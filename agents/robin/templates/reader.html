@@ -208,37 +208,34 @@
     const modalContext = document.getElementById('modalContext');
     const modalInput = document.getElementById('modalInput');
 
-    // ── Markdown preprocessing ──
+    // ── Rendering (two-pass to avoid marked.js wrapping sidenotes in <p>) ──
 
-    function preprocess(md) {
-      // Step 1: Extract annotations → sidenote HTML inserted inline
-      // Format: > [!annotation] reference text
-      //         > note line 1
-      let annCounter = 0;
+    function render() {
+      // Pass 1: Extract annotations into a store, leave placeholders in markdown
+      const annStore = [];
       const annRefs = [];
+      let annCounter = 0;
 
-      md = md.replace(
+      let md = mdSource.replace(
         /^> \[!annotation\]\s*(.*)\n((?:^> .*(?:\n|$))*)/gm,
         function(match, refLine, body) {
           annCounter++;
           const ref = refLine.trim();
           const note = body.replace(/^> ?/gm, '').trim();
           if (ref) annRefs.push(ref);
-          const refHtml = ref
-            ? `<div class="sn-ref">"${ref.substring(0, 60)}${ref.length > 60 ? '…' : ''}"</div>`
-            : '';
-          return `<span class="sidenote">${refHtml}<span class="sn-body">${note}</span></span>\n`;
+          annStore.push({ ref, note, id: annCounter });
+          // Placeholder that marked will pass through as-is (won't wrap in <p>)
+          return `<!--ANN${annCounter}-->`;
         }
       );
 
-      // Step 2: ==text== → highlights
-      // Green if the text is referenced by an annotation, yellow otherwise
+      // Convert ==text== → highlights (before marked)
       md = md.replace(/==(.*?)==/gs, function(match, text) {
         const trimmed = text.trim();
         let isAnnotated = false;
         for (const ref of annRefs) {
-          if (trimmed.length >= 20 && ref.includes(trimmed.substring(0, 20))) { isAnnotated = true; break; }
-          if (ref.length >= 20 && trimmed.includes(ref.substring(0, 20))) { isAnnotated = true; break; }
+          if (trimmed.length >= 15 && ref.includes(trimmed.substring(0, 15))) { isAnnotated = true; break; }
+          if (ref.length >= 15 && trimmed.includes(ref.substring(0, 15))) { isAnnotated = true; break; }
           if (trimmed === ref) { isAnnotated = true; break; }
         }
         return isAnnotated
@@ -246,12 +243,18 @@
           : `<mark class="hl">${text}</mark>`;
       });
 
-      return md;
-    }
+      // Pass 2: Run marked, then replace placeholders with sidenote divs
+      let html = marked.parse(md);
 
-    function render() {
-      const processed = preprocess(mdSource);
-      readerContent.innerHTML = marked.parse(processed);
+      for (const ann of annStore) {
+        const refHtml = ann.ref
+          ? `<div class="sn-ref">"${ann.ref.substring(0, 60)}${ann.ref.length > 60 ? '…' : ''}"</div>`
+          : '';
+        const sidenote = `<div class="sidenote">${refHtml}<div class="sn-body">${ann.note}</div></div>`;
+        html = html.replace(`<!--ANN${ann.id}-->`, sidenote);
+      }
+
+      readerContent.innerHTML = html;
     }
 
     // ── Dark mode ──
