@@ -19,7 +19,7 @@
     --annotated-bg: #d4edda;
     --accent: #6c63ff;
     --accent-hover: #574fd6;
-    --note-bg: #f3f2ff;
+    --note-bg: #f8f7ff;
     --note-border: #6c63ff;
     --modal-bg: white;
     --btn-muted-bg: #f0f0f0;
@@ -66,36 +66,17 @@
   .header-btn:hover { border-color: var(--accent); color: var(--accent); }
   .shortcuts-hint { font-size: 0.65rem; color: var(--text-faint); }
 
-  /* ── Reader layout ── */
-  .reader-outer { flex: 1; display: flex; overflow: hidden; position: relative; }
-
-  /* Margin note columns */
-  .margin-left, .margin-right { width: 220px; flex-shrink: 0; overflow-y: auto; padding: 2rem 0.75rem; }
-  .margin-left { text-align: right; }
-  .margin-right { text-align: left; }
-  @media (max-width: 1100px) { .margin-left { display: none; } }
-  @media (max-width: 800px) { .margin-right { display: none; } }
-
-  .margin-note { font-size: 0.78rem; color: var(--accent); background: var(--note-bg); border-radius: 6px; padding: 0.5rem 0.6rem; margin-bottom: 0.75rem; line-height: 1.5; border-left: 2px solid var(--note-border); text-align: left; }
-  .margin-note .mn-ref { font-size: 0.7rem; color: var(--text-faint); margin-bottom: 0.25rem; font-style: italic; }
-
-  /* Main reading pane */
-  .reader-main { flex: 1; min-width: 0; overflow: hidden; }
-  .reader-scroll { height: 100%; overflow-y: auto; }
-  .reader-content { max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
-
-  /* Paged mode */
-  .reader-main.paged .reader-scroll { overflow: hidden; }
-  .reader-main.paged .reader-content {
-    max-width: none;
-    height: 100%;
-    padding: 2rem 2rem 3rem;
-    column-fill: auto;
-    column-gap: 4rem;
-    overflow: hidden;
+  /* ── Reader: Tufte-style sidenotes ── */
+  .reader-scroll { flex: 1; overflow-y: auto; }
+  .reader-content {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 300px 4rem 6%;
+    position: relative;
   }
-  .page-nav { display: none; position: absolute; bottom: 3rem; left: 50%; transform: translateX(-50%); font-size: 0.8rem; color: var(--text-muted); background: var(--bg-card); padding: 0.25rem 0.75rem; border-radius: 6px; border: 1px solid var(--border); z-index: 10; }
-  .reader-main.paged ~ .page-nav-wrap .page-nav { display: block; }
+  @media (max-width: 1000px) {
+    .reader-content { padding: 2rem 1.5rem 4rem; }
+  }
 
   /* ── Typography ── */
   .reader-content h1 { font-size: 1.6rem; margin: 1.5rem 0 0.75rem; color: var(--text-heading); line-height: 1.4; }
@@ -116,9 +97,33 @@
   /* Annotated text (Ctrl+Shift+C) — green */
   .reader-content mark.ann { background: var(--annotated-bg); padding: 0.05rem 0.15rem; border-radius: 2px; color: inherit; }
 
-  /* Inline annotation (fallback when margin is hidden) */
-  .reader-content .annotation-inline { border-left: 3px solid var(--note-border); background: var(--note-bg); padding: 0.6rem 0.8rem; border-radius: 0 6px 6px 0; margin: 0.5rem 0; font-size: 0.85rem; color: var(--accent); display: none; }
-  @media (max-width: 800px) { .reader-content .annotation-inline { display: block; } }
+  /* ── Sidenote (margin note) ── */
+  .sidenote {
+    float: right;
+    clear: right;
+    width: 250px;
+    margin-right: -280px;
+    margin-bottom: 0.75rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--accent);
+    background: var(--note-bg);
+    border-left: 2px solid var(--note-border);
+    border-radius: 0 6px 6px 0;
+    padding: 0.5rem 0.65rem;
+  }
+  .sidenote .sn-ref { font-size: 0.7rem; color: var(--text-faint); font-style: italic; margin-bottom: 0.2rem; }
+  .sidenote .sn-body { color: var(--accent); }
+
+  /* On narrow screens, sidenotes go inline */
+  @media (max-width: 1000px) {
+    .sidenote {
+      float: none;
+      width: auto;
+      margin: 0.5rem 0 0.75rem;
+      padding: 0.6rem 0.8rem;
+    }
+  }
 
   /* ── Footer ── */
   .footer { background: var(--bg-card); padding: 0.6rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); flex-shrink: 0; }
@@ -157,24 +162,14 @@
     <div class="header-right">
       <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解</span>
       <span class="save-indicator" id="saveIndicator">已儲存</span>
-      <button class="header-btn" id="modeToggle" onclick="toggleMode()">翻頁模式</button>
       <button class="header-btn" id="darkToggle" onclick="toggleDark()">Dark</button>
     </div>
   </div>
 
   <!-- Reader -->
-  <div class="reader-outer">
-    <div class="margin-left" id="marginLeft"></div>
-    <div class="reader-main" id="readerMain">
-      <div class="reader-scroll" id="readerScroll">
-        <div class="reader-content" id="readerContent"></div>
-      </div>
-    </div>
-    <div class="margin-right" id="marginRight"></div>
+  <div class="reader-scroll" id="readerScroll">
+    <div class="reader-content" id="readerContent"></div>
   </div>
-
-  <!-- Page nav (outside reader-outer for z-index) -->
-  <div class="page-nav" id="pageNav" style="display:none"></div>
 
   <!-- Footer -->
   <div class="footer">
@@ -202,17 +197,9 @@
     // ── State ──
     const FILENAME = '{{ filename }}';
     let mdSource = {{ content | tojson }};
-    let isPaged = false;
-    let currentPage = 0;
-    let totalPages = 1;
     let pendingSelectedText = '';
 
-    const readerMain = document.getElementById('readerMain');
-    const readerScroll = document.getElementById('readerScroll');
     const readerContent = document.getElementById('readerContent');
-    const marginRight = document.getElementById('marginRight');
-    const pageNav = document.getElementById('pageNav');
-    const modeToggle = document.getElementById('modeToggle');
     const darkToggle = document.getElementById('darkToggle');
     const saveIndicator = document.getElementById('saveIndicator');
     const finishBtn = document.getElementById('finishBtn');
@@ -222,51 +209,41 @@
     const modalInput = document.getElementById('modalInput');
 
     // ── Markdown preprocessing ──
-    // We collect annotations during preprocessing so we can render margin notes.
-    let annotations = []; // [{ref, note, id}]
 
     function preprocess(md) {
-      annotations = [];
-      let annCounter = 0;
-
-      // Step 1: Extract annotations and replace with inline markers
+      // Step 1: Extract annotations → sidenote HTML inserted inline
       // Format: > [!annotation] reference text
       //         > note line 1
-      //         > note line 2
+      let annCounter = 0;
+      const annRefs = [];
+
       md = md.replace(
         /^> \[!annotation\]\s*(.*)\n((?:^> .*(?:\n|$))*)/gm,
         function(match, refLine, body) {
           annCounter++;
-          const id = 'ann-' + annCounter;
           const ref = refLine.trim();
           const note = body.replace(/^> ?/gm, '').trim();
-          annotations.push({ ref, note, id });
-          // Leave an inline fallback for narrow screens
-          return `<div class="annotation-inline" data-ann-id="${id}"><strong>Note:</strong> ${note}</div>\n`;
+          if (ref) annRefs.push(ref);
+          const refHtml = ref
+            ? `<div class="sn-ref">"${ref.substring(0, 60)}${ref.length > 60 ? '…' : ''}"</div>`
+            : '';
+          return `<span class="sidenote">${refHtml}<span class="sn-body">${note}</span></span>\n`;
         }
       );
 
-      // Step 2: Convert ==text== to highlights
-      // If text matches an annotation ref, use green (ann class); otherwise yellow (hl class)
-      const annRefs = new Set(annotations.map(a => a.ref));
+      // Step 2: ==text== → highlights
+      // Green if the text is referenced by an annotation, yellow otherwise
       md = md.replace(/==(.*?)==/gs, function(match, text) {
-        // Check if this highlighted text is referenced by an annotation
         const trimmed = text.trim();
-        let matchedAnn = null;
-        for (const a of annotations) {
-          if (a.ref && trimmed.includes(a.ref.substring(0, 30))) {
-            matchedAnn = a;
-            break;
-          }
-          if (a.ref && a.ref.includes(trimmed.substring(0, 30))) {
-            matchedAnn = a;
-            break;
-          }
+        let isAnnotated = false;
+        for (const ref of annRefs) {
+          if (trimmed.length >= 20 && ref.includes(trimmed.substring(0, 20))) { isAnnotated = true; break; }
+          if (ref.length >= 20 && trimmed.includes(ref.substring(0, 20))) { isAnnotated = true; break; }
+          if (trimmed === ref) { isAnnotated = true; break; }
         }
-        if (matchedAnn) {
-          return `<mark class="ann" data-ann-id="${matchedAnn.id}">${text}</mark>`;
-        }
-        return `<mark class="hl">${text}</mark>`;
+        return isAnnotated
+          ? `<mark class="ann">${text}</mark>`
+          : `<mark class="hl">${text}</mark>`;
       });
 
       return md;
@@ -275,90 +252,6 @@
     function render() {
       const processed = preprocess(mdSource);
       readerContent.innerHTML = marked.parse(processed);
-      renderMarginNotes();
-      if (isPaged) {
-        requestAnimationFrame(() => applyPageLayout());
-      }
-    }
-
-    function renderMarginNotes() {
-      marginRight.innerHTML = '';
-      if (annotations.length === 0) return;
-
-      for (const ann of annotations) {
-        const noteEl = document.createElement('div');
-        noteEl.className = 'margin-note';
-        noteEl.dataset.annId = ann.id;
-        if (ann.ref) {
-          noteEl.innerHTML = `<div class="mn-ref">"${ann.ref.substring(0, 50)}${ann.ref.length > 50 ? '…' : ''}"</div>${ann.note}`;
-        } else {
-          noteEl.textContent = ann.note;
-        }
-        marginRight.appendChild(noteEl);
-      }
-
-      // Position margin notes near their anchors
-      requestAnimationFrame(positionMarginNotes);
-    }
-
-    function positionMarginNotes() {
-      const notes = marginRight.querySelectorAll('.margin-note');
-      const outerRect = document.querySelector('.reader-outer').getBoundingClientRect();
-
-      for (const noteEl of notes) {
-        const annId = noteEl.dataset.annId;
-        // Find the anchor: either mark.ann or .annotation-inline
-        const anchor = readerContent.querySelector(`[data-ann-id="${annId}"]`);
-        if (!anchor) continue;
-        const anchorRect = anchor.getBoundingClientRect();
-        const targetTop = anchorRect.top - outerRect.top + document.querySelector('.reader-outer').scrollTop;
-        noteEl.style.marginTop = '0';
-        // Rough positioning — offset from top of margin column
-        const noteRect = noteEl.getBoundingClientRect();
-        const currentTop = noteRect.top - outerRect.top;
-        const offset = targetTop - currentTop;
-        if (Math.abs(offset) > 10) {
-          noteEl.style.marginTop = Math.max(0, offset) + 'px';
-        }
-      }
-    }
-
-    // ── Mode toggle ──
-
-    function toggleMode() {
-      isPaged = !isPaged;
-      if (isPaged) {
-        readerMain.classList.add('paged');
-        modeToggle.textContent = '捲動模式';
-        pageNav.style.display = 'block';
-        currentPage = 0;
-        requestAnimationFrame(() => applyPageLayout());
-      } else {
-        readerMain.classList.remove('paged');
-        modeToggle.textContent = '翻頁模式';
-        pageNav.style.display = 'none';
-        readerContent.style.columnWidth = '';
-        readerContent.style.width = '';
-        readerScroll.scrollLeft = 0;
-      }
-    }
-
-    function applyPageLayout() {
-      const wrapW = readerScroll.clientWidth;
-      const wrapH = readerScroll.clientHeight;
-      readerContent.style.height = wrapH + 'px';
-      readerContent.style.columnWidth = (wrapW - 64) + 'px'; // account for padding
-      requestAnimationFrame(() => {
-        totalPages = Math.max(1, Math.ceil(readerContent.scrollWidth / wrapW));
-        goToPage(currentPage);
-      });
-    }
-
-    function goToPage(n) {
-      const wrapW = readerScroll.clientWidth;
-      currentPage = Math.max(0, Math.min(n, totalPages - 1));
-      readerScroll.scrollLeft = currentPage * wrapW;
-      pageNav.textContent = `${currentPage + 1} / ${totalPages}`;
     }
 
     // ── Dark mode ──
@@ -370,7 +263,6 @@
       localStorage.setItem('robin-dark', isDark ? '1' : '0');
     }
 
-    // Restore dark mode preference
     if (localStorage.getItem('robin-dark') === '1') {
       document.body.classList.add('dark');
       darkToggle.textContent = 'Light';
@@ -405,24 +297,22 @@
     }
 
     function addAnnotationInSource(text, note) {
-      // First, highlight the text with ==...== if not already
       const match = findInSource(text);
       if (!match) return false;
       const idx = mdSource.indexOf(match[0]);
 
-      // Check if already highlighted
+      // Highlight the text if not already
       const before2 = mdSource.substring(Math.max(0, idx - 2), idx);
       if (before2 !== '==') {
-        // Wrap with ==...==
         mdSource = mdSource.substring(0, idx) + '==' + match[0] + '==' + mdSource.substring(idx + match[0].length);
       }
 
-      // Find end of paragraph after the match
-      const afterIdx = mdSource.indexOf(match[0], idx) + match[0].length;
-      let paraEnd = mdSource.indexOf('\n\n', afterIdx);
+      // Find end of paragraph
+      const searchFrom = mdSource.indexOf(match[0], idx) + match[0].length;
+      let paraEnd = mdSource.indexOf('\n\n', searchFrom);
       if (paraEnd === -1) paraEnd = mdSource.length;
 
-      // Build annotation block with reference
+      // Build annotation block
       const refText = text.substring(0, 60).replace(/\n/g, ' ');
       const noteLines = note.split('\n').map(l => '> ' + l).join('\n');
       const block = `\n\n> [!annotation] ${refText}\n${noteLines}\n`;
@@ -459,7 +349,6 @@
     // ── Keyboard shortcuts ──
 
     document.addEventListener('keydown', function(e) {
-      // Don't trigger when modal is open (except modal-specific keys)
       if (modalOverlay.classList.contains('show')) return;
 
       // Ctrl+B: highlight (yellow)
@@ -473,19 +362,13 @@
         }
       }
 
-      // Ctrl+Shift+C: annotation (green + margin note)
+      // Ctrl+Shift+C: annotation (green + sidenote)
       if (e.ctrlKey && e.shiftKey && e.key === 'C') {
         e.preventDefault();
         const text = getSelectedText();
         if (!text) return;
         pendingSelectedText = text;
         openModal(text);
-      }
-
-      // Arrow keys for paged mode
-      if (isPaged) {
-        if (e.key === 'ArrowRight') { e.preventDefault(); goToPage(currentPage + 1); }
-        if (e.key === 'ArrowLeft') { e.preventDefault(); goToPage(currentPage - 1); }
       }
     });
 
@@ -539,17 +422,6 @@
         console.error('Mark read failed:', e);
       }
     }
-
-    // ── Resize ──
-
-    window.addEventListener('resize', function() {
-      if (isPaged) applyPageLayout();
-    });
-
-    // Reposition margin notes on scroll
-    readerScroll.addEventListener('scroll', function() {
-      requestAnimationFrame(positionMarginNotes);
-    });
 
     // ── Init ──
     render();
