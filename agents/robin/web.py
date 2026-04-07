@@ -113,7 +113,7 @@ def _get_inbox_files() -> list[dict]:
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @app.post("/login")
@@ -122,11 +122,7 @@ async def login(request: Request, password: str = Form(...)):
         response = RedirectResponse("/", status_code=302)
         response.set_cookie("robin_auth", _make_token(password), httponly=True)
         return response
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": "密碼錯誤"},
-        status_code=401,
-    )
+    return templates.TemplateResponse(request, "login.html", {"error": "密碼錯誤"}, status_code=401)
 
 
 @app.post("/logout")
@@ -141,7 +137,7 @@ async def index(request: Request, robin_auth: str | None = Cookie(None)):
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     files = _get_inbox_files()
-    return templates.TemplateResponse("index.html", {"request": request, "files": files})
+    return templates.TemplateResponse(request, "index.html", {"files": files})
 
 
 @app.post("/start")
@@ -197,8 +193,7 @@ async def processing(request: Request, robin_session: str | None = Cookie(None),
         "executing": "Robin 正在寫入 Wiki 頁面...",
     }
     label = step_labels.get(sess["step"], "處理中...")
-    return templates.TemplateResponse("processing.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "processing.html", {
         "session_id": robin_session,
         "label": label,
     })
@@ -344,8 +339,7 @@ async def review_summary(request: Request, robin_session: str | None = Cookie(No
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_guidance":
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse("review_summary.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "review_summary.html", {
         "file_name": sess["file_name"],
         "summary": sess["summary_body"],
     })
@@ -374,8 +368,7 @@ async def review_plan(request: Request, robin_session: str | None = Cookie(None)
     if not sess or sess["step"] != "awaiting_approval":
         return RedirectResponse("/", status_code=302)
     plan = sess.get("plan", {"create": [], "update": []})
-    return templates.TemplateResponse("review_plan.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "review_plan.html", {
         "file_name": sess["file_name"],
         "creates": enumerate(plan.get("create", [])),
         "updates": enumerate(plan.get("update", [])),
@@ -426,8 +419,7 @@ async def done(request: Request, robin_session: str | None = Cookie(None), robin
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "done":
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse("done.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "done.html", {
         "file_name": sess["file_name"],
         "created": sess["result"].get("created", []),
         "updated": sess["result"].get("updated", []),
