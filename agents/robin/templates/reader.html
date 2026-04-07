@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 閱讀</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Header ── */
+  .header { background: white; padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; }
+  .header-left { display: flex; align-items: center; gap: 0.75rem; }
+  .header-left h1 { font-size: 1.1rem; color: #1a1a1a; word-break: break-all; }
+  .header-right { display: flex; align-items: center; gap: 0.5rem; }
+  .badge-read { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: #e8f5e9; color: #2e7d32; font-weight: 600; }
+  .save-indicator { font-size: 0.8rem; color: #4caf50; opacity: 0; transition: opacity 0.3s; }
+  .save-indicator.show { opacity: 1; }
+
+  /* ── Toolbar ── */
+  .toolbar { background: white; padding: 0.5rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; }
+  .toolbar button { padding: 0.35rem 0.75rem; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+  .toolbar button:hover { background: #6c63ff; color: white; border-color: #6c63ff; }
+
+  /* ── Split pane ── */
+  .panes { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+  .pane { overflow-y: auto; padding: 1.5rem; }
+  .pane-preview { background: white; border-right: 1px solid #e5e5e5; }
+  .pane-source { background: #fafafa; display: flex; flex-direction: column; }
+  .pane-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 0.75rem; }
+  .source-editor { flex: 1; width: 100%; border: none; background: transparent; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 0.85rem; line-height: 1.7; resize: none; outline: none; color: #333; tab-size: 2; }
+
+  /* ── Preview styles ── */
+  .preview-content { font-size: 0.95rem; line-height: 1.8; color: #333; }
+  .preview-content h1 { font-size: 1.5rem; margin: 1.5rem 0 0.75rem; color: #1a1a1a; }
+  .preview-content h2 { font-size: 1.25rem; margin: 1.25rem 0 0.6rem; color: #1a1a1a; }
+  .preview-content h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; color: #1a1a1a; }
+  .preview-content p { margin-bottom: 0.75rem; }
+  .preview-content ul, .preview-content ol { margin: 0.5rem 0 0.75rem 1.5rem; }
+  .preview-content li { margin-bottom: 0.25rem; }
+  .preview-content blockquote { border-left: 3px solid #ddd; padding-left: 1rem; color: #666; margin: 0.75rem 0; }
+  .preview-content code { background: #f0f0f0; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; }
+  .preview-content pre { background: #f0f0f0; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0.75rem 0; }
+  .preview-content pre code { background: none; padding: 0; }
+  .preview-content mark { background: #fff3a3; padding: 0.05rem 0.15rem; border-radius: 2px; }
+  .preview-content .annotation-callout { border-left: 3px solid #6c63ff; background: #f3f2ff; padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; margin: 0.75rem 0; font-size: 0.9rem; color: #444; }
+  .preview-content .annotation-callout strong { color: #6c63ff; }
+
+  /* ── Footer ── */
+  .footer { background: white; padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e5e5e5; flex-shrink: 0; }
+  .footer a { color: #888; text-decoration: none; font-size: 0.9rem; }
+  .footer a:hover { color: #333; }
+  .btn { padding: 0.55rem 1.2rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; }
+  .btn-finish { background: #4caf50; color: white; }
+  .btn-finish:hover { background: #43a047; }
+  .btn-finish.done { background: #e8f5e9; color: #2e7d32; }
+
+  /* ── Mobile ── */
+  @media (max-width: 768px) {
+    .panes { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .pane-preview { border-right: none; border-bottom: 1px solid #e5e5e5; }
+  }
+</style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>{{ filename }}</h1>
+      <span class="badge-read" id="readBadge" {% if not is_read %}style="display:none"{% endif %}>已閱讀</span>
+    </div>
+    <div class="header-right">
+      <span class="save-indicator" id="saveIndicator">已儲存</span>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button type="button" onclick="wrapHighlight()" title="選取文字後按此標記重點">標記重點</button>
+    <button type="button" onclick="insertNote()" title="在游標處插入筆記區塊">新增筆記</button>
+  </div>
+
+  <!-- Split panes -->
+  <div class="panes">
+    <div class="pane pane-preview">
+      <div class="pane-label">Preview</div>
+      <div class="preview-content" id="preview"></div>
+    </div>
+    <div class="pane pane-source">
+      <div class="pane-label">Markdown Source</div>
+      <textarea class="source-editor" id="editor" spellcheck="false">{{ content }}</textarea>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <a href="/">← 返回 Inbox</a>
+    <button class="btn btn-finish {% if is_read %}done{% endif %}" id="finishBtn" onclick="finishReading()">
+      {% if is_read %}已完成閱讀 ✓{% else %}完成閱讀{% endif %}
+    </button>
+  </div>
+
+  <script>
+    const editor = document.getElementById('editor');
+    const preview = document.getElementById('preview');
+    const saveIndicator = document.getElementById('saveIndicator');
+    const finishBtn = document.getElementById('finishBtn');
+    const readBadge = document.getElementById('readBadge');
+    const FILENAME = '{{ filename }}';
+
+    // ── Markdown preprocessing ──
+
+    function preprocess(md) {
+      // ==highlight== → <mark>
+      md = md.replace(/==(.*?)==/gs, '<mark>$1</mark>');
+      // > [!annotation]\n> lines → styled callout
+      md = md.replace(
+        /^> \[!annotation\]\s*\n((?:^> .*(?:\n|$))*)/gm,
+        function(match, body) {
+          const text = body.replace(/^> ?/gm, '').trim();
+          return '<div class="annotation-callout"><strong>My Note</strong><br>' + text + '</div>\n';
+        }
+      );
+      return md;
+    }
+
+    function renderPreview() {
+      const raw = editor.value;
+      const processed = preprocess(raw);
+      preview.innerHTML = marked.parse(processed);
+    }
+
+    // ── Debounce utility ──
+
+    function debounce(fn, ms) {
+      let timer;
+      return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), ms);
+      };
+    }
+
+    // ── Auto-save ──
+
+    let saveTimeout;
+    function showSaved() {
+      saveIndicator.classList.add('show');
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(() => saveIndicator.classList.remove('show'), 1500);
+    }
+
+    async function saveContent() {
+      const form = new FormData();
+      form.append('filename', FILENAME);
+      form.append('content', editor.value);
+      try {
+        const res = await fetch('/save-annotations', { method: 'POST', body: form });
+        if (res.ok) showSaved();
+      } catch (e) {
+        console.error('Save failed:', e);
+      }
+    }
+
+    const debouncedSave = debounce(saveContent, 2000);
+    const debouncedRender = debounce(renderPreview, 300);
+
+    editor.addEventListener('input', function() {
+      debouncedRender();
+      debouncedSave();
+    });
+
+    // ── Toolbar actions ──
+
+    function wrapHighlight() {
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      if (start === end) return; // nothing selected
+      const text = editor.value;
+      const selected = text.substring(start, end);
+      const newText = text.substring(0, start) + '==' + selected + '==' + text.substring(end);
+      editor.value = newText;
+      editor.selectionStart = start;
+      editor.selectionEnd = end + 4; // account for ==...==
+      editor.focus();
+      debouncedRender();
+      debouncedSave();
+    }
+
+    function insertNote() {
+      const pos = editor.selectionStart;
+      const text = editor.value;
+      const insertion = '\n\n> [!annotation]\n> ';
+      const newText = text.substring(0, pos) + insertion + text.substring(pos);
+      editor.value = newText;
+      editor.selectionStart = editor.selectionEnd = pos + insertion.length;
+      editor.focus();
+      debouncedRender();
+      debouncedSave();
+    }
+
+    // ── Finish reading ──
+
+    async function finishReading() {
+      // Save first
+      await saveContent();
+      // Mark as read
+      const form = new FormData();
+      form.append('filename', FILENAME);
+      try {
+        const res = await fetch('/mark-read', { method: 'POST', body: form });
+        if (res.ok) {
+          finishBtn.textContent = '已完成閱讀 ✓';
+          finishBtn.classList.add('done');
+          readBadge.style.display = '';
+        }
+      } catch (e) {
+        console.error('Mark read failed:', e);
+      }
+    }
+
+    // ── Initial render ──
+    renderPreview();
+  </script>
+</body>
+</html>

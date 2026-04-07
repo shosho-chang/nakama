@@ -19,7 +19,7 @@ from agents.robin.ingest import IngestPipeline
 from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
 from shared.obsidian_writer import list_files
-from shared.state import mark_file_processed
+from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.utils import extract_frontmatter, read_text, slugify
 
 logger = get_logger("nakama.robin.web")
@@ -105,6 +105,8 @@ def _get_inbox_files() -> list[dict]:
                 "name": f.name,
                 "size": f"{size_kb} KB" if size_kb >= 1 else f"{f.stat().st_size} B",
                 "type": EXTENSION_TO_SOURCE_TYPE.get(f.suffix.lower(), "article"),
+                "annotatable": f.suffix.lower() in (".md", ".txt"),
+                "is_read": is_file_read(f),
             })
     return files
 
@@ -138,6 +140,56 @@ async def index(request: Request, robin_auth: str | None = Cookie(None)):
         return RedirectResponse("/login", status_code=302)
     files = _get_inbox_files()
     return templates.TemplateResponse(request, "index.html", {"files": files})
+
+
+@app.get("/read", response_class=HTMLResponse)
+async def read_source(request: Request, file: str, robin_auth: str | None = Cookie(None)):
+    if not _check_auth(robin_auth):
+        return RedirectResponse("/login", status_code=302)
+    inbox = _get_inbox()
+    file_path = inbox / file
+    if not file_path.exists():
+        raise HTTPException(404, detail=f"找不到檔案：{file}")
+    if file_path.suffix.lower() not in (".md", ".txt"):
+        raise HTTPException(400, detail="此檔案格式不支援線上閱讀")
+    content = read_text(file_path)
+    return templates.TemplateResponse(request, "reader.html", {
+        "filename": file,
+        "content": content,
+        "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
+        "is_read": is_file_read(file_path),
+    })
+
+
+@app.post("/save-annotations")
+async def save_annotations(
+    filename: str = Form(...),
+    content: str = Form(...),
+    robin_auth: str | None = Cookie(None),
+):
+    if not _check_auth(robin_auth):
+        raise HTTPException(403)
+    inbox = _get_inbox()
+    file_path = inbox / filename
+    if not file_path.exists():
+        raise HTTPException(404, detail=f"找不到檔案：{filename}")
+    file_path.write_text(content, encoding="utf-8")
+    return {"status": "ok"}
+
+
+@app.post("/mark-read")
+async def mark_read(
+    filename: str = Form(...),
+    robin_auth: str | None = Cookie(None),
+):
+    if not _check_auth(robin_auth):
+        raise HTTPException(403)
+    inbox = _get_inbox()
+    file_path = inbox / filename
+    if not file_path.exists():
+        raise HTTPException(404, detail=f"找不到檔案：{filename}")
+    mark_file_read(file_path)
+    return {"status": "ok"}
 
 
 @app.post("/start")

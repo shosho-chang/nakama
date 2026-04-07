@@ -15,12 +15,17 @@
   .container { max-width: 680px; margin: 0 auto; }
   .empty { text-align: center; color: #888; padding: 3rem; background: white; border-radius: 12px; }
   .empty p { margin-top: 0.5rem; font-size: 0.9rem; }
-  .file-card { background: white; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .file-card { background: white; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .file-top { display: flex; align-items: center; justify-content: space-between; }
   .file-info { flex: 1; }
-  .file-name { font-weight: 600; color: #1a1a1a; word-break: break-all; }
+  .file-name { font-weight: 600; color: #1a1a1a; word-break: break-all; display: flex; align-items: center; gap: 0.5rem; }
   .file-meta { font-size: 0.8rem; color: #888; margin-top: 0.2rem; }
+  .badge-read { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: #e8f5e9; color: #2e7d32; font-weight: 600; flex-shrink: 0; }
+  .file-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; justify-content: flex-end; }
   .type-select { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid #ddd; background: #fafafa; color: #444; cursor: pointer; }
   .type-select:focus { outline: none; border-color: #6c63ff; }
+  .btn-read { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.9rem; background: white; color: #6c63ff; border: 1px solid #6c63ff; border-radius: 8px; font-size: 0.85rem; text-decoration: none; white-space: nowrap; transition: all .2s; }
+  .btn-read:hover { background: #6c63ff; color: white; }
   button { padding: 0.55rem 1.2rem; background: #6c63ff; color: white; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; white-space: nowrap; transition: background .2s; }
   button:hover { background: #574fd6; }
 </style>
@@ -36,21 +41,31 @@
   {% if files %}
     {% for file in files %}
     <div class="file-card">
-      <div class="file-info">
-        <div class="file-name">{{ file.name }}</div>
-        <div class="file-meta">{{ file.size }}</div>
+      <div class="file-top">
+        <div class="file-info">
+          <div class="file-name">
+            {{ file.name }}
+            {% if file.is_read %}<span class="badge-read">已閱讀</span>{% endif %}
+          </div>
+          <div class="file-meta">{{ file.size }}</div>
+        </div>
       </div>
-      <form method="post" action="/start" style="margin:0;margin-left:1rem;display:flex;align-items:center;gap:0.5rem">
-        <input type="hidden" name="filename" value="{{ file.name }}">
-        <select name="source_type" class="type-select">
-          <option value="article"{% if file.type == "article" %} selected{% endif %}>Article</option>
-          <option value="paper"{% if file.type == "paper" %} selected{% endif %}>Paper</option>
-          <option value="book"{% if file.type == "book" %} selected{% endif %}>Book</option>
-          <option value="video"{% if file.type == "video" %} selected{% endif %}>Video</option>
-          <option value="podcast"{% if file.type == "podcast" %} selected{% endif %}>Podcast</option>
-        </select>
-        <button type="submit">開始 Ingest</button>
-      </form>
+      <div class="file-actions">
+        {% if file.annotatable %}
+          <a href="/read?file={{ file.name }}" class="btn-read">閱讀</a>
+        {% endif %}
+        <form method="post" action="/start" style="margin:0;display:flex;align-items:center;gap:0.5rem">
+          <input type="hidden" name="filename" value="{{ file.name }}">
+          <select name="source_type" class="type-select">
+            <option value="article"{% if file.type == "article" %} selected{% endif %}>Article</option>
+            <option value="paper"{% if file.type == "paper" %} selected{% endif %}>Paper</option>
+            <option value="book"{% if file.type == "book" %} selected{% endif %}>Book</option>
+            <option value="video"{% if file.type == "video" %} selected{% endif %}>Video</option>
+            <option value="podcast"{% if file.type == "podcast" %} selected{% endif %}>Podcast</option>
+          </select>
+          <button type="submit">開始 Ingest</button>
+        </form>
+      </div>
     </div>
     {% endfor %}
   {% else %}

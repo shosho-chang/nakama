@@ -56,6 +56,11 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             created_at  TEXT NOT NULL,
             resolved    INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS files_read (
+            file_path   TEXT NOT NULL PRIMARY KEY,
+            read_at     TEXT NOT NULL
+        );
     """)
     conn.commit()
 
@@ -88,6 +93,27 @@ def mark_file_processed(path: Path, agent: str) -> None:
            (file_path, file_hash, agent, processed_at, status)
            VALUES (?, ?, ?, ?, 'done')""",
         (str(path), file_hash(path), agent, now),
+    )
+    conn.commit()
+
+
+def is_file_read(path: Path) -> bool:
+    """檢查檔案是否已被標記為已閱讀。"""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT 1 FROM files_read WHERE file_path = ?",
+        (str(path),),
+    ).fetchone()
+    return row is not None
+
+
+def mark_file_read(path: Path) -> None:
+    """標記檔案為已閱讀。"""
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO files_read (file_path, read_at) VALUES (?, ?)",
+        (str(path), now),
     )
     conn.commit()
 
