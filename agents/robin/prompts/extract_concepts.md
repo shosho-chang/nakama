@@ -19,22 +19,22 @@
 用 JSON 回傳：
 
 ```json
-{
+{{
   "create": [
-    {
+    {{
       "title": "頁面標題",
       "type": "concept 或 entity",
       "reason": "為什麼需要建立",
       "content_notes": "應包含的重點"
-    }
+    }}
   ],
   "update": [
-    {
+    {{
       "title": "既有頁面標題",
       "file": "既有檔案的相對路徑",
       "reason": "為什麼需要更新",
       "additions": "應新增的內容"
-    }
+    }}
   ]
-}
+}}
 ```
