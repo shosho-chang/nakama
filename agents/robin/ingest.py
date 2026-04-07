@@ -27,7 +27,13 @@ def _load_prompt(name: str) -> str:
 class IngestPipeline:
     """處理單一來源的完整 ingest 流程。"""
 
-    def ingest(self, raw_path: Path, source_type: str) -> None:
+    def ingest(
+        self,
+        raw_path: Path,
+        source_type: str,
+        user_guidance: str = "",
+        interactive: bool = False,
+    ) -> None:
         """執行完整 ingest pipeline。"""
         # 讀取來源內容
         content = read_text(raw_path)
@@ -51,7 +57,11 @@ class IngestPipeline:
             source_type=source_type,
         )
 
-        # Step 2: 寫入 Source Summary 頁面
+        # Step 2: 互動式模式 — 印出 Summary，等待使用者引導
+        if interactive:
+            user_guidance = self._prompt_user_guidance(title, summary_body)
+
+        # Step 3: 寫入 Source Summary 頁面
         slug = slugify(title)
         summary_path = f"KB/Wiki/Sources/{slug}.md"
         raw_relative = str(raw_path.relative_to(vault_path().parent.parent))
@@ -76,11 +86,34 @@ class IngestPipeline:
         logger.info(f"已建立 Source Summary：{summary_path}")
         kb_log("robin", "ingest", f"建立 Source Summary: {slug}")
 
-        # Step 3: 識別需要建立/更新的 Concept & Entity pages
-        self._process_concepts_and_entities(summary_body, summary_path)
+        # Step 4: 識別需要建立/更新的 Concept & Entity pages
+        self._process_concepts_and_entities(summary_body, summary_path, user_guidance)
 
-        # Step 4: 更新 index.md
+        # Step 5: 更新 index.md
         self._update_index(title, slug, source_type)
+
+    def _prompt_user_guidance(self, title: str, summary_body: str) -> str:
+        """互動式模式：印出 Summary 並等待使用者輸入引導方向。"""
+        print(f"\n{'='*60}")
+        print(f"📝 Source Summary：{title}")
+        print(f"{'='*60}")
+        print(summary_body)
+        print(f"\n{'='*60}")
+        print("Robin 即將根據以上 Summary 建立 Concept 和 Entity 頁面。")
+        print()
+        print("你有想要特別強調的方向嗎？例如：")
+        print('  "重點放在 CBT-I 療法的部分"')
+        print('  "作者 Colleen Carney 的研究背景很重要"')
+        print('  "失眠和焦慮的關係要獨立成一頁"')
+        print()
+        guidance = input("引導方向（直接按 Enter 讓 Robin 自行判斷）：").strip()
+        print()
+        if guidance:
+            print(f"✓ 已收到引導：{guidance}")
+        else:
+            print("✓ Robin 將自行判斷重點")
+        print()
+        return guidance
 
     def _generate_summary(
         self,
@@ -102,7 +135,7 @@ class IngestPipeline:
         return ask_claude(prompt, system="你是 Robin，Nakama 團隊的考古學家，負責知識庫管理。")
 
     def _process_concepts_and_entities(
-        self, summary_body: str, source_path: str
+        self, summary_body: str, source_path: str, user_guidance: str = ""
     ) -> None:
         """根據 summary 識別並建立/更新 concept & entity pages。"""
         # 收集既有頁面清單
@@ -123,6 +156,7 @@ class IngestPipeline:
         prompt = prompt_template.format(
             existing_pages=existing_pages,
             summary=summary_body,
+            user_guidance=user_guidance or "（無特別引導，請自行判斷重點）",
         )
 
         response = ask_claude(

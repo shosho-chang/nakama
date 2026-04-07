@@ -41,12 +41,13 @@ EXTENSION_TO_SOURCE_TYPE: dict[str, str] = {
 class RobinAgent(BaseAgent):
     name = "robin"
 
-    def __init__(self) -> None:
+    def __init__(self, interactive: bool = False) -> None:
         super().__init__()
         self.config = get_agent_config("robin")
         self.vault = get_vault_path()
         self.inbox = self.vault / self.config.get("inbox_path", "Inbox/kb")
         self.pipeline = IngestPipeline()
+        self.interactive = interactive
 
     def run(self) -> str:
         """掃描 inbox，處理所有新檔案。"""
@@ -102,13 +103,33 @@ class RobinAgent(BaseAgent):
         shutil.copy2(file_path, raw_dest)
         self.logger.info(f"已複製到 KB/Raw/{raw_dir}/{file_path.name}")
 
-        # 3-5. 執行 ingest pipeline（摘要 → 概念/實體 → index/log）
+        # 3. 取得使用者引導（互動式模式）
+        user_guidance = ""
+        if self.interactive:
+            user_guidance = self._get_user_guidance(file_path.name, source_type)
+
+        # 4. 執行 ingest pipeline（摘要 → 概念/實體 → index/log）
         self.pipeline.ingest(
             raw_path=raw_dest,
             source_type=source_type,
+            user_guidance=user_guidance,
+            interactive=self.interactive,
         )
 
-        # 6. 標記已處理，移除 inbox 中的原檔
+        # 5. 標記已處理，移除 inbox 中的原檔
         mark_file_processed(file_path, self.name)
         file_path.unlink()
         self.logger.info(f"已完成：{file_path.name}")
+
+    def _get_user_guidance(self, filename: str, source_type: str) -> str:
+        """互動式模式：等待使用者輸入引導方向。"""
+        print(f"\n{'='*60}")
+        print(f"📄 檔案：{filename}（{source_type}）")
+        print(f"{'='*60}")
+        print("Robin 即將產出 Source Summary，完成後會暫停等你閱讀。")
+        print("你可以在閱讀後輸入引導方向，例如：")
+        print('  "重點放在睡眠品質那部分"')
+        print('  "作者的研究背景很重要"')
+        print('  （直接按 Enter 讓 Robin 自行判斷）')
+        print()
+        return ""  # 引導在 summary 產出後才收集，此處回傳空字串
