@@ -1,0 +1,27 @@
+# Environment
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Config (generated)
+config/style-profile.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# State
+*.db

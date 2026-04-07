@@ -1,0 +1,14 @@
+# Core
+anthropic>=0.42.0
+pyyaml>=6.0
+python-dotenv>=1.0
+
+# Web & API
+httpx>=0.27.0
+feedparser>=6.0        # RSS (PubMed, etc.)
+
+# Database
+# sqlite3 is built-in
+
+# Utilities
+python-dateutil>=2.9

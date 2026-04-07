@@ -1,0 +1,51 @@
+vault_path: /home/Shosho LifeOS
+db_path: /home/agents/state.db
+
+notification:
+  method: email
+  # SMTP credentials in .env
+
+agents:
+  robin:
+    description: "Knowledge Base — 攝入來源、產出摘要、維護 Wiki"
+    inbox_path: Inbox/kb
+    schedule: "0 2 * * *"
+    style_profile: config/style-profile.json
+
+  nami:
+    description: "Secretary — 整合當日產出、產出 Morning Brief"
+    schedule: "0 7 * * *"
+    brief_path: AgentBriefs
+
+  zoro:
+    description: "Scout — 追蹤 KOL、趨勢、PubMed、關鍵字研究"
+    schedule: "0 6 * * *"
+    sources:
+      twitter:
+        api_version: v2
+        kol_list: config/kol-twitter.yaml
+      pubmed:
+        rss_feeds: config/pubmed-feeds.yaml
+      google_trends:
+        keywords: [longevity, biohacking, 身心健康, healthspan]
+
+  usopp:
+    description: "Community Monitor — 監控 WordPress Fluent Community"
+    schedule: "0 * * * *"
+    wordpress:
+      # base_url in .env
+      alert_threshold:
+        unanswered_hours: 24
+
+  sanji:
+    description: "Producer — 選題、標題建議、內容大綱"
+    trigger: manual
+
+  franky:
+    description: "Repurpose — 改寫文章、SEO、社群貼文"
+    trigger: manual
+    style_profile: config/style-profile.json
+
+  brook:
+    description: "Publish — 發布 WordPress、上傳 YouTube"
+    trigger: on_approve
