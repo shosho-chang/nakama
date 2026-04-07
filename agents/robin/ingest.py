@@ -86,10 +86,19 @@ class IngestPipeline:
         logger.info(f"已建立 Source Summary：{summary_path}")
         kb_log("robin", "ingest", f"建立 Source Summary: {slug}")
 
-        # Step 4: 識別需要建立/更新的 Concept & Entity pages
-        self._process_concepts_and_entities(summary_body, summary_path, user_guidance)
+        # Step 4: 取得 Concept & Entity 候選清單
+        plan = self._get_concept_plan(summary_body, summary_path, user_guidance)
+        if not plan:
+            return
 
-        # Step 5: 更新 index.md
+        # Step 5: 互動式模式 — 讓使用者審核候選清單後再建頁
+        if interactive:
+            plan = self._review_plan_interactive(plan)
+
+        # Step 6: 執行計畫（建立/更新頁面）
+        self._execute_plan(plan, summary_path)
+
+        # Step 7: 更新 index.md
         self._update_index(title, slug, source_type)
 
     def _prompt_user_guidance(self, title: str, summary_body: str) -> str:
@@ -134,17 +143,12 @@ class IngestPipeline:
 
         return ask_claude(prompt, system="你是 Robin，Nakama 團隊的考古學家，負責知識庫管理。")
 
-    def _process_concepts_and_entities(
+    def _get_concept_plan(
         self, summary_body: str, source_path: str, user_guidance: str = ""
-    ) -> None:
-        """根據 summary 識別並建立/更新 concept & entity pages。"""
-        # 收集既有頁面清單
-        existing_concepts = [
-            f.stem for f in list_files("KB/Wiki/Concepts")
-        ]
-        existing_entities = [
-            f.stem for f in list_files("KB/Wiki/Entities")
-        ]
+    ) -> dict | None:
+        """呼叫 Claude 取得 Concept & Entity 候選清單，回傳計畫 dict。"""
+        existing_concepts = [f.stem for f in list_files("KB/Wiki/Concepts")]
+        existing_entities = [f.stem for f in list_files("KB/Wiki/Entities")]
 
         existing_pages = (
             "概念頁：" + ", ".join(existing_concepts) if existing_concepts else "概念頁：（無）"
@@ -165,23 +169,88 @@ class IngestPipeline:
             temperature=0.2,
         )
 
-        # 解析 JSON 回應
         try:
-            # 提取 JSON block（可能被 ```json ... ``` 包裹）
             json_match = re.search(r"\{[\s\S]*\}", response)
             if not json_match:
                 logger.warning("未能從 Claude 回應中提取 JSON")
-                return
-            plan = json.loads(json_match.group())
+                return None
+            return json.loads(json_match.group())
         except json.JSONDecodeError as e:
             logger.warning(f"JSON 解析失敗：{e}")
-            return
+            return None
 
-        # 建立新頁面
+    def _review_plan_interactive(self, plan: dict) -> dict:
+        """互動式模式：印出候選清單，讓使用者逐一確認後回傳過濾後的計畫。"""
+        creates = plan.get("create", [])
+        updates = plan.get("update", [])
+
+        if not creates and not updates:
+            print("Robin 判斷這份來源不需要新增或更新任何頁面。")
+            return plan
+
+        approved_creates = []
+        approved_updates = []
+
+        # 審核「新建」候選
+        if creates:
+            print(f"\n{'='*60}")
+            print(f"📋 Robin 建議新建以下 {len(creates)} 個頁面：")
+            print(f"{'='*60}")
+            for i, item in enumerate(creates, 1):
+                page_type = item.get("type", "concept")
+                icon = "💡" if page_type == "concept" else "👤"
+                print(f"\n{i}. {icon} [{page_type.upper()}] {item['title']}")
+                print(f"   理由：{item.get('reason', '')}")
+                print(f"   內容重點：{item.get('content_notes', '')[:100]}...")
+
+            print(f"\n{'='*60}")
+            print("輸入要建立的編號（逗號分隔），例如：1,3")
+            print("輸入 all 全部建立，輸入 none 或直接 Enter 全部跳過")
+            choice = input("你的選擇：").strip().lower()
+
+            if choice == "all":
+                approved_creates = creates
+                print(f"✓ 全部 {len(creates)} 個頁面將建立")
+            elif choice and choice != "none":
+                selected_indices = {int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()}
+                approved_creates = [creates[i] for i in sorted(selected_indices) if i < len(creates)]
+                print(f"✓ 已選擇 {len(approved_creates)} 個頁面")
+            else:
+                print("✓ 跳過所有新建頁面")
+
+        # 審核「更新」候選
+        if updates:
+            print(f"\n{'='*60}")
+            print(f"📝 Robin 建議更新以下 {len(updates)} 個既有頁面：")
+            print(f"{'='*60}")
+            for i, item in enumerate(updates, 1):
+                print(f"\n{i}. 🔄 {item['title']}")
+                print(f"   理由：{item.get('reason', '')}")
+                print(f"   新增內容：{item.get('additions', '')[:100]}...")
+
+            print(f"\n{'='*60}")
+            print("輸入要更新的編號（逗號分隔），例如：1,2")
+            print("輸入 all 全部更新，輸入 none 或直接 Enter 全部跳過")
+            choice = input("你的選擇：").strip().lower()
+
+            if choice == "all":
+                approved_updates = updates
+                print(f"✓ 全部 {len(updates)} 個頁面將更新")
+            elif choice and choice != "none":
+                selected_indices = {int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()}
+                approved_updates = [updates[i] for i in sorted(selected_indices) if i < len(updates)]
+                print(f"✓ 已選擇 {len(approved_updates)} 個頁面")
+            else:
+                print("✓ 跳過所有更新")
+
+        print()
+        return {"create": approved_creates, "update": approved_updates}
+
+    def _execute_plan(self, plan: dict, source_path: str) -> None:
+        """根據計畫建立/更新頁面。"""
         for item in plan.get("create", []):
             self._create_wiki_page(item, source_path)
 
-        # 更新既有頁面
         for item in plan.get("update", []):
             self._update_wiki_page(item, source_path)
 
@@ -237,7 +306,6 @@ class IngestPipeline:
         title = item.get("title", "")
 
         if not file_path:
-            # 嘗試根據 title 找到檔案
             slug = slugify(title)
             for wiki_dir in ("KB/Wiki/Concepts", "KB/Wiki/Entities"):
                 candidate = f"{wiki_dir}/{slug}.md"
@@ -256,13 +324,11 @@ class IngestPipeline:
 
         fm, body = extract_frontmatter(existing_content)
 
-        # 將新來源加入 source_refs
         refs = fm.get("source_refs", [])
         if source_path not in refs:
             refs.append(source_path)
         fm["source_refs"] = refs
 
-        # 在頁面末尾加入新資訊
         update_section = f"\n\n---\n\n## 更新（{date.today()}）\n\n{additions}\n\n來源：[[{Path(source_path).stem}]]\n"
         body += update_section
 
@@ -274,13 +340,11 @@ class IngestPipeline:
         """在 KB/index.md 中新增此來源的條目。"""
         index_content = read_page("KB/index.md") or ""
 
-        # 檢查是否已存在
         if slug in index_content:
             return
 
         entry = f"- [[{slug}]] — {source_type}：{title}\n"
 
-        # 找到合適的位置插入（在 Sources 區塊下）
         if "## Sources" in index_content:
             index_content = index_content.replace(
                 "## Sources\n",
@@ -289,7 +353,6 @@ class IngestPipeline:
         else:
             index_content += f"\n## Sources\n{entry}"
 
-        # 直接寫入（index.md 不需要 frontmatter 格式）
         target = vault_path("KB", "index.md")
         target.write_text(index_content, encoding="utf-8")
         logger.info(f"已更新 KB/index.md：加入 {slug}")
