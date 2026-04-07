@@ -117,14 +117,14 @@ async def login_page(request: Request):
 
 
 @app.post("/login")
-async def login(password: str = Form(...)):
+async def login(request: Request, password: str = Form(...)):
     if not WEB_PASSWORD or password == WEB_PASSWORD:
         response = RedirectResponse("/", status_code=302)
         response.set_cookie("robin_auth", _make_token(password), httponly=True)
         return response
     return templates.TemplateResponse(
         "login.html",
-        {"request": {}, "error": "密碼錯誤"},
+        {"request": request, "error": "密碼錯誤"},
         status_code=401,
     )
 
