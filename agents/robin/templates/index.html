@@ -19,10 +19,8 @@
   .file-info { flex: 1; }
   .file-name { font-weight: 600; color: #1a1a1a; word-break: break-all; }
   .file-meta { font-size: 0.8rem; color: #888; margin-top: 0.2rem; }
-  .type-badge { display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; text-transform: uppercase; }
-  .type-article { background: #e8f5e9; color: #2e7d32; }
-  .type-paper { background: #e3f2fd; color: #1565c0; }
-  .type-book { background: #fff3e0; color: #e65100; }
+  .type-select { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid #ddd; background: #fafafa; color: #444; cursor: pointer; }
+  .type-select:focus { outline: none; border-color: #6c63ff; }
   button { padding: 0.55rem 1.2rem; background: #6c63ff; color: white; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; white-space: nowrap; transition: background .2s; }
   button:hover { background: #574fd6; }
 </style>
@@ -40,13 +38,17 @@
     <div class="file-card">
       <div class="file-info">
         <div class="file-name">{{ file.name }}</div>
-        <div class="file-meta">
-          {{ file.size }} ·
-          <span class="type-badge type-{{ file.type }}">{{ file.type }}</span>
-        </div>
+        <div class="file-meta">{{ file.size }}</div>
       </div>
-      <form method="post" action="/start" style="margin:0;margin-left:1rem">
+      <form method="post" action="/start" style="margin:0;margin-left:1rem;display:flex;align-items:center;gap:0.5rem">
         <input type="hidden" name="filename" value="{{ file.name }}">
+        <select name="source_type" class="type-select">
+          <option value="article"{% if file.type == "article" %} selected{% endif %}>Article</option>
+          <option value="paper"{% if file.type == "paper" %} selected{% endif %}>Paper</option>
+          <option value="book"{% if file.type == "book" %} selected{% endif %}>Book</option>
+          <option value="video"{% if file.type == "video" %} selected{% endif %}>Video</option>
+          <option value="podcast"{% if file.type == "podcast" %} selected{% endif %}>Podcast</option>
+        </select>
         <button type="submit">開始 Ingest</button>
       </form>
     </div>

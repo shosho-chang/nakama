@@ -14,7 +14,7 @@ from fastapi import Cookie, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from agents.robin.agent import EXTENSION_TO_RAW_DIR, EXTENSION_TO_SOURCE_TYPE
+from agents.robin.agent import EXTENSION_TO_RAW_DIR, EXTENSION_TO_SOURCE_TYPE, SOURCE_TYPE_TO_RAW_DIR
 from agents.robin.ingest import IngestPipeline
 from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
@@ -141,7 +141,7 @@ async def index(request: Request, robin_auth: str | None = Cookie(None)):
 
 
 @app.post("/start")
-async def start(filename: str = Form(...), robin_auth: str | None = Cookie(None)):
+async def start(filename: str = Form(...), source_type: str = Form("article"), robin_auth: str | None = Cookie(None)):
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
 
@@ -150,9 +150,7 @@ async def start(filename: str = Form(...), robin_auth: str | None = Cookie(None)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
 
-    suffix = file_path.suffix.lower()
-    raw_dir = EXTENSION_TO_RAW_DIR.get(suffix, "Articles")
-    source_type = EXTENSION_TO_SOURCE_TYPE.get(suffix, "article")
+    raw_dir = SOURCE_TYPE_TO_RAW_DIR.get(source_type, "Articles")
 
     raw_dest = get_vault_path() / "KB" / "Raw" / raw_dir / filename
     raw_dest.parent.mkdir(parents=True, exist_ok=True)

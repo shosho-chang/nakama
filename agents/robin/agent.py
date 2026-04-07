@@ -19,7 +19,7 @@ from shared.log import kb_log
 from shared.state import is_file_processed, mark_file_processed
 
 
-# 副檔名 → Raw 子資料夾 對應
+# 副檔名 → Raw 子資料夾 對應（僅作預設推測，Web UI 可覆寫）
 EXTENSION_TO_RAW_DIR: dict[str, str] = {
     ".pdf": "Papers",
     ".md": "Articles",
@@ -28,13 +28,22 @@ EXTENSION_TO_RAW_DIR: dict[str, str] = {
     ".epub": "Books",
 }
 
-# 副檔名 → source type 對應
+# 副檔名 → source type 對應（僅作預設推測，Web UI 可覆寫）
 EXTENSION_TO_SOURCE_TYPE: dict[str, str] = {
     ".pdf": "paper",
     ".md": "article",
     ".txt": "article",
     ".html": "article",
     ".epub": "book",
+}
+
+# source type → Raw 子資料夾 對應（Web UI 手動選擇後使用）
+SOURCE_TYPE_TO_RAW_DIR: dict[str, str] = {
+    "article": "Articles",
+    "paper":   "Papers",
+    "book":    "Books",
+    "video":   "Videos",
+    "podcast": "Podcasts",
 }
 
 
