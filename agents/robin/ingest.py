@@ -340,15 +340,34 @@ class IngestPipeline:
         """在 KB/index.md 中新增此來源的條目。"""
         index_content = read_page("KB/index.md") or ""
 
-        if slug in index_content:
-            return
-
         entry = f"- [[{slug}]] — {source_type}：{title}\n"
 
+        # 已有正確的 wikilink 格式，跳過
+        if f"[[{slug}]]" in index_content:
+            return
+
+        # 有舊格式（plain path），自動修正為 wikilink
+        plain_path = f"KB/Wiki/Sources/{slug}.md"
+        if plain_path in index_content:
+            # 找到整行並替換
+            index_content = re.sub(
+                rf"- {re.escape(plain_path)}[^\n]*\n?",
+                entry,
+                index_content,
+            )
+            target = vault_path("KB", "index.md")
+            target.write_text(index_content, encoding="utf-8")
+            logger.info(f"已修正 KB/index.md：{slug} 的連結格式")
+            return
+
+        # 全新條目：插入 Sources 區塊（相容中英文 heading）
         if "## Sources" in index_content:
-            index_content = index_content.replace(
-                "## Sources\n",
-                f"## Sources\n{entry}",
+            # 同時處理 "## Sources" 和 "## 來源（Sources）"
+            index_content = re.sub(
+                r"(## (?:來源（)?Sources(?:）)?)\n",
+                rf"\1\n{entry}",
+                index_content,
+                count=1,
             )
         else:
             index_content += f"\n## Sources\n{entry}"
