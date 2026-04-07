@@ -6,86 +6,144 @@
 <title>Robin · 閱讀</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
+  :root {
+    --bg: #fafaf8;
+    --bg-card: white;
+    --text: #333;
+    --text-heading: #1a1a1a;
+    --text-muted: #888;
+    --text-faint: #aaa;
+    --border: #e5e5e5;
+    --code-bg: #f0f0f0;
+    --highlight-bg: #fff3a3;
+    --annotated-bg: #d4edda;
+    --accent: #6c63ff;
+    --accent-hover: #574fd6;
+    --note-bg: #f3f2ff;
+    --note-border: #6c63ff;
+    --modal-bg: white;
+    --btn-muted-bg: #f0f0f0;
+    --btn-muted-text: #666;
+    --finish-bg: #4caf50;
+    --finish-done-bg: #e8f5e9;
+    --finish-done-text: #2e7d32;
+  }
+  body.dark {
+    --bg: #1a1a2e;
+    --bg-card: #16213e;
+    --text: #d4d4d4;
+    --text-heading: #e8e8e8;
+    --text-muted: #888;
+    --text-faint: #666;
+    --border: #2a2a4a;
+    --code-bg: #0f3460;
+    --highlight-bg: #5c5320;
+    --annotated-bg: #1b4332;
+    --accent: #8b80ff;
+    --accent-hover: #a59bff;
+    --note-bg: #1e1e3a;
+    --note-border: #8b80ff;
+    --modal-bg: #16213e;
+    --btn-muted-bg: #2a2a4a;
+    --btn-muted-text: #999;
+    --finish-bg: #2e7d32;
+    --finish-done-bg: #1b4332;
+    --finish-done-text: #81c784;
+  }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: #fafaf8; height: 100vh; display: flex; flex-direction: column; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; transition: background 0.3s, color 0.3s; }
 
   /* ── Header ── */
-  .header { background: white; padding: 0.6rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; }
+  .header { background: var(--bg-card); padding: 0.6rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .header-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
-  .header-left h1 { font-size: 1rem; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .header-right { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
-  .badge-read { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: #e8f5e9; color: #2e7d32; font-weight: 600; }
+  .header-left h1 { font-size: 1rem; color: var(--text-heading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-right { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+  .badge-read { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--finish-done-bg); color: var(--finish-done-text); font-weight: 600; }
   .save-indicator { font-size: 0.75rem; color: #4caf50; opacity: 0; transition: opacity 0.3s; }
   .save-indicator.show { opacity: 1; }
-  .mode-toggle { font-size: 0.75rem; padding: 0.25rem 0.6rem; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; cursor: pointer; color: #555; }
-  .mode-toggle:hover { border-color: #6c63ff; color: #6c63ff; }
-  .shortcuts-hint { font-size: 0.7rem; color: #aaa; }
+  .header-btn { font-size: 0.75rem; padding: 0.25rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); cursor: pointer; color: var(--text-muted); transition: all 0.2s; }
+  .header-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .shortcuts-hint { font-size: 0.65rem; color: var(--text-faint); }
 
-  /* ── Reader area ── */
-  .reader-wrap { flex: 1; overflow: hidden; position: relative; }
+  /* ── Reader layout ── */
+  .reader-outer { flex: 1; display: flex; overflow: hidden; position: relative; }
 
-  /* Scroll mode */
-  .reader-content { max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem; }
-  .reader-wrap.scroll-mode { overflow-y: auto; }
-  .reader-wrap.scroll-mode .reader-content { /* default behavior */ }
+  /* Margin note columns */
+  .margin-left, .margin-right { width: 220px; flex-shrink: 0; overflow-y: auto; padding: 2rem 0.75rem; }
+  .margin-left { text-align: right; }
+  .margin-right { text-align: left; }
+  @media (max-width: 1100px) { .margin-left { display: none; } }
+  @media (max-width: 800px) { .margin-right { display: none; } }
+
+  .margin-note { font-size: 0.78rem; color: var(--accent); background: var(--note-bg); border-radius: 6px; padding: 0.5rem 0.6rem; margin-bottom: 0.75rem; line-height: 1.5; border-left: 2px solid var(--note-border); text-align: left; }
+  .margin-note .mn-ref { font-size: 0.7rem; color: var(--text-faint); margin-bottom: 0.25rem; font-style: italic; }
+
+  /* Main reading pane */
+  .reader-main { flex: 1; min-width: 0; overflow: hidden; }
+  .reader-scroll { height: 100%; overflow-y: auto; }
+  .reader-content { max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
 
   /* Paged mode */
-  .reader-wrap.paged-mode { overflow: hidden; }
-  .reader-wrap.paged-mode .reader-content {
+  .reader-main.paged .reader-scroll { overflow: hidden; }
+  .reader-main.paged .reader-content {
     max-width: none;
     height: 100%;
-    padding: 2rem 3rem;
+    padding: 2rem 2rem 3rem;
     column-fill: auto;
-    column-gap: 3rem;
+    column-gap: 4rem;
+    overflow: hidden;
   }
-  .page-nav { display: none; position: absolute; bottom: 0.75rem; left: 50%; transform: translateX(-50%); font-size: 0.8rem; color: #888; background: rgba(255,255,255,0.9); padding: 0.25rem 0.75rem; border-radius: 6px; }
-  .reader-wrap.paged-mode .page-nav { display: block; }
+  .page-nav { display: none; position: absolute; bottom: 3rem; left: 50%; transform: translateX(-50%); font-size: 0.8rem; color: var(--text-muted); background: var(--bg-card); padding: 0.25rem 0.75rem; border-radius: 6px; border: 1px solid var(--border); z-index: 10; }
+  .reader-main.paged ~ .page-nav-wrap .page-nav { display: block; }
 
-  /* ── Content typography ── */
-  .reader-content h1 { font-size: 1.6rem; margin: 1.5rem 0 0.75rem; color: #1a1a1a; line-height: 1.4; }
-  .reader-content h2 { font-size: 1.3rem; margin: 1.5rem 0 0.6rem; color: #1a1a1a; }
-  .reader-content h3 { font-size: 1.1rem; margin: 1.2rem 0 0.5rem; color: #1a1a1a; }
-  .reader-content p { margin-bottom: 0.9rem; line-height: 1.9; color: #333; font-size: 1rem; }
+  /* ── Typography ── */
+  .reader-content h1 { font-size: 1.6rem; margin: 1.5rem 0 0.75rem; color: var(--text-heading); line-height: 1.4; }
+  .reader-content h2 { font-size: 1.3rem; margin: 1.5rem 0 0.6rem; color: var(--text-heading); }
+  .reader-content h3 { font-size: 1.1rem; margin: 1.2rem 0 0.5rem; color: var(--text-heading); }
+  .reader-content p { margin-bottom: 0.9rem; line-height: 1.9; font-size: 1rem; }
   .reader-content ul, .reader-content ol { margin: 0.5rem 0 0.9rem 1.5rem; line-height: 1.8; }
   .reader-content li { margin-bottom: 0.3rem; }
-  .reader-content blockquote { border-left: 3px solid #ddd; padding-left: 1rem; color: #666; margin: 0.75rem 0; }
-  .reader-content code { background: #f0f0f0; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; }
-  .reader-content pre { background: #f0f0f0; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0.75rem 0; }
+  .reader-content blockquote { border-left: 3px solid var(--border); padding-left: 1rem; color: var(--text-muted); margin: 0.75rem 0; }
+  .reader-content code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; }
+  .reader-content pre { background: var(--code-bg); padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0.75rem 0; }
   .reader-content pre code { background: none; padding: 0; }
   .reader-content img { max-width: 100%; border-radius: 8px; margin: 0.75rem 0; }
-  .reader-content hr { border: none; border-top: 1px solid #e5e5e5; margin: 1.5rem 0; }
+  .reader-content hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 
-  /* Highlight */
-  .reader-content mark { background: #fff3a3; padding: 0.05rem 0.15rem; border-radius: 2px; }
+  /* Highlight (Ctrl+B) — yellow */
+  .reader-content mark.hl { background: var(--highlight-bg); padding: 0.05rem 0.15rem; border-radius: 2px; color: inherit; }
+  /* Annotated text (Ctrl+Shift+C) — green */
+  .reader-content mark.ann { background: var(--annotated-bg); padding: 0.05rem 0.15rem; border-radius: 2px; color: inherit; }
 
-  /* Annotation callout */
-  .reader-content .annotation-callout { border-left: 3px solid #6c63ff; background: #f3f2ff; padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; margin: 0.75rem 0; font-size: 0.9rem; color: #444; }
-  .reader-content .annotation-callout strong { color: #6c63ff; }
+  /* Inline annotation (fallback when margin is hidden) */
+  .reader-content .annotation-inline { border-left: 3px solid var(--note-border); background: var(--note-bg); padding: 0.6rem 0.8rem; border-radius: 0 6px 6px 0; margin: 0.5rem 0; font-size: 0.85rem; color: var(--accent); display: none; }
+  @media (max-width: 800px) { .reader-content .annotation-inline { display: block; } }
 
   /* ── Footer ── */
-  .footer { background: white; padding: 0.6rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e5e5e5; flex-shrink: 0; }
-  .footer a { color: #888; text-decoration: none; font-size: 0.875rem; }
-  .footer a:hover { color: #333; }
+  .footer { background: var(--bg-card); padding: 0.6rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .footer a { color: var(--text-muted); text-decoration: none; font-size: 0.875rem; }
+  .footer a:hover { color: var(--text-heading); }
   .btn { padding: 0.5rem 1rem; border: none; border-radius: 8px; font-size: 0.875rem; cursor: pointer; transition: background 0.2s; }
-  .btn-finish { background: #4caf50; color: white; }
-  .btn-finish:hover { background: #43a047; }
-  .btn-finish.done { background: #e8f5e9; color: #2e7d32; }
+  .btn-finish { background: var(--finish-bg); color: white; }
+  .btn-finish:hover { opacity: 0.9; }
+  .btn-finish.done { background: var(--finish-done-bg); color: var(--finish-done-text); }
 
   /* ── Modal ── */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.show { display: flex; }
-  .modal { background: white; border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 520px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
-  .modal h3 { font-size: 1rem; color: #1a1a1a; margin-bottom: 0.75rem; }
-  .modal-context { font-size: 0.85rem; color: #666; background: #f9f9f9; padding: 0.5rem 0.75rem; border-radius: 6px; margin-bottom: 0.75rem; max-height: 80px; overflow-y: auto; border-left: 3px solid #fff3a3; }
-  .modal textarea { width: 100%; height: 100px; border: 1px solid #ddd; border-radius: 8px; padding: 0.75rem; font-family: system-ui, sans-serif; font-size: 0.9rem; resize: vertical; outline: none; }
-  .modal textarea:focus { border-color: #6c63ff; }
-  .modal-hint { font-size: 0.7rem; color: #aaa; margin-top: 0.35rem; }
+  .modal { background: var(--modal-bg); border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 520px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+  .modal h3 { font-size: 1rem; color: var(--text-heading); margin-bottom: 0.75rem; }
+  .modal-context { font-size: 0.85rem; color: var(--text-muted); background: var(--annotated-bg); padding: 0.5rem 0.75rem; border-radius: 6px; margin-bottom: 0.75rem; max-height: 100px; overflow-y: auto; line-height: 1.6; }
+  .modal textarea { width: 100%; height: 100px; border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; font-family: system-ui, sans-serif; font-size: 0.9rem; resize: vertical; outline: none; background: var(--bg); color: var(--text); }
+  .modal textarea:focus { border-color: var(--accent); }
+  .modal-hint { font-size: 0.7rem; color: var(--text-faint); margin-top: 0.35rem; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
   .modal-actions button { padding: 0.45rem 1rem; border-radius: 8px; font-size: 0.85rem; cursor: pointer; border: none; }
-  .modal-cancel { background: #f0f0f0; color: #666; }
-  .modal-cancel:hover { background: #e5e5e5; }
-  .modal-confirm { background: #6c63ff; color: white; }
-  .modal-confirm:hover { background: #574fd6; }
+  .modal-cancel { background: var(--btn-muted-bg); color: var(--btn-muted-text); }
+  .modal-cancel:hover { opacity: 0.8; }
+  .modal-confirm { background: var(--accent); color: white; }
+  .modal-confirm:hover { background: var(--accent-hover); }
 </style>
 </head>
 <body>
@@ -99,15 +157,24 @@
     <div class="header-right">
       <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解</span>
       <span class="save-indicator" id="saveIndicator">已儲存</span>
-      <button class="mode-toggle" id="modeToggle" onclick="toggleMode()">翻頁模式</button>
+      <button class="header-btn" id="modeToggle" onclick="toggleMode()">翻頁模式</button>
+      <button class="header-btn" id="darkToggle" onclick="toggleDark()">Dark</button>
     </div>
   </div>
 
   <!-- Reader -->
-  <div class="reader-wrap scroll-mode" id="readerWrap">
-    <div class="reader-content" id="readerContent"></div>
-    <div class="page-nav" id="pageNav"></div>
+  <div class="reader-outer">
+    <div class="margin-left" id="marginLeft"></div>
+    <div class="reader-main" id="readerMain">
+      <div class="reader-scroll" id="readerScroll">
+        <div class="reader-content" id="readerContent"></div>
+      </div>
+    </div>
+    <div class="margin-right" id="marginRight"></div>
   </div>
+
+  <!-- Page nav (outside reader-outer for z-index) -->
+  <div class="page-nav" id="pageNav" style="display:none"></div>
 
   <!-- Footer -->
   <div class="footer">
@@ -123,7 +190,7 @@
       <h3>新增註解</h3>
       <div class="modal-context" id="modalContext"></div>
       <textarea id="modalInput" placeholder="寫下你的想法或心得..."></textarea>
-      <div class="modal-hint">Ctrl+Enter 確認</div>
+      <div class="modal-hint">Ctrl+Enter 確認 · Esc 取消</div>
       <div class="modal-actions">
         <button class="modal-cancel" onclick="closeModal()">取消</button>
         <button class="modal-confirm" onclick="confirmAnnotation()">確認</button>
@@ -140,10 +207,13 @@
     let totalPages = 1;
     let pendingSelectedText = '';
 
-    const readerWrap = document.getElementById('readerWrap');
+    const readerMain = document.getElementById('readerMain');
+    const readerScroll = document.getElementById('readerScroll');
     const readerContent = document.getElementById('readerContent');
+    const marginRight = document.getElementById('marginRight');
     const pageNav = document.getElementById('pageNav');
     const modeToggle = document.getElementById('modeToggle');
+    const darkToggle = document.getElementById('darkToggle');
     const saveIndicator = document.getElementById('saveIndicator');
     const finishBtn = document.getElementById('finishBtn');
     const readBadge = document.getElementById('readBadge');
@@ -151,24 +221,106 @@
     const modalContext = document.getElementById('modalContext');
     const modalInput = document.getElementById('modalInput');
 
-    // ── Markdown preprocessing & rendering ──
+    // ── Markdown preprocessing ──
+    // We collect annotations during preprocessing so we can render margin notes.
+    let annotations = []; // [{ref, note, id}]
 
     function preprocess(md) {
-      md = md.replace(/==(.*?)==/gs, '<mark>$1</mark>');
+      annotations = [];
+      let annCounter = 0;
+
+      // Step 1: Extract annotations and replace with inline markers
+      // Format: > [!annotation] reference text
+      //         > note line 1
+      //         > note line 2
       md = md.replace(
-        /^> \[!annotation\]\s*\n((?:^> .*(?:\n|$))*)/gm,
-        function(match, body) {
-          const text = body.replace(/^> ?/gm, '').trim();
-          return '<div class="annotation-callout"><strong>My Note</strong><br>' + text + '</div>\n';
+        /^> \[!annotation\]\s*(.*)\n((?:^> .*(?:\n|$))*)/gm,
+        function(match, refLine, body) {
+          annCounter++;
+          const id = 'ann-' + annCounter;
+          const ref = refLine.trim();
+          const note = body.replace(/^> ?/gm, '').trim();
+          annotations.push({ ref, note, id });
+          // Leave an inline fallback for narrow screens
+          return `<div class="annotation-inline" data-ann-id="${id}"><strong>Note:</strong> ${note}</div>\n`;
         }
       );
+
+      // Step 2: Convert ==text== to highlights
+      // If text matches an annotation ref, use green (ann class); otherwise yellow (hl class)
+      const annRefs = new Set(annotations.map(a => a.ref));
+      md = md.replace(/==(.*?)==/gs, function(match, text) {
+        // Check if this highlighted text is referenced by an annotation
+        const trimmed = text.trim();
+        let matchedAnn = null;
+        for (const a of annotations) {
+          if (a.ref && trimmed.includes(a.ref.substring(0, 30))) {
+            matchedAnn = a;
+            break;
+          }
+          if (a.ref && a.ref.includes(trimmed.substring(0, 30))) {
+            matchedAnn = a;
+            break;
+          }
+        }
+        if (matchedAnn) {
+          return `<mark class="ann" data-ann-id="${matchedAnn.id}">${text}</mark>`;
+        }
+        return `<mark class="hl">${text}</mark>`;
+      });
+
       return md;
     }
 
     function render() {
       const processed = preprocess(mdSource);
       readerContent.innerHTML = marked.parse(processed);
-      if (isPaged) updatePageInfo();
+      renderMarginNotes();
+      if (isPaged) {
+        requestAnimationFrame(() => applyPageLayout());
+      }
+    }
+
+    function renderMarginNotes() {
+      marginRight.innerHTML = '';
+      if (annotations.length === 0) return;
+
+      for (const ann of annotations) {
+        const noteEl = document.createElement('div');
+        noteEl.className = 'margin-note';
+        noteEl.dataset.annId = ann.id;
+        if (ann.ref) {
+          noteEl.innerHTML = `<div class="mn-ref">"${ann.ref.substring(0, 50)}${ann.ref.length > 50 ? '…' : ''}"</div>${ann.note}`;
+        } else {
+          noteEl.textContent = ann.note;
+        }
+        marginRight.appendChild(noteEl);
+      }
+
+      // Position margin notes near their anchors
+      requestAnimationFrame(positionMarginNotes);
+    }
+
+    function positionMarginNotes() {
+      const notes = marginRight.querySelectorAll('.margin-note');
+      const outerRect = document.querySelector('.reader-outer').getBoundingClientRect();
+
+      for (const noteEl of notes) {
+        const annId = noteEl.dataset.annId;
+        // Find the anchor: either mark.ann or .annotation-inline
+        const anchor = readerContent.querySelector(`[data-ann-id="${annId}"]`);
+        if (!anchor) continue;
+        const anchorRect = anchor.getBoundingClientRect();
+        const targetTop = anchorRect.top - outerRect.top + document.querySelector('.reader-outer').scrollTop;
+        noteEl.style.marginTop = '0';
+        // Rough positioning — offset from top of margin column
+        const noteRect = noteEl.getBoundingClientRect();
+        const currentTop = noteRect.top - outerRect.top;
+        const offset = targetTop - currentTop;
+        if (Math.abs(offset) > 10) {
+          noteEl.style.marginTop = Math.max(0, offset) + 'px';
+        }
+      }
     }
 
     // ── Mode toggle ──
@@ -176,46 +328,55 @@
     function toggleMode() {
       isPaged = !isPaged;
       if (isPaged) {
-        readerWrap.classList.remove('scroll-mode');
-        readerWrap.classList.add('paged-mode');
+        readerMain.classList.add('paged');
         modeToggle.textContent = '捲動模式';
+        pageNav.style.display = 'block';
         currentPage = 0;
-        applyPageLayout();
+        requestAnimationFrame(() => applyPageLayout());
       } else {
-        readerWrap.classList.remove('paged-mode');
-        readerWrap.classList.add('scroll-mode');
+        readerMain.classList.remove('paged');
         modeToggle.textContent = '翻頁模式';
+        pageNav.style.display = 'none';
         readerContent.style.columnWidth = '';
         readerContent.style.width = '';
-        readerContent.style.transform = '';
+        readerScroll.scrollLeft = 0;
       }
     }
 
     function applyPageLayout() {
-      const wrapW = readerWrap.clientWidth;
-      readerContent.style.columnWidth = wrapW + 'px';
+      const wrapW = readerScroll.clientWidth;
+      const wrapH = readerScroll.clientHeight;
+      readerContent.style.height = wrapH + 'px';
+      readerContent.style.columnWidth = (wrapW - 64) + 'px'; // account for padding
       requestAnimationFrame(() => {
-        const scrollW = readerContent.scrollWidth;
-        totalPages = Math.max(1, Math.ceil(scrollW / wrapW));
+        totalPages = Math.max(1, Math.ceil(readerContent.scrollWidth / wrapW));
         goToPage(currentPage);
       });
     }
 
     function goToPage(n) {
-      const wrapW = readerWrap.clientWidth;
+      const wrapW = readerScroll.clientWidth;
       currentPage = Math.max(0, Math.min(n, totalPages - 1));
-      readerContent.style.transform = `translateX(-${currentPage * wrapW}px)`;
-      updatePageInfo();
-    }
-
-    function updatePageInfo() {
-      const wrapW = readerWrap.clientWidth;
-      const scrollW = readerContent.scrollWidth;
-      totalPages = Math.max(1, Math.ceil(scrollW / wrapW));
+      readerScroll.scrollLeft = currentPage * wrapW;
       pageNav.textContent = `${currentPage + 1} / ${totalPages}`;
     }
 
-    // ── Text selection → markdown source mapping ──
+    // ── Dark mode ──
+
+    function toggleDark() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      darkToggle.textContent = isDark ? 'Light' : 'Dark';
+      localStorage.setItem('robin-dark', isDark ? '1' : '0');
+    }
+
+    // Restore dark mode preference
+    if (localStorage.getItem('robin-dark') === '1') {
+      document.body.classList.add('dark');
+      darkToggle.textContent = 'Light';
+    }
+
+    // ── Text selection → markdown source ──
 
     function getSelectedText() {
       const sel = window.getSelection();
@@ -226,13 +387,15 @@
       return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    function highlightInSource(text) {
-      // Find the text in markdown source and wrap with ==...==
-      // Use a flexible match that ignores minor whitespace differences
+    function findInSource(text) {
       const escaped = escapeRegex(text);
       const flexPattern = escaped.replace(/\s+/g, '\\s+');
       const regex = new RegExp(flexPattern);
-      const match = mdSource.match(regex);
+      return mdSource.match(regex);
+    }
+
+    function highlightInSource(text) {
+      const match = findInSource(text);
       if (match) {
         const idx = mdSource.indexOf(match[0]);
         mdSource = mdSource.substring(0, idx) + '==' + match[0] + '==' + mdSource.substring(idx + match[0].length);
@@ -242,24 +405,29 @@
     }
 
     function addAnnotationInSource(text, note) {
-      // Find the text in source, then insert annotation after the paragraph
-      const escaped = escapeRegex(text);
-      const flexPattern = escaped.replace(/\s+/g, '\\s+');
-      const regex = new RegExp(flexPattern);
-      const match = mdSource.match(regex);
-      if (match) {
-        const idx = mdSource.indexOf(match[0]);
-        const afterMatch = idx + match[0].length;
-        // Find end of current paragraph (next double newline or end)
-        let paraEnd = mdSource.indexOf('\n\n', afterMatch);
-        if (paraEnd === -1) paraEnd = mdSource.length;
-        // Build annotation block
-        const noteLines = note.split('\n').map(l => '> ' + l).join('\n');
-        const block = '\n\n> [!annotation]\n' + noteLines + '\n';
-        mdSource = mdSource.substring(0, paraEnd) + block + mdSource.substring(paraEnd);
-        return true;
+      // First, highlight the text with ==...== if not already
+      const match = findInSource(text);
+      if (!match) return false;
+      const idx = mdSource.indexOf(match[0]);
+
+      // Check if already highlighted
+      const before2 = mdSource.substring(Math.max(0, idx - 2), idx);
+      if (before2 !== '==') {
+        // Wrap with ==...==
+        mdSource = mdSource.substring(0, idx) + '==' + match[0] + '==' + mdSource.substring(idx + match[0].length);
       }
-      return false;
+
+      // Find end of paragraph after the match
+      const afterIdx = mdSource.indexOf(match[0], idx) + match[0].length;
+      let paraEnd = mdSource.indexOf('\n\n', afterIdx);
+      if (paraEnd === -1) paraEnd = mdSource.length;
+
+      // Build annotation block with reference
+      const refText = text.substring(0, 60).replace(/\n/g, ' ');
+      const noteLines = note.split('\n').map(l => '> ' + l).join('\n');
+      const block = `\n\n> [!annotation] ${refText}\n${noteLines}\n`;
+      mdSource = mdSource.substring(0, paraEnd) + block + mdSource.substring(paraEnd);
+      return true;
     }
 
     // ── Auto-save ──
@@ -291,7 +459,10 @@
     // ── Keyboard shortcuts ──
 
     document.addEventListener('keydown', function(e) {
-      // Ctrl+B: highlight
+      // Don't trigger when modal is open (except modal-specific keys)
+      if (modalOverlay.classList.contains('show')) return;
+
+      // Ctrl+B: highlight (yellow)
       if (e.ctrlKey && !e.shiftKey && e.key === 'b') {
         e.preventDefault();
         const text = getSelectedText();
@@ -302,7 +473,7 @@
         }
       }
 
-      // Ctrl+Shift+C: annotation
+      // Ctrl+Shift+C: annotation (green + margin note)
       if (e.ctrlKey && e.shiftKey && e.key === 'C') {
         e.preventDefault();
         const text = getSelectedText();
@@ -312,7 +483,7 @@
       }
 
       // Arrow keys for paged mode
-      if (isPaged && !modalOverlay.classList.contains('show')) {
+      if (isPaged) {
         if (e.key === 'ArrowRight') { e.preventDefault(); goToPage(currentPage + 1); }
         if (e.key === 'ArrowLeft') { e.preventDefault(); goToPage(currentPage - 1); }
       }
@@ -342,19 +513,11 @@
       closeModal();
     }
 
-    // Ctrl+Enter in modal to confirm
     modalInput.addEventListener('keydown', function(e) {
-      if (e.ctrlKey && e.key === 'Enter') {
-        e.preventDefault();
-        confirmAnnotation();
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeModal();
-      }
+      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); confirmAnnotation(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
     });
 
-    // Close modal on overlay click
     modalOverlay.addEventListener('click', function(e) {
       if (e.target === modalOverlay) closeModal();
     });
@@ -377,10 +540,15 @@
       }
     }
 
-    // ── Resize handler for paged mode ──
+    // ── Resize ──
 
     window.addEventListener('resize', function() {
       if (isPaged) applyPageLayout();
+    });
+
+    // Reposition margin notes on scroll
+    readerScroll.addEventListener('scroll', function() {
+      requestAnimationFrame(positionMarginNotes);
     });
 
     // ── Init ──
