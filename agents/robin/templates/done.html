@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 完成</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
+  .card { background: white; border-radius: 12px; padding: 2.5rem; width: 100%; max-width: 480px; text-align: center; box-shadow: 0 2px 16px rgba(0,0,0,.08); }
+  .icon { font-size: 3rem; margin-bottom: 1rem; }
+  h1 { font-size: 1.25rem; color: #1a1a1a; margin-bottom: 0.4rem; }
+  .subtitle { color: #666; font-size: 0.875rem; margin-bottom: 2rem; }
+  .result-group { text-align: left; margin-bottom: 1.25rem; }
+  .result-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 0.5rem; }
+  .result-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; color: #333; }
+  .result-item:last-child { border-bottom: none; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-created { background: #4caf50; }
+  .dot-updated { background: #ff9800; }
+  .empty-result { font-size: 0.875rem; color: #aaa; padding: 0.5rem 0; }
+  .btn-home { display: inline-block; margin-top: 2rem; padding: 0.75rem 2rem; background: #6c63ff; color: white; border-radius: 8px; text-decoration: none; font-size: 0.95rem; transition: background .2s; }
+  .btn-home:hover { background: #574fd6; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">✅</div>
+  <h1>Ingest 完成！</h1>
+  <p class="subtitle">{{ file_name }}</p>
+
+  <div class="result-group">
+    <div class="result-label">新建頁面（{{ created|length }}）</div>
+    {% if created %}
+      {% for title in created %}
+      <div class="result-item"><span class="dot dot-created"></span>{{ title }}</div>
+      {% endfor %}
+    {% else %}
+      <p class="empty-result">沒有新建任何頁面</p>
+    {% endif %}
+  </div>
+
+  <div class="result-group">
+    <div class="result-label">更新頁面（{{ updated|length }}）</div>
+    {% if updated %}
+      {% for title in updated %}
+      <div class="result-item"><span class="dot dot-updated"></span>{{ title }}</div>
+      {% endfor %}
+    {% else %}
+      <p class="empty-result">沒有更新任何頁面</p>
+    {% endif %}
+  </div>
+
+  <a href="/" class="btn-home">← 返回 Inbox</a>
+</div>
+</body>
+</html>

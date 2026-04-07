@@ -12,3 +12,9 @@ feedparser>=6.0        # RSS (PubMed, etc.)
 
 # Utilities
 python-dateutil>=2.9
+
+# Web UI (Robin)
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+jinja2>=3.1.0
+python-multipart>=0.0.9

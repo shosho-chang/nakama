@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · Inbox</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 2rem; }
+  .header { max-width: 680px; margin: 0 auto 2rem; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 1.5rem; color: #1a1a1a; }
+  .header span { font-size: 1.5rem; margin-right: 0.5rem; }
+  .logout { font-size: 0.875rem; color: #888; text-decoration: none; }
+  .logout:hover { color: #333; }
+  .container { max-width: 680px; margin: 0 auto; }
+  .empty { text-align: center; color: #888; padding: 3rem; background: white; border-radius: 12px; }
+  .empty p { margin-top: 0.5rem; font-size: 0.9rem; }
+  .file-card { background: white; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .file-info { flex: 1; }
+  .file-name { font-weight: 600; color: #1a1a1a; word-break: break-all; }
+  .file-meta { font-size: 0.8rem; color: #888; margin-top: 0.2rem; }
+  .type-badge { display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; text-transform: uppercase; }
+  .type-article { background: #e8f5e9; color: #2e7d32; }
+  .type-paper { background: #e3f2fd; color: #1565c0; }
+  .type-book { background: #fff3e0; color: #e65100; }
+  button { padding: 0.55rem 1.2rem; background: #6c63ff; color: white; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; white-space: nowrap; transition: background .2s; }
+  button:hover { background: #574fd6; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><span>🏴‍☠️</span>Robin · Inbox</h1>
+  <form method="post" action="/logout" style="margin:0">
+    <button type="submit" style="background:transparent;color:#888;padding:0;font-size:0.875rem">登出</button>
+  </form>
+</div>
+<div class="container">
+  {% if files %}
+    {% for file in files %}
+    <div class="file-card">
+      <div class="file-info">
+        <div class="file-name">{{ file.name }}</div>
+        <div class="file-meta">
+          {{ file.size }} ·
+          <span class="type-badge type-{{ file.type }}">{{ file.type }}</span>
+        </div>
+      </div>
+      <form method="post" action="/start" style="margin:0;margin-left:1rem">
+        <input type="hidden" name="filename" value="{{ file.name }}">
+        <button type="submit">開始 Ingest</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="empty">
+    <div style="font-size:2.5rem">📭</div>
+    <strong>Inbox 是空的</strong>
+    <p>把檔案放入 Inbox/kb/ 資料夾後重新整理</p>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

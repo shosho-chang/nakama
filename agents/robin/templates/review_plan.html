@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 審核計畫</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 2rem; }
+  .container { max-width: 760px; margin: 0 auto; }
+  .header { margin-bottom: 1.5rem; }
+  .header h1 { font-size: 1.25rem; color: #1a1a1a; }
+  .header p { color: #666; font-size: 0.875rem; margin-top: 0.3rem; }
+  .section { margin-bottom: 1.5rem; }
+  .section-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #888; margin-bottom: 0.75rem; }
+  .item-card { background: white; border-radius: 10px; padding: 1.1rem 1.25rem; margin-bottom: 0.6rem; display: flex; gap: 1rem; align-items: flex-start; box-shadow: 0 1px 3px rgba(0,0,0,.05); cursor: pointer; transition: box-shadow .15s; }
+  .item-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .item-card.selected { outline: 2px solid #6c63ff; }
+  input[type=checkbox] { margin-top: 0.2rem; accent-color: #6c63ff; width: 1.1rem; height: 1.1rem; flex-shrink: 0; cursor: pointer; }
+  .item-body { flex: 1; }
+  .item-title { font-weight: 600; color: #1a1a1a; display: flex; align-items: center; gap: 0.5rem; }
+  .badge { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; text-transform: uppercase; }
+  .badge-concept { background: #e8f5e9; color: #2e7d32; }
+  .badge-entity { background: #e3f2fd; color: #1565c0; }
+  .badge-update { background: #fff3e0; color: #e65100; }
+  .item-reason { font-size: 0.8rem; color: #666; margin-top: 0.3rem; line-height: 1.5; }
+  .item-notes { font-size: 0.8rem; color: #888; margin-top: 0.25rem; line-height: 1.4; }
+  .toolbar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .toolbar button { font-size: 0.8rem; padding: 0.3rem 0.8rem; border: 1.5px solid #ddd; border-radius: 6px; background: white; cursor: pointer; color: #555; transition: all .15s; }
+  .toolbar button:hover { border-color: #6c63ff; color: #6c63ff; }
+  .empty-section { color: #aaa; font-size: 0.875rem; padding: 1rem 0; }
+  .actions { margin-top: 2rem; display: flex; gap: 0.75rem; }
+  .btn-primary { padding: 0.75rem 2rem; background: #6c63ff; color: white; border: none; border-radius: 8px; font-size: 0.95rem; cursor: pointer; transition: background .2s; }
+  .btn-primary:hover { background: #574fd6; }
+  .btn-skip { padding: 0.75rem 1.5rem; background: transparent; color: #888; border: 1.5px solid #ddd; border-radius: 8px; font-size: 0.95rem; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>📋 審核 Robin 的建議</h1>
+    <p>{{ file_name }} · 勾選你想建立的頁面</p>
+  </div>
+
+  <form method="post" action="/execute" id="form">
+
+    <!-- Creates -->
+    <div class="section">
+      <div class="section-title">新建頁面</div>
+      {% if creates_list %}
+      <div class="toolbar">
+        <button type="button" onclick="toggleAll('create', true)">全選</button>
+        <button type="button" onclick="toggleAll('create', false)">全不選</button>
+      </div>
+      {% for i, item in creates %}
+      <label class="item-card" id="card-create-{{ i }}">
+        <input type="checkbox" name="create" value="{{ i }}" checked onchange="updateCard(this, 'create-{{ i }}')">
+        <div class="item-body">
+          <div class="item-title">
+            {% if item.type == 'concept' %}
+              <span class="badge badge-concept">概念</span>
+            {% else %}
+              <span class="badge badge-entity">實體</span>
+            {% endif %}
+            {{ item.title }}
+          </div>
+          <div class="item-reason">{{ item.reason }}</div>
+          {% if item.content_notes %}
+          <div class="item-notes">內容重點：{{ item.content_notes[:120] }}{% if item.content_notes|length > 120 %}...{% endif %}</div>
+          {% endif %}
+        </div>
+      </label>
+      {% endfor %}
+      {% else %}
+      <p class="empty-section">Robin 判斷這次不需要新建任何頁面。</p>
+      {% endif %}
+    </div>
+
+    <!-- Updates -->
+    <div class="section">
+      <div class="section-title">更新既有頁面</div>
+      {% if updates_list %}
+      <div class="toolbar">
+        <button type="button" onclick="toggleAll('update', true)">全選</button>
+        <button type="button" onclick="toggleAll('update', false)">全不選</button>
+      </div>
+      {% for i, item in updates %}
+      <label class="item-card" id="card-update-{{ i }}">
+        <input type="checkbox" name="update" value="{{ i }}" checked onchange="updateCard(this, 'update-{{ i }}')">
+        <div class="item-body">
+          <div class="item-title">
+            <span class="badge badge-update">更新</span>
+            {{ item.title }}
+          </div>
+          <div class="item-reason">{{ item.reason }}</div>
+          {% if item.additions %}
+          <div class="item-notes">新增內容：{{ item.additions[:120] }}{% if item.additions|length > 120 %}...{% endif %}</div>
+          {% endif %}
+        </div>
+      </label>
+      {% endfor %}
+      {% else %}
+      <p class="empty-section">Robin 判斷這次不需要更新任何既有頁面。</p>
+      {% endif %}
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn-primary">建立選定頁面</button>
+      <button type="button" class="btn-skip" onclick="uncheckAll(); document.getElementById('form').submit()">略過，不建任何頁面</button>
+    </div>
+  </form>
+</div>
+<script>
+function updateCard(checkbox, cardId) {
+  const card = document.getElementById("card-" + cardId);
+  if (checkbox.checked) card.classList.add("selected");
+  else card.classList.remove("selected");
+}
+function toggleAll(name, checked) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(cb => {
+    cb.checked = checked;
+    updateCard(cb, name + "-" + cb.value);
+  });
+}
+function uncheckAll() {
+  document.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = false; });
+}
+// Init selected state
+document.querySelectorAll("input[type=checkbox]").forEach(cb => {
+  if (cb.checked) cb.closest(".item-card").classList.add("selected");
+});
+</script>
+</body>
+</html>
