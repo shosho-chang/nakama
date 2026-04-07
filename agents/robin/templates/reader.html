@@ -7,63 +7,89 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; }
+  body { font-family: system-ui, sans-serif; background: #fafaf8; height: 100vh; display: flex; flex-direction: column; }
 
   /* ── Header ── */
-  .header { background: white; padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; }
-  .header-left { display: flex; align-items: center; gap: 0.75rem; }
-  .header-left h1 { font-size: 1.1rem; color: #1a1a1a; word-break: break-all; }
-  .header-right { display: flex; align-items: center; gap: 0.5rem; }
-  .badge-read { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: #e8f5e9; color: #2e7d32; font-weight: 600; }
-  .save-indicator { font-size: 0.8rem; color: #4caf50; opacity: 0; transition: opacity 0.3s; }
+  .header { background: white; padding: 0.6rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; }
+  .header-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+  .header-left h1 { font-size: 1rem; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-right { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
+  .badge-read { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: #e8f5e9; color: #2e7d32; font-weight: 600; }
+  .save-indicator { font-size: 0.75rem; color: #4caf50; opacity: 0; transition: opacity 0.3s; }
   .save-indicator.show { opacity: 1; }
+  .mode-toggle { font-size: 0.75rem; padding: 0.25rem 0.6rem; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; cursor: pointer; color: #555; }
+  .mode-toggle:hover { border-color: #6c63ff; color: #6c63ff; }
+  .shortcuts-hint { font-size: 0.7rem; color: #aaa; }
 
-  /* ── Toolbar ── */
-  .toolbar { background: white; padding: 0.5rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid #e5e5e5; flex-shrink: 0; }
-  .toolbar button { padding: 0.35rem 0.75rem; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
-  .toolbar button:hover { background: #6c63ff; color: white; border-color: #6c63ff; }
+  /* ── Reader area ── */
+  .reader-wrap { flex: 1; overflow: hidden; position: relative; }
 
-  /* ── Split pane ── */
-  .panes { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
-  .pane { overflow-y: auto; padding: 1.5rem; }
-  .pane-preview { background: white; border-right: 1px solid #e5e5e5; }
-  .pane-source { background: #fafafa; display: flex; flex-direction: column; }
-  .pane-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 0.75rem; }
-  .source-editor { flex: 1; width: 100%; border: none; background: transparent; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 0.85rem; line-height: 1.7; resize: none; outline: none; color: #333; tab-size: 2; }
+  /* Scroll mode */
+  .reader-content { max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem; }
+  .reader-wrap.scroll-mode { overflow-y: auto; }
+  .reader-wrap.scroll-mode .reader-content { /* default behavior */ }
 
-  /* ── Preview styles ── */
-  .preview-content { font-size: 0.95rem; line-height: 1.8; color: #333; }
-  .preview-content h1 { font-size: 1.5rem; margin: 1.5rem 0 0.75rem; color: #1a1a1a; }
-  .preview-content h2 { font-size: 1.25rem; margin: 1.25rem 0 0.6rem; color: #1a1a1a; }
-  .preview-content h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; color: #1a1a1a; }
-  .preview-content p { margin-bottom: 0.75rem; }
-  .preview-content ul, .preview-content ol { margin: 0.5rem 0 0.75rem 1.5rem; }
-  .preview-content li { margin-bottom: 0.25rem; }
-  .preview-content blockquote { border-left: 3px solid #ddd; padding-left: 1rem; color: #666; margin: 0.75rem 0; }
-  .preview-content code { background: #f0f0f0; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; }
-  .preview-content pre { background: #f0f0f0; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0.75rem 0; }
-  .preview-content pre code { background: none; padding: 0; }
-  .preview-content mark { background: #fff3a3; padding: 0.05rem 0.15rem; border-radius: 2px; }
-  .preview-content .annotation-callout { border-left: 3px solid #6c63ff; background: #f3f2ff; padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; margin: 0.75rem 0; font-size: 0.9rem; color: #444; }
-  .preview-content .annotation-callout strong { color: #6c63ff; }
+  /* Paged mode */
+  .reader-wrap.paged-mode { overflow: hidden; }
+  .reader-wrap.paged-mode .reader-content {
+    max-width: none;
+    height: 100%;
+    padding: 2rem 3rem;
+    column-fill: auto;
+    column-gap: 3rem;
+  }
+  .page-nav { display: none; position: absolute; bottom: 0.75rem; left: 50%; transform: translateX(-50%); font-size: 0.8rem; color: #888; background: rgba(255,255,255,0.9); padding: 0.25rem 0.75rem; border-radius: 6px; }
+  .reader-wrap.paged-mode .page-nav { display: block; }
+
+  /* ── Content typography ── */
+  .reader-content h1 { font-size: 1.6rem; margin: 1.5rem 0 0.75rem; color: #1a1a1a; line-height: 1.4; }
+  .reader-content h2 { font-size: 1.3rem; margin: 1.5rem 0 0.6rem; color: #1a1a1a; }
+  .reader-content h3 { font-size: 1.1rem; margin: 1.2rem 0 0.5rem; color: #1a1a1a; }
+  .reader-content p { margin-bottom: 0.9rem; line-height: 1.9; color: #333; font-size: 1rem; }
+  .reader-content ul, .reader-content ol { margin: 0.5rem 0 0.9rem 1.5rem; line-height: 1.8; }
+  .reader-content li { margin-bottom: 0.3rem; }
+  .reader-content blockquote { border-left: 3px solid #ddd; padding-left: 1rem; color: #666; margin: 0.75rem 0; }
+  .reader-content code { background: #f0f0f0; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; }
+  .reader-content pre { background: #f0f0f0; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0.75rem 0; }
+  .reader-content pre code { background: none; padding: 0; }
+  .reader-content img { max-width: 100%; border-radius: 8px; margin: 0.75rem 0; }
+  .reader-content hr { border: none; border-top: 1px solid #e5e5e5; margin: 1.5rem 0; }
+
+  /* Highlight */
+  .reader-content mark { background: #fff3a3; padding: 0.05rem 0.15rem; border-radius: 2px; }
+
+  /* Annotation callout */
+  .reader-content .annotation-callout { border-left: 3px solid #6c63ff; background: #f3f2ff; padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; margin: 0.75rem 0; font-size: 0.9rem; color: #444; }
+  .reader-content .annotation-callout strong { color: #6c63ff; }
 
   /* ── Footer ── */
-  .footer { background: white; padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e5e5e5; flex-shrink: 0; }
-  .footer a { color: #888; text-decoration: none; font-size: 0.9rem; }
+  .footer { background: white; padding: 0.6rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e5e5e5; flex-shrink: 0; }
+  .footer a { color: #888; text-decoration: none; font-size: 0.875rem; }
   .footer a:hover { color: #333; }
-  .btn { padding: 0.55rem 1.2rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; }
+  .btn { padding: 0.5rem 1rem; border: none; border-radius: 8px; font-size: 0.875rem; cursor: pointer; transition: background 0.2s; }
   .btn-finish { background: #4caf50; color: white; }
   .btn-finish:hover { background: #43a047; }
   .btn-finish.done { background: #e8f5e9; color: #2e7d32; }
 
-  /* ── Mobile ── */
-  @media (max-width: 768px) {
-    .panes { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-    .pane-preview { border-right: none; border-bottom: 1px solid #e5e5e5; }
-  }
+  /* ── Modal ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: white; border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 520px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+  .modal h3 { font-size: 1rem; color: #1a1a1a; margin-bottom: 0.75rem; }
+  .modal-context { font-size: 0.85rem; color: #666; background: #f9f9f9; padding: 0.5rem 0.75rem; border-radius: 6px; margin-bottom: 0.75rem; max-height: 80px; overflow-y: auto; border-left: 3px solid #fff3a3; }
+  .modal textarea { width: 100%; height: 100px; border: 1px solid #ddd; border-radius: 8px; padding: 0.75rem; font-family: system-ui, sans-serif; font-size: 0.9rem; resize: vertical; outline: none; }
+  .modal textarea:focus { border-color: #6c63ff; }
+  .modal-hint { font-size: 0.7rem; color: #aaa; margin-top: 0.35rem; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+  .modal-actions button { padding: 0.45rem 1rem; border-radius: 8px; font-size: 0.85rem; cursor: pointer; border: none; }
+  .modal-cancel { background: #f0f0f0; color: #666; }
+  .modal-cancel:hover { background: #e5e5e5; }
+  .modal-confirm { background: #6c63ff; color: white; }
+  .modal-confirm:hover { background: #574fd6; }
 </style>
 </head>
 <body>
+
   <!-- Header -->
   <div class="header">
     <div class="header-left">
@@ -71,26 +97,16 @@
       <span class="badge-read" id="readBadge" {% if not is_read %}style="display:none"{% endif %}>已閱讀</span>
     </div>
     <div class="header-right">
+      <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解</span>
       <span class="save-indicator" id="saveIndicator">已儲存</span>
+      <button class="mode-toggle" id="modeToggle" onclick="toggleMode()">翻頁模式</button>
     </div>
   </div>
 
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <button type="button" onclick="wrapHighlight()" title="選取文字後按此標記重點">標記重點</button>
-    <button type="button" onclick="insertNote()" title="在游標處插入筆記區塊">新增筆記</button>
-  </div>
-
-  <!-- Split panes -->
-  <div class="panes">
-    <div class="pane pane-preview">
-      <div class="pane-label">Preview</div>
-      <div class="preview-content" id="preview"></div>
-    </div>
-    <div class="pane pane-source">
-      <div class="pane-label">Markdown Source</div>
-      <textarea class="source-editor" id="editor" spellcheck="false">{{ content }}</textarea>
-    </div>
+  <!-- Reader -->
+  <div class="reader-wrap scroll-mode" id="readerWrap">
+    <div class="reader-content" id="readerContent"></div>
+    <div class="page-nav" id="pageNav"></div>
   </div>
 
   <!-- Footer -->
@@ -101,20 +117,44 @@
     </button>
   </div>
 
+  <!-- Annotation Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h3>新增註解</h3>
+      <div class="modal-context" id="modalContext"></div>
+      <textarea id="modalInput" placeholder="寫下你的想法或心得..."></textarea>
+      <div class="modal-hint">Ctrl+Enter 確認</div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="closeModal()">取消</button>
+        <button class="modal-confirm" onclick="confirmAnnotation()">確認</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    const editor = document.getElementById('editor');
-    const preview = document.getElementById('preview');
+    // ── State ──
+    const FILENAME = '{{ filename }}';
+    let mdSource = {{ content | tojson }};
+    let isPaged = false;
+    let currentPage = 0;
+    let totalPages = 1;
+    let pendingSelectedText = '';
+
+    const readerWrap = document.getElementById('readerWrap');
+    const readerContent = document.getElementById('readerContent');
+    const pageNav = document.getElementById('pageNav');
+    const modeToggle = document.getElementById('modeToggle');
     const saveIndicator = document.getElementById('saveIndicator');
     const finishBtn = document.getElementById('finishBtn');
     const readBadge = document.getElementById('readBadge');
-    const FILENAME = '{{ filename }}';
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalContext = document.getElementById('modalContext');
+    const modalInput = document.getElementById('modalInput');
 
-    // ── Markdown preprocessing ──
+    // ── Markdown preprocessing & rendering ──
 
     function preprocess(md) {
-      // ==highlight== → <mark>
       md = md.replace(/==(.*?)==/gs, '<mark>$1</mark>');
-      // > [!annotation]\n> lines → styled callout
       md = md.replace(
         /^> \[!annotation\]\s*\n((?:^> .*(?:\n|$))*)/gm,
         function(match, body) {
@@ -125,35 +165,116 @@
       return md;
     }
 
-    function renderPreview() {
-      const raw = editor.value;
-      const processed = preprocess(raw);
-      preview.innerHTML = marked.parse(processed);
+    function render() {
+      const processed = preprocess(mdSource);
+      readerContent.innerHTML = marked.parse(processed);
+      if (isPaged) updatePageInfo();
     }
 
-    // ── Debounce utility ──
+    // ── Mode toggle ──
 
-    function debounce(fn, ms) {
-      let timer;
-      return function(...args) {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn.apply(this, args), ms);
-      };
+    function toggleMode() {
+      isPaged = !isPaged;
+      if (isPaged) {
+        readerWrap.classList.remove('scroll-mode');
+        readerWrap.classList.add('paged-mode');
+        modeToggle.textContent = '捲動模式';
+        currentPage = 0;
+        applyPageLayout();
+      } else {
+        readerWrap.classList.remove('paged-mode');
+        readerWrap.classList.add('scroll-mode');
+        modeToggle.textContent = '翻頁模式';
+        readerContent.style.columnWidth = '';
+        readerContent.style.width = '';
+        readerContent.style.transform = '';
+      }
+    }
+
+    function applyPageLayout() {
+      const wrapW = readerWrap.clientWidth;
+      readerContent.style.columnWidth = wrapW + 'px';
+      requestAnimationFrame(() => {
+        const scrollW = readerContent.scrollWidth;
+        totalPages = Math.max(1, Math.ceil(scrollW / wrapW));
+        goToPage(currentPage);
+      });
+    }
+
+    function goToPage(n) {
+      const wrapW = readerWrap.clientWidth;
+      currentPage = Math.max(0, Math.min(n, totalPages - 1));
+      readerContent.style.transform = `translateX(-${currentPage * wrapW}px)`;
+      updatePageInfo();
+    }
+
+    function updatePageInfo() {
+      const wrapW = readerWrap.clientWidth;
+      const scrollW = readerContent.scrollWidth;
+      totalPages = Math.max(1, Math.ceil(scrollW / wrapW));
+      pageNav.textContent = `${currentPage + 1} / ${totalPages}`;
+    }
+
+    // ── Text selection → markdown source mapping ──
+
+    function getSelectedText() {
+      const sel = window.getSelection();
+      return sel ? sel.toString().trim() : '';
+    }
+
+    function escapeRegex(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function highlightInSource(text) {
+      // Find the text in markdown source and wrap with ==...==
+      // Use a flexible match that ignores minor whitespace differences
+      const escaped = escapeRegex(text);
+      const flexPattern = escaped.replace(/\s+/g, '\\s+');
+      const regex = new RegExp(flexPattern);
+      const match = mdSource.match(regex);
+      if (match) {
+        const idx = mdSource.indexOf(match[0]);
+        mdSource = mdSource.substring(0, idx) + '==' + match[0] + '==' + mdSource.substring(idx + match[0].length);
+        return true;
+      }
+      return false;
+    }
+
+    function addAnnotationInSource(text, note) {
+      // Find the text in source, then insert annotation after the paragraph
+      const escaped = escapeRegex(text);
+      const flexPattern = escaped.replace(/\s+/g, '\\s+');
+      const regex = new RegExp(flexPattern);
+      const match = mdSource.match(regex);
+      if (match) {
+        const idx = mdSource.indexOf(match[0]);
+        const afterMatch = idx + match[0].length;
+        // Find end of current paragraph (next double newline or end)
+        let paraEnd = mdSource.indexOf('\n\n', afterMatch);
+        if (paraEnd === -1) paraEnd = mdSource.length;
+        // Build annotation block
+        const noteLines = note.split('\n').map(l => '> ' + l).join('\n');
+        const block = '\n\n> [!annotation]\n' + noteLines + '\n';
+        mdSource = mdSource.substring(0, paraEnd) + block + mdSource.substring(paraEnd);
+        return true;
+      }
+      return false;
     }
 
     // ── Auto-save ──
 
-    let saveTimeout;
+    let saveTimer;
     function showSaved() {
       saveIndicator.classList.add('show');
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => saveIndicator.classList.remove('show'), 1500);
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => saveIndicator.classList.remove('show'), 1500);
     }
 
     async function saveContent() {
       const form = new FormData();
       form.append('filename', FILENAME);
-      form.append('content', editor.value);
+      form.append('content', mdSource);
       try {
         const res = await fetch('/save-annotations', { method: 'POST', body: form });
         if (res.ok) showSaved();
@@ -162,49 +283,86 @@
       }
     }
 
-    const debouncedSave = debounce(saveContent, 2000);
-    const debouncedRender = debounce(renderPreview, 300);
+    function saveAndRender() {
+      render();
+      saveContent();
+    }
 
-    editor.addEventListener('input', function() {
-      debouncedRender();
-      debouncedSave();
+    // ── Keyboard shortcuts ──
+
+    document.addEventListener('keydown', function(e) {
+      // Ctrl+B: highlight
+      if (e.ctrlKey && !e.shiftKey && e.key === 'b') {
+        e.preventDefault();
+        const text = getSelectedText();
+        if (!text) return;
+        if (highlightInSource(text)) {
+          window.getSelection().removeAllRanges();
+          saveAndRender();
+        }
+      }
+
+      // Ctrl+Shift+C: annotation
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        e.preventDefault();
+        const text = getSelectedText();
+        if (!text) return;
+        pendingSelectedText = text;
+        openModal(text);
+      }
+
+      // Arrow keys for paged mode
+      if (isPaged && !modalOverlay.classList.contains('show')) {
+        if (e.key === 'ArrowRight') { e.preventDefault(); goToPage(currentPage + 1); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); goToPage(currentPage - 1); }
+      }
     });
 
-    // ── Toolbar actions ──
+    // ── Modal ──
 
-    function wrapHighlight() {
-      const start = editor.selectionStart;
-      const end = editor.selectionEnd;
-      if (start === end) return; // nothing selected
-      const text = editor.value;
-      const selected = text.substring(start, end);
-      const newText = text.substring(0, start) + '==' + selected + '==' + text.substring(end);
-      editor.value = newText;
-      editor.selectionStart = start;
-      editor.selectionEnd = end + 4; // account for ==...==
-      editor.focus();
-      debouncedRender();
-      debouncedSave();
+    function openModal(contextText) {
+      modalContext.textContent = contextText;
+      modalInput.value = '';
+      modalOverlay.classList.add('show');
+      setTimeout(() => modalInput.focus(), 100);
     }
 
-    function insertNote() {
-      const pos = editor.selectionStart;
-      const text = editor.value;
-      const insertion = '\n\n> [!annotation]\n> ';
-      const newText = text.substring(0, pos) + insertion + text.substring(pos);
-      editor.value = newText;
-      editor.selectionStart = editor.selectionEnd = pos + insertion.length;
-      editor.focus();
-      debouncedRender();
-      debouncedSave();
+    function closeModal() {
+      modalOverlay.classList.remove('show');
+      pendingSelectedText = '';
     }
+
+    function confirmAnnotation() {
+      const note = modalInput.value.trim();
+      if (!note) { closeModal(); return; }
+      if (addAnnotationInSource(pendingSelectedText, note)) {
+        window.getSelection().removeAllRanges();
+        saveAndRender();
+      }
+      closeModal();
+    }
+
+    // Ctrl+Enter in modal to confirm
+    modalInput.addEventListener('keydown', function(e) {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        confirmAnnotation();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeModal();
+      }
+    });
+
+    // Close modal on overlay click
+    modalOverlay.addEventListener('click', function(e) {
+      if (e.target === modalOverlay) closeModal();
+    });
 
     // ── Finish reading ──
 
     async function finishReading() {
-      // Save first
       await saveContent();
-      // Mark as read
       const form = new FormData();
       form.append('filename', FILENAME);
       try {
@@ -219,8 +377,14 @@
       }
     }
 
-    // ── Initial render ──
-    renderPreview();
+    // ── Resize handler for paged mode ──
+
+    window.addEventListener('resize', function() {
+      if (isPaged) applyPageLayout();
+    });
+
+    // ── Init ──
+    render();
   </script>
 </body>
 </html>
