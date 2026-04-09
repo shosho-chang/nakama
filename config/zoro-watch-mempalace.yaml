@@ -1,0 +1,61 @@
+# Zoro Watch — MemPalace (milla-jovovich/mempalace)
+# 目的：追蹤 MemPalace 是否已達到可整合進 LifeOS 的標準
+# 整合計畫：作為 Claude 對話記憶層（個人偏好 + 討論歷史），與 KB/Wiki/ 分開
+
+repo: milla-jovovich/mempalace
+check_interval: weekly   # Zoro 每週檢查一次即可（不需要每天）
+
+# ── 整合條件（全部滿足才通知）──────────────────────────────────────────────
+
+readiness_criteria:
+  # 1. 中文支援（最關鍵）
+  - id: chinese_embedding
+    description: "embedding model 改為支援中文的多語言模型"
+    signal: "paraphrase-multilingual OR multilingual-e5 OR bge-m3"
+    check: grep_in_file
+    target: "requirements.txt OR config*.py OR README.md"
+
+  - id: chinese_room_detector
+    description: "room_detector_local.py 加入中文關鍵字"
+    signal: "中文 OR chinese OR zh OR 健康 OR 知識"
+    check: grep_in_file
+    target: "room_detector_local.py"
+
+  # 2. Windows / MCP 穩定性
+  - id: windows_split_fixed
+    description: "Windows split 指令 bug 修復（Issue #303）"
+    signal: issue_closed
+    issue: 303
+
+  - id: mcp_version_fixed
+    description: "MCP 版本不一致修復（Issue #290）"
+    signal: issue_closed
+    issue: 290
+
+  - id: claude_jsonl_parser_fixed
+    description: "Claude Code JSONL parser bug 修復（Issue #327）"
+    signal: issue_closed
+    issue: 327
+
+  # 3. 整體健康度
+  - id: open_issues_stable
+    description: "open issues 不再快速增加（穩定 < 60 個）"
+    signal: open_issues_count
+    threshold: "< 60"
+
+# ── 次要追蹤（有就報告，不影響 ready 判斷）──────────────────────────────────
+
+watch_also:
+  - "AAAK compression 是否恢復到接近 96% 的水準"
+  - "per-user isolation PR（Issue #292）"
+  - "LoCoMo benchmark 是否有改善（目前 60.3%）"
+  - "新的 release tag"
+
+# ── 通知設定 ──────────────────────────────────────────────────────────────
+
+notify:
+  method: brief           # 寫入 AgentBriefs/，由 Nami 整合進 Morning Brief
+  when_ready: email       # 全部條件滿足時額外發 email
+  ready_subject: "✅ MemPalace 已可整合進 LifeOS"
+  partial_update: false   # 若只有部分條件滿足，不要每週打擾，只有全滿足才發 email
+  weekly_summary: true    # 每週在 brief 裡附上一行狀態摘要
