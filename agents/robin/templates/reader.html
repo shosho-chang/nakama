@@ -229,6 +229,11 @@
         }
       );
 
+      // Convert Obsidian image wikilinks → standard markdown (for local images fetched by Robin)
+      md = md.replace(/!\[\[([^\]]+\.(?:png|jpe?g|gif|webp|svg|avif|bmp))\]\]/gi, function(_, filename) {
+        return `![${filename}](/files/${encodeURIComponent(filename)})`;
+      });
+
       // Convert ==text== → highlights (before marked)
       md = md.replace(/==(.*?)==/gs, function(match, text) {
         const trimmed = text.trim();

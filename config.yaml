@@ -9,16 +9,18 @@ agents:
   robin:
     description: "Knowledge Base — 攝入來源、產出摘要、維護 Wiki"
     inbox_path: Inbox/kb
-    schedule: "0 2 * * *"
+    trigger: manual  # Web UI 觸發，不走 cron（cron 會繞過 review 流程）
     style_profile: config/style-profile.json
 
   nami:
-    description: "Secretary — 整合當日產出、產出 Morning Brief"
+    description: "Secretary — Morning Brief、頻道數據追蹤、邀約報價回覆"
     schedule: "0 7 * * *"
     brief_path: AgentBriefs
+    metrics_schedule: "0 9 * * 1"  # 每週一早上彙整數據
+    pricing_config: config/nami-pricing.yaml
 
   zoro:
-    description: "Scout — 追蹤 KOL、趨勢、PubMed、關鍵字研究"
+    description: "Scout — 追蹤 KOL、趨勢、PubMed、關鍵字研究、GitHub 專案監控"
     schedule: "0 6 * * *"
     sources:
       twitter:
@@ -28,24 +30,32 @@ agents:
         rss_feeds: config/pubmed-feeds.yaml
       google_trends:
         keywords: [longevity, biohacking, 身心健康, healthspan]
+    github_watch:
+      - config/zoro-watch-mempalace.yaml
 
   usopp:
-    description: "Community Monitor — 監控 WordPress Fluent Community"
-    schedule: "0 * * * *"
+    description: "Publisher — 精準發布內容至各平台、電子報管理（Fluent CRM）"
+    trigger: on_approve
+    newsletter:
+      name: 張秀秀的自由之路
+      crm: fluent_crm
+      # API key in .env
+
+  sanji:
+    description: "Community Manager — 自由艦隊社群營運、監控、活動策劃（Fluent Community）"
+    schedule: "0 * * * *"  # 監控每小時
     wordpress:
-      # base_url in .env
+      community: fluent_community
       alert_threshold:
         unanswered_hours: 24
 
-  sanji:
-    description: "Producer — 選題、標題建議、內容大綱"
-    trigger: manual
-
   franky:
-    description: "Repurpose — 改寫文章、SEO、社群貼文"
-    trigger: manual
-    style_profile: config/style-profile.json
+    description: "System Maintenance — 套件更新監測、GitHub watch 執行、系統健康檢查"
+    schedule: "0 9 * * 1"  # 每週一執行
+    watch_configs:
+      - config/zoro-watch-mempalace.yaml
 
   brook:
-    description: "Publish — 發布 WordPress、上傳 YouTube"
-    trigger: on_approve
+    description: "Composer — 素材重組為各平台格式，交由 Usopp 發布"
+    trigger: manual
+    style_profile: config/style-profile.json

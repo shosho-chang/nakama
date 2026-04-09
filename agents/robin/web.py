@@ -11,10 +11,11 @@ import uuid
 from pathlib import Path
 
 from fastapi import Cookie, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from agents.robin.agent import EXTENSION_TO_RAW_DIR, EXTENSION_TO_SOURCE_TYPE, SOURCE_TYPE_TO_RAW_DIR
+from agents.robin.image_fetcher import fetch_images
 from agents.robin.ingest import IngestPipeline
 from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
@@ -152,6 +153,12 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
         raise HTTPException(404, detail=f"找不到檔案：{file}")
     if file_path.suffix.lower() not in (".md", ".txt"):
         raise HTTPException(400, detail="此檔案格式不支援線上閱讀")
+
+    # 下載外部圖片，更新 markdown 連結（背景執行，不阻塞頁面載入）
+    fetched = await asyncio.to_thread(fetch_images, file_path)
+    if fetched:
+        logger.info(f"已為 {file} 下載 {fetched} 張外部圖片")
+
     content = read_text(file_path)
     return templates.TemplateResponse(request, "reader.html", {
         "filename": file,
@@ -159,6 +166,17 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
         "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
         "is_read": is_file_read(file_path),
     })
+
+
+@app.get("/files/{path:path}")
+async def serve_vault_file(path: str, robin_auth: str | None = Cookie(None)):
+    """提供 vault/Files/ 中的圖片給 reader 顯示。"""
+    if not _check_auth(robin_auth):
+        raise HTTPException(403)
+    file_path = get_vault_path() / "Files" / path
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(404)
+    return FileResponse(file_path)
 
 
 @app.post("/save-annotations")
