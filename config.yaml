@@ -50,8 +50,8 @@ agents:
         unanswered_hours: 24
 
   franky:
-    description: "System Maintenance — 套件更新監測、GitHub watch 執行、系統健康檢查"
-    schedule: "0 9 * * 1"  # 每週一執行
+    description: "Engineer — 工程進度追蹤、系統健康檢查、套件更新監測"
+    schedule: "0 1 * * 1"  # 每週一 01:00（週報在 Shosho 起床前產出）
     watch_configs:
       - config/zoro-watch-mempalace.yaml
 

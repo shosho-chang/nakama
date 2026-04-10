@@ -12,6 +12,7 @@ feedparser>=6.0        # RSS (PubMed, etc.)
 
 # Utilities
 python-dateutil>=2.9
+psutil>=5.9.0              # Franky: system health checks (disk/memory)
 
 # Web UI (Robin)
 fastapi>=0.111.0
