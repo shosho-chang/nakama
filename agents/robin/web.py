@@ -10,13 +10,14 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import Cookie, FastAPI, Form, HTTPException, Request
+from fastapi import Cookie, FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from agents.robin.agent import EXTENSION_TO_RAW_DIR, EXTENSION_TO_SOURCE_TYPE, SOURCE_TYPE_TO_RAW_DIR
 from agents.robin.image_fetcher import fetch_images
 from agents.robin.ingest import IngestPipeline
+from agents.robin.kb_search import search_kb
 from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
 from shared.obsidian_writer import list_files
@@ -45,6 +46,13 @@ def _check_auth(auth_cookie: str | None) -> bool:
     if not WEB_PASSWORD:
         return True  # 未設定密碼時跳過驗證（本機開發用）
     return bool(auth_cookie and auth_cookie == _make_token(WEB_PASSWORD))
+
+
+def _check_key(key: str | None) -> bool:
+    """Accept X-Robin-Key header as alternative to cookie auth (for programmatic access)."""
+    if not WEB_SECRET or WEB_SECRET == "nakama-default-secret":
+        return True  # dev mode
+    return bool(key and key == WEB_SECRET)
 
 
 def _require_auth(robin_auth: str | None = Cookie(None)) -> str | None:
@@ -492,3 +500,19 @@ async def done(request: Request, robin_session: str | None = Cookie(None), robin
         "created": sess["result"].get("created", []),
         "updated": sess["result"].get("updated", []),
     })
+
+
+@app.post("/kb/research")
+async def kb_research(
+    query: str = Form(...),
+    x_robin_key: str | None = Header(None),
+    robin_auth: str | None = Cookie(None),
+):
+    """Search KB/Wiki for pages relevant to query.
+
+    Accepts cookie auth (browser session) OR X-Robin-Key header (programmatic access).
+    """
+    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    results = await asyncio.to_thread(search_kb, query, get_vault_path())
+    return {"results": results}
