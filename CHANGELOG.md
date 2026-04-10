@@ -9,6 +9,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.4.1] - 2026-04-10
+
+### Docs
+- 建立 `ARCHITECTURE.md`：系統架構、核心模組、資料流、技術選型說明
+- 建立 `docs/decisions/` 目錄與 ADR 規範
+- `ADR-001`：記錄 v0.1.0 → v0.4.0 的 Agent 職責重新分配決策
+- 更新 `README.md`：修正 Usopp/Sanji/Franky/Brook 的職責描述（與程式碼對齊）、新增先決條件、補充 VPS 部署步驟、新增文件索引
+
+---
+
 ## [0.4.0] - 2026-04-10
 
 ### Added
