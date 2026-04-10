@@ -7,21 +7,31 @@ from pathlib import Path
 
 from shared.anthropic_client import ask_claude
 from shared.log import get_logger, kb_log
+from shared.memory import load_memory
 from shared.obsidian_writer import (
     list_files,
     read_page,
     vault_path,
     write_page,
 )
+from shared.prompt_loader import load_prompt
 from shared.utils import extract_frontmatter, read_text, slugify
 
 logger = get_logger("nakama.robin.ingest")
 
-_PROMPT_DIR = Path(__file__).parent / "prompts"
 
+def _build_robin_system_prompt() -> str:
+    """組合 Robin 的 system prompt，注入跨 session 記憶。"""
+    base = "你是 Robin，Nakama 團隊的考古學家，負責知識庫管理。"
+    shared_mem = load_memory("shared")
+    robin_mem = load_memory("robin")
+    parts = [base]
+    if shared_mem:
+        parts.append(f"\n## 共用背景知識\n\n{shared_mem}")
+    if robin_mem:
+        parts.append(f"\n## Robin 的學習記憶\n\n{robin_mem}")
+    return "\n".join(parts)
 
-def _load_prompt(name: str) -> str:
-    return (_PROMPT_DIR / name).read_text(encoding="utf-8")
 
 
 class IngestPipeline:
@@ -132,8 +142,8 @@ class IngestPipeline:
         source_type: str,
     ) -> str:
         """呼叫 Claude 產出 Source Summary。"""
-        prompt_template = _load_prompt("summarize.md")
-        prompt = prompt_template.format(
+        prompt = load_prompt(
+            "robin", "summarize",
             title=title,
             author=author or "未知",
             source_type=source_type,
@@ -141,7 +151,7 @@ class IngestPipeline:
             content=content[:30000],  # 限制輸入長度
         )
 
-        return ask_claude(prompt, system="你是 Robin，Nakama 團隊的考古學家，負責知識庫管理。")
+        return ask_claude(prompt, system=_build_robin_system_prompt())
 
     def _get_concept_plan(
         self, summary_body: str, source_path: str, user_guidance: str = ""
@@ -156,8 +166,8 @@ class IngestPipeline:
             "實體頁：" + ", ".join(existing_entities) if existing_entities else "實體頁：（無）"
         )
 
-        prompt_template = _load_prompt("extract_concepts.md")
-        prompt = prompt_template.format(
+        prompt = load_prompt(
+            "robin", "extract_concepts",
             existing_pages=existing_pages,
             summary=summary_body,
             user_guidance=user_guidance or "（無特別引導，請自行判斷重點）",
@@ -165,7 +175,7 @@ class IngestPipeline:
 
         response = ask_claude(
             prompt,
-            system="你是 Robin，Nakama 團隊的考古學家。回傳純 JSON，不要包含其他文字。",
+            system=_build_robin_system_prompt() + "\n\n回傳純 JSON，不要包含其他文字。",
             temperature=0.2,
         )
 
@@ -262,16 +272,16 @@ class IngestPipeline:
         slug = slugify(title)
 
         if page_type == "concept":
-            prompt_template = _load_prompt("write_concept.md")
-            prompt = prompt_template.format(
+            prompt = load_prompt(
+                "robin", "write_concept",
                 title=title,
                 content_notes=content_notes,
                 source_refs=source_path,
             )
             wiki_dir = "KB/Wiki/Concepts"
         else:
-            prompt_template = _load_prompt("write_entity.md")
-            prompt = prompt_template.format(
+            prompt = load_prompt(
+                "robin", "write_entity",
                 title=title,
                 entity_type=item.get("entity_type", "other"),
                 content_notes=content_notes,
@@ -279,7 +289,7 @@ class IngestPipeline:
             )
             wiki_dir = "KB/Wiki/Entities"
 
-        body = ask_claude(prompt, system="你是 Robin，Nakama 團隊的考古學家。")
+        body = ask_claude(prompt, system=_build_robin_system_prompt())
 
         write_page(
             f"{wiki_dir}/{slug}.md",

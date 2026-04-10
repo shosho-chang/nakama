@@ -37,7 +37,19 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             started_at  TEXT NOT NULL,
             finished_at TEXT,
             status      TEXT NOT NULL DEFAULT 'running',
-            summary     TEXT
+            summary     TEXT,
+            input_tokens  INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS api_calls (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent         TEXT NOT NULL,
+            run_id        INTEGER,
+            model         TEXT NOT NULL,
+            input_tokens  INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            called_at     TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS scout_seen (
@@ -60,6 +72,16 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS files_read (
             file_path   TEXT NOT NULL PRIMARY KEY,
             read_at     TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            source      TEXT NOT NULL,
+            event_type  TEXT NOT NULL,
+            payload     TEXT NOT NULL DEFAULT '{}',
+            created_at  TEXT NOT NULL,
+            consumed_by TEXT,
+            consumed_at TEXT
         );
     """)
     conn.commit()
@@ -139,3 +161,72 @@ def finish_run(run_id: int, *, status: str = "done", summary: str = "") -> None:
         (now, status, summary, run_id),
     )
     conn.commit()
+
+
+def record_api_call(
+    agent: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    run_id: int | None = None,
+) -> None:
+    """記錄一次 Claude API 呼叫的 token 用量。"""
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO api_calls (agent, run_id, model, input_tokens, output_tokens, called_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (agent, run_id, model, input_tokens, output_tokens, now),
+    )
+    # 同步累加到 agent_runs
+    if run_id is not None:
+        conn.execute(
+            """UPDATE agent_runs
+               SET input_tokens  = input_tokens  + ?,
+                   output_tokens = output_tokens + ?
+               WHERE id = ?""",
+            (input_tokens, output_tokens, run_id),
+        )
+    conn.commit()
+
+
+def get_cost_summary(agent: str | None = None, days: int = 7) -> list[dict]:
+    """回傳最近 N 天的 token 用量統計，依 agent 分組。
+
+    Args:
+        agent: 過濾特定 agent，None 表示全部
+        days:  統計最近幾天
+
+    Returns:
+        列表，每筆含 agent, model, calls, input_tokens, output_tokens
+    """
+    conn = _get_conn()
+    from datetime import timedelta
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    if agent:
+        rows = conn.execute(
+            """SELECT agent, model,
+                      COUNT(*) as calls,
+                      SUM(input_tokens) as input_tokens,
+                      SUM(output_tokens) as output_tokens
+               FROM api_calls
+               WHERE agent = ? AND called_at >= ?
+               GROUP BY agent, model
+               ORDER BY calls DESC""",
+            (agent, since),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT agent, model,
+                      COUNT(*) as calls,
+                      SUM(input_tokens) as input_tokens,
+                      SUM(output_tokens) as output_tokens
+               FROM api_calls
+               WHERE called_at >= ?
+               GROUP BY agent, model
+               ORDER BY calls DESC""",
+            (since,),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
