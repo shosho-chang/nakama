@@ -7,3 +7,4 @@
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — Robin /kb/research endpoint 未測試
 - [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 整合評估：觀望中（Zoro 每週追蹤）
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
+- [feedback_conversation_end.md](feedback_conversation_end.md) — 對話結束時主動存記憶並 commit & push

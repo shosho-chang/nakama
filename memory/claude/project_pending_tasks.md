@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-12
+updated: 2026-04-11
 confidence: high
 ttl: 90d
 ---
@@ -15,6 +15,9 @@ ttl: 90d
 **待開發（下一個 agent）：**
 - Nami（航海士）— 最自然的下一步，消費 Robin/Franky 事件，產出 Morning Brief
 - Zoro（劍士）— PubMed / KOL 追蹤、MemPalace 監控
+
+**待評估：**
+- MCP 整合方向 — Agent 能力層改為 MCP-compatible，複用社群的 Obsidian/Playwright/PubMed MCP Server（2026-04-11 討論，修修認同方向，尚未正式列入規劃）
 
 **基礎建設 — 第三批（開源/商業化前）：**
 - CONTRIBUTING.md
