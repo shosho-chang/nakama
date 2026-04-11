@@ -58,6 +58,7 @@ def extract_style_profile(articles_dir: str = "KB/Raw/Articles") -> dict:
     try:
         # 提取 JSON
         import re
+
         json_match = re.search(r"\{[\s\S]*\}", response)
         if json_match:
             profile = json.loads(json_match.group())

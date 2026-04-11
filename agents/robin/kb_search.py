@@ -36,19 +36,20 @@ def search_kb(query: str, vault_path: Path, top_k: int = TOP_K) -> list[dict]:
             page_type = subdir.rstrip("s").lower()
             if page_type == "entit":
                 page_type = "entity"
-            pages.append({
-                "type": page_type,
-                "title": title,
-                "path": f"KB/Wiki/{subdir}/{md_file.stem}",
-                "preview": preview,
-            })
+            pages.append(
+                {
+                    "type": page_type,
+                    "title": title,
+                    "path": f"KB/Wiki/{subdir}/{md_file.stem}",
+                    "preview": preview,
+                }
+            )
 
     if not pages:
         return []
 
     pages_text = "\n".join(
-        f"[{i + 1}] ({p['type']}) {p['title']}: {p['preview']}"
-        for i, p in enumerate(pages)
+        f"[{i + 1}] ({p['type']}) {p['title']}: {p['preview']}" for i, p in enumerate(pages)
     )
 
     prompt = (

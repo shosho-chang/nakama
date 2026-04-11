@@ -18,7 +18,6 @@ from shared.config import get_agent_config, get_vault_path
 from shared.log import kb_log
 from shared.state import is_file_processed, mark_file_processed
 
-
 # 副檔名 → Raw 子資料夾 對應（僅作預設推測，Web UI 可覆寫）
 EXTENSION_TO_RAW_DIR: dict[str, str] = {
     ".pdf": "Papers",
@@ -40,9 +39,9 @@ EXTENSION_TO_SOURCE_TYPE: dict[str, str] = {
 # source type → Raw 子資料夾 對應（Web UI 手動選擇後使用）
 SOURCE_TYPE_TO_RAW_DIR: dict[str, str] = {
     "article": "Articles",
-    "paper":   "Papers",
-    "book":    "Books",
-    "video":   "Videos",
+    "paper": "Papers",
+    "book": "Books",
+    "video": "Videos",
     "podcast": "Podcasts",
 }
 
@@ -85,14 +84,10 @@ class RobinAgent(BaseAgent):
         """掃描 inbox 中未處理的檔案。"""
         supported = set(EXTENSION_TO_RAW_DIR.keys())
         all_files = [
-            f for f in self.inbox.iterdir()
-            if f.is_file() and f.suffix.lower() in supported
+            f for f in self.inbox.iterdir() if f.is_file() and f.suffix.lower() in supported
         ]
 
-        new_files = [
-            f for f in all_files
-            if not is_file_processed(f, self.name)
-        ]
+        new_files = [f for f in all_files if not is_file_processed(f, self.name)]
 
         self.logger.info(f"Inbox 共 {len(all_files)} 個檔案，{len(new_files)} 個待處理")
         return new_files
@@ -132,13 +127,13 @@ class RobinAgent(BaseAgent):
 
     def _get_user_guidance(self, filename: str, source_type: str) -> str:
         """互動式模式：等待使用者輸入引導方向。"""
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"📄 檔案：{filename}（{source_type}）")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print("Robin 即將產出 Source Summary，完成後會暫停等你閱讀。")
         print("你可以在閱讀後輸入引導方向，例如：")
         print('  "重點放在睡眠品質那部分"')
         print('  "作者的研究背景很重要"')
-        print('  （直接按 Enter 讓 Robin 自行判斷）')
+        print("  （直接按 Enter 讓 Robin 自行判斷）")
         print()
         return ""  # 引導在 summary 產出後才收集，此處回傳空字串

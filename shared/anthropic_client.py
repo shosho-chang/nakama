@@ -42,6 +42,7 @@ def ask_claude(
 
     自動重試（最多 3 次，指數退避）並記錄 token 用量。
     """
+
     def _call() -> anthropic.types.Message:
         client = get_client()
         kwargs: dict = {
@@ -59,6 +60,7 @@ def ask_claude(
     # Cost tracking
     try:
         from shared.state import record_api_call
+
         agent = getattr(_local, "agent", "unknown")
         run_id = getattr(_local, "run_id", None)
         record_api_call(

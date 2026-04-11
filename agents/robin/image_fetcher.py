@@ -36,7 +36,7 @@ def fetch_images(file_path: Path) -> int:
 
     def _replace(match: re.Match) -> str:
         nonlocal count
-        alt = match.group(1)
+        _alt = match.group(1)
         url = match.group(2)
 
         # 從 URL 推斷副檔名

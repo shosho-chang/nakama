@@ -15,7 +15,7 @@ import yaml
 
 from shared.anthropic_client import ask_claude
 from shared.log import get_logger
-from shared.obsidian_writer import list_files, read_page, write_page
+from shared.obsidian_writer import write_page
 from shared.prompt_loader import load_prompt
 
 logger = get_logger("nakama.franky")
@@ -28,7 +28,7 @@ logger = get_logger("nakama.franky")
 class HealthSnapshot:
     disk_pct: int
     memory_pct: int
-    status: str          # "ok" | "warn" | "error"
+    status: str  # "ok" | "warn" | "error"
     notes: list[str] = field(default_factory=list)
 
 
@@ -49,9 +49,9 @@ class BacklogStats:
 
 @dataclass
 class WeeklyReport:
-    period: str           # "2026-W15"
-    period_start: str     # "2026-04-07"
-    generated_at: str     # "2026-04-13"
+    period: str  # "2026-W15"
+    period_start: str  # "2026-04-07"
+    generated_at: str  # "2026-04-13"
     open_tasks: int
     closed_tasks: int
     blocked_count: int
@@ -104,6 +104,7 @@ class SystemHealthChecker:
     def _disk_pct(self) -> int:
         try:
             import psutil
+
             usage = psutil.disk_usage("/")
             return int(usage.percent)
         except ImportError:
@@ -116,6 +117,7 @@ class SystemHealthChecker:
     def _memory_pct(self) -> int:
         try:
             import psutil
+
             return int(psutil.virtual_memory().percent)
         except ImportError:
             logger.warning("psutil 未安裝，略過記憶體檢查")

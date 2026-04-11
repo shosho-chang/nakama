@@ -37,6 +37,7 @@ _MEMORY_DIR = Path(__file__).resolve().parent.parent / "memory"
 # Frontmatter 解析
 # ---------------------------------------------------------------------------
 
+
 def parse_frontmatter(text: str) -> Tuple[dict, str]:
     """解析 YAML frontmatter，回傳 (metadata_dict, body_str)。
 
@@ -66,13 +67,14 @@ def parse_frontmatter(text: str) -> Tuple[dict, str]:
                 value = [v.strip() for v in value[1:-1].split(",") if v.strip()]
             meta[key.strip()] = value
 
-    body = text[match.end():]
+    body = text[match.end() :]
     return meta, body
 
 
 # ---------------------------------------------------------------------------
 # 路徑解析（支援 memory/agents/ 子目錄，向下相容 memory/{agent}.md）
 # ---------------------------------------------------------------------------
+
 
 def _memory_path(agent: str) -> Path:
     """回傳 agent 記憶檔路徑。
@@ -98,6 +100,7 @@ def _ensure_agents_dir() -> Path:
 # ---------------------------------------------------------------------------
 # 核心讀寫（舊 API，向下相容）
 # ---------------------------------------------------------------------------
+
 
 def load_memory(agent: str) -> str:
     """讀取 agent 的記憶內容（body only，不含 frontmatter）。
@@ -137,6 +140,7 @@ def clear_memory(agent: str) -> None:
 # ---------------------------------------------------------------------------
 # 智能載入（新 API — ADR-002 Tier 2）
 # ---------------------------------------------------------------------------
+
 
 def _load_raw(name: str) -> str:
     """載入 memory/{name}.md 或 memory/agents/{name}.md 的原始內容。"""
@@ -196,6 +200,7 @@ def memory_as_system_block(agent: str) -> str:
 # 讓 agent 可以從 shared.memory 統一存取所有記憶 API：
 #   from shared.memory import get_context, remember, search_memory
 
+
 def remember(
     agent: str,
     type: str,
@@ -208,9 +213,16 @@ def remember(
 ) -> int:
     """記錄一筆新記憶到 Tier 3（SQLite + FTS5）。見 shared.state.remember()。"""
     from shared.state import remember as _remember
+
     return _remember(
-        agent=agent, type=type, title=title, content=content,
-        tags=tags, confidence=confidence, source=source, ttl_days=ttl_days,
+        agent=agent,
+        type=type,
+        title=title,
+        content=content,
+        tags=tags,
+        confidence=confidence,
+        source=source,
+        ttl_days=ttl_days,
     )
 
 
@@ -222,4 +234,5 @@ def search_memory(
 ) -> list:
     """FTS5 全文搜尋記憶。見 shared.state.search_memory()。"""
     from shared.state import search_memory as _search
+
     return _search(query=query, agent=agent, type=type, limit=limit)

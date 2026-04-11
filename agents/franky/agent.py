@@ -58,14 +58,18 @@ class FrankyAgent(BaseAgent):
         )
 
         # 7. emit 事件給 Nami
-        emit("franky", "engineering_report_ready", {
-            "period": report.period,
-            "report_path": report_path,
-            "open_tasks": report.open_tasks,
-            "closed_tasks": report.closed_tasks,
-            "blocked_count": report.blocked_count,
-            "health_status": report.health.status,
-        })
+        emit(
+            "franky",
+            "engineering_report_ready",
+            {
+                "period": report.period,
+                "report_path": report_path,
+                "open_tasks": report.open_tasks,
+                "closed_tasks": report.closed_tasks,
+                "blocked_count": report.blocked_count,
+                "health_status": report.health.status,
+            },
+        )
 
         summary = (
             f"Report {report.period}: "

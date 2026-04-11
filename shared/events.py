@@ -68,7 +68,8 @@ def consume(target: str, event_type: str) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc).isoformat()
     ids = [row["id"] for row in rows]
     conn.execute(
-        f"UPDATE agent_events SET consumed_by = ?, consumed_at = ? WHERE id IN ({','.join('?' * len(ids))})",
+        "UPDATE agent_events SET consumed_by = ?, consumed_at = ?"
+        f" WHERE id IN ({','.join('?' * len(ids))})",
         [target, now, *ids],
     )
     conn.commit()
