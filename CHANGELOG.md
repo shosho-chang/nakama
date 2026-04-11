@@ -11,6 +11,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `pyproject.toml`：正式專案定義（名稱、版號、依賴、工具設定）
 - Git tags `v0.0.1` ~ `v0.4.1`：補齊歷史版號標記
 - `requirements.txt` 加註來源為 `pyproject.toml`
+- `.pre-commit-config.yaml`：commit 前自動檢查（ruff lint/format、大檔、密鑰、merge conflict）
+- `.github/workflows/ci.yml`：PR/push 自動執行 lint + format check + pytest
+
+### Changed
+- 全專案程式碼經 ruff lint fix + format 統一風格（20 個檔案）
 
 ---
 
