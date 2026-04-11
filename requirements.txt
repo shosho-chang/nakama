@@ -1,3 +1,6 @@
+# Auto-generated from pyproject.toml — 保留此檔案供 VPS 上 pip install -r 使用
+# 修改依賴請改 pyproject.toml，再同步到這裡
+
 # Core
 anthropic>=0.42.0
 pyyaml>=6.0
