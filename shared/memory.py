@@ -1,49 +1,128 @@
-"""Agent 跨 session 記憶系統。
+"""Agent 跨 session 記憶系統（ADR-002 Tier 2: Warm Memory）。
 
-每個 agent 有一個 memory/<name>.md 檔，格式為 YAML frontmatter + 自由文字。
-記憶會在每次 agent 執行時注入 system prompt，讓 agent「記得」過去學到的東西。
+三層記憶架構：
+  Tier 1 (Hot)  — CLAUDE.md，永遠載入
+  Tier 2 (Warm) — memory/*.md，按需載入（本模組負責）
+  Tier 3 (Cold) — SQLite FTS5，搜尋取回（Phase 2）
+
+目錄結構：
+    memory/
+    ├── shared.md              ← 全員共用背景
+    ├── agents/{name}.md       ← 各 agent 的學習記憶
+    ├── claude/                ← Claude Code 跨平台記憶
+    └── episodic/              ← 事件記錄（Phase 3）
 
 用法：
-    from shared.memory import load_memory, save_memory, append_memory
+    from shared.memory import get_context, load_memory, append_memory
 
-    # 讀取記憶（用於注入 system prompt）
-    mem = load_memory("nami")
+    # 新 API：智能載入（推薦）
+    ctx = get_context("robin", task="ingest")
 
-    # 覆寫整份記憶（agent 自行決定要記住什麼）
-    save_memory("nami", "使用者偏好簡短的 brief，重點放在行動項目而非背景說明。")
-
-    # 追加一條記憶（不覆寫舊的）
-    append_memory("robin", "2026-04-10：學到 longevity 概念頁應拆分「機制」與「干預」兩個子概念。")
+    # 舊 API：向下相容
+    mem = load_memory("robin")
+    append_memory("robin", "學到 X")
 """
 
+from __future__ import annotations
+
+import re
 from pathlib import Path
+from typing import Any, Optional, Tuple
 
 # memory/ 目錄放在 nakama 專案根目錄
 _MEMORY_DIR = Path(__file__).resolve().parent.parent / "memory"
 
 
+# ---------------------------------------------------------------------------
+# Frontmatter 解析
+# ---------------------------------------------------------------------------
+
+def parse_frontmatter(text: str) -> Tuple[dict, str]:
+    """解析 YAML frontmatter，回傳 (metadata_dict, body_str)。
+
+    若無 frontmatter 則 metadata 為空 dict。
+    使用簡易 key: value 解析，避免強制依賴 PyYAML。
+
+    >>> meta, body = parse_frontmatter("---\\ntype: semantic\\n---\\n# Title")
+    >>> meta["type"]
+    'semantic'
+    >>> body.strip()
+    '# Title'
+    """
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", text, re.DOTALL)
+    if not match:
+        return {}, text
+
+    meta: dict[str, Any] = {}
+    for line in match.group(1).splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" in line:
+            key, _, value = line.partition(":")
+            value = value.strip()
+            # 解析 YAML list 語法 [a, b, c]
+            if value.startswith("[") and value.endswith("]"):
+                value = [v.strip() for v in value[1:-1].split(",") if v.strip()]
+            meta[key.strip()] = value
+
+    body = text[match.end():]
+    return meta, body
+
+
+# ---------------------------------------------------------------------------
+# 路徑解析（支援 memory/agents/ 子目錄，向下相容 memory/{agent}.md）
+# ---------------------------------------------------------------------------
+
 def _memory_path(agent: str) -> Path:
+    """回傳 agent 記憶檔路徑。
+
+    優先查 memory/agents/{agent}.md，fallback memory/{agent}.md。
+    """
     _MEMORY_DIR.mkdir(exist_ok=True)
+    agents_dir = _MEMORY_DIR / "agents"
+    if agents_dir.is_dir():
+        new_path = agents_dir / f"{agent}.md"
+        if new_path.exists():
+            return new_path
     return _MEMORY_DIR / f"{agent}.md"
 
 
+def _ensure_agents_dir() -> Path:
+    """確保 memory/agents/ 目錄存在並回傳路徑。"""
+    agents_dir = _MEMORY_DIR / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    return agents_dir
+
+
+# ---------------------------------------------------------------------------
+# 核心讀寫（舊 API，向下相容）
+# ---------------------------------------------------------------------------
+
 def load_memory(agent: str) -> str:
-    """讀取 agent 的記憶內容。若無記憶檔則回傳空字串。"""
+    """讀取 agent 的記憶內容（body only，不含 frontmatter）。
+
+    若無記憶檔則回傳空字串。向下相容舊介面。
+    """
     path = _memory_path(agent)
     if not path.exists():
         return ""
-    return path.read_text(encoding="utf-8").strip()
+    text = path.read_text(encoding="utf-8").strip()
+    _meta, body = parse_frontmatter(text)
+    return body.strip()
 
 
 def save_memory(agent: str, content: str) -> None:
-    """覆寫 agent 的整份記憶。"""
-    path = _memory_path(agent)
+    """覆寫 agent 的整份記憶。寫入 memory/agents/{agent}.md。"""
+    path = _ensure_agents_dir() / f"{agent}.md"
     path.write_text(content.strip() + "\n", encoding="utf-8")
 
 
 def append_memory(agent: str, entry: str) -> None:
     """在記憶檔末尾追加一條紀錄（不破壞舊記憶）。"""
     path = _memory_path(agent)
+    if not path.exists():
+        path = _ensure_agents_dir() / f"{agent}.md"
     existing = path.read_text(encoding="utf-8").strip() if path.exists() else ""
     separator = "\n\n" if existing else ""
     path.write_text(existing + separator + entry.strip() + "\n", encoding="utf-8")
@@ -55,12 +134,92 @@ def clear_memory(agent: str) -> None:
     path.write_text("", encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# 智能載入（新 API — ADR-002 Tier 2）
+# ---------------------------------------------------------------------------
+
+def _load_raw(name: str) -> str:
+    """載入 memory/{name}.md 或 memory/agents/{name}.md 的原始內容。"""
+    path = _memory_path(name)
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8").strip()
+
+
+def _load_body(name: str) -> str:
+    """載入記憶檔的 body（去除 frontmatter）。"""
+    raw = _load_raw(name)
+    if not raw:
+        return ""
+    _meta, body = parse_frontmatter(raw)
+    return body.strip()
+
+
+def get_context(agent: str, task: Optional[str] = None, max_tokens: int = 500) -> str:
+    """Tier 2 智能載入：合併 shared + agent 記憶，格式化為 system prompt 區塊。
+
+    Args:
+        agent:      agent 名稱（如 "robin"、"franky"）
+        task:       任務類型（預留給未來 tag 篩選，目前未使用）
+        max_tokens: 最大 token 數估算（預留給未來壓縮，目前未使用）
+
+    Returns:
+        格式化後的 system prompt 區塊，若無記憶則回傳空字串。
+    """
+    shared = _load_body("shared")
+    agent_mem = _load_body(agent)
+
+    parts: list[str] = []
+    if shared:
+        parts.append(f"## 共用背景知識\n\n{shared}")
+    if agent_mem:
+        parts.append(f"## {agent} 的學習記憶\n\n{agent_mem}")
+
+    return "\n\n---\n\n".join(parts)
+
+
 def memory_as_system_block(agent: str) -> str:
     """將記憶格式化為可注入 system prompt 的區塊。
 
     若無記憶則回傳空字串，不影響 system prompt。
+    向下相容舊介面，內部呼叫 get_context()。
     """
-    mem = load_memory(agent)
-    if not mem:
+    ctx = get_context(agent)
+    if not ctx:
         return ""
-    return f"## 過去學到的知識（跨 session 記憶）\n\n{mem}"
+    return f"## 過去學到的知識（跨 session 記憶）\n\n{ctx}"
+
+
+# ---------------------------------------------------------------------------
+# Tier 3: 搜尋層（re-export from shared.state）
+# ---------------------------------------------------------------------------
+# 讓 agent 可以從 shared.memory 統一存取所有記憶 API：
+#   from shared.memory import get_context, remember, search_memory
+
+def remember(
+    agent: str,
+    type: str,
+    title: str,
+    content: str,
+    tags: Optional[list] = None,
+    confidence: str = "medium",
+    source: Optional[str] = None,
+    ttl_days: Optional[int] = None,
+) -> int:
+    """記錄一筆新記憶到 Tier 3（SQLite + FTS5）。見 shared.state.remember()。"""
+    from shared.state import remember as _remember
+    return _remember(
+        agent=agent, type=type, title=title, content=content,
+        tags=tags, confidence=confidence, source=source, ttl_days=ttl_days,
+    )
+
+
+def search_memory(
+    query: str,
+    agent: Optional[str] = None,
+    type: Optional[str] = None,
+    limit: int = 5,
+) -> list:
+    """FTS5 全文搜尋記憶。見 shared.state.search_memory()。"""
+    from shared.state import search_memory as _search
+    return _search(query=query, agent=agent, type=type, limit=limit)

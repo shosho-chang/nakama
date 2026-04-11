@@ -1,10 +1,18 @@
-# Shared 跨 Agent 記憶
+---
+type: procedural
+agent: shared
+tags: [owner, workflow, language]
+created: 2026-04-06
+updated: 2026-04-11
+confidence: high
+ttl: permanent
+---
 
-記錄所有 agent 都應該知道的事情。
+# Shared 跨 Agent 記憶
 
 ## 關於使用者
 
-- 使用者：Shosho，健康與長壽內容創作者，同時經營自由艦隊訂閱社群
+- 使用者：Shosho（修修），健康與長壽內容創作者，同時經營自由艦隊訂閱社群
 - 主要語言：繁體中文（回應與輸出一律用繁中）
 - 主要關注領域：longevity、biohacking、身心健康、healthspan
 - 社群平台：Fluent Community（自由艦隊）、WordPress、YouTube

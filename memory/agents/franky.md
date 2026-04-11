@@ -1,3 +1,13 @@
+---
+type: procedural
+agent: franky
+tags: [engineering-report, system-health, backlog]
+created: 2026-04-10
+updated: 2026-04-11
+confidence: high
+ttl: permanent
+---
+
 # Franky 記憶檔
 
 ## 角色定位

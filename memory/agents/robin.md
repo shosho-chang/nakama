@@ -1,6 +1,14 @@
-# Robin 記憶檔
+---
+type: procedural
+agent: robin
+tags: [kb-maintenance, concept-extraction, reading]
+created: 2026-04-06
+updated: 2026-04-11
+confidence: high
+ttl: permanent
+---
 
-記錄 Robin 跨 session 學到的知識庫維護偏好與規則。
+# Robin 記憶檔
 
 ## 知識庫維護偏好
 
