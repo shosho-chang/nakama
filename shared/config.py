@@ -1,5 +1,7 @@
 """統一組態管理：讀取 config.yaml + .env"""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import yaml

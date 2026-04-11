@@ -74,24 +74,41 @@ class FrankyAgent(BaseAgent):
         )
         self.logger.info(summary)
 
-        # 8. 記錄事件到 Tier 3 記憶
+        # 暫存報告資訊，供 record_episodic() 使用
+        self._report_info = {
+            "period": report.period,
+            "period_start": report.period_start,
+            "open_tasks": report.open_tasks,
+            "closed_tasks": report.closed_tasks,
+            "blocked_count": report.blocked_count,
+            "health_status": report.health.status,
+            "report_path": report_path,
+        }
+
+        return summary
+
+    def record_episodic(self, summary: str) -> None:
+        """Override: 記錄更豐富的週報 episodic 記憶。"""
+        info = getattr(self, "_report_info", None)
+        if not info:
+            super().record_episodic(summary)
+            return
+
         remember(
             agent="franky",
             type="episodic",
-            title=f"Weekly Report: {report.period}",
+            title=f"Weekly Report: {info['period']}",
             content=(
-                f"Period: {report.period} ({report.period_start})\n"
-                f"Open: {report.open_tasks}, Closed: {report.closed_tasks}, "
-                f"Blocked: {report.blocked_count}\n"
-                f"Health: {report.health.status}\n"
-                f"Report: {report_path}"
+                f"Period: {info['period']} ({info['period_start']})\n"
+                f"Open: {info['open_tasks']}, Closed: {info['closed_tasks']}, "
+                f"Blocked: {info['blocked_count']}\n"
+                f"Health: {info['health_status']}\n"
+                f"Report: {info['report_path']}"
             ),
-            tags=["weekly-report", report.period],
+            tags=["weekly-report", info["period"]],
             confidence="high",
-            source=report_path,
+            source=info["report_path"],
         )
-
-        return summary
 
     def _load_last_report(self):
         """載入上一份週報（若存在），供 Claude 對比用。"""

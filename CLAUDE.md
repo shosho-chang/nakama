@@ -34,6 +34,11 @@ python -m agents.zoro
 
 # 測試
 python -m pytest tests/
+
+# 記憶維護
+python -m shared.memory_maintenance stats     # 查看記憶統計
+python -m shared.memory_maintenance expire    # 清理過期記憶
+python -m shared.memory_maintenance archive   # 歸檔舊低信心記憶
 ```
 
 ---
