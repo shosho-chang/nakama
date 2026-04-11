@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- `pyproject.toml`：正式專案定義（名稱、版號、依賴、工具設定）
+- Git tags `v0.0.1` ~ `v0.4.1`：補齊歷史版號標記
+- `requirements.txt` 加註來源為 `pyproject.toml`
+
 ---
 
 ## [0.4.1] - 2026-04-10
