@@ -10,7 +10,7 @@ ttl: permanent
 ---
 
 - **Repo 根目錄**：`/home/nakama/`
-- **Obsidian Vault**：`/home/nakama/LifeOS/`
+- **Obsidian Vault**：`/home/Shosho LifeOS`
 - **state.db**：`/home/nakama/data/state.db`
 
-所有東西都在 `/home/nakama/` 底下。`data/` 已加進 `.gitignore`，不進 git。
+Vault 和 Repo 不在同一個父目錄底下。`data/` 已加進 `.gitignore`，不進 git。
