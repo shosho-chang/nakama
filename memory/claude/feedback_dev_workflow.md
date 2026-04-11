@@ -88,6 +88,7 @@ Claude 執行：
 - 每個 Phase 完成後立即 commit，不要一次大 commit
 - commit message 格式：`feat:` / `docs:` / `fix:` 前綴，中文描述
 - 重要架構決策寫 ADR（`docs/decisions/ADR-XXX-*.md`）
+- **記憶檔案更新後必須 commit & push** — `memory/claude/` 是透過 git 跨平台共用的，不 push 其他機器看不到
 
 ---
 
