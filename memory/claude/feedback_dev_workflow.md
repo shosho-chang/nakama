@@ -92,6 +92,16 @@ Claude 執行：
 
 ---
 
+## 不重複造輪子
+
+開發新功能前，先搜尋現有的 Claude Code Skills、Plugins、MCP Servers 和開源套件，優先使用已有的成熟方案，不自己重寫。
+
+**Why:** AI 生態系發展快，很多能力已經有人做好了（Obsidian MCP、Playwright MCP、PubMed 工具等）。自己寫不但慢，還要自己維護。
+
+**How to apply:** Phase 2 評估時，技術方案必須包含「是否有現成 skill/plugin/MCP/套件可用」的調研。能用現成的就用，只在沒有合適方案或整合成本過高時才自己寫。
+
+---
+
 ## 套件與依賴監控
 
 交由 **Franky Agent**（System Maintenance）定期執行：
