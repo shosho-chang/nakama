@@ -4,11 +4,14 @@
 以及共用的 logging、狀態追蹤、錯誤處理、跨 session 記憶。
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from shared.anthropic_client import set_current_agent
 from shared.log import get_logger, kb_log
-from shared.memory import memory_as_system_block
+from shared.memory import get_context, memory_as_system_block
 from shared.notifier import send_email
 from shared.state import finish_run, start_run
 
@@ -27,20 +30,13 @@ class BaseAgent(ABC):
         """執行 agent 的主要邏輯，回傳摘要文字。"""
         ...
 
-    def get_memory_context(self) -> str:
+    def get_memory_context(self, task: Optional[str] = None) -> str:
         """取得此 agent 的記憶，可注入 Claude system prompt。
 
-        合併 shared.md（全員共用）和 <name>.md（agent 專屬）。
+        合併 shared.md（全員共用）和 agents/{name}.md（agent 專屬）。
+        使用 ADR-002 Tier 2 智能載入。
         """
-        from shared.memory import load_memory
-        shared = load_memory("shared")
-        agent_mem = load_memory(self.name)
-        parts = []
-        if shared:
-            parts.append(f"## 共用背景知識\n\n{shared}")
-        if agent_mem:
-            parts.append(f"## {self.name} 的學習記憶\n\n{agent_mem}")
-        return "\n\n---\n\n".join(parts)
+        return get_context(self.name, task=task)
 
     def execute(self) -> None:
         """完整的執行 lifecycle：紀錄開始 → run → 紀錄結束 → 錯誤通知。"""

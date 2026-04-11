@@ -1,44 +1,7 @@
 # Nakama — AI Agent 團隊
 
-## Mission
-
-Nakama 是一個為內容創作者（YouTuber + Podcaster）設計的 AI Agent 系統。
-專注領域：身心健康（Health & Wellness）與長壽科學（Longevity）。
-部署於 VPS，定時自動執行，產出 Markdown 筆記同步至 Obsidian LifeOS。
-
-靈感來自《海賊王》——每位 Agent 都是 Owner 的夥伴。
-
----
-
-## Agents
-
-| 代號 | 角色 | 功能 | 排程 |
-|------|------|------|------|
-| Robin | 考古學家 | Knowledge Base：攝入來源、產出摘要、維護 Wiki | 每天 02:00 |
-| Nami | 航海士 | Secretary：整合當日產出、產出 Morning Brief | 每天 07:00 |
-| Zoro | 劍士 | Scout：追蹤 KOL、趨勢、PubMed、關鍵字研究 | 每天 06:00 |
-| Usopp | 狙擊手 | Community Monitor：監控 WordPress 社群狀態 | 每小時 |
-| Sanji | 廚師 | Producer：選題、腦力激盪標題、產出內容大綱 | 手動觸發 |
-| Franky | 船匠 | Repurpose：改寫文章、SEO、社群貼文、IG Carousel | 手動觸發 |
-| Brook | 音樂家 | Publish：發布 WordPress、上傳 YouTube | Owner Approve 後觸發 |
-
----
-
-## Architecture
-
-```
-nakama/                         ← 本 repo（部署於 VPS）
-  shared/                       ← 共用模組
-  agents/{robin,nami,zoro,...}  ← 各 agent
-  config/                       ← 衍生組態（style-profile 等）
-
-/home/Shosho LifeOS/            ← Obsidian vault（Syncthing 雙向同步）
-  Inbox/kb/                     ← Robin 的收件匣
-  AgentBriefs/                  ← Nami 的每日報告
-  KB/                           ← 知識庫（Robin 的主要工作區）
-
-/home/agents/state.db           ← SQLite 狀態追蹤
-```
+Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS，產出同步至 Obsidian LifeOS。
+詳細架構與 Agent 列表見 `ARCHITECTURE.md`、Agent 職責變更見 `docs/decisions/ADR-001-agent-role-assignments.md`。
 
 ---
 
@@ -75,8 +38,11 @@ python -m pytest tests/
 
 ---
 
-## Config
+## Claude 記憶系統（跨平台）
 
-- `config.yaml` — 統一組態（vault 路徑、agent 設定、API 設定）
-- `.env` — 敏感資訊（API keys、密碼），不進 git
-- `config/style-profile.json` — Owner 寫作風格分析結果
+**覆寫預設行為**：不使用平台特定的 `~/.claude/projects/…/memory/` 路徑。
+所有記憶統一存放於 repo 內的 `memory/claude/`，透過 git 跨平台共用。
+
+- 讀取記憶：從 `memory/claude/MEMORY.md` 讀取索引，再讀取對應檔案
+- 寫入記憶：寫入 `memory/claude/` 下的對應 `.md` 檔，並更新 `memory/claude/MEMORY.md`
+- 格式規範同原本記憶系統（frontmatter: name, description, type）

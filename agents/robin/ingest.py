@@ -7,7 +7,7 @@ from pathlib import Path
 
 from shared.anthropic_client import ask_claude
 from shared.log import get_logger, kb_log
-from shared.memory import load_memory
+from shared.memory import get_context
 from shared.obsidian_writer import (
     list_files,
     read_page,
@@ -23,14 +23,8 @@ logger = get_logger("nakama.robin.ingest")
 def _build_robin_system_prompt() -> str:
     """組合 Robin 的 system prompt，注入跨 session 記憶。"""
     base = "你是 Robin，Nakama 團隊的考古學家，負責知識庫管理。"
-    shared_mem = load_memory("shared")
-    robin_mem = load_memory("robin")
-    parts = [base]
-    if shared_mem:
-        parts.append(f"\n## 共用背景知識\n\n{shared_mem}")
-    if robin_mem:
-        parts.append(f"\n## Robin 的學習記憶\n\n{robin_mem}")
-    return "\n".join(parts)
+    memory = get_context("robin", task="ingest")
+    return f"{base}\n\n{memory}" if memory else base
 
 
 
