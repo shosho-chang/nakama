@@ -15,6 +15,7 @@ from agents.franky.reporter import ReportGenerator, SystemHealthChecker
 from shared.config import get_agent_config, get_vault_path
 from shared.events import emit
 from shared.log import kb_log
+from shared.memory import remember
 from shared.obsidian_writer import list_files, read_page
 
 
@@ -72,9 +73,27 @@ class FrankyAgent(BaseAgent):
             f"{report.blocked_count} blocked, health={report.health.status}"
         )
         self.logger.info(summary)
+
+        # 8. 記錄事件到 Tier 3 記憶
+        remember(
+            agent="franky",
+            type="episodic",
+            title=f"Weekly Report: {report.period}",
+            content=(
+                f"Period: {report.period} ({report.period_start})\n"
+                f"Open: {report.open_tasks}, Closed: {report.closed_tasks}, "
+                f"Blocked: {report.blocked_count}\n"
+                f"Health: {report.health.status}\n"
+                f"Report: {report_path}"
+            ),
+            tags=["weekly-report", report.period],
+            confidence="high",
+            source=report_path,
+        )
+
         return summary
 
-    def _load_last_report(self) -> str | None:
+    def _load_last_report(self):
         """載入上一份週報（若存在），供 Claude 對比用。"""
         reports = list_files("AgentReports/franky", suffix=".md")
         if not reports:

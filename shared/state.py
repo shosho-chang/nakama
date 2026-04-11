@@ -1,13 +1,17 @@
-"""SQLite 狀態管理：追蹤已處理檔案、agent 執行紀錄。"""
+"""SQLite 狀態管理：追蹤已處理檔案、agent 執行紀錄、記憶搜尋。"""
+
+from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from shared.config import get_db_path
 
-_conn: sqlite3.Connection | None = None
+_conn: Optional[sqlite3.Connection] = None
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -83,7 +87,60 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             consumed_by TEXT,
             consumed_at TEXT
         );
+
+        -- ADR-002 Tier 3: 記憶搜尋層
+        CREATE TABLE IF NOT EXISTS memories (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent       TEXT NOT NULL,
+            type        TEXT NOT NULL,
+            title       TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            tags        TEXT NOT NULL DEFAULT '[]',
+            confidence  TEXT NOT NULL DEFAULT 'medium',
+            source      TEXT,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            expires_at  TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent);
+        CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
     """)
+
+    # FTS5 虛擬表需要獨立建立（不支援 IF NOT EXISTS 語法）
+    try:
+        conn.execute("""
+            CREATE VIRTUAL TABLE memories_fts USING fts5(
+                title, content, tags,
+                content='memories',
+                content_rowid='id'
+            )
+        """)
+    except sqlite3.OperationalError:
+        pass  # 已存在
+
+    # FTS5 同步觸發器
+    for trigger_sql in [
+        """CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+            INSERT INTO memories_fts(rowid, title, content, tags)
+            VALUES (new.id, new.title, new.content, new.tags);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, title, content, tags)
+            VALUES ('delete', old.id, old.title, old.content, old.tags);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, title, content, tags)
+            VALUES ('delete', old.id, old.title, old.content, old.tags);
+            INSERT INTO memories_fts(rowid, title, content, tags)
+            VALUES (new.id, new.title, new.content, new.tags);
+        END""",
+    ]:
+        try:
+            conn.execute(trigger_sql)
+        except sqlite3.OperationalError:
+            pass  # 已存在
+
     conn.commit()
 
 
@@ -168,7 +225,7 @@ def record_api_call(
     model: str,
     input_tokens: int,
     output_tokens: int,
-    run_id: int | None = None,
+    run_id: Optional[int] = None,
 ) -> None:
     """記錄一次 Claude API 呼叫的 token 用量。"""
     conn = _get_conn()
@@ -190,7 +247,7 @@ def record_api_call(
     conn.commit()
 
 
-def get_cost_summary(agent: str | None = None, days: int = 7) -> list[dict]:
+def get_cost_summary(agent: Optional[str] = None, days: int = 7) -> list[dict]:
     """回傳最近 N 天的 token 用量統計，依 agent 分組。
 
     Args:
@@ -230,3 +287,158 @@ def get_cost_summary(agent: str | None = None, days: int = 7) -> list[dict]:
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# ADR-002 Tier 3: 記憶搜尋層
+# ---------------------------------------------------------------------------
+
+def remember(
+    agent: str,
+    type: str,
+    title: str,
+    content: str,
+    tags: Optional[list[str]] = None,
+    confidence: str = "medium",
+    source: Optional[str] = None,
+    ttl_days: Optional[int] = None,
+) -> int:
+    """記錄一筆新記憶到 Tier 3（SQLite + FTS5）。
+
+    Args:
+        agent:      記錄者（robin, franky, claude, ...）
+        type:       記憶類型（semantic, episodic, procedural, user）
+        title:      簡短標題
+        content:    記憶內容
+        tags:       標籤列表
+        confidence: 信心度（high, medium, low）
+        source:     來源（session_id, run_id, file_path, ...）
+        ttl_days:   幾天後過期（None 表示永久）
+
+    Returns:
+        新記憶的 id
+    """
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    expires_at = None
+    if ttl_days is not None:
+        from datetime import timedelta
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
+
+    cur = conn.execute(
+        """INSERT INTO memories
+           (agent, type, title, content, tags, confidence, source, created_at, updated_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            agent, type, title, content,
+            json.dumps(tags or [], ensure_ascii=False),
+            confidence, source, now, now, expires_at,
+        ),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def search_memory(
+    query: str,
+    agent: Optional[str] = None,
+    type: Optional[str] = None,
+    limit: int = 5,
+) -> list[dict]:
+    """FTS5 全文搜尋記憶。
+
+    Args:
+        query:  搜尋關鍵字（支援 FTS5 語法：AND, OR, NOT, "phrase"）
+        agent:  過濾特定 agent（None 表示全部）
+        type:   過濾特定類型（None 表示全部）
+        limit:  最多回傳幾筆
+
+    Returns:
+        列表，每筆含 id, agent, type, title, content, tags, confidence, created_at
+        依相關度排序。
+    """
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+
+    # 建構 WHERE 子句
+    conditions = ["m.id IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH ?)"]
+    params: list = [query]
+
+    # 排除過期記憶
+    conditions.append("(m.expires_at IS NULL OR m.expires_at > ?)")
+    params.append(now)
+
+    if agent:
+        conditions.append("m.agent = ?")
+        params.append(agent)
+    if type:
+        conditions.append("m.type = ?")
+        params.append(type)
+
+    where = " AND ".join(conditions)
+    params.append(limit)
+
+    rows = conn.execute(
+        f"""SELECT m.id, m.agent, m.type, m.title, m.content,
+                   m.tags, m.confidence, m.source, m.created_at
+            FROM memories m
+            WHERE {where}
+            ORDER BY m.created_at DESC
+            LIMIT ?""",
+        params,
+    ).fetchall()
+
+    results = []
+    for row in rows:
+        d = dict(row)
+        d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        results.append(d)
+    return results
+
+
+def list_memories(
+    agent: Optional[str] = None,
+    type: Optional[str] = None,
+    limit: int = 20,
+) -> list[dict]:
+    """列出記憶（不需搜尋關鍵字）。
+
+    Args:
+        agent:  過濾特定 agent（None 表示全部）
+        type:   過濾特定類型（None 表示全部）
+        limit:  最多回傳幾筆
+
+    Returns:
+        列表，依建立時間倒序。
+    """
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+
+    conditions = ["(expires_at IS NULL OR expires_at > ?)"]
+    params: list = [now]
+
+    if agent:
+        conditions.append("agent = ?")
+        params.append(agent)
+    if type:
+        conditions.append("type = ?")
+        params.append(type)
+
+    where = " AND ".join(conditions)
+    params.append(limit)
+
+    rows = conn.execute(
+        f"""SELECT id, agent, type, title, content, tags, confidence, source, created_at
+            FROM memories
+            WHERE {where}
+            ORDER BY created_at DESC
+            LIMIT ?""",
+        params,
+    ).fetchall()
+
+    results = []
+    for row in rows:
+        d = dict(row)
+        d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        results.append(d)
+    return results

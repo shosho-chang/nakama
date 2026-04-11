@@ -188,3 +188,38 @@ def memory_as_system_block(agent: str) -> str:
     if not ctx:
         return ""
     return f"## 過去學到的知識（跨 session 記憶）\n\n{ctx}"
+
+
+# ---------------------------------------------------------------------------
+# Tier 3: 搜尋層（re-export from shared.state）
+# ---------------------------------------------------------------------------
+# 讓 agent 可以從 shared.memory 統一存取所有記憶 API：
+#   from shared.memory import get_context, remember, search_memory
+
+def remember(
+    agent: str,
+    type: str,
+    title: str,
+    content: str,
+    tags: Optional[list] = None,
+    confidence: str = "medium",
+    source: Optional[str] = None,
+    ttl_days: Optional[int] = None,
+) -> int:
+    """記錄一筆新記憶到 Tier 3（SQLite + FTS5）。見 shared.state.remember()。"""
+    from shared.state import remember as _remember
+    return _remember(
+        agent=agent, type=type, title=title, content=content,
+        tags=tags, confidence=confidence, source=source, ttl_days=ttl_days,
+    )
+
+
+def search_memory(
+    query: str,
+    agent: Optional[str] = None,
+    type: Optional[str] = None,
+    limit: int = 5,
+) -> list:
+    """FTS5 全文搜尋記憶。見 shared.state.search_memory()。"""
+    from shared.state import search_memory as _search
+    return _search(query=query, agent=agent, type=type, limit=limit)

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from shared.anthropic_client import ask_claude
 from shared.log import get_logger, kb_log
-from shared.memory import get_context
+from shared.memory import get_context, remember
 from shared.obsidian_writer import (
     list_files,
     read_page,
@@ -104,6 +104,25 @@ class IngestPipeline:
 
         # Step 7: 更新 index.md
         self._update_index(title, slug, source_type)
+
+        # Step 8: 記錄事件到 Tier 3 記憶
+        created = [item.get("title", "") for item in plan.get("create", [])]
+        updated = [item.get("title", "") for item in plan.get("update", [])]
+        remember(
+            agent="robin",
+            type="episodic",
+            title=f"Ingest: {title}",
+            content=(
+                f"來源：{title}（{source_type}）\n"
+                f"Summary：{summary_path}\n"
+                f"新建頁面：{', '.join(created) if created else '無'}\n"
+                f"更新頁面：{', '.join(updated) if updated else '無'}\n"
+                f"引導方向：{user_guidance or '無'}"
+            ),
+            tags=["ingest", source_type, slug],
+            confidence="high",
+            source=str(raw_path),
+        )
 
     def _prompt_user_guidance(self, title: str, summary_body: str) -> str:
         """互動式模式：印出 Summary 並等待使用者輸入引導方向。"""
