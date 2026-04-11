@@ -14,3 +14,5 @@ ttl: permanent
 - **state.db**：`/home/nakama/data/state.db`
 
 Vault 和 Repo 不在同一個父目錄底下。`data/` 已加進 `.gitignore`，不進 git。
+
+**驗證來源：** vault_path 來自 `config.yaml` 第一行（`grep vault_path config.yaml`），不是推斷。路徑有疑問時，先查 config 或實際執行，不推斷。
