@@ -1,5 +1,5 @@
 vault_path: /home/Shosho LifeOS
-db_path: /home/agents/state.db
+db_path: /home/nakama/data/state.db
 
 notification:
   method: email

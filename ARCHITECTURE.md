@@ -131,7 +131,7 @@ VPS /home/nakama/LifeOS/
     ↑ Nami 寫入 AgentBriefs/
     ↓ Robin 讀取 Inbox/kb/
 
-VPS /home/agents/state.db
+VPS /home/nakama/data/state.db
     ← 所有 Agent 讀寫（執行狀態、計費、事件）
 ```
 
