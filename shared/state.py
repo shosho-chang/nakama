@@ -259,6 +259,7 @@ def get_cost_summary(agent: Optional[str] = None, days: int = 7) -> list[dict]:
     """
     conn = _get_conn()
     from datetime import timedelta
+
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
     if agent:
@@ -293,6 +294,7 @@ def get_cost_summary(agent: Optional[str] = None, days: int = 7) -> list[dict]:
 # ADR-002 Tier 3: 記憶搜尋層
 # ---------------------------------------------------------------------------
 
+
 def remember(
     agent: str,
     type: str,
@@ -323,16 +325,25 @@ def remember(
     expires_at = None
     if ttl_days is not None:
         from datetime import timedelta
+
         expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
 
     cur = conn.execute(
         """INSERT INTO memories
-           (agent, type, title, content, tags, confidence, source, created_at, updated_at, expires_at)
+           (agent, type, title, content, tags, confidence, source,
+            created_at, updated_at, expires_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            agent, type, title, content,
+            agent,
+            type,
+            title,
+            content,
             json.dumps(tags or [], ensure_ascii=False),
-            confidence, source, now, now, expires_at,
+            confidence,
+            source,
+            now,
+            now,
+            expires_at,
         ),
     )
     conn.commit()

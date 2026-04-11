@@ -34,6 +34,7 @@ _RETRYABLE_EXCEPTIONS = (
 # 嘗試匯入 anthropic 的例外（若未安裝則略過）
 try:
     import anthropic
+
     _RETRYABLE_EXCEPTIONS = _RETRYABLE_EXCEPTIONS + (
         anthropic.APITimeoutError,
         anthropic.APIConnectionError,

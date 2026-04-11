@@ -13,10 +13,8 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from shared.state import _get_conn
 
@@ -149,7 +147,7 @@ def main() -> None:
 
     elif cmd == "stats":
         s = memory_stats()
-        print(f"記憶統計：")
+        print("記憶統計：")
         print(f"  總數: {s['total']}（活躍: {s['active']}, 過期: {s['expired']}）")
         if s["by_agent"]:
             print(f"  依 agent: {s['by_agent']}")

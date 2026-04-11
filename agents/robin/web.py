@@ -14,13 +14,16 @@ from fastapi import Cookie, FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from agents.robin.agent import EXTENSION_TO_RAW_DIR, EXTENSION_TO_SOURCE_TYPE, SOURCE_TYPE_TO_RAW_DIR
+from agents.robin.agent import (
+    EXTENSION_TO_RAW_DIR,
+    EXTENSION_TO_SOURCE_TYPE,
+    SOURCE_TYPE_TO_RAW_DIR,
+)
 from agents.robin.image_fetcher import fetch_images
 from agents.robin.ingest import IngestPipeline
 from agents.robin.kb_search import search_kb
 from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
-from shared.obsidian_writer import list_files
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.utils import extract_frontmatter, read_text, slugify
 
@@ -89,12 +92,14 @@ def _cleanup_sessions():
 
 # ── SSE helper ─────────────────────────────────────────────────────────────────
 
+
 def _sse(event: str, data: dict | str) -> str:
     payload = json.dumps(data) if isinstance(data, dict) else data
     return f"event: {event}\ndata: {payload}\n\n"
 
 
 # ── Vault helpers ──────────────────────────────────────────────────────────────
+
 
 def _get_inbox() -> Path:
     cfg = get_agent_config("robin")
@@ -110,17 +115,20 @@ def _get_inbox_files() -> list[dict]:
     for f in sorted(inbox.iterdir()):
         if f.is_file() and f.suffix.lower() in supported:
             size_kb = f.stat().st_size // 1024
-            files.append({
-                "name": f.name,
-                "size": f"{size_kb} KB" if size_kb >= 1 else f"{f.stat().st_size} B",
-                "type": EXTENSION_TO_SOURCE_TYPE.get(f.suffix.lower(), "article"),
-                "annotatable": f.suffix.lower() in (".md", ".txt"),
-                "is_read": is_file_read(f),
-            })
+            files.append(
+                {
+                    "name": f.name,
+                    "size": f"{size_kb} KB" if size_kb >= 1 else f"{f.stat().st_size} B",
+                    "type": EXTENSION_TO_SOURCE_TYPE.get(f.suffix.lower(), "article"),
+                    "annotatable": f.suffix.lower() in (".md", ".txt"),
+                    "is_read": is_file_read(f),
+                }
+            )
     return files
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
+
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
@@ -168,12 +176,16 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
         logger.info(f"已為 {file} 下載 {fetched} 張外部圖片")
 
     content = read_text(file_path)
-    return templates.TemplateResponse(request, "reader.html", {
-        "filename": file,
-        "content": content,
-        "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
-        "is_read": is_file_read(file_path),
-    })
+    return templates.TemplateResponse(
+        request,
+        "reader.html",
+        {
+            "filename": file,
+            "content": content,
+            "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
+            "is_read": is_file_read(file_path),
+        },
+    )
 
 
 @app.get("/files/{path:path}")
@@ -219,7 +231,11 @@ async def mark_read(
 
 
 @app.post("/start")
-async def start(filename: str = Form(...), source_type: str = Form("article"), robin_auth: str | None = Cookie(None)):
+async def start(
+    filename: str = Form(...),
+    source_type: str = Form("article"),
+    robin_auth: str | None = Cookie(None),
+):
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
 
@@ -256,7 +272,11 @@ async def start(filename: str = Form(...), source_type: str = Form("article"), r
 
 
 @app.get("/processing", response_class=HTMLResponse)
-async def processing(request: Request, robin_session: str | None = Cookie(None), robin_auth: str | None = Cookie(None)):
+async def processing(
+    request: Request,
+    robin_session: str | None = Cookie(None),
+    robin_auth: str | None = Cookie(None),
+):
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
@@ -269,10 +289,14 @@ async def processing(request: Request, robin_session: str | None = Cookie(None),
         "executing": "Robin 正在寫入 Wiki 頁面...",
     }
     label = step_labels.get(sess["step"], "處理中...")
-    return templates.TemplateResponse(request, "processing.html", {
-        "session_id": robin_session,
-        "label": label,
-    })
+    return templates.TemplateResponse(
+        request,
+        "processing.html",
+        {
+            "session_id": robin_session,
+            "label": label,
+        },
+    )
 
 
 @app.get("/events/{session_id}")
@@ -315,10 +339,14 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 sess["summary_body"] = summary
 
                 from datetime import date
+
                 from shared.obsidian_writer import write_page
+
                 slug = slugify(title)
                 summary_path = f"KB/Wiki/Sources/{slug}.md"
-                raw_relative = str(Path(sess["raw_path"]).relative_to(get_vault_path().parent.parent))
+                raw_relative = str(
+                    Path(sess["raw_path"]).relative_to(get_vault_path().parent.parent)
+                )
 
                 await asyncio.to_thread(
                     write_page,
@@ -409,20 +437,32 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
 
 
 @app.get("/review-summary", response_class=HTMLResponse)
-async def review_summary(request: Request, robin_session: str | None = Cookie(None), robin_auth: str | None = Cookie(None)):
+async def review_summary(
+    request: Request,
+    robin_session: str | None = Cookie(None),
+    robin_auth: str | None = Cookie(None),
+):
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_guidance":
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse(request, "review_summary.html", {
-        "file_name": sess["file_name"],
-        "summary": sess["summary_body"],
-    })
+    return templates.TemplateResponse(
+        request,
+        "review_summary.html",
+        {
+            "file_name": sess["file_name"],
+            "summary": sess["summary_body"],
+        },
+    )
 
 
 @app.post("/submit-guidance")
-async def submit_guidance(guidance: str = Form(default=""), robin_session: str | None = Cookie(None), robin_auth: str | None = Cookie(None)):
+async def submit_guidance(
+    guidance: str = Form(default=""),
+    robin_session: str | None = Cookie(None),
+    robin_auth: str | None = Cookie(None),
+):
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
@@ -437,20 +477,28 @@ async def submit_guidance(guidance: str = Form(default=""), robin_session: str |
 
 
 @app.get("/review-plan", response_class=HTMLResponse)
-async def review_plan(request: Request, robin_session: str | None = Cookie(None), robin_auth: str | None = Cookie(None)):
+async def review_plan(
+    request: Request,
+    robin_session: str | None = Cookie(None),
+    robin_auth: str | None = Cookie(None),
+):
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_approval":
         return RedirectResponse("/", status_code=302)
     plan = sess.get("plan", {"create": [], "update": []})
-    return templates.TemplateResponse(request, "review_plan.html", {
-        "file_name": sess["file_name"],
-        "creates": enumerate(plan.get("create", [])),
-        "updates": enumerate(plan.get("update", [])),
-        "creates_list": plan.get("create", []),
-        "updates_list": plan.get("update", []),
-    })
+    return templates.TemplateResponse(
+        request,
+        "review_plan.html",
+        {
+            "file_name": sess["file_name"],
+            "creates": enumerate(plan.get("create", [])),
+            "updates": enumerate(plan.get("update", [])),
+            "creates_list": plan.get("create", []),
+            "updates_list": plan.get("update", []),
+        },
+    )
 
 
 @app.post("/execute")
@@ -471,11 +519,13 @@ async def execute(
     all_updates = plan.get("update", [])
 
     selected_creates = [
-        all_creates[int(i)] for i in form.getlist("create")
+        all_creates[int(i)]
+        for i in form.getlist("create")
         if i.isdigit() and int(i) < len(all_creates)
     ]
     selected_updates = [
-        all_updates[int(i)] for i in form.getlist("update")
+        all_updates[int(i)]
+        for i in form.getlist("update")
         if i.isdigit() and int(i) < len(all_updates)
     ]
 
@@ -489,17 +539,25 @@ async def execute(
 
 
 @app.get("/done", response_class=HTMLResponse)
-async def done(request: Request, robin_session: str | None = Cookie(None), robin_auth: str | None = Cookie(None)):
+async def done(
+    request: Request,
+    robin_session: str | None = Cookie(None),
+    robin_auth: str | None = Cookie(None),
+):
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "done":
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse(request, "done.html", {
-        "file_name": sess["file_name"],
-        "created": sess["result"].get("created", []),
-        "updated": sess["result"].get("updated", []),
-    })
+    return templates.TemplateResponse(
+        request,
+        "done.html",
+        {
+            "file_name": sess["file_name"],
+            "created": sess["result"].get("created", []),
+            "updated": sess["result"].get("updated", []),
+        },
+    )
 
 
 @app.post("/kb/research")

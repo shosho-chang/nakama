@@ -11,7 +11,7 @@ from typing import Optional
 
 from shared.anthropic_client import set_current_agent
 from shared.log import get_logger, kb_log
-from shared.memory import get_context, memory_as_system_block, remember
+from shared.memory import get_context, remember
 from shared.notifier import send_email
 from shared.state import finish_run, start_run
 

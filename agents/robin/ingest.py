@@ -27,7 +27,6 @@ def _build_robin_system_prompt() -> str:
     return f"{base}\n\n{memory}" if memory else base
 
 
-
 class IngestPipeline:
     """處理單一來源的完整 ingest 流程。"""
 
@@ -126,11 +125,11 @@ class IngestPipeline:
 
     def _prompt_user_guidance(self, title: str, summary_body: str) -> str:
         """互動式模式：印出 Summary 並等待使用者輸入引導方向。"""
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"📝 Source Summary：{title}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(summary_body)
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("Robin 即將根據以上 Summary 建立 Concept 和 Entity 頁面。")
         print()
         print("你有想要特別強調的方向嗎？例如：")
@@ -156,7 +155,8 @@ class IngestPipeline:
     ) -> str:
         """呼叫 Claude 產出 Source Summary。"""
         prompt = load_prompt(
-            "robin", "summarize",
+            "robin",
+            "summarize",
             title=title,
             author=author or "未知",
             source_type=source_type,
@@ -174,13 +174,14 @@ class IngestPipeline:
         existing_entities = [f.stem for f in list_files("KB/Wiki/Entities")]
 
         existing_pages = (
-            "概念頁：" + ", ".join(existing_concepts) if existing_concepts else "概念頁：（無）"
-        ) + "\n" + (
-            "實體頁：" + ", ".join(existing_entities) if existing_entities else "實體頁：（無）"
+            ("概念頁：" + ", ".join(existing_concepts) if existing_concepts else "概念頁：（無）")
+            + "\n"
+            + ("實體頁：" + ", ".join(existing_entities) if existing_entities else "實體頁：（無）")
         )
 
         prompt = load_prompt(
-            "robin", "extract_concepts",
+            "robin",
+            "extract_concepts",
             existing_pages=existing_pages,
             summary=summary_body,
             user_guidance=user_guidance or "（無特別引導，請自行判斷重點）",
@@ -216,9 +217,9 @@ class IngestPipeline:
 
         # 審核「新建」候選
         if creates:
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"📋 Robin 建議新建以下 {len(creates)} 個頁面：")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             for i, item in enumerate(creates, 1):
                 page_type = item.get("type", "concept")
                 icon = "💡" if page_type == "concept" else "👤"
@@ -226,7 +227,7 @@ class IngestPipeline:
                 print(f"   理由：{item.get('reason', '')}")
                 print(f"   內容重點：{item.get('content_notes', '')[:100]}...")
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("輸入要建立的編號（逗號分隔），例如：1,3")
             print("輸入 all 全部建立，輸入 none 或直接 Enter 全部跳過")
             choice = input("你的選擇：").strip().lower()
@@ -235,23 +236,27 @@ class IngestPipeline:
                 approved_creates = creates
                 print(f"✓ 全部 {len(creates)} 個頁面將建立")
             elif choice and choice != "none":
-                selected_indices = {int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()}
-                approved_creates = [creates[i] for i in sorted(selected_indices) if i < len(creates)]
+                selected_indices = {
+                    int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()
+                }
+                approved_creates = [
+                    creates[i] for i in sorted(selected_indices) if i < len(creates)
+                ]
                 print(f"✓ 已選擇 {len(approved_creates)} 個頁面")
             else:
                 print("✓ 跳過所有新建頁面")
 
         # 審核「更新」候選
         if updates:
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"📝 Robin 建議更新以下 {len(updates)} 個既有頁面：")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             for i, item in enumerate(updates, 1):
                 print(f"\n{i}. 🔄 {item['title']}")
                 print(f"   理由：{item.get('reason', '')}")
                 print(f"   新增內容：{item.get('additions', '')[:100]}...")
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("輸入要更新的編號（逗號分隔），例如：1,2")
             print("輸入 all 全部更新，輸入 none 或直接 Enter 全部跳過")
             choice = input("你的選擇：").strip().lower()
@@ -260,8 +265,12 @@ class IngestPipeline:
                 approved_updates = updates
                 print(f"✓ 全部 {len(updates)} 個頁面將更新")
             elif choice and choice != "none":
-                selected_indices = {int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()}
-                approved_updates = [updates[i] for i in sorted(selected_indices) if i < len(updates)]
+                selected_indices = {
+                    int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()
+                }
+                approved_updates = [
+                    updates[i] for i in sorted(selected_indices) if i < len(updates)
+                ]
                 print(f"✓ 已選擇 {len(approved_updates)} 個頁面")
             else:
                 print("✓ 跳過所有更新")
@@ -286,7 +295,8 @@ class IngestPipeline:
 
         if page_type == "concept":
             prompt = load_prompt(
-                "robin", "write_concept",
+                "robin",
+                "write_concept",
                 title=title,
                 content_notes=content_notes,
                 source_refs=source_path,
@@ -294,7 +304,8 @@ class IngestPipeline:
             wiki_dir = "KB/Wiki/Concepts"
         else:
             prompt = load_prompt(
-                "robin", "write_entity",
+                "robin",
+                "write_entity",
                 title=title,
                 entity_type=item.get("entity_type", "other"),
                 content_notes=content_notes,
@@ -352,7 +363,10 @@ class IngestPipeline:
             refs.append(source_path)
         fm["source_refs"] = refs
 
-        update_section = f"\n\n---\n\n## 更新（{date.today()}）\n\n{additions}\n\n來源：[[{Path(source_path).stem}]]\n"
+        source_stem = Path(source_path).stem
+        update_section = (
+            f"\n\n---\n\n## 更新（{date.today()}）\n\n{additions}\n\n來源：[[{source_stem}]]\n"
+        )
         body += update_section
 
         write_page(file_path, frontmatter=fm, body=body)
