@@ -11,7 +11,7 @@ __pycache__/
 .idea/
 
 # Claude Code local settings (per-machine)
-.claude/
+.claude/settings.local.json
 *.swp
 *.swo
 

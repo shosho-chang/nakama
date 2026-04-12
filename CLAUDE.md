@@ -1,5 +1,11 @@
 # Nakama — AI Agent 團隊
 
+## 0. Memory
+
+每次對話開始時，讀取 `memory/claude/MEMORY.md` 載入持久記憶索引。需要詳細內容時再讀取個別記憶檔。
+
+---
+
 Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS，產出同步至 Obsidian LifeOS。
 詳細架構與 Agent 列表見 `ARCHITECTURE.md`、Agent 職責變更見 `docs/decisions/ADR-001-agent-role-assignments.md`。
 
@@ -15,6 +21,22 @@ Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS
 - `KB/index.md` — 每次新增/更新 Wiki 頁面後必須同步更新
 - `KB/log.md` — Append-only，不可修改歷史紀錄
 - 頁面內容用繁體中文，frontmatter key 用英文，專有名詞保留原文附英文翻譯
+
+---
+
+## 檔案刪除規則
+
+禁止使用 `rm` / `rmdir`（已在 `.claude/settings.json` deny）。
+需要刪除檔案時，改用 PowerShell 回收桶：
+
+```powershell
+# 檔案
+Add-Type -AssemblyName Microsoft.VisualBasic
+[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile('路徑', 'OnlyErrorDialogs', 'SendToRecycleBin')
+
+# 資料夾
+[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('路徑', 'OnlyErrorDialogs', 'SendToRecycleBin')
+```
 
 ---
 
