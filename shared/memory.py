@@ -25,16 +25,17 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
+
+from shared.utils import extract_frontmatter
 
 # memory/ 目錄放在 nakama 專案根目錄
 _MEMORY_DIR = Path(__file__).resolve().parent.parent / "memory"
 
 
 # ---------------------------------------------------------------------------
-# Frontmatter 解析
+# Frontmatter 解析（統一使用 shared.utils.extract_frontmatter）
 # ---------------------------------------------------------------------------
 
 
@@ -42,7 +43,7 @@ def parse_frontmatter(text: str) -> Tuple[dict, str]:
     """解析 YAML frontmatter，回傳 (metadata_dict, body_str)。
 
     若無 frontmatter 則 metadata 為空 dict。
-    使用簡易 key: value 解析，避免強制依賴 PyYAML。
+    委託 shared.utils.extract_frontmatter（使用 yaml.safe_load）。
 
     >>> meta, body = parse_frontmatter("---\\ntype: semantic\\n---\\n# Title")
     >>> meta["type"]
@@ -50,25 +51,7 @@ def parse_frontmatter(text: str) -> Tuple[dict, str]:
     >>> body.strip()
     '# Title'
     """
-    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", text, re.DOTALL)
-    if not match:
-        return {}, text
-
-    meta: dict[str, Any] = {}
-    for line in match.group(1).splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" in line:
-            key, _, value = line.partition(":")
-            value = value.strip()
-            # 解析 YAML list 語法 [a, b, c]
-            if value.startswith("[") and value.endswith("]"):
-                value = [v.strip() for v in value[1:-1].split(",") if v.strip()]
-            meta[key.strip()] = value
-
-    body = text[match.end() :]
-    return meta, body
+    return extract_frontmatter(text)
 
 
 # ---------------------------------------------------------------------------

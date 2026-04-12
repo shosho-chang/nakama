@@ -29,6 +29,20 @@ from shared.utils import extract_frontmatter, read_text, slugify
 
 logger = get_logger("nakama.robin.web")
 
+
+# ── Path safety ───────────────────────────────────────────────────────────────
+
+
+def _safe_resolve(base: Path, user_input: str) -> Path:
+    """Resolve user-supplied filename against a base directory, rejecting traversal.
+
+    Raises HTTPException(403) if the resolved path escapes the base directory.
+    """
+    resolved = (base / user_input).resolve()
+    if not resolved.is_relative_to(base.resolve()):
+        raise HTTPException(403, detail="Access denied: path traversal detected")
+    return resolved
+
 # ── App setup ──────────────────────────────────────────────────────────────────
 
 app = FastAPI(docs_url=None, redoc_url=None)
@@ -38,7 +52,8 @@ pipeline = IngestPipeline()
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
-WEB_SECRET = os.environ.get("WEB_SECRET", "nakama-default-secret")
+WEB_SECRET = os.environ.get("WEB_SECRET", "")
+_DEV_MODE = not WEB_SECRET
 
 
 def _make_token(password: str) -> str:
@@ -48,14 +63,17 @@ def _make_token(password: str) -> str:
 def _check_auth(auth_cookie: str | None) -> bool:
     if not WEB_PASSWORD:
         return True  # 未設定密碼時跳過驗證（本機開發用）
-    return bool(auth_cookie and auth_cookie == _make_token(WEB_PASSWORD))
+    if not auth_cookie:
+        return False
+    return hmac.compare_digest(auth_cookie, _make_token(WEB_PASSWORD))
 
 
 def _check_key(key: str | None) -> bool:
     """Accept X-Robin-Key header as alternative to cookie auth (for programmatic access)."""
-    if not WEB_SECRET or WEB_SECRET == "nakama-default-secret":
-        return True  # dev mode
-    return bool(key and key == WEB_SECRET)
+    if _DEV_MODE:
+        logger.warning("WEB_SECRET not set — API key auth disabled (dev mode)")
+        return True
+    return bool(key and hmac.compare_digest(key, WEB_SECRET))
 
 
 def _require_auth(robin_auth: str | None = Cookie(None)) -> str | None:
@@ -164,7 +182,7 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
     if not _check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     inbox = _get_inbox()
-    file_path = inbox / file
+    file_path = _safe_resolve(inbox, file)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{file}")
     if file_path.suffix.lower() not in (".md", ".txt"):
@@ -193,7 +211,8 @@ async def serve_vault_file(path: str, robin_auth: str | None = Cookie(None)):
     """提供 vault/Files/ 中的圖片給 reader 顯示。"""
     if not _check_auth(robin_auth):
         raise HTTPException(403)
-    file_path = get_vault_path() / "Files" / path
+    files_dir = get_vault_path() / "Files"
+    file_path = _safe_resolve(files_dir, path)
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(404)
     return FileResponse(file_path)
@@ -208,7 +227,7 @@ async def save_annotations(
     if not _check_auth(robin_auth):
         raise HTTPException(403)
     inbox = _get_inbox()
-    file_path = inbox / filename
+    file_path = _safe_resolve(inbox, filename)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
     file_path.write_text(content, encoding="utf-8")
@@ -223,7 +242,7 @@ async def mark_read(
     if not _check_auth(robin_auth):
         raise HTTPException(403)
     inbox = _get_inbox()
-    file_path = inbox / filename
+    file_path = _safe_resolve(inbox, filename)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
     mark_file_read(file_path)
@@ -240,7 +259,7 @@ async def start(
         return RedirectResponse("/login", status_code=302)
 
     inbox = _get_inbox()
-    file_path = inbox / filename
+    file_path = _safe_resolve(inbox, filename)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
 
@@ -344,9 +363,12 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
 
                 slug = slugify(title)
                 summary_path = f"KB/Wiki/Sources/{slug}.md"
-                raw_relative = str(
-                    Path(sess["raw_path"]).relative_to(get_vault_path().parent.parent)
-                )
+                try:
+                    raw_relative = str(
+                        Path(sess["raw_path"]).relative_to(get_vault_path())
+                    )
+                except ValueError:
+                    raw_relative = str(Path(sess["raw_path"]))
 
                 await asyncio.to_thread(
                     write_page,

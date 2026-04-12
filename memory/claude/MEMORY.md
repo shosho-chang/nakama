@@ -9,3 +9,4 @@
 - [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 整合評估：觀望中（Zoro 每週追蹤）
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
 - [feedback_conversation_end.md](feedback_conversation_end.md) — 對話結束時主動存記憶並 commit & push
+- [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用

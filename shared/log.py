@@ -8,21 +8,23 @@ from shared.obsidian_writer import append_to_file
 
 # ── Python logger ──
 
-_logger: logging.Logger | None = None
+_initialized = False
 
 
 def get_logger(name: str = "nakama") -> logging.Logger:
-    global _logger
-    if _logger is not None:
-        return _logger
+    global _initialized
+    if not _initialized:
+        # 設定 root nakama logger 的 handler（只做一次）
+        root = logging.getLogger("nakama")
+        root.setLevel(logging.INFO)
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            logging.Formatter("[%(asctime)s] %(name)s %(levelname)s — %(message)s")
+        )
+        root.addHandler(handler)
+        _initialized = True
 
-    _logger = logging.getLogger(name)
-    _logger.setLevel(logging.INFO)
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter("[%(asctime)s] %(name)s %(levelname)s — %(message)s"))
-    _logger.addHandler(handler)
-    return _logger
+    return logging.getLogger(name)
 
 
 # ── KB/log.md append ──

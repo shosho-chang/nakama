@@ -19,8 +19,9 @@ def _get_conn() -> sqlite3.Connection:
     if _conn is None:
         db_path = get_db_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(str(db_path))
+        _conn = sqlite3.connect(str(db_path), check_same_thread=False)
         _conn.row_factory = sqlite3.Row
+        _conn.execute("PRAGMA journal_mode=WAL")
         _init_tables(_conn)
     return _conn
 
@@ -86,6 +87,14 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             created_at  TEXT NOT NULL,
             consumed_by TEXT,
             consumed_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS event_consumptions (
+            event_id    INTEGER NOT NULL,
+            consumer    TEXT NOT NULL,
+            consumed_at TEXT NOT NULL,
+            PRIMARY KEY (event_id, consumer),
+            FOREIGN KEY (event_id) REFERENCES agent_events(id)
         );
 
         -- ADR-002 Tier 3: 記憶搜尋層

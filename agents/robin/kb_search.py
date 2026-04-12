@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from shared.anthropic_client import get_client
+from shared.anthropic_client import get_client, set_current_agent
 from shared.utils import extract_frontmatter
 
 TOP_K = 8
@@ -60,7 +60,8 @@ def search_kb(query: str, vault_path: Path, top_k: int = TOP_K) -> list[dict]:
         '[{"index": 1, "relevance_reason": "..."}]'
     )
 
-    client = get_client("robin")
+    set_current_agent("robin")
+    client = get_client()
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1024,

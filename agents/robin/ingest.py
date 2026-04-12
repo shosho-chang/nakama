@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from shared.anthropic_client import ask_claude
+from shared.config import get_vault_path
 from shared.log import get_logger, kb_log
 from shared.memory import get_context, remember
 from shared.obsidian_writer import (
@@ -18,6 +19,22 @@ from shared.prompt_loader import load_prompt
 from shared.utils import extract_frontmatter, read_text, slugify
 
 logger = get_logger("nakama.robin.ingest")
+
+
+def _truncate_at_boundary(text: str, max_chars: int) -> str:
+    """Truncate text at the last paragraph break before max_chars."""
+    if len(text) <= max_chars:
+        return text
+    # Try to cut at a paragraph boundary (double newline)
+    cut = text[:max_chars].rfind("\n\n")
+    if cut > max_chars * 0.5:
+        return text[:cut] + "\n\n[…內容過長，已截斷]"
+    # Fallback: cut at last sentence-ending punctuation
+    for sep in ("。", ".\n", ". ", "\n"):
+        cut = text[:max_chars].rfind(sep)
+        if cut > max_chars * 0.5:
+            return text[: cut + len(sep)] + "\n\n[…內容過長，已截斷]"
+    return text[:max_chars] + "\n\n[…內容過長，已截斷]"
 
 
 def _build_robin_system_prompt() -> str:
@@ -67,7 +84,10 @@ class IngestPipeline:
         # Step 3: 寫入 Source Summary 頁面
         slug = slugify(title)
         summary_path = f"KB/Wiki/Sources/{slug}.md"
-        raw_relative = str(raw_path.relative_to(vault_path().parent.parent))
+        try:
+            raw_relative = str(raw_path.relative_to(get_vault_path()))
+        except ValueError:
+            raw_relative = str(raw_path)
 
         write_page(
             summary_path,
@@ -161,7 +181,7 @@ class IngestPipeline:
             author=author or "未知",
             source_type=source_type,
             date=str(date.today()),
-            content=content[:30000],  # 限制輸入長度
+            content=_truncate_at_boundary(content, 30000),
         )
 
         return ask_claude(prompt, system=_build_robin_system_prompt())

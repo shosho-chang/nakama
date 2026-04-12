@@ -41,9 +41,10 @@ def emit(source: str, event_type: str, payload: dict[str, Any] | None = None) ->
 
 
 def consume(target: str, event_type: str) -> list[dict[str, Any]]:
-    """取得並標記消費事件。
+    """取得並標記消費事件（支援多消費者）。
 
     同一個 (target, event_type) 組合只會收到尚未被該 target 消費的事件。
+    不同 target 可各自獨立消費同一筆事件。
 
     Args:
         target:     消費事件的 agent 名稱（如 "robin"）
@@ -54,11 +55,13 @@ def consume(target: str, event_type: str) -> list[dict[str, Any]]:
     """
     conn = _get_conn()
     rows = conn.execute(
-        """SELECT id, source, event_type, payload, created_at
-           FROM agent_events
-           WHERE event_type = ?
-             AND (consumed_by IS NULL OR consumed_by != ?)
-           ORDER BY created_at ASC""",
+        """SELECT e.id, e.source, e.event_type, e.payload, e.created_at
+           FROM agent_events e
+           WHERE e.event_type = ?
+             AND e.id NOT IN (
+                 SELECT event_id FROM event_consumptions WHERE consumer = ?
+             )
+           ORDER BY e.created_at ASC""",
         (event_type, target),
     ).fetchall()
 
@@ -66,11 +69,10 @@ def consume(target: str, event_type: str) -> list[dict[str, Any]]:
         return []
 
     now = datetime.now(timezone.utc).isoformat()
-    ids = [row["id"] for row in rows]
-    conn.execute(
-        "UPDATE agent_events SET consumed_by = ?, consumed_at = ?"
-        f" WHERE id IN ({','.join('?' * len(ids))})",
-        [target, now, *ids],
+    conn.executemany(
+        "INSERT OR IGNORE INTO event_consumptions"
+        " (event_id, consumer, consumed_at) VALUES (?, ?, ?)",
+        [(row["id"], target, now) for row in rows],
     )
     conn.commit()
 
@@ -108,15 +110,20 @@ def peek(event_type: str, limit: int = 20) -> list[dict[str, Any]]:
             (limit,),
         ).fetchall()
 
-    return [
-        {
-            "id": row["id"],
-            "source": row["source"],
-            "event_type": row["event_type"],
-            "payload": json.loads(row["payload"]),
-            "created_at": row["created_at"],
-            "consumed_by": row["consumed_by"],
-            "consumed_at": row["consumed_at"],
-        }
-        for row in rows
-    ]
+    results = []
+    for row in rows:
+        consumers = conn.execute(
+            "SELECT consumer, consumed_at FROM event_consumptions WHERE event_id = ?",
+            (row["id"],),
+        ).fetchall()
+        results.append(
+            {
+                "id": row["id"],
+                "source": row["source"],
+                "event_type": row["event_type"],
+                "payload": json.loads(row["payload"]),
+                "created_at": row["created_at"],
+                "consumed_by": [c["consumer"] for c in consumers],
+            }
+        )
+    return results
