@@ -10,5 +10,6 @@
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
 - [feedback_conversation_end.md](feedback_conversation_end.md) — 對話結束時主動存記憶並 commit & push
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
-- [project_plugins_installed.md](project_plugins_installed.md) — 已安裝 4 個 Claude Code plugin：skill-creator、claude-md-management、pyright-lsp、code-review
+- [project_plugins_installed.md](project_plugins_installed.md) — 已安裝 6 個 Claude Code plugin（含 playwright、firecrawl）+ 評估不裝清單
+- [feedback_no_secrets_in_chat.md](feedback_no_secrets_in_chat.md) — API key 等敏感資訊走 .env，不在對話框輸入
 - [project_code_review_2026_04_12.md](project_code_review_2026_04_12.md) — 首次 code review：9 項修復已合併（Path Traversal、Event Bus 多消費者、Logger 等）

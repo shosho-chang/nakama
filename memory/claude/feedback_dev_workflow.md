@@ -5,10 +5,11 @@ type: feedback
 tags: [workflow, process, collaboration]
 created: 2026-04-11
 updated: 2026-04-12
+revision: 新增 PRD Template、Phase 1 產出標準化
 confidence: high
 ttl: permanent
+originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 ---
-
 ## 核心原則
 
 採用大公司正規角色分工，由修修和 Claude 兩人認領。該做的事都要做，交接要清楚。目標是讓專案能對接交接、規模化、開源、商業化。
@@ -34,7 +35,8 @@ ttl: permanent
 
 ### Phase 1：需求定義（PM → 架構師）
 - 修修提出需求（口頭、Issue、或對話中描述）
-- **交棒**：修修說完需求 → Claude 進入 Phase 2
+- Claude 將需求整理為輕量 PRD（見下方 template），交修修確認
+- **交棒**：修修確認 PRD → Claude 進入 Phase 2
 
 ### Phase 2：評估與設計（架構師 → PM 審核）
 Claude 產出：
@@ -69,6 +71,36 @@ Claude 執行：
 - 修修：功能驗收、實際使用測試
 - 有問題 → 開 Issue 回到 Phase 3
 - **交棒**：修修確認通過 → 結案
+
+---
+
+## PRD Template（Phase 1 產出）
+
+每次進 Phase 2 之前，Claude 先將修修的需求整理為以下格式，修修確認後才開始技術評估：
+
+```markdown
+# [功能名稱]
+
+## 問題描述
+要解決什麼問題？為什麼現在要做？
+
+## User Stories
+- 作為 [角色]，我想要 [行為]，以便 [價值]
+
+## 範圍界定
+- **包含**：…
+- **不包含**：…
+
+## 驗收標準
+- [ ] 條件 1
+- [ ] 條件 2
+
+## Success Metrics
+如何衡量這個功能成功？（可量化指標或定性判斷）
+```
+
+**Why:** Phase 1 → 2 原本沒有標準化產出，需求常以口頭形式直接進入技術評估，容易遺漏邊界條件和驗收標準。
+**How to apply:** 每次收到修修的需求後，先產出 PRD 再進設計。小改動可以精簡（一兩句問題描述 + 驗收標準即可），大功能要完整填寫。
 
 ---
 
