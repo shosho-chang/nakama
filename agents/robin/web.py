@@ -43,6 +43,7 @@ def _safe_resolve(base: Path, user_input: str) -> Path:
         raise HTTPException(403, detail="Access denied: path traversal detected")
     return resolved
 
+
 # ── App setup ──────────────────────────────────────────────────────────────────
 
 app = FastAPI(docs_url=None, redoc_url=None)
@@ -364,9 +365,7 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 slug = slugify(title)
                 summary_path = f"KB/Wiki/Sources/{slug}.md"
                 try:
-                    raw_relative = str(
-                        Path(sess["raw_path"]).relative_to(get_vault_path())
-                    )
+                    raw_relative = str(Path(sess["raw_path"]).relative_to(get_vault_path()))
                 except ValueError:
                     raw_relative = str(Path(sess["raw_path"]))
 
