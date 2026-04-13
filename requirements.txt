@@ -14,6 +14,10 @@ firecrawl-py>=4.22.0   # Firecrawl: web scraping/crawling for Robin & Zoro
 # Database
 # sqlite3 is built-in
 
+# Zoro: Keyword Research
+google-api-python-client>=2.100.0  # YouTube Data API v3
+pytrends>=4.9.0                    # Google Trends (unofficial)
+
 # Utilities
 python-dateutil>=2.9
 psutil>=5.9.0              # Franky: system health checks (disk/memory)
