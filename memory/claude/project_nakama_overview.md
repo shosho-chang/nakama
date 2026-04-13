@@ -33,9 +33,9 @@ Franky ──系統健康──▶ Nami
 Chopper ──一對一──▶ 自由艦隊會員（獨立運作）
 ```
 
-## 狀態（2026-04-12 更新）
+## 狀態（2026-04-14 更新）
 
-- Robin：✅ 完成（含 /kb/research endpoint，尚未測試）
+- Robin：✅ 完成（含 /kb/research endpoint，待 VPS 部署測試）
 - 基礎設施 v0.4：✅ 完成（PR #2 merged）
 - Franky：✅ 完成（工程週報系統）
 - ADR-002 記憶系統：✅ Phase 1-3 完成（PR #4 merged）
@@ -43,6 +43,7 @@ Chopper ──一對一──▶ 自由艦隊會員（獨立運作）
 - 基礎建設 #2：✅ CI/CD + Ruff + pre-commit（PR #6 merged）
 - ADR-002 Phase 4（MCP Memory Server）：⏸ 等 MemPalace 中文支援
 - Zoro Keyword Research：✅ 完成（commit 0e4c866，待 VPS 部署）
+- **Brook Phase 1：✅ 完成（commit 370bc22，待 VPS 部署測試）**
 - 下一個建議：Nami（Morning Brief，消費 Robin/Franky 事件）
 - 其餘船員：🚧 待開發
 - Chopper：🔒 待 MemPalace 整合條件滿足後啟動
