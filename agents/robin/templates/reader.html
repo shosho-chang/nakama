@@ -78,6 +78,18 @@
     .reader-content { padding: 2rem 1.5rem 4rem; }
   }
 
+  /* ── Meta card ── */
+  .meta-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem 1.5rem; margin-bottom: 2rem; }
+  .meta-title { font-size: 1.5rem; font-weight: 700; color: var(--text-heading); line-height: 1.4; margin-bottom: 0.6rem; }
+  .meta-desc { font-size: 0.9rem; color: var(--text-muted); line-height: 1.7; margin-bottom: 0.75rem; }
+  .meta-fields { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.6rem; }
+  .meta-fields a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  .meta-fields a:hover { text-decoration: underline; }
+  .meta-label { color: var(--text-faint); margin-right: 0.25rem; }
+  .meta-authors { font-size: 0.85rem; color: var(--text); line-height: 1.6; margin-bottom: 0.5rem; }
+  .meta-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .meta-tag { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--btn-muted-bg); color: var(--btn-muted-text); }
+
   /* ── Typography ── */
   .reader-content h1 { font-size: 1.6rem; margin: 1.5rem 0 0.75rem; color: var(--text-heading); line-height: 1.4; }
   .reader-content h2 { font-size: 1.3rem; margin: 1.5rem 0 0.6rem; color: var(--text-heading); }
@@ -168,7 +180,33 @@
 
   <!-- Reader -->
   <div class="reader-scroll" id="readerScroll">
-    <div class="reader-content" id="readerContent"></div>
+    <div class="reader-content" id="readerContent">
+      {% if frontmatter %}
+      <div class="meta-card">
+        {% if frontmatter.title %}<div class="meta-title">{{ frontmatter.title }}</div>{% endif %}
+        {% if frontmatter.description %}<div class="meta-desc">{{ frontmatter.description }}</div>{% endif %}
+        {% if frontmatter.author %}
+        <div class="meta-authors">
+          {%- for a in frontmatter.author -%}
+            {{ a | replace('[[','') | replace(']]','') }}{% if not loop.last %}、{% endif %}
+          {%- endfor -%}
+        </div>
+        {% endif %}
+        <div class="meta-fields">
+          {% if frontmatter.published %}<span><span class="meta-label">Published</span>{{ frontmatter.published }}</span>{% endif %}
+          {% if frontmatter.created %}<span><span class="meta-label">Added</span>{{ frontmatter.created }}</span>{% endif %}
+          {% if frontmatter.source %}<span><span class="meta-label">Source</span><a href="{{ frontmatter.source }}" target="_blank" rel="noopener">{{ frontmatter.source[:60] }}{% if frontmatter.source|length > 60 %}…{% endif %}</a></span>{% endif %}
+        </div>
+        {% if frontmatter.tags %}
+        <div class="meta-tags">
+          {%- for tag in frontmatter.tags -%}
+            <span class="meta-tag">{{ tag }}</span>
+          {%- endfor -%}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
   </div>
 
   <!-- Footer -->
@@ -196,6 +234,7 @@
   <script>
     // ── State ──
     const FILENAME = '{{ filename }}';
+    const FRONTMATTER_RAW = {{ frontmatter_raw | tojson }};
     let mdSource = {{ content | tojson }};
     let pendingSelectedText = '';
 
@@ -259,7 +298,17 @@
         html = html.replace(`<!--ANN${ann.id}-->`, sidenote);
       }
 
-      readerContent.innerHTML = html;
+      // Preserve the meta card, only replace the markdown body
+      const metaCard = readerContent.querySelector('.meta-card');
+      if (metaCard) {
+        // Remove everything after meta card, then append new body
+        while (metaCard.nextSibling) metaCard.nextSibling.remove();
+        const bodyDiv = document.createElement('div');
+        bodyDiv.innerHTML = html;
+        while (bodyDiv.firstChild) readerContent.appendChild(bodyDiv.firstChild);
+      } else {
+        readerContent.innerHTML = html;
+      }
     }
 
     // ── Dark mode ──
@@ -340,7 +389,8 @@
     async function saveContent() {
       const form = new FormData();
       form.append('filename', FILENAME);
-      form.append('content', mdSource);
+      const fullContent = FRONTMATTER_RAW ? FRONTMATTER_RAW + '\n' + mdSource : mdSource;
+      form.append('content', fullContent);
       try {
         const res = await fetch('/save-annotations', { method: 'POST', body: form });
         if (res.ok) showSaved();

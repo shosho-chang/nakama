@@ -195,12 +195,21 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
         logger.info(f"已為 {file} 下載 {fetched} 張外部圖片")
 
     content = read_text(file_path)
+    frontmatter, body = extract_frontmatter(content)
+
+    # Reconstruct raw frontmatter text so JS can prepend it when saving
+    frontmatter_raw = ""
+    if frontmatter and content.startswith("---"):
+        frontmatter_raw = content[: content.index("---", 3) + 3]
+
     return templates.TemplateResponse(
         request,
         "reader.html",
         {
             "filename": file,
-            "content": content,
+            "content": body,
+            "frontmatter": frontmatter,
+            "frontmatter_raw": frontmatter_raw,
             "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
             "is_read": is_file_read(file_path),
         },
@@ -209,14 +218,21 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
 
 @app.get("/files/{path:path}")
 async def serve_vault_file(path: str, robin_auth: str | None = Cookie(None)):
-    """提供 vault/Files/ 中的圖片給 reader 顯示。"""
+    """提供 vault 中的圖片給 reader 顯示。
+
+    查找順序：vault/Files/{path} → vault/{path}（Obsidian 貼圖預設位置）。
+    """
     if not _check_auth(robin_auth):
         raise HTTPException(403)
-    files_dir = get_vault_path() / "Files"
-    file_path = _safe_resolve(files_dir, path)
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(404)
-    return FileResponse(file_path)
+    vault = get_vault_path()
+    for base_dir in (vault / "Files", vault):
+        try:
+            candidate = _safe_resolve(base_dir, path)
+        except HTTPException:
+            continue
+        if candidate.exists() and candidate.is_file():
+            return FileResponse(candidate)
+    raise HTTPException(404)
 
 
 @app.post("/save-annotations")
