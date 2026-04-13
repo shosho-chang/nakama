@@ -42,6 +42,7 @@ Chopper ──一對一──▶ 自由艦隊會員（獨立運作）
 - 基礎建設 #1：✅ pyproject.toml + git tags（PR #5 merged）
 - 基礎建設 #2：✅ CI/CD + Ruff + pre-commit（PR #6 merged）
 - ADR-002 Phase 4（MCP Memory Server）：⏸ 等 MemPalace 中文支援
+- Zoro Keyword Research：✅ 完成（commit 0e4c866，待 VPS 部署）
 - 下一個建議：Nami（Morning Brief，消費 Robin/Franky 事件）
 - 其餘船員：🚧 待開發
 - Chopper：🔒 待 MemPalace 整合條件滿足後啟動
