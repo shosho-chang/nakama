@@ -1,4 +1,4 @@
-# ADR-003: Telegram Bot Gateway — 草帽海賊團群組
+# ADR-003: Telegram Bot Gateway — 張修修海賊團群組
 
 **Date:** 2026-04-13
 **Status:** Approved
@@ -7,14 +7,14 @@
 
 ## Context
 
-使用者想透過 Telegram 群組與 Nakama agents 即時互動。在「草帽海賊團」群組中呼喊 agent 名字就能指派任務；如果指派錯了，agent 會以自己的個性拒絕並轉介給正確的人。這是 Nakama 的第一個即時互動介面（現有介面是 Robin Web UI 和 cron）。
+使用者想透過 Telegram 群組與 Nakama agents 即時互動。在「張修修海賊團」群組中呼喊 agent 名字就能指派任務；如果指派錯了，agent 會以自己的個性拒絕並轉介給正確的人。這是 Nakama 的第一個即時互動介面（現有介面是 Robin Web UI 和 cron）。
 
 ---
 
 ## Architecture
 
 ```
-Telegram Group "草帽海賊團"
+Telegram Group "張修修海賊團"
         │
         ▼
   gateway/bot.py          ← python-telegram-bot v21, long-running service
