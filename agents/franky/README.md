@@ -15,7 +15,7 @@
 - 標記有 breaking changes 的重大更新（需人工判斷）
 
 ### 2. GitHub 專案監控
-- 讀取 `config/zoro-watch-*.yaml` 中定義的 watch list
+- 讀取 `config/franky-watch-*.yaml` 中定義的 watch list
 - 查詢各 repo 的 issue 狀態、新 release、open PR
 - 彙整報告交給 Nami 放入 Morning Brief（或條件滿足時發 email）
 

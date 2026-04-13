@@ -20,7 +20,7 @@ agents:
     pricing_config: config/nami-pricing.yaml
 
   zoro:
-    description: "Scout — 追蹤 KOL、趨勢、PubMed、關鍵字研究、GitHub 專案監控"
+    description: "Scout — 追蹤 KOL、趨勢、PubMed、關鍵字研究"
     schedule: "0 6 * * *"
     sources:
       twitter:
@@ -30,8 +30,6 @@ agents:
         rss_feeds: config/pubmed-feeds.yaml
       google_trends:
         keywords: [longevity, biohacking, 身心健康, healthspan]
-    github_watch:
-      - config/zoro-watch-mempalace.yaml
 
   usopp:
     description: "Publisher — 精準發布內容至各平台、電子報管理（Fluent CRM）"
@@ -53,7 +51,7 @@ agents:
     description: "Engineer — 工程進度追蹤、系統健康檢查、套件更新監測"
     schedule: "0 1 * * 1"  # 每週一 01:00（週報在 Shosho 起床前產出）
     watch_configs:
-      - config/zoro-watch-mempalace.yaml
+      - config/franky-watch-mempalace.yaml
 
   brook:
     description: "Composer — 素材重組為各平台格式，交由 Usopp 發布"

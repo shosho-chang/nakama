@@ -2,14 +2,14 @@
 name: MemPalace 整合評估
 description: MemPalace 開源專案的整合評估過程與結論——目前觀望，條件滿足後才整合。最後查核日 2026-04-11
 type: project
-tags: [mempalace, integration, tier3, zoro-watch]
+tags: [mempalace, integration, tier3, franky-watch]
 created: 2026-04-11
 updated: 2026-04-11
 confidence: high
 ttl: permanent
+originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 ---
-
-MemPalace（`milla-jovovich/mempalace`）是一個外部開源專案，評估後決定暫不整合，交由 Zoro 每週監控。
+MemPalace（`milla-jovovich/mempalace`）是一個外部開源專案，評估後決定暫不整合，交由 Franky 每週監控。
 
 **定位：** 作為 Claude 對話記憶層（個人偏好 + 討論歷史），與 Obsidian KB/Wiki 分開，互補而非替代。未來可能取代 ADR-002 中 Tier 3 的 Mem0 選項。
 
@@ -34,6 +34,6 @@ MemPalace（`milla-jovovich/mempalace`）是一個外部開源專案，評估後
 - [ ] Issue #327（JSONL parser 丟失 user messages）— 仍 Open
 - [ ] Open issues 穩定 < 60 個（目前 161 個）
 
-**追蹤方式：** Zoro 每週自動檢查（`config/zoro-watch-mempalace.yaml`），條件全滿足時發 email 通知修修。
+**追蹤方式：** Franky 每週自動檢查（`config/franky-watch-mempalace.yaml`），條件全滿足時發 email 通知修修。
 
-**How to apply:** 若 Zoro 發出整合通知，或修修主動問起 MemPalace 進度，再重新評估是否整合。在那之前不需要手動追蹤。ADR-002 的 Tier 3 進階選項應同時考慮 MemPalace（不只 Mem0）。
+**How to apply:** 若 Franky 發出整合通知，或修修主動問起 MemPalace 進度，再重新評估是否整合。在那之前不需要手動追蹤。ADR-002 的 Tier 3 進階選項應同時考慮 MemPalace（不只 Mem0）。

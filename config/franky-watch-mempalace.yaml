@@ -1,9 +1,9 @@
-# Zoro Watch — MemPalace (milla-jovovich/mempalace)
+# Franky Watch — MemPalace (milla-jovovich/mempalace)
 # 目的：追蹤 MemPalace 是否已達到可整合進 LifeOS 的標準
 # 整合計畫：作為 Claude 對話記憶層（個人偏好 + 討論歷史），與 KB/Wiki/ 分開
 
 repo: milla-jovovich/mempalace
-check_interval: weekly   # Zoro 每週檢查一次即可（不需要每天）
+check_interval: weekly   # Franky 每週檢查一次（配合週一 01:00 排程）
 
 # ── 整合條件（全部滿足才通知）──────────────────────────────────────────────
 

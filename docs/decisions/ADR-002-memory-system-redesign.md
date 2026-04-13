@@ -165,7 +165,7 @@ def remember(agent: str, type: str, title: str, content: str, tags: list, confid
 等 agent 數量增加、記憶量超過 FTS5 能力時，升級到：
 - **Basic Memory**（如果 Obsidian 整合是首要） 
 - **Mem0 self-hosted**（如果語意搜尋是首要）
-- **MemPalace**（`milla-jovovich/mempalace`）— 目前最強候選（LongMemEval 96.6% vs Mem0 ~85%，原文保留不有損，啟動僅 170 tokens，MCP 原生 19 工具）。但 2026-04-11 查核時尚無中文支援且專案僅 5 天大。等中文語意搜尋完善後優先評估，可能取代 Mem0。Zoro 每週追蹤中（`config/zoro-watch-mempalace.yaml`）。
+- **MemPalace**（`milla-jovovich/mempalace`）— 目前最強候選（LongMemEval 96.6% vs Mem0 ~85%，原文保留不有損，啟動僅 170 tokens，MCP 原生 19 工具）。但 2026-04-11 查核時尚無中文支援且專案僅 5 天大。等中文語意搜尋完善後優先評估，可能取代 Mem0。Franky 每週追蹤中（`config/franky-watch-mempalace.yaml`）。
 
 升級路徑：`search_memory()` 介面不變，只換 backend。
 

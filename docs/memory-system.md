@@ -407,7 +407,7 @@ Claude Code 在不同作業系統的記憶路徑不同：
 
 | 選項 | 適用場景 | 狀態 |
 |------|---------|------|
-| **MemPalace** | 原文保留 + 170 tokens 啟動 + MCP 原生 | 等中文支援（Zoro 追蹤中） |
+| **MemPalace** | 原文保留 + 170 tokens 啟動 + MCP 原生 | 等中文支援（Franky 追蹤中） |
 | **Mem0 self-hosted** | 語意向量搜尋（pgvector） | 備選 |
 | **Basic Memory** | Obsidian 原生整合 | 備選 |
 

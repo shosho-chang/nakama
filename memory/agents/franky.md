@@ -22,7 +22,7 @@ Franky 是 Nakama 船隊的船匠兼工程總監：
 - `AgentReports/dev-backlog.md` 由 Claude Code（對話中）維護，Franky 只讀不寫
 - `- [ ]` = open task，`- [x]` = closed/completed
 - 含 `blocked:` 關鍵字的項目為阻塞項（大小寫不敏感）
-- MemPalace 細節由 Zoro 追蹤；Franky 只看頂層狀態
+- MemPalace 由 Franky 直接追蹤（`config/franky-watch-mempalace.yaml`）
 
 ## 報告風格
 

@@ -7,14 +7,14 @@ created: 2026-04-11
 updated: 2026-04-11
 confidence: high
 ttl: 90d
+originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 ---
-
 **待測試：**
 - Robin `/kb/research` endpoint（2026-04-10 新增，commit c49b630，尚未測試）
 
 **待開發（下一個 agent）：**
 - Nami（航海士）— 最自然的下一步，消費 Robin/Franky 事件，產出 Morning Brief
-- Zoro（劍士）— PubMed / KOL 追蹤、MemPalace 監控
+- Zoro（劍士）— PubMed / KOL 追蹤
 
 **待評估：**
 - MCP 整合方向 — Agent 能力層改為 MCP-compatible，複用社群的 Obsidian/Playwright/PubMed MCP Server（2026-04-11 討論，修修認同方向，尚未正式列入規劃）
