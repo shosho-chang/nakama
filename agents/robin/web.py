@@ -632,3 +632,141 @@ async def kb_research(
         raise HTTPException(status_code=403, detail="Unauthorized")
     results = await asyncio.to_thread(search_kb, query, get_vault_path())
     return {"results": results}
+
+
+# ---------------------------------------------------------------------------
+# Brook routes — 多回合文章撰寫助手
+# ---------------------------------------------------------------------------
+
+
+@app.get("/brook/chat", response_class=HTMLResponse)
+async def brook_chat_page(
+    request: Request,
+    robin_auth: str | None = Cookie(None),
+):
+    """Brook 聊天頁面。"""
+    if not _check_auth(robin_auth):
+        return RedirectResponse("/login", status_code=302)
+    return templates.TemplateResponse(request, "brook_chat.html", {})
+
+
+@app.post("/brook/start")
+async def brook_start(
+    topic: str = Form(...),
+    kb_query: str | None = Form(None),
+    x_robin_key: str | None = Header(None),
+    robin_auth: str | None = Cookie(None),
+):
+    """開始新的 Brook 對話。"""
+    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    if not topic.strip():
+        raise HTTPException(status_code=400, detail="topic is required")
+
+    # 可選：搜尋 KB 作為上下文
+    kb_context = ""
+    if kb_query and kb_query.strip():
+        try:
+            results = await asyncio.to_thread(
+                search_kb, kb_query.strip(), get_vault_path()
+            )
+            if results:
+                kb_context = "\n".join(
+                    f"- **{r['title']}**（{r['type']}）：{r.get('relevance_reason', '')}"
+                    for r in results
+                )
+        except Exception:
+            pass  # KB 搜尋失敗不影響對話
+
+    try:
+        from agents.brook.compose import start_conversation
+
+        result = await asyncio.to_thread(
+            start_conversation, topic.strip(), kb_context
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Brook start error: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/brook/message")
+async def brook_message(
+    conversation_id: str = Form(...),
+    message: str = Form(...),
+    x_robin_key: str | None = Header(None),
+    robin_auth: str | None = Cookie(None),
+):
+    """在既有 Brook 對話中傳送訊息。"""
+    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    if not message.strip():
+        raise HTTPException(status_code=400, detail="message is required")
+
+    try:
+        from agents.brook.compose import send_message
+
+        result = await asyncio.to_thread(
+            send_message, conversation_id, message.strip()
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Brook message error: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/brook/conversations")
+async def brook_list_conversations(
+    x_robin_key: str | None = Header(None),
+    robin_auth: str | None = Cookie(None),
+):
+    """列出最近的 Brook 對話。"""
+    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    from agents.brook.compose import get_conversations
+
+    result = await asyncio.to_thread(get_conversations)
+    return {"conversations": result}
+
+
+@app.get("/brook/conversation/{conversation_id}")
+async def brook_get_conversation(
+    conversation_id: str,
+    x_robin_key: str | None = Header(None),
+    robin_auth: str | None = Cookie(None),
+):
+    """載入完整 Brook 對話。"""
+    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    from agents.brook.compose import get_conversation
+
+    result = await asyncio.to_thread(get_conversation, conversation_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return result
+
+
+@app.post("/brook/export/{conversation_id}")
+async def brook_export(
+    conversation_id: str,
+    x_robin_key: str | None = Header(None),
+    robin_auth: str | None = Cookie(None),
+):
+    """匯出 Brook 對話為文章初稿。"""
+    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    try:
+        from agents.brook.compose import export_draft
+
+        draft = await asyncio.to_thread(export_draft, conversation_id)
+        return {"draft": draft}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Brook export error: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=str(e))

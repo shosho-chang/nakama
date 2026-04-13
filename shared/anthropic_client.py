@@ -74,3 +74,61 @@ def ask_claude(
         pass  # cost tracking 失敗不影響主流程
 
     return response.content[0].text
+
+
+def ask_claude_multi(
+    messages: list[dict],
+    *,
+    system: str = "",
+    model: str = "claude-sonnet-4-20250514",
+    max_tokens: int = 4096,
+    temperature: float = 0.3,
+) -> str:
+    """送出多回合 Claude API 請求，回傳純文字回應。
+
+    與 ask_claude() 相同的 retry / cost tracking 機制，
+    但接受完整 messages 陣列以支援多回合對話。
+
+    Args:
+        messages: Claude API messages 格式，
+                  例如 [{"role": "user", "content": "..."}, ...]
+        system:   系統 prompt
+        model:    模型名稱
+        max_tokens: 最大回應 token 數
+        temperature: 溫度
+
+    Returns:
+        assistant 回應的純文字
+    """
+
+    def _call() -> anthropic.types.Message:
+        client = get_client()
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": messages,
+        }
+        if system:
+            kwargs["system"] = system
+        return client.messages.create(**kwargs)
+
+    response = with_retry(_call, max_attempts=3, backoff_base=2.0)
+
+    # Cost tracking
+    try:
+        from shared.state import record_api_call
+
+        agent = getattr(_local, "agent", "unknown")
+        run_id = getattr(_local, "run_id", None)
+        record_api_call(
+            agent=agent,
+            model=model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            run_id=run_id,
+        )
+    except Exception:
+        pass  # cost tracking 失敗不影響主流程
+
+    return response.content[0].text
