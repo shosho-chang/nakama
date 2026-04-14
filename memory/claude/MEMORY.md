@@ -15,3 +15,4 @@
 - [feedback_no_secrets_in_chat.md](feedback_no_secrets_in_chat.md) — API key 等敏感資訊走 .env，不在對話框輸入
 - [project_code_review_2026_04_12.md](project_code_review_2026_04_12.md) — 首次 code review：9 項修復已合併（Path Traversal、Event Bus 多消費者、Logger 等）
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
+- [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main

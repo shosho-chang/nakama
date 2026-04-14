@@ -34,10 +34,20 @@ originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 **待調整：**
 - KB Research 結果的 UI 呈現方式（修修想再改，具體需求待定）
 
-**待開發（下一個 agent）：**
+**待進行（下一步）：**
+- 盤點現有 Agent 功能 → 改寫成 Skill（修修 2026-04-14 確認要做）
+  - 用 prior-art-research skill 先調研，再用 /skill-creator 建立
+  - 建議用 feature branch：`feat/skill-refactor`
+
+**待開發（agent 功能）：**
 - Nami（航海士）— 最自然的下一步，消費 Robin/Franky 事件，產出 Morning Brief
 - Zoro 其餘功能 — PubMed / KOL 追蹤（keyword research 已完成）
 - Brook Phase 2 — SSE streaming、風格參考庫、Prompt Caching、匯出到 Vault
+
+**開發流程變更（2026-04-14）：**
+- 多視窗開發時用 feature branch + PR（不直接在 main 上改）
+- 開發前先讓 prior-art-research skill 跑完再動手
+- 用 /skill-creator 建新 skill（含 eval 迭代循環）
 
 **待評估：**
 - MCP 整合方向 — Agent 能力層改為 MCP-compatible（2026-04-11 討論，尚未正式列入規劃）
