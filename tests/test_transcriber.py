@@ -12,10 +12,13 @@ import pytest
 
 from shared.transcriber import (
     _build_initial_prompt,
+    _correct_with_llm,
     _extract_hotwords,
+    _extract_srt_texts,
     _lrc_to_srt,
     _process_srt_line,
     _remove_punctuation,
+    _replace_srt_texts,
     _seconds_to_srt_ts,
     _to_traditional,
 )
@@ -129,6 +132,92 @@ def test_extract_hotwords(tmp_path):
 
 def test_extract_hotwords_empty():
     assert _extract_hotwords([]) == []
+
+
+# ── SRT 文字提取與替換 ──
+
+_SAMPLE_SRT = """\
+1
+00:00:01,000 --> 00:00:05,000
+這是第一句
+
+2
+00:00:05,000 --> 00:00:10,000
+NMM是一種重要的分子
+
+3
+00:00:10,000 --> 00:00:15,000
+李大華博士的研究
+"""
+
+
+def test_extract_srt_texts():
+    entries = _extract_srt_texts(_SAMPLE_SRT)
+    assert len(entries) == 3
+    assert entries[0] == (1, "這是第一句")
+    assert entries[1] == (2, "NMM是一種重要的分子")
+    assert entries[2] == (3, "李大華博士的研究")
+
+
+def test_extract_srt_texts_empty():
+    assert _extract_srt_texts("") == []
+
+
+def test_replace_srt_texts():
+    corrected = {2: "NMN是一種重要的分子", 3: "李大華博士的研究成果"}
+    result = _replace_srt_texts(_SAMPLE_SRT, corrected)
+    assert "NMN是一種重要的分子" in result
+    assert "李大華博士的研究成果" in result
+    # 未修改的行保留
+    assert "這是第一句" in result
+    # 時間戳不變
+    assert "00:00:05,000 --> 00:00:10,000" in result
+
+
+def test_replace_srt_texts_no_changes():
+    result = _replace_srt_texts(_SAMPLE_SRT, {})
+    assert "這是第一句" in result
+    assert "NMM是一種重要的分子" in result
+
+
+# ── LLM 校正（mock Claude）──
+
+
+def test_correct_with_llm_basic():
+    """測試 LLM 校正的完整流程（mock ask_claude）。"""
+    from unittest.mock import patch
+
+    # Claude 回傳校正後的文字
+    mock_response = "[1] 這是第一句\n[2] NMN是一種重要的分子\n[3] 李大華博士的研究"
+
+    with patch("shared.anthropic_client.ask_claude", return_value=mock_response):
+        result = _correct_with_llm(_SAMPLE_SRT, context_files=[], model="claude-haiku-4-5-20251001")
+
+    assert "NMN是一種重要的分子" in result
+    # 時間戳應保留
+    assert "00:00:05,000 --> 00:00:10,000" in result
+
+
+def test_correct_with_llm_empty_srt():
+    """空 SRT 應直接回傳，不呼叫 Claude。"""
+    result = _correct_with_llm("", context_files=[])
+    assert result == ""
+
+
+def test_correct_with_llm_with_context(tmp_path):
+    """帶 context 檔案的校正。"""
+    from unittest.mock import patch
+
+    ctx = tmp_path / "book.md"
+    ctx.write_text("《NMN革命》作者李大華博士", encoding="utf-8")
+
+    mock_response = "[1] 這是第一句\n[2] NMN是一種重要的分子\n[3] 李大華博士的研究"
+
+    with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
+        _correct_with_llm(_SAMPLE_SRT, context_files=[str(ctx)])
+        # 確認 system prompt 包含 context
+        call_kwargs = mock_ask.call_args
+        assert "李大華" in call_kwargs.kwargs["system"]
 
 
 # ── LRC → SRT 轉換 ──
