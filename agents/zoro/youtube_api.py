@@ -11,6 +11,15 @@ from shared.log import get_logger
 logger = get_logger("nakama.zoro.youtube")
 
 
+def _parse_duration(iso: str) -> int:
+    """Parse ISO 8601 duration (e.g. 'PT1H2M30S') to seconds."""
+    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", iso or "")
+    if not m:
+        return 0
+    h, mn, s = (int(g) if g else 0 for g in m.groups())
+    return h * 3600 + mn * 60 + s
+
+
 def search_top_videos(topic: str, max_results: int = 15) -> dict:
     """Search YouTube for top videos on a topic and analyze title patterns.
 
@@ -38,9 +47,11 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
         if not video_ids:
             return {"top_videos": [], "common_words": [], "avg_views": 0}
 
-        # Step 2: Get video statistics (1 quota unit)
+        # Step 2: Get video statistics + duration (1 quota unit)
         stats_resp = (
-            youtube.videos().list(id=",".join(video_ids), part="snippet,statistics").execute()
+            youtube.videos()
+            .list(id=",".join(video_ids), part="snippet,statistics,contentDetails")
+            .execute()
         )
 
         videos = []
@@ -51,6 +62,7 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
             title = item["snippet"]["title"]
             view_count = int(item["statistics"].get("viewCount", 0))
             video_id = item["id"]
+            duration_sec = _parse_duration(item.get("contentDetails", {}).get("duration", ""))
             videos.append(
                 {
                     "title": title,
@@ -58,6 +70,8 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
                     "channel": item["snippet"]["channelTitle"],
                     "published": item["snippet"]["publishedAt"][:10],
                     "url": f"https://youtube.com/watch?v={video_id}",
+                    "duration_sec": duration_sec,
+                    "is_short": duration_sec <= 60,
                 }
             )
             total_views += view_count
@@ -94,7 +108,7 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
         avg_views = total_views // len(videos) if videos else 0
 
         return {
-            "top_videos": videos[:10],  # Keep top 10 for prompt
+            "top_videos": videos[:20],  # Keep top 20 for shorts/long split
             "common_words": common_words,
             "avg_views": avg_views,
         }
