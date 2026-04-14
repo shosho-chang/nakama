@@ -6,7 +6,7 @@
 
 from pathlib import Path
 from textwrap import dedent
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,6 +14,7 @@ from shared.transcriber import (
     _build_initial_prompt,
     _extract_hotwords,
     _lrc_to_srt,
+    _process_srt_line,
     _remove_punctuation,
     _seconds_to_srt_ts,
     _to_traditional,
@@ -60,6 +61,39 @@ def test_to_traditional():
 def test_to_traditional_already_traditional():
     result = _to_traditional("繁體中文")
     assert "繁體中文" == result
+
+
+# ── SRT 行處理 ──
+
+
+def test_process_srt_line_text_no_punctuation():
+    result = _process_srt_line("这是简体中文，测试。", use_punctuation=False)
+    assert "這是簡體中文" in result
+    assert "，" not in result
+    assert "。" not in result
+
+
+def test_process_srt_line_text_with_punctuation():
+    result = _process_srt_line("这是简体中文，测试。", use_punctuation=True)
+    assert "，" in result
+
+
+def test_process_srt_line_timestamp():
+    line = "00:01:05,500 --> 00:01:10,000"
+    assert _process_srt_line(line, use_punctuation=False) == line
+
+
+def test_process_srt_line_sequence_number():
+    assert _process_srt_line("42", use_punctuation=False) == "42"
+
+
+def test_process_srt_line_empty():
+    assert _process_srt_line("", use_punctuation=False) == ""
+
+
+def test_process_srt_line_punctuation_only():
+    result = _process_srt_line("……——", use_punctuation=False)
+    assert result.strip() == ""  # 變成空格，不是完全空
 
 
 # ── Context 處理 ──
@@ -143,7 +177,10 @@ def test_transcribe_basic(tmp_path):
 
     # 建立 fake openlrc module
     fake_openlrc = types.ModuleType("openlrc")
-    fake_openlrc.LRCer = MagicMock()
+    mock_lrcer = MagicMock()
+    # run() 回傳路徑列表
+    mock_lrcer.run.return_value = [str(lrc_output)]
+    fake_openlrc.LRCer = MagicMock(return_value=mock_lrcer)
     fake_openlrc.TranscriptionConfig = MagicMock()
     fake_openlrc.TranslationConfig = MagicMock()
     fake_openlrc.ModelConfig = MagicMock()
@@ -151,7 +188,6 @@ def test_transcribe_basic(tmp_path):
     sys.modules["openlrc"] = fake_openlrc
 
     try:
-        # 重新載入 transcriber 以使用 fake module
         import importlib
 
         import shared.transcriber
