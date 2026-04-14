@@ -17,6 +17,10 @@ dependencies = [
     "httpx>=0.27.0",
     "feedparser>=6.0",
 
+    # Transcription (ASR)
+    "openlrc>=1.6.0",
+    "opencc-python-reimplemented>=0.1.7",
+
     # Utilities
     "python-dateutil>=2.9",
     "psutil>=5.9.0",

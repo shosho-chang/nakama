@@ -18,6 +18,10 @@ firecrawl-py>=4.22.0   # Firecrawl: web scraping/crawling for Robin & Zoro
 google-api-python-client>=2.100.0  # YouTube Data API v3
 pytrends>=4.9.0                    # Google Trends (unofficial)
 
+# Transcription (ASR)
+openlrc>=1.6.0
+opencc-python-reimplemented>=0.1.7
+
 # Utilities
 python-dateutil>=2.9
 psutil>=5.9.0              # Franky: system health checks (disk/memory)
