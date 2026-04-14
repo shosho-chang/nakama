@@ -4,7 +4,6 @@
 整合測試（實際轉寫）需要 GPU 環境，標記為 slow。
 """
 
-from pathlib import Path
 from textwrap import dedent
 from unittest.mock import MagicMock
 
@@ -22,7 +21,6 @@ from shared.transcriber import (
     _seconds_to_srt_ts,
     _to_traditional,
 )
-
 
 # ── 時間戳轉換 ──
 

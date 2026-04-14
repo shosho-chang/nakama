@@ -52,11 +52,13 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
         for item in stats_resp.get("items", []):
             title = item["snippet"]["title"]
             view_count = int(item["statistics"].get("viewCount", 0))
+            video_id = item["id"]
             videos.append({
                 "title": title,
                 "views": view_count,
                 "channel": item["snippet"]["channelTitle"],
                 "published": item["snippet"]["publishedAt"][:10],
+                "url": f"https://youtube.com/watch?v={video_id}",
             })
             total_views += view_count
 
@@ -67,7 +69,10 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
         # Analyze common title words (top 20)
         word_counts = Counter(all_title_words)
         # Remove overly generic words
-        stopwords = {"the", "of", "and", "in", "to", "for", "is", "on", "it", "with", "at", "by", "this", "that"}
+        stopwords = {
+            "the", "of", "and", "in", "to", "for", "is",
+            "on", "it", "with", "at", "by", "this", "that",
+        }
         common_words = [
             {"word": word, "count": count}
             for word, count in word_counts.most_common(30)

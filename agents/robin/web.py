@@ -601,10 +601,14 @@ async def done(
 async def zoro_keyword_research(
     topic: str = Form(...),
     content_type: str = Form("youtube"),
+    en_topic: str = Form(""),
     x_robin_key: str | None = Header(None),
     robin_auth: str | None = Cookie(None),
 ):
-    """Zoro keyword research: gather data from YouTube/Trends/Autocomplete, synthesize with Claude."""
+    """Zoro keyword research: bilingual data from YouTube/Trends/Autocomplete.
+
+    Synthesize with Claude.
+    """
     if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
         raise HTTPException(status_code=403, detail="Unauthorized")
     if not topic.strip():
@@ -612,7 +616,12 @@ async def zoro_keyword_research(
     try:
         from agents.zoro.keyword_research import research_keywords
 
-        result = await asyncio.to_thread(research_keywords, topic.strip(), content_type)
+        result = await asyncio.to_thread(
+            research_keywords,
+            topic.strip(),
+            content_type,
+            en_topic.strip() or None,
+        )
         return result
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))

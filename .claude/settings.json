@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
     "allow": [
       "WebFetch",
       "WebSearch",
@@ -32,7 +31,27 @@
       "Bash(pwd)",
       "Bash(which *)",
       "Bash(node *)",
-      "Bash(npx *)"
+      "Bash(npx *)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/kepano/obsidian-skills/refs/heads/main/skills/obsidian-markdown/SKILL.md\")",
+      "Bash(cp f:/nakama/prompts/shared/writing-style.md ~/.claude/skills/kb-ingest/references/writing-style.md)",
+      "Bash(cp f:/nakama/prompts/shared/domain.md ~/.claude/skills/kb-ingest/references/domain.md)",
+      "Bash(cp f:/nakama/prompts/shared/vault-conventions.md ~/.claude/skills/kb-ingest/references/vault-conventions.md)",
+      "Bash(cp f:/nakama/prompts/robin/summarize.md ~/.claude/skills/kb-ingest/references/summarize.md)",
+      "Bash(cp f:/nakama/prompts/robin/extract_concepts.md ~/.claude/skills/kb-ingest/references/extract-concepts.md)",
+      "Edit(~/.claude/skills/kb-ingest/**)",
+      "Edit(~/.claude/skills/kb-ingest-workspace/**)",
+      "Bash(mkdir -p ~/.claude/skills/kb-ingest-workspace/iteration-1/eval-1-ingest-article/without_skill)",
+      "Bash(mkdir -p ~/.claude/skills/kb-ingest-workspace/iteration-1/eval-2-ingest-transcript/without_skill)",
+      "Bash(mkdir -p ~/.claude/skills/kb-ingest-workspace/iteration-1/eval-1-ingest-article/with_skill)",
+      "Bash(mkdir -p ~/.claude/skills/kb-ingest-workspace/iteration-1/eval-2-ingest-transcript/with_skill)",
+      "Bash(cp f:/nakama/prompts/brook/compose.md ~/.claude/skills/article-compose/references/compose.md)",
+      "Bash(cp f:/nakama/prompts/brook/export.md ~/.claude/skills/article-compose/references/export.md)",
+      "Bash(cp f:/nakama/prompts/shared/writing-style.md ~/.claude/skills/article-compose/references/writing-style.md)",
+      "Bash(cp f:/nakama/prompts/shared/domain.md ~/.claude/skills/article-compose/references/domain.md)",
+      "Edit(~/.claude/skills/article-compose/**)",
+      "Edit(~/.claude/skills/article-compose-workspace/**)",
+      "Bash(python -c ':*)",
+      "Bash(curl -sL \"https://developers.reddit.com/docs/capabilities/server/reddit-api\")"
     ],
     "deny": [
       "Bash(rm *)",
@@ -44,6 +63,14 @@
       "Bash(git clean *)",
       "Bash(git branch -D *)",
       "Edit(.env)"
+    ],
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "C:\\Users\\Shosho\\.claude\\skills",
+      "C:\\Users\\Shosho\\.claude\\skills\\kb-ingest",
+      "C:\\Users\\Shosho\\.claude\\skills\\kb-ingest-workspace",
+      "C:\\Users\\Shosho\\.claude\\skills\\article-compose",
+      "C:\\Users\\Shosho\\.claude\\skills\\article-compose-workspace\\iteration-1\\eval-1-new-article"
     ]
   }
 }
