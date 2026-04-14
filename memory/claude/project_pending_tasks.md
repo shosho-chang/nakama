@@ -9,21 +9,19 @@ confidence: high
 ttl: 90d
 originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 ---
-**待部署（VPS）— 明天第一件事：**
+**待部署（VPS）：**
 - `git pull` + `pip install -r requirements.txt`（新增 google-api-python-client、pytrends）
-- 設定 `YOUTUBE_API_KEY` 到 `.env`
+- 設定 `YOUTUBE_API_KEY` + `ANTHROPIC_API_KEY` 到 VPS `.env`
 - `sudo systemctl restart robin`
-- 需要一次部署的 commits：
-  - MemPalace 監控 Zoro→Franky（commit 86cd42e）
-  - Robin Reader metadata 卡片 + 圖片修復（commit 70f6c11）
-  - Zoro Keyword Research（commit 0e4c866）
-  - ADR-003 Telegram Bot（commit 1253abe, b077c71）
-  - **Brook 文章助手 Phase 1（commit 370bc22）**
+- 需要一次部署的 commits（含 Zoro 雙語升級 + 社群來源）
 
 **待測試（部署後）：**
 - Robin Reader：metadata 卡片顯示 + 貼上圖片顯示
 - Robin KB Research：`/kb/research` endpoint（上次 404 已修，但只在本地驗證邏輯）
-- Zoro Keyword Research：Obsidian 按鈕 → `/zoro/keyword-research` 端到端測試
+- **Zoro Keyword Research：Obsidian 按鈕 → `/zoro/keyword-research` 端到端測試**
+  - 確認中英雙語搜尋（自動翻譯 + 10 路平行）
+  - 確認新版 Obsidian 版面（7 欄關鍵字表格、趨勢缺口、影片可點擊、社群討論）
+  - 確認 Reddit 資料出現、Twitter best-effort
 - **Brook 聊天頁面：`http://VPS:8000/brook/chat` 端到端測試**
   - 開新對話 → 確認大綱產出
   - 來回 5+ 回合 → 確認對話連貫
@@ -40,8 +38,9 @@ originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 
 **待開發（agent 功能）：**
 - Nami（航海士）— 最自然的下一步，消費 Robin/Franky 事件，產出 Morning Brief
-- Zoro 其餘功能 — PubMed / KOL 追蹤（keyword research 已完成）
+- Zoro 其餘功能 — PubMed / KOL 追蹤（keyword research 雙語版已完成）
 - Brook Phase 2 — SSE streaming、風格參考庫、Prompt Caching、匯出到 Vault
+- PubMed 整合 — 修修有 n8n RSS 工作流（GPT 分析摘要→Google Sheets），預計用於其他功能，不是 Zoro
 
 **開發流程變更（2026-04-14）：**
 - 多視窗開發時用 feature branch + PR（不直接在 main 上改）
@@ -60,6 +59,15 @@ originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 - Brook compose.py 也需要測試
 
 **已完成（2026-04-14）：**
+- Zoro Keyword Research 雙語升級（3 commits: e34ed2c, be4647b, b8682d5）
+  - 中英雙語搜尋（自動翻譯 + 10 路平行蒐集）
+  - 新增 Twitter（DuckDuckGo best-effort）+ Reddit（公開 JSON API）社群來源
+  - YouTube 影片加 URL 可點擊、關鍵字加 search_volume/competition/opportunity 指標
+  - 新增 trend_gaps 跨語言趨勢缺口分析
+  - Obsidian 模板全新版面（6 區塊：摘要→關鍵字→趨勢缺口→影片→社群→標題建議）
+  - web endpoint 支援 en_topic 參數
+  - Obsidian 模板移除 Branding Components 區塊
+- PR #8 merged：Agent→Skill Phase 1
 - Agent→Skill 改寫 Phase 1：kb-ingest + article-compose + obsidian-markdown（3 個 skill）
   - 盤點 7 個 Agent 功能候選 → Phase 1 先做最高價值的 2 個
   - kb-ingest：Robin ingest pipeline 7 步 workflow，7 個 reference 檔，eval 100% pass
