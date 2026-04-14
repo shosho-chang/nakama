@@ -40,9 +40,7 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
 
         # Step 2: Get video statistics (1 quota unit)
         stats_resp = (
-            youtube.videos()
-            .list(id=",".join(video_ids), part="snippet,statistics")
-            .execute()
+            youtube.videos().list(id=",".join(video_ids), part="snippet,statistics").execute()
         )
 
         videos = []
@@ -53,13 +51,15 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
             title = item["snippet"]["title"]
             view_count = int(item["statistics"].get("viewCount", 0))
             video_id = item["id"]
-            videos.append({
-                "title": title,
-                "views": view_count,
-                "channel": item["snippet"]["channelTitle"],
-                "published": item["snippet"]["publishedAt"][:10],
-                "url": f"https://youtube.com/watch?v={video_id}",
-            })
+            videos.append(
+                {
+                    "title": title,
+                    "views": view_count,
+                    "channel": item["snippet"]["channelTitle"],
+                    "published": item["snippet"]["publishedAt"][:10],
+                    "url": f"https://youtube.com/watch?v={video_id}",
+                }
+            )
             total_views += view_count
 
             # Extract meaningful words (filter short/common words)
@@ -70,8 +70,20 @@ def search_top_videos(topic: str, max_results: int = 15) -> dict:
         word_counts = Counter(all_title_words)
         # Remove overly generic words
         stopwords = {
-            "the", "of", "and", "in", "to", "for", "is",
-            "on", "it", "with", "at", "by", "this", "that",
+            "the",
+            "of",
+            "and",
+            "in",
+            "to",
+            "for",
+            "is",
+            "on",
+            "it",
+            "with",
+            "at",
+            "by",
+            "this",
+            "that",
         }
         common_words = [
             {"word": word, "count": count}

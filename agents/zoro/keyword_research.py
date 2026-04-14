@@ -144,15 +144,17 @@ def research_keywords(
             social_posts.append({**t, "lang": lang, "platform": "twitter"})
     for lang, key in [("zh", "reddit_zh"), ("en", "reddit_en")]:
         for p in data.get(key, {}).get("posts", []):
-            social_posts.append({
-                "title": p["title"],
-                "score": p["score"],
-                "num_comments": p["num_comments"],
-                "subreddit": p["subreddit"],
-                "url": p["url"],
-                "lang": lang,
-                "platform": "reddit",
-            })
+            social_posts.append(
+                {
+                    "title": p["title"],
+                    "score": p["score"],
+                    "num_comments": p["num_comments"],
+                    "subreddit": p["subreddit"],
+                    "url": p["url"],
+                    "lang": lang,
+                    "platform": "reddit",
+                }
+            )
 
     result["en_topic"] = en_topic
     result["trending_videos"] = trending_videos[:20]
@@ -220,9 +222,7 @@ def _format_reddit(data: dict) -> str:
         return "（無相關討論）"
     lines = []
     for p in posts[:10]:
-        lines.append(
-            f"- [⬆{p['score']} 💬{p['num_comments']}] r/{p['subreddit']}: {p['title']}"
-        )
+        lines.append(f"- [⬆{p['score']} 💬{p['num_comments']}] r/{p['subreddit']}: {p['title']}")
     return "熱門討論：\n" + "\n".join(lines)
 
 

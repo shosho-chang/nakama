@@ -50,9 +50,7 @@ def _parse_ddg_results(html: str, max_results: int) -> list[dict]:
     tweets = []
     seen_urls = set()
 
-    tweet_url_re = re.compile(
-        r"https?://(?:www\.)?(?:x\.com|twitter\.com)/([\w]+)/status/(\d+)"
-    )
+    tweet_url_re = re.compile(r"https?://(?:www\.)?(?:x\.com|twitter\.com)/([\w]+)/status/(\d+)")
 
     # DuckDuckGo wraps result links in uddg= redirects
     uddg_re = re.compile(r"uddg=(https?[^&\"]+)")
@@ -76,7 +74,13 @@ def _parse_ddg_results(html: str, max_results: int) -> list[dict]:
 
         # Skip non-user pages
         if username.lower() in (
-            "i", "search", "explore", "home", "hashtag", "x", "twitter",
+            "i",
+            "search",
+            "explore",
+            "home",
+            "hashtag",
+            "x",
+            "twitter",
         ):
             continue
 
@@ -106,17 +110,19 @@ def _parse_ddg_results(html: str, max_results: int) -> list[dict]:
             name = re.sub(r"<[^>]+>", "", title_match.group(1)).strip()
             name = re.split(r"\s+on\s+X\b|\s+[-/–]\s+X\b|\(\s*@", name)[0].strip()
 
-        tweets.append({
-            "text": snippet[:200] if snippet else "",
-            "created_at": "",
-            "likes": 0,
-            "retweets": 0,
-            "replies": 0,
-            "impressions": 0,
-            "author": name,
-            "username": username,
-            "url": url,
-        })
+        tweets.append(
+            {
+                "text": snippet[:200] if snippet else "",
+                "created_at": "",
+                "likes": 0,
+                "retweets": 0,
+                "replies": 0,
+                "impressions": 0,
+                "author": name,
+                "username": username,
+                "url": url,
+            }
+        )
 
         if len(tweets) >= max_results:
             break

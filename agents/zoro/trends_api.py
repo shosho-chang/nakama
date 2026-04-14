@@ -54,12 +54,10 @@ def get_trends(topic: str) -> dict:
 
             return {
                 "related_top": [
-                    {"query": r["query"], "value": int(r.get("value", 0))}
-                    for r in top_queries
+                    {"query": r["query"], "value": int(r.get("value", 0))} for r in top_queries
                 ],
                 "related_rising": [
-                    {"query": r["query"], "value": str(r.get("value", ""))}
-                    for r in rising_queries
+                    {"query": r["query"], "value": str(r.get("value", ""))} for r in rising_queries
                 ],
                 "trend_direction": trend_direction,
             }

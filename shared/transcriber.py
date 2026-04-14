@@ -15,7 +15,7 @@ from shared.log import get_logger
 logger = get_logger("nakama.transcriber")
 
 # 中文標點符號 pattern（用於標點移除）
-_ZH_PUNCTUATION = re.compile(r"[，。！？、；：""''（）《》【】…—～·]")
+_ZH_PUNCTUATION = re.compile(r"[，。！？、；：" "''（）《》【】…—～·]")
 
 # SRT 時間戳格式
 _SRT_TS_FMT = "{h:02d}:{m:02d}:{s:02d},{ms:03d}"
@@ -219,8 +219,7 @@ def _correct_with_llm(
     if context_text:
         system += (
             "\n\n## 參考資料\n"
-            "以下是這次訪談相關的背景資料，用於判斷正確的專有名詞拼寫：\n\n"
-            + context_text
+            "以下是這次訪談相關的背景資料，用於判斷正確的專有名詞拼寫：\n\n" + context_text
         )
 
     prompt = f"請校正以下語音辨識逐字稿：\n\n{numbered_text}"

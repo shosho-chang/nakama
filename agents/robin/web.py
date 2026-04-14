@@ -676,9 +676,7 @@ async def brook_start(
     kb_context = ""
     if kb_query and kb_query.strip():
         try:
-            results = await asyncio.to_thread(
-                search_kb, kb_query.strip(), get_vault_path()
-            )
+            results = await asyncio.to_thread(search_kb, kb_query.strip(), get_vault_path())
             if results:
                 kb_context = "\n".join(
                     f"- **{r['title']}**（{r['type']}）：{r.get('relevance_reason', '')}"
@@ -690,9 +688,7 @@ async def brook_start(
     try:
         from agents.brook.compose import start_conversation
 
-        result = await asyncio.to_thread(
-            start_conversation, topic.strip(), kb_context
-        )
+        result = await asyncio.to_thread(start_conversation, topic.strip(), kb_context)
         return result
     except Exception as e:
         logger.error(f"Brook start error: {e}", exc_info=True)
@@ -715,9 +711,7 @@ async def brook_message(
     try:
         from agents.brook.compose import send_message
 
-        result = await asyncio.to_thread(
-            send_message, conversation_id, message.strip()
-        )
+        result = await asyncio.to_thread(send_message, conversation_id, message.strip())
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

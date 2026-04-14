@@ -54,15 +54,17 @@ def search_reddit_posts(topic: str, max_results: int = 10) -> dict:
         for child in data.get("data", {}).get("children", []):
             post = child.get("data", {})
             subreddit = post.get("subreddit", "")
-            posts.append({
-                "title": post.get("title", ""),
-                "score": post.get("score", 0),
-                "num_comments": post.get("num_comments", 0),
-                "subreddit": subreddit,
-                "created_utc": post.get("created_utc", 0),
-                "url": f"https://reddit.com{post.get('permalink', '')}",
-                "is_health_sub": subreddit.lower() in [s.lower() for s in _HEALTH_SUBREDDITS],
-            })
+            posts.append(
+                {
+                    "title": post.get("title", ""),
+                    "score": post.get("score", 0),
+                    "num_comments": post.get("num_comments", 0),
+                    "subreddit": subreddit,
+                    "created_utc": post.get("created_utc", 0),
+                    "url": f"https://reddit.com{post.get('permalink', '')}",
+                    "is_health_sub": subreddit.lower() in [s.lower() for s in _HEALTH_SUBREDDITS],
+                }
+            )
 
         # Sort by engagement (score + comments)
         posts.sort(key=lambda p: p["score"] + p["num_comments"], reverse=True)
