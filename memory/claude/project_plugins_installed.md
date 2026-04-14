@@ -28,6 +28,9 @@ Plugins（來自 marketplace）：
 |---|---|---|
 | `prior-art-research` | 自建（2 輪 eval 迭代，95% pass rate） | 開發前 6 通道搜尋：本地→skills.sh→Marketplaces→MCP→GitHub→PyPI，產出 adopt/extend/build 報告 |
 | `find-skills` | vercel-labs/skills（手動安裝） | 搜尋 skills.sh 市場（環境無 Node.js，用 WebFetch 替代 npx） |
+| `kb-ingest` | 自建（1 輪 eval，100% pass rate） | Robin KB ingest pipeline 改寫：7 步 workflow（讀取→摘要→提取→寫頁→更新索引），附 7 個 reference 檔 |
+| `article-compose` | 自建（1 輪 eval，100% pass rate） | Brook 文章助手改寫：3 階段互動式寫作（大綱→逐段→匯出），附 4 個 reference 檔 |
+| `obsidian-markdown` | kepano/obsidian-skills（手動安裝） | Obsidian 專用 Markdown 語法教學（wikilinks、embeds、callouts、properties） |
 
 ## 評估後決定不裝的 Plugins
 
