@@ -35,9 +35,8 @@ originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 - KB Research 結果的 UI 呈現方式（修修想再改，具體需求待定）
 
 **待進行（下一步）：**
-- 盤點現有 Agent 功能 → 改寫成 Skill（修修 2026-04-14 確認要做）
-  - 用 prior-art-research skill 先調研，再用 /skill-creator 建立
-  - 建議用 feature branch：`feat/skill-refactor`
+- Agent 功能 → Skill 改寫 **Phase 2**：morning-brief (Nami)、kb-search (Robin)
+- Agent 功能 → Skill 改寫 **Phase 3**：keyword-research (Zoro)、weekly-report (Franky)、style-extractor
 
 **待開發（agent 功能）：**
 - Nami（航海士）— 最自然的下一步，消費 Robin/Franky 事件，產出 Morning Brief
@@ -61,6 +60,11 @@ originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 - Brook compose.py 也需要測試
 
 **已完成（2026-04-14）：**
+- Agent→Skill 改寫 Phase 1：kb-ingest + article-compose + obsidian-markdown（3 個 skill）
+  - 盤點 7 個 Agent 功能候選 → Phase 1 先做最高價值的 2 個
+  - kb-ingest：Robin ingest pipeline 7 步 workflow，7 個 reference 檔，eval 100% pass
+  - article-compose：Brook 3 階段互動寫作，eval 100% pass，比 baseline 快 48% 省 22% tokens
+  - obsidian-markdown：安裝 kepano/obsidian-skills 作為互補基礎
 - Brook 文章助手 Phase 1 MVP（6 files, 1247 insertions）
   - ask_claude_multi() 多回合 API 支援
   - compose.py 對話管理 + SQLite 儲存 + sliding window
