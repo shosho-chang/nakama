@@ -1,6 +1,6 @@
 ---
 name: project_plugins_installed
-description: Claude Code 已安裝的 6 個 plugin + 2 個自建 skill 及其用途
+description: Claude Code 已安裝的 6 個 plugin + 5 個 skill（3 自建 + 2 外部）及其用途
 type: project
 originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
 ---
