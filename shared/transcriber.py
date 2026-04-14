@@ -361,6 +361,8 @@ def transcribe(
         logger.info(f"Hotwords：{hotwords[:10]}{'...' if len(hotwords) > 10 else ''}")
 
     transcription_config = TranscriptionConfig(
+        whisper_model=whisper_model,
+        compute_type=compute_type,
         asr_options=asr_options,
     )
 
