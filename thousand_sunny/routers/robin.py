@@ -22,7 +22,7 @@ from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.utils import extract_frontmatter, read_text, slugify
-from thousand_sunny.auth import check_auth, make_token, require_auth_or_key, WEB_PASSWORD
+from thousand_sunny.auth import WEB_PASSWORD, check_auth, make_token, require_auth_or_key
 from thousand_sunny.helpers import safe_resolve, sse
 
 logger = get_logger("nakama.web.robin")
