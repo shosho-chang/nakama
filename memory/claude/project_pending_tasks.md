@@ -9,15 +9,12 @@ confidence: high
 ttl: 90d
 ---
 
-**Transcriber 升級（feat/transcriber-upgrade branch，3 commits）：**
-- ✅ shared/auphonic.py — Auphonic REST API 客戶端（多帳號輪詢 + jingle 裁切）
-- ✅ shared/transcriber.py — openlrc/Whisper → FunASR Paraformer-zh
-- ✅ SRT 斷行 ≤20 字 + 標點改空格 + 英文不切斷
-- ✅ E2E 測試通過（20 min Podcast，GPU 10 秒）
-- ⬜ 辨識度改善 — 開 LLM 校正（use_llm_correction=True）
-- ⬜ Auphonic E2E — 完整 pipeline 含 normalization
-- ⬜ merge PR 回 main
-- ⬜ 後續：CLI 命令 → Skill 化
+**Transcriber（PR #9 已 merge，2026-04-15）：**
+- ✅ FunASR + Auphonic + LLM 校正升級（Pinyin + JSON diff + LifeOS 整合 + Opus）
+- ✅ 78 個測試全過，已 merge 到 main
+- ⬜ LLM 校正 E2E 實測（`use_llm_correction=True` + 真實音檔）
+- ⬜ Auphonic E2E 實測（完整 pipeline 含 normalization）
+- ⬜ CLI 命令 → Skill 化
 
 **VPS 已部署完成（2026-04-15）：**
 - Thousand Sunny web server 已上線
