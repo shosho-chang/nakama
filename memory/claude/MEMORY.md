@@ -19,3 +19,4 @@
 - [project_transcriber.md](project_transcriber.md) — 已 merge，shared/transcriber.py 本地 ASR + LLM 校正
 - [feedback_dependency_check.md](feedback_dependency_check.md) — pip install 前必須檢查版本衝突，避免降級核心套件
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
+- [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format
