@@ -57,3 +57,19 @@ agents:
     description: "Composer — 素材重組為各平台格式，交由 Usopp 發布"
     trigger: manual
     style_profile: config/style-profile.json
+
+gateway:
+  slack:
+    channels:
+      main: ""      # #nakama channel ID (e.g. C0123456789)
+      nami: ""      # #nami channel ID
+      zoro: ""      # #zoro channel ID
+      robin: ""     # #robin channel ID
+      franky: ""    # #franky channel ID
+      brook: ""     # #brook channel ID
+    cost_limit:
+      daily_haiku_calls: 200
+      warn_at: 150
+    event_bridge:
+      poll_interval_seconds: 5
+      enabled: true
