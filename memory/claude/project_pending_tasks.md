@@ -25,6 +25,13 @@ ttl: 90d
 - Brook 聊天頁面端到端測試
 - KB Research UI 呈現方式（修修想再改）
 
+**Robin 大文件 Ingest（PR #11 已 merge，2026-04-15）：**
+- ✅ PDF 解析（pymupdf4llm 本地 + Firecrawl 遠端）
+- ✅ 本地 LLM 客戶端（OpenAI-compatible，支援 llama.cpp / Ollama）
+- ✅ Map-Reduce 大文件摘要（chunker + prompts + fallback）
+- ✅ 33 個新測試全過
+- ⬜ E2E 實測：安裝 llama.cpp + Gemma 4 26B，丟 PDF 跑完整 pipeline
+
 **待進行（下一步）：**
 - Agent 功能 → Skill 改寫 **Phase 2**：morning-brief (Nami)、kb-search (Robin)
 - Agent 功能 → Skill 改寫 **Phase 3**：keyword-research (Zoro)、weekly-report (Franky)、style-extractor
