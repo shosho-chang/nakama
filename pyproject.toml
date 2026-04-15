@@ -29,6 +29,10 @@ dependencies = [
     "uvicorn[standard]>=0.29.0",
     "jinja2>=3.1.0",
     "python-multipart>=0.0.9",
+
+    # Slack Gateway
+    "slack-bolt>=1.18.0",
+    "slack-sdk>=3.27.0",
 ]
 
 [project.optional-dependencies]
@@ -49,7 +53,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["agents*", "shared*", "thousand_sunny*"]
+include = ["agents*", "shared*", "thousand_sunny*", "gateway*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

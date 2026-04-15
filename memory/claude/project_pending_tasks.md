@@ -8,6 +8,15 @@ updated: 2026-04-15
 confidence: high
 ttl: 90d
 ---
+
+**Transcriber 升級（PR #9 open，feat/transcriber-upgrade，5 commits）：**
+- ✅ Auphonic + FunASR 引擎 + LLM 校正升級（Pinyin + JSON diff + LifeOS 整合 + Opus）
+- ✅ 78 個測試全過
+- ⬜ Review + Merge PR #9
+- ⬜ LLM 校正 E2E 實測（`use_llm_correction=True`）
+- ⬜ Auphonic E2E 實測
+- ⬜ 後續：CLI 命令 → Skill 化
+
 **VPS 已部署完成（2026-04-15）：**
 - Thousand Sunny web server 已上線（取代舊的 robin service）
 - `WEB_SECRET=s581020` 已設定
