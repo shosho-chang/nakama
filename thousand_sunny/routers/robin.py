@@ -301,15 +301,18 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 sess["_author"] = author
                 sess["_content"] = content
 
-                # 進度回報：大文件時會多次回報 Map-Reduce 進度
-                progress_messages = []
-
-                def _progress(msg):
-                    progress_messages.append(msg)
-
                 is_large = len(content) > pipeline.LARGE_DOC_THRESHOLD
                 if is_large:
-                    yield sse("status", {"msg": "偵測到大文件，啟動 Map-Reduce 摘要..."})
+                    from agents.robin.chunker import chunk_document
+
+                    n_chunks = len(chunk_document(content))
+                    yield sse(
+                        "status",
+                        {
+                            "msg": f"偵測到大文件（{len(content):,} 字），"
+                            f"將分 {n_chunks} 段 Map-Reduce 摘要，請耐心等候..."
+                        },
+                    )
                 else:
                     yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
 
@@ -319,7 +322,6 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                     title=title,
                     author=author,
                     source_type=sess["source_type"],
-                    progress_callback=_progress,
                 )
                 sess["summary_body"] = summary
 

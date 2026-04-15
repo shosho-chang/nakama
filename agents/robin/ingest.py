@@ -180,14 +180,8 @@ class IngestPipeline:
         title: str,
         author: str,
         source_type: str,
-        *,
-        progress_callback=None,
     ) -> str:
-        """產出 Source Summary。小文件直接用 Sonnet，大文件走 Map-Reduce。
-
-        Args:
-            progress_callback: 可選的進度回報函式，簽名 (msg: str) -> None
-        """
+        """產出 Source Summary。小文件直接用 Sonnet，大文件走 Map-Reduce。"""
         if len(content) <= self.LARGE_DOC_THRESHOLD:
             # 現有流程：直接用 Sonnet
             prompt = load_prompt(
@@ -207,7 +201,6 @@ class IngestPipeline:
             title=title,
             author=author or "未知",
             source_type=source_type,
-            progress_callback=progress_callback,
         )
 
     def _map_reduce_summary(
@@ -216,8 +209,6 @@ class IngestPipeline:
         title: str,
         author: str,
         source_type: str,
-        *,
-        progress_callback=None,
     ) -> str:
         """Map-Reduce 摘要：分段用本地模型，合併用 Sonnet。"""
         from agents.robin.chunker import chunk_document
@@ -225,21 +216,13 @@ class IngestPipeline:
         chunks = chunk_document(content)
         logger.info(f"大文件 Map-Reduce：{len(chunks)} chunks，{len(content):,} 字元")
 
-        if progress_callback:
-            progress_callback(f"偵測到大文件（{len(content):,} 字），分 {len(chunks)} 段處理...")
-
         # 決定 Map 階段使用的推理函式
         ask_fn = self._get_map_ask_fn()
 
-        # Map：每個 chunk 獨立摘要
+        # Map：每個 chunk 獨立摘要（單一 chunk 失敗不中斷整個流程）
         system = _build_robin_system_prompt()
         chunk_summaries = []
         for chunk in chunks:
-            if progress_callback:
-                progress_callback(
-                    f"正在摘要第 {chunk['index']}/{len(chunks)} 段（{chunk['heading']}）..."
-                )
-
             prompt = load_prompt(
                 "robin",
                 "summarize_chunk",
@@ -249,14 +232,15 @@ class IngestPipeline:
                 heading=chunk["heading"],
                 content=chunk["text"],
             )
-            summary = ask_fn(prompt, system=system)
+            try:
+                summary = ask_fn(prompt, system=system)
+            except Exception as e:
+                logger.error(f"  chunk {chunk['index']}/{len(chunks)} 失敗：{e}")
+                summary = f"（此段落摘要失敗：{chunk['heading']}）"
             chunk_summaries.append(summary)
             logger.info(f"  chunk {chunk['index']}/{len(chunks)} 完成（{len(summary)} 字元）")
 
         # Reduce：合併所有 chunk 摘要（用 Sonnet 確保最終品質）
-        if progress_callback:
-            progress_callback("正在合併摘要（Claude Sonnet）...")
-
         combined = "\n\n---\n\n".join(
             f"### 段落 {i + 1}：{chunks[i]['heading']}\n{s}" for i, s in enumerate(chunk_summaries)
         )

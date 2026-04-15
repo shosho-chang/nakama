@@ -89,7 +89,7 @@ def ask_local(
     cfg = _get_config()
     url = base_url or cfg.get("base_url", DEFAULT_BASE_URL)
     model_name = model or cfg.get("model", DEFAULT_MODEL)
-    req_timeout = timeout or cfg.get("timeout", DEFAULT_TIMEOUT)
+    req_timeout = timeout if timeout is not None else cfg.get("timeout", DEFAULT_TIMEOUT)
 
     messages = []
     if system:

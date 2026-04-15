@@ -12,17 +12,13 @@ from shared.log import get_logger
 logger = get_logger("nakama.shared.pdf_parser")
 
 
-def parse_pdf(file_path: str | Path, *, mode: str = "auto") -> str:
+def parse_pdf(file_path: str | Path) -> str:
     """將本地 PDF 轉為 LLM-ready Markdown。
 
-    使用 pymupdf4llm 做本地解析，支援文字型和掃描型 PDF。
+    使用 pymupdf4llm 做本地解析，自動處理文字型 PDF 和基本 layout 偵測。
 
     Args:
         file_path: PDF 檔案路徑
-        mode: 解析模式（目前僅影響 OCR 行為）
-              - "auto": 預設，自動偵測是否需要 OCR
-              - "fast": 純文字擷取，跳過 OCR
-              - "ocr": 強制對所有頁面做 OCR
 
     Returns:
         Markdown 格式的全文文字
@@ -43,7 +39,7 @@ def parse_pdf(file_path: str | Path, *, mode: str = "auto") -> str:
     except ImportError as e:
         raise RuntimeError("pymupdf4llm 未安裝。請執行：pip install pymupdf4llm") from e
 
-    logger.info(f"開始解析 PDF：{file_path.name}（mode={mode}）")
+    logger.info(f"開始解析 PDF：{file_path.name}")
 
     try:
         # pymupdf4llm.to_markdown() 回傳 LLM-ready markdown
