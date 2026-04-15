@@ -52,7 +52,11 @@
       "Edit(~/.claude/skills/article-compose-workspace/**)",
       "Bash(python -c ':*)",
       "Bash(curl -sL \"https://developers.reddit.com/docs/capabilities/server/reddit-api\")",
-      "Bash(ruff format:*)"
+      "Bash(ruff format:*)",
+      "Bash(powershell -Command \"Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile\\('f:\\\\nakama\\\\agents\\\\zoro\\\\pubmed_api.py', 'OnlyErrorDialogs', 'SendToRecycleBin'\\)\")",
+      "Bash(wc -l /f/nakama/agents/*/compose.py /f/nakama/agents/*/keyword_research.py)",
+      "Bash(powershell -Command \"Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory\\('f:\\\\nakama\\\\agents\\\\robin\\\\templates', 'OnlyErrorDialogs', 'SendToRecycleBin'\\)\")",
+      "Bash(powershell -Command \"Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile\\('f:\\\\nakama\\\\nakama-web.service', 'OnlyErrorDialogs', 'SendToRecycleBin'\\)\")"
     ],
     "deny": [
       "Bash(rm *)",

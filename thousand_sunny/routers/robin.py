@@ -1,16 +1,12 @@
-"""Robin Web UI — FastAPI app for interactive ingest."""
+"""Robin routes — KB ingest UI, reader, and search."""
 
 import asyncio
-import hashlib
-import hmac
-import json
-import os
 import shutil
 import time
 import uuid
 from pathlib import Path
 
-from fastapi import Cookie, FastAPI, Form, Header, HTTPException, Request
+from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
@@ -26,67 +22,20 @@ from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.utils import extract_frontmatter, read_text, slugify
+from thousand_sunny.auth import check_auth, make_token, require_auth_or_key, WEB_PASSWORD
+from thousand_sunny.helpers import safe_resolve, sse
 
-logger = get_logger("nakama.robin.web")
-
-
-# ── Path safety ───────────────────────────────────────────────────────────────
-
-
-def _safe_resolve(base: Path, user_input: str) -> Path:
-    """Resolve user-supplied filename against a base directory, rejecting traversal.
-
-    Raises HTTPException(403) if the resolved path escapes the base directory.
-    """
-    resolved = (base / user_input).resolve()
-    if not resolved.is_relative_to(base.resolve()):
-        raise HTTPException(403, detail="Access denied: path traversal detected")
-    return resolved
-
-
-# ── App setup ──────────────────────────────────────────────────────────────────
-
-app = FastAPI(docs_url=None, redoc_url=None)
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+logger = get_logger("nakama.web.robin")
+router = APIRouter()
+templates = Jinja2Templates(
+    directory=str(Path(__file__).resolve().parent.parent / "templates" / "robin")
+)
 pipeline = IngestPipeline()
 
-# ── Auth ───────────────────────────────────────────────────────────────────────
-
-WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
-WEB_SECRET = os.environ.get("WEB_SECRET", "")
-_DEV_MODE = not WEB_SECRET
-
-
-def _make_token(password: str) -> str:
-    return hmac.new(WEB_SECRET.encode(), password.encode(), hashlib.sha256).hexdigest()
-
-
-def _check_auth(auth_cookie: str | None) -> bool:
-    if not WEB_PASSWORD:
-        return True  # 未設定密碼時跳過驗證（本機開發用）
-    if not auth_cookie:
-        return False
-    return hmac.compare_digest(auth_cookie, _make_token(WEB_PASSWORD))
-
-
-def _check_key(key: str | None) -> bool:
-    """Accept X-Robin-Key header as alternative to cookie auth (for programmatic access)."""
-    if _DEV_MODE:
-        logger.warning("WEB_SECRET not set — API key auth disabled (dev mode)")
-        return True
-    return bool(key and hmac.compare_digest(key, WEB_SECRET))
-
-
-def _require_auth(robin_auth: str | None = Cookie(None)) -> str | None:
-    if not _check_auth(robin_auth):
-        raise HTTPException(status_code=302, headers={"Location": "/login"})
-    return robin_auth
-
-
-# ── Session store ──────────────────────────────────────────────────────────────
+# ── Session store ─────────────────────────────────────────────────────────────
 
 sessions: dict[str, dict] = {}
-SESSION_TTL = 7200  # 2 hours
+SESSION_TTL = 7200
 
 
 def _new_session(**kwargs) -> str:
@@ -109,15 +58,7 @@ def _cleanup_sessions():
         del sessions[k]
 
 
-# ── SSE helper ─────────────────────────────────────────────────────────────────
-
-
-def _sse(event: str, data: dict | str) -> str:
-    payload = json.dumps(data) if isinstance(data, dict) else data
-    return f"event: {event}\ndata: {payload}\n\n"
-
-
-# ── Vault helpers ──────────────────────────────────────────────────────────────
+# ── Vault helpers ─────────────────────────────────────────────────────────────
 
 
 def _get_inbox() -> Path:
@@ -146,50 +87,49 @@ def _get_inbox_files() -> list[dict]:
     return files
 
 
-# ── Routes ─────────────────────────────────────────────────────────────────────
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 
-@app.get("/login", response_class=HTMLResponse)
+@router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
-@app.post("/login")
+@router.post("/login")
 async def login(request: Request, password: str = Form(...)):
     if not WEB_PASSWORD or password == WEB_PASSWORD:
         response = RedirectResponse("/", status_code=302)
-        response.set_cookie("robin_auth", _make_token(password), httponly=True)
+        response.set_cookie("robin_auth", make_token(password), httponly=True)
         return response
     return templates.TemplateResponse(request, "login.html", {"error": "密碼錯誤"}, status_code=401)
 
 
-@app.post("/logout")
+@router.post("/logout")
 async def logout():
     response = RedirectResponse("/login", status_code=302)
     response.delete_cookie("robin_auth")
     return response
 
 
-@app.get("/", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
 async def index(request: Request, robin_auth: str | None = Cookie(None)):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     files = _get_inbox_files()
     return templates.TemplateResponse(request, "index.html", {"files": files})
 
 
-@app.get("/read", response_class=HTMLResponse)
+@router.get("/read", response_class=HTMLResponse)
 async def read_source(request: Request, file: str, robin_auth: str | None = Cookie(None)):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     inbox = _get_inbox()
-    file_path = _safe_resolve(inbox, file)
+    file_path = safe_resolve(inbox, file)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{file}")
     if file_path.suffix.lower() not in (".md", ".txt"):
         raise HTTPException(400, detail="此檔案格式不支援線上閱讀")
 
-    # 下載外部圖片，更新 markdown 連結（背景執行，不阻塞頁面載入）
     fetched = await asyncio.to_thread(fetch_images, file_path)
     if fetched:
         logger.info(f"已為 {file} 下載 {fetched} 張外部圖片")
@@ -197,7 +137,6 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
     content = read_text(file_path)
     frontmatter, body = extract_frontmatter(content)
 
-    # Reconstruct raw frontmatter text so JS can prepend it when saving
     frontmatter_raw = ""
     if frontmatter and content.startswith("---"):
         frontmatter_raw = content[: content.index("---", 3) + 3]
@@ -216,18 +155,15 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
     )
 
 
-@app.get("/files/{path:path}")
+@router.get("/files/{path:path}")
 async def serve_vault_file(path: str, robin_auth: str | None = Cookie(None)):
-    """提供 vault 中的圖片給 reader 顯示。
-
-    查找順序：vault/Files/{path} → vault/{path}（Obsidian 貼圖預設位置）。
-    """
-    if not _check_auth(robin_auth):
+    """提供 vault 中的圖片給 reader 顯示。"""
+    if not check_auth(robin_auth):
         raise HTTPException(403)
     vault = get_vault_path()
     for base_dir in (vault / "Files", vault):
         try:
-            candidate = _safe_resolve(base_dir, path)
+            candidate = safe_resolve(base_dir, path)
         except HTTPException:
             continue
         if candidate.exists() and candidate.is_file():
@@ -235,53 +171,52 @@ async def serve_vault_file(path: str, robin_auth: str | None = Cookie(None)):
     raise HTTPException(404)
 
 
-@app.post("/save-annotations")
+@router.post("/save-annotations")
 async def save_annotations(
     filename: str = Form(...),
     content: str = Form(...),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         raise HTTPException(403)
     inbox = _get_inbox()
-    file_path = _safe_resolve(inbox, filename)
+    file_path = safe_resolve(inbox, filename)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
     file_path.write_text(content, encoding="utf-8")
     return {"status": "ok"}
 
 
-@app.post("/mark-read")
+@router.post("/mark-read")
 async def mark_read(
     filename: str = Form(...),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         raise HTTPException(403)
     inbox = _get_inbox()
-    file_path = _safe_resolve(inbox, filename)
+    file_path = safe_resolve(inbox, filename)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
     mark_file_read(file_path)
     return {"status": "ok"}
 
 
-@app.post("/start")
+@router.post("/start")
 async def start(
     filename: str = Form(...),
     source_type: str = Form("article"),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
 
     inbox = _get_inbox()
-    file_path = _safe_resolve(inbox, filename)
+    file_path = safe_resolve(inbox, filename)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
 
     raw_dir = SOURCE_TYPE_TO_RAW_DIR.get(source_type, "Articles")
-
     raw_dest = get_vault_path() / "KB" / "Raw" / raw_dir / filename
     raw_dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(file_path, raw_dest)
@@ -307,13 +242,13 @@ async def start(
     return response
 
 
-@app.get("/processing", response_class=HTMLResponse)
+@router.get("/processing", response_class=HTMLResponse)
 async def processing(
     request: Request,
     robin_session: str | None = Cookie(None),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
@@ -326,18 +261,13 @@ async def processing(
     }
     label = step_labels.get(sess["step"], "處理中...")
     return templates.TemplateResponse(
-        request,
-        "processing.html",
-        {
-            "session_id": robin_session,
-            "label": label,
-        },
+        request, "processing.html", {"session_id": robin_session, "label": label}
     )
 
 
-@app.get("/events/{session_id}")
+@router.get("/events/{session_id}")
 async def events(session_id: str, robin_auth: str | None = Cookie(None)):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         raise HTTPException(403)
 
     sess = _get_session(session_id)
@@ -349,7 +279,7 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
             step = sess["step"]
 
             if step == "summarizing":
-                yield _sse("status", {"msg": "Robin 正在閱讀文件..."})
+                yield sse("status", {"msg": "Robin 正在閱讀文件..."})
 
                 content = read_text(Path(sess["raw_path"]))
                 title = Path(sess["raw_path"]).stem
@@ -364,7 +294,7 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 sess["_author"] = author
                 sess["_content"] = content
 
-                yield _sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
+                yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
                 summary = await asyncio.to_thread(
                     pipeline._generate_summary,
                     content=content,
@@ -405,11 +335,11 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 )
                 sess["summary_path"] = summary_path
                 sess["step"] = "awaiting_guidance"
-                yield _sse("done", {"redirect": "/review-summary"})
+                yield sse("done", {"redirect": "/review-summary"})
 
             elif step == "planning":
-                yield _sse("status", {"msg": "Robin 正在分析需要建立哪些概念頁面..."})
-                yield _sse("status", {"msg": "正在呼叫 Claude（約 10-20 秒）..."})
+                yield sse("status", {"msg": "Robin 正在分析需要建立哪些概念頁面..."})
+                yield sse("status", {"msg": "正在呼叫 Claude（約 10-20 秒）..."})
 
                 plan = await asyncio.to_thread(
                     pipeline._get_concept_plan,
@@ -419,28 +349,19 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 )
                 sess["plan"] = plan or {"create": [], "update": []}
                 sess["step"] = "awaiting_approval"
-                yield _sse("done", {"redirect": "/review-plan"})
+                yield sse("done", {"redirect": "/review-plan"})
 
             elif step == "executing":
                 creates = sess["plan"].get("create", [])
                 updates = sess["plan"].get("update", [])
                 total = len(creates) + len(updates)
-                yield _sse("status", {"msg": f"Robin 正在寫入 {total} 個 Wiki 頁面..."})
+                yield sse("status", {"msg": f"Robin 正在寫入 {total} 個 Wiki 頁面..."})
 
-                await asyncio.to_thread(
-                    pipeline._execute_plan,
-                    sess["plan"],
-                    sess["summary_path"],
-                )
+                await asyncio.to_thread(pipeline._execute_plan, sess["plan"], sess["summary_path"])
 
                 title = sess.get("_title", Path(sess["raw_path"]).stem)
                 slug = slugify(title)
-                await asyncio.to_thread(
-                    pipeline._update_index,
-                    title,
-                    slug,
-                    sess["source_type"],
-                )
+                await asyncio.to_thread(pipeline._update_index, title, slug, sess["source_type"])
 
                 mark_file_processed(Path(sess["file_path"]), "robin")
                 Path(sess["file_path"]).unlink(missing_ok=True)
@@ -450,36 +371,35 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                     "updated": [item["title"] for item in updates],
                 }
                 sess["step"] = "done"
-                yield _sse("done", {"redirect": "/done"})
+                yield sse("done", {"redirect": "/done"})
 
             elif step in ("awaiting_guidance", "awaiting_approval", "done"):
-                # 如果 SSE 被重新連線但已完成，直接跳轉
                 redirect_map = {
                     "awaiting_guidance": "/review-summary",
                     "awaiting_approval": "/review-plan",
                     "done": "/done",
                 }
-                yield _sse("done", {"redirect": redirect_map[step]})
+                yield sse("done", {"redirect": redirect_map[step]})
 
             else:
-                yield _sse("error", {"msg": f"未知狀態：{step}"})
+                yield sse("error", {"msg": f"未知狀態：{step}"})
 
         except Exception as e:
             logger.error(f"SSE error: {e}", exc_info=True)
             sess["step"] = "error"
             sess["error"] = str(e)
-            yield _sse("error", {"msg": str(e)})
+            yield sse("error", {"msg": str(e)})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-@app.get("/review-summary", response_class=HTMLResponse)
+@router.get("/review-summary", response_class=HTMLResponse)
 async def review_summary(
     request: Request,
     robin_session: str | None = Cookie(None),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_guidance":
@@ -487,20 +407,17 @@ async def review_summary(
     return templates.TemplateResponse(
         request,
         "review_summary.html",
-        {
-            "file_name": sess["file_name"],
-            "summary": sess["summary_body"],
-        },
+        {"file_name": sess["file_name"], "summary": sess["summary_body"]},
     )
 
 
-@app.post("/submit-guidance")
+@router.post("/submit-guidance")
 async def submit_guidance(
     guidance: str = Form(default=""),
     robin_session: str | None = Cookie(None),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
@@ -513,13 +430,13 @@ async def submit_guidance(
     return response
 
 
-@app.get("/review-plan", response_class=HTMLResponse)
+@router.get("/review-plan", response_class=HTMLResponse)
 async def review_plan(
     request: Request,
     robin_session: str | None = Cookie(None),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_approval":
@@ -538,13 +455,13 @@ async def review_plan(
     )
 
 
-@app.post("/execute")
+@router.post("/execute")
 async def execute(
     request: Request,
     robin_session: str | None = Cookie(None),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
@@ -575,13 +492,13 @@ async def execute(
     return response
 
 
-@app.get("/done", response_class=HTMLResponse)
+@router.get("/done", response_class=HTMLResponse)
 async def done(
     request: Request,
     robin_session: str | None = Cookie(None),
     robin_auth: str | None = Cookie(None),
 ):
-    if not _check_auth(robin_auth):
+    if not check_auth(robin_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "done":
@@ -597,179 +514,11 @@ async def done(
     )
 
 
-@app.post("/zoro/keyword-research")
-async def zoro_keyword_research(
-    topic: str = Form(...),
-    content_type: str = Form("youtube"),
-    en_topic: str = Form(""),
-    x_robin_key: str | None = Header(None),
-    robin_auth: str | None = Cookie(None),
-):
-    """Zoro keyword research: bilingual data from YouTube/Trends/Autocomplete.
-
-    Synthesize with Claude.
-    """
-    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    if not topic.strip():
-        raise HTTPException(status_code=400, detail="topic is required")
-    try:
-        from agents.zoro.keyword_research import research_keywords
-
-        result = await asyncio.to_thread(
-            research_keywords,
-            topic.strip(),
-            content_type,
-            en_topic.strip() or None,
-        )
-        return result
-    except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-
-@app.post("/kb/research")
+@router.post("/kb/research")
 async def kb_research(
     query: str = Form(...),
-    x_robin_key: str | None = Header(None),
-    robin_auth: str | None = Cookie(None),
+    _auth=Depends(require_auth_or_key),
 ):
-    """Search KB/Wiki for pages relevant to query.
-
-    Accepts cookie auth (browser session) OR X-Robin-Key header (programmatic access).
-    """
-    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
-        raise HTTPException(status_code=403, detail="Unauthorized")
+    """Search KB/Wiki for pages relevant to query."""
     results = await asyncio.to_thread(search_kb, query, get_vault_path())
     return {"results": results}
-
-
-# ---------------------------------------------------------------------------
-# Brook routes — 多回合文章撰寫助手
-# ---------------------------------------------------------------------------
-
-
-@app.get("/brook/chat", response_class=HTMLResponse)
-async def brook_chat_page(
-    request: Request,
-    robin_auth: str | None = Cookie(None),
-):
-    """Brook 聊天頁面。"""
-    if not _check_auth(robin_auth):
-        return RedirectResponse("/login", status_code=302)
-    return templates.TemplateResponse(request, "brook_chat.html", {})
-
-
-@app.post("/brook/start")
-async def brook_start(
-    topic: str = Form(...),
-    kb_query: str | None = Form(None),
-    x_robin_key: str | None = Header(None),
-    robin_auth: str | None = Cookie(None),
-):
-    """開始新的 Brook 對話。"""
-    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    if not topic.strip():
-        raise HTTPException(status_code=400, detail="topic is required")
-
-    # 可選：搜尋 KB 作為上下文
-    kb_context = ""
-    if kb_query and kb_query.strip():
-        try:
-            results = await asyncio.to_thread(search_kb, kb_query.strip(), get_vault_path())
-            if results:
-                kb_context = "\n".join(
-                    f"- **{r['title']}**（{r['type']}）：{r.get('relevance_reason', '')}"
-                    for r in results
-                )
-        except Exception:
-            pass  # KB 搜尋失敗不影響對話
-
-    try:
-        from agents.brook.compose import start_conversation
-
-        result = await asyncio.to_thread(start_conversation, topic.strip(), kb_context)
-        return result
-    except Exception as e:
-        logger.error(f"Brook start error: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail=str(e))
-
-
-@app.post("/brook/message")
-async def brook_message(
-    conversation_id: str = Form(...),
-    message: str = Form(...),
-    x_robin_key: str | None = Header(None),
-    robin_auth: str | None = Cookie(None),
-):
-    """在既有 Brook 對話中傳送訊息。"""
-    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    if not message.strip():
-        raise HTTPException(status_code=400, detail="message is required")
-
-    try:
-        from agents.brook.compose import send_message
-
-        result = await asyncio.to_thread(send_message, conversation_id, message.strip())
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Brook message error: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail=str(e))
-
-
-@app.get("/brook/conversations")
-async def brook_list_conversations(
-    x_robin_key: str | None = Header(None),
-    robin_auth: str | None = Cookie(None),
-):
-    """列出最近的 Brook 對話。"""
-    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-    from agents.brook.compose import get_conversations
-
-    result = await asyncio.to_thread(get_conversations)
-    return {"conversations": result}
-
-
-@app.get("/brook/conversation/{conversation_id}")
-async def brook_get_conversation(
-    conversation_id: str,
-    x_robin_key: str | None = Header(None),
-    robin_auth: str | None = Cookie(None),
-):
-    """載入完整 Brook 對話。"""
-    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-    from agents.brook.compose import get_conversation
-
-    result = await asyncio.to_thread(get_conversation, conversation_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    return result
-
-
-@app.post("/brook/export/{conversation_id}")
-async def brook_export(
-    conversation_id: str,
-    x_robin_key: str | None = Header(None),
-    robin_auth: str | None = Cookie(None),
-):
-    """匯出 Brook 對話為文章初稿。"""
-    if not (_check_auth(robin_auth) or _check_key(x_robin_key)):
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-    try:
-        from agents.brook.compose import export_draft
-
-        draft = await asyncio.to_thread(export_draft, conversation_id)
-        return {"draft": draft}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Brook export error: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail=str(e))

@@ -1,5 +1,5 @@
 [Unit]
-Description=Nakama Robin Web UI
+Description=Nakama Thousand Sunny Web Server
 After=network.target
 
 [Service]
@@ -7,7 +7,7 @@ User=root
 WorkingDirectory=/home/nakama
 Environment="PYTHONPATH=/home/nakama"
 EnvironmentFile=/home/nakama/.env
-ExecStart=/usr/bin/python3 -m uvicorn agents.robin.web:app --host 0.0.0.0 --port 8000
+ExecStart=/usr/bin/python3 -m uvicorn thousand_sunny.app:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=5
 
