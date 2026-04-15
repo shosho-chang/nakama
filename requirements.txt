@@ -20,6 +20,7 @@ pytrends>=4.9.0                    # Google Trends (unofficial)
 
 # Transcription (post-processing)
 opencc-python-reimplemented>=0.1.7
+pypinyin>=0.51                     # LLM 校正：拼音輔助同音字辨識
 # ASR (GPU 環境另裝): pip install funasr torch torchaudio
 
 # Utilities
@@ -31,3 +32,7 @@ fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 jinja2>=3.1.0
 python-multipart>=0.0.9
+
+# Slack Gateway
+slack-bolt>=1.18.0
+slack-sdk>=3.27.0

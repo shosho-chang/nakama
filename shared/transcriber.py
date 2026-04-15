@@ -3,11 +3,12 @@
 獨立模組，可被任何 agent 調用。
 支援 Auphonic 雲端前處理（normalization + 降噪）、
 FunASR 本地辨識（VAD + 時間戳 + 標點 + Hotword），
-以及可選的 LLM 校正。
+以及可選的 LLM 校正（Pinyin 輔助 + JSON diff + QC 報告）。
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -110,6 +111,108 @@ def _load_context_text(context_files: list[str | Path]) -> str:
     return "\n\n".join(parts)
 
 
+def _add_pinyin(text: str) -> str:
+    """為中文文字加上拼音標注，輔助 LLM 辨識同音字。
+
+    範例：'蘇味行銷' → '蘇味行銷 (sū wèi xíng xiāo)'
+    純英文或純數字不加 pinyin。
+    """
+    if not re.search(r"[\u4e00-\u9fff]", text):
+        return text
+    from pypinyin import Style, pinyin
+
+    py = " ".join(p[0] for p in pinyin(text, style=Style.TONE))
+    return f"{text} ({py})"
+
+
+def _extract_project_context(project_file: str | Path) -> dict:
+    """從 LifeOS Podcast Project 檔案提取校正 context。
+
+    解析 YAML frontmatter 取得 guest、category，
+    並提取 Research Dropbox、Script、Keywords Research 等 section 的純文字。
+    跳過 DataviewJS / Templater code blocks。
+
+    Returns:
+        dict: guest_name, topic, context_text
+    """
+    p = Path(project_file)
+    if not p.exists():
+        logger.warning(f"Project 檔案不存在：{p}")
+        return {"guest_name": "", "topic": "", "context_text": ""}
+
+    raw = p.read_text(encoding="utf-8")
+    result: dict = {
+        "guest_name": "",
+        "topic": p.stem,  # 檔名即主題
+        "context_text": "",
+    }
+
+    # ── 解析 frontmatter ──
+    fm_match = re.match(r"^---\s*\n(.*?)\n---", raw, re.DOTALL)
+    if fm_match:
+        fm_text = fm_match.group(1)
+        for line in fm_text.splitlines():
+            if line.startswith("guest:"):
+                result["guest_name"] = line.split(":", 1)[1].strip()
+            elif line.startswith("search_topic:"):
+                val = line.split(":", 1)[1].strip()
+                if val:
+                    result["topic"] = val
+
+    # ── 提取有用 section（跳過 code blocks）──
+    useful_sections = {
+        "Research Dropbox",
+        "Script",
+        "Keywords Research",
+        "Description",
+        "Description / Show Notes",
+        "專案筆記",
+    }
+
+    sections_text: list[str] = []
+    in_code_block = False
+    capturing = False
+
+    for line in raw.splitlines():
+        # code block 狀態機
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
+        # 跳過 Templater 區塊
+        if line.strip().startswith("<%"):
+            continue
+
+        # 偵測 section header
+        header_match = re.match(r"^##\s+(?:[^\w]*\s*)?(.+)", line)
+        if header_match:
+            section_name = header_match.group(1).strip()
+            # 移除 emoji prefix
+            section_name = re.sub(r"^[\U0001f300-\U0001f9ff\s]+", "", section_name).strip()
+            capturing = any(s in section_name for s in useful_sections)
+            continue
+
+        if capturing and line.strip():
+            sections_text.append(line.strip())
+
+    result["context_text"] = "\n".join(sections_text)
+    return result
+
+
+def _write_qc_report(path: Path, uncertainties: list[dict]) -> None:
+    """將不確定修正寫成 Markdown QC 報告。"""
+    lines = ["# QC 報告 — 需人工確認\n"]
+    for item in uncertainties:
+        risk = item.get("risk", "medium")
+        lines.append(f"## [{risk.upper()}] Line {item.get('line', '?')}")
+        lines.append(f"- **原文**：{item.get('original', '')}")
+        lines.append(f"- **建議**：{item.get('suggestion', '')}")
+        lines.append(f"- **理由**：{item.get('reason', '')}")
+        lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def _extract_srt_texts(srt_content: str) -> list[tuple[int, str]]:
     """從 SRT 內容中提取 (序號, 文字) 列表，跳過時間戳和空行。"""
     entries: list[tuple[int, str]] = []
@@ -171,55 +274,124 @@ def _correct_with_llm(
     srt_content: str,
     *,
     context_files: list[str | Path],
-    model: str = "claude-haiku-4-5-20251001",
-) -> str:
-    """用 Claude 一次讀完整份逐字稿，統一校正。
+    project_context: dict | None = None,
+    model: str = "claude-opus-4-20250918",
+    host_name: str = "",
+    show_name: str = "",
+) -> tuple[str, list[dict]]:
+    """用 Claude 校正 ASR 逐字稿（Pinyin 輔助 + JSON diff + 三輪校對）。
 
-    策略：將整份 SRT 的文字行（帶序號）一次送給 Claude，
-    連同使用者提供的 context（書、報導、人名等），
-    讓 Claude 在理解全文的前提下統一修正專有名詞和錯字。
+    策略：
+    1. 帶 pinyin 的逐字稿讓 Claude 同時看到語義和語音
+    2. 三輪校對思路：機械校正 → 語意校正 → 交付檢核
+    3. JSON diff 輸出：只回傳有改的行 + 不確定修正清單
+
+    Returns:
+        tuple: (corrected_srt, uncertainties)
     """
     from shared.anthropic_client import ask_claude
 
-    # 提取文字行
     entries = _extract_srt_texts(srt_content)
     if not entries:
         logger.warning("SRT 無文字行，跳過 LLM 校正")
-        return srt_content
+        return srt_content, []
 
-    # 組裝編號文字
-    numbered_text = "\n".join(f"[{seq}] {text}" for seq, text in entries)
+    # ── 帶 pinyin 的編號文字 ──
+    numbered_lines = []
+    for seq, text in entries:
+        numbered_lines.append(f"[{seq}] {_add_pinyin(text)}")
+    numbered_text = "\n".join(numbered_lines)
 
-    # 載入 context
-    context_text = _load_context_text(context_files)
+    # ── 組裝 context ──
+    context_parts: list[str] = []
 
-    system = (
-        "你是字幕校正專家。你的任務是校正語音辨識（ASR）產生的繁體中文逐字稿。\n\n"
-        "## 校正規則\n"
-        "1. 修正 ASR 常見錯誤：同音字、斷句錯誤、漏字\n"
-        "2. 專有名詞必須全文統一（人名、書名、術語、品牌名）\n"
-        "3. 保持口語自然感，不要改成書面語\n"
-        "4. 不要增刪內容，只修正錯誤\n"
-        "5. 每行的序號 [N] 必須保留，不可合併或拆分行\n\n"
-        "## 輸出格式\n"
-        "逐行輸出，格式與輸入相同：\n"
-        "[序號] 校正後的文字\n\n"
-        "只輸出校正後的內容，不要加任何說明。\n"
-        "如果某行不需要修改，原樣輸出即可。"
+    # Project context（自動從 LifeOS Project 提取）
+    if project_context:
+        guest = project_context.get("guest_name", "")
+        topic = project_context.get("topic", "")
+        proj_text = project_context.get("context_text", "")
+        if guest:
+            context_parts.append(f"來賓姓名：{guest}")
+        if topic:
+            context_parts.append(f"主題：{topic}")
+        if proj_text:
+            context_parts.append(f"背景資料：\n{proj_text[:3000]}")
+
+    # 手動 context files
+    manual_context = _load_context_text(context_files)
+    if manual_context:
+        context_parts.append(manual_context)
+
+    # ── System Prompt ──
+    system = "你是資深繁體中文（台灣）字幕校正專家，專精 Podcast 訪談字幕。\n"
+
+    if host_name or show_name:
+        system += "\n## 節目資訊\n"
+        if show_name:
+            system += f"- 節目名稱：{show_name}\n"
+        if host_name:
+            system += f"- 主持人：{host_name}\n"
+
+    system += (
+        "\n## 任務\n"
+        "校正語音辨識（ASR）產出的逐字稿。每行格式為 [序號] 文字 (拼音)。\n"
+        "拼音是原始文字的讀音，可幫助你判斷 ASR 的同音字錯誤。\n"
+        "\n## 三輪校對思路（在心中依序執行，最終只輸出結果）\n"
+        "1. 機械校正：同音字/近音字替換、繁體用字統一、術語表比對\n"
+        "2. 語意校正：上下文不通順、人名/稱謂前後不一致、英文專有名詞修正\n"
+        "3. 交付檢核：專有名詞全文一致性、確認沒有過度修改\n"
+        "\n## 核心原則\n"
+        "- 不改變原意、不新增內容\n"
+        "- 術語表/參考資料的寫法為最高優先\n"
+        "- 保持口語自然感，不改成書面語\n"
+        "- 不確定的修正必須放入 uncertain 清單，不要硬改\n"
+        "\n## 輸出格式（嚴格 JSON，不要加 ```json 標記）\n"
+        "{\n"
+        '  "corrections": {"序號": "校正後文字", ...},\n'
+        '  "uncertain": [\n'
+        '    {"line": 序號, "original": "原文", "suggestion": "建議", '
+        '"reason": "判斷理由", "risk": "high|medium|low"}\n'
+        "  ]\n"
+        "}\n\n"
+        "只輸出 JSON，不要加任何說明。corrections 只包含有修改的行。"
     )
 
-    if context_text:
-        system += (
-            "\n\n## 參考資料\n"
-            "以下是這次訪談相關的背景資料，用於判斷正確的專有名詞拼寫：\n\n" + context_text
-        )
+    if context_parts:
+        system += "\n\n## 參考資料\n" + "\n\n".join(context_parts)
 
     prompt = f"請校正以下語音辨識逐字稿：\n\n{numbered_text}"
 
     logger.info(f"LLM 校正：{len(entries)} 行，模型 {model}")
-    raw = ask_claude(prompt, system=system, model=model, max_tokens=8192, temperature=0.1)
+    raw = ask_claude(prompt, system=system, model=model, max_tokens=16384, temperature=0.1)
 
-    # 解析回傳
+    # ── 解析 JSON 回傳 ──
+    corrected, uncertainties = _parse_llm_response(raw, len(entries))
+
+    if corrected:
+        logger.info(f"LLM 校正完成：{len(corrected)} 行修正，{len(uncertainties)} 項待確認")
+    else:
+        logger.warning("LLM 校正無修改")
+
+    return _replace_srt_texts(srt_content, corrected), uncertainties
+
+
+def _parse_llm_response(raw: str, total_entries: int) -> tuple[dict[int, str], list[dict]]:
+    """解析 LLM 校正回傳，支援 JSON 格式 + regex fallback。"""
+    # 嘗試 JSON 解析
+    try:
+        # 移除可能的 markdown code fence
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```\s*$", "", cleaned)
+        data = json.loads(cleaned)
+        corrections = {int(k): v for k, v in data.get("corrections", {}).items()}
+        uncertainties = data.get("uncertain", [])
+        return corrections, uncertainties
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        logger.warning("JSON 解析失敗，嘗試 regex fallback")
+
+    # Fallback: 原本的 [N] text 格式
     corrected: dict[int, str] = {}
     for line in raw.strip().splitlines():
         match = re.match(r"\[(\d+)\]\s*(.*)", line)
@@ -231,11 +403,8 @@ def _correct_with_llm(
 
     if not corrected:
         logger.warning("LLM 校正回傳無法解析，使用原始文字")
-        return srt_content
 
-    logger.info(f"LLM 校正完成：{len(corrected)}/{len(entries)} 行已處理")
-
-    return _replace_srt_texts(srt_content, corrected)
+    return corrected, []
 
 
 def _get_ts_values(ts_item) -> tuple[int, int]:
@@ -456,12 +625,15 @@ def transcribe(
     *,
     language: str = "zh",
     context_files: list[str | Path] | None = None,
+    project_file: str | Path | None = None,
     use_punctuation: bool = False,
     use_llm_correction: bool = False,
-    llm_model: str = "claude-haiku-4-5-20251001",
+    llm_model: str = "claude-opus-4-20250918",
     asr_model: str = "paraformer-zh",
     normalize_audio: bool = True,
     output_dir: str | Path | None = None,
+    host_name: str = "張修修",
+    show_name: str = "不正常人類研究所",
 ) -> Path:
     """語音轉繁體中文 SRT 字幕。
 
@@ -469,12 +641,15 @@ def transcribe(
         audio_path: 音檔路徑（MP3, WAV, M4A 等）
         language: 語言代碼（預設 "zh"）
         context_files: 參考資料檔案路徑列表（書、報導等），用於提升專有名詞準確度
+        project_file: LifeOS Podcast Project 檔案路徑，自動提取來賓/主題/術語 context
         use_punctuation: 是否保留標點符號（預設 False）
         use_llm_correction: 是否啟用 LLM 校正（預設 False，啟用會產生 API 成本）
-        llm_model: LLM 校正使用的模型（預設 Haiku，~$0.09/小時音檔）
+        llm_model: LLM 校正使用的模型（預設 Opus，~$0.40/小時音檔）
         asr_model: FunASR 模型 ID（預設 paraformer-zh）
         normalize_audio: 是否先用 Auphonic 做 normalization（預設 True）
         output_dir: 輸出目錄（預設與音檔同目錄）
+        host_name: 主持人名稱（預設「張修修」）
+        show_name: 節目名稱（預設「不正常人類研究所」）
 
     Returns:
         SRT 字幕檔的 Path
@@ -531,11 +706,19 @@ def transcribe(
 
     # ── LLM 校正（可選）──
     if use_llm_correction:
-        srt_content = _correct_with_llm(
+        proj_ctx = _extract_project_context(project_file) if project_file else None
+        srt_content, uncertainties = _correct_with_llm(
             srt_content,
             context_files=context_files,
+            project_context=proj_ctx,
             model=llm_model,
+            host_name=host_name,
+            show_name=show_name,
         )
+        if uncertainties:
+            qc_path = output_dir / f"{audio_path.stem}.qc.md"
+            _write_qc_report(qc_path, uncertainties)
+            logger.info(f"QC 報告：{len(uncertainties)} 項待確認 → {qc_path}")
 
     # ── 寫入最終 SRT ──
     final_srt = output_dir / f"{audio_path.stem}.srt"

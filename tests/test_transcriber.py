@@ -9,17 +9,21 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.transcriber import (
+    _add_pinyin,
     _correct_with_llm,
     _extract_hotwords,
+    _extract_project_context,
     _extract_srt_texts,
     _funasr_to_srt,
     _get_ts_values,
+    _parse_llm_response,
     _process_srt_line,
     _remove_punctuation,
     _replace_srt_texts,
     _seconds_to_srt_ts,
     _split_sentences,
     _to_traditional,
+    _write_qc_report,
 )
 
 # ── 時間戳轉換 ──
@@ -163,21 +167,24 @@ def test_replace_srt_texts_no_changes():
 
 
 def test_correct_with_llm_basic():
-    """測試 LLM 校正的完整流程（mock ask_claude）。"""
-    mock_response = "[1] 這是第一句\n[2] NMN是一種重要的分子\n[3] 李大華博士的研究"
+    """測試 LLM 校正的完整流程（mock ask_claude，JSON 格式回傳）。"""
+    mock_response = '{"corrections": {"2": "NMN是一種重要的分子"}, "uncertain": []}'
 
     with patch("shared.anthropic_client.ask_claude", return_value=mock_response):
-        result = _correct_with_llm(_SAMPLE_SRT, context_files=[], model="claude-haiku-4-5-20251001")
+        result, uncertainties = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], model="claude-opus-4-20250918"
+        )
 
     assert "NMN是一種重要的分子" in result
-    # 時間戳應保留
     assert "00:00:05,000 --> 00:00:10,000" in result
+    assert uncertainties == []
 
 
 def test_correct_with_llm_empty_srt():
     """空 SRT 應直接回傳，不呼叫 Claude。"""
-    result = _correct_with_llm("", context_files=[])
+    result, uncertainties = _correct_with_llm("", context_files=[])
     assert result == ""
+    assert uncertainties == []
 
 
 def test_correct_with_llm_with_context(tmp_path):
@@ -185,11 +192,10 @@ def test_correct_with_llm_with_context(tmp_path):
     ctx = tmp_path / "book.md"
     ctx.write_text("《NMN革命》作者李大華博士", encoding="utf-8")
 
-    mock_response = "[1] 這是第一句\n[2] NMN是一種重要的分子\n[3] 李大華博士的研究"
+    mock_response = '{"corrections": {"2": "NMN是一種重要的分子"}, "uncertain": []}'
 
     with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
         _correct_with_llm(_SAMPLE_SRT, context_files=[str(ctx)])
-        # 確認 system prompt 包含 context
         call_kwargs = mock_ask.call_args
         assert "李大華" in call_kwargs.kwargs["system"]
 
@@ -433,9 +439,285 @@ def test_transcribe_normalize_failure_continues(tmp_path):
     assert result.exists()
 
 
+def test_transcribe_with_llm_correction_writes_qc(tmp_path):
+    """transcribe() 開 LLM 校正 + uncertainties 時產出 .qc.md。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    mock_model = MagicMock()
+    mock_model.generate.return_value = [{"text": "测试文字。", "timestamp": [[0, 1000]]}]
+
+    mock_response = (
+        '{"corrections": {}, "uncertain": ['
+        '{"line": 1, "original": "測試文字", "suggestion": "測試問題",'
+        ' "reason": "語意不確定", "risk": "medium"}'
+        "]}"
+    )
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+    ):
+        from shared.transcriber import transcribe
+
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,
+            use_llm_correction=True,
+        )
+
+    assert result.exists()
+    qc_path = tmp_path / "test.qc.md"
+    assert qc_path.exists()
+    qc_content = qc_path.read_text(encoding="utf-8")
+    assert "MEDIUM" in qc_content
+    assert "測試問題" in qc_content
+
+
 def test_transcribe_file_not_found():
     """音檔不存在應 raise FileNotFoundError。"""
     from shared.transcriber import transcribe
 
     with pytest.raises(FileNotFoundError, match="音檔不存在"):
         transcribe("/nonexistent/audio.mp3")
+
+
+# ── Pinyin 輔助 ──
+
+
+def test_add_pinyin_chinese():
+    result = _add_pinyin("你好")
+    assert "你好" in result
+    assert "(" in result
+    assert "nǐ hǎo" in result
+
+
+def test_add_pinyin_english_only():
+    assert _add_pinyin("Hello World") == "Hello World"
+
+
+def test_add_pinyin_mixed():
+    result = _add_pinyin("NAD+是好的")
+    assert "NAD+是好的" in result
+    assert "(" in result
+
+
+def test_add_pinyin_empty():
+    assert _add_pinyin("") == ""
+
+
+# ── LLM 回傳解析 ──
+
+
+def test_parse_llm_response_json():
+    raw = '{"corrections": {"1": "修正文字", "3": "另一個修正"}, "uncertain": []}'
+    corrections, uncertainties = _parse_llm_response(raw, 5)
+    assert corrections == {1: "修正文字", 3: "另一個修正"}
+    assert uncertainties == []
+
+
+def test_parse_llm_response_json_with_uncertain():
+    raw = (
+        '{"corrections": {"2": "數位行銷"}, '
+        '"uncertain": [{"line": 5, "original": "原文", '
+        '"suggestion": "建議", "reason": "不確定", "risk": "high"}]}'
+    )
+    corrections, uncertainties = _parse_llm_response(raw, 10)
+    assert corrections == {2: "數位行銷"}
+    assert len(uncertainties) == 1
+    assert uncertainties[0]["risk"] == "high"
+
+
+def test_parse_llm_response_json_with_code_fence():
+    raw = '```json\n{"corrections": {"1": "修正"}, "uncertain": []}\n```'
+    corrections, uncertainties = _parse_llm_response(raw, 3)
+    assert corrections == {1: "修正"}
+
+
+def test_parse_llm_response_fallback_regex():
+    """JSON 解析失敗時 fallback 到 regex。"""
+    raw = "[1] 這是第一句\n[2] NMN是一種重要的分子"
+    corrections, uncertainties = _parse_llm_response(raw, 3)
+    assert corrections == {1: "這是第一句", 2: "NMN是一種重要的分子"}
+    assert uncertainties == []
+
+
+def test_parse_llm_response_unparseable():
+    """完全無法解析時回傳空。"""
+    raw = "這是一段無法解析的回傳"
+    corrections, uncertainties = _parse_llm_response(raw, 3)
+    assert corrections == {}
+    assert uncertainties == []
+
+
+# ── LLM 校正進階 ──
+
+
+def test_correct_with_llm_with_uncertainties():
+    """測試 uncertain 項目正確回傳。"""
+    mock_response = (
+        '{"corrections": {"2": "NMN是一種重要的分子"}, '
+        '"uncertain": [{"line": 3, "original": "李大華博士的研究", '
+        '"suggestion": "李大花博士的研究", "reason": "人名不確定", "risk": "high"}]}'
+    )
+
+    with patch("shared.anthropic_client.ask_claude", return_value=mock_response):
+        result, uncertainties = _correct_with_llm(_SAMPLE_SRT, context_files=[])
+
+    assert "NMN是一種重要的分子" in result
+    assert len(uncertainties) == 1
+    assert uncertainties[0]["line"] == 3
+    assert uncertainties[0]["risk"] == "high"
+
+
+def test_correct_with_llm_host_show_name():
+    """host_name/show_name 出現在 system prompt。"""
+    mock_response = '{"corrections": {}, "uncertain": []}'
+
+    with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
+        _correct_with_llm(
+            _SAMPLE_SRT,
+            context_files=[],
+            host_name="張修修",
+            show_name="不正常人類研究所",
+        )
+        call_kwargs = mock_ask.call_args
+        system = call_kwargs.kwargs["system"]
+        assert "張修修" in system
+        assert "不正常人類研究所" in system
+
+
+def test_correct_with_llm_pinyin_in_prompt():
+    """確認 prompt 中包含拼音標注。"""
+    mock_response = '{"corrections": {}, "uncertain": []}'
+
+    with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
+        _correct_with_llm(_SAMPLE_SRT, context_files=[])
+        call_args = mock_ask.call_args
+        prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
+        # SRT 包含中文，prompt 應有拼音
+        assert "(" in prompt
+
+
+def test_correct_with_llm_project_context():
+    """帶 project_context 的校正。"""
+    mock_response = '{"corrections": {}, "uncertain": []}'
+    proj_ctx = {
+        "guest_name": "陳博士",
+        "topic": "NMN 抗老化",
+        "context_text": "NMN 是一種 NAD+ 前驅物",
+    }
+
+    with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
+        _correct_with_llm(_SAMPLE_SRT, context_files=[], project_context=proj_ctx)
+        call_kwargs = mock_ask.call_args
+        system = call_kwargs.kwargs["system"]
+        assert "陳博士" in system
+        assert "NMN 抗老化" in system
+
+
+# ── QC 報告 ──
+
+
+def test_write_qc_report(tmp_path):
+    qc_path = tmp_path / "test.qc.md"
+    uncertainties = [
+        {
+            "line": 5,
+            "original": "蘇味行銷",
+            "suggestion": "數位行銷",
+            "reason": "同音字",
+            "risk": "high",
+        },
+        {
+            "line": 12,
+            "original": "某個詞",
+            "suggestion": "另一個詞",
+            "reason": "語意推測",
+            "risk": "low",
+        },
+    ]
+    _write_qc_report(qc_path, uncertainties)
+
+    content = qc_path.read_text(encoding="utf-8")
+    assert "# QC 報告" in content
+    assert "[HIGH] Line 5" in content
+    assert "蘇味行銷" in content
+    assert "數位行銷" in content
+    assert "[LOW] Line 12" in content
+
+
+# ── Project Context 提取 ──
+
+
+def test_extract_project_context_podcast(tmp_path):
+    """從 podcast project 檔案正確提取 guest、topic、sections。"""
+    proj = tmp_path / "NMN抗老化.md"
+    proj.write_text(
+        "---\n"
+        "type: project\n"
+        "content_type: podcast\n"
+        "guest: 陳博士\n"
+        "category: 健康\n"
+        "---\n"
+        "\n"
+        "# NMN抗老化\n"
+        "\n"
+        "## Research Dropbox\n"
+        "\n"
+        "NMN 是 NAD+ 的前驅物，可延緩老化。\n"
+        "\n"
+        "## Script\n"
+        "\n"
+        "Q1: 什麼是 NMN？\n"
+        "Q2: 誰適合補充？\n"
+        "\n"
+        "## 不相關的區塊\n"
+        "\n"
+        "這段不應該被提取。\n",
+        encoding="utf-8",
+    )
+
+    result = _extract_project_context(str(proj))
+    assert result["guest_name"] == "陳博士"
+    assert result["topic"] == "NMN抗老化"
+    assert "NAD+" in result["context_text"]
+    assert "什麼是 NMN" in result["context_text"]
+    assert "不應該被提取" not in result["context_text"]
+
+
+def test_extract_project_context_skips_codeblocks(tmp_path):
+    """DataviewJS code blocks 被跳過。"""
+    proj = tmp_path / "test.md"
+    proj.write_text(
+        "---\n"
+        "guest: 王醫師\n"
+        "---\n"
+        "\n"
+        "## Script\n"
+        "\n"
+        "重要的訪談大綱\n"
+        "\n"
+        "```dataviewjs\n"
+        "const x = dv.current();\n"
+        "這不應該被提取\n"
+        "```\n"
+        "\n"
+        "大綱繼續\n",
+        encoding="utf-8",
+    )
+
+    result = _extract_project_context(str(proj))
+    assert result["guest_name"] == "王醫師"
+    assert "重要的訪談大綱" in result["context_text"]
+    assert "dv.current" not in result["context_text"]
+    assert "大綱繼續" in result["context_text"]
+
+
+def test_extract_project_context_missing_file():
+    """檔案不存在時回傳空 dict。"""
+    result = _extract_project_context("/nonexistent/project.md")
+    assert result["guest_name"] == ""
+    assert result["topic"] == ""
+    assert result["context_text"] == ""
