@@ -56,12 +56,17 @@ class IngestPipeline:
     ) -> None:
         """執行完整 ingest pipeline。"""
         # 讀取來源內容
-        content = read_text(raw_path)
+        if raw_path.suffix.lower() == ".pdf":
+            from shared.pdf_parser import parse_pdf
+
+            content = parse_pdf(raw_path)
+        else:
+            content = read_text(raw_path)
         title = raw_path.stem
         author = ""
 
         # 嘗試從 frontmatter 提取 metadata
-        if raw_path.suffix == ".md":
+        if raw_path.suffix.lower() == ".md":
             fm, body = extract_frontmatter(content)
             title = fm.get("title", title)
             author = fm.get("author", "")
@@ -166,6 +171,9 @@ class IngestPipeline:
         print()
         return guidance
 
+    # 大文件閾值（超過此字元數啟用 Map-Reduce）
+    LARGE_DOC_THRESHOLD = 30000
+
     def _generate_summary(
         self,
         content: str,
@@ -173,18 +181,96 @@ class IngestPipeline:
         author: str,
         source_type: str,
     ) -> str:
-        """呼叫 Claude 產出 Source Summary。"""
-        prompt = load_prompt(
-            "robin",
-            "summarize",
+        """產出 Source Summary。小文件直接用 Sonnet，大文件走 Map-Reduce。"""
+        if len(content) <= self.LARGE_DOC_THRESHOLD:
+            # 現有流程：直接用 Sonnet
+            prompt = load_prompt(
+                "robin",
+                "summarize",
+                title=title,
+                author=author or "未知",
+                source_type=source_type,
+                date=str(date.today()),
+                content=_truncate_at_boundary(content, 30000),
+            )
+            return ask_claude(prompt, system=_build_robin_system_prompt())
+
+        # 大文件：Map-Reduce
+        return self._map_reduce_summary(
+            content=content,
             title=title,
             author=author or "未知",
             source_type=source_type,
-            date=str(date.today()),
-            content=_truncate_at_boundary(content, 30000),
         )
 
-        return ask_claude(prompt, system=_build_robin_system_prompt())
+    def _map_reduce_summary(
+        self,
+        content: str,
+        title: str,
+        author: str,
+        source_type: str,
+    ) -> str:
+        """Map-Reduce 摘要：分段用本地模型，合併用 Sonnet。"""
+        from agents.robin.chunker import chunk_document
+
+        chunks = chunk_document(content)
+        logger.info(f"大文件 Map-Reduce：{len(chunks)} chunks，{len(content):,} 字元")
+
+        # 決定 Map 階段使用的推理函式
+        ask_fn = self._get_map_ask_fn()
+
+        # Map：每個 chunk 獨立摘要（單一 chunk 失敗不中斷整個流程）
+        system = _build_robin_system_prompt()
+        chunk_summaries = []
+        for chunk in chunks:
+            prompt = load_prompt(
+                "robin",
+                "summarize_chunk",
+                chunk_index=str(chunk["index"]),
+                total_chunks=str(len(chunks)),
+                title=title,
+                heading=chunk["heading"],
+                content=chunk["text"],
+            )
+            try:
+                summary = ask_fn(prompt, system=system)
+            except Exception as e:
+                logger.error(f"  chunk {chunk['index']}/{len(chunks)} 失敗：{e}")
+                summary = f"（此段落摘要失敗：{chunk['heading']}）"
+            chunk_summaries.append(summary)
+            logger.info(f"  chunk {chunk['index']}/{len(chunks)} 完成（{len(summary)} 字元）")
+
+        # Reduce：合併所有 chunk 摘要（用 Sonnet 確保最終品質）
+        combined = "\n\n---\n\n".join(
+            f"### 段落 {i + 1}：{chunks[i]['heading']}\n{s}" for i, s in enumerate(chunk_summaries)
+        )
+
+        reduce_prompt = load_prompt(
+            "robin",
+            "reduce_summary",
+            title=title,
+            author=author,
+            source_type=source_type,
+            total_chunks=str(len(chunks)),
+            chunk_summaries=combined,
+        )
+
+        return ask_claude(reduce_prompt, system=system)
+
+    @staticmethod
+    def _get_map_ask_fn():
+        """取得 Map 階段的推理函式：優先本地模型，fallback 到 Sonnet。"""
+        try:
+            from shared.local_llm import ask_local, is_server_available
+
+            if is_server_available():
+                logger.info("Map 階段使用本地 LLM")
+                return ask_local
+        except ImportError:
+            pass
+
+        logger.warning("本地 LLM 不可用，Map 階段改用 Sonnet API（費用較高）")
+        return ask_claude
 
     def _get_concept_plan(
         self, summary_body: str, source_path: str, user_guidance: str = ""

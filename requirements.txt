@@ -23,6 +23,9 @@ opencc-python-reimplemented>=0.1.7
 pypinyin>=0.51                     # LLM 校正：拼音輔助同音字辨識
 # ASR (GPU 環境另裝): pip install funasr torch torchaudio
 
+# PDF parsing
+pymupdf4llm>=1.27
+
 # Utilities
 python-dateutil>=2.9
 psutil>=5.9.0              # Franky: system health checks (disk/memory)

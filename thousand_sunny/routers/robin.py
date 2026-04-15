@@ -281,8 +281,15 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
             if step == "summarizing":
                 yield sse("status", {"msg": "Robin 正在閱讀文件..."})
 
-                content = read_text(Path(sess["raw_path"]))
-                title = Path(sess["raw_path"]).stem
+                raw = Path(sess["raw_path"])
+                if raw.suffix.lower() == ".pdf":
+                    from shared.pdf_parser import parse_pdf
+
+                    yield sse("status", {"msg": "正在解析 PDF..."})
+                    content = await asyncio.to_thread(parse_pdf, raw)
+                else:
+                    content = read_text(raw)
+                title = raw.stem
                 author = ""
                 if Path(sess["raw_path"]).suffix == ".md":
                     fm, body = extract_frontmatter(content)
@@ -294,7 +301,21 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 sess["_author"] = author
                 sess["_content"] = content
 
-                yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
+                is_large = len(content) > pipeline.LARGE_DOC_THRESHOLD
+                if is_large:
+                    from agents.robin.chunker import chunk_document
+
+                    n_chunks = len(chunk_document(content))
+                    yield sse(
+                        "status",
+                        {
+                            "msg": f"偵測到大文件（{len(content):,} 字），"
+                            f"將分 {n_chunks} 段 Map-Reduce 摘要，請耐心等候..."
+                        },
+                    )
+                else:
+                    yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
+
                 summary = await asyncio.to_thread(
                     pipeline._generate_summary,
                     content=content,
