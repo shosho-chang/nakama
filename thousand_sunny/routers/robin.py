@@ -281,8 +281,15 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
             if step == "summarizing":
                 yield sse("status", {"msg": "Robin 正在閱讀文件..."})
 
-                content = read_text(Path(sess["raw_path"]))
-                title = Path(sess["raw_path"]).stem
+                raw = Path(sess["raw_path"])
+                if raw.suffix.lower() == ".pdf":
+                    from shared.pdf_parser import parse_pdf
+
+                    yield sse("status", {"msg": "正在解析 PDF..."})
+                    content = await asyncio.to_thread(parse_pdf, raw)
+                else:
+                    content = read_text(raw)
+                title = raw.stem
                 author = ""
                 if Path(sess["raw_path"]).suffix == ".md":
                     fm, body = extract_frontmatter(content)
@@ -294,13 +301,25 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 sess["_author"] = author
                 sess["_content"] = content
 
-                yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
+                # 進度回報：大文件時會多次回報 Map-Reduce 進度
+                progress_messages = []
+
+                def _progress(msg):
+                    progress_messages.append(msg)
+
+                is_large = len(content) > pipeline.LARGE_DOC_THRESHOLD
+                if is_large:
+                    yield sse("status", {"msg": "偵測到大文件，啟動 Map-Reduce 摘要..."})
+                else:
+                    yield sse("status", {"msg": "正在呼叫 Claude 產出摘要（約 10-30 秒）..."})
+
                 summary = await asyncio.to_thread(
                     pipeline._generate_summary,
                     content=content,
                     title=title,
                     author=author,
                     source_type=sess["source_type"],
+                    progress_callback=_progress,
                 )
                 sess["summary_body"] = summary
 

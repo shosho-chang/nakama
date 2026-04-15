@@ -58,6 +58,11 @@ agents:
     trigger: manual
     style_profile: config/style-profile.json
 
+local_llm:
+  base_url: "http://localhost:8080/v1"
+  model: "gemma-4-26b-a4b"
+  timeout: 300  # 本地推理 timeout（秒）
+
 gateway:
   slack:
     channels:

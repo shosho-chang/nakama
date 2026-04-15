@@ -21,6 +21,9 @@ dependencies = [
     "opencc-python-reimplemented>=0.1.7",
     "pypinyin>=0.51",
 
+    # PDF parsing
+    "pymupdf4llm>=1.27",
+
     # Utilities
     "python-dateutil>=2.9",
     "psutil>=5.9.0",
