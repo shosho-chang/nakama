@@ -357,12 +357,40 @@ def _split_sentences(text: str) -> list[str]:
                 if len(clause) <= _MAX_SUBTITLE_CHARS:
                     result.append(clause)
                 else:
-                    # Step 3: 強制斷行
-                    for i in range(0, len(clause), _MAX_SUBTITLE_CHARS):
-                        chunk = clause[i : i + _MAX_SUBTITLE_CHARS]
-                        if chunk.strip():
-                            result.append(chunk)
+                    # Step 3: 強制斷行（不切斷英文單字）
+                    result.extend(_force_break(clause, _MAX_SUBTITLE_CHARS))
     return result
+
+
+def _force_break(text: str, max_chars: int) -> list[str]:
+    """強制斷行，但不切斷英文單字。
+
+    遇到英文字詞時，往前找最近的中文字元或空格斷行。
+    如果整段都是英文且超過上限，則在空格處斷。
+    """
+    chunks: list[str] = []
+    while len(text) > max_chars:
+        cut = max_chars
+        # 如果切點落在英文字母中間，往前找安全斷點
+        if cut < len(text) and re.match(r"[a-zA-Z]", text[cut]):
+            # 往前找非英文字母的位置
+            safe = cut
+            while safe > 0 and re.match(r"[a-zA-Z]", text[safe - 1]):
+                safe -= 1
+            if safe > 0:
+                cut = safe
+            else:
+                # 整段開頭都是英文，往後找單字結尾
+                cut = max_chars
+                while cut < len(text) and re.match(r"[a-zA-Z]", text[cut]):
+                    cut += 1
+        chunk = text[:cut].strip()
+        if chunk:
+            chunks.append(chunk)
+        text = text[cut:].strip()
+    if text.strip():
+        chunks.append(text.strip())
+    return chunks
 
 
 def _split_by_pattern(pattern: re.Pattern, text: str) -> list[str]:
