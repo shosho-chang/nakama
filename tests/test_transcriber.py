@@ -1,24 +1,24 @@
 """shared/transcriber.py 單元測試。
 
-測試不需要 GPU 或 openlrc 安裝的輔助函式。
+測試不需要 GPU 或 FunASR 安裝的輔助函式。
 整合測試（實際轉寫）需要 GPU 環境，標記為 slow。
 """
 
-from textwrap import dedent
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from shared.transcriber import (
-    _build_initial_prompt,
     _correct_with_llm,
     _extract_hotwords,
     _extract_srt_texts,
-    _lrc_to_srt,
+    _funasr_to_srt,
+    _get_ts_values,
     _process_srt_line,
     _remove_punctuation,
     _replace_srt_texts,
     _seconds_to_srt_ts,
+    _split_sentences,
     _to_traditional,
 )
 
@@ -100,25 +100,6 @@ def test_process_srt_line_punctuation_only():
 # ── Context 處理 ──
 
 
-def test_build_initial_prompt_no_files():
-    result = _build_initial_prompt([])
-    assert "繁體中文" in result
-
-
-def test_build_initial_prompt_with_files(tmp_path):
-    ctx = tmp_path / "context.txt"
-    ctx.write_text("這本書討論了 NAD+ 和 NMN 的作用", encoding="utf-8")
-
-    result = _build_initial_prompt([str(ctx)])
-    assert "NAD+" in result
-    assert "繁體中文" in result
-
-
-def test_build_initial_prompt_missing_file():
-    result = _build_initial_prompt(["/nonexistent/file.txt"])
-    assert "繁體中文" in result
-
-
 def test_extract_hotwords(tmp_path):
     ctx = tmp_path / "context.txt"
     ctx.write_text("《人體簡史》是一本好書，「NMN」是重要的分子", encoding="utf-8")
@@ -183,9 +164,6 @@ def test_replace_srt_texts_no_changes():
 
 def test_correct_with_llm_basic():
     """測試 LLM 校正的完整流程（mock ask_claude）。"""
-    from unittest.mock import patch
-
-    # Claude 回傳校正後的文字
     mock_response = "[1] 這是第一句\n[2] NMN是一種重要的分子\n[3] 李大華博士的研究"
 
     with patch("shared.anthropic_client.ask_claude", return_value=mock_response):
@@ -204,8 +182,6 @@ def test_correct_with_llm_empty_srt():
 
 def test_correct_with_llm_with_context(tmp_path):
     """帶 context 檔案的校正。"""
-    from unittest.mock import patch
-
     ctx = tmp_path / "book.md"
     ctx.write_text("《NMN革命》作者李大華博士", encoding="utf-8")
 
@@ -218,87 +194,247 @@ def test_correct_with_llm_with_context(tmp_path):
         assert "李大華" in call_kwargs.kwargs["system"]
 
 
-# ── LRC → SRT 轉換 ──
+# ── FunASR 時間戳解析 ──
 
 
-def test_lrc_to_srt(tmp_path):
-    lrc = tmp_path / "test.lrc"
-    lrc.write_text(
-        dedent("""\
-            [00:05.00] 第一句話
-            [00:10.50] 第二句話
-            [00:15.00] 第三句話
-        """),
-        encoding="utf-8",
-    )
-
-    srt = _lrc_to_srt(lrc)
-    assert "1\n00:00:05,000 --> 00:00:10,500\n第一句話" in srt
-    assert "2\n00:00:10,500 --> 00:00:15,000\n第二句話" in srt
-    assert "3\n00:00:15,000 --> 00:00:18,000\n第三句話" in srt  # 最後一句 +3s
+def test_get_ts_values_list():
+    assert _get_ts_values([100, 200]) == (100, 200)
 
 
-def test_lrc_to_srt_empty(tmp_path):
-    lrc = tmp_path / "empty.lrc"
-    lrc.write_text("", encoding="utf-8")
-    assert _lrc_to_srt(lrc) == ""
+def test_get_ts_values_tuple():
+    assert _get_ts_values((100, 200)) == (100, 200)
 
 
-# ── transcribe() 主函式（mock openlrc）──
+def test_get_ts_values_dict():
+    assert _get_ts_values({"start_time": 100, "end_time": 200}) == (100, 200)
+
+
+# ── 句子拆分 ──
+
+
+def test_split_sentences_basic():
+    sentences = _split_sentences("今天天氣真好。我們去散步吧。")
+    assert sentences == ["今天天氣真好。", "我們去散步吧。"]
+
+
+def test_split_sentences_mixed_punctuation():
+    sentences = _split_sentences("你好嗎？我很好！謝謝。")
+    assert sentences == ["你好嗎？", "我很好！", "謝謝。"]
+
+
+def test_split_sentences_no_punctuation():
+    sentences = _split_sentences("沒有句尾標點的文字")
+    assert sentences == ["沒有句尾標點的文字"]
+
+
+def test_split_sentences_empty():
+    assert _split_sentences("") == []
+
+
+# ── FunASR → SRT 轉換 ──
+
+
+def test_funasr_to_srt_with_sentence_info():
+    """有 sentence_info 時，直接用它。"""
+    results = [
+        {
+            "text": "今天天氣真好。我們去散步吧。",
+            "sentence_info": [
+                {"text": "今天天氣真好。", "start": 380, "end": 1560},
+                {"text": "我們去散步吧。", "start": 1780, "end": 3200},
+            ],
+        }
+    ]
+    srt = _funasr_to_srt(results)
+
+    assert "1\n00:00:00,380 --> 00:00:01,560\n今天天氣真好。" in srt
+    assert "2\n00:00:01,780 --> 00:00:03,200\n我們去散步吧。" in srt
+
+
+def test_funasr_to_srt_with_aligned_timestamps():
+    """沒有 sentence_info，但 timestamps 與句子數量一致。"""
+    results = [
+        {
+            "text": "今天天氣真好。我們去散步吧。",
+            "timestamp": [[380, 1560], [1780, 3200]],
+        }
+    ]
+    srt = _funasr_to_srt(results)
+
+    assert "1\n00:00:00,380 --> 00:00:01,560\n今天天氣真好。" in srt
+    assert "2\n00:00:01,780 --> 00:00:03,200\n我們去散步吧。" in srt
+
+
+def test_funasr_to_srt_with_dict_timestamps():
+    """時間戳是 dict 格式。"""
+    results = [
+        {
+            "text": "測試文字。",
+            "timestamp": [{"start_time": 500, "end_time": 2000}],
+        }
+    ]
+    srt = _funasr_to_srt(results)
+
+    assert "00:00:00,500 --> 00:00:02,000" in srt
+    assert "測試文字。" in srt
+
+
+def test_funasr_to_srt_unaligned_timestamps():
+    """timestamps 數量與句子數不一致，用首尾包整段。"""
+    results = [
+        {
+            "text": "一段很長的文字沒有標點",
+            "timestamp": [[100, 200], [300, 400], [500, 1000]],
+        }
+    ]
+    srt = _funasr_to_srt(results)
+
+    assert "00:00:00,100 --> 00:00:01,000" in srt
+    assert "一段很長的文字沒有標點" in srt
+
+
+def test_funasr_to_srt_no_timestamps():
+    """沒有時間戳，用 00:00:00 佔位。"""
+    results = [{"text": "只有文字沒有時間戳"}]
+    srt = _funasr_to_srt(results)
+
+    assert "00:00:00,000 --> 00:00:00,000" in srt
+    assert "只有文字沒有時間戳" in srt
+
+
+def test_funasr_to_srt_empty():
+    assert _funasr_to_srt([]) == ""
+    assert _funasr_to_srt([{"text": ""}]) == ""
+
+
+def test_funasr_to_srt_multiple_items():
+    """多個結果項（VAD 切出的多段）。"""
+    results = [
+        {
+            "text": "第一段。",
+            "timestamp": [[0, 2000]],
+        },
+        {
+            "text": "第二段。",
+            "timestamp": [[3000, 5000]],
+        },
+    ]
+    srt = _funasr_to_srt(results)
+
+    assert "1\n" in srt
+    assert "2\n" in srt
+    assert "第一段。" in srt
+    assert "第二段。" in srt
+
+
+# ── transcribe() 主函式（mock FunASR）──
 
 
 def test_transcribe_basic(tmp_path):
-    """測試 transcribe() 的整合流程（mock openlrc）。"""
-    import sys
-    import types
-
+    """測試 transcribe() 的整合流程（mock FunASR + 跳過 Auphonic）。"""
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
-    # openlrc 會產生 .lrc 檔案
-    lrc_output = tmp_path / "test.lrc"
-    lrc_output.write_text(
-        "[00:01.00] 这是简体中文的测试\n[00:05.00] 软件开发很有趣\n",
-        encoding="utf-8",
-    )
+    # Mock FunASR model
+    mock_model = MagicMock()
+    mock_model.generate.return_value = [
+        {
+            "text": "这是简体中文的测试。软件开发很有趣。",
+            "timestamp": [[1000, 3000], [3500, 6000]],
+        }
+    ]
 
-    # 建立 fake openlrc module
-    fake_openlrc = types.ModuleType("openlrc")
-    mock_lrcer = MagicMock()
-    # run() 回傳路徑列表
-    mock_lrcer.run.return_value = [str(lrc_output)]
-    fake_openlrc.LRCer = MagicMock(return_value=mock_lrcer)
-    fake_openlrc.TranscriptionConfig = MagicMock()
-    fake_openlrc.TranslationConfig = MagicMock()
-    fake_openlrc.ModelConfig = MagicMock()
-    fake_openlrc.ModelProvider = MagicMock()
-    sys.modules["openlrc"] = fake_openlrc
-
-    try:
-        import importlib
-
-        import shared.transcriber
-
-        importlib.reload(shared.transcriber)
+    with patch("shared.transcriber._get_asr_model", return_value=mock_model):
         from shared.transcriber import transcribe
 
-        result = transcribe(str(audio), output_dir=str(tmp_path))
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,  # 跳過 Auphonic
+        )
 
-        assert result.suffix == ".srt"
-        assert result.exists()
+    assert result.suffix == ".srt"
+    assert result.exists()
 
-        content = result.read_text(encoding="utf-8")
-        # 應已轉為繁體
-        assert "這是簡體中文的測試" in content
-        # 預設無標點 — 中文標點應被移除
-        assert "，" not in content
-        assert "。" not in content
-    finally:
-        del sys.modules["openlrc"]
+    content = result.read_text(encoding="utf-8")
+    # 應已轉為繁體
+    assert "這是簡體中文的測試" in content
+    # 預設無標點 — 中文標點應被移除
+    assert "，" not in content
+    assert "。" not in content
+
+
+def test_transcribe_with_punctuation(tmp_path):
+    """use_punctuation=True 時保留標點。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    mock_model = MagicMock()
+    mock_model.generate.return_value = [
+        {
+            "text": "今天天气真好。",
+            "timestamp": [[0, 2000]],
+        }
+    ]
+
+    with patch("shared.transcriber._get_asr_model", return_value=mock_model):
+        from shared.transcriber import transcribe
+
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,
+            use_punctuation=True,
+        )
+
+    content = result.read_text(encoding="utf-8")
+    assert "。" in content
+
+
+def test_transcribe_with_normalize(tmp_path):
+    """normalize_audio=True 時呼叫 Auphonic。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    normalized = tmp_path / "test_normalized.wav"
+    normalized.write_bytes(b"normalized audio")
+
+    mock_model = MagicMock()
+    mock_model.generate.return_value = [{"text": "测试。", "timestamp": [[0, 1000]]}]
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("shared.auphonic.normalize", return_value=normalized) as mock_normalize,
+    ):
+        from shared.transcriber import transcribe
+
+        transcribe(str(audio), output_dir=str(tmp_path), normalize_audio=True)
+
+    mock_normalize.assert_called_once()
+
+
+def test_transcribe_normalize_failure_continues(tmp_path):
+    """Auphonic 失敗時應繼續用原始音檔。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    mock_model = MagicMock()
+    mock_model.generate.return_value = [{"text": "测试。", "timestamp": [[0, 1000]]}]
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("shared.auphonic.normalize", side_effect=ValueError("No credits")),
+    ):
+        from shared.transcriber import transcribe
+
+        result = transcribe(str(audio), output_dir=str(tmp_path), normalize_audio=True)
+
+    # 即使 Auphonic 失敗，仍應產出 SRT
+    assert result.exists()
 
 
 def test_transcribe_file_not_found():
-    """音檔不存在應 raise FileNotFoundError（不需要 openlrc）。"""
+    """音檔不存在應 raise FileNotFoundError。"""
     from shared.transcriber import transcribe
 
     with pytest.raises(FileNotFoundError, match="音檔不存在"):

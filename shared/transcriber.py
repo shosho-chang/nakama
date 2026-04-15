@@ -1,8 +1,9 @@
-"""語音轉繁體中文字幕：基於 openlrc + faster-whisper 的本地 ASR pipeline。
+"""語音轉繁體中文字幕：基於 FunASR Paraformer-zh 的本地 ASR pipeline。
 
 獨立模組，可被任何 agent 調用。
-支援 context 注入（提升專有名詞準確度）和可選的 LLM 校正。
-LLM 校正使用 shared/anthropic_client.py，不依賴 openlrc 的 chatbot 模組。
+支援 Auphonic 雲端前處理（normalization + 降噪）、
+FunASR 本地辨識（VAD + 時間戳 + 標點 + Hotword），
+以及可選的 LLM 校正。
 """
 
 from __future__ import annotations
@@ -17,11 +18,18 @@ logger = get_logger("nakama.transcriber")
 # 中文標點符號 pattern（用於標點移除）
 _ZH_PUNCTUATION = re.compile(r"[，。！？、；：" "''（）《》【】…—～·]")
 
+# 中文句尾標點（用於拆分句子）
+_SENTENCE_END = re.compile(r"([。！？])")
+
 # SRT 時間戳格式
 _SRT_TS_FMT = "{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 # OpenCC lazy singleton（避免重複載入字典）
 _cc_s2t = None
+
+# FunASR model lazy singleton
+_asr_model = None
+_asr_model_id = None
 
 
 def _get_cc():
@@ -51,30 +59,6 @@ def _remove_punctuation(text: str) -> str:
 def _to_traditional(text: str) -> str:
     """簡體中文轉繁體中文（使用 OpenCC lazy singleton）。"""
     return _get_cc().convert(text)
-
-
-def _build_initial_prompt(context_files: list[str | Path]) -> str:
-    """從 context 檔案中提取內容，組成 initial_prompt。
-
-    讀取每個檔案的前 500 字作為 context，幫助 Whisper 辨識專有名詞。
-    """
-    if not context_files:
-        return "以下是繁體中文的內容。"
-
-    snippets = []
-    for fpath in context_files:
-        p = Path(fpath)
-        if not p.exists():
-            logger.warning(f"Context file not found: {fpath}")
-            continue
-        text = p.read_text(encoding="utf-8")[:500]
-        snippets.append(text)
-
-    if not snippets:
-        return "以下是繁體中文的內容。"
-
-    combined = "\n".join(snippets)
-    return f"以下是繁體中文的內容。相關背景資料：{combined}"
 
 
 def _extract_hotwords(context_files: list[str | Path]) -> list[str]:
@@ -184,8 +168,6 @@ def _correct_with_llm(
     策略：將整份 SRT 的文字行（帶序號）一次送給 Claude，
     連同使用者提供的 context（書、報導、人名等），
     讓 Claude 在理解全文的前提下統一修正專有名詞和錯字。
-
-    使用 shared/anthropic_client.py，不依賴 openlrc。
     """
     from shared.anthropic_client import ask_claude
 
@@ -246,37 +228,96 @@ def _correct_with_llm(
     return _replace_srt_texts(srt_content, corrected)
 
 
-def _lrc_to_srt(lrc_path: Path) -> str:
-    """將 LRC 格式轉為 SRT 格式字串。
+def _get_ts_values(ts_item) -> tuple[int, int]:
+    """從時間戳項目中取得 (start_ms, end_ms)。
 
-    LRC 格式：[MM:SS.xx] 文字
-    SRT 格式：序號 + 時間區間 + 文字
+    FunASR 時間戳格式可能是：
+    - List/tuple: [start_ms, end_ms]
+    - Dict: {"start_time": ms, "end_time": ms}
     """
-    lines = lrc_path.read_text(encoding="utf-8").strip().splitlines()
-    entries: list[tuple[float, str]] = []
+    if isinstance(ts_item, dict):
+        return ts_item["start_time"], ts_item["end_time"]
+    return ts_item[0], ts_item[1]
 
-    for line in lines:
-        match = re.match(r"\[(\d+):(\d+\.\d+)\]\s*(.*)", line)
-        if match:
-            minutes = int(match.group(1))
-            seconds = float(match.group(2))
-            text = match.group(3).strip()
-            if text:
-                entries.append((minutes * 60 + seconds, text))
 
-    if not entries:
-        logger.warning(f"LRC 檔案無有效字幕行：{lrc_path}")
-        return ""
+def _funasr_to_srt(results: list[dict]) -> str:
+    """將 FunASR 辨識結果轉為 SRT 格式字串。
 
+    FunASR 輸出格式：[{"text": "...", "timestamp": [[start_ms, end_ms], ...]}]
+    若有 sentence_info 則用它（包含 per-sentence text + timestamps）。
+    """
     srt_parts: list[str] = []
-    for i, (start, text) in enumerate(entries, 1):
-        # 結束時間 = 下一句開始時間，最後一句 +3 秒
-        end = entries[i][0] if i < len(entries) else start + 3.0
-        srt_parts.append(
-            f"{i}\n{_seconds_to_srt_ts(start)} --> {_seconds_to_srt_ts(end)}\n{text}\n"
-        )
+    seq = 1
+
+    for item in results:
+        text = item.get("text", "").strip()
+        if not text:
+            continue
+
+        # 優先使用 sentence_info（含逐句文字 + 時間戳）
+        sentence_info = item.get("sentence_info")
+        if sentence_info:
+            for info in sentence_info:
+                s_text = info.get("text", "").strip()
+                if not s_text:
+                    continue
+                start_s = info["start"] / 1000
+                end_s = info["end"] / 1000
+                start_ts = _seconds_to_srt_ts(start_s)
+                end_ts = _seconds_to_srt_ts(end_s)
+                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{s_text}\n")
+                seq += 1
+            continue
+
+        # Fallback: 用 timestamp 陣列
+        timestamps = item.get("timestamp", [])
+        if not timestamps:
+            # 沒有時間戳，整段當一個字幕
+            srt_parts.append(f"{seq}\n00:00:00,000 --> 00:00:00,000\n{text}\n")
+            seq += 1
+            continue
+
+        # 用句尾標點拆分文字，對齊 timestamps
+        # FunASR with punc model: timestamps 與句子一一對應
+        sentences = _split_sentences(text)
+
+        if len(sentences) == len(timestamps):
+            # 完美對齊：每句配一個 timestamp
+            for sentence, ts in zip(sentences, timestamps):
+                start_ms, end_ms = _get_ts_values(ts)
+                start_ts = _seconds_to_srt_ts(start_ms / 1000)
+                end_ts = _seconds_to_srt_ts(end_ms / 1000)
+                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{sentence}\n")
+                seq += 1
+        else:
+            # 數量不對齊：用首尾 timestamp 包整段
+            start_ms, _ = _get_ts_values(timestamps[0])
+            _, end_ms = _get_ts_values(timestamps[-1])
+            start_ts = _seconds_to_srt_ts(start_ms / 1000)
+            end_ts = _seconds_to_srt_ts(end_ms / 1000)
+            srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{text}\n")
+            seq += 1
 
     return "\n".join(srt_parts)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """用中文句尾標點（。！？）拆分文字，保留標點。"""
+    parts = _SENTENCE_END.split(text)
+    sentences: list[str] = []
+    i = 0
+    while i < len(parts):
+        segment = parts[i]
+        # 句尾標點黏回前一段
+        if i + 1 < len(parts) and _SENTENCE_END.match(parts[i + 1]):
+            segment += parts[i + 1]
+            i += 2
+        else:
+            i += 1
+        segment = segment.strip()
+        if segment:
+            sentences.append(segment)
+    return sentences
 
 
 def _process_srt_line(line: str, *, use_punctuation: bool) -> str:
@@ -299,6 +340,26 @@ def _process_srt_line(line: str, *, use_punctuation: bool) -> str:
     return line
 
 
+def _get_asr_model(model_id: str):
+    """取得 FunASR 模型（lazy singleton，避免重複載入）。"""
+    global _asr_model, _asr_model_id
+
+    if _asr_model is not None and _asr_model_id == model_id:
+        return _asr_model
+
+    from funasr import AutoModel
+
+    logger.info(f"載入 FunASR 模型: {model_id}")
+    _asr_model = AutoModel(
+        model=model_id,
+        vad_model="fsmn-vad",
+        punc_model="ct-punc-c",
+    )
+    _asr_model_id = model_id
+    logger.info("FunASR 模型載入完成")
+    return _asr_model
+
+
 def transcribe(
     audio_path: str | Path,
     *,
@@ -307,10 +368,9 @@ def transcribe(
     use_punctuation: bool = False,
     use_llm_correction: bool = False,
     llm_model: str = "claude-haiku-4-5-20251001",
-    whisper_model: str = "large-v3",
-    compute_type: str = "int8",
+    asr_model: str = "paraformer-zh",
+    normalize_audio: bool = True,
     output_dir: str | Path | None = None,
-    noise_suppress: bool = False,
 ) -> Path:
     """語音轉繁體中文 SRT 字幕。
 
@@ -321,10 +381,9 @@ def transcribe(
         use_punctuation: 是否保留標點符號（預設 False）
         use_llm_correction: 是否啟用 LLM 校正（預設 False，啟用會產生 API 成本）
         llm_model: LLM 校正使用的模型（預設 Haiku，~$0.09/小時音檔）
-        whisper_model: Whisper 模型大小（tiny/base/small/medium/large-v3）
-        compute_type: 計算精度（int8/float16/float32）
+        asr_model: FunASR 模型 ID（預設 paraformer-zh）
+        normalize_audio: 是否先用 Auphonic 做 normalization（預設 True）
         output_dir: 輸出目錄（預設與音檔同目錄）
-        noise_suppress: 是否啟用降噪（需要額外依賴）
 
     Returns:
         SRT 字幕檔的 Path
@@ -333,75 +392,53 @@ def transcribe(
     if not audio_path.exists():
         raise FileNotFoundError(f"音檔不存在：{audio_path}")
 
-    from openlrc import LRCer, TranscriptionConfig
-
     context_files = context_files or []
     output_dir = Path(output_dir) if output_dir else audio_path.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"開始轉寫：{audio_path.name}")
-    logger.info(f"模型：{whisper_model}（{compute_type}），語言：{language}")
-    if context_files:
-        logger.info(f"Context 檔案：{len(context_files)} 個")
 
-    # ── 組裝 ASR 設定 ──
-    initial_prompt = _build_initial_prompt(context_files)
+    # ── Auphonic 前處理（可選）──
+    if normalize_audio:
+        try:
+            from shared.auphonic import normalize
+
+            audio_path = normalize(audio_path, output_dir=output_dir)
+            logger.info(f"Auphonic normalization 完成：{audio_path.name}")
+        except Exception as e:
+            logger.warning(f"跳過 Auphonic normalization: {e}")
+
+    # ── FunASR 辨識 ──
+    model = _get_asr_model(asr_model)
+
     hotwords = _extract_hotwords(context_files)
-
-    asr_options: dict = {
-        "language": language,
-        "initial_prompt": initial_prompt,
-        "beam_size": 5,
-        "word_timestamps": True,
-        "condition_on_previous_text": True,
-    }
+    hotword_str = " ".join(hotwords) if hotwords else ""
     if hotwords:
-        # faster-whisper 的 hotwords 參數是 string，用空格分隔
-        asr_options["hotwords"] = " ".join(hotwords)
-        logger.info(f"Hotwords：{hotwords[:10]}{'...' if len(hotwords) > 10 else ''}")
+        logger.info(f"Hotwords: {hotwords[:10]}{'...' if len(hotwords) > 10 else ''}")
 
-    transcription_config = TranscriptionConfig(
-        whisper_model=whisper_model,
-        compute_type=compute_type,
-        asr_options=asr_options,
+    logger.info(f"開始 ASR 辨識（模型: {asr_model}）")
+    results = model.generate(
+        input=str(audio_path),
+        batch_size_s=300,
+        hotword=hotword_str,
     )
 
-    # ── 執行轉寫（僅 ASR，不使用 openlrc 的 LLM 翻譯）──
-    lrcer = LRCer(transcription=transcription_config)
+    if not results or not results[0].get("text"):
+        raise RuntimeError("FunASR 辨識結果為空")
 
-    result_paths = lrcer.run(
-        str(audio_path),
-        target_lang=language,
-        noise_suppress=noise_suppress,
-        skip_trans=True,
-    )
+    logger.info(f"ASR 辨識完成，文字長度: {len(results[0]['text'])}")
 
-    # ── 找到 openlrc 的輸出檔案 ──
-    if result_paths:
-        source_path = Path(result_paths[0])
-        srt_content = source_path.read_text(encoding="utf-8")
-        if source_path.suffix == ".lrc":
-            srt_content = _lrc_to_srt(source_path)
-    else:
-        lrc_output = audio_path.with_suffix(".lrc")
-        srt_output = audio_path.with_suffix(".srt")
+    # ── 轉為 SRT ──
+    srt_content = _funasr_to_srt(results)
 
-        if srt_output.exists():
-            srt_content = srt_output.read_text(encoding="utf-8")
-        elif lrc_output.exists():
-            srt_content = _lrc_to_srt(lrc_output)
-        else:
-            raise FileNotFoundError(
-                f"openlrc 未產生預期的輸出檔案（找不到 {lrc_output} 或 {srt_output}）"
-            )
-
-    # ── 後處理：逐行簡轉繁 + 標點控制（只作用於字幕文字行）──
+    # ── 後處理：逐行簡轉繁 + 標點控制 ──
     processed_lines = [
         _process_srt_line(line, use_punctuation=use_punctuation)
         for line in srt_content.splitlines()
     ]
     srt_content = "\n".join(processed_lines)
 
-    # ── LLM 校正（可選）：一次讀完整份逐字稿，統一校正 ──
+    # ── LLM 校正（可選）──
     if use_llm_correction:
         srt_content = _correct_with_llm(
             srt_content,
@@ -410,15 +447,8 @@ def transcribe(
         )
 
     # ── 寫入最終 SRT ──
-    output_dir.mkdir(parents=True, exist_ok=True)
     final_srt = output_dir / f"{audio_path.stem}.srt"
     final_srt.write_text(srt_content, encoding="utf-8")
-
-    # 清理 openlrc 的中間檔案（LRC 和原始 SRT）
-    for suffix in (".lrc", ".srt"):
-        intermediate = audio_path.with_suffix(suffix)
-        if intermediate.exists() and intermediate != final_srt:
-            intermediate.unlink()
 
     logger.info(f"完成！SRT 已儲存：{final_srt}")
     return final_srt
