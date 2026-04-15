@@ -41,7 +41,7 @@ def test_seconds_to_srt_ts_hours():
 
 
 def test_remove_punctuation_chinese():
-    assert _remove_punctuation("你好，世界！") == "你好世界"
+    assert _remove_punctuation("你好，世界！") == "你好 世界"
 
 
 def test_remove_punctuation_keeps_english():
@@ -49,7 +49,7 @@ def test_remove_punctuation_keeps_english():
 
 
 def test_remove_punctuation_mixed():
-    assert _remove_punctuation("NAD+是一種，重要的coenzyme。") == "NAD+是一種重要的coenzyme"
+    assert _remove_punctuation("NAD+是一種，重要的coenzyme。") == "NAD+是一種 重要的coenzyme"
 
 
 # ── 簡轉繁 ──

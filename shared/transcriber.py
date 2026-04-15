@@ -15,11 +15,19 @@ from shared.log import get_logger
 
 logger = get_logger("nakama.transcriber")
 
-# 中文標點符號 pattern（用於標點移除）
-_ZH_PUNCTUATION = re.compile(r"[，。！？、；：" "''（）《》【】…—～·]")
+# 中文句中標點 → 替換為空格
+_ZH_MID_PUNCTUATION = re.compile(r"[，、；：" "''（）《》【】…—～·]")
+# 中文句尾標點 → 直接移除
+_ZH_END_PUNCTUATION = re.compile(r"[。！？]")
 
 # 中文句尾標點（用於拆分句子）
 _SENTENCE_END = re.compile(r"([。！？])")
+
+# 中文逗號等次級斷點（用於長句再拆分）
+_CLAUSE_BREAK = re.compile(r"([，、；：])")
+
+# 字幕每行最大字數
+_MAX_SUBTITLE_CHARS = 20
 
 # SRT 時間戳格式
 _SRT_TS_FMT = "{h:02d}:{m:02d}:{s:02d},{ms:03d}"
@@ -52,8 +60,10 @@ def _seconds_to_srt_ts(seconds: float) -> str:
 
 
 def _remove_punctuation(text: str) -> str:
-    """移除中文標點符號，保留英文標點和空格。"""
-    return _ZH_PUNCTUATION.sub("", text)
+    """中文句中標點→空格，句尾標點→移除，再壓縮連續空格。"""
+    text = _ZH_MID_PUNCTUATION.sub(" ", text)
+    text = _ZH_END_PUNCTUATION.sub("", text)
+    return re.sub(r" {2,}", " ", text).strip()
 
 
 def _to_traditional(text: str) -> str:
@@ -244,7 +254,11 @@ def _funasr_to_srt(results: list[dict]) -> str:
     """將 FunASR 辨識結果轉為 SRT 格式字串。
 
     FunASR 輸出格式：[{"text": "...", "timestamp": [[start_ms, end_ms], ...]}]
-    若有 sentence_info 則用它（包含 per-sentence text + timestamps）。
+
+    時間戳類型：
+    - sentence_info: per-sentence（最佳，直接用）
+    - 字級時間戳: len(timestamps) ≈ len(text)，用句尾標點拆分並對齊
+    - 句級時間戳: len(timestamps) == len(sentences)，直接配對
     """
     srt_parts: list[str] = []
     seq = 1
@@ -269,20 +283,40 @@ def _funasr_to_srt(results: list[dict]) -> str:
                 seq += 1
             continue
 
-        # Fallback: 用 timestamp 陣列
         timestamps = item.get("timestamp", [])
         if not timestamps:
-            # 沒有時間戳，整段當一個字幕
             srt_parts.append(f"{seq}\n00:00:00,000 --> 00:00:00,000\n{text}\n")
             seq += 1
             continue
 
-        # 用句尾標點拆分文字，對齊 timestamps
-        # FunASR with punc model: timestamps 與句子一一對應
         sentences = _split_sentences(text)
 
-        if len(sentences) == len(timestamps):
-            # 完美對齊：每句配一個 timestamp
+        # 判斷時間戳類型：字級（≈字數）還是句級（≈句數）
+        is_char_level = len(timestamps) > len(sentences) * 2
+
+        if is_char_level:
+            # 字級時間戳：用字元位置對齊句子的起止時間
+            char_idx = 0
+            for sentence in sentences:
+                # 句子在原文中的起始字元位置
+                start_char = char_idx
+                end_char = char_idx + len(sentence) - 1
+
+                # 對齊到 timestamp 陣列（可能有標點不佔 timestamp）
+                ts_start = min(start_char, len(timestamps) - 1)
+                ts_end = min(end_char, len(timestamps) - 1)
+
+                start_ms, _ = _get_ts_values(timestamps[ts_start])
+                _, end_ms = _get_ts_values(timestamps[ts_end])
+
+                start_ts = _seconds_to_srt_ts(start_ms / 1000)
+                end_ts = _seconds_to_srt_ts(end_ms / 1000)
+                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{sentence}\n")
+                seq += 1
+
+                char_idx += len(sentence)
+        elif len(sentences) == len(timestamps):
+            # 句級時間戳：完美對齊
             for sentence, ts in zip(sentences, timestamps):
                 start_ms, end_ms = _get_ts_values(ts)
                 start_ts = _seconds_to_srt_ts(start_ms / 1000)
@@ -290,7 +324,7 @@ def _funasr_to_srt(results: list[dict]) -> str:
                 srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{sentence}\n")
                 seq += 1
         else:
-            # 數量不對齊：用首尾 timestamp 包整段
+            # Fallback：用首尾 timestamp 包整段
             start_ms, _ = _get_ts_values(timestamps[0])
             _, end_ms = _get_ts_values(timestamps[-1])
             start_ts = _seconds_to_srt_ts(start_ms / 1000)
@@ -302,22 +336,51 @@ def _funasr_to_srt(results: list[dict]) -> str:
 
 
 def _split_sentences(text: str) -> list[str]:
-    """用中文句尾標點（。！？）拆分文字，保留標點。"""
-    parts = _SENTENCE_END.split(text)
-    sentences: list[str] = []
+    """拆分文字為字幕段落，每段不超過 _MAX_SUBTITLE_CHARS 字。
+
+    策略：
+    1. 先用句尾標點（。！？）拆分
+    2. 超過上限的再用逗號（，、；：）拆分
+    3. 仍超過的強制在上限處斷行
+    """
+    # Step 1: 用句尾標點拆分
+    raw_sentences = _split_by_pattern(_SENTENCE_END, text)
+
+    # Step 2: 長句用逗號再拆
+    result: list[str] = []
+    for s in raw_sentences:
+        if len(s) <= _MAX_SUBTITLE_CHARS:
+            result.append(s)
+        else:
+            clauses = _split_by_pattern(_CLAUSE_BREAK, s)
+            for clause in clauses:
+                if len(clause) <= _MAX_SUBTITLE_CHARS:
+                    result.append(clause)
+                else:
+                    # Step 3: 強制斷行
+                    for i in range(0, len(clause), _MAX_SUBTITLE_CHARS):
+                        chunk = clause[i : i + _MAX_SUBTITLE_CHARS]
+                        if chunk.strip():
+                            result.append(chunk)
+    return result
+
+
+def _split_by_pattern(pattern: re.Pattern, text: str) -> list[str]:
+    """用正規表達式 pattern 拆分文字，將分隔符黏回前一段。"""
+    parts = pattern.split(text)
+    segments: list[str] = []
     i = 0
     while i < len(parts):
         segment = parts[i]
-        # 句尾標點黏回前一段
-        if i + 1 < len(parts) and _SENTENCE_END.match(parts[i + 1]):
+        if i + 1 < len(parts) and pattern.match(parts[i + 1]):
             segment += parts[i + 1]
             i += 2
         else:
             i += 1
         segment = segment.strip()
         if segment:
-            sentences.append(segment)
-    return sentences
+            segments.append(segment)
+    return segments
 
 
 def _process_srt_line(line: str, *, use_punctuation: bool) -> str:
