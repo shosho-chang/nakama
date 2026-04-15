@@ -18,9 +18,10 @@ firecrawl-py>=4.22.0   # Firecrawl: web scraping/crawling for Robin & Zoro
 google-api-python-client>=2.100.0  # YouTube Data API v3
 pytrends>=4.9.0                    # Google Trends (unofficial)
 
-# Transcription (post-processing; openlrc 需另裝，見 pyproject.toml)
+# Transcription (post-processing)
 opencc-python-reimplemented>=0.1.7
-# GPU 環境另裝：pip install openlrc --no-deps && pip install faster-whisper ctranslate2
+pypinyin>=0.51                     # LLM 校正：拼音輔助同音字辨識
+# ASR (GPU 環境另裝): pip install funasr torch torchaudio
 
 # Utilities
 python-dateutil>=2.9

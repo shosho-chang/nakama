@@ -1,12 +1,14 @@
-"""語音轉繁體中文字幕：基於 openlrc + faster-whisper 的本地 ASR pipeline。
+"""語音轉繁體中文字幕：基於 FunASR Paraformer-zh 的本地 ASR pipeline。
 
 獨立模組，可被任何 agent 調用。
-支援 context 注入（提升專有名詞準確度）和可選的 LLM 校正。
-LLM 校正使用 shared/anthropic_client.py，不依賴 openlrc 的 chatbot 模組。
+支援 Auphonic 雲端前處理（normalization + 降噪）、
+FunASR 本地辨識（VAD + 時間戳 + 標點 + Hotword），
+以及可選的 LLM 校正（Pinyin 輔助 + JSON diff + QC 報告）。
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -14,14 +16,29 @@ from shared.log import get_logger
 
 logger = get_logger("nakama.transcriber")
 
-# 中文標點符號 pattern（用於標點移除）
-_ZH_PUNCTUATION = re.compile(r"[，。！？、；：" "''（）《》【】…—～·]")
+# 中文句中標點 → 替換為空格
+_ZH_MID_PUNCTUATION = re.compile(r"[，、；：" "''（）《》【】…—～·]")
+# 中文句尾標點 → 直接移除
+_ZH_END_PUNCTUATION = re.compile(r"[。！？]")
+
+# 中文句尾標點（用於拆分句子）
+_SENTENCE_END = re.compile(r"([。！？])")
+
+# 中文逗號等次級斷點（用於長句再拆分）
+_CLAUSE_BREAK = re.compile(r"([，、；：])")
+
+# 字幕每行最大字數
+_MAX_SUBTITLE_CHARS = 20
 
 # SRT 時間戳格式
 _SRT_TS_FMT = "{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 # OpenCC lazy singleton（避免重複載入字典）
 _cc_s2t = None
+
+# FunASR model lazy singleton
+_asr_model = None
+_asr_model_id = None
 
 
 def _get_cc():
@@ -44,37 +61,15 @@ def _seconds_to_srt_ts(seconds: float) -> str:
 
 
 def _remove_punctuation(text: str) -> str:
-    """移除中文標點符號，保留英文標點和空格。"""
-    return _ZH_PUNCTUATION.sub("", text)
+    """中文句中標點→空格，句尾標點→移除，再壓縮連續空格。"""
+    text = _ZH_MID_PUNCTUATION.sub(" ", text)
+    text = _ZH_END_PUNCTUATION.sub("", text)
+    return re.sub(r" {2,}", " ", text).strip()
 
 
 def _to_traditional(text: str) -> str:
     """簡體中文轉繁體中文（使用 OpenCC lazy singleton）。"""
     return _get_cc().convert(text)
-
-
-def _build_initial_prompt(context_files: list[str | Path]) -> str:
-    """從 context 檔案中提取內容，組成 initial_prompt。
-
-    讀取每個檔案的前 500 字作為 context，幫助 Whisper 辨識專有名詞。
-    """
-    if not context_files:
-        return "以下是繁體中文的內容。"
-
-    snippets = []
-    for fpath in context_files:
-        p = Path(fpath)
-        if not p.exists():
-            logger.warning(f"Context file not found: {fpath}")
-            continue
-        text = p.read_text(encoding="utf-8")[:500]
-        snippets.append(text)
-
-    if not snippets:
-        return "以下是繁體中文的內容。"
-
-    combined = "\n".join(snippets)
-    return f"以下是繁體中文的內容。相關背景資料：{combined}"
 
 
 def _extract_hotwords(context_files: list[str | Path]) -> list[str]:
@@ -114,6 +109,108 @@ def _load_context_text(context_files: list[str | Path]) -> str:
         parts.append(f"--- {p.name} ---\n{text}")
 
     return "\n\n".join(parts)
+
+
+def _add_pinyin(text: str) -> str:
+    """為中文文字加上拼音標注，輔助 LLM 辨識同音字。
+
+    範例：'蘇味行銷' → '蘇味行銷 (sū wèi xíng xiāo)'
+    純英文或純數字不加 pinyin。
+    """
+    if not re.search(r"[\u4e00-\u9fff]", text):
+        return text
+    from pypinyin import Style, pinyin
+
+    py = " ".join(p[0] for p in pinyin(text, style=Style.TONE))
+    return f"{text} ({py})"
+
+
+def _extract_project_context(project_file: str | Path) -> dict:
+    """從 LifeOS Podcast Project 檔案提取校正 context。
+
+    解析 YAML frontmatter 取得 guest、category，
+    並提取 Research Dropbox、Script、Keywords Research 等 section 的純文字。
+    跳過 DataviewJS / Templater code blocks。
+
+    Returns:
+        dict: guest_name, topic, context_text
+    """
+    p = Path(project_file)
+    if not p.exists():
+        logger.warning(f"Project 檔案不存在：{p}")
+        return {"guest_name": "", "topic": "", "context_text": ""}
+
+    raw = p.read_text(encoding="utf-8")
+    result: dict = {
+        "guest_name": "",
+        "topic": p.stem,  # 檔名即主題
+        "context_text": "",
+    }
+
+    # ── 解析 frontmatter ──
+    fm_match = re.match(r"^---\s*\n(.*?)\n---", raw, re.DOTALL)
+    if fm_match:
+        fm_text = fm_match.group(1)
+        for line in fm_text.splitlines():
+            if line.startswith("guest:"):
+                result["guest_name"] = line.split(":", 1)[1].strip()
+            elif line.startswith("search_topic:"):
+                val = line.split(":", 1)[1].strip()
+                if val:
+                    result["topic"] = val
+
+    # ── 提取有用 section（跳過 code blocks）──
+    useful_sections = {
+        "Research Dropbox",
+        "Script",
+        "Keywords Research",
+        "Description",
+        "Description / Show Notes",
+        "專案筆記",
+    }
+
+    sections_text: list[str] = []
+    in_code_block = False
+    capturing = False
+
+    for line in raw.splitlines():
+        # code block 狀態機
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
+        # 跳過 Templater 區塊
+        if line.strip().startswith("<%"):
+            continue
+
+        # 偵測 section header
+        header_match = re.match(r"^##\s+(?:[^\w]*\s*)?(.+)", line)
+        if header_match:
+            section_name = header_match.group(1).strip()
+            # 移除 emoji prefix
+            section_name = re.sub(r"^[\U0001f300-\U0001f9ff\s]+", "", section_name).strip()
+            capturing = any(s in section_name for s in useful_sections)
+            continue
+
+        if capturing and line.strip():
+            sections_text.append(line.strip())
+
+    result["context_text"] = "\n".join(sections_text)
+    return result
+
+
+def _write_qc_report(path: Path, uncertainties: list[dict]) -> None:
+    """將不確定修正寫成 Markdown QC 報告。"""
+    lines = ["# QC 報告 — 需人工確認\n"]
+    for item in uncertainties:
+        risk = item.get("risk", "medium")
+        lines.append(f"## [{risk.upper()}] Line {item.get('line', '?')}")
+        lines.append(f"- **原文**：{item.get('original', '')}")
+        lines.append(f"- **建議**：{item.get('suggestion', '')}")
+        lines.append(f"- **理由**：{item.get('reason', '')}")
+        lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _extract_srt_texts(srt_content: str) -> list[tuple[int, str]]:
@@ -177,57 +274,124 @@ def _correct_with_llm(
     srt_content: str,
     *,
     context_files: list[str | Path],
-    model: str = "claude-haiku-4-5-20251001",
-) -> str:
-    """用 Claude 一次讀完整份逐字稿，統一校正。
+    project_context: dict | None = None,
+    model: str = "claude-opus-4-20250918",
+    host_name: str = "",
+    show_name: str = "",
+) -> tuple[str, list[dict]]:
+    """用 Claude 校正 ASR 逐字稿（Pinyin 輔助 + JSON diff + 三輪校對）。
 
-    策略：將整份 SRT 的文字行（帶序號）一次送給 Claude，
-    連同使用者提供的 context（書、報導、人名等），
-    讓 Claude 在理解全文的前提下統一修正專有名詞和錯字。
+    策略：
+    1. 帶 pinyin 的逐字稿讓 Claude 同時看到語義和語音
+    2. 三輪校對思路：機械校正 → 語意校正 → 交付檢核
+    3. JSON diff 輸出：只回傳有改的行 + 不確定修正清單
 
-    使用 shared/anthropic_client.py，不依賴 openlrc。
+    Returns:
+        tuple: (corrected_srt, uncertainties)
     """
     from shared.anthropic_client import ask_claude
 
-    # 提取文字行
     entries = _extract_srt_texts(srt_content)
     if not entries:
         logger.warning("SRT 無文字行，跳過 LLM 校正")
-        return srt_content
+        return srt_content, []
 
-    # 組裝編號文字
-    numbered_text = "\n".join(f"[{seq}] {text}" for seq, text in entries)
+    # ── 帶 pinyin 的編號文字 ──
+    numbered_lines = []
+    for seq, text in entries:
+        numbered_lines.append(f"[{seq}] {_add_pinyin(text)}")
+    numbered_text = "\n".join(numbered_lines)
 
-    # 載入 context
-    context_text = _load_context_text(context_files)
+    # ── 組裝 context ──
+    context_parts: list[str] = []
 
-    system = (
-        "你是字幕校正專家。你的任務是校正語音辨識（ASR）產生的繁體中文逐字稿。\n\n"
-        "## 校正規則\n"
-        "1. 修正 ASR 常見錯誤：同音字、斷句錯誤、漏字\n"
-        "2. 專有名詞必須全文統一（人名、書名、術語、品牌名）\n"
-        "3. 保持口語自然感，不要改成書面語\n"
-        "4. 不要增刪內容，只修正錯誤\n"
-        "5. 每行的序號 [N] 必須保留，不可合併或拆分行\n\n"
-        "## 輸出格式\n"
-        "逐行輸出，格式與輸入相同：\n"
-        "[序號] 校正後的文字\n\n"
-        "只輸出校正後的內容，不要加任何說明。\n"
-        "如果某行不需要修改，原樣輸出即可。"
+    # Project context（自動從 LifeOS Project 提取）
+    if project_context:
+        guest = project_context.get("guest_name", "")
+        topic = project_context.get("topic", "")
+        proj_text = project_context.get("context_text", "")
+        if guest:
+            context_parts.append(f"來賓姓名：{guest}")
+        if topic:
+            context_parts.append(f"主題：{topic}")
+        if proj_text:
+            context_parts.append(f"背景資料：\n{proj_text[:3000]}")
+
+    # 手動 context files
+    manual_context = _load_context_text(context_files)
+    if manual_context:
+        context_parts.append(manual_context)
+
+    # ── System Prompt ──
+    system = "你是資深繁體中文（台灣）字幕校正專家，專精 Podcast 訪談字幕。\n"
+
+    if host_name or show_name:
+        system += "\n## 節目資訊\n"
+        if show_name:
+            system += f"- 節目名稱：{show_name}\n"
+        if host_name:
+            system += f"- 主持人：{host_name}\n"
+
+    system += (
+        "\n## 任務\n"
+        "校正語音辨識（ASR）產出的逐字稿。每行格式為 [序號] 文字 (拼音)。\n"
+        "拼音是原始文字的讀音，可幫助你判斷 ASR 的同音字錯誤。\n"
+        "\n## 三輪校對思路（在心中依序執行，最終只輸出結果）\n"
+        "1. 機械校正：同音字/近音字替換、繁體用字統一、術語表比對\n"
+        "2. 語意校正：上下文不通順、人名/稱謂前後不一致、英文專有名詞修正\n"
+        "3. 交付檢核：專有名詞全文一致性、確認沒有過度修改\n"
+        "\n## 核心原則\n"
+        "- 不改變原意、不新增內容\n"
+        "- 術語表/參考資料的寫法為最高優先\n"
+        "- 保持口語自然感，不改成書面語\n"
+        "- 不確定的修正必須放入 uncertain 清單，不要硬改\n"
+        "\n## 輸出格式（嚴格 JSON，不要加 ```json 標記）\n"
+        "{\n"
+        '  "corrections": {"序號": "校正後文字", ...},\n'
+        '  "uncertain": [\n'
+        '    {"line": 序號, "original": "原文", "suggestion": "建議", '
+        '"reason": "判斷理由", "risk": "high|medium|low"}\n'
+        "  ]\n"
+        "}\n\n"
+        "只輸出 JSON，不要加任何說明。corrections 只包含有修改的行。"
     )
 
-    if context_text:
-        system += (
-            "\n\n## 參考資料\n"
-            "以下是這次訪談相關的背景資料，用於判斷正確的專有名詞拼寫：\n\n" + context_text
-        )
+    if context_parts:
+        system += "\n\n## 參考資料\n" + "\n\n".join(context_parts)
 
     prompt = f"請校正以下語音辨識逐字稿：\n\n{numbered_text}"
 
     logger.info(f"LLM 校正：{len(entries)} 行，模型 {model}")
-    raw = ask_claude(prompt, system=system, model=model, max_tokens=8192, temperature=0.1)
+    raw = ask_claude(prompt, system=system, model=model, max_tokens=16384, temperature=0.1)
 
-    # 解析回傳
+    # ── 解析 JSON 回傳 ──
+    corrected, uncertainties = _parse_llm_response(raw, len(entries))
+
+    if corrected:
+        logger.info(f"LLM 校正完成：{len(corrected)} 行修正，{len(uncertainties)} 項待確認")
+    else:
+        logger.warning("LLM 校正無修改")
+
+    return _replace_srt_texts(srt_content, corrected), uncertainties
+
+
+def _parse_llm_response(raw: str, total_entries: int) -> tuple[dict[int, str], list[dict]]:
+    """解析 LLM 校正回傳，支援 JSON 格式 + regex fallback。"""
+    # 嘗試 JSON 解析
+    try:
+        # 移除可能的 markdown code fence
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```\s*$", "", cleaned)
+        data = json.loads(cleaned)
+        corrections = {int(k): v for k, v in data.get("corrections", {}).items()}
+        uncertainties = data.get("uncertain", [])
+        return corrections, uncertainties
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        logger.warning("JSON 解析失敗，嘗試 regex fallback")
+
+    # Fallback: 原本的 [N] text 格式
     corrected: dict[int, str] = {}
     for line in raw.strip().splitlines():
         match = re.match(r"\[(\d+)\]\s*(.*)", line)
@@ -239,44 +403,181 @@ def _correct_with_llm(
 
     if not corrected:
         logger.warning("LLM 校正回傳無法解析，使用原始文字")
-        return srt_content
 
-    logger.info(f"LLM 校正完成：{len(corrected)}/{len(entries)} 行已處理")
-
-    return _replace_srt_texts(srt_content, corrected)
+    return corrected, []
 
 
-def _lrc_to_srt(lrc_path: Path) -> str:
-    """將 LRC 格式轉為 SRT 格式字串。
+def _get_ts_values(ts_item) -> tuple[int, int]:
+    """從時間戳項目中取得 (start_ms, end_ms)。
 
-    LRC 格式：[MM:SS.xx] 文字
-    SRT 格式：序號 + 時間區間 + 文字
+    FunASR 時間戳格式可能是：
+    - List/tuple: [start_ms, end_ms]
+    - Dict: {"start_time": ms, "end_time": ms}
     """
-    lines = lrc_path.read_text(encoding="utf-8").strip().splitlines()
-    entries: list[tuple[float, str]] = []
+    if isinstance(ts_item, dict):
+        return ts_item["start_time"], ts_item["end_time"]
+    return ts_item[0], ts_item[1]
 
-    for line in lines:
-        match = re.match(r"\[(\d+):(\d+\.\d+)\]\s*(.*)", line)
-        if match:
-            minutes = int(match.group(1))
-            seconds = float(match.group(2))
-            text = match.group(3).strip()
-            if text:
-                entries.append((minutes * 60 + seconds, text))
 
-    if not entries:
-        logger.warning(f"LRC 檔案無有效字幕行：{lrc_path}")
-        return ""
+def _funasr_to_srt(results: list[dict]) -> str:
+    """將 FunASR 辨識結果轉為 SRT 格式字串。
 
+    FunASR 輸出格式：[{"text": "...", "timestamp": [[start_ms, end_ms], ...]}]
+
+    時間戳類型：
+    - sentence_info: per-sentence（最佳，直接用）
+    - 字級時間戳: len(timestamps) ≈ len(text)，用句尾標點拆分並對齊
+    - 句級時間戳: len(timestamps) == len(sentences)，直接配對
+    """
     srt_parts: list[str] = []
-    for i, (start, text) in enumerate(entries, 1):
-        # 結束時間 = 下一句開始時間，最後一句 +3 秒
-        end = entries[i][0] if i < len(entries) else start + 3.0
-        srt_parts.append(
-            f"{i}\n{_seconds_to_srt_ts(start)} --> {_seconds_to_srt_ts(end)}\n{text}\n"
-        )
+    seq = 1
+
+    for item in results:
+        text = item.get("text", "").strip()
+        if not text:
+            continue
+
+        # 優先使用 sentence_info（含逐句文字 + 時間戳）
+        sentence_info = item.get("sentence_info")
+        if sentence_info:
+            for info in sentence_info:
+                s_text = info.get("text", "").strip()
+                if not s_text:
+                    continue
+                start_s = info["start"] / 1000
+                end_s = info["end"] / 1000
+                start_ts = _seconds_to_srt_ts(start_s)
+                end_ts = _seconds_to_srt_ts(end_s)
+                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{s_text}\n")
+                seq += 1
+            continue
+
+        timestamps = item.get("timestamp", [])
+        if not timestamps:
+            srt_parts.append(f"{seq}\n00:00:00,000 --> 00:00:00,000\n{text}\n")
+            seq += 1
+            continue
+
+        sentences = _split_sentences(text)
+
+        # 判斷時間戳類型：字級（≈字數）還是句級（≈句數）
+        is_char_level = len(timestamps) > len(sentences) * 2
+
+        if is_char_level:
+            # 字級時間戳：用字元位置對齊句子的起止時間
+            char_idx = 0
+            for sentence in sentences:
+                # 句子在原文中的起始字元位置
+                start_char = char_idx
+                end_char = char_idx + len(sentence) - 1
+
+                # 對齊到 timestamp 陣列（可能有標點不佔 timestamp）
+                ts_start = min(start_char, len(timestamps) - 1)
+                ts_end = min(end_char, len(timestamps) - 1)
+
+                start_ms, _ = _get_ts_values(timestamps[ts_start])
+                _, end_ms = _get_ts_values(timestamps[ts_end])
+
+                start_ts = _seconds_to_srt_ts(start_ms / 1000)
+                end_ts = _seconds_to_srt_ts(end_ms / 1000)
+                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{sentence}\n")
+                seq += 1
+
+                char_idx += len(sentence)
+        elif len(sentences) == len(timestamps):
+            # 句級時間戳：完美對齊
+            for sentence, ts in zip(sentences, timestamps):
+                start_ms, end_ms = _get_ts_values(ts)
+                start_ts = _seconds_to_srt_ts(start_ms / 1000)
+                end_ts = _seconds_to_srt_ts(end_ms / 1000)
+                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{sentence}\n")
+                seq += 1
+        else:
+            # Fallback：用首尾 timestamp 包整段
+            start_ms, _ = _get_ts_values(timestamps[0])
+            _, end_ms = _get_ts_values(timestamps[-1])
+            start_ts = _seconds_to_srt_ts(start_ms / 1000)
+            end_ts = _seconds_to_srt_ts(end_ms / 1000)
+            srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{text}\n")
+            seq += 1
 
     return "\n".join(srt_parts)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """拆分文字為字幕段落，每段不超過 _MAX_SUBTITLE_CHARS 字。
+
+    策略：
+    1. 先用句尾標點（。！？）拆分
+    2. 超過上限的再用逗號（，、；：）拆分
+    3. 仍超過的強制在上限處斷行
+    """
+    # Step 1: 用句尾標點拆分
+    raw_sentences = _split_by_pattern(_SENTENCE_END, text)
+
+    # Step 2: 長句用逗號再拆
+    result: list[str] = []
+    for s in raw_sentences:
+        if len(s) <= _MAX_SUBTITLE_CHARS:
+            result.append(s)
+        else:
+            clauses = _split_by_pattern(_CLAUSE_BREAK, s)
+            for clause in clauses:
+                if len(clause) <= _MAX_SUBTITLE_CHARS:
+                    result.append(clause)
+                else:
+                    # Step 3: 強制斷行（不切斷英文單字）
+                    result.extend(_force_break(clause, _MAX_SUBTITLE_CHARS))
+    return result
+
+
+def _force_break(text: str, max_chars: int) -> list[str]:
+    """強制斷行，但不切斷英文單字。
+
+    遇到英文字詞時，往前找最近的中文字元或空格斷行。
+    如果整段都是英文且超過上限，則在空格處斷。
+    """
+    chunks: list[str] = []
+    while len(text) > max_chars:
+        cut = max_chars
+        # 如果切點落在英文字母中間，往前找安全斷點
+        if cut < len(text) and re.match(r"[a-zA-Z]", text[cut]):
+            # 往前找非英文字母的位置
+            safe = cut
+            while safe > 0 and re.match(r"[a-zA-Z]", text[safe - 1]):
+                safe -= 1
+            if safe > 0:
+                cut = safe
+            else:
+                # 整段開頭都是英文，往後找單字結尾
+                cut = max_chars
+                while cut < len(text) and re.match(r"[a-zA-Z]", text[cut]):
+                    cut += 1
+        chunk = text[:cut].strip()
+        if chunk:
+            chunks.append(chunk)
+        text = text[cut:].strip()
+    if text.strip():
+        chunks.append(text.strip())
+    return chunks
+
+
+def _split_by_pattern(pattern: re.Pattern, text: str) -> list[str]:
+    """用正規表達式 pattern 拆分文字，將分隔符黏回前一段。"""
+    parts = pattern.split(text)
+    segments: list[str] = []
+    i = 0
+    while i < len(parts):
+        segment = parts[i]
+        if i + 1 < len(parts) and pattern.match(parts[i + 1]):
+            segment += parts[i + 1]
+            i += 2
+        else:
+            i += 1
+        segment = segment.strip()
+        if segment:
+            segments.append(segment)
+    return segments
 
 
 def _process_srt_line(line: str, *, use_punctuation: bool) -> str:
@@ -299,18 +600,40 @@ def _process_srt_line(line: str, *, use_punctuation: bool) -> str:
     return line
 
 
+def _get_asr_model(model_id: str):
+    """取得 FunASR 模型（lazy singleton，避免重複載入）。"""
+    global _asr_model, _asr_model_id
+
+    if _asr_model is not None and _asr_model_id == model_id:
+        return _asr_model
+
+    from funasr import AutoModel
+
+    logger.info(f"載入 FunASR 模型: {model_id}")
+    _asr_model = AutoModel(
+        model=model_id,
+        vad_model="fsmn-vad",
+        punc_model="ct-punc-c",
+    )
+    _asr_model_id = model_id
+    logger.info("FunASR 模型載入完成")
+    return _asr_model
+
+
 def transcribe(
     audio_path: str | Path,
     *,
     language: str = "zh",
     context_files: list[str | Path] | None = None,
+    project_file: str | Path | None = None,
     use_punctuation: bool = False,
     use_llm_correction: bool = False,
-    llm_model: str = "claude-haiku-4-5-20251001",
-    whisper_model: str = "large-v3",
-    compute_type: str = "int8",
+    llm_model: str = "claude-opus-4-20250918",
+    asr_model: str = "paraformer-zh",
+    normalize_audio: bool = True,
     output_dir: str | Path | None = None,
-    noise_suppress: bool = False,
+    host_name: str = "張修修",
+    show_name: str = "不正常人類研究所",
 ) -> Path:
     """語音轉繁體中文 SRT 字幕。
 
@@ -318,13 +641,15 @@ def transcribe(
         audio_path: 音檔路徑（MP3, WAV, M4A 等）
         language: 語言代碼（預設 "zh"）
         context_files: 參考資料檔案路徑列表（書、報導等），用於提升專有名詞準確度
+        project_file: LifeOS Podcast Project 檔案路徑，自動提取來賓/主題/術語 context
         use_punctuation: 是否保留標點符號（預設 False）
         use_llm_correction: 是否啟用 LLM 校正（預設 False，啟用會產生 API 成本）
-        llm_model: LLM 校正使用的模型（預設 Haiku，~$0.09/小時音檔）
-        whisper_model: Whisper 模型大小（tiny/base/small/medium/large-v3）
-        compute_type: 計算精度（int8/float16/float32）
+        llm_model: LLM 校正使用的模型（預設 Opus，~$0.40/小時音檔）
+        asr_model: FunASR 模型 ID（預設 paraformer-zh）
+        normalize_audio: 是否先用 Auphonic 做 normalization（預設 True）
         output_dir: 輸出目錄（預設與音檔同目錄）
-        noise_suppress: 是否啟用降噪（需要額外依賴）
+        host_name: 主持人名稱（預設「張修修」）
+        show_name: 節目名稱（預設「不正常人類研究所」）
 
     Returns:
         SRT 字幕檔的 Path
@@ -333,92 +658,71 @@ def transcribe(
     if not audio_path.exists():
         raise FileNotFoundError(f"音檔不存在：{audio_path}")
 
-    from openlrc import LRCer, TranscriptionConfig
-
     context_files = context_files or []
     output_dir = Path(output_dir) if output_dir else audio_path.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"開始轉寫：{audio_path.name}")
-    logger.info(f"模型：{whisper_model}（{compute_type}），語言：{language}")
-    if context_files:
-        logger.info(f"Context 檔案：{len(context_files)} 個")
 
-    # ── 組裝 ASR 設定 ──
-    initial_prompt = _build_initial_prompt(context_files)
+    # ── Auphonic 前處理（可選）──
+    if normalize_audio:
+        try:
+            from shared.auphonic import normalize
+
+            audio_path = normalize(audio_path, output_dir=output_dir)
+            logger.info(f"Auphonic normalization 完成：{audio_path.name}")
+        except Exception as e:
+            logger.warning(f"跳過 Auphonic normalization: {e}")
+
+    # ── FunASR 辨識 ──
+    model = _get_asr_model(asr_model)
+
     hotwords = _extract_hotwords(context_files)
-
-    asr_options: dict = {
-        "language": language,
-        "initial_prompt": initial_prompt,
-        "beam_size": 5,
-        "word_timestamps": True,
-        "condition_on_previous_text": True,
-    }
+    hotword_str = " ".join(hotwords) if hotwords else ""
     if hotwords:
-        # faster-whisper 的 hotwords 參數是 string，用空格分隔
-        asr_options["hotwords"] = " ".join(hotwords)
-        logger.info(f"Hotwords：{hotwords[:10]}{'...' if len(hotwords) > 10 else ''}")
+        logger.info(f"Hotwords: {hotwords[:10]}{'...' if len(hotwords) > 10 else ''}")
 
-    transcription_config = TranscriptionConfig(
-        whisper_model=whisper_model,
-        compute_type=compute_type,
-        asr_options=asr_options,
+    logger.info(f"開始 ASR 辨識（模型: {asr_model}）")
+    results = model.generate(
+        input=str(audio_path),
+        batch_size_s=300,
+        hotword=hotword_str,
     )
 
-    # ── 執行轉寫（僅 ASR，不使用 openlrc 的 LLM 翻譯）──
-    lrcer = LRCer(transcription=transcription_config)
+    if not results or not results[0].get("text"):
+        raise RuntimeError("FunASR 辨識結果為空")
 
-    result_paths = lrcer.run(
-        str(audio_path),
-        target_lang=language,
-        noise_suppress=noise_suppress,
-        skip_trans=True,
-    )
+    logger.info(f"ASR 辨識完成，文字長度: {len(results[0]['text'])}")
 
-    # ── 找到 openlrc 的輸出檔案 ──
-    if result_paths:
-        source_path = Path(result_paths[0])
-        srt_content = source_path.read_text(encoding="utf-8")
-        if source_path.suffix == ".lrc":
-            srt_content = _lrc_to_srt(source_path)
-    else:
-        lrc_output = audio_path.with_suffix(".lrc")
-        srt_output = audio_path.with_suffix(".srt")
+    # ── 轉為 SRT ──
+    srt_content = _funasr_to_srt(results)
 
-        if srt_output.exists():
-            srt_content = srt_output.read_text(encoding="utf-8")
-        elif lrc_output.exists():
-            srt_content = _lrc_to_srt(lrc_output)
-        else:
-            raise FileNotFoundError(
-                f"openlrc 未產生預期的輸出檔案（找不到 {lrc_output} 或 {srt_output}）"
-            )
-
-    # ── 後處理：逐行簡轉繁 + 標點控制（只作用於字幕文字行）──
+    # ── 後處理：逐行簡轉繁 + 標點控制 ──
     processed_lines = [
         _process_srt_line(line, use_punctuation=use_punctuation)
         for line in srt_content.splitlines()
     ]
     srt_content = "\n".join(processed_lines)
 
-    # ── LLM 校正（可選）：一次讀完整份逐字稿，統一校正 ──
+    # ── LLM 校正（可選）──
     if use_llm_correction:
-        srt_content = _correct_with_llm(
+        proj_ctx = _extract_project_context(project_file) if project_file else None
+        srt_content, uncertainties = _correct_with_llm(
             srt_content,
             context_files=context_files,
+            project_context=proj_ctx,
             model=llm_model,
+            host_name=host_name,
+            show_name=show_name,
         )
+        if uncertainties:
+            qc_path = output_dir / f"{audio_path.stem}.qc.md"
+            _write_qc_report(qc_path, uncertainties)
+            logger.info(f"QC 報告：{len(uncertainties)} 項待確認 → {qc_path}")
 
     # ── 寫入最終 SRT ──
-    output_dir.mkdir(parents=True, exist_ok=True)
     final_srt = output_dir / f"{audio_path.stem}.srt"
     final_srt.write_text(srt_content, encoding="utf-8")
-
-    # 清理 openlrc 的中間檔案（LRC 和原始 SRT）
-    for suffix in (".lrc", ".srt"):
-        intermediate = audio_path.with_suffix(suffix)
-        if intermediate.exists() and intermediate != final_srt:
-            intermediate.unlink()
 
     logger.info(f"完成！SRT 已儲存：{final_srt}")
     return final_srt

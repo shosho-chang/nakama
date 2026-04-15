@@ -17,8 +17,9 @@ dependencies = [
     "httpx>=0.27.0",
     "feedparser>=6.0",
 
-    # Transcription (post-processing only; openlrc in optional deps)
+    # Transcription (post-processing)
     "opencc-python-reimplemented>=0.1.7",
+    "pypinyin>=0.51",
 
     # Utilities
     "python-dateutil>=2.9",
@@ -37,10 +38,9 @@ dependencies = [
 
 [project.optional-dependencies]
 transcription = [
-    # openlrc 鎖 anthropic<0.40，與主依賴 anthropic>=0.42 衝突
-    # 安裝方式：pip install openlrc --no-deps && pip install faster-whisper ctranslate2
-    # 我們只用 openlrc 的 ASR pipeline（skip_trans=True），不觸碰其 anthropic 依賴
-    "faster-whisper>=1.0.0",
+    # FunASR: 本地 ASR 引擎（需要 GPU 環境）
+    # 安裝方式：pip install funasr torch torchaudio
+    "funasr>=1.0.0",
 ]
 dev = [
     "pytest>=8.0",
