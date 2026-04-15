@@ -1,7 +1,7 @@
 # ADR-003: Telegram Bot Gateway — 張修修海賊團群組
 
 **Date:** 2026-04-13
-**Status:** Approved
+**Status:** Superseded by [ADR-004](ADR-004-slack-gateway.md)
 
 ---
 
