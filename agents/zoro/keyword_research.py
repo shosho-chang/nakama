@@ -132,10 +132,8 @@ def research_keywords(
 
     # ── Attach raw data for Obsidian rendering ─────────────────────────
     trending_videos = []
-    for lang, key in [("zh", "youtube_zh"), ("en", "youtube_en")]:
-        vdata = data.get(key, {})
-        for v in vdata.get("top_videos", []):
-            trending_videos.append({**v, "lang": lang})
+    for v in data.get("youtube_en", {}).get("top_videos", []):
+        trending_videos.append({**v, "lang": "en"})
     trending_videos.sort(key=lambda v: v["views"], reverse=True)
 
     social_posts = []
