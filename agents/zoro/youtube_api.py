@@ -20,7 +20,7 @@ def _parse_duration(iso: str) -> int:
     return h * 3600 + mn * 60 + s
 
 
-def search_top_videos(topic: str, max_results: int = 15) -> dict:
+def search_top_videos(topic: str, max_results: int = 25) -> dict:
     """Search YouTube for top videos on a topic and analyze title patterns.
 
     Returns dict with keys: top_videos, common_words, avg_views.
