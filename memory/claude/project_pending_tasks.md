@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-16
+updated: 2026-04-17
 confidence: high
 ttl: 90d
 originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
@@ -16,12 +16,16 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ⬜ Auphonic E2E 實測（完整 pipeline 含 normalization）
 - ⬜ CLI 命令 → Skill 化
 
+**Robin 本機專用（PR #13 已 merge，2026-04-16）：**
+- ✅ Robin 服務改為僅本機執行（VPS 設 `DISABLE_ROBIN=1`）
+- ⬜ VPS 部署更新：push + 加 `DISABLE_ROBIN=1` + 重啟服務
+
 **VPS 已部署完成（2026-04-15）：**
 - Thousand Sunny web server 已上線
 - Zoro Keyword Research 端到端測試通過
 
-**待測試（部署後）：**
-- Robin Reader：metadata 卡片顯示 + 貼上圖片顯示
+**待測試：**
+- Robin Reader：metadata 卡片顯示 + 貼上圖片顯示（本機測試）
 - Brook 聊天頁面端到端測試
 - KB Research UI 呈現方式（修修想再改）
 

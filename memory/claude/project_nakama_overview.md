@@ -59,12 +59,18 @@ Chopper ──一對一──▶ 自由艦隊會員（獨立運作）
 | Cost tracking | `shared/anthropic_client.py` | token 用量記錄 |
 | Prompt 模組化 | `shared/prompt_loader.py` + `prompts/` | shared partials |
 
-## Robin VPS 部署
+## 部署架構（2026-04-16 更新）
+
+| 服務 | VPS | 本機 | 說明 |
+|------|-----|------|------|
+| Robin (Ingest + Reader) | ❌ | ✅ | 本機有 GPU 跑 Gemma 4，`DISABLE_ROBIN=1` |
+| Brook (聊天) | ✅ | — | |
+| Zoro (Keyword Research) | ✅ | — | |
+| KB Research API | ✅ | — | |
 
 - systemd：`/etc/systemd/system/robin.service`
 - Port：8000
-- trigger：manual only（不走 cron）
-- Log：`/var/log/nakama/robin-web.log`
+- VPS `.env` 設 `DISABLE_ROBIN=1` 停用 Robin router（PR #13）
 
 ## Franky 工程週報
 
