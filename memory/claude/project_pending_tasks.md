@@ -4,11 +4,11 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-15
+updated: 2026-04-16
 confidence: high
 ttl: 90d
+originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 ---
-
 **Transcriber（PR #9 已 merge，2026-04-15）：**
 - ✅ FunASR + Auphonic + LLM 校正升級（Pinyin + JSON diff + LifeOS 整合 + Opus）
 - ✅ 78 個測試全過，已 merge 到 main
@@ -30,7 +30,16 @@ ttl: 90d
 - ✅ 本地 LLM 客戶端（OpenAI-compatible，支援 llama.cpp / Ollama）
 - ✅ Map-Reduce 大文件摘要（chunker + prompts + fallback）
 - ✅ 33 個新測試全過
-- ⬜ E2E 實測：安裝 llama.cpp + Gemma 4 26B，丟 PDF 跑完整 pipeline
+- ⬜ E2E 實測：Gemma 4 26B 已安裝，丟 PDF 跑完整 pipeline
+
+**Robin 內容性質分類（PR #12 已 merge，2026-04-16）：**
+- ✅ 兩層分類架構（source_type + content_nature）
+- ✅ 6 類別專屬 prompt（research/textbook/clinical_protocol/narrative/commentary + popular_science default）
+- ✅ prompt_loader 支援 categories/ 路由 + fallback
+- ✅ Web UI 兩個 dropdown + 取消按鈕
+- ✅ 領域擴充：運動科學、營養科學、腦神經科學（睡眠/飲食/運動/情緒四大面向）
+- ⬜ Web UI 實測：不同 content_nature 執行 ingest
+- ⬜ E2E：大文件 + 本地 LLM + 類別 prompt 驗證
 
 **待進行（下一步）：**
 - Agent 功能 → Skill 改寫 **Phase 2**：morning-brief (Nami)、kb-search (Robin)
