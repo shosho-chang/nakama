@@ -54,14 +54,22 @@
         {% if file.annotatable %}
           <a href="/read?file={{ file.name }}" class="btn-read">閱讀</a>
         {% endif %}
-        <form method="post" action="/start" style="margin:0;display:flex;align-items:center;gap:0.5rem">
+        <form method="post" action="/start" style="margin:0;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
           <input type="hidden" name="filename" value="{{ file.name }}">
-          <select name="source_type" class="type-select">
+          <select name="source_type" class="type-select" title="媒體格式">
             <option value="article"{% if file.type == "article" %} selected{% endif %}>Article</option>
             <option value="paper"{% if file.type == "paper" %} selected{% endif %}>Paper</option>
             <option value="book"{% if file.type == "book" %} selected{% endif %}>Book</option>
             <option value="video"{% if file.type == "video" %} selected{% endif %}>Video</option>
             <option value="podcast"{% if file.type == "podcast" %} selected{% endif %}>Podcast</option>
+          </select>
+          <select name="content_nature" class="type-select" title="內容性質">
+            <option value="popular_science">科普讀物</option>
+            <option value="research"{% if file.type == "paper" %} selected{% endif %}>研究文獻</option>
+            <option value="textbook">教科書</option>
+            <option value="clinical_protocol">臨床指引</option>
+            <option value="narrative">敘事經驗</option>
+            <option value="commentary">評論觀點</option>
           </select>
           <button type="submit">開始 Ingest</button>
         </form>

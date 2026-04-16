@@ -53,6 +53,7 @@ class IngestPipeline:
         source_type: str,
         user_guidance: str = "",
         interactive: bool = False,
+        content_nature: str = "",
     ) -> None:
         """執行完整 ingest pipeline。"""
         # 讀取來源內容
@@ -72,7 +73,7 @@ class IngestPipeline:
             author = fm.get("author", "")
             content = body if body else content
 
-        logger.info(f"Ingest: {title} (type={source_type})")
+        logger.info(f"Ingest: {title} (type={source_type}, nature={content_nature or 'default'})")
 
         # Step 1: 產出 Source Summary
         summary_body = self._generate_summary(
@@ -80,6 +81,7 @@ class IngestPipeline:
             title=title,
             author=author,
             source_type=source_type,
+            content_nature=content_nature,
         )
 
         # Step 2: 互動式模式 — 印出 Summary，等待使用者引導
@@ -104,6 +106,7 @@ class IngestPipeline:
                 "updated": str(date.today()),
                 "source_refs": [raw_relative],
                 "source_type": source_type,
+                "content_nature": content_nature or "popular_science",
                 "author": author,
                 "confidence": "medium",
                 "tags": [],
@@ -115,7 +118,9 @@ class IngestPipeline:
         kb_log("robin", "ingest", f"建立 Source Summary: {slug}")
 
         # Step 4: 取得 Concept & Entity 候選清單
-        plan = self._get_concept_plan(summary_body, summary_path, user_guidance)
+        plan = self._get_concept_plan(
+            summary_body, summary_path, user_guidance, content_nature=content_nature
+        )
         if not plan:
             return
 
@@ -143,7 +148,7 @@ class IngestPipeline:
                 f"更新頁面：{', '.join(updated) if updated else '無'}\n"
                 f"引導方向：{user_guidance or '無'}"
             ),
-            tags=["ingest", source_type, slug],
+            tags=["ingest", source_type, content_nature or "popular_science", slug],
             confidence="high",
             source=str(raw_path),
         )
@@ -180,6 +185,7 @@ class IngestPipeline:
         title: str,
         author: str,
         source_type: str,
+        content_nature: str = "",
     ) -> str:
         """產出 Source Summary。小文件直接用 Sonnet，大文件走 Map-Reduce。"""
         if len(content) <= self.LARGE_DOC_THRESHOLD:
@@ -187,6 +193,7 @@ class IngestPipeline:
             prompt = load_prompt(
                 "robin",
                 "summarize",
+                content_nature=content_nature,
                 title=title,
                 author=author or "未知",
                 source_type=source_type,
@@ -201,6 +208,7 @@ class IngestPipeline:
             title=title,
             author=author or "未知",
             source_type=source_type,
+            content_nature=content_nature,
         )
 
     def _map_reduce_summary(
@@ -209,6 +217,7 @@ class IngestPipeline:
         title: str,
         author: str,
         source_type: str,
+        content_nature: str = "",
     ) -> str:
         """Map-Reduce 摘要：分段用本地模型，合併用 Sonnet。"""
         from agents.robin.chunker import chunk_document
@@ -248,6 +257,7 @@ class IngestPipeline:
         reduce_prompt = load_prompt(
             "robin",
             "reduce_summary",
+            content_nature=content_nature,
             title=title,
             author=author,
             source_type=source_type,
@@ -273,7 +283,11 @@ class IngestPipeline:
         return ask_claude
 
     def _get_concept_plan(
-        self, summary_body: str, source_path: str, user_guidance: str = ""
+        self,
+        summary_body: str,
+        source_path: str,
+        user_guidance: str = "",
+        content_nature: str = "",
     ) -> dict | None:
         """呼叫 Claude 取得 Concept & Entity 候選清單，回傳計畫 dict。"""
         existing_concepts = [f.stem for f in list_files("KB/Wiki/Concepts")]
@@ -288,6 +302,7 @@ class IngestPipeline:
         prompt = load_prompt(
             "robin",
             "extract_concepts",
+            content_nature=content_nature,
             existing_pages=existing_pages,
             summary=summary_body,
             user_guidance=user_guidance or "（無特別引導，請自行判斷重點）",

@@ -1,7 +1,9 @@
 """Robin routes — KB ingest UI, reader, and search."""
 
 import asyncio
+import platform
 import shutil
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -31,6 +33,20 @@ templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "robin")
 )
 pipeline = IngestPipeline()
+
+
+def _send_to_recycle_bin(path: Path) -> None:
+    """刪除檔案至回收桶（Windows）或直接刪除（Linux）。遵守 CLAUDE.md 刪除規則。"""
+    if platform.system() == "Windows":
+        ps_cmd = (
+            "Add-Type -AssemblyName Microsoft.VisualBasic; "
+            "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile("
+            f"'{path}', 'OnlyErrorDialogs', 'SendToRecycleBin')"
+        )
+        subprocess.run(["powershell", "-Command", ps_cmd], check=False)
+    else:
+        path.unlink(missing_ok=True)
+
 
 # ── Session store ─────────────────────────────────────────────────────────────
 
@@ -206,6 +222,7 @@ async def mark_read(
 async def start(
     filename: str = Form(...),
     source_type: str = Form("article"),
+    content_nature: str = Form("popular_science"),
     robin_auth: str | None = Cookie(None),
 ):
     if not check_auth(robin_auth):
@@ -227,6 +244,7 @@ async def start(
         file_path=str(file_path),
         raw_path=str(raw_dest),
         source_type=source_type,
+        content_nature=content_nature,
         summary_body="",
         summary_path="",
         user_guidance="",
@@ -239,6 +257,28 @@ async def start(
     response.set_cookie("robin_session", sid, httponly=True)
     if robin_auth:
         response.set_cookie("robin_auth", robin_auth, httponly=True)
+    return response
+
+
+@router.post("/cancel")
+async def cancel(
+    robin_session: str | None = Cookie(None),
+    robin_auth: str | None = Cookie(None),
+):
+    if not check_auth(robin_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    sess = _get_session(robin_session)
+    if sess:
+        sess["step"] = "cancelled"
+        # 清理已複製到 KB/Raw 的檔案（若尚在摘要階段，尚未產出任何 Wiki 頁面）
+        raw_path = Path(sess.get("raw_path", ""))
+        if raw_path.exists() and not sess.get("summary_path"):
+            _send_to_recycle_bin(raw_path)
+            logger.info(f"Cancel: 已清理 {raw_path}")
+
+    response = RedirectResponse("/", status_code=302)
+    response.delete_cookie("robin_session")
     return response
 
 
@@ -277,6 +317,10 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
     async def generate():
         try:
             step = sess["step"]
+
+            if step == "cancelled":
+                yield sse("done", {"redirect": "/"})
+                return
 
             if step == "summarizing":
                 yield sse("status", {"msg": "Robin 正在閱讀文件..."})
@@ -322,6 +366,7 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                     title=title,
                     author=author,
                     source_type=sess["source_type"],
+                    content_nature=sess.get("content_nature", ""),
                 )
                 sess["summary_body"] = summary
 
@@ -347,6 +392,7 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                         "updated": str(date.today()),
                         "source_refs": [raw_relative],
                         "source_type": sess["source_type"],
+                        "content_nature": sess.get("content_nature", "popular_science"),
                         "author": author,
                         "confidence": "medium",
                         "tags": [],
@@ -367,6 +413,7 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                     sess["summary_body"],
                     sess["summary_path"],
                     sess["user_guidance"],
+                    content_nature=sess.get("content_nature", ""),
                 )
                 sess["plan"] = plan or {"create": [], "update": []}
                 sess["step"] = "awaiting_approval"

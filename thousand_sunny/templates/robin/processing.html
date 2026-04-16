@@ -14,6 +14,8 @@
   #status { color: #666; font-size: 0.9rem; min-height: 1.2em; }
   .error-msg { color: #e53e3e; font-size: 0.9rem; margin-top: 1rem; }
   .back-link { display: inline-block; margin-top: 1.5rem; color: #6c63ff; font-size: 0.875rem; text-decoration: none; }
+  .cancel-btn { display: inline-block; margin-top: 1.5rem; padding: 0.4rem 1rem; background: transparent; color: #999; border: 1px solid #ddd; border-radius: 8px; font-size: 0.8rem; cursor: pointer; transition: all .2s; }
+  .cancel-btn:hover { color: #e53e3e; border-color: #e53e3e; }
 </style>
 </head>
 <body>
@@ -23,6 +25,9 @@
   <p id="status">連線中...</p>
   <div id="error" class="error-msg" style="display:none"></div>
   <a href="/" class="back-link" style="display:none" id="back">← 返回</a>
+  <form method="post" action="/cancel" id="cancel-form" style="margin:0">
+    <button type="submit" class="cancel-btn">取消</button>
+  </form>
 </div>
 <script>
 const sessionId = "{{ session_id }}";
@@ -35,6 +40,7 @@ evtSource.addEventListener("status", function(e) {
 
 evtSource.addEventListener("done", function(e) {
   evtSource.close();
+  document.getElementById("cancel-form").style.display = "none";
   const data = JSON.parse(e.data);
   window.location.href = data.redirect;
 });
@@ -46,6 +52,7 @@ evtSource.addEventListener("error", function(e) {
   document.getElementById("error").textContent = msg;
   document.getElementById("error").style.display = "block";
   document.getElementById("back").style.display = "inline-block";
+  document.getElementById("cancel-form").style.display = "none";
   document.querySelector(".spinner").style.display = "none";
 });
 

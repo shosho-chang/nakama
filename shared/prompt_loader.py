@@ -46,7 +46,7 @@ def load_shared(name: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def load_prompt(agent: str, name: str, **kwargs: str) -> str:
+def load_prompt(agent: str, name: str, *, content_nature: str = "", **kwargs: str) -> str:
     """載入 agent prompt 並套用變數插值。
 
     自動將以下 shared partials 注入為可用變數：
@@ -55,9 +55,11 @@ def load_prompt(agent: str, name: str, **kwargs: str) -> str:
         {vault_conventions}  → prompts/shared/vault-conventions.md
 
     Args:
-        agent:   agent 名稱（如 "robin"、"nami"）
-        name:    prompt 檔名（不含 .md），如 "summarize"
-        **kwargs: 額外的 format 變數
+        agent:           agent 名稱（如 "robin"、"nami"）
+        name:            prompt 檔名（不含 .md），如 "summarize"
+        content_nature:  內容性質（如 "research"、"textbook"），用於載入類別專屬 prompt。
+                         空字串或 "popular_science" 使用預設 prompt。
+        **kwargs:        額外的 format 變數
 
     Returns:
         格式化後的 prompt 字串
@@ -65,9 +67,18 @@ def load_prompt(agent: str, name: str, **kwargs: str) -> str:
     Raises:
         FileNotFoundError: prompt 檔不存在
     """
-    path = _PROMPTS_DIR / agent / f"{name}.md"
-    if not path.exists():
-        raise FileNotFoundError(f"Prompt 不存在：{path}")
+    # 嘗試載入類別專屬 prompt（若指定且非 default）
+    path = None
+    if content_nature and content_nature != "popular_science":
+        category_path = _PROMPTS_DIR / agent / "categories" / content_nature / f"{name}.md"
+        if category_path.exists():
+            path = category_path
+
+    # Fallback 到預設 prompt
+    if path is None:
+        path = _PROMPTS_DIR / agent / f"{name}.md"
+        if not path.exists():
+            raise FileNotFoundError(f"Prompt 不存在：{path}")
 
     template = path.read_text(encoding="utf-8")
 
