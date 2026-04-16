@@ -26,7 +26,7 @@ async def brook_chat_page(
 ):
     """Brook 聊天頁面。"""
     if not check_auth(robin_auth):
-        return RedirectResponse("/login", status_code=302)
+        return RedirectResponse("/login?next=/brook/chat", status_code=302)
     return templates.TemplateResponse(request, "brook_chat.html", {})
 
 

@@ -24,7 +24,7 @@ from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.utils import extract_frontmatter, read_text, slugify
-from thousand_sunny.auth import WEB_PASSWORD, check_auth, make_token, require_auth_or_key
+from thousand_sunny.auth import check_auth, require_auth_or_key
 from thousand_sunny.helpers import safe_resolve, sse
 
 logger = get_logger("nakama.web.robin")
@@ -106,31 +106,10 @@ def _get_inbox_files() -> list[dict]:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
-@router.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"error": None})
-
-
-@router.post("/login")
-async def login(request: Request, password: str = Form(...)):
-    if not WEB_PASSWORD or password == WEB_PASSWORD:
-        response = RedirectResponse("/", status_code=302)
-        response.set_cookie("robin_auth", make_token(password), httponly=True)
-        return response
-    return templates.TemplateResponse(request, "login.html", {"error": "密碼錯誤"}, status_code=401)
-
-
-@router.post("/logout")
-async def logout():
-    response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie("robin_auth")
-    return response
-
-
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, robin_auth: str | None = Cookie(None)):
     if not check_auth(robin_auth):
-        return RedirectResponse("/login", status_code=302)
+        return RedirectResponse("/login?next=/", status_code=302)
     files = _get_inbox_files()
     return templates.TemplateResponse(request, "index.html", {"files": files})
 

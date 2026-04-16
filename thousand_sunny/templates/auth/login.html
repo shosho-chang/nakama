@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Robin · 登入</title>
+<title>Nakama · 登入</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
@@ -21,8 +21,9 @@
 <body>
 <div class="card">
   <div class="logo">🏴‍☠️</div>
-  <h1>Robin · 知識庫</h1>
+  <h1>Nakama</h1>
   <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{ next }}">
     <label for="password">密碼</label>
     <input type="password" id="password" name="password" autofocus placeholder="輸入密碼">
     <button type="submit">進入</button>
