@@ -13,6 +13,7 @@ import shutil
 from pathlib import Path
 
 from agents.base import BaseAgent
+from agents.robin.categories import CONTENT_NATURES, DEFAULT_CONTENT_NATURE
 from agents.robin.ingest import IngestPipeline
 from shared.config import get_agent_config, get_vault_path
 from shared.log import kb_log
@@ -107,10 +108,12 @@ class RobinAgent(BaseAgent):
         shutil.copy2(file_path, raw_dest)
         self.logger.info(f"已複製到 KB/Raw/{raw_dir}/{file_path.name}")
 
-        # 3. 取得使用者引導（互動式模式）
+        # 3. 取得使用者引導和內容性質（互動式模式）
         user_guidance = ""
+        content_nature = DEFAULT_CONTENT_NATURE
         if self.interactive:
             user_guidance = self._get_user_guidance(file_path.name, source_type)
+            content_nature = self._get_content_nature(file_path.name)
 
         # 4. 執行 ingest pipeline（摘要 → 概念/實體 → index/log）
         self.pipeline.ingest(
@@ -118,6 +121,7 @@ class RobinAgent(BaseAgent):
             source_type=source_type,
             user_guidance=user_guidance,
             interactive=self.interactive,
+            content_nature=content_nature,
         )
 
         # 5. 標記已處理，移除 inbox 中的原檔
@@ -137,3 +141,21 @@ class RobinAgent(BaseAgent):
         print("  （直接按 Enter 讓 Robin 自行判斷）")
         print()
         return ""  # 引導在 summary 產出後才收集，此處回傳空字串
+
+    @staticmethod
+    def _get_content_nature(filename: str) -> str:
+        """互動式模式：讓使用者選擇內容性質。"""
+        print(f"\n{'=' * 60}")
+        print(f"📋 請選擇 {filename} 的內容性質：")
+        print(f"{'=' * 60}")
+        options = list(CONTENT_NATURES.items())
+        for i, (key, info) in enumerate(options, 1):
+            print(f"  {i}. {info['label']}（{info['description']}）")
+        print()
+        choice = input("輸入編號（預設 1 = 科普讀物）：").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(options):
+            selected = options[int(choice) - 1]
+            print(f"✓ 已選擇：{selected[1]['label']}")
+            return selected[0]
+        print("✓ 使用預設：科普讀物")
+        return DEFAULT_CONTENT_NATURE

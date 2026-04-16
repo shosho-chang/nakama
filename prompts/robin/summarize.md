@@ -2,7 +2,9 @@
 
 ## 要求
 
-1. **核心主張（Core Claims）**：列出來源的 3-5 個核心主張，每項附上信心等級（high / medium / low）
+1. **核心主張（Core Claims）**：列出來源的 3-5 個核心主張，每項附上：
+   - 信心等級（high / medium / low）
+   - 來源標注（cited-research = 有引用研究 / author-assertion = 作者主張 / anecdote = 軼事）
 2. **重要數據（Key Data）**：提取具體數字、研究結果、統計資料
 3. **關鍵觀點（Key Insights）**：作者的獨特見解或論述
 4. **相關概念（Related Concepts）**：列出此來源涉及的抽象概念，使用 `[[概念名稱]]` 格式
