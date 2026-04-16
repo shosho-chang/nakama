@@ -1,7 +1,9 @@
 """Robin routes — KB ingest UI, reader, and search."""
 
 import asyncio
+import platform
 import shutil
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -31,6 +33,20 @@ templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "robin")
 )
 pipeline = IngestPipeline()
+
+
+def _send_to_recycle_bin(path: Path) -> None:
+    """刪除檔案至回收桶（Windows）或直接刪除（Linux）。遵守 CLAUDE.md 刪除規則。"""
+    if platform.system() == "Windows":
+        ps_cmd = (
+            "Add-Type -AssemblyName Microsoft.VisualBasic; "
+            "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile("
+            f"'{path}', 'OnlyErrorDialogs', 'SendToRecycleBin')"
+        )
+        subprocess.run(["powershell", "-Command", ps_cmd], check=False)
+    else:
+        path.unlink(missing_ok=True)
+
 
 # ── Session store ─────────────────────────────────────────────────────────────
 
@@ -258,7 +274,7 @@ async def cancel(
         # 清理已複製到 KB/Raw 的檔案（若尚在摘要階段，尚未產出任何 Wiki 頁面）
         raw_path = Path(sess.get("raw_path", ""))
         if raw_path.exists() and not sess.get("summary_path"):
-            raw_path.unlink(missing_ok=True)
+            _send_to_recycle_bin(raw_path)
             logger.info(f"Cancel: 已清理 {raw_path}")
 
     response = RedirectResponse("/", status_code=302)
