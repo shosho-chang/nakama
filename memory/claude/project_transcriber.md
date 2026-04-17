@@ -1,9 +1,9 @@
 ---
 name: Transcriber 語音轉字幕模組
-description: shared/transcriber.py — FunASR + Auphonic + LLM 校正（Pinyin/JSON diff/LifeOS 整合/Opus），已 merge 到 main（PR #9）
+description: shared/transcriber.py — FunASR + Auphonic + LLM 校正；多模態仲裁升級中（路線 2：只用 Gemini audio 仲裁 uncertain，不加第二個 ASR）
 type: project
 created: 2026-04-14
-updated: 2026-04-15
+updated: 2026-04-17
 confidence: high
 ---
 
@@ -47,3 +47,41 @@ confidence: high
 
 ### 成本（1 小時 Podcast）
 - Haiku: ~$0.07 / Sonnet: ~$0.20 / **Opus: ~$0.33**
+
+---
+
+## 多模態仲裁升級（路線 2，2026-04-17 設計凍結）
+
+### 為何走路線 2（放棄雙 ASR）
+原本構想：FunASR + Whisper large-v3 並行 → diff → 仲裁。
+調研發現 **Whisper large-v3 在純中文遠差於 FunASR Paraformer-zh**（AIShell1 CER 4.72% vs 0.54%），diff 會爆炸且 Whisper 價值稀釋。
+
+**路線 2：** FunASR 仍是主幹 → Opus 第一輪標 uncertain → 對 uncertain 片段用 Gemini 2.5 Pro audio 仲裁（不需要第二個 ASR）。工程複雜度砍半，省掉對齊演算法。
+
+### 升級後架構
+```
+FunASR 轉寫 → Opus 第一輪校正（標 uncertain）
+           → 對 uncertain 片段切 audio clip（±1s padding）
+           → Gemini 2.5 Pro audio 仲裁（多模態直接聽）
+           → Opus 第二輪整合（吃仲裁結果）
+           → SRT + .qc.md
+```
+
+### 成本上升（1 小時 Podcast）
+- Gemini audio 仲裁 ~20 個片段 × 10 秒 ≈ $0.05–0.20
+- 合計 ~$0.40–0.55（相對現況 $0.33，品質大幅提升）
+
+### PR 進度
+- ✅ PR-A (#18, 2026-04-17)：`shared/audio_clip.py` ffmpeg 切片（含 tempfile 失敗清理 + capture_output）
+- ⬜ PR-B：`shared/gemini_client.py`（audio + response_json_schema，`google-genai>=1.73`）
+- ⬜ PR-C：`shared/multimodal_arbiter.py`（串 audio_clip + gemini_client）
+- ⬜ PR-D：`transcriber.py` `_correct_with_llm()` 改兩輪 + 接仲裁器
+
+### 關鍵技術決策
+- **多模態 LLM：** Gemini 2.5 Pro（$1.25/M input audio，32 tokens/秒，10 秒 clip ~$0.0004）
+- **不走多模態吃整集：** 1 小時音檔即使技術上行（~11.5 萬 tokens < 2M context），但延遲長、注意力稀釋、成本浪費；僅刀口使用
+- **不加第二個 ASR：** 工程成本不值 — Whisper 中文品質差、對齊演算法難寫
+- **audio clip 規格：** 16kHz mono WAV（Gemini 內部降到 16kbps，先降省傳輸；mono 省 token）
+
+### 未來可加（暫不做）
+- 若 Gemini 對英文/混語片段判不準 → 再加 Whisper 作第三意見（路線 3）

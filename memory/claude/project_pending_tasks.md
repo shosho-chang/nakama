@@ -66,6 +66,12 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ⬜ Web UI 實測：不同 content_nature 執行 ingest
 - ⬜ E2E：大文件 + 本地 LLM + 類別 prompt 驗證
 
+**Transcriber 多模態仲裁 pipeline（路線 2，2026-04-17 設計凍結）：**
+- ✅ PR-A：`shared/audio_clip.py`（ffmpeg 切片 + tempfile 清理）— PR #18 merged
+- ⬜ PR-B：`shared/gemini_client.py`（Gemini 2.5 Pro audio + JSON schema）
+- ⬜ PR-C：`shared/multimodal_arbiter.py`（串 audio_clip + gemini_client）
+- ⬜ PR-D：改造 `transcriber.py` `_correct_with_llm()` 接仲裁器（第一輪 Opus 標 uncertain → 呼叫仲裁器 → 第二輪 Opus 整合）
+
 **待進行（下一步）：**
 - Agent 功能 → Skill 改寫 **Phase 2**：morning-brief (Nami)、kb-search (Robin)
 - Agent 功能 → Skill 改寫 **Phase 3**：keyword-research (Zoro)、weekly-report (Franky)、style-extractor
