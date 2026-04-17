@@ -57,26 +57,37 @@ def _load_accounts() -> list[AuphonicAccount]:
 # ── .env 參數讀取 ──
 
 
+def _strip_inline_comment(val: str) -> str:
+    """python-dotenv 不保證剝 inline `#` 註解（空值時整段註解會被當值讀），手動處理。"""
+    idx = val.find("#")
+    if idx != -1:
+        val = val[:idx]
+    return val.strip()
+
+
 def _env_str(key: str, default: str) -> str:
-    return os.environ.get(key, default).strip()
+    raw = os.environ.get(key)
+    if raw is None:
+        return default.strip()
+    return _strip_inline_comment(raw)
 
 
 def _env_bool(key: str, default: bool) -> bool:
-    val = os.environ.get(key, "").strip().lower()
+    val = _strip_inline_comment(os.environ.get(key, "")).lower()
     if not val:
         return default
     return val in ("true", "1", "yes")
 
 
 def _env_float(key: str, default: float) -> float:
-    val = os.environ.get(key, "").strip()
+    val = _strip_inline_comment(os.environ.get(key, ""))
     if not val:
         return default
     return float(val)
 
 
 def _env_int(key: str, default: int) -> int:
-    val = os.environ.get(key, "").strip()
+    val = _strip_inline_comment(os.environ.get(key, ""))
     if not val:
         return default
     return int(val)
@@ -100,7 +111,7 @@ def _load_env_defaults() -> dict:
         "leveler_strength": _env_int("AUPHONIC_LEVELER_STRENGTH", 100),
         "compressor": _env_str("AUPHONIC_COMPRESSOR", "auto"),
         "filtering": _env_bool("AUPHONIC_FILTERING", True),
-        "filter_method": _env_str("AUPHONIC_FILTER_METHOD", "voice_autoeq"),
+        "filter_method": _env_str("AUPHONIC_FILTER_METHOD", "autoeq"),
         "silence_cutter": _env_bool("AUPHONIC_SILENCE_CUTTER", False),
         "filler_cutter": _env_bool("AUPHONIC_FILLER_CUTTER", False),
         "trim_jingle": _env_bool("AUPHONIC_TRIM_JINGLE", True),
@@ -232,6 +243,9 @@ def _create_production(api_key: str, *, params: dict) -> str:
         headers={**_headers(api_key), "Content-Type": "application/json"},
         timeout=30,
     )
+    if resp.status_code >= 400:
+        logger.error(f"Auphonic {resp.status_code} body: {resp.text}")
+        logger.error(f"Payload was: {payload}")
     resp.raise_for_status()
     uuid = resp.json()["data"]["uuid"]
     logger.info(f"建立 production: {uuid}")
@@ -297,10 +311,9 @@ def _download_result(api_key: str, production_data: dict, output_path: Path) -> 
     if not output_files:
         raise RuntimeError("Auphonic production 沒有輸出檔案")
 
-    uuid = production_data["uuid"]
-    output_basename = production_data.get("output_basename", "")
-    file_ending = output_files[0].get("ending", ".wav")
-    download_url = f"{_API_BASE}/production/{uuid}/download/{output_basename}{file_ending}"
+    download_url = output_files[0].get("download_url")
+    if not download_url:
+        raise RuntimeError("Auphonic output_files 缺 download_url")
 
     resp = httpx.get(download_url, headers=_headers(api_key), timeout=300, follow_redirects=True)
     resp.raise_for_status()

@@ -96,7 +96,7 @@ def ask_gemini_audio(
     model: str = "gemini-2.5-pro",
     system: str = "",
     temperature: float = 0.2,
-    max_output_tokens: int = 1024,
+    max_output_tokens: int = 8192,
 ) -> Any:
     """對音訊檔送一次 Gemini 請求。
 
@@ -134,7 +134,7 @@ def ask_gemini_audio(
         config_kwargs["system_instruction"] = system
     if response_schema is not None:
         config_kwargs["response_mime_type"] = "application/json"
-        config_kwargs["response_json_schema"] = response_schema
+        config_kwargs["response_schema"] = response_schema
 
     def _call() -> Any:
         client = get_client()
@@ -162,13 +162,28 @@ def ask_gemini_audio(
             return parsed
         text = getattr(response, "text", None)
         if text is None:
-            raise RuntimeError("Gemini 回應沒有 parsed 也沒有 text")
+            diag = _describe_finish(response)
+            raise RuntimeError(f"Gemini 回應沒有 parsed 也沒有 text（{diag}）")
         return response_schema.model_validate_json(text)
 
     text = getattr(response, "text", None)
     if not text:
-        raise RuntimeError("Gemini 回應為空")
+        raise RuntimeError(f"Gemini 回應為空（{_describe_finish(response)}）")
     return text
+
+
+def _describe_finish(response: Any) -> str:
+    """把 response 的 finish_reason / token 用量濃縮成一行診斷訊息。"""
+    try:
+        cand = (response.candidates or [None])[0]
+        finish = getattr(cand, "finish_reason", None)
+        usage = getattr(response, "usage_metadata", None)
+        thought = getattr(usage, "thoughts_token_count", None) if usage else None
+        out = getattr(usage, "candidates_token_count", None) if usage else None
+        total = getattr(usage, "total_token_count", None) if usage else None
+        return f"finish={finish}, thoughts={thought}, output={out}, total={total}"
+    except Exception as e:
+        return f"diagnostic 失敗: {e}"
 
 
 def _record_usage(response: Any, model: str) -> None:

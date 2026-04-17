@@ -109,7 +109,7 @@ def test_structured_response_with_parsed(monkeypatch, fake_audio):
     # 驗證 schema 確實傳進 config
     config = fake_client.last_kwargs["config"]
     assert config.response_mime_type == "application/json"
-    assert config.response_json_schema is not None
+    assert config.response_schema is not None
 
 
 def test_structured_response_fallback_to_text(monkeypatch, fake_audio):

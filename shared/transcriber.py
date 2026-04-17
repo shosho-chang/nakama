@@ -359,7 +359,7 @@ def _correct_with_llm(
     *,
     context_files: list[str | Path],
     project_context: dict | None = None,
-    model: str = "claude-opus-4-20250918",
+    model: str = "claude-opus-4-7",
     host_name: str = "",
     show_name: str = "",
     audio_path: Path | None = None,
@@ -453,7 +453,7 @@ def _correct_with_llm(
     prompt = f"請校正以下語音辨識逐字稿：\n\n{numbered_text}"
 
     logger.info(f"LLM 校正：{len(entries)} 行，模型 {model}")
-    raw = ask_claude(prompt, system=system, model=model, max_tokens=16384, temperature=0.1)
+    raw = ask_claude(prompt, system=system, model=model, max_tokens=16384)
 
     # ── 解析 JSON 回傳 ──
     corrected, uncertainties = _parse_llm_response(raw, len(entries))
@@ -742,7 +742,7 @@ def transcribe(
     project_file: str | Path | None = None,
     use_punctuation: bool = False,
     use_llm_correction: bool = False,
-    llm_model: str = "claude-opus-4-20250918",
+    llm_model: str = "claude-opus-4-7",
     asr_model: str = "paraformer-zh",
     normalize_audio: bool = True,
     output_dir: str | Path | None = None,

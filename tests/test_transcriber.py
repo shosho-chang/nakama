@@ -172,7 +172,7 @@ def test_correct_with_llm_basic():
 
     with patch("shared.anthropic_client.ask_claude", return_value=mock_response):
         result, uncertainties = _correct_with_llm(
-            _SAMPLE_SRT, context_files=[], model="claude-opus-4-20250918"
+            _SAMPLE_SRT, context_files=[], model="claude-opus-4-7"
         )
 
     assert "NMN是一種重要的分子" in result
