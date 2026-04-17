@@ -411,7 +411,7 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
                 await asyncio.to_thread(pipeline._update_index, title, slug, sess["source_type"])
 
                 mark_file_processed(Path(sess["file_path"]), "robin")
-                Path(sess["file_path"]).unlink(missing_ok=True)
+                _send_to_recycle_bin(Path(sess["file_path"]))
 
                 sess["result"] = {
                     "created": [item["title"] for item in creates],
