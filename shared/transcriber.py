@@ -436,6 +436,7 @@ def _correct_with_llm(
         "- 術語表/參考資料的寫法為最高優先\n"
         "- 保持口語自然感，不改成書面語\n"
         "- 不確定的修正必須放入 uncertain 清單，不要硬改\n"
+        "- **輸出文字不要包含任何標點符號（，。、；：？！等）**；語氣停頓用半形空格分隔即可\n"
         "\n## 輸出格式（嚴格 JSON，不要加 ```json 標記）\n"
         "{\n"
         '  "corrections": {"序號": "校正後文字", ...},\n'
@@ -694,23 +695,18 @@ def _split_by_pattern(pattern: re.Pattern, text: str) -> list[str]:
     return segments
 
 
-def _process_srt_line(line: str, *, use_punctuation: bool) -> str:
-    """處理單行 SRT 內容：簡轉繁 + 標點控制。只作用於字幕文字行。"""
+def _process_srt_line(line: str) -> str:
+    """處理單行 SRT 內容：簡轉繁 + 去標點（句中→空格、句尾→刪除）。只作用於字幕文字行。"""
     stripped = line.strip()
     # 跳過空行、序號行、時間戳行
     if not stripped or stripped.isdigit() or "-->" in stripped:
         return line
 
-    # 簡轉繁
     line = _to_traditional(line)
-
-    # 標點控制
-    if not use_punctuation:
-        line = _remove_punctuation(line)
-        # 移除標點後如果變空行，保留一個空格避免破壞 SRT 結構
-        if not line.strip():
-            line = " "
-
+    line = _remove_punctuation(line)
+    # 移除標點後如果變空行，保留一個空格避免破壞 SRT 結構
+    if not line.strip():
+        line = " "
     return line
 
 
@@ -740,7 +736,6 @@ def transcribe(
     language: str = "zh",
     context_files: list[str | Path] | None = None,
     project_file: str | Path | None = None,
-    use_punctuation: bool = False,
     use_llm_correction: bool = False,
     llm_model: str = "claude-opus-4-7",
     asr_model: str = "paraformer-zh",
@@ -758,7 +753,6 @@ def transcribe(
         language: 語言代碼（預設 "zh"）
         context_files: 參考資料檔案路徑列表（書、報導等），用於提升專有名詞準確度
         project_file: LifeOS Podcast Project 檔案路徑，自動提取來賓/主題/術語 context
-        use_punctuation: 是否保留標點符號（預設 False）
         use_llm_correction: 是否啟用 LLM 校正（預設 False，啟用會產生 API 成本）
         llm_model: LLM 校正使用的模型（預設 Opus，~$0.40/小時音檔）
         asr_model: FunASR 模型 ID（預設 paraformer-zh）
@@ -816,12 +810,8 @@ def transcribe(
     # ── 轉為 SRT ──
     srt_content = _funasr_to_srt(results)
 
-    # ── 後處理：逐行簡轉繁 + 標點控制 ──
-    processed_lines = [
-        _process_srt_line(line, use_punctuation=use_punctuation)
-        for line in srt_content.splitlines()
-    ]
-    srt_content = "\n".join(processed_lines)
+    # ── 後處理：逐行簡轉繁 + 去標點（Pass 1：FunASR 輸出）──
+    srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
 
     # ── LLM 校正（可選）──
     if use_llm_correction:
@@ -841,6 +831,9 @@ def transcribe(
             qc_path = output_dir / f"{audio_path.stem}.qc.md"
             _write_qc_report(qc_path, qc_items)
             logger.info(f"QC 報告：{len(qc_items)} 項待確認 → {qc_path}")
+
+        # ── Pass 2：LLM/Gemini 可能在校正時加回標點，最終輸出前再過濾一次 ──
+        srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
 
     # ── 寫入最終 SRT ──
     final_srt = output_dir / f"{audio_path.stem}.srt"

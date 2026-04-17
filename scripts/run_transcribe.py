@@ -40,7 +40,6 @@ def main() -> None:
         audio_path=audio_path,
         output_dir=output_dir,
         normalize_audio=True,
-        use_punctuation=True,
         use_llm_correction=True,
         use_multimodal_arbitration=True,
     )
