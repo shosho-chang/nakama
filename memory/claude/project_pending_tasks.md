@@ -70,7 +70,8 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ✅ PR-A：`shared/audio_clip.py`（ffmpeg 切片 + tempfile 清理）— PR #18 merged
 - ✅ PR-B：`shared/gemini_client.py`（Gemini 2.5 Pro audio + JSON schema）— PR #19 merged 2026-04-17，順手修 CI 裝 ffmpeg
 - ✅ PR-C：`shared/multimodal_arbiter.py`（串 audio_clip + gemini_client）— PR #20 merged 2026-04-17，code review 修掉 thread-local cost tracking bug
-- ⬜ PR-D：改造 `transcriber.py` `_correct_with_llm()` 接仲裁器（第一輪 Opus 標 uncertain → 呼叫仲裁器 → 第二輪 Opus 整合）
+- ✅ PR-D：`transcriber.py` `_correct_with_llm()` 兩輪 pipeline — PR #21 merged 2026-04-17，策略 A（自動應用 verdicts，無第二輪 Opus）；code review 修掉 `accept_suggestion` 分支沒寫 corrections 的 bug
+- ⬜ Transcriber 多模態仲裁 E2E 實測（真實音檔跑完整 Opus + Gemini pipeline，驗成本、品質、QC 報告）
 
 **待進行（下一步）：**
 - Agent 功能 → Skill 改寫 **Phase 2**：morning-brief (Nami)、kb-search (Robin)

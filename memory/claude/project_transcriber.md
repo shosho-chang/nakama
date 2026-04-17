@@ -1,6 +1,6 @@
 ---
 name: Transcriber 語音轉字幕模組
-description: shared/transcriber.py — FunASR + Auphonic + LLM 校正；多模態仲裁升級中（路線 2：只用 Gemini audio 仲裁 uncertain，不加第二個 ASR）
+description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁（路線 2，四個 PR 全 merged，待 E2E 實測）
 type: project
 created: 2026-04-14
 updated: 2026-04-17
@@ -75,7 +75,7 @@ FunASR 轉寫 → Opus 第一輪校正（標 uncertain）
 - ✅ PR-A (#18, 2026-04-17)：`shared/audio_clip.py` ffmpeg 切片（含 tempfile 失敗清理 + capture_output）
 - ✅ PR-B (#19, 2026-04-17)：`shared/gemini_client.py` — `ask_gemini_audio()` 支援 Pydantic schema；retryable 只列 `ServerError`（不含 `APIError` 基類，避免 4xx 空重試）；singleton + with_retry + cost tracking；順手修 CI 裝 ffmpeg
 - ✅ PR-C (#20, 2026-04-17)：`shared/multimodal_arbiter.py` — per-clip 仲裁；4-way verdict enum；動態 padding（短 2s 長 1s）；前後各 1 行 SRT 文字進 prompt；失敗隔離；code review 找到 `set_current_agent` thread-local bug（worker thread 讀不到主線程設定 → cost tracking 全變 unknown），已修（搬進 `_arbitrate_one`，走 worker 再設）
-- ⬜ PR-D：`transcriber.py` `_correct_with_llm()` 改兩輪 + 接仲裁器
+- ✅ PR-D (#21, 2026-04-17)：`transcriber.py` `_correct_with_llm()` 兩輪 pipeline — Pass 1 Opus 標 uncertain → `arbitrate_uncertain()` → 自動應用 verdicts（策略 A，無第二輪 Opus）；`_write_qc_report` 支援新格式（verdict/信心/Gemini 理由）；整批仲裁失敗退回舊流程；code review 找到 `accept_suggestion` 分支沒寫 `corrections[line]` 的 bug（Opus Pass 1 按 prompt 不放 uncertain 進 corrections，仲裁採納後永遠套不上去），已修並補測試
 
 ### 關鍵技術決策
 - **多模態 LLM：** Gemini 2.5 Pro（$1.25/M input audio，32 tokens/秒，10 秒 clip ~$0.0004）
