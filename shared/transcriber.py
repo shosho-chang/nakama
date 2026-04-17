@@ -200,15 +200,35 @@ def _extract_project_context(project_file: str | Path) -> dict:
     return result
 
 
-def _write_qc_report(path: Path, uncertainties: list[dict]) -> None:
-    """將不確定修正寫成 Markdown QC 報告。"""
+def _write_qc_report(path: Path, items: list[dict]) -> None:
+    """將 QC 項目寫成 Markdown 報告。
+
+    支援兩種格式（自動偵測）：
+    - 新版（含 `verdict`）：多模態仲裁結果
+    - 舊版（僅 original/suggestion/reason）：單輪 Opus uncertainties
+    """
     lines = ["# QC 報告 — 需人工確認\n"]
-    for item in uncertainties:
+    for item in items:
         risk = item.get("risk", "medium")
-        lines.append(f"## [{risk.upper()}] Line {item.get('line', '?')}")
-        lines.append(f"- **原文**：{item.get('original', '')}")
-        lines.append(f"- **建議**：{item.get('suggestion', '')}")
-        lines.append(f"- **理由**：{item.get('reason', '')}")
+        line_no = item.get("line", "?")
+        has_verdict = "verdict" in item
+
+        if has_verdict:
+            verdict = item.get("verdict", "?")
+            confidence = item.get("confidence", 0.0)
+            header = f"## [{risk.upper()} | {verdict} | conf {confidence:.2f}] Line {line_no}"
+            lines.append(header)
+            lines.append(f"- **ASR 原文**：{item.get('original', '')}")
+            lines.append(f"- **Opus 建議**：{item.get('suggestion', '')}")
+            lines.append(f"- **Opus 理由**：{item.get('reason', '')}")
+            lines.append(f"- **Gemini 仲裁**：{item.get('final_text', '')}")
+            lines.append(f"- **Gemini 理由**：{item.get('gemini_reasoning', '')}")
+        else:
+            lines.append(f"## [{risk.upper()}] Line {line_no}")
+            lines.append(f"- **原文**：{item.get('original', '')}")
+            lines.append(f"- **建議**：{item.get('suggestion', '')}")
+            lines.append(f"- **理由**：{item.get('reason', '')}")
+
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -270,6 +290,63 @@ def _replace_srt_texts(srt_content: str, corrected: dict[int, str]) -> str:
     return "\n".join(result)
 
 
+_QC_CONFIDENCE_THRESHOLD = 0.6
+
+
+def _apply_arbitration_verdicts(
+    corrections: dict[int, str],
+    uncertainties: list[dict],
+    verdicts: list,  # list[ArbitrationVerdict]
+) -> tuple[dict[int, str], list[dict]]:
+    """依 Gemini 仲裁結果更新 corrections dict，並產出 QC 清單。
+
+    - keep_original  → 從 corrections 移除（還原 ASR 原文）
+    - accept_suggestion → corrections 不動（Pass 1 已套 suggestion）
+    - other → corrections 覆寫為 final_text
+    - uncertain → 從 corrections 移除 + 進 QC
+    - 任何 confidence < _QC_CONFIDENCE_THRESHOLD → 進 QC（即便已套用）
+    """
+    uncertain_by_line = {u.get("line"): u for u in uncertainties}
+    qc_items: list[dict] = []
+
+    for v in verdicts:
+        line = v.line
+        original_dict = uncertain_by_line.get(line, {})
+        asr_original = original_dict.get("original", "")
+        opus_suggestion = original_dict.get("suggestion", "")
+        opus_reason = original_dict.get("reason", "")
+        risk = original_dict.get("risk", "medium")
+
+        if v.verdict == "keep_original":
+            corrections.pop(line, None)
+            final_text = asr_original
+        elif v.verdict == "accept_suggestion":
+            final_text = opus_suggestion or corrections.get(line, asr_original)
+        elif v.verdict == "other":
+            corrections[line] = v.final_text
+            final_text = v.final_text
+        else:  # uncertain
+            corrections.pop(line, None)
+            final_text = asr_original
+
+        if v.verdict == "uncertain" or v.confidence < _QC_CONFIDENCE_THRESHOLD:
+            qc_items.append(
+                {
+                    "line": line,
+                    "original": asr_original,
+                    "suggestion": opus_suggestion,
+                    "reason": opus_reason,
+                    "risk": risk,
+                    "verdict": v.verdict,
+                    "final_text": final_text,
+                    "gemini_reasoning": v.reasoning,
+                    "confidence": v.confidence,
+                }
+            )
+
+    return corrections, qc_items
+
+
 def _correct_with_llm(
     srt_content: str,
     *,
@@ -278,16 +355,23 @@ def _correct_with_llm(
     model: str = "claude-opus-4-20250918",
     host_name: str = "",
     show_name: str = "",
+    audio_path: Path | None = None,
+    use_arbitration: bool = True,
+    run_id: int | None = None,
 ) -> tuple[str, list[dict]]:
-    """用 Claude 校正 ASR 逐字稿（Pinyin 輔助 + JSON diff + 三輪校對）。
+    """用 Claude 校正 ASR 逐字稿（Pinyin 輔助 + JSON diff + 三輪校對 + 多模態仲裁）。
 
-    策略：
-    1. 帶 pinyin 的逐字稿讓 Claude 同時看到語義和語音
-    2. 三輪校對思路：機械校正 → 語意校正 → 交付檢核
-    3. JSON diff 輸出：只回傳有改的行 + 不確定修正清單
+    流程：
+    1. Pass 1 Opus 校正：帶 pinyin 的編號逐字稿 → corrections + uncertainties
+    2. 若有 `audio_path` 且 `use_arbitration=True` 且有 uncertainties：
+       → Gemini 2.5 Pro audio 對 uncertain 片段仲裁
+       → 依 verdict 更新 corrections、低信心 verdict 進 QC
+    3. 否則走舊流程：uncertainties 直接進 QC
 
     Returns:
-        tuple: (corrected_srt, uncertainties)
+        tuple: (corrected_srt, qc_items)
+            - 有仲裁時 qc_items 含 verdict/final_text/gemini_reasoning/confidence
+            - 無仲裁時 qc_items 為原始 uncertainties（保持向下相容）
     """
     from shared.anthropic_client import ask_claude
 
@@ -368,11 +452,34 @@ def _correct_with_llm(
     corrected, uncertainties = _parse_llm_response(raw, len(entries))
 
     if corrected:
-        logger.info(f"LLM 校正完成：{len(corrected)} 行修正，{len(uncertainties)} 項待確認")
+        logger.info(f"LLM Pass 1 完成：{len(corrected)} 行修正，{len(uncertainties)} 項 uncertain")
     else:
-        logger.warning("LLM 校正無修改")
+        logger.warning("LLM Pass 1 無修改")
 
-    return _replace_srt_texts(srt_content, corrected), uncertainties
+    # ── Pass 2：多模態仲裁（可選）──
+    qc_items: list[dict] = uncertainties
+    should_arbitrate = use_arbitration and uncertainties and audio_path is not None
+
+    if should_arbitrate:
+        try:
+            from shared.multimodal_arbiter import arbitrate_uncertain
+
+            pre_arb_srt = _replace_srt_texts(srt_content, corrected)
+            verdicts = arbitrate_uncertain(
+                audio_path,
+                pre_arb_srt,
+                uncertainties,
+                run_id=run_id,
+            )
+            corrected, qc_items = _apply_arbitration_verdicts(corrected, uncertainties, verdicts)
+            logger.info(f"多模態仲裁完成：{len(verdicts)} 個 verdict，{len(qc_items)} 項進 QC")
+        except Exception as e:
+            logger.warning(f"多模態仲裁失敗，退回舊流程：{type(e).__name__}: {e}")
+            qc_items = uncertainties
+    elif use_arbitration and uncertainties and audio_path is None:
+        logger.info("無 audio_path，跳過多模態仲裁")
+
+    return _replace_srt_texts(srt_content, corrected), qc_items
 
 
 def _parse_llm_response(raw: str, total_entries: int) -> tuple[dict[int, str], list[dict]]:
@@ -634,6 +741,8 @@ def transcribe(
     output_dir: str | Path | None = None,
     host_name: str = "張修修",
     show_name: str = "不正常人類研究所",
+    use_multimodal_arbitration: bool = True,
+    run_id: int | None = None,
 ) -> Path:
     """語音轉繁體中文 SRT 字幕。
 
@@ -650,6 +759,9 @@ def transcribe(
         output_dir: 輸出目錄（預設與音檔同目錄）
         host_name: 主持人名稱（預設「張修修」）
         show_name: 節目名稱（預設「不正常人類研究所」）
+        use_multimodal_arbitration: 是否在 LLM 校正後用 Gemini 2.5 Pro audio 仲裁 uncertain 片段
+            （僅在 use_llm_correction=True 時生效，多 $0.05–0.20/hr）
+        run_id: cost tracking 用的 run id（傳給 Gemini 客戶端）
 
     Returns:
         SRT 字幕檔的 Path
@@ -707,18 +819,21 @@ def transcribe(
     # ── LLM 校正（可選）──
     if use_llm_correction:
         proj_ctx = _extract_project_context(project_file) if project_file else None
-        srt_content, uncertainties = _correct_with_llm(
+        srt_content, qc_items = _correct_with_llm(
             srt_content,
             context_files=context_files,
             project_context=proj_ctx,
             model=llm_model,
             host_name=host_name,
             show_name=show_name,
+            audio_path=audio_path,
+            use_arbitration=use_multimodal_arbitration,
+            run_id=run_id,
         )
-        if uncertainties:
+        if qc_items:
             qc_path = output_dir / f"{audio_path.stem}.qc.md"
-            _write_qc_report(qc_path, uncertainties)
-            logger.info(f"QC 報告：{len(uncertainties)} 項待確認 → {qc_path}")
+            _write_qc_report(qc_path, qc_items)
+            logger.info(f"QC 報告：{len(qc_items)} 項待確認 → {qc_path}")
 
     # ── 寫入最終 SRT ──
     final_srt = output_dir / f"{audio_path.stem}.srt"
