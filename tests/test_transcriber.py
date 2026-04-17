@@ -721,3 +721,277 @@ def test_extract_project_context_missing_file():
     assert result["guest_name"] == ""
     assert result["topic"] == ""
     assert result["context_text"] == ""
+
+
+# ── 多模態仲裁整合（PR-D）──
+
+
+def _make_verdict(line, verdict, final_text, confidence=0.9, reasoning="仲裁理由"):
+    """組 ArbitrationVerdict 的測試輔助。"""
+    from shared.multimodal_arbiter import ArbitrationVerdict
+
+    return ArbitrationVerdict(
+        line=line,
+        final_text=final_text,
+        verdict=verdict,
+        confidence=confidence,
+        reasoning=reasoning,
+    )
+
+
+def test_correct_with_llm_no_uncertainties_skips_arbitration(tmp_path):
+    """零 uncertain 時不呼叫仲裁器。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    mock_response = '{"corrections": {"2": "NMN是一種重要的分子"}, "uncertain": []}'
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain") as mock_arb,
+    ):
+        result, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=True
+        )
+
+    assert mock_arb.call_count == 0
+    assert qc_items == []
+    assert "NMN是一種重要的分子" in result
+
+
+def test_correct_with_llm_arbitration_disabled(tmp_path):
+    """use_arbitration=False 時不呼叫仲裁器，uncertainties 直接進 qc_items。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    mock_response = (
+        '{"corrections": {}, "uncertain": ['
+        '{"line": 3, "original": "李大華博士的研究", '
+        '"suggestion": "李大花博士的研究", "reason": "人名", "risk": "high"}]}'
+    )
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain") as mock_arb,
+    ):
+        _, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=False
+        )
+
+    assert mock_arb.call_count == 0
+    assert len(qc_items) == 1
+    assert "verdict" not in qc_items[0]
+
+
+def test_correct_with_llm_no_audio_skips_arbitration():
+    """audio_path=None 時不呼叫仲裁器。"""
+    mock_response = (
+        '{"corrections": {}, "uncertain": ['
+        '{"line": 3, "original": "李大華博士的研究", '
+        '"suggestion": "李大花博士的研究", "reason": "人名", "risk": "high"}]}'
+    )
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain") as mock_arb,
+    ):
+        _, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=None, use_arbitration=True
+        )
+
+    assert mock_arb.call_count == 0
+    assert len(qc_items) == 1
+
+
+def test_correct_with_llm_applies_verdicts(tmp_path):
+    """四種 verdict 各覆蓋一條，驗 corrections dict 結果。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    # Pass 1：四條 uncertain（line 1/2/3 在 _SAMPLE_SRT 內，加一條模擬多行）
+    # _SAMPLE_SRT 只有 3 行，我們測 keep_original / accept_suggestion / other
+    mock_response = (
+        '{"corrections": {'
+        '"1": "這是第一句修改版",'  # accept_suggestion，Pass 1 已套
+        '"2": "NMN是一種重要的分子",'  # other，仲裁改掉
+        '"3": "李大花博士的研究"'  # keep_original，仲裁撤銷 Pass 1 修改
+        "}, "
+        '"uncertain": ['
+        '{"line": 1, "original": "這是第一句", '
+        '"suggestion": "這是第一句修改版", "reason": "r1", "risk": "low"},'
+        '{"line": 2, "original": "NMM是一種重要的分子", '
+        '"suggestion": "NMN是一種重要的分子", "reason": "r2", "risk": "medium"},'
+        '{"line": 3, "original": "李大華博士的研究", '
+        '"suggestion": "李大花博士的研究", "reason": "r3", "risk": "high"}'
+        "]}"
+    )
+
+    verdicts = [
+        _make_verdict(1, "accept_suggestion", "這是第一句修改版", confidence=0.9),
+        _make_verdict(2, "other", "NMN才是正確的分子", confidence=0.95),
+        _make_verdict(3, "keep_original", "李大華博士的研究", confidence=0.85),
+    ]
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
+    ):
+        result, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=True
+        )
+
+    # line 1: Pass 1 的 suggestion 被保留
+    assert "這是第一句修改版" in result
+    # line 2: Gemini 的 final_text 覆蓋
+    assert "NMN才是正確的分子" in result
+    assert "NMN是一種重要的分子" not in result
+    # line 3: ASR 原文還原
+    assert "李大華博士的研究" in result
+    assert "李大花博士" not in result
+    # 所有 confidence >= 0.6 且非 uncertain → qc_items 空
+    assert qc_items == []
+
+
+def test_correct_with_llm_low_confidence_goes_to_qc(tmp_path):
+    """低信心 verdict 即便套用了也進 QC。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    mock_response = (
+        '{"corrections": {"2": "NMN是一種重要的分子"}, '
+        '"uncertain": [{"line": 2, "original": "NMM是一種重要的分子", '
+        '"suggestion": "NMN是一種重要的分子", "reason": "r", "risk": "medium"}]}'
+    )
+
+    verdicts = [
+        _make_verdict(2, "accept_suggestion", "NMN是一種重要的分子", confidence=0.3),
+    ]
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
+    ):
+        _, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=True
+        )
+
+    assert len(qc_items) == 1
+    assert qc_items[0]["line"] == 2
+    assert qc_items[0]["confidence"] == 0.3
+    assert qc_items[0]["verdict"] == "accept_suggestion"
+
+
+def test_correct_with_llm_accept_suggestion_not_in_pass1_corrections(tmp_path):
+    """accept_suggestion 時即便 Pass 1 沒把 suggestion 放進 corrections 也要套用。
+
+    Pass 1 的 prompt 要求 Opus「uncertain 項目不要硬改」— 所以 suggestion 通常
+    只在 uncertainties dict，而非 corrections。若 Gemini 仲裁 accept_suggestion，
+    必須顯式寫入 corrections，否則最終 SRT 會用 ASR 原文。
+    """
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    # Pass 1：line 3 被標 uncertain，但 Opus 沒放進 corrections（符合 prompt 指示）
+    mock_response = (
+        '{"corrections": {}, '
+        '"uncertain": [{"line": 3, "original": "李大華博士的研究", '
+        '"suggestion": "李大花博士的研究", "reason": "人名", "risk": "high"}]}'
+    )
+    verdicts = [_make_verdict(3, "accept_suggestion", "李大花博士的研究", confidence=0.9)]
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
+    ):
+        result, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=True
+        )
+
+    # Gemini 仲裁的 suggestion 必須出現在最終 SRT
+    assert "李大花博士的研究" in result
+    assert "李大華博士的研究" not in result
+    assert qc_items == []
+
+
+def test_correct_with_llm_uncertain_verdict_drops_correction(tmp_path):
+    """verdict=uncertain 時撤銷 Pass 1 修改，還原 ASR 原文，並進 QC。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    mock_response = (
+        '{"corrections": {"2": "NMN是一種重要的分子"}, '
+        '"uncertain": [{"line": 2, "original": "NMM是一種重要的分子", '
+        '"suggestion": "NMN是一種重要的分子", "reason": "r", "risk": "high"}]}'
+    )
+    verdicts = [_make_verdict(2, "uncertain", "NMM是一種重要的分子", confidence=0.0)]
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
+    ):
+        result, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=True
+        )
+
+    # Pass 1 的修改被撤銷、ASR 原文保留
+    assert "NMM是一種重要的分子" in result
+    assert "NMN是一種重要的分子" not in result
+    assert len(qc_items) == 1
+    assert qc_items[0]["verdict"] == "uncertain"
+
+
+def test_correct_with_llm_arbitration_raises_fallback(tmp_path):
+    """arbitrate_uncertain 整批 raise → 退回舊流程（uncertainties 直接進 QC）。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    mock_response = (
+        '{"corrections": {}, "uncertain": ['
+        '{"line": 3, "original": "李大華博士的研究", '
+        '"suggestion": "李大花博士的研究", "reason": "人名", "risk": "high"}]}'
+    )
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch(
+            "shared.multimodal_arbiter.arbitrate_uncertain",
+            side_effect=FileNotFoundError("音檔不見了"),
+        ),
+    ):
+        _, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=True
+        )
+
+    # 退回舊流程：原始 uncertainties 直接進 qc_items（無 verdict 欄位）
+    assert len(qc_items) == 1
+    assert "verdict" not in qc_items[0]
+    assert qc_items[0]["line"] == 3
+
+
+def test_write_qc_report_new_format(tmp_path):
+    """新版 QC 報告含仲裁欄位。"""
+    qc_path = tmp_path / "test.qc.md"
+    items = [
+        {
+            "line": 5,
+            "original": "蘇味行銷",
+            "suggestion": "數位行銷",
+            "reason": "同音字",
+            "risk": "high",
+            "verdict": "other",
+            "final_text": "蘇味的祕密",
+            "gemini_reasoning": "音訊清楚為秘密",
+            "confidence": 0.82,
+        },
+    ]
+    _write_qc_report(qc_path, items)
+
+    content = qc_path.read_text(encoding="utf-8")
+    assert "HIGH" in content
+    assert "other" in content
+    assert "conf 0.82" in content
+    assert "ASR 原文" in content
+    assert "Opus 建議" in content
+    assert "Gemini 仲裁" in content
+    assert "蘇味的祕密" in content
+    assert "音訊清楚為秘密" in content
