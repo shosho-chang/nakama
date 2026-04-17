@@ -249,7 +249,16 @@ def test_normalize_full_flow(tmp_path, monkeypatch):
             return_value={
                 "uuid": "uuid-123",
                 "status": 3,
-                "output_files": [{"format": "wav", "ending": ".wav"}],
+                "output_files": [
+                    {
+                        "format": "wav",
+                        "ending": "wav",
+                        "filename": "test.wav",
+                        "download_url": (
+                            "https://auphonic.com/api/download/audio-result/uuid-123/test.wav"
+                        ),
+                    }
+                ],
                 "output_basename": "test",
             },
         ),
@@ -291,7 +300,16 @@ def test_normalize_skip_jingle_trim(tmp_path, monkeypatch):
             return_value={
                 "uuid": "uuid-123",
                 "status": 3,
-                "output_files": [{"format": "wav", "ending": ".wav"}],
+                "output_files": [
+                    {
+                        "format": "wav",
+                        "ending": "wav",
+                        "filename": "test.wav",
+                        "download_url": (
+                            "https://auphonic.com/api/download/audio-result/uuid-123/test.wav"
+                        ),
+                    }
+                ],
                 "output_basename": "test",
             },
         ),
@@ -330,7 +348,16 @@ def test_normalize_override_params(tmp_path, monkeypatch):
             return_value={
                 "uuid": "uuid-123",
                 "status": 3,
-                "output_files": [{"format": "wav", "ending": ".wav"}],
+                "output_files": [
+                    {
+                        "format": "wav",
+                        "ending": "wav",
+                        "filename": "test.wav",
+                        "download_url": (
+                            "https://auphonic.com/api/download/audio-result/uuid-123/test.wav"
+                        ),
+                    }
+                ],
                 "output_basename": "test",
             },
         ),

@@ -84,12 +84,13 @@ def ask_claude_multi(
     system: str = "",
     model: str = "claude-sonnet-4-20250514",
     max_tokens: int = 4096,
-    temperature: float = 0.3,
+    temperature: float | None = None,
 ) -> str:
     """送出多回合 Claude API 請求，回傳純文字回應。
 
     與 ask_claude() 相同的 retry / cost tracking 機制，
     但接受完整 messages 陣列以支援多回合對話。
+    Claude 4.7 以後的模型已廢除 temperature，預設不送。
 
     Args:
         messages: Claude API messages 格式，
@@ -97,7 +98,7 @@ def ask_claude_multi(
         system:   系統 prompt
         model:    模型名稱
         max_tokens: 最大回應 token 數
-        temperature: 溫度
+        temperature: 溫度（None 表示不送）
 
     Returns:
         assistant 回應的純文字
@@ -108,9 +109,10 @@ def ask_claude_multi(
         kwargs: dict = {
             "model": model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "messages": messages,
         }
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         if system:
             kwargs["system"] = system
         return client.messages.create(**kwargs)
