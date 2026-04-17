@@ -1,6 +1,6 @@
 ---
 name: Transcriber 語音轉字幕模組
-description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁（路線 2，四個 PR 全 merged，待 E2E 實測）
+description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁（路線 2，E2E 實測通過，PR #22 修 9 個 live-run bug）
 type: project
 created: 2026-04-14
 updated: 2026-04-17
@@ -19,12 +19,29 @@ confidence: high
 - ✅ ASR E2E 測試通過（20 min Podcast，GPU 10 秒）
 - ✅ 78 個測試全過（60 transcriber + 18 auphonic）
 
-### 待測試
-- ⬜ LLM 校正 E2E：`use_llm_correction=True` 搭配真實 podcast 音檔
-- ⬜ Auphonic E2E：完整 pipeline 含 normalization + 降噪
+### E2E 實測（PR #22，2026-04-17）
+20 分鐘 Angie podcast 音檔跑通，找出並修復 9 個 bug：
+1. Opus model ID `claude-opus-4-20250918` 過期 → `claude-opus-4-7`
+2. Claude 4.7+ 廢 `temperature` → `ask_claude` / `ask_claude_multi` 改 optional conditional-send
+3. Gemini SDK 傳 Pydantic class 要用 `response_schema`，不是 `response_json_schema`（mock test 沒抓到真實契約）
+4. Gemini 2.5 Pro dynamic thinking 吃爆預設 `max_output_tokens=1024` → 調 8192，空回應加 finish_reason 診斷
+5. Auphonic `filtermethod` enum 改版：`voice_autoeq` → `autoeq`（API 只接受 `hipfilter/autoeq/bwe`）
+6. `_env_str` 不剝 inline `#` 註解，`.env.example` 空值行的註解被當值讀進 bitrate 欄位
+7. Auphonic download URL 格式是 `/download/audio-result/{uuid}/`，不是 `/production/{uuid}/download/`；API 回傳有 `download_url` 欄位直接用
+8. `test_auphonic.py` mock payload 還用舊欄位（ending + output_basename）不對齊 `download_url` 新契約
+9. `test_auphonic.py` 沒 delenv 掉開發機 .env 的 ACCOUNT_3-5，autouse fixture 補上
+
+### 運行成本與時間（20 min 音檔，實測）
+- Auphonic 上傳 344MB WAV：~19 分（受上行頻寬限制）
+- Auphonic 處理：~46 秒（Auphonic 伺服器側超快）
+- FunASR GPU ASR：~11 秒
+- Opus 校正 Pass 1：~75 秒
+- Gemini 仲裁 10-13 片段（3 workers）：~70 秒
+- 總計含 Auphonic ~23 分；不含 Auphonic ~3 分
 
 ### 待進行
 - ⬜ CLI 命令 → Skill 化
+- ⬜ 本地模型替代 Gemini 2.5 Pro 仲裁（候選見 `project_local_multimodal_audio_models.md`）
 
 ## 架構
 
