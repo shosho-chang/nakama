@@ -10,6 +10,8 @@ authors = [
 dependencies = [
     # Core
     "anthropic>=0.42.0",
+    "google-genai>=1.73",              # Gemini 2.5 Pro audio 仲裁（多模態）
+    "pydantic>=2.0",                   # 結構化輸出 schema
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
 
