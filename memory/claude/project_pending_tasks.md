@@ -18,7 +18,18 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 
 **Robin 本機專用（PR #13 已 merge，2026-04-16）：**
 - ✅ Robin 服務改為僅本機執行（VPS 設 `DISABLE_ROBIN=1`）
-- ⬜ VPS 部署更新：push + 加 `DISABLE_ROBIN=1` + 重啟服務
+- ✅ VPS 部署：git pull + `.env` 加 `DISABLE_ROBIN=1` + systemctl restart（2026-04-17）
+- ⚠️ PR #13 漏掉 Brook 依賴 `/login` 的問題 → 已由 PR #14 修復
+
+**Auth router 抽出（PR #14 已 merge，2026-04-17）：**
+- ✅ `/login` + `/logout` 抽到 `thousand_sunny/routers/auth.py`，VPS 永遠掛載
+- ✅ 支援 `?next=<path>`（含 open-redirect 防護），登入後回原頁
+- ✅ VPS `/` 重導到 `/brook/chat`
+- ✅ 13 個新測試全過（174 total, no regression）
+- ⬜ **VPS 部署 PR #14**：git pull + restart + 實測 `/login` 200、Brook 可登入
+- ⬜ **Tech debt（follow-up，可單獨開 PR）：**
+  - Cookie `robin_auth` 改名為 `nakama_auth`（要動 auth.py + robin.py + brook.py + tests）
+  - `robin.py:414` 殘留的 `Path.unlink` 改用 `_send_to_recycle_bin`（CLAUDE.md 違規）
 
 **VPS 已部署完成（2026-04-15）：**
 - Thousand Sunny web server 已上線

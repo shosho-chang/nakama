@@ -16,6 +16,7 @@
 - [project_code_review_2026_04_12.md](project_code_review_2026_04_12.md) — 首次 code review：9 項修復已合併（Path Traversal、Event Bus 多消費者、Logger 等）
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
+- [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR 開完自動跑 code-review → 報告 → 等授權 → squash merge → pull + 刪 branch
 - [project_transcriber.md](project_transcriber.md) — PR #9 open：FunASR + Auphonic + LLM 校正（Pinyin/JSON diff/LifeOS 整合/Opus）
 - [feedback_dependency_check.md](feedback_dependency_check.md) — pip install 前必須檢查版本衝突，避免降級核心套件
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
@@ -24,3 +25,4 @@
 - [user_hardware.md](user_hardware.md) — 開發機：RTX 5070 Ti 16GB VRAM + 64GB RAM
 - [user_domain_focus.md](user_domain_focus.md) — 內容領域四大面向：睡眠/飲食/運動/情緒 + 五大學科
 - [project_robin_content_nature.md](project_robin_content_nature.md) — PR #12 已 merge：兩層分類、6 類別 prompt、取消按鈕
+- [project_deck_dashboard_idea.md](project_deck_dashboard_idea.md) — 甲板儀表板想法：Thousand Sunny 首頁變 multi-agent 控制台（待設計、下次展開）
