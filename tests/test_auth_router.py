@@ -58,7 +58,7 @@ def test_login_success_redirects_to_next(client_vps):
     )
     assert r.status_code == 302
     assert r.headers["location"] == "/brook/chat"
-    assert "robin_auth" in r.cookies
+    assert "nakama_auth" in r.cookies
 
 
 def test_login_success_default_redirect(client_vps):
@@ -105,9 +105,9 @@ def test_logout_clears_cookie(client_vps):
     r = client_vps.post("/logout")
     assert r.status_code == 302
     assert r.headers["location"] == "/login"
-    # Set-Cookie 應該清除 robin_auth
+    # Set-Cookie 應該清除 nakama_auth
     set_cookie = r.headers.get("set-cookie", "")
-    assert "robin_auth" in set_cookie
+    assert "nakama_auth" in set_cookie
 
 
 def test_vps_root_redirects_to_brook(client_vps):
@@ -127,10 +127,10 @@ def test_vps_brook_unauth_redirects_with_next(client_vps):
 def test_vps_brook_with_auth(client_vps):
     """登入後應能訪問 Brook chat 頁。"""
     login = client_vps.post("/login", data={"password": "testpass"})
-    cookie = login.cookies.get("robin_auth")
+    cookie = login.cookies.get("nakama_auth")
     assert cookie
 
-    r = client_vps.get("/brook/chat", cookies={"robin_auth": cookie})
+    r = client_vps.get("/brook/chat", cookies={"nakama_auth": cookie})
     assert r.status_code == 200
 
 

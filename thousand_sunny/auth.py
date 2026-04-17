@@ -36,9 +36,9 @@ def check_key(key: str | None) -> bool:
 
 
 def require_auth_or_key(
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
     x_robin_key: str | None = Header(None),
 ) -> None:
     """FastAPI dependency: require either cookie or API key auth."""
-    if not (check_auth(robin_auth) or check_key(x_robin_key)):
+    if not (check_auth(nakama_auth) or check_key(x_robin_key)):
         raise HTTPException(status_code=403, detail="Unauthorized")
