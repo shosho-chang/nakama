@@ -1,6 +1,6 @@
 ---
 name: Transcriber 語音轉字幕模組
-description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁（路線 2，E2E 實測通過，PR #22 修 9 個 live-run bug）
+description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁（路線 2，E2E 實測通過，PR #23 全 pipeline 強制無標點輸出）
 type: project
 created: 2026-04-14
 updated: 2026-04-17
@@ -39,9 +39,22 @@ confidence: high
 - Gemini 仲裁 10-13 片段（3 workers）：~70 秒
 - 總計含 Auphonic ~23 分；不含 Auphonic ~3 分
 
-### 待進行
+### PR #23（2026-04-17，merged 4396d44）— 強制無標點輸出
+**Why：** 標點會誤導下游 LLM 語氣判斷（QC 案例「成功是過遊牧」/「成功試過游牧」— Gemini 仲裁說「音檔與候選文字無關」就維持原文，標點干擾了判斷）。
+
+**改動：**
+- 移除 `use_punctuation` 參數，最終 SRT 永遠無標點（句中→空格、句尾→刪除）
+- 新增 Pass 2 過濾：LLM 校正之後再跑一次 `_process_srt_line`，清掉 Opus/Gemini 加回的標點
+- `_correct_with_llm` prompt 加「輸出不要標點，半形空格分隔」
+- **保留 `punc_model="ct-punc-c"`**（注意 rationale）：實際作用是給 `_funasr_to_srt` 句尾標點做**字級時間戳對齊**（看 `_split_sentences` L631 「先用句尾標點拆分」），不是給 LLM 校正參考（Pass 1 在 LLM 之前已去標點，LLM 永遠看不到）
+- Code review 找到 mock 契約問題（9 字配 2 timestamp），改用 FunASR `sentence_info` 真實形式
+
+### 待進行（QC 改進清單）
 - ⬜ CLI 命令 → Skill 化
 - ⬜ 本地模型替代 Gemini 2.5 Pro 仲裁（候選見 `project_local_multimodal_audio_models.md`）
+- ⬜ **SRT 段落硬拆問題**：FunASR VAD 只看聲學靜默切段，會把「可以」「時間」這種詞拆到相鄰兩段。建議在 LLM 校正 prompt 加「若相鄰段在詞語/短語中間被截斷請合併」+ 後處理 re-segment 步驟
+- ⬜ **Gemini 仲裁拒答信號**：Gemini 回「音檔與候選文字無關」這類拒答應 downgrade 為低信心而非採信原文（現在會直接保留 ASR 原文）
+- ⬜ **同音字優先清單**：是/試/式、地/的、做/作 等中文 ASR 高頻同音字可在 prompt 顯式列出
 
 ## 架構
 

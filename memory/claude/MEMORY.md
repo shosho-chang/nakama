@@ -17,7 +17,7 @@
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR 開完自動跑 code-review → 報告 → 等授權 → squash merge → pull + 刪 branch
-- [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁，E2E 實測通過（PR #22 修 9 個 live-run bug）
+- [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁，PR #23 強制全 pipeline 無標點輸出 + QC 改進清單
 - [project_local_multimodal_audio_models.md](project_local_multimodal_audio_models.md) — 本地多模態音訊模型候選（Qwen2.5-Omni / MiniCPM-o / Kimi-Audio），Gemini 2.5 Pro 替代方案
 - [reference_api_contract_pitfalls.md](reference_api_contract_pitfalls.md) — Claude / Gemini / Auphonic / python-dotenv 踩過的 API 契約陷阱清單
 - [feedback_dependency_check.md](feedback_dependency_check.md) — pip install 前必須檢查版本衝突，避免降級核心套件
@@ -32,3 +32,4 @@
 - [reference_cloudflare_tunnel.md](reference_cloudflare_tunnel.md) — CF Tunnel 部署架構：nakama.shosho.tw → tunnel → VPS:8000，LiteSpeed 佔 80 port
 - [feedback_code_review_borderline.md](feedback_code_review_borderline.md) — code-review score <80 但你確信真 bug → 向使用者報告、讓他決定
 - [feedback_test_realism.md](feedback_test_realism.md) — mock integration test 時輸入形狀要對齊真實契約，別為了測試好寫造不可能的資料
+- [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
