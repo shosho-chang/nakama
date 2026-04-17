@@ -18,6 +18,14 @@ from shared.auphonic import (
     normalize,
 )
 
+
+@pytest.fixture(autouse=True)
+def clear_auphonic_env(monkeypatch):
+    """避免開發機 .env 的 AUPHONIC_ACCOUNT_* 污染 mock 測試。"""
+    for i in range(1, 6):
+        monkeypatch.delenv(f"AUPHONIC_ACCOUNT_{i}", raising=False)
+
+
 # ── 帳號載入 ──
 
 
