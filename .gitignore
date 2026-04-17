@@ -29,3 +29,9 @@ logs/
 # State
 *.db
 data/
+
+# Build artifacts
+*.egg-info/
+
+# Test fixtures (large audio + pipeline outputs)
+tests/files/

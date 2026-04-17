@@ -18,6 +18,14 @@ from shared.auphonic import (
     normalize,
 )
 
+
+@pytest.fixture(autouse=True)
+def clear_auphonic_env(monkeypatch):
+    """避免開發機 .env 的 AUPHONIC_ACCOUNT_* 污染 mock 測試。"""
+    for i in range(1, 6):
+        monkeypatch.delenv(f"AUPHONIC_ACCOUNT_{i}", raising=False)
+
+
 # ── 帳號載入 ──
 
 
@@ -241,7 +249,16 @@ def test_normalize_full_flow(tmp_path, monkeypatch):
             return_value={
                 "uuid": "uuid-123",
                 "status": 3,
-                "output_files": [{"format": "wav", "ending": ".wav"}],
+                "output_files": [
+                    {
+                        "format": "wav",
+                        "ending": "wav",
+                        "filename": "test.wav",
+                        "download_url": (
+                            "https://auphonic.com/api/download/audio-result/uuid-123/test.wav"
+                        ),
+                    }
+                ],
                 "output_basename": "test",
             },
         ),
@@ -283,7 +300,16 @@ def test_normalize_skip_jingle_trim(tmp_path, monkeypatch):
             return_value={
                 "uuid": "uuid-123",
                 "status": 3,
-                "output_files": [{"format": "wav", "ending": ".wav"}],
+                "output_files": [
+                    {
+                        "format": "wav",
+                        "ending": "wav",
+                        "filename": "test.wav",
+                        "download_url": (
+                            "https://auphonic.com/api/download/audio-result/uuid-123/test.wav"
+                        ),
+                    }
+                ],
                 "output_basename": "test",
             },
         ),
@@ -322,7 +348,16 @@ def test_normalize_override_params(tmp_path, monkeypatch):
             return_value={
                 "uuid": "uuid-123",
                 "status": 3,
-                "output_files": [{"format": "wav", "ending": ".wav"}],
+                "output_files": [
+                    {
+                        "format": "wav",
+                        "ending": "wav",
+                        "filename": "test.wav",
+                        "download_url": (
+                            "https://auphonic.com/api/download/audio-result/uuid-123/test.wav"
+                        ),
+                    }
+                ],
                 "output_basename": "test",
             },
         ),
