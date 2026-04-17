@@ -73,15 +73,17 @@ def set_current_agent(agent: str, run_id: int | None = None) -> None:
 
 
 def _get_retryable_exceptions() -> tuple[type[Exception], ...]:
-    """組出 google-genai 的可重試例外清單（lazy import）。"""
+    """組出 google-genai 的可重試例外清單（lazy import）。
+
+    只白名單 5xx (`ServerError`) — 不含 base `APIError`，否則會把
+    4xx `ClientError`（壞 API key、400 bad request）也重試，浪費時間。
+    照 `shared/retry.py` 對 anthropic 的寫法，刻意只列具體子類。
+    """
     base = (TimeoutError, ConnectionError, OSError)
     try:
         from google.genai import errors as genai_errors
 
-        return base + (
-            genai_errors.APIError,
-            genai_errors.ServerError,
-        )
+        return base + (genai_errors.ServerError,)
     except (ImportError, AttributeError):
         return base
 
