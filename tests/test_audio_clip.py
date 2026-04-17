@@ -145,3 +145,44 @@ def test_custom_sample_rate(sine_wav: Path, tmp_path: Path):
 
     info = _wav_info(output)
     assert int(info["sample_rate"]) == 22050
+
+
+def test_tempfile_cleaned_on_ffmpeg_failure(tmp_path: Path, monkeypatch):
+    """ffmpeg 失敗時，內部建立的 tempfile 要被清掉（不洩漏）。"""
+    # 先做一個有效的 sine wav，讓 get_audio_duration 先過
+    wav = tmp_path / "good.wav"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5:sample_rate=44100",
+            str(wav),
+        ],
+        check=True,
+    )
+
+    # 記錄 monkeypatch 前的 subprocess.run
+    real_run = subprocess.run
+    captured_tempfile: list[Path] = []
+
+    def fake_run(cmd, *args, **kwargs):
+        # 只攔截 ffmpeg 主切片呼叫（ffprobe 放行）
+        if cmd and cmd[0] == "ffmpeg" and "-to" in cmd:
+            # 從 cmd 尾端抓出 output 路徑
+            captured_tempfile.append(Path(cmd[-1]))
+            raise subprocess.CalledProcessError(1, cmd)
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        extract_clip(wav, 1.0, 2.0)  # output_path=None → 走 tempfile 路徑
+
+    # tempfile 應該被清掉
+    assert len(captured_tempfile) == 1
+    assert not captured_tempfile[0].exists(), "ffmpeg 失敗後 tempfile 未被清除"

@@ -79,7 +79,8 @@ def extract_clip(
     clip_start = max(0.0, start_seconds - padding)
     clip_end = min(duration, end_seconds + padding)
 
-    if output_path is None:
+    output_is_tempfile = output_path is None
+    if output_is_tempfile:
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tmp.close()
         output_path = Path(tmp.name)
@@ -87,28 +88,34 @@ def extract_clip(
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-loglevel",
-            "error",
-            "-ss",
-            f"{clip_start:.3f}",
-            "-to",
-            f"{clip_end:.3f}",
-            "-i",
-            str(audio_path),
-            "-ac",
-            "1",
-            "-ar",
-            str(sample_rate),
-            "-f",
-            "wav",
-            str(output_path),
-        ],
-        check=True,
-    )
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-ss",
+                f"{clip_start:.3f}",
+                "-to",
+                f"{clip_end:.3f}",
+                "-i",
+                str(audio_path),
+                "-ac",
+                "1",
+                "-ar",
+                str(sample_rate),
+                "-f",
+                "wav",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError:
+        if output_is_tempfile:
+            output_path.unlink(missing_ok=True)
+        raise
 
     logger.info(f"切片：{audio_path.name} [{clip_start:.2f}–{clip_end:.2f}s] → {output_path.name}")
     return output_path
