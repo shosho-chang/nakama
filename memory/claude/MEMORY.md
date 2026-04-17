@@ -27,3 +27,4 @@
 - [project_robin_content_nature.md](project_robin_content_nature.md) — PR #12 已 merge：兩層分類、6 類別 prompt、取消按鈕
 - [project_deck_dashboard_idea.md](project_deck_dashboard_idea.md) — 甲板儀表板想法：Thousand Sunny 首頁變 multi-agent 控制台（待設計、下次展開）
 - [feedback_parallel_sub_agents.md](feedback_parallel_sub_agents.md) — 並行 sub-agent 優先（時間 > token 成本）+ worktree 污染陷阱
+- [reference_cloudflare_tunnel.md](reference_cloudflare_tunnel.md) — CF Tunnel 部署架構：nakama.shosho.tw → tunnel → VPS:8000，LiteSpeed 佔 80 port

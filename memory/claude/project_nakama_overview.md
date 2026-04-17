@@ -4,7 +4,7 @@ description: Agent 全員任務、工作流程、狀態、基礎設施、VPS 部
 type: project
 tags: [nakama, overview, agents]
 created: 2026-04-09
-updated: 2026-04-12
+updated: 2026-04-17
 confidence: high
 ttl: permanent
 originSessionId: ecac2e9b-d409-4922-b30f-4270e46d6df0
@@ -68,9 +68,11 @@ Chopper ──一對一──▶ 自由艦隊會員（獨立運作）
 | Zoro (Keyword Research) | ✅ | — | |
 | KB Research API | ✅ | — | |
 
-- systemd：`/etc/systemd/system/robin.service`
-- Port：8000
+- systemd：`thousand-sunny`（Nakama）+ `cloudflared`（HTTPS tunnel）
+- 對外 URL：`https://nakama.shosho.tw`（Cloudflare Tunnel，VPS 不開 inbound port）
 - VPS `.env` 設 `DISABLE_ROBIN=1` 停用 Robin router（PR #13）
+- Auth cookie：`nakama_auth`，帶 HttpOnly + Secure + SameSite=Lax（PR #17）
+- 詳見 `reference_cloudflare_tunnel.md`
 
 ## Franky 工程週報
 
