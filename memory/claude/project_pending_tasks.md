@@ -32,7 +32,7 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ✅ PR #15：`thousand_sunny/routers/robin.py:414` 的 `Path.unlink` 改用 `_send_to_recycle_bin`
 - ✅ PR #16：Cookie `robin_auth` → `nakama_auth`（5 檔 45 行，174 tests 通過）
 - ✅ PR #17：auth cookie 加 `Secure` + `SameSite=Lax`（176 tests 通過）
-- ⬜ VPS 部署 PR #17：git pull + restart + 瀏覽器 F12 驗 Secure flag 打勾（可能要重新登入）
+- ✅ VPS 部署 PR #17 + F12 驗 Secure flag 打勾（2026-04-17）
 
 **HTTPS 部署完成（2026-04-17）：**
 - ✅ Cloudflare Tunnel：`https://nakama.shosho.tw` → `localhost:8000`（VPS 的 `cloudflared` systemd service）
