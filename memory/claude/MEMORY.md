@@ -28,3 +28,5 @@
 - [project_deck_dashboard_idea.md](project_deck_dashboard_idea.md) — 甲板儀表板想法：Thousand Sunny 首頁變 multi-agent 控制台（待設計、下次展開）
 - [feedback_parallel_sub_agents.md](feedback_parallel_sub_agents.md) — 並行 sub-agent 優先（時間 > token 成本）+ worktree 污染陷阱
 - [reference_cloudflare_tunnel.md](reference_cloudflare_tunnel.md) — CF Tunnel 部署架構：nakama.shosho.tw → tunnel → VPS:8000，LiteSpeed 佔 80 port
+- [feedback_code_review_borderline.md](feedback_code_review_borderline.md) — code-review score <80 但你確信真 bug → 向使用者報告、讓他決定
+- [feedback_test_realism.md](feedback_test_realism.md) — mock integration test 時輸入形狀要對齊真實契約，別為了測試好寫造不可能的資料
