@@ -110,6 +110,24 @@ def test_logout_clears_cookie(client_vps):
     assert "nakama_auth" in set_cookie
 
 
+def test_login_cookie_has_secure_samesite_httponly(client_vps):
+    """Auth cookie 必須有 Secure + SameSite=Lax + HttpOnly 三個 flag。"""
+    r = client_vps.post("/login", data={"password": "testpass"})
+    set_cookie = r.headers.get("set-cookie", "")
+    assert "nakama_auth=" in set_cookie
+    assert "Secure" in set_cookie
+    assert "SameSite=lax" in set_cookie.replace("SameSite=Lax", "SameSite=lax")
+    assert "HttpOnly" in set_cookie
+
+
+def test_logout_cookie_has_secure_samesite(client_vps):
+    """Logout 的 delete cookie 也要帶 Secure + SameSite 才能正確讓瀏覽器清掉。"""
+    r = client_vps.post("/logout")
+    set_cookie = r.headers.get("set-cookie", "")
+    assert "Secure" in set_cookie
+    assert "SameSite=lax" in set_cookie.replace("SameSite=Lax", "SameSite=lax")
+
+
 def test_vps_root_redirects_to_brook(client_vps):
     """VPS 模式下 / 應重導到 /brook/chat，而非 404。"""
     r = client_vps.get("/")

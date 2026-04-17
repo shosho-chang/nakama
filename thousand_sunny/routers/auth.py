@@ -44,7 +44,13 @@ async def login(
 ):
     if not WEB_PASSWORD or password == WEB_PASSWORD:
         response = RedirectResponse(_safe_next(next), status_code=302)
-        response.set_cookie("nakama_auth", make_token(password), httponly=True)
+        response.set_cookie(
+            "nakama_auth",
+            make_token(password),
+            httponly=True,
+            secure=True,
+            samesite="lax",
+        )
         return response
     return templates.TemplateResponse(
         request,
@@ -57,5 +63,5 @@ async def login(
 @router.post("/logout")
 async def logout():
     response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie("nakama_auth")
+    response.delete_cookie("nakama_auth", httponly=True, secure=True, samesite="lax")
     return response
