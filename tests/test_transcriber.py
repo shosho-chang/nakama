@@ -71,33 +71,28 @@ def test_to_traditional_already_traditional():
 # ── SRT 行處理 ──
 
 
-def test_process_srt_line_text_no_punctuation():
-    result = _process_srt_line("这是简体中文，测试。", use_punctuation=False)
+def test_process_srt_line_text_removes_punctuation():
+    result = _process_srt_line("这是简体中文，测试。")
     assert "這是簡體中文" in result
     assert "，" not in result
     assert "。" not in result
 
 
-def test_process_srt_line_text_with_punctuation():
-    result = _process_srt_line("这是简体中文，测试。", use_punctuation=True)
-    assert "，" in result
-
-
 def test_process_srt_line_timestamp():
     line = "00:01:05,500 --> 00:01:10,000"
-    assert _process_srt_line(line, use_punctuation=False) == line
+    assert _process_srt_line(line) == line
 
 
 def test_process_srt_line_sequence_number():
-    assert _process_srt_line("42", use_punctuation=False) == "42"
+    assert _process_srt_line("42") == "42"
 
 
 def test_process_srt_line_empty():
-    assert _process_srt_line("", use_punctuation=False) == ""
+    assert _process_srt_line("") == ""
 
 
 def test_process_srt_line_punctuation_only():
-    result = _process_srt_line("……——", use_punctuation=False)
+    result = _process_srt_line("……——")
     assert result.strip() == ""  # 變成空格，不是完全空
 
 
@@ -370,33 +365,6 @@ def test_transcribe_basic(tmp_path):
     assert "。" not in content
 
 
-def test_transcribe_with_punctuation(tmp_path):
-    """use_punctuation=True 時保留標點。"""
-    audio = tmp_path / "test.mp3"
-    audio.write_bytes(b"fake audio data")
-
-    mock_model = MagicMock()
-    mock_model.generate.return_value = [
-        {
-            "text": "今天天气真好。",
-            "timestamp": [[0, 2000]],
-        }
-    ]
-
-    with patch("shared.transcriber._get_asr_model", return_value=mock_model):
-        from shared.transcriber import transcribe
-
-        result = transcribe(
-            str(audio),
-            output_dir=str(tmp_path),
-            normalize_audio=False,
-            use_punctuation=True,
-        )
-
-    content = result.read_text(encoding="utf-8")
-    assert "。" in content
-
-
 def test_transcribe_with_normalize(tmp_path):
     """normalize_audio=True 時呼叫 Auphonic。"""
     audio = tmp_path / "test.mp3"
@@ -481,6 +449,38 @@ def test_transcribe_file_not_found():
 
     with pytest.raises(FileNotFoundError, match="音檔不存在"):
         transcribe("/nonexistent/audio.mp3")
+
+
+def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
+    """LLM 校正若加回標點，Pass 2 必須把它清掉（防止標點誤導下游 LLM 語氣判斷）。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    mock_model = MagicMock()
+    mock_model.generate.return_value = [
+        {"text": "这是第一句这是第二句", "timestamp": [[0, 2000], [2500, 5000]]}
+    ]
+
+    # LLM 把一整段帶標點回傳（含逗號、句號、問號、驚嘆號）
+    mock_response = '{"corrections": {"1": "這是第一句，真的嗎？太好了！"}, "uncertain": []}'
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+    ):
+        from shared.transcriber import transcribe
+
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,
+            use_llm_correction=True,
+            use_multimodal_arbitration=False,
+        )
+
+    content = result.read_text(encoding="utf-8")
+    for punct in ["，", "。", "？", "！", "、", "；", "："]:
+        assert punct not in content, f"標點 {punct} 應被 Pass 2 過濾掉"
 
 
 # ── Pinyin 輔助 ──
