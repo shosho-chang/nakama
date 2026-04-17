@@ -288,15 +288,20 @@ def test_tempfile_cleaned_on_extract_failure(monkeypatch, fake_audio):
     assert result[0].final_text == "A1"
 
 
-def test_run_id_passed_to_cost_tracking(monkeypatch, fake_audio, tmp_path):
-    captured = {}
+def test_set_current_agent_called_in_worker_thread(monkeypatch, fake_audio, tmp_path):
+    """set_current_agent 必須在 worker thread 內被呼叫（gemini_client._local 是
+    threading.local — 主線程設定 worker 讀不到）。記下每次呼叫的 thread id，
+    驗證至少有一次不是主線程。"""
+    import threading
+
+    calls: list[dict] = []
+    main_tid = threading.get_ident()
 
     def fake_set_agent(agent, run_id=None):
-        captured["agent"] = agent
-        captured["run_id"] = run_id
+        calls.append({"tid": threading.get_ident(), "agent": agent, "run_id": run_id})
 
     def fake_extract_clip(audio, start, end, **kwargs):
-        clip = tmp_path / "clip.wav"
+        clip = tmp_path / f"clip_{start}.wav"
         clip.write_bytes(b"clip")
         return clip
 
@@ -312,12 +317,21 @@ def test_run_id_passed_to_cost_tracking(monkeypatch, fake_audio, tmp_path):
     arbitrate_uncertain(
         fake_audio,
         SAMPLE_SRT,
-        [{"line": 1, "original": "A", "suggestion": "B", "reason": "r"}],
+        [
+            {"line": 1, "original": "A", "suggestion": "B", "reason": "r"},
+            {"line": 2, "original": "A", "suggestion": "B", "reason": "r"},
+            {"line": 3, "original": "A", "suggestion": "B", "reason": "r"},
+        ],
         run_id=42,
     )
 
-    assert captured["agent"] == "transcriber-arbiter"
-    assert captured["run_id"] == 42
+    # 每次仲裁都呼叫一次 set_current_agent
+    assert len(calls) == 3
+    assert all(c["agent"] == "transcriber-arbiter" for c in calls)
+    assert all(c["run_id"] == 42 for c in calls)
+    # 至少一次在非主線程（保證不是主線程提前寫、worker 讀不到的 bug）
+    worker_calls = [c for c in calls if c["tid"] != main_tid]
+    assert len(worker_calls) >= 1, "set_current_agent 必須在 worker thread 內呼叫"
 
 
 def test_arbitration_verdict_schema():

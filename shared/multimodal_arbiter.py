@@ -151,8 +151,15 @@ def _arbitrate_one(
     srt_index: dict[int, tuple[float, float, str]],
     *,
     model: str,
+    run_id: int | None,
 ) -> ArbitrationVerdict | None:
-    """對單一 uncertain 項目做仲裁。回 None 表示該項應 skip（line 找不到）。"""
+    """對單一 uncertain 項目做仲裁。回 None 表示該項應 skip（line 找不到）。
+
+    在 worker thread 內執行 — 必須自己呼叫 `set_current_agent`，
+    因為 `gemini_client._local` 是 threading.local，主線程的設定讀不到。
+    """
+    set_current_agent("transcriber-arbiter", run_id=run_id)
+
     line = uncertain.get("line")
     original = uncertain.get("original", "")
     if line is None or line not in srt_index:
@@ -223,16 +230,15 @@ def arbitrate_uncertain(
         logger.warning("SRT 解析結果為空，所有 uncertain 都會被 skip")
         return []
 
-    set_current_agent("transcriber-arbiter", run_id=run_id)
-
     max_workers = int(os.environ.get("GEMINI_MAX_WORKERS", "3"))
     logger.info(f"多模態仲裁：{len(uncertainties)} 個片段，max_workers={max_workers}")
 
     results: list[ArbitrationVerdict] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         # 保序：executor.map 按 iterable 順序回傳
+        # set_current_agent 必須在 worker thread 內呼叫（threading.local 跨 thread 不傳）
         for verdict in pool.map(
-            lambda u: _arbitrate_one(audio_path, u, srt_index, model=model),
+            lambda u: _arbitrate_one(audio_path, u, srt_index, model=model, run_id=run_id),
             uncertainties,
         ):
             if verdict is not None:
