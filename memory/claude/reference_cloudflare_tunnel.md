@@ -26,11 +26,11 @@ ttl: permanent
 
 **VPS 防火牆（ufw）：**
 - 對外只開 22 (SSH)、80 (LiteSpeed)、443、22000 (Syncthing)
-- 8000 (Thousand Sunny) 只對 localhost（tunnel 從 outbound 連）
+- 8000 (Thousand Sunny) 只 listen 127.0.0.1，ufw 對外也關
 
 **要改什麼時看哪裡：**
 - Tunnel routing / ingress：`/etc/cloudflared/config.yml`
-- Uvicorn bind host/port：`/home/nakama/thousand-sunny.service` （目前 `--host 0.0.0.0`，未來可改 `127.0.0.1`）
+- Uvicorn bind host/port：`/etc/systemd/system/thousand-sunny.service`（目前 `--host 127.0.0.1`，只對 tunnel 可見）
 - CF-level security（Bot Fight Mode、WAF）：CF dashboard → Security
 
 **驗證 tunnel 有通：**

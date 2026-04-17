@@ -39,7 +39,7 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ✅ ufw 關掉 8000 對外（tunnel 走 outbound，不需要對外 port）
 - ✅ LiteSpeed（個人網站）不受影響
 - ℹ️ CF SSL mode: 走 tunnel 不需要設
-- ⚠️ `thousand-sunny.service` 仍是 `--host 0.0.0.0` — 下次可改 `127.0.0.1` 更安全（非急）
+- ✅ `thousand-sunny.service` 改為 `--host 127.0.0.1`（2026-04-17，ss 驗證只 listen localhost）
 
 **VPS 已部署完成（2026-04-15）：**
 - Thousand Sunny web server 已上線
