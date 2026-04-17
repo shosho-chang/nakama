@@ -73,7 +73,7 @@ FunASR 轉寫 → Opus 第一輪校正（標 uncertain）
 
 ### PR 進度
 - ✅ PR-A (#18, 2026-04-17)：`shared/audio_clip.py` ffmpeg 切片（含 tempfile 失敗清理 + capture_output）
-- ⬜ PR-B：`shared/gemini_client.py`（audio + response_json_schema，`google-genai>=1.73`）
+- ✅ PR-B (#19, 2026-04-17)：`shared/gemini_client.py` — `ask_gemini_audio()` 支援 Pydantic schema；retryable 只列 `ServerError`（不含 `APIError` 基類，避免 4xx 空重試）；singleton + with_retry + cost tracking；順手修 CI 裝 ffmpeg
 - ⬜ PR-C：`shared/multimodal_arbiter.py`（串 audio_clip + gemini_client）
 - ⬜ PR-D：`transcriber.py` `_correct_with_llm()` 改兩輪 + 接仲裁器
 
