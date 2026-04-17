@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-17b
+updated: 2026-04-17c
 confidence: high
 ttl: 90d
 originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
@@ -26,12 +26,20 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ✅ 支援 `?next=<path>`（含 open-redirect 防護），登入後回原頁
 - ✅ VPS `/` 重導到 `/brook/chat`
 - ✅ 13 個新測試全過（174 total, no regression）
-- ⬜ **VPS 部署 PR #14 + #15 + #16**：git pull + restart + 實測 `/login` 200、Brook 可登入（注意 #16 會讓所有 session 失效，需要重新登入）
+- ✅ VPS 部署 PR #14 + #15 + #16（2026-04-17，git pull + restart + 實測 /login 200、Brook 登入正常）
 
-**Tech debt 清理（PR #15 + #16 已 merge，2026-04-17）：**
+**Tech debt 清理（PR #15 + #16 + #17 已 merge，2026-04-17）：**
 - ✅ PR #15：`thousand_sunny/routers/robin.py:414` 的 `Path.unlink` 改用 `_send_to_recycle_bin`
 - ✅ PR #16：Cookie `robin_auth` → `nakama_auth`（5 檔 45 行，174 tests 通過）
-- ⚠️ Pre-existing 未修：`routers/auth.py` 的 `set_cookie` 缺 `secure=True` 和 `samesite`（留給未來單獨 PR）
+- ✅ PR #17：auth cookie 加 `Secure` + `SameSite=Lax`（176 tests 通過）
+- ⬜ VPS 部署 PR #17：git pull + restart + 瀏覽器 F12 驗 Secure flag 打勾（可能要重新登入）
+
+**HTTPS 部署完成（2026-04-17）：**
+- ✅ Cloudflare Tunnel：`https://nakama.shosho.tw` → `localhost:8000`（VPS 的 `cloudflared` systemd service）
+- ✅ ufw 關掉 8000 對外（tunnel 走 outbound，不需要對外 port）
+- ✅ LiteSpeed（個人網站）不受影響
+- ℹ️ CF SSL mode: 走 tunnel 不需要設
+- ⚠️ `thousand-sunny.service` 仍是 `--host 0.0.0.0` — 下次可改 `127.0.0.1` 更安全（非急）
 
 **VPS 已部署完成（2026-04-15）：**
 - Thousand Sunny web server 已上線
