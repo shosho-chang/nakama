@@ -456,9 +456,15 @@ def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
+    # 用 FunASR 真實 sentence_info 契約（punc_model 會加句號，per-sentence 時間戳）
     mock_model = MagicMock()
     mock_model.generate.return_value = [
-        {"text": "这是第一句这是第二句", "timestamp": [[0, 2000], [2500, 5000]]}
+        {
+            "text": "这是第一句。",
+            "sentence_info": [
+                {"text": "这是第一句。", "start": 0, "end": 2000},
+            ],
+        }
     ]
 
     # LLM 把一整段帶標點回傳（含逗號、句號、問號、驚嘆號）
