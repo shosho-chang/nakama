@@ -9,7 +9,7 @@
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — Robin /kb/research endpoint 未測試
 - [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 整合評估：觀望中（Franky 每週追蹤）
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
-- [feedback_conversation_end.md](feedback_conversation_end.md) — 對話結束時主動存記憶並 commit & push
+- [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」三字當 trigger → 自動存記憶 + commit & push
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
 - [project_plugins_installed.md](project_plugins_installed.md) — 已安裝 6 個 Claude Code plugin（含 playwright、firecrawl）+ 評估不裝清單
 - [feedback_no_secrets_in_chat.md](feedback_no_secrets_in_chat.md) — API key 等敏感資訊走 .env，不在對話框輸入
