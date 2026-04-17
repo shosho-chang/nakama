@@ -881,6 +881,38 @@ def test_correct_with_llm_low_confidence_goes_to_qc(tmp_path):
     assert qc_items[0]["verdict"] == "accept_suggestion"
 
 
+def test_correct_with_llm_accept_suggestion_not_in_pass1_corrections(tmp_path):
+    """accept_suggestion 時即便 Pass 1 沒把 suggestion 放進 corrections 也要套用。
+
+    Pass 1 的 prompt 要求 Opus「uncertain 項目不要硬改」— 所以 suggestion 通常
+    只在 uncertainties dict，而非 corrections。若 Gemini 仲裁 accept_suggestion，
+    必須顯式寫入 corrections，否則最終 SRT 會用 ASR 原文。
+    """
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    # Pass 1：line 3 被標 uncertain，但 Opus 沒放進 corrections（符合 prompt 指示）
+    mock_response = (
+        '{"corrections": {}, '
+        '"uncertain": [{"line": 3, "original": "李大華博士的研究", '
+        '"suggestion": "李大花博士的研究", "reason": "人名", "risk": "high"}]}'
+    )
+    verdicts = [_make_verdict(3, "accept_suggestion", "李大花博士的研究", confidence=0.9)]
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
+    ):
+        result, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=True
+        )
+
+    # Gemini 仲裁的 suggestion 必須出現在最終 SRT
+    assert "李大花博士的研究" in result
+    assert "李大華博士的研究" not in result
+    assert qc_items == []
+
+
 def test_correct_with_llm_uncertain_verdict_drops_correction(tmp_path):
     """verdict=uncertain 時撤銷 Pass 1 修改，還原 ASR 原文，並進 QC。"""
     audio = tmp_path / "test.mp3"

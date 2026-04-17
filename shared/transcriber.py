@@ -301,7 +301,9 @@ def _apply_arbitration_verdicts(
     """依 Gemini 仲裁結果更新 corrections dict，並產出 QC 清單。
 
     - keep_original  → 從 corrections 移除（還原 ASR 原文）
-    - accept_suggestion → corrections 不動（Pass 1 已套 suggestion）
+    - accept_suggestion → 寫入 corrections[line] = opus_suggestion
+      （因為 Pass 1 prompt 叫 Opus「不要硬改」uncertain 項目，典型情況下
+      suggestion 只在 uncertainties dict，不在 corrections — 必須顯式寫入）
     - other → corrections 覆寫為 final_text
     - uncertain → 從 corrections 移除 + 進 QC
     - 任何 confidence < _QC_CONFIDENCE_THRESHOLD → 進 QC（即便已套用）
@@ -321,7 +323,12 @@ def _apply_arbitration_verdicts(
             corrections.pop(line, None)
             final_text = asr_original
         elif v.verdict == "accept_suggestion":
-            final_text = opus_suggestion or corrections.get(line, asr_original)
+            if opus_suggestion:
+                corrections[line] = opus_suggestion
+                final_text = opus_suggestion
+            else:
+                corrections.pop(line, None)
+                final_text = asr_original
         elif v.verdict == "other":
             corrections[line] = v.final_text
             final_text = v.final_text
