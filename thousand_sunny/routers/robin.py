@@ -107,16 +107,16 @@ def _get_inbox_files() -> list[dict]:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request, robin_auth: str | None = Cookie(None)):
-    if not check_auth(robin_auth):
+async def index(request: Request, nakama_auth: str | None = Cookie(None)):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/", status_code=302)
     files = _get_inbox_files()
     return templates.TemplateResponse(request, "index.html", {"files": files})
 
 
 @router.get("/read", response_class=HTMLResponse)
-async def read_source(request: Request, file: str, robin_auth: str | None = Cookie(None)):
-    if not check_auth(robin_auth):
+async def read_source(request: Request, file: str, nakama_auth: str | None = Cookie(None)):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
     inbox = _get_inbox()
     file_path = safe_resolve(inbox, file)
@@ -151,9 +151,9 @@ async def read_source(request: Request, file: str, robin_auth: str | None = Cook
 
 
 @router.get("/files/{path:path}")
-async def serve_vault_file(path: str, robin_auth: str | None = Cookie(None)):
+async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
     """提供 vault 中的圖片給 reader 顯示。"""
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         raise HTTPException(403)
     vault = get_vault_path()
     for base_dir in (vault / "Files", vault):
@@ -170,9 +170,9 @@ async def serve_vault_file(path: str, robin_auth: str | None = Cookie(None)):
 async def save_annotations(
     filename: str = Form(...),
     content: str = Form(...),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         raise HTTPException(403)
     inbox = _get_inbox()
     file_path = safe_resolve(inbox, filename)
@@ -185,9 +185,9 @@ async def save_annotations(
 @router.post("/mark-read")
 async def mark_read(
     filename: str = Form(...),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         raise HTTPException(403)
     inbox = _get_inbox()
     file_path = safe_resolve(inbox, filename)
@@ -202,9 +202,9 @@ async def start(
     filename: str = Form(...),
     source_type: str = Form("article"),
     content_nature: str = Form("popular_science"),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
 
     inbox = _get_inbox()
@@ -234,17 +234,17 @@ async def start(
 
     response = RedirectResponse("/processing", status_code=302)
     response.set_cookie("robin_session", sid, httponly=True)
-    if robin_auth:
-        response.set_cookie("robin_auth", robin_auth, httponly=True)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
 
 
 @router.post("/cancel")
 async def cancel(
     robin_session: str | None = Cookie(None),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
 
     sess = _get_session(robin_session)
@@ -265,9 +265,9 @@ async def cancel(
 async def processing(
     request: Request,
     robin_session: str | None = Cookie(None),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
@@ -285,8 +285,8 @@ async def processing(
 
 
 @router.get("/events/{session_id}")
-async def events(session_id: str, robin_auth: str | None = Cookie(None)):
-    if not check_auth(robin_auth):
+async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
+    if not check_auth(nakama_auth):
         raise HTTPException(403)
 
     sess = _get_session(session_id)
@@ -444,9 +444,9 @@ async def events(session_id: str, robin_auth: str | None = Cookie(None)):
 async def review_summary(
     request: Request,
     robin_session: str | None = Cookie(None),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_guidance":
@@ -462,9 +462,9 @@ async def review_summary(
 async def submit_guidance(
     guidance: str = Form(default=""),
     robin_session: str | None = Cookie(None),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
@@ -472,8 +472,8 @@ async def submit_guidance(
     sess["user_guidance"] = guidance.strip()
     sess["step"] = "planning"
     response = RedirectResponse("/processing", status_code=302)
-    if robin_auth:
-        response.set_cookie("robin_auth", robin_auth, httponly=True)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
 
 
@@ -481,9 +481,9 @@ async def submit_guidance(
 async def review_plan(
     request: Request,
     robin_session: str | None = Cookie(None),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_approval":
@@ -506,9 +506,9 @@ async def review_plan(
 async def execute(
     request: Request,
     robin_session: str | None = Cookie(None),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
@@ -534,8 +534,8 @@ async def execute(
     sess["step"] = "executing"
 
     response = RedirectResponse("/processing", status_code=302)
-    if robin_auth:
-        response.set_cookie("robin_auth", robin_auth, httponly=True)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
 
 
@@ -543,9 +543,9 @@ async def execute(
 async def done(
     request: Request,
     robin_session: str | None = Cookie(None),
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "done":

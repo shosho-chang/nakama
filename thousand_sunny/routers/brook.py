@@ -22,10 +22,10 @@ templates = Jinja2Templates(
 @router.get("/chat", response_class=HTMLResponse)
 async def brook_chat_page(
     request: Request,
-    robin_auth: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
 ):
     """Brook 聊天頁面。"""
-    if not check_auth(robin_auth):
+    if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/brook/chat", status_code=302)
     return templates.TemplateResponse(request, "brook_chat.html", {})
 
