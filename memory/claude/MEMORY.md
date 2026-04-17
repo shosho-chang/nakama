@@ -17,7 +17,7 @@
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR 開完自動跑 code-review → 報告 → 等授權 → squash merge → pull + 刪 branch
-- [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正已 merge；多模態仲裁路線 2：PR-A/B merged（#18/#19），PR-C/D 待做
+- [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正已 merge；多模態仲裁路線 2：PR-A/B/C merged（#18/#19/#20），PR-D 待做
 - [feedback_dependency_check.md](feedback_dependency_check.md) — pip install 前必須檢查版本衝突，避免降級核心套件
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
 - [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format

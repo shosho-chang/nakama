@@ -74,7 +74,7 @@ FunASR 轉寫 → Opus 第一輪校正（標 uncertain）
 ### PR 進度
 - ✅ PR-A (#18, 2026-04-17)：`shared/audio_clip.py` ffmpeg 切片（含 tempfile 失敗清理 + capture_output）
 - ✅ PR-B (#19, 2026-04-17)：`shared/gemini_client.py` — `ask_gemini_audio()` 支援 Pydantic schema；retryable 只列 `ServerError`（不含 `APIError` 基類，避免 4xx 空重試）；singleton + with_retry + cost tracking；順手修 CI 裝 ffmpeg
-- ⬜ PR-C：`shared/multimodal_arbiter.py`（串 audio_clip + gemini_client）
+- ✅ PR-C (#20, 2026-04-17)：`shared/multimodal_arbiter.py` — per-clip 仲裁；4-way verdict enum；動態 padding（短 2s 長 1s）；前後各 1 行 SRT 文字進 prompt；失敗隔離；code review 找到 `set_current_agent` thread-local bug（worker thread 讀不到主線程設定 → cost tracking 全變 unknown），已修（搬進 `_arbitrate_one`，走 worker 再設）
 - ⬜ PR-D：`transcriber.py` `_correct_with_llm()` 改兩輪 + 接仲裁器
 
 ### 關鍵技術決策
