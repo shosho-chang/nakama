@@ -5,6 +5,9 @@ type: project
 created: 2026-04-14
 updated: 2026-04-17
 confidence: high
+
+<!-- 2026-04-17 更新：Gemini 仲裁實測成本 $0.5 / 20min（比原估高 10x），根因 thinking output token。 -->
+
 ---
 
 ## 狀態：已 merge（PR #9，2026-04-15）
@@ -97,9 +100,21 @@ FunASR 轉寫 → Opus 第一輪校正（標 uncertain）
            → SRT + .qc.md
 ```
 
-### 成本上升（1 小時 Podcast）
-- Gemini audio 仲裁 ~20 個片段 × 10 秒 ≈ $0.05–0.20
-- 合計 ~$0.40–0.55（相對現況 $0.33，品質大幅提升）
+### 成本（**實測修正，原估低估 10x**）
+**實測：20 分鐘 Angie podcast / 13 個仲裁片段 ≈ USD 0.5**（2026-04-17）。推回 1 小時 podcast ≈ USD 1.5。
+
+**原估為何錯：** 只算 audio input token（$1.25/M × 10s × 32 tok/s ≈ $0.0004/clip），漏算 **thinking mode output token**。Gemini 2.5 Pro output $10/M（含 thinking），dynamic thinking 會吃滿 `max_output_tokens`（PR #22 bug #4 為此從 1024 調到 8192）。
+
+**實測每 clip 成本拆解（推估）：**
+- Audio input 320 tok × $1.25/M ≈ $0.0004
+- Text input（prompt + SRT context + schema）~1-2K tok × $1.25/M ≈ $0.002
+- **Output（thinking + JSON）~3-5K tok × $10/M ≈ $0.03-0.05** ← 主成本
+- 合計 ~$0.04/clip，13 clips ≈ $0.5 ✅
+
+**降本選項（依工程量排序）：**
+1. **限 thinking budget** — Gemini 2.5 Pro 支援 `thinking_config.thinking_budget`，設低（e.g. 512）直接砍主成本；工程 0.5 小時
+2. **降級 gemini-2.5-flash** — audio 也支援，價格低 ~10x；工程 1 小時（重跑 shadow test 驗準確率）
+3. **本地 Qwen2.5-Omni-7B-GPTQ-Int4** — 見 `project_local_multimodal_audio_models.md`；工程 1-2 天，風險見該檔
 
 ### PR 進度
 - ✅ PR-A (#18, 2026-04-17)：`shared/audio_clip.py` ffmpeg 切片（含 tempfile 失敗清理 + capture_output）
@@ -108,7 +123,7 @@ FunASR 轉寫 → Opus 第一輪校正（標 uncertain）
 - ✅ PR-D (#21, 2026-04-17)：`transcriber.py` `_correct_with_llm()` 兩輪 pipeline — Pass 1 Opus 標 uncertain → `arbitrate_uncertain()` → 自動應用 verdicts（策略 A，無第二輪 Opus）；`_write_qc_report` 支援新格式（verdict/信心/Gemini 理由）；整批仲裁失敗退回舊流程；code review 找到 `accept_suggestion` 分支沒寫 `corrections[line]` 的 bug（Opus Pass 1 按 prompt 不放 uncertain 進 corrections，仲裁採納後永遠套不上去），已修並補測試
 
 ### 關鍵技術決策
-- **多模態 LLM：** Gemini 2.5 Pro（$1.25/M input audio，32 tokens/秒，10 秒 clip ~$0.0004）
+- **多模態 LLM：** Gemini 2.5 Pro（input $1.25/M、output $10/M；thinking 模式下 output 是主成本，估 audio 預算時**必須**連 thinking output 一起估）
 - **不走多模態吃整集：** 1 小時音檔即使技術上行（~11.5 萬 tokens < 2M context），但延遲長、注意力稀釋、成本浪費；僅刀口使用
 - **不加第二個 ASR：** 工程成本不值 — Whisper 中文品質差、對齊演算法難寫
 - **audio clip 規格：** 16kHz mono WAV（Gemini 內部降到 16kbps，先降省傳輸；mono 省 token）
