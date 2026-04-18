@@ -117,9 +117,35 @@ def test_add_glossary_term_new(tmp_path):
     assert result["mitochondria"] == "粒線體"
 
 
+def test_add_glossary_term_preserves_comments(tmp_path):
+    """add_glossary_term 必須保留 terms: 區塊的所有注釋。"""
+    glossary_file = tmp_path / "glossary.yaml"
+    original = "# 台灣學術術語對照表\nterms:\n  # 細胞與分子生物學\n  mitochondria: 粒線體\n"
+    glossary_file.write_text(original, encoding="utf-8")
+    with patch("shared.translator._GLOSSARY_PATH", glossary_file):
+        add_glossary_term("cortisol", "皮質醇")
+        written = glossary_file.read_text(encoding="utf-8")
+    assert "# 台灣學術術語對照表" in written
+    assert "# 細胞與分子生物學" in written
+    assert "mitochondria: 粒線體" in written
+    assert "cortisol: 皮質醇" in written
+
+
+def test_add_glossary_term_writes_to_user_terms(tmp_path):
+    """add_glossary_term 應寫入 user_terms 區塊，不修改 terms 區塊。"""
+    glossary_file = tmp_path / "glossary.yaml"
+    glossary_file.write_text("terms:\n  mitochondria: 粒線體\n", encoding="utf-8")
+    with patch("shared.translator._GLOSSARY_PATH", glossary_file):
+        add_glossary_term("cortisol", "皮質醇")
+        written = glossary_file.read_text(encoding="utf-8")
+    assert "user_terms:" in written
+    assert "cortisol: 皮質醇" in written
+    assert written.index("terms:") < written.index("user_terms:")
+
+
 def test_add_glossary_term_overwrite(tmp_path):
     glossary_file = tmp_path / "glossary.yaml"
-    glossary_file.write_text("terms:\n  mitochondria: 線粒體\n", encoding="utf-8")
+    glossary_file.write_text("terms:\n  mitochondria: 線粒體\nuser_terms: {}\n", encoding="utf-8")
     with patch("shared.translator._GLOSSARY_PATH", glossary_file):
         add_glossary_term("Mitochondria", "粒線體")
         result = load_glossary()
@@ -131,6 +157,19 @@ def test_add_glossary_term_creates_file(tmp_path):
     with patch("shared.translator._GLOSSARY_PATH", glossary_file):
         add_glossary_term("cortisol", "皮質醇")
         result = load_glossary()
+    assert result["cortisol"] == "皮質醇"
+
+
+def test_load_glossary_merges_user_terms(tmp_path):
+    """load_glossary 應合併 terms 和 user_terms，user_terms 優先。"""
+    glossary_file = tmp_path / "glossary.yaml"
+    glossary_file.write_text(
+        "terms:\n  mitochondria: 粒線體\nuser_terms:\n  cortisol: 皮質醇\n",
+        encoding="utf-8",
+    )
+    with patch("shared.translator._GLOSSARY_PATH", glossary_file):
+        result = load_glossary()
+    assert result["mitochondria"] == "粒線體"
     assert result["cortisol"] == "皮質醇"
 
 

@@ -114,7 +114,7 @@ terms:
   thyroid hormone: 甲狀腺素
 
   # 運動科學
-  aerobic capacity: 有氧能量系統
+  aerobic capacity: 有氧能力
   anaerobic threshold: 無氧閾值
   cardiovascular fitness: 心肺適能
   eccentric contraction: 離心收縮
@@ -184,3 +184,6 @@ terms:
   standard deviation: 標準差
   statistical significance: 統計顯著性
   systematic review: 系統性回顧
+
+# Robin 自動學習的術語（由 add_glossary_term() 寫入，不會影響上方 terms: 區塊）
+user_terms: {}

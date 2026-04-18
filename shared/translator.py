@@ -21,33 +21,51 @@ logger = get_logger("nakama.shared.translator")
 _GLOSSARY_PATH = (
     Path(__file__).resolve().parent.parent / "prompts" / "robin" / "translation_tw_glossary.yaml"
 )
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 _BATCH_SIZE = 20
+_BATCH_MAX_TOKENS = 16384
+_SEGMENT_MAX_TOKENS = 4096
 
 
 def load_glossary() -> dict[str, str]:
-    """讀取台灣術語表，回傳 {英文: 台灣中文} dict。"""
+    """讀取台灣術語表，回傳 {英文: 台灣中文} dict。
+
+    合併 terms（人工維護）與 user_terms（Robin 自動學習），
+    user_terms 的值優先覆蓋 terms。
+    """
     if not _GLOSSARY_PATH.exists():
         return {}
     with _GLOSSARY_PATH.open(encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-    return data.get("terms", {})
+    merged = dict(data.get("terms", {}))
+    merged.update(data.get("user_terms", {}))
+    return merged
 
 
 def add_glossary_term(english: str, zh_tw: str) -> None:
-    """新增或更新一條術語（用於 Robin 術語學習）。
+    """新增或更新一條學習術語到 user_terms 區塊。
 
-    若術語已存在則覆蓋，不存在則新增。
+    只更新 YAML 末尾的 user_terms: 區塊，不覆寫主 terms: 區塊，
+    確保人工維護的 section 注釋永遠不被破壞。
+
+    呼叫方注意：翻譯 API 成本由呼叫方透過 set_current_agent() 歸因，
+    此 shared module 本身不設定 agent context。
     """
-    data: dict = {}
-    if _GLOSSARY_PATH.exists():
-        with _GLOSSARY_PATH.open(encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-    terms: dict = data.get("terms", {})
-    terms[english.lower()] = zh_tw
-    data["terms"] = dict(sorted(terms.items()))
-    with _GLOSSARY_PATH.open("w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    text = _GLOSSARY_PATH.read_text(encoding="utf-8") if _GLOSSARY_PATH.exists() else ""
+    data = yaml.safe_load(text) or {}
+    user_terms: dict = dict(data.get("user_terms", {}))
+    user_terms[english.lower()] = zh_tw
+    user_terms_yaml = yaml.dump(
+        {"user_terms": dict(sorted(user_terms.items()))},
+        allow_unicode=True,
+        default_flow_style=False,
+    )
+    if "user_terms:" in text:
+        idx = text.index("user_terms:")
+        text = text[:idx] + user_terms_yaml
+    else:
+        text = text.rstrip() + "\n\n" + user_terms_yaml
+    _GLOSSARY_PATH.write_text(text, encoding="utf-8")
     logger.info(f"術語表更新：{english} → {zh_tw}")
 
 
@@ -102,7 +120,7 @@ def translate_segments(
         f"{numbered}"
     )
 
-    response = ask_claude(prompt, system=system, model=model, max_tokens=8192)
+    response = ask_claude(prompt, system=system, model=model, max_tokens=_BATCH_MAX_TOKENS)
 
     try:
         json_match = re.search(r"\[[\s\S]*\]", response)
@@ -125,6 +143,7 @@ def _translate_one_by_one(segments: list[str], *, system: str, model: str) -> li
                 f"翻譯成台灣繁體中文（只回傳譯文，不要其他說明）：\n\n{seg}",
                 system=system,
                 model=model,
+                max_tokens=_SEGMENT_MAX_TOKENS,
             )
             results.append(t.strip())
         except Exception as e:
