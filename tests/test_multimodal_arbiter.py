@@ -349,16 +349,31 @@ def test_arbitration_verdict_schema():
 
 
 def test_is_refusal_detects_patterns():
-    """拒答偵測：reasoning 或 final_text 任一含拒答字串即判 True。"""
-    assert _is_refusal("音檔與候選文字無關", "")
-    assert _is_refusal("", "無法判斷")
-    assert _is_refusal("兩者都不相關", "")
-    assert _is_refusal("沒有對應的語音", "")
+    """拒答偵測：只掃 reasoning（不掃 final_text），命中清單任一字樣即判 True。"""
+    assert _is_refusal("音檔與候選文字無關")
+    assert _is_refusal("無法判斷")
+    assert _is_refusal("兩者都不相關")
+    assert _is_refusal("沒有對應的語音")
+    assert _is_refusal("無法辨識聲音")
+    assert _is_refusal("無法識別內容")
+    assert _is_refusal("沒有相關資訊")
     # 正常回應不誤判
-    assert not _is_refusal("聽起來是第一個候選", "修正後的文字")
-    assert not _is_refusal("清楚聽到「試過」", "成功試過游牧")
+    assert not _is_refusal("聽起來是第一個候選")
+    assert not _is_refusal("清楚聽到「試過」")
     # 空字串安全
-    assert not _is_refusal("", "")
+    assert not _is_refusal("")
+
+
+def test_is_refusal_does_not_scan_final_text():
+    """final_text 內含「無關」不應誤觸拒答——那是來賓講的內容，不是 Gemini 的 meta。
+
+    來賓自然講出「這件事無關緊要」「跟主題無關」等句子在 1hr podcast 很常見；
+    若掃 final_text 會把正確轉寫誤判為拒答、清掉修正。
+    """
+    # 函式簽名只吃 reasoning 一個參數（final_text 不傳）
+    assert not _is_refusal("聽起來正確")  # normal reasoning
+    # 正常 reasoning 即便 final_text 可能含「無關」，_is_refusal 也只看 reasoning
+    # → 不會誤判（由函式簽名本身保證）
 
 
 def test_refusal_downgraded_to_refused_verdict(monkeypatch, fake_audio, tmp_path):
@@ -400,6 +415,42 @@ def test_refusal_downgraded_to_refused_verdict(monkeypatch, fake_audio, tmp_path
     assert result[0].confidence == 0.0
     assert result[0].final_text == "ASR 原文"
     assert result[0].reasoning.startswith("[拒答]")
+
+
+def test_final_text_with_refusal_word_not_downgraded(monkeypatch, fake_audio, tmp_path):
+    """迴歸測試：來賓講出含「無關」的句子，final_text 正確轉寫但不該觸發拒答。
+
+    e.g. Gemini reasoning 正常、final_text="這件事無關緊要"、verdict=accept_suggestion。
+    _is_refusal 只看 reasoning 所以不誤判，verdict 應維持 accept_suggestion。
+    """
+
+    def fake_extract_clip(audio, start, end, **kwargs):
+        clip = tmp_path / f"clip_{start}.wav"
+        clip.write_bytes(b"clip")
+        return clip
+
+    def fake_ask_gemini(clip_path, prompt, *, response_schema, **kwargs):
+        return response_schema(
+            final_text="這件事無關緊要",
+            verdict="accept_suggestion",
+            confidence=0.9,
+            reasoning="聽起來是候選 B",
+        )
+
+    monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
+
+    result = arbitrate_uncertain(
+        fake_audio,
+        SAMPLE_SRT,
+        [{"line": 1, "original": "這件事物觀緊要", "suggestion": "這件事無關緊要", "reason": "r"}],
+    )
+
+    assert len(result) == 1
+    assert result[0].verdict == "accept_suggestion"
+    assert result[0].final_text == "這件事無關緊要"
+    assert result[0].confidence == 0.9
 
 
 def test_normal_uncertain_not_treated_as_refused(monkeypatch, fake_audio, tmp_path):

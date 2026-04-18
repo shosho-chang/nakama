@@ -64,14 +64,18 @@ _REFUSAL_PATTERNS = (
 )
 
 
-def _is_refusal(reasoning: str, final_text: str) -> bool:
-    """偵測 Gemini 拒答訊號——reasoning 或 final_text 含「音檔與候選無關」類字樣。
+def _is_refusal(reasoning: str) -> bool:
+    """偵測 Gemini 拒答訊號——reasoning 含「音檔與候選無關」類 meta 字樣。
 
     Gemini 偶爾對短片段或歧義音訊給出「音檔與候選文字無關」「無法判斷」等 meta 回應，
     但仍會填一個 verdict（通常 keep_original with 看似高 confidence），
     導致系統誤信 ASR 原文。此偵測用於把這類回應 downgrade 為 refused + conf 0。
+
+    **只掃 reasoning，不掃 final_text：** final_text 是 Gemini 轉寫的實際語音內容，
+    來賓可能自然講出含「無關」的句子（「這件事無關緊要」），掃到會把正確轉寫誤判為拒答。
+    meta commentary 只會出現在 reasoning 欄位。
     """
-    text = f"{reasoning or ''} {final_text or ''}"
+    text = reasoning or ""
     return any(p in text for p in _REFUSAL_PATTERNS)
 
 
@@ -207,7 +211,7 @@ def _arbitrate_one(
             temperature=0.1,
             thinking_budget=512,
         )
-        if _is_refusal(result.reasoning, result.final_text):
+        if _is_refusal(result.reasoning):
             logger.info(
                 f"line={line} 偵測到 Gemini 拒答訊號 → refused"
                 f"（原 verdict={result.verdict}, conf={result.confidence}）"
