@@ -182,6 +182,7 @@ def _arbitrate_one(
             model=model,
             system=system,
             temperature=0.1,
+            thinking_budget=512,
         )
         return ArbitrationVerdict(
             line=line,
