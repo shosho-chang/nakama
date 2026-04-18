@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-17c
+updated: 2026-04-18
 confidence: high
 ttl: 90d
 originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
@@ -85,6 +85,17 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ⬜ morning-brief (Nami) — Nami 還沒開發，先做 skill 再 agent
 - ⬜ kb-search (Robin) — `/kb/research` 未 E2E 測，skill 化前先驗
 - ⬜ style-extractor — 新功能，需先定義 PRD
+
+**雙語閱讀 Pipeline（2026-04-18，P0+P1+P2A 完成）：**
+- ✅ PR #27：`shared/translator.py` + 台灣術語表（150+ 詞，user_terms 自動學習）
+- ✅ PR #28：`shared/web_scraper.py` 三層擷取（Trafilatura → Readability → Firecrawl）
+- ✅ PR #29：Robin Reader 雙語切換 + `/scrape-translate` 端點（URL → scrape → translate → Reader）
+  - `bilingual: true` frontmatter 自動啟動雙語模式（reader.html IS_BILINGUAL）
+  - source_type/content_nature allowlist + url newline 清理（YAML injection 防護）
+- ✅ PR #30：`shared/pdf_parser.py` pdfplumber 精確表格（with_tables=True）+ Firecrawl result.markdown 修正
+  - research/textbook/clinical_protocol → 自動 with_tables=True（ingest.py）
+- ⬜ **P2B：BabelDOC 整合**（PDF 學術論文 → 雙語 PDF，需 Immersive Translate API key，下次討論是否需要）
+- ⬜ **P3：Annotation → Ingest 整合**（reader 畫線/注解 → KB 入庫時一起加入）
 
 **待開發（agent 功能）：**
 - Nami（航海士）— 消費 Robin/Franky 事件，產出 Morning Brief
