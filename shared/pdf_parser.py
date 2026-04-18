@@ -64,7 +64,7 @@ def parse_pdf(file_path: str | Path, *, with_tables: bool = False) -> str:
         tables_md = extract_tables(file_path)
         if tables_md:
             result = result + "\n\n---\n\n## 表格（pdfplumber 精確版）\n\n" + tables_md
-            logger.info(f"已附加 {tables_md.count('|---|')} 個精確表格")
+            logger.info(f"已附加 {tables_md.count('| --- |')} 個精確表格")
 
     logger.info(f"PDF 解析完成：{len(result):,} 字元")
     return result
