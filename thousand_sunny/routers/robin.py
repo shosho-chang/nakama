@@ -197,6 +197,65 @@ async def mark_read(
     return {"status": "ok"}
 
 
+@router.post("/scrape-translate")
+async def scrape_translate(
+    url: str = Form(...),
+    source_type: str = Form("article"),
+    content_nature: str = Form("popular_science"),
+    nakama_auth: str | None = Cookie(None),
+):
+    """從 URL 抓取網頁並翻譯成雙語 Markdown，存入 inbox。"""
+    if not check_auth(nakama_auth):
+        raise HTTPException(403)
+
+    from shared.translator import translate_document
+    from shared.web_scraper import scrape_url
+
+    try:
+        raw_text = await asyncio.to_thread(scrape_url, url)
+    except RuntimeError as e:
+        raise HTTPException(422, detail=f"無法擷取頁面：{e}")
+
+    try:
+        bilingual_md = await asyncio.to_thread(translate_document, raw_text)
+    except Exception as e:
+        logger.error(f"翻譯失敗：{e}")
+        bilingual_md = raw_text  # 翻譯失敗時保留原文
+
+    # 以 URL slug 命名文件
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    slug = slugify(parsed.netloc + parsed.path)[:60] or "scraped"
+    filename = f"{slug}.md"
+    inbox = _get_inbox()
+    inbox.mkdir(parents=True, exist_ok=True)
+    dest = inbox / filename
+    # 避免覆蓋現有檔案
+    counter = 1
+    while dest.exists():
+        dest = inbox / f"{slug}-{counter}.md"
+        counter += 1
+    filename = dest.name
+
+    frontmatter = (
+        "---\n"
+        f"title: {parsed.netloc}{parsed.path}\n"
+        f"source: {url}\n"
+        f"source_type: {source_type}\n"
+        f"content_nature: {content_nature}\n"
+        "bilingual: true\n"
+        "---\n\n"
+    )
+    dest.write_text(frontmatter + bilingual_md, encoding="utf-8")
+    logger.info(f"scrape-translate 完成：{filename}")
+
+    response = RedirectResponse(f"/read?file={filename}", status_code=303)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
 @router.post("/start")
 async def start(
     filename: str = Form(...),
