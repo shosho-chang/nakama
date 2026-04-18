@@ -306,6 +306,8 @@ def _apply_arbitration_verdicts(
       suggestion 只在 uncertainties dict，不在 corrections — 必須顯式寫入）
     - other → corrections 覆寫為 final_text
     - uncertain → 從 corrections 移除 + 進 QC
+    - refused → 同 uncertain（從 corrections 移除 + 進 QC）；
+      拒答由 arbiter 偵測 reasoning 含「無關/無法判斷」等 meta 字樣後覆蓋產生
     - 任何 confidence < _QC_CONFIDENCE_THRESHOLD → 進 QC（即便已套用）
     """
     uncertain_by_line = {u.get("line"): u for u in uncertainties}
@@ -332,11 +334,11 @@ def _apply_arbitration_verdicts(
         elif v.verdict == "other":
             corrections[line] = v.final_text
             final_text = v.final_text
-        else:  # uncertain
+        else:  # uncertain 或 refused（拒答） — 保守採 ASR 原文並進 QC
             corrections.pop(line, None)
             final_text = asr_original
 
-        if v.verdict == "uncertain" or v.confidence < _QC_CONFIDENCE_THRESHOLD:
+        if v.verdict in ("uncertain", "refused") or v.confidence < _QC_CONFIDENCE_THRESHOLD:
             qc_items.append(
                 {
                     "line": line,
