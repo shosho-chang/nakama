@@ -97,6 +97,7 @@ def ask_gemini_audio(
     system: str = "",
     temperature: float = 0.2,
     max_output_tokens: int = 8192,
+    thinking_budget: int | None = 512,
 ) -> Any:
     """對音訊檔送一次 Gemini 請求。
 
@@ -108,6 +109,9 @@ def ask_gemini_audio(
         system: system instruction
         temperature: 溫度（預設 0.2，仲裁需要穩定）
         max_output_tokens: 最大輸出 token
+        thinking_budget: thinking token 上限（預設 512；None = SDK 預設 dynamic）。
+            Gemini 2.5 Pro output $10/M 含 thinking，dynamic 模式常吃滿 max_output_tokens；
+            仲裁這類「聽 clip 選 candidate」的封閉推理任務，512 足夠且省 5-10x 成本。
 
     Returns:
         若 response_schema 有給 → BaseModel 實例
@@ -135,6 +139,8 @@ def ask_gemini_audio(
     if response_schema is not None:
         config_kwargs["response_mime_type"] = "application/json"
         config_kwargs["response_schema"] = response_schema
+    if thinking_budget is not None:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
 
     def _call() -> Any:
         client = get_client()
@@ -187,7 +193,11 @@ def _describe_finish(response: Any) -> str:
 
 
 def _record_usage(response: Any, model: str) -> None:
-    """記錄 token 用量到 state.api_calls（失敗不影響主流程）。"""
+    """記錄 token 用量到 state.api_calls（失敗不影響主流程）。
+
+    Reasoning model（Gemini 2.5 Pro）的 thinking token 也是 output 計費，必須併入
+    output_tokens 否則 cost tracking 會少算大半（實測 thinking 常為 candidates 的 2-5 倍）。
+    """
     try:
         from shared.state import record_api_call
 
@@ -195,7 +205,9 @@ def _record_usage(response: Any, model: str) -> None:
         if usage is None:
             return
         input_tokens = getattr(usage, "prompt_token_count", 0) or 0
-        output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+        candidates_tokens = getattr(usage, "candidates_token_count", 0) or 0
+        thoughts_tokens = getattr(usage, "thoughts_token_count", 0) or 0
+        output_tokens = candidates_tokens + thoughts_tokens
 
         agent = getattr(_local, "agent", "unknown")
         run_id = getattr(_local, "run_id", None)

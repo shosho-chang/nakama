@@ -111,7 +111,7 @@ def test_happy_path(monkeypatch, fake_audio, tmp_path):
         calls.append({"start": start, "end": end, "padding": padding})
         return clip
 
-    def fake_ask_gemini(clip_path, prompt, *, response_schema, model, system, temperature):
+    def fake_ask_gemini(clip_path, prompt, *, response_schema, **kwargs):
         # 從 prompt 找序號（靠時間戳字串識別）
         return response_schema(
             final_text="修正後",

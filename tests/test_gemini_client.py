@@ -38,13 +38,20 @@ def reset_singleton(monkeypatch):
     yield
 
 
-def _fake_response(text: str = "", parsed=None, input_tokens: int = 100, output_tokens: int = 50):
+def _fake_response(
+    text: str = "",
+    parsed=None,
+    input_tokens: int = 100,
+    output_tokens: int = 50,
+    thoughts_tokens: int = 0,
+):
     return SimpleNamespace(
         text=text,
         parsed=parsed,
         usage_metadata=SimpleNamespace(
             prompt_token_count=input_tokens,
             candidates_token_count=output_tokens,
+            thoughts_token_count=thoughts_tokens,
         ),
     )
 
@@ -200,6 +207,58 @@ def test_cost_tracking_called(monkeypatch, fake_audio):
     assert recorded["input_tokens"] == 123
     assert recorded["output_tokens"] == 45
     assert recorded["model"] == "gemini-2.5-pro"
+
+
+def test_cost_tracking_sums_thoughts_tokens(monkeypatch, fake_audio):
+    """Reasoning model 的 thoughts_token_count 也是 output 計費，必須併入 output_tokens。"""
+    fake_client = FakeClient(
+        _fake_response(text="ok", input_tokens=100, output_tokens=50, thoughts_tokens=400)
+    )
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+
+    recorded = {}
+
+    def fake_record(agent, model, input_tokens, output_tokens, run_id=None):
+        recorded["output_tokens"] = output_tokens
+
+    monkeypatch.setattr("shared.state.record_api_call", fake_record)
+
+    gc.ask_gemini_audio(fake_audio, "prompt")
+
+    assert recorded["output_tokens"] == 450
+
+
+def test_thinking_budget_default_applied(monkeypatch, fake_audio):
+    """預設 thinking_budget=512 會注入 ThinkingConfig 到 GenerateContentConfig。"""
+    fake_client = FakeClient(_fake_response(text="ok"))
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+
+    gc.ask_gemini_audio(fake_audio, "prompt")
+
+    config = fake_client.last_kwargs["config"]
+    assert config.thinking_config is not None
+    assert config.thinking_config.thinking_budget == 512
+
+
+def test_thinking_budget_custom_value(monkeypatch, fake_audio):
+    fake_client = FakeClient(_fake_response(text="ok"))
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+
+    gc.ask_gemini_audio(fake_audio, "prompt", thinking_budget=128)
+
+    config = fake_client.last_kwargs["config"]
+    assert config.thinking_config.thinking_budget == 128
+
+
+def test_thinking_budget_none_omits_config(monkeypatch, fake_audio):
+    """thinking_budget=None 走 SDK 預設 dynamic thinking，不送 ThinkingConfig。"""
+    fake_client = FakeClient(_fake_response(text="ok"))
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+
+    gc.ask_gemini_audio(fake_audio, "prompt", thinking_budget=None)
+
+    config = fake_client.last_kwargs["config"]
+    assert config.thinking_config is None
 
 
 def test_cost_tracking_failure_does_not_break(monkeypatch, fake_audio):
