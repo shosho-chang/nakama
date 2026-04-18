@@ -146,6 +146,7 @@ async def read_source(request: Request, file: str, nakama_auth: str | None = Coo
             "frontmatter_raw": frontmatter_raw,
             "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
             "is_read": is_file_read(file_path),
+            "is_bilingual": bool(frontmatter.get("bilingual")),
         },
     )
 
@@ -206,7 +207,15 @@ async def scrape_translate(
 ):
     """從 URL 抓取網頁並翻譯成雙語 Markdown，存入 inbox。"""
     if not check_auth(nakama_auth):
-        raise HTTPException(403)
+        return RedirectResponse("/login", status_code=302)
+
+    _VALID_SOURCE_TYPES = {"article", "paper", "book", "video", "podcast"}
+    _VALID_CONTENT_NATURES = {
+        "popular_science", "research", "textbook",
+        "clinical_protocol", "narrative", "commentary",
+    }
+    source_type = source_type if source_type in _VALID_SOURCE_TYPES else "article"
+    content_nature = content_nature if content_nature in _VALID_CONTENT_NATURES else "popular_science"  # noqa: E501
 
     from shared.translator import translate_document
     from shared.web_scraper import scrape_url
@@ -238,10 +247,13 @@ async def scrape_translate(
         counter += 1
     filename = dest.name
 
+    # 清理換行符防止 YAML 注入；source_type/content_nature 已通過 allowlist 驗證
+    safe_title = f"{parsed.netloc}{parsed.path}".replace("\n", "").replace("\r", "")
+    safe_url = url.replace("\n", "").replace("\r", "")
     frontmatter = (
         "---\n"
-        f"title: {parsed.netloc}{parsed.path}\n"
-        f"source: {url}\n"
+        f'title: "{safe_title}"\n'
+        f'source: "{safe_url}"\n'
         f"source_type: {source_type}\n"
         f"content_nature: {content_nature}\n"
         "bilingual: true\n"

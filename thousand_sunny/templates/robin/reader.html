@@ -243,6 +243,7 @@
     // ── State ──
     const FILENAME = '{{ filename }}';
     const FRONTMATTER_RAW = {{ frontmatter_raw | tojson }};
+    const IS_BILINGUAL = {{ is_bilingual | tojson }};
     let mdSource = {{ content | tojson }};
     let pendingSelectedText = '';
 
@@ -324,7 +325,8 @@
     // states: 'off' → 'on' (show translation) → 'hidden' (hide translation) → 'off'
     const BILINGUAL_STATES = ['off', 'on', 'hidden'];
     const BILINGUAL_LABELS = { off: '雙語', on: '譯文 ✓', hidden: '譯文 ✗' };
-    let bilingualState = localStorage.getItem('robin-bilingual') || 'off';
+    // IS_BILINGUAL=true（從 scrape-translate 產生的雙語檔案）時，首次開啟預設 'on'
+    let bilingualState = localStorage.getItem('robin-bilingual') || (IS_BILINGUAL ? 'on' : 'off');
 
     function applyBilingual() {
       readerContent.classList.remove('bilingual', 'bilingual-hidden');

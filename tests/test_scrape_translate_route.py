@@ -42,7 +42,8 @@ def _auth_cookie(client):
 
 def test_scrape_translate_requires_auth(client):
     resp = client.post("/scrape-translate", data={"url": "https://example.com"})
-    assert resp.status_code == 403
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["location"]
 
 
 def test_scrape_translate_success(client, tmp_path):
