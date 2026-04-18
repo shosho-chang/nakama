@@ -1,11 +1,24 @@
 """端到端跑一次 Transcriber pipeline（Auphonic + FunASR + LLM 校正 + Gemini 仲裁）。
 
 用法：
-    python scripts/run_transcribe.py <audio_path> [output_dir]
+    # 最小
+    python scripts/run_transcribe.py <audio_path>
+
+    # 指定輸出 + LifeOS Project file（建議：人名/術語命中率差很多）
+    python scripts/run_transcribe.py <audio_path> \
+        --output-dir <dir> \
+        --project-file "F:/Shosho LifeOS/Projects/Angie.md"
+
+    # 跳過 Auphonic（省上傳時間；犧牲 ASR 品質）
+    python scripts/run_transcribe.py <audio_path> --no-auphonic
+
+    # 只跑 ASR + Opus，不做 Gemini 仲裁（省 Gemini 成本）
+    python scripts/run_transcribe.py <audio_path> --no-arbitration
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -22,26 +35,71 @@ load_dotenv()
 from shared.transcriber import transcribe  # noqa: E402
 
 
-def main() -> None:
-    if len(sys.argv) < 2:
-        print("用法: python scripts/run_transcribe.py <audio_path> [output_dir]")
-        sys.exit(1)
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Transcriber pipeline 端到端執行",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("audio_path", type=Path, help="音檔路徑（WAV / MP3 / M4A）")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="輸出目錄（預設：<audio_path>/out）",
+    )
+    parser.add_argument(
+        "--project-file",
+        type=Path,
+        default=None,
+        help="LifeOS Podcast Project .md 檔（抽 hotwords + LLM 校正 context）",
+    )
+    parser.add_argument(
+        "--no-auphonic",
+        action="store_true",
+        help="跳過 Auphonic normalization（省上傳時間）",
+    )
+    parser.add_argument(
+        "--no-arbitration",
+        action="store_true",
+        help="關閉 Gemini 2.5 Pro 多模態仲裁（省仲裁成本）",
+    )
+    parser.add_argument(
+        "--no-llm-correction",
+        action="store_true",
+        help="完全跳過 Opus 校正（純 ASR 輸出）",
+    )
+    return parser.parse_args()
 
-    audio_path = Path(sys.argv[1])
-    output_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else audio_path.parent / "out"
+
+def main() -> None:
+    args = _parse_args()
+
+    audio_path: Path = args.audio_path
+    output_dir: Path = args.output_dir or audio_path.parent / "out"
 
     print(f"音檔: {audio_path}")
     print(f"輸出: {output_dir}")
-    print("Pipeline: Auphonic normalization + FunASR + Opus 校正 + Gemini 2.5 Pro 仲裁")
+    if args.project_file:
+        print(f"Project: {args.project_file}")
+    pipeline_parts = []
+    if not args.no_auphonic:
+        pipeline_parts.append("Auphonic normalization")
+    pipeline_parts.append("FunASR")
+    if not args.no_llm_correction:
+        pipeline_parts.append("Opus 校正")
+        if not args.no_arbitration:
+            pipeline_parts.append("Gemini 2.5 Pro 仲裁")
+    print(f"Pipeline: {' + '.join(pipeline_parts)}")
     print("-" * 60)
 
     started = time.time()
     srt_path = transcribe(
         audio_path=audio_path,
         output_dir=output_dir,
-        normalize_audio=True,
-        use_llm_correction=True,
-        use_multimodal_arbitration=True,
+        project_file=args.project_file,
+        normalize_audio=not args.no_auphonic,
+        use_llm_correction=not args.no_llm_correction,
+        use_multimodal_arbitration=not args.no_arbitration,
     )
     elapsed = time.time() - started
 
