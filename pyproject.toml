@@ -20,6 +20,7 @@ dependencies = [
     "feedparser>=6.0",
     "trafilatura>=2.0.0",        # Web scraping：主要內容提取（本地、CJK 友好）
     "readability-lxml>=0.8.4",   # Web scraping：備選去噪方案
+    "firecrawl-py>=4.22.0",      # Web scraping：JS 渲染 / SPA fallback（已在 requirements.txt）
 
     # Transcription (post-processing)
     "opencc-python-reimplemented>=0.1.7",

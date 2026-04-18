@@ -146,7 +146,7 @@ def _scrape_readability(url: str, html: str | None = None) -> str | None:
         if not html:
             return None
 
-        doc = Document(html)
+        doc = Document(html, url=url)
         content_html = doc.summary()
 
         # HTML → 純文字（保留基本段落結構）
@@ -172,6 +172,7 @@ def _html_to_text(html: str) -> str:
         if tree is None:
             return html
 
+        _BLOCK_TAGS = {"h1", "h2", "h3", "h4", "p", "li", "br"}
         lines = []
         for elem in tree.iter():
             tag = elem.tag if isinstance(elem.tag, str) else ""
@@ -190,8 +191,11 @@ def _html_to_text(html: str) -> str:
                     lines.append(f"- {text}")
             elif tag == "br":
                 lines.append("")
+            elif text and tag not in _BLOCK_TAGS:
+                # inline 標籤（a, strong, em, span 等）的文字直接追加
+                lines.append(text)
 
-            if tail and tag not in ("h1", "h2", "h3", "h4", "p", "li"):
+            if tail and tag not in _BLOCK_TAGS:
                 lines.append(tail)
 
         return "\n\n".join(line for line in lines if line)
@@ -223,7 +227,7 @@ def _scrape_firecrawl(url: str) -> str:
     try:
         app = FirecrawlApp(api_key=api_key)
         result = app.scrape_url(url, params={"formats": ["markdown"]})
-        md = result.get("markdown", "")
+        md = result.markdown or ""
         if not md:
             raise RuntimeError("Firecrawl 回傳空內容")
         logger.debug(f"Firecrawl 成功：{len(md)} 字元")

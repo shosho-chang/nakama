@@ -137,8 +137,10 @@ def test_scrape_firecrawl_no_api_key():
 
 
 def test_scrape_firecrawl_success():
+    mock_response = MagicMock()
+    mock_response.markdown = "# Article\n\nContent here " * 10
     mock_app = MagicMock()
-    mock_app.scrape_url.return_value = {"markdown": "# Article\n\nContent here " * 10}
+    mock_app.scrape_url.return_value = mock_response
     with (
         patch.dict("os.environ", {"FIRECRAWL_API_KEY": "test-key"}),
         patch("firecrawl.FirecrawlApp", return_value=mock_app),
@@ -148,8 +150,10 @@ def test_scrape_firecrawl_success():
 
 
 def test_scrape_firecrawl_empty_response():
+    mock_response = MagicMock()
+    mock_response.markdown = None
     mock_app = MagicMock()
-    mock_app.scrape_url.return_value = {"markdown": ""}
+    mock_app.scrape_url.return_value = mock_response
     with (
         patch.dict("os.environ", {"FIRECRAWL_API_KEY": "test-key"}),
         patch("firecrawl.FirecrawlApp", return_value=mock_app),
@@ -182,8 +186,10 @@ def test_scrape_auto_falls_back_to_readability():
 
 
 def test_scrape_auto_falls_back_to_firecrawl():
+    mock_response = MagicMock()
+    mock_response.markdown = "# JS Page\n\n" + "content " * 50
     mock_app = MagicMock()
-    mock_app.scrape_url.return_value = {"markdown": "# JS Page\n\n" + "content " * 50}
+    mock_app.scrape_url.return_value = mock_response
     with (
         patch("shared.web_scraper._fetch_html", return_value=_SHORT_HTML),
         patch("trafilatura.extract", return_value=None),
@@ -228,8 +234,10 @@ def test_scrape_url_mode_string():
 
 
 def test_scrape_url_mode_firecrawl():
+    mock_response = MagicMock()
+    mock_response.markdown = "# Test\n\n" + "word " * 50
     mock_app = MagicMock()
-    mock_app.scrape_url.return_value = {"markdown": "# Test\n\n" + "word " * 50}
+    mock_app.scrape_url.return_value = mock_response
     with (
         patch.dict("os.environ", {"FIRECRAWL_API_KEY": "key"}),
         patch("firecrawl.FirecrawlApp", return_value=mock_app),
