@@ -56,6 +56,7 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ✅ Map-Reduce 大文件摘要（chunker + prompts + fallback）
 - ✅ 33 個新測試全過
 - ⬜ E2E 實測：Gemma 4 26B 已安裝，丟 PDF 跑完整 pipeline
+- ⬜ `shared/local_llm.py` 加 image 支援（OpenAI-compatible multimodal content parts array + base64 encode helper）— 解 Robin ingest PDF 圖表問題；Gemma 4 26B-A4B 原生支援 image input
 
 **Robin 內容性質分類（PR #12 已 merge，2026-04-16）：**
 - ✅ 兩層分類架構（source_type + content_nature）

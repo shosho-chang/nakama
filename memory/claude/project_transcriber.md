@@ -8,8 +8,8 @@ confidence: high
 
 <!-- 2026-04-17 更新：Gemini 仲裁實測成本 $0.5 / 20min（比原估高 10x），根因 thinking output token。 -->
 
+originSessionId: c2ace3b3-f24c-4428-9d8b-ddd315f7d92e
 ---
-
 ## 狀態：已 merge（PR #9，2026-04-15）
 
 ### 已完成
@@ -51,6 +51,12 @@ confidence: high
 - `_correct_with_llm` prompt 加「輸出不要標點，半形空格分隔」
 - **保留 `punc_model="ct-punc-c"`**（注意 rationale）：實際作用是給 `_funasr_to_srt` 句尾標點做**字級時間戳對齊**（看 `_split_sentences` L631 「先用句尾標點拆分」），不是給 LLM 校正參考（Pass 1 在 LLM 之前已去標點，LLM 永遠看不到）
 - Code review 找到 mock 契約問題（9 字配 2 timestamp），改用 FunASR `sentence_info` 真實形式
+
+### 未來方向（2026-04-18 新增）
+**計畫將 transcriber 獨立出來開源給其他使用者。** 這讓**降低仲裁成本從內部優化升級為產品級需求** — 現行 $1.5/hr 太貴，一般使用者無法承擔。優先順序：
+1. **限 thinking_budget**（0.5 小時工程）— 先做、立即見效
+2. **降級 gemini-2.5-flash**（1 小時工程 + shadow test）
+3. **本地方案**（Qwen2.5-Omni / Gemma 4 E4B 等，見 `project_local_multimodal_audio_models.md`）
 
 ### 待進行（QC 改進清單）
 - ⬜ CLI 命令 → Skill 化
