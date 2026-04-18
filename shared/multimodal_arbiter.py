@@ -44,12 +44,35 @@ class ArbitrationVerdict(BaseModel):
 
     line: int = Field(description="SRT 序號")
     final_text: str = Field(description="仲裁後最終文字")
-    verdict: Literal["keep_original", "accept_suggestion", "other", "uncertain"] = Field(
+    verdict: Literal["keep_original", "accept_suggestion", "other", "uncertain", "refused"] = Field(
         description="keep_original=ASR 原文對；accept_suggestion=Opus 建議對；"
-        "other=兩個都不對（final_text 是新版）；uncertain=聽不清楚"
+        "other=兩個都不對（final_text 是新版）；uncertain=聽不清楚；"
+        "refused=Gemini 回拒答訊號（由本模組偵測後覆蓋，Gemini schema 本身不回這值）"
     )
     confidence: float = Field(ge=0.0, le=1.0, description="0.0–1.0")
     reasoning: str = Field(description="≤50 字理由")
+
+
+_REFUSAL_PATTERNS = (
+    "無關",
+    "無法判斷",
+    "無法辨識",
+    "無法識別",
+    "沒有相關",
+    "沒有對應",
+    "不相關",
+)
+
+
+def _is_refusal(reasoning: str, final_text: str) -> bool:
+    """偵測 Gemini 拒答訊號——reasoning 或 final_text 含「音檔與候選無關」類字樣。
+
+    Gemini 偶爾對短片段或歧義音訊給出「音檔與候選文字無關」「無法判斷」等 meta 回應，
+    但仍會填一個 verdict（通常 keep_original with 看似高 confidence），
+    導致系統誤信 ASR 原文。此偵測用於把這類回應 downgrade 為 refused + conf 0。
+    """
+    text = f"{reasoning or ''} {final_text or ''}"
+    return any(p in text for p in _REFUSAL_PATTERNS)
 
 
 class _GeminiResponse(BaseModel):
@@ -184,6 +207,18 @@ def _arbitrate_one(
             temperature=0.1,
             thinking_budget=512,
         )
+        if _is_refusal(result.reasoning, result.final_text):
+            logger.info(
+                f"line={line} 偵測到 Gemini 拒答訊號 → refused"
+                f"（原 verdict={result.verdict}, conf={result.confidence}）"
+            )
+            return ArbitrationVerdict(
+                line=line,
+                final_text=original,
+                verdict="refused",
+                confidence=0.0,
+                reasoning=f"[拒答] {result.reasoning}"[:100],
+            )
         return ArbitrationVerdict(
             line=line,
             final_text=result.final_text,

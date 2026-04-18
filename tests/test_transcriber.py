@@ -946,6 +946,34 @@ def test_correct_with_llm_uncertain_verdict_drops_correction(tmp_path):
     assert qc_items[0]["verdict"] == "uncertain"
 
 
+def test_correct_with_llm_refused_verdict_drops_correction_and_qc(tmp_path):
+    """verdict=refused（拒答）行為同 uncertain：撤銷 Pass 1 修改 + 進 QC。"""
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake")
+
+    mock_response = (
+        '{"corrections": {"2": "NMN是一種重要的分子"}, '
+        '"uncertain": [{"line": 2, "original": "NMM是一種重要的分子", '
+        '"suggestion": "NMN是一種重要的分子", "reason": "r", "risk": "high"}]}'
+    )
+    # 模擬 arbiter 偵測到拒答後回傳的 verdict
+    verdicts = [_make_verdict(2, "refused", "NMM是一種重要的分子", confidence=0.0)]
+
+    with (
+        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
+    ):
+        result, qc_items = _correct_with_llm(
+            _SAMPLE_SRT, context_files=[], audio_path=audio, use_arbitration=True
+        )
+
+    # Pass 1 的修改被撤銷、ASR 原文保留
+    assert "NMM是一種重要的分子" in result
+    assert "NMN是一種重要的分子" not in result
+    assert len(qc_items) == 1
+    assert qc_items[0]["verdict"] == "refused"
+
+
 def test_correct_with_llm_arbitration_raises_fallback(tmp_path):
     """arbitrate_uncertain 整批 raise → 退回舊流程（uncertainties 直接進 QC）。"""
     audio = tmp_path / "test.mp3"

@@ -22,6 +22,7 @@ import shared.multimodal_arbiter as arb
 from shared.multimodal_arbiter import (
     ArbitrationVerdict,
     _choose_padding,
+    _is_refusal,
     _parse_srt_index,
     arbitrate_uncertain,
 )
@@ -345,3 +346,88 @@ def test_arbitration_verdict_schema():
         line=1, final_text="x", verdict="keep_original", confidence=0.5, reasoning="x"
     )
     assert v.confidence == 0.5
+
+
+def test_is_refusal_detects_patterns():
+    """拒答偵測：reasoning 或 final_text 任一含拒答字串即判 True。"""
+    assert _is_refusal("音檔與候選文字無關", "")
+    assert _is_refusal("", "無法判斷")
+    assert _is_refusal("兩者都不相關", "")
+    assert _is_refusal("沒有對應的語音", "")
+    # 正常回應不誤判
+    assert not _is_refusal("聽起來是第一個候選", "修正後的文字")
+    assert not _is_refusal("清楚聽到「試過」", "成功試過游牧")
+    # 空字串安全
+    assert not _is_refusal("", "")
+
+
+def test_refusal_downgraded_to_refused_verdict(monkeypatch, fake_audio, tmp_path):
+    """Gemini 回「音檔與候選文字無關」但填 keep_original + 高 confidence，
+    應被偵測為拒答、覆蓋為 verdict=refused / conf=0 / final_text=ASR 原文。"""
+
+    def fake_extract_clip(audio, start, end, **kwargs):
+        clip = tmp_path / f"clip_{start}.wav"
+        clip.write_bytes(b"clip")
+        return clip
+
+    def fake_ask_gemini(clip_path, prompt, *, response_schema, **kwargs):
+        return response_schema(
+            final_text="成功是過遊牧",
+            verdict="keep_original",
+            confidence=0.9,
+            reasoning="音檔與候選文字無關",
+        )
+
+    monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
+
+    result = arbitrate_uncertain(
+        fake_audio,
+        SAMPLE_SRT,
+        [
+            {
+                "line": 1,
+                "original": "ASR 原文",
+                "suggestion": "Opus 建議",
+                "reason": "r",
+            }
+        ],
+    )
+
+    assert len(result) == 1
+    assert result[0].verdict == "refused"
+    assert result[0].confidence == 0.0
+    assert result[0].final_text == "ASR 原文"
+    assert result[0].reasoning.startswith("[拒答]")
+
+
+def test_normal_uncertain_not_treated_as_refused(monkeypatch, fake_audio, tmp_path):
+    """Gemini 回正常 uncertain（非拒答字樣）應保留為 uncertain，不誤判為 refused。"""
+
+    def fake_extract_clip(audio, start, end, **kwargs):
+        clip = tmp_path / f"clip_{start}.wav"
+        clip.write_bytes(b"clip")
+        return clip
+
+    def fake_ask_gemini(clip_path, prompt, *, response_schema, **kwargs):
+        return response_schema(
+            final_text="ASR 原文",
+            verdict="uncertain",
+            confidence=0.3,
+            reasoning="音訊模糊難以分辨兩個候選",
+        )
+
+    monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
+    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
+
+    result = arbitrate_uncertain(
+        fake_audio,
+        SAMPLE_SRT,
+        [{"line": 1, "original": "ASR 原文", "suggestion": "Opus", "reason": "r"}],
+    )
+
+    assert len(result) == 1
+    assert result[0].verdict == "uncertain"
+    assert result[0].confidence == 0.3

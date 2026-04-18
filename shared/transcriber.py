@@ -332,11 +332,11 @@ def _apply_arbitration_verdicts(
         elif v.verdict == "other":
             corrections[line] = v.final_text
             final_text = v.final_text
-        else:  # uncertain
+        else:  # uncertain 或 refused（拒答） — 保守採 ASR 原文並進 QC
             corrections.pop(line, None)
             final_text = asr_original
 
-        if v.verdict == "uncertain" or v.confidence < _QC_CONFIDENCE_THRESHOLD:
+        if v.verdict in ("uncertain", "refused") or v.confidence < _QC_CONFIDENCE_THRESHOLD:
             qc_items.append(
                 {
                     "line": line,
