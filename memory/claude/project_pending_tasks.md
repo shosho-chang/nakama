@@ -84,7 +84,10 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ⬜ weekly-report (Franky)
 - ⬜ morning-brief (Nami) — Nami 還沒開發，先做 skill 再 agent
 - ⬜ kb-search (Robin) — `/kb/research` 未 E2E 測，skill 化前先驗
-- ⬜ style-extractor — 新功能，需先定義 PRD
+- 🚧 style-extractor — **PRD v4 草稿完成**（LifeOS KB/Wiki/Outputs/style-extractor-prd-draft.md），重新定位為 building block（產出 voice profile 給下游 workflow skill 用）；V1 產出三個 profile：修修-人物報導 / 修修-科普文章 / 修修-讀書心得；LLM 用 Opus 4.7；等修修備齊 3 個 StyleSamples 資料夾（每個 8–10 篇）就進入實作。詳見 LifeOS 記憶 [[project_style_extractor]]
+- ⬜ interview-to-article skill — style-extractor 下游 workflow，Podcast 逐字稿 → 人物報導；需獨立 PRD
+- ⬜ kb-synthesize-article skill — style-extractor 下游 workflow，Project + KB refs → 科普文章；需獨立 PRD
+- ⬜ book-reflection-compose skill — style-extractor 下游 workflow，書 + 閱讀筆記 → 讀書心得；需獨立 PRD
 
 **雙語閱讀 Pipeline（2026-04-18，P0+P1+P2A 完成）：**
 - ✅ PR #27：`shared/translator.py` + 台灣術語表（150+ 詞，user_terms 自動學習）
