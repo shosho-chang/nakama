@@ -28,6 +28,15 @@
   .btn-read:hover { background: #6c63ff; color: white; }
   button { padding: 0.55rem 1.2rem; background: #6c63ff; color: white; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; white-space: nowrap; transition: background .2s; }
   button:hover { background: #574fd6; }
+  .url-card { background: white; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); border: 1px solid #e8e5ff; }
+  .url-card h2 { font-size: 0.9rem; color: #6c63ff; font-weight: 600; margin-bottom: 0.75rem; }
+  .url-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end; }
+  .url-input { flex: 1; min-width: 200px; padding: 0.5rem 0.75rem; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; outline: none; transition: border-color .2s; }
+  .url-input:focus { border-color: #6c63ff; }
+  .url-selects { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .url-card button { background: #6c63ff; font-size: 0.85rem; padding: 0.5rem 1rem; }
+  .url-card button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .url-hint { font-size: 0.75rem; color: #aaa; margin-top: 0.5rem; }
 </style>
 </head>
 <body>
@@ -38,6 +47,30 @@
   </form>
 </div>
 <div class="container">
+  <!-- URL 抓取 + 翻譯 -->
+  <div class="url-card">
+    <h2>從 URL 抓取並翻譯</h2>
+    <form id="scrapeForm" method="post" action="/scrape-translate" onsubmit="return onScrapeSubmit()">
+      <div class="url-row">
+        <input class="url-input" type="url" name="url" id="urlInput" placeholder="https://www.nature.com/articles/..." required>
+        <div class="url-selects">
+          <select name="source_type" class="type-select">
+            <option value="article">Article</option>
+            <option value="paper">Paper</option>
+          </select>
+          <select name="content_nature" class="type-select">
+            <option value="popular_science">科普</option>
+            <option value="research">研究文獻</option>
+            <option value="textbook">教科書</option>
+            <option value="commentary">評論</option>
+          </select>
+        </div>
+        <button type="submit" id="scrapeBtn">抓取 + 翻譯</button>
+      </div>
+      <div class="url-hint">抓取後自動翻譯成雙語版，並在 Reader 中開啟</div>
+    </form>
+  </div>
+
   {% if files %}
     {% for file in files %}
     <div class="file-card">
@@ -84,5 +117,13 @@
   </div>
   {% endif %}
 </div>
+<script>
+  function onScrapeSubmit() {
+    const btn = document.getElementById('scrapeBtn');
+    btn.disabled = true;
+    btn.textContent = '抓取中…';
+    return true;
+  }
+</script>
 </body>
 </html>

@@ -97,7 +97,14 @@
   .reader-content p { margin-bottom: 0.9rem; line-height: 1.9; font-size: 1rem; }
   .reader-content ul, .reader-content ol { margin: 0.5rem 0 0.9rem 1.5rem; line-height: 1.8; }
   .reader-content li { margin-bottom: 0.3rem; }
+  /* 一般引言 */
   .reader-content blockquote { border-left: 3px solid var(--border); padding-left: 1rem; color: var(--text-muted); margin: 0.75rem 0; }
+  /* 雙語譯文 blockquote */
+  .reader-content.bilingual blockquote { font-size: 0.82rem; line-height: 1.7; color: var(--text-muted); background: var(--bg); border-left: 2px solid #c8c4f7; padding: 0.3rem 0.75rem; margin: -0.5rem 0 0.9rem 0; border-radius: 0 4px 4px 0; font-style: normal; }
+  /* 隱藏譯文 */
+  .reader-content.bilingual-hidden blockquote { display: none; }
+  /* 切換按鈕 active 狀態 */
+  .header-btn.active { border-color: var(--accent); color: var(--accent); background: var(--note-bg); }
   .reader-content code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; }
   .reader-content pre { background: var(--code-bg); padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0.75rem 0; }
   .reader-content pre code { background: none; padding: 0; }
@@ -172,8 +179,9 @@
       <span class="badge-read" id="readBadge" {% if not is_read %}style="display:none"{% endif %}>已閱讀</span>
     </div>
     <div class="header-right">
-      <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解</span>
+      <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解 · T 切換譯文</span>
       <span class="save-indicator" id="saveIndicator">已儲存</span>
+      <button class="header-btn" id="bilingualToggle" onclick="cycleBilingual()" title="T">雙語</button>
       <button class="header-btn" id="darkToggle" onclick="toggleDark()">Dark</button>
     </div>
   </div>
@@ -235,11 +243,13 @@
     // ── State ──
     const FILENAME = '{{ filename }}';
     const FRONTMATTER_RAW = {{ frontmatter_raw | tojson }};
+    const IS_BILINGUAL = {{ is_bilingual | tojson }};
     let mdSource = {{ content | tojson }};
     let pendingSelectedText = '';
 
     const readerContent = document.getElementById('readerContent');
     const darkToggle = document.getElementById('darkToggle');
+    const bilingualToggle = document.getElementById('bilingualToggle');
     const saveIndicator = document.getElementById('saveIndicator');
     const finishBtn = document.getElementById('finishBtn');
     const readBadge = document.getElementById('readBadge');
@@ -310,6 +320,36 @@
         readerContent.innerHTML = html;
       }
     }
+
+    // ── Bilingual mode ──
+    // states: 'off' → 'on' (show translation) → 'hidden' (hide translation) → 'off'
+    const BILINGUAL_STATES = ['off', 'on', 'hidden'];
+    const BILINGUAL_LABELS = { off: '雙語', on: '譯文 ✓', hidden: '譯文 ✗' };
+    // IS_BILINGUAL=true（從 scrape-translate 產生的雙語檔案）時，首次開啟預設 'on'
+    let bilingualState = localStorage.getItem('robin-bilingual') || (IS_BILINGUAL ? 'on' : 'off');
+
+    function applyBilingual() {
+      readerContent.classList.remove('bilingual', 'bilingual-hidden');
+      if (bilingualState === 'on') {
+        readerContent.classList.add('bilingual');
+        bilingualToggle.classList.add('active');
+      } else if (bilingualState === 'hidden') {
+        readerContent.classList.add('bilingual', 'bilingual-hidden');
+        bilingualToggle.classList.add('active');
+      } else {
+        bilingualToggle.classList.remove('active');
+      }
+      bilingualToggle.textContent = BILINGUAL_LABELS[bilingualState];
+    }
+
+    function cycleBilingual() {
+      const idx = BILINGUAL_STATES.indexOf(bilingualState);
+      bilingualState = BILINGUAL_STATES[(idx + 1) % BILINGUAL_STATES.length];
+      localStorage.setItem('robin-bilingual', bilingualState);
+      applyBilingual();
+    }
+
+    applyBilingual();
 
     // ── Dark mode ──
 
@@ -408,6 +448,15 @@
 
     document.addEventListener('keydown', function(e) {
       if (modalOverlay.classList.contains('show')) return;
+
+      // T: cycle bilingual mode
+      if (!e.ctrlKey && !e.metaKey && e.key === 't') {
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+        e.preventDefault();
+        cycleBilingual();
+        return;
+      }
 
       // Ctrl+B: highlight (yellow)
       if (e.ctrlKey && !e.shiftKey && e.key === 'b') {
