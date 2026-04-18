@@ -75,7 +75,7 @@ originSessionId: c2ace3b3-f24c-4428-9d8b-ddd315f7d92e
 - 開源友善：使用者不需改 source code 就能關 Auphonic / 仲裁
 
 ### 待進行（QC 改進清單）
-- ⬜ CLI 命令 → Skill 化
+- ✅ **CLI 命令 → Skill 化**：`f:/nakama/.claude/skills/transcribe/` 完成（2026-04-18），SKILL.md + 6 references，週一 Angie 實測作為首次 eval
 - ⬜ 本地模型替代 Gemini 2.5 Pro 仲裁（候選見 `project_local_multimodal_audio_models.md`）
 - ⬜ **SRT 段落硬拆問題**：FunASR VAD 只看聲學靜默切段，會把「可以」「時間」這種詞拆到相鄰兩段。建議在 LLM 校正 prompt 加「若相鄰段在詞語/短語中間被截斷請合併」+ 後處理 re-segment 步驟
 - ✅ **Gemini 仲裁拒答信號**：PR #25 完成

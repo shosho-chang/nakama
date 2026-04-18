@@ -78,9 +78,13 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
   - PR #26 `run_transcribe.py` argparse + `--project-file` 等 CLI flags
 - ⬜ **週一 2026-04-20：1hr Angie 首次正式實測**（驗成本、品質、QC 報告、拒答率）
 
-**待進行（下一步）：**
-- Agent 功能 → Skill 改寫 **Phase 2**：morning-brief (Nami)、kb-search (Robin)
-- Agent 功能 → Skill 改寫 **Phase 3**：keyword-research (Zoro)、weekly-report (Franky)、style-extractor
+**Skill 化工程（2026-04-18 重排）：**
+- ✅ transcribe（`f:/nakama/.claude/skills/transcribe/`）— 週一 Angie 實測作為首次 eval
+- 🚧 下一個：keyword-research (Zoro) — 已部署穩定，改寫風險低
+- ⬜ weekly-report (Franky)
+- ⬜ morning-brief (Nami) — Nami 還沒開發，先做 skill 再 agent
+- ⬜ kb-search (Robin) — `/kb/research` 未 E2E 測，skill 化前先驗
+- ⬜ style-extractor — 新功能，需先定義 PRD
 
 **待開發（agent 功能）：**
 - Nami（航海士）— 消費 Robin/Franky 事件，產出 Morning Brief
