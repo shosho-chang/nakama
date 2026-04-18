@@ -72,7 +72,11 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ✅ PR-B：`shared/gemini_client.py`（Gemini 2.5 Pro audio + JSON schema）— PR #19 merged 2026-04-17，順手修 CI 裝 ffmpeg
 - ✅ PR-C：`shared/multimodal_arbiter.py`（串 audio_clip + gemini_client）— PR #20 merged 2026-04-17，code review 修掉 thread-local cost tracking bug
 - ✅ PR-D：`transcriber.py` `_correct_with_llm()` 兩輪 pipeline — PR #21 merged 2026-04-17，策略 A（自動應用 verdicts，無第二輪 Opus）；code review 修掉 `accept_suggestion` 分支沒寫 corrections 的 bug
-- ⬜ Transcriber 多模態仲裁 E2E 實測（真實音檔跑完整 Opus + Gemini pipeline，驗成本、品質、QC 報告）
+- ✅ **2026-04-18 收尾三件**：
+  - PR #24 thinking_budget=512 + thoughts token cost tracking 修（成本 5-10x 降）
+  - PR #25 拒答訊號偵測 + refused verdict（code-review 抓到 final_text 誤掃 bug 同 branch 修）
+  - PR #26 `run_transcribe.py` argparse + `--project-file` 等 CLI flags
+- ⬜ **週一 2026-04-20：1hr Angie 首次正式實測**（驗成本、品質、QC 報告、拒答率）
 
 **待進行（下一步）：**
 - Agent 功能 → Skill 改寫 **Phase 2**：morning-brief (Nami)、kb-search (Robin)

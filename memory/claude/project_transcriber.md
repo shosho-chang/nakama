@@ -1,12 +1,12 @@
 ---
 name: Transcriber 語音轉字幕模組
-description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁（路線 2，E2E 實測通過，PR #23 全 pipeline 強制無標點輸出）
+description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁（2026-04-18 收尾 PR #24/#25/#26，等 1hr Angie 正式實測）
 type: project
 created: 2026-04-14
-updated: 2026-04-17
+updated: 2026-04-18
 confidence: high
 
-<!-- 2026-04-17 更新：Gemini 仲裁實測成本 $0.5 / 20min（比原估高 10x），根因 thinking output token。 -->
+<!-- 2026-04-18 更新：PR #24/#25/#26 merged，成本降 5-10x + 拒答偵測 + CLI argparse，週一 2026-04-20 首次 1hr Angie 正式使用。 -->
 
 originSessionId: c2ace3b3-f24c-4428-9d8b-ddd315f7d92e
 ---
@@ -52,18 +52,35 @@ originSessionId: c2ace3b3-f24c-4428-9d8b-ddd315f7d92e
 - **保留 `punc_model="ct-punc-c"`**（注意 rationale）：實際作用是給 `_funasr_to_srt` 句尾標點做**字級時間戳對齊**（看 `_split_sentences` L631 「先用句尾標點拆分」），不是給 LLM 校正參考（Pass 1 在 LLM 之前已去標點，LLM 永遠看不到）
 - Code review 找到 mock 契約問題（9 字配 2 timestamp），改用 FunASR `sentence_info` 真實形式
 
-### 未來方向（2026-04-18 新增）
+### 未來方向
 **計畫將 transcriber 獨立出來開源給其他使用者。** 這讓**降低仲裁成本從內部優化升級為產品級需求** — 現行 $1.5/hr 太貴，一般使用者無法承擔。優先順序：
-1. **限 thinking_budget**（0.5 小時工程）— 先做、立即見效
-2. **降級 gemini-2.5-flash**（1 小時工程 + shadow test）
+1. ✅ **限 thinking_budget** — PR #24 完成（預設 512，成本降 5-10x）
+2. **降級 gemini-2.5-flash**（1 小時工程 + shadow test）— 週一實測後決定
 3. **本地方案**（Qwen2.5-Omni / Gemma 4 E4B 等，見 `project_local_multimodal_audio_models.md`）
+
+### PR #24（2026-04-18，merged 419db3d）— thinking_budget + cost tracking 修
+- `ask_gemini_audio` 加 `thinking_budget: int | None = 512` 參數，arbiter 顯式傳 512
+- `_record_usage` bug 修：之前只算 `candidates_token_count`，漏算 `thoughts_token_count`，cost tracking 顯示的成本僅真實值的 1/5
+- 實測預估 1hr Angie：$1.5 → ~$0.3-0.5
+
+### PR #25（2026-04-18，merged 6209c45）— 拒答訊號偵測
+- 新 verdict `refused`（加在 `ArbitrationVerdict` 側，`_GeminiResponse` 不動，由 arbiter 偵測後覆蓋）
+- `_is_refusal(reasoning)` 偵測拒答字樣：`無關 / 無法判斷 / 無法辨識 / 無法識別 / 沒有相關 / 沒有對應 / 不相關`
+- 偵測到 → 強制 verdict=refused、conf=0、final_text=ASR 原文、進 `.qc.md`
+- transcriber `_apply_arbitration_verdicts` 把 refused 當 uncertain 處理（pop corrections + 進 QC）
+- **code-review 抓到真 bug（分 88）同 branch 修掉**：原實作同時掃 `reasoning` + `final_text`，但 final_text 是轉寫的語音內容，來賓若自然講「這件事無關緊要」會被誤判為拒答、清掉修正。最終版只掃 reasoning（meta-commentary 只出現在 reasoning 欄位）
+
+### PR #26（2026-04-18，merged 1ff1f3f）— `run_transcribe.py` argparse
+- 加 CLI flags：`--project-file` / `--output-dir` / `--no-auphonic` / `--no-arbitration` / `--no-llm-correction`
+- 開源友善：使用者不需改 source code 就能關 Auphonic / 仲裁
 
 ### 待進行（QC 改進清單）
 - ⬜ CLI 命令 → Skill 化
 - ⬜ 本地模型替代 Gemini 2.5 Pro 仲裁（候選見 `project_local_multimodal_audio_models.md`）
 - ⬜ **SRT 段落硬拆問題**：FunASR VAD 只看聲學靜默切段，會把「可以」「時間」這種詞拆到相鄰兩段。建議在 LLM 校正 prompt 加「若相鄰段在詞語/短語中間被截斷請合併」+ 後處理 re-segment 步驟
-- ⬜ **Gemini 仲裁拒答信號**：Gemini 回「音檔與候選文字無關」這類拒答應 downgrade 為低信心而非採信原文（現在會直接保留 ASR 原文）
-- ⬜ **同音字優先清單**：是/試/式、地/的、做/作 等中文 ASR 高頻同音字可在 prompt 顯式列出
+- ✅ **Gemini 仲裁拒答信號**：PR #25 完成
+- ⬜ **同音字優先清單**：等 1hr Angie 實測看哪些高頻再補
+- ⬜ **[開源] `_REFUSAL_PATTERNS` 可擴充化**：目前 module constant，他人場景要擴充需改 source；應改為 arg + 預設清單（見 `feedback_open_source_ready.md`）
 
 ## 架構
 

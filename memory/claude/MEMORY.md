@@ -34,3 +34,4 @@
 - [feedback_test_realism.md](feedback_test_realism.md) — mock integration test 時輸入形狀要對齊真實契約，別為了測試好寫造不可能的資料
 - [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
+- [feedback_open_source_ready.md](feedback_open_source_ready.md) — 所有功能都可能個別開源，開發時保留參數化與擴充點（避免硬編碼內部假設）
