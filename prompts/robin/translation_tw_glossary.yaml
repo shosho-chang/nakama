@@ -1,0 +1,189 @@
+# 台灣學術術語對照表
+# 格式：英文（小寫）: 台灣繁體中文譯名
+# Robin 翻譯模組使用此表確保術語一致性
+# 修正術語後，Robin 會自動更新此檔案
+
+terms:
+  # 細胞與分子生物學
+  adenosine triphosphate: 三磷酸腺苷
+  apoptosis: 細胞凋亡
+  autophagy: 自噬作用
+  cell membrane: 細胞膜
+  chromatin: 染色質
+  cytoplasm: 細胞質
+  dna methylation: DNA 甲基化
+  endoplasmic reticulum: 內質網
+  epigenetics: 表觀遺傳學
+  gene expression: 基因表現
+  golgi apparatus: 高基氏體
+  histone: 組蛋白
+  lysosome: 溶酶體
+  messenger rna: 信使 RNA
+  mitochondria: 粒線體
+  mitochondrial membrane: 粒線體膜
+  mitosis: 有絲分裂
+  mrna: 信使 RNA
+  nucleus: 細胞核
+  organelle: 胞器
+  ribosome: 核糖體
+  stem cell: 幹細胞
+  telomere: 端粒
+  transcription factor: 轉錄因子
+
+  # 神經科學與心理學
+  acetylcholine: 乙醯膽鹼
+  amygdala: 杏仁核
+  basal ganglia: 基底核
+  cerebellum: 小腦
+  cerebral cortex: 大腦皮質
+  cognitive function: 認知功能
+  default mode network: 預設模式網路
+  dopamine: 多巴胺
+  endorphin: 腦內啡
+  frontal lobe: 額葉
+  gaba: γ-胺基丁酸
+  glutamate: 麩胺酸
+  hippocampus: 海馬迴
+  hypothalamus: 下視丘
+  limbic system: 邊緣系統
+  long-term potentiation: 長期增益
+  melatonin: 褪黑素
+  myelin: 髓鞘
+  neurogenesis: 神經新生
+  neuroinflammation: 神經發炎
+  neuroplasticity: 神經可塑性
+  neurotransmitter: 神經傳遞物質
+  norepinephrine: 正腎上腺素
+  oxytocin: 催產素
+  prefrontal cortex: 前額葉皮質
+  serotonin: 血清素
+  synaptic plasticity: 突觸可塑性
+  thalamus: 視丘
+
+  # 睡眠醫學
+  adenosine: 腺苷
+  circadian rhythm: 晝夜節律
+  deep sleep: 深度睡眠
+  homeostatic sleep pressure: 睡眠恆定壓力
+  hypnogram: 睡眠圖
+  insomnia: 失眠症
+  light sleep: 淺度睡眠
+  non-rem sleep: 非快速動眼期睡眠
+  nrem sleep: 非快速動眼期睡眠
+  obstructive sleep apnea: 阻塞性睡眠呼吸中止症
+  polysomnography: 多項生理睡眠檢查
+  rem sleep: 快速動眼期睡眠
+  rem: 快速動眼期
+  sleep architecture: 睡眠結構
+  sleep debt: 睡眠債
+  sleep efficiency: 睡眠效率
+  sleep inertia: 睡眠惰性
+  sleep latency: 入睡潛伏期
+  sleep pressure: 睡眠壓力
+  sleep spindle: 睡眠紡錘波
+  slow-wave sleep: 慢波睡眠
+  suprachiasmatic nucleus: 視交叉上核
+
+  # 代謝與內分泌
+  adiponectin: 脂聯素
+  adipose tissue: 脂肪組織
+  aldosterone: 醛固酮
+  anabolic: 合成代謝
+  blood glucose: 血糖
+  catabolic: 分解代謝
+  cortisol: 皮質醇
+  estrogen: 雌激素
+  glucagon: 升糖素
+  glycemic index: 升糖指數
+  glycemic load: 升糖負荷
+  growth hormone: 生長激素
+  hdl cholesterol: 高密度脂蛋白膽固醇
+  hpa axis: 下視丘－腦垂體－腎上腺軸
+  hyperglycemia: 高血糖
+  hypoglycemia: 低血糖
+  inflammation: 發炎反應
+  insulin: 胰島素
+  insulin resistance: 胰島素阻抗
+  insulin sensitivity: 胰島素敏感性
+  ldl cholesterol: 低密度脂蛋白膽固醇
+  leptin: 瘦素
+  metabolic syndrome: 代謝症候群
+  oxidative stress: 氧化壓力
+  progesterone: 黃體素
+  testosterone: 睾固酮
+  thyroid hormone: 甲狀腺素
+
+  # 運動科學
+  aerobic capacity: 有氧能力
+  anaerobic threshold: 無氧閾值
+  cardiovascular fitness: 心肺適能
+  eccentric contraction: 離心收縮
+  fast-twitch fiber: 快縮肌纖維
+  fatigue: 疲勞
+  hypertrophy: 肥大
+  lactate threshold: 乳酸閾值
+  maximal oxygen uptake: 最大攝氧量
+  muscle fiber: 肌纖維
+  muscle hypertrophy: 肌肉肥大
+  progressive overload: 漸進式超負荷
+  repetition maximum: 最大反覆次數
+  resistance training: 阻力訓練
+  sarcomere: 肌節
+  slow-twitch fiber: 慢縮肌纖維
+  supercompensation: 超補償
+  vo2 max: 最大攝氧量
+
+  # 營養學
+  amino acid: 胺基酸
+  antioxidant: 抗氧化劑
+  bioavailability: 生物可利用率
+  carbohydrate: 碳水化合物
+  dietary fiber: 膳食纖維
+  essential fatty acid: 必需脂肪酸
+  fermentation: 發酵作用
+  gut microbiome: 腸道菌相
+  gut microbiota: 腸道菌群
+  intermittent fasting: 間歇性斷食
+  ketone body: 酮體
+  macronutrient: 巨量營養素
+  microbiome: 微生物相
+  micronutrient: 微量營養素
+  omega-3 fatty acid: Omega-3 脂肪酸
+  phytochemical: 植化素
+  polyphenol: 多酚
+  prebiotic: 益生元
+  probiotic: 益生菌
+  protein synthesis: 蛋白質合成
+  saturated fat: 飽和脂肪
+  short-chain fatty acid: 短鏈脂肪酸
+  unsaturated fat: 不飽和脂肪
+
+  # 研究方法與統計
+  blind study: 盲性研究
+  clinical trial: 臨床試驗
+  cohort study: 世代研究
+  confidence interval: 信賴區間
+  confounding variable: 混淆變項
+  control group: 對照組
+  cross-sectional study: 橫斷面研究
+  dose-response: 劑量反應
+  double-blind: 雙盲
+  effect size: 效應量
+  hazard ratio: 風險比
+  longitudinal study: 縱向研究
+  meta-analysis: 統合分析
+  odds ratio: 勝算比
+  p-value: p 值
+  placebo: 安慰劑
+  prospective study: 前瞻性研究
+  randomized controlled trial: 隨機對照試驗
+  relative risk: 相對風險
+  retrospective study: 回溯性研究
+  rct: 隨機對照試驗
+  sample size: 樣本數
+  standard deviation: 標準差
+  statistical significance: 統計顯著性
+  systematic review: 系統性回顧
+
+# Robin 自動學習的術語（由 add_glossary_term() 寫入，不會影響上方 terms: 區塊）
+user_terms: {}
