@@ -4,7 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shared.pdf_parser import get_pdf_page_count, parse_pdf, parse_pdf_url
+from shared.pdf_parser import (
+    _table_to_markdown,
+    extract_tables,
+    get_pdf_page_count,
+    parse_pdf,
+    parse_pdf_url,
+)
 
 # ── parse_pdf (local) ────────────────────────────────────────────────────────
 
@@ -46,7 +52,6 @@ class TestParsePdf:
         pdf_file.write_bytes(b"%PDF-1.4 fake")
         result = parse_pdf(pdf_file)
 
-        # 2 blank lines = \n\n\n (3 newlines) is fine; 3+ blank lines should be collapsed
         assert "\n\n\n\n" not in result
         assert "Line 1" in result
         assert "Line 2" in result
@@ -75,6 +80,142 @@ class TestParsePdf:
         result = parse_pdf(pdf_file)
         assert result == "Content"
 
+    @patch.dict("sys.modules", {"pymupdf4llm": MagicMock()})
+    def test_with_tables_appends_table_section(self, tmp_path):
+        import sys
+
+        mock_mod = sys.modules["pymupdf4llm"]
+        mock_mod.to_markdown.return_value = "# Research Paper\n\nText content."
+
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+
+        mock_table = [["Gene", "Expression"], ["BRCA1", "2.3x"], ["TP53", "0.8x"]]
+        mock_page = MagicMock()
+        mock_page.extract_tables.return_value = [mock_table]
+        mock_pdf_ctx = MagicMock()
+        mock_pdf_ctx.__enter__ = MagicMock(return_value=mock_pdf_ctx)
+        mock_pdf_ctx.__exit__ = MagicMock(return_value=False)
+        mock_pdf_ctx.pages = [mock_page]
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.return_value = mock_pdf_ctx
+
+        with patch.dict("sys.modules", {"pdfplumber": mock_pdfplumber}):
+            result = parse_pdf(pdf_file, with_tables=True)
+
+        assert "## 表格" in result
+        assert "Gene" in result
+        assert "BRCA1" in result
+
+    @patch.dict("sys.modules", {"pymupdf4llm": MagicMock()})
+    def test_with_tables_false_no_table_section(self, tmp_path):
+        import sys
+
+        mock_mod = sys.modules["pymupdf4llm"]
+        mock_mod.to_markdown.return_value = "Just text."
+
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+        result = parse_pdf(pdf_file, with_tables=False)
+
+        assert "## 表格" not in result
+
+
+# ── _table_to_markdown ────────────────────────────────────────────────────────
+
+
+class TestTableToMarkdown:
+    def test_basic_table(self):
+        table = [["Name", "Value"], ["A", "1"], ["B", "2"]]
+        result = _table_to_markdown(table)
+        assert "| Name | Value |" in result
+        assert "| --- | --- |" in result
+        assert "| A | 1 |" in result
+        assert "| B | 2 |" in result
+
+    def test_none_cells_replaced_with_empty(self):
+        table = [["Col1", "Col2"], [None, "data"], ["val", None]]
+        result = _table_to_markdown(table)
+        assert result != ""
+        assert "None" not in result
+
+    def test_empty_table_returns_empty(self):
+        assert _table_to_markdown([]) == ""
+
+    def test_single_row_returns_empty(self):
+        assert _table_to_markdown([["Header only"]]) == ""
+
+    def test_newlines_in_cells_replaced(self):
+        table = [["Header"], ["multi\nline"]]
+        result = _table_to_markdown(table)
+        assert "\n" not in result.split("|")[1]
+
+    def test_uneven_rows_padded(self):
+        table = [["A", "B", "C"], ["only_one"]]
+        result = _table_to_markdown(table)
+        assert result != ""
+        assert "only_one" in result
+
+
+# ── extract_tables ────────────────────────────────────────────────────────────
+
+
+class TestExtractTables:
+    def test_file_not_found(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            extract_tables(tmp_path / "missing.pdf")
+
+    def test_returns_markdown_tables(self, tmp_path):
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+
+        mock_table = [["Metric", "Value"], ["VO2max", "58 mL/kg/min"]]
+        mock_page = MagicMock()
+        mock_page.extract_tables.return_value = [mock_table]
+        mock_pdf_ctx = MagicMock()
+        mock_pdf_ctx.__enter__ = MagicMock(return_value=mock_pdf_ctx)
+        mock_pdf_ctx.__exit__ = MagicMock(return_value=False)
+        mock_pdf_ctx.pages = [mock_page]
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.return_value = mock_pdf_ctx
+
+        with patch.dict("sys.modules", {"pdfplumber": mock_pdfplumber}):
+            result = extract_tables(pdf_file)
+
+        assert "Metric" in result
+        assert "VO2max" in result
+        assert "第 1 頁" in result
+
+    def test_no_tables_returns_empty(self, tmp_path):
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+
+        mock_page = MagicMock()
+        mock_page.extract_tables.return_value = []
+        mock_pdf_ctx = MagicMock()
+        mock_pdf_ctx.__enter__ = MagicMock(return_value=mock_pdf_ctx)
+        mock_pdf_ctx.__exit__ = MagicMock(return_value=False)
+        mock_pdf_ctx.pages = [mock_page]
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.return_value = mock_pdf_ctx
+
+        with patch.dict("sys.modules", {"pdfplumber": mock_pdfplumber}):
+            result = extract_tables(pdf_file)
+
+        assert result == ""
+
+    def test_exception_returns_empty_string(self, tmp_path):
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 fake")
+
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.side_effect = Exception("corrupt")
+
+        with patch.dict("sys.modules", {"pdfplumber": mock_pdfplumber}):
+            result = extract_tables(pdf_file)
+
+        assert result == ""
+
 
 # ── parse_pdf_url (Firecrawl) ────────────────────────────────────────────────
 
@@ -88,8 +229,10 @@ class TestParsePdfUrl:
     def test_basic_url_parse(self, monkeypatch):
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test-key")
 
+        mock_response = MagicMock()
+        mock_response.markdown = "# Remote PDF\n\nContent"
         mock_app = MagicMock()
-        mock_app.scrape_url.return_value = {"markdown": "# Remote PDF\n\nContent"}
+        mock_app.scrape_url.return_value = mock_response
         mock_cls = MagicMock(return_value=mock_app)
 
         mock_firecrawl = MagicMock()
@@ -104,8 +247,10 @@ class TestParsePdfUrl:
     def test_url_parse_with_ocr_mode(self, monkeypatch):
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test-key")
 
+        mock_response = MagicMock()
+        mock_response.markdown = "OCR content"
         mock_app = MagicMock()
-        mock_app.scrape_url.return_value = {"markdown": "OCR content"}
+        mock_app.scrape_url.return_value = mock_response
         mock_cls = MagicMock(return_value=mock_app)
 
         mock_firecrawl = MagicMock()
