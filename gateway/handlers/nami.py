@@ -206,9 +206,11 @@ NAMI_TOOLS: list[dict] = [
     {
         "name": "create_calendar_event",
         "description": (
-            "建立 Google Calendar 事件。預設會先檢查時段衝突，若有重疊事件會回傳衝突資訊"
-            "（不建立）— 此時用 ask_user 問使用者要改時段還是覆蓋。"
-            "使用者確認要覆蓋時用 force=true 再呼叫一次。"
+            "建立 Google Calendar 事件，預設同時建立對應的 Obsidian Task"
+            "（方便在 Tasks view 看到）。預設會先檢查時段衝突，若有重疊事件"
+            "會回傳衝突資訊（不建立）— 此時用 ask_user 問使用者要改時段還是"
+            "覆蓋。使用者確認要覆蓋時用 force=true 再呼叫一次。"
+            "純事件（婚禮、生日、紀念日）不需要 task 的話用 also_create_task=false。"
             "適用於「排會議」「排行程」「XX 點跟 XX 開會」等需求。"
         ),
         "input_schema": {
@@ -230,6 +232,12 @@ NAMI_TOOLS: list[dict] = [
                 "force": {
                     "type": "boolean",
                     "description": "跳過衝突偵測強制建立，預設 false",
+                },
+                "also_create_task": {
+                    "type": "boolean",
+                    "description": (
+                        "是否同時建立對應 Task（預設 true）。純事件（婚禮、生日、紀念日）設 false。"
+                    ),
                 },
             },
             "required": ["title", "start", "end"],
@@ -781,6 +789,20 @@ class NamiHandler(BaseHandler):
                 return rel, fm, body
         return None
 
+    def _find_task_by_calendar_id(self, event_id: str) -> tuple[str, dict, str] | None:
+        """以 calendar_event_id 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。"""
+        for f in list_files(TASK_DIR):
+            rel = f"{TASK_DIR}/{f.name}"
+            content = read_page(rel)
+            if not content:
+                continue
+            fm = _extract_frontmatter(content)
+            if fm.get("calendar_event_id") == event_id:
+                parts = content.split("---", 2)
+                body = parts[2].strip() if len(parts) >= 3 else ""
+                return rel, fm, body
+        return None
+
     def _tool_update_task(self, input_: dict) -> _ToolOutcome:
         title = str(input_.get("title", "")).strip()
         if not title:
@@ -849,6 +871,22 @@ class NamiHandler(BaseHandler):
 
         description = input_.get("description", "") or ""
         force = bool(input_.get("force", False))
+        also_create_task = bool(input_.get("also_create_task", True))
+
+        # Pre-check task 檔案不存在，避免 calendar 建完後 task 撞名產生孤兒 event
+        task_rel_path: str | None = None
+        if also_create_task:
+            slug = _slugify(title)
+            task_rel_path = f"{TASK_DIR}/{slug}.md"
+            existing = self._find_task_by_title(title)
+            if existing is not None:
+                return _ToolOutcome(
+                    content=(
+                        f"Task 標題撞名：vault 內已有「{existing[1].get('title', title)}」。"
+                        "請改 event 標題，或用 also_create_task=false 只建 calendar 不建 task。"
+                    ),
+                    is_error=True,
+                )
 
         result = google_calendar.create_event(
             title=title,
@@ -871,11 +909,17 @@ class NamiHandler(BaseHandler):
                 is_error=True,
             )
 
-        event = result  # type: CalendarEvent  # noqa: F841
+        event = result
+        task_path_display = ""
+        if also_create_task and task_rel_path is not None:
+            self._write_calendar_linked_task(task_rel_path, event)
+            task_path_display = f"\n   📝 Task：{task_rel_path}"
+
         summary = (
             f"📅 Calendar 事件已建立：{event.title}\n"
             f"   時間：{_fmt_event_time(event.start, event.end)}\n"
             f"   連結：{event.html_link}"
+            f"{task_path_display}"
         )
         return _ToolOutcome(
             content=summary,
@@ -887,10 +931,27 @@ class NamiHandler(BaseHandler):
                     "start": event.start,
                     "end": event.end,
                     "html_link": event.html_link,
+                    "task_path": task_rel_path if also_create_task else None,
                 },
                 "log": event.title,
             },
         )
+
+    def _write_calendar_linked_task(self, rel_path: str, event: CalendarEvent) -> None:
+        """建立 calendar-linked task；scheduled/scheduled_end 剝 tz 對齊 Obsidian 格式。"""
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        frontmatter = {
+            "title": event.title,
+            "status": "to-do",
+            "priority": "normal",
+            "tags": ["task"],
+            "dateCreated": now_iso,
+            "dateModified": now_iso,
+            "scheduled": _strip_tz(event.start),
+            "scheduled_end": _strip_tz(event.end),
+            "calendar_event_id": event.id,
+        }
+        write_page(rel_path, frontmatter, "")
 
     def _tool_list_calendar_events(self, input_: dict) -> _ToolOutcome:
         range_ = input_.get("range", "today")
@@ -996,7 +1057,11 @@ class NamiHandler(BaseHandler):
         if description is not None:
             changes.append("描述已更新")
 
-        summary = f"📝 Calendar 事件已更新：{updated.title}（{', '.join(changes)}）"
+        task_sync_note = self._sync_task_from_calendar_update(
+            updated, title_changed=bool(new_title)
+        )
+
+        summary = f"📝 Calendar 事件已更新：{updated.title}（{', '.join(changes)}）{task_sync_note}"
         return _ToolOutcome(
             content=summary,
             event={
@@ -1012,6 +1077,29 @@ class NamiHandler(BaseHandler):
             },
         )
 
+    def _sync_task_from_calendar_update(self, event: CalendarEvent, *, title_changed: bool) -> str:
+        """更新 calendar 後同步對應 task。回傳要附在 summary 後的備註（可為空字串）。"""
+        linked = self._find_task_by_calendar_id(event.id)
+        if linked is None:
+            return ""
+
+        rel_path, fm, body = linked
+        fm["scheduled"] = _strip_tz(event.start)
+        fm["scheduled_end"] = _strip_tz(event.end)
+        if title_changed:
+            fm["title"] = event.title
+            new_rel = f"{TASK_DIR}/{_slugify(event.title)}.md"
+        else:
+            new_rel = rel_path
+
+        fm["dateModified"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fm = _stringify_fm_dates(fm)
+
+        if new_rel != rel_path:
+            delete_page(rel_path)
+        write_page(new_rel, fm, body)
+        return f"\n   📝 Task 同步更新：{new_rel}"
+
     def _tool_delete_calendar_event(self, input_: dict) -> _ToolOutcome:
         title = str(input_.get("title", "")).strip()
         if not title:
@@ -1025,7 +1113,16 @@ class NamiHandler(BaseHandler):
             )
 
         google_calendar.delete_event(found.id)
-        summary = f"🗑️ 已刪除 Calendar 事件：{found.title}"
+
+        # 靜默刪除對應 task（找不到不視為錯誤，PRD 規格）
+        task_note = ""
+        linked = self._find_task_by_calendar_id(found.id)
+        if linked is not None:
+            task_rel, _, _ = linked
+            if delete_page(task_rel):
+                task_note = f"\n   📝 Task 一併刪除：{task_rel}"
+
+        summary = f"🗑️ 已刪除 Calendar 事件：{found.title}{task_note}"
         return _ToolOutcome(
             content=summary,
             event={
@@ -1135,6 +1232,25 @@ def _parse_iso_local(s: str, tz: ZoneInfo) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=tz)
     return dt
+
+
+def _strip_tz(iso_str: str) -> str:
+    """剝掉 ISO 字串的時區，對齊 Obsidian task scheduled 格式。
+
+    ``2026-04-25T15:00:00+08:00`` → ``2026-04-25T15:00:00``
+    ``2026-04-25T15:00:00Z``      → ``2026-04-25T15:00:00``
+    無 tz 原樣回。全日事件 (``2026-04-25``) 原樣回。
+    """
+    if not iso_str:
+        return iso_str
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except ValueError:
+        return iso_str
+    if dt.tzinfo is None:
+        return iso_str
+    local = dt.astimezone(ZoneInfo("Asia/Taipei"))
+    return local.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 # ── Deprecated alias（for backward-compat with old tests/imports） ─────
