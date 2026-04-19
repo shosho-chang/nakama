@@ -30,13 +30,14 @@ from shared.lifeos_writer import (
     default_task_names,
 )
 from shared.log import get_logger, kb_log
-from shared.obsidian_writer import list_files, read_page, write_page
+from shared.obsidian_writer import delete_page, list_files, read_page, write_page
 from shared.prompt_loader import load_prompt
 
 logger = get_logger("nakama.gateway.nami")
 
 NAMI_AGENT_FLOW = "nami_agent"
 TASK_DIR = "TaskNotes/Tasks"
+PROJECT_DIR = "Projects"
 
 _MAX_ITERS = 6
 _MODEL = "claude-sonnet-4-6"
@@ -153,6 +154,43 @@ NAMI_TOOLS: list[dict] = [
                     "type": "string",
                     "enum": ["to-do", "in-progress", "done"],
                     "description": "新的狀態",
+                },
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "delete_task",
+        "description": (
+            "刪除現有 Task 檔案。呼叫前必須先用 ask_user 告知使用者將刪除哪個 task 並請確認。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "要刪除的任務標題（用來搜尋，不需完全符合）",
+                },
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "delete_project",
+        "description": (
+            "刪除 Project 檔案，可選擇一併刪除該 project 下的所有 tasks。"
+            "呼叫前必須先用 ask_user 列出將刪除的所有檔案並請使用者確認。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "要刪除的 project 標題（用來搜尋）",
+                },
+                "include_tasks": {
+                    "type": "boolean",
+                    "description": "是否一併刪除該 project 下的所有 tasks（預設 true）",
                 },
             },
             "required": ["title"],
@@ -373,6 +411,10 @@ class NamiHandler(BaseHandler):
                 return self._tool_create_task(tool_input)
             if name == "update_task":
                 return self._tool_update_task(tool_input)
+            if name == "delete_task":
+                return self._tool_delete_task(tool_input)
+            if name == "delete_project":
+                return self._tool_delete_project(tool_input)
             if name == "list_tasks":
                 return self._tool_list_tasks()
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
@@ -500,6 +542,104 @@ class NamiHandler(BaseHandler):
             lines.append(line)
 
         return _ToolOutcome(content=f"*待辦任務（{len(tasks)} 項）*\n" + "\n".join(lines))
+
+    def _tool_delete_task(self, input_: dict) -> _ToolOutcome:
+        title = str(input_.get("title", "")).strip()
+        if not title:
+            return _ToolOutcome(content="Missing task title", is_error=True)
+
+        found = self._find_task_by_title(title)
+        if not found:
+            return _ToolOutcome(
+                content=f"找不到標題含「{title}」的 task。請用 list_tasks 確認標題。",
+                is_error=True,
+            )
+
+        rel_path, fm, _ = found
+        matched_title = str(fm.get("title", title))
+        deleted = delete_page(rel_path)
+        if not deleted:
+            return _ToolOutcome(content=f"刪除失敗：檔案不存在（{rel_path}）", is_error=True)
+
+        return _ToolOutcome(
+            content=f"🗑️ 已刪除 task：{matched_title}",
+            event={
+                "name": "task_deleted",
+                "payload": {"title": matched_title, "path": rel_path},
+                "log": matched_title,
+            },
+        )
+
+    def _tool_delete_project(self, input_: dict) -> _ToolOutcome:
+        title = str(input_.get("title", "")).strip()
+        if not title:
+            return _ToolOutcome(content="Missing project title", is_error=True)
+
+        include_tasks = input_.get("include_tasks", True)
+
+        found = self._find_project_by_title(title)
+        if not found:
+            return _ToolOutcome(
+                content=f"找不到標題含「{title}」的 project。",
+                is_error=True,
+            )
+
+        proj_rel, proj_fm = found
+        matched_title = str(proj_fm.get("title", title))
+
+        deleted_tasks: list[str] = []
+        if include_tasks:
+            for task_rel, task_fm in self._find_tasks_by_project(matched_title):
+                if delete_page(task_rel):
+                    deleted_tasks.append(str(task_fm.get("title", task_rel)))
+
+        delete_page(proj_rel)
+
+        task_summary = f"，含 {len(deleted_tasks)} 個 task" if deleted_tasks else ""
+        summary = f"🗑️ 已刪除 project：{matched_title}{task_summary}"
+        return _ToolOutcome(
+            content=summary,
+            event={
+                "name": "project_deleted",
+                "payload": {
+                    "title": matched_title,
+                    "path": proj_rel,
+                    "deleted_tasks": deleted_tasks,
+                },
+                "log": matched_title,
+            },
+        )
+
+    def _find_project_by_title(self, title: str) -> tuple[str, dict] | None:
+        """以 title 搜尋 project 檔案，回傳 (relative_path, frontmatter) 或 None。"""
+        title_lower = title.lower()
+        for f in list_files(PROJECT_DIR):
+            rel = f"{PROJECT_DIR}/{f.name}"
+            content = read_page(rel)
+            if not content:
+                continue
+            fm = _extract_frontmatter(content)
+            fm_title = str(fm.get("title", f.stem)).lower()
+            if fm_title == title_lower or title_lower in fm_title or fm_title in title_lower:
+                return rel, fm
+        return None
+
+    def _find_tasks_by_project(self, project_title: str) -> list[tuple[str, dict]]:
+        """找出所有 linked 到 project_title 的 task，回傳 [(rel_path, frontmatter)]。"""
+        results: list[tuple[str, dict]] = []
+        link = f"[[{project_title}]]"
+        for f in list_files(TASK_DIR):
+            rel = f"{TASK_DIR}/{f.name}"
+            content = read_page(rel)
+            if not content:
+                continue
+            fm = _extract_frontmatter(content)
+            projects_field = fm.get("projects") or []
+            if isinstance(projects_field, list) and link in projects_field:
+                results.append((rel, fm))
+            elif isinstance(projects_field, str) and link in projects_field:
+                results.append((rel, fm))
+        return results
 
     def _find_task_by_title(self, title: str) -> tuple[str, dict, str] | None:
         """以 title 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。"""

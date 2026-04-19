@@ -449,6 +449,105 @@ def test_update_task_mark_done():
     assert fm["status"] == "done"
 
 
+# ── Agent loop: delete_task tool ─────────────────────────────────────
+
+
+def test_delete_task_removes_file():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("delete_task", {"title": "看牙醫"}, id_="toolu_dt1")],
+        ),
+        _fake_response("end_turn", [_text_block("🗑️ 已刪除")]),
+    ]
+
+    fake_file = SimpleNamespace(name="看牙醫.md", stem="看牙醫")
+    fake_content = "---\ntitle: 看牙醫\nstatus: to-do\n---\n\n"
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_file]),
+        patch("gateway.handlers.nami.read_page", return_value=fake_content),
+        patch("gateway.handlers.nami.delete_page", return_value=True) as mock_del,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("delete_task", "把看牙醫刪掉", "U1")
+
+    assert "刪除" in result.text
+    mock_del.assert_called_once_with("TaskNotes/Tasks/看牙醫.md")
+
+
+def test_delete_task_not_found():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("delete_task", {"title": "不存在"}, id_="toolu_dt2")],
+        ),
+        _fake_response("end_turn", [_text_block("找不到這個 task")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+    ):
+        result = NamiHandler().handle("delete_task", "刪掉不存在的任務", "U1")
+
+    assert "找不到" in result.text
+
+
+# ── Agent loop: delete_project tool ──────────────────────────────────
+
+
+def test_delete_project_with_tasks():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "delete_project",
+                    {"title": "建立專案", "include_tasks": True},
+                    id_="toolu_dp1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("🗑️ 已刪除 project")]),
+    ]
+
+    proj_file = SimpleNamespace(name="建立專案.md", stem="建立專案")
+    proj_content = "---\ntitle: 建立專案\nstatus: active\n---\n\n"
+    task_file = SimpleNamespace(name="建立專案---Filming.md", stem="建立專案---Filming")
+    task_content = "---\ntitle: 建立專案 - Filming\nprojects:\n- '[[建立專案]]'\n---\n\n"
+
+    def fake_list_files(dir_: str, suffix: str = ".md"):
+        if "Projects" in dir_:
+            return [proj_file]
+        return [task_file]
+
+    read_map = {
+        "Projects/建立專案.md": proj_content,
+        "TaskNotes/Tasks/建立專案---Filming.md": task_content,
+    }
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", side_effect=fake_list_files),
+        patch("gateway.handlers.nami.read_page", side_effect=lambda p: read_map.get(p)),
+        patch("gateway.handlers.nami.delete_page", return_value=True) as mock_del,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("delete_project", "把建立專案給砍掉", "U1")
+
+    assert "刪除" in result.text
+    deleted_paths = {call[0][0] for call in mock_del.call_args_list}
+    assert "Projects/建立專案.md" in deleted_paths
+    assert "TaskNotes/Tasks/建立專案---Filming.md" in deleted_paths
+
+
 # ── Agent loop: max iters safety ────────────────────────────────────
 
 

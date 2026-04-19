@@ -66,6 +66,15 @@ def append_to_file(relative_path: str, text: str) -> None:
         f.write(text)
 
 
+def delete_page(relative_path: str) -> bool:
+    """刪除 vault 內的檔案。檔案不存在時返回 False，成功刪除返回 True。"""
+    target = get_vault_path() / relative_path
+    if not target.exists():
+        return False
+    target.unlink()
+    return True
+
+
 def list_files(relative_dir: str, suffix: str = ".md") -> list[Path]:
     """列出 vault 內某資料夾下所有指定副檔名的檔案。"""
     target = get_vault_path() / relative_dir
