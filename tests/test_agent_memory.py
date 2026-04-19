@@ -163,6 +163,15 @@ def test_list_subjects_empty():
     assert agent_memory.list_subjects("nami", "U1") == []
 
 
+def test_list_subjects_with_content_returns_pairs():
+    agent_memory.add("nami", "U1", "fact", "B", "b content")
+    agent_memory.add("nami", "U1", "preference", "A", "a content")
+
+    pairs = agent_memory.list_subjects_with_content("nami", "U1")
+    assert ("A", "a content") in pairs
+    assert ("B", "b content") in pairs
+
+
 def test_format_as_context_empty():
     """沒有記憶時回空字串。"""
     assert agent_memory.format_as_context("nami", "U1") == ""

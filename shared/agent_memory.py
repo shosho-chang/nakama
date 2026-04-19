@@ -237,6 +237,18 @@ def list_subjects(agent: str, user_id: str) -> list[str]:
     return [r["subject"] for r in rows]
 
 
+def list_subjects_with_content(agent: str, user_id: str) -> list[tuple[str, str]]:
+    """回傳該 user + agent 所有 (subject, content) pair，供抽取器 merge 用。"""
+    _ensure_schema()
+    conn = _get_conn()
+    rows = conn.execute(
+        """SELECT subject, content FROM user_memories
+           WHERE agent = ? AND user_id = ? ORDER BY subject""",
+        (agent, user_id),
+    ).fetchall()
+    return [(r["subject"], r["content"]) for r in rows]
+
+
 def format_as_context(agent: str, user_id: str, *, limit: int = 20) -> str:
     """把該 user + agent 的 top-N 記憶組成供 LLM 注入的 context block。
 

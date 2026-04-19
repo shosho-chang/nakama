@@ -47,19 +47,31 @@ _EXTRACTOR_SYSTEM_PROMPT = """你是對話記憶抽取器。
 ## subject 欄位規則
 
 - **短**（2-6 個字的名詞片語），用來**去重**
-- **優先重用** prompt 結尾列出的「已有 subject」——
+- **優先重用** prompt 結尾列出的「已有記憶」——
   如果新資訊屬於某個既有主題，直接用那個 subject（即使字面不完全相同）
   - 例：已有「工作時段」，新對話提到「下午兩點前深度工作」→ 仍用 `工作時段`
   - 例：已有「專業領域」，對話提到「研究健康長壽」→ 仍用 `專業領域`
 - 只有在新主題跟所有既有 subject 都不相關時，才發明新的
 - 繁體中文
 
-## content 欄位規則
+## content 欄位規則（重要！）
 
 - **直接寫事實**，不要加主詞（使用者身分已知）
   - 錯：「修修船長早上頭腦最清楚」
   - 對：「早上頭腦最清楚，深度工作排在下午兩點前」
 - 不要重複 subject 內容，補充細節即可
+
+## content 合併規則（重複用既有 subject 時必讀）
+
+當你重用一個既有 subject，**content 必須是 merged 版本**，包含舊資訊 + 新資訊：
+
+- 既有 `專業領域 = 主攻健康長壽，重點是睡眠/飲食/運動/情緒`
+- 對話新增：「最近在研究蛋白質攝取量」
+- 正確 content：`主攻健康長壽（睡眠/飲食/運動/情緒），目前深入研究蛋白質攝取量`
+- **錯誤** content：`正在研究蛋白質攝取量`（舊資訊丟失）
+
+例外：使用者**明確取代**舊事實（例：「我改去讀哈佛了」取代原本的 NTNU）→ 才覆蓋。
+無明確取代 → 一律 merge 不遺漏。
 
 ## 輸出格式
 
@@ -161,10 +173,11 @@ def extract_from_messages(
 
     conversation = _format_messages_for_extraction(messages)
 
-    existing_subjects = agent_memory.list_subjects(agent, user_id)
-    if existing_subjects:
-        subjects_block = "\n\n## 已有 subject（優先重用，語意相近就直接用）\n" + "\n".join(
-            f"- {s}" for s in existing_subjects
+    existing = agent_memory.list_subjects_with_content(agent, user_id)
+    if existing:
+        subjects_block = (
+            "\n\n## 已有記憶（重用 subject 時 content 必須是 merged 版本，包含舊資訊）\n"
+            + "\n".join(f"- `{s}` = {c}" for s, c in existing)
         )
     else:
         subjects_block = ""
