@@ -78,9 +78,10 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
   - PR #26 `run_transcribe.py` argparse + `--project-file` 等 CLI flags
 - ⬜ **週一 2026-04-20：1hr Angie 首次正式實測**（驗成本、品質、QC 報告、拒答率）
 
-**Skill 化工程（2026-04-18 重排）：**
+**Skill 化工程（2026-04-18 更新）：**
 - ✅ transcribe（`f:/nakama/.claude/skills/transcribe/`）— 週一 Angie 實測作為首次 eval
-- 🚧 下一個：keyword-research (Zoro) — 已部署穩定，改寫風險低
+- ✅ **keyword-research** (Zoro) — PR #31 pytrends→trendspy 解阻塞 + PR #32 skill + CLI wrapper + 6 references + frontmatter output contract（2026-04-18 merged）
+  - 下一個動作：第一次真實 invoke 作 first eval（走 transcribe 同路線，不跑合成 eval）
 - ⬜ weekly-report (Franky)
 - ⬜ morning-brief (Nami) — Nami 還沒開發，先做 skill 再 agent
 - ⬜ kb-search (Robin) — `/kb/research` 未 E2E 測，skill 化前先驗
@@ -89,16 +90,29 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ⬜ kb-synthesize-article skill — style-extractor 下游 workflow，Project + KB refs → 科普文章；需獨立 PRD
 - ⬜ book-reflection-compose skill — style-extractor 下游 workflow，書 + 閱讀筆記 → 讀書心得；需獨立 PRD
 
+**SEO Solution（下一個重點，keyword-research 完成後接棒）：**
+詳見 [project_seo_solution_scope.md](project_seo_solution_scope.md)
+- ⬜ 跑 prior-art-research 針對 DataForSEO MCP / Ahrefs MCP / 部落格 audit workflow
+- ⬜ 設計 skill 家族（可能 2-3 個：`seo-audit-post` / `seo-keyword-enrich` / `seo-optimize-draft`）
+- ⬜ Brook compose 整合 — 寫草稿時吃 style profile + SEO skill 輸出產出排行潛力內容
+
 **雙語閱讀 Pipeline（2026-04-18，P0+P1+P2A 完成）：**
 - ✅ PR #27：`shared/translator.py` + 台灣術語表（150+ 詞，user_terms 自動學習）
 - ✅ PR #28：`shared/web_scraper.py` 三層擷取（Trafilatura → Readability → Firecrawl）
 - ✅ PR #29：Robin Reader 雙語切換 + `/scrape-translate` 端點（URL → scrape → translate → Reader）
   - `bilingual: true` frontmatter 自動啟動雙語模式（reader.html IS_BILINGUAL）
   - source_type/content_nature allowlist + url newline 清理（YAML injection 防護）
+  - ⚠️ PR #29 留了兩個 CI 債（ruff format drift + `test_scrape_translate_success` 漏 patch `_get_inbox`）→ 已於 PR #32 順手修掉
 - ✅ PR #30：`shared/pdf_parser.py` pdfplumber 精確表格（with_tables=True）+ Firecrawl result.markdown 修正
   - research/textbook/clinical_protocol → 自動 with_tables=True（ingest.py）
 - ⬜ **P2B：BabelDOC 整合**（PDF 學術論文 → 雙語 PDF，需 Immersive Translate API key，下次討論是否需要）
 - ⬜ **P3：Annotation → Ingest 整合**（reader 畫線/注解 → KB 入庫時一起加入）
+
+**Zoro 遷移 + Skill 化（PR #31 + #32，2026-04-18 merged）：**
+- ✅ PR #31：pytrends → trendspy 遷移（pytrends 2025-04-17 archived，trendspy 0.1.6 是後繼者，non-drop-in 四個 API 改寫）
+- ✅ PR #32：keyword-research skill 化（SKILL.md + 6 references + `scripts/run_keyword_research.py` CLI + 結構化 frontmatter output contract）
+  - code-review 抓到 3 bug 同 branch 修：缺 `load_dotenv()` / SKILL.md「5 steps」誤標 / CLI 缺 elapsed time
+  - 順手清 PR #29 的 2 個 CI 債
 
 **待開發（agent 功能）：**
 - Nami（航海士）— 消費 Robin/Franky 事件，產出 Morning Brief

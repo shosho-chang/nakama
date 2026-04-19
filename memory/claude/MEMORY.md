@@ -15,6 +15,8 @@
 - [feedback_no_secrets_in_chat.md](feedback_no_secrets_in_chat.md) — API key 等敏感資訊走 .env，不在對話框輸入
 - [project_code_review_2026_04_12.md](project_code_review_2026_04_12.md) — 首次 code review：9 項修復已合併（Path Traversal、Event Bus 多消費者、Logger 等）
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
+- [feedback_skill_design_principle.md](feedback_skill_design_principle.md) — Skill 三層架構：互動式 workflow→skill、確定性函式→shared/*.py、agent 只做觸發/編排；skill 粒度扁平、通常 agent-specific
+- [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR 開完自動跑 code-review → 報告 → 等授權 → squash merge → pull + 刪 branch
 - [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁，PR #23 強制全 pipeline 無標點輸出 + QC 改進清單

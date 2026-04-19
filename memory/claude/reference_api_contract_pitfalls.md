@@ -54,3 +54,21 @@ confidence: high
 - 有值 + inline `#` 通常會正確剝掉；空值 + `#` 是陷阱
 - 解法：wrapper 讀 env 時自己剝 `#` 後內容（見 `shared/auphonic.py:_strip_inline_comment`）
 - 或更穩：`.env.example` 的註解放上一行，不放同一行
+
+## trendspy（Google Trends 後繼套件）
+
+### `language=` kwarg 會被截斷到 `[:2].lower()`
+- `Trends(language="zh-TW", tzs=480)` → `self.language = "zh"`（trendspy 0.1.6 client.py line 22）
+- 連 deprecated `hl=` fallback 也做同樣 [:2] 截斷
+- pytrends 以前保留完整 `hl="zh-TW"` 送 Google，trendspy 沒有任何建構子路徑保留
+- Workaround：`tr._default_params['hl'] = 'zh-TW'` 後塞（破壞封裝，慎用）
+- 實際影響小：Google Trends 主要用 `geo=` 做地區、`hl=` 主要影響回應語言；zh vs zh-TW 差異多在相關查詢的繁/簡混入
+
+### `related_queries()` 是 flat dict（與 pytrends 的 nested dict 不同）
+- pytrends: `{keyword: {"top": df, "rising": df}}` → 要 `related[topic].get("top")`
+- trendspy: `{"top": df, "rising": df}` → 直接 `related.get("top")`
+- 遷移時四個 API（`TrendReq`/`build_payload`/`related_queries`/`interest_over_time`）都要改，不是 drop-in
+
+### package 別名叫 `trendspy` 不是 `trendspyg`
+- `trendspyg`（flack0x）是完全不同的套件（RSS + CSV scraper），**不要裝錯**
+- 正確：`pip install trendspy>=0.1.6`（sdil87/trendspy）
