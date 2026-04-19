@@ -237,18 +237,34 @@ class NamiHandler(BaseHandler):
             logger.error("agent_system prompt missing — fallback to minimal system")
             base_prompt = "你是 Nami，修修的 LifeOS 任務助手。用繁體中文。"
 
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        weekday = datetime.now(timezone.utc).strftime("%A")
-        weekday_zh = {
-            "Monday": "週一",
-            "Tuesday": "週二",
-            "Wednesday": "週三",
-            "Thursday": "週四",
-            "Friday": "週五",
-            "Saturday": "週六",
-            "Sunday": "週日",
-        }.get(weekday, weekday)
-        system_prompt = f"{base_prompt}\n\n## 今日資訊\n今天是 {today}（{weekday_zh}）。"
+        from datetime import timedelta
+
+        now_local = datetime.now()  # VPS 跑台灣時區 (UTC+8)，用本地時間
+        weekday_zh_map = {
+            0: "週一",
+            1: "週二",
+            2: "週三",
+            3: "週四",
+            4: "週五",
+            5: "週六",
+            6: "週日",
+        }
+        today_str = now_local.strftime("%Y-%m-%d")
+        today_zh = weekday_zh_map[now_local.weekday()]
+        # 未來 14 天日期表，讓 LLM 直接查表而不要自行推算
+        date_lines = []
+        for i in range(14):
+            d = now_local + timedelta(days=i)
+            label = "今天" if i == 0 else ("明天" if i == 1 else "")
+            zh = weekday_zh_map[d.weekday()]
+            suffix = f"（{label}）" if label else ""
+            date_lines.append(f"  {d.strftime('%Y-%m-%d')} {zh}{suffix}")
+        date_table = "\n".join(date_lines)
+        system_prompt = (
+            f"{base_prompt}\n\n## 今日資訊\n"
+            f"今天是 {today_str}（{today_zh}）。\n\n"
+            f"未來 14 天日期對照表（直接查，不要自行推算）：\n{date_table}"
+        )
 
         for _ in range(_MAX_ITERS):
             response = call_claude_with_tools(
