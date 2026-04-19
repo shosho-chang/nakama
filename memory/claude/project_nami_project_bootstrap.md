@@ -1,59 +1,54 @@
 ---
-name: Nami Project Bootstrap — branch 已推、待 VPS 部署測試
-description: feat/nami-project-bootstrap 進度、VPS 部署待辦、Slack manifest 更新項目
+name: Nami Agent Loop — feat/nami-agent-loop 進度
+description: LLM tool-use agent loop 重構完成，VPS 已部署實測，待 PR merge
 type: project
-tags: [nami, skill, project-bootstrap, pending-deploy]
+tags: [nami, agent-loop, tool-use, vps-deployed]
 created: 2026-04-19
 updated: 2026-04-19
-confidence: high
-ttl: 30d
+originSessionId: 387704f9-a851-4156-893b-7b0b74f69276
 ---
+## 狀態：VPS 實測通過，待 PR review + merge
 
-## 狀態：已 commit + push，等 VPS 部署測試
+**Branch**: `feat/nami-agent-loop`（已推 origin，最新 commit: `231d3b0`）
+**VPS**: `nakama-gateway.service` 已設定為 systemd service，正在運行
 
-**Branch**: `feat/nami-project-bootstrap`（已推到 origin，commit `d2cde47`，未 merge）
-**PR URL**: https://github.com/shosho-chang/nakama/pull/new/feat/nami-project-bootstrap
+## 已完成（2026-04-19）
 
-## 已完成
+**架構重構**：
+- `gateway/handlers/nami.py` — 完整 LLM agent loop（取代舊 state machine）
+  - 4 個 tools：`create_project` / `create_task` / `list_tasks` / `ask_user`
+  - `ask_user` 特殊處理：pause loop → Slack thread → continue_flow()
+  - thread 持續對話：end_turn 後不清掉 conversation，整個 thread 可繼續問問題
+  - `_MAX_ITERS = 6` 安全上限
+- `shared/anthropic_client.py` — 新增 `call_claude_with_tools()`（prompt caching）
+- `prompts/nami/agent_system.md` — 決策規則 + 日期判斷 + Nami 角色個性（few-shot）
+- `gateway/conversation_state.py` — 新增 `get_latest_for_user_and_agent()`（DM fallback）
+- `gateway/bot.py` — DM thread_ts 缺失的 fallback 邏輯 + debug 日誌
 
-4 個 unit + Capability card + backlog：
-- `shared/lifeos_writer.py` + `shared/lifeos_templates/*.md.tpl`（youtube/blog/research/podcast）— 純渲染 + 寫入
-- `scripts/run_project_bootstrap.py`（CLI wrapper，含 `--vault` 測試覆寫）
-- `.claude/skills/project-bootstrap/`（SKILL.md + 3 references + evals/test-cases.md + CAPABILITY.md）
-- `gateway/conversation_state.py`（thread-scoped ConversationStore，30 分鐘 TTL）
-- `gateway/handlers/base.py`（`Continuation` 契約 + `continue_flow()` 預設 raise）
-- `gateway/bot.py`（`message` event 路由到 `handler.continue_flow`）
-- `gateway/handlers/nami.py`（`create_project` intent + 兩態 state machine）
-- `gateway/router.py`（15 個新 keyword → `create_project`）
-- `prompts/nami/parse_project.md`（Haiku 解析 prompt）
-- 340 tests pass（+43 新），ruff clean
+**修復清單**：
+- DM 中 thread reply 沒反應（`thread_ts` 缺失，現用 user+agent fallback 查詢）
+- 移除 intent debug context block（用戶不應看到）
+- 注入今日日期 + 未來 14 天對照表（Sonnet 直接查表，不再自行推算）
+- 模型升級：Haiku 4.5 → Sonnet 4.6（Haiku 日期推算不可靠）
+- `scheduled` 支援 datetime 格式（`2026-04-23T15:00:00`）
+- Nami 角色個性 prompt：正面描述 + 4 個 few-shot 範例，修修 = 船長
 
-## 下次要做的事（依序）
+**測試**：26 tests pass，336 total pass，ruff clean
 
-**1. VPS 部署**（修修重開機後做）
+## VPS 部署
+
 ```bash
-ssh <VPS>; cd /home/nakama
-git fetch origin && git checkout feat/nami-project-bootstrap && git pull
-# 無新依賴
+systemctl status nakama-gateway  # 確認運行中
+journalctl -u nakama-gateway -f  # 看即時日誌
 ```
 
-**2. Slack App manifest 更新**（最容易漏）— https://api.slack.com/apps
-- Event Subscriptions → Subscribe to bot events 加：`message.channels`、`message.im`
-- OAuth & Permissions → Bot Token Scopes 加：`channels:history`、`im:history`、`im:read`
-- Reinstall App
+## 下一步
 
-**3. 手動測試**（建議先 DM，不急著做 systemd）
-```bash
-cd /home/nakama
-set -a && source .env && set +a
-python -m gateway
-```
-Slack DM Nami：「幫我建立一個關於超加工食品的 project」→ 照 thread 回 research → 確認 → 檢查 `/home/Shosho LifeOS/Projects/超加工食品.md` 存在
+- ⬜ PR review + squash merge（照 feedback_pr_review_merge_flow.md 流程）
+- ⬜ Slack manifest 實際確認訂閱了 message.channels + message.im（已確認有加）
+- ⬜ morning-brief 功能（Nami 主動推送）
 
-**4. systemd service**（測通後）：`/etc/systemd/system/nakama-gateway.service`，user=root、WorkingDirectory=/home/nakama、ExecStart=`/usr/bin/python3 -m gateway`、EnvironmentFile=/home/nakama/.env
+## 已知限制
 
-**5. PR → code-review → squash merge**（照 `feedback_pr_review_merge_flow.md` 流程）
-
-## 未做但 plan 提過（獨立工作，可另開 branch）
-
-- LifeOS `Templates/tpl-project.md` + `tpl-action.md` 同步更新（已跟 gold standard 脫節，見 [project_lifeos_template_drift.md](project_lifeos_template_drift.md)）
+- ConversationStore 是 in-memory，重啟後狀態清掉，用戶需重新開始對話
+- DM fallback 策略（user+agent 查最新 conversation）在多對話同時進行時可能混淆
