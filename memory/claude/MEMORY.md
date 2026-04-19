@@ -7,7 +7,7 @@
 - [project_pending_tasks.md](project_pending_tasks.md) — 待辦：VPS 部署 + 端到端測試（Robin/Zoro/Brook）、Nami 開發、補測試
 - [project_brook_design.md](project_brook_design.md) — Brook 設計決策：Web UI 聊天頁、成本分析、Phase 2 規劃
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — Robin /kb/research endpoint 未測試
-- [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 整合評估：觀望中（Franky 每週追蹤）
+- [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 放棄觀望（2026-04-19 結論）：CJK 只改一半 + 無 auto-extraction + API churn
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
 - [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」三字當 trigger → 自動存記憶 + commit & push
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
@@ -46,3 +46,5 @@
 - [project_nami_vps_deployed.md](project_nami_vps_deployed.md) — Nami Slack Bot VPS 部署設定、Socket Mode 踩坑記錄
 - [project_nami_agent_loop_plan.md](project_nami_agent_loop_plan.md) — Nami agent loop 四個 Phase 規劃（Phase 0 已完成）
 - [feedback_traditional_chinese.md](feedback_traditional_chinese.md) — 所有對話必須用繁體中文（台灣語境），不能切成簡體
+- [project_agent_cost_tracking.md](project_agent_cost_tracking.md) — Agent 用量/費用追蹤：data/usage_log.jsonl，供 Bridge 儀表板顯示（待實作）
+- [project_agent_memory_design.md](project_agent_memory_design.md) — Agent 記憶自建方案：Working+Episodic+Semantic 三層，SQLite + Haiku 抽取（四階段，待實作）

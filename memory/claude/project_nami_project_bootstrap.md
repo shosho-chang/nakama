@@ -1,54 +1,37 @@
 ---
-name: Nami Agent Loop — feat/nami-agent-loop 進度
-description: LLM tool-use agent loop 重構完成，VPS 已部署實測，待 PR merge
+name: Nami Agent Loop — 主線狀態
+description: LLM tool-use agent loop + 5 tools，全部 merge 至 main，VPS 待 git pull
 type: project
 tags: [nami, agent-loop, tool-use, vps-deployed]
 created: 2026-04-19
 updated: 2026-04-19
-originSessionId: 387704f9-a851-4156-893b-7b0b74f69276
+originSessionId: 6dc774b2-8ee7-4655-b691-eebe19832245
 ---
-## 狀態：VPS 實測通過，待 PR review + merge
+## 狀態：main branch（commit: 5b36437），VPS 待 pull
 
-**Branch**: `feat/nami-agent-loop`（已推 origin，最新 commit: `231d3b0`）
-**VPS**: `nakama-gateway.service` 已設定為 systemd service，正在運行
+## Nami 工具清單（gateway/handlers/nami.py）
+- `create_project` — 建 project + 3 個預設 task
+- `create_task` — 建獨立或 project-linked task（支援 scheduled datetime）
+- `update_task` — 修改現有 task（scheduled / priority / status）；by-title 模糊搜尋
+- `list_tasks` — 列所有 to-do / in-progress task
+- `ask_user` — pause loop，等使用者回覆後繼續
 
-## 已完成（2026-04-19）
-
-**架構重構**：
-- `gateway/handlers/nami.py` — 完整 LLM agent loop（取代舊 state machine）
-  - 4 個 tools：`create_project` / `create_task` / `list_tasks` / `ask_user`
-  - `ask_user` 特殊處理：pause loop → Slack thread → continue_flow()
-  - thread 持續對話：end_turn 後不清掉 conversation，整個 thread 可繼續問問題
-  - `_MAX_ITERS = 6` 安全上限
-- `shared/anthropic_client.py` — 新增 `call_claude_with_tools()`（prompt caching）
-- `prompts/nami/agent_system.md` — 決策規則 + 日期判斷 + Nami 角色個性（few-shot）
-- `gateway/conversation_state.py` — 新增 `get_latest_for_user_and_agent()`（DM fallback）
-- `gateway/bot.py` — DM thread_ts 缺失的 fallback 邏輯 + debug 日誌
-
-**修復清單**：
-- DM 中 thread reply 沒反應（`thread_ts` 缺失，現用 user+agent fallback 查詢）
-- 移除 intent debug context block（用戶不應看到）
-- 注入今日日期 + 未來 14 天對照表（Sonnet 直接查表，不再自行推算）
-- 模型升級：Haiku 4.5 → Sonnet 4.6（Haiku 日期推算不可靠）
-- `scheduled` 支援 datetime 格式（`2026-04-23T15:00:00`）
-- Nami 角色個性 prompt：正面描述 + 4 個 few-shot 範例，修修 = 船長
-
-**測試**：26 tests pass，336 total pass，ruff clean
+## 重要設計決策
+- 日期表注入 user message（非 system），確保 system prompt 可 cache
+- end_turn 保留 Continuation（pending_tool_use_id=None）讓 thread 持續存活
+- DM 不傳 thread_ts 給 say()，避免 thread UI；channel @mention 同樣直接回主對話
+- yaml.safe_load 把 date 字串解析成 date 物件，寫回前需 _stringify_fm_dates()
 
 ## VPS 部署
-
 ```bash
-systemctl status nakama-gateway  # 確認運行中
-journalctl -u nakama-gateway -f  # 看即時日誌
+cd /home/nakama && git pull && systemctl restart nakama-gateway
 ```
 
 ## 下一步
-
-- ⬜ PR review + squash merge（照 feedback_pr_review_merge_flow.md 流程）
-- ⬜ Slack manifest 實際確認訂閱了 message.channels + message.im（已確認有加）
+- ⬜ VPS git pull 更新（含 update_task + DM/channel reply 修復）
 - ⬜ morning-brief 功能（Nami 主動推送）
+- ⬜ delete_task / delete_project（低優先，用戶目前手動刪）
 
 ## 已知限制
-
-- ConversationStore 是 in-memory，重啟後狀態清掉，用戶需重新開始對話
-- DM fallback 策略（user+agent 查最新 conversation）在多對話同時進行時可能混淆
+- ConversationStore 是 in-memory，重啟後狀態清掉
+- _find_task_by_title 是線性掃描，task 量大時會慢
