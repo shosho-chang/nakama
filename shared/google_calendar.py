@@ -167,33 +167,20 @@ def delete_event(event_id: str) -> None:
 
 
 def find_conflicts(start: str, end: str) -> list[CalendarEvent]:
-    """回傳與 [start, end) 精確重疊的事件（不含剛好首尾相接的情況）。"""
+    """回傳與 [start, end) 精確重疊的事件（不含剛好首尾相接的情況）。
+
+    不用 ``freebusy.query`` — 它需要額外的 ``calendar.freebusy`` scope。改用
+    ``events.list`` 直接撈時段內事件，再用 ``_overlaps`` 精確過濾。只吃 ``calendar.events``
+    scope 就夠。
+    """
     start_iso = _ensure_tz_iso(start)
     end_iso = _ensure_tz_iso(end)
-    service = _get_service()
-    fb = (
-        service.freebusy()
-        .query(
-            body={
-                "timeMin": start_iso,
-                "timeMax": end_iso,
-                "items": [{"id": "primary"}],
-                "timeZone": TIMEZONE,
-            }
-        )
-        .execute()
-    )
-    busy = fb.get("calendars", {}).get("primary", {}).get("busy", [])
-    if not busy:
-        return []
-
-    # freebusy 只告訴我們 busy 區塊，不給 event 詳情。拉一次 events.list 拿標題
     events = list_events(
         time_min=_parse_iso(start_iso),
         time_max=_parse_iso(end_iso),
-        max_results=10,
+        max_results=20,
     )
-    # events.list 預設會把首尾相接的事件也抓進來；濾掉
+    # events.list 會把首尾相接的事件也抓進來；用精確 overlap 過濾
     return [e for e in events if _overlaps(e.start, e.end, start_iso, end_iso)]
 
 
