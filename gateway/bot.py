@@ -171,7 +171,7 @@ def _handle_thread_message(event, say, client):
             return
         result = handler.handle(route.intent, route.text, user_id)
         fallback, blocks = format_agent_response(route.agent, result.text, route.intent)
-        say(text=fallback, blocks=blocks, thread_ts=msg_ts)
+        say(text=fallback, blocks=blocks)  # DM：不開 thread，直接回主對話
         _register_continuation(
             result,
             thread_ts=msg_ts,
@@ -204,7 +204,9 @@ def _handle_thread_message(event, say, client):
         return
 
     fallback, blocks = format_agent_response(conv.agent_name, result.text, conv.flow_name)
-    say(text=fallback, blocks=blocks, thread_ts=thread_ts)
+    # DM（channel 以 D 開頭）回覆不開 thread，直接顯示在主對話視窗
+    reply_thread_ts = None if channel.startswith("D") else thread_ts
+    say(text=fallback, blocks=blocks, thread_ts=reply_thread_ts)
 
     if result.continuation is None:
         get_store().end(thread_ts)
