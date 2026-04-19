@@ -15,31 +15,27 @@ def get_trends(topic: str) -> dict:
     Returns empty dict on failure.
     """
     try:
-        from pytrends.request import TrendReq
+        from trendspy import Trends
 
-        pytrends = TrendReq(hl="zh-TW", tz=480)
+        tr = Trends(language="zh-TW", tzs=480)
 
         def _fetch():
-            pytrends.build_payload([topic], timeframe="today 3-m")
-
-            # Related queries
-            related = pytrends.related_queries()
+            related = tr.related_queries(topic, timeframe="today 3-m")
             top_queries = []
             rising_queries = []
 
-            if topic in related:
-                top_df = related[topic].get("top")
+            if related:
+                top_df = related.get("top")
                 if top_df is not None and not top_df.empty:
                     top_queries = top_df.head(15).to_dict("records")
 
-                rising_df = related[topic].get("rising")
+                rising_df = related.get("rising")
                 if rising_df is not None and not rising_df.empty:
                     rising_queries = rising_df.head(10).to_dict("records")
 
-            # Interest over time (for trend direction)
             trend_direction = "stable"
             try:
-                iot = pytrends.interest_over_time()
+                iot = tr.interest_over_time([topic], timeframe="today 3-m")
                 if not iot.empty and topic in iot.columns:
                     values = iot[topic].tolist()
                     if len(values) >= 4:

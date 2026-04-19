@@ -20,7 +20,7 @@ readability-lxml>=0.8.4  # Web scraping：備選去噪方案
 
 # Zoro: Keyword Research
 google-api-python-client>=2.100.0  # YouTube Data API v3
-pytrends>=4.9.0                    # Google Trends (unofficial)
+trendspy>=0.1.6                    # Google Trends (pytrends successor; pytrends archived 2025-04)
 
 # Transcription (post-processing)
 opencc-python-reimplemented>=0.1.7
