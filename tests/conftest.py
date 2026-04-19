@@ -34,11 +34,12 @@ def _prevent_real_memory_extraction(request, monkeypatch):
         pass
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def isolated_db(tmp_path: Path, monkeypatch):
     """Route shared.state to a temporary SQLite DB per test.
 
-    Opt-in: tests that touch the DB should depend on this fixture.
+    Autouse so every test hits a tmp DB — real config points to
+    /home/nakama/data/state.db which doesn't exist on CI runners.
     """
     db_path = tmp_path / "test.db"
     import shared.state as state

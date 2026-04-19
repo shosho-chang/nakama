@@ -197,9 +197,7 @@ def test_extract_injects_existing_memories_with_content():
         return "[]"
 
     with patch("shared.memory_extractor.ask_claude", side_effect=_capture):
-        memory_extractor.extract_from_messages(
-            "nami", "U1", [{"role": "user", "content": "test"}]
-        )
+        memory_extractor.extract_from_messages("nami", "U1", [{"role": "user", "content": "test"}])
 
     value = captured_prompt["value"]
     assert "已有記憶" in value
@@ -218,9 +216,7 @@ def test_extract_no_subjects_block_when_empty():
         return "[]"
 
     with patch("shared.memory_extractor.ask_claude", side_effect=_capture):
-        memory_extractor.extract_from_messages(
-            "nami", "U1", [{"role": "user", "content": "test"}]
-        )
+        memory_extractor.extract_from_messages("nami", "U1", [{"role": "user", "content": "test"}])
 
     assert "已有記憶" not in captured_prompt["value"]
 
