@@ -408,7 +408,7 @@ def test_format_agent_response():
     fallback, blocks = format_agent_response("nami", "已建立任務", "create_task")
     assert "[nami]" in fallback
     assert "已建立任務" in fallback
-    assert len(blocks) == 2
+    assert len(blocks) == 1
     assert blocks[0]["type"] == "section"
     assert "Nami" in blocks[0]["text"]["text"]
 

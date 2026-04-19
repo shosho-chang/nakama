@@ -232,10 +232,23 @@ class NamiHandler(BaseHandler):
 
     def _run_loop(self, messages: list[dict], user_id: str) -> HandlerResponse:
         try:
-            system_prompt = load_prompt("nami", "agent_system")
+            base_prompt = load_prompt("nami", "agent_system")
         except FileNotFoundError:
             logger.error("agent_system prompt missing — fallback to minimal system")
-            system_prompt = "你是 Nami，修修的 LifeOS 任務助手。用繁體中文。"
+            base_prompt = "你是 Nami，修修的 LifeOS 任務助手。用繁體中文。"
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        weekday = datetime.now(timezone.utc).strftime("%A")
+        weekday_zh = {
+            "Monday": "週一",
+            "Tuesday": "週二",
+            "Wednesday": "週三",
+            "Thursday": "週四",
+            "Friday": "週五",
+            "Saturday": "週六",
+            "Sunday": "週日",
+        }.get(weekday, weekday)
+        system_prompt = f"{base_prompt}\n\n## 今日資訊\n今天是 {today}（{weekday_zh}）。"
 
         for _ in range(_MAX_ITERS):
             response = call_claude_with_tools(
