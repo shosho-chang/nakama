@@ -5,23 +5,37 @@ V1 scope（見 ``docs/prds/phase-4-bridge-ui.md``）：
 - Memory：列出 / 編輯 / 刪除 ``user_memories``（Phase 1-3 Nami 對修修的記憶）。
   Tier 3 ``memories`` 表（agent run 日記）**不在本頁範疇**。
 - Cost：近 N 天 ``api_calls`` 的 agent × model 統計 + 時間序列 + USD 估算。
-
-本檔只提供 JSON API；HTML 頁面由 PR-B / PR-C 加。
 """
 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from shared import agent_memory, state
 from shared.pricing import calc_cost, get_pricing
-from thousand_sunny.auth import require_auth_or_key
+from thousand_sunny.auth import check_auth, require_auth_or_key
 
 router = APIRouter(prefix="/bridge", dependencies=[Depends(require_auth_or_key)])
+
+# HTML 頁面走 cookie → /login redirect，不跟 API 共用 403 行為
+page_router = APIRouter(prefix="/bridge")
+_templates = Jinja2Templates(
+    directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge")
+)
+
+
+@page_router.get("/memory", response_class=HTMLResponse)
+async def memory_page(request: Request, nakama_auth: str | None = Cookie(None)):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/memory", status_code=302)
+    return _templates.TemplateResponse(request, "memory.html", {})
 
 
 # ---------------------------------------------------------------------------
