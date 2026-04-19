@@ -60,4 +60,20 @@ CREATE INDEX idx_memory_lookup ON agent_memory(agent, user_id, subject);
 
 5-6 個人日。
 
-## 狀態：待實作，Phase 1 下一步
+## 狀態：Phase 1-3 已部署 VPS 實測通過（2026-04-19）
+
+**驗證項目全部通過**：
+- 自動抽取（Haiku 4.5 on end_turn）
+- Subject 去重（list_subjects_with_content 注入 prompt）
+- Content 合併不覆蓋（merge rule in prompt）
+- Context 注入對話（format_as_context at handle() only, 不 cacheable 避開 system prompt）
+- 背景 daemon thread 不 block 主流程
+
+**VPS commit**：62007b8
+
+**已知小瑕疵**（Phase 4 前不影響使用）：
+- 舊條目 content 有多餘主詞前綴（「修修船長⋯」）
+- type 可能被 Haiku 重判（fact ↔ preference）
+- ConversationStore 仍是 in-memory，restart 丟失 active conversations（記憶本身持久 OK）
+
+**下一步**：Phase 4 Bridge UI（編輯/刪除記憶 + cost tracking 一起做）
