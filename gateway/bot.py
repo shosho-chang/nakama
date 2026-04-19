@@ -102,6 +102,7 @@ def _handle_mention(event, say):
     user_id = event.get("user", "")
     channel = event.get("channel", "")
     event_ts = event.get("ts")
+    msg_thread_ts = event.get("thread_ts")  # 非 None 表示此 @mention 本身在某個 thread 中
 
     logger.info(f"Mention in {channel}: '{text}' from {user_id}")
 
@@ -109,16 +110,25 @@ def _handle_mention(event, say):
     handler = get_handler(route.agent)
 
     if not handler:
-        say(f"Agent `{route.agent}` 尚未上線。", thread_ts=event_ts)
+        say(f"Agent `{route.agent}` 尚未上線。", thread_ts=msg_thread_ts)
         return
 
     result = handler.handle(route.intent, route.text, user_id)
     fallback, blocks = format_agent_response(route.agent, result.text, route.intent)
-    say(text=fallback, blocks=blocks, thread_ts=event_ts)
+
+    if msg_thread_ts:
+        # 已在 thread 中被 @mention → 繼續在同一個 thread 回覆
+        say(text=fallback, blocks=blocks, thread_ts=msg_thread_ts)
+        cont_thread_ts = msg_thread_ts
+    else:
+        # 主頻道 @mention → 直接回主對話，不開 thread
+        # 用 bot 回覆的 ts 作為 continuation key，讓用戶可 reply in thread 接續
+        say_resp = say(text=fallback, blocks=blocks)
+        cont_thread_ts = (say_resp or {}).get("ts") or event_ts
 
     _register_continuation(
         result,
-        thread_ts=event_ts,
+        thread_ts=cont_thread_ts,
         channel=channel,
         user_id=user_id,
         agent_name=route.agent,
