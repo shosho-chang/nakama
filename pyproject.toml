@@ -67,6 +67,9 @@ include = ["agents*", "shared*", "thousand_sunny*", "gateway*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "real_extractor: run the real memory_extractor (bypass conftest auto-mock)",
+]
 
 [tool.ruff]
 target-version = "py311"

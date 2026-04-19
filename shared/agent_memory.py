@@ -226,6 +226,22 @@ def decay(*, older_than_days: int = 30, factor: float = 0.9) -> int:
     return cur.rowcount
 
 
+def format_as_context(agent: str, user_id: str, *, limit: int = 20) -> str:
+    """把該 user + agent 的 top-N 記憶組成供 LLM 注入的 context block。
+
+    搜尋時會更新 ``last_accessed_at``，記憶越常被注入代表越活躍。
+    沒有記憶時回傳空字串（呼叫端應略過注入）。
+    """
+    memories = search(agent=agent, user_id=user_id, limit=limit)
+    if not memories:
+        return ""
+
+    lines = ["## 你記得關於使用者的事"]
+    for m in memories:
+        lines.append(f"- [{m.type}] {m.subject}：{m.content}")
+    return "\n".join(lines)
+
+
 def prune(*, confidence_threshold: float = 0.1) -> int:
     """刪除 confidence 低於 threshold 的記憶。回傳刪除筆數。"""
     _ensure_schema()

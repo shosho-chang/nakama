@@ -72,6 +72,49 @@ def test_suggest_redirect():
 # ── Agent loop: end_turn path ───────────────────────────────────────
 
 
+def test_handle_injects_memory_context_when_available():
+    """handle() 應在 user message 開頭附上 agent_memory.format_as_context 的結果。"""
+    captured_messages = []
+
+    def _capture(**kwargs):
+        captured_messages.append(list(kwargs["messages"]))
+        return _fake_response("end_turn", [_text_block("好的")])
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.agent_memory.format_as_context",
+            return_value="## 你記得關於使用者的事\n- [fact] 船長：修修是船長",
+        ),
+    ):
+        NamiHandler().handle("general", "嗨", "U1")
+
+    first_user_msg = captured_messages[0][0]
+    assert first_user_msg["role"] == "user"
+    assert "## 你記得關於使用者的事" in first_user_msg["content"]
+    assert "修修是船長" in first_user_msg["content"]
+
+
+def test_handle_skips_memory_block_when_empty():
+    """無記憶時不該出現空的記憶標題。"""
+    captured_messages = []
+
+    def _capture(**kwargs):
+        captured_messages.append(list(kwargs["messages"]))
+        return _fake_response("end_turn", [_text_block("好的")])
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.agent_memory.format_as_context", return_value=""),
+    ):
+        NamiHandler().handle("general", "嗨", "U1")
+
+    first_user_msg = captured_messages[0][0]
+    assert "## 你記得關於使用者的事" not in first_user_msg["content"]
+
+
 def test_handle_returns_text_on_end_turn():
     """LLM 直接回文字（沒呼叫 tool），handler 返回該文字並保持 thread 存活。"""
     fake = _fake_response("end_turn", [_text_block("你好，我是 Nami！")])

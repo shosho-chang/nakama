@@ -174,6 +174,7 @@ def test_extract_from_messages_empty_messages():
     assert ids == []
 
 
+@pytest.mark.real_extractor
 def test_extract_in_background_returns_thread():
     fake_response = "[]"
     with patch("shared.memory_extractor.ask_claude", return_value=fake_response):

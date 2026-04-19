@@ -21,6 +21,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from gateway.handlers.base import BaseHandler, Continuation, HandlerResponse
+from shared import agent_memory
 from shared.anthropic_client import call_claude_with_tools, set_current_agent
 from shared.events import emit
 from shared.lifeos_writer import (
@@ -278,7 +279,12 @@ class NamiHandler(BaseHandler):
     def handle(self, intent: str, text: str, user_id: str) -> HandlerResponse:
         set_current_agent("nami")
         date_context = _build_date_context()
-        messages: list[dict] = [{"role": "user", "content": f"{date_context}\n\n{text}"}]
+        memory_context = agent_memory.format_as_context("nami", user_id)
+        parts = [date_context]
+        if memory_context:
+            parts.append(memory_context)
+        parts.append(text)
+        messages: list[dict] = [{"role": "user", "content": "\n\n".join(parts)}]
         return self._run_loop(messages, user_id)
 
     def continue_flow(

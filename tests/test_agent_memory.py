@@ -150,6 +150,31 @@ def test_decay_reduces_confidence():
     assert mems[0].confidence == 0.5
 
 
+def test_format_as_context_empty():
+    """沒有記憶時回空字串。"""
+    assert agent_memory.format_as_context("nami", "U1") == ""
+
+
+def test_format_as_context_renders_memories():
+    agent_memory.add("nami", "U1", "preference", "工作時段", "修修習慣早上做深度工作")
+    agent_memory.add("nami", "U1", "fact", "角色", "修修是船長")
+
+    text = agent_memory.format_as_context("nami", "U1")
+    assert "## 你記得關於使用者的事" in text
+    assert "[preference] 工作時段" in text
+    assert "修修習慣早上做深度工作" in text
+    assert "[fact] 角色" in text
+
+
+def test_format_as_context_isolated_by_user():
+    agent_memory.add("nami", "U1", "fact", "A", "U1 的事")
+    agent_memory.add("nami", "U2", "fact", "B", "U2 的事")
+
+    u1_ctx = agent_memory.format_as_context("nami", "U1")
+    assert "U1 的事" in u1_ctx
+    assert "U2 的事" not in u1_ctx
+
+
 def test_prune_removes_low_confidence():
     agent_memory.add("nami", "U1", "fact", "high", "high conf", confidence=0.9)
     agent_memory.add("nami", "U1", "fact", "low", "low conf", confidence=0.05)
