@@ -151,8 +151,35 @@ def _handle_thread_message(event, say, client):
             )
             thread_ts = conv.thread_ts
 
-    if not thread_ts or thread_ts == msg_ts or conv is None:
-        return  # 非 thread reply 或沒有活躍 flow
+    is_dm = event.get("channel_type") == "im"
+    if (not thread_ts or thread_ts == msg_ts or conv is None) and not is_dm:
+        return  # 非 thread reply 且不是 DM → 略過
+
+    if conv is None:
+        if not is_dm:
+            return
+        # DM 第一則訊息：沒有 active conversation，當成新請求路由到 Nami
+        text = event.get("text", "").strip()
+        if not text:
+            return
+        logger.info(f"DM new conversation: user={user_id} text='{text[:50]}'")
+        from gateway.router import route_mention
+
+        route = route_mention(text)
+        handler = get_handler(route.agent)
+        if handler is None:
+            return
+        result = handler.handle(route.intent, route.text, user_id)
+        fallback, blocks = format_agent_response(route.agent, result.text, route.intent)
+        say(text=fallback, blocks=blocks, thread_ts=msg_ts)
+        _register_continuation(
+            result,
+            thread_ts=msg_ts,
+            channel=channel,
+            user_id=user_id,
+            agent_name=route.agent,
+        )
+        return
 
     if user_id != conv.user_id:
         return  # 只認原發起人
