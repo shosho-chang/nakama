@@ -30,6 +30,7 @@ from shared.lifeos_writer import (
     default_task_names,
 )
 from shared.log import get_logger, kb_log
+from shared.memory_extractor import extract_in_background
 from shared.obsidian_writer import delete_page, list_files, read_page, write_page
 from shared.prompt_loader import load_prompt
 
@@ -340,6 +341,11 @@ class NamiHandler(BaseHandler):
                 text = _extract_text(content_dicts) or "完成。"
                 # 把 assistant 回覆存進 messages，讓 thread 保持存活接受後續問題
                 messages.append({"role": "assistant", "content": content_dicts})
+                # 背景抽取記憶（Phase 2）。失敗不影響主流程。
+                try:
+                    extract_in_background(agent="nami", user_id=user_id, messages=messages)
+                except Exception as e:
+                    logger.warning(f"Failed to spawn memory extractor: {e}")
                 return HandlerResponse(
                     text=text,
                     continuation=Continuation(
