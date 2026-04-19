@@ -39,7 +39,7 @@ NAMI_AGENT_FLOW = "nami_agent"
 TASK_DIR = "TaskNotes/Tasks"
 
 _MAX_ITERS = 6
-_MODEL = "claude-haiku-4-5"
+_MODEL = "claude-sonnet-4-6"
 
 # ── Tool definitions（stable, will be prompt-cached） ──────────────────
 
