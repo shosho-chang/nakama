@@ -93,7 +93,11 @@ NAMI_TOOLS: list[dict] = [
                 "title": {"type": "string", "description": "任務標題"},
                 "scheduled": {
                     "type": "string",
-                    "description": "排程日期 ISO 8601（例：2026-04-22），沒講就不填",
+                    "description": (
+                        "排程日期時間 ISO 8601。"
+                        "有時間就填 datetime（例：2026-04-23T15:00:00）；"
+                        "只有日期就填 date（例：2026-04-23）。沒講就不填。"
+                    ),
                 },
                 "priority": {
                     "type": "string",

@@ -41,3 +41,4 @@
 - [project_bilingual_reader_design.md](project_bilingual_reader_design.md) — 雙語閱讀三場景設計凍結：BabelDOC+Docling雙路線、Claude Sonnet翻譯、台灣術語表、輕量Annotation
 - [project_nami_project_bootstrap.md](project_nami_project_bootstrap.md) — feat/nami-project-bootstrap 已推、等 VPS 部署 + Slack manifest 更新 + DM 測試
 - [project_lifeos_template_drift.md](project_lifeos_template_drift.md) — tpl-project.md / tpl-action.md 過時，gold standard 是 Projects/肌酸的妙用.md
+- [project_chopper_community_qa.md](project_chopper_community_qa.md) — Chopper：community 平台健康問答 + KB 查詢 + 會員記憶，待開發（平台/記憶/問答三大挑戰）
