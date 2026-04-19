@@ -39,3 +39,5 @@
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
 - [feedback_open_source_ready.md](feedback_open_source_ready.md) — 所有功能都可能個別開源，開發時保留參數化與擴充點；每個可開源單位需有 capability card（能力/IO/實測成本）
 - [project_bilingual_reader_design.md](project_bilingual_reader_design.md) — 雙語閱讀三場景設計凍結：BabelDOC+Docling雙路線、Claude Sonnet翻譯、台灣術語表、輕量Annotation
+- [project_nami_project_bootstrap.md](project_nami_project_bootstrap.md) — feat/nami-project-bootstrap 已推、等 VPS 部署 + Slack manifest 更新 + DM 測試
+- [project_lifeos_template_drift.md](project_lifeos_template_drift.md) — tpl-project.md / tpl-action.md 過時，gold standard 是 Projects/肌酸的妙用.md
