@@ -36,18 +36,27 @@ def _register_continuation(
     """若 handler 要求接續，註冊到 ConversationStore。"""
     if result.continuation is None or not thread_ts:
         return
-    get_store().start(
-        thread_ts=thread_ts,
-        channel=channel,
-        user_id=user_id,
-        agent_name=agent_name,
-        flow_name=result.continuation.flow_name,
-        state=result.continuation.state,
-    )
-    logger.info(
-        f"Continuation registered: thread={thread_ts} agent={agent_name} "
-        f"flow={result.continuation.flow_name}"
-    )
+    store = get_store()
+    if store.get(thread_ts) is not None:
+        # 已有活躍 conversation（如 end_turn 後用戶再次 @mention），只更新 state
+        store.update(thread_ts, result.continuation.state)
+        logger.info(
+            f"Continuation updated: thread={thread_ts} agent={agent_name} "
+            f"flow={result.continuation.flow_name}"
+        )
+    else:
+        store.start(
+            thread_ts=thread_ts,
+            channel=channel,
+            user_id=user_id,
+            agent_name=agent_name,
+            flow_name=result.continuation.flow_name,
+            state=result.continuation.state,
+        )
+        logger.info(
+            f"Continuation registered: thread={thread_ts} agent={agent_name} "
+            f"flow={result.continuation.flow_name}"
+        )
 
 
 def _handle_command(ack, command, respond):
@@ -122,14 +131,29 @@ def _handle_thread_message(event, say, client):
     if event.get("bot_id") or event.get("subtype") in {"bot_message", "message_changed"}:
         return
     thread_ts = event.get("thread_ts")
-    if not thread_ts or thread_ts == event.get("ts"):
-        return  # 非 thread reply
-
-    conv = get_store().get(thread_ts)
-    if conv is None:
-        return  # thread 沒有活躍 flow，放行
-
+    msg_ts = event.get("ts")
     user_id = event.get("user", "")
+    channel = event.get("channel", "")
+
+    # Debug: 記錄收到的 message event
+    logger.debug(
+        f"Message event: ts={msg_ts} thread_ts={thread_ts} user={user_id} channel={channel}"
+    )
+
+    conv = get_store().get(thread_ts) if thread_ts else None
+    # 在 DM 中，thread_ts 可能沒有；嘗試從 user_id + agent_name 找最新 conversation
+    if not conv and user_id:
+        conv = get_store().get_latest_for_user_and_agent(user_id, "nami")
+        if conv:
+            logger.info(
+                f"DM fallback: found conversation via user+agent lookup: "
+                f"thread={conv.thread_ts} flow={conv.flow_name}"
+            )
+            thread_ts = conv.thread_ts
+
+    if not thread_ts or thread_ts == msg_ts or conv is None:
+        return  # 非 thread reply 或沒有活躍 flow
+
     if user_id != conv.user_id:
         return  # 只認原發起人
 
@@ -138,7 +162,10 @@ def _handle_thread_message(event, say, client):
         return
 
     text = event.get("text", "").strip()
-    logger.info(f"Thread continuation: thread={thread_ts} flow={conv.flow_name} user={user_id}")
+    logger.info(
+        f"Thread continuation: thread={thread_ts} flow={conv.flow_name} "
+        f"user={user_id} text='{text[:50]}...'"
+    )
 
     try:
         result = handler.continue_flow(conv.flow_name, conv.state, text, user_id)
