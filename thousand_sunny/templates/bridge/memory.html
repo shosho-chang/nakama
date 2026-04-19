@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Memory</title>
+<style>
+  :root {
+    --bg: #fafaf8;
+    --bg-card: white;
+    --bg-alt: #f4f4f0;
+    --text: #333;
+    --text-heading: #1a1a1a;
+    --text-muted: #888;
+    --border: #e5e5e5;
+    --accent: #6c63ff;
+    --accent-hover: #574fd6;
+    --danger: #d9534f;
+    --danger-hover: #c9302c;
+    --row-hover: #f0efff;
+  }
+  body.dark {
+    --bg: #1a1a2e;
+    --bg-card: #16213e;
+    --bg-alt: #1e2a45;
+    --text: #d4d4d4;
+    --text-heading: #e8e8e8;
+    --text-muted: #888;
+    --border: #2a2a4a;
+    --accent: #8b80ff;
+    --accent-hover: #a59bff;
+    --danger: #e57373;
+    --danger-hover: #ef9a9a;
+    --row-hover: #242d4f;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    background: var(--bg-card);
+    padding: 0.6rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 { font-size: 1rem; color: var(--text-heading); }
+  .header-right { display: flex; gap: 0.5rem; }
+  .header-right a, .header-right button {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .header-right a.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .header-right a:hover, .header-right button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0.3rem;
+    padding: 0.8rem 1.5rem 0;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    background: var(--bg-alt);
+    color: var(--text-muted);
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text-heading); }
+  .tab.active {
+    background: var(--bg-card);
+    color: var(--accent);
+    border-color: var(--accent);
+    border-bottom: 1px solid var(--bg-card);
+    margin-bottom: -1px;
+  }
+  .tab .count {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-left: 0.3rem;
+  }
+
+  .content {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 0.85rem;
+  }
+  thead {
+    background: var(--bg-alt);
+  }
+  th {
+    padding: 0.7rem 0.8rem;
+    text-align: left;
+    color: var(--text-heading);
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 0.7rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--row-hover); }
+
+  .type-badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .type-preference { background: #e0d9ff; color: #5048a8; }
+  .type-fact { background: #d6efff; color: #1e6091; }
+  .type-decision { background: #ffe4b5; color: #8a5a00; }
+  .type-project { background: #d4f4d4; color: #2d6b2d; }
+  body.dark .type-preference { background: #3a2f6a; color: #c9bfff; }
+  body.dark .type-fact { background: #1e3a5a; color: #9bd1ff; }
+  body.dark .type-decision { background: #5a4020; color: #ffd28a; }
+  body.dark .type-project { background: #2a4a2a; color: #a8e0a8; }
+
+  .conf-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 80px;
+  }
+  .conf-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    max-width: 60px;
+  }
+  .conf-fill {
+    height: 100%;
+    background: var(--accent);
+  }
+  .conf-num {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .subject-cell { font-weight: 500; color: var(--text-heading); }
+  .content-cell {
+    max-width: 480px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+  .meta-cell {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.3rem;
+    justify-content: flex-end;
+  }
+  .action-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.72rem;
+    cursor: pointer;
+    color: var(--text-muted);
+  }
+  .action-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .action-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  .empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal {
+    background: var(--bg-card);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 560px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .modal-header h3 {
+    font-size: 1rem;
+    color: var(--text-heading);
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 1.3rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.2rem;
+  }
+  .modal-body label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin: 0.8rem 0 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .modal-body label:first-child { margin-top: 0; }
+  .modal-body input[type="text"],
+  .modal-body select,
+  .modal-body textarea {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.88rem;
+    font-family: inherit;
+    outline: none;
+  }
+  .modal-body input:focus,
+  .modal-body select:focus,
+  .modal-body textarea:focus { border-color: var(--accent); }
+  .modal-body textarea {
+    min-height: 100px;
+    resize: vertical;
+    line-height: 1.55;
+  }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+  }
+  .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .slider-row .conf-num {
+    min-width: 3.5ch;
+    text-align: right;
+    color: var(--text-heading);
+    font-size: 0.9rem;
+  }
+  .modal-footer {
+    padding: 0.8rem 1.2rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .modal-footer .left-group { display: flex; gap: 0.5rem; }
+  .modal-footer .right-group { display: flex; gap: 0.5rem; }
+  .modal-footer button {
+    padding: 0.4rem 1rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border: 1px solid var(--border);
+  }
+  .btn-primary { background: var(--accent); color: white; border: none; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-danger { background: var(--danger); color: white; border: none; }
+  .btn-danger:hover { background: var(--danger-hover); }
+  .btn-cancel { background: none; color: var(--text-muted); }
+  .btn-cancel:hover { color: var(--text-heading); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Bridge · Memory</h1>
+  <div class="header-right">
+    <a href="/bridge/memory" class="active">Memory</a>
+    <a href="/">Home</a>
+    <button id="themeBtn">Dark</button>
+  </div>
+</div>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="content">
+  <div class="status-bar">
+    <div id="statusText">Loading…</div>
+    <button class="action-btn" id="reloadBtn">Reload</button>
+  </div>
+  <div id="tableWrap"></div>
+</div>
+
+<!-- Edit / Delete modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Edit memory</h3>
+      <button class="modal-close" id="modalClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label>Type</label>
+      <select id="fieldType">
+        <option value="preference">preference</option>
+        <option value="fact">fact</option>
+        <option value="decision">decision</option>
+        <option value="project">project</option>
+      </select>
+
+      <label>Subject</label>
+      <input type="text" id="fieldSubject" maxlength="200">
+
+      <label>Content</label>
+      <textarea id="fieldContent"></textarea>
+
+      <label>Confidence <span id="fieldConfLabel" style="color:var(--text-muted);font-weight:normal;"></span></label>
+      <div class="slider-row">
+        <input type="range" id="fieldConf" min="0" max="100" step="1">
+        <span class="conf-num" id="fieldConfNum"></span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="left-group">
+        <button class="btn-danger" id="deleteBtn">Delete</button>
+      </div>
+      <div class="right-group">
+        <button class="btn-cancel" id="cancelBtn">Cancel</button>
+        <button class="btn-primary" id="saveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Fallback list — show these tabs even if they have 0 memories yet
+const FALLBACK_AGENTS = ["nami", "zoro", "robin", "brook", "chopper", "usopp"];
+
+const $ = id => document.getElementById(id);
+
+// --- Theme ---
+if (localStorage.getItem('bridge-dark') === '1') {
+  document.body.classList.add('dark');
+  $('themeBtn').textContent = 'Light';
+}
+$('themeBtn').onclick = () => {
+  document.body.classList.toggle('dark');
+  const dark = document.body.classList.contains('dark');
+  $('themeBtn').textContent = dark ? 'Light' : 'Dark';
+  localStorage.setItem('bridge-dark', dark ? '1' : '0');
+};
+
+// --- State ---
+let activeAgent = localStorage.getItem('bridge-memory-agent') || 'nami';
+let memories = [];
+let agentsWithData = new Set();
+let editing = null;
+
+// --- API helpers ---
+async function api(url, opts = {}) {
+  const resp = await fetch(url, opts);
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`${resp.status} ${text || resp.statusText}`);
+  }
+  return resp.json();
+}
+
+// --- Tabs ---
+async function loadAgents() {
+  try {
+    const data = await api('/bridge/api/memory/agents');
+    agentsWithData = new Set(data.agents || []);
+  } catch (e) {
+    agentsWithData = new Set();
+  }
+  renderTabs();
+}
+
+function renderTabs() {
+  const all = new Set(FALLBACK_AGENTS);
+  agentsWithData.forEach(a => all.add(a));
+  if (!all.has(activeAgent)) all.add(activeAgent);
+
+  const ordered = [...all].sort((a, b) => {
+    const ai = FALLBACK_AGENTS.indexOf(a), bi = FALLBACK_AGENTS.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  const tabsEl = $('tabs');
+  tabsEl.innerHTML = '';
+  for (const a of ordered) {
+    const el = document.createElement('div');
+    el.className = 'tab' + (a === activeAgent ? ' active' : '');
+    const hasData = agentsWithData.has(a);
+    el.innerHTML = `${a}${hasData ? '' : '<span class="count">·</span>'}`;
+    el.onclick = () => selectAgent(a);
+    tabsEl.appendChild(el);
+  }
+}
+
+function selectAgent(a) {
+  activeAgent = a;
+  localStorage.setItem('bridge-memory-agent', a);
+  renderTabs();
+  loadMemories();
+}
+
+// --- Memories ---
+async function loadMemories() {
+  $('statusText').textContent = `Loading ${activeAgent}…`;
+  $('tableWrap').innerHTML = '';
+  try {
+    const data = await api(`/bridge/api/memory?agent=${encodeURIComponent(activeAgent)}`);
+    memories = data.memories || [];
+    renderTable();
+    $('statusText').textContent = `${memories.length} memory row${memories.length === 1 ? '' : 's'} for ${activeAgent} · user ${data.user_id}`;
+  } catch (e) {
+    memories = [];
+    $('tableWrap').innerHTML = `<div class="empty">Failed to load: ${e.message}</div>`;
+    $('statusText').textContent = '';
+  }
+}
+
+function fmtDate(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleString('zh-TW', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function escapeHTML(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderTable() {
+  if (memories.length === 0) {
+    $('tableWrap').innerHTML = `<div class="empty">No memories yet for <strong>${escapeHTML(activeAgent)}</strong>.</div>`;
+    return;
+  }
+
+  const rows = memories.map(m => {
+    const conf = Math.round((m.confidence ?? 0) * 100);
+    return `
+      <tr data-id="${m.id}">
+        <td><span class="type-badge type-${escapeHTML(m.type || 'fact')}">${escapeHTML(m.type || '?')}</span></td>
+        <td class="subject-cell">${escapeHTML(m.subject)}</td>
+        <td class="content-cell">${escapeHTML(m.content)}</td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div>
+            <span class="conf-num">${conf}%</span>
+          </div>
+        </td>
+        <td class="meta-cell">${fmtDate(m.last_accessed_at)}</td>
+        <td>
+          <div class="actions">
+            <button class="action-btn" data-action="edit" data-id="${m.id}">Edit</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  $('tableWrap').innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th style="width:110px;">Type</th>
+          <th style="width:22%;">Subject</th>
+          <th>Content</th>
+          <th style="width:110px;">Confidence</th>
+          <th style="width:140px;">Last accessed</th>
+          <th style="width:80px;"></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  $('tableWrap').querySelectorAll('button[data-action="edit"]').forEach(btn => {
+    btn.onclick = () => openEdit(parseInt(btn.dataset.id, 10));
+  });
+}
+
+$('reloadBtn').onclick = () => { loadAgents(); loadMemories(); };
+
+// --- Modal ---
+function openEdit(id) {
+  const m = memories.find(x => x.id === id);
+  if (!m) return;
+  editing = { ...m };
+  $('modalTitle').textContent = `Edit memory #${m.id}`;
+  $('fieldType').value = m.type || 'fact';
+  $('fieldSubject').value = m.subject || '';
+  $('fieldContent').value = m.content || '';
+  const conf = Math.round((m.confidence ?? 0) * 100);
+  $('fieldConf').value = conf;
+  $('fieldConfNum').textContent = conf + '%';
+  $('modalOverlay').classList.add('visible');
+  $('fieldContent').focus();
+}
+
+function closeModal() {
+  $('modalOverlay').classList.remove('visible');
+  editing = null;
+}
+
+$('modalClose').onclick = closeModal;
+$('cancelBtn').onclick = closeModal;
+$('modalOverlay').onclick = e => { if (e.target === $('modalOverlay')) closeModal(); };
+
+$('fieldConf').addEventListener('input', () => {
+  $('fieldConfNum').textContent = $('fieldConf').value + '%';
+});
+
+$('saveBtn').onclick = async () => {
+  if (!editing) return;
+  const payload = {
+    type: $('fieldType').value,
+    subject: $('fieldSubject').value.trim(),
+    content: $('fieldContent').value.trim(),
+    confidence: parseInt($('fieldConf').value, 10) / 100,
+  };
+  if (!payload.subject || !payload.content) {
+    alert('Subject and content are required.');
+    return;
+  }
+  $('saveBtn').disabled = true;
+  try {
+    await api(`/bridge/api/memory/${editing.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    closeModal();
+    await loadMemories();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  } finally {
+    $('saveBtn').disabled = false;
+  }
+};
+
+$('deleteBtn').onclick = async () => {
+  if (!editing) return;
+  if (!confirm(`Delete memory #${editing.id}?\n\n"${editing.subject}"\n\nThis cannot be undone.`)) return;
+  try {
+    await api(`/bridge/api/memory/${editing.id}`, { method: 'DELETE' });
+    closeModal();
+    await Promise.all([loadAgents(), loadMemories()]);
+  } catch (e) {
+    alert('Delete failed: ' + e.message);
+  }
+};
+
+// --- Init ---
+loadAgents().then(loadMemories);
+</script>
+</body>
+</html>

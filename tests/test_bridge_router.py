@@ -58,6 +58,20 @@ def seed_memories():
 
 
 # ---------------------------------------------------------------------------
+# HTML pages
+# ---------------------------------------------------------------------------
+
+
+def test_memory_page_renders_html(client):
+    r = client.get("/bridge/memory")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    body = r.text
+    assert "Bridge · Memory" in body
+    assert "/bridge/api/memory" in body
+
+
+# ---------------------------------------------------------------------------
 # Memory endpoints
 # ---------------------------------------------------------------------------
 
