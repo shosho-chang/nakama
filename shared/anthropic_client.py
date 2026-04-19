@@ -78,6 +78,69 @@ def ask_claude(
     return response.content[0].text
 
 
+def call_claude_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    *,
+    system: str = "",
+    model: str = "claude-haiku-4-5",
+    max_tokens: int = 2048,
+) -> "anthropic.types.Message":
+    """呼叫 Claude 的 tool-use API，回傳完整 Message 物件（含 stop_reason、content blocks）。
+
+    與 ask_claude_multi() 不同，這個函式 **不** 把 response 擷取為字串——呼叫端需要
+    inspect `stop_reason`（"end_turn" / "tool_use"）以及 content blocks 才能驅動
+    agent loop。
+
+    Prompt caching：會在 system prompt 的最後一個 block 加 `cache_control`，讓
+    tools + system 整段被 cache。呼叫端請確保 `system` 與 `tools` 是確定性的
+    （不要含 `datetime.now()`、UUID 等每次變化的內容），否則 cache 不會命中。
+
+    Args:
+        messages: Claude API messages 格式（alternate user/assistant）
+        tools: Tool definitions（JSON schema 陣列）
+        system: System prompt
+        model: 模型（預設 Haiku 4.5，tool-routing 任務通常夠用）
+        max_tokens: 最大輸出 token 數
+
+    Returns:
+        anthropic.types.Message（含 content + stop_reason + usage）
+    """
+
+    def _call() -> anthropic.types.Message:
+        client = get_client()
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+            "tools": tools,
+        }
+        if system:
+            kwargs["system"] = [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ]
+        return client.messages.create(**kwargs)
+
+    response = with_retry(_call, max_attempts=3, backoff_base=2.0)
+
+    try:
+        from shared.state import record_api_call
+
+        agent = getattr(_local, "agent", "unknown")
+        run_id = getattr(_local, "run_id", None)
+        record_api_call(
+            agent=agent,
+            model=model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            run_id=run_id,
+        )
+    except Exception:
+        pass
+
+    return response
+
+
 def ask_claude_multi(
     messages: list[dict],
     *,
