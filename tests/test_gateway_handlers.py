@@ -350,6 +350,105 @@ def test_list_tasks_tool_empty():
     assert "沒有待辦" in result.text
 
 
+# ── Agent loop: update_task tool ────────────────────────────────────
+
+
+def test_update_task_changes_scheduled():
+    """LLM 呼叫 update_task，handler 讀取現有檔案並寫回更新的 frontmatter。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_task",
+                    {"title": "肌酸的妙用 - Pre-production", "scheduled": "2026-04-20T10:00:00"},
+                    id_="toolu_ut1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("✅ 已更新排程")]),
+    ]
+
+    fake_file = SimpleNamespace(
+        name="肌酸的妙用---Pre-production.md", stem="肌酸的妙用---Pre-production"
+    )
+    fake_content = (
+        "---\ntitle: 肌酸的妙用 - Pre-production\nstatus: to-do\npriority: normal\n---\n\n"
+    )
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_file]),
+        patch("gateway.handlers.nami.read_page", return_value=fake_content),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("update_task", "把肌酸 Pre-production 排到週一早上十點", "U1")
+
+    assert "更新" in result.text
+    mock_write.assert_called_once()
+    rel_path, fm, _ = mock_write.call_args[0]
+    assert fm["scheduled"] == "2026-04-20T10:00:00"
+    assert "Pre-production" in rel_path
+
+
+def test_update_task_not_found_returns_error():
+    """找不到 task 時，tool 回 is_error，LLM 應告知使用者。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("update_task", {"title": "不存在的任務"}, id_="toolu_ut2")],
+        ),
+        _fake_response("end_turn", [_text_block("找不到這個 task。")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+    ):
+        result = NamiHandler().handle("update_task", "改一個不存在的 task", "U1")
+
+    assert "找不到" in result.text
+
+
+def test_update_task_mark_done():
+    """把 status 改成 done。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_task",
+                    {"title": "看牙醫", "status": "done"},
+                    id_="toolu_ut3",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("✅ 已完成")]),
+    ]
+
+    fake_file = SimpleNamespace(name="看牙醫.md", stem="看牙醫")
+    fake_content = "---\ntitle: 看牙醫\nstatus: to-do\npriority: normal\n---\n\n"
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_file]),
+        patch("gateway.handlers.nami.read_page", return_value=fake_content),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("update_task", "看牙醫完成了", "U1")
+
+    assert "完成" in result.text
+    fm = mock_write.call_args[0][1]
+    assert fm["status"] == "done"
+
+
 # ── Agent loop: max iters safety ────────────────────────────────────
 
 

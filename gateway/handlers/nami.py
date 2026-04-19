@@ -122,6 +122,43 @@ NAMI_TOOLS: list[dict] = [
         },
     },
     {
+        "name": "update_task",
+        "description": (
+            "修改現有 Task 的欄位（排程日期、優先級、狀態）。"
+            "當使用者說「改」「設」「調整日期」「把...改成」「完成了」等時使用。"
+            "若找不到 task，回傳錯誤讓 LLM 告知使用者。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "要修改的任務標題（用來搜尋，不需完全符合）",
+                },
+                "scheduled": {
+                    "type": "string",
+                    "description": (
+                        "新的排程日期時間 ISO 8601。"
+                        "有時間就填 datetime（例：2026-04-23T15:00:00）；"
+                        "只有日期就填 date（例：2026-04-23）。"
+                        "要清除排程就填空字串。"
+                    ),
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["high", "normal", "low"],
+                    "description": "新的優先級",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["to-do", "in-progress", "done"],
+                    "description": "新的狀態",
+                },
+            },
+            "required": ["title"],
+        },
+    },
+    {
         "name": "ask_user",
         "description": (
             "當必要資訊缺失時向使用者問一個澄清問題。"
@@ -334,6 +371,8 @@ class NamiHandler(BaseHandler):
                 return self._tool_create_project(tool_input)
             if name == "create_task":
                 return self._tool_create_task(tool_input)
+            if name == "update_task":
+                return self._tool_update_task(tool_input)
             if name == "list_tasks":
                 return self._tool_list_tasks()
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
@@ -462,6 +501,76 @@ class NamiHandler(BaseHandler):
 
         return _ToolOutcome(content=f"*待辦任務（{len(tasks)} 項）*\n" + "\n".join(lines))
 
+    def _find_task_by_title(self, title: str) -> tuple[str, dict, str] | None:
+        """以 title 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。"""
+        title_lower = title.lower()
+        for f in list_files(TASK_DIR):
+            rel = f"{TASK_DIR}/{f.name}"
+            content = read_page(rel)
+            if not content:
+                continue
+            fm = _extract_frontmatter(content)
+            fm_title = str(fm.get("title", "")).lower()
+            if fm_title == title_lower or title_lower in fm_title or fm_title in title_lower:
+                parts = content.split("---", 2)
+                body = parts[2].strip() if len(parts) >= 3 else ""
+                return rel, fm, body
+        return None
+
+    def _tool_update_task(self, input_: dict) -> _ToolOutcome:
+        title = str(input_.get("title", "")).strip()
+        if not title:
+            return _ToolOutcome(content="Missing task title", is_error=True)
+
+        found = self._find_task_by_title(title)
+        if not found:
+            return _ToolOutcome(
+                content=f"找不到標題含「{title}」的 task。請用 list_tasks 確認標題。",
+                is_error=True,
+            )
+
+        rel_path, fm, body = found
+        matched_title = str(fm.get("title", title))
+
+        updated_fields: list[str] = []
+        if input_.get("scheduled") is not None:
+            scheduled_val = input_["scheduled"]
+            if scheduled_val == "":
+                fm.pop("scheduled", None)
+                updated_fields.append("scheduled 已清除")
+            else:
+                fm["scheduled"] = scheduled_val
+                updated_fields.append(f"scheduled={scheduled_val}")
+        if input_.get("priority") is not None:
+            fm["priority"] = input_["priority"]
+            updated_fields.append(f"priority={input_['priority']}")
+        if input_.get("status") is not None:
+            fm["status"] = input_["status"]
+            updated_fields.append(f"status={input_['status']}")
+
+        if not updated_fields:
+            return _ToolOutcome(content="沒有指定要更新的欄位。", is_error=True)
+
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fm["dateModified"] = now_iso
+        fm = _stringify_fm_dates(fm)
+
+        write_page(rel_path, fm, body)
+
+        summary = f"✅ 已更新 task：{matched_title}（{', '.join(updated_fields)}）"
+        return _ToolOutcome(
+            content=summary,
+            event={
+                "name": "task_updated",
+                "payload": {
+                    "title": matched_title,
+                    "path": rel_path,
+                    "updated_fields": updated_fields,
+                },
+                "log": matched_title,
+            },
+        )
+
 
 # ── Utilities ────────────────────────────────────────────────────────
 
@@ -490,6 +599,15 @@ def _slugify(title: str) -> str:
     slug = re.sub(r"[^\w\u4e00-\u9fff\-]", " ", title)
     slug = re.sub(r"\s+", "-", slug.strip())
     return slug[:60] or "untitled"
+
+
+def _stringify_fm_dates(fm: dict) -> dict:
+    """yaml.safe_load 會把 2026-04-23 解析成 date 物件，寫回前先轉字串。"""
+    import datetime as _dt
+
+    return {
+        k: v.isoformat() if isinstance(v, (_dt.date, _dt.datetime)) else v for k, v in fm.items()
+    }
 
 
 def _extract_frontmatter(content: str) -> dict:

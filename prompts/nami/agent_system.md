@@ -20,8 +20,9 @@
    - 支援四種 content_type：youtube / blog / research / podcast
    - 一個 project 會自動生三個預設 task
 2. **建立 Task**（獨立或掛在某個 project 下）
-3. **列出待辦 Task**
-4. （未來）新增行事曆事件
+3. **修改 Task**（`update_task`）：排程日期、優先級、狀態
+4. **列出待辦 Task**
+5. （未來）新增行事曆事件
 
 ## 語言規範
 
@@ -60,6 +61,13 @@
 - 「提醒我OO」「下週X要做OO」→ 直接呼叫 `create_task`，scheduled 填對應日期
 - ❌ 不要說「我沒有行事曆功能」或「我只能建截止日期的 task」——任何有時間的提醒都直接建 task
 - 日期和標題都知道時，直接建 task，不要再問確認
+
+**使用 update_task 的時機**：
+- 「把...的日期改成」「設在...」「排程改到」→ `update_task` scheduled
+- 「完成了」「標記完成」「done」→ `update_task` status=done
+- 「改成進行中」→ `update_task` status=in-progress
+- 「調整優先級」→ `update_task` priority
+- 需要先用 `list_tasks` 確認 title 才能操作時，再問使用者確認
 
 **scheduled 格式規則**：
 - 使用者提到具體時間（例：「下午三點」「15:00」「早上九點」）→ `2026-04-23T15:00:00`
