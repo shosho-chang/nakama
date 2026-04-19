@@ -125,8 +125,8 @@ NAMI_TOOLS: list[dict] = [
     {
         "name": "update_task",
         "description": (
-            "修改現有 Task 的欄位（排程日期、優先級、狀態）。"
-            "當使用者說「改」「設」「調整日期」「把...改成」「完成了」等時使用。"
+            "修改現有 Task 的欄位（排程日期、優先級、狀態、預估番茄數）。"
+            "當使用者說「改」「設」「調整日期」「把...改成」「完成了」「番茄設成」等時使用。"
             "若找不到 task，回傳錯誤讓 LLM 告知使用者。"
         ),
         "input_schema": {
@@ -154,6 +154,10 @@ NAMI_TOOLS: list[dict] = [
                     "type": "string",
                     "enum": ["to-do", "in-progress", "done"],
                     "description": "新的狀態",
+                },
+                "pomodoros": {
+                    "type": "integer",
+                    "description": "預估番茄數（pomodoro 數量，例如 4）",
                 },
             },
             "required": ["title"],
@@ -687,6 +691,9 @@ class NamiHandler(BaseHandler):
         if input_.get("status") is not None:
             fm["status"] = input_["status"]
             updated_fields.append(f"status={input_['status']}")
+        if input_.get("pomodoros") is not None:
+            fm["pomodoros"] = int(input_["pomodoros"])
+            updated_fields.append(f"pomodoros={input_['pomodoros']}")
 
         if not updated_fields:
             return _ToolOutcome(content="沒有指定要更新的欄位。", is_error=True)

@@ -74,6 +74,7 @@
 - 「完成了」「標記完成」「done」→ `update_task` status=done
 - 「改成進行中」→ `update_task` status=in-progress
 - 「調整優先級」→ `update_task` priority
+- 「番茄設成 N」「預估 N 個番茄」→ `update_task` pomodoros=N
 - 需要先用 `list_tasks` 確認 title 才能操作時，再問使用者確認
 
 **scheduled 格式規則**：
