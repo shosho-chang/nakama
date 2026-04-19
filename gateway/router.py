@@ -43,6 +43,23 @@ AGENT_ALIASES: dict[str, str] = {
 # ── Intent 關鍵字（零 LLM 成本）────────────────────────────────────────
 
 INTENT_KEYWORDS: dict[str, list[str]] = {
+    "create_project": [
+        "建立專案",
+        "開專案",
+        "開個專案",
+        "新專案",
+        "做個專案",
+        "建個專案",
+        "建立 project",
+        "開 project",
+        "開個 project",
+        "建個 project",
+        "做個 project",
+        "新 project",
+        "new project",
+        "start a project",
+        "bootstrap a project",
+    ],
     "create_task": ["任務", "提醒", "排程", "待辦", "to-do", "task", "remind"],
     "list_tasks": ["任務清單", "list tasks", "列出任務", "今天有什麼"],
     "keyword_research": ["關鍵字", "keyword", "研究", "趨勢", "trend"],
@@ -52,6 +69,7 @@ INTENT_KEYWORDS: dict[str, list[str]] = {
 }
 
 INTENT_TO_AGENT: dict[str, str] = {
+    "create_project": "nami",
     "create_task": "nami",
     "list_tasks": "nami",
     "keyword_research": "zoro",

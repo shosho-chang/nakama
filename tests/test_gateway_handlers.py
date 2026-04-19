@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 
 from gateway.formatters import format_agent_response, format_event_message
 from gateway.handlers import get_handler, list_agents
-from gateway.handlers.nami import NamiHandler, _extract_frontmatter, _slugify
+from gateway.handlers.nami import (
+    PROJECT_BOOTSTRAP_FLOW,
+    NamiHandler,
+    _extract_frontmatter,
+    _slugify,
+)
 
 # ── Handler registry ──
 
@@ -37,6 +42,7 @@ def test_can_handle_supported():
     handler = NamiHandler()
     assert handler.can_handle("create_task") is True
     assert handler.can_handle("list_tasks") is True
+    assert handler.can_handle("create_project") is True
 
 
 def test_can_handle_unsupported():
@@ -166,6 +172,199 @@ def test_nami_general_dispatch_list():
         result = handler.handle("general", "列出清單", "U123")
 
     assert "沒有待辦" in result.text
+
+
+# ── Nami project_bootstrap flow ──
+
+
+def _parse_result(
+    content_type=None,
+    title="超加工食品",
+    area=None,
+    priority=None,
+    search_topic=None,
+):
+    return json.dumps(
+        {
+            "title": title,
+            "content_type": content_type,
+            "area": area,
+            "priority": priority,
+            "search_topic": search_topic,
+        }
+    )
+
+
+def test_nami_create_project_asks_content_type_when_unknown():
+    """Parser 未能判斷 content_type 時，Nami 反問。"""
+    with (
+        patch("gateway.handlers.nami.ask_claude", return_value=_parse_result(content_type=None)),
+        patch("gateway.handlers.nami.set_current_agent"),
+    ):
+        handler = NamiHandler()
+        result = handler.handle("create_project", "幫我建立一個超加工食品的 project", "U1")
+
+    assert result.continuation is not None
+    assert result.continuation.flow_name == PROJECT_BOOTSTRAP_FLOW
+    assert result.continuation.state["step"] == "awaiting_content_type"
+    assert "youtube" in result.text and "blog" in result.text and "research" in result.text
+    assert "超加工食品" in result.text
+
+
+def test_nami_create_project_skips_to_confirm_when_content_type_known():
+    """Parser 已判斷 content_type 時，直接進 confirm step。"""
+    with (
+        patch(
+            "gateway.handlers.nami.ask_claude",
+            return_value=_parse_result(content_type="research", area="health"),
+        ),
+        patch("gateway.handlers.nami.set_current_agent"),
+    ):
+        handler = NamiHandler()
+        result = handler.handle("create_project", "關於超加工食品的 research project", "U1")
+
+    assert result.continuation is not None
+    assert result.continuation.state["step"] == "awaiting_confirm"
+    assert result.continuation.state["content_type"] == "research"
+    assert "Literature Review" in result.text
+    assert "health" in result.text
+
+
+def test_nami_continue_content_type_parses_reply():
+    """continue_flow 收到 content_type 回覆後進 confirm step。"""
+    with patch("gateway.handlers.nami.set_current_agent"):
+        handler = NamiHandler()
+        state = {
+            "step": "awaiting_content_type",
+            "title": "超加工食品",
+            "area": "work",
+            "priority": "medium",
+            "search_topic": None,
+        }
+        result = handler.continue_flow(PROJECT_BOOTSTRAP_FLOW, state, "research", "U1")
+
+    assert result.continuation.state["step"] == "awaiting_confirm"
+    assert result.continuation.state["content_type"] == "research"
+
+
+def test_nami_continue_content_type_rejects_garbage():
+    """亂打時要重新問，state 保持。"""
+    with patch("gateway.handlers.nami.set_current_agent"):
+        handler = NamiHandler()
+        state = {
+            "step": "awaiting_content_type",
+            "title": "X",
+            "area": "work",
+            "priority": "medium",
+            "search_topic": None,
+        }
+        result = handler.continue_flow(PROJECT_BOOTSTRAP_FLOW, state, "嗯嗯", "U1")
+
+    assert result.continuation is not None
+    assert result.continuation.state["step"] == "awaiting_content_type"
+
+
+def test_nami_continue_confirm_cancel_ends_flow():
+    with patch("gateway.handlers.nami.set_current_agent"):
+        handler = NamiHandler()
+        state = {
+            "step": "awaiting_confirm",
+            "title": "X",
+            "content_type": "research",
+            "area": "work",
+            "priority": "medium",
+            "search_topic": None,
+            "tasks": ["A", "B", "C"],
+        }
+        result = handler.continue_flow(PROJECT_BOOTSTRAP_FLOW, state, "取消", "U1")
+
+    assert result.continuation is None
+    assert "取消" in result.text
+
+
+def test_nami_continue_confirm_executes_subprocess():
+    """使用者回「確認」後 subprocess.run 會被呼叫並回 success。"""
+    fake_stdout = json.dumps(
+        {
+            "project_path": "Projects/超加工食品.md",
+            "task_paths": [
+                "TaskNotes/Tasks/超加工食品 - Literature Review.md",
+                "TaskNotes/Tasks/超加工食品 - Synthesis.md",
+                "TaskNotes/Tasks/超加工食品 - Write-up.md",
+            ],
+            "content_type": "research",
+            "vault_abs_project": "/tmp/vault/Projects/超加工食品.md",
+            "obsidian_uri": "obsidian://open?vault=vault&file=Projects/%E8%B6%85",
+        }
+    )
+    proc = MagicMock(returncode=0, stdout=fake_stdout, stderr="")
+
+    with (
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.subprocess.run", return_value=proc) as mock_run,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        handler = NamiHandler()
+        state = {
+            "step": "awaiting_confirm",
+            "title": "超加工食品",
+            "content_type": "research",
+            "area": "work",
+            "priority": "medium",
+            "search_topic": None,
+            "tasks": ["Literature Review", "Synthesis", "Write-up"],
+        }
+        result = handler.continue_flow(PROJECT_BOOTSTRAP_FLOW, state, "確認", "U1")
+
+    assert result.continuation is None
+    assert "✅" in result.text
+    assert "Projects/超加工食品.md" in result.text
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0][0]
+    assert "--content-type" in args
+    assert "research" in args
+    assert "--tasks" in args
+    mock_emit.assert_called_once()
+    emit_args = mock_emit.call_args[0]
+    assert emit_args[1] == "project_created"
+
+
+def test_nami_continue_confirm_handles_conflict():
+    """Subprocess exit code 2 (ProjectExistsError) → 友善錯誤訊息。"""
+    proc = MagicMock(
+        returncode=2,
+        stdout='{"error": "ProjectExistsError", "detail": "..."}',
+        stderr="",
+    )
+    with (
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.subprocess.run", return_value=proc),
+    ):
+        handler = NamiHandler()
+        state = {
+            "step": "awaiting_confirm",
+            "title": "X",
+            "content_type": "research",
+            "area": "work",
+            "priority": "medium",
+            "search_topic": None,
+            "tasks": ["A", "B", "C"],
+        }
+        result = handler.continue_flow(PROJECT_BOOTSTRAP_FLOW, state, "確認", "U1")
+
+    assert result.continuation is None
+    assert "同名" in result.text or "已有" in result.text
+
+
+def test_nami_unknown_flow_raises_not_implemented():
+    handler = NamiHandler()
+    try:
+        handler.continue_flow("some_other_flow", {}, "hi", "U1")
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError("expected NotImplementedError for unknown flow")
 
 
 # ── Utility functions ──

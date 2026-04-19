@@ -7,8 +7,10 @@ import os
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
+from gateway.conversation_state import get_store
 from gateway.formatters import format_agent_response
 from gateway.handlers import get_handler
+from gateway.handlers.base import HandlerResponse
 from gateway.router import route_mention, route_slash_command
 from shared.config import load_config
 from shared.log import get_logger
@@ -21,6 +23,31 @@ def _get_allowed_channels() -> set[str]:
     cfg = load_config()
     channels = cfg.get("gateway", {}).get("slack", {}).get("channels", {})
     return {v for v in channels.values() if v}
+
+
+def _register_continuation(
+    result: HandlerResponse,
+    *,
+    thread_ts: str | None,
+    channel: str,
+    user_id: str,
+    agent_name: str,
+) -> None:
+    """若 handler 要求接續，註冊到 ConversationStore。"""
+    if result.continuation is None or not thread_ts:
+        return
+    get_store().start(
+        thread_ts=thread_ts,
+        channel=channel,
+        user_id=user_id,
+        agent_name=agent_name,
+        flow_name=result.continuation.flow_name,
+        state=result.continuation.state,
+    )
+    logger.info(
+        f"Continuation registered: thread={thread_ts} agent={agent_name} "
+        f"flow={result.continuation.flow_name}"
+    )
 
 
 def _handle_command(ack, command, respond):
@@ -54,6 +81,9 @@ def _handle_command(ack, command, respond):
 
     result = handler.handle(route.intent, route.text, user_id)
     fallback, blocks = format_agent_response(route.agent, result.text, route.intent)
+    # Slash command 有 continuation 時無法開 thread（respond 沒 ts），以 note 提示
+    if result.continuation is not None:
+        fallback += "\n_（此流程需要多輪回覆；請用 @mention 或 DM 啟動以開 thread）_"
     respond(text=fallback, blocks=blocks)
 
 
@@ -62,6 +92,7 @@ def _handle_mention(event, say):
     text = event.get("text", "")
     user_id = event.get("user", "")
     channel = event.get("channel", "")
+    event_ts = event.get("ts")
 
     logger.info(f"Mention in {channel}: '{text}' from {user_id}")
 
@@ -69,12 +100,62 @@ def _handle_mention(event, say):
     handler = get_handler(route.agent)
 
     if not handler:
-        say(f"Agent `{route.agent}` 尚未上線。", thread_ts=event.get("ts"))
+        say(f"Agent `{route.agent}` 尚未上線。", thread_ts=event_ts)
         return
 
     result = handler.handle(route.intent, route.text, user_id)
     fallback, blocks = format_agent_response(route.agent, result.text, route.intent)
-    say(text=fallback, blocks=blocks, thread_ts=event.get("ts"))
+    say(text=fallback, blocks=blocks, thread_ts=event_ts)
+
+    _register_continuation(
+        result,
+        thread_ts=event_ts,
+        channel=channel,
+        user_id=user_id,
+        agent_name=route.agent,
+    )
+
+
+def _handle_thread_message(event, say, client):
+    """接續 thread 內對話：若 thread_ts 有註冊中的 flow，路由回 handler.continue_flow。"""
+    # 只處理 user 訊息（bot subtype 跳過，不然會自己回自己）
+    if event.get("bot_id") or event.get("subtype") in {"bot_message", "message_changed"}:
+        return
+    thread_ts = event.get("thread_ts")
+    if not thread_ts or thread_ts == event.get("ts"):
+        return  # 非 thread reply
+
+    conv = get_store().get(thread_ts)
+    if conv is None:
+        return  # thread 沒有活躍 flow，放行
+
+    user_id = event.get("user", "")
+    if user_id != conv.user_id:
+        return  # 只認原發起人
+
+    handler = get_handler(conv.agent_name)
+    if handler is None:
+        return
+
+    text = event.get("text", "").strip()
+    logger.info(f"Thread continuation: thread={thread_ts} flow={conv.flow_name} user={user_id}")
+
+    try:
+        result = handler.continue_flow(conv.flow_name, conv.state, text, user_id)
+    except NotImplementedError:
+        logger.warning(
+            f"Handler {conv.agent_name} does not implement continue_flow for flow {conv.flow_name}"
+        )
+        get_store().end(thread_ts)
+        return
+
+    fallback, blocks = format_agent_response(conv.agent_name, result.text, conv.flow_name)
+    say(text=fallback, blocks=blocks, thread_ts=thread_ts)
+
+    if result.continuation is None:
+        get_store().end(thread_ts)
+    else:
+        get_store().update(thread_ts, result.continuation.state)
 
 
 def create_app() -> App:
@@ -87,6 +168,9 @@ def create_app() -> App:
 
     # @mention handler
     app.event("app_mention")(_handle_mention)
+
+    # thread reply handler — 接續多輪 flow
+    app.event("message")(_handle_thread_message)
 
     return app
 
