@@ -81,6 +81,20 @@ class ConversationStore:
             self._evict_expired_locked()
             return len(self._by_thread)
 
+    def get_latest_for_user_and_agent(self, user_id: str, agent_name: str) -> Conversation | None:
+        """找特定 user + agent 的最新活躍 conversation（DM 中 thread_ts 丟失時用）。"""
+        with self._lock:
+            self._evict_expired_locked()
+            # 找同 user + agent、最近活動的 conversation
+            matches = [
+                c
+                for c in self._by_thread.values()
+                if c.user_id == user_id and c.agent_name == agent_name
+            ]
+            if not matches:
+                return None
+            return max(matches, key=lambda c: c.last_activity)
+
     def _evict_expired_locked(self) -> None:
         now = time.time()
         expired = [ts for ts, c in self._by_thread.items() if now - c.last_activity > self._timeout]
