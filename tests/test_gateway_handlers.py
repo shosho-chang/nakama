@@ -607,6 +607,7 @@ def _fake_cal_event(
 
 
 def test_create_calendar_event_happy_path():
+    """預設 also_create_task=True，同時建 calendar + task。"""
     iter_responses = [
         _fake_response(
             "tool_use",
@@ -625,7 +626,7 @@ def test_create_calendar_event_happy_path():
         _fake_response("end_turn", [_text_block("已建立")]),
     ]
 
-    fake_created = _fake_cal_event(title="跟 Angie 開會")
+    fake_created = _fake_cal_event(id_="evt42", title="跟 Angie 開會")
     with (
         patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
@@ -633,6 +634,8 @@ def test_create_calendar_event_happy_path():
             "gateway.handlers.nami.google_calendar.create_event",
             return_value=fake_created,
         ) as mock_create,
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+        patch("gateway.handlers.nami.write_page") as mock_write,
         patch("gateway.handlers.nami.emit") as mock_emit,
         patch("gateway.handlers.nami.kb_log"),
     ):
@@ -645,6 +648,14 @@ def test_create_calendar_event_happy_path():
     assert kwargs["check_conflict"] is True  # force 預設 false
     mock_emit.assert_called_once()
     assert mock_emit.call_args[0][1] == "calendar_event_created"
+    # 驗證 task 同時建立，frontmatter 帶 calendar_event_id + scheduled_end（剝 tz）
+    mock_write.assert_called_once()
+    task_fm = mock_write.call_args.args[1]
+    assert task_fm["calendar_event_id"] == "evt42"
+    assert task_fm["scheduled"] == "2026-04-25T15:00:00"
+    assert task_fm["scheduled_end"] == "2026-04-25T16:00:00"
+    assert task_fm["title"] == "跟 Angie 開會"
+    assert task_fm["status"] == "to-do"
 
 
 def test_create_calendar_event_conflict_returns_error():
@@ -727,12 +738,97 @@ def test_create_calendar_event_force_skips_conflict_check():
             "gateway.handlers.nami.google_calendar.create_event",
             return_value=_fake_cal_event(title="覆蓋排"),
         ) as mock_create,
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+        patch("gateway.handlers.nami.write_page"),
         patch("gateway.handlers.nami.emit"),
         patch("gateway.handlers.nami.kb_log"),
     ):
         NamiHandler().handle("general", "強制排", "U1")
 
     assert mock_create.call_args.kwargs["check_conflict"] is False
+
+
+def test_create_calendar_event_also_create_task_false_skips_task():
+    """also_create_task=false 只建 calendar，不建 task。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "Angie 生日",
+                        "start": "2026-04-25T15:00:00",
+                        "end": "2026-04-25T16:00:00",
+                        "also_create_task": False,
+                    },
+                    id_="toolu_cce4",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    fake_created = _fake_cal_event(id_="evtBday", title="Angie 生日")
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.create_event",
+            return_value=fake_created,
+        ),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.list_files") as mock_list,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "排生日事件", "U1")
+
+    mock_write.assert_not_called()
+    mock_list.assert_not_called()
+
+
+def test_create_calendar_event_task_title_conflict_aborts_before_calendar():
+    """Task 撞名時 pre-check 失敗，不建 calendar（避免孤兒 event）。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "讀書會",
+                        "start": "2026-04-25T15:00:00",
+                        "end": "2026-04-25T16:00:00",
+                    },
+                    id_="toolu_cce5",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("撞名處理完")]),
+    ]
+
+    # 偽造 vault 內已有「讀書會」task
+    fake_task_file = SimpleNamespace(name="讀書會.md", stem="讀書會")
+    existing_content = "---\ntitle: 讀書會\nstatus: to-do\ntags: [task]\n---\n"
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.create_event",
+        ) as mock_create,
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=existing_content),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+    ):
+        NamiHandler().handle("general", "讀書會排 25 號", "U1")
+
+    # calendar 不應被建立（pre-check 前就 abort）
+    mock_create.assert_not_called()
+    mock_write.assert_not_called()
+    mock_emit.assert_not_called()
 
 
 def test_list_calendar_events_today():
@@ -812,6 +908,7 @@ def test_update_calendar_event_by_title():
             "gateway.handlers.nami.google_calendar.update_event",
             return_value=updated,
         ) as mock_update,
+        patch("gateway.handlers.nami.list_files", return_value=[]),  # 無對應 task
         patch("gateway.handlers.nami.emit") as mock_emit,
         patch("gateway.handlers.nami.kb_log"),
     ):
@@ -820,6 +917,113 @@ def test_update_calendar_event_by_title():
     mock_update.assert_called_once()
     assert mock_update.call_args.args[0] == "evt42"
     assert mock_emit.call_args[0][1] == "calendar_event_updated"
+
+
+def test_update_calendar_event_syncs_linked_task():
+    """Calendar event 改時段 → 有 calendar_event_id 的 task 也同步 scheduled/scheduled_end。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_calendar_event",
+                    {
+                        "title": "讀書會",
+                        "start": "2026-04-26T14:00:00",
+                        "end": "2026-04-26T15:00:00",
+                    },
+                    id_="toolu_uce_sync",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evt42", title="讀書會")
+    updated = _fake_cal_event(
+        id_="evt42",
+        title="讀書會",
+        start="2026-04-26T14:00:00+08:00",
+        end="2026-04-26T15:00:00+08:00",
+    )
+
+    fake_task_file = SimpleNamespace(name="讀書會.md", stem="讀書會")
+    task_content = (
+        "---\n"
+        "title: 讀書會\n"
+        "status: to-do\n"
+        "calendar_event_id: evt42\n"
+        "scheduled: 2026-04-25T15:00:00\n"
+        "scheduled_end: 2026-04-25T16:00:00\n"
+        "---\n"
+    )
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[existing],
+        ),
+        patch("gateway.handlers.nami.google_calendar.find_conflicts", return_value=[]),
+        patch(
+            "gateway.handlers.nami.google_calendar.update_event",
+            return_value=updated,
+        ),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=task_content),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "讀書會改到 26 號", "U1")
+
+    mock_write.assert_called_once()
+    new_fm = mock_write.call_args.args[1]
+    assert new_fm["scheduled"] == "2026-04-26T14:00:00"
+    assert new_fm["scheduled_end"] == "2026-04-26T15:00:00"
+    assert new_fm["calendar_event_id"] == "evt42"
+
+
+def test_update_calendar_event_no_linked_task_silent():
+    """Calendar event 沒有對應 task 時，update 不應錯誤也不寫檔。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_calendar_event",
+                    {"title": "讀書會", "start": "2026-04-26T14:00:00"},
+                    id_="toolu_uce_no_task",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evt42", title="讀書會")
+    updated = _fake_cal_event(id_="evt42", title="讀書會", start="2026-04-26T14:00:00+08:00")
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[existing],
+        ),
+        patch("gateway.handlers.nami.google_calendar.find_conflicts", return_value=[]),
+        patch(
+            "gateway.handlers.nami.google_calendar.update_event",
+            return_value=updated,
+        ),
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "讀書會改到 26 號", "U1")
+
+    mock_write.assert_not_called()
 
 
 def test_update_calendar_event_not_found():
@@ -871,6 +1075,7 @@ def test_delete_calendar_event_happy_path():
         patch(
             "gateway.handlers.nami.google_calendar.delete_event",
         ) as mock_delete,
+        patch("gateway.handlers.nami.list_files", return_value=[]),  # 沒對應 task
         patch("gateway.handlers.nami.emit") as mock_emit,
         patch("gateway.handlers.nami.kb_log"),
     ):
@@ -879,6 +1084,196 @@ def test_delete_calendar_event_happy_path():
     mock_delete.assert_called_once_with("evt99")
     assert "刪除" in result.text
     assert mock_emit.call_args[0][1] == "calendar_event_deleted"
+
+
+def test_delete_calendar_event_also_deletes_linked_task():
+    """Calendar event 刪除 → 有 calendar_event_id 的 task 也跟著刪。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("delete_calendar_event", {"title": "讀書會"}, id_="toolu_dce_sync")],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evt42", title="讀書會")
+    fake_task_file = SimpleNamespace(name="讀書會.md", stem="讀書會")
+    task_content = "---\ntitle: 讀書會\nstatus: to-do\ncalendar_event_id: evt42\n---\n"
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[existing],
+        ),
+        patch("gateway.handlers.nami.google_calendar.delete_event"),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=task_content),
+        patch("gateway.handlers.nami.delete_page", return_value=True) as mock_delete_page,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "刪讀書會", "U1")
+
+    mock_delete_page.assert_called_once()
+    deleted_path = mock_delete_page.call_args.args[0]
+    assert "讀書會" in deleted_path
+
+
+def test_delete_calendar_event_task_not_found_silent():
+    """PRD: delete 時找不到對應 task → 靜默跳過，不視為錯誤。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "delete_calendar_event",
+                    {"title": "孤兒事件"},
+                    id_="toolu_dce_orphan",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evtOrphan", title="孤兒事件")
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[existing],
+        ),
+        patch("gateway.handlers.nami.google_calendar.delete_event"),
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+        patch("gateway.handlers.nami.delete_page") as mock_delete_page,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "刪孤兒事件", "U1")
+
+    mock_delete_page.assert_not_called()
+
+
+def test_create_calendar_event_rollback_on_task_write_failure():
+    """Task 寫入失敗 → calendar event 自動 rollback（刪除），避免孤兒事件。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "會議",
+                        "start": "2026-04-25T15:00:00",
+                        "end": "2026-04-25T16:00:00",
+                    },
+                    id_="toolu_rollback",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已 rollback")]),
+    ]
+
+    fake_created = _fake_cal_event(id_="evtRollback", title="會議")
+    captured_results = []
+
+    def _capture(*, messages, tools, system, model):
+        for msg in messages:
+            if isinstance(msg.get("content"), list):
+                for block in msg["content"]:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        captured_results.append(block)
+        return iter_responses.pop(0)
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.create_event",
+            return_value=fake_created,
+        ),
+        patch(
+            "gateway.handlers.nami.google_calendar.delete_event",
+        ) as mock_delete_event,
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+        patch(
+            "gateway.handlers.nami.write_page",
+            side_effect=OSError("disk full"),
+        ),
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "排會議", "U1")
+
+    # 必須觸發 rollback
+    mock_delete_event.assert_called_once_with("evtRollback")
+    # tool_result 應標記 is_error 且提到 rollback
+    assert any(r.get("is_error") and "rollback" in r.get("content", "") for r in captured_results)
+    # 不應 emit created event
+    mock_emit.assert_not_called()
+
+
+def test_update_calendar_event_title_rename_write_before_delete():
+    """Rename 分支：必須先寫新檔，再刪舊檔（避免 write 失敗時 task 遺失）。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_calendar_event",
+                    {"title": "讀書會", "new_title": "讀書新會"},
+                    id_="toolu_rename",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evt42", title="讀書會")
+    updated = _fake_cal_event(
+        id_="evt42",
+        title="讀書新會",
+        start="2026-04-25T15:00:00+08:00",
+        end="2026-04-25T16:00:00+08:00",
+    )
+
+    fake_task_file = SimpleNamespace(name="讀書會.md", stem="讀書會")
+    task_content = "---\ntitle: 讀書會\nstatus: to-do\ncalendar_event_id: evt42\n---\n"
+
+    call_order: list[str] = []
+
+    def _track_write(*args, **kwargs):
+        call_order.append("write")
+
+    def _track_delete(*args, **kwargs):
+        call_order.append("delete")
+        return True
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[existing],
+        ),
+        patch(
+            "gateway.handlers.nami.google_calendar.update_event",
+            return_value=updated,
+        ),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=task_content),
+        patch("gateway.handlers.nami.write_page", side_effect=_track_write),
+        patch("gateway.handlers.nami.delete_page", side_effect=_track_delete),
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "讀書會改名成讀書新會", "U1")
+
+    # 必須先 write，再 delete — 若 write 失敗舊檔還在
+    assert call_order == ["write", "delete"], f"expected write-then-delete, got {call_order}"
 
 
 def test_calendar_tool_auth_error_returns_graceful_message():
