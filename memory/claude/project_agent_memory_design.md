@@ -76,4 +76,23 @@ CREATE INDEX idx_memory_lookup ON agent_memory(agent, user_id, subject);
 - type 可能被 Haiku 重判（fact ↔ preference）
 - ConversationStore 仍是 in-memory，restart 丟失 active conversations（記憶本身持久 OK）
 
-**下一步**：Phase 4 Bridge UI（編輯/刪除記憶 + cost tracking 一起做）
+## Phase 4 進度（2026-04-20）
+
+**PR-A backend merged（PR #41, commit 73a064c）**
+
+- PRD: `docs/prds/phase-4-bridge-ui.md`（Approved for implementation，10 個設計決策 A-J 全採推薦選項）
+- 實作：`shared/pricing.py`（價目表 + env override）+ `api_calls` schema migration（補 cache_read/write_tokens 欄位）+ `shared/agent_memory.py` get/update/list_agents_with_memory + `thousand_sunny/routers/bridge.py`（memory CRUD + cost overview API）
+- 順手修掉隱藏 bug：`record_api_call` 之前把 Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens` 丟掉，現在會存
+- 測試：59 新 + 全 457 pass，code review 7 issue 全 < 80 無 blocker
+
+**Q4 關鍵設計決定**：Tier 3 `memories` 表（ADR-002 agent run 日記）**不進本頁**，UI 位置也不預留。理由：量級（幾千筆 vs <50）、修改需求、搜尋需求完全不同。未來若要管獨立做 `/bridge/runs` timeline page，適合進 Deck Dashboard。
+
+**剩下的工作**：
+- PR-B：Memory 頁 UI（Jinja template + agent tabs + 編輯 modal + delete confirm，~0.5 天）
+- PR-C：Cost dashboard 頁 UI（range selector + Chart.js stacked bar，~0.5 天）
+- VPS 部署（PR-C merge 後一起；`api_calls` migration 自動跑，舊資料 cache 欄位 default 0 相容）
+- Tech debt follow-up（review 抓到但未擋 merge）：
+  1. `agent_memory.update` 加 `conn.rollback()` after IntegrityError
+  2. `MemoryUpdate.type` 改 `Literal[]` + `agent_memory.add/update` enum check
+  3. `shared/pricing.py` 模組 docstring lookup order 跟 function docstring 衝突
+  4. `get_cost_summary` docstring 漏新加的 cache 欄位

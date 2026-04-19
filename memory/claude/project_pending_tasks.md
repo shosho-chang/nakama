@@ -123,6 +123,19 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
   - code-review 抓到 3 bug 同 branch 修：缺 `load_dotenv()` / SKILL.md「5 steps」誤標 / CLI 缺 elapsed time
   - 順手清 PR #29 的 2 個 CI 債
 
+**Phase 4 Bridge UI（PR #41 PR-A merged，2026-04-20）：**
+- ✅ PR-A backend：`shared/pricing.py` + `api_calls` schema migration（cache tokens 補登）+ `shared/agent_memory.py` get/update/list_agents + `thousand_sunny/routers/bridge.py`（memory CRUD + cost API）
+- ✅ 59 個新測試（pricing / cost tracking / memory update-family / bridge router）— 全 457 tests pass
+- ✅ Code review PASS（7 issue 全部 Haiku score < 80，無 blocker）
+- ⬜ **PR-B：Memory 頁 UI**（`thousand_sunny/templates/bridge/memory.html` + agent tabs + 編輯 modal + delete confirm）
+- ⬜ **PR-C：Cost dashboard 頁 UI**（range selector + Chart.js stacked bar + agent×model 表）
+- ⬜ **VPS 部署**（PR-C merge 後一起部署；`api_calls` migration 會自動跑）
+- ⬜ **Tech debt follow-up**（review 抓到但未擋 merge）：
+  - `agent_memory.update` 加 `conn.rollback()` after IntegrityError（score 68，singleton conn dirty tx）
+  - `MemoryUpdate.type` 改 `Literal["preference","fact","decision","project"]`（score 60；`agent_memory.add/update` 也可順手加 enum check）
+  - `shared/pricing.py` 模組 docstring lookup order 跟 function docstring 衝突（module 寫 env 是 step 3，實際是 step 1）
+  - `get_cost_summary` docstring 漏新加的 cache 欄位
+
 **Nami Google Calendar 整合（PR #39 已 merge + VPS deployed，2026-04-19）：**
 - ✅ 4 個 Calendar tools（create/list/update/delete_calendar_event）+ 衝突偵測
 - ✅ OAuth 2.0 user-consent + token refresh/persist（filelock 保護）
@@ -135,7 +148,7 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - Zoro 其餘功能 — PubMed / KOL 追蹤
 - Brook Phase 2 — SSE streaming、風格參考庫、Prompt Caching、匯出到 Vault
 - PubMed 整合 — 修修有 n8n RSS 工作流，預計用於其他功能，不是 Zoro
-- Memory Phase 4 Bridge UI — 編輯/刪除記憶 + cost tracking dashboard（待 Calendar-Task 同步完成後做）
+- Memory Phase 4 Bridge UI — ✅ **PR-A backend merged 2026-04-20 (#41, commit 73a064c)**；下面是剩下的工作
 
 **基礎建設 — 補測試覆蓋率：**
 - Robin 核心流程（ingest、kb_search）

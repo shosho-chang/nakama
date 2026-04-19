@@ -6,6 +6,8 @@ originSessionId: b5636c88-2145-418f-b98f-ef364ae150df
 ---
 **規則：PR 開完 → 自動跑 code-review skill → 依 PR 類型分級決定是否自動 merge**
 
+**不要再問「要不要跑 review」** — 2026-04-20 修修再次確認 review 授權給我自己跑，不用先問。只有 merge 這一步才要停下等授權（依分級）。
+
 **Why:** 修修想減少重複指令，但 main 幾乎等同 pre-prod（VPS 從 main pull 部署）。PR #13 是前車之鑑：review 沒擋下 auth 被鎖在 Robin router 裡，merge 後 VPS restart 直接弄壞 Brook。所以用**分級**而非二元：低風險完全自動，高風險保留人工 checkpoint。
 
 **How to apply:**
