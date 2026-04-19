@@ -207,3 +207,75 @@ def test_prune_removes_low_confidence():
     mems = agent_memory.list_all("nami", "U1")
     assert len(mems) == 1
     assert mems[0].subject == "high"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 Bridge UI — get / update / list_agents_with_memory
+# ---------------------------------------------------------------------------
+
+
+def test_get_returns_memory_by_id():
+    mid = agent_memory.add("nami", "U1", "fact", "A", "content A")
+    m = agent_memory.get(mid)
+    assert m is not None
+    assert m.id == mid
+    assert m.content == "content A"
+
+
+def test_get_returns_none_for_unknown_id():
+    assert agent_memory.get(99999) is None
+
+
+def test_update_content_only():
+    mid = agent_memory.add("nami", "U1", "preference", "work", "old content")
+    updated = agent_memory.update(mid, content="new content")
+    assert updated is not None
+    assert updated.content == "new content"
+    assert updated.type == "preference"  # preserved
+    assert updated.subject == "work"
+
+
+def test_update_type_and_confidence():
+    mid = agent_memory.add("nami", "U1", "preference", "work", "x")
+    updated = agent_memory.update(mid, type="fact", confidence=0.4)
+    assert updated.type == "fact"
+    assert updated.confidence == 0.4
+
+
+def test_update_rejects_invalid_confidence():
+    mid = agent_memory.add("nami", "U1", "fact", "x", "y")
+    with pytest.raises(ValueError):
+        agent_memory.update(mid, confidence=1.5)
+    with pytest.raises(ValueError):
+        agent_memory.update(mid, confidence=-0.1)
+
+
+def test_update_unknown_id_returns_none():
+    assert agent_memory.update(99999, content="x") is None
+
+
+def test_update_subject_collision_raises():
+    agent_memory.add("nami", "U1", "fact", "subj_a", "a")
+    mid_b = agent_memory.add("nami", "U1", "fact", "subj_b", "b")
+    with pytest.raises(ValueError, match="subject collision"):
+        agent_memory.update(mid_b, subject="subj_a")
+
+
+def test_update_noop_returns_current_memory():
+    mid = agent_memory.add("nami", "U1", "fact", "x", "y")
+    result = agent_memory.update(mid)  # nothing to update
+    assert result is not None
+    assert result.id == mid
+
+
+def test_list_agents_with_memory_returns_distinct_sorted():
+    agent_memory.add("zoro", "U1", "fact", "a", "1")
+    agent_memory.add("nami", "U1", "fact", "b", "2")
+    agent_memory.add("nami", "U1", "fact", "c", "3")
+
+    agents = agent_memory.list_agents_with_memory()
+    assert agents == ["nami", "zoro"]
+
+
+def test_list_agents_with_memory_empty():
+    assert agent_memory.list_agents_with_memory() == []

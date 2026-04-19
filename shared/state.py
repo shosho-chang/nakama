@@ -48,14 +48,20 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS api_calls (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            agent         TEXT NOT NULL,
-            run_id        INTEGER,
-            model         TEXT NOT NULL,
-            input_tokens  INTEGER NOT NULL,
-            output_tokens INTEGER NOT NULL,
-            called_at     TEXT NOT NULL
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent               TEXT NOT NULL,
+            run_id              INTEGER,
+            model               TEXT NOT NULL,
+            input_tokens        INTEGER NOT NULL,
+            output_tokens       INTEGER NOT NULL,
+            cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
+            cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+            called_at           TEXT NOT NULL
         );
+        CREATE INDEX IF NOT EXISTS idx_api_calls_agent_time
+            ON api_calls(agent, called_at);
+        CREATE INDEX IF NOT EXISTS idx_api_calls_time
+            ON api_calls(called_at);
 
         CREATE TABLE IF NOT EXISTS scout_seen (
             source      TEXT NOT NULL,
@@ -115,6 +121,17 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent);
         CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
     """)
+
+    # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
+    # ALTER TABLE ADD COLUMN 沒有 IF NOT EXISTS 語法，用 try/except 補。
+    for col_ddl in (
+        "ALTER TABLE api_calls ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE api_calls ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0",
+    ):
+        try:
+            conn.execute(col_ddl)
+        except sqlite3.OperationalError:
+            pass  # 欄位已存在
 
     # FTS5 虛擬表需要獨立建立（不支援 IF NOT EXISTS 語法）
     try:
@@ -235,16 +252,35 @@ def record_api_call(
     input_tokens: int,
     output_tokens: int,
     run_id: Optional[int] = None,
+    *,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
 ) -> None:
-    """記錄一次 Claude API 呼叫的 token 用量。"""
+    """記錄一次 Claude API 呼叫的 token 用量。
+
+    ``input_tokens`` / ``output_tokens`` 對應 Anthropic response.usage 的
+    input_tokens / output_tokens（thinking tokens 已含在 output）。
+    Cache tokens 來自 ``cache_read_input_tokens`` / ``cache_creation_input_tokens``。
+    """
     conn = _get_conn()
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
-        """INSERT INTO api_calls (agent, run_id, model, input_tokens, output_tokens, called_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (agent, run_id, model, input_tokens, output_tokens, now),
+        """INSERT INTO api_calls
+              (agent, run_id, model, input_tokens, output_tokens,
+               cache_read_tokens, cache_write_tokens, called_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            agent,
+            run_id,
+            model,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+            now,
+        ),
     )
-    # 同步累加到 agent_runs
+    # 同步累加到 agent_runs（只累計 input/output，cache 統計查 api_calls 即可）
     if run_id is not None:
         conn.execute(
             """UPDATE agent_runs
@@ -271,30 +307,81 @@ def get_cost_summary(agent: Optional[str] = None, days: int = 7) -> list[dict]:
 
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
+    select = """SELECT agent, model,
+                       COUNT(*) as calls,
+                       SUM(input_tokens) as input_tokens,
+                       SUM(output_tokens) as output_tokens,
+                       SUM(cache_read_tokens) as cache_read_tokens,
+                       SUM(cache_write_tokens) as cache_write_tokens
+                FROM api_calls"""
     if agent:
         rows = conn.execute(
-            """SELECT agent, model,
-                      COUNT(*) as calls,
-                      SUM(input_tokens) as input_tokens,
-                      SUM(output_tokens) as output_tokens
-               FROM api_calls
-               WHERE agent = ? AND called_at >= ?
-               GROUP BY agent, model
-               ORDER BY calls DESC""",
+            f"""{select}
+                WHERE agent = ? AND called_at >= ?
+                GROUP BY agent, model
+                ORDER BY calls DESC""",
             (agent, since),
         ).fetchall()
     else:
         rows = conn.execute(
-            """SELECT agent, model,
-                      COUNT(*) as calls,
-                      SUM(input_tokens) as input_tokens,
-                      SUM(output_tokens) as output_tokens
-               FROM api_calls
-               WHERE called_at >= ?
-               GROUP BY agent, model
-               ORDER BY calls DESC""",
+            f"""{select}
+                WHERE called_at >= ?
+                GROUP BY agent, model
+                ORDER BY calls DESC""",
             (since,),
         ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def get_cost_timeseries(
+    *,
+    agent: Optional[str] = None,
+    days: int = 7,
+    bucket: str = "day",
+) -> list[dict]:
+    """回傳時間序列的 token 用量，按 agent × model × bucket 聚合。
+
+    Args:
+        agent:  過濾特定 agent，None 表示全部
+        days:   統計最近幾天
+        bucket: "day" 或 "hour"
+
+    Returns:
+        列表，每筆含 bucket (ISO str)、agent、model、tokens 欄位
+    """
+    if bucket not in ("day", "hour"):
+        raise ValueError(f"bucket must be 'day' or 'hour', got {bucket!r}")
+
+    conn = _get_conn()
+    from datetime import timedelta
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    # SQLite substr 切 ISO8601：'2026-04-19T03:15:22...' → day 取前 10 碼、hour 取前 13 碼 + ':00'
+    bucket_expr = (
+        "substr(called_at, 1, 10)" if bucket == "day" else "substr(called_at, 1, 13) || ':00'"
+    )
+
+    params: list = [since]
+    where = "called_at >= ?"
+    if agent:
+        where += " AND agent = ?"
+        params.append(agent)
+
+    rows = conn.execute(
+        f"""SELECT {bucket_expr} as bucket,
+                   agent, model,
+                   COUNT(*) as calls,
+                   SUM(input_tokens) as input_tokens,
+                   SUM(output_tokens) as output_tokens,
+                   SUM(cache_read_tokens) as cache_read_tokens,
+                   SUM(cache_write_tokens) as cache_write_tokens
+            FROM api_calls
+            WHERE {where}
+            GROUP BY bucket, agent, model
+            ORDER BY bucket ASC, agent ASC""",
+        params,
+    ).fetchall()
 
     return [dict(row) for row in rows]
 

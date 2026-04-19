@@ -71,6 +71,8 @@ def ask_claude(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             run_id=run_id,
+            cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+            cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
         )
     except Exception:
         pass  # cost tracking 失敗不影響主流程
@@ -134,6 +136,8 @@ def call_claude_with_tools(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             run_id=run_id,
+            cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+            cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
         )
     except Exception:
         pass
@@ -194,6 +198,8 @@ def ask_claude_multi(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             run_id=run_id,
+            cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+            cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
         )
     except Exception:
         pass  # cost tracking 失敗不影響主流程
