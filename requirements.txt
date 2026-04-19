@@ -44,3 +44,7 @@ python-multipart>=0.0.9
 # Slack Gateway
 slack-bolt>=1.18.0
 slack-sdk>=3.27.0
+
+# Nami: Google Calendar
+google-auth-oauthlib>=1.2.0        # OAuth consent flow（user-consent, not service account）
+filelock>=3.13.0                   # Token file rotate 時的併發保護
