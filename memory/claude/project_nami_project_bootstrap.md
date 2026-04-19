@@ -38,7 +38,6 @@ cd /home/nakama && git pull && systemctl restart nakama-gateway
 ## 下一步
 - ⬜ VPS git pull 更新（含 update_task + DM/channel reply 修復）
 - ⬜ morning-brief 功能（Nami 主動推送）
-- ⬜ delete_task / delete_project（低優先，用戶目前手動刪）
 
 ## 已知限制
 - ConversationStore 是 in-memory，重啟後狀態清掉
