@@ -912,7 +912,33 @@ class NamiHandler(BaseHandler):
         event = result
         task_path_display = ""
         if also_create_task and task_rel_path is not None:
-            self._write_calendar_linked_task(task_rel_path, event)
+            try:
+                self._write_calendar_linked_task(task_rel_path, event)
+            except Exception as e:
+                # Task 寫入失敗 → rollback calendar 避免孤兒事件
+                logger.exception(
+                    f"Task write failed after calendar create; rolling back event {event.id}"
+                )
+                try:
+                    google_calendar.delete_event(event.id)
+                except Exception:
+                    logger.exception(
+                        f"Rollback delete_event({event.id}) also failed — orphan event remains"
+                    )
+                    return _ToolOutcome(
+                        content=(
+                            f"Calendar 已建立但 task 寫入失敗（{e}），"
+                            f"自動 rollback 也失敗。請手動刪除 Calendar 事件「{event.title}」。"
+                        ),
+                        is_error=True,
+                    )
+                return _ToolOutcome(
+                    content=(
+                        f"Task 寫入失敗（{e}），Calendar 事件已 rollback。"
+                        " 請檢查 vault 狀態後再試。"
+                    ),
+                    is_error=True,
+                )
             task_path_display = f"\n   📝 Task：{task_rel_path}"
 
         summary = (
@@ -1095,9 +1121,11 @@ class NamiHandler(BaseHandler):
         fm["dateModified"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         fm = _stringify_fm_dates(fm)
 
+        # Write-then-delete 順序：先寫新檔，成功後才刪舊檔。若 write 拋例外，舊檔還在，
+        # task 不會遺失。
+        write_page(new_rel, fm, body)
         if new_rel != rel_path:
             delete_page(rel_path)
-        write_page(new_rel, fm, body)
         return f"\n   📝 Task 同步更新：{new_rel}"
 
     def _tool_delete_calendar_event(self, input_: dict) -> _ToolOutcome:
