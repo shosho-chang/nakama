@@ -1,6 +1,6 @@
 ---
 name: Agent Memory 設計 — 自建 SQLite 三層架構
-description: 放棄 MemPalace 後的自建記憶系統：Working + Episodic（Slack）+ Semantic（SQLite）
+description: Phase 1-4 全完成（Phase 4 Bridge UI + hub 2026-04-20 部署）；三層架構 + Bridge /bridge/memory + /bridge/cost + /bridge landing
 type: project
 tags: [memory, agent, sqlite, nami, cross-agent]
 created: 2026-04-19
@@ -96,3 +96,18 @@ CREATE INDEX idx_memory_lookup ON agent_memory(agent, user_id, subject);
   2. `MemoryUpdate.type` 改 `Literal[]` + `agent_memory.add/update` enum check
   3. `shared/pricing.py` 模組 docstring lookup order 跟 function docstring 衝突
   4. `get_cost_summary` docstring 漏新加的 cache 欄位
+
+## 2026-04-20 — Phase 4 全部完成
+
+- **PR #42 Memory UI**（commit e39edb2）：`/bridge/memory` + agent tabs + edit modal + delete confirm；code-review 92/100
+- **PR #44 Cost UI**（commit 717069f）：`/bridge/cost` + 24h/7d/30d range + Chart.js stacked bar + breakdown table；code-review 88/100
+- **PR #45 Bridge Hub**（commit a28c3eb）：`/bridge` landing 4-tile hub (Memory/Cost/Brook/Robin)，Robin tile 在 `DISABLE_ROBIN=1` 下 greyed out；解決 header「Home」誤連到 Brook 的問題
+- VPS 全部部署並 smoke-test 通過（thousand-sunny restart）；近 7d cost $2.93（Nami Sonnet 66 calls/$0.30）
+
+**踩到的坑**：
+- VPS `.env` 沒設 `SLACK_USER_ID_SHOSHO`，`_default_user_id()` fallback 到 `"shosho"` 查不到 Nami 真實 user_id `U05F841H127`。修修手動補了 env 後正常。未來 agent 加 user-scoped filter 時要檢查 VPS 是否有對應 env
+- 合 PR-B 時 `--delete-branch` 連帶把 PR-C 的 base branch 砍掉，PR-C 變 CLOSED / CONFLICTING 無法 reopen，必須 rebase + 另開新 PR #44
+
+**Tier 3 `memories` 表**仍未接 UI（PRD §2 Q4 凍結的決定）；未來若要管改做獨立 `/bridge/runs` timeline page
+
+**Deck Dashboard**：Bridge hub 當作最小 placeholder，等其他 agent 成熟再決定 hub 要不要升級成完整 dashboard（project_deck_dashboard_idea.md）

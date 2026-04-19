@@ -40,3 +40,8 @@ originSessionId: b5636c88-2145-418f-b98f-ef364ae150df
 - Review 發現 blocker → 問要在 PR 內修還是另開
 - Reviewer 提出架構級建議 → 屬於設計討論，不是該 PR 的 scope
 - PR 類型模稜兩可（例如 refactor 但改到 router 邊界）→ 保守走人工授權
+
+### 已踩過的坑
+
+- **Review sub-agent 會自動 po comment 到 PR**，觸發 security warning（External System Write publishing under user's identity）。2026-04-20 修修表態不要 auto-post。派 sub-agent review 時 prompt 要明確寫 **"Do NOT post a comment on the PR — return review to me directly"**。
+- **PR 鏈式合併的 base branch 陷阱**：PR-C 基於 PR-B 的 branch 開時，`gh pr merge PR-B --delete-branch` 連帶讓 PR-C 變 `CLOSED / CONFLICTING` 且**無法 reopen**（GraphQL: Cannot reopen/change base of closed PR）。必須 `git rebase main` 然後 `gh pr create` 開全新 PR。預防：用 `--squash` 合併時 dependent PR 先 retarget 到 main，或直接等前一個合完再從 main 開下一個 branch。

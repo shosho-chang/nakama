@@ -49,8 +49,9 @@
 - [project_nami_agent_loop_plan.md](project_nami_agent_loop_plan.md) — Nami agent loop 四個 Phase 規劃（Phase 0 已完成）
 - [feedback_traditional_chinese.md](feedback_traditional_chinese.md) — 所有對話必須用繁體中文（台灣語境），不能切成簡體
 - [project_agent_cost_tracking.md](project_agent_cost_tracking.md) — Agent 用量/費用追蹤：data/usage_log.jsonl，供 Bridge 儀表板顯示（待實作）
-- [project_agent_memory_design.md](project_agent_memory_design.md) — Agent 記憶 Phase 1-3 已部署 VPS + Phase 4 PR-A backend merged (#41)，待 PR-B/C UI
+- [project_agent_memory_design.md](project_agent_memory_design.md) — Agent 記憶 Phase 1-4 全部完成並 VPS 部署：/bridge landing + /bridge/memory + /bridge/cost
 - [feedback_llm_memory_extraction.md](feedback_llm_memory_extraction.md) — LLM 抽取記憶兩個坑：subject 去重要注入既有列表、content merge 要注入既有內容
 - [feedback_test_api_isolation.md](feedback_test_api_isolation.md) — 背景 LLM call 用 conftest autouse mock + pytest marker 例外，避免測試打真 API
 - [feedback_py_spy_gateway_diagnosis.md](feedback_py_spy_gateway_diagnosis.md) — Gateway 卡住用 py-spy dump --pid 看 thread stack
 - [feedback_windows_abs_path_silent.md](feedback_windows_abs_path_silent.md) — Windows 把 POSIX 絕對路徑默默解到當前磁碟根，CI Linux 才炸；conftest autouse isolate
+- [feedback_vps_env_drift_check.md](feedback_vps_env_drift_check.md) — 新 feature 的 env fallback 上 VPS 前要確認 .env 有對應 key，避免靜默 fallback 到無用預設值
