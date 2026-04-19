@@ -43,3 +43,6 @@
 - [project_lifeos_template_drift.md](project_lifeos_template_drift.md) — tpl-project.md / tpl-action.md 過時，gold standard 是 Projects/肌酸的妙用.md
 - [project_chopper_community_qa.md](project_chopper_community_qa.md) — Chopper：community 平台健康問答 + KB 查詢 + 會員記憶，待開發（平台/記憶/問答三大挑戰）
 - [feedback_agent_personality.md](feedback_agent_personality.md) — Agent 角色個性用正面描述 + few-shot，不用禁止清單；用戶確認這個方向
+- [project_nami_vps_deployed.md](project_nami_vps_deployed.md) — Nami Slack Bot VPS 部署設定、Socket Mode 踩坑記錄
+- [project_nami_agent_loop_plan.md](project_nami_agent_loop_plan.md) — Nami agent loop 四個 Phase 規劃（Phase 0 已完成）
+- [feedback_traditional_chinese.md](feedback_traditional_chinese.md) — 所有對話必須用繁體中文（台灣語境），不能切成簡體

@@ -36,18 +36,27 @@ def _register_continuation(
     """若 handler 要求接續，註冊到 ConversationStore。"""
     if result.continuation is None or not thread_ts:
         return
-    get_store().start(
-        thread_ts=thread_ts,
-        channel=channel,
-        user_id=user_id,
-        agent_name=agent_name,
-        flow_name=result.continuation.flow_name,
-        state=result.continuation.state,
-    )
-    logger.info(
-        f"Continuation registered: thread={thread_ts} agent={agent_name} "
-        f"flow={result.continuation.flow_name}"
-    )
+    store = get_store()
+    if store.get(thread_ts) is not None:
+        # 已有活躍 conversation（如 end_turn 後用戶再次 @mention），只更新 state
+        store.update(thread_ts, result.continuation.state)
+        logger.info(
+            f"Continuation updated: thread={thread_ts} agent={agent_name} "
+            f"flow={result.continuation.flow_name}"
+        )
+    else:
+        store.start(
+            thread_ts=thread_ts,
+            channel=channel,
+            user_id=user_id,
+            agent_name=agent_name,
+            flow_name=result.continuation.flow_name,
+            state=result.continuation.state,
+        )
+        logger.info(
+            f"Continuation registered: thread={thread_ts} agent={agent_name} "
+            f"flow={result.continuation.flow_name}"
+        )
 
 
 def _handle_command(ack, command, respond):

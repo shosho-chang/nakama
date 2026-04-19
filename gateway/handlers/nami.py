@@ -13,12 +13,12 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from gateway.handlers.base import BaseHandler, Continuation, HandlerResponse
 from shared.anthropic_client import call_claude_with_tools, set_current_agent
@@ -197,7 +197,8 @@ class NamiHandler(BaseHandler):
 
     def handle(self, intent: str, text: str, user_id: str) -> HandlerResponse:
         set_current_agent("nami")
-        messages: list[dict] = [{"role": "user", "content": text}]
+        date_context = _build_date_context()
+        messages: list[dict] = [{"role": "user", "content": f"{date_context}\n\n{text}"}]
         return self._run_loop(messages, user_id)
 
     def continue_flow(
@@ -240,39 +241,10 @@ class NamiHandler(BaseHandler):
 
     def _run_loop(self, messages: list[dict], user_id: str) -> HandlerResponse:
         try:
-            base_prompt = load_prompt("nami", "agent_system")
+            system_prompt = load_prompt("nami", "agent_system")
         except FileNotFoundError:
             logger.error("agent_system prompt missing — fallback to minimal system")
-            base_prompt = "你是 Nami，修修的 LifeOS 任務助手。用繁體中文。"
-
-        from datetime import timedelta
-
-        now_local = datetime.now()  # VPS 跑台灣時區 (UTC+8)，用本地時間
-        weekday_zh_map = {
-            0: "週一",
-            1: "週二",
-            2: "週三",
-            3: "週四",
-            4: "週五",
-            5: "週六",
-            6: "週日",
-        }
-        today_str = now_local.strftime("%Y-%m-%d")
-        today_zh = weekday_zh_map[now_local.weekday()]
-        # 未來 14 天日期表，讓 LLM 直接查表而不要自行推算
-        date_lines = []
-        for i in range(14):
-            d = now_local + timedelta(days=i)
-            label = "今天" if i == 0 else ("明天" if i == 1 else "")
-            zh = weekday_zh_map[d.weekday()]
-            suffix = f"（{label}）" if label else ""
-            date_lines.append(f"  {d.strftime('%Y-%m-%d')} {zh}{suffix}")
-        date_table = "\n".join(date_lines)
-        system_prompt = (
-            f"{base_prompt}\n\n## 今日資訊\n"
-            f"今天是 {today_str}（{today_zh}）。\n\n"
-            f"未來 14 天日期對照表（直接查，不要自行推算）：\n{date_table}"
-        )
+            system_prompt = "你是 Nami，修修的 LifeOS 任務助手。用繁體中文。"
 
         for _ in range(_MAX_ITERS):
             response = call_claude_with_tools(
@@ -494,6 +466,26 @@ class NamiHandler(BaseHandler):
 # ── Utilities ────────────────────────────────────────────────────────
 
 
+def _build_date_context() -> str:
+    """今日日期資訊，注入到 user message（而非 system）以保持 system prompt 可快取。"""
+    _weekday_zh = {0: "週一", 1: "週二", 2: "週三", 3: "週四", 4: "週五", 5: "週六", 6: "週日"}
+    now = datetime.now(ZoneInfo("Asia/Taipei"))
+    today_str = now.strftime("%Y-%m-%d")
+    today_zh = _weekday_zh[now.weekday()]
+    date_lines = []
+    for i in range(14):
+        d = now + timedelta(days=i)
+        label = "今天" if i == 0 else ("明天" if i == 1 else "")
+        suffix = f"（{label}）" if label else ""
+        date_lines.append(f"  {d.strftime('%Y-%m-%d')} {_weekday_zh[d.weekday()]}{suffix}")
+    date_table = "\n".join(date_lines)
+    return (
+        f"## 今日資訊\n"
+        f"今天是 {today_str}（{today_zh}）。\n\n"
+        f"未來 14 天日期對照表（直接查，不要自行推算）：\n{date_table}"
+    )
+
+
 def _slugify(title: str) -> str:
     slug = re.sub(r"[^\w\u4e00-\u9fff\-]", " ", title)
     slug = re.sub(r"\s+", "-", slug.strip())
@@ -527,6 +519,3 @@ def _to_vault_relative(path: Path) -> str:
 # ── Deprecated alias（for backward-compat with old tests/imports） ─────
 
 PROJECT_BOOTSTRAP_FLOW = NAMI_AGENT_FLOW  # 舊 flow name；保留以免 break import
-
-# avoid unused import warnings when json is not referenced directly
-_ = json
