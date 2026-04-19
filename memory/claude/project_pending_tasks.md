@@ -123,11 +123,19 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
   - code-review 抓到 3 bug 同 branch 修：缺 `load_dotenv()` / SKILL.md「5 steps」誤標 / CLI 缺 elapsed time
   - 順手清 PR #29 的 2 個 CI 債
 
+**Nami Google Calendar 整合（PR #39 已 merge + VPS deployed，2026-04-19）：**
+- ✅ 4 個 Calendar tools（create/list/update/delete_calendar_event）+ 衝突偵測
+- ✅ OAuth 2.0 user-consent + token refresh/persist（filelock 保護）
+- ✅ VPS 實戰驗證：token rotate + persist OK、API 通、事件正確列出
+- ✅ Slack E2E 實測通過：create/list/update/delete 全正常
+- ⬜ **下一步：Calendar × Task 單向同步**（PRD approved，見 `project_nami_calendar_task_sync.md`）
+
 **待開發（agent 功能）：**
 - Nami（航海士）— 消費 Robin/Franky 事件，產出 Morning Brief
 - Zoro 其餘功能 — PubMed / KOL 追蹤
 - Brook Phase 2 — SSE streaming、風格參考庫、Prompt Caching、匯出到 Vault
 - PubMed 整合 — 修修有 n8n RSS 工作流，預計用於其他功能，不是 Zoro
+- Memory Phase 4 Bridge UI — 編輯/刪除記憶 + cost tracking dashboard（待 Calendar-Task 同步完成後做）
 
 **基礎建設 — 補測試覆蓋率：**
 - Robin 核心流程（ingest、kb_search）

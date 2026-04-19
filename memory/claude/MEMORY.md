@@ -9,6 +9,7 @@
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — Robin /kb/research endpoint 未測試
 - [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 放棄觀望（2026-04-19 結論）：CJK 只改一半 + 無 auto-extraction + API churn
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
+- [reference_vps_ssh.md](reference_vps_ssh.md) — VPS SSH alias `nakama-vps` → root@202.182.107.202
 - [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」三字當 trigger → 自動存記憶 + commit & push
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
 - [project_plugins_installed.md](project_plugins_installed.md) — 已安裝 6 個 Claude Code plugin（含 playwright、firecrawl）+ 評估不裝清單
@@ -39,7 +40,8 @@
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
 - [feedback_open_source_ready.md](feedback_open_source_ready.md) — 所有功能都可能個別開源，開發時保留參數化與擴充點；每個可開源單位需有 capability card（能力/IO/實測成本）
 - [project_bilingual_reader_design.md](project_bilingual_reader_design.md) — 雙語閱讀三場景設計凍結：BabelDOC+Docling雙路線、Claude Sonnet翻譯、台灣術語表、輕量Annotation
-- [project_nami_project_bootstrap.md](project_nami_project_bootstrap.md) — feat/nami-agent-loop 完成：LLM agent loop + VPS 已部署實測，待 PR merge
+- [project_nami_project_bootstrap.md](project_nami_project_bootstrap.md) — Nami 11 tools（含 Google Calendar 4 tools）全 merged + VPS deployed + Calendar E2E 實測通過
+- [project_nami_calendar_task_sync.md](project_nami_calendar_task_sync.md) — 下一步：Calendar × Task 單向同步 PRD approved，待 Phase 2/3
 - [project_lifeos_template_drift.md](project_lifeos_template_drift.md) — tpl-project.md / tpl-action.md 過時，gold standard 是 Projects/肌酸的妙用.md
 - [project_chopper_community_qa.md](project_chopper_community_qa.md) — Chopper：community 平台健康問答 + KB 查詢 + 會員記憶，待開發（平台/記憶/問答三大挑戰）
 - [feedback_agent_personality.md](feedback_agent_personality.md) — Agent 角色個性用正面描述 + few-shot，不用禁止清單；用戶確認這個方向

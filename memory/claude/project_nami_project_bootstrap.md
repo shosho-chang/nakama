@@ -1,13 +1,13 @@
 ---
 name: Nami Agent Loop — 主線狀態
-description: LLM tool-use agent loop + 5 tools，全部 merge 至 main，VPS 待 git pull
+description: LLM tool-use agent loop + 11 tools（含 Google Calendar），全部 merge + VPS deployed
 type: project
 tags: [nami, agent-loop, tool-use, vps-deployed]
 created: 2026-04-19
 updated: 2026-04-19
 originSessionId: 6dc774b2-8ee7-4655-b691-eebe19832245
 ---
-## 狀態：main branch（commit: 5b36437），VPS 待 pull
+## 狀態：main branch（commit: c1d5b6d），VPS 已部署 + Calendar E2E 實測通過
 
 ## Nami 工具清單（gateway/handlers/nami.py）
 - `create_project` — 建 project + 3 個預設 task
@@ -16,6 +16,10 @@ originSessionId: 6dc774b2-8ee7-4655-b691-eebe19832245
 - `delete_task` — 刪除 task（刪前必須 ask_user 確認）
 - `delete_project` — 刪除 project（預設連同 linked tasks 一起刪）
 - `list_tasks` — 列所有 to-do / in-progress task
+- `create_calendar_event` — 建 Google Calendar 事件，預設 check_conflict（force=true 覆蓋）
+- `list_calendar_events` — 列事件（today / tomorrow / this_week / next_week / custom）
+- `update_calendar_event` — 改事件（by-title 模糊搜尋近 30 天）
+- `delete_calendar_event` — 刪事件（刪前必 ask_user）
 - `ask_user` — pause loop，等使用者回覆後繼續
 
 ## 記憶系統（Phase 1-3 已部署）
@@ -36,8 +40,9 @@ cd /home/nakama && git pull && systemctl restart nakama-gateway
 ```
 
 ## 下一步
-- ⬜ VPS git pull 更新（含 update_task + DM/channel reply 修復）
+- 🚧 Calendar × Task 雙向同步（PRD 已 approve，見 `project_nami_calendar_task_sync.md`）
 - ⬜ morning-brief 功能（Nami 主動推送）
+- ⬜ Memory Phase 4 Bridge UI（在 Calendar-Task 同步完成後做）
 
 ## 已知限制
 - ConversationStore 是 in-memory，重啟後狀態清掉
