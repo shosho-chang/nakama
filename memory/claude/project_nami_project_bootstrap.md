@@ -12,9 +12,17 @@ originSessionId: 6dc774b2-8ee7-4655-b691-eebe19832245
 ## Nami 工具清單（gateway/handlers/nami.py）
 - `create_project` — 建 project + 3 個預設 task
 - `create_task` — 建獨立或 project-linked task（支援 scheduled datetime）
-- `update_task` — 修改現有 task（scheduled / priority / status）；by-title 模糊搜尋
+- `update_task` — 修改現有 task（scheduled / priority / status / pomodoros）；by-title 模糊搜尋
+- `delete_task` — 刪除 task（刪前必須 ask_user 確認）
+- `delete_project` — 刪除 project（預設連同 linked tasks 一起刪）
 - `list_tasks` — 列所有 to-do / in-progress task
 - `ask_user` — pause loop，等使用者回覆後繼續
+
+## 記憶系統（Phase 1-3 已部署）
+- `shared/agent_memory.py` — user_memories table，(agent, user_id, subject) upsert
+- `shared/memory_extractor.py` — Haiku 4.5 背景抽取，prompt 注入既有記憶確保 merge 不覆蓋
+- Nami handle() 在 user message 開頭注入「## 你記得關於使用者的事」block
+- VPS 實測通過：subject 去重 + content merge 無資訊遺失
 
 ## 重要設計決策
 - 日期表注入 user message（非 system），確保 system prompt 可 cache
