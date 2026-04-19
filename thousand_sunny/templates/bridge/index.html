@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Nakama</title>
+<style>
+  :root {
+    --bg: #fafaf8;
+    --bg-card: white;
+    --bg-alt: #f4f4f0;
+    --text: #333;
+    --text-heading: #1a1a1a;
+    --text-muted: #888;
+    --border: #e5e5e5;
+    --accent: #6c63ff;
+    --accent-hover: #574fd6;
+    --tile-hover: #f0efff;
+  }
+  body.dark {
+    --bg: #1a1a2e;
+    --bg-card: #16213e;
+    --bg-alt: #1e2a45;
+    --text: #d4d4d4;
+    --text-heading: #e8e8e8;
+    --text-muted: #888;
+    --border: #2a2a4a;
+    --accent: #8b80ff;
+    --accent-hover: #a59bff;
+    --tile-hover: #242d4f;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    background: var(--bg-card);
+    padding: 0.6rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    font-size: 1rem;
+    color: var(--text-heading);
+    font-weight: 600;
+  }
+  .header button {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .header button:hover { border-color: var(--accent); color: var(--accent); }
+
+  .content {
+    flex: 1;
+    padding: 2.5rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .intro {
+    max-width: 640px;
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+  .intro h2 {
+    font-size: 1.4rem;
+    color: var(--text-heading);
+    margin-bottom: 0.5rem;
+  }
+  .intro p {
+    color: var(--text-muted);
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    width: 100%;
+    max-width: 960px;
+  }
+
+  .tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.3rem;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    transition: transform 0.1s, border-color 0.15s, background 0.15s;
+  }
+  .tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    background: var(--tile-hover);
+  }
+  .tile.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .tile-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .tile-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--bg-alt);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .tile-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-heading);
+  }
+  .tile-kind {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.1rem;
+  }
+  .tile-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-top: 0.3rem;
+  }
+  .tile-note {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 0.4rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Bridge</h1>
+  <button id="themeBtn">Dark</button>
+</div>
+
+<div class="content">
+  <div class="intro">
+    <h2>Nakama Bridge</h2>
+    <p>Agent 團隊的管理介面入口。從這裡看 Agent 對你記得什麼、API 花了多少錢，或是直接跳進對話。</p>
+  </div>
+
+  <div class="grid">
+    <a class="tile" href="/bridge/memory">
+      <div class="tile-head">
+        <div class="tile-icon">M</div>
+        <div>
+          <div class="tile-title">Memory</div>
+          <div class="tile-kind">Bridge · Tool</div>
+        </div>
+      </div>
+      <div class="tile-desc">審視、編輯、刪除 Agent 對你的記憶（preference / fact / decision / project）。</div>
+    </a>
+
+    <a class="tile" href="/bridge/cost">
+      <div class="tile-head">
+        <div class="tile-icon">$</div>
+        <div>
+          <div class="tile-title">Cost</div>
+          <div class="tile-kind">Bridge · Tool</div>
+        </div>
+      </div>
+      <div class="tile-desc">近 24h / 7d / 30d 的 API 用量 + 美元估算，按 agent × model 分解。</div>
+    </a>
+
+    <a class="tile" href="/brook/chat">
+      <div class="tile-head">
+        <div class="tile-icon">B</div>
+        <div>
+          <div class="tile-title">Brook</div>
+          <div class="tile-kind">Agent · Chat</div>
+        </div>
+      </div>
+      <div class="tile-desc">文章撰寫助手：多回合對話、整合 KB 材料、匯出 Markdown 草稿。</div>
+    </a>
+
+    {% if robin_enabled %}
+    <a class="tile" href="/">
+      <div class="tile-head">
+        <div class="tile-icon">R</div>
+        <div>
+          <div class="tile-title">Robin</div>
+          <div class="tile-kind">Agent · KB Ingest</div>
+        </div>
+      </div>
+      <div class="tile-desc">KB 材料處理：PDF / article / YouTube 進 Obsidian Wiki，含雙語閱讀器。</div>
+    </a>
+    {% else %}
+    <div class="tile disabled" title="Robin 只在本機執行，VPS 已停用">
+      <div class="tile-head">
+        <div class="tile-icon">R</div>
+        <div>
+          <div class="tile-title">Robin</div>
+          <div class="tile-kind">Agent · KB Ingest</div>
+        </div>
+      </div>
+      <div class="tile-desc">KB 材料處理：PDF / article / YouTube 進 Obsidian Wiki。</div>
+      <div class="tile-note">本環境已停用（DISABLE_ROBIN）— 只在本機開發機運行。</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+if (localStorage.getItem('bridge-dark') === '1') {
+  document.body.classList.add('dark');
+  document.getElementById('themeBtn').textContent = 'Light';
+}
+document.getElementById('themeBtn').onclick = () => {
+  document.body.classList.toggle('dark');
+  const dark = document.body.classList.contains('dark');
+  document.getElementById('themeBtn').textContent = dark ? 'Light' : 'Dark';
+  localStorage.setItem('bridge-dark', dark ? '1' : '0');
+};
+</script>
+</body>
+</html>

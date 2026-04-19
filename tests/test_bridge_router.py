@@ -62,6 +62,23 @@ def seed_memories():
 # ---------------------------------------------------------------------------
 
 
+def test_bridge_index_renders_html(client):
+    r = client.get("/bridge")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    body = r.text
+    assert "Nakama Bridge" in body
+    assert 'href="/bridge/memory"' in body
+    assert 'href="/bridge/cost"' in body
+    assert 'href="/brook/chat"' in body
+
+
+def test_bridge_index_hides_robin_when_disabled(client):
+    # Fixture sets DISABLE_ROBIN=1 → Robin tile shows as disabled with a note.
+    r = client.get("/bridge")
+    assert "DISABLE_ROBIN" in r.text
+
+
 def test_memory_page_renders_html(client):
     r = client.get("/bridge/memory")
     assert r.status_code == 200
