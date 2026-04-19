@@ -25,12 +25,6 @@ def format_agent_response(agent: str, text: str, intent: str) -> tuple[str, list
                 "text": f"{emoji} *{agent.capitalize()}*\n{text}",
             },
         },
-        {
-            "type": "context",
-            "elements": [
-                {"type": "mrkdwn", "text": f"_intent: {intent}_"},
-            ],
-        },
     ]
     return (f"[{agent}] {text}", blocks)
 

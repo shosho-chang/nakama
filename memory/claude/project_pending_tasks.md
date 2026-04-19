@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-18
+updated: 2026-04-19
 confidence: high
 ttl: 90d
 originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
@@ -85,8 +85,14 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
     - 報告：[docs/evals/keyword-research-2026-04-19-deep-sleep.md](../../docs/evals/keyword-research-2026-04-19-deep-sleep.md)
     - Graceful degrade 實測驗證（Run 2 Trends quota 擋住仍 7/10 達門檻）
     - Backlog 6 項已開 GH issue：術語表補深度睡眠 / lowercase normalize / {today} 注入 / reddit_zh query 精度 / twitter zh-TW 分流 / CLI emit 實測成本（實踐 capability card 原則）
+- ✅ **project-bootstrap**（Nami × LifeOS）— 2026-04-19 feat branch `feat/nami-project-bootstrap`
+  - 4 unit 完成：`shared/lifeos_writer.py` + `scripts/run_project_bootstrap.py` + `.claude/skills/project-bootstrap/` + `gateway/conversation_state.py` (Slack thread 多輪) + Nami `create_project` intent
+  - 支援 4 content_type（youtube/blog/research/podcast），硬編碼 3-task 套餐
+  - 43 新測試（28 lifeos_writer + 7 conversation_state + 8 Nami flow），全 340 tests pass
+  - ⬜ Template 同步更新（`Templates/tpl-project.md` + `tpl-action.md` 已跟 gold standard 脫節，獨立工作）
+  - ⬜ Slack 實機測試（需 VPS 部署 + 開 thread 續問實測）
 - ⬜ weekly-report (Franky)
-- ⬜ morning-brief (Nami) — Nami 還沒開發，先做 skill 再 agent
+- ⬜ morning-brief (Nami) — Nami handler 已有 create_project/continue_flow 骨架，morning-brief 可共用 Unit 4 thread 機制
 - ⬜ kb-search (Robin) — `/kb/research` 未 E2E 測，skill 化前先驗
 - 🚧 style-extractor — **PRD v4 草稿完成**（LifeOS KB/Wiki/Outputs/style-extractor-prd-draft.md），重新定位為 building block（產出 voice profile 給下游 workflow skill 用）；V1 產出三個 profile：修修-人物報導 / 修修-科普文章 / 修修-讀書心得；LLM 用 Opus 4.7；等修修備齊 3 個 StyleSamples 資料夾（每個 8–10 篇）就進入實作。詳見 LifeOS 記憶 [[project_style_extractor]]
 - ⬜ interview-to-article skill — style-extractor 下游 workflow，Podcast 逐字稿 → 人物報導；需獨立 PRD
