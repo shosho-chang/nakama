@@ -41,7 +41,7 @@
 - [feedback_open_source_ready.md](feedback_open_source_ready.md) — 所有功能都可能個別開源，開發時保留參數化與擴充點；每個可開源單位需有 capability card（能力/IO/實測成本）
 - [project_bilingual_reader_design.md](project_bilingual_reader_design.md) — 雙語閱讀三場景設計凍結：BabelDOC+Docling雙路線、Claude Sonnet翻譯、台灣術語表、輕量Annotation
 - [project_nami_project_bootstrap.md](project_nami_project_bootstrap.md) — Nami 11 tools（含 Google Calendar 4 tools）全 merged + VPS deployed + Calendar E2E 實測通過
-- [project_nami_calendar_task_sync.md](project_nami_calendar_task_sync.md) — 下一步：Calendar × Task 單向同步 PRD approved，待 Phase 2/3
+- [project_nami_calendar_task_sync.md](project_nami_calendar_task_sync.md) — Calendar × Task 單向同步 PR #40 merged + VPS deployed + E2E 全通過
 - [project_lifeos_template_drift.md](project_lifeos_template_drift.md) — tpl-project.md / tpl-action.md 過時，gold standard 是 Projects/肌酸的妙用.md
 - [project_chopper_community_qa.md](project_chopper_community_qa.md) — Chopper：community 平台健康問答 + KB 查詢 + 會員記憶，待開發（平台/記憶/問答三大挑戰）
 - [feedback_agent_personality.md](feedback_agent_personality.md) — Agent 角色個性用正面描述 + few-shot，不用禁止清單；用戶確認這個方向
@@ -53,3 +53,4 @@
 - [feedback_llm_memory_extraction.md](feedback_llm_memory_extraction.md) — LLM 抽取記憶兩個坑：subject 去重要注入既有列表、content merge 要注入既有內容
 - [feedback_test_api_isolation.md](feedback_test_api_isolation.md) — 背景 LLM call 用 conftest autouse mock + pytest marker 例外，避免測試打真 API
 - [feedback_py_spy_gateway_diagnosis.md](feedback_py_spy_gateway_diagnosis.md) — Gateway 卡住用 py-spy dump --pid 看 thread stack
+- [feedback_windows_abs_path_silent.md](feedback_windows_abs_path_silent.md) — Windows 把 POSIX 絕對路徑默默解到當前磁碟根，CI Linux 才炸；conftest autouse isolate
