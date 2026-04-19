@@ -31,6 +31,19 @@ _templates = Jinja2Templates(
 )
 
 
+@page_router.get("", response_class=HTMLResponse)
+@page_router.get("/", response_class=HTMLResponse)
+async def bridge_index(request: Request, nakama_auth: str | None = Cookie(None)):
+    """Hub 首頁：列出可跳轉的 Bridge 工具 + 其他 Agent UI。"""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge", status_code=302)
+    return _templates.TemplateResponse(
+        request,
+        "index.html",
+        {"robin_enabled": not os.getenv("DISABLE_ROBIN")},
+    )
+
+
 @page_router.get("/memory", response_class=HTMLResponse)
 async def memory_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
