@@ -71,6 +71,15 @@ def test_memory_page_renders_html(client):
     assert "/bridge/api/memory" in body
 
 
+def test_cost_page_renders_html(client):
+    r = client.get("/bridge/cost")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    body = r.text
+    assert "Bridge · Cost" in body
+    assert "/bridge/api/cost" in body
+
+
 # ---------------------------------------------------------------------------
 # Memory endpoints
 # ---------------------------------------------------------------------------
