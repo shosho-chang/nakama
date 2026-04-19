@@ -21,9 +21,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from gateway.handlers.base import BaseHandler, Continuation, HandlerResponse
-from shared import agent_memory
+from shared import agent_memory, google_calendar
 from shared.anthropic_client import call_claude_with_tools, set_current_agent
 from shared.events import emit
+from shared.google_calendar import CalendarEvent, GoogleCalendarAuthError
 from shared.lifeos_writer import (
     CONTENT_TYPES,
     ProjectExistsError,
@@ -198,6 +199,100 @@ NAMI_TOOLS: list[dict] = [
                     "type": "boolean",
                     "description": "是否一併刪除該 project 下的所有 tasks（預設 true）",
                 },
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "create_calendar_event",
+        "description": (
+            "建立 Google Calendar 事件。預設會先檢查時段衝突，若有重疊事件會回傳衝突資訊"
+            "（不建立）— 此時用 ask_user 問使用者要改時段還是覆蓋。"
+            "使用者確認要覆蓋時用 force=true 再呼叫一次。"
+            "適用於「排會議」「排行程」「XX 點跟 XX 開會」等需求。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "事件標題"},
+                "start": {
+                    "type": "string",
+                    "description": (
+                        "開始時間 ISO 8601 本地時間（例：2026-04-25T15:00:00），"
+                        "時區會自動套用 Asia/Taipei。"
+                    ),
+                },
+                "end": {
+                    "type": "string",
+                    "description": "結束時間 ISO 8601（同 start 格式）",
+                },
+                "description": {"type": "string", "description": "事件描述（可選）"},
+                "force": {
+                    "type": "boolean",
+                    "description": "跳過衝突偵測強制建立，預設 false",
+                },
+            },
+            "required": ["title", "start", "end"],
+        },
+    },
+    {
+        "name": "list_calendar_events",
+        "description": ("列出 Google Calendar 事件。用於「查今天行程」「這週有什麼」等需求。"),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "range": {
+                    "type": "string",
+                    "enum": ["today", "tomorrow", "this_week", "next_week", "custom"],
+                    "description": "時段範圍",
+                },
+                "time_min": {
+                    "type": "string",
+                    "description": "range=custom 時的起始日期（ISO 8601，含時間）",
+                },
+                "time_max": {
+                    "type": "string",
+                    "description": "range=custom 時的結束日期（ISO 8601）",
+                },
+            },
+            "required": ["range"],
+        },
+    },
+    {
+        "name": "update_calendar_event",
+        "description": (
+            "修改現有 Calendar 事件。by title 模糊搜尋最近 30 天的事件。"
+            "若改動時段，會再次檢查衝突（同 create 行為）。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "要修改的事件現有標題（模糊搜尋）",
+                },
+                "new_title": {"type": "string", "description": "新標題（可選）"},
+                "start": {"type": "string", "description": "新開始時間（可選）"},
+                "end": {"type": "string", "description": "新結束時間（可選）"},
+                "description": {"type": "string", "description": "新描述（可選）"},
+                "force": {
+                    "type": "boolean",
+                    "description": "改時段時跳過衝突偵測，預設 false",
+                },
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "delete_calendar_event",
+        "description": (
+            "刪除 Calendar 事件。**呼叫前必須先用 ask_user 列出要刪的事件請使用者確認。**"
+            "by title 模糊搜尋最近 30 天的事件。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "要刪除的事件標題（模糊搜尋）"},
             },
             "required": ["title"],
         },
@@ -433,7 +528,20 @@ class NamiHandler(BaseHandler):
                 return self._tool_delete_project(tool_input)
             if name == "list_tasks":
                 return self._tool_list_tasks()
+            if name == "create_calendar_event":
+                return self._tool_create_calendar_event(tool_input)
+            if name == "list_calendar_events":
+                return self._tool_list_calendar_events(tool_input)
+            if name == "update_calendar_event":
+                return self._tool_update_calendar_event(tool_input)
+            if name == "delete_calendar_event":
+                return self._tool_delete_calendar_event(tool_input)
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
+        except GoogleCalendarAuthError as e:
+            return _ToolOutcome(
+                content=f"Google Calendar 授權失效：{e}",
+                is_error=True,
+            )
         except Exception as e:
             logger.exception(f"Tool {name} failed")
             return _ToolOutcome(content=f"Tool {name} error: {e}", is_error=True)
@@ -730,6 +838,217 @@ class NamiHandler(BaseHandler):
             },
         )
 
+    # ── Calendar tool executors ──────────────────────────────────
+
+    def _tool_create_calendar_event(self, input_: dict) -> _ToolOutcome:
+        title = str(input_.get("title", "")).strip()
+        start = str(input_.get("start", "")).strip()
+        end = str(input_.get("end", "")).strip()
+        if not title or not start or not end:
+            return _ToolOutcome(content="Missing required fields: title, start, end", is_error=True)
+
+        description = input_.get("description", "") or ""
+        force = bool(input_.get("force", False))
+
+        result = google_calendar.create_event(
+            title=title,
+            start=start,
+            end=end,
+            description=description,
+            check_conflict=not force,
+        )
+
+        # 衝突 → result 是 list[CalendarEvent]，沒有建立
+        if isinstance(result, list):
+            conflicts_desc = "、".join(
+                f"{_fmt_event_time(e.start, e.end)}「{e.title}」" for e in result[:3]
+            )
+            return _ToolOutcome(
+                content=(
+                    f"時段衝突：{conflicts_desc}。"
+                    " 要改時段還是強制建立（ask_user 問使用者，若同意覆蓋再用 force=true 重試）？"
+                ),
+                is_error=True,
+            )
+
+        event = result  # type: CalendarEvent  # noqa: F841
+        summary = (
+            f"📅 Calendar 事件已建立：{event.title}\n"
+            f"   時間：{_fmt_event_time(event.start, event.end)}\n"
+            f"   連結：{event.html_link}"
+        )
+        return _ToolOutcome(
+            content=summary,
+            event={
+                "name": "calendar_event_created",
+                "payload": {
+                    "id": event.id,
+                    "title": event.title,
+                    "start": event.start,
+                    "end": event.end,
+                    "html_link": event.html_link,
+                },
+                "log": event.title,
+            },
+        )
+
+    def _tool_list_calendar_events(self, input_: dict) -> _ToolOutcome:
+        range_ = input_.get("range", "today")
+        tz = ZoneInfo("Asia/Taipei")
+        now = datetime.now(tz)
+
+        if range_ == "today":
+            time_min = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            time_max = time_min + timedelta(days=1)
+        elif range_ == "tomorrow":
+            time_min = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            time_max = time_min + timedelta(days=1)
+        elif range_ == "this_week":
+            start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            days_to_sunday = 6 - now.weekday()  # 週一=0, 週日=6
+            time_min = start_of_today
+            time_max = start_of_today + timedelta(days=days_to_sunday + 1)
+        elif range_ == "next_week":
+            start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            days_to_next_monday = 7 - now.weekday()
+            time_min = start_of_today + timedelta(days=days_to_next_monday)
+            time_max = time_min + timedelta(days=7)
+        elif range_ == "custom":
+            t_min_str = input_.get("time_min")
+            t_max_str = input_.get("time_max")
+            if not t_min_str or not t_max_str:
+                return _ToolOutcome(
+                    content="range=custom 時必須同時提供 time_min 和 time_max",
+                    is_error=True,
+                )
+            time_min = _parse_iso_local(t_min_str, tz)
+            time_max = _parse_iso_local(t_max_str, tz)
+        else:
+            return _ToolOutcome(content=f"Unknown range: {range_}", is_error=True)
+
+        events = google_calendar.list_events(time_min=time_min, time_max=time_max, max_results=30)
+
+        if not events:
+            return _ToolOutcome(content=f"{range_} 時段沒有 Calendar 事件。")
+
+        lines = [f"*Calendar 事件（{range_}，共 {len(events)} 項）*"]
+        for e in events[:20]:
+            lines.append(f"  • {_fmt_event_time(e.start, e.end)} — {e.title}")
+        return _ToolOutcome(content="\n".join(lines))
+
+    def _tool_update_calendar_event(self, input_: dict) -> _ToolOutcome:
+        title = str(input_.get("title", "")).strip()
+        if not title:
+            return _ToolOutcome(content="Missing title", is_error=True)
+
+        found = self._find_calendar_event_by_title(title)
+        if not found:
+            return _ToolOutcome(
+                content=f"找不到標題含「{title}」的 Calendar 事件（最近 30 天）。",
+                is_error=True,
+            )
+
+        new_title = input_.get("new_title")
+        start = input_.get("start")
+        end = input_.get("end")
+        description = input_.get("description")
+        force = bool(input_.get("force", False))
+
+        if not any([new_title, start, end, description]):
+            return _ToolOutcome(content="沒有指定要更新的欄位。", is_error=True)
+
+        # 若改時段，先做衝突檢查（排除當前這筆事件本身）
+        if (start or end) and not force:
+            effective_start = start or found.start
+            effective_end = end or found.end
+            conflicts = [
+                c
+                for c in google_calendar.find_conflicts(effective_start, effective_end)
+                if c.id != found.id
+            ]
+            if conflicts:
+                conflicts_desc = "、".join(
+                    f"{_fmt_event_time(c.start, c.end)}「{c.title}」" for c in conflicts[:3]
+                )
+                return _ToolOutcome(
+                    content=(
+                        f"更新時段衝突：{conflicts_desc}。"
+                        " 要改到別的時段還是強制覆蓋（force=true）？"
+                    ),
+                    is_error=True,
+                )
+
+        updated = google_calendar.update_event(
+            found.id,
+            title=new_title,
+            start=start,
+            end=end,
+            description=description,
+        )
+
+        changes = []
+        if new_title:
+            changes.append(f"標題→{new_title}")
+        if start:
+            changes.append(f"start={start}")
+        if end:
+            changes.append(f"end={end}")
+        if description is not None:
+            changes.append("描述已更新")
+
+        summary = f"📝 Calendar 事件已更新：{updated.title}（{', '.join(changes)}）"
+        return _ToolOutcome(
+            content=summary,
+            event={
+                "name": "calendar_event_updated",
+                "payload": {
+                    "id": updated.id,
+                    "title": updated.title,
+                    "start": updated.start,
+                    "end": updated.end,
+                    "changes": changes,
+                },
+                "log": updated.title,
+            },
+        )
+
+    def _tool_delete_calendar_event(self, input_: dict) -> _ToolOutcome:
+        title = str(input_.get("title", "")).strip()
+        if not title:
+            return _ToolOutcome(content="Missing title", is_error=True)
+
+        found = self._find_calendar_event_by_title(title)
+        if not found:
+            return _ToolOutcome(
+                content=f"找不到標題含「{title}」的 Calendar 事件（最近 30 天）。",
+                is_error=True,
+            )
+
+        google_calendar.delete_event(found.id)
+        summary = f"🗑️ 已刪除 Calendar 事件：{found.title}"
+        return _ToolOutcome(
+            content=summary,
+            event={
+                "name": "calendar_event_deleted",
+                "payload": {"id": found.id, "title": found.title},
+                "log": found.title,
+            },
+        )
+
+    def _find_calendar_event_by_title(self, title: str) -> CalendarEvent | None:
+        """在最近 30 天（past 7 + future 23）內 by title 模糊搜尋，回第一個匹配。"""
+        tz = ZoneInfo("Asia/Taipei")
+        now = datetime.now(tz)
+        time_min = now - timedelta(days=7)
+        time_max = now + timedelta(days=23)
+        title_lower = title.lower()
+        events = google_calendar.find_events_by_title(title, time_min=time_min, time_max=time_max)
+        # Google q 搜尋已做過濾；這裡再確認以防萬一
+        for e in events:
+            if title_lower in e.title.lower():
+                return e
+        return None
+
 
 # ── Utilities ────────────────────────────────────────────────────────
 
@@ -791,6 +1110,31 @@ def _to_vault_relative(path: Path) -> str:
             idx = parts.index(marker)
             return "/".join(parts[idx:])
     return path.name
+
+
+def _fmt_event_time(start: str, end: str) -> str:
+    """格式化事件時間給使用者看（Asia/Taipei，精簡）。"""
+    try:
+        s = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        e = datetime.fromisoformat(end.replace("Z", "+00:00"))
+        if s.tzinfo is not None:
+            tz = ZoneInfo("Asia/Taipei")
+            s = s.astimezone(tz)
+            e = e.astimezone(tz)
+        if s.date() == e.date():
+            return f"{s.strftime('%m/%d %H:%M')}-{e.strftime('%H:%M')}"
+        return f"{s.strftime('%m/%d %H:%M')} 至 {e.strftime('%m/%d %H:%M')}"
+    except Exception:
+        # 全日事件是 YYYY-MM-DD 格式，無時間
+        return f"{start} 至 {end}"
+
+
+def _parse_iso_local(s: str, tz: ZoneInfo) -> datetime:
+    """ISO 字串轉 datetime，無時區時假設為 ``tz``。"""
+    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    return dt
 
 
 # ── Deprecated alias（for backward-compat with old tests/imports） ─────
