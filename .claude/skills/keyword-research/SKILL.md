@@ -43,7 +43,7 @@ Do NOT trigger for:
 
 ## Workflow Overview
 
-The pipeline has 5 steps and 2 mandatory confirmation points (topic
+The pipeline has 6 steps and 2 mandatory confirmation points (topic
 clarification + final cost go/no-go). Middle steps can be skipped in **fast
 mode** when the user says "full pipeline" / "用 default" / "快速跑" / "go".
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,6 +27,9 @@ sys.stderr.reconfigure(encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import yaml  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv()
 
 from agents.zoro.keyword_research import research_keywords  # noqa: E402
 
@@ -205,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[keyword-research] 模式：{args.content_type}", file=sys.stderr)
     print("[keyword-research] 執行中…（預計 30-60s，取決於資料來源回應）", file=sys.stderr)
 
+    started_at = time.monotonic()
     try:
         result = research_keywords(
             topic,
@@ -214,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as e:
         print(f"[keyword-research] ERROR: {e}", file=sys.stderr)
         return 2
+    elapsed = time.monotonic() - started_at
 
     frontmatter = _build_frontmatter(topic, args.en_topic or "", args.content_type, result)
     md = _render_markdown(frontmatter, result)
@@ -231,9 +237,11 @@ def main(argv: list[str] | None = None) -> int:
     sources_used = result.get("sources_used", [])
     sources_failed = result.get("sources_failed", [])
     print(
-        f"[keyword-research] sources_used={len(sources_used)} sources_failed={len(sources_failed)}",
+        f"[keyword-research] sources_used={len(sources_used)} "
+        f"sources_failed={len(sources_failed)} elapsed={elapsed:.1f}s",
         file=sys.stderr,
     )
+    print(f"完成！耗時 {elapsed:.1f}s", file=sys.stdout)
 
     return 0
 
