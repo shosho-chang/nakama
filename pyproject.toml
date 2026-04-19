@@ -43,6 +43,11 @@ dependencies = [
     # Slack Gateway
     "slack-bolt>=1.18.0",
     "slack-sdk>=3.27.0",
+
+    # Nami: Google Calendar
+    "google-api-python-client>=2.100.0",
+    "google-auth-oauthlib>=1.2.0",
+    "filelock>=3.13.0",
 ]
 
 [project.optional-dependencies]

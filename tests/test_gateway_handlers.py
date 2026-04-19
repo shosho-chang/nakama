@@ -591,6 +591,322 @@ def test_delete_project_with_tasks():
     assert "TaskNotes/Tasks/建立專案---Filming.md" in deleted_paths
 
 
+# ── Agent loop: Google Calendar tools ───────────────────────────────
+
+
+def _fake_cal_event(
+    id_="evt1",
+    title="讀書會",
+    start="2026-04-25T15:00:00+08:00",
+    end="2026-04-25T16:00:00+08:00",
+    html_link="https://calendar.google.com/evt1",
+):
+    from shared.google_calendar import CalendarEvent
+
+    return CalendarEvent(id=id_, title=title, start=start, end=end, html_link=html_link)
+
+
+def test_create_calendar_event_happy_path():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "跟 Angie 開會",
+                        "start": "2026-04-25T15:00:00",
+                        "end": "2026-04-25T16:00:00",
+                    },
+                    id_="toolu_cce1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已建立")]),
+    ]
+
+    fake_created = _fake_cal_event(title="跟 Angie 開會")
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.create_event",
+            return_value=fake_created,
+        ) as mock_create,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "排下週會議", "U1")
+
+    assert "Calendar" in result.text or "建立" in result.text
+    mock_create.assert_called_once()
+    kwargs = mock_create.call_args.kwargs
+    assert kwargs["title"] == "跟 Angie 開會"
+    assert kwargs["check_conflict"] is True  # force 預設 false
+    mock_emit.assert_called_once()
+    assert mock_emit.call_args[0][1] == "calendar_event_created"
+
+
+def test_create_calendar_event_conflict_returns_error():
+    """衝突時回傳 list[CalendarEvent]，tool 應回 error outcome（讓 LLM ask_user）。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "讀書",
+                        "start": "2026-04-25T15:00:00",
+                        "end": "2026-04-25T16:00:00",
+                    },
+                    id_="toolu_cce2",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已回報衝突")]),
+    ]
+
+    conflict = _fake_cal_event(title="已有的會議")
+    captured_tool_results = []
+
+    def _capture_and_respond(*, messages, tools, system, model):
+        # 第二輪看 tool_result 是否標記 is_error=True
+        for msg in messages:
+            if isinstance(msg.get("content"), list):
+                for block in msg["content"]:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        captured_tool_results.append(block)
+        return iter_responses.pop(0)
+
+    with (
+        patch(
+            "gateway.handlers.nami.call_claude_with_tools",
+            side_effect=_capture_and_respond,
+        ),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.create_event",
+            return_value=[conflict],
+        ),
+        patch("gateway.handlers.nami.emit") as mock_emit,
+    ):
+        NamiHandler().handle("general", "排讀書", "U1")
+
+    # 衝突時不應 emit
+    mock_emit.assert_not_called()
+    # tool_result 應標記 is_error
+    assert any(tr.get("is_error") for tr in captured_tool_results)
+    assert any("衝突" in tr.get("content", "") for tr in captured_tool_results)
+
+
+def test_create_calendar_event_force_skips_conflict_check():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "覆蓋排",
+                        "start": "2026-04-25T15:00:00",
+                        "end": "2026-04-25T16:00:00",
+                        "force": True,
+                    },
+                    id_="toolu_cce3",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("ok")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.create_event",
+            return_value=_fake_cal_event(title="覆蓋排"),
+        ) as mock_create,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "強制排", "U1")
+
+    assert mock_create.call_args.kwargs["check_conflict"] is False
+
+
+def test_list_calendar_events_today():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("list_calendar_events", {"range": "today"}, id_="toolu_lce")],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+    events = [
+        _fake_cal_event(
+            title="晨跑", start="2026-04-19T07:00:00+08:00", end="2026-04-19T08:00:00+08:00"
+        ),
+        _fake_cal_event(
+            title="午餐", start="2026-04-19T12:00:00+08:00", end="2026-04-19T13:00:00+08:00"
+        ),
+    ]
+
+    captured_kwargs = {}
+
+    def capture_list(*, time_min, time_max, max_results=30):
+        captured_kwargs["time_min"] = time_min
+        captured_kwargs["time_max"] = time_max
+        return events
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.list_events",
+            side_effect=capture_list,
+        ),
+    ):
+        NamiHandler().handle("general", "今天行程", "U1")
+
+    # today range → time_min 是當日 0:00
+    assert captured_kwargs["time_min"].hour == 0
+    assert (captured_kwargs["time_max"] - captured_kwargs["time_min"]).days == 1
+
+
+def test_update_calendar_event_by_title():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_calendar_event",
+                    {"title": "讀書", "start": "2026-04-26T14:00:00", "end": "2026-04-26T15:00:00"},
+                    id_="toolu_uce",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evt42", title="讀書會")
+    updated = _fake_cal_event(
+        id_="evt42",
+        title="讀書會",
+        start="2026-04-26T14:00:00+08:00",
+        end="2026-04-26T15:00:00+08:00",
+    )
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[existing],
+        ),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_conflicts",
+            return_value=[],
+        ),
+        patch(
+            "gateway.handlers.nami.google_calendar.update_event",
+            return_value=updated,
+        ) as mock_update,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "讀書改到 26 號下午 2 點", "U1")
+
+    mock_update.assert_called_once()
+    assert mock_update.call_args.args[0] == "evt42"
+    assert mock_emit.call_args[0][1] == "calendar_event_updated"
+
+
+def test_update_calendar_event_not_found():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "update_calendar_event",
+                    {"title": "不存在事件", "start": "2026-04-26T14:00:00"},
+                    id_="toolu_uce2",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("找不到")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[],
+        ),
+    ):
+        result = NamiHandler().handle("general", "改不存在事件", "U1")
+
+    assert "找不到" in result.text
+
+
+def test_delete_calendar_event_happy_path():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("delete_calendar_event", {"title": "舊會議"}, id_="toolu_dce")],
+        ),
+        _fake_response("end_turn", [_text_block("已刪除舊會議")]),
+    ]
+
+    existing = _fake_cal_event(id_="evt99", title="舊會議")
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[existing],
+        ),
+        patch(
+            "gateway.handlers.nami.google_calendar.delete_event",
+        ) as mock_delete,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "刪掉舊會議", "U1")
+
+    mock_delete.assert_called_once_with("evt99")
+    assert "刪除" in result.text
+    assert mock_emit.call_args[0][1] == "calendar_event_deleted"
+
+
+def test_calendar_tool_auth_error_returns_graceful_message():
+    """Token 失效時 tool 應回錯誤訊息，不崩 loop。"""
+    from shared.google_calendar import GoogleCalendarAuthError
+
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("list_calendar_events", {"range": "today"}, id_="toolu_auth")],
+        ),
+        _fake_response("end_turn", [_text_block("授權過期請重新登入")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.list_events",
+            side_effect=GoogleCalendarAuthError("Token expired"),
+        ),
+    ):
+        result = NamiHandler().handle("general", "今天行程", "U1")
+
+    # 處理流程不崩，回應文字裡有授權過期訊息
+    assert result.text  # 有回訊息
+
+
 # ── Agent loop: max iters safety ────────────────────────────────────
 
 
