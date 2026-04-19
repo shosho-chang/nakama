@@ -210,6 +210,80 @@ def forget(memory_id: int) -> bool:
     return cur.rowcount > 0
 
 
+def get(memory_id: int) -> UserMemory | None:
+    """依 id 取單筆記憶，找不到回傳 None。"""
+    _ensure_schema()
+    conn = _get_conn()
+    row = conn.execute(
+        """SELECT id, agent, user_id, type, subject, content, confidence,
+                  source_thread, created_at, last_accessed_at
+           FROM user_memories WHERE id = ?""",
+        (memory_id,),
+    ).fetchone()
+    return _row_to_memory(row) if row else None
+
+
+def update(
+    memory_id: int,
+    *,
+    type: str | None = None,
+    subject: str | None = None,
+    content: str | None = None,
+    confidence: float | None = None,
+) -> UserMemory | None:
+    """手動編輯一筆記憶（供 Bridge UI 使用）。
+
+    只更新非 None 的欄位，同時刷新 ``last_accessed_at`` 當成 updated 時戳。
+    找不到 id 回傳 None；否則回傳更新後的記憶物件。
+    """
+    _ensure_schema()
+    if all(v is None for v in (type, subject, content, confidence)):
+        return get(memory_id)
+
+    if confidence is not None and not (0.0 <= confidence <= 1.0):
+        raise ValueError(f"confidence must be in [0, 1], got {confidence}")
+
+    conn = _get_conn()
+    sets: list[str] = []
+    params: list = []
+    if type is not None:
+        sets.append("type = ?")
+        params.append(type)
+    if subject is not None:
+        sets.append("subject = ?")
+        params.append(subject)
+    if content is not None:
+        sets.append("content = ?")
+        params.append(content)
+    if confidence is not None:
+        sets.append("confidence = ?")
+        params.append(confidence)
+    sets.append("last_accessed_at = ?")
+    params.append(datetime.now(timezone.utc).isoformat())
+    params.append(memory_id)
+
+    try:
+        cur = conn.execute(
+            f"UPDATE user_memories SET {', '.join(sets)} WHERE id = ?",
+            params,
+        )
+    except sqlite3.IntegrityError as e:
+        # subject 改到跟同 (agent, user_id) 的其他 row 撞 UNIQUE
+        raise ValueError(f"subject collision: {e}") from e
+    conn.commit()
+    if cur.rowcount == 0:
+        return None
+    return get(memory_id)
+
+
+def list_agents_with_memory() -> list[str]:
+    """回傳目前有記憶資料的 agent 清單（供 Bridge UI 產 tab 列表）。"""
+    _ensure_schema()
+    conn = _get_conn()
+    rows = conn.execute("SELECT DISTINCT agent FROM user_memories ORDER BY agent").fetchall()
+    return [r["agent"] for r in rows]
+
+
 def decay(*, older_than_days: int = 30, factor: float = 0.9) -> int:
     """把超過 ``older_than_days`` 沒被存取的記憶 confidence * factor。
 
