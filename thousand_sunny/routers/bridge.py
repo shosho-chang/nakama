@@ -38,6 +38,13 @@ async def memory_page(request: Request, nakama_auth: str | None = Cookie(None)):
     return _templates.TemplateResponse(request, "memory.html", {})
 
 
+@page_router.get("/cost", response_class=HTMLResponse)
+async def cost_page(request: Request, nakama_auth: str | None = Cookie(None)):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/cost", status_code=302)
+    return _templates.TemplateResponse(request, "cost.html", {})
+
+
 # ---------------------------------------------------------------------------
 # Memory API
 # ---------------------------------------------------------------------------

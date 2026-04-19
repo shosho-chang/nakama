@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Cost</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #fafaf8;
+    --bg-card: white;
+    --bg-alt: #f4f4f0;
+    --text: #333;
+    --text-heading: #1a1a1a;
+    --text-muted: #888;
+    --border: #e5e5e5;
+    --accent: #6c63ff;
+    --accent-hover: #574fd6;
+    --row-hover: #f0efff;
+  }
+  body.dark {
+    --bg: #1a1a2e;
+    --bg-card: #16213e;
+    --bg-alt: #1e2a45;
+    --text: #d4d4d4;
+    --text-heading: #e8e8e8;
+    --text-muted: #888;
+    --border: #2a2a4a;
+    --accent: #8b80ff;
+    --accent-hover: #a59bff;
+    --row-hover: #242d4f;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    background: var(--bg-card);
+    padding: 0.6rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 { font-size: 1rem; color: var(--text-heading); }
+  .header-right { display: flex; gap: 0.5rem; }
+  .header-right a, .header-right button {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .header-right a.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .header-right a:hover, .header-right button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .controls {
+    background: var(--bg-card);
+    padding: 0.8rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .seg button {
+    border: none;
+    background: var(--bg-alt);
+    color: var(--text-muted);
+    padding: 0.35rem 0.8rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+    border-right: 1px solid var(--border);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button.active {
+    background: var(--accent);
+    color: white;
+  }
+  .seg button:not(.active):hover { color: var(--text-heading); }
+
+  .controls label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .controls select {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.82rem;
+  }
+  .controls .status {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .content {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.8rem;
+    margin-bottom: 1.2rem;
+  }
+  .stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+  }
+  .stat-card .label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat-card .value {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin-top: 0.3rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-card .sub {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+  }
+
+  .chart-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.2rem;
+    min-height: 360px;
+    position: relative;
+  }
+  .chart-card h3 {
+    font-size: 0.88rem;
+    color: var(--text-heading);
+    margin-bottom: 0.5rem;
+  }
+  .chart-wrap {
+    position: relative;
+    height: 320px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 0.85rem;
+  }
+  thead { background: var(--bg-alt); }
+  th {
+    padding: 0.7rem 0.8rem;
+    text-align: left;
+    color: var(--text-heading);
+    font-weight: 600;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border);
+  }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td {
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--row-hover); }
+  tfoot td {
+    font-weight: 600;
+    color: var(--text-heading);
+    background: var(--bg-alt);
+    border-top: 1px solid var(--border);
+  }
+
+  .agent-chip {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    background: var(--bg-alt);
+    border-radius: 4px;
+    font-size: 0.78rem;
+    color: var(--text-heading);
+  }
+  .empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Bridge · Cost</h1>
+  <div class="header-right">
+    <a href="/bridge/memory">Memory</a>
+    <a href="/bridge/cost" class="active">Cost</a>
+    <a href="/">Home</a>
+    <button id="themeBtn">Dark</button>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="seg" id="rangeSeg">
+    <button data-range="24h">24h</button>
+    <button data-range="7d" class="active">7d</button>
+    <button data-range="30d">30d</button>
+  </div>
+  <label>Agent
+    <select id="agentFilter">
+      <option value="">All</option>
+    </select>
+  </label>
+  <div class="status" id="statusText">Loading…</div>
+</div>
+
+<div class="content">
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="label">Total cost</div>
+      <div class="value" id="statCost">—</div>
+      <div class="sub" id="statRange"></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">API calls</div>
+      <div class="value" id="statCalls">—</div>
+      <div class="sub" id="statAgents"></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Input tokens</div>
+      <div class="value" id="statInput">—</div>
+      <div class="sub" id="statCache"></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Output tokens</div>
+      <div class="value" id="statOutput">—</div>
+      <div class="sub">incl. thinking</div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Cost over time · agent × model</h3>
+    <div class="chart-wrap"><canvas id="costChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Breakdown</h3>
+    <div id="tableWrap"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// --- Theme ---
+if (localStorage.getItem('bridge-dark') === '1') {
+  document.body.classList.add('dark');
+  $('themeBtn').textContent = 'Light';
+}
+$('themeBtn').onclick = () => {
+  document.body.classList.toggle('dark');
+  const dark = document.body.classList.contains('dark');
+  $('themeBtn').textContent = dark ? 'Light' : 'Dark';
+  localStorage.setItem('bridge-dark', dark ? '1' : '0');
+  if (chart) renderChart(lastData);  // re-colour axes
+};
+
+// --- State ---
+let range = localStorage.getItem('bridge-cost-range') || '7d';
+let agentFilter = '';
+let chart = null;
+let lastData = null;
+
+// --- Controls ---
+$('rangeSeg').querySelectorAll('button').forEach(btn => {
+  if (btn.dataset.range === range) {
+    $('rangeSeg').querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  btn.onclick = () => {
+    $('rangeSeg').querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    range = btn.dataset.range;
+    localStorage.setItem('bridge-cost-range', range);
+    load();
+  };
+});
+
+$('agentFilter').onchange = () => {
+  agentFilter = $('agentFilter').value;
+  load();
+};
+
+// --- API ---
+async function api(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
+// --- Formatters ---
+function fmtUSD(v) {
+  if (v == null) return '—';
+  if (v === 0) return '$0.00';
+  if (Math.abs(v) < 1) return '$' + v.toFixed(4);
+  return '$' + v.toFixed(2);
+}
+function fmtInt(v) {
+  return (v ?? 0).toLocaleString('en-US');
+}
+
+function escapeHTML(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Stable colour per series
+const PALETTE = [
+  '#6c63ff', '#ff7a59', '#20c997', '#f5b400',
+  '#d9534f', '#17a2b8', '#9b59b6', '#2ecc71',
+  '#e67e22', '#3498db', '#e84393', '#00b894',
+];
+function colorFor(key, idx) {
+  return PALETTE[idx % PALETTE.length];
+}
+
+// --- Rendering ---
+async function load() {
+  $('statusText').textContent = `Loading ${range}${agentFilter ? ' · ' + agentFilter : ''}…`;
+  try {
+    const qs = new URLSearchParams({ range });
+    if (agentFilter) qs.set('agent', agentFilter);
+    const data = await api('/bridge/api/cost?' + qs.toString());
+    lastData = data;
+    render(data);
+    $('statusText').textContent = `Updated ${new Date().toLocaleTimeString('zh-TW')}`;
+  } catch (e) {
+    $('statusText').textContent = 'Failed: ' + e.message;
+  }
+}
+
+function render(data) {
+  const summary = data.summary || [];
+  const timeseries = data.timeseries || [];
+
+  // Stats
+  const totalCalls = summary.reduce((a, r) => a + (r.calls || 0), 0);
+  const totalInput = summary.reduce((a, r) => a + (r.input_tokens || 0), 0);
+  const totalOutput = summary.reduce((a, r) => a + (r.output_tokens || 0), 0);
+  const totalCacheRead = summary.reduce((a, r) => a + (r.cache_read_tokens || 0), 0);
+  const totalCacheWrite = summary.reduce((a, r) => a + (r.cache_write_tokens || 0), 0);
+  const agents = [...new Set(summary.map(r => r.agent))];
+
+  $('statCost').textContent = fmtUSD(data.total_cost_usd);
+  $('statRange').textContent = `${data.range} · ${data.bucket} bucket`;
+  $('statCalls').textContent = fmtInt(totalCalls);
+  $('statAgents').textContent = agents.length ? agents.join(', ') : 'no activity';
+  $('statInput').textContent = fmtInt(totalInput);
+  $('statCache').textContent = `cache: ${fmtInt(totalCacheRead)} read · ${fmtInt(totalCacheWrite)} write`;
+  $('statOutput').textContent = fmtInt(totalOutput);
+
+  // Populate agent filter from summary + keep selection
+  refreshAgentFilter(summary);
+
+  // Chart + table
+  renderChart(data);
+  renderTable(data);
+}
+
+function refreshAgentFilter(summary) {
+  // Accumulate agents seen across reloads so the dropdown doesn't shrink
+  // just because the current filter is one agent.
+  const existing = new Set();
+  for (const opt of $('agentFilter').options) {
+    if (opt.value) existing.add(opt.value);
+  }
+  for (const row of summary) existing.add(row.agent);
+
+  const current = agentFilter;
+  const sel = $('agentFilter');
+  sel.innerHTML = '<option value="">All</option>';
+  [...existing].sort().forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a;
+    opt.textContent = a;
+    if (a === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function renderChart(data) {
+  const ts = data.timeseries || [];
+  if (!ts.length) {
+    if (chart) { chart.destroy(); chart = null; }
+    const wrap = document.querySelector('.chart-wrap');
+    wrap.innerHTML = '<div class="empty">No API calls in this range.</div>';
+    return;
+  }
+  // Ensure canvas exists
+  let canvas = document.getElementById('costChart');
+  if (!canvas) {
+    const wrap = document.querySelector('.chart-wrap');
+    wrap.innerHTML = '<canvas id="costChart"></canvas>';
+    canvas = document.getElementById('costChart');
+  }
+
+  // Pivot: bucket -> { "agent/model" -> cost_usd }
+  const buckets = [...new Set(ts.map(r => r.bucket))].sort();
+  const keys = [...new Set(ts.map(r => `${r.agent}/${r.model}`))].sort();
+
+  const bucketIdx = new Map(buckets.map((b, i) => [b, i]));
+  const seriesMap = new Map();
+  for (const key of keys) seriesMap.set(key, new Array(buckets.length).fill(0));
+  for (const row of ts) {
+    const key = `${row.agent}/${row.model}`;
+    seriesMap.get(key)[bucketIdx.get(row.bucket)] += row.cost_usd || 0;
+  }
+
+  const datasets = keys.map((key, i) => ({
+    label: key,
+    data: seriesMap.get(key),
+    backgroundColor: colorFor(key, i),
+    stack: 'cost',
+    borderWidth: 0,
+  }));
+
+  const labels = buckets.map(b => {
+    // 24h → "HH:00"; day → "MM/DD"
+    if (b.length === 16) return b.slice(11, 16);
+    return b.slice(5);
+  });
+
+  const gridColor = document.body.classList.contains('dark') ? '#2a2a4a' : '#e5e5e5';
+  const tickColor = document.body.classList.contains('dark') ? '#aaa' : '#666';
+
+  if (chart) chart.destroy();
+  chart = new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: tickColor, boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${fmtUSD(ctx.parsed.y)}`,
+            footer: items => {
+              const total = items.reduce((a, it) => a + (it.parsed.y || 0), 0);
+              return 'Total: ' + fmtUSD(total);
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          stacked: true,
+          grid: { color: gridColor, display: false },
+          ticks: { color: tickColor, font: { size: 10 } },
+        },
+        y: {
+          stacked: true,
+          grid: { color: gridColor },
+          ticks: {
+            color: tickColor,
+            font: { size: 10 },
+            callback: v => fmtUSD(v),
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderTable(data) {
+  const summary = (data.summary || []).slice().sort((a, b) => (b.cost_usd || 0) - (a.cost_usd || 0));
+  if (!summary.length) {
+    $('tableWrap').innerHTML = '<div class="empty">No breakdown yet.</div>';
+    return;
+  }
+
+  const rows = summary.map(r => `
+    <tr>
+      <td><span class="agent-chip">${escapeHTML(r.agent)}</span></td>
+      <td>${escapeHTML(r.model)}</td>
+      <td class="num">${fmtInt(r.calls)}</td>
+      <td class="num">${fmtInt(r.input_tokens)}</td>
+      <td class="num">${fmtInt(r.output_tokens)}</td>
+      <td class="num">${fmtInt(r.cache_read_tokens)} / ${fmtInt(r.cache_write_tokens)}</td>
+      <td class="num">${fmtUSD(r.cost_usd)}</td>
+    </tr>`).join('');
+
+  const totCalls = summary.reduce((a, r) => a + (r.calls || 0), 0);
+  const totInput = summary.reduce((a, r) => a + (r.input_tokens || 0), 0);
+  const totOutput = summary.reduce((a, r) => a + (r.output_tokens || 0), 0);
+  const totCacheR = summary.reduce((a, r) => a + (r.cache_read_tokens || 0), 0);
+  const totCacheW = summary.reduce((a, r) => a + (r.cache_write_tokens || 0), 0);
+
+  $('tableWrap').innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Model</th>
+          <th class="num">Calls</th>
+          <th class="num">Input</th>
+          <th class="num">Output</th>
+          <th class="num">Cache (read / write)</th>
+          <th class="num">Cost</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2">Total</td>
+          <td class="num">${fmtInt(totCalls)}</td>
+          <td class="num">${fmtInt(totInput)}</td>
+          <td class="num">${fmtInt(totOutput)}</td>
+          <td class="num">${fmtInt(totCacheR)} / ${fmtInt(totCacheW)}</td>
+          <td class="num">${fmtUSD(data.total_cost_usd)}</td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+// --- Init ---
+load();
+</script>
+</body>
+</html>
