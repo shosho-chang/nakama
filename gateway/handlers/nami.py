@@ -213,23 +213,27 @@ class NamiHandler(BaseHandler):
 
         messages = state.get("messages", [])
         pending_id = state.get("pending_tool_use_id")
-        if not messages or not pending_id:
+        if not messages:
             return HandlerResponse(text="流程狀態異常，已重置。請重新開始。")
 
-        # 把使用者回覆當成 ask_user 的 tool_result 塞回 loop
         messages = list(messages)
-        messages.append(
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": pending_id,
-                        "content": text,
-                    }
-                ],
-            }
-        )
+        if pending_id:
+            # 有 pending ask_user：把使用者回覆當成 tool_result 塞回 loop
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": pending_id,
+                            "content": text,
+                        }
+                    ],
+                }
+            )
+        else:
+            # 後續問題（task 建完後繼續問）：直接 append 新 user message
+            messages.append({"role": "user", "content": text})
         return self._run_loop(messages, user_id)
 
     # ── Agent loop ────────────────────────────────────────────────
@@ -283,7 +287,15 @@ class NamiHandler(BaseHandler):
 
             if stop_reason == "end_turn":
                 text = _extract_text(content_dicts) or "完成。"
-                return HandlerResponse(text=text)
+                # 把 assistant 回覆存進 messages，讓 thread 保持存活接受後續問題
+                messages.append({"role": "assistant", "content": content_dicts})
+                return HandlerResponse(
+                    text=text,
+                    continuation=Continuation(
+                        flow_name=NAMI_AGENT_FLOW,
+                        state={"messages": messages, "pending_tool_use_id": None},
+                    ),
+                )
 
             if stop_reason != "tool_use":
                 logger.warning(f"Unexpected stop_reason: {stop_reason}")

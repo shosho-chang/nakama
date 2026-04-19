@@ -73,7 +73,7 @@ def test_suggest_redirect():
 
 
 def test_handle_returns_text_on_end_turn():
-    """LLM 直接回文字（沒呼叫 tool），handler 返回該文字。"""
+    """LLM 直接回文字（沒呼叫 tool），handler 返回該文字並保持 thread 存活。"""
     fake = _fake_response("end_turn", [_text_block("你好，我是 Nami！")])
     with (
         patch("gateway.handlers.nami.call_claude_with_tools", return_value=fake),
@@ -81,7 +81,9 @@ def test_handle_returns_text_on_end_turn():
     ):
         result = NamiHandler().handle("general", "嗨", "U1")
     assert "Nami" in result.text
-    assert result.continuation is None
+    # end_turn 後 thread 保持存活（pending_tool_use_id=None 表示等待下一個問題）
+    assert result.continuation is not None
+    assert result.continuation.state["pending_tool_use_id"] is None
 
 
 # ── Agent loop: ask_user pauses loop ────────────────────────────────
@@ -171,7 +173,8 @@ def test_create_project_tool_executes_and_writes():
         result = NamiHandler().handle("create_project", "關於超加工食品的研究 project", "U1")
 
     assert "超加工食品" in result.text
-    assert result.continuation is None
+    assert result.continuation is not None  # thread 保持存活
+    assert result.continuation.state["pending_tool_use_id"] is None
     mock_writer.assert_called_once()
     call_kwargs = mock_writer.call_args.kwargs
     assert call_kwargs["title"] == "超加工食品"
@@ -300,7 +303,8 @@ def test_continue_flow_feeds_user_reply_as_tool_result():
     ):
         result = NamiHandler().continue_flow(NAMI_AGENT_FLOW, state, "research", "U1")
 
-    assert result.continuation is None
+    assert result.continuation is not None  # thread 保持存活
+    assert result.continuation.state["pending_tool_use_id"] is None
     assert "research" in result.text
     # 驗證塞回去的 tool_result
     last_messages = captured_messages[-1]
