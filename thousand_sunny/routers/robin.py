@@ -211,11 +211,17 @@ async def scrape_translate(
 
     _VALID_SOURCE_TYPES = {"article", "paper", "book", "video", "podcast"}
     _VALID_CONTENT_NATURES = {
-        "popular_science", "research", "textbook",
-        "clinical_protocol", "narrative", "commentary",
+        "popular_science",
+        "research",
+        "textbook",
+        "clinical_protocol",
+        "narrative",
+        "commentary",
     }
     source_type = source_type if source_type in _VALID_SOURCE_TYPES else "article"
-    content_nature = content_nature if content_nature in _VALID_CONTENT_NATURES else "popular_science"  # noqa: E501
+    content_nature = (
+        content_nature if content_nature in _VALID_CONTENT_NATURES else "popular_science"
+    )  # noqa: E501
 
     from shared.translator import translate_document
     from shared.web_scraper import scrape_url

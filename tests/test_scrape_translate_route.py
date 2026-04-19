@@ -49,10 +49,13 @@ def test_scrape_translate_requires_auth(client):
 def test_scrape_translate_success(client, tmp_path):
     auth = _auth_cookie(client)
     bilingual_content = "# Title\n\nOriginal paragraph.\n\n> 原始段落。"
+    inbox = tmp_path / "Inbox" / "kb"
+    inbox.mkdir(parents=True, exist_ok=True)
 
     with (
         patch("shared.web_scraper.scrape_url", return_value="# Title\n\nOriginal paragraph."),
         patch("shared.translator.translate_document", return_value=bilingual_content),
+        patch("thousand_sunny.routers.robin._get_inbox", return_value=inbox),
     ):
         resp = client.post(
             "/scrape-translate",
