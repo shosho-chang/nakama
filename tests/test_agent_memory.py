@@ -150,6 +150,19 @@ def test_decay_reduces_confidence():
     assert mems[0].confidence == 0.5
 
 
+def test_list_subjects_returns_existing():
+    agent_memory.add("nami", "U1", "fact", "A", "a")
+    agent_memory.add("nami", "U1", "preference", "B", "b")
+    agent_memory.add("nami", "U2", "fact", "C", "c")  # different user
+
+    subjects = agent_memory.list_subjects("nami", "U1")
+    assert subjects == ["A", "B"]
+
+
+def test_list_subjects_empty():
+    assert agent_memory.list_subjects("nami", "U1") == []
+
+
 def test_format_as_context_empty():
     """沒有記憶時回空字串。"""
     assert agent_memory.format_as_context("nami", "U1") == ""

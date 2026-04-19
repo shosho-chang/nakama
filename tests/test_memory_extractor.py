@@ -185,6 +185,43 @@ def test_extract_in_background_returns_thread():
     assert not t.is_alive()
 
 
+def test_extract_injects_existing_subjects_into_prompt():
+    """抽取時應把 user 現有的 subject 列表注入 prompt，讓 Haiku 重用。"""
+    agent_memory.add("nami", "U1", "preference", "工作時段", "既有記憶")
+    agent_memory.add("nami", "U1", "fact", "專業領域", "既有記憶")
+
+    captured_prompt = {}
+
+    def _capture(prompt, **kwargs):
+        captured_prompt["value"] = prompt
+        return "[]"
+
+    with patch("shared.memory_extractor.ask_claude", side_effect=_capture):
+        memory_extractor.extract_from_messages(
+            "nami", "U1", [{"role": "user", "content": "test"}]
+        )
+
+    assert "已有 subject" in captured_prompt["value"]
+    assert "工作時段" in captured_prompt["value"]
+    assert "專業領域" in captured_prompt["value"]
+
+
+def test_extract_no_subjects_block_when_empty():
+    """沒有既有記憶時，prompt 不應有 subjects block。"""
+    captured_prompt = {}
+
+    def _capture(prompt, **kwargs):
+        captured_prompt["value"] = prompt
+        return "[]"
+
+    with patch("shared.memory_extractor.ask_claude", side_effect=_capture):
+        memory_extractor.extract_from_messages(
+            "nami", "U1", [{"role": "user", "content": "test"}]
+        )
+
+    assert "已有 subject" not in captured_prompt["value"]
+
+
 def test_extract_dedup_via_subject():
     """同一 subject 第二次抽取應 update 現有記憶，不是新增。"""
     first_response = json.dumps(
