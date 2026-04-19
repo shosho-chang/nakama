@@ -1,8 +1,9 @@
 ---
-name: 任何功能都可能個別開源，開發時保留參數化與擴充點
-description: nakama 所有 agent/module 都視為「未來可能獨立開源」來設計，避免硬編碼內部假設
+name: 任何功能都可能個別開源，開發時保留參數化與擴充點＋能力/IO/成本說明卡
+description: nakama 所有 agent/module 都視為「未來可能獨立開源」來設計，避免硬編碼內部假設；並對使用者明確說明能力、能力範圍、輸入輸出、成本
 type: feedback
 created: 2026-04-18
+updated: 2026-04-19
 originSessionId: c2ace3b3-f24c-4428-9d8b-ddd315f7d92e
 ---
 開發 nakama 任何功能（transcriber、Robin、Nami、Brook、Zoro、shared/ 等）時，**假設它之後可能被單獨抽出來開源給其他使用者**。設計決策要為這個未來保留彈性。
@@ -42,4 +43,23 @@ originSessionId: c2ace3b3-f24c-4428-9d8b-ddd315f7d92e
    - 最小可行介面 + 明確擴充點就好，不要為未知使用情境預建複雜 plugin 系統
    - 工程取捨原則仍適用（YAGNI），參考 CLAUDE.md「Don't design for hypothetical future requirements」
 
-**如何驗證一個 PR 有做到：** 想像把該 module 連同測試抽到一個新 repo，其他開發者能不能不改 source code 就能跑起來？
+8. **能力/輸入輸出/成本 說明卡（capability card）**
+   修修 2026-04-19 追加：開源前需要能向使用者「一頁說清楚」這個 app/skill/agent 是什麼。每個可獨立開源的單位（skill、agent、CLI entrypoint）都該有一張 capability card，涵蓋五件事：
+   - **能做什麼（Capabilities）**：用一句話描述主要用途，不含 jargon
+   - **不做什麼（Scope / Non-goals）**：明確列出邊界，避免使用者誤用（例：keyword-research 不做 SERP 爬取、不做競品分析）
+   - **輸入（Inputs）**：args、env vars、前置檔案、API key 需求、網路 / 配額依賴
+   - **輸出（Outputs）**：檔案路徑、格式、schema（frontmatter keys 等）、log / side effects
+   - **成本（Cost）**：典型一次執行的**實測**值 — 時間、$（含 LLM input + output + thinking tokens）、外部 API 配額耗用量；附上量測日期與版本 commit
+   
+   放在哪裡：
+   - Skill → 寫在 SKILL.md「When to Use」+「Cost」段，或 references/cost-estimation.md
+   - CLI → `--help` 訊息 + docstring
+   - Agent / service → README.md 或 module docstring
+   
+   關鍵要求：**成本必須是實測，不只是 a priori 估算**。事前公式可以放 cost-estimation.md 作為參考，但 SKILL.md 裡給使用者看的那一行要是「量測自 v<commit>，<date>，N 次平均」。
+
+**如何驗證一個 PR 有做到：**
+- 設計面：想像把該 module 連同測試抽到新 repo，其他開發者能不能不改 source code 就能跑起來？（對應 1–7 點）
+- 文件面：capability card 五件事是否都在使用者會看到的地方、成本是否為實測？（對應第 8 點）
+
+**具體先例：** 2026-04-19 keyword-research skill eval 發現 cost-estimation.md 只有 a priori 公式（`~$0.03–0.08/run`），沒有實測；CLI 不印 token usage。→ 已進 backlog，未來所有 skill 初次 eval 要同步產出實測成本行並寫回 SKILL.md。

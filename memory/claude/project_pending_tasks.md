@@ -81,7 +81,10 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 **Skill 化工程（2026-04-18 更新）：**
 - ✅ transcribe（`f:/nakama/.claude/skills/transcribe/`）— 週一 Angie 實測作為首次 eval
 - ✅ **keyword-research** (Zoro) — PR #31 pytrends→trendspy 解阻塞 + PR #32 skill + CLI wrapper + 6 references + frontmatter output contract（2026-04-18 merged）
-  - 下一個動作：第一次真實 invoke 作 first eval（走 transcribe 同路線，不跑合成 eval）
+  - ✅ **2026-04-19 首次真實 eval 完成**（深度睡眠 × youtube/blog 雙跑）— **PASS-WITH-NOTES**
+    - 報告：[docs/evals/keyword-research-2026-04-19-deep-sleep.md](../../docs/evals/keyword-research-2026-04-19-deep-sleep.md)
+    - Graceful degrade 實測驗證（Run 2 Trends quota 擋住仍 7/10 達門檻）
+    - Backlog 6 項已開 GH issue：術語表補深度睡眠 / lowercase normalize / {today} 注入 / reddit_zh query 精度 / twitter zh-TW 分流 / CLI emit 實測成本（實踐 capability card 原則）
 - ⬜ weekly-report (Franky)
 - ⬜ morning-brief (Nami) — Nami 還沒開發，先做 skill 再 agent
 - ⬜ kb-search (Robin) — `/kb/research` 未 E2E 測，skill 化前先驗

@@ -24,6 +24,7 @@
 - [reference_api_contract_pitfalls.md](reference_api_contract_pitfalls.md) — Claude / Gemini / Auphonic / python-dotenv 踩過的 API 契約陷阱清單
 - [feedback_dependency_check.md](feedback_dependency_check.md) — pip install 前必須檢查版本衝突，避免降級核心套件
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
+- [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
 - [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format
 - [feedback_search_skills_first.md](feedback_search_skills_first.md) — 開發前必須先搜尋現有 skills/MCP tools，不重複造輪子
 - [user_hardware.md](user_hardware.md) — 開發機：RTX 5070 Ti 16GB VRAM + 64GB RAM
@@ -36,5 +37,5 @@
 - [feedback_test_realism.md](feedback_test_realism.md) — mock integration test 時輸入形狀要對齊真實契約，別為了測試好寫造不可能的資料
 - [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
-- [feedback_open_source_ready.md](feedback_open_source_ready.md) — 所有功能都可能個別開源，開發時保留參數化與擴充點（避免硬編碼內部假設）
+- [feedback_open_source_ready.md](feedback_open_source_ready.md) — 所有功能都可能個別開源，開發時保留參數化與擴充點；每個可開源單位需有 capability card（能力/IO/實測成本）
 - [project_bilingual_reader_design.md](project_bilingual_reader_design.md) — 雙語閱讀三場景設計凍結：BabelDOC+Docling雙路線、Claude Sonnet翻譯、台灣術語表、輕量Annotation
