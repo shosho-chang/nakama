@@ -43,7 +43,7 @@ AGENT_ALIASES: dict[str, str] = {
 # ── Intent 關鍵字（零 LLM 成本）────────────────────────────────────────
 
 INTENT_KEYWORDS: dict[str, list[str]] = {
-    # brainstorm 放最前面，keyword 比較長會優先命中，避免被其他 intent 吃掉
+    # 位置不重要 — _match_intent_keywords 依 keyword 長度全域排序，長的先命中。
     "brainstorm": [
         "brainstorm",
         "腦力激盪",

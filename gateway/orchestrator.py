@@ -18,6 +18,7 @@ P1 設計：
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from shared.anthropic_client import set_current_agent
@@ -126,6 +127,33 @@ def select_participants(topic: str, *, max_count: int = 2) -> list[str]:
     return [agent for _, agent in scored[:max_count]]
 
 
+def _collect_views_parallel(participants: list[str], topic: str) -> dict[str, str]:
+    """跑所有 participants 並回傳 views dict，保留 participants 原順序。
+
+    `feedback_parallel_sub_agents.md`：獨立 sub-agent 要並行（時間 > token 成本）。
+    兩個 participant 各約 2-5s 的 LLM call，並行可省一半等待。synthesizer 必須
+    等兩邊回來才能開跑，所以只平行化這一階段。
+
+    threading.local 每 worker thread 有獨立副本，所以各自的 `set_current_agent`
+    不會互相污染 cost tracking 的 agent 標記。`_run_participant` 自己包 try/except，
+    future.result() 不會拋出；failed agent 會寫進 views 的占位文字。
+    """
+    if not participants:
+        return {}
+    if len(participants) == 1:
+        agent = participants[0]
+        return {agent: _run_participant(agent, topic)}
+
+    views: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=len(participants)) as pool:
+        futures = [pool.submit(_run_participant, agent, topic) for agent in participants]
+        # zip 讓 views 的 insertion order == participants 順序，下游的 Slack block
+        # 順序才穩定，即使 robin 的 future 比 sanji 早完成也一樣。
+        for agent, future in zip(participants, futures):
+            views[agent] = future.result()
+    return views
+
+
 def _run_participant(agent: str, topic: str) -> str:
     """叫某個 agent 用它的 persona 對 topic 給一段觀點。
 
@@ -200,10 +228,7 @@ def run_brainstorm(topic: str, *, max_participants: int = 2) -> BrainstormResult
     participants = select_participants(topic, max_count=max_participants)
     logger.info(f"brainstorm 主題={topic!r} 參與者={participants}")
 
-    views: dict[str, str] = {}
-    for agent in participants:
-        views[agent] = _run_participant(agent, topic)
-
+    views = _collect_views_parallel(participants, topic)
     synthesis = _synthesize(topic, views)
 
     return BrainstormResult(

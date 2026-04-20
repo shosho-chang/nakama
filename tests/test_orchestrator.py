@@ -164,18 +164,28 @@ def test_format_brainstorm_blocks_structure() -> None:
 
 
 def test_run_brainstorm_sets_thread_local_agent_per_call() -> None:
-    """每個參與者呼叫 ask 時，thread-local agent 必須是對應 agent（供 router / cost）。"""
+    """每個參與者呼叫 ask 時，thread-local agent 必須是對應 agent（供 router / cost）。
+
+    Participants 現在並行跑（feedback_parallel_sub_agents.md），所以 sanji/robin
+    的 ask 哪個先 append 到 seen_agents 取決於 scheduler。Nami synthesizer 一定
+    在兩個 participant future 都回來後才跑，所以穩定在最後。
+    """
+    import threading
+
+    lock = threading.Lock()
     seen_agents: list[str] = []
 
     def fake_ask(prompt: str, **kwargs):
         from shared.anthropic_client import _local
 
-        seen_agents.append(getattr(_local, "agent", None) or "unset")
+        with lock:
+            seen_agents.append(getattr(_local, "agent", None) or "unset")
         return "x"
 
-    # sanji 拿 2 hits、robin 拿 1 hit — 確定 sanji 先、robin 第二、nami synthesizer 最後
     with patch.object(orchestrator, "ask", side_effect=fake_ask):
         run_brainstorm("飲食 習慣 研究")
 
-    # 依順序：sanji, robin, nami
-    assert seen_agents == ["sanji", "robin", "nami"]
+    # participant 順序不固定，但必須是 sanji + robin；synthesizer 一定最後
+    assert set(seen_agents[:2]) == {"sanji", "robin"}
+    assert seen_agents[2] == "nami"
+    assert len(seen_agents) == 3
