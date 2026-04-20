@@ -59,3 +59,4 @@
 - [project_qwen3_6_installed.md](project_qwen3_6_installed.md) — Qwen3.6-35B-A3B 下載完成 + A/B bench 就緒，週四 2026-04-23 09:00 測試
 - [feedback_windows_stdout_utf8.md](feedback_windows_stdout_utf8.md) — Windows Python stdout cp1252 無法印中文，module 頂層 reconfigure UTF-8
 - [reference_lifeos_task_frontmatter.md](reference_lifeos_task_frontmatter.md) — LifeOS Task 排程 frontmatter 格式（scheduled 無 Z），Nami calendar sync 會抓
+- [project_multi_model_architecture.md](project_multi_model_architecture.md) — 多 Model 多 Agent 架構決策：Q1 Hybrid routing、Q2 panel A 範圍（2026-05-18 評估擴 B）、Q3 Slack brainstorm 進行中

@@ -34,7 +34,7 @@ def ask_claude(
     prompt: str,
     *,
     system: str = "",
-    model: str = "claude-sonnet-4-20250514",
+    model: str | None = None,
     max_tokens: int = 4096,
     temperature: float | None = None,
 ) -> str:
@@ -42,7 +42,13 @@ def ask_claude(
 
     自動重試（最多 3 次，指數退避）並記錄 token 用量。
     Claude 4.7 以後的模型已廢除 temperature，預設不送。
+
+    `model=None` 時會走 `shared.llm_router.get_model()` 依當前 agent 解析。
     """
+    if model is None:
+        from shared.llm_router import get_model
+
+        model = get_model(agent=getattr(_local, "agent", None), task="default")
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -85,7 +91,7 @@ def call_claude_with_tools(
     tools: list[dict],
     *,
     system: str = "",
-    model: str = "claude-haiku-4-5",
+    model: str | None = None,
     max_tokens: int = 2048,
 ) -> "anthropic.types.Message":
     """呼叫 Claude 的 tool-use API，回傳完整 Message 物件（含 stop_reason、content blocks）。
@@ -102,12 +108,17 @@ def call_claude_with_tools(
         messages: Claude API messages 格式（alternate user/assistant）
         tools: Tool definitions（JSON schema 陣列）
         system: System prompt
-        model: 模型（預設 Haiku 4.5，tool-routing 任務通常夠用）
+        model: 模型。None 則走 `shared.llm_router.get_model(task="tool_use")`
+            （預設 Haiku 4.5，tool-routing 任務通常夠用）。
         max_tokens: 最大輸出 token 數
 
     Returns:
         anthropic.types.Message（含 content + stop_reason + usage）
     """
+    if model is None:
+        from shared.llm_router import get_model
+
+        model = get_model(agent=getattr(_local, "agent", None), task="tool_use")
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -149,7 +160,7 @@ def ask_claude_multi(
     messages: list[dict],
     *,
     system: str = "",
-    model: str = "claude-sonnet-4-20250514",
+    model: str | None = None,
     max_tokens: int = 4096,
     temperature: float | None = None,
 ) -> str:
@@ -163,13 +174,17 @@ def ask_claude_multi(
         messages: Claude API messages 格式，
                   例如 [{"role": "user", "content": "..."}, ...]
         system:   系統 prompt
-        model:    模型名稱
+        model:    模型名稱。None 則走 `shared.llm_router.get_model()`。
         max_tokens: 最大回應 token 數
         temperature: 溫度（None 表示不送）
 
     Returns:
         assistant 回應的純文字
     """
+    if model is None:
+        from shared.llm_router import get_model
+
+        model = get_model(agent=getattr(_local, "agent", None), task="default")
 
     def _call() -> anthropic.types.Message:
         client = get_client()
