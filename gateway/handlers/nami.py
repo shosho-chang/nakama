@@ -21,10 +21,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from gateway.handlers.base import BaseHandler, Continuation, HandlerResponse
-from shared import agent_memory, google_calendar
+from shared import agent_memory, google_calendar, google_gmail
 from shared.anthropic_client import call_claude_with_tools, set_current_agent
 from shared.events import emit
 from shared.google_calendar import CalendarEvent, GoogleCalendarAuthError
+from shared.google_gmail import GoogleGmailAuthError
 from shared.lifeos_writer import (
     CONTENT_TYPES,
     ProjectExistsError,
@@ -305,6 +306,147 @@ NAMI_TOOLS: list[dict] = [
             "required": ["title"],
         },
     },
+    # ── Gmail tools ───────────────────────────────────────────────
+    {
+        "name": "list_gmail_unread",
+        "description": (
+            "列出 Gmail 收件匣的未讀（或符合 query 的）信件。"
+            "用於「Gmail 有什麼新信」「幫我掃信箱」「有沒有重要信」等需求。"
+            "回傳每封信的編號、寄件人、主旨、日期、摘要。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Gmail search syntax，預設 'is:unread'。"
+                        "例：'is:unread from:brand@example.com'、'is:unread newer_than:3d'"
+                    ),
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "最多回傳幾封，預設 10，最多 20",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_gmail_message",
+        "description": (
+            "取得單封 Gmail 信件的完整內容（含 body）。"
+            "在 list_gmail_unread 後，使用者要求看某封信的完整內容，或你需要讀內文才能回覆時使用。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message_id": {
+                    "type": "string",
+                    "description": "信件 ID（從 list_gmail_unread 取得）",
+                },
+            },
+            "required": ["message_id"],
+        },
+    },
+    {
+        "name": "search_gmail_history",
+        "description": (
+            "搜尋 Gmail 全域歷史（含寄件備份）。"
+            "報價時用來找自己過去寄過的類似報價信、合作信。"
+            "建議 query 帶 'in:sent' 搜已寄出的信。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Gmail search syntax。例：'in:sent 報價 YouTube'、"
+                        "'in:sent subject:合作邀約'"
+                    ),
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "最多回傳幾封，預設 5",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "create_gmail_draft",
+        "description": (
+            "把撰寫好的信件存成 Gmail 草稿。"
+            "草稿建立後，**在 Slack 貼出完整預覽（收件人 / 主旨 / 信件內容），"
+            "附 Gmail 連結，告訴使用者確認後說「發」才發出**。"
+            "若是回覆某封信，請傳入 thread_id 與 in_reply_to_message_id。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "收件人 email 列表",
+                },
+                "subject": {"type": "string", "description": "信件主旨"},
+                "body": {"type": "string", "description": "信件正文（plain text）"},
+                "thread_id": {
+                    "type": "string",
+                    "description": "若為回覆，帶入原信件的 thread_id",
+                },
+                "in_reply_to_message_id": {
+                    "type": "string",
+                    "description": "若為回覆，帶入原信件的 message_id（設 In-Reply-To header）",
+                },
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "update_gmail_draft",
+        "description": (
+            "修改既有 Gmail 草稿（未提供的欄位保留原值）。"
+            "使用者說「改第二段」「收件人換成 X」等時使用。"
+            "修改後同樣在 Slack 貼出新版完整預覽。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "draft_id": {
+                    "type": "string",
+                    "description": "要修改的草稿 ID（從 create_gmail_draft 取得）",
+                },
+                "to": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "新的收件人列表（可選）",
+                },
+                "subject": {"type": "string", "description": "新的主旨（可選）"},
+                "body": {"type": "string", "description": "新的信件正文（可選）"},
+            },
+            "required": ["draft_id"],
+        },
+    },
+    {
+        "name": "send_gmail_draft",
+        "description": (
+            "發送既有 Gmail 草稿。"
+            "**只有在使用者明確說「發」「發出去」「確認」「OK 發」之後才呼叫。**"
+            "發送後回報已寄出。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "draft_id": {
+                    "type": "string",
+                    "description": "要發送的草稿 ID",
+                },
+            },
+            "required": ["draft_id"],
+        },
+    },
+    # ── / Gmail tools ─────────────────────────────────────────────
     {
         "name": "ask_user",
         "description": (
@@ -544,10 +686,27 @@ class NamiHandler(BaseHandler):
                 return self._tool_update_calendar_event(tool_input)
             if name == "delete_calendar_event":
                 return self._tool_delete_calendar_event(tool_input)
+            if name == "list_gmail_unread":
+                return self._tool_list_gmail_unread(tool_input)
+            if name == "get_gmail_message":
+                return self._tool_get_gmail_message(tool_input)
+            if name == "search_gmail_history":
+                return self._tool_search_gmail_history(tool_input)
+            if name == "create_gmail_draft":
+                return self._tool_create_gmail_draft(tool_input)
+            if name == "update_gmail_draft":
+                return self._tool_update_gmail_draft(tool_input)
+            if name == "send_gmail_draft":
+                return self._tool_send_gmail_draft(tool_input)
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
         except GoogleCalendarAuthError as e:
             return _ToolOutcome(
                 content=f"Google Calendar 授權失效：{e}",
+                is_error=True,
+            )
+        except GoogleGmailAuthError as e:
+            return _ToolOutcome(
+                content=f"Gmail 授權失效：{e}",
                 is_error=True,
             )
         except Exception as e:
@@ -1173,6 +1332,161 @@ class NamiHandler(BaseHandler):
             if title_lower in e.title.lower():
                 return e
         return None
+
+    # ── Gmail tool executors ─────────────────────────────────────
+
+    def _tool_list_gmail_unread(self, input_: dict) -> _ToolOutcome:
+        query = str(input_.get("query") or "is:unread")
+        max_results = min(int(input_.get("max_results") or 10), 20)
+
+        messages = google_gmail.list_messages(query=query, max_results=max_results)
+        if not messages:
+            return _ToolOutcome(content=f"沒有符合條件的信件（query: {query}）。")
+
+        lines = [f"*Gmail 信件（{query}，共 {len(messages)} 封）*"]
+        for i, m in enumerate(messages, 1):
+            lines.append(
+                f"{i}. [{m['date'][:16]}] {m['from']}\n"
+                f"   主旨：{m['subject']}\n"
+                f"   id: {m['id']} | thread: {m['thread_id']}\n"
+                f"   摘要：{m['snippet'][:100]}"
+            )
+        return _ToolOutcome(content="\n\n".join(lines))
+
+    def _tool_get_gmail_message(self, input_: dict) -> _ToolOutcome:
+        message_id = str(input_.get("message_id", "")).strip()
+        if not message_id:
+            return _ToolOutcome(content="Missing message_id", is_error=True)
+
+        msg = google_gmail.get_message(message_id)
+        content = (
+            f"*信件詳情*\n"
+            f"From: {msg['from']}\n"
+            f"To: {msg['to']}\n"
+            f"CC: {msg['cc']}\n"
+            f"Subject: {msg['subject']}\n"
+            f"Date: {msg['date']}\n"
+            f"Thread ID: {msg['thread_id']}\n"
+            f"Message ID: {msg['id']}\n\n"
+            f"---\n{msg['body'] or '（無純文字內容）'}"
+        )
+        return _ToolOutcome(content=content)
+
+    def _tool_search_gmail_history(self, input_: dict) -> _ToolOutcome:
+        query = str(input_.get("query", "")).strip()
+        if not query:
+            return _ToolOutcome(content="Missing query", is_error=True)
+        max_results = min(int(input_.get("max_results") or 5), 10)
+
+        messages = google_gmail.list_messages(query=query, max_results=max_results)
+        if not messages:
+            return _ToolOutcome(content=f"沒有找到符合的歷史信件（query: {query}）。")
+
+        lines = [f"*Gmail 歷史搜尋（{query}，共 {len(messages)} 封）*"]
+        for i, m in enumerate(messages, 1):
+            lines.append(
+                f"{i}. [{m['date'][:16]}] to:{m['to']}\n"
+                f"   主旨：{m['subject']}\n"
+                f"   id: {m['id']}\n"
+                f"   摘要：{m['snippet'][:120]}"
+            )
+        return _ToolOutcome(content="\n\n".join(lines))
+
+    def _tool_create_gmail_draft(self, input_: dict) -> _ToolOutcome:
+        to = input_.get("to")
+        subject = str(input_.get("subject", "")).strip()
+        body = str(input_.get("body", "")).strip()
+        if not to or not subject or not body:
+            return _ToolOutcome(content="Missing required fields: to, subject, body", is_error=True)
+        if isinstance(to, str):
+            to = [to]
+
+        thread_id = input_.get("thread_id") or None
+        in_reply_to = input_.get("in_reply_to_message_id") or None
+
+        result = google_gmail.create_draft(
+            to=to,
+            subject=subject,
+            body=body,
+            thread_id=thread_id,
+            in_reply_to_message_id=in_reply_to,
+        )
+
+        content = (
+            f"✉️ 草稿已存 Gmail Drafts\n"
+            f"draft_id: {result['draft_id']}\n"
+            f"Gmail 連結：{result['gmail_web_link']}\n\n"
+            f"---\n"
+            f"To: {', '.join(to)}\n"
+            f"Subject: {subject}\n\n"
+            f"{body}\n"
+            f"---\n\n"
+            f"確認 OK 後說「發」，Nami 會呼叫 send_gmail_draft 發出。\n"
+            f"要修改就告訴我哪裡要改。"
+        )
+        return _ToolOutcome(
+            content=content,
+            event={
+                "name": "gmail_draft_created",
+                "payload": {
+                    "draft_id": result["draft_id"],
+                    "to": to,
+                    "subject": subject,
+                    "gmail_web_link": result["gmail_web_link"],
+                },
+                "log": subject,
+            },
+        )
+
+    def _tool_update_gmail_draft(self, input_: dict) -> _ToolOutcome:
+        draft_id = str(input_.get("draft_id", "")).strip()
+        if not draft_id:
+            return _ToolOutcome(content="Missing draft_id", is_error=True)
+
+        to = input_.get("to") or None
+        if isinstance(to, str):
+            to = [to]
+        subject = input_.get("subject") or None
+        body = input_.get("body") or None
+
+        result = google_gmail.update_draft(draft_id, to=to, subject=subject, body=body)
+
+        content = (
+            f"✏️ 草稿已更新\n"
+            f"draft_id: {result['draft_id']}\n"
+            f"Gmail 連結：{result['gmail_web_link']}\n\n"
+            f"---\n"
+            f"To: {', '.join(result['to'])}\n"
+            f"Subject: {result['subject']}\n\n"
+            f"{result['body']}\n"
+            f"---\n\n"
+            f"確認 OK 後說「發」。"
+        )
+        return _ToolOutcome(content=content)
+
+    def _tool_send_gmail_draft(self, input_: dict) -> _ToolOutcome:
+        draft_id = str(input_.get("draft_id", "")).strip()
+        if not draft_id:
+            return _ToolOutcome(content="Missing draft_id", is_error=True)
+
+        result = google_gmail.send_draft(draft_id)
+
+        content = (
+            f"📬 信件已發出\n"
+            f"message_id: {result['message_id']}\n"
+            f"thread_id: {result['thread_id']}"
+        )
+        return _ToolOutcome(
+            content=content,
+            event={
+                "name": "gmail_sent",
+                "payload": {
+                    "message_id": result["message_id"],
+                    "thread_id": result["thread_id"],
+                },
+                "log": f"draft {draft_id}",
+            },
+        )
 
 
 # ── Utilities ────────────────────────────────────────────────────────
