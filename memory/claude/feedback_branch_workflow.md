@@ -14,6 +14,7 @@ ttl: permanent
 
 **How to apply:**
 - 開始新任務：`git checkout -b feat/xxx main`
-- 完成後：`git push -u origin feat/xxx` → `gh pr create`
-- PR 前跑 `/code-review`
-- 純記憶更新或小修改可以直接在 main
+- 完成後：`git push -u origin feat/xxx` → `gh pr create` → `/code-review`
+- **Auto mode 也不例外**：auto mode 不是跳過 PR 的理由，多檔改動一律走 branch + PR
+- 純記憶更新或單行 typo 修正才可以直接 main
+- 違反後果：code review 永遠不會觸發（沒有 PR = 沒有觸發點）

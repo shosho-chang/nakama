@@ -148,7 +148,14 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ✅ OAuth 2.0 user-consent + token refresh/persist（filelock 保護）
 - ✅ VPS 實戰驗證：token rotate + persist OK、API 通、事件正確列出
 - ✅ Slack E2E 實測通過：create/list/update/delete 全正常
-- ⬜ **下一步：Calendar × Task 單向同步**（PRD approved，見 `project_nami_calendar_task_sync.md`）
+- ✅ **Calendar × Task 單向同步** — PR #40 merged + VPS deployed
+
+**Nami Gmail 整合（2026-04-20，完成並 VPS deployed）：**
+- ✅ 6 個 Gmail tools：list_gmail_unread / get_gmail_message / search_gmail_history / create_gmail_draft / update_gmail_draft / send_gmail_draft
+- ✅ Triage 規則：Primary only + Respond/Shosho label 24h 超時提醒
+- ✅ Code review（PR #57）三個 bug 修掉
+- ✅ SSL bug 修（per-thread service client）
+- 詳見 `project_nami_gmail.md`
 
 **待開發（agent 功能）：**
 - Nami（航海士）— 消費 Robin/Franky 事件，產出 Morning Brief
