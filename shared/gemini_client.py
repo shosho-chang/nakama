@@ -96,6 +96,57 @@ def _require_gemini_model(model: str) -> None:
         )
 
 
+def _clamp_thinking_budget(thinking_budget: int | None, max_tokens: int) -> int | None:
+    """若 thinking_budget 會吃光 output quota，自動縮成 max_tokens // 4。
+
+    Gemini 2.5 的 thinking token 計入 max_output_tokens。當 `max_tokens=200 +
+    thinking_budget=512` 時 thinking 把整個 output quota 吃光，最終文字只回傳
+    幾個字（或 finish_reason=MAX_TOKENS），成本花了卻拿不到有用輸出。
+
+    特殊語義保留：
+    - `None` → 不注入 ThinkingConfig，由 SDK 決定（Pro 家族是 dynamic）
+    - `<= 0` → 明確要關 thinking（Flash 支援傳 0）
+    """
+    if thinking_budget is None or thinking_budget <= 0:
+        return thinking_budget
+    cap = max_tokens // 4
+    if thinking_budget > cap:
+        logger.warning(
+            "thinking_budget=%d 超過 max_tokens(%d) // 4，自動縮為 %d 避免餓死 output",
+            thinking_budget,
+            max_tokens,
+            cap,
+        )
+        return cap
+    return thinking_budget
+
+
+def _extract_system_messages(messages: list[dict], existing_system: str) -> tuple[list[dict], str]:
+    """把 messages 裡 role="system" 的項目抽出來併進 system_instruction。
+
+    Gemini SDK `generate_content.contents` 只吃 role in (user, model)，
+    傳入 role="system" 會在 runtime 被拒絕。這個 helper 讓 caller 用共通
+    messages 格式（含 system），facade 層不用處理 provider 差異。
+    """
+    system_parts: list[str] = []
+    other: list[dict] = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                content = "\n".join(b.get("text", "") for b in content if isinstance(b, dict))
+            text = str(content).strip()
+            if text:
+                system_parts.append(text)
+        else:
+            other.append(msg)
+    if not system_parts:
+        return other, existing_system
+    extra = "\n\n".join(system_parts)
+    merged = f"{existing_system}\n\n{extra}" if existing_system else extra
+    return other, merged
+
+
 def ask_gemini(
     prompt: str,
     *,
@@ -125,6 +176,8 @@ def ask_gemini(
     _require_gemini_model(model)
 
     from google.genai import types
+
+    thinking_budget = _clamp_thinking_budget(thinking_budget, max_tokens)
 
     config_kwargs: dict[str, Any] = {"max_output_tokens": max_tokens}
     if system:
@@ -177,6 +230,10 @@ def ask_gemini_multi(
     _require_gemini_model(model)
 
     from google.genai import types
+
+    # Gemini 不吃 role="system"；抽出來併進 system_instruction
+    messages, system = _extract_system_messages(messages, system)
+    thinking_budget = _clamp_thinking_budget(thinking_budget, max_tokens)
 
     # Gemini 的 role 是 "user" / "model"（不是 "assistant"）
     contents: list[Any] = []
@@ -263,6 +320,8 @@ def ask_gemini_audio(
     mime_type = _audio_mime_type(audio_path)
 
     from google.genai import types
+
+    thinking_budget = _clamp_thinking_budget(thinking_budget, max_output_tokens)
 
     config_kwargs: dict[str, Any] = {
         "temperature": temperature,

@@ -411,3 +411,94 @@ def test_gemini_client_shares_local_with_anthropic():
     from shared.gemini_client import _local as g_local
 
     assert a_local is g_local  # 同一個 threading.local 物件
+
+
+# ── 步驟 4 follow-up：borderline bug 修復測試 ─────────────────────────
+
+
+def test_clamp_thinking_budget_shrinks_when_bigger_than_quarter():
+    """thinking_budget > max_tokens // 4 時縮為 max_tokens // 4。"""
+    from shared.gemini_client import _clamp_thinking_budget
+
+    # max_tokens=200, thinking=512 → 512 > 50 → 縮成 50
+    assert _clamp_thinking_budget(512, 200) == 50
+    # max_tokens=4096, thinking=512 → 512 <= 1024 → 保持 512
+    assert _clamp_thinking_budget(512, 4096) == 512
+
+
+def test_clamp_thinking_budget_preserves_special_values():
+    from shared.gemini_client import _clamp_thinking_budget
+
+    # None 保留原樣（不注入 ThinkingConfig）
+    assert _clamp_thinking_budget(None, 100) is None
+    # 0 保留原樣（明確關閉 thinking）
+    assert _clamp_thinking_budget(0, 100) == 0
+    # -1 保留原樣（Gemini dynamic 模式）
+    assert _clamp_thinking_budget(-1, 100) == -1
+
+
+def test_ask_gemini_auto_shrinks_thinking_budget(monkeypatch):
+    """小 max_tokens 搭預設 512 thinking_budget 時，內部應自動縮避免餓死 output。"""
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    import shared.gemini_client as gc
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = _make_text_response("ok")
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+
+    gc.ask_gemini("hi", model="gemini-2.5-pro", max_tokens=100)
+
+    config = fake_client.models.generate_content.call_args.kwargs["config"]
+    # 512 > 100 // 4 = 25，應被縮成 25
+    assert config.thinking_config.thinking_budget == 25
+
+
+def test_ask_gemini_multi_extracts_system_role(monkeypatch):
+    """messages 裡 role="system" 應被抽出併進 system_instruction，不混入 contents。"""
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    import shared.gemini_client as gc
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = _make_text_response("ok")
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+
+    gc.ask_gemini_multi(
+        [
+            {"role": "system", "content": "你是助手"},
+            {"role": "user", "content": "嗨"},
+        ],
+        model="gemini-2.5-pro",
+    )
+
+    call_kwargs = fake_client.models.generate_content.call_args.kwargs
+    # system 併入 system_instruction
+    assert call_kwargs["config"].system_instruction == "你是助手"
+    # contents 只剩 user（沒有 system role 混入）
+    contents = call_kwargs["contents"]
+    assert len(contents) == 1
+    assert contents[0].role == "user"
+
+
+def test_ask_gemini_multi_merges_system_role_with_existing(monkeypatch):
+    """caller 已傳 system 參數時，messages 裡的 system role 應 append 上去。"""
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    import shared.gemini_client as gc
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = _make_text_response("ok")
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+
+    gc.ask_gemini_multi(
+        [
+            {"role": "system", "content": "補充指令"},
+            {"role": "user", "content": "嗨"},
+        ],
+        system="你是助手",
+        model="gemini-2.5-pro",
+    )
+
+    system_instruction = fake_client.models.generate_content.call_args.kwargs[
+        "config"
+    ].system_instruction
+    assert "你是助手" in system_instruction
+    assert "補充指令" in system_instruction
