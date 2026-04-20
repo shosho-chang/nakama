@@ -1683,6 +1683,139 @@ def test_format_agent_response():
     assert "Nami" in blocks[0]["text"]["text"]
 
 
+# ── Web research tools ──────────────────────────────────────────────
+
+
+def test_web_search_happy_path():
+    """LLM 呼叫 web_search，firecrawl_search 被呼叫，回傳格式化候選清單。"""
+    fake_results = [
+        {"title": "睡眠研究A", "url": "https://example.com/a", "description": "說明A"},
+        {"title": "睡眠研究B", "url": "https://example.com/b", "description": ""},
+    ]
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("web_search", {"query": "睡眠 研究"}, id_="toolu_ws1")],
+        ),
+        _fake_response("end_turn", [_text_block("找到以下結果")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.firecrawl_search.firecrawl_search", return_value=fake_results) as mock_search,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "幫我搜尋睡眠研究", "U1")
+
+    assert result.text
+    mock_search.assert_called_once_with("睡眠 研究", num_results=10)
+
+
+def test_web_search_empty_query():
+    """web_search 傳入空 query 應回 is_error=True，不呼叫 firecrawl_search。"""
+    outcome = NamiHandler()._tool_web_search({"query": "  "})
+    assert outcome.is_error is True
+    assert "空" in outcome.content
+
+
+def test_fetch_url_happy_path():
+    """LLM 呼叫 fetch_url，scrape_url 被呼叫，回傳內文。"""
+    fake_content = "# 睡眠研究\n\n這是內文。" * 10
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("fetch_url", {"url": "https://example.com/a"}, id_="toolu_fu1")],
+        ),
+        _fake_response("end_turn", [_text_block("讀到了")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.web_scraper.scrape_url", return_value=fake_content) as mock_scrape,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "讀這個 URL", "U1")
+
+    assert result.text
+    mock_scrape.assert_called_once_with("https://example.com/a", mode="auto")
+
+
+def test_fetch_url_truncation():
+    """fetch_url 回傳 >20000 字元時應截斷並附上截斷提示。"""
+    long_content = "x" * 25000
+    outcome = NamiHandler()._tool_fetch_url.__func__(
+        NamiHandler.__new__(NamiHandler), {"url": "https://example.com/long"}
+    )
+    # 直接測 handler method（需 mock scrape_url）
+    with patch("shared.web_scraper.scrape_url", return_value=long_content):
+        outcome = NamiHandler()._tool_fetch_url({"url": "https://example.com/long"})
+
+    assert outcome.is_error is False
+    assert len(outcome.content) < 25000
+    assert "截斷" in outcome.content
+    assert outcome.event["payload"]["truncated"] is True
+
+
+def test_deep_research_flow():
+    """端到端 research flow：web_search → fetch_url × 2 → write_vault_note → end_turn。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("web_search", {"query": "褪黑激素 睡眠"}, id_="toolu_dr1")],
+        ),
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("fetch_url", {"url": "https://example.com/study1"}, id_="toolu_dr2")],
+        ),
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("fetch_url", {"url": "https://example.com/study2"}, id_="toolu_dr3")],
+        ),
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "write_vault_note",
+                    {
+                        "relative_path": "Nami/Notes/Research/2026-04-21-melatonin.md",
+                        "title": "褪黑激素與睡眠研究",
+                        "body": "## 研究結論\n...",
+                        "tags": ["research"],
+                    },
+                    id_="toolu_dr4",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("✅ 報告存好了")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "shared.firecrawl_search.firecrawl_search",
+            return_value=[
+                {"title": "Study1", "url": "https://example.com/study1", "description": "desc1"},
+            ],
+        ),
+        patch("shared.web_scraper.scrape_url", return_value="研究內文"),
+        patch("gateway.handlers.nami.read_page", return_value=None),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "幫我做褪黑激素的深度研究", "U1")
+
+    assert result.text
+    mock_write.assert_called_once()
+    written_path = mock_write.call_args[0][0]
+    assert "Nami/Notes/Research/" in written_path
+
+
 def test_format_event_message():
     payload = {"title": "研究完成", "path": "reports/intel.md"}
     fallback, blocks = format_event_message("zoro", "intel_ready", payload)
