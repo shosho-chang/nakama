@@ -5,8 +5,9 @@ import re
 from datetime import date
 from pathlib import Path
 
-from shared.anthropic_client import ask_claude
+from shared.anthropic_client import set_current_agent
 from shared.config import get_vault_path
+from shared.llm import ask
 from shared.log import get_logger, kb_log
 from shared.memory import get_context, remember
 from shared.obsidian_writer import (
@@ -190,9 +191,13 @@ class IngestPipeline:
         source_type: str,
         content_nature: str = "",
     ) -> str:
-        """產出 Source Summary。小文件直接用 Sonnet，大文件走 Map-Reduce。"""
+        """產出 Source Summary。小文件直接用 facade，大文件走 Map-Reduce。
+
+        facade 依 `MODEL_ROBIN` env 選 provider（預設 Gemini 2.5 Pro，見步驟 4）。
+        """
+        set_current_agent("robin")  # Web UI 也會呼叫此 method，重設 thread-local
         if len(content) <= self.LARGE_DOC_THRESHOLD:
-            # 現有流程：直接用 Sonnet
+            # 小文件：單次 facade 呼叫（provider 由 MODEL_ROBIN 決定）
             prompt = load_prompt(
                 "robin",
                 "summarize",
@@ -203,7 +208,7 @@ class IngestPipeline:
                 date=str(date.today()),
                 content=_truncate_at_boundary(content, 30000),
             )
-            return ask_claude(prompt, system=_build_robin_system_prompt())
+            return ask(prompt=prompt, system=_build_robin_system_prompt())
 
         # 大文件：Map-Reduce
         return self._map_reduce_summary(
@@ -222,7 +227,8 @@ class IngestPipeline:
         source_type: str,
         content_nature: str = "",
     ) -> str:
-        """Map-Reduce 摘要：分段用本地模型，合併用 Sonnet。"""
+        """Map-Reduce 摘要：分段用本地模型，合併走 facade（MODEL_ROBIN）。"""
+        set_current_agent("robin")
         from agents.robin.chunker import chunk_document
 
         chunks = chunk_document(content)
@@ -252,7 +258,7 @@ class IngestPipeline:
             chunk_summaries.append(summary)
             logger.info(f"  chunk {chunk['index']}/{len(chunks)} 完成（{len(summary)} 字元）")
 
-        # Reduce：合併所有 chunk 摘要（用 Sonnet 確保最終品質）
+        # Reduce：合併所有 chunk 摘要（走 facade，provider 由 MODEL_ROBIN 決定）
         combined = "\n\n---\n\n".join(
             f"### 段落 {i + 1}：{chunks[i]['heading']}\n{s}" for i, s in enumerate(chunk_summaries)
         )
@@ -268,11 +274,15 @@ class IngestPipeline:
             chunk_summaries=combined,
         )
 
-        return ask_claude(reduce_prompt, system=system)
+        return ask(prompt=reduce_prompt, system=system)
 
     @staticmethod
     def _get_map_ask_fn():
-        """取得 Map 階段的推理函式：優先本地模型，fallback 到 Sonnet。"""
+        """取得 Map 階段的推理函式：優先本地模型，fallback 到 facade。
+
+        facade（`shared.llm.ask`）依 `MODEL_ROBIN` env 自動選 provider — Robin
+        預設走 Gemini（步驟 4）。沒設就回退到 DEFAULT_MODELS 的 Claude Sonnet。
+        """
         try:
             from shared.local_llm import ask_local, is_server_available
 
@@ -282,8 +292,8 @@ class IngestPipeline:
         except ImportError:
             pass
 
-        logger.warning("本地 LLM 不可用，Map 階段改用 Sonnet API（費用較高）")
-        return ask_claude
+        logger.warning("本地 LLM 不可用，Map 階段改走雲端 facade（費用較高）")
+        return ask
 
     def _get_concept_plan(
         self,
@@ -292,7 +302,8 @@ class IngestPipeline:
         user_guidance: str = "",
         content_nature: str = "",
     ) -> dict | None:
-        """呼叫 Claude 取得 Concept & Entity 候選清單，回傳計畫 dict。"""
+        """呼叫 facade（依 MODEL_ROBIN）取得 Concept & Entity 候選清單，回傳計畫 dict。"""
+        set_current_agent("robin")
         existing_concepts = [f.stem for f in list_files("KB/Wiki/Concepts")]
         existing_entities = [f.stem for f in list_files("KB/Wiki/Entities")]
 
@@ -311,8 +322,8 @@ class IngestPipeline:
             user_guidance=user_guidance or "（無特別引導，請自行判斷重點）",
         )
 
-        response = ask_claude(
-            prompt,
+        response = ask(
+            prompt=prompt,
             system=_build_robin_system_prompt() + "\n\n回傳純 JSON，不要包含其他文字。",
             temperature=0.2,
         )
@@ -412,6 +423,7 @@ class IngestPipeline:
 
     def _create_wiki_page(self, item: dict, source_path: str) -> None:
         """建立一個新的 concept 或 entity 頁面。"""
+        set_current_agent("robin")
         title = item["title"]
         page_type = item.get("type", "concept")
         content_notes = item.get("content_notes", "")
@@ -437,7 +449,7 @@ class IngestPipeline:
             )
             wiki_dir = "KB/Wiki/Entities"
 
-        body = ask_claude(prompt, system=_build_robin_system_prompt())
+        body = ask(prompt=prompt, system=_build_robin_system_prompt())
 
         write_page(
             f"{wiki_dir}/{slug}.md",

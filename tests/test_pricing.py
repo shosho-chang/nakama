@@ -46,6 +46,33 @@ def test_grok_flagship_and_catchall():
     assert p_unknown.input_usd_per_mtok == 2.0  # catch-all 保守 tier
 
 
+def test_gemini_pro_tier():
+    p = pricing.get_pricing("gemini-2.5-pro")
+    assert p.input_usd_per_mtok == 1.25
+    assert p.output_usd_per_mtok == 10.0
+    assert p.cache_read_usd_per_mtok == 0.3125
+    assert p.cache_write_usd_per_mtok == 0.0  # Gemini implicit cache 不計 write
+
+
+def test_gemini_flash_tier():
+    p = pricing.get_pricing("gemini-2.5-flash")
+    assert p.input_usd_per_mtok == 0.30
+    assert p.output_usd_per_mtok == 2.50
+    assert p.cache_read_usd_per_mtok == 0.075
+
+
+def test_gemini_unknown_variant_uses_pro_tier_catchall():
+    p = pricing.get_pricing("gemini-experimental-x")
+    assert p.input_usd_per_mtok == 1.25
+    assert p.output_usd_per_mtok == 10.0
+
+
+def test_gemini_flash_not_shadowed_by_pro_or_catchall():
+    """insertion order：flash 必須在 gemini- catch-all 前命中，不然會被吃成 pro tier。"""
+    p = pricing.get_pricing("gemini-2.5-flash-lite")
+    assert p.input_usd_per_mtok == 0.30  # flash tier
+
+
 def test_unknown_model_fallback_to_zero():
     p = pricing.get_pricing("gpt-4o")
     assert p.input_usd_per_mtok == 0.0
