@@ -73,7 +73,7 @@ Sanji agent 目前只是骨架（`raise NotImplementedError`），Q4 實則是**
 | 3 | Q3 P1 用戶主導 brainstorm（原以為 Sanji 當第二個 Slack bot，實為 handler）| ✅ 2026-04-20 | [#52](https://github.com/shosho-chang/nakama/pull/52) `40acad8` |
 | 4 | Q1 Gemini provider + Robin ingest 改走 Gemini | ✅ 2026-04-20 | [#53](https://github.com/shosho-chang/nakama/pull/53) `b015775` |
 | 4.1 | 步驟 4 borderline fix（Gemini 3 bug） | ✅ 2026-04-20 | [#54](https://github.com/shosho-chang/nakama/pull/54) `221e3bd` |
-| 4.2 | Multi-bot Slack gateway（每個 agent 獨立 bot）| 🔄 **PR #55 OPEN** | [#55](https://github.com/shosho-chang/nakama/pull/55) |
+| 4.2 | Multi-bot Slack gateway（每個 agent 獨立 bot）| ✅ 2026-04-20 | [#55](https://github.com/shosho-chang/nakama/pull/55) `b9dfdbf` |
 | 5 | Q3 P2 Zoro 白天推題 | 設計 doc 凍結，7 Q 全決定 | [docs/decisions/step-5-zoro-brainstorm-p2.md](../../docs/decisions/step-5-zoro-brainstorm-p2.md) |
 | 6 | Q2 panel 小範圍（Brook 長文優先） | 待開 | — |
 | 7 | Q3 P3 夜間 async + Nami 晨報整合 | 待開 | — |

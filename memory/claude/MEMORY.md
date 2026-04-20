@@ -48,6 +48,7 @@
 - [project_nami_vps_deployed.md](project_nami_vps_deployed.md) — Nami Slack Bot VPS 部署設定、Socket Mode 踩坑記錄
 - [project_nami_agent_loop_plan.md](project_nami_agent_loop_plan.md) — Nami agent loop 四個 Phase 規劃（Phase 0 已完成）
 - [feedback_traditional_chinese.md](feedback_traditional_chinese.md) — 所有對話必須用繁體中文（台灣語境），不能切成簡體
+- [feedback_cost_management.md](feedback_cost_management.md) — Sonnet 200k 為日常主模型，Opus 按需；1M context 已關閉；~/clear 每 task boundary
 - [project_agent_cost_tracking.md](project_agent_cost_tracking.md) — Agent 用量/費用追蹤：data/usage_log.jsonl，供 Bridge 儀表板顯示（待實作）
 - [project_agent_memory_design.md](project_agent_memory_design.md) — Agent 記憶 Phase 1-4 全部完成並 VPS 部署：/bridge landing + /bridge/memory + /bridge/cost
 - [feedback_llm_memory_extraction.md](feedback_llm_memory_extraction.md) — LLM 抽取記憶兩個坑：subject 去重要注入既有列表、content merge 要注入既有內容

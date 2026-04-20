@@ -123,6 +123,13 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
   - code-review 抓到 3 bug 同 branch 修：缺 `load_dotenv()` / SKILL.md「5 steps」誤標 / CLI 缺 elapsed time
   - 順手清 PR #29 的 2 個 CI 債
 
+**Multi-bot Slack gateway（PR #55 merged，2026-04-20）：**
+- ✅ 每個 agent 獨立 Slack app（`<AGENT>_SLACK_BOT_TOKEN`）
+- ✅ `_discover_bots` 改 regex scan env + `get_handler()` gate（移除硬寫 tuple）
+- ✅ `run()` crash_event — 任何 bot thread 死亡即 raise，讓 systemd 重啟
+- ✅ 10 個測試，86 gateway tests pass
+- ⬜ **Zoro bot 上線**（Phase 2 brainstorm 的 blocker）：Phase 1 — 建 Zoro Slack app + 加 token → gateway 自動啟動
+
 **Phase 4 Bridge UI（PR #41 PR-A merged，2026-04-20）：**
 - ✅ PR-A backend：`shared/pricing.py` + `api_calls` schema migration（cache tokens 補登）+ `shared/agent_memory.py` get/update/list_agents + `thousand_sunny/routers/bridge.py`（memory CRUD + cost API）
 - ✅ 59 個新測試（pricing / cost tracking / memory update-family / bridge router）— 全 457 tests pass
