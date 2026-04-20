@@ -1657,7 +1657,7 @@ class NamiHandler(BaseHandler):
 
         lines = [f"📂 {relative_dir} 底下共 {len(files)} 個筆記："]
         for f in files:
-            lines.append(f"  - {f.name}")
+            lines.append(f"  - {relative_dir.rstrip('/')}/{f.name}")
         return _ToolOutcome(content="\n".join(lines))
 
 
