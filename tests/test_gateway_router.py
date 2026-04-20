@@ -157,3 +157,38 @@ def test_route_mention_strips_user_id():
     result = route_mention("<@U12345ABC> Nami 建任務 買牛奶")
     assert result.agent == "nami"
     assert "U12345ABC" not in result.text
+
+
+# ── Brainstorm routing (step 3) ──
+
+
+def test_brainstorm_english_keyword_routes_to_orchestrator():
+    result = route_mention("<@U999> brainstorm 如何戒宵夜")
+    assert result.agent == "orchestrator"
+    assert result.intent == "brainstorm"
+    assert result.confidence == "keyword"
+
+
+def test_brainstorm_chinese_keyword_routes_to_orchestrator():
+    result = route_natural_language("腦力激盪 autophagy 機制")
+    assert result.agent == "orchestrator"
+    assert result.intent == "brainstorm"
+
+
+def test_brainstorm_beats_other_shorter_intents():
+    """'brainstorm 研究 autophagy' 應命中 brainstorm，不是 keyword_research。"""
+    result = route_natural_language("brainstorm 研究 autophagy 的證據")
+    assert result.intent == "brainstorm"
+    assert result.agent == "orchestrator"
+
+
+def test_sanji_alias_routes_to_sanji():
+    """直接 @sanji 時走 sanji handler。"""
+    result = route_natural_language("Sanji 最近覺得有點累")
+    assert result.agent == "sanji"
+    assert result.intent == "general"
+
+
+def test_sanji_chinese_title_routes_to_sanji():
+    result = route_natural_language("廚師，幫我想個 snack 點子")
+    assert result.agent == "sanji"

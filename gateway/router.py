@@ -43,6 +43,14 @@ AGENT_ALIASES: dict[str, str] = {
 # ── Intent 關鍵字（零 LLM 成本）────────────────────────────────────────
 
 INTENT_KEYWORDS: dict[str, list[str]] = {
+    # brainstorm 放最前面，keyword 比較長會優先命中，避免被其他 intent 吃掉
+    "brainstorm": [
+        "brainstorm",
+        "腦力激盪",
+        "討論一下",
+        "一起討論",
+        "來討論",
+    ],
     "create_project": [
         "建立專案",
         "開專案",
@@ -69,6 +77,7 @@ INTENT_KEYWORDS: dict[str, list[str]] = {
 }
 
 INTENT_TO_AGENT: dict[str, str] = {
+    "brainstorm": "orchestrator",
     "create_project": "nami",
     "create_task": "nami",
     "list_tasks": "nami",
