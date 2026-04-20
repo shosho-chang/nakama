@@ -19,6 +19,7 @@ def ask(
     model: str | None = None,
     max_tokens: int = 4096,
     temperature: float | None = None,
+    thinking_budget: int | None = None,
 ) -> str:
     """送一次 LLM 請求，自動依 (agent, model) 路由到對的 provider。
 
@@ -29,6 +30,9 @@ def ask(
 
     其他 provider 尚未實作，會拋 `NotImplementedError`，讓 caller 明確看到
     缺什麼（避免 router silent 回預設那種不透明的 fallback）。
+
+    `thinking_budget` 僅對 Gemini 生效（其他 provider 忽略）。傳 `None` 時讓
+    Gemini wrapper 套自家預設 512；傳 `0` 明確關閉 thinking；正整數為上限。
     """
     if model is None:
         model = get_model(agent=getattr(_local, "agent", None), task="default")
@@ -56,12 +60,16 @@ def ask(
     if provider == "google":
         from shared.gemini_client import ask_gemini
 
+        extra: dict = {}
+        if thinking_budget is not None:
+            extra["thinking_budget"] = thinking_budget
         return ask_gemini(
             prompt,
             system=system,
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            **extra,
         )
     raise NotImplementedError(
         f"Provider '{provider}' (model={model}) not yet wired. "
@@ -76,11 +84,15 @@ def ask_multi(
     model: str | None = None,
     max_tokens: int = 4096,
     temperature: float | None = None,
+    thinking_budget: int | None = None,
 ) -> str:
     """多回合版本。messages 用兩家共通的 OpenAI/Anthropic 欄位（role/content）。
 
-    Anthropic 不吃 role="system" in messages（走 `system` 參數），xAI 兩種都吃。
-    facade 把 `system` 參數正確送到各自 provider，caller 不用自己處理差異。
+    Provider 差異都在 wrapper 層處理：Anthropic 不吃 role="system" in messages（走
+    `system` 參數），xAI 兩種都吃，Gemini wrapper 也會把 role="system" 抽出來
+    併進 system_instruction。caller 用共通格式即可，不需自己分支。
+
+    `thinking_budget` 僅對 Gemini 生效（其他 provider 忽略）。
     """
     if model is None:
         model = get_model(agent=getattr(_local, "agent", None), task="default")
@@ -108,11 +120,15 @@ def ask_multi(
     if provider == "google":
         from shared.gemini_client import ask_gemini_multi
 
+        extra: dict = {}
+        if thinking_budget is not None:
+            extra["thinking_budget"] = thinking_budget
         return ask_gemini_multi(
             messages,
             system=system,
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            **extra,
         )
     raise NotImplementedError(f"Provider '{provider}' (model={model}) not yet wired for ask_multi.")

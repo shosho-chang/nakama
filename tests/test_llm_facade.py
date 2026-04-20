@@ -113,3 +113,40 @@ def test_ask_with_none_model_uses_router(monkeypatch: pytest.MonkeyPatch):
 
     m_grok.assert_called_once()
     assert m_grok.call_args.kwargs["model"] == "grok-4-fast-non-reasoning"
+
+
+def test_ask_forwards_thinking_budget_only_to_gemini():
+    """thinking_budget 只對 Gemini forward，不塞給其他 provider（簽名沒 accept 會炸）。"""
+    from shared import llm
+
+    with patch("shared.gemini_client.ask_gemini", return_value="ok") as m_gem:
+        llm.ask("hi", model="gemini-2.5-pro", thinking_budget=256)
+    assert m_gem.call_args.kwargs["thinking_budget"] == 256
+
+    # None 則不 forward（讓 Gemini wrapper 用自家 default 512）
+    with patch("shared.gemini_client.ask_gemini", return_value="ok") as m_gem:
+        llm.ask("hi", model="gemini-2.5-pro")
+    assert "thinking_budget" not in m_gem.call_args.kwargs
+
+    # 0 要 forward（明確關閉 thinking）
+    with patch("shared.gemini_client.ask_gemini", return_value="ok") as m_gem:
+        llm.ask("hi", model="gemini-2.5-pro", thinking_budget=0)
+    assert m_gem.call_args.kwargs["thinking_budget"] == 0
+
+    # Claude 不該拿到 thinking_budget kwarg
+    with patch("shared.llm.ask_claude", return_value="ok") as m_claude:
+        llm.ask("hi", model="claude-sonnet-4-20250514", thinking_budget=256)
+    assert "thinking_budget" not in m_claude.call_args.kwargs
+
+
+def test_ask_multi_forwards_thinking_budget_only_to_gemini():
+    from shared import llm
+
+    messages = [{"role": "user", "content": "hi"}]
+    with patch("shared.gemini_client.ask_gemini_multi", return_value="ok") as m_gem:
+        llm.ask_multi(messages, model="gemini-2.5-pro", thinking_budget=128)
+    assert m_gem.call_args.kwargs["thinking_budget"] == 128
+
+    with patch("shared.llm.ask_claude_multi", return_value="ok") as m_claude:
+        llm.ask_multi(messages, model="claude-sonnet-4-20250514", thinking_budget=128)
+    assert "thinking_budget" not in m_claude.call_args.kwargs
