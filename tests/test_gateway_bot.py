@@ -41,7 +41,7 @@ def test_discover_bots_picks_up_nami(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_discover_bots_multi_agent_order(monkeypatch: pytest.MonkeyPatch):
-    """Nami 在前、Sanji 其次 — 固定順序由 _SUPPORTED_AGENTS 決定。"""
+    """多 agent 按 agent_name 字母排序 — 確保 log/啟動順序穩定。"""
     monkeypatch.setenv("NAMI_SLACK_BOT_TOKEN", "xoxb-nami")
     monkeypatch.setenv("NAMI_SLACK_APP_TOKEN", "xapp-nami")
     monkeypatch.setenv("SANJI_SLACK_BOT_TOKEN", "xoxb-sanji")
@@ -69,6 +69,16 @@ def test_discover_bots_skips_half_set_token(monkeypatch: pytest.MonkeyPatch):
 def test_discover_bots_ignores_whitespace_only(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("NAMI_SLACK_BOT_TOKEN", "   ")
     monkeypatch.setenv("NAMI_SLACK_APP_TOKEN", "xapp-nami")
+
+    from gateway.bot import _discover_bots
+
+    assert _discover_bots() == []
+
+
+def test_discover_bots_skips_agent_without_handler(monkeypatch: pytest.MonkeyPatch):
+    """Token 齊了但 gateway/handlers registry 沒註冊 → skip，不啟動空殼 bot。"""
+    monkeypatch.setenv("ZORO_SLACK_BOT_TOKEN", "xoxb-zoro")
+    monkeypatch.setenv("ZORO_SLACK_APP_TOKEN", "xapp-zoro")
 
     from gateway.bot import _discover_bots
 
