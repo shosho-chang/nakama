@@ -2,8 +2,8 @@
 name: 多 Model 多 Agent 架構決策進度
 description: 多 LLM provider routing + review panel + Slack brainstorm 三個需求的決策記錄 + 8 步建置順序 + trigger
 type: project
+originSessionId: f2ea9d48-f32a-4c33-bf30-c54837e598ec
 ---
-
 # 多 Model 多 Agent 架構決策（2026-04-20 起）
 
 調研來源：2026-04-20 三個平行 subagent 深度調研（LiteLLM vs 直 SDK、MoA/panel review、Slack multi-agent）。
@@ -68,10 +68,10 @@ Sanji agent 目前只是骨架（`raise NotImplementedError`），Q4 實則是**
 
 | # | 任務 | 狀態 | PR |
 |---|---|---|---|
-| 1 | Q1 router skeleton（`shared/llm_router.py` + env 讀 `MODEL_<AGENT>`） | ✅ **已完成 2026-04-20** | [#50](https://github.com/shosho-chang/nakama/pull/50) merged as `e216147` |
-| 2 | Q1 第一個新 provider（xAI）+ Sanji wire（第一版人格 prompt） | 進行中 | — |
-| 3 | Q3 P1 用戶主導 brainstorm（Sanji 當第二個 Slack bot + 簡單 orchestrator） | 待開 | — |
-| 4 | Q1 Gemini provider + Robin ingest 改走 Gemini | 待開 | — |
+| 1 | Q1 router skeleton（`shared/llm_router.py` + env 讀 `MODEL_<AGENT>`） | ✅ 2026-04-20 | [#50](https://github.com/shosho-chang/nakama/pull/50) `e216147` |
+| 2 | Q1 第一個新 provider（xAI）+ Sanji wire（第一版人格 prompt） | ✅ 2026-04-20 | [#51](https://github.com/shosho-chang/nakama/pull/51) `0e82fe9` |
+| 3 | Q3 P1 用戶主導 brainstorm（Sanji 當第二個 Slack bot + 簡單 orchestrator） | ✅ 2026-04-20 | [#52](https://github.com/shosho-chang/nakama/pull/52) `40acad8` |
+| 4 | Q1 Gemini provider + Robin ingest 改走 Gemini | 🔄 **PR OPEN** 待 merge | [#53](https://github.com/shosho-chang/nakama/pull/53) `af350a0` |
 | 5 | Q3 P2 Zoro 白天推題 | 待開 | — |
 | 6 | Q2 panel 小範圍（Brook 長文優先） | 待開 | — |
 | 7 | Q3 P3 夜間 async + Nami 晨報整合 | 待開 | — |
@@ -81,12 +81,19 @@ Sanji agent 目前只是骨架（`raise NotImplementedError`），Q4 實則是**
 
 **Thousand Sunny 甲板 UI 順序**：先用 Python orchestrator 跑著、功能穩後再加 UI（避免 UI 設計改動頻繁影響邏輯）。
 
-## 實作細節備忘（步驟 1 完成後）
+## 步驟 4（PR #53）code review borderline — 留下階段處理
 
-- `shared/llm_router.py` 解析優先序：`MODEL_<AGENT>_<TASK>` > `MODEL_<AGENT>` > `DEFAULT_MODELS[task]`
-- `DEFAULT_MODELS`：`default="claude-sonnet-4-20250514"`、`tool_use="claude-haiku-4-5"`（與舊硬寫值完全一致，向下相容）
-- `anthropic_client.py` 三函式 `model=None` 時走 router，讀 `_local.agent`（threading.local，由 `set_current_agent()` 設）
-- 向下相容：顯式 `model=X` 的 callsite 零改動（gateway/router.py、memory_extractor、translator、transcriber）
-- Code review 發現但未 block 的未來改善點（步驟 2 一起做）：
-  - Issue C（72 分）：未呼叫 `set_current_agent` 的 thread → router silent 回 default。PR #20 踩過同類，值得在步驟 2 主動加 `logger.debug` 或 strict mode
-  - Issue B（62 分）：非 Anthropic model ID 會噴 SDK 錯 retry 3 次。步驟 2 加 xAI 後 router 需擴 provider dispatch，届時處理
+1. **`ingest.py` 兩處 inline 註解還寫「Sonnet」**（score 85，已 post 給用戶）— `_generate_summary:200` + `_map_reduce_summary:261`。外層 docstring 已更新成 facade / MODEL_ROBIN，兩個 inline 忘了跟。2 行 trivial 修。
+2. **`ask_gemini_multi` 沒處理 `role="system"` 訊息**（score 75）— Gemini SDK 只吃 user/model，system 混進 messages 會 runtime 拒絕。修法：開頭過濾掉 / 併入 `system_instruction`。xai vs gemini 的 multi 訊息格式差異可能需要一次性 refactor 解決。
+3. **thinking_budget 餓死 output**（score 75）— `max_tokens=200 + thinking_budget=512` 時 thinking 把輸出吃光（E2E 打到 7 chars）。`gateway/router.py` 的 Haiku 路由用 `max_tokens=100`，如果之後走 Gemini 會中。修法：`thinking_budget = min(thinking_budget, max_tokens // 4)` 自動縮放，或發 warning。
+4. **`shared/llm.py` 模組 docstring 過期**（score 75）— 說「Google / OpenAI 等下個步驟加」，PR #53 已加 Google。3 行 trivial 修。
+5. **thinking_budget 沒透過 facade 暴露**（score 62）— `ask_gemini` 有這參數，但 `shared.llm.ask()` 沒 forward。Robin 走 facade 永遠用預設 512。當前不 block，但長文 / 短 classification 任務要 tune 時必得 bypass facade。
+
+## 實作細節備忘
+
+- `shared/llm_router.py` 解析優先序：`MODEL_<AGENT>_<TASK>` > `MODEL_<AGENT>` > `DEFAULT_MODELS[task]`。`get_provider(model)` 依 prefix 推 provider（claude-/grok-/gemini-/gpt-/o1-/o3-）
+- `DEFAULT_MODELS`：`default="claude-sonnet-4-20250514"`、`tool_use="claude-haiku-4-5"`
+- `shared/llm.py` facade `ask()` / `ask_multi()` 跨 provider dispatch（Claude + Grok + Gemini；OpenAI 待 wire）
+- Thread-local agent 統一由 `shared.anthropic_client._local` 主管；xai_client / gemini_client `from anthropic_client import _local` 共用一個物件，跨 provider cost tracking agent 欄位一致
+- 三個 provider 都有對稱的 `_require_<X>_model` fail-fast guard，避免 wrong model ID 被 SDK retry 3× 浪費時間
+- Per-agent MODEL_ env 現況：`MODEL_SANJI=grok-4-fast-non-reasoning`（社群口吻），`MODEL_ROBIN=gemini-2.5-pro` 或 `-flash`（KB ingest）— 兩個都要在 VPS `.env` 設才會生效

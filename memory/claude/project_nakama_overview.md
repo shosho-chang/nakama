@@ -33,20 +33,21 @@ Franky ──系統健康──▶ Nami
 Chopper ──一對一──▶ 自由艦隊會員（獨立運作）
 ```
 
-## 狀態（2026-04-14 更新）
+## 狀態（2026-04-20 更新）
 
-- Robin：✅ 完成（含 /kb/research endpoint，待 VPS 部署測試）
+- Robin：✅ 完成（含 /kb/research endpoint + 步驟 4 已改走 Gemini facade，PR #53 待 merge）
 - 基礎設施 v0.4：✅ 完成（PR #2 merged）
 - Franky：✅ 完成（工程週報系統）
 - ADR-002 記憶系統：✅ Phase 1-3 完成（PR #4 merged）
-- 基礎建設 #1：✅ pyproject.toml + git tags（PR #5 merged）
-- 基礎建設 #2：✅ CI/CD + Ruff + pre-commit（PR #6 merged）
+- 基礎建設 #1-2：✅ pyproject.toml + CI/CD + Ruff + pre-commit
 - ADR-002 Phase 4（MCP Memory Server）：⏸ 等 MemPalace 中文支援
-- Zoro Keyword Research v2：✅ 完成並部署（中英雙語 + Reddit/Twitter + markdown 直寫 + 影片 Shorts/長片分離）
-- **Thousand Sunny**：✅ 完成並部署（獨立 web server，取代 agents/robin/web.py）
-- **Brook Phase 1：✅ 完成（commit 370bc22，待 VPS 部署測試）**
-- 下一個建議：Nami（Morning Brief，消費 Robin/Franky 事件）
-- 其餘船員：🚧 待開發
+- Zoro Keyword Research v2：✅ 完成並部署
+- **Thousand Sunny**：✅ 完成並部署
+- **Brook Phase 1：✅ 完成**
+- **Nami**：✅ Slack bot + 11 tools + Google Calendar + task sync 全 merged + VPS deployed
+- **Sanji**：✅ 第一版上線（2026-04-20）— persona prompt + `SanjiHandler`（同 Slack app、Grok 聲音）+ brainstorm 參與者身份。社群監控 / Fluent Community 管理功能留 follow-up
+- **多 Model 多 Agent 架構**：✅ 4/8 步完成（router / xAI / brainstorm P1 / Gemini），詳見 [project_multi_model_architecture.md](project_multi_model_architecture.md)
+- **Brainstorm orchestrator**：✅ P1 完成 — `@nakama brainstorm <主題>` 選 2 agents 並行跑 + Nami synthesizer。P2（Zoro agent-initiated）/ P3（夜間 async）待開
 - Chopper：🔒 待 MemPalace 整合條件滿足後啟動
 
 ## 基礎設施 v0.4
