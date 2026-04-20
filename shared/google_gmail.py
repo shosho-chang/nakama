@@ -93,8 +93,10 @@ def list_messages(query: str = "is:unread", max_results: int = 10) -> list[dict]
     msg_ids = [m["id"] for m in result.get("messages", [])]
 
     def _fetch_meta(msg_id: str) -> dict:
+        # 每個 thread 建自己的 service，避免共用 SSL socket 導致 DECRYPTION_FAILED
+        svc = _get_service()
         detail = (
-            service.users()
+            svc.users()
             .messages()
             .get(
                 userId="me",
