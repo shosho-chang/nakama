@@ -52,11 +52,38 @@ def test_ask_raises_for_unknown_provider():
 
 
 def test_ask_raises_notimplemented_for_recognized_but_unwired_provider():
-    """gemini- prefix 已在 router 識別為 google，但 facade 還沒 wire。"""
+    """openai 已識別但尚未 wire（gpt-* / o1-* / o3-*）。"""
     from shared import llm
 
-    with pytest.raises(NotImplementedError, match="google"):
-        llm.ask("hi", model="gemini-2.5-pro")
+    with pytest.raises(NotImplementedError, match="openai"):
+        llm.ask("hi", model="gpt-4o")
+
+
+def test_ask_dispatches_gemini_to_google_client():
+    from shared import llm
+
+    with (
+        patch("shared.llm.ask_claude", return_value="claude reply") as m_claude,
+        patch("shared.xai_client.ask_grok", return_value="grok reply") as m_grok,
+        patch("shared.gemini_client.ask_gemini", return_value="gemini reply") as m_gemini,
+    ):
+        out = llm.ask("hi", model="gemini-2.5-pro")
+
+    assert out == "gemini reply"
+    m_gemini.assert_called_once()
+    m_claude.assert_not_called()
+    m_grok.assert_not_called()
+
+
+def test_ask_multi_dispatches_gemini_to_google_client():
+    from shared import llm
+
+    messages = [{"role": "user", "content": "hi"}]
+    with patch("shared.gemini_client.ask_gemini_multi", return_value="gemini multi") as m:
+        out = llm.ask_multi(messages, model="gemini-2.5-flash")
+
+    assert out == "gemini multi"
+    m.assert_called_once()
 
 
 def test_ask_multi_dispatches_by_provider():

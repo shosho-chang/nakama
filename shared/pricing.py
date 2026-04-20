@@ -91,6 +91,28 @@ _FAMILY_DEFAULTS: dict[str, ModelPricing] = {
         cache_read_usd_per_mtok=0.20,
         cache_write_usd_per_mtok=0.0,
     ),
+    # Google Gemini — output 已含 thinking tokens（reasoning 全算 output 計費）。
+    # Gemini 沒有 implicit cache_write 計費（走 Context Caching API 才有），固定 0。
+    # 200k+ input 會漲價到 Pro $2.50/$15 / Flash $0.60/$3.50，這裡只取 ≤200k tier；
+    # 長 context 任務上線前再開 _MODEL_OVERRIDES 明確標示。
+    "gemini-2.5-pro": ModelPricing(
+        input_usd_per_mtok=1.25,
+        output_usd_per_mtok=10.0,
+        cache_read_usd_per_mtok=0.3125,  # ≤200k 為 input 的 1/4
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "gemini-2.5-flash": ModelPricing(
+        input_usd_per_mtok=0.30,
+        output_usd_per_mtok=2.50,
+        cache_read_usd_per_mtok=0.075,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "gemini-": ModelPricing(  # 未知 Gemini variant 保守用 pro tier
+        input_usd_per_mtok=1.25,
+        output_usd_per_mtok=10.0,
+        cache_read_usd_per_mtok=0.3125,
+        cache_write_usd_per_mtok=0.0,
+    ),
 }
 
 

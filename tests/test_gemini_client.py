@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
@@ -186,16 +187,8 @@ def test_cost_tracking_called(monkeypatch, fake_audio):
 
     recorded = {}
 
-    def fake_record(agent, model, input_tokens, output_tokens, run_id=None):
-        recorded.update(
-            {
-                "agent": agent,
-                "model": model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "run_id": run_id,
-            }
-        )
+    def fake_record(**kwargs):
+        recorded.update(kwargs)
 
     monkeypatch.setattr("shared.state.record_api_call", fake_record)
     gc.set_current_agent("test-agent", run_id=7)
@@ -218,8 +211,8 @@ def test_cost_tracking_sums_thoughts_tokens(monkeypatch, fake_audio):
 
     recorded = {}
 
-    def fake_record(agent, model, input_tokens, output_tokens, run_id=None):
-        recorded["output_tokens"] = output_tokens
+    def fake_record(**kwargs):
+        recorded["output_tokens"] = kwargs["output_tokens"]
 
     monkeypatch.setattr("shared.state.record_api_call", fake_record)
 
@@ -296,3 +289,125 @@ def test_retry_on_connection_error(monkeypatch, fake_audio):
     result = gc.ask_gemini_audio(fake_audio, "prompt")
     assert result == "ok"
     assert calls["n"] == 2
+
+
+# ── 步驟 4：文字 API (ask_gemini / ask_gemini_multi) 測試 ─────────────
+
+
+def _make_text_response(
+    text: str = "hello",
+    prompt_tokens: int = 100,
+    candidates_tokens: int = 50,
+    thoughts_tokens: int = 30,
+    cached: int = 0,
+):
+    """組出 google-genai 回傳物件的形狀。"""
+    from types import SimpleNamespace
+
+    usage = SimpleNamespace(
+        prompt_token_count=prompt_tokens,
+        candidates_token_count=candidates_tokens,
+        thoughts_token_count=thoughts_tokens,
+        cached_content_token_count=cached,
+        total_token_count=prompt_tokens + candidates_tokens + thoughts_tokens,
+    )
+    return SimpleNamespace(
+        text=text,
+        usage_metadata=usage,
+        candidates=[SimpleNamespace(finish_reason="STOP")],
+    )
+
+
+def test_ask_gemini_returns_text(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    import shared.gemini_client as gc
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = _make_text_response("gemini reply")
+
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+    out = gc.ask_gemini("hi", system="be concise", model="gemini-2.5-pro")
+
+    assert out == "gemini reply"
+    call_kwargs = fake_client.models.generate_content.call_args.kwargs
+    assert call_kwargs["model"] == "gemini-2.5-pro"
+    assert call_kwargs["config"].system_instruction == "be concise"
+
+
+def test_ask_gemini_records_output_includes_thinking_tokens(monkeypatch):
+    """Gemini 2.5 Pro 的 thinking token 也是 output 計費，必須併進 output_tokens。"""
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    import shared.gemini_client as gc
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = _make_text_response(
+        prompt_tokens=100, candidates_tokens=50, thoughts_tokens=200, cached=20
+    )
+
+    recorded = {}
+
+    def fake_record(**kwargs):
+        recorded.update(kwargs)
+
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+    monkeypatch.setattr("shared.state.record_api_call", fake_record)
+    gc.ask_gemini("hi", model="gemini-2.5-pro")
+
+    # thinking (200) + candidates (50) = 250 output
+    assert recorded["output_tokens"] == 250
+    assert recorded["input_tokens"] == 100
+    assert recorded["cache_read_tokens"] == 20
+    assert recorded["cache_write_tokens"] == 0  # Gemini implicit cache 不計 write
+
+
+def test_ask_gemini_rejects_non_gemini_model():
+    from shared.gemini_client import ask_gemini
+
+    with pytest.raises(ValueError, match="non-Gemini model"):
+        ask_gemini("hi", model="claude-sonnet-4-20250514")
+
+
+def test_ask_gemini_multi_rejects_grok_model():
+    from shared.gemini_client import ask_gemini_multi
+
+    with pytest.raises(ValueError, match="non-Gemini model"):
+        ask_gemini_multi(
+            [{"role": "user", "content": "hi"}],
+            model="grok-4-fast-non-reasoning",
+        )
+
+
+def test_ask_gemini_guard_fires_via_router(monkeypatch):
+    """MODEL_<AGENT> 被誤設成非 Gemini ID 時也要擋下來。"""
+    monkeypatch.setenv("MODEL_ROBIN", "claude-sonnet-4-20250514")
+    from shared.anthropic_client import set_current_agent
+    from shared.gemini_client import ask_gemini
+
+    set_current_agent("robin", run_id=None)
+    with pytest.raises(ValueError, match="non-Gemini model"):
+        ask_gemini("hi")
+
+
+def test_ask_gemini_resolves_model_via_router(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    monkeypatch.setenv("MODEL_ROBIN", "gemini-2.5-pro")
+    import shared.gemini_client as gc
+    from shared.anthropic_client import set_current_agent
+
+    set_current_agent("robin", run_id=None)
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = _make_text_response()
+
+    monkeypatch.setattr(gc, "get_client", lambda: fake_client)
+    gc.ask_gemini("hi")
+
+    assert fake_client.models.generate_content.call_args.kwargs["model"] == "gemini-2.5-pro"
+
+
+def test_gemini_client_shares_local_with_anthropic():
+    """unified thread-local：anthropic_client.set_current_agent 也能標記 Gemini 呼叫。"""
+    from shared.anthropic_client import _local as a_local
+    from shared.gemini_client import _local as g_local
+
+    assert a_local is g_local  # 同一個 threading.local 物件

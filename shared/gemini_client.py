@@ -1,31 +1,24 @@
-"""Google Gemini API wrapper，支援音訊輸入 + JSON schema 結構化輸出。
+"""Google Gemini API wrapper：支援文字、音訊輸入 + JSON schema 結構化輸出。
 
-用於多模態仲裁：對 ASR uncertain 片段用 Gemini 2.5 Pro audio 聽音檔做仲裁。
+用法：
+- `ask_gemini(prompt, system=...)` — 純文字（給 facade / Robin ingest 用）
+- `ask_gemini_multi(messages, system=...)` — 多回合文字
+- `ask_gemini_audio(audio_path, prompt, ...)` — 音訊（transcriber 多模態仲裁用）
 
 依賴 `google-genai>=1.73`（lazy import — 沒裝時不影響其他模組）。
 
-用法：
-    from shared.gemini_client import ask_gemini_audio
-    from pydantic import BaseModel
-
-    class Arbitration(BaseModel):
-        text: str
-        confidence: float
-
-    result = ask_gemini_audio(
-        audio_path="clip.wav",
-        prompt="這段語音最可能的逐字稿是什麼？",
-        response_schema=Arbitration,
-    )
+Thread-local agent 與 `shared.anthropic_client` 共用（步驟 4 起），讓 cost
+tracking 跨 provider 一致：`BaseAgent.execute()` 呼叫 anthropic_client 的
+`set_current_agent("robin")`，Gemini 這邊 `_record_usage` 自動吃到同一個標記。
 """
 
 from __future__ import annotations
 
 import os
-import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from shared.anthropic_client import _local, set_current_agent  # re-export for existing callers
 from shared.log import get_logger
 from shared.retry import with_retry
 
@@ -35,7 +28,14 @@ if TYPE_CHECKING:
 logger = get_logger("nakama.gemini_client")
 
 _client: Any | None = None
-_local = threading.local()
+
+__all__ = [
+    "ask_gemini",
+    "ask_gemini_multi",
+    "ask_gemini_audio",
+    "get_client",
+    "set_current_agent",  # 仍 re-export，multimodal_arbiter 在用
+]
 
 
 def _audio_mime_type(path: Path) -> str:
@@ -66,12 +66,6 @@ def get_client() -> Any:
     return _client
 
 
-def set_current_agent(agent: str, run_id: int | None = None) -> None:
-    """設定當前執行的 agent 名稱與 run_id，供 cost tracking 使用。"""
-    _local.agent = agent
-    _local.run_id = run_id
-
-
 def _get_retryable_exceptions() -> tuple[type[Exception], ...]:
     """組出 google-genai 的可重試例外清單（lazy import）。
 
@@ -86,6 +80,146 @@ def _get_retryable_exceptions() -> tuple[type[Exception], ...]:
         return base + (genai_errors.ServerError,)
     except (ImportError, AttributeError):
         return base
+
+
+def _require_gemini_model(model: str) -> None:
+    """Fail fast if router resolved a non-Gemini model for a Gemini call.
+
+    對稱 anthropic_client._require_claude_model / xai_client._require_grok_model。
+    避免 google-genai SDK 對 non-gemini ID 噴模糊錯後被 retry 包住白等。
+    """
+    if not model.startswith("gemini-"):
+        raise ValueError(
+            f"ask_gemini / ask_gemini_multi received non-Gemini model '{model}'. "
+            f"Use shared.llm.ask() for cross-provider routing, "
+            f"or check MODEL_<AGENT> env vars for a wrong value."
+        )
+
+
+def ask_gemini(
+    prompt: str,
+    *,
+    system: str = "",
+    model: str | None = None,
+    max_tokens: int = 4096,
+    temperature: float | None = None,
+    thinking_budget: int | None = 512,
+) -> str:
+    """送出一次 Gemini 純文字請求，回傳文字回應。
+
+    自動重試（最多 3 次，指數退避）並記錄 token 用量（含 thinking token）。
+
+    `model=None` 時會走 `shared.llm_router.get_model()` 依當前 agent 解析。
+    Resolved model 若不是 Gemini 系列會直接 raise。跨 provider 路由建議走
+    `shared.llm.ask()` facade。
+
+    Args:
+        thinking_budget: thinking token 上限。Gemini 2.5 Pro output 含 thinking 計費，
+            dynamic 模式常吃滿 max_tokens 讓成本爆掉。預設 512 對大部分 ingest /
+            摘要類任務足夠。要完全關掉 thinking 傳 0。
+    """
+    if model is None:
+        from shared.llm_router import get_model
+
+        model = get_model(agent=getattr(_local, "agent", None), task="default")
+    _require_gemini_model(model)
+
+    from google.genai import types
+
+    config_kwargs: dict[str, Any] = {"max_output_tokens": max_tokens}
+    if system:
+        config_kwargs["system_instruction"] = system
+    if temperature is not None:
+        config_kwargs["temperature"] = temperature
+    if thinking_budget is not None:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
+
+    def _call() -> Any:
+        client = get_client()
+        return client.models.generate_content(
+            model=model,
+            contents=[prompt],
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+
+    response = with_retry(
+        _call,
+        max_attempts=3,
+        backoff_base=2.0,
+        retryable=_get_retryable_exceptions(),
+    )
+
+    _record_usage(response, model)
+
+    text = getattr(response, "text", None)
+    if not text:
+        raise RuntimeError(f"Gemini 回應為空（{_describe_finish(response)}）")
+    return text
+
+
+def ask_gemini_multi(
+    messages: list[dict],
+    *,
+    system: str = "",
+    model: str | None = None,
+    max_tokens: int = 4096,
+    temperature: float | None = None,
+    thinking_budget: int | None = 512,
+) -> str:
+    """多回合 Gemini 請求。messages 用共通格式（role: user/assistant/model）。
+
+    Gemini SDK 自己的 `contents` 是 turn-based list；這裡把通用 messages
+    展平成 Gemini 期望的 Content 陣列。"""
+    if model is None:
+        from shared.llm_router import get_model
+
+        model = get_model(agent=getattr(_local, "agent", None), task="default")
+    _require_gemini_model(model)
+
+    from google.genai import types
+
+    # Gemini 的 role 是 "user" / "model"（不是 "assistant"）
+    contents: list[Any] = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        if role == "assistant":
+            role = "model"
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            # 若是 block list（例如 tool_result），展平成 plain text
+            text_parts = [b.get("text", "") for b in content if isinstance(b, dict)]
+            content = "\n".join(p for p in text_parts if p)
+        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=str(content))]))
+
+    config_kwargs: dict[str, Any] = {"max_output_tokens": max_tokens}
+    if system:
+        config_kwargs["system_instruction"] = system
+    if temperature is not None:
+        config_kwargs["temperature"] = temperature
+    if thinking_budget is not None:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
+
+    def _call() -> Any:
+        client = get_client()
+        return client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+
+    response = with_retry(
+        _call,
+        max_attempts=3,
+        backoff_base=2.0,
+        retryable=_get_retryable_exceptions(),
+    )
+
+    _record_usage(response, model)
+
+    text = getattr(response, "text", None)
+    if not text:
+        raise RuntimeError(f"Gemini 回應為空（{_describe_finish(response)}）")
+    return text
 
 
 def ask_gemini_audio(
@@ -197,6 +331,12 @@ def _record_usage(response: Any, model: str) -> None:
 
     Reasoning model（Gemini 2.5 Pro）的 thinking token 也是 output 計費，必須併入
     output_tokens 否則 cost tracking 會少算大半（實測 thinking 常為 candidates 的 2-5 倍）。
+
+    Gemini 的 `prompt_token_count` 已經是「扣掉 cache 的」實際計費 input（與 xAI
+    相反 — xAI 的 prompt_tokens 含 cached），所以這裡不需要再做減法。
+    `cached_content_token_count` 單獨記錄到 cache_read_tokens 供 Bridge 觀測。
+    Gemini 沒有 cache_write 計費（cache 要另外走 Context Caching API 建立，
+    那才有寫入成本；這層 implicit cache 是 free write），固定填 0。
     """
     try:
         from shared.state import record_api_call
@@ -207,6 +347,7 @@ def _record_usage(response: Any, model: str) -> None:
         input_tokens = getattr(usage, "prompt_token_count", 0) or 0
         candidates_tokens = getattr(usage, "candidates_token_count", 0) or 0
         thoughts_tokens = getattr(usage, "thoughts_token_count", 0) or 0
+        cached_tokens = getattr(usage, "cached_content_token_count", 0) or 0
         output_tokens = candidates_tokens + thoughts_tokens
 
         agent = getattr(_local, "agent", "unknown")
@@ -217,6 +358,8 @@ def _record_usage(response: Any, model: str) -> None:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             run_id=run_id,
+            cache_read_tokens=cached_tokens,
+            cache_write_tokens=0,
         )
     except Exception as e:
         logger.debug(f"cost tracking 失敗（忽略）：{e}")

@@ -52,6 +52,16 @@ def ask(
             max_tokens=max_tokens,
             temperature=temperature,
         )
+    if provider == "google":
+        from shared.gemini_client import ask_gemini
+
+        return ask_gemini(
+            prompt,
+            system=system,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
     raise NotImplementedError(
         f"Provider '{provider}' (model={model}) not yet wired. "
         f"Add a wrapper to shared/ and dispatch here."
@@ -88,6 +98,16 @@ def ask_multi(
         from shared.xai_client import ask_grok_multi
 
         return ask_grok_multi(
+            messages,
+            system=system,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    if provider == "google":
+        from shared.gemini_client import ask_gemini_multi
+
+        return ask_gemini_multi(
             messages,
             system=system,
             model=model,
