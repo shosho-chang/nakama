@@ -2,8 +2,8 @@
 name: Nami vault 筆記工具
 description: Nami 新增 3 個 vault note tools + 路徑規則模組，已完成但尚未 VPS 部署
 type: project
+originSessionId: ed5a46c9-99bf-45ef-bf83-53b56124009c
 ---
-
 **Nami vault note 能力（2026-04-20，本機完成，待 VPS 部署）**
 
 ## 已完成
@@ -24,10 +24,10 @@ type: project
 - **記憶系統**（`shared/agent_memory.py`）：Nami 從對話學到的事，不對外顯示
 - **vault note**（這個功能）：交付物（sales kit、會議摘要），使用者可見
 
-## 待辦
+## 狀態
 
-- VPS 部署（`git pull` + `systemctl restart nakama-gateway`）
-- 告知修修可以請 Nami 整理 Gmail Sent 報價記錄到 `Nami/Notes/sales-kit-*.md`
+- VPS 已部署（2026-04-21）
+- 可請 Nami 整理 Gmail Sent 報價記錄到 `Nami/Notes/sales-kit-*.md`
 
 **Why:** 修修問 Nami 能不能幫整理 sales kit，觸發了這個設計。
 **How to apply:** Nami 現在可以把交付物存進 vault，秘書能力完整一圈。
