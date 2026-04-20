@@ -310,9 +310,10 @@ NAMI_TOOLS: list[dict] = [
     {
         "name": "list_gmail_unread",
         "description": (
-            "列出 Gmail 收件匣的未讀（或符合 query 的）信件。"
-            "用於「Gmail 有什麼新信」「幫我掃信箱」「有沒有重要信」等需求。"
-            "回傳每封信的編號、寄件人、主旨、日期、摘要。"
+            "列出 Gmail 信件（支援 Gmail search syntax）。"
+            "掃信箱時固定呼叫兩次："
+            "1) query='category:primary is:unread'（Primary 未讀，不含 Promotions/Social/Updates）"
+            "2) query='label:Respond/Shosho older_than:1d'（超過 24 小時未處理的待回信）"
         ),
         "input_schema": {
             "type": "object",
@@ -320,8 +321,9 @@ NAMI_TOOLS: list[dict] = [
                 "query": {
                     "type": "string",
                     "description": (
-                        "Gmail search syntax，預設 'is:unread'。"
-                        "例：'is:unread from:brand@example.com'、'is:unread newer_than:3d'"
+                        "Gmail search syntax。"
+                        "掃 Primary 未讀用 'category:primary is:unread'；"
+                        "掃超時待回信用 'label:Respond/Shosho older_than:1d'"
                     ),
                 },
                 "max_results": {
