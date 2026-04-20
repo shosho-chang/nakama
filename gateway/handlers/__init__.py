@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from gateway.handlers.base import BaseHandler
 from gateway.handlers.nami import NamiHandler
+from gateway.handlers.orchestrator import OrchestratorHandler
+from gateway.handlers.sanji import SanjiHandler
 
 _HANDLERS: dict[str, BaseHandler] = {
     "nami": NamiHandler(),
+    "sanji": SanjiHandler(),
+    "orchestrator": OrchestratorHandler(),
 }
 
 
