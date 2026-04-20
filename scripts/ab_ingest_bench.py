@@ -33,6 +33,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# Windows 預設 cp1252 stdout 無法印中文，強制切 UTF-8
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
+
 # 讓 script 可以從 repo 根目錄匯入 nakama modules
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
