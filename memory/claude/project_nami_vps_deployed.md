@@ -14,7 +14,7 @@ originSessionId: 387704f9-a851-4156-893b-7b0b74f69276
 **2026-04-19 完成**：
 - ✅ VPS 拉 `feat/nami-project-bootstrap` 分支
 - ✅ 建立 Slack App「Nami」+ 走 Socket Mode（不走 HTTP Request URL）
-- ✅ `.env` 加 `SLACK_BOT_TOKEN` / `SLACK_SIGNING_SECRET` / `SLACK_APP_TOKEN`
+- ✅ `.env` 加 Slack token（**2026-04-20 改名** → `NAMI_SLACK_BOT_TOKEN` / `NAMI_SLACK_APP_TOKEN`，見 PR #55。`SLACK_SIGNING_SECRET` Socket Mode 用不到，可刪）
 - ✅ 手動啟動 `python3 -m gateway`（尚未設 systemd service）
 - ✅ Slack DM 測通：「建立專案」可觸發 create_project flow，選 content_type 後寫 LifeOS
 
