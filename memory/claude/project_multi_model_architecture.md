@@ -70,24 +70,43 @@ Sanji agent 目前只是骨架（`raise NotImplementedError`），Q4 實則是**
 |---|---|---|---|
 | 1 | Q1 router skeleton（`shared/llm_router.py` + env 讀 `MODEL_<AGENT>`） | ✅ 2026-04-20 | [#50](https://github.com/shosho-chang/nakama/pull/50) `e216147` |
 | 2 | Q1 第一個新 provider（xAI）+ Sanji wire（第一版人格 prompt） | ✅ 2026-04-20 | [#51](https://github.com/shosho-chang/nakama/pull/51) `0e82fe9` |
-| 3 | Q3 P1 用戶主導 brainstorm（Sanji 當第二個 Slack bot + 簡單 orchestrator） | ✅ 2026-04-20 | [#52](https://github.com/shosho-chang/nakama/pull/52) `40acad8` |
-| 4 | Q1 Gemini provider + Robin ingest 改走 Gemini | 🔄 **PR OPEN** 待 merge | [#53](https://github.com/shosho-chang/nakama/pull/53) `af350a0` |
-| 5 | Q3 P2 Zoro 白天推題 | 待開 | — |
+| 3 | Q3 P1 用戶主導 brainstorm（原以為 Sanji 當第二個 Slack bot，實為 handler）| ✅ 2026-04-20 | [#52](https://github.com/shosho-chang/nakama/pull/52) `40acad8` |
+| 4 | Q1 Gemini provider + Robin ingest 改走 Gemini | ✅ 2026-04-20 | [#53](https://github.com/shosho-chang/nakama/pull/53) `b015775` |
+| 4.1 | 步驟 4 borderline fix（Gemini 3 bug） | ✅ 2026-04-20 | [#54](https://github.com/shosho-chang/nakama/pull/54) `221e3bd` |
+| 4.2 | Multi-bot Slack gateway（每個 agent 獨立 bot）| 🔄 **PR #55 OPEN** | [#55](https://github.com/shosho-chang/nakama/pull/55) |
+| 5 | Q3 P2 Zoro 白天推題 | 設計 doc 凍結，7 Q 全決定 | [docs/decisions/step-5-zoro-brainstorm-p2.md](../../docs/decisions/step-5-zoro-brainstorm-p2.md) |
 | 6 | Q2 panel 小範圍（Brook 長文優先） | 待開 | — |
 | 7 | Q3 P3 夜間 async + Nami 晨報整合 | 待開 | — |
 | 8 | Q2 擴大評估 trigger（2026-05-18） | 記憶已設 | — |
 
-**步驟 3 更正**：用戶確認**第二個 Slack bot 用 Sanji**（原推薦 Robin，但 Sanji 社群 agent 在 #general 講話更自然）。
+**步驟 3 架構修正**（2026-04-20 session 尾）：PR #52 原本把 Sanji 做成「一個 Slack app 內多 persona，keyword routing」路線，修修實際要**每個 agent 獨立 Slack bot**。PR #55 重寫 `gateway/bot.py` 成 multi-bot registry，token 統一命名 `<AGENT>_SLACK_*`（Nami 也 rename）。見 [project_slack_multi_bot_architecture.md](project_slack_multi_bot_architecture.md)。
 
 **Thousand Sunny 甲板 UI 順序**：先用 Python orchestrator 跑著、功能穩後再加 UI（避免 UI 設計改動頻繁影響邏輯）。
 
-## 步驟 4（PR #53）code review borderline — 留下階段處理
+## 步驟 4 borderline 處理結果（PR #53 + #54）
 
-1. **`ingest.py` 兩處 inline 註解還寫「Sonnet」**（score 85，已 post 給用戶）— `_generate_summary:200` + `_map_reduce_summary:261`。外層 docstring 已更新成 facade / MODEL_ROBIN，兩個 inline 忘了跟。2 行 trivial 修。
-2. **`ask_gemini_multi` 沒處理 `role="system"` 訊息**（score 75）— Gemini SDK 只吃 user/model，system 混進 messages 會 runtime 拒絕。修法：開頭過濾掉 / 併入 `system_instruction`。xai vs gemini 的 multi 訊息格式差異可能需要一次性 refactor 解決。
-3. **thinking_budget 餓死 output**（score 75）— `max_tokens=200 + thinking_budget=512` 時 thinking 把輸出吃光（E2E 打到 7 chars）。`gateway/router.py` 的 Haiku 路由用 `max_tokens=100`，如果之後走 Gemini 會中。修法：`thinking_budget = min(thinking_budget, max_tokens // 4)` 自動縮放，或發 warning。
-4. **`shared/llm.py` 模組 docstring 過期**（score 75）— 說「Google / OpenAI 等下個步驟加」，PR #53 已加 Google。3 行 trivial 修。
-5. **thinking_budget 沒透過 facade 暴露**（score 62）— `ask_gemini` 有這參數，但 `shared.llm.ask()` 沒 forward。Robin 走 facade 永遠用預設 512。當前不 block，但長文 / 短 classification 任務要 tune 時必得 bypass facade。
+PR #53 code review 抓到 5 個 borderline（全 score < 85），分兩批處理：
+
+**PR #53 同 branch 修掉**（trivial 兩個）：
+1. `ingest.py` 兩處 inline 註解「直接用 Sonnet」→ facade/MODEL_ROBIN 語言
+2. `shared/llm.py` 模組 docstring 加 Google
+
+**PR #54 follow-up 修掉**（實質三個）：
+3. `ask_gemini_multi` 抽出 `role="system"` 併進 `system_instruction`
+4. `thinking_budget > max_tokens // 4` 自動縮 + warning（保留 None/≤0 特殊語義）
+5. facade `ask()` / `ask_multi()` 加 `thinking_budget` 參數，只對 Gemini forward
+
+## 步驟 5（Q3 P2 Zoro brainstorm）7 個 open questions 決定（2026-04-20）
+
+1. **頻道**：新建 `#brainstorm`
+2. **觸發時間**：台北早上 05:00（單次，後續若不夠再加 14:00）
+3. **Participant selection**：先用 P1 keyword routing（`_PARTICIPANT_PROFILES`），實測幾週真的常選錯人再升級 LLM
+4. **Relevance 濾網**：A+B 混合（keyword pre-filter → LLM 判準，每天 < $0.01）
+5. **排程**：APScheduler in-process（跟 thousand-sunny 同 service，重啟一起走）
+6. **Novelty 儲存**：agent_memory DB 新 type `"pushed_topic"`
+7. **Zoro persona prompt**：實作時一起寫，照新 Nami persona 模板（push-back 文化 + 聲音 anchor + 情境模式）
+
+**實作 blocker**：Zoro 要有獨立 Slack bot（走 [runbook](../../docs/runbooks/add-agent-slack-bot.md) Phase 1），主動推訊息時 Slack 只認 bot ID。
 
 ## 實作細節備忘
 

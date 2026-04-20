@@ -59,8 +59,10 @@
 - [project_qwen3_6_installed.md](project_qwen3_6_installed.md) — Qwen3.6-35B-A3B 下載完成 + A/B bench 就緒，週四 2026-04-23 09:00 測試
 - [feedback_windows_stdout_utf8.md](feedback_windows_stdout_utf8.md) — Windows Python stdout cp1252 無法印中文，module 頂層 reconfigure UTF-8
 - [reference_lifeos_task_frontmatter.md](reference_lifeos_task_frontmatter.md) — LifeOS Task 排程 frontmatter 格式（scheduled 無 Z），Nami calendar sync 會抓
-- [project_multi_model_architecture.md](project_multi_model_architecture.md) — 8 步建置順序：步驟 1-3 merged、步驟 4 PR #53 開啟待 merge，5 項 borderline 留下階段
+- [project_multi_model_architecture.md](project_multi_model_architecture.md) — 8 步建置順序：步驟 1-4 + borderline fix 全 merged；步驟 5 設計 doc 凍結，7 Q 全決定
+- [project_slack_multi_bot_architecture.md](project_slack_multi_bot_architecture.md) — 每個 agent 獨立 Slack app，token 統一 `<AGENT>_SLACK_*`，PR #55 待部署
 - [reference_llm_provider_cost_quirks.md](reference_llm_provider_cost_quirks.md) — Anthropic / xAI / Gemini usage 欄位差異、cache 計費、thinking token、role 名稱陷阱
 - [feedback_env_example_formatting.md](feedback_env_example_formatting.md) — .env.example 註解放獨立行（dotenv inline # 會被當成 value）
 - [feedback_ask_on_architecture.md](feedback_ask_on_architecture.md) — UX/產品架構決策（用戶直接可見的差異）先問再動手，不自行決定
 - Runbook：[docs/runbooks/add-agent-slack-bot.md](../../docs/runbooks/add-agent-slack-bot.md) — 幫 agent 開獨立 Slack bot 的完整流程（Phase 1 修修手動、Phase 2 Claude code、Phase 3 部署）
+- Design doc：[docs/decisions/step-5-zoro-brainstorm-p2.md](../../docs/decisions/step-5-zoro-brainstorm-p2.md) — 步驟 5 設計凍結，blocker 是 Zoro 獨立 Slack bot
