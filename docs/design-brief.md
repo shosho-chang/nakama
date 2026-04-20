@@ -22,16 +22,24 @@
 
 ## Agent 團隊（設計主角）
 
-| Agent | 角色 | 個性種子 |
-|-------|------|---------|
-| **Robin** | 知識管理（KB ingest / wiki） | 博學、安靜、整齊 |
-| **Zoro** | 輸入分類守門 | 果斷、少話、可靠 |
-| **Brook** | 文章寫作 | 作曲家般的長篇慢工 |
-| **Nami** | LifeOS 總管（Slack bot） | 導航員、高執行力 |
-| **Chopper** | 社群健康問答（規劃中） | 親和、會傾聽 |
-| **Thousand Sunny** | 甲板儀表板（multi-agent 控制台，規劃中） | 承載全員的船 |
+每個 agent 在 Bridge UI 上都有自己的卡片與狀態顯示。個性種子影響視覺識別的**語氣與密度**，不是靠不同字體做淺層差異化。
 
-這些個性會影響**每個 agent 在 UI 上的視覺識別**（例如 Robin 的區塊是靜態偏書感，Nami 的區塊有導航感）— 但不是給每人不同字體那種淺層差異化。
+| Agent | 角色定位 | 互動介面 | 個性種子 | UI 視覺語氣 |
+|-------|---------|---------|---------|------------|
+| **Robin** | 知識管理 — KB ingest / wiki 建立 / 概念提取 | Web UI（`/robin`）| 博學、安靜、系統化、連結者 | 書感偏靜態、密度高、像索引卡 |
+| **Nami** | LifeOS 秘書 — 任務／行事曆／Project 管理，Slack bot | Slack（@Nami）+ 對話式 tool-use | 精明、務實、有主見、不卑不亢、高執行力 | 導航感、資訊流動、即時狀態 |
+| **Zoro** | 情報蒐集 — Keyword Research（YouTube / Trends / Reddit / Twitter 雙語） | API endpoint + Web UI | 敏銳、追蹤者、數據獵手、少話 | 數字密集、圖表導向、沒廢話 |
+| **Brook** | 內容 Composer — 對話式長文寫作、格式轉換（Blog / YouTube / IG / Newsletter） | Web chat UI（`/brook/chat`）| 作曲家、藝術家、協作引導、文體把握 | 大留白、段落感強、書寫節奏 |
+| **Sanji** | 社群管理 — Fluent Community 社群營運、成員互動、xAI Grok 路由 | Slack（@Sanji）| 熱血、重情義、坦直、對每個人細心 | 溫度感、對話泡泡、即時互動 |
+| **Franky** | 系統維護 — 健康檢查、套件掃描、工程週報、事件 emit | Cron job + Vault 寫入 | 工程師魂、監測者、邏輯清晰、責任心 | 終端機感、數字儀表、log 流 |
+| **Usopp** | 發布者 — WordPress / YouTube / 社群媒體 / Fluent CRM（規劃中） | Human-in-the-loop 核准 + Web UI | 說故事的人、謹慎求證、需人核准才發 | 待機狀態、等待批准的節奏 |
+| **Chopper** | 1:1 健康顧問 — 會員個人問答、記憶式陪伴（規劃中） | Webhook + 對話平台（待定） | 親和、傾聽、不評判、醫師的溫柔 | 柔和對話感、進度追蹤 |
+| **Thousand Sunny** | 甲板儀表板 — multi-agent 控制台（規劃中） | Web dashboard | 承載全員的船、整合視角 | 總覽感、船艙地圖式佈局 |
+
+**Bridge UI 的三個頁面顯示哪些 agents：**
+- **Landing `/bridge`**：全員狀態卡（最後執行時間、本日 token 用量、是否在線）
+- **Memory `/bridge/memory`**：依 agent 分頁，顯示記憶條目（preference / fact / decision / project 四類型）+ 編輯 modal + 封存確認
+- **Cost `/bridge/cost`**：每個 agent 的 token 用量趨勢（stacked bar by model）+ 本月費用摘要表（agent × model 矩陣）
 
 ## 要設計的 Surfaces（按優先度）
 
@@ -116,3 +124,4 @@
 | 日期 | 版本 | 變更 |
 |------|------|------|
 | 2026-04-20 | v0 | 首版 brief 起草 |
+| 2026-04-20 | v0.1 | Agent 表格補 Sanji / Franky / Usopp；加互動介面 + UI 視覺語氣欄；補 Bridge 三頁面顯示說明 |
