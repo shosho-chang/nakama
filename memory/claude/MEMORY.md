@@ -61,7 +61,8 @@
 - [feedback_windows_stdout_utf8.md](feedback_windows_stdout_utf8.md) — Windows Python stdout cp1252 無法印中文，module 頂層 reconfigure UTF-8
 - [reference_lifeos_task_frontmatter.md](reference_lifeos_task_frontmatter.md) — LifeOS Task 排程 frontmatter 格式（scheduled 無 Z），Nami calendar sync 會抓
 - [project_multi_model_architecture.md](project_multi_model_architecture.md) — 8 步建置順序：步驟 1-4 + borderline fix 全 merged；步驟 5 設計 doc 凍結，7 Q 全決定
-- [project_slack_multi_bot_architecture.md](project_slack_multi_bot_architecture.md) — 每個 agent 獨立 Slack app，token 統一 `<AGENT>_SLACK_*`，PR #55 待部署
+- [project_slack_multi_bot_architecture.md](project_slack_multi_bot_architecture.md) — 每個 agent 獨立 Slack app，Nami + Sanji 已上線，Zoro 是步驟 5 blocker
+- [feedback_vps_two_services.md](feedback_vps_two_services.md) — VPS 有兩個獨立 service：thousand-sunny（web）+ nakama-gateway（Slack），部署時要分開重啟
 - [reference_llm_provider_cost_quirks.md](reference_llm_provider_cost_quirks.md) — Anthropic / xAI / Gemini usage 欄位差異、cache 計費、thinking token、role 名稱陷阱
 - [feedback_env_example_formatting.md](feedback_env_example_formatting.md) — .env.example 註解放獨立行（dotenv inline # 會被當成 value）
 - [feedback_ask_on_architecture.md](feedback_ask_on_architecture.md) — UX/產品架構決策（用戶直接可見的差異）先問再動手，不自行決定
