@@ -36,6 +36,7 @@ from shared.log import get_logger, kb_log
 from shared.memory_extractor import extract_in_background
 from shared.obsidian_writer import delete_page, list_files, read_page, write_page
 from shared.prompt_loader import load_prompt
+from shared.vault_rules import VaultRuleViolation, assert_nami_can_read, assert_nami_can_write
 
 logger = get_logger("nakama.gateway.nami")
 
@@ -449,6 +450,84 @@ NAMI_TOOLS: list[dict] = [
         },
     },
     # ── / Gmail tools ─────────────────────────────────────────────
+    # ── Vault note tools ──────────────────────────────────────────
+    {
+        "name": "write_vault_note",
+        "description": (
+            "把自由格式的 markdown 筆記寫入 vault（Nami 專屬筆記區 Nami/Notes/）。"
+            "用途：整理交付物（sales kit、會議摘要、研究整理），"
+            "或你覺得值得留底給使用者的資料。"
+            "寫入前若路徑可能已存在，先用 read_vault_note 確認，避免意外覆寫。"
+            "**不要**用這個工具寫 Project/Task、KB/Wiki、Journals——那些有專屬工具或不該碰。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "relative_path": {
+                    "type": "string",
+                    "description": (
+                        "vault-relative 路徑，必須在 Nami/Notes/ 底下，"
+                        "例：'Nami/Notes/sales-kit-2026-04.md'"
+                    ),
+                },
+                "title": {
+                    "type": "string",
+                    "description": "note 標題（放進 frontmatter）",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "markdown 內文（繁體中文）",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "可選 tags，例：['sales-kit', 'quotes']",
+                },
+                "overwrite": {
+                    "type": "boolean",
+                    "description": "既有檔案是否覆寫，預設 false（防誤覆寫）",
+                },
+            },
+            "required": ["relative_path", "title", "body"],
+        },
+    },
+    {
+        "name": "read_vault_note",
+        "description": (
+            "讀取 vault 內已存在的筆記。"
+            "用途：寫入前確認是否已有同路徑檔案、或翻舊筆記查閱內容。"
+            "可讀取 Nami/Notes/、Projects/、TaskNotes/Tasks/ 底下的檔案。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "relative_path": {
+                    "type": "string",
+                    "description": "vault-relative 路徑，例：'Nami/Notes/sales-kit-2026-04.md'",
+                },
+            },
+            "required": ["relative_path"],
+        },
+    },
+    {
+        "name": "list_vault_notes",
+        "description": (
+            "列出 vault 內某資料夾下的筆記清單。"
+            "用途：查看已有哪些 note、避免重複寫入。"
+            "預設列 Nami/Notes/，也可指定 Projects/ 或 TaskNotes/Tasks/。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "relative_dir": {
+                    "type": "string",
+                    "description": "vault-relative 資料夾路徑，預設 'Nami/Notes/'",
+                },
+            },
+            "required": [],
+        },
+    },
+    # ── / Vault note tools ────────────────────────────────────────
     {
         "name": "ask_user",
         "description": (
@@ -700,7 +779,15 @@ class NamiHandler(BaseHandler):
                 return self._tool_update_gmail_draft(tool_input)
             if name == "send_gmail_draft":
                 return self._tool_send_gmail_draft(tool_input)
+            if name == "write_vault_note":
+                return self._tool_write_vault_note(tool_input)
+            if name == "read_vault_note":
+                return self._tool_read_vault_note(tool_input)
+            if name == "list_vault_notes":
+                return self._tool_list_vault_notes(tool_input)
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
+        except VaultRuleViolation as e:
+            return _ToolOutcome(content=f"Vault 規則違反：{e}", is_error=True)
         except GoogleCalendarAuthError as e:
             return _ToolOutcome(
                 content=f"Google Calendar 授權失效：{e}",
@@ -1485,9 +1572,7 @@ class NamiHandler(BaseHandler):
         result = google_gmail.send_draft(draft_id)
 
         content = (
-            f"📬 信件已發出\n"
-            f"message_id: {result['message_id']}\n"
-            f"thread_id: {result['thread_id']}"
+            f"📬 信件已發出\nmessage_id: {result['message_id']}\nthread_id: {result['thread_id']}"
         )
         return _ToolOutcome(
             content=content,
@@ -1500,6 +1585,80 @@ class NamiHandler(BaseHandler):
                 "log": f"draft {draft_id}",
             },
         )
+
+    def _tool_write_vault_note(self, input_: dict) -> _ToolOutcome:
+        relative_path = str(input_.get("relative_path", "")).strip()
+        title = str(input_.get("title", "")).strip()
+        body = str(input_.get("body", "")).strip()
+        if not relative_path or not title or not body:
+            return _ToolOutcome(
+                content="Missing required fields: relative_path, title, body",
+                is_error=True,
+            )
+
+        tags = input_.get("tags") or []
+        overwrite = bool(input_.get("overwrite", False))
+
+        assert_nami_can_write(relative_path)
+
+        if not overwrite:
+            existing = read_page(relative_path)
+            if existing is not None:
+                return _ToolOutcome(
+                    content=(
+                        f"⚠️ 路徑已存在：{relative_path}\n"
+                        f"若要覆寫，請在請求中加上 overwrite: true，"
+                        f"或先用 read_vault_note 確認內容再決定。"
+                    ),
+                    is_error=True,
+                )
+
+        frontmatter: dict = {"title": title}
+        if tags:
+            frontmatter["tags"] = tags
+
+        write_page(relative_path, frontmatter, body, overwrite=True)
+
+        content = f"📝 筆記已寫入：{relative_path}\n標題：{title}"
+        if tags:
+            content += f"\nTags：{', '.join(tags)}"
+        return _ToolOutcome(
+            content=content,
+            event={
+                "name": "vault_note_written",
+                "payload": {"relative_path": relative_path, "title": title},
+                "log": title,
+            },
+        )
+
+    def _tool_read_vault_note(self, input_: dict) -> _ToolOutcome:
+        relative_path = str(input_.get("relative_path", "")).strip()
+        if not relative_path:
+            return _ToolOutcome(content="Missing relative_path", is_error=True)
+
+        assert_nami_can_read(relative_path)
+
+        content = read_page(relative_path)
+        if content is None:
+            return _ToolOutcome(
+                content=f"找不到此路徑的筆記：{relative_path}",
+                is_error=True,
+            )
+        return _ToolOutcome(content=content)
+
+    def _tool_list_vault_notes(self, input_: dict) -> _ToolOutcome:
+        relative_dir = str(input_.get("relative_dir", "Nami/Notes/")).strip() or "Nami/Notes/"
+
+        assert_nami_can_read(relative_dir if relative_dir.endswith("/") else relative_dir + "/")
+
+        files = list_files(relative_dir)
+        if not files:
+            return _ToolOutcome(content=f"資料夾 {relative_dir} 目前沒有任何 .md 筆記。")
+
+        lines = [f"📂 {relative_dir} 底下共 {len(files)} 個筆記："]
+        for f in files:
+            lines.append(f"  - {f.name}")
+        return _ToolOutcome(content="\n".join(lines))
 
 
 # ── Utilities ────────────────────────────────────────────────────────

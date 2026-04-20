@@ -1357,6 +1357,320 @@ def test_extract_frontmatter_incomplete():
     assert _extract_frontmatter("---\ntitle: test") == {}
 
 
+# ── Vault note tools ────────────────────────────────────────────────
+
+
+def test_write_vault_note_happy_path():
+    """LLM 呼叫 write_vault_note，write_page 被呼叫，emit vault_note_written。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "write_vault_note",
+                    {
+                        "relative_path": "Nami/Notes/sales-kit-2026-04.md",
+                        "title": "2026 Q2 報價記錄",
+                        "body": "## 報價一覽\n- YouTube 影片：NT$50,000",
+                        "tags": ["sales-kit", "quotes"],
+                    },
+                    id_="toolu_wvn1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("✅ 筆記已存好")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.read_page", return_value=None),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "存成 sales kit 筆記", "U1")
+
+    assert result.text
+    mock_write.assert_called_once()
+    call_args = mock_write.call_args
+    assert call_args[0][0] == "Nami/Notes/sales-kit-2026-04.md"
+    fm = call_args[0][1]
+    assert fm["title"] == "2026 Q2 報價記錄"
+    assert fm["tags"] == ["sales-kit", "quotes"]
+    mock_emit.assert_called_once()
+    assert mock_emit.call_args[0][1] == "vault_note_written"
+
+
+def test_write_vault_note_rejects_forbidden_path():
+    """LLM 嘗試寫 Journals/，VaultRuleViolation 被攔截，回 is_error。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "write_vault_note",
+                    {
+                        "relative_path": "Journals/secret.md",
+                        "title": "不該寫",
+                        "body": "test",
+                    },
+                    id_="toolu_wvn2",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("規則不允許")]),
+    ]
+
+    captured_results: list[dict] = []
+    call_count = 0
+
+    def _capture_tool_results(messages, **kwargs):
+        nonlocal call_count
+        resp = iter_responses[call_count]
+        call_count += 1
+        if call_count > 1:
+            for m in messages:
+                if m.get("role") == "user":
+                    content = m.get("content")
+                    if not isinstance(content, list):
+                        continue
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "tool_result":
+                            captured_results.append(block)
+        return resp
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture_tool_results),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "存日記", "U1")
+
+    assert any(r.get("is_error") for r in captured_results)
+    assert any("Vault 規則違反" in r.get("content", "") for r in captured_results)
+
+
+def test_write_vault_note_rejects_path_traversal():
+    """LLM 傳含 .. 的路徑，VaultRuleViolation 被攔截。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "write_vault_note",
+                    {
+                        "relative_path": "Nami/Notes/../KB/Raw/steal.md",
+                        "title": "偷跑",
+                        "body": "test",
+                    },
+                    id_="toolu_wvn3",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("不行")]),
+    ]
+
+    captured_results: list[dict] = []
+    call_count = 0
+
+    def _capture(messages, **kwargs):
+        nonlocal call_count
+        resp = iter_responses[call_count]
+        call_count += 1
+        if call_count > 1:
+            for m in messages:
+                if m.get("role") == "user":
+                    content = m.get("content")
+                    if not isinstance(content, list):
+                        continue
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "tool_result":
+                            captured_results.append(block)
+        return resp
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "存", "U1")
+
+    assert any(r.get("is_error") for r in captured_results)
+
+
+def test_write_vault_note_no_overwrite_by_default():
+    """檔案已存在且沒帶 overwrite=true，應回 is_error。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "write_vault_note",
+                    {
+                        "relative_path": "Nami/Notes/existing.md",
+                        "title": "已存在",
+                        "body": "new content",
+                    },
+                    id_="toolu_wvn4",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已存在提示")]),
+    ]
+
+    captured_results: list[dict] = []
+    call_count = 0
+
+    def _capture(messages, **kwargs):
+        nonlocal call_count
+        resp = iter_responses[call_count]
+        call_count += 1
+        if call_count > 1:
+            for m in messages:
+                if m.get("role") == "user":
+                    content = m.get("content")
+                    if not isinstance(content, list):
+                        continue
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "tool_result":
+                            captured_results.append(block)
+        return resp
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.read_page", return_value="existing content"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "存", "U1")
+
+    assert any(r.get("is_error") for r in captured_results)
+    assert any("已存在" in r.get("content", "") for r in captured_results)
+
+
+def test_read_vault_note_returns_content():
+    """read_vault_note 正確讀取並回傳內容。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "read_vault_note",
+                    {"relative_path": "Nami/Notes/sales-kit-2026-04.md"},
+                    id_="toolu_rvn1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("這是你之前的 sales kit")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.read_page", return_value="# 報價\n內容在這") as mock_read,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "翻舊 sales kit", "U1")
+
+    assert result.text
+    mock_read.assert_called_once_with("Nami/Notes/sales-kit-2026-04.md")
+
+
+def test_read_vault_note_rejects_kb_path():
+    """read_vault_note 嘗試讀 KB/Wiki/ 應被規則擋住。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "read_vault_note",
+                    {"relative_path": "KB/Wiki/article.md"},
+                    id_="toolu_rvn2",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("不能讀")]),
+    ]
+
+    captured_results: list[dict] = []
+    call_count = 0
+
+    def _capture(messages, **kwargs):
+        nonlocal call_count
+        resp = iter_responses[call_count]
+        call_count += 1
+        if call_count > 1:
+            for m in messages:
+                if m.get("role") == "user":
+                    content = m.get("content")
+                    if not isinstance(content, list):
+                        continue
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "tool_result":
+                            captured_results.append(block)
+        return resp
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "讀 KB", "U1")
+
+    assert any(r.get("is_error") for r in captured_results)
+
+
+def test_list_vault_notes_returns_files():
+    """list_vault_notes 列出 Nami/Notes/ 下的檔案清單。"""
+    from pathlib import Path
+
+    fake_files = [Path("Nami/Notes/a.md"), Path("Nami/Notes/b.md")]
+
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "list_vault_notes",
+                    {"relative_dir": "Nami/Notes/"},
+                    id_="toolu_lvn1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("你有 2 個筆記")]),
+    ]
+
+    captured_results: list[dict] = []
+    call_count = 0
+
+    def _capture(messages, **kwargs):
+        nonlocal call_count
+        resp = iter_responses[call_count]
+        call_count += 1
+        if call_count > 1:
+            for m in messages:
+                if m.get("role") == "user":
+                    content = m.get("content")
+                    if not isinstance(content, list):
+                        continue
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "tool_result":
+                            captured_results.append(block)
+        return resp
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", return_value=fake_files),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "Nami/Notes 有什麼", "U1")
+
+    assert any("a.md" in r.get("content", "") for r in captured_results)
+    assert any("b.md" in r.get("content", "") for r in captured_results)
+
+
 # ── Formatters ──────────────────────────────────────────────────────
 
 

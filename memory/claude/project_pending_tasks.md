@@ -157,6 +157,14 @@ originSessionId: 8bece3a7-26ae-4215-bade-04d2bca1809b
 - ✅ SSL bug 修（per-thread service client）
 - 詳見 `project_nami_gmail.md`
 
+**Nami vault note 工具（2026-04-20，本機完成，待 VPS 部署）：**
+- ✅ `shared/vault_rules.py`：路徑規則模組（白名單 + traversal 保護）
+- ✅ 3 tools：`write_vault_note` / `read_vault_note` / `list_vault_notes`
+- ✅ System prompt 加「Vault Notes 秘書筆記」區塊
+- ✅ 76 tests pass（19 unit + 7 integration）
+- ⬜ VPS 部署（git pull + systemctl restart nakama-gateway）
+- 詳見 `project_nami_vault_notes.md`
+
 **待開發（agent 功能）：**
 - Nami（航海士）— 消費 Robin/Franky 事件，產出 Morning Brief
 - Zoro 其餘功能 — PubMed / KOL 追蹤

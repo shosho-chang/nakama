@@ -69,3 +69,4 @@
 - Runbook：[docs/runbooks/add-agent-slack-bot.md](../../docs/runbooks/add-agent-slack-bot.md) — 幫 agent 開獨立 Slack bot 的完整流程（Phase 1 修修手動、Phase 2 Claude code、Phase 3 部署）
 - Design doc：[docs/decisions/step-5-zoro-brainstorm-p2.md](../../docs/decisions/step-5-zoro-brainstorm-p2.md) — 步驟 5 設計凍結，blocker 是 Zoro 獨立 Slack bot
 - [project_nami_gmail.md](project_nami_gmail.md) — Nami Gmail 整合完成：6 tools + triage 規則（Primary + Respond/Shosho 24h）+ SSL per-thread bug 修法
+- [project_nami_vault_notes.md](project_nami_vault_notes.md) — Nami vault note 3 tools（write/read/list）+ vault_rules.py，待 VPS 部署
