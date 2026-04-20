@@ -9,9 +9,11 @@ facade 依 MODEL_SANJI env 自動把 Sanji 路到 Grok（見 shared/llm_router.p
 from __future__ import annotations
 
 from gateway.handlers.base import BaseHandler, HandlerResponse
+from shared import agent_memory
 from shared.anthropic_client import set_current_agent
 from shared.llm import ask
 from shared.log import get_logger
+from shared.memory import get_context
 from shared.prompt_loader import load_prompt
 
 logger = get_logger("nakama.gateway.sanji")
@@ -26,8 +28,6 @@ class SanjiHandler(BaseHandler):
     supported_intents = ["general", "community_chat", "wellness_qa", "brainstorm_participant"]
 
     def handle(self, intent: str, text: str, user_id: str) -> HandlerResponse:
-        # set_current_agent 讓 router / cost tracking 吃到「sanji」
-        # → MODEL_SANJI env 自動走 Grok，$$ 落 api_calls 的 agent 欄位也對
         set_current_agent("sanji")
 
         try:
@@ -35,6 +35,11 @@ class SanjiHandler(BaseHandler):
         except FileNotFoundError:
             logger.error("sanji persona prompt missing — fallback minimal")
             system = "你是 Sanji，張修修海賊團的廚師，負責自由艦隊社群。用繁體中文。"
+
+        # 注入 shared 記憶（修修是誰）+ Sanji 的 SQLite 記憶
+        mem_parts = [p for p in [get_context("sanji"), agent_memory.format_as_context("sanji", user_id)] if p]
+        if mem_parts:
+            system = system + "\n\n" + "\n\n".join(mem_parts)
 
         try:
             reply = ask(prompt=text, system=system, max_tokens=SANJI_MAX_TOKENS)
