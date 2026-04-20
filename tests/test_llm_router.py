@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.llm_router import DEFAULT_MODELS, get_model
+from shared.llm_router import DEFAULT_MODELS, get_model, get_provider
 
 
 @pytest.fixture(autouse=True)
@@ -62,3 +62,49 @@ def test_none_agent_skips_agent_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_unknown_task_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
     assert get_model(task="nonexistent") == DEFAULT_MODELS["default"]
+
+
+def test_none_agent_emits_debug_log(caplog: pytest.LogCaptureFixture) -> None:
+    """Issue C：thread 忘了呼叫 set_current_agent 時，至少留 debug 痕跡。"""
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="nakama.llm_router"):
+        get_model()
+
+    assert any("without agent context" in r.message for r in caplog.records)
+
+
+def test_get_provider_claude() -> None:
+    assert get_provider("claude-sonnet-4-20250514") == "anthropic"
+    assert get_provider("claude-opus-4-7") == "anthropic"
+    assert get_provider("claude-haiku-4-5") == "anthropic"
+
+
+def test_get_provider_grok() -> None:
+    assert get_provider("grok-4") == "xai"
+    assert get_provider("grok-4-fast-non-reasoning") == "xai"
+
+
+def test_get_provider_gemini_and_openai() -> None:
+    """未來 wire 上去之前先把識別面 coverage 敲穩。"""
+    assert get_provider("gemini-2.5-pro") == "google"
+    assert get_provider("gpt-4o") == "openai"
+    assert get_provider("o1-preview") == "openai"
+    assert get_provider("o3-mini") == "openai"
+
+
+def test_get_provider_unknown_raises() -> None:
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        get_provider("mystery-model")
+
+
+def test_get_provider_o_series_requires_hyphen() -> None:
+    """裸 "o1"/"o3" prefix 會誤吃未來非 openai 的怪 ID，所以 prefix 必須帶 hyphen。"""
+    # 合法的 o-series（帶 hyphen）
+    assert get_provider("o1-preview") == "openai"
+    assert get_provider("o3-mini") == "openai"
+    # 不該被吃的 — 不帶 hyphen 的奇怪 prefix
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        get_provider("o100-xyz")
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        get_provider("o1something")

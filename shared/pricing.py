@@ -1,20 +1,26 @@
-"""Claude model pricing (USD per 1M tokens) for cost dashboard.
+"""Multi-provider model pricing (USD per 1M tokens) for cost dashboard.
 
-Prices are per **million** tokens. Keep this file updated when Anthropic
+Prices are per **million** tokens. Keep this file updated when a provider
 revises pricing or a new model family ships.
 
 Lookup order (see ``get_pricing``):
-1. Exact model id match (best)
-2. Family prefix match (``claude-opus`` / ``claude-sonnet`` / ``claude-haiku``)
-3. Environment override via ``NAKAMA_PRICING_{INPUT,OUTPUT,CACHE_READ,CACHE_WRITE}_USD_PER_MTOK``
+1. Environment override via ``NAKAMA_PRICING_{INPUT,OUTPUT,CACHE_READ,CACHE_WRITE}_USD_PER_MTOK``
+2. Exact model id match via ``_MODEL_OVERRIDES``
+3. Family prefix match (e.g. ``claude-opus`` / ``claude-sonnet`` / ``claude-haiku`` /
+   ``grok-4-fast`` / ``grok-4`` / ``grok-``)
 4. Fallback to all-zero (dashboard still renders, but cost column reads $0)
+
+Prefix ordering matters: more specific prefixes (``grok-4-fast``) must come
+before less specific ones (``grok-4``, ``grok-``) in ``_FAMILY_DEFAULTS``,
+because ``get_pricing`` iterates in insertion order (Python 3.7+ dict guarantee).
 
 ``calc_cost`` combines token counts with a pricing dict to a USD float.
 
-Sources (checked 2026-04-19):
+Sources (checked 2026-04-20):
 - Anthropic pricing page
-- Family defaults mirror the latest 4.x tier. If 5.x ships with a different
-  schedule, add an explicit ``claude-*-5-*`` entry above the family default.
+- xAI pricing (``docs.x.ai/developers/models``); 注意 xAI 沒有 cache_write 計費
+- Family defaults mirror the latest generation. If a new tier ships, add an
+  explicit override above the family default.
 """
 
 from __future__ import annotations
@@ -64,6 +70,26 @@ _FAMILY_DEFAULTS: dict[str, ModelPricing] = {
         output_usd_per_mtok=4.0,
         cache_read_usd_per_mtok=0.08,
         cache_write_usd_per_mtok=1.0,
+    ),
+    # xAI — 需要特定 ID 覆寫的放 _MODEL_OVERRIDES。這裡只放最通用的 family 兜底。
+    # 沒有 cache_write 計費（xAI 自動 cache，不收寫入費）。
+    "grok-4-fast": ModelPricing(
+        input_usd_per_mtok=0.20,
+        output_usd_per_mtok=0.50,
+        cache_read_usd_per_mtok=0.05,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "grok-4": ModelPricing(
+        input_usd_per_mtok=2.0,
+        output_usd_per_mtok=6.0,
+        cache_read_usd_per_mtok=0.20,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "grok-": ModelPricing(  # 未知 Grok variant 保守用 grok-4 tier
+        input_usd_per_mtok=2.0,
+        output_usd_per_mtok=6.0,
+        cache_read_usd_per_mtok=0.20,
+        cache_write_usd_per_mtok=0.0,
     ),
 }
 

@@ -1,0 +1,88 @@
+"""shared.llm facade — 依 model prefix dispatch 到對的 provider wrapper。"""
+
+from __future__ import annotations
+
+from unittest.mock import patch
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clean_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    for key in list(os.environ.keys()):
+        if key.startswith("MODEL_"):
+            monkeypatch.delenv(key, raising=False)
+
+
+def test_ask_dispatches_claude_to_anthropic_client():
+    from shared import llm
+
+    with (
+        patch("shared.llm.ask_claude", return_value="claude reply") as m_claude,
+        patch("shared.xai_client.ask_grok", return_value="grok reply") as m_grok,
+    ):
+        out = llm.ask("hi", model="claude-sonnet-4-20250514")
+
+    assert out == "claude reply"
+    m_claude.assert_called_once()
+    m_grok.assert_not_called()
+
+
+def test_ask_dispatches_grok_to_xai_client():
+    from shared import llm
+
+    with (
+        patch("shared.llm.ask_claude", return_value="claude reply") as m_claude,
+        patch("shared.xai_client.ask_grok", return_value="grok reply") as m_grok,
+    ):
+        out = llm.ask("hi", model="grok-4-fast-non-reasoning")
+
+    assert out == "grok reply"
+    m_grok.assert_called_once()
+    m_claude.assert_not_called()
+
+
+def test_ask_raises_for_unknown_provider():
+    from shared import llm
+
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        llm.ask("hi", model="mystery-model-v1")
+
+
+def test_ask_raises_notimplemented_for_recognized_but_unwired_provider():
+    """gemini- prefix 已在 router 識別為 google，但 facade 還沒 wire。"""
+    from shared import llm
+
+    with pytest.raises(NotImplementedError, match="google"):
+        llm.ask("hi", model="gemini-2.5-pro")
+
+
+def test_ask_multi_dispatches_by_provider():
+    from shared import llm
+
+    messages = [{"role": "user", "content": "hi"}]
+    with (
+        patch("shared.llm.ask_claude_multi", return_value="claude multi") as m_c,
+        patch("shared.xai_client.ask_grok_multi", return_value="grok multi") as m_g,
+    ):
+        assert llm.ask_multi(messages, model="claude-sonnet-4-20250514") == "claude multi"
+        assert llm.ask_multi(messages, model="grok-4-fast-non-reasoning") == "grok multi"
+
+    assert m_c.call_count == 1
+    assert m_g.call_count == 1
+
+
+def test_ask_with_none_model_uses_router(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("MODEL_SANJI", "grok-4-fast-non-reasoning")
+    from shared import llm
+    from shared.anthropic_client import set_current_agent
+
+    set_current_agent("sanji", run_id=None)
+
+    with patch("shared.xai_client.ask_grok", return_value="ok") as m_grok:
+        llm.ask("hi")
+
+    m_grok.assert_called_once()
+    assert m_grok.call_args.kwargs["model"] == "grok-4-fast-non-reasoning"
