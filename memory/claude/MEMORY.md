@@ -62,3 +62,5 @@
 - [project_multi_model_architecture.md](project_multi_model_architecture.md) — 8 步建置順序：步驟 1-3 merged、步驟 4 PR #53 開啟待 merge，5 項 borderline 留下階段
 - [reference_llm_provider_cost_quirks.md](reference_llm_provider_cost_quirks.md) — Anthropic / xAI / Gemini usage 欄位差異、cache 計費、thinking token、role 名稱陷阱
 - [feedback_env_example_formatting.md](feedback_env_example_formatting.md) — .env.example 註解放獨立行（dotenv inline # 會被當成 value）
+- [feedback_ask_on_architecture.md](feedback_ask_on_architecture.md) — UX/產品架構決策（用戶直接可見的差異）先問再動手，不自行決定
+- Runbook：[docs/runbooks/add-agent-slack-bot.md](../../docs/runbooks/add-agent-slack-bot.md) — 幫 agent 開獨立 Slack bot 的完整流程（Phase 1 修修手動、Phase 2 Claude code、Phase 3 部署）
