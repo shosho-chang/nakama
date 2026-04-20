@@ -32,8 +32,10 @@ _PROVIDER_PREFIXES: tuple[tuple[str, str], ...] = (
     ("grok-", "xai"),
     ("gemini-", "google"),
     ("gpt-", "openai"),
-    ("o1", "openai"),
-    ("o3", "openai"),
+    # 全帶 trailing hyphen 才一致，避免 "o1"/"o3" 的裸 prefix 誤吃
+    # 未來無關模型（e.g. 非 openai 的 "o1something"、"o100-xyz"）
+    ("o1-", "openai"),
+    ("o3-", "openai"),
 )
 
 

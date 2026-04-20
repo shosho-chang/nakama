@@ -25,6 +25,27 @@ def test_family_default_haiku():
     assert p.output_usd_per_mtok == 4.0
 
 
+def test_grok_fast_tier_not_shadowed_by_generic_grok():
+    """grok-4-fast-* 必須命中 fast 層，而非被 grok-4 或 grok- catch-all 吃掉。
+
+    _FAMILY_DEFAULTS 的 insertion order 是 load-bearing — 這 test 若掛了，
+    代表有人把 `grok-4` 或 `grok-` 插到 `grok-4-fast` 前面。
+    """
+    p = pricing.get_pricing("grok-4-fast-non-reasoning")
+    assert p.input_usd_per_mtok == 0.20
+    assert p.output_usd_per_mtok == 0.50
+    assert p.cache_write_usd_per_mtok == 0.0  # xAI 不收 cache write
+
+
+def test_grok_flagship_and_catchall():
+    p_flagship = pricing.get_pricing("grok-4-0709")
+    assert p_flagship.input_usd_per_mtok == 2.0
+    assert p_flagship.output_usd_per_mtok == 6.0
+
+    p_unknown = pricing.get_pricing("grok-beta")
+    assert p_unknown.input_usd_per_mtok == 2.0  # catch-all 保守 tier
+
+
 def test_unknown_model_fallback_to_zero():
     p = pricing.get_pricing("gpt-4o")
     assert p.input_usd_per_mtok == 0.0

@@ -65,14 +65,16 @@ def ask_grok(
 
     自動重試（最多 3 次，指數退避）並記錄 token 用量。
 
-    `model=None` 時會走 `shared.llm_router.get_model()` 依當前 agent 解析，
-    但 caller 應確保結果是 Grok 系列 model ID（否則 xAI endpoint 會拒絕）。
-    建議透過 `shared.llm.ask()` facade 讓 provider dispatch 自動發生。
+    `model=None` 時會走 `shared.llm_router.get_model()` 依當前 agent 解析。
+    Resolved model 若不是 Grok 系列會直接 raise — 避免 xAI endpoint 對
+    非 grok ID 噴模糊 404 後被 retry 包住白等 6 秒（對稱 anthropic_client
+    的 `_require_claude_model` guard）。跨 provider 路由請改走 `shared.llm.ask()`。
     """
     if model is None:
         from shared.llm_router import get_model
 
         model = get_model(agent=getattr(_local, "agent", None), task="default")
+    _require_grok_model(model)
 
     messages: list[dict] = []
     if system:
@@ -113,6 +115,7 @@ def ask_grok_multi(
         from shared.llm_router import get_model
 
         model = get_model(agent=getattr(_local, "agent", None), task="default")
+    _require_grok_model(model)
 
     full_messages: list[dict] = []
     if system:
@@ -135,6 +138,22 @@ def ask_grok_multi(
     _record_usage(model, response)
 
     return response.choices[0].message.content or ""
+
+
+def _require_grok_model(model: str) -> None:
+    """Fail fast if router resolved a non-Grok model for an xAI call.
+
+    xAI endpoint would otherwise return a generic 404/invalid-model error,
+    and the retry wrapper would burn ~6s before surfacing it. Route via
+    `shared.llm.ask()` for cross-provider dispatch, or fix a wrong
+    `MODEL_<AGENT>` env var. 對稱 `anthropic_client._require_claude_model`。
+    """
+    if not model.startswith("grok-"):
+        raise ValueError(
+            f"ask_grok / ask_grok_multi received non-Grok model '{model}'. "
+            f"Use shared.llm.ask() for cross-provider routing, "
+            f"or check MODEL_<AGENT> env vars for a wrong value."
+        )
 
 
 def _record_usage(model: str, response) -> None:

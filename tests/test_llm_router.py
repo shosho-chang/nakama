@@ -96,3 +96,15 @@ def test_get_provider_gemini_and_openai() -> None:
 def test_get_provider_unknown_raises() -> None:
     with pytest.raises(ValueError, match="Unknown model provider"):
         get_provider("mystery-model")
+
+
+def test_get_provider_o_series_requires_hyphen() -> None:
+    """裸 "o1"/"o3" prefix 會誤吃未來非 openai 的怪 ID，所以 prefix 必須帶 hyphen。"""
+    # 合法的 o-series（帶 hyphen）
+    assert get_provider("o1-preview") == "openai"
+    assert get_provider("o3-mini") == "openai"
+    # 不該被吃的 — 不帶 hyphen 的奇怪 prefix
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        get_provider("o100-xyz")
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        get_provider("o1something")

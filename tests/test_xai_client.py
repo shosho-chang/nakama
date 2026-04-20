@@ -105,3 +105,32 @@ def test_ask_grok_resolves_model_via_router(monkeypatch, _fake_openai_response):
     assert (
         fake_client.chat.completions.create.call_args.kwargs["model"] == "grok-4-fast-non-reasoning"
     )
+
+
+def test_ask_grok_rejects_claude_model():
+    """對稱 anthropic_client 的 Issue B 修：非 grok ID 直接 raise，不 retry 6s。"""
+    from shared.xai_client import ask_grok
+
+    with pytest.raises(ValueError, match="non-Grok model"):
+        ask_grok("hi", model="claude-sonnet-4-20250514")
+
+
+def test_ask_grok_multi_rejects_gemini_model():
+    from shared.xai_client import ask_grok_multi
+
+    with pytest.raises(ValueError, match="non-Grok model"):
+        ask_grok_multi(
+            [{"role": "user", "content": "hi"}],
+            model="gemini-2.5-pro",
+        )
+
+
+def test_ask_grok_guard_fires_via_router(monkeypatch):
+    """MODEL_<AGENT> 被誤設成非 Grok ID 時也要擋下來。"""
+    monkeypatch.setenv("MODEL_SANJI", "claude-sonnet-4-20250514")
+    from shared.anthropic_client import set_current_agent
+    from shared.xai_client import ask_grok
+
+    set_current_agent("sanji", run_id=None)
+    with pytest.raises(ValueError, match="non-Grok model"):
+        ask_grok("hi")
