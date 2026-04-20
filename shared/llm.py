@@ -3,7 +3,7 @@
 呼叫端只需要 `shared.llm.ask(prompt, ...)`，不用自己判斷 Claude / Grok / Gemini。
 router 決定 model ID → provider，facade 再 dispatch 到對應的 `shared/*_client.py`。
 
-目前 coverage：Anthropic + xAI。Google / OpenAI 等下個步驟加。
+目前 coverage：Anthropic + xAI + Google。OpenAI 等下個步驟加。
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ def ask(
     - `model=None` → 依 thread-local agent 從 router 解析
     - Claude ID → 走 `shared.anthropic_client.ask_claude`
     - Grok ID → 走 `shared.xai_client.ask_grok`
+    - Gemini ID → 走 `shared.gemini_client.ask_gemini`
 
     其他 provider 尚未實作，會拋 `NotImplementedError`，讓 caller 明確看到
     缺什麼（避免 router silent 回預設那種不透明的 fallback）。

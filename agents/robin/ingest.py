@@ -197,7 +197,7 @@ class IngestPipeline:
         """
         set_current_agent("robin")  # Web UI 也會呼叫此 method，重設 thread-local
         if len(content) <= self.LARGE_DOC_THRESHOLD:
-            # 現有流程：直接用 Sonnet
+            # 小文件：單次 facade 呼叫（provider 由 MODEL_ROBIN 決定）
             prompt = load_prompt(
                 "robin",
                 "summarize",
@@ -258,7 +258,7 @@ class IngestPipeline:
             chunk_summaries.append(summary)
             logger.info(f"  chunk {chunk['index']}/{len(chunks)} 完成（{len(summary)} 字元）")
 
-        # Reduce：合併所有 chunk 摘要（用 Sonnet 確保最終品質）
+        # Reduce：合併所有 chunk 摘要（走 facade，provider 由 MODEL_ROBIN 決定）
         combined = "\n\n---\n\n".join(
             f"### 段落 {i + 1}：{chunks[i]['heading']}\n{s}" for i, s in enumerate(chunk_summaries)
         )
