@@ -44,11 +44,15 @@ def ask_claude(
     Claude 4.7 以後的模型已廢除 temperature，預設不送。
 
     `model=None` 時會走 `shared.llm_router.get_model()` 依當前 agent 解析。
+    Resolved model 若不是 Claude 系列會直接 raise — 避免 Anthropic SDK 對
+    非 claude- ID 噴模糊錯誤後自動 retry 3 次浪費時間。跨 provider 路由請
+    改走 `shared.llm.ask()`。
     """
     if model is None:
         from shared.llm_router import get_model
 
         model = get_model(agent=getattr(_local, "agent", None), task="default")
+    _require_claude_model(model)
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -119,6 +123,7 @@ def call_claude_with_tools(
         from shared.llm_router import get_model
 
         model = get_model(agent=getattr(_local, "agent", None), task="tool_use")
+    _require_claude_model(model)
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -185,6 +190,7 @@ def ask_claude_multi(
         from shared.llm_router import get_model
 
         model = get_model(agent=getattr(_local, "agent", None), task="default")
+    _require_claude_model(model)
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -220,3 +226,18 @@ def ask_claude_multi(
         pass  # cost tracking 失敗不影響主流程
 
     return response.content[0].text
+
+
+def _require_claude_model(model: str) -> None:
+    """Fail fast if router resolved a non-Claude model for an Anthropic call.
+
+    Anthropic SDK would otherwise retry 3 times on a validation error before
+    surfacing a confusing message. Route via `shared.llm.ask()` instead for
+    cross-provider dispatch.
+    """
+    if not model.startswith("claude-"):
+        raise ValueError(
+            f"ask_claude / call_claude_with_tools received non-Claude model "
+            f"'{model}'. Use shared.llm.ask() for cross-provider routing, "
+            f"or check MODEL_<AGENT> env vars for a wrong value."
+        )

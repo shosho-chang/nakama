@@ -65,6 +65,26 @@ _FAMILY_DEFAULTS: dict[str, ModelPricing] = {
         cache_read_usd_per_mtok=0.08,
         cache_write_usd_per_mtok=1.0,
     ),
+    # xAI — 需要特定 ID 覆寫的放 _MODEL_OVERRIDES。這裡只放最通用的 family 兜底。
+    # 沒有 cache_write 計費（xAI 自動 cache，不收寫入費）。
+    "grok-4-fast": ModelPricing(
+        input_usd_per_mtok=0.20,
+        output_usd_per_mtok=0.50,
+        cache_read_usd_per_mtok=0.05,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "grok-4": ModelPricing(
+        input_usd_per_mtok=2.0,
+        output_usd_per_mtok=6.0,
+        cache_read_usd_per_mtok=0.20,
+        cache_write_usd_per_mtok=0.0,
+    ),
+    "grok-": ModelPricing(  # 未知 Grok variant 保守用 grok-4 tier
+        input_usd_per_mtok=2.0,
+        output_usd_per_mtok=6.0,
+        cache_read_usd_per_mtok=0.20,
+        cache_write_usd_per_mtok=0.0,
+    ),
 }
 
 

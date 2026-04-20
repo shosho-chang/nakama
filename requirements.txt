@@ -3,6 +3,7 @@
 
 # Core
 anthropic>=0.42.0
+openai>=1.50.0            # xAI Grok 走 OpenAI-compatible endpoint（shared/xai_client.py）
 google-genai>=1.73        # Gemini 2.5 Pro audio 仲裁（多模態）
 pydantic>=2.0             # 結構化輸出 schema
 pyyaml>=6.0
