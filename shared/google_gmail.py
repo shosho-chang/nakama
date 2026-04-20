@@ -13,6 +13,7 @@ import base64
 import email.mime.multipart
 import email.mime.text
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from filelock import FileLock
@@ -89,14 +90,15 @@ def list_messages(query: str = "is:unread", max_results: int = 10) -> list[dict]
         .execute()
     )
 
-    out = []
-    for msg in result.get("messages", []):
+    msg_ids = [m["id"] for m in result.get("messages", [])]
+
+    def _fetch_meta(msg_id: str) -> dict:
         detail = (
             service.users()
             .messages()
             .get(
                 userId="me",
-                id=msg["id"],
+                id=msg_id,
                 format="metadata",
                 metadataHeaders=["From", "To", "Subject", "Date"],
             )
@@ -106,17 +108,18 @@ def list_messages(query: str = "is:unread", max_results: int = 10) -> list[dict]
             h["name"]: h["value"]
             for h in detail.get("payload", {}).get("headers", [])
         }
-        out.append(
-            {
-                "id": detail["id"],
-                "thread_id": detail.get("threadId", ""),
-                "from": headers.get("From", ""),
-                "to": headers.get("To", ""),
-                "subject": headers.get("Subject", "（無主旨）"),
-                "date": headers.get("Date", ""),
-                "snippet": detail.get("snippet", ""),
-            }
-        )
+        return {
+            "id": detail["id"],
+            "thread_id": detail.get("threadId", ""),
+            "from": headers.get("From", ""),
+            "to": headers.get("To", ""),
+            "subject": headers.get("Subject", "（無主旨）"),
+            "date": headers.get("Date", ""),
+            "snippet": detail.get("snippet", ""),
+        }
+
+    with ThreadPoolExecutor(max_workers=min(len(msg_ids), 10)) as pool:
+        out = list(pool.map(_fetch_meta, msg_ids))
     return out
 
 
@@ -180,9 +183,7 @@ def create_draft(
     draft_id = draft["id"]
     message_id = draft.get("message", {}).get("id", "")
 
-    profile = service.users().getProfile(userId="me").execute()
-    email_addr = profile.get("emailAddress", "me")
-    gmail_web_link = f"https://mail.google.com/mail/u/{email_addr}/#drafts/{message_id}"
+    gmail_web_link = f"https://mail.google.com/mail/u/0/#drafts/{message_id}"
 
     return {
         "draft_id": draft_id,
@@ -249,9 +250,7 @@ def update_draft(
     )
     message_id = updated.get("message", {}).get("id", "")
 
-    profile = service.users().getProfile(userId="me").execute()
-    email_addr = profile.get("emailAddress", "me")
-    gmail_web_link = f"https://mail.google.com/mail/u/{email_addr}/#drafts/{message_id}"
+    gmail_web_link = f"https://mail.google.com/mail/u/0/#drafts/{message_id}"
 
     return {
         "draft_id": draft_id,

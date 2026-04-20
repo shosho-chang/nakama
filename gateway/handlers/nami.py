@@ -1462,7 +1462,18 @@ class NamiHandler(BaseHandler):
             f"---\n\n"
             f"確認 OK 後說「發」。"
         )
-        return _ToolOutcome(content=content)
+        return _ToolOutcome(
+            content=content,
+            event={
+                "name": "gmail_draft_updated",
+                "payload": {
+                    "draft_id": draft_id,
+                    "subject": result["subject"],
+                    "gmail_web_link": result["gmail_web_link"],
+                },
+                "log": result["subject"],
+            },
+        )
 
     def _tool_send_gmail_draft(self, input_: dict) -> _ToolOutcome:
         draft_id = str(input_.get("draft_id", "")).strip()
