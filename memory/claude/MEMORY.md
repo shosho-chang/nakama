@@ -56,3 +56,4 @@
 - [feedback_windows_abs_path_silent.md](feedback_windows_abs_path_silent.md) — Windows 把 POSIX 絕對路徑默默解到當前磁碟根，CI Linux 才炸；conftest autouse isolate
 - [feedback_vps_env_drift_check.md](feedback_vps_env_drift_check.md) — 新 feature 的 env fallback 上 VPS 前要確認 .env 有對應 key，避免靜默 fallback 到無用預設值
 - [feedback_aesthetic_first_class.md](feedback_aesthetic_first_class.md) — 美學 first-class：自用工具和對外產出都要賞心悅目，拒絕 AI slop default
+- [project_qwen3_6_installed.md](project_qwen3_6_installed.md) — Qwen3.6-35B-A3B 下載完成 + A/B bench 就緒，週四 2026-04-23 09:00 測試
