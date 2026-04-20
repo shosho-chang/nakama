@@ -184,6 +184,7 @@ def _match_intent_keywords(text: str) -> str | None:
 
 def _haiku_classify(text: str) -> RouteResult:
     """用 Claude Haiku 分類 agent + intent（Tier 3 fallback）。"""
+    _default = RouteResult(agent="nami", intent="general", text=text, confidence="haiku")
     try:
         from shared.anthropic_client import ask_claude, set_current_agent
 
@@ -206,7 +207,14 @@ def _haiku_classify(text: str) -> RouteResult:
             max_tokens=100,
             temperature=0.0,
         )
-        result = json.loads(raw.strip())
+        stripped = raw.strip()
+        if not stripped:
+            logger.warning("Haiku routing returned empty response, defaulting to nami")
+            return _default
+        # Haiku 有時包 markdown fence 或前言，嘗試抽出第一個 {...}
+        json_match = re.search(r"\{[^}]+\}", stripped)
+        json_str = json_match.group(0) if json_match else stripped
+        result = json.loads(json_str)
         return RouteResult(
             agent=result.get("agent", "nami"),
             intent=result.get("intent", "general"),
@@ -215,4 +223,4 @@ def _haiku_classify(text: str) -> RouteResult:
         )
     except Exception as e:
         logger.warning(f"Haiku routing failed: {e}, defaulting to nami")
-        return RouteResult(agent="nami", intent="general", text=text, confidence="haiku")
+        return _default
