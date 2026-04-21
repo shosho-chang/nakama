@@ -223,6 +223,28 @@ def mark_file_read(path: Path) -> None:
     conn.commit()
 
 
+def is_seen(source: str, item_id: str) -> bool:
+    """檢查某 source 的 item（PMID、tweet id、url hash 等）是否已見過。"""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT 1 FROM scout_seen WHERE source = ? AND item_id = ?",
+        (source, item_id),
+    ).fetchone()
+    return row is not None
+
+
+def mark_seen(source: str, item_id: str, url: Optional[str] = None) -> None:
+    """標記某 source 的 item 已見過（冪等：重複呼叫安全）。"""
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT OR IGNORE INTO scout_seen (source, item_id, url, first_seen)
+           VALUES (?, ?, ?, ?)""",
+        (source, item_id, url, now),
+    )
+    conn.commit()
+
+
 def start_run(agent: str) -> int:
     """記錄 agent 開始執行，回傳 run_id。"""
     conn = _get_conn()
