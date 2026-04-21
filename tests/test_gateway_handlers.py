@@ -1680,7 +1680,7 @@ def test_format_agent_response():
     assert "已建立任務" in fallback
     assert len(blocks) == 1
     assert blocks[0]["type"] == "section"
-    assert "Nami" in blocks[0]["text"]["text"]
+    assert "已建立任務" in blocks[0]["text"]["text"]
 
 
 # ── Web research tools ──────────────────────────────────────────────
