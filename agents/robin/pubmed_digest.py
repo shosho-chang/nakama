@@ -23,7 +23,7 @@ import feedparser
 import yaml
 
 from agents.base import BaseAgent
-from shared.anthropic_client import ask_claude
+from shared import llm
 from shared.journal_metrics import lookup as journal_lookup
 from shared.obsidian_writer import append_to_file, write_page
 from shared.prompt_loader import load_prompt
@@ -257,7 +257,7 @@ class PubMedDigestPipeline(BaseAgent):
             candidates="\n".join(lines),
             total_candidates=str(len(candidates)),
         )
-        response = ask_claude(prompt, max_tokens=4096)
+        response = llm.ask(prompt, max_tokens=4096)
         return _parse_json(response)
 
     # ------------------------------------------------------------------
@@ -286,7 +286,7 @@ class PubMedDigestPipeline(BaseAgent):
             authors=paper["authors"] or "（未提供）",
             abstract=paper["abstract"],
         )
-        response = ask_claude(prompt, max_tokens=2048)
+        response = llm.ask(prompt, max_tokens=2048)
         return _parse_json(response)
 
     # ------------------------------------------------------------------
