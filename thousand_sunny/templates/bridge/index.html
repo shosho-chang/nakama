@@ -1,251 +1,782 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bridge · Nakama</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #fafaf8;
-    --bg-card: white;
-    --bg-alt: #f4f4f0;
-    --text: #333;
-    --text-heading: #1a1a1a;
-    --text-muted: #888;
-    --border: #e5e5e5;
-    --accent: #6c63ff;
-    --accent-hover: #574fd6;
-    --tile-hover: #f0efff;
-  }
-  body.dark {
-    --bg: #1a1a2e;
-    --bg-card: #16213e;
-    --bg-alt: #1e2a45;
-    --text: #d4d4d4;
-    --text-heading: #e8e8e8;
-    --text-muted: #888;
-    --border: #2a2a4a;
-    --accent: #8b80ff;
-    --accent-hover: #a59bff;
-    --tile-hover: #242d4f;
-  }
+/* ── Direction B tokens ── */
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-2:    #2a2a2a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-signal-mute:  rgba(255,90,31,0.08);
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-t-micro: 10px; --nk-t-xs: 11px; --nk-t-sm: 12px;
+  --nk-t-base: 14px;  --nk-t-md: 16px; --nk-t-lg: 19px;
+  --nk-t-xl: 24px;    --nk-t-2xl: 32px;
+  --nk-r-2: 2px;
+  --nk-border:      1px solid var(--nk-rule);
+  --nk-border-hair: 1px solid var(--nk-hairline);
+  --nk-shadow-popover: 0 4px 16px rgba(13,13,13,.10), 0 1px 3px rgba(13,13,13,.08);
+  --nk-dur-fast: 80ms;
+  --nk-dur-base: 140ms;
+  --nk-dur-slow: 240ms;
+  --nk-ease-out: cubic-bezier(0.2,0.7,0.2,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: var(--nk-t-base);
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-  .header {
-    background: var(--bg-card);
-    padding: 0.6rem 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--border);
-  }
-  .header h1 {
-    font-size: 1rem;
-    color: var(--text-heading);
-    font-weight: 600;
-  }
-  .header button {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.3rem 0.7rem;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    cursor: pointer;
-  }
-  .header button:hover { border-color: var(--accent); color: var(--accent); }
+/* ── Chassis header ── */
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.chassis-dot {
+  width: 14px; height: 14px;
+  border: 2px solid var(--nk-chassis-fg);
+  border-radius: 50%;
+  position: relative;
+}
+.chassis-dot::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  background: var(--nk-signal);
+  border-radius: 50%;
+}
+.chassis-wordmark {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  white-space: nowrap;
+}
+.chassis-version {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  color: var(--nk-chassis-fg-2);
+  letter-spacing: 0.08em;
+}
+.chassis-nav {
+  flex: 1;
+  display: flex;
+  gap: 24px;
+}
+.chassis-nav a {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent;
+  padding-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh {
+  font-family: var(--nk-font-zh);
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+.chassis-nav a.active,
+.chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+.chassis-meta {
+  display: flex;
+  gap: 20px;
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  color: var(--nk-chassis-fg-2);
+  white-space: nowrap;
+}
+.chassis-meta .val { color: #fff; }
 
-  .content {
-    flex: 1;
-    padding: 2.5rem 1.5rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  .intro {
-    max-width: 640px;
-    text-align: center;
-    margin-bottom: 2rem;
-  }
-  .intro h2 {
-    font-size: 1.4rem;
-    color: var(--text-heading);
-    margin-bottom: 0.5rem;
-  }
-  .intro p {
-    color: var(--text-muted);
-    font-size: 0.92rem;
-    line-height: 1.55;
-  }
+/* ── Readout strip ── */
+.readout-strip {
+  background: var(--nk-panel);
+  border-bottom: var(--nk-border);
+  padding: 18px 40px;
+  display: grid;
+  grid-template-columns: 1.4fr repeat(4, 1fr) auto;
+  gap: 32px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.readout-cell {}
+.nk-caps {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+  margin-bottom: 6px;
+}
+.fleet-count {
+  font-family: var(--nk-font-display);
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+  line-height: 1;
+}
+.fleet-count .on { color: var(--nk-signal); }
+.fleet-count .total { color: var(--nk-muted); }
+.fleet-count .label {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--nk-ink-2);
+  margin-left: 8px;
+  letter-spacing: 0;
+}
+.nk-readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.nk-readout .val {
+  font-family: var(--nk-font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  font-variant-numeric: tabular-nums;
+  color: var(--nk-ink);
+}
+.nk-readout .unit {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  color: var(--nk-muted);
+}
+.nk-gauge-wrap { margin-top: 8px; }
+.nk-gauge {
+  position: relative;
+  height: 3px;
+  background: var(--nk-hairline);
+  width: 120px;
+}
+.nk-gauge-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--nk-ink);
+  transition: width var(--nk-dur-slow) var(--nk-ease-out);
+}
+.nk-gauge-tick {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 7px;
+  background: var(--nk-rule);
+}
+.strip-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nk-btn-primary {
+  background: var(--nk-ink);
+  color: #fff;
+  border: none;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  cursor: pointer;
+  border-radius: var(--nk-r-2);
+  transition: background var(--nk-dur-base) var(--nk-ease-out);
+  white-space: nowrap;
+}
+.nk-btn-primary:hover { background: var(--nk-chassis-2); }
+.nk-btn-ghost {
+  background: transparent;
+  color: var(--nk-ink-2);
+  border: var(--nk-border);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 13px;
+  cursor: pointer;
+  border-radius: var(--nk-r-2);
+  white-space: nowrap;
+}
+.nk-btn-ghost:hover { border-color: var(--nk-ink-2); color: var(--nk-ink); }
 
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1rem;
-    width: 100%;
-    max-width: 960px;
-  }
+/* ── Grid subheader ── */
+.grid-subheader {
+  padding: 14px 40px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.state-legend {
+  display: flex;
+  gap: 14px;
+}
+.state-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  color: var(--nk-muted);
+}
+.state-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
 
-  .tile {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.3rem;
-    text-decoration: none;
-    color: inherit;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    transition: transform 0.1s, border-color 0.15s, background 0.15s;
-  }
-  .tile:hover {
-    transform: translateY(-2px);
-    border-color: var(--accent);
-    background: var(--tile-hover);
-  }
-  .tile.disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
+/* ── Agent grid ── */
+.grid-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 40px 28px;
+}
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: var(--nk-border);
+  background: var(--nk-rule);
+  gap: 1px;
+}
+.agent-card {
+  background: var(--nk-panel);
+  padding: 18px;
+  position: relative;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background var(--nk-dur-fast) var(--nk-ease-out);
+  min-height: 148px;
+}
+.agent-card:hover { background: #fafaf7; }
+.agent-card.selected { background: var(--nk-panel-2); }
+.agent-card.is-active { border-left-color: var(--nk-signal); }
+.agent-card.is-lead { padding: 20px 24px; }
+.agent-card.span-2 { grid-column: span 2; }
 
-  .tile-head {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .tile-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    background: var(--bg-alt);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
-    color: var(--accent);
-    flex-shrink: 0;
-  }
-  .tile-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-heading);
-  }
-  .tile-kind {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-top: 0.1rem;
-  }
-  .tile-desc {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-    margin-top: 0.3rem;
-  }
-  .tile-note {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    font-style: italic;
-    margin-top: 0.4rem;
-  }
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.card-id {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--nk-ink-2);
+  margin-bottom: 2px;
+}
+.card-role {
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  color: var(--nk-ink);
+  line-height: 1.2;
+}
+.agent-card.is-lead .card-role { font-size: 24px; }
+
+.nk-state-chip {
+  display: inline-block;
+  font-family: var(--nk-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  padding: 3px 6px;
+  flex-shrink: 0;
+}
+.chip-active   { background: var(--nk-signal);  color: #fff; }
+.chip-online   { background: var(--nk-ink);     color: #fff; }
+.chip-idle     { background: var(--nk-ink);     color: #fff; }
+.chip-hold     { background: var(--nk-amber);   color: #fff; }
+.chip-offline  { background: transparent; color: var(--nk-muted); border: var(--nk-border); }
+
+.card-signal-label {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--nk-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--nk-ink-2);
+  margin-bottom: 4px;
+}
+.card-signal-label .sig-val { color: var(--nk-ink); }
+.card-note {
+  font-size: 13px;
+  color: var(--nk-ink-2);
+  line-height: 1.5;
+  margin-bottom: 10px;
+  min-height: 34px;
+}
+.agent-card.is-lead .card-note { min-height: 40px; }
+
+.card-footer {
+  display: flex;
+  gap: 14px;
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--nk-hairline);
+  font-variant-numeric: tabular-nums;
+}
+.card-footer .lbl { color: var(--nk-muted); margin-right: 3px; }
+.card-footer .num { color: var(--nk-ink); font-weight: 500; }
+.card-open-draft {
+  margin-left: auto;
+  color: var(--nk-signal);
+  font-weight: 500;
+}
+
+/* ── Detail drawer ── */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13,13,13,0.35);
+  z-index: 100;
+  display: none;
+}
+.drawer-overlay.open { display: flex; justify-content: flex-end; }
+.drawer {
+  width: 420px;
+  background: var(--nk-panel);
+  height: 100%;
+  border-left: var(--nk-border);
+  padding: 28px 32px;
+  overflow-y: auto;
+  animation: drawer-in var(--nk-dur-slow) var(--nk-ease-out);
+}
+@keyframes drawer-in {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.drawer-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.drawer-role {
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+  line-height: 1.15;
+}
+.drawer-section {
+  border-top: var(--nk-border);
+  padding-top: 14px;
+  margin-bottom: 18px;
+}
+.drawer-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px dotted var(--nk-hairline);
+  font-size: 12px;
+}
+.drawer-row .dk { color: var(--nk-ink-2); }
+.drawer-row .dv {
+  font-family: var(--nk-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.drawer-actions { display: flex; gap: 8px; margin-top: 8px; }
+.drawer-actions .nk-btn-primary { flex: 1; }
+
+/* focus rings */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal);
+}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>Bridge</h1>
-  <button id="themeBtn">Dark</button>
+<!-- Chassis header -->
+<div class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+    <div class="chassis-version">v0.4</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge" class="active">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
+  </nav>
+  <div class="chassis-meta">
+    <span>TPE <span class="val" id="clock">--:--:--</span></span>
+    <span>CPT <span class="val">SHOSHO</span></span>
+  </div>
 </div>
 
-<div class="content">
-  <div class="intro">
-    <h2>Nakama Bridge</h2>
-    <p>Agent 團隊的管理介面入口。從這裡看 Agent 對你記得什麼、API 花了多少錢，或是直接跳進對話。</p>
-  </div>
-
-  <div class="grid">
-    <a class="tile" href="/bridge/memory">
-      <div class="tile-head">
-        <div class="tile-icon">M</div>
-        <div>
-          <div class="tile-title">Memory</div>
-          <div class="tile-kind">Bridge · Tool</div>
-        </div>
-      </div>
-      <div class="tile-desc">審視、編輯、刪除 Agent 對你的記憶（preference / fact / decision / project）。</div>
-    </a>
-
-    <a class="tile" href="/bridge/cost">
-      <div class="tile-head">
-        <div class="tile-icon">$</div>
-        <div>
-          <div class="tile-title">Cost</div>
-          <div class="tile-kind">Bridge · Tool</div>
-        </div>
-      </div>
-      <div class="tile-desc">近 24h / 7d / 30d 的 API 用量 + 美元估算，按 agent × model 分解。</div>
-    </a>
-
-    <a class="tile" href="/brook/chat">
-      <div class="tile-head">
-        <div class="tile-icon">B</div>
-        <div>
-          <div class="tile-title">Brook</div>
-          <div class="tile-kind">Agent · Chat</div>
-        </div>
-      </div>
-      <div class="tile-desc">文章撰寫助手：多回合對話、整合 KB 材料、匯出 Markdown 草稿。</div>
-    </a>
-
-    {% if robin_enabled %}
-    <a class="tile" href="/">
-      <div class="tile-head">
-        <div class="tile-icon">R</div>
-        <div>
-          <div class="tile-title">Robin</div>
-          <div class="tile-kind">Agent · KB Ingest</div>
-        </div>
-      </div>
-      <div class="tile-desc">KB 材料處理：PDF / article / YouTube 進 Obsidian Wiki，含雙語閱讀器。</div>
-    </a>
-    {% else %}
-    <div class="tile disabled" title="Robin 只在本機執行，VPS 已停用">
-      <div class="tile-head">
-        <div class="tile-icon">R</div>
-        <div>
-          <div class="tile-title">Robin</div>
-          <div class="tile-kind">Agent · KB Ingest</div>
-        </div>
-      </div>
-      <div class="tile-desc">KB 材料處理：PDF / article / YouTube 進 Obsidian Wiki。</div>
-      <div class="tile-note">本環境已停用（DISABLE_ROBIN）— 只在本機開發機運行。</div>
+<!-- Readout strip -->
+<div class="readout-strip">
+  <div class="readout-cell">
+    <div class="nk-caps">FLEET · 艦隊狀態</div>
+    <div class="fleet-count">
+      <span class="on" id="fleet-on">—</span><span class="total">/9</span>
+      <span class="label">on watch</span>
     </div>
-    {% endif %}
+  </div>
+  <div class="readout-cell">
+    <div class="nk-caps">TOKENS · 24H</div>
+    <div class="nk-readout"><span class="val" id="tok-24h">—</span><span class="unit">tok</span></div>
+    <div class="nk-gauge-wrap">
+      <div class="nk-gauge" style="width:120px">
+        <div class="nk-gauge-fill" id="tok-gauge" style="width:0%"></div>
+        <div class="nk-gauge-tick" style="left:25%"></div>
+        <div class="nk-gauge-tick" style="left:50%"></div>
+        <div class="nk-gauge-tick" style="left:75%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="readout-cell">
+    <div class="nk-caps">COST · MTD</div>
+    <div class="nk-readout"><span class="val" id="cost-mtd">—</span><span class="unit">USD</span></div>
+    <div class="nk-gauge-wrap">
+      <div class="nk-gauge" style="width:120px">
+        <div class="nk-gauge-fill" id="cost-gauge" style="width:0%"></div>
+        <div class="nk-gauge-tick" style="left:25%"></div>
+        <div class="nk-gauge-tick" style="left:50%"></div>
+        <div class="nk-gauge-tick" style="left:75%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="readout-cell">
+    <div class="nk-caps">RUNS · 24H</div>
+    <div class="nk-readout"><span class="val" id="runs-24h">—</span><span class="unit">exec</span></div>
+    <div class="nk-gauge-wrap">
+      <div class="nk-gauge" style="width:120px">
+        <div class="nk-gauge-fill" id="runs-gauge" style="width:0%"></div>
+        <div class="nk-gauge-tick" style="left:25%"></div>
+        <div class="nk-gauge-tick" style="left:50%"></div>
+        <div class="nk-gauge-tick" style="left:75%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="readout-cell" id="latency-cell" style="display:none">
+    <div class="nk-caps">LATENCY</div>
+    <div class="nk-readout"><span class="val">—</span><span class="unit">s avg</span></div>
+  </div>
+  <div class="strip-actions">
+    <a href="/bridge/memory" class="nk-btn-primary" style="text-decoration:none;text-align:center">記憶庫 →</a>
+    <a href="/bridge/cost" class="nk-btn-ghost" style="text-decoration:none;text-align:center">成本報告</a>
+  </div>
+</div>
+
+<!-- Grid subheader -->
+<div class="grid-subheader">
+  <div class="nk-caps">AGENTS · 九位艦員 — ordered by signal ↓</div>
+  <div class="state-legend">
+    <div class="state-legend-item">
+      <div class="state-dot" style="background:var(--nk-signal)"></div>ACTIVE
+    </div>
+    <div class="state-legend-item">
+      <div class="state-dot" style="background:var(--nk-ink)"></div>ONLINE
+    </div>
+    <div class="state-legend-item">
+      <div class="state-dot" style="background:var(--nk-amber)"></div>HOLD
+    </div>
+    <div class="state-legend-item">
+      <div class="state-dot" style="border:1px solid var(--nk-rule)"></div>OFFLINE
+    </div>
+  </div>
+</div>
+
+<!-- Agent grid -->
+<div class="grid-scroll">
+  <div class="agent-grid" id="agentGrid">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<!-- Detail drawer -->
+<div class="drawer-overlay" id="drawerOverlay">
+  <div class="drawer" id="drawer">
+    <div class="drawer-top">
+      <div>
+        <div class="nk-caps" id="drawer-id"></div>
+        <div class="drawer-role" id="drawer-role"></div>
+        <div id="drawer-chip"></div>
+      </div>
+      <button class="nk-btn-ghost" onclick="closeDrawer()" style="padding:4px 8px;font-size:10px">ESC</button>
+    </div>
+    <div class="nk-caps" style="margin-bottom:8px" id="drawer-note"></div>
+    <div class="drawer-section">
+      <div class="nk-caps" style="margin-bottom:10px">TODAY · 今日</div>
+      <div id="drawer-rows"></div>
+    </div>
+    <div class="drawer-actions">
+      <button class="nk-btn-primary" id="drawer-open-btn" onclick="openAgentInterface()">OPEN INTERFACE</button>
+      <button class="nk-btn-ghost" onclick="closeDrawer()">CLOSE</button>
+    </div>
   </div>
 </div>
 
 <script>
-if (localStorage.getItem('bridge-dark') === '1') {
-  document.body.classList.add('dark');
-  document.getElementById('themeBtn').textContent = 'Light';
+// ── Clock ──
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('zh-TW', { hour12: false, timeZone: 'Asia/Taipei' });
 }
-document.getElementById('themeBtn').onclick = () => {
-  document.body.classList.toggle('dark');
-  const dark = document.body.classList.contains('dark');
-  document.getElementById('themeBtn').textContent = dark ? 'Light' : 'Dark';
-  localStorage.setItem('bridge-dark', dark ? '1' : '0');
+updateClock();
+setInterval(updateClock, 1000);
+
+// ── Agent interface URLs ── DISABLE_ROBIN={{ "0" if robin_enabled else "1" }}
+const AGENT_URLS = {
+  robin: '{{ "/robin/kb" if robin_enabled else "/" }}',
+  brook: '/brook/chat',
 };
+
+// ── State helpers ──
+const STATE_LABEL = { active: 'ACTIVE', online: 'ONLINE', idle: 'IDLE', hold: 'HOLD', offline: 'OFFLINE' };
+
+function stateChipHTML(st) {
+  return `<span class="nk-state-chip chip-${st}">${STATE_LABEL[st] || st.toUpperCase()}</span>`;
+}
+
+function gaugeHTML(value, color, width) {
+  const pct = Math.max(0, Math.min(1, value)) * 100;
+  const c = color || 'var(--nk-ink)';
+  return `
+    <div class="nk-gauge" style="width:${width || '100%'}">
+      <div class="nk-gauge-fill" style="width:${pct.toFixed(1)}%;background:${c}"></div>
+      <div class="nk-gauge-tick" style="left:25%"></div>
+      <div class="nk-gauge-tick" style="left:50%"></div>
+      <div class="nk-gauge-tick" style="left:75%"></div>
+    </div>`;
+}
+
+function fmtTok(n) {
+  if (!n) return '0';
+  if (n >= 1000000) return (n/1000000).toFixed(2) + 'M';
+  if (n >= 1000) return (n/1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+function fmtNum(n) { return (n || 0).toLocaleString('en-US'); }
+
+// ── Signal score (normalized token count) ──
+let maxTok = 1;
+function sigScore(a) { return Math.min(1, (a.tok_today || 0) / Math.max(maxTok, 1)); }
+function sigColor(a) {
+  if (a.state === 'active')  return 'var(--nk-signal)';
+  if (a.state === 'hold')    return 'var(--nk-amber)';
+  if (a.state === 'offline') return 'var(--nk-muted)';
+  return 'var(--nk-ink)';
+}
+
+// ── Render agent card ──
+function renderCard(a) {
+  const isLead = a.key === 'brook';
+  const isActive = a.state === 'active';
+  const sig = sigScore(a);
+  const sigPct = (sig * 100).toFixed(0).padStart(2, '0');
+
+  let footer = `
+    <span><span class="lbl">TOK</span><span class="num">${fmtTok(a.tok_today)}</span></span>
+    <span><span class="lbl">RUN</span><span class="num">${String(a.runs_today || 0).padStart(3,'0')}</span></span>
+    <span><span class="lbl">MODEL</span><span class="num">${(a.model||'').replace('claude-','').slice(0,12)}</span></span>`;
+  if (isLead) {
+    footer += `<span class="card-open-draft">▸ OPEN DRAFT</span>`;
+  }
+
+  return `
+    <div class="agent-card${isLead ? ' is-lead span-2' : ''}${isActive ? ' is-active' : ''}"
+         data-key="${a.key}" onclick="openDrawer('${a.key}')">
+      <div class="card-top">
+        <div>
+          <div class="card-id">${a.code} · ${a.en.toUpperCase()}</div>
+          <div class="card-role">${a.role}</div>
+        </div>
+        ${stateChipHTML(a.state)}
+      </div>
+      <div class="card-signal-label">
+        <span>SIGNAL</span>
+        <span class="sig-val">${sigPct}<span style="color:var(--nk-muted)">%</span></span>
+      </div>
+      ${gaugeHTML(sig, sigColor(a), '100%')}
+      <div class="card-note" style="margin-top:10px">${a.note || '—'}</div>
+      <div class="card-footer">${footer}</div>
+    </div>`;
+}
+
+// ── Selected agent for drawer ──
+let allAgents = [];
+let selectedKey = null;
+
+// ── Open / close drawer ──
+function openDrawer(key) {
+  const a = allAgents.find(x => x.key === key);
+  if (!a) return;
+  selectedKey = key;
+
+  document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('selected'));
+  const card = document.querySelector(`[data-key="${key}"]`);
+  if (card) card.classList.add('selected');
+
+  document.getElementById('drawer-id').textContent = `${a.code} · ${a.en.toUpperCase()}`;
+  document.getElementById('drawer-role').textContent = a.role;
+  document.getElementById('drawer-chip').innerHTML = stateChipHTML(a.state);
+  document.getElementById('drawer-note').textContent = a.note || '';
+
+  const url = AGENT_URLS[a.key];
+  const btn = document.getElementById('drawer-open-btn');
+  if (url) {
+    btn.style.display = '';
+    btn.onclick = () => { window.location.href = url; };
+  } else {
+    btn.style.display = 'none';
+  }
+
+  document.getElementById('drawer-rows').innerHTML = [
+    ['tokens today', fmtNum(a.tok_today) + ' tok'],
+    ['runs today',   String(a.runs_today || 0)],
+    ['cost today',   '$' + (a.cost_today || 0).toFixed(4)],
+    ['model',        (a.model || '—').replace('claude-', '')],
+    ['state',        STATE_LABEL[a.state] || a.state],
+  ].map(([k, v]) => `
+    <div class="drawer-row">
+      <span class="dk">${k}</span>
+      <span class="dv">${v}</span>
+    </div>`).join('');
+
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('selected'));
+  selectedKey = null;
+}
+
+document.getElementById('drawerOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeDrawer();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDrawer();
+});
+
+function openAgentInterface() {
+  const a = allAgents.find(x => x.key === selectedKey);
+  if (a && AGENT_URLS[a.key]) window.location.href = AGENT_URLS[a.key];
+}
+
+// ── Load agents ──
+async function loadAgents() {
+  try {
+    const res = await fetch('/bridge/api/agents');
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    allAgents = data.agents || [];
+
+    // Compute maxTok for signal normalization
+    maxTok = Math.max(1, ...allAgents.map(a => a.tok_today || 0));
+
+    // Sort: active first, then online/idle, then hold, then offline
+    const ORDER = { active: 0, online: 1, idle: 2, hold: 3, offline: 4 };
+    allAgents.sort((a, b) => {
+      const od = (ORDER[a.state] ?? 5) - (ORDER[b.state] ?? 5);
+      if (od !== 0) return od;
+      return (b.tok_today || 0) - (a.tok_today || 0);
+    });
+
+    const onCount = allAgents.filter(a => ['active','online','idle'].includes(a.state)).length;
+    document.getElementById('fleet-on').textContent = onCount;
+
+    document.getElementById('agentGrid').innerHTML = allAgents.map(renderCard).join('');
+  } catch (err) {
+    console.error('Failed to load agents:', err);
+    document.getElementById('agentGrid').innerHTML =
+      `<div style="padding:24px;color:var(--nk-muted);font-family:var(--nk-font-mono);font-size:12px;grid-column:span 4">
+        failed to load agents — check console
+      </div>`;
+  }
+}
+
+// ── Load readout strip ──
+async function loadReadout() {
+  try {
+    const [agents24h, costMtd] = await Promise.all([
+      fetch('/bridge/api/agents').then(r => r.json()),
+      fetch('/bridge/api/cost?range=30d').then(r => r.json()),
+    ]);
+
+    const agents = agents24h.agents || [];
+    const tokToday = agents.reduce((s, a) => s + (a.tok_today || 0), 0);
+    const runsToday = agents.reduce((s, a) => s + (a.runs_today || 0), 0);
+    const costUsd = (costMtd.total_cost_usd || 0).toFixed(2);
+
+    document.getElementById('tok-24h').textContent = fmtTok(tokToday);
+    document.getElementById('runs-24h').textContent = String(runsToday);
+    document.getElementById('cost-mtd').textContent = '$' + costUsd;
+
+    // Gauge fill (rough scaling)
+    const tokMax = 500000;
+    document.getElementById('tok-gauge').style.width = Math.min(100, tokToday / tokMax * 100).toFixed(1) + '%';
+    document.getElementById('runs-gauge').style.width = Math.min(100, runsToday / 500 * 100).toFixed(1) + '%';
+    const costMax = 100;
+    document.getElementById('cost-gauge').style.width = Math.min(100, parseFloat(costUsd) / costMax * 100).toFixed(1) + '%';
+  } catch (err) {
+    console.error('Failed to load readout:', err);
+  }
+}
+
+loadAgents();
+loadReadout();
 </script>
 </body>
 </html>
