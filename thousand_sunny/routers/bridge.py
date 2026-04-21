@@ -26,15 +26,15 @@ from thousand_sunny.auth import check_auth, require_auth_or_key
 # Static config for all 9 agents. "default_state" is the fallback when there
 # are no api_calls today; agents with "offline" are never promoted.
 AGENT_ROSTER = [
-    {"code": "R-01", "key": "robin",   "role": "知識管理", "en": "Knowledge",  "model": "claude-sonnet-4-6", "default_state": "online"},
-    {"code": "N-02", "key": "nami",    "role": "日常秘書", "en": "Secretary",  "model": "claude-haiku-4-5",  "default_state": "online"},
-    {"code": "Z-03", "key": "zoro",    "role": "情報蒐集", "en": "Scout",      "model": "claude-sonnet-4-6", "default_state": "online"},
-    {"code": "B-04", "key": "brook",   "role": "內容撰寫", "en": "Composer",   "model": "claude-opus-4-7",   "default_state": "online"},
-    {"code": "S-05", "key": "sanji",   "role": "社群營運", "en": "Community",  "model": "claude-haiku-4-5",  "default_state": "online"},
-    {"code": "F-06", "key": "franky",  "role": "系統監測", "en": "Systems",    "model": "claude-haiku-4-5",  "default_state": "online"},
-    {"code": "U-07", "key": "usopp",   "role": "發布管線", "en": "Publisher",  "model": "claude-sonnet-4-6", "default_state": "hold"},
-    {"code": "C-08", "key": "chopper", "role": "健康顧問", "en": "Counsel",    "model": "—",                 "default_state": "offline"},
-    {"code": "D-09", "key": "sunny",   "role": "整合甲板", "en": "Deck",       "model": "—",                 "default_state": "offline"},
+    {"code": "R-01", "key": "robin",   "role": "知識管理", "en": "Knowledge",  "model": "claude-sonnet-4-6", "default_state": "online"},   # noqa: E501
+    {"code": "N-02", "key": "nami",    "role": "日常秘書", "en": "Secretary",  "model": "claude-haiku-4-5",  "default_state": "online"},   # noqa: E501
+    {"code": "Z-03", "key": "zoro",    "role": "情報蒐集", "en": "Scout",      "model": "claude-sonnet-4-6", "default_state": "online"},   # noqa: E501
+    {"code": "B-04", "key": "brook",   "role": "內容撰寫", "en": "Composer",   "model": "claude-opus-4-7",   "default_state": "online"},   # noqa: E501
+    {"code": "S-05", "key": "sanji",   "role": "社群營運", "en": "Community",  "model": "claude-haiku-4-5",  "default_state": "online"},   # noqa: E501
+    {"code": "F-06", "key": "franky",  "role": "系統監測", "en": "Systems",    "model": "claude-haiku-4-5",  "default_state": "online"},   # noqa: E501
+    {"code": "U-07", "key": "usopp",   "role": "發布管線", "en": "Publisher",  "model": "claude-sonnet-4-6", "default_state": "hold"},     # noqa: E501
+    {"code": "C-08", "key": "chopper", "role": "健康顧問", "en": "Counsel",    "model": "—",                 "default_state": "offline"},  # noqa: E501
+    {"code": "D-09", "key": "sunny",   "role": "整合甲板", "en": "Deck",       "model": "—",                 "default_state": "offline"},  # noqa: E501
 ]
 
 router = APIRouter(prefix="/bridge", dependencies=[Depends(require_auth_or_key)])
