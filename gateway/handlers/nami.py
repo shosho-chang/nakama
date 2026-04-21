@@ -1752,15 +1752,16 @@ class NamiHandler(BaseHandler):
             return _ToolOutcome(content=f"無法擷取頁面：{e}", is_error=True)
 
         _MAX_CHARS = 20000
-        truncated = len(content) > _MAX_CHARS
+        original_len = len(content)
+        truncated = original_len > _MAX_CHARS
         if truncated:
-            content = content[:_MAX_CHARS] + f"\n\n[...已截斷，原文共 {len(content)} 字元]"
+            content = content[:_MAX_CHARS] + f"\n\n[...已截斷，原文共 {original_len} 字元]"
 
         return _ToolOutcome(
             content=content,
             event={
                 "name": "fetch_url",
-                "payload": {"url": url, "chars": len(content), "truncated": truncated},
+                "payload": {"url": url, "chars": original_len, "truncated": truncated},
                 "log": f"fetch: {url}",
             },
         )
