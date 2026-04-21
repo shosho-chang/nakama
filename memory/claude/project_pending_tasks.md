@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-21
+updated: 2026-04-22
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
@@ -52,8 +52,9 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ P2B：BabelDOC 整合（需 Immersive Translate API key）
 - ⬜ P3：Annotation → Ingest 整合
 
-**PubMed 整合（討論中）：**
-- ⬜ 調研 PubMed NCBI Entrez API（Nami Quick Lookup 替代 Deep Research）
+**PubMed 整合：**
+- ✅ Robin PubMed 每日 digest 上線 VPS（PR #66/#67/#68，首次 cron 2026-04-22 05:30 台北）
+- ⬜ 調研 PubMed NCBI Entrez API（Nami Quick Lookup 替代 Deep Research，獨立於 Robin digest）
 
 **基礎建設：**
 - ⬜ Robin 核心流程（ingest、kb_search）補測試覆蓋率
