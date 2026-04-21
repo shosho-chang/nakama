@@ -681,7 +681,7 @@ def test_create_calendar_event_conflict_returns_error():
     conflict = _fake_cal_event(title="已有的會議")
     captured_tool_results = []
 
-    def _capture_and_respond(*, messages, tools, system, model):
+    def _capture_and_respond(*, messages, tools, system, model, **kwargs):
         # 第二輪看 tool_result 是否標記 is_error=True
         for msg in messages:
             if isinstance(msg.get("content"), list):
@@ -1180,7 +1180,7 @@ def test_create_calendar_event_rollback_on_task_write_failure():
     fake_created = _fake_cal_event(id_="evtRollback", title="會議")
     captured_results = []
 
-    def _capture(*, messages, tools, system, model):
+    def _capture(*, messages, tools, system, model, **kwargs):
         for msg in messages:
             if isinstance(msg.get("content"), list):
                 for block in msg["content"]:
