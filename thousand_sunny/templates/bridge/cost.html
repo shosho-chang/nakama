@@ -1,574 +1,486 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bridge · Cost</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #fafaf8;
-    --bg-card: white;
-    --bg-alt: #f4f4f0;
-    --text: #333;
-    --text-heading: #1a1a1a;
-    --text-muted: #888;
-    --border: #e5e5e5;
-    --accent: #6c63ff;
-    --accent-hover: #574fd6;
-    --row-hover: #f0efff;
-  }
-  body.dark {
-    --bg: #1a1a2e;
-    --bg-card: #16213e;
-    --bg-alt: #1e2a45;
-    --text: #d4d4d4;
-    --text-heading: #e8e8e8;
-    --text-muted: #888;
-    --border: #2a2a4a;
-    --accent: #8b80ff;
-    --accent-hover: #a59bff;
-    --row-hover: #242d4f;
-  }
+/* ── Direction B tokens ── */
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-2:    #2a2a2a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-t-micro: 10px; --nk-t-xs: 11px; --nk-t-sm: 12px;
+  --nk-t-base: 14px;  --nk-t-md: 16px;
+  --nk-r-2: 2px;
+  --nk-border:      1px solid var(--nk-rule);
+  --nk-border-hair: 1px solid var(--nk-hairline);
+  --nk-dur-fast: 80ms;
+  --nk-dur-base: 140ms;
+  --nk-dur-slow: 240ms;
+  --nk-ease-out: cubic-bezier(0.2,0.7,0.2,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; }
+}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: var(--nk-t-base);
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-  .header {
-    background: var(--bg-card);
-    padding: 0.6rem 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--border);
-  }
-  .header h1 { font-size: 1rem; color: var(--text-heading); }
-  .header-right { display: flex; gap: 0.5rem; }
-  .header-right a, .header-right button {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.3rem 0.7rem;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    cursor: pointer;
-    text-decoration: none;
-  }
-  .header-right a.active {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-  .header-right a:hover, .header-right button:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
+/* ── Chassis ── */
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-version  { font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-chassis-fg-2); letter-spacing: 0.08em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+.chassis-meta { display: flex; gap: 20px; font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-chassis-fg-2); }
+.chassis-meta .val { color: #fff; }
 
-  .controls {
-    background: var(--bg-card);
-    padding: 0.8rem 1.5rem;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-  .seg {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .seg button {
-    border: none;
-    background: var(--bg-alt);
-    color: var(--text-muted);
-    padding: 0.35rem 0.8rem;
-    font-size: 0.82rem;
-    cursor: pointer;
-    border-right: 1px solid var(--border);
-  }
-  .seg button:last-child { border-right: none; }
-  .seg button.active {
-    background: var(--accent);
-    color: white;
-  }
-  .seg button:not(.active):hover { color: var(--text-heading); }
+/* ── Page header ── */
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: var(--nk-border);
+  padding: 18px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+  margin-bottom: 4px;
+}
+.page-title { font-family: var(--nk-font-display); font-size: 26px; font-weight: 500; letter-spacing: -0.5px; }
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
 
-  .controls label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .controls select {
-    padding: 0.3rem 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 0.82rem;
-  }
-  .controls .status {
-    margin-left: auto;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-  }
+.range-selector { display: flex; border: var(--nk-border); }
+.range-btn {
+  border: none; background: transparent; color: var(--nk-ink-2);
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 8px 14px; cursor: pointer; transition: background var(--nk-dur-fast), color var(--nk-dur-fast);
+}
+.range-btn:hover { background: var(--nk-panel-2); }
+.range-btn.active { background: var(--nk-ink); color: #fff; }
 
-  .content {
-    flex: 1;
-    padding: 1.5rem;
-    overflow-y: auto;
-  }
+/* ── Hero readout ── */
+.hero-readout {
+  background: var(--nk-panel);
+  border-bottom: var(--nk-border);
+  padding: 22px 40px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  gap: 36px;
+  flex-shrink: 0;
+}
+.nk-readout-hero { display: flex; align-items: baseline; gap: 6px; }
+.nk-readout-hero .val {
+  font-family: var(--nk-font-mono); font-size: 40px; font-weight: 500;
+  letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.nk-readout-hero .unit { font-family: var(--nk-font-mono); font-size: 12px; color: var(--nk-muted); }
+.nk-readout-md { display: flex; align-items: baseline; gap: 5px; }
+.nk-readout-md .val {
+  font-family: var(--nk-font-mono); font-size: 28px; font-weight: 500;
+  letter-spacing: -0.6px; font-variant-numeric: tabular-nums;
+}
+.nk-readout-md .unit { font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-muted); }
+.hero-sub { font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-2); margin-top: 6px; }
+.hero-sub .hl  { color: var(--nk-ink); }
+.hero-sub .sig { color: var(--nk-signal); }
 
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0.8rem;
-    margin-bottom: 1.2rem;
-  }
-  .stat-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.9rem 1.1rem;
-  }
-  .stat-card .label {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .stat-card .value {
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: var(--text-heading);
-    margin-top: 0.3rem;
-    font-variant-numeric: tabular-nums;
-  }
-  .stat-card .sub {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    margin-top: 0.2rem;
-  }
+/* ── Body scroll ── */
+.body-scroll { flex: 1; overflow-y: auto; padding: 24px 40px 40px; }
 
-  .chart-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1.2rem;
-    min-height: 360px;
-    position: relative;
-  }
-  .chart-card h3 {
-    font-size: 0.88rem;
-    color: var(--text-heading);
-    margin-bottom: 0.5rem;
-  }
-  .chart-wrap {
-    position: relative;
-    height: 320px;
-  }
+/* ── Chart ── */
+.chart-section { margin-bottom: 28px; }
+.section-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.chart-legend { display: flex; gap: 12px; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-2); }
+.legend-swatch { width: 10px; height: 8px; }
+.chart-panel { background: var(--nk-panel); border: var(--nk-border); padding: 16px 20px 10px 48px; }
+.chart-inner { position: relative; height: 180px; }
+.chart-gridline { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--nk-hairline); }
+.gridline-label { position: absolute; left: -40px; top: -7px; font-family: var(--nk-font-mono); font-size: 9px; color: var(--nk-muted); font-variant-numeric: tabular-nums; }
+.chart-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
+.chart-bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; }
+.chart-bar-seg { transition: height var(--nk-dur-slow) var(--nk-ease-out); }
+.chart-x-labels { display: flex; justify-content: space-between; margin-top: 6px; font-family: var(--nk-font-mono); font-size: 9px; color: var(--nk-muted); padding-left: 2px; }
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    font-size: 0.85rem;
-  }
-  thead { background: var(--bg-alt); }
-  th {
-    padding: 0.7rem 0.8rem;
-    text-align: left;
-    color: var(--text-heading);
-    font-weight: 600;
-    font-size: 0.76rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    border-bottom: 1px solid var(--border);
-  }
-  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td {
-    padding: 0.65rem 0.8rem;
-    border-bottom: 1px solid var(--border);
-  }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr:hover { background: var(--row-hover); }
-  tfoot td {
-    font-weight: 600;
-    color: var(--text-heading);
-    background: var(--bg-alt);
-    border-top: 1px solid var(--border);
-  }
+/* ── Matrix table ── */
+.matrix-section {}
+.matrix-table { background: var(--nk-panel); border: var(--nk-border); width: 100%; }
+.matrix-head {
+  display: grid; grid-template-columns: 200px repeat(3,1fr) 130px 140px;
+  padding: 10px 16px; border-bottom: var(--nk-border);
+  font-family: var(--nk-font-mono); font-size: 9px; letter-spacing: 0.15em; color: var(--nk-ink-2); text-transform: uppercase;
+}
+.matrix-row {
+  display: grid; grid-template-columns: 200px repeat(3,1fr) 130px 140px;
+  padding: 13px 16px; border-bottom: var(--nk-border-hair); align-items: center;
+}
+.matrix-tfoot {
+  display: grid; grid-template-columns: 200px repeat(3,1fr) 130px 140px;
+  padding: 13px 16px; background: var(--nk-panel-2); border-top: var(--nk-border); align-items: center;
+}
+.matrix-head span, .matrix-row span, .matrix-tfoot span { text-align: right; }
+.matrix-head span:first-child, .matrix-row span:first-child, .matrix-tfoot span:first-child { text-align: left; }
 
-  .agent-chip {
-    display: inline-block;
-    padding: 0.1rem 0.5rem;
-    background: var(--bg-alt);
-    border-radius: 4px;
-    font-size: 0.78rem;
-    color: var(--text-heading);
-  }
-  .empty {
-    text-align: center;
-    padding: 3rem 1rem;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-  }
+.agent-cell-code { font-family: var(--nk-font-mono); font-size: 9px; letter-spacing: 0.15em; color: var(--nk-ink-3); margin-bottom: 1px; }
+.agent-cell-role { font-size: 13px; font-weight: 500; color: var(--nk-ink); }
+.model-cell { text-align: right; padding-right: 12px; }
+.model-pct { font-family: var(--nk-font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.model-gauge { position: relative; height: 2px; background: var(--nk-hairline); margin-top: 4px; margin-left: auto; width: 80px; }
+.model-gauge-fill { position: absolute; inset: 0; }
+.tok-cell { text-align: right; font-family: var(--nk-font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.cost-cell { text-align: right; font-family: var(--nk-font-mono); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.cost-hot { color: var(--nk-signal); }
+.status-bar { margin-top: 12px; font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-muted); }
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>Bridge · Cost</h1>
-  <div class="header-right">
-    <a href="/bridge">Bridge</a>
-    <a href="/bridge/memory">Memory</a>
-    <a href="/bridge/cost" class="active">Cost</a>
-    <button id="themeBtn">Dark</button>
+<!-- Chassis -->
+<div class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+    <div class="chassis-version">v0.4</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost" class="active">COST <span class="zh">成本</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
+  </nav>
+  <div class="chassis-meta">
+    <span>CPT <span class="val">SHOSHO</span></span>
   </div>
 </div>
 
-<div class="controls">
-  <div class="seg" id="rangeSeg">
-    <button data-range="24h">24h</button>
-    <button data-range="7d" class="active">7d</button>
-    <button data-range="30d">30d</button>
+<!-- Page header -->
+<div class="page-header">
+  <div>
+    <div class="nk-caps">/bridge/cost · 成本儀表板</div>
+    <div class="page-title">Token Telemetry <span class="zh">· 耗字與費用</span></div>
   </div>
-  <label>Agent
-    <select id="agentFilter">
-      <option value="">All</option>
-    </select>
-  </label>
-  <div class="status" id="statusText">Loading…</div>
+  <div class="range-selector">
+    <button class="range-btn" data-r="24h" onclick="setRange('24h')">24H</button>
+    <button class="range-btn" data-r="7d"  onclick="setRange('7d')">7 DAYS</button>
+    <button class="range-btn active" data-r="30d" onclick="setRange('30d')">30 DAYS</button>
+  </div>
 </div>
 
-<div class="content">
-  <div class="stats-row">
-    <div class="stat-card">
-      <div class="label">Total cost</div>
-      <div class="value" id="statCost">—</div>
-      <div class="sub" id="statRange"></div>
+<!-- Hero readout -->
+<div class="hero-readout">
+  <div>
+    <div class="nk-caps">COST · 本範圍總計</div>
+    <div class="nk-readout-hero">
+      <span class="val" id="hero-cost">—</span>
+      <span class="unit">USD</span>
     </div>
-    <div class="stat-card">
-      <div class="label">API calls</div>
-      <div class="value" id="statCalls">—</div>
-      <div class="sub" id="statAgents"></div>
+    <div class="hero-sub" id="hero-cost-sub"></div>
+  </div>
+  <div>
+    <div class="nk-caps">TOKENS · 本範圍</div>
+    <div class="nk-readout-md">
+      <span class="val" id="hero-tok">—</span>
+      <span class="unit">tok</span>
     </div>
-    <div class="stat-card">
-      <div class="label">Input tokens</div>
-      <div class="value" id="statInput">—</div>
-      <div class="sub" id="statCache"></div>
+    <div class="hero-sub" id="hero-tok-sub"></div>
+  </div>
+  <div>
+    <div class="nk-caps">API CALLS</div>
+    <div class="nk-readout-md">
+      <span class="val" id="hero-calls">—</span>
+      <span class="unit">exec</span>
     </div>
-    <div class="stat-card">
-      <div class="label">Output tokens</div>
-      <div class="value" id="statOutput">—</div>
-      <div class="sub">incl. thinking</div>
+    <div class="hero-sub" id="hero-calls-sub"></div>
+  </div>
+  <div>
+    <div class="nk-caps">MOST EXPENSIVE</div>
+    <div id="hero-top-agent" style="font-size:18px;font-weight:500;line-height:1.2;margin-top:2px">—</div>
+    <div class="hero-sub" id="hero-top-cost"></div>
+  </div>
+</div>
+
+<!-- Scrollable body -->
+<div class="body-scroll">
+
+  <!-- Stacked bar chart -->
+  <div class="chart-section">
+    <div class="section-header">
+      <div class="nk-caps">DAILY TOKENS BY AGENT · 每日耗字 · 依艦員堆疊</div>
+      <div class="chart-legend" id="chartLegend"></div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-inner" id="chartInner"></div>
+      <div class="chart-x-labels" id="chartXLabels"></div>
     </div>
   </div>
 
-  <div class="chart-card">
-    <h3>Cost over time · agent × model</h3>
-    <div class="chart-wrap"><canvas id="costChart"></canvas></div>
+  <!-- Agent × Model matrix -->
+  <div class="matrix-section">
+    <div class="nk-caps" style="margin-bottom:8px">AGENT × MODEL · 艦員與模型交叉帳</div>
+    <div class="matrix-table">
+      <div class="matrix-head">
+        <span>AGENT</span>
+        <span>OPUS</span>
+        <span>SONNET</span>
+        <span>HAIKU</span>
+        <span>TOKENS</span>
+        <span>COST USD</span>
+      </div>
+      <div id="matrixRows"></div>
+      <div class="matrix-tfoot">
+        <span style="font-family:var(--nk-font-mono);font-size:11px;letter-spacing:.15em;color:var(--nk-ink)">TOTAL</span>
+        <span></span><span></span><span></span>
+        <span id="foot-tok" style="font-family:var(--nk-font-mono);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums">—</span>
+        <span id="foot-cost" style="font-family:var(--nk-font-mono);font-size:16px;font-weight:500;font-variant-numeric:tabular-nums">—</span>
+      </div>
+    </div>
   </div>
 
-  <div class="chart-card">
-    <h3>Breakdown</h3>
-    <div id="tableWrap"></div>
-  </div>
+  <div class="status-bar" id="statusBar">loading…</div>
 </div>
 
 <script>
-const $ = id => document.getElementById(id);
+let range = localStorage.getItem('bridge-cost-range') || '30d';
 
-// --- Theme ---
-if (localStorage.getItem('bridge-dark') === '1') {
-  document.body.classList.add('dark');
-  $('themeBtn').textContent = 'Light';
-}
-$('themeBtn').onclick = () => {
-  document.body.classList.toggle('dark');
-  const dark = document.body.classList.contains('dark');
-  $('themeBtn').textContent = dark ? 'Light' : 'Dark';
-  localStorage.setItem('bridge-dark', dark ? '1' : '0');
-  if (chart) renderChart(lastData);  // re-colour axes
+const AGENT_COLORS = {
+  brook: '#ff5a1f', robin: '#0d0d0d', nami: '#4a4a46',
+  zoro: '#6a6a64', sanji: '#98958e', franky: '#c8c5be', usopp: '#dcd9d2',
 };
+function agentColor(key, idx) {
+  return AGENT_COLORS[key] || ['#0d0d0d','#4a4a46','#6a6a64','#98958e','#c8c5be'][idx % 5];
+}
 
-// --- State ---
-let range = localStorage.getItem('bridge-cost-range') || '7d';
-let agentFilter = '';
-let chart = null;
-let lastData = null;
+function fmtTok(n) {
+  if (!n) return '0';
+  if (n >= 1e6) return (n/1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
+  return String(Math.round(n));
+}
+function fmtCost(n) { return '$' + (n||0).toFixed(2); }
 
-// --- Controls ---
-$('rangeSeg').querySelectorAll('button').forEach(btn => {
-  if (btn.dataset.range === range) {
-    $('rangeSeg').querySelectorAll('button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-  }
-  btn.onclick = () => {
-    $('rangeSeg').querySelectorAll('button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    range = btn.dataset.range;
-    localStorage.setItem('bridge-cost-range', range);
-    load();
-  };
-});
-
-$('agentFilter').onchange = () => {
-  agentFilter = $('agentFilter').value;
+function setRange(r) {
+  range = r;
+  localStorage.setItem('bridge-cost-range', r);
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === r));
   load();
-};
-
-// --- API ---
-async function api(url) {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
-  return resp.json();
 }
 
-// --- Formatters ---
-function fmtUSD(v) {
-  if (v == null) return '—';
-  if (v === 0) return '$0.00';
-  if (Math.abs(v) < 1) return '$' + v.toFixed(4);
-  return '$' + v.toFixed(2);
-}
-function fmtInt(v) {
-  return (v ?? 0).toLocaleString('en-US');
-}
-
-function escapeHTML(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-// Stable colour per series
-const PALETTE = [
-  '#6c63ff', '#ff7a59', '#20c997', '#f5b400',
-  '#d9534f', '#17a2b8', '#9b59b6', '#2ecc71',
-  '#e67e22', '#3498db', '#e84393', '#00b894',
-];
-function colorFor(key, idx) {
-  return PALETTE[idx % PALETTE.length];
-}
-
-// --- Rendering ---
 async function load() {
-  $('statusText').textContent = `Loading ${range}${agentFilter ? ' · ' + agentFilter : ''}…`;
+  document.getElementById('statusBar').textContent = 'loading…';
   try {
-    const qs = new URLSearchParams({ range });
-    if (agentFilter) qs.set('agent', agentFilter);
-    const data = await api('/bridge/api/cost?' + qs.toString());
-    lastData = data;
+    const res = await fetch(`/bridge/api/cost?range=${range}`);
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
     render(data);
-    $('statusText').textContent = `Updated ${new Date().toLocaleTimeString('zh-TW')}`;
-  } catch (e) {
-    $('statusText').textContent = 'Failed: ' + e.message;
+    document.getElementById('statusBar').textContent =
+      `last updated ${new Date().toLocaleTimeString('zh-TW',{hour12:false})} · range: ${range}`;
+  } catch(err) {
+    document.getElementById('statusBar').textContent = 'error: ' + err.message;
+    console.error(err);
   }
 }
 
 function render(data) {
-  const summary = data.summary || [];
+  const summary    = data.summary    || [];
   const timeseries = data.timeseries || [];
+  const totalCost  = data.total_cost_usd || 0;
 
-  // Stats
-  const totalCalls = summary.reduce((a, r) => a + (r.calls || 0), 0);
-  const totalInput = summary.reduce((a, r) => a + (r.input_tokens || 0), 0);
-  const totalOutput = summary.reduce((a, r) => a + (r.output_tokens || 0), 0);
-  const totalCacheRead = summary.reduce((a, r) => a + (r.cache_read_tokens || 0), 0);
-  const totalCacheWrite = summary.reduce((a, r) => a + (r.cache_write_tokens || 0), 0);
-  const agents = [...new Set(summary.map(r => r.agent))];
+  // Hero
+  const totalTok   = summary.reduce((s,r) => s + (r.input_tokens||0) + (r.output_tokens||0), 0);
+  const totalCalls = summary.reduce((s,r) => s + (r.calls||0), 0);
+  const inTok      = summary.reduce((s,r) => s + (r.input_tokens||0), 0);
+  const outTok     = summary.reduce((s,r) => s + (r.output_tokens||0), 0);
+  const cacheRead  = summary.reduce((s,r) => s + (r.cache_read_tokens||0), 0);
 
-  $('statCost').textContent = fmtUSD(data.total_cost_usd);
-  $('statRange').textContent = `${data.range} · ${data.bucket} bucket`;
-  $('statCalls').textContent = fmtInt(totalCalls);
-  $('statAgents').textContent = agents.length ? agents.join(', ') : 'no activity';
-  $('statInput').textContent = fmtInt(totalInput);
-  $('statCache').textContent = `cache: ${fmtInt(totalCacheRead)} read · ${fmtInt(totalCacheWrite)} write`;
-  $('statOutput').textContent = fmtInt(totalOutput);
+  document.getElementById('hero-cost').textContent  = fmtCost(totalCost);
+  document.getElementById('hero-tok').textContent   = fmtTok(totalTok);
+  document.getElementById('hero-calls').textContent = totalCalls.toLocaleString('en-US');
+  document.getElementById('hero-tok-sub').innerHTML =
+    `<span class="hl">${fmtTok(inTok)}</span> in · <span class="hl">${fmtTok(outTok)}</span> out`;
+  if (cacheRead > 0) {
+    document.getElementById('hero-calls-sub').innerHTML =
+      `cache read <span class="hl">${fmtTok(cacheRead)}</span>`;
+  }
 
-  // Populate agent filter from summary + keep selection
-  refreshAgentFilter(summary);
+  // Top agent
+  const byAgent = {};
+  for (const r of summary) {
+    byAgent[r.agent] = (byAgent[r.agent]||0) + (r.cost_usd||0);
+  }
+  const top = Object.entries(byAgent).sort((a,b)=>b[1]-a[1])[0];
+  if (top) {
+    document.getElementById('hero-top-agent').textContent = top[0];
+    const pct = totalCost > 0 ? Math.round(top[1]/totalCost*100) : 0;
+    document.getElementById('hero-top-cost').innerHTML =
+      `<span class="hl">${fmtCost(top[1])}</span> · <span class="sig">${pct}%</span> of total`;
+  }
 
-  // Chart + table
-  renderChart(data);
-  renderTable(data);
+  renderChart(timeseries);
+  renderMatrix(summary, totalCost);
 }
 
-function refreshAgentFilter(summary) {
-  // Accumulate agents seen across reloads so the dropdown doesn't shrink
-  // just because the current filter is one agent.
-  const existing = new Set();
-  for (const opt of $('agentFilter').options) {
-    if (opt.value) existing.add(opt.value);
+function renderChart(ts) {
+  const buckets = {}, agentKeys = [];
+  for (const r of ts) {
+    const b = (r.bucket||'').slice(0,10);
+    if (!b) continue;
+    if (!buckets[b]) buckets[b] = {};
+    const k = r.agent;
+    if (!agentKeys.includes(k)) agentKeys.push(k);
+    buckets[b][k] = (buckets[b][k]||0) + (r.input_tokens||0) + (r.output_tokens||0);
   }
-  for (const row of summary) existing.add(row.agent);
-
-  const current = agentFilter;
-  const sel = $('agentFilter');
-  sel.innerHTML = '<option value="">All</option>';
-  [...existing].sort().forEach(a => {
-    const opt = document.createElement('option');
-    opt.value = a;
-    opt.textContent = a;
-    if (a === current) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
-
-function renderChart(data) {
-  const ts = data.timeseries || [];
-  if (!ts.length) {
-    if (chart) { chart.destroy(); chart = null; }
-    const wrap = document.querySelector('.chart-wrap');
-    wrap.innerHTML = '<div class="empty">No API calls in this range.</div>';
-    return;
-  }
-  // Ensure canvas exists
-  let canvas = document.getElementById('costChart');
-  if (!canvas) {
-    const wrap = document.querySelector('.chart-wrap');
-    wrap.innerHTML = '<canvas id="costChart"></canvas>';
-    canvas = document.getElementById('costChart');
-  }
-
-  // Pivot: bucket -> { "agent/model" -> cost_usd }
-  const buckets = [...new Set(ts.map(r => r.bucket))].sort();
-  const keys = [...new Set(ts.map(r => `${r.agent}/${r.model}`))].sort();
-
-  const bucketIdx = new Map(buckets.map((b, i) => [b, i]));
-  const seriesMap = new Map();
-  for (const key of keys) seriesMap.set(key, new Array(buckets.length).fill(0));
-  for (const row of ts) {
-    const key = `${row.agent}/${row.model}`;
-    seriesMap.get(key)[bucketIdx.get(row.bucket)] += row.cost_usd || 0;
-  }
-
-  const datasets = keys.map((key, i) => ({
-    label: key,
-    data: seriesMap.get(key),
-    backgroundColor: colorFor(key, i),
-    stack: 'cost',
-    borderWidth: 0,
-  }));
-
-  const labels = buckets.map(b => {
-    // 24h → "HH:00"; day → "MM/DD"
-    if (b.length === 16) return b.slice(11, 16);
-    return b.slice(5);
-  });
-
-  const gridColor = document.body.classList.contains('dark') ? '#2a2a4a' : '#e5e5e5';
-  const tickColor = document.body.classList.contains('dark') ? '#aaa' : '#666';
-
-  if (chart) chart.destroy();
-  chart = new Chart(canvas, {
-    type: 'bar',
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { position: 'bottom', labels: { color: tickColor, boxWidth: 12, font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: ctx => `${ctx.dataset.label}: ${fmtUSD(ctx.parsed.y)}`,
-            footer: items => {
-              const total = items.reduce((a, it) => a + (it.parsed.y || 0), 0);
-              return 'Total: ' + fmtUSD(total);
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          stacked: true,
-          grid: { color: gridColor, display: false },
-          ticks: { color: tickColor, font: { size: 10 } },
-        },
-        y: {
-          stacked: true,
-          grid: { color: gridColor },
-          ticks: {
-            color: tickColor,
-            font: { size: 10 },
-            callback: v => fmtUSD(v),
-          },
-        },
-      },
-    },
-  });
-}
-
-function renderTable(data) {
-  const summary = (data.summary || []).slice().sort((a, b) => (b.cost_usd || 0) - (a.cost_usd || 0));
-  if (!summary.length) {
-    $('tableWrap').innerHTML = '<div class="empty">No breakdown yet.</div>';
+  const dates = Object.keys(buckets).sort();
+  if (!dates.length) {
+    document.getElementById('chartInner').innerHTML =
+      `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--nk-muted);font-family:var(--nk-font-mono);font-size:12px">no data</div>`;
     return;
   }
 
-  const rows = summary.map(r => `
-    <tr>
-      <td><span class="agent-chip">${escapeHTML(r.agent)}</span></td>
-      <td>${escapeHTML(r.model)}</td>
-      <td class="num">${fmtInt(r.calls)}</td>
-      <td class="num">${fmtInt(r.input_tokens)}</td>
-      <td class="num">${fmtInt(r.output_tokens)}</td>
-      <td class="num">${fmtInt(r.cache_read_tokens)} / ${fmtInt(r.cache_write_tokens)}</td>
-      <td class="num">${fmtUSD(r.cost_usd)}</td>
-    </tr>`).join('');
+  const maxDay = Math.max(1, ...dates.map(d => agentKeys.reduce((s,k)=>s+(buckets[d][k]||0),0)));
 
-  const totCalls = summary.reduce((a, r) => a + (r.calls || 0), 0);
-  const totInput = summary.reduce((a, r) => a + (r.input_tokens || 0), 0);
-  const totOutput = summary.reduce((a, r) => a + (r.output_tokens || 0), 0);
-  const totCacheR = summary.reduce((a, r) => a + (r.cache_read_tokens || 0), 0);
-  const totCacheW = summary.reduce((a, r) => a + (r.cache_write_tokens || 0), 0);
+  document.getElementById('chartLegend').innerHTML = agentKeys.slice(0,6).map((k,i) =>
+    `<div class="legend-item"><div class="legend-swatch" style="background:${agentColor(k,i)}"></div>${k.slice(0,4).toUpperCase()}</div>`
+  ).join('');
 
-  $('tableWrap').innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Agent</th>
-          <th>Model</th>
-          <th class="num">Calls</th>
-          <th class="num">Input</th>
-          <th class="num">Output</th>
-          <th class="num">Cache (read / write)</th>
-          <th class="num">Cost</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-      <tfoot>
-        <tr>
-          <td colspan="2">Total</td>
-          <td class="num">${fmtInt(totCalls)}</td>
-          <td class="num">${fmtInt(totInput)}</td>
-          <td class="num">${fmtInt(totOutput)}</td>
-          <td class="num">${fmtInt(totCacheR)} / ${fmtInt(totCacheW)}</td>
-          <td class="num">${fmtUSD(data.total_cost_usd)}</td>
-        </tr>
-      </tfoot>
-    </table>`;
+  const H = 180;
+  let gridHtml = '';
+  [0.25,0.5,0.75,1].forEach(t => {
+    gridHtml += `<div class="chart-gridline" style="bottom:${t*H}px">
+      <span class="gridline-label">${fmtTok(maxDay*t)}</span></div>`;
+  });
+
+  let barsHtml = '<div class="chart-bars">';
+  for (const d of dates) {
+    barsHtml += '<div class="chart-bar-col">';
+    for (let i = agentKeys.length-1; i >= 0; i--) {
+      const tok = buckets[d][agentKeys[i]] || 0;
+      if (tok < 1) continue;
+      const h = (tok/maxDay)*H;
+      barsHtml += `<div class="chart-bar-seg" style="height:${h.toFixed(1)}px;background:${agentColor(agentKeys[i],i)}" title="${agentKeys[i]}: ${fmtTok(tok)}"></div>`;
+    }
+    barsHtml += '</div>';
+  }
+  barsHtml += '</div>';
+  document.getElementById('chartInner').innerHTML = gridHtml + barsHtml;
+
+  const step = Math.max(1, Math.floor(dates.length/6));
+  const labelDates = dates.filter((_,i) => i%step===0 || i===dates.length-1);
+  document.getElementById('chartXLabels').innerHTML = labelDates.map(d => {
+    const [,m,dd] = d.split('-');
+    return `<span>${parseInt(m)}/${parseInt(dd)}</span>`;
+  }).join('');
 }
 
-// --- Init ---
+function renderMatrix(summary, totalCost) {
+  const agents = {};
+  for (const r of summary) {
+    const k = r.agent;
+    if (!agents[k]) agents[k] = {key:k, tok:0, cost:0, opus:0, sonnet:0, haiku:0};
+    const tok = (r.input_tokens||0)+(r.output_tokens||0);
+    agents[k].tok  += tok;
+    agents[k].cost += r.cost_usd||0;
+    const m = (r.model||'').toLowerCase();
+    if (m.includes('opus'))   agents[k].opus   += tok;
+    if (m.includes('sonnet')) agents[k].sonnet += tok;
+    if (m.includes('haiku'))  agents[k].haiku  += tok;
+  }
+  const rows = Object.values(agents).sort((a,b)=>b.cost-a.cost);
+  const MODEL_COLORS = {opus:'#0d0d0d', sonnet:'#4a4a46', haiku:'#98958e'};
+
+  document.getElementById('matrixRows').innerHTML = rows.map(a => {
+    const modelCols = ['opus','sonnet','haiku'].map(m => {
+      const pct = a.tok>0 ? a[m]/a.tok : 0;
+      if (pct < 0.01) return `<span class="model-cell"><span class="model-pct" style="color:var(--nk-muted)">—</span></span>`;
+      const c = MODEL_COLORS[m];
+      return `<span class="model-cell">
+        <span class="model-pct" style="color:${c}">${Math.round(pct*100)}%</span>
+        <div class="model-gauge"><div class="model-gauge-fill" style="width:${Math.round(pct*100)}%;background:${c}"></div></div>
+      </span>`;
+    }).join('');
+    const hot = a.cost > totalCost * 0.3;
+    return `<div class="matrix-row">
+      <span>
+        <div class="agent-cell-code">${a.key.toUpperCase()}</div>
+        <div class="agent-cell-role">${a.key}</div>
+      </span>
+      ${modelCols}
+      <span class="tok-cell">${fmtTok(a.tok)}</span>
+      <span class="cost-cell${hot?' cost-hot':''}">${fmtCost(a.cost)}</span>
+    </div>`;
+  }).join('');
+
+  const totalTok = rows.reduce((s,r)=>s+r.tok, 0);
+  document.getElementById('foot-tok').textContent  = fmtTok(totalTok);
+  document.getElementById('foot-cost').textContent = fmtCost(totalCost);
+}
+
+// Init — restore range
+document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.r === range));
 load();
 </script>
 </body>

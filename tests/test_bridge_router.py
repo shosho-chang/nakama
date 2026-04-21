@@ -67,10 +67,10 @@ def test_bridge_index_renders_html(client):
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     body = r.text
-    assert "Nakama Bridge" in body
+    assert "NAKAMA / BRIDGE" in body
     assert 'href="/bridge/memory"' in body
     assert 'href="/bridge/cost"' in body
-    assert 'href="/brook/chat"' in body
+    assert "'/brook/chat'" in body
 
 
 def test_bridge_index_hides_robin_when_disabled(client):
