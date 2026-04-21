@@ -88,6 +88,8 @@ def list_messages(query: str = "is:unread", max_results: int = 10) -> list[dict]
     result = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
 
     msg_ids = [m["id"] for m in result.get("messages", [])]
+    if not msg_ids:
+        return []
 
     def _fetch_meta(msg_id: str) -> dict:
         # 每個 thread 建自己的 service，避免共用 SSL socket 導致 DECRYPTION_FAILED
