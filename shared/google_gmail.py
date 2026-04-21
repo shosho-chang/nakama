@@ -67,7 +67,9 @@ def _get_credentials() -> Credentials:
             _TOKEN_PATH.write_text(creds.to_json())
             logger.info("Google Gmail token refreshed & persisted")
         elif not creds.valid:
-            raise GoogleGmailAuthError("Gmail Token 無效且無 refresh_token。請重新跑 consent 流程。")
+            raise GoogleGmailAuthError(
+                "Gmail Token 無效且無 refresh_token。請重新跑 consent 流程。"
+            )
     return creds
 
 
@@ -83,12 +85,7 @@ def _get_service():
 def list_messages(query: str = "is:unread", max_results: int = 10) -> list[dict]:
     """列出信件（支援 Gmail search syntax）。回傳精簡 metadata 列表。"""
     service = _get_service()
-    result = (
-        service.users()
-        .messages()
-        .list(userId="me", q=query, maxResults=max_results)
-        .execute()
-    )
+    result = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
 
     msg_ids = [m["id"] for m in result.get("messages", [])]
 
@@ -106,10 +103,7 @@ def list_messages(query: str = "is:unread", max_results: int = 10) -> list[dict]
             )
             .execute()
         )
-        headers = {
-            h["name"]: h["value"]
-            for h in detail.get("payload", {}).get("headers", [])
-        }
+        headers = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
         return {
             "id": detail["id"],
             "thread_id": detail.get("threadId", ""),
@@ -128,17 +122,9 @@ def list_messages(query: str = "is:unread", max_results: int = 10) -> list[dict]
 def get_message(message_id: str) -> dict:
     """取得單封信件完整內容（plain text body，超過 3000 字截斷）。"""
     service = _get_service()
-    detail = (
-        service.users()
-        .messages()
-        .get(userId="me", id=message_id, format="full")
-        .execute()
-    )
+    detail = service.users().messages().get(userId="me", id=message_id, format="full").execute()
 
-    headers = {
-        h["name"]: h["value"]
-        for h in detail.get("payload", {}).get("headers", [])
-    }
+    headers = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
     body = _extract_body(detail.get("payload", {}))
     if len(body) > _BODY_TRUNCATE:
         body = body[:_BODY_TRUNCATE] + "\n\n[…內容過長，已截斷]"
@@ -212,15 +198,9 @@ def update_draft(
     thread_id = existing_msg.get("threadId")
 
     detail = (
-        service.users()
-        .messages()
-        .get(userId="me", id=existing_msg["id"], format="full")
-        .execute()
+        service.users().messages().get(userId="me", id=existing_msg["id"], format="full").execute()
     )
-    existing_headers = {
-        h["name"]: h["value"]
-        for h in detail.get("payload", {}).get("headers", [])
-    }
+    existing_headers = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
 
     final_to_raw = existing_headers.get("To", "")
     final_to = to if to is not None else [x.strip() for x in final_to_raw.split(",") if x.strip()]
@@ -245,10 +225,7 @@ def update_draft(
         draft_body_payload["message"]["threadId"] = thread_id
 
     updated = (
-        service.users()
-        .drafts()
-        .update(userId="me", id=draft_id, body=draft_body_payload)
-        .execute()
+        service.users().drafts().update(userId="me", id=draft_id, body=draft_body_payload).execute()
     )
     message_id = updated.get("message", {}).get("id", "")
 
@@ -267,12 +244,7 @@ def update_draft(
 def send_draft(draft_id: str) -> dict:
     """發送草稿，回傳 message_id + thread_id。"""
     service = _get_service()
-    result = (
-        service.users()
-        .drafts()
-        .send(userId="me", body={"id": draft_id})
-        .execute()
-    )
+    result = service.users().drafts().send(userId="me", body={"id": draft_id}).execute()
     return {
         "message_id": result.get("id", ""),
         "thread_id": result.get("threadId", ""),

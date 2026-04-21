@@ -1747,10 +1747,6 @@ def test_fetch_url_happy_path():
 def test_fetch_url_truncation():
     """fetch_url 回傳 >20000 字元時應截斷並附上截斷提示。"""
     long_content = "x" * 25000
-    outcome = NamiHandler()._tool_fetch_url.__func__(
-        NamiHandler.__new__(NamiHandler), {"url": "https://example.com/long"}
-    )
-    # 直接測 handler method（需 mock scrape_url）
     with patch("shared.web_scraper.scrape_url", return_value=long_content):
         outcome = NamiHandler()._tool_fetch_url({"url": "https://example.com/long"})
 
