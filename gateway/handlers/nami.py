@@ -1751,7 +1751,7 @@ class NamiHandler(BaseHandler):
         except RuntimeError as e:
             return _ToolOutcome(content=f"無法擷取頁面：{e}", is_error=True)
 
-        _MAX_CHARS = 20000
+        _MAX_CHARS = 5000
         original_len = len(content)
         truncated = original_len > _MAX_CHARS
         if truncated:
