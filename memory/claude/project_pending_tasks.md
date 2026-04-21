@@ -27,11 +27,11 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ KB Research UI 呈現方式（修修想再改）
 
 **Phase 4 Bridge UI：**
-- ✅ PR-A backend merged（#41，pricing / cost tracking / memory CRUD / bridge router）
-- ⬜ PR-B：Memory 頁 UI（agent tabs + 編輯 modal + delete confirm）
-- ⬜ PR-C：Cost dashboard（range selector + Chart.js stacked bar）
-- ⬜ VPS 部署（PR-C merge 後一起）
+- ✅ PR-A backend merged（#41）
+- ✅ PR-B Memory UI（#42）、PR-C Cost UI（#44）、Bridge Hub（#45）
+- ✅ Direction B Instrument Panel 重設計 + VPS 部署（PR #65，2026-04-21）
 - ⬜ Tech debt：`agent_memory.update` rollback / `MemoryUpdate.type` Literal / docstring
+- ⬜ 細節 UI polish（修修說「還有很多細節要改，但先這樣」）
 
 **Zoro：**
 - ⬜ Zoro bot Slack app 上線（Phase 2 brainstorm blocker）

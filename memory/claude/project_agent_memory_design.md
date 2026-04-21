@@ -111,3 +111,21 @@ CREATE INDEX idx_memory_lookup ON agent_memory(agent, user_id, subject);
 **Tier 3 `memories` 表**仍未接 UI（PRD §2 Q4 凍結的決定）；未來若要管改做獨立 `/bridge/runs` timeline page
 
 **Deck Dashboard**：Bridge hub 當作最小 placeholder，等其他 agent 成熟再決定 hub 要不要升級成完整 dashboard（project_deck_dashboard_idea.md）
+
+## 2026-04-21 — Direction B Instrument Panel 全面重設計
+
+- **PR #65**（commit ff55bd4）：Bridge UI 3 頁全面套用 Direction B "Instrument Panel" 設計語言
+  - `bridge.py`：新增 `AGENT_ROSTER` 常數（9 agents 靜態定義）+ `GET /bridge/api/agents` endpoint（今日 token/runs 統計）
+  - `index.html`：Hub → 9-agent instrument panel dashboard（state chips、signal gauge、right-side detail drawer 140ms slide-in）
+  - `memory.html`：Left agent rail 220px、outline kind chips、黑色 chassis modal header
+  - `cost.html`：移除 Chart.js，改用純 CSS flex stacked bars + 絕對定位 gridlines、agent×model matrix table
+  - 設計語言：骨白 `#e8e6e1` + 黑色 chassis `#1a1a1a` + signal-orange `#ff5a1f` 僅 active 狀態
+  - Google Fonts：Space Grotesk + Noto Sans TC + JetBrains Mono；全數字 `font-variant-numeric: tabular-nums`
+
+- **測試修復**：`test_bridge_index_renders_html` + `test_bridge_index_hides_robin_when_disabled` 更新斷言
+  - `"Nakama Bridge"` → `"NAKAMA / BRIDGE"`；`href="/brook/chat"` → `"'/brook/chat'"` (JS string)
+  - index.html 加入 Jinja2 `robin_enabled` 條件：`AGENT_URLS.robin` 動態切換 + JS comment 輸出 `DISABLE_ROBIN=0/1`
+
+- **已知小問題**（細節待改，不影響功能）：很多 Bridge UI 視覺細節，修修說「先這樣」
+
+- **VPS 部署**：PR merge 後 thousand-sunny restart，smoke test 需在瀏覽器手動確認
