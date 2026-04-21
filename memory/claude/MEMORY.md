@@ -47,6 +47,7 @@
 - [feedback_agent_personality.md](feedback_agent_personality.md) — Agent 角色個性用正面描述 + few-shot，不用禁止清單；用戶確認這個方向
 - [project_nami_vps_deployed.md](project_nami_vps_deployed.md) — Nami Slack Bot VPS 部署設定、Socket Mode 踩坑記錄
 - [project_nami_agent_loop_plan.md](project_nami_agent_loop_plan.md) — Nami agent loop Phase 規劃：Phase 0 agent loop + Phase 1 Deep Research（PR #58，2026-04-21）已完成；3 個 deferred bug 待修
+- [feedback_language.md](feedback_language.md) — 回應一律繁體中文，絕不能用日文或簡體中文（修修是台灣人）
 - [feedback_traditional_chinese.md](feedback_traditional_chinese.md) — 所有對話必須用繁體中文（台灣語境），不能切成簡體
 - [feedback_cost_management.md](feedback_cost_management.md) — Sonnet 200k 為日常主模型，Opus 按需；1M context 已關閉；~/clear 每 task boundary
 - [project_agent_cost_tracking.md](project_agent_cost_tracking.md) — Agent 用量/費用追蹤：data/usage_log.jsonl，供 Bridge 儀表板顯示（待實作）
