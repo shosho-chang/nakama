@@ -14,9 +14,10 @@ from __future__ import annotations
 import html
 import json
 import re
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import feedparser
 import yaml
@@ -328,7 +329,9 @@ class PubMedDigestPipeline(BaseAgent):
         total_fresh: int,
     ) -> Path:
         """寫 KB/Wiki/Digests/PubMed/YYYY-MM-DD.md。"""
-        today = date.today().isoformat()
+        # 用台北時區而非 UTC — cron 在 UTC 21:30 跑（台北 05:30），
+        # 若用 date.today()（UTC）會把明早的 digest 貼上昨日日期。
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
         summary = curated.get("summary", {})
 
         # 按 rank 排序（curate 給的）
@@ -374,7 +377,9 @@ class PubMedDigestPipeline(BaseAgent):
 
         若 index.md 不存在則略過（vault 尚未初始化）。
         """
-        today = date.today().isoformat()
+        # 用台北時區而非 UTC — cron 在 UTC 21:30 跑（台北 05:30），
+        # 若用 date.today()（UTC）會把明早的 digest 貼上昨日日期。
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
         line = f"\n- [[Digests/PubMed/{today}|PubMed {today}]] — {count} 篇精選"
         try:
             append_to_file("KB/index.md", line)
