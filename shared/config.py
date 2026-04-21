@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import yaml
@@ -27,13 +28,25 @@ def load_config() -> dict:
 
 
 def get_vault_path() -> Path:
-    """回傳 Obsidian vault 的絕對路徑。"""
+    """回傳 Obsidian vault 的絕對路徑。
+
+    跨平台覆寫：`VAULT_PATH` env var 優先（讓 Windows 開發機、VPS、CI 各自指向不同位置）。
+    """
+    override = os.environ.get("VAULT_PATH")
+    if override:
+        return Path(override)
     cfg = load_config()
     return Path(cfg["vault_path"])
 
 
 def get_db_path() -> Path:
-    """回傳 SQLite 資料庫路徑。"""
+    """回傳 SQLite 資料庫路徑。
+
+    跨平台覆寫：`DB_PATH` env var 優先。
+    """
+    override = os.environ.get("DB_PATH")
+    if override:
+        return Path(override)
     cfg = load_config()
     return Path(cfg["db_path"])
 

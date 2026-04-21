@@ -28,7 +28,9 @@ logs/
 
 # State
 *.db
-data/
+data/*
+# Reference data that *should* be committed (gitignore exception)
+!data/scimago_journals.csv
 
 # Build artifacts
 *.egg-info/

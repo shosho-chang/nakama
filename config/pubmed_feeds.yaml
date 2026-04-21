@@ -1,0 +1,17 @@
+# PubMed RSS feeds — Robin 每日 digest 的來源
+#
+# 每個 feed 是一個 saved search 的 RSS URL。可用多個 feed 分領域，
+# 也可用一個廣查 query 的 feed（目前就是這個）。新增 feed 直接 append。
+#
+# 如何取得 URL：
+#   1. 到 pubmed.ncbi.nlm.nih.gov 登入帳號
+#   2. 建立 / 編輯 saved search
+#   3. 右上角 Create RSS → 複製 URL
+#
+# Robin 會對所有 feed 的 PMID 去重；歷史看過的（state.db scout_seen）不會重複處理。
+
+feeds:
+  - name: wellness_longevity_broad
+    url: https://pubmed.ncbi.nlm.nih.gov/rss/search/1PIb741EQUegdLmYL_qqSKED_eRaInAMxDWg9K7cdz3EcOXMAY/?limit=120&utm_campaign=pubmed-2&fc=20250728234019
+    # 修修的 saved search（2025-07-28 建立）：廣泛涵蓋睡眠/飲食/運動/情緒
+    # 以及慢性病管理、抗老、腸道微生物、代謝健康作為長壽面向之一。
