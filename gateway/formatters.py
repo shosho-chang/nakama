@@ -15,14 +15,12 @@ AGENT_EMOJI: dict[str, str] = {
 
 def format_agent_response(agent: str, text: str, intent: str) -> tuple[str, list[dict]]:
     """將 agent 回應格式化為 Block Kit。回傳 (fallback_text, blocks)。"""
-    emoji = AGENT_EMOJI.get(agent, ":robot_face:")
-
     blocks = [
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{emoji} *{agent.capitalize()}*\n{text}",
+                "text": text,
             },
         },
     ]
