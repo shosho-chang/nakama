@@ -44,7 +44,7 @@ NAMI_AGENT_FLOW = "nami_agent"
 TASK_DIR = "TaskNotes/Tasks"
 PROJECT_DIR = "Projects"
 
-_MAX_ITERS = 6
+_MAX_ITERS = 15
 _MODEL = "claude-sonnet-4-6"
 
 # ── Tool definitions（stable, will be prompt-cached） ──────────────────
@@ -528,6 +528,49 @@ NAMI_TOOLS: list[dict] = [
         },
     },
     # ── / Vault note tools ────────────────────────────────────────
+    # ── Web research tools ────────────────────────────────────────
+    {
+        "name": "web_search",
+        "description": (
+            "搜尋網路上的資訊，回傳 title + URL + 摘要的候選清單。"
+            "做研究報告時先用這個廣撒網，再用 fetch_url 深讀最相關的幾個來源。"
+            "一次搜尋只用一個角度；需要多角度時分多次呼叫。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜尋關鍵字（可中英混用）",
+                },
+                "num_results": {
+                    "type": "integer",
+                    "description": "候選數量，預設 10，上限 20",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "fetch_url",
+        "description": (
+            "抓取指定 URL 的主要內文（已去除導覽列、廣告、無關 boilerplate）。"
+            "用在 web_search 之後，深讀 3–6 個最相關的來源。"
+            "不要一次 fetch 超過 6 個 URL——先判斷相關性再決定讀哪幾個。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "完整 URL（https://...）",
+                },
+            },
+            "required": ["url"],
+        },
+    },
+    # ── / Web research tools ──────────────────────────────────────
     {
         "name": "ask_user",
         "description": (
@@ -785,6 +828,10 @@ class NamiHandler(BaseHandler):
                 return self._tool_read_vault_note(tool_input)
             if name == "list_vault_notes":
                 return self._tool_list_vault_notes(tool_input)
+            if name == "web_search":
+                return self._tool_web_search(tool_input)
+            if name == "fetch_url":
+                return self._tool_fetch_url(tool_input)
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
         except VaultRuleViolation as e:
             return _ToolOutcome(content=f"Vault 規則違反：{e}", is_error=True)
@@ -1659,6 +1706,64 @@ class NamiHandler(BaseHandler):
         for f in files:
             lines.append(f"  - {relative_dir.rstrip('/')}/{f.name}")
         return _ToolOutcome(content="\n".join(lines))
+
+    def _tool_web_search(self, input_: dict) -> _ToolOutcome:
+        query = str(input_.get("query", "")).strip()
+        if not query:
+            return _ToolOutcome(content="query 不能為空", is_error=True)
+        num = min(int(input_.get("num_results", 10)), 20)
+
+        from shared.firecrawl_search import FirecrawlSearchError, firecrawl_search
+
+        try:
+            results = firecrawl_search(query, num_results=num)
+        except FirecrawlSearchError as e:
+            return _ToolOutcome(content=f"搜尋失敗：{e}", is_error=True)
+
+        if not results:
+            return _ToolOutcome(content="搜尋無結果，換個關鍵字試試。")
+
+        lines = []
+        for r in results:
+            title = r["title"] or r["url"]
+            desc = r["description"]
+            lines.append(f"- [{title}]({r['url']})")
+            if desc:
+                lines.append(f"  {desc}")
+        return _ToolOutcome(
+            content="\n".join(lines),
+            event={
+                "name": "web_search",
+                "payload": {"query": query, "hits": len(results)},
+                "log": f"search: {query!r} ({len(results)} hits)",
+            },
+        )
+
+    def _tool_fetch_url(self, input_: dict) -> _ToolOutcome:
+        url = str(input_.get("url", "")).strip()
+        if not url:
+            return _ToolOutcome(content="url 不能為空", is_error=True)
+
+        from shared.web_scraper import scrape_url
+
+        try:
+            content = scrape_url(url, mode="auto")
+        except RuntimeError as e:
+            return _ToolOutcome(content=f"無法擷取頁面：{e}", is_error=True)
+
+        _MAX_CHARS = 20000
+        truncated = len(content) > _MAX_CHARS
+        if truncated:
+            content = content[:_MAX_CHARS] + f"\n\n[...已截斷，原文共 {len(content)} 字元]"
+
+        return _ToolOutcome(
+            content=content,
+            event={
+                "name": "fetch_url",
+                "payload": {"url": url, "chars": len(content), "truncated": truncated},
+                "log": f"fetch: {url}",
+            },
+        )
 
 
 # ── Utilities ────────────────────────────────────────────────────────
