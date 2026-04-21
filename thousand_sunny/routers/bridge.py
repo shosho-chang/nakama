@@ -26,15 +26,78 @@ from thousand_sunny.auth import check_auth, require_auth_or_key
 # Static config for all 9 agents. "default_state" is the fallback when there
 # are no api_calls today; agents with "offline" are never promoted.
 AGENT_ROSTER = [
-    {"code": "R-01", "key": "robin",   "role": "知識管理", "en": "Knowledge",  "model": "claude-sonnet-4-6", "default_state": "online"},   # noqa: E501
-    {"code": "N-02", "key": "nami",    "role": "日常秘書", "en": "Secretary",  "model": "claude-haiku-4-5",  "default_state": "online"},   # noqa: E501
-    {"code": "Z-03", "key": "zoro",    "role": "情報蒐集", "en": "Scout",      "model": "claude-sonnet-4-6", "default_state": "online"},   # noqa: E501
-    {"code": "B-04", "key": "brook",   "role": "內容撰寫", "en": "Composer",   "model": "claude-opus-4-7",   "default_state": "online"},   # noqa: E501
-    {"code": "S-05", "key": "sanji",   "role": "社群營運", "en": "Community",  "model": "claude-haiku-4-5",  "default_state": "online"},   # noqa: E501
-    {"code": "F-06", "key": "franky",  "role": "系統監測", "en": "Systems",    "model": "claude-haiku-4-5",  "default_state": "online"},   # noqa: E501
-    {"code": "U-07", "key": "usopp",   "role": "發布管線", "en": "Publisher",  "model": "claude-sonnet-4-6", "default_state": "hold"},     # noqa: E501
-    {"code": "C-08", "key": "chopper", "role": "健康顧問", "en": "Counsel",    "model": "—",                 "default_state": "offline"},  # noqa: E501
-    {"code": "D-09", "key": "sunny",   "role": "整合甲板", "en": "Deck",       "model": "—",                 "default_state": "offline"},  # noqa: E501
+    {
+        "code": "R-01",
+        "key": "robin",
+        "role": "知識管理",
+        "en": "Knowledge",
+        "model": "claude-sonnet-4-6",
+        "default_state": "online",
+    },  # noqa: E501
+    {
+        "code": "N-02",
+        "key": "nami",
+        "role": "日常秘書",
+        "en": "Secretary",
+        "model": "claude-haiku-4-5",
+        "default_state": "online",
+    },  # noqa: E501
+    {
+        "code": "Z-03",
+        "key": "zoro",
+        "role": "情報蒐集",
+        "en": "Scout",
+        "model": "claude-sonnet-4-6",
+        "default_state": "online",
+    },  # noqa: E501
+    {
+        "code": "B-04",
+        "key": "brook",
+        "role": "內容撰寫",
+        "en": "Composer",
+        "model": "claude-opus-4-7",
+        "default_state": "online",
+    },  # noqa: E501
+    {
+        "code": "S-05",
+        "key": "sanji",
+        "role": "社群營運",
+        "en": "Community",
+        "model": "claude-haiku-4-5",
+        "default_state": "online",
+    },  # noqa: E501
+    {
+        "code": "F-06",
+        "key": "franky",
+        "role": "系統監測",
+        "en": "Systems",
+        "model": "claude-haiku-4-5",
+        "default_state": "online",
+    },  # noqa: E501
+    {
+        "code": "U-07",
+        "key": "usopp",
+        "role": "發布管線",
+        "en": "Publisher",
+        "model": "claude-sonnet-4-6",
+        "default_state": "hold",
+    },  # noqa: E501
+    {
+        "code": "C-08",
+        "key": "chopper",
+        "role": "健康顧問",
+        "en": "Counsel",
+        "model": "—",
+        "default_state": "offline",
+    },  # noqa: E501
+    {
+        "code": "D-09",
+        "key": "sunny",
+        "role": "整合甲板",
+        "en": "Deck",
+        "model": "—",
+        "default_state": "offline",
+    },  # noqa: E501
 ]
 
 router = APIRouter(prefix="/bridge", dependencies=[Depends(require_auth_or_key)])
@@ -95,13 +158,18 @@ def agents_list() -> dict:
     for row in today_rows:
         key = row["agent"]
         if key not in today_by_agent:
-            today_by_agent[key] = {"calls": 0, "input_tokens": 0, "output_tokens": 0,
-                                   "cache_read_tokens": 0, "cache_write_tokens": 0}
-        today_by_agent[key]["calls"]             += row.get("calls") or 0
-        today_by_agent[key]["input_tokens"]      += row.get("input_tokens") or 0
-        today_by_agent[key]["output_tokens"]     += row.get("output_tokens") or 0
+            today_by_agent[key] = {
+                "calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+            }
+        today_by_agent[key]["calls"] += row.get("calls") or 0
+        today_by_agent[key]["input_tokens"] += row.get("input_tokens") or 0
+        today_by_agent[key]["output_tokens"] += row.get("output_tokens") or 0
         today_by_agent[key]["cache_read_tokens"] += row.get("cache_read_tokens") or 0
-        today_by_agent[key]["cache_write_tokens"]+= row.get("cache_write_tokens") or 0
+        today_by_agent[key]["cache_write_tokens"] += row.get("cache_write_tokens") or 0
 
     result = []
     for a in AGENT_ROSTER:
@@ -126,20 +194,23 @@ def agents_list() -> dict:
                 output_tokens=usage.get("output_tokens") or 0,
                 cache_read_tokens=usage.get("cache_read_tokens") or 0,
                 cache_write_tokens=usage.get("cache_write_tokens") or 0,
-            ), 4
+            ),
+            4,
         )
 
-        result.append({
-            "code": a["code"],
-            "key": key,
-            "role": a["role"],
-            "en": a["en"],
-            "model": a["model"],
-            "state": agent_state,
-            "tok_today": tok_today,
-            "runs_today": runs_today,
-            "cost_today": cost_today,
-        })
+        result.append(
+            {
+                "code": a["code"],
+                "key": key,
+                "role": a["role"],
+                "en": a["en"],
+                "model": a["model"],
+                "state": agent_state,
+                "tok_today": tok_today,
+                "runs_today": runs_today,
+                "cost_today": cost_today,
+            }
+        )
 
     return {"agents": result}
 
