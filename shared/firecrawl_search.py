@@ -55,7 +55,8 @@ def firecrawl_search(
     logger.info(f"Firecrawl search: {query!r} (limit={num_results})")
     try:
         app = FirecrawlApp(api_key=api_key)
-        response = app.search(query, limit=num_results, lang=lang)
+        # TODO: lang 參數待確認 SDK 支援後再補回（firecrawl-py search method signature 未驗證）
+        response = app.search(query, limit=num_results)
 
         # v2 SDK: response 為 SearchData，web 為 List[SearchResultWeb | Document]
         raw_results = getattr(response, "web", None) or []
