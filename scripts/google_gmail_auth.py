@@ -77,7 +77,7 @@ def main() -> int:
         '  python -c "from shared.google_gmail import _get_service;'
         " s = _get_service();"
         " p = s.users().getProfile(userId='me').execute();"
-        ' print(\'Gmail account:\', p[\'emailAddress\'])"'
+        " print('Gmail account:', p['emailAddress'])\""
     )
     print()
     print("下一步（部署到 VPS）：")
