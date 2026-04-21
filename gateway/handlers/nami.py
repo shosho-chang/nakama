@@ -707,6 +707,7 @@ class NamiHandler(BaseHandler):
                 tools=NAMI_TOOLS,
                 system=system_prompt,
                 model=_MODEL,
+                max_tokens=8192,
             )
 
             stop_reason = response.stop_reason
