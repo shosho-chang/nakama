@@ -67,7 +67,9 @@ def _get_credentials() -> Credentials:
             _TOKEN_PATH.write_text(creds.to_json())
             logger.info("Google Gmail token refreshed & persisted")
         elif not creds.valid:
-            raise GoogleGmailAuthError("Gmail Token 無效且無 refresh_token。請重新跑 consent 流程。")
+            raise GoogleGmailAuthError(
+                "Gmail Token 無效且無 refresh_token。請重新跑 consent 流程。"
+            )
     return creds
 
 

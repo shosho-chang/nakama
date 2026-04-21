@@ -37,7 +37,9 @@ class SanjiHandler(BaseHandler):
             system = "你是 Sanji，張修修海賊團的廚師，負責自由艦隊社群。用繁體中文。"
 
         # 注入 shared 記憶（修修是誰）+ Sanji 的 SQLite 記憶
-        mem_parts = [p for p in [get_context("sanji"), agent_memory.format_as_context("sanji", user_id)] if p]
+        mem_parts = [
+            p for p in [get_context("sanji"), agent_memory.format_as_context("sanji", user_id)] if p
+        ]
         if mem_parts:
             system = system + "\n\n" + "\n\n".join(mem_parts)
 
