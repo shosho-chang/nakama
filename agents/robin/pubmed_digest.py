@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -23,7 +25,9 @@ import feedparser
 import yaml
 
 from agents.base import BaseAgent
+from agents.robin.pubmed_fulltext import FullTextResult, fetch_fulltext
 from shared import llm
+from shared.config import get_vault_path
 from shared.journal_metrics import lookup as journal_lookup
 from shared.obsidian_writer import append_to_file, write_page
 from shared.prompt_loader import load_prompt
@@ -125,7 +129,10 @@ class PubMedDigestPipeline(BaseAgent):
         if not scored:
             return f"候選 {len(all_candidates)} 筆，curate/score 後無精選入選"
 
-        # 6. Write vault outputs
+        # 6. Fetch OA full text for each scored paper
+        self._fetch_fulltext_for_all(scored)
+
+        # 7. Write vault outputs
         if self.dry_run:
             self.logger.info(f"[dry-run] 模擬寫入 {len(scored)} 篇 source + 1 份 digest")
         else:
@@ -135,18 +142,75 @@ class PubMedDigestPipeline(BaseAgent):
             self._append_kb_log(digest_path, len(scored))
             self._update_kb_index(digest_path, len(scored))
 
-        # 7. 標記所有今次處理到的 PMID 為 seen（避免明天再抓到重複；
+        # 8. 標記所有今次處理到的 PMID 為 seen（避免明天再抓到重複；
         #    即便未入選也記，因為已經 curate 過了）
         if not self.dry_run:
             for c in fresh:
                 mark_seen(_SOURCE_NAME, c["pmid"], c.get("url"))
 
+        oa_count = sum(1 for i in scored if i.get("fulltext", {}).get("status") == "oa_downloaded")
         summary = (
             f"fetch={len(all_candidates)} fresh={len(fresh)} "
-            f"selected={len(scored)} "
+            f"selected={len(scored)} oa_downloaded={oa_count} "
             f"(dry_run={self.dry_run})"
         )
         return summary
+
+    # ------------------------------------------------------------------
+    # Full text
+    # ------------------------------------------------------------------
+
+    def _fetch_fulltext_for_all(self, scored: list[dict]) -> None:
+        """對所有 scored 論文嘗試抓 OA 全文，結果寫回每個 item 的 ``fulltext`` 欄位。
+
+        dry-run 時跳過網路呼叫，直接塞 placeholder，確保下游渲染不爆。
+        """
+        if self.dry_run:
+            for item in scored:
+                item["fulltext"] = _dry_run_fulltext()
+            return
+
+        email = os.environ.get("UNPAYWALL_EMAIL") or os.environ.get("NOTIFY_TO", "").strip()
+        if not email:
+            self.logger.warning("[fulltext] 未設定 UNPAYWALL_EMAIL/NOTIFY_TO，跳過全文下載")
+            for item in scored:
+                item["fulltext"] = {
+                    "status": "not_found",
+                    "source": None,
+                    "pdf_relpath": None,
+                    "doi": None,
+                    "note": "未設定 UNPAYWALL_EMAIL，未嘗試下載",
+                }
+            return
+
+        ncbi_key = os.environ.get("PUBMED_API_KEY") or None
+        attachments_abs_dir = get_vault_path() / "KB" / "Attachments" / "pubmed"
+        vault_relative_prefix = "KB/Attachments/pubmed"
+
+        # NCBI rate limit: 3 req/s 無 key、10 req/s 有 key。保守 sleep。
+        sleep_between = 0.35 if not ncbi_key else 0.12
+
+        for item in scored:
+            pmid = item["candidate"]["pmid"]
+            try:
+                result: FullTextResult = fetch_fulltext(
+                    pmid,
+                    attachments_abs_dir=attachments_abs_dir,
+                    vault_relative_prefix=vault_relative_prefix,
+                    email=email,
+                    ncbi_api_key=ncbi_key,
+                )
+            except Exception as e:
+                self.logger.warning(f"[fulltext] PMID {pmid} 例外：{e}", exc_info=True)
+                result = {
+                    "status": "not_found",
+                    "source": None,
+                    "pdf_relpath": None,
+                    "doi": None,
+                    "note": f"例外：{e}",
+                }
+            item["fulltext"] = result
+            time.sleep(sleep_between)
 
     # ------------------------------------------------------------------
     # Fetch & parse
@@ -299,9 +363,11 @@ class PubMedDigestPipeline(BaseAgent):
         curate_meta = item["curate_meta"]
         score = item["score_result"]
         tier = cand.get("journal_tier")
+        ft: FullTextResult = item.get("fulltext") or _dry_run_fulltext()
 
         frontmatter = {
             "pmid": cand["pmid"],
+            "doi": ft.get("doi"),
             "title": cand["title"],
             "journal": cand["journal"],
             "journal_quartile": tier["quartile"] if tier else None,
@@ -314,11 +380,15 @@ class PubMedDigestPipeline(BaseAgent):
             "scores": score.get("scores"),
             "overall_score": score.get("overall"),
             "editor_pick": score.get("editor_pick"),
+            "full_text_status": ft.get("status"),
+            "full_text_source": ft.get("source"),
+            "full_text_path": ft.get("pdf_relpath"),
+            "read_status": "unread",
             "source": "pubmed_rss",
             "type": "paper_digest",
         }
 
-        body = _render_source_body(cand, curate_meta, score)
+        body = _render_source_body(cand, curate_meta, score, ft)
         relative_path = f"KB/Wiki/Sources/pubmed-{cand['pmid']}.md"
         return write_page(relative_path, frontmatter, body)
 
@@ -438,9 +508,49 @@ def _parse_json(text: str) -> dict:
     return json.loads(text[start : end + 1])
 
 
-def _render_source_body(cand: dict, curate_meta: dict, score: dict) -> str:
+def _dry_run_fulltext() -> FullTextResult:
+    """dry-run 用的 fulltext placeholder，避免渲染時 None 報錯。"""
+    return {
+        "status": "not_found",
+        "source": None,
+        "pdf_relpath": None,
+        "doi": None,
+        "note": "dry-run 未嘗試下載",
+    }
+
+
+def _render_fulltext_section(ft: FullTextResult) -> str:
+    """渲染 Source 頁的「全文」區塊。"""
+    status = ft.get("status")
+    doi = ft.get("doi")
+    pdf = ft.get("pdf_relpath")
+    src = ft.get("source")
+    note = ft.get("note") or ""
+    doi_line = f"**DOI**: [{doi}](https://doi.org/{doi})" if doi else ""
+
+    if status == "oa_downloaded" and pdf:
+        src_label = {"pmc": "PubMed Central", "unpaywall": "Unpaywall"}.get(src or "", src or "")
+        pdf_line = f"**PDF**: [[{pdf}]]（來源：{src_label}）"
+    elif status == "needs_manual":
+        pdf_line = "**PDF**: ⚠️ 非 Open Access，需手動取得全文"
+    else:
+        pdf_line = f"**PDF**: ❌ 無法取得（{note}）"
+
+    parts = [pdf_line]
+    if doi_line:
+        parts.append(doi_line)
+    return "\n".join(parts)
+
+
+def _render_source_body(
+    cand: dict,
+    curate_meta: dict,
+    score: dict,
+    ft: FullTextResult,
+) -> str:
     """單篇 Source 頁內文（繁體中文）。"""
     scores = score.get("scores", {})
+    fulltext_section = _render_fulltext_section(ft)
     return f"""# {cand["title"]}
 
 **PMID**: [{cand["pmid"]}]({cand["url"]})
@@ -448,6 +558,10 @@ def _render_source_body(cand: dict, curate_meta: dict, score: dict) -> str:
 **Published**: {cand["pub_date"]}
 **Authors**: {cand["authors"] or "（未提供）"}
 **Domain**: `{curate_meta.get("domain", "other")}`
+
+## 全文
+
+{fulltext_section}
 
 ## 編輯評分（總分 {score.get("overall", "—")}）
 
@@ -534,11 +648,23 @@ def _render_digest_entry(rank: int, item: dict) -> list[str]:
     curate_meta = item["curate_meta"]
     score = item["score_result"]
     tier = cand.get("journal_tier")
+    ft: FullTextResult = item.get("fulltext") or _dry_run_fulltext()
     tier_label = (
         f"{tier['quartile']} · SJR {tier['sjr']}"
         if tier and tier.get("quartile")
         else "未收錄 Scimago"
     )
+
+    # 全文狀態：已下載顯示 📄 PDF link，非 OA 顯示 ⚠️ + DOI，無法取得顯示 ❌
+    status = ft.get("status")
+    doi = ft.get("doi")
+    pdf_relpath = ft.get("pdf_relpath")
+    if status == "oa_downloaded" and pdf_relpath:
+        ft_line = f"- **全文**: 📄 [[{pdf_relpath}|下載的 PDF]]"
+    elif status == "needs_manual" and doi:
+        ft_line = f"- **全文**: ⚠️ 非 OA — [DOI: {doi}](https://doi.org/{doi}) (需手動取得)"
+    else:
+        ft_line = "- **全文**: ❌ 無法取得（無 DOI / PMCID）"
 
     return [
         f"### {rank}. {cand['title']}",
@@ -554,6 +680,7 @@ def _render_digest_entry(rank: int, item: dict) -> list[str]:
         f"N{score.get('scores', {}).get('novelty', '—')})",
         f"- **Verdict**: {score.get('one_line_verdict', '')}",
         f"- **Why**: {score.get('why_it_matters', '')}",
+        ft_line,
         f"- **→** [[pubmed-{cand['pmid']}]] · [PubMed]({cand['url']})",
         "",
     ]
