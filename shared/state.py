@@ -120,6 +120,56 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent);
         CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
+
+        -- ADR-006: HITL approval queue（Brook / Usopp / Chopper / Sanji 共用）
+        -- Status FSM SoT 在 shared/approval_queue.ALLOWED_TRANSITIONS；
+        -- CHECK 列表必與 ALL_STATUSES 相等，由 FSM 測試斷言
+        CREATE TABLE IF NOT EXISTS approval_queue (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at              TEXT NOT NULL
+                                    DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+            updated_at              TEXT NOT NULL
+                                    DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')),
+
+            source_agent            TEXT NOT NULL,
+            target_platform         TEXT NOT NULL,
+            target_site             TEXT,
+            action_type             TEXT NOT NULL,
+            priority                INTEGER NOT NULL DEFAULT 50 CHECK (priority BETWEEN 0 AND 100),
+
+            payload_version         INTEGER NOT NULL,
+            payload                 TEXT NOT NULL,
+            title_snippet           TEXT NOT NULL,
+            diff_target_id          TEXT,
+
+            status                  TEXT NOT NULL
+                                    CHECK (status IN ('pending','in_review','approved','rejected',
+                                                      'claimed','published','failed','archived')),
+
+            reviewer                TEXT,
+            review_note             TEXT,
+            reviewed_at             TEXT,
+
+            -- ADR-005b §10 compliance gate
+            reviewer_compliance_ack INTEGER NOT NULL DEFAULT 0,
+
+            worker_id               TEXT,
+            claimed_at              TEXT,
+            published_at            TEXT,
+            execution_result        TEXT,
+            retry_count             INTEGER NOT NULL DEFAULT 0,
+            error_log               TEXT,
+
+            operation_id            TEXT NOT NULL,
+            cost_usd_compose        REAL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_queue_status_priority
+            ON approval_queue(status, priority DESC, created_at ASC);
+        CREATE INDEX IF NOT EXISTS idx_queue_agent_status
+            ON approval_queue(source_agent, status);
+        CREATE INDEX IF NOT EXISTS idx_queue_operation
+            ON approval_queue(operation_id);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
