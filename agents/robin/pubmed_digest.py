@@ -519,8 +519,8 @@ def _dry_run_fulltext() -> FullTextResult:
     }
 
 
-def _render_fulltext_section(ft: FullTextResult) -> str:
-    """渲染 Source 頁的「全文」區塊。"""
+def _render_fulltext_section(ft: FullTextResult, pmid: str) -> str:
+    """渲染 Source 頁的「全文」區塊；OA 論文附上本機 Robin reader 雙語閱讀 link。"""
     status = ft.get("status")
     doi = ft.get("doi")
     pdf = ft.get("pdf_relpath")
@@ -528,9 +528,12 @@ def _render_fulltext_section(ft: FullTextResult) -> str:
     note = ft.get("note") or ""
     doi_line = f"**DOI**: [{doi}](https://doi.org/{doi})" if doi else ""
 
+    reader_line = ""
     if status == "oa_downloaded" and pdf:
         src_label = {"pmc": "PubMed Central", "unpaywall": "Unpaywall"}.get(src or "", src or "")
         pdf_line = f"**PDF**: [[{pdf}]]（來源：{src_label}）"
+        reader_url = f"http://localhost:8000/robin/pubmed-to-reader?pmid={pmid}"
+        reader_line = f"**雙語閱讀**: [📖 開啟 Robin reader（本機）]({reader_url})"
     elif status == "needs_manual":
         pdf_line = "**PDF**: ⚠️ 非 Open Access，需手動取得全文"
     else:
@@ -539,6 +542,8 @@ def _render_fulltext_section(ft: FullTextResult) -> str:
     parts = [pdf_line]
     if doi_line:
         parts.append(doi_line)
+    if reader_line:
+        parts.append(reader_line)
     return "\n".join(parts)
 
 
@@ -550,7 +555,7 @@ def _render_source_body(
 ) -> str:
     """單篇 Source 頁內文（繁體中文）。"""
     scores = score.get("scores", {})
-    fulltext_section = _render_fulltext_section(ft)
+    fulltext_section = _render_fulltext_section(ft, cand["pmid"])
     return f"""# {cand["title"]}
 
 **PMID**: [{cand["pmid"]}]({cand["url"]})
