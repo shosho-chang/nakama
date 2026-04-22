@@ -72,6 +72,8 @@
 - [project_nami_gmail.md](project_nami_gmail.md) — Nami Gmail 整合完成：6 tools + triage 規則（Primary + Respond/Shosho 24h）+ SSL per-thread bug 修法
 - [project_nami_vault_notes.md](project_nami_vault_notes.md) — Nami vault note 3 tools（write/read/list）+ vault_rules.py，待 VPS 部署
 - [project_brook_style_extraction_todo.md](project_brook_style_extraction_todo.md) — Brook style extraction 2026-04-22 待辦，電子報前置依賴
-- [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest 上線（台北 05:30 cron），六維度評分 + Scimago tier + Obsidian 輸出
+- [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest + OA 全文下載 + 雙語閱讀（PR #66/70/71 全上線）
 - [reference_vps_timezone.md](reference_vps_timezone.md) — VPS TZ 是 Asia/Taipei，cron 用本機時區；日期 filename 要 `ZoneInfo("Asia/Taipei")`
 - [feedback_gitignore_negation.md](feedback_gitignore_negation.md) — .gitignore 子檔再 include 要用 `data/*` + `!data/file`，不是 `data/` + `!data/file`
+- [feedback_design_deviation_discovery.md](feedback_design_deviation_discovery.md) — 實作時發現現成輕量方案 → flag deviation，不默默換方案
+- [reference_oa_fulltext_apis.md](reference_oa_fulltext_apis.md) — PMC + Unpaywall 合法 OA PDF 下載 API 模式

@@ -49,12 +49,17 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ skill 家族設計（`seo-audit-post` / `seo-keyword-enrich` / `seo-optimize-draft`）
 
 **雙語閱讀 Pipeline：**
-- ⬜ P2B：BabelDOC 整合（需 Immersive Translate API key）
-- ⬜ P3：Annotation → Ingest 整合
+- ✅ P1 PubMed flow（PR #71）：PDF 全文 → 雙語 reader（pymupdf4llm + translator）
+- ⬜ P2A：BabelDOC 整合（學術論文雙語 PDF，需 Immersive Translate API key）
+- ⬜ P2B：Docling 升級（書籍 / 掃描 PDF，VPS 3.8GB RAM 不能裝）
+- ⬜ P3：Annotation → Source page 自動 append「我的筆記」
 
 **PubMed 整合：**
-- ✅ Robin PubMed 每日 digest 上線 VPS（PR #66/#67/#68，首次 cron 2026-04-22 05:30 台北）
-- ⬜ 調研 PubMed NCBI Entrez API（Nami Quick Lookup 替代 Deep Research，獨立於 Robin digest）
+- ✅ Robin PubMed 每日 digest 上線 VPS（PR #66/#67/#68）
+- ✅ PubMed OA 全文自動下載（PR #70，PMC + Unpaywall 兩層 fallback）
+- ✅ PubMed 雙語閱讀本機整合（PR #71，source 頁 link → reader）
+- ⬜ 觀察 pymupdf4llm 對多欄學術 PDF 品質，不夠好再上 Docling/BabelDOC
+- ⬜ 調研 PubMed NCBI Entrez API（Nami Quick Lookup 替代 Deep Research）
 
 **基礎建設：**
 - ⬜ Robin 核心流程（ingest、kb_search）補測試覆蓋率
