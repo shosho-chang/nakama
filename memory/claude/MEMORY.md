@@ -71,9 +71,17 @@
 - Design doc：[docs/decisions/step-5-zoro-brainstorm-p2.md](../../docs/decisions/step-5-zoro-brainstorm-p2.md) — 步驟 5 設計凍結，blocker 是 Zoro 獨立 Slack bot
 - [project_nami_gmail.md](project_nami_gmail.md) — Nami Gmail 整合完成：6 tools + triage 規則（Primary + Respond/Shosho 24h）+ SSL per-thread bug 修法
 - [project_nami_vault_notes.md](project_nami_vault_notes.md) — Nami vault note 3 tools（write/read/list）+ vault_rules.py，待 VPS 部署
-- [project_brook_style_extraction_todo.md](project_brook_style_extraction_todo.md) — Brook style extraction 2026-04-22 待辦，電子報前置依賴
+- [project_brook_style_extraction_todo.md](project_brook_style_extraction_todo.md) — Brook style extraction 完成：36 篇 → 3 份 profile + 交叉分析（agents/brook/style-profiles/）
 - [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest + OA 全文下載 + 雙語閱讀（PR #66/70/71 全上線）
 - [reference_vps_timezone.md](reference_vps_timezone.md) — VPS TZ 是 Asia/Taipei，cron 用本機時區；日期 filename 要 `ZoneInfo("Asia/Taipei")`
 - [feedback_gitignore_negation.md](feedback_gitignore_negation.md) — .gitignore 子檔再 include 要用 `data/*` + `!data/file`，不是 `data/` + `!data/file`
 - [feedback_design_deviation_discovery.md](feedback_design_deviation_discovery.md) — 實作時發現現成輕量方案 → flag deviation，不默默換方案
 - [reference_oa_fulltext_apis.md](reference_oa_fulltext_apis.md) — PMC + Unpaywall 合法 OA PDF 下載 API 模式
+- [project_brook_image_pipeline.md](project_brook_image_pipeline.md) — Brook 圖片生成管線（blog/IG/YT 縮圖）下一輪專題
+- [project_repurpose_flow.md](project_repurpose_flow.md) — 部落格 → IG 知識圖表等平台內容重製，下一階段實作
+- [project_envato_api_reality.md](project_envato_api_reality.md) — Envato Elements 無 API，用 Unsplash/Pexels/Flux 替代方案
+- [reference_infra_xcloud_vultr.md](reference_infra_xcloud_vultr.md) — VPS 規格 2vCPU/4GB，xCloud on Vultr，Cloudflare R2 備份
+- [project_case_studies_archive.md](project_case_studies_archive.md) — vault `Case Studies/` 目錄收錄對話案例，首份 2026-04-22 WP 整合規劃
+- [project_phase1_infra_checkpoint.md](project_phase1_infra_checkpoint.md) — Phase 1 憑證 setup 進度 checkpoint（compact 保留用）
+- [project_multi_model_panel_methodology.md](project_multi_model_panel_methodology.md) — 三家模型 triangulate（Gemini 吹哨 / Claude 仲裁 / Grok 啦啦隊），ADR review 實證有效
+- [reference_nakama_principles.md](reference_nakama_principles.md) — docs/principles/ 三份原則：schemas / reliability / observability（所有 ADR 援引）

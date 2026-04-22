@@ -31,4 +31,11 @@ Community Platform → Webhook → Nakama API → Router → Chopper handler
 - 先做哪一塊：平台接入 / 會員記憶 / KB 問答本身？
 - 醫療免責聲明的措辭
 
-**狀態：** 待開發，用戶說「先把目前功能搞定，之後再做」。
+**狀態：** 待開發，優先級最後（Brook = Usopp = Franky 都 > Chopper）。
+
+**2026-04-22 更新**：
+- Chopper **完全不給診斷或醫療建議**，只做資訊 / 教育 / 引用 KB 文獻
+- 上線前在 Slack 內部先「活一陣子」做 dogfooding（不直接暴露給社群會員）
+- FluentCommunity 給 Chopper 專屬 space，會員資料（FluentCRM）**可主動引用**（社群最大優勢）
+- HITL approval 三階段：Phase A 全 approve → Phase B 信心閾值 + 敏感詞分流 → Phase C 全自動 + audit
+- 細節（敏感詞清單、免責措辭、profile 免責、超出範圍行為）上線前再討論
