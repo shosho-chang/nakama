@@ -86,3 +86,4 @@
 - [project_multi_model_panel_methodology.md](project_multi_model_panel_methodology.md) — 三家模型 triangulate（Gemini 吹哨 / Claude 仲裁 / Grok 啦啦隊），ADR review 實證有效
 - [reference_nakama_principles.md](reference_nakama_principles.md) — docs/principles/ 三份原則：schemas / reliability / observability（所有 ADR 援引）
 - [project_phase1_foundation_pr.md](project_phase1_foundation_pr.md) — PR #72 foundation 合併紀錄 + 實作時 ADR 3 漏洞 + 6 個 code-review borderline follow-up
+- [feedback_cross_doc_review_methodology.md](feedback_cross_doc_review_methodology.md) — 多 ADR 專案在 single-ADR multi-model review 之上再跑 3 agent 跨文件審查（consistency/readiness/plain-lang）

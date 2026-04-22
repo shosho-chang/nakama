@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-22
+updated: 2026-04-23
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
@@ -65,3 +65,19 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ Robin 核心流程（ingest、kb_search）補測試覆蓋率
 - ⬜ Brook compose.py 補測試覆蓋率
 - ⬜ Thousand Sunny routers smoke test
+
+**Phase 1 Wave 2（foundation 已合併，見 project_phase1_foundation_pr.md）：**
+- 🚧 VPS baseline 壓測 24h，2026-04-23 ~22:21 滿 → `ssh nakama-vps "python3 /home/nakama/scripts/vps_baseline_monitor.py --analyze"` 看 verdict
+- ⬜ `shared/gutenberg_validator.py`（ADR-005a §4，round-trip + whitelist + attr JSON 驗）
+- ⬜ `agents/brook/compose.py` + style_profile_loader + tag_filter + compliance_scan
+- ⬜ `agents/usopp/publisher.py` + wp_client + seopress_writer + litespeed_purge + advisory locks
+- ⬜ `shared/schemas/external/wordpress.py` + `external/seopress.py`（anti-corruption layer）
+- ⬜ Bridge `/bridge/drafts` UI + routes + CLI fallback
+- ⬜ `agents/franky/` 6 模組 + `/healthz` endpoint + weekly digest
+- ⬜ `config/style-profiles/*.yaml` 三個 profile（book-review / people / science）
+
+**Phase 1 foundation borderline follow-ups（6 項，非 blocker）：**
+- ⬜ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` 移到 `_get_conn()` 開啟時設（ADR-006 §5 checklist）
+- ⬜ `claim_approved_drafts` 的 `UnknownPayloadVersionError` 改 `mark_failed` 兜底，不 raise 上來
+- ⬜ `BlockNodeV1.children` 加 per-block-type whitelist（list 只能 list_item）
+- ⬜ 3 個 docstring 準確度修正（atomic mutex / filter-out / CHECK 反向生成）

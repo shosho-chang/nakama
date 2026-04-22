@@ -27,8 +27,18 @@ created: 2026-04-22
 
 ## 待完成（Phase 1 開工前剩餘）
 
-- [ ] **VPS baseline 壓測**（ADR-007 §6 要求：24 小時實測 CPU p95 < 60%、RAM < 3GB、headroom ≥ 500MB。未通過不開工）
-- [ ] 修修快速 review 8 份 ADR + 3 份原則（30-60 分鐘即可）
+- [🚧] **VPS baseline 壓測**（2026-04-22 22:21 起跑，2026-04-23 ~22:21 滿 24h；昨夜 7.4h 看 RAM 1681MB / 3910MB、available 2228MB，看起來 GREEN）
+- [✅] 修修 ADR review — 2026-04-22 改跑 3 agent 跨文件審查代替（Agent A/B/C），抓到 4 blocker 全修，foundation PR #72 已 merged
+
+## 2026-04-23 更新
+
+**Phase 1 foundation 已合併** — PR #72 squash merged 到 main（commit 6bbd5b3），1578 行 code：
+- shared/schemas/publishing.py + approval.py（ADR-005a/b/006 schemas）
+- shared/gutenberg_builder.py（8 block types 純函式 builder）
+- shared/approval_queue.py + state.py 加 approval_queue 表（FSM + atomic claim + compliance gate + stale reset）
+- 39 new tests + 全 repo 669 tests pass
+
+剩下 Wave 2 code：gutenberg_validator / agents/brook compose / agents/usopp publisher / bridge/drafts UI / agents/franky 監控 / config/style-profiles yaml。
 
 ## 2026-04-22 ADR 修訂全部完工
 
