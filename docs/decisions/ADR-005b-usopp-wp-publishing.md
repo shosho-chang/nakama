@@ -291,7 +291,18 @@ class PublishResultV1(BaseModel):
 **處理流程**：
 
 ```python
-class ComplianceFlagsV1(BaseModel):
+class PublishComplianceGateV1(BaseModel):
+    """
+    Publish 前終端 compliance scan 結果（Brook 入隊時先跑一次、Usopp claim 後 publish 前再跑一次）。
+
+    與 ADR-005a §2 的 `DraftComplianceV1` 不同：
+    - `DraftComplianceV1`（ADR-005a）：compose snapshot，Brook self-check 結果（含 disclaimer 宣稱）
+    - `PublishComplianceGateV1`（本 schema）：publish gate，雙方在 enqueue + claim 各掃一次（defense in depth）
+
+    任一 bool flag 為 True 時：
+    - Bridge HITL UI 隱藏一般 approve，改顯示加強 HITL 的兩步驟確認
+    - Usopp claim 後若 `ApprovalPayload.reviewer_compliance_ack != True`，立即 fail 回 approval queue
+    """
     model_config = ConfigDict(extra="forbid", frozen=True)
     schema_version: Literal[1] = 1
     medical_claim: bool = False          # 療效 / 診斷 / 藥物類比詞彙命中
@@ -316,17 +327,17 @@ if flags.medical_claim or flags.absolute_assertion:
 
 **硬規則**：
 
-- 任何 `ComplianceFlagsV1` 有 flag 為 `True` 的 draft，**禁止自動 publish**，不論 `approval_queue.status` 狀態
+- 任何 `PublishComplianceGateV1` 有 flag 為 `True` 的 draft，**禁止自動 publish**，不論 `approval_queue.status` 狀態
 - 加強 HITL 路徑必須有**修修明確文字確認**（例如 Bridge UI 打勾 "我已閱讀並確認本文無違反藥事法 / 醫療法"），非一般的 approve 按鈕
 - flag 歷史寫入 `publish_jobs.compliance_flags`（JSON），供稽核追溯
 
 **跟 ADR-005a / ADR-006 的分工**：
 
 - ADR-005a（Brook）：compose 階段初篩，若命中應主動改寫（例：「治療失眠」→「幫助睡眠」），減少進入 Usopp 的 flag 數量
-- ADR-006（Approval Queue）：HITL UI 需顯示 `ComplianceFlagsV1.matched_terms`，並在有 flag 時隱藏一般 approve 按鈕，改顯示加強 HITL 的兩步驟確認
+- ADR-006（Approval Queue）：HITL UI 需顯示 `PublishComplianceGateV1.matched_terms`，並在有 flag 時隱藏一般 approve 按鈕，改顯示加強 HITL 的兩步驟確認
 - ADR-005b（Usopp）：publish 前最後一關攔截，確保即便上游遺漏或 UI 繞過，也不會發出有法規風險的內容
 
-**與 ADR-006 的介面約束**：`ApprovalPayloadV1` 須包含 `compliance_flags: ComplianceFlagsV1` 欄位；若 flag 為 True 而 `reviewer_compliance_ack: bool` 為 False，Usopp `claim` 後立即 fail 並回退至 approval queue。
+**與 ADR-006 的介面約束**：`ApprovalPayloadV1` 須包含 `compliance_flags: PublishComplianceGateV1` 欄位；若 flag 為 True 而 `reviewer_compliance_ack: bool` 為 False，Usopp `claim` 後立即 fail 並回退至 approval queue。
 
 ## Consequences
 
@@ -421,7 +432,7 @@ if flags.medical_claim or flags.absolute_assertion:
 
 **Compliance（§10）**
 - [ ] `shared/compliance/medical_claim_vocab.py` 初版詞彙清單（以 PR 形式提出）
-- [ ] `shared/schemas/publishing.py` 補 `ComplianceFlagsV1`
+- [ ] `shared/schemas/publishing.py` 補 `PublishComplianceGateV1`
 - [ ] Usopp publish 前置掃描 + 命中時 reopen approval queue 邏輯
 - [ ] Test：高風險詞彙 draft 不會自動 publish（即使 approval_queue 已 approved）
 - [ ] ADR-006 介面對齊：`ApprovalPayloadV1.compliance_flags` + `reviewer_compliance_ack`
@@ -456,7 +467,7 @@ if flags.medical_claim or flags.absolute_assertion:
 - **Context** 新增「跨 ADR 邊界約定」段落，明確 Gutenberg validator 來自 ADR-005a、compliance 詞彙黑名單兩層分工、`DraftV1.content` 介面由 ADR-005a 承諾（回應 grok B1、claude P1、gemini 1.1）
 - **§2 Idempotency** 新增 §2.1 Race Condition 防護，選定**選項 A（Nakama 側 advisory lock via `shared/locks.py`）**，並說明為何不選選項 B（WP `register_post_meta unique`）；同時要求 WP 側 `register_post_meta` 正確 `show_in_rest` 設定以讓 `find_by_meta` 運作（回應 gemini race condition、claude P4 blocker B2）
 - **§5 LiteSpeed** 由「第一週實測」明確為「**Day 1 指派**」，並定義 fallback 規則：三方案全不可行時 fallback 到 TTL 600s 等待，寫入 `docs/runbooks/litespeed-purge.md`（回應 gemini W2、claude P3）
-- **§10 Compliance Guardrail**（新章節）：定義 `ComplianceFlagsV1`、觸發詞彙類別、加強 HITL 流程、硬規則（有 flag 即禁止自動 publish）、與 ADR-005a / ADR-006 的三層分工介面（回應 grok 健康內容 compliance blocker、claude P5）
+- **§10 Compliance Guardrail**（新章節）：定義 `PublishComplianceGateV1`、觸發詞彙類別、加強 HITL 流程、硬規則（有 flag 即禁止自動 publish）、與 ADR-005a / ADR-006 的三層分工介面（回應 grok 健康內容 compliance blocker、claude P5）
 - **Consequences 風險表** 補 2 列：idempotency race 緩解、compliance 命中三層防線
 - **Open Questions** 更新 Q1（Day 1 實測 + fallback）、新增 Q4（medical_claim_vocab 來源）
 

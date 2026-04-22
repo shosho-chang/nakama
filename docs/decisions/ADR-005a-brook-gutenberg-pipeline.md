@@ -40,7 +40,7 @@ Brook 不直接讓 LLM 吐整份 block HTML，改讓 LLM 吐 **結構化 JSON AS
 存放於 `shared/schemas/publishing.py`，top of file 註明 `ADR-005a`：
 
 Schema 定義順序（依相依性排列，Python 直譯器由上至下載入，被引用者必先定義）：
-`BlockNodeV1` → `GutenbergHTMLV1` → `FeaturedImageBriefV1` → `ComplianceFlagsV1` → `DraftV1`。
+`BlockNodeV1` → `GutenbergHTMLV1` → `FeaturedImageBriefV1` → `DraftComplianceV1` → `DraftV1`。
 
 ```python
 # shared/schemas/publishing.py — ADR-005a / ADR-005b
@@ -107,10 +107,16 @@ class FeaturedImageBriefV1(BaseModel):
     keywords: list[str]
 
 
-class ComplianceFlagsV1(BaseModel):
+class DraftComplianceV1(BaseModel):
     """
-    `detected_blacklist_hits` 語義為「compose 時 regex scan 命中的詞彙」，
-    非空時 Bridge HITL 應顯示警告。非例外清單、非豁免清單。
+    Brook compose 階段的合規狀態快照（regex scan + LLM self-check 共同填寫）。
+
+    與 ADR-005b §10 的 `PublishComplianceGateV1` 不同：
+    - `DraftComplianceV1`（本 schema）：compose 期 snapshot，描述「Brook 寫時有沒有避開療效、有沒有加免責」
+    - `PublishComplianceGateV1`（ADR-005b §10）：publish gate scan 結果，Brook enqueue + Usopp claim 各掃一次
+    兩者皆存於 DraftV1 與 ApprovalPayloadV1，分別代表不同階段的合規視角。
+
+    `detected_blacklist_hits` 非空時 Bridge HITL 應顯示警告。非例外清單、非豁免清單。
     """
     model_config = ConfigDict(extra="forbid", frozen=True)
     claims_no_therapeutic_effect: bool  # 未聲稱療效
@@ -158,7 +164,7 @@ class DraftV1(BaseModel):
     # 圖片（Phase 1 人工，featured_media_id 在 Bridge approve 時填）
     featured_image_brief: FeaturedImageBriefV1 | None = None
     # Compliance（review §2.11）
-    compliance: ComplianceFlagsV1
+    compliance: DraftComplianceV1
     # Style profile 來源
     style_profile_id: constr(pattern=r"^[a-z0-9-]+@\d+\.\d+\.\d+$")  # e.g. "book-review@0.1.0"
 
@@ -265,7 +271,7 @@ Phase 1 三個 profile：`book-review`、`people`、`science`（9 個 science su
 ### 7. Compliance Guardrail（review §2.11）
 
 - Style profile 的 `blacklist_terms` 在 compose 後做 regex scan，命中 → raise + log
-- Draft schema 的 `ComplianceFlagsV1` 必填；Bridge HITL checklist 再確認一次
+- Draft schema 的 `DraftComplianceV1` 必填；Bridge HITL checklist 再確認一次
 
 ## Consequences
 
@@ -300,7 +306,7 @@ Phase 1 三個 profile：`book-review`、`people`、`science`（9 個 science su
 
 ### Schema Version
 
-- `DraftV1`、`GutenbergHTMLV1`、`BlockNodeV1`、`FeaturedImageBriefV1`、`ComplianceFlagsV1` 皆 v1
+- `DraftV1`、`GutenbergHTMLV1`、`BlockNodeV1`、`FeaturedImageBriefV1`、`DraftComplianceV1` 皆 v1
 - 未來若改 AST 結構 → V2 + migrator（schemas.md §3 流程）
 
 ## SLO（依 [observability.md](../principles/observability.md) §5）
@@ -323,7 +329,7 @@ Phase 1 三個 profile：`book-review`、`people`、`science`（9 個 science su
    - 禁止 `on*` 事件屬性（`onclick`、`onerror`、`onload` 等）出現在任何 `attrs` key 中；builder 層直接 blacklist。
 2. **`html_raw` block 已從 Phase 1 白名單移除**（見 §2 schema），杜絕 LLM 透過逃生艙繞過 escape 的可能。
 3. **Compliance flag 審核路徑**：
-   - `ComplianceFlagsV1` 的 bool 值由 Brook compose 階段的 regex scan + LLM self-check 共同填寫，不由 LLM 單獨決定。
+   - `DraftComplianceV1` 的 bool 值由 Brook compose 階段的 regex scan + LLM self-check 共同填寫，不由 LLM 單獨決定。
    - `detected_blacklist_hits` 非空時，即使 `claims_no_therapeutic_effect=True` 也必須進 Bridge HITL 並以 WARNING 顯示（防 LLM 虛假 compliance）。
    - Validator 在 build 後再跑一次 blacklist regex scan，若命中數與 `detected_blacklist_hits` 不符 → raise（防 schema 與實際內容脫節）。
 4. **Secret 隔離**：Brook 不持有任何 WP credential；所有 WP 相關 secret 由 ADR-005b 管理，Brook 的 `.env` 只有 LLM provider key。
@@ -403,7 +409,7 @@ Brook 產出 `DraftV1` 寫入 `approval_queue`（ADR-006）。Usopp 從 queue cl
 
 根據 multi-model verification（Claude Sonnet / Gemini / Grok）反饋修訂：
 
-- **Critical 修**：重排 §2 schema 定義順序為 `BlockNodeV1 → GutenbergHTMLV1 → FeaturedImageBriefV1 → ComplianceFlagsV1 → DraftV1`，修正 `ComplianceFlagsV1` 被 `DraftV1` 引用時尚未定義的 `NameError`（Claude Sonnet 問題 A）。
+- **Critical 修**：重排 §2 schema 定義順序為 `BlockNodeV1 → GutenbergHTMLV1 → FeaturedImageBriefV1 → DraftComplianceV1 → DraftV1`，修正 `DraftComplianceV1` 被 `DraftV1` 引用時尚未定義的 `NameError`（Claude Sonnet 問題 A）。
 - **High 修**：
   - `DraftV1.tags` 與 `secondary_categories` 加 slug `constr(pattern=_SLUG_PATTERN)` 約束，並加 `_tags_unique` model_validator 去重（Claude Sonnet 問題 B、Grok tag 去重）。
   - `GutenbergHTMLV1` 加 `_ast_and_html_consistent` model_validator，確保 `raw_html == build(ast).raw_html`，`ast` 為 source of truth（Claude Sonnet 問題 C）。
@@ -412,7 +418,7 @@ Brook 產出 `DraftV1` 寫入 `approval_queue`（ADR-006）。Usopp 從 queue cl
   - 新增 `MAX_AST_DEPTH = 6` 常數與 `_ast_depth_within_limit` validator、validator 層再驗，防遞迴 DoS（Gemini 問題 1）。
   - 新增「資安考量」章節（放在 SLO 後），涵蓋 LLM output escape、`javascript:` / `data:` / `on*` blacklist、compliance 審核雙重驗證、secret 隔離（Grok blocker 4、Claude Sonnet 問題 G）。
   - SLO 表加「適用範圍」欄，區分新產 DraftV1 vs 既有 192 篇 migration；既有篇 round-trip 通過率改為「Week 2 baseline 後再定」（Claude Sonnet 問題 D）。
-  - `ComplianceFlagsV1.reviewed_blacklist_terms` 改名 `detected_blacklist_hits` 並加 docstring，釐清語義為命中清單非豁免清單（Claude Sonnet 問題 G）。
+  - `DraftComplianceV1.reviewed_blacklist_terms` 改名 `detected_blacklist_hits` 並加 docstring，釐清語義為命中清單非豁免清單（Claude Sonnet 問題 G）。
   - 從 `BlockNodeV1.block_type` 移除 `"html_raw"`，關閉 schema 允許但邏輯禁止的隱藏炸彈；Open Question 1 標示已解（Claude Sonnet 問題 E、Grok 問題 4）。
   - 開工 Checklist 測試段補 8 項資安與一致性測試。
 - **未引入新風險**：所有變更均為 narrowing（更嚴格的約束、更明確的責任分工），不改變 pipeline 架構，builder/validator API 簽名、DraftV1 對 Usopp 的欄位契約形狀不變。`detected_blacklist_hits` 命名改動為語義修正（原 `reviewed_blacklist_terms` 語義不清，實作尚未落地故無 migration 成本）。

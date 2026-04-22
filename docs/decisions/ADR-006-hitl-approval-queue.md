@@ -59,6 +59,9 @@ CREATE TABLE approval_queue (
     review_note       TEXT,
     reviewed_at       TEXT,
 
+    -- Compliance（ADR-005b §10 介面；flag 命中時此欄須為 1 才可 claim→publish）
+    reviewer_compliance_ack INTEGER NOT NULL DEFAULT 0,
+
     -- Claim & execution
     worker_id         TEXT,                  -- 認領的 worker 識別
     claimed_at        TEXT,
@@ -84,6 +87,7 @@ CREATE INDEX idx_queue_operation       ON approval_queue(operation_id);
 - `retry_count` / `error_log`：失敗可追查、DLQ 轉入條件
 - `operation_id`：[observability.md §2](../principles/observability.md) 硬規則
 - `cost_usd_compose`：Bridge UI 顯示「這篇花了多少 token」供 HITL 判斷
+- `reviewer_compliance_ack`：ADR-005b §10 介面約束；當 `payload.compliance_flags` 任一 bool 為 True 時，`claim_approved_drafts` 必須驗證此欄為 1，否則 fail 回 approval queue
 
 ### 2. Pydantic Payload Schema（回應 blocker #1）
 
@@ -94,29 +98,40 @@ CREATE INDEX idx_queue_operation       ON approval_queue(operation_id);
 from typing import Literal, Annotated, Union
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, AwareDatetime, constr
 
+# DraftV1 與 compliance schema 定義於 shared/schemas/publishing.py
+# （ADR-005a §2 定義 DraftV1；ADR-005b §10 定義 PublishComplianceGateV1）
+from shared.schemas.publishing import DraftV1, PublishComplianceGateV1
+
+
 class PublishWpPostV1(BaseModel):
+    """Brook 新發文章入隊；payload 即完整 DraftV1 + HITL 合規 gate 欄位。
+
+    contract 來源：ADR-005a §2（DraftV1）、ADR-005b §10（PublishComplianceGateV1）。
+    Brook enqueue 前在 compose 層跑一次 `PublishComplianceGateV1` scan 填入 `compliance_flags`；
+    Usopp claim 後會在 publish 前再跑一次（defense in depth），兩次結果不一致視為 fail。
+    """
     model_config = ConfigDict(extra="forbid", frozen=True, use_enum_values=True)
     schema_version: Literal[1] = 1
     action_type: Literal["publish_post"]
     target_site: Literal["wp_shosho", "wp_fleet"]
-    title: constr(min_length=5, max_length=120)
-    slug: constr(pattern=r"^[a-z0-9\-]+$")
-    category: str
-    tags: list[str]
-    post_content_html: str            # Gutenberg HTML
-    seo_focus_keyword: str
-    scheduled_at: AwareDatetime | None = None
-    draft_id: constr(pattern=r"^draft_\d{8}T\d{6}_[a-f0-9]{6}$")
+    draft: DraftV1                                # Brook → Usopp 核心 contract（ADR-005a §2）
+    compliance_flags: PublishComplianceGateV1     # Brook enqueue 前預 scan 結果（ADR-005b §10）
+    reviewer_compliance_ack: bool = False         # flag 命中時此欄須為 True 才能 claim→publish
+    scheduled_at: AwareDatetime | None = None     # action=schedule 時指定
+
 
 class UpdateWpPostV1(BaseModel):
+    """更新既有 WP post；patch 若觸發 compliance scan，同樣要過 HITL gate。"""
     model_config = ConfigDict(extra="forbid", frozen=True, use_enum_values=True)
     schema_version: Literal[1] = 1
     action_type: Literal["update_post"]
     target_site: Literal["wp_shosho", "wp_fleet"]
     wp_post_id: int
-    patch: dict           # only changed fields
-    change_summary: str   # 人類可讀的修改說明，供 HITL review
+    patch: dict                                   # 僅變更欄位
+    change_summary: str                           # 人類可讀修改說明，供 HITL review
     draft_id: str
+    compliance_flags: PublishComplianceGateV1     # patched content 的 scan 結果
+    reviewer_compliance_ack: bool = False
 
 # Pydantic v2 discriminated union：以 action_type 為 discriminator field
 # 新增 action_type 時在此 Union 擴充，Pydantic 會自動依 action_type 分派

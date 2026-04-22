@@ -77,32 +77,27 @@
 
 ## Phase 1.2 — Franky 監控核心（week 2-3，和 Brook 並行）
 
+**Scope**：依 [ADR-007](../decisions/ADR-007-franky-scope-expansion.md) slim 版，Phase 1 只做 VPS + WP + Nakama service + R2 backup verify + UptimeRobot 外部 probe + 告警去重 + 週報。**GSC / GA4 / Cloudflare 已拆到 [ADR-008](../decisions/ADR-008-seo-observability.md)（Phase 2），本階段不做。**
+
 ### 1.2a `agents/franky/health_check.py`
-- systemd timer 每 5 分鐘跑
-- 檢查：VPS RAM/CPU/disk、Nakama service、WP×2 site HTTP
+- systemd timer 每 5 分鐘跑（flock 避免重疊）
+- 檢查：VPS RAM/CPU/disk、Nakama service、WP×2 site HTTP、`/healthz` endpoint
+- `health_probe_state` 表：連 3 次 fail 才升 Critical（避免單次網路抖動刷屏）
 
 ### 1.2b `agents/franky/alert_router.py`
-- 三級告警分派（Critical → Franky Slack DM / Warning → Bridge / Info → log）
+- 三級告警分派（Critical → Franky Slack DM + UptimeRobot SMS / Warning → Bridge / Info → log）
+- `alert_state` 表去重（15 分鐘內同類告警只發一次，見 ADR-007 §4）
 
-### 1.2c `shared/google_api_client.py` + `agents/franky/gsc_tracker.py`
-- GSC API 抓每日排名
-- state.db 新表 `gsc_ranks`
+### 1.2c `agents/franky/r2_backup_verify.py`
+- 每日 cron 驗證 R2 有新備份檔（大小合理、SHA 可讀回）
+- state.db snapshot 每日推到 R2（ADR-007 §5）
 
-### 1.2d `agents/franky/ga4_audience.py`
-- 每週抓 demographics
-- state.db 新表 `ga4_audience`
+### 1.2d Bridge `/bridge/franky` dashboard + 週報
+- 圖表：RAM trend / cron success rate / R2 backup status / 告警次數 / LLM 成本
+- Weekly digest：每週一早上 10:00 Slack DM（VPS 平均資源、cron 成功率、備份狀態、告警次數、LLM 花費）
+- `/healthz` endpoint 供 UptimeRobot 每 5 分鐘探測（外部 probe，不走 VPS 告警通道）
 
-### 1.2e `shared/cloudflare_client.py` + `agents/franky/cloudflare_monitor.py`
-- GraphQL API 抓 threats / bot distribution
-
-### 1.2f `agents/franky/r2_backup_verify.py`
-- 每日驗證 R2 有新備份檔
-
-### 1.2g Bridge `/bridge/franky` dashboard
-- 圖表：RAM trend / GSC rank top 10 / CF threat 24h / R2 backup status
-- Weekly digest view
-
-**交付**：修修 Slack 收到 Franky 「Nakama 啟動」DM + Bridge `/bridge/franky` 顯示即時數據
+**交付**：修修 Slack 收到 Franky 「Nakama 啟動」DM + `/bridge/franky` 顯示即時數據 + VPS down 時 UptimeRobot email/SMS 通知繞過 VPS
 
 ---
 
@@ -156,6 +151,7 @@
 
 ## 不在 Phase 1 做（避免 scope creep）
 
+- **GSC 每日排名 / GA4 讀者分析 / Cloudflare 流量監控**（已拆到 [ADR-008](../decisions/ADR-008-seo-observability.md) Phase 2，blocked by Phase 1 + 72h soak）
 - Brook 圖片自動生成（見 project_brook_image_pipeline，Phase 2）
 - Repurpose（blog → IG carousel，Phase 2）
 - FluentCRM newsletter 自動發（Phase 2）
@@ -164,6 +160,7 @@
 - FB / IG / YouTube 發布（Phase 4）
 - Bricks AI Studio 實際整合（裝了但 Phase 2 再用）
 - Claude Design 實際整合（Phase 2）
+- Obsidian vault 雙向同步（已拆到 [ADR-006b](../decisions/ADR-006b-obsidian-vault-sync.md) Phase 2 research）
 
 ---
 
