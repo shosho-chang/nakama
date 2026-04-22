@@ -242,6 +242,7 @@
   <script>
     // ── State ──
     const FILENAME = '{{ filename }}';
+    const BASE = '{{ base | default("inbox") }}';
     const FRONTMATTER_RAW = {{ frontmatter_raw | tojson }};
     const IS_BILINGUAL = {{ is_bilingual | tojson }};
     let mdSource = {{ content | tojson }};
@@ -429,6 +430,7 @@
     async function saveContent() {
       const form = new FormData();
       form.append('filename', FILENAME);
+      form.append('base', BASE);
       const fullContent = FRONTMATTER_RAW ? FRONTMATTER_RAW + '\n' + mdSource : mdSource;
       form.append('content', fullContent);
       try {
@@ -518,6 +520,7 @@
       await saveContent();
       const form = new FormData();
       form.append('filename', FILENAME);
+      form.append('base', BASE);
       try {
         const res = await fetch('/mark-read', { method: 'POST', body: form });
         if (res.ok) {

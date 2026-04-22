@@ -2,6 +2,7 @@
 
 import asyncio
 import platform
+import re
 import shutil
 import subprocess
 import time
@@ -82,6 +83,26 @@ def _get_inbox() -> Path:
     return get_vault_path() / cfg.get("inbox_path", "Inbox/kb")
 
 
+def _get_sources() -> Path:
+    """KB/Wiki/Sources — 已 ingest 的文件（含 PubMed source pages 與雙語閱讀版本）。"""
+    return get_vault_path() / "KB" / "Wiki" / "Sources"
+
+
+# Reader 可讀寫的基底目錄白名單；外部路徑遭拒，防止路徑穿越。
+_READER_BASES = {
+    "inbox": _get_inbox,
+    "sources": _get_sources,
+}
+
+
+def _resolve_reader_base(base: str) -> Path:
+    """依白名單取得基底目錄；不在白名單直接 400。"""
+    resolver = _READER_BASES.get(base)
+    if resolver is None:
+        raise HTTPException(400, detail=f"未知的 reader base：{base}")
+    return resolver()
+
+
 def _get_inbox_files() -> list[dict]:
     inbox = _get_inbox()
     if not inbox.exists():
@@ -115,11 +136,16 @@ async def index(request: Request, nakama_auth: str | None = Cookie(None)):
 
 
 @router.get("/read", response_class=HTMLResponse)
-async def read_source(request: Request, file: str, nakama_auth: str | None = Cookie(None)):
+async def read_source(
+    request: Request,
+    file: str,
+    base: str = "inbox",
+    nakama_auth: str | None = Cookie(None),
+):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
-    inbox = _get_inbox()
-    file_path = safe_resolve(inbox, file)
+    base_dir = _resolve_reader_base(base)
+    file_path = safe_resolve(base_dir, file)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{file}")
     if file_path.suffix.lower() not in (".md", ".txt"):
@@ -141,6 +167,7 @@ async def read_source(request: Request, file: str, nakama_auth: str | None = Coo
         "reader.html",
         {
             "filename": file,
+            "base": base,
             "content": body,
             "frontmatter": frontmatter,
             "frontmatter_raw": frontmatter_raw,
@@ -171,12 +198,13 @@ async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
 async def save_annotations(
     filename: str = Form(...),
     content: str = Form(...),
+    base: str = Form("inbox"),
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         raise HTTPException(403)
-    inbox = _get_inbox()
-    file_path = safe_resolve(inbox, filename)
+    base_dir = _resolve_reader_base(base)
+    file_path = safe_resolve(base_dir, filename)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
     file_path.write_text(content, encoding="utf-8")
@@ -186,12 +214,13 @@ async def save_annotations(
 @router.post("/mark-read")
 async def mark_read(
     filename: str = Form(...),
+    base: str = Form("inbox"),
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         raise HTTPException(403)
-    inbox = _get_inbox()
-    file_path = safe_resolve(inbox, filename)
+    base_dir = _resolve_reader_base(base)
+    file_path = safe_resolve(base_dir, filename)
     if not file_path.exists():
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
     mark_file_read(file_path)
@@ -269,6 +298,85 @@ async def scrape_translate(
     logger.info(f"scrape-translate 完成：{filename}")
 
     response = RedirectResponse(f"/read?file={filename}", status_code=303)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
+_PUBMED_FT_DIR = "KB/Attachments/pubmed"
+_PMID_RE = re.compile(r"^\d+$")
+
+
+@router.get("/pubmed-to-reader")
+async def pubmed_to_reader(
+    pmid: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """將 PubMed 下載的 OA PDF 轉為雙語 Markdown，並跳轉到 reader。
+
+    - 輸入：已下載在 ``KB/Attachments/pubmed/{pmid}.pdf`` 的全文 PDF
+    - 輸出：``KB/Wiki/Sources/pubmed-{pmid}-bilingual.md``（與原 source 並列）
+    - 第二次點同一篇會 short-circuit：發現雙語檔已存在就直接跳 reader，不重翻
+    - 翻譯成本：Claude Sonnet，每篇約 5–15 萬字（看 PDF 長度），成本 $0.3–1
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    if not _PMID_RE.match(pmid):
+        raise HTTPException(400, detail="pmid 必須是純數字")
+
+    sources_dir = _get_sources()
+    bilingual_name = f"pubmed-{pmid}-bilingual.md"
+    bilingual_path = sources_dir / bilingual_name
+
+    # 已翻譯過就直接開 reader，不重翻
+    if bilingual_path.exists():
+        response = RedirectResponse(f"/read?file={bilingual_name}&base=sources", status_code=303)
+        if nakama_auth:
+            response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+        return response
+
+    pdf_path = get_vault_path() / _PUBMED_FT_DIR / f"{pmid}.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(
+            404,
+            detail=(
+                f"找不到 {_PUBMED_FT_DIR}/{pmid}.pdf — 可能是 non-OA 論文，Robin digest 未下載"
+            ),
+        )
+
+    from shared.pdf_parser import parse_pdf
+    from shared.translator import translate_document
+
+    try:
+        raw_md = await asyncio.to_thread(parse_pdf, pdf_path, with_tables=True)
+    except Exception as e:
+        logger.error(f"PDF 解析失敗（PMID {pmid}）：{e}", exc_info=True)
+        raise HTTPException(500, detail=f"PDF 解析失敗：{e}") from e
+
+    try:
+        bilingual_md = await asyncio.to_thread(translate_document, raw_md)
+    except Exception as e:
+        logger.error(f"翻譯失敗（PMID {pmid}）：{e}", exc_info=True)
+        bilingual_md = raw_md  # fallback：留純英文，使用者仍能閱讀 + annotate
+
+    safe_pmid = pmid  # 已通過 _PMID_RE 驗證
+    frontmatter = (
+        "---\n"
+        f'title: "PubMed {safe_pmid} — 雙語閱讀版"\n'
+        f"pmid: {safe_pmid}\n"
+        f'source: "https://pubmed.ncbi.nlm.nih.gov/{safe_pmid}/"\n'
+        "source_type: paper\n"
+        "content_nature: research\n"
+        "bilingual: true\n"
+        f'derived_from: "{_PUBMED_FT_DIR}/{safe_pmid}.pdf"\n'
+        "---\n\n"
+    )
+    sources_dir.mkdir(parents=True, exist_ok=True)
+    bilingual_path.write_text(frontmatter + bilingual_md, encoding="utf-8")
+    logger.info(f"pubmed-to-reader 完成：{bilingual_name}")
+
+    response = RedirectResponse(f"/read?file={bilingual_name}&base=sources", status_code=303)
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
