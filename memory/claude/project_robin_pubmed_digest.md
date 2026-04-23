@@ -6,7 +6,7 @@ originSessionId: ea82060e-3d51-44bc-a470-e61162514715
 ---
 # Robin PubMed 每日 Digest
 
-**狀態**：✅ 全功能上線（2026-04-22 擴充 OA 全文下載 + 雙語閱讀整合）
+**狀態**：✅ 全功能上線（2026-04-23 PR #84 修 OA 誤標 — 加 Europe PMC 鏡像 + digest render 誠實化）
 
 ## 做什麼
 
@@ -16,14 +16,15 @@ originSessionId: ea82060e-3d51-44bc-a470-e61162514715
 - `KB/Attachments/pubmed/{pmid}.pdf` — OA 全文（PMC + Unpaywall 兩層 fallback）
 - `KB/Wiki/Sources/pubmed-{pmid}-bilingual.md` — 雙語閱讀版（本機 reader 觸發才產）
 
-## 全文下載（PR #70）
+## 全文下載（PR #70、PR #84 擴充）
 
-三層 fallback：
+**四層 fallback**（PR #84 2026-04-23 加入 Europe PMC）：
 1. NCBI efetch XML → 抓 DOI + PMCID
-2. 有 PMCID → 直連 PMC PDF
-3. 否則有 DOI → Unpaywall API 查 OA best location
-4. 都沒 OA 但有 DOI → `needs_manual`（digest 顯示 ⚠️ + DOI link）
-5. 連 DOI 都沒 → `not_found`
+2. 有 PMCID → PMC NCBI `/pdf/`（**注意**：2024+ 常回 HTML landing page，實務上通常失敗）
+3. PMC NCBI 失敗 → Europe PMC 鏡像 `europepmc.org/articles/PMC{id}?pdf=render`（直接回 `application/pdf`，不需過 publisher IdP cookie flow，**VPS 友善**）
+4. 還失敗 + 有 DOI → Unpaywall API `best_oa_location.url_for_pdf`（注意：Nature 回的 URL 要過 `idp.nature.com` cookie flow，VPS 固定 IP 常被擋）
+5. 都失敗但有 DOI → `needs_manual`（digest 顯示 ⚠️ + DOI link）
+6. 無識別碼 OR 兩條 PMC 都掛+無 DOI → `not_found`（note 會區分兩種情況）
 
 Source 頁新增 frontmatter 欄位（Dataview 可查）：`doi` / `full_text_status` / `full_text_source` / `full_text_path` / `read_status`。
 
@@ -66,6 +67,7 @@ reader（`/read`、`/save-annotations`、`/mark-read`）新加 `base=inbox|sourc
 - #69 fix：pubmed_digest 改用 `llm.ask()` 支援 Gemini model（VPS `MODEL_ROBIN=gemini-2.5-pro`）
 - #70 feat：OA 全文自動下載
 - #71 feat：雙語閱讀整合（本機 Robin reader）
+- #84 fix：OA 誤標為「無法取得」— 加 Europe PMC fallback + render 誠實化 + log 升 warning（2026-04-23，用 PMID 42014402 Nature Commun 實測驗證）
 
 ## 下個迭代
 
