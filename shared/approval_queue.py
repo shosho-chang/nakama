@@ -228,6 +228,13 @@ def claim_approved_drafts(
     via `mark_failed()` with a diagnostic. The SQL itself does NOT filter these out —
     ADR-005b §10's defense-in-depth requires the Python-side re-check so a missing
     reviewer ack never silently escapes to the worker.
+
+    Unknown payload_version fallback: a row with `payload_version != 1` is marked
+    failed (non-retry-able, `increment_retry=False`) and the loop continues to
+    other batch rows, instead of raising `UnknownPayloadVersionError` and aborting
+    the whole claim. Rationale: schema drift is a ship-time bug, not a transient
+    condition — one bad row shouldn't stall the whole worker, and the diagnostic
+    in the failed row surfaces the drift for triage.
     """
     conn = _get_conn()
     conn.execute(f"PRAGMA busy_timeout = {timeout_s * 1000}")
@@ -253,12 +260,24 @@ def claim_approved_drafts(
 
     claimed: list[dict[str, Any]] = []
     for row in rows:
-        raw_payload = json.loads(row["payload"])
         if row["payload_version"] != 1:
-            raise UnknownPayloadVersionError(
-                f"draft id={row['id']} payload_version={row['payload_version']} "
-                f"— no V{row['payload_version']} adapter"
+            # Schema drift — unknown payload_version has no adapter. Don't raise:
+            # that would abort the rest of the batch and leave sibling rows in an
+            # ambiguous half-claimed state. Instead mark just this row failed
+            # with a diagnostic; it sits in 'failed' until the relevant adapter
+            # lands, and other rows in the batch keep processing.
+            mark_failed(
+                draft_id=row["id"],
+                error_log=(
+                    f"unknown payload_version={row['payload_version']} — "
+                    f"no V{row['payload_version']} adapter (known: V1). "
+                    "Schema drift; ignore until adapter added."
+                ),
+                actor=worker_id,
+                increment_retry=False,  # adapter gap is not a retry-able condition
             )
+            continue
+        raw_payload = json.loads(row["payload"])
         payload = ApprovalPayloadV1Adapter.validate_python(raw_payload)
 
         flags = payload.compliance_flags
