@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import feedparser
@@ -149,9 +150,10 @@ class PubMedDigestPipeline(BaseAgent):
                 mark_seen(_SOURCE_NAME, c["pmid"], c.get("url"))
 
         oa_count = sum(1 for i in scored if i.get("fulltext", {}).get("status") == "oa_downloaded")
+        html_count = sum(1 for i in scored if i.get("fulltext", {}).get("status") == "oa_html")
         summary = (
             f"fetch={len(all_candidates)} fresh={len(fresh)} "
-            f"selected={len(scored)} oa_downloaded={oa_count} "
+            f"selected={len(scored)} oa_downloaded={oa_count} oa_html={html_count} "
             f"(dry_run={self.dry_run})"
         )
         return summary
@@ -383,6 +385,8 @@ class PubMedDigestPipeline(BaseAgent):
             "full_text_status": ft.get("status"),
             "full_text_source": ft.get("source"),
             "full_text_path": ft.get("pdf_relpath"),
+            "full_text_html_path": ft.get("html_relpath"),
+            "publisher_url": ft.get("publisher_url"),
             "read_status": "unread",
             "source": "pubmed_rss",
             "type": "paper_digest",
@@ -514,6 +518,8 @@ def _dry_run_fulltext() -> FullTextResult:
         "status": "not_found",
         "source": None,
         "pdf_relpath": None,
+        "html_relpath": None,
+        "publisher_url": None,
         "doi": None,
         "note": "dry-run 未嘗試下載",
     }
@@ -524,11 +530,14 @@ def _render_fulltext_section(ft: FullTextResult, pmid: str) -> str:
     status = ft.get("status")
     doi = ft.get("doi")
     pdf = ft.get("pdf_relpath")
+    html = ft.get("html_relpath")
+    publisher_url = ft.get("publisher_url")
     src = ft.get("source")
     note = ft.get("note") or ""
     doi_line = f"**DOI**: [{doi}](https://doi.org/{doi})" if doi else ""
 
     reader_line = ""
+    extra_lines: list[str] = []
     if status == "oa_downloaded" and pdf:
         src_label = {
             "pmc": "PubMed Central",
@@ -538,12 +547,21 @@ def _render_fulltext_section(ft: FullTextResult, pmid: str) -> str:
         pdf_line = f"**PDF**: [[{pdf}]]（來源：{src_label}）"
         reader_url = f"http://localhost:8000/robin/pubmed-to-reader?pmid={pmid}"
         reader_line = f"**雙語閱讀**: [📖 開啟 Robin reader（本機）]({reader_url})"
+    elif status == "oa_html" and html:
+        domain = urlparse(publisher_url).netloc if publisher_url else "publisher"
+        pdf_line = f"**HTML**: [[{html}]]（來源：{domain}）"
+        if publisher_url:
+            extra_lines.append(f"**原始頁**: [{domain}]({publisher_url})")
+        if pdf:
+            extra_lines.append(f"**PDF**: [[{pdf}]]")
+        reader_url = f"http://localhost:8000/robin/pubmed-to-reader?pmid={pmid}"
+        reader_line = f"**雙語閱讀**: [📖 開啟 Robin reader（本機）]({reader_url})"
     elif status == "needs_manual":
         pdf_line = "**PDF**: ⚠️ 非 Open Access，需手動取得全文"
     else:
         pdf_line = f"**PDF**: ❌ 無法取得（{note}）"
 
-    parts = [pdf_line]
+    parts = [pdf_line, *extra_lines]
     if doi_line:
         parts.append(doi_line)
     if reader_line:
@@ -664,13 +682,20 @@ def _render_digest_entry(rank: int, item: dict) -> list[str]:
         else "未收錄 Scimago"
     )
 
-    # 全文狀態：已下載顯示 📄 PDF link，非 OA 顯示 ⚠️ + DOI，其他顯示 ❌ + 真實原因
+    # 全文狀態：PDF 下載 / publisher HTML / 非 OA / 無法取得
     status = ft.get("status")
     doi = ft.get("doi")
     pdf_relpath = ft.get("pdf_relpath")
+    html_relpath = ft.get("html_relpath")
+    publisher_url = ft.get("publisher_url")
+    pmid = cand["pmid"]
     note = ft.get("note") or ""
     if status == "oa_downloaded" and pdf_relpath:
         ft_line = f"- **全文**: 📄 [[{pdf_relpath}|下載的 PDF]]"
+    elif status == "oa_html" and html_relpath:
+        domain = urlparse(publisher_url).netloc if publisher_url else "publisher"
+        reader_url = f"http://localhost:8000/robin/pubmed-to-reader?pmid={pmid}"
+        ft_line = f"- **全文**: 🌐 網頁全文（{domain}）— [📖 開啟雙語閱讀]({reader_url})"
     elif status == "needs_manual" and doi:
         ft_line = f"- **全文**: ⚠️ 非 OA — [DOI: {doi}](https://doi.org/{doi}) (需手動取得)"
     else:

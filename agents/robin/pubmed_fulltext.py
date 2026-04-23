@@ -18,6 +18,7 @@ from typing import Literal, Optional, TypedDict
 
 import httpx
 
+from agents.robin.pubmed_html import fetch_publisher_html
 from shared.log import get_logger
 
 _logger = get_logger("nakama.robin.fulltext")
@@ -28,13 +29,15 @@ _EUROPE_PMC_PDF_URL_TMPL = "https://europepmc.org/articles/PMC{pmcid}?pdf=render
 _UNPAYWALL_URL_TMPL = "https://api.unpaywall.org/v2/{doi}"
 
 
-Status = Literal["oa_downloaded", "needs_manual", "not_found"]
+Status = Literal["oa_downloaded", "oa_html", "needs_manual", "not_found"]
 
 
-class FullTextResult(TypedDict):
+class FullTextResult(TypedDict, total=False):
     status: Status
     source: Optional[str]
     pdf_relpath: Optional[str]
+    html_relpath: Optional[str]
+    publisher_url: Optional[str]
     doi: Optional[str]
     note: str
 
@@ -121,6 +124,28 @@ def fetch_fulltext(
                     "doi": doi,
                     "note": "via Unpaywall",
                 }
+
+    # 第 5 層 fallback：透過 NCBI elink prlinks 找 publisher 的 Free HTML 全文，
+    # 用 shared.web_scraper 抓 → 圖片本地化 → 可選附帶 PDF。
+    publisher = fetch_publisher_html(
+        pmid,
+        doi=doi,
+        attachments_abs_dir=attachments_abs_dir,
+        vault_relative_prefix=vault_relative_prefix,
+        email=email,
+        ncbi_api_key=ncbi_api_key,
+        timeout=timeout,
+    )
+    if publisher:
+        return {
+            "status": "oa_html",
+            "source": publisher["source"],
+            "pdf_relpath": publisher.get("pdf_relpath"),
+            "html_relpath": publisher["html_relpath"],
+            "publisher_url": publisher["publisher_url"],
+            "doi": doi,
+            "note": publisher["note"],
+        }
 
     if doi:
         _logger.info(f"[fulltext] PMID {pmid} 非 OA，需手動取得")
