@@ -211,7 +211,6 @@ def claim_approved_drafts(
     worker_id: str,
     source_agent: str,
     batch: int = 5,
-    timeout_s: int = 5,
 ) -> list[dict[str, Any]]:
     """Atomically claim `batch` approved drafts for this worker.
 
@@ -237,7 +236,6 @@ def claim_approved_drafts(
     in the failed row surfaces the drift for triage.
     """
     conn = _get_conn()
-    conn.execute(f"PRAGMA busy_timeout = {timeout_s * 1000}")
 
     now = _now_iso()
     rows = conn.execute(
