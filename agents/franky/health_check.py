@@ -33,8 +33,8 @@ import psutil
 
 from shared.log import get_logger
 from shared.schemas.franky import (
-    AlertV1,
     DEFAULT_FAIL_THRESHOLD,
+    AlertV1,
     HealthProbeV1,
     ProbeTarget,
 )

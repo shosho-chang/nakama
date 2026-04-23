@@ -27,8 +27,8 @@ from agents.franky.health_check import (
     run_once,
 )
 from shared.schemas.franky import (
-    AlertV1,
     DEFAULT_FAIL_THRESHOLD,
+    AlertV1,
     HealthProbeV1,
 )
 

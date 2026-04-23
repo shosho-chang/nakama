@@ -8,9 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from shared.schemas.franky import (
-    AlertV1,
     DEFAULT_DEDUP_WINDOW_S,
     DEFAULT_FAIL_THRESHOLD,
+    AlertV1,
     HealthProbeV1,
     HealthzCheckEntry,
     HealthzResponseV1,
