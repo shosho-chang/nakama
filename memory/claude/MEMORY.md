@@ -100,4 +100,6 @@
 - [feedback_multi_machine_parallel.md](feedback_multi_machine_parallel.md) — Mac ↔ 桌機並行用對方 open PR file list 做 conflict 分析，挑 zero-overlap 任務不 rebase
 - [feedback_dual_review_complementarity.md](feedback_dual_review_complementarity.md) — ultrareview（behavioral bias）+ 本地 3-agent（data/config bias）互補；PR #77 實證 9 bug 零重疊
 - [feedback_rendering_truthify_audit_upstream.md](feedback_rendering_truthify_audit_upstream.md) — render 改用上游 note 欄位時要掃所有 return 該欄位的分支，確認訊息沒說謊（PR #84 review 抓到）
+- [feedback_model_construct_bypasses_validators.md](feedback_model_construct_bypasses_validators.md) — pydantic `model_construct()` 跳過 validators，消費端要補 defensive check（Bug 2 根因）
+- [project_usopp_slice_b_pr77.md](project_usopp_slice_b_pr77.md) — PR #77 四 commit 跨三台 review 解 11 個 blocker，951 tests，等 merge
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界

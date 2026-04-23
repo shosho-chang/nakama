@@ -68,17 +68,18 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 
 **Phase 1 Wave 2（foundation 已合併，見 project_phase1_foundation_pr.md）：**
 - 🚧 VPS baseline 壓測 24h，2026-04-23 ~22:21 滿 → `ssh nakama-vps "python3 /home/nakama/scripts/vps_baseline_monitor.py --analyze"` 看 verdict
-- ⬜ `shared/gutenberg_validator.py`（ADR-005a §4，round-trip + whitelist + attr JSON 驗）
-- ⬜ `agents/brook/compose.py` + style_profile_loader + tag_filter + compliance_scan
-- ⬜ `agents/usopp/publisher.py` + wp_client + seopress_writer + litespeed_purge + advisory locks
-- ⬜ `shared/schemas/external/wordpress.py` + `external/seopress.py`（anti-corruption layer）
+- ✅ `shared/gutenberg_validator.py`（ADR-005a §4）— PR #80 Mac session
+- ✅ `agents/brook/compose.py` + style_profile_loader + tag_filter + compliance_scan — PR #78 Mac session
+- 🚧 `agents/usopp/publisher.py` + compliance + seopress_writer + litespeed_purge — **PR #77 open, 11 blockers cleared, awaiting merge**（見 [project_usopp_slice_b_pr77.md](project_usopp_slice_b_pr77.md)）
+- ✅ `shared/schemas/external/wordpress.py` + `external/seopress.py`（PR #73 Slice A）
 - ⬜ Bridge `/bridge/drafts` UI + routes + CLI fallback
-- ✅ `agents/franky/` 全三 slice + `/healthz` + weekly digest + `/bridge/franky`（PR #74/#75/#76，2026-04-23；見 [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md)）
+- ✅ `agents/franky/` 全三 slice（PR #74/#75/#76）
 - ⬜ Franky VPS 上線：`.env` 補 `SLACK_SHOSHO_USER_ID` + R2_* + 加 3 條 cron + 跑 UptimeRobot runbook
-- ✅ `config/style-profiles/*.yaml` 三個 profile（seed 由 PR #78 帶，detect_keywords 擴充由 PR #79 完成）
+- ✅ `config/style-profiles/*.yaml` 三個 profile（PR #78/#79）
+- ⬜ Usopp Slice C — daemon loop + `/healthz` WP 連線檢查 + Docker WP 6.x staging E2E + LiteSpeed Day 1 實測
 
 **Phase 1 foundation borderline follow-ups（6 項，非 blocker，5/6 完成）：**
-- ⬜ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` 移到 `_get_conn()` 開啟時設（ADR-006 §5 checklist）— **blocked by #77** 觸碰 `shared/state.py`
+- ⬜ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` 移到 `_get_conn()` 開啟時設（ADR-006 §5 checklist）— **等 PR #77 merge 後再做**（兩邊都動 `shared/state.py`）
 - ✅ `claim_approved_drafts` 的 `UnknownPayloadVersionError` 改 `mark_failed` 兜底（PR #83）
 - ✅ `BlockNodeV1.children` 加 per-block-type whitelist（PR #81）
 - ✅ 3 個 docstring 準確度修正（atomic mutex / filter-out / CHECK 反向生成）（PR #82）
