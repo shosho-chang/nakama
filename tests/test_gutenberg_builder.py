@@ -89,6 +89,79 @@ class TestBlockNodeV1Schema:
             BlockNodeV1(block_type="paragraph", content="x", unknown_field="y")  # type: ignore[call-arg]
 
 
+class TestBlockNodeV1ChildrenWhitelist:
+    """ADR-004 review borderline #3：per-block-type children type constraint."""
+
+    def test_list_accepts_list_item_children(self):
+        BlockNodeV1(
+            block_type="list",
+            children=[BlockNodeV1(block_type="list_item", content="a")],
+        )
+
+    def test_list_rejects_paragraph_child(self):
+        with pytest.raises(ValidationError, match="cannot contain 'paragraph'"):
+            BlockNodeV1(
+                block_type="list",
+                children=[BlockNodeV1(block_type="paragraph", content="stray")],
+            )
+
+    def test_quote_accepts_paragraph_list_and_nested_quote(self):
+        BlockNodeV1(
+            block_type="quote",
+            children=[
+                BlockNodeV1(block_type="paragraph", content="p"),
+                BlockNodeV1(
+                    block_type="list",
+                    children=[BlockNodeV1(block_type="list_item", content="i")],
+                ),
+                BlockNodeV1(
+                    block_type="quote",
+                    children=[BlockNodeV1(block_type="paragraph", content="inner")],
+                ),
+            ],
+        )
+
+    def test_quote_rejects_image_child(self):
+        with pytest.raises(ValidationError, match="cannot contain 'image'"):
+            BlockNodeV1(
+                block_type="quote",
+                children=[BlockNodeV1(block_type="image", attrs={"src": "/x.jpg"})],
+            )
+
+    def test_paragraph_rejects_any_children(self):
+        with pytest.raises(ValidationError, match="leaf block"):
+            BlockNodeV1(
+                block_type="paragraph",
+                content="x",
+                children=[BlockNodeV1(block_type="paragraph", content="y")],
+            )
+
+    def test_leaf_blocks_reject_any_children(self):
+        """所有 leaf block（無 children 能力）加 child 都要被擋。"""
+        for leaf_type in ("heading", "list_item", "image", "code", "separator"):
+            with pytest.raises(ValidationError, match="leaf block"):
+                BlockNodeV1(
+                    block_type=leaf_type,
+                    children=[BlockNodeV1(block_type="paragraph", content="stray")],
+                )
+
+    def test_empty_children_always_allowed(self):
+        """無 children 的 leaf block 正常建構不受影響。"""
+        for block_type in ("paragraph", "heading", "list_item", "image", "code", "separator"):
+            BlockNodeV1(block_type=block_type, content="x" if block_type != "separator" else None)
+
+    def test_whitelist_covers_all_block_types(self):
+        """_ALLOWED_CHILDREN 必須涵蓋 block_type Literal 所有成員，否則 KeyError。"""
+        from typing import get_args
+
+        from shared.schemas.publishing import _ALLOWED_CHILDREN
+
+        literal_members = set(get_args(BlockNodeV1.model_fields["block_type"].annotation))
+        assert literal_members == set(_ALLOWED_CHILDREN.keys()), (
+            "Literal 新增 block_type 時漏更新 _ALLOWED_CHILDREN"
+        )
+
+
 class TestGutenbergHTMLV1Validator:
     def test_builder_output_valid(self):
         """GutenbergHTMLV1 constructed with build()'s output must pass validator."""
