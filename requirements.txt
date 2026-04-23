@@ -35,6 +35,7 @@ pdfplumber>=0.11          # 精確表格提取（研究論文/教科書 with_tab
 # Utilities
 python-dateutil>=2.9
 psutil>=5.9.0              # Franky: system health checks (disk/memory)
+boto3>=1.34.0              # Franky: R2 (S3-compatible) backup verification
 
 # Web UI (Robin)
 fastapi>=0.111.0
