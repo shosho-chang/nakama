@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-23
+updated: 2026-04-24
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
@@ -98,4 +98,8 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ PR #81 — `BlockNodeV1.children` whitelist
 - ✅ PR #82 — 3 個 docstring 準確度修正
 - ✅ PR #83 — UnknownPayloadVersionError → mark_failed 兜底
-- **Follow-up backlog 累積**：gutenberg_validator AST depth 用 stack depth 落地、crossed recovery 改 find-and-pop、`content × children` XOR 約束、`ValidationError` / `JSONDecodeError` soft-fail（borderline #2.5）、`UnknownPayloadVersionError` class 加 deprecation docstring
+
+**Mac 2026-04-24 session（桌機同時做 #88 Nakama backup to R2，零重疊並行）：**
+- ✅ PR #89 — gutenberg follow-ups：`_ast_depth` iterative stack（DoS-proof）+ find-and-preserve crossed recovery + `BlockNodeV1.content × children` XOR（Group A 三項）
+- ✅ PR #90 — approval_queue follow-ups：`UnknownPayloadVersionError` deprecation docstring + `ValidationError / JSONDecodeError / TypeError` soft-fail（borderline #2.5，Group B 兩項）
+- Follow-up backlog 全部清空
