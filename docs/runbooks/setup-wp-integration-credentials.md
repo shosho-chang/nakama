@@ -186,7 +186,7 @@ fleet 站裝了 **Fluent Security** plugin，預設會關掉 Application Passwor
   ```
   SLACK_FRANKY_BOT_TOKEN=xoxb-...
   SLACK_FRANKY_APP_TOKEN=xapp-...
-  SLACK_SHOSHO_USER_ID=U0xxxxxx  # 你的 Slack user ID（Franky DM 目標）
+  SLACK_USER_ID_SHOSHO=U0xxxxxx  # 你的 Slack user ID（Franky DM 目標）
   ```
 
 （完整步驟請參考 [docs/runbooks/add-agent-slack-bot.md](add-agent-slack-bot.md)）

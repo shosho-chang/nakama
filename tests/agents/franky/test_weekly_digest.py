@@ -328,7 +328,7 @@ def test_send_digest_calls_post_plain():
 
 def test_send_digest_without_slack_bot_uses_from_env(monkeypatch):
     monkeypatch.delenv("SLACK_FRANKY_BOT_TOKEN", raising=False)
-    monkeypatch.delenv("SLACK_SHOSHO_USER_ID", raising=False)
+    monkeypatch.delenv("SLACK_USER_ID_SHOSHO", raising=False)
     with patch.object(weekly_digest, "sample_vps") as mock_vps:
         mock_vps.return_value = VPSSnapshot(
             cpu_pct=10,
