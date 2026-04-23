@@ -312,12 +312,16 @@ async def pubmed_to_reader(
     pmid: str,
     nakama_auth: str | None = Cookie(None),
 ):
-    """將 PubMed 下載的 OA PDF 轉為雙語 Markdown，並跳轉到 reader。
+    """將 PubMed 下載的 OA 全文轉為雙語 Markdown，並跳轉到 reader。
 
-    - 輸入：已下載在 ``KB/Attachments/pubmed/{pmid}.pdf`` 的全文 PDF
+    Source 優先順序：
+    1. ``KB/Attachments/pubmed/{pmid}.pdf`` → parse_pdf → translate
+    2. ``KB/Attachments/pubmed/{pmid}.md`` → 直接 translate（oa_html case，
+       publisher HTML 已被 `pubmed_html.fetch_publisher_html()` 轉成 markdown）
+
     - 輸出：``KB/Wiki/Sources/pubmed-{pmid}-bilingual.md``（與原 source 並列）
     - 第二次點同一篇會 short-circuit：發現雙語檔已存在就直接跳 reader，不重翻
-    - 翻譯成本：Claude Sonnet，每篇約 5–15 萬字（看 PDF 長度），成本 $0.3–1
+    - 翻譯成本：Claude Sonnet，每篇約 5–15 萬字（看來源長度），成本 $0.3–1
     """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
@@ -336,29 +340,46 @@ async def pubmed_to_reader(
             response.set_cookie("nakama_auth", nakama_auth, httponly=True)
         return response
 
-    pdf_path = get_vault_path() / _PUBMED_FT_DIR / f"{pmid}.pdf"
-    if not pdf_path.exists():
-        raise HTTPException(
-            404,
-            detail=(
-                f"找不到 {_PUBMED_FT_DIR}/{pmid}.pdf — 可能是 non-OA 論文，Robin digest 未下載"
-            ),
-        )
+    attachments_dir = get_vault_path() / _PUBMED_FT_DIR
+    pdf_path = attachments_dir / f"{pmid}.pdf"
+    html_md_path = attachments_dir / f"{pmid}.md"
 
     from shared.pdf_parser import parse_pdf
     from shared.translator import translate_document
 
-    try:
-        raw_md = await asyncio.to_thread(parse_pdf, pdf_path, with_tables=True)
-    except Exception as e:
-        logger.error(f"PDF 解析失敗（PMID {pmid}）：{e}", exc_info=True)
-        raise HTTPException(500, detail=f"PDF 解析失敗：{e}") from e
+    raw_md: str
+    source_kind: str
+    derived_from: str
+    if pdf_path.exists():
+        try:
+            raw_md = await asyncio.to_thread(parse_pdf, pdf_path, with_tables=True)
+        except Exception as e:
+            logger.error(f"PDF 解析失敗（PMID {pmid}）：{e}", exc_info=True)
+            raise HTTPException(500, detail=f"PDF 解析失敗：{e}") from e
+        source_kind = "pdf"
+        derived_from = f"{_PUBMED_FT_DIR}/{pmid}.pdf"
+    elif html_md_path.exists():
+        try:
+            raw_md = await asyncio.to_thread(html_md_path.read_text, encoding="utf-8")
+        except Exception as e:
+            logger.error(f"讀取 publisher HTML markdown 失敗（PMID {pmid}）：{e}", exc_info=True)
+            raise HTTPException(500, detail=f"讀 HTML md 失敗：{e}") from e
+        source_kind = "html"
+        derived_from = f"{_PUBMED_FT_DIR}/{pmid}.md"
+    else:
+        raise HTTPException(
+            404,
+            detail=(
+                f"找不到 {_PUBMED_FT_DIR}/{pmid}.pdf 或 {_PUBMED_FT_DIR}/{pmid}.md — "
+                "可能是 non-OA 論文，Robin digest 未下載"
+            ),
+        )
 
     try:
         bilingual_md = await asyncio.to_thread(translate_document, raw_md)
     except Exception as e:
         logger.error(f"翻譯失敗（PMID {pmid}）：{e}", exc_info=True)
-        bilingual_md = raw_md  # fallback：留純英文，使用者仍能閱讀 + annotate
+        bilingual_md = raw_md  # fallback：留純原文，使用者仍能閱讀 + annotate
 
     safe_pmid = pmid  # 已通過 _PMID_RE 驗證
     frontmatter = (
@@ -369,12 +390,13 @@ async def pubmed_to_reader(
         "source_type: paper\n"
         "content_nature: research\n"
         "bilingual: true\n"
-        f'derived_from: "{_PUBMED_FT_DIR}/{safe_pmid}.pdf"\n'
+        f"source_kind: {source_kind}\n"
+        f'derived_from: "{derived_from}"\n'
         "---\n\n"
     )
     sources_dir.mkdir(parents=True, exist_ok=True)
     bilingual_path.write_text(frontmatter + bilingual_md, encoding="utf-8")
-    logger.info(f"pubmed-to-reader 完成：{bilingual_name}")
+    logger.info(f"pubmed-to-reader 完成：{bilingual_name} (source={source_kind})")
 
     response = RedirectResponse(f"/read?file={bilingual_name}&base=sources", status_code=303)
     if nakama_auth:
