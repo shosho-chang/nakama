@@ -1,0 +1,19 @@
+profile_id: people@0.1.0
+category: people
+primary_category: people
+style_profile_md: agents/brook/style-profiles/people.md
+word_count:
+  min: 1000
+  max: 4000
+forbid_emoji: false
+default_tag_hints:
+  - people
+  - podcast
+  - interview
+detect_keywords:
+  - 訪談
+  - 來賓
+  - podcast
+  - EP
+  - 不正常人類研究所
+  - 人物

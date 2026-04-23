@@ -1,0 +1,24 @@
+profile_id: book-review@0.1.0
+category: book-review
+# DraftV1.primary_category 值（publishing.py Literal 列表）
+primary_category: book-review
+# 主要風格 body（markdown），由 style_profile_loader 讀入當作 system prompt 附件
+style_profile_md: agents/brook/style-profiles/book-review.md
+word_count:
+  min: 5000
+  max: 12500
+# 硬規則：書評類禁 emoji（_extraction-notes.md §2）
+forbid_emoji: true
+# Brook 產稿時的候選 tag hint（tag_filter 會做白名單交集）
+default_tag_hints:
+  - book-review
+  - reading
+  - personal-development
+# 類別識別關鍵詞（style_profile_loader.detect_category 使用）
+detect_keywords:
+  - "這本書"
+  - 書名
+  - ISBN
+  - book review
+  - 讀書心得
+  - 心得
