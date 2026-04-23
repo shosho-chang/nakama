@@ -199,6 +199,22 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_health_probe_status
             ON health_probe_state(last_status, last_check_at DESC);
+
+        -- ADR-007 §5 R2 backup verification history.
+        -- Canonical DDL lives in migrations/004_r2_backup_checks.sql.
+        CREATE TABLE IF NOT EXISTS r2_backup_checks (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            checked_at          TEXT NOT NULL,
+            latest_object_key   TEXT,
+            latest_object_size  INTEGER,
+            latest_object_mtime TEXT,
+            status              TEXT NOT NULL
+                                CHECK (status IN ('ok', 'stale', 'missing', 'too_small')),
+            detail              TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_r2_backup_time
+            ON r2_backup_checks(checked_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
