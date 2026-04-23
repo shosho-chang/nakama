@@ -78,11 +78,12 @@ def filter_tags(
     """依白/黑名單過濾候選 tag，回傳 accepted + rejected(with reason)。
 
     過濾順序：
-    1. 去重（保序）
+    1. 去重（保序）；重複的視為 rejected reason="duplicate"
     2. blacklist 命中 → rejected reason="blacklisted"
     3. strict_whitelist=True 且不在 whitelist → rejected reason="not_in_whitelist"
-    4. strict_whitelist=False 且不在 whitelist → rejected reason="unknown"
-       （Phase 1 seed whitelist 不完整；切 true 前允許 compose 繼續但記錄警告）
+    4. strict_whitelist=False 且不在 whitelist → 直接 accepted（不列 rejected）
+       （Phase 1 seed whitelist 不完整；切 true 前先讓 compose 通過，觀察期內不阻擋。
+       呼叫端若要觀察「哪些被通過的 tag 不在 whitelist」，請看 accepted vs. registry）
     5. accepted 超過 max_tags → 多出的 rejected reason="over_limit"
     """
     reg = registry or load_registry()

@@ -9,6 +9,7 @@ word count / emoji 約束，以及一份 markdown（agents/brook/style-profiles/
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,19 +90,60 @@ def load_style_profile(category: str) -> StyleProfile:
     )
 
 
+_ASCII_WORD = re.compile(r"^[A-Za-z0-9]+$")
+
+# Yaml-only 快取，避免 detect_category 每次 load 整份 22KB md（只為拿 keywords）。
+_keyword_cache: dict[str, tuple[str, ...]] = {}
+
+
+def _load_detect_keywords(category: str) -> tuple[str, ...]:
+    """只讀 yaml 的 detect_keywords 欄位，略過 md 載入。"""
+    if category in _keyword_cache:
+        return _keyword_cache[category]
+    yaml_path = _profile_yaml_path(category)
+    if not yaml_path.exists():
+        return ()
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+    keywords = tuple(str(k) for k in (data.get("detect_keywords") or []))
+    _keyword_cache[category] = keywords
+    return keywords
+
+
+def _reset_keyword_cache() -> None:
+    """測試用。"""
+    _keyword_cache.clear()
+
+
+def _keyword_hits(keyword: str, topic: str, source_content: str) -> int:
+    """ASCII 短字用 word boundary 匹配，CJK 用 substring；CJK 無 \\b 語意可靠。"""
+    if _ASCII_WORD.match(keyword):
+        pattern = rf"\b{re.escape(keyword)}\b"
+        flags = re.IGNORECASE
+        return len(re.findall(pattern, topic, flags)) + len(
+            re.findall(pattern, source_content, flags)
+        )
+    topic_l = topic.lower()
+    source_l = source_content.lower()
+    kw_l = keyword.lower()
+    return topic_l.count(kw_l) + source_l.count(kw_l)
+
+
 def detect_category(topic: str, source_content: str = "") -> str | None:
     """依 topic + 原始素材粗略判斷類別；無匹配回 None（由 caller 決定 fallback）。
 
-    順序：先匹配 book-review（最精確，書名 / ISBN），再 people（訪談關鍵字），
-    最後 science。同時命中多類時取 hits 最多的；tie 時回 None 讓 caller 明指。
+    關鍵字匹配規則：
+    - ASCII 關鍵字（EP / ISBN / NEAT / VO2 / 168 等）要求 `\\b` word boundary；
+      否則 `EP` 會被「step / deep / help」吃到、`168` 會被「1680」吃到。
+    - CJK 關鍵字走 substring 匹配（CJK 沒有 `\\b` 語意，詞邊界不可靠）。
+    同時命中多類時取 hits 最多的；tie 時回 None，讓 caller 明確指定。
     """
-    haystack = f"{topic}\n{source_content}".lower()
     scores: dict[str, int] = {}
     for category in available_categories():
-        profile = load_style_profile(category)
-        hits = sum(1 for kw in profile.detect_keywords if kw.lower() in haystack)
-        if hits > 0:
-            scores[category] = hits
+        total = 0
+        for kw in _load_detect_keywords(category):
+            total += _keyword_hits(kw, topic, source_content)
+        if total > 0:
+            scores[category] = total
 
     if not scores:
         return None

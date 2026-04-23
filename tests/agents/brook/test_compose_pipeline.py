@@ -234,3 +234,47 @@ def test_default_tag_hints_used_when_llm_returns_empty_tags():
     payload = ApprovalPayloadV1Adapter.validate_python(json.loads(row["payload"]))
     # book-review.yaml default_tag_hints 包含 "book-review"
     assert "book-review" in payload.draft.tags
+
+
+def test_llm_title_too_short_wraps_as_parse_error():
+    """title < 5 字（DraftV1 下限）ValidationError 必須轉 ComposeOutputParseError。"""
+    fake = _valid_llm_response(title="太短")
+    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+        with pytest.raises(ComposeOutputParseError):
+            compose_and_enqueue(topic="讀書心得", category="book-review")
+
+
+def test_llm_missing_required_key_wraps_as_parse_error():
+    """LLM 漏 focus_keyword → KeyError 必須轉 ComposeOutputParseError。"""
+    body: dict[str, Any] = {
+        "title": "閱讀筆記：這本書改變了我的作息節奏與日常",
+        "slug_candidates": ["my-book"],
+        "excerpt": "短短 30 字的 excerpt，講一下這本書帶來的改變，請嚴格遵守。",
+        # focus_keyword intentionally missing
+        "meta_description": (
+            "讀完之後我整理了三個最打中的觀點，搭配 30 天實踐，"
+            "給你一個可以立刻動手的起手式，想看完整版 blog 歡迎訂閱。"
+        ),
+        "secondary_categories": [],
+        "tags": [],
+        "blocks": [
+            {
+                "block_type": "paragraph",
+                "attrs": {},
+                "content": "正文。",
+                "children": [],
+            }
+        ],
+    }
+    fake = json.dumps(body, ensure_ascii=False)
+    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+        with pytest.raises(ComposeOutputParseError):
+            compose_and_enqueue(topic="讀書心得", category="book-review")
+
+
+def test_llm_bad_slug_pattern_wraps_as_parse_error():
+    """LLM 送 CJK slug → DraftV1.slug_candidates pattern fail → ComposeOutputParseError。"""
+    fake = _valid_llm_response(slug_candidates=["這是中文slug"])
+    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+        with pytest.raises(ComposeOutputParseError):
+            compose_and_enqueue(topic="讀書心得", category="book-review")

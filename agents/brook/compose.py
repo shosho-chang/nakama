@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import AwareDatetime
+from pydantic import AwareDatetime, ValidationError
 
 from agents.brook.compliance_scan import scan_draft_compliance, scan_publish_gate
 from agents.brook.style_profile_loader import (
@@ -499,33 +499,37 @@ def compose_and_enqueue(
     operation_id = _new_operation_id()
     draft_id = _new_draft_id(now)
 
-    draft = DraftV1(
-        draft_id=draft_id,
-        created_at=now,
-        agent="brook",
-        operation_id=operation_id,
-        title=metadata["title"],
-        slug_candidates=list(metadata["slug_candidates"]),
-        content=content,
-        excerpt=metadata["excerpt"],
-        primary_category=primary_category_override or profile.primary_category,
-        secondary_categories=list(metadata.get("secondary_categories") or []),
-        tags=tag_result.accepted,
-        focus_keyword=metadata["focus_keyword"],
-        meta_description=metadata["meta_description"],
-        featured_image_brief=None,
-        compliance=draft_compliance,
-        style_profile_id=profile.profile_id,
-    )
-
-    approval_payload = PublishWpPostV1(
-        action_type="publish_post",
-        target_site=target_site,
-        draft=draft,
-        compliance_flags=gate_flags,
-        reviewer_compliance_ack=False,
-        scheduled_at=scheduled_at,
-    )
+    # LLM 可能回傳語法合法 JSON 但違反 DraftV1 長度 / pattern 限制，或漏掉必要欄位。
+    # 全部收斂成 ComposeOutputParseError，維持模組對外的單一 parse-class 例外契約。
+    try:
+        draft = DraftV1(
+            draft_id=draft_id,
+            created_at=now,
+            agent="brook",
+            operation_id=operation_id,
+            title=metadata["title"],
+            slug_candidates=list(metadata["slug_candidates"]),
+            content=content,
+            excerpt=metadata["excerpt"],
+            primary_category=primary_category_override or profile.primary_category,
+            secondary_categories=list(metadata.get("secondary_categories") or []),
+            tags=tag_result.accepted,
+            focus_keyword=metadata["focus_keyword"],
+            meta_description=metadata["meta_description"],
+            featured_image_brief=None,
+            compliance=draft_compliance,
+            style_profile_id=profile.profile_id,
+        )
+        approval_payload = PublishWpPostV1(
+            action_type="publish_post",
+            target_site=target_site,
+            draft=draft,
+            compliance_flags=gate_flags,
+            reviewer_compliance_ack=False,
+            scheduled_at=scheduled_at,
+        )
+    except (ValidationError, KeyError, TypeError) as e:
+        raise ComposeOutputParseError(f"LLM 輸出違反 DraftV1 / PublishWpPostV1 契約：{e}") from e
 
     queue_row_id = approval_queue.enqueue(
         source_agent="brook",

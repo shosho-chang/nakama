@@ -69,6 +69,27 @@ def test_detect_returns_none_when_no_match():
     assert detect_category("純隨機文字 quack zoot blob") is None
 
 
+def test_detect_ascii_keyword_respects_word_boundary():
+    """`EP`（people detect_keywords）不能吃到 step / help / deep 等內嵌字串。"""
+    # help / deep / step 都含 "ep" substring 但都不是獨立詞
+    assert detect_category("help me deep thinking at each step") is None
+
+
+def test_detect_ascii_numeric_keyword_respects_word_boundary():
+    """`168`（science detect_keywords）不能吃到 1680 / 2168 等較長數字。"""
+    assert detect_category("ascii code 1680 in unicode spec 21681") is None
+
+
+def test_detect_ascii_keyword_matches_on_boundary():
+    """正確被 `EP42` → `EP` 命中當 people 訊號。"""
+    assert detect_category("podcast EP42 來賓分享") == "people"
+
+
+def test_detect_case_insensitive_for_ascii():
+    """Isbn / isbn / ISBN 都算命中 book-review。"""
+    assert detect_category("isbn 978-0-123-45678-9 的那本書") == "book-review"
+
+
 def test_primary_category_matches_draft_v1_literal():
     """StyleProfile.primary_category 必須是 DraftV1.primary_category Literal 成員。"""
     from shared.schemas.publishing import DraftV1

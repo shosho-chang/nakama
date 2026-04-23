@@ -4,8 +4,16 @@
 - `DraftComplianceV1`：compose 期 snapshot（「有沒有避開療效、有沒有加免責」）
 - `PublishComplianceGateV1`：publish gate scan（Brook enqueue + Usopp claim 各跑一次）
 
-Phase 1 只提供最小 vocabulary。正規 `shared/compliance/medical_claim_vocab.py`
-屬桌機 lane（Usopp Slice B），完成後 Brook 會切到 shared 版本並保留相同 API。
+⚠️ SEED 版本有已知漏洞（不可用於 production）：
+    - `治好` / `治療 XX 病` / `停藥` / `預防癌症` / `降血糖` / `99.9%` 等自然表達不抓
+    - 疾病詞只覆蓋 {癌症, 糖尿病, 高血壓, 失智, 憂鬱, 慢性病}，未含肝癌 / 肺癌 / 乳癌等
+    - 絕對斷言 `100\\s*%` 不抓 `99.9%` / `100％`（全形）/ `百分百`
+
+Phase 1 seed 只為通 pipeline 契約。正規詞表住桌機 lane：
+    shared/compliance/medical_claim_vocab.py（Usopp Slice B）
+
+Slice B 上線後：本模組 deprecated，改 import shim 到 shared 版本。在那之前，
+compose_and_enqueue 不應被排 cron 或對外 expose — HITL 必過。
 
 使用方式：
     text = draft_content_as_plaintext
