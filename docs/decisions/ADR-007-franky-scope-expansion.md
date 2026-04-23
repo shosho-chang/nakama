@@ -321,7 +321,7 @@ CREATE INDEX IF NOT EXISTS idx_r2_backup_time
 
 - 獨立 Slack app（sanity：bot token 已依 `docs/runbooks/add-agent-slack-bot.md` 完成，見 `project_phase1_infra_checkpoint.md`）
 - Scope：`chat:write` + `im:write`（單向 DM）
-- 接收 DM target：`SLACK_SHOSHO_USER_ID`
+- 接收 DM target：`SLACK_USER_ID_SHOSHO`
 - 發送類型：Critical alert / Weekly digest / 啟動通知
 - **不訂閱 events、不提供 interactivity**（降低 attack surface）
 
@@ -403,7 +403,7 @@ migrations/
 | state.db 毀損 | alert_state / cron_runs 全失 | 每日 R2 備份 + WAL + `.backup` API | litestream 實時同步 |
 | UptimeRobot 掛 | 外部告警失效 | email-only 降級 | 加第二家 probe |
 | Slack outage | Franky DM 失敗 | 外部 probe email 繞過 | SMTP/Resend email fallback |
-| `SLACK_SHOSHO_USER_ID` 變更 | DM 失敗 | bot 啟動時驗 user id，失敗即崩（非靜默） | — |
+| `SLACK_USER_ID_SHOSHO` 變更 | DM 失敗 | bot 啟動時驗 user id，失敗即崩（非靜默） | — |
 
 ---
 

@@ -15,7 +15,7 @@ Franky is Nakama's infrastructure watchdog. It probes VPS resources, WordPress s
 | `agents/franky/health_check.py` | 5-min cron probe: VPS / WP×2 / Nakama gateway, 3-consecutive-fail state machine |
 | `agents/franky/alert_router.py` | Dedup via `alert_state` table (ADR-007 §4), dispatch to Slack |
 | `agents/franky/r2_backup_verify.py` | Daily probe of R2 backups; 連 2 日失敗 → Critical |
-| `agents/franky/slack_bot.py` | `slack_sdk` wrapper, DM to `SLACK_SHOSHO_USER_ID`, no-op stub when env missing; `post_alert` + `post_plain` surfaces |
+| `agents/franky/slack_bot.py` | `slack_sdk` wrapper, DM to `SLACK_USER_ID_SHOSHO`, no-op stub when env missing; `post_alert` + `post_plain` surfaces |
 | `agents/franky/weekly_digest.py` | Monday 10:00 Slack DM — 5 sections (VPS / cron / alerts / backup / cost), pure template, no LLM |
 | `thousand_sunny/routers/franky.py` | `GET /healthz` (Slice 1) + `GET /bridge/franky` dashboard (Slice 3) |
 | `thousand_sunny/templates/bridge/franky.html` | Direction B-styled dashboard: 4 probe cards + 24h alert list + R2 strip |
@@ -29,7 +29,7 @@ Franky is Nakama's infrastructure watchdog. It probes VPS resources, WordPress s
 | Env | Required? | Purpose |
 |---|---|---|
 | `SLACK_FRANKY_BOT_TOKEN` | optional† | Slack bot token (xoxb-...); missing → DM is a logged no-op |
-| `SLACK_SHOSHO_USER_ID` | optional† | Target user for DMs (U07XXXXXXX) |
+| `SLACK_USER_ID_SHOSHO` | optional† | Target user for DMs (U07XXXXXXX) |
 | `NAKAMA_HEALTHZ_URL` | optional | Override loopback probe URL; defaults to `http://127.0.0.1:8000/healthz` |
 | `WP_SHOSHO_{BASE_URL,USERNAME,APP_PASSWORD}` | optional | When set, Franky probes shosho.tw health |
 | `WP_FLEET_{BASE_URL,USERNAME,APP_PASSWORD}` | optional | When set, Franky probes fleet.shosho.tw health |

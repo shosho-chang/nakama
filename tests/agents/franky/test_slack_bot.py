@@ -40,21 +40,21 @@ def _alert(severity: str = "critical") -> AlertV1:
 
 def test_from_env_missing_token_returns_stub(monkeypatch):
     monkeypatch.delenv("SLACK_FRANKY_BOT_TOKEN", raising=False)
-    monkeypatch.setenv("SLACK_SHOSHO_USER_ID", "U123")
+    monkeypatch.setenv("SLACK_USER_ID_SHOSHO", "U123")
     bot = FrankySlackBot.from_env()
     assert isinstance(bot, _NoopSlackStub)
 
 
 def test_from_env_missing_user_returns_stub(monkeypatch):
     monkeypatch.setenv("SLACK_FRANKY_BOT_TOKEN", "xoxb-x")
-    monkeypatch.delenv("SLACK_SHOSHO_USER_ID", raising=False)
+    monkeypatch.delenv("SLACK_USER_ID_SHOSHO", raising=False)
     bot = FrankySlackBot.from_env()
     assert isinstance(bot, _NoopSlackStub)
 
 
 def test_from_env_both_present_returns_real(monkeypatch):
     monkeypatch.setenv("SLACK_FRANKY_BOT_TOKEN", "xoxb-testtoken")
-    monkeypatch.setenv("SLACK_SHOSHO_USER_ID", "U07CAFEBABE")
+    monkeypatch.setenv("SLACK_USER_ID_SHOSHO", "U07CAFEBABE")
     bot = FrankySlackBot.from_env()
     assert isinstance(bot, FrankySlackBot)
 

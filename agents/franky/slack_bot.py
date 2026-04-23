@@ -5,7 +5,7 @@ subscribe to events or handle interactivity (降低 attack surface per ADR-007 �
 
 Env:
     SLACK_FRANKY_BOT_TOKEN   — bot token (xoxb-...)
-    SLACK_SHOSHO_USER_ID     — target user ID (U07XXXXXXX) for DMs
+    SLACK_USER_ID_SHOSHO     — target user ID (U07XXXXXXX) for DMs
 
 Factory returns a no-op stub when either env is missing — dev machines and CI can run
 without creds, alert_router still exercises dedup logic, no Slack API calls made.
@@ -40,7 +40,7 @@ class SlackPoster(Protocol):
 
 
 class FrankySlackBot:
-    """Thin WebClient wrapper that DMs `SLACK_SHOSHO_USER_ID`."""
+    """Thin WebClient wrapper that DMs `SLACK_USER_ID_SHOSHO`."""
 
     def __init__(self, *, bot_token: str, user_id: str, client: WebClient | None = None) -> None:
         self._client = client or WebClient(token=bot_token)
@@ -51,11 +51,11 @@ class FrankySlackBot:
     def from_env(cls) -> SlackPoster:
         """Return FrankySlackBot if env is present, otherwise a log-only stub."""
         token = os.getenv("SLACK_FRANKY_BOT_TOKEN")
-        user = os.getenv("SLACK_SHOSHO_USER_ID")
+        user = os.getenv("SLACK_USER_ID_SHOSHO")
         if not token or not user:
             logger.info(
                 "Franky Slack bot disabled — missing %s",
-                "SLACK_FRANKY_BOT_TOKEN" if not token else "SLACK_SHOSHO_USER_ID",
+                "SLACK_FRANKY_BOT_TOKEN" if not token else "SLACK_USER_ID_SHOSHO",
             )
             return _NoopSlackStub()
         return cls(bot_token=token, user_id=user)
