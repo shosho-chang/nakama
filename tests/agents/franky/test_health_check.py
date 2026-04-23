@@ -63,9 +63,7 @@ def _ok_probe(target: str = "wp_shosho") -> HealthProbeV1:
 
 def test_single_fail_does_not_emit_alert():
     sink = MagicMock()
-    result = _record_and_maybe_alert(
-        _fail_probe(), operation_id="op_aaaaaaaa", alert_sink=sink
-    )
+    result = _record_and_maybe_alert(_fail_probe(), operation_id="op_aaaaaaaa", alert_sink=sink)
     assert result is None
     sink.assert_not_called()
 
@@ -73,9 +71,7 @@ def test_single_fail_does_not_emit_alert():
 def test_two_consecutive_fails_do_not_emit():
     sink = MagicMock()
     for _ in range(DEFAULT_FAIL_THRESHOLD - 1):
-        result = _record_and_maybe_alert(
-            _fail_probe(), operation_id="op_bbbbbbbb", alert_sink=sink
-        )
+        result = _record_and_maybe_alert(_fail_probe(), operation_id="op_bbbbbbbb", alert_sink=sink)
         assert result is None
     sink.assert_not_called()
 
@@ -83,9 +79,7 @@ def test_two_consecutive_fails_do_not_emit():
 def test_third_consecutive_fail_emits_critical():
     sink = MagicMock()
     for _ in range(DEFAULT_FAIL_THRESHOLD):
-        _record_and_maybe_alert(
-            _fail_probe(), operation_id="op_cccccccc", alert_sink=sink
-        )
+        _record_and_maybe_alert(_fail_probe(), operation_id="op_cccccccc", alert_sink=sink)
     assert sink.call_count == 1
     emitted: AlertV1 = sink.call_args.args[0]
     assert emitted.severity == "critical"
@@ -96,9 +90,7 @@ def test_third_consecutive_fail_emits_critical():
 def test_fourth_consecutive_fail_does_not_re_emit():
     sink = MagicMock()
     for _ in range(DEFAULT_FAIL_THRESHOLD + 1):
-        _record_and_maybe_alert(
-            _fail_probe(), operation_id="op_dddddddd", alert_sink=sink
-        )
+        _record_and_maybe_alert(_fail_probe(), operation_id="op_dddddddd", alert_sink=sink)
     # Only one alert total — router-side dedup gets the same guarantee but we prove
     # the probe itself doesn't spam.
     assert sink.call_count == 1
