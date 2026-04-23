@@ -10,6 +10,8 @@ default_tag_hints:
   - people
   - podcast
   - interview
+# 類別識別關鍵詞（style_profile_loader.detect_category 使用）
+# 從 13 集 podcast 人物介紹文萃取；聚焦「podcast 引流」語彙
 detect_keywords:
   - 訪談
   - 來賓
@@ -17,3 +19,6 @@ detect_keywords:
   - EP
   - 不正常人類研究所
   - 人物
+  - 本集
+  - 這集
+  - 主持

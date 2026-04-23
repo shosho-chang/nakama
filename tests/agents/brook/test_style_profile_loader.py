@@ -90,6 +90,32 @@ def test_detect_case_insensitive_for_ascii():
     assert detect_category("isbn 978-0-123-45678-9 的那本書") == "book-review"
 
 
+def test_detect_science_sleep_domain():
+    """科普四大領域之一的睡眠主題，應命中 science（seed 階段漏收錄）。"""
+    assert detect_category("睡眠不足對皮質醇的長期影響") == "science"
+
+
+def test_detect_science_metabolic_signature_terms():
+    """BDNF / mTOR / 褪黑激素 等代謝神經生化簽名詞應穩定打中 science。"""
+    assert detect_category("BDNF 與 mTOR 的交互作用") == "science"
+
+
+def test_detect_science_across_domains_accumulates():
+    """單篇同時觸及多個子領域（飲食+情緒）時 hit count 應累加而非互消。"""
+    # 果糖 + 發炎 + 多巴胺 三個 hits
+    assert detect_category("果糖、發炎反應、多巴胺獎勵迴路") == "science"
+
+
+def test_detect_people_via_episode_marker():
+    """人物文常用「本集」「這集」導引，不只是 EP{n}。"""
+    assert detect_category("本集來賓聊了創業八年的心路") == "people"
+
+
+def test_detect_book_review_via_goodreads():
+    """Goodreads / 推薦序 / 書單 等延伸簽名詞應命中 book-review。"""
+    assert detect_category("這本書在 Goodreads 上超過十萬評分") == "book-review"
+
+
 def test_primary_category_matches_draft_v1_literal():
     """StyleProfile.primary_category 必須是 DraftV1.primary_category Literal 成員。"""
     from shared.schemas.publishing import DraftV1

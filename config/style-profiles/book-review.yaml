@@ -15,6 +15,7 @@ default_tag_hints:
   - reading
   - personal-development
 # 類別識別關鍵詞（style_profile_loader.detect_category 使用）
+# 從 10 篇樣本萃取的 topic-level signature 詞；避免泛用詞（「閱讀」「推薦」會誤判）
 detect_keywords:
   - "這本書"
   - 書名
@@ -22,3 +23,7 @@ detect_keywords:
   - book review
   - 讀書心得
   - 心得
+  - 原書
+  - 推薦序
+  - 書單
+  - Goodreads
