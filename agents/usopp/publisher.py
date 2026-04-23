@@ -212,48 +212,49 @@ class Publisher:
         job_id = job["id"]
         adopted = False
 
-        # Stage 1: advisory-locked idempotency probe + create_post (ADR-005b §2.1)
+        # Stage 1: advisory-locked idempotency probe + create_post (ADR-005b §2.1).
+        # Orphan probe runs unconditionally inside the lock (not gated on
+        # state=="claimed") — crash between `media_ready` advance and `create_post`
+        # would otherwise bypass the probe on resume and create a duplicate post.
         if self._state_of(job_id) in ("claimed", "media_ready"):
             with advisory_lock(self.conn, key=f"usopp_draft_{draft.draft_id}", timeout_s=5.0):
-                current = self._state_of(job_id)
-                if current == "claimed":
-                    existing = self.wp.find_by_meta(
-                        "nakama_draft_id",
+                existing = self.wp.find_by_meta(
+                    "nakama_draft_id",
+                    draft.draft_id,
+                    operation_id=operation_id,
+                )
+                if existing is not None:
+                    logger.info(
+                        "publish adopting orphan WP post draft_id=%s post_id=%s op=%s",
                         draft.draft_id,
-                        operation_id=operation_id,
+                        existing.id,
+                        operation_id,
                     )
-                    if existing is not None:
-                        logger.info(
-                            "publish adopting orphan WP post draft_id=%s post_id=%s op=%s",
-                            draft.draft_id,
-                            existing.id,
-                            operation_id,
-                        )
-                        self._advance(
-                            job_id,
-                            "done",
-                            post_id=existing.id,
-                            permalink=existing.link,
-                            seo_status="skipped",
-                            cache_purged=0,
-                            completed_at=_iso_now(),
-                        )
-                        return True
+                    self._advance(
+                        job_id,
+                        "done",
+                        post_id=existing.id,
+                        permalink=existing.link,
+                        seo_status="skipped",
+                        cache_purged=0,
+                        completed_at=_iso_now(),
+                    )
+                    return True
 
+                if self._state_of(job_id) == "claimed":
                     self._advance(
                         job_id,
                         "media_ready",
                         featured_media_id=request.featured_media_id,
                     )
-                    current = "media_ready"
 
-                if current == "media_ready":
-                    post = self._create_draft_post(
-                        draft=draft,
-                        featured_media_id=request.featured_media_id,
-                        operation_id=operation_id,
-                    )
-                    self._advance(job_id, "post_draft", post_id=post.id, permalink=post.link)
+                # state is now media_ready; create post + advance to post_draft.
+                post = self._create_draft_post(
+                    draft=draft,
+                    featured_media_id=request.featured_media_id,
+                    operation_id=operation_id,
+                )
+                self._advance(job_id, "post_draft", post_id=post.id, permalink=post.link)
 
         # Stage 2: SEO write (three-tier fallback, ADR-005b §3)
         if self._state_of(job_id) == "post_draft":
@@ -291,6 +292,14 @@ class Publisher:
             elif request.action == "schedule":
                 if request.scheduled_at is None:
                     raise PublisherError("action=schedule requires scheduled_at")
+                # PublishRequestV1 pydantic validator normally enforces aware
+                # datetime, but `model_construct()` bypasses validators. Guard
+                # here so a naive datetime surfaces as a proper publisher
+                # failure rather than an unlabelled ValueError from astimezone().
+                if request.scheduled_at.tzinfo is None:
+                    raise PublisherError(
+                        "action=schedule requires timezone-aware scheduled_at (got naive datetime)"
+                    )
                 self.wp.update_post(
                     post_id,
                     status="future",

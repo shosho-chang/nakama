@@ -506,6 +506,101 @@ class TestCrashRecovery:
         # SEO write should NOT be called either
         wp.write_seopress_meta.assert_not_called()
 
+    def test_resume_from_media_ready_probes_orphan_before_create(self, monkeypatch):
+        """Bug #1 regression: resume from media_ready must still probe WP side.
+
+        If the prior run advanced to media_ready then crashed mid-create_post,
+        the WP side may already have an orphan post with this draft_id meta.
+        Without this check, resume would call create_post again and produce
+        a duplicate.
+        """
+        monkeypatch.setenv("LITESPEED_PURGE_METHOD", "noop")
+        draft = _make_draft()
+        approval_id = _enqueue_approved(draft, op_id=draft.operation_id)
+
+        # Seed publish_jobs in state=media_ready (mimics crash after advance)
+        from shared.state import _get_conn
+
+        conn = _get_conn()
+        conn.execute(
+            """INSERT INTO publish_jobs
+               (draft_id, approval_queue_id, operation_id, state,
+                state_updated_at, claimed_at)
+               VALUES (?, ?, ?, 'media_ready', ?, ?)""",
+            (
+                draft.draft_id,
+                approval_id,
+                draft.operation_id,
+                "2026-04-23T12:00:00+00:00",
+                "2026-04-23T12:00:00+00:00",
+            ),
+        )
+        conn.commit()
+
+        wp = _mk_happy_wp_client()
+        # Orphan exists on WP side — probe must find + adopt it
+        wp.find_by_meta.return_value = _wp_post(
+            post_id=55,
+            status="publish",
+            slug="example-post",
+            draft_id=draft.draft_id,
+        )
+        pub = Publisher(wp, category_map={"blog": 1}, tag_map={})
+
+        result = pub.publish(
+            _make_request(draft),
+            approval_queue_id=approval_id,
+            operation_id=draft.operation_id,
+        )
+
+        assert result.status == "already_published"
+        assert result.post_id == 55
+        # Critical: no duplicate create_post call
+        wp.create_post.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Scheduled datetime hardening
+# ---------------------------------------------------------------------------
+
+
+class TestScheduleDatetimeHardening:
+    def test_naive_scheduled_at_raises_publisher_error(self, monkeypatch):
+        """Bug #2 regression: naive datetime should surface as PublisherError
+        (which the publish() wrapper catches and records as failed), not as
+        an unlabelled ValueError from astimezone().
+        """
+        monkeypatch.setenv("LITESPEED_PURGE_METHOD", "noop")
+        draft = _make_draft()
+        approval_id = _enqueue_approved(draft, op_id=draft.operation_id)
+
+        # Bypass PublishRequestV1 validator via model_construct() to simulate
+        # a callpath that produced a naive datetime (Bridge/cron/JSON).
+        naive = datetime(2026, 4, 23, 12, 0, 0)  # no tzinfo
+        bad_request = PublishRequestV1.model_construct(
+            schema_version=1,
+            draft=draft,
+            action="schedule",
+            scheduled_at=naive,
+            featured_media_id=None,
+            reviewer="U_SHOSHO",
+        )
+
+        wp = _mk_happy_wp_client()
+        wp.get_post.side_effect = [
+            _wp_post(post_id=42, status="draft", draft_id=draft.draft_id),
+        ]
+        pub = Publisher(wp, category_map={"blog": 1}, tag_map={})
+
+        result = pub.publish(
+            bad_request,
+            approval_queue_id=approval_id,
+            operation_id=draft.operation_id,
+        )
+
+        assert result.status == "failed"
+        assert "timezone-aware" in (result.failure_reason or "")
+
 
 # ---------------------------------------------------------------------------
 # Category / tag handling

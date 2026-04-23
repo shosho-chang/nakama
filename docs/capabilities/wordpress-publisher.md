@@ -11,7 +11,7 @@
 | 功能 | 方法 | 來源 |
 |---|---|---|
 | 讀 approval_queue → publish WP | `Publisher(wp).publish(request, ...)` | ADR-005b §1 |
-| Crash-safe state machine（8 states） | `publish_jobs` 表持久化 | ADR-005b §1 |
+| Crash-safe state machine（8 forward states + failed） | `publish_jobs` 表持久化 | ADR-005b §1 |
 | 雙層 idempotency（Nakama + WP meta） | `publish_jobs.draft_id UNIQUE` + `nakama_draft_id` post meta | ADR-005b §2 |
 | Advisory lock（race-free create_post） | `shared/locks.advisory_lock` | ADR-005b §2.1 |
 | 三層 SEOPress fallback | `shared/seopress_writer.write_seopress` | ADR-005b §3 |
