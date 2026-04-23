@@ -131,6 +131,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Must run before any subcommand reads env (e.g. SlackBot.from_env in make_default_sink).
+    # Other agents trigger this indirectly via get_db_path(); Franky can send an alert
+    # without touching the DB first, so we load explicitly here.
+    from shared.config import load_config
+
+    load_config()
+
     parser = _build_parser()
     args = parser.parse_args(argv)
 
