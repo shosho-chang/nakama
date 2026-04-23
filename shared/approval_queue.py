@@ -31,6 +31,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from pydantic import ValidationError
+
 from shared.schemas.approval import (
     ApprovalPayloadV1,
     ApprovalPayloadV1Adapter,
@@ -88,7 +90,14 @@ class ConcurrentTransitionError(RuntimeError):
 
 
 class UnknownPayloadVersionError(ValueError):
-    """payload_version 在 schema 版本表裡找不到對應 parser。"""
+    """payload_version 在 schema 版本表裡找不到對應 parser。
+
+    DEPRECATED（ADR-006 borderline #2, PR #83 後）：`claim_approved_drafts()` 不再 raise
+    此 exception — 遇 schema drift 改走 `mark_failed(increment_retry=False)` 軟失敗兜底，
+    一個壞 row 不擋同 batch 其他 row。類別保留純為 legacy：若未來新增 loader 直接吃
+    raw DB row 不經 claim_approved_drafts，仍可用這個語意化 exception；新路徑請優先
+    採用 soft-fail 模式（見 PR #83 commit + docs/decisions/ADR-006 review log）。
+    """
 
 
 class ComplianceAckMissingError(ValueError):
@@ -234,6 +243,12 @@ def claim_approved_drafts(
     the whole claim. Rationale: schema drift is a ship-time bug, not a transient
     condition — one bad row shouldn't stall the whole worker, and the diagnostic
     in the failed row surfaces the drift for triage.
+
+    Payload parse fallback (ADR-006 borderline #2.5): same soft-fail treatment for
+    `json.JSONDecodeError` (payload column 字串壞掉) 與 `pydantic.ValidationError`
+    (payload_version=1 但 schema 部分欄位 drift)。過去這兩條都會從 Python 異常直接
+    炸穿整個 batch；現在跟 unknown-version 同一條路走，壞 row mark_failed 不 retry、
+    同 batch 其他 row 照常 claim。
     """
     conn = _get_conn()
 
@@ -275,8 +290,28 @@ def claim_approved_drafts(
                 increment_retry=False,  # adapter gap is not a retry-able condition
             )
             continue
-        raw_payload = json.loads(row["payload"])
-        payload = ApprovalPayloadV1Adapter.validate_python(raw_payload)
+
+        # Parse + schema validate — 同 unknown-version 一樣 soft-fail，一個壞 row 不擋 batch。
+        # JSONDecodeError：payload TEXT 字串實際損壞（罕見但 DB 層沒 JSON 型別保證）。
+        # ValidationError：payload_version=1 但 schema 部分欄位飄
+        #   （rename / Literal 收斂 / 必要欄位砍）。
+        # TypeError：payload 欄位 NULL / bytes 非 str 被丟進 json.loads
+        #   （schema NOT NULL 理論上擋，但照 feedback_parse_error_wrap_all_modes.md
+        #   belt-and-suspenders 要求留一條）。
+        try:
+            raw_payload = json.loads(row["payload"])
+            payload = ApprovalPayloadV1Adapter.validate_python(raw_payload)
+        except (json.JSONDecodeError, ValidationError, TypeError) as e:
+            mark_failed(
+                draft_id=row["id"],
+                error_log=(
+                    f"payload parse failed: {type(e).__name__}: {e}. "
+                    "Schema drift or corrupted payload; ignore until triaged."
+                ),
+                actor=worker_id,
+                increment_retry=False,  # parse failure won't heal on retry
+            )
+            continue
 
         flags = payload.compliance_flags
         if (flags.medical_claim or flags.absolute_assertion) and not bool(
