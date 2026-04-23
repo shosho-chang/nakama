@@ -134,6 +134,41 @@ def test_crossed_blocks_rejected():
     assert any(e.code == "comment_crossed" for e in result.errors)
 
 
+def test_crossed_close_does_not_pop_inner_target():
+    """find-and-preserve 恢復：close outer 時不該 pop 掉 inner（ADR-005a §4 follow-up）。
+
+    結構：open A → open B → close A → close B。
+    舊 bug：close A 時 top=B 不匹配 → `stack.pop()` 誤把 B pop 掉，close B 又報一次
+           crossed（stack 空）→ 一個錯被報成兩個，locator 也失真。
+    新行為：close A 看到 A 在 stack 較深處 → 報一次 crossed，stack 不動；close B 配對成
+           功 pop；最後 stack 剩 A 沒配對 → 一個 unpaired open。
+    """
+    html = (
+        "<!-- wp:paragraph -->\n<!-- wp:heading -->\n<!-- /wp:paragraph -->\n<!-- /wp:heading -->"
+    )
+    result = validate(html)
+    codes = [e.code for e in result.errors]
+    # 恰好一個 crossed（不是兩個）
+    assert codes.count("comment_crossed") == 1, f"expected exactly 1 crossed, got {codes}"
+    # paragraph 仍被記為 unpaired open（stack 沒被誤動）
+    assert any(e.code == "comment_unpaired" and "paragraph" in e.message for e in result.errors), (
+        f"expected unpaired paragraph open, got {result.errors}"
+    )
+
+
+def test_close_name_not_in_stack_reported_as_unpaired_not_crossed():
+    """close name 從未 open → unpaired，不該標成 crossed。"""
+    html = (
+        "<!-- wp:paragraph -->\n"
+        "<!-- /wp:heading -->\n"  # heading 從未 open
+        "<!-- /wp:paragraph -->"
+    )
+    result = validate(html)
+    codes = {e.code for e in result.errors}
+    assert "comment_unpaired" in codes
+    assert "comment_crossed" not in codes, f"should be unpaired not crossed: {result.errors}"
+
+
 # ---------------------------------------------------------------------------
 # Negative: attr JSON
 # ---------------------------------------------------------------------------

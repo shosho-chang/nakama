@@ -74,11 +74,35 @@ class BlockNodeV1(BaseModel):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _content_xor_children(self) -> "BlockNodeV1":
+        # AST shape invariant：leaf block 用 content，container block 用 children，
+        # 同時出現兩者代表 LLM / 手動構建亂塞（renderer 會 silently 忽略其中一個）。
+        if self.content is not None and self.children:
+            raise ValueError(
+                f"{self.block_type!r} block cannot have both 'content' and 'children'; "
+                "leaf blocks use content, container blocks use children "
+                "(or neither for separator/image)"
+            )
+        return self
+
 
 def _ast_depth(nodes: list[BlockNodeV1]) -> int:
+    """Iterative max-depth walk — 顯式 stack 追深度，不靠 Python recursion limit。
+
+    避免 pathological 輸入（>1000 層巢狀）打爆 CPython default recursion limit
+    造成 RecursionError / DoS（recursion version 走訪一次就得 pop frame 一次）。
+    """
     if not nodes:
         return 0
-    return 1 + max((_ast_depth(n.children) for n in nodes), default=0)
+    max_depth = 0
+    stack: list[tuple[BlockNodeV1, int]] = [(n, 1) for n in nodes]
+    while stack:
+        node, depth = stack.pop()
+        if depth > max_depth:
+            max_depth = depth
+        stack.extend((child, depth + 1) for child in node.children)
+    return max_depth
 
 
 class GutenbergHTMLV1(BaseModel):
