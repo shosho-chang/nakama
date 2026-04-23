@@ -17,15 +17,18 @@ ADR-007 Franky Phase 1 slim 版全三 slice 上 main：
 
 CI baseline：740 → 805 tests，0 regression。
 
+## VPS 上線（2026-04-24 完成）
+
+- ✅ `.env` 全部 R2_* 補齊 + `SLACK_USER_ID_SHOSHO` 統一命名（PR #86）
+- ✅ `load_config()` 顯式在 `__main__.py` 呼叫，env 不再漏 load（PR #87）
+- ✅ 3 條 cron 全裝：health (`*/5`)、backup-verify (03:30)、digest (週一 10:00)
+- ✅ Smoke test：`alert --test` → Slack DM 成功 `ts=1776949007.977169`；`backup-verify` → R2 連線 OK；`health` → 4 個 probe 全 ok
+
 ## 還沒做的事（修修手動 / 之後排）
 
-- **VPS .env 補齊**：`SLACK_SHOSHO_USER_ID`、`R2_ACCOUNT_ID`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`、`R2_BUCKET_NAME`（[feedback_vps_env_drift_check.md](feedback_vps_env_drift_check.md) 硬規則）
-- **VPS cron 加三條**：
-  - `*/5 * * * * python -m agents.franky health`
-  - `30 3 * * * python -m agents.franky backup-verify`
-  - `0 10 * * 1 python -m agents.franky digest`
-- **UptimeRobot 設定**：跑 [docs/runbooks/uptimerobot-setup.md](../../docs/runbooks/uptimerobot-setup.md)
+- **UptimeRobot 設定**：跑 [docs/runbooks/uptimerobot-setup.md](../../docs/runbooks/uptimerobot-setup.md)（~20 分鐘）
 - **Dashboard 驗看**：`/bridge/franky` 登入實看，確認 4 張 probe 卡 + 24h alert list 美學沒跑掉
+- **Fleet `.tar.gz` 缺口**：xCloud 對 fleet 只有 DB dump，沒有整站 tarball；修修要去 xCloud console 檢查 fleet 的 Full Backup 有沒有開 file scope
 
 ## Phase 2 伏筆（Slice 3 的 capability card 有寫）
 

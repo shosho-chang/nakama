@@ -101,5 +101,9 @@
 - [feedback_dual_review_complementarity.md](feedback_dual_review_complementarity.md) — ultrareview（behavioral bias）+ 本地 3-agent（data/config bias）互補；PR #77 實證 9 bug 零重疊
 - [feedback_rendering_truthify_audit_upstream.md](feedback_rendering_truthify_audit_upstream.md) — render 改用上游 note 欄位時要掃所有 return 該欄位的分支，確認訊息沒說謊（PR #84 review 抓到）
 - [feedback_model_construct_bypasses_validators.md](feedback_model_construct_bypasses_validators.md) — pydantic `model_construct()` 跳過 validators，消費端要補 defensive check（Bug 2 根因）
-- [project_usopp_slice_b_pr77.md](project_usopp_slice_b_pr77.md) — PR #77 四 commit 跨三台 review 解 11 個 blocker，951 tests，等 merge
+- [project_usopp_slice_b_pr77.md](project_usopp_slice_b_pr77.md) — PR #77 四 commit 跨三台 review 解 11 個 blocker，2026-04-23 merged
+- [feedback_explicit_load_dotenv_for_non_db_paths.md](feedback_explicit_load_dotenv_for_non_db_paths.md) — agent `__main__.py` subcommand 不摸 DB 就要顯式 `load_config()`；Franky slice 踩到 silently no-op
+- [feedback_date_filename_review_checklist.md](feedback_date_filename_review_checklist.md) — 新 daily-rotating path 必用 `ZoneInfo("Asia/Taipei")`；PR #67 precedent 多次重踩
+- [feedback_env_push_diff_before_overwrite.md](feedback_env_push_diff_before_overwrite.md) — scp `.env` 前必 diff key names；只 append 新 keys，別整份覆蓋
+- [project_nakama_backup_deployed.md](project_nakama_backup_deployed.md) — Nakama `state.db` daily 04:00 Taipei → R2 `nakama-backup` bucket 上線（PR #88）；retention 30d
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
