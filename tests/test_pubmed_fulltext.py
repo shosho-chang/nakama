@@ -149,17 +149,60 @@ class TestFetchFulltext:
         assert result["pdf_relpath"] == "KB/Attachments/pubmed/12345.pdf"
         assert result["doi"] == "10.1/abc"
 
-    def test_pmc_fails_unpaywall_succeeds(self, tmp_path: Path):
-        """PMC 直連失敗，Unpaywall 接手。"""
-        call_count = {"pmc": 0, "unpaywall": 0}
+    def test_pmc_ncbi_fails_europe_pmc_succeeds(self, tmp_path: Path):
+        """PMC NCBI 回 HTML landing page 失敗，Europe PMC 鏡像接手。"""
+        call_count = {"pmc_ncbi": 0, "europe_pmc": 0, "other": 0}
 
         def _fake_download(**kwargs):
             url = kwargs["url"]
-            if "pmc" in url:
-                call_count["pmc"] += 1
-                return None  # PMC 失敗
+            if "europepmc.org" in url:
+                call_count["europe_pmc"] += 1
+                return f"{kwargs['vault_relative_prefix']}/{kwargs['pmid']}.pdf"
+            if "ncbi.nlm.nih.gov" in url:
+                call_count["pmc_ncbi"] += 1
+                return None
+            call_count["other"] += 1
+            return None
+
+        with (
+            patch.object(
+                pubmed_fulltext,
+                "_lookup_ids",
+                return_value=("10.1/abc", "98765"),
+            ),
+            patch.object(
+                pubmed_fulltext,
+                "_download_pdf",
+                side_effect=_fake_download,
+            ),
+        ):
+            result = fetch_fulltext(
+                "12345",
+                attachments_abs_dir=tmp_path,
+                vault_relative_prefix="KB/Attachments/pubmed",
+                email="a@b.com",
+            )
+
+        assert result["status"] == "oa_downloaded"
+        assert result["source"] == "europe_pmc"
+        assert call_count["pmc_ncbi"] == 1
+        assert call_count["europe_pmc"] == 1
+        assert call_count["other"] == 0  # 不該打到 Unpaywall
+
+    def test_both_pmc_fail_unpaywall_succeeds(self, tmp_path: Path):
+        """PMC NCBI + Europe PMC 兩條都掛，Unpaywall 接手。"""
+        call_count = {"pmc_ncbi": 0, "europe_pmc": 0, "unpaywall": 0}
+
+        def _fake_download(**kwargs):
+            url = kwargs["url"]
+            if "europepmc.org" in url:
+                call_count["europe_pmc"] += 1
+                return None
+            if "ncbi.nlm.nih.gov" in url:
+                call_count["pmc_ncbi"] += 1
+                return None
             call_count["unpaywall"] += 1
-            return "KB/Attachments/pubmed/12345.pdf"
+            return f"{kwargs['vault_relative_prefix']}/{kwargs['pmid']}.pdf"
 
         with (
             patch.object(
@@ -187,7 +230,8 @@ class TestFetchFulltext:
 
         assert result["status"] == "oa_downloaded"
         assert result["source"] == "unpaywall"
-        assert call_count["pmc"] == 1
+        assert call_count["pmc_ncbi"] == 1
+        assert call_count["europe_pmc"] == 1
         assert call_count["unpaywall"] == 1
 
     def test_needs_manual_when_doi_exists_no_oa(self, tmp_path: Path):
