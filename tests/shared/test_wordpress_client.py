@@ -263,6 +263,79 @@ def test_list_tags():
 
 
 # ---------------------------------------------------------------------------
+# Tests: upload_media
+# ---------------------------------------------------------------------------
+
+
+def _media_body(**overrides) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "id": 501,
+        "date": "2026-04-23T00:00:00",
+        "date_gmt": "2026-04-23T00:00:00",
+        "guid": {"rendered": "http://wp.test/?p=501", "protected": False},
+        "modified": "2026-04-23T00:00:00",
+        "modified_gmt": "2026-04-23T00:00:00",
+        "slug": "hero",
+        "status": "inherit",
+        "type": "attachment",
+        "link": "http://wp.test/hero/",
+        "title": {"rendered": "hero", "protected": False},
+        "author": 1,
+        "source_url": "http://wp.test/wp-content/uploads/hero.jpg",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_upload_media_merges_headers():
+    """Regression: upload_media passes extra headers as kwarg → _request must merge,
+    not collide with Basic auth. Previously raised
+    TypeError: got multiple values for keyword argument 'headers'.
+    """
+    client = _make_client()
+
+    with patch("httpx.Client") as mock_cls:
+        mock_cls.return_value = _mock_request(201, _media_body())
+        media = client.upload_media(
+            filename="hero.jpg",
+            content=b"\xff\xd8\xff\xe0fake-jpeg-bytes",
+            mime_type="image/jpeg",
+            operation_id="op_abcdef12",
+        )
+
+    # Did not raise TypeError → fix is in place.
+    assert media.id == 501
+    assert media.media_type == "image"  # Literal default
+
+    # Verify merged headers reached httpx.request: auth + Content-Disposition + Content-Type
+    call_kwargs = mock_cls.return_value.request.call_args.kwargs
+    headers = call_kwargs["headers"]
+    assert "Authorization" in headers  # auth preserved
+    assert headers["Authorization"].startswith("Basic ")
+    assert headers["Content-Disposition"] == 'attachment; filename="hero.jpg"'
+    assert headers["Content-Type"] == "image/jpeg"
+
+
+def test_upload_media_with_alt_text_does_not_crash():
+    """upload_media's follow-up alt_text update also goes through _request; must not collide."""
+    client = _make_client()
+
+    with patch("httpx.Client") as mock_cls:
+        # Single MagicMock reused for both upload + alt_text update calls.
+        mock_cls.return_value = _mock_request(201, _media_body(alt_text="Hero image"))
+        media = client.upload_media(
+            filename="hero.jpg",
+            content=b"fake",
+            alt_text="Hero image",
+            operation_id="op_abcdef12",
+        )
+
+    assert media.id == 501
+    # Two calls made: initial upload + alt_text update
+    assert mock_cls.return_value.request.call_count == 2
+
+
+# ---------------------------------------------------------------------------
 # Tests: health_check
 # ---------------------------------------------------------------------------
 

@@ -185,6 +185,11 @@ class WordPressClient:
         url = f"{self._base_url}/wp-json/{path}"
         last_exc: Exception | None = None
 
+        # Caller may pass extra headers (e.g. upload_media Content-Disposition);
+        # merge with our auth headers instead of fighting over the `headers=` kwarg.
+        extra_headers = kwargs.pop("headers", None) or {}
+        merged_headers = {**self._headers(), **extra_headers}
+
         for attempt in range(1, _RETRY_ATTEMPTS + 1):
             self._rate_limit()
             try:
@@ -192,7 +197,7 @@ class WordPressClient:
                     resp = client.request(
                         method,
                         url,
-                        headers=self._headers(),
+                        headers=merged_headers,
                         **kwargs,
                     )
                 logger.debug(
@@ -381,13 +386,12 @@ class WordPressClient:
             alt_text:   alt text set after upload
             operation_id: for log correlation
         """
-        # First upload
+        # First upload — extra headers merge with auth headers inside _request()
         raw = self._request(
             "POST",
             "wp/v2/media",
             content=content,
             headers={
-                **self._headers(),
                 "Content-Disposition": f'attachment; filename="{filename}"',
                 "Content-Type": mime_type,
             },
