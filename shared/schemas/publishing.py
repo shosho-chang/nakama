@@ -35,17 +35,44 @@ MAX_AST_DEPTH = 6
 # ---------------------------------------------------------------------------
 
 
+# 每種 block_type 允許的 children block_type；空集合 = 不得有 children（leaf）。
+# 擋 LLM / 手動構建亂塞（例 `list` 塞 paragraph 進來、paragraph 有 children），
+# ADR-004 review borderline #3 的 follow-up。升 block_type Literal 時同步調整此表。
+_ALLOWED_CHILDREN: dict[str, frozenset[str]] = {
+    "paragraph": frozenset(),
+    "heading": frozenset(),
+    "list": frozenset({"list_item"}),
+    "list_item": frozenset(),
+    # quote 可含段落、清單或巢狀 quote（WP blockquote 合法用法）
+    "quote": frozenset({"paragraph", "list", "quote"}),
+    "image": frozenset(),
+    "code": frozenset(),
+    "separator": frozenset(),
+}
+
+
 class BlockNodeV1(BaseModel):
     """Gutenberg AST 單一 block 節點。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    # Phase 1 白名單；Phase 2 有明確需求時升 V2 並同步調整 builder/validator
+    # Phase 1 白名單；Phase 2 有明確需求時升 V2 並同步調整 builder/validator + _ALLOWED_CHILDREN
     block_type: Literal[
         "paragraph", "heading", "list", "list_item", "quote", "image", "code", "separator"
     ]
     attrs: dict[str, str | int | bool] = Field(default_factory=dict)
     content: str | None = None
     children: list["BlockNodeV1"] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _children_match_block_type(self) -> "BlockNodeV1":
+        allowed = _ALLOWED_CHILDREN[self.block_type]
+        for child in self.children:
+            if child.block_type not in allowed:
+                raise ValueError(
+                    f"{self.block_type!r} block cannot contain {child.block_type!r} child; "
+                    f"allowed={sorted(allowed) if allowed else 'none (leaf block)'}"
+                )
+        return self
 
 
 def _ast_depth(nodes: list[BlockNodeV1]) -> int:
