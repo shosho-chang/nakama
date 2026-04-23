@@ -156,7 +156,13 @@ def _check_comments(html: str) -> list[GutenbergValidationError]:
                         locator=_excerpt(html, pos),
                     )
                 )
-            elif stack[-1] != name:
+            elif stack[-1] == name:
+                stack.pop()
+            elif name in stack:
+                # Crossed / mis-nested: target 在 stack 較深處但頂端是別的 block。
+                # 不 pop — 保留 stack 讓後續 close 仍能配對正確目標。
+                # 反例：old code 對 <b><i>…</b></i> 的 close-b 會誤 pop 掉 i，導致後續
+                # close-i 又報一次 crossed；find-and-preserve 只報一次且訊息更精確。
                 expected = stack[-1]
                 errors.append(
                     GutenbergValidationError(
@@ -168,9 +174,15 @@ def _check_comments(html: str) -> list[GutenbergValidationError]:
                         locator=_excerpt(html, pos),
                     )
                 )
-                stack.pop()  # 繼續 parse 剩餘部分
             else:
-                stack.pop()
+                # name 根本不在 stack 裡 → unpaired close（不是 crossed）
+                errors.append(
+                    GutenbergValidationError(
+                        code="comment_unpaired",
+                        message=f"close /wp:{name} without matching open",
+                        locator=_excerpt(html, pos),
+                    )
+                )
         else:
             stack.append(name)
 

@@ -162,6 +162,39 @@ class TestBlockNodeV1ChildrenWhitelist:
         )
 
 
+class TestBlockNodeV1ContentChildrenXor:
+    """content × children 不得同時出現（leaf 用 content / container 用 children / 或都無）。"""
+
+    def test_content_and_children_both_set_rejected(self):
+        with pytest.raises(ValidationError, match="both 'content' and 'children'"):
+            BlockNodeV1(
+                block_type="list",
+                content="stray",
+                children=[BlockNodeV1(block_type="list_item", content="a")],
+            )
+
+    def test_content_only_allowed(self):
+        BlockNodeV1(block_type="paragraph", content="hello")
+
+    def test_children_only_allowed(self):
+        BlockNodeV1(
+            block_type="list",
+            children=[BlockNodeV1(block_type="list_item", content="a")],
+        )
+
+    def test_neither_allowed_for_standalone_block(self):
+        BlockNodeV1(block_type="separator")
+
+    def test_empty_string_content_with_children_still_rejected(self):
+        """content='' 同樣算「有 content」— 嚴格 not-both 語意。"""
+        with pytest.raises(ValidationError, match="both 'content' and 'children'"):
+            BlockNodeV1(
+                block_type="list",
+                content="",
+                children=[BlockNodeV1(block_type="list_item", content="a")],
+            )
+
+
 class TestGutenbergHTMLV1Validator:
     def test_builder_output_valid(self):
         """GutenbergHTMLV1 constructed with build()'s output must pass validator."""
@@ -195,6 +228,29 @@ class TestGutenbergHTMLV1Validator:
                 raw_html=built.raw_html,
                 validator_version=gutenberg_builder.VERSION,
             )
+
+    def test_ast_depth_iterative_handles_deep_nesting(self):
+        """_ast_depth 用顯式 stack 走訪，超過 sys.getrecursionlimit() 不會 RecursionError。
+
+        ADR-005a §4 follow-up：舊遞迴版本對 pathological 輸入（LLM 亂產 10k 層）會
+        打爆 Python recursion limit 造成 DoS。iterative 版不吃 Python frame。
+        """
+        import sys
+
+        from shared.schemas.publishing import _ast_depth
+
+        target_depth = sys.getrecursionlimit() + 200
+        # model_construct 繞過 AST 白名單 + XOR validator，建病態深巢狀樹直測 _ast_depth
+        node: BlockNodeV1 = BlockNodeV1(block_type="paragraph", content="leaf")
+        for _ in range(target_depth):
+            node = BlockNodeV1.model_construct(
+                block_type="quote",
+                attrs={},
+                content=None,
+                children=[node],
+            )
+        # 舊遞迴實作在此 raise RecursionError；iterative 正常回傳 target_depth + 1
+        assert _ast_depth([node]) == target_depth + 1
 
 
 class TestParse:
