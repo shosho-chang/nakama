@@ -24,6 +24,7 @@ def _get_conn() -> sqlite3.Connection:
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.execute("PRAGMA synchronous=NORMAL")
         _conn.execute("PRAGMA busy_timeout=5000")
+        _conn.execute("PRAGMA foreign_keys=ON")
         _init_tables(_conn)
     return _conn
 
