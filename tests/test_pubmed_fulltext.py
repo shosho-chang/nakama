@@ -276,6 +276,35 @@ class TestFetchFulltext:
 
         assert result["status"] == "not_found"
         assert result["doi"] is None
+        assert "無 DOI / PMCID" in result["note"]
+
+    def test_not_found_note_mentions_pmc_when_both_pmc_fail_no_doi(self, tmp_path: Path):
+        """有 PMCID 但兩條 PMC 都失敗、無 DOI → not_found 且 note 要誠實交代，
+        不能印「無 DOI / PMCID」這種謊。"""
+        with (
+            patch.object(
+                pubmed_fulltext,
+                "_lookup_ids",
+                return_value=(None, "98765"),
+            ),
+            patch.object(
+                pubmed_fulltext,
+                "_download_pdf",
+                return_value=None,
+            ),
+        ):
+            result = fetch_fulltext(
+                "12345",
+                attachments_abs_dir=tmp_path,
+                vault_relative_prefix="KB/Attachments/pubmed",
+                email="a@b.com",
+            )
+
+        assert result["status"] == "not_found"
+        assert result["doi"] is None
+        # note 必須點出「PMC 下載失敗」，不能騙說「無 DOI / PMCID」
+        assert "PMC98765" in result["note"]
+        assert "下載失敗" in result["note"]
 
 
 def _fake_download_pdf(pdf_bytes: bytes, success: bool):

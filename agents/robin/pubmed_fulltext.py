@@ -131,13 +131,21 @@ def fetch_fulltext(
             "doi": doi,
             "note": "非 OA 來源，請用 DOI 手動取得全文",
         }
-    _logger.info(f"[fulltext] PMID {pmid} 無 DOI 無 PMCID")
+    # 到這裡表示無 DOI；pmcid 可能是 None（真的沒識別碼）或有值但兩條 PMC 路徑都失敗
+    if pmcid:
+        note = (
+            f"PMC{pmcid} 下載失敗（PMC NCBI + Europe PMC 皆不可用），可手動至 PubMed Central 取得"
+        )
+        _logger.info(f"[fulltext] PMID {pmid} PMC{pmcid} 下載失敗且無 DOI")
+    else:
+        note = "PubMed 無 DOI / PMCID，無法取得全文"
+        _logger.info(f"[fulltext] PMID {pmid} 無 DOI 無 PMCID")
     return {
         "status": "not_found",
         "source": None,
         "pdf_relpath": None,
         "doi": None,
-        "note": "PubMed 無 DOI / PMCID，無法取得全文",
+        "note": note,
     }
 
 
