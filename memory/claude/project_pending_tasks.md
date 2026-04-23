@@ -75,10 +75,18 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ Bridge `/bridge/drafts` UI + routes + CLI fallback
 - ✅ `agents/franky/` 全三 slice + `/healthz` + weekly digest + `/bridge/franky`（PR #74/#75/#76，2026-04-23；見 [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md)）
 - ⬜ Franky VPS 上線：`.env` 補 `SLACK_SHOSHO_USER_ID` + R2_* + 加 3 條 cron + 跑 UptimeRobot runbook
-- ⬜ `config/style-profiles/*.yaml` 三個 profile（book-review / people / science）
+- ✅ `config/style-profiles/*.yaml` 三個 profile（seed 由 PR #78 帶，detect_keywords 擴充由 PR #79 完成）
 
-**Phase 1 foundation borderline follow-ups（6 項，非 blocker）：**
-- ⬜ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` 移到 `_get_conn()` 開啟時設（ADR-006 §5 checklist）
-- ⬜ `claim_approved_drafts` 的 `UnknownPayloadVersionError` 改 `mark_failed` 兜底，不 raise 上來
-- ⬜ `BlockNodeV1.children` 加 per-block-type whitelist（list 只能 list_item）
-- ⬜ 3 個 docstring 準確度修正（atomic mutex / filter-out / CHECK 反向生成）
+**Phase 1 foundation borderline follow-ups（6 項，非 blocker，5/6 完成）：**
+- ⬜ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` 移到 `_get_conn()` 開啟時設（ADR-006 §5 checklist）— **blocked by #77** 觸碰 `shared/state.py`
+- ✅ `claim_approved_drafts` 的 `UnknownPayloadVersionError` 改 `mark_failed` 兜底（PR #83）
+- ✅ `BlockNodeV1.children` 加 per-block-type whitelist（PR #81）
+- ✅ 3 個 docstring 準確度修正（atomic mutex / filter-out / CHECK 反向生成）（PR #82）
+
+**Mac 2026-04-23 下午 session（桌機同時做 #77 Usopp Slice B）：**
+- ✅ PR #79 — Brook style profile detect_keywords enrichment
+- ✅ PR #80 — `shared/gutenberg_validator.py`（ADR-005a §4）
+- ✅ PR #81 — `BlockNodeV1.children` whitelist
+- ✅ PR #82 — 3 個 docstring 準確度修正
+- ✅ PR #83 — UnknownPayloadVersionError → mark_failed 兜底
+- **Follow-up backlog 累積**：gutenberg_validator AST depth 用 stack depth 落地、crossed recovery 改 find-and-pop、`content × children` XOR 約束、`ValidationError` / `JSONDecodeError` soft-fail（borderline #2.5）、`UnknownPayloadVersionError` class 加 deprecation docstring

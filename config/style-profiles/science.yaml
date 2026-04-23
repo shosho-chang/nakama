@@ -1,0 +1,45 @@
+profile_id: science@0.1.0
+category: science
+# 科普預設走 neuroscience；若主題明確偏 nutrition / sport 等，compose 呼叫時可 override
+primary_category: neuroscience
+style_profile_md: agents/brook/style-profiles/science.md
+word_count:
+  min: 4000
+  max: 7000
+forbid_emoji: false
+default_tag_hints:
+  - science
+  - health
+  - research
+# 類別識別關鍵詞（style_profile_loader.detect_category 使用）
+# 從 13 篇樣本萃取，跨四大領域（睡眠/飲食/運動/情緒）+ 論文式開場用語
+# 避免「健康」「身體」「好處」這類泛用詞，Brook 書評/人物文也可能命中
+detect_keywords:
+  # 通用 rigor signal（論文式勾引）
+  - 研究
+  - 論文
+  - 機制
+  - 最新研究
+  - 迷思
+  # 運動
+  - VO2
+  - Zone 2
+  - NEAT
+  - VILPA
+  - HIIT
+  - 有氧
+  - 肌少症
+  # 飲食
+  - 168
+  - 斷食
+  - 蛋白質
+  - 果糖
+  - 發炎
+  # 腦神經 / 情緒
+  - 多巴胺
+  - BDNF
+  - mTOR
+  - 皮質醇
+  - 褪黑激素
+  # 睡眠
+  - 睡眠

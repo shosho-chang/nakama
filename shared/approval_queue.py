@@ -1,6 +1,7 @@
 """HITL approval queue — FSM + atomic claim + stale reset (ADR-006).
 
-FSM Single Source of Truth：`ALLOWED_TRANSITIONS` dict。DB CHECK 列表由此反向生成。
+FSM Single Source of Truth：`ALLOWED_TRANSITIONS` dict。state.py 的 DB CHECK
+字面值是**手動複寫**，本檔 import 時的 `assert` 鎖住兩邊同步 — 非真正的程式碼生成。
 
 典型使用：
     # Brook enqueue
@@ -53,7 +54,7 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "archived": set(),
 }
 
-# DB CHECK 欄位值集合；測試時須斷言與 state.py 裡的 CHECK 列表完全相等
+# FSM 衍生的完整 status 集合；import 時的 assert 鎖住與 state.py CHECK 子句的硬編碼重複
 ALL_STATUSES: set[str] = set(ALLOWED_TRANSITIONS.keys()) | {
     s for targets in ALLOWED_TRANSITIONS.values() for s in targets
 }
@@ -214,14 +215,26 @@ def claim_approved_drafts(
 ) -> list[dict[str, Any]]:
     """Atomically claim `batch` approved drafts for this worker.
 
-    Atomicity comes from SQLite's single-statement UPDATE...RETURNING with IN-subselect —
-    SQLite evaluates subselect + update as one atomic step per statement, and WAL mode
-    plus the check_same_thread=False connection's internal mutex serialize concurrent
-    writers. This gives the same semantic as BEGIN IMMEDIATE without fighting Python
-    sqlite3's implicit transaction management (reliability.md §2).
+    Atomicity comes from SQLite's single-statement UPDATE...RETURNING with IN-subselect:
+    SQLite evaluates subselect + update as one atomic step per statement. Concurrent
+    writers serialize via SQLite's own file-level locking (WAL mode permits 1 writer
+    + N readers); `check_same_thread=False` only disables Python's thread-origin check
+    and does not itself add a mutex. The single-statement design avoids fighting
+    Python sqlite3's implicit transaction management (reliability.md §2), giving the
+    same semantics as an explicit BEGIN IMMEDIATE.
 
-    Filters out rows where compliance_flags triggered but reviewer_compliance_ack is False
-    (ADR-005b §10 interface contract); those rows are marked failed with diagnostic.
+    Compliance post-filter: rows with compliance_flags triggered but no
+    reviewer_compliance_ack are briefly claimed at SQL level then reverted to failed
+    via `mark_failed()` with a diagnostic. The SQL itself does NOT filter these out —
+    ADR-005b §10's defense-in-depth requires the Python-side re-check so a missing
+    reviewer ack never silently escapes to the worker.
+
+    Unknown payload_version fallback: a row with `payload_version != 1` is marked
+    failed (non-retry-able, `increment_retry=False`) and the loop continues to
+    other batch rows, instead of raising `UnknownPayloadVersionError` and aborting
+    the whole claim. Rationale: schema drift is a ship-time bug, not a transient
+    condition — one bad row shouldn't stall the whole worker, and the diagnostic
+    in the failed row surfaces the drift for triage.
     """
     conn = _get_conn()
     conn.execute(f"PRAGMA busy_timeout = {timeout_s * 1000}")
@@ -247,12 +260,24 @@ def claim_approved_drafts(
 
     claimed: list[dict[str, Any]] = []
     for row in rows:
-        raw_payload = json.loads(row["payload"])
         if row["payload_version"] != 1:
-            raise UnknownPayloadVersionError(
-                f"draft id={row['id']} payload_version={row['payload_version']} "
-                f"— no V{row['payload_version']} adapter"
+            # Schema drift — unknown payload_version has no adapter. Don't raise:
+            # that would abort the rest of the batch and leave sibling rows in an
+            # ambiguous half-claimed state. Instead mark just this row failed
+            # with a diagnostic; it sits in 'failed' until the relevant adapter
+            # lands, and other rows in the batch keep processing.
+            mark_failed(
+                draft_id=row["id"],
+                error_log=(
+                    f"unknown payload_version={row['payload_version']} — "
+                    f"no V{row['payload_version']} adapter (known: V1). "
+                    "Schema drift; ignore until adapter added."
+                ),
+                actor=worker_id,
+                increment_retry=False,  # adapter gap is not a retry-able condition
             )
+            continue
+        raw_payload = json.loads(row["payload"])
         payload = ApprovalPayloadV1Adapter.validate_python(raw_payload)
 
         flags = payload.compliance_flags

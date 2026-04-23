@@ -320,6 +320,60 @@ class TestComplianceGate:
 
 
 # ---------------------------------------------------------------------------
+# Unknown payload_version fallback (borderline #2)
+# ---------------------------------------------------------------------------
+
+
+class TestUnknownPayloadVersionFallback:
+    """`claim_approved_drafts` 遇 payload_version != 1 時必須 mark_failed 兜底，
+    而不是 raise UnknownPayloadVersionError 導致整個 batch 爆炸。"""
+
+    def _enqueue_then_force_version(self, slug: str, op_id: str, version: int) -> int:
+        """Helper：正常 enqueue V1 payload，再直接改 DB 的 payload_version
+        欄位模擬 schema drift（future V2 已進 DB 但 adapter 尚未 deploy 的情境）。"""
+        qid = _enqueue_approved(slug, op_id)
+        conn = state._get_conn()
+        conn.execute(
+            "UPDATE approval_queue SET payload_version = ? WHERE id = ?",
+            (version, qid),
+        )
+        conn.commit()
+        return qid
+
+    def test_unknown_version_marked_failed_not_raised(self):
+        qid = self._enqueue_then_force_version("future-schema", "op_deadbeef", version=2)
+
+        # 重要：不該 raise UnknownPayloadVersionError
+        claimed = approval_queue.claim_approved_drafts(
+            worker_id="usopp-1", source_agent="brook", batch=5
+        )
+        assert claimed == []
+
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "failed"
+        assert "payload_version=2" in row["error_log"]
+        assert "no V2 adapter" in row["error_log"]
+
+    def test_unknown_version_does_not_abort_batch(self):
+        """單一 bad row 不應擋住同 batch 其他有效 row 被 claim。"""
+        bad_id = self._enqueue_then_force_version("drift", "op_aaaa0001", version=99)
+        good_ids = {_enqueue_approved(f"ok-{i}", f"op_aaaa{i:04x}") for i in (2, 3)}
+
+        claimed = approval_queue.claim_approved_drafts(
+            worker_id="usopp-1", source_agent="brook", batch=5
+        )
+        assert {c["id"] for c in claimed} == good_ids, "good rows 應被正常 claim"
+        assert approval_queue.get_by_id(bad_id)["status"] == "failed"
+
+    def test_unknown_version_does_not_increment_retry(self):
+        """Schema drift 不是 transient 失敗 → retry_count 應維持 0。"""
+        qid = self._enqueue_then_force_version("non-retryable", "op_cccc0001", version=3)
+        approval_queue.claim_approved_drafts(worker_id="usopp-1", source_agent="brook", batch=5)
+        row = approval_queue.get_by_id(qid)
+        assert row["retry_count"] == 0, "retry_count 不該因 schema drift 遞增"
+
+
+# ---------------------------------------------------------------------------
 # Publish / fail
 # ---------------------------------------------------------------------------
 
