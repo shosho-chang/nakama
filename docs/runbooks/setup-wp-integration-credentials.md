@@ -22,7 +22,7 @@
 - [ ] 填入 `.env`：
   ```
   WP_SHOSHO_BASE_URL=https://shosho.tw/wp-json
-  WP_SHOSHO_USER=bot_usopp
+  WP_SHOSHO_USERNAME=bot_usopp
   WP_SHOSHO_APP_PASSWORD=xxxx xxxx xxxx xxxx xxxx xxxx
   ```
 
@@ -45,7 +45,7 @@ fleet 站裝了 **Fluent Security** plugin，預設會關掉 Application Passwor
 - [ ] 填入 `.env`：
   ```
   WP_FLEET_BASE_URL=https://fleet.shosho.tw/wp-json
-  WP_FLEET_USER=bot_chopper
+  WP_FLEET_USERNAME=bot_chopper
   WP_FLEET_APP_PASSWORD=xxxx xxxx xxxx xxxx xxxx xxxx
   ```
 
