@@ -132,13 +132,20 @@ def _matches(term: str, original: str, lowered: str) -> bool:
 
 
 def _ast_text(nodes: list[BlockNodeV1]) -> str:
-    """Recursively collect .content from Gutenberg AST nodes."""
+    """Recursively collect .content + text-bearing attrs from Gutenberg AST nodes.
+
+    attrs str values are included so scanners catch compliance-risky text
+    smuggled into e.g. image block `alt` fields (ADR-005b §10 defense in depth).
+    """
     parts: list[str] = []
 
     def walk(ns: list[BlockNodeV1]) -> None:
         for n in ns:
             if n.content:
                 parts.append(n.content)
+            for v in n.attrs.values():
+                if isinstance(v, str) and v:
+                    parts.append(v)
             if n.children:
                 walk(n.children)
 

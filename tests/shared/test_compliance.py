@@ -115,6 +115,73 @@ class TestScanDraft:
         assert result.medical_claim is False
         assert result.absolute_assertion is False
 
+    def test_scan_catches_medical_claim_in_image_alt(self):
+        # Hiding risky text in image alt must not bypass the scanner (ADR-005b §10).
+        ast = [
+            BlockNodeV1(block_type="paragraph", content="Nothing risky here at all"),
+            BlockNodeV1(
+                block_type="image",
+                attrs={"src": "https://example.com/x.jpg", "alt": "治癒糖尿病的秘方"},
+            ),
+        ]
+        d = DraftV1(
+            draft_id="draft_20260423T120000_abc123",
+            created_at=datetime.now(timezone.utc),
+            agent="brook",
+            operation_id="op_12345678",
+            title="Neutral Title",
+            slug_candidates=["test-slug"],
+            content=gutenberg_builder.build(ast),
+            excerpt="An excerpt of at least twenty characters to pass validator.",
+            primary_category="blog",
+            focus_keyword="test",
+            meta_description=(
+                "A meta description that is at least fifty chars long to pass validator."
+            ),
+            compliance=DraftComplianceV1(
+                schema_version=1,
+                claims_no_therapeutic_effect=True,
+                has_disclaimer=False,
+            ),
+            style_profile_id="blog@0.1.0",
+        )
+        result = compliance.scan(d)
+        assert result.medical_claim is True
+        assert "治癒" in result.matched_terms
+
+    def test_scan_ignores_non_string_attrs(self):
+        # int/bool attrs (e.g. id, sizeSlug) must not crash _ast_text.
+        ast = [
+            BlockNodeV1(
+                block_type="image",
+                attrs={"src": "https://example.com/x.jpg", "alt": "clean alt", "id": 42},
+            ),
+        ]
+        d = DraftV1(
+            draft_id="draft_20260423T120000_abc124",
+            created_at=datetime.now(timezone.utc),
+            agent="brook",
+            operation_id="op_12345679",
+            title="Neutral Title",
+            slug_candidates=["test-slug"],
+            content=gutenberg_builder.build(ast),
+            excerpt="An excerpt of at least twenty characters to pass validator.",
+            primary_category="blog",
+            focus_keyword="test",
+            meta_description=(
+                "A meta description that is at least fifty chars long to pass validator."
+            ),
+            compliance=DraftComplianceV1(
+                schema_version=1,
+                claims_no_therapeutic_effect=True,
+                has_disclaimer=False,
+            ),
+            style_profile_id="blog@0.1.0",
+        )
+        result = compliance.scan(d)
+        assert result.medical_claim is False
+        assert result.absolute_assertion is False
+
 
 # ---------------------------------------------------------------------------
 # Vocab structure sanity checks
