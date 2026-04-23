@@ -374,6 +374,81 @@ class TestUnknownPayloadVersionFallback:
 
 
 # ---------------------------------------------------------------------------
+# Payload parse-error fallback (borderline #2.5)
+# ---------------------------------------------------------------------------
+
+
+class TestPayloadParseErrorFallback:
+    """`claim_approved_drafts` 遇 payload 字串壞掉 / schema 部分欄位 drift 時必須 mark_failed
+    兜底，而不是 raise JSONDecodeError / ValidationError / TypeError 炸整個 batch。
+
+    同 unknown-version 一樣屬於 ADR-006 borderline，走 `increment_retry=False` 非 retry。
+    """
+
+    def _enqueue_then_corrupt_payload(self, slug: str, op_id: str, new_payload: str | None) -> int:
+        """Helper：正常 enqueue V1 payload，再直接改 DB 的 payload 欄位模擬損壞。"""
+        qid = _enqueue_approved(slug, op_id)
+        conn = state._get_conn()
+        conn.execute(
+            "UPDATE approval_queue SET payload = ? WHERE id = ?",
+            (new_payload, qid),
+        )
+        conn.commit()
+        return qid
+
+    def test_corrupted_json_marked_failed_not_raised(self):
+        qid = self._enqueue_then_corrupt_payload(
+            "bad-json", "op_beef0001", new_payload="{not valid json"
+        )
+        # 重要：不該 raise JSONDecodeError
+        claimed = approval_queue.claim_approved_drafts(
+            worker_id="usopp-1", source_agent="brook", batch=5
+        )
+        assert claimed == []
+
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "failed"
+        assert "parse failed" in row["error_log"]
+        assert "JSONDecodeError" in row["error_log"]
+
+    def test_schema_drift_valid_json_marked_failed_not_raised(self):
+        """合法 JSON 但缺必要欄位 → ValidationError 改 soft-fail。"""
+        # schema_version=1 對齊 payload_version 整數，但 draft 欄位整段砍 → ValidationError
+        drifted = '{"schema_version":1,"action_type":"publish_post","target_site":"wp_shosho"}'
+        qid = self._enqueue_then_corrupt_payload("schema-drift", "op_beef0002", new_payload=drifted)
+
+        claimed = approval_queue.claim_approved_drafts(
+            worker_id="usopp-1", source_agent="brook", batch=5
+        )
+        assert claimed == []
+
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "failed"
+        assert "parse failed" in row["error_log"]
+        assert "ValidationError" in row["error_log"]
+
+    def test_parse_error_does_not_abort_batch(self):
+        """單一壞 row 不應擋住同 batch 其他有效 row 被 claim。"""
+        bad_id = self._enqueue_then_corrupt_payload(
+            "broken", "op_dddd0001", new_payload="{not json"
+        )
+        good_ids = {_enqueue_approved(f"ok-{i}", f"op_eeee{i:04x}") for i in (2, 3)}
+
+        claimed = approval_queue.claim_approved_drafts(
+            worker_id="usopp-1", source_agent="brook", batch=5
+        )
+        assert {c["id"] for c in claimed} == good_ids, "good rows 應被正常 claim"
+        assert approval_queue.get_by_id(bad_id)["status"] == "failed"
+
+    def test_parse_error_does_not_increment_retry(self):
+        """Payload 壞掉 / schema drift 都是 ship-time bug，不該走 retry 路徑。"""
+        qid = self._enqueue_then_corrupt_payload("no-retry", "op_eeee0001", new_payload="bad{json")
+        approval_queue.claim_approved_drafts(worker_id="usopp-1", source_agent="brook", batch=5)
+        row = approval_queue.get_by_id(qid)
+        assert row["retry_count"] == 0, "retry_count 不該因 parse error 遞增"
+
+
+# ---------------------------------------------------------------------------
 # Publish / fail
 # ---------------------------------------------------------------------------
 
