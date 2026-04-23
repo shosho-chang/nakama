@@ -1,0 +1,50 @@
+# Brook tag 白名單與黑名單。Phase 1 種子 — 修修稍後會把既有 WP 497 tag 匯入 whitelist。
+#
+# whitelist: 允許的 slug（DraftV1.tags 最終只能用這裡的）
+# blacklist: 任何情況禁用（醫療 / 療效 / 診斷類）
+#
+# strict_whitelist: true → 不在 whitelist 的 tag 一律 reject
+# strict_whitelist: false → 未匹配白名單的 tag 被歸為 rejected 但允許 compose 繼續
+#                          （Phase 1 預設 false，等 497 tag 匯入後切 true）
+
+strict_whitelist: false
+
+whitelist:
+  # Brook 三大類
+  - book-review
+  - people
+  - science
+  # 內容領域（與 DraftV1.primary_category Literal 對齊的 slug 集合）
+  - blog
+  - podcast
+  - neuroscience
+  - sport-science
+  - nutrition-science
+  - weight-loss-science
+  - sleep-science
+  - emotion-science
+  - longevity-science
+  - preventive-healthcare
+  - productivity-science
+  # 常用通用 tag
+  - health
+  - research
+  - reading
+  - personal-development
+  - interview
+  - habits
+  - mindfulness
+  - exercise
+  - nutrition
+  - sleep
+
+blacklist:
+  # 療效宣稱（與 compliance scan 平行的第二道防線）
+  - treatment
+  - cure
+  - diagnosis
+  - prescription
+  - medical-advice
+  # 會被 WP 拒收或引監管風險的類別
+  - cancer-cure
+  - covid-cure

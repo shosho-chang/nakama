@@ -1,14 +1,40 @@
-"""Brook Compose — 多回合對話式文章撰寫助手。"""
+"""Brook Compose — 多回合對話式文章撰寫助手 + 一次性 production 流水線。
+
+兩條 entry point：
+- 對話式（`start_conversation` / `send_message` / `export_draft`）：修修 Web UI 用
+- Production（`compose_and_enqueue`）：topic → DraftV1 → approval_queue，Usopp claim 後發文
+"""
 
 from __future__ import annotations
 
+import json
+import re
+import secrets
 import uuid
 from datetime import datetime, timezone
+from typing import Any, Literal
 
+from pydantic import AwareDatetime, ValidationError
+
+from agents.brook.compliance_scan import scan_draft_compliance, scan_publish_gate
+from agents.brook.style_profile_loader import (
+    StyleProfile,
+    detect_category,
+    load_style_profile,
+)
+from shared import approval_queue, gutenberg_builder
 from shared.anthropic_client import ask_claude_multi, set_current_agent
 from shared.log import get_logger
 from shared.prompt_loader import load_prompt
+from shared.schemas.approval import PublishWpPostV1
+from shared.schemas.publishing import (
+    BlockNodeV1,
+    DraftV1,
+    GutenbergHTMLV1,
+    PublishComplianceGateV1,
+)
 from shared.state import _get_conn
+from shared.tag_filter import filter_tags
 
 logger = get_logger("nakama.brook.compose")
 
@@ -259,3 +285,274 @@ def export_draft(conversation_id: str) -> str:
 
     logger.info(f"Brook 匯出文章：{conversation_id}")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Production pipeline: topic → DraftV1 → approval_queue
+# ---------------------------------------------------------------------------
+#
+# 和對話式流水線正交：這條路徑給定 topic 與可選素材（kb_context / source_content），
+# 透過 style profile + Claude structured output 產出 DraftV1，落 approval_queue，等
+# Usopp claim 後發 WordPress。Phase 1 單回合 compose；對話式產稿走 start_conversation。
+
+
+class ComposeOutputParseError(ValueError):
+    """LLM 的結構化輸出 JSON parse 失敗或缺必要欄位。"""
+
+
+Category = Literal["book-review", "people", "science"]
+TargetSite = Literal["wp_shosho", "wp_fleet"]
+
+
+_COMPOSE_OUTPUT_SCHEMA = """{
+  "title": "<5-120 字標題>",
+  "slug_candidates": ["<3-80 字 a-z 0-9 連字號的 url slug>", ...],
+  "excerpt": "<20-300 字摘要>",
+  "focus_keyword": "<2-60 字主關鍵字>",
+  "meta_description": "<50-155 字 SEO meta>",
+  "secondary_categories": ["<slug, 最多 2 個>"],
+  "tags": ["<slug, 最多 10 個>"],
+  "blocks": [
+    {"block_type": "heading", "attrs": {"level": 2}, "content": "段落標題", "children": []},
+    {"block_type": "paragraph", "attrs": {}, "content": "段落內文", "children": []}
+  ]
+}"""
+
+
+def _build_compose_system_prompt(profile: StyleProfile) -> str:
+    """把風格側寫整份塞進 system，緊接著結構化輸出規範。
+
+    Phase 1 單類別單檔；依 _extraction-notes.md §3.2「不要三類都塞進 context」。
+    """
+    emoji_rule = (
+        "本類別嚴禁 emoji（書評硬規則）。" if profile.forbid_emoji else "emoji 依風格側寫內指引。"
+    )
+
+    header = (
+        f"你是 Brook，為修修代筆的文章撰寫 agent。"
+        f"以下為本類別（{profile.category}）的完整風格側寫，"
+        "請嚴格遵守聲音指紋與禁止事項。"
+    )
+    block_types = "paragraph、heading、list、list_item、quote、image、code、separator"
+    word_range = f"{profile.word_count_min} – {profile.word_count_max}"
+    return f"""{header}
+
+{profile.body}
+
+---
+
+# 輸出規範（覆寫以上 markdown 範本的輸出格式）
+
+1. 你的輸出 **必須是單一 JSON 物件**，無 markdown code fence、無前後說明文字。
+2. {emoji_rule}
+3. slug 僅用小寫 a-z / 0-9 / 連字號，3-80 字。
+4. blocks 是 Gutenberg AST 陣列；block_type 僅可為：{block_types}。
+5. heading 的 attrs.level 僅允許 2-4。
+6. list 的 children 全為 list_item。
+7. content 為該 block 的純文字，不要帶 HTML 標籤。
+8. 全文字數控制在 {word_range} 字之間。
+
+JSON schema 範例：
+{_COMPOSE_OUTPUT_SCHEMA}
+"""
+
+
+def _build_user_request(topic: str, kb_context: str, source_content: str) -> str:
+    parts = [f"# 主題\n{topic}"]
+    if kb_context.strip():
+        parts.append(f"# 知識庫參考（Robin 查詢結果）\n{kb_context}")
+    if source_content.strip():
+        parts.append(f"# 素材（書摘 / 逐字稿 / 研究筆記）\n{source_content}")
+    parts.append("請依系統 prompt 的結構化輸出規範，回傳單一 JSON 物件。")
+    return "\n\n".join(parts)
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    """抽 LLM 回應的 JSON：先試整段，失敗則抓第一個 {…} 區塊。"""
+    stripped = text.strip()
+    # 去 markdown fence
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+        stripped = re.sub(r"\s*```$", "", stripped)
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    # 抓第一個平衡的 {…}
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ComposeOutputParseError("LLM 回應不含 JSON object") from None
+    try:
+        return json.loads(stripped[start : end + 1])
+    except json.JSONDecodeError as e:
+        raise ComposeOutputParseError(f"JSON parse 失敗：{e}") from e
+
+
+def _ast_to_plaintext(ast: list[BlockNodeV1]) -> str:
+    """把 AST 攤平成純文字給 compliance scan 用。"""
+    chunks: list[str] = []
+    for node in ast:
+        if node.content:
+            chunks.append(node.content)
+        if node.children:
+            chunks.append(_ast_to_plaintext(node.children))
+    return "\n".join(chunks)
+
+
+def _new_draft_id(now: datetime) -> str:
+    """draft_YYYYMMDDTHHMMSS_xxxxxx（DraftV1.draft_id pattern）。"""
+    return f"draft_{now.strftime('%Y%m%dT%H%M%S')}_{secrets.token_hex(3)}"
+
+
+def _new_operation_id() -> str:
+    return f"op_{uuid.uuid4().hex[:8]}"
+
+
+def _parse_llm_output(
+    raw: dict[str, Any],
+) -> tuple[dict[str, Any], GutenbergHTMLV1]:
+    """把 LLM JSON 分離成 metadata 區塊 + 已 build 的 Gutenberg AST。"""
+    blocks_raw = raw.get("blocks")
+    if not isinstance(blocks_raw, list) or not blocks_raw:
+        raise ComposeOutputParseError("LLM 輸出缺少 blocks 陣列或為空")
+    try:
+        ast = [BlockNodeV1.model_validate(b) for b in blocks_raw]
+    except Exception as e:
+        raise ComposeOutputParseError(f"blocks 無法轉 BlockNodeV1：{e}") from e
+
+    try:
+        content = gutenberg_builder.build(ast)
+    except Exception as e:
+        raise ComposeOutputParseError(f"AST → HTML build 失敗：{e}") from e
+    return raw, content
+
+
+def compose_and_enqueue(
+    *,
+    topic: str,
+    category: Category | None = None,
+    kb_context: str = "",
+    source_content: str = "",
+    target_site: TargetSite = "wp_shosho",
+    scheduled_at: AwareDatetime | None = None,
+    primary_category_override: str | None = None,
+    model: str | None = None,
+    max_tokens: int = 8192,
+) -> dict[str, Any]:
+    """主題 → Claude 產 AST → DraftV1 → approval_queue row。
+
+    Args:
+        topic: 文章主題
+        category: 強制使用的風格類別；None 時由 detect_category 判斷，再 None 則 raise
+        kb_context: Robin 查詢的背景資訊（科普類常用）
+        source_content: 原始素材（書摘 / podcast 逐字稿 / 研究筆記）
+        target_site: 目標 WordPress 站台（wp_shosho / wp_fleet）
+        scheduled_at: 排程發佈時間；None 表立即發（Usopp claim 後送）
+        primary_category_override: 覆寫 style profile 的預設 primary_category
+        model: Claude 模型；None 走 llm_router
+        max_tokens: LLM 最大輸出 token
+
+    Returns:
+        {
+            "queue_row_id": int,
+            "draft_id": str,
+            "operation_id": str,
+            "category": str,
+            "title": str,
+            "compliance_flags": PublishComplianceGateV1,
+            "tag_filter_rejected": list[tuple[str, str]],
+        }
+    """
+    set_current_agent("brook")
+
+    resolved_category: str | None = category or detect_category(topic, source_content)
+    if resolved_category is None:
+        raise ValueError(
+            '無法自動判斷文章類別，請顯式指定 category="book-review" | "people" | "science"'
+        )
+
+    profile = load_style_profile(resolved_category)
+    system_prompt = _build_compose_system_prompt(profile)
+    user_msg = _build_user_request(topic, kb_context, source_content)
+
+    raw_text = ask_claude_multi(
+        [{"role": "user", "content": user_msg}],
+        system=system_prompt,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=0.4,
+    )
+    payload = _extract_json_object(raw_text)
+    metadata, content = _parse_llm_output(payload)
+
+    plaintext = _ast_to_plaintext(content.ast)
+    gate_flags: PublishComplianceGateV1 = scan_publish_gate(plaintext)
+    draft_compliance = scan_draft_compliance(plaintext)
+
+    tag_candidates = [str(t) for t in metadata.get("tags") or []]
+    if not tag_candidates:
+        tag_candidates = list(profile.default_tag_hints)
+    tag_result = filter_tags(tag_candidates)
+
+    now = datetime.now(timezone.utc)
+    operation_id = _new_operation_id()
+    draft_id = _new_draft_id(now)
+
+    # LLM 可能回傳語法合法 JSON 但違反 DraftV1 長度 / pattern 限制，或漏掉必要欄位。
+    # 全部收斂成 ComposeOutputParseError，維持模組對外的單一 parse-class 例外契約。
+    try:
+        draft = DraftV1(
+            draft_id=draft_id,
+            created_at=now,
+            agent="brook",
+            operation_id=operation_id,
+            title=metadata["title"],
+            slug_candidates=list(metadata["slug_candidates"]),
+            content=content,
+            excerpt=metadata["excerpt"],
+            primary_category=primary_category_override or profile.primary_category,
+            secondary_categories=list(metadata.get("secondary_categories") or []),
+            tags=tag_result.accepted,
+            focus_keyword=metadata["focus_keyword"],
+            meta_description=metadata["meta_description"],
+            featured_image_brief=None,
+            compliance=draft_compliance,
+            style_profile_id=profile.profile_id,
+        )
+        approval_payload = PublishWpPostV1(
+            action_type="publish_post",
+            target_site=target_site,
+            draft=draft,
+            compliance_flags=gate_flags,
+            reviewer_compliance_ack=False,
+            scheduled_at=scheduled_at,
+        )
+    except (ValidationError, KeyError, TypeError) as e:
+        raise ComposeOutputParseError(f"LLM 輸出違反 DraftV1 / PublishWpPostV1 契約：{e}") from e
+
+    queue_row_id = approval_queue.enqueue(
+        source_agent="brook",
+        payload_model=approval_payload,
+        operation_id=operation_id,
+    )
+    logger.info(
+        "Brook compose_and_enqueue %s topic=%r category=%s queue_row=%d",
+        draft_id,
+        topic,
+        resolved_category,
+        queue_row_id,
+    )
+
+    if tag_result.rejected:
+        logger.info("tag filter rejected: %s", tag_result.rejected)
+
+    return {
+        "queue_row_id": queue_row_id,
+        "draft_id": draft_id,
+        "operation_id": operation_id,
+        "category": resolved_category,
+        "title": draft.title,
+        "compliance_flags": gate_flags,
+        "tag_filter_rejected": tag_result.rejected,
+    }

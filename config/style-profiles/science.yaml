@@ -1,0 +1,25 @@
+profile_id: science@0.1.0
+category: science
+# 科普預設走 neuroscience；若主題明確偏 nutrition / sport 等，compose 呼叫時可 override
+primary_category: neuroscience
+style_profile_md: agents/brook/style-profiles/science.md
+word_count:
+  min: 4000
+  max: 7000
+forbid_emoji: false
+default_tag_hints:
+  - science
+  - health
+  - research
+detect_keywords:
+  - 研究
+  - 論文
+  - 機制
+  - 最新研究
+  - 迷思
+  - VO2
+  - Zone 2
+  - NEAT
+  - 多巴胺
+  - 168
+  - 斷食
