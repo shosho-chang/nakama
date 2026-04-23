@@ -286,6 +286,105 @@ class TestComplianceGate:
         wp.create_post.assert_not_called()
         wp.update_post.assert_not_called()
 
+    def test_reviewer_ack_bypasses_compliance_block(self, monkeypatch):
+        """ADR-005b §10 escape hatch: ack=True lets flagged drafts publish.
+
+        Models Bridge HITL two-step: reviewer saw the flag, confirmed via the
+        explicit acknowledgement checkbox, set reviewer_compliance_ack=True,
+        then approved. Publisher must honour that decision and not re-block,
+        but still persist the flags for audit.
+        """
+        monkeypatch.setenv("LITESPEED_PURGE_METHOD", "noop")
+        draft = _make_draft(
+            title="治癒失眠的終極方法",
+            body="這個方法百分之百有效",
+        )
+        # Enqueue with ack=True directly to simulate post-HITL state.
+        payload = PublishWpPostV1(
+            action_type="publish_post",
+            target_site="wp_shosho",
+            draft=draft,
+            compliance_flags=PublishComplianceGateV1(medical_claim=True, matched_terms=["治癒"]),
+            reviewer_compliance_ack=True,
+        )
+        approval_id = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=payload,
+            operation_id=draft.operation_id,
+            initial_status="in_review",
+        )
+        approval_queue.approve(approval_id, reviewer="shosho")
+        approval_queue.claim_approved_drafts(worker_id="usopp-test", source_agent="brook", batch=5)
+
+        wp = _mk_happy_wp_client()
+        wp.get_post.side_effect = [
+            _wp_post(post_id=42, status="draft", draft_id=draft.draft_id),
+            _wp_post(post_id=42, status="publish", draft_id=draft.draft_id),
+        ]
+        pub = Publisher(wp, category_map={"blog": 1}, tag_map={})
+
+        result = pub.publish(
+            _make_request(draft),
+            approval_queue_id=approval_id,
+            operation_id=draft.operation_id,
+        )
+
+        assert result.status == "published"
+        # Flags still persisted in publish_jobs for audit.
+        from shared.state import _get_conn
+
+        row = (
+            _get_conn()
+            .execute(
+                "SELECT compliance_flags FROM publish_jobs WHERE draft_id = ?",
+                (draft.draft_id,),
+            )
+            .fetchone()
+        )
+        assert row is not None
+        assert row["compliance_flags"] is not None
+        parsed = PublishComplianceGateV1.model_validate_json(row["compliance_flags"])
+        assert parsed.medical_claim is True
+        assert "治癒" in parsed.matched_terms
+
+
+# ---------------------------------------------------------------------------
+# WP error propagation
+# ---------------------------------------------------------------------------
+
+
+class TestWPErrorPropagation:
+    def test_wp_server_error_in_publish_step_marks_failed(self, monkeypatch):
+        """Tenacity-exhausted WPServerError in update_post should mark job failed
+        rather than bubble out as an unhandled exception.
+        """
+        monkeypatch.setenv("LITESPEED_PURGE_METHOD", "noop")
+        from shared.wordpress_client import WPServerError
+
+        draft = _make_draft()
+        approval_id = _enqueue_approved(draft, op_id=draft.operation_id)
+
+        wp = _mk_happy_wp_client()
+        # First get_post (validate) succeeds; update_post blows up.
+        wp.get_post.side_effect = [
+            _wp_post(post_id=42, status="draft", draft_id=draft.draft_id),
+        ]
+        wp.update_post.side_effect = WPServerError("503 after retries")
+
+        pub = Publisher(wp, category_map={"blog": 1}, tag_map={})
+        result = pub.publish(
+            _make_request(draft),
+            approval_queue_id=approval_id,
+            operation_id=draft.operation_id,
+        )
+
+        assert result.status == "failed"
+        assert "503" in (result.failure_reason or "")
+        # approval_queue row moved to failed too
+        row = approval_queue.get_by_id(approval_id)
+        assert row is not None
+        assert row["status"] == "failed"
+
 
 # ---------------------------------------------------------------------------
 # Idempotency (both layers)

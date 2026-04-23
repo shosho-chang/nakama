@@ -45,7 +45,12 @@ from shared.schemas.publishing import (
 )
 from shared.seopress_writer import write_seopress
 from shared.state import _get_conn
-from shared.wordpress_client import WordPressClient
+from shared.wordpress_client import (
+    WordPressClient,
+    WPAuthError,
+    WPClientError,
+    WPServerError,
+)
 
 logger = get_logger("nakama.usopp.publisher")
 
@@ -122,26 +127,43 @@ class Publisher:
             return self._failed_result(job=job, operation_id=operation_id)
 
         # Compliance gate (ADR-005b §10) — runs on every entry including resume.
+        # Reviewer-ack escape hatch: if approval_queue already carries
+        # reviewer_compliance_ack=True, the reviewer has explicitly confirmed
+        # awareness of the regulatory risk; honour it instead of re-blocking.
         flags = compliance.scan(draft)
         if flags.medical_claim or flags.absolute_assertion:
-            self._handle_compliance_flag(
-                job=job,
-                draft=draft,
-                approval_queue_id=approval_queue_id,
-                flags=flags,
-                operation_id=operation_id,
+            if not self._reviewer_ack_present(approval_queue_id):
+                self._handle_compliance_flag(
+                    job=job,
+                    draft=draft,
+                    approval_queue_id=approval_queue_id,
+                    flags=flags,
+                    operation_id=operation_id,
+                )
+                final = self._reload_job(job["id"])
+                return self._failed_result(job=final, operation_id=operation_id)
+            # Ack present → persist the flags for audit but let publish continue.
+            self.conn.execute(
+                "UPDATE publish_jobs SET compliance_flags = ? WHERE id = ?",
+                (flags.model_dump_json(), job["id"]),
             )
-            final = self._reload_job(job["id"])
-            return self._failed_result(job=final, operation_id=operation_id)
+            self.conn.commit()
+            logger.info(
+                "publish proceeding with reviewer_compliance_ack=True draft_id=%s flags=%s op=%s",
+                draft.draft_id,
+                flags.matched_terms,
+                operation_id,
+            )
 
-        # Drive state machine.
+        # Drive state machine. Any expected WP error or PublisherError marks
+        # the job + approval_queue row failed so nothing stays mid-flight.
         try:
             adopted = self._run_state_machine(
                 job=job,
                 request=request,
                 operation_id=operation_id,
             )
-        except PublisherError as exc:
+        except (PublisherError, WPAuthError, WPClientError, WPServerError) as exc:
             self._mark_failed(job["id"], reason=str(exc))
             approval_mark_failed(
                 draft_id=approval_queue_id,
@@ -435,6 +457,19 @@ class Publisher:
     # ------------------------------------------------------------------
     # Compliance handling
     # ------------------------------------------------------------------
+
+    def _reviewer_ack_present(self, approval_queue_id: int) -> bool:
+        """Read `reviewer_compliance_ack` from the approval_queue row.
+
+        ADR-005b §10 escape hatch: if set to True, the reviewer has explicitly
+        confirmed awareness of the regulatory risk via Bridge HITL two-step
+        confirmation, and publisher should not auto-block on re-scan.
+        """
+        row = self.conn.execute(
+            "SELECT reviewer_compliance_ack FROM approval_queue WHERE id = ?",
+            (approval_queue_id,),
+        ).fetchone()
+        return bool(row and row["reviewer_compliance_ack"])
 
     def _handle_compliance_flag(
         self,
