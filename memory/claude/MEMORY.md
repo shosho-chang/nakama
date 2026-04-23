@@ -96,4 +96,6 @@
 - [feedback_parse_error_wrap_all_modes.md](feedback_parse_error_wrap_all_modes.md) — 宣稱 ParseError 契約要同時包 ValidationError / KeyError / TypeError，只包 JSONDecodeError 會漏
 - [feedback_yaml_unquoted_numbers.md](feedback_yaml_unquoted_numbers.md) — yaml `- 168` 解析成 int；loader 凡 list 都要 coerce `str(k)` 再吞
 - [reference_mac_dev_env.md](reference_mac_dev_env.md) — Mac 開發機 bring-up：brew python@3.12 + .venv + pip install -e .
+- [reference_sqlite_python_pitfalls.md](reference_sqlite_python_pitfalls.md) — `check_same_thread=False` 不加 mutex、BEGIN IMMEDIATE 與 Python implicit txn 打架等 SQLite 陷阱
+- [feedback_multi_machine_parallel.md](feedback_multi_machine_parallel.md) — Mac ↔ 桌機並行用對方 open PR file list 做 conflict 分析，挑 zero-overlap 任務不 rebase
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
