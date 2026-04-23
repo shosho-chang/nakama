@@ -73,7 +73,8 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ `agents/usopp/publisher.py` + wp_client + seopress_writer + litespeed_purge + advisory locks
 - ⬜ `shared/schemas/external/wordpress.py` + `external/seopress.py`（anti-corruption layer）
 - ⬜ Bridge `/bridge/drafts` UI + routes + CLI fallback
-- ⬜ `agents/franky/` 6 模組 + `/healthz` endpoint + weekly digest
+- ✅ `agents/franky/` 全三 slice + `/healthz` + weekly digest + `/bridge/franky`（PR #74/#75/#76，2026-04-23；見 [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md)）
+- ⬜ Franky VPS 上線：`.env` 補 `SLACK_SHOSHO_USER_ID` + R2_* + 加 3 條 cron + 跑 UptimeRobot runbook
 - ⬜ `config/style-profiles/*.yaml` 三個 profile（book-review / people / science）
 
 **Phase 1 foundation borderline follow-ups（6 項，非 blocker）：**

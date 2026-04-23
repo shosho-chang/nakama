@@ -1,50 +1,34 @@
 ---
-name: Franky Phase 1 monitor 交給另一台 Claude Code 並行開發
-description: 2026-04-23 handover 給第二台機器執行 Franky 健康檢查 + 告警 + R2 備份 + 週報三 slice；主機器不碰 agents/franky/
+name: Franky Phase 1 monitor 全三 slice 完工（Mac 機執行）
+description: 2026-04-23 第二台 Mac 把 ADR-007 三個 slice 全部做完並 merged（PR #74/#75/#76），805 tests / 804 pass
 type: project
-tags: [franky, phase-1, parallel-dev, handover]
+tags: [franky, phase-1, complete, pr-74, pr-75, pr-76]
+originSessionId: d6248f62-150b-43c6-ac05-98394223e172
 ---
+## 完工狀態（2026-04-23）
 
-## 現況（2026-04-23）
+ADR-007 Franky Phase 1 slim 版全三 slice 上 main：
 
-主機器跑 Qwen bench 同時 handover Franky monitor 給另一台開發機（也是 Claude Code）。
+| PR | Slice | Squash commit | 內容 |
+|---|---|---|---|
+| #74 | Slice 1 | `b22ecaf` | health_check + /healthz + alert_state/health_probe_state 表 + UptimeRobot runbook |
+| #75 | Slice 2 | `c0ce485` | alert_router + slack_bot + r2_backup_verify + r2_client + r2_backup_checks 表 |
+| #76 | Slice 3 | `91e08b4` | weekly_digest + /bridge/franky dashboard + capability card |
 
-## 交給對方的範圍
+CI baseline：740 → 805 tests，0 regression。
 
-依 ADR-007 slim 版，三個獨立 PR：
+## 還沒做的事（修修手動 / 之後排）
 
-1. **Slice 1 — 健康檢查核心**（`feature/franky-slice-1-health`）
-   - `agents/franky/health_check.py`（systemd timer / VPS+WP+Nakama service probe / `health_probe_state` 表）
-   - `shared/schemas/franky.py`（HealthProbeV1 / AlertV1）
-   - `migrations/003_franky_tables.sql`
-   - `thousand_sunny/routers/franky.py` — `GET /healthz`（UptimeRobot 探測）
-   - `docs/runbooks/uptimerobot-setup.md`
+- **VPS .env 補齊**：`SLACK_SHOSHO_USER_ID`、`R2_ACCOUNT_ID`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`、`R2_BUCKET_NAME`（[feedback_vps_env_drift_check.md](feedback_vps_env_drift_check.md) 硬規則）
+- **VPS cron 加三條**：
+  - `*/5 * * * * python -m agents.franky health`
+  - `30 3 * * * python -m agents.franky backup-verify`
+  - `0 10 * * 1 python -m agents.franky digest`
+- **UptimeRobot 設定**：跑 [docs/runbooks/uptimerobot-setup.md](../../docs/runbooks/uptimerobot-setup.md)
+- **Dashboard 驗看**：`/bridge/franky` 登入實看，確認 4 張 probe 卡 + 24h alert list 美學沒跑掉
 
-2. **Slice 2 — 告警 + R2 備份**（`feature/franky-slice-2-alert-backup`）
-   - `agents/franky/alert_router.py`（三級分派 + `alert_state` 表 15-min 去重）
-   - `agents/franky/r2_backup_verify.py`（daily cron + state.db snapshot push）
+## Phase 2 伏筆（Slice 3 的 capability card 有寫）
 
-3. **Slice 3 — 週報 + 儀表板**（`feature/franky-slice-3-digest-dashboard`）
-   - `agents/franky/weekly_digest.py`（週一早 10:00 Slack DM）
-   - `thousand_sunny/routers/franky.py` `GET /bridge/franky` 儀表板
-   - Capability card
-
-Paste 用的完整六要素 prompt 在本次對話記錄裡（未寫進 repo 的 `docs/task-prompts/`；若對方要，主機器這邊可以補寫）。
-
-## 主機器的邊界
-
-不碰 `agents/franky/`、`shared/schemas/franky.py`、`thousand_sunny/routers/franky.py`、`migrations/003_*.sql`、`docs/runbooks/uptimerobot-setup.md`、`docs/capabilities/franky-monitor.md`。若另一台卡住，可以 pair 但不要 push 到同 branch。
-
-## 憑證狀態（對方直接用）
-
-全在 `.env`（見 [project_phase1_infra_checkpoint.md](project_phase1_infra_checkpoint.md)）：
-- `SLACK_FRANKY_BOT_TOKEN` + `SLACK_FRANKY_APP_TOKEN`
-- `/home/nakama/secrets/gcp-nakama-franky.json`（VPS 上）
-- `CLOUDFLARE_API_TOKEN` + `R2_ACCESS_KEY_ID/SECRET_ACCESS_KEY/BUCKET_NAME`
-- WP health_check 走剛 merged 的 `shared/wordpress_client.WordPressClient.health_check()`
-
-## How to apply
-
-- 主機器若接下 Phase 1 其他任務（Usopp Slice B、Brook compose、Bridge drafts UI）可以平行做
-- 對方開 PR 時主機器這邊照 `feedback_pr_review_merge_flow.md` 跑 code-review 給意見
-- 收工後寫 capability card + 下一輪整合測試（Usopp Slice C E2E 跑通之後一起驗 Franky `/bridge/franky` 顯示）
+- `vps_metrics` 時序表 + `vps_monitor.py` sampler → dashboard 圖表
+- `cron_runs` 表 + `shared/cron_wrapper.py` → 更準的 cron success rate（現在靠 agent_runs 代）
+- `alert_events` append-only log → 真 24h alert timeline（現在 `alert_state` 是 latest-per-dedup_key）

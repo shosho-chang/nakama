@@ -89,5 +89,7 @@
 - [feedback_cross_doc_review_methodology.md](feedback_cross_doc_review_methodology.md) — 多 ADR 專案在 single-ADR multi-model review 之上再跑 3 agent 跨文件審查（consistency/readiness/plain-lang）
 - [project_usopp_slice_a_merged.md](project_usopp_slice_a_merged.md) — PR #73 Usopp Slice A merged（WP client + locks + external schemas + Docker staging），upload_media TypeError bug 已修；剩 Slice B/C
 - [reference_llama_cpp_flags.md](reference_llama_cpp_flags.md) — llama.cpp 2026 CLI breaking change：`--flash-attn on`、`--reasoning on|off`、`--reasoning-budget N`
-- [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md) — Franky Phase 1 monitor 交給第二台 Claude Code 做 3 slice（health / alert+R2 / digest+dashboard），主機器不碰 agents/franky/
+- [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md) — Franky Phase 1 全三 slice merged（PR #74/#75/#76）；剩 VPS .env + cron + UptimeRobot 修修手動
+- [feedback_stacked_pr_squash_conflict.md](feedback_stacked_pr_squash_conflict.md) — 堆疊 PR + squash merge：子 PR 變 unmergeable；沒 force-push 權限走 merge-main + --ours 退路
+- [feedback_ruff_order_by_type.md](feedback_ruff_order_by_type.md) — ruff isort 預設 order-by-type：ALL_CAPS 常數先於 PascalCase 類，不是純 ASCII 序
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
