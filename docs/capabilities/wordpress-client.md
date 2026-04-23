@@ -1,8 +1,8 @@
 # Capability Card — `nakama-wp-client`
 
-**Status:** Phase 1 in-development (part of `shared/wordpress_client.py`)
+**Status:** Phase 1 Slice A merged（PR #73）— live in `shared/wordpress_client.py`
 **License:** MIT（計畫開源）
-**Scope:** WordPress REST API + SEOPress Pro Python client，site-agnostic、config-driven。
+**Scope:** WordPress REST API + SEOPress Pro Python client，site-agnostic、config-driven。用於 Usopp publisher（ADR-005b）及 Franky 健康檢查（ADR-007）。
 
 ---
 

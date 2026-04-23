@@ -171,6 +171,39 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_queue_operation
             ON approval_queue(operation_id);
 
+        -- ADR-005b §1 / §2 / §10 Usopp publish_jobs state machine
+        -- (canonical DDL: migrations/002_publish_jobs.sql)
+        CREATE TABLE IF NOT EXISTS publish_jobs (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            draft_id            TEXT    NOT NULL UNIQUE,
+            approval_queue_id   INTEGER NOT NULL,
+            operation_id        TEXT    NOT NULL,
+            state               TEXT    NOT NULL
+                                CHECK (state IN ('claimed', 'media_ready', 'post_draft',
+                                                 'seo_ready', 'validated', 'published',
+                                                 'cache_purged', 'done', 'failed')),
+            state_updated_at    TEXT    NOT NULL,
+            featured_media_id   INTEGER,
+            post_id             INTEGER,
+            permalink           TEXT,
+            seo_status          TEXT
+                                CHECK (seo_status IS NULL OR
+                                       seo_status IN ('written', 'fallback_meta', 'skipped')),
+            cache_purged        INTEGER NOT NULL DEFAULT 0,
+            compliance_flags    TEXT,
+            claimed_at          TEXT    NOT NULL,
+            completed_at        TEXT,
+            failure_reason      TEXT,
+            retry_count         INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_publish_jobs_state
+            ON publish_jobs(state, state_updated_at);
+        CREATE INDEX IF NOT EXISTS idx_publish_jobs_approval_queue
+            ON publish_jobs(approval_queue_id);
+        CREATE INDEX IF NOT EXISTS idx_publish_jobs_operation
+            ON publish_jobs(operation_id);
+
         -- ADR-007 §4 Franky monitoring（canonical DDL: migrations/003_franky_tables.sql）
         -- Slice 1 scope: alert_state + health_probe_state.
         -- cron_runs / vps_metrics / r2_backup_checks deferred to Slice 2/3.
