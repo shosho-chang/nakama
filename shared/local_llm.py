@@ -19,8 +19,8 @@ logger = get_logger("nakama.shared.local_llm")
 
 # 預設值，可透過 config.yaml 或呼叫時覆寫
 DEFAULT_BASE_URL = "http://localhost:8080/v1"
-DEFAULT_MODEL = "gemma-4-26b-a4b"
-DEFAULT_TIMEOUT = 300  # 本地推理可能較慢，5 分鐘 timeout
+DEFAULT_MODEL = "qwen3.6-35b-a3b"
+DEFAULT_TIMEOUT = 900  # 本地推理可能較慢（Qwen partial offload 可達 4-5 分鐘/chunk），預設 15 分鐘
 
 
 def _get_config() -> dict:

@@ -60,8 +60,8 @@ agents:
 
 local_llm:
   base_url: "http://localhost:8080/v1"
-  model: "gemma-4-26b-a4b"
-  timeout: 300  # 本地推理 timeout（秒）
+  model: "qwen3.6-35b-a3b"
+  timeout: 900  # 本地推理 timeout（秒）；Qwen partial offload 單 chunk 可達 4-5 分鐘，預設 15 分鐘
 
 gateway:
   slack:

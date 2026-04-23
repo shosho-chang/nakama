@@ -29,9 +29,11 @@ F:\llama.cpp\llama-server.exe ^
   -ngl %GPU_LAYERS% ^
   -c %CTX% ^
   -t 6 ^
-  --flash-attn ^
+  --flash-attn on ^
   -ctk q8_0 ^
   -ctv q8_0 ^
-  --jinja
+  --jinja ^
+  --reasoning off ^
+  --reasoning-budget 0
 
 pause
