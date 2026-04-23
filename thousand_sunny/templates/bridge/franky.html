@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Franky Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Direction B tokens (mirrored from /bridge/index.html) ── */
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-signal-mute:  rgba(255,90,31,0.08);
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-jade-mute:    rgba(63,122,90,0.08);
+  --nk-crimson:      #a8231a;
+  --nk-crimson-mute: rgba(168,35,26,0.08);
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-t-micro: 10px; --nk-t-xs: 11px; --nk-t-sm: 12px;
+  --nk-t-base: 14px;  --nk-t-md: 16px; --nk-t-lg: 19px;
+  --nk-t-xl: 24px;    --nk-t-2xl: 32px; --nk-t-3xl: 48px;
+  --nk-r-2: 2px;
+  --nk-border:      1px solid var(--nk-rule);
+  --nk-border-hair: 1px solid var(--nk-hairline);
+  --nk-dur-fast: 80ms;
+  --nk-dur-base: 140ms;
+  --nk-ease-out: cubic-bezier(0.2,0.7,0.2,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: var(--nk-t-base);
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Chassis header (shared with other bridge pages) ── */
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; }
+.chassis-dot {
+  width: 14px; height: 14px;
+  border: 2px solid var(--nk-chassis-fg);
+  border-radius: 50%;
+  position: relative;
+}
+.chassis-dot::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  background: var(--nk-signal);
+  border-radius: 50%;
+}
+.chassis-wordmark {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.chassis-nav { display: flex; gap: 24px; margin-left: auto; }
+.chassis-nav a {
+  color: var(--nk-chassis-fg-2);
+  text-decoration: none;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: color var(--nk-dur-fast) var(--nk-ease-out);
+}
+.chassis-nav a:hover, .chassis-nav a.is-current { color: var(--nk-chassis-fg); }
+.chassis-nav a.is-current {
+  border-bottom: 2px solid var(--nk-signal);
+  padding-bottom: 2px;
+}
+
+/* ── Page subheader ── */
+.pg-subheader {
+  padding: 20px 40px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: var(--nk-border-hair);
+}
+.pg-title {
+  font-family: var(--nk-font-display);
+  font-size: var(--nk-t-xl);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.pg-stamp {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-muted);
+  letter-spacing: 0.08em;
+}
+
+/* ── Probe cards grid — break the grid-cols-4 monotony ── */
+/* Row 1: Nakama gateway hero (2fr) + VPS resources (1fr) */
+/* Row 2: three equal cards (WP shosho / WP fleet / R2 backup) */
+.probe-zone {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1px;
+  background: var(--nk-rule);
+  border: var(--nk-border);
+  margin: 20px 40px 0;
+}
+.probe-row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: var(--nk-rule);
+  border: var(--nk-border);
+  border-top: none;
+  margin: 0 40px;
+}
+.probe-card {
+  background: var(--nk-panel);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 128px;
+  position: relative;
+}
+.probe-card.is-hero { min-height: 148px; padding: 24px 26px; }
+.probe-card .pc-label {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+.probe-card .pc-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+}
+.probe-card .pc-status {
+  font-family: var(--nk-font-display);
+  font-size: var(--nk-t-lg);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.probe-card.is-hero .pc-status {
+  font-size: var(--nk-t-2xl);
+  letter-spacing: -0.005em;
+}
+.probe-card .pc-meta {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-muted);
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.probe-card .pc-error {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-crimson);
+  background: var(--nk-crimson-mute);
+  padding: 4px 8px;
+  border-left: 2px solid var(--nk-crimson);
+  margin-top: 6px;
+  word-break: break-all;
+  line-height: 1.4;
+}
+.probe-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--nk-panel);
+}
+.probe-card.is-ok .probe-dot { background: var(--nk-jade); }
+.probe-card.is-ok .pc-status { color: var(--nk-jade); }
+.probe-card.is-fail .probe-dot { background: var(--nk-crimson); }
+.probe-card.is-fail .pc-status { color: var(--nk-crimson); }
+.probe-card.is-unknown .probe-dot {
+  background: transparent;
+  border: 2px dashed var(--nk-muted);
+}
+.probe-card.is-unknown .pc-status { color: var(--nk-muted); }
+
+/* VPS resource inline stats (right side of hero row) */
+.vps-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 8px;
+}
+.vps-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vps-stat-label {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nk-muted);
+}
+.vps-stat-value {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-md);
+  color: var(--nk-ink);
+}
+
+/* ── Section header ── */
+.sec-header {
+  padding: 28px 40px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.sec-title {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+}
+.sec-meta {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-muted);
+}
+
+/* ── Alert list ── */
+.alert-list {
+  margin: 0 40px 28px;
+  border: var(--nk-border);
+  background: var(--nk-panel);
+}
+.alert-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 160px 80px;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: var(--nk-border-hair);
+  align-items: start;
+}
+.alert-row:last-child { border-bottom: none; }
+.alert-state-badge {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  align-self: start;
+  justify-self: start;
+}
+.alert-state-badge.is-firing {
+  background: var(--nk-crimson-mute);
+  color: var(--nk-crimson);
+}
+.alert-state-badge.is-resolved {
+  background: var(--nk-jade-mute);
+  color: var(--nk-jade);
+}
+.alert-state-badge.is-stale {
+  background: transparent;
+  border: 1px solid var(--nk-muted);
+  color: var(--nk-muted);
+}
+.alert-rule {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-sm);
+  color: var(--nk-ink);
+  word-break: break-all;
+}
+.alert-msg {
+  font-size: var(--nk-t-sm);
+  color: var(--nk-ink-2);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+.alert-ts {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-muted);
+  text-align: right;
+}
+.alert-count {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-ink-3);
+  text-align: right;
+}
+.alert-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--nk-muted);
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ── R2 backup strip (footer) ── */
+.r2-strip {
+  margin: 0 40px 28px;
+  padding: 16px 22px;
+  background: var(--nk-panel-2);
+  border: var(--nk-border-hair);
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+}
+.r2-strip-key { color: var(--nk-muted); letter-spacing: 0.18em; text-transform: uppercase; }
+.r2-strip-val { color: var(--nk-ink); }
+.r2-strip-val.is-ok { color: var(--nk-jade); }
+.r2-strip-val.is-fail { color: var(--nk-crimson); }
+
+/* ── Small screen stacking ── */
+@media (max-width: 900px) {
+  .chassis { padding: 0 20px; gap: 16px; }
+  .pg-subheader, .sec-header, .probe-zone, .probe-row2, .alert-list, .r2-strip { margin-left: 20px; margin-right: 20px; }
+  .probe-zone, .probe-row2 { grid-template-columns: 1fr; }
+  .alert-row { grid-template-columns: 1fr; gap: 4px; padding: 12px 14px; }
+  .alert-ts, .alert-count { text-align: left; }
+}
+</style>
+</head>
+<body>
+  <header class="chassis" role="banner">
+    <div class="chassis-brand">
+      <div class="chassis-dot" aria-hidden="true"></div>
+      <span class="chassis-wordmark">Nakama · Bridge</span>
+    </div>
+    <nav class="chassis-nav" aria-label="Bridge sections">
+      <a href="/bridge">OVERVIEW</a>
+      <a href="/bridge/memory">MEMORY</a>
+      <a href="/bridge/cost">COST</a>
+      <a href="/bridge/franky" class="is-current" aria-current="page">FRANKY</a>
+    </nav>
+  </header>
+
+  <section class="pg-subheader">
+    <h1 class="pg-title">Franky Monitor</h1>
+    <span class="pg-stamp">LAST UPDATED · {{ generated_at[:19] }}Z</span>
+  </section>
+
+  {# ── Hero row: Nakama Gateway (2fr) + VPS Resources (1fr) ── #}
+  <div class="probe-zone">
+    {% set hero = probe_cards[0] %}
+    <article class="probe-card is-hero is-{{ hero.status }}">
+      <span class="pc-label">{{ hero.label }}</span>
+      <div class="pc-status-row">
+        <span class="probe-dot" aria-hidden="true"></span>
+        <span class="pc-status">
+          {% if hero.status == "ok" %}Responding
+          {% elif hero.status == "fail" %}Unhealthy · {{ hero.consecutive_fails }}× fail
+          {% else %}No data yet
+          {% endif %}
+        </span>
+      </div>
+      <div class="pc-meta">
+        {% if hero.last_check_at %}last probe {{ hero.last_check_at[:19] }}Z{% else %}awaiting first probe{% endif %}
+      </div>
+      {% if hero.last_error %}
+        <div class="pc-error">{{ hero.last_error }}</div>
+      {% endif %}
+    </article>
+
+    {% set vps_card = probe_cards[1] %}
+    <article class="probe-card is-{{ vps_card.status }}">
+      <span class="pc-label">{{ vps_card.label }}</span>
+      <div class="pc-status-row">
+        <span class="probe-dot" aria-hidden="true"></span>
+        <span class="pc-status">
+          {% if vps_card.status == "ok" %}Sampled
+          {% elif vps_card.status == "fail" %}Stressed
+          {% else %}No data yet
+          {% endif %}
+        </span>
+      </div>
+      <div class="vps-stats">
+        <div class="vps-stat">
+          <span class="vps-stat-label">CPU</span>
+          <span class="vps-stat-value">{{ '%.1f' % vps.cpu_pct }}%</span>
+        </div>
+        <div class="vps-stat">
+          <span class="vps-stat-label">RAM</span>
+          <span class="vps-stat-value">{{ '%.0f' % vps.ram_pct }}%</span>
+        </div>
+        <div class="vps-stat">
+          <span class="vps-stat-label">Disk</span>
+          <span class="vps-stat-value">{{ '%.0f' % vps.disk_pct }}%</span>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  {# ── Secondary row: WP×2 + placeholder for asymmetry ── #}
+  <div class="probe-row2">
+    {% for card in probe_cards[2:] %}
+      <article class="probe-card is-{{ card.status }}">
+        <span class="pc-label">{{ card.label }}</span>
+        <div class="pc-status-row">
+          <span class="probe-dot" aria-hidden="true"></span>
+          <span class="pc-status">
+            {% if card.status == "ok" %}Responding
+            {% elif card.status == "fail" %}Unhealthy · {{ card.consecutive_fails }}× fail
+            {% else %}No data yet
+            {% endif %}
+          </span>
+        </div>
+        <div class="pc-meta">
+          {% if card.last_check_at %}last probe {{ card.last_check_at[:19] }}Z{% else %}awaiting first probe{% endif %}
+        </div>
+        {% if card.last_error %}
+          <div class="pc-error">{{ card.last_error }}</div>
+        {% endif %}
+      </article>
+    {% endfor %}
+    {# Third slot: latest R2 backup summary to avoid trailing gap and preserve 3-column rhythm #}
+    <article class="probe-card is-{% if r2_backup and r2_backup.status == 'ok' %}ok{% elif r2_backup %}fail{% else %}unknown{% endif %}">
+      <span class="pc-label">R2 Backup · latest</span>
+      <div class="pc-status-row">
+        <span class="probe-dot" aria-hidden="true"></span>
+        <span class="pc-status">
+          {% if r2_backup %}{{ r2_backup.status }}{% else %}No data yet{% endif %}
+        </span>
+      </div>
+      <div class="pc-meta">
+        {% if r2_backup %}
+          {% if r2_backup.latest_object_size %}{{ (r2_backup.latest_object_size // 1048576) }} MB · {% endif %}
+          checked {{ r2_backup.checked_at[:19] }}Z
+        {% else %}
+          run `python -m agents.franky backup-verify` to populate
+        {% endif %}
+      </div>
+    </article>
+  </div>
+
+  {# ── Recent alerts ── #}
+  <header class="sec-header">
+    <h2 class="sec-title">Recent Alerts · 24h</h2>
+    <span class="sec-meta">{{ alerts | length }} shown</span>
+  </header>
+
+  <section class="alert-list" aria-label="Recent alerts">
+    {% if alerts %}
+      {% for a in alerts %}
+        <div class="alert-row">
+          <span class="alert-state-badge {% if a.still_firing %}is-firing{% elif a.state == 'resolved' %}is-resolved{% else %}is-stale{% endif %}">
+            {% if a.still_firing %}firing{% elif a.state == 'resolved' %}resolved{% else %}stale{% endif %}
+          </span>
+          <div>
+            <div class="alert-rule">{{ a.rule_id }}</div>
+            {% if a.message %}<div class="alert-msg">{{ a.message }}</div>{% endif %}
+          </div>
+          <span class="alert-ts">{{ a.last_fired_at[:19] }}Z</span>
+          <span class="alert-count">{{ a.fire_count }}× fires</span>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="alert-empty">no alerts in the last 24 hours</div>
+    {% endif %}
+  </section>
+
+  {# ── R2 backup footer strip ── #}
+  {% if r2_backup %}
+    <div class="r2-strip" role="contentinfo">
+      <span class="r2-strip-key">R2 latest</span>
+      <span class="r2-strip-val">{{ r2_backup.latest_object_key or '—' }}</span>
+      <span class="r2-strip-key">· size</span>
+      <span class="r2-strip-val">
+        {% if r2_backup.latest_object_size %}{{ r2_backup.latest_object_size // 1048576 }} MB{% else %}—{% endif %}
+      </span>
+      <span class="r2-strip-key">· status</span>
+      <span class="r2-strip-val {% if r2_backup.status == 'ok' %}is-ok{% else %}is-fail{% endif %}">{{ r2_backup.status }}</span>
+    </div>
+  {% endif %}
+
+</body>
+</html>

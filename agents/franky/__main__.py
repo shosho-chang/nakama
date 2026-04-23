@@ -5,7 +5,7 @@ Usage:
     python -m agents.franky health       # Slice 1: run one health-check tick + dispatch alerts
     python -m agents.franky alert --test # Slice 2: send a test alert through the router
     python -m agents.franky backup-verify  # Slice 2: verify R2 daily snapshot
-    python -m agents.franky digest       # Slice 3: weekly digest (not yet implemented)
+    python -m agents.franky digest       # Slice 3: weekly digest (5-section Slack DM)
 
 The default (no-subcommand) path preserves existing cron behavior until Slice 3 flips
 the default to the new digest. See ADR-007 §11 for the module layout plan.
@@ -99,9 +99,11 @@ def _cmd_backup_verify(_args: argparse.Namespace) -> int:
 
 
 def _cmd_digest(_args: argparse.Namespace) -> int:
-    raise NotImplementedError(
-        "agents.franky.weekly_digest lands in Slice 3 (feature/franky-slice-3-digest-dashboard)"
-    )
+    from agents.franky.weekly_digest import send_digest
+
+    result = send_digest()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
 
 
 def _cmd_legacy_weekly(_args: argparse.Namespace) -> int:
@@ -124,7 +126,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Send a synthetic info alert through the router (verifies Slack wiring).",
     )
     sub.add_parser("backup-verify", help="Verify R2 daily backup (Slice 2)")
-    sub.add_parser("digest", help="Weekly digest (Slice 3, not yet implemented)")
+    sub.add_parser("digest", help="Send weekly digest to Slack DM (Slice 3)")
     return parser
 
 
