@@ -15,6 +15,7 @@ app.include_router(bridge.page_router)
 # Franky /healthz must be mounted unconditionally — UptimeRobot probes this regardless of
 # DISABLE_ROBIN or any other feature flag (ADR-007 §2).
 app.include_router(franky.router)
+app.include_router(franky.page_router)
 
 # Robin（KB ingest + reader）僅本機執行，VPS 設 DISABLE_ROBIN=1 跳過
 if not os.getenv("DISABLE_ROBIN"):

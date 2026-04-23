@@ -1,6 +1,6 @@
 # Capability: Franky Monitor
 
-**Status:** Slice 1 + 2 landed (health checks + alert router + R2 backup verify). Slice 3 (weekly digest + Bridge dashboard) pending.
+**Status:** Slice 1 + 2 + 3 landed — health checks, alert router, R2 backup verify, weekly digest, and `/bridge/franky` dashboard are all shipped.
 **ADR:** [ADR-007 Franky Phase 1 — 基礎設施監控 (slim 版)](../decisions/ADR-007-franky-scope-expansion.md)
 **Principles:** [reliability](../principles/reliability.md), [observability](../principles/observability.md), [schemas](../principles/schemas.md)
 
@@ -15,8 +15,10 @@ Franky is Nakama's infrastructure watchdog. It probes VPS resources, WordPress s
 | `agents/franky/health_check.py` | 5-min cron probe: VPS / WP×2 / Nakama gateway, 3-consecutive-fail state machine |
 | `agents/franky/alert_router.py` | Dedup via `alert_state` table (ADR-007 §4), dispatch to Slack |
 | `agents/franky/r2_backup_verify.py` | Daily probe of R2 backups; 連 2 日失敗 → Critical |
-| `agents/franky/slack_bot.py` | `slack_sdk` wrapper, DM to `SLACK_SHOSHO_USER_ID`, no-op stub when env missing |
-| `thousand_sunny/routers/franky.py` | `GET /healthz` — UptimeRobot external probe target (Slice 1) |
+| `agents/franky/slack_bot.py` | `slack_sdk` wrapper, DM to `SLACK_SHOSHO_USER_ID`, no-op stub when env missing; `post_alert` + `post_plain` surfaces |
+| `agents/franky/weekly_digest.py` | Monday 10:00 Slack DM — 5 sections (VPS / cron / alerts / backup / cost), pure template, no LLM |
+| `thousand_sunny/routers/franky.py` | `GET /healthz` (Slice 1) + `GET /bridge/franky` dashboard (Slice 3) |
+| `thousand_sunny/templates/bridge/franky.html` | Direction B-styled dashboard: 4 probe cards + 24h alert list + R2 strip |
 | `shared/r2_client.py` | Read-only boto3 wrapper for R2 (Cloudflare Object Storage) |
 | `shared/schemas/franky.py` | Pydantic contracts (`HealthProbeV1` / `AlertV1` / `HealthzResponseV1` / `WeeklyDigestV1`) |
 
@@ -57,15 +59,19 @@ Franky is Nakama's infrastructure watchdog. It probes VPS resources, WordPress s
 python -m agents.franky health         # one 5-min tick; probes all 4 targets; dispatches alerts
 python -m agents.franky alert --test   # synthetic info alert (self-test Slack wiring)
 python -m agents.franky backup-verify  # one R2 daily probe; returns non-zero exit when Critical emitted
-python -m agents.franky digest         # Slice 3 (NotImplementedError until shipped)
+python -m agents.franky digest         # compose + send weekly digest DM (5 sections)
 python -m agents.franky                # legacy weekly report (backward-compat for current cron)
 ```
 
 ### HTTP
 
 ```
-GET /healthz  →  200 + HealthzResponseV1   (process-level; < 200ms; no DB/Slack/LLM)
-                 503 + degraded payload    (only when response cannot be built)
+GET /healthz         →  200 + HealthzResponseV1   (process-level; < 200ms; no DB/Slack/LLM)
+                        503 + degraded payload    (only when response cannot be built)
+
+GET /bridge/franky   →  200 + HTML dashboard       (cookie auth; reads health_probe_state
+                                                   + alert_state + r2_backup_checks + psutil)
+                        302 /login?next=/bridge/franky  (when unauthenticated)
 ```
 
 ---
@@ -142,7 +148,7 @@ Per [feedback_open_source_ready.md](../../memory/claude/feedback_open_source_rea
 Missing for OSS release:
 - A generic `config.yaml` for threshold knobs (currently env-only).
 - Pluggable notifier interface (today only Slack; email / PagerDuty / Discord would need new module).
-- Phase 2: `vps_monitor.py` + `weekly_digest.py` + Bridge dashboard (Slice 3).
+- Phase 2: `vps_monitor.py` time-series sampler (today VPS snapshot is single-point at digest/dashboard time) + `cron_wrapper.py` + charts.
 
 ---
 

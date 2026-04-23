@@ -76,6 +76,13 @@ class FrankySlackBot:
             f"{alert.message}\n"
             f"_rule=`{alert.rule_id}`  op=`{alert.operation_id}`_"
         )
+        return self._post_text(text, context=f"alert rule={alert.rule_id}")
+
+    def post_plain(self, text: str, *, context: str = "plain") -> str | None:
+        """Send plain markdown DM (weekly digest / startup notice). Returns Slack ts or None."""
+        return self._post_text(text, context=context)
+
+    def _post_text(self, text: str, *, context: str) -> str | None:
         try:
             channel = self._ensure_dm_channel()
             resp = self._client.chat_postMessage(
@@ -85,18 +92,12 @@ class FrankySlackBot:
                 unfurl_media=False,
             )
             ts = resp.get("ts")
-            logger.info(
-                "slack dm sent rule=%s severity=%s ts=%s",
-                alert.rule_id,
-                alert.severity,
-                ts,
-            )
+            logger.info("slack dm sent context=%s ts=%s", context, ts)
             return str(ts) if ts else None
         except SlackApiError as exc:
             logger.error(
-                "slack dm failed rule=%s severity=%s err=%s",
-                alert.rule_id,
-                alert.severity,
+                "slack dm failed context=%s err=%s",
+                context,
                 exc.response.get("error") if exc.response else str(exc),
             )
             return None
@@ -113,4 +114,10 @@ class _NoopSlackStub:
             alert.title,
             alert.message,
         )
+        return None
+
+    def post_plain(self, text: str, *, context: str = "plain") -> str | None:
+        # Log only the first 240 chars to avoid dumping whole digest to cron log
+        preview = text if len(text) <= 240 else text[:240] + "…"
+        logger.warning("[slack stub] context=%s preview=%s", context, preview)
         return None
