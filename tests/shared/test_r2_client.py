@@ -151,3 +151,191 @@ def test_head_object_wraps_client_error():
     client = _client_with_mock_s3(s3)
     with pytest.raises(R2Unavailable):
         client.head_object("missing.zst")
+
+
+# ---------------------------------------------------------------------------
+# from_nakama_backup_env
+# ---------------------------------------------------------------------------
+
+
+def test_from_nakama_backup_env_reuses_base_credentials(_env, monkeypatch):
+    from shared.r2_client import R2Client
+
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    monkeypatch.delenv("NAKAMA_R2_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("NAKAMA_R2_SECRET_ACCESS_KEY", raising=False)
+    with patch("shared.r2_client.boto3.client") as mock_boto:
+        mock_boto.return_value = MagicMock()
+        client = R2Client.from_nakama_backup_env()
+    assert client.bucket == "nakama-backup"
+    call_kwargs = mock_boto.call_args.kwargs
+    assert call_kwargs["aws_access_key_id"] == "ak"  # reused from R2_ACCESS_KEY_ID
+    assert call_kwargs["aws_secret_access_key"] == "sk"
+
+
+def test_from_nakama_backup_env_override_credentials(_env, monkeypatch):
+    from shared.r2_client import R2Client
+
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    monkeypatch.setenv("NAKAMA_R2_ACCESS_KEY_ID", "scoped-ak")
+    monkeypatch.setenv("NAKAMA_R2_SECRET_ACCESS_KEY", "scoped-sk")
+    with patch("shared.r2_client.boto3.client") as mock_boto:
+        mock_boto.return_value = MagicMock()
+        R2Client.from_nakama_backup_env()
+    call_kwargs = mock_boto.call_args.kwargs
+    assert call_kwargs["aws_access_key_id"] == "scoped-ak"
+    assert call_kwargs["aws_secret_access_key"] == "scoped-sk"
+
+
+def test_from_nakama_backup_env_missing_bucket_raises(_env, monkeypatch):
+    from shared.r2_client import R2Client, R2Unavailable
+
+    monkeypatch.delenv("NAKAMA_R2_BACKUP_BUCKET", raising=False)
+    with pytest.raises(R2Unavailable) as exc:
+        R2Client.from_nakama_backup_env()
+    assert "NAKAMA_R2_BACKUP_BUCKET" in str(exc.value)
+
+
+def test_from_nakama_backup_env_missing_account_id_raises(monkeypatch):
+    from shared.r2_client import R2Client, R2Unavailable
+
+    monkeypatch.delenv("R2_ACCOUNT_ID", raising=False)
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    monkeypatch.setenv("NAKAMA_R2_ACCESS_KEY_ID", "ak")
+    monkeypatch.setenv("NAKAMA_R2_SECRET_ACCESS_KEY", "sk")
+    with pytest.raises(R2Unavailable) as exc:
+        R2Client.from_nakama_backup_env()
+    assert "R2_ACCOUNT_ID" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# upload_file
+# ---------------------------------------------------------------------------
+
+
+def test_upload_file_calls_s3_upload_file(tmp_path):
+    src = tmp_path / "hello.bin"
+    src.write_bytes(b"payload")
+    s3 = MagicMock()
+    client = _client_with_mock_s3(s3)
+    client.upload_file(src, "state/2026/04/23/state.db.gz", content_type="application/gzip")
+    s3.upload_file.assert_called_once_with(
+        Filename=str(src),
+        Bucket="backups",
+        Key="state/2026/04/23/state.db.gz",
+        ExtraArgs={"ContentType": "application/gzip"},
+    )
+
+
+def test_upload_file_no_content_type_passes_none_extra(tmp_path):
+    src = tmp_path / "x.bin"
+    src.write_bytes(b"x")
+    s3 = MagicMock()
+    client = _client_with_mock_s3(s3)
+    client.upload_file(src, "k")
+    call_kwargs = s3.upload_file.call_args.kwargs
+    assert call_kwargs["ExtraArgs"] is None
+
+
+def test_upload_file_wraps_client_error(tmp_path):
+    from shared.r2_client import R2Unavailable
+
+    src = tmp_path / "x.bin"
+    src.write_bytes(b"x")
+    s3 = MagicMock()
+    s3.upload_file.side_effect = ClientError(
+        {"Error": {"Code": "AccessDenied", "Message": "nope"}}, "PutObject"
+    )
+    client = _client_with_mock_s3(s3)
+    with pytest.raises(R2Unavailable) as exc:
+        client.upload_file(src, "k")
+    assert "upload_file key=k" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# delete_objects + delete_older_than
+# ---------------------------------------------------------------------------
+
+
+def test_delete_objects_empty_is_noop():
+    s3 = MagicMock()
+    client = _client_with_mock_s3(s3)
+    assert client.delete_objects([]) == 0
+    s3.delete_objects.assert_not_called()
+
+
+def test_delete_objects_single_batch_returns_count():
+    s3 = MagicMock()
+    s3.delete_objects.return_value = {"Deleted": [{"Key": "a"}, {"Key": "b"}]}
+    client = _client_with_mock_s3(s3)
+    assert client.delete_objects(["a", "b"]) == 2
+    s3.delete_objects.assert_called_once_with(
+        Bucket="backups",
+        Delete={"Objects": [{"Key": "a"}, {"Key": "b"}], "Quiet": True},
+    )
+
+
+def test_delete_objects_chunks_at_1000():
+    s3 = MagicMock()
+    s3.delete_objects.return_value = {}
+    client = _client_with_mock_s3(s3)
+    keys = [f"k{i}" for i in range(2500)]
+    assert client.delete_objects(keys) == 2500
+    assert s3.delete_objects.call_count == 3  # 1000 + 1000 + 500
+
+
+def test_delete_objects_partial_failure_subtracts_errors():
+    s3 = MagicMock()
+    s3.delete_objects.return_value = {"Errors": [{"Key": "a", "Code": "AccessDenied"}]}
+    client = _client_with_mock_s3(s3)
+    assert client.delete_objects(["a", "b", "c"]) == 2
+
+
+def test_delete_older_than_rejects_negative_days():
+    s3 = MagicMock()
+    client = _client_with_mock_s3(s3)
+    with pytest.raises(ValueError):
+        client.delete_older_than(-1)
+
+
+def test_delete_older_than_selects_objects_before_cutoff():
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    s3 = MagicMock()
+    now = _dt.now(timezone.utc)
+    page1 = {
+        "Contents": [
+            {"Key": "old1", "LastModified": now - _td(days=31), "Size": 1},
+            {"Key": "fresh", "LastModified": now - _td(days=1), "Size": 1},
+        ]
+    }
+    page2 = {"Contents": [{"Key": "old2", "LastModified": now - _td(days=60), "Size": 1}]}
+
+    paginator = MagicMock()
+    paginator.paginate.return_value = [page1, page2]
+    s3.get_paginator.return_value = paginator
+    s3.delete_objects.return_value = {"Deleted": [{"Key": "old1"}, {"Key": "old2"}]}
+
+    client = _client_with_mock_s3(s3)
+    assert client.delete_older_than(30, prefix="state/") == 2
+    paginator.paginate.assert_called_once_with(Bucket="backups", Prefix="state/")
+    # fresh (1d old) not in delete request
+    delete_call = s3.delete_objects.call_args.kwargs["Delete"]["Objects"]
+    assert {o["Key"] for o in delete_call} == {"old1", "old2"}
+
+
+def test_delete_older_than_no_victims_skips_delete():
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    s3 = MagicMock()
+    now = _dt.now(timezone.utc)
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {"Contents": [{"Key": "fresh", "LastModified": now - _td(hours=1), "Size": 1}]}
+    ]
+    s3.get_paginator.return_value = paginator
+    client = _client_with_mock_s3(s3)
+    assert client.delete_older_than(30) == 0
+    s3.delete_objects.assert_not_called()
