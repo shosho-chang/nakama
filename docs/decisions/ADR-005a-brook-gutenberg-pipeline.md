@@ -182,6 +182,7 @@ class DraftV1(BaseModel):
 **實作備註**：
 - `raw_html` 另一個等效作法是用 `@computed_field`，但為了 DB round-trip 方便（直接 store `raw_html` 給下游 Usopp POST 使用而不必 re-build），本 ADR 選擇「兩欄並存 + `model_validator` 守恆」。
 - `secondary_categories` 僅驗 slug 格式，白名單比對（避免 WP 端 category not found）在 compose 層次做，與 tags 策略一致。
+- **`_ast_and_html_consistent` 遞迴陷阱**：此 validator 呼叫 `gutenberg_builder.build()`，而 `build()` 本身若走一般 `GutenbergHTMLV1(...)` 建構會再觸發此 validator → `build()` → …無限遞迴。實作守則：`gutenberg_builder.build()` 是 canonical constructor，**必須用 `model_construct()` 繞 validator**（跳過 Pydantic 驗證）。`model_validator` 僅在外部手動建構場景生效（tests、migration、LLM 直出的 `html_raw` 反序列化），守護「ast 與 raw_html 不同步」這個錯誤狀態被檢出。
 
 ### 3. Gutenberg Builder API 契約
 

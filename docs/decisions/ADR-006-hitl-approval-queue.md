@@ -152,7 +152,14 @@ queue.enqueue(
     payload_version=1,
     payload_model=payload_model,
 )
-# enqueue 內部會 payload_model.model_dump_json() 與 title_snippet 拉取
+# enqueue 內部做三件事（payload_model 的欄位與 DB column 不是自動同步的）：
+# 1. payload_model.model_dump_json() → 寫入 payload TEXT column
+# 2. 從 payload 擷取 title_snippet 寫入獨立 column（UI 列表不解 JSON）
+# 3. getattr(payload_model, "reviewer_compliance_ack", False) → 寫入
+#    DB 的 reviewer_compliance_ack column（§1 schema 的獨立欄位）
+# 第 3 項 propagation 是手動的：payload schema 的布林值是契約入口，
+# DB column 是 claim_approved_drafts 的 guard；enqueue 必須兩邊同時寫，
+# 否則 HITL ack 只存在 payload JSON 裡、gate 檢查看不到會誤放行。
 ```
 
 **Reader 端**（worker 認領後）：
@@ -173,17 +180,22 @@ schema 升級走 [schemas.md §3](../principles/schemas.md) 流程。
 依 [reliability.md §2](../principles/reliability.md) 硬規則，**絕不**用 read-then-write。實作於 `shared/approval_queue.py`：
 
 ```python
+# module-level singleton connection + lock；WAL 下 writer 單一、讀者多併發，
+# 本 process 內再包一層 RLock 確保 UPDATE...RETURNING 對 application 層原子
+_conn_lock = threading.RLock()
+
 def claim_approved_drafts(
     worker_id: str,
     source_agent: str,
     batch: int = 5,
-    timeout_s: int = 5,
 ) -> list[ClaimedDraft]:
     """
     原子認領 approved → claimed，回傳已認領列表。
-    同時被多 worker 呼叫不會重複（SQLite BEGIN IMMEDIATE + RETURNING）。
+    單一 `UPDATE ... RETURNING` statement：SQLite 保證單 statement 原子執行，
+    語意等價於 BEGIN IMMEDIATE + SELECT/UPDATE + COMMIT，但不跟 Python sqlite3
+    的 implicit transaction 管理打架（見下方「為何不用 BEGIN IMMEDIATE」）。
     """
-    with db.transaction(isolation="IMMEDIATE", busy_timeout_ms=timeout_s * 1000):
+    with _conn_lock:
         rows = db.execute("""
             UPDATE approval_queue
             SET status     = 'claimed',
@@ -202,10 +214,15 @@ def claim_approved_drafts(
     return [ClaimedDraft(**r) for r in rows]
 ```
 
+**為何不用 `BEGIN IMMEDIATE`**：Python stdlib 的 `sqlite3` module 預設 `isolation_level=""` 會對 DML statement 自動開/提交 transaction；若再手動 `BEGIN IMMEDIATE` 包在 shared connection 外層，兩者會衝突 → `"cannot commit - SQL statements in progress"` / `"cannot rollback - no transaction is active"`。Phase 1 採「單一 `UPDATE ... RETURNING` statement + WAL + singleton conn + application-level mutex」：單 statement 本身 atomic，WAL 讓 reader 不阻塞 writer，mutex 保護跨 thread 的 connection 共用。Phase 2 多 worker（跨 process）時升級到 fencing token。
+
+**`busy_timeout` 設定時機**：在 `_get_conn()` 建 connection 時一次 `PRAGMA busy_timeout = 5000`（見 §5），不在 `claim_approved_drafts` 內逐次設。
+
 **驗收測試**（DoD checklist 一項）：起 10 個 thread 同時 claim 100 筆 approved draft，驗證：
 - 每筆 draft 只有 1 個 worker_id 拿到
 - 總認領數 = 100（不漏）
 - 無 `database is locked` exception（WAL + busy_timeout 生效）
+- 無 `cannot commit/rollback` exception（singleton conn + 單 statement 策略生效）
 
 ### 4. Status FSM（回應 blocker #4）
 
@@ -470,7 +487,7 @@ python -m shared.approval_queue reject  <id> --reviewer shosho --note "reason"
 
 ### 邏輯層
 - [ ] `shared/approval_queue.py`：`enqueue()` / `claim_approved_drafts()` / `transition()` / `mark_published()` / `mark_failed()` / `reset_stale_claims()`
-- [ ] Atomic claim 實作與 `BEGIN IMMEDIATE` 正確
+- [ ] Atomic claim 走「單 `UPDATE ... RETURNING` + WAL + singleton conn + `_conn_lock`」，不用 `BEGIN IMMEDIATE`（避免與 Python sqlite3 implicit transaction 衝突，見 §3）
 - [ ] `ALLOWED_TRANSITIONS` 完整，所有公開 API 一律經 `transition()`
 - [ ] `ApprovalPayloadV1` 用 `Field(discriminator="action_type")`，Reader 端走 `ApprovalPayloadV1Adapter.validate_python()`；驗證測試塞一個 `UpdateWpPostV1` payload，斷言 `type(payload) is UpdateWpPostV1`（防 discriminator 漏設導致 ambiguous match）
 - [ ] FSM 一致性測試：斷言 `ALL_STATUSES` 與 `001_approval_queue.sql` CHECK 列表逐一相等
