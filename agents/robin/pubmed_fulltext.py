@@ -24,6 +24,7 @@ _logger = get_logger("nakama.robin.fulltext")
 
 _NCBI_EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 _PMC_PDF_URL_TMPL = "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmcid}/pdf/"
+_EUROPE_PMC_PDF_URL_TMPL = "https://europepmc.org/articles/PMC{pmcid}?pdf=render"
 _UNPAYWALL_URL_TMPL = "https://api.unpaywall.org/v2/{doi}"
 
 
@@ -77,7 +78,28 @@ def fetch_fulltext(
                 "doi": doi,
                 "note": f"PMC{pmcid}",
             }
-        _logger.debug(f"[fulltext] PMID {pmid} PMC{pmcid} 直連 PDF 失敗，fallback 試 Unpaywall")
+        # PMC NCBI /pdf/ endpoint 2024 後常回 HTML landing page；Europe PMC mirror
+        # 仍直接回 application/pdf，不需過 publisher IdP cookie flow。
+        pdf_relpath = _download_europe_pmc_pdf(
+            pmcid=pmcid,
+            pmid=pmid,
+            attachments_abs_dir=attachments_abs_dir,
+            vault_relative_prefix=vault_relative_prefix,
+            email=email,
+            timeout=timeout,
+        )
+        if pdf_relpath:
+            _logger.info(f"[fulltext] PMID {pmid} via Europe PMC PMC{pmcid}")
+            return {
+                "status": "oa_downloaded",
+                "source": "europe_pmc",
+                "pdf_relpath": pdf_relpath,
+                "doi": doi,
+                "note": f"Europe PMC mirror of PMC{pmcid}",
+            }
+        _logger.debug(
+            f"[fulltext] PMID {pmid} PMC{pmcid} 兩條 PMC 路徑都失敗，fallback 試 Unpaywall"
+        )
 
     if doi:
         pdf_url = _query_unpaywall(doi, email=email, timeout=timeout)
@@ -109,13 +131,21 @@ def fetch_fulltext(
             "doi": doi,
             "note": "非 OA 來源，請用 DOI 手動取得全文",
         }
-    _logger.info(f"[fulltext] PMID {pmid} 無 DOI 無 PMCID")
+    # 到這裡表示無 DOI；pmcid 可能是 None（真的沒識別碼）或有值但兩條 PMC 路徑都失敗
+    if pmcid:
+        note = (
+            f"PMC{pmcid} 下載失敗（PMC NCBI + Europe PMC 皆不可用），可手動至 PubMed Central 取得"
+        )
+        _logger.info(f"[fulltext] PMID {pmid} PMC{pmcid} 下載失敗且無 DOI")
+    else:
+        note = "PubMed 無 DOI / PMCID，無法取得全文"
+        _logger.info(f"[fulltext] PMID {pmid} 無 DOI 無 PMCID")
     return {
         "status": "not_found",
         "source": None,
         "pdf_relpath": None,
         "doi": None,
-        "note": "PubMed 無 DOI / PMCID，無法取得全文",
+        "note": note,
     }
 
 
@@ -189,6 +219,27 @@ def _download_pmc_pdf(
     )
 
 
+def _download_europe_pmc_pdf(
+    *,
+    pmcid: str,
+    pmid: str,
+    attachments_abs_dir: Path,
+    vault_relative_prefix: str,
+    email: str,
+    timeout: float = 30.0,
+) -> Optional[str]:
+    """嘗試從 Europe PMC 鏡像下載 PDF。成功回傳 vault-relative 路徑，否則 None。"""
+    url = _EUROPE_PMC_PDF_URL_TMPL.format(pmcid=pmcid)
+    return _download_pdf(
+        url=url,
+        pmid=pmid,
+        attachments_abs_dir=attachments_abs_dir,
+        vault_relative_prefix=vault_relative_prefix,
+        email=email,
+        timeout=timeout,
+    )
+
+
 def _query_unpaywall(
     doi: str,
     *,
@@ -249,11 +300,11 @@ def _download_pdf(
             follow_redirects=True,
         ) as r:
             if r.status_code != 200:
-                _logger.debug(f"[fulltext] PDF download {url} → HTTP {r.status_code}")
+                _logger.warning(f"[fulltext] PDF download {url} → HTTP {r.status_code}")
                 return None
             ctype = r.headers.get("content-type", "").lower()
             if "pdf" not in ctype:
-                _logger.debug(f"[fulltext] {url} 回傳 {ctype}，不是 PDF")
+                _logger.warning(f"[fulltext] {url} 回傳 {ctype}，不是 PDF")
                 return None
             with open(dest, "wb") as f:
                 for chunk in r.iter_bytes():

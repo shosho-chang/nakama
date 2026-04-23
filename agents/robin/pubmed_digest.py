@@ -530,7 +530,11 @@ def _render_fulltext_section(ft: FullTextResult, pmid: str) -> str:
 
     reader_line = ""
     if status == "oa_downloaded" and pdf:
-        src_label = {"pmc": "PubMed Central", "unpaywall": "Unpaywall"}.get(src or "", src or "")
+        src_label = {
+            "pmc": "PubMed Central",
+            "europe_pmc": "Europe PMC",
+            "unpaywall": "Unpaywall",
+        }.get(src or "", src or "")
         pdf_line = f"**PDF**: [[{pdf}]]（來源：{src_label}）"
         reader_url = f"http://localhost:8000/robin/pubmed-to-reader?pmid={pmid}"
         reader_line = f"**雙語閱讀**: [📖 開啟 Robin reader（本機）]({reader_url})"
@@ -660,16 +664,17 @@ def _render_digest_entry(rank: int, item: dict) -> list[str]:
         else "未收錄 Scimago"
     )
 
-    # 全文狀態：已下載顯示 📄 PDF link，非 OA 顯示 ⚠️ + DOI，無法取得顯示 ❌
+    # 全文狀態：已下載顯示 📄 PDF link，非 OA 顯示 ⚠️ + DOI，其他顯示 ❌ + 真實原因
     status = ft.get("status")
     doi = ft.get("doi")
     pdf_relpath = ft.get("pdf_relpath")
+    note = ft.get("note") or ""
     if status == "oa_downloaded" and pdf_relpath:
         ft_line = f"- **全文**: 📄 [[{pdf_relpath}|下載的 PDF]]"
     elif status == "needs_manual" and doi:
         ft_line = f"- **全文**: ⚠️ 非 OA — [DOI: {doi}](https://doi.org/{doi}) (需手動取得)"
     else:
-        ft_line = "- **全文**: ❌ 無法取得（無 DOI / PMCID）"
+        ft_line = f"- **全文**: ❌ 無法取得（{note}）"
 
     return [
         f"### {rank}. {cand['title']}",
