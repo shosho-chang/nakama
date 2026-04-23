@@ -170,6 +170,35 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             ON approval_queue(source_agent, status);
         CREATE INDEX IF NOT EXISTS idx_queue_operation
             ON approval_queue(operation_id);
+
+        -- ADR-007 §4 Franky monitoring（canonical DDL: migrations/003_franky_tables.sql）
+        -- Slice 1 scope: alert_state + health_probe_state.
+        -- cron_runs / vps_metrics / r2_backup_checks deferred to Slice 2/3.
+        CREATE TABLE IF NOT EXISTS alert_state (
+            dedup_key       TEXT PRIMARY KEY,
+            rule_id         TEXT NOT NULL,
+            last_fired_at   TEXT NOT NULL,
+            suppress_until  TEXT NOT NULL,
+            state           TEXT NOT NULL CHECK (state IN ('firing', 'resolved')),
+            last_message    TEXT NOT NULL,
+            fire_count      INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_alert_state_suppress
+            ON alert_state(suppress_until);
+        CREATE INDEX IF NOT EXISTS idx_alert_state_rule
+            ON alert_state(rule_id, last_fired_at DESC);
+
+        CREATE TABLE IF NOT EXISTS health_probe_state (
+            target              TEXT PRIMARY KEY,
+            consecutive_fails   INTEGER NOT NULL DEFAULT 0,
+            last_check_at       TEXT NOT NULL,
+            last_status         TEXT NOT NULL CHECK (last_status IN ('ok', 'fail')),
+            last_error          TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_health_probe_status
+            ON health_probe_state(last_status, last_check_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
