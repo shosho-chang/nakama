@@ -108,9 +108,9 @@ def test_search_type_filter():
 
 def test_search_updates_last_accessed():
     mid = agent_memory.add("nami", "U1", "fact", "X", "content")
-    before = agent_memory.list_all("nami", "U1")[0].last_accessed_at
 
-    # small delay: mutate directly to guarantee a different timestamp
+    # Force last_accessed_at into the past so the assertion is robust to
+    # same-microsecond add/search commits (e.g. on SQLite synchronous=NORMAL).
     import shared.state as state
 
     state._get_conn().execute(
@@ -119,6 +119,7 @@ def test_search_updates_last_accessed():
     )
     state._get_conn().commit()
 
+    before = agent_memory.list_all("nami", "U1")[0].last_accessed_at
     agent_memory.search("nami", "U1")
     after = agent_memory.list_all("nami", "U1")[0].last_accessed_at
     assert after > before
