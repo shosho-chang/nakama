@@ -1,25 +1,47 @@
 ---
-name: Qwen 3.6 已下載 + A/B bench 工具就緒
-description: Qwen3.6-35B-A3B Q4_K_M GGUF 已下載，A/B bench（vs Gemma 4 26B）已上 main，等週四 2026-04-23 測試
+name: Qwen 3.6 A/B bench 勝出，切為 Robin Map step 預設本地 LLM
+description: 2026-04-23 A/B bench 完成；Qwen 100% 可靠度 vs Gemma 95.7%，雖慢 6× 但 KB 給 Chopper 用品質 > 速度，config.yaml 已切
 type: project
+tags: [robin, local-llm, ingest, ab-bench, qwen, gemma]
 ---
 
-## 現況（2026-04-20）
+## 決策（2026-04-23）
 
-- **模型檔**：`F:\llama.cpp\models\Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`（22.1GB）
-- **Gemma 現況**：`F:\llama.cpp\models\gemma-4-26B-A4B-it-Q4_K_M.gguf`（16.8GB），仍為 Robin Map step 使用中（`config.yaml` 的 `local_llm.model`）
-- **啟動腳本**：`scripts/start_qwen_server.bat`（partial offload：-ngl 35/40 層）
-- **Bench 工具**：`scripts/ab_ingest_bench.py` run/report 子指令
-- **PR #47**：已 merged（2026-04-20）
+**Qwen 3.6-35B-A3B** 取代 Gemma 4 26B 成為 Robin ingest Map step 本地 LLM 預設。
 
-## Why
+| 樣本 | Gemma | Qwen | Qwen 時間倍數 |
+|------|-------|------|---------------|
+| Book（327K chars，21 chunks） | 20/21 (95.2%) / 13.7min | **21/21** / 74min | 5.4× |
+| Paper（193K chars，14 chunks） | 13/14 (92.9%) / 8.9min | **14/14** / 60min | 6.7× |
+| Article（203K chars，12 chunks） | **12/12** / 8min | **12/12** / 55min | 6.9× |
+| 總計 | 45/47 (95.7%) / 30.6min | **47/47 (100%)** / 189min | 6.2× |
 
-Qwen 3.6 的研究顯示：中文訓練重點、document benchmarks 領先 Gemma 4 20+ 分、Apache 2.0、1M context（vs Gemma 256K）。VRAM 16GB 限制下 Qwen 要 partial offload，Gemma 全進 VRAM，所以速度 Gemma 略勝、品質需實測。
+Gemma 2 次失敗都是 llama-server 層 `<|channel|>thought` parse error（server bug，非 Gemma 內容品質問題）。排除 server 因素 Gemma 等效 100%。
+
+## Why Qwen 勝
+
+- **可靠性**：47/47 全過，Gemma 95.7%（即使 server bug 也算）
+- **品質維度**：中文流暢度、結構完整、專有名詞處理（修修讀 Book REPORT.md 前 5 chunks 確認 Qwen 優勢足以蓋過速度劣勢）
+- **主用途 Chopper RAG**：KB summary 品質 > ingest 速度（KB 是長期資產）
 
 ## How to apply
 
-- 週四測試完後看 `data/ab_bench/<slug>/REPORT.md`
-- 若 Qwen 勝：開 PR 改 `config.yaml` `local_llm.model` → `qwen3.6-35b-a3b`、改 `scripts/start_llm_server.bat` 指向 Qwen GGUF
-- 若差不多：留 Gemma 省 VRAM 壓力
-- 若中文明顯更流暢但速度輸：考慮混合策略（某些步驟 Qwen、某些 Gemma）
-- Task 檔：`F:/Shosho LifeOS/TaskNotes/Tasks/Robin ingest A B 測試 - Qwen vs Gemma.md`（scheduled 2026-04-23T09:00-10:00）
+- `config.yaml` `local_llm.model` = `qwen3.6-35b-a3b`，`timeout` = `900`（Qwen partial offload 單 chunk 可達 4-5 分鐘）
+- 預設啟動：`scripts/start_qwen_server.bat`（**不再**用 `start_llm_server.bat` 的 Gemma 版本）
+- `shared/local_llm.py` `DEFAULT_TIMEOUT` = 900（從 300 提升）
+- VPS 目前不跑本地 LLM（Robin ingest 仍在本機做），此切換不影響 VPS 部署
+
+## Bench 原始資料
+
+- `data/ab_bench/Quiet-Your-Mind-and-Get-to-Slee---Colleen-Carney/{REPORT.md, gemma.json, qwen.json}`
+- `data/ab_bench/Ultra-processed-foods-and-human-health-the-main-thesis-and-the-evidence/{REPORT.md, gemma.json, qwen.json}`
+- `data/ab_bench/Low-back-pain/{REPORT.md, gemma.json, qwen.json}`
+
+（`data/` 被 gitignore，留本機）
+
+## 踩坑紀錄（2026-04-23 bench 過程）
+
+- **llama.cpp breaking change**：`--flash-attn` 裸旗標改為 `--flash-attn on|off|auto`；`--reasoning on|off|auto` + `--reasoning-budget N` 新增，用來關 Qwen thinking mode（server bug：thinking on 時每 chunk > 15 分鐘）
+- **timeout 300s 不夠**：Qwen chunk 1 首輪冷啟動 269s，第二次 302s 就 timeout，bump config.yaml + DEFAULT_TIMEOUT 到 900s
+- **`_get_config()` 有 cache**：改 config.yaml 後要重啟 process 才生效，不能熱 reload
+- **model name 僅 log 用**：`ask_local(model=...)` 這個 model 是 OpenAI API 相容的 hint，llama-server 實際用載入的 GGUF 模型，hint 不影響結果但影響 log 顯示

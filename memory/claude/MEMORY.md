@@ -58,7 +58,7 @@
 - [feedback_windows_abs_path_silent.md](feedback_windows_abs_path_silent.md) — Windows 把 POSIX 絕對路徑默默解到當前磁碟根，CI Linux 才炸；conftest autouse isolate
 - [feedback_vps_env_drift_check.md](feedback_vps_env_drift_check.md) — 新 feature 的 env fallback 上 VPS 前要確認 .env 有對應 key，避免靜默 fallback 到無用預設值
 - [feedback_aesthetic_first_class.md](feedback_aesthetic_first_class.md) — 美學 first-class：自用工具和對外產出都要賞心悅目，拒絕 AI slop default
-- [project_qwen3_6_installed.md](project_qwen3_6_installed.md) — Qwen3.6-35B-A3B 下載完成 + A/B bench 就緒，週四 2026-04-23 09:00 測試
+- [project_qwen3_6_installed.md](project_qwen3_6_installed.md) — Qwen 3.6 A/B bench 2026-04-23 勝出（47/47 vs Gemma 45/47），切為 Robin Map step 預設本地 LLM；timeout 300→900s
 - [feedback_windows_stdout_utf8.md](feedback_windows_stdout_utf8.md) — Windows Python stdout cp1252 無法印中文，module 頂層 reconfigure UTF-8
 - [reference_lifeos_task_frontmatter.md](reference_lifeos_task_frontmatter.md) — LifeOS Task 排程 frontmatter 格式（scheduled 無 Z），Nami calendar sync 會抓
 - [project_multi_model_architecture.md](project_multi_model_architecture.md) — 8 步建置順序：步驟 1-4 + borderline fix 全 merged；步驟 5 設計 doc 凍結，7 Q 全決定
@@ -87,3 +87,7 @@
 - [reference_nakama_principles.md](reference_nakama_principles.md) — docs/principles/ 三份原則：schemas / reliability / observability（所有 ADR 援引）
 - [project_phase1_foundation_pr.md](project_phase1_foundation_pr.md) — PR #72 foundation 合併紀錄 + 實作時 ADR 3 漏洞 + 6 個 code-review borderline follow-up
 - [feedback_cross_doc_review_methodology.md](feedback_cross_doc_review_methodology.md) — 多 ADR 專案在 single-ADR multi-model review 之上再跑 3 agent 跨文件審查（consistency/readiness/plain-lang）
+- [project_usopp_slice_a_merged.md](project_usopp_slice_a_merged.md) — PR #73 Usopp Slice A merged（WP client + locks + external schemas + Docker staging），upload_media TypeError bug 已修；剩 Slice B/C
+- [reference_llama_cpp_flags.md](reference_llama_cpp_flags.md) — llama.cpp 2026 CLI breaking change：`--flash-attn on`、`--reasoning on|off`、`--reasoning-budget N`
+- [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md) — Franky Phase 1 monitor 交給第二台 Claude Code 做 3 slice（health / alert+R2 / digest+dashboard），主機器不碰 agents/franky/
+- Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
