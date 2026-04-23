@@ -25,8 +25,9 @@ import shutil
 import sqlite3
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from shared.config import load_config
 from shared.log import get_logger
@@ -113,7 +114,10 @@ def main() -> int:
         logger.error("data dir missing: %s", data_dir)
         return 1
 
-    now = datetime.now(timezone.utc)
+    # Date-partitioned R2 key must match operator-perceived Taipei date — cron fires at
+    # 04:00 Asia/Taipei (= 20:00 UTC previous day), so datetime.now(timezone.utc) would
+    # stamp backups with yesterday's folder. Precedent: PR #67 for Robin pubmed_digest.
+    now = datetime.now(ZoneInfo("Asia/Taipei"))
     retention_days = int(os.environ.get("NAKAMA_BACKUP_RETENTION_DAYS", "30"))
 
     failures: list[str] = []

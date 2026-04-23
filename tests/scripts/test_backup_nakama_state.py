@@ -158,6 +158,34 @@ def test_main_returns_1_when_r2_env_missing(tmp_path, monkeypatch):
         assert main() == 1
 
 
+def test_main_uses_taipei_date_for_key_across_utc_day_boundary(_data_dir_with_state, _fake_r2):
+    """Key must use Asia/Taipei date, not UTC.
+
+    04:00 Asia/Taipei = 20:00 UTC previous day; a UTC-based key would stamp
+    the backup with yesterday's folder. Regression guard for the PR #67
+    category of timezone bug.
+    """
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _Zone
+
+    import scripts.backup_nakama_state as backup_mod
+
+    # Freeze Taipei-aware clock at 04:00 Taipei on 2026-04-24 → 20:00 UTC 2026-04-23.
+    taipei_now = _dt(2026, 4, 24, 4, 0, tzinfo=_Zone("Asia/Taipei"))
+
+    class _FakeDateTime:
+        @staticmethod
+        def now(tz):
+            assert tz is not None
+            return taipei_now.astimezone(tz)
+
+    with patch.object(backup_mod, "datetime", _FakeDateTime):
+        assert backup_mod.main() == 0
+
+    keys = [c.args[1] for c in _fake_r2.upload_file.call_args_list]
+    assert keys == ["state/2026/04/24/state.db.gz"], f"expected Taipei-date key but got {keys!r}"
+
+
 def test_backed_up_content_matches_source(_data_dir_with_state, tmp_path):
     """Smoke test the .backup + gzip chain: what we upload is what gunzips back to the DB."""
     import gzip
