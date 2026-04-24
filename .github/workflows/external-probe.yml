@@ -5,8 +5,12 @@ name: External Uptime Probe
 # 既有 Slack bot token DM 修修。runner IP 不在 CF datacenter bot list，
 # 繞過 UptimeRobot 踩到的 CF Bot Fight Mode / keyword 特殊字元 / HEAD-default 三層坑。
 #
-# Phase 1 scope：無 state tracking、無 flapping 抑制、無 maintenance window。
-# DOWN-only 發 Slack；每 5 分鐘可能重發，flooding 問題後續有需要再加。
+# Phase 1.5 scope（PR #111 review follow-ups）：
+#   1. 單 job for-loop 3 targets，quota 從 3-matrix × 288/day ≈ 72hr/月
+#      降到 1 job × 288/day ≈ 24hr/月（省 ~66% runner minutes）。
+#   2. curl --retry 2 --retry-delay 10，吸收 single flaky 請求。
+#   3. Slack DM 30-min dedupe（per-target），透過 GHA cache 持久化 last_alert_ts。
+#   4. simulate_down 改 choice enum [none, nakama, shosho, fleet, all]。
 
 on:
   schedule:
@@ -16,9 +20,15 @@ on:
   workflow_dispatch:
     inputs:
       simulate_down:
-        description: 'Force nakama-gateway-healthz probe to fail (test Slack alert path)'
-        type: boolean
-        default: false
+        description: 'Force selected target(s) to fail (test Slack alert path)'
+        type: choice
+        default: 'none'
+        options:
+          - 'none'
+          - 'nakama'
+          - 'shosho'
+          - 'fleet'
+          - 'all'
 
 concurrency:
   group: external-probe
@@ -27,78 +37,135 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  DEDUPE_WINDOW_SECONDS: 1800  # 30 min per-target
+
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - name: nakama-gateway-healthz
-            url: https://nakama.shosho.tw/healthz
-            keyword: nakama-gateway
-          - name: shosho-tw-homepage
-            url: https://shosho.tw/
-            keyword: ''
-          - name: fleet-shosho-tw-homepage
-            url: https://fleet.shosho.tw/
-            keyword: ''
+    timeout-minutes: 5
 
     steps:
-      - name: Probe ${{ matrix.target.name }}
+      - name: Restore alert state cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .probe-state
+          # 固定 key — cache/save 會永遠更新，cache/restore 用 prefix match
+          key: external-probe-state-v1
+          restore-keys: |
+            external-probe-state-
+
+      - name: Probe all targets
         id: probe
         env:
-          SIMULATE_DOWN: ${{ inputs.simulate_down }}
-          TARGET_NAME: ${{ matrix.target.name }}
-          TARGET_URL: ${{ matrix.target.url }}
-          TARGET_KEYWORD: ${{ matrix.target.keyword }}
+          SIMULATE_DOWN: ${{ inputs.simulate_down || 'none' }}
+          DEDUPE_WINDOW_SECONDS: ${{ env.DEDUPE_WINDOW_SECONDS }}
         run: |
           set +e
+          mkdir -p .probe-state
+          state_file=".probe-state/last_alert_ts.json"
+          [ -f "$state_file" ] || echo '{}' > "$state_file"
 
-          # simulate_down 只觸發 nakama-gateway-healthz，其他兩個照常跑
-          if [ "$SIMULATE_DOWN" = "true" ] && [ "$TARGET_NAME" = "nakama-gateway-healthz" ]; then
-            {
-              echo "http_code=000"
-              echo "reason=Simulated DOWN via workflow_dispatch (simulate_down=true)"
-            } >> "$GITHUB_OUTPUT"
-            exit 1
+          # Targets 定義：name | url | keyword（keyword 空字串代表只檢查 HTTP 200）
+          targets=(
+            "nakama|https://nakama.shosho.tw/healthz|nakama-gateway"
+            "shosho|https://shosho.tw/|"
+            "fleet|https://fleet.shosho.tw/|"
+          )
+
+          # 用 newline-delimited file 傳給 post step（GITHUB_OUTPUT 跨多行吃不消）
+          failures_file=$(mktemp)
+          echo -n '' > "$failures_file"
+
+          for target in "${targets[@]}"; do
+            name="${target%%|*}"
+            rest="${target#*|}"
+            url="${rest%%|*}"
+            keyword="${rest#*|}"
+
+            echo "::group::Probe $name ($url)"
+
+            # simulate_down：'all' 全倒 / 單一 name 只倒該 target / 'none' 照常
+            if [ "$SIMULATE_DOWN" = "all" ] || [ "$SIMULATE_DOWN" = "$name" ]; then
+              echo "Simulated DOWN for $name (simulate_down=$SIMULATE_DOWN)"
+              printf '%s\n' "$name|$url|000|Simulated DOWN via workflow_dispatch" >> "$failures_file"
+              echo "::endgroup::"
+              continue
+            fi
+
+            body_file=$(mktemp)
+            # --retry 2 --retry-delay 10：吸收 single flaky 請求；transient 4xx/5xx retry
+            http_code=$(curl -sS --max-time 30 --retry 2 --retry-delay 10 --retry-all-errors \
+              -A "nakama-external-probe/1.0 (github-actions)" \
+              -o "$body_file" -w "%{http_code}" "$url")
+            curl_exit=$?
+
+            reason=""
+            if [ "$curl_exit" -ne 0 ]; then
+              reason="curl exit=$curl_exit (network / DNS / TLS failure after 2 retries)"
+            elif [ "$http_code" != "200" ]; then
+              reason="HTTP $http_code (expected 200)"
+            elif [ -n "$keyword" ] && ! grep -qF "$keyword" "$body_file"; then
+              reason="keyword '$keyword' not found in response body"
+            fi
+
+            rm -f "$body_file"
+
+            if [ -n "$reason" ]; then
+              echo "FAIL: $reason"
+              printf '%s\n' "$name|$url|$http_code|$reason" >> "$failures_file"
+            else
+              echo "OK: http=$http_code"
+            fi
+            echo "::endgroup::"
+          done
+
+          # Dedupe：checked last_alert_ts[name]，30 分鐘內已 alert 則 suppress
+          now_ts=$(date +%s)
+          to_alert_file=$(mktemp)
+          echo -n '' > "$to_alert_file"
+
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            name="${line%%|*}"
+            last_ts=$(jq -r --arg k "$name" '.[$k] // 0' "$state_file")
+            age=$((now_ts - last_ts))
+            if [ "$age" -lt "$DEDUPE_WINDOW_SECONDS" ]; then
+              echo "Dedupe: $name last alerted ${age}s ago (<${DEDUPE_WINDOW_SECONDS}s), skip"
+            else
+              printf '%s\n' "$line" >> "$to_alert_file"
+              # 更新 state 檔
+              jq --arg k "$name" --arg ts "$now_ts" '.[$k] = ($ts | tonumber)' "$state_file" > "$state_file.tmp"
+              mv "$state_file.tmp" "$state_file"
+            fi
+          done < "$failures_file"
+
+          # 輸出供後續 step 使用
+          {
+            echo "failures<<FAILEOF"
+            cat "$to_alert_file"
+            echo "FAILEOF"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -s "$to_alert_file" ]; then
+            echo "alerts_to_send=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "alerts_to_send=false" >> "$GITHUB_OUTPUT"
           fi
 
-          body_file=$(mktemp)
-          http_code=$(curl -sS --max-time 30 --retry 0 \
-            -A "nakama-external-probe/1.0 (github-actions)" \
-            -o "$body_file" -w "%{http_code}" "$TARGET_URL")
-          curl_exit=$?
+          # pre-dedupe failures count（含被 suppress 的）— 決定 job 最終 exit code
+          pre_dedupe_count=$(grep -c '.' "$failures_file" || true)
+          echo "pre_dedupe_failures=$pre_dedupe_count" >> "$GITHUB_OUTPUT"
 
-          echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
+          # 不在本 step exit — 讓 Slack + cache/save 都先跑完
 
-          if [ "$curl_exit" -ne 0 ]; then
-            echo "reason=curl exit=$curl_exit (network / DNS / TLS failure)" >> "$GITHUB_OUTPUT"
-            exit 1
-          fi
-
-          if [ "$http_code" != "200" ]; then
-            echo "reason=HTTP $http_code (expected 200)" >> "$GITHUB_OUTPUT"
-            exit 1
-          fi
-
-          if [ -n "$TARGET_KEYWORD" ] && ! grep -qF "$TARGET_KEYWORD" "$body_file"; then
-            echo "reason=keyword '$TARGET_KEYWORD' not found in response body" >> "$GITHUB_OUTPUT"
-            exit 1
-          fi
-
-          echo "Probe OK: $TARGET_NAME ($TARGET_URL) http=$http_code"
-
-      - name: Slack DM on failure
-        if: failure()
+      - name: Slack DM for each failure (post-dedupe)
+        if: always() && steps.probe.outputs.alerts_to_send == 'true'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_FRANKY_BOT_TOKEN }}
           SLACK_USER_ID: ${{ secrets.SLACK_USER_ID_SHOSHO }}
-          TARGET_NAME: ${{ matrix.target.name }}
-          TARGET_URL: ${{ matrix.target.url }}
-          HTTP_CODE: ${{ steps.probe.outputs.http_code }}
-          REASON: ${{ steps.probe.outputs.reason }}
+          FAILURES: ${{ steps.probe.outputs.failures }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -123,36 +190,61 @@ jobs:
           utc=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           tpe=$(TZ=Asia/Taipei date +"%Y-%m-%d %H:%M:%S %Z")
 
-          # 用 jq 直接組 payload 避免多行 shell string 在 YAML 裡縮排出包
-          payload=$(jq -cn \
-            --arg c "$channel" \
-            --arg name "$TARGET_NAME" \
-            --arg url "$TARGET_URL" \
-            --arg code "$HTTP_CODE" \
-            --arg reason "$REASON" \
-            --arg utc "$utc" \
-            --arg tpe "$tpe" \
-            --arg run "$RUN_URL" \
-            '{
-              channel: $c,
-              text: (":rotating_light: External probe DOWN — " + $name
-                     + "\nURL: " + $url
-                     + "\nHTTP: " + $code
-                     + "\nReason: " + $reason
-                     + "\nTime: " + $utc + " / " + $tpe
-                     + "\nRun: " + $run),
-              unfurl_links: false,
-              unfurl_media: false
-            }')
+          # 逐個失敗 target 發一則 DM（dedupe 已在 probe step 完成）
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            name="${line%%|*}"
+            rest="${line#*|}"
+            url="${rest%%|*}"
+            rest2="${rest#*|}"
+            code="${rest2%%|*}"
+            reason="${rest2#*|}"
 
-          post_resp=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
-            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
-            -H "Content-Type: application/json; charset=utf-8" \
-            --data "$payload")
+            payload=$(jq -cn \
+              --arg c "$channel" \
+              --arg name "$name" \
+              --arg url "$url" \
+              --arg code "$code" \
+              --arg reason "$reason" \
+              --arg utc "$utc" \
+              --arg tpe "$tpe" \
+              --arg run "$RUN_URL" \
+              '{
+                channel: $c,
+                text: (":rotating_light: External probe DOWN — " + $name
+                       + "\nURL: " + $url
+                       + "\nHTTP: " + $code
+                       + "\nReason: " + $reason
+                       + "\nTime: " + $utc + " / " + $tpe
+                       + "\nRun: " + $run),
+                unfurl_links: false,
+                unfurl_media: false
+              }')
 
-          if [ "$(echo "$post_resp" | jq -r '.ok')" != "true" ]; then
-            echo "::error::chat.postMessage failed: $post_resp"
-            exit 1
-          fi
+            post_resp=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
+              -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+              -H "Content-Type: application/json; charset=utf-8" \
+              --data "$payload")
 
-          echo "Slack DM sent for ${TARGET_NAME}"
+            if [ "$(echo "$post_resp" | jq -r '.ok')" != "true" ]; then
+              echo "::error::chat.postMessage failed for $name: $post_resp"
+              exit 1
+            fi
+
+            echo "Slack DM sent for $name"
+          done <<< "$FAILURES"
+
+      - name: Save alert state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .probe-state
+          # 用 run_id 讓每次 save 都走不同 key（actions/cache 不允許覆寫既有 key），
+          # 但 restore 透過 prefix match 永遠拿到最新的
+          key: external-probe-state-${{ github.run_id }}
+
+      - name: Fail job if any target was DOWN (pre-dedupe)
+        if: always() && steps.probe.outputs.pre_dedupe_failures != '0'
+        run: |
+          echo "::error::${{ steps.probe.outputs.pre_dedupe_failures }} target(s) failed probe"
+          exit 1
