@@ -263,10 +263,12 @@ def test_update_subject_collision_raises():
 
 
 def test_update_collision_rollback_leaves_no_dirty_state():
-    """UNIQUE collision 後必須 rollback；不然下個 commit 會把髒 UPDATE flush 掉。
+    """UNIQUE collision 後連線 state 必須乾淨，可以繼續讀寫。
 
-    Regression：原實作在 except sqlite3.IntegrityError 沒做 conn.rollback()，
-    sqlite3 Python driver 的 implicit transaction 可能洩漏到下個操作。
+    當前單 UPDATE 下 SQLite 本身 statement-level rollback 就夠；顯式
+    ``conn.rollback()`` 是 defensive — 未來若同 try-block 加多 statement
+    才真正防止髒 state 洩漏。本測試驗 invariant「collision 後下筆
+    operation 仍正常」，同時守未來的擴充面。
     """
     agent_memory.add("nami", "U1", "fact", "subj_a", "original_a")
     mid_b = agent_memory.add("nami", "U1", "fact", "subj_b", "original_b")

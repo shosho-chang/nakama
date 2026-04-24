@@ -164,7 +164,7 @@ def search(
     conditions = ["agent = ?", "user_id = ?"]
     params: list = [agent, user_id]
 
-    if type:
+    if type is not None:
         _validate_type(type)
         conditions.append("type = ?")
         params.append(type)
@@ -258,8 +258,11 @@ def update(
     ``type`` 不在 ``VALID_TYPES`` 內 raise ``ValueError``。
 
     ``subject`` 改到撞 ``(agent, user_id, subject)`` UNIQUE constraint 時，
-    raise ``ValueError("subject collision: ...")`` 且先 ``rollback()``，
-    避免 sqlite3 implicit-transaction 髒 state 洩漏到下一次 commit。
+    raise ``ValueError("subject collision: ...")`` 並先 ``conn.rollback()``。
+    就目前的單 UPDATE 寫法，sqlite3 會 statement-level rollback 失敗語句，
+    ``rollback()`` 視為 defensive — 若未來同 try-block 改成多 statement
+    才真正防止髒 state 洩漏下一次 commit（見
+    ``reference_sqlite_python_pitfalls.md``）。
 
     找不到 id 回傳 None；否則回傳更新後的記憶物件。
     """
@@ -298,9 +301,9 @@ def update(
         )
         conn.commit()
     except sqlite3.IntegrityError as e:
-        # subject 撞 (agent, user_id, subject) UNIQUE；rollback 確保
-        # sqlite3 Python driver 的 implicit transaction 不會帶髒 state
-        # 到下一個 commit（見 reference_sqlite_python_pitfalls.md）。
+        # subject 撞 (agent, user_id, subject) UNIQUE。單 UPDATE 下 SQLite
+        # 已 statement-level rollback 該語句，但顯式 rollback() 當 defensive
+        # — 未來若同 try-block 加多語句才真正防髒 state 洩漏。
         conn.rollback()
         raise ValueError(f"subject collision: {e}") from e
     if cur.rowcount == 0:
