@@ -14,6 +14,7 @@ import builtins
 import sys
 import types
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -59,11 +60,18 @@ def stub_memory(monkeypatch):
 
 
 @pytest.fixture
-def pipeline(stub_vault, stub_prompts, stub_memory, monkeypatch):
+def set_current_agent_spy(monkeypatch):
+    """Expose set_current_agent as a MagicMock so tests can assert call args."""
+    spy = MagicMock()
+    monkeypatch.setattr(mod, "set_current_agent", spy)
+    return spy
+
+
+@pytest.fixture
+def pipeline(stub_vault, stub_prompts, stub_memory, set_current_agent_spy, monkeypatch):
     """A pipeline with ask / kb_log / set_current_agent 都 stub 掉。"""
     monkeypatch.setattr(mod, "ask", lambda **k: "stubbed-ask")
     monkeypatch.setattr(mod, "kb_log", lambda *a, **k: None)
-    monkeypatch.setattr(mod, "set_current_agent", lambda *a, **k: None)
     return IngestPipeline()
 
 
@@ -157,6 +165,65 @@ def test_system_prompt_with_memory(monkeypatch):
     result = _build_robin_system_prompt()
     assert "Robin" in result
     assert "記憶內容" in result
+
+
+# ---------------------------------------------------------------------------
+# set_current_agent("robin") is called at every public entry point
+# (regression guard for commit b015775 — cost DB was recording "unknown"
+# for Web UI calls until these were wired in)
+# ---------------------------------------------------------------------------
+
+
+def test_set_current_agent_called_on_all_entry_points(
+    pipeline, stub_vault, set_current_agent_spy, monkeypatch
+):
+    """ingest() 跑完後，4 個 entry point（generate_summary / concept_plan /
+    create_wiki_page / map_reduce — 後者只在大文件）各自呼叫 set_current_agent('robin')。
+    """
+    raw = stub_vault / "data.md"
+    raw.write_text("---\ntitle: D\n---\nshort body", encoding="utf-8")
+
+    plan_json = (
+        '{"create": [{"title": "NewPage", "type": "concept", "content_notes": ""}], "update": []}'
+    )
+    call_idx = {"n": 0}
+
+    def fake_ask(**k):
+        call_idx["n"] += 1
+        if call_idx["n"] == 2:
+            return plan_json
+        return "stub"
+
+    monkeypatch.setattr(mod, "ask", fake_ask)
+    monkeypatch.setattr(mod, "list_files", lambda p: [])
+    pipeline.ingest(raw, source_type="article")
+
+    # Must have been called at least for _generate_summary + _get_concept_plan
+    # + _create_wiki_page — all with "robin"
+    called_args = [c.args for c in set_current_agent_spy.call_args_list]
+    assert all(a == ("robin",) for a in called_args), (
+        f"set_current_agent 被呼叫時 arg 不是 'robin'：{called_args}"
+    )
+    assert set_current_agent_spy.call_count >= 3
+
+
+def test_set_current_agent_called_in_map_reduce_path(pipeline, set_current_agent_spy, monkeypatch):
+    """_map_reduce_summary 也要呼叫 set_current_agent('robin')。"""
+    _install_fake_chunker(
+        monkeypatch,
+        [{"index": 1, "heading": "A", "text": "t"}],
+    )
+    fake_llm = types.ModuleType("shared.local_llm")
+    fake_llm.ask_local = lambda *a, **k: "x"
+    fake_llm.is_server_available = lambda: False
+    monkeypatch.setitem(sys.modules, "shared.local_llm", fake_llm)
+    monkeypatch.setattr(mod, "ask", lambda **k: "stub")
+
+    set_current_agent_spy.reset_mock()
+    pipeline._map_reduce_summary(
+        content="big", title="T", author="A", source_type="book", content_nature=""
+    )
+    set_current_agent_spy.assert_any_call("robin")
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +354,7 @@ def test_map_reduce_happy_path(pipeline, monkeypatch):
 
 
 def test_map_reduce_chunk_failure_does_not_abort(pipeline, monkeypatch):
-    """其中一個 chunk raise → 該段落填 fallback，整體繼續。"""
+    """其中一個 chunk raise → 該段落填 fallback，fallback 文字要送進 reduce prompt。"""
     _install_fake_chunker(
         monkeypatch,
         [
@@ -296,14 +363,25 @@ def test_map_reduce_chunk_failure_does_not_abort(pipeline, monkeypatch):
         ],
     )
 
-    call_count = {"n": 0}
+    prompts_seen: list[str] = []
 
     def flaky_ask(prompt, system=None, **kwargs):
-        call_count["n"] += 1
-        # 第 2 次（壞段）raise；第 3 次是 reduce call → 回合成結果
-        if call_count["n"] == 2:
+        prompts_seen.append(prompt)
+        # 第 2 次（壞段 map）raise；第 3 次 reduce → 回合成結果
+        if len(prompts_seen) == 2:
             raise RuntimeError("provider down")
         return "ok-sum"
+
+    # Capture load_prompt kwargs so we can inspect what reduce receives
+    reduce_kwargs: dict = {}
+    orig_load = mod.load_prompt
+
+    def capturing_load(agent, name, **kwargs):
+        if name == "reduce_summary":
+            reduce_kwargs.update(kwargs)
+        return orig_load(agent, name, **kwargs)
+
+    monkeypatch.setattr(mod, "load_prompt", capturing_load)
 
     fake_llm = types.ModuleType("shared.local_llm")
     fake_llm.ask_local = lambda *a, **k: "x"
@@ -316,7 +394,11 @@ def test_map_reduce_chunk_failure_does_not_abort(pipeline, monkeypatch):
     )
     # reduce call 發生 → 有 output
     assert out == "ok-sum"
-    assert call_count["n"] == 3  # 2 map (含一次失敗) + 1 reduce
+    assert len(prompts_seen) == 3  # 2 map (含一次失敗) + 1 reduce
+    # fallback 文字要帶上壞段 heading，並送進 reduce prompt（regression guard，
+    # 別讓 exception handler 悄悄吞成空字串 — 這是 commit 7884f79 的用意）
+    assert "壞段" in reduce_kwargs["chunk_summaries"]
+    assert "此段落摘要失敗" in reduce_kwargs["chunk_summaries"]
 
 
 # ---------------------------------------------------------------------------
@@ -593,12 +675,16 @@ def test_update_page_locates_by_slug_in_entities(pipeline, stub_vault):
     assert "new paper" in final
 
 
-def test_update_page_title_not_found_logs_and_returns(pipeline, caplog):
+def test_update_page_title_not_found_logs_warning(pipeline, caplog):
+    """title 找不到對應 slug → logger.warning + 靜默 return。"""
+    import logging
+
+    caplog.set_level(logging.WARNING, logger="nakama.robin.ingest")
     pipeline._update_wiki_page(
         {"title": "Nonexistent", "additions": "x"},
         "KB/Wiki/Sources/src.md",
     )
-    # 靜默 return，不應 raise
+    assert any("找不到要更新的頁面" in r.message for r in caplog.records)
 
 
 def test_update_page_file_field_points_to_missing_file(pipeline, stub_vault):
