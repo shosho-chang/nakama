@@ -1,6 +1,6 @@
 # Capability Card — `nakama-wordpress-publisher`
 
-**Status:** Phase 1 Slice B（in-development），尚未上線
+**Status:** Phase 1 Slice C1（daemon in place，staging E2E 未跑）
 **License:** MIT（計畫開源）
 **Scope:** 把已審核的 `DraftV1` 安全發布到 WordPress，含 SEO + cache purge + 法規攔截 + crash recovery。
 
@@ -47,14 +47,34 @@ result = pub.publish(
 # result.failure_reason: str | None
 ```
 
+## Daemon（`python -m agents.usopp`）
+
+Slice C1 加入 poll-based worker：每 `USOPP_POLL_INTERVAL_S` 秒（預設 30）呼叫 `claim_approved_drafts(source_agent="brook", batch=N)`，把每筆 `PublishWpPostV1` payload 轉成 `PublishRequestV1` 餵給 `Publisher.publish()`；`UpdateWpPostV1` 超出 Phase 1 scope，直接 `mark_failed`。
+
+**Env 控制：**
+
+| Env | Default | 用途 |
+|---|---|---|
+| `USOPP_TARGET_SITE` | `wp_shosho` | `WordPressClient.from_env` 讀的 prefix（`wp_shosho` / `wp_fleet`） |
+| `USOPP_WORKER_ID` | `usopp-<hostname>` | claim 時寫入 `approval_queue.worker_id` |
+| `USOPP_POLL_INTERVAL_S` | `30` | 每 cycle 的 sleep 秒數（interruptible） |
+| `USOPP_BATCH_SIZE` | `5` | 單次 claim 批量 |
+
+**Action 推論：** `payload.scheduled_at is not None → action="schedule"`，否則 `"publish"`。`"draft_only"` 在 HITL Bridge UI 有出口時再加（Phase 2）。
+
+**Reviewer 來源：** `approval_queue.reviewer` 欄位（`approve()` 透過 `transition()` 寫入）；NULL 時 fallback `"unknown"` 並 log WARNING。
+
+**Signal 行為：** SIGTERM / SIGINT 只設 `_shutdown` flag；current dispatch 跑完 + current sleep 中斷（1s 粒度）後清空退出。
+
 ## 不做的事
 
-- ❌ 不起 daemon loop（Slice C `agents/usopp/__main__.py` 做）
-- ❌ 不 claim approval_queue（daemon 呼叫 `claim_approved_drafts()` 再餵給本模組）
+- ❌ 不 claim approval_queue 以外的 queue 分支（只看 `source_agent='brook'`）
 - ❌ 不發 FluentCRM newsletter / FluentCommunity 貼文（Phase 2–3）
 - ❌ 不自動建 WP category / tag（ADR-005b §6 硬規則；DraftV1 slug 不在 map 直接 fail）
 - ❌ 不 grant `unfiltered_html` 給 bot user（ADR-005a AST 白名單已安全）
 - ❌ 不 backfill 既有 192 篇文章的 `nakama_draft_id`
+- ❌ 不處理 `UpdateWpPostV1` action_type（Phase 1 只 cover new-post，update 路徑走 HITL 人工改 WP admin）
+- ❌ 不在 `/healthz` 加 WP 連線檢查 — ADR-007 `probe_wp_site` out-of-band cron 已 cover（ADR-005b line 417 superseded by ADR-007 §4）
 
 ## 依賴
 
@@ -90,11 +110,13 @@ result = pub.publish(
 ## 契約測試
 
 - Unit: 44 tests in `tests/shared/test_compliance.py` + `test_seopress_writer.py` + `test_litespeed_purge.py` + `tests/agents/usopp/test_publisher.py`
-- Live (Slice C): `@pytest.mark.live_wp` + Docker WP 6.x + SEOPress 9.4.1 staging
+- Unit (daemon): 16 tests in `tests/agents/usopp/test_daemon.py`（poll cycle / signal graceful / reviewer lookup / action 推論 / update_post skip / env factory）
+- Live (Slice C2): `@pytest.mark.live_wp` + Docker WP 6.x + SEOPress 9.4.1 staging（未跑）
 
 ## Roadmap
 
 - [x] v0.1 Slice A — WordPressClient + locks + external schemas
-- [x] v0.1 Slice B — publisher.py + compliance + seopress_writer + litespeed_purge（本 PR）
-- [ ] v0.2 Slice C — daemon + E2E staging test + Day 1 LiteSpeed 實測
-- [ ] v0.3 Phase 2 — multi-worker（fencing token）、WP-CLI purge fallback、cron_runs 追蹤成功率
+- [x] v0.1 Slice B — publisher.py + compliance + seopress_writer + litespeed_purge
+- [x] v0.2 Slice C1 — `agents/usopp/__main__.py` daemon + signal handling + unit tests（本 PR）
+- [ ] v0.2 Slice C2 — Docker WP 6.x staging E2E + Day 1 LiteSpeed 實測 + runbook 定稿
+- [ ] v0.3 Phase 2 — multi-worker（fencing token）、WP-CLI purge fallback、update_post flow、cron_runs 追蹤成功率

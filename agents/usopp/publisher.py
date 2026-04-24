@@ -533,7 +533,7 @@ class Publisher:
             context={
                 "post_id": post_id if post_id is not None else 0,
                 "draft_id": draft.draft_id,
-                "site": self.wp._site_id,
+                "site": self.wp.site_id,
             },
         )
         try:

@@ -1,42 +1,52 @@
 # Usopp — 狙擊手（Publisher Agent）
 
-精準將內容發布到最對的地方，同時負責電子報發送管理（Fluent CRM）。
+精準將已審核的 Brook `DraftV1` 發布到 WordPress（shosho.tw / fleet.shosho.tw），含 SEOPress meta、LiteSpeed cache purge、台灣藥事法/醫療法詞彙攔截、crash-safe state machine。
 
-**排程：** 手動觸發（發布）；電子報依排程  
-**狀態：** 🚧 待開發
+**排程：** Daemon poll `approval_queue`（預設每 30 秒），批量 claim + publish
+**狀態：** Phase 1 Slice C1（daemon + unit tests 完備，staging E2E 未跑）
 
 ---
 
-## 功能
+## 能力
 
-### 1. 內容精準發布
-接收 Brook（Composer）產出的格式化內容，發布至對應平台：
-- **WordPress 部落格**：文章發布（含圖片、標籤、分類、SEO meta）
-- **YouTube**：影片上傳（含縮圖、描述、標籤、章節）
-- **社群媒體**：Facebook / Instagram / LinkedIn 貼文排程
-- 發布前需 Owner 明確核准，不自動發布
+詳見 [docs/capabilities/wordpress-publisher.md](../../docs/capabilities/wordpress-publisher.md)。要點：
 
-### 2. 電子報管理（Fluent CRM）
-- 電子報名稱：**張秀秀的自由之路**
-- 依排程發送電子報至訂閱名單
-- 追蹤發送結果（open rate、click rate）並回報給 Nami
-
-## 設定
-
-WordPress / YouTube 帳號設定於 `.env`：
-
-```
-WP_BASE_URL=https://your-site.com/wp-json
-WP_USER=admin
-WP_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
-YOUTUBE_CLIENT_ID=
-YOUTUBE_CLIENT_SECRET=
-YOUTUBE_REFRESH_TOKEN=
-FLUENT_CRM_API_KEY=
-```
+- Crash-safe 8 階段 state machine（`publish_jobs` 表持久化；重啟續跑）
+- 雙層 idempotency（Nakama `draft_id` UNIQUE + WP `nakama_draft_id` post meta）
+- SEOPress 三層 fallback（REST → post meta → skip + Critical alert）
+- LiteSpeed cache purge（Slice C2 Day 1 實測後定 endpoint）
+- 合規詞彙 Gate（`shared.compliance.scan`，Brook + Usopp 雙次防禦）
 
 ## 執行
 
 ```bash
+# VPS：systemd 拉起（部署時再加 unit file）
 python -m agents.usopp
 ```
+
+## 環境變數
+
+| Env | Default | 用途 |
+|---|---|---|
+| `WP_SHOSHO_BASE_URL` / `WP_SHOSHO_USERNAME` / `WP_SHOSHO_APP_PASSWORD` | — | WordPress REST v2 憑證（`nakama_publisher` role app password） |
+| `USOPP_TARGET_SITE` | `wp_shosho` | `WordPressClient.from_env` prefix（`wp_shosho` / `wp_fleet`） |
+| `USOPP_WORKER_ID` | `usopp-<hostname>` | claim 時寫入 `approval_queue.worker_id` |
+| `USOPP_POLL_INTERVAL_S` | `30` | 每 cycle sleep 秒數（interruptible by SIGTERM） |
+| `USOPP_BATCH_SIZE` | `5` | 單次 `claim_approved_drafts` 批量 |
+| `LITESPEED_PURGE_METHOD` | — | Day 1 決定後設；Slice C2 定稿 |
+
+## 不做的事（Phase 1 scope）
+
+- ❌ `UpdateWpPostV1` — daemon 收到直接 `mark_failed`（Phase 2 再加 update flow）
+- ❌ FluentCRM newsletter / FluentCommunity 貼文（Phase 2–3）
+- ❌ 多 worker 併發（Phase 1 單 worker + SQLite advisory lock）
+- ❌ 自動建 WP category / tag
+- ❌ `/healthz` 加 WP 連線檢查 — ADR-007 `agents/franky/health_check.probe_wp_site` out-of-band cron 已 cover（ADR-005b line 417 superseded by ADR-007 §4）
+
+## 相關文件
+
+- [ADR-005b](../../docs/decisions/ADR-005b-usopp-wp-publishing.md) — 正典設計
+- [ADR-006](../../docs/decisions/ADR-006-approval-queue.md) — approval_queue FSM
+- [docs/runbooks/litespeed-purge.md](../../docs/runbooks/litespeed-purge.md) — LiteSpeed purge 決策（Slice C2 定稿）
+- [docs/runbooks/rotate-wp-app-password.md](../../docs/runbooks/rotate-wp-app-password.md) — 憑證輪替
+- [docs/runbooks/wp-nakama-publisher-role.md](../../docs/runbooks/wp-nakama-publisher-role.md) — WP 自訂角色白名單
