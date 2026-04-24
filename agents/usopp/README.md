@@ -20,8 +20,11 @@
 ## 執行
 
 ```bash
-# VPS：systemd 拉起（部署時再加 unit file）
+# 本機（dry-run）
 python -m agents.usopp
+
+# VPS：systemd 拉起 — 見 docs/runbooks/deploy-usopp-vps.md
+systemctl start nakama-usopp
 ```
 
 ## 環境變數
@@ -47,6 +50,7 @@ python -m agents.usopp
 
 - [ADR-005b](../../docs/decisions/ADR-005b-usopp-wp-publishing.md) — 正典設計
 - [ADR-006](../../docs/decisions/ADR-006-approval-queue.md) — approval_queue FSM
+- [docs/runbooks/deploy-usopp-vps.md](../../docs/runbooks/deploy-usopp-vps.md) — VPS 部署（systemd + `.env` diff）
 - [docs/runbooks/litespeed-purge.md](../../docs/runbooks/litespeed-purge.md) — LiteSpeed purge 決策（Slice C2 定稿）
 - [docs/runbooks/rotate-wp-app-password.md](../../docs/runbooks/rotate-wp-app-password.md) — 憑證輪替
 - [docs/runbooks/wp-nakama-publisher-role.md](../../docs/runbooks/wp-nakama-publisher-role.md) — WP 自訂角色白名單

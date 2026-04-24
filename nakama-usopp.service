@@ -1,0 +1,23 @@
+[Unit]
+Description=Nakama Usopp Publisher Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/nakama
+Environment="PYTHONPATH=/home/nakama"
+EnvironmentFile=/home/nakama/.env
+ExecStart=/usr/bin/python3 -m agents.usopp
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+KillSignal=SIGTERM
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nakama-usopp
+
+[Install]
+WantedBy=multi-user.target
