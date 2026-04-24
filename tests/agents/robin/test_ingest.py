@@ -656,22 +656,23 @@ def test_update_page_with_explicit_file_path(pipeline, stub_vault):
 
 
 def test_update_page_locates_by_slug_in_concepts(pipeline, stub_vault):
-    _seed_page(stub_vault, "KB/Wiki/Concepts/found.md", "title: Found", "body")
+    # slugify preserves case，seed path 要對齊 slugify(title) 輸出，不然 Linux CI 大小寫敏感會找不到
+    _seed_page(stub_vault, "KB/Wiki/Concepts/Found.md", "title: Found", "body")
     pipeline._update_wiki_page(
         {"title": "Found", "additions": "a"},
         "KB/Wiki/Sources/src.md",
     )
-    final = (stub_vault / "KB" / "Wiki" / "Concepts" / "found.md").read_text("utf-8")
+    final = (stub_vault / "KB" / "Wiki" / "Concepts" / "Found.md").read_text("utf-8")
     assert "a" in final
 
 
 def test_update_page_locates_by_slug_in_entities(pipeline, stub_vault):
-    _seed_page(stub_vault, "KB/Wiki/Entities/carney.md", "title: Carney", "bio")
+    _seed_page(stub_vault, "KB/Wiki/Entities/Carney.md", "title: Carney", "bio")
     pipeline._update_wiki_page(
         {"title": "Carney", "additions": "new paper"},
         "KB/Wiki/Sources/src.md",
     )
-    final = (stub_vault / "KB" / "Wiki" / "Entities" / "carney.md").read_text("utf-8")
+    final = (stub_vault / "KB" / "Wiki" / "Entities" / "Carney.md").read_text("utf-8")
     assert "new paper" in final
 
 
