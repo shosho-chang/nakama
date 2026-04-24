@@ -113,7 +113,7 @@
 - [feedback_date_filename_review_checklist.md](feedback_date_filename_review_checklist.md) — 新 daily-rotating path 必用 `ZoneInfo("Asia/Taipei")`；PR #67 precedent 多次重踩
 - [feedback_env_push_diff_before_overwrite.md](feedback_env_push_diff_before_overwrite.md) — scp `.env` 前必 diff key names；只 append 新 keys，別整份覆蓋
 - [project_nakama_backup_deployed.md](project_nakama_backup_deployed.md) — Nakama `state.db` daily 04:00 Taipei → R2 `nakama-backup` bucket 上線（PR #88）；retention 30d
-- [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md) — UptimeRobot free plan 三層坑（HEAD default / keyword 特殊字元 / CF Bot Fight Mode）CP 值差，優先用 GitHub Actions + Slack webhook
+- [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md) — 選 GH Actions 勝 UptimeRobot（UI / 版控），但 CF WAF skip rule 不論哪家工具都必備（2026-04-24 實測 GH runner 也被 CF SBFM 擋 403）
 - [reference_github_actions_probe.md](reference_github_actions_probe.md) — Scheduled / probe workflow 五坑：UTC-only cron、延遲 5-15 min、60d 停用、boolean input 是 string、Slack bot 要先 conversations.open
 - [project_usopp_slice_c1_merged.md](project_usopp_slice_c1_merged.md) — PR #97 merged `05d35a4` 2026-04-24：daemon + signal + 3 件 follow-up
 - [project_usopp_slice_c2a_merged.md](project_usopp_slice_c2a_merged.md) — PR #101 merged `916b8eb` 2026-04-24：Docker WP E2E 黃金路徑 + live_wp marker；C2b 等 VPS 部署
