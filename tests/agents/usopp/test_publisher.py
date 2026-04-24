@@ -211,7 +211,7 @@ class TestHappyPath:
         wp.update_post.assert_called_once()
 
     def test_draft_only_skips_publish_and_purge(self, monkeypatch):
-        monkeypatch.setenv("LITESPEED_PURGE_METHOD", "rest")
+        monkeypatch.setenv("LITESPEED_PURGE_METHOD", "noop")
         draft = _make_draft()
         approval_id = _enqueue_approved(draft, op_id=draft.operation_id)
 
@@ -231,7 +231,7 @@ class TestHappyPath:
         assert result.status == "draft_only"
         # update_post should not have been called for status change
         wp.update_post.assert_not_called()
-        # purge should not run for draft_only even if method=rest
+        # purge stage never runs for draft_only (state machine skips it)
         assert result.cache_purged is False
 
     def test_schedule_action_uses_future_status(self, monkeypatch):

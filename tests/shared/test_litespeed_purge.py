@@ -57,19 +57,28 @@ def test_explicit_noop_method_arg(no_env):
     client._request.assert_not_called()
 
 
-def test_legacy_env_value_falls_back_to_noop(monkeypatch):
+def test_legacy_env_value_falls_back_to_noop(monkeypatch, caplog):
     """Stale .env with LITESPEED_PURGE_METHOD=rest / admin_ajax / anything else
-    must not crash — logs warning, behaves as noop."""
+    must not crash — logs WARNING and behaves as noop."""
+    import logging
+
     for legacy_value in ("rest", "admin_ajax", "carrier-pigeon", ""):
         monkeypatch.setenv("LITESPEED_PURGE_METHOD", legacy_value)
         client = MagicMock()
-        result = purge_url(
-            "https://shosho.tw/post/1",
-            wp_client=client,
-            operation_id="op_12345678",
-        )
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="nakama.litespeed_purge"):
+            result = purge_url(
+                "https://shosho.tw/post/1",
+                wp_client=client,
+                operation_id="op_12345678",
+            )
         assert result is False, f"legacy env value {legacy_value!r} should still noop"
         client._request.assert_not_called()
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("not supported" in r.message for r in warnings), (
+            f"expected 'not supported' WARNING for {legacy_value!r}, "
+            f"got {[r.message for r in warnings]}"
+        )
 
 
 def test_wp_client_can_be_none(no_env):

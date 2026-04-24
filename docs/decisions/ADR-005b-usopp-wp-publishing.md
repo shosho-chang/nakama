@@ -335,7 +335,7 @@ if flags.medical_claim or flags.absolute_assertion:
 ### 正面
 - SEOPress 升版不再靜默失敗（schema drift 立即紅燈 + 三層降級）
 - Publish 原子性 + idempotency → crash 重啟不產生孤兒 / 雙發
-- 顯式 cache purge → Franky / 修修發布後立刻看得到新內容
+- WP `save_post` hook 自動 cache invalidation → Franky / 修修發布後立刻看得到新內容（§5 修訂版 2026-04-24）
 - 最小權限 user + log 遮罩 → 即使 .env 洩漏，攻擊面僅限 Editor 權限內
 
 ### 風險與緩解
@@ -400,9 +400,9 @@ if flags.medical_claim or flags.absolute_assertion:
 
 **Observability（observability.md）**
 - [ ] 每個 publish job 帶 `operation_id`（從 draft 繼承或新生）
-- [ ] Structured log 記 `draft_id / post_id / state / step / http_status / latency_ms / cache_purge_status`
-- [ ] `publish_duration_ms` histogram by step（create_post / write_seo / purge）
-- [ ] `external_api_errors_total{api=wp|seopress|litespeed, status_code}` counter
+- [ ] Structured log 記 `draft_id / post_id / state / step / http_status / latency_ms / cache_purge_status`（§5 修訂 2026-04-24 後，`cache_purge_status` 在 `LITESPEED_PURGE_METHOD=noop` 下恆為 `"noop"`，保留欄位供未來非 WP-REST 寫入路徑使用）
+- [ ] `publish_duration_ms` histogram by step（create_post / write_seo / purge）— 同上，`purge` step 在 noop 下 latency 恆 ~0ms，保留 label space
+- [ ] `external_api_errors_total{api=wp|seopress|litespeed, status_code}` counter — `litespeed` dimension 在 noop 下恆 0，保留 label space 供未來啟用
 - [ ] `publish_jobs_in_state{state}` gauge（每分鐘 snapshot）
 - [ ] Application password / HMAC 絕不進 log（§9）
 - [ ] `/healthz` 加 WP 連線檢查

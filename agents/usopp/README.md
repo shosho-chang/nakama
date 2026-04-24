@@ -1,9 +1,9 @@
 # Usopp — 狙擊手（Publisher Agent）
 
-精準將已審核的 Brook `DraftV1` 發布到 WordPress（shosho.tw / fleet.shosho.tw），含 SEOPress meta、LiteSpeed cache purge、台灣藥事法/醫療法詞彙攔截、crash-safe state machine。
+精準將已審核的 Brook `DraftV1` 發布到 WordPress（shosho.tw / fleet.shosho.tw），含 SEOPress meta、LiteSpeed cache 自動 invalidation（WP `save_post` hook 處理）、台灣藥事法/醫療法詞彙攔截、crash-safe state machine。
 
 **排程：** Daemon poll `approval_queue`（預設每 30 秒），批量 claim + publish
-**狀態：** Phase 1 Slice C2a（daemon + Docker WP staging E2E 黃金路徑可跑；LiteSpeed Day 1 實測留給 C2b，等 VPS 部署）
+**狀態：** Phase 1 Slice C2b 完成（daemon 上線 VPS、Docker WP staging E2E 黃金路徑可跑、LiteSpeed Day 1 實測 2026-04-24 完成 — `LITESPEED_PURGE_METHOD=noop` 為生產正解）
 
 ---
 
@@ -14,7 +14,7 @@
 - Crash-safe 8 階段 state machine（`publish_jobs` 表持久化；重啟續跑）
 - 雙層 idempotency（Nakama `draft_id` UNIQUE + WP `nakama_draft_id` post meta）
 - SEOPress 三層 fallback（REST → post meta → skip + Critical alert）
-- LiteSpeed cache purge（Slice C2 Day 1 實測後定 endpoint）
+- LiteSpeed cache 自動失效（透過 WP `save_post` hook，`shared/litespeed_purge.py` 是 anchor point；Day 1 實測 2026-04-24 確認不需 explicit purge call）
 - 合規詞彙 Gate（`shared.compliance.scan`，Brook + Usopp 雙次防禦）
 
 ## 執行
@@ -36,12 +36,12 @@ systemctl start nakama-usopp
 | `USOPP_WORKER_ID` | `usopp-<hostname>` | claim 時寫入 `approval_queue.worker_id` |
 | `USOPP_POLL_INTERVAL_S` | `30` | 每 cycle sleep 秒數（interruptible by SIGTERM） |
 | `USOPP_BATCH_SIZE` | `5` | 單次 `claim_approved_drafts` 批量 |
-| `LITESPEED_PURGE_METHOD` | — | Day 1 決定後設；Slice C2 定稿 |
+| `LITESPEED_PURGE_METHOD` | `noop` | 只接受 `noop`；Day 1 實測 2026-04-24 確認 WP save_post hook 已處理 cache invalidation |
 
 ## E2E test（本機 Docker WP staging）
 
 Slice C2a 產出的 opt-in local 測試 — 真 WP + SEOPress 9.4.1，狀態機跑完整。
-LiteSpeed 實測（Slice C2b）等 VPS 部署後才做，這裡的 `cache_purged` 會是 `False`（noop method）。
+`cache_purged=False` 是生產正解（noop method）— Day 1 實測 2026-04-24 確認 WP `save_post` hook 已自動 invalidate cache，explicit purge call 不需要。
 
 ```bash
 # 1. 一次性 boot + seed + 產 .env.test
@@ -72,6 +72,6 @@ docker compose -f tests/fixtures/wp_staging/docker-compose.yml down -v
 - [ADR-005b](../../docs/decisions/ADR-005b-usopp-wp-publishing.md) — 正典設計
 - [ADR-006](../../docs/decisions/ADR-006-approval-queue.md) — approval_queue FSM
 - [docs/runbooks/deploy-usopp-vps.md](../../docs/runbooks/deploy-usopp-vps.md) — VPS 部署（systemd + `.env` diff）
-- [docs/runbooks/litespeed-purge.md](../../docs/runbooks/litespeed-purge.md) — LiteSpeed purge 決策（Slice C2 定稿）
+- [docs/runbooks/litespeed-purge.md](../../docs/runbooks/litespeed-purge.md) — LiteSpeed purge Day 1 決策（2026-04-24 定稿：WP `save_post` hook 處理）
 - [docs/runbooks/rotate-wp-app-password.md](../../docs/runbooks/rotate-wp-app-password.md) — 憑證輪替
 - [docs/runbooks/wp-nakama-publisher-role.md](../../docs/runbooks/wp-nakama-publisher-role.md) — WP 自訂角色白名單
