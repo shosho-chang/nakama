@@ -27,7 +27,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ `live_wp` pytest marker + `tests/e2e/conftest.py` auto-skip guard
 - ✅ `tests/e2e/test_phase1_publish_flow.py` 黃金路徑（enqueue → publish → round-trip meta）
 - ✅ code-review fix：`/wp-json` convention bug 修正（見 `feedback_wp_base_url_convention.md`）
-- ⬜ **Slice C2b blocker：VPS 部署**（LiteSpeed Day 1 實測需 Usopp daemon 在 VPS 跑）
+- ✅ **Slice C2b LiteSpeed Day 1 實測完成（2026-04-24）**：`LITESPEED_PURGE_METHOD=noop` 為生產正解（不是 fallback）。發現 REST endpoint 不存在（404），WP `save_post` hook 已自動 invalidate cache。code follow-up：`shared/litespeed_purge.py` 清理 + ADR-005b §5 放寬硬規則
 
 **Nami 收尾（本次對話完成大部分，剩兩項）：**
 - ✅ PR #59：Deep Research deferred bug 3 個 + lint 修
@@ -109,7 +109,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ Usopp Slice C1 — daemon loop + signal + follow-ups（PR #97 merged 2026-04-24）；`/healthz` 加 WP 檢查項目 superseded by ADR-007 §4 probe_wp_site
 - ✅ Usopp VPS 部署材料（PR #98 merged 2026-04-24）— systemd unit + runbook；等修修手動套用
 - ✅ Usopp Slice C2a — Docker WP 6.4.3 + SEOPress 9.4.1 staging E2E 黃金路徑（PR #101 merged 2026-04-24）
-- ⬜ Usopp Slice C2b — LiteSpeed Day 1 實測 + `LITESPEED_PURGE_METHOD` 值定稿 + `docs/runbooks/litespeed-purge.md` 決策表定稿（blocker 已解：VPS 2026-04-24 部署完成，目前 `noop` 為過渡值）
+- ✅ Usopp Slice C2b — LiteSpeed Day 1 實測完成（2026-04-24）：`LITESPEED_PURGE_METHOD=noop` 為生產正解；REST endpoint 不存在、WP hook auto-purge 已覆蓋；決策表與 code follow-up 清單見 [docs/runbooks/litespeed-purge.md](../../docs/runbooks/litespeed-purge.md)
 
 **Phase 1 foundation borderline follow-ups（6 項，全部完成）：**
 - ✅ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` + `foreign_keys=ON` 移到 `_get_conn()`（ADR-006 §5 四條 PRAGMA 收齊，PR #85 2026-04-23）

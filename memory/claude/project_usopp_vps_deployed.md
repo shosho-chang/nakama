@@ -43,10 +43,12 @@ VPS `.env` 備份在 `/home/nakama/.env.bak.20260424_135123`。
 
 ## Unblock 清單
 
-- ✅ Slice C2b — LiteSpeed Day 1 三 method（rest / admin_ajax / noop）實測，定稿 `LITESPEED_PURGE_METHOD` 值 + `docs/runbooks/litespeed-purge.md` 決策表
+- ✅ Slice C2b — LiteSpeed Day 1 實測完成（2026-04-24）：`LITESPEED_PURGE_METHOD=noop` 為**生產正解不是 fallback**。發現 `POST /wp-json/litespeed/v1/purge` endpoint 根本不存在（404 `rest_no_route`），`shared/litespeed_purge.py` 的 rest method 一直在打空氣；真正的 purge 機制是 LiteSpeed plugin hook `save_post`，WP REST API 寫入天然觸發 auto-invalidate（實測 hit → update → miss → hit，2 秒內完成）。決策表 + 後續 code follow-up 清單在 [docs/runbooks/litespeed-purge.md](../../docs/runbooks/litespeed-purge.md)。
 
 ## Follow-up（可選）
 
+- **`shared/litespeed_purge.py` 清理**（code PR）：(1) 預設從 `"rest"` 改 `"noop"` (2) `_purge_via_rest()` 可刪（endpoint 不存在）(3) docstring 反映 WP hook 實際機制
+- **ADR-005b §5 更新**（docs PR）：「publish 成功後顯式呼叫 purge」的硬規則要放寬為「WP REST 寫入路徑已由 LiteSpeed plugin hook 處理，不需 explicit call」；硬規則只對非 WP-REST 寫入路徑適用（目前無）
 - 寫個 preflight script 對齊 `.env` key names vs `.env.example`，下次 onboard 新機器自動發現 typo（這次 mocked tests 蓋不到的兩個 typo 都是這類）
 
 ## 相關
