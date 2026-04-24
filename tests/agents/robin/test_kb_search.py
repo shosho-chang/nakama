@@ -1,0 +1,244 @@
+"""Tests for agents/robin/kb_search.py.
+
+覆蓋：vault walking / frontmatter title fallback / type normalization /
+preview truncation / Claude Haiku ranking response parsing 各路徑。
+
+Claude client 全 mock（feedback_test_api_isolation.md）。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+
+from agents.robin.kb_search import search_kb
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _mk_page(dir_path: Path, stem: str, title: str, body: str) -> None:
+    dir_path.mkdir(parents=True, exist_ok=True)
+    content = f"---\ntitle: {title}\n---\n{body}"
+    (dir_path / f"{stem}.md").write_text(content, encoding="utf-8")
+
+
+def _mock_claude_response(text: str) -> MagicMock:
+    """Build a MagicMock mimicking anthropic client.messages.create return."""
+    client = MagicMock()
+    client.messages.create.return_value = SimpleNamespace(content=[SimpleNamespace(text=text)])
+    return client
+
+
+@pytest.fixture
+def vault(tmp_path):
+    """Minimal KB/Wiki vault with 3 subdirs (initially empty)."""
+    wiki = tmp_path / "KB" / "Wiki"
+    (wiki / "Sources").mkdir(parents=True)
+    (wiki / "Concepts").mkdir()
+    (wiki / "Entities").mkdir()
+    return tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Empty / missing vault edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_empty_vault_returns_empty_list(tmp_path, monkeypatch):
+    """KB/Wiki dirs 不存在 → 不打 Claude、回空 list。"""
+    client = _mock_claude_response("[]")
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    assert search_kb("anything", tmp_path) == []
+    client.messages.create.assert_not_called()
+
+
+def test_vault_with_only_empty_subdirs_returns_empty(vault, monkeypatch):
+    """3 個 subdir 存在但無 .md 檔案 → 回 []、不打 Claude。"""
+    client = _mock_claude_response("[]")
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    assert search_kb("topic", vault) == []
+    client.messages.create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Page collection from 3 subdirs + type normalization
+# ---------------------------------------------------------------------------
+
+
+def test_type_normalization_sources_concepts_entities(vault, monkeypatch):
+    """Sources → source / Concepts → concept / Entities → entity（特別處理 Entit → entity）。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "paper1", "Paper 1", "摘要 A")
+    _mk_page(vault / "KB" / "Wiki" / "Concepts", "circadian", "生理時鐘", "概念 B")
+    _mk_page(vault / "KB" / "Wiki" / "Entities", "matt-walker", "Matt Walker", "人物 C")
+
+    client = _mock_claude_response(
+        '[{"index": 1, "relevance_reason": "r1"},'
+        ' {"index": 2, "relevance_reason": "r2"},'
+        ' {"index": 3, "relevance_reason": "r3"}]'
+    )
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    results = search_kb("睡眠", vault)
+    types = {r["type"] for r in results}
+    assert types == {"source", "concept", "entity"}
+
+
+def test_title_from_frontmatter_preferred_over_filename(vault, monkeypatch):
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "why-we-sleep", "為什麼要睡覺", "body")
+    client = _mock_claude_response('[{"index": 1, "relevance_reason": "主題相關"}]')
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    results = search_kb("睡眠科學", vault)
+    assert results[0]["title"] == "為什麼要睡覺"
+
+
+def test_title_falls_back_to_filename_when_frontmatter_missing(vault, monkeypatch):
+    """無 frontmatter title → 用 file stem。"""
+    (vault / "KB" / "Wiki" / "Sources" / "no-frontmatter.md").write_text(
+        "just body no frontmatter at all", encoding="utf-8"
+    )
+    client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    results = search_kb("query", vault)
+    assert results[0]["title"] == "no-frontmatter"
+
+
+def test_preview_truncated_to_200_chars(vault, monkeypatch):
+    """body > 200 char 的 page，送給 LLM 的 preview 應該截到 200。"""
+    long_body = "A" * 500
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "long", "Long", long_body)
+
+    captured = {}
+
+    def _capture_messages_create(**kwargs):
+        captured["prompt"] = kwargs["messages"][0]["content"]
+        return SimpleNamespace(content=[SimpleNamespace(text="[]")])
+
+    client = MagicMock()
+    client.messages.create.side_effect = _capture_messages_create
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    search_kb("q", vault)
+    # preview 在 prompt 裡；不該含完整 500 個 A
+    assert "A" * 200 in captured["prompt"]
+    assert "A" * 201 not in captured["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Claude response parsing
+# ---------------------------------------------------------------------------
+
+
+def test_happy_path_returns_ranked_pages_with_reasons(vault, monkeypatch):
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body1")
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s2", "Page 2", "body2")
+    client = _mock_claude_response(
+        '[{"index": 2, "relevance_reason": "最契合"}, {"index": 1, "relevance_reason": "次相關"}]'
+    )
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    results = search_kb("主題", vault)
+    assert len(results) == 2
+    # Order matches LLM ranking
+    assert results[0]["title"] == "Page 2"
+    assert results[0]["relevance_reason"] == "最契合"
+    assert results[1]["title"] == "Page 1"
+    assert results[1]["relevance_reason"] == "次相關"
+
+
+def test_response_without_json_array_returns_empty(vault, monkeypatch):
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body")
+    client = _mock_claude_response("Sorry, I could not find anything relevant.")
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    assert search_kb("主題", vault) == []
+
+
+def test_response_with_invalid_json_returns_empty(vault, monkeypatch):
+    """regex 抓到 [...] 但 json.loads 炸 → 回 []。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body")
+    client = _mock_claude_response('[{"index": 1, invalid-json: true}]')
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    assert search_kb("主題", vault) == []
+
+
+def test_out_of_range_index_is_skipped(vault, monkeypatch):
+    """LLM 回傳的 index 超出 pages 陣列 → 跳過（不 crash）。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "only", "Only", "body")
+    client = _mock_claude_response(
+        '[{"index": 1, "relevance_reason": "ok"}, {"index": 99, "relevance_reason": "ghost"}]'
+    )
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    results = search_kb("q", vault)
+    assert len(results) == 1
+    assert results[0]["title"] == "Only"
+
+
+def test_response_with_prose_prefix_then_json_parses_array(vault, monkeypatch):
+    """LLM 常把 JSON 包在說明文字裡 — regex 抓第一個 [...] block 即可。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body")
+    client = _mock_claude_response(
+        '以下是相關頁面：\n[{"index": 1, "relevance_reason": "相關"}]\n以上。'
+    )
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    results = search_kb("q", vault)
+    assert len(results) == 1
+    assert results[0]["relevance_reason"] == "相關"
+
+
+# ---------------------------------------------------------------------------
+# File read robustness
+# ---------------------------------------------------------------------------
+
+
+def test_unreadable_file_is_skipped_gracefully(vault, monkeypatch):
+    """讀檔噴錯 → skip 該檔、其他檔照走。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "good", "Good", "body")
+
+    original_read = Path.read_text
+
+    def _selective_read(self, *args, **kwargs):
+        if self.name == "good.md":
+            raise OSError("permission denied simulated")
+        return original_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _selective_read)
+
+    # 只有一個檔、且它讀不到 → pages 為空 → 直接回 [] 不打 Claude
+    client = _mock_claude_response("[]")
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    assert search_kb("q", vault) == []
+    client.messages.create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Result schema
+# ---------------------------------------------------------------------------
+
+
+def test_result_has_expected_keys(vault, monkeypatch):
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
+    client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    results = search_kb("q", vault)
+    assert set(results[0].keys()) == {
+        "type",
+        "title",
+        "path",
+        "preview",
+        "relevance_reason",
+    }
+    assert results[0]["path"] == "KB/Wiki/Sources/s1"

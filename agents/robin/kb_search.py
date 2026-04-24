@@ -9,6 +9,8 @@ from shared.utils import extract_frontmatter
 
 TOP_K = 8
 
+_SUBDIR_TO_TYPE = {"Sources": "source", "Concepts": "concept", "Entities": "entity"}
+
 
 def search_kb(query: str, vault_path: Path, top_k: int = TOP_K) -> list[dict]:
     """Return KB pages relevant to `query`, ranked by Claude Haiku.
@@ -32,10 +34,9 @@ def search_kb(query: str, vault_path: Path, top_k: int = TOP_K) -> list[dict]:
             fm, body = extract_frontmatter(content)
             title = fm.get("title") or md_file.stem
             preview = (body or "").strip()[:200]
-            # Normalise type: "Sources" → "source", "Entities" → "entity"
-            page_type = subdir.rstrip("s").lower()
-            if page_type == "entit":
-                page_type = "entity"
+            # Normalise type: "Sources" → "source", "Concepts" → "concept",
+            # "Entities" → "entity".
+            page_type = _SUBDIR_TO_TYPE[subdir]
             pages.append(
                 {
                     "type": page_type,
