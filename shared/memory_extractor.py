@@ -17,6 +17,7 @@ import threading
 from typing import Any
 
 from shared import agent_memory
+from shared.agent_memory import VALID_TYPES
 from shared.anthropic_client import ask_claude
 from shared.log import get_logger
 
@@ -25,7 +26,7 @@ logger = get_logger("nakama.memory_extractor")
 _EXTRACTOR_MODEL = "claude-haiku-4-5"
 _MAX_MESSAGES = 30  # 對話超長時，只看最近 N 則
 
-VALID_TYPES = {"preference", "fact", "decision", "context"}
+__all__ = ["VALID_TYPES", "extract_from_messages", "extract_in_background"]
 
 _EXTRACTOR_SYSTEM_PROMPT = """你是對話記憶抽取器。
 你的工作是從對話中找出值得**長期記住**關於「使用者」的資訊。
