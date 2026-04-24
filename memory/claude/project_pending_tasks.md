@@ -103,7 +103,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ Bridge `/bridge/drafts` UI + routes + CLI fallback
 - ✅ `agents/franky/` 全三 slice（PR #74/#75/#76）
 - ✅ Franky VPS 上線（2026-04-24，含 PR #86/#87 修 env drift）
-- ⬜ **External uptime probe**：UptimeRobot 2026-04-24 實測擱置（三坑 25+ 分鐘未轉綠，見 [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md)）→ 改做 GitHub Actions cron + Slack webhook（`.github/workflows/external-probe.yml`，~15 分鐘）
+- ✅ **External uptime probe**：`.github/workflows/external-probe.yml` + `docs/runbooks/external-probe-setup.md` 完成（Mac 2026-04-24 session）。每 5 分鐘 probe 3 URL，失敗時 Franky bot token DM 修修；修修需設 `SLACK_FRANKY_BOT_TOKEN` + `SLACK_USER_ID_SHOSHO` 兩個 repo secrets 才啟用
 - ⬜ docs/runbooks/uptimerobot-setup.md 需標記 deprecated 或加「三坑警告」（Keyword type / plain ASCII keyword / CF WAF skip rule）
 - ✅ `config/style-profiles/*.yaml` 三個 profile（PR #78/#79）
 - ✅ Usopp Slice C1 — daemon loop + signal + follow-ups（PR #97 merged 2026-04-24）；`/healthz` 加 WP 檢查項目 superseded by ADR-007 §4 probe_wp_site
