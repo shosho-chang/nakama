@@ -284,6 +284,17 @@
         return `![${filename}](/files/${encodeURIComponent(filename)})`;
       });
 
+      // Convert vault-root-relative image paths → /files/-prefixed URLs
+      // Matches standard markdown ![alt](KB/Attachments/.../img.png) where the
+      // path is neither an absolute URL nor already under /files/.
+      md = md.replace(
+        /!\[([^\]]*)\]\(((?!https?:|\/files\/|\/|#|data:)[^)\s]+\.(?:png|jpe?g|gif|webp|svg|avif|bmp))\)/gi,
+        function(_, alt, relpath) {
+          var encoded = relpath.split('/').map(encodeURIComponent).join('/');
+          return `![${alt}](/files/${encoded})`;
+        }
+      );
+
       // Convert ==text== → highlights (before marked)
       md = md.replace(/==(.*?)==/gs, function(match, text) {
         const trimmed = text.trim();
