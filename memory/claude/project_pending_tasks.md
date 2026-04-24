@@ -20,7 +20,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ `nakama-usopp.service` systemd unit（TimeoutStopSec=120 graceful budget）
 - ✅ `docs/runbooks/deploy-usopp-vps.md` 7 步部署 runbook（`.env` diff-append / dry-run / rollback）
 - ✅ code-review fix：`reset_stale_claims()` 正確簽名 + `TimeoutStopSec` 60→120
-- ⬜ **修修手動部署到 VPS**：ssh + git pull + `.env` append USOPP_* + `cp nakama-usopp.service /etc/systemd/system/` + `systemctl enable --now`
+- ✅ **VPS 部署完成（2026-04-24）**：`nakama-usopp.service` active running，PID worker_id `usopp-shoshotw`，graceful restart 1s 完成。路上修了兩個 .env legacy（`WP_SHOSHO_USER`→`USERNAME` typo + BASE_URL `/wp-json` 後綴）+ append `LITESPEED_PURGE_METHOD=noop`。詳見 [project_usopp_vps_deployed.md](project_usopp_vps_deployed.md)
 
 **Usopp Slice C2a merged（2026-04-24）：** PR #101 squash merged `916b8eb`
 - ✅ Docker WP staging + `run.sh` 一鍵 boot + seed + 產 `.env.test`
@@ -109,7 +109,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ Usopp Slice C1 — daemon loop + signal + follow-ups（PR #97 merged 2026-04-24）；`/healthz` 加 WP 檢查項目 superseded by ADR-007 §4 probe_wp_site
 - ✅ Usopp VPS 部署材料（PR #98 merged 2026-04-24）— systemd unit + runbook；等修修手動套用
 - ✅ Usopp Slice C2a — Docker WP 6.4.3 + SEOPress 9.4.1 staging E2E 黃金路徑（PR #101 merged 2026-04-24）
-- ⬜ Usopp Slice C2b — LiteSpeed Day 1 實測 + `LITESPEED_PURGE_METHOD` 值定稿 + `docs/runbooks/litespeed-purge.md` 決策表定稿（blocker：VPS 部署）
+- ⬜ Usopp Slice C2b — LiteSpeed Day 1 實測 + `LITESPEED_PURGE_METHOD` 值定稿 + `docs/runbooks/litespeed-purge.md` 決策表定稿（blocker 已解：VPS 2026-04-24 部署完成，目前 `noop` 為過渡值）
 
 **Phase 1 foundation borderline follow-ups（6 項，全部完成）：**
 - ✅ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` + `foreign_keys=ON` 移到 `_get_conn()`（ADR-006 §5 四條 PRAGMA 收齊，PR #85 2026-04-23）

@@ -112,6 +112,7 @@
 - [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md) — UptimeRobot free plan 三層坑（HEAD default / keyword 特殊字元 / CF Bot Fight Mode）CP 值差，優先用 GitHub Actions + Slack webhook
 - [project_usopp_slice_c1_merged.md](project_usopp_slice_c1_merged.md) — PR #97 merged `05d35a4` 2026-04-24：daemon + signal + 3 件 follow-up
 - [project_usopp_slice_c2a_merged.md](project_usopp_slice_c2a_merged.md) — PR #101 merged `916b8eb` 2026-04-24：Docker WP E2E 黃金路徑 + live_wp marker；C2b 等 VPS 部署
+- [project_usopp_vps_deployed.md](project_usopp_vps_deployed.md) — Usopp daemon VPS 上線 2026-04-24；路上修兩個 .env legacy（USER→USERNAME / BASE_URL /wp-json）+ noop purge；C2b unblocked
 - [feedback_wp_base_url_convention.md](feedback_wp_base_url_convention.md) — `WP_*_BASE_URL` 不含 `/wp-json` 後綴；`_request()` 自己 append，double-path 會 404（mocked tests 看不到）
 - [feedback_slack_bot_bringup_gotchas.md](feedback_slack_bot_bringup_gotchas.md) — 新 agent Slack bot 沒反應時的三層診斷順序（gateway→Slack→handler），頭號坑是 Event Subscriptions 沒訂 app_mention
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
