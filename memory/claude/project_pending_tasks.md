@@ -142,10 +142,20 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ PR #113 merged — fix CI trendspy pyproject.toml 漏 sync（桌機抓主幹 CI 紅）
 - ✅ PR #114 merged — memory: feedback_dep_manifest_sync
 - ✅ PR #115 merged — external probe CF WAF skip rule documented（Mac，修 PR #111 原 CF 假設錯誤）
-- 🚧 **PR #116 open** — test(brook): compose.py conversational coverage 57% → 100%
-- 🚧 **PR #118 open** — test(routers): brook + zoro 0% → 100%
-- 🚧 **PR #119 open** — test(robin): kb_search 0% → 100% + 修 `"Entities" → "entitie"` type normalize bug
-- 🚧 **PR #120 open** — memory: feedback_pytest_monkeypatch_where_used + pending_tasks 同步
+- ✅ PR #116 merged — test(brook): compose.py conversational coverage 57% → 100%
+- ✅ PR #118 merged — test(routers): brook + zoro 0% → 100%
+- ✅ PR #119 merged — test(robin): kb_search 0% → 100% + 修 `"Entities" → "entitie"` type normalize bug
+- ✅ PR #120 merged — memory: feedback_pytest_monkeypatch_where_used
+
+**Mac 2026-04-24 晚間 Part 2 session（桌機 Robin kb_search + coverage 並行）：**
+- 分工 doc: [docs/task-prompts/mac-2026-04-24-p2-handoff.md](../../docs/task-prompts/mac-2026-04-24-p2-handoff.md)
+- ✅ 任務 D1 → PR #122 merged — `docs/decisions/ADR-009-seo-solution-architecture.md`（ADR 凍結 3 skill + SEOContextV1 + Brook opt-in 整合契約）
+- ✅ 任務 T1 → PR #123 merged — `shared/agent_memory.py` tech debt：`update()` `conn.rollback()` + `MemoryType = Literal[...]` + `_validate_type()` + docstring audit + `shared/memory_extractor.py` import `VALID_TYPES` + `thousand_sunny/routers/bridge.py` 1-char description fix（drive-by）
+- 踩坑新 feedback：[feedback_defensive_vs_bug_fix_claim.md](feedback_defensive_vs_bug_fix_claim.md)（PR #123 reviewer 發現 rollback 原本就不 leak，claim 降級 defensive hardening）
+
+**桌機 2026-04-24 晚間 Part 2 session（Mac D1 + T1 並行）：**
+- 🚧 **PR #121 open** — test(robin): ingest.py 0% → 100%（60 tests，含 D/F 兩個 regression guard 補強 + B caplog 真驗）；code-review "no issues found"
+- 🚧 **PR #124 open** — docs(seo): ADR-009 multi-model triangulation（Gemini 4/10 / Grok 6/10 / Claude 通過；6 blockers 消化 → T5/T6 ADR body 改、T4 Revised Slice Order；`scripts/adr_multi_model_review.py` 加 skip-if-exists + dynamic date）
 
 **PR #111 review 找到 Mac 沒動的 follow-up（非 P0、可攢成 1 個 PR 或拆開做）：**
 - ⬜ GHA quota：3 matrix × 288/day ≈ 72 hr/month 超 private repo free tier 2000 min × 2 倍 — 改 1 job for-loop 3 URL 或拉 cron 到 10-min；runbook 補成本說明
