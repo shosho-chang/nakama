@@ -76,7 +76,7 @@ def test_publish_flow_reaches_terminal_state(
     assert result.post_id is not None
     assert result.permalink and result.permalink.startswith("http://localhost:8888/")
     assert result.seo_status in {"written", "fallback_meta"}
-    # LITESPEED_PURGE_METHOD=noop until Slice C2b Day 1 实测
+    # LITESPEED_PURGE_METHOD=noop until Slice C2b Day 1 實測
     assert result.cache_purged is False
 
     # Round-trip: verify the post is retrievable via REST and carries the
