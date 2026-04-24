@@ -122,13 +122,58 @@ systemctl status thousand-sunny --no-pager | head
 2. 該 bot 應該以自己的 avatar / name 回覆
 3. `https://nakama.shosho.tw/bridge/cost` 查最新一筆 → `agent=<agent>` 對上
 
+## Troubleshooting — `@<Agent>` 沒反應
+
+### 診斷流程（先看 log 判斷是 Slack 端還是 code 端）
+
+```bash
+# 1. Gateway 認得 bot 嗎？
+journalctl -u nakama-gateway -n 20 --no-pager | grep "啟動\|Socket"
+# 預期：「啟動 N 個 Slack bot：[..., '<agent>', ...]」+ 「[<agent>] Socket Mode connection started」
+# 沒看到 agent 名字 → code 端問題（handler 沒註冊 or .env token 沒設）
+# 看到 Socket started 但沒 Mention event → 往下
+
+# 2. Slack 有把 mention 送過來嗎？
+journalctl -u nakama-gateway --since "10 minutes ago" --no-pager | grep -E "<agent>|Mention"
+# 有看到 `[<agent>] Mention in ...` → code 端處理問題，往 handler 查
+# 完全沒 Mention event → Slack app 端問題（見下）
+
+# 3. Bot token 有效嗎？
+set -a && source .env && set +a
+curl -s -H "Authorization: Bearer $<AGENT>_SLACK_BOT_TOKEN" https://slack.com/api/auth.test
+# 預期 {"ok":true,"user":"<agent>","user_id":"U...","bot_id":"B..."}
+# ok:false 或 missing_scope → 去 OAuth & Permissions 檢查 + Reinstall
+```
+
+### 最常見的 Slack 端 gotcha
+
+1. **Event Subscriptions 沒訂閱 `app_mention`**（頭號坑）
+   - Slack app settings → Event Subscriptions → Enable Events ON
+   - Subscribe to bot events 必須有 `app_mention`、`message.im`、`message.channels`
+   - 漏掉 `app_mention` 的症狀：`auth.test` 成功、Socket Mode 連得上、但 gateway log 永遠收不到該 bot 的 Mention event
+
+2. **加新 scope 後忘記 Reinstall to Workspace**
+   - OAuth & Permissions 加了 scope，頁頂會出現「You've changed the scopes...」黃色 banner
+   - 必須按 Reinstall to Workspace，舊 token 雖然還能 `auth.test` 但不會有新 scope
+   - 症狀：部分功能失靈（例如 DM 能回但頻道 mention 沒反應）
+
+3. **Bot 沒被加入頻道**
+   - 頻道 `@<agent>` 需要 bot 是該頻道成員（`/invite @<agent>`）
+   - DM 不受此限，DM 有 scope 就能用。可用 DM 驗證 bot 本身是否正常
+
+### 確認是 code 端問題後（log 有看到 Mention event 但 bot 沒回覆）
+
+- `gateway/handlers/<agent>.py` 有 `raise` 穿出嗎？`journalctl` 看 exception
+- `MODEL_<AGENT>` 設了但 provider 無效？看 `shared/llm.py` fail-fast guard 的 error
+- `set_current_agent("<agent>")` 有被呼叫嗎？沒的話 cost DB 會記到別 agent
+
 ## 當前進度表
 
 | Agent | Slack app | .env token | Handler | 備註 |
 |---|---|---|---|---|
 | Nami | ✅ | `NAMI_SLACK_*` | ✅ `gateway/handlers/nami.py` | 11 tools |
-| Sanji | ⬜ Phase 1 中 | ⬜ `SANJI_SLACK_*` | ✅（handler 已寫，要接獨立 bot）| Q3 P1 brainstorm 一起重接 |
-| Zoro | ⬜ | ⬜ | ⬜ | Phase 5B（先 Sanji 穩定） |
+| Sanji | ✅ | `SANJI_SLACK_*` | ✅ `gateway/handlers/sanji.py` | P1 brainstorm 上線 |
+| Zoro | ✅ | `ZORO_SLACK_*` | ✅ `gateway/handlers/zoro.py` | P2 scout 在 Slice B/C |
 | Brook | ⬜ | ⬜ | ⬜ | 之後 |
 | Robin | ⬜ | ⬜ | ⬜ | 之後（Robin 本機跑，Slack 端是通知用） |
 | Chopper | ⬜ | ⬜ | ⬜ | 平台未定 |
