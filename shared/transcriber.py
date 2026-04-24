@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from shared.log import get_logger
@@ -578,6 +579,117 @@ def _funasr_char_to_ts_idx(text: str, n_ts: int) -> list[int]:
         c_idx += 1  # not strictly needed but keeps signature symmetric
 
     return result
+
+
+@dataclass
+class AsrCharTimeline:
+    """ASR 字級時間軸：完整文字 + 每字 (start_ms, end_ms)。
+
+    用於把 hand SRT 的 cue 精確對齊到音訊真實時間。
+    不發音的字元（標點/空白）繼承前一發音字的時間，保證 char_times 同長度。
+    """
+
+    text: str
+    char_times: list[tuple[int, int]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if len(self.char_times) != len(self.text):
+            raise ValueError(
+                f"char_times 長度 {len(self.char_times)} != text 長度 {len(self.text)}"
+            )
+
+    @property
+    def duration_ms(self) -> int:
+        return self.char_times[-1][1] if self.char_times else 0
+
+
+def build_char_timeline(results: list[dict]) -> AsrCharTimeline:
+    """從 FunASR results 組出完整字級時間軸（已簡轉繁）。
+
+    優先順序（per item）：
+    1. 有 sentence_info：句子內依字比例分配到 [sent.start, sent.end]
+    2. 有 char-level timestamp：用 `_funasr_char_to_ts_idx` 直接取
+    3. 只有句級 timestamp：整句共享同一時間
+
+    多個 items 依序串接（items 之間不重疊、時間單調）。
+    """
+    text_parts: list[str] = []
+    char_times: list[tuple[int, int]] = []
+
+    for item in results:
+        sentence_info = item.get("sentence_info")
+        if sentence_info:
+            for info in sentence_info:
+                s_text = _to_traditional((info.get("text") or "").strip())
+                if not s_text:
+                    continue
+                s_start = int(info["start"])
+                s_end = int(info["end"])
+                _extend_timeline_proportional(text_parts, char_times, s_text, s_start, s_end)
+            continue
+
+        raw_text = (item.get("text") or "").strip()
+        if not raw_text:
+            continue
+
+        timestamps = item.get("timestamp") or []
+        if not timestamps:
+            continue
+
+        trad_text = _to_traditional(raw_text)
+        is_char_level = len(timestamps) > 2  # 保守門檻：多於句級的就當 char-level
+        if is_char_level:
+            char_to_ts = _funasr_char_to_ts_idx(trad_text, len(timestamps))
+            last_end = 0
+            for i, ch in enumerate(trad_text):
+                ts_idx = char_to_ts[i]
+                start_ms, end_ms = _get_ts_values(timestamps[ts_idx])
+                # 標點沒獨立 ts，延續前一個 end（避免時間倒退）
+                if _FUNASR_NO_TS_CHAR.match(ch):
+                    start_ms = last_end
+                    end_ms = last_end
+                else:
+                    last_end = end_ms
+                text_parts.append(ch)
+                char_times.append((start_ms, end_ms))
+        else:
+            # 只有一個 timestamp 覆蓋整段
+            start_ms, end_ms = _get_ts_values(timestamps[0])
+            _extend_timeline_proportional(text_parts, char_times, trad_text, start_ms, end_ms)
+
+    return AsrCharTimeline(text="".join(text_parts), char_times=char_times)
+
+
+def _extend_timeline_proportional(
+    text_parts: list[str],
+    char_times: list[tuple[int, int]],
+    segment_text: str,
+    start_ms: int,
+    end_ms: int,
+) -> None:
+    """把 segment 依字比例攤到 [start_ms, end_ms] 並 append。
+
+    發音字均分 duration；不發音字（標點/空白）繼承前一發音字 end，保持單調。
+    """
+    if not segment_text:
+        return
+    duration = max(0, end_ms - start_ms)
+    content_flags = [not _FUNASR_NO_TS_CHAR.match(ch) for ch in segment_text]
+    n_content = sum(content_flags)
+
+    last_end = start_ms
+    content_seen = 0
+    for ch, is_content in zip(segment_text, content_flags):
+        if is_content and n_content > 0:
+            c_start = start_ms + int(duration * content_seen / n_content)
+            c_end = start_ms + int(duration * (content_seen + 1) / n_content)
+            content_seen += 1
+            last_end = c_end
+            text_parts.append(ch)
+            char_times.append((c_start, c_end))
+        else:
+            text_parts.append(ch)
+            char_times.append((last_end, last_end))
 
 
 def _funasr_to_srt(results: list[dict]) -> str:

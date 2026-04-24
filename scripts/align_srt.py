@@ -38,7 +38,7 @@ from shared.srt_align import (  # noqa: E402
     format_srt,
     parse_srt,
     retime_cues_from_asr,
-    run_asr_segments,
+    run_asr_char_timeline,
 )
 
 
@@ -93,8 +93,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--window",
         type=float,
-        default=45.0,
-        help="auto：搜尋視窗半徑秒（預設 45）",
+        default=None,
+        help="搜尋視窗半徑秒（auto 預設 45；retime 預設 15）",
+    )
+    parser.add_argument(
+        "--max-offset-deviation",
+        type=float,
+        default=5.0,
+        help="retime：match 偏離全局 median offset 超過此秒數視為 outlier 丟棄（預設 5）",
     )
     parser.add_argument(
         "--asr-model",
@@ -122,12 +128,13 @@ def _resolve_transform(args: argparse.Namespace) -> tuple[float, float, str]:
         print(f"[auto] 跑 ASR（模型 {args.asr_model}）並比對文字...")
         print("-" * 60)
 
+        auto_window_s = args.window if args.window is not None else 45.0
         fit, matches = detect_transform(
             args.srt_path,
             args.audio,
             asr_model=args.asr_model,
             ratio_threshold=args.ratio_threshold,
-            window_s=args.window,
+            window_s=auto_window_s,
         )
 
         print(
@@ -174,16 +181,19 @@ def _run_retime(args: argparse.Namespace):
 
     print(f"[retime] 音檔: {args.audio}")
     print(f"[retime] SRT:  {args.srt_path}（{len(cues)} cues）")
-    print(f"[retime] 跑 ASR（模型 {args.asr_model}）...")
+    print(f"[retime] 跑 ASR（模型 {args.asr_model}，char-level）...")
     print("-" * 60)
 
-    asr_segs = run_asr_segments(args.audio, asr_model=args.asr_model)
+    timeline = run_asr_char_timeline(args.audio, asr_model=args.asr_model)
+    print(f"[retime] ASR 文字 {len(timeline.text)} 字，時長 {timeline.duration_ms / 1000:.1f}s")
 
+    window_s = args.window if args.window is not None else 15.0
     new_cues, matches, stats = retime_cues_from_asr(
         cues,
-        asr_segs,
+        timeline,
         ratio_threshold=args.ratio_threshold,
-        window_s=args.window,
+        window_s=window_s,
+        max_offset_deviation_s=args.max_offset_deviation,
     )
 
     coverage = stats.matched / stats.total if stats.total else 0.0
