@@ -6,7 +6,7 @@ originSessionId: ea82060e-3d51-44bc-a470-e61162514715
 ---
 # Robin PubMed 每日 Digest
 
-**狀態**：✅ 全功能上線（2026-04-23 PR #84 修 OA 誤標 — 加 Europe PMC 鏡像 + digest render 誠實化）
+**狀態**：✅ 全功能上線（2026-04-24 PR #91/#94/#95 — publisher HTML fallback 第 5 層上線 + reader 分流 oa_html + 圖片本地化；#96 讓 reader render vault-root-relative 圖）
 
 ## 做什麼
 
@@ -18,13 +18,14 @@ originSessionId: ea82060e-3d51-44bc-a470-e61162514715
 
 ## 全文下載（PR #70、PR #84 擴充）
 
-**四層 fallback**（PR #84 2026-04-23 加入 Europe PMC）：
+**五層 fallback**（PR #94 2026-04-24 加入 publisher HTML）：
 1. NCBI efetch XML → 抓 DOI + PMCID
 2. 有 PMCID → PMC NCBI `/pdf/`（**注意**：2024+ 常回 HTML landing page，實務上通常失敗）
 3. PMC NCBI 失敗 → Europe PMC 鏡像 `europepmc.org/articles/PMC{id}?pdf=render`（直接回 `application/pdf`，不需過 publisher IdP cookie flow，**VPS 友善**）
 4. 還失敗 + 有 DOI → Unpaywall API `best_oa_location.url_for_pdf`（注意：Nature 回的 URL 要過 `idp.nature.com` cookie flow，VPS 固定 IP 常被擋）
-5. 都失敗但有 DOI → `needs_manual`（digest 顯示 ⚠️ + DOI link）
-6. 無識別碼 OR 兩條 PMC 都掛+無 DOI → `not_found`（note 會區分兩種情況）
+5. **PR #94 新增**：elink `cmd=prlinks` 查 publisher Free-標記 URL（BMJ/PLOS/eLife 等 HighWire free host），`scrape_url` → `download_markdown_images` → 寫 `{pmid}.md`；同頁若有 PDF link 順手抓。保守策略：只跟 `Attribute="Free"`、長度 ≥ 1500 字、paywall 關鍵字黑名單早退
+6. 都失敗但有 DOI → `needs_manual`（digest 顯示 ⚠️ + DOI link）
+7. 無識別碼 OR 兩條 PMC 都掛+無 DOI → `not_found`（note 會區分兩種情況）
 
 Source 頁新增 frontmatter 欄位（Dataview 可查）：`doi` / `full_text_status` / `full_text_source` / `full_text_path` / `read_status`。
 

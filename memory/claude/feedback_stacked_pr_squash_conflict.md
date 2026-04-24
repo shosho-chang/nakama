@@ -16,3 +16,16 @@ originSessionId: d6248f62-150b-43c6-ac05-98394223e172
 - 驗證策略選對：如果子分支的所有衝突檔案「our size > their size」就放心用 ours；不對勁才一個檔案看 conflict marker 手動挑。
 - 順序很重要：每次 merge 完 main，下一個堆疊 PR 才開始跑 merge 解衝突 → 才有新 base 可用。
 - 案例：PR #74/#75/#76（Franky Phase 1 三 slice）2026-04-23 就是踩這個，第二招解掉沒 force-push。
+
+**變體 — auto-close on base deletion**（2026-04-24 再踩）：
+
+用 `gh pr merge --squash --delete-branch` merge 父 PR 後，base branch 被刪 → GitHub **自動 CLOSE 所有以該 branch 為 base 的子 PR**（不是 unmergeable，是直接 closed 且 `gh pr edit --base main` 拒絕 "Cannot change the base branch of a closed pull request"）。CI status / comments 全保留但無法 reopen。
+
+**正確流程**（有 force-push 權限時）：
+1. Merge 父 PR（`gh pr merge --squash --delete-branch`）→ 子 PR state=CLOSED
+2. `git checkout 子branch && git rebase origin/main`（git 自動 skip 已 cherry-pick 的 commits，warning 可忽略）
+3. `git push --force-with-lease origin 子branch`
+4. `gh pr create --base main --head 子branch --title "..." --body "..."` 重開（不是 reopen）
+5. 新 PR 號，在 body 註明 "Re-open of #舊號（GitHub auto-closed on base branch deletion）" 保留審查線索
+
+**案例**：PR #91/#92/#93（Robin publisher HTML 三 slice）2026-04-24 完整走一次這流程，#92 → #94、#93 → #95 重開，main 歷史乾淨。

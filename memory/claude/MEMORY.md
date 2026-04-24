@@ -72,7 +72,8 @@
 - [project_nami_gmail.md](project_nami_gmail.md) — Nami Gmail 整合完成：6 tools + triage 規則（Primary + Respond/Shosho 24h）+ SSL per-thread bug 修法
 - [project_nami_vault_notes.md](project_nami_vault_notes.md) — Nami vault note 3 tools（write/read/list）+ vault_rules.py，待 VPS 部署
 - [project_brook_style_extraction_todo.md](project_brook_style_extraction_todo.md) — Brook style extraction 完成：36 篇 → 3 份 profile + 交叉分析（agents/brook/style-profiles/）
-- [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest + OA 全文下載 + 雙語閱讀（PR #66/70/71 全上線）
+- [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest；PR #94 publisher HTML fallback（第 5 層，BMJ/PLOS/eLife 等 Free-標記 OA）上線
+- [project_zotero_integration_plan.md](project_zotero_integration_plan.md) — 訂閱期刊全文走 Zotero（非 publisher login）；待開工，Phase A–D 框架已定
 - [reference_vps_timezone.md](reference_vps_timezone.md) — VPS TZ 是 Asia/Taipei，cron 用本機時區；日期 filename 要 `ZoneInfo("Asia/Taipei")`
 - [feedback_gitignore_negation.md](feedback_gitignore_negation.md) — .gitignore 子檔再 include 要用 `data/*` + `!data/file`，不是 `data/` + `!data/file`
 - [feedback_design_deviation_discovery.md](feedback_design_deviation_discovery.md) — 實作時發現現成輕量方案 → flag deviation，不默默換方案
