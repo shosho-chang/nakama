@@ -50,6 +50,9 @@ dependencies = [
     "google-api-python-client>=2.100.0",
     "google-auth-oauthlib>=1.2.0",
     "filelock>=3.13.0",
+
+    # Zoro: Google Trends (PR #107 brainstorm scout primary source)
+    "trendspy>=0.1.6",
 ]
 
 [project.optional-dependencies]
