@@ -130,9 +130,11 @@ P3 是「夜間 async + budget cap + Nami 晨報整合」，本 step 不做。
 
 ## 5. 排程與頻道
 
-**觸發**：APScheduler cron
-- 09:00 台北時間 — 早上熱點輪詢（Zoro 睜眼那刻）
-- 14:00 台北時間 — 下午補推（若早上沒出題）
+**觸發**（2026-04-24 實作更新）：**Linux cron**（非原本規劃的 APScheduler），cron.conf 統一管理。
+- 05:00 台北時間 — 單次每日偵查（7Q 凍結決定，見 memory `project_multi_model_architecture.md`）
+- 後續若不夠再加 14:00
+
+**為什麼改 cron**：VPS 已有 4 條 cron 線（Franky × 3 + nakama-backup）同 pattern，沿用省依賴 + debug 友善（獨立 log 檔 + journalctl）+ service 重啟不影響排程。APScheduler 原本「跟 thousand-sunny 同 service、重啟一起走」在實際 ops 下變缺點。
 
 **22:00–09:00 不推**（夜間留給 P3 async 模式）。
 
