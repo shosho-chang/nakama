@@ -368,71 +368,84 @@ def test_llm_judge_parses_fenced_json():
     assert out["domain"] == "飲食"
 
 
-# ── gather_signals (Reddit) ───────────────────────────────────────────────
+# ── gather_signals (Trends primary, Slice C1) ────────────────────────────
 
 
-def test_gather_signals_calls_reddit_hot():
-    posts = [
+def test_gather_signals_calls_trends_discover():
+    terms = [
         {
-            "title": "CGM biohack results",
-            "score": 80,
-            "num_comments": 20,
-            "subreddit": "biohacking",
-            "age_hours": 2.0,
-            "velocity_score": 40.0,
-            "url": "https://reddit.com/r/biohacking/x",
-            "created_utc": 123.0,
+            "title": "ozempic side effects",
+            "velocity_score": 80.0,
+            "subreddit": "trends",
+            "score": 800,
+            "num_comments": 0,
+            "age_hours": 0.0,
+            "url": "",
+            "volume": 500_000,
+            "related": ["ozempic", "glp-1", "weight loss"],
         },
         {
-            "title": "Zone 2 cardio benefits",
-            "score": 50,
-            "num_comments": 10,
-            "subreddit": "longevity",
-            "age_hours": 3.0,
-            "velocity_score": 16.67,
-            "url": "https://reddit.com/r/longevity/y",
-            "created_utc": 456.0,
+            "title": "zone 2 cardio",
+            "velocity_score": 30.0,
+            "subreddit": "trends",
+            "score": 300,
+            "num_comments": 0,
+            "age_hours": 0.0,
+            "url": "",
+            "volume": 100_000,
+            "related": ["zone 2", "cardio", "vo2"],
         },
     ]
-    with patch("agents.zoro.reddit_api.hot_in_health_subreddits", return_value=posts):
+    with patch("agents.zoro.trends_api.discover_trending_health", return_value=terms):
         signals = scout.gather_signals()
 
     assert len(signals) == 2
-    assert signals[0].source == "reddit"
-    assert signals[0].topic == "CGM biohack results"
-    assert signals[0].velocity_score == 40.0
-    assert signals[0].metadata["subreddit"] == "biohacking"
-    assert signals[0].metadata["score"] == 80
+    assert signals[0].source == "trends"
+    assert signals[0].topic == "ozempic side effects"
+    assert signals[0].velocity_score == 80.0
+    assert signals[0].metadata["volume"] == 500_000
+    assert signals[0].metadata["growth_pct"] == 800
+    assert signals[0].metadata["related"][:3] == ["ozempic", "glp-1", "weight loss"]
 
 
-def test_gather_signals_handles_reddit_api_failure():
+def test_gather_signals_handles_trends_api_failure():
     with patch(
-        "agents.zoro.reddit_api.hot_in_health_subreddits",
-        side_effect=RuntimeError("network down"),
+        "agents.zoro.trends_api.discover_trending_health",
+        side_effect=RuntimeError("Trends down"),
     ):
         signals = scout.gather_signals()
     assert signals == []
 
 
 def test_gather_signals_skips_empty_titles():
-    posts = [
+    terms = [
         {
             "title": "",
-            "score": 100,
-            "num_comments": 10,
-            "subreddit": "biohacking",
-            "velocity_score": 50.0,
-            "age_hours": 2.0,
+            "velocity_score": 80.0,
+            "subreddit": "trends",
+            "score": 800,
+            "num_comments": 0,
+            "age_hours": 0.0,
+            "url": "",
+            "volume": 500_000,
+            "related": [],
         },
         {
             "title": "real topic",
-            "score": 80,
-            "num_comments": 20,
-            "subreddit": "biohacking",
-            "velocity_score": 40.0,
-            "age_hours": 2.0,
+            "velocity_score": 60.0,
+            "subreddit": "trends",
+            "score": 600,
+            "num_comments": 0,
+            "age_hours": 0.0,
+            "url": "",
+            "volume": 200_000,
+            "related": ["glucose"],
         },
     ]
-    with patch("agents.zoro.reddit_api.hot_in_health_subreddits", return_value=posts):
+    with patch("agents.zoro.trends_api.discover_trending_health", return_value=terms):
         signals = scout.gather_signals()
     assert [s.topic for s in signals] == ["real topic"]
+
+
+# Slice C1: gather_signals 主 source 切到 Trends；Reddit 留到 Slice D OAuth。
+# Reddit client 本身仍有單元測試（tests/test_reddit_hot_discovery.py），只是 scout 不呼叫。
