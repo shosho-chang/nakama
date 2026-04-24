@@ -77,8 +77,8 @@ def test_discover_bots_ignores_whitespace_only(monkeypatch: pytest.MonkeyPatch):
 
 def test_discover_bots_skips_agent_without_handler(monkeypatch: pytest.MonkeyPatch):
     """Token 齊了但 gateway/handlers registry 沒註冊 → skip，不啟動空殼 bot。"""
-    monkeypatch.setenv("ZORO_SLACK_BOT_TOKEN", "xoxb-zoro")
-    monkeypatch.setenv("ZORO_SLACK_APP_TOKEN", "xapp-zoro")
+    monkeypatch.setenv("BROOK_SLACK_BOT_TOKEN", "xoxb-brook")
+    monkeypatch.setenv("BROOK_SLACK_APP_TOKEN", "xapp-brook")
 
     from gateway.bot import _discover_bots
 

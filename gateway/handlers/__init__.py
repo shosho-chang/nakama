@@ -6,10 +6,12 @@ from gateway.handlers.base import BaseHandler
 from gateway.handlers.nami import NamiHandler
 from gateway.handlers.orchestrator import OrchestratorHandler
 from gateway.handlers.sanji import SanjiHandler
+from gateway.handlers.zoro import ZoroHandler
 
 _HANDLERS: dict[str, BaseHandler] = {
     "nami": NamiHandler(),
     "sanji": SanjiHandler(),
+    "zoro": ZoroHandler(),
     "orchestrator": OrchestratorHandler(),
 }
 
