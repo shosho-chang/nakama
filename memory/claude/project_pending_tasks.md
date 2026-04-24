@@ -104,7 +104,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ `agents/franky/` 全三 slice（PR #74/#75/#76）
 - ✅ Franky VPS 上線（2026-04-24，含 PR #86/#87 修 env drift）
 - ✅ **External uptime probe**：PR #111 merged `6cf5475`（2026-04-24）+ 線上驗收通過。happy path / simulate_down 兩路徑全綠，Slack DM 實收確認。踩 1 個坑：原以為 GH runner 可繞 CF bot list 錯，實測 SBFM 全擋 → 加 CF WAF skip rule by UA `nakama-external-probe/1.0` 解。見更新版 [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md)
-- ⬜ docs/runbooks/uptimerobot-setup.md 需標記 deprecated 或加「三坑警告」（Keyword type / plain ASCII keyword / CF WAF skip rule）
+- ✅ docs/runbooks/uptimerobot-setup.md 標 deprecated + 三坑警告（桌機 PR #110 merged 2026-04-24 `421213f`；Mac session PR `<pending>` 修錯誤的「GH runner 零 CF 配置」claim）
 - ✅ `config/style-profiles/*.yaml` 三個 profile（PR #78/#79）
 - ✅ Usopp Slice C1 — daemon loop + signal + follow-ups（PR #97 merged 2026-04-24）；`/healthz` 加 WP 檢查項目 superseded by ADR-007 §4 probe_wp_site
 - ✅ Usopp VPS 部署材料（PR #98 merged 2026-04-24）— systemd unit + runbook；等修修手動套用
