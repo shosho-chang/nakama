@@ -1,9 +1,34 @@
 # UptimeRobot 外部 Uptime Probe 設定
 
+> ⚠️ **DEPRECATED（2026-04-24）** — 本 runbook 不再是 external uptime probe 的首選方案。
+>
+> 2026-04-24 Franky 上線依此 runbook 設定，**三層坑合計 25+ 分鐘未轉綠**後擱置：
+> 1. **HEAD vs GET** — HTTP(s) monitor 預設送 HEAD，`/healthz` 只接 GET → 405。切 HTTP Method 是 **paid-only**。Workaround 是改用 `Keyword` monitor（強制 GET）。
+> 2. **Keyword 欄位對特殊字元不友善** — `"status":"ok"` 雙引號會被搞壞；**改用純 ASCII unique 字串**（e.g. `nakama-gateway`）。
+> 3. **Cloudflare Bot Fight Mode 擋 datacenter IP** — UptimeRobot Ashburn 節點被 CF 當 bot → challenge page → keyword miss → 回報 DOWN。**要做 CF WAF Skip rule**，且要等 propagate。
+>
+> **新的首選方案：GitHub Actions cron + Slack webhook**（`.github/workflows/external-probe.yml`，~15 分鐘寫完；runner IP 不在 CF datacenter bot list；Slack mobile push 繞過 VPS 夠用；零 CF 配置）。
+>
+> 背景：[memory/claude/feedback_uptimerobot_cost_benefit.md](../../memory/claude/feedback_uptimerobot_cost_benefit.md)
+>
+> **本 runbook 保留的場景：** 僅當你需要 SMS fallback（VPS + CF Tunnel + GitHub runner 全掛時發手機簡訊）才走 UptimeRobot。個人創作者實際觸發機率 1-2 次/年。啟用前務必先做下方「三坑預防檢查」。
+
+---
+
+## 三坑預防檢查（啟用前必看）
+
+走本 runbook 前，下列三件事必須先做完，否則 monitor 一定不會轉綠：
+
+1. **Monitor type 選 `Keyword`（不選 HTTP(s)）** — Free plan 的 HTTP(s) 固定送 HEAD，`/healthz` 只接 GET。Keyword type 強制 GET 因為要讀 body。
+2. **Keyword 欄位用純 ASCII unique 字串** — 不要用 `"status":"ok"`（雙引號會被解析器搞壞）。建議用 service 名如 `nakama-gateway` 或 `healthz`。
+3. **CF WAF Custom Rule 預先放行 UptimeRobot UA** — 規則見本文件尾的「踩坑備忘」區段。做完後等 ~5 分鐘 propagate 再啟用 monitor。
+
+---
+
 **Scope:** ADR-007 §2 的 blocker 緩解 — 讓 VPS 掛時也能收到告警（Slack / Franky DM 都依賴 VPS，繞不出去）。
 **Owner:** 修修手動完成（需要個人手機號 + email）。
 **執行條件:** Franky Slice 1 已部署、`GET https://nakama.shosho.tw/healthz` 在公網可訪問。
-**時間預估:** 約 20 分鐘。
+**時間預估:** 約 20 分鐘（含三坑預防檢查）。
 
 ---
 
@@ -52,18 +77,23 @@ Franky 本身跑在 VPS 內。VPS 掛 = Franky 一起死 = Slack DM 不會送 = 
 
 在 **Dashboard → + New Monitor** 建立：
 
-| Monitor Name | Type | URL | Interval | Timeout | Keyword（可選） |
+| Monitor Name | Type | URL | Interval | Timeout | Keyword |
 |---|---|---|---|---|---|
-| Nakama Gateway healthz | HTTP(s) | `https://nakama.shosho.tw/healthz` | 5 minutes | 30s | `"status":"ok"` |
-| WP — shosho.tw | HTTP(s) | `https://shosho.tw/` | 5 minutes | 30s | — |
-| WP — fleet.shosho.tw | HTTP(s) | `https://fleet.shosho.tw/` | 5 minutes | 30s | — |
+| Nakama Gateway healthz | **Keyword** | `https://nakama.shosho.tw/healthz` | 5 minutes | 30s | `nakama-gateway`（純 ASCII，無引號） |
+| WP — shosho.tw | Keyword | `https://shosho.tw/` | 5 minutes | 30s | `shosho`（或任一首頁必現字串） |
+| WP — fleet.shosho.tw | Keyword | `https://fleet.shosho.tw/` | 5 minutes | 30s | `fleet`（同上） |
+
+> **Type 一律選 Keyword，不選 HTTP(s)** — HTTP(s) 預設送 HEAD 會被 `/healthz` 回 405；切 GET 是 paid-only。Keyword type 強制 GET。
+>
+> **Keyword 值用純 ASCII unique 字串** — 不要用 `"status":"ok"`，雙引號會被解析器搞壞。建議用 service 名。
+>
+> **前置任務：** `/healthz` response body 必須含有該 keyword。Nakama Gateway 目前回傳 `{"service":"nakama-gateway","status":"ok",...}`，所以 `nakama-gateway` 成立（contract 來源：[shared/schemas/franky.py:95](../../shared/schemas/franky.py#L95) `service: Literal["nakama-gateway"]`）。若未來 `/healthz` schema 變動，這裡的 keyword 要同步。
 
 對每一個 monitor：
 
 - **Alert Contacts:** 勾選 Email + SMS（SMS 會自動只在 DOWN 觸發）
 - **Alert When Down For:** 設 `10 minutes`（避免單次網路抖動把 SMS 額度用完）
-- **Advanced Settings → HTTP Method:** GET
-- **Advanced Settings → HTTP Headers:** 留空（/healthz 不需 auth）
+- **Advanced Settings → HTTP Headers:** 留空（`/healthz` 不需 auth）
 
 ### 4. Maintenance Window（避免 VPS 週期維護觸發告警）
 
@@ -126,6 +156,13 @@ Franky 本身跑在 VPS 內。VPS 掛 = Franky 一起死 = Slack DM 不會送 = 
 
 ## 踩坑備忘（補充）
 
-- **Cloudflare WAF 擋掉 UptimeRobot**：若 monitor 持續 timeout，去 CF Dashboard → Security → WAF → Tools 查 `UptimeRobot` bot UA 是否被 Bot Fight Mode 攔截。Phase 1 用 Skip rule 放行其 UA。
+- **Cloudflare Bot Fight Mode 擋掉 UptimeRobot datacenter IP**：2026-04-24 Franky 上線實測 → monitor 持續 DOWN 因為 CF 把 UptimeRobot Ashburn 節點當 bot 回 challenge page，body 無 keyword → 失敗。**解法：在 CF Dashboard → Security → WAF → Custom Rules 加 Skip rule：**
+  ```
+  Expression:
+  (http.host eq "nakama.shosho.tw" and starts_with(http.request.uri.path, "/healthz") and http.user_agent contains "UptimeRobot")
+
+  Action: Skip → 勾選 All Managed Rules + Super Bot Fight Mode + User Agent Blocking + Rate Limiting
+  ```
+  做完後等 ~5 分鐘 propagate 再啟用 monitor。其他網域（`shosho.tw` / `fleet.shosho.tw`）若也走 CF，要同樣加規則 — 把 `http.host eq` 的 host 替換即可。
 - **Keyword matching 誤判**：若 `/healthz` response 改版後 `"status":"ok"` 字串位置變動，keyword check 可能炸。`HealthzResponseV1` 的 schema 有 `status` 欄位，移除或改名 = 破契約，需要同步更新本 monitor 的 keyword。
 - **SMS 額度用完**：免費 20 則/月用完後，只剩 email。升級 Pro 方案（$7/mo 起）或等月初 reset。
