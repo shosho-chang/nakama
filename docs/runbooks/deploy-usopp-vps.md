@@ -10,7 +10,7 @@
 ## 為什麼需要獨立 systemd service
 
 - `thousand-sunny`（FastAPI web） vs `nakama-gateway`（Slack Socket Mode） vs `nakama-usopp`（publisher poll loop）是三個**獨立工作負載**，掛一個不該帶倒其他。
-- Usopp daemon 有 graceful shutdown（SIGTERM → 收完 current batch 再退），`TimeoutStopSec=60` 配合 signal handler，避免 abrupt kill 留下 stuck `claimed` row。
+- Usopp daemon 有 graceful shutdown（SIGTERM → 收完 current batch 再退），`TimeoutStopSec=120` 配合 signal handler，避免 abrupt kill 留下 stuck `claimed` row。
 - 有獨立 service 後 `journalctl -u nakama-usopp -f` 可以單獨追 publisher log，不跟 web / gateway 混。
 
 相關：[`feedback_vps_two_services.md`](../../memory/claude/feedback_vps_two_services.md)（變三個了，memory 待更新）。
@@ -147,7 +147,7 @@ journalctl -u nakama-usopp -n 20
 #   usopp daemon start worker_id=...
 ```
 
-如果 `TimeoutStopSec=60` 內沒 graceful stop，systemd 會強殺 → journal 會顯示 `Killing process ... with signal SIGKILL`。出現這行代表 daemon 有 row 正在 publish 而且超時，需要查 `publish_jobs` 表看是不是 WP REST 卡住。
+如果 `TimeoutStopSec=120` 內沒 graceful stop，systemd 會強殺 → journal 會顯示 `Killing process ... with signal SIGKILL`。出現這行代表 daemon 有 row 正在 publish 而且超時，需要查 `publish_jobs` 表看是不是 WP REST 卡住。
 
 ---
 
@@ -160,14 +160,16 @@ ssh nakama-vps
 systemctl stop nakama-usopp
 systemctl disable nakama-usopp
 
-# 把 claim 到 'claimed' 但沒完成的 row 釋放回 'approved'（Franky reset_stale_claims 也會做，
-# 但等 5 分鐘太久，手動跑一次）：
+# 把 claim 到 'claimed' 但沒完成的 row 釋放回 'approved'。
+# reset_stale_claims() 只處理超過 STALE_CLAIM_THRESHOLD_S（10 分鐘）的 row；
+# Franky 5 分鐘 cron 也會跑這個，所以即使不手動，最多 10 分鐘內所有 stale row 會自動釋放。
+# 想立即釋放，手動跑一次即可：
 cd /home/nakama
-python3 -c "from shared import approval_queue; print(approval_queue.reset_stale_claims(stale_minutes=0))"
+python3 -c "from shared import approval_queue; print(approval_queue.reset_stale_claims())"
 
-# 確認沒有 'claimed' 孤兒：
-sqlite3 /home/nakama/data/state.db "SELECT id, status, worker_id FROM approval_queue WHERE status='claimed';"
-# 應回空集
+# 確認沒有超過閾值的 'claimed' 孤兒：
+sqlite3 /home/nakama/data/state.db "SELECT id, status, worker_id, claimed_at FROM approval_queue WHERE status='claimed';"
+# 剩下的 row 都是最近 10 分鐘內 claimed 的（未達 stale 閾值），等下一輪 Franky cron 過閾值後自然釋放
 ```
 
 回滾完成。重啟前先找出 root cause，別用「service 重啟」當 shortcut（[三條紅線](../../CLAUDE.md#三條紅線任何任務共同遵守) — 事實驅動）。
