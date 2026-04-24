@@ -115,5 +115,10 @@
 - [project_usopp_vps_deployed.md](project_usopp_vps_deployed.md) — Usopp daemon VPS 上線 2026-04-24；路上修兩個 .env legacy（USER→USERNAME / BASE_URL /wp-json）+ noop purge；C2b unblocked
 - [feedback_wp_base_url_convention.md](feedback_wp_base_url_convention.md) — `WP_*_BASE_URL` 不含 `/wp-json` 後綴；`_request()` 自己 append，double-path 會 404（mocked tests 看不到）
 - [feedback_slack_bot_bringup_gotchas.md](feedback_slack_bot_bringup_gotchas.md) — 新 agent Slack bot 沒反應時的三層診斷順序（gateway→Slack→handler），頭號坑是 Event Subscriptions 沒訂 app_mention
+- [project_zoro_brainstorm_p2_deployed.md](project_zoro_brainstorm_p2_deployed.md) — Zoro brainstorm P2 全 slice（A-C2 / PR #102/#105/#106/#107/#108）上線 + cron 05:00 台北 + Slice D backlog
+- [feedback_reddit_vps_ip_block.md](feedback_reddit_vps_ip_block.md) — Reddit 匿名 JSON API 從 VPS datacenter IP 全 403；OAuth 唯一可靠解，同類風險適用其他平台
+- [feedback_slack_cjk_mrkdwn.md](feedback_slack_cjk_mrkdwn.md) — Slack `*bold*` 對 CJK 字元 leak 字面；agent 訊息走純口語或 blocks API，不靠 mrkdwn 粗體
+- [feedback_llm_compose_agent_messages.md](feedback_llm_compose_agent_messages.md) — Agent 對外訊息用 LLM compose with persona，別 Python template；$0.002/tick 忽略、品質+self-aware 差異大
+- [feedback_cron_vs_apscheduler_for_daily_agent.md](feedback_cron_vs_apscheduler_for_daily_agent.md) — Daily agent 用 Linux cron（沿用 Franky/backup pattern），不裝 APScheduler
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
