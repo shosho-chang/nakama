@@ -4,7 +4,7 @@ description: 寫 cron-driven GitHub Actions workflow（uptime probe、定時抓 
 type: reference
 originSessionId: 9bfe5264-7fe3-4bcf-8418-f9917c14cced
 ---
-寫 `on: schedule` GitHub Actions workflow 時容易踩到的五個固定坑：
+寫 `on: schedule` GitHub Actions workflow 時容易踩到的六個固定坑：
 
 1. **Cron 強制 UTC，沒時區**
    - `cron: '*/5 * * * *'` 不吃 `TZ=...`，想「台北上班時段密集」要自己算 offset。
@@ -26,6 +26,13 @@ originSessionId: 9bfe5264-7fe3-4bcf-8418-f9917c14cced
    - `chat.postMessage` 的 `channel` 欄位吃 DM channel ID（`D...`），不吃 user ID（`U...`）。
    - 要先 `conversations.open` with `users: <U...>`，拿回 `channel.id` 再 post。
    - 也可以 cache channel ID，但每次重開低成本（~50ms），workflow 裡直接開就行。
+
+6. **Cloudflare Bot Fight Mode 擋 GH Actions runner IP**
+   - 原以為 GH runner 能繞 CF bot list，2026-04-24 實測 ubuntu-latest（Azure eastus）戳 CF-fronted endpoint 全回 **403**。
+   - CF SBFM 把所有公有 cloud datacenter IP（含 Azure）當 bot，跟 UptimeRobot 同坑。
+   - 解：CF WAF Custom Rule skip by User-Agent。workflow 送 `curl -A "<specific-UA>"`，CF 規則 `(http.user_agent contains "<specific-UA>")` → Action: Skip → 勾 `All Super Bot Fight Mode rules`（關鍵）+ Managed Rules + User Agent Blocking。
+   - 選 specific UA 字串，別用 generic。放行限 UA，不要開放 path（避免真 bot 繞過打 healthz）。
+   - 詳見 [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md)。
 
 **workflow_dispatch simulate 按鈕的常見模式:**
 加一個 `simulate_down: boolean` input，在 step 開頭判斷 `"$SIMULATE_DOWN" = "true"` 就強制 fail
