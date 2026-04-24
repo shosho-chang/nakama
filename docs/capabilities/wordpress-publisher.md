@@ -16,7 +16,7 @@
 | Advisory lock（race-free create_post） | `shared/locks.advisory_lock` | ADR-005b §2.1 |
 | 三層 SEOPress fallback | `shared/seopress_writer.write_seopress` | ADR-005b §3 |
 | Atomic publish（先 draft → 驗證 → 切 publish） | State `post_draft → seo_ready → validated → published` | ADR-005b §4 |
-| LiteSpeed cache purge（含 noop fallback） | `shared/litespeed_purge.purge_url` | ADR-005b §5 |
+| LiteSpeed cache purge（noop — WP `save_post` hook 已自動處理） | `shared/litespeed_purge.purge_url` | ADR-005b §5 (Day 1 修訂 2026-04-24) |
 | Category fail-fast（未 map 就拒） | `CategoryNotMappedError` | ADR-005b §6 |
 | Compliance gate（台灣醫療/藥事法詞彙） | `shared.compliance.scan` | ADR-005b §10 |
 | Alert on SEO skip（Critical Franky alert） | `agents.franky.alert_router.dispatch` | ADR-005b §3 + ADR-007 |
