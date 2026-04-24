@@ -124,7 +124,7 @@ class UsoppDaemon:
             )
             return
 
-        reviewer = _lookup_reviewer(approval_queue_id)
+        reviewer = _lookup_reviewer(approval_queue_id, operation_id=operation_id)
         action = "schedule" if payload.scheduled_at is not None else "publish"
 
         try:
@@ -226,12 +226,14 @@ class UsoppDaemon:
             remaining -= chunk
 
 
-def _lookup_reviewer(approval_queue_id: int) -> str:
+def _lookup_reviewer(approval_queue_id: int, *, operation_id: str = "") -> str:
     """Read the approver's identity from approval_queue.reviewer.
 
     approve() writes this column on in_review→approved (transition's SET clause).
-    Fallback "unknown" only used if the column is NULL — which shouldn't happen on an
-    approved row but keeps PublishRequestV1 constructable rather than crashing the batch.
+    Fallback "unknown" fires when the column is NULL — shouldn't happen off the
+    HITL path but reset_stale_claims() can move claimed→approved without setting
+    reviewer, so this warning is load-bearing for the stale-reset scenario
+    (observability.md §2 — propagate operation_id so the warning correlates).
     """
     row = (
         _get_conn()
@@ -244,8 +246,9 @@ def _lookup_reviewer(approval_queue_id: int) -> str:
     reviewer = row["reviewer"] if row else None
     if not reviewer:
         logger.warning(
-            "usopp daemon: no reviewer on approval_queue id=%s; using 'unknown'",
+            "usopp daemon: no reviewer on approval_queue id=%s op=%s; using 'unknown'",
             approval_queue_id,
+            operation_id,
         )
         return "unknown"
     return reviewer
@@ -268,6 +271,12 @@ def _build_from_env() -> UsoppDaemon:
 
 
 def main() -> None:
+    # Load .env before _build_from_env() — WordPressClient.from_env reads os.environ
+    # directly and will KeyError on VPS if this daemon path hasn't touched the DB
+    # yet (same class as Franky PR #87; feedback_explicit_load_dotenv_for_non_db_paths.md).
+    from shared.config import load_config
+
+    load_config()
     _build_from_env().run()
 
 

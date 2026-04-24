@@ -276,6 +276,24 @@ class TestReviewerLookup:
     def test_missing_row_falls_back_to_unknown(self):
         assert _lookup_reviewer(999999) == "unknown"
 
+    def test_warning_log_carries_operation_id(self, caplog):
+        """observability.md §2: warning on NULL reviewer must correlate to the draft's op."""
+        import logging
+
+        draft = _make_draft()
+        qid = _enqueue_approved_publish(draft, op_id=draft.operation_id)
+        from shared.state import _get_conn
+
+        _get_conn().execute("UPDATE approval_queue SET reviewer = NULL WHERE id = ?", (qid,))
+        _get_conn().commit()
+
+        with caplog.at_level(logging.WARNING, logger="nakama.usopp.daemon"):
+            _lookup_reviewer(qid, operation_id="op_testoprn")
+
+        joined = " ".join(r.getMessage() for r in caplog.records)
+        assert "op=op_testoprn" in joined
+        assert f"id={qid}" in joined
+
 
 # ---------------------------------------------------------------------------
 # Signal-driven shutdown + interruptible sleep
