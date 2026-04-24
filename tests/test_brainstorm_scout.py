@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -240,9 +241,10 @@ def test_publish_to_slack_swallows_exception():
 # ── run() — full pipeline ────────────────────────────────────────────────
 
 
-def test_run_with_stub_signals_returns_none():
-    """Slice B gather_signals 回 [] → 全 pipeline pass through → None。"""
-    assert scout.run(publish=False) is None
+def test_run_when_no_signals_returns_none():
+    """無 signals → 全 pipeline pass through → None。"""
+    with patch("agents.zoro.brainstorm_scout.gather_signals", return_value=[]):
+        assert scout.run(publish=False) is None
 
 
 def test_run_injected_signal_passes_all_gates_and_records():
@@ -320,3 +322,117 @@ def test_run_skips_publish_when_env_missing(monkeypatch, caplog):
 
     history = pushed_topics.recent("zoro", since=timedelta(hours=1))
     assert len(history) == 1
+
+
+def test_run_dry_run_does_not_record(monkeypatch):
+    """record=False 不寫 pushed_topics（dry-run 用）。"""
+    sig = Signal(source="reddit", topic="glucose biohack", velocity_score=70.0)
+
+    with (
+        patch("agents.zoro.brainstorm_scout.gather_signals", return_value=[sig]),
+        patch(
+            "agents.zoro.brainstorm_scout._llm_judge_relevance",
+            return_value={"score": 0.85, "reason": "OK", "domain": "飲食"},
+        ),
+    ):
+        best = scout.run(publish=False, record=False)
+
+    assert best is not None
+    history = pushed_topics.recent("zoro", since=timedelta(hours=1))
+    assert history == []
+
+
+# ── _strip_json_fence ────────────────────────────────────────────────────
+
+
+def test_strip_fence_removes_json_wrapper():
+    raw = '```json\n{"score": 0.9}\n```'
+    assert scout._strip_json_fence(raw) == '{"score": 0.9}'
+
+
+def test_strip_fence_removes_bare_wrapper():
+    raw = '```\n{"score": 0.9}\n```'
+    assert scout._strip_json_fence(raw) == '{"score": 0.9}'
+
+
+def test_strip_fence_noop_on_plain_json():
+    assert scout._strip_json_fence('{"score": 0.9}') == '{"score": 0.9}'
+
+
+def test_llm_judge_parses_fenced_json():
+    """LLM 偶爾無視 prompt 加 ```json``` 外殼 — fence strip 後要能 parse。"""
+    fenced = '```json\n{"score": 0.9, "reason": "OK", "domain": "飲食"}\n```'
+    with patch("agents.zoro.brainstorm_scout.ask", return_value=fenced):
+        out = scout._llm_judge_relevance("topic")
+    assert out["score"] == 0.9
+    assert out["domain"] == "飲食"
+
+
+# ── gather_signals (Reddit) ───────────────────────────────────────────────
+
+
+def test_gather_signals_calls_reddit_hot():
+    posts = [
+        {
+            "title": "CGM biohack results",
+            "score": 80,
+            "num_comments": 20,
+            "subreddit": "biohacking",
+            "age_hours": 2.0,
+            "velocity_score": 40.0,
+            "url": "https://reddit.com/r/biohacking/x",
+            "created_utc": 123.0,
+        },
+        {
+            "title": "Zone 2 cardio benefits",
+            "score": 50,
+            "num_comments": 10,
+            "subreddit": "longevity",
+            "age_hours": 3.0,
+            "velocity_score": 16.67,
+            "url": "https://reddit.com/r/longevity/y",
+            "created_utc": 456.0,
+        },
+    ]
+    with patch("agents.zoro.reddit_api.hot_in_health_subreddits", return_value=posts):
+        signals = scout.gather_signals()
+
+    assert len(signals) == 2
+    assert signals[0].source == "reddit"
+    assert signals[0].topic == "CGM biohack results"
+    assert signals[0].velocity_score == 40.0
+    assert signals[0].metadata["subreddit"] == "biohacking"
+    assert signals[0].metadata["score"] == 80
+
+
+def test_gather_signals_handles_reddit_api_failure():
+    with patch(
+        "agents.zoro.reddit_api.hot_in_health_subreddits",
+        side_effect=RuntimeError("network down"),
+    ):
+        signals = scout.gather_signals()
+    assert signals == []
+
+
+def test_gather_signals_skips_empty_titles():
+    posts = [
+        {
+            "title": "",
+            "score": 100,
+            "num_comments": 10,
+            "subreddit": "biohacking",
+            "velocity_score": 50.0,
+            "age_hours": 2.0,
+        },
+        {
+            "title": "real topic",
+            "score": 80,
+            "num_comments": 20,
+            "subreddit": "biohacking",
+            "velocity_score": 40.0,
+            "age_hours": 2.0,
+        },
+    ]
+    with patch("agents.zoro.reddit_api.hot_in_health_subreddits", return_value=posts):
+        signals = scout.gather_signals()
+    assert [s.topic for s in signals] == ["real topic"]

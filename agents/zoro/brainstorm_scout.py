@@ -21,14 +21,15 @@ Pipeline：
     publish_to_slack(topic)             # 以 Zoro bot 身份 post 到 #brainstorm
     pushed_topics.record(...)           # 記錄供下次 novelty/cooldown 查
 
-**Slice B 範圍**：除了 `gather_signals()` 回傳 stub 以外，其他 pipeline 全活。
-**Slice C 待接**：`gather_signals()` wire 到真實 Trends/Reddit/YouTube API + APScheduler。
+**Slice C 範圍**：Reddit hot discovery + Linux cron（cron.conf 05:00 台北）。
+**Slice D 待接**：trends_api / youtube_api discover 函式、真 `<@U...>` mention、Nami 晨報整合。
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -68,15 +69,56 @@ class Topic:
 # ── 1. Data gathering ───────────────────────────────────────────────────────
 
 
+DEFAULT_REDDIT_MAX_AGE_HOURS = 48.0
+DEFAULT_REDDIT_LIMIT = 50
+
+
 def gather_signals() -> list[Signal]:
     """收集所有資料源訊號。
 
-    **Slice B stub**：回傳空 list，讓 pipeline 在無真實 API 下也能跑且可測。
-    **Slice C TODO**：wire 到 `agents/zoro/trends_api.discover_rising()`、
-    `reddit_api.hot_in_health_subreddits()`、`youtube_api.trending_health()`。
+    Slice C：已接 Reddit（hot in health subreddits）。
+    Future（Slice D）：trends_api.discover_rising()、youtube_api.trending_health()。
     """
-    logger.debug("gather_signals stub returning []")
-    return []
+    signals: list[Signal] = []
+    signals.extend(_gather_reddit_signals())
+    return signals
+
+
+def _gather_reddit_signals(
+    *,
+    limit: int = DEFAULT_REDDIT_LIMIT,
+    max_age_hours: float = DEFAULT_REDDIT_MAX_AGE_HOURS,
+) -> list[Signal]:
+    """從 10 個健康 subreddit 合集拉 hot posts，轉 Signal。"""
+    from agents.zoro import reddit_api
+
+    try:
+        posts = reddit_api.hot_in_health_subreddits(limit=limit, max_age_hours=max_age_hours)
+    except Exception as e:
+        logger.warning(f"reddit signal gather failed: {e}")
+        return []
+
+    signals: list[Signal] = []
+    for p in posts:
+        title = p.get("title", "").strip()
+        if not title:
+            continue
+        signals.append(
+            Signal(
+                source="reddit",
+                topic=title,
+                velocity_score=float(p.get("velocity_score", 0.0)),
+                metadata={
+                    "subreddit": p.get("subreddit", ""),
+                    "score": p.get("score", 0),
+                    "num_comments": p.get("num_comments", 0),
+                    "age_hours": p.get("age_hours", 0),
+                    "url": p.get("url", ""),
+                },
+            )
+        )
+    logger.info(f"reddit gather: {len(signals)} signals from {len(posts)} posts")
+    return signals
 
 
 # ── 2. Velocity gate ────────────────────────────────────────────────────────
@@ -175,6 +217,14 @@ def _keyword_prefilter(topic: Topic) -> set[str]:
     return hits
 
 
+_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?|\n?```\s*$", re.IGNORECASE)
+
+
+def _strip_json_fence(raw: str) -> str:
+    """剝掉 LLM 有時多加的 ```json … ``` markdown 外殼（即使 prompt 禁止）。"""
+    return _JSON_FENCE_RE.sub("", raw.strip()).strip()
+
+
 def _llm_judge_relevance(topic_text: str) -> dict:
     """呼叫 LLM 用 prompts/zoro/scout.md 判 relevance。回傳 dict with score / reason / domain。"""
     try:
@@ -189,8 +239,9 @@ def _llm_judge_relevance(topic_text: str) -> dict:
         logger.warning(f"relevance judge LLM failed: {e}")
         return {"score": 0.0, "reason": f"judge error: {e}", "domain": None}
 
+    cleaned = _strip_json_fence(raw)
     try:
-        payload = json.loads(raw.strip())
+        payload = json.loads(cleaned)
     except json.JSONDecodeError:
         logger.warning(f"relevance judge returned non-JSON, rejecting: {raw[:120]!r}")
         return {"score": 0.0, "reason": "judge parse failed", "domain": None}
@@ -322,6 +373,7 @@ def run(
     *,
     llm_judge: bool = True,
     publish: bool = True,
+    record: bool = True,
     channel: str | None = None,
     bot_token: str | None = None,
     mentions: list[str] | None = None,
@@ -329,8 +381,8 @@ def run(
     """Scout 主流程。
 
     publish=True 時需要 `channel` + `bot_token`（未提供則從 env 讀 ZORO_*）。
-    env 若也缺 → publish 會 log warning 並跳過（但 novelty/cooldown 仍會記錄
-    推題，以免下次重推 — 這段交給 Slice C 的真正 scheduler 時再細調）。
+    env 若也缺 → publish 會 log warning 並跳過，但 record 仍會進 pushed_topics
+    （避免下次同題重推）— 除非 record=False（dry-run 用）。
     """
     signals = gather_signals()
     signals = velocity_gate(signals)
@@ -362,5 +414,6 @@ def run(
             if ts:
                 logger.info(f"scout published to {ch} ts={ts}")
 
-    pushed_topics.record("zoro", best.title, best.normalized_keywords)
+    if record:
+        pushed_topics.record("zoro", best.title, best.normalized_keywords)
     return best
