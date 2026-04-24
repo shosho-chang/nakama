@@ -114,6 +114,7 @@
 - [feedback_env_push_diff_before_overwrite.md](feedback_env_push_diff_before_overwrite.md) — scp `.env` 前必 diff key names；只 append 新 keys，別整份覆蓋
 - [project_nakama_backup_deployed.md](project_nakama_backup_deployed.md) — Nakama `state.db` daily 04:00 Taipei → R2 `nakama-backup` bucket 上線（PR #88）；retention 30d
 - [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md) — UptimeRobot free plan 三層坑（HEAD default / keyword 特殊字元 / CF Bot Fight Mode）CP 值差，優先用 GitHub Actions + Slack webhook
+- [reference_github_actions_probe.md](reference_github_actions_probe.md) — Scheduled / probe workflow 五坑：UTC-only cron、延遲 5-15 min、60d 停用、boolean input 是 string、Slack bot 要先 conversations.open
 - [project_usopp_slice_c1_merged.md](project_usopp_slice_c1_merged.md) — PR #97 merged `05d35a4` 2026-04-24：daemon + signal + 3 件 follow-up
 - [project_usopp_slice_c2a_merged.md](project_usopp_slice_c2a_merged.md) — PR #101 merged `916b8eb` 2026-04-24：Docker WP E2E 黃金路徑 + live_wp marker；C2b 等 VPS 部署
 - [project_usopp_vps_deployed.md](project_usopp_vps_deployed.md) — Usopp daemon VPS 上線 2026-04-24；路上修兩個 .env legacy（USER→USERNAME / BASE_URL /wp-json）+ noop purge；C2b unblocked

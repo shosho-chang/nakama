@@ -1,0 +1,158 @@
+name: External Uptime Probe
+
+# 替代 UptimeRobot free plan（見 feedback_uptimerobot_cost_benefit.md）。
+# GitHub Actions runner 每 5 分鐘 probe 3 個公網 URL，失敗時用 Franky
+# 既有 Slack bot token DM 修修。runner IP 不在 CF datacenter bot list，
+# 繞過 UptimeRobot 踩到的 CF Bot Fight Mode / keyword 特殊字元 / HEAD-default 三層坑。
+#
+# Phase 1 scope：無 state tracking、無 flapping 抑制、無 maintenance window。
+# DOWN-only 發 Slack；每 5 分鐘可能重發，flooding 問題後續有需要再加。
+
+on:
+  schedule:
+    # GitHub cron 強制 UTC，不支援時區（見 reference_github_actions_probe.md）。
+    # 排程可能延遲 5-15 分鐘（公有 runner 滿載時），SLA 不是承諾值。
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      simulate_down:
+        description: 'Force nakama-gateway-healthz probe to fail (test Slack alert path)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: external-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: nakama-gateway-healthz
+            url: https://nakama.shosho.tw/healthz
+            keyword: nakama-gateway
+          - name: shosho-tw-homepage
+            url: https://shosho.tw/
+            keyword: ''
+          - name: fleet-shosho-tw-homepage
+            url: https://fleet.shosho.tw/
+            keyword: ''
+
+    steps:
+      - name: Probe ${{ matrix.target.name }}
+        id: probe
+        env:
+          SIMULATE_DOWN: ${{ inputs.simulate_down }}
+          TARGET_NAME: ${{ matrix.target.name }}
+          TARGET_URL: ${{ matrix.target.url }}
+          TARGET_KEYWORD: ${{ matrix.target.keyword }}
+        run: |
+          set +e
+
+          # simulate_down 只觸發 nakama-gateway-healthz，其他兩個照常跑
+          if [ "$SIMULATE_DOWN" = "true" ] && [ "$TARGET_NAME" = "nakama-gateway-healthz" ]; then
+            {
+              echo "http_code=000"
+              echo "reason=Simulated DOWN via workflow_dispatch (simulate_down=true)"
+            } >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          body_file=$(mktemp)
+          http_code=$(curl -sS --max-time 30 --retry 0 \
+            -A "nakama-external-probe/1.0 (github-actions)" \
+            -o "$body_file" -w "%{http_code}" "$TARGET_URL")
+          curl_exit=$?
+
+          echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
+
+          if [ "$curl_exit" -ne 0 ]; then
+            echo "reason=curl exit=$curl_exit (network / DNS / TLS failure)" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if [ "$http_code" != "200" ]; then
+            echo "reason=HTTP $http_code (expected 200)" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if [ -n "$TARGET_KEYWORD" ] && ! grep -qF "$TARGET_KEYWORD" "$body_file"; then
+            echo "reason=keyword '$TARGET_KEYWORD' not found in response body" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "Probe OK: $TARGET_NAME ($TARGET_URL) http=$http_code"
+
+      - name: Slack DM on failure
+        if: failure()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_FRANKY_BOT_TOKEN }}
+          SLACK_USER_ID: ${{ secrets.SLACK_USER_ID_SHOSHO }}
+          TARGET_NAME: ${{ matrix.target.name }}
+          TARGET_URL: ${{ matrix.target.url }}
+          HTTP_CODE: ${{ steps.probe.outputs.http_code }}
+          REASON: ${{ steps.probe.outputs.reason }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SLACK_BOT_TOKEN:-}" ] || [ -z "${SLACK_USER_ID:-}" ]; then
+            echo "::error::Missing SLACK_FRANKY_BOT_TOKEN or SLACK_USER_ID_SHOSHO secret — see docs/runbooks/external-probe-setup.md"
+            exit 1
+          fi
+
+          # 1. 開 DM channel（Slack API 要求：bot 不能直接 post 到 user ID，要先換成 DM channel ID）
+          open_resp=$(curl -sS -X POST https://slack.com/api/conversations.open \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "$(jq -cn --arg u "$SLACK_USER_ID" '{users: $u}')")
+
+          if [ "$(echo "$open_resp" | jq -r '.ok')" != "true" ]; then
+            echo "::error::conversations.open failed: $open_resp"
+            exit 1
+          fi
+          channel=$(echo "$open_resp" | jq -r '.channel.id')
+
+          utc=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          tpe=$(TZ=Asia/Taipei date +"%Y-%m-%d %H:%M:%S %Z")
+
+          # 用 jq 直接組 payload 避免多行 shell string 在 YAML 裡縮排出包
+          payload=$(jq -cn \
+            --arg c "$channel" \
+            --arg name "$TARGET_NAME" \
+            --arg url "$TARGET_URL" \
+            --arg code "$HTTP_CODE" \
+            --arg reason "$REASON" \
+            --arg utc "$utc" \
+            --arg tpe "$tpe" \
+            --arg run "$RUN_URL" \
+            '{
+              channel: $c,
+              text: (":rotating_light: External probe DOWN — " + $name
+                     + "\nURL: " + $url
+                     + "\nHTTP: " + $code
+                     + "\nReason: " + $reason
+                     + "\nTime: " + $utc + " / " + $tpe
+                     + "\nRun: " + $run),
+              unfurl_links: false,
+              unfurl_media: false
+            }')
+
+          post_resp=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "$payload")
+
+          if [ "$(echo "$post_resp" | jq -r '.ok')" != "true" ]; then
+            echo "::error::chat.postMessage failed: $post_resp"
+            exit 1
+          fi
+
+          echo "Slack DM sent for ${TARGET_NAME}"
