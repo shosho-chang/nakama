@@ -6,7 +6,7 @@ Two public surfaces:
    - p95 < 200 ms, no DB / LLM / Slack, no auth, only 200/503.
 
 2. `GET /bridge/franky` — minimal status dashboard (ADR-007 Slice 3 / direction A).
-   - 4 probe cards (vps_resources / wp_shosho / wp_fleet / nakama_gateway)
+   - 5 probe cards (nakama_gateway / vps_resources / wp_shosho / wp_fleet / r2_backup_nakama)
    - Recent alerts list (last 24h window from alert_state)
    - Latest R2 backup check
    - Current VPS snapshot
@@ -98,12 +98,19 @@ def healthz(response: Response) -> HealthzResponseV1:
 # /bridge/franky dashboard (Slice 3)
 # ---------------------------------------------------------------------------
 
-_PROBE_TARGETS: tuple[str, ...] = ("nakama_gateway", "vps_resources", "wp_shosho", "wp_fleet")
+_PROBE_TARGETS: tuple[str, ...] = (
+    "nakama_gateway",
+    "vps_resources",
+    "wp_shosho",
+    "wp_fleet",
+    "r2_backup_nakama",
+)
 _PROBE_LABELS: dict[str, str] = {
     "nakama_gateway": "Nakama Gateway",
     "vps_resources": "VPS Resources",
     "wp_shosho": "WordPress · shosho.tw",
     "wp_fleet": "WordPress · fleet.shosho.tw",
+    "r2_backup_nakama": "R2 · nakama-backup",
 }
 
 

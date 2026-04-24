@@ -95,7 +95,7 @@ def test_bridge_franky_auth_renders_200(client):
 # ---------------------------------------------------------------------------
 
 
-def test_dashboard_shows_all_four_probe_labels(client):
+def test_dashboard_shows_all_probe_labels(client):
     with _mock_psutil_patch():
         resp = client.get("/bridge/franky", cookies=_auth_cookie())
     body = resp.text
@@ -104,6 +104,8 @@ def test_dashboard_shows_all_four_probe_labels(client):
         "VPS Resources",
         "WordPress · shosho.tw",
         "WordPress · fleet.shosho.tw",
+        "R2 · nakama-backup",
+        "R2 · xcloud-backup",
     ):
         assert label in body
 
@@ -151,6 +153,27 @@ def test_dashboard_shows_probe_status_from_db(client):
     with _mock_psutil_patch():
         resp = client.get("/bridge/franky", cookies=_auth_cookie())
     assert "Responding" in resp.text
+
+
+def test_dashboard_renders_r2_backup_nakama_probe_state(client):
+    """When health_probe_state has an r2_backup_nakama row, the card shows its status."""
+    from shared.state import _get_conn
+
+    now = _now()
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO health_probe_state
+              (target, consecutive_fails, last_check_at, last_status, last_error)
+           VALUES ('r2_backup_nakama', 3, ?, 'fail', 'stale 72.5h')""",
+        (now.isoformat(),),
+    )
+    conn.commit()
+
+    with _mock_psutil_patch():
+        resp = client.get("/bridge/franky", cookies=_auth_cookie())
+    assert resp.status_code == 200
+    assert "R2 · nakama-backup" in resp.text
+    assert "stale 72.5h" in resp.text  # last_error surfaces in pc-error block
 
 
 def test_dashboard_shows_r2_backup_when_present(client):

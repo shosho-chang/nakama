@@ -139,9 +139,10 @@ body {
   border: var(--nk-border);
   margin: 20px 40px 0;
 }
+/* Row 2 carries 4 tiles: wp×2 + r2_backup_nakama probe + xCloud R2 summary slot. */
 .probe-row2 {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 1px;
   background: var(--nk-rule);
   border: var(--nk-border);
@@ -451,9 +452,9 @@ body {
         {% endif %}
       </article>
     {% endfor %}
-    {# Third slot: latest R2 backup summary to avoid trailing gap and preserve 3-column rhythm #}
+    {# Fourth slot: xCloud R2 backup summary (companion to r2_backup_nakama probe above). #}
     <article class="probe-card is-{% if r2_backup and r2_backup.status == 'ok' %}ok{% elif r2_backup %}fail{% else %}unknown{% endif %}">
-      <span class="pc-label">R2 Backup · latest</span>
+      <span class="pc-label">R2 · xcloud-backup</span>
       <div class="pc-status-row">
         <span class="probe-dot" aria-hidden="true"></span>
         <span class="pc-status">
