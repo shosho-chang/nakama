@@ -266,3 +266,43 @@ def test_save_annotations_to_sources(client, tmp_path):
     )
     assert resp.status_code == 200
     assert target.read_text(encoding="utf-8") == "annotated!"
+
+
+# ── /files/{path} image serving ────────────────────────────────────────────
+
+
+def test_files_serves_from_vault_files_dir(client, tmp_path):
+    """legacy: /files/{name} → vault/Files/{name}（Robin fetch_images 落地的目錄）"""
+    auth = _auth_cookie(client)
+    (tmp_path / "Files").mkdir(exist_ok=True)
+    (tmp_path / "Files" / "figure-abc123.png").write_bytes(b"\x89PNG\r\n")
+
+    resp = client.get("/files/figure-abc123.png", cookies={"nakama_auth": auth})
+    assert resp.status_code == 200
+    assert resp.content == b"\x89PNG\r\n"
+
+
+def test_files_serves_vault_root_relative_path(client, tmp_path):
+    """新路徑 /files/KB/Attachments/pubmed/{pmid}/img-N.png → vault 根下同路徑"""
+    auth = _auth_cookie(client)
+    pmid_dir = tmp_path / "KB" / "Attachments" / "pubmed" / "42020128"
+    pmid_dir.mkdir(parents=True)
+    (pmid_dir / "img-1.png").write_bytes(b"PNGBYTES")
+
+    resp = client.get(
+        "/files/KB/Attachments/pubmed/42020128/img-1.png",
+        cookies={"nakama_auth": auth},
+    )
+    assert resp.status_code == 200
+    assert resp.content == b"PNGBYTES"
+
+
+def test_files_rejects_path_traversal(client, tmp_path):
+    """/files/ 不可透過 .. 跑出 vault（safe_resolve 防護）"""
+    auth = _auth_cookie(client)
+    resp = client.get(
+        "/files/../../../etc/passwd",
+        cookies={"nakama_auth": auth},
+    )
+    # safe_resolve 會 raise HTTPException；具體 status 可能 400 或 404
+    assert resp.status_code in (400, 404)
