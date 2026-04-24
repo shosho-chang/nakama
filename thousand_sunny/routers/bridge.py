@@ -230,7 +230,7 @@ def _default_user_id() -> str:
 class MemoryUpdate(BaseModel):
     """PATCH payload — 只傳有要改的欄位。"""
 
-    type: Optional[str] = Field(None, description="preference / fact / decision / project")
+    type: Optional[str] = Field(None, description="preference / fact / decision / context")
     subject: Optional[str] = None
     content: Optional[str] = None
     confidence: Optional[float] = Field(None, ge=0.0, le=1.0)

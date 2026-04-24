@@ -262,6 +262,37 @@ def test_update_subject_collision_raises():
         agent_memory.update(mid_b, subject="subj_a")
 
 
+def test_update_collision_rollback_leaves_no_dirty_state():
+    """UNIQUE collision 後必須 rollback；不然下個 commit 會把髒 UPDATE flush 掉。
+
+    Regression：原實作在 except sqlite3.IntegrityError 沒做 conn.rollback()，
+    sqlite3 Python driver 的 implicit transaction 可能洩漏到下個操作。
+    """
+    agent_memory.add("nami", "U1", "fact", "subj_a", "original_a")
+    mid_b = agent_memory.add("nami", "U1", "fact", "subj_b", "original_b")
+
+    # 觸發 UNIQUE 違反
+    with pytest.raises(ValueError, match="subject collision"):
+        agent_memory.update(mid_b, subject="subj_a", content="dirty_write_b")
+
+    # B 必須維持原本的 subject 與 content（未被髒寫入污染）
+    row_b = agent_memory.get(mid_b)
+    assert row_b is not None
+    assert row_b.subject == "subj_b"
+    assert row_b.content == "original_b"
+
+    # A 也不能被意外影響
+    mems = agent_memory.list_all("nami", "U1")
+    subj_a_row = next(m for m in mems if m.subject == "subj_a")
+    assert subj_a_row.content == "original_a"
+
+    # 後續操作（新 add / 另一個 update）必須正常成交
+    mid_c = agent_memory.add("nami", "U1", "fact", "subj_c", "c_content")
+    updated_c = agent_memory.update(mid_c, content="c_updated")
+    assert updated_c is not None
+    assert updated_c.content == "c_updated"
+
+
 def test_update_noop_returns_current_memory():
     mid = agent_memory.add("nami", "U1", "fact", "x", "y")
     result = agent_memory.update(mid)  # nothing to update
@@ -280,3 +311,82 @@ def test_list_agents_with_memory_returns_distinct_sorted():
 
 def test_list_agents_with_memory_empty():
     assert agent_memory.list_agents_with_memory() == []
+
+
+# ---------------------------------------------------------------------------
+# Literal type validation
+# ---------------------------------------------------------------------------
+
+
+def test_add_rejects_invalid_type():
+    with pytest.raises(ValueError, match="type must be one of"):
+        agent_memory.add("nami", "U1", "invalid_type", "subj", "content")  # type: ignore[arg-type]
+
+
+def test_update_rejects_invalid_type():
+    mid = agent_memory.add("nami", "U1", "fact", "subj", "content")
+    with pytest.raises(ValueError, match="type must be one of"):
+        agent_memory.update(mid, type="project")  # type: ignore[arg-type]
+
+
+def test_search_rejects_invalid_type():
+    agent_memory.add("nami", "U1", "fact", "subj", "content")
+    with pytest.raises(ValueError, match="type must be one of"):
+        agent_memory.search("nami", "U1", type="project")  # type: ignore[arg-type]
+
+
+def test_valid_types_frozenset_matches_memory_type_literal():
+    """VALID_TYPES 必須與 MemoryType Literal args 完全一致 — 避免單邊升版漏同步。"""
+    from typing import get_args
+
+    assert agent_memory.VALID_TYPES == frozenset(get_args(agent_memory.MemoryType))
+
+
+# ---------------------------------------------------------------------------
+# Docstring-claimed behavior regression
+# ---------------------------------------------------------------------------
+
+
+def test_add_upsert_updates_type_and_source_thread():
+    """docstring 聲稱 upsert 會更新 type / content / confidence / source_thread。"""
+    mid1 = agent_memory.add(
+        "nami", "U1", "fact", "subj", "v1", confidence=0.5, source_thread="thread_A"
+    )
+    mid2 = agent_memory.add(
+        "nami", "U1", "preference", "subj", "v2", confidence=0.9, source_thread=None
+    )
+    assert mid1 == mid2
+
+    row = agent_memory.get(mid1)
+    assert row is not None
+    assert row.type == "preference"  # 被更新
+    assert row.content == "v2"
+    assert row.confidence == 0.9
+    # source_thread=None 時用 COALESCE 保留既有非空值（docstring 聲稱的行為）
+    assert row.source_thread == "thread_A"
+
+
+def test_update_confidence_zero_is_valid_write():
+    """confidence=0.0 不是 no-op — docstring 明確註記是合法值。"""
+    mid = agent_memory.add("nami", "U1", "fact", "subj", "content", confidence=0.5)
+    updated = agent_memory.update(mid, confidence=0.0)
+    assert updated is not None
+    assert updated.confidence == 0.0
+
+
+def test_decay_does_not_restore_zero_confidence():
+    """0 × factor 仍是 0 — docstring 明確聲明的行為。"""
+    mid = agent_memory.add("nami", "U1", "fact", "subj", "content", confidence=0.0)
+
+    import shared.state as state
+
+    state._get_conn().execute(
+        "UPDATE user_memories SET last_accessed_at = '2020-01-01T00:00:00+00:00' WHERE id = ?",
+        (mid,),
+    )
+    state._get_conn().commit()
+
+    agent_memory.decay(older_than_days=30, factor=0.9)
+    row = agent_memory.get(mid)
+    assert row is not None
+    assert row.confidence == 0.0

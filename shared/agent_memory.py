@@ -21,8 +21,22 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Literal, get_args
 
 from shared.state import _get_conn
+
+# 合法 memory type — 對齊 extractor 的抽取分類與 Bridge UI。
+# 升版（新增 / 刪除 / 重命名）時需同步 shared.memory_extractor.VALID_TYPES
+# 與 thousand_sunny.routers.bridge.MemoryUpdate.type description。
+MemoryType = Literal["preference", "fact", "decision", "context"]
+VALID_TYPES: frozenset[str] = frozenset(get_args(MemoryType))
+
+
+def _validate_type(type_: str) -> None:
+    """Runtime 檢查 type 是否合法；留給 dict-origin caller（LLM 抽取 / HTTP payload）。"""
+    if type_ not in VALID_TYPES:
+        raise ValueError(f"type must be one of {sorted(VALID_TYPES)}, got {type_!r}")
+
 
 _SCHEMA_INITIALIZED = False
 
@@ -88,18 +102,23 @@ def _row_to_memory(row: sqlite3.Row) -> UserMemory:
 def add(
     agent: str,
     user_id: str,
-    type: str,
+    type: MemoryType,
     subject: str,
     content: str,
     *,
     confidence: float = 1.0,
     source_thread: str | None = None,
 ) -> int:
-    """新增或覆寫記憶。(agent, user_id, subject) 命中則 update content+confidence。
+    """新增或覆寫記憶。
 
-    回傳記憶的 ``id``。
+    ``(agent, user_id, subject)`` 命中則 upsert — 更新 type / content /
+    confidence / source_thread 與 last_accessed_at（source_thread 用
+    COALESCE 保留既有非空值）。
+
+    回傳記憶的 ``id``。``type`` 不在 ``VALID_TYPES`` 內 raise ``ValueError``。
     """
     _ensure_schema()
+    _validate_type(type)
     conn = _get_conn()
     now = datetime.now(timezone.utc).isoformat()
 
@@ -130,13 +149,13 @@ def search(
     user_id: str,
     *,
     query: str | None = None,
-    type: str | None = None,
+    type: MemoryType | None = None,
     limit: int = 20,
 ) -> list[UserMemory]:
     """按 confidence × recency 排序回傳記憶。
 
     - ``query``：若給，對 subject/content 做 LIKE 關鍵字匹配
-    - ``type``：若給，過濾類型
+    - ``type``：若給，過濾類型；不在 ``VALID_TYPES`` 內 raise ``ValueError``
     - 命中的記憶 ``last_accessed_at`` 會被更新
     """
     _ensure_schema()
@@ -146,6 +165,7 @@ def search(
     params: list = [agent, user_id]
 
     if type:
+        _validate_type(type)
         conditions.append("type = ?")
         params.append(type)
     if query:
@@ -226,7 +246,7 @@ def get(memory_id: int) -> UserMemory | None:
 def update(
     memory_id: int,
     *,
-    type: str | None = None,
+    type: MemoryType | None = None,
     subject: str | None = None,
     content: str | None = None,
     confidence: float | None = None,
@@ -234,12 +254,21 @@ def update(
     """手動編輯一筆記憶（供 Bridge UI 使用）。
 
     只更新非 None 的欄位，同時刷新 ``last_accessed_at`` 當成 updated 時戳。
+    ``confidence=0.0`` 視為合法更新（不會被當成 no-op）。
+    ``type`` 不在 ``VALID_TYPES`` 內 raise ``ValueError``。
+
+    ``subject`` 改到撞 ``(agent, user_id, subject)`` UNIQUE constraint 時，
+    raise ``ValueError("subject collision: ...")`` 且先 ``rollback()``，
+    避免 sqlite3 implicit-transaction 髒 state 洩漏到下一次 commit。
+
     找不到 id 回傳 None；否則回傳更新後的記憶物件。
     """
     _ensure_schema()
     if all(v is None for v in (type, subject, content, confidence)):
         return get(memory_id)
 
+    if type is not None:
+        _validate_type(type)
     if confidence is not None and not (0.0 <= confidence <= 1.0):
         raise ValueError(f"confidence must be in [0, 1], got {confidence}")
 
@@ -267,10 +296,13 @@ def update(
             f"UPDATE user_memories SET {', '.join(sets)} WHERE id = ?",
             params,
         )
+        conn.commit()
     except sqlite3.IntegrityError as e:
-        # subject 改到跟同 (agent, user_id) 的其他 row 撞 UNIQUE
+        # subject 撞 (agent, user_id, subject) UNIQUE；rollback 確保
+        # sqlite3 Python driver 的 implicit transaction 不會帶髒 state
+        # 到下一個 commit（見 reference_sqlite_python_pitfalls.md）。
+        conn.rollback()
         raise ValueError(f"subject collision: {e}") from e
-    conn.commit()
     if cur.rowcount == 0:
         return None
     return get(memory_id)
@@ -288,6 +320,9 @@ def decay(*, older_than_days: int = 30, factor: float = 0.9) -> int:
     """把超過 ``older_than_days`` 沒被存取的記憶 confidence * factor。
 
     回傳受影響筆數。用於定期維護（例如每週跑一次）。
+
+    已是 0 的 confidence 不會因此恢復（0 × factor = 0）；
+    長期 0 的記憶由 ``prune()`` 清除。
     """
     _ensure_schema()
     conn = _get_conn()
