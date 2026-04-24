@@ -7,7 +7,7 @@
 > 2. **Keyword 欄位對特殊字元不友善** — `"status":"ok"` 雙引號會被搞壞；**改用純 ASCII unique 字串**（e.g. `nakama-gateway`）。
 > 3. **Cloudflare Bot Fight Mode 擋 datacenter IP** — UptimeRobot Ashburn 節點被 CF 當 bot → challenge page → keyword miss → 回報 DOWN。**要做 CF WAF Skip rule**，且要等 propagate。
 >
-> **新的首選方案：GitHub Actions cron + Slack webhook**（`.github/workflows/external-probe.yml`，~15 分鐘寫完；runner IP 不在 CF datacenter bot list；Slack mobile push 繞過 VPS 夠用；零 CF 配置）。
+> **新的首選方案：GitHub Actions cron + Slack bot DM**（`.github/workflows/external-probe.yml`；UI 乾淨、workflow 版本控制、Slack mobile push 繞過 VPS 夠用）。⚠️ **CF WAF skip rule 省不掉** — 2026-04-24 實測 GH Actions runner（Azure）也被 CF SBFM 擋 403，跟 UptimeRobot 同坑；setup 步驟見 [docs/runbooks/external-probe-setup.md](external-probe-setup.md)。
 >
 > 背景：[memory/claude/feedback_uptimerobot_cost_benefit.md](../../memory/claude/feedback_uptimerobot_cost_benefit.md)
 >
