@@ -15,7 +15,19 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ `WordPressClient._site_id` → `.site_id` 公開化（PR #77 borderline C6）
 - ✅ 3 件 code-review follow-up（load_config / USOPP_* env drift / op_id in warning log）
 - ✅ 17 daemon unit tests
-- ⬜ VPS 部署（修修手動：systemd unit + .env push + git pull + service 啟動）
+
+**Usopp VPS 部署材料 merged（2026-04-24）：** PR #98 squash merged `f8f3de7`
+- ✅ `nakama-usopp.service` systemd unit（TimeoutStopSec=120 graceful budget）
+- ✅ `docs/runbooks/deploy-usopp-vps.md` 7 步部署 runbook（`.env` diff-append / dry-run / rollback）
+- ✅ code-review fix：`reset_stale_claims()` 正確簽名 + `TimeoutStopSec` 60→120
+- ⬜ **修修手動部署到 VPS**：ssh + git pull + `.env` append USOPP_* + `cp nakama-usopp.service /etc/systemd/system/` + `systemctl enable --now`
+
+**Usopp Slice C2a merged（2026-04-24）：** PR #101 squash merged `916b8eb`
+- ✅ Docker WP staging + `run.sh` 一鍵 boot + seed + 產 `.env.test`
+- ✅ `live_wp` pytest marker + `tests/e2e/conftest.py` auto-skip guard
+- ✅ `tests/e2e/test_phase1_publish_flow.py` 黃金路徑（enqueue → publish → round-trip meta）
+- ✅ code-review fix：`/wp-json` convention bug 修正（見 `feedback_wp_base_url_convention.md`）
+- ⬜ **Slice C2b blocker：VPS 部署**（LiteSpeed Day 1 實測需 Usopp daemon 在 VPS 跑）
 
 **Nami 收尾（本次對話完成大部分，剩兩項）：**
 - ✅ PR #59：Deep Research deferred bug 3 個 + lint 修
@@ -95,7 +107,9 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ docs/runbooks/uptimerobot-setup.md 需標記 deprecated 或加「三坑警告」（Keyword type / plain ASCII keyword / CF WAF skip rule）
 - ✅ `config/style-profiles/*.yaml` 三個 profile（PR #78/#79）
 - ✅ Usopp Slice C1 — daemon loop + signal + follow-ups（PR #97 merged 2026-04-24）；`/healthz` 加 WP 檢查項目 superseded by ADR-007 §4 probe_wp_site
-- ⬜ Usopp Slice C2 — Docker WP 6.x + SEOPress 9.4.1 staging E2E + LiteSpeed Day 1 實測 + runbook 定稿
+- ✅ Usopp VPS 部署材料（PR #98 merged 2026-04-24）— systemd unit + runbook；等修修手動套用
+- ✅ Usopp Slice C2a — Docker WP 6.4.3 + SEOPress 9.4.1 staging E2E 黃金路徑（PR #101 merged 2026-04-24）
+- ⬜ Usopp Slice C2b — LiteSpeed Day 1 實測 + `LITESPEED_PURGE_METHOD` 值定稿 + `docs/runbooks/litespeed-purge.md` 決策表定稿（blocker：VPS 部署）
 
 **Phase 1 foundation borderline follow-ups（6 項，全部完成）：**
 - ✅ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` + `foreign_keys=ON` 移到 `_get_conn()`（ADR-006 §5 四條 PRAGMA 收齊，PR #85 2026-04-23）
@@ -117,6 +131,6 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 
 **Mac 2026-04-24 晚間 session（桌機同時做 PR #97 Usopp Slice C1）：**
 - 分工 doc: [docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md)
-- 任務 A：LifeOS `tpl-project.md` + `tpl-action.md` 對齊 gold standard `Projects/肌酸的妙用.md`（純 vault，不碰 repo）
-- 任務 B：Franky `r2_backup_verify` 擴展 `nakama-backup` bucket freshness（48hr threshold）
-- 桌機進度：PR #97 merged `05d35a4` + 3 項 follow-up 一起
+- ✅ 任務 A：LifeOS `tpl-project.md` + `tpl-action.md` 對齊 gold standard（純 vault，已完成）
+- ✅ 任務 B：Franky `r2_backup_verify` 擴展 `nakama-backup` bucket freshness（PR #99 merged）+ Bridge dashboard 曝光（PR #100 merged）
+- ✅ 桌機：PR #97 Slice C1 + PR #98 VPS 部署材料 + PR #101 Slice C2a
