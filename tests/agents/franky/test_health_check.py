@@ -12,7 +12,7 @@ Coverage (task prompt §5 verification):
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -22,10 +22,12 @@ from agents.franky import health_check
 from agents.franky.health_check import (
     _record_and_maybe_alert,
     probe_nakama_gateway,
+    probe_r2_backup_nakama,
     probe_vps_resources,
     probe_wp_site,
     run_once,
 )
+from shared.r2_client import R2Object, R2Unavailable
 from shared.schemas.franky import (
     DEFAULT_FAIL_THRESHOLD,
     AlertV1,
@@ -309,14 +311,131 @@ def test_nakama_probe_connect_error_fail():
 
 
 # ---------------------------------------------------------------------------
+# nakama-backup R2 freshness probe
+# ---------------------------------------------------------------------------
+
+
+def _r2_object(*, age_h: float, size: int = 5 * 1024 * 1024, key: str = "state.db.gz") -> R2Object:
+    return R2Object(
+        key=key,
+        size=size,
+        last_modified=_now() - timedelta(hours=age_h),
+        etag="deadbeef",
+    )
+
+
+@pytest.fixture
+def _r2_nakama_env(monkeypatch):
+    """Provide all env so from_nakama_backup_env() doesn't trip on missing."""
+    monkeypatch.setenv("R2_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "ak")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "sk")
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    yield
+
+
+def _mock_r2_nakama_client(objects: list[R2Object] | Exception):
+    client = MagicMock()
+    if isinstance(objects, Exception):
+        client.list_objects.side_effect = objects
+    else:
+        client.list_objects.return_value = objects
+    client.bucket = "nakama-backup"
+    return client
+
+
+def test_r2_backup_nakama_env_missing_skips_gracefully(monkeypatch):
+    for k in (
+        "R2_ACCOUNT_ID",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "NAKAMA_R2_BACKUP_BUCKET",
+        "NAKAMA_R2_ACCESS_KEY_ID",
+        "NAKAMA_R2_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    probe, inline = probe_r2_backup_nakama()
+    assert probe.status == "ok"
+    assert probe.detail.get("skipped") is True
+    assert inline == []
+
+
+def test_r2_backup_nakama_fresh_returns_ok_no_alert(_r2_nakama_env):
+    client = _mock_r2_nakama_client([_r2_object(age_h=3.0)])
+    with patch.object(health_check, "R2Client") as mock_cls:
+        mock_cls.from_nakama_backup_env.return_value = client
+        probe, inline = probe_r2_backup_nakama()
+    assert probe.status == "ok"
+    assert probe.detail["bucket"] == "nakama-backup"
+    assert probe.detail["latest_key"] == "state.db.gz"
+    assert inline == []
+
+
+def test_r2_backup_nakama_stale_returns_fail_with_critical_inline(_r2_nakama_env):
+    client = _mock_r2_nakama_client([_r2_object(age_h=72.0)])
+    with patch.object(health_check, "R2Client") as mock_cls:
+        mock_cls.from_nakama_backup_env.return_value = client
+        probe, inline = probe_r2_backup_nakama()
+    assert probe.status == "fail"
+    assert "stale" in (probe.error or "")
+    assert len(inline) == 1
+    alert = inline[0]
+    assert alert.severity == "critical"
+    assert alert.rule_id == "r2_backup_nakama_stale"
+    assert alert.dedup_key == "r2_backup_nakama_stale"
+    assert "72" in alert.message or "72.0h" in alert.message
+
+
+def test_r2_backup_nakama_empty_bucket_returns_fail_with_critical_inline(_r2_nakama_env):
+    client = _mock_r2_nakama_client([])
+    with patch.object(health_check, "R2Client") as mock_cls:
+        mock_cls.from_nakama_backup_env.return_value = client
+        probe, inline = probe_r2_backup_nakama()
+    assert probe.status == "fail"
+    assert probe.error == "bucket empty"
+    assert len(inline) == 1
+    assert inline[0].severity == "critical"
+    assert inline[0].rule_id == "r2_backup_nakama_empty"
+
+
+def test_r2_backup_nakama_list_error_fail_without_inline_alert(_r2_nakama_env):
+    client = _mock_r2_nakama_client(R2Unavailable("network flake"))
+    with patch.object(health_check, "R2Client") as mock_cls:
+        mock_cls.from_nakama_backup_env.return_value = client
+        probe, inline = probe_r2_backup_nakama()
+    assert probe.status == "fail"
+    assert "list_objects failed" in (probe.error or "")
+    # Transient errors DON'T fire inline — run_once's N-fail gate handles them.
+    assert inline == []
+
+
+def test_r2_backup_nakama_threshold_is_env_tunable(_r2_nakama_env, monkeypatch):
+    # Narrow the threshold so a 10h-old object is already stale.
+    monkeypatch.setattr(health_check, "NAKAMA_BACKUP_STALE_THRESHOLD_HOURS", 8.0)
+    client = _mock_r2_nakama_client([_r2_object(age_h=10.0)])
+    with patch.object(health_check, "R2Client") as mock_cls:
+        mock_cls.from_nakama_backup_env.return_value = client
+        probe, inline = probe_r2_backup_nakama()
+    assert probe.status == "fail"
+    assert len(inline) == 1
+    assert inline[0].rule_id == "r2_backup_nakama_stale"
+
+
+# ---------------------------------------------------------------------------
 # run_once end-to-end
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def _mock_ok_env(monkeypatch):
-    """Make probes pass — env missing (wp skip) + nakama 200 + vps healthy."""
-    for k in ("WP_SHOSHO_BASE_URL", "WP_FLEET_BASE_URL"):
+    """Make probes pass — wp/r2 env missing (skip) + nakama 200 + vps healthy."""
+    for k in (
+        "WP_SHOSHO_BASE_URL",
+        "WP_FLEET_BASE_URL",
+        # Delete r2 env so probe_r2_backup_nakama skips gracefully in the default fixture.
+        "R2_ACCOUNT_ID",
+        "NAKAMA_R2_BACKUP_BUCKET",
+    ):
         monkeypatch.delenv(k, raising=False)
     for p in _mock_psutil(cpu=10.0, ram_pct=40.0, swap_pct=0.0, disk_pct=30.0):
         p.start()
@@ -329,10 +448,16 @@ def _mock_ok_env(monkeypatch):
     patch.stopall()
 
 
-def test_run_once_returns_all_four_probes(_mock_ok_env):
+def test_run_once_returns_all_probes(_mock_ok_env):
     result = run_once(alert_sink=lambda _a: None)
     targets = {p.target for p in result["probes"]}
-    assert targets == {"vps_resources", "wp_shosho", "wp_fleet", "nakama_gateway"}
+    assert targets == {
+        "vps_resources",
+        "wp_shosho",
+        "wp_fleet",
+        "nakama_gateway",
+        "r2_backup_nakama",
+    }
     assert result["operation_id"].startswith("op_")
     assert result["duration_ms"] >= 0
 
@@ -353,3 +478,58 @@ def test_run_once_collects_alerts_from_sink(_mock_ok_env):
         result = run_once(alert_sink=collected.append, fail_threshold=1)
     assert any(a.rule_id == "nakama_gateway_unhealthy" for a in collected)
     assert collected == result["alerts"]
+
+
+def test_run_once_stale_backup_emits_stale_not_unhealthy(_r2_nakama_env, monkeypatch):
+    """Regression: stale inline Critical must NOT be double-paged as generic _unhealthy."""
+    for k in ("WP_SHOSHO_BASE_URL", "WP_FLEET_BASE_URL"):
+        monkeypatch.delenv(k, raising=False)
+    for p in _mock_psutil(cpu=10.0, ram_pct=40.0, swap_pct=0.0, disk_pct=30.0):
+        p.start()
+    collected: list[AlertV1] = []
+    stale_client = _mock_r2_nakama_client([_r2_object(age_h=72.0)])
+    try:
+        with (
+            patch.object(
+                health_check.httpx,
+                "Client",
+                return_value=_MockHttpxClient(status_code=200),
+            ),
+            patch.object(health_check, "R2Client") as mock_r2,
+        ):
+            mock_r2.from_nakama_backup_env.return_value = stale_client
+            # fail_threshold=1 would normally trigger _unhealthy; guard asserts we suppress it.
+            run_once(alert_sink=collected.append, fail_threshold=1)
+    finally:
+        patch.stopall()
+    rules = {a.rule_id for a in collected}
+    assert "r2_backup_nakama_stale" in rules
+    assert "r2_backup_nakama_unhealthy" not in rules
+
+
+def test_run_once_transient_list_error_hits_n_fail_gate(_r2_nakama_env, monkeypatch):
+    """Transient list_objects errors should go through the 3-fail gate (fail_threshold=1 here)."""
+    for k in ("WP_SHOSHO_BASE_URL", "WP_FLEET_BASE_URL"):
+        monkeypatch.delenv(k, raising=False)
+    for p in _mock_psutil(cpu=10.0, ram_pct=40.0, swap_pct=0.0, disk_pct=30.0):
+        p.start()
+    collected: list[AlertV1] = []
+    flaky_client = _mock_r2_nakama_client(R2Unavailable("network flake"))
+    try:
+        with (
+            patch.object(
+                health_check.httpx,
+                "Client",
+                return_value=_MockHttpxClient(status_code=200),
+            ),
+            patch.object(health_check, "R2Client") as mock_r2,
+        ):
+            mock_r2.from_nakama_backup_env.return_value = flaky_client
+            run_once(alert_sink=collected.append, fail_threshold=1)
+    finally:
+        patch.stopall()
+    rules = {a.rule_id for a in collected}
+    assert "r2_backup_nakama_unhealthy" in rules
+    # No inline stale/empty — this was a transient error.
+    assert "r2_backup_nakama_stale" not in rules
+    assert "r2_backup_nakama_empty" not in rules
