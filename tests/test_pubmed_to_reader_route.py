@@ -123,6 +123,67 @@ def test_pubmed_to_reader_short_circuit_when_bilingual_exists(client, tmp_path):
     mock_translate.assert_not_called()
 
 
+def test_pubmed_to_reader_html_path_translates(client, tmp_path):
+    """只有 {pmid}.md 沒 {pmid}.pdf（oa_html case）→ 讀 md + translate → bilingual"""
+    auth = _auth_cookie(client)
+    html_md = tmp_path / "KB" / "Attachments" / "pubmed" / "42020128.md"
+    raw_md = "# Lean Mass Preservation\n\nThe publisher HTML was scraped and localized. " * 20
+    html_md.write_text(raw_md, encoding="utf-8")
+
+    with (
+        patch("shared.pdf_parser.parse_pdf") as mock_parse,
+        patch(
+            "shared.translator.translate_document",
+            return_value=raw_md + "\n\n> 翻譯內容。",
+        ) as mock_translate,
+    ):
+        resp = client.get(
+            "/pubmed-to-reader?pmid=42020128",
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == ("/read?file=pubmed-42020128-bilingual.md&base=sources")
+    mock_parse.assert_not_called()  # PDF 路徑不該被碰
+    mock_translate.assert_called_once()
+    bilingual = tmp_path / "KB" / "Wiki" / "Sources" / "pubmed-42020128-bilingual.md"
+    assert bilingual.exists()
+    text = bilingual.read_text(encoding="utf-8")
+    assert "source_kind: html" in text
+    assert "42020128.md" in text  # derived_from 指向 md 而非 pdf
+    assert "翻譯內容。" in text
+
+
+def test_pubmed_to_reader_prefers_pdf_over_html(client, tmp_path):
+    """PDF 跟 HTML md 都存在時優先用 PDF（資料完整度高）。"""
+    auth = _auth_cookie(client)
+    pubmed_dir = tmp_path / "KB" / "Attachments" / "pubmed"
+    (pubmed_dir / "42020128.pdf").write_bytes(b"%PDF-1.4 fake")
+    (pubmed_dir / "42020128.md").write_text("# HTML version", encoding="utf-8")
+
+    with (
+        patch("shared.pdf_parser.parse_pdf", return_value="# PDF version\n\nBody.") as mock_parse,
+        patch(
+            "shared.translator.translate_document",
+            return_value="# PDF version\n\nBody.\n\n> 翻譯版。",
+        ) as mock_translate,
+    ):
+        resp = client.get(
+            "/pubmed-to-reader?pmid=42020128",
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    mock_parse.assert_called_once()  # PDF flow 被觸發
+    mock_translate.assert_called_once()
+    bilingual = tmp_path / "KB" / "Wiki" / "Sources" / "pubmed-42020128-bilingual.md"
+    text = bilingual.read_text(encoding="utf-8")
+    assert "source_kind: pdf" in text
+    assert "42020128.pdf" in text
+
+
 def test_pubmed_to_reader_falls_back_to_raw_when_translate_fails(client, tmp_path):
     """翻譯失敗仍要把 raw markdown 存下來，讓使用者至少能讀 + annotate。"""
     auth = _auth_cookie(client)
