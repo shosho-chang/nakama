@@ -22,7 +22,9 @@ Pipeline：
     pushed_topics.record(...)           # 記錄供下次 novelty/cooldown 查
 
 **Slice C 範圍**：Reddit hot discovery + Linux cron（cron.conf 05:00 台北）。
-**Slice D 待接**：trends_api / youtube_api discover 函式、真 `<@U...>` mention、Nami 晨報整合。
+**Slice C1**：切主 source 到 Google Trends（en-US trending_now），Reddit 因 VPS
+datacenter IP 被匿名 API 封 403，留到 Slice D 做 OAuth。
+**Slice D 待接**：Reddit OAuth、youtube_api discover、真 `<@U...>` mention、Nami 晨報整合。
 """
 
 from __future__ import annotations
@@ -69,55 +71,45 @@ class Topic:
 # ── 1. Data gathering ───────────────────────────────────────────────────────
 
 
-DEFAULT_REDDIT_MAX_AGE_HOURS = 48.0
-DEFAULT_REDDIT_LIMIT = 50
-
-
 def gather_signals() -> list[Signal]:
     """收集所有資料源訊號。
 
-    Slice C：已接 Reddit（hot in health subreddits）。
-    Future（Slice D）：trends_api.discover_rising()、youtube_api.trending_health()。
+    Slice C1（2026-04-24）：主 source = Google Trends（en-US trending_now 濾健康）。
+    Reddit 因 VPS datacenter IP 被 Reddit 封 403（匿名 API），留到 Slice D 做 OAuth 時接回。
     """
     signals: list[Signal] = []
-    signals.extend(_gather_reddit_signals())
+    signals.extend(_gather_trends_signals())
     return signals
 
 
-def _gather_reddit_signals(
-    *,
-    limit: int = DEFAULT_REDDIT_LIMIT,
-    max_age_hours: float = DEFAULT_REDDIT_MAX_AGE_HOURS,
-) -> list[Signal]:
-    """從 10 個健康 subreddit 合集拉 hot posts，轉 Signal。"""
-    from agents.zoro import reddit_api
+def _gather_trends_signals() -> list[Signal]:
+    """從 Google Trends trending_now en-US 拉健康相關趨勢，轉 Signal。"""
+    from agents.zoro import trends_api
 
     try:
-        posts = reddit_api.hot_in_health_subreddits(limit=limit, max_age_hours=max_age_hours)
+        terms = trends_api.discover_trending_health()
     except Exception as e:
-        logger.warning(f"reddit signal gather failed: {e}")
+        logger.warning(f"trends signal gather failed: {e}")
         return []
 
     signals: list[Signal] = []
-    for p in posts:
-        title = p.get("title", "").strip()
+    for t in terms:
+        title = (t.get("title") or "").strip()
         if not title:
             continue
         signals.append(
             Signal(
-                source="reddit",
+                source="trends",
                 topic=title,
-                velocity_score=float(p.get("velocity_score", 0.0)),
+                velocity_score=float(t.get("velocity_score", 0.0)),
                 metadata={
-                    "subreddit": p.get("subreddit", ""),
-                    "score": p.get("score", 0),
-                    "num_comments": p.get("num_comments", 0),
-                    "age_hours": p.get("age_hours", 0),
-                    "url": p.get("url", ""),
+                    "volume": t.get("volume", 0),
+                    "growth_pct": t.get("score", 0),
+                    "related": t.get("related", [])[:5],  # 只留前 5 個 related 避免訊息太長
                 },
             )
         )
-    logger.info(f"reddit gather: {len(signals)} signals from {len(posts)} posts")
+    logger.info(f"trends gather: {len(signals)} signals from {len(terms)} trends")
     return signals
 
 
