@@ -9,6 +9,7 @@
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — Robin /kb/research endpoint 未測試
 - [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 放棄觀望（2026-04-19 結論）：CJK 只改一半 + 無 auto-extraction + API churn
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
+- [reference_vault_paths_mac.md](reference_vault_paths_mac.md) — Mac Shosho LifeOS vault：`/Users/shosho/Documents/Shosho LifeOS/`（跨平台對照 Windows F:）
 - [reference_vps_ssh.md](reference_vps_ssh.md) — VPS SSH alias `nakama-vps` → root@202.182.107.202
 - [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」三字當 trigger → 自動存記憶 + commit & push
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
@@ -42,7 +43,7 @@
 - [project_bilingual_reader_design.md](project_bilingual_reader_design.md) — 雙語閱讀三場景設計凍結：BabelDOC+Docling雙路線、Claude Sonnet翻譯、台灣術語表、輕量Annotation
 - [project_nami_project_bootstrap.md](project_nami_project_bootstrap.md) — Nami 11 tools（含 Google Calendar 4 tools）全 merged + VPS deployed + Calendar E2E 實測通過
 - [project_nami_calendar_task_sync.md](project_nami_calendar_task_sync.md) — Calendar × Task 單向同步 PR #40 merged + VPS deployed + E2E 全通過
-- [project_lifeos_template_drift.md](project_lifeos_template_drift.md) — tpl-project.md / tpl-action.md 過時，gold standard 是 Projects/肌酸的妙用.md
+- [project_lifeos_template_drift.md](project_lifeos_template_drift.md) — RESOLVED 2026-04-24：dispatcher + 4 body partials，手動/Nami 路徑共用 body 定義
 - [project_chopper_community_qa.md](project_chopper_community_qa.md) — Chopper：community 平台健康問答 + KB 查詢 + 會員記憶，待開發（平台/記憶/問答三大挑戰）
 - [feedback_agent_personality.md](feedback_agent_personality.md) — Agent 角色個性用正面描述 + few-shot，不用禁止清單；用戶確認這個方向
 - [project_nami_vps_deployed.md](project_nami_vps_deployed.md) — Nami Slack Bot VPS 部署設定、Socket Mode 踩坑記錄
@@ -66,6 +67,7 @@
 - [feedback_vps_two_services.md](feedback_vps_two_services.md) — VPS 有兩個獨立 service：thousand-sunny（web）+ nakama-gateway（Slack），部署時要分開重啟
 - [reference_llm_provider_cost_quirks.md](reference_llm_provider_cost_quirks.md) — Anthropic / xAI / Gemini usage 欄位差異、cache 計費、thinking token、role 名稱陷阱
 - [feedback_env_example_formatting.md](feedback_env_example_formatting.md) — .env.example 註解放獨立行（dotenv inline # 會被當成 value）
+- [feedback_bridge_dashboard_probe_coupling.md](feedback_bridge_dashboard_probe_coupling.md) — /bridge/franky 加 probe 要同步改 `_PROBE_TARGETS` tuple + template index + .probe-row2 grid 欄數
 - [feedback_ask_on_architecture.md](feedback_ask_on_architecture.md) — UX/產品架構決策（用戶直接可見的差異）先問再動手，不自行決定
 - Runbook：[docs/runbooks/add-agent-slack-bot.md](../../docs/runbooks/add-agent-slack-bot.md) — 幫 agent 開獨立 Slack bot 的完整流程（Phase 1 修修手動、Phase 2 Claude code、Phase 3 部署）
 - Design doc：[docs/decisions/step-5-zoro-brainstorm-p2.md](../../docs/decisions/step-5-zoro-brainstorm-p2.md) — 步驟 5 設計凍結，blocker 是 Zoro 獨立 Slack bot
