@@ -53,9 +53,10 @@ def isolated_db(tmp_path: Path, monkeypatch):
             pass
     state._conn = None
 
-    from shared import agent_memory
+    from shared import agent_memory, pushed_topics
 
     agent_memory._SCHEMA_INITIALIZED = False
+    pushed_topics._SCHEMA_INITIALIZED = False
 
     yield db_path
 
