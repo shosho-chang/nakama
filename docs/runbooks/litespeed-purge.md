@@ -10,144 +10,113 @@
 
 ---
 
-## Day 1 執行 checklist（2026-04-25+ 第一次發布日）
+## Day 1 實測紀錄（2026-04-24 retrospective）
 
-**前提**：一篇**非關鍵的測試 post**，內容可以隨便改、hard-refresh 觀察是否立即反映。
+**執行人**：修修 + Claude（桌機）
+**測試 post**：id=9930 `day-1-litespeed-test`（測完立即 trash）
+**本節是當天實際跑了什麼 + 觀察到什麼**；對應結論見下方「Day 1 決策紀錄」表。若未來 cache 行為出狀況要重新 debug，此段可當 playbook template（把「觀察到」那欄的結果當成「預期」，出現 diff 就往不同方向查）。
 
 ### 步驟 0 — 前置確認（5 分鐘）
 
-- [ ] **Usopp daemon 在 VPS 跑中**：`ssh nakama-vps 'systemctl is-active nakama-usopp.service'` → `active`
-- [ ] **VPS .env 目前值**：`ssh nakama-vps 'grep LITESPEED_PURGE_METHOD /home/nakama/.env'` → `LITESPEED_PURGE_METHOD=noop`（若非 noop 記下原值以便回滾）
-- [ ] **測試 post 存在且可發布**：挑一個 draft post，記下 slug（後續測試用 `https://shosho.tw/<slug>/`）
-- [ ] **WP user `bot_usopp` 有 `litespeed_manage_options` capability**：見 [docs/runbooks/wp-nakama-publisher-role.md](wp-nakama-publisher-role.md)；若沒有，方案 A REST 一定炸 WPAuthError
-- [ ] **LiteSpeed plugin 啟用中**：WP admin → Plugins → LiteSpeed Cache 是 Active
-- [ ] **開 WP admin → LiteSpeed Cache → Toolbox → Purge** 頁面（手動 purge 按鈕位置）— 萬一三方案都炸，這是 fallback 觀察點
+cwd = `f:\nakama`（桌機 repo 根目錄；所有 `grep .env` 指本機；`ssh nakama-vps` 跳 VPS）
 
-### 步驟 1 — 方案 A（REST）實測（10 分鐘）
+- ✅ **Usopp daemon active**：`ssh nakama-vps 'systemctl is-active nakama-usopp.service'` → `active` since 2026-04-24 13:55
+- ✅ **VPS `.env` 現值**：`LITESPEED_PURGE_METHOD=noop`（部署時 append 的過渡值）
+- ⚠️ **WP user `bot_usopp` role = `editor`**（不是 `nakama_publisher`），**無 `manage_options` 也無任何 `litespeed_*` capability**。這預告方案 A 會 403 — 但實際跑出更本質的 404（見步驟 1）。
+- ✅ **LiteSpeed plugin 啟用中**（從後續出現 `x-litespeed-cache` header 間接確認）
 
-從**本機**直接打 REST endpoint（還沒動 VPS）：
+### 步驟 1 — 方案 A（REST）實測 → ❌ 404 `rest_no_route`
+
+從桌機（cwd = `f:\nakama`）打 REST endpoint：
 
 ```bash
-# 從 .env 拿 bot_usopp 密碼（別 echo 到對話框或歷史）
 WP_PASS=$(grep '^WP_SHOSHO_APP_PASSWORD=' .env | cut -d= -f2-)
+WP_USER=$(grep '^WP_SHOSHO_USERNAME=' .env | cut -d= -f2-)
+WP_BASE=$(grep '^WP_SHOSHO_BASE_URL=' .env | cut -d= -f2-)
 
 curl -s -o /tmp/ls-purge.json -w "HTTP %{http_code}\n" \
-  -X POST https://shosho.tw/wp-json/litespeed/v1/purge \
-  -u "bot_usopp:$WP_PASS" \
+  -X POST "$WP_BASE/wp-json/litespeed/v1/purge" \
+  -u "$WP_USER:$WP_PASS" \
   -H 'Content-Type: application/json' \
-  -d '{"url": "https://shosho.tw/<測試 slug>/"}'
-
-cat /tmp/ls-purge.json
+  -d '{"url": "https://shosho.tw/blog/day-1-litespeed-test/"}'
 ```
 
-- [ ] HTTP 200？
-- [ ] Body 結構（貼到下方決策表）：_待填_
-- [ ] WP admin → LiteSpeed Cache → Reports 看到 purge log？
-- [ ] 驗證：把測試 post 內容小改一個字 → 手動打上面 curl → `curl -sI https://shosho.tw/<slug>/` 看 `X-LiteSpeed-Cache: miss` vs `hit` 切換
+**結果**：HTTP 404，body `{"code":"rest_no_route","message":"找不到與網址及要求方法相符的路由。"}`
 
-**若 A 通過 → 直接跳「步驟 4 套用」（不用測 B/C）。**
-
-### 步驟 2 — 方案 B（admin-ajax）實測（10 分鐘，僅 A 失敗時）
-
-`admin-ajax` 需要 wp-admin session nonce。從 Python headless 拿 nonce 複雜度高（要模擬登入 + scrape HTML）。**Phase 1 Slice B 不實作**，這步只驗「未來要不要投資」：
-
-- [ ] 開 browser 登入 WP admin → F12 → 在任一 admin page 跑 `console.log(wpApiSettings?.nonce)` 或看 LiteSpeed 頁面 HTML 的 `_wpnonce` 值
-- [ ] 能拿到 nonce 代表路徑存在，但**不代表 Python 能拿到**
-- [ ] 結論記到下方決策表即可；**不實作**
-
-### 步驟 3 — 方案 C（WP-CLI SSH）實測（5 分鐘，僅 A/B 都失敗時）
+列 plugin 暴露的 namespace 確認：
 
 ```bash
-ssh nakama-vps 'which wp && wp --path=/var/www/shosho.tw --allow-root litespeed-purge url https://shosho.tw/<slug>/'
+curl -s -u "$WP_USER:$WP_PASS" "$WP_BASE/wp-json" | jq -r '.namespaces | sort[]'
+# → 出現 litespeed/v1 + litespeed/v3；均**無** purge route
+
+curl -s -u "$WP_USER:$WP_PASS" "$WP_BASE/wp-json/litespeed/v3" | jq -r '.routes | keys[]'
+# → cdn_status, err_domains, ip_validate, ping, wp_rest_echo（全是 QUIC.cloud CDN 管理，不是 purge）
 ```
 
-- [ ] `wp` CLI 有裝？
-- [ ] `litespeed-purge` subcommand 可用？（LiteSpeed WP-CLI plugin）
-- [ ] **若能用但需要 `--allow-root`** → Python 從 agent 殼呼叫 SSH 會權限放大，**不建議**。此路作廢，走 noop。
+**結論**：`POST /wp-json/litespeed/v1/purge` **endpoint 根本不存在**。原 runbook 寫的 URL 是虛構的，`shared/litespeed_purge.py` 的 rest method 一直在打 404（mocked tests 看不到）。
 
-### 步驟 4 — 套用決策到 VPS（5 分鐘）
+### 步驟 2 — 方案 B（admin-ajax）⏭️ 跳過
 
-依步驟 1–3 結果，填下方「Day 1 決策紀錄」表格，然後：
+原計畫在方案 A 失敗後評估 browser nonce 路徑。跳過理由：下方「意外發現（方案 D）」已覆蓋所有 purge 時機；admin-ajax 只剩理論價值。
+
+### 步驟 3 — 方案 C（WP-CLI SSH）⏭️ 快速確認存在性
 
 ```bash
-# 1. 備份 .env
-ssh nakama-vps 'cp /home/nakama/.env /home/nakama/.env.bak.$(date +%Y%m%d_%H%M%S)'
+ssh nakama-vps 'which wp && ls -la /var/www/shosho.tw 2>&1 | head -3'
+# → /usr/local/bin/wp 存在；site 在 /var/www/shosho.tw（owner: u1_shosho_tw）
+```
 
-# 2. in-place 改值（不要 scp 整份覆蓋，會殺掉 VPS-only keys）
-ssh nakama-vps 'sed -i "s/^LITESPEED_PURGE_METHOD=.*/LITESPEED_PURGE_METHOD=<rest|noop>/" /home/nakama/.env'
+**結論**：`wp` CLI 有裝。但目錄 owner 不是 `nakama`，要 `sudo -u u1_shosho_tw wp ...` 或 `wp --allow-root`，都屬權限放大。Daemon 從 Python 殼 `ssh` 到 VPS 再跑 wp-cli 是 anti-pattern。**跳過**。
 
-# 3. 驗證寫進去了
+### 步驟 4 — 意外發現：WP `save_post` hook auto-purge（方案 D）
+
+測試 cache 生命週期：Prime（瀏覽器 UA）→ update post → 觀察 header 變化
+
+```bash
+URL="https://shosho.tw/blog/day-1-litespeed-test/"
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0.0.0"
+
+# Prime cache
+for i in 1 2 3 4; do curl -sI "$URL" -H "User-Agent: $UA" | grep -i "x-litespeed-cache:"; done
+# → hit, hit, hit, hit ✅
+
+# Update post via WP REST
+curl -s -u "$WP_USER:$WP_PASS" -X POST "$WP_BASE/wp-json/wp/v2/posts/9930" \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"<p>Updated at 2026-04-24T18:30+08:00</p>'}
+# → HTTP 200
+
+# 立即再 probe cache
+curl -sI "$URL" -H "User-Agent: $UA" | grep -i "x-litespeed-cache:"
+# → miss（cache invalidated）
+
+# 2 秒後
+sleep 2; curl -sI "$URL" -H "User-Agent: $UA" | grep -i "x-litespeed-cache:"
+# → hit（cache re-populated）
+```
+
+**結論**：LiteSpeed plugin hook 到 WP `save_post`，**WP REST API 的寫入路徑天然觸發 auto-invalidate + auto re-populate**。explicit purge call 完全不需要。Usopp 的 `create_post` / `update_post` 都走 WP REST，因此 `LITESPEED_PURGE_METHOD=noop` 是生產正解而非 fallback。
+
+**觀察 tip**：LiteSpeed 的 `x-litespeed-cache` header 只在「看起來像 browser 的 UA + `Accept: text/html`」請求才出現；裸 curl（預設 UA）會讓 LiteSpeed bypass cache 完全不設此 header。debug 時記得帶 realistic UA。
+
+### 步驟 5 — 套用結論：VPS `.env` 維持不變
+
+```bash
 ssh nakama-vps 'grep LITESPEED_PURGE_METHOD /home/nakama/.env'
-
-# 4. restart daemon 讓新 env 生效
-ssh nakama-vps 'systemctl restart nakama-usopp.service && systemctl status nakama-usopp.service --no-pager | head -10'
+# → LITESPEED_PURGE_METHOD=noop（維持不變；此為生產正解）
 ```
 
-- [ ] `active (running)` 確認
-- [ ] Graceful restart（看 journal 有 `SIGTERM received` + 新 PID）：`ssh nakama-vps 'journalctl -u nakama-usopp.service -n 20 --no-pager'`
+無須 daemon restart。
 
-### 步驟 5 — 端到端驗證（10 分鐘）
+### 步驟 6 — 收尾（已完成）
 
-透過正式 publish 路徑驗（不是手動 curl）：
+- ✅ 本檔「Day 1 決策紀錄」表填完
+- ✅ `memory/claude/project_usopp_vps_deployed.md` Unblock 清單勾 C2b
+- ✅ `memory/claude/project_pending_tasks.md` Phase 1 Wave 2 C2b 行勾 ✅
+- ✅ `.env.example` `LITESPEED_PURGE_METHOD` 註解改述「只接受 noop」（見 PR #112）
+- ✅ code follow-up 開 PR #112：`shared/litespeed_purge.py` 刪死 code + ADR-005b §5 放寬硬規則
 
-- [ ] 用 Usopp 正式流程 enqueue 一篇新 post（或 update 測試 post）
-- [ ] daemon 處理完後，`ssh nakama-vps 'journalctl -u nakama-usopp.service -n 50 --no-pager | grep -i litespeed'` 看到 `litespeed purge ok url=...`（若 method=rest）或 `litespeed purge skipped (method=noop)`
-- [ ] 瀏覽器訪問文章 URL hard-refresh（Cmd+Shift+R / Ctrl+F5），內容即時更新
-- [ ] `curl -sI https://shosho.tw/<slug>/ | grep -i x-litespeed-cache` 看 cache header 狀態
-
-### 步驟 6 — 收尾
-
-- [ ] 更新本檔 §「Day 1 決策紀錄」表
-- [ ] 更新 `memory/claude/project_usopp_vps_deployed.md` 的 Unblock 清單（勾 C2b）
-- [ ] 更新 `memory/claude/project_pending_tasks.md` 的 Phase 1 Wave 2 C2b 行
-- [ ] 若選 `noop`：在 `.env.example` 的 `LITESPEED_PURGE_METHOD` 註解補「noop is production default until Phase 2 revisits」
-- [ ] 若選 `rest`：補 runbook「如果 bot_usopp 失去 litespeed_manage_options 會怎樣」的 alert 線索（journal grep `litespeed purge auth failure`）
-
----
-
-## 待實測三方案
-
-### 方案 A — REST endpoint（Python 首選）
-
-```bash
-curl -X POST https://shosho.tw/wp-json/litespeed/v1/purge \
-  -u bot_usopp:<app_password> \
-  -H 'Content-Type: application/json' \
-  -d '{"url": "https://shosho.tw/<任一已發表文章 slug>/"}'
-```
-
-- [ ] HTTP 200？
-- [ ] 回 body 結構（貼出來）：
-- [ ] LiteSpeed plugin 有看到 purge 動作？（WP admin → LiteSpeed Cache → Reports）
-
-若成功 → `.env` 設 `LITESPEED_PURGE_METHOD=rest`，本 runbook 結案。
-
-### 方案 B — admin-ajax + nonce
-
-```
-POST https://shosho.tw/wp-admin/admin-ajax.php
-  action=litespeed_purge
-  _wpnonce=<從 wp-admin page 拿到的 one-time token>
-Body: purge_type=url, url=<permalink>
-```
-
-- [ ] 從 /wp-admin 首頁拿到的 nonce 能否從 Python headless 拿到？（通常不行，要登入 session）
-- [ ] 若能：貼出來，並記錄 nonce 如何 refresh
-
-若成功 → Phase 2 task：為此寫 nonce fetcher + session plumbing。Slice B **不實作**。
-
-### 方案 C — WP-CLI via SSH
-
-```bash
-ssh nakama-vps
-wp --path=/var/www/shosho.tw litespeed-purge url https://shosho.tw/<slug>/
-```
-
-- [ ] WP-CLI 有裝？（`which wp` on VPS）
-- [ ] LiteSpeed WP-CLI plugin 有啟用？
-- [ ] Python 從 agent 殼呼叫 SSH 是否合理？（不建議——權限放大）
-
-若方案 A/B 都失敗才考慮。建議 Phase 2 自架 purge service 取代。
+測試 post `id=9930` 已 `DELETE /wp/v2/posts/9930` → trash。
 
 ---
 
@@ -175,13 +144,15 @@ LITESPEED_PURGE_METHOD=noop    # 維持不變；已驗證為正確生產值
 
 ---
 
-## 後續 code follow-up（非本次 scope）
+## 後續 code follow-up
 
-基於 Day 1 發現，`shared/litespeed_purge.py` 有兩個值得清理的點（開新 PR 處理）：
+基於 Day 1 發現，`shared/litespeed_purge.py` 的清理已在 **PR #112（`chore/litespeed-purge-cleanup`，open）** 處理：
 
-1. **預設值改 `noop`**（[shared/litespeed_purge.py:50](../../shared/litespeed_purge.py#L50)）— 現值 `"rest"` 會讓沒設 env 的環境打到不存在的 endpoint 拿 404，造成 journal 充斥無用 warning。
-2. **方案 A REST method 可刪**（[shared/litespeed_purge.py:104-146](../../shared/litespeed_purge.py#L104-L146)）— endpoint 不存在，`_purge_via_rest()` 死程式碼。同時更新 docstring 反映「noop 是生產預設，因 WP hook 已處理」。
-3. **ADR-005b §5 更新**（[ADR-005b-usopp-wp-publishing.md](../decisions/ADR-005b-usopp-wp-publishing.md)）— 原本說「publish 成功後顯式呼叫 purge，不依賴 plugin 自動偵測」的硬規則要放寬：WP save_post hook 是 LiteSpeed plugin 的**內建**行為（不是「偵測」），可信度等同 plugin 本身；explicit purge 只在「繞過 WP REST 的寫入路徑」才需要（我們目前沒有這類路徑）。
+1. `shared/litespeed_purge.py` 預設 `"rest"` → `"noop"` + 刪 `_purge_via_rest()` + docstring 反映 WP hook 實際機制
+2. ADR-005b §5 放寬硬規則 — 原「publish 成功後顯式呼叫 purge」作廢；`save_post` 是 WP core hook 而非 LiteSpeed 自偵測行為，可信度等同 WP 本身；explicit purge 僅對「繞過 WP REST 的寫入路徑」適用（目前無）
+3. 受影響 schema / state machine 皆不動；`cache_purged=False` 語意從「失敗/未嘗試」改為「WP hook 已處理」
+
+建議 merge 順序：本 PR（#110）先 merge → PR #112 其次，讓 ADR §5 修訂版引用的 runbook 決策紀錄就位。
 
 ---
 

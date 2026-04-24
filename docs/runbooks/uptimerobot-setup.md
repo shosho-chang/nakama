@@ -157,12 +157,23 @@ Franky 本身跑在 VPS 內。VPS 掛 = Franky 一起死 = Slack DM 不會送 = 
 ## 踩坑備忘（補充）
 
 - **Cloudflare Bot Fight Mode 擋掉 UptimeRobot datacenter IP**：2026-04-24 Franky 上線實測 → monitor 持續 DOWN 因為 CF 把 UptimeRobot Ashburn 節點當 bot 回 challenge page，body 無 keyword → 失敗。**解法：在 CF Dashboard → Security → WAF → Custom Rules 加 Skip rule：**
+
+  **A. Nakama Gateway（`nakama.shosho.tw/healthz`）：**
   ```
   Expression:
   (http.host eq "nakama.shosho.tw" and starts_with(http.request.uri.path, "/healthz") and http.user_agent contains "UptimeRobot")
-
-  Action: Skip → 勾選 All Managed Rules + Super Bot Fight Mode + User Agent Blocking + Rate Limiting
   ```
-  做完後等 ~5 分鐘 propagate 再啟用 monitor。其他網域（`shosho.tw` / `fleet.shosho.tw`）若也走 CF，要同樣加規則 — 把 `http.host eq` 的 host 替換即可。
-- **Keyword matching 誤判**：若 `/healthz` response 改版後 `"status":"ok"` 字串位置變動，keyword check 可能炸。`HealthzResponseV1` 的 schema 有 `status` 欄位，移除或改名 = 破契約，需要同步更新本 monitor 的 keyword。
+
+  **B. WP 根網域（`shosho.tw/` 或 `fleet.shosho.tw/`）：**
+  ```
+  Expression:
+  ((http.host eq "shosho.tw" or http.host eq "fleet.shosho.tw") and http.user_agent contains "UptimeRobot")
+  ```
+
+  ⚠️ **不能只換 A 規則的 host、保留 `/healthz` path predicate** — WP monitor 打的是 `/` 不是 `/healthz`，`starts_with("/", "/healthz")` 永假、Skip rule 不會觸發。WP 根網域版本**必須拿掉 path 條件**或改成 `/`。
+
+  **兩條規則都要設定：**
+  - Action: Skip → 勾選 All Managed Rules + Super Bot Fight Mode + User Agent Blocking + Rate Limiting
+  - 設完等 ~5 分鐘 propagate 再啟用 monitor。
+- **Keyword matching 誤判**：monitor keyword 現為 `nakama-gateway`（純 ASCII，來源 `shared/schemas/franky.py:95` `service: Literal["nakama-gateway"]`）。若未來 `/healthz` 的 `service` 欄位改名或移除 = 破契約，需要同步更新本 monitor 的 keyword；WP 網域 monitor 的 keyword（`shosho` / `fleet`）若首頁內容大改也要檢查。
 - **SMS 額度用完**：免費 20 則/月用完後，只剩 email。升級 Pro 方案（$7/mo 起）或等月初 reset。
