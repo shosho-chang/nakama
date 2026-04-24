@@ -204,3 +204,64 @@ def test_dashboard_no_secrets_leaked(client, monkeypatch):
         resp = client.get("/bridge/franky", cookies=_auth_cookie())
     assert "xoxb-super-secret-123" not in resp.text
     assert "r2-super-secret-456" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# /healthz — liveness probe
+# ---------------------------------------------------------------------------
+
+
+def test_healthz_happy_path(client):
+    """正常狀況 → 200 + schema_version=1 + status=ok，帶 no-store cache header。"""
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["schema_version"] == 1
+    assert body["service"] == "nakama-gateway"
+    assert body["uptime_seconds"] >= 0
+    assert any(c["name"] == "process" and c["status"] == "ok" for c in body["checks"])
+    assert resp.headers.get("Cache-Control") == "no-store"
+
+
+def test_healthz_returns_503_when_build_fails(client, monkeypatch):
+    """_build_healthz raise 時走 503 degraded 分支（lines 79-81）。"""
+    import thousand_sunny.routers.franky as franky_module
+
+    monkeypatch.setattr(
+        franky_module,
+        "_build_healthz",
+        lambda: (_ for _ in ()).throw(RuntimeError("schema broken")),
+    )
+    resp = client.get("/healthz")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["service"] == "nakama-gateway"
+    assert body["uptime_seconds"] == 0
+    assert any(c["name"] == "process" and c["status"] == "degraded" for c in body["checks"])
+
+
+# ---------------------------------------------------------------------------
+# Dashboard — edge branches
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_firing_alert_with_invalid_suppress_until_still_firing(client):
+    """alert state=firing 但 suppress_until 無法解析 → still_firing=True 分支（lines 182-183）。"""
+    from shared.state import _get_conn
+
+    now = _now()
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO alert_state
+              (dedup_key, rule_id, last_fired_at, suppress_until, state, last_message, fire_count)
+           VALUES ('bad-suppress', 'bad_rule', ?, 'not-a-valid-timestamp', 'firing', 'msg', 1)""",
+        (now.isoformat(),),
+    )
+    conn.commit()
+
+    with _mock_psutil_patch():
+        resp = client.get("/bridge/franky", cookies=_auth_cookie())
+    assert resp.status_code == 200
+    assert "bad_rule" in resp.text
