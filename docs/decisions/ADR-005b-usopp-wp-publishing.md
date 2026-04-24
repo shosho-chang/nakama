@@ -185,32 +185,23 @@ wp.update_post(post.id, status="publish")
 
 **安全網**：每日 Franky cron 掃 `status=draft` 且 `nakama_draft_id` 非空但 `publish_jobs.state != done` 的 post → Critical alert。
 
-### 5. LiteSpeed Cache Purge（review §2.7）
+### 5. LiteSpeed Cache Purge（Day 1 實測後修訂，2026-04-24）
 
-Publish 成功後**顯式**呼叫 LiteSpeed purge，不依賴 plugin 自動偵測：
+**原提案（已作廢）**：Publish 成功後**顯式**呼叫 LiteSpeed purge endpoint，不依賴 plugin 自動偵測。
 
-```
-POST https://shosho.tw/wp-admin/admin-ajax.php?action=litespeed_purge
-Body: { "purge_type": "url", "url": <post permalink> }
-Header: X-LSCache-Vary: <signed token>
-```
+**Day 1 實測結論**（完整紀錄見 [docs/runbooks/litespeed-purge.md](../runbooks/litespeed-purge.md)）：
+- **REST endpoint 不存在** — `POST /wp-json/litespeed/v1/purge` 回 HTTP 404 `rest_no_route`；LiteSpeed plugin v1/v3 namespace 無任何 purge route（v3 是 QUIC.cloud CDN 管理）。原提案的 endpoint 是虛構的。
+- **admin-ajax** 需 wp-admin session nonce，Python headless 無法合理取得。
+- **WP-CLI via SSH** 需 daemon 端權限放大，不建議。
+- **意外發現（已採用）**：LiteSpeed plugin hook 到 WP `save_post`，**Usopp 走 WP REST API 的寫入路徑天然觸發 auto-invalidate**（實測：hit → POST update → miss → 2s 後 hit re-populated）。explicit purge call 完全不需要。
 
-若 LiteSpeed endpoint 不可達（WP 掛 / plugin 停用）→ WARNING 不 Critical（page 會隨 TTL 自動過期，最多延遲呈現）。
+**修訂後規則**：
+- `LITESPEED_PURGE_METHOD=noop`（`.env.example` 與 VPS 雙方皆此值）為**生產正解**，不是 fallback。
+- `shared/litespeed_purge.py` 保留 `purge_url()` 簽名 + state machine `cache_purged` stage，供未來若出現**非 WP-REST 寫入路徑**（e.g. 直接改 DB / wp-cli batch 腳本）時重新接上的錨點。目前所有寫入皆透過 WP REST，故 `cache_purged=False` 是合法值，不代表失敗。
+- `PublishResultV1.cache_purged = false` 語意從「purge 失敗或未嘗試」改為「WP plugin hook 已處理 cache，explicit purge unnecessary」。
+- SLO「Cache purge 成功率 > 95%」作廢（不再量測 explicit call 成功率）；改以「post 發布後 X 秒內 homepage 反映」作 Phase 2 SLO 候選。
 
-**LiteSpeed API 驗證工作項（Day 1 指派，不延到整週末）**：
-
-Phase 1 **Sprint Day 1** 指派一位工程師（或修修本人）在 VPS 實測三個候選方案，**當天內回報結論**：
-1. `admin-ajax.php?action=litespeed_purge` + nonce
-2. `/wp-json/litespeed/v1/purge` REST endpoint
-3. WP-CLI `wp litespeed-purge url <url>` via SSH
-
-**Fallback 決策規則**：若 Day 1 結束所有三個方案均不可行（例如 plugin 無 public API、nonce 機制不允許非瀏覽器請求、SSH 不可用），**立即 fallback 到「不主動 purge，等 LiteSpeed 預設 TTL 自動過期」**，TTL 預設 600 秒（可在 plugin 設定調整）。此 fallback 需：
-- `PublishResultV1.cache_purged = false`
-- Log WARNING，不 Critical
-- 文章呈現延遲上限 = TTL（600 秒），修修驗證發布時手動 hard-refresh 即可看到最新內容
-- Sprint 結束前評估是否排進 Phase 2 改採 WP-CLI 或自架 purge service
-
-Day 1 研究產出應寫入 `docs/runbooks/litespeed-purge.md`（若不存在則新建），記錄選擇的 endpoint、auth 方式、或 fallback 決定的理由。
+**原 hard rule「顯式呼叫、不依賴 plugin 自動偵測」的放寬理由**：multi-model review 提出此硬規則是為防止「依賴 plugin 可能失靈的偵測機制」。Day 1 實測證明 `save_post` 是 WP core hook 而非 LiteSpeed 的自偵測行為，可信度等同 WP 本身；硬規則只對「不經 WP core hook 的寫入路徑」適用（目前無此類路徑）。
 
 ### 6. Category / Tag 策略
 
@@ -351,7 +342,7 @@ if flags.medical_claim or flags.absolute_assertion:
 
 | 風險 | 緩解 |
 |---|---|
-| LiteSpeed purge endpoint 不可達 | Day 1 實測三方案，全失敗則 fallback 到 TTL 600s 等待 + WARNING |
+| WP `save_post` hook 不再自動 purge（plugin 升級或失靈） | 需重新引入 explicit purge（見 §5 修訂版 — anchor 已保留在 `shared/litespeed_purge.py`）；偵測方式：監控新 publish 後 homepage reflect lag（Phase 2 SLO 候選） |
 | SEOPress Fallback A meta key 在新版被改名 | CI smoke test 紅燈；Fallback B 無 SEO 發布 + 人工補 |
 | `nakama_publisher` 角色缺 `unfiltered_html` → 產出被過濾 | ADR-005a 的 AST 僅用白名單 block，無特殊 attr |
 | WP REST 5xx 狂 retry 撐爆 LiteSpeed | 1 req/sec rate limit + tenacity max 60 秒 budget |
@@ -384,7 +375,7 @@ if flags.medical_claim or flags.absolute_assertion:
 | 單篇 publish（含 SEO + cache purge）p95 | < 10 秒 |
 | Publish 成功率（到 status=published） | > 98% |
 | SEOPress 寫入成功率（含 fallback A） | > 99%；Fallback B 觸發每月 < 1 次 |
-| Cache purge 成功率 | > 95%（失敗非阻塞） |
+| ~~Cache purge 成功率~~ | ~~> 95%（失敗非阻塞）~~ — 作廢 2026-04-24（§5 修訂版，WP hook 自動處理；不再量測 explicit call）|
 | Schema drift 偵測 MTTR | < 1 小時（CI smoke + Critical alert） |
 
 ## 開工 Checklist
@@ -438,7 +429,7 @@ if flags.medical_claim or flags.absolute_assertion:
 - [ ] ADR-006 介面對齊：`ApprovalPayloadV1.compliance_flags` + `reviewer_compliance_ack`
 
 **LiteSpeed purge Day 1 研究**
-- [ ] Sprint Day 1 產出 `docs/runbooks/litespeed-purge.md` 決定採用方案或 fallback 到 TTL 等待
+- [x] Day 1 研究完成 2026-04-24：`docs/runbooks/litespeed-purge.md` 決策紀錄顯示 WP `save_post` hook 已自動處理 cache，`LITESPEED_PURGE_METHOD=noop` 為生產正解；§5 已修訂反映此結論
 
 ## 跟 ADR-005a / ADR-006 的介面
 
@@ -447,7 +438,7 @@ if flags.medical_claim or flags.absolute_assertion:
 
 ## Open Questions
 
-1. LiteSpeed purge 的 auth 方式修修要選 (a) WP-CLI via SSH （b) LiteSpeed API token （c) admin-ajax nonce？ → **Day 1 實測**決定（見 §5）；若三方案均不可行，明確 fallback 到 TTL 600s 等待
+1. ~~LiteSpeed purge 的 auth 方式修修要選 (a) WP-CLI via SSH （b) LiteSpeed API token （c) admin-ajax nonce？~~ → **已解決 2026-04-24**：三方案均無需採用。WP `save_post` hook 自動處理 cache invalidation，`LITESPEED_PURGE_METHOD=noop` 為生產正解。詳見 §5 修訂版與 `docs/runbooks/litespeed-purge.md`。
 2. `nakama_publisher` 角色要不要 grant `unfiltered_html`？ → 建議不給（AST 本身就安全），若 ADR-005a 需要 raw HTML block 再重新評估
 3. 192 篇既有文章要不要 backfill `nakama_draft_id`？ → 不必，新發的才帶
 4. `shared/compliance/medical_claim_vocab.py` 初版詞彙清單由誰提案？ → 修修與 Brook agent owner（同一人）另以 PR 提出，本 ADR 僅定義介面

@@ -1,4 +1,9 @@
-"""Tests for shared.litespeed_purge (ADR-005b §5)."""
+"""Tests for shared.litespeed_purge — noop-only after Day 1 (2026-04-24).
+
+See docs/runbooks/litespeed-purge.md Day 1 決策紀錄：WP `save_post` hook 自動
+處理 cache invalidation，explicit purge call 不需要；REST endpoint 不存在。
+因此本模組只保留 noop path，其他舊 method（rest / admin_ajax）的測試已刪除。
+"""
 
 from __future__ import annotations
 
@@ -7,27 +12,21 @@ from unittest.mock import MagicMock
 import pytest
 
 from shared.litespeed_purge import purge_url
-from shared.wordpress_client import WPAuthError, WPClientError, WPServerError
 
 
 @pytest.fixture
 def no_env(monkeypatch):
-    """Clear any inherited LITESPEED_* env vars so tests are deterministic."""
+    """Clear inherited LITESPEED_* env vars so tests are deterministic."""
     for var in ("LITESPEED_PURGE_METHOD", "LITESPEED_PURGE_TIMEOUT"):
         monkeypatch.delenv(var, raising=False)
 
 
-# ---------------------------------------------------------------------------
-# method=noop
-# ---------------------------------------------------------------------------
-
-
-def test_noop_returns_false_without_calling_client(no_env):
+def test_default_returns_false_without_calling_client(no_env):
+    """No env, no explicit method — returns False, never touches wp_client."""
     client = MagicMock()
     result = purge_url(
         "https://shosho.tw/post/1",
         wp_client=client,
-        method="noop",
         operation_id="op_12345678",
     )
     assert result is False
@@ -46,100 +45,38 @@ def test_env_noop_is_honored(monkeypatch):
     client._request.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# method=admin_ajax (documented but not implemented in Phase 1)
-# ---------------------------------------------------------------------------
-
-
-def test_admin_ajax_returns_false_without_calling_client(no_env):
+def test_explicit_noop_method_arg(no_env):
     client = MagicMock()
     result = purge_url(
         "https://shosho.tw/post/1",
         wp_client=client,
-        method="admin_ajax",
+        method="noop",
         operation_id="op_12345678",
     )
     assert result is False
     client._request.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# method=rest
-# ---------------------------------------------------------------------------
+def test_legacy_env_value_falls_back_to_noop(monkeypatch):
+    """Stale .env with LITESPEED_PURGE_METHOD=rest / admin_ajax / anything else
+    must not crash — logs warning, behaves as noop."""
+    for legacy_value in ("rest", "admin_ajax", "carrier-pigeon", ""):
+        monkeypatch.setenv("LITESPEED_PURGE_METHOD", legacy_value)
+        client = MagicMock()
+        result = purge_url(
+            "https://shosho.tw/post/1",
+            wp_client=client,
+            operation_id="op_12345678",
+        )
+        assert result is False, f"legacy env value {legacy_value!r} should still noop"
+        client._request.assert_not_called()
 
 
-def test_rest_happy_path(no_env):
-    client = MagicMock()
-    client._request.return_value = {"ok": True}
+def test_wp_client_can_be_none(no_env):
+    """wp_client is accepted but ignored; None must not raise."""
     result = purge_url(
         "https://shosho.tw/post/1",
-        wp_client=client,
-        method="rest",
-        operation_id="op_12345678",
-    )
-    assert result is True
-    client._request.assert_called_once()
-    args, kwargs = client._request.call_args
-    assert args[0] == "POST"
-    assert args[1] == "litespeed/v1/purge"
-    assert kwargs["json"] == {"url": "https://shosho.tw/post/1"}
-
-
-@pytest.mark.parametrize(
-    "exc",
-    [
-        WPAuthError("401"),
-        WPClientError("404 not found"),
-        WPServerError("503 unavailable"),
-    ],
-)
-def test_rest_swallows_expected_wp_errors(no_env, exc):
-    client = MagicMock()
-    client._request.side_effect = exc
-    result = purge_url(
-        "https://shosho.tw/post/1",
-        wp_client=client,
-        method="rest",
+        wp_client=None,
         operation_id="op_12345678",
     )
     assert result is False
-
-
-def test_rest_requires_wp_client(no_env):
-    # No wp_client provided → log + False, no crash.
-    result = purge_url(
-        "https://shosho.tw/post/1",
-        method="rest",
-        operation_id="op_12345678",
-    )
-    assert result is False
-
-
-# ---------------------------------------------------------------------------
-# Env resolution
-# ---------------------------------------------------------------------------
-
-
-def test_env_default_is_rest(monkeypatch):
-    monkeypatch.delenv("LITESPEED_PURGE_METHOD", raising=False)
-    client = MagicMock()
-    client._request.return_value = {"ok": True}
-    result = purge_url(
-        "https://shosho.tw/post/1",
-        wp_client=client,
-        operation_id="op_12345678",
-    )
-    assert result is True
-    client._request.assert_called_once()
-
-
-def test_env_unknown_method_falls_back_to_noop(monkeypatch):
-    monkeypatch.setenv("LITESPEED_PURGE_METHOD", "carrier-pigeon")
-    client = MagicMock()
-    result = purge_url(
-        "https://shosho.tw/post/1",
-        wp_client=client,
-        operation_id="op_12345678",
-    )
-    assert result is False
-    client._request.assert_not_called()
