@@ -150,7 +150,7 @@ def _mk_happy_wp_client(
 ) -> MagicMock:
     """A MagicMock WP client that walks the happy state-machine path."""
     client = MagicMock()
-    client._site_id = "wp_test"
+    client.site_id = "wp_test"
     client.find_by_meta.return_value = (
         _wp_post(post_id=99, status="publish") if find_by_meta_hit else None
     )

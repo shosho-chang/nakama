@@ -103,7 +103,7 @@ class WordPressClient:
         site_id: str = "wp_shosho",
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._site_id = site_id
+        self.site_id = site_id
         # Strip spaces from application password (WP copies them with spaces)
         cleaned = app_password.replace(" ", "")
         raw = f"{username}:{cleaned}"
@@ -302,7 +302,7 @@ class WordPressClient:
             post.id,
             post.status,
             operation_id,
-            self._site_id,
+            self.site_id,
         )
         return post
 
@@ -543,5 +543,5 @@ class WordPressClient:
             self._request("GET", "wp/v2/users/me", operation_id=operation_id)
             return True
         except (WPAuthError, WPClientError, WPServerError, httpx.HTTPError) as exc:
-            logger.warning("wp health_check failed site=%s err=%s", self._site_id, exc)
+            logger.warning("wp health_check failed site=%s err=%s", self.site_id, exc)
             return False
