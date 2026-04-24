@@ -308,6 +308,54 @@ def test_funasr_to_srt_empty():
     assert _funasr_to_srt([{"text": ""}]) == ""
 
 
+def test_funasr_to_srt_char_level_no_drift_with_punctuation():
+    """Regression：FunASR 的 timestamp 陣列只覆蓋可發音字，不含標點。
+
+    舊版 `_funasr_to_srt` 把 text 的 `char_idx`（含標點）當 timestamp 索引，
+    每遇一個標點就多計一格，造成時間戳線性漂移、末段 clamp 到 timestamp[-1]。
+    EP107 案例：81 min 音檔漂 ~10%（±250s），末段全擠在 01:21:38。
+
+    這個 test 塞 30 個等長句子（每句 14 可發音字 + 1 句號 = 15 字），
+    timestamp 陣列剛好 420 筆（30×14）均勻分布於 0–42s。
+    正確行為：每個 cue 的 start 線性遞增、最後一 cue 落在 ~40.6s。
+    舊 bug：最後兩 cue 都會被 clamp 到 ~41.9s。
+    """
+    sentence_body = "我們就是需要持續觀察這樣可以"  # 14 chars
+    assert len(sentence_body) == 14
+    text = (sentence_body + "。") * 30  # 30 × 15 = 450 chars, 420 non-punct
+
+    # 100ms 一個可發音字，總長 42s
+    timestamps = [[i * 100, i * 100 + 90] for i in range(420)]
+    assert len(timestamps) == 420
+
+    srt = _funasr_to_srt([{"text": text, "timestamp": timestamps}])
+
+    # 取每個 cue 的 start_s
+    import re
+
+    starts = []
+    for match in re.finditer(r"(\d\d):(\d\d):(\d\d),(\d{3})\s*-->", srt):
+        h, m, s, ms = map(int, match.groups())
+        starts.append(h * 3600 + m * 60 + s + ms / 1000)
+
+    assert len(starts) >= 25, f"預期 ~30 個 cue，得到 {len(starts)}"
+
+    # 1. 首 cue 接近 0（bug 不會影響頭段，只是 sanity check）
+    assert starts[0] < 1.0, f"首 cue 應在 <1s，得 {starts[0]}s"
+
+    # 2. 末 cue 應該在 ~40.6s（char position ≈ 406，100ms/char），不該被 clamp 到 41.9s
+    assert 39.5 < starts[-1] < 41.5, f"末 cue 漂移：應在 40.6s 附近，得 {starts[-1]}s"
+
+    # 3. 沒有連續兩個 cue start 時間相同（bug 會讓末段數個 cue 全 clamp 到同一個 ts）
+    dup_pairs = sum(1 for a, b in zip(starts, starts[1:]) if abs(a - b) < 0.01)
+    assert dup_pairs == 0, f"發現 {dup_pairs} 對相鄰 cue 時間重合（bug 特徵）"
+
+    # 4. 時間線性遞增（每 cue 約 +1.4s，容忍 ±0.3s）
+    for i in range(1, len(starts)):
+        gap = starts[i] - starts[i - 1]
+        assert 1.1 < gap < 1.7, f"cue {i} gap 異常：{gap}s（應 ~1.4s）"
+
+
 def test_funasr_to_srt_multiple_items():
     """多個結果項（VAD 切出的多段）。"""
     results = [

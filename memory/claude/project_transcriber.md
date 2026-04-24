@@ -1,15 +1,51 @@
 ---
 name: Transcriber 語音轉字幕模組
-description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁（2026-04-18 收尾 PR #24/#25/#26，等 1hr Angie 正式實測）
+description: shared/transcriber.py — FunASR + Auphonic + LLM 校正 + 多模態仲裁；2026-04-24 修掉長音檔 ~10% 線性漂移 bug（char_idx 當 timestamp 索引）
 type: project
 created: 2026-04-14
-updated: 2026-04-18
+updated: 2026-04-24
 confidence: high
-
-<!-- 2026-04-18 更新：PR #24/#25/#26 merged，成本降 5-10x + 拒答偵測 + CLI argparse，週一 2026-04-20 首次 1hr Angie 正式使用。 -->
 
 originSessionId: c2ace3b3-f24c-4428-9d8b-ddd315f7d92e
 ---
+
+## 2026-04-24 重大 Bug 修復：長音檔時間戳線性漂移
+
+### 症狀
+EP107 81 分鐘音檔走 transcribe() 不含 LLM 校正，產出 SRT 時間戳在中後段**線性漂移 ~10%**：
+- 60s → 偏 ~0s（頭段勉強對）
+- 600s → 偏 +66s
+- 1200s → 偏 +121s
+- 2400s → 偏 +262s
+- 末段（>4800s）**clamp 到 audio end time**，多個 cue 擠在同一時間
+
+### 根因
+`_funasr_to_srt()` char-level 分支（`is_char_level = len(timestamps) > len(sentences) * 2`）假設 text 的 `char_idx` = `timestamps[char_idx]`。但 **FunASR 的 timestamp 陣列只覆蓋可發音字，不含標點/空白/全形括號**。81 分鐘音檔：text 27047 字、timestamps 24461 個（差 ~10% = 標點佔比）。char_idx 每遇標點就多算一格，漂移線性累積。
+
+### 診斷方法
+1. **取樣比對**：9 個時間點切 15 秒片段獨立跑 FunASR（短片段 ASR 無漂移，當 ground truth），跟 hand SRT + 長音檔 A-run SRT 三欄對照
+2. **驗證 raw timestamp 準度**：直接找 "同居" 在 `item['text']` 的 char position，用 `ts[non_punct_count_before]` 算時間，比對 hand SRT — 若 raw 差只 ±10s 代表 bug 在下游映射
+3. **切掉 batch 變因**：`batch_size_s=6000`（不切塊）vs `=300` — 結果相同，排除 batch 拼接 bug
+
+### 修法
+- 新 helper `_funasr_char_to_ts_idx(text, n_ts)`：建 char position → ts idx 的映射
+  1. 找出所有「可發音字」位置（用 `_FUNASR_NO_TS_CHAR` 排除標點/空白/全形括號）
+  2. 把第 k 個可發音字線性映射到 `ts[k * n_ts / n_content]`（scale 處理 FunASR 對英文 tokenization）
+  3. 標點位置繼承前一個可發音字的 ts 索引
+- `_funasr_to_srt` char-level 分支：
+  - 改用 `text.find(sentence, search_from)` 定位（不再靠 `char_idx += len(sentence)`，因為 `_split_sentences` 會 `.strip()`）
+  - 查新 helper 拿 `ts_start` / `ts_end`
+- **`shared/srt_align.py:run_asr_segments()` 有同款 bug，同一套 helper 修掉**
+
+### 驗證
+- 新 `tests/test_transcriber.py::test_funasr_to_srt_char_level_no_drift_with_punctuation`：30 個合成句 × 15 字（14 可發音 + 1 句號）配 420 timestamp。舊 bug → 末 cue clamp 到 41.9s；修後 → 40.6s ±1s。實測 stash 掉修正 → test 紅燈命中預期訊息 "末 cue 應在 40.6s 附近，得 41.899s"
+- EP107 全檔 9 取樣點：修後所有 anchor 偏移 ±2s 內（同居 0.8s / 爸爸可以抱 0.6s / 輔導老師 1.8s）
+
+### 影響範圍（歷史檔）
+**所有** 20+ 分鐘長音檔走 transcribe() 產出的 SRT 都有這個漂移 bug。修修有需要可能要重跑歷史轉寫。短音檔（<10 分鐘）漂移 <10s 可能被 Gemini 仲裁/人工校對吸收所以沒發現。
+
+---
+
 ## 狀態：已 merge（PR #9，2026-04-15）
 
 ### 已完成

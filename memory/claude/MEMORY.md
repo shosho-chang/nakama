@@ -21,7 +21,9 @@
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR 開完自動跑 code-review → 報告 → 等授權 → squash merge → pull + 刪 branch
-- [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁，PR #23 強制全 pipeline 無標點輸出 + QC 改進清單
+- [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁；2026-04-24 修長音檔 ~10% 線性漂移 bug（char_idx 當 ts 索引）+ regression test
+- [project_srt_align_tool.md](project_srt_align_tool.md) — SRT 對齊工具 shift/scale/auto/retime 四模式 + 踩過的坑
+- [feedback_short_clip_ground_truth.md](feedback_short_clip_ground_truth.md) — 長音檔 ASR 可疑時切 15s 短片段獨立跑同模型當 oracle
 - [project_local_multimodal_audio_models.md](project_local_multimodal_audio_models.md) — 本地多模態音訊模型候選（Qwen2.5-Omni / MiniCPM-o / Kimi-Audio），Gemini 2.5 Pro 替代方案
 - [reference_api_contract_pitfalls.md](reference_api_contract_pitfalls.md) — Claude / Gemini / Auphonic / python-dotenv 踩過的 API 契約陷阱清單
 - [feedback_dependency_check.md](feedback_dependency_check.md) — pip install 前必須檢查版本衝突，避免降級核心套件

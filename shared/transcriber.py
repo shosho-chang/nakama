@@ -21,6 +21,10 @@ _ZH_MID_PUNCTUATION = re.compile(r"[，、；：" "''（）《》【】…—～
 # 中文句尾標點 → 直接移除
 _ZH_END_PUNCTUATION = re.compile(r"[。！？]")
 
+# FunASR 字級 timestamp 不覆蓋的字元（標點、空白、全形括號等）
+# 用於 `_funasr_to_srt` 將 text char 位置映射到 timestamp 索引。
+_FUNASR_NO_TS_CHAR = re.compile(r"[，、。！？；：,.!?;:\s\"'“”‘’（）()《》【】…—~～·]")
+
 # 中文句尾標點（用於拆分句子）
 _SENTENCE_END = re.compile(r"([。！？])")
 
@@ -536,6 +540,46 @@ def _get_ts_values(ts_item) -> tuple[int, int]:
     return ts_item[0], ts_item[1]
 
 
+def _funasr_char_to_ts_idx(text: str, n_ts: int) -> list[int]:
+    """建立 `text` 每個字元位置 → FunASR timestamp 索引的映射。
+
+    FunASR 的 timestamp 陣列只覆蓋**可發音字**（跳過標點/空白/全形括號），
+    所以不能直接用 `char_idx` 當 timestamp 索引（長音檔會線性漂移 ~10%）。
+
+    策略：
+    1. 數出 text 裡所有可發音字元的位置（content chars）
+    2. 用線性比例把第 k 個 content char 映射到 timestamp[k * n_ts / n_content]
+       — 處理 FunASR 對英文單字的 tokenization 可能跟單字元計數不一致
+    3. 標點/空白位置繼承前一個可發音字的索引
+    """
+    n = len(text)
+    if n == 0 or n_ts == 0:
+        return [0] * n
+
+    content_positions = [i for i, ch in enumerate(text) if not _FUNASR_NO_TS_CHAR.match(ch)]
+    n_content = len(content_positions)
+    if n_content == 0:
+        return [0] * n
+
+    scale = n_ts / n_content
+    result = [0] * n
+    c_idx = 0
+    last_ts = 0
+    content_set = set(content_positions)
+    # 建立 content_position → ts_idx 的 lookup
+    content_to_ts: dict[int, int] = {}
+    for k, pos in enumerate(content_positions):
+        content_to_ts[pos] = min(n_ts - 1, int(k * scale))
+
+    for i in range(n):
+        if i in content_set:
+            last_ts = content_to_ts[i]
+        result[i] = last_ts
+        c_idx += 1  # not strictly needed but keeps signature symmetric
+
+    return result
+
+
 def _funasr_to_srt(results: list[dict]) -> str:
     """將 FunASR 辨識結果轉為 SRT 格式字串。
 
@@ -543,7 +587,7 @@ def _funasr_to_srt(results: list[dict]) -> str:
 
     時間戳類型：
     - sentence_info: per-sentence（最佳，直接用）
-    - 字級時間戳: len(timestamps) ≈ len(text)，用句尾標點拆分並對齊
+    - 字級時間戳: len(timestamps) 對應可發音字（跳過標點），用 `_funasr_char_to_ts_idx` 對齊
     - 句級時間戳: len(timestamps) == len(sentences)，直接配對
     """
     srt_parts: list[str] = []
@@ -581,16 +625,34 @@ def _funasr_to_srt(results: list[dict]) -> str:
         is_char_level = len(timestamps) > len(sentences) * 2
 
         if is_char_level:
-            # 字級時間戳：用字元位置對齊句子的起止時間
-            char_idx = 0
-            for sentence in sentences:
-                # 句子在原文中的起始字元位置
-                start_char = char_idx
-                end_char = char_idx + len(sentence) - 1
+            # 字級時間戳：FunASR 只給可發音字的 timestamp，必須把
+            # text char 位置正確映射到 timestamp 索引（不能直接用 char_idx）。
+            char_to_ts_idx = _funasr_char_to_ts_idx(text, len(timestamps))
 
-                # 對齊到 timestamp 陣列（可能有標點不佔 timestamp）
-                ts_start = min(start_char, len(timestamps) - 1)
-                ts_end = min(end_char, len(timestamps) - 1)
+            search_from = 0
+            for sentence in sentences:
+                if not sentence:
+                    continue
+                # 找句子在 text 裡的位置（_split_sentences 可能做過 strip()）
+                pos = text.find(sentence, search_from)
+                if pos < 0:
+                    stripped = sentence.strip()
+                    pos = text.find(stripped, search_from) if stripped else -1
+                    if pos >= 0:
+                        sentence_len = len(stripped)
+                    else:
+                        # 找不到就 fallback：用當前 search_from 估位置
+                        pos = search_from
+                        sentence_len = len(sentence)
+                else:
+                    sentence_len = len(sentence)
+
+                start_char = pos
+                end_char = min(pos + sentence_len - 1, len(text) - 1)
+                search_from = pos + sentence_len
+
+                ts_start = char_to_ts_idx[start_char]
+                ts_end = char_to_ts_idx[end_char]
 
                 start_ms, _ = _get_ts_values(timestamps[ts_start])
                 _, end_ms = _get_ts_values(timestamps[ts_end])
@@ -599,8 +661,6 @@ def _funasr_to_srt(results: list[dict]) -> str:
                 end_ts = _seconds_to_srt_ts(end_ms / 1000)
                 srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{sentence}\n")
                 seq += 1
-
-                char_idx += len(sentence)
         elif len(sentences) == len(timestamps):
             # 句級時間戳：完美對齊
             for sentence, ts in zip(sentences, timestamps):
