@@ -30,6 +30,7 @@
 - [reference_api_contract_pitfalls.md](reference_api_contract_pitfalls.md) — Claude / Gemini / Auphonic / python-dotenv 踩過的 API 契約陷阱清單
 - [feedback_dependency_check.md](feedback_dependency_check.md) — pip install 前必須檢查版本衝突，避免降級核心套件
 - [feedback_dep_manifest_sync.md](feedback_dep_manifest_sync.md) — 加 Python dep 時 requirements.txt + pyproject.toml 要同步；CI 只讀後者，只改前者主幹直接紅
+- [feedback_pytest_monkeypatch_where_used.md](feedback_pytest_monkeypatch_where_used.md) — monkeypatch 要 patch code 實際讀名字的 namespace，不是原始定義處；module-level cache 同類陷阱
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
 - [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
 - [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format

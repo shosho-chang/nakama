@@ -82,9 +82,9 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ 調研 PubMed NCBI Entrez API（Nami Quick Lookup 替代 Deep Research）
 
 **基礎建設：**
-- ⬜ Robin 核心流程（ingest、kb_search）補測試覆蓋率
-- ⬜ Brook compose.py 補測試覆蓋率
-- ⬜ Thousand Sunny routers smoke test
+- 🚧 Robin 核心流程 `kb_search.py` 0% → 100%（PR #119 open，路上抓到 `"Entities"` type normalize bug 順手修）；`ingest.py` 仍待補
+- 🚧 Brook compose.py 補測試覆蓋率（PR #116 open，57% → 100%，含對話式 API + helpers）
+- 🚧 Thousand Sunny routers smoke test — brook + zoro 0% → 100%（PR #118 open）；franky / robin routers 仍有 gap
 
 **Nakama backup / VPS 備份（2026-04-24）：**
 - ✅ Nakama `state.db` daily 04:00 Taipei → R2 `nakama-backup` bucket，retention 30 天（PR #88）
@@ -134,3 +134,22 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ 任務 A：LifeOS `tpl-project.md` + `tpl-action.md` 對齊 gold standard（純 vault，已完成）
 - ✅ 任務 B：Franky `r2_backup_verify` 擴展 `nakama-backup` bucket freshness（PR #99 merged）+ Bridge dashboard 曝光（PR #100 merged）
 - ✅ 桌機：PR #97 Slice C1 + PR #98 VPS 部署材料 + PR #101 Slice C2a
+
+**2026-04-24 深夜 cleanup session（桌機 + Mac）：**
+- ✅ PR #110 merged — UptimeRobot deprecated + Usopp C2b LiteSpeed Day 1 執行 checklist（桌機實測驗證）
+- ✅ PR #111 merged — GHA external uptime probe workflow（Mac）
+- ✅ PR #112 merged — litespeed cleanup + ADR-005b §5 放寬（桌機，刪 `_purge_via_rest()` dead code）
+- ✅ PR #113 merged — fix CI trendspy pyproject.toml 漏 sync（桌機抓主幹 CI 紅）
+- ✅ PR #114 merged — memory: feedback_dep_manifest_sync
+- ✅ PR #115 merged — external probe CF WAF skip rule documented（Mac，修 PR #111 原 CF 假設錯誤）
+- 🚧 **PR #116 open** — test(brook): compose.py conversational coverage 57% → 100%
+- 🚧 **PR #118 open** — test(routers): brook + zoro 0% → 100%
+- 🚧 **PR #119 open** — test(robin): kb_search 0% → 100% + 修 `"Entities" → "entitie"` type normalize bug
+- 🚧 **PR #120 open** — memory: feedback_pytest_monkeypatch_where_used + pending_tasks 同步
+
+**PR #111 review 找到 Mac 沒動的 follow-up（非 P0、可攢成 1 個 PR 或拆開做）：**
+- ⬜ GHA quota：3 matrix × 288/day ≈ 72 hr/month 超 private repo free tier 2000 min × 2 倍 — 改 1 job for-loop 3 URL 或拉 cron 到 10-min；runbook 補成本說明
+- ⬜ `curl --retry 0` 無 retry，single flaky 就發警報 — 建議加 2-3 次 with 10s sleep
+- ⬜ 持續 DOWN 每 5 分鐘重發 Slack DM 無 rate-limit — GHA cache 存 `last_alert_ts.json` + 30 分鐘 dedupe 視窗
+- ⬜ `simulate_down` 只能戳 1/3 target — 改 choice enum `[none, nakama, shosho, fleet, all]`
+- ⬜ `project_pending_tasks.md:106` 原「External uptime probe ✅」事實驅動違規（Mac 已在 PR #115 update）
