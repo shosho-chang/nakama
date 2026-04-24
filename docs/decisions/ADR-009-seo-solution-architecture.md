@@ -180,9 +180,12 @@ class SEOContextV1(BaseModel):
 - `schema_version: Literal[1]` + `extra="forbid"` + `frozen=True` → 遵守 `schemas.md` §1-§4
 - 所有可選量化欄位用 `| None = None`，**不用 0-fill** — missing 和「確認是 0」語意不同，下游 Brook compose prompt 要能分辨（health 類常 None，但排名 0 是不可能的）
 - `sources: list[Literal[...]]` → 每個 metric 自己帶來源；下游可以「GSC 數據優先，DataForSEO 備援」的規則
-- `striking_distance.current_position: confloat(ge=11, le=20)` → schema 層直接擋「非 striking-distance 的 keyword 塞進來」
+- `striking_distance.current_position: confloat(ge=10.0, le=21.0)` → 業界「striking distance」慣用 11-20，schema 層留 ±1 緩衝區間吸收 GSC 小數 position（avg 10.8 / 20.3 也算）；實際「收進來的算不算 striking distance」由 `seo-keyword-enrich` 的 filter logic 決定
 - `cannibalization_warnings.competing_urls: min_length=2` → 定義上就是 2+ URL 競爭
-- `site: Literal["wp_shosho", "wp_fleet"]` → 對齊 `DraftV1.target_site`，決定讀哪個 GSC property
+- `site: Literal["wp_shosho", "wp_fleet"]` → **對齊 `DraftV1.target_site`（app-name），不是** ADR-008 `TargetKeywordV1.site` 的 `["shosho.tw", "fleet.shosho.tw"]`（GSC host 字串）。兩套 Literal 的用途不同：`DraftV1.target_site` 是 Brook/Usopp 寫稿路由；`TargetKeywordV1.site` 是 GSC property host。跨層傳遞策略：
+  - `seo-keyword-enrich` 讀 `config/target-keywords.yaml`（ADR-008 schema）→ 依 host 呼叫 GSC → 產出 `SEOContextV1` 時把 host 對回 app-name（mapping 由 `shared/gsc_client.py` 提供 helper，例 `host_to_target_site("shosho.tw") → "wp_shosho"`）
+  - Brook compose 與 Usopp 消費 `SEOContextV1` 時只看 `target_site`（app-name），不碰 host 字串
+  - 此 mapping 為 Slice A（`shared/gsc_client.py`）PR 的驗收條件之一（加 fixture test 保 mapping 不壞）
 
 ### D4. Phase 1 / Phase 2 界線
 
