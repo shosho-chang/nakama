@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -30,6 +31,7 @@ ADRS = [
     "ADR-005-publishing-infrastructure",
     "ADR-006-hitl-approval-queue",
     "ADR-007-franky-scope-expansion",
+    "ADR-009-seo-solution-architecture",
 ]
 
 MODELS: list[tuple[str, str]] = [
@@ -80,6 +82,10 @@ REVIEW_PROMPT = """你是一位資深軟體架構師，正在為一個 AI Agent 
 
 
 def review_one(adr_name: str, model_id: str, label: str) -> tuple[str, str, int | str]:
+    out_file = OUT_DIR / f"{adr_name}--{label}.md"
+    if out_file.exists():
+        return adr_name, label, "SKIP: already exists"
+
     adr_file = ADR_DIR / f"{adr_name}.md"
     adr_content = adr_file.read_text(encoding="utf-8")
     prompt = REVIEW_PROMPT.format(adr_content=adr_content)
@@ -91,13 +97,12 @@ def review_one(adr_name: str, model_id: str, label: str) -> tuple[str, str, int 
         return adr_name, label, f"FAILED: {type(e).__name__}: {e}"
 
     elapsed = int(time.time() - start)
-    out_file = OUT_DIR / f"{adr_name}--{label}.md"
     header = (
         f"---\n"
         f"source_adr: {adr_name}\n"
         f"reviewer_model: {model_id}\n"
         f"elapsed_seconds: {elapsed}\n"
-        f"review_date: 2026-04-22\n"
+        f"review_date: {date.today().isoformat()}\n"
         f"---\n\n"
         f"# {adr_name} — {label} 審查\n\n"
     )

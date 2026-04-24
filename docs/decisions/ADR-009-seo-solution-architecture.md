@@ -115,6 +115,10 @@ class StrikingDistanceV1(BaseModel):
     業界「striking distance」慣用 11-20，但 GSC 平均 position 會給小數
     （如 10.8 / 20.3），schema 留緩衝區間由 enrich skill 的 filter logic
     決定實際收錄範圍，避免 edge value 直接被 schema reject。
+
+    **實作契約（triangulation T6）**：GSC raw rows 必須在 skill 層先 filter
+    才建 `StrikingDistanceV1` 物件；不符合 [10.0, 21.0] range 的 row 用 `drop`
+    處理，**絕不**以 try/except ValidationError 當 filter。
     """
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -183,9 +187,9 @@ class SEOContextV1(BaseModel):
 - `striking_distance.current_position: confloat(ge=10.0, le=21.0)` → 業界「striking distance」慣用 11-20，schema 層留 ±1 緩衝區間吸收 GSC 小數 position（avg 10.8 / 20.3 也算）；實際「收進來的算不算 striking distance」由 `seo-keyword-enrich` 的 filter logic 決定
 - `cannibalization_warnings.competing_urls: min_length=2` → 定義上就是 2+ URL 競爭
 - `site: Literal["wp_shosho", "wp_fleet"]` → **對齊 `DraftV1.target_site`（app-name），不是** ADR-008 `TargetKeywordV1.site` 的 `["shosho.tw", "fleet.shosho.tw"]`（GSC host 字串）。兩套 Literal 的用途不同：`DraftV1.target_site` 是 Brook/Usopp 寫稿路由；`TargetKeywordV1.site` 是 GSC property host。跨層傳遞策略：
-  - `seo-keyword-enrich` 讀 `config/target-keywords.yaml`（ADR-008 schema）→ 依 host 呼叫 GSC → 產出 `SEOContextV1` 時把 host 對回 app-name（mapping 由 `shared/gsc_client.py` 提供 helper，例 `host_to_target_site("shosho.tw") → "wp_shosho"`）
+  - `seo-keyword-enrich` 讀 `config/target-keywords.yaml`（ADR-008 schema）→ 依 host 呼叫 GSC → 產出 `SEOContextV1` 時把 host 對回 app-name（mapping 由 **`shared/schemas/site_mapping.py`** 提供純函式 `host_to_target_site("shosho.tw") → "wp_shosho"`；**不放在** `shared/gsc_client.py` 以保 client 為 thin wrapper — triangulation T5）
   - Brook compose 與 Usopp 消費 `SEOContextV1` 時只看 `target_site`（app-name），不碰 host 字串
-  - 此 mapping 為 Slice A（`shared/gsc_client.py`）PR 的驗收條件之一（加 fixture test 保 mapping 不壞）
+  - 此 mapping 為 Slice A PR 驗收條件：(1) 檔案位置正確（`shared/schemas/site_mapping.py`），(2) 窮舉 test `set(HOST_TO_TARGET_SITE.keys()) == set(TargetSite.__args__)` 確保新增 host 時 Literal 同步
 
 ### D4. Phase 1 / Phase 2 界線
 
@@ -450,7 +454,7 @@ description: >
    - ADR-009 skill 第一次啟動時 health check：呼叫 GSC API `sites.list()`，失敗則明確報錯指向 runbook（不默默 fallback）
 4. **`shared/gsc_client.py` retry / rate-limit 策略具體實作** — 遵守 `reliability.md` §5（exponential backoff with jitter）；具體次數由實作 PR 測試決定
 5. **Skill PR 切分順序** — 建議 Slice A: `SEOContextV1` schema + `shared/gsc_client.py` + GSC OAuth runbook；Slice B: `seo-keyword-enrich`；Slice C: `seo-audit-post`；Slice D: Brook compose `seo_context` opt-in。但此順序不在 ADR 凍結範圍
-6. **Multi-model triangulation review pending** — 本 ADR 2026-04-24 於 Mac 本機無 API key 未能跑 Gemini/Grok/Opus 三家獨立 review（方法論：[project_multi_model_panel_methodology.md](../../memory/claude/project_multi_model_panel_methodology.md)）；依方法論 §「不阻擋 merge」條款 — 自行 critical self-review 已覆蓋 schema / 契約 / 時序 / 可測試性 / secrets 五個角度。合併前建議桌機或 VPS 跑一次 triangulation，若發現 blocker 再回修 ADR
+6. **Multi-model triangulation review — 已完成 2026-04-24（桌機）** — 跑了 Claude Sonnet 4.6 / Gemini 2.5 Pro / Grok 4 三家獨立 review。原始 artifacts 在 [docs/decisions/multi-model-review/ADR-009-seo-solution-architecture--{claude-sonnet,gemini,grok}.md](multi-model-review/)。整體可行性評分：Gemini 4/10「退回重寫」、Grok 6/10「修改後通過」、Claude Sonnet「修改後通過」。findings 彙整見下方「Multi-Model Triangulation Findings」新節
 
 ### prior-art §6 open questions 回答狀態（供交叉檢查）
 
@@ -464,6 +468,65 @@ description: >
 | 6 | `SEOContextV1` phase 1 凍結？ | 是 | D3 |
 | 7 | Cron-driven 整站 GSC 體檢 phase 1？ | 否，Phase 2（且合併 ADR-008 Phase 2 weekly digest） | D4 |
 | 8 | Cannibalization 偵測 phase 1？ | 是（~50 行 Python，GSC 最高 ROI） | D3 / D4 |
+
+---
+
+## Multi-Model Triangulation Findings (2026-04-24)
+
+桌機跑完 Claude Sonnet 4.6 / Gemini 2.5 Pro / Grok 4 三家。下面是 **actionable** 部分 — noise（客套話、一家獨吹且風險低）已濾掉。
+
+### 三家共識 Blockers（兩家以上點名）
+
+| # | Finding | 來源 | 建議處理 |
+|---|---|---|---|
+| T1 | **VPS 資源與延遲未 benchmark** — 2vCPU/4GB 跑 `seo-keyword-enrich`（GSC + DataForSEO + firecrawl + LLM 摘要 chain）的 P95 延遲 / OOM 風險沒實測數據 | Gemini、Grok、Claude (pitfall) | 先推進 Slice A（只 GSC，最輕量），Slice A 完工後 VPS dry-run 量 P95；> 30s 則啟動異步化評估（見 T7） |
+| T2 | **Prompt injection via `competitor_serp_summary`** — firecrawl 爬的外部內容未消毒直接注入 compose system prompt | Claude、Gemini | 實作 `_build_seo_block` 時加 sanitization step（strip `<system>` / instruction pattern）；這是 Slice D Brook 整合的 review 必查項 |
+| T3 | **Cross-skill schema drift 緩解不足** — `schema_version: Literal[1]` 只防 V2 物件被 V1 讀，不防 consumer 讀到 `None` 欄位後邏輯炸；三 skill + Brook compose 同時要改的 major change 風險被低估 | Claude、Gemini、Grok（三家共識）| Slice D 加「consumer defensive check」pattern（`if seo_context and seo_context.field is None: fallback`）；Open Items 新增「V2 migration playbook」（ADR Phase 2） |
+| T4 | **Phase 1 範疇過大** — `seo-audit-post` + `seo-keyword-enrich` + Brook 整合三件事 2-3 週不現實 | Gemini（最嚴，「退回重寫」主因）、Claude、Grok | 縮範：**Phase 1 只做 `seo-keyword-enrich`（GSC only）+ Slice D Brook 整合**；`seo-audit-post` 與 DataForSEO 移 **Phase 1.5**（同一 ADR，不新開）；這個調整已反映到實作 Slice 順序（見下方 §Revised Slice Order） |
+| T5 | **`host_to_target_site` mapping 放錯層** — business logic 混進 `shared/gsc_client.py` 違反 thin wrapper 原則 | Claude (D3 pitfall)、Gemini (D3 pitfall)、Grok | 搬到 `shared/schemas/site_mapping.py`，加窮舉 test：`set(map.keys()) == TargetSite.__args__`。Slice A 就要做對 |
+| T6 | **`StrikingDistanceV1.current_position confloat(ge=10.0, le=21.0)` 容易誤用** — ADR 說「由 filter logic 決定」但沒明文規定 filter 順序，工程師容易先建 schema 後 filter → ValidationError | Claude (Pitfall 5)、Grok (實作坑 #1) | ADR D3 補一句：「GSC raw rows 必須在 skill 層先 filter 才建 `StrikingDistanceV1`；不符合 range 的 row 用 `drop` 而非 `ValidationError` retry」|
+
+### 單家獨吹 — 值得記 Follow-up（非 Slice A blocker）
+
+**Gemini 獨吹：**
+- T7. `seo-keyword-enrich` 異步化策略（job_id + Slack 通知）— Phase 2 評估，依 T1 benchmark 結果觸發
+- T8. 集中 rate limit / quota middleware — Phase 2，skill 數量 > 3 再做
+- T9. `CannibalizationWarningV1` 的「什麼叫競爭」業務規則 ~50 行 Python 嚴重低估 — Slice B 實作時擴預估至 150-200 行 + threshold config
+
+**Claude 獨吹：**
+- T10. `SEOContextV1` → frontmatter 序列化的 float/datetime 往返精度問題 — Slice D 決定「存單一 `seo_context_json` 欄位 via `model_dump(mode="json")`」而非攤平 frontmatter
+- T11. `_build_seo_block` 缺 token budget 控制（滿載 ~1500 tokens 放 system prompt 尾端）— Slice D 定義優先截斷順序（striking_distance > related_keywords > competitor_serp_summary）
+- T12. `keyword-research` 輸出未定義 `KeywordResearchOutputV1` Pydantic schema — 獨立 Issue，不在 ADR-009 scope，記 backlog
+- T13. GSC API quota 與 ADR-008 batch cron 共用 GCP project — ADR-008 Phase 2 實作 PR 時要設 quota alert
+
+**Grok 獨吹：**
+- T14. 3 個新 skill 觸發詞與既有 agent（Zoro / Brook chat）是否衝突 — Slice A/B/C 開 PR 前 grep `.claude/skills/*/frontmatter` 交叉檢查
+- T15. `secrets/*.json` 權限 chmod 600 — 已在 ADR §Secrets 寫明，Grok 點出是 reminder 無新 signal
+
+### Revised Slice Order（依 T4 調整）
+
+原 Open Items #5 的順序（Slice A → B → C → D）保留 A/B/D，C 延到 1.5 階段：
+
+| 原 | 改 | 內容 | 理由 |
+|---|---|---|---|
+| Slice A | Slice A（不變）| `SEOContextV1` schema + `shared/gsc_client.py` + `shared/schemas/site_mapping.py`（T5）+ GSC OAuth runbook | 核心基建 |
+| Slice B | Slice B（內容收斂）| `seo-keyword-enrich`（**只 GSC 來源**；DataForSEO 延後）+ `CannibalizationWarningV1`（T9 增預估）| 先驗證核心 pipeline 延遲（T1） |
+| Slice C | **Slice 1.5**（延後）| `seo-audit-post` + DataForSEO 整合 | T4 共識 — Phase 1 範疇太大 |
+| Slice D | Slice C（序號前移）| Brook compose `seo_context` opt-in + sanitization（T2）+ token budget（T11）+ serialization（T10）| 延遲評估依賴 Slice B 完成才能量 |
+
+### Grok review 品質評估
+
+Grok 回應 33 行（Claude 228 / Gemini 129），六個 section 結構完整、評分清楚，點出 2 個共識 blocker + 1 個反向信號（DataForSEO $50 sunk cost 被高估，是三家唯一對 ADR 樂觀的角度）。深度不及 Claude/Gemini，但作為「第三票確認」有效。**不重跑**。
+
+### ADR 層改動 vs 實作層處理
+
+- **ADR 現在要改**：T5（mapping 搬家）、T6（filter 順序）→ 在 D3 / Open Items #3 補說明
+- **Slice A PR 要注意**：T5 + T6（Slice A 就會動到）
+- **Slice B PR 要注意**：T1 benchmark（Slice B 完成後量 P95）、T9（擴 Cannibalization 預估）
+- **Slice C（原 D）PR 要注意**：T2 sanitization + T10 serialization + T11 token budget
+- **Phase 2 backlog**：T3 V2 migration playbook、T7 異步化、T8 rate limit middleware、T13 quota alert
+
+**這個 triangulation 的結論沒有 overriding 的 blocker 要求 ADR 退回重寫** — Gemini 4/10 的主因 T4（Phase 1 範疇）已由上方 Revised Slice Order 吸收，剩下 5 個共識 blocker 都能在 ADR 補說明 + 實作 PR review 覆蓋。
 
 ---
 
