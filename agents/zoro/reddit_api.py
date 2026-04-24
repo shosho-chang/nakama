@@ -104,7 +104,14 @@ def hot_in_health_subreddits(
         resp = httpx.get(
             url,
             params={"limit": min(limit, 100), "raw_json": 1},
-            headers={"User-Agent": "nakama-bot/1.0 (scout)"},
+            # Reddit 要求 UA 格式 `<platform>:<appID>:<version> (by /u/<user>)` —
+            # 泛用的「bot」字眼會被鎖 429。repo URL 當 contact。
+            headers={
+                "User-Agent": (
+                    "linux:tw.shosho.nakama.zoro-scout:1.0 "
+                    "(by https://github.com/shosho-chang/nakama)"
+                )
+            },
             timeout=10,
         )
         resp.raise_for_status()

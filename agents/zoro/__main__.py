@@ -1,12 +1,12 @@
 """Zoro CLI entrypoint.
 
 Usage:
-    python -m agents.zoro                    # backward-compat cron：scout 一次（publish 真的送）
-    python -m agents.zoro scout              # 同上，明確形式
+    python -m agents.zoro scout              # 跑 scout 一次（publish + record 真的送）
     python -m agents.zoro scout --dry-run    # 跑 pipeline 但不 publish、不 record
 
-Cron 裡掛 `python -m agents.zoro scout`（見 cron.conf）— legacy 無參數路徑保留給
-還沒更新 cron 的 VPS，避免 deploy 錯序時 cron 變 NotImplementedError。
+無 subcommand → print help 並 exit 2，**不** fallback 到 scout — 避免 CI / devbox
+誤打 `python -m agents.zoro` 就把訊息真的貼到 #brainstorm（code review N2 修正）。
+Cron 必須明確寫 `scout` subcommand（cron.conf 已這樣設）。
 """
 
 from __future__ import annotations
@@ -55,8 +55,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scout":
         return _cmd_scout(args)
 
-    # Legacy fallback: no subcommand → scout (publish 真送)
-    return _cmd_scout(argparse.Namespace(dry_run=False))
+    # 無 subcommand → print help + exit 2，不自動 scout（避免誤打觸發真 publish）
+    parser.print_help()
+    return 2
 
 
 if __name__ == "__main__":
