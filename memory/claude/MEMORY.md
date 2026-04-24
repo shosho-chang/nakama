@@ -113,5 +113,6 @@
 - [project_usopp_slice_c1_merged.md](project_usopp_slice_c1_merged.md) — PR #97 merged `05d35a4` 2026-04-24：daemon + signal + 3 件 follow-up
 - [project_usopp_slice_c2a_merged.md](project_usopp_slice_c2a_merged.md) — PR #101 merged `916b8eb` 2026-04-24：Docker WP E2E 黃金路徑 + live_wp marker；C2b 等 VPS 部署
 - [feedback_wp_base_url_convention.md](feedback_wp_base_url_convention.md) — `WP_*_BASE_URL` 不含 `/wp-json` 後綴；`_request()` 自己 append，double-path 會 404（mocked tests 看不到）
+- [feedback_slack_bot_bringup_gotchas.md](feedback_slack_bot_bringup_gotchas.md) — 新 agent Slack bot 沒反應時的三層診斷順序（gateway→Slack→handler），頭號坑是 Event Subscriptions 沒訂 app_mention
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
