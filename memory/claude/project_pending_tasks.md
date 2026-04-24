@@ -154,12 +154,19 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - 踩坑新 feedback：[feedback_defensive_vs_bug_fix_claim.md](feedback_defensive_vs_bug_fix_claim.md)（PR #123 reviewer 發現 rollback 原本就不 leak，claim 降級 defensive hardening）
 
 **桌機 2026-04-24 晚間 Part 2 session（Mac D1 + T1 並行）：**
-- 🚧 **PR #121 open** — test(robin): ingest.py 0% → 100%（60 tests，含 D/F 兩個 regression guard 補強 + B caplog 真驗）；code-review "no issues found"
-- 🚧 **PR #124 open** — docs(seo): ADR-009 multi-model triangulation（Gemini 4/10 / Grok 6/10 / Claude 通過；6 blockers 消化 → T5/T6 ADR body 改、T4 Revised Slice Order；`scripts/adr_multi_model_review.py` 加 skip-if-exists + dynamic date）
+- ✅ **PR #121 merged** — test(robin): ingest.py 0% → 100%（60 tests）。路上抓到 2 個 Linux CI 大小寫敏感 bug（slugify 保留大小寫但 test seed 用小寫），以 fix commit 解
+- ✅ **PR #124 merged** — docs(seo): ADR-009 multi-model triangulation（Gemini 4/10 / Grok 6/10 / Claude 通過；6 blockers 消化 → T5/T6 ADR body 改、T4 Revised Slice Order；`scripts/adr_multi_model_review.py` 加 skip-if-exists + dynamic date）
 
-**PR #111 review 找到 Mac 沒動的 follow-up（非 P0、可攢成 1 個 PR 或拆開做）：**
-- ⬜ GHA quota：3 matrix × 288/day ≈ 72 hr/month 超 private repo free tier 2000 min × 2 倍 — 改 1 job for-loop 3 URL 或拉 cron 到 10-min；runbook 補成本說明
-- ⬜ `curl --retry 0` 無 retry，single flaky 就發警報 — 建議加 2-3 次 with 10s sleep
-- ⬜ 持續 DOWN 每 5 分鐘重發 Slack DM 無 rate-limit — GHA cache 存 `last_alert_ts.json` + 30 分鐘 dedupe 視窗
-- ⬜ `simulate_down` 只能戳 1/3 target — 改 choice enum `[none, nakama, shosho, fleet, all]`
-- ⬜ `project_pending_tasks.md:106` 原「External uptime probe ✅」事實驅動違規（Mac 已在 PR #115 update）
+**2026-04-25 深夜 auto-mode session（修修睡覺前授權全 merge + 四任務）：**
+- ✅ PR #121/#124/#125/#116/#118/#119 全 merged（授權範圍）
+- 🚧 PR #126 open — `feat/external-probe-follow-ups`: PR #111 四 follow-up 一次收（Task A）
+  - Quota: 3-matrix → 單 job for-loop，省 ~66%
+  - `curl --retry 2 --retry-delay 10 --retry-all-errors`
+  - Slack DM per-target 30-min dedupe（`actions/cache`）
+  - `simulate_down` → choice enum `[none, nakama, shosho, fleet, all]`
+  - runbook 同步更新
+- 🚧 PR #127 open — `test/routers-franky-robin`: franky 94%→100% + robin 46%→77%（Task B，SSE events 留下輪）
+- 🚧 PR #<pending> — `chore/cleanup-gitignore-memory`: `.gitignore` 補 `.claude/scheduled_tasks.lock` + `.coverage` + memory pending_tasks reconcile（Task D）
+- 🚧 Task E — ADR-009 Phase 1 task prompts 草稿（純 design doc，讓下個 PR 落地有六要素 prompt 可用）
+
+**PR #111 review 找到的 follow-up**：已全部在 PR #126 收掉，見上。

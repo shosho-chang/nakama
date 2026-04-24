@@ -13,8 +13,14 @@ __pycache__/
 
 # Claude Code local settings (per-machine)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 *.swp
 *.swo
+
+# Coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
 
 # Config (generated)
 config/style-profile.json
