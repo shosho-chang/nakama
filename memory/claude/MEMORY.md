@@ -122,5 +122,7 @@
 - [feedback_slack_cjk_mrkdwn.md](feedback_slack_cjk_mrkdwn.md) — Slack `*bold*` 對 CJK 字元 leak 字面；agent 訊息走純口語或 blocks API，不靠 mrkdwn 粗體
 - [feedback_llm_compose_agent_messages.md](feedback_llm_compose_agent_messages.md) — Agent 對外訊息用 LLM compose with persona，別 Python template；$0.002/tick 忽略、品質+self-aware 差異大
 - [feedback_cron_vs_apscheduler_for_daily_agent.md](feedback_cron_vs_apscheduler_for_daily_agent.md) — Daily agent 用 Linux cron（沿用 Franky/backup pattern），不裝 APScheduler
+- [feedback_retime_text_search_failure_mode.md](feedback_retime_text_search_failure_mode.md) — hand SRT retime 不能走 text substring match，要走聲學 forced alignment
+- [feedback_structural_vs_functional_validation.md](feedback_structural_vs_functional_validation.md) — 字幕/圖/影音類交付物，結構不變量全綠不算完成，用戶實際播放/使用才是驗收
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
