@@ -4,6 +4,7 @@ description: SEO 方案範圍三用途：內容建議、現有部落格體檢、
 type: project
 created: 2026-04-18
 confidence: high
+originSessionId: 7a9274dd-50e3-4ba4-88fe-50199d5f4333
 ---
 修修 2026-04-18 拍板的下一個開發重點：keyword-research skill 完成後，進入 SEO solution。
 
@@ -34,3 +35,8 @@ confidence: high
 3. 獨立 prior-art-research: SEO audit + MCP 選型
 4. SEO skill 家族設計（可能 2-3 個 skill：`seo-audit-post`、`seo-keyword-enrich`、`seo-optimize-draft`）
 5. Brook compose 整合 — 寫草稿時吃 style profile + SEO skill 輸出
+
+**狀態**：
+- 2026-04-24 — prior-art 完成 ([docs/research/seo-prior-art-2026-04-24.md](../../docs/research/seo-prior-art-2026-04-24.md))
+- 2026-04-24 — ADR-009 architecture frozen ([docs/decisions/ADR-009-seo-solution-architecture.md](../../docs/decisions/ADR-009-seo-solution-architecture.md))；8 個 open questions 全收斂（3 skill / GSC 主源 / DataForSEO $50 / Sonnet for audit / SEOContextV1 凍結 / cannibalization 含 phase 1 / seo-optimize-draft 推 phase 2）
+- 下一步：Slice A PR（`SEOContextV1` schema + `shared/gsc_client.py` + GSC OAuth runbook），時程由修修決定
