@@ -310,28 +310,64 @@ _DEFAULT_MENTIONS = ["@Sanji", "@Robin"]
 
 
 def format_publish_message(topic: Topic, mentions: list[str] | None = None) -> str:
-    """組推題訊息。Zoro persona few-shot 過的格式：題目 + 訊號 + 邀請。"""
+    """Fallback template（用於 LLM compose 失敗時）。純文字無 markdown — Slack mrkdwn
+    對 CJK `*bold*` 判斷不穩，讓訊息長得一致。"""
     mentions = mentions or _DEFAULT_MENTIONS
     lines: list[str] = [
-        "🗡️ 有個話題值得討論一下。",
-        "",
-        f"*題目*：{topic.title}",
+        f"🗡️ {topic.title} 在 {topic.signals[0].source if topic.signals else '某處'} 熱起來。",
     ]
-    if topic.signals:
-        lines.append("")
-        lines.append("*訊號*：")
-        for s in topic.signals:
-            line = f"• {s.source}: velocity={s.velocity_score:.0f}"
-            if s.metadata:
-                kv = ", ".join(f"{k}={v}" for k, v in s.metadata.items())
-                line += f"（{kv}）"
-            lines.append(line)
+    if topic.velocity_score:
+        lines.append(
+            f"Velocity {topic.velocity_score:.0f}、relevance {topic.relevance_score:.2f}。"
+        )
     if topic.relevance_reason:
-        lines.append("")
-        lines.append(f"*為什麼值得討論*：{topic.relevance_reason}")
+        lines.append(topic.relevance_reason)
     lines.append("")
-    lines.append(f"{' '.join(mentions)} 願意各給一段觀點嗎？")
+    lines.append(f"{' '.join(mentions)} 看要不要聊？")
     return "\n".join(lines)
+
+
+def _build_compose_input(topic: Topic) -> str:
+    """把 Topic 的原始訊號打包成 compose prompt 的 user message。"""
+    lines: list[str] = [f"Topic: {topic.title}"]
+    if topic.relevance_score:
+        lines.append(f"Relevance judge score: {topic.relevance_score:.2f}")
+    if topic.relevance_reason:
+        lines.append(f"Relevance judge reason: {topic.relevance_reason}")
+    if topic.domain:
+        lines.append(f"Domain: {topic.domain}")
+    lines.append("")
+    lines.append("Signals:")
+    for s in topic.signals:
+        lines.append(f"- Source: {s.source}, velocity={s.velocity_score:.0f}")
+        for k, v in (s.metadata or {}).items():
+            lines.append(f"  {k}: {v}")
+    return "\n".join(lines)
+
+
+def compose_message(topic: Topic) -> str:
+    """用 Zoro 人格 LLM compose 自然口語的 Slack 訊息。
+
+    失敗（prompt 缺 / LLM 炸）→ fallback 到 `format_publish_message` 保底。
+    """
+    try:
+        system = load_prompt("zoro", "compose_message")
+    except FileNotFoundError:
+        logger.error("compose_message prompt missing, falling back to template")
+        return format_publish_message(topic)
+
+    user = _build_compose_input(topic)
+    try:
+        raw = ask(prompt=user, system=system, max_tokens=500)
+    except Exception as e:
+        logger.warning(f"compose_message LLM failed ({e}), falling back to template")
+        return format_publish_message(topic)
+
+    text = raw.strip()
+    # 保險：如果 LLM 忘了邀請，補上
+    if "@Sanji" not in text and "@Robin" not in text:
+        text = text.rstrip() + "\n\n@Sanji @Robin 看怎麼想？"
+    return text
 
 
 def publish_to_slack(
@@ -340,8 +376,13 @@ def publish_to_slack(
     channel: str,
     bot_token: str,
     mentions: list[str] | None = None,
+    use_llm_compose: bool = True,
 ) -> str | None:
-    """把 topic post 到指定 Slack channel。回傳 message ts，失敗回 None。"""
+    """把 topic post 到指定 Slack channel。回傳 message ts，失敗回 None。
+
+    use_llm_compose=True（預設）→ LLM 用 Zoro 人格寫自然口語訊息。
+    False → 走 `format_publish_message` fallback template。
+    """
     try:
         from slack_sdk import WebClient
     except ImportError:
@@ -349,7 +390,10 @@ def publish_to_slack(
         return None
 
     client = WebClient(token=bot_token)
-    text = format_publish_message(topic, mentions=mentions)
+    if use_llm_compose:
+        text = compose_message(topic)
+    else:
+        text = format_publish_message(topic, mentions=mentions)
     try:
         resp = client.chat_postMessage(channel=channel, text=text)
     except Exception as e:

@@ -183,47 +183,133 @@ def test_pick_best_topic_empty_returns_none():
     assert scout.pick_best_topic([]) is None
 
 
-# ── Format publish message ────────────────────────────────────────────────
+# ── Fallback template (format_publish_message) ────────────────────────────
 
 
-def test_format_publish_message_includes_topic_signals_mentions():
+def test_fallback_template_has_no_markdown_asterisks():
+    """Fallback 也不能有 *bold*（Slack CJK mrkdwn 會 leak `*` 當字面）。"""
     t = Topic(
         title="CGM for non-diabetics",
         normalized_keywords=["cgm"],
-        signals=[
-            Signal(
-                source="reddit", topic="CGM", velocity_score=75.0, metadata={"subs": "biohackers"}
-            )
-        ],
+        signals=[Signal(source="reddit", topic="CGM", velocity_score=75.0)],
         velocity_score=75.0,
+        relevance_score=0.85,
         relevance_reason="近期多篇研究",
     )
     msg = scout.format_publish_message(t, mentions=["@Sanji", "@Robin"])
+    assert "*" not in msg
     assert "CGM for non-diabetics" in msg
-    assert "reddit" in msg
-    assert "75" in msg
-    assert "近期多篇研究" in msg
     assert "@Sanji" in msg and "@Robin" in msg
+
+
+# ── compose_message (LLM path) ─────────────────────────────────────────────
+
+
+def test_build_compose_input_formats_signal_fields():
+    t = Topic(
+        title="running point",
+        normalized_keywords=["running", "point"],
+        signals=[
+            Signal(
+                source="trends",
+                topic="running point",
+                velocity_score=30.0,
+                metadata={"volume": 50000, "growth_pct": 300, "related": ["kate hudson"]},
+            )
+        ],
+        velocity_score=30.0,
+        relevance_score=0.75,
+        relevance_reason="跑步相關",
+        domain="運動",
+    )
+    text = scout._build_compose_input(t)
+    assert "running point" in text
+    assert "0.75" in text
+    assert "運動" in text
+    assert "trends" in text
+    assert "kate hudson" in text
+
+
+def test_compose_message_calls_llm_and_returns_output():
+    t = Topic(
+        title="cgm",
+        normalized_keywords=["cgm"],
+        signals=[Signal(source="trends", topic="cgm", velocity_score=80.0)],
+        velocity_score=80.0,
+        relevance_score=0.9,
+        relevance_reason="AJCN 多篇",
+        domain="飲食",
+    )
+    fake_output = "🗡️ cgm 熱起來。@Sanji @Robin 一人一段？"
+    with patch("agents.zoro.brainstorm_scout.ask", return_value=fake_output):
+        msg = scout.compose_message(t)
+    assert msg == fake_output
+
+
+def test_compose_message_falls_back_on_prompt_missing():
+    t = Topic(title="cgm", normalized_keywords=["cgm"], signals=[], velocity_score=80.0)
+    with patch(
+        "agents.zoro.brainstorm_scout.load_prompt",
+        side_effect=FileNotFoundError("missing"),
+    ):
+        msg = scout.compose_message(t)
+    # Fallback template includes title
+    assert "cgm" in msg
+    assert "@Sanji" in msg
+
+
+def test_compose_message_falls_back_on_llm_error():
+    t = Topic(title="cgm", normalized_keywords=["cgm"], signals=[], velocity_score=80.0)
+    with patch("agents.zoro.brainstorm_scout.ask", side_effect=RuntimeError("Anthropic 529")):
+        msg = scout.compose_message(t)
+    assert "cgm" in msg  # fallback 用到
+    assert "@Sanji" in msg
+
+
+def test_compose_message_appends_mentions_if_llm_forgot():
+    """LLM 偶爾忘了結尾 @Sanji @Robin — 保險要補上避免訊息無法觸發下游。"""
+    t = Topic(title="cgm", normalized_keywords=["cgm"], signals=[], velocity_score=80.0)
+    with patch("agents.zoro.brainstorm_scout.ask", return_value="🗡️ cgm 在 Trends 熱起來。"):
+        msg = scout.compose_message(t)
+    assert "@Sanji" in msg
+    assert "@Robin" in msg
 
 
 # ── publish_to_slack ──────────────────────────────────────────────────────
 
 
-def test_publish_to_slack_calls_web_client():
-    topic = Topic(title="t", normalized_keywords=[], signals=[])
+def test_publish_to_slack_uses_llm_compose_by_default():
+    topic = Topic(title="cgm", normalized_keywords=["cgm"], signals=[], velocity_score=80.0)
 
     fake_client = MagicMock()
     fake_client.chat_postMessage.return_value = {"ts": "1234.5678", "ok": True}
 
-    with patch("slack_sdk.WebClient", return_value=fake_client) as m_ctor:
+    with (
+        patch("slack_sdk.WebClient", return_value=fake_client),
+        patch("agents.zoro.brainstorm_scout.compose_message", return_value="🗡️ test @Sanji @Robin"),
+    ):
         ts = scout.publish_to_slack(topic, channel="C123", bot_token="xoxb-x")
 
-    m_ctor.assert_called_once_with(token="xoxb-x")
-    fake_client.chat_postMessage.assert_called_once()
     kwargs = fake_client.chat_postMessage.call_args.kwargs
-    assert kwargs["channel"] == "C123"
-    assert "t" in kwargs["text"]
+    assert kwargs["text"] == "🗡️ test @Sanji @Robin"
     assert ts == "1234.5678"
+
+
+def test_publish_to_slack_use_llm_compose_false_uses_fallback():
+    topic = Topic(title="cgm", normalized_keywords=["cgm"], signals=[], velocity_score=80.0)
+
+    fake_client = MagicMock()
+    fake_client.chat_postMessage.return_value = {"ts": "t", "ok": True}
+
+    with (
+        patch("slack_sdk.WebClient", return_value=fake_client),
+        patch("agents.zoro.brainstorm_scout.compose_message") as m_compose,
+    ):
+        scout.publish_to_slack(topic, channel="C", bot_token="x", use_llm_compose=False)
+
+    m_compose.assert_not_called()
+    kwargs = fake_client.chat_postMessage.call_args.kwargs
+    assert "cgm" in kwargs["text"]
 
 
 def test_publish_to_slack_swallows_exception():
@@ -232,10 +318,13 @@ def test_publish_to_slack_swallows_exception():
     fake_client = MagicMock()
     fake_client.chat_postMessage.side_effect = RuntimeError("channel_not_found")
 
-    with patch("slack_sdk.WebClient", return_value=fake_client):
+    with (
+        patch("slack_sdk.WebClient", return_value=fake_client),
+        patch("agents.zoro.brainstorm_scout.compose_message", return_value="msg"),
+    ):
         ts = scout.publish_to_slack(topic, channel="Cbad", bot_token="xoxb-x")
 
-    assert ts is None  # 失敗不 raise，回 None
+    assert ts is None
 
 
 # ── run() — full pipeline ────────────────────────────────────────────────
