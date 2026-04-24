@@ -108,4 +108,6 @@
 - [feedback_env_push_diff_before_overwrite.md](feedback_env_push_diff_before_overwrite.md) — scp `.env` 前必 diff key names；只 append 新 keys，別整份覆蓋
 - [project_nakama_backup_deployed.md](project_nakama_backup_deployed.md) — Nakama `state.db` daily 04:00 Taipei → R2 `nakama-backup` bucket 上線（PR #88）；retention 30d
 - [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md) — UptimeRobot free plan 三層坑（HEAD default / keyword 特殊字元 / CF Bot Fight Mode）CP 值差，優先用 GitHub Actions + Slack webhook
+- [project_usopp_slice_c1_merged.md](project_usopp_slice_c1_merged.md) — PR #97 merged `05d35a4` 2026-04-24：daemon + signal + 3 件 follow-up；剩 Slice C2 + VPS 部署
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
+- Session handoff doc：[docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素

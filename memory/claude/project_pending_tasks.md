@@ -9,6 +9,14 @@ confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 ---
+
+**Usopp Slice C1 merged（2026-04-24）：** PR #97 squash merged `05d35a4`
+- ✅ daemon loop + SIGTERM/SIGINT graceful shutdown + `update_post` fail-closed
+- ✅ `WordPressClient._site_id` → `.site_id` 公開化（PR #77 borderline C6）
+- ✅ 3 件 code-review follow-up（load_config / USOPP_* env drift / op_id in warning log）
+- ✅ 17 daemon unit tests
+- ⬜ VPS 部署（修修手動：systemd unit + .env push + git pull + service 啟動）
+
 **Nami 收尾（本次對話完成大部分，剩兩項）：**
 - ✅ PR #59：Deep Research deferred bug 3 個 + lint 修
 - ✅ PR #60：移除 Slack 回應的 `:tangerine: Nami` header
@@ -75,7 +83,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ xCloud 已改 daily + 15 天 retention（修修 2026-04-24 設定）
 
 **Phase 1 Wave 2（foundation 已合併，見 project_phase1_foundation_pr.md）：**
-- 🚧 VPS baseline 壓測 24h，2026-04-23 ~22:21 滿 → `ssh nakama-vps "python3 /home/nakama/scripts/vps_baseline_monitor.py --analyze"` 看 verdict
+- ✅ VPS baseline 壓測 24h（2026-04-24 analyze）：**GREEN** — CPU p95 2%, RAM p95 1.73GB (threshold 3GB), avail 低點 1.99GB, Load 1m p95 0.15. ADR-007 §6 門檻全過，Phase 1 full workload 可推進
 - ✅ `shared/gutenberg_validator.py`（ADR-005a §4）— PR #80 Mac session
 - ✅ `agents/brook/compose.py` + style_profile_loader + tag_filter + compliance_scan — PR #78 Mac session
 - ✅ `agents/usopp/publisher.py` + compliance + seopress_writer + litespeed_purge（PR #77 merged 2026-04-23）
@@ -86,7 +94,8 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ **External uptime probe**：UptimeRobot 2026-04-24 實測擱置（三坑 25+ 分鐘未轉綠，見 [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md)）→ 改做 GitHub Actions cron + Slack webhook（`.github/workflows/external-probe.yml`，~15 分鐘）
 - ⬜ docs/runbooks/uptimerobot-setup.md 需標記 deprecated 或加「三坑警告」（Keyword type / plain ASCII keyword / CF WAF skip rule）
 - ✅ `config/style-profiles/*.yaml` 三個 profile（PR #78/#79）
-- ⬜ Usopp Slice C — daemon loop + `/healthz` WP 連線檢查 + Docker WP 6.x staging E2E + LiteSpeed Day 1 實測
+- ✅ Usopp Slice C1 — daemon loop + signal + follow-ups（PR #97 merged 2026-04-24）；`/healthz` 加 WP 檢查項目 superseded by ADR-007 §4 probe_wp_site
+- ⬜ Usopp Slice C2 — Docker WP 6.x + SEOPress 9.4.1 staging E2E + LiteSpeed Day 1 實測 + runbook 定稿
 
 **Phase 1 foundation borderline follow-ups（6 項，全部完成）：**
 - ✅ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` + `foreign_keys=ON` 移到 `_get_conn()`（ADR-006 §5 四條 PRAGMA 收齊，PR #85 2026-04-23）
@@ -105,3 +114,9 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ PR #89 — gutenberg follow-ups：`_ast_depth` iterative stack（DoS-proof）+ find-and-preserve crossed recovery + `BlockNodeV1.content × children` XOR（Group A 三項）
 - ✅ PR #90 — approval_queue follow-ups：`UnknownPayloadVersionError` deprecation docstring + `ValidationError / JSONDecodeError / TypeError` soft-fail（borderline #2.5，Group B 兩項）
 - Follow-up backlog 全部清空
+
+**Mac 2026-04-24 晚間 session（桌機同時做 PR #97 Usopp Slice C1）：**
+- 分工 doc: [docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md)
+- 任務 A：LifeOS `tpl-project.md` + `tpl-action.md` 對齊 gold standard `Projects/肌酸的妙用.md`（純 vault，不碰 repo）
+- 任務 B：Franky `r2_backup_verify` 擴展 `nakama-backup` bucket freshness（48hr threshold）
+- 桌機進度：PR #97 merged `05d35a4` + 3 項 follow-up 一起
