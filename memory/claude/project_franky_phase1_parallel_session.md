@@ -26,7 +26,7 @@ CI baseline：740 → 805 tests，0 regression。
 
 ## 還沒做的事（修修手動 / 之後排）
 
-- **UptimeRobot 設定**：跑 [docs/runbooks/uptimerobot-setup.md](../../docs/runbooks/uptimerobot-setup.md)（~20 分鐘）
+- **External uptime probe**：2026-04-24 UptimeRobot 實測擱置（CF Bot Fight Mode + free plan HEAD default + keyword 特殊字元三坑，25+ 分鐘未轉綠）。改用 GitHub Actions cron + Slack webhook，見 [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md)。UptimeRobot 設好的 monitor 需手動刪（或留著免費忽略）。
 - **Dashboard 驗看**：`/bridge/franky` 登入實看，確認 4 張 probe 卡 + 24h alert list 美學沒跑掉
 - **Fleet `.tar.gz` 缺口**：xCloud 對 fleet 只有 DB dump，沒有整站 tarball；修修要去 xCloud console 檢查 fleet 的 Full Backup 有沒有開 file scope
 

@@ -82,7 +82,9 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ `shared/schemas/external/wordpress.py` + `external/seopress.py`（PR #73 Slice A）
 - ⬜ Bridge `/bridge/drafts` UI + routes + CLI fallback
 - ✅ `agents/franky/` 全三 slice（PR #74/#75/#76）
-- ✅ Franky VPS 上線（2026-04-24，含 PR #86/#87 修 env drift）— 剩 UptimeRobot 手動
+- ✅ Franky VPS 上線（2026-04-24，含 PR #86/#87 修 env drift）
+- ⬜ **External uptime probe**：UptimeRobot 2026-04-24 實測擱置（三坑 25+ 分鐘未轉綠，見 [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md)）→ 改做 GitHub Actions cron + Slack webhook（`.github/workflows/external-probe.yml`，~15 分鐘）
+- ⬜ docs/runbooks/uptimerobot-setup.md 需標記 deprecated 或加「三坑警告」（Keyword type / plain ASCII keyword / CF WAF skip rule）
 - ✅ `config/style-profiles/*.yaml` 三個 profile（PR #78/#79）
 - ⬜ Usopp Slice C — daemon loop + `/healthz` WP 連線檢查 + Docker WP 6.x staging E2E + LiteSpeed Day 1 實測
 

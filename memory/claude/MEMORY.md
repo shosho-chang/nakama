@@ -107,4 +107,5 @@
 - [feedback_date_filename_review_checklist.md](feedback_date_filename_review_checklist.md) — 新 daily-rotating path 必用 `ZoneInfo("Asia/Taipei")`；PR #67 precedent 多次重踩
 - [feedback_env_push_diff_before_overwrite.md](feedback_env_push_diff_before_overwrite.md) — scp `.env` 前必 diff key names；只 append 新 keys，別整份覆蓋
 - [project_nakama_backup_deployed.md](project_nakama_backup_deployed.md) — Nakama `state.db` daily 04:00 Taipei → R2 `nakama-backup` bucket 上線（PR #88）；retention 30d
+- [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md) — UptimeRobot free plan 三層坑（HEAD default / keyword 特殊字元 / CF Bot Fight Mode）CP 值差，優先用 GitHub Actions + Slack webhook
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
