@@ -32,6 +32,7 @@ import httpx
 import psutil
 
 from shared.log import get_logger
+from shared.r2_client import R2Client, R2Unavailable
 from shared.schemas.franky import (
     DEFAULT_FAIL_THRESHOLD,
     AlertV1,
@@ -57,6 +58,12 @@ NAKAMA_PROBE_TIMEOUT_S: float = 3.0
 
 # 預設本機 gateway URL；env override 讓 dev/CI 各自指向
 DEFAULT_NAKAMA_HEALTHZ_URL: str = "http://127.0.0.1:8000/healthz"
+
+# nakama-backup bucket freshness threshold. 超過此小時數 → sustained-state Critical（inline）。
+# 預設 48h：Nakama state.db daily 04:00 Taipei 備份，48h 代表連兩日都沒跑就報警。
+NAKAMA_BACKUP_STALE_THRESHOLD_HOURS: float = float(
+    os.getenv("FRANKY_NAKAMA_BACKUP_STALE_HOURS", "48")
+)
 
 
 AlertSink = Callable[[AlertV1], None]
@@ -369,6 +376,137 @@ def probe_nakama_gateway(
         )
 
 
+def probe_r2_backup_nakama(
+    now: datetime | None = None,
+) -> tuple[HealthProbeV1, list[AlertV1]]:
+    """Check nakama-backup R2 bucket freshness; emit Critical inline if >48h stale.
+
+    Sustained-state probe pattern (like probe_vps_resources): sampling itself never "fails";
+    inline Critical alerts fire directly when the backup is stale / empty — router dedup
+    controls repetition. Bypasses the 3-consecutive-fail gate because 48h is already its
+    own confirmation window (not a transient blip).
+
+    Transient network errors on list_objects return status='fail' WITHOUT an inline alert,
+    so _record_and_maybe_alert's 3-fail gate can still escalate persistent infra issues.
+
+    Env missing → skip with status='ok' + detail.skipped=True (dev / CI safety), mirrors
+    probe_wp_site's behavior.
+
+    Returns: (probe, list_of_inline_alerts) — same contract as probe_vps_resources.
+    """
+    now = now or _now()
+    started = time.monotonic()
+    inline_alerts: list[AlertV1] = []
+
+    try:
+        client = R2Client.from_nakama_backup_env()
+    except R2Unavailable as exc:
+        logger.info("r2_backup_nakama probe skipped (missing env): %s", exc)
+        return (
+            HealthProbeV1(
+                target="r2_backup_nakama",
+                status="ok",
+                checked_at=now,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                detail={"skipped": True, "reason": "missing_env"},
+            ),
+            [],
+        )
+
+    try:
+        objects = client.list_objects(prefix="", max_keys=50)
+    except R2Unavailable as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return (
+            HealthProbeV1(
+                target="r2_backup_nakama",
+                status="fail",
+                checked_at=now,
+                latency_ms=latency_ms,
+                error=f"list_objects failed: {exc}"[:200],
+                detail={"bucket": client.bucket},
+            ),
+            [],
+        )
+
+    op = _new_operation_id()
+    if not objects:
+        detail_msg = f"bucket={client.bucket} empty — daily state.db backup job failing?"
+        inline_alerts.append(
+            AlertV1(
+                rule_id="r2_backup_nakama_empty",
+                severity="critical",
+                title="nakama-backup bucket empty",
+                message=detail_msg,
+                fired_at=now,
+                dedup_key="r2_backup_nakama_empty",
+                operation_id=op,
+                context={"bucket": client.bucket},
+            )
+        )
+        return (
+            HealthProbeV1(
+                target="r2_backup_nakama",
+                status="fail",
+                checked_at=now,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                error="bucket empty",
+                detail={"bucket": client.bucket},
+            ),
+            inline_alerts,
+        )
+
+    latest = max(objects, key=lambda o: o.last_modified)
+    age_h = (now - latest.last_modified).total_seconds() / 3600
+    latency_ms = int((time.monotonic() - started) * 1000)
+    base_detail: dict[str, str | int | float | bool] = {
+        "bucket": client.bucket,
+        "latest_key": latest.key,
+        "latest_size": latest.size,
+        "age_hours": round(age_h, 2),
+    }
+
+    if age_h > NAKAMA_BACKUP_STALE_THRESHOLD_HOURS:
+        msg = (
+            f"latest={latest.key} is {age_h:.1f}h old "
+            f"(> {NAKAMA_BACKUP_STALE_THRESHOLD_HOURS}h threshold)"
+        )
+        inline_alerts.append(
+            AlertV1(
+                rule_id="r2_backup_nakama_stale",
+                severity="critical",
+                title="nakama-backup is stale",
+                message=msg,
+                fired_at=now,
+                dedup_key="r2_backup_nakama_stale",
+                operation_id=op,
+                context=base_detail,
+            )
+        )
+        return (
+            HealthProbeV1(
+                target="r2_backup_nakama",
+                status="fail",
+                checked_at=now,
+                latency_ms=latency_ms,
+                error=f"stale {age_h:.1f}h",
+                detail=base_detail,
+            ),
+            inline_alerts,
+        )
+
+    return (
+        HealthProbeV1(
+            target="r2_backup_nakama",
+            status="ok",
+            checked_at=now,
+            latency_ms=latency_ms,
+            detail=base_detail,
+        ),
+        [],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public entry — single cron tick
 # ---------------------------------------------------------------------------
@@ -442,6 +580,28 @@ def run_once(
     )
     if a is not None:
         alerts.append(a)
+
+    # 4. nakama-backup R2 freshness（inline Critical + 3-fail gate for transient errors only）
+    r2_nakama_probe, r2_nakama_alerts = probe_r2_backup_nakama(now=now)
+    probes.append(r2_nakama_probe)
+    for inline in r2_nakama_alerts:
+        sink(inline)
+        alerts.append(inline)
+    # Skip the N-fail gate when inline already fired (stale/empty path) — the explicit
+    # r2_backup_nakama_stale / _empty alert is already the right signal; the generic
+    # _unhealthy rule would just double-page 15 min later with a different dedup key.
+    # Still upsert state so the Bridge dashboard sees consecutive_fails accurately.
+    if r2_nakama_alerts:
+        _upsert_probe_state(r2_nakama_probe, consecutive_fails=fail_threshold)
+    else:
+        a = _record_and_maybe_alert(
+            r2_nakama_probe,
+            operation_id=operation_id,
+            alert_sink=sink,
+            fail_threshold=fail_threshold,
+        )
+        if a is not None:
+            alerts.append(a)
 
     duration_ms = int((time.monotonic() - started) * 1000)
     logger.info(

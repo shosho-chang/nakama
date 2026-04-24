@@ -12,9 +12,9 @@ Franky is Nakama's infrastructure watchdog. It probes VPS resources, WordPress s
 
 | Module | What it does |
 |---|---|
-| `agents/franky/health_check.py` | 5-min cron probe: VPS / WP×2 / Nakama gateway, 3-consecutive-fail state machine |
+| `agents/franky/health_check.py` | 5-min cron probe: VPS / WP×2 / Nakama gateway / nakama-backup freshness, 3-consecutive-fail state machine + sustained-state inline Critical |
 | `agents/franky/alert_router.py` | Dedup via `alert_state` table (ADR-007 §4), dispatch to Slack |
-| `agents/franky/r2_backup_verify.py` | Daily probe of R2 backups; 連 2 日失敗 → Critical |
+| `agents/franky/r2_backup_verify.py` | Daily probe of xCloud R2 backups; 連 2 日失敗 → Critical |
 | `agents/franky/slack_bot.py` | `slack_sdk` wrapper, DM to `SLACK_USER_ID_SHOSHO`, no-op stub when env missing; `post_alert` + `post_plain` surfaces |
 | `agents/franky/weekly_digest.py` | Monday 10:00 Slack DM — 5 sections (VPS / cron / alerts / backup / cost), pure template, no LLM |
 | `thousand_sunny/routers/franky.py` | `GET /healthz` (Slice 1) + `GET /bridge/franky` dashboard (Slice 3) |
@@ -33,10 +33,12 @@ Franky is Nakama's infrastructure watchdog. It probes VPS resources, WordPress s
 | `NAKAMA_HEALTHZ_URL` | optional | Override loopback probe URL; defaults to `http://127.0.0.1:8000/healthz` |
 | `WP_SHOSHO_{BASE_URL,USERNAME,APP_PASSWORD}` | optional | When set, Franky probes shosho.tw health |
 | `WP_FLEET_{BASE_URL,USERNAME,APP_PASSWORD}` | optional | When set, Franky probes fleet.shosho.tw health |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | optional‡ | Backup verification; missing → status=missing, no alert on first day |
-| `FRANKY_R2_PREFIX` | optional | Object prefix filter (e.g. `daily/`); default = "" |
-| `FRANKY_R2_STALE_HOURS` | optional | Latest snapshot age threshold; default = 25h |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | optional‡ | xCloud backup verification; missing → status=missing, no alert on first day |
+| `FRANKY_R2_PREFIX` | optional | xCloud object prefix filter (e.g. `daily/`); default = "" |
+| `FRANKY_R2_STALE_HOURS` | optional | xCloud latest snapshot age threshold; default = 25h |
 | `FRANKY_R2_MIN_SIZE_BYTES` | optional | Below this = `too_small`; default = 1 MiB |
+| `NAKAMA_R2_BACKUP_BUCKET` (+ optional `NAKAMA_R2_ACCESS_KEY_ID` / `NAKAMA_R2_SECRET_ACCESS_KEY`) | optional‡ | 5-min probe of the Nakama self-backup bucket; missing → probe skips silently (dev safety) |
+| `FRANKY_NAKAMA_BACKUP_STALE_HOURS` | optional | nakama-backup staleness threshold; default = 48h, > threshold emits Critical inline |
 
 † Dev + CI run without Slack env; stub logs the alert.
 ‡ Dev + CI run without R2 env; verify returns `status=missing` with no alert unless 2 consecutive day failures are in the local DB.
@@ -115,7 +117,8 @@ Corrupt state rows (unparseable `suppress_until`) degrade safely to "send again"
 | `run_once()` total wall time | p95 < 30 s | captured in result `duration_ms` |
 | `/healthz` response time | p95 < 200 ms | TestClient + uptime probe |
 | Alert dedup correctness | same `dedup_key` within 15 min → 1 Slack DM | manual Slack audit |
-| R2 backup freshness | daily snapshot ≤ 25h old | `r2_backup_checks.status = 'ok'` ratio |
+| xCloud R2 backup freshness | daily snapshot ≤ 25h old | `r2_backup_checks.status = 'ok'` ratio |
+| nakama-backup R2 freshness | latest state.db snapshot ≤ 48h old | `health_probe_state` target=`r2_backup_nakama`, `last_status='ok'` ratio |
 
 ---
 

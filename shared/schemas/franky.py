@@ -30,6 +30,7 @@ ProbeTarget = Literal[
     "wp_shosho",
     "wp_fleet",
     "nakama_gateway",
+    "r2_backup_nakama",
 ]
 
 # 連續失敗門檻：跨過後升 Critical。ADR-007 §8 三連 fail 才升告警。
