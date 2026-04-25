@@ -205,3 +205,24 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 **2026-04-25 晚 Mac Bridge mutation session（桌機 Slice C + Robin Reader 並行）：**
 - 🟡 **PR #140 open 2026-04-25** — `feat(bridge)`: drafts queue mutation endpoints (approve/reject/edit/requeue)。FSM 擴 `pending → rejected` + `failed → pending` 兩條邊（`ALL_STATUSES` 不動，DB CHECK 不需 migration）；`transition()` 加 `clear_failure` 參數讓 requeue 是單一 atomic UPDATE；新 `update_payload()` helper（recompute denorm + TOCTOU guard）；UI 用 native `<dialog>` modal 無 JS framework；status-aware action panel（pending/in_review→3 button、failed→requeue、其他→read-only note）+ ERROR LOG box 一眼看到 retry_count；13 new tests / 1208 既有全綠。**Drafts UI Phase 2 backlog 4 項一次收齊 (a)/(c)/(d)/(e)**。Test plan 留給修修瀏覽器 smoke
 - ✅ **vault legacy templates 清理完成 2026-04-25**：3 個 dispatcher 遷移前 template (`tpl-new-project.md` / `tpl-project-podcast.md` / `tpl-project-youtube.md`) → osascript 送 Mac 回收桶；vault `CLAUDE.md` L259 改寫為 `tpl-project.md`（dispatcher）+ 註明自動 include partial 行為；`project_lifeos_template_drift.md` 標 FULLY RESOLVED。Templater quick-switcher 不再列 legacy → 修修不會誤選舊 frontmatter shape
+
+**2026-04-25 dual-window session 大收尾（9 個 PR 全 merged）：**
+- ✅ #136 Bridge drafts UI scaffolding / ✅ #137 approval_queue count_by_status / ✅ #138 SEO enrich follow-ups
+- ✅ #139 Brook SEO Slice C compose / ✅ #140 Bridge drafts mutations
+- ✅ **#141 Robin Reader meta-card pills + DOI/PMID** — 拆 PR：原含 paste-image 但 user 想不到 use case 砍掉，留純 meta-card +13 lines。教訓 [feedback_todo_needs_use_case.md](feedback_todo_needs_use_case.md) 寫 todo 必附 use case
+- ✅ #142 kb-search skill / ✅ #143 Nami pubmed_lookup
+- ✅ **#144 keyword-research v1.1**（Item 6/1/3/2 收）— closes #33 partial。實測 cost emit：2,573 in / 2,606 out / $0.0468 / 45.6s
+- ⬜ **GH issue #33 Item 4 (reddit_zh query 精度) + Item 5 (twitter_zh zh-TW 分流)** 留 Phase B（要實跑 API 對若干 health topic 看 query 結果，較重）
+- 教訓三條進 main：[feedback_todo_needs_use_case.md](feedback_todo_needs_use_case.md) / [feedback_shared_tree_devserver_collision.md](feedback_shared_tree_devserver_collision.md) / [feedback_worktree_session_hygiene.md](feedback_worktree_session_hygiene.md)（既有的 dual_window 加 cross-link）
+- Window B worktree session 完美收尾：worktree 隔離有效（feedback_dual_window_worktree.md hold），最後 `git worktree remove` + 刪 stale local branch 清乾淨
+
+**Vault ingest 工程 baseline（下波待開）：**
+- 詳見 [project_vault_ingest_flow_drift_2026_04_25.md](project_vault_ingest_flow_drift_2026_04_25.md) — 5 條流程想像 vs 實作對齊度 + 3 條 schema drift
+- 桌機 / VPS compute tier 分工：[feedback_compute_tier_split.md](feedback_compute_tier_split.md)
+- 整本教科書 ingest 缺口：[project_textbook_ingest_design_gap.md](project_textbook_ingest_design_gap.md)（Chopper 開發前要凍結）
+- 修修打算把 ingest 流程畫成 IA diagram：mermaid 起手 → Claude Design 美學迭代 → `docs/diagrams/vault-ingest-flow.md`（待修修確認資訊正確再 commit）
+- ⬜ Daily digest 補 `content_nature` / `lang` / `doi` 欄位（schema drift 治本，小 PR 規模）
+- ⬜ Reader 翻譯按鈕設計分歧（修修以為 reader 內按需翻譯、實作是 ingest 預翻譯 + toggle）— 待設計討論
+- ⬜ Chrome Extension 一鍵剪 → thousand_sunny（後端 API 都有，缺 plugin shell）
+- ⬜ EPUB / Word parser（中文帶圖）— 完全沒實作
+- ⬜ Translator A/B 試 Opus 4.7（cost vs Sonnet quality）— 一篇就能驗
