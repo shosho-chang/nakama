@@ -37,7 +37,7 @@ target_site: wp_shosho           # optional; defaults to "wp_shosho"
 
 **Output** — `SEOContextV1` markdown:
 
-```markdown
+````markdown
 ---
 type: seo-context
 schema_version: 1
@@ -69,7 +69,7 @@ source_keyword_research_path: …/morning-coffee-sleep.md
 - Primary keyword: ...
 - Striking distance: N opportunities (...)
 - Cannibalization: K warnings (...)
-```
+````
 
 The JSON block is the source of truth for downstream consumers and **MUST**
 round-trip through `SEOContextV1.model_validate_json()`.

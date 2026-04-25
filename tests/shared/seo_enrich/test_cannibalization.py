@@ -334,6 +334,35 @@ def test_recommendation_within_schema_limit() -> None:
     assert all(len(w.recommendation) <= 500 for w in warnings)
 
 
+def test_recommendation_low_topic_cluster_long_tail() -> None:
+    """Long-tail topic cluster（1 dominant + N tail，全部 share 都過 min_impressions
+    但 < significant_urls_share）會走 'low' 分支；所有 loser URL 串接時長度若無上限
+    會撞上 schema max_length=500（regression for ultrareview bug_003 — 早期版本把
+    `losers_txt` 全 join，topic cluster shape 直接讓 pydantic ValidationError 中斷
+    enrich pipeline）。"""
+    base_url = "https://shosho.tw/2024/01/morning-coffee-and-sleep-quality-deep-dive"
+    # top_share = 1000/1400 ≈ 0.71 ≥ dominant (0.70); each loser 50/1400 ≈ 0.036
+    # < significant (0.20) → significant_count == 1 < 3 → severity == "low".
+    rows = [_row("morning coffee sleep", base_url, 1000)]
+    for i in range(8):
+        rows.append(
+            _row(
+                "morning coffee sleep",
+                f"https://shosho.tw/2023/{i:02d}/competing-page-with-similar-topic-{i}",
+                50,
+            )
+        )
+    warnings = detect_cannibalization(rows)
+    assert len(warnings) == 1
+    w = warnings[0]
+    assert w.severity == "low"
+    assert len(w.recommendation) <= 500
+    # competing_urls 仍保留完整列表（資訊不丟）；recommendation 只截顯示文字。
+    assert len(w.competing_urls) == 9
+    # 截斷文案應提到還有更多頁
+    assert "等" in w.recommendation
+
+
 @pytest.mark.parametrize(
     ("share_top", "share_other", "expected"),
     [

@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from shared.schemas.publishing import CannibalizationWarningV1
 
@@ -154,7 +155,16 @@ def _build_recommendation(
     """產出繁中 recommendation；簡短、actionable、不超 500 字（schema 限制）。"""
     if severity == "low":
         losers = [u for u in competing_urls if u != top_url]
-        losers_txt = "、".join(losers) if losers else "次要頁"
+        # competing_urls 個別可達 2048 字、long-tail topic cluster 常 5+ losers，
+        # 全列出去極易撞上 recommendation max_length=500。只顯示前 2 個 + 餘量計數。
+        shown = losers[:2]
+        extra = len(losers) - len(shown)
+        if not losers:
+            losers_txt = "次要頁"
+        elif extra > 0:
+            losers_txt = "、".join(shown) + f"…等 {len(losers)} 頁"
+        else:
+            losers_txt = "、".join(shown)
         return (
             f"主頁 {top_url} 佔大宗流量；建議將 {losers_txt} 內連指回主頁，"
             "或在次要頁加 canonical 指向主頁，避免稀釋 ranking signal。"
@@ -228,14 +238,25 @@ def detect_cannibalization(
         severity = _classify_severity(shares, cfg)
         recommendation = _build_recommendation(severity, competing_urls, top_url)
 
-        warnings.append(
-            CannibalizationWarningV1(
-                keyword=keyword,
-                competing_urls=competing_urls,
-                severity=severity,  # type: ignore[arg-type]
-                recommendation=recommendation,
+        # Honour the docstring promise of "不會 raise validation error":
+        # if a pathological row makes it past `_build_recommendation`'s
+        # truncation (e.g. two URLs each near 2 KB), drop just that warning
+        # rather than aborting the whole enrich pipeline.
+        try:
+            warnings.append(
+                CannibalizationWarningV1(
+                    keyword=keyword,
+                    competing_urls=competing_urls,
+                    severity=severity,  # type: ignore[arg-type]
+                    recommendation=recommendation,
+                )
             )
-        )
+        except ValidationError as exc:
+            logger.warning(
+                "cannibalization warning skipped for keyword=%r: %s",
+                keyword,
+                exc,
+            )
 
     # severity 降序 → high 在前；同 severity 內 keyword 穩定排序
     warnings.sort(key=lambda w: (_SEVERITY_ORDER[w.severity], w.keyword))

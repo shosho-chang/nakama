@@ -105,16 +105,15 @@ Accept "go" / "確認" / "ok"; reject → return to scope adjustment.
 
 ### Step 4: Invoke enrich.py
 
-Build the command:
+Build the command (run from repo root; the script auto-prepends the repo
+root to `sys.path` so `shared.*` imports resolve regardless of cwd):
 
 ```bash
-python -m .claude.skills.seo-keyword-enrich.scripts.enrich \
+python .claude/skills/seo-keyword-enrich/scripts/enrich.py \
     --input "<kw_research_path>" \
     --output-dir "<out_dir>" \
     [--dry-run]
 ```
-
-Or equivalent `python .claude/skills/seo-keyword-enrich/scripts/enrich.py`.
 
 `--dry-run` skips the real GSC call and prints the query payload for
 debugging — use when diagnosing auth / property issues.

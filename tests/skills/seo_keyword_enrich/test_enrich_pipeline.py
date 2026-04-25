@@ -356,6 +356,35 @@ def test_build_seo_context_related_cap(tmp_path: Path) -> None:
     assert len(ctx.related_keywords) == enrich_mod._MAX_RELATED_KEYWORDS
 
 
+def test_select_primary_metric_skips_malformed_rows() -> None:
+    """`_select_primary_metric` must skip rows missing `keys` / with `keys=None` /
+    `keys=[]` rather than `KeyError`/`TypeError`/`IndexError` (regression for
+    ultrareview bug_005 — earlier guard `(r.get("keys") or [""])` was
+    structurally broken because the truthy fallback never got indexed; the next
+    clause re-indexed the original dict and crashed on missing/None/empty)."""
+    rows: list[dict[str, Any]] = [
+        {"impressions": 100, "clicks": 5, "position": 8.0},  # no `keys` at all
+        {"keys": None, "impressions": 50, "clicks": 1, "position": 12.0},
+        {"keys": [], "impressions": 50, "clicks": 1, "position": 12.0},
+        _gsc_row("tiny", "https://shosho.tw/p", clicks=10, impressions=200, position=8.0),
+    ]
+    metric = enrich_mod._select_primary_metric(rows, "tiny")
+    assert metric is not None
+    assert metric.keyword == "tiny"
+    assert metric.impressions == 200
+
+
+def test_select_primary_metric_returns_none_when_only_malformed() -> None:
+    """All-malformed input → `None`, no exception (mirror of
+    `test_malformed_row_skipped` precedent for cannibalization)."""
+    rows: list[dict[str, Any]] = [
+        {},
+        {"keys": None},
+        {"keys": []},
+    ]
+    assert enrich_mod._select_primary_metric(rows, "anything") is None
+
+
 def test_build_seo_context_clamps_low_position(tmp_path: Path) -> None:
     """GSC can return avg_position < 1.0; must clamp into schema range."""
     rows = [_gsc_row("tiny", "https://shosho.tw/p", clicks=0, impressions=1, position=0.5)]
@@ -509,6 +538,34 @@ def test_enrich_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert ctx.target_site == "wp_shosho"
     assert ctx.primary_keyword is not None
     assert ctx.primary_keyword.keyword == "晨間咖啡 睡眠"
+
+
+def test_enrich_generated_at_uses_injected_now_fn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`enrich()` must forward `now_fn` to `build_seo_context` so
+    `SEOContextV1.generated_at` is deterministic for tests / replay
+    (regression for ultrareview bug_001 — earlier code hardcoded
+    `lambda: datetime.now(tz=timezone.utc)` and shadowed the injection)."""
+    monkeypatch.setenv("GSC_PROPERTY_SHOSHO", "sc-domain:shosho.tw")
+    input_path = tmp_path / "kw.md"
+    input_path.write_text(_kw_research_md(), encoding="utf-8")
+    output_dir = tmp_path / "out"
+
+    pinned = datetime(2026, 4, 26, 3, 0, 0, tzinfo=timezone.utc)
+
+    def _pinned_now() -> datetime:
+        return pinned
+
+    out_path = enrich_mod.enrich(
+        input_path=input_path,
+        output_dir=output_dir,
+        client=_fake_client([]),
+        now_fn=_pinned_now,
+    )
+    md = out_path.read_text(encoding="utf-8")
+    ctx = SEOContextV1.model_validate_json(_extract_json_block(md))
+    assert ctx.generated_at == pinned
 
 
 def test_enrich_filename_uses_taipei_tz(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -35,25 +35,34 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-import yaml
+# Make the repo root importable so `python <this-file>.py` works from any cwd
+# (the skill is invoked outside any installed package; without this, `from
+# shared.* import …` raises `ModuleNotFoundError` because `sys.path[0]` is the
+# script directory, not the repo root).
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-from shared.gsc_client import GSCClient
-from shared.log import get_logger
-from shared.schemas.publishing import (
+import yaml  # noqa: E402
+
+from shared.gsc_client import GSCClient  # noqa: E402
+from shared.log import get_logger  # noqa: E402
+from shared.schemas.publishing import (  # noqa: E402
     KeywordMetricV1,
     SEOContextV1,
     TargetSite,
 )
-from shared.seo_enrich.cannibalization import (
+from shared.seo_enrich.cannibalization import (  # noqa: E402
     detect_cannibalization,
     load_cannibalization_thresholds,
 )
-from shared.seo_enrich.striking_distance import filter_striking_distance
+from shared.seo_enrich.striking_distance import filter_striking_distance  # noqa: E402
 
 logger = get_logger("nakama.seo_enrich.pipeline")
 
@@ -318,13 +327,13 @@ def _select_primary_metric(
     Returns `None` if the keyword has no GSC rows.
     """
     target = primary_keyword.strip().casefold()
-    matched = [
-        r
-        for r in rows
-        if (r.get("keys") or [""])
-        and isinstance(r["keys"][0], str)
-        and r["keys"][0].strip().casefold() == target
-    ]
+    matched: list[dict[str, Any]] = []
+    for r in rows:
+        keys = r.get("keys") or []
+        if not keys or not isinstance(keys[0], str):
+            continue
+        if keys[0].strip().casefold() == target:
+            matched.append(r)
     if not matched:
         return None
 
@@ -546,7 +555,7 @@ def enrich(
         target_site=target_site,
         primary_keyword=parsed.primary_keyword,
         source_path=input_path,
-        now_fn=lambda: datetime.now(tz=timezone.utc),
+        now_fn=now_fn,
     )
     md = render_output_markdown(ctx)
 
