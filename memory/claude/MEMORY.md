@@ -19,8 +19,8 @@
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
 - [feedback_skill_design_principle.md](feedback_skill_design_principle.md) — Skill 三層架構：互動式 workflow→skill、確定性函式→shared/*.py、agent 只做觸發/編排；skill 粒度扁平、通常 agent-specific
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
-- [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/seo-prior-art-2026-04-24.md
-- Research doc：[docs/research/seo-prior-art-2026-04-24.md](../../docs/research/seo-prior-art-2026-04-24.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
+- [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/2026-04-24-seo-prior-art.md
+- Research doc：[docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_worktree_session_hygiene.md](feedback_worktree_session_hygiene.md) — worktree 用主 tree venv 絕對路徑 + 收尾 fetch 不 checkout main + bash cwd 不持久
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
@@ -80,6 +80,8 @@
 - [feedback_fsm_audit_columns_actor_check.md](feedback_fsm_audit_columns_actor_check.md) — FSM transition 寫 reviewer/audit 欄位要看 from_status，不能只看 to_status；同 to_status 不同來源（人類 vs cron）語意相反
 - [reference_bridge_ui_mutation_pattern.md](reference_bridge_ui_mutation_pattern.md) — Bridge UI mutation 範式：cookie auth + form post + 303 + native `<dialog>` modal，無 JS framework；PR #140 reference 實作
 - [feedback_ask_on_architecture.md](feedback_ask_on_architecture.md) — UX/產品架構決策（用戶直接可見的差異）先問再動手，不自行決定
+- [feedback_decision_questionnaire.md](feedback_decision_questionnaire.md) — ≥2 個未決選項要拍板時開獨立 docs/plans/*-decisions-{date}.md（checkbox + comment），不混在 chat / PR description
+- [feedback_doc_naming_date_prefix.md](feedback_doc_naming_date_prefix.md) — 時間性 doc（plans/research/task-prompts）走 YYYY-MM-DD-{topic}.md 前置；runbooks/diagrams/principles/ADR 不加日期
 - [feedback_todo_needs_use_case.md](feedback_todo_needs_use_case.md) — 寫 todo / pending_tasks 必附「我什麼時候會用」use case，沒寫的 todo 拿來開做會 over-build（PR #141 paste-image 教訓）
 - [feedback_shared_tree_devserver_collision.md](feedback_shared_tree_devserver_collision.md) — 修修跑 uvicorn --reload + 我 git checkout 會 mtime 觸發 reload 看到不對版本；解法走 worktree 隔離
 - [feedback_compute_tier_split.md](feedback_compute_tier_split.md) — 重 ingest 桌機（GPU+64GB）/ 輕 query VPS（2vCPU/4GB）分工；vault 同步介面；新功能設計前先決定落點
@@ -146,4 +148,7 @@
 - [feedback_count_vs_list_len.md](feedback_count_vs_list_len.md) — UI badge/stat 用專屬 `count_*()` 走 `SELECT COUNT(*)`，不要 `len(list_*())` — list API 通常有 LIMIT 預設值會 silent 封頂
 - [feedback_vps_deploy_smoke_browser.md](feedback_vps_deploy_smoke_browser.md) — nakama.shosho.tw 全域 CF SBFM 擋 curl 全 403（含已上線 route），VPS deploy smoke 要修修瀏覽器；self-verify 走 ssh+systemctl+journalctl 或 127.0.0.1 直連 uvicorn
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
-- Session handoff doc：[docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
+- Session handoff doc：[docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
+- [project_quality_uplift_in_flight.md](project_quality_uplift_in_flight.md) — 9-phase quality uplift 5/9 完成（PR #146/147/152/154/157 OPEN）；A-bar 進度 + 修修 manual + Phase 4-8 ordering
+- [project_quality_uplift_review_2026_04_25.md](project_quality_uplift_review_2026_04_25.md) — 5 PR review verdict + 3 critical 已修 + 待修 major/minor 清單 + merge 順序建議
+- [feedback_subagent_shared_worktree.md](feedback_subagent_shared_worktree.md) — 並行 sub-agent 必開 `git worktree`，不可共用主 worktree（5-PR review 踩坑教訓）
