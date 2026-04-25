@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Draft DR-{{ '%04d'|format(draft.id) }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-2:    #2a2a2a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-t-micro: 10px; --nk-t-xs: 11px; --nk-t-sm: 12px;
+  --nk-t-base: 14px;  --nk-t-md: 16px; --nk-t-lg: 19px;
+  --nk-r-2: 2px;
+  --nk-border:      1px solid var(--nk-rule);
+  --nk-border-hair: 1px solid var(--nk-hairline);
+  --nk-dur-fast: 80ms;
+  --nk-dur-base: 140ms;
+  --nk-ease-out: cubic-bezier(0.2,0.7,0.2,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { min-height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: var(--nk-t-base);
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chassis {
+  background: var(--nk-chassis); color: var(--nk-chassis-fg);
+  padding: 0 40px; height: 48px;
+  display: flex; align-items: center; gap: 32px;
+  flex-shrink: 0; border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot {
+  width: 14px; height: 14px;
+  border: 2px solid var(--nk-chassis-fg); border-radius: 50%;
+  position: relative;
+}
+.chassis-dot::after {
+  content: ''; position: absolute; inset: 3px;
+  background: var(--nk-signal); border-radius: 50%;
+}
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-version  { font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-chassis-fg-2); letter-spacing: 0.08em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+.chassis-meta { display: flex; gap: 20px; font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-chassis-fg-2); }
+.chassis-meta .val { color: #fff; }
+
+/* Page header */
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: var(--nk-border);
+  padding: 18px 40px;
+  flex-shrink: 0;
+}
+.crumb {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+  margin-bottom: 8px;
+}
+.crumb a {
+  color: var(--nk-ink-2);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.crumb a:hover { color: var(--nk-ink); border-bottom-color: var(--nk-rule); }
+.crumb .sep { margin: 0 8px; color: var(--nk-rule); }
+.headline {
+  display: flex; align-items: baseline; gap: 14px;
+}
+.draft-id-big {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink-3);
+  letter-spacing: 0.12em;
+}
+.title-text {
+  font-family: var(--nk-font-display);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  line-height: 1.25;
+}
+.title-text.is-broken { color: var(--nk-ink-2); font-style: italic; }
+
+/* Status chip — same vocabulary as drafts.html */
+.status-chip {
+  display: inline-block;
+  font-family: var(--nk-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  padding: 3px 7px;
+  text-transform: uppercase;
+  border-radius: 0;
+}
+.chip-pending   { background: var(--nk-signal);   color: #fff; }
+.chip-in-review { background: var(--nk-amber);    color: #fff; }
+.chip-broken    { border: 1px dashed var(--nk-ink-2); color: var(--nk-ink-2); }
+
+.compliance-warn {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--nk-crimson);
+  background: var(--nk-panel-2);
+  font-size: 12px;
+  color: var(--nk-ink-2);
+  font-family: var(--nk-font-mono);
+}
+.compliance-warn .label {
+  color: var(--nk-crimson);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-right: 8px;
+}
+
+/* Body */
+.body-pane {
+  flex: 1;
+  padding: 22px 40px 60px;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 28px;
+}
+
+.section {
+  background: var(--nk-panel);
+  border: var(--nk-border);
+  margin-bottom: 18px;
+}
+.section-header {
+  padding: 12px 18px;
+  border-bottom: var(--nk-border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.section-title {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+}
+.section-body { padding: 16px 18px; }
+
+.kv-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  padding: 8px 0;
+  border-bottom: 1px dotted var(--nk-hairline);
+  font-size: 12px;
+  align-items: baseline;
+}
+.kv-row:last-child { border-bottom: none; }
+.kv-key {
+  font-family: var(--nk-font-mono);
+  color: var(--nk-ink-2);
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+}
+.kv-val {
+  font-family: var(--nk-font-mono);
+  color: var(--nk-ink);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+.kv-val.is-prose { font-family: var(--nk-font-sans); font-size: 13px; }
+
+.payload-pre {
+  background: var(--nk-bench);
+  border: var(--nk-border-hair);
+  padding: 14px 16px;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--nk-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 540px;
+  overflow-y: auto;
+}
+
+/* Action panel (right) */
+.action-section { position: sticky; top: 24px; }
+.action-button {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 12px 16px;
+  cursor: not-allowed;
+  border-radius: var(--nk-r-2);
+  margin-bottom: 8px;
+  position: relative;
+}
+.action-button .key { font-size: 9px; color: var(--nk-muted); letter-spacing: 0.14em; }
+.action-button:disabled { opacity: 0.55; }
+.action-approve {
+  background: var(--nk-ink); color: #fff; border: none;
+}
+.action-reject {
+  background: transparent; color: var(--nk-crimson);
+  border: 1px solid var(--nk-crimson);
+}
+.action-edit {
+  background: transparent; color: var(--nk-ink-2);
+  border: var(--nk-border);
+}
+.phase-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--nk-amber);
+  background: var(--nk-panel-2);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--nk-ink-2);
+}
+.phase-note .label {
+  color: var(--nk-amber);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.parse-error-box {
+  border-left: 3px solid var(--nk-crimson);
+  background: var(--nk-panel-2);
+  padding: 14px 16px;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink-2);
+  margin-bottom: 18px;
+}
+.parse-error-box .label {
+  color: var(--nk-crimson);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+}
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
+</style>
+</head>
+<body>
+
+<div class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+    <div class="chassis-version">v0.4</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts" class="active">DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
+  </nav>
+  <div class="chassis-meta">
+    <span>CPT <span class="val">SHOSHO</span></span>
+  </div>
+</div>
+
+<div class="page-header">
+  <div class="crumb">
+    <a href="/bridge/drafts">drafts</a><span class="sep">/</span>DR-{{ '%04d'|format(draft.id) }}
+  </div>
+  <div class="headline">
+    <span class="draft-id-big">DR-{{ '%04d'|format(draft.id) }}</span>
+    {% if draft.parse_error %}
+      <span class="status-chip chip-broken">BROKEN</span>
+    {% elif draft.status == 'in_review' %}
+      <span class="status-chip chip-in-review">IN REVIEW</span>
+    {% else %}
+      <span class="status-chip chip-pending">{{ draft.status|upper }}</span>
+    {% endif %}
+    <div class="title-text{% if draft.parse_error %} is-broken{% endif %}">
+      {% if draft.parse_error %}
+        payload parse failed — manual triage required
+      {% else %}
+        {{ draft.title_snippet or '—' }}
+      {% endif %}
+    </div>
+  </div>
+  {% if draft.compliance_flagged and not draft.compliance_ack %}
+  <div class="compliance-warn">
+    <span class="label">⚑ COMPLIANCE</span>
+    payload 觸發 medical_claim 或 absolute_assertion，但 reviewer_compliance_ack 未勾。Usopp claim 時會被擋。
+  </div>
+  {% endif %}
+</div>
+
+<div class="body-pane">
+  <div>
+    {% if draft.parse_error %}
+    <div class="parse-error-box">
+      <span class="label">PARSE ERROR</span>
+      {{ draft.parse_error }}
+    </div>
+    {% endif %}
+
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">PAYLOAD · {{ draft.action_type or 'unknown' }}</span>
+      </div>
+      <div class="section-body">
+        {% if has_parsed_payload and headline_fields %}
+        {% for k, v in headline_fields %}
+        <div class="kv-row">
+          <div class="kv-key">{{ k }}</div>
+          <div class="kv-val{% if k in ('title', 'change_summary') %} is-prose{% endif %}">{{ v }}</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">RAW · ApprovalPayloadV1</span>
+        <span style="font-family:var(--nk-font-mono);font-size:10px;color:var(--nk-muted)">
+          json
+        </span>
+      </div>
+      <div class="section-body" style="padding: 14px 16px;">
+        {% if payload_pretty %}
+        <pre class="payload-pre">{{ payload_pretty }}</pre>
+        {% else %}
+        <div style="font-family:var(--nk-font-mono);font-size:12px;color:var(--nk-muted)">
+          payload column 為空
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="section action-section">
+      <div class="section-header">
+        <span class="section-title">ACTIONS · 覆核</span>
+      </div>
+      <div class="section-body">
+        <button class="action-button action-approve" disabled
+                title="Phase 2 待實作 — 目前只能在 SQLite 直接 transition()">
+          <span>APPROVE</span><span class="key">A</span>
+        </button>
+        <button class="action-button action-reject" disabled
+                title="Phase 2 待實作 — 目前只能在 SQLite 直接 transition()">
+          <span>REJECT</span><span class="key">R</span>
+        </button>
+        <button class="action-button action-edit" disabled
+                title="Phase 2 待實作 — 目前修 payload 直接改 DB row">
+          <span>EDIT PAYLOAD</span><span class="key">E</span>
+        </button>
+
+        <div class="phase-note">
+          <span class="label">SCAFFOLDING</span>
+          這頁是唯讀。Phase 2 才接 PATCH /api/drafts/{id}/transition；
+          現在 reviewer 直接在 SQLite transition() 走人類審核。
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">METADATA</span>
+      </div>
+      <div class="section-body">
+        <div class="kv-row">
+          <div class="kv-key">source_agent</div>
+          <div class="kv-val">{{ draft.source_agent or '—' }}</div>
+        </div>
+        <div class="kv-row">
+          <div class="kv-key">target_platform</div>
+          <div class="kv-val">{{ draft.target_platform or '—' }}</div>
+        </div>
+        <div class="kv-row">
+          <div class="kv-key">target_site</div>
+          <div class="kv-val">{{ draft.target_site or '—' }}</div>
+        </div>
+        <div class="kv-row">
+          <div class="kv-key">priority</div>
+          <div class="kv-val">{{ draft.priority }}</div>
+        </div>
+        <div class="kv-row">
+          <div class="kv-key">operation_id</div>
+          <div class="kv-val">{{ draft.operation_id or '—' }}</div>
+        </div>
+        <div class="kv-row">
+          <div class="kv-key">created_at</div>
+          <div class="kv-val">{{ (draft.created_at or '')[:19].replace('T', ' ') }}</div>
+        </div>
+        <div class="kv-row">
+          <div class="kv-key">updated_at</div>
+          <div class="kv-val">{{ (draft.updated_at or '')[:19].replace('T', ' ') }}</div>
+        </div>
+        <div class="kv-row">
+          <div class="kv-key">compliance_ack</div>
+          <div class="kv-val">{{ 'yes' if draft.compliance_ack else 'no' }}</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+</body>
+</html>
