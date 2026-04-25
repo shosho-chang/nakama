@@ -5,8 +5,8 @@ type: reference
 created: 2026-04-17
 updated: 2026-04-17
 confidence: high
+originSessionId: 7f40e9e3-bda4-4add-9c3e-454613bb2532
 ---
-
 踩過的坑（PR #22 live-run 實測發現），寫 code 或 debug 同類問題時先來這裡對一下。
 
 ## Claude API（Anthropic SDK）
@@ -32,6 +32,15 @@ confidence: high
 ### Gemini 2.5 Pro dynamic thinking 會吃爆 `max_output_tokens`
 - 預設 `max_output_tokens=1024` 對結構化輸出常常 thinking 先吃完 → `finish_reason=MAX_TOKENS`、`response.parsed/text` 都是 None
 - 解法：預設調到 8192；錯誤訊息加 `finish_reason / thoughts_token_count / candidates_token_count` 診斷
+
+## Google Auth (google-auth 2.x)
+
+### `Credentials.authorize()` 已移除（oauth2client 老 API）
+- google-auth 2.x 的 `service_account.Credentials` 沒有 `.authorize()` 方法
+- 老程式：`http = creds.authorize(httplib2.Http(timeout=30))` → `AttributeError`
+- 新做法：用 `google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=30))`
+- **build() 不能同時收 credentials= + http=AuthorizedHttp**（後者已 attach creds，build 會 raise ValueError）
+- 案例：PR #132 GSC client 留下此 silent bug，PR #135 修；unit test 用 MagicMock 沒抓到（見 [feedback_mock_use_spec.md](feedback_mock_use_spec.md)）
 
 ## Auphonic REST API
 
