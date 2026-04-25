@@ -54,11 +54,11 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ 細節 UI polish（修修說「還有很多細節要改，但先這樣」）
 
 **Zoro：**
-- ⬜ Zoro bot Slack app 上線（Phase 2 brainstorm blocker）
+- ✅ Zoro bot Slack app 上線（修修 2026-04-25 完成）— **Phase 2 brainstorm 整個 unblocked**
 - ⬜ keyword-research backlog 6 項 GH issues（術語表 / normalize / {today} / reddit_zh / twitter / CLI cost）
 
 **Skill 化工程：**
-- ⬜ `kb-search` (Robin) — E2E 未測，skill 化前先驗
+- 🟢 `kb-search` (Robin) — E2E 2026-04-25 重驗通過（中英文兩 query 強命中、PR #119 type normalize fix 沒倒退）；skill scaffolding unblocked。詳見 [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md)
 - 🚧 `style-extractor` — PRD v4 草稿完成，等 3 個 StyleSamples 資料夾備齊
 - ⬜ `weekly-report` (Franky)
 - ⬜ `morning-brief` (Nami)
@@ -72,7 +72,10 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ **PR #134 closed** — gsc-oauth-setup.md 跨機策略補丁；改走 PR #135 整體 deprecate
 - ✅ **PR #135 merged 2026-04-25** — `cleanup(seo): reuse Franky GSC sa`：env key rename → `GCP_SERVICE_ACCOUNT_JSON`（reuse ADR-007 convention）+ deprecate `gsc-oauth-setup.md` → redirect `setup-wp-integration-credentials.md` + ADR-009 註明 sa 重用。**順手修 PR #132 silent bug**：`creds.authorize()` 被 google-auth 2.x 移除，改 `google_auth_httplib2.AuthorizedHttp`。教訓 [feedback_mock_use_spec.md](feedback_mock_use_spec.md) + [reference_api_contract_pitfalls.md](reference_api_contract_pitfalls.md) §Google Auth
 - ✅ **修修 unblock 完成 2026-04-25**：本機 .env 改用 `GCP_SERVICE_ACCOUNT_JSON=/Users/shosho/.config/nakama/gcp-nakama-franky.json`（從 VPS scp Franky sa）+ 補 `GSC_PROPERTY_*`；GCP console nakama-seo SHUT DOWN。**End-to-end smoke test 通過**：shosho.tw 拉到 5 row 真資料（zone 2 訓練 168 clicks 等）、fleet.shosho.tw 0 row（流量小 expected）。Slice B PR #133 T1 benchmark 解 unblocked
-- ⬜ Slice C：Brook compose `seo_context` opt-in 整合（task prompt phase-1-seo-solution.md §C 已凍結，依 Slice B merged）
+- ✅ **T1 benchmark on shosho.tw 2026-04-25**：跑 `/keyword-research zone 2 訓練` → `/seo-keyword-enrich` 真資料對 90 striking + 30 cannibalization。Mechanical 全綠（schema / GSC / filter / wall clock），quality 抓到 4 點：(1) related/striking 沒 topic 過濾→F3 凍結（見下）；(2) brand query 「張修修」被建議 301 首頁→ F2 修；(3) homepage + section 同時排同字算 cannibalization → F2 修；(4) recommendation 是 template 不是 LLM → Phase 1.5 firecrawl+LLM 解
+- ✅ **PR #138 merged 2026-04-25** `7921d7e` — F2 cannibalization 白名單（brand_query_patterns + homepage_equivalent_patterns，site-specific 在 yaml seed、baked-in 為空 list 對 OSS friendly）+ F4 enrich.py 自己 load_dotenv（解 `set -a && source .env` 痛點，per [feedback_explicit_load_dotenv_for_non_db_paths.md](feedback_explicit_load_dotenv_for_non_db_paths.md)）。6 條新測試 + 1 改 round-trip exempt 規則。82 pass
+- ✅ **F3=A 凍結**（2026-04-25，PR #138）：Slice B 維持 site-wide raw GSC posture（zero-LLM 契約守住），topic relevance 過濾在 Slice C Brook compose 內做（Claude Haiku batch rank ~$0.005/run）。理由：(1) 不破壞 Slice B 凍結契約；(2) site-wide SEOContextV1 未來可重用給「站台 SEO 全景儀表板」消費者；(3) Brook 本就 LLM 規劃，narrow 是自然延伸。寫進 phase-1-seo-solution.md §C.1 / §C.2 / §C.4.1 / §C.5
+- ⬜ **Slice C：Brook compose `seo_context` opt-in 整合**（task prompt 已含 F3=A 凍結；新增 `agents/brook/seo_narrow.py` + `agents/brook/seo_block.py` + 整合進 `compose.py`）
 - ⬜ Phase 1.5：seo-audit-post skill + DataForSEO + firecrawl + PageSpeed（ADR-009 已定延後）
 
 **雙語閱讀 Pipeline：**
