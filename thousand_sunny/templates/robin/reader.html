@@ -80,6 +80,9 @@
 
   /* ── Meta card ── */
   .meta-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem 1.5rem; margin-bottom: 2rem; }
+  .meta-pills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem; }
+  .meta-pill { font-size: 0.65rem; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.18rem 0.55rem; border-radius: 4px; background: var(--note-bg); color: var(--accent); border: 1px solid var(--border); font-weight: 600; }
+  .meta-pill.lang { background: var(--btn-muted-bg); color: var(--btn-muted-text); border-color: transparent; }
   .meta-title { font-size: 1.5rem; font-weight: 700; color: var(--text-heading); line-height: 1.4; margin-bottom: 0.6rem; }
   .meta-desc { font-size: 0.9rem; color: var(--text-muted); line-height: 1.7; margin-bottom: 0.75rem; }
   .meta-fields { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.6rem; }
@@ -191,6 +194,14 @@
     <div class="reader-content" id="readerContent">
       {% if frontmatter %}
       <div class="meta-card">
+        {% if frontmatter.type or frontmatter.source_type or frontmatter.content_nature or frontmatter.lang %}
+        <div class="meta-pills">
+          {% if frontmatter.type %}<span class="meta-pill">{{ frontmatter.type }}</span>{% endif %}
+          {% if frontmatter.source_type and frontmatter.source_type != frontmatter.type %}<span class="meta-pill">{{ frontmatter.source_type }}</span>{% endif %}
+          {% if frontmatter.content_nature %}<span class="meta-pill">{{ frontmatter.content_nature | replace('_', ' ') }}</span>{% endif %}
+          {% if frontmatter.lang %}<span class="meta-pill lang">{{ frontmatter.lang }}</span>{% endif %}
+        </div>
+        {% endif %}
         {% if frontmatter.title %}<div class="meta-title">{{ frontmatter.title }}</div>{% endif %}
         {% if frontmatter.description %}<div class="meta-desc">{{ frontmatter.description }}</div>{% endif %}
         {% if frontmatter.author %}
@@ -203,6 +214,8 @@
         <div class="meta-fields">
           {% if frontmatter.published %}<span><span class="meta-label">Published</span>{{ frontmatter.published }}</span>{% endif %}
           {% if frontmatter.created %}<span><span class="meta-label">Added</span>{{ frontmatter.created }}</span>{% endif %}
+          {% if frontmatter.doi %}<span><span class="meta-label">DOI</span><a href="https://doi.org/{{ frontmatter.doi }}" target="_blank" rel="noopener">{{ frontmatter.doi }}</a></span>{% endif %}
+          {% if frontmatter.pmid %}<span><span class="meta-label">PMID</span><a href="https://pubmed.ncbi.nlm.nih.gov/{{ frontmatter.pmid }}/" target="_blank" rel="noopener">{{ frontmatter.pmid }}</a></span>{% endif %}
           {% if frontmatter.source %}<span><span class="meta-label">Source</span><a href="{{ frontmatter.source }}" target="_blank" rel="noopener">{{ frontmatter.source[:60] }}{% if frontmatter.source|length > 60 %}…{% endif %}</a></span>{% endif %}
         </div>
         {% if frontmatter.tags %}
