@@ -14,11 +14,14 @@ embedding pipeline.
 
 ## Capability
 
-Given a PDF path and (optional) book metadata overrides, the skill:
+Given a book file path (`.epub` preferred / `.pdf` fallback) and optional
+metadata overrides, the skill:
 
-1. Calls `parse_book.py` to extract chapter outline (PDF outline →
-   manual TOC YAML → regex fallback) and optionally export per-chapter
-   text to `/tmp/textbook-chapters/`.
+1. Calls `parse_book.py` to extract chapter outline. **EPUB is the
+   primary path** — OPF metadata + nav TOC + spine order give 100%
+   authoritative chapter boundaries. PDF is the fallback chain (PDF
+   outline → manual TOC YAML → regex). Optionally exports per-chapter
+   text to `/tmp/textbook-chapters/` for the LLM to Read.
 2. Confirms the chapter list with the user (mandatory hand-off).
 3. Loops one Claude Code turn per chapter, reading the chapter into
    Opus 1M context, generating a section-by-section Source Summary,
@@ -127,10 +130,12 @@ Phase 1; downstream consumers (Chopper kb-search, future
 
 - **Runtime**
   - Python 3.10+
-  - `pymupdf >= 1.23` (provides `fitz` API for outline extraction)
+  - `ebooklib >= 0.18` — EPUB structural reader (spine + TOC + metadata)
+  - `beautifulsoup4 >= 4.12` — EPUB HTML → plain text + heading extraction
+  - `pymupdf >= 1.23` (PDF fallback path, `fitz` API for outline extraction)
   - `pymupdf4llm >= 0.0.10` (markdown text extraction, used indirectly
     via existing `shared/pdf_parser.py`)
-  - `pyyaml` (manual TOC override path)
+  - `pyyaml` (PDF manual TOC override path)
 - **Internal**
   - `shared/pdf_parser.py` — `parse_pdf()` markdown text helper
   - `shared/obsidian_writer.py` — `write_page()` vault writer
@@ -165,9 +170,15 @@ Parameterized extension points so the skill can be lifted out of Nakama:
 1. **Vault path injection** — uses `shared.config.get_vault_path()`; a
    fork wires up its own vault root via env / config without touching
    the skill code.
-2. **PDF parser is swappable** — `parse_book.py` calls `pymupdf` for
-   outline extraction; a fork adopting Docling or another PDF library
-   replaces only the parser body, the JSON outline contract stays.
+2. **Format dispatch by file extension** — `parse_book.py` dispatches on
+   `.epub` → `_parse_epub` / `.pdf` → `_parse_pdf`; a fork adding `.docx`
+   / `.azw3` / etc. inserts a new branch + matching `_parse_<fmt>` function,
+   the JSON outline contract stays.
+3. **EPUB parser uses standard `ebooklib` + BeautifulSoup** — drop-in
+   replacement of the metadata extraction or HTML→text logic does not
+   touch the dispatcher or downstream prompt templates.
+4. **PDF parser is swappable** — `parse_book.py` calls `pymupdf` for
+   outline extraction; a fork adopting Docling replaces only `_parse_pdf`.
 3. **Manual TOC override path** — `--toc-yaml /path/to/toc.yaml` lets a
    fork bypass detection entirely with hand-written chapter boundaries.
 4. **Prompt templates are isolated** — `prompts/chapter-summary.md` /
@@ -183,20 +194,27 @@ Parameterized extension points so the skill can be lifted out of Nakama:
 
 ## Contract Tests
 
-- Unit: `tests/skills/textbook_ingest/test_parse_book.py` (planned —
-  injected pymupdf fixture, smoke + outline + regex fallback paths)
+- Unit: `tests/skills/textbook_ingest/test_parse_book.py` — synthetic
+  EPUB built in-memory via `ebooklib`, asserts metadata extraction,
+  chapter count, section_anchors, page estimation, chapter export, and
+  format dispatch (8 tests, all green).
 - Live smoke: run `parse_book.py --help` from any cwd to verify
-  `sys.path` shim + arg parser; full ingest is interactive and
-  rebuilt manually per book
+  `sys.path` shim + arg parser; full ingest is interactive and run
+  manually per book.
 
 ## Limitations (Phase 1)
 
 - **English textbooks only by default** — Chinese / Japanese support
   works mechanically but Concept extraction prompts are English-biased;
   Phase 2 includes localized prompts
-- **PDF outline-dependent for best results** — fallback is regex
-  heading detection; for scanned PDFs (no OCR) the skill falls through
-  to "needs_manual" and exits
+- **EPUB preferred over PDF** — EPUB has authoritative chapter
+  structure (OPF spine + nav). PDF requires outline / regex / Opus
+  self-detection fallbacks; expect occasional chapter mis-segmentation
+  on PDFs without bookmarks
+- **EPUB pages are estimated** — 250 words/page heuristic;
+  citations show "estimated p.X". For exact citation use PDF input
+- **Scanned PDFs unsupported** — no OCR fallback; `parse_book.py` falls
+  through to `status: needs_manual` and exits
 - **Single-machine session** — the skill runs in one Claude Code
   session on Mac; can't span multiple sessions or machines mid-book
 - **Token budget exposure** — very large books (Harrison's 4000pp) can
@@ -212,8 +230,11 @@ Parameterized extension points so the skill can be lifted out of Nakama:
 ## Roadmap
 
 - [x] Phase 1 — Skill scaffold + parse_book helper + 3 prompt templates
-- [ ] Phase 1.5 — End-to-end MVP run on one mid-size English textbook,
-  verify all artefact types written correctly + Chopper retrieval works
+- [x] Phase 1.1 — EPUB primary path (this PR): `_parse_epub` via
+  `ebooklib`, 8 unit tests, format dispatcher
+- [ ] Phase 1.5 — End-to-end MVP run on one mid-size English textbook
+  (EPUB), verify all artefact types written correctly + Chopper
+  retrieval works
 - [ ] Phase 2A — Web UI (Bridge Hub upload + SSE progress bar)
 - [ ] Phase 2B — Multi-provider adapter (Anthropic / OpenAI / Google)
 - [ ] Phase 3 — Chinese textbook support (localized prompts)

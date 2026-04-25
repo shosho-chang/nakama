@@ -64,7 +64,7 @@ Do NOT trigger for:
 ## Workflow Overview
 
 ```
-Step 1. Parse args + locate PDF                  [Read user message]
+Step 1. Parse args + locate book file            [Read user message]
 Step 2. Run parse_book.py to extract outline      [Bash: chapter boundaries]
 Step 3. Confirm chapter detection with user       [CONFIRM, never skip]
 Step 4. Ingest each chapter (loop, one turn each) [Read → summarize → write]
@@ -76,35 +76,56 @@ Step 6. Smoke-check + sync hint                   [Tell user to wait Obsidian Sy
 
 Extract:
 
-- ``pdf_path`` (required) — absolute path to the PDF file
+- ``book_path`` (required) — absolute path to the book file (.epub
+  preferred / .pdf fallback)
 - ``book_id`` (optional) — slug; if omitted, derive from filename
 - ``book_subtype`` (optional) — one of:
   ``textbook_exam`` / ``textbook_pro`` / ``popular_health`` /
   ``clinical_protocol`` / ``reference``. Default: ``textbook_pro``
 - ``language`` (optional) — ``en`` / ``zh-TW`` / ``zh-CN``. Default: ``en``
 
-If ``pdf_path`` is missing or unclear, ask the user. Do NOT guess.
+If ``book_path`` is missing or unclear, ask the user. Do NOT guess.
+**Prefer EPUB over PDF when both editions are available** — EPUB has
+authoritative chapter structure (OPF spine + nav) so chapter boundaries
+are 100% accurate; PDF requires outline / regex / Opus self-detection
+fallback chains and may mis-segment.
 
 ### Step 2 — Extract outline + chapter boundaries
 
 Run from any cwd (script has sys.path shim, do NOT use ``python -m``):
 
 ```bash
+# EPUB (preferred — authoritative chapter structure from OPF/nav)
+python .claude/skills/textbook-ingest/scripts/parse_book.py \
+    --path "/Users/shosho/Books/harrison-21e.epub" \
+    --out /tmp/textbook-outline.json \
+    --export-chapters-dir /tmp/textbook-chapters/
+
+# PDF (fallback — when no EPUB edition exists)
 python .claude/skills/textbook-ingest/scripts/parse_book.py \
     --path "/Users/shosho/Books/harrison-21e.pdf" \
     --out /tmp/textbook-outline.json
 ```
 
-The script attempts (in order):
+**EPUB path** (`strategy: epub_nav`):
+
+1. OPF metadata → title / authors / language / publisher / pub_year (from `dc:date`)
+2. nav TOC top-level entries → chapters (in spine reading order)
+3. h2/h3 within chapter HTML → ``section_anchors``
+4. Page numbers are **estimated from word count** (250 words/page,
+   EPUB is reflowable); citation will say "estimated p.X" not exact
+
+**PDF path** (`strategy: pdf_outline | regex_fallback | manual_toc`):
 
 1. PDF outline / bookmarks (most textbooks have them)
 2. heading regex (`^(Chapter|第)\s*\d+`) + font-size heuristic
-3. Returns structured JSON: ``{book_metadata, chapters: [{index, title, page_start, page_end}]}``
+3. ``--toc-yaml`` manual override
 
-If the script reports fallback to manual mode, tell the user and offer:
+If the script reports `status: needs_manual`:
 
-- Run with ``--toc-yaml /path/to/manual-toc.yaml`` to override
-- Or proceed and let Opus self-detect chapters in Step 4
+- (PDF only) Run with ``--toc-yaml /path/to/manual-toc.yaml`` to override
+- (EPUB) ``--toc-yaml`` is rejected — nav is authoritative. If nav is
+  empty, the EPUB is degenerate; ask user to inspect or convert
 
 ### Step 3 — Confirm chapter detection (NEVER skip)
 
