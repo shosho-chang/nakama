@@ -80,37 +80,42 @@ prior-art（[docs/research/seo-prior-art-2026-04-24.md](../research/seo-prior-ar
 
 **位置**：`shared/schemas/publishing.py`（與 `DraftV1` / `PublishRequestV1` 同檔，維持 Brook → Usopp 契約集中）。
 
-**Phase 1 schema**（Pydantic v2）：
+**Phase 1 schema**（Pydantic v2）— **Slice A PR #132 實作版（2026-04-25 更新）**：
+
+> 原始 ADR 草案包含 DataForSEO / firecrawl 等 Phase 1.5 欄位。Slice A 實作時簡化為
+> GSC-only baseline；Phase 1.5 新增的欄位走 optional `| None = None` 加入，符合 D8
+> 升版策略「增加 optional 欄位 → minor change」。以下為**凍結的 V1 實作版**。
 
 ```python
 from typing import Literal
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, confloat, constr, NonNegativeInt
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, confloat, conint, constr
 
 
 class KeywordMetricV1(BaseModel):
-    """單一 keyword 的量化指標；缺失用 None，不 0-fill（0 與 missing 語意不同）。"""
+    """單一關鍵字的 ranking 指標快照。
+
+    Phase 1 聚焦 GSC 來源：GSC 每行必有 clicks/impressions/ctr/position 四欄位，
+    因此這四欄為非 nullable。Phase 1.5 加入 DataForSEO 時，新欄位（keyword_en /
+    search_volume / difficulty）走 optional 加入。
+    """
     model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal[1] = 1
 
-    keyword: constr(min_length=1, max_length=100)
-    keyword_en: constr(max_length=100) | None = None
+    keyword: constr(min_length=1, max_length=200)
+    clicks: conint(ge=0)
+    impressions: conint(ge=0)
+    ctr: confloat(ge=0.0, le=1.0)
+    avg_position: confloat(ge=1.0, le=200.0)
+    source: Literal["gsc", "dataforseo"] = "gsc"
 
-    # 搜尋量（health 類常為 None）
-    search_volume: NonNegativeInt | None = None
-    # 0-100；DataForSEO Labs keyword_difficulty
-    difficulty: confloat(ge=0, le=100) | None = None
-    # GSC 自家當前排名（最近 28 天平均 position）；無歷史則 None
-    current_position: confloat(ge=1) | None = None
-    # GSC impressions（最近 28 天）；無歷史則 None
-    gsc_impressions: NonNegativeInt | None = None
-
-    # 數據來源；enrich skill 填入「哪些源實際命中」便於下游 debug
-    sources: list[Literal["dataforseo", "gsc", "keyword_research", "manual"]] = Field(
-        default_factory=list
-    )
+    # ── Phase 1.5 預留（加入時為 optional，不破 V1 消費端）──
+    # keyword_en: constr(max_length=100) | None = None
+    # search_volume: NonNegativeInt | None = None
+    # difficulty: confloat(ge=0, le=100) | None = None
 
 
 class StrikingDistanceV1(BaseModel):
-    """GSC 來源 — 排名第二頁附近的 keyword，修修最高 ROI 的 SEO win。
+    """11-20 排名邊緣關鍵字 — push 一下就能上第一頁。
 
     業界「striking distance」慣用 11-20，但 GSC 平均 position 會給小數
     （如 10.8 / 20.3），schema 留緩衝區間由 enrich skill 的 filter logic
@@ -118,24 +123,27 @@ class StrikingDistanceV1(BaseModel):
 
     **實作契約（triangulation T6）**：GSC raw rows 必須在 skill 層先 filter
     才建 `StrikingDistanceV1` 物件；不符合 [10.0, 21.0] range 的 row 用 `drop`
-    處理，**絕不**以 try/except ValidationError 當 filter。
+    處理，**絕不**以 try/except ValidationError 當 filter（浪費算力 + 錯誤訊號污染）。
     """
     model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal[1] = 1
 
-    keyword: constr(min_length=1, max_length=100)
+    keyword: constr(min_length=1, max_length=200)
+    url: constr(min_length=1, max_length=2048)
     current_position: confloat(ge=10.0, le=21.0)
-    impressions: NonNegativeInt
-    clicks: NonNegativeInt
-    existing_url: constr(min_length=1, max_length=2000)  # 目前排這關鍵字的自家 URL
+    impressions_last_28d: conint(ge=0)
+    suggested_actions: list[str] = Field(default_factory=list)
 
 
 class CannibalizationWarningV1(BaseModel):
-    """多個自家 URL 競爭同一 keyword（GSC 偵測）。"""
+    """多個 URL 在同一關鍵字互相競爭的警告。"""
     model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal[1] = 1
 
-    keyword: constr(min_length=1, max_length=100)
-    competing_urls: list[constr(min_length=1, max_length=2000)] = Field(min_length=2, max_length=10)
-    recommended_primary_url: constr(max_length=2000) | None = None
+    keyword: constr(min_length=1, max_length=200)
+    competing_urls: list[constr(min_length=1, max_length=2048)] = Field(min_length=2)
+    severity: Literal["low", "medium", "high"]
+    recommendation: constr(min_length=1, max_length=500)
 
 
 class SEOContextV1(BaseModel):
@@ -148,48 +156,32 @@ class SEOContextV1(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     schema_version: Literal[1] = 1
 
-    # 來源追溯
+    target_site: TargetSite  # app-name（非 GSC host 字串）
+    primary_keyword: KeywordMetricV1 | None = None
+    related_keywords: list[KeywordMetricV1] = Field(default_factory=list)
+    striking_distance: list[StrikingDistanceV1] = Field(default_factory=list)
+    cannibalization_warnings: list[CannibalizationWarningV1] = Field(default_factory=list)
+    competitor_serp_summary: str | None = None
     generated_at: AwareDatetime
-    keyword_research_source: constr(max_length=500) | None = None  # frontmatter 原檔路徑
+    source_keyword_research_path: str | None = None
 
-    # 主戰略
-    target_focus_keyword: constr(min_length=2, max_length=60)
-    target_focus_keyword_en: constr(max_length=60) | None = None
-    # 站台（沿用 DraftV1.target_site 語意；決定讀哪個 GSC property）
-    site: Literal["wp_shosho", "wp_fleet"]
-
-    # 關鍵字組
-    related_keywords: list[KeywordMetricV1] = Field(min_length=1, max_length=20)
-    # GSC 最高 ROI 機會（Phase 1 含）
-    striking_distance: list[StrikingDistanceV1] = Field(default_factory=list, max_length=10)
-    # GSC cannibalization 警告（Phase 1 含）
-    cannibalization_warnings: list[CannibalizationWarningV1] = Field(
-        default_factory=list, max_length=5
-    )
-
-    # 競品 SERP 摘要（firecrawl top-3 → LLM 摘要；失敗則 None）
-    competitor_serp_summary: constr(max_length=3000) | None = None
-
-    # 從 keyword-research frontmatter 傳過來的標題候選
-    title_seed_hints: list[constr(max_length=200)] = Field(default_factory=list, max_length=10)
-
-    # 數據源健康度（debug + Brook compose 知道哪些欄位可信）
-    sources_available: list[
-        Literal["gsc", "dataforseo", "firecrawl", "keyword_research", "robin_kb"]
-    ] = Field(default_factory=list)
+    # ── Phase 1.5 預留（加入時為 optional，不破 V1 消費端）──
+    # title_seed_hints: list[constr(max_length=200)] = Field(default_factory=list)
+    # sources_available: list[Literal["gsc", "dataforseo", ...]] = Field(default_factory=list)
 ```
 
 **schema 設計決策說明**：
 
 - `schema_version: Literal[1]` + `extra="forbid"` + `frozen=True` → 遵守 `schemas.md` §1-§4
-- 所有可選量化欄位用 `| None = None`，**不用 0-fill** — missing 和「確認是 0」語意不同，下游 Brook compose prompt 要能分辨（health 類常 None，但排名 0 是不可能的）
-- `sources: list[Literal[...]]` → 每個 metric 自己帶來源；下游可以「GSC 數據優先，DataForSEO 備援」的規則
+- **Phase 1 GSC-only**：GSC 每行必有 `clicks`/`impressions`/`ctr`/`position` 四指標，因此 `KeywordMetricV1` 這四欄非 nullable。Phase 1.5 加 DataForSEO 時，新欄位走 `| None = None` optional 加入（符合 D8 升版策略 minor change）
+- `source: Literal["gsc", "dataforseo"]`（單值 default `"gsc"`）→ Phase 1 每筆 metric 來自單一來源；如果未來同一 keyword 有多源，考慮升版
 - `striking_distance.current_position: confloat(ge=10.0, le=21.0)` → 業界「striking distance」慣用 11-20，schema 層留 ±1 緩衝區間吸收 GSC 小數 position（avg 10.8 / 20.3 也算）；實際「收進來的算不算 striking distance」由 `seo-keyword-enrich` 的 filter logic 決定
 - `cannibalization_warnings.competing_urls: min_length=2` → 定義上就是 2+ URL 競爭
-- `site: Literal["wp_shosho", "wp_fleet"]` → **對齊 `DraftV1.target_site`（app-name），不是** ADR-008 `TargetKeywordV1.site` 的 `["shosho.tw", "fleet.shosho.tw"]`（GSC host 字串）。兩套 Literal 的用途不同：`DraftV1.target_site` 是 Brook/Usopp 寫稿路由；`TargetKeywordV1.site` 是 GSC property host。跨層傳遞策略：
+- `CannibalizationWarningV1` 加 `severity` + `recommendation` → 提供 actionable 資訊，不只列 URL
+- `target_site: TargetSite`（app-name）→ **對齊 `DraftV1.target_site`，不是** ADR-008 `TargetKeywordV1.site` 的 GSC host 字串。跨層傳遞策略：
   - `seo-keyword-enrich` 讀 `config/target-keywords.yaml`（ADR-008 schema）→ 依 host 呼叫 GSC → 產出 `SEOContextV1` 時把 host 對回 app-name（mapping 由 **`shared/schemas/site_mapping.py`** 提供純函式 `host_to_target_site("shosho.tw") → "wp_shosho"`；**不放在** `shared/gsc_client.py` 以保 client 為 thin wrapper — triangulation T5）
   - Brook compose 與 Usopp 消費 `SEOContextV1` 時只看 `target_site`（app-name），不碰 host 字串
-  - 此 mapping 為 Slice A PR 驗收條件：(1) 檔案位置正確（`shared/schemas/site_mapping.py`），(2) 窮舉 test `set(HOST_TO_TARGET_SITE.keys()) == set(TargetSite.__args__)` 確保新增 host 時 Literal 同步
+  - 此 mapping 為 Slice A PR 驗收條件：(1) 檔案位置正確（`shared/schemas/site_mapping.py`），(2) 窮舉 test `set(HOST_TO_TARGET_SITE.values()) == set(TargetSite.__args__)` 確保新增 target site 時 Literal 同步
 
 ### D4. Phase 1 / Phase 2 界線
 

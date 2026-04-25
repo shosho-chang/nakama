@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import httplib2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -33,6 +34,7 @@ logger = get_logger("nakama.gsc_client")
 
 _SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
 _SDK_NUM_RETRIES = 2  # googleapiclient 內建：對 500/503 retry（exp backoff）
+_HTTP_TIMEOUT = 30  # 秒；防 GSC API 掛住造成 agent thread 無限等待
 
 
 class GSCCredentialsError(FileNotFoundError):
@@ -54,7 +56,7 @@ class GSCClient:
         self._sa_path = path
         self._service: Any | None = None  # lazy, build 在首次 query
 
-        logger.info("GSCClient init sa_path=%s", self._sa_path)
+        logger.debug("GSCClient init sa_path=%s", self._sa_path)
 
     @classmethod
     def from_env(cls) -> "GSCClient":
@@ -69,12 +71,18 @@ class GSCClient:
         return cls(service_account_json_path=path)
 
     def _get_service(self) -> Any:
-        """Lazy build — 第一次 query 才真正讀 JSON + auth handshake。"""
+        """Lazy build — 第一次 query 才真正讀 JSON + auth handshake。
+
+        Not thread-safe (check-then-set); OK for single-process agent.
+        """
         if self._service is None:
             creds = service_account.Credentials.from_service_account_file(
                 str(self._sa_path), scopes=_SCOPES
             )
-            self._service = build("searchconsole", "v1", credentials=creds, cache_discovery=False)
+            http = creds.authorize(httplib2.Http(timeout=_HTTP_TIMEOUT))
+            self._service = build(
+                "searchconsole", "v1", credentials=creds, http=http, cache_discovery=False
+            )
         return self._service
 
     def query(

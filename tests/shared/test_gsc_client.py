@@ -91,9 +91,13 @@ def test_query_builds_correct_payload(fake_sa_json):
         str(fake_sa_json),
         scopes=["https://www.googleapis.com/auth/webmasters.readonly"],
     )
-    m_build.assert_called_once_with(
-        "searchconsole", "v1", credentials=m_creds.return_value, cache_discovery=False
-    )
+    # build() 現在帶 http= kwarg（httplib2.Http with timeout）
+    assert m_build.call_count == 1
+    build_kwargs = m_build.call_args
+    assert build_kwargs[0] == ("searchconsole", "v1")
+    assert build_kwargs[1]["credentials"] == m_creds.return_value
+    assert build_kwargs[1]["cache_discovery"] is False
+    assert "http" in build_kwargs[1]  # httplib2.Http(timeout=30) via creds.authorize()
     m_service.searchanalytics.return_value.query.assert_called_once_with(
         siteUrl="sc-domain:shosho.tw",
         body={
