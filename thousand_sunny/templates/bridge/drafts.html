@@ -158,6 +158,17 @@ body {
 .legend-flagged  .legend-pip { background: var(--nk-crimson); }
 .legend-broken   .legend-pip { background: var(--nk-ink-2); border: 1px dashed var(--nk-rule); }
 
+.truncate-banner {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--nk-amber);
+  background: var(--nk-panel-2);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-2);
+  letter-spacing: 0.04em;
+}
+
 /* Drafts table */
 .drafts-table-head,
 .drafts-row {
@@ -327,6 +338,11 @@ body {
     <span class="legend-flagged"><span class="legend-pip"></span>compliance flag</span>
     <span class="legend-broken"><span class="legend-pip"></span>payload parse failed</span>
   </div>
+  {% if truncated %}
+  <div class="truncate-banner">
+    顯示前 {{ shown_count }} 筆（pending {{ pending_count }} · in review {{ in_review_count }}）— 每組上限 {{ list_limit }} 筆，超量時隊伍尾端的 row 暫不顯示
+  </div>
+  {% endif %}
 
   <div class="drafts-table-head">
     <span>STATUS</span>

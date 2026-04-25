@@ -122,7 +122,7 @@ async def bridge_index(request: Request, nakama_auth: str | None = Cookie(None))
         "index.html",
         {
             "robin_enabled": not os.getenv("DISABLE_ROBIN"),
-            "drafts_pending_count": len(approval_queue.list_by_status("pending")),
+            "drafts_pending_count": approval_queue.count_by_status("pending"),
         },
     )
 
@@ -188,17 +188,25 @@ async def drafts_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/drafts", status_code=302)
 
-    pending_rows = approval_queue.list_by_status("pending")
-    in_review_rows = approval_queue.list_by_status("in_review")
+    list_limit = 50  # mirrors approval_queue.list_by_status default
+    pending_rows = approval_queue.list_by_status("pending", limit=list_limit)
+    in_review_rows = approval_queue.list_by_status("in_review", limit=list_limit)
     drafts = [_summarize_draft_row(r) for r in (pending_rows + in_review_rows)]
+
+    pending_total = approval_queue.count_by_status("pending")
+    in_review_total = approval_queue.count_by_status("in_review")
+    truncated = pending_total > len(pending_rows) or in_review_total > len(in_review_rows)
 
     return _templates.TemplateResponse(
         request,
         "drafts.html",
         {
             "drafts": drafts,
-            "pending_count": len(pending_rows),
-            "in_review_count": len(in_review_rows),
+            "pending_count": pending_total,
+            "in_review_count": in_review_total,
+            "list_limit": list_limit,
+            "truncated": truncated,
+            "shown_count": len(drafts),
         },
     )
 

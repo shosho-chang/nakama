@@ -545,6 +545,55 @@ class TestPayloadDiscriminator:
 
 
 # ---------------------------------------------------------------------------
+# count_by_status — cheap COUNT(*) for badges, avoids LIMIT 50 truncation
+# ---------------------------------------------------------------------------
+
+
+class TestCountByStatus:
+    def test_zero_when_empty(self):
+        assert approval_queue.count_by_status("pending") == 0
+
+    def test_counts_pending_rows(self):
+        for i in range(3):
+            approval_queue.enqueue(
+                source_agent="brook",
+                payload_model=_make_payload(slug=f"a-{i}", op_id=f"op_aaaa1{i:03d}"),
+                operation_id=f"op_aaaa1{i:03d}",
+            )
+        assert approval_queue.count_by_status("pending") == 3
+        assert approval_queue.count_by_status("approved") == 0
+
+    def test_filters_by_source_agent(self):
+        for i in range(2):
+            approval_queue.enqueue(
+                source_agent="brook",
+                payload_model=_make_payload(slug=f"b-{i}", op_id=f"op_bbbb2{i:03d}"),
+                operation_id=f"op_bbbb2{i:03d}",
+            )
+        approval_queue.enqueue(
+            source_agent="chopper",
+            payload_model=_make_payload(slug="c-0", op_id="op_cccc3000"),
+            operation_id="op_cccc3000",
+        )
+        assert approval_queue.count_by_status("pending") == 3
+        assert approval_queue.count_by_status("pending", source_agent="brook") == 2
+        assert approval_queue.count_by_status("pending", source_agent="chopper") == 1
+
+    def test_count_returns_true_total_above_list_limit(self):
+        # The bug count_by_status fixes: list_by_status caps at 50, so
+        # len(list_by_status(...)) silently truncates the badge.
+        for i in range(55):
+            approval_queue.enqueue(
+                source_agent="brook",
+                payload_model=_make_payload(slug=f"d-{i}", op_id=f"op_dddd{i:04d}"),
+                operation_id=f"op_dddd{i:04d}",
+            )
+        assert approval_queue.count_by_status("pending") == 55
+        # Confirm the trap: list_by_status capped at 50 even with 55 rows present
+        assert len(approval_queue.list_by_status("pending")) == 50
+
+
+# ---------------------------------------------------------------------------
 # new_operation_id helper
 # ---------------------------------------------------------------------------
 
