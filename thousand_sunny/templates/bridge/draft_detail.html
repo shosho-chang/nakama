@@ -141,6 +141,12 @@ body {
 }
 .chip-pending   { background: var(--nk-signal);   color: #fff; }
 .chip-in-review { background: var(--nk-amber);    color: #fff; }
+.chip-approved  { background: var(--nk-jade);     color: #fff; }
+.chip-claimed   { background: var(--nk-indigo);   color: #fff; }
+.chip-published { background: var(--nk-ink-2);    color: #fff; }
+.chip-failed    { background: var(--nk-crimson);  color: #fff; }
+.chip-rejected  { color: var(--nk-ink-3); border: 1px solid var(--nk-ink-3); }
+.chip-archived  { color: var(--nk-muted);  border: 1px solid var(--nk-muted); }
 .chip-broken    { border: 1px dashed var(--nk-ink-2); color: var(--nk-ink-2); }
 
 .compliance-warn {
@@ -226,6 +232,7 @@ body {
 
 /* Action panel (right) */
 .action-section { position: sticky; top: 24px; }
+.action-form { display: block; margin: 0; padding: 0; }
 .action-button {
   display: flex; align-items: center; justify-content: space-between;
   width: 100%;
@@ -234,40 +241,136 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   padding: 12px 16px;
-  cursor: not-allowed;
+  cursor: pointer;
   border-radius: var(--nk-r-2);
   margin-bottom: 8px;
   position: relative;
+  transition: background var(--nk-dur-fast), color var(--nk-dur-fast), border-color var(--nk-dur-fast);
 }
 .action-button .key { font-size: 9px; color: var(--nk-muted); letter-spacing: 0.14em; }
-.action-button:disabled { opacity: 0.55; }
+.action-button:disabled { cursor: not-allowed; opacity: 0.55; }
 .action-approve {
-  background: var(--nk-ink); color: #fff; border: none;
+  background: var(--nk-ink); color: #fff; border: 1px solid var(--nk-ink);
 }
+.action-approve:hover:not(:disabled) { background: var(--nk-jade); border-color: var(--nk-jade); }
 .action-reject {
   background: transparent; color: var(--nk-crimson);
   border: 1px solid var(--nk-crimson);
 }
+.action-reject:hover:not(:disabled) { background: var(--nk-crimson); color: #fff; }
 .action-edit {
   background: transparent; color: var(--nk-ink-2);
   border: var(--nk-border);
 }
-.phase-note {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-left: 3px solid var(--nk-amber);
-  background: var(--nk-panel-2);
+.action-edit:hover:not(:disabled) { color: var(--nk-ink); border-color: var(--nk-ink); }
+.action-requeue {
+  background: transparent; color: var(--nk-amber);
+  border: 1px solid var(--nk-amber);
+}
+.action-requeue:hover:not(:disabled) { background: var(--nk-amber); color: #fff; }
+.action-disabled-note {
   font-family: var(--nk-font-mono);
-  font-size: 11px;
-  line-height: 1.55;
+  font-size: 10px;
+  color: var(--nk-muted);
+  letter-spacing: 0.04em;
+  margin: 6px 2px 14px;
+  line-height: 1.5;
+}
+
+/* Modal — native <dialog>, no JS framework */
+dialog.action-modal {
+  border: var(--nk-border);
+  background: var(--nk-panel);
+  color: var(--nk-ink);
+  padding: 0;
+  min-width: 420px;
+  max-width: 720px;
+  width: 60vw;
+  border-radius: var(--nk-r-2);
+}
+dialog.action-modal::backdrop {
+  background: rgba(13, 13, 13, 0.55);
+}
+.modal-header {
+  padding: 14px 18px;
+  border-bottom: var(--nk-border);
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   color: var(--nk-ink-2);
 }
-.phase-note .label {
-  color: var(--nk-amber);
+.modal-body { padding: 16px 18px; }
+.modal-body label {
+  display: block;
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--nk-ink-2);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.modal-body textarea,
+.modal-body input[type=text] {
+  width: 100%;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  border: var(--nk-border);
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  border-radius: var(--nk-r-2);
+  resize: vertical;
+}
+.modal-body textarea { min-height: 320px; }
+.modal-footer {
+  padding: 12px 18px;
+  border-top: var(--nk-border);
+  display: flex; justify-content: flex-end; gap: 10px;
+}
+.modal-footer button {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-radius: var(--nk-r-2);
+}
+.modal-footer .btn-primary {
+  background: var(--nk-ink); color: #fff; border: 1px solid var(--nk-ink);
+}
+.modal-footer .btn-primary.is-danger {
+  background: var(--nk-crimson); border-color: var(--nk-crimson);
+}
+.modal-footer .btn-secondary {
+  background: transparent; color: var(--nk-ink-2); border: var(--nk-border);
+}
+
+.failure-box {
+  border-left: 3px solid var(--nk-crimson);
+  background: var(--nk-panel-2);
+  padding: 14px 16px;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink-2);
+  margin-bottom: 18px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.failure-box .label {
+  color: var(--nk-crimson);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   display: block;
   margin-bottom: 4px;
+}
+.failure-box .meta {
+  font-size: 10px;
+  color: var(--nk-muted);
+  letter-spacing: 0.04em;
+  margin-top: 6px;
 }
 
 .parse-error-box {
@@ -318,10 +421,8 @@ body {
     <span class="draft-id-big">DR-{{ '%04d'|format(draft.id) }}</span>
     {% if draft.parse_error %}
       <span class="status-chip chip-broken">BROKEN</span>
-    {% elif draft.status == 'in_review' %}
-      <span class="status-chip chip-in-review">IN REVIEW</span>
     {% else %}
-      <span class="status-chip chip-pending">{{ draft.status|upper }}</span>
+      <span class="status-chip chip-{{ draft.status|replace('_', '-') }}">{{ draft.status|upper|replace('_', ' ') }}</span>
     {% endif %}
     <div class="title-text{% if draft.parse_error %} is-broken{% endif %}">
       {% if draft.parse_error %}
@@ -345,6 +446,14 @@ body {
     <div class="parse-error-box">
       <span class="label">PARSE ERROR</span>
       {{ draft.parse_error }}
+    </div>
+    {% endif %}
+
+    {% if error_log %}
+    <div class="failure-box">
+      <span class="label">ERROR LOG</span>
+      {{ error_log }}
+      <div class="meta">retry_count = {{ retry_count }}</div>
     </div>
     {% endif %}
 
@@ -389,24 +498,39 @@ body {
         <span class="section-title">ACTIONS · 覆核</span>
       </div>
       <div class="section-body">
-        <button class="action-button action-approve" disabled
-                title="Phase 2 待實作 — 目前只能在 SQLite 直接 transition()">
-          <span>APPROVE</span><span class="key">A</span>
-        </button>
-        <button class="action-button action-reject" disabled
-                title="Phase 2 待實作 — 目前只能在 SQLite 直接 transition()">
+        {% if draft.status in ('pending', 'in_review') %}
+        <form class="action-form" method="post" action="/bridge/drafts/{{ draft.id }}/approve">
+          <button type="submit" class="action-button action-approve"
+                  {% if draft.compliance_flagged and not draft.compliance_ack %}
+                  title="尚有 compliance flag 未確認 — Usopp claim 時會被擋"
+                  {% endif %}>
+            <span>APPROVE</span><span class="key">A</span>
+          </button>
+        </form>
+        <button type="button" class="action-button action-reject"
+                onclick="document.getElementById('reject-modal').showModal()">
           <span>REJECT</span><span class="key">R</span>
         </button>
-        <button class="action-button action-edit" disabled
-                title="Phase 2 待實作 — 目前修 payload 直接改 DB row">
+        <button type="button" class="action-button action-edit"
+                onclick="document.getElementById('edit-modal').showModal()">
           <span>EDIT PAYLOAD</span><span class="key">E</span>
         </button>
-
-        <div class="phase-note">
-          <span class="label">SCAFFOLDING</span>
-          這頁是唯讀。Phase 2 才接 PATCH /api/drafts/{id}/transition；
-          現在 reviewer 直接在 SQLite transition() 走人類審核。
+        {% elif draft.status == 'failed' %}
+        <form class="action-form" method="post" action="/bridge/drafts/{{ draft.id }}/requeue">
+          <button type="submit" class="action-button action-requeue">
+            <span>REQUEUE</span><span class="key">Q</span>
+          </button>
+        </form>
+        <div class="action-disabled-note">
+          將 status 推回 <code>pending</code>，清空 error_log 與 retry_count。
         </div>
+        {% else %}
+        <div class="action-disabled-note">
+          狀態 <code>{{ draft.status }}</code> 無覆核動作。<br>
+          只有 <code>pending</code> / <code>in_review</code> 可 approve / reject / edit；
+          <code>failed</code> 可 requeue 重新走流程。
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -451,6 +575,40 @@ body {
     </div>
   </aside>
 </div>
+
+{% if draft.status in ('pending', 'in_review') %}
+<dialog id="reject-modal" class="action-modal" aria-labelledby="reject-modal-title">
+  <form method="post" action="/bridge/drafts/{{ draft.id }}/reject">
+    <div class="modal-header" id="reject-modal-title">REJECT · DR-{{ '%04d'|format(draft.id) }}</div>
+    <div class="modal-body">
+      <label for="reject-reason">理由（必填，會寫入 review_note）</label>
+      <textarea id="reject-reason" name="reason" required minlength="1" autofocus
+                placeholder="例：off-brand / compliance issue / 標題與內文不符"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary"
+              onclick="document.getElementById('reject-modal').close()">CANCEL</button>
+      <button type="submit" class="btn-primary is-danger">REJECT</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="edit-modal" class="action-modal" aria-labelledby="edit-modal-title">
+  <form method="post" action="/bridge/drafts/{{ draft.id }}/edit">
+    <div class="modal-header" id="edit-modal-title">EDIT PAYLOAD · DR-{{ '%04d'|format(draft.id) }}</div>
+    <div class="modal-body">
+      <label for="edit-payload">完整 ApprovalPayloadV1（JSON，需通過 schema validation）</label>
+      <textarea id="edit-payload" name="payload" required minlength="1"
+                spellcheck="false">{{ payload_pretty or raw_payload_text or '' }}</textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary"
+              onclick="document.getElementById('edit-modal').close()">CANCEL</button>
+      <button type="submit" class="btn-primary">SAVE</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
 
 </body>
 </html>

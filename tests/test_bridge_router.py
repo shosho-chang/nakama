@@ -413,12 +413,12 @@ def test_drafts_detail_renders_for_existing_id(client):
     assert "Title for detail-one" in body
     assert "publish_post" in body
     assert "wp_shosho" in body
-    # Stub buttons present + disabled
+    # Mutation buttons (Phase 2): forms post to the new endpoints, no `disabled` stub
     assert "APPROVE" in body
     assert "REJECT" in body
     assert "EDIT PAYLOAD" in body
-    assert body.count("disabled") >= 3
-    assert "Phase 2" in body
+    assert f'action="/bridge/drafts/{qid}/approve"' in body
+    assert "Phase 2 待實作" not in body
 
 
 def test_drafts_detail_404_on_unknown_id(client):
@@ -497,3 +497,189 @@ def test_drafts_page_no_truncate_banner_when_under_limit(client):
     # No truncate banner copy
     assert "顯示前" not in body
     assert "每組上限" not in body
+
+
+# ---------------------------------------------------------------------------
+# Drafts mutation endpoints (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def _drive_to_failed(qid: int) -> None:
+    """approve → claim → mark_failed, leaving row in 'failed' status.
+
+    _enqueue_draft() creates rows in 'pending', so approve must use
+    from_status='pending' (the helper's default targets 'in_review')."""
+    approval_queue.approve(qid, reviewer="shosho", from_status="pending")
+    approval_queue.claim_approved_drafts(worker_id="usopp-1", source_agent="brook", batch=5)
+    approval_queue.mark_failed(qid, "WP 500 error")
+
+
+# ── /approve ───────────────────────────────────────────────────────────────
+
+
+def test_draft_approve_pending_redirects_and_marks_approved(client):
+    qid = _enqueue_draft(slug="ap-1", op_id="op_b0010001")
+    r = client.post(f"/bridge/drafts/{qid}/approve", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/bridge/drafts"
+    row = approval_queue.get_by_id(qid)
+    assert row["status"] == "approved"
+    assert row["reviewer"] == "shosho"
+
+
+def test_draft_approve_in_review_also_works(client):
+    qid = _enqueue_draft(slug="ap-2", op_id="op_b0010002", initial_status="in_review")
+    r = client.post(f"/bridge/drafts/{qid}/approve", follow_redirects=False)
+    assert r.status_code == 303
+    assert approval_queue.get_by_id(qid)["status"] == "approved"
+
+
+def test_draft_approve_404_on_unknown_id(client):
+    r = client.post("/bridge/drafts/99999/approve", follow_redirects=False)
+    assert r.status_code == 404
+
+
+def test_draft_approve_409_when_status_not_reviewable(client):
+    qid = _enqueue_draft(slug="ap-3", op_id="op_b0010003")
+    approval_queue.approve(qid, reviewer="shosho", from_status="pending")
+    # Now in 'approved' — second approve must fail with 409
+    r = client.post(f"/bridge/drafts/{qid}/approve", follow_redirects=False)
+    assert r.status_code == 409
+    assert "approved" in r.json()["detail"]
+
+
+# ── /reject ────────────────────────────────────────────────────────────────
+
+
+def test_draft_reject_records_reason_and_redirects(client):
+    qid = _enqueue_draft(slug="rj-1", op_id="op_b0020001")
+    r = client.post(
+        f"/bridge/drafts/{qid}/reject",
+        data={"reason": "off-brand"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/bridge/drafts"
+    row = approval_queue.get_by_id(qid)
+    assert row["status"] == "rejected"
+    assert row["review_note"] == "off-brand"
+    assert row["reviewer"] == "shosho"
+
+
+def test_draft_reject_requires_reason(client):
+    qid = _enqueue_draft(slug="rj-2", op_id="op_b0020002")
+    r = client.post(f"/bridge/drafts/{qid}/reject", data={}, follow_redirects=False)
+    assert r.status_code == 422
+    # Row untouched
+    assert approval_queue.get_by_id(qid)["status"] == "pending"
+
+
+def test_draft_reject_409_when_status_not_reviewable(client):
+    qid = _enqueue_draft(slug="rj-3", op_id="op_b0020003")
+    approval_queue.approve(qid, reviewer="shosho", from_status="pending")
+    r = client.post(
+        f"/bridge/drafts/{qid}/reject",
+        data={"reason": "too late"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 409
+
+
+# ── /edit ──────────────────────────────────────────────────────────────────
+
+
+def test_draft_edit_overwrites_payload_preserving_status(client):
+    qid = _enqueue_draft(slug="ed-original", op_id="op_b0030001")
+    new_payload = PublishWpPostV1(
+        action_type="publish_post",
+        target_site="wp_shosho",
+        draft=_make_draft(slug="ed-rewritten", op_id="op_b0030001"),
+        compliance_flags=PublishComplianceGateV1(),
+        reviewer_compliance_ack=False,
+    )
+    r = client.post(
+        f"/bridge/drafts/{qid}/edit",
+        data={"payload": new_payload.model_dump_json()},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == f"/bridge/drafts/{qid}"
+    row = approval_queue.get_by_id(qid)
+    assert row["status"] == "pending"  # status preserved
+    assert "ed-rewritten" in row["title_snippet"]
+
+
+def test_draft_edit_400_on_invalid_json(client):
+    qid = _enqueue_draft(slug="ed-bad", op_id="op_b0030002")
+    r = client.post(
+        f"/bridge/drafts/{qid}/edit",
+        data={"payload": "{not valid json"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+    assert "JSONDecodeError" in r.json()["detail"]
+    # Row untouched
+    assert "ed-bad" in approval_queue.get_by_id(qid)["title_snippet"]
+
+
+def test_draft_edit_400_on_schema_validation_failure(client):
+    qid = _enqueue_draft(slug="ed-schema", op_id="op_b0030003")
+    r = client.post(
+        f"/bridge/drafts/{qid}/edit",
+        data={"payload": '{"action_type":"publish_post"}'},  # missing required fields
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+    assert "ValidationError" in r.json()["detail"]
+
+
+# ── /requeue ───────────────────────────────────────────────────────────────
+
+
+def test_draft_requeue_failed_to_pending_clears_metadata(client):
+    qid = _enqueue_draft(slug="rq-1", op_id="op_b0040001")
+    _drive_to_failed(qid)
+    assert approval_queue.get_by_id(qid)["status"] == "failed"
+
+    r = client.post(f"/bridge/drafts/{qid}/requeue", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/bridge/drafts"
+    row = approval_queue.get_by_id(qid)
+    assert row["status"] == "pending"
+    assert row["retry_count"] == 0
+    assert row["error_log"] is None
+
+
+def test_draft_requeue_409_when_not_failed(client):
+    qid = _enqueue_draft(slug="rq-2", op_id="op_b0040002")
+    r = client.post(f"/bridge/drafts/{qid}/requeue", follow_redirects=False)
+    assert r.status_code == 409
+    assert "failed" in r.json()["detail"]
+
+
+# ── Detail page UI: button enable + error_log + status chips ───────────────
+
+
+def test_drafts_detail_buttons_enabled_for_pending(client):
+    qid = _enqueue_draft(slug="ui-1", op_id="op_b0050001")
+    r = client.get(f"/bridge/drafts/{qid}")
+    body = r.text
+    # Approve / reject / edit forms target the new endpoints
+    assert f'action="/bridge/drafts/{qid}/approve"' in body
+    assert "showModal" in body  # reject + edit modals
+    # Disabled stub note from Phase 1 must be gone
+    assert "Phase 2 待實作" not in body
+
+
+def test_drafts_detail_shows_requeue_for_failed_status(client):
+    qid = _enqueue_draft(slug="ui-2", op_id="op_b0050002")
+    _drive_to_failed(qid)
+    r = client.get(f"/bridge/drafts/{qid}")
+    body = r.text
+    assert f'action="/bridge/drafts/{qid}/requeue"' in body
+    assert "REQUEUE" in body
+    # Error log box visible
+    assert "ERROR LOG" in body
+    assert "WP 500 error" in body
+    # Approve/reject/edit must NOT show for failed status
+    assert f'action="/bridge/drafts/{qid}/approve"' not in body
