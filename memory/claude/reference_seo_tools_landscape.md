@@ -1,11 +1,11 @@
 ---
 name: SEO 工具地景與 API 契約陷阱
-description: SEO 工具/API 選型快速 reference — 價格、契約坑、Health vertical 限制；詳見 docs/research/seo-prior-art-2026-04-24.md
+description: SEO 工具/API 選型快速 reference — 價格、契約坑、Health vertical 限制；詳見 docs/research/2026-04-24-seo-prior-art.md
 type: reference
 created: 2026-04-24
 originSessionId: 0688a720-7789-447a-b7a2-7d60c84698d1
 ---
-詳細研究見 [docs/research/seo-prior-art-2026-04-24.md](../../docs/research/seo-prior-art-2026-04-24.md)。此處記錄選型時最常踩到的契約坑與紅線。
+詳細研究見 [docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md)。此處記錄選型時最常踩到的契約坑與紅線。
 
 ## 紅線：Health vertical 數據源限制
 

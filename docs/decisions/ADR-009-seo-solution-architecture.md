@@ -9,7 +9,7 @@
 
 修修的內容策略要同時滿足三件事：（1）寫什麼（關鍵字 / 主題建議）、（2）既有部落格 SEO 體檢、（3）寫稿時把 SEO 數據餵進 Brook compose 以提升排行潛力。`keyword-research` skill 已 production（topic → YouTube/Trends/Reddit → core keywords + title seeds），Usopp 已把 `focus_keyword` / `meta_description` 寫進 SEOPress（PR #101 Slice C2a），但中間缺一層：**把關鍵字研究結果 enrich 成可動作的 SEO context，並在 compose 時作為 system prompt 的數據依據**。
 
-prior-art（[docs/research/seo-prior-art-2026-04-24.md](../research/seo-prior-art-2026-04-24.md)）已經盤點工具地景，列出 8 個 open question 並附初步建議。本 ADR 把這 8 題收斂成架構決策，凍結 3 個 skill（`seo-audit-post` / `seo-keyword-enrich` / `seo-optimize-draft`）的邊界、`SEOContextV1` schema、Brook compose 整合介面、Phase 1/2 界線。
+prior-art（[docs/research/2026-04-24-seo-prior-art.md](../research/2026-04-24-seo-prior-art.md)）已經盤點工具地景，列出 8 個 open question 並附初步建議。本 ADR 把這 8 題收斂成架構決策，凍結 3 個 skill（`seo-audit-post` / `seo-keyword-enrich` / `seo-optimize-draft`）的邊界、`SEOContextV1` schema、Brook compose 整合介面、Phase 1/2 界線。
 
 **與 [ADR-008 SEO 觀測中心](ADR-008-seo-observability.md) 的分層關係**（本 ADR 所有決策必須與 ADR-008 介面相容）：
 
@@ -526,7 +526,7 @@ Grok 回應 33 行（Claude 228 / Gemini 129），六個 section 結構完整、
 
 ### Internal
 
-- [docs/research/seo-prior-art-2026-04-24.md](../research/seo-prior-art-2026-04-24.md) — 工具地景 + capability cards + §6 open questions
+- [docs/research/2026-04-24-seo-prior-art.md](../research/2026-04-24-seo-prior-art.md) — 工具地景 + capability cards + §6 open questions
 - [docs/decisions/ADR-008-seo-observability.md](ADR-008-seo-observability.md) — 觀測層（GSC / GA4 / Cloudflare）與本 ADR 共享 GSC client + target-keywords.yaml
 - [docs/principles/schemas.md](../principles/schemas.md) — 所有 schema 決策援引
 - [docs/principles/reliability.md](../principles/reliability.md) — retry / timeout 策略援引

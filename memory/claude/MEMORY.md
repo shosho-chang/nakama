@@ -19,8 +19,8 @@
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
 - [feedback_skill_design_principle.md](feedback_skill_design_principle.md) — Skill 三層架構：互動式 workflow→skill、確定性函式→shared/*.py、agent 只做觸發/編排；skill 粒度扁平、通常 agent-specific
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
-- [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/seo-prior-art-2026-04-24.md
-- Research doc：[docs/research/seo-prior-art-2026-04-24.md](../../docs/research/seo-prior-art-2026-04-24.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
+- [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/2026-04-24-seo-prior-art.md
+- Research doc：[docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_worktree_session_hygiene.md](feedback_worktree_session_hygiene.md) — worktree 用主 tree venv 絕對路徑 + 收尾 fetch 不 checkout main + bash cwd 不持久
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
@@ -148,4 +148,4 @@
 - [feedback_count_vs_list_len.md](feedback_count_vs_list_len.md) — UI badge/stat 用專屬 `count_*()` 走 `SELECT COUNT(*)`，不要 `len(list_*())` — list API 通常有 LIMIT 預設值會 silent 封頂
 - [feedback_vps_deploy_smoke_browser.md](feedback_vps_deploy_smoke_browser.md) — nakama.shosho.tw 全域 CF SBFM 擋 curl 全 403（含已上線 route），VPS deploy smoke 要修修瀏覽器；self-verify 走 ssh+systemctl+journalctl 或 127.0.0.1 直連 uvicorn
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
-- Session handoff doc：[docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
+- Session handoff doc：[docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
