@@ -1,0 +1,30 @@
+# SEO enrich skill — cannibalization detection thresholds
+#
+# 這些 threshold 控制 `shared.seo_enrich.cannibalization.detect_cannibalization`
+# 如何判定「同一關鍵字多個 URL 互相競爭」以及嚴重度分級。
+# 缺檔時 skill 會 fallback 到 `_DEFAULT_THRESHOLDS`（值與本檔一致）。
+#
+# ADR-009 triangulation T9：cannibalization 規則比原估 50 行更複雜，
+# threshold 抽到 yaml 讓修修可在不改 code 的情況下校正 false-positive。
+
+# 同 keyword 至少要有幾個 unique URL 才算候選（2 是定義下限）。
+min_urls_per_keyword: 2
+
+# 單 URL impressions 低於此值視為雜訊、filter 掉。
+# 選 10：GSC 28 天 impressions < 10 的 URL 通常是 ranking tail，
+# 算不上「真的在競爭」；拉低會一堆誤報，拉高會漏掉新頁面。
+min_impressions_per_url: 10
+
+# Top URL 占全 keyword impressions ≥ 此比例 → severity=low（主從分明，僅弱警告）。
+# 選 0.70：GSC 實務上 70/30 多半是主頁壓次要頁，不需強烈處置。
+dominant_share: 0.70
+
+# 兩 URL 的 impressions share 落在 [balanced_share_min, balanced_share_max]
+# → 視為真分票 → severity=medium。
+# 40-60 區間涵蓋 40:60 ~ 60:40 的典型「兩頁搶同 query」場景。
+balanced_share_min: 0.40
+balanced_share_max: 0.60
+
+# URL 占 ≥ 此比例算「significant」，用於 3+ URL 的 high 判定。
+# 選 0.20：3 個 URL 各佔 ≥ 20% 代表流量真的被均分，合併動作急迫。
+significant_urls_share: 0.20
