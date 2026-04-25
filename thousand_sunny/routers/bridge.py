@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
@@ -233,11 +233,7 @@ async def draft_detail_page(
         try:
             payload = ApprovalPayloadV1Adapter.validate_python(json.loads(raw))
             parsed_payload = payload
-            payload_pretty = json.dumps(
-                json.loads(payload.model_dump_json()),
-                ensure_ascii=False,
-                indent=2,
-            )
+            payload_pretty = payload.model_dump_json(indent=2)
             if isinstance(payload, PublishWpPostV1):
                 headline_fields = [
                     ("title", payload.draft.title),
@@ -263,8 +259,125 @@ async def draft_detail_page(
             "headline_fields": headline_fields,
             "payload_pretty": payload_pretty,
             "has_parsed_payload": parsed_payload is not None,
+            "raw_payload_text": raw,
+            "error_log": row.get("error_log"),
+            "retry_count": row.get("retry_count") or 0,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Drafts — mutation endpoints (Phase 2, ADR-006 §7)
+# ---------------------------------------------------------------------------
+#
+# All four endpoints are POST + 303 redirect (form-post pattern, no JS required).
+# Auth = same cookie path as the page routes; the dev fallback when WEB_PASSWORD
+# is unset returns True so unit tests don't need to forge cookies.
+# Reviewer is hard-coded to "shosho" — single-reviewer assumption (task邊界:
+# permission/role check pushed to Phase 4 if multi-reviewer ever lands).
+
+_REVIEWER = "shosho"
+
+
+def _require_draft(draft_id: int) -> dict[str, Any]:
+    row = approval_queue.get_by_id(draft_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"draft {draft_id} not found")
+    return row
+
+
+@page_router.post("/drafts/{draft_id:int}/approve")
+async def draft_approve(draft_id: int, nakama_auth: str | None = Cookie(None)):
+    """POST → set status=approved (pending or in_review), redirect to list."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/drafts/{draft_id}", status_code=302)
+    row = _require_draft(draft_id)
+    if row["status"] not in ("pending", "in_review"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"cannot approve from status={row['status']!r}",
+        )
+    try:
+        approval_queue.approve(draft_id, reviewer=_REVIEWER, from_status=row["status"])
+    except approval_queue.ConcurrentTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return RedirectResponse("/bridge/drafts", status_code=303)
+
+
+@page_router.post("/drafts/{draft_id:int}/reject")
+async def draft_reject(
+    draft_id: int,
+    reason: str = Form(..., min_length=1),
+    nakama_auth: str | None = Cookie(None),
+):
+    """POST → set status=rejected (pending or in_review), record reason, redirect to list."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/drafts/{draft_id}", status_code=302)
+    row = _require_draft(draft_id)
+    if row["status"] not in ("pending", "in_review"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"cannot reject from status={row['status']!r}",
+        )
+    try:
+        approval_queue.reject(draft_id, reviewer=_REVIEWER, note=reason, from_status=row["status"])
+    except approval_queue.ConcurrentTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return RedirectResponse("/bridge/drafts", status_code=303)
+
+
+_EDIT_PAYLOAD_MAX_BYTES = 200_000  # 200 KB hard cap on payload edit (form post)
+
+
+@page_router.post("/drafts/{draft_id:int}/edit")
+async def draft_edit(
+    draft_id: int,
+    payload: str = Form(..., min_length=1, max_length=_EDIT_PAYLOAD_MAX_BYTES),
+    nakama_auth: str | None = Cookie(None),
+):
+    """POST → overwrite payload JSON in place; status preserved; redirect to detail."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/drafts/{draft_id}", status_code=302)
+    row = _require_draft(draft_id)
+    if row["status"] not in ("pending", "in_review"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"cannot edit payload from status={row['status']!r}",
+        )
+    try:
+        parsed = ApprovalPayloadV1Adapter.validate_python(json.loads(payload))
+    except (json.JSONDecodeError, ValidationError, TypeError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"payload invalid: {type(e).__name__}: {e}",
+        )
+    try:
+        approval_queue.update_payload(
+            draft_id,
+            payload_model=parsed,
+            expected_status=row["status"],
+        )
+    except approval_queue.ConcurrentTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return RedirectResponse(f"/bridge/drafts/{draft_id}", status_code=303)
+
+
+@page_router.post("/drafts/{draft_id:int}/requeue")
+async def draft_requeue(draft_id: int, nakama_auth: str | None = Cookie(None)):
+    """POST → failed → pending, clear error_log + retry_count, redirect to list."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/drafts/{draft_id}", status_code=302)
+    row = _require_draft(draft_id)
+    if row["status"] != "failed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"cannot requeue from status={row['status']!r} (only 'failed')",
+        )
+    try:
+        approval_queue.requeue(draft_id, actor=_REVIEWER)
+    except approval_queue.ConcurrentTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return RedirectResponse("/bridge/drafts", status_code=303)
 
 
 # ---------------------------------------------------------------------------

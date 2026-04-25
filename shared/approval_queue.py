@@ -46,11 +46,13 @@ from shared.state import _get_conn
 # ---------------------------------------------------------------------------
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "pending": {"in_review", "approved"},
+    # pending→rejected：reviewer 在 Bridge UI 看一眼可直接 reject，不必先進 in_review
+    "pending": {"in_review", "approved", "rejected"},
     "in_review": {"in_review", "approved", "rejected"},
     "approved": {"claimed"},
     "claimed": {"published", "failed", "approved"},  # approved 為 stale timeout reset
-    "failed": {"claimed", "archived"},
+    # failed→pending：reviewer 在 Bridge UI 觸發 requeue（清 error_log + retry_count 歸零）
+    "failed": {"claimed", "archived", "pending"},
     "published": {"archived"},
     "rejected": {"archived"},
     "archived": set(),
@@ -353,6 +355,7 @@ def transition(
     execution_result: dict | None = None,
     error_log: str | None = None,
     increment_retry: bool = False,
+    clear_failure: bool = False,
 ) -> None:
     """Transition a queue row from one status to another, atomic via conditional UPDATE.
 
@@ -372,7 +375,11 @@ def transition(
     set_fragments = ["status = ?", "updated_at = ?"]
     params: list[Any] = [to_status, now]
 
-    if to_status == "approved" and from_status == "in_review":
+    if to_status == "approved" and from_status in ("pending", "in_review"):
+        # HITL approve — both pending→approved and in_review→approved record reviewer.
+        # claimed→approved (stale reset) intentionally excluded: that path's "actor" is
+        # the cron job, not a human reviewer, and we don't want to overwrite the
+        # original reviewer column from the prior approve.
         set_fragments.append("reviewer = ?")
         params.append(actor)
         set_fragments.append("reviewed_at = ?")
@@ -403,6 +410,12 @@ def transition(
     if from_status == "claimed" and to_status == "approved":
         set_fragments.append("worker_id = NULL")
         set_fragments.append("claimed_at = NULL")
+    # requeue：reviewer 把 broken row 推回 pending 時清掉所有失敗痕跡
+    if clear_failure:
+        set_fragments.append("error_log = NULL")
+        set_fragments.append("retry_count = 0")
+        set_fragments.append("worker_id = NULL")
+        set_fragments.append("claimed_at = NULL")
 
     params.extend([draft_id, from_status])
     sql = "UPDATE approval_queue SET " + ", ".join(set_fragments) + " WHERE id = ? AND status = ?"
@@ -419,25 +432,128 @@ def transition(
 # ---------------------------------------------------------------------------
 
 
-def approve(draft_id: int, *, reviewer: str, note: str | None = None) -> None:
-    """HITL approve — in_review → approved."""
+def approve(
+    draft_id: int,
+    *,
+    reviewer: str,
+    note: str | None = None,
+    from_status: str = "in_review",
+) -> None:
+    """HITL approve — pending/in_review → approved."""
     transition(
         draft_id=draft_id,
-        from_status="in_review",
+        from_status=from_status,
         to_status="approved",
         actor=reviewer,
         note=note,
     )
 
 
-def reject(draft_id: int, *, reviewer: str, note: str | None = None) -> None:
-    """HITL reject — in_review → rejected."""
+def reject(
+    draft_id: int,
+    *,
+    reviewer: str,
+    note: str | None = None,
+    from_status: str = "in_review",
+) -> None:
+    """HITL reject — pending/in_review → rejected."""
     transition(
         draft_id=draft_id,
-        from_status="in_review",
+        from_status=from_status,
         to_status="rejected",
         actor=reviewer,
         note=note,
+    )
+
+
+def update_payload(
+    draft_id: int,
+    *,
+    payload_model: ApprovalPayloadV1,
+    expected_status: str | None = None,
+) -> None:
+    """Reviewer edit — overwrite payload + derived columns; status unchanged.
+
+    Recomputes title_snippet / target_platform / target_site / action_type /
+    diff_target_id / reviewer_compliance_ack from the new payload, mirroring
+    enqueue()'s denormalization. Caller is responsible for Pydantic-validating
+    payload_model upstream.
+
+    Audit-free path: the editor's identity is intentionally NOT persisted. Only
+    `updated_at` advances. If you need "who edited what" for forensics, see
+    issue #145 (Option B adds `last_edited_by` / `last_edited_at` columns).
+
+    Args:
+        expected_status: if provided, the conditional UPDATE will fail with
+            ConcurrentTransitionError when the row's status no longer matches —
+            same TOCTOU guard as transition().
+
+    Raises:
+        ConcurrentTransitionError: row status drifted away from expected_status,
+            or row vanished entirely (rowcount=0 path is collapsed).
+        ValueError: when expected_status is None and the draft id is not found.
+    """
+    payload_json = payload_model.model_dump_json()
+    target_platform = _target_platform(payload_model)
+    target_site = _target_site(payload_model)
+    action_type = payload_model.action_type
+    title_snippet = _snippet(_title_of(payload_model))
+    diff_target_id = _diff_target_id(payload_model)
+    ack = 1 if getattr(payload_model, "reviewer_compliance_ack", False) else 0
+
+    conn = _get_conn()
+    now = _now_iso()
+
+    set_clause = (
+        "payload = ?, payload_version = ?, title_snippet = ?, "
+        "target_platform = ?, target_site = ?, action_type = ?, "
+        "diff_target_id = ?, reviewer_compliance_ack = ?, updated_at = ?"
+    )
+    params: list[Any] = [
+        payload_json,
+        payload_model.schema_version,
+        title_snippet,
+        target_platform,
+        target_site,
+        action_type,
+        diff_target_id,
+        ack,
+        now,
+    ]
+
+    if expected_status is not None:
+        params.extend([draft_id, expected_status])
+        sql = f"UPDATE approval_queue SET {set_clause} WHERE id = ? AND status = ?"
+    else:
+        params.append(draft_id)
+        sql = f"UPDATE approval_queue SET {set_clause} WHERE id = ?"
+
+    cur = conn.execute(sql, params)
+    conn.commit()
+    if cur.rowcount == 0:
+        if expected_status is not None:
+            raise ConcurrentTransitionError(
+                f"draft={draft_id} not in status={expected_status!r} at update time"
+            )
+        raise ValueError(f"draft={draft_id} not found")
+
+
+def requeue(draft_id: int, *, actor: str, note: str | None = None) -> None:
+    """Reviewer requeue broken row — failed → pending, clear retry_count + error_log.
+
+    Audit-free path: `transition()` has no `to_status == "pending"` audit branch,
+    so `actor` and `note` are accepted for caller-side symmetry with
+    approve()/reject() but NOT persisted. Only `updated_at` advances along with
+    the failure-state cleanup (error_log / retry_count / worker_id / claimed_at).
+    See issue #145 for the audit-column proposal.
+    """
+    transition(
+        draft_id=draft_id,
+        from_status="failed",
+        to_status="pending",
+        actor=actor,
+        note=note,
+        clear_failure=True,
     )
 
 

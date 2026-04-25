@@ -594,6 +594,226 @@ class TestCountByStatus:
 
 
 # ---------------------------------------------------------------------------
+# Bridge UI Phase 2 mutations — extended approve/reject + update_payload + requeue
+# ---------------------------------------------------------------------------
+
+
+class TestApproveFromPending:
+    """ADR-006 §4: pending → approved is a legal one-step transition."""
+
+    def test_pending_to_approved_records_reviewer(self):
+        qid = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=_make_payload(),
+            operation_id="op_a0010001",
+            initial_status="pending",
+        )
+        approval_queue.approve(qid, reviewer="shosho", note="quick LGTM", from_status="pending")
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "approved"
+        assert row["reviewer"] == "shosho"
+        assert row["reviewed_at"] is not None
+        assert row["review_note"] == "quick LGTM"
+
+    def test_pending_to_approved_default_from_status_fails_loudly(self):
+        """Default from_status='in_review' MUST raise on a pending row — silent
+        fallthrough would overwrite 'pending' rows that were never reviewed."""
+        qid = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=_make_payload(),
+            operation_id="op_a0010002",
+            initial_status="pending",
+        )
+        with pytest.raises(approval_queue.ConcurrentTransitionError):
+            approval_queue.approve(qid, reviewer="shosho")  # default = in_review
+
+
+class TestRejectFromPending:
+    """Bridge UI: reviewer can reject a pending draft without first promoting to
+    in_review (FSM extended in this PR with pending → rejected)."""
+
+    def test_pending_to_rejected(self):
+        qid = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=_make_payload(),
+            operation_id="op_a0020001",
+            initial_status="pending",
+        )
+        approval_queue.reject(qid, reviewer="shosho", note="off-topic", from_status="pending")
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "rejected"
+        assert row["reviewer"] == "shosho"
+        assert row["review_note"] == "off-topic"
+
+    def test_pending_to_rejected_in_allowed_transitions(self):
+        assert "rejected" in approval_queue.ALLOWED_TRANSITIONS["pending"]
+
+
+class TestUpdatePayload:
+    """update_payload overwrites payload + recomputed denorm columns; status preserved."""
+
+    def test_update_recomputes_title_snippet_and_keeps_status(self):
+        qid = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=_make_payload(slug="original", op_id="op_a0030001"),
+            operation_id="op_a0030001",
+            initial_status="in_review",
+        )
+        new_payload = _make_payload(slug="rewritten-headline", op_id="op_a0030001")
+        approval_queue.update_payload(
+            qid,
+            payload_model=new_payload,
+            expected_status="in_review",
+        )
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "in_review", "edit must not change status"
+        assert "rewritten-headline" in row["title_snippet"]
+        # payload column reflects new content
+        assert "rewritten-headline" in row["payload"]
+        assert "Title original" not in row["payload"]
+
+    def test_update_payload_pending_row(self):
+        qid = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=_make_payload(slug="orig", op_id="op_a0030002"),
+            operation_id="op_a0030002",
+            initial_status="pending",
+        )
+        new_payload = _make_payload(slug="edited", op_id="op_a0030002")
+        approval_queue.update_payload(
+            qid,
+            payload_model=new_payload,
+            expected_status="pending",
+        )
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "pending"
+        assert "edited" in row["title_snippet"]
+
+    def test_update_payload_expected_status_drift_raises(self):
+        qid = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=_make_payload(),
+            operation_id="op_a0030003",
+            initial_status="pending",
+        )
+        # Move row to a different status outside the helper to simulate drift
+        conn = state._get_conn()
+        conn.execute("UPDATE approval_queue SET status='in_review' WHERE id=?", (qid,))
+        conn.commit()
+        with pytest.raises(approval_queue.ConcurrentTransitionError):
+            approval_queue.update_payload(
+                qid,
+                payload_model=_make_payload(slug="never-saved", op_id="op_a0030003"),
+                expected_status="pending",
+            )
+
+    def test_update_payload_unknown_id_raises(self):
+        with pytest.raises(ValueError, match="not found"):
+            approval_queue.update_payload(
+                99999,
+                payload_model=_make_payload(),
+            )
+
+
+class TestRequeue:
+    """failed → pending, with retry_count + error_log + claim metadata cleared."""
+
+    def _enqueue_then_fail(self, slug: str, op_id: str) -> int:
+        qid = _enqueue_approved(slug, op_id)
+        approval_queue.claim_approved_drafts(worker_id="usopp-1", source_agent="brook", batch=5)
+        approval_queue.mark_failed(qid, "WP 500 error")
+        return qid
+
+    def test_failed_to_pending_clears_failure_metadata(self):
+        qid = self._enqueue_then_fail("fail-1", "op_a0040001")
+        # Sanity precondition
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "failed"
+        assert row["retry_count"] == 1
+        assert row["error_log"] == "WP 500 error"
+        assert row["worker_id"] == "usopp-1"
+
+        approval_queue.requeue(qid, actor="shosho")
+
+        row = approval_queue.get_by_id(qid)
+        assert row["status"] == "pending"
+        assert row["retry_count"] == 0
+        assert row["error_log"] is None
+        assert row["worker_id"] is None
+        assert row["claimed_at"] is None
+
+    def test_requeue_from_pending_raises(self):
+        """requeue() targets 'failed' rows; calling on a pending row must fail
+        with ConcurrentTransitionError (the conditional UPDATE matches 0 rows
+        because the row's status is 'pending', not 'failed')."""
+        qid = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=_make_payload(),
+            operation_id="op_a0040002",
+        )
+        with pytest.raises(approval_queue.ConcurrentTransitionError):
+            approval_queue.requeue(qid, actor="shosho")
+
+    def test_pending_to_pending_illegal(self):
+        """FSM still rejects a literal pending → pending transition; only the
+        failed → pending edge was added in this PR."""
+        qid = approval_queue.enqueue(
+            source_agent="brook",
+            payload_model=_make_payload(),
+            operation_id="op_a0040003",
+        )
+        with pytest.raises(approval_queue.IllegalStatusTransitionError):
+            approval_queue.transition(
+                draft_id=qid,
+                from_status="pending",
+                to_status="pending",
+                actor="shosho",
+            )
+
+
+class TestFSMBoundaryNegative:
+    """Lock the boundary of the two new edges (pending→rejected, failed→pending)
+    so future ALLOWED_TRANSITIONS edits cannot silently widen the FSM.
+
+    Each case asserts that a status which sits *next to* one of the new edges
+    cannot itself reach the new target — i.e. only the explicit edge was added.
+    """
+
+    @pytest.mark.parametrize(
+        "from_status,to_status",
+        [
+            # only failed→pending was added, not these:
+            ("approved", "pending"),
+            ("rejected", "pending"),
+            ("published", "pending"),
+            ("claimed", "pending"),
+            ("in_review", "pending"),  # backward-edge into pending forbidden
+            # archived is terminal — nothing leaves it:
+            ("archived", "pending"),
+            ("archived", "approved"),
+            ("archived", "in_review"),
+            # rejected can only go to archived, not loop back:
+            ("rejected", "approved"),
+            ("rejected", "in_review"),
+            # approved → pending shortcuts the audit/review path; explicitly forbidden:
+            ("approved", "in_review"),
+            ("approved", "rejected"),
+        ],
+    )
+    def test_illegal_transition_raises(self, from_status: str, to_status: str):
+        # We only need the FSM check, which fires before the DB UPDATE — pass an
+        # arbitrary draft_id; the IllegalStatusTransitionError must be raised
+        # before any row is touched.
+        with pytest.raises(approval_queue.IllegalStatusTransitionError):
+            approval_queue.transition(
+                draft_id=999_999,
+                from_status=from_status,
+                to_status=to_status,
+                actor="cron",
+            )
+
+
+# ---------------------------------------------------------------------------
 # new_operation_id helper
 # ---------------------------------------------------------------------------
 
