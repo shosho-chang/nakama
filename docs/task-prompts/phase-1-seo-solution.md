@@ -51,8 +51,9 @@
 | `shared/schemas/publishing.py`（擴增） | 新 pydantic class：`KeywordMetricV1` / `StrikingDistanceV1` / `CannibalizationWarningV1` / `SEOContextV1`；全 `ConfigDict(extra="forbid", frozen=True)`；`schema_version: Literal[1]` |
 | `shared/schemas/site_mapping.py` | 新檔 — `TargetSite` `Literal[...]` re-export + `HOST_TO_TARGET_SITE` dict + 純函式 `host_to_target_site(host) -> TargetSite`；**不放在** `shared/gsc_client.py`（triangulation T5） |
 | `shared/gsc_client.py` | GSC Search Console API v1 thin wrapper：OAuth service account auth + `query(site, start_date, end_date, dimensions, row_limit) -> list[dict]`；tenacity retry（2 retries, 10s backoff）；timeout 30s |
-| `docs/runbooks/gsc-oauth-setup.md` | 修修手動步驟：GCP project / service account JSON / property 驗證 / scope 授權 / `.env` 變數；含驗收指令 |
-| `.env.example`（append） | 加 key name 註解獨立行（`feedback_env_example_formatting.md`）：`GSC_SERVICE_ACCOUNT_JSON_PATH` / `GSC_PROPERTY_SHOSHO` / `GSC_PROPERTY_FLEET` |
+| `docs/runbooks/gsc-oauth-setup.md` | **deprecation stub**（2026-04-25 cleanup） — redirect 到 [setup-wp-integration-credentials.md §2](../runbooks/setup-wp-integration-credentials.md)，reuse Franky 既有 sa；**不要新建 GCP project / service account** |
+| `docs/runbooks/setup-wp-integration-credentials.md` §2b | append SEO 專用 env keys（`GSC_PROPERTY_SHOSHO` / `GSC_PROPERTY_FLEET`） |
+| `.env.example`（append） | 加 key name 註解獨立行（`feedback_env_example_formatting.md`）：`GCP_SERVICE_ACCOUNT_JSON`（reuse Franky）/ `GSC_PROPERTY_SHOSHO` / `GSC_PROPERTY_FLEET` |
 
 **測試檔**：
 
@@ -175,7 +176,7 @@ class GSCClient:
 - [ ] `shared/schemas/site_mapping.py` 窮舉 test 通過（`set(HOST_TO_TARGET_SITE.keys()) == set(TargetSite.__args__)`）
 - [ ] `shared/gsc_client.py` 所有 public method 有 docstring，說明 raw return shape（不承諾 schema）
 - [ ] `tests/shared/test_gsc_client.py` 驗：（a）無 service account file 時 raise 明確 exception；（b）retry 2 次後仍失敗 propagate；（c）query payload 組成正確
-- [ ] `docs/runbooks/gsc-oauth-setup.md` 含驗收指令（`python -c "from shared.gsc_client import GSCClient; GSCClient().query(...)"` smoke test）
+- [ ] `docs/runbooks/gsc-oauth-setup.md` 改 deprecation stub（redirect setup-wp-integration-credentials.md §2 + 含驗收 smoke test 指令）
 - [ ] `.env.example` 三個 key 註解獨立行（不是 inline `#`）
 - [ ] 全 repo `pytest` pass，無 regression
 - [ ] `ruff check` + `ruff format` 綠
