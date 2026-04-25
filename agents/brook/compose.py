@@ -32,6 +32,7 @@ from shared.schemas.publishing import (
     DraftV1,
     GutenbergHTMLV1,
     PublishComplianceGateV1,
+    SEOContextV1,
     TargetSite,
 )
 from shared.state import _get_conn
@@ -319,10 +320,16 @@ _COMPOSE_OUTPUT_SCHEMA = """{
 }"""
 
 
-def _build_compose_system_prompt(profile: StyleProfile) -> str:
+def _build_compose_system_prompt(
+    profile: StyleProfile,
+    seo_context: SEOContextV1 | None = None,
+) -> str:
     """把風格側寫整份塞進 system，緊接著結構化輸出規範。
 
     Phase 1 單類別單檔；依 _extraction-notes.md §3.2「不要三類都塞進 context」。
+
+    `seo_context=None`（預設）路徑 byte-identical 於 SEO 整合前的輸出（regression 保護）。
+    給定 `SEOContextV1` 時在 prompt 尾端 append 一段繁中 SEO 數據區塊（ADR-009 §D5）。
     """
     emoji_rule = (
         "本類別嚴禁 emoji（書評硬規則）。" if profile.forbid_emoji else "emoji 依風格側寫內指引。"
@@ -335,7 +342,7 @@ def _build_compose_system_prompt(profile: StyleProfile) -> str:
     )
     block_types = "paragraph、heading、list、list_item、quote、image、code、separator"
     word_range = f"{profile.word_count_min} – {profile.word_count_max}"
-    return f"""{header}
+    base = f"""{header}
 
 {profile.body}
 
@@ -355,6 +362,12 @@ def _build_compose_system_prompt(profile: StyleProfile) -> str:
 JSON schema 範例：
 {_COMPOSE_OUTPUT_SCHEMA}
 """
+    if seo_context is None:
+        return base
+
+    from agents.brook.seo_block import build_seo_block
+
+    return base + "\n---\n\n" + build_seo_block(seo_context)
 
 
 def _build_user_request(topic: str, kb_context: str, source_content: str) -> str:
@@ -439,6 +452,8 @@ def compose_and_enqueue(
     primary_category_override: str | None = None,
     model: str | None = None,
     max_tokens: int = 8192,
+    seo_context: SEOContextV1 | None = None,
+    core_keywords: list[str] | None = None,
 ) -> dict[str, Any]:
     """主題 → Claude 產 AST → DraftV1 → approval_queue row。
 
@@ -452,6 +467,11 @@ def compose_and_enqueue(
         primary_category_override: 覆寫 style profile 的預設 primary_category
         model: Claude 模型；None 走 llm_router
         max_tokens: LLM 最大輸出 token
+        seo_context: 可選的 SEOContextV1（site-wide，由 seo-keyword-enrich skill 產出）。
+            非 None 時會先跑 `narrow_to_topic` 過濾成 topic 相關子集再 append 到 system prompt。
+            `None` 時整段邏輯路徑 byte-identical 於 SEO 整合前。
+        core_keywords: 給 narrow LLM 的額外 anchor（通常從 keyword-research markdown 讀進來）；
+            僅在 `seo_context` 非 None 時生效。
 
     Returns:
         {
@@ -473,7 +493,14 @@ def compose_and_enqueue(
         )
 
     profile = load_style_profile(resolved_category)
-    system_prompt = _build_compose_system_prompt(profile)
+
+    narrowed_seo: SEOContextV1 | None = None
+    if seo_context is not None:
+        from agents.brook.seo_narrow import narrow_to_topic
+
+        narrowed_seo = narrow_to_topic(seo_context, topic, core_keywords)
+
+    system_prompt = _build_compose_system_prompt(profile, narrowed_seo)
     user_msg = _build_user_request(topic, kb_context, source_content)
 
     raw_text = ask_claude_multi(
