@@ -24,6 +24,30 @@
 
 ---
 
+## 跨機策略（Mac + 桌機 + VPS）
+
+Nakama 開發環境目前三台：Mac、桌機（Windows）、VPS（Linux）。JSON key 含 private key **絕對不能 commit repo**、**不走 iCloud / Dropbox**，所以不能單純「下載一次各機同步」。三個可行策略：
+
+| 策略 | 安全 | 便利 | Rotation 成本 | 建議 |
+|---|---|---|---|---|
+| **A. 各機獨立下載** | ⭐️⭐️⭐️ 零跨機傳輸 | ⭐️⭐️ 首次多跑一次 step 3 | 低（各機獨立 revoke） | ✅ **推薦** |
+| B. 一台下載後 scp 到另一台 | ⭐️⭐️ 加密傳輸但曾入網 | ⭐️⭐️⭐️ 簡單 | 中（一動全動） | 🟡 備選 |
+| C. `age` / `gpg` 加密 commit | ⭐️⭐️⭐️ 若私鑰控制得當 | ⭐️ 每次 decrypt | 高（tooling 要同步） | ❌ 不建議 |
+
+**策略 A 做法**（推薦）：
+
+1. **Mac**：跑 step 3 下載第一把 JSON → 放 `~/.config/nakama/gsc-service-account.json`
+2. **桌機**：同一個 GCP service account 頁面 **Add Key → Create new JSON key** 下載第二把 → 放 `C:\Users\<user>\.config\nakama\gsc-service-account.json`（或 `%USERPROFILE%\.config\nakama\`）
+3. **VPS**：特例 — VPS 不能從瀏覽器下 GCP key。從 Mac 或桌機其中一台 `scp` 一把上去（step 6 有指令）。這是唯一單程跨機傳輸，SSH 加密、VPS 受控
+
+GCP service account 上限 10 把 key，三機三把綽綽有餘。**一台 compromise 時只 revoke 該機那把**，其他機不受影響。
+
+**為何不建議 B/C**：
+- B 的 scp 雖加密，還是多一次網路傳輸窗口；rotation 要同步兩端
+- C 雖技術可行但修修目前沒 age/gpg workflow，引入新 tooling 成本 > 收益；若未來 secrets 數量增加再評估
+
+---
+
 ## 步驟
 
 ### 1. GCP Project 與 API 啟用
@@ -41,10 +65,32 @@
 
 ### 3. 產生 JSON Key
 
+依上方 **跨機策略** 章節，每台開發機（Mac / 桌機）各跑一次此 step 下載**自己那把**（VPS 例外，從其中一台 scp 上去）：
+
 1. 在 Credentials 頁點開剛建的 service account。
 2. **Keys 分頁 → Add Key → Create new key → JSON** → 下載。
-3. 檔案存到本機安全位置，例 `~/.config/nakama/gsc-service-account.json`；**絕對路徑**是等下 `.env` 要填的值。
-4. `chmod 600` 收緊權限（避免 shared machine 洩漏）。
+3. 檔案存到本機安全位置：
+
+   **Mac**：
+   ```bash
+   mkdir -p ~/.config/nakama
+   chmod 700 ~/.config/nakama
+   mv ~/Downloads/<下載的 JSON 檔名>.json ~/.config/nakama/gsc-service-account.json
+   chmod 600 ~/.config/nakama/gsc-service-account.json
+   ```
+
+   **桌機（Windows，PowerShell）**：
+   ```powershell
+   $dir = "$env:USERPROFILE\.config\nakama"
+   New-Item -ItemType Directory -Force -Path $dir | Out-Null
+   Move-Item "$env:USERPROFILE\Downloads\<下載的 JSON 檔名>.json" "$dir\gsc-service-account.json"
+   # 權限收緊（移除 inherited 權限，只留 owner）
+   icacls "$dir\gsc-service-account.json" /inheritance:r /grant:r "${env:USERNAME}:(R)"
+   ```
+
+   > ℹ️ **iCloud / OneDrive 提醒**：Mac 不要放 `~/Documents/` 或 `~/Desktop/`（預設 iCloud 同步）。Windows 不要放 `%USERPROFILE%\Documents\` / `%USERPROFILE%\OneDrive\`。`~/.config/` / `%USERPROFILE%\.config\` 兩平台都不在任何雲端同步範圍內。
+
+4. **絕對路徑**是等下 `.env` 要填的值（step 6）。
 
 > ⚠️ JSON 含 private key，**不可 commit 進 repo**、不可貼 Slack、不可 scp 整份到 VPS 前 diff。見 [feedback_no_secrets_in_chat.md](../../memory/claude/feedback_no_secrets_in_chat.md)。
 
@@ -71,7 +117,9 @@ GSC property 有兩種型態，GSC API `siteUrl` 格式不同：
 
 ### 6. 寫入 `.env`
 
-本機 `.env`：
+三台環境 `.env` 路徑不同，`GSC_PROPERTY_*` 值相同。
+
+**Mac `.env`**：
 
 ```bash
 GSC_SERVICE_ACCOUNT_JSON_PATH=/Users/shosho/.config/nakama/gsc-service-account.json
@@ -79,9 +127,18 @@ GSC_PROPERTY_SHOSHO=sc-domain:shosho.tw
 GSC_PROPERTY_FLEET=sc-domain:fleet.shosho.tw
 ```
 
-VPS `.env`：先把 JSON 用 `scp` 上去：
+**桌機 `.env`**（Windows，注意路徑用 forward slash 或 double backslash 避免 dotenv escape 問題）：
 
 ```bash
+GSC_SERVICE_ACCOUNT_JSON_PATH=C:/Users/shosho/.config/nakama/gsc-service-account.json
+GSC_PROPERTY_SHOSHO=sc-domain:shosho.tw
+GSC_PROPERTY_FLEET=sc-domain:fleet.shosho.tw
+```
+
+**VPS `.env`**：從 Mac / 桌機其中一台 `scp` 一把 JSON 上去（見跨機策略 A.3），再編 `.env`：
+
+```bash
+# 從本機（Mac 範例）：
 scp ~/.config/nakama/gsc-service-account.json nakama-vps:/home/nakama/.config/nakama/gsc-service-account.json
 ssh nakama-vps "chmod 600 /home/nakama/.config/nakama/gsc-service-account.json"
 ```
