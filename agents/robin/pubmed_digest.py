@@ -389,6 +389,9 @@ class PubMedDigestPipeline(BaseAgent):
             "publisher_url": ft.get("publisher_url"),
             "read_status": "unread",
             "source": "pubmed_rss",
+            "source_type": "paper",
+            "content_nature": "research",
+            "lang": "en",
             "type": "paper_digest",
         }
 

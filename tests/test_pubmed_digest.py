@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from agents.robin.pubmed_digest import (
+    PubMedDigestPipeline,
     _clean_abstract,
     _clean_journal,
     _parse_json,
@@ -153,3 +154,61 @@ class TestEtlParsers:
         from scripts.update_scimago import parse_issns
 
         assert parse_issns("") == []
+
+
+class TestSourcePageSchema:
+    """Pin the daily-digest source page frontmatter schema (drift fix).
+
+    Reader UI (PR #141) renders pills from `type`, `source_type`, `content_nature`,
+    `lang`. Daily digest source pages used to declare only `type: paper_digest`
+    so reader pills were sparse. This test locks the four-field schema in.
+    """
+
+    def test_source_page_includes_schema_fields(self, monkeypatch, tmp_path):
+        from shared import obsidian_writer
+
+        monkeypatch.setattr(obsidian_writer, "get_vault_path", lambda: tmp_path)
+
+        pipeline = PubMedDigestPipeline(dry_run=False)
+        item = {
+            "candidate": {
+                "pmid": "99999001",
+                "title": "Test paper title",
+                "journal": "Test Journal",
+                "abstract": "Test abstract.",
+                "pub_date": "2026-04-25",
+                "authors": "Doe J, Smith A",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/99999001/",
+                "feed_source": "test",
+                "journal_tier": None,
+            },
+            "curate_meta": {"domain": "sleep", "reason": "test"},
+            "score_result": {
+                "scores": {},
+                "overall": 7,
+                "study_design": "RCT",
+                "editor_pick": True,
+                "one_line_verdict": "",
+                "why_it_matters": "",
+                "key_finding": "",
+                "sample_size": "",
+                "red_flags_detail": "",
+            },
+            "fulltext": {
+                "status": "oa_downloaded",
+                "source": "pmc",
+                "pdf_relpath": "KB/Attachments/pubmed/99999001.pdf",
+                "html_relpath": None,
+                "publisher_url": None,
+                "doi": "10.0001/test.99999001",
+                "note": None,
+            },
+        }
+        pipeline._write_source_page(item)
+
+        page = (tmp_path / "KB/Wiki/Sources/pubmed-99999001.md").read_text(encoding="utf-8")
+        assert "source_type: paper" in page
+        assert "content_nature: research" in page
+        assert "lang: en" in page
+        assert "doi: 10.0001/test.99999001" in page
+        assert "type: paper_digest" in page
