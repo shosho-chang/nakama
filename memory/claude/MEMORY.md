@@ -111,6 +111,7 @@
 - [reference_mac_dev_env.md](reference_mac_dev_env.md) — Mac 開發機 bring-up：brew python@3.12 + .venv + pip install -e .
 - [reference_sqlite_python_pitfalls.md](reference_sqlite_python_pitfalls.md) — `check_same_thread=False` 不加 mutex、BEGIN IMMEDIATE 與 Python implicit txn 打架等 SQLite 陷阱
 - [feedback_multi_machine_parallel.md](feedback_multi_machine_parallel.md) — Mac ↔ 桌機並行用對方 open PR file list 做 conflict 分析，挑 zero-overlap 任務不 rebase
+- [feedback_dual_window_worktree.md](feedback_dual_window_worktree.md) — 同機雙視窗開發必用 `git worktree add`；純切 branch 會跨 branch 互相覆蓋未 commit 改動
 - [feedback_dual_review_complementarity.md](feedback_dual_review_complementarity.md) — ultrareview（behavioral bias）+ 本地 3-agent（data/config bias）互補；PR #77 實證 9 bug 零重疊
 - [feedback_rendering_truthify_audit_upstream.md](feedback_rendering_truthify_audit_upstream.md) — render 改用上游 note 欄位時要掃所有 return 該欄位的分支，確認訊息沒說謊（PR #84 review 抓到）
 - [feedback_model_construct_bypasses_validators.md](feedback_model_construct_bypasses_validators.md) — pydantic `model_construct()` 跳過 validators，消費端要補 defensive check（Bug 2 根因）
