@@ -96,6 +96,15 @@ fleet 站裝了 **Fluent Security** plugin，預設會關掉 Application Passwor
 - [ ] 對 `sc-domain:fleet.shosho.tw` 重複同步驟
 - [ ] 確認：之後跑 `python -m agents.franky.gsc_test` 能列出兩個 property
 
+**ADR-009 SEO solution 額外 env keys**（`shared/gsc_client.py` 消費）：
+
+```
+GSC_PROPERTY_SHOSHO=sc-domain:shosho.tw
+GSC_PROPERTY_FLEET=sc-domain:fleet.shosho.tw
+```
+
+`GSC_PROPERTY_*` 是 GSC API `siteUrl` 字串。Domain property 用 `sc-domain:<domain>`，URL-prefix property 用 `https://<host>/`（含 trailing slash）。Service account 已在本 §2b 授權兩 property，env key 直接填即可，無需重新授權。
+
 ### 2c. 授權此 Service Account 存取 GA4 Property
 
 - [ ] 你已在 GA4 追蹤 shosho.tw 嗎？（若無，先到 `https://analytics.google.com/` 開 property）
