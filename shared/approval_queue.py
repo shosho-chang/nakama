@@ -470,7 +470,6 @@ def update_payload(
     draft_id: int,
     *,
     payload_model: ApprovalPayloadV1,
-    actor: str,
     expected_status: str | None = None,
 ) -> None:
     """Reviewer edit — overwrite payload + derived columns; status unchanged.
@@ -479,6 +478,10 @@ def update_payload(
     diff_target_id / reviewer_compliance_ack from the new payload, mirroring
     enqueue()'s denormalization. Caller is responsible for Pydantic-validating
     payload_model upstream.
+
+    Audit-free path: the editor's identity is intentionally NOT persisted. Only
+    `updated_at` advances. If you need "who edited what" for forensics, see
+    issue #145 (Option B adds `last_edited_by` / `last_edited_at` columns).
 
     Args:
         expected_status: if provided, the conditional UPDATE will fail with
@@ -536,7 +539,14 @@ def update_payload(
 
 
 def requeue(draft_id: int, *, actor: str, note: str | None = None) -> None:
-    """Reviewer requeue broken row — failed → pending, clear retry_count + error_log."""
+    """Reviewer requeue broken row — failed → pending, clear retry_count + error_log.
+
+    Audit-free path: `transition()` has no `to_status == "pending"` audit branch,
+    so `actor` and `note` are accepted for caller-side symmetry with
+    approve()/reject() but NOT persisted. Only `updated_at` advances along with
+    the failure-state cleanup (error_log / retry_count / worker_id / claimed_at).
+    See issue #145 for the audit-column proposal.
+    """
     transition(
         draft_id=draft_id,
         from_status="failed",

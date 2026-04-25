@@ -633,6 +633,21 @@ def test_draft_edit_400_on_schema_validation_failure(client):
     assert "ValidationError" in r.json()["detail"]
 
 
+def test_draft_edit_422_on_payload_above_max_length(client):
+    """Form field max_length guards against accidental paste of huge artifacts —
+    FastAPI returns 422 (validation error) before the route body runs."""
+    qid = _enqueue_draft(slug="ed-too-big", op_id="op_b0030004")
+    huge = "x" * 200_001  # 1 byte over 200 KB cap
+    r = client.post(
+        f"/bridge/drafts/{qid}/edit",
+        data={"payload": huge},
+        follow_redirects=False,
+    )
+    assert r.status_code == 422
+    # Row untouched
+    assert "ed-too-big" in approval_queue.get_by_id(qid)["title_snippet"]
+
+
 # ── /requeue ───────────────────────────────────────────────────────────────
 
 

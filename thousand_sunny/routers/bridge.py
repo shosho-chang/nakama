@@ -326,10 +326,13 @@ async def draft_reject(
     return RedirectResponse("/bridge/drafts", status_code=303)
 
 
+_EDIT_PAYLOAD_MAX_BYTES = 200_000  # 200 KB hard cap on payload edit (form post)
+
+
 @page_router.post("/drafts/{draft_id:int}/edit")
 async def draft_edit(
     draft_id: int,
-    payload: str = Form(..., min_length=1),
+    payload: str = Form(..., min_length=1, max_length=_EDIT_PAYLOAD_MAX_BYTES),
     nakama_auth: str | None = Cookie(None),
 ):
     """POST → overwrite payload JSON in place; status preserved; redirect to detail."""
@@ -352,7 +355,6 @@ async def draft_edit(
         approval_queue.update_payload(
             draft_id,
             payload_model=parsed,
-            actor=_REVIEWER,
             expected_status=row["status"],
         )
     except approval_queue.ConcurrentTransitionError as e:

@@ -663,7 +663,6 @@ class TestUpdatePayload:
         approval_queue.update_payload(
             qid,
             payload_model=new_payload,
-            actor="shosho",
             expected_status="in_review",
         )
         row = approval_queue.get_by_id(qid)
@@ -684,7 +683,6 @@ class TestUpdatePayload:
         approval_queue.update_payload(
             qid,
             payload_model=new_payload,
-            actor="shosho",
             expected_status="pending",
         )
         row = approval_queue.get_by_id(qid)
@@ -706,7 +704,6 @@ class TestUpdatePayload:
             approval_queue.update_payload(
                 qid,
                 payload_model=_make_payload(slug="never-saved", op_id="op_a0030003"),
-                actor="shosho",
                 expected_status="pending",
             )
 
@@ -715,7 +712,6 @@ class TestUpdatePayload:
             approval_queue.update_payload(
                 99999,
                 payload_model=_make_payload(),
-                actor="shosho",
             )
 
 
@@ -772,6 +768,48 @@ class TestRequeue:
                 from_status="pending",
                 to_status="pending",
                 actor="shosho",
+            )
+
+
+class TestFSMBoundaryNegative:
+    """Lock the boundary of the two new edges (pending→rejected, failed→pending)
+    so future ALLOWED_TRANSITIONS edits cannot silently widen the FSM.
+
+    Each case asserts that a status which sits *next to* one of the new edges
+    cannot itself reach the new target — i.e. only the explicit edge was added.
+    """
+
+    @pytest.mark.parametrize(
+        "from_status,to_status",
+        [
+            # only failed→pending was added, not these:
+            ("approved", "pending"),
+            ("rejected", "pending"),
+            ("published", "pending"),
+            ("claimed", "pending"),
+            ("in_review", "pending"),  # backward-edge into pending forbidden
+            # archived is terminal — nothing leaves it:
+            ("archived", "pending"),
+            ("archived", "approved"),
+            ("archived", "in_review"),
+            # rejected can only go to archived, not loop back:
+            ("rejected", "approved"),
+            ("rejected", "in_review"),
+            # approved → pending shortcuts the audit/review path; explicitly forbidden:
+            ("approved", "in_review"),
+            ("approved", "rejected"),
+        ],
+    )
+    def test_illegal_transition_raises(self, from_status: str, to_status: str):
+        # We only need the FSM check, which fires before the DB UPDATE — pass an
+        # arbitrary draft_id; the IllegalStatusTransitionError must be raised
+        # before any row is touched.
+        with pytest.raises(approval_queue.IllegalStatusTransitionError):
+            approval_queue.transition(
+                draft_id=999_999,
+                from_status=from_status,
+                to_status=to_status,
+                actor="cron",
             )
 
 
