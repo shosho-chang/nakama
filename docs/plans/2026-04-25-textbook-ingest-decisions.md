@@ -1,81 +1,62 @@
 # Textbook Ingest — Decision Questionnaire
 
-**用法**：每題勾選一個選項（用 `[x]` 取代 `[ ]`），需要 nuance 寫在 **Comments / overrides** 區。三題拍板後升級 ADR-010、開工。
+**Status**: ✅ RESOLVED 2026-04-25 — 透過對話拍板（不是 checkbox），升級為 [ADR-010-textbook-ingest.md](../decisions/ADR-010-textbook-ingest.md)。本檔保留為歷史紀錄。
 
 對應提案：[2026-04-25-textbook-ingest-design.md](./2026-04-25-textbook-ingest-design.md)
 背景：[project_textbook_ingest_design_gap.md](../../memory/claude/project_textbook_ingest_design_gap.md)
 
 ---
 
-## Q1 — 章節拆分粒度：拆到章還是拆到節？
+## 拍板過程
 
-**Tradeoff**：
-- **章**（建議）：1 章 = 1 source page；節用章內 metadata 表達；retrieval 走章 + chunk 兩層
-- **節**：1 節 = 1 source page；source 數量 ×5–10；retrieval citation 更精確但檔案爆炸
+原本 questionnaire 列了 3 個未決問題（章/節粒度、rerank 落點、vector store 落點）。實際對話過程因為兩個關鍵 insight 把問題場域整個重塑：
 
-**選一個**：
+1. **修修提醒 Karpathy 的 KB 設計哲學** — 教科書 ingest 的核心不是「把書切完存檔」，是「filing each chapter as you go, building out pages for characters, themes, plot threads, and how they connect」。每章吃完都會增建 / 更新 vault 內的 Concept / Entity 頁，跨書共享。
+2. **修修提案用 Claude Code Opus 4.7 1M context + Max 200 subscription** — 教科書數量少、絕大多英文，沒必要建 embedding pipeline。直接用 Claude Code 互動式跑，整章 in-context 處理。
 
-- [ ] **A — 拆到章**（我的建議）
-- [ ] **B — 拆到節**
-- [ ] **C — Hybrid：預設拆到章，但如果一章 > N 頁就自動拆節**（請於 Comments 寫 N）
-
-**Comments / overrides**：
-
-> _（修修在這裡寫補充 / 例外 / 反對理由）_
+這兩個 insight 把原 Q4（embedding / rerank）+ Q5 部分（vector store 落點）整個刪掉。剩下的決策透過對話直接拍板。
 
 ---
 
-## Q2 — Rerank 落點：桌機還是 VPS？
+## Q1 — 章節拆分粒度
 
-**背景**：retrieve 拉 top-K=20 chunks 後，用 cross-encoder reranker（`bge-reranker-v2-m3`）打分挑 top-5 給 LLM compose。
-**Tradeoff**：
-- **VPS**（建議）：query latency 在 user 視角重要；ONNX 量化版 ~500MB RAM 跑得動；桌機可離線但 query 不受影響
-- **桌機**：跑 full-precision torch 版稍快但每次 query 要桌機在線；vault sync 沒這條 path
+**Decided: 章為單位**，但 Source Summary 內部走 section-by-section 結構（每節 2-3 段重點，而非整章一坨大摘要）。
 
-**選一個**：
+**Why**：retrieval 是 chunk + concept backlink 兩層做的，summary 只是入口；vault 整潔（一本書 ~30 檔，不是節級的 150-300 檔）。
 
-- [ ] **A — VPS**（我的建議；ONNX 量化版 bge-reranker-v2-m3）
-- [ ] **B — 桌機**（full-precision torch；query 路徑要桌機在線）
-- [ ] **C — 跳過 rerank**（直接用 retrieval top-5，省掉一個依賴）
+## Q2 — Rerank 落點桌機 / VPS
 
-**Comments / overrides**：
+**Decided: 不需要 rerank**（連 embedding 都不要了）。
 
-> _（修修在這裡寫補充）_
+**Why**：Robin `/kb/research` 已經是 LLM-based ranking + symbolic backlink expansion，不靠 vector similarity。
 
----
+## Q3 — Vector store 落點桌機 / VPS
 
-## Q3 — Vector store 落點：桌機還是 VPS？
+**Decided: 不需要 vector store**。
 
-**背景**：Chopper KB 的向量 + 章節 metadata 存哪。Embedding 一定在桌機產（GPU 速度），問題是落地。
-**Tradeoff**：
-- **VPS**（建議）：query path 就近，無需桌機在線；桌機產完 embedding `scp` 過去（一本書幾十 MB-幾百 MB）
-- **桌機**：query 要桌機在線；好處是不用 scp，不過跟 Obsidian Sync 不太搭（SQLite + Obsidian sync 容易撞）
-- **vault 內 sqlite + sync**：放 vault 裡讓 Obsidian Sync 帶；風險是 sync 對 SQLite WAL 不友善，可能 corruption
-
-**選一個**：
-
-- [ ] **A — VPS（建議）**：桌機 ingest 後 scp 推到 `/home/nakama/data/chopper_kb.sqlite`
-- [ ] **B — 桌機**：query 路徑要桌機在線
-- [ ] **C — vault 內 sqlite + Obsidian Sync**：自動同步但有 corruption 風險
-
-**Comments / overrides**：
-
-> _（修修在這裡寫補充）_
+**Why**：同 Q2。Wiki 的 `mentioned_in:` backlink 就是 retrieval 的「索引」— 由 LLM 在 query time 動態打分，不需要預先 embed。
 
 ---
 
-## 補充自由提問區
+## 補充新增拍板（對話過程衍生）
 
-如果你想到第 4、5 題我沒列到的、或是覺得我提案哪段不對，寫在這裡：
+### Q4 — Vault 落地
 
-> _（修修自由 input）_
+**Decided: 方案 C+** — 分層子資料夾（`Sources/Books/{book_id}/ch*.md`、`Entities/Books/{book_id}.md`、`Raw/Books/{book_id}.pdf`） **加** 跨書共享的 `Concepts/` + `Entities/` Wiki 池（重用 Robin 既有抽 concept/entity 機制）。
+
+### Q5 — Ingest trigger / pipeline
+
+**Decided: Claude Code skill** — `.claude/skills/textbook-ingest/`，Mac 本機跑 Opus 4.7（Max 200 quota），互動式每章一個 turn。
+
+### Q6 — Future backlog
+
+**Decided（不在 Phase 1 scope）**：
+
+1. 網頁 UI 介面（Bridge Hub 入口 + 進度條）
+2. Multi-provider subscription 選擇（Anthropic Max / OpenAI Pro / Google AI Ultra）
 
 ---
 
-## 拍板後我做什麼
+## 接下來
 
-1. 你 commit 這份檔案的勾選 + comment（或在 PR file diff 直接編輯）
-2. 我讀勾選結果 + comment
-3. 提案 doc 對應段落更新成「**Decided**」+ 內容對齊勾選
-4. 升級為 `docs/decisions/ADR-010-textbook-ingest.md`
-5. 開工：先做 PDF parse + TOC 抽章節 baseline，然後 chunking + embedding，最後 vector store 落地
+詳細決策、schema 凍結、實作 phase 切分以 [ADR-010-textbook-ingest.md](../decisions/ADR-010-textbook-ingest.md) 為準。

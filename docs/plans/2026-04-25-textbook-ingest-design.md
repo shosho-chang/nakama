@@ -1,210 +1,183 @@
 # Textbook Ingest Workflow — Design Proposal
 
-**Status**: 提案中（未凍結）。修修確認 → 升級成 ADR → 實作可開工。
-**Blocks**: Chopper agent ([project_chopper_community_qa.md](../../memory/claude/project_chopper_community_qa.md)) — 預設 KB 含教科書，但「整本書怎麼進 KB」沒有 workflow。
-**Compute tier**: 桌機（per [feedback_compute_tier_split.md](../../memory/claude/feedback_compute_tier_split.md)）。
-**Source memory**: [project_textbook_ingest_design_gap.md](../../memory/claude/project_textbook_ingest_design_gap.md)。
+**Status**: ✅ RESOLVED 2026-04-25 — 升級為 [ADR-010-textbook-ingest.md](../decisions/ADR-010-textbook-ingest.md)。本檔保留為設計過程歷史紀錄。
+**Blocks**: Chopper agent ([project_chopper_community_qa.md](../../memory/claude/project_chopper_community_qa.md)) — 預設 KB 含教科書，但「整本書怎麼進 KB」沒有 workflow（已解決）
+**Compute tier**: Mac / 桌機（Claude Code，per [feedback_compute_tier_split.md](../../memory/claude/feedback_compute_tier_split.md)）
+**Source memory**: [project_textbook_ingest_design_gap.md](../../memory/claude/project_textbook_ingest_design_gap.md)
 
 ---
 
-## 5 個 design 問題 × 我的提案
+## 設計決策摘要（最終版）
 
-### Q1 — 單位：整本一個 source 還是章節拆分？
+對話過程拍板的 5 題決策，最終版本與最初提案有重大轉折，特別是 Q4 / Q5 因為兩個關鍵 insight 整個簡化：
 
-**提案**：**章節拆分為主**，一個 source-per-chapter。書本層級走 Entity 頁串連結。
-
-**Why**：
-- 一本醫學教科書 1500 頁，整本一個 source 對 retrieval 不友善（embedding 失準、citation 模糊）
-- 章節是天然語意單位，跨章 retrieve 也好處理
-- 對齊既有 `KB/Wiki/Sources/` 是「per content unit」的慣例
-
-**取捨**：章節數爆炸時（某些書 100+ 章）`KB/Wiki/Sources/` 會被淹沒 — 用 `Sources/Books/{book_id}/ch{n}.md` 子資料夾隔離，不污染既有 Sources flat 命名空間。
-
-⚠️ **修修決策點**：要不要拆到「節」（section）層級？我傾向只拆到章 — 節拆太細 retrieval 變雜訊，retriever 可以靠 chunk-level metadata 還原節的精度。
+1. **Karpathy KB 哲學**（修修提醒）— 教科書 ingest 不是只有「章 → Source」這條線，**抽出來的 Concept / Entity 要長進跨書共享 Wiki 池**，每個 concept 頁帶 `mentioned_in:` backlink 串起所有來源。
+2. **Claude Code Opus 4.7 1M context**（修修提案）— 教科書數量少、絕大多英文 → 直接用 Claude Code + Max 200 quota 走 Opus 4.7 整章 in-context 處理。**完全不需要 embedding / vector store / 桌機 GPU**。
 
 ---
 
-### Q2 — Schema：frontmatter 要哪些欄位？
+## Q1 — 切到「章」還是「節」？
 
-**提案**：
+**Decided: 章為單位，但 Source Summary 內部走 section-by-section 結構**
 
-#### Book Entity (`KB/Wiki/Entities/Books/{book_id}.md`)
+- 每章 1 個 Source 檔（`KB/Wiki/Sources/Books/{book_id}/ch{n}.md`）
+- 一本書約 30 個檔（不是節級的 150-300 檔），vault 整潔
+- 章內 summary 不是一坨大摘要，而是按節獨立寫 2-3 段重點：
 
-```yaml
-type: book
-book_id: { slug }                       # e.g. harrison-internal-medicine-21e
-title: { 完整書名 }
-authors: [...]
-isbn: { ISBN-13 }
-edition: { string, e.g. "21st" }
-pub_year: { int }
-publisher: { string }
-language: { zh-TW | en | ... }
-book_subtype: { textbook_exam | textbook_pro | popular_health | clinical_protocol | reference }
-chapter_count: { int }
-ingested_at: { ISO date }
-status: { ingesting | complete | partial }
-```
+  ```markdown
+  ## 3.1 Inspection
+  （這節 2-3 段重點）
 
-#### Chapter Source (`KB/Wiki/Sources/Books/{book_id}/ch{n}.md`)
+  ## 3.2 Auscultation
+  （這節 2-3 段重點）
+  ```
 
-```yaml
-type: book_chapter                       # 跟 paper_digest / scrape_translate 區分
-source_type: book
-content_nature: textbook                 # allowlist 已支援，見 thousand_sunny/routers/robin.py:242
-lang: { zh-TW | en | ... }
-book_id: { slug }                        # 反查 Book Entity
-chapter_index: { 1-based int }
-chapter_title: { 章名 }
-section_anchors: [...]                   # 章內 section heading 列表（給 retrieval reranker）
-page_range: { "1234-1267" }              # 原始 PDF 頁碼，給 citation
-ingested_at: { ISO date }
-```
+- 為什麼不切到節：retrieval 是 chunk 層 + concept backlink 層做的，summary 只是人類肉眼瀏覽 + LLM 排序候選的入口。檔案爆炸沒必要。
 
-⚠️ **修修決策點**：`book_subtype` 需要哪些值？我先列 5 個，之後可加（修修腦袋想到的書類型有幾種？國考用書、專業參考、科普、臨床指引 — 第五種「reference」是 catch-all，比如字典）。
+## Q2 — Frontmatter schema
 
----
+**Decided: 接受提案 schema、5 個 book_subtype、book_id 走 slug**
 
-### Q3 — Vault 落地：A / B / C 哪一個？
+詳細欄位定義移到 ADR-010 §D2。
 
-**提案**：**方案 C 的變體**（per-chapter Source + book-level Entity + 完整原文 Raw 備份）
+## Q3 — Vault 落地
+
+**Decided: 方案 C+ — 分層子資料夾 + 跨書共享的 Concept/Entity Wiki 池**
 
 ```
 KB/
 ├── Raw/Books/
-│   └── {book_id}.pdf                    # 不可變原文（LifeOS Layer A）
+│   └── harrison-21e.pdf                     ← 原檔備份（Layer A）
 ├── Wiki/
 │   ├── Entities/Books/
-│   │   └── {book_id}.md                 # 書 metadata + 章節 wikilink 索引
-│   └── Sources/Books/
-│       └── {book_id}/
-│           ├── ch1.md
-│           ├── ch2.md
-│           └── ...                      # 章節獨立檔
+│   │   └── harrison-21e.md                  ← 書本身入口頁
+│   ├── Sources/Books/
+│   │   └── harrison-21e/
+│   │       ├── ch1.md
+│   │       └── ...
+│   ├── Concepts/                            ← ★ 跨書/論文共享
+│   │   ├── frank-starling-law.md
+│   │   └── ...
+│   └── Entities/                            ← ★ 跨書/論文共享
+│       └── beta-blocker.md
 └── Attachments/Books/
-    └── {book_id}/                       # 圖片 / 表格擷取（如果 Docling 抽出）
+    └── harrison-21e/
 ```
 
-**Why**：
-- 對齊 LifeOS CLAUDE.md Layer A (`Raw/`) vs Layer B (`Wiki/`) 規範
-- Entity 層做 single source of truth（修修要找書本身的 metadata 從這裡開始）
-- Source 層做 retrieval 主場（Chopper embed 與 query 都針對章節）
-- `Sources/Books/{book_id}/` 子資料夾隔離爆量章節，不污染既有 `Sources/` flat 命名空間
+每個 Concept / Entity 頁的 frontmatter 帶 `mentioned_in:` 列所有來源（書章 + 論文 + 文章）：
 
-**Ruled out**：
-- 方案 A（每章扁平到 `Sources/textbook-{book_id}-ch{n}.md`）：1500 頁 × 30 章 × 多本書 → flat 目錄爆炸
-- 方案 B（Raw 整本 + Wiki 章節索引）：跟 Entity 概念重複，不如直接用 Entity
+```yaml
+title: Beta Blocker
+type: concept
+mentioned_in:
+  - "[[Sources/Books/harrison-21e/ch5]]"
+  - "[[Sources/pubmed-12345]]"
+  - "[[Sources/popular-health-article-xyz]]"
+```
+
+這是 Karpathy 的「rich companion wiki」精神 — Chopper 答題時從一個 concept 反查所有來源，**一次拿到立體多角度資訊**。
+
+## Q4 — Retrieval（embedding / rerank）
+
+**Decided: 完全不需要 embedding / vector store / reranker**
+
+Robin 既有的 `/kb/research`（kb-search skill）就是 LLM-based ranking + symbolic backlink expansion：
+
+1. 掃 `KB/Wiki/Concepts/`、`Entities/`、`Sources/` 標題
+2. 給 Claude 排序「哪幾頁跟問題最相關」
+3. 拿 top-K，follow `mentioned_in:` 抓所有源頭
+4. compose 答案
+
+Chopper 直接重用 kb-search skill 即可。**幹掉的東西**：
+
+- bge-m3 embedding model
+- bge-reranker-v2-m3 cross-encoder
+- sqlite-vec / pgvector vector store
+- 桌機 GPU 跑 embedding 的依賴
+- 桌機 vs VPS rerank 落點討論
+- chunk size / overlap 參數調
+
+## Q5 — Ingest trigger / pipeline
+
+**Decided: Claude Code skill 走 Opus 4.7 1M context，Mac 本機跑**
+
+教科書 ingest 包成 `.claude/skills/textbook-ingest/`：
+
+1. 修修開 Claude Code → 「ingest /Users/shosho/Books/harrison.pdf 這本教科書」
+2. Skill 接到 → bash 跑 PDF parse helper 抽出 outline + 章節邊界 → 給修修確認
+3. **每章一個 turn**：Opus 讀整章 in-context → 產 section-by-section summary → 抽 concept/entity → Write tool 寫入 vault（重用 Robin 的 prompt template + obsidian_writer）
+4. 全部完成 → 產 Book Entity 入口頁列章節 wikilink
+5. vault → Obsidian Sync → VPS → Chopper kb-search 可查
+
+**為什麼 Claude Code 走 Opus 4.7 而不是 API**：
+
+| 維度 | API 路徑 | Claude Code Opus 4.7 |
+|------|---------|---------------------|
+| 成本 | 30 章 × map-reduce ≈ 一本書 $3-5 | 走 Max 200 subscription quota（已付） |
+| Context 模型 | 200k Sonnet（要 map-reduce）| 1M Opus（中型書整本可一次塞、大書整章一次塞）|
+| 互動 | 純 batch，失敗要排查 log | interactive 可中斷可介入 |
+| 品質 | Sonnet map-reduce reduce 階段會掉 context | Opus 整章 in-context，品質高 |
+| 桌機 / VPS | 都可跑 | Mac Claude Code，自然落點 |
+
+**Token 數學**（英文書）：
+
+| 書類 | 頁數 | 整本 token | 1M 塞得下 |
+|------|------|-----------|----------|
+| 一般醫學參考書 | 800 | ~520k | ✅ |
+| 中型教科書 | 1500 | ~975k | 🟡 邊緣 |
+| Harrison's | 4000 | ~2.6M | ❌ 必須分章 |
+
+大書分章 ingest，每章 30-100 頁約 20-65k token，**Opus 4.7 一次吃整章 + 寫 summary + 抽 concept/entity 綽綽有餘**。
 
 ---
 
-### Q4 — Chopper Retrieval：embedding / citation / 跨章？
+## 章節辨識策略
 
-**提案**：
+教科書 PDF 章節邊界辨識：
 
-#### Embedding 切塊
-
-- **大小**：800 token sliding window，200 token overlap（醫學教科書章節有 Q&A、表、文字混雜，800 對段落不會切碎）
-- **metadata**：每 chunk 帶 `book_id` / `chapter_index` / `chapter_title` / `section_anchor` / `page` 五件
-- **embedder**：先用 `BAAI/bge-m3`（中英雙語、Apache 2.0、桌機本地跑），未來 A/B 比 OpenAI text-embedding-3-large
-
-#### Citation 形式
-
-- Chopper 回答時引用：`(《Harrison's Internal Medicine》21e, ch3 · Cardiovascular Examination, p.245)`
-- vault 內部用 `[[Books/{book_id}/ch3]]` wikilink，這樣 Obsidian graph view 自動成圖
-- 不要直接給檔名（檔名是 slug-friendly 內部格式，不適合 user-facing）
-
-#### 跨章合成
-
-- 先 retrieve top-K chunks（K=20）跨章
-- Cross-encoder rerank（`bge-reranker-v2-m3`）→ top-5
-- LLM compose 時 system prompt 加「同一書多章引用要明確標出每點來自哪章」
-- 修修認知：跟我跑研究時 Robin 引用多份 paper 一樣的體感
-
-⚠️ **修修決策點**：rerank step 是 round-trip 桌機還是 VPS？我傾向 retrieve + rerank 都在 VPS（query latency 重要、bge-reranker-m3 有 ONNX 版可在 4GB RAM 跑），ingest（embedding）才在桌機。
-
----
-
-### Q5 — Ingest Trigger：哪個 agent / endpoint / CLI？
-
-**提案**：**桌機 CLI script `scripts/ingest_book.py`**
-
-```bash
-# 桌機
-python -m scripts.ingest_book \
-    --path "/Users/shosho/Books/harrison-21e.pdf" \
-    --book-id harrison-internal-medicine-21e \
-    --book-subtype textbook_pro \
-    --language en
-```
-
-**Why**：
-- 教科書 ingest 是長 process（PDF 解析 → 章節抽取 → LLM categorize → embedding → vault 寫入），20-60 分鐘量級
-- Slack 命令會 timeout（3s 內必須回 ack）
-- VPS 4GB RAM 跑不動 1500 頁 chunking + 本地 embedding model
-
-**Pipeline 內部**：
-
-```mermaid
-flowchart LR
-    PDF[PDF / EPUB] --> PARSE[Docling parse<br/>or PyMuPDF fallback]
-    PARSE --> TOC[抽 TOC / outline<br/>→ 章節邊界]
-    TOC --> CHUNK[每章 sliding window chunk]
-    CHUNK --> EMBED[bge-m3 embed<br/>桌機本地]
-    EMBED --> WRITE_SRC[寫 KB/Wiki/Sources/Books/{book_id}/ch*.md]
-    WRITE_SRC --> WRITE_ENTITY[寫 KB/Wiki/Entities/Books/{book_id}.md]
-    WRITE_ENTITY --> WRITE_VEC[寫 vector store<br/>data/chopper_kb.sqlite]
-    WRITE_VEC --> SYNC[Obsidian Sync 自動同步]
-    SYNC --> VPS_READY[VPS 端 Chopper 可查]
-```
-
-**State / 中斷重來**：每章寫一筆 `data/textbook_ingest_state.sqlite` row（book_id + chapter_index + status），失敗從未完成章節續跑，不重做已完成章節。
-
-⚠️ **修修決策點**：vector store 要在桌機還是 VPS？
-- **桌機**：embedding 寫入快、不過 SQLite + Obsidian sync 不太搭
-- **VPS**：query 端就近，但桌機要每次推送 SQLite 檔（不大，幾十 MB-幾百 MB）
-- **建議**：vector store 在 VPS（embedding 完桌機 scp 過去），原始章節 md 走 vault sync。
-
----
-
-## 章節辨識策略（補充未列原問題）
-
-教科書 PDF 章節邊界辨識的成敗會決定整體品質。提案：
-
-1. **First pass — PDF outline / bookmarks**：90% 教科書 PDF 帶 outline，直接讀 TOC
+1. **First pass — PDF outline / bookmarks**：90% 教科書 PDF 帶 outline，直接讀
 2. **Second pass — heading regex**：沒 outline 就用 `r"^(Chapter|第)\s*\d+"` + font-size 偵測
-3. **Third pass — LLM segmenter**：以上都失敗（掃描 PDF / 不規則排版），切 50 頁滑動視窗用 Claude Sonnet 標章節邊界
-4. **Manual override**：CLI 接 `--toc-yaml` 參數讓修修手寫章節邊界（rare case）
+3. **Third pass — Opus 自己看 50 頁滑動視窗判斷章節邊界**（最後 fallback）
+4. **Manual override**：CLI 接 `--toc-yaml` 讓修修手寫章節邊界（rare case）
 
-⚠️ **修修決策點**：第 3 層 LLM 章節辨識成本可能 $1-3/書。要的話加 flag `--auto-toc`，不要的話 fallback 到 manual override。
+## 依賴 / 重用既有 code
 
----
-
-## 依賴 / 前置工作
-
-| 依賴 | 狀態 | 落點 |
-|------|------|------|
-| Docling 桌機本地安裝 | ⬜ 未安裝 | 桌機 |
-| EPUB parser（python-ebooklib + bs4）| ⬜ 未實作 | 桌機 |
-| frontmatter schema 統一（書 vs paper vs article）| ⬜ 待設計 | shared/ |
-| `KB/Wiki/Sources/Books/` 目錄慣例 | ⬜ vault 內無此資料夾 | vault |
-| vector store schema（chopper_kb.sqlite）| ⬜ 未設計 | shared/ |
-| bge-m3 embedder + bge-reranker-v2-m3 | ⬜ 未安裝 | 桌機 + VPS |
+- ✅ `shared/pdf_parser.py`（既有，pymupdf4llm）
+- ✅ `shared/obsidian_writer.py`（既有，write_page）
+- ✅ `agents/robin/chunker.py`（既有，按 heading 切；Opus 1M context 多半用不到）
+- ✅ Robin 既有 prompt template（summarize_chunk / concept-extract）— 直接重用，不重造輪子
+- ✅ Robin `/kb/research` retrieval pipeline — 不動
+- ❌ ~~Docling / EPUB parser~~ — 不需要（PDF outline + pymupdf4llm 涵蓋 90%）
+- ❌ ~~bge-m3 embedding~~ — 不需要
+- ❌ ~~vector store~~ — 不需要
+- ❌ ~~桌機 GPU~~ — 不需要
 
 ---
 
-## 三個未決問題（需要修修 input）
+## Future backlog（之後再優化）
 
-1. **章節 vs 節拆分粒度**（Q1 取捨）— 我傾向只拆到章
-2. **rerank 落點 桌機 / VPS**（Q4 取捨）— 我傾向 VPS
-3. **vector store 落點 桌機 / VPS**（Q5 取捨）— 我傾向 VPS（桌機 ingest，VPS query）
+修修提到的兩條優化方向，Phase 2+ 處理：
 
-回答這三題之後可以升級為 ADR-010-textbook-ingest 開工。
+### 1. 網頁 UI 介面
+
+- (a) Nakama 首頁（Bridge Hub）加「教科書 ingest」入口
+- (b) Ingest 過程中加互動 UI / 進度條
+
+實作思路：FastAPI route 接 PDF upload → background task 呼叫 Claude SDK（不是 Claude Code，是程式化呼叫）→ SSE stream 進度 → 寫 vault。重用 Bridge UI mutation pattern（[reference_bridge_ui_mutation_pattern.md](../../memory/claude/reference_bridge_ui_mutation_pattern.md)）。
+
+**前置依賴**：Phase 1 Claude Code skill 流程穩定運作後，prompt / pipeline 邏輯已經沉澱成可程式化呼叫的單元。
+
+### 2. Multi-provider subscription model 選擇
+
+- (a) Ingest 時可選擇用哪家 subscription（Anthropic Max / OpenAI Pro / Google AI Ultra ...）
+- (b) 各家模型強項不同：Opus 強推理 / GPT-5 強多語 / Gemini 強長 context
+
+實作思路：抽象 `IngestProvider` interface，各家實作 adapter；ingest 命令加 `--provider claude|openai|google` flag；對應 prompt 微調。
+
+**前置依賴**：Phase 1 把 prompt / vault writer / schema 等抽象介面凍結（Claude Code 是最直白的呼叫端，反而最容易抽出 interface）。
 
 ---
 
-## 對齊既有設計
+## 升級為 ADR
 
-- 對齊 [feedback_compute_tier_split.md](../../memory/claude/feedback_compute_tier_split.md)：重 ingest（解析 + chunking + embedding）在桌機，輕 query（retrieve + LLM compose）在 VPS
-- 對齊 [project_vault_ingest_flow_drift_2026_04_25.md](../../memory/claude/project_vault_ingest_flow_drift_2026_04_25.md)：新 schema 直接用 `content_nature: textbook`（allowlist 已支援）
-- 對齊 LifeOS CLAUDE.md：Raw/ 不改（Layer A）+ Wiki/ 主工作區（Layer B）
-- 對齊 [project_chopper_community_qa.md](../../memory/claude/project_chopper_community_qa.md)：Chopper 預設 KB 來源
+本提案已升級為 [ADR-010-textbook-ingest.md](../decisions/ADR-010-textbook-ingest.md)，詳細決策、schema 凍結、實作 phase 切分以那邊為準。
