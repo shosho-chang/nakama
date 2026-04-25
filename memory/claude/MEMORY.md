@@ -81,6 +81,7 @@
 - [reference_bridge_ui_mutation_pattern.md](reference_bridge_ui_mutation_pattern.md) — Bridge UI mutation 範式：cookie auth + form post + 303 + native `<dialog>` modal，無 JS framework；PR #140 reference 實作
 - [feedback_ask_on_architecture.md](feedback_ask_on_architecture.md) — UX/產品架構決策（用戶直接可見的差異）先問再動手，不自行決定
 - [feedback_decision_questionnaire.md](feedback_decision_questionnaire.md) — ≥2 個未決選項要拍板時開獨立 docs/plans/*-decisions-{date}.md（checkbox + comment），不混在 chat / PR description
+- [feedback_doc_naming_date_prefix.md](feedback_doc_naming_date_prefix.md) — 時間性 doc（plans/research/task-prompts）走 YYYY-MM-DD-{topic}.md 前置；runbooks/diagrams/principles/ADR 不加日期
 - [feedback_todo_needs_use_case.md](feedback_todo_needs_use_case.md) — 寫 todo / pending_tasks 必附「我什麼時候會用」use case，沒寫的 todo 拿來開做會 over-build（PR #141 paste-image 教訓）
 - [feedback_shared_tree_devserver_collision.md](feedback_shared_tree_devserver_collision.md) — 修修跑 uvicorn --reload + 我 git checkout 會 mtime 觸發 reload 看到不對版本；解法走 worktree 隔離
 - [feedback_compute_tier_split.md](feedback_compute_tier_split.md) — 重 ingest 桌機（GPU+64GB）/ 輕 query VPS（2vCPU/4GB）分工；vault 同步介面；新功能設計前先決定落點
