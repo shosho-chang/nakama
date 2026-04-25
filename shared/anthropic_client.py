@@ -30,6 +30,39 @@ def set_current_agent(agent: str, run_id: int | None = None) -> None:
     _local.run_id = run_id
 
 
+def start_usage_tracking() -> None:
+    """Opt-in：開始累積本 thread 的 ask_claude / ask_claude_multi / call_claude_with_tools usage。
+
+    啟用後，每次 API 呼叫會把 ``{model, input_tokens, output_tokens, cache_*}`` append 到 buffer。
+    呼叫 :func:`stop_usage_tracking` 取出並停止累積。對未啟用的 thread 不影響。
+    """
+    _local.usage_buffer = []
+
+
+def stop_usage_tracking() -> list[dict]:
+    """停止累積並回傳累計 usage 列表。Idempotent — 沒啟用過時回傳空 list。"""
+    buf = getattr(_local, "usage_buffer", None)
+    _local.usage_buffer = None
+    return list(buf) if buf else []
+
+
+def _record_usage_to_buffer(model: str, response: "anthropic.types.Message") -> None:
+    """若當前 thread 有啟用 tracking，把這次 call 的 usage 寫進 buffer。"""
+    buf = getattr(_local, "usage_buffer", None)
+    if buf is None:
+        return
+    usage = response.usage
+    buf.append(
+        {
+            "model": model,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "cache_read_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
+            "cache_write_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        }
+    )
+
+
 def ask_claude(
     prompt: str,
     *,
@@ -68,6 +101,7 @@ def ask_claude(
         return client.messages.create(**kwargs)
 
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
+    _record_usage_to_buffer(model, response)
 
     # Cost tracking
     try:
@@ -140,6 +174,7 @@ def call_claude_with_tools(
         return client.messages.create(**kwargs)
 
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
+    _record_usage_to_buffer(model, response)
 
     try:
         from shared.state import record_api_call
@@ -206,6 +241,7 @@ def ask_claude_multi(
         return client.messages.create(**kwargs)
 
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
+    _record_usage_to_buffer(model, response)
 
     # Cost tracking
     try:

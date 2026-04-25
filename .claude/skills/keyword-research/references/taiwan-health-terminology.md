@@ -18,6 +18,13 @@ the research output.
 - 失眠 → acute insomnia / chronic insomnia / sleep-onset vs. sleep-maintenance
 - 睡眠呼吸中止症 (OSA) — clinical topic, different search intent
 - 時差 / 輪班 → circadian disruption, not general sleep
+- **深度睡眠** / Deep sleep — 學術名 N3 NREM 睡眠 / slow-wave sleep (SWS) / delta sleep。
+  台灣常見譯名：深度睡眠、深層睡眠（中國大陸常見：深度睡眠、深睡眠）。
+  Disambiguation：
+    - 科普角度（什麼是深睡、為什麼重要） vs.
+    - 實作角度（如何提升深睡比例：運動／溫度／褪黑激素／鎂） vs.
+    - 病理角度（深睡缺乏與失智 / 代謝風險 / Alzheimer's glymphatic clearance）
+  相鄰術語：REM 快速動眼期、入睡潛時 sleep onset latency、睡眠效率 sleep efficiency、睡眠週期 sleep cycle。
 
 ### 運動 / 訓練
 - 重訓 → strength training (general) / hypertrophy / powerlifting

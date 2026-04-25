@@ -120,14 +120,14 @@ Skip presenting this step in fast mode; just use the resolved values.
 
 ## Step 4: Cost + Time Estimate (CONFIRM #2, never skip)
 
-Read `references/cost-estimation.md` for the full formula.
+Read `references/cost-estimation.md` for the measured baseline + formula.
 
-Quick summary:
+Quick summary (from v1.1 N=1 measurement, `dffa1e7`, 2026-04-25):
 - Parallel data collection: ~15-30s (10 concurrent sources, 15s timeout each)
 - Claude synthesis: ~10-15s (Sonnet-level, ~3-4K output tokens)
-- Total wall time: **~30-60s**
-- API cost: **~$0.03-0.08** per run (Claude input+output; pipeline data sources
-  are free / uses YouTube Data API free tier)
+- Wall time: **~45s measured** (range 30-60s)
+- API cost: **$0.05 measured** (input 2.6K + output 2.6K → $0.0468 at Sonnet rates)
+- Range envelope: $0.03-0.08 depending on data volume
 
 External API calls (rate-limit awareness — not dollar cost):
 - YouTube Data API v3 (quota: 10K units/day, each search costs 100 units → ~100 runs/day ceiling)
@@ -139,8 +139,8 @@ Present to the user:
 
 ```
 預估：
-  時間：~30-60s
-  成本：~$0.05（Claude 合成）
+  時間：~45s（量測自 v1.1 N=1，範圍 30-60s）
+  成本：$0.05（量測自 v1.1 N=1，CLI 結尾會印實際數字）
   輸出：<out_path>
 確認開跑？
 ```
@@ -184,10 +184,13 @@ After successful run, read the output markdown file and extract:
 - Trend gaps count + the most interesting gap
 - YouTube/Blog title count
 
-Present a structured summary:
+Present a structured summary. The CLI itself prints `完成！耗時 XX.Xs` plus a
+**measured cost block** (input/output tokens + $) — keep that block visible
+to the user; do not paraphrase it. Wrap it with the qualitative summary
+below:
 
 ```
-完成！耗時 XX.Xs
+完成！耗時 XX.Xs   ← from CLI
 
 輸出：<out_path>
 
@@ -202,6 +205,12 @@ Top 機會關鍵字：
   - <first_gap_topic>：<opportunity (short)>
 
 標題種子：YouTube <M> 個 / Blog <K> 個（看報告 <out_path>）
+
+成本（實測）：    ← printed by CLI; surface verbatim
+  Claude API call(s)：N 次
+    input tokens   : ...
+    output tokens  : ...  (Claude 4.x 把 extended thinking 計入 output)
+  $ 換算：$0.0XXX
 
 下一步建議：
   → 寫文章：用 Brook `article-compose` skill（會自動吃這份 frontmatter）

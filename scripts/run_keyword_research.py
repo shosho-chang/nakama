@@ -33,6 +33,66 @@ load_dotenv()
 
 from agents.zoro.keyword_research import research_keywords  # noqa: E402
 
+# Anthropic Sonnet / Opus / Haiku 4.x rate card (USD per 1M tokens, input, output).
+# Cache-write costs 1.25x input; cache-read costs 0.1x input. Aligned with
+# `memory/claude/reference_llm_provider_cost_quirks.md` and Anthropic's public
+# pricing as of 2026-04. Update both docs together if rates change.
+_CLAUDE_RATE_USD_PER_1M: dict[str, tuple[float, float]] = {
+    "claude-haiku-4": (1.0, 5.0),
+    "claude-sonnet-4": (3.0, 15.0),
+    "claude-opus-4": (15.0, 75.0),
+}
+
+
+def _rate_for(model: str) -> tuple[float, float]:
+    for prefix, rate in _CLAUDE_RATE_USD_PER_1M.items():
+        if model.startswith(prefix):
+            return rate
+    return (3.0, 15.0)  # fallback to Sonnet — keep CLI honest, not silent
+
+
+def _calc_cost_usd(records: list[dict]) -> float:
+    """Sum USD across per-call usage records using the prefix-matched rate card."""
+    total = 0.0
+    for r in records:
+        in_rate, out_rate = _rate_for(r.get("model", ""))
+        total += r.get("input_tokens", 0) / 1_000_000 * in_rate
+        total += r.get("output_tokens", 0) / 1_000_000 * out_rate
+        total += r.get("cache_read_tokens", 0) / 1_000_000 * (in_rate * 0.1)
+        total += r.get("cache_write_tokens", 0) / 1_000_000 * (in_rate * 1.25)
+    return total
+
+
+def _format_cost_summary(usage: list[dict]) -> str:
+    """Render the cost summary block printed at the end of a CLI run.
+
+    Empty ``usage`` (e.g. tracking failed) yields an empty string so callers
+    can drop the section instead of printing zeros that look like a real run.
+    """
+    if not usage:
+        return ""
+    n = len(usage)
+    inp = sum(r.get("input_tokens", 0) for r in usage)
+    out = sum(r.get("output_tokens", 0) for r in usage)
+    cache_r = sum(r.get("cache_read_tokens", 0) for r in usage)
+    cache_w = sum(r.get("cache_write_tokens", 0) for r in usage)
+    cost = _calc_cost_usd(usage)
+    lines = [
+        "",
+        "成本（實測）：",
+        f"  Claude API call(s)：{n} 次",
+        f"    input tokens   : {inp:>7,}",
+        f"    output tokens  : {out:>7,}  (Claude 4.x 把 extended thinking 計入 output)",
+    ]
+    if cache_r or cache_w:
+        lines.append(f"    cache read     : {cache_r:>7,}  (折扣 0.1×)")
+        lines.append(f"    cache write    : {cache_w:>7,}  (1.25× input)")
+    lines.append(
+        f"  $ 換算 (rate card per memory/claude/reference_llm_provider_cost_quirks.md)：${cost:.4f}"
+    )
+    lines.append("  歷史 N 次平均見 .claude/skills/keyword-research/references/cost-estimation.md")
+    return "\n".join(lines)
+
 
 def _build_frontmatter(
     topic: str,
@@ -242,6 +302,10 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
     print(f"完成！耗時 {elapsed:.1f}s", file=sys.stdout)
+
+    cost_block = _format_cost_summary(result.get("usage", []))
+    if cost_block:
+        print(cost_block, file=sys.stdout)
 
     return 0
 
