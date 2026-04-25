@@ -221,10 +221,14 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 **Vault ingest 工程 baseline（下波待開）：**
 - 詳見 [project_vault_ingest_flow_drift_2026_04_25.md](project_vault_ingest_flow_drift_2026_04_25.md) — 5 條流程想像 vs 實作對齊度 + 3 條 schema drift
 - 桌機 / VPS compute tier 分工：[feedback_compute_tier_split.md](feedback_compute_tier_split.md)
-- 整本教科書 ingest 缺口：[project_textbook_ingest_design_gap.md](project_textbook_ingest_design_gap.md)（Chopper 開發前要凍結）
+- 整本教科書 ingest 缺口：[project_textbook_ingest_design_gap.md](project_textbook_ingest_design_gap.md)（✅ RESOLVED 2026-04-25 → ADR-010）
 - ✅ **PR #148 merged 2026-04-25** — daily digest 補 `source_type / content_nature / lang`（DOI 已在；schema drift 治本）。Reader pill 從一格 → 四格
 - ✅ **PR #149 merged 2026-04-25** — `docs/diagrams/vault-ingest-flow.md` 全景 mermaid IA baseline（5 條 flow + 3 條 schema drift + 桌機/VPS 分工 + 缺口清單）。下一步 Claude Design handoff 美學迭代
-- 🚧 **PR #150 OPEN — 等修修拍板** — `docs/plans/textbook-ingest-design-2026-04-25.md` 教科書 ingest 5 題提案（單位/Schema/Vault落地/Retrieval/Trigger）+ 章節辨識策略 + 3 個未決問題標 ⚠️（章節 vs 節粒度 / rerank 落點 / vector store 落點）。修修拍板後升級 ADR-010
+- ✅ **PR #150 merged 2026-04-25** — ADR-010 textbook ingest 凍結：Claude Code Opus 4.7 skill + Karpathy 跨書 Wiki + per-chapter Source（section-by-section）+ Concept/Entity `mentioned_in:` backlink。**完全跳過 embedding / vector store / 桌機 GPU**（重大 simplification 從原提案翻轉）
+- 🚧 **PR #157（進行中）** — `.claude/skills/textbook-ingest/` 骨架：SKILL.md + 3 個 prompt template（chapter-summary / concept-extract / book-entity）+ `parse_book.py` PDF outline 抽取 helper + capability card
+- ⬜ Phase 1 MVP 驗收：用一本中型英文教科書（800 頁）跑完整流程
+- ⬜ Phase 2A：教科書 ingest Web UI（Bridge Hub 入口 + SSE 進度條）
+- ⬜ Phase 2B：Multi-provider subscription 選擇（Anthropic Max / OpenAI Pro / Google AI Ultra adapter）
 - ⬜ Reader 翻譯按鈕設計分歧（修修以為 reader 內按需翻譯、實作是 ingest 預翻譯 + toggle）— 待設計討論
 - ⬜ Chrome Extension 一鍵剪 → thousand_sunny（後端 API 都有，缺 plugin shell）
 - ⬜ EPUB / Word parser（中文帶圖）— 完全沒實作
