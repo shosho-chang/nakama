@@ -64,9 +64,15 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ `morning-brief` (Nami)
 - ⬜ `interview-to-article`、`kb-synthesize-article`、`book-reflection-compose`（需 PRD）
 
-**SEO Solution（下一個重點）：**
-- ⬜ prior-art-research（DataForSEO MCP / Ahrefs MCP / 部落格 audit workflow）
-- ⬜ skill 家族設計（`seo-audit-post` / `seo-keyword-enrich` / `seo-optimize-draft`）
+**SEO Solution（ADR-009 進行中）：**
+- ✅ prior-art-research、ADR-009 凍結、multi-model triangulation
+- ✅ Slice A merged（PR #132）— SEOContextV1 schema family + gsc_client + site_mapping + runbook
+- 🚧 **Slice B PR #133 open** — seo-keyword-enrich skill GSC-only baseline；72 new tests 全綠；3 subagents parallel dispatch 13 min 完工。等修修 `/ultrareview 133` + T1 benchmark + merge
+- 🚧 **PR #134 open 但要 close** — gsc-oauth-setup.md 跨機策略補丁；發現整個 runbook 要 deprecate（重工 nakama-franky setup），下次 session close
+- 🔥 **Cleanup 待開新 PR**：env key `GSC_SERVICE_ACCOUNT_JSON_PATH` → `GCP_SERVICE_ACCOUNT_JSON`（reuse ADR-007 convention）+ deprecate `gsc-oauth-setup.md` → redirect `setup-wp-integration-credentials.md`。修修踩到此坑：「拒絕重工 + 變胖變複雜」是最高指導原則，見 [feedback_prior_art_includes_internal_setup.md](feedback_prior_art_includes_internal_setup.md)
+- 🔄 **修修手動 unblock OAuth**：改用 nakama-franky@nakama-monitoring sa（GSC 已授權兩 property），不要繼續 nakama-seo path；GCP console SHUTDOWN nakama-seo project
+- ⬜ Slice C：Brook compose `seo_context` opt-in 整合（task prompt phase-1-seo-solution.md §C 已凍結，依 Slice B merged）
+- ⬜ Phase 1.5：seo-audit-post skill + DataForSEO + firecrawl + PageSpeed（ADR-009 已定延後）
 
 **雙語閱讀 Pipeline：**
 - ✅ P1 PubMed flow（PR #71）：PDF 全文 → 雙語 reader（pymupdf4llm + translator）

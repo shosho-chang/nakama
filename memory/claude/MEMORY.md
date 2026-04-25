@@ -35,6 +35,7 @@
 - [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
 - [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format
 - [feedback_search_skills_first.md](feedback_search_skills_first.md) — 開發前必須先搜尋現有 skills/MCP tools，不重複造輪子
+- [feedback_prior_art_includes_internal_setup.md](feedback_prior_art_includes_internal_setup.md) — Prior-art audit 必含 repo 既有 runbooks + env keys + GCP setup；新建是 exception 要論證
 - [user_hardware.md](user_hardware.md) — 開發機：RTX 5070 Ti 16GB VRAM + 64GB RAM
 - [user_domain_focus.md](user_domain_focus.md) — 內容領域四大面向：睡眠/飲食/運動/情緒 + 五大學科
 - [project_robin_content_nature.md](project_robin_content_nature.md) — PR #12 已 merge：兩層分類、6 類別 prompt、取消按鈕
