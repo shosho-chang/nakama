@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-25
+updated: 2026-04-25T22
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
@@ -64,9 +64,16 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ `morning-brief` (Nami)
 - ⬜ `interview-to-article`、`kb-synthesize-article`、`book-reflection-compose`（需 PRD）
 
-**SEO Solution（下一個重點）：**
-- ⬜ prior-art-research（DataForSEO MCP / Ahrefs MCP / 部落格 audit workflow）
-- ⬜ skill 家族設計（`seo-audit-post` / `seo-keyword-enrich` / `seo-optimize-draft`）
+**SEO Solution（ADR-009 進行中）：**
+- ✅ prior-art-research、ADR-009 凍結、multi-model triangulation
+- ✅ Slice A merged（PR #132）— SEOContextV1 schema family + gsc_client + site_mapping + runbook
+- 🚧 **Slice B PR #133 open** — seo-keyword-enrich skill GSC-only baseline；72 new tests 全綠；3 subagents parallel dispatch 13 min 完工。**ultrareview 完成**（2026-04-25 Mac，commit `cb0afdb`）：5 bug 全修（now_fn forward / SKILL.md unrunnable invocation / cannibalization recommendation 500-char overflow / `_select_primary_metric` broken guard / capability-card 3-backtick nested fence）+ 4 regression test。CI green，等修修 T1 benchmark + merge。教訓詳見 [feedback_skill_scaffolding_pitfalls.md](feedback_skill_scaffolding_pitfalls.md)
+  - **澄清（修正前一輪誤判）**：`shared/seo_enrich/striking_distance.py` 對 malformed row crash 是 ADR-009 T6 契約刻意行為（module docstring §35-36 + `Raises:` 段明寫 `IndexError` / `KeyError` / `ValidationError` 為 caller 違約信號），不是相同類別的缺口、不需要 follow-up。
+- ✅ **PR #134 closed** — gsc-oauth-setup.md 跨機策略補丁；改走 PR #135 整體 deprecate
+- ✅ **PR #135 merged 2026-04-25** — `cleanup(seo): reuse Franky GSC sa`：env key rename → `GCP_SERVICE_ACCOUNT_JSON`（reuse ADR-007 convention）+ deprecate `gsc-oauth-setup.md` → redirect `setup-wp-integration-credentials.md` + ADR-009 註明 sa 重用。**順手修 PR #132 silent bug**：`creds.authorize()` 被 google-auth 2.x 移除，改 `google_auth_httplib2.AuthorizedHttp`。教訓 [feedback_mock_use_spec.md](feedback_mock_use_spec.md) + [reference_api_contract_pitfalls.md](reference_api_contract_pitfalls.md) §Google Auth
+- ✅ **修修 unblock 完成 2026-04-25**：本機 .env 改用 `GCP_SERVICE_ACCOUNT_JSON=/Users/shosho/.config/nakama/gcp-nakama-franky.json`（從 VPS scp Franky sa）+ 補 `GSC_PROPERTY_*`；GCP console nakama-seo SHUT DOWN。**End-to-end smoke test 通過**：shosho.tw 拉到 5 row 真資料（zone 2 訓練 168 clicks 等）、fleet.shosho.tw 0 row（流量小 expected）。Slice B PR #133 T1 benchmark 解 unblocked
+- ⬜ Slice C：Brook compose `seo_context` opt-in 整合（task prompt phase-1-seo-solution.md §C 已凍結，依 Slice B merged）
+- ⬜ Phase 1.5：seo-audit-post skill + DataForSEO + firecrawl + PageSpeed（ADR-009 已定延後）
 
 **雙語閱讀 Pipeline：**
 - ✅ P1 PubMed flow（PR #71）：PDF 全文 → 雙語 reader（pymupdf4llm + translator）
@@ -100,7 +107,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ `agents/brook/compose.py` + style_profile_loader + tag_filter + compliance_scan — PR #78 Mac session
 - ✅ `agents/usopp/publisher.py` + compliance + seopress_writer + litespeed_purge（PR #77 merged 2026-04-23）
 - ✅ `shared/schemas/external/wordpress.py` + `external/seopress.py`（PR #73 Slice A）
-- ⬜ Bridge `/bridge/drafts` UI + routes + CLI fallback
+- ✅ **Bridge `/bridge/drafts` UI scaffolding（read-only）merged 2026-04-25**：PR #136 squash merged `99ddba0`。drafts list + detail 兩 page route（server-side render 直接吃 `list_by_status` / `get_by_id`）+ hub readout cell `DRAFTS · PENDING`（pending>0 走 signal 橘 + 「reviewer needed →」tag）+ 三 stub button（disabled / Phase 2 tooltip）+ 11 個新測試。Payload parse 走 ADR-006 borderline #2.5 同條 soft-fail（一個壞 row 不擋整頁）。**Phase 2 backlog**：(a) approve/reject/edit mutation API + UI、(b) `count_by_status()` 取代 `len(list_by_status())`（避免 LIMIT 50 截斷 + 浪費 query 50 row payload）、(c) detail 頁顯示 `error_log` column 給 broken row triage 用、(d) `payload_pretty` 改 `model_dump_json(indent=2)` 少一次 round-trip、(e) drafts.html 補「displaying first N」提示
 - ✅ `agents/franky/` 全三 slice（PR #74/#75/#76）
 - ✅ Franky VPS 上線（2026-04-24，含 PR #86/#87 修 env drift）
 - ✅ **External uptime probe**：PR #111 merged `6cf5475`（2026-04-24）+ 線上驗收通過。happy path / simulate_down 兩路徑全綠，Slack DM 實收確認。踩 1 個坑：原以為 GH runner 可繞 CF bot list 錯，實測 SBFM 全擋 → 加 CF WAF skip rule by UA `nakama-external-probe/1.0` 解。見更新版 [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md)
@@ -175,3 +182,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - 分工 doc: [docs/task-prompts/mac-2026-04-25-handoff.md](../../docs/task-prompts/mac-2026-04-25-handoff.md)
 - Mac 主推 ADR-009 Phase 1 Slice A（`SEOContextV1` schema + `shared/gsc_client.py` + `shared/schemas/site_mapping.py` + GSC OAuth runbook），純 `shared/` 層、全 mock test、零外部 API、零檔案衝突
 - 桌機在 Mac 出門期間做三件零衝突小工：memory reconcile（本 PR）+ SSE events coverage + project-bootstrap template drift 掃描
+
+**2026-04-25 晚桌機 Bridge drafts UI session（Mac kb/research E2E + Slice C scaffolding 並行）：**
+- 分工 doc: [docs/task-prompts/desktop-2026-04-25-handoff.md](../../docs/task-prompts/desktop-2026-04-25-handoff.md)
+- ✅ **PR #136 merged 2026-04-25** — `feat(bridge)`: drafts queue UI scaffolding (read-only)。30 tests / lint 全綠，本機 uvicorn 4 acceptance scenario 實測通過。Independent review by sub-agent：no blocker, ready to merge（FastAPI Jinja2 預設 autoescape 啟用、auth pattern 跟既有 page route 一致、open redirect 不可能因 path int validator、soft-fail catch 完整）。Phase 2 backlog 5 項見上面 Bridge UI 段

@@ -1,45 +1,36 @@
 ---
 name: PR 開完後的標準 review + merge 流程
-description: 開完 PR 後主動跑 code-review skill，依 PR 類型分級：低風險自動 merge，高風險給報告等授權
+description: PR review/merge 全自動 — review 我自己跑、merge 我自己 squash，不問修修；只在 reviewer 抓到真 blocker 時停下
 type: feedback
 originSessionId: b5636c88-2145-418f-b98f-ef364ae150df
 ---
-**規則：PR 開完 → 自動跑 code-review skill → 依 PR 類型分級決定是否自動 merge**
+**規則：PR 開完 → 自動 review → 自動 squash merge → pull main + 刪 branch。全程不問修修。**
 
-**不要再問「要不要跑 review」** — 2026-04-20 修修再次確認 review 授權給我自己跑，不用先問。只有 merge 這一步才要停下等授權（依分級）。
-
-**Why:** 修修想減少重複指令，但 main 幾乎等同 pre-prod（VPS 從 main pull 部署）。PR #13 是前車之鑑：review 沒擋下 auth 被鎖在 Robin router 裡，merge 後 VPS restart 直接弄壞 Brook。所以用**分級**而非二元：低風險完全自動，高風險保留人工 checkpoint。
+**Why:** 2026-04-25 修修明確指令「以後不用再問我有關 review 和 merge 的事情，你都直接調用適合的工具做掉」。歷史上 PR #13 出包是 review **沒抓到 bug** 的問題，不是「沒授權」的問題；停下等授權只是空轉，加 review/test 嚴格度才是真防禦。
 
 **How to apply:**
 
-### 分級規則
+### 共通流程（全自動）
 
-| PR 類型 | 自動 merge | 說明 |
-|---|---|---|
-| 純文件（.md/docs） | ✅ 直接 | 文件錯可 follow-up 修 |
-| 純測試（只改 tests/） | ✅ 直接 | 不影響 runtime |
-| 單檔 bug fix + 對應測試，且**不碰** auth / router / schema / `.env` / VPS 部署路徑 | ✅ 直接 | 小範圍 + 測試覆蓋 |
-| 小 refactor（行為不變、有測試綠） | ✅ 直接 | 無行為變更 |
-| 動 auth / router / schema / 新依賴 | ❌ 給報告等授權 | 風險 blast radius 大 |
-| 跨 agent / 動 VPS 部署相關 | ❌ 給報告等授權 | 影響共享狀態 |
-| > 300 行或 > 5 檔 | ❌ 給報告等授權 | 大 PR 認知成本高 |
-| Review skill 找到任何 confidence ≥ 80 的 blocker | ❌ 停下來討論 | 不管類型一律停 |
+1. PR 開好 → 視 PR 規模/風險判斷要不要派 review sub-agent（純 hygiene/單 bug fix 跳過；feature/動 schema/動 auth 要派）
+2. Review 嚴格度：只有 blocker（bug / 安全漏洞 / 破壞既有行為 / 新增 secret leak）才停下找修修討論；nit / style suggestion 不打斷
+3. Merge 策略：`gh pr merge <N> --squash --delete-branch`（符合 repo history）
+4. Merge 後：`git checkout main && git pull origin main`，本地 branch `git branch -d <name>`（已 merged 才用 -d；不要 -D）
+5. 把待測試 / follow-up 事項更新到 `project_pending_tasks.md`
+6. 結束時告知修修「已 auto-merge PR #N」+ 一句 summary
 
-### 共通流程
+### 必須停下找修修的真 blocker
 
-1. **Review 嚴格度**：只有 blocker（bug / 安全漏洞 / 破壞現有行為）才停下；nit 和 style suggestion 不打斷修修
-2. **Merge 策略**：squash（符合 repo 現有 history 風格）
-3. **Merge 後動作**：
-   - `git checkout main && git pull origin main`
-   - 刪除 feature branch（local + remote）
-4. **PR 後續**：把待測試事項更新到 `project_pending_tasks.md`
-5. **自動 merge 後**：在對話中明確告知「已 auto-merge，類型：<X>」讓修修知道發生了什麼
+- Reviewer 找到 confidence ≥ 80 的 bug / 安全 / 行為破壞
+- PR 改動超出原本 scope（例如 cleanup PR 突然動了 auth flow）
+- Architecture-level 建議（不屬該 PR scope，需要設計討論）
+- CI 紅且原因不明（可能環境問題也可能真 bug）
 
-### 例外情況需暫停問修修
+### 例外不停下（即使曾經會停）
 
-- Review 發現 blocker → 問要在 PR 內修還是另開
-- Reviewer 提出架構級建議 → 屬於設計討論，不是該 PR 的 scope
-- PR 類型模稜兩可（例如 refactor 但改到 router 邊界）→ 保守走人工授權
+- ❌ ~~動 auth / router / schema / 新依賴一律等授權~~ — 改成「review 是否抓到 blocker」決定，不靠類型 gating
+- ❌ ~~跨 agent / VPS 部署相關等授權~~ — 同上
+- ❌ ~~> 300 行或 > 5 檔等授權~~ — 大 PR 用 review depth 處理，不是停下等
 
 ### 已踩過的坑
 

@@ -4,7 +4,7 @@
 - 缺 service account JSON → 明確 exception
 - query payload 組成正確
 - 首次 query 才 build service（lazy init）
-- from_env 讀 GSC_SERVICE_ACCOUNT_JSON_PATH，缺 env 報錯
+- from_env 讀 GCP_SERVICE_ACCOUNT_JSON，缺 env 報錯
 """
 
 from __future__ import annotations
@@ -37,13 +37,13 @@ def test_init_points_to_directory_raises(tmp_path):
 
 
 def test_from_env_missing_raises(monkeypatch):
-    monkeypatch.delenv("GSC_SERVICE_ACCOUNT_JSON_PATH", raising=False)
+    monkeypatch.delenv("GCP_SERVICE_ACCOUNT_JSON", raising=False)
     with pytest.raises(GSCCredentialsError, match="env var not set"):
         GSCClient.from_env()
 
 
 def test_from_env_happy(monkeypatch, fake_sa_json):
-    monkeypatch.setenv("GSC_SERVICE_ACCOUNT_JSON_PATH", str(fake_sa_json))
+    monkeypatch.setenv("GCP_SERVICE_ACCOUNT_JSON", str(fake_sa_json))
     client = GSCClient.from_env()
     assert client._sa_path == fake_sa_json
 
@@ -91,13 +91,16 @@ def test_query_builds_correct_payload(fake_sa_json):
         str(fake_sa_json),
         scopes=["https://www.googleapis.com/auth/webmasters.readonly"],
     )
-    # build() 現在帶 http= kwarg（httplib2.Http with timeout）
+    # build() 帶 http=AuthorizedHttp(creds, httplib2.Http(timeout=30))，
+    # 不再 pass credentials=（AuthorizedHttp 已 attach；同傳會 ValueError）。
+    import google_auth_httplib2
+
     assert m_build.call_count == 1
     build_kwargs = m_build.call_args
     assert build_kwargs[0] == ("searchconsole", "v1")
-    assert build_kwargs[1]["credentials"] == m_creds.return_value
+    assert "credentials" not in build_kwargs[1]
     assert build_kwargs[1]["cache_discovery"] is False
-    assert "http" in build_kwargs[1]  # httplib2.Http(timeout=30) via creds.authorize()
+    assert isinstance(build_kwargs[1]["http"], google_auth_httplib2.AuthorizedHttp)
     m_service.searchanalytics.return_value.query.assert_called_once_with(
         siteUrl="sc-domain:shosho.tw",
         body={

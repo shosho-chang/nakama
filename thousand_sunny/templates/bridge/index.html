@@ -149,12 +149,31 @@ body {
   border-bottom: var(--nk-border);
   padding: 18px 40px;
   display: grid;
-  grid-template-columns: 1.4fr repeat(4, 1fr) auto;
+  grid-template-columns: 1.4fr repeat(5, 1fr) auto;
   gap: 32px;
   align-items: center;
   flex-shrink: 0;
 }
 .readout-cell {}
+.drafts-cell {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  border-left: var(--nk-border);
+  padding-left: 24px;
+  margin-left: -24px;
+  transition: background var(--nk-dur-fast);
+}
+.drafts-cell:hover { background: var(--nk-panel-2); }
+.drafts-cell .drafts-attention { color: var(--nk-signal); }
+.drafts-cell-tag {
+  margin-top: 6px;
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  color: var(--nk-muted);
+  letter-spacing: 0.06em;
+}
+.drafts-cell:hover .drafts-cell-tag { color: var(--nk-ink-2); }
 .nk-caps {
   font-family: var(--nk-font-mono);
   font-size: var(--nk-t-micro);
@@ -451,6 +470,7 @@ body {
   </div>
   <nav class="chassis-nav">
     <a href="/bridge" class="active">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
     <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
     <a href="/bridge/cost">COST <span class="zh">成本</span></a>
     <a href="/">VAULT <span class="zh">秘庫</span></a>
@@ -506,6 +526,16 @@ body {
       </div>
     </div>
   </div>
+  <a href="/bridge/drafts" class="readout-cell drafts-cell">
+    <div class="nk-caps">DRAFTS · PENDING</div>
+    <div class="nk-readout">
+      <span class="val{% if drafts_pending_count %} drafts-attention{% endif %}">{{ drafts_pending_count }}</span>
+      <span class="unit">queued</span>
+    </div>
+    <div class="drafts-cell-tag">
+      {% if drafts_pending_count %}reviewer needed →{% else %}queue clear ↗{% endif %}
+    </div>
+  </a>
   <div class="readout-cell" id="latency-cell" style="display:none">
     <div class="nk-caps">LATENCY</div>
     <div class="nk-readout"><span class="val">—</span><span class="unit">s avg</span></div>

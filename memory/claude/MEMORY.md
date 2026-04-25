@@ -22,7 +22,7 @@
 - [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/seo-prior-art-2026-04-24.md
 - Research doc：[docs/research/seo-prior-art-2026-04-24.md](../../docs/research/seo-prior-art-2026-04-24.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
-- [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR 開完自動跑 code-review → 報告 → 等授權 → squash merge → pull + 刪 branch
+- [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
 - [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁；2026-04-24 修長音檔 ~10% 線性漂移 bug（char_idx 當 ts 索引）+ regression test
 - [project_srt_align_tool.md](project_srt_align_tool.md) — SRT 對齊工具 shift/scale/auto/retime 四模式 + 踩過的坑
 - [feedback_short_clip_ground_truth.md](feedback_short_clip_ground_truth.md) — 長音檔 ASR 可疑時切 15s 短片段獨立跑同模型當 oracle
@@ -35,6 +35,7 @@
 - [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
 - [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format
 - [feedback_search_skills_first.md](feedback_search_skills_first.md) — 開發前必須先搜尋現有 skills/MCP tools，不重複造輪子
+- [feedback_prior_art_includes_internal_setup.md](feedback_prior_art_includes_internal_setup.md) — Prior-art audit 必含 repo 既有 runbooks + env keys + GCP setup；新建是 exception 要論證
 - [user_hardware.md](user_hardware.md) — 開發機：RTX 5070 Ti 16GB VRAM + 64GB RAM
 - [user_domain_focus.md](user_domain_focus.md) — 內容領域四大面向：睡眠/飲食/運動/情緒 + 五大學科
 - [project_robin_content_nature.md](project_robin_content_nature.md) — PR #12 已 merge：兩層分類、6 類別 prompt、取消按鈕
@@ -43,6 +44,7 @@
 - [reference_cloudflare_tunnel.md](reference_cloudflare_tunnel.md) — CF Tunnel 部署架構：nakama.shosho.tw → tunnel → VPS:8000，LiteSpeed 佔 80 port
 - [feedback_code_review_borderline.md](feedback_code_review_borderline.md) — code-review score <80 但你確信真 bug → 向使用者報告、讓他決定
 - [feedback_test_realism.md](feedback_test_realism.md) — mock integration test 時輸入形狀要對齊真實契約，別為了測試好寫造不可能的資料
+- [feedback_mock_use_spec.md](feedback_mock_use_spec.md) — mock 第三方 SDK 要 `spec=` / `autospec=True`，否則 MagicMock 預設 truthy 會掩蓋 nonexistent-method bug
 - [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
 - [feedback_open_source_ready.md](feedback_open_source_ready.md) — 所有功能都可能個別開源，開發時保留參數化與擴充點；每個可開源單位需有 capability card（能力/IO/實測成本）
@@ -130,5 +132,7 @@
 - [feedback_cron_vs_apscheduler_for_daily_agent.md](feedback_cron_vs_apscheduler_for_daily_agent.md) — Daily agent 用 Linux cron（沿用 Franky/backup pattern），不裝 APScheduler
 - [feedback_retime_text_search_failure_mode.md](feedback_retime_text_search_failure_mode.md) — hand SRT retime 不能走 text substring match，要走聲學 forced alignment
 - [feedback_structural_vs_functional_validation.md](feedback_structural_vs_functional_validation.md) — 字幕/圖/影音類交付物，結構不變量全綠不算完成，用戶實際播放/使用才是驗收
+- [feedback_skill_scaffolding_pitfalls.md](feedback_skill_scaffolding_pitfalls.md) — 開新 .claude/skills/* 四坑：`python -m` 永遠失效要 sys.path shim / 嵌套 fence 用 4-backtick / `now_fn` 要 forward 到所有 time call site / `(x or fallback)` 守衛在 list-comp and-chain 失效
+- [feedback_read_docstring_before_flagging_similar_bug.md](feedback_read_docstring_before_flagging_similar_bug.md) — 同 repo 不同模組對 malformed input 常採刻意相反的 lenient/strict 政策；標「類似 bug」前先讀 docstring + Raises 段
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素

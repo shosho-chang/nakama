@@ -440,9 +440,9 @@ description: >
 
 1. **`seo-audit-post` 的 25 條 deterministic check 具體 rule set** — 實作 PR 從 SEOmator 251 rules 抽出相關子集 + 3-5 條台灣在地化（zh-TW 字型、繁簡混用、台灣藥事法 compliance SEO 不衝突）
 2. **`seo-audit-post` output markdown 模板樣式** — 實作者決定；但必須有「pass/warn/fail 三色狀態」+「每條 check 的 actual vs expected vs fix」
-3. **GSC OAuth 前置作業（修修手動，phase 1 blocker）**
-   - ADR-008 Phase 2 的 checklist B 列了修修端準備（GSC property verify + service account JSON + Viewer role），本 ADR 沿用同一份 setup；但 ADR-008 狀態為 Proposed（blocked on ADR-007 Phase 1 soak），**若 ADR-009 Phase 1 先於 ADR-008 Phase 2 啟動，修修需先完成這些步驟**
-   - 具體 runbook 由實作 Slice A PR 一併 deliver（`docs/runbooks/seo-gsc-oauth-setup.md`），內容：property 確認 → service account 建立 → JSON 下載與部署 → Viewer role 授權
+3. **GSC service account 前置作業（修修手動，phase 1 blocker）**
+   - **Reuse 既有**（2026-04-25 cleanup）：ADR-007 Franky 已建 `nakama-monitoring` GCP project + `nakama-franky@nakama-monitoring.iam.gserviceaccount.com` service account，授權 `sc-domain:shosho.tw` + `sc-domain:fleet.shosho.tw` 兩個 GSC property。env key `GCP_SERVICE_ACCOUNT_JSON` 既有 convention。runbook：[setup-wp-integration-credentials.md §2](../runbooks/setup-wp-integration-credentials.md)。**不要新建 GCP project / service account**（見 [feedback_prior_art_includes_internal_setup.md](../../memory/claude/feedback_prior_art_includes_internal_setup.md) 教訓）
+   - SEO 專用 env key（修修在 `.env` 補）：`GSC_PROPERTY_SHOSHO=sc-domain:shosho.tw` / `GSC_PROPERTY_FLEET=sc-domain:fleet.shosho.tw`
    - ADR-009 skill 第一次啟動時 health check：呼叫 GSC API `sites.list()`，失敗則明確報錯指向 runbook（不默默 fallback）
 4. **`shared/gsc_client.py` retry / rate-limit 策略具體實作** — 遵守 `reliability.md` §5（exponential backoff with jitter）；具體次數由實作 PR 測試決定
 5. **Skill PR 切分順序** — 建議 Slice A: `SEOContextV1` schema + `shared/gsc_client.py` + GSC OAuth runbook；Slice B: `seo-keyword-enrich`；Slice C: `seo-audit-post`；Slice D: Brook compose `seo_context` opt-in。但此順序不在 ADR 凍結範圍
