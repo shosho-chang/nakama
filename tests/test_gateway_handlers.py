@@ -1812,6 +1812,148 @@ def test_deep_research_flow():
     assert "Nami/Notes/Research/" in written_path
 
 
+# ── pubmed_lookup tool ──────────────────────────────────────────────
+
+
+def _pubmed_record(pmid="38945123", title="Test", first_author="Smith J"):
+    return {
+        "pmid": pmid,
+        "title": title,
+        "authors": [first_author, "Doe A", "Lee K", "Chen W"],
+        "first_author": first_author,
+        "journal": "JAMA Internal Medicine",
+        "year": "2024",
+        "pubdate": "2024 Aug 12",
+        "doi": "10.1001/test.2024.1234",
+        "pmcid": "PMC12345678",
+        "pubtypes": ["Journal Article", "Randomized Controlled Trial"],
+    }
+
+
+def test_pubmed_lookup_tool_renders_markdown():
+    """pubmed_lookup tool 接 lookup() 結果，render markdown 含 PubMed/PMC/doi 連結。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "pubmed_lookup",
+                    {"query": "intermittent fasting", "max_results": 2, "since_year": 2024},
+                    id_="toolu_pl1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已找到兩篇")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "shared.pubmed_client.lookup",
+            return_value=[
+                _pubmed_record(pmid="38945123", title="Time-restricted eating: an RCT"),
+                _pubmed_record(pmid="38821456", title="Single-author study", first_author="Solo P"),
+            ],
+        ) as mock_lookup,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "查 IF 文獻", "U1")
+
+    mock_lookup.assert_called_once_with("intermittent fasting", max_results=2, since_year=2024)
+    # Tool 觸發了 pubmed_lookup event
+    event_calls = [c for c in mock_emit.call_args_list if c[0][1] == "pubmed_lookup"]
+    assert len(event_calls) == 1
+    assert event_calls[0][0][2]["hits"] == 2
+
+    assert result.text == "已找到兩篇"
+
+
+def test_pubmed_lookup_tool_empty_query_returns_error():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("pubmed_lookup", {"query": ""}, id_="toolu_pl2")],
+        ),
+        _fake_response("end_turn", [_text_block("query 不能為空")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.pubmed_client.lookup") as mock_lookup,
+    ):
+        NamiHandler().handle("general", "查文獻", "U1")
+
+    mock_lookup.assert_not_called()
+
+
+def test_pubmed_lookup_tool_no_results_returns_friendly_message():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("pubmed_lookup", {"query": "xxxyyy"}, id_="toolu_pl3")],
+        ),
+        _fake_response("end_turn", [_text_block("沒找到，換關鍵字")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.pubmed_client.lookup", return_value=[]),
+    ):
+        result = NamiHandler().handle("general", "查 xxxyyy 文獻", "U1")
+
+    assert result.text == "沒找到，換關鍵字"
+
+
+def test_pubmed_lookup_tool_propagates_client_error():
+    """PubMedClientError → tool_result is_error=True，agent loop 由 LLM 回應。"""
+    from shared.pubmed_client import PubMedClientError
+
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("pubmed_lookup", {"query": "x"}, id_="toolu_pl4")],
+        ),
+        _fake_response("end_turn", [_text_block("查詢服務暫時不通，等下再試")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.pubmed_client.lookup", side_effect=PubMedClientError("HTTP 503")),
+    ):
+        result = NamiHandler().handle("general", "查文獻", "U1")
+
+    assert "服務暫時不通" in result.text
+
+
+def test_pubmed_lookup_tool_caps_max_results_at_20():
+    """max_results > 20 應被夾到 20 才丟給 lookup()。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("pubmed_lookup", {"query": "x", "max_results": 999}, id_="toolu_pl5")],
+        ),
+        _fake_response("end_turn", [_text_block("ok")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.pubmed_client.lookup", return_value=[]) as mock_lookup,
+    ):
+        NamiHandler().handle("general", "查文獻", "U1")
+
+    mock_lookup.assert_called_once()
+    assert mock_lookup.call_args.kwargs["max_results"] == 20
+
+
+# ── /pubmed_lookup ──────────────────────────────────────────────────
+
+
 def test_format_event_message():
     payload = {"title": "研究完成", "path": "reports/intel.md"}
     fallback, blocks = format_event_message("zoro", "intel_ready", payload)

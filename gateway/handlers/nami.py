@@ -570,6 +570,38 @@ NAMI_TOOLS: list[dict] = [
             "required": ["url"],
         },
     },
+    {
+        "name": "pubmed_lookup",
+        "description": (
+            "查 PubMed 醫學文獻資料庫，回傳前 N 篇文獻的標題 + 作者 + 期刊 + 年份 + DOI + "
+            "PMID URL。比 web_search 快又準（直接資料庫查詢，無 SEO 噪音），適合快速 "
+            "evidence lookup：「最近有沒有 X 的 RCT？」「Y 跟 Z 的關聯文獻有哪些？」。"
+            "查英文（PubMed 索引語言）。需要深讀全文時，回傳結果裡的 PMID 可丟給 Robin 的 "
+            "pubmed-to-reader pipeline 拿雙語版。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "PubMed 查詢字串（英文）。可用 boolean operators 與 MeSH 標籤，"
+                        '例：``"intermittent fasting" AND insulin resistance``。'
+                    ),
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "回傳筆數，預設 5，上限 20。",
+                    "default": 5,
+                },
+                "since_year": {
+                    "type": "integer",
+                    "description": "只看這年（含）之後發表的文獻，例：2024。沒講就不限。",
+                },
+            },
+            "required": ["query"],
+        },
+    },
     # ── / Web research tools ──────────────────────────────────────
     {
         "name": "ask_user",
@@ -833,6 +865,8 @@ class NamiHandler(BaseHandler):
                 return self._tool_web_search(tool_input)
             if name == "fetch_url":
                 return self._tool_fetch_url(tool_input)
+            if name == "pubmed_lookup":
+                return self._tool_pubmed_lookup(tool_input)
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
         except VaultRuleViolation as e:
             return _ToolOutcome(content=f"Vault 規則違反：{e}", is_error=True)
@@ -1764,6 +1798,81 @@ class NamiHandler(BaseHandler):
                 "name": "fetch_url",
                 "payload": {"url": url, "chars": original_len, "truncated": truncated},
                 "log": f"fetch: {url}",
+            },
+        )
+
+    def _tool_pubmed_lookup(self, input_: dict) -> _ToolOutcome:
+        query = str(input_.get("query", "")).strip()
+        if not query:
+            return _ToolOutcome(content="query 不能為空", is_error=True)
+
+        try:
+            max_results = int(input_.get("max_results") or 5)
+        except (TypeError, ValueError):
+            return _ToolOutcome(content="max_results 必須是整數", is_error=True)
+        max_results = max(1, min(max_results, 20))
+
+        since_year = input_.get("since_year")
+        if since_year is not None:
+            try:
+                since_year = int(since_year)
+            except (TypeError, ValueError):
+                return _ToolOutcome(content="since_year 必須是整數年份", is_error=True)
+
+        from shared.pubmed_client import PubMedClientError, lookup
+
+        try:
+            results = lookup(query, max_results=max_results, since_year=since_year)
+        except PubMedClientError as e:
+            return _ToolOutcome(content=f"PubMed 查詢失敗：{e}", is_error=True)
+
+        if not results:
+            return _ToolOutcome(
+                content=f"PubMed 沒找到 {query!r} 相關文獻"
+                + (f"（{since_year} 之後）" if since_year else "")
+                + "。換個關鍵字、放寬年份限制、或改用 web_search。"
+            )
+
+        lines: list[str] = []
+        for r in results:
+            authors = r["authors"]
+            if len(authors) == 0:
+                author_label = ""
+            elif len(authors) == 1:
+                author_label = authors[0]
+            elif len(authors) <= 3:
+                author_label = ", ".join(authors)
+            else:
+                author_label = f"{authors[0]} et al."
+
+            head = f"- **{r['title']}**"
+            meta_bits = [b for b in (author_label, r["journal"], r["year"]) if b]
+            if meta_bits:
+                head += f"  \n  {' · '.join(meta_bits)}"
+
+            link_bits = [f"[PubMed](https://pubmed.ncbi.nlm.nih.gov/{r['pmid']}/)"]
+            if r["pmcid"]:
+                link_bits.append(f"[PMC](https://www.ncbi.nlm.nih.gov/pmc/articles/{r['pmcid']}/)")
+            if r["doi"]:
+                link_bits.append(f"[doi:{r['doi']}](https://doi.org/{r['doi']})")
+            head += f"  \n  {' · '.join(link_bits)}"
+            lines.append(head)
+
+        body = "\n\n".join(lines)
+        header = f"### PubMed top {len(results)} for {query!r}"
+        if since_year:
+            header += f"（{since_year} 起）"
+
+        return _ToolOutcome(
+            content=f"{header}\n\n{body}",
+            event={
+                "name": "pubmed_lookup",
+                "payload": {
+                    "query": query,
+                    "hits": len(results),
+                    "since_year": since_year,
+                },
+                "log": f"pubmed: {query!r} ({len(results)} hits)",
             },
         )
 
