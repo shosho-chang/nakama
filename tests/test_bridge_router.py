@@ -105,6 +105,34 @@ def test_cost_page_renders_html(client):
     assert "/bridge/api/cost" in body
 
 
+def test_health_page_empty_state_when_no_heartbeats(client):
+    r = client.get("/bridge/health")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    body = r.text
+    assert "Bridge · Health" in body
+    assert "NO HEARTBEATS RECORDED YET" in body
+
+
+def test_health_page_renders_recorded_heartbeats(client):
+    from shared import heartbeat
+
+    heartbeat.record_success("nakama-backup")
+    heartbeat.record_failure("flaky-cron", "ConnectionError: timed out")
+
+    r = client.get("/bridge/health")
+    assert r.status_code == 200
+    body = r.text
+    assert "nakama-backup" in body
+    assert "flaky-cron" in body
+    # Failure row surfaces error text + consecutive_failures non-zero
+    assert "ConnectionError" in body
+    # Status chip rendered
+    assert (
+        "chip green" in body or "chip yellow" in body or "chip orange" in body or "chip red" in body
+    )
+
+
 # ---------------------------------------------------------------------------
 # Memory endpoints
 # ---------------------------------------------------------------------------
