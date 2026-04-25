@@ -28,3 +28,21 @@ balanced_share_max: 0.60
 # URL 占 ≥ 此比例算「significant」，用於 3+ URL 的 high 判定。
 # 選 0.20：3 個 URL 各佔 ≥ 20% 代表流量真的被均分，合併動作急迫。
 significant_urls_share: 0.20
+
+# ----- False-positive whitelist（PR #133 T1 benchmark 抓到的 follow-up）-----
+#
+# Brand query 例：「張修修」、「shosho」、「張修修的不正常人類研究所」
+# 站台首頁 + section/archive 同時排同一品牌字是 GSC 正常行為，不算 cannibalization。
+# Pattern 是 Python re.search()（不是 fullmatch），記得用 ^ 鎖住開頭避免誤殺。
+brand_query_patterns:
+  - "^張修修"
+  - "^shosho\\b"
+
+# 同 keyword 下所有 competing URL 都落在 homepage-equivalent set 裡 → skip warning。
+# 用這個處理「首頁 vs blog 列表 vs category 列表」這類非真正競爭的 SERP 同列。
+# 未來新增：把對應 site 的 archive / section / 分類 page 加進來。
+homepage_equivalent_patterns:
+  - "^https?://[^/]+/?$"                       # bare homepage
+  - "^https?://[^/]+/blog/?$"                  # main blog archive
+  - "^https?://[^/]+/podcast-all-episodes/?$"  # podcast list
+  - "^https?://[^/]+/category/[^/]+/?$"        # any category archive

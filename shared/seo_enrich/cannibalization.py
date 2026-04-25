@@ -35,6 +35,7 @@ T9 設計：threshold 全部從 yaml 載入、預設值 baked-in；這是 ADR-00
 from __future__ import annotations
 
 import logging
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,11 @@ _DEFAULT_THRESHOLDS: dict[str, Any] = {
     "balanced_share_min": 0.40,
     "balanced_share_max": 0.60,
     "significant_urls_share": 0.20,
+    # F2 follow-up（PR #133 T1 benchmark）— false-positive whitelist。
+    # baked-in 預設空 list = 不做 whitelist 過濾，行為向下相容；
+    # 真值在 yaml seed，方便不改 code 校正。
+    "brand_query_patterns": [],
+    "homepage_equivalent_patterns": [],
 }
 
 # severity 降序排序用
@@ -147,6 +153,37 @@ def _classify_severity(
     return "medium"
 
 
+def _compile_patterns(raw: Any) -> list[re.Pattern[str]]:
+    """yaml 來的 list[str] → 編譯好的 regex。malformed entries 個別 skip + warn。"""
+    compiled: list[re.Pattern[str]] = []
+    if not isinstance(raw, list):
+        return compiled
+    for entry in raw:
+        if not isinstance(entry, str) or not entry:
+            continue
+        try:
+            compiled.append(re.compile(entry))
+        except re.error as exc:
+            logger.warning("invalid cannibalization whitelist regex %r: %s", entry, exc)
+    return compiled
+
+
+def _is_brand_query(keyword: str, brand_patterns: list[re.Pattern[str]]) -> bool:
+    return any(p.search(keyword) for p in brand_patterns)
+
+
+def _all_urls_homepage_equivalent(
+    urls: list[str], homepage_patterns: list[re.Pattern[str]]
+) -> bool:
+    """All competing URLs match SOME homepage-equivalent pattern.
+
+    Empty `homepage_patterns` → False（沒設 whitelist 就不過濾）。
+    """
+    if not homepage_patterns:
+        return False
+    return all(any(p.search(u) for p in homepage_patterns) for u in urls)
+
+
 def _build_recommendation(
     severity: str,
     competing_urls: list[str],
@@ -205,6 +242,8 @@ def detect_cannibalization(
     cfg = dict(thresholds) if thresholds is not None else load_cannibalization_thresholds()
     min_urls = int(cfg["min_urls_per_keyword"])
     min_impr = int(cfg["min_impressions_per_url"])
+    brand_patterns = _compile_patterns(cfg.get("brand_query_patterns"))
+    homepage_patterns = _compile_patterns(cfg.get("homepage_equivalent_patterns"))
 
     # group by keyword
     by_keyword: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -219,6 +258,10 @@ def detect_cannibalization(
 
     warnings: list[CannibalizationWarningV1] = []
     for keyword, kw_rows in by_keyword.items():
+        # F2 whitelist — brand query 整段 skip。
+        if _is_brand_query(keyword, brand_patterns):
+            continue
+
         url_impressions = _aggregate_by_url(kw_rows)
         # 過濾低 impression URL
         significant = {url: impr for url, impr in url_impressions.items() if impr >= min_impr}
@@ -234,6 +277,11 @@ def detect_cannibalization(
         shares = [impr / total for _, impr in sorted_urls]
         competing_urls = [url for url, _ in sorted_urls]
         top_url = competing_urls[0]
+
+        # F2 whitelist — competing URL 全是 homepage-equivalent → skip。
+        # 例：「/」+「/blog/」搶同 query 是 SERP 正常行為，不該叫人 301 首頁。
+        if _all_urls_homepage_equivalent(competing_urls, homepage_patterns):
+            continue
 
         severity = _classify_severity(shares, cfg)
         recommendation = _build_recommendation(severity, competing_urls, top_url)
