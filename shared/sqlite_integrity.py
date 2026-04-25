@@ -48,8 +48,7 @@ def verify_db(db_path: Path) -> tuple[bool, int, int]:
 
         try:
             tables = conn.execute(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ).fetchall()
         except sqlite3.DatabaseError as exc:
             logger.error("table listing raised: %s", exc)
