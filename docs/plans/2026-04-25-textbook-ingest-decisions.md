@@ -2,7 +2,7 @@
 
 **用法**：每題勾選一個選項（用 `[x]` 取代 `[ ]`），需要 nuance 寫在 **Comments / overrides** 區。三題拍板後升級 ADR-010、開工。
 
-對應提案：[textbook-ingest-design-2026-04-25.md](./textbook-ingest-design-2026-04-25.md)
+對應提案：[2026-04-25-textbook-ingest-design.md](./2026-04-25-textbook-ingest-design.md)
 背景：[project_textbook_ingest_design_gap.md](../../memory/claude/project_textbook_ingest_design_gap.md)
 
 ---
