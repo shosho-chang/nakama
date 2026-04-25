@@ -149,6 +149,6 @@
 - [feedback_vps_deploy_smoke_browser.md](feedback_vps_deploy_smoke_browser.md) — nakama.shosho.tw 全域 CF SBFM 擋 curl 全 403（含已上線 route），VPS deploy smoke 要修修瀏覽器；self-verify 走 ssh+systemctl+journalctl 或 127.0.0.1 直連 uvicorn
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
-- [project_quality_uplift_in_flight.md](project_quality_uplift_in_flight.md) — 9-phase quality uplift 5/9 完成（PR #146/147/152/154/157 OPEN）；A-bar 進度 + 修修 manual + Phase 4-8 ordering
-- [project_quality_uplift_review_2026_04_25.md](project_quality_uplift_review_2026_04_25.md) — 5 PR review verdict + 3 critical 已修 + 待修 major/minor 清單 + merge 順序建議
+- [project_quality_uplift_in_flight.md](project_quality_uplift_in_flight.md) — 9-phase quality uplift 5/9 完成 ✅ MERGED 2026-04-25（PR #146/147/152/154/157）；剩 Phase 4-8 + 待修 major（清單見 review memory）
+- [project_quality_uplift_review_2026_04_25.md](project_quality_uplift_review_2026_04_25.md) — 5 PR review verdict + 3 critical 已修 + 待修 major/minor 清單 + 修修 manual follow-up
 - [feedback_subagent_shared_worktree.md](feedback_subagent_shared_worktree.md) — 並行 sub-agent 必開 `git worktree`，不可共用主 worktree（5-PR review 踩坑教訓）
