@@ -14,9 +14,13 @@ Env (base, all required):
     R2_BUCKET_NAME          — Franky verify bucket (xcloud-backup)
 
 Env (backup-only, required for `from_nakama_backup_env`):
-    NAKAMA_R2_BACKUP_BUCKET — destination bucket (nakama-backup)
-    NAKAMA_R2_ACCESS_KEY_ID     — optional override
-    NAKAMA_R2_SECRET_ACCESS_KEY — optional override
+    NAKAMA_R2_BACKUP_BUCKET           — destination bucket (nakama-backup)
+    NAKAMA_R2_WRITE_ACCESS_KEY_ID     — optional, write-scoped token (mode="write")
+    NAKAMA_R2_WRITE_SECRET_ACCESS_KEY — optional, write-scoped token
+    NAKAMA_R2_READ_ACCESS_KEY_ID      — optional, read-scoped token (mode="read")
+    NAKAMA_R2_READ_SECRET_ACCESS_KEY  — optional, read-scoped token
+    NAKAMA_R2_ACCESS_KEY_ID           — optional mode-agnostic fallback
+    NAKAMA_R2_SECRET_ACCESS_KEY       — optional mode-agnostic fallback
 
 Usage:
     from shared.r2_client import R2Client, R2Unavailable
@@ -109,22 +113,47 @@ class R2Client:
         )
 
     @classmethod
-    def from_nakama_backup_env(cls) -> R2Client:
-        """Writer client for the Nakama self-backup bucket.
+    def from_nakama_backup_env(cls, mode: str = "write") -> R2Client:
+        """Client for the Nakama self-backup bucket, scoped by `mode`.
 
-        Requires `R2_ACCOUNT_ID` + `NAKAMA_R2_BACKUP_BUCKET`. Uses
-        `NAKAMA_R2_ACCESS_KEY_ID` / `NAKAMA_R2_SECRET_ACCESS_KEY` if present,
-        otherwise falls back to `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`.
+        Requires `R2_ACCOUNT_ID` + `NAKAMA_R2_BACKUP_BUCKET`. Credentials are
+        looked up by mode-specific env first, then mode-agnostic, then base R2.
+        This lets operators rotate to bucket-scoped tokens incrementally
+        without breaking either side:
+
+        - mode="write" (default, used by backup):
+            NAKAMA_R2_WRITE_ACCESS_KEY_ID / NAKAMA_R2_WRITE_SECRET_ACCESS_KEY
+            → NAKAMA_R2_ACCESS_KEY_ID / NAKAMA_R2_SECRET_ACCESS_KEY
+            → R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
+
+        - mode="read" (used by restore / integrity verify):
+            NAKAMA_R2_READ_ACCESS_KEY_ID / NAKAMA_R2_READ_SECRET_ACCESS_KEY
+            → NAKAMA_R2_ACCESS_KEY_ID / NAKAMA_R2_SECRET_ACCESS_KEY
+            → R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
         """
+        if mode not in ("write", "read"):
+            raise ValueError(f"mode must be 'write' or 'read', got {mode!r}")
         if not os.getenv("R2_ACCOUNT_ID"):
             raise R2Unavailable("missing R2 env: ['R2_ACCOUNT_ID']")
         if not os.getenv("NAKAMA_R2_BACKUP_BUCKET"):
             raise R2Unavailable("missing R2 env: ['NAKAMA_R2_BACKUP_BUCKET']")
-        access_key = os.getenv("NAKAMA_R2_ACCESS_KEY_ID") or os.getenv("R2_ACCESS_KEY_ID")
-        secret_key = os.getenv("NAKAMA_R2_SECRET_ACCESS_KEY") or os.getenv("R2_SECRET_ACCESS_KEY")
+
+        scoped_prefix = "NAKAMA_R2_WRITE_" if mode == "write" else "NAKAMA_R2_READ_"
+        access_key = (
+            os.getenv(f"{scoped_prefix}ACCESS_KEY_ID")
+            or os.getenv("NAKAMA_R2_ACCESS_KEY_ID")
+            or os.getenv("R2_ACCESS_KEY_ID")
+        )
+        secret_key = (
+            os.getenv(f"{scoped_prefix}SECRET_ACCESS_KEY")
+            or os.getenv("NAKAMA_R2_SECRET_ACCESS_KEY")
+            or os.getenv("R2_SECRET_ACCESS_KEY")
+        )
         if not access_key or not secret_key:
             raise R2Unavailable(
-                "missing R2 credentials: set NAKAMA_R2_ACCESS_KEY_ID/SECRET_ACCESS_KEY "
+                f"missing R2 credentials for mode={mode}: set "
+                f"{scoped_prefix}ACCESS_KEY_ID/SECRET_ACCESS_KEY, "
+                "NAKAMA_R2_ACCESS_KEY_ID/SECRET_ACCESS_KEY, "
                 "or R2_ACCESS_KEY_ID/SECRET_ACCESS_KEY"
             )
         return cls(
