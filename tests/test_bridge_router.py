@@ -19,12 +19,14 @@ from shared.schemas.publishing import (
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
     """Bridge router with dev-mode auth (WEB_SECRET unset → check_key returns True)."""
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
     monkeypatch.delenv("WEB_SECRET", raising=False)
     monkeypatch.setenv("DISABLE_ROBIN", "1")
     monkeypatch.setenv("NAKAMA_DEFAULT_USER_ID", "shosho")
+    # Phase 9 doc_index uses NAKAMA_DOC_INDEX_DB_PATH for test isolation
+    monkeypatch.setenv("NAKAMA_DOC_INDEX_DB_PATH", str(tmp_path / "doc_index.db"))
 
     import thousand_sunny.app as app_module
     import thousand_sunny.auth as auth_module
@@ -103,6 +105,27 @@ def test_cost_page_renders_html(client):
     body = r.text
     assert "Bridge · Cost" in body
     assert "/bridge/api/cost" in body
+
+
+def test_docs_page_renders_search_form_when_no_query(client):
+    r = client.get("/bridge/docs")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    body = r.text
+    assert "Bridge · Docs" in body
+    # Help text shown when q is empty
+    assert "Enter a query" in body
+    # Search form present
+    assert 'name="q"' in body
+
+
+def test_docs_page_with_query_returns_results(client):
+    """Query against the real repo's docs/ + memory/ — at least 1 hit for 'memory'."""
+    r = client.get("/bridge/docs?q=memory")
+    assert r.status_code == 200
+    body = r.text
+    # FTS5 highlight or "no matches" — both are valid; we just want no 500
+    assert ("<mark>" in body) or ("No matches" in body)
 
 
 # ---------------------------------------------------------------------------

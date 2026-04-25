@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-jade:         #3f7a5a;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+}
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: 1px solid var(--nk-rule);
+  padding: 18px 40px;
+  flex-shrink: 0;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
+}
+.page-title { font-family: var(--nk-font-display); font-size: 26px; font-weight: 500; letter-spacing: -0.5px; }
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
+
+.search-form { margin-top: 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.search-input {
+  flex: 1; min-width: 320px;
+  padding: 10px 12px;
+  font-family: var(--nk-font-sans); font-size: 14px;
+  background: var(--nk-panel-2); color: var(--nk-ink);
+  border: 1px solid var(--nk-rule);
+  outline: none;
+}
+.search-input:focus { border-color: var(--nk-signal); }
+.search-select {
+  padding: 10px 12px;
+  font-family: var(--nk-font-mono); font-size: 11px;
+  background: var(--nk-panel-2); color: var(--nk-ink);
+  border: 1px solid var(--nk-rule);
+}
+.search-btn {
+  padding: 10px 18px;
+  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  background: var(--nk-chassis); color: var(--nk-chassis-fg);
+  border: none; cursor: pointer;
+}
+.search-btn:hover { background: var(--nk-signal); }
+
+.stats {
+  margin-top: 10px;
+  font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3);
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
+
+.main { flex: 1; overflow: auto; padding: 24px 40px 40px; }
+
+.results { display: flex; flex-direction: column; gap: 12px; }
+.result {
+  background: var(--nk-panel);
+  border: 1px solid var(--nk-rule);
+  padding: 14px 16px;
+}
+.result-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; margin-bottom: 6px;
+}
+.result-title {
+  font-family: var(--nk-font-display); font-size: 16px; font-weight: 500;
+  color: var(--nk-ink);
+}
+.result-category {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--nk-jade);
+}
+.result-path {
+  font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-3);
+  margin-bottom: 8px; word-break: break-all;
+}
+.result-snippet {
+  font-size: 13px; color: var(--nk-ink-2);
+  line-height: 1.55;
+}
+.result-snippet mark {
+  background: rgba(255, 90, 31, 0.18); color: var(--nk-signal); padding: 0 2px;
+}
+
+.empty, .help {
+  padding: 40px 0; text-align: center;
+  color: var(--nk-ink-3);
+  font-family: var(--nk-font-mono); font-size: 12px; letter-spacing: 0.08em;
+}
+.help { color: var(--nk-ink-2); }
+.help p { font-family: var(--nk-font-sans); letter-spacing: normal; margin-top: 8px; font-size: 13px; }
+.help code {
+  font-family: var(--nk-font-mono);
+  background: var(--nk-panel-2);
+  padding: 1px 5px;
+}
+</style>
+</head>
+<body>
+<header class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">Hub</a>
+    <a href="/bridge/memory">Memory</a>
+    <a href="/bridge/cost">Cost</a>
+    <a href="/bridge/drafts">Drafts</a>
+    <a href="/bridge/docs" class="active">Docs</a>
+  </nav>
+</header>
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/docs · markdown full-text search</div>
+    <h1 class="page-title">Documentation Search <span class="zh">文件搜尋</span></h1>
+  </div>
+  <form method="get" action="/bridge/docs" class="search-form">
+    <input
+      class="search-input"
+      type="text"
+      name="q"
+      value="{{ q }}"
+      placeholder="搜尋 docs/ + memory/…  例如：R2 backup, FSM, 雙語 reader"
+      autofocus
+    />
+    <select class="search-select" name="category">
+      <option value="">All categories</option>
+      {% for cat in categories %}
+        <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ cat }} ({{ stats[cat] }})</option>
+      {% endfor %}
+    </select>
+    <button class="search-btn" type="submit">Search</button>
+  </form>
+  <div class="stats">
+    <span>Indexed: {{ stats.values() | sum }} files</span>
+    {% for cat, n in stats.items() %}
+      <span>{{ cat }}: {{ n }}</span>
+    {% endfor %}
+    <span><a href="/bridge/docs?reindex=1{% if q %}&q={{ q }}{% endif %}" style="color: var(--nk-ink-2);">↻ Reindex</a></span>
+  </div>
+</section>
+
+<main class="main">
+{% if not q %}
+  <div class="help">
+    Enter a query above to search across <code>docs/</code> + <code>memory/claude/</code>.
+    <p>FTS5 syntax supported: <code>R2 AND backup</code>, <code>"exact phrase"</code>, <code>foo*</code> prefix match.</p>
+  </div>
+{% elif not hits %}
+  <div class="empty">
+    No matches for "{{ q }}".
+  </div>
+{% else %}
+  <div class="results">
+    {% for hit in hits %}
+      <div class="result">
+        <div class="result-header">
+          <div class="result-title">{{ hit.title }}</div>
+          <div class="result-category">{{ hit.category }}</div>
+        </div>
+        <div class="result-path">{{ hit.path }}</div>
+        <div class="result-snippet">{{ hit.snippet | safe }}</div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+</main>
+</body>
+</html>
