@@ -134,5 +134,7 @@
 - [feedback_structural_vs_functional_validation.md](feedback_structural_vs_functional_validation.md) — 字幕/圖/影音類交付物，結構不變量全綠不算完成，用戶實際播放/使用才是驗收
 - [feedback_skill_scaffolding_pitfalls.md](feedback_skill_scaffolding_pitfalls.md) — 開新 .claude/skills/* 四坑：`python -m` 永遠失效要 sys.path shim / 嵌套 fence 用 4-backtick / `now_fn` 要 forward 到所有 time call site / `(x or fallback)` 守衛在 list-comp and-chain 失效
 - [feedback_read_docstring_before_flagging_similar_bug.md](feedback_read_docstring_before_flagging_similar_bug.md) — 同 repo 不同模組對 malformed input 常採刻意相反的 lenient/strict 政策；標「類似 bug」前先讀 docstring + Raises 段
+- [feedback_count_vs_list_len.md](feedback_count_vs_list_len.md) — UI badge/stat 用專屬 `count_*()` 走 `SELECT COUNT(*)`，不要 `len(list_*())` — list API 通常有 LIMIT 預設值會 silent 封頂
+- [feedback_vps_deploy_smoke_browser.md](feedback_vps_deploy_smoke_browser.md) — nakama.shosho.tw 全域 CF SBFM 擋 curl 全 403（含已上線 route），VPS deploy smoke 要修修瀏覽器；self-verify 走 ssh+systemctl+journalctl 或 127.0.0.1 直連 uvicorn
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
