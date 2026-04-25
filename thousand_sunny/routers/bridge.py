@@ -9,17 +9,19 @@ V1 scope（見 ``docs/prds/phase-4-bridge-ui.md``）：
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from shared import agent_memory, state
+from shared import agent_memory, approval_queue, state
 from shared.pricing import calc_cost, get_pricing
+from shared.schemas.approval import ApprovalPayloadV1Adapter, PublishWpPostV1, UpdateWpPostV1
 from thousand_sunny.auth import check_auth, require_auth_or_key
 
 # ── Agent roster ─────────────────────────────────────────────────────────────
@@ -118,7 +120,10 @@ async def bridge_index(request: Request, nakama_auth: str | None = Cookie(None))
     return _templates.TemplateResponse(
         request,
         "index.html",
-        {"robin_enabled": not os.getenv("DISABLE_ROBIN")},
+        {
+            "robin_enabled": not os.getenv("DISABLE_ROBIN"),
+            "drafts_pending_count": len(approval_queue.list_by_status("pending")),
+        },
     )
 
 
@@ -134,6 +139,124 @@ async def cost_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/cost", status_code=302)
     return _templates.TemplateResponse(request, "cost.html", {})
+
+
+# ---------------------------------------------------------------------------
+# Drafts — HITL approval queue UI（read-only scaffolding, ADR-006）
+# ---------------------------------------------------------------------------
+
+
+def _summarize_draft_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Decorate a raw approval_queue row with a parsed-payload summary for the UI.
+
+    Bad payloads (schema drift / corrupted JSON) get `parse_error` set instead
+    of crashing the whole list — same soft-fail philosophy as
+    `claim_approved_drafts()` (ADR-006 borderline #2.5).
+    """
+    summary: dict[str, Any] = {
+        "id": row["id"],
+        "status": row["status"],
+        "source_agent": row["source_agent"],
+        "target_platform": row.get("target_platform"),
+        "target_site": row.get("target_site"),
+        "action_type": row.get("action_type"),
+        "title_snippet": row.get("title_snippet") or "",
+        "operation_id": row.get("operation_id"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+        "priority": row.get("priority", 50),
+        "compliance_ack": bool(row.get("reviewer_compliance_ack")),
+        "parse_error": None,
+        "compliance_flagged": False,
+    }
+    raw = row.get("payload")
+    if not raw:
+        return summary
+    try:
+        payload = ApprovalPayloadV1Adapter.validate_python(json.loads(raw))
+    except (json.JSONDecodeError, ValidationError, TypeError) as e:
+        summary["parse_error"] = f"{type(e).__name__}: {e}"
+        return summary
+    flags = payload.compliance_flags
+    summary["compliance_flagged"] = bool(flags.medical_claim or flags.absolute_assertion)
+    return summary
+
+
+@page_router.get("/drafts", response_class=HTMLResponse)
+async def drafts_page(request: Request, nakama_auth: str | None = Cookie(None)):
+    """List drafts in the HITL approval queue. Read-only in this scaffolding."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/drafts", status_code=302)
+
+    pending_rows = approval_queue.list_by_status("pending")
+    in_review_rows = approval_queue.list_by_status("in_review")
+    drafts = [_summarize_draft_row(r) for r in (pending_rows + in_review_rows)]
+
+    return _templates.TemplateResponse(
+        request,
+        "drafts.html",
+        {
+            "drafts": drafts,
+            "pending_count": len(pending_rows),
+            "in_review_count": len(in_review_rows),
+        },
+    )
+
+
+@page_router.get("/drafts/{draft_id:int}", response_class=HTMLResponse)
+async def draft_detail_page(
+    draft_id: int, request: Request, nakama_auth: str | None = Cookie(None)
+):
+    """Single draft detail — payload preview + stub action buttons (Phase 2)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/drafts/{draft_id}", status_code=302)
+
+    row = approval_queue.get_by_id(draft_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"draft {draft_id} not found")
+
+    summary = _summarize_draft_row(row)
+    parsed_payload: ApprovalPayloadV1Adapter | None = None
+    payload_pretty: str | None = None
+    headline_fields: list[tuple[str, str]] = []
+
+    raw = row.get("payload")
+    if raw:
+        try:
+            payload = ApprovalPayloadV1Adapter.validate_python(json.loads(raw))
+            parsed_payload = payload
+            payload_pretty = json.dumps(
+                json.loads(payload.model_dump_json()),
+                ensure_ascii=False,
+                indent=2,
+            )
+            if isinstance(payload, PublishWpPostV1):
+                headline_fields = [
+                    ("title", payload.draft.title),
+                    ("target_site", payload.target_site),
+                    ("scheduled_at", str(payload.scheduled_at) if payload.scheduled_at else "—"),
+                ]
+            elif isinstance(payload, UpdateWpPostV1):
+                headline_fields = [
+                    ("change_summary", payload.change_summary),
+                    ("target_site", payload.target_site),
+                    ("wp_post_id", str(payload.wp_post_id)),
+                ]
+        except (json.JSONDecodeError, ValidationError, TypeError) as e:
+            summary["parse_error"] = f"{type(e).__name__}: {e}"
+            payload_pretty = raw  # show raw text so reviewer can triage manually
+
+    return _templates.TemplateResponse(
+        request,
+        "draft_detail.html",
+        {
+            "draft": summary,
+            "raw_row": row,
+            "headline_fields": headline_fields,
+            "payload_pretty": payload_pretty,
+            "has_parsed_payload": parsed_payload is not None,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
