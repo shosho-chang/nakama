@@ -20,7 +20,8 @@ readability-lxml>=0.8.4  # Web scraping：備選去噪方案
 # sqlite3 is built-in
 
 # Zoro: Keyword Research
-google-api-python-client>=2.100.0  # YouTube Data API v3
+google-api-python-client>=2.100.0  # YouTube Data API v3 + GSC Search Analytics
+google-auth>=2.0.0                 # Service account auth（GSC client 直接 import）
 trendspy>=0.1.6                    # Google Trends (pytrends successor; pytrends archived 2025-04)
 
 # Transcription (post-processing)

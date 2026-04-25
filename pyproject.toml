@@ -48,6 +48,7 @@ dependencies = [
 
     # Nami: Google Calendar
     "google-api-python-client>=2.100.0",
+    "google-auth>=2.0.0",
     "google-auth-oauthlib>=1.2.0",
     "filelock>=3.13.0",
 
