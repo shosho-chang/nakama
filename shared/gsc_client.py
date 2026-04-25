@@ -13,8 +13,10 @@ dep 且與既有 pattern 不一致。本檔用 googleapiclient 內建的 `.execu
 `shared.schemas.site_mapping`，避免 I/O adapter 污染 pure lookup 的測試邊界。
 
 Environment:
-    GSC_SERVICE_ACCOUNT_JSON_PATH  絕對路徑到 GCP service account JSON；runbook
-                                    見 `docs/runbooks/gsc-oauth-setup.md`。
+    GCP_SERVICE_ACCOUNT_JSON  絕對路徑到 GCP service account JSON；reuse Franky
+                              既有 `nakama-franky@nakama-monitoring.iam.gserviceaccount.com`
+                              SA（已授權 sc-domain:shosho.tw + sc-domain:fleet.shosho.tw）。
+                              setup 流程見 `docs/runbooks/setup-wp-integration-credentials.md` §2。
 """
 
 from __future__ import annotations
@@ -51,7 +53,7 @@ class GSCClient:
         if not path.is_file():
             raise GSCCredentialsError(
                 f"GSC service account JSON not found at {path!s}; "
-                "see docs/runbooks/gsc-oauth-setup.md"
+                "see docs/runbooks/setup-wp-integration-credentials.md §2"
             )
         self._sa_path = path
         self._service: Any | None = None  # lazy, build 在首次 query
@@ -60,13 +62,13 @@ class GSCClient:
 
     @classmethod
     def from_env(cls) -> "GSCClient":
-        """從 `GSC_SERVICE_ACCOUNT_JSON_PATH` env var 建構。缺 env 或檔不存在 raise。"""
+        """從 `GCP_SERVICE_ACCOUNT_JSON` env var 建構。缺 env 或檔不存在 raise。"""
         try:
-            path = os.environ["GSC_SERVICE_ACCOUNT_JSON_PATH"]
+            path = os.environ["GCP_SERVICE_ACCOUNT_JSON"]
         except KeyError as e:
             raise GSCCredentialsError(
-                "GSC_SERVICE_ACCOUNT_JSON_PATH env var not set; "
-                "see docs/runbooks/gsc-oauth-setup.md"
+                "GCP_SERVICE_ACCOUNT_JSON env var not set; "
+                "see docs/runbooks/setup-wp-integration-credentials.md §2"
             ) from e
         return cls(service_account_json_path=path)
 
