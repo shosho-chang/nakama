@@ -602,6 +602,20 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Auto-load .env so users invoking the skill from a fresh shell don't have
+    # to remember `set -a && source .env`. Per
+    # feedback_explicit_load_dotenv_for_non_db_paths.md — agent/skill entry
+    # points that read env vars (GSC creds, GSC_PROPERTY_*) must not silently
+    # fall back to "key not set" when the project .env has the value.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        # python-dotenv is in requirements.txt but skip gracefully if missing
+        # (e.g. someone running scripts/ outside the project venv).
+        pass
+
     args = _parse_args(argv)
 
     if args.dry_run:

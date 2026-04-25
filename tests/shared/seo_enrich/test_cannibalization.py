@@ -260,9 +260,19 @@ def test_load_thresholds_yaml_matches_baked_defaults() -> None:
     """Repo 內 yaml 的值應該等同於 `_DEFAULT_THRESHOLDS`（CLAUDE.md 寫進檔頭）。
 
     任何一方改動 drift 都要同步更新另一方。
+
+    Whitelist keys（brand_query_patterns / homepage_equivalent_patterns）刻意
+    在 baked-in 為空、在 yaml seed 為 shosho.tw 的真值 — 這是 open-source
+    友善的設計（fork 用戶不會 inherit 我們網站的白名單）。所以這兩個 key
+    在 round-trip test 跳過比對，但 yaml 必須有 key、值必須 list[str]。
     """
     loaded = load_cannibalization_thresholds()
+    site_specific_keys = {"brand_query_patterns", "homepage_equivalent_patterns"}
     for key, default_val in _DEFAULT_THRESHOLDS.items():
+        if key in site_specific_keys:
+            assert isinstance(loaded[key], list), f"{key} should be list, got {type(loaded[key])}"
+            assert all(isinstance(p, str) for p in loaded[key]), f"{key} should be list[str]"
+            continue
         assert loaded[key] == default_val, f"{key}: yaml={loaded[key]} vs default={default_val}"
 
 
@@ -382,3 +392,111 @@ def test_two_url_severity_boundaries(share_top: float, share_other: float, expec
     ]
     warnings = detect_cannibalization(rows)
     assert warnings[0].severity == expected
+
+
+# ---------- F2 false-positive whitelist（PR #133 T1 benchmark follow-up）-----
+
+
+def test_brand_query_pattern_skips_warning() -> None:
+    """Keyword 命中 brand pattern → 整 keyword 跳過、不出 warning。"""
+    rows = [
+        _row("張修修", "https://shosho.tw/", 500),
+        _row("張修修", "https://shosho.tw/blog/", 500),
+        # 對照組：非品牌字、URL 也不在 homepage-equivalent → 應該照常出 warning
+        _row("zone 2 訓練", "https://shosho.tw/blog/zone-2-training-explain/", 500),
+        _row("zone 2 訓練", "https://shosho.tw/blog/zone-2-common-questions/", 500),
+    ]
+    cfg = {**_DEFAULT_THRESHOLDS, "brand_query_patterns": [r"^張修修"]}
+    warnings = detect_cannibalization(rows, thresholds=cfg)
+    keywords = {w.keyword for w in warnings}
+    assert "張修修" not in keywords
+    assert "zone 2 訓練" in keywords
+
+
+def test_brand_query_pattern_substring_anchor() -> None:
+    """`^shosho\\b` 應 match `shosho` 但不 match `shoshoxyz`（word boundary 守住）。"""
+    rows = [
+        _row("shosho", "https://shosho.tw/", 500),
+        _row("shosho", "https://shosho.tw/blog/", 500),
+        _row("shoshoxyz", "https://shosho.tw/page-a/", 500),
+        _row("shoshoxyz", "https://shosho.tw/page-b/", 500),
+    ]
+    cfg = {**_DEFAULT_THRESHOLDS, "brand_query_patterns": [r"^shosho\b"]}
+    warnings = detect_cannibalization(rows, thresholds=cfg)
+    keywords = {w.keyword for w in warnings}
+    assert "shosho" not in keywords
+    assert "shoshoxyz" in keywords
+
+
+def test_homepage_equivalent_pattern_skips_warning() -> None:
+    """所有 competing URL 都是 homepage-equivalent → skip。"""
+    rows = [
+        # 全 homepage-equivalent，應 skip
+        _row("品牌字", "https://shosho.tw/", 500),
+        _row("品牌字", "https://shosho.tw/blog/", 500),
+        # 對照組：一個 homepage-equivalent + 一個真內頁 → 不 skip
+        _row("vo2 max", "https://shosho.tw/", 500),
+        _row("vo2 max", "https://shosho.tw/blog/vo2-max-cpet/", 500),
+    ]
+    cfg = {
+        **_DEFAULT_THRESHOLDS,
+        "homepage_equivalent_patterns": [
+            r"^https?://[^/]+/?$",
+            r"^https?://[^/]+/blog/?$",
+        ],
+    }
+    warnings = detect_cannibalization(rows, thresholds=cfg)
+    keywords = {w.keyword for w in warnings}
+    assert "品牌字" not in keywords
+    assert "vo2 max" in keywords
+
+
+def test_homepage_pattern_three_url_all_equivalent() -> None:
+    """3 個 URL 都 homepage-equivalent → skip（不只 2-URL case）。"""
+    rows = [
+        _row("kw", "https://shosho.tw/", 400),
+        _row("kw", "https://shosho.tw/blog/", 300),
+        _row("kw", "https://shosho.tw/category/podcast/", 300),
+    ]
+    cfg = {
+        **_DEFAULT_THRESHOLDS,
+        "homepage_equivalent_patterns": [
+            r"^https?://[^/]+/?$",
+            r"^https?://[^/]+/blog/?$",
+            r"^https?://[^/]+/category/[^/]+/?$",
+        ],
+    }
+    warnings = detect_cannibalization(rows, thresholds=cfg)
+    assert warnings == []
+
+
+def test_empty_whitelist_disables_filter() -> None:
+    """白名單為空 list → filter 全 disable，向下相容（行為等同 PR #133 merged 那刻）。"""
+    rows = [
+        _row("張修修", "https://shosho.tw/", 500),
+        _row("張修修", "https://shosho.tw/blog/", 500),
+    ]
+    cfg = {
+        **_DEFAULT_THRESHOLDS,
+        "brand_query_patterns": [],
+        "homepage_equivalent_patterns": [],
+    }
+    warnings = detect_cannibalization(rows, thresholds=cfg)
+    # baked-in 預設空 list = 不過濾，warning 仍然出
+    assert len(warnings) == 1
+    assert warnings[0].keyword == "張修修"
+
+
+def test_invalid_regex_pattern_skipped_gracefully() -> None:
+    """yaml 裡寫壞 regex（unbalanced bracket 等）→ 個別 skip + warn，不 crash。"""
+    rows = [
+        _row("張修修", "https://shosho.tw/", 500),
+        _row("張修修", "https://shosho.tw/blog/", 500),
+    ]
+    cfg = {
+        **_DEFAULT_THRESHOLDS,
+        "brand_query_patterns": ["[unbalanced", r"^張修修"],  # 第一個壞、第二個好
+    }
+    warnings = detect_cannibalization(rows, thresholds=cfg)
+    # 第二個 pattern 仍生效 → 張修修 skip
+    assert warnings == []
