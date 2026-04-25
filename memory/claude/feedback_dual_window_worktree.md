@@ -24,3 +24,5 @@ git worktree add ../nakama-window-b feat/window-b-branch
 - 跨機器（Mac vs 桌機）走 [feedback_multi_machine_parallel.md](feedback_multi_machine_parallel.md) — 各自 clone、用對方 open PR file list 挑零重疊任務
 - 寫雙視窗交接 prompt 時，§開工 checklist 必含「`pwd` 確認在獨立 worktree」「`git status` clean 才動手」「commit 前 `git diff main --stat` 對齊範圍」
 - 範例：[docs/task-prompts/dual-window-2026-04-25-allocation.md](../../docs/task-prompts/dual-window-2026-04-25-allocation.md)、[docs/task-prompts/window-b-kb-search-2026-04-25.md](../../docs/task-prompts/window-b-kb-search-2026-04-25.md)
+
+**相關但不同 root cause**：[feedback_shared_tree_devserver_collision.md](feedback_shared_tree_devserver_collision.md) — 同 working tree 跑 dev server 時，我做 git checkout 會 mtime 觸發 uvicorn reload 看到「不對 branch 的程式碼」。同樣用 worktree 解。

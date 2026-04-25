@@ -81,6 +81,7 @@
 - [reference_bridge_ui_mutation_pattern.md](reference_bridge_ui_mutation_pattern.md) — Bridge UI mutation 範式：cookie auth + form post + 303 + native `<dialog>` modal，無 JS framework；PR #140 reference 實作
 - [feedback_ask_on_architecture.md](feedback_ask_on_architecture.md) — UX/產品架構決策（用戶直接可見的差異）先問再動手，不自行決定
 - [feedback_todo_needs_use_case.md](feedback_todo_needs_use_case.md) — 寫 todo / pending_tasks 必附「我什麼時候會用」use case，沒寫的 todo 拿來開做會 over-build（PR #141 paste-image 教訓）
+- [feedback_shared_tree_devserver_collision.md](feedback_shared_tree_devserver_collision.md) — 修修跑 uvicorn --reload + 我 git checkout 會 mtime 觸發 reload 看到不對版本；解法走 worktree 隔離
 - Runbook：[docs/runbooks/add-agent-slack-bot.md](../../docs/runbooks/add-agent-slack-bot.md) — 幫 agent 開獨立 Slack bot 的完整流程（Phase 1 修修手動、Phase 2 Claude code、Phase 3 部署）
 - Design doc：[docs/decisions/step-5-zoro-brainstorm-p2.md](../../docs/decisions/step-5-zoro-brainstorm-p2.md) — 步驟 5 設計凍結，blocker 是 Zoro 獨立 Slack bot
 - [project_nami_gmail.md](project_nami_gmail.md) — Nami Gmail 整合完成：6 tools + triage 規則（Primary + Respond/Shosho 24h）+ SSL per-thread bug 修法
