@@ -1,0 +1,33 @@
+name: Conventional Commits
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+
+jobs:
+  lint-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history so we can git log against base
+          fetch-depth: 0
+
+      - name: Validate PR title format
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          python3 .github/scripts/lint_commit_title.py "$PR_TITLE"
+
+      - name: Validate commit titles in PR
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          # Each commit between base..head is checked. PR titles squash-merge,
+          # so commit-by-commit lint is mostly informational — but it catches
+          # cases where the squash title needs editing because individual
+          # commits drifted from convention.
+          git log --format='%s' "$base..$head" | while IFS= read -r title; do
+            python3 .github/scripts/lint_commit_title.py "$title" || echo "WARN: drift in: $title"
+          done

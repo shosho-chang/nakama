@@ -118,7 +118,9 @@ def main() -> int:
     # 04:00 Asia/Taipei (= 20:00 UTC previous day), so datetime.now(timezone.utc) would
     # stamp backups with yesterday's folder. Precedent: PR #67 for Robin pubmed_digest.
     now = datetime.now(ZoneInfo("Asia/Taipei"))
-    retention_days = int(os.environ.get("NAKAMA_BACKUP_RETENTION_DAYS", "30"))
+    # `... or "30"` handles unset (None) AND empty ("=" in .env) — empty string
+    # passes os.environ.get's default-arg check and crashes int("") otherwise.
+    retention_days = int(os.environ.get("NAKAMA_BACKUP_RETENTION_DAYS") or "30")
 
     failures: list[str] = []
     for db_name in _DBS:

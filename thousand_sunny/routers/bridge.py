@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
 from shared import agent_memory, approval_queue, state
+from shared.doc_index import DocIndex
 from shared.pricing import calc_cost, get_pricing
 from shared.schemas.approval import ApprovalPayloadV1Adapter, PublishWpPostV1, UpdateWpPostV1
 from thousand_sunny.auth import check_auth, require_auth_or_key
@@ -139,6 +140,57 @@ async def cost_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/cost", status_code=302)
     return _templates.TemplateResponse(request, "cost.html", {})
+
+
+# ---------------------------------------------------------------------------
+# /bridge/docs — FTS5 search across docs/ + memory/ markdown (Phase 9)
+# ---------------------------------------------------------------------------
+
+# Module-level singleton: index is rebuilt on first request and on demand.
+# Cheap rebuild (<1s for ~700 files) means we don't need persistent staleness
+# tracking — the page query string can include &reindex=1 to force rebuild.
+_doc_index: DocIndex | None = None
+
+
+def _get_doc_index() -> DocIndex:
+    global _doc_index
+    if _doc_index is None:
+        _doc_index = DocIndex.from_repo_root()
+        _doc_index.rebuild()
+    return _doc_index
+
+
+@page_router.get("/docs", response_class=HTMLResponse)
+async def docs_page(
+    request: Request,
+    q: str = Query("", max_length=200),
+    category: str = Query("", max_length=64),
+    reindex: bool = Query(False),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Full-text search across docs/ + memory/ markdown."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/docs", status_code=302)
+
+    if reindex:
+        global _doc_index
+        _doc_index = None  # force rebuild on next access
+    idx = _get_doc_index()
+
+    hits = idx.search(q, limit=30, category=category or None) if q.strip() else []
+    stats = idx.stats()
+
+    return _templates.TemplateResponse(
+        request,
+        "docs.html",
+        {
+            "q": q,
+            "category": category,
+            "hits": hits,
+            "stats": stats,
+            "categories": sorted(stats.keys()),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
