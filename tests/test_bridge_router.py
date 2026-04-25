@@ -472,3 +472,28 @@ def test_hub_index_pending_count_zero_when_empty(client):
     assert "DRAFTS · PENDING" in body
     # Zero state copy: queue clear
     assert "queue clear" in body
+
+
+def test_drafts_page_shows_truncate_banner_above_list_limit(client):
+    # Seed 51 pending rows; list_by_status caps at 50, count_by_status returns 51
+    for i in range(51):
+        _enqueue_draft(slug=f"trunc-{i}", op_id=f"op_eeee{i:04d}")
+    r = client.get("/bridge/drafts")
+    assert r.status_code == 200
+    body = r.text
+    # Header stat is the *true* count (not the capped row count)
+    assert "pending" in body
+    assert ">51<" in body
+    # Banner appears explaining truncation
+    assert "顯示前" in body
+    assert "每組上限" in body
+
+
+def test_drafts_page_no_truncate_banner_when_under_limit(client):
+    _enqueue_draft(slug="under-1", op_id="op_ffff0001")
+    r = client.get("/bridge/drafts")
+    assert r.status_code == 200
+    body = r.text
+    # No truncate banner copy
+    assert "顯示前" not in body
+    assert "每組上限" not in body

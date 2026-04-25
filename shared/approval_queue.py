@@ -542,6 +542,27 @@ def list_by_status(
     return [dict(r) for r in rows]
 
 
+def count_by_status(status: str, *, source_agent: str | None = None) -> int:
+    """Cheap COUNT(*) for badges / hub stats — avoids loading full payload TEXT.
+
+    Use instead of ``len(list_by_status(...))`` whenever the caller only needs
+    the integer; ``list_by_status`` has a default ``LIMIT 50`` and would silently
+    cap the count at 50 while paying the cost of materializing 50 full rows.
+    """
+    conn = _get_conn()
+    if source_agent:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM approval_queue WHERE status = ? AND source_agent = ?",
+            (status, source_agent),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM approval_queue WHERE status = ?",
+            (status,),
+        ).fetchone()
+    return int(row["n"])
+
+
 def new_operation_id() -> str:
     """Generate an operation_id matching DraftV1's op_[0-9a-f]{8} pattern."""
     return f"op_{uuid.uuid4().hex[:8]}"
