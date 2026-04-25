@@ -225,11 +225,12 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ **PR #148 merged 2026-04-25** — daily digest 補 `source_type / content_nature / lang`（DOI 已在；schema drift 治本）。Reader pill 從一格 → 四格
 - ✅ **PR #149 merged 2026-04-25** — `docs/diagrams/vault-ingest-flow.md` 全景 mermaid IA baseline（5 條 flow + 3 條 schema drift + 桌機/VPS 分工 + 缺口清單）。下一步 Claude Design handoff 美學迭代
 - ✅ **PR #150 merged 2026-04-25** — ADR-010 textbook ingest 凍結：Claude Code Opus 4.7 skill + Karpathy 跨書 Wiki + per-chapter Source（section-by-section）+ Concept/Entity `mentioned_in:` backlink。**完全跳過 embedding / vector store / 桌機 GPU**（重大 simplification 從原提案翻轉）
-- 🚧 **PR #157（進行中）** — `.claude/skills/textbook-ingest/` 骨架：SKILL.md + 3 個 prompt template（chapter-summary / concept-extract / book-entity）+ `parse_book.py` PDF outline 抽取 helper + capability card
-- ⬜ Phase 1 MVP 驗收：用一本中型英文教科書（800 頁）跑完整流程
+- ✅ **PR #158 merged 2026-04-25** — `.claude/skills/textbook-ingest/` 骨架：SKILL.md + 3 個 prompt template（chapter-summary / concept-extract / book-entity）+ `parse_book.py` PDF helper + capability card。Skill 已註冊到 Claude Code harness
+- ✅ **PR #159 merged 2026-04-25** — EPUB primary path（修修確認手上教科書全是 EPUB 版）。`parse_book.py` 走 ebooklib + BeautifulSoup，OPF spine + nav TOC 100% 權威章節結構，PDF 留 fallback。8 unit tests + 全 suite 1584 pass
+- 🚧 **Phase 1.5 MVP 驗收 @ 桌機**（修修 2026-04-25 決定移到桌機跑）：用一本英文 EPUB textbook 試跑完整流程，驗證：(1) `parse_book.py` 抽 metadata + 章節邊界正確、(2) 每章 Source 頁 section-by-section 結構符合 ADR、(3) Concept/Entity 頁 `mentioned_in:` backlink 正確（既有頁 update 不重建）、(4) Book Entity 入口頁完整。Mac 已開發完成，桌機只負責**驗收測試 + 實際 ingest 生產**
 - ⬜ Phase 2A：教科書 ingest Web UI（Bridge Hub 入口 + SSE 進度條）
 - ⬜ Phase 2B：Multi-provider subscription 選擇（Anthropic Max / OpenAI Pro / Google AI Ultra adapter）
 - ⬜ Reader 翻譯按鈕設計分歧（修修以為 reader 內按需翻譯、實作是 ingest 預翻譯 + toggle）— 待設計討論
 - ⬜ Chrome Extension 一鍵剪 → thousand_sunny（後端 API 都有，缺 plugin shell）
-- ⬜ EPUB / Word parser（中文帶圖）— 完全沒實作
+- ⬜ EPUB / Word parser（中文帶圖）— 教科書 ingest skill 已涵蓋 EPUB；剩 Word 沒實作
 - ⬜ Translator A/B 試 Opus 4.7（cost vs Sonnet quality）— 一篇就能驗
