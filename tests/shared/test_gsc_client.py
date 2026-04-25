@@ -91,13 +91,16 @@ def test_query_builds_correct_payload(fake_sa_json):
         str(fake_sa_json),
         scopes=["https://www.googleapis.com/auth/webmasters.readonly"],
     )
-    # build() 現在帶 http= kwarg（httplib2.Http with timeout）
+    # build() 帶 http=AuthorizedHttp(creds, httplib2.Http(timeout=30))，
+    # 不再 pass credentials=（AuthorizedHttp 已 attach；同傳會 ValueError）。
+    import google_auth_httplib2
+
     assert m_build.call_count == 1
     build_kwargs = m_build.call_args
     assert build_kwargs[0] == ("searchconsole", "v1")
-    assert build_kwargs[1]["credentials"] == m_creds.return_value
+    assert "credentials" not in build_kwargs[1]
     assert build_kwargs[1]["cache_discovery"] is False
-    assert "http" in build_kwargs[1]  # httplib2.Http(timeout=30) via creds.authorize()
+    assert isinstance(build_kwargs[1]["http"], google_auth_httplib2.AuthorizedHttp)
     m_service.searchanalytics.return_value.query.assert_called_once_with(
         siteUrl="sc-domain:shosho.tw",
         body={

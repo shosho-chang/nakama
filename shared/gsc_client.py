@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import google_auth_httplib2
 import httplib2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -81,10 +82,13 @@ class GSCClient:
             creds = service_account.Credentials.from_service_account_file(
                 str(self._sa_path), scopes=_SCOPES
             )
-            http = creds.authorize(httplib2.Http(timeout=_HTTP_TIMEOUT))
-            self._service = build(
-                "searchconsole", "v1", credentials=creds, http=http, cache_discovery=False
+            # google-auth 2.x 移除了 Credentials.authorize()；用 google_auth_httplib2
+            # 包 timeout 過的 http 物件，再傳給 build()。傳 http= 時不能再傳 credentials=
+            # （build 會 raise ValueError），因為 AuthorizedHttp 已 attach 過 creds。
+            http = google_auth_httplib2.AuthorizedHttp(
+                creds, http=httplib2.Http(timeout=_HTTP_TIMEOUT)
             )
+            self._service = build("searchconsole", "v1", http=http, cache_discovery=False)
         return self._service
 
     def query(
