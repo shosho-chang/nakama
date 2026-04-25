@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
-from shared import agent_memory, approval_queue, state
+from shared import agent_memory, approval_queue, heartbeat, state
 from shared.doc_index import DocIndex
 from shared.pricing import calc_cost, get_pricing
 from shared.schemas.approval import ApprovalPayloadV1Adapter, PublishWpPostV1, UpdateWpPostV1
@@ -140,6 +140,62 @@ async def cost_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/cost", status_code=302)
     return _templates.TemplateResponse(request, "cost.html", {})
+
+
+# Stale thresholds (minutes) used to colour-code rows on /bridge/health.
+# `green` ≤ HEALTH_GREEN_MIN; HEALTH_GREEN_MIN < `yellow` ≤ HEALTH_YELLOW_MIN;
+# HEALTH_YELLOW_MIN < `orange` ≤ HEALTH_ORANGE_MIN; > HEALTH_ORANGE_MIN → `red`.
+# Tuned for 5-min cron tick + 15-min GH Actions delay budget.
+HEALTH_GREEN_MIN = 60
+HEALTH_YELLOW_MIN = 6 * 60
+HEALTH_ORANGE_MIN = 24 * 60
+
+
+def _health_chip(stale_minutes: int | None) -> str:
+    if stale_minutes is None:
+        return "never"
+    if stale_minutes <= HEALTH_GREEN_MIN:
+        return "green"
+    if stale_minutes <= HEALTH_YELLOW_MIN:
+        return "yellow"
+    if stale_minutes <= HEALTH_ORANGE_MIN:
+        return "orange"
+    return "red"
+
+
+@page_router.get("/health", response_class=HTMLResponse)
+async def health_page(request: Request, nakama_auth: str | None = Cookie(None)):
+    """Phase 3 observability: per-job heartbeat surface."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/health", status_code=302)
+
+    rows = []
+    for hb in heartbeat.list_all():
+        rows.append(
+            {
+                "job_name": hb.job_name,
+                "last_status": hb.last_status,
+                "stale_minutes": hb.stale_minutes,
+                "success_age_minutes": hb.success_age_minutes,
+                "consecutive_failures": hb.consecutive_failures,
+                "last_error": hb.last_error,
+                "last_run_at": hb.last_run_at.isoformat() if hb.last_run_at else None,
+                "chip": _health_chip(hb.stale_minutes),
+            }
+        )
+
+    return _templates.TemplateResponse(
+        request,
+        "health.html",
+        {
+            "rows": rows,
+            "thresholds": {
+                "green_min": HEALTH_GREEN_MIN,
+                "yellow_min": HEALTH_YELLOW_MIN,
+                "orange_min": HEALTH_ORANGE_MIN,
+            },
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

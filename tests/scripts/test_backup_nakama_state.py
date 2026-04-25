@@ -300,6 +300,57 @@ def test_main_uses_taipei_date_for_key_across_utc_day_boundary(_data_dir_with_st
     assert keys == ["state/2026/04/24/state.db.gz"], f"expected Taipei-date key but got {keys!r}"
 
 
+def test_main_records_heartbeat_success_on_happy_path(_data_dir_with_state, _fake_r2):
+    from scripts.backup_nakama_state import main
+    from shared import heartbeat
+
+    assert main() == 0
+
+    hb = heartbeat.get_heartbeat("nakama-backup")
+    assert hb is not None
+    assert hb.last_status == "success"
+    assert hb.consecutive_failures == 0
+
+
+def test_main_records_heartbeat_failure_on_r2_unavailable(tmp_path, monkeypatch):
+    """When env missing, backup fails fast — heartbeat must still record the failure."""
+    from scripts.backup_nakama_state import main
+    from shared import heartbeat
+
+    for key in (
+        "R2_ACCOUNT_ID",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "NAKAMA_R2_BACKUP_BUCKET",
+        "NAKAMA_R2_ACCESS_KEY_ID",
+        "NAKAMA_R2_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    with patch("scripts.backup_nakama_state.load_config", lambda: {}):
+        assert main() == 1
+
+    hb = heartbeat.get_heartbeat("nakama-backup")
+    assert hb is not None
+    assert hb.last_status == "fail"
+    assert "r2 client unavailable" in (hb.last_error or "").lower()
+    assert hb.consecutive_failures == 1
+
+
+def test_main_records_heartbeat_failure_on_upload_error(_data_dir_with_state, _fake_r2):
+    from scripts.backup_nakama_state import main
+    from shared import heartbeat
+    from shared.r2_client import R2Unavailable
+
+    _fake_r2.upload_file.side_effect = R2Unavailable("access denied")
+    assert main() == 1
+
+    hb = heartbeat.get_heartbeat("nakama-backup")
+    assert hb is not None
+    assert hb.last_status == "fail"
+    assert "backup failed" in (hb.last_error or "").lower()
+
+
 def main_call() -> int:
     """Indirection lets the timezone-regression test patch the module-level datetime
     using `_patch_now` without colliding with `from scripts.backup_nakama_state import main`

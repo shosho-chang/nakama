@@ -42,11 +42,15 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from shared.alerts import alert
 from shared.config import load_config
+from shared.heartbeat import record_failure, record_success
 from shared.log import get_logger
 from shared.r2_client import R2Client, R2Unavailable
 
 logger = get_logger("nakama.backup")
+
+_JOB_NAME = "nakama-backup"  # heartbeat key — keep stable across releases
 
 # `nakama.db` is currently unused (0 bytes) but lives alongside state.db and was in
 # the original Phase 1 layout; back it up too so future use doesn't silently bypass.
@@ -230,11 +234,15 @@ def main() -> int:
         client = R2Client.from_nakama_backup_env(mode="write")
     except R2Unavailable as exc:
         logger.error("r2 client unavailable: %s", exc)
+        record_failure(_JOB_NAME, f"r2 client unavailable: {exc}")
+        alert("error", "backup", f"R2 unavailable: {exc}", dedupe_key="backup-r2-unavailable")
         return 1
 
     data_dir = Path(os.environ.get("NAKAMA_DATA_DIR", "/home/nakama/data"))
     if not data_dir.is_dir():
         logger.error("data dir missing: %s", data_dir)
+        record_failure(_JOB_NAME, f"data dir missing: {data_dir}")
+        alert("error", "backup", f"data dir missing: {data_dir}", dedupe_key="backup-data-dir")
         return 1
 
     # Date-partitioned R2 key must match operator-perceived Taipei date — cron fires at
@@ -249,7 +257,10 @@ def main() -> int:
             failures.append(db_name)
 
     if failures:
-        logger.error("backup failed dbs=%s", failures)
+        msg = f"backup failed dbs={failures}"
+        logger.error(msg)
+        record_failure(_JOB_NAME, msg)
+        alert("error", "backup", msg, dedupe_key="backup-upload-fail")
         return 1
 
     # Retention runs only after all uploads succeeded, so a failed day never
@@ -258,6 +269,7 @@ def main() -> int:
         _prune_for_db(client, db_name, now)
 
     logger.info("nakama backup complete dbs=%d", len(_DBS))
+    record_success(_JOB_NAME)
     return 0
 
 

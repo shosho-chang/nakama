@@ -251,6 +251,21 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_r2_backup_time
             ON r2_backup_checks(checked_at DESC);
+
+        -- Phase 3 observability: per-job heartbeat (last-success + consecutive failure
+        -- counter). Owned by `shared/heartbeat.py`; consumed by `/bridge/health`.
+        CREATE TABLE IF NOT EXISTS heartbeats (
+            job_name             TEXT PRIMARY KEY,
+            last_success_at      TEXT,
+            last_run_at          TEXT NOT NULL,
+            last_status          TEXT NOT NULL CHECK (last_status IN ('success', 'fail')),
+            last_error           TEXT,
+            consecutive_failures INTEGER NOT NULL DEFAULT 0,
+            updated_at           TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_heartbeats_status
+            ON heartbeats(last_status, last_run_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
