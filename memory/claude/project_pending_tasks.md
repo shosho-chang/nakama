@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-25
+updated: 2026-04-25T22
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
@@ -107,7 +107,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ `agents/brook/compose.py` + style_profile_loader + tag_filter + compliance_scan — PR #78 Mac session
 - ✅ `agents/usopp/publisher.py` + compliance + seopress_writer + litespeed_purge（PR #77 merged 2026-04-23）
 - ✅ `shared/schemas/external/wordpress.py` + `external/seopress.py`（PR #73 Slice A）
-- ⬜ Bridge `/bridge/drafts` UI + routes + CLI fallback
+- ✅ **Bridge `/bridge/drafts` UI scaffolding（read-only）merged 2026-04-25**：PR #136 squash merged `99ddba0`。drafts list + detail 兩 page route（server-side render 直接吃 `list_by_status` / `get_by_id`）+ hub readout cell `DRAFTS · PENDING`（pending>0 走 signal 橘 + 「reviewer needed →」tag）+ 三 stub button（disabled / Phase 2 tooltip）+ 11 個新測試。Payload parse 走 ADR-006 borderline #2.5 同條 soft-fail（一個壞 row 不擋整頁）。**Phase 2 backlog**：(a) approve/reject/edit mutation API + UI、(b) `count_by_status()` 取代 `len(list_by_status())`（避免 LIMIT 50 截斷 + 浪費 query 50 row payload）、(c) detail 頁顯示 `error_log` column 給 broken row triage 用、(d) `payload_pretty` 改 `model_dump_json(indent=2)` 少一次 round-trip、(e) drafts.html 補「displaying first N」提示
 - ✅ `agents/franky/` 全三 slice（PR #74/#75/#76）
 - ✅ Franky VPS 上線（2026-04-24，含 PR #86/#87 修 env drift）
 - ✅ **External uptime probe**：PR #111 merged `6cf5475`（2026-04-24）+ 線上驗收通過。happy path / simulate_down 兩路徑全綠，Slack DM 實收確認。踩 1 個坑：原以為 GH runner 可繞 CF bot list 錯，實測 SBFM 全擋 → 加 CF WAF skip rule by UA `nakama-external-probe/1.0` 解。見更新版 [feedback_uptimerobot_cost_benefit.md](feedback_uptimerobot_cost_benefit.md)
@@ -182,3 +182,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - 分工 doc: [docs/task-prompts/mac-2026-04-25-handoff.md](../../docs/task-prompts/mac-2026-04-25-handoff.md)
 - Mac 主推 ADR-009 Phase 1 Slice A（`SEOContextV1` schema + `shared/gsc_client.py` + `shared/schemas/site_mapping.py` + GSC OAuth runbook），純 `shared/` 層、全 mock test、零外部 API、零檔案衝突
 - 桌機在 Mac 出門期間做三件零衝突小工：memory reconcile（本 PR）+ SSE events coverage + project-bootstrap template drift 掃描
+
+**2026-04-25 晚桌機 Bridge drafts UI session（Mac kb/research E2E + Slice C scaffolding 並行）：**
+- 分工 doc: [docs/task-prompts/desktop-2026-04-25-handoff.md](../../docs/task-prompts/desktop-2026-04-25-handoff.md)
+- ✅ **PR #136 merged 2026-04-25** — `feat(bridge)`: drafts queue UI scaffolding (read-only)。30 tests / lint 全綠，本機 uvicorn 4 acceptance scenario 實測通過。Independent review by sub-agent：no blocker, ready to merge（FastAPI Jinja2 預設 autoescape 啟用、auth pattern 跟既有 page route 一致、open redirect 不可能因 path int validator、soft-fail catch 完整）。Phase 2 backlog 5 項見上面 Bridge UI 段
