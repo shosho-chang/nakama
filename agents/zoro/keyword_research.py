@@ -5,13 +5,20 @@ from __future__ import annotations
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from agents.zoro.autocomplete import get_suggestions
 from agents.zoro.reddit_api import search_reddit_posts
 from agents.zoro.trends_api import get_trends
 from agents.zoro.twitter_api import search_recent_tweets
 from agents.zoro.youtube_api import search_top_videos
-from shared.anthropic_client import ask_claude, set_current_agent
+from shared.anthropic_client import (
+    ask_claude,
+    set_current_agent,
+    start_usage_tracking,
+    stop_usage_tracking,
+)
 from shared.log import get_logger
 from shared.prompt_loader import load_prompt
 
@@ -21,7 +28,11 @@ _SOURCE_TIMEOUT = 15  # seconds per data source
 
 
 def _auto_translate(topic: str) -> str:
-    """Use Claude to translate a Chinese topic to its English equivalent."""
+    """Use Claude to translate a Chinese topic to its English equivalent.
+
+    Lower-cased before return so downstream dedup / filename / cache lookups
+    match regardless of Claude's casing choice.
+    """
     raw = ask_claude(
         "Translate the following topic to English."
         " Reply with ONLY the English term, nothing else."
@@ -29,7 +40,7 @@ def _auto_translate(topic: str) -> str:
         max_tokens=100,
         temperature=0.0,
     )
-    return raw.strip().strip('"').strip("'")
+    return raw.strip().strip('"').strip("'").lower()
 
 
 def research_keywords(
@@ -50,10 +61,26 @@ def research_keywords(
 
     Returns JSON-serializable dict with keys:
         keywords, youtube_titles, blog_titles, analysis_summary,
-        sources_used, sources_failed
+        sources_used, sources_failed, usage (list of per-call token records)
     """
     set_current_agent("zoro")
+    start_usage_tracking()
+    try:
+        result = _research_keywords_inner(topic, content_type, en_topic)
+    except BaseException:
+        # Drain the buffer so a thread-pool worker reused later doesn't
+        # inherit our records.
+        stop_usage_tracking()
+        raise
+    result["usage"] = stop_usage_tracking()
+    return result
 
+
+def _research_keywords_inner(
+    topic: str,
+    content_type: str,
+    en_topic: str | None,
+) -> dict:
     # ── Auto-translate if needed ──────────────────────────────────────────
     if not en_topic:
         logger.info(f"Auto-translating topic: {topic}")
@@ -109,12 +136,14 @@ def research_keywords(
     reddit_data_en = _format_reddit(data.get("reddit_en", {}))
 
     # ── Claude synthesis ──────────────────────────────────────────────────
+    today_iso = datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
     prompt = load_prompt(
         "zoro",
         "keyword_research",
         topic=topic,
         en_topic=en_topic,
         content_type=content_type,
+        today_iso=today_iso,
         youtube_data_zh=youtube_data_zh,
         youtube_data_en=youtube_data_en,
         trends_data_zh=trends_data_zh,
