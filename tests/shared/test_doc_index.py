@@ -100,6 +100,28 @@ def test_search_includes_snippet_with_highlight(idx):
     assert "Anthropic" in snippet
 
 
+def test_search_snippet_escapes_html_in_body(repo_with_docs, tmp_path):
+    """Markdown containing literal `<script>` must not leak as raw HTML.
+
+    Repro of the XSS that PR #157 review caught: snippet() -> `| safe` template
+    -> stored XSS via any indexed file containing `<script>` literals.
+    """
+    docs = repo_with_docs / "docs" / "decisions"
+    (docs / "ADR-evil.md").write_text(
+        "# Evil ADR\n\nDiscussion of canarytokenxyz and <script>alert(1)</script> in the wild.\n",
+        encoding="utf-8",
+    )
+    idx = DocIndex(repo_root=repo_with_docs, db_path=tmp_path / "doc_index.db")
+    idx.rebuild()
+    hits = idx.search("canarytokenxyz")
+    assert len(hits) >= 1
+    snippet = hits[0].snippet
+    assert "<script>" not in snippet
+    assert "&lt;script&gt;" in snippet
+    # `<mark>` from sentinel swap is the ONLY allowed raw tag
+    assert "<mark>" in snippet
+
+
 def test_search_filters_by_category(idx):
     idx.rebuild()
     hits = idx.search("backup", category="memory")

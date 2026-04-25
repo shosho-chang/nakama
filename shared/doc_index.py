@@ -32,6 +32,7 @@ Usage:
 
 from __future__ import annotations
 
+import html
 import os
 import re
 import sqlite3
@@ -41,6 +42,14 @@ from pathlib import Path
 from shared.log import get_logger
 
 logger = get_logger("nakama.doc_index")
+
+# Sentinel tokens for FTS5 snippet() — replaced with safe `<mark>`/`</mark>`
+# AFTER html.escape() runs over the body. Any literal `<script>` (or other HTML)
+# inside an indexed markdown file would otherwise reach the template raw via
+# `{{ hit.snippet | safe }}` and execute. ASCII control chars 0x01/0x02 are
+# illegal in markdown source, so they can never collide with file content.
+_MARK_OPEN = "\x01"
+_MARK_CLOSE = "\x02"
 
 # Subdirectories of repo root to index. Reading any other path is intentional
 # noise — agents/ source code, scripts/, etc. live elsewhere and don't belong
@@ -57,12 +66,21 @@ _H1_RE = re.compile(r"^#\s+(.+?)\s*$", flags=re.MULTILINE)
 
 @dataclass(frozen=True)
 class DocHit:
-    """One ranked search result. `snippet` is FTS5 highlight context."""
+    """One ranked search result.
+
+    `snippet` is safe HTML — already html.escape()'d, with only `<mark>` /
+    `</mark>` tags re-introduced. Templates can render with `| safe`.
+    """
 
     path: str
     title: str
     category: str
     snippet: str
+
+
+def _safe_snippet(raw: str) -> str:
+    """Escape FTS5 snippet body, then swap sentinels for `<mark>` tags."""
+    return html.escape(raw).replace(_MARK_OPEN, "<mark>").replace(_MARK_CLOSE, "</mark>")
 
 
 class DocIndex:
@@ -206,11 +224,12 @@ class DocIndex:
         if not query.strip():
             return []
         conn = self._get_conn()
-        # FTS5 BM25 ranking is the default. snippet() args:
-        #   col=2 (body), count=15 tokens, ellipsis=" … ", left tag="<mark>", right tag="</mark>"
+        # snippet() emits sentinels (not literal `<mark>`); we html.escape the
+        # whole string then swap sentinels back. Otherwise `<script>` literals
+        # inside markdown leak to the template raw via `| safe`.
         sql = (
             "SELECT path, title, category, "
-            "       snippet(docs_fts, 2, '<mark>', '</mark>', ' … ', 15) AS snippet "
+            f"       snippet(docs_fts, 2, '{_MARK_OPEN}', '{_MARK_CLOSE}', ' … ', 15) AS snippet "
             "FROM docs_fts WHERE docs_fts MATCH ?"
         )
         params: list = [query]
@@ -231,7 +250,7 @@ class DocIndex:
                 path=row["path"],
                 title=row["title"],
                 category=row["category"],
-                snippet=row["snippet"],
+                snippet=_safe_snippet(row["snippet"]),
             )
             for row in rows
         ]
