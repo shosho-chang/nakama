@@ -22,6 +22,8 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    confloat,
+    conint,
     constr,
     model_validator,
 )
@@ -289,3 +291,77 @@ class PublishResultV1(BaseModel):
     failure_reason: str | None = None
     operation_id: constr(pattern=r"^op_[0-9a-f]{8}$")
     completed_at: AwareDatetime
+
+
+# ---------------------------------------------------------------------------
+# Publish target（ADR-009 / ADR-008）— Brook compose + SEO context 共用
+# ---------------------------------------------------------------------------
+
+# app-name（不是 host）；`shared.schemas.site_mapping` 提供 host ↔ app-name 雙向對照。
+TargetSite = Literal["wp_shosho", "wp_fleet"]
+
+
+# ---------------------------------------------------------------------------
+# SEO context（ADR-009 §D3）— seo-keyword-enrich skill 產出、Brook compose 消費
+# ---------------------------------------------------------------------------
+
+
+class KeywordMetricV1(BaseModel):
+    """單一關鍵字的 ranking 指標快照。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal[1] = 1
+    keyword: constr(min_length=1, max_length=200)
+    clicks: conint(ge=0)
+    impressions: conint(ge=0)
+    ctr: confloat(ge=0.0, le=1.0)
+    avg_position: confloat(ge=1.0, le=200.0)
+    source: Literal["gsc", "dataforseo"] = "gsc"
+
+
+class StrikingDistanceV1(BaseModel):
+    """11-20 排名邊緣關鍵字 — push 一下就能上第一頁。
+
+    **實作契約（ADR-009 triangulation T6）**：GSC raw rows 必須在 skill 層
+    先 filter 才建本物件；不符合 position [10.0, 21.0] range 的 row 用 `drop`
+    處理，**絕不**以 try/except ValidationError 當 filter（浪費算力 + 錯誤訊號污染）。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal[1] = 1
+    keyword: constr(min_length=1, max_length=200)
+    url: constr(min_length=1, max_length=2048)
+    current_position: confloat(ge=10.0, le=21.0)
+    impressions_last_28d: conint(ge=0)
+    suggested_actions: list[str] = Field(default_factory=list)
+
+
+class CannibalizationWarningV1(BaseModel):
+    """多個 URL 在同一關鍵字互相競爭的警告。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal[1] = 1
+    keyword: constr(min_length=1, max_length=200)
+    competing_urls: list[constr(min_length=1, max_length=2048)] = Field(min_length=2)
+    severity: Literal["low", "medium", "high"]
+    recommendation: constr(min_length=1, max_length=500)
+
+
+class SEOContextV1(BaseModel):
+    """ADR-009 Phase 1 下游消費物件。
+
+    Brook compose 的 system prompt 把本物件非 None / 非空欄位轉成繁中建議接到
+    prompt 尾端（ADR §D5）。不覆蓋 `DraftV1.focus_keyword` / `meta_description`
+    的輸出格式硬規則。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal[1] = 1
+    target_site: TargetSite
+    primary_keyword: KeywordMetricV1 | None = None
+    related_keywords: list[KeywordMetricV1] = Field(default_factory=list)
+    striking_distance: list[StrikingDistanceV1] = Field(default_factory=list)
+    cannibalization_warnings: list[CannibalizationWarningV1] = Field(default_factory=list)
+    competitor_serp_summary: str | None = None
+    generated_at: AwareDatetime
+    source_keyword_research_path: str | None = None

@@ -32,6 +32,7 @@ from shared.schemas.publishing import (
     DraftV1,
     GutenbergHTMLV1,
     PublishComplianceGateV1,
+    TargetSite,
 )
 from shared.state import _get_conn
 from shared.tag_filter import filter_tags
@@ -301,7 +302,6 @@ class ComposeOutputParseError(ValueError):
 
 
 Category = Literal["book-review", "people", "science"]
-TargetSite = Literal["wp_shosho", "wp_fleet"]
 
 
 _COMPOSE_OUTPUT_SCHEMA = """{
