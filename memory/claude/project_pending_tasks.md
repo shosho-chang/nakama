@@ -67,7 +67,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 **SEO Solution（ADR-009 進行中）：**
 - ✅ prior-art-research、ADR-009 凍結、multi-model triangulation
 - ✅ Slice A merged（PR #132）— SEOContextV1 schema family + gsc_client + site_mapping + runbook
-- 🚧 **Slice B PR #133 open** — seo-keyword-enrich skill GSC-only baseline；72 new tests 全綠；3 subagents parallel dispatch 13 min 完工。等修修 `/ultrareview 133` + T1 benchmark + merge
+- 🚧 **Slice B PR #133 open** — seo-keyword-enrich skill GSC-only baseline；72 new tests 全綠；3 subagents parallel dispatch 13 min 完工。**ultrareview 完成**（2026-04-25 Mac，commit `cb0afdb`）：5 bug 全修（now_fn forward / SKILL.md unrunnable invocation / cannibalization recommendation 500-char overflow / `_select_primary_metric` broken guard / capability-card 3-backtick nested fence）+ 4 regression test。等修修 T1 benchmark + merge。順手發現 `shared/seo_enrich/striking_distance.py:74-89` 有相同類別的 malformed-row 防護缺口（`row["keys"]` 沒 None/empty 守衛），未在此 PR 修。教訓詳見 [feedback_skill_scaffolding_pitfalls.md](feedback_skill_scaffolding_pitfalls.md)
 - 🚧 **PR #134 open 但要 close** — gsc-oauth-setup.md 跨機策略補丁；發現整個 runbook 要 deprecate（重工 nakama-franky setup），下次 session close
 - 🔥 **Cleanup 待開新 PR**：env key `GSC_SERVICE_ACCOUNT_JSON_PATH` → `GCP_SERVICE_ACCOUNT_JSON`（reuse ADR-007 convention）+ deprecate `gsc-oauth-setup.md` → redirect `setup-wp-integration-credentials.md`。修修踩到此坑：「拒絕重工 + 變胖變複雜」是最高指導原則，見 [feedback_prior_art_includes_internal_setup.md](feedback_prior_art_includes_internal_setup.md)
 - 🔄 **修修手動 unblock OAuth**：改用 nakama-franky@nakama-monitoring sa（GSC 已授權兩 property），不要繼續 nakama-seo path；GCP console SHUTDOWN nakama-seo project
