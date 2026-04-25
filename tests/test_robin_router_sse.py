@@ -140,14 +140,16 @@ def test_events_step_cancelled_redirects_home(client):
 
 
 def _mock_summarizing_io(monkeypatch, mod, *, summary_text: str = "fake summary"):
-    """Mock 所有 summarizing step 用到的 I/O 與 LLM call."""
+    """Mock 所有 summarizing step 用到的 I/O 與 LLM call.
+
+    write_page 是 SSE generator 內 `from shared.obsidian_writer import write_page`，
+    所以要 patch 原始 module，不是 robin namespace。
+    """
     monkeypatch.setattr(
         mod.pipeline,
         "_generate_summary",
         MagicMock(return_value=summary_text),
     )
-    monkeypatch.setattr(mod, "write_page", MagicMock(), raising=False)
-    # write_page imported inside generator — patch sys.modules path
     import shared.obsidian_writer as ow
 
     monkeypatch.setattr(ow, "write_page", MagicMock())
@@ -360,10 +362,14 @@ def test_events_step_executing_redirects_to_done(client, vault, monkeypatch):
         _title="My Title",
     )
 
-    monkeypatch.setattr(mod.pipeline, "_execute_plan", MagicMock())
-    monkeypatch.setattr(mod.pipeline, "_update_index", MagicMock())
-    monkeypatch.setattr(mod, "mark_file_processed", MagicMock())
-    monkeypatch.setattr(mod, "_send_to_recycle_bin", MagicMock())
+    execute_plan = MagicMock()
+    update_index = MagicMock()
+    mark_processed = MagicMock()
+    recycle = MagicMock()
+    monkeypatch.setattr(mod.pipeline, "_execute_plan", execute_plan)
+    monkeypatch.setattr(mod.pipeline, "_update_index", update_index)
+    monkeypatch.setattr(mod, "mark_file_processed", mark_processed)
+    monkeypatch.setattr(mod, "_send_to_recycle_bin", recycle)
 
     r = tc.get(f"/events/{sid}")
     assert r.status_code == 200
@@ -376,6 +382,12 @@ def test_events_step_executing_redirects_to_done(client, vault, monkeypatch):
     # status 應提示「寫入 3 個 Wiki 頁面」
     status_msgs = [e["data"].get("msg", "") for e in events if e["event"] == "status"]
     assert any("3 個" in m for m in status_msgs)
+
+    # 各 side-effect 都要被呼叫過 — 防 regression
+    execute_plan.assert_called_once()
+    update_index.assert_called_once()
+    mark_processed.assert_called_once()
+    recycle.assert_called_once()
 
 
 def test_events_step_executing_falls_back_to_raw_stem_when_title_missing(
