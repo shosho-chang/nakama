@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-24
+updated: 2026-04-25
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
@@ -50,7 +50,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ PR-A backend merged（#41）
 - ✅ PR-B Memory UI（#42）、PR-C Cost UI（#44）、Bridge Hub（#45）
 - ✅ Direction B Instrument Panel 重設計 + VPS 部署（PR #65，2026-04-21）
-- ⬜ Tech debt：`agent_memory.update` rollback / `MemoryUpdate.type` Literal / docstring
+- ✅ Tech debt：`agent_memory.update` rollback / `MemoryUpdate.type` Literal / docstring（PR #123 merged 2026-04-25）— rollback claim 降級為 defensive hardening，見 [feedback_defensive_vs_bug_fix_claim.md](feedback_defensive_vs_bug_fix_claim.md)
 - ⬜ 細節 UI polish（修修說「還有很多細節要改，但先這樣」）
 
 **Zoro：**
@@ -82,17 +82,17 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ⬜ 調研 PubMed NCBI Entrez API（Nami Quick Lookup 替代 Deep Research）
 
 **基礎建設：**
-- 🚧 Robin 核心流程 `kb_search.py` 0% → 100%（PR #119 open，路上抓到 `"Entities"` type normalize bug 順手修）；`ingest.py` 仍待補
-- 🚧 Brook compose.py 補測試覆蓋率（PR #116 open，57% → 100%，含對話式 API + helpers）
-- 🚧 Thousand Sunny routers smoke test — brook + zoro 0% → 100%（PR #118 open）；franky / robin routers 仍有 gap
+- ✅ Robin 核心流程 `kb_search.py` 0% → 100%（PR #119 merged，順手修 `"Entities"` type normalize bug）+ `ingest.py` 0% → 100%（PR #121 merged 60 tests，路上修 2 個 Linux CI case-sensitive bug）
+- ✅ Brook compose.py 補測試覆蓋率 57% → 100%（PR #116 merged，含對話式 API + helpers）
+- ✅ Thousand Sunny routers smoke test — brook + zoro 0% → 100%（PR #118 merged）+ franky 94% → 100% / robin 46% → 77%（PR #127 merged，SSE events 留下輪）
 
 **Nakama backup / VPS 備份（2026-04-24）：**
 - ✅ Nakama `state.db` daily 04:00 Taipei → R2 `nakama-backup` bucket，retention 30 天（PR #88）
 - ✅ 見 [project_nakama_backup_deployed.md](project_nakama_backup_deployed.md)
-- ⬜ Franky 擴展 `r2_backup_verify` 檢查 `nakama-backup` bucket 的 freshness（目前只看 xcloud-backup）
+- ✅ Franky 擴展 `r2_backup_verify` 檢查 `nakama-backup` bucket 的 freshness（PR #99 merged，並 PR #100 加入 Bridge dashboard 曝光）
 - ⬜ R2 bucket-scoped token 分離（寫 nakama-backup / 讀 xcloud-backup 兩份 key）
 - ⬜ xCloud fleet 整站 tarball 缺口（fleet 目前只有 DB dump，沒有 file tarball — 修修去 xCloud console 檢查）
-- ⬜ xCloud 已改 daily + 15 天 retention（修修 2026-04-24 設定）
+- ✅ xCloud 已改 daily + 15 天 retention（修修 2026-04-24 設定完成）
 
 **Phase 1 Wave 2（foundation 已合併，見 project_phase1_foundation_pr.md）：**
 - ✅ VPS baseline 壓測 24h（2026-04-24 analyze）：**GREEN** — CPU p95 2%, RAM p95 1.73GB (threshold 3GB), avail 低點 1.99GB, Load 1m p95 0.15. ADR-007 §6 門檻全過，Phase 1 full workload 可推進
@@ -157,16 +157,21 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ **PR #121 merged** — test(robin): ingest.py 0% → 100%（60 tests）。路上抓到 2 個 Linux CI 大小寫敏感 bug（slugify 保留大小寫但 test seed 用小寫），以 fix commit 解
 - ✅ **PR #124 merged** — docs(seo): ADR-009 multi-model triangulation（Gemini 4/10 / Grok 6/10 / Claude 通過；6 blockers 消化 → T5/T6 ADR body 改、T4 Revised Slice Order；`scripts/adr_multi_model_review.py` 加 skip-if-exists + dynamic date）
 
-**2026-04-25 深夜 auto-mode session（修修睡覺前授權全 merge + 四任務）：**
-- ✅ PR #121/#124/#125/#116/#118/#119 全 merged（授權範圍）
-- 🚧 PR #126 open — `feat/external-probe-follow-ups`: PR #111 四 follow-up 一次收（Task A）
+**2026-04-25 深夜 auto-mode session（修修睡覺前授權全 merge + 四任務全收）：**
+- ✅ PR #116/#118/#119/#121/#122/#123/#124/#125 全 merged（前置授權範圍）
+- ✅ PR #126 merged — `feat(external-probe)`: PR #111 四 follow-up 一次收（Task A）
   - Quota: 3-matrix → 單 job for-loop，省 ~66%
   - `curl --retry 2 --retry-delay 10 --retry-all-errors`
   - Slack DM per-target 30-min dedupe（`actions/cache`）
   - `simulate_down` → choice enum `[none, nakama, shosho, fleet, all]`
   - runbook 同步更新
-- 🚧 PR #127 open — `test/routers-franky-robin`: franky 94%→100% + robin 46%→77%（Task B，SSE events 留下輪）
-- 🚧 PR #<pending> — `chore/cleanup-gitignore-memory`: `.gitignore` 補 `.claude/scheduled_tasks.lock` + `.coverage` + memory pending_tasks reconcile（Task D）
-- 🚧 Task E — ADR-009 Phase 1 task prompts 草稿（純 design doc，讓下個 PR 落地有六要素 prompt 可用）
+- ✅ PR #127 merged — `test(routers)`: franky 94%→100% + robin 46%→77%（Task B，SSE events 留下輪）
+- ✅ PR #128 merged — `chore`: ignore runtime artifacts (`.claude/scheduled_tasks.lock` + `.coverage`) + reconcile pending_tasks（Task D）
+- ✅ PR #129 merged — `docs(task-prompts)`: ADR-009 Phase 1 Slice A/B/C 六要素凍結（Task E，讓下個 PR 落地有六要素 prompt 可用）
 
-**PR #111 review 找到的 follow-up**：已全部在 PR #126 收掉，見上。
+**PR #111 review 找到的 follow-up**：全部在 PR #126 收掉，見上。
+
+**2026-04-25 出門 Mac handoff**：
+- 分工 doc: [docs/task-prompts/mac-2026-04-25-handoff.md](../../docs/task-prompts/mac-2026-04-25-handoff.md)
+- Mac 主推 ADR-009 Phase 1 Slice A（`SEOContextV1` schema + `shared/gsc_client.py` + `shared/schemas/site_mapping.py` + GSC OAuth runbook），純 `shared/` 層、全 mock test、零外部 API、零檔案衝突
+- 桌機在 Mac 出門期間做三件零衝突小工：memory reconcile（本 PR）+ SSE events coverage + project-bootstrap template drift 掃描
