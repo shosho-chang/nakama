@@ -1,6 +1,6 @@
 ---
 name: LifeOS Templates drift 已修正
-description: tpl-project / tpl-action 已對齊 gold standard（2026-04-24 Mac session，2026-04-25 re-scan 再次確認）
+description: tpl-project / tpl-action 已對齊 gold standard（2026-04-24 Mac session，2026-04-25 re-scan + legacy 雜物 grep 三度確認）
 type: project
 tags: [lifeos, templates, resolved]
 created: 2026-04-19
@@ -9,7 +9,19 @@ confidence: high
 ttl: 180d
 originSessionId: 64ccfe1b-b7a7-4f86-8964-5a458e6eba6f
 ---
-## Status: RESOLVED 2026-04-24（2026-04-25 re-scan 確認）
+## Status: FULLY RESOLVED 2026-04-25 — legacy 雜物已清
+
+### 2026-04-25 (晚) 處理結果
+
+桌機 Mac auto session 對 3 個 dispatcher 遷移前 legacy template 跑完整 reference grep + 修修同意後執行清理：
+
+- `tpl-new-project.md` / `tpl-project-podcast.md` / `tpl-project-youtube.md` 三檔已 osascript 送回收桶（Trash），可在 Finder 回復 30 天內
+- vault `CLAUDE.md` L259 已從 `tpl-new-project.md` 改寫為 `tpl-project.md` + 註明 dispatcher 行為
+- nakama 主 repo（`agents/nami/` + `shared/`）grep 確認**零引用**，code path 未受影響
+- vault `.claude/memory/project_lifeos_dev.md` 仍有 stale references — 但那是 vault 自己 Claude 的 memory，非 nakama 範疇，不動
+
+→ 後續：Templater quick-switcher 不再會列出這 3 個 legacy template，修修不會誤選到舊 frontmatter shape。dispatcher + 4 partials + tpl-action 是唯一 active path。
+
 
 ### 2026-04-25 re-scan 結果
 
