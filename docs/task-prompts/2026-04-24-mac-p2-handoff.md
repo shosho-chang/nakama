@@ -22,14 +22,14 @@
 
 ### 1. 目標
 
-把 `docs/research/seo-prior-art-2026-04-24.md` §6 的 8 個 open questions 收斂成架構決策，凍結 3 個 skill（`seo-audit-post` / `seo-keyword-enrich` / `seo-optimize-draft`）的邊界、IO schema、phase 1 / phase 2 界線。輸出 ADR，讓後續實作有清楚 contract。
+把 `docs/research/2026-04-24-seo-prior-art.md` §6 的 8 個 open questions 收斂成架構決策，凍結 3 個 skill（`seo-audit-post` / `seo-keyword-enrich` / `seo-optimize-draft`）的邊界、IO schema、phase 1 / phase 2 界線。輸出 ADR，讓後續實作有清楚 contract。
 
 ### 2. 範圍
 
 | 路徑 | 動作 |
 |---|---|
 | `docs/decisions/ADR-008-seo-solution-architecture.md` | **新建**（ADR 編號撞的話往後推，先 ls `docs/decisions/` 確認編號） |
-| `docs/research/seo-prior-art-2026-04-24.md` | 只讀（ADR 要 cite 它當 supporting research） |
+| `docs/research/2026-04-24-seo-prior-art.md` | 只讀（ADR 要 cite 它當 supporting research） |
 | `memory/claude/project_seo_solution_scope.md` | 只讀 + ADR 凍結後更新一行 status |
 | `agents/brook/compose.py` | 只讀（`_build_compose_system_prompt` 整合點 §4.2） |
 | `agents/usopp/publisher.py` | 只讀（SEOPress 寫入點 §2.6） |
@@ -39,7 +39,7 @@
 
 ### 3. 輸入
 
-- Prior-art doc：`docs/research/seo-prior-art-2026-04-24.md`（§4、§5、§6 是 ADR 的主要素材）
+- Prior-art doc：`docs/research/2026-04-24-seo-prior-art.md`（§4、§5、§6 是 ADR 的主要素材）
 - Nakama principles：`docs/principles/{schemas,reliability,observability}.md` — ADR 要援引
 - 既有 ADR 格式參考：`docs/decisions/ADR-007-*.md`（最近的一份 ADR，格式對齊）
 - Brook compose 整合點：`agents/brook/compose.py:476`（`compose_and_enqueue` signature）
@@ -117,7 +117,7 @@ seo-keyword-enrich synth 用 Haiku（純 merge/rank，cheap）
 - 預期的 PR 切分順序（Slice A/B/C，給下游實作者參考但 ADR 不凍結）
 
 ## References
-- docs/research/seo-prior-art-2026-04-24.md
+- docs/research/2026-04-24-seo-prior-art.md
 - memory/claude/project_seo_solution_scope.md
 - memory/claude/feedback_skill_design_principle.md
 - memory/claude/feedback_open_source_ready.md

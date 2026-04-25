@@ -1,9 +1,22 @@
 ---
 name: 教科書 ingest workflow 設計缺口
-description: Chopper 設計前提是 KB 含教科書 + 研究文獻供查詢，但「整本書怎麼進 KB」沒有獨立 workflow 設計；Chopper 開發前要先凍結
+description: ✅ RESOLVED 2026-04-25 — 升級為 ADR-010；Claude Code Opus 4.7 skill + Karpathy 跨書 Wiki，跳過 embedding/vector store/桌機 GPU
 type: project
 originSessionId: c6399fca-d109-4f35-807f-e564c7010f0c
 ---
+**Status: ✅ RESOLVED 2026-04-25** — 升級為 [ADR-010-textbook-ingest.md](../../docs/decisions/ADR-010-textbook-ingest.md)。
+
+決策方向（兩個 insight 重塑設計）：
+
+1. **Karpathy KB 哲學**：每章吃完都增建 / 更新 vault 內 Concept / Entity 頁，跨書共享 Wiki 池，每頁帶 `mentioned_in:` backlink
+2. **Claude Code Opus 4.7 1M context + Max 200**：教科書數量少 + 絕大多英文 → Claude Code skill 互動式跑，**完全跳過 embedding / vector store / 桌機 GPU**
+
+落地：`.claude/skills/textbook-ingest/`。Phase 2 backlog：Web UI + multi-provider subscription 選擇。
+
+下方為原始 design gap 描述（歷史紀錄保留）。
+
+---
+
 [project_chopper_community_qa.md](project_chopper_community_qa.md) Chopper community Q&A 設計寫「Chopper 可查 Robin 的 KB（教科書、研究文獻）」當前提 — 但 nakama 沒有「整本書 ingest」流程。
 
 現有 ingest pipeline 都是 per-document chunk + categorize（`agents/robin/ingest.py`）—— 不是 superset of「整本書 ingest」。

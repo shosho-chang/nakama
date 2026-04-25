@@ -37,7 +37,7 @@ originSessionId: 7a9274dd-50e3-4ba4-88fe-50199d5f4333
 5. Brook compose 整合 — 寫草稿時吃 style profile + SEO skill 輸出
 
 **狀態**：
-- 2026-04-24 — prior-art 完成 ([docs/research/seo-prior-art-2026-04-24.md](../../docs/research/seo-prior-art-2026-04-24.md))
+- 2026-04-24 — prior-art 完成 ([docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md))
 - 2026-04-24 — ADR-009 architecture frozen ([docs/decisions/ADR-009-seo-solution-architecture.md](../../docs/decisions/ADR-009-seo-solution-architecture.md))；8 個 open questions 全收斂（3 skill / GSC 主源 / DataForSEO $50 / Sonnet for audit / SEOContextV1 凍結 / cannibalization 含 phase 1 / seo-optimize-draft 推 phase 2）
 - 2026-04-24 — multi-model triangulation 完成（PR #124 桌機跑 Gemini 4/10 退回 / Grok 6/10 通過 / Claude 通過）；6 個共識 blockers 消化：ADR body 改 T5（mapping 搬 `shared/schemas/site_mapping.py`）+ T6（`StrikingDistanceV1` filter 順序契約）；Revised Slice Order `seo-audit-post` 從 Slice C 延到 Phase 1.5，Slice B 縮範只做 GSC；Slice D (Brook 整合) 前移成 Slice C
 - 下一步：Slice A PR（`SEOContextV1` schema + `shared/gsc_client.py` + `shared/schemas/site_mapping.py` + GSC OAuth runbook），時程由修修決定

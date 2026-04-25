@@ -208,6 +208,98 @@ def test_from_nakama_backup_env_missing_account_id_raises(monkeypatch):
     assert "R2_ACCOUNT_ID" in str(exc.value)
 
 
+def test_from_nakama_backup_env_rejects_unknown_mode(_env, monkeypatch):
+    from shared.r2_client import R2Client
+
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    with pytest.raises(ValueError):
+        R2Client.from_nakama_backup_env(mode="readwrite")
+
+
+def test_from_nakama_backup_env_write_mode_prefers_write_token(_env, monkeypatch):
+    """mode='write' picks NAKAMA_R2_WRITE_* over NAKAMA_R2_* and base R2_*."""
+    from shared.r2_client import R2Client
+
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    monkeypatch.setenv("NAKAMA_R2_WRITE_ACCESS_KEY_ID", "write-only-ak")
+    monkeypatch.setenv("NAKAMA_R2_WRITE_SECRET_ACCESS_KEY", "write-only-sk")
+    monkeypatch.setenv("NAKAMA_R2_ACCESS_KEY_ID", "shared-ak")
+    monkeypatch.setenv("NAKAMA_R2_SECRET_ACCESS_KEY", "shared-sk")
+
+    with patch("shared.r2_client.boto3.client") as mock_boto:
+        mock_boto.return_value = MagicMock()
+        R2Client.from_nakama_backup_env(mode="write")
+
+    call_kwargs = mock_boto.call_args.kwargs
+    assert call_kwargs["aws_access_key_id"] == "write-only-ak"
+    assert call_kwargs["aws_secret_access_key"] == "write-only-sk"
+
+
+def test_from_nakama_backup_env_read_mode_prefers_read_token(_env, monkeypatch):
+    """mode='read' picks NAKAMA_R2_READ_* over NAKAMA_R2_* and base R2_*."""
+    from shared.r2_client import R2Client
+
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    monkeypatch.setenv("NAKAMA_R2_READ_ACCESS_KEY_ID", "read-only-ak")
+    monkeypatch.setenv("NAKAMA_R2_READ_SECRET_ACCESS_KEY", "read-only-sk")
+    monkeypatch.setenv("NAKAMA_R2_WRITE_ACCESS_KEY_ID", "write-only-ak")
+    monkeypatch.setenv("NAKAMA_R2_WRITE_SECRET_ACCESS_KEY", "write-only-sk")
+
+    with patch("shared.r2_client.boto3.client") as mock_boto:
+        mock_boto.return_value = MagicMock()
+        R2Client.from_nakama_backup_env(mode="read")
+
+    call_kwargs = mock_boto.call_args.kwargs
+    assert call_kwargs["aws_access_key_id"] == "read-only-ak"
+    assert call_kwargs["aws_secret_access_key"] == "read-only-sk"
+
+
+def test_from_nakama_backup_env_falls_through_to_base_r2(_env, monkeypatch):
+    """No scoped or shared NAKAMA tokens → falls back to base R2_* (legacy)."""
+    from shared.r2_client import R2Client
+
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    for k in (
+        "NAKAMA_R2_WRITE_ACCESS_KEY_ID",
+        "NAKAMA_R2_WRITE_SECRET_ACCESS_KEY",
+        "NAKAMA_R2_READ_ACCESS_KEY_ID",
+        "NAKAMA_R2_READ_SECRET_ACCESS_KEY",
+        "NAKAMA_R2_ACCESS_KEY_ID",
+        "NAKAMA_R2_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+
+    with patch("shared.r2_client.boto3.client") as mock_boto:
+        mock_boto.return_value = MagicMock()
+        R2Client.from_nakama_backup_env(mode="write")
+
+    call_kwargs = mock_boto.call_args.kwargs
+    assert call_kwargs["aws_access_key_id"] == "ak"  # base R2_ACCESS_KEY_ID from _env
+    assert call_kwargs["aws_secret_access_key"] == "sk"
+
+
+def test_from_nakama_backup_env_missing_credentials_raises(monkeypatch):
+    from shared.r2_client import R2Client, R2Unavailable
+
+    monkeypatch.setenv("R2_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("NAKAMA_R2_BACKUP_BUCKET", "nakama-backup")
+    for k in (
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "NAKAMA_R2_ACCESS_KEY_ID",
+        "NAKAMA_R2_SECRET_ACCESS_KEY",
+        "NAKAMA_R2_WRITE_ACCESS_KEY_ID",
+        "NAKAMA_R2_WRITE_SECRET_ACCESS_KEY",
+        "NAKAMA_R2_READ_ACCESS_KEY_ID",
+        "NAKAMA_R2_READ_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+
+    with pytest.raises(R2Unavailable) as exc:
+        R2Client.from_nakama_backup_env(mode="write")
+    assert "missing R2 credentials" in str(exc.value)
+
+
 # ---------------------------------------------------------------------------
 # upload_file
 # ---------------------------------------------------------------------------

@@ -140,7 +140,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - Follow-up backlog 全部清空
 
 **Mac 2026-04-24 晚間 session（桌機同時做 PR #97 Usopp Slice C1）：**
-- 分工 doc: [docs/task-prompts/mac-2026-04-24-handoff.md](../../docs/task-prompts/mac-2026-04-24-handoff.md)
+- 分工 doc: [docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md)
 - ✅ 任務 A：LifeOS `tpl-project.md` + `tpl-action.md` 對齊 gold standard（純 vault，已完成）
 - ✅ 任務 B：Franky `r2_backup_verify` 擴展 `nakama-backup` bucket freshness（PR #99 merged）+ Bridge dashboard 曝光（PR #100 merged）
 - ✅ 桌機：PR #97 Slice C1 + PR #98 VPS 部署材料 + PR #101 Slice C2a
@@ -158,7 +158,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ PR #120 merged — memory: feedback_pytest_monkeypatch_where_used
 
 **Mac 2026-04-24 晚間 Part 2 session（桌機 Robin kb_search + coverage 並行）：**
-- 分工 doc: [docs/task-prompts/mac-2026-04-24-p2-handoff.md](../../docs/task-prompts/mac-2026-04-24-p2-handoff.md)
+- 分工 doc: [docs/task-prompts/2026-04-24-mac-p2-handoff.md](../../docs/task-prompts/2026-04-24-mac-p2-handoff.md)
 - ✅ 任務 D1 → PR #122 merged — `docs/decisions/ADR-009-seo-solution-architecture.md`（ADR 凍結 3 skill + SEOContextV1 + Brook opt-in 整合契約）
 - ✅ 任務 T1 → PR #123 merged — `shared/agent_memory.py` tech debt：`update()` `conn.rollback()` + `MemoryType = Literal[...]` + `_validate_type()` + docstring audit + `shared/memory_extractor.py` import `VALID_TYPES` + `thousand_sunny/routers/bridge.py` 1-char description fix（drive-by）
 - 踩坑新 feedback：[feedback_defensive_vs_bug_fix_claim.md](feedback_defensive_vs_bug_fix_claim.md)（PR #123 reviewer 發現 rollback 原本就不 leak，claim 降級 defensive hardening）
@@ -187,13 +187,13 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - 桌機在 Mac 出門期間做三件零衝突小工：memory reconcile（本 PR）+ SSE events coverage + project-bootstrap template drift 掃描
 
 **2026-04-25 晚桌機 Bridge drafts UI session（Mac kb/research E2E + Slice C scaffolding 並行）：**
-- 分工 doc: [docs/task-prompts/desktop-2026-04-25-handoff.md](../../docs/task-prompts/desktop-2026-04-25-handoff.md)
+- 分工 doc: [docs/task-prompts/2026-04-25-desktop-handoff.md](../../docs/task-prompts/2026-04-25-desktop-handoff.md)
 - ✅ **PR #136 merged 2026-04-25** — `feat(bridge)`: drafts queue UI scaffolding (read-only)。30 tests / lint 全綠，本機 uvicorn 4 acceptance scenario 實測通過。Independent review by sub-agent：no blocker, ready to merge（FastAPI Jinja2 預設 autoescape 啟用、auth pattern 跟既有 page route 一致、open redirect 不可能因 path int validator、soft-fail catch 完整）。Phase 2 backlog 5 項見上面 Bridge UI 段
 - ✅ **PR #137 merged 2026-04-25** — `fix(approval-queue)`: count_by_status() 取代 `len(list_by_status())`。閉迴圈 PR #136 reviewer 抓到的真 bug（pending > 50 時 hub badge 封頂在 50 + 浪費 query 50 row payload）。新 helper 走 SELECT COUNT(*) WHERE status=? + source_agent filter；drafts.html 補 truncate banner（list 真截斷時告訴 reviewer 隊伍超量）；67 tests passed。**Drafts UI Phase 2 backlog 5 項剩 4 項**：(a) approve/reject/edit mutation API + UI、(c) detail 頁顯示 error_log、(d) `payload_pretty` 改 `model_dump_json(indent=2)`、(e) ~~drafts.html truncate hint~~ 已合 #137
 - ✅ **VPS 部署完成 2026-04-25**：修修跑完 `git pull && systemctl restart thousand-sunny`，PR #136 + #137 線上生效。Drafts UI Phase 1 完整收尾（routes / templates / hub badge / count_by_status / truncate banner）
 
 **2026-04-25 晚 dual-window session（教訓：同機雙視窗必須用 `git worktree`）：**
-- 分工 doc: [docs/task-prompts/dual-window-2026-04-25-allocation.md](../../docs/task-prompts/dual-window-2026-04-25-allocation.md) + Window B 六要素 [docs/task-prompts/window-b-kb-search-2026-04-25.md](../../docs/task-prompts/window-b-kb-search-2026-04-25.md)
+- 分工 doc: [docs/task-prompts/2026-04-25-dual-window-allocation.md](../../docs/task-prompts/2026-04-25-dual-window-allocation.md) + Window B 六要素 [docs/task-prompts/2026-04-25-window-b-kb-search.md](../../docs/task-prompts/2026-04-25-window-b-kb-search.md)
 - 教訓：[feedback_dual_window_worktree.md](feedback_dual_window_worktree.md) — 兩視窗各自 `git checkout -b` 在同 working tree → 未 commit 改動跨 branch 互踩。手動 stash + cherry-pick 才把 SEO Slice C / Bridge mutations 兩堆改動分到對的 PR
 - ✅ **PR #139 OPEN（Window A）** — Brook seo_context 整合（Slice C，見上 SEO 段）
 - ✅ **PR #140 merged（Window B）** — Bridge drafts mutations（4 endpoint + FSM 擴 `pending→rejected` / `failed→pending` + 13 tests + native dialog modal + status-aware action panel + ERROR LOG box；新教訓 [feedback_fsm_audit_columns_actor_check.md](feedback_fsm_audit_columns_actor_check.md) + [reference_bridge_ui_mutation_pattern.md](reference_bridge_ui_mutation_pattern.md)）
@@ -221,11 +221,16 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 **Vault ingest 工程 baseline（下波待開）：**
 - 詳見 [project_vault_ingest_flow_drift_2026_04_25.md](project_vault_ingest_flow_drift_2026_04_25.md) — 5 條流程想像 vs 實作對齊度 + 3 條 schema drift
 - 桌機 / VPS compute tier 分工：[feedback_compute_tier_split.md](feedback_compute_tier_split.md)
-- 整本教科書 ingest 缺口：[project_textbook_ingest_design_gap.md](project_textbook_ingest_design_gap.md)（Chopper 開發前要凍結）
+- 整本教科書 ingest 缺口：[project_textbook_ingest_design_gap.md](project_textbook_ingest_design_gap.md)（✅ RESOLVED 2026-04-25 → ADR-010）
 - ✅ **PR #148 merged 2026-04-25** — daily digest 補 `source_type / content_nature / lang`（DOI 已在；schema drift 治本）。Reader pill 從一格 → 四格
 - ✅ **PR #149 merged 2026-04-25** — `docs/diagrams/vault-ingest-flow.md` 全景 mermaid IA baseline（5 條 flow + 3 條 schema drift + 桌機/VPS 分工 + 缺口清單）。下一步 Claude Design handoff 美學迭代
-- 🚧 **PR #150 OPEN — 等修修拍板** — `docs/plans/textbook-ingest-design-2026-04-25.md` 教科書 ingest 5 題提案（單位/Schema/Vault落地/Retrieval/Trigger）+ 章節辨識策略 + 3 個未決問題標 ⚠️（章節 vs 節粒度 / rerank 落點 / vector store 落點）。修修拍板後升級 ADR-010
+- ✅ **PR #150 merged 2026-04-25** — ADR-010 textbook ingest 凍結：Claude Code Opus 4.7 skill + Karpathy 跨書 Wiki + per-chapter Source（section-by-section）+ Concept/Entity `mentioned_in:` backlink。**完全跳過 embedding / vector store / 桌機 GPU**（重大 simplification 從原提案翻轉）
+- ✅ **PR #158 merged 2026-04-25** — `.claude/skills/textbook-ingest/` 骨架：SKILL.md + 3 個 prompt template（chapter-summary / concept-extract / book-entity）+ `parse_book.py` PDF helper + capability card。Skill 已註冊到 Claude Code harness
+- ✅ **PR #159 merged 2026-04-25** — EPUB primary path（修修確認手上教科書全是 EPUB 版）。`parse_book.py` 走 ebooklib + BeautifulSoup，OPF spine + nav TOC 100% 權威章節結構，PDF 留 fallback。8 unit tests + 全 suite 1584 pass
+- 🚧 **Phase 1.5 MVP 驗收 @ 桌機**（修修 2026-04-25 決定移到桌機跑）：用一本英文 EPUB textbook 試跑完整流程，驗證：(1) `parse_book.py` 抽 metadata + 章節邊界正確、(2) 每章 Source 頁 section-by-section 結構符合 ADR、(3) Concept/Entity 頁 `mentioned_in:` backlink 正確（既有頁 update 不重建）、(4) Book Entity 入口頁完整。Mac 已開發完成，桌機只負責**驗收測試 + 實際 ingest 生產**
+- ⬜ Phase 2A：教科書 ingest Web UI（Bridge Hub 入口 + SSE 進度條）
+- ⬜ Phase 2B：Multi-provider subscription 選擇（Anthropic Max / OpenAI Pro / Google AI Ultra adapter）
 - ⬜ Reader 翻譯按鈕設計分歧（修修以為 reader 內按需翻譯、實作是 ingest 預翻譯 + toggle）— 待設計討論
 - ⬜ Chrome Extension 一鍵剪 → thousand_sunny（後端 API 都有，缺 plugin shell）
-- ⬜ EPUB / Word parser（中文帶圖）— 完全沒實作
+- ⬜ EPUB / Word parser（中文帶圖）— 教科書 ingest skill 已涵蓋 EPUB；剩 Word 沒實作
 - ⬜ Translator A/B 試 Opus 4.7（cost vs Sonnet quality）— 一篇就能驗

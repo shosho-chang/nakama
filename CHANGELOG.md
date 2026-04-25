@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Quality-uplift Phase 1** — DR runbook + `restore_from_r2.py` + secret-rotation runbook ([#146])
+- **Quality-uplift Phase 2A** — backup multi-tier retention (daily 30d / weekly 12w / monthly 12m) + read/write token separation in `R2Client` ([#147])
+- **Quality-uplift Phase 2B** — weekly integrity verify cron + Backblaze B2 secondary mirror; `shared/sqlite_integrity.py` + `shared/secondary_storage.py` ([#154])
+- **Quality-uplift Phase 3** — structured JSON log mode (`NAKAMA_LOG_FORMAT=json`) + per-job heartbeat (`shared/heartbeat.py`) + severity-based alert router (`shared/alerts.py`) + `/bridge/health` page ([#152])
+- **Quality-uplift Phase 9** — `.github/workflows/conventional-commits-lint.yml` + `scripts/release.py` semver/changelog automation + `scripts/prune_old_memories.py` monthly archive + `/bridge/docs` FTS5 search + branch-protection runbook
 - `pyproject.toml`：正式專案定義（名稱、版號、依賴、工具設定）
 - Git tags `v0.0.1` ~ `v0.4.1`：補齊歷史版號標記
 - `requirements.txt` 加註來源為 `pyproject.toml`
@@ -16,6 +21,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - 全專案程式碼經 ruff lint fix + format 統一風格（20 個檔案）
+- `shared/log.py` switches to JSON output when `NAKAMA_LOG_FORMAT=json` (default still text) ([#152])
+- `shared/r2_client.py` `from_nakama_backup_env(mode="write"|"read")` for bucket-scoped tokens ([#147])
+
+[#146]: https://github.com/shosho-chang/nakama/pull/146
+[#147]: https://github.com/shosho-chang/nakama/pull/147
+[#152]: https://github.com/shosho-chang/nakama/pull/152
+[#154]: https://github.com/shosho-chang/nakama/pull/154
 
 ---
 

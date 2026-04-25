@@ -3,7 +3,7 @@
 **Framework:** P9 六要素（CLAUDE.md §工作方法論）
 **Status:** 草稿，待修修凍結後 dispatch
 **Source ADR:** [ADR-009](../decisions/ADR-009-seo-solution-architecture.md)（正典，本 prompt 不重述細節）
-**Prior-art:** [seo-prior-art-2026-04-24.md](../research/seo-prior-art-2026-04-24.md)
+**Prior-art:** [2026-04-24-seo-prior-art.md](../research/2026-04-24-seo-prior-art.md)
 **Related ADR:** [ADR-008 SEO 觀測中心](../decisions/ADR-008-seo-observability.md)（Phase 2 交付後共用 `gsc_rows` 表）
 
 ---

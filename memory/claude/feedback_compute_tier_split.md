@@ -25,7 +25,19 @@ originSessionId: c6399fca-d109-4f35-807f-e564c7010f0c
 **Why**：
 - VPS 3.8GB RAM 撐不住 torch + transformers（Docling 試過就放棄）
 - 整本書 chunking + embedding 需要 RAM，本地跑才合理
-- 本地 GPU 對 LLM batch 比 API call 更省成本
+- 本地 GPU 對**本地 LLM** batch 比 API call 更省成本
+
+**例外 — Claude Code subscription 走法**（2026-04-25 ADR-010 新增）：
+
+整本教科書 ingest（textbook-ingest skill）**不需要桌機 GPU**，因為：
+
+- Claude Code Opus 4.7 走 Max 200 subscription quota（修修已付）= 零邊際成本
+- 1M context 可整章 in-context，不需要本地 embedding pipeline
+- 不需要 vector store，retrieval 走 Robin /kb/research 的 LLM ranking + symbolic backlink
+
+所以「桌機 vs Mac」對 textbook-ingest 主要看修修在哪邊舒服 + 哪台 quota 有剩，不是性能 / 成本決策。Phase 1 開發在 Mac，Phase 1.5 MVP 驗收 + 實際 ingest 修修決定走桌機。
+
+**規則修正**：「重 ingest 在桌機」對「需要本地 model 跑（Docling / Qwen / EPUB Word parser）」仍成立；對「Claude Code-driven ingest（textbook 等）」改成「兩邊都行，看 subscription quota + 修修偏好」。
 
 **vault 是中介層**：
 - 桌機 ingest 寫進 vault → Obsidian Sync 自動同步到雲 + VPS
@@ -45,6 +57,7 @@ originSessionId: c6399fca-d109-4f35-807f-e564c7010f0c
 | 純 API endpoint / agent 對話 | ❌ | ✅ |
 | cron 輕量觀測 / digest | ❌ | ✅ |
 | 24/7 always-on | ❌ | ✅ |
+| Claude Code interactive subscription ingest | ✅（Mac 也行）| ❌（VPS 沒 Claude Code）|
 | 寫入 vault | ✅ 兩邊都行 | ✅（透過 sync）|
 | 修修一鍵互動 | ✅ | ✅（Slack / Bridge）|
 

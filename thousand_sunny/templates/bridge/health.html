@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Health</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+}
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: 1px solid var(--nk-rule);
+  padding: 18px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
+}
+.page-title { font-family: var(--nk-font-display); font-size: 26px; font-weight: 500; letter-spacing: -0.5px; }
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
+
+.legend {
+  display: flex; gap: 18px; font-family: var(--nk-font-mono); font-size: 10px;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--nk-ink-3);
+}
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+.main { flex: 1; overflow: auto; padding: 24px 40px 40px; }
+
+.health-table {
+  width: 100%; border-collapse: collapse;
+  background: var(--nk-panel);
+  border: 1px solid var(--nk-rule);
+  font-variant-numeric: tabular-nums;
+}
+.health-table th {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--nk-ink-2); font-weight: 500;
+  padding: 10px 14px; text-align: left;
+  border-bottom: 1px solid var(--nk-rule);
+  background: var(--nk-panel-2);
+}
+.health-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--nk-hairline);
+  vertical-align: top;
+}
+.health-table tr:last-child td { border-bottom: none; }
+.health-table .col-job { font-family: var(--nk-font-mono); font-size: 12px; }
+.health-table .col-stale { font-family: var(--nk-font-mono); font-size: 12px; color: var(--nk-ink-2); }
+.health-table .col-failures.high { color: var(--nk-crimson); font-weight: 500; }
+.health-table .col-error {
+  font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-3);
+  max-width: 460px; overflow-wrap: anywhere;
+}
+
+/* Status chip — green / yellow / orange / red / never */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 3px 8px; border: 1px solid currentColor;
+}
+.chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.green  { color: var(--nk-jade); }
+.chip.yellow { color: var(--nk-amber); }
+.chip.orange { color: var(--nk-signal); }
+.chip.red    { color: var(--nk-crimson); }
+.chip.never  { color: var(--nk-muted); }
+
+.empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--nk-ink-3);
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+.empty p { margin-top: 6px; }
+.empty .hint {
+  font-family: var(--nk-font-sans);
+  font-size: 13px;
+  color: var(--nk-ink-2);
+  letter-spacing: normal;
+  text-transform: none;
+  margin-top: 12px;
+}
+.empty code { font-family: var(--nk-font-mono); background: var(--nk-panel-2); padding: 1px 5px; }
+</style>
+</head>
+<body>
+<header class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div>
+      <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+    </div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">Hub</a>
+    <a href="/bridge/memory">Memory</a>
+    <a href="/bridge/cost">Cost</a>
+    <a href="/bridge/drafts">Drafts</a>
+    <a href="/bridge/health" class="active">Health</a>
+    <a href="/bridge/franky">Franky</a>
+  </nav>
+</header>
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/health · per-job heartbeats</div>
+    <h1 class="page-title">System Health <span class="zh">系統健康</span></h1>
+  </div>
+  <div class="legend" aria-label="staleness thresholds">
+    <span class="legend-item"><span class="legend-dot" style="background:var(--nk-jade)"></span>≤ {{ thresholds.green_min }} min</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--nk-amber)"></span>≤ {{ thresholds.yellow_min }} min</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--nk-signal)"></span>≤ {{ thresholds.orange_min }} min</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--nk-crimson)"></span>&gt; {{ thresholds.orange_min }} min</span>
+  </div>
+</section>
+
+<main class="main">
+{% if rows %}
+<table class="health-table">
+  <thead>
+    <tr>
+      <th class="col-job">Job</th>
+      <th>Status</th>
+      <th>Last run</th>
+      <th>Stale (min)</th>
+      <th>Last success age</th>
+      <th>Consecutive failures</th>
+      <th>Last error</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="col-job">{{ r.job_name }}</td>
+      <td><span class="chip {{ r.chip }}"><span class="chip-dot"></span>{{ r.last_status }}</span></td>
+      <td class="col-stale">{{ r.last_run_at or "—" }}</td>
+      <td class="col-stale">{{ r.stale_minutes if r.stale_minutes is not none else "—" }}</td>
+      <td class="col-stale">{{ r.success_age_minutes if r.success_age_minutes is not none else "—" }}</td>
+      <td class="col-failures{% if r.consecutive_failures > 0 %} high{% endif %}">
+        {{ r.consecutive_failures }}
+      </td>
+      <td class="col-error">{{ r.last_error or "" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <div>NO HEARTBEATS RECORDED YET</div>
+  <p class="hint">Cron jobs and daemons populate this table by calling
+  <code>shared.heartbeat.record_success(...)</code> or
+  <code>record_failure(...)</code> at the end of each tick. After Phase 3
+  rolls out, expect the first row within 24 hours (next backup cron).</p>
+</div>
+{% endif %}
+</main>
+</body>
+</html>
