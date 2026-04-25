@@ -191,7 +191,17 @@ Chopper 答題 retrieval 流程：
 5. 通知修修 ingest 完成、提示 Obsidian Sync 把 vault 同步到 VPS
 ```
 
-**章節辨識策略**（按優先序 fallback）：
+**章節辨識策略**（按格式 + 優先序 fallback）：
+
+**EPUB（primary path，修修書全是 EPUB 已決定）**：
+
+1. OPF metadata（title / authors / language / publisher / pub_year / ISBN）
+2. nav TOC top-level entries → chapters（spine reading order）
+3. chapter HTML 內 h2/h3 → section_anchors
+
+EPUB 結構由 OPF spec 決定，章節邊界是 100% 權威，不需要 fallback chain。
+
+**PDF（fallback path）**：
 
 1. PDF outline / bookmarks（90% 教科書 PDF 帶 outline）
 2. heading regex（`r"^(Chapter|第)\s*\d+"` + font-size 偵測）
@@ -200,11 +210,16 @@ Chopper 答題 retrieval 流程：
 
 **重用既有 code**：
 
-- `shared/pdf_parser.py` — pymupdf4llm，既有
+- `shared/pdf_parser.py` — pymupdf4llm，既有（PDF fallback path 用）
 - `shared/obsidian_writer.py` — write_page，既有
 - `agents/robin/chunker.py` — 按 heading 切（Opus 1M context 多半用不到）
 - Robin prompt template — `summarize_chunk` / concept-extract / entity-extract（直接重用）
 - Robin `/kb/research` — Chopper 端用，不動
+
+**新增依賴**（EPUB primary path）：
+
+- `ebooklib >= 0.18` — EPUB 結構解析（OPF spine + nav TOC + metadata）
+- `beautifulsoup4 >= 4.12` — chapter HTML → plain text + heading 抽取
 
 ---
 
