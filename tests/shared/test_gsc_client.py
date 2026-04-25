@@ -4,7 +4,7 @@
 - 缺 service account JSON → 明確 exception
 - query payload 組成正確
 - 首次 query 才 build service（lazy init）
-- from_env 讀 GSC_SERVICE_ACCOUNT_JSON_PATH，缺 env 報錯
+- from_env 讀 GCP_SERVICE_ACCOUNT_JSON，缺 env 報錯
 """
 
 from __future__ import annotations
@@ -37,13 +37,13 @@ def test_init_points_to_directory_raises(tmp_path):
 
 
 def test_from_env_missing_raises(monkeypatch):
-    monkeypatch.delenv("GSC_SERVICE_ACCOUNT_JSON_PATH", raising=False)
+    monkeypatch.delenv("GCP_SERVICE_ACCOUNT_JSON", raising=False)
     with pytest.raises(GSCCredentialsError, match="env var not set"):
         GSCClient.from_env()
 
 
 def test_from_env_happy(monkeypatch, fake_sa_json):
-    monkeypatch.setenv("GSC_SERVICE_ACCOUNT_JSON_PATH", str(fake_sa_json))
+    monkeypatch.setenv("GCP_SERVICE_ACCOUNT_JSON", str(fake_sa_json))
     client = GSCClient.from_env()
     assert client._sa_path == fake_sa_json
 
