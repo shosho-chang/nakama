@@ -38,7 +38,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ PR #64：`call_claude_with_tools` max_tokens 2048→8192
 - ✅ Deep Research 功能驗收通過（Vault 有報告輸出）
 - ✅ Gmail 大量搜尋策略加入 system prompt（分批 5 封 + ask_user）
-- ⬜ **project-bootstrap template 同步**（`tpl-project.md` + `tpl-action.md` 脫節）
+- ✅ **project-bootstrap template 同步**：2026-04-25 re-scan 確認 primary path 全對齊（dispatcher `tpl-project.md` + 4 partials + `tpl-action.md` 1:1 match Nami source/`render_task`），詳見 [project_lifeos_template_drift.md](project_lifeos_template_drift.md)。⚠️ vault 內有 3 份 dispatcher 遷移前的 legacy templates（`tpl-new-project.md` / `tpl-project-podcast.md` / `tpl-project-youtube.md`），不在 active path 上但留著有誤選風險 — 修修決定要不要 archive 或刪除
 - ⬜ **Slack thread 續問實機測試**（多輪對話未驗）
 
 **Robin（今晚要做）：**
