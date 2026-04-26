@@ -183,3 +183,89 @@ def test_samples_env_override_respected(fake_r2, tmp_path, monkeypatch):
     # for state DB × 2 daily samples + nakama DB × 2 (but nakama prefix has 0 objects,
     # so nakama branch is no-op). Net: 2 downloads.
     assert fake._s3.download_file.call_count == 2  # noqa: SLF001
+
+
+# ── heartbeat + alert wiring (sweep PR C) ───────────────────────────────────
+# PR #154 shipped without record_failure / alert("error", ...) — corruption
+# detected by the cron only logged, never DM'd. These tests pin the wiring.
+
+
+def test_main_records_success_when_all_pass(fake_r2, tmp_path, monkeypatch):
+    from scripts import verify_backup_integrity as mod
+
+    db = tmp_path / "src.db"
+    payload = _make_state_db(db)
+    _seed(
+        fake_r2,
+        "state/2026/04/25/state.db.gz",
+        payload,
+        datetime(2026, 4, 25, tzinfo=timezone.utc),
+    )
+
+    with (
+        patch.object(mod, "record_success") as rec_ok,
+        patch.object(mod, "record_failure") as rec_fail,
+        patch.object(mod, "alert") as alert_fn,
+    ):
+        rc = mod.main()
+
+    assert rc == 0
+    rec_ok.assert_called_once_with("nakama-backup-integrity")
+    rec_fail.assert_not_called()
+    alert_fn.assert_not_called()
+
+
+def test_main_alerts_and_records_failure_on_corrupt_snapshot(fake_r2, tmp_path):
+    from scripts import verify_backup_integrity as mod
+
+    # Seed a corrupt snapshot — verify_db returns (False, ...) → counted as failure
+    bad = tmp_path / "bad.db"
+    bad.write_bytes(b"SQLite format 3\x00" + b"\xff" * 1024)
+    with open(bad, "rb") as f:
+        raw = f.read()
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+        gz.write(raw)
+    _seed(
+        fake_r2,
+        "state/2026/04/25/state.db.gz",
+        buf.getvalue(),
+        datetime(2026, 4, 25, tzinfo=timezone.utc),
+    )
+
+    with (
+        patch.object(mod, "record_success") as rec_ok,
+        patch.object(mod, "record_failure") as rec_fail,
+        patch.object(mod, "alert") as alert_fn,
+    ):
+        rc = mod.main()
+
+    assert rc == 1
+    rec_ok.assert_not_called()
+    rec_fail.assert_called_once()
+    assert rec_fail.call_args[0][0] == "nakama-backup-integrity"
+    alert_fn.assert_called_once()
+    args, kwargs = alert_fn.call_args
+    assert args[0] == "error"
+    assert args[1] == "backup"
+    assert "integrity:" in args[2]
+    assert kwargs.get("dedupe_key") == "backup-integrity-fail"
+
+
+def test_main_records_failure_when_r2_unavailable():
+    from scripts import verify_backup_integrity as mod
+    from shared.r2_client import R2Unavailable
+
+    with (
+        patch("scripts.verify_backup_integrity.R2Client") as r2_cls,
+        patch("scripts.verify_backup_integrity.load_config", lambda: {}),
+        patch.object(mod, "record_failure") as rec_fail,
+        patch.object(mod, "alert") as alert_fn,
+    ):
+        r2_cls.from_nakama_backup_env.side_effect = R2Unavailable("missing")
+        rc = mod.main()
+
+    assert rc == 1
+    rec_fail.assert_called_once()
+    alert_fn.assert_called_once()
+    assert alert_fn.call_args.kwargs["dedupe_key"] == "backup-integrity-r2-unavailable"

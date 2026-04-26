@@ -35,13 +35,16 @@ import sys
 import tempfile
 from pathlib import Path
 
+from shared.alerts import alert
 from shared.config import load_config
+from shared.heartbeat import record_failure, record_success
 from shared.log import get_logger
 from shared.r2_client import R2Client, R2Unavailable
 from shared.secondary_storage import B2Client, B2Unavailable
 
 logger = get_logger("nakama.backup_mirror")
 
+_JOB_NAME = "nakama-backup-mirror"  # heartbeat key — keep stable across releases
 _DBS = ("state", "nakama")
 _ALL_TIERS = (
     ("daily", ""),
@@ -99,9 +102,13 @@ def main() -> int:
     load_config()
 
     try:
-        r2 = R2Client.from_nakama_backup_env()
+        # Mirror reads from R2 → use the read token (least privilege).
+        r2 = R2Client.from_nakama_backup_env(mode="read")
     except R2Unavailable as exc:
-        logger.error("r2 source unavailable: %s", exc)
+        msg = f"r2 source unavailable: {exc}"
+        logger.error(msg)
+        record_failure(_JOB_NAME, msg)
+        alert("error", "backup", f"mirror: {msg}", dedupe_key="backup-mirror-r2-unavailable")
         return 1
 
     try:
@@ -109,8 +116,10 @@ def main() -> int:
     except B2Unavailable as exc:
         # B2 not configured → log and exit clean (no failure, nothing to do).
         # This lets the cron be installed on a VPS that hasn't yet had B2 set up
-        # without erroring every night until env arrives.
+        # without erroring every night until env arrives. Heartbeat still records
+        # success so /bridge/health doesn't show a stale-cron false alarm.
         logger.warning("b2 sink not configured: %s — exiting clean (no mirror)", exc)
+        record_success(_JOB_NAME)
         return 0
 
     failures: list[str] = []
@@ -148,7 +157,12 @@ def main() -> int:
     if failures:
         for k in failures:
             logger.error("mirror failed key=%s", k)
+        msg = f"backup mirror failed count={len(failures)}"
+        record_failure(_JOB_NAME, msg)
+        alert("error", "backup", f"mirror: {msg}", dedupe_key="backup-mirror-fail")
         return 1
+
+    record_success(_JOB_NAME)
     return 0
 
 

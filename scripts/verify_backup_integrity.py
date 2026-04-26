@@ -35,13 +35,16 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from shared.alerts import alert
 from shared.config import load_config
+from shared.heartbeat import record_failure, record_success
 from shared.log import get_logger
 from shared.r2_client import R2Client, R2Object, R2Unavailable
 from shared.sqlite_integrity import verify_db
 
 logger = get_logger("nakama.backup_integrity")
 
+_JOB_NAME = "nakama-backup-integrity"  # heartbeat key — keep stable across releases
 _DBS = ("state", "nakama")
 # Tier prefix layout: keep in sync with `scripts/backup_nakama_state.py`.
 # Phase 2A introduces -weekly / -monthly prefixes; this script verifies
@@ -110,9 +113,18 @@ def main() -> int:
     load_config()
 
     try:
-        client = R2Client.from_nakama_backup_env()
+        # Verifier only reads — least-privilege via mode="read".
+        client = R2Client.from_nakama_backup_env(mode="read")
     except R2Unavailable as exc:
-        logger.error("r2 client unavailable: %s", exc)
+        msg = f"r2 client unavailable: {exc}"
+        logger.error(msg)
+        record_failure(_JOB_NAME, msg)
+        alert(
+            "error",
+            "backup",
+            f"backup-integrity: {msg}",
+            dedupe_key="backup-integrity-r2-unavailable",
+        )
         return 1
 
     results: list[IntegrityResult] = []
@@ -150,7 +162,12 @@ def main() -> int:
                 f.db,
                 f.error,
             )
+        msg = f"backup integrity failed count={len(failures)} of {len(results)}"
+        record_failure(_JOB_NAME, msg)
+        alert("error", "backup", f"integrity: {msg}", dedupe_key="backup-integrity-fail")
         return 1
+
+    record_success(_JOB_NAME)
     return 0
 
 
