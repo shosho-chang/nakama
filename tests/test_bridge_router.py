@@ -156,9 +156,64 @@ def test_docs_page_with_query_returns_results(client):
     assert ("<mark>" in body) or ("No matches" in body)
 
 
-# ---------------------------------------------------------------------------
-# Memory endpoints
-# ---------------------------------------------------------------------------
+# ── chassis-nav unification regression ──────────────────────────────────────
+# Three taxonomies emerged across PR #136 / #152 / #157 because each new page
+# copy-pasted the chassis nav and diverged. PR A (2026-04-26) unified them to
+# the canonical 8-item form: uppercase + zh suffix + class="active" marker
+# + aria-current="page" on the active link for a11y.
+def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> None:
+    """Verify all 8 entries present, no legacy taxonomy, active link has both
+    `class="active"` and `aria-current="page"` regardless of attribute order."""
+    for label, zh in [
+        ("BRIDGE", "船橋"),
+        ("DRAFTS", "待審"),
+        ("MEMORY", "記憶"),
+        ("COST", "成本"),
+        ("FRANKY", "船匠"),
+        ("HEALTH", "巡檢"),
+        ("DOCS", "文件"),
+        ("VAULT", "秘庫"),
+    ]:
+        assert f'{label} <span class="zh">{zh}' in body, f"{path} missing {label}"
+    assert "is-current" not in body, f"{path} still uses is-current taxonomy"
+
+    import re
+
+    # Extract the <a> tag that contains the active label; verify both attrs.
+    pattern = rf'(<a [^>]*>){active_label} <span class="zh">'
+    match = re.search(pattern, body)
+    assert match, f"{path} no link matches {active_label}"
+    active_tag = match.group(1)
+    assert 'class="active"' in active_tag, f"{path} active link missing class=active: {active_tag}"
+    assert 'aria-current="page"' in active_tag, (
+        f"{path} active link missing aria-current=page: {active_tag}"
+    )
+
+
+@pytest.mark.parametrize(
+    "path,active_label",
+    [
+        ("/bridge", "BRIDGE"),
+        ("/bridge/drafts", "DRAFTS"),
+        ("/bridge/memory", "MEMORY"),
+        ("/bridge/cost", "COST"),
+        ("/bridge/franky", "FRANKY"),
+        ("/bridge/health", "HEALTH"),
+        ("/bridge/docs", "DOCS"),
+    ],
+)
+def test_chassis_nav_canonical_8_items(client, path, active_label):
+    r = client.get(path)
+    assert r.status_code == 200
+    _assert_canonical_chassis_nav(r.text, path, active_label)
+
+
+def test_chassis_nav_on_draft_detail_page(client):
+    """Draft detail (/bridge/drafts/{id}) shares the chassis with the list page."""
+    qid = _enqueue_draft(slug="nav-test", op_id="op_a1b2c3d4")
+    r = client.get(f"/bridge/drafts/{qid}")
+    assert r.status_code == 200
+    _assert_canonical_chassis_nav(r.text, f"/bridge/drafts/{qid}", "DRAFTS")
 
 
 def test_list_agents_returns_distinct_agents(client, seed_memories):
