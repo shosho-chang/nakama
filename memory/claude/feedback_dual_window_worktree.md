@@ -26,3 +26,5 @@ git worktree add ../nakama-window-b feat/window-b-branch
 - 範例：[docs/task-prompts/2026-04-25-dual-window-allocation.md](../../docs/task-prompts/2026-04-25-dual-window-allocation.md)、[docs/task-prompts/2026-04-25-window-b-kb-search.md](../../docs/task-prompts/2026-04-25-window-b-kb-search.md)
 
 **相關但不同 root cause**：[feedback_shared_tree_devserver_collision.md](feedback_shared_tree_devserver_collision.md) — 同 working tree 跑 dev server 時，我做 git checkout 會 mtime 觸發 uvicorn reload 看到「不對 branch 的程式碼」。同樣用 worktree 解。
+
+**跨 Claude session 也適用（2026-04-26 踩到）**：兩個 Claude session 同時開在同一 repo working tree，A session 已 `git add -A` staged 一批改動準備 commit，期間 B session 在不同 prompt 跑 `git add -A` + `git commit` — **A 的 staged 改動會被吃進 B 的 commit**（git index 共享）。事故點：B 的 commit message 跟 scope 完全錯（B 只想 commit 自己的改動，但 commit stat 包含 A 的 8 個 SEO 檔）。解套：B push 上 origin 後不可 force-rewrite；A 要在新 branch 重做 PR 並標明 race condition，留給 future review/merge 自然處理（內容 identical 時 git auto-merge 不衝突）。**正確預防**：開第二個 Claude session 前先 `git worktree add` 隔離 — 跟人類雙視窗同樣對策。
