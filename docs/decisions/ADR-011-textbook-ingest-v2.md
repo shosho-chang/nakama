@@ -275,7 +275,7 @@ ingested_by: "claude-code-opus-4.7"
 | **Output** | `llm_description: str`（domain-aware，含座標軸 / 數字 / annotation / 與 surrounding_text 的關係） |
 | **Domain prompt**（從 book_subtype 推斷） | `textbook_pro` + biochem book → 「You are a biochemistry expert annotating a textbook figure for a downstream knowledge base. Describe axes, units, curves, key inflection points, and how the figure illustrates the concept discussed in the surrounding text. Use precise scientific terminology.」<br>`textbook_pro` + anatomy book → 「You are an anatomy expert...」（同 pattern） |
 | **Failure mode** | Vision 失敗 / 無法辨識 → fallback `[FIGURE: alt-text only — manual annotation required]` placeholder + log warning |
-| **Vision LLM 選型** | <!-- 待修修拍板 — Opus 4.7 vs Sonnet 4.6；plan §8 Q4 --> |
+| **Vision LLM 選型** | **Sonnet 4.6**（[decisions §Q4](../plans/2026-04-26-ingest-v2-decisions.md)）— ingest 全程 Opus 但 Vision step 降 Sonnet：成本約 1/5、教科書 figure 在 domain-aware prompt 下品質夠用、不影響核心 chapter source / concept extract（仍 Opus）。實測品質不夠時可後升 Opus（Risk §3.5「Vision LLM token cost」對應） |
 
 #### Step 3: Deep extract chapter source page
 
@@ -375,7 +375,7 @@ Output: 3-8 sentences of dense scientific description. Do NOT add disclaimers or
 | `popular_health` | (any) | science journalist |
 | `clinical_protocol` | (any) | clinical guideline writer |
 
-**Vision LLM 選型**：<!-- 待修修拍板 — Opus 4.7（品質高、token 貴 5x）vs Sonnet 4.6（token 便宜、教科書 figure 描述應夠用）；plan §8 Q4 -->
+**Vision LLM 選型**：**Sonnet 4.6**（[decisions §Q4](../plans/2026-04-26-ingest-v2-decisions.md)）。Opus 4.7 留給 chapter source deep extract / concept extract / diff-merge 三個 LLM-readable 主路徑（per P2）；Vision describe 是輔助 step，Sonnet 4.6 在 domain-aware prompt（§3.4.3）下對教科書 biochem pathway / anatomy / chart 描述品質夠用，token 成本約 Opus 1/5。Phase 1 Sonnet 為 default；若 Acceptance §6 跑 ch1 後發現特定 figure 類型品質明顯不足（如複雜 mitochondria cross-section），單獨升 Opus；不全 Opus。
 
 ---
 
@@ -585,7 +585,7 @@ class MigrationReport(BaseModel):
 | broken concept page（A-11，2 頁：`ATP再合成.md` `肌酸代謝.md`） | Step 1 hygiene PR 修好 frontmatter；Step 3 上線後 lazy migrate v1 → v2 schema |
 | Robin v1 schema concept page（既有 `source_refs:` schema） | Step 3 上線後 lazy migrate：第一次被 `update_*` action 命中時自動跑 `migrate_v1_to_v2()`；body 末尾既有 `## 更新（date）` block 一次性 LLM diff-merge into main body |
 | ch1 已 ingest 的 4 新 concept（`能量連續體` / `糖解作用` / `有氧能量系統` / `無氧能量系統`） | Step 3 上線後重 ingest ch1 一次（覆寫）— 走完整 v2 schema |
-| ch1 update 的 6 既有 concept（`磷酸肌酸系統` / `ATP再合成` / `肌酸激酶系統` / `磷酸肌酸能量穿梭` / `肌酸代謝` / `運動營養學`） | <!-- 待修修拍板 — 重做（用 v2 schema 重新 merge into main body）vs 維持 v1 schema 直到全本 v2 backfill；plan §8 Q2 --> |
+| ch1 update 的 6 既有 concept（`磷酸肌酸系統` / `ATP再合成` / `肌酸激酶系統` / `磷酸肌酸能量穿梭` / `肌酸代謝` / `運動營養學`） | **維持 v1 schema 直到 Step 3 重 ingest ch1**（[decisions §Q2](../plans/2026-04-26-ingest-v2-decisions.md)）。短期內 6 頁仍會看到 body 末尾 `## 更新（2026-04-25）` block；Step 3 重 ingest ch1 時走 `update_merge` action，由 LLM 把 update block 一次性 diff-merge 進 Definition / Core Principles / Practical Applications 主體（同一 lazy migrate path 適用所有 v1 page），完成後刪除 `## 更新` block 並升 `schema_version: 2` |
 | chapter source page (`Sources/Books/biochemistry-sport-exercise-2024/ch1.md`) | Step 3 上線後重 ingest ch1（含 figures + Vision describe） |
 | Book entity (`Entities/Books/biochemistry-sport-exercise-2024.md`) | 保留；status 維持 `partial`、`chapters_ingested` 隨 ch2-ch11 ingest 累計 |
 

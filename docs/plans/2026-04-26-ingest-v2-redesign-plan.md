@@ -208,12 +208,16 @@ textbook-ingest skill Phase 1 MVP 把 *Biochemistry for Sport and Exercise Metab
 
 ---
 
-## 8. Open questions（待修修 confirm）
+## 8. Decisions（2026-04-26 修修拍板）
 
-1. **Sequencing**：Step 1 → Step 2 → Step 3 序貫？還是 Step 1 + Step 2 並行（hygiene fix 跟 ADR 草稿沒依賴）？
-2. **既有 6 concept page 的 ch1 update**：要不要重做（用 v2 schema 重新 merge into main body）還是維持 v1 schema 直到全本 v2 backfill？
-3. **ADR-010-v2 是新增 ADR-011 還是替換 ADR-010**？建議**新增 ADR-011-textbook-ingest-v2** + ADR-010 標記 superseded（保留歷史脈絡）。
-4. **Vision LLM 用 Opus 4.7 還是 Sonnet 4.6**？Opus 品質高但 token 貴 5 倍；Sonnet 對教科書 figure 描述應夠用。
+完整勾選紀錄見 [docs/plans/2026-04-26-ingest-v2-decisions.md](2026-04-26-ingest-v2-decisions.md)。
+
+| # | 問題 | Decision | 落地位置 |
+|---|---|---|---|
+| Q1 | Sequencing | **Step 1 + Step 2 並行**（Step 3 等 ADR accept） | Step 1 = PR `fix/config-and-broken-pages`；Step 2 = ADR-011 PR；兩者 file 範圍 disjoint |
+| Q2 | ch1 update 的 6 既有 concept page 處理 | **維持 v1 schema 直到 Step 3 重 ingest ch1**（lazy migrate path 一次解決） | [ADR-011 §4.2](../decisions/ADR-011-textbook-ingest-v2.md) |
+| Q3 | ADR-010-v2 location | **新增 ADR-011-textbook-ingest-v2 + ADR-010 標 Superseded**（保留歷史脈絡，對齊 repo convention） | [ADR-010](../decisions/ADR-010-textbook-ingest.md) status 已改 / [ADR-011](../decisions/ADR-011-textbook-ingest-v2.md) created |
+| Q4 | Vision LLM 選型 | **Sonnet 4.6 預設**（domain-aware prompt 補品質、成本約 Opus 1/5；ch1 acceptance 後若特定 figure 不夠再單獨升 Opus） | [ADR-011 §3.4](../decisions/ADR-011-textbook-ingest-v2.md) |
 
 ---
 
