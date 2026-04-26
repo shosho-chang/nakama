@@ -1,7 +1,7 @@
 # ADR-009: SEO Solution Architecture — Skill 家族 + Brook compose 整合
 
 **Date:** 2026-04-24
-**Status:** Proposed
+**Status:** Accepted (with 2026-04-26 addendum — see §Addendum: DataForSEO 不整合)
 
 ---
 
@@ -39,7 +39,7 @@ prior-art（[docs/research/2026-04-24-seo-prior-art.md](../research/2026-04-24-s
 | Skill | 單一責任 | Phase |
 |---|---|---|
 | `seo-audit-post` | 單篇已發佈 URL 體檢，產 markdown report | 1 |
-| `seo-keyword-enrich` | `keyword-research` 結果 → + GSC striking-distance + DataForSEO difficulty + firecrawl SERP 摘要 → `SEOContextV1` | 1 |
+| `seo-keyword-enrich` | `keyword-research` 結果 → + GSC striking-distance + firecrawl SERP 摘要 → `SEOContextV1`（DataForSEO 已從計畫移除，見 §Addendum）| 1 |
 | `seo-optimize-draft` | 既有 draft.md + `SEOContextV1` → 重寫 / 改寫建議（內部 call Brook compose） | 2 |
 
 **Trigger phrases**（寫進 skill frontmatter `description`）：
@@ -67,7 +67,7 @@ prior-art（[docs/research/2026-04-24-seo-prior-art.md](../research/2026-04-24-s
 |---|---|---|---|
 | **Google Search Console API** | 自己網站 striking-distance keyword、cannibalization 偵測、真實 impressions/CTR | $0 | auth 失敗 → skill 報錯 + 建議走 `/seo-keyword-enrich --no-gsc` fallback mode |
 | **PageSpeed Insights API** | `seo-audit-post` 的 CWV + Lighthouse SEO category | $0 | 失敗 → 標記「CWV unavailable」繼續跑其他 check |
-| **DataForSEO Labs API** | 非 health 類 keyword 的 difficulty / search_volume（health 類會被 anonymize） | $50 起儲值、~$0.005/audit | 失敗或 health 關鍵字 → 省略此欄位，Claude synth 時標註「difficulty unknown」 |
+| **DataForSEO Labs API** ⚠️ | 非 health 類 keyword 的 difficulty / search_volume（health 類會被 anonymize） | $50 起儲值、~$0.005/audit | **2026-04-26 update: 決定不整合，見 §Addendum。** 失敗或 health 關鍵字 → 省略此欄位 |
 | **firecrawl plugin（已裝）** | 競品 top-3 SERP 頁面結構爬取 | 免費 quota 內 | 失敗 → `competitor_serp_summary = None` |
 | **既有 `keyword-research` skill frontmatter** | core_keywords / trend_gaps / title_seeds | $0.05/run（已計在 keyword-research） | 必要輸入；缺則 `seo-keyword-enrich` 報錯提示先跑 `keyword-research` |
 | **既有 Robin KB search** | LLM semantic check 時查作者既有觀點（E-E-A-T + internal link） | $0.01/audit | 失敗 → 省略 internal link 建議 |
@@ -403,7 +403,7 @@ description: >
 ### 負面 / Risk
 
 - **GSC OAuth 設定一次性成本** — 修修手動步驟（property verify + service account + scope 授權），runbook 已在 ADR-008 §8 定義，ADR-009 沿用
-- **DataForSEO $50 sunk cost** — credits 不過期但屬 sunk cost；若月用量極低 credits 可能用好幾年
+- ~~**DataForSEO $50 sunk cost** — credits 不過期但屬 sunk cost；若月用量極低 credits 可能用好幾年~~ — 2026-04-26 撤回：決定不整合，無 sunk cost。見 §Addendum
 - **跨 skill schema drift 風險** — `SEOContextV1` 任何變更都影響 3 個 skill + Brook compose。緩解：schema 走 `schema_version: Literal[1]` 並在 change 時同步升版 + 新增 fixture test
 - **3 個 skill 觸發詞需維護** — 與既有 `keyword-research` 邊界要清楚；緩解：D7 `Do NOT trigger for` 區明確列出
 - **Phase 1 GSC client 與 ADR-008 Phase 2 可能相互等待** — 緩解：ADR-009 Phase 1 自行在 `shared/gsc_client.py` 實作 interactive query；ADR-008 Phase 2 實作時 import 此 client 加 batched wrapper
@@ -411,7 +411,7 @@ description: >
 ### 風險 — 明確列出
 
 1. **GSC API schema 變更**（Google 歷史多次微調） → `shared/schemas/external/gsc.py`（ADR-008 §2）已做 anti-corruption layer，ADR-009 透過此層消費，不直接解析 raw response
-2. **DataForSEO Health restriction policy change**（可能變寬或變嚴） → 客戶端無法感知；緩解：收到 `search_volume=None` 時 log + 告警（不阻斷 skill 執行）
+2. ~~**DataForSEO Health restriction policy change**（可能變寬或變嚴） → 客戶端無法感知；緩解：收到 `search_volume=None` 時 log + 告警（不阻斷 skill 執行）~~ — 2026-04-26 撤回：見 §Addendum
 3. **Claude Sonnet API 成本飆升** → `seo-audit-post` 的 LLM semantic check 可配置 `--llm-level=haiku|sonnet|none`；skill frontmatter 預設 sonnet，CLI flag 可降級
 4. **keyword-research frontmatter schema 未來變更** → 凍結當前 frontmatter 為 ADR-009 的合約輸入；若 keyword-research 要升版，需同步升 `SEOContextV1.schema_version`
 5. **`_build_compose_system_prompt` 修改可能破壞 compose 測試** → Phase 1 實作 PR 必須跑 `tests/agents/brook/test_compose*.py` 全綠；為 `seo_context=None` 路徑加 regression test：固定 `StyleProfile` fixture → 兩次呼叫（一次 `seo_context=None`，一次 Phase 0 HEAD 的程式碼）→ 比對 system prompt exact string 必須 byte-identical。`seo_context` 非 None 路徑另加 snapshot test（固定 `SEOContextV1` fixture → 輸出 prompt 包含必要 SEO block 標記）。
@@ -453,7 +453,7 @@ description: >
 | # | 原題 | ADR-009 決定 | §位置 |
 |---|---|---|---|
 | 1 | Skill 家族切法選 A/B/C？ | A（3 skill） | D1 |
-| 2 | DataForSEO $50 儲值起步？ | 是（phase 1） | D2 |
+| 2 | DataForSEO $50 儲值起步？ | ~~是（phase 1）~~ → **否（2026-04-26 撤回，見 §Addendum）** | D2 |
 | 3 | GSC API OAuth 先做？ | 是（phase 1 blocker） | D2 / Open Items #3 |
 | 4 | `seo-audit-post` LLM 用 Sonnet/Haiku？ | Sonnet | D6 |
 | 5 | `seo-optimize-draft` standalone 或 Brook mode？ | Standalone skill，內部 call compose | D1 / D5 |
@@ -519,6 +519,58 @@ Grok 回應 33 行（Claude 228 / Gemini 129），六個 section 結構完整、
 - **Phase 2 backlog**：T3 V2 migration playbook、T7 異步化、T8 rate limit middleware、T13 quota alert
 
 **這個 triangulation 的結論沒有 overriding 的 blocker 要求 ADR 退回重寫** — Gemini 4/10 的主因 T4（Phase 1 範疇）已由上方 Revised Slice Order 吸收，剩下 5 個共識 blocker 都能在 ADR 補說明 + 實作 PR review 覆蓋。
+
+---
+
+## Addendum: 2026-04-26 — DataForSEO Slice E 不整合
+
+**背景**：Phase 1.5 D.1 / D.2 / F 三 sub-slice 都在 2026-04-26 land 上線後（PR #173 / #181 / #183 / #185），重新評估 Slice E（DataForSEO Labs `keyword_difficulty` 整合）的必要性 — 結論是**不整合**。
+
+### Why（決策依據）
+
+1. **Health vertical fallback 率高** — DataForSEO 自家 help-center 註明 health / financial / gambling 類 keyword 的 `search_volume` 與 `CPC` 會被 Google Ads policy hide。修修是 Health & Wellness 內容創作者，主要使用情境會大量 fallback 到「difficulty unknown」
+2. **single-blog actionability 低** — 對個人創作者，「我自己網站怎麼排」（GSC striking-distance，已 production）+「top-3 競品在寫什麼」（firecrawl SERP 摘要，已 production）比「全網 difficulty 分數」更 actionable。Difficulty 分數對「要不要寫這篇」決策影響極小（流量不靠單篇 #1 ranking）
+3. **替代方案已 production** — Phase 1（GSC + cannibalization）+ Phase 1.5 F（firecrawl SERP + Haiku 摘要）兩條已覆蓋核心需求；Phase 1.5 D.1 + D.2（PageSpeed + 28 deterministic + 12 LLM rule）覆蓋 audit 需求
+4. **Sunk cost 不值** — $50 起儲值 + 持續使用成本；對 health 主題大部分時候 quota 沒用到位
+
+### What changes
+
+| 項目 | 變動 |
+|---|---|
+| `SEOContextV1.related_keywords[].difficulty` | 維持 optional `int \| None = None`，永遠寫 `None`；schema 不需升版 |
+| `SEOContextV1.related_keywords[].search_volume` | 同上 |
+| `SEOContextV1.related_keywords[].source` | 永遠 `"gsc"`，`"dataforseo"` value 保留為 schema-level reservation 但不會被 emit |
+| `shared/dataforseo_client.py` | **不實作** |
+| `.env`：`DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` | 不需設定 |
+| `.claude/skills/seo-keyword-enrich/scripts/enrich.py` | 不加 DataForSEO call site；保持 GSC + firecrawl 雙源 |
+| Phase label `"1.5 (gsc + dataforseo + firecrawl)"` | 不會出現；終態為 `"1.5 (gsc + firecrawl)"` / `"1.5 (gsc + serp-skipped)"` / `"1 (gsc-only)"` |
+| 三大用途映射 | 用途 3（Brook compose 整合）從「near-production 缺 E」→ **production**（GSC + firecrawl 兩源已足夠） |
+
+### Affected sections（in this ADR）
+
+- §D2 表格 DataForSEO row — inline 標 ⚠️ 不整合
+- §D8 Secrets `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` — schema 保留 reservation 但實作上不需設
+- §D9 §修改「`shared/dataforseo_client.py`」— **不實作**
+- §Consequences 負面「DataForSEO $50 sunk cost」— 撤回
+- §風險 #2「DataForSEO Health restriction policy change」— 撤回（無 client 故無 risk）
+- §prior-art Q2 答案改：「No (decided 2026-04-26 not to integrate)」
+- §Open Items #1-5 不變
+
+### Future revisit triggers
+
+如以下任一條件成真，重新評估是否引入 DataForSEO（或同類 keyword difficulty 數據源）：
+
+1. 修修跨入非 health 主題（科技 / 商業 / 設計等）為主寫作 vertical，且 Google Ads policy 對 health 類別解禁
+2. 月 keyword 研究次數 > 50，且 GSC + firecrawl 兩源覆蓋顯著不足
+3. 引入 `seo-optimize-draft` Phase 2 skill 後，發現 difficulty 數據對「下篇文章選題排序」有實質影響
+
+否則維持 GSC + firecrawl 雙源終態。
+
+### References
+
+- [memory/claude/project_seo_dataforseo_scrap_decision.md](../../memory/claude/project_seo_dataforseo_scrap_decision.md) — 決策動機完整紀錄
+- [memory/claude/reference_seo_tools_landscape.md](../../memory/claude/reference_seo_tools_landscape.md) §Health vertical 紅線 — 原始限制描述
+- [docs/research/2026-04-24-seo-prior-art.md](../research/2026-04-24-seo-prior-art.md) §1.1 — DataForSEO capability card
 
 ---
 
