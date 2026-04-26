@@ -6,6 +6,7 @@ Usage:
     python -m agents.franky alert --test # Slice 2: send a test alert through the router
     python -m agents.franky backup-verify  # Slice 2: verify R2 daily snapshot
     python -m agents.franky digest       # Slice 3: weekly digest (5-section Slack DM)
+    python -m agents.franky anomaly      # Phase 5B-3: 15-min anomaly daemon tick
 
 The default (no-subcommand) path preserves existing cron behavior until Slice 3 flips
 the default to the new digest. See ADR-007 §11 for the module layout plan.
@@ -30,6 +31,7 @@ for _stream in (sys.stdout, sys.stderr):
 _JOB_NAME_BACKUP_VERIFY = "franky-r2-backup-verify"
 _JOB_NAME_DIGEST = "franky-weekly-report"
 _JOB_NAME_NEWS = "franky-news-digest"
+_JOB_NAME_ANOMALY = "nakama-anomaly-daemon"
 
 
 def _cmd_health(_args: argparse.Namespace) -> int:
@@ -155,6 +157,39 @@ def _cmd_news(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_anomaly(_args: argparse.Namespace) -> int:
+    """Phase 5B-3 — one anomaly daemon tick (cost / latency / error rate / cron cluster).
+
+    ``run_once`` itself records ``record_success`` on the happy path; the
+    outer ``record_failure`` here only fires if the daemon crashed before
+    completing (e.g. SQLite locked, disk full). Per-check exception
+    isolation lives inside ``run_once``.
+    """
+    from agents.franky.anomaly_daemon import run_once
+
+    try:
+        anomalies = run_once()
+    except Exception as exc:
+        record_failure(_JOB_NAME_ANOMALY, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+    summary = {
+        "count": len(anomalies),
+        "anomalies": [
+            {
+                "metric": a.metric,
+                "target": a.target,
+                "current": a.current,
+                "baseline_mean": a.baseline_mean,
+                "baseline_stddev": a.baseline_stddev,
+                "sample_size": a.sample_size,
+            }
+            for a in anomalies
+        ],
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _cmd_legacy_weekly(_args: argparse.Namespace) -> int:
     """Backward-compat: the current VPS cron still runs `python -m agents.franky` without args."""
     from agents.franky.agent import FrankyAgent
@@ -176,6 +211,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub.add_parser("backup-verify", help="Verify R2 daily backup (Slice 2)")
     sub.add_parser("digest", help="Send weekly digest to Slack DM (Slice 3)")
+    sub.add_parser("anomaly", help="Phase 5B-3: anomaly daemon tick (cron every 15 min)")
     news = sub.add_parser("news", help="AI ecosystem daily digest (Slice A: official blogs)")
     news.add_argument(
         "--dry-run",
@@ -207,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         "backup-verify": _cmd_backup_verify,
         "digest": _cmd_digest,
         "news": _cmd_news,
+        "anomaly": _cmd_anomaly,
     }
     handler = dispatch.get(args.command, _cmd_legacy_weekly)
     return handler(args)

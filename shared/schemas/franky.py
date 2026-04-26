@@ -3,6 +3,7 @@
 Schema 定義順序（依相依性）：
     HealthProbeV1 → HealthzResponseV1
     AlertV1
+    AnomalyV1 (Phase 5B-3)
     VPSResourceSampleV1 → WeeklyDigestV1
 
 所有 schema 遵守 docs/principles/schemas.md：
@@ -129,6 +130,42 @@ class AlertV1(BaseModel):
     operation_id: constr(pattern=r"^op_[0-9a-f]{8}$")
     # 額外結構化欄位供 dashboard / log 顯示（不能含 secrets，observability.md §9）
     context: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Anomaly detection（Phase 5B-3 anomaly daemon）
+# ---------------------------------------------------------------------------
+
+
+AnomalyMetric = Literal[
+    "cost_spike",
+    "latency_p95_spike",
+    "error_rate_spike",
+    "cron_failure_cluster",
+]
+
+
+class AnomalyV1(BaseModel):
+    """One detected anomaly per (metric, target). Returned by run_once for
+    introspection / dashboard; alert routing happens via shared.alerts.alert.
+
+    Statistical metrics (cost/latency/error_rate) populate baseline_mean /
+    baseline_stddev / sample_size from the rolling baseline window. The
+    state-based metric (cron_failure_cluster) leaves stddev=0 + n=0; the
+    `current` field carries the count of failing cron jobs in that case.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal[1] = 1
+    metric: AnomalyMetric
+    # agent name (e.g. "robin", "franky") OR "_global" for system-wide metrics.
+    target: constr(pattern=r"^[a-z_][a-z0-9_-]{0,63}$")
+    current: float
+    baseline_mean: float
+    baseline_stddev: float = Field(ge=0)
+    sample_size: int = Field(ge=0)
+    detail: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    detected_at: AwareDatetime
 
 
 # ---------------------------------------------------------------------------

@@ -102,6 +102,7 @@ CRON_SCHEDULES: dict[str, tuple[int, int]] = {
     "franky-news-digest": (24 * 60, 60),  # daily 06:30
     "franky-weekly-report": (7 * 24 * 60, 120),  # weekly Mon 10:00
     "nakama-cleanup-logs": (24 * 60, 60),  # daily 04:00 — Phase 5C log retention
+    "nakama-anomaly-daemon": (15, 5),  # */15 min — Phase 5B-3 anomaly daemon
 }
 
 
