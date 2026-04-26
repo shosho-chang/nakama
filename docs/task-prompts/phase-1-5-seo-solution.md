@@ -12,7 +12,7 @@
 ## 閱讀順序（修修審稿 checklist）
 
 1. 讀 §0「Phase 1.5 Sub-slice 順序與並行策略」確認 4 個 PR 的 dep 圖
-2. 讀 §0.1「凍結 ADR Open Items」— 本 prompt 凍結了 ADR-009 §Open Items #1（25 條 deterministic check）+ #2（report markdown 模板）這兩個被 ADR 留給「實作階段決定」的項目
+2. 讀 §0.1「凍結 ADR Open Items」— 本 prompt 凍結了 ADR-009 §Open Items #1（28 條 deterministic check）+ #2（report markdown 模板）這兩個被 ADR 留給「實作階段決定」的項目
 3. 逐個 slice §6 邊界段確認沒踩到桌機 / Mac textbook v2 視窗正在動的檔
 4. §D.1 / §D.2 是否能拆兩 PR（vs 合併 1 大 PR）— D.2 體積大但對 user-value 來說是同件事
 5. §E / §F 序看你想先做哪個（兩者獨立、可並行）
@@ -25,8 +25,8 @@
 
 | Slice | 範圍 | 預估 | 依賴 |
 |---|---|---|---|
-| **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*.py` 6 個 deterministic check 模組 + 全套 unit test | 1.5-2 天 | Slice A merged（pydantic schemas + `gsc_client.py`，Phase 1） |
-| **D.2** | `.claude/skills/seo-audit-post/` skill：`audit.py` 主流程 + LLM semantic 10 條 + markdown report；reuse 既有 `gsc_client` 補 GSC 章節 + reuse `agents/robin/kb_search` 補 internal link suggestion | 2-2.5 天 | **D.1 必須 merged**（skill import audit modules） |
+| **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*.py` 6 個 deterministic check 模組 + 全套 unit test（28 條 rule） | 2-2.5 天 | Slice A merged（pydantic schemas + `gsc_client.py`，Phase 1） |
+| **D.2** | `.claude/skills/seo-audit-post/` skill：`audit.py` 主流程 + LLM semantic 12 條 + markdown report；reuse 既有 `gsc_client` 補 GSC 章節 + 改 `agents/robin/kb_search` 加 `purpose` 參數（既有 prompt 寫死 YouTube 場景，不能直接 reuse — 見 D.2.3 caveat）補 internal link suggestion | 2.5-3 天 | **D.1 必須 merged**（skill import audit modules） |
 | **E** | DataForSEO Labs `keyword_difficulty` 整合到 `seo-keyword-enrich`（health filter 內建 + Phase 1.5 optional 欄位） | 1-1.5 天 | Slice B merged（已完成）；與 D 完全獨立 |
 | **F** | firecrawl top-3 SERP 爬取 + Claude Haiku 摘要 → 填 `competitor_serp_summary` | 1-1.5 天 | Slice B merged（已完成）；與 D / E 完全獨立 |
 
@@ -52,7 +52,7 @@
 
 ADR-009 §Open Items 以下兩項在本 task prompt 凍結（不留給實作 PR 決定，避免 scope creep）：
 
-### Open Item #1 — 25 條 deterministic check 具體 rule set
+### Open Item #1 — 28 條 deterministic check 具體 rule set
 
 見 §附錄 A。Slice D.1 必須實作這 25 條，每條對應一個 module function，每條附 fix suggestion 模板。
 
@@ -111,7 +111,7 @@ ADR-009 §Open Items 以下兩項在本 task prompt 凍結（不留給實作 PR 
 |---|---|---|
 | ADR-009 §D2 | PageSpeed Insights API 為免費官方源，category=`['PERFORMANCE','SEO','BEST_PRACTICES','ACCESSIBILITY']` | ✅ |
 | ADR-009 §D9 | 模組拆法 `shared/seo_audit/{metadata,headings,images,schema_markup}.py`；本 prompt 擴充為 7 個模組（加 `structure` / `performance` / `html_fetcher` / `types`） | ✅ |
-| 本 prompt §附錄 A | 25 條 deterministic check rule set（M1-M5 / O1-O4 / H1-H3 / I1-I3 / S1-S3 / SC1-SC4 / P1-P3）| ✅ 凍結 |
+| 本 prompt §附錄 A | 28 條 deterministic check rule set（M1-M5 / O1-O4 / H1-H3 / I1-I5 / S1-S3 / SC1-SC5 / P1-P3）| ✅ 凍結 |
 | `shared/gsc_client.py` 既有風格 | tenacity retry pattern + Path-based service account / API key load + structured log | ✅ Phase 1 reference |
 | `shared/log.py` `get_logger` | 結構化日誌；遵守 `feedback_logger_init_before_load_config.md`（`load_config()` 之後才 instantiate） | ✅ |
 | Prior-art §3.1 | 業界 2026 on-page SEO checklist 來源（Chillybin / CrawlWP / Pentagon / SEOlogist 4 篇） | ✅ |
@@ -250,7 +250,7 @@ class PageSpeedClient:
 ## D.1.5 驗收
 
 - [ ] 所有 7 個 module + `types.py` + `pagespeed_client.py` 全 ruff check + ruff format 綠
-- [ ] 25 條 deterministic check rule（§附錄 A）每條至少 3 個 unit test：pass / warn or fail / edge（缺欄位、過長過短、unicode）
+- [ ] 28 條 deterministic check rule（§附錄 A）每條至少 3 個 unit test：pass / warn or fail / edge（缺欄位、過長過短、unicode）
 - [ ] `pagespeed_client.py` 缺 API key 時 raise `RuntimeError` 帶 actionable runbook 路徑
 - [ ] `tests/shared/seo_audit/` 路徑存在，所有測試 pass，coverage > 90%
 - [ ] `AuditCheck` dataclass `frozen=True`；`AuditResult.{pass,warn,fail,skip}_count` properties 對齊 status enum
@@ -287,7 +287,7 @@ class PageSpeedClient:
 |---|---|
 | `.claude/skills/seo-audit-post/SKILL.md` | Skill frontmatter（ADR §D7 已凍結 `description`）+ interactive workflow 敘述（沿用 `seo-keyword-enrich/SKILL.md` 5-step 結構：parse input / resolve options / cost confirm / invoke audit.py / summary + hand-off） |
 | `.claude/skills/seo-audit-post/scripts/audit.py` | 主流程：fetch HTML → call deterministic modules → call PageSpeed → call LLM semantic → optional GSC section → optional KB internal link → render markdown |
-| `.claude/skills/seo-audit-post/references/check-rule-catalog.md` | 25 deterministic + 10 semantic rule 的人類可讀目錄（給 skill 內 LLM 在 user 問「audit 看什麼」時援引）|
+| `.claude/skills/seo-audit-post/references/check-rule-catalog.md` | 28 deterministic + 12 semantic rule 的人類可讀目錄（給 skill 內 LLM 在 user 問「audit 看什麼」時援引）|
 | `.claude/skills/seo-audit-post/references/output-contract.md` | 下游 consumer 的契約 doc（frontmatter shape + body section 順序保證 + filename convention） |
 | `shared/seo_audit/llm_review.py` | LLM semantic check 10 條（§附錄 C）；輸入 `(soup, fetched_text, focus_keyword, kb_context: list[dict] \| None)`；輸出 `list[AuditCheck]`；Sonnet 4.6 single-call batch 評估（成本控制：1 call / audit）|
 | `docs/capabilities/seo-audit-post.md` | Capability card（沿用 `seo-keyword-enrich.md` 格式：能力 / Scope / 輸入 / 輸出 / 成本 / 開源相容性） |
@@ -296,7 +296,7 @@ class PageSpeedClient:
 
 | 路徑 | 測試範圍 |
 |---|---|
-| `tests/shared/seo_audit/test_llm_review.py` | Mock Anthropic client；驗 10 條 semantic check 各自 prompt 組裝、JSON parse、LLM 失敗 fallback `status="skip"` 不 raise |
+| `tests/shared/seo_audit/test_llm_review.py` | Mock Anthropic client；驗 12 條 semantic check 各自 prompt 組裝、JSON parse、LLM 失敗 fallback `status="skip"` 不 raise |
 | `tests/skills/seo_audit_post/test_audit_pipeline.py` | End-to-end mock：fixture HTML + mock PageSpeed + mock LLM + mock GSC client → 驗 markdown report 結構、frontmatter 形狀、所有 sections present |
 | `tests/skills/seo_audit_post/test_audit_no_gsc.py` | URL 不屬修修網站 → 跳過 GSC section（status="skip"，markdown report 仍完整） |
 | `tests/skills/seo_audit_post/test_audit_no_kb.py` | KB search 失敗 / vault path 不存在 → 跳過 internal link suggestion，不 raise |
@@ -308,12 +308,12 @@ class PageSpeedClient:
 |---|---|---|
 | Slice D.1 交付的 7 個 audit modules + `pagespeed_client` | import 即用 | ⏳ 依 D.1 |
 | `shared/gsc_client.py`（Slice A merged） | 可選 GSC section reuse | ✅ |
-| `agents/robin/kb_search.py:search_kb()` | 可選 internal link suggestion reuse | ✅（PR #119 merged） |
+| `agents/robin/kb_search.py:search_kb()` | 可選 internal link suggestion reuse — **Caveat**：[kb_search.py:57](../../agents/robin/kb_search.py#L57) 的 prompt 寫死「使用者正在製作一支 YouTube 影片」場景；D.2 **不能直接 reuse**，必須先 (a) 加 `purpose: str` 參數讓 SEO audit 走適配 prompt，或 (b) 寫 thin wrapper 自己餵 prompt。本 slice 預估時程已含此擴充工作 | ⚠️ 需擴充 |
 | `shared/llm/anthropic.py` 或對等 wrapper | LLM semantic check 走 Sonnet 4.6（ADR §D6）| ✅ |
-| `agents/brook/compliance_scan.py` | 台灣藥事法/醫療法 compliance check（LLM semantic 第 9 條）reuse | ✅ |
+| `agents/brook/compliance_scan.py` | 台灣藥事法/醫療法 compliance check（LLM semantic 第 9 條）reuse — **Caveat**：目前是 SEED 版（[compliance_scan.py:7-13](../../agents/brook/compliance_scan.py#L7-L13) 標明），`MEDICAL_CLAIM_PATTERNS` 只 6 條（治好 / 99.9% / 肝癌 / 乳癌等），對 audit 場景會給假陰性。D.2 reuse 時必須走 `scan_publish_gate()` + 在 audit report 標明「Phase 1 SEED — Slice B vocab 上線後升級」；或等 `shared/compliance/medical_claim_vocab.py` 落地後再 wire | ⚠️ SEED 限制 |
 | ADR-009 §D7 frontmatter `description`（凍結觸發詞） | 逐字落檔 | ✅ |
 | 本 prompt §附錄 B | markdown report 模板 | ✅ 凍結 |
-| 本 prompt §附錄 C | LLM semantic 10 條 prompt 結構提案 | ✅（wording 留實作） |
+| 本 prompt §附錄 C | LLM semantic 12 條 prompt 結構提案 | ✅（wording 留實作） |
 | `seo-keyword-enrich/SKILL.md` workflow 5-step 結構 | 體例參考 | ✅ |
 
 ## D.2.4 輸出
@@ -375,7 +375,7 @@ def audit(
     result.checks.extend(schema_markup.check_schema_markup(soup))
     result.checks.extend(performance.check_performance(pagespeed))
 
-    # 4. LLM semantic (10 條，§附錄 C)
+    # 4. LLM semantic (12 條，§附錄 C)
     kb_context = _maybe_kb_search(soup, focus_keyword) if enable_kb else None
     if llm_level != "none":
         result.checks.extend(
@@ -419,9 +419,9 @@ python .claude/skills/seo-audit-post/scripts/audit.py \
 - [ ] `audit.py` `--llm-level=none` 模式跑通（不需 ANTHROPIC_API_KEY）→ 純 deterministic + PageSpeed + 可選 GSC + 可選 KB
 - [ ] `audit.py` `--no-kb` 模式跑通（不需 vault path）
 - [ ] `audit.py` 對非修修域名（不在 `HOST_TO_TARGET_SITE`）→ 自動 skip GSC section，markdown 顯示 `不適用（URL 非自有網站）` 而非 raise
-- [ ] LLM semantic single-call batch（不是 10 次 LLM call）→ 1 audit ~$0.02-0.05（Sonnet 4.6，input ~3K, output ~2K）
-- [ ] LLM 失敗（API error / JSON parse 失敗）→ 10 條 semantic check 全 mark `status="skip"`，不阻斷 markdown 產出
-- [ ] markdown report 結構 100% 對齊 §附錄 B 模板（frontmatter type / schema_version / 6 個 body section 順序）
+- [ ] LLM semantic single-call batch（不是 12 次 LLM call）→ 1 audit ~$0.025-0.060（Sonnet 4.6，input ~3.5K, output ~2.5K — 12 條 batch 多 ~10% token）
+- [ ] LLM 失敗（API error / JSON parse 失敗）→ 12 條 semantic check 全 mark `status="skip"`，不阻斷 markdown 產出
+- [ ] markdown report 結構 100% 對齊 §附錄 B 模板（frontmatter type / schema_version / 7 個 body section 順序，5 必選 + 2 可選）
 - [ ] 整個 pipeline wall-clock < 60s（PageSpeed 單獨 ~10-30s 為主）；> 60s 在 PR description 紀錄
 - [ ] 整個 pipeline cost < $0.10（PageSpeed $0 + LLM ~$0.05 + GSC $0 + KB ~$0.005 + Haiku KB rank ~$0.005）
 - [ ] 全 repo `pytest` + `ruff` 綠；`tests/skills/seo_audit_post/` coverage > 85%
@@ -762,7 +762,7 @@ def _enrich_with_serp(primary_keyword: str) -> str | None:
 
 ---
 
-## §附錄 A — 25 條 deterministic check rule set（Slice D.1 凍結）
+## §附錄 A — 28 條 deterministic check rule set（Slice D.1 凍結）
 
 每條格式：`<rule_id> <name> | <category> | <severity> | actual 抓取規則 | expected 標準 | fix_suggestion 模板`
 
@@ -802,6 +802,8 @@ def _enrich_with_serp(primary_keyword: str) -> str | None:
 | I1 | 所有 img 有非空 alt | warning | `len(soup.find_all("img", alt=""))` 或缺 alt count | 0 | `補 alt 描述（含 focus keyword 自然出現）` |
 | I2 | alt 長度 < 125 字符 | info | 各 img alt 長度 | < 125 | `截短 alt，重點前置` |
 | I3 | featured image / og:image accessible | warning | og:image URL 可達 + content-type image/* | 200 OK + image 類 type | `修正圖片 URL / 上傳新圖` |
+| I4 | 圖片 lazy loading 覆蓋率 | info | `<img loading="lazy">` 比例（首屏外 imgs；首屏 = viewport 內 ~3 imgs）| 首屏外 > 80% | `補 loading="lazy" 在非首屏 img；首屏 img 保 eager 給 LCP` |
+| I5 | WebP/AVIF modern format 比例 | info | 各 img URL HEAD 拿 content-type；計 image/webp + image/avif 比例 | > 50% | `主圖優化 to WebP；舊 jpg/png 重新生成（SEOPress 自動 WebP plugin 可批次）` |
 
 ### Content Structure（S1-S3）
 
@@ -819,6 +821,7 @@ def _enrich_with_serp(primary_keyword: str) -> str | None:
 | SC2 | BreadcrumbList schema 存在 | info | JSON-LD 含 `@type: BreadcrumbList` | 存在 | `加麵包屑 schema（Home > Category > Article）` |
 | SC3 | Author schema（E-E-A-T 強化）| info | Article.author 是 Person + 有 name / url | 有 author 物件 | `補 author + url 連到 about 頁` |
 | SC4 | Schema JSON-LD parse 無 error | critical | `json.loads` 所有 `<script type="application/ld+json">` | 全 parse OK | `修正 JSON 語法（comma / quote / encoding）` |
+| SC5 | FAQPage / HowTo schema 偵測（Health 高觸發 rich result）| info | JSON-LD 含 `@type: FAQPage` 或 `@type: HowTo` | 任一存在或 N/A（無 FAQ / step 內容）| `Health 內容含常見問答 / step-by-step → 加 FAQPage / HowTo schema 觸發 rich result（SEOPress block 預設帶）` |
 
 ### Performance（P1-P3，從 PageSpeed Insights）
 
@@ -828,7 +831,7 @@ def _enrich_with_serp(primary_keyword: str) -> str | None:
 | P2 | INP < 200ms | warning | INP from CrUX field data | < 200ms | `減 JS 主執行緒阻塞 / defer non-critical` |
 | P3 | CLS < 0.1 | warning | `audits['cumulative-layout-shift'].numericValue` | < 0.1 | `圖片 / iframe 標 width/height；font-display: optional` |
 
-**Total: 25 条**（M:5 + O:4 + H:3 + I:3 + S:3 + SC:4 + P:3 = 25）
+**Total: 28 条**（M:5 + O:4 + H:3 + I:5 + S:3 + SC:5 + P:3 = 28）
 
 ---
 
@@ -844,41 +847,42 @@ audit_target: https://shosho.tw/zone-2-training-guide
 target_site: wp_shosho                    # null 若 URL 非自有網站
 focus_keyword: zone 2 訓練                # null 若未指定
 fetched_at: 2026-04-26T03:00:00+00:00
-audit_phase: "1.5"
+phase: "1.5 (deterministic + llm)"
 generated_by: seo-audit-post (Slice D.2)
 pagespeed_strategy: mobile
 llm_level: sonnet                          # sonnet | haiku | none
 gsc_section: included                      # included | skipped (non-self-hosted) | error
 kb_section: included                       # included | skipped (--no-kb) | error
 summary:
-  pass: 18
-  warn: 5
-  fail: 2
-  skip: 0
+  total: 40                                # 28 deterministic + 12 LLM semantic
+  pass: 25
+  warn: 8
+  fail: 3
+  skip: 4                                  # 例：URL 非自有 → GSC section skipped 影響部分 rule
   overall_grade: B+                        # A / B+ / B / C+ / C / D / F（按 fail 數 + critical 數計算）
 ---
 ```
 
-### Body 6 個 section（順序固定，下游 consumer 可 anchor）
+### Body 7 個 section（5 必選 + 2 可選；順序固定，下游 consumer 可 anchor）
 
 ```markdown
 # SEO Audit — <article title>
 
 ## 1. Summary
 
-| 類別 | Pass | Warn | Fail |
-|---|---|---|---|
-| Metadata | 4 | 1 | 0 |
-| OpenGraph | 3 | 1 | 0 |
-| Headings | 2 | 1 | 0 |
-| Images | 2 | 1 | 0 |
-| Structure | 2 | 1 | 0 |
-| Schema | 2 | 1 | 1 |
-| Performance | 1 | 1 | 1 |
-| Semantic (LLM) | 2 | 0 | 0 |
-| **Total** | **18** | **7** | **2** |
+| 類別 | Pass | Warn | Fail | Skip |
+|---|---|---|---|---|
+| Metadata (M1-M5) | 4 | 1 | 0 | 0 |
+| OpenGraph (O1-O4) | 3 | 1 | 0 | 0 |
+| Headings (H1-H3) | 2 | 1 | 0 | 0 |
+| Images (I1-I5) | 3 | 1 | 0 | 1 |
+| Structure (S1-S3) | 2 | 1 | 0 | 0 |
+| Schema (SC1-SC5) | 2 | 1 | 1 | 1 |
+| Performance (P1-P3) | 1 | 1 | 1 | 0 |
+| Semantic (L1-L12) | 8 | 1 | 1 | 2 |
+| **Total** | **25** | **8** | **3** | **4** |
 
-**Overall grade: B+**
+**Overall grade: B+**（總 40 條 = 28 deterministic + 12 LLM semantic）
 
 最重要修法（按 severity）：
 1. [SC4] Schema JSON-LD parse error — 修語法
@@ -951,7 +955,7 @@ Core Web Vitals (CrUX field data, last 28 days):
 
 下游 consumer（未來 `seo-optimize-draft` Phase 2）可依賴：
 - Frontmatter `type: seo-audit-report` discriminator
-- `schema_version: 1` 期間 6 section 順序固定（1-7，section 6/7 為可選）
+- `schema_version: 1` 期間 7 section 順序固定（5 必選: §1-§5 + 2 可選: §6 GSC / §7 Internal Link）
 - Section 標題（`## 1. Summary` / `## 2. Critical Fixes` / ...）為 anchor
 
 不保證（可能在 phase 1.5 → 2 之間演進）：
@@ -966,9 +970,9 @@ Core Web Vitals (CrUX field data, last 28 days):
 
 ---
 
-## §附錄 C — 10 條 LLM semantic check 提案（Slice D.2 wording 留實作）
+## §附錄 C — 12 條 LLM semantic check 提案（Slice D.2 wording 留實作）
 
-10 條走 single-call batch（Sonnet 4.6，input ~3K + output ~2K = ~$0.025/audit）。每條回 `{rule_id, status, actual, fix_suggestion}`。
+12 條走 single-call batch（Sonnet 4.6，input ~3.5K + output ~2.5K = ~$0.025-0.035/audit）。每條回 `{rule_id, status, actual, fix_suggestion}`。
 
 | ID | Name | Why LLM | KB context required? |
 |---|---|---|---|
@@ -980,8 +984,25 @@ Core Web Vitals (CrUX field data, last 28 days):
 | L6 | E-E-A-T Expertise：作者 bio / 引用 / credentials | 結合 author info + 內文 | no |
 | L7 | E-E-A-T Authoritativeness：被引用 / 外部 mention 提示 | 從內文提示 author authority | no |
 | L8 | E-E-A-T Trustworthiness：HTTPS / 隱私頁 / 聯絡 | mix structural + LLM judgment | no |
-| L9 | 台灣藥事法 / 醫療法 compliance（reuse `compliance_scan.py`）| 中文法規語境 | reuse `agents/brook/compliance_scan.py` |
-| L10 | Schema 與內容一致性 / Internal link 機會 | LLM 對 Article schema headline vs `<h1>` / KB context 判斷 internal link | yes（`agents/robin/kb_search.search_kb`，top_k=5）|
+| L9 | 台灣藥事法 / 醫療法 compliance（reuse `compliance_scan.py` — see Caveat below）| 中文法規語境 | reuse `agents/brook/compliance_scan.py` |
+| L10 | Schema 與內容一致性 / Internal link 機會（see Caveat below）| LLM 對 Article schema headline vs `<h1>` / KB context 判斷 internal link | yes（`agents/robin/kb_search.search_kb` 須加 `purpose` 參數版） |
+| L11 | Medical references / DOI / PubMed / 衛福部 / WHO 等權威源引用率 | YMYL Health niche Google 強信號（Google QRG §5.1）；S3 字面 ≥1 link 過寬鬆 | no |
+| L12 | Last reviewed date / 醫師審稿標記 / 內容更新頻率 | YMYL freshness：`<meta name="article:modified_time">` + 內文「最後更新 / 醫師審稿 by」標記；SC3 Author 不 cover「reviewed by」層 | no |
+
+### L9 / L10 Reuse Caveats（**實作 PR 必看**）
+
+**L9 — `compliance_scan.py` 是 SEED 版本**：
+- [`agents/brook/compliance_scan.py:7-13`](../../agents/brook/compliance_scan.py#L7-L13) 模組註解明確標 SEED；`MEDICAL_CLAIM_PATTERNS` 只 6 條（治好 / 99.9% / 肝癌 / 乳癌等）
+- 直接 reuse 會在 audit report L9 給出**假陰性**（很多違反藥事法的句子抓不到）
+- 解法：D.2 走 `scan_publish_gate()` 作為 quick signal，audit report L9 標明「Phase 1 SEED — 結果僅作參考；Slice B 醫療詞庫上線後升級到 full coverage」；或等 `shared/compliance/medical_claim_vocab.py` 落地後再 wire 進 L9
+- 化妝品衛生安全管理法 / 食品安全衛生管理法 vocab 補進 Slice B 醫療詞庫 — 不在本 D.2 scope，但 audit 報告 L9 fix_suggestion 模板要提到「需補化妝品 / 食品法規 vocab」
+
+**L10 — `kb_search.search_kb` prompt 寫死 YouTube 場景**：
+- [`agents/robin/kb_search.py:57`](../../agents/robin/kb_search.py#L57) 的 prompt 寫死「使用者正在製作一支 YouTube 影片，主題是：」 — 給 SEO audit 場景用，會讓 Haiku 在錯誤上下文（YouTube 創作者）排序 KB 結果
+- 兩個解法（D.2 必選一）：
+  - **方案 A（推薦）**：擴 `search_kb` signature 加 `purpose: Literal["youtube", "seo_audit", "blog_compose", "general"] = "general"`，內部依 purpose dispatch 適配 prompt；既有 caller 預設 "youtube" 保 backward compat 或 audit caller passes `purpose="seo_audit"`
+  - **方案 B（短期）**：D.2 寫 thin wrapper `_kb_search_for_audit(query)` 自行實作 prompt（SEO audit 場景：「使用者寫了一篇 SEO 文章，正尋找 internal link 機會，主題是：」）+ Haiku 排序 — 但 logic duplication 風險
+- 預估時程已含此擴充工作；方案 A 必須跨檔影響 `agents/robin/kb_search.py` 既有 caller，做 regression test 確認既有 YouTube 路徑不破
 
 ### Single-call prompt 結構
 
