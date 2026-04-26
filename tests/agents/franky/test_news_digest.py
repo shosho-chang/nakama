@@ -447,7 +447,9 @@ def test_run_merges_rss_and_anthropic_html_candidates(tmp_path, monkeypatch):
 
 
 def test_run_anthropic_html_failure_does_not_block_rss(tmp_path, monkeypatch):
-    """If anthropic_html.gather raises, RSS path must still produce digest."""
+    """If anthropic_html.gather raises an unexpected exception, RSS path
+    must still produce the digest. Tests the merge-layer try/except in
+    NewsDigestPipeline.run, not just the scraper's internal None-return path."""
     cfg = tmp_path / "feeds.yaml"
     cfg.write_text(
         "feeds:\n  - name: x\n    url: https://example.com\n    publisher: X\n",
@@ -456,8 +458,10 @@ def test_run_anthropic_html_failure_does_not_block_rss(tmp_path, monkeypatch):
 
     monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [_make_candidate("rss")])
 
-    # Anthropic scraper itself swallows network errors and returns []. Simulate.
-    monkeypatch.setattr(nd.anthropic_html, "gather_candidates", lambda **kw: [])
+    def _boom(**kw):
+        raise RuntimeError("anthropic scraper exploded")
+
+    monkeypatch.setattr(nd.anthropic_html, "gather_candidates", _boom)
     monkeypatch.setattr(
         nd.llm,
         "ask",
