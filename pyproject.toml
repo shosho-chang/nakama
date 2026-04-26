@@ -68,6 +68,7 @@ transcription = [
 ]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",                 # Phase 6: critical-path coverage gate
     "ruff>=0.4.0",
     "pre-commit>=3.7.0",
 ]
@@ -94,3 +95,27 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+
+# Coverage 設定（Phase 6 Slice 1）
+# 預設不在 pytest 加 --cov（避免本地 dev 變慢 ~30%）；CI 額外開
+# 量法：pytest --cov=shared --cov=thousand_sunny --cov=agents --cov-report=term-missing
+[tool.coverage.run]
+source = ["shared", "thousand_sunny", "agents"]
+branch = false
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]
+show_missing = true
+skip_covered = false
+precision = 2

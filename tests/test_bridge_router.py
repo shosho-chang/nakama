@@ -841,3 +841,113 @@ def test_drafts_detail_shows_requeue_for_failed_status(client):
     assert "WP 500 error" in body
     # Approve/reject/edit must NOT show for failed status
     assert f'action="/bridge/drafts/{qid}/approve"' not in body
+
+
+# ── /api/agents ─────────────────────────────────────────────────────────────
+
+
+def test_api_agents_returns_full_roster_with_state_derivation(client, monkeypatch):
+    """`/bridge/api/agents` 回傳 9 個 agent + 三條 state path（online / idle / hold / offline）"""
+    fake_today = [
+        {
+            "agent": "robin",
+            "model": "claude-sonnet-4-6",
+            "calls": 5,
+            "input_tokens": 1000,
+            "output_tokens": 500,
+            "cache_read_tokens": 200,
+            "cache_write_tokens": 100,
+        },
+        {
+            "agent": "robin",  # 同 agent 跨 model 要 sum
+            "model": "claude-haiku-4-5",
+            "calls": 3,
+            "input_tokens": 600,
+            "output_tokens": 300,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+        },
+    ]
+
+    import shared.state as state_module
+
+    monkeypatch.setattr(state_module, "get_cost_summary", lambda **kw: fake_today)
+
+    r = client.get("/bridge/api/agents")
+    assert r.status_code == 200
+    payload = r.json()
+    assert "agents" in payload
+    agents = {a["key"]: a for a in payload["agents"]}
+
+    # 9 個 agent 全到（roster 由 bridge.py 模組變數定義）
+    assert set(agents.keys()) == {
+        "robin",
+        "nami",
+        "zoro",
+        "brook",
+        "sanji",
+        "franky",
+        "usopp",
+        "chopper",
+        "sunny",
+    }
+
+    # robin: 有 today usage → online；input+output 跨 model 累加
+    assert agents["robin"]["state"] == "online"
+    assert agents["robin"]["runs_today"] == 8  # 5+3
+    assert agents["robin"]["tok_today"] == 2400  # (1000+600)+(500+300)
+    assert agents["robin"]["cost_today"] > 0
+
+    # nami: default_state="online" 但無 today usage → idle
+    assert agents["nami"]["state"] == "idle"
+    assert agents["nami"]["runs_today"] == 0
+    assert agents["nami"]["tok_today"] == 0
+
+    # usopp: default_state="hold" → 永遠 hold（即使無 usage）
+    assert agents["usopp"]["state"] == "hold"
+
+    # chopper / sunny: default_state="offline" → 永遠 offline
+    assert agents["chopper"]["state"] == "offline"
+    assert agents["sunny"]["state"] == "offline"
+
+    # 結構完整：每個 agent 必含 9 欄
+    for a in payload["agents"]:
+        assert set(a.keys()) == {
+            "code",
+            "key",
+            "role",
+            "en",
+            "model",
+            "state",
+            "tok_today",
+            "runs_today",
+            "cost_today",
+        }
+
+
+def test_api_agents_handles_none_token_fields(client, monkeypatch):
+    """get_cost_summary 回傳 None 欄位（SQLite SUM(NULL) 情境）— 不能炸"""
+    fake_today = [
+        {
+            "agent": "brook",
+            "model": "claude-opus-4-7",
+            "calls": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "cache_read_tokens": None,
+            "cache_write_tokens": None,
+        },
+    ]
+
+    import shared.state as state_module
+
+    monkeypatch.setattr(state_module, "get_cost_summary", lambda **kw: fake_today)
+
+    r = client.get("/bridge/api/agents")
+    assert r.status_code == 200
+    agents = {a["key"]: a for a in r.json()["agents"]}
+    # calls=None → runs_today=0 → idle
+    assert agents["brook"]["state"] == "idle"
+    assert agents["brook"]["runs_today"] == 0
+    assert agents["brook"]["tok_today"] == 0
+    assert agents["brook"]["cost_today"] == 0

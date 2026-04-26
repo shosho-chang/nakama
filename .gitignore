@@ -21,6 +21,7 @@ __pycache__/
 # Coverage artifacts
 .coverage
 .coverage.*
+coverage.json
 htmlcov/
 
 # Config (generated)
