@@ -11,7 +11,8 @@
 - [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — Robin update logic PR #169 merged 33f3095；broken pages migration 待修修 apply 4 頁；A-11c lifeos_writer 修了
 - [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **ingest 軸線 pickup**：PR A merged 33f3095 + PR B merged d955af6；PR C 必先修 4 silent corruption bug
 - [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — 6 PR 全 merged 2026-04-26（4 PR review + 2 follow-up bug fix #180/#181）；三軸線下游 unblock
-- [project_d2_seo_audit_starting_2026_04_27.md](project_d2_seo_audit_starting_2026_04_27.md) — **下一個 chunk**：D.2 SEO audit-post skill 起跑 checklist（scope / files / dep / caveat）
+- [project_d2_seo_audit_pr183.md](project_d2_seo_audit_pr183.md) — **D.2 PR #183 opened 2026-04-26**：seo-audit-post skill + 12 LLM + T1 benchmark + 17 test；下一 chunk 走 F (firecrawl)
+- [feedback_init_py_alias_shadows_module.md](feedback_init_py_alias_shadows_module.md) — `__init__.py` 用 `import X as Y` 同名 alias 會 shadow submodule；monkeypatch 失靈訊息「'function' object」要立刻想到
 - [feedback_mathml2latex_abandoned.md](feedback_mathml2latex_abandoned.md) — mathml2latex PyPI 0.1.0 abandoned，MathML → LaTeX 走 alttext-first（不加 dep）
 - [feedback_kb_concept_aggregator_principle.md](feedback_kb_concept_aggregator_principle.md) — concept page = cross-source aggregator，禁止 `## 更新` todo dump，衝突寫 `## 文獻分歧`
 - Plan：[docs/plans/2026-04-26-ingest-v2-redesign-plan.md](../../docs/plans/2026-04-26-ingest-v2-redesign-plan.md) — ingest v2 redesign 完整 plan + §8 Decisions table（4 題拍板）
