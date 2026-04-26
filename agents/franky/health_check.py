@@ -399,7 +399,9 @@ def probe_r2_backup_nakama(
     inline_alerts: list[AlertV1] = []
 
     try:
-        client = R2Client.from_nakama_backup_env()
+        # Probe is read-only (list_objects). Use mode="read" so this surface
+        # never needs the WRITE token — least-privilege.
+        client = R2Client.from_nakama_backup_env(mode="read")
     except R2Unavailable as exc:
         logger.info("r2_backup_nakama probe skipped (missing env): %s", exc)
         return (

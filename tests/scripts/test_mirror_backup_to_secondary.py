@@ -192,3 +192,105 @@ def test_main_respects_tier_filter_env(fake_clients, monkeypatch):
     # daily got mirrored, weekly didn't
     assert (b2_root / "state/2026/04/25/state.db.gz").exists()
     assert not (b2_root / "state-weekly/2026-W17/state.db.gz").exists()
+
+
+# ── heartbeat + alert wiring (sweep PR C) ───────────────────────────────────
+# Phase 3 said "no silent failures"; PR #154 shipped without record_failure /
+# alert("error", ...) on the mirror cron, so a B2 outage would only surface in
+# the cron log. These tests pin the wiring so future drift surfaces.
+
+
+def test_main_records_success_on_clean_run(fake_clients):
+    from scripts import mirror_backup_to_secondary as mod
+
+    _seed_r2(
+        fake_clients,
+        "state/2026/04/25/state.db.gz",
+        b"ok",
+        datetime(2026, 4, 25, tzinfo=timezone.utc),
+    )
+    with (
+        patch.object(mod, "record_success") as rec_ok,
+        patch.object(mod, "record_failure") as rec_fail,
+        patch.object(mod, "alert") as alert_fn,
+    ):
+        rc = mod.main()
+
+    assert rc == 0
+    rec_ok.assert_called_once_with("nakama-backup-mirror")
+    rec_fail.assert_not_called()
+    alert_fn.assert_not_called()
+
+
+def test_main_alerts_and_records_failure_on_b2_upload_error(fake_clients):
+    from scripts import mirror_backup_to_secondary as mod
+
+    fake_r2, fake_b2, _, _ = fake_clients
+    _seed_r2(
+        fake_clients,
+        "state/2026/04/25/state.db.gz",
+        b"will-fail",
+        datetime(2026, 4, 25, tzinfo=timezone.utc),
+    )
+    fake_b2.upload_file.side_effect = B2Unavailable("upload denied")
+
+    with (
+        patch.object(mod, "record_success") as rec_ok,
+        patch.object(mod, "record_failure") as rec_fail,
+        patch.object(mod, "alert") as alert_fn,
+    ):
+        rc = mod.main()
+
+    assert rc == 1
+    rec_ok.assert_not_called()
+    rec_fail.assert_called_once()
+    assert rec_fail.call_args[0][0] == "nakama-backup-mirror"
+    alert_fn.assert_called_once()
+    args, kwargs = alert_fn.call_args
+    assert args[0] == "error"
+    assert args[1] == "backup"
+    assert "mirror:" in args[2]
+    assert kwargs.get("dedupe_key") == "backup-mirror-fail"
+
+
+def test_main_records_failure_when_r2_unavailable():
+    from scripts import mirror_backup_to_secondary as mod
+    from shared.r2_client import R2Unavailable
+
+    with (
+        patch("scripts.mirror_backup_to_secondary.R2Client") as r2_cls,
+        patch("scripts.mirror_backup_to_secondary.B2Client"),
+        patch("scripts.mirror_backup_to_secondary.load_config", lambda: {}),
+        patch.object(mod, "record_failure") as rec_fail,
+        patch.object(mod, "alert") as alert_fn,
+    ):
+        r2_cls.from_nakama_backup_env.side_effect = R2Unavailable("missing")
+        rc = mod.main()
+
+    assert rc == 1
+    rec_fail.assert_called_once()
+    alert_fn.assert_called_once()
+    assert alert_fn.call_args.kwargs["dedupe_key"] == "backup-mirror-r2-unavailable"
+
+
+def test_main_records_success_when_b2_not_configured():
+    """B2-not-configured is not a failure — heartbeat still records success so
+    /bridge/health doesn't show a stale-cron false alarm."""
+    from scripts import mirror_backup_to_secondary as mod
+
+    with (
+        patch("scripts.mirror_backup_to_secondary.R2Client") as r2_cls,
+        patch("scripts.mirror_backup_to_secondary.B2Client") as b2_cls,
+        patch("scripts.mirror_backup_to_secondary.load_config", lambda: {}),
+        patch.object(mod, "record_success") as rec_ok,
+        patch.object(mod, "record_failure") as rec_fail,
+        patch.object(mod, "alert") as alert_fn,
+    ):
+        r2_cls.from_nakama_backup_env.return_value = MagicMock()
+        b2_cls.from_env.side_effect = B2Unavailable("missing B2 env")
+        rc = mod.main()
+
+    assert rc == 0
+    rec_ok.assert_called_once_with("nakama-backup-mirror")
+    rec_fail.assert_not_called()
+    alert_fn.assert_not_called()

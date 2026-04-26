@@ -369,6 +369,8 @@ def test_r2_backup_nakama_fresh_returns_ok_no_alert(_r2_nakama_env):
     assert probe.detail["bucket"] == "nakama-backup"
     assert probe.detail["latest_key"] == "state.db.gz"
     assert inline == []
+    # Sweep PR C: probe is read-only, must request read token (least privilege)
+    mock_cls.from_nakama_backup_env.assert_called_once_with(mode="read")
 
 
 def test_r2_backup_nakama_stale_returns_fail_with_critical_inline(_r2_nakama_env):
