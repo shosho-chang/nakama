@@ -26,7 +26,7 @@ from typing import Any, Literal
 
 from bs4 import BeautifulSoup
 
-from shared.anthropic_client import get_client, set_current_agent
+from shared.anthropic_client import ask_claude, set_current_agent
 from shared.log import get_logger
 from shared.seo_audit.types import AuditCheck
 
@@ -207,6 +207,12 @@ def _build_system_prompt() -> str:
         '"fix_suggestion": "..."}. Use "skip" when the data needed for the '
         "rule is missing. Keep `actual` and `fix_suggestion` concise, in "
         "繁體中文，each ≤ 60 字。"
+        # L9 SEED caveat — see references/check-rule-catalog.md L9/L10 caveats.
+        # SEED 詞庫只 6 條，LLM 補抓僅供參考，所以 fix_suggestion 要掛這個尾巴
+        # 提醒讀者目前是 Phase 1 SEED 限制。
+        "\nSpecial rule for L9 (台灣藥事法): always append '（SEED scan；醫療"
+        "詞庫升級中）' to its fix_suggestion (whatever the status), so report "
+        "readers know this rule still has SEED-only coverage."
     )
 
 
@@ -356,23 +362,19 @@ def review(
     )
 
     set_current_agent("brook")  # SEO audit 暫掛 brook，cost tracking 一致
+    # Use shared.anthropic_client.ask_claude wrapper so `record_api_call` fires
+    # (the previous direct `client.messages.create` skipped cost tracking — see
+    # follow-up A3 in project_seo_d2_f_merged_2026_04_26.md).
     try:
-        client = get_client()
-        response = client.messages.create(
+        text = ask_claude(
+            user,
+            system=system,
             model=_model_for_level(model),
             max_tokens=_MAX_OUTPUT_TOKENS,
-            system=system,
-            messages=[{"role": "user", "content": user}],
         )
     except Exception as e:
         logger.warning("llm_review_call_failed err=%s", e)
         return _all_skipped(f"LLM API error: {type(e).__name__}")
-
-    try:
-        text = response.content[0].text
-    except Exception as e:
-        logger.warning("llm_review_response_shape_unexpected err=%s", e)
-        return _all_skipped("LLM response 結構不符預期")
 
     parsed = _parse_response_json(text)
     if parsed is None:

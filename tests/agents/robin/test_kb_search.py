@@ -52,7 +52,7 @@ def vault(tmp_path):
 def test_empty_vault_returns_empty_list(tmp_path, monkeypatch):
     """KB/Wiki dirs 不存在 → 不打 Claude、回空 list。"""
     client = _mock_claude_response("[]")
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     assert search_kb("anything", tmp_path) == []
     client.messages.create.assert_not_called()
@@ -61,7 +61,7 @@ def test_empty_vault_returns_empty_list(tmp_path, monkeypatch):
 def test_vault_with_only_empty_subdirs_returns_empty(vault, monkeypatch):
     """3 個 subdir 存在但無 .md 檔案 → 回 []、不打 Claude。"""
     client = _mock_claude_response("[]")
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     assert search_kb("topic", vault) == []
     client.messages.create.assert_not_called()
@@ -83,7 +83,7 @@ def test_type_normalization_sources_concepts_entities(vault, monkeypatch):
         ' {"index": 2, "relevance_reason": "r2"},'
         ' {"index": 3, "relevance_reason": "r3"}]'
     )
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     results = search_kb("睡眠", vault)
     types = {r["type"] for r in results}
@@ -93,7 +93,7 @@ def test_type_normalization_sources_concepts_entities(vault, monkeypatch):
 def test_title_from_frontmatter_preferred_over_filename(vault, monkeypatch):
     _mk_page(vault / "KB" / "Wiki" / "Sources", "why-we-sleep", "為什麼要睡覺", "body")
     client = _mock_claude_response('[{"index": 1, "relevance_reason": "主題相關"}]')
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     results = search_kb("睡眠科學", vault)
     assert results[0]["title"] == "為什麼要睡覺"
@@ -105,7 +105,7 @@ def test_title_falls_back_to_filename_when_frontmatter_missing(vault, monkeypatc
         "just body no frontmatter at all", encoding="utf-8"
     )
     client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     results = search_kb("query", vault)
     assert results[0]["title"] == "no-frontmatter"
@@ -124,7 +124,7 @@ def test_preview_truncated_to_200_chars(vault, monkeypatch):
 
     client = MagicMock()
     client.messages.create.side_effect = _capture_messages_create
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     search_kb("q", vault)
     # preview 在 prompt 裡；不該含完整 500 個 A
@@ -143,7 +143,7 @@ def test_happy_path_returns_ranked_pages_with_reasons(vault, monkeypatch):
     client = _mock_claude_response(
         '[{"index": 2, "relevance_reason": "最契合"}, {"index": 1, "relevance_reason": "次相關"}]'
     )
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     results = search_kb("主題", vault)
     assert len(results) == 2
@@ -157,7 +157,7 @@ def test_happy_path_returns_ranked_pages_with_reasons(vault, monkeypatch):
 def test_response_without_json_array_returns_empty(vault, monkeypatch):
     _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body")
     client = _mock_claude_response("Sorry, I could not find anything relevant.")
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     assert search_kb("主題", vault) == []
 
@@ -166,7 +166,7 @@ def test_response_with_invalid_json_returns_empty(vault, monkeypatch):
     """regex 抓到 [...] 但 json.loads 炸 → 回 []。"""
     _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body")
     client = _mock_claude_response('[{"index": 1, invalid-json: true}]')
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     assert search_kb("主題", vault) == []
 
@@ -177,7 +177,7 @@ def test_out_of_range_index_is_skipped(vault, monkeypatch):
     client = _mock_claude_response(
         '[{"index": 1, "relevance_reason": "ok"}, {"index": 99, "relevance_reason": "ghost"}]'
     )
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     results = search_kb("q", vault)
     assert len(results) == 1
@@ -190,7 +190,7 @@ def test_response_with_prose_prefix_then_json_parses_array(vault, monkeypatch):
     client = _mock_claude_response(
         '以下是相關頁面：\n[{"index": 1, "relevance_reason": "相關"}]\n以上。'
     )
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     results = search_kb("q", vault)
     assert len(results) == 1
@@ -217,7 +217,7 @@ def test_unreadable_file_is_skipped_gracefully(vault, monkeypatch):
 
     # 只有一個檔、且它讀不到 → pages 為空 → 直接回 [] 不打 Claude
     client = _mock_claude_response("[]")
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     assert search_kb("q", vault) == []
     client.messages.create.assert_not_called()
@@ -231,7 +231,7 @@ def test_unreadable_file_is_skipped_gracefully(vault, monkeypatch):
 def test_result_has_expected_keys(vault, monkeypatch):
     _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
     client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     results = search_kb("q", vault)
     assert set(results[0].keys()) == {
@@ -259,7 +259,7 @@ def _capture_prompt(monkeypatch) -> dict:
 
     client = MagicMock()
     client.messages.create.side_effect = _capture_messages_create
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
     return captured
 
 
@@ -310,7 +310,7 @@ def test_all_purposes_produce_same_output_shape(vault, monkeypatch):
     """所有 purpose 走同一套 JSON parsing；輸出 keys 不變。"""
     _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body1")
     client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
-    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     for purpose in ("general", "youtube", "seo_audit", "blog_compose"):
         results = search_kb("q", vault, purpose=purpose)  # type: ignore[arg-type]
@@ -322,3 +322,16 @@ def test_all_purposes_produce_same_output_shape(vault, monkeypatch):
             "preview",
             "relevance_reason",
         }
+
+
+# ---------------------------------------------------------------------------
+# A5 follow-up — invalid purpose raises ValueError instead of silent fallback
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_purpose_raises_value_error(vault):
+    """A5 follow-up: 無效 purpose 字串應 raise ValueError，
+    不再 silently fall through 到 general。"""
+    _mk_page(vault / "KB" / "Wiki" / "Concepts", "x", "X", "body")
+    with pytest.raises(ValueError, match="Unknown purpose"):
+        search_kb("q", vault, purpose="not_a_real_purpose")  # type: ignore[arg-type]

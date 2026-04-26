@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from shared.anthropic_client import get_client, set_current_agent
+from shared.anthropic_client import ask_claude, set_current_agent
 from shared.utils import extract_frontmatter
 
 TOP_K = 8
@@ -41,8 +41,12 @@ def _build_purpose_intro(purpose: Purpose, query: str) -> str:
             f"使用者正在撰寫一篇部落格文章，需要 KB 內既有素材作為引用 / 對照背景。"
             f"文章主題是：\n「{query}」"
         )
-    # general — 不假設 use case，純相關性
-    return f"使用者想查詢知識庫中與下列主題相關的頁面：\n「{query}」"
+    if purpose == "general":
+        return f"使用者想查詢知識庫中與下列主題相關的頁面：\n「{query}」"
+    raise ValueError(
+        f"Unknown purpose: {purpose!r}; expected one of "
+        f'("youtube", "seo_audit", "blog_compose", "general")'
+    )
 
 
 def search_kb(
@@ -111,14 +115,14 @@ def search_kb(
     )
 
     set_current_agent("robin")
-    client = get_client()
-    response = client.messages.create(
+    # Use shared.anthropic_client.ask_claude wrapper so `record_api_call` fires
+    # (the previous direct `client.messages.create` skipped cost tracking — see
+    # follow-up A3 in project_seo_d2_f_merged_2026_04_26.md).
+    text = ask_claude(
+        prompt,
         model="claude-haiku-4-5-20251001",
         max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
     )
-
-    text = response.content[0].text
     json_match = re.search(r"\[[\s\S]*\]", text)
     if not json_match:
         return []

@@ -23,8 +23,9 @@ from shared.log import get_logger
 
 logger = get_logger("nakama.shared.seo_enrich.serp_summarizer")
 
-# Haiku 4.5：cheapest Claude；$1/MTok in / $5/MTok out。
-# 一次 enrich ~3000 in + 1500 out tokens ≈ $0.003 + $0.0075 ≈ $0.011。
+# Haiku 4.5：cheapest Claude；$0.80/MTok in / $4/MTok out（per `shared/pricing.py`
+# `_FAMILY_DEFAULTS["claude-haiku"]`，2026-04 effective）。
+# 一次 enrich ~3000 in + 1500 out tokens ≈ $0.0024 + $0.006 ≈ $0.008。
 # Task prompt 估 ~$0.005；視實際 token 用量調整。
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
@@ -75,7 +76,7 @@ def _format_pages_block(pages: list[dict]) -> str:
     blocks: list[str] = []
     for i, p in enumerate(pages, start=1):
         title = _sanitize(str(p.get("title", "") or ""))
-        url = str(p.get("url", "") or "")
+        url = _sanitize(str(p.get("url", "") or ""))
         content = _sanitize(str(p.get("content_markdown", "") or ""))
         blocks.append(f"### 第 {i} 名\n標題：{title}\nURL：{url}\n\n{content}")
     return "\n\n---\n\n".join(blocks)
