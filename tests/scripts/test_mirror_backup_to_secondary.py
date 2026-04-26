@@ -28,6 +28,8 @@ def fake_clients(monkeypatch, tmp_path):
 
     fake_r2 = MagicMock(spec=R2Client)
     fake_r2.bucket = "nakama-backup"
+    # `_s3` is a boto3 instance attribute (not on the class), so spec= can't
+    # restrict it — re-stub explicitly so .download_file is callable.
     fake_r2._s3 = MagicMock()
     fake_r2._s3.download_file = fake_r2_download_file
 

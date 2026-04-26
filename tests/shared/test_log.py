@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 
 import pytest
@@ -175,8 +176,6 @@ def test_get_logger_lazy_loads_dotenv_before_reading_format(monkeypatch, capsys)
     def fake_load_config():
         os.environ["NAKAMA_LOG_FORMAT"] = "json"
         return {}
-
-    import os
 
     monkeypatch.setattr(config_mod, "load_config", fake_load_config)
 
