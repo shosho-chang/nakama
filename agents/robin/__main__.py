@@ -10,6 +10,28 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from agents.robin.agent import RobinAgent
 from agents.robin.pubmed_digest import PubMedDigestPipeline
+from shared.heartbeat import record_failure, record_success
+
+# Phase 5B-2 — heartbeat key consumed by probe_cron_freshness via CRON_SCHEDULES.
+# Stable across releases (changing breaks the probe's prior-state continuity).
+# Only the pubmed_digest mode is instrumented; --mode ingest is a manual file watcher
+# whose absence loses no work (operator just hasn't dropped files in inbox).
+_JOB_NAME_PUBMED = "robin-pubmed-digest"
+
+
+def _run_pubmed_digest(*, dry_run: bool) -> None:
+    agent = PubMedDigestPipeline(dry_run=dry_run)
+    if dry_run:
+        # dry-run is manual / ad-hoc — recording its outcomes would corrupt the
+        # cron staleness signal. Only the production path emits heartbeats.
+        agent.execute()
+        return
+    try:
+        agent.execute()
+    except Exception as exc:
+        record_failure(_JOB_NAME_PUBMED, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+    record_success(_JOB_NAME_PUBMED)
 
 
 def main() -> None:
@@ -34,10 +56,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.mode == "pubmed_digest":
-        agent = PubMedDigestPipeline(dry_run=args.dry_run)
+        _run_pubmed_digest(dry_run=args.dry_run)
     else:
-        agent = RobinAgent(interactive=args.interactive)
-    agent.execute()
+        RobinAgent(interactive=args.interactive).execute()
 
 
 if __name__ == "__main__":

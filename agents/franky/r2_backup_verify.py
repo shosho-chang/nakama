@@ -33,9 +33,12 @@ from shared.state import _get_conn
 logger = get_logger("nakama.franky.r2_backup_verify")
 
 
-# Thresholds — env-tunable for tests / staging variants
-MIN_BACKUP_SIZE_BYTES: int = int(os.getenv("FRANKY_R2_MIN_SIZE_BYTES", str(1 * 1024 * 1024)))
-STALE_THRESHOLD_HOURS: float = float(os.getenv("FRANKY_R2_STALE_HOURS", "25"))
+# Thresholds — env-tunable for tests / staging variants.
+# `... or "<default>"` handles both unset (None) and explicitly-empty key=
+# in .env — the latter would crash the int/float cast (defensive pattern lifted
+# from scripts/backup_nakama_state.py after the 04-26 morning incident).
+MIN_BACKUP_SIZE_BYTES: int = int(os.getenv("FRANKY_R2_MIN_SIZE_BYTES") or str(1 * 1024 * 1024))
+STALE_THRESHOLD_HOURS: float = float(os.getenv("FRANKY_R2_STALE_HOURS") or "25")
 DEFAULT_PREFIX: str = os.getenv("FRANKY_R2_PREFIX", "")
 
 # 連 N 日失敗升 Critical（ADR-007 §1 table row 4）

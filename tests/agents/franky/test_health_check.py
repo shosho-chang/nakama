@@ -653,3 +653,84 @@ def test_cron_freshness_alert_context_includes_threshold_and_age():
     assert ctx["job_name"] == "nakama-backup"
     assert ctx["threshold_minutes"] == 24 * 60 + 60  # interval + grace
     assert ctx["success_age_minutes"] == 26 * 60
+
+
+# ---------------------------------------------------------------------------
+# CRON_SCHEDULES registry — Phase 5B-1 reviewer lesson
+# ---------------------------------------------------------------------------
+
+
+def test_every_registered_job_has_a_record_success_caller():
+    """Each CRON_SCHEDULES entry must correspond to a real record_success caller.
+
+    Catches the false-green bug from PR #170 review (feedback_probe_registry_verify_producer.md):
+    if you register a job here without an instrumented producer, probe_cron_freshness
+    silently sees `hb=None` for that job and skips it — every cron miss looks healthy.
+
+    The test grep's the repo for `record_success("<job>"|'<job>')` to verify a caller
+    exists somewhere. Skipped jobs (franky-health-probe / external-uptime-probe) are
+    intentionally NOT in CRON_SCHEDULES so they don't need to be checked here.
+    """
+    import subprocess
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    missing: list[str] = []
+    for job in health_check.CRON_SCHEDULES:
+        # Match `record_success("<job>")` or `record_success('<job>')` or wrapped via
+        # `_JOB_NAME = "<job>"` followed by `record_success(_JOB_NAME)`. We only need to
+        # verify the literal string appears in a non-test source file under agents/ or
+        # scripts/, with `record_success` somewhere in the same module.
+        result = subprocess.run(
+            [
+                "git",
+                "grep",
+                "-l",
+                "--",
+                f'"{job}"',
+                "agents/",
+                "scripts/",
+            ],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        files_with_literal = [
+            f for f in result.stdout.strip().splitlines() if f and not f.startswith("tests/")
+        ]
+        if not files_with_literal:
+            missing.append(f"{job}: no source file references this literal")
+            continue
+
+        # Confirm at least one of those files also imports/calls record_success.
+        has_caller = False
+        for path in files_with_literal:
+            text = (repo_root / path).read_text(encoding="utf-8")
+            if "record_success" in text:
+                has_caller = True
+                break
+        if not has_caller:
+            missing.append(
+                f"{job}: literal found in {files_with_literal} but no record_success caller there"
+            )
+
+    assert not missing, "CRON_SCHEDULES drift — register-without-instrument:\n  " + "\n  ".join(
+        missing
+    )
+
+
+def test_cron_schedules_grace_convention():
+    """Daily jobs use 60-min grace; weekly jobs use 120-min grace.
+
+    Convention from PR #170 review feedback (feedback_alert_dedup_window_per_interval).
+    Daily=60 covers ad-hoc reboot / NTP drift; weekly=120 absorbs Sunday DST or maintenance.
+    """
+    daily_min = 24 * 60
+    weekly_min = 7 * 24 * 60
+    for job, (interval, grace) in health_check.CRON_SCHEDULES.items():
+        if interval == daily_min:
+            assert grace == 60, f"{job}: daily job grace should be 60min, got {grace}"
+        elif interval == weekly_min:
+            assert grace == 120, f"{job}: weekly job grace should be 120min, got {grace}"
+        # 5-min / hourly probes not in this dict yet; skip.
