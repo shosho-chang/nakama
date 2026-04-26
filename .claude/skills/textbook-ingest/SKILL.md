@@ -238,12 +238,28 @@ For each chapter (loop):
 3. **Compose Chapter Source Summary** using the template at
    ``.claude/skills/textbook-ingest/prompts/chapter-summary.md``
    (rewritten for v2 — no word limit, verbatim quote per section,
-   Section concept map per section). **Placeholder swap is mandatory**:
-   every `<<FIG:fig-{ch}-{N}>>` / `<<TAB:tab-{ch}-{N}>>` / `<<EQ:eq-{ch}-{N}>>`
-   placeholder in `chapter_content` must be swapped to its final
-   markdown form in the body — placeholders **must not leak to the
-   final page** (Obsidian renders them as plain text and the figure
-   never displays).
+   Section concept map per section).
+
+   **Pre-compose preparation (driver responsibility)** — before
+   invoking the chapter-summary prompt, the driver MUST inject the
+   following fields into the prompt input; missing any of these will
+   regress to the PR C bug (placeholders leak or tables render blank):
+
+   - `figures: list[{ref, extension, caption, tied_to_section, llm_description}]`
+     — `llm_description` from Step 2 Vision describe (or carried
+     from prior ingest on idempotent re-run).
+   - `tables: list[{ref, caption, markdown_content}]` — driver reads
+     each ``{attachments-base-dir}/ch{n}/{ref}.md`` (already done in
+     Step 2 above) and inlines the file content as
+     `markdown_content`. The LLM `<<TAB:>>` splice logic depends
+     entirely on this field being populated; transclude (`![[tab.md]]`)
+     is forbidden.
+
+   **Placeholder swap is mandatory**: every `<<FIG:fig-{ch}-{N}>>` /
+   `<<TAB:tab-{ch}-{N}>>` / `<<EQ:eq-{ch}-{N}>>` placeholder in
+   `chapter_content` must be swapped to its final markdown form in
+   the body — placeholders **must not leak to the final page**
+   (Obsidian renders them as plain text and the figure never displays).
 
    **Swap rules** (also documented in `chapter-summary.md`
    "Placeholder swap rules" section):
