@@ -157,10 +157,13 @@
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
 - [project_quality_uplift_review_2026_04_25.md](project_quality_uplift_review_2026_04_25.md) — 9-phase 5/9 完成 MERGED 2026-04-25（PR #146/147/152/154/157）+ 待修 12 major/minor 清單 + 修修 manual follow-up
-- [project_quality_uplift_next_2026_04_26.md](project_quality_uplift_next_2026_04_26.md) — **目前 pickup 點**：12 sweep + VPS done；剩 Phase 4-8；下一步 Phase 4 postmortem
+- [project_quality_uplift_next_2026_04_26.md](project_quality_uplift_next_2026_04_26.md) — 04-26 morning pickup（已 superseded）
+- [project_quality_uplift_next_2026_04_26_evening.md](project_quality_uplift_next_2026_04_26_evening.md) — **目前 pickup 點**：本日 +3 PR (Phase 4 / 5A / 5B-1)；下一步 Phase 5B-2 instrument 4 cron
 - [project_quality_uplift_next_2026_04_25.md](project_quality_uplift_next_2026_04_25.md) — 上一輪 pickup（已過時，被 04-26 取代）
 - [project_quality_uplift_vps_deployed_2026_04_26.md](project_quality_uplift_vps_deployed_2026_04_26.md) — 5 PR VPS 部署完成 2026-04-26：解鎖 Phase 5/7/8；路上抓到 logger init / endpoint 漏 https / bucket name trailing space 三 bug
 - [project_quality_uplift_sweep_done_2026_04_26.md](project_quality_uplift_sweep_done_2026_04_26.md) — 12-major sweep 三 PR 全 merged 2026-04-26（#161/#162/#163）；剩 Phase 4-8 + 修修 VPS pull/restart
 - [feedback_subagent_shared_worktree.md](feedback_subagent_shared_worktree.md) — 並行 sub-agent 必開 `git worktree`，不可共用主 worktree（5-PR review 踩坑教訓）
 - [feedback_logger_init_before_load_config.md](feedback_logger_init_before_load_config.md) — module-level `logger = get_logger(...)` 必在 `load_config()` 之後；否則 LOG_FORMAT 鎖死 text（VPS deploy smoke 踩到）
 - Runbook：[docs/runbooks/postmortem-process.md](../../docs/runbooks/postmortem-process.md) — Phase 4：incident detect→mitigate→stub(24h)→postmortem(7d)→半年 retro；trigger `shared.alerts.alert("error", ...)`
+- [feedback_probe_registry_verify_producer.md](feedback_probe_registry_verify_producer.md) — 加 probe registry 前必 grep producer call site，docstring 列名單 ≠ 已 instrument（5B-1 false-green 教訓）
+- [feedback_alert_dedup_window_per_interval.md](feedback_alert_dedup_window_per_interval.md) — sustained-state alert dedup_window 必對齊 expected interval，default 15min 對 daily 失敗會炸 96 alerts/day
