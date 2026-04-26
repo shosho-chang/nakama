@@ -3,6 +3,7 @@
 **Scope:** 從 VPS 整台壞掉、state.db 損毀、或 secret compromise 復原 Nakama 服務的 step-by-step playbook。
 **Owner:** 修修手動 ssh 執行；本檔的指令 copy-paste 友善。
 **測試節奏:** 每半年做一次 drill（drill 步驟見 §6），記錄 wall-clock time 回饋本檔的 RTO 估值。
+**Incident 處理:** 觸發本 runbook 的事件屬於 SEV-1，同時走 [`postmortem-process.md`](postmortem-process.md) §3 開 incident stub（24h 內）+ 7 天內補 postmortem。
 
 ---
 
