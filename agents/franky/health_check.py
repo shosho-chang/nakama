@@ -547,6 +547,175 @@ def probe_r2_backup_nakama(
     )
 
 
+# ---------------------------------------------------------------------------
+# Phase 5D — external service auth probes (GSC / Slack / Gmail)
+#
+# Pattern: cheapest read-only call that exercises the auth handshake. Failure
+# means token expired / revoked / scope drift — operator wakes up to refresh
+# the credential before the actual cron job (Robin Slack DM, Nami Gmail triage,
+# zoro/ai-news GSC enrich) silently breaks. Goes through the standard 3-fail
+# gate via _record_and_maybe_alert; transient API blips don't page.
+#
+# Env-skip: if the credential is absent (dev / CI), return status='ok' +
+# detail.skipped=True. Mirrors probe_wp_site / probe_r2_backup_nakama.
+# ---------------------------------------------------------------------------
+
+
+def _skipped_external_probe(
+    target: ProbeTarget, now: datetime, started: float, reason: str
+) -> HealthProbeV1:
+    """Common skip-when-env-missing return for external probes (dev / CI safety)."""
+    return HealthProbeV1(
+        target=target,
+        status="ok",
+        checked_at=now,
+        latency_ms=int((time.monotonic() - started) * 1000),
+        detail={"skipped": True, "reason": reason},
+    )
+
+
+def probe_gsc(now: datetime | None = None) -> HealthProbeV1:
+    """Google Search Console auth probe — `sites().list()` is the cheapest token-validating call.
+
+    Service-account creds (no refresh token); failure = SA disabled, JSON file moved/corrupted,
+    or scope revoked at GCP project. Triggers operator action (regen SA / re-grant scopes).
+    """
+    now = now or _now()
+    started = time.monotonic()
+    if not os.getenv("GCP_SERVICE_ACCOUNT_JSON"):
+        return _skipped_external_probe("gsc", now, started, "missing_env")
+    try:
+        from shared.gsc_client import GSCClient
+
+        client = GSCClient.from_env()
+        # `sites().list()` — service-account scopes already granted at SA setup; this just
+        # exercises the token handshake + GSC API reachability. No business data fetched.
+        # num_retries=0 — probe should fail fast (transient infra is the 3-fail gate's job,
+        # not the SDK's silent backoff which would inflate latency_ms).
+        resp = client._get_service().sites().list().execute(num_retries=0)
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return HealthProbeV1(
+            target="gsc",
+            status="ok",
+            checked_at=now,
+            latency_ms=latency_ms,
+            detail={"site_count": len(resp.get("siteEntry", []))},
+        )
+    except Exception as exc:  # noqa: BLE001 — probe must never raise
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return HealthProbeV1(
+            target="gsc",
+            status="fail",
+            checked_at=now,
+            latency_ms=latency_ms,
+            error=f"{type(exc).__name__}: {exc}"[:200],
+        )
+
+
+def probe_slack(now: datetime | None = None) -> HealthProbeV1:
+    """Slack workspace auth probe — `auth.test` validates the FrankySlackBot bot token.
+
+    Token rotation, app uninstall, or workspace boot would silently 4xx every alert; this
+    catches it before an actual incident lands in the alert pipeline with nowhere to go.
+    """
+    now = now or _now()
+    started = time.monotonic()
+    token = os.getenv("SLACK_FRANKY_BOT_TOKEN")
+    if not token:
+        return _skipped_external_probe("slack", now, started, "missing_env")
+    try:
+        from slack_sdk import WebClient
+        from slack_sdk.errors import SlackApiError
+
+        # 10s timeout — Slack API is normally <1s; longer-than-10s = real network issue.
+        client = WebClient(token=token, timeout=10)
+        resp = client.auth_test()
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return HealthProbeV1(
+            target="slack",
+            status="ok",
+            checked_at=now,
+            latency_ms=latency_ms,
+            # `team` and `bot_id` are bot identity, not user data; safe for dashboard.
+            detail={"team": str(resp.get("team", ""))[:50]},
+        )
+    except SlackApiError as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        # Slack returns a structured error code (token_revoked / account_inactive / ...).
+        err_code = exc.response.get("error", "unknown") if exc.response else "unknown"
+        return HealthProbeV1(
+            target="slack",
+            status="fail",
+            checked_at=now,
+            latency_ms=latency_ms,
+            error=f"SlackApiError: {err_code}"[:200],
+        )
+    except Exception as exc:  # noqa: BLE001 — probe must never raise
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return HealthProbeV1(
+            target="slack",
+            status="fail",
+            checked_at=now,
+            latency_ms=latency_ms,
+            error=f"{type(exc).__name__}: {exc}"[:200],
+        )
+
+
+def probe_gmail(now: datetime | None = None) -> HealthProbeV1:
+    """Gmail OAuth probe — `users.getProfile(me)` validates the user-consent token + scopes.
+
+    OAuth tokens silently revoke on Google security events (password change / security
+    alert / 6-month inactivity for testing-mode apps). Probe surfaces it before Nami's
+    daily triage cron at 07:00 fails wholesale.
+    """
+    now = now or _now()
+    started = time.monotonic()
+    # Gmail uses file-based OAuth token (not env). Skip when token absent — local dev
+    # without consent flow ran. NAKAMA_DATA_DIR mirrors shared.google_gmail's resolution.
+    from pathlib import Path
+
+    data_dir = Path(os.environ.get("NAKAMA_DATA_DIR", "data"))
+    token_path = data_dir / "google_gmail_token.json"
+    if not token_path.exists():
+        return _skipped_external_probe("gmail", now, started, "missing_token_file")
+    try:
+        from shared.google_gmail import GoogleGmailAuthError, _get_service
+
+        service = _get_service()
+        # users.getProfile(me) — single GET, returns email + counts; lightest probe call.
+        resp = service.users().getProfile(userId="me").execute(num_retries=0)
+        latency_ms = int((time.monotonic() - started) * 1000)
+        # Bot account's own email — not user data, but storing the domain keeps the dashboard
+        # readable without leaking the full address back into log lines.
+        email = str(resp.get("emailAddress", ""))
+        domain = email.rsplit("@", 1)[-1] if "@" in email else ""
+        return HealthProbeV1(
+            target="gmail",
+            status="ok",
+            checked_at=now,
+            latency_ms=latency_ms,
+            detail={"email_domain": domain[:50]},
+        )
+    except GoogleGmailAuthError as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return HealthProbeV1(
+            target="gmail",
+            status="fail",
+            checked_at=now,
+            latency_ms=latency_ms,
+            error=f"GoogleGmailAuthError: {exc}"[:200],
+        )
+    except Exception as exc:  # noqa: BLE001 — probe must never raise
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return HealthProbeV1(
+            target="gmail",
+            status="fail",
+            checked_at=now,
+            latency_ms=latency_ms,
+            error=f"{type(exc).__name__}: {exc}"[:200],
+        )
+
+
 def probe_cron_freshness(
     now: datetime | None = None,
 ) -> tuple[HealthProbeV1, list[AlertV1]]:
@@ -772,6 +941,20 @@ def run_once(
     else:
         a = _record_and_maybe_alert(
             cron_probe,
+            operation_id=operation_id,
+            alert_sink=sink,
+            fail_threshold=fail_threshold,
+        )
+        if a is not None:
+            alerts.append(a)
+
+    # 6. External service auth probes (Phase 5D) — GSC / Slack / Gmail
+    # Same 3-fail gate as wp_shosho/wp_fleet — transient API blip won't page.
+    for probe_fn in (probe_gsc, probe_slack, probe_gmail):
+        ext_probe = probe_fn(now=now)
+        probes.append(ext_probe)
+        a = _record_and_maybe_alert(
+            ext_probe,
             operation_id=operation_id,
             alert_sink=sink,
             fail_threshold=fail_threshold,
