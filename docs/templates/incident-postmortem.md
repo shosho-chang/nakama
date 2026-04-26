@@ -6,9 +6,9 @@ status: detected                      # detected / mitigated / resolved / postmo
 detected_at: 2026-04-26T10:30:00+08:00
 mitigated_at:                         # 留空待填
 resolved_at:                          # 留空待填
-postmortem_due: 2026-05-03            # detected_at + 7 天
+postmortem_due: 2026-05-03            # detected_at + 7 天（不從 mitigated_at 起算）
 trigger: backup-mirror-fail           # shared.alerts dedupe_key / manual / franky-probe-{name} / bridge-health-{job}
-owner: 修修
+owner: 修修                            # 也可以是 agent 名（Robin / Usopp / Franky / ...）
 tags:
   - incident
   - nakama
@@ -17,8 +17,9 @@ tags:
 
 # {{ title }}
 
-> 用法：複製本檔到 `vault/Incidents/YYYY/MM/incident-{id}.md`，把 `{{ ... }}` 與 `<!-- TODO -->` 區塊填掉。
-> 流程定義見 [`docs/runbooks/postmortem-process.md`](../runbooks/postmortem-process.md)。
+> **用法**：複製本檔到 `vault/Incidents/YYYY/MM/incident-{id}.md`（檔名前綴 `incident-`，frontmatter `id` 不含前綴）。
+> **填寫慣例**：`{{ ... }}` 是從 frontmatter 衍生的欄位（標題 / trigger 等），`<!-- TODO -->` 是要動腦補的內容。兩種都要填。
+> **流程定義**見 [`docs/runbooks/postmortem-process.md`](../runbooks/postmortem-process.md)。
 
 ## Summary
 

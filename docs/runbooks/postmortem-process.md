@@ -21,7 +21,7 @@
 - 用戶可見（修修 hit 到「壞了」）→ 至少 SEV-2
 - Silent（Franky 抓到 / cron 沒跑才知道）→ SEV-3
 - 一次性 + 無 pattern + 已自癒 → SEV-4
-- 不確定 → 從嚴從寬以高一級登記，事後再降
+- 不確定 → 從嚴登記為高一級，事後 close 時可降級註記（避免漏記）
 
 ---
 
@@ -82,6 +82,13 @@ Incidents/YYYY/MM/incident-YYYY-MM-DD-{slug}.md
 > **首次使用前**：`mkdir -p "{vault}/Incidents/2026/04"` 並（若用 Templater）把 template 複製到 `Templates/tpl-incident.md`。否則手動 copy `docs/templates/incident-postmortem.md` 內容貼新檔。
 
 ### 3.4 Postmortem（7 天內，SEV-1/2/3）
+
+`postmortem_due = detected_at + 7 天`（**從偵測時起算，不是 mitigation 完成起算**）。
+若 incident 在 day 7 仍未 mitigate（例：等 Cloudflare / 等廠商），postmortem 仍照寫，
+Mitigation / Root cause sections 標 `（持續中，2026-MM-DD 更新）` 並每週滾動更新到 resolved。
+
+**Missed deadline**：若 day 7 過了仍未開 postmortem，frontmatter `status` flip 成 `postmortem-overdue`。
+Franky 月報（§7 #1 未實作）將 surface overdue list；目前靠修修每月 1 號自查 vault `Incidents/` grep `status: postmortem-overdue`。
 
 按 template 把所有 sections 填完。SEV-3 可走 lightweight：
 
@@ -187,6 +194,10 @@ FROM alert_state
 WHERE dedup_key = 'backup-mirror-fail'
 ORDER BY last_fired_at DESC;
 ```
+
+> 註：`shared/alerts.py` docstring 說 warn-level alert 會 "aggregated into Franky weekly report later (Phase 4)"，
+> 該聚合本身屬本 runbook §7 #1 backlog，**目前尚未實作**。Phase 4 此 PR 只交付制度與 template，
+> warn 聚合留給 future enhancement。
 
 ---
 
