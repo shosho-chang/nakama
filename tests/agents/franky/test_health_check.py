@@ -21,6 +21,7 @@ import pytest
 from agents.franky import health_check
 from agents.franky.health_check import (
     _record_and_maybe_alert,
+    probe_cron_freshness,
     probe_nakama_gateway,
     probe_r2_backup_nakama,
     probe_vps_resources,
@@ -459,6 +460,7 @@ def test_run_once_returns_all_probes(_mock_ok_env):
         "wp_fleet",
         "nakama_gateway",
         "r2_backup_nakama",
+        "cron_freshness",
     }
     assert result["operation_id"].startswith("op_")
     assert result["duration_ms"] >= 0
@@ -535,3 +537,119 @@ def test_run_once_transient_list_error_hits_n_fail_gate(_r2_nakama_env, monkeypa
     # No inline stale/empty — this was a transient error.
     assert "r2_backup_nakama_stale" not in rules
     assert "r2_backup_nakama_empty" not in rules
+
+
+# ---------------------------------------------------------------------------
+# probe_cron_freshness — Phase 5B meta-probe over heartbeats table
+# ---------------------------------------------------------------------------
+
+
+def _record_hb(job: str, success_age_minutes: int) -> None:
+    """Helper：寫一筆 heartbeat success，但 backdate `last_success_at`。
+    模擬 N 分鐘前 success 的 cron job。
+    """
+    from shared import heartbeat
+    from shared.state import _get_conn
+
+    heartbeat.record_success(job)  # 先寫一筆 now
+    backdated_iso = (
+        datetime.now(timezone.utc) - timedelta(minutes=success_age_minutes)
+    ).isoformat()
+    conn = _get_conn()
+    conn.execute(
+        """UPDATE heartbeats SET last_success_at = ?, last_run_at = ?, updated_at = ?
+           WHERE job_name = ?""",
+        (backdated_iso, backdated_iso, backdated_iso, job),
+    )
+    conn.commit()
+
+
+def test_cron_freshness_empty_heartbeats_skips_gracefully():
+    probe, inline = probe_cron_freshness()
+    assert probe.status == "ok"
+    assert probe.detail.get("skipped") is True
+    assert probe.detail.get("reason") == "no_heartbeats_recorded"
+    assert inline == []
+
+
+def test_cron_freshness_all_fresh_returns_ok():
+    # 所有 registered job 都剛 success（age=1 min）
+    for job in health_check.CRON_SCHEDULES:
+        _record_hb(job, success_age_minutes=1)
+    probe, inline = probe_cron_freshness()
+    assert probe.status == "ok"
+    assert inline == []
+    assert probe.detail.get("checked") == len(health_check.CRON_SCHEDULES)
+    assert probe.detail.get("stale_count") == 0
+
+
+def test_cron_freshness_stale_job_emits_critical_inline():
+    # nakama-backup interval 24h + grace 60min → 25h 算 stale
+    _record_hb("nakama-backup", success_age_minutes=25 * 60 + 5)
+    probe, inline = probe_cron_freshness()
+    assert probe.status == "fail"
+    assert "1 stale cron job(s)" in (probe.error or "")
+    assert len(inline) == 1
+    alert = inline[0]
+    assert alert.severity == "critical"
+    assert alert.rule_id == "cron_staleness"
+    assert alert.dedup_key == "cron-stale-nakama-backup"
+    assert "nakama-backup" in alert.message
+
+
+def test_cron_freshness_age_just_within_grace_no_alert():
+    # nakama-backup interval 24h + grace 60min → 24h59min 仍算 fresh
+    _record_hb("nakama-backup", success_age_minutes=24 * 60 + 59)
+    probe, inline = probe_cron_freshness()
+    assert probe.status == "ok"
+    assert inline == []
+
+
+def test_cron_freshness_unregistered_heartbeat_ignored():
+    # 寫一個不在 CRON_SCHEDULES 的 heartbeat，且其 last_success 很久以前
+    _record_hb("some-other-job-not-registered", success_age_minutes=99999)
+    probe, inline = probe_cron_freshness()
+    assert probe.status == "ok"
+    assert inline == []
+
+
+def test_cron_freshness_registered_no_heartbeat_skipped():
+    # 寫一個其他 job heartbeat，讓 list_all 非空，但沒寫 nakama-backup
+    _record_hb("franky-health-probe", success_age_minutes=1)
+    probe, inline = probe_cron_freshness()
+    # nakama-backup 在 CRON_SCHEDULES 但無 heartbeat → 不報警（部署初期容忍）
+    assert probe.status == "ok"
+    assert inline == []
+
+
+def test_cron_freshness_multi_stale_emits_per_job_dedup_keys():
+    _record_hb("nakama-backup", success_age_minutes=25 * 60 + 5)
+    _record_hb("nakama-backup-mirror", success_age_minutes=25 * 60 + 5)
+    probe, inline = probe_cron_freshness()
+    assert probe.status == "fail"
+    assert len(inline) == 2
+    dedup_keys = {a.dedup_key for a in inline}
+    assert dedup_keys == {"cron-stale-nakama-backup", "cron-stale-nakama-backup-mirror"}
+
+
+def test_cron_freshness_dedup_window_matches_interval_capped_24h():
+    # nakama-backup interval=24h + grace=60min → threshold 1500min；用 1505 才 stale
+    _record_hb("nakama-backup", success_age_minutes=25 * 60 + 5)
+    _, inline = probe_cron_freshness()
+    # nakama-backup window = min(24h, 24h) = 24h
+    assert inline[0].dedup_window_seconds == 24 * 3600
+    # nakama-backup-integrity interval=7d → window = min(7d, 24h) = 24h（capped）
+    _record_hb("nakama-backup-integrity", success_age_minutes=8 * 24 * 60)
+    _, inline = probe_cron_freshness()
+    integrity_alert = next(a for a in inline if "integrity" in a.dedup_key)
+    assert integrity_alert.dedup_window_seconds == 24 * 3600
+
+
+def test_cron_freshness_alert_context_includes_threshold_and_age():
+    _record_hb("nakama-backup", success_age_minutes=26 * 60)
+    probe, inline = probe_cron_freshness()
+    assert len(inline) == 1
+    ctx = inline[0].context
+    assert ctx["job_name"] == "nakama-backup"
+    assert ctx["threshold_minutes"] == 24 * 60 + 60  # interval + grace
+    assert ctx["success_age_minutes"] == 26 * 60

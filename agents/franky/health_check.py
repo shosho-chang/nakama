@@ -65,6 +65,28 @@ NAKAMA_BACKUP_STALE_THRESHOLD_HOURS: float = float(
     os.getenv("FRANKY_NAKAMA_BACKUP_STALE_HOURS", "48")
 )
 
+# Phase 5B — cron job heartbeat schedule registry.
+# (job_name, expected_interval_minutes, grace_minutes)
+# Probe alerts when last_success_at is older than (interval + grace).
+#
+# 嚴格規則：本 dict 的 entry 必須對應到實際呼叫 `shared.heartbeat.record_success(name)`
+# 的生產 cron。否則 probe 永遠看到 hb=None 走「skipped」路徑，false-green。
+# 已驗證有 caller 的 3 個 job（grep `record_success` in scripts/）：
+#   - nakama-backup            (scripts/backup_nakama_state.py)
+#   - nakama-backup-mirror     (scripts/mirror_backup_to_secondary.py)
+#   - nakama-backup-integrity  (scripts/verify_backup_integrity.py)
+# 待 instrument（加入 dict 前先補 record_success/record_failure）：
+#   - franky-health-probe（self-deadlock：probe 是 franky cron 自己跑，永遠不會 stale。
+#     liveness 由 external-uptime-probe 偵測。建議永不加入此 dict。）
+#   - franky-r2-backup-verify、franky-weekly-report、robin-pubmed-digest、
+#     zoro-brainstorm-scout、external-uptime-probe — Phase 5B-2 follow-up。
+CRON_SCHEDULES: dict[str, tuple[int, int]] = {
+    # name                          interval  grace
+    "nakama-backup": (24 * 60, 60),  # daily 04:00
+    "nakama-backup-mirror": (24 * 60, 60),  # daily 04:30
+    "nakama-backup-integrity": (7 * 24 * 60, 120),  # weekly Sun 03:30
+}
+
 
 AlertSink = Callable[[AlertV1], None]
 
@@ -509,6 +531,121 @@ def probe_r2_backup_nakama(
     )
 
 
+def probe_cron_freshness(
+    now: datetime | None = None,
+) -> tuple[HealthProbeV1, list[AlertV1]]:
+    """Phase 5B — meta-probe over the heartbeats table.
+
+    For every cron job in `CRON_SCHEDULES`, alerts critical if
+    `last_success_at` is older than `interval + grace` (or has never succeeded).
+    Catches silent cron failures the in-script `alert("error", ...)` cannot:
+    cron didn't fire (systemd typo / disabled / VPS reboot), env-drift made
+    the script crash before the alert call, or the script silently 0-exited.
+
+    Sustained-state pattern (matches probe_r2_backup_nakama): inline Critical
+    AlertV1 per stale job; bypasses the 3-fail gate because each job's
+    `interval + grace` window is already its own confirmation horizon.
+
+    Empty heartbeats table → status='ok' + detail.skipped=True (fresh deploy
+    / dev environment safety).
+    """
+    from shared import heartbeat
+
+    now = now or _now()
+    started = time.monotonic()
+    inline_alerts: list[AlertV1] = []
+    op = _new_operation_id()
+
+    all_hb = {hb.job_name: hb for hb in heartbeat.list_all()}
+    if not all_hb:
+        return (
+            HealthProbeV1(
+                target="cron_freshness",
+                status="ok",
+                checked_at=now,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                detail={"skipped": True, "reason": "no_heartbeats_recorded"},
+            ),
+            [],
+        )
+
+    stale_names: list[str] = []
+    for job_name, (interval_min, grace_min) in CRON_SCHEDULES.items():
+        threshold_min = interval_min + grace_min
+        hb = all_hb.get(job_name)
+        if hb is None:
+            # Registered cron but never recorded — could be: not deployed yet, or
+            # heartbeat instrumentation just landed and cron hasn't fired since.
+            # Log INFO so operators can grep "registered but no heartbeat" to spot
+            # call-site drift; don't alert (would noise on every fresh deploy).
+            logger.info("cron registered but no heartbeat row yet job=%s", job_name)
+            continue
+        success_age = hb.success_age_minutes
+        if success_age is not None and success_age <= threshold_min:
+            continue  # fresh — skip
+        # stale
+        age_str = f"{success_age}m" if success_age is not None else "never"
+        msg = (
+            f"cron job '{job_name}' last success {age_str} ago, "
+            f"expected ≤ {threshold_min}m (interval={interval_min}m + grace={grace_min}m)"
+        )
+        # dedup_window = interval（capped 24h）→ 1 alert per cycle for a stuck job,
+        # not 96/day on the default 15-min window. Daily backup → 1 alert/24h until
+        # fixed; 5-min probe → 1 alert/5-min（still bounded by 24h cap when probe
+        # gets re-registered below）.
+        dedup_window_s = min(interval_min * 60, 24 * 3600)
+        inline_alerts.append(
+            AlertV1(
+                rule_id="cron_staleness",
+                severity="critical",
+                title=f"Cron stale: {job_name}",
+                message=msg,
+                fired_at=now,
+                dedup_key=f"cron-stale-{job_name}",
+                dedup_window_seconds=dedup_window_s,
+                operation_id=op,
+                context={
+                    "job_name": job_name,
+                    "success_age_minutes": success_age if success_age is not None else -1,
+                    "threshold_minutes": threshold_min,
+                    "consecutive_failures": hb.consecutive_failures,
+                },
+            )
+        )
+        stale_names.append(job_name)
+
+    latency_ms = int((time.monotonic() - started) * 1000)
+    if inline_alerts:
+        # HealthProbeV1.detail only accepts scalar values; per-job timing/threshold
+        # detail lives in each AlertV1.context (richer typing). Probe.detail keeps
+        # a comma-joined name list for the dashboard "what's stale at a glance".
+        return (
+            HealthProbeV1(
+                target="cron_freshness",
+                status="fail",
+                checked_at=now,
+                latency_ms=latency_ms,
+                error=f"{len(inline_alerts)} stale cron job(s)",
+                detail={
+                    "stale_count": len(inline_alerts),
+                    "stale_jobs": ",".join(stale_names),
+                    "registered": len(CRON_SCHEDULES),
+                },
+            ),
+            inline_alerts,
+        )
+    return (
+        HealthProbeV1(
+            target="cron_freshness",
+            status="ok",
+            checked_at=now,
+            latency_ms=latency_ms,
+            detail={"checked": len(CRON_SCHEDULES), "stale_count": 0},
+        ),
+        [],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public entry — single cron tick
 # ---------------------------------------------------------------------------
@@ -598,6 +735,27 @@ def run_once(
     else:
         a = _record_and_maybe_alert(
             r2_nakama_probe,
+            operation_id=operation_id,
+            alert_sink=sink,
+            fail_threshold=fail_threshold,
+        )
+        if a is not None:
+            alerts.append(a)
+
+    # 5. cron freshness meta-probe (Phase 5B) — sustained-state, inline alerts per stale job
+    cron_probe, cron_alerts = probe_cron_freshness(now=now)
+    probes.append(cron_probe)
+    for inline in cron_alerts:
+        sink(inline)
+        alerts.append(inline)
+    # Same skip-gate logic as r2_backup_nakama: each stale-job alert is already
+    # confirmed by the (interval + grace) window; don't double-page via the
+    # generic 3-fail unhealthy rule.
+    if cron_alerts:
+        _upsert_probe_state(cron_probe, consecutive_fails=fail_threshold)
+    else:
+        a = _record_and_maybe_alert(
+            cron_probe,
             operation_id=operation_id,
             alert_sink=sink,
             fail_threshold=fail_threshold,
