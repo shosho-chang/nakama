@@ -58,6 +58,7 @@
 - [feedback_mock_use_spec.md](feedback_mock_use_spec.md) — mock 第三方 SDK 要 `spec=` / `autospec=True`，否則 MagicMock 預設 truthy 會掩蓋 nonexistent-method bug
 - [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
+- [feedback_llm_pipeline_consume_all_fields.md](feedback_llm_pipeline_consume_all_fields.md) — prompt 教 LLM 輸出的 schema 欄位必須在 pipeline 內 consume，不然 schema drift 默默 leak（PR #171 review 抓到 pick=false 例）
 - [feedback_open_source_ready.md](feedback_open_source_ready.md) — 所有功能都可能個別開源，開發時保留參數化與擴充點；每個可開源單位需有 capability card（能力/IO/實測成本）
 - [project_bilingual_reader_design.md](project_bilingual_reader_design.md) — 雙語閱讀三場景設計凍結：BabelDOC+Docling雙路線、Claude Sonnet翻譯、台灣術語表、輕量Annotation
 - [project_nami_project_bootstrap.md](project_nami_project_bootstrap.md) — Nami 11 tools（含 Google Calendar 4 tools）全 merged + VPS deployed + Calendar E2E 實測通過
@@ -121,6 +122,7 @@
 - [project_usopp_slice_a_merged.md](project_usopp_slice_a_merged.md) — PR #73 Usopp Slice A merged（WP client + locks + external schemas + Docker staging），upload_media TypeError bug 已修；剩 Slice B/C
 - [reference_llama_cpp_flags.md](reference_llama_cpp_flags.md) — llama.cpp 2026 CLI breaking change：`--flash-attn on`、`--reasoning on|off`、`--reasoning-budget N`
 - [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md) — Franky Phase 1 全三 slice merged（PR #74/#75/#76）；剩 VPS .env + cron + UptimeRobot 修修手動
+- [project_franky_news_digest_slice_a.md](project_franky_news_digest_slice_a.md) — Franky AI 生態情報 daily digest Slice A (PR #171) merged + VPS deployed cron 06:30；8 RSS + Slice B Anthropic HTML scrape backlog
 - [feedback_stacked_pr_squash_conflict.md](feedback_stacked_pr_squash_conflict.md) — 堆疊 PR + squash merge：子 PR 變 unmergeable；沒 force-push 權限走 merge-main + --ours 退路
 - [feedback_ruff_order_by_type.md](feedback_ruff_order_by_type.md) — ruff isort 預設 order-by-type：ALL_CAPS 常數先於 PascalCase 類，不是純 ASCII 序
 - [project_brook_compose_merged.md](project_brook_compose_merged.md) — PR #78 Brook compose_and_enqueue merged；production 路徑就位，seed compliance vocab 等 Slice B 替換
