@@ -36,7 +36,7 @@ import math
 import sqlite3
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 from shared import heartbeat
@@ -416,9 +416,9 @@ def check_cron_failure_cluster(*, now: datetime | None = None) -> list[AnomalyV1
 # ---------------------------------------------------------------------------
 
 
-CheckFn = "tuple[str, callable[..., list[AnomalyV1]]]"
+CheckFn = Callable[..., "list[AnomalyV1]"]
 
-_CHECKS: Iterable[tuple[str, callable]] = (  # type: ignore[type-arg]
+_CHECKS: tuple[tuple[str, CheckFn], ...] = (
     ("cost_spike", check_cost_spike),
     ("latency_p95_spike", check_latency_p95_spike),
     ("error_rate_spike", check_error_rate_spike),
