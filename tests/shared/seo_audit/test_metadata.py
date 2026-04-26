@@ -56,6 +56,19 @@ def test_m1_unicode_counts_chars_not_bytes():
     assert c.status == "pass"
 
 
+def test_m1_nested_tags_in_title_not_misreported_as_missing():
+    """`<title>` containing nested elements should be read via get_text(), not
+    `.string` (which returns None for nested-tag content)."""
+    title_inner = "Hi " + "x" * 50 + " World"
+    html = f"<html><head><title>Hi <b>{'x' * 50}</b> World</title></head></html>"
+    checks = check_metadata(_soup(html), "https://x")
+    c = _by_rule(checks, "M1")
+    # Length of "Hi " + 50 'x' + " World" = 3 + 50 + 6 = 59 → in pass range
+    assert len(title_inner) == 59
+    assert c.status == "pass", f"got status={c.status}, actual={c.actual!r}"
+    assert "缺少 <title>" not in c.actual
+
+
 # ── M2: meta description 150-160 ──
 
 
@@ -124,6 +137,43 @@ def test_m3_wrong_target():
     checks = check_metadata(_soup(html), "https://shosho.tw/post-a")
     c = _by_rule(checks, "M3")
     assert c.status == "fail"
+
+
+def test_m3_relative_canonical_resolved_against_page_url():
+    """Relative canonical hrefs must be resolved against page_url before
+    comparison; previously a relative href like ``/post-a`` always failed."""
+    html = '<html><head><link rel="canonical" href="/post-a"></head></html>'
+    checks = check_metadata(_soup(html), "https://shosho.tw/post-a")
+    c = _by_rule(checks, "M3")
+    assert c.status == "pass", f"got actual={c.actual!r}"
+
+
+def test_m3_uppercase_host_treated_as_self_match():
+    """Hosts are case-insensitive (RFC 3986); ``Example.COM`` must match
+    ``example.com``."""
+    html = '<html><head><link rel="canonical" href="https://Example.COM/post"></head></html>'
+    checks = check_metadata(_soup(html), "https://example.com/post")
+    c = _by_rule(checks, "M3")
+    assert c.status == "pass"
+
+
+def test_m3_query_string_difference_is_not_self_match():
+    """Stripping the query string used to make ``?utm=x`` look like a
+    self-canonical even when it isn't. Now query strings are preserved."""
+    html = '<html><head><link rel="canonical" href="https://shosho.tw/post-a?utm=campaign"></head></html>'
+    checks = check_metadata(_soup(html), "https://shosho.tw/post-a")
+    c = _by_rule(checks, "M3")
+    assert c.status == "fail", f"got actual={c.actual!r}"
+
+
+def test_m3_query_string_match_is_self_match():
+    """If both URLs have the same query string they should match."""
+    html = (
+        '<html><head><link rel="canonical" href="https://shosho.tw/post-a?lang=en"></head></html>'
+    )
+    checks = check_metadata(_soup(html), "https://shosho.tw/post-a?lang=en")
+    c = _by_rule(checks, "M3")
+    assert c.status == "pass"
 
 
 # ── M4: robots noindex ──

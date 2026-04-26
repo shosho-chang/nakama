@@ -18,7 +18,7 @@ meta 存在；避免 metadata.py 跨層做 network call。
 from __future__ import annotations
 
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -55,7 +55,11 @@ def check_metadata(
 
 def _check_title(soup: BeautifulSoup) -> AuditCheck:
     title_tag = soup.find("title")
-    if title_tag is None or not (title_tag.string or "").strip():
+    # `.string` returns None when the <title> contains nested tags
+    # (e.g. `<title>Hi <b>World</b></title>`) — use get_text() so a
+    # legitimately-populated title is not misreported as missing.
+    text = title_tag.get_text(strip=True) if title_tag is not None else ""
+    if not text:
         return AuditCheck(
             rule_id="M1",
             name="title 長度 50-60 字符",
@@ -66,7 +70,6 @@ def _check_title(soup: BeautifulSoup) -> AuditCheck:
             expected=f"{_TITLE_MIN} ≤ len ≤ {_TITLE_MAX}",
             fix_suggestion="補 <title> 標籤；含主要 focus keyword 並控制在 50-60 字符內",
         )
-    text = title_tag.string.strip()
     length = len(text)
     if _TITLE_MIN <= length <= _TITLE_MAX:
         status = "pass"
@@ -124,14 +127,28 @@ def _check_meta_description(soup: BeautifulSoup) -> AuditCheck:
     )
 
 
-def _normalize_url(u: str) -> str:
-    """drop fragment + trailing slash；做最小 normalization 給 self-referential
-    canonical 比對用。"""
+def _normalize_url(u: str, *, base: str | None = None) -> str:
+    """Normalize a URL for self-referential canonical comparison.
+
+    - Resolve against *base* when supplied so a relative canonical
+      ``href="/post"`` compares correctly against an absolute page URL.
+    - Drop fragment and trailing slash.
+    - Lowercase scheme + host (RFC 3986: case-insensitive).
+    - **Preserve** the query string. Stripping ``?utm=...`` causes
+      legitimately-different canonicals to falsely compare equal.
+    """
+    if base:
+        u = urljoin(base, u)
     parts = urlsplit(u)
     path = parts.path or "/"
     if len(path) > 1 and path.endswith("/"):
         path = path[:-1]
-    return f"{parts.scheme}://{parts.netloc}{path}"
+    scheme = (parts.scheme or "").lower()
+    netloc = (parts.netloc or "").lower()
+    out = f"{scheme}://{netloc}{path}"
+    if parts.query:
+        out = f"{out}?{parts.query}"
+    return out
 
 
 def _check_canonical(soup: BeautifulSoup, page_url: str) -> AuditCheck:
@@ -148,7 +165,7 @@ def _check_canonical(soup: BeautifulSoup, page_url: str) -> AuditCheck:
             expected="存在且指向自己",
             fix_suggestion='加 <link rel="canonical" href="..."/> 指到 page 自身',
         )
-    norm_canonical = _normalize_url(href)
+    norm_canonical = _normalize_url(href, base=page_url)
     norm_page = _normalize_url(page_url)
     if norm_canonical == norm_page:
         return AuditCheck(
