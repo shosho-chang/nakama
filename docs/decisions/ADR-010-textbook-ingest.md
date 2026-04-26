@@ -1,7 +1,7 @@
 # ADR-010: Textbook Ingest — Claude Code skill + Karpathy-style cross-book Wiki
 
 **Date:** 2026-04-25
-**Status:** Accepted
+**Status:** Superseded by [ADR-011](ADR-011-textbook-ingest-v2.md) (2026-04-26)
 
 ---
 
