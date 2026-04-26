@@ -32,7 +32,8 @@ logger = get_logger("nakama.shared.firecrawl_serp")
 # 3 篇 × 3000 chars ≈ 9000 chars ≈ ~3000 tokens，配 prompt 不到 4k input tokens。
 _MAX_PAGE_CHARS = 3000
 
-# 單篇 scrape timeout（秒）；firecrawl SDK 預設較長，這裡縮短避免單一卡頓拖累整批。
+# 單篇 scrape timeout（毫秒，per firecrawl SDK contract — `app.scrape(timeout=...)`
+# 取毫秒）；20000ms = 20s。SDK 預設較長，這裡縮短避免單一卡頓拖累整批。
 _SCRAPE_TIMEOUT_MS = 20000
 
 
@@ -84,17 +85,16 @@ def fetch_top_n_serp(
         logger.warning("firecrawl_serp_empty_search keyword=%r", keyword)
         return []
 
-    # Stage 2: scrape each candidate URL for markdown body
-    api_key = os.environ.get("FIRECRAWL_API_KEY")
-    if not api_key:
-        raise FirecrawlSerpError("FIRECRAWL_API_KEY 未設定，無法 scrape SERP 內文")
-
+    # Stage 2: scrape each candidate URL for markdown body.
+    # Note: API key check skipped here — `firecrawl_search()` above already raised
+    # `FirecrawlSearchError` (caught and re-raised as `FirecrawlSerpError`) on
+    # missing key, so reaching this line means the key is valid.
     try:
         from firecrawl import FirecrawlApp
     except ImportError as e:
         raise FirecrawlSerpError("firecrawl-py 未安裝") from e
 
-    app = FirecrawlApp(api_key=api_key)
+    app = FirecrawlApp(api_key=os.environ["FIRECRAWL_API_KEY"])
     results: list[dict[str, Any]] = []
     for cand in candidates[:n]:
         url = cand.get("url", "")

@@ -169,7 +169,7 @@ def _resolve_target_site(url: str) -> str | None:
     try:
         from shared.schemas.site_mapping import host_to_target_site
 
-        host = (urlsplit(url).hostname or "").lower().lstrip("www.")
+        host = (urlsplit(url).hostname or "").lower().removeprefix("www.")
         return host_to_target_site(host)
     except Exception:
         return None
@@ -558,7 +558,7 @@ def audit(
         try:
             kb_searcher_fn = kb_searcher or _default_kb_searcher
             kb_results = kb_searcher_fn(focus_keyword, vault_path, _KB_TOP_K) or []
-            kb_section = "included" if kb_results is not None else "skipped (no results)"
+            kb_section = "included" if kb_results else "skipped (no results)"
         except Exception as e:
             logger.warning("kb_search_failed err=%s", e)
             kb_results = []

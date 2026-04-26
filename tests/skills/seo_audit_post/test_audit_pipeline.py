@@ -409,3 +409,32 @@ def test_grade_computation_critical_fail(tmp_path, patch_fetch_html):
     md = out_path.read_text(encoding="utf-8")
     fm = yaml.safe_load(md.split("---\n", 2)[1])
     assert fm["summary"]["overall_grade"] == "F"
+
+
+def test_kb_section_skipped_when_kb_searcher_returns_empty(tmp_path, patch_fetch_html):
+    """A1 follow-up: empty KB results 應 emit `skipped (no results)` not `included`."""
+    out_path = audit_mod.audit(
+        url="https://shosho.tw/zone-2-training-guide",
+        output_dir=tmp_path,
+        focus_keyword="zone 2 訓練",
+        enable_kb=True,
+        vault_path=tmp_path / "vault",
+        pagespeed_runner=lambda u, s: _fake_pagespeed_response(),
+        kb_searcher=lambda q, v, k: [],  # empty results
+        compliance_scanner=_fake_compliance_scanner,
+        llm_reviewer=_fake_llm_reviewer,
+        now_fn=_now,
+    )
+    md = out_path.read_text(encoding="utf-8")
+    fm = yaml.safe_load(md.split("---\n", 2)[1])
+    assert fm["kb_section"] == "skipped (no results)"
+
+
+def test_resolve_target_site_does_not_misclassify_wfleet_prefix():
+    """A2 follow-up: `wfleet.shosho.tw` 不該被誤分類為 wp_fleet（lstrip foot-gun）。"""
+    # `lstrip("www.")` 過去把 wfleet → fleet，現在 removeprefix 不動
+    result = audit_mod._resolve_target_site("https://wfleet.shosho.tw/some-page")
+    assert result is None  # not "wp_fleet"
+    # Ensure standard fleet host still works
+    assert audit_mod._resolve_target_site("https://fleet.shosho.tw/some-page") == "wp_fleet"
+    assert audit_mod._resolve_target_site("https://www.shosho.tw/some-page") == "wp_shosho"
