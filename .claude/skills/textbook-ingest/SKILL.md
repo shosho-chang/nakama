@@ -196,7 +196,7 @@ and adjust the chapter list. Do NOT proceed without explicit confirmation.
 
 ### Step 4 — Ingest each chapter (one Claude turn per chapter)
 
-ADR-011 §3.3 splits this into 5 sub-steps; Vision describe (4b) is new
+ADR-011 §3.3 splits this into 7 sub-steps; Vision describe (4b) is new
 in v2 and Concept extract (4d) now uses the 4-action dispatcher.
 
 For each chapter (loop):
@@ -263,14 +263,16 @@ For each chapter (loop):
 
 6. **Write chapter Source page** to
    ``KB/Wiki/Sources/Books/{book_id}/ch{n}.md`` with v2 frontmatter
-   (ADR-011 §3.2.1: includes `figures: [{ref, path, caption,
-   llm_description, tied_to_section}]` list).
+   (ADR-011 §3.2.1: includes `figures: [{ref, extension, caption,
+   llm_description, tied_to_section}]` list — the skill driver derives
+   the on-disk `path` from `{attachments-base-dir}/ch{n}/{ref}{extension}`
+   when it needs to read the binary; it is not stored in frontmatter).
 
 7. **Update Book Entity progress** — set ``status: partial`` and bump
    the ``ingested_at`` timestamp on the Book Entity if it exists; create
    a stub if not (full Book Entity assembled in Step 5).
 
-7. **Report progress** to the user:
+8. **Report progress** to the user:
 
    ```
    ✓ ch3/30 — Physical Examination — Cardiovascular (p.59-92)

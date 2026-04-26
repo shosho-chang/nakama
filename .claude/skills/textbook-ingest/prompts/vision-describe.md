@@ -23,7 +23,7 @@ retrieval can splice in lieu of seeing the original image.
 | `{caption_or_alt_text}` | walker output `figures[].caption` (figcaption ‖ alt) | `Schematic of ATP-PCr energy system kinetics during high-intensity exercise` |
 | `{surrounding_text}` | ±500 chars of chapter text surrounding the placeholder | (~1000 chars verbatim) |
 | `{ref}` | walker output `figures[].ref` | `fig-1-1` |
-| `{path}` | walker output `figures[].path` | `Attachments/Books/biochemistry-sport-exercise-2024/ch1/fig-1-1.png` |
+| `{path}` | derived by skill driver: `{attachments-base-dir}/ch{n}/{ref}{extension}` (the walker emits `ref` + `extension` separately; the path is composed at Vision-call time using the same `--attachments-base-dir` passed to `parse_book.py`) | `Attachments/Books/biochemistry-sport-exercise-2024/ch1/fig-1-1.png` |
 
 ---
 

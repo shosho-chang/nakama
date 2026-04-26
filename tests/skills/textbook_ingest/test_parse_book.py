@@ -437,6 +437,100 @@ class TestHtmlTableHelper:
         # Body row padded to 3 cols
         assert "| 1 |  |  |" in md
 
+    def test_rowspan_replicates_cell_down(self):
+        """A cell with rowspan=2 should appear in two consecutive rows."""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table>"
+            "<tr><th>A</th><th>B</th></tr>"
+            "<tr><td rowspan='2'>x</td><td>y</td></tr>"
+            "<tr><td>z</td></tr>"
+            "</table>",
+            "html.parser",
+        )
+        md, _cap = parse_book_mod._html_table_to_markdown(soup.find("table"))
+        # Row 1 of body: x, y; Row 2 of body: x replicated, z
+        assert "| x | y |" in md
+        assert "| x | z |" in md
+
+    def test_colspan_replicates_cell_right(self):
+        """A cell with colspan=2 should fill two columns."""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table>"
+            "<tr><th>A</th><th>B</th><th>C</th></tr>"
+            "<tr><td colspan='2'>span</td><td>solo</td></tr>"
+            "</table>",
+            "html.parser",
+        )
+        md, _cap = parse_book_mod._html_table_to_markdown(soup.find("table"))
+        # The colspan cell is replicated in both columns it occupies
+        assert "| span | span | solo |" in md
+
+    def test_nested_table_rows_not_absorbed_by_outer(self):
+        """An inner <table> inside a <td> must not contribute rows to the outer table."""
+        from bs4 import BeautifulSoup
+
+        html = (
+            "<table>"
+            "<tr><th>OuterA</th><th>OuterB</th></tr>"
+            "<tr><td>outer1</td>"
+            "<td><table><tr><td>inner1</td><td>inner2</td></tr></table></td>"
+            "</tr>"
+            "<tr><td>outer3</td><td>outer4</td></tr>"
+            "</table>"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        outer = soup.find("table")
+        md, _cap = parse_book_mod._html_table_to_markdown(outer)
+        # Outer table should have exactly 3 rows (1 header + 2 body), each 2 cols
+        body_lines = [ln for ln in md.split("\n") if ln.startswith("| ") and "---" not in ln]
+        assert len(body_lines) == 3
+        assert "| OuterA | OuterB |" in md
+        assert "| outer3 | outer4 |" in md
+        # The inner cells should appear inside one of the outer cells (as
+        # cell text via get_text(strip=True, separator=" ")), not as their
+        # own row in the outer table
+        assert "outer3" in md and "outer4" in md
+
+    def test_no_thead_no_th_preserves_first_row_as_data(self):
+        """A table with no <thead> and no <th> in row 1 must keep row 1 as data."""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table>"
+            "<tr><td>data1</td><td>data2</td></tr>"
+            "<tr><td>data3</td><td>data4</td></tr>"
+            "</table>",
+            "html.parser",
+        )
+        md, _cap = parse_book_mod._html_table_to_markdown(soup.find("table"))
+        # Both source rows must appear in body — old behavior silently
+        # promoted row 1 to header and dropped data1/data2.
+        assert "| data1 | data2 |" in md
+        assert "| data3 | data4 |" in md
+
+    def test_explicit_thead_used_as_header(self):
+        """Explicit <thead> rows are used as the header even when other rows have <th>."""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table>"
+            "<thead><tr><th>H1</th><th>H2</th></tr></thead>"
+            "<tbody>"
+            "<tr><td>d1</td><td>d2</td></tr>"
+            "<tr><td>d3</td><td>d4</td></tr>"
+            "</tbody>"
+            "</table>",
+            "html.parser",
+        )
+        md, _cap = parse_book_mod._html_table_to_markdown(soup.find("table"))
+        assert md.splitlines()[0] == "| H1 | H2 |"
+        assert "| d1 | d2 |" in md
+        assert "| d3 | d4 |" in md
+
 
 class TestHtmlMathHelper:
     def test_alttext_used(self):
@@ -466,3 +560,125 @@ class TestHtmlMathHelper:
 
         soup = BeautifulSoup("<math></math>", "html.parser")
         assert parse_book_mod._html_math_to_latex(soup.find("math")) == ""
+
+    def test_mfrac_without_alttext_emits_frac(self):
+        """`<mfrac><mn>1</mn><mn>2</mn></mfrac>` should yield `\\frac{1}{2}`,
+        not the digit-collapsed `12` the old fallback produced."""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<math><mfrac><mn>1</mn><mn>2</mn></mfrac></math>",
+            "html.parser",
+        )
+        out = parse_book_mod._html_math_to_latex(soup.find("math"))
+        assert out == "$$\\frac{1}{2}$$"
+
+    def test_msup_without_alttext_emits_caret(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<math><msup><mi>x</mi><mn>2</mn></msup></math>",
+            "html.parser",
+        )
+        out = parse_book_mod._html_math_to_latex(soup.find("math"))
+        assert out == "$$x^{2}$$"
+
+    def test_msub_without_alttext_emits_underscore(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<math><msub><mi>H</mi><mn>2</mn></msub><mi>O</mi></math>",
+            "html.parser",
+        )
+        out = parse_book_mod._html_math_to_latex(soup.find("math"))
+        assert out == "$$H_{2}O$$"
+
+    def test_msqrt_without_alttext_emits_sqrt(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<math><msqrt><mn>2</mn></msqrt></math>",
+            "html.parser",
+        )
+        out = parse_book_mod._html_math_to_latex(soup.find("math"))
+        assert out == "$$\\sqrt{2}$$"
+
+    def test_alttext_still_takes_priority_over_walker(self):
+        """alttext takes priority over the structural walker."""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            '<math alttext="\\frac{a}{b}"><mfrac><mi>x</mi><mi>y</mi></mfrac></math>',
+            "html.parser",
+        )
+        out = parse_book_mod._html_math_to_latex(soup.find("math"))
+        # alttext beats the structural walker output
+        assert out == "$$\\frac{a}{b}$$"
+
+
+class TestExportChapterAttachmentsValidation:
+    """`_validate_attachment_ref` and `_validate_attachment_extension` block
+    path-traversal writes outside the attachments dir.
+
+    Today the walker only emits `fig-{int}-{int}` / `tab-{int}-{int}` refs
+    so the surface is zero, but the export entrypoint is now a public-ish
+    boundary (skill driver may eventually round-trip via JSON outline) and
+    deserves defense-in-depth.
+    """
+
+    def test_safe_ref_accepted(self):
+        parse_book_mod._validate_attachment_ref("fig-1-3", kind="figure")
+        parse_book_mod._validate_attachment_ref("tab-12-7", kind="table")
+
+    def test_path_traversal_ref_rejected(self):
+        with pytest.raises(ValueError, match="unsafe figure ref"):
+            parse_book_mod._validate_attachment_ref("../../evil", kind="figure")
+        with pytest.raises(ValueError, match="unsafe table ref"):
+            parse_book_mod._validate_attachment_ref("../../etc/passwd", kind="table")
+
+    def test_path_separator_ref_rejected(self):
+        with pytest.raises(ValueError):
+            parse_book_mod._validate_attachment_ref("foo/bar", kind="figure")
+        with pytest.raises(ValueError):
+            parse_book_mod._validate_attachment_ref("foo\\bar", kind="figure")
+
+    def test_empty_ref_rejected(self):
+        with pytest.raises(ValueError):
+            parse_book_mod._validate_attachment_ref("", kind="figure")
+
+    def test_safe_extension_accepted(self):
+        for ext in (".png", ".jpg", ".svg", ".webp"):
+            parse_book_mod._validate_attachment_extension(ext)
+
+    def test_unsafe_extension_rejected(self):
+        for ext in ("../sh", ".png/../evil", "png", "", ".../etc"):
+            with pytest.raises(ValueError, match="unsafe attachment extension"):
+                parse_book_mod._validate_attachment_extension(ext)
+
+    def test_export_blocks_traversal_at_runtime(self, tmp_path):
+        """End-to-end: a malicious figure ref raises before writing."""
+        Chapter = parse_book_mod.Chapter
+        ChapterFigure = parse_book_mod.ChapterFigure
+        attach = tmp_path / "attach"
+        evil_fig = ChapterFigure(
+            ref="../../escape",
+            extension=".png",
+            alt="",
+            caption="",
+            tied_to_section="",
+            placeholder="<<FIG:evil>>",
+            binary=b"\x89PNG",
+        )
+        chapter = Chapter(
+            index=1,
+            title="Test",
+            page_start=1,
+            page_end=1,
+            section_anchors=[],
+            figures=[evil_fig],
+            tables=[],
+        )
+        with pytest.raises(ValueError, match="unsafe figure ref"):
+            parse_book_mod._export_chapter_attachments(chapter, attach)
+        # No file should have been written outside attach/
+        assert not (tmp_path / "escape.png").exists()
