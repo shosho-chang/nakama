@@ -51,7 +51,7 @@ import argparse
 import json
 import re
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 # sys.path shim for ``shared.*`` imports (per
@@ -62,12 +62,50 @@ if str(_REPO_ROOT) not in sys.path:
 
 
 @dataclass
+class ChapterFigure:
+    """Image extracted from chapter HTML (ADR-011 §3.4.1).
+
+    `binary` is the raw image bytes pulled from the EPUB / PDF; the caller
+    decides where to write it (typically ``Attachments/Books/{book_id}/ch{n}/``).
+    `placeholder` is the inline marker that replaces the original ``<img>`` /
+    ``<svg>`` element in the chapter text so downstream LLM passes can splice
+    a Vision-generated description back in.
+    """
+
+    ref: str  # "fig-{chapter}-{N}"
+    binary: bytes
+    extension: str  # ".png" / ".jpg" / ".svg" / ".gif" / ".webp"
+    alt: str
+    caption: str
+    tied_to_section: str  # closest preceding h2/h3 anchor; "" if before first
+    placeholder: str  # "<<FIG:fig-{chapter}-{N}>>"
+
+
+@dataclass
+class ChapterTable:
+    """Table extracted from chapter HTML, normalised to markdown (ADR-011 §3.4.1).
+
+    `markdown` is the GFM table representation, intended to be written to
+    ``Attachments/Books/{book_id}/ch{n}/tab-N.md``. The chapter text gets a
+    ``<<TAB:...>>`` placeholder where the original ``<table>`` lived.
+    """
+
+    ref: str  # "tab-{chapter}-{N}"
+    markdown: str
+    caption: str
+    tied_to_section: str
+    placeholder: str  # "<<TAB:tab-{chapter}-{N}>>"
+
+
+@dataclass
 class Chapter:
     index: int
     title: str
     page_start: int  # 1-based
     page_end: int  # 1-based, inclusive
     section_anchors: list[str]
+    figures: list[ChapterFigure] = field(default_factory=list)
+    tables: list[ChapterTable] = field(default_factory=list)
 
 
 @dataclass
@@ -236,15 +274,118 @@ def _chapters_from_regex(doc) -> list[Chapter]:
     return chapters
 
 
-def _export_chapter_texts(doc, chapters: list[Chapter], out_dir: Path) -> None:
-    """Write each chapter as ``ch{n}.md`` under ``out_dir``."""
+def _pdf_chapter_markdown(doc, page_indices: list[int]) -> str:
+    """Render a PDF page range as markdown via ``pymupdf4llm`` (preserves
+    tables; ADR-011 §3.4.2 / A-9). Falls back to raw ``page.get_text()`` if
+    pymupdf4llm raises on an exotic layout."""
+    if not page_indices:
+        return ""
+    try:
+        import pymupdf4llm  # type: ignore[import-not-found]
+    except ImportError:  # pragma: no cover — declared dep, but stay defensive
+        return _pdf_chapter_plain_text(doc, page_indices)
+
+    try:
+        return pymupdf4llm.to_markdown(
+            doc,
+            pages=page_indices,
+            write_images=False,
+            show_progress=False,
+        ).strip()
+    except TypeError:
+        # Older pymupdf4llm signatures (no write_images / show_progress kwargs)
+        try:
+            return pymupdf4llm.to_markdown(doc, pages=page_indices).strip()
+        except Exception:
+            return _pdf_chapter_plain_text(doc, page_indices)
+    except Exception:
+        return _pdf_chapter_plain_text(doc, page_indices)
+
+
+def _pdf_chapter_plain_text(doc, page_indices: list[int]) -> str:
+    """Fallback PDF text extraction — used only when pymupdf4llm is unavailable
+    or fails (table information is not preserved here)."""
+    page_texts: list[str] = []
+    for page_idx in page_indices:
+        if 0 <= page_idx < doc.page_count:
+            page_texts.append(doc.load_page(page_idx).get_text("text") or "")
+    return "\n\n".join(page_texts).strip()
+
+
+def _pdf_chapter_figures(doc, chapter_index: int, page_indices: list[int]) -> list[ChapterFigure]:
+    """Extract images embedded in the given PDF page range as ``ChapterFigure``s.
+
+    PDF lacks a reliable association between an image's position in markdown
+    and its position in the page layout, so callers should append placeholders
+    at chapter end (``## Figures (extracted, awaiting Vision describe)``)
+    rather than try to inline-splice. Each xref is exported once even when it
+    appears on multiple pages.
+    """
+    figures: list[ChapterFigure] = []
+    seen_xrefs: set[int] = set()
+    for page_idx in page_indices:
+        if not (0 <= page_idx < doc.page_count):
+            continue
+        page = doc.load_page(page_idx)
+        try:
+            images = page.get_images(full=True)
+        except Exception:
+            continue
+        for img_info in images:
+            xref = img_info[0] if img_info else 0
+            if not xref or xref in seen_xrefs:
+                continue
+            seen_xrefs.add(xref)
+            try:
+                extracted = doc.extract_image(xref)
+            except Exception:
+                continue
+            if not extracted:
+                continue
+            img_bytes = extracted.get("image")
+            ext_name = extracted.get("ext") or "png"
+            if not img_bytes:
+                continue
+            ref = f"fig-{chapter_index}-{len(figures) + 1}"
+            figures.append(
+                ChapterFigure(
+                    ref=ref,
+                    binary=img_bytes,
+                    extension=f".{ext_name.lstrip('.')}",
+                    alt="",
+                    caption="",
+                    tied_to_section="",  # PDF: no easy section attribution
+                    placeholder=_FIG_PLACEHOLDER.format(ref=ref),
+                )
+            )
+    return figures
+
+
+def _export_chapter_texts(
+    doc,
+    chapters: list[Chapter],
+    out_dir: Path,
+    *,
+    attachments_base_dir: Path | None = None,
+) -> None:
+    """Write each chapter as ``ch{n}.md`` under ``out_dir`` and (optionally)
+    figures under ``{attachments_base_dir}/ch{n}/``.
+
+    PDF chapter markdown is rendered via :func:`_pdf_chapter_markdown` so
+    tables survive (ADR-011 P3); raw images get appended as placeholder lines
+    for the downstream Vision describe pass to splice descriptions back in.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     for ch in chapters:
-        page_texts: list[str] = []
-        for page_idx in range(ch.page_start - 1, ch.page_end):
-            if 0 <= page_idx < doc.page_count:
-                page_texts.append(doc.load_page(page_idx).get_text("text") or "")
-        body = "\n\n".join(page_texts).strip()
+        page_indices = list(range(ch.page_start - 1, ch.page_end))
+        body = _pdf_chapter_markdown(doc, page_indices)
+        figures = _pdf_chapter_figures(doc, ch.index, page_indices)
+        ch.figures = figures  # mutate so caller sees the same artefacts
+
+        if figures:
+            body += "\n\n## Figures (extracted, awaiting Vision describe)\n\n"
+            body += "\n\n".join(f.placeholder for f in figures)
+
         target = out_dir / f"ch{ch.index}.md"
         target.write_text(
             f"# Chapter {ch.index} — {ch.title}\n\n"
@@ -252,6 +393,9 @@ def _export_chapter_texts(doc, chapters: list[Chapter], out_dir: Path) -> None:
             f"{body}\n",
             encoding="utf-8",
         )
+
+        if attachments_base_dir is not None:
+            _export_chapter_attachments(ch, attachments_base_dir / f"ch{ch.index}")
 
 
 # ----------------------------------------------------------------------
@@ -299,30 +443,313 @@ def _epub_metadata(book) -> BookMetadata:
     )
 
 
-def _epub_html_to_text(html_bytes: bytes) -> tuple[str, list[str]]:
-    """Convert EPUB chapter HTML to plain text + extract heading anchors."""
-    from bs4 import BeautifulSoup
+_FIG_PLACEHOLDER = "<<FIG:{ref}>>"
+_TAB_PLACEHOLDER = "<<TAB:{ref}>>"
+
+# Used to derive an extension when resolved via EPUB media-type
+_IMAGE_EXT_BY_MIME = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/gif": ".gif",
+    "image/svg+xml": ".svg",
+    "image/webp": ".webp",
+    "image/bmp": ".bmp",
+    "image/tiff": ".tiff",
+}
+
+
+def _clean_cell_text(cell_tag) -> str:
+    """Render a ``<th>`` / ``<td>`` cell as a single-line markdown-safe string."""
+    text = cell_tag.get_text(strip=True, separator=" ")
+    return text.replace("|", "\\|").replace("\n", " ").replace("\r", "").strip()
+
+
+def _html_table_to_markdown(table_tag) -> tuple[str, str]:
+    """Convert a BS4 ``<table>`` to GFM markdown; return ``(markdown, caption)``.
+
+    The first row is treated as the header. Empty tables yield ``("", caption)``
+    so the caller can decide whether to emit a placeholder.
+    """
+    cap_tag = table_tag.find("caption")
+    caption_text = cap_tag.get_text(strip=True) if cap_tag is not None else ""
+
+    rows: list[list[str]] = []
+    for tr in table_tag.find_all("tr"):
+        cells_tags = tr.find_all(["th", "td"])
+        if not cells_tags:
+            continue
+        rows.append([_clean_cell_text(c) for c in cells_tags])
+
+    if not rows:
+        return "", caption_text
+
+    n_cols = max(len(r) for r in rows)
+    if n_cols == 0:
+        return "", caption_text
+
+    header = rows[0] + [""] * (n_cols - len(rows[0]))
+    body = [r + [""] * (n_cols - len(r)) for r in rows[1:]]
+
+    md_lines = ["| " + " | ".join(header) + " |"]
+    md_lines.append("| " + " | ".join(["---"] * n_cols) + " |")
+    for row in body:
+        md_lines.append("| " + " | ".join(row[:n_cols]) + " |")
+
+    return "\n".join(md_lines), caption_text
+
+
+def _html_math_to_latex(math_tag) -> str:
+    """Convert a MathML ``<math>`` tag to inline LaTeX ``$$...$$``.
+
+    ADR-011 §3.4.1 originally proposed wrapping the ``mathml2latex`` PyPI
+    package; that package is effectively abandoned (v0.1.0 ships an empty
+    public ``__init__`` and a brittle internal API). Per the deviation
+    feedback principle, we ship the lighter alttext-first path instead:
+
+    1. ``<math alttext="\\frac{1}{2}">`` — most modern textbook EPUBs include
+       the official accessibility ``alttext`` attribute carrying LaTeX or
+       readable text. Use it verbatim.
+    2. Fallback to MathML's rendered text content (loses structure for
+       complex equations, but keeps numbers and identifiers visible to
+       downstream LLM passes — preferable to silently dropping the math).
+    3. Empty or whitespace-only input → empty string (caller decides what
+       to do with the now-empty placeholder).
+
+    Future: a richer MathML→LaTeX converter (e.g. an in-house walker over
+    the common subset, or a maintained dep) can replace the alttext-first
+    path; the function signature stays the same.
+    """
+    alt = (math_tag.get("alttext") or "").strip()
+    if alt:
+        return f"$${alt}$$"
+    text = (math_tag.get_text(strip=True) or "").strip()
+    return f"$${text}$$" if text else ""
+
+
+def _extract_figure(
+    tag,
+    chapter_index: int,
+    fig_index: int,
+    tied_to_section: str,
+    image_resolver,
+) -> ChapterFigure | None:
+    """Build a ``ChapterFigure`` from an ``<img>``, ``<svg>``, or ``<figure>`` tag.
+
+    Returns ``None`` if no usable image can be resolved (no ``src``, resolver
+    declined, or unsupported nesting). Caller should drop the originating tag
+    when ``None`` is returned.
+
+    SVG nodes are serialised inline as bytes (vector preserved, downstream
+    Vision pass can still describe them).
+    """
+    name = (tag.name or "").lower()
+
+    img_tag = None
+    figcaption_text = ""
+
+    if name == "figure":
+        img_tag = tag.find(["img", "svg"])
+        cap = tag.find("figcaption")
+        if cap is not None:
+            figcaption_text = cap.get_text(strip=True)
+    elif name in ("img", "svg"):
+        img_tag = tag
+
+    if img_tag is None:
+        return None
+
+    if (img_tag.name or "").lower() == "svg":
+        binary = str(img_tag).encode("utf-8")
+        extension = ".svg"
+        alt = img_tag.get("aria-label") or img_tag.get("title") or ""
+    else:
+        src = img_tag.get("src", "")
+        alt = img_tag.get("alt", "")
+        if not src or image_resolver is None:
+            return None
+        resolved = image_resolver(src)
+        if resolved is None:
+            return None
+        binary, extension = resolved
+
+    ref = f"fig-{chapter_index}-{fig_index}"
+    caption = figcaption_text or alt
+    return ChapterFigure(
+        ref=ref,
+        binary=binary,
+        extension=extension,
+        alt=alt,
+        caption=caption,
+        tied_to_section=tied_to_section,
+        placeholder=_FIG_PLACEHOLDER.format(ref=ref),
+    )
+
+
+def _walk_epub_html(
+    html_bytes: bytes,
+    *,
+    chapter_index: int = 0,
+    image_resolver=None,
+) -> tuple[str, list[str], list[ChapterFigure], list[ChapterTable]]:
+    """Walk EPUB chapter HTML extracting text + headings + figures + tables.
+
+    ADR-011 §3.4.1 — replaces the legacy ``BeautifulSoup.get_text()`` flatten
+    that dropped ``<img>`` / ``<table>`` / ``<math>``. Special elements are
+    replaced with placeholders so the chapter source page can splice in
+    Vision-generated descriptions or markdown table files post-ingest.
+
+    ``image_resolver(src) -> (binary, extension) | None`` is invoked for each
+    ``<img src>`` to pull binary image data out of the EPUB zip. When ``None``,
+    figures are skipped — useful for text-only smoke tests where image
+    extraction is irrelevant.
+
+    Note: ``<svg>`` elements are serialised inline as bytes (no resolver
+    needed) so vector graphics survive intact.
+    """
+    from bs4 import BeautifulSoup, Tag
 
     soup = BeautifulSoup(html_bytes, "html.parser")
-    # Drop nav / style / script
     for tag in soup(["script", "style", "nav"]):
         tag.decompose()
 
-    # Section anchors: h2 / h3 within the chapter (h1 is usually chapter title)
     section_anchors: list[str] = []
-    for h in soup.find_all(["h2", "h3"]):
-        text = h.get_text(strip=True)
-        if text:
-            section_anchors.append(text)
+    figures: list[ChapterFigure] = []
+    tables: list[ChapterTable] = []
+
+    state = {"section": "", "fig_n": 0, "tab_n": 0}
+
+    def _walk(parent: Tag) -> None:
+        for child in list(parent.children):
+            if not isinstance(child, Tag):
+                continue
+            name = (child.name or "").lower()
+
+            if name in ("h2", "h3"):
+                anchor = child.get_text(strip=True)
+                if anchor:
+                    section_anchors.append(anchor)
+                    state["section"] = anchor
+                continue
+
+            if name in ("img", "svg", "figure"):
+                state["fig_n"] += 1
+                fig = _extract_figure(
+                    child,
+                    chapter_index,
+                    state["fig_n"],
+                    state["section"],
+                    image_resolver,
+                )
+                if fig is not None:
+                    figures.append(fig)
+                    placeholder = soup.new_string(f"\n{fig.placeholder}\n")
+                    child.replace_with(placeholder)
+                else:
+                    state["fig_n"] -= 1  # roll back: nothing exported
+                    child.decompose()
+                continue
+
+            if name == "table":
+                state["tab_n"] += 1
+                ref = f"tab-{chapter_index}-{state['tab_n']}"
+                md, caption = _html_table_to_markdown(child)
+                placeholder_str = _TAB_PLACEHOLDER.format(ref=ref)
+                tables.append(
+                    ChapterTable(
+                        ref=ref,
+                        markdown=md,
+                        caption=caption,
+                        tied_to_section=state["section"],
+                        placeholder=placeholder_str,
+                    )
+                )
+                placeholder = soup.new_string(f"\n{placeholder_str}\n")
+                child.replace_with(placeholder)
+                continue
+
+            if name == "math":
+                latex = _html_math_to_latex(child)
+                # Replace MathML node with inline LaTeX text (or empty if no
+                # alt/textContent could be extracted)
+                child.replace_with(soup.new_string(latex))
+                continue
+
+            _walk(child)
+
+    _walk(soup)
 
     body_text = soup.get_text(separator="\n", strip=True)
-    return body_text, section_anchors
+    return body_text, section_anchors, figures, tables
+
+
+def _epub_html_to_text(html_bytes: bytes) -> tuple[str, list[str]]:
+    """Backwards-compatible wrapper: return ``(text, section_anchors)`` only.
+
+    New callers should use :func:`_walk_epub_html` directly so figures and
+    tables are preserved as first-class artefacts.
+    """
+    body, anchors, _figs, _tabs = _walk_epub_html(html_bytes)
+    return body, anchors
+
+
+def _build_epub_image_resolver(book, chapter_href: str):
+    """Return a callable resolving ``<img src>`` (relative to ``chapter_href``)
+    to ``(binary, extension)`` by looking up matching ``ITEM_IMAGE`` items.
+
+    EPUB src attributes are typically relative (``../Images/fig.png``); we try
+    both the literal src and a normalised path against the chapter directory
+    to handle the common conventions.
+    """
+    from posixpath import join, normpath
+
+    from ebooklib import ITEM_IMAGE
+
+    items_by_name = {item.get_name(): item for item in book.get_items_of_type(ITEM_IMAGE)}
+    chapter_dir = "/".join(chapter_href.split("/")[:-1])
+
+    def _resolve(src: str):
+        cleaned = (src or "").split("#")[0].split("?")[0]
+        if not cleaned:
+            return None
+
+        candidates: list[str] = []
+        candidates.append(cleaned.lstrip("/"))
+        if chapter_dir:
+            candidates.append(normpath(join(chapter_dir, cleaned)).lstrip("/"))
+
+        seen: set[str] = set()
+        for cand in candidates:
+            if cand in seen:
+                continue
+            seen.add(cand)
+            item = items_by_name.get(cand)
+            if item is None:
+                # Try matching by suffix (some EPUBs flatten all images to root)
+                matches = [v for k, v in items_by_name.items() if k.endswith(cand)]
+                item = matches[0] if matches else None
+            if item is None:
+                continue
+            content = item.get_content()
+            media_type = (getattr(item, "media_type", "") or "").lower()
+            extension = _IMAGE_EXT_BY_MIME.get(media_type)
+            if not extension:
+                suffix = Path(cand).suffix.lower()
+                extension = suffix if suffix else ".bin"
+            return content, extension
+        return None
+
+    return _resolve
 
 
 def _epub_chapters(
     book, *, max_chapters: int = 200
 ) -> tuple[list[Chapter], list[tuple[Chapter, str]], int]:
-    """Walk EPUB TOC + spine; return chapters + per-chapter text + total pages."""
+    """Walk EPUB TOC + spine; return chapters + per-chapter text + total pages.
+
+    Each ``Chapter`` carries figures/tables extracted by :func:`_walk_epub_html`
+    so callers can export attachments after the spine walk completes.
+    """
     from ebooklib import ITEM_DOCUMENT
 
     # Build href → spine_index map (reading order)
@@ -388,7 +815,13 @@ def _epub_chapters(
             item = matches[0] if matches else None
         if item is None:
             continue
-        body_text, section_anchors = _epub_html_to_text(item.get_content())
+        chapter_href = item.get_name()
+        image_resolver = _build_epub_image_resolver(book, chapter_href)
+        body_text, section_anchors, figures, tables = _walk_epub_html(
+            item.get_content(),
+            chapter_index=index,
+            image_resolver=image_resolver,
+        )
         word_count = len(body_text.split())
         page_start = cumulative_words // _EPUB_WORDS_PER_PAGE + 1
         cumulative_words += word_count
@@ -399,6 +832,8 @@ def _epub_chapters(
             page_start=page_start,
             page_end=page_end,
             section_anchors=section_anchors,
+            figures=figures,
+            tables=tables,
         )
         chapters.append(chapter)
         chapter_texts.append((chapter, body_text))
@@ -407,8 +842,43 @@ def _epub_chapters(
     return chapters, chapter_texts, total_pages
 
 
-def _export_epub_chapter_texts(chapter_texts: list[tuple[Chapter, str]], out_dir: Path) -> None:
-    """Write each EPUB chapter as ``ch{n}.md`` under ``out_dir``."""
+def _export_chapter_attachments(chapter: Chapter, attachments_dir: Path) -> None:
+    """Write figures + tables for a single chapter under ``attachments_dir``.
+
+    Layout follows ADR-011 §3.4.1:
+
+    - Figures → ``{ref}{extension}`` (e.g. ``fig-1-3.png`` / ``fig-1-3.svg``)
+    - Tables → ``{ref}.md`` (e.g. ``tab-1-2.md``) — caption-prefixed markdown
+    """
+    if not chapter.figures and not chapter.tables:
+        return
+    attachments_dir.mkdir(parents=True, exist_ok=True)
+    for fig in chapter.figures:
+        target = attachments_dir / f"{fig.ref}{fig.extension}"
+        target.write_bytes(fig.binary)
+    for tab in chapter.tables:
+        target = attachments_dir / f"{tab.ref}.md"
+        body = tab.markdown.strip() if tab.markdown else ""
+        if tab.caption and body:
+            body = f"_{tab.caption}_\n\n{body}"
+        elif tab.caption:
+            body = f"_{tab.caption}_\n\n_(空表格)_"
+        elif not body:
+            body = "_(空表格)_"
+        target.write_text(body + "\n", encoding="utf-8")
+
+
+def _export_epub_chapter_texts(
+    chapter_texts: list[tuple[Chapter, str]],
+    out_dir: Path,
+    *,
+    attachments_base_dir: Path | None = None,
+) -> None:
+    """Write each EPUB chapter as ``ch{n}.md`` under ``out_dir``.
+
+    When ``attachments_base_dir`` is supplied, also writes per-chapter
+    figures / tables to ``{attachments_base_dir}/ch{n}/``.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     for ch, body in chapter_texts:
         target = out_dir / f"ch{ch.index}.md"
@@ -419,12 +889,15 @@ def _export_epub_chapter_texts(chapter_texts: list[tuple[Chapter, str]], out_dir
             f"{body}\n",
             encoding="utf-8",
         )
+        if attachments_base_dir is not None:
+            _export_chapter_attachments(ch, attachments_base_dir / f"ch{ch.index}")
 
 
 def _parse_epub(
     epub_path: Path,
     *,
     export_chapters_dir: Path | None = None,
+    attachments_base_dir: Path | None = None,
     max_chapters: int = 200,
 ) -> Outline:
     try:
@@ -462,7 +935,15 @@ def _parse_epub(
             )
 
     if export_chapters_dir is not None:
-        _export_epub_chapter_texts(chapter_texts, export_chapters_dir)
+        _export_epub_chapter_texts(
+            chapter_texts,
+            export_chapters_dir,
+            attachments_base_dir=attachments_base_dir,
+        )
+    elif attachments_base_dir is not None:
+        # Caller wants attachments but not chapter md → still export
+        for ch in chapters:
+            _export_chapter_attachments(ch, attachments_base_dir / f"ch{ch.index}")
 
     return Outline(
         status="ok",
@@ -483,6 +964,7 @@ def _parse_pdf(
     *,
     toc_yaml: Path | None = None,
     export_chapters_dir: Path | None = None,
+    attachments_base_dir: Path | None = None,
     max_chapters: int = 200,
 ) -> Outline:
     """Build an outline for the given PDF, exporting per-chapter texts if asked."""
@@ -543,7 +1025,18 @@ def _parse_pdf(
             warnings.append(f"ch{ch.index} ({ch.title!r}) 共 {size} 頁，建議手動切細")
 
     if export_chapters_dir is not None:
-        _export_chapter_texts(doc, chapters, export_chapters_dir)
+        _export_chapter_texts(
+            doc,
+            chapters,
+            export_chapters_dir,
+            attachments_base_dir=attachments_base_dir,
+        )
+    elif attachments_base_dir is not None:
+        # Attachments-only path: extract figures without writing chapter md
+        for ch in chapters:
+            page_indices = list(range(ch.page_start - 1, ch.page_end))
+            ch.figures = _pdf_chapter_figures(doc, ch.index, page_indices)
+            _export_chapter_attachments(ch, attachments_base_dir / f"ch{ch.index}")
 
     doc.close()
 
@@ -561,6 +1054,7 @@ def parse_book(
     *,
     toc_yaml: Path | None = None,
     export_chapters_dir: Path | None = None,
+    attachments_base_dir: Path | None = None,
     max_chapters: int = 200,
 ) -> Outline:
     """Dispatch on file extension; EPUB primary, PDF fallback."""
@@ -571,6 +1065,7 @@ def parse_book(
         return _parse_epub(
             book_path,
             export_chapters_dir=export_chapters_dir,
+            attachments_base_dir=attachments_base_dir,
             max_chapters=max_chapters,
         )
     if suffix == ".pdf":
@@ -578,9 +1073,46 @@ def parse_book(
             book_path,
             toc_yaml=toc_yaml,
             export_chapters_dir=export_chapters_dir,
+            attachments_base_dir=attachments_base_dir,
             max_chapters=max_chapters,
         )
     raise ValueError(f"unsupported file extension: {suffix} (expected .epub or .pdf)")
+
+
+def _figure_to_dict(fig: ChapterFigure) -> dict:
+    """Serialise a ``ChapterFigure`` to JSON (without binary)."""
+    return {
+        "ref": fig.ref,
+        "extension": fig.extension,
+        "alt": fig.alt,
+        "caption": fig.caption,
+        "tied_to_section": fig.tied_to_section,
+        "placeholder": fig.placeholder,
+    }
+
+
+def _table_to_dict(tab: ChapterTable) -> dict:
+    """Serialise a ``ChapterTable`` to JSON (without markdown body — that lives
+    on disk under ``Attachments/.../{ref}.md``)."""
+    return {
+        "ref": tab.ref,
+        "caption": tab.caption,
+        "tied_to_section": tab.tied_to_section,
+        "placeholder": tab.placeholder,
+    }
+
+
+def _chapter_to_dict(ch: Chapter) -> dict:
+    """Serialise a ``Chapter`` to JSON, including figures/tables metadata."""
+    return {
+        "index": ch.index,
+        "title": ch.title,
+        "page_start": ch.page_start,
+        "page_end": ch.page_end,
+        "section_anchors": ch.section_anchors,
+        "figures": [_figure_to_dict(f) for f in ch.figures],
+        "tables": [_table_to_dict(t) for t in ch.tables],
+    }
 
 
 def _outline_to_dict(outline: Outline) -> dict:
@@ -588,7 +1120,7 @@ def _outline_to_dict(outline: Outline) -> dict:
         "status": outline.status,
         "strategy": outline.strategy,
         "book_metadata": asdict(outline.book_metadata),
-        "chapters": [asdict(ch) for ch in outline.chapters],
+        "chapters": [_chapter_to_dict(ch) for ch in outline.chapters],
         "warnings": outline.warnings,
     }
 
@@ -610,6 +1142,14 @@ def main() -> int:
         help="if set, write per-chapter .md files here for downstream Read tool use",
     )
     p.add_argument(
+        "--attachments-base-dir",
+        default=None,
+        help=(
+            "if set, write per-chapter figures/tables under "
+            "{attachments-base-dir}/ch{n}/ (target = vault Attachments/Books/{book_id}/)"
+        ),
+    )
+    p.add_argument(
         "--max-chapters",
         type=int,
         default=200,
@@ -621,6 +1161,9 @@ def main() -> int:
         Path(args.path),
         toc_yaml=Path(args.toc_yaml) if args.toc_yaml else None,
         export_chapters_dir=(Path(args.export_chapters_dir) if args.export_chapters_dir else None),
+        attachments_base_dir=(
+            Path(args.attachments_base_dir) if args.attachments_base_dir else None
+        ),
         max_chapters=args.max_chapters,
     )
 
@@ -633,6 +1176,9 @@ def main() -> int:
 
     print(f"status={outline.status} strategy={outline.strategy}")
     print(f"chapters={len(outline.chapters)} warnings={len(outline.warnings)}")
+    fig_total = sum(len(ch.figures) for ch in outline.chapters)
+    tab_total = sum(len(ch.tables) for ch in outline.chapters)
+    print(f"figures={fig_total} tables={tab_total}")
     if outline.warnings:
         for w in outline.warnings:
             print(f"  [warn] {w}")
