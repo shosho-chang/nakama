@@ -15,11 +15,26 @@ import argparse
 import json
 import sys
 
+from shared.heartbeat import record_failure, record_success
+
+# Phase 5B-2 — heartbeat key consumed by probe_cron_freshness via CRON_SCHEDULES.
+# Stable across releases (changing breaks the probe's prior-state continuity).
+_JOB_NAME_SCOUT = "zoro-brainstorm-scout"
+
 
 def _cmd_scout(args: argparse.Namespace) -> int:
     from agents.zoro.brainstorm_scout import run
 
-    best = run(publish=not args.dry_run, record=not args.dry_run)
+    try:
+        best = run(publish=not args.dry_run, record=not args.dry_run)
+    except Exception as exc:
+        # dry-run is manual / ad-hoc — recording its failures would corrupt the
+        # cron staleness signal (operator running --dry-run repeatedly would mask
+        # an actual cron miss). Only the production path emits heartbeats.
+        if not args.dry_run:
+            record_failure(_JOB_NAME_SCOUT, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+
     summary = {
         "picked": best.title if best else None,
         "velocity": round(best.velocity_score, 2) if best else None,
@@ -28,6 +43,8 @@ def _cmd_scout(args: argparse.Namespace) -> int:
         "dry_run": args.dry_run,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if not args.dry_run:
+        record_success(_JOB_NAME_SCOUT)
     return 0
 
 

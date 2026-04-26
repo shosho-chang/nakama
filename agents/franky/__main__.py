@@ -18,10 +18,18 @@ import json
 import sys
 from datetime import datetime, timezone
 
+from shared.heartbeat import record_failure, record_success
+
 # Windows cp1252 stdout 無法印中文 — 統一 UTF-8（feedback_windows_stdout_utf8）
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
+
+# Phase 5B-2 — heartbeat keys consumed by probe_cron_freshness via CRON_SCHEDULES.
+# Stable across releases (changing breaks the probe's prior-state continuity).
+_JOB_NAME_BACKUP_VERIFY = "franky-r2-backup-verify"
+_JOB_NAME_DIGEST = "franky-weekly-report"
+_JOB_NAME_NEWS = "franky-news-digest"
 
 
 def _cmd_health(_args: argparse.Namespace) -> int:
@@ -87,7 +95,12 @@ def _cmd_backup_verify(_args: argparse.Namespace) -> int:
     from agents.franky.alert_router import make_default_sink
     from agents.franky.r2_backup_verify import verify_once
 
-    result = verify_once()
+    try:
+        result = verify_once()
+    except Exception as exc:
+        record_failure(_JOB_NAME_BACKUP_VERIFY, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+
     summary = {
         "operation_id": result["operation_id"],
         "status": result["status"],
@@ -99,6 +112,10 @@ def _cmd_backup_verify(_args: argparse.Namespace) -> int:
     if result["alert"] is not None:
         sink = make_default_sink()
         sink(result["alert"])
+    # The cron itself succeeded (it ran and produced a verdict, possibly emitting an
+    # alert about the *backed-up data* being stale). probe_cron_freshness watches the
+    # cron's liveness; the backup-content alert path is probe_r2_backup_nakama's job.
+    record_success(_JOB_NAME_BACKUP_VERIFY)
     # Exit 0 on ok/too-early-fail; exit 1 only if Critical alert emitted (cron noise signal)
     return 1 if result["alert"] is not None else 0
 
@@ -106,8 +123,13 @@ def _cmd_backup_verify(_args: argparse.Namespace) -> int:
 def _cmd_digest(_args: argparse.Namespace) -> int:
     from agents.franky.weekly_digest import send_digest
 
-    result = send_digest()
+    try:
+        result = send_digest()
+    except Exception as exc:
+        record_failure(_JOB_NAME_DIGEST, f"{type(exc).__name__}: {exc}"[:200])
+        raise
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    record_success(_JOB_NAME_DIGEST)
     return 0
 
 
@@ -115,11 +137,21 @@ def _cmd_news(args: argparse.Namespace) -> int:
     """Slice A: AI ecosystem daily digest from official blogs."""
     from agents.franky.news_digest import run_news_digest
 
-    summary = run_news_digest(
-        dry_run=getattr(args, "dry_run", False),
-        no_publish=getattr(args, "no_publish", False),
-    )
+    dry_run = getattr(args, "dry_run", False)
+    try:
+        summary = run_news_digest(
+            dry_run=dry_run,
+            no_publish=getattr(args, "no_publish", False),
+        )
+    except Exception as exc:
+        # dry-run is manual / ad-hoc — recording its failures would corrupt the
+        # cron staleness signal. Only the production path emits heartbeats.
+        if not dry_run:
+            record_failure(_JOB_NAME_NEWS, f"{type(exc).__name__}: {exc}"[:200])
+        raise
     print(summary)
+    if not dry_run:
+        record_success(_JOB_NAME_NEWS)
     return 0
 
 

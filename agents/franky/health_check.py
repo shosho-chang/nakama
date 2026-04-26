@@ -71,20 +71,36 @@ NAKAMA_BACKUP_STALE_THRESHOLD_HOURS: float = float(
 #
 # 嚴格規則：本 dict 的 entry 必須對應到實際呼叫 `shared.heartbeat.record_success(name)`
 # 的生產 cron。否則 probe 永遠看到 hb=None 走「skipped」路徑，false-green。
-# 已驗證有 caller 的 3 個 job（grep `record_success` in scripts/）：
+# 已驗證有 caller 的 jobs（grep `record_success` 各 entry 點）：
 #   - nakama-backup            (scripts/backup_nakama_state.py)
 #   - nakama-backup-mirror     (scripts/mirror_backup_to_secondary.py)
 #   - nakama-backup-integrity  (scripts/verify_backup_integrity.py)
-# 待 instrument（加入 dict 前先補 record_success/record_failure）：
+#   - robin-pubmed-digest      (agents/robin/__main__.py via _run_pubmed_digest)
+#   - zoro-brainstorm-scout    (agents/zoro/__main__.py via _cmd_scout)
+#   - franky-r2-backup-verify  (agents/franky/__main__.py via _cmd_backup_verify)
+#   - franky-weekly-report     (agents/franky/__main__.py via _cmd_digest)
+#   - franky-news-digest       (agents/franky/__main__.py via _cmd_news)
+# 不 instrument 的 cron：
 #   - franky-health-probe（self-deadlock：probe 是 franky cron 自己跑，永遠不會 stale。
-#     liveness 由 external-uptime-probe 偵測。建議永不加入此 dict。）
-#   - franky-r2-backup-verify、franky-weekly-report、robin-pubmed-digest、
-#     zoro-brainstorm-scout、external-uptime-probe — Phase 5B-2 follow-up。
+#     liveness 由 external-uptime-probe 偵測。）
+#   - external-uptime-probe（GH Actions runner 沒法直接 record_success；要 webhook
+#     架構接收 ping，defer。）
+#   - robin-ingest（manual file-watcher：missed run 不掉資料，operator 只是還沒丟
+#     檔案到 inbox，alert 是 noise。）
+#   - usopp（hourly）/ nami（daily 07:00）/ sanji — 手動或互動為主，未要求高 SLA。
+#
+# Grace 慣例：daily=60min（cover ad-hoc reboot / NTP drift），weekly=120min。
+# Reviewer 過去抓到 5+5min 太緊（見 PR #170 review）— 寧可 grace 一小時換誤報少。
 CRON_SCHEDULES: dict[str, tuple[int, int]] = {
-    # name                          interval  grace
+    # name                          interval         grace
     "nakama-backup": (24 * 60, 60),  # daily 04:00
     "nakama-backup-mirror": (24 * 60, 60),  # daily 04:30
     "nakama-backup-integrity": (7 * 24 * 60, 120),  # weekly Sun 03:30
+    "robin-pubmed-digest": (24 * 60, 60),  # daily 05:30
+    "zoro-brainstorm-scout": (24 * 60, 60),  # daily 05:00
+    "franky-r2-backup-verify": (24 * 60, 60),  # daily 03:30
+    "franky-news-digest": (24 * 60, 60),  # daily 06:30
+    "franky-weekly-report": (7 * 24 * 60, 120),  # weekly Mon 10:00
 }
 
 

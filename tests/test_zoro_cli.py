@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from agents.zoro.__main__ import main
 
@@ -40,3 +42,72 @@ def test_main_scout_dry_run_flag_propagates():
 
     ns = m_scout.call_args.args[0]
     assert ns.dry_run is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 5B-2 — heartbeat instrumentation
+# ---------------------------------------------------------------------------
+
+
+def _fake_topic() -> MagicMock:
+    return MagicMock(title="zone 2 cardio", velocity_score=80.0, relevance_score=0.9, domain="運動")
+
+
+def test_scout_records_heartbeat_success_on_happy_path():
+    from shared import heartbeat
+
+    with patch("agents.zoro.brainstorm_scout.run", return_value=_fake_topic()):
+        rc = main(["scout"])
+
+    assert rc == 0
+    hb = heartbeat.get_heartbeat("zoro-brainstorm-scout")
+    assert hb is not None
+    assert hb.last_status == "success"
+    assert hb.consecutive_failures == 0
+
+
+def test_scout_records_heartbeat_success_when_no_topic_picked():
+    """run() returning None still means the cron *ran* — operators should see fresh heartbeat."""
+    from shared import heartbeat
+
+    with patch("agents.zoro.brainstorm_scout.run", return_value=None):
+        rc = main(["scout"])
+
+    assert rc == 0
+    hb = heartbeat.get_heartbeat("zoro-brainstorm-scout")
+    assert hb is not None
+    assert hb.last_status == "success"
+
+
+def test_scout_records_heartbeat_failure_on_exception():
+    from shared import heartbeat
+
+    with patch("agents.zoro.brainstorm_scout.run", side_effect=RuntimeError("trends API down")):
+        with pytest.raises(RuntimeError):
+            main(["scout"])
+
+    hb = heartbeat.get_heartbeat("zoro-brainstorm-scout")
+    assert hb is not None
+    assert hb.last_status == "fail"
+    assert "trends API down" in (hb.last_error or "")
+    assert hb.consecutive_failures == 1
+
+
+def test_scout_dry_run_does_not_record_heartbeat():
+    """Dry-run is manual / ad-hoc; recording it would mask real cron misses."""
+    from shared import heartbeat
+
+    with patch("agents.zoro.brainstorm_scout.run", return_value=_fake_topic()):
+        main(["scout", "--dry-run"])
+
+    assert heartbeat.get_heartbeat("zoro-brainstorm-scout") is None
+
+
+def test_scout_dry_run_failure_does_not_record_heartbeat():
+    from shared import heartbeat
+
+    with patch("agents.zoro.brainstorm_scout.run", side_effect=RuntimeError("boom")):
+        with pytest.raises(RuntimeError):
+            main(["scout", "--dry-run"])
+
+    assert heartbeat.get_heartbeat("zoro-brainstorm-scout") is None
