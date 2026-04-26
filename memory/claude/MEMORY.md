@@ -27,7 +27,7 @@
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
 - [feedback_skill_design_principle.md](feedback_skill_design_principle.md) — Skill 三層架構：互動式 workflow→skill、確定性函式→shared/*.py、agent 只做觸發/編排；skill 粒度扁平、通常 agent-specific
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
-- [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **目前 SEO 軸線 pickup 點**：Phase 1 全 merged + Phase 1.5 task prompt PR #167 frozen；4 sub-slice 待 dispatch（D.1 → D.2 → E → F）
+- [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **目前 SEO 軸線 pickup 點**：D.1 PR #173 open（28 rule + 146 test）+ PageSpeed key 設好；D.2/E/F 0%
 - [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/2026-04-24-seo-prior-art.md
 - Research doc：[docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
 - Task prompt：[docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md) — Phase 1.5 凍結 4 sub-slice + 28 deterministic + 12 LLM rule + report 模板（PR #167 a985d14）

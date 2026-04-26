@@ -1,14 +1,15 @@
 ---
-name: SEO Solution Phase 1.5 dispatch 起跑點（task prompt PR #167 frozen 後）
-description: Phase 1 全 merged（5 PR）+ Phase 1.5 task prompt PR #167 frozen 2026-04-26（a985d14）；4 sub-slice (D.1/D.2/E/F) 待 dispatch；推薦序 D.1 → D.2 → E → F
+name: SEO Solution Phase 1.5 dispatch 起跑點（D.1 PR #173 open，D.2 unblock 後起手）
+description: Phase 1 全 merged + Phase 1.5 task prompt PR #167 frozen + D.1 PR #173 open 2026-04-26（28 rule + 146 test）；D.2/E/F 待 dispatch；推薦序 D.2 → E → F
 type: project
 created: 2026-04-26
+originSessionId: d68cbc3c-496f-44e3-b795-24cd48c68d09
 ---
-2026-04-26 SEO Phase 1.5 task prompt 已 frozen，4 sub-slice scope + 28 deterministic + 12 LLM rule + report 模板全凍結進 [docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md)。下次 fresh session 起手 D.1 implementation。
+2026-04-26 D.1 implementation 完成並開 PR #173（commit `8364163`）：`shared/pagespeed_client.py` + `shared/seo_audit/*` 8 module + 146 unit test 全綠 + `.env.example` PAGESPEED_INSIGHTS_API_KEY + runbook §2e。等 review/merge。修修 PageSpeed API key 已申請設好，D.2 ship 後可端到端跑。
 
 **Why:** Phase 1 (Slice A/B/C) 全 merged 涵蓋 keyword-research 下游 enrich + Brook compose opt-in；Phase 1.5 補修修原始三大用途中的「現有部落格 SEO 體檢」(D.1+D.2 ship `seo-audit-post`) + 「Brook compose 完整 enrich」(E+F 補 DataForSEO + firecrawl SERP)。task prompt PR #167 fix-up 額外凍結了 ADR §Open Items #1（28 條 deterministic check rule set）+ #2（report markdown 模板）兩個被 ADR 留給「實作階段」的決策，避免實作 PR scope creep。
 
-**How to apply:** 開新 session 讀 MEMORY.md → 讀本 memo → 讀 [docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md) §0 + Slice D.1 + §附錄 A，從 worktree 起手 D.1 implementation。
+**How to apply:** 開新 session 讀 MEMORY.md → 讀本 memo →（D.1 merged 後）讀 [docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md) §0 + Slice D.2 + §附錄 B + §附錄 C，從新 worktree `F:/nakama-seo-d2` 起手 D.2 implementation。
 
 ## Phase 1 狀態（已完成 — 5 PR + benchmark）
 
@@ -22,50 +23,61 @@ created: 2026-04-26
 | ADR-009 multi-model triangulation | #124 | merged |
 | T1 benchmark on shosho.tw（zone 2 訓練 5 row 真資料 / fleet 0 row）| — | 2026-04-25 |
 
-## Phase 1.5 狀態（task prompt frozen，實作 0%）
+## Phase 1.5 狀態（D.1 PR #173 open，D.2/E/F 0%）
 
 | Sub-slice | 範圍 | 預估 | 狀態 |
 |---|---|---|---|
 | **task prompt** | 4 sub-slice + 28 deterministic + 12 LLM + report 模板凍結 | — | ✅ PR #167 a985d14 |
-| **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*` 6 module（28 條 rule）+ unit test | 2-2.5 天 | ⬜ |
-| **D.2** | `seo-audit-post` skill + LLM semantic 12 條 + markdown report；reuse gsc_client + 改 kb_search 加 `purpose` 參數 | 2.5-3 天 | ⬜ |
+| **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*` 8 module（28 rule + types + html_fetcher）+ 146 unit test | 2-2.5 天 | 🟡 PR #173 open（commit `8364163`，2026-04-26）|
+| **D.2** | `seo-audit-post` skill + LLM semantic 12 條 + markdown report；reuse gsc_client + 改 kb_search 加 `purpose` 參數 | 2.5-3 天 | ⬜（待 D.1 merge）|
 | **E** | DataForSEO Labs `keyword_difficulty` → `seo-keyword-enrich`（health filter 內建）| 1-1.5 天 | ⬜ |
 | **F** | firecrawl top-3 SERP + Claude Haiku 摘要 → 填 `competitor_serp_summary` | 1-1.5 天 | ⬜ |
 
-**並行策略**：D.1 → D.2 強制 sequential；E / F 互不依賴可並行；D 全線 vs E vs F 三條完全獨立可丟 dual-window。
+**並行策略**：D.1 → D.2 強制 sequential；E / F 互不依賴可並行；D 全線 vs E vs F 三條完全獨立可丟 dual-window。D.1 merged 後 D.2 + E + F 三線可完全並行（dual-window 友好）。
 
 ## 修修 manual prerequisites
 
 | 工作 | Slice unblock | 狀態 |
 |---|---|---|
 | GSC OAuth + Franky sa reuse + `.env` GSC_PROPERTY_*  | A/B/C ✓ | ✅ 2026-04-25 |
+| **PageSpeed Insights API key** | D.1（D.2 端到端驗證需要）| ✅ 2026-04-26（已填 `.env`）|
 | **DataForSEO 註冊 + $50 儲值 + `DATAFORSEO_LOGIN/PASSWORD`** | E | ⬜ |
-| **PageSpeed Insights API key**（GCP Console → 啟用 PageSpeed Insights API → 建 key，5 分鐘） | D.1 | ⬜ |
 
-## D.1 起跑 checklist（下次 session 起手）
+## D.1 PR #173 摘要（已完成、待 merge）
 
-1. 讀 [docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md) §0 + §0.1 + Slice D.1 (§D.1.1 - §D.1.6) + §附錄 A 28 條 rule
-2. 讀體例參考：`shared/gsc_client.py`（thin wrapper retry pattern）+ `shared/seo_enrich/striking_distance.py`（filter-first-then-build T6 contract）+ `shared/log.py`（get_logger）+ `tests/shared/test_gsc_client.py`（test 體例）
-3. 開 worktree（避免踩 textbook v2 視窗 working tree）：`git worktree add F:/nakama-seo-d1 -b feat/seo-audit-d1 origin/main`
-4. 寫 module（10 個檔）+ tests（8 個檔，每 rule ≥ 3 unit test）
-5. ruff + pytest 全綠
-6. commit + push + open PR
-7. dispatch review + merge（按 [feedback_pr_review_merge_flow.md] 自動流程）
+- 8 module：`pagespeed_client.py` / `seo_audit/{__init__,types,html_fetcher,metadata,headings,images,structure,schema_markup,performance}.py`
+- 28 rule 全套對齊 §附錄 A：M1-M5 / O1-O4 / H1-H3 / I1-I5 / S1-S3 / SC1-SC5 / P1-P3
+- 146 unit test 全綠（每 rule ≥3 case 涵蓋 pass / warn / fail / edge）
+- HEAD network call 全 mock；retry sleep 走 monkeypatch lambda
+- httpx + self-rolled retry（**沒**用 tenacity；對齊 `gsc_client.py` 既有風格）
+- `.env.example` 加 `PAGESPEED_INSIGHTS_API_KEY` + runbook §2e GCP Console 步驟
+- CJK-aware word count（「磷酸肌酸系統」=6 字 not 1）；子網域算 external
+
+## D.2 起跑 checklist（D.1 merged 後）
+
+1. `gh pr view 173 --json state` 確認 D.1 已 merge（merged → 進行；open → 暫停等 review）
+2. 開 worktree：`git worktree add F:/nakama-seo-d2 -b feat/seo-audit-d2 origin/main`
+3. 讀 [docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md) §0 + Slice D.2 (§D.2.1 - §D.2.6) + §附錄 B（report 模板）+ §附錄 C（12 條 LLM semantic）
+4. **必看 caveat**：L9 `compliance_scan.py` 6 條 SEED 詞庫不夠 / L10 `kb_search.py:57` prompt 寫死 YouTube 場景（D.2 要擴 `purpose` 參數）— 詳見下方
+5. 寫 skill (`audit.py` 主流程 + LLM semantic + markdown report) + tests
+6. ruff + pytest 全綠 + commit + push + PR
 
 ## 三大用途映射（修修原始定義）
 
 | 用途 | 現狀 | 補完路徑 |
 |---|---|---|
 | 1. 內容創作建議 | ✅ keyword-research production | — |
-| 2. 既有部落格 SEO 體檢 | ⬜ | Phase 1.5 D.1 + D.2 |
+| 2. 既有部落格 SEO 體檢 | 🟡 D.1 PR #173 open | D.1 merge → Phase 1.5 D.2 |
 | 3. Brook compose 整合（寫稿吃 SEO 數據） | 🟡 半完成 — Slice C opt-in 已就緒，enrich 缺 difficulty + SERP 摘要 | Phase 1.5 E + F |
 
-## 重要 caveats（task prompt 已寫進，實作 PR 必看）
+## 重要 caveats（task prompt 已寫進，D.2 PR 必看）
 
 1. **L9 `compliance_scan.py` reuse 是 SEED 限制** — `MEDICAL_CLAIM_PATTERNS` 只 6 條（治好 / 99.9% / 肝癌 / 乳癌等）。直接 reuse 會在 audit L9 給假陰性。D.2 走 `scan_publish_gate()` + 在 audit report 標明「Phase 1 SEED — Slice B 醫療詞庫上線後升級」
 2. **L10 `kb_search.py:57` prompt 寫死 YouTube 場景** — 給 SEO audit 用會讓 Haiku 在錯誤 context 排序。D.2 必須擇一：(a) 擴 `search_kb` signature 加 `purpose: Literal["youtube", "seo_audit", "blog_compose", "general"]`（推薦），或 (b) 寫 thin wrapper 自己 prompt
 3. SEOPress meta_description 在 SEOPress block / focus_keyword 路徑已 wired by Usopp（PR #101）— audit 純 read-only，不寫
 4. PageSpeed Insights API 預設 mobile，desktop 對照（CLI `--strategy` flag）
+5. **D.1 已知 stale wording**：task prompt §D.1.6 邊界寫「reuse tenacity 與 gsc_client.py 對齊」是錯的（gsc_client.py 不用 tenacity，docstring 明示）。D.1 PR #173 採真實 codebase pattern（httpx + self-rolled retry）— D.2 接續沿用
+6. **D.1 已知 stale rule count**：§D.1.1/D.1.2 寫「25 條 rule」是 stale，§附錄 A + §D.1.5 驗收凍結 28 條 — 以 §附錄為準
 
 ## Phase 2 backlog（時程未定）
 
