@@ -123,6 +123,25 @@ GSC_PROPERTY_FLEET=sc-domain:fleet.shosho.tw
 - [ ] 開啟後等 24-48 小時資料才會出現
 - [ ] 同意 Google 的 demographic data 使用條款
 
+### 2e. PageSpeed Insights API Key（ADR-009 Phase 1.5 Slice D — `seo-audit-post`）
+
+PageSpeed Insights API **不**走 service account，走獨立 API key（GCP Console 建立後直接拿到字串）。免費 25,000 req/day quota，本專案僅在 audit 體檢時觸發，遠遠用不完。
+
+- [ ] 到 `https://console.cloud.google.com/apis/library` (用 §2a 同一個 `nakama-monitoring` project)
+- [ ] 搜尋 **PageSpeed Insights API** → **ENABLE**
+- [ ] APIs & Services → Credentials → **CREATE CREDENTIALS → API key**
+- [ ] 複製生成的 key
+- [ ] 點 **EDIT API KEY** 限制 key 使用範圍：
+  - **Application restrictions**: HTTP referrers 留空 / 或選 None（VPS server 端呼叫）
+  - **API restrictions**: Restrict key → 勾 **PageSpeed Insights API** 一項
+- [ ] 填入 `.env`：
+  ```
+  PAGESPEED_INSIGHTS_API_KEY=AIzaSy...
+  ```
+- [ ] 驗證（D.2 skill ship 後）：`python -c "from shared.pagespeed_client import PageSpeedClient; print(PageSpeedClient().run('https://shosho.tw').get('lighthouseResult', {}).get('categories', {}).get('performance', {}).get('score'))"` 應印 0-1 之間 score
+
+**消費者**：`shared/pagespeed_client.py` → `shared/seo_audit/performance.py`（P1 LCP / P2 INP / P3 CLS rule）。
+
 ---
 
 ## 3. Cloudflare API Token
