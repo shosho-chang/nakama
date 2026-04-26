@@ -26,8 +26,11 @@
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
 - [feedback_skill_design_principle.md](feedback_skill_design_principle.md) — Skill 三層架構：互動式 workflow→skill、確定性函式→shared/*.py、agent 只做觸發/編排；skill 粒度扁平、通常 agent-specific
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
+- [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **目前 SEO 軸線 pickup 點**：Phase 1 全 merged + Phase 1.5 task prompt PR #167 frozen；4 sub-slice 待 dispatch（D.1 → D.2 → E → F）
 - [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/2026-04-24-seo-prior-art.md
 - Research doc：[docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
+- Task prompt：[docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md) — Phase 1.5 凍結 4 sub-slice + 28 deterministic + 12 LLM rule + report 模板（PR #167 a985d14）
+- [feedback_reuse_module_inspect_inner_text.md](feedback_reuse_module_inspect_inner_text.md) — reuse 既有 module 前 grep prompt / docstring / hardcoded literal，不只看 signature（kb_search YouTube hardcoded + compliance_scan SEED 教訓）
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_worktree_session_hygiene.md](feedback_worktree_session_hygiene.md) — worktree 用主 tree venv 絕對路徑 + 收尾 fetch 不 checkout main + bash cwd 不持久
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
