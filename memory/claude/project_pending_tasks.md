@@ -218,6 +218,22 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - 教訓三條進 main：[feedback_todo_needs_use_case.md](feedback_todo_needs_use_case.md) / [feedback_shared_tree_devserver_collision.md](feedback_shared_tree_devserver_collision.md) / [feedback_worktree_session_hygiene.md](feedback_worktree_session_hygiene.md)（既有的 dual_window 加 cross-link）
 - Window B worktree session 完美收尾：worktree 隔離有效（feedback_dual_window_worktree.md hold），最後 `git worktree remove` + 刪 stale local branch 清乾淨
 
+**Ingest v2 Step 3 implementation（2026-04-26 ready to start）：**
+- ✅ **Step 1 PR #164 merged** `c2b529b` — config env 順序 + obsidian yaml fold + migration script + tests + decisions doc
+- ✅ **Step 2 PR #165 merged** `694b50d` — ADR-011 完整稿 + ADR-010 標 Superseded + plan §8 Decisions 表（修修 4 題全 A）
+- ⬜ **Migration apply（修修 user action）**：`python -m scripts.migrate_broken_concept_frontmatter --vault "F:/Shosho LifeOS" --apply` — 修 4 頁 broken concept page（ATP再合成 / 神經保護作用 / 肌酸代謝 / 膳食補充劑安全性），預設寫 `.bak`
+- 🚧 **Step 3 開工順序**（per ADR-011 §6 Acceptance）：
+  1. `shared/schemas/kb.py` — 6 個 Pydantic class（已凍結 §3.5.3）
+  2. `shared/kb_writer.py` — 7 個 function（已凍結 §3.5.1）+ migrate_v1_to_v2 + backfill_all_v1_pages
+  3. 重接線 `agents/robin/ingest.py:472-510` `_update_wiki_page` → kb_writer
+  4. 重寫 `agents/robin/prompts/extract_concepts.md` 注入既有 body + 4 action
+  5. 拿掉 `chapter-summary.md` 字數上限
+  6. 改 `parse_book.py` `_epub_html_to_text` walker（圖/表/公式）+ Vision describe（Sonnet 4.6）
+  7. 重 ingest ch1 + retrieval acceptance test
+  8. 批 ingest 剩 10 章
+- ⬜ **A-11c follow-up**（low pri）：`shared/lifeos_writer.py:193` 加 `width=10**9`（同 obsidian_writer fix），use case：Nami 寫 Task/Project 含長 wikilink frontmatter 防 corruption
+- 詳見 [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) + [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md)
+
 **Vault ingest 工程 baseline（下波待開）：**
 - 詳見 [project_vault_ingest_flow_drift_2026_04_25.md](project_vault_ingest_flow_drift_2026_04_25.md) — 5 條流程想像 vs 實作對齊度 + 3 條 schema drift
 - 桌機 / VPS compute tier 分工：[feedback_compute_tier_split.md](feedback_compute_tier_split.md)
