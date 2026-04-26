@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bridge · Docs</title>
+<title>Bridge · Logs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -23,6 +23,9 @@
   --nk-hairline:     #dcd9d2;
   --nk-signal:       #ff5a1f;
   --nk-jade:         #3f7a5a;
+  --nk-warning:      #d4751c;
+  --nk-error:        #c04848;
+  --nk-debug:        #98958e;
   --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
   --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
   --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
@@ -63,7 +66,6 @@ body {
   text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
   border-bottom: 2px solid transparent; padding-bottom: 2px;
   display: flex; align-items: center; gap: 6px;
-  transition: color var(--nk-dur-fast);
 }
 .chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
 .chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
@@ -82,22 +84,17 @@ body {
 .page-title { font-family: var(--nk-font-display); font-size: 26px; font-weight: 500; letter-spacing: -0.5px; }
 .page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
 
-.search-form { margin-top: 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.search-input {
-  flex: 1; min-width: 320px;
+.search-form { margin-top: 18px; display: grid; gap: 8px; grid-template-columns: 1fr auto auto auto auto auto; align-items: stretch; }
+.search-input, .search-select, .search-time {
   padding: 10px 12px;
   font-family: var(--nk-font-sans); font-size: 14px;
   background: var(--nk-panel-2); color: var(--nk-ink);
   border: 1px solid var(--nk-rule);
   outline: none;
 }
-.search-input:focus { border-color: var(--nk-signal); }
-.search-select {
-  padding: 10px 12px;
-  font-family: var(--nk-font-mono); font-size: 11px;
-  background: var(--nk-panel-2); color: var(--nk-ink);
-  border: 1px solid var(--nk-rule);
-}
+.search-select, .search-time { font-family: var(--nk-font-mono); font-size: 11px; }
+.search-time { width: 130px; }
+.search-input:focus, .search-select:focus, .search-time:focus { border-color: var(--nk-signal); }
 .search-btn {
   padding: 10px 18px;
   font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
@@ -105,6 +102,11 @@ body {
   border: none; cursor: pointer;
 }
 .search-btn:hover { background: var(--nk-signal); }
+
+@media (max-width: 980px) {
+  .search-form { grid-template-columns: 1fr 1fr; }
+  .search-time { width: 100%; }
+}
 
 .stats {
   margin-top: 10px;
@@ -114,34 +116,56 @@ body {
 
 .main { flex: 1; overflow: auto; padding: 24px 40px 40px; }
 
-.results { display: flex; flex-direction: column; gap: 12px; }
-.result {
+.results { display: flex; flex-direction: column; gap: 8px; }
+.row {
   background: var(--nk-panel);
   border: 1px solid var(--nk-rule);
-  padding: 14px 16px;
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: 140px 80px 200px 1fr;
+  gap: 12px;
+  align-items: start;
+  font-size: 13px;
 }
-.result-header {
-  display: flex; justify-content: space-between; align-items: baseline;
-  gap: 12px; margin-bottom: 6px;
-}
-.result-title {
-  font-family: var(--nk-font-display); font-size: 16px; font-weight: 500;
-  color: var(--nk-ink);
-}
-.result-category {
-  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--nk-jade);
-}
-.result-path {
+.row-ts {
   font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-3);
-  margin-bottom: 8px; word-break: break-all;
+  white-space: nowrap;
 }
-.result-snippet {
-  font-size: 13px; color: var(--nk-ink-2);
-  line-height: 1.55;
+.level-chip {
+  display: inline-block;
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  width: fit-content;
 }
-.result-snippet mark {
+.level-INFO     { color: var(--nk-ink-3); }
+.level-WARNING  { color: var(--nk-warning); }
+.level-ERROR    { color: var(--nk-error); }
+.level-CRITICAL { color: var(--nk-error); background: rgba(192,72,72,0.1); }
+.level-DEBUG    { color: var(--nk-debug); }
+.row-logger {
+  font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-2);
+  word-break: break-all;
+}
+.row-msg {
+  font-family: var(--nk-font-mono); font-size: 12px; color: var(--nk-ink);
+  line-height: 1.5;
+  word-break: break-word;
+}
+.row-msg mark {
   background: rgba(255, 90, 31, 0.18); color: var(--nk-signal); padding: 0 2px;
+}
+.row-extra {
+  margin-top: 4px;
+  font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-3);
+}
+.row-extra summary { cursor: pointer; color: var(--nk-ink-2); }
+.row-extra summary:hover { color: var(--nk-signal); }
+.row-extra pre { margin-top: 4px; padding: 6px 8px; background: var(--nk-panel-2); white-space: pre-wrap; word-break: break-all; }
+
+@media (max-width: 980px) {
+  .row { grid-template-columns: 1fr; gap: 4px; }
 }
 
 .empty, .help {
@@ -156,6 +180,17 @@ body {
   background: var(--nk-panel-2);
   padding: 1px 5px;
 }
+
+.pagination {
+  margin-top: 20px; display: flex; gap: 12px; justify-content: center;
+  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.pagination a {
+  padding: 8px 16px;
+  border: 1px solid var(--nk-rule);
+  color: var(--nk-ink-2); text-decoration: none;
+}
+.pagination a:hover { border-color: var(--nk-signal); color: var(--nk-signal); }
 </style>
 </head>
 <body>
@@ -171,65 +206,106 @@ body {
     <a href="/bridge/cost">COST <span class="zh">成本</span></a>
     <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
     <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
-    <a href="/bridge/docs" class="active" aria-current="page">DOCS <span class="zh">文件</span></a>
-    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
+    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
+    <a href="/bridge/logs" class="active" aria-current="page">LOGS <span class="zh">日誌</span></a>
     <a href="/">VAULT <span class="zh">秘庫</span></a>
   </nav>
 </header>
 
 <section class="page-header">
   <div>
-    <div class="nk-caps">/docs · markdown full-text search</div>
-    <h1 class="page-title">Documentation Search <span class="zh">文件搜尋</span></h1>
+    <div class="nk-caps">/logs · structured log search</div>
+    <h1 class="page-title">Log Search <span class="zh">日誌搜尋</span></h1>
   </div>
-  <form method="get" action="/bridge/docs" class="search-form">
+  <form method="get" action="/bridge/logs" class="search-form">
     <input
       class="search-input"
       type="text"
       name="q"
       value="{{ q }}"
-      placeholder="搜尋 docs/ + memory/…  例如：R2 backup, FSM, 雙語 reader"
+      placeholder="搜尋 msg / extra…  例如：UnsupportedProtocol, backup, run_id"
       autofocus
     />
-    <select class="search-select" name="category">
-      <option value="">All categories</option>
-      {% for cat in categories %}
-        <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ cat }} ({{ stats[cat] }})</option>
-      {% endfor %}
+    <select class="search-select" name="level" title="Level">
+      <option value="">All levels</option>
+      <option value="INFO" {% if level == "INFO" %}selected{% endif %}>INFO</option>
+      <option value="WARNING" {% if level == "WARNING" %}selected{% endif %}>WARNING</option>
+      <option value="ERROR" {% if level == "ERROR" %}selected{% endif %}>ERROR</option>
+      <option value="CRITICAL" {% if level == "CRITICAL" %}selected{% endif %}>CRITICAL</option>
     </select>
+    <input
+      class="search-time"
+      type="text"
+      name="logger"
+      value="{{ logger }}"
+      placeholder="logger prefix"
+      title="例如：nakama.franky"
+    />
+    <input
+      class="search-time"
+      type="text"
+      name="since"
+      value="{{ since }}"
+      placeholder="since (24h ago)"
+      title="ISO8601 / date / 24h ago"
+    />
+    <input
+      class="search-time"
+      type="text"
+      name="until"
+      value="{{ until }}"
+      placeholder="until"
+      title="ISO8601 / date / 1h ago"
+    />
     <button class="search-btn" type="submit">Search</button>
   </form>
   <div class="stats">
-    <span>Indexed: {{ stats.values() | sum }} files</span>
-    {% for cat, n in stats.items() %}
-      <span>{{ cat }}: {{ n }}</span>
+    <span>Total: {{ stats.total }}</span>
+    {% for lvl, n in stats.by_level.items() %}
+      <span>{{ lvl }}: {{ n }}</span>
     {% endfor %}
-    <span><a href="/bridge/docs?reindex=1{% if q %}&q={{ q }}{% endif %}" style="color: var(--nk-ink-2);">↻ Reindex</a></span>
+    {% if stats.oldest_ts %}
+      <span>Oldest: {{ stats.oldest_ts }}</span>
+    {% endif %}
+    {% if stats.newest_ts %}
+      <span>Newest: {{ stats.newest_ts }}</span>
+    {% endif %}
   </div>
 </section>
 
 <main class="main">
-{% if not q %}
+{% if not q and not level and not logger and not since and not until and not hits %}
   <div class="help">
-    Enter a query above to search across <code>docs/</code> + <code>memory/claude/</code>.
-    <p>FTS5 syntax supported: <code>R2 AND backup</code>, <code>"exact phrase"</code>, <code>foo*</code> prefix match.</p>
+    Empty filters — search runs against the most recent logs in time order.
+    <p>FTS5 syntax supported in <code>q</code>: <code>error AND timeout</code>, <code>"exact phrase"</code>, <code>foo*</code> prefix.<br>
+       Time filters: <code>2026-04-26</code>, <code>2026-04-26T07:00:00Z</code>, or relative <code>1h ago</code> / <code>24h ago</code> / <code>7d ago</code>.</p>
   </div>
 {% elif not hits %}
   <div class="empty">
-    No matches for "{{ q }}".
+    No log records match the current filters.
   </div>
 {% else %}
   <div class="results">
     {% for hit in hits %}
-      <div class="result">
-        <div class="result-header">
-          <div class="result-title">{{ hit.title }}</div>
-          <div class="result-category">{{ hit.category }}</div>
+      <div class="row">
+        <div class="row-ts">{{ hit.ts }}</div>
+        <div><span class="level-chip level-{{ hit.level }}">{{ hit.level }}</span></div>
+        <div class="row-logger">{{ hit.logger }}</div>
+        <div>
+          <div class="row-msg">{{ hit.snippet | safe }}</div>
+          {% if hit.extra %}
+            <details class="row-extra">
+              <summary>extra ({{ hit.extra | length }} fields)</summary>
+              <pre>{{ hit.extra | tojson(indent=2) }}</pre>
+            </details>
+          {% endif %}
         </div>
-        <div class="result-path">{{ hit.path }}</div>
-        <div class="result-snippet">{{ hit.snippet | safe }}</div>
       </div>
     {% endfor %}
+  </div>
+  <div class="pagination">
+    {% if prev_url %}<a href="{{ prev_url }}">← Prev</a>{% endif %}
+    {% if next_url %}<a href="{{ next_url }}">Next →</a>{% endif %}
   </div>
 {% endif %}
 </main>

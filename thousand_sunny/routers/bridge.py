@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -21,6 +23,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from shared import agent_memory, approval_queue, heartbeat, state
 from shared.doc_index import DocIndex
+from shared.log_index import LogIndex
 from shared.pricing import calc_cost, get_pricing
 from shared.schemas.approval import ApprovalPayloadV1Adapter, PublishWpPostV1, UpdateWpPostV1
 from thousand_sunny.auth import check_auth, require_auth_or_key
@@ -245,6 +248,132 @@ async def docs_page(
             "hits": hits,
             "stats": stats,
             "categories": sorted(stats.keys()),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# /bridge/logs — FTS5 search across structured nakama logs (Phase 5C)
+# ---------------------------------------------------------------------------
+
+_log_index: LogIndex | None = None
+
+
+def _get_log_index() -> LogIndex:
+    global _log_index
+    if _log_index is None:
+        _log_index = LogIndex.from_default_path()
+    return _log_index
+
+
+_RELATIVE_TIME_RE = re.compile(r"^\s*(\d+)\s*([smhd])\s*(?:ago)?\s*$", flags=re.IGNORECASE)
+
+
+def _parse_time_filter(raw: str) -> datetime | None:
+    """Parse user-supplied time filter into a tz-aware UTC datetime.
+
+    Accepted forms (most lenient last):
+      - ISO8601:    `2026-04-26T07:00:00Z` / `2026-04-26T07:00:00+00:00`
+      - Date-only:  `2026-04-26` (interpreted as 00:00 UTC)
+      - Relative:   `30m ago` / `1h` / `24h ago` / `7d` — uses `s/m/h/d` units
+
+    Returns None on empty / unparseable input (caller treats as "no filter").
+    """
+    if not raw or not raw.strip():
+        return None
+    s = raw.strip()
+    rel = _RELATIVE_TIME_RE.match(s)
+    if rel:
+        amount = int(rel.group(1))
+        unit = rel.group(2).lower()
+        delta = {
+            "s": timedelta(seconds=amount),
+            "m": timedelta(minutes=amount),
+            "h": timedelta(hours=amount),
+            "d": timedelta(days=amount),
+        }[unit]
+        return datetime.now(timezone.utc) - delta
+    # ISO8601 / date-only
+    try:
+        # `Z` suffix isn't recognized by fromisoformat() pre-3.11 in some builds
+        normalized = s.replace("Z", "+00:00") if s.endswith("Z") else s
+        if "T" not in normalized and len(normalized) == 10:
+            normalized += "T00:00:00+00:00"
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+@page_router.get("/logs", response_class=HTMLResponse)
+async def logs_page(
+    request: Request,
+    q: str = Query("", max_length=200),
+    level: str = Query("", max_length=16),
+    logger: str = Query("", max_length=128),
+    since: str = Query("", max_length=64),
+    until: str = Query("", max_length=64),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Full-text + filter search over structured nakama log records.
+
+    See task prompt `2026-04-26-phase-5c-log-search-fts5.md` for behavior spec.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/logs", status_code=302)
+
+    idx = _get_log_index()
+    since_dt = _parse_time_filter(since)
+    until_dt = _parse_time_filter(until)
+
+    hits = idx.search(
+        q,
+        level=level or None,
+        logger_prefix=logger or None,
+        since=since_dt,
+        until=until_dt,
+        limit=limit,
+        offset=offset,
+    )
+    stats = idx.stats()
+
+    # Build prev/next URLs preserving filters; offset is the only thing we change.
+    base_qs: list[str] = []
+    for k, v in (
+        ("q", q),
+        ("level", level),
+        ("logger", logger),
+        ("since", since),
+        ("until", until),
+    ):
+        if v:
+            base_qs.append(f"{k}={v}")
+    base_qs.append(f"limit={limit}")
+    base = "&".join(base_qs)
+    prev_offset = max(offset - limit, 0)
+    next_offset = offset + limit
+    prev_url = f"/bridge/logs?{base}&offset={prev_offset}" if offset > 0 else None
+    next_url = f"/bridge/logs?{base}&offset={next_offset}" if len(hits) == limit else None
+
+    return _templates.TemplateResponse(
+        request,
+        "logs.html",
+        {
+            "q": q,
+            "level": level,
+            "logger": logger,
+            "since": since,
+            "until": until,
+            "limit": limit,
+            "offset": offset,
+            "hits": hits,
+            "stats": stats,
+            "prev_url": prev_url,
+            "next_url": next_url,
         },
     )
 
