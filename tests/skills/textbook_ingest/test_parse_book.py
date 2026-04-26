@@ -202,3 +202,267 @@ def test_missing_epub_raises_filenotfound(tmp_path: Path):
     missing = tmp_path / "does-not-exist.epub"
     with pytest.raises(FileNotFoundError):
         parse_book_mod.parse_book(missing)
+
+
+# ---------------------------------------------------------------------------
+# v2 walker — figures, tables, math (ADR-011 §3.4.1)
+# ---------------------------------------------------------------------------
+
+# 1×1 transparent PNG (binary literal)
+_TINY_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "8900000001735247420aaee91c0000000d49444154789c63f8ff9f0100050001"
+    "1f1f1f190000000049454e44ae426082"
+)
+
+
+def _build_synthetic_epub_v2(tmp_path: Path) -> Path:
+    """Build a 1-chapter EPUB containing img / table / math elements."""
+    pytest.importorskip("ebooklib")
+    from ebooklib import epub
+
+    book = epub.EpubBook()
+    book.set_identifier("urn:isbn:9789876543210")
+    book.set_title("Walker Test Book")
+    book.set_language("en")
+    book.add_author("Walker Author")
+    book.add_metadata("DC", "publisher", "WP")
+    book.add_metadata("DC", "date", "2026-04-26")
+
+    img_item = epub.EpubItem(
+        uid="img1",
+        file_name="Images/fig1.png",
+        media_type="image/png",
+        content=_TINY_PNG,
+    )
+    book.add_item(img_item)
+
+    body_html = (
+        "<h1>Energy Sources</h1>"
+        "<h2>1.1 Introduction</h2>"
+        "<p>Lead paragraph before the figure.</p>"
+        "<figure>"
+        '<img src="../Images/fig1.png" alt="ATP-PCr kinetics curve">'
+        "<figcaption>Schematic of ATP-PCr energy system kinetics</figcaption>"
+        "</figure>"
+        "<p>Following text references the curve.</p>"
+        "<h2>1.2 Phosphagen System</h2>"
+        "<p>Body before table.</p>"
+        "<table><caption>ATP yield per substrate</caption>"
+        "<thead><tr><th>System</th><th>ATP/glucose</th></tr></thead>"
+        "<tbody><tr><td>Glycolysis</td><td>2</td></tr>"
+        "<tr><td>Oxidative</td><td>30</td></tr></tbody></table>"
+        "<p>Body after table.</p>"
+        '<math alttext="\\frac{1}{2}mv^2"><mfrac><mn>1</mn><mn>2</mn></mfrac>'
+        "<mi>m</mi><msup><mi>v</mi><mn>2</mn></msup></math>"
+    )
+    ch = epub.EpubHtml(title="Energy Sources", file_name="Text/chap_01.xhtml", lang="en")
+    ch.content = f"<html><body>{body_html}</body></html>"
+    book.add_item(ch)
+
+    book.toc = (epub.Link(ch.file_name, ch.title, ch.file_name),)
+    book.spine = ["nav", ch]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+
+    epub_path = tmp_path / "walker.epub"
+    epub.write_epub(str(epub_path), book)
+    return epub_path
+
+
+class TestWalkerEpubFigures:
+    def test_img_extracted_with_binary(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_synthetic_epub_v2(tmp_path)
+        outline = parse_book_mod.parse_book(epub_path)
+
+        ch = outline.chapters[0]
+        assert len(ch.figures) == 1
+        fig = ch.figures[0]
+        assert fig.ref == "fig-1-1"
+        assert fig.binary == _TINY_PNG
+        assert fig.extension == ".png"
+        # Caption from <figcaption>
+        assert "ATP-PCr energy system kinetics" in fig.caption
+        # tied_to_section: figure appears under 1.1 Introduction
+        assert fig.tied_to_section == "1.1 Introduction"
+        # Placeholder marker present
+        assert fig.placeholder == "<<FIG:fig-1-1>>"
+
+    def test_placeholder_in_chapter_text(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_synthetic_epub_v2(tmp_path)
+        out_dir = tmp_path / "chapters"
+        outline = parse_book_mod.parse_book(epub_path, export_chapters_dir=out_dir)
+        assert outline.status == "ok"
+        ch1_text = (out_dir / "ch1.md").read_text(encoding="utf-8")
+        assert "<<FIG:fig-1-1>>" in ch1_text
+        assert "<<TAB:tab-1-1>>" in ch1_text
+
+
+class TestWalkerEpubTables:
+    def test_table_to_markdown(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_synthetic_epub_v2(tmp_path)
+        outline = parse_book_mod.parse_book(epub_path)
+
+        ch = outline.chapters[0]
+        assert len(ch.tables) == 1
+        tab = ch.tables[0]
+        assert tab.ref == "tab-1-1"
+        assert "ATP yield per substrate" in tab.caption
+        # Markdown table contains header + body cells
+        assert "| System | ATP/glucose |" in tab.markdown
+        assert "| Glycolysis | 2 |" in tab.markdown
+        assert "| Oxidative | 30 |" in tab.markdown
+        # tied_to_section: table appears under 1.2 Phosphagen System
+        assert tab.tied_to_section == "1.2 Phosphagen System"
+
+
+class TestWalkerEpubMath:
+    def test_math_uses_alttext(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_synthetic_epub_v2(tmp_path)
+        out_dir = tmp_path / "chapters"
+        parse_book_mod.parse_book(epub_path, export_chapters_dir=out_dir)
+        ch1_text = (out_dir / "ch1.md").read_text(encoding="utf-8")
+        # alttext from <math alttext="\frac{1}{2}mv^2"> rendered as $$...$$
+        assert r"$$\frac{1}{2}mv^2$$" in ch1_text
+
+
+class TestAttachmentsExport:
+    def test_writes_figure_binary_and_table_md(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_synthetic_epub_v2(tmp_path)
+        attachments = tmp_path / "Attachments" / "Books" / "walker"
+        out_dir = tmp_path / "chapters"
+
+        parse_book_mod.parse_book(
+            epub_path,
+            export_chapters_dir=out_dir,
+            attachments_base_dir=attachments,
+        )
+
+        # Figure binary at expected path
+        fig_path = attachments / "ch1" / "fig-1-1.png"
+        assert fig_path.exists()
+        assert fig_path.read_bytes() == _TINY_PNG
+
+        # Table markdown at expected path with caption header
+        tab_path = attachments / "ch1" / "tab-1-1.md"
+        assert tab_path.exists()
+        tab_md = tab_path.read_text(encoding="utf-8")
+        assert "ATP yield per substrate" in tab_md
+        assert "| System | ATP/glucose |" in tab_md
+
+    def test_attachments_only_mode_skips_chapter_md(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_synthetic_epub_v2(tmp_path)
+        attachments = tmp_path / "Attachments" / "Books" / "walker"
+
+        parse_book_mod.parse_book(epub_path, attachments_base_dir=attachments)
+        # Attachments still written
+        assert (attachments / "ch1" / "fig-1-1.png").exists()
+        assert (attachments / "ch1" / "tab-1-1.md").exists()
+
+
+class TestOutlineJsonShape:
+    def test_figures_and_tables_serialised(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_synthetic_epub_v2(tmp_path)
+        outline = parse_book_mod.parse_book(epub_path)
+        d = parse_book_mod._outline_to_dict(outline)
+        ch = d["chapters"][0]
+        assert "figures" in ch and "tables" in ch
+        assert ch["figures"][0]["ref"] == "fig-1-1"
+        assert ch["figures"][0]["extension"] == ".png"
+        # Binary NOT in JSON (would explode size + non-serialisable)
+        assert "binary" not in ch["figures"][0]
+        assert ch["tables"][0]["ref"] == "tab-1-1"
+        # Markdown NOT in JSON (lives on disk under Attachments)
+        assert "markdown" not in ch["tables"][0]
+
+
+class TestBackwardsCompat:
+    def test_existing_text_only_export_still_works(self, tmp_path: Path):
+        """Old fixture (no img/table/math) should still produce identical
+        text-only output — backwards compat for existing tests."""
+        pytest.importorskip("ebooklib")
+        epub_path = _build_synthetic_epub(tmp_path)
+        out_dir = tmp_path / "chapters"
+        outline = parse_book_mod.parse_book(epub_path, export_chapters_dir=out_dir)
+        assert outline.status == "ok"
+        # Chapter md still written
+        assert (out_dir / "ch1.md").exists()
+        # No figures / tables for the old fixture
+        for ch in outline.chapters:
+            assert ch.figures == []
+            assert ch.tables == []
+
+
+class TestHtmlTableHelper:
+    def test_simple_table(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table><caption>X</caption>"
+            "<tr><th>A</th><th>B</th></tr>"
+            "<tr><td>1</td><td>2</td></tr></table>",
+            "html.parser",
+        )
+        md, cap = parse_book_mod._html_table_to_markdown(soup.find("table"))
+        assert cap == "X"
+        assert "| A | B |" in md
+        assert "| 1 | 2 |" in md
+        assert "| --- | --- |" in md
+
+    def test_pipes_in_cells_escaped(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table><tr><td>a|b</td><td>c</td></tr></table>",
+            "html.parser",
+        )
+        md, _cap = parse_book_mod._html_table_to_markdown(soup.find("table"))
+        assert r"a\|b" in md
+
+    def test_uneven_rows_padded(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<table><tr><th>A</th><th>B</th><th>C</th></tr><tr><td>1</td></tr></table>",
+            "html.parser",
+        )
+        md, _cap = parse_book_mod._html_table_to_markdown(soup.find("table"))
+        # Body row padded to 3 cols
+        assert "| 1 |  |  |" in md
+
+
+class TestHtmlMathHelper:
+    def test_alttext_used(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            '<math alttext="E=mc^2"><mi>E</mi></math>',
+            "html.parser",
+        )
+        out = parse_book_mod._html_math_to_latex(soup.find("math"))
+        assert out == "$$E=mc^2$$"
+
+    def test_falls_back_to_text_content(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(
+            "<math><mi>x</mi><mo>+</mo><mn>1</mn></math>",
+            "html.parser",
+        )
+        out = parse_book_mod._html_math_to_latex(soup.find("math"))
+        # No alttext → use rendered text content
+        assert out.startswith("$$")
+        assert "x" in out and "1" in out
+
+    def test_empty_math_returns_empty(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup("<math></math>", "html.parser")
+        assert parse_book_mod._html_math_to_latex(soup.find("math")) == ""

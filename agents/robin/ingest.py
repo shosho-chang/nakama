@@ -197,7 +197,13 @@ class IngestPipeline:
         """
         set_current_agent("robin")  # Web UI 也會呼叫此 method，重設 thread-local
         if len(content) <= self.LARGE_DOC_THRESHOLD:
-            # 小文件：單次 facade 呼叫（provider 由 MODEL_ROBIN 決定）
+            # 小文件：單次 facade 呼叫（provider 由 MODEL_ROBIN 決定）。
+            # ADR-011 P2「不省 token、deep extract」— 這個分支 content 已經
+            # 在 LARGE_DOC_THRESHOLD 之內，pass-through 不截斷；先前的
+            # `_truncate_at_boundary(content, 30000)` 呼叫在此 branch 永遠是
+            # no-op（max_chars == LARGE_DOC_THRESHOLD），但留著會誤導後人
+            # 以為 ingest 會主動摺扣內容（A-10）。函式本身保留作為 future
+            # opt-in utility（例如 retrieval-time pre-trim）。
             prompt = load_prompt(
                 "robin",
                 "summarize",
@@ -206,7 +212,7 @@ class IngestPipeline:
                 author=author or "未知",
                 source_type=source_type,
                 date=str(date.today()),
-                content=_truncate_at_boundary(content, 30000),
+                content=content,
             )
             return ask(prompt=prompt, system=_build_robin_system_prompt())
 

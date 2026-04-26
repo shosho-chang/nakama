@@ -502,22 +502,29 @@ def _html_table_to_markdown(table_tag) -> tuple[str, str]:
 def _html_math_to_latex(math_tag) -> str:
     """Convert a MathML ``<math>`` tag to inline LaTeX ``$$...$$``.
 
-    Uses the optional ``mathml2latex`` package when available; falls back to
-    the ``alttext`` attribute or rendered text content so equations are at
-    least visible to downstream LLM passes (per ADR-011 P3).
+    ADR-011 §3.4.1 originally proposed wrapping the ``mathml2latex`` PyPI
+    package; that package is effectively abandoned (v0.1.0 ships an empty
+    public ``__init__`` and a brittle internal API). Per the deviation
+    feedback principle, we ship the lighter alttext-first path instead:
+
+    1. ``<math alttext="\\frac{1}{2}">`` — most modern textbook EPUBs include
+       the official accessibility ``alttext`` attribute carrying LaTeX or
+       readable text. Use it verbatim.
+    2. Fallback to MathML's rendered text content (loses structure for
+       complex equations, but keeps numbers and identifiers visible to
+       downstream LLM passes — preferable to silently dropping the math).
+    3. Empty or whitespace-only input → empty string (caller decides what
+       to do with the now-empty placeholder).
+
+    Future: a richer MathML→LaTeX converter (e.g. an in-house walker over
+    the common subset, or a maintained dep) can replace the alttext-first
+    path; the function signature stays the same.
     """
-    try:
-        from mathml2latex import mathml2latex as _mathml2latex  # type: ignore[import-not-found]
-
-        latex = (_mathml2latex(str(math_tag)) or "").strip()
-        if latex:
-            return f"$${latex}$$"
-    except Exception:
-        # mathml2latex missing or raised on unusual MathML — fall through
-        pass
-
-    alt = (math_tag.get("alttext") or math_tag.get_text(strip=True) or "").strip()
-    return f"$${alt}$$" if alt else ""
+    alt = (math_tag.get("alttext") or "").strip()
+    if alt:
+        return f"$${alt}$$"
+    text = (math_tag.get_text(strip=True) or "").strip()
+    return f"$${text}$$" if text else ""
 
 
 def _extract_figure(

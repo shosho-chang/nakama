@@ -90,7 +90,7 @@ authoritative chapter structure (OPF spine + nav) so chapter boundaries
 are 100% accurate; PDF requires outline / regex / Opus self-detection
 fallback chains and may mis-segment.
 
-### Step 2 — Extract outline + chapter boundaries
+### Step 2 — Extract outline + chapter boundaries (with figures / tables)
 
 Run from any cwd (script has sys.path shim, do NOT use ``python -m``):
 
@@ -99,33 +99,78 @@ Run from any cwd (script has sys.path shim, do NOT use ``python -m``):
 python .claude/skills/textbook-ingest/scripts/parse_book.py \
     --path "/Users/shosho/Books/harrison-21e.epub" \
     --out /tmp/textbook-outline.json \
-    --export-chapters-dir /tmp/textbook-chapters/
+    --export-chapters-dir /tmp/textbook-chapters/ \
+    --attachments-base-dir "/Users/shosho/Documents/Shosho LifeOS/Attachments/Books/harrison-21e"
 
 # PDF (fallback — when no EPUB edition exists)
 python .claude/skills/textbook-ingest/scripts/parse_book.py \
     --path "/Users/shosho/Books/harrison-21e.pdf" \
-    --out /tmp/textbook-outline.json
+    --out /tmp/textbook-outline.json \
+    --export-chapters-dir /tmp/textbook-chapters/ \
+    --attachments-base-dir "/Users/shosho/Documents/Shosho LifeOS/Attachments/Books/harrison-21e"
 ```
 
-**EPUB path** (`strategy: epub_nav`):
+**EPUB path** (`strategy: epub_nav`, ADR-011 §3.4.1):
 
 1. OPF metadata → title / authors / language / publisher / pub_year (from `dc:date`)
 2. nav TOC top-level entries → chapters (in spine reading order)
 3. h2/h3 within chapter HTML → ``section_anchors``
-4. Page numbers are **estimated from word count** (250 words/page,
+4. Walker handles `<img>` `<svg>` → `Attachments/.../ch{n}/fig-N.{ext}` +
+   `<<FIG:fig-{ch}-{N}>>` placeholder; `<table>` →
+   `Attachments/.../ch{n}/tab-N.md` (markdown) + `<<TAB:tab-{ch}-{N}>>`
+   placeholder; `<math>` → inline `$$LaTeX$$` (via mathml2latex if
+   installed, else alt-text fallback)
+5. Page numbers are **estimated from word count** (250 words/page,
    EPUB is reflowable); citation will say "estimated p.X" not exact
 
-**PDF path** (`strategy: pdf_outline | regex_fallback | manual_toc`):
+**PDF path** (`strategy: pdf_outline | regex_fallback | manual_toc`,
+ADR-011 §3.4.2):
 
 1. PDF outline / bookmarks (most textbooks have them)
 2. heading regex (`^(Chapter|第)\s*\d+`) + font-size heuristic
 3. ``--toc-yaml`` manual override
+4. Chapter text rendered via ``pymupdf4llm.to_markdown(with_tables=True)``
+   so tables survive; per-chapter images extracted via
+   ``page.get_images()`` + ``doc.extract_image(xref)`` and appended as
+   `## Figures (extracted, awaiting Vision describe)` placeholder
+   block (PDF lacks reliable inline position attribution)
 
 If the script reports `status: needs_manual`:
 
 - (PDF only) Run with ``--toc-yaml /path/to/manual-toc.yaml`` to override
 - (EPUB) ``--toc-yaml`` is rejected — nav is authoritative. If nav is
   empty, the EPUB is degenerate; ask user to inspect or convert
+
+**Outline JSON figures / tables shape** (per chapter entry):
+
+```json
+{
+  "index": 1,
+  "title": "Energy Sources",
+  "section_anchors": ["1.1 Introduction", "1.2 Phosphagen System"],
+  "figures": [
+    {
+      "ref": "fig-1-1",
+      "extension": ".png",
+      "alt": "ATP-PCr kinetics curve",
+      "caption": "Schematic of ATP-PCr energy system kinetics",
+      "tied_to_section": "1.2 Phosphagen System",
+      "placeholder": "<<FIG:fig-1-1>>"
+    }
+  ],
+  "tables": [
+    {
+      "ref": "tab-1-1",
+      "caption": "ATP yield per substrate",
+      "tied_to_section": "1.4 Oxidative System",
+      "placeholder": "<<TAB:tab-1-1>>"
+    }
+  ]
+}
+```
+
+Binary lives at ``{attachments-base-dir}/ch{n}/{ref}{extension}`` (figures)
+and ``{attachments-base-dir}/ch{n}/{ref}.md`` (tables).
 
 ### Step 3 — Confirm chapter detection (NEVER skip)
 
@@ -151,34 +196,77 @@ and adjust the chapter list. Do NOT proceed without explicit confirmation.
 
 ### Step 4 — Ingest each chapter (one Claude turn per chapter)
 
+ADR-011 §3.3 splits this into 5 sub-steps; Vision describe (4b) is new
+in v2 and Concept extract (4d) now uses the 4-action dispatcher.
+
 For each chapter (loop):
 
-1. **Read chapter text** — use Read tool on the chapter slice (helper
-   script can write per-chapter MD files to ``/tmp/textbook-chapters/`` for
-   you to Read, or you read the PDF page range directly). Aim for the
-   whole chapter in a single Read call (Opus 1M can handle 30-100 pages).
+1. **Read chapter text** — use Read tool on the chapter slice from
+   ``/tmp/textbook-chapters/ch{n}.md``. Body contains
+   `<<FIG:fig-{ch}-{N}>>` / `<<TAB:tab-{ch}-{N}>>` placeholders + inline
+   `$$LaTeX$$` for math. Aim for the whole chapter in a single Read
+   (Opus 1M can handle 30-100 pages).
 
-2. **Compose Chapter Source Summary** using the template at
-   ``.claude/skills/textbook-ingest/prompts/chapter-summary.md``. The summary
-   must follow section-by-section structure (one ``## section_anchor``
-   per section, 2-3 paragraphs each), per ADR-010 §D2.
+2. **Vision describe each figure** (ADR-011 §3.3 Step 2 — new in v2).
+   For each `figure` in the chapter's outline JSON:
 
-3. **Extract Concept / Entity candidates** using the template at
-   ``.claude/skills/textbook-ingest/prompts/concept-extract.md``. This
-   reuses Robin's existing prompt with one tweak: skip ``book`` Entity
-   type (Book Entity is created at Step 5, not via concept-extract).
+   a. Read the image binary via `Read` tool on
+      ``{attachments-base-dir}/ch{n}/{ref}{extension}``.
+   b. Use the prompt template at
+      ``.claude/skills/textbook-ingest/prompts/vision-describe.md`` —
+      fill in `{domain}`, `{book_subtype}`, `{book_title}`,
+      `{chapter_title}`, `{tied_to_section}`, `{caption_or_alt_text}`,
+      and `{surrounding_text}` (±500 chars from chapter text around the
+      placeholder). Pick the system role from the domain mapping table
+      in the prompt.
+   c. Default model: Sonnet 4.6 (per ADR-011 §3.4 / decisions §Q4).
+      Upgrade to Opus 4.7 only when Sonnet's output is visibly
+      insufficient on a specific figure (e.g. complex mitochondria
+      cross-sections).
+   d. Store the description for use in Step 4c (chapter source body)
+      and Step 4e (frontmatter `figures[].llm_description`).
 
-4. **For each concept candidate**:
-   - Check if ``KB/Wiki/Concepts/{slug}.md`` exists (use Glob / Read)
-   - If exists: append the chapter Source path to the ``mentioned_in:``
-     frontmatter list (preserve existing entries; deduplicate)
-   - If new: create with full content + ``mentioned_in: ["[[Sources/Books/{book_id}/ch{n}]]"]``
+   For tables: read the markdown file at
+   ``{attachments-base-dir}/ch{n}/{ref}.md``; no Vision call needed
+   (markdown already preserves structure). For inline math
+   (`$$...$$`): no Vision call needed.
 
-5. **Write chapter Source page** to
-   ``KB/Wiki/Sources/Books/{book_id}/ch{n}.md`` with frontmatter per
-   ADR-010 §D2 (Chapter Source schema).
+   Skip Vision describe entirely on re-ingest if the existing chapter
+   source page already has `figures[].llm_description` populated for
+   the same `ref` (idempotency / cost guard).
 
-6. **Update Book Entity progress** — set ``status: partial`` and bump
+3. **Compose Chapter Source Summary** using the template at
+   ``.claude/skills/textbook-ingest/prompts/chapter-summary.md``
+   (rewritten for v2 — no word limit, verbatim quote per section,
+   Section concept map per section). Splice each figure's
+   `llm_description` from Step 2 inline at the corresponding
+   `<<FIG:...>>` placeholder position (or right after, depending on
+   layout fit); leave the placeholder in place so retrieval can
+   reverse-look-up. Splice table markdown content (or wikilink to the
+   tab-N.md file) at `<<TAB:...>>` positions.
+
+4. **Extract Concept / Entity candidates** using the v2 prompt at
+   ``agents/robin/prompts/extract_concepts.md`` via Robin's
+   `_get_concept_plan` (or directly if running in a non-Robin context).
+   Returns 4-action plan: `create` / `update_merge` / `update_conflict`
+   / `noop` per concept candidate.
+
+5. **Dispatch each concept action via `kb_writer.upsert_concept_page`**
+   (ADR-011 §3.5; Robin handles this in `_execute_concept_action`):
+
+   - `create` — new concept page with v2 schema (8 H2 skeleton +
+     `mentioned_in: [chapter source link]`)
+   - `update_merge` — LLM diff-merge new extract into existing body
+   - `update_conflict` — append structured `### Topic` block under
+     `## 文獻分歧 / Discussion`
+   - `noop` — append source link to `mentioned_in` only
+
+6. **Write chapter Source page** to
+   ``KB/Wiki/Sources/Books/{book_id}/ch{n}.md`` with v2 frontmatter
+   (ADR-011 §3.2.1: includes `figures: [{ref, path, caption,
+   llm_description, tied_to_section}]` list).
+
+7. **Update Book Entity progress** — set ``status: partial`` and bump
    the ``ingested_at`` timestamp on the Book Entity if it exists; create
    a stub if not (full Book Entity assembled in Step 5).
 
