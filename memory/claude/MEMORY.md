@@ -75,7 +75,8 @@
 - [project_agent_cost_tracking.md](project_agent_cost_tracking.md) — Agent 用量/費用追蹤：data/usage_log.jsonl，供 Bridge 儀表板顯示（待實作）
 - [project_agent_memory_design.md](project_agent_memory_design.md) — Agent 記憶 Phase 1-4 全部完成並 VPS 部署：/bridge landing + /bridge/memory + /bridge/cost
 - [feedback_llm_memory_extraction.md](feedback_llm_memory_extraction.md) — LLM 抽取記憶兩個坑：subject 去重要注入既有列表、content merge 要注入既有內容
-- [feedback_test_api_isolation.md](feedback_test_api_isolation.md) — 背景 LLM call 用 conftest autouse mock + pytest marker 例外，避免測試打真 API
+- [feedback_test_api_isolation.md](feedback_test_api_isolation.md) — 對外 side effect（LLM / Slack DM / API call）用 conftest autouse mock + marker 例外；PR #174 補 Slack endpoint
+- [feedback_inspect_html_before_writing_parser.md](feedback_inspect_html_before_writing_parser.md) — 寫 HTML scraper 前必先 fetch raw HTML 抽 3+ 位置看結構，靠 tag/structure 不靠 hashed class（Anthropic /news 三版型踩坑）
 - [feedback_py_spy_gateway_diagnosis.md](feedback_py_spy_gateway_diagnosis.md) — Gateway 卡住用 py-spy dump --pid 看 thread stack
 - [feedback_windows_abs_path_silent.md](feedback_windows_abs_path_silent.md) — Windows 把 POSIX 絕對路徑默默解到當前磁碟根，CI Linux 才炸；conftest autouse isolate
 - [feedback_vps_env_drift_check.md](feedback_vps_env_drift_check.md) — 新 feature 的 env fallback 上 VPS 前要確認 .env 有對應 key，避免靜默 fallback 到無用預設值
@@ -123,7 +124,8 @@
 - [project_usopp_slice_a_merged.md](project_usopp_slice_a_merged.md) — PR #73 Usopp Slice A merged（WP client + locks + external schemas + Docker staging），upload_media TypeError bug 已修；剩 Slice B/C
 - [reference_llama_cpp_flags.md](reference_llama_cpp_flags.md) — llama.cpp 2026 CLI breaking change：`--flash-attn on`、`--reasoning on|off`、`--reasoning-budget N`
 - [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md) — Franky Phase 1 全三 slice merged（PR #74/#75/#76）；剩 VPS .env + cron + UptimeRobot 修修手動
-- [project_franky_news_digest_slice_a.md](project_franky_news_digest_slice_a.md) — Franky AI 生態情報 daily digest Slice A (PR #171) merged + VPS deployed cron 06:30；8 RSS + Slice B Anthropic HTML scrape backlog
+- [project_franky_news_digest_slice_a.md](project_franky_news_digest_slice_a.md) — Slice A (PR #171) merged + VPS cron 06:30；8 RSS feed + 規劃表
+- [project_franky_news_slice_b_merged.md](project_franky_news_slice_b_merged.md) — Slice B (PR #176) merged 2026-04-26：Anthropic /news HTML 三版型 + 4 GitHub atom；reviewer hardening；VPS pull 修修手動
 - [feedback_stacked_pr_squash_conflict.md](feedback_stacked_pr_squash_conflict.md) — 堆疊 PR + squash merge：子 PR 變 unmergeable；沒 force-push 權限走 merge-main + --ours 退路
 - [feedback_ruff_order_by_type.md](feedback_ruff_order_by_type.md) — ruff isort 預設 order-by-type：ALL_CAPS 常數先於 PascalCase 類，不是純 ASCII 序
 - [project_brook_compose_merged.md](project_brook_compose_merged.md) — PR #78 Brook compose_and_enqueue merged；production 路徑就位，seed compliance vocab 等 Slice B 替換
