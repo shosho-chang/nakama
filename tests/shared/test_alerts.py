@@ -6,13 +6,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from agents.franky.slack_bot import FrankySlackBot
 from shared import alerts
 
 
 @pytest.fixture
 def fake_slack():
-    """Patch the lazy-imported FrankySlackBot so no real DM is attempted."""
-    bot = MagicMock()
+    """Patch the lazy-imported FrankySlackBot so no real DM is attempted.
+
+    `spec=FrankySlackBot` (the concrete class — Protocol-typed `SlackPoster`
+    doesn't expose methods to `spec=`) catches typo'd method names like
+    `bot.post_plian` that would otherwise silently pass.
+    """
+    bot = MagicMock(spec=FrankySlackBot)
     with patch("agents.franky.slack_bot.FrankySlackBot.from_env", return_value=bot):
         yield bot
 

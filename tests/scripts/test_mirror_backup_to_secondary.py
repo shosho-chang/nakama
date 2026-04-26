@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shared.r2_client import R2Object
-from shared.secondary_storage import B2Unavailable
+from shared.r2_client import R2Client, R2Object
+from shared.secondary_storage import B2Client, B2Unavailable
 
 
 @pytest.fixture
@@ -26,8 +26,9 @@ def fake_clients(monkeypatch, tmp_path):
             raise RuntimeError(f"fake R2: key not found {Key}")
         Path(Filename).write_bytes(src.read_bytes())
 
-    fake_r2 = MagicMock()
+    fake_r2 = MagicMock(spec=R2Client)
     fake_r2.bucket = "nakama-backup"
+    fake_r2._s3 = MagicMock()
     fake_r2._s3.download_file = fake_r2_download_file
 
     def stub_list_objects(*, prefix, max_keys=100):
@@ -36,7 +37,7 @@ def fake_clients(monkeypatch, tmp_path):
 
     fake_r2.list_objects.side_effect = stub_list_objects
 
-    fake_b2 = MagicMock()
+    fake_b2 = MagicMock(spec=B2Client)
     fake_b2.bucket = "nakama-backup-mirror"
 
     def fake_b2_head(key):

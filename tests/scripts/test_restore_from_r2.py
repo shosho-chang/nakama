@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from scripts import restore_from_r2 as restore
-from shared.r2_client import R2Object, R2Unavailable
+from shared.r2_client import R2Client, R2Object, R2Unavailable
 
 
 def _make_state_db(path: Path, n_rows: int = 3) -> None:
@@ -55,8 +55,9 @@ def fake_r2(monkeypatch, tmp_path):
             raise RuntimeError(f"fake R2: key not found {Key}")
         Path(Filename).write_bytes(src.read_bytes())
 
-    fake = MagicMock()
+    fake = MagicMock(spec=R2Client)
     fake.bucket = "nakama-backup"
+    fake._s3 = MagicMock()
     fake._s3.download_file = fake_download_file
 
     def stub_list_objects(*, prefix, max_keys=100):

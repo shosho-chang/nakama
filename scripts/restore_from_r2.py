@@ -37,7 +37,6 @@ import argparse
 import gzip
 import os
 import shutil
-import sqlite3
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -48,6 +47,7 @@ from zoneinfo import ZoneInfo
 from shared.config import load_config
 from shared.log import get_logger
 from shared.r2_client import R2Client, R2Object, R2Unavailable
+from shared.sqlite_integrity import verify_db
 
 logger = get_logger("nakama.restore")
 
@@ -128,55 +128,9 @@ def fetch_to_temp(client: R2Client, snap: R2Object, work_dir: Path) -> Path:
     return db_path
 
 
-def verify_db(db_path: Path) -> tuple[bool, int, int]:
-    """Run `PRAGMA integrity_check` + count tables + sum rows.
-
-    Returns (integrity_ok, table_count, row_count_total). A 0-byte sentinel
-    file (legitimate for nakama.db today) returns (True, 0, 0). Any sqlite
-    error (header garbage, page corruption) returns (False, 0, 0) so operators
-    see a clean "integrity FAILED" report rather than a stack trace.
-    """
-    if db_path.stat().st_size == 0:
-        return True, 0, 0
-
-    try:
-        conn = sqlite3.connect(str(db_path))
-    except sqlite3.DatabaseError as exc:
-        logger.error("sqlite open failed: %s", exc)
-        return False, 0, 0
-
-    try:
-        try:
-            integrity = conn.execute("PRAGMA integrity_check").fetchone()
-        except sqlite3.DatabaseError as exc:
-            logger.error("integrity_check raised: %s", exc)
-            return False, 0, 0
-        integrity_ok = bool(integrity) and integrity[0] == "ok"
-
-        try:
-            tables = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-            ).fetchall()
-        except sqlite3.DatabaseError as exc:
-            logger.error("table listing raised: %s", exc)
-            return False, 0, 0
-        table_count = len(tables)
-
-        # Sum row counts across every user table — proves the file is readable
-        # end-to-end, not just header-valid. Any error here means we can't
-        # trust the snapshot.
-        total_rows = 0
-        for (tname,) in tables:
-            try:
-                (n,) = conn.execute(f"SELECT COUNT(*) FROM {tname}").fetchone()
-            except sqlite3.DatabaseError as exc:
-                logger.error("row count failed table=%s: %s", tname, exc)
-                return False, table_count, total_rows
-            total_rows += n
-    finally:
-        conn.close()
-
-    return integrity_ok, table_count, total_rows
+# `verify_db` lives in shared/sqlite_integrity so PR #154's weekly
+# integrity-check cron and this restore tool stay byte-identical (PR #154
+# follow-up sweep, 2026-04-26).
 
 
 # ---- apply (overwrite target) -----------------------------------------------
