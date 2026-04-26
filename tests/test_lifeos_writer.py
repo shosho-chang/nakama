@@ -177,6 +177,23 @@ class TestCreateProjectWithTasks:
             assert fm["tags"] == ["task"]
             assert fm["status"] == "to-do"
 
+    def test_long_wikilink_not_yaml_folded(self, tmp_path):
+        """Regression for A-11c: yaml.dump must not fold long unicode wikilinks
+        across lines (PyYAML default width=80 wraps and inserts `---` literal
+        which is then re-parsed as a document separator — same root cause that
+        broke 4 vault concept pages before PR #164's obsidian_writer fix).
+        """
+        long_project = "Foo---Bar超長---的---研究---題目"
+        result = create_project_with_tasks(
+            long_project,
+            "research",
+            ["Literature Review"],
+            vault=tmp_path,
+        )
+        for tp in result.task_paths:
+            fm, _ = _parse(tp.read_text(encoding="utf-8"))
+            assert fm["projects"] == [f"[[{long_project}]]"]
+
     def test_conflict_raises_and_writes_nothing(self, tmp_path):
         projects_dir = tmp_path / "Projects"
         projects_dir.mkdir()

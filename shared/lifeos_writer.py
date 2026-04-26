@@ -197,6 +197,7 @@ def _write_markdown(target: Path, frontmatter: dict, body: str) -> None:
         default_flow_style=False,
         sort_keys=False,
         indent=2,
+        width=10**9,
     ).rstrip()
     if body:
         content = f"---\n{fm_str}\n---\n\n{body.lstrip()}"

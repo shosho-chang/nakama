@@ -434,7 +434,7 @@ async def start(
         summary_body="",
         summary_path="",
         user_guidance="",
-        plan={"create": [], "update": []},
+        plan={"concepts": [], "entities": []},
         result={"created": [], "updated": []},
         error="",
     )
@@ -601,14 +601,14 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     sess["user_guidance"],
                     content_nature=sess.get("content_nature", ""),
                 )
-                sess["plan"] = plan or {"create": [], "update": []}
+                sess["plan"] = plan or {"concepts": [], "entities": []}
                 sess["step"] = "awaiting_approval"
                 yield sse("done", {"redirect": "/review-plan"})
 
             elif step == "executing":
-                creates = sess["plan"].get("create", [])
-                updates = sess["plan"].get("update", [])
-                total = len(creates) + len(updates)
+                concepts = sess["plan"].get("concepts", [])
+                entities = sess["plan"].get("entities", [])
+                total = len(concepts) + len(entities)
                 yield sse("status", {"msg": f"Robin 正在寫入 {total} 個 Wiki 頁面..."})
 
                 await asyncio.to_thread(pipeline._execute_plan, sess["plan"], sess["summary_path"])
@@ -620,9 +620,20 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                 mark_file_processed(Path(sess["file_path"]), "robin")
                 _send_to_recycle_bin(Path(sess["file_path"]))
 
+                concept_create = [
+                    c.get("title") or c.get("slug") or "?"
+                    for c in concepts
+                    if c.get("action") == "create"
+                ]
+                concept_update = [
+                    c.get("title") or c.get("slug") or "?"
+                    for c in concepts
+                    if c.get("action") in ("update_merge", "update_conflict")
+                ]
+                entity_create = [e.get("title", "?") for e in entities]
                 sess["result"] = {
-                    "created": [item["title"] for item in creates],
-                    "updated": [item["title"] for item in updates],
+                    "created": concept_create + entity_create,
+                    "updated": concept_update,
                 }
                 sess["step"] = "done"
                 yield sse("done", {"redirect": "/done"})
@@ -695,16 +706,16 @@ async def review_plan(
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_approval":
         return RedirectResponse("/", status_code=302)
-    plan = sess.get("plan", {"create": [], "update": []})
+    plan = sess.get("plan", {"concepts": [], "entities": []})
     return templates.TemplateResponse(
         request,
         "review_plan.html",
         {
             "file_name": sess["file_name"],
-            "creates": enumerate(plan.get("create", [])),
-            "updates": enumerate(plan.get("update", [])),
-            "creates_list": plan.get("create", []),
-            "updates_list": plan.get("update", []),
+            "concepts": list(enumerate(plan.get("concepts", []))),
+            "entities": list(enumerate(plan.get("entities", []))),
+            "concepts_list": plan.get("concepts", []),
+            "entities_list": plan.get("entities", []),
         },
     )
 
@@ -722,22 +733,22 @@ async def execute(
         return RedirectResponse("/", status_code=302)
 
     form = await request.form()
-    plan = sess.get("plan", {"create": [], "update": []})
-    all_creates = plan.get("create", [])
-    all_updates = plan.get("update", [])
+    plan = sess.get("plan", {"concepts": [], "entities": []})
+    all_concepts = plan.get("concepts", [])
+    all_entities = plan.get("entities", [])
 
-    selected_creates = [
-        all_creates[int(i)]
-        for i in form.getlist("create")
-        if i.isdigit() and int(i) < len(all_creates)
+    selected_concepts = [
+        all_concepts[int(i)]
+        for i in form.getlist("concept")
+        if i.isdigit() and int(i) < len(all_concepts)
     ]
-    selected_updates = [
-        all_updates[int(i)]
-        for i in form.getlist("update")
-        if i.isdigit() and int(i) < len(all_updates)
+    selected_entities = [
+        all_entities[int(i)]
+        for i in form.getlist("entity")
+        if i.isdigit() and int(i) < len(all_entities)
     ]
 
-    sess["plan"] = {"create": selected_creates, "update": selected_updates}
+    sess["plan"] = {"concepts": selected_concepts, "entities": selected_entities}
     sess["step"] = "executing"
 
     response = RedirectResponse("/processing", status_code=302)

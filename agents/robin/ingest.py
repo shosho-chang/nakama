@@ -1,10 +1,16 @@
-"""Robin 的 Ingest Pipeline：來源 → Source Summary → Concept/Entity 更新。"""
+"""Robin 的 Ingest Pipeline：來源 → Source Summary → Concept/Entity 更新。
+
+ADR-011 textbook ingest v2：concept page 走 `shared.kb_writer.upsert_concept_page`
+4-action dispatcher (create / update_merge / update_conflict / noop)；entity page
+仍走 v1 schema（ADR-011 暫不 cover entity）。
+"""
 
 import json
 import re
 from datetime import date
 from pathlib import Path
 
+from shared import kb_writer
 from shared.anthropic_client import set_current_agent
 from shared.config import get_vault_path
 from shared.llm import ask
@@ -17,6 +23,7 @@ from shared.obsidian_writer import (
     write_page,
 )
 from shared.prompt_loader import load_prompt
+from shared.schemas.kb import ConflictBlock
 from shared.utils import extract_frontmatter, read_text, slugify
 
 logger = get_logger("nakama.robin.ingest")
@@ -43,6 +50,36 @@ def _build_robin_system_prompt() -> str:
     base = "你是 Robin，Nakama 團隊的考古學家，負責知識庫管理。"
     memory = get_context("robin", task="ingest")
     return f"{base}\n\n{memory}" if memory else base
+
+
+def _concept_label(item: dict) -> str:
+    """Display label for a concept action item (title fallback to slug)."""
+    return item.get("title") or item.get("slug") or "?"
+
+
+def _build_existing_concepts_blob(existing: dict[str, dict]) -> str:
+    """Render existing concept pages into a prompt-friendly aggregator blob.
+
+    Each entry: slug + domain + aliases + body excerpt (≤800 chars per page) so
+    the LLM can detect dedup matches and content conflicts without needing the
+    full vault dump in prompt.
+    """
+    if not existing:
+        return "（無既有 concept）"
+    lines: list[str] = []
+    for slug, page in sorted(existing.items()):
+        fm = page["frontmatter"]
+        body = page["body"]
+        aliases = fm.get("aliases") or []
+        domain = fm.get("domain", "general")
+        body_excerpt = body[:800] + ("...(truncated)" if len(body) > 800 else "")
+        lines.append(
+            f"### [[{slug}]]\n"
+            f"- domain: {domain}\n"
+            f"- aliases: {aliases}\n"
+            f"- body excerpt:\n```\n{body_excerpt}\n```"
+        )
+    return "\n\n".join(lines)
 
 
 class IngestPipeline:
@@ -139,8 +176,14 @@ class IngestPipeline:
         self._update_index(title, slug, source_type)
 
         # Step 8: 記錄事件到 Tier 3 記憶
-        created = [item.get("title", "") for item in plan.get("create", [])]
-        updated = [item.get("title", "") for item in plan.get("update", [])]
+        concepts = plan.get("concepts", [])
+        entities = plan.get("entities", [])
+        concept_create = [_concept_label(c) for c in concepts if c.get("action") == "create"]
+        concept_merge = [_concept_label(c) for c in concepts if c.get("action") == "update_merge"]
+        concept_conflict = [
+            _concept_label(c) for c in concepts if c.get("action") == "update_conflict"
+        ]
+        entity_create = [e.get("title", "") for e in entities]
         remember(
             agent="robin",
             type="episodic",
@@ -148,8 +191,11 @@ class IngestPipeline:
             content=(
                 f"來源：{title}（{source_type}）\n"
                 f"Summary：{summary_path}\n"
-                f"新建頁面：{', '.join(created) if created else '無'}\n"
-                f"更新頁面：{', '.join(updated) if updated else '無'}\n"
+                f"新建 concept：{', '.join(concept_create) if concept_create else '無'}\n"
+                f"merge 更新 concept：{', '.join(concept_merge) if concept_merge else '無'}\n"
+                f"conflict 記錄 concept："
+                f"{', '.join(concept_conflict) if concept_conflict else '無'}\n"
+                f"新建 entity：{', '.join(entity_create) if entity_create else '無'}\n"
                 f"引導方向：{user_guidance or '無'}"
             ),
             tags=["ingest", source_type, content_nature or "popular_science", slug],
@@ -302,22 +348,23 @@ class IngestPipeline:
         user_guidance: str = "",
         content_nature: str = "",
     ) -> dict | None:
-        """呼叫 facade（依 MODEL_ROBIN）取得 Concept & Entity 候選清單，回傳計畫 dict。"""
-        set_current_agent("robin")
-        existing_concepts = [f.stem for f in list_files("KB/Wiki/Concepts")]
-        existing_entities = [f.stem for f in list_files("KB/Wiki/Entities")]
+        """呼叫 facade（依 MODEL_ROBIN）取得 v2 plan：{concepts, entities}。
 
-        existing_pages = (
-            ("概念頁：" + ", ".join(existing_concepts) if existing_concepts else "概念頁：（無）")
-            + "\n"
-            + ("實體頁：" + ", ".join(existing_entities) if existing_entities else "實體頁：（無）")
-        )
+        ADR-011 §3.3 Step 4：注入既有 concept page aliases + body 給 LLM 做 dedup
+        + conflict detection；LLM 對每候選 concept 直接吐 4 種 action 之一。
+        """
+        set_current_agent("robin")
+        existing_concepts = kb_writer.list_existing_concepts()
+        existing_concepts_blob = _build_existing_concepts_blob(existing_concepts)
+        existing_entity_stems = [f.stem for f in list_files("KB/Wiki/Entities")]
+        existing_entities = ", ".join(existing_entity_stems) if existing_entity_stems else "（無）"
 
         prompt = load_prompt(
             "robin",
             "extract_concepts",
             content_nature=content_nature,
-            existing_pages=existing_pages,
+            existing_concepts_blob=existing_concepts_blob,
+            existing_entities=existing_entities,
             summary=summary_body,
             user_guidance=user_guidance or "（無特別引導，請自行判斷重點）",
         )
@@ -339,123 +386,157 @@ class IngestPipeline:
             return None
 
     def _review_plan_interactive(self, plan: dict) -> dict:
-        """互動式模式：印出候選清單，讓使用者逐一確認後回傳過濾後的計畫。"""
-        creates = plan.get("create", [])
-        updates = plan.get("update", [])
+        """互動式模式：印出 v2 plan 候選清單，讓使用者逐一確認後回傳過濾後的計畫。
 
-        if not creates and not updates:
+        Plan schema (ADR-011 §3.3 Step 4)：
+            {
+                "concepts": [{slug, action, title, ...}],
+                "entities": [{title, entity_type, reason, content_notes}],
+            }
+        """
+        concepts = plan.get("concepts", [])
+        entities = plan.get("entities", [])
+
+        if not concepts and not entities:
             print("Robin 判斷這份來源不需要新增或更新任何頁面。")
             return plan
 
-        approved_creates = []
-        approved_updates = []
+        approved_concepts: list[dict] = []
+        approved_entities: list[dict] = []
 
-        # 審核「新建」候選
-        if creates:
+        if concepts:
             print(f"\n{'=' * 60}")
-            print(f"📋 Robin 建議新建以下 {len(creates)} 個頁面：")
+            print(f"💡 Robin 建議對 {len(concepts)} 個 Concept 動作：")
             print(f"{'=' * 60}")
-            for i, item in enumerate(creates, 1):
-                page_type = item.get("type", "concept")
-                icon = "💡" if page_type == "concept" else "👤"
-                print(f"\n{i}. {icon} [{page_type.upper()}] {item['title']}")
-                print(f"   理由：{item.get('reason', '')}")
-                print(f"   內容重點：{item.get('content_notes', '')[:100]}...")
+            for i, item in enumerate(concepts, 1):
+                action = item.get("action", "?")
+                icon = {
+                    "create": "🆕",
+                    "update_merge": "🔀",
+                    "update_conflict": "⚠️",
+                    "noop": "🟢",
+                }.get(action, "?")
+                print(f"\n{i}. {icon} [{action.upper()}] {_concept_label(item)}")
+                if item.get("reason"):
+                    print(f"   理由：{item['reason']}")
+                if item.get("conflict"):
+                    c = item["conflict"]
+                    print(
+                        f"   衝突：{c.get('topic', '?')} — "
+                        f"既有「{c.get('existing_claim', '')}」"
+                        f" vs 新「{c.get('new_claim', '')}」"
+                    )
 
             print(f"\n{'=' * 60}")
-            print("輸入要建立的編號（逗號分隔），例如：1,3")
-            print("輸入 all 全部建立，輸入 none 或直接 Enter 全部跳過")
+            print("輸入要執行的編號（逗號分隔），例如：1,3")
+            print("輸入 all 全部執行，輸入 none 或直接 Enter 全部跳過")
             choice = input("你的選擇：").strip().lower()
 
             if choice == "all":
-                approved_creates = creates
-                print(f"✓ 全部 {len(creates)} 個頁面將建立")
+                approved_concepts = concepts
+                print(f"✓ 全部 {len(concepts)} 個 concept action 將執行")
             elif choice and choice != "none":
-                selected_indices = {
-                    int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()
-                }
-                approved_creates = [
-                    creates[i] for i in sorted(selected_indices) if i < len(creates)
-                ]
-                print(f"✓ 已選擇 {len(approved_creates)} 個頁面")
+                selected = {int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()}
+                approved_concepts = [concepts[i] for i in sorted(selected) if i < len(concepts)]
+                print(f"✓ 已選擇 {len(approved_concepts)} 個 concept action")
             else:
-                print("✓ 跳過所有新建頁面")
+                print("✓ 跳過所有 concept action")
 
-        # 審核「更新」候選
-        if updates:
+        if entities:
             print(f"\n{'=' * 60}")
-            print(f"📝 Robin 建議更新以下 {len(updates)} 個既有頁面：")
+            print(f"👤 Robin 建議新建以下 {len(entities)} 個 Entity：")
             print(f"{'=' * 60}")
-            for i, item in enumerate(updates, 1):
-                print(f"\n{i}. 🔄 {item['title']}")
-                print(f"   理由：{item.get('reason', '')}")
-                print(f"   新增內容：{item.get('additions', '')[:100]}...")
+            for i, item in enumerate(entities, 1):
+                etype = item.get("entity_type", "other")
+                print(f"\n{i}. [{etype.upper()}] {item['title']}")
+                if item.get("reason"):
+                    print(f"   理由：{item['reason']}")
+                if item.get("content_notes"):
+                    print(f"   內容重點：{item['content_notes'][:100]}...")
 
             print(f"\n{'=' * 60}")
-            print("輸入要更新的編號（逗號分隔），例如：1,2")
-            print("輸入 all 全部更新，輸入 none 或直接 Enter 全部跳過")
+            print("輸入要建立的編號（逗號分隔），all 全部，none/Enter 跳過")
             choice = input("你的選擇：").strip().lower()
 
             if choice == "all":
-                approved_updates = updates
-                print(f"✓ 全部 {len(updates)} 個頁面將更新")
+                approved_entities = entities
             elif choice and choice != "none":
-                selected_indices = {
-                    int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()
-                }
-                approved_updates = [
-                    updates[i] for i in sorted(selected_indices) if i < len(updates)
-                ]
-                print(f"✓ 已選擇 {len(approved_updates)} 個頁面")
-            else:
-                print("✓ 跳過所有更新")
+                selected = {int(x.strip()) - 1 for x in choice.split(",") if x.strip().isdigit()}
+                approved_entities = [entities[i] for i in sorted(selected) if i < len(entities)]
 
         print()
-        return {"create": approved_creates, "update": approved_updates}
+        return {"concepts": approved_concepts, "entities": approved_entities}
 
     def _execute_plan(self, plan: dict, source_path: str) -> None:
-        """根據計畫建立/更新頁面。"""
-        for item in plan.get("create", []):
-            self._create_wiki_page(item, source_path)
+        """執行 v2 plan：concepts 走 kb_writer 4-action dispatcher；entities 沿用 v1。"""
+        source_link = f"[[{Path(source_path).stem}]]"
+        for concept in plan.get("concepts", []):
+            self._execute_concept_action(concept, source_link)
+        for entity in plan.get("entities", []):
+            self._create_entity_page(entity, source_path)
 
-        for item in plan.get("update", []):
-            self._update_wiki_page(item, source_path)
+    def _execute_concept_action(self, item: dict, source_link: str) -> None:
+        """Dispatch 一個 concept action 到 kb_writer.upsert_concept_page。
 
-    def _create_wiki_page(self, item: dict, source_path: str) -> None:
-        """建立一個新的 concept 或 entity 頁面。"""
+        Plan item schema：{slug, action, title?, domain?, candidate_aliases?,
+        extracted_body?, conflict?, reason?}
+        """
+        set_current_agent("robin")
+        slug = item.get("slug") or slugify(item.get("title", ""))
+        action = item.get("action", "create")
+        if not slug:
+            logger.warning(f"concept action missing slug/title: {item}")
+            return
+        if action not in ("create", "update_merge", "update_conflict", "noop"):
+            logger.warning(f"unknown concept action {action!r} for slug {slug}")
+            return
+
+        conflict: ConflictBlock | None = None
+        conflict_data = item.get("conflict")
+        if conflict_data:
+            try:
+                conflict = ConflictBlock(**conflict_data)
+            except Exception as e:
+                logger.warning(f"invalid conflict block for {slug}: {e}")
+                return
+
+        try:
+            kb_writer.upsert_concept_page(
+                slug=slug,
+                action=action,
+                source_link=source_link,
+                title=item.get("title"),
+                domain=item.get("domain"),
+                aliases=item.get("candidate_aliases") or [],
+                extracted_body=item.get("extracted_body"),
+                conflict=conflict,
+            )
+            kb_log("robin", f"concept-{action}", f"[[{slug}]]")
+        except Exception as e:
+            logger.error(f"upsert_concept_page failed for {slug}: {e}")
+
+    def _create_entity_page(self, item: dict, source_path: str) -> None:
+        """Entity page 沿用 v1 schema (ADR-011 暫不 cover entity)."""
         set_current_agent("robin")
         title = item["title"]
-        page_type = item.get("type", "concept")
         content_notes = item.get("content_notes", "")
         slug = slugify(title)
 
-        if page_type == "concept":
-            prompt = load_prompt(
-                "robin",
-                "write_concept",
-                title=title,
-                content_notes=content_notes,
-                source_refs=source_path,
-            )
-            wiki_dir = "KB/Wiki/Concepts"
-        else:
-            prompt = load_prompt(
-                "robin",
-                "write_entity",
-                title=title,
-                entity_type=item.get("entity_type", "other"),
-                content_notes=content_notes,
-                source_refs=source_path,
-            )
-            wiki_dir = "KB/Wiki/Entities"
-
+        prompt = load_prompt(
+            "robin",
+            "write_entity",
+            title=title,
+            entity_type=item.get("entity_type", "other"),
+            content_notes=content_notes,
+            source_refs=source_path,
+        )
         body = ask(prompt=prompt, system=_build_robin_system_prompt())
 
         write_page(
-            f"{wiki_dir}/{slug}.md",
+            f"KB/Wiki/Entities/{slug}.md",
             frontmatter={
                 "title": title,
-                "type": page_type,
+                "type": "entity",
                 "status": "draft",
                 "created": str(date.today()),
                 "updated": str(date.today()),
@@ -466,48 +547,8 @@ class IngestPipeline:
             },
             body=body,
         )
-        logger.info(f"已建立 {page_type} page：{slug}")
-        kb_log("robin", f"create-{page_type}", f"建立 [[{title}]]")
-
-    def _update_wiki_page(self, item: dict, source_path: str) -> None:
-        """更新一個既有的 wiki 頁面，加入新來源的資訊。"""
-        file_path = item.get("file", "")
-        additions = item.get("additions", "")
-        title = item.get("title", "")
-
-        if not file_path:
-            slug = slugify(title)
-            for wiki_dir in ("KB/Wiki/Concepts", "KB/Wiki/Entities"):
-                candidate = f"{wiki_dir}/{slug}.md"
-                if read_page(candidate) is not None:
-                    file_path = candidate
-                    break
-
-        if not file_path:
-            logger.warning(f"找不到要更新的頁面：{title}")
-            return
-
-        existing_content = read_page(file_path)
-        if existing_content is None:
-            logger.warning(f"頁面不存在：{file_path}")
-            return
-
-        fm, body = extract_frontmatter(existing_content)
-
-        refs = fm.get("source_refs", [])
-        if source_path not in refs:
-            refs.append(source_path)
-        fm["source_refs"] = refs
-
-        source_stem = Path(source_path).stem
-        update_section = (
-            f"\n\n---\n\n## 更新（{date.today()}）\n\n{additions}\n\n來源：[[{source_stem}]]\n"
-        )
-        body += update_section
-
-        write_page(file_path, frontmatter=fm, body=body)
-        logger.info(f"已更新頁面：{file_path}")
-        kb_log("robin", "update", f"更新 [[{title}]]，新增來源資訊")
+        logger.info(f"已建立 entity page：{slug}")
+        kb_log("robin", "create-entity", f"建立 [[{title}]]")
 
     def _update_index(self, title: str, slug: str, source_type: str) -> None:
         """在 KB/index.md 中新增此來源的條目。"""

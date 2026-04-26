@@ -68,8 +68,35 @@ def set_current_agent_spy(monkeypatch):
 
 
 @pytest.fixture
-def pipeline(stub_vault, stub_prompts, stub_memory, set_current_agent_spy, monkeypatch):
-    """A pipeline with ask / kb_log / set_current_agent 都 stub 掉。"""
+def stub_kb_writer(monkeypatch):
+    """Mock shared.kb_writer used by _get_concept_plan + _execute_concept_action.
+
+    `upsert_concept_page` is replaced by a recording stub so concept-action tests
+    can assert dispatch without real vault writes.
+    """
+    upsert_calls: list[dict] = []
+
+    def fake_upsert(**kwargs):
+        upsert_calls.append(kwargs)
+        return Path("KB/Wiki/Concepts/stub.md")
+
+    monkeypatch.setattr(mod.kb_writer, "upsert_concept_page", fake_upsert)
+    monkeypatch.setattr(mod.kb_writer, "list_existing_concepts", lambda: {})
+    # Expose the call list under a stable attr for tests
+    fake_upsert.calls = upsert_calls  # type: ignore[attr-defined]
+    return fake_upsert
+
+
+@pytest.fixture
+def pipeline(
+    stub_vault,
+    stub_prompts,
+    stub_memory,
+    set_current_agent_spy,
+    stub_kb_writer,
+    monkeypatch,
+):
+    """A pipeline with ask / kb_log / set_current_agent / kb_writer 都 stub 掉."""
     monkeypatch.setattr(mod, "ask", lambda **k: "stubbed-ask")
     monkeypatch.setattr(mod, "kb_log", lambda *a, **k: None)
     return IngestPipeline()
@@ -177,14 +204,15 @@ def test_system_prompt_with_memory(monkeypatch):
 def test_set_current_agent_called_on_all_entry_points(
     pipeline, stub_vault, set_current_agent_spy, monkeypatch
 ):
-    """ingest() 跑完後，4 個 entry point（generate_summary / concept_plan /
-    create_wiki_page / map_reduce — 後者只在大文件）各自呼叫 set_current_agent('robin')。
+    """ingest() 跑完後，多個 entry point（generate_summary / concept_plan /
+    execute_concept_action / map_reduce — 後者只在大文件）各自呼叫 set_current_agent('robin')。
     """
     raw = stub_vault / "data.md"
     raw.write_text("---\ntitle: D\n---\nshort body", encoding="utf-8")
 
     plan_json = (
-        '{"create": [{"title": "NewPage", "type": "concept", "content_notes": ""}], "update": []}'
+        '{"concepts": [{"slug": "NewPage", "action": "create", "title": "NewPage",'
+        ' "extracted_body": "## Definition\\n\\nx"}], "entities": []}'
     )
     call_idx = {"n": 0}
 
@@ -199,7 +227,7 @@ def test_set_current_agent_called_on_all_entry_points(
     pipeline.ingest(raw, source_type="article")
 
     # Must have been called at least for _generate_summary + _get_concept_plan
-    # + _create_wiki_page — all with "robin"
+    # + _execute_concept_action — all with "robin"
     called_args = [c.args for c in set_current_agent_spy.call_args_list]
     assert all(a == ("robin",) for a in called_args), (
         f"set_current_agent 被呼叫時 arg 不是 'robin'：{called_args}"
@@ -411,10 +439,13 @@ def test_concept_plan_parses_json(pipeline, monkeypatch):
     monkeypatch.setattr(
         mod,
         "ask",
-        lambda **k: 'some preamble {"create": [{"title": "X"}], "update": []} trailing',
+        lambda **k: (
+            'some preamble {"concepts": [{"slug": "X", "action": "create"}],'
+            ' "entities": []} trailing'
+        ),
     )
     plan = pipeline._get_concept_plan("body", "KB/Wiki/Sources/x.md")
-    assert plan == {"create": [{"title": "X"}], "update": []}
+    assert plan == {"concepts": [{"slug": "X", "action": "create"}], "entities": []}
 
 
 def test_concept_plan_no_json_returns_none(pipeline, monkeypatch):
@@ -430,15 +461,26 @@ def test_concept_plan_invalid_json_returns_none(pipeline, monkeypatch):
 
 
 def test_concept_plan_existing_pages_listed(pipeline, monkeypatch):
-    """既有 concept/entity 頁面應被注入到 prompt context。"""
+    """既有 concept page (含 aliases + body excerpt) + entity stems 應注入 prompt context。"""
 
-    # 給 chunker / list_files 的模擬回傳
-    def fake_list(path):
-        if "Concepts" in path:
-            return [Path("sleep.md"), Path("CBT-I.md")]
-        return [Path("Carney.md")]
-
-    monkeypatch.setattr(mod, "list_files", fake_list)
+    monkeypatch.setattr(
+        mod.kb_writer,
+        "list_existing_concepts",
+        lambda: {
+            "sleep": {
+                "frontmatter": {
+                    "domain": "circadian",
+                    "aliases": ["sleep", "睡眠"],
+                },
+                "body": "## Definition\n\n睡眠的定義...",
+            },
+            "CBT-I": {
+                "frontmatter": {"domain": "psychology", "aliases": []},
+                "body": "## Definition\n\n認知行為失眠療法...",
+            },
+        },
+    )
+    monkeypatch.setattr(mod, "list_files", lambda path: [Path("Carney.md")])
     captured = {}
 
     def fake_load(agent, name, **kwargs):
@@ -446,29 +488,34 @@ def test_concept_plan_existing_pages_listed(pipeline, monkeypatch):
         return "<prompt>"
 
     monkeypatch.setattr(mod, "load_prompt", fake_load)
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"create":[],"update":[]}')
+    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
     pipeline._get_concept_plan("summary body", "src.md", user_guidance="guide")
-    assert "sleep" in captured["existing_pages"]
-    assert "Carney" in captured["existing_pages"]
+    assert "sleep" in captured["existing_concepts_blob"]
+    assert "CBT-I" in captured["existing_concepts_blob"]
+    assert "circadian" in captured["existing_concepts_blob"]
+    assert "Carney" in captured["existing_entities"]
     assert captured["user_guidance"] == "guide"
 
 
 def test_concept_plan_empty_existing_pages_label(pipeline, monkeypatch):
-    """無既有頁面 → prompt 用「（無）」。"""
+    """無既有 concept / entity → prompt 用「（無 ...）」。"""
     monkeypatch.setattr(mod, "list_files", lambda path: [])
+    monkeypatch.setattr(mod.kb_writer, "list_existing_concepts", lambda: {})
     captured = {}
     monkeypatch.setattr(mod, "load_prompt", lambda agent, name, **k: captured.update(k) or "<p>")
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"create":[],"update":[]}')
+    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
     pipeline._get_concept_plan("body", "src.md")
-    assert "（無）" in captured["existing_pages"]
+    assert "（無既有 concept）" in captured["existing_concepts_blob"]
+    assert "（無）" in captured["existing_entities"]
 
 
 def test_concept_plan_default_guidance_placeholder(pipeline, monkeypatch):
     """無 user_guidance → prompt 填預設語。"""
     monkeypatch.setattr(mod, "list_files", lambda path: [])
+    monkeypatch.setattr(mod.kb_writer, "list_existing_concepts", lambda: {})
     captured = {}
     monkeypatch.setattr(mod, "load_prompt", lambda agent, name, **k: captured.update(k) or "<p>")
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"create":[],"update":[]}')
+    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
     pipeline._get_concept_plan("body", "src.md")
     assert "自行判斷" in captured["user_guidance"]
 
@@ -499,7 +546,7 @@ def test_prompt_user_guidance_empty_lets_robin_decide(pipeline, monkeypatch, cap
 
 
 def test_review_plan_empty_returns_as_is(pipeline, capsys):
-    plan = {"create": [], "update": []}
+    plan = {"concepts": [], "entities": []}
     out = pipeline._review_plan_interactive(plan)
     assert out == plan
     assert "不需要新增或更新" in capsys.readouterr().out
@@ -509,26 +556,28 @@ def test_review_plan_all_approves_everything(pipeline, monkeypatch):
     inputs = iter(["all", "all"])
     monkeypatch.setattr("builtins.input", lambda *a, **k: next(inputs))
     plan = {
-        "create": [
-            {"title": "A", "type": "concept", "reason": "r1", "content_notes": "n1"},
-            {"title": "B", "type": "entity", "reason": "r2", "content_notes": "n2"},
+        "concepts": [
+            {"slug": "A", "action": "create", "title": "A", "reason": "r1"},
+            {"slug": "B", "action": "update_merge", "title": "B", "reason": "r2"},
         ],
-        "update": [{"title": "U", "reason": "ru", "additions": "au"}],
+        "entities": [
+            {"title": "U", "entity_type": "person", "reason": "ru", "content_notes": "n"},
+        ],
     }
     out = pipeline._review_plan_interactive(plan)
-    assert len(out["create"]) == 2
-    assert len(out["update"]) == 1
+    assert len(out["concepts"]) == 2
+    assert len(out["entities"]) == 1
 
 
 def test_review_plan_none_rejects_all(pipeline, monkeypatch):
     inputs = iter(["none", "none"])
     monkeypatch.setattr("builtins.input", lambda *a, **k: next(inputs))
     plan = {
-        "create": [{"title": "A", "reason": "", "content_notes": ""}],
-        "update": [{"title": "U", "reason": "", "additions": ""}],
+        "concepts": [{"slug": "A", "action": "create", "title": "A"}],
+        "entities": [{"title": "U", "entity_type": "person"}],
     }
     out = pipeline._review_plan_interactive(plan)
-    assert out == {"create": [], "update": []}
+    assert out == {"concepts": [], "entities": []}
 
 
 def test_review_plan_empty_string_same_as_none(pipeline, monkeypatch):
@@ -536,23 +585,23 @@ def test_review_plan_empty_string_same_as_none(pipeline, monkeypatch):
     inputs = iter(["", ""])
     monkeypatch.setattr("builtins.input", lambda *a, **k: next(inputs))
     plan = {
-        "create": [{"title": "A", "reason": "", "content_notes": ""}],
-        "update": [{"title": "U", "reason": "", "additions": ""}],
+        "concepts": [{"slug": "A", "action": "create", "title": "A"}],
+        "entities": [{"title": "U", "entity_type": "person"}],
     }
     out = pipeline._review_plan_interactive(plan)
-    assert out == {"create": [], "update": []}
+    assert out == {"concepts": [], "entities": []}
 
 
 def test_review_plan_indexed_selection(pipeline, monkeypatch):
     inputs = iter(["1,3", "2"])
     monkeypatch.setattr("builtins.input", lambda *a, **k: next(inputs))
     plan = {
-        "create": [{"title": f"C{i}", "reason": "", "content_notes": ""} for i in range(3)],
-        "update": [{"title": f"U{i}", "reason": "", "additions": ""} for i in range(3)],
+        "concepts": [{"slug": f"C{i}", "action": "create", "title": f"C{i}"} for i in range(3)],
+        "entities": [{"title": f"U{i}", "entity_type": "person"} for i in range(3)],
     }
     out = pipeline._review_plan_interactive(plan)
-    assert [c["title"] for c in out["create"]] == ["C0", "C2"]
-    assert [u["title"] for u in out["update"]] == ["U1"]
+    assert [c["title"] for c in out["concepts"]] == ["C0", "C2"]
+    assert [e["title"] for e in out["entities"]] == ["U1"]
 
 
 def test_review_plan_indexed_ignores_out_of_range(pipeline, monkeypatch):
@@ -560,58 +609,181 @@ def test_review_plan_indexed_ignores_out_of_range(pipeline, monkeypatch):
     inputs = iter(["1,99"])
     monkeypatch.setattr("builtins.input", lambda *a, **k: next(inputs))
     plan = {
-        "create": [{"title": "only", "reason": "", "content_notes": ""}],
-        "update": [],
+        "concepts": [{"slug": "only", "action": "create", "title": "only"}],
+        "entities": [],
     }
     out = pipeline._review_plan_interactive(plan)
-    assert len(out["create"]) == 1  # 99 被 drop
+    assert len(out["concepts"]) == 1  # 99 被 drop
 
 
-def test_review_plan_only_creates_no_updates(pipeline, monkeypatch):
-    """plan 只有 create、沒有 update → update 分支不執行。"""
+def test_review_plan_only_concepts_no_entities(pipeline, monkeypatch):
+    """plan 只有 concepts、沒有 entities → entity 分支不執行。"""
     monkeypatch.setattr("builtins.input", lambda *a, **k: "all")
     plan = {
-        "create": [{"title": "A", "reason": "", "content_notes": ""}],
-        "update": [],
+        "concepts": [{"slug": "A", "action": "create", "title": "A"}],
+        "entities": [],
     }
     out = pipeline._review_plan_interactive(plan)
-    assert len(out["create"]) == 1
-    assert out["update"] == []
+    assert len(out["concepts"]) == 1
+    assert out["entities"] == []
 
 
-def test_review_plan_only_updates_no_creates(pipeline, monkeypatch):
+def test_review_plan_only_entities_no_concepts(pipeline, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *a, **k: "all")
     plan = {
-        "create": [],
-        "update": [{"title": "U", "reason": "", "additions": ""}],
+        "concepts": [],
+        "entities": [{"title": "U", "entity_type": "person"}],
     }
     out = pipeline._review_plan_interactive(plan)
-    assert out["create"] == []
-    assert len(out["update"]) == 1
+    assert out["concepts"] == []
+    assert len(out["entities"]) == 1
+
+
+def test_review_plan_displays_conflict_topic(pipeline, monkeypatch, capsys):
+    """update_conflict action with conflict block → topic + claims 印出。"""
+    monkeypatch.setattr("builtins.input", lambda *a, **k: "none")
+    plan = {
+        "concepts": [
+            {
+                "slug": "PCr",
+                "action": "update_conflict",
+                "title": "磷酸肌酸系統",
+                "conflict": {
+                    "topic": "PCr 主導窗口時長範圍",
+                    "existing_claim": "10-15 秒",
+                    "new_claim": "1-10 秒",
+                },
+            },
+        ],
+        "entities": [],
+    }
+    pipeline._review_plan_interactive(plan)
+    out = capsys.readouterr().out
+    assert "PCr 主導窗口時長範圍" in out
+    assert "10-15 秒" in out
+    assert "1-10 秒" in out
 
 
 # ---------------------------------------------------------------------------
-# _create_wiki_page  (concept vs entity)
+# _execute_concept_action  (4-action dispatcher → kb_writer.upsert_concept_page)
 # ---------------------------------------------------------------------------
 
 
-def test_create_concept_page_writes_to_concepts_dir(pipeline, stub_vault):
-    pipeline._create_wiki_page(
-        {"title": "Sleep Pressure", "type": "concept", "content_notes": "notes"},
-        "KB/Wiki/Sources/x.md",
+def test_execute_concept_action_create_dispatches(pipeline, stub_kb_writer):
+    pipeline._execute_concept_action(
+        {
+            "slug": "Sleep-Pressure",
+            "action": "create",
+            "title": "Sleep Pressure",
+            "domain": "circadian",
+            "extracted_body": "## Definition\n\nfoo",
+        },
+        source_link="[[Sources/x]]",
     )
-    expected = stub_vault / "KB" / "Wiki" / "Concepts" / "Sleep-Pressure.md"
-    assert expected.exists()
-    text = expected.read_text(encoding="utf-8")
-    assert "type: concept" in text
-    assert "Sleep Pressure" in text
+    assert len(stub_kb_writer.calls) == 1
+    call = stub_kb_writer.calls[0]
+    assert call["slug"] == "Sleep-Pressure"
+    assert call["action"] == "create"
+    assert call["source_link"] == "[[Sources/x]]"
+    assert call["title"] == "Sleep Pressure"
+
+
+def test_execute_concept_action_update_merge(pipeline, stub_kb_writer):
+    pipeline._execute_concept_action(
+        {
+            "slug": "肌酸代謝",
+            "action": "update_merge",
+            "candidate_aliases": ["creatine metabolism"],
+            "extracted_body": "new extract",
+        },
+        source_link="[[Sources/Books/foo/ch1]]",
+    )
+    call = stub_kb_writer.calls[0]
+    assert call["action"] == "update_merge"
+    assert call["aliases"] == ["creatine metabolism"]
+    assert call["extracted_body"] == "new extract"
+
+
+def test_execute_concept_action_update_conflict_constructs_block(pipeline, stub_kb_writer):
+    """conflict dict → ConflictBlock 物件 (Pydantic schema validation)。"""
+    pipeline._execute_concept_action(
+        {
+            "slug": "PCr",
+            "action": "update_conflict",
+            "conflict": {
+                "topic": "PCr 主導窗口",
+                "existing_claim": "10-15s",
+                "new_claim": "1-10s",
+                "possible_reason": "endpoint 差異",
+            },
+        },
+        source_link="[[Sources/x]]",
+    )
+    call = stub_kb_writer.calls[0]
+    assert call["action"] == "update_conflict"
+    assert call["conflict"].topic == "PCr 主導窗口"
+    assert call["conflict"].possible_reason == "endpoint 差異"
+
+
+def test_execute_concept_action_invalid_conflict_logs_warning(pipeline, stub_kb_writer, caplog):
+    """conflict dict 缺必填欄位 → ValidationError 被 catch + warning + 不呼叫 upsert。"""
+    import logging
+
+    caplog.set_level(logging.WARNING, logger="nakama.robin.ingest")
+    pipeline._execute_concept_action(
+        {
+            "slug": "x",
+            "action": "update_conflict",
+            "conflict": {"topic": "t"},  # missing existing_claim / new_claim
+        },
+        source_link="[[s]]",
+    )
+    assert len(stub_kb_writer.calls) == 0
+    assert any("invalid conflict block" in r.message for r in caplog.records)
+
+
+def test_execute_concept_action_unknown_action_logs_warning(pipeline, stub_kb_writer, caplog):
+    import logging
+
+    caplog.set_level(logging.WARNING, logger="nakama.robin.ingest")
+    pipeline._execute_concept_action(
+        {"slug": "x", "action": "delete"},
+        source_link="[[s]]",
+    )
+    assert len(stub_kb_writer.calls) == 0
+    assert any("unknown concept action" in r.message for r in caplog.records)
+
+
+def test_execute_concept_action_falls_back_to_slug_from_title(pipeline, stub_kb_writer):
+    """item 沒 slug 但有 title → slugify(title) 當 slug。"""
+    pipeline._execute_concept_action(
+        {
+            "action": "create",
+            "title": "Sleep Pressure",
+            "extracted_body": "body",
+        },
+        source_link="[[s]]",
+    )
+    assert stub_kb_writer.calls[0]["slug"] == "Sleep-Pressure"
+
+
+def test_execute_concept_action_noop_dispatches(pipeline, stub_kb_writer):
+    pipeline._execute_concept_action(
+        {"slug": "x", "action": "noop"},
+        source_link="[[s]]",
+    )
+    assert stub_kb_writer.calls[0]["action"] == "noop"
+
+
+# ---------------------------------------------------------------------------
+# _create_entity_page  (entity 沿用 v1 schema)
+# ---------------------------------------------------------------------------
 
 
 def test_create_entity_page_writes_to_entities_dir(pipeline, stub_vault):
-    pipeline._create_wiki_page(
+    pipeline._create_entity_page(
         {
             "title": "Colleen Carney",
-            "type": "entity",
             "entity_type": "person",
             "content_notes": "notes",
         },
@@ -621,102 +793,6 @@ def test_create_entity_page_writes_to_entities_dir(pipeline, stub_vault):
     assert expected.exists()
     text = expected.read_text(encoding="utf-8")
     assert "type: entity" in text
-
-
-def test_create_page_default_type_is_concept(pipeline, stub_vault):
-    """item 沒指定 type → default concept。"""
-    pipeline._create_wiki_page({"title": "NoType", "content_notes": ""}, "src.md")
-    assert (stub_vault / "KB" / "Wiki" / "Concepts" / "NoType.md").exists()
-
-
-# ---------------------------------------------------------------------------
-# _update_wiki_page
-# ---------------------------------------------------------------------------
-
-
-def _seed_page(vault: Path, relative: str, frontmatter: str, body: str) -> None:
-    path = vault / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"---\n{frontmatter}\n---\n{body}\n", encoding="utf-8")
-
-
-def test_update_page_with_explicit_file_path(pipeline, stub_vault):
-    _seed_page(stub_vault, "KB/Wiki/Concepts/topic.md", "title: Topic", "old body")
-    pipeline._update_wiki_page(
-        {
-            "title": "Topic",
-            "file": "KB/Wiki/Concepts/topic.md",
-            "additions": "新發現",
-        },
-        "KB/Wiki/Sources/new-src.md",
-    )
-    final = (stub_vault / "KB" / "Wiki" / "Concepts" / "topic.md").read_text("utf-8")
-    assert "新發現" in final
-    assert "[[new-src]]" in final
-
-
-def test_update_page_locates_by_slug_in_concepts(pipeline, stub_vault):
-    # slugify preserves case，seed path 要對齊 slugify(title) 輸出，不然 Linux CI 大小寫敏感會找不到
-    _seed_page(stub_vault, "KB/Wiki/Concepts/Found.md", "title: Found", "body")
-    pipeline._update_wiki_page(
-        {"title": "Found", "additions": "a"},
-        "KB/Wiki/Sources/src.md",
-    )
-    final = (stub_vault / "KB" / "Wiki" / "Concepts" / "Found.md").read_text("utf-8")
-    assert "a" in final
-
-
-def test_update_page_locates_by_slug_in_entities(pipeline, stub_vault):
-    _seed_page(stub_vault, "KB/Wiki/Entities/Carney.md", "title: Carney", "bio")
-    pipeline._update_wiki_page(
-        {"title": "Carney", "additions": "new paper"},
-        "KB/Wiki/Sources/src.md",
-    )
-    final = (stub_vault / "KB" / "Wiki" / "Entities" / "Carney.md").read_text("utf-8")
-    assert "new paper" in final
-
-
-def test_update_page_title_not_found_logs_warning(pipeline, caplog):
-    """title 找不到對應 slug → logger.warning + 靜默 return。"""
-    import logging
-
-    caplog.set_level(logging.WARNING, logger="nakama.robin.ingest")
-    pipeline._update_wiki_page(
-        {"title": "Nonexistent", "additions": "x"},
-        "KB/Wiki/Sources/src.md",
-    )
-    assert any("找不到要更新的頁面" in r.message for r in caplog.records)
-
-
-def test_update_page_file_field_points_to_missing_file(pipeline, stub_vault):
-    """file 指定了但檔不存在 → 警告 + return，不 raise。"""
-    pipeline._update_wiki_page(
-        {
-            "title": "Ghost",
-            "file": "KB/Wiki/Concepts/ghost.md",
-            "additions": "x",
-        },
-        "KB/Wiki/Sources/src.md",
-    )
-    # 不應 raise；ghost.md 不會被建立
-    assert not (stub_vault / "KB" / "Wiki" / "Concepts" / "ghost.md").exists()
-
-
-def test_update_page_deduplicates_source_refs(pipeline, stub_vault):
-    """同一 source 再次 ingest 不重複 append refs。"""
-    _seed_page(
-        stub_vault,
-        "KB/Wiki/Concepts/topic.md",
-        "title: Topic\nsource_refs:\n  - KB/Wiki/Sources/src.md",
-        "body",
-    )
-    pipeline._update_wiki_page(
-        {"title": "Topic", "file": "KB/Wiki/Concepts/topic.md", "additions": "x"},
-        "KB/Wiki/Sources/src.md",
-    )
-    final = (stub_vault / "KB" / "Wiki" / "Concepts" / "topic.md").read_text("utf-8")
-    # 應該只出現一次 src.md
-    assert final.count("KB/Wiki/Sources/src.md") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -788,33 +864,54 @@ def test_update_index_chinese_heading_falls_through_to_append(pipeline, stub_vau
 # ---------------------------------------------------------------------------
 
 
-def test_execute_plan_dispatches_to_create_and_update(pipeline, monkeypatch):
-    calls = {"create": 0, "update": 0}
-
-    def fake_create(item, src):
-        calls["create"] += 1
-
-    def fake_update(item, src):
-        calls["update"] += 1
-
-    monkeypatch.setattr(pipeline, "_create_wiki_page", fake_create)
-    monkeypatch.setattr(pipeline, "_update_wiki_page", fake_update)
-
+def test_execute_plan_dispatches_v2(pipeline, monkeypatch):
+    """v2 plan: concepts 走 _execute_concept_action; entities 走 _create_entity_page."""
+    concept_calls: list[dict] = []
+    entity_calls: list[dict] = []
+    monkeypatch.setattr(
+        pipeline,
+        "_execute_concept_action",
+        lambda item, source_link: concept_calls.append(item),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_create_entity_page",
+        lambda item, source_path: entity_calls.append(item),
+    )
     pipeline._execute_plan(
         {
-            "create": [{"title": "A"}, {"title": "B"}],
-            "update": [{"title": "X"}],
+            "concepts": [
+                {"slug": "A", "action": "create"},
+                {"slug": "B", "action": "noop"},
+            ],
+            "entities": [{"title": "X", "entity_type": "person"}],
         },
-        "src.md",
+        "KB/Wiki/Sources/src.md",
     )
-    assert calls == {"create": 2, "update": 1}
+    assert len(concept_calls) == 2
+    assert len(entity_calls) == 1
 
 
 def test_execute_plan_handles_missing_keys(pipeline, monkeypatch):
-    """plan 沒 create / update key → 走預設空 list，不炸。"""
-    monkeypatch.setattr(pipeline, "_create_wiki_page", lambda i, s: None)
-    monkeypatch.setattr(pipeline, "_update_wiki_page", lambda i, s: None)
+    """plan 沒 concepts / entities key → 走預設空 list，不炸。"""
+    monkeypatch.setattr(pipeline, "_execute_concept_action", lambda i, s: None)
+    monkeypatch.setattr(pipeline, "_create_entity_page", lambda i, s: None)
     pipeline._execute_plan({}, "src.md")  # no raise
+
+
+def test_execute_plan_derives_source_link_from_stem(pipeline, monkeypatch):
+    """source_link 一律 [[stem]] 形式（去除 .md 後綴 + 路徑前綴）。"""
+    seen: list[str] = []
+    monkeypatch.setattr(
+        pipeline,
+        "_execute_concept_action",
+        lambda item, source_link: seen.append(source_link),
+    )
+    pipeline._execute_plan(
+        {"concepts": [{"slug": "x", "action": "noop"}]},
+        "KB/Wiki/Sources/foo-paper.md",
+    )
+    assert seen == ["[[foo-paper]]"]
 
 
 # ---------------------------------------------------------------------------
@@ -822,24 +919,26 @@ def test_execute_plan_handles_missing_keys(pipeline, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_ingest_md_file_full_flow(pipeline, stub_vault, monkeypatch):
-    """Markdown source → frontmatter 讀取 → 建 Source Summary → plan 執行 → index 更新。"""
+def test_ingest_md_file_full_flow(pipeline, stub_vault, stub_kb_writer, monkeypatch):
+    """Markdown source → frontmatter 讀取 → 建 Source Summary → plan 執行 → index 更新.
+
+    Concept create dispatched via kb_writer.upsert_concept_page (stub records call);
+    not asserting actual concept page write here (that's kb_writer's own coverage).
+    """
     raw = stub_vault / "raw.md"
     raw.write_text(
         "---\ntitle: Real Title\nauthor: Real Author\n---\nbody content\n",
         encoding="utf-8",
     )
 
-    # concept plan 回一個 create item
     plan_json = (
-        '{"create": [{"title": "NewConcept", "type": "concept", '
-        '"content_notes": "n"}], "update": []}'
+        '{"concepts": [{"slug": "NewConcept", "action": "create", "title": "NewConcept",'
+        ' "extracted_body": "## Definition\\n\\nx"}], "entities": []}'
     )
     call_idx = {"n": 0}
 
     def fake_ask(**kwargs):
         call_idx["n"] += 1
-        # 1st: summary; 2nd: concept plan; 3rd: create_wiki_page body
         if call_idx["n"] == 2:
             return plan_json
         return "generic ask response"
@@ -854,8 +953,8 @@ def test_ingest_md_file_full_flow(pipeline, stub_vault, monkeypatch):
     assert "title: Real Title" in summary.read_text("utf-8")
     assert "author: Real Author" in summary.read_text("utf-8")
 
-    new_concept = stub_vault / "KB" / "Wiki" / "Concepts" / "NewConcept.md"
-    assert new_concept.exists()
+    # kb_writer.upsert_concept_page invoked with create action
+    assert any(c["slug"] == "NewConcept" and c["action"] == "create" for c in stub_kb_writer.calls)
 
     index = (stub_vault / "KB" / "index.md").read_text("utf-8")
     assert "[[Real-Title]]" in index
@@ -866,7 +965,7 @@ def test_ingest_raw_path_outside_vault_uses_full_path(pipeline, stub_vault, monk
     outside = tmp_path / "outside.md"
     outside.write_text("no frontmatter body", encoding="utf-8")
 
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"create":[],"update":[]}')
+    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
     monkeypatch.setattr(mod, "list_files", lambda p: [])
 
     # 移到 vault 外 — stub_vault 是 tmp_path，outside 就寫在 vault 根（outside.md）
@@ -924,7 +1023,7 @@ def test_ingest_pdf_research_nature_enables_table_extraction(pipeline, stub_vaul
     fake_mod.parse_pdf = fake_parse_pdf
     monkeypatch.setitem(sys.modules, "shared.pdf_parser", fake_mod)
 
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"create":[],"update":[]}')
+    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
     monkeypatch.setattr(mod, "list_files", lambda p: [])
 
     pipeline.ingest(raw, source_type="paper", content_nature="research")
@@ -946,7 +1045,7 @@ def test_ingest_pdf_popular_science_disables_table_extraction(pipeline, stub_vau
     fake_mod.parse_pdf = fake_parse_pdf
     monkeypatch.setitem(sys.modules, "shared.pdf_parser", fake_mod)
 
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"create":[],"update":[]}')
+    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
     monkeypatch.setattr(mod, "list_files", lambda p: [])
 
     pipeline.ingest(raw, source_type="book", content_nature="popular_science")
@@ -972,7 +1071,7 @@ def test_ingest_interactive_mode_consults_user_twice(pipeline, stub_vault, monke
     monkeypatch.setattr(pipeline, "_prompt_user_guidance", fake_guide)
     monkeypatch.setattr(pipeline, "_review_plan_interactive", fake_review)
 
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"create":[],"update":[]}')
+    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
     monkeypatch.setattr(mod, "list_files", lambda p: [])
 
     pipeline.ingest(raw, source_type="note", interactive=True)
@@ -981,17 +1080,21 @@ def test_ingest_interactive_mode_consults_user_twice(pipeline, stub_vault, monke
     assert review_calls["n"] == 1
 
 
-def test_ingest_remember_records_created_and_updated_titles(pipeline, stub_vault, monkeypatch):
-    """ingest 尾端 remember() 應收到 plan 內的 create + update titles。"""
+def test_ingest_remember_records_v2_concept_actions(pipeline, stub_vault, monkeypatch):
+    """ingest 尾端 remember() 應收到 v2 plan 的 concept actions + entities。"""
     raw = stub_vault / "r.md"
     raw.write_text("---\ntitle: R\n---\nbody", encoding="utf-8")
 
     plan_json = (
-        '{"create": [{"title": "NewPage", "type": "concept", "content_notes": ""}], '
-        '"update": [{"title": "OldPage", "file": "KB/Wiki/Concepts/old.md", '
-        '"additions": "x"}]}'
+        '{"concepts": ['
+        '{"slug": "NewPage", "action": "create", "title": "NewPage",'
+        ' "extracted_body": "## Definition\\n\\nx"},'
+        '{"slug": "OldPage", "action": "update_merge", "title": "OldPage",'
+        ' "extracted_body": "merged"}'
+        '], "entities": ['
+        '{"title": "Carney", "entity_type": "person"}'
+        "]}"
     )
-    _seed_page(stub_vault, "KB/Wiki/Concepts/old.md", "title: OldPage", "body")
 
     ask_idx = {"n": 0}
 
@@ -1009,8 +1112,9 @@ def test_ingest_remember_records_created_and_updated_titles(pipeline, stub_vault
 
     pipeline.ingest(raw, source_type="note", user_guidance="hint")
 
-    assert "NewPage" in captured["content"]
-    assert "OldPage" in captured["content"]
+    assert "NewPage" in captured["content"]  # 新建 concept
+    assert "OldPage" in captured["content"]  # merge 更新 concept
+    assert "Carney" in captured["content"]  # 新建 entity
     assert "hint" in captured["content"]
     assert "ingest" in captured["tags"]
 
@@ -1020,7 +1124,7 @@ def test_ingest_md_without_frontmatter_uses_stem_as_title(pipeline, stub_vault, 
     raw = stub_vault / "no-fm.md"
     raw.write_text("plain text only\n", encoding="utf-8")
 
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"create":[],"update":[]}')
+    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
     monkeypatch.setattr(mod, "list_files", lambda p: [])
 
     pipeline.ingest(raw, source_type="note")
