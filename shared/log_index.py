@@ -285,6 +285,42 @@ class LogIndex:
             for row in rows
         ]
 
+    def count_by_hour(
+        self,
+        *,
+        since: datetime,
+        until: datetime,
+        levels: tuple[str, ...] | None = None,
+    ) -> dict[str, int]:
+        """Return {hour_bucket_iso: count} over `[since, until)` (UTC),
+        bucketed by ``strftime('%Y-%m-%dT%H', ts)``.
+
+        Phase 5B-3 anomaly daemon uses this for baseline error-rate
+        aggregation (with `levels=('ERROR', 'CRITICAL')`) and for the
+        "active baseline hours" set (without levels filter, so silent
+        hours don't poison the baseline).
+
+        Half-open range: rows with ts == until are excluded. Hour bucket
+        keys look like ``"2026-04-26T14"`` — UTC, no timezone suffix
+        (sqlite's strftime drops it).
+        """
+        conn = self._get_conn()
+        sql = (
+            "SELECT strftime('%Y-%m-%dT%H', ts) AS hour_bucket, COUNT(*) AS n "
+            "FROM logs WHERE ts >= ? AND ts < ?"
+        )
+        params: list = [
+            since.astimezone(timezone.utc).isoformat(timespec="seconds"),
+            until.astimezone(timezone.utc).isoformat(timespec="seconds"),
+        ]
+        if levels:
+            placeholders = ",".join("?" * len(levels))
+            sql += f" AND level IN ({placeholders})"
+            params.extend(levels)
+        sql += " GROUP BY hour_bucket"
+        rows = conn.execute(sql, params).fetchall()
+        return {row["hour_bucket"]: int(row["n"]) for row in rows}
+
     def stats(self) -> LogStats:
         conn = self._get_conn()
         total_row = conn.execute("SELECT COUNT(*) AS n FROM logs").fetchone()
