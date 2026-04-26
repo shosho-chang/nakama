@@ -104,6 +104,7 @@ _PROBE_TARGETS: tuple[str, ...] = (
     "wp_shosho",
     "wp_fleet",
     "r2_backup_nakama",
+    "cron_freshness",
 )
 _PROBE_LABELS: dict[str, str] = {
     "nakama_gateway": "Nakama Gateway",
@@ -111,6 +112,7 @@ _PROBE_LABELS: dict[str, str] = {
     "wp_shosho": "WordPress · shosho.tw",
     "wp_fleet": "WordPress · fleet.shosho.tw",
     "r2_backup_nakama": "R2 · nakama-backup",
+    "cron_freshness": "Cron · freshness",
 }
 
 
