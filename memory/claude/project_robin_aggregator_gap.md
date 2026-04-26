@@ -6,12 +6,13 @@ originSessionId: 27c0b340-d612-4f47-aba4-b4f3727267fd
 ---
 2026-04-26 audit 列三個 production code 缺陷，狀態：
 
-## 1. Robin `_update_wiki_page` 不是 aggregator（PR #169 修，待 merge + E2E）
+## 1. Robin `_update_wiki_page` 不是 aggregator（PR #169 修法 push 完，待 ultrareview second pass + merge）
 
 - **檔案**：`agents/robin/ingest.py`（PR #169 已重寫）
 - **舊行為**：body 末尾 append `## 更新（{date}）` block + LLM imperative todo
 - **PR #169 fix**：刪除 `_update_wiki_page`；新 `_execute_concept_action` 走 `kb_writer.upsert_concept_page(action=...)` 4 種 action（create / update_merge / update_conflict / noop）
-- **狀態**：commit 26ec74f / branch `feat/ingest-v2-step3-schemas-kb-writer`；PR open 待 ultrareview + 修修 E2E + merge
+- **狀態**：commit `26ec74f` (base) + `4d4ab4e` (ultrareview fixes 9 findings) push 完；CI 綠；branch `feat/ingest-v2-step3-schemas-kb-writer`
+- **Ultrareview fixes 含**：critical prompt 目錄錯誤（runtime path → 從 dead `agents/robin/prompts/` 搬到 `prompts/robin/` + 5 categories）、slug validation、update_conflict idempotency、_ensure_h2_skeleton preserve non-canonical H2、noop strip legacy block + 5 nits
 - **影響範圍**：lazy migrate 在第一次 update 時 trigger（v1 → v2 schema_version + derive mentioned_in from source_refs + strip legacy `## 更新` blocks）
 
 ## 2. 既有 broken concept page（migration script merged，待修修 apply）

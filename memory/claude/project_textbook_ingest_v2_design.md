@@ -1,6 +1,6 @@
 ---
-name: textbook-ingest v2 設計凍結 + Step 1/2 done + Step 3 PR A open
-description: textbook-ingest pipeline v2 — 4 凍結原則 + Step 1 hygiene PR #164 + Step 2 ADR-011 PR #165 + Step 3 PR A #169 open（schemas + kb_writer + Robin 重接線 + Web UI v2 plan）
+name: textbook-ingest v2 設計凍結 + Step 1/2 done + Step 3 PR A/B 都 in-flight
+description: textbook-ingest pipeline v2 — 4 凍結原則 + Step 1 PR #164 + Step 2 ADR-011 PR #165 + Step 3 PR A #169 ultrareview fixes pushed + PR B #178 opened
 type: project
 originSessionId: 27c0b340-d612-4f47-aba4-b4f3727267fd
 ---
@@ -17,48 +17,54 @@ originSessionId: 27c0b340-d612-4f47-aba4-b4f3727267fd
 
 ## 進度狀態（2026-04-26 EOD）
 
-- ✅ **Step 1 (Hygiene) PR #164 merged** `c2b529b` — A-5 config.py env 順序 + A-11a obsidian_writer width=10**9 + A-11b migration script + tests
-- ✅ **Step 2 (ADR-011) PR #165 merged** `694b50d` — ADR-011 完整稿（5 sub-decisions + Migration + Acceptance）+ ADR-010 標 Superseded + 修修 4 題拍板
-- 🚧 **Step 3 PR A open #169** `26ec74f` — schemas + kb_writer + lifeos_writer A-11c + Robin ingest 重接線 + extract_concepts v2 prompt + Web UI v2 plan schema + 186 PR-scope tests 全綠
-- ⏳ **Step 3 剩餘 PR B/C/D**：parse_book walker + Vision / 重 ingest ch1 / 批 ingest 10 章
+- ✅ **Step 1 PR #164 merged** `c2b529b` — config env order + obsidian_writer width=10**9 + broken page migration script
+- ✅ **Step 2 ADR-011 PR #165 merged** `694b50d` — ADR-011 完整稿 + ADR-010 標 Superseded + 修修 4 題拍板
+- 🚧 **Step 3 PR A #169** — base `26ec74f` + ultrareview fixes `4d4ab4e` pushed；CI 綠；等 ultrareview 跑 second pass / 修修 manual E2E。9 findings 全修：5 normal-severity（含 critical prompt 目錄錯誤）+ 5 nits + 18 new tests
+- 🚧 **Step 3 PR B #178** opened `d8b6e84` — parse_book walker (img/table/math) + PDF pymupdf4llm + chapter-summary v2 + vision-describe.md + SKILL.md Step 4 rewrite + truncate call removal + 22 walker tests + full suite 1843 passing
+- ⏳ **Step 3 PR C / D backlog**：等 PR A + B 都 land
 
-## PR A 內容（PR #169 / branch `feat/ingest-v2-step3-schemas-kb-writer`）
+**詳細 in-flight 狀態 + 修修 manual todos**：見 `project_ingest_v2_step3_in_flight_2026_04_26.md`
+
+## PR A 內容（branch `feat/ingest-v2-step3-schemas-kb-writer`）
 
 **新增 4 檔**：
 - `shared/schemas/kb.py` — 6 Pydantic schemas（ConceptPageV2 / FigureRef / ChapterSourcePageV2 / ConflictBlock / ConceptAction / MigrationReport）
-- `shared/kb_writer.py` — 7 function + migrate（read_concept_for_diff / list_existing_concepts / upsert_concept_page / update_mentioned_in / aggregate_conflict / write_source_page / upsert_book_entity + migrate_v1_to_v2 / backfill_all_v1_pages）；idempotency + .bak retain 24h；LLM diff-merge 走 Opus 4.7
-- `tests/test_kb_schemas.py` — 38 tests
-- `tests/test_kb_writer.py` — 41 tests
+- `shared/kb_writer.py` — 7 function + migrate；idempotency + .bak retain 24h；LLM diff-merge 走 Opus 4.7
+- `tests/test_kb_schemas.py` — 38 tests / `tests/test_kb_writer.py` — 41 + 18 new fix tests = 59 total
 
-**改 9 檔**：
-- `shared/lifeos_writer.py:193` — yaml.dump 加 width=10**9（A-11c follow-up）
-- `agents/robin/prompts/extract_concepts.md` — v2 4-action schema（create / update_merge / update_conflict / noop），prompt 注入既有 page aliases + body excerpt
-- `agents/robin/ingest.py` — 新 `_execute_concept_action` 走 kb_writer；`_create_entity_page` 沿用 v1；移除舊 `_create_wiki_page` concept branch 與 `_update_wiki_page` todo-append
-- `thousand_sunny/routers/robin.py` — Web UI 適配 v2 plan schema (concepts/entities)
-- `thousand_sunny/templates/robin/review_plan.html` — UI 顯示 4-action badge + conflict topic
-- 4 tests files：test_lifeos_writer regression + test_ingest 重寫 + test_robin_router/_sse 適配
+**改 PR A path**（ultrareview fixes 4d4ab4e）：
+- `prompts/robin/extract_concepts.md` + 5 categories — v2 prompt 從 dead `agents/robin/prompts/` 搬到 runtime path（CRITICAL：原本 merge 後 ingest 會 KeyError 炸）
+- `shared/kb_writer.py` — slug validation / update_conflict idempotency / `_ensure_h2_skeleton` preserve non-canonical / noop strip legacy / chapter sort / aggregate_conflict + update_mentioned_in 補 migration + mentioned_in / confidence migration bool/unknown
+- `agents/robin/ingest.py` — conflict validation gate on `action == 'update_conflict'`
+- `thousand_sunny/routers/robin.py` + `templates/robin/done.html` — noop 進 progress count + done 加 referenced bucket
 
-## Step 3 PR B 開工順序（按 ADR-011 §6 Acceptance 排）
+## PR B 內容（branch `feat/ingest-v2-step3-pr-b-parse-book`）
 
-1. 改 `.claude/skills/textbook-ingest/scripts/parse_book.py:302-319` `_epub_html_to_text` walker — 處理 `<img>` `<table>` `<math>` + 新 dep `mathml2latex`
-2. PDF 路徑改用 `pymupdf4llm.to_markdown(with_tables=True)` (A-9)
-3. 拿掉 `.claude/skills/textbook-ingest/prompts/chapter-summary.md` 字數上限 (A-4)
-4. 加 Vision describe step（Sonnet 4.6 + domain-aware prompt §3.4.3 skeleton）+ `prompts/vision-describe.md`
-5. parse_book + Vision tests
+**新增 1 檔**：`prompts/vision-describe.md` — domain-aware system role；Sonnet 4.6 default
 
-## Step 3 PR C/D
+**改 4 檔**：
+- `.claude/skills/textbook-ingest/scripts/parse_book.py` — `_walk_epub_html` walker (img/table/math) + PDF `pymupdf4llm.to_markdown` + xref dedup figures + `--attachments-base-dir` CLI flag + outline JSON figures/tables
+- `.claude/skills/textbook-ingest/prompts/chapter-summary.md` — v2：拿掉字數上限 + 強制 verbatim + Section concept map + 保留 placeholders
+- `.claude/skills/textbook-ingest/SKILL.md` — Step 2 + Step 4 rewrite（4b Vision describe 新 step / 4d/4e v2 4-action dispatcher）
+- `agents/robin/ingest.py` — 移除 `_truncate_at_boundary(content, 30000)` no-op call (A-10)
+- `tests/skills/textbook_ingest/test_parse_book.py` — +12 cases
 
-- PR C：重 ingest ch1 + retrieval acceptance test（kb-search 對「PCr 主導時間多長」要拿到 文獻分歧 section）
-- PR D：批 ingest 剩 10 章（ch2-ch11）
+**ADR-011 deviation**：mathml2latex PyPI 0.1.0 abandoned（empty public API）→ alttext-first path（見 `feedback_mathml2latex_abandoned.md`）
 
-## Critical 檔案 reference（給後續 PR implementer）
+## Step 3 PR C / D backlog
 
-- `agents/robin/ingest.py` — v2 已落地，PR B/C 不動
-- `agents/robin/prompts/extract_concepts.md` — v2 已落地
-- `shared/kb_writer.py` — PR B 寫 chapter source 時呼叫 `write_source_page()`
-- `.claude/skills/textbook-ingest/scripts/parse_book.py:302-319` — `_epub_html_to_text` walker（PR B 重寫）
-- `.claude/skills/textbook-ingest/prompts/chapter-summary.md` — 拿掉字數上限（PR B）
-- `shared/obsidian_writer.py` — 已加 `width=10**9`（PR #164）；新 KB 寫入走 kb_writer
+- **PR C**：重 ingest ch1 + retrieval acceptance test（kb-search 對「PCr 主導時間多長」要拿到 `## 文獻分歧` section）；6 既有 concept page lazy migrate v1 → v2、body 末尾無 `## 更新` block
+- **PR D**：批 ingest ch2-ch11；Book Entity status: complete + chapters_ingested: 11
+
+## Critical 檔案 reference
+
+- `agents/robin/ingest.py` — v2 在 PR A 落地（concept paths）+ PR B 改 truncate call
+- `agents/robin/prompts/extract_concepts.md` — **dead path**，已刪；runtime 路徑是 `prompts/robin/extract_concepts.md` + 5 categories
+- `shared/kb_writer.py` — PR A 主體；後續 PR 寫 chapter source 呼叫 `write_source_page()`
+- `.claude/skills/textbook-ingest/scripts/parse_book.py` — PR B walker；PR C 用其 outline JSON
+- `.claude/skills/textbook-ingest/prompts/chapter-summary.md` — PR B v2；PR C 跑 ingest 時用
+- `.claude/skills/textbook-ingest/prompts/vision-describe.md` — PR B 新；PR C Vision describe step 用
+- `shared/obsidian_writer.py` — `width=10**9`（PR #164）；KB 寫入走 kb_writer
 
 ## 完整文件 reference
 

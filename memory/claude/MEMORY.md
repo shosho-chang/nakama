@@ -7,9 +7,10 @@
 - [project_pending_tasks.md](project_pending_tasks.md) — 待辦：VPS 部署 + 端到端測試（Robin/Zoro/Brook）、Nami 開發、補測試
 - [project_brook_design.md](project_brook_design.md) — Brook 設計決策：Web UI 聊天頁、成本分析、Phase 2 規劃
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — /kb/research E2E + kb-search skill PR #142 merged；server top_k=8 enhancement 待修
-- [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — ingest v2 4 原則 + Step 1 (#164) + Step 2 ADR-011 (#165) merged + Step 3 PR A #169 open
-- [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — Robin update logic PR #169 重寫待 merge；broken pages migration 待修修 apply 4 頁；config env fixed；A-11c lifeos_writer 修了
-- [project_ingest_v2_step3_pr_a_open.md](project_ingest_v2_step3_pr_a_open.md) — **目前 pickup 點**：PR #169 open + ultrareview 跑中 + 修修 manual todo + PR B/C/D 範圍與起跑順序
+- [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — ingest v2 4 原則 + Step 1/2 merged + Step 3 PR A #169 fixes pushed + PR B #178 opened
+- [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — Robin update logic PR #169 ultrareview fixes pushed 待 merge；broken pages migration 待修修 apply 4 頁；config env fixed；A-11c lifeos_writer 修了
+- [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **目前 pickup 點**：PR A #169 修法 push + PR B #178 opened + ADR deviation + 修修 manual todos + PR C/D backlog
+- [feedback_mathml2latex_abandoned.md](feedback_mathml2latex_abandoned.md) — mathml2latex PyPI 0.1.0 abandoned，MathML → LaTeX 走 alttext-first（不加 dep）
 - [feedback_kb_concept_aggregator_principle.md](feedback_kb_concept_aggregator_principle.md) — concept page = cross-source aggregator，禁止 `## 更新` todo dump，衝突寫 `## 文獻分歧`
 - Plan：[docs/plans/2026-04-26-ingest-v2-redesign-plan.md](../../docs/plans/2026-04-26-ingest-v2-redesign-plan.md) — ingest v2 redesign 完整 plan + §8 Decisions table（4 題拍板）
 - ADR：[docs/decisions/ADR-011-textbook-ingest-v2.md](../../docs/decisions/ADR-011-textbook-ingest-v2.md) — Step 2 ADR 凍結（5 sub-decisions / Pydantic schema / kb_writer signatures / Migration / Acceptance）
