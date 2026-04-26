@@ -32,10 +32,10 @@ def get_vault_path() -> Path:
 
     跨平台覆寫：`VAULT_PATH` env var 優先（讓 Windows 開發機、VPS、CI 各自指向不同位置）。
     """
+    cfg = load_config()
     override = os.environ.get("VAULT_PATH")
     if override:
         return Path(override)
-    cfg = load_config()
     return Path(cfg["vault_path"])
 
 
@@ -44,10 +44,10 @@ def get_db_path() -> Path:
 
     跨平台覆寫：`DB_PATH` env var 優先。
     """
+    cfg = load_config()
     override = os.environ.get("DB_PATH")
     if override:
         return Path(override)
-    cfg = load_config()
     return Path(cfg["db_path"])
 
 
