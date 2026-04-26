@@ -4,12 +4,19 @@
 # scout_seen source key = "ai_news_blog"，dedup 用 entry.id (RSS GUID)
 # fallback 到 sha256(url)。
 #
-# 本檔僅 Slice A 範圍 — Reddit / X / GitHub trending 留 Slice B/C。
+# Slice A 範圍 — Reddit / X / GitHub trending 留 Slice B/C。
+#
+# 已驗證（2026-04-26 dry-run smoke）：以下 8 個 feed 都回 200 + valid XML。
+#
+# 不在清單的 publishers（Slice A 範圍外，Slice B follow-up 用 HTML scrape 處理）：
+#   - Anthropic /news — 沒官方 RSS（/news/rss.xml /news/feed /research/rss.xml 全 404）
+#   - Meta AI blog — RSS endpoint malformed
+#   - vLLM blog — 沒 RSS（blog 是純 HTML）
+#   - LangChain blog — RSS malformed（已改用 changelog feed 替代）
+#   - xAI / Mistral — 沒 RSS 或 datacenter IP block
+#   - arxiv cs.AI — 暫不收（每日 200+ paper，會把 curate prompt 衝爆；PubMed 已涵蓋 paper 流）
 
 feeds:
-  - name: anthropic_news
-    url: https://www.anthropic.com/news/rss.xml
-    publisher: Anthropic
   - name: openai_news
     url: https://openai.com/news/rss.xml
     publisher: OpenAI
@@ -22,18 +29,15 @@ feeds:
   - name: huggingface
     url: https://huggingface.co/blog/feed.xml
     publisher: Hugging Face
-  - name: meta_ai
-    url: https://ai.meta.com/blog/rss/
-    publisher: Meta AI
-  - name: vllm
-    url: https://blog.vllm.ai/feed.xml
-    publisher: vLLM
-  - name: langchain
-    url: https://blog.langchain.dev/rss/
-    publisher: LangChain
   - name: simon_willison
     url: https://simonwillison.net/atom/everything/
     publisher: Simon Willison
   - name: latent_space
     url: https://www.latent.space/feed
     publisher: Latent Space
+  - name: langchain_changelog
+    url: https://changelog.langchain.com/feed.xml
+    publisher: LangChain Changelog
+  - name: together_ai
+    url: https://www.together.ai/blog/rss.xml
+    publisher: Together AI

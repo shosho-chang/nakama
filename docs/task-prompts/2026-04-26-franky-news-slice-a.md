@@ -175,4 +175,35 @@ op=op_xxxxxxxx
 
 ## 7. 發現 issue（執行過程補寫）
 
-（執行者若發現需要的 building block 缺漏 / RSS URL 失效 / pattern 不 fit，補這裡，不偷改 scope。）
+### 2026-04-26 本機 dry-run smoke test 發現
+
+10 個 seed feed 中 4 個無 RSS / RSS broken：
+
+| Publisher | 原 URL | 結果 | 處理 |
+|---|---|---|---|
+| Anthropic | `/news/rss.xml` | 404 | **沒官方 RSS**（試了 `/feed`, `/research/rss.xml` 都 404）— 拿掉。Slice B follow-up 用 HTML scrape `/news` 頁解 |
+| Meta AI | `/blog/rss/` | malformed XML（回 Facebook 反爬 HTML）| 拿掉 |
+| vLLM | `/feed.xml` | text/html 不是 XML — vLLM blog 純 HTML 無 RSS | 拿掉 |
+| LangChain blog | `/rss/` | malformed XML | 換成 `changelog.langchain.com/feed.xml`（changelog 比 blog 更實用）|
+
+加入替代 source 補回容量：
+- `together_ai` — `https://www.together.ai/blog/rss.xml` ✅ 有效
+- （考慮過 arxiv cs.AI RSS 補 paper coverage，最後不加 — 每日 200+ paper 會把 curate prompt 衝爆；PubMed 既有流已涵蓋）
+
+最終 8 feeds：openai / google_research / deepmind / huggingface / simon_willison / latent_space / langchain_changelog / together_ai
+
+### Anthropic RSS 缺口 — Slice B follow-up
+
+Anthropic 沒官方 RSS 是這個方案最大缺口（修修最在乎 Anthropic update）。
+Slice B 加 GitHub watchlist 時，**順便加一個 HTML scrape source**：
+- 用 `shared/web_scraper.py` 三層 fallback 抓 `https://www.anthropic.com/news` 主頁
+- parse `<a href="/news/...">` 連結 + 各篇 `<time>` 取 published date
+- 24h cutoff + scout_seen 去重，schema 對齊既有 candidate dict
+
+工程量：~50 行新 module `agents/franky/news/anthropic_html.py`，配個 unit test。
+
+### 2026-04-26 本機 stdout fix
+
+Windows cp1252 stdout 印中文 log crash（feedback_windows_stdout_utf8）。
+`agents/franky/__main__.py` 頂層加 stdout/stderr UTF-8 reconfigure 解決。
+VPS Linux 不受影響，但本機 dev 必須。

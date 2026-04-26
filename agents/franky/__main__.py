@@ -18,6 +18,11 @@ import json
 import sys
 from datetime import datetime, timezone
 
+# Windows cp1252 stdout 無法印中文 — 統一 UTF-8（feedback_windows_stdout_utf8）
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 def _cmd_health(_args: argparse.Namespace) -> int:
     from agents.franky.alert_router import make_default_sink
