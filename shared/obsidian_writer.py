@@ -43,6 +43,7 @@ def write_page(
         allow_unicode=True,
         default_flow_style=False,
         sort_keys=False,
+        width=10**9,
     ).strip()
 
     content = f"---\n{fm_str}\n---\n\n{body}\n"
