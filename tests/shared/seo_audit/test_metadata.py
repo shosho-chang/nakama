@@ -56,17 +56,21 @@ def test_m1_unicode_counts_chars_not_bytes():
     assert c.status == "pass"
 
 
-def test_m1_nested_tags_in_title_not_misreported_as_missing():
-    """`<title>` containing nested elements should be read via get_text(), not
-    `.string` (which returns None for nested-tag content)."""
-    title_inner = "Hi " + "x" * 50 + " World"
-    html = f"<html><head><title>Hi <b>{'x' * 50}</b> World</title></head></html>"
+def test_m1_inline_markup_title_not_misreported_as_missing():
+    """A `<title>` containing inline markup like ``<b>`` must never be
+    misreported as missing. Under ``html.parser`` ``<title>`` is RCDATA, so
+    the inline tags become part of the literal text (status may be warn for
+    length); the invariant we care about is that the field is *present*.
+
+    The ``get_text(strip=True)`` switch in ``_check_title`` is defensive
+    for parsers (lxml/html5lib) where nested children may surface as
+    multiple Tag descendants and ``.string`` would return None — under
+    those parsers the original code would have reported "缺少 <title>".
+    """
+    html = "<html><head><title>Hi <b>World</b></title></head></html>"
     checks = check_metadata(_soup(html), "https://x")
     c = _by_rule(checks, "M1")
-    # Length of "Hi " + 50 'x' + " World" = 3 + 50 + 6 = 59 → in pass range
-    assert len(title_inner) == 59
-    assert c.status == "pass", f"got status={c.status}, actual={c.actual!r}"
-    assert "缺少 <title>" not in c.actual
+    assert "缺少" not in c.actual, f"misreported as missing: {c.actual!r}"
 
 
 # ── M2: meta description 150-160 ──
