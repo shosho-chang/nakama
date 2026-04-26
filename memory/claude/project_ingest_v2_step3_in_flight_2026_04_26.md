@@ -51,7 +51,13 @@ originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
 - **Final commit on branch**：`d8b6e84`
 - **Review verdict**：MERGE WITH FOLLOW-UP — 4 silent data corruption bug 必修 before PR C re-ingest
 
-### **🔴 4 個 silent data corruption bug — 必修 before PR C**
+## PR B follow-up — #180 (walker corruption fix) — MERGED 7f77c3a
+
+- ✅ 4 silent corruption bug + 4 minor 全 land 2026-04-26
+- 修法：rowspan/colspan grid expansion / `find_parent` filter / 三層 header detection / `_walk_mathml` recurser + `_export_chapter_attachments` ref/extension regex validation
+- +17 test（5 table / 5 math / 7 export validation）
+
+### **~~🔴 4 個 silent data corruption bug — 必修 before PR C~~** — ✅ 全修
 
 1. **`_html_table_to_markdown` 忽略 rowspan/colspan** — `parse_book.py:478`
    - `<td rowspan=2>A</td><td>B</td>...<td>C</td>` 渲染後 `C` 在錯欄

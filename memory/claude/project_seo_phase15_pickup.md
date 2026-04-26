@@ -29,8 +29,8 @@ originSessionId: d68cbc3c-496f-44e3-b795-24cd48c68d09
 |---|---|---|---|
 | **task prompt** | 4 sub-slice + 28 deterministic + 12 LLM + report 模板凍結 | — | ✅ PR #167 a985d14 |
 | **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*` 8 module（28 rule + types + html_fetcher）+ 146 unit test | 2-2.5 天 | ✅ PR #173 merged `cc35218` 2026-04-26 |
-| **D.1-followup** | 2 correctness bug（M1 nested-tag title / `_normalize_url` query-strip + case） + 5 minor — 詳見 `project_2026_04_26_4pr_merged_bugs_followup.md` §A | 半天 | 🟡 待開 PR（D.2 ship 前必 land）|
-| **D.2** | `seo-audit-post` skill + LLM semantic 12 條 + markdown report；reuse gsc_client + 改 kb_search 加 `purpose` 參數 | 2.5-3 天 | ⬜（D.1-followup merge 後）|
+| **D.1-followup** | 2 correctness bug（M1 get_text + M3 query/case/relative urljoin）+ env doc + 5 test | 半天 | ✅ PR #181 merged `f247184` 2026-04-26 |
+| **D.2** | `seo-audit-post` skill + LLM semantic 12 條 + markdown report；reuse gsc_client + 改 kb_search 加 `purpose` 參數 | 2.5-3 天 | 🟢 unblocked — 詳見 [project_d2_seo_audit_starting_2026_04_27.md](project_d2_seo_audit_starting_2026_04_27.md) |
 | **E** | DataForSEO Labs `keyword_difficulty` → `seo-keyword-enrich`（health filter 內建）| 1-1.5 天 | ⬜（不依賴 D.1-followup）|
 | **F** | firecrawl top-3 SERP + Claude Haiku 摘要 → 填 `competitor_serp_summary` | 1-1.5 天 | ⬜（不依賴 D.1-followup）|
 
