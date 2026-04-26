@@ -99,12 +99,18 @@ def healthz(response: Response) -> HealthzResponseV1:
 # ---------------------------------------------------------------------------
 
 _PROBE_TARGETS: tuple[str, ...] = (
+    # Row 1 (slice [0:2]): VPS-internal hero
     "nakama_gateway",
     "vps_resources",
+    # Row 2 (slice [2:6]): internal services + cron meta
     "wp_shosho",
     "wp_fleet",
     "r2_backup_nakama",
     "cron_freshness",
+    # Row 3 (slice [6:9]): external service auth (Phase 5D)
+    "gsc",
+    "slack",
+    "gmail",
 )
 _PROBE_LABELS: dict[str, str] = {
     "nakama_gateway": "Nakama Gateway",
@@ -113,6 +119,9 @@ _PROBE_LABELS: dict[str, str] = {
     "wp_fleet": "WordPress · fleet.shosho.tw",
     "r2_backup_nakama": "R2 · nakama-backup",
     "cron_freshness": "Cron · freshness",
+    "gsc": "Google Search Console",
+    "slack": "Slack · Franky bot",
+    "gmail": "Gmail · Nami inbox",
 }
 
 

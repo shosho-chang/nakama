@@ -22,8 +22,11 @@ from agents.franky import health_check
 from agents.franky.health_check import (
     _record_and_maybe_alert,
     probe_cron_freshness,
+    probe_gmail,
+    probe_gsc,
     probe_nakama_gateway,
     probe_r2_backup_nakama,
+    probe_slack,
     probe_vps_resources,
     probe_wp_site,
     run_once,
@@ -461,6 +464,10 @@ def test_run_once_returns_all_probes(_mock_ok_env):
         "nakama_gateway",
         "r2_backup_nakama",
         "cron_freshness",
+        # Phase 5D — external service auth probes (skipped in this fixture, but still emitted).
+        "gsc",
+        "slack",
+        "gmail",
     }
     assert result["operation_id"].startswith("op_")
     assert result["duration_ms"] >= 0
@@ -734,3 +741,189 @@ def test_cron_schedules_grace_convention():
         elif interval == weekly_min:
             assert grace == 120, f"{job}: weekly job grace should be 120min, got {grace}"
         # 5-min / hourly probes not in this dict yet; skip.
+
+
+# ---------------------------------------------------------------------------
+# Phase 5D — external service auth probes (gsc / slack / gmail)
+# ---------------------------------------------------------------------------
+
+
+def test_gsc_probe_skips_when_env_missing(monkeypatch):
+    monkeypatch.delenv("GCP_SERVICE_ACCOUNT_JSON", raising=False)
+    probe = probe_gsc()
+    assert probe.target == "gsc"
+    assert probe.status == "ok"
+    assert probe.detail.get("skipped") is True
+    assert probe.detail.get("reason") == "missing_env"
+
+
+def test_gsc_probe_success_path(monkeypatch):
+    monkeypatch.setenv("GCP_SERVICE_ACCOUNT_JSON", "/tmp/fake-sa.json")
+
+    fake_service = MagicMock()
+    fake_service.sites.return_value.list.return_value.execute.return_value = {
+        "siteEntry": [{"siteUrl": "sc-domain:shosho.tw"}, {"siteUrl": "sc-domain:fleet.shosho.tw"}]
+    }
+    fake_client = MagicMock()
+    fake_client._get_service.return_value = fake_service
+
+    with patch("shared.gsc_client.GSCClient.from_env", return_value=fake_client):
+        probe = probe_gsc()
+    assert probe.status == "ok"
+    assert probe.detail.get("site_count") == 2
+
+
+def test_gsc_probe_failure_path(monkeypatch):
+    monkeypatch.setenv("GCP_SERVICE_ACCOUNT_JSON", "/tmp/fake-sa.json")
+
+    def _boom():
+        raise RuntimeError("token revoked")
+
+    with patch("shared.gsc_client.GSCClient.from_env", side_effect=_boom):
+        probe = probe_gsc()
+    assert probe.status == "fail"
+    assert "RuntimeError" in (probe.error or "")
+    assert "token revoked" in (probe.error or "")
+
+
+def test_slack_probe_skips_when_env_missing(monkeypatch):
+    monkeypatch.delenv("SLACK_FRANKY_BOT_TOKEN", raising=False)
+    probe = probe_slack()
+    assert probe.target == "slack"
+    assert probe.status == "ok"
+    assert probe.detail.get("skipped") is True
+    assert probe.detail.get("reason") == "missing_env"
+
+
+def test_slack_probe_success_path(monkeypatch):
+    monkeypatch.setenv("SLACK_FRANKY_BOT_TOKEN", "xoxb-fake")
+
+    fake_client = MagicMock()
+    fake_client.auth_test.return_value = {"ok": True, "team": "shosho-team", "bot_id": "B0X"}
+
+    with patch("slack_sdk.WebClient", return_value=fake_client):
+        probe = probe_slack()
+    assert probe.status == "ok"
+    assert probe.detail.get("team") == "shosho-team"
+
+
+def test_slack_probe_api_error_classified(monkeypatch):
+    """SlackApiError should produce a structured `SlackApiError: <code>` message."""
+    from slack_sdk.errors import SlackApiError
+
+    monkeypatch.setenv("SLACK_FRANKY_BOT_TOKEN", "xoxb-fake")
+
+    fake_response = MagicMock()
+    fake_response.get.return_value = "token_revoked"
+
+    fake_client = MagicMock()
+    fake_client.auth_test.side_effect = SlackApiError("token revoked", fake_response)
+
+    with patch("slack_sdk.WebClient", return_value=fake_client):
+        probe = probe_slack()
+    assert probe.status == "fail"
+    assert "token_revoked" in (probe.error or "")
+
+
+def test_slack_probe_unexpected_exception_becomes_fail(monkeypatch):
+    monkeypatch.setenv("SLACK_FRANKY_BOT_TOKEN", "xoxb-fake")
+
+    fake_client = MagicMock()
+    fake_client.auth_test.side_effect = ConnectionError("dns down")
+
+    with patch("slack_sdk.WebClient", return_value=fake_client):
+        probe = probe_slack()
+    assert probe.status == "fail"
+    assert "ConnectionError" in (probe.error or "")
+
+
+def test_gmail_probe_skips_when_token_missing(tmp_path, monkeypatch):
+    """No `data/google_gmail_token.json` → skipped (dev / CI without consent flow)."""
+    monkeypatch.setenv("NAKAMA_DATA_DIR", str(tmp_path))
+    probe = probe_gmail()
+    assert probe.target == "gmail"
+    assert probe.status == "ok"
+    assert probe.detail.get("skipped") is True
+    assert probe.detail.get("reason") == "missing_token_file"
+
+
+def test_gmail_probe_success_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("NAKAMA_DATA_DIR", str(tmp_path))
+    (tmp_path / "google_gmail_token.json").write_text("{}")
+
+    fake_service = MagicMock()
+    fake_service.users.return_value.getProfile.return_value.execute.return_value = {
+        "emailAddress": "nakama-bot@shosho.tw",
+        "messagesTotal": 100,
+    }
+
+    with patch("shared.google_gmail._get_service", return_value=fake_service):
+        probe = probe_gmail()
+    assert probe.status == "ok"
+    # Domain only — full address would leak unnecessarily into the dashboard.
+    assert probe.detail.get("email_domain") == "shosho.tw"
+
+
+def test_gmail_probe_auth_error_classified(tmp_path, monkeypatch):
+    from shared.google_gmail import GoogleGmailAuthError
+
+    monkeypatch.setenv("NAKAMA_DATA_DIR", str(tmp_path))
+    (tmp_path / "google_gmail_token.json").write_text("{}")
+
+    with patch(
+        "shared.google_gmail._get_service",
+        side_effect=GoogleGmailAuthError("refresh failed"),
+    ):
+        probe = probe_gmail()
+    assert probe.status == "fail"
+    assert "GoogleGmailAuthError" in (probe.error or "")
+    assert "refresh failed" in (probe.error or "")
+
+
+def test_gmail_probe_unexpected_exception_becomes_fail(tmp_path, monkeypatch):
+    monkeypatch.setenv("NAKAMA_DATA_DIR", str(tmp_path))
+    (tmp_path / "google_gmail_token.json").write_text("{}")
+
+    with patch("shared.google_gmail._get_service", side_effect=RuntimeError("api down")):
+        probe = probe_gmail()
+    assert probe.status == "fail"
+    assert "RuntimeError" in (probe.error or "")
+
+
+# ---------------------------------------------------------------------------
+# run_once integration — verify all 5D probes wired in
+# ---------------------------------------------------------------------------
+
+
+def test_run_once_emits_external_probes(monkeypatch):
+    """run_once should call all 3 Phase 5D probes and include them in the result."""
+    # All env missing — probes will return ok-skipped, but they must still be CALLED.
+    for k in ("GCP_SERVICE_ACCOUNT_JSON", "SLACK_FRANKY_BOT_TOKEN"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("NAKAMA_DATA_DIR", "/nonexistent-dir-for-test")
+
+    result = run_once(alert_sink=lambda _a: None)
+    targets = [p.target for p in result["probes"]]
+    assert "gsc" in targets
+    assert "slack" in targets
+    assert "gmail" in targets
+
+
+def test_run_once_external_probe_failure_flows_through_gate(monkeypatch):
+    """Failing 3 times should emit a Critical alert via the standard 3-fail gate."""
+    monkeypatch.setenv("GCP_SERVICE_ACCOUNT_JSON", "/tmp/fake-sa.json")
+    # Other envs unset → those probes skip + don't pollute the alert sink.
+    monkeypatch.delenv("SLACK_FRANKY_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("NAKAMA_DATA_DIR", "/nonexistent-dir-for-test")
+
+    captured = []
+
+    with patch("shared.gsc_client.GSCClient.from_env", side_effect=RuntimeError("scope revoked")):
+        for _ in range(DEFAULT_FAIL_THRESHOLD):
+            run_once(alert_sink=captured.append)
+
+    gsc_alerts = [a for a in captured if a.rule_id == "gsc_unhealthy"]
+    assert len(gsc_alerts) == 1, (
+        f"expected exactly 1 Critical at threshold, got {[a.rule_id for a in captured]}"
+    )
+    assert gsc_alerts[0].severity == "critical"

@@ -106,6 +106,11 @@ def test_dashboard_shows_all_probe_labels(client):
         "WordPress · fleet.shosho.tw",
         "R2 · nakama-backup",
         "R2 · xcloud-backup",
+        "Cron · freshness",
+        # Phase 5D — external service auth probes
+        "Google Search Console",
+        "Slack · Franky bot",
+        "Gmail · Nami inbox",
     ):
         assert label in body
 

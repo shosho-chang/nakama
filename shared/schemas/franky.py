@@ -24,7 +24,9 @@ from pydantic import (
     constr,
 )
 
-# 探測目標白名單（Phase 1）。Phase 2 加新 target 時升 V2，避免靜默接受未知 target。
+# 探測目標白名單。Phase 2 加新 target 時升 V2，避免靜默接受未知 target。
+# Phase 5D 新增 gsc / slack / gmail：3 個 OAuth 或 service-account 認證的外部 API 健康，
+# 用 cheapest read-only call（list / auth_test / getProfile）驗證 token 還活著。
 ProbeTarget = Literal[
     "vps_resources",
     "wp_shosho",
@@ -32,6 +34,9 @@ ProbeTarget = Literal[
     "nakama_gateway",
     "r2_backup_nakama",
     "cron_freshness",
+    "gsc",
+    "slack",
+    "gmail",
 ]
 
 # 連續失敗門檻：跨過後升 Critical。ADR-007 §8 三連 fail 才升告警。
