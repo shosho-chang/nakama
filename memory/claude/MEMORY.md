@@ -7,6 +7,11 @@
 - [project_pending_tasks.md](project_pending_tasks.md) — 待辦：VPS 部署 + 端到端測試（Robin/Zoro/Brook）、Nami 開發、補測試
 - [project_brook_design.md](project_brook_design.md) — Brook 設計決策：Web UI 聊天頁、成本分析、Phase 2 規劃
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — /kb/research E2E + kb-search skill PR #142 merged；server top_k=8 enhancement 待修
+- [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — textbook-ingest v2 凍結 4 原則（Karpathy aggregator / deep extract / 圖表 first-class / conflict detection）+ ch1 已 ingest 剩 10 章 hold
+- [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — 三個 production bug：_update_wiki_page todo-append、ATP再合成/肌酸代謝 broken frontmatter、config.py env 順序
+- [feedback_kb_concept_aggregator_principle.md](feedback_kb_concept_aggregator_principle.md) — concept page = cross-source aggregator，禁止 `## 更新` todo dump，衝突寫 `## 文獻分歧`
+- Plan：[docs/plans/2026-04-26-ingest-v2-redesign-plan.md](../../docs/plans/2026-04-26-ingest-v2-redesign-plan.md) — ingest v2 redesign 完整 plan + ADR-010-v2 大綱
+- Inventory：[docs/research/2026-04-26-workflow-inventory.md](../../docs/research/2026-04-26-workflow-inventory.md) — 9 agent × 12 use case workflow catalog
 - [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 放棄觀望（2026-04-19 結論）：CJK 只改一半 + 無 auto-extraction + API churn
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
 - [reference_vault_paths_mac.md](reference_vault_paths_mac.md) — Mac Shosho LifeOS vault：`/Users/shosho/Documents/Shosho LifeOS/`（跨平台對照 Windows F:）
