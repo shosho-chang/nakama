@@ -169,12 +169,8 @@
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
 - [project_quality_uplift_review_2026_04_25.md](project_quality_uplift_review_2026_04_25.md) — 9-phase 5/9 完成 MERGED 2026-04-25（PR #146/147/152/154/157）+ 待修 12 major/minor 清單 + 修修 manual follow-up
-- [project_quality_uplift_next_2026_04_26.md](project_quality_uplift_next_2026_04_26.md) — 04-26 morning pickup（已 superseded）
-- [project_quality_uplift_next_2026_04_26_evening.md](project_quality_uplift_next_2026_04_26_evening.md) — 04-26 evening pickup（已過時，被 04-27 取代）
-- [project_quality_uplift_next_2026_04_28.md](project_quality_uplift_next_2026_04_28.md) — **Quality Uplift pickup**：plan 5/9 ✅ + 2/9 🟡 + 3/9 ❌；下一步 grey-fix（Phase 1 drill + Phase 4 archive 1.5 天）task prompt 凍結
-- Task prompt：[docs/task-prompts/2026-04-27-phase-1-4-grey-fix.md](../../docs/task-prompts/2026-04-27-phase-1-4-grey-fix.md) — Phase 1 DR drill 實證 + Phase 4 alert→Incident archive 自動化（Q1-Q5 待簽）
+- [project_quality_uplift_next_2026_04_28.md](project_quality_uplift_next_2026_04_28.md) — **Quality Uplift pickup**：PR #187 grey-fix merged + VPS deployed → 7/9 ✅；下一步 = Phase 6 test coverage task prompt 凍結
 - [feedback_log_search_fts5_pattern.md](feedback_log_search_fts5_pattern.md) — FTS5 unicode61 對 CJK 是整段一 token、record.exc_info 不可吞、html.escape 走 sentinel swap 三點教訓
-- [project_quality_uplift_next_2026_04_25.md](project_quality_uplift_next_2026_04_25.md) — 上一輪 pickup（已過時，被 04-26 取代）
 - [project_quality_uplift_vps_deployed_2026_04_26.md](project_quality_uplift_vps_deployed_2026_04_26.md) — 5 PR VPS 部署完成 2026-04-26：解鎖 Phase 5/7/8；路上抓到 logger init / endpoint 漏 https / bucket name trailing space 三 bug
 - [project_quality_uplift_sweep_done_2026_04_26.md](project_quality_uplift_sweep_done_2026_04_26.md) — 12-major sweep 三 PR 全 merged 2026-04-26（#161/#162/#163）；剩 Phase 4-8 + 修修 VPS pull/restart
 - [feedback_subagent_shared_worktree.md](feedback_subagent_shared_worktree.md) — 並行 sub-agent 必開 `git worktree`，不可共用主 worktree（5-PR review 踩坑教訓）
