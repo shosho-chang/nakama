@@ -101,6 +101,7 @@ CRON_SCHEDULES: dict[str, tuple[int, int]] = {
     "franky-r2-backup-verify": (24 * 60, 60),  # daily 03:30
     "franky-news-digest": (24 * 60, 60),  # daily 06:30
     "franky-weekly-report": (7 * 24 * 60, 120),  # weekly Mon 10:00
+    "nakama-cleanup-logs": (24 * 60, 60),  # daily 04:00 — Phase 5C log retention
 }
 
 
