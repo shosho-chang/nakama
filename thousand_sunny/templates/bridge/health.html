@@ -60,12 +60,15 @@ body {
 .chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
 .chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
 .chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
-.chassis-nav { flex: 1; display: flex; gap: 24px; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
 .chassis-nav a {
-  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
-  text-decoration: none; color: var(--nk-chassis-fg-2);
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
   border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
 }
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
 .chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
 .chassis-nav a.active { border-bottom-color: var(--nk-signal); }
 
@@ -163,12 +166,14 @@ body {
     </div>
   </div>
   <nav class="chassis-nav">
-    <a href="/bridge">Hub</a>
-    <a href="/bridge/memory">Memory</a>
-    <a href="/bridge/cost">Cost</a>
-    <a href="/bridge/drafts">Drafts</a>
-    <a href="/bridge/health" class="active">Health</a>
-    <a href="/bridge/franky">Franky</a>
+    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
+    <a href="/bridge/franky">FRANKY <span class="zh">船工</span></a>
+    <a href="/bridge/health" class="active">HEALTH <span class="zh">巡檢</span></a>
+    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
   </nav>
 </header>
 

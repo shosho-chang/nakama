@@ -156,9 +156,46 @@ def test_docs_page_with_query_returns_results(client):
     assert ("<mark>" in body) or ("No matches" in body)
 
 
-# ---------------------------------------------------------------------------
-# Memory endpoints
-# ---------------------------------------------------------------------------
+# ── chassis-nav unification regression ──────────────────────────────────────
+# Three taxonomies emerged across PR #136 / #152 / #157 because each new page
+# copy-pasted the chassis nav and diverged. PR A (2026-04-26) unified them to
+# the canonical 8-item form: uppercase + zh suffix + class="active" marker.
+@pytest.mark.parametrize(
+    "path,active_label",
+    [
+        ("/bridge", "BRIDGE"),
+        ("/bridge/drafts", "DRAFTS"),
+        ("/bridge/memory", "MEMORY"),
+        ("/bridge/cost", "COST"),
+        ("/bridge/franky", "FRANKY"),
+        ("/bridge/health", "HEALTH"),
+        ("/bridge/docs", "DOCS"),
+    ],
+)
+def test_chassis_nav_canonical_8_items(client, path, active_label):
+    r = client.get(path)
+    assert r.status_code == 200
+    body = r.text
+    # All 8 entries present with zh suffix
+    for label, zh in [
+        ("BRIDGE", "船橋"),
+        ("DRAFTS", "待審"),
+        ("MEMORY", "記憶"),
+        ("COST", "成本"),
+        ("FRANKY", "船工"),
+        ("HEALTH", "巡檢"),
+        ("DOCS", "文件"),
+        ("VAULT", "秘庫"),
+    ]:
+        assert f'{label} <span class="zh">{zh}' in body, f"{path} missing {label}"
+    # Old taxonomy gone
+    assert "is-current" not in body, f"{path} still uses is-current taxonomy"
+    # Current page marked active (class="active" on the matching link, possibly
+    # followed by aria-current="page" for a11y on franky)
+    import re
+
+    pattern = rf'class="active"[^>]*>{active_label} <span class="zh">'
+    assert re.search(pattern, body), f"{path} should mark {active_label} active"
 
 
 def test_list_agents_returns_distinct_agents(client, seed_memories):
