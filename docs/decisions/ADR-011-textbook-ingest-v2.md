@@ -281,9 +281,10 @@ ingested_by: "claude-code-opus-4.7"
 
 | | |
 |---|---|
-| **Input** | (a) `chapter_text: str`（含已被 Vision describe 的圖片占位符替換成 inline description）<br>(b) `chapter_metadata: dict`（chapter_index / chapter_title / section_anchors / page_range）<br>(c) `book_metadata: dict`（book_id / title / authors / lang） |
+| **Input** | (a) `chapter_text: str`（含 Step 1 寫的占位符 `<<FIG:fig-{ch}-{N}>>` / `<<TAB:tab-{ch}-{N}>>` / `<<EQ:eq-{ch}-{N}>>`）<br>(b) `figures: list[FigureRef]`（含 Step 2 產出的 llm_description + caption + ref + extension）<br>(c) `tables: list[{ref, caption, markdown_content}]`（driver 預讀 `Attachments/.../{ref}.md`）<br>(d) `chapter_metadata: dict`（chapter_index / chapter_title / section_anchors / page_range）<br>(e) `book_metadata: dict`（book_id / title / authors / lang） |
 | **Output** | `chapter_source_md: str`（完整 chapter source page md，含 frontmatter + body）按 §3.2 schema |
-| **Prompt** | `.claude/skills/textbook-ingest/prompts/chapter-summary.md` 重寫 — 拿掉「每節 300-500 字」字數上限（A-4）+ 強制 verbatim quote + 強制 Section concept map |
+| **Prompt** | `.claude/skills/textbook-ingest/prompts/chapter-summary.md` 重寫 — 拿掉「每節 300-500 字」字數上限（A-4）+ 強制 verbatim quote + 強制 Section concept map + 強制占位符 swap（見下） |
+| **Placeholder swap (強制)** | LLM 在輸出 body 時必須將每個占位符 swap 成最終 markdown，**占位符不可 leak 到 final body**：<br>• `<<FIG:fig-{ch}-{N}>>` → `![[Attachments/Books/{book_id}/ch{n}/{ref}.{extension}]]` + `*{caption}*`（二行）；`llm_description` 留 frontmatter，不重複 splice 進 body<br>• `<<TAB:tab-{ch}-{N}>>` → `**{caption}**` + 直接 inline `markdown_content`（不用 transclude）<br>• `<<EQ:eq-{ch}-{N}>>` → `$$LaTeX$$` inline math<br>**Why strict**：PR C ch1 v2 ingest 因 SKILL.md spec 寫「保留占位符」+ LLM 操作疏漏，13 `<<FIG:>>` + 2 `<<TAB:>>` leak 進 vault page，Obsidian render 純文字、13 圖完全不顯示（見 `docs/plans/2026-04-26-ch1-v2-acceptance-checklist.md` F3） |
 | **Write target** | `KB/Wiki/Sources/Books/{book_id}/ch{n}.md` via `kb_writer.write_source_page()` |
 
 #### Step 4: Concept extract with conflict detection
@@ -321,12 +322,21 @@ ingested_by: "claude-code-opus-4.7"
 
 | HTML element | 處理 | 落點 |
 |---|---|---|
-| `<img src="...">` | 1. 抽 src + alt-text<br>2. 從 EPUB zip 讀 binary → 寫 `Attachments/Books/{book_id}/ch{n}/fig-{N}.{ext}`<br>3. text 內替換成 `<<FIG:fig-{chapter}-{N}>>` 占位符 | `Attachments/.../*.{png,jpg,svg,gif,webp}` |
-| `<table>` | 1. recursive walker 取 `<thead>` / `<tbody>` / `<tr>` / `<th>` / `<td>` → markdown table 格式<br>2. 寫 `Attachments/Books/{book_id}/ch{n}/tab-{N}.md`<br>3. text 內替換成 `<<TAB:tab-{chapter}-{N}>>` 占位符 | `Attachments/.../tab-{N}.md` |
+| `<img src="...">` | 1. 抽 src + alt-text<br>2. 從 EPUB zip 讀 binary → 寫 `Attachments/Books/{book_id}/ch{n}/fig-{N}.{ext}`<br>3. text 內替換成 `<<FIG:fig-{chapter}-{N}>>` 占位符（中介格式，**Step 3 寫入 body 時必須 swap 成 Obsidian image embed + caption — 占位符不可 leak**） | `Attachments/.../*.{png,jpg,svg,gif,webp}` |
+| `<table>` | 1. recursive walker 取 `<thead>` / `<tbody>` / `<tr>` / `<th>` / `<td>` → markdown table 格式<br>2. 寫 `Attachments/Books/{book_id}/ch{n}/tab-{N}.md`<br>3. text 內替換成 `<<TAB:tab-{chapter}-{N}>>` 占位符（同上，Step 3 必須 swap 成 caption + spliced markdown table content） | `Attachments/.../tab-{N}.md` |
 | `<math>` (MathML) | 1. 用 `mathml2latex` 轉 LaTeX（或 fallback：保留 MathML 原 XML）<br>2. text 內 inline 嵌入 `$$...$$`（不 export，公式短） | inline in chapter source body |
 | `<svg>` (vector) | 同 `<img>` 處理（保留 vector，Vision 也能 process） | `Attachments/.../fig-{N}.svg` |
 | `<figcaption>` | 與相鄰 `<img>` 配對；填入 `figures[].caption` | inline |
 | 其他 (`<p>`, `<h1-6>`, `<ul>`, `<blockquote>`) | 沿用既有 markdown convert 邏輯 | inline |
+
+**占位符生命週期（關鍵 invariant）**：
+
+1. **Step 1 (parse_book)** 寫占位符進 `chapter_text`，是中介格式
+2. **Step 2 (Vision describe)** 不動 chapter_text，只 fill `figures[].llm_description`
+3. **Step 3 (Deep extract)** LLM 必須將每個占位符 swap 成最終 markdown（image embed / spliced table / `$$LaTeX$$`）
+4. **Final body** 不可有任何 `<<FIG:` / `<<TAB:` / `<<EQ:` 字串殘留
+
+違反此 invariant 的後果：Obsidian render 占位符是純文字（user 開頁面看到 `<<FIG:fig-1-1>>`、attachment 圖完全不顯示）。PR C ch1 v2 ingest 因 SKILL.md 與 prompt 原寫「保留占位符」誤導，已踩過此 bug — 詳見 [`docs/plans/2026-04-26-ch1-v2-acceptance-checklist.md`](../plans/2026-04-26-ch1-v2-acceptance-checklist.md) F3。
 
 **新增依賴**：
 
@@ -656,6 +666,7 @@ class MigrationReport(BaseModel):
   - [ ] 同一本 *Biochemistry for Sport and Exercise Metabolism* Ch.1 重 ingest 一輪
   - [ ] chapter source page (`Sources/Books/biochemistry-sport-exercise-2024/ch1.md`) frontmatter 含 `figures:` list、ch1 內所有 `<img>` `<table>` `<math>` 都有對應 entry
   - [ ] 每張圖在 `Attachments/Books/biochemistry-sport-exercise-2024/ch1/` 下；每張圖有 Vision-generated `llm_description`
+  - [ ] **chapter source body 無任何 `<<FIG:` / `<<TAB:` / `<<EQ:` 占位符殘留**（`grep -c '<<FIG\\|<<TAB\\|<<EQ' ch1.md` = 0）；每個 figure 在 body 對應位置有 Obsidian image embed `![[Attachments/...]]` + italic caption；每個 table 有 spliced markdown content + bold caption（見 §3.3 Step 3 Placeholder swap）
   - [ ] 至少一個既有 concept page（推薦 `肌酸代謝`）展示 `## 文獻分歧 / Discussion` section，含 PCr 主導窗口時長範圍的跨 source diff（教科書 1-10s vs 既有 10-15s）
   - [ ] 4 個 ch1 新 concept (`能量連續體` / `糖解作用` / `有氧能量系統` / `無氧能量系統`) page 全 v2 schema
   - [ ] 6 個既有 concept page 全 v2 schema、body 末尾無 `## 更新（date）` block

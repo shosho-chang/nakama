@@ -238,12 +238,39 @@ For each chapter (loop):
 3. **Compose Chapter Source Summary** using the template at
    ``.claude/skills/textbook-ingest/prompts/chapter-summary.md``
    (rewritten for v2 — no word limit, verbatim quote per section,
-   Section concept map per section). Splice each figure's
-   `llm_description` from Step 2 inline at the corresponding
-   `<<FIG:...>>` placeholder position (or right after, depending on
-   layout fit); leave the placeholder in place so retrieval can
-   reverse-look-up. Splice table markdown content (or wikilink to the
-   tab-N.md file) at `<<TAB:...>>` positions.
+   Section concept map per section). **Placeholder swap is mandatory**:
+   every `<<FIG:fig-{ch}-{N}>>` / `<<TAB:tab-{ch}-{N}>>` / `<<EQ:eq-{ch}-{N}>>`
+   placeholder in `chapter_content` must be swapped to its final
+   markdown form in the body — placeholders **must not leak to the
+   final page** (Obsidian renders them as plain text and the figure
+   never displays).
+
+   **Swap rules** (also documented in `chapter-summary.md`
+   "Placeholder swap rules" section):
+
+   - `<<FIG:fig-{ch}-{N}>>` → two-line Obsidian image embed + italic caption:
+     ```
+     ![[Attachments/Books/{book_id}/ch{n}/{ref}.{extension}]]
+     *{caption}*
+     ```
+     `llm_description` stays in frontmatter `figures[].llm_description`
+     for retrieval reverse-look-up; do **not** also splice it into the
+     body (duplication causes desync risk).
+   - `<<TAB:tab-{ch}-{N}>>` → bold caption + spliced markdown table content:
+     ```
+     **{caption}**
+
+     {markdown table content read from Attachments/Books/{book_id}/ch{n}/{ref}.md}
+     ```
+     Do not use Obsidian transclude (`![[tab-1-1.md]]`) — visually
+     fragmenting and retrieval can't read transcluded content.
+   - `<<EQ:eq-{ch}-{N}>>` → `$$LaTeX$$` inline math.
+
+   **Why this is strict**: PR C ch1 v2 ingest leaked 13 `<<FIG:>>` +
+   2 `<<TAB:>>` placeholders into the published page, Obsidian render
+   showed plain text and 13 figures invisible — see
+   `docs/plans/2026-04-26-ch1-v2-acceptance-checklist.md` F3 for
+   incident detail.
 
 4. **Extract Concept / Entity candidates** using the v2 prompt at
    ``agents/robin/prompts/extract_concepts.md`` via Robin's
