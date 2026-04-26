@@ -172,7 +172,8 @@
 - [project_quality_uplift_review_2026_04_25.md](project_quality_uplift_review_2026_04_25.md) — 9-phase 5/9 完成 MERGED 2026-04-25（PR #146/147/152/154/157）+ 待修 12 major/minor 清單 + 修修 manual follow-up
 - [project_quality_uplift_next_2026_04_26.md](project_quality_uplift_next_2026_04_26.md) — 04-26 morning pickup（已 superseded）
 - [project_quality_uplift_next_2026_04_26_evening.md](project_quality_uplift_next_2026_04_26_evening.md) — 04-26 evening pickup（已過時，被 04-27 取代）
-- [project_quality_uplift_next_2026_04_28.md](project_quality_uplift_next_2026_04_28.md) — **Quality Uplift 軸線 pickup**：dotenv #179 + 5C #182 + 5B-3 #184 全 merged + VPS deployed；Phase 5 結束，下次接手挑 Phase 6/7 vs 別軸線
+- [project_quality_uplift_next_2026_04_28.md](project_quality_uplift_next_2026_04_28.md) — **Quality Uplift pickup**：plan 5/9 ✅ + 2/9 🟡 + 3/9 ❌；下一步 grey-fix（Phase 1 drill + Phase 4 archive 1.5 天）task prompt 凍結
+- Task prompt：[docs/task-prompts/2026-04-27-phase-1-4-grey-fix.md](../../docs/task-prompts/2026-04-27-phase-1-4-grey-fix.md) — Phase 1 DR drill 實證 + Phase 4 alert→Incident archive 自動化（Q1-Q5 待簽）
 - [feedback_log_search_fts5_pattern.md](feedback_log_search_fts5_pattern.md) — FTS5 unicode61 對 CJK 是整段一 token、record.exc_info 不可吞、html.escape 走 sentinel swap 三點教訓
 - [project_quality_uplift_next_2026_04_25.md](project_quality_uplift_next_2026_04_25.md) — 上一輪 pickup（已過時，被 04-26 取代）
 - [project_quality_uplift_vps_deployed_2026_04_26.md](project_quality_uplift_vps_deployed_2026_04_26.md) — 5 PR VPS 部署完成 2026-04-26：解鎖 Phase 5/7/8；路上抓到 logger init / endpoint 漏 https / bucket name trailing space 三 bug
