@@ -1,16 +1,80 @@
 ---
-name: Quality Uplift 下一輪起點（2026-04-27+ 接手 — 7/9 ✅ 全綠，下一個 chunk = Phase 6 test coverage）
-description: PR #187 grey-fix merged + VPS deploy 通了；9-phase plan 7/9 ✅ + 0/9 🟡 + 3/9 ❌（6/7/8 未開始）；下一個 chunk task prompt 待凍結
+name: Quality Uplift 下一輪起點（2026-04-27+ 接手 — Slice 1 PR #190 開了，等修修拍板 threshold）
+description: Phase 6 task prompt 凍結 + Slice 1 tooling PR #190 開了 + baseline 整體 81% / 8 模組全綠；等修修醒來 review + merge → Slice 2
 type: project
 created: 2026-04-26
 updated: 2026-04-26
 originSessionId: 2026-04-26-night
 ---
-2026-04-26 晚 22:10 PR #187 squash merged + VPS deploy + smoke 全通。Phase 1 / Phase 4 兩個 grey 洗綠到 ✅。**取代 `project_quality_uplift_next_2026_04_27.md` 跟更早所有同名 memo**。
+2026-04-26 深夜：修修「放手讓你執行、我先去睡了」+ auto mode → 我凍結 Phase 6 task prompt + 開 Slice 1 PR #190。**取代 `project_quality_uplift_next_2026_04_27.md` 跟更早所有同名 memo**。
 
-**Why:** 修修 auto mode + Q1=Mac/sandbox + 自決 squash merge → drill 實證 + alert→Incidents archive 一條龍。Self-review 路上抓到 3 個 YAML footgun（trigger raw embed / category_tag 漏 sanitize / title 換行）並修進同 PR，比留 follow-up 乾淨。
+**Why:** Phase 6 task prompt 採 decisions doc 全 A 拍板（self-决，修修授權範圍內）；Slice 1 是其他 3 slice 的 dep（pytest-cov + critical-path gate）必先做；baseline 量出來 8/8 ✅ 大幅好過 plan 估計，threshold 走「不退步 gate」哲學鎖 baseline。
 
-**How to apply:** 開新對話讀完 `MEMORY.md` → 讀本 memo → 預設下一步 = **Phase 6 test coverage task prompt 凍結**（plan §Phase 6 已寫 4 個 deliverable，task prompt 還沒做）。其他別軸線狀態見「別軸線」章節。
+**How to apply:** 開新對話讀完 `MEMORY.md` → 讀本 memo → 預設下一步 = **修修 review PR #190 → 拍板 threshold 是否合理 → squash merge → 我開 Slice 2 PR（FSM property test）**。
+
+## 本 session 進度（2026-04-26 night）
+
+### 已完成
+
+| 項目 | 結果 |
+|---|---|
+| Decisions doc | `docs/plans/2026-04-26-phase-6-test-coverage-decisions.md`（6 題 + 建議答案）— commit edf94c8 |
+| Task prompt 凍結 | `docs/task-prompts/2026-04-26-phase-6-test-coverage.md`（採 Q1-Q6 全 A）— commit edf94c8 |
+| Slice 1 PR | **#190 `feature/phase-6-slice-1-coverage-tooling`** — 待 review |
+
+### Slice 1 PR #190 內容
+
+- pytest-cov dev dep + `[tool.coverage.*]` config
+- `scripts/check_critical_path_coverage.py`（不退步 gate, 8 模組 threshold dict）
+- `.github/workflows/ci.yml` 加 cov gate step
+- 補 `/api/agents` 兩條 test 把 `bridge.py` 77.56% → 86.67%
+- `docs/runbooks/test-coverage.md` runbook
+- `.gitignore` 加 `coverage.json`
+- 6 files / +335 lines
+
+### Baseline 2026-04-26（揭露 plan §Phase 6 三點對不上）
+
+整體 **81.0%**（11857 stmts / 2240 missed）— **遠超 plan A bar 整體 ≥ 50%**。
+
+| 模組 | Threshold | After |
+|---|---|---|
+| `shared/approval_queue.py` | 95% | 96.77% ✓ |
+| `shared/alerts.py` | 100% | 100.00% ✓ |
+| `shared/incident_archive.py` | 90% | 93.08% ✓ |
+| `shared/heartbeat.py` | 100% | 100.00% ✓ |
+| `shared/kb_writer.py` | 90% | 91.15% ✓ |
+| `shared/wordpress_client.py` | 90% | 90.34% ✓ |
+| `thousand_sunny/routers/robin.py` | 95% | 96.56% ✓ |
+| `thousand_sunny/routers/bridge.py` | 80% | 86.67% ✓（+9.11% 從 baseline） |
+
+**Plan §Phase 6 vs 現狀三點**（已寫進 PR description + decisions doc）：
+
+1. plan 寫「目前 <60%」實際 **81%** — 大幅好過估計，baseline gate 收斂在「不退步」而非「補洞」
+2. **alert_state 不是 FSM**（只有 dedupe），Slice 2 走 deterministic dedupe 而非 property-based stateful
+3. **SSE 在 `thousand_sunny/routers/robin.py:672`**（既有 1328 行 router test），plan 寫的 path 對
+
+### Tests + lint
+- 2363 passed, 2 skipped（baseline 2361 → +2）
+- ruff check + format clean
+- 本地 `python scripts/check_critical_path_coverage.py` → 8/8 ✓
+- CI 在跑（GH Actions runs/24959818297）— 我沒等綠就推；修修明早看
+
+## 下一步（修修醒來）
+
+1. **review PR #190**：看 baseline 數字 + threshold 設定是否同意（80/90/95/100）
+2. **CI green** + 修修一句話 → 我 squash merge + 開 Slice 2
+3. 或修修想調 threshold（例：要求 bridge.py 90% 而非 80%）→ 同 PR 補 test 達標
+
+## 9-phase plan 對照（不變，等 Slice 1 merge 後再更新）
+
+| # | Phase | 狀態 |
+|---|---|:---:|
+| 1-5, 9 | 全 merged | ✅ |
+| **6** | **Slice 1 PR #190 待 review；Slice 2-4 task prompt 已凍結** | 🟡 |
+| 7 | Staging — 要錢/新 VPS，必先問 | ❌ |
+| 8 | CI/CD auto deploy — blocked by 7 | ❌ |
+
+整體：7/9 ✅ + 1/9 🟡（Slice 1 in flight）+ 2/9 ❌。
 
 ## PR #187 merged + VPS deployed
 
