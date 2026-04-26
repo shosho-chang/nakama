@@ -40,4 +40,7 @@ originSessionId: 7a9274dd-50e3-4ba4-88fe-50199d5f4333
 - 2026-04-24 — prior-art 完成 ([docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md))
 - 2026-04-24 — ADR-009 architecture frozen ([docs/decisions/ADR-009-seo-solution-architecture.md](../../docs/decisions/ADR-009-seo-solution-architecture.md))；8 個 open questions 全收斂（3 skill / GSC 主源 / DataForSEO $50 / Sonnet for audit / SEOContextV1 凍結 / cannibalization 含 phase 1 / seo-optimize-draft 推 phase 2）
 - 2026-04-24 — multi-model triangulation 完成（PR #124 桌機跑 Gemini 4/10 退回 / Grok 6/10 通過 / Claude 通過）；6 個共識 blockers 消化：ADR body 改 T5（mapping 搬 `shared/schemas/site_mapping.py`）+ T6（`StrikingDistanceV1` filter 順序契約）；Revised Slice Order `seo-audit-post` 從 Slice C 延到 Phase 1.5，Slice B 縮範只做 GSC；Slice D (Brook 整合) 前移成 Slice C
-- 下一步：Slice A PR（`SEOContextV1` schema + `shared/gsc_client.py` + `shared/schemas/site_mapping.py` + GSC OAuth runbook），時程由修修決定
+- 2026-04-26 — Phase 1.5 D.1 + D.2 + F merged（PR #173 / #181 / #183 / #185）；**Slice E DataForSEO 同日決定不接**（health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋；見 [project_seo_dataforseo_scrap_decision](project_seo_dataforseo_scrap_decision.md) + ADR-009 §Addendum）
+- 三大用途映射：1+2+3 全 **production**；SEO Phase 1.5 = 完成
+
+**注意**：上方 line 18「需要 keyword volume / difficulty / SERP feature 數據 → 指向 DataForSEO MCP 或類似付費資料源」是 2026-04-18 原始 scope 想法；2026-04-26 評估後改採 GSC + firecrawl SERP 兩源（同樣覆蓋 SERP feature 摘要 + 自家網站排名數據，跳過 DataForSEO 對 health vertical 的限制）。

@@ -79,7 +79,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ **Phase 1.5 D.1 + D.2 + F merged 2026-04-26**（PR #173/#181/#183/#185）— 用途 1（keyword-research）+ 2（seo-audit-post）已 production；用途 3（Brook 整合）near-production 缺 E
   - 詳見 [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — 12 follow-up + 4 test gap
   - **修修瀏覽器待辦**：(1) T1 production benchmark on `seo-keyword-enrich`（5 keyword P95 wall-clock）；(2) Brook compose 端到端 smoke `compose_and_enqueue(seo_context=<enriched.md>)`；(3) `/bridge/cost` 觀察 D.2 LLM 成本「沒出現」印證 follow-up A3
-- ⬜ **E (DataForSEO Labs)** — 卡修修 manual：註冊 + $50 + `DATAFORSEO_LOGIN/PASSWORD` 進 .env
+- ❌ **E (DataForSEO Labs)** — **CANCELLED 2026-04-26**：health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋；見 [project_seo_dataforseo_scrap_decision](project_seo_dataforseo_scrap_decision.md)
 - ⬜ **D.2 follow-up backlog (6 條)** — 詳見上 memo §A；最值得修：A3 cost-tracking helper（`shared.anthropic_client.messages_create_with_tracking`）一次解 D.2 + `kb_search.py` 兩處
 - ⬜ **F follow-up backlog (6 條)** — 詳見上 memo §B；最值得修：B2 `url` sanitize gap（defense-in-depth）+ B4 firecrawl `Location` 物件接 country
 

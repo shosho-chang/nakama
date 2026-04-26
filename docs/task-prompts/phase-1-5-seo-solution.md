@@ -27,14 +27,14 @@
 |---|---|---|---|
 | **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*.py` 6 個 deterministic check 模組 + 全套 unit test（28 條 rule） | 2-2.5 天 | Slice A merged（pydantic schemas + `gsc_client.py`，Phase 1） |
 | **D.2** | `.claude/skills/seo-audit-post/` skill：`audit.py` 主流程 + LLM semantic 12 條 + markdown report；reuse 既有 `gsc_client` 補 GSC 章節 + 改 `agents/robin/kb_search` 加 `purpose` 參數（既有 prompt 寫死 YouTube 場景，不能直接 reuse — 見 D.2.3 caveat）補 internal link suggestion | 2.5-3 天 | **D.1 必須 merged**（skill import audit modules） |
-| **E** | DataForSEO Labs `keyword_difficulty` 整合到 `seo-keyword-enrich`（health filter 內建 + Phase 1.5 optional 欄位） | 1-1.5 天 | Slice B merged（已完成）；與 D 完全獨立 |
+| ~~**E**~~ | ~~DataForSEO Labs `keyword_difficulty` 整合到 `seo-keyword-enrich`（health filter 內建 + Phase 1.5 optional 欄位）~~ | ~~1-1.5 天~~ | **❌ CANCELLED 2026-04-26 — 見 ADR-009 §Addendum** |
 | **F** | firecrawl top-3 SERP 爬取 + Claude Haiku 摘要 → 填 `competitor_serp_summary` | 1-1.5 天 | Slice B merged（已完成）；與 D / E 完全獨立 |
 
 ### 並行策略
 
 - **D.1 / D.2 強制 sequential**（D.2 import D.1 modules）
 - **E / F 互不依賴**（兩者都改 `enrich.py` 但動的欄位不同 — E 加 `KeywordMetricV1.difficulty`，F 填 `SEOContextV1.competitor_serp_summary`）
-- **D 全線 vs E vs F 三條線完全獨立** — 適合多視窗 / 多機並行（zero-conflict 切點：D 動 `shared/pagespeed_client.py` + `shared/seo_audit/*` + `.claude/skills/seo-audit-post/`；E 動 `shared/dataforseo_client.py` + `enrich.py`；F 動 `shared/firecrawl_serp.py` + `enrich.py`；E/F 共動 `enrich.py` 但區段不同）
+- **D 全線 vs ~~E~~ vs F 三條線完全獨立** — 適合多視窗 / 多機並行（zero-conflict 切點：D 動 `shared/pagespeed_client.py` + `shared/seo_audit/*` + `.claude/skills/seo-audit-post/`；~~E 動 `shared/dataforseo_client.py` + `enrich.py`~~（cancelled 2026-04-26）；F 動 `shared/firecrawl_serp.py` + `enrich.py`）
 - **若 E 和 F 同 session 做** — 先做 E（schema optional 欄位 land 後 F 不會 schema drift）
 
 ### 推薦序（單視窗）
@@ -445,7 +445,11 @@ python .claude/skills/seo-audit-post/scripts/audit.py \
 
 ---
 
-# Slice E — DataForSEO Labs 整合到 seo-keyword-enrich
+# Slice E — DataForSEO Labs 整合到 seo-keyword-enrich ❌ CANCELLED 2026-04-26
+
+> **DEPRECATION NOTICE 2026-04-26**：本 slice 已決定**不實作**。Health vertical 限制 + single-blog actionability 低 + GSC + firecrawl 雙源已覆蓋，不值得 $50 sunk cost。完整理由見 [ADR-009 §Addendum](../decisions/ADR-009-seo-solution-architecture.md#addendum-2026-04-26--dataforseo-slice-e-不整合) 與 [project_seo_dataforseo_scrap_decision](../../memory/claude/project_seo_dataforseo_scrap_decision.md)。
+>
+> **以下 §E 內容保留為歷史 reference**（schema 已預留 optional 欄位，未來若 revisit 可直接接上 — 見 §Addendum 的 Future revisit triggers），不要當作未來工作項目讀。
 
 ## E.1 目標
 

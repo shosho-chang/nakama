@@ -12,7 +12,11 @@ originSessionId: 0688a720-7789-447a-b7a2-7d60c84698d1
 **DataForSEO 自己在 help-center 註明**：health / financial / gambling 類 keyword 的 search_volume 與 CPC 可能被 Google Ads policy hide。
 - 對修修（Health & Wellness 創作者）影響：**不能把 DataForSEO 當主 keyword volume 數據源**
 - 替代方案：**Google Search Console API（免費）**取自己網站真實 query × URL 數據
-- DataForSEO 只用來補非醫療類關鍵字的 difficulty / SERP 結構
+- ~~DataForSEO 只用來補非醫療類關鍵字的 difficulty / SERP 結構~~
+
+## Decision 2026-04-26：完全不整合 DataForSEO
+
+Phase 1.5 D.1 / D.2 / F 上線後重評，**決定不接 DataForSEO**：health vertical fallback 率高 + single-blog actionability 低 + GSC + firecrawl 兩源已覆蓋核心需求 + $50 sunk cost 不值。詳見 [project_seo_dataforseo_scrap_decision](project_seo_dataforseo_scrap_decision.md) + [ADR-009 §Addendum](../../docs/decisions/ADR-009-seo-solution-architecture.md#addendum-2026-04-26--dataforseo-slice-e-不整合)。
 
 ## 價格地景（2026-04-24）
 
@@ -27,7 +31,7 @@ originSessionId: 0688a720-7789-447a-b7a2-7d60c84698d1
 | Ahrefs | $129/月起 | MCP 內含於 plan |
 | Semrush | $499.95/月（API plan）| MCP 內含 |
 
-對 single-blog use-case：**GSC + PageSpeed + DataForSEO Labs（按需）= 月成本 < $3**，付費平台 sticker shock。
+對 single-blog use-case：**GSC + PageSpeed + firecrawl SERP（已 production）= 月成本 ~$3**，付費平台 sticker shock。（DataForSEO 評估後不接，2026-04-26）
 
 ## API 契約坑
 

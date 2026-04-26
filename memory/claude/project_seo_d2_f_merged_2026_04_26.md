@@ -1,12 +1,12 @@
 ---
 name: SEO Phase 1.5 D.2 + F merged 2026-04-26 — 3 用途 production / follow-up backlog
-description: PR #183 (D.2 audit) + #185 (F SERP) auto-merged 2026-04-26；用途 1+2 production / 3 等 E (DataForSEO)；12 follow-up 條目 + 4 test gap
+description: PR #183 (D.2 audit) + #185 (F SERP) auto-merged 2026-04-26；用途 1+2+3 全 production（E DataForSEO 同日決定不接）；12 follow-up 條目 + 4 test gap
 type: project
 created: 2026-04-26
 supersedes: project_d2_seo_audit_pr183.md, project_f_slice_firecrawl_pr185.md
 originSessionId: TBD
 ---
-2026-04-26 sweep：D.2 PR #183 + F PR #185 兩個 SEO PR 同時 review + auto-squash merged 並 worktree 清理完成。SEO Phase 1.5 進度：4/5 sub-slice 上線（A+B+C+D.1+D.2+F），剩 E 卡修修 DataForSEO 註冊。
+2026-04-26 sweep：D.2 PR #183 + F PR #185 兩個 SEO PR 同時 review + auto-squash merged 並 worktree 清理完成。SEO Phase 1.5 = **完成**：A+B+C+D.1+D.2+F 上線；E DataForSEO 同日評估後決定不接（見 [project_seo_dataforseo_scrap_decision](project_seo_dataforseo_scrap_decision.md)）。
 
 ## Merged commits
 
@@ -65,7 +65,7 @@ originSessionId: TBD
 |---|---|---|
 | 1. 內容創作建議（keyword-research） | ✅ **production** | — |
 | 2. 既有部落格 SEO 體檢（seo-audit-post） | ✅ **production**（D.2 merged） | 修修瀏覽器跑 T1 production benchmark（5-keyword end-to-end）量 P95 wall-clock 補進 SKILL.md 取代 ~15-25s 估值 |
-| 3. Brook compose 整合（寫稿吃 SEO 數據） | 🟢 **near-production**（C opt-in + F SERP 摘要 ready） | 缺 E (DataForSEO difficulty)；可先用 GSC + firecrawl 兩源跑端到端 smoke |
+| 3. Brook compose 整合（寫稿吃 SEO 數據） | ✅ **production**（C opt-in + GSC + F SERP 摘要 ready；E DataForSEO 同日決定不接）| — |
 
 ## Closeout 已完成
 
@@ -84,7 +84,7 @@ originSessionId: TBD
 
 ## 不要碰
 
-- E slice — 卡修修 manual：DataForSEO 註冊 + $50 + `DATAFORSEO_LOGIN/PASSWORD` 進 .env
+- ~~E slice — 卡修修 manual：DataForSEO 註冊 + $50 + `DATAFORSEO_LOGIN/PASSWORD` 進 .env~~ → **不做**（2026-04-26 決定，見 [project_seo_dataforseo_scrap_decision](project_seo_dataforseo_scrap_decision.md)）
 - broken pages migration — 4 頁待修修瀏覽器手動 apply
 
 ## 開始之前一定要看

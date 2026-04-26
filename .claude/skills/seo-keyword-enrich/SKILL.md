@@ -2,13 +2,13 @@
 name: seo-keyword-enrich
 description: >
   Enrich a keyword-research frontmatter report with on-site GSC data
-  (striking-distance keywords, cannibalization warnings), DataForSEO Labs
-  difficulty (non-health terms only), and firecrawl top-3 SERP summary.
-  Produces a SEOContextV1 block consumable by seo-optimize-draft and
-  Brook compose. Use when the user says "enrich 這份關鍵字研究",
-  "加上 ranking 數據", "SEO enrich", or hands you a keyword-research
-  markdown and asks for SEO context. Do NOT run raw keyword research
-  (use keyword-research) or audit a URL (use seo-audit-post).
+  (striking-distance keywords, cannibalization warnings) and firecrawl
+  top-3 SERP summary. Produces a SEOContextV1 block consumable by
+  seo-optimize-draft and Brook compose. Use when the user says "enrich
+  這份關鍵字研究", "加上 ranking 數據", "SEO enrich", or hands you a
+  keyword-research markdown and asks for SEO context. Do NOT run raw
+  keyword research (use keyword-research) or audit a URL (use
+  seo-audit-post).
 ---
 
 # SEO Keyword Enrich — Enrich keyword-research with GSC ranking data
@@ -37,21 +37,21 @@ Do NOT trigger for:
 - Rewriting an existing draft with SEO context (use `seo-optimize-draft` — Phase 2)
 - Writing the article itself (use Brook compose / `article-compose`)
 
-## Phase 1.5 Status (GSC + firecrawl SERP)
+## Phase 1.5 Status (GSC + firecrawl SERP — terminal state)
 
-This Slice F implementation extends Slice B's GSC baseline with a firecrawl
-top-3 SERP fetch + Claude Haiku summary chain that fills
-`competitor_serp_summary`. DataForSEO difficulty (Slice E) is the remaining
-Phase 1.5 item.
+GSC baseline (Slice B) + firecrawl SERP top-3 + Claude Haiku summary
+(Slice F) is the **terminal state** for `seo-keyword-enrich`. DataForSEO
+Slice E was cancelled 2026-04-26 (see ADR-009 §Addendum).
 
 Currently active:
 - GSC: primary / related / striking-distance / cannibalization (Slice B)
 - firecrawl SERP top-3 + Haiku 4.5 summary → `competitor_serp_summary` (Slice F)
 
-Currently stubbed (still `None` / empty in output):
-- DataForSEO `keyword_difficulty` / `search_volume` — Slice E, requires
-  `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` + $50 credit
-- PageSpeed Insights data — belongs to `seo-audit-post` skill
+Schema reserves but does NOT emit:
+- `KeywordMetricV1.difficulty` / `search_volume` — always `None` (DataForSEO
+  was decided not to integrate; schema field kept for future revisit per
+  ADR-009 §Addendum Future revisit triggers)
+- PageSpeed Insights data — belongs to `seo-audit-post` skill (separate)
 
 Output frontmatter `phase` field reflects what actually ran:
 - `"1.5 (gsc + firecrawl)"`     — both GSC + SERP summary OK
@@ -153,7 +153,6 @@ SEOContextV1 summary:
 下一步建議：
   → Brook compose：把這份 path 傳給 article-compose / Brook，
     `compose_and_enqueue(..., seo_context=<parse SEOContextV1 from this file>)`
-  → Slice E (pending)：DataForSEO difficulty 補齊
 ```
 
 ---
@@ -219,8 +218,6 @@ Example: `enriched-morning-coffee-sleep-20260426.md`.
 - **Wall clock**: ~15-25s dominated by firecrawl scrape (3 × ~5s).
   `--no-serp` brings it back to ~3-8s.
 - **Effective per-run cost**: ~$0.01 with SERP, ~$0 without.
-
-Slice E will add ~$0.001 per non-health keyword (DataForSEO Labs).
 
 ---
 
