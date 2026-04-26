@@ -1,17 +1,20 @@
 ---
-name: ingest v2 Step 3 — PR A 修法 + PR B 全 push、PR C/D backlog
-description: PR #169 (PR A) ultrareview 9 findings 全修 + push 4d4ab4e；PR #178 (PR B) opened d8b6e84 含 walker + Vision + chapter-summary；PR C/D backlog
+name: ingest v2 Step 3 — PR A + B merged 2026-04-26，PR C 必先修 4 個 silent corruption bug
+description: PR #169 (A) merged 33f3095 / PR #178 (B) merged d955af6；4 個 walker silent corruption bug 必修 before PR C
 type: project
 originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
 ---
-2026-04-26 EOD pickup 點：Step 3 PR A + PR B 都 in-flight，等 review/merge。
+2026-04-26 17:50 台北 sweep：PR A + PR B 都 reviewed + squash merged。PR C/D 解鎖前必修 PR B 的 4 個 silent data corruption bug。
 
-## PR A — #169 (kb_writer + Robin v2 dispatcher)
+## PR A — #169 (kb_writer + Robin v2 dispatcher) — MERGED 33f3095
 
-- **Branch**：`feat/ingest-v2-step3-schemas-kb-writer`
-- **Latest commit**：`4d4ab4e` (`fix(ingest): address ultrareview findings on PR A`)
-- **CI**：lint-and-test + lint-pr-title 都 pass
-- **狀態**：等 ultrareview 跑 second pass 確認 9 findings 全清 + 修修 manual E2E
+- **Branch**：`feat/ingest-v2-step3-schemas-kb-writer`（已刪）
+- **Merge commit**：`33f3095`（squash merged 2026-04-26）
+- **Final commit on branch**：`4d4ab4e`
+- **Review verdict**：READY TO MERGE — 9 findings 全 fixed + 168 test pass
+- **2 minor 非 blocker（可順手在 follow-up PR 修）**：
+  - noop branch 沒 normalize body 到 v2 H2 skeleton（`shared/kb_writer.py:660-691` 沒 call `_ensure_h2_skeleton(body)`）— v1 → v2 first noop 會 schema_version=2 但缺 canonical sections
+  - cosmetic — noop write redundancy on first-noop-after-derive（最多一次冗餘 write per v1 page）
 
 ### Ultrareview 9 findings 全修（2026-04-26）
 
@@ -41,12 +44,34 @@ originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
    `python -m scripts.migrate_broken_concept_frontmatter --vault "F:/Shosho LifeOS" --apply`
    修 4 頁：ATP再合成 / 神經保護作用 / 肌酸代謝 / 膳食補充劑安全性
 
-## PR B — #178 (parse_book walker + Vision + chapter-summary v2)
+## PR B — #178 (parse_book walker + Vision + chapter-summary v2) — MERGED d955af6
 
-- **Branch**：`feat/ingest-v2-step3-pr-b-parse-book`
-- **Latest commit**：`d8b6e84` (`feat(ingest): Step 3 PR B — parse_book walker + Vision describe + chapter-summary v2 (ADR-011)`)
-- **Stack base**：main（不 stack on PR A，避免 squash conflict）
-- **檔案重疊風險**：跟 PR A 只有 `agents/robin/ingest.py:209` `_truncate_at_boundary` no-op call removal；PR A hunks 不含此 line，rebase 應該 clean
+- **Branch**：`feat/ingest-v2-step3-pr-b-parse-book`（已刪 + worktree 殘留 dir 在 `.claude/worktrees/ingest-v2-pr-b-parse-book/`，PowerShell delete 失敗 — file in use；下次手動清）
+- **Merge commit**：`d955af6`（squash merged 2026-04-26）
+- **Final commit on branch**：`d8b6e84`
+- **Review verdict**：MERGE WITH FOLLOW-UP — 4 silent data corruption bug 必修 before PR C re-ingest
+
+### **🔴 4 個 silent data corruption bug — 必修 before PR C**
+
+1. **`_html_table_to_markdown` 忽略 rowspan/colspan** — `parse_book.py:478`
+   - `<td rowspan=2>A</td><td>B</td>...<td>C</td>` 渲染後 `C` 在錯欄
+   - 常見於藥理 / 代謝 / 實驗值表 — 高頻打到
+2. **`_html_table_to_markdown` 遞迴抓 nested `<tr>`** — `parse_book.py:478`
+   - `find_all("tr")` 預設 recursive；巢狀 table 把內層 row 吸到外層
+   - 修法：filter `tr.find_parents("table")[0] is table_tag`
+3. **always treats `rows[0]` as header** — `parse_book.py:491`
+   - 無 `<thead>` 的 table（很多 EPUB 的標準寫法）silent 把第一個資料 row 當 header
+   - 第一行 data 永遠丟失 — 高頻打到
+4. **`<mfrac>` 無 alttext fallback collapse 數字** — `parse_book.py:526`
+   - `<math><mfrac><mn>1</mn><mn>2</mn></mfrac></math>` 無 alttext → `$$12$$`（應 `$$\frac{1}{2}$$`）
+   - modern EPUB 通常有 alttext 所以 low risk，但 fallback 路徑該補 mfrac/msub/msup/msqrt 走訪
+
+### Minor 也可順手修
+
+5. SKILL.md 重複 `7.` 編號（line 269/273），應該是 `8.`
+6. SKILL.md 寫「5 sub-steps」但實際 7 條
+7. `vision-describe.md` references nonexistent `figures[].path`（walker `_figure_to_dict` 沒 emit `path` key）
+8. `_export_chapter_attachments` 沒 validate `ref` for path traversal（今天 surface=0 但 future-proof 加防護）
 
 ### PR B 改了什麼
 
@@ -68,7 +93,7 @@ originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
 
 ADR §3.4.1 寫 `mathml2latex>=0.0.5` PyPI dep — 那 package 0.1.0 是 abandoned（`__init__.py` 只有 `__version__ = '0.1.0'`，無 public API）。改走 alttext-first：`<math alttext="\\frac{1}{2}">` → fallback to text content。不加 dep。`_html_math_to_latex` docstring + PR description 都標 deviation。Signature 不變，未來可換 maintained converter（見 `feedback_mathml2latex_abandoned.md`）。
 
-## PR C / D backlog（等 PR A + B 都 land）
+## PR C / D backlog（PR A + B merged，但 PR C 必先修 4 corruption bug）
 
 ### PR C：重 ingest ch1 + retrieval acceptance
 

@@ -1,11 +1,11 @@
 ---
-name: SEO Solution Phase 1.5 dispatch 起跑點（D.1 PR #173 open，D.2 unblock 後起手）
-description: Phase 1 全 merged + Phase 1.5 task prompt PR #167 frozen + D.1 PR #173 open 2026-04-26（28 rule + 146 test）；D.2/E/F 待 dispatch；推薦序 D.2 → E → F
+name: SEO Solution Phase 1.5 — D.1 merged 2026-04-26，D.2/E/F unblocked，先 follow-up bug PR
+description: Phase 1 全 merged + D.1 merged cc35218（28 rule + 146 test）；D.2/E/F unblocked，但 D.2 ship 前先修 D.1 follow-up bug
 type: project
 created: 2026-04-26
 originSessionId: d68cbc3c-496f-44e3-b795-24cd48c68d09
 ---
-2026-04-26 D.1 implementation 完成並開 PR #173（commit `8364163`）：`shared/pagespeed_client.py` + `shared/seo_audit/*` 8 module + 146 unit test 全綠 + `.env.example` PAGESPEED_INSIGHTS_API_KEY + runbook §2e。等 review/merge。修修 PageSpeed API key 已申請設好，D.2 ship 後可端到端跑。
+2026-04-26 17:50 台北 D.1 PR #173 squash merged `cc35218`：`shared/pagespeed_client.py` + `shared/seo_audit/*` 8 module + 146 unit test 全綠 + `.env.example` PAGESPEED_INSIGHTS_API_KEY + runbook §2e。Review verdict MERGE WITH FOLLOW-UP — D.2 ship 前先修 2 correctness + 5 minor。
 
 **Why:** Phase 1 (Slice A/B/C) 全 merged 涵蓋 keyword-research 下游 enrich + Brook compose opt-in；Phase 1.5 補修修原始三大用途中的「現有部落格 SEO 體檢」(D.1+D.2 ship `seo-audit-post`) + 「Brook compose 完整 enrich」(E+F 補 DataForSEO + firecrawl SERP)。task prompt PR #167 fix-up 額外凍結了 ADR §Open Items #1（28 條 deterministic check rule set）+ #2（report markdown 模板）兩個被 ADR 留給「實作階段」的決策，避免實作 PR scope creep。
 
@@ -23,17 +23,18 @@ originSessionId: d68cbc3c-496f-44e3-b795-24cd48c68d09
 | ADR-009 multi-model triangulation | #124 | merged |
 | T1 benchmark on shosho.tw（zone 2 訓練 5 row 真資料 / fleet 0 row）| — | 2026-04-25 |
 
-## Phase 1.5 狀態（D.1 PR #173 open，D.2/E/F 0%）
+## Phase 1.5 狀態（D.1 merged，bug-followup 待開，D.2/E/F unblocked）
 
 | Sub-slice | 範圍 | 預估 | 狀態 |
 |---|---|---|---|
 | **task prompt** | 4 sub-slice + 28 deterministic + 12 LLM + report 模板凍結 | — | ✅ PR #167 a985d14 |
-| **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*` 8 module（28 rule + types + html_fetcher）+ 146 unit test | 2-2.5 天 | 🟡 PR #173 open（commit `8364163`，2026-04-26）|
-| **D.2** | `seo-audit-post` skill + LLM semantic 12 條 + markdown report；reuse gsc_client + 改 kb_search 加 `purpose` 參數 | 2.5-3 天 | ⬜（待 D.1 merge）|
-| **E** | DataForSEO Labs `keyword_difficulty` → `seo-keyword-enrich`（health filter 內建）| 1-1.5 天 | ⬜ |
-| **F** | firecrawl top-3 SERP + Claude Haiku 摘要 → 填 `competitor_serp_summary` | 1-1.5 天 | ⬜ |
+| **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*` 8 module（28 rule + types + html_fetcher）+ 146 unit test | 2-2.5 天 | ✅ PR #173 merged `cc35218` 2026-04-26 |
+| **D.1-followup** | 2 correctness bug（M1 nested-tag title / `_normalize_url` query-strip + case） + 5 minor — 詳見 `project_2026_04_26_4pr_merged_bugs_followup.md` §A | 半天 | 🟡 待開 PR（D.2 ship 前必 land）|
+| **D.2** | `seo-audit-post` skill + LLM semantic 12 條 + markdown report；reuse gsc_client + 改 kb_search 加 `purpose` 參數 | 2.5-3 天 | ⬜（D.1-followup merge 後）|
+| **E** | DataForSEO Labs `keyword_difficulty` → `seo-keyword-enrich`（health filter 內建）| 1-1.5 天 | ⬜（不依賴 D.1-followup）|
+| **F** | firecrawl top-3 SERP + Claude Haiku 摘要 → 填 `competitor_serp_summary` | 1-1.5 天 | ⬜（不依賴 D.1-followup）|
 
-**並行策略**：D.1 → D.2 強制 sequential；E / F 互不依賴可並行；D 全線 vs E vs F 三條完全獨立可丟 dual-window。D.1 merged 後 D.2 + E + F 三線可完全並行（dual-window 友好）。
+**並行策略**：D.1-followup → D.2 sequential（D.2 reuse seo_audit modules）；E / F 不依賴 follow-up bug；E / F 互不依賴可並行。三條 dual-window：D.1-followup（半天小修） / E（DataForSEO） / F（firecrawl）。
 
 ## 修修 manual prerequisites
 

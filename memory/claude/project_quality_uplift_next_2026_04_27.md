@@ -28,11 +28,8 @@ originSessionId: 6966e360-f96e-4739-b4e8-44d3c16567d4
 ## 路上抓到 + 已自動修復 / 留 follow-up
 
 1. **`r2_backup_verify.py` 兩條 module-level int/float coerce 用 `os.getenv(K, default)` 撞 .env empty-string** — 已併進 PR #175 修掉（drive-by）
-2. **`probe_nakama_gateway` 同類 bug** — `NAKAMA_HEALTHZ_URL=` 空字串導致 `httpx.get("")` 炸 `UnsupportedProtocol`。**未修**，需小 PR：line `health_check.py:384` 改 `os.getenv("NAKAMA_HEALTHZ_URL") or DEFAULT_NAKAMA_HEALTHZ_URL`。即時補丁可改 VPS .env 補真值；durable fix 走 PR。同類詳見 `feedback_dotenv_empty_string_fallback.md`
-3. **既知還沒修的 same-class bug**（grep 查到，下次 sweep 一次掃）：
-   - `agents/usopp/__main__.py` USOPP_POLL_INTERVAL_S / USOPP_BATCH_SIZE
-   - `shared/notifier.py` SMTP_PORT
-   - `shared/multimodal_arbiter.py` GEMINI_MAX_WORKERS
+2. ~~**`probe_nakama_gateway` 同類 bug**~~ — ✅ **PR #179 merged `bf5b4ed` 2026-04-26**。`NAKAMA_HEALTHZ_URL` + 4 同類 site 全 swept（health_check / usopp poll/batch / SMTP_PORT / GEMINI_MAX_WORKERS）+ 4 regression test。**VPS .env 還是要補真值**才能 probe 變綠（DEFAULT URL 對 VPS context 是錯的）— 修修 manual。
+3. ~~既知還沒修的 same-class bug~~ — ✅ 全部由 PR #179 sweep 掉
 
 ## 待做
 
@@ -65,12 +62,12 @@ originSessionId: 6966e360-f96e-4739-b4e8-44d3c16567d4
 
 ## 推薦下一步序
 
-5C 與 5B-3 各 2-3 天，並行 OK。**5C 較簡單（CRUD + FTS5 query），先做暖手**；**5B-3 有設計挑戰**（3σ statistical baseline 要從歷史 LLM 成本/error rate 算 + 抓 anomaly 的 dedup 策略）。
+dotenv sweep 已 land（PR #179），剩 **5C** 和 **5B-3** 各 2-3 天，並行 OK。**5C 較簡單（CRUD + FTS5 query），先做暖手**；**5B-3 有設計挑戰**（3σ statistical baseline 要從歷史 LLM 成本/error rate 算 + 抓 anomaly 的 dedup 策略）。
 
 順序建議：
-- **5C**（FTS5 log search） → **5B-3**（anomaly daemon） → 順手 sweep `dotenv empty-string` 4 個 known bug → **Phase 6 test coverage**
+- **5C**（FTS5 log search） → **5B-3**（anomaly daemon） → **Phase 6 test coverage**
 
-或先 sweep dotenv bugs（半天）解空集合 follow-up，再 5C / 5B-3。
+但目前優先序：**先把 D.1 follow-up + PR B 4 corruption bug 修完**（一個 follow-up PR，半天 ~ 1 天）→ 再回 5C / 5B-3。詳見 `project_2026_04_26_4pr_merged_bugs_followup.md`。
 
 ## 不要自己決定的事
 

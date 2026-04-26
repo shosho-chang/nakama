@@ -41,25 +41,24 @@ CSS class 全 hashed（CSS Modules），靠 tag/structure 解析：
 
 Reviewer 是 general-purpose Agent dispatch（prompt 明確「Do NOT post a comment to GitHub」），結論 APPROVE / no blocker。
 
-## VPS 部署（修修手動）
-
-cron 不變（`30 6 * * * python -m agents.franky news` Slice A 已上線）。修修 manual：
+## VPS 部署（2026-04-26 17:43 台北 Smoke 完成）
 
 ```bash
-ssh nakama-vps
-cd /home/nakama
-git pull
-python3 -m agents.franky news --dry-run  # smoke 驗 log
+ssh nakama-vps && cd /home/nakama && git pull  # already up to date
+pip3 install beautifulsoup4  # VPS system python 缺，requirements.txt 有寫
+python3 -m agents.franky news --dry-run  # 全綠
 ```
 
-Smoke 驗點：
-- 8 RSS（Slice A 沿用）+ 4 GitHub atom + Anthropic HTML 都 fetch 成功
-- 任一 source 失敗 log warning 但不擋整批
-- candidates 數量符合預期
+Dry-run 結果：
+- 8 RSS + 4 GitHub atom + Anthropic HTML 全部 fetch 成功
+- **Anthropic parsed 13 articles**（VPS IP 沒被 CDN 擋，最重要風險點解除）
+- candidates 8 條（rss=8, anthropic_html=0）— anthropic 13 篇都 > 24h 被 age filter 掉，正常
+- score pick=false 過濾掉 5 條 → 「無精選入選」（純 age + LLM 判斷，dedupe DB 為空）
 
-## 已知風險（不擋 merge，需 VPS 觀察）
+## 待 verify（明早）
 
-- **VPS IP 被 Anthropic CDN 擋**：reviewer flagged（cf [feedback_reddit_vps_ip_block.md]）。failure mode 是 graceful（`_fetch_html` returns None → `[]`），但 Anthropic 文章會無聲缺席。VPS smoke 驗 200，再看每天 log 確認 parsed > 0。如擋，follow-up 改走 firecrawl
+- syslog 顯示 `franky news` cron 從未執行過 — 今天首次部署，下次 06:30 台北是明早。第一次 production 完看 `/var/log/nakama/franky-news.log` 確認 Anthropic parsed > 0、GitHub releases 沒淹沒 curate
+- VPS python 是 system /usr/bin/python3.12 不是 venv；新 dep 用 `pip3 install`。requirements.txt 寫了 bs4 但歷史上只 ingest path 用，這次首次走 franky news 才暴露未裝
 
 ## 下一步候選
 

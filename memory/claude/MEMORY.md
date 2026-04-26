@@ -7,9 +7,10 @@
 - [project_pending_tasks.md](project_pending_tasks.md) — 待辦：VPS 部署 + 端到端測試（Robin/Zoro/Brook）、Nami 開發、補測試
 - [project_brook_design.md](project_brook_design.md) — Brook 設計決策：Web UI 聊天頁、成本分析、Phase 2 規劃
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — /kb/research E2E + kb-search skill PR #142 merged；server top_k=8 enhancement 待修
-- [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — ingest v2 4 原則 + Step 1/2 merged + Step 3 PR A #169 fixes pushed + PR B #178 opened
-- [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — Robin update logic PR #169 ultrareview fixes pushed 待 merge；broken pages migration 待修修 apply 4 頁；config env fixed；A-11c lifeos_writer 修了
-- [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **目前 pickup 點**：PR A #169 修法 push + PR B #178 opened + ADR deviation + 修修 manual todos + PR C/D backlog
+- [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — ingest v2 4 原則 + Step 1/2/3 全 merged（PR A #169 + PR B #178）
+- [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — Robin update logic PR #169 merged 33f3095；broken pages migration 待修修 apply 4 頁；A-11c lifeos_writer 修了
+- [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **ingest 軸線 pickup**：PR A merged 33f3095 + PR B merged d955af6；PR C 必先修 4 silent corruption bug
+- [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — **下一個 PR**：4 PR sweep merged + 6 follow-up bug（2 SEO + 4 ingest walker）
 - [feedback_mathml2latex_abandoned.md](feedback_mathml2latex_abandoned.md) — mathml2latex PyPI 0.1.0 abandoned，MathML → LaTeX 走 alttext-first（不加 dep）
 - [feedback_kb_concept_aggregator_principle.md](feedback_kb_concept_aggregator_principle.md) — concept page = cross-source aggregator，禁止 `## 更新` todo dump，衝突寫 `## 文獻分歧`
 - Plan：[docs/plans/2026-04-26-ingest-v2-redesign-plan.md](../../docs/plans/2026-04-26-ingest-v2-redesign-plan.md) — ingest v2 redesign 完整 plan + §8 Decisions table（4 題拍板）
@@ -27,7 +28,7 @@
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
 - [feedback_skill_design_principle.md](feedback_skill_design_principle.md) — Skill 三層架構：互動式 workflow→skill、確定性函式→shared/*.py、agent 只做觸發/編排；skill 粒度扁平、通常 agent-specific
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
-- [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **目前 SEO 軸線 pickup 點**：D.1 PR #173 open（28 rule + 146 test）+ PageSpeed key 設好；D.2/E/F 0%
+- [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **SEO 軸線 pickup**：D.1 merged cc35218；D.1-followup（2 bug + 5 minor）待開 PR；D.2/E/F unblocked
 - [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/2026-04-24-seo-prior-art.md
 - Research doc：[docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
 - Task prompt：[docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md) — Phase 1.5 凍結 4 sub-slice + 28 deterministic + 12 LLM rule + report 模板（PR #167 a985d14）
@@ -125,7 +126,8 @@
 - [reference_llama_cpp_flags.md](reference_llama_cpp_flags.md) — llama.cpp 2026 CLI breaking change：`--flash-attn on`、`--reasoning on|off`、`--reasoning-budget N`
 - [project_franky_phase1_parallel_session.md](project_franky_phase1_parallel_session.md) — Franky Phase 1 全三 slice merged（PR #74/#75/#76）；剩 VPS .env + cron + UptimeRobot 修修手動
 - [project_franky_news_digest_slice_a.md](project_franky_news_digest_slice_a.md) — Slice A (PR #171) merged + VPS cron 06:30；8 RSS feed + 規劃表
-- [project_franky_news_slice_b_merged.md](project_franky_news_slice_b_merged.md) — Slice B (PR #176) merged 2026-04-26：Anthropic /news HTML 三版型 + 4 GitHub atom；reviewer hardening；VPS pull 修修手動
+- [project_franky_news_slice_b_merged.md](project_franky_news_slice_b_merged.md) — Slice B (PR #176) merged + VPS smoke 全綠 2026-04-26：Anthropic VPS IP 沒被擋（parsed 13）；明早首次 06:30 cron
+- [feedback_vps_dep_install_invisible.md](feedback_vps_dep_install_invisible.md) — VPS system python 不裝 venv，requirements.txt 加 dep 不自動 sync；新 path 第一次跑才暴露
 - [feedback_stacked_pr_squash_conflict.md](feedback_stacked_pr_squash_conflict.md) — 堆疊 PR + squash merge：子 PR 變 unmergeable；沒 force-push 權限走 merge-main + --ours 退路
 - [feedback_ruff_order_by_type.md](feedback_ruff_order_by_type.md) — ruff isort 預設 order-by-type：ALL_CAPS 常數先於 PascalCase 類，不是純 ASCII 序
 - [project_brook_compose_merged.md](project_brook_compose_merged.md) — PR #78 Brook compose_and_enqueue merged；production 路徑就位，seed compliance vocab 等 Slice B 替換
@@ -167,7 +169,7 @@
 - [project_quality_uplift_review_2026_04_25.md](project_quality_uplift_review_2026_04_25.md) — 9-phase 5/9 完成 MERGED 2026-04-25（PR #146/147/152/154/157）+ 待修 12 major/minor 清單 + 修修 manual follow-up
 - [project_quality_uplift_next_2026_04_26.md](project_quality_uplift_next_2026_04_26.md) — 04-26 morning pickup（已 superseded）
 - [project_quality_uplift_next_2026_04_26_evening.md](project_quality_uplift_next_2026_04_26_evening.md) — 04-26 evening pickup（已過時，被 04-27 取代）
-- [project_quality_uplift_next_2026_04_27.md](project_quality_uplift_next_2026_04_27.md) — **目前 pickup 點**：04-26 晚 +2 PR (5B-2 cron heartbeat / 5D external probes)；5D VPS 未部署；下一步 5C 或 5B-3
+- [project_quality_uplift_next_2026_04_27.md](project_quality_uplift_next_2026_04_27.md) — **Quality Uplift 軸線**：dotenv sweep PR #179 merged；5D VPS 未部署；先修 follow-up bug 再回 5C / 5B-3
 - [project_quality_uplift_next_2026_04_25.md](project_quality_uplift_next_2026_04_25.md) — 上一輪 pickup（已過時，被 04-26 取代）
 - [project_quality_uplift_vps_deployed_2026_04_26.md](project_quality_uplift_vps_deployed_2026_04_26.md) — 5 PR VPS 部署完成 2026-04-26：解鎖 Phase 5/7/8；路上抓到 logger init / endpoint 漏 https / bucket name trailing space 三 bug
 - [project_quality_uplift_sweep_done_2026_04_26.md](project_quality_uplift_sweep_done_2026_04_26.md) — 12-major sweep 三 PR 全 merged 2026-04-26（#161/#162/#163）；剩 Phase 4-8 + 修修 VPS pull/restart
