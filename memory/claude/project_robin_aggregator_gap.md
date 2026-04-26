@@ -15,16 +15,16 @@ originSessionId: 27c0b340-d612-4f47-aba4-b4f3727267fd
 - **Ultrareview fixes 含**：critical prompt 目錄錯誤（runtime path → 從 dead `agents/robin/prompts/` 搬到 `prompts/robin/` + 5 categories）、slug validation、update_conflict idempotency、_ensure_h2_skeleton preserve non-canonical H2、noop strip legacy block + 5 nits
 - **影響範圍**：lazy migrate 在第一次 update 時 trigger（v1 → v2 schema_version + derive mentioned_in from source_refs + strip legacy `## 更新` blocks）
 
-## 2. 既有 broken concept page（migration script merged，待修修 apply）
+## 2. 既有 broken concept page — ✅ 全 apply 完 2026-04-26
 
-- **狀態**：✅ A-11a fix（obsidian_writer width=10**9）+ A-11b migration script 已 merged（PR #164 `c2b529b`）；**修修 apply 還沒做**
-- **dry-run 找到 4 頁**：
-  - `ATP再合成.md` — recover source_refs[2]
-  - `神經保護作用.md` — recover source_refs[0]
-  - `肌酸代謝.md` — recover source_refs[3]
-  - `膳食補充劑安全性.md` — recover source_refs[2]
+- **狀態**：✅ A-11a fix + A-11b migration + apply 全完成（PR #164 `c2b529b` merged + 4 頁 apply 2026-04-26）
+- **apply 結果**：
+  - `ATP再合成.md` — recovered source_refs[2] + merged keys [confidence, tags, related_pages]
+  - `神經保護作用.md` — recovered source_refs[0]
+  - `肌酸代謝.md` — recovered source_refs[3]
+  - `膳食補充劑安全性.md` — recovered source_refs[2]
 - **共同 raw_suffix**：`Journal-of-the-International-Society-of-Sports-Nutrition.md`
-- **修修要做**：`python -m scripts.migrate_broken_concept_frontmatter --vault "F:/Shosho LifeOS" --apply`（預設寫 `.bak` 同目錄）
+- **`.bak` 留同目錄**（`{name}.md.bak`）
 - **根因**：`shared/obsidian_writer.write_page` 之前 `yaml.dump` 沒設 `width`，PyYAML default 80 char fold 把長 source filename 從中間 fold；下一行開頭 `---` 被 yaml loader 當 document separator
 
 ## 3. `shared/config.py` get_vault_path / get_db_path env 順序 bug（已 fix）

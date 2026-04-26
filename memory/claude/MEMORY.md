@@ -8,8 +8,8 @@
 - [project_brook_design.md](project_brook_design.md) — Brook 設計決策：Web UI 聊天頁、成本分析、Phase 2 規劃
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — /kb/research E2E + kb-search skill PR #142 merged；server top_k=8 enhancement 待修
 - [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — ingest v2 4 原則 + Step 1/2/3 全 merged（PR A #169 + PR B #178）
-- [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — Robin update logic PR #169 merged 33f3095；broken pages migration 待修修 apply 4 頁；A-11c lifeos_writer 修了
-- [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **ingest 軸線 pickup**：PR A merged 33f3095 + PR B merged d955af6；PR C 必先修 4 silent corruption bug
+- [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — 三 bug 全結案：PR #169 merged + 4 頁 broken pages migration apply 完 2026-04-26 + A-11c
+- [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **ingest 軸線**：PR A/B/180/186 全 merged；PR C 重 ingest ch1 真 unblocked
 - [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — 6 PR 全 merged 2026-04-26（4 PR review + 2 follow-up bug fix #180/#181）；三軸線下游 unblock
 - [project_d2_seo_audit_pr183.md](project_d2_seo_audit_pr183.md) — **D.2 PR #183 opened 2026-04-26**：seo-audit-post skill + 12 LLM + T1 benchmark + 17 test
 - [project_f_slice_firecrawl_pr185.md](project_f_slice_firecrawl_pr185.md) — **F PR #185 opened 2026-04-26**：firecrawl SERP + Haiku 摘要 + 39 test；E 卡修修 DataForSEO 註冊

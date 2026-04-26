@@ -1,10 +1,10 @@
 ---
-name: ingest v2 Step 3 — PR A + B merged 2026-04-26，PR C 必先修 4 個 silent corruption bug
-description: PR #169 (A) merged 33f3095 / PR #178 (B) merged d955af6；4 個 walker silent corruption bug 必修 before PR C
+name: ingest v2 Step 3 — PR A/B/180/186 全 merged 2026-04-26，PR C 真 unblocked
+description: PR #169 (A) / #178 (B) / #180 (walker fix-1) / #186 (walker fix-2) 全 merged；PR C 重 ingest ch1 + retrieval acceptance 真 unblocked
 type: project
 originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
 ---
-2026-04-26 17:50 台北 sweep：PR A + PR B 都 reviewed + squash merged。PR C/D 解鎖前必修 PR B 的 4 個 silent data corruption bug。
+2026-04-26 21:00 台北 sweep：PR A + B + 兩波 walker fix（#180 + #186）全 merged。PR C 重 ingest ch1 + retrieval acceptance 真 unblocked（Phase 0 dry-run 已對實書 sanity check 過）。
 
 ## PR A — #169 (kb_writer + Robin v2 dispatcher) — MERGED 33f3095
 
@@ -99,7 +99,40 @@ originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
 
 ADR §3.4.1 寫 `mathml2latex>=0.0.5` PyPI dep — 那 package 0.1.0 是 abandoned（`__init__.py` 只有 `__version__ = '0.1.0'`，無 public API）。改走 alttext-first：`<math alttext="\\frac{1}{2}">` → fallback to text content。不加 dep。`_html_math_to_latex` docstring + PR description 都標 deviation。Signature 不變，未來可換 maintained converter（見 `feedback_mathml2latex_abandoned.md`）。
 
-## PR C / D backlog（PR A + B merged，但 PR C 必先修 4 corruption bug）
+## PR B follow-up — #186 (walker fix-2 — figure-wrapped table + h2/h3 markers) — MERGED 6879520
+
+- **Branch**：`feat/ingest-v2-step3-pr-c-prereq-walker-fix-2`（已刪 + worktree removed）
+- **Merge commit**：`6879520`（squash merged 2026-04-26 20:56 台北）
+- **Review verdict**：READY TO MERGE — 0 blocker，3 個 MAJOR 全是 pre-existing PR B 限制（fix-2 未引入新 regression）
+- **Trigger**：Phase 0 dry-run on real Wiley EPUB *Biochemistry for Sport and Exercise Metabolism* 暴露 PR #180 沒抓到的 2 個 walker silent corruption bug
+
+### 2 個 silent corruption bug — 全修
+
+1. **`<figure><table>...</table></figure>` silent drop** — `parse_book.py:_walk_epub_html`
+   - publisher 把 data table 包在 `<figure>` 裡（Wiley 教科書習慣）；walker 進 figure branch、`_extract_figure` 找不到 img/svg → return None → caller decompose 整個 figure subtree → table 失蹤
+   - 真實 Wiley book 415pp 跨 11 章，walker tables=0 vs raw HTML 24 個 `<table>` element
+   - 修法：`_extract_figure` return None for `<figure>` 時 `_walk(child)` recurse + `child.unwrap()` 保留 inline children
+   - Phase 0 verify after fix：walker tables=21 across 9 content chapters（剩 3 個 nested-deeper 邊際 case 留 follow-up）
+
+2. **`<h2>` / `<h3>` markdown markers 沒注入** — `parse_book.py:_walk_epub_html`
+   - walker 抽 anchor 進 `section_anchors` list 但 heading tag 只 `continue`d，純文本流失 heading semantic
+   - downstream `chapter-summary.md` prompt 預期 `## {anchor}` markers 定位 verbatim quote
+   - 修法：h2/h3 node `replace_with(soup.new_string("\n\n## {anchor}\n\n"))`（h3 用 `### `）
+   - Phase 0 verify after fix：ch6.md (= 真章 1) 含全 11 個 H2/H3 markers，例如 `## 1.1 Adenosine Triphosphate` / `## 1.2 Energy Continuum`
+
+### Tests + Phase 0 verify
+
+- 6 new tests（2 Bug A + 4 Bug B）+ 全 walker 39 pre-existing test 不退化 → 45/45 pass
+- Phase 0 dry-run 對 *Biochemistry for Sport and Exercise Metabolism* EPUB（無 LLM、純機械操作）— Bug A/B 修法在實書驗證通過
+- Per-chapter table count after fix：Ch.1=2, Ch.2=2, Ch.3=1, Ch.4=4, Ch.5=2, Ch.6=0, Ch.7=2, Ch.8=3, Ch.9=2, Ch.10=0, Ch.11=3
+
+### 3 個 review-flagged MAJOR（pre-existing，非 fix-2 引入，不擋 merge；可後續處理）
+
+- **M1**：`<figure>` 同時包 `<img>` AND `<table>` 為 sibling — `_extract_figure` 抓 img、return ChapterFigure，inner `<table>` 仍被 `child.replace_with(placeholder)` 銷毀（pre-existing PR B 限制）
+- **M2**：h2/h3 nested markup 用 `get_text(strip=True)` collapse whitespace，例如 `<h2>1.1 <em>ATP</em> bound</h2>` → anchor `"1.1ATPbound"` 無空格（PR B 也有此問題，現在 inject markers 後讀者看得見）
+- **M3**：heading text 含 markdown-significant char（pipe / asterisk）沒 escape — 實際 risk 低（Obsidian 對 heading line 內 pipe 寬容）
+
+## PR C / D backlog（PR A + B + 180 + 186 全 merged，PR C 真 unblocked）
 
 ### PR C：重 ingest ch1 + retrieval acceptance
 
