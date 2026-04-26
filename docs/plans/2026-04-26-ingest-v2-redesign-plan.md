@@ -67,9 +67,9 @@ textbook-ingest skill Phase 1 MVP 把 *Biochemistry for Sport and Exercise Metab
 
 ---
 
-## 4. ADR-010-v2 大綱（草稿目錄）
+## 4. ADR-011 大綱（草稿目錄，已落地）
 
-待修修確認後寫成 `docs/decisions/ADR-010-textbook-ingest-v2.md`：
+> **歷史 note**：本節為 2026-04-26 凍結時的 ADR 草稿目錄。Decision Q3 拍板後 ADR 編號改為 **ADR-011**（保留 ADR-010 標 Superseded）。實際完整 ADR 見 [`docs/decisions/ADR-011-textbook-ingest-v2.md`](../decisions/ADR-011-textbook-ingest-v2.md)。本節保留作為設計演進過程紀錄。
 
 ### §1. Context — 為什麼要 v2
 

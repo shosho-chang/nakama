@@ -503,7 +503,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, AwareDatetime
 
 class ConceptPageV2(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    # frozen=False（預設）— upsert_concept_page 需要 mutate mentioned_in / discussion_topics
+    # 仍 enforce extra="forbid"（schemas.md §4）阻擋未知欄位
+    model_config = ConfigDict(extra="forbid")
     schema_version: Literal[2] = 2
     title: str
     type: Literal["concept"]
@@ -517,8 +519,17 @@ class ConceptPageV2(BaseModel):
     created: date
     updated: date
 
-class ChapterSourcePageV2(BaseModel):
+# FigureRef 必須在 ChapterSourcePageV2 之前定義（避免 forward ref + model_rebuild()）
+class FigureRef(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    ref: str  # constr(pattern=r"^(fig|tab|eq)-\d+-\d+$") in production
+    path: str
+    caption: str
+    llm_description: str | None = None
+    tied_to_section: str
+
+class ChapterSourcePageV2(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     schema_version: Literal[2] = 2
     type: Literal["book_chapter"]
     source_type: Literal["book"]
@@ -529,26 +540,11 @@ class ChapterSourcePageV2(BaseModel):
     chapter_title: str
     section_anchors: list[str]
     page_range: str
-    figures: list["FigureRef"] = Field(default_factory=list)
+    figures: list[FigureRef] = Field(default_factory=list)
     ingested_at: date
     ingested_by: str
 
-class FigureRef(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    ref: str  # constr(pattern=r"^(fig|tab|eq)-\d+-\d+$") in production
-    path: str
-    caption: str
-    llm_description: str | None = None
-    tied_to_section: str
-
-class ConceptAction(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    slug: str
-    action: Literal["create", "update_merge", "update_conflict", "noop"]
-    candidate_aliases: list[str] = Field(default_factory=list)
-    extracted_body: str | None = None      # action=create / update_merge
-    conflict: "ConflictBlock | None" = None  # action=update_conflict
-
+# ConflictBlock 必須在 ConceptAction 之前定義（避免 forward ref + model_rebuild()）
 class ConflictBlock(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     topic: str
@@ -557,6 +553,14 @@ class ConflictBlock(BaseModel):
     possible_reason: str | None = None
     consensus: str | None = None
     uncertainty: str | None = None
+
+class ConceptAction(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    slug: str
+    action: Literal["create", "update_merge", "update_conflict", "noop"]
+    candidate_aliases: list[str] = Field(default_factory=list)
+    extracted_body: str | None = None      # action=create / update_merge
+    conflict: ConflictBlock | None = None  # action=update_conflict
 
 class MigrationReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -585,7 +589,7 @@ class MigrationReport(BaseModel):
 | broken concept page（A-11，2 頁：`ATP再合成.md` `肌酸代謝.md`） | Step 1 hygiene PR 修好 frontmatter；Step 3 上線後 lazy migrate v1 → v2 schema |
 | Robin v1 schema concept page（既有 `source_refs:` schema） | Step 3 上線後 lazy migrate：第一次被 `update_*` action 命中時自動跑 `migrate_v1_to_v2()`；body 末尾既有 `## 更新（date）` block 一次性 LLM diff-merge into main body |
 | ch1 已 ingest 的 4 新 concept（`能量連續體` / `糖解作用` / `有氧能量系統` / `無氧能量系統`） | Step 3 上線後重 ingest ch1 一次（覆寫）— 走完整 v2 schema |
-| ch1 update 的 6 既有 concept（`磷酸肌酸系統` / `ATP再合成` / `肌酸激酶系統` / `磷酸肌酸能量穿梭` / `肌酸代謝` / `運動營養學`） | **維持 v1 schema 直到 Step 3 重 ingest ch1**（[decisions §Q2](../plans/2026-04-26-ingest-v2-decisions.md)）。短期內 6 頁仍會看到 body 末尾 `## 更新（2026-04-25）` block；Step 3 重 ingest ch1 時走 `update_merge` action，由 LLM 把 update block 一次性 diff-merge 進 Definition / Core Principles / Practical Applications 主體（同一 lazy migrate path 適用所有 v1 page），完成後刪除 `## 更新` block 並升 `schema_version: 2` |
+| ch1 update 的 6 既有 concept（`磷酸肌酸系統` / `ATP再合成` / `肌酸激酶系統` / `磷酸肌酸能量穿梭` / `肌酸代謝` / `運動營養學`） | **維持 v1 schema 直到 Step 3 重 ingest ch1**（[decisions §Q2](../plans/2026-04-26-ingest-v2-decisions.md)）。短期內 6 頁仍會看到 body 末尾 `## 更新（2026-04-25）` block；Step 3 重 ingest ch1 時逐頁判斷走 `update_merge`（無事實衝突）或 `update_conflict`（有衝突，例：`磷酸肌酸系統` PCr 主導 10-15s vs ch1 教科書 1-10s 預期觸發 `update_conflict` → 寫進 `## 文獻分歧`），由 LLM 把 update block 一次性 diff-merge 進 Definition / Core Principles / Practical Applications 主體或 `## 文獻分歧` section（同一 lazy migrate path 適用所有 v1 page），完成後刪除 `## 更新` block 並升 `schema_version: 2` |
 | chapter source page (`Sources/Books/biochemistry-sport-exercise-2024/ch1.md`) | Step 3 上線後重 ingest ch1（含 figures + Vision describe） |
 | Book entity (`Entities/Books/biochemistry-sport-exercise-2024.md`) | 保留；status 維持 `partial`、`chapters_ingested` 隨 ch2-ch11 ingest 累計 |
 
