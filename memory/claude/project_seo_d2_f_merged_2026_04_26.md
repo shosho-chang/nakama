@@ -8,6 +8,10 @@ originSessionId: TBD
 ---
 2026-04-26 sweep：D.2 PR #183 + F PR #185 兩個 SEO PR 同時 review + auto-squash merged 並 worktree 清理完成。SEO Phase 1.5 = **完成**：A+B+C+D.1+D.2+F 上線；E DataForSEO 同日評估後決定不接（見 [project_seo_dataforseo_scrap_decision](project_seo_dataforseo_scrap_decision.md)）。
 
+**晚間 follow-up sweep（2026-04-26）**：
+- ✅ **PR #191 merged** `21ab18e` — DataForSEO scrap doc：ADR-009 §Addendum / task prompt §E deprecation / SKILL.md description / 5 memory file
+- ✅ **PR #192 merged** `f1a542d` — D.2 + F follow-up sweep（A1/A2/A3/A4/A5 + B1/B2/B5/B6 + 4 regression test）；50 affected test 全綠
+
 ## Merged commits
 
 | PR | Squash commit | 內容 |
@@ -24,29 +28,29 @@ originSessionId: TBD
 - **#183**: MERGE WITH FOLLOW-UP — 0 blocker，6 follow-up
 - **#185**: READY TO MERGE — 0 blocker，6 polish
 
-## Follow-up 清單（12 條，全 non-blocker）
+## Follow-up 清單（12 條，**已透過 PR #192 收 9 條 / 3 條 deferred**）
 
 ### A. D.2 SEO audit (PR #183)
 
-| # | 檔案:行 | 問題 | 嚴重度 | 修法 |
+| # | 檔案:行 | 問題 | 嚴重度 | 狀態 |
 |---|---|---|---|---|
-| A1 | `.claude/skills/seo-audit-post/scripts/audit.py:560-561` | `kb_section` 標籤 drift：`kb_results = ... or []` + `is not None` check → 空 KB 結果 frontmatter 標 `included` 但 body 寫「KB 內無相關頁面」 | low（只 empty case） | `if kb_results else "skipped (no results)"` 一行修；output-contract 「kb_section prefix 可分支」契約破 |
-| A2 | `.claude/skills/seo-audit-post/scripts/audit.py:171` | `host.lstrip("www.")` 經典 char-set foot-gun → `wfleet.shosho.tw` → `fleet.shosho.tw` 誤分類 `wp_fleet` | low（adversarial 仍 graceful） | `host.removeprefix("www.")` (Python 3.10+) |
-| A3 | `shared/seo_audit/llm_review.py:359-369` | 直接 call `client.messages.create(...)` 跳過 `shared.anthropic_client` wrapper → `record_api_call` 不發 → audit 的 $0.025-0.035 不出現在 `/bridge/cost` | medium（同類 pre-existing in `kb_search.py:113-119`） | 建 `shared.anthropic_client.messages_create_with_tracking()` helper 一次解兩處 |
-| A4 | `shared/seo_audit/llm_review.py:201-210` | system prompt 沒注入「Phase 1 SEED — Slice B medical vocab upgrade pending」suffix；PR description + `references/check-rule-catalog.md:116-117` claim 對不上 | low（doc drift） | 二擇一：(a) prompt 加「For L9 fix_suggestion, suffix with '(SEED scan; vocab upgrade pending)'」(b) 文件改成「caller 在報告下方加 caveat box」實作 |
-| A5 | `agents/robin/kb_search.py:23-45` | invalid `purpose` 字串 silently fall through 到 `"general"` branch（`Literal[...]` 只 static check） | low | raise `ValueError` 或至少 log warning |
-| A6 | tests/{shared/seo_audit,skills/seo_audit_post}/* | `MagicMock()` 沒 `spec=` / `autospec=True`；`client.messages.creates(...)` typo 不會被抓 | minor（跟 repo 風格一致） | 對齊 `feedback_mock_use_spec.md`，但低優先 |
+| A1 | `audit.py:560-561` | `kb_section` 標籤 drift（empty KB → 'included'）| low | ✅ PR #192 — `if kb_results else "skipped (no results)"` |
+| A2 | `audit.py:171` | `lstrip("www.")` foot-gun | low | ✅ PR #192 — `removeprefix("www.")` |
+| A3 | `llm_review.py:359` + `kb_search.py:113` | 直接 call 跳 cost tracking → 改用既有 `ask_claude` wrapper | medium | ✅ PR #192 — 既有 wrapper 已支援 system + prompt + max_tokens；不需建新 helper |
+| A4 | `llm_review.py:_build_system_prompt` | system prompt 沒注入 SEED suffix instruction | low | ✅ PR #192 — system prompt 加 L9 specific instruction |
+| A5 | `kb_search.py:_build_purpose_intro` | invalid purpose silent fall through | low | ✅ PR #192 — raise ValueError |
+| A6 | tests | `MagicMock()` 沒 `spec=` | minor | ⬜ deferred — 跟 repo 風格一致，留 cleanup |
 
 ### B. F firecrawl SERP (PR #185)
 
-| # | 檔案:行 | 問題 | 嚴重度 | 修法 |
+| # | 檔案:行 | 問題 | 嚴重度 | 狀態 |
 |---|---|---|---|---|
-| B1 | `shared/firecrawl_serp.py:35` | comment `# 單篇 scrape timeout（秒）` 但值 `_SCRAPE_TIMEOUT_MS = 20000` ms（行為正確、註解錯） | trivial | 改「毫秒」或 rename const |
-| B2 | `shared/seo_enrich/serp_summarizer.py:78` | `_format_pages_block` sanitize `title` + `content_markdown` 但**漏 `url`**；攻擊者控 SERP URL 可塞 prompt-injection 字串 | low（URL 編碼通常中和；但 defense-in-depth 不完整） | wrap line 78 with `_sanitize(...)` |
-| B3 | tests/{shared,skills/seo_keyword_enrich}/* | `MagicMock()` 沒 `spec=`（同 A6） | minor | 同 A6 |
-| B4 | `shared/firecrawl_serp.py` | author 註解「firecrawl 4.22 不接 country」是 partial-true：SDK `Location(country=...)` 物件存在於 `scrape()`，可不 bump SDK 接上 | enhancement | 加 `from firecrawl.v2.types import Location`；單行 `location=Location(country=country)` |
-| B5 | `shared/seo_enrich/serp_summarizer.py:26` | cost comment `$1/$5/MTok` 高估；`shared/pricing.py:68-73` 實 $0.80/$4 | trivial | 對齊 pricing source-of-truth |
-| B6 | `shared/firecrawl_serp.py:88-90` | API key 二次 check（`firecrawl_search()` 已先 raise on missing key），dead code | trivial | 移除 |
+| B1 | `firecrawl_serp.py:35` | comment 單位錯（秒 → 毫秒）| trivial | ✅ PR #192 |
+| B2 | `serp_summarizer.py:78` | `_format_pages_block` 漏 sanitize `url` | low | ✅ PR #192 — wrap `_sanitize` |
+| B3 | tests/* | MagicMock 無 spec | minor | ⬜ deferred 同 A6 |
+| B4 | `firecrawl_serp.py` | firecrawl `Location(country=...)` 可接上 | enhancement | ⬜ deferred — 需 SDK 實測 |
+| B5 | `serp_summarizer.py:26` | cost comment $1/$5 → $0.80/$4 | trivial | ✅ PR #192 |
+| B6 | `firecrawl_serp.py:88-90` | redundant API key check | trivial | ✅ PR #192 — 移除 + clarifying comment |
 
 ### C. Test gap（兩 PR 累計）
 
