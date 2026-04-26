@@ -35,6 +35,33 @@ def _prevent_real_memory_extraction(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _prevent_real_slack_alerts(request, monkeypatch):
+    """Stop ``shared.alerts.alert("error", ...)`` from DMing real Slack.
+
+    ``_send_slack`` lazy-imports ``FrankySlackBot.from_env``. On dev machines
+    where ``SLACK_FRANKY_BOT_TOKEN`` + ``SLACK_USER_ID_SHOSHO`` are set, any
+    failure-path test that exercises a backup/cron script silently posts to
+    the user's production DM (e.g. pytest tmp_path leaking via "data dir
+    missing: ...pytest-of-Shosho/...").
+
+    Default: redirect ``from_env`` to the no-op stub. Tests that want to
+    assert post arguments stack their own patch (see
+    ``tests/shared/test_alerts.py::fake_slack``).
+
+    Tests that need real Slack delivery should mark themselves with
+    ``@pytest.mark.real_slack``.
+    """
+    if request.node.get_closest_marker("real_slack"):
+        return
+    from agents.franky.slack_bot import _NoopSlackStub
+
+    monkeypatch.setattr(
+        "agents.franky.slack_bot.FrankySlackBot.from_env",
+        MagicMock(return_value=_NoopSlackStub()),
+    )
+
+
+@pytest.fixture(autouse=True)
 def isolated_db(tmp_path: Path, monkeypatch):
     """Route shared.state to a temporary SQLite DB per test.
 
