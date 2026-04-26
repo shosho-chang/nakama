@@ -1,15 +1,14 @@
-# Franky AI news digest — 官方 blog RSS sources（Slice A）
+# Franky AI news digest — sources（Slice A 官方 blog + Slice B GitHub releases）
 #
 # 加 source 直接 append。失敗 feed 會 log warning 但不擋整批。
 # scout_seen source key = "ai_news_blog"，dedup 用 entry.id (RSS GUID)
 # fallback 到 sha256(url)。
 #
-# Slice A 範圍 — Reddit / X / GitHub trending 留 Slice B/C。
+# 已驗證（Slice A 2026-04-26 dry-run smoke）：以下 RSS/atom feed 全回 200。
 #
-# 已驗證（2026-04-26 dry-run smoke）：以下 8 個 feed 都回 200 + valid XML。
-#
-# 不在清單的 publishers（Slice A 範圍外，Slice B follow-up 用 HTML scrape 處理）：
+# 不在清單的 publishers（HTML scrape 路徑處理）：
 #   - Anthropic /news — 沒官方 RSS（/news/rss.xml /news/feed /research/rss.xml 全 404）
+#     → 走 agents/franky/news/anthropic_html.py（Slice B）
 #   - Meta AI blog — RSS endpoint malformed
 #   - vLLM blog — 沒 RSS（blog 是純 HTML）
 #   - LangChain blog — RSS malformed（已改用 changelog feed 替代）
@@ -17,6 +16,7 @@
 #   - arxiv cs.AI — 暫不收（每日 200+ paper，會把 curate prompt 衝爆；PubMed 已涵蓋 paper 流）
 
 feeds:
+  # ---- 官方 blog RSS（Slice A） ----
   - name: openai_news
     url: https://openai.com/news/rss.xml
     publisher: OpenAI
@@ -41,3 +41,18 @@ feeds:
   - name: together_ai
     url: https://www.together.ai/blog/rss.xml
     publisher: Together AI
+
+  # ---- GitHub releases atom（Slice B）— 4 個 high-signal repo ----
+  # 不收 transformers/diffusers 全套，避免每週 10+ minor release 衝爆 curate prompt。
+  - name: github_vllm
+    url: https://github.com/vllm-project/vllm/releases.atom
+    publisher: GitHub vllm-project/vllm
+  - name: github_llama_cpp
+    url: https://github.com/ggerganov/llama.cpp/releases.atom
+    publisher: GitHub ggerganov/llama.cpp
+  - name: github_transformers
+    url: https://github.com/huggingface/transformers/releases.atom
+    publisher: GitHub huggingface/transformers
+  - name: github_langchain
+    url: https://github.com/langchain-ai/langchain/releases.atom
+    publisher: GitHub langchain-ai/langchain

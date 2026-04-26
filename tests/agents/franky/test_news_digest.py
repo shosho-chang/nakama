@@ -9,6 +9,15 @@ import pytest
 
 from agents.franky import news_digest as nd
 
+
+@pytest.fixture(autouse=True)
+def _no_anthropic_html_fetch(monkeypatch):
+    """Default: Slice B Anthropic HTML scraper returns []. Tests that exercise
+    multi-source merge can override locally. Without this, every test would
+    trigger a real httpx call to anthropic.com/news (Slice B regression risk)."""
+    monkeypatch.setattr(nd.anthropic_html, "gather_candidates", lambda **kw: [])
+
+
 # ---------- _parse_json --------------------------------------------------------
 
 
@@ -389,6 +398,82 @@ def test_run_score_failure_per_item_continues(tmp_path, monkeypatch):
     )
     summary = pipeline.run()
     assert "selected=1" in summary  # one survived
+
+
+# ---------- Multi-source merge (Slice B) --------------------------------------
+
+
+def test_run_merges_rss_and_anthropic_html_candidates(tmp_path, monkeypatch):
+    """Slice B: RSS gather + anthropic_html.gather should both reach curate."""
+    cfg = tmp_path / "feeds.yaml"
+    cfg.write_text(
+        "feeds:\n  - name: x\n    url: https://example.com\n    publisher: X\n",
+        encoding="utf-8",
+    )
+
+    rss_cand = _make_candidate(item_id="rss-a", title="OpenAI release", publisher="OpenAI")
+    rss_cand["published_ts"] = 100.0
+    html_cand = _make_candidate(
+        item_id="anthropic-news-claude", title="Claude release", publisher="Anthropic"
+    )
+    html_cand["published_ts"] = 200.0  # newer → should sort first after merge
+
+    monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [rss_cand])
+    monkeypatch.setattr(nd.anthropic_html, "gather_candidates", lambda **kw: [html_cand])
+
+    captured: dict = {}
+
+    def _ask(prompt, **kw):
+        if "5-8 條" in prompt:
+            # Capture which item_ids reached curate, in order
+            captured["prompt"] = prompt
+            return _curate_response(["anthropic-news-claude", "rss-a"])
+        return _score_response()
+
+    monkeypatch.setattr(nd.llm, "ask", _ask)
+    monkeypatch.setattr(nd, "write_page", MagicMock())
+    monkeypatch.setattr(nd, "append_to_file", MagicMock())
+    monkeypatch.setattr(nd, "mark_seen", MagicMock())
+
+    pipeline = nd.NewsDigestPipeline(dry_run=True, feeds_config_path=cfg)
+    summary = pipeline.run()
+    assert "fetch=2" in summary
+    # Newer (Anthropic, ts=200) must appear before older (RSS, ts=100) in curate prompt
+    assert "anthropic-news-claude" in captured["prompt"]
+    assert "rss-a" in captured["prompt"]
+    anthropic_pos = captured["prompt"].index("anthropic-news-claude")
+    rss_pos = captured["prompt"].index("rss-a")
+    assert anthropic_pos < rss_pos
+
+
+def test_run_anthropic_html_failure_does_not_block_rss(tmp_path, monkeypatch):
+    """If anthropic_html.gather raises an unexpected exception, RSS path
+    must still produce the digest. Tests the merge-layer try/except in
+    NewsDigestPipeline.run, not just the scraper's internal None-return path."""
+    cfg = tmp_path / "feeds.yaml"
+    cfg.write_text(
+        "feeds:\n  - name: x\n    url: https://example.com\n    publisher: X\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [_make_candidate("rss")])
+
+    def _boom(**kw):
+        raise RuntimeError("anthropic scraper exploded")
+
+    monkeypatch.setattr(nd.anthropic_html, "gather_candidates", _boom)
+    monkeypatch.setattr(
+        nd.llm,
+        "ask",
+        lambda p, **kw: _curate_response(["rss"]) if "5-8 條" in p else _score_response(),
+    )
+    monkeypatch.setattr(nd, "write_page", MagicMock())
+    monkeypatch.setattr(nd, "append_to_file", MagicMock())
+    monkeypatch.setattr(nd, "mark_seen", MagicMock())
+
+    pipeline = nd.NewsDigestPipeline(dry_run=True, feeds_config_path=cfg)
+    summary = pipeline.run()
+    assert "selected=1" in summary
 
 
 # ---------- Pure render functions ---------------------------------------------

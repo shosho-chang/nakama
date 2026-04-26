@@ -24,6 +24,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from agents.base import BaseAgent
+from agents.franky.news import anthropic_html
 from agents.franky.news.official_blogs import (
     SOURCE_KEY,
     FeedConfig,
@@ -89,12 +90,28 @@ class NewsDigestPipeline(BaseAgent):
         if not self.feeds:
             return "無 feed 設定，略過"
 
-        # 1. Fetch + filter + dedupe
-        candidates = gather_candidates(self.feeds, skip_seen=not self.dry_run)
+        # 1. Fetch + filter + dedupe.
+        # Each source is wrapped so one source's failure can never tank the digest
+        # (Slice A: official_blogs 內部已 per-feed swallow；merge layer 另外 wrap
+        # anthropic_html — 它若拋未預期 exception 不會帶倒 RSS 結果)。
+        skip_seen = not self.dry_run
+        rss_candidates = gather_candidates(self.feeds, skip_seen=skip_seen)
+        try:
+            anthropic_candidates = anthropic_html.gather_candidates(skip_seen=skip_seen)
+        except Exception as e:
+            self.logger.warning(f"anthropic_html source failed: {e}", exc_info=True)
+            anthropic_candidates = []
+        candidates = rss_candidates + anthropic_candidates
+        # Re-sort across sources by recency (each gather sorts internally, but
+        # the merged list needs one more pass).
+        candidates.sort(key=lambda c: c.get("published_ts", 0.0), reverse=True)
         if not candidates:
             return "所有 feed 無 24h 內新項目（或全已見過）"
 
-        self.logger.info(f"news_digest: {len(candidates)} fresh candidates after dedupe")
+        self.logger.info(
+            f"news_digest: {len(candidates)} fresh candidates after dedupe "
+            f"(rss={len(rss_candidates)}, anthropic_html={len(anthropic_candidates)})"
+        )
 
         # 2. Curate (one LLM call)
         try:
