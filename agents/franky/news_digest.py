@@ -24,6 +24,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from agents.base import BaseAgent
+from agents.franky.news import anthropic_html
 from agents.franky.news.official_blogs import (
     SOURCE_KEY,
     FeedConfig,
@@ -90,11 +91,20 @@ class NewsDigestPipeline(BaseAgent):
             return "無 feed 設定，略過"
 
         # 1. Fetch + filter + dedupe
-        candidates = gather_candidates(self.feeds, skip_seen=not self.dry_run)
+        skip_seen = not self.dry_run
+        rss_candidates = gather_candidates(self.feeds, skip_seen=skip_seen)
+        anthropic_candidates = anthropic_html.gather_candidates(skip_seen=skip_seen)
+        candidates = rss_candidates + anthropic_candidates
+        # Re-sort across sources by recency (each gather sorts internally, but
+        # the merged list needs one more pass).
+        candidates.sort(key=lambda c: c.get("published_ts", 0.0), reverse=True)
         if not candidates:
             return "所有 feed 無 24h 內新項目（或全已見過）"
 
-        self.logger.info(f"news_digest: {len(candidates)} fresh candidates after dedupe")
+        self.logger.info(
+            f"news_digest: {len(candidates)} fresh candidates after dedupe "
+            f"(rss={len(rss_candidates)}, anthropic_html={len(anthropic_candidates)})"
+        )
 
         # 2. Curate (one LLM call)
         try:
