@@ -20,7 +20,13 @@ def _ts(seconds_ago: int = 0) -> datetime:
 
 def test_insert_and_search_basic(idx: LogIndex):
     idx.insert(ts=_ts(60), level="INFO", logger="nakama.test", msg="hello world", extra={})
-    idx.insert(ts=_ts(30), level="ERROR", logger="nakama.test", msg="db connection lost", extra={"err": "timeout"})
+    idx.insert(
+        ts=_ts(30),
+        level="ERROR",
+        logger="nakama.test",
+        msg="db connection lost",
+        extra={"err": "timeout"},
+    )
 
     hits = idx.search("hello", limit=10)
     assert len(hits) == 1
@@ -53,7 +59,9 @@ def test_search_level_filter(idx: LogIndex):
 
 
 def test_search_logger_prefix_filter(idx: LogIndex):
-    idx.insert(ts=_ts(60), level="INFO", logger="nakama.franky.health", msg="franky health", extra={})
+    idx.insert(
+        ts=_ts(60), level="INFO", logger="nakama.franky.health", msg="franky health", extra={}
+    )
     idx.insert(ts=_ts(30), level="INFO", logger="nakama.robin.scout", msg="robin scout", extra={})
     idx.insert(ts=_ts(10), level="INFO", logger="nakama.franky.news", msg="franky news", extra={})
 
@@ -64,9 +72,13 @@ def test_search_logger_prefix_filter(idx: LogIndex):
 
 def test_search_time_range(idx: LogIndex):
     now = datetime.now(timezone.utc)
-    idx.insert(ts=now - timedelta(hours=3), level="INFO", logger="a", msg="three hours ago", extra={})
+    idx.insert(
+        ts=now - timedelta(hours=3), level="INFO", logger="a", msg="three hours ago", extra={}
+    )
     idx.insert(ts=now - timedelta(hours=1), level="INFO", logger="a", msg="one hour ago", extra={})
-    idx.insert(ts=now - timedelta(minutes=5), level="INFO", logger="a", msg="five min ago", extra={})
+    idx.insert(
+        ts=now - timedelta(minutes=5), level="INFO", logger="a", msg="five min ago", extra={}
+    )
 
     hits = idx.search("", since=now - timedelta(hours=2))
     assert len(hits) == 2
@@ -104,9 +116,13 @@ def test_search_snippet_html_escaped(idx: LogIndex):
 
 
 def test_search_combined_filters(idx: LogIndex):
-    idx.insert(ts=_ts(60), level="ERROR", logger="nakama.franky", msg="db connection refused", extra={})
+    idx.insert(
+        ts=_ts(60), level="ERROR", logger="nakama.franky", msg="db connection refused", extra={}
+    )
     idx.insert(ts=_ts(30), level="INFO", logger="nakama.franky", msg="db connection ok", extra={})
-    idx.insert(ts=_ts(10), level="ERROR", logger="nakama.robin", msg="db connection refused", extra={})
+    idx.insert(
+        ts=_ts(10), level="ERROR", logger="nakama.robin", msg="db connection refused", extra={}
+    )
 
     hits = idx.search("connection", level="ERROR", logger_prefix="nakama.franky")
     assert len(hits) == 1
@@ -166,7 +182,9 @@ def test_cleanup_deletes_old_rows(idx: LogIndex):
 def test_cleanup_also_removes_from_fts(idx: LogIndex):
     """After delete, FTS5 should not return the deleted row (logs_ad trigger)."""
     now = datetime.now(timezone.utc)
-    idx.insert(ts=now - timedelta(days=40), level="INFO", logger="a", msg="ancient secret", extra={})
+    idx.insert(
+        ts=now - timedelta(days=40), level="INFO", logger="a", msg="ancient secret", extra={}
+    )
     idx.insert(ts=now - timedelta(hours=1), level="INFO", logger="a", msg="fresh secret", extra={})
 
     pre = idx.search("secret")

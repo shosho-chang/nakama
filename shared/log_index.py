@@ -221,9 +221,10 @@ class LogIndex:
 
         if query.strip():
             # FTS path: join against logs_fts, snippet from msg column (idx 0).
+            snippet_expr = f"snippet(logs_fts, 0, '{_MARK_OPEN}', '{_MARK_CLOSE}', ' … ', 15)"
             sql = (
                 "SELECT logs.id, logs.ts, logs.level, logs.logger, logs.msg, logs.extra_json, "
-                f"       snippet(logs_fts, 0, '{_MARK_OPEN}', '{_MARK_CLOSE}', ' … ', 15) AS snippet "
+                f"       {snippet_expr} AS snippet "
                 "FROM logs JOIN logs_fts ON logs_fts.rowid = logs.id "
                 "WHERE logs_fts MATCH ?"
             )
@@ -269,9 +270,7 @@ class LogIndex:
             # Bad FTS5 query syntax — soft-fail, matches doc_index behavior.
             from shared.log import get_logger
 
-            get_logger("nakama.log_index").warning(
-                "fts5 query syntax err query=%r: %s", query, exc
-            )
+            get_logger("nakama.log_index").warning("fts5 query syntax err query=%r: %s", query, exc)
             return []
         return [
             LogHit(
@@ -298,9 +297,7 @@ class LogIndex:
         ).fetchall()
         by_level = {row["level"]: int(row["n"]) for row in by_level_rows}
 
-        bounds = conn.execute(
-            "SELECT MIN(ts) AS oldest, MAX(ts) AS newest FROM logs"
-        ).fetchone()
+        bounds = conn.execute("SELECT MIN(ts) AS oldest, MAX(ts) AS newest FROM logs").fetchone()
         return LogStats(
             total=total,
             by_level=by_level,
