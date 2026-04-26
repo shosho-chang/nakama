@@ -1,14 +1,10 @@
-"""SQLite snapshot integrity check — used by both the restore tool and the
-weekly backup-integrity cron.
+"""SQLite snapshot integrity check — used by `scripts/restore_from_r2.py`,
+the weekly `scripts/verify_backup_integrity.py` cron, and any future tool
+that needs to validate a `.db` file end-to-end.
 
 Single-purpose: open a `.db` file, run `PRAGMA integrity_check`, count tables
 + rows, return a verdict. Designed to never raise on a corrupt file — operators
 get a clean (False, 0, 0) and an error log line, not a stack trace.
-
-`scripts/restore_from_r2.py` (PR #146) duplicates this logic inline; once that
-PR merges, a small follow-up will swap the inline copy for an import. Keeping
-this module the canonical version here so Phase 2B's
-`scripts/verify_backup_integrity.py` doesn't have to wait for the merge.
 """
 
 from __future__ import annotations

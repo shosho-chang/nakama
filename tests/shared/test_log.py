@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 
 import pytest
@@ -151,6 +152,40 @@ def test_get_logger_uses_json_format_when_env_set(monkeypatch, capsys):
     parsed = json.loads(line)
     assert parsed["msg"] == "json-format"
     assert parsed["job"] == "tx"
+
+
+def test_get_logger_lazy_loads_dotenv_before_reading_format(monkeypatch, capsys):
+    """Regression: cron scripts call `logger = get_logger(...)` at module top
+    BEFORE main() runs `load_config()`. Without the lazy load_config inside
+    get_logger, the first call locks `_initialized=True` with text format and
+    NAKAMA_LOG_FORMAT=json from .env never takes effect.
+
+    VPS-deploy 2026-04-26 caught this on `scripts/{backup,mirror,verify}_*.py`.
+    """
+    import shared.config as config_mod
+    import shared.log as log_mod
+
+    # Simulate: env not yet loaded (as if main() hasn't called load_config())
+    monkeypatch.delenv("NAKAMA_LOG_FORMAT", raising=False)
+    monkeypatch.setattr(log_mod, "_initialized", False)
+    root = logging.getLogger("nakama")
+    root.handlers.clear()
+
+    # The .env on disk would set NAKAMA_LOG_FORMAT=json — fake that via the
+    # load_config that get_logger should be calling lazily.
+    def fake_load_config():
+        os.environ["NAKAMA_LOG_FORMAT"] = "json"
+        return {}
+
+    monkeypatch.setattr(config_mod, "load_config", fake_load_config)
+
+    logger = log_mod.get_logger("nakama.test_lazy")
+    logger.info("lazy-loaded", extra={"job": "regression"})
+
+    line = capsys.readouterr().out.strip()
+    parsed = json.loads(line)
+    assert parsed["msg"] == "lazy-loaded"
+    assert parsed["job"] == "regression"
 
 
 @pytest.fixture(autouse=True)

@@ -82,6 +82,15 @@ class JSONFormatter(logging.Formatter):
 def get_logger(name: str = "nakama") -> logging.Logger:
     global _initialized
     if not _initialized:
+        # Lazy-load .env so module-level `logger = get_logger(...)` (e.g. in
+        # `scripts/backup_nakama_state.py`) sees `NAKAMA_LOG_FORMAT=json` even
+        # when the caller's `main()` hasn't run `load_config()` yet. Without
+        # this, the first call locks `_initialized=True` with the default text
+        # formatter and any later .env load is silently ignored.
+        from shared.config import load_config
+
+        load_config()
+
         # 設定 root nakama logger 的 handler（只做一次）
         root = logging.getLogger("nakama")
         root.setLevel(logging.INFO)
