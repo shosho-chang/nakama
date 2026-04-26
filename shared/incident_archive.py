@@ -126,6 +126,14 @@ def _slugify(rule_id: str) -> str:
     return s[:80] or "unknown"
 
 
+def _yaml_safe(s: str) -> str:
+    """Make a string safe to embed inside a YAML double-quoted scalar.
+
+    Escapes `"` and `\\`, collapses CR/LF to spaces. Sufficient for the
+    auto-archived stubs we write (no exotic Unicode escapes needed)."""
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", " ")
+
+
 def _render_stub(
     *,
     rule_id: str,
@@ -139,8 +147,14 @@ def _render_stub(
     detected_iso = fired_local.replace(microsecond=0).isoformat()
     postmortem_due = (fired_local + timedelta(days=7)).strftime("%Y-%m-%d")
     slug = _slugify(rule_id)
-    title_yaml = title.replace('"', '\\"')
-    category_tag = rule_id.split("-", 1)[0].split("_", 1)[0] or "alert"
+    # YAML scalar safety: escape quotes + collapse newlines. title may be
+    # `alert.message[:80]` and rule_id may carry `:`, `/`, `!`, spaces — all of
+    # which break unquoted YAML scalars.
+    title_yaml = _yaml_safe(title)
+    trigger_yaml = _yaml_safe(rule_id)
+    # Use slug (already filesystem/YAML-safe) for the category tag, not raw rule_id —
+    # otherwise rule_ids like "alert/foo bar" leak `/` and spaces into YAML list items.
+    category_tag = slug.split("-", 1)[0] or "alert"
 
     if context:
         ctx_lines = "\n".join(f"- `{k}`: {context[k]}" for k in sorted(context.keys()))
@@ -156,7 +170,7 @@ detected_at: {detected_iso}
 mitigated_at:
 resolved_at:
 postmortem_due: {postmortem_due}
-trigger: {rule_id}
+trigger: "{trigger_yaml}"
 owner: 修修
 tags:
   - incident

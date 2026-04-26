@@ -67,7 +67,7 @@ def test_critical_alert_archives_to_pending_dir(tmp_path, monkeypatch):
     files = list(tmp_path.glob("*.md"))
     assert len(files) == 1
     body = files[0].read_text(encoding="utf-8")
-    assert "trigger: wp_fleet_unhealthy" in body
+    assert 'trigger: "wp_fleet_unhealthy"' in body
     assert "severity: SEV-1" in body  # critical → SEV-1
 
 

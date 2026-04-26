@@ -40,7 +40,7 @@ def test_archive_creates_new_stub_with_frontmatter(tmp_path: Path):
     assert "id: 2026-04-26-backup-r2-fail" in body
     assert 'title: "R2 backup mirror failed"' in body
     assert "severity: SEV-2" in body  # error → SEV-2
-    assert "trigger: backup-r2-fail" in body
+    assert 'trigger: "backup-r2-fail"' in body  # always quoted (YAML safe)
     assert "status: detected" in body
     # body
     assert "upload to bucket B2 timed out after 30s" in body
@@ -145,8 +145,9 @@ def test_severity_to_tier_mapping(tmp_path: Path, severity: str, expected: str):
 
 
 def test_slugify_handles_special_chars(tmp_path: Path):
+    rule_id = "alert/category with spaces & symbols!"
     result = archive_incident(
-        rule_id="alert/category with spaces & symbols!",
+        rule_id=rule_id,
         severity="error",
         title="t",
         message="m",
@@ -156,6 +157,71 @@ def test_slugify_handles_special_chars(tmp_path: Path):
     assert result is not None
     # Special chars collapsed to single dashes, lowercased
     assert result.path.name == "2026-04-26-alert-category-with-spaces-symbols.md"
+    body = result.path.read_text(encoding="utf-8")
+    frontmatter = body.split("---\n", 2)[1]
+
+    # `tags:` list must use slug-prefix, not raw rule_id (otherwise `/` and
+    # spaces leak into a YAML list item and break frontmatter parse).
+    assert "  - alert\n" in frontmatter
+    assert "  - alert/category" not in frontmatter
+    # `trigger:` keeps the raw rule_id (informational) but inside double-quoted
+    # YAML scalar, so `/` `!` `:` `space` etc don't break parsing.
+    assert f'trigger: "{rule_id}"' in frontmatter
+
+
+def test_frontmatter_yaml_parses_with_special_chars(tmp_path: Path):
+    """Strongest structural guarantee: yaml.safe_load() round-trips the
+    frontmatter even when rule_id / title contain `:`, `/`, `!`, `"`, spaces.
+    String-substring asserts can pass while YAML is broken — this catches that."""
+    import yaml
+
+    rule_id = 'alert: with "quotes" / slash & symbol!'
+    title = 'oh no: "everything"\nbroke'
+    result = archive_incident(
+        rule_id=rule_id,
+        severity="error",
+        title=title,
+        message="m",
+        fired_at=_fake_fired_at(),
+        pending_dir=tmp_path,
+    )
+    assert result is not None
+    body = result.path.read_text(encoding="utf-8")
+    frontmatter_block = body.split("---\n", 2)[1]
+
+    parsed = yaml.safe_load(frontmatter_block)
+    assert isinstance(parsed, dict)
+    # Round-trip preserved: trigger keeps the raw rule_id, title collapses newlines
+    assert parsed["trigger"] == rule_id
+    assert "\n" not in parsed["title"]
+    assert "everything" in parsed["title"]
+    assert parsed["severity"] == "SEV-2"
+    # tags is a YAML list of clean slug-prefix entries
+    assert isinstance(parsed["tags"], list)
+    assert "alert" in parsed["tags"]
+    assert "incident" in parsed["tags"]
+
+
+def test_title_with_newlines_stays_on_one_yaml_line(tmp_path: Path):
+    """Caller may pass `alert.message[:80]` which can contain \\n. Title must
+    not span multiple YAML lines or many parsers (Obsidian frontmatter included)
+    misread the scalar."""
+    result = archive_incident(
+        rule_id="multiline-test",
+        severity="error",
+        title="line one\nline two\rline three",
+        message="m",
+        fired_at=_fake_fired_at(),
+        pending_dir=tmp_path,
+    )
+    assert result is not None
+    body = result.path.read_text(encoding="utf-8")
+    # Title rendered on one line, with newlines collapsed to spaces
+    assert 'title: "line one line two line three"' in body
+    # And the YAML block is well-formed: no stray closing-quote on its own line
+    frontmatter = body.split("---\n", 2)[1]
+    title_line = next(line for line in frontmatter.splitlines() if line.startswith("title:"))
+    assert title_line.count('"') == 2  # opening + closing on same line
 
 
 def test_archive_naive_datetime_treated_as_utc(tmp_path: Path):

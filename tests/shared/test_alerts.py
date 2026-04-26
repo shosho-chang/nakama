@@ -114,7 +114,7 @@ def test_alert_error_archives_to_pending_dir(fake_slack, tmp_path, monkeypatch):
     files = list(tmp_path.glob("*.md"))
     assert len(files) == 1
     body = files[0].read_text(encoding="utf-8")
-    assert "trigger: backup-fail" in body
+    assert 'trigger: "backup-fail"' in body
     assert "severity: SEV-2" in body
     assert "R2 upload failed" in body
 
