@@ -381,7 +381,9 @@ def probe_nakama_gateway(
     """
     now = now or _now()
     started = time.monotonic()
-    url = url or os.getenv("NAKAMA_HEALTHZ_URL", DEFAULT_NAKAMA_HEALTHZ_URL)
+    # `or DEFAULT` instead of `os.getenv(K, DEFAULT)`: dotenv parses `KEY=` as `""`,
+    # which os.getenv treats as set, returning "" — httpx.get("") then UnsupportedProtocols.
+    url = url or os.getenv("NAKAMA_HEALTHZ_URL") or DEFAULT_NAKAMA_HEALTHZ_URL
 
     try:
         with httpx.Client(timeout=timeout_s) as client:

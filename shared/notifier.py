@@ -12,7 +12,7 @@ logger = get_logger()
 def send_email(subject: str, body: str) -> None:
     """發送 Email 通知給 Owner。"""
     smtp_host = os.environ.get("SMTP_HOST", "")
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_port = int(os.environ.get("SMTP_PORT") or "587")
     smtp_user = os.environ.get("SMTP_USER", "")
     smtp_pass = os.environ.get("SMTP_PASS", "")
     notify_to = os.environ.get("NOTIFY_TO", "")
