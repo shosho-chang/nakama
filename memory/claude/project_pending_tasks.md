@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-25T23
+updated: 2026-04-26T13
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
@@ -76,7 +76,12 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ **PR #138 merged 2026-04-25** `7921d7e` — F2 cannibalization 白名單（brand_query_patterns + homepage_equivalent_patterns，site-specific 在 yaml seed、baked-in 為空 list 對 OSS friendly）+ F4 enrich.py 自己 load_dotenv（解 `set -a && source .env` 痛點，per [feedback_explicit_load_dotenv_for_non_db_paths.md](feedback_explicit_load_dotenv_for_non_db_paths.md)）。6 條新測試 + 1 改 round-trip exempt 規則。82 pass
 - ✅ **F3=A 凍結**（2026-04-25，PR #138）：Slice B 維持 site-wide raw GSC posture（zero-LLM 契約守住），topic relevance 過濾在 Slice C Brook compose 內做（Claude Haiku batch rank ~$0.005/run）。理由：(1) 不破壞 Slice B 凍結契約；(2) site-wide SEOContextV1 未來可重用給「站台 SEO 全景儀表板」消費者；(3) Brook 本就 LLM 規劃，narrow 是自然延伸。寫進 phase-1-seo-solution.md §C.1 / §C.2 / §C.4.1 / §C.5
 - 🚧 **PR #139 OPEN — Slice C：Brook compose `seo_context` opt-in 整合**：`agents/brook/seo_block.py`（T2 sanitization + T11 token budget priority `striking > related > SERP`）+ `agents/brook/seo_narrow.py`（Claude Haiku narrow，LLM 失敗 fallback 不 raise）+ `compose.py` 加 `seo_context` + `core_keywords` kwargs；`seo_context=None` 路徑 byte-identical 雙保險（test_seo_context_none_equals_default_arg + test_compose_without_seo_does_not_call_narrow）。15 新 test，1480 全綠 + ruff 綠
-- ⬜ Phase 1.5：seo-audit-post skill + DataForSEO + firecrawl + PageSpeed（ADR-009 已定延後）
+- ✅ **Phase 1.5 D.1 + D.2 + F merged 2026-04-26**（PR #173/#181/#183/#185）— 用途 1（keyword-research）+ 2（seo-audit-post）已 production；用途 3（Brook 整合）near-production 缺 E
+  - 詳見 [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — 12 follow-up + 4 test gap
+  - **修修瀏覽器待辦**：(1) T1 production benchmark on `seo-keyword-enrich`（5 keyword P95 wall-clock）；(2) Brook compose 端到端 smoke `compose_and_enqueue(seo_context=<enriched.md>)`；(3) `/bridge/cost` 觀察 D.2 LLM 成本「沒出現」印證 follow-up A3
+- ⬜ **E (DataForSEO Labs)** — 卡修修 manual：註冊 + $50 + `DATAFORSEO_LOGIN/PASSWORD` 進 .env
+- ⬜ **D.2 follow-up backlog (6 條)** — 詳見上 memo §A；最值得修：A3 cost-tracking helper（`shared.anthropic_client.messages_create_with_tracking`）一次解 D.2 + `kb_search.py` 兩處
+- ⬜ **F follow-up backlog (6 條)** — 詳見上 memo §B；最值得修：B2 `url` sanitize gap（defense-in-depth）+ B4 firecrawl `Location` 物件接 country
 
 **雙語閱讀 Pipeline：**
 - ✅ P1 PubMed flow（PR #71）：PDF 全文 → 雙語 reader（pymupdf4llm + translator）

@@ -30,8 +30,8 @@ originSessionId: d68cbc3c-496f-44e3-b795-24cd48c68d09
 | **task prompt** | 4 sub-slice + 28 deterministic + 12 LLM + report 模板凍結 | — | ✅ PR #167 a985d14 |
 | **D.1** | `shared/pagespeed_client.py` + `shared/seo_audit/*` 8 module（28 rule + types + html_fetcher）+ 146 unit test | 2-2.5 天 | ✅ PR #173 merged `cc35218` 2026-04-26 |
 | **D.1-followup** | 2 correctness bug（M1 get_text + M3 query/case/relative urljoin）+ env doc + 5 test | 半天 | ✅ PR #181 merged `f247184` 2026-04-26 |
-| **D.2** | `seo-audit-post` skill + LLM semantic 12 條 + markdown report；reuse gsc_client + 改 kb_search 加 `purpose` 參數 | 2.5-3 天 | 🟢 PR #183 opened 2026-04-26 — 詳見 [project_d2_seo_audit_pr183.md](project_d2_seo_audit_pr183.md)，等 review |
-| **F** | firecrawl top-3 SERP + Claude Haiku 摘要 → 填 `competitor_serp_summary` | 1-1.5 天 | 🟢 PR #185 opened 2026-04-26 — 詳見 [project_f_slice_firecrawl_pr185.md](project_f_slice_firecrawl_pr185.md)，等 review |
+| **D.2** | `seo-audit-post` skill + LLM semantic 12 條 + markdown report；reuse gsc_client + 改 kb_search 加 `purpose` 參數 | 2.5-3 天 | ✅ PR #183 merged `23751d9` 2026-04-26 — 詳見 [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) |
+| **F** | firecrawl top-3 SERP + Claude Haiku 摘要 → 填 `competitor_serp_summary` | 1-1.5 天 | ✅ PR #185 merged `6712527` 2026-04-26 — 詳見 [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) |
 | **E** | DataForSEO Labs `keyword_difficulty` → `seo-keyword-enrich`（health filter 內建）| 1-1.5 天 | ⬜ 卡修修 DataForSEO 註冊 + $50 + `DATAFORSEO_LOGIN/PASSWORD` |
 
 **並行策略**：D.1-followup → D.2 sequential（D.2 reuse seo_audit modules）；E / F 不依賴 follow-up bug；E / F 互不依賴可並行。三條 dual-window：D.1-followup（半天小修） / E（DataForSEO） / F（firecrawl）。
@@ -68,8 +68,8 @@ originSessionId: d68cbc3c-496f-44e3-b795-24cd48c68d09
 | 用途 | 現狀 | 補完路徑 |
 |---|---|---|
 | 1. 內容創作建議 | ✅ keyword-research production | — |
-| 2. 既有部落格 SEO 體檢 | 🟡 D.1 PR #173 open | D.1 merge → Phase 1.5 D.2 |
-| 3. Brook compose 整合（寫稿吃 SEO 數據） | 🟡 半完成 — Slice C opt-in 已就緒，enrich 缺 difficulty + SERP 摘要 | Phase 1.5 E + F |
+| 2. 既有部落格 SEO 體檢 | ✅ **production**（D.2 PR #183 merged） | 修修跑 T1 production benchmark on real URLs |
+| 3. Brook compose 整合（寫稿吃 SEO 數據） | 🟢 **near-production**（C opt-in + F SERP 摘要 ready，缺 E difficulty） | Phase 1.5 E（DataForSEO） |
 
 ## 重要 caveats（task prompt 已寫進，D.2 PR 必看）
 
