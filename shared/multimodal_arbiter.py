@@ -270,7 +270,7 @@ def arbitrate_uncertain(
         logger.warning("SRT 解析結果為空，所有 uncertain 都會被 skip")
         return []
 
-    max_workers = int(os.environ.get("GEMINI_MAX_WORKERS", "3"))
+    max_workers = int(os.environ.get("GEMINI_MAX_WORKERS") or "3")
     logger.info(f"多模態仲裁：{len(uncertainties)} 個片段，max_workers={max_workers}")
 
     results: list[ArbitrationVerdict] = []

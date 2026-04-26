@@ -259,8 +259,10 @@ def _build_from_env() -> UsoppDaemon:
     wp = WordPressClient.from_env(site)
     publisher = Publisher(wp)
     worker_id = os.environ.get("USOPP_WORKER_ID") or f"usopp-{socket.gethostname()}"
-    poll_interval_s = int(os.environ.get("USOPP_POLL_INTERVAL_S", DEFAULT_POLL_INTERVAL_S))
-    batch_size = int(os.environ.get("USOPP_BATCH_SIZE", DEFAULT_BATCH_SIZE))
+    # `or DEFAULT` instead of `os.environ.get(K, DEFAULT)`: dotenv `KEY=` returns ""
+    # and `int("")` raises ValueError. See feedback_dotenv_empty_string_fallback.md.
+    poll_interval_s = int(os.environ.get("USOPP_POLL_INTERVAL_S") or DEFAULT_POLL_INTERVAL_S)
+    batch_size = int(os.environ.get("USOPP_BATCH_SIZE") or DEFAULT_BATCH_SIZE)
     return UsoppDaemon(
         wp_client=wp,
         publisher=publisher,
