@@ -11,7 +11,7 @@ abstract. The four binding principles:
 |---|---|---|
 | **P1** | Karpathy aggregator | Concept pages get the merged view; the chapter source page records what *this chapter* said in full fidelity. |
 | **P2** | LLM-readable deep extract | **No word limit.** Capture every mechanism, experimental condition, number, and citation. The downstream agent does the abridging at retrieval time. |
-| **P3** | Figures first-class | Figures / tables / equations are referenced inline via `<<FIG:fig-{ch}-{N}>>` / `<<TAB:tab-{ch}-{N}>>` placeholders or `$$LaTeX$$` for math. Do not summarise away their content. |
+| **P3** | Figures first-class | Figures / tables / equations are rendered inline via Obsidian image embeds `![[Attachments/Books/{book_id}/ch{n}/{ref}.{ext}]]` + italic caption (figures), spliced markdown table content + bold caption (tables), or `$$LaTeX$$` (math). Do not summarise away their content. |
 | **P4** | Conflict detection mandatory | Concept-level conflicts go into the concept page's `## 文獻分歧 / Discussion` section (handled by `extract_concepts.md`). The chapter source records this chapter's claims verbatim — including the values that may later disagree with other sources. |
 
 Removed from v1: the "每節 300-500 字" word limit (A-4) and the implicit
@@ -30,13 +30,18 @@ underlying chapter is dense.
 - `section_anchors` — list of section headings detected in the chapter
 - `chapter_content` — the full chapter text (Opus 1M context fits 30-100 pages)
 - `language` — `en` / `zh-TW` / `zh-CN`
-- `figures` — list of `{ref, caption, tied_to_section, llm_description}` from
-  the parse_book outline + Vision describe pass; placeholders in
-  `chapter_content` will be `<<FIG:fig-{ch}-{N}>>` style — **do not strip
-  them**, keep them inline at the position the original chapter put them so
-  agent retrieval can reverse-look-up the figure
+- `figures` — list of `{ref, extension, caption, tied_to_section, llm_description}` from
+  the parse_book outline + Vision describe pass; the `chapter_content` you
+  receive will contain `<<FIG:fig-{ch}-{N}>>` placeholders at the positions
+  where the original chapter laid out each figure — **you must swap each
+  placeholder for an Obsidian image embed + caption** (see "Placeholder
+  swap rules" below). The `llm_description` stays in the page frontmatter
+  for retrieval reverse-look-up; do not duplicate it into the body
 - `tables` — same structure as `figures` but for `<<TAB:tab-{ch}-{N}>>`
-  references (markdown lives at `Attachments/Books/{book_id}/ch{n}/{ref}.md`)
+  placeholders; markdown table content lives at
+  `Attachments/Books/{book_id}/ch{n}/{ref}.md` and **must be spliced
+  directly into the body** at the placeholder position (preceded by a
+  bold caption)
 
 ---
 
@@ -118,10 +123,11 @@ LLM 自評：本章內容跟既有 KB 的什麼 concept / source 強相關？列
 3. **Section concept map 強制** — 每節結尾必有 concept map（mermaid /
    nested bullet / plain bullet 三選一）。沒有 concept map 的 section
    會在 acceptance test 被 reject（Acceptance §6 Pipeline 重接線項）。
-4. **保留 figures / tables 占位符** — 章內若有 `<<FIG:fig-1-3>>` /
-   `<<TAB:tab-1-2>>` 占位符，**保留在原位**；不要替換成「（見圖
-   1-3）」之類的中文化字串。Vision describe 的內容會由 ingest pipeline
-   在 chapter source 寫入時 splice 進來，retrieval 端能反查。
+4. **占位符 swap 強制** — 章內每個 `<<FIG:fig-{ch}-{N}>>` /
+   `<<TAB:tab-{ch}-{N}>>` 占位符**必須在原位 swap 成最終 markdown**，
+   遵守下方「Placeholder swap rules」。**不可保留占位符** — Obsidian
+   render 占位符是純文字、看不到圖；占位符是 parse 階段中介格式，body
+   寫入時必須消滅。也不要替換成「（見圖 1-3）」之類的中文化字串。
 5. **數學公式 LaTeX inline** — `$$ATP + H_2O \to ADP + P_i + 30.5\ kJ/mol$$`
    而不是「ATP 水解放出能量」這種失去精確度的描述。
 6. **保留原文術語並附中文翻譯** — 例如：`Frank-Starling Law（佛朗克–
@@ -137,11 +143,59 @@ LLM 自評：本章內容跟既有 KB 的什麼 concept / source 強相關？列
 
 ---
 
+## Placeholder swap rules（強制 — 違反此規則 ch1 已踩過 user-facing bug）
+
+**Why this section exists**: PR C ch1 v2 ingest 把占位符直接 leak 到最終
+body，Obsidian 開頁面看到 13 處純文字 `<<FIG:fig-1-1>>`、attachment 圖檔
+存在但完全不顯示。這是 spec gap × LLM 操作疏漏雙因素 bug，本 section 是
+strict 修補。
+
+### Figure placeholder swap
+
+每個 `<<FIG:fig-{ch}-{N}>>` 占位符必須 swap 成兩行 markdown：
+
+```markdown
+![[Attachments/Books/{book_id}/ch{n}/{ref}.{extension}]]
+*{caption}*
+```
+
+- `{ref}` / `{extension}` / `{caption}` 從 input 的 `figures` list 對應 entry 拿
+- 若 `caption` 為空，用 `*Figure {ch}.{N} — (no caption)*` fallback
+- **不要** 把 `llm_description` 也 splice 進 body — description 已在 frontmatter
+  `figures[].llm_description`，body 重複會吵雜且 desync 風險高
+- swap 後占位符必須 **完全消失**；如果你看到自己輸出含 `<<FIG:` 字串，
+  你違反了這條規則
+
+### Table placeholder swap
+
+每個 `<<TAB:tab-{ch}-{N}>>` 占位符必須 swap 成 caption + spliced markdown
+table content：
+
+```markdown
+**{caption}**
+
+{markdown table content read from Attachments/Books/{book_id}/ch{n}/{ref}.md}
+```
+
+- markdown table 在 `Attachments/Books/{book_id}/ch{n}/{ref}.md`，作為 ingest
+  driver input 已預讀傳入（在 `tables[].markdown_content` 欄位 — driver
+  fills this field; if missing, request the driver re-read the file）
+- 直接 inline 整張 markdown table，不要轉 transclude `![[tab-1-1.md]]`
+  （transclude 在 Obsidian 視覺切割感重 + retrieval 端讀不到）
+
+### Equation placeholder swap
+
+`<<EQ:eq-{ch}-{N}>>` 占位符（若有）swap 成 `$$LaTeX$$` inline math。
+
+---
+
 ## Avoid
 
 - 把章節壓縮成單一段 abstract（違反 P2）
 - 為了「乾淨」刪掉冷僻數字 / 引用 / 機轉細節（違反 P2）
-- 把 figures / tables 占位符替換成中文字串（破壞 retrieval 反查）
+- **保留 `<<FIG:>>` / `<<TAB:>>` / `<<EQ:>>` 占位符在最終 body**（違反 P3 + Obsidian render 顯示純文字 = user-facing bug，PR C ch1 已踩過）
+- 把占位符替換成「（見圖 1-3）」之類的中文字串（破壞 retrieval 反查）
+- 把 `llm_description` 也 splice 進 body（已在 frontmatter，重複會 desync）
 - 用「（細節省略）」「（公式略）」遮蓋內容（違反 P2 + P3）
 - 自己加觀點 / 推測超出原文（教科書 ingest 是忠實摘要）
 
@@ -159,7 +213,7 @@ Summary（v2，依 ADR-011 §3.2）。
 - 章節：第 {chapter_index} 章 — {chapter_title}
 - 頁碼範圍：{page_range}
 - 偵測到的節：{section_anchors}
-- 圖表清單：{figures_summary}（占位符 <<FIG:...>> / <<TAB:...>>）
+- 圖表清單：{figures_summary}（chapter_content 內含占位符 <<FIG:...>> / <<TAB:...>>，本 prompt 要求你 swap 成 Obsidian image embed / spliced table — 見下方規則）
 - 語言：{language}
 
 請按照以下結構輸出 markdown body（frontmatter 由 ingest pipeline 自動加）：
@@ -169,8 +223,16 @@ Summary（v2，依 ADR-011 §3.2）。
 ## {對每個 section_anchor}
 深度抽取本節所有 mechanism / 數字 / 實驗條件 / 引用文獻
 不限字數，要寫多深就寫多深
-保留 <<FIG:fig-{ch}-{N}>> / <<TAB:tab-{ch}-{N}>> 占位符在原位
-數學用 $$LaTeX$$ inline
+**占位符 swap 強制**：
+- 每個 <<FIG:fig-{ch}-{N}>> swap 成
+  ![[Attachments/Books/{book_id}/ch{n}/{ref}.{extension}]]
+  *{caption}*
+  （從 figures list metadata 拿 ref/extension/caption；description 留 frontmatter）
+- 每個 <<TAB:tab-{ch}-{N}>> swap 成
+  **{caption}**
+  {直接 inline markdown table content 從 tables[].markdown_content}
+- 每個 <<EQ:eq-{ch}-{N}>> swap 成 $$LaTeX$$
+最終 body 不可有任何 <<FIG: / <<TAB: / <<EQ: 殘留
 
 > 原書 verbatim："{1-2 句原書關鍵 claim}" (p.{page})
 
@@ -193,7 +255,8 @@ mentioned_in 用）
 - **不限字數** — 為下游 agent 消化深度抽取，不為人類閱讀摺扣
 - **每節 verbatim quote 1-2 句強制**
 - **每節 ### Section concept map 強制**
-- **保留 figures/tables 占位符在原位** — 不替換成中文敘述
+- **占位符 swap 強制** — 每個 <<FIG:>> / <<TAB:>> / <<EQ:>> swap 成最終 markdown（image embed / spliced table / LaTeX），最終 body 不可有任何占位符殘留
+- **不替換成中文敘述** — 不要把占位符換成「（見圖 1-3）」之類字串
 - **數學公式 $$LaTeX$$ inline** — 不要「水解放出能量」這種失去精確度的描述
 - 術語雙語：「Frank-Starling Law（佛朗克–史塔林定律）」
 - 保留原書「common misconception」段落

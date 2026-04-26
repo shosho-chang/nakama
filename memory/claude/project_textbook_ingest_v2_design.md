@@ -44,7 +44,7 @@ originSessionId: 27c0b340-d612-4f47-aba4-b4f3727267fd
 
 **改 4 檔**：
 - `.claude/skills/textbook-ingest/scripts/parse_book.py` — `_walk_epub_html` walker (img/table/math) + PDF `pymupdf4llm.to_markdown` + xref dedup figures + `--attachments-base-dir` CLI flag + outline JSON figures/tables
-- `.claude/skills/textbook-ingest/prompts/chapter-summary.md` — v2：拿掉字數上限 + 強制 verbatim + Section concept map + 保留 placeholders
+- `.claude/skills/textbook-ingest/prompts/chapter-summary.md` — v2：拿掉字數上限 + 強制 verbatim + Section concept map + 占位符 swap 強制（fig→image embed / tab→spliced markdown，PR #188 修）
 - `.claude/skills/textbook-ingest/SKILL.md` — Step 2 + Step 4 rewrite（4b Vision describe 新 step / 4d/4e v2 4-action dispatcher）
 - `agents/robin/ingest.py` — 移除 `_truncate_at_boundary(content, 30000)` no-op call (A-10)
 - `tests/skills/textbook_ingest/test_parse_book.py` — +12 cases
