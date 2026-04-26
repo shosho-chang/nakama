@@ -71,30 +71,52 @@ def test_emit_skips_below_handler_level(db_path):
     assert idx.stats().total == 0
 
 
-def test_emit_swallows_db_error_via_handle_error(tmp_path, monkeypatch):
-    """A broken DB path must not raise out of emit() — logger contract."""
-    handler = SQLiteLogHandler(db_path=tmp_path / "nonexistent" / "deeply" / "nested.db")
-
-    captured = {}
+def test_emit_swallows_db_error_via_handle_error(handler, monkeypatch):
+    """A broken insert path must not raise out of emit() — logger contract."""
+    captured: dict = {}
 
     def fake_handle_error(record):
         captured["handled"] = record
 
     monkeypatch.setattr(handler, "handleError", fake_handle_error)
 
-    # Force the LogIndex to fail by making the parent dir unwritable AFTER
-    # the handler is constructed (lazy index init only fires on first emit).
-    parent = tmp_path / "nonexistent"
-    parent.mkdir(parents=True)
-    parent.chmod(0o400)  # read-only — sqlite cannot create the db file
-    try:
-        handler.emit(_make_record(logging.INFO, "should not raise"))
-    finally:
-        parent.chmod(0o700)  # cleanup so tmp_path can be deleted
+    # Force LogIndex.insert to raise so we exercise the except branch
+    # deterministically (filesystem-permission tricks are flaky across OSes).
+    def fake_get_index():
+        class _Broken:
+            def insert(self, **_):
+                raise RuntimeError("simulated db corruption")
 
-    # Either insert silently failed via handle_error OR succeeded (depends on
-    # OS permission handling); the contract is just "no raise".
-    assert "handled" in captured or True  # contract: no exception bubbled
+        return _Broken()
+
+    monkeypatch.setattr(handler, "_get_index", fake_get_index)
+    handler.emit(_make_record(logging.INFO, "should not raise"))
+
+    assert "handled" in captured, "handle_error should be called when insert raises"
+
+
+def test_emit_captures_exc_info_into_extra(handler, db_path):
+    """`logger.exception()` sets record.exc_info; the traceback must land in
+    extra_json so /bridge/logs FTS can search inside it. Without this,
+    postmortem search loses stack traces — exactly the type of log most
+    useful when debugging."""
+    try:
+        raise ValueError("boom — disk gremlins")
+    except ValueError:
+        import sys
+
+        record = _make_record(logging.ERROR, "task failed")
+        record.exc_info = sys.exc_info()
+        handler.emit(record)
+
+    from shared.log_index import LogIndex
+
+    idx = LogIndex.from_path(db_path)
+    hits = idx.search("gremlins")  # the message text lives only inside the traceback
+    assert len(hits) == 1
+    assert hits[0].extra.get("exc"), "exc traceback missing from extra_json"
+    assert "ValueError" in hits[0].extra["exc"]
+    assert "disk gremlins" in hits[0].extra["exc"]
 
 
 def test_get_logger_skips_db_handler_when_env_disabled(monkeypatch):

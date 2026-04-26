@@ -132,17 +132,30 @@ class SQLiteLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
+            extra = _extract_extra(record)
+            # `logger.exception()` sets exc_info; capture the traceback into
+            # extra so /bridge/logs can search inside it (FTS5 indexes
+            # extra_json). Without this, the most useful postmortem log
+            # type loses its stack trace at insert time.
+            if record.exc_info:
+                extra["exc"] = self.format_exc(record.exc_info)
             self._get_index().insert(
                 ts=datetime.fromtimestamp(record.created, tz=timezone.utc),
                 level=record.levelname,
                 logger=record.name,
                 msg=record.getMessage(),
-                extra=_extract_extra(record),
+                extra=extra,
             )
         except Exception:
             # Logging itself must NEVER raise — fall back to stderr via
             # logging.Handler default behavior.
             self.handleError(record)
+
+    @staticmethod
+    def format_exc(exc_info) -> str:
+        """Format exc_info via the standard `Formatter.formatException` route.
+        Wrapped as a method so tests can monkeypatch if needed."""
+        return logging.Formatter().formatException(exc_info)
 
 
 def get_logger(name: str = "nakama") -> logging.Logger:
