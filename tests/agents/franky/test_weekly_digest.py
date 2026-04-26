@@ -22,6 +22,7 @@ from agents.franky.weekly_digest import (
     CostSummary,
     CronSummary,
     DigestBundle,
+    IncidentSummary,
     VPSSnapshot,
     build_digest_text,
     render_slack_text,
@@ -30,6 +31,7 @@ from agents.franky.weekly_digest import (
     summarise_backup,
     summarise_cost,
     summarise_cron,
+    summarise_incidents,
 )
 
 
@@ -42,7 +44,7 @@ def _now() -> datetime:
 # ---------------------------------------------------------------------------
 
 
-def _fake_bundle() -> DigestBundle:
+def _fake_bundle(*, incidents: IncidentSummary | None = None) -> DigestBundle:
     now = _now()
     return DigestBundle(
         period_start=now - timedelta(days=7),
@@ -65,15 +67,69 @@ def _fake_bundle() -> DigestBundle:
             latest_checked_at=now.isoformat(),
         ),
         cost=CostSummary(this_week_usd=3.21, last_week_usd=3.06, delta_pct=4.9),
+        incidents=incidents
+        or IncidentSummary(total_30d=0, by_severity={}, open_count=0, top_recurring=[]),
         operation_id="op_deadbeef",
     )
 
 
-def test_render_contains_all_5_sections():
+def test_render_contains_all_6_sections():
     text = render_slack_text(_fake_bundle())
-    for marker in ("VPS 快照", "Cron 成功率", "Alert 統計", "R2 備份", "LLM 花費"):
+    for marker in ("VPS 快照", "Cron 成功率", "Alert 統計", "R2 備份", "LLM 花費", "Incidents"):
         assert marker in text
     assert "op_deadbeef" in text
+
+
+def test_render_incidents_zero_shows_clean():
+    text = render_slack_text(_fake_bundle())  # default = 0 incidents
+    assert "0 件" in text
+    assert "incidents-pending 乾淨" in text
+
+
+def test_render_incidents_with_data_shows_breakdown_and_top_recurring():
+    incidents = IncidentSummary(
+        total_30d=4,
+        by_severity={"SEV-1": 1, "SEV-2": 2, "SEV-3": 1},
+        open_count=2,
+        top_recurring=[("cron-stale", 5), ("r2-mirror-fail", 3), ("wp-shosho", 1)],
+    )
+    text = render_slack_text(_fake_bundle(incidents=incidents))
+    assert "30 天總 4 件" in text
+    assert "SEV-1 `1`" in text
+    assert "SEV-2 `2`" in text
+    assert "SEV-3 `1`" in text
+    assert "未結 `2`" in text
+    assert "`cron-stale` ×5" in text
+    assert "`r2-mirror-fail` ×3" in text
+    assert "Top recurring" in text
+
+
+def test_summarise_incidents_uses_pending_dir(tmp_path, monkeypatch):
+    """summarise_incidents reads from the env-configured pending dir."""
+    from shared.incident_archive import archive_incident
+
+    monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path))
+    archive_incident(
+        rule_id="rule-A",
+        severity="critical",
+        title="t",
+        message="m",
+        fired_at=_now(),
+        pending_dir=tmp_path,
+    )
+    archive_incident(
+        rule_id="rule-B",
+        severity="error",
+        title="t",
+        message="m",
+        fired_at=_now(),
+        pending_dir=tmp_path,
+    )
+
+    summary = summarise_incidents(since=_now() - timedelta(days=30))
+    assert summary.total_30d == 2
+    assert summary.by_severity == {"SEV-1": 1, "SEV-2": 1}
+    assert summary.open_count == 2  # both in 'detected' status
 
 
 def test_render_formats_delta_plus_percent():

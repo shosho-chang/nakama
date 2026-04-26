@@ -101,3 +101,63 @@ def test_alert_error_re_fires_after_dedupe_window(fake_slack):
 def test_alert_unknown_severity_raises():
     with pytest.raises(ValueError, match="unknown severity"):
         alerts.alert("critical", "x", "y")  # 'critical' not in Literal['error','warn','info']
+
+
+# ---- incident archive integration -------------------------------------------
+
+
+def test_alert_error_archives_to_pending_dir(fake_slack, tmp_path, monkeypatch):
+    """Each unsuppressed error fire writes a stub to NAKAMA_INCIDENTS_PENDING_DIR."""
+    monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path))
+    alerts.alert("error", "backup", "R2 upload failed", dedupe_key="backup-fail")
+
+    files = list(tmp_path.glob("*.md"))
+    assert len(files) == 1
+    body = files[0].read_text(encoding="utf-8")
+    assert "trigger: backup-fail" in body
+    assert "severity: SEV-2" in body
+    assert "R2 upload failed" in body
+
+
+def test_alert_error_warn_info_archive_only_error(fake_slack, tmp_path, monkeypatch):
+    monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path))
+    alerts.alert("info", "deploy", "restarted")
+    alerts.alert("warn", "publish", "slow")
+    alerts.alert("error", "backup", "fail", dedupe_key="archive-test")
+
+    files = list(tmp_path.glob("*.md"))
+    assert len(files) == 1
+    assert "archive-test" in files[0].name
+
+
+def test_alert_error_suppressed_does_not_archive_twice(fake_slack, tmp_path, monkeypatch):
+    """Second fire within suppress window must not append to the stub
+    (only unsuppressed fires reach archive_incident)."""
+    monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path))
+    alerts.alert("error", "backup", "fire 1", dedupe_key="dedup-archive")
+    alerts.alert("error", "backup", "fire 2", dedupe_key="dedup-archive")  # suppressed
+
+    files = list(tmp_path.glob("*.md"))
+    assert len(files) == 1
+    body = files[0].read_text(encoding="utf-8")
+    assert "fire 1" in body
+    assert "fire 2" not in body  # suppressed alerts skip archive
+    assert "## Repeat fires" not in body
+
+
+def test_alert_archive_failure_does_not_crash_alert(fake_slack, tmp_path, monkeypatch, caplog):
+    """If archive_incident raises, the alert call still succeeds — _archive
+    wraps it in try/except so Slack delivery is never blocked by archive IO."""
+    from shared import incident_archive as ia_mod
+
+    def boom(**kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(ia_mod, "archive_incident", boom)
+    caplog.set_level("ERROR")
+
+    # Alert should still complete without raising
+    alerts.alert("error", "backup", "fail", dedupe_key="failure-test")
+
+    fake_slack.post_plain.assert_called_once()  # Slack DM still went out
+    assert any("incident archive failed" in r.message for r in caplog.records)

@@ -58,6 +58,41 @@ def test_first_fire_sends_and_records_firing():
     bot.post_alert.assert_called_once()
 
 
+def test_critical_alert_archives_to_pending_dir(tmp_path, monkeypatch):
+    """Critical AlertV1 dispatch creates an incident stub."""
+    monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path))
+    bot = MagicMock()
+    dispatch(_make_alert(rule_id="wp_fleet_unhealthy", severity="critical"), slack_bot=bot)
+
+    files = list(tmp_path.glob("*.md"))
+    assert len(files) == 1
+    body = files[0].read_text(encoding="utf-8")
+    assert "trigger: wp_fleet_unhealthy" in body
+    assert "severity: SEV-1" in body  # critical → SEV-1
+
+
+def test_warning_alert_does_not_archive(tmp_path, monkeypatch):
+    monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path))
+    bot = MagicMock()
+    dispatch(_make_alert(rule_id="wp_warning_slow", severity="warning"), slack_bot=bot)
+
+    assert list(tmp_path.glob("*.md")) == []
+
+
+def test_suppressed_critical_does_not_archive(tmp_path, monkeypatch):
+    """Within dedup window, repeats are suppressed and never reach archive."""
+    monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path))
+    bot = MagicMock()
+    dispatch(_make_alert(rule_id="cron_stale", severity="critical"), slack_bot=bot)
+    dispatch(_make_alert(rule_id="cron_stale", severity="critical"), slack_bot=bot)
+
+    files = list(tmp_path.glob("*.md"))
+    assert len(files) == 1
+    body = files[0].read_text(encoding="utf-8")
+    # Only the first fire was recorded; the second was suppressed before archive
+    assert "## Repeat fires" not in body
+
+
 def test_repeated_fire_within_window_suppresses():
     bot = MagicMock()
     bot.post_alert.return_value = "ts1"
