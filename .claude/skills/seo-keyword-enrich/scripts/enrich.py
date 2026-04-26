@@ -1,33 +1,35 @@
-"""SEO keyword enrichment pipeline — Slice B GSC-only baseline.
+"""SEO keyword enrichment pipeline — Slice B GSC + Slice F firecrawl SERP.
 
 Reads a `keyword-research` markdown report (ADR-009 frozen input contract;
 see `.claude/skills/keyword-research/references/output-contract.md`), calls
 Google Search Console for the last 28 days, filters striking-distance rows,
-detects cannibalization warnings, and writes a `SEOContextV1`-shaped markdown
+detects cannibalization warnings, optionally pulls top-3 SERP via firecrawl
+and summarizes via Claude Haiku, then writes a `SEOContextV1`-shaped markdown
 report to the vault for downstream consumption (Brook compose Slice C,
 `seo-optimize-draft` Phase 2).
 
-Scope (Slice B):
-    - GSC only — DataForSEO / firecrawl / PageSpeed stubbed out
-    - `competitor_serp_summary` always `None` (fill in Phase 1.5)
-    - Zero LLM calls (pure parse + API + filter + build)
+Scope (Slice B + F):
+    - GSC for primary / related / striking-distance / cannibalization (Slice B)
+    - firecrawl SERP top-3 + Haiku summary → `competitor_serp_summary` (Slice F)
+    - DataForSEO difficulty / PageSpeed remain stubbed (E pending / belongs to
+      `seo-audit-post`)
 
-Design — pure functions + inject-able client
----------------------------------------------
+Design — pure functions + inject-able collaborators
+---------------------------------------------------
 Functions are pulled apart so each unit is directly testable without
-standing up a real `GSCClient`:
+standing up a real `GSCClient` / firecrawl / Anthropic SDK:
 
 - `parse_keyword_research_input(path)`       pure
 - `resolve_target_site(parsed)`              pure
 - `build_gsc_query_payload(site, end_date)`  pure
-- `build_seo_context(rows, …)`               pure (given rows)
-- `render_output_markdown(ctx)`              pure
-- `enrich(input_path, output_dir, client?)`  orchestrator — `client=None`
-                                             triggers `GSCClient.from_env()`,
-                                             otherwise injects the given one
-                                             (tests pass a fake client).
+- `build_seo_context(rows, …)`               pure (given rows + serp_summary)
+- `render_output_markdown(ctx, *, phase)`    pure
+- `enrich(input_path, output_dir, client?, serp_runner?, enable_serp?)`
+      orchestrator — `client=None` → `GSCClient.from_env()`;
+      `serp_runner=None` → `_default_serp_runner` (firecrawl + Haiku).
+      Tests inject fakes for both.
 
-CLI: `python enrich.py --input <path> --output-dir <dir> [--dry-run]`.
+CLI: `python enrich.py --input <path> --output-dir <dir> [--dry-run] [--no-serp]`.
 """
 
 from __future__ import annotations
@@ -94,6 +96,17 @@ _TARGET_SITE_TO_GSC_PROPERTY_ENV: dict[TargetSite, str] = {
 # (ADR-008 §6) would be the authoritative lookup once populated; until then,
 # default to the primary blog and let the user override via CLI.
 _DEFAULT_TARGET_SITE: TargetSite = "wp_shosho"
+
+# Frontmatter `phase` values per Slice F:
+#   GSC + firecrawl OK            → "1.5 (gsc + firecrawl)"
+#   firecrawl/summary failed/skipped → "1.5 (gsc + serp-skipped)"
+#   --no-serp opt-out             → "1 (gsc-only)" (compatible with Slice B)
+_PHASE_GSC_ONLY = "1 (gsc-only)"
+_PHASE_GSC_FIRECRAWL = "1.5 (gsc + firecrawl)"
+_PHASE_GSC_SERP_SKIPPED = "1.5 (gsc + serp-skipped)"
+
+# Top-N SERP results to fetch via firecrawl (per ADR-009 Slice F).
+_SERP_TOP_N = 3
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +409,7 @@ def build_seo_context(
     target_site: TargetSite,
     primary_keyword: str,
     source_path: Path,
+    serp_summary: str | None = None,
     now_fn: Callable[[], datetime] | None = None,
     thresholds: dict[str, Any] | None = None,
 ) -> SEOContextV1:
@@ -403,7 +417,8 @@ def build_seo_context(
 
     `now_fn` injected for testability (default `datetime.now(timezone.utc)`).
     `thresholds` optionally override cannibalization config; `None` reads yaml.
-    `competitor_serp_summary` is stubbed to `None` in Slice B.
+    `serp_summary` filled by Slice F firecrawl chain; `None` if disabled or
+    upstream fetch / summarize failed.
     """
     now = now_fn() if now_fn is not None else datetime.now(tz=timezone.utc)
     # Ensure tz-aware UTC (AwareDatetime requirement).
@@ -424,7 +439,7 @@ def build_seo_context(
         related_keywords=related,
         striking_distance=striking,
         cannibalization_warnings=warnings,
-        competitor_serp_summary=None,  # Phase 1.5 — firecrawl stub
+        competitor_serp_summary=serp_summary,
         generated_at=now,
         source_keyword_research_path=str(source_path),
     )
@@ -435,12 +450,12 @@ def build_seo_context(
 # ---------------------------------------------------------------------------
 
 
-def _render_frontmatter(ctx: SEOContextV1) -> str:
+def _render_frontmatter(ctx: SEOContextV1, *, phase: str) -> str:
     fm = {
         "type": "seo-context",
         "schema_version": int(ctx.schema_version),
         "target_site": ctx.target_site,
-        "phase": "1 (gsc-only)",
+        "phase": phase,
         "generated_at": ctx.generated_at.isoformat(),
         "source_keyword_research_path": ctx.source_keyword_research_path,
     }
@@ -448,7 +463,7 @@ def _render_frontmatter(ctx: SEOContextV1) -> str:
     return yaml.safe_dump(fm, sort_keys=False, allow_unicode=True).rstrip() + "\n"
 
 
-def _render_human_summary(ctx: SEOContextV1) -> list[str]:
+def _render_human_summary(ctx: SEOContextV1, *, phase: str) -> list[str]:
     lines = ["## 人類可讀摘要", ""]
     if ctx.primary_keyword is not None:
         pk = ctx.primary_keyword
@@ -470,18 +485,28 @@ def _render_human_summary(ctx: SEOContextV1) -> list[str]:
     if ctx.cannibalization_warnings:
         for w in ctx.cannibalization_warnings[:5]:
             lines.append(f"  - [{w.severity}] {w.keyword} — {w.recommendation}")
-    if ctx.competitor_serp_summary is None:
-        lines.append("- **Competitor SERP**：未提供（Phase 1.5 firecrawl 整合後補上）")
+    if ctx.competitor_serp_summary:
+        chars = len(ctx.competitor_serp_summary)
+        lines.append(f"- **Competitor SERP 摘要**：{chars} 字（Haiku 4.5 摘要 firecrawl top-3）")
+    elif phase == _PHASE_GSC_SERP_SKIPPED:
+        lines.append("- **Competitor SERP**：firecrawl / 摘要失敗（quota / network / LLM）— 已降級")
+    elif phase == _PHASE_GSC_ONLY:
+        lines.append("- **Competitor SERP**：以 `--no-serp` 跳過")
+    else:
+        lines.append("- **Competitor SERP**：未提供")
     return lines
 
 
-def render_output_markdown(ctx: SEOContextV1) -> str:
+def render_output_markdown(ctx: SEOContextV1, *, phase: str = _PHASE_GSC_ONLY) -> str:
     """Serialize `ctx` to the markdown form specified in ADR-009 §B.4.
 
     Contract: the JSON code fence must round-trip through
     `SEOContextV1.model_validate_json(...)` byte-for-byte.
+
+    `phase` is written into frontmatter and influences the human summary's
+    SERP line. Default `_PHASE_GSC_ONLY` keeps Slice B callers backward-compat.
     """
-    frontmatter = _render_frontmatter(ctx)
+    frontmatter = _render_frontmatter(ctx, phase=phase)
     json_block = ctx.model_dump_json(indent=2)
     body_lines: list[str] = [
         "# SEO enrichment result",
@@ -493,7 +518,7 @@ def render_output_markdown(ctx: SEOContextV1) -> str:
         "```",
         "",
     ]
-    body_lines.extend(_render_human_summary(ctx))
+    body_lines.extend(_render_human_summary(ctx, phase=phase))
     return "---\n" + frontmatter + "---\n\n" + "\n".join(body_lines) + "\n"
 
 
@@ -508,19 +533,50 @@ def _output_filename(input_stem: str, now_fn: Callable[[], datetime] | None = No
     return f"enriched-{input_stem}-{date_str}.md"
 
 
+def _default_serp_runner(primary_keyword: str) -> str | None:
+    """Default firecrawl SERP + Haiku summarizer chain (Slice F).
+
+    Wraps both stages in a single try-block so any failure (firecrawl quota,
+    network, LLM API error, parse error) cleanly returns `None` for the
+    caller to fall back to `competitor_serp_summary=None` and label the
+    output `phase: "1.5 (gsc + serp-skipped)"`.
+
+    Imports done lazily so unit tests that inject a custom `serp_runner`
+    never touch the firecrawl / Anthropic SDK code paths.
+    """
+    try:
+        from shared.firecrawl_serp import fetch_top_n_serp
+        from shared.seo_enrich.serp_summarizer import summarize_serp
+
+        pages = fetch_top_n_serp(primary_keyword, n=_SERP_TOP_N, country="tw")
+        if not pages:
+            logger.warning("serp_runner_empty_pages kw=%r", primary_keyword)
+            return None
+        return summarize_serp(pages, primary_keyword)
+    except Exception as e:
+        logger.warning("serp_runner_failed kw=%r err=%s", primary_keyword, e)
+        return None
+
+
 def enrich(
     *,
     input_path: Path,
     output_dir: Path,
     client: GSCClient | None = None,
     target_site_override: TargetSite | None = None,
+    enable_serp: bool = True,
+    serp_runner: Callable[[str], str | None] | None = None,
     now_fn: Callable[[], datetime] | None = None,
     env: dict[str, str] | None = None,
 ) -> Path:
-    """Run the full GSC enrich pipeline end-to-end and return the output path.
+    """Run the full enrich pipeline end-to-end and return the output path.
 
     `client=None` triggers `GSCClient.from_env()` so production calls don't
     need to plumb credentials; tests inject a fake client.
+
+    `serp_runner=None` triggers `_default_serp_runner` (firecrawl + Haiku);
+    tests inject a fake. `enable_serp=False` skips the call entirely (used by
+    CLI `--no-serp` flag) and writes `phase: "1 (gsc-only)"`.
     """
     parsed = parse_keyword_research_input(input_path)
     target_site = resolve_target_site(parsed, override=target_site_override)
@@ -534,12 +590,13 @@ def enrich(
         client = GSCClient.from_env()
 
     logger.info(
-        "gsc_enrich_start input=%s target_site=%s property=%s window=%s..%s",
+        "enrich_start input=%s target_site=%s property=%s window=%s..%s serp=%s",
         input_path,
         target_site,
         gsc_property,
         start_iso,
         end_iso,
+        enable_serp,
     )
     rows = client.query(
         site=gsc_property,
@@ -548,21 +605,39 @@ def enrich(
         dimensions=["query", "page"],
         row_limit=1000,
     )
-    logger.info("gsc_enrich_rows count=%d", len(rows))
+    logger.info("enrich_gsc_rows count=%d", len(rows))
+
+    serp_summary: str | None = None
+    if enable_serp:
+        runner = serp_runner if serp_runner is not None else _default_serp_runner
+        serp_summary = runner(parsed.primary_keyword)
+        logger.info(
+            "enrich_serp_summary kw=%r status=%s",
+            parsed.primary_keyword,
+            "ok" if serp_summary else "skipped",
+        )
+
+    if not enable_serp:
+        phase = _PHASE_GSC_ONLY
+    elif serp_summary:
+        phase = _PHASE_GSC_FIRECRAWL
+    else:
+        phase = _PHASE_GSC_SERP_SKIPPED
 
     ctx = build_seo_context(
         rows=rows,
         target_site=target_site,
         primary_keyword=parsed.primary_keyword,
         source_path=input_path,
+        serp_summary=serp_summary,
         now_fn=now_fn,
     )
-    md = render_output_markdown(ctx)
+    md = render_output_markdown(ctx, phase=phase)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / _output_filename(input_path.stem, now_fn=now_fn)
     out_path.write_text(md, encoding="utf-8")
-    logger.info("gsc_enrich_wrote path=%s", out_path)
+    logger.info("enrich_wrote path=%s phase=%s", out_path, phase)
     return out_path
 
 
@@ -573,7 +648,7 @@ def enrich(
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="SEO keyword enrich pipeline — GSC-only baseline (ADR-009 Slice B)."
+        description="SEO keyword enrich pipeline — GSC + firecrawl SERP (ADR-009 Slice B + F)."
     )
     parser.add_argument(
         "--input",
@@ -597,6 +672,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Skip the real GSC call; print the query payload and exit.",
+    )
+    parser.add_argument(
+        "--no-serp",
+        action="store_true",
+        help="Skip firecrawl + Haiku SERP summary chain; phase falls back to "
+        "'1 (gsc-only)'. Use for offline / quota-constrained runs.",
     )
     return parser.parse_args(argv)
 
@@ -631,6 +712,7 @@ def main(argv: list[str] | None = None) -> int:
             "end_date": end_iso,
             "primary_keyword": parsed.primary_keyword,
             "core_keywords": list(parsed.core_keywords),
+            "serp_enabled": not args.no_serp,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
@@ -639,6 +721,7 @@ def main(argv: list[str] | None = None) -> int:
         input_path=args.input,
         output_dir=args.output_dir,
         target_site_override=args.target_site,
+        enable_serp=not args.no_serp,
     )
     print(str(out_path))
     return 0

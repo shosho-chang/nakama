@@ -42,6 +42,19 @@ def _load_enrich_module():
 enrich_mod = _load_enrich_module()
 
 
+@pytest.fixture(autouse=True)
+def _disable_default_serp_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Slice F: enrich() now calls `_default_serp_runner` (firecrawl + Haiku) by
+    default. Tests in this module that don't explicitly inject a `serp_runner`
+    must never reach the network — replace with a no-op so the SERP chain is
+    always skipped (phase: '1.5 (gsc + serp-skipped)').
+
+    Tests that exercise the firecrawl path live in `test_firecrawl_integration.py`
+    and inject their own runner.
+    """
+    monkeypatch.setattr(enrich_mod, "_default_serp_runner", lambda _kw: None)
+
+
 # ---------------------------------------------------------------------------
 # Test helpers
 # ---------------------------------------------------------------------------

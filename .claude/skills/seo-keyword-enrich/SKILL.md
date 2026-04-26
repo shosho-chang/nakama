@@ -37,21 +37,26 @@ Do NOT trigger for:
 - Rewriting an existing draft with SEO context (use `seo-optimize-draft` — Phase 2)
 - Writing the article itself (use Brook compose / `article-compose`)
 
-## Phase 1 Limits (GSC-only baseline)
+## Phase 1.5 Status (GSC + firecrawl SERP)
 
-This Slice B implementation is the **GSC-only baseline**. The frontmatter
-`description` (above) mentions DataForSEO Labs difficulty and firecrawl
-top-3 SERP summary because those land in **Phase 1.5**; the trigger
-phrases are frozen now so upgrading later won't require routing changes.
+This Slice F implementation extends Slice B's GSC baseline with a firecrawl
+top-3 SERP fetch + Claude Haiku summary chain that fills
+`competitor_serp_summary`. DataForSEO difficulty (Slice E) is the remaining
+Phase 1.5 item.
 
-Currently stubbed (always `None` / empty in output):
-- `competitor_serp_summary` → `None` (firecrawl integration — Phase 1.5)
-- DataForSEO `keyword_difficulty` / `search_volume` — not in `KeywordMetricV1`
-  V1 schema (added as optional in Phase 1.5 per ADR-009 §D8)
+Currently active:
+- GSC: primary / related / striking-distance / cannibalization (Slice B)
+- firecrawl SERP top-3 + Haiku 4.5 summary → `competitor_serp_summary` (Slice F)
+
+Currently stubbed (still `None` / empty in output):
+- DataForSEO `keyword_difficulty` / `search_volume` — Slice E, requires
+  `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` + $50 credit
 - PageSpeed Insights data — belongs to `seo-audit-post` skill
 
-Output markdown frontmatter always sets `phase: "1 (gsc-only)"` to make the
-baseline explicit to downstream consumers.
+Output frontmatter `phase` field reflects what actually ran:
+- `"1.5 (gsc + firecrawl)"`     — both GSC + SERP summary OK
+- `"1.5 (gsc + serp-skipped)"`  — GSC OK, firecrawl/Haiku failed/no results
+- `"1 (gsc-only)"`              — `--no-serp` flag explicitly opted out
 
 ## Workflow Overview
 
@@ -87,19 +92,24 @@ Missing required fields (no frontmatter block / wrong `type` / no
 
 - GSC quota: 200 req/day; this skill uses **1 query** (dimensions
   `["query", "page"]`, rowLimit 1000, 28-day window) → ~200 runs/day ceiling
-- LLM cost: **$0** (Slice B has zero LLM calls; pure GSC + filter + build)
-- Wall clock: **~3-8s** (single GSC API round-trip dominates)
+- firecrawl quota: free tier ~500 credits/month; **1 search + 3 scrape ≈ 4 credits**
+  per enrich → ~125 enrich/month ceiling on free tier
+- LLM cost: **~$0.005-0.011** per enrich (Haiku 4.5 ≤ 3000 in + ≤ 1500 out tokens)
+- Wall clock: **~15-25s** (firecrawl scrape dominates; GSC ~3-5s, Haiku ~3-5s)
 
 Present to user:
 
 ```
 預估：
-  時間：~5s
-  成本：$0（GSC only）
+  時間：~20s
+  成本：~$0.01（GSC 免費 + firecrawl free tier + Haiku 4.5 摘要）
   GSC property：<property>  (target_site=<app-name>)
+  firecrawl SERP：top-3（about 4 credits）
   輸出：<out_path>
 確認開跑？
 ```
+
+如果 firecrawl quota 用完或想離線跑，加 `--no-serp` flag 跳過 SERP chain。
 
 Accept "go" / "確認" / "ok"; reject → return to scope adjustment.
 
@@ -112,11 +122,15 @@ root to `sys.path` so `shared.*` imports resolve regardless of cwd):
 python .claude/skills/seo-keyword-enrich/scripts/enrich.py \
     --input "<kw_research_path>" \
     --output-dir "<out_dir>" \
-    [--dry-run]
+    [--dry-run] [--no-serp]
 ```
 
-`--dry-run` skips the real GSC call and prints the query payload for
+`--dry-run` skips both GSC and SERP calls and prints the query payload for
 debugging — use when diagnosing auth / property issues.
+
+`--no-serp` skips the firecrawl + Haiku SERP summary chain (phase falls back
+to `"1 (gsc-only)"`); use for offline runs or when firecrawl quota is
+exhausted.
 
 ### Step 5: Summary + Hand-off
 
@@ -126,6 +140,7 @@ After a successful run, present:
 完成！耗時 X.Xs
 
 輸出：<out_path>
+phase: <"1.5 (gsc + firecrawl)" | "1.5 (gsc + serp-skipped)" | "1 (gsc-only)">
 
 SEOContextV1 summary:
   target_site: <app-name>
@@ -133,12 +148,12 @@ SEOContextV1 summary:
   related_keywords: N
   striking_distance: M opportunities
   cannibalization_warnings: K
+  competitor_serp_summary: <chars> 字 / 已跳過 / 失敗降級
 
 下一步建議：
   → Brook compose：把這份 path 傳給 article-compose / Brook，
     `compose_and_enqueue(..., seo_context=<parse SEOContextV1 from this file>)`
-    （Slice C 完成後自動化）
-  → Phase 1.5：加上 DataForSEO difficulty + firecrawl SERP（未 ship）
+  → Slice E (pending)：DataForSEO difficulty 補齊
 ```
 
 ---
@@ -154,7 +169,7 @@ The pipeline writes a markdown file with two layers:
 type: seo-context
 schema_version: 1
 target_site: wp_shosho        # "wp_shosho" | "wp_fleet"
-phase: "1 (gsc-only)"
+phase: "1.5 (gsc + firecrawl)"  # also: "1.5 (gsc + serp-skipped)" / "1 (gsc-only)"
 generated_at: 2026-04-26T03:00:00+00:00
 source_keyword_research_path: KB/Research/keywords/morning-coffee-sleep.md
 ---
@@ -175,12 +190,15 @@ source_keyword_research_path: KB/Research/keywords/morning-coffee-sleep.md
 
 Downstream consumers can rely on:
 - Frontmatter `type: seo-context` discriminator
-- `schema_version: 1` + `phase: "1 (gsc-only)"` during Slice B lifetime
+- `schema_version: 1` invariant
 - JSON block round-trips through `SEOContextV1.model_validate_json()`
 
 Not stable (may evolve between Phase 1 / 1.5 / 2):
 - Body markdown structure (headings, order)
 - Exact frontmatter field order
+- `phase` value (added new variants when more enrich sources land — caller
+  should treat any `phase: "1.5 ..."` as Slice F output and parse the JSON
+  block for what's actually present)
 
 ### Filename convention
 
@@ -194,13 +212,15 @@ Example: `enriched-morning-coffee-sleep-20260426.md`.
 
 - **GSC**: 1 query per enrich (dimensions `["query", "page"]`, rowLimit 1000,
   28-day window). At 200 queries/day GSC quota → ~200 enrich runs/day ceiling.
-- **LLM**: zero (Slice B).
-- **Wall clock**: ~3-8s dominated by GSC API round-trip.
-- **Effective per-run cost**: ~$0 (GSC is free, quota-bounded).
+- **firecrawl**: 1 search + 3 scrape ≈ 4 credits per enrich. Free tier 500
+  credits/month → ~125 enrich/month ceiling. Exceeded → graceful fallback
+  to `phase: "1.5 (gsc + serp-skipped)"`.
+- **LLM** (Haiku 4.5): ~$0.005-0.011 per enrich (3000 in + 1500 out tokens).
+- **Wall clock**: ~15-25s dominated by firecrawl scrape (3 × ~5s).
+  `--no-serp` brings it back to ~3-8s.
+- **Effective per-run cost**: ~$0.01 with SERP, ~$0 without.
 
-Phase 1.5 will add ~2 firecrawl calls + ~1 Claude Haiku summary call per run
-(~$0.005 each); still well under $0.05/run. DataForSEO queries would be
-~$0.001 per non-health keyword.
+Slice E will add ~$0.001 per non-health keyword (DataForSEO Labs).
 
 ---
 
@@ -229,5 +249,8 @@ See `docs/capabilities/seo-keyword-enrich.md` for capability card format.
 | GSC query / auth | `shared/gsc_client.py`, `docs/runbooks/gsc-oauth-setup.md` |
 | Striking-distance filter | `shared/seo_enrich/striking_distance.py` (T6 contract) |
 | Cannibalization threshold | `shared/seo_enrich/cannibalization.py`, `config/seo-enrich.yaml` |
+| firecrawl SERP fetch | `shared/firecrawl_serp.py` (Slice F) |
+| SERP summary | `shared/seo_enrich/serp_summarizer.py` (Slice F, Haiku 4.5) |
+| Brook downstream sanitize | `agents/brook/seo_block.py` (`_INJECTION_PATTERNS`, `_MAX_SERP_CHARS=1200`) |
 | Input contract | `.claude/skills/keyword-research/references/output-contract.md` |
 | Brook compose integration (Slice C) | ADR-009 §D5 |
