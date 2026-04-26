@@ -68,6 +68,17 @@ def _prevent_real_slack_alerts(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
+    """Route shared.incident_archive default dir to tmp.
+
+    Without this, any test that fires `shared.alerts.alert("error", ...)` or
+    `agents.franky.alert_router.dispatch(critical_alert)` writes a real .md
+    into the repo's `data/incidents-pending/` and pollutes git status.
+    """
+    monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path / "_incidents-pending"))
+
+
+@pytest.fixture(autouse=True)
 def isolated_db(tmp_path: Path, monkeypatch):
     """Route shared.state to a temporary SQLite DB per test.
 

@@ -78,6 +78,12 @@ def alert(
         _send_slack(category, message)
         if dedupe_key:
             _record_fired(dedupe_key, category, message, dedupe_minutes)
+        _archive(
+            rule_id=dedupe_key or category,
+            severity=severity,
+            category=category,
+            message=message,
+        )
         return
     raise ValueError(f"unknown severity: {severity!r}")
 
@@ -132,3 +138,24 @@ def _send_slack(category: str, message: str) -> None:
 
     bot = FrankySlackBot.from_env()
     bot.post_plain(f":rotating_light: *[{category}]* {message}", context=f"alert/{category}")
+
+
+# ---- vault archive (Phase 4 incident postmortem auto-archive) ---------------
+
+
+def _archive(*, rule_id: str, severity: str, category: str, message: str) -> None:
+    """Best-effort: write incident stub. Failure logged, never raised — alert
+    delivery must not be blocked by archive IO."""
+    try:
+        from shared.incident_archive import archive_incident
+
+        archive_incident(
+            rule_id=rule_id,
+            severity=severity,
+            title=f"[{category}] {message[:80]}",
+            message=message,
+            fired_at=datetime.now(timezone.utc),
+            context={"category": category},
+        )
+    except Exception as exc:
+        logger.error("incident archive failed: %s", exc, exc_info=True)

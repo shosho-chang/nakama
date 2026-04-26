@@ -181,7 +181,30 @@ def dispatch(alert: AlertV1, *, slack_bot: SlackPoster | None = None) -> dict[st
         new_fire_count,
         slack_ts,
     )
+    if alert.severity == "critical":
+        _archive_alert(alert, fired_at=now)
     return {"action": "sent", "slack_ts": slack_ts, "fire_count": new_fire_count}
+
+
+# ---- vault archive (Phase 4 incident postmortem auto-archive) ---------------
+
+
+def _archive_alert(alert: AlertV1, *, fired_at: datetime) -> None:
+    """Best-effort archive. Failure logged, never raised — Slack send must
+    never be undone if archive IO fails."""
+    try:
+        from shared.incident_archive import archive_incident
+
+        archive_incident(
+            rule_id=alert.rule_id,
+            severity=alert.severity,
+            title=alert.message[:80],
+            message=alert.message,
+            fired_at=fired_at,
+            context={"dedup_key": alert.dedup_key, "source": "franky.alert_router"},
+        )
+    except Exception as exc:
+        logger.error("incident archive failed: %s", exc, exc_info=True)
 
 
 def dispatch_all(

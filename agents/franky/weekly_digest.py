@@ -78,6 +78,14 @@ class CostSummary:
 
 
 @dataclass(frozen=True)
+class IncidentSummary:
+    total_30d: int
+    by_severity: dict[str, int]  # SEV-1..SEV-4 counts
+    open_count: int
+    top_recurring: list[tuple[str, int]]  # (rule_id, fire_count) sorted desc, max 3
+
+
+@dataclass(frozen=True)
 class DigestBundle:
     period_start: datetime
     period_end: datetime
@@ -86,6 +94,7 @@ class DigestBundle:
     alerts: AlertSummary
     backup: BackupSummary
     cost: CostSummary
+    incidents: IncidentSummary
     operation_id: str
 
 
@@ -248,6 +257,25 @@ def _week_cost(*, since: datetime, until: datetime) -> float:
     return total
 
 
+def summarise_incidents(*, since: datetime) -> IncidentSummary:
+    """30-day rollup of auto-archived incident stubs in `data/incidents-pending/`.
+
+    Source = files in pending dir (Mac sync hook eventually moves to vault, but
+    on VPS we only see what hasn't synced yet — which is fine for a "what fired
+    recently" snapshot). Counts by SEV tier from frontmatter, open status, and
+    top-3 recurring rules.
+    """
+    from shared.incident_archive import list_pending_incidents
+
+    rollup = list_pending_incidents(since=since)
+    return IncidentSummary(
+        total_30d=rollup.total,
+        by_severity=dict(rollup.by_severity),
+        open_count=rollup.open_count,
+        top_recurring=list(rollup.top_recurring),
+    )
+
+
 def summarise_cost(*, period_end: datetime) -> CostSummary:
     this_start = period_end - timedelta(days=7)
     last_start = period_end - timedelta(days=14)
@@ -273,6 +301,7 @@ def gather(*, now: datetime | None = None) -> DigestBundle:
     """Pure data-gathering — no side effects on external services."""
     now = now or _now()
     since = now - timedelta(days=7)
+    incidents_since = now - timedelta(days=30)
     return DigestBundle(
         period_start=since,
         period_end=now,
@@ -281,6 +310,7 @@ def gather(*, now: datetime | None = None) -> DigestBundle:
         alerts=summarise_alerts(since=since),
         backup=summarise_backup(since=since),
         cost=summarise_cost(period_end=now),
+        incidents=summarise_incidents(since=incidents_since),
         operation_id=_new_op_id(),
     )
 
@@ -312,6 +342,22 @@ def render_slack_text(bundle: DigestBundle) -> str:
         else "—"
     )
 
+    incidents = bundle.incidents
+    if incidents.total_30d == 0:
+        incidents_lines = ["• 過去 30 天 0 件（incidents-pending 乾淨）"]
+    else:
+        sev_parts = " · ".join(
+            f"{tier} `{incidents.by_severity[tier]}`"
+            for tier in ("SEV-1", "SEV-2", "SEV-3", "SEV-4")
+            if incidents.by_severity.get(tier)
+        )
+        incidents_lines = [
+            f"• 30 天總 {incidents.total_30d} 件 · {sev_parts} · 未結 `{incidents.open_count}`",
+        ]
+        if incidents.top_recurring:
+            top_str = " · ".join(f"`{rule}` ×{n}" for rule, n in incidents.top_recurring)
+            incidents_lines.append(f"• Top recurring：{top_str}")
+
     return "\n".join(
         [
             f"*🤖 Franky Weekly Digest · {period_end_tpe:%Y-%m-%d}*",
@@ -341,6 +387,9 @@ def render_slack_text(bundle: DigestBundle) -> str:
             "",
             "*5. LLM 花費（本週 vs 上週）*",
             f"• 本週 `${cost.this_week_usd:.2f}` {_format_delta(cost.delta_pct)}",
+            "",
+            "*6. Incidents（過去 30 天，data/incidents-pending）*",
+            *incidents_lines,
             "",
             f"_op=`{bundle.operation_id}`_",
         ]
