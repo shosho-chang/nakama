@@ -254,6 +254,110 @@ def test_run_unknown_item_id_in_curate_skipped(tmp_path, monkeypatch, caplog):
     assert "無精選" in summary or "selected=0" in summary or "score 後" in summary
 
 
+def test_run_pick_false_items_filtered_out(tmp_path, monkeypatch):
+    """Score 回 pick=false 的條目不應出現在 vault digest 或 Slack DM。"""
+    cfg = tmp_path / "feeds.yaml"
+    cfg.write_text(
+        "feeds:\n  - name: x\n    url: https://example.com\n    publisher: X\n",
+        encoding="utf-8",
+    )
+    cands = [_make_candidate("a"), _make_candidate("b")]
+    monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: cands)
+
+    score_call = {"n": 0}
+
+    def _ask(prompt, **kw):
+        if "5-8 條" in prompt:
+            return _curate_response(["a", "b"])
+        score_call["n"] += 1
+        if score_call["n"] == 1:
+            return _score_response()
+        bad = json.loads(_score_response())
+        bad["pick"] = False
+        bad["overall"] = 1.2
+        return json.dumps(bad)
+
+    monkeypatch.setattr(nd.llm, "ask", _ask)
+    monkeypatch.setattr(nd, "write_page", MagicMock())
+    monkeypatch.setattr(nd, "append_to_file", MagicMock())
+    monkeypatch.setattr(nd, "mark_seen", MagicMock())
+
+    pipeline = nd.NewsDigestPipeline(
+        dry_run=False, no_publish=True, feeds_config_path=cfg, slack_bot=MagicMock()
+    )
+    summary = pipeline.run()
+    assert "selected=1" in summary
+
+
+def test_run_all_pick_false_returns_no_picks(tmp_path, monkeypatch):
+    """所有 score pick=false → 無精選入選 short-circuit。"""
+    cfg = tmp_path / "feeds.yaml"
+    cfg.write_text(
+        "feeds:\n  - name: x\n    url: https://example.com\n    publisher: X\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [_make_candidate()])
+
+    def _ask(prompt, **kw):
+        if "5-8 條" in prompt:
+            return _curate_response(["i1"])
+        bad = json.loads(_score_response())
+        bad["pick"] = False
+        return json.dumps(bad)
+
+    monkeypatch.setattr(nd.llm, "ask", _ask)
+    monkeypatch.setattr(nd, "write_page", MagicMock())
+
+    pipeline = nd.NewsDigestPipeline(dry_run=True, feeds_config_path=cfg)
+    summary = pipeline.run()
+    assert "無精選" in summary or "selected=0" in summary
+
+
+def test_run_curate_dropped_no_id_logs_warning(tmp_path, monkeypatch, caplog):
+    """Curate 回傳 selected 缺 item_id → 計數 + warning log，不 crash。"""
+    import logging
+
+    cfg = tmp_path / "feeds.yaml"
+    cfg.write_text(
+        "feeds:\n  - name: x\n    url: https://example.com\n    publisher: X\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [_make_candidate("real")])
+
+    def _ask(prompt, **kw):
+        if "5-8 條" in prompt:
+            return json.dumps(
+                {
+                    "selected": [
+                        {"rank": 1, "category": "x", "reason": "missing id"},
+                        {
+                            "item_id": "real",
+                            "rank": 2,
+                            "category": "model_release",
+                            "reason": "ok",
+                        },
+                    ],
+                    "summary": {
+                        "total_candidates": 1,
+                        "selected_count": 2,
+                        "main_categories": ["x"],
+                        "editor_note": "",
+                    },
+                }
+            )
+        return _score_response()
+
+    monkeypatch.setattr(nd.llm, "ask", _ask)
+    monkeypatch.setattr(nd, "write_page", MagicMock())
+    monkeypatch.setattr(nd, "append_to_file", MagicMock())
+    monkeypatch.setattr(nd, "mark_seen", MagicMock())
+
+    with caplog.at_level(logging.WARNING):
+        pipeline = nd.NewsDigestPipeline(dry_run=True, feeds_config_path=cfg)
+        pipeline.run()
+    assert any("缺 item_id" in r.message for r in caplog.records)
+
+
 def test_run_score_failure_per_item_continues(tmp_path, monkeypatch):
     """Single _score raise 不應炸整批。"""
     cfg = tmp_path / "feeds.yaml"

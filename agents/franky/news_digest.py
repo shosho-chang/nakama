@@ -103,9 +103,17 @@ class NewsDigestPipeline(BaseAgent):
             self.logger.error(f"curate 失敗：{e}", exc_info=True)
             return f"curate 失敗：{e}"
 
-        selected_meta_by_id = {
-            s.get("item_id"): s for s in curated.get("selected", []) if s.get("item_id")
-        }
+        raw_selected = curated.get("selected", []) or []
+        selected_meta_by_id: dict[str, dict] = {}
+        dropped_no_id = 0
+        for s in raw_selected:
+            iid = s.get("item_id")
+            if iid:
+                selected_meta_by_id[iid] = s
+            else:
+                dropped_no_id += 1
+        if dropped_no_id:
+            self.logger.warning(f"Curate 回傳 {dropped_no_id} 條缺 item_id 的 selected 項，已略過")
         cand_by_id = {c["item_id"]: c for c in candidates}
 
         # 3. Score each selected (one LLM call per pick)
@@ -128,6 +136,13 @@ class NewsDigestPipeline(BaseAgent):
                 }
             )
 
+        # Filter by score-side `pick` flag (news_score.md 規則：overall ≥ 3.5 且 signal ≥ 3
+        # 才設 true)。score 沒明確 false 的當 true 處理，避免 LLM 漏欄位整批掉光。
+        rejected_by_pick = sum(1 for s in scored if s["score_result"].get("pick", True) is False)
+        scored = [s for s in scored if s["score_result"].get("pick", True) is not False]
+        if rejected_by_pick:
+            self.logger.info(f"score pick=false 過濾掉 {rejected_by_pick} 條")
+
         if not scored:
             return f"候選 {len(candidates)} 條，curate/score 後無精選入選"
 
@@ -141,6 +156,9 @@ class NewsDigestPipeline(BaseAgent):
             digest_relpath = self._write_digest_page(scored, curated, len(candidates))
             self._append_kb_log(digest_relpath, len(scored))
             self._update_kb_index(digest_relpath, len(scored))
+            # Mark ALL candidates seen (including non-selected and pick=false-filtered) —
+            # 沿用 PubMed pattern：即便未入選也 mark，避免明天 LLM 又重 curate 同一批
+            # （curate 是 N→K 隨機性，同題目今天沒選不代表明天會選 — 一致比起多餘重算划算）。
             for c in candidates:
                 mark_seen(SOURCE_KEY, c["item_id"], c.get("url"))
         else:
