@@ -682,3 +682,188 @@ class TestExportChapterAttachmentsValidation:
             parse_book_mod._export_chapter_attachments(chapter, attach)
         # No file should have been written outside attach/
         assert not (tmp_path / "escape.png").exists()
+
+
+# ---------------------------------------------------------------------------
+# Walker fix-2: figure-wrapped table + h2/h3 markdown markers
+# ---------------------------------------------------------------------------
+
+
+def _build_epub_figure_wrapped_table(tmp_path: Path) -> Path:
+    """Build a 1-chapter EPUB where a <table> is wrapped in <figure>.
+
+    Some publishers (eg. Wiley sport-sciences textbooks) wrap data
+    tables inside <figure> elements for layout. The walker must still
+    extract such tables — not silently drop them when <figure> contains
+    no <img>/<svg>.
+    """
+    pytest.importorskip("ebooklib")
+    from ebooklib import epub
+
+    book = epub.EpubBook()
+    book.set_identifier("urn:isbn:9780000000001")
+    book.set_title("FigureTable Test Book")
+    book.set_language("en")
+    book.add_author("Author")
+    book.add_metadata("DC", "publisher", "WP")
+    book.add_metadata("DC", "date", "2026-04-26")
+
+    body_html = (
+        "<h1>Energy Sources</h1>"
+        "<h2>1.1 Phosphagen System</h2>"
+        "<p>Body before figure-wrapped table.</p>"
+        "<figure>"
+        "<table>"
+        "<thead><tr><th>System</th><th>ATP/glucose</th></tr></thead>"
+        "<tbody><tr><td>Glycolysis</td><td>2</td></tr>"
+        "<tr><td>Oxidative</td><td>30</td></tr></tbody>"
+        "</table>"
+        "<figcaption>Table 1.1 ATP yield per substrate</figcaption>"
+        "</figure>"
+        "<p>Body after.</p>"
+    )
+    ch = epub.EpubHtml(title="Energy", file_name="Text/c01.xhtml", lang="en")
+    ch.content = f"<html><body>{body_html}</body></html>"
+    book.add_item(ch)
+    book.toc = (epub.Link(ch.file_name, ch.title, ch.file_name),)
+    book.spine = ["nav", ch]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+
+    epub_path = tmp_path / "figtab.epub"
+    epub.write_epub(str(epub_path), book)
+    return epub_path
+
+
+class TestWalkerFigureWrappedTable:
+    """Bug A — `<figure><table>...</table></figure>` must not silently drop the table.
+
+    `_extract_figure` returns None when a <figure> has no <img>/<svg>;
+    pre-fix, the caller decomposed the entire <figure> subtree, losing
+    the inner <table>. Fix: recurse into the <figure> children so the
+    nested table is processed by the table branch, then unwrap the
+    figure so its remaining inline children survive in body text.
+    """
+
+    def test_table_inside_figure_extracted(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_epub_figure_wrapped_table(tmp_path)
+        outline = parse_book_mod.parse_book(epub_path)
+
+        ch = outline.chapters[0]
+        # The <figure> contained no img/svg → no figure entry
+        assert ch.figures == []
+        # But the table inside must be extracted as a first-class table
+        assert len(ch.tables) == 1
+        tab = ch.tables[0]
+        assert tab.ref == "tab-1-1"
+        assert "| System | ATP/glucose |" in tab.markdown
+        assert "| Glycolysis | 2 |" in tab.markdown
+        assert "| Oxidative | 30 |" in tab.markdown
+        assert tab.tied_to_section == "1.1 Phosphagen System"
+
+    def test_table_placeholder_and_figcaption_in_body(self, tmp_path: Path):
+        """Placeholder must be present in body; figcaption text must
+        survive (not silently dropped with the figure shell)."""
+        pytest.importorskip("ebooklib")
+        epub_path = _build_epub_figure_wrapped_table(tmp_path)
+        out_dir = tmp_path / "chapters"
+        parse_book_mod.parse_book(epub_path, export_chapters_dir=out_dir)
+        body = (out_dir / "ch1.md").read_text(encoding="utf-8")
+        assert "<<TAB:tab-1-1>>" in body
+        assert "Table 1.1 ATP yield per substrate" in body
+        assert "Body before figure-wrapped table." in body
+        assert "Body after." in body
+
+
+def _build_epub_section_headings(tmp_path: Path) -> Path:
+    """Build a 1-chapter EPUB with h2/h3 sub-section headings.
+
+    The walker must inject ``## ``/``### `` markdown markers so chapter
+    body retains heading structure (chapter-summary prompt expects to
+    locate verbatim quotes per section).
+    """
+    pytest.importorskip("ebooklib")
+    from ebooklib import epub
+
+    book = epub.EpubBook()
+    book.set_identifier("urn:isbn:9780000000002")
+    book.set_title("Heading Test Book")
+    book.set_language("en")
+    book.add_author("Author")
+    book.add_metadata("DC", "publisher", "WP")
+    book.add_metadata("DC", "date", "2026-04-26")
+
+    body_html = (
+        "<h1>Energy Sources</h1>"
+        "<p>Lead paragraph.</p>"
+        "<h2>1.1 ATP</h2>"
+        "<p>Section 1.1 body content here.</p>"
+        "<h3>1.1.1 Hydrolysis</h3>"
+        "<p>Subsection body.</p>"
+        "<h2>1.2 PCr</h2>"
+        "<p>Section 1.2 body content here.</p>"
+    )
+    ch = epub.EpubHtml(title="Energy", file_name="Text/c01.xhtml", lang="en")
+    ch.content = f"<html><body>{body_html}</body></html>"
+    book.add_item(ch)
+    book.toc = (epub.Link(ch.file_name, ch.title, ch.file_name),)
+    book.spine = ["nav", ch]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+
+    epub_path = tmp_path / "headings.epub"
+    epub.write_epub(str(epub_path), book)
+    return epub_path
+
+
+class TestWalkerSectionHeadings:
+    """Bug B — `<h2>`/`<h3>` must inject markdown markers into body text.
+
+    Pre-fix, walker collected anchors into ``section_anchors`` but body
+    text lost heading semantics — chapter-summary prompt could not
+    locate per-section verbatim quotes. Fix: ``replace_with`` a
+    ``\\n\\n## {anchor}\\n\\n`` (or ``### `` for h3) text node so the
+    structure survives ``soup.get_text`` flattening.
+    """
+
+    def test_h2_marker_injected(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_epub_section_headings(tmp_path)
+        out_dir = tmp_path / "chapters"
+        parse_book_mod.parse_book(epub_path, export_chapters_dir=out_dir)
+        body = (out_dir / "ch1.md").read_text(encoding="utf-8")
+        assert "## 1.1 ATP" in body
+        assert "## 1.2 PCr" in body
+
+    def test_h3_marker_injected(self, tmp_path: Path):
+        pytest.importorskip("ebooklib")
+        epub_path = _build_epub_section_headings(tmp_path)
+        out_dir = tmp_path / "chapters"
+        parse_book_mod.parse_book(epub_path, export_chapters_dir=out_dir)
+        body = (out_dir / "ch1.md").read_text(encoding="utf-8")
+        assert "### 1.1.1 Hydrolysis" in body
+
+    def test_section_anchors_still_collected(self, tmp_path: Path):
+        """Regression: marker injection must not break anchor collection."""
+        pytest.importorskip("ebooklib")
+        epub_path = _build_epub_section_headings(tmp_path)
+        outline = parse_book_mod.parse_book(epub_path)
+        anchors = outline.chapters[0].section_anchors
+        assert "1.1 ATP" in anchors
+        assert "1.1.1 Hydrolysis" in anchors
+        assert "1.2 PCr" in anchors
+
+    def test_marker_separates_paragraphs(self, tmp_path: Path):
+        """Body order: lead paragraph → ## 1.1 → 1.1 body → ### 1.1.1 → 1.2 PCr."""
+        pytest.importorskip("ebooklib")
+        epub_path = _build_epub_section_headings(tmp_path)
+        out_dir = tmp_path / "chapters"
+        parse_book_mod.parse_book(epub_path, export_chapters_dir=out_dir)
+        body = (out_dir / "ch1.md").read_text(encoding="utf-8")
+        lead_idx = body.find("Lead paragraph")
+        h11_idx = body.find("## 1.1 ATP")
+        sec11_body_idx = body.find("Section 1.1 body content")
+        h111_idx = body.find("### 1.1.1 Hydrolysis")
+        h12_idx = body.find("## 1.2 PCr")
+        assert 0 <= lead_idx < h11_idx < sec11_body_idx < h111_idx < h12_idx

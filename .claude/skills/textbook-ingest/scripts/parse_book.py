@@ -780,6 +780,14 @@ def _walk_epub_html(
                 if anchor:
                     section_anchors.append(anchor)
                     state["section"] = anchor
+                    # Inject markdown heading marker so chapter body
+                    # retains heading structure after soup.get_text
+                    # flattening (chapter-summary prompt locates per-
+                    # section verbatim quotes by `## `/`### ` markers).
+                    marker = "## " if name == "h2" else "### "
+                    child.replace_with(soup.new_string(f"\n\n{marker}{anchor}\n\n"))
+                else:
+                    child.decompose()
                 continue
 
             if name in ("img", "svg", "figure"):
@@ -797,7 +805,18 @@ def _walk_epub_html(
                     child.replace_with(placeholder)
                 else:
                     state["fig_n"] -= 1  # roll back: nothing exported
-                    child.decompose()
+                    if name == "figure":
+                        # <figure> with no extractable image — eg. some
+                        # publishers wrap a <table> (or <math>, plain
+                        # text) in <figure> for layout. Recurse so the
+                        # nested first-class elements are processed by
+                        # their own branches, then unwrap the <figure>
+                        # shell so any remaining inline children
+                        # (figcaption text, etc.) survive in body text.
+                        _walk(child)
+                        child.unwrap()
+                    else:
+                        child.decompose()
                 continue
 
             if name == "table":
