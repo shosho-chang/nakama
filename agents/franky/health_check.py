@@ -68,20 +68,23 @@ NAKAMA_BACKUP_STALE_THRESHOLD_HOURS: float = float(
 # Phase 5B — cron job heartbeat schedule registry.
 # (job_name, expected_interval_minutes, grace_minutes)
 # Probe alerts when last_success_at is older than (interval + grace).
-# job_name 必須對齊 shared/heartbeat.py module docstring 列出的 conventional names。
-# 不在此 dict 的 heartbeat job 不被本 probe 監控（有意避免新 cron 強迫 register；
-# operator 視情況加入即可）。
+#
+# 嚴格規則：本 dict 的 entry 必須對應到實際呼叫 `shared.heartbeat.record_success(name)`
+# 的生產 cron。否則 probe 永遠看到 hb=None 走「skipped」路徑，false-green。
+# 已驗證有 caller 的 3 個 job（grep `record_success` in scripts/）：
+#   - nakama-backup            (scripts/backup_nakama_state.py)
+#   - nakama-backup-mirror     (scripts/mirror_backup_to_secondary.py)
+#   - nakama-backup-integrity  (scripts/verify_backup_integrity.py)
+# 待 instrument（加入 dict 前先補 record_success/record_failure）：
+#   - franky-health-probe（self-deadlock：probe 是 franky cron 自己跑，永遠不會 stale。
+#     liveness 由 external-uptime-probe 偵測。建議永不加入此 dict。）
+#   - franky-r2-backup-verify、franky-weekly-report、robin-pubmed-digest、
+#     zoro-brainstorm-scout、external-uptime-probe — Phase 5B-2 follow-up。
 CRON_SCHEDULES: dict[str, tuple[int, int]] = {
     # name                          interval  grace
     "nakama-backup": (24 * 60, 60),  # daily 04:00
     "nakama-backup-mirror": (24 * 60, 60),  # daily 04:30
     "nakama-backup-integrity": (7 * 24 * 60, 120),  # weekly Sun 03:30
-    "franky-health-probe": (5, 5),  # every 5 min
-    "franky-r2-backup-verify": (5, 5),  # every 5 min
-    "franky-weekly-report": (7 * 24 * 60, 120),  # weekly Mon 01:00
-    "robin-pubmed-digest": (24 * 60, 60),  # daily 05:30
-    "zoro-brainstorm-scout": (24 * 60, 60),  # daily 05:00
-    "external-uptime-probe": (5, 10),  # GH Actions every 5 min（GH 排程延遲較大）
 }
 
 
@@ -572,8 +575,10 @@ def probe_cron_freshness(
         hb = all_hb.get(job_name)
         if hb is None:
             # Registered cron but never recorded — could be: not deployed yet, or
-            # cron never fired since heartbeat was added. Skip silently for now;
-            # operators see "no row" on /bridge/health, that's the surface.
+            # heartbeat instrumentation just landed and cron hasn't fired since.
+            # Log INFO so operators can grep "registered but no heartbeat" to spot
+            # call-site drift; don't alert (would noise on every fresh deploy).
+            logger.info("cron registered but no heartbeat row yet job=%s", job_name)
             continue
         success_age = hb.success_age_minutes
         if success_age is not None and success_age <= threshold_min:
@@ -584,6 +589,11 @@ def probe_cron_freshness(
             f"cron job '{job_name}' last success {age_str} ago, "
             f"expected ≤ {threshold_min}m (interval={interval_min}m + grace={grace_min}m)"
         )
+        # dedup_window = interval（capped 24h）→ 1 alert per cycle for a stuck job,
+        # not 96/day on the default 15-min window. Daily backup → 1 alert/24h until
+        # fixed; 5-min probe → 1 alert/5-min（still bounded by 24h cap when probe
+        # gets re-registered below）.
+        dedup_window_s = min(interval_min * 60, 24 * 3600)
         inline_alerts.append(
             AlertV1(
                 rule_id="cron_staleness",
@@ -592,6 +602,7 @@ def probe_cron_freshness(
                 message=msg,
                 fired_at=now,
                 dedup_key=f"cron-stale-{job_name}",
+                dedup_window_seconds=dedup_window_s,
                 operation_id=op,
                 context={
                     "job_name": job_name,

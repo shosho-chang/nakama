@@ -624,12 +624,25 @@ def test_cron_freshness_registered_no_heartbeat_skipped():
 
 def test_cron_freshness_multi_stale_emits_per_job_dedup_keys():
     _record_hb("nakama-backup", success_age_minutes=25 * 60 + 5)
-    _record_hb("robin-pubmed-digest", success_age_minutes=25 * 60 + 5)
+    _record_hb("nakama-backup-mirror", success_age_minutes=25 * 60 + 5)
     probe, inline = probe_cron_freshness()
     assert probe.status == "fail"
     assert len(inline) == 2
     dedup_keys = {a.dedup_key for a in inline}
-    assert dedup_keys == {"cron-stale-nakama-backup", "cron-stale-robin-pubmed-digest"}
+    assert dedup_keys == {"cron-stale-nakama-backup", "cron-stale-nakama-backup-mirror"}
+
+
+def test_cron_freshness_dedup_window_matches_interval_capped_24h():
+    # nakama-backup interval=24h + grace=60min → threshold 1500min；用 1505 才 stale
+    _record_hb("nakama-backup", success_age_minutes=25 * 60 + 5)
+    _, inline = probe_cron_freshness()
+    # nakama-backup window = min(24h, 24h) = 24h
+    assert inline[0].dedup_window_seconds == 24 * 3600
+    # nakama-backup-integrity interval=7d → window = min(7d, 24h) = 24h（capped）
+    _record_hb("nakama-backup-integrity", success_age_minutes=8 * 24 * 60)
+    _, inline = probe_cron_freshness()
+    integrity_alert = next(a for a in inline if "integrity" in a.dedup_key)
+    assert integrity_alert.dedup_window_seconds == 24 * 3600
 
 
 def test_cron_freshness_alert_context_includes_threshold_and_age():
