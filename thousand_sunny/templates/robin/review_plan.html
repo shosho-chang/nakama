@@ -20,11 +20,14 @@
   .item-body { flex: 1; }
   .item-title { font-weight: 600; color: #1a1a1a; display: flex; align-items: center; gap: 0.5rem; }
   .badge { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; text-transform: uppercase; }
-  .badge-concept { background: #e8f5e9; color: #2e7d32; }
-  .badge-entity { background: #e3f2fd; color: #1565c0; }
-  .badge-update { background: #fff3e0; color: #e65100; }
+  .badge-create { background: #e8f5e9; color: #2e7d32; }
+  .badge-merge { background: #e3f2fd; color: #1565c0; }
+  .badge-conflict { background: #fff3e0; color: #e65100; }
+  .badge-noop { background: #f5f5f5; color: #777; }
+  .badge-entity { background: #ede7f6; color: #4527a0; }
   .item-reason { font-size: 0.8rem; color: #666; margin-top: 0.3rem; line-height: 1.5; }
   .item-notes { font-size: 0.8rem; color: #888; margin-top: 0.25rem; line-height: 1.4; }
+  .item-conflict { font-size: 0.8rem; color: #b85b00; background: #fff8e1; padding: 0.5rem 0.75rem; border-radius: 6px; margin-top: 0.4rem; line-height: 1.5; }
   .toolbar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
   .toolbar button { font-size: 0.8rem; padding: 0.3rem 0.8rem; border: 1.5px solid #ddd; border-radius: 6px; background: white; cursor: pointer; color: #555; transition: all .15s; }
   .toolbar button:hover { border-color: #6c63ff; color: #6c63ff; }
@@ -39,32 +42,74 @@
 <div class="container">
   <div class="header">
     <h1>📋 審核 Robin 的建議</h1>
-    <p>{{ file_name }} · 勾選你想建立的頁面</p>
+    <p>{{ file_name }} · 勾選你想執行的動作</p>
   </div>
 
   <form method="post" action="/execute" id="form">
 
-    <!-- Creates -->
+    <!-- Concept actions (ADR-011 4-action) -->
     <div class="section">
-      <div class="section-title">新建頁面</div>
-      {% if creates_list %}
+      <div class="section-title">Concept Actions</div>
+      {% if concepts_list %}
       <div class="toolbar">
-        <button type="button" onclick="toggleAll('create', true)">全選</button>
-        <button type="button" onclick="toggleAll('create', false)">全不選</button>
+        <button type="button" onclick="toggleAll('concept', true)">全選</button>
+        <button type="button" onclick="toggleAll('concept', false)">全不選</button>
       </div>
-      {% for i, item in creates %}
-      <label class="item-card" id="card-create-{{ i }}">
-        <input type="checkbox" name="create" value="{{ i }}" checked onchange="updateCard(this, 'create-{{ i }}')">
+      {% for i, item in concepts %}
+      <label class="item-card" id="card-concept-{{ i }}">
+        <input type="checkbox" name="concept" value="{{ i }}" checked onchange="updateCard(this, 'concept-{{ i }}')">
         <div class="item-body">
           <div class="item-title">
-            {% if item.type == 'concept' %}
-              <span class="badge badge-concept">概念</span>
+            {% set action = item.action or 'create' %}
+            {% if action == 'create' %}
+              <span class="badge badge-create">新建</span>
+            {% elif action == 'update_merge' %}
+              <span class="badge badge-merge">Merge</span>
+            {% elif action == 'update_conflict' %}
+              <span class="badge badge-conflict">衝突</span>
             {% else %}
-              <span class="badge badge-entity">實體</span>
+              <span class="badge badge-noop">Noop</span>
             {% endif %}
+            {{ item.title or item.slug }}
+          </div>
+          {% if item.reason %}
+          <div class="item-reason">{{ item.reason }}</div>
+          {% endif %}
+          {% if item.conflict %}
+          <div class="item-conflict">
+            <strong>{{ item.conflict.topic }}</strong><br>
+            既有：{{ item.conflict.existing_claim }}<br>
+            新：{{ item.conflict.new_claim }}
+            {% if item.conflict.possible_reason %}<br>原因：{{ item.conflict.possible_reason }}{% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </label>
+      {% endfor %}
+      {% else %}
+      <p class="empty-section">Robin 判斷這次不需要動任何 concept。</p>
+      {% endif %}
+    </div>
+
+    <!-- Entities (v1 schema, 不在 ADR-011 範圍) -->
+    <div class="section">
+      <div class="section-title">新建 Entity</div>
+      {% if entities_list %}
+      <div class="toolbar">
+        <button type="button" onclick="toggleAll('entity', true)">全選</button>
+        <button type="button" onclick="toggleAll('entity', false)">全不選</button>
+      </div>
+      {% for i, item in entities %}
+      <label class="item-card" id="card-entity-{{ i }}">
+        <input type="checkbox" name="entity" value="{{ i }}" checked onchange="updateCard(this, 'entity-{{ i }}')">
+        <div class="item-body">
+          <div class="item-title">
+            <span class="badge badge-entity">{{ item.entity_type or 'other' }}</span>
             {{ item.title }}
           </div>
+          {% if item.reason %}
           <div class="item-reason">{{ item.reason }}</div>
+          {% endif %}
           {% if item.content_notes %}
           <div class="item-notes">內容重點：{{ item.content_notes[:120] }}{% if item.content_notes|length > 120 %}...{% endif %}</div>
           {% endif %}
@@ -72,41 +117,13 @@
       </label>
       {% endfor %}
       {% else %}
-      <p class="empty-section">Robin 判斷這次不需要新建任何頁面。</p>
-      {% endif %}
-    </div>
-
-    <!-- Updates -->
-    <div class="section">
-      <div class="section-title">更新既有頁面</div>
-      {% if updates_list %}
-      <div class="toolbar">
-        <button type="button" onclick="toggleAll('update', true)">全選</button>
-        <button type="button" onclick="toggleAll('update', false)">全不選</button>
-      </div>
-      {% for i, item in updates %}
-      <label class="item-card" id="card-update-{{ i }}">
-        <input type="checkbox" name="update" value="{{ i }}" checked onchange="updateCard(this, 'update-{{ i }}')">
-        <div class="item-body">
-          <div class="item-title">
-            <span class="badge badge-update">更新</span>
-            {{ item.title }}
-          </div>
-          <div class="item-reason">{{ item.reason }}</div>
-          {% if item.additions %}
-          <div class="item-notes">新增內容：{{ item.additions[:120] }}{% if item.additions|length > 120 %}...{% endif %}</div>
-          {% endif %}
-        </div>
-      </label>
-      {% endfor %}
-      {% else %}
-      <p class="empty-section">Robin 判斷這次不需要更新任何既有頁面。</p>
+      <p class="empty-section">Robin 判斷這次不需要新建任何 entity。</p>
       {% endif %}
     </div>
 
     <div class="actions">
-      <button type="submit" class="btn-primary">建立選定頁面</button>
-      <button type="button" class="btn-skip" onclick="uncheckAll(); document.getElementById('form').submit()">略過，不建任何頁面</button>
+      <button type="submit" class="btn-primary">執行選定動作</button>
+      <button type="button" class="btn-skip" onclick="uncheckAll(); document.getElementById('form').submit()">略過，全部跳過</button>
     </div>
   </form>
 </div>

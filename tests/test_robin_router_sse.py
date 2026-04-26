@@ -310,7 +310,12 @@ def test_events_step_planning_redirects_to_review_plan(client, monkeypatch):
     monkeypatch.setattr(
         mod.pipeline,
         "_get_concept_plan",
-        MagicMock(return_value={"create": [{"title": "A"}], "update": []}),
+        MagicMock(
+            return_value={
+                "concepts": [{"slug": "A", "action": "create", "title": "A"}],
+                "entities": [],
+            }
+        ),
     )
 
     r = tc.get(f"/events/{sid}")
@@ -319,7 +324,10 @@ def test_events_step_planning_redirects_to_review_plan(client, monkeypatch):
     assert events[-1] == {"event": "done", "data": {"redirect": "/review-plan"}}
     sess = mod.sessions[sid]
     assert sess["step"] == "awaiting_approval"
-    assert sess["plan"] == {"create": [{"title": "A"}], "update": []}
+    assert sess["plan"] == {
+        "concepts": [{"slug": "A", "action": "create", "title": "A"}],
+        "entities": [],
+    }
 
 
 def test_events_step_planning_none_plan_falls_back_to_empty(client, monkeypatch):
@@ -336,7 +344,7 @@ def test_events_step_planning_none_plan_falls_back_to_empty(client, monkeypatch)
     r = tc.get(f"/events/{sid}")
     assert r.status_code == 200
     sess = mod.sessions[sid]
-    assert sess["plan"] == {"create": [], "update": []}
+    assert sess["plan"] == {"concepts": [], "entities": []}
 
 
 # ---------------------------------------------------------------------------
@@ -356,8 +364,11 @@ def test_events_step_executing_redirects_to_done(client, vault, monkeypatch):
         source_type="article",
         summary_path="KB/Wiki/Sources/x.md",
         plan={
-            "create": [{"title": "A"}, {"title": "B"}],
-            "update": [{"title": "C"}],
+            "concepts": [
+                {"slug": "A", "action": "create", "title": "A"},
+                {"slug": "B", "action": "update_merge", "title": "B"},
+            ],
+            "entities": [{"title": "C", "entity_type": "person"}],
         },
         _title="My Title",
     )
@@ -377,9 +388,15 @@ def test_events_step_executing_redirects_to_done(client, vault, monkeypatch):
     assert events[-1] == {"event": "done", "data": {"redirect": "/done"}}
     sess = mod.sessions[sid]
     assert sess["step"] == "done"
-    assert sess["result"] == {"created": ["A", "B"], "updated": ["C"]}
+    # created = concept create + entity create; updated = concept update_merge/conflict;
+    # referenced = concept noop (none in this fixture)
+    assert sess["result"] == {
+        "created": ["A", "C"],
+        "updated": ["B"],
+        "referenced": [],
+    }
 
-    # status 應提示「寫入 3 個 Wiki 頁面」
+    # status 應提示「寫入 3 個 Wiki 頁面」(2 concept + 1 entity = 3 writes; no noop)
     status_msgs = [e["data"].get("msg", "") for e in events if e["event"] == "status"]
     assert any("3 個" in m for m in status_msgs)
 
@@ -404,7 +421,7 @@ def test_events_step_executing_falls_back_to_raw_stem_when_title_missing(
         file_path=str(raw),
         source_type="article",
         summary_path="KB/Wiki/Sources/y.md",
-        plan={"create": [], "update": []},
+        plan={"concepts": [], "entities": []},
     )
 
     monkeypatch.setattr(mod.pipeline, "_execute_plan", MagicMock())

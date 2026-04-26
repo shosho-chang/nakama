@@ -709,8 +709,8 @@ def test_review_plan_wrong_step_redirects_home(client):
 def test_review_plan_happy_path(client):
     tc, mod = client
     plan = {
-        "create": [{"title": "Concept A", "additions": "a"}],
-        "update": [{"title": "Existing", "additions": "u"}],
+        "concepts": [{"slug": "concept-a", "action": "create", "title": "Concept A"}],
+        "entities": [{"title": "Existing", "entity_type": "person"}],
     }
     sid = mod._new_session(step="awaiting_approval", file_name="foo.md", plan=plan)
     tc.cookies.set("robin_session", sid)
@@ -740,39 +740,39 @@ def test_execute_no_session_redirects_home(client):
 def test_execute_filters_selected_items(client):
     tc, mod = client
     plan = {
-        "create": [
-            {"title": "A", "additions": "a"},
-            {"title": "B", "additions": "b"},
-            {"title": "C", "additions": "c"},
+        "concepts": [
+            {"slug": "a", "action": "create", "title": "A"},
+            {"slug": "b", "action": "update_merge", "title": "B"},
+            {"slug": "c", "action": "noop", "title": "C"},
         ],
-        "update": [
-            {"title": "U1", "additions": "u"},
-            {"title": "U2", "additions": "u"},
+        "entities": [
+            {"title": "U1", "entity_type": "person"},
+            {"title": "U2", "entity_type": "tool"},
         ],
     }
     sid = mod._new_session(step="awaiting_approval", plan=plan)
     tc.cookies.set("robin_session", sid)
-    r = tc.post("/execute", data={"create": ["0", "2"], "update": ["1"]})
+    r = tc.post("/execute", data={"concept": ["0", "2"], "entity": ["1"]})
     assert r.status_code == 302
     assert r.headers["location"] == "/processing"
     final_plan = mod.sessions[sid]["plan"]
-    assert [c["title"] for c in final_plan["create"]] == ["A", "C"]
-    assert [u["title"] for u in final_plan["update"]] == ["U2"]
+    assert [c["title"] for c in final_plan["concepts"]] == ["A", "C"]
+    assert [e["title"] for e in final_plan["entities"]] == ["U2"]
     assert mod.sessions[sid]["step"] == "executing"
 
 
 def test_execute_ignores_invalid_indices(client):
     """非數字或超界 index 應被略過。"""
     tc, mod = client
-    plan = {"create": [{"title": "A"}], "update": []}
+    plan = {"concepts": [{"slug": "a", "action": "create", "title": "A"}], "entities": []}
     sid = mod._new_session(step="awaiting_approval", plan=plan)
     tc.cookies.set("robin_session", sid)
     r = tc.post(
         "/execute",
-        data={"create": ["0", "99", "abc"]},
+        data={"concept": ["0", "99", "abc"]},
     )
     assert r.status_code == 302
-    assert len(mod.sessions[sid]["plan"]["create"]) == 1  # only "A"
+    assert len(mod.sessions[sid]["plan"]["concepts"]) == 1  # only "A"
 
 
 # ---------------------------------------------------------------------------
