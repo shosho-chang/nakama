@@ -10,6 +10,7 @@ Thread-local agent 與 `shared.anthropic_client` 共用，由 `BaseAgent.execute
 from __future__ import annotations
 
 import os
+import time
 
 from openai import (
     APIConnectionError,
@@ -92,9 +93,11 @@ def ask_grok(
             kwargs["temperature"] = temperature
         return client.chat.completions.create(**kwargs)
 
+    start = time.perf_counter()
     response = with_retry(_call, max_attempts=3, backoff_base=2.0, retryable=_XAI_RETRYABLE)
+    latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_usage(model, response)
+    _record_usage(model, response, latency_ms=latency_ms)
 
     return response.choices[0].message.content or ""
 
@@ -133,9 +136,11 @@ def ask_grok_multi(
             kwargs["temperature"] = temperature
         return client.chat.completions.create(**kwargs)
 
+    start = time.perf_counter()
     response = with_retry(_call, max_attempts=3, backoff_base=2.0, retryable=_XAI_RETRYABLE)
+    latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_usage(model, response)
+    _record_usage(model, response, latency_ms=latency_ms)
 
     return response.choices[0].message.content or ""
 
@@ -156,12 +161,13 @@ def _require_grok_model(model: str) -> None:
         )
 
 
-def _record_usage(model: str, response) -> None:
+def _record_usage(model: str, response, *, latency_ms: int = 0) -> None:
     """把 OpenAI-shape usage 轉成 record_api_call 的欄位。
 
     xAI quirk：`prompt_tokens` 包含 cached_tokens（不是附加），所以
     `input_tokens = prompt_tokens - cached_tokens` 才不會重複計費。
     xAI 沒有 cache_write 計費，固定填 0。
+    ``latency_ms`` 由 caller 提供（end-to-end 含 retry 時間）。
     """
     try:
         from shared.state import record_api_call
@@ -184,6 +190,7 @@ def _record_usage(model: str, response) -> None:
             run_id=run_id,
             cache_read_tokens=cached,
             cache_write_tokens=0,
+            latency_ms=latency_ms,
         )
     except Exception:
         pass  # cost tracking 失敗不影響主流程

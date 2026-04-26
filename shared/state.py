@@ -59,6 +59,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             output_tokens       INTEGER NOT NULL,
             cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
             cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+            latency_ms          INTEGER NOT NULL DEFAULT 0,
             called_at           TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_api_calls_agent_time
@@ -273,6 +274,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
     for col_ddl in (
         "ALTER TABLE api_calls ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE api_calls ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE api_calls ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             conn.execute(col_ddl)
@@ -423,20 +425,23 @@ def record_api_call(
     *,
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
+    latency_ms: int = 0,
 ) -> None:
-    """記錄一次 Claude API 呼叫的 token 用量。
+    """記錄一次 LLM API 呼叫的 token 用量 + 延遲。
 
-    ``input_tokens`` / ``output_tokens`` 對應 Anthropic response.usage 的
-    input_tokens / output_tokens（thinking tokens 已含在 output）。
+    ``input_tokens`` / ``output_tokens`` 對應 provider response.usage 的
+    input_tokens / output_tokens（Anthropic：thinking tokens 已含在 output）。
     Cache tokens 來自 ``cache_read_input_tokens`` / ``cache_creation_input_tokens``。
+    ``latency_ms`` 包含 retry 時間（end-to-end caller 視角的 wall-clock）；0 表示
+    呼叫端未測量（既有 callers 升級前），p50/p95/p99 聚合會 filter 掉。
     """
     conn = _get_conn()
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO api_calls
               (agent, run_id, model, input_tokens, output_tokens,
-               cache_read_tokens, cache_write_tokens, called_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               cache_read_tokens, cache_write_tokens, latency_ms, called_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             agent,
             run_id,
@@ -445,6 +450,7 @@ def record_api_call(
             output_tokens,
             cache_read_tokens,
             cache_write_tokens,
+            latency_ms,
             now,
         ),
     )
@@ -552,6 +558,74 @@ def get_cost_timeseries(
     ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def get_latency_summary(agent: Optional[str] = None, days: int = 7) -> list[dict]:
+    """回傳最近 N 天 LLM call 的延遲分布，依 agent × model 分組。
+
+    p50/p95/p99 用 Python 算（SQLite 沒 PERCENTILE_CONT）。只看 ``latency_ms > 0``
+    的 row（既有資料 default 0 表示未測量，會被略過避免拉低分位）。
+
+    Args:
+        agent: 過濾特定 agent，None 表示全部
+        days:  統計最近幾天
+
+    Returns:
+        列表，每筆含 agent, model, calls, latency_p50_ms, latency_p95_ms,
+        latency_p99_ms, latency_max_ms（若該 group 全 0 則不入榜）
+    """
+    conn = _get_conn()
+    from datetime import timedelta
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    params: list = [since]
+    where = "called_at >= ? AND latency_ms > 0"
+    if agent:
+        where += " AND agent = ?"
+        params.append(agent)
+
+    rows = conn.execute(
+        f"""SELECT agent, model, latency_ms
+            FROM api_calls
+            WHERE {where}
+            ORDER BY agent, model""",
+        params,
+    ).fetchall()
+
+    # 在 Python 端做 group + percentile（SQLite 缺 PERCENTILE_CONT）
+    from collections import defaultdict
+
+    buckets: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for row in rows:
+        buckets[(row["agent"], row["model"])].append(row["latency_ms"])
+
+    import math
+
+    def _percentile(sorted_vals: list[int], p: float) -> int:
+        if not sorted_vals:
+            return 0
+        # Nearest-rank: index = ceil(p * n) - 1（標準離散分位定義）
+        n = len(sorted_vals)
+        k = max(0, min(n - 1, math.ceil(p * n) - 1))
+        return sorted_vals[k]
+
+    out: list[dict] = []
+    for (agent_name, model), vals in buckets.items():
+        vals.sort()
+        out.append(
+            {
+                "agent": agent_name,
+                "model": model,
+                "calls": len(vals),
+                "latency_p50_ms": _percentile(vals, 0.50),
+                "latency_p95_ms": _percentile(vals, 0.95),
+                "latency_p99_ms": _percentile(vals, 0.99),
+                "latency_max_ms": vals[-1],
+            }
+        )
+    out.sort(key=lambda r: r["calls"], reverse=True)
+    return out
 
 
 # ---------------------------------------------------------------------------

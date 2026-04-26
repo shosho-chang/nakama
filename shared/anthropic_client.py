@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 
 import anthropic
 
@@ -100,7 +101,9 @@ def ask_claude(
             kwargs["system"] = system
         return client.messages.create(**kwargs)
 
+    start = time.perf_counter()
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
+    latency_ms = int((time.perf_counter() - start) * 1000)
     _record_usage_to_buffer(model, response)
 
     # Cost tracking
@@ -117,6 +120,7 @@ def ask_claude(
             run_id=run_id,
             cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
             cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
+            latency_ms=latency_ms,
         )
     except Exception:
         pass  # cost tracking 失敗不影響主流程
@@ -173,7 +177,9 @@ def call_claude_with_tools(
             ]
         return client.messages.create(**kwargs)
 
+    start = time.perf_counter()
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
+    latency_ms = int((time.perf_counter() - start) * 1000)
     _record_usage_to_buffer(model, response)
 
     try:
@@ -189,6 +195,7 @@ def call_claude_with_tools(
             run_id=run_id,
             cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
             cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
+            latency_ms=latency_ms,
         )
     except Exception:
         pass
@@ -240,7 +247,9 @@ def ask_claude_multi(
             kwargs["system"] = system
         return client.messages.create(**kwargs)
 
+    start = time.perf_counter()
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
+    latency_ms = int((time.perf_counter() - start) * 1000)
     _record_usage_to_buffer(model, response)
 
     # Cost tracking
@@ -257,6 +266,7 @@ def ask_claude_multi(
             run_id=run_id,
             cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
             cache_write_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
+            latency_ms=latency_ms,
         )
     except Exception:
         pass  # cost tracking 失敗不影響主流程
