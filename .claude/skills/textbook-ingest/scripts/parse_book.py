@@ -465,38 +465,189 @@ def _clean_cell_text(cell_tag) -> str:
     return text.replace("|", "\\|").replace("\n", " ").replace("\r", "").strip()
 
 
+def _row_cells_with_spans(tr) -> list[tuple[str, int, int]]:
+    """Return ``[(text, rowspan, colspan), ...]`` for direct ``<th>``/``<td>`` of *tr*."""
+    out: list[tuple[str, int, int]] = []
+    for c in tr.find_all(["th", "td"]):
+        try:
+            rs = int(c.get("rowspan", 1) or 1)
+        except (TypeError, ValueError):
+            rs = 1
+        try:
+            cs = int(c.get("colspan", 1) or 1)
+        except (TypeError, ValueError):
+            cs = 1
+        out.append((_clean_cell_text(c), max(1, rs), max(1, cs)))
+    return out
+
+
+def _expand_rows_to_grid(row_tags) -> list[list[str]]:
+    """Expand a list of ``<tr>`` tags into a 2D grid honoring rowspan/colspan.
+
+    Cells with ``rowspan>1`` are replicated downward into subsequent rows;
+    cells with ``colspan>1`` are replicated rightward. Empty rows (no cells
+    after expansion) are dropped.
+    """
+    grid: list[list[str]] = []
+    pending: dict[int, tuple[str, int]] = {}
+    for tr in row_tags:
+        cells = _row_cells_with_spans(tr)
+        if not cells and not pending:
+            continue
+        row: list[str] = []
+        col = 0
+        cell_idx = 0
+        while cell_idx < len(cells) or col in pending:
+            if col in pending:
+                text, remaining = pending[col]
+                row.append(text)
+                if remaining > 1:
+                    pending[col] = (text, remaining - 1)
+                else:
+                    del pending[col]
+                col += 1
+                continue
+            text, rs, cs = cells[cell_idx]
+            cell_idx += 1
+            for k in range(cs):
+                row.append(text)
+                if rs > 1:
+                    pending[col + k] = (text, rs - 1)
+            col += cs
+        # Drain any remaining pending cells past the explicit ones
+        while col in pending:
+            text, remaining = pending[col]
+            row.append(text)
+            if remaining > 1:
+                pending[col] = (text, remaining - 1)
+            else:
+                del pending[col]
+            col += 1
+        if row:
+            grid.append(row)
+    return grid
+
+
 def _html_table_to_markdown(table_tag) -> tuple[str, str]:
     """Convert a BS4 ``<table>`` to GFM markdown; return ``(markdown, caption)``.
 
-    The first row is treated as the header. Empty tables yield ``("", caption)``
-    so the caller can decide whether to emit a placeholder.
+    Header detection: explicit ``<thead>`` rows take precedence; otherwise the
+    first ``<tr>`` containing any ``<th>`` cell is treated as the header. If
+    no header can be detected, an empty header row is synthesised so source
+    data rows are preserved (GFM tables require a header separator line).
+
+    Handles ``rowspan`` / ``colspan`` by replicating cells across the implied
+    grid positions. Filters ``<tr>`` whose nearest ``<table>`` ancestor is not
+    *table_tag* so a nested table's rows are not absorbed into the outer
+    table.
+
+    Empty tables yield ``("", caption)`` so the caller can emit a placeholder.
     """
     cap_tag = table_tag.find("caption")
     caption_text = cap_tag.get_text(strip=True) if cap_tag is not None else ""
 
-    rows: list[list[str]] = []
-    for tr in table_tag.find_all("tr"):
-        cells_tags = tr.find_all(["th", "td"])
-        if not cells_tags:
-            continue
-        rows.append([_clean_cell_text(c) for c in cells_tags])
+    # All <tr> whose nearest <table> ancestor is *this* table — drops nested
+    # tables' rows (find_all is recursive by default).
+    own_trs = [tr for tr in table_tag.find_all("tr") if tr.find_parent("table") is table_tag]
 
-    if not rows:
+    # <thead> rows whose nearest table ancestor is *this* table.
+    thead_trs: list = []
+    for thead in table_tag.find_all("thead"):
+        if thead.find_parent("table") is not table_tag:
+            continue
+        for tr in thead.find_all("tr"):
+            if tr.find_parent("table") is table_tag:
+                thead_trs.append(tr)
+
+    if thead_trs:
+        header_rows = thead_trs
+        body_rows = [tr for tr in own_trs if tr not in thead_trs]
+    elif own_trs and own_trs[0].find("th") is not None:
+        header_rows = [own_trs[0]]
+        body_rows = own_trs[1:]
+    else:
+        header_rows = []
+        body_rows = own_trs
+
+    header_grid = _expand_rows_to_grid(header_rows) if header_rows else []
+    body_grid = _expand_rows_to_grid(body_rows)
+
+    if not header_grid and not body_grid:
         return "", caption_text
 
-    n_cols = max(len(r) for r in rows)
+    n_cols = max((len(r) for r in header_grid + body_grid), default=0)
     if n_cols == 0:
         return "", caption_text
 
-    header = rows[0] + [""] * (n_cols - len(rows[0]))
-    body = [r + [""] * (n_cols - len(r)) for r in rows[1:]]
+    def _pad(r: list[str]) -> list[str]:
+        return (r + [""] * (n_cols - len(r)))[:n_cols]
 
-    md_lines = ["| " + " | ".join(header) + " |"]
+    md_lines: list[str] = []
+    # Multi-row thead: emit all but the last as preceding header rows; the
+    # last is the canonical header line that pairs with the separator.
+    if header_grid:
+        for extra in header_grid[:-1]:
+            md_lines.append("| " + " | ".join(_pad(extra)) + " |")
+        md_lines.append("| " + " | ".join(_pad(header_grid[-1])) + " |")
+    else:
+        md_lines.append("| " + " | ".join([""] * n_cols) + " |")
     md_lines.append("| " + " | ".join(["---"] * n_cols) + " |")
-    for row in body:
-        md_lines.append("| " + " | ".join(row[:n_cols]) + " |")
+    for row in body_grid:
+        md_lines.append("| " + " | ".join(_pad(row)) + " |")
 
     return "\n".join(md_lines), caption_text
+
+
+def _walk_mathml(node) -> str:
+    """Convert common MathML elements to LaTeX, recursing into children.
+
+    Handles the elements that account for the bulk of textbook math:
+    ``mfrac`` → ``\\frac{n}{d}``; ``msup`` → ``base^{exp}``; ``msub`` →
+    ``base_{sub}``; ``msubsup`` → ``base_{sub}^{sup}``; ``msqrt`` →
+    ``\\sqrt{...}``; ``mroot`` → ``\\sqrt[n]{...}``. Leaf elements
+    (``mn``/``mi``/``mo``/``mtext``) emit their text content. Containers
+    (``mrow``/``math``/unknown) walk their children. Strings pass through.
+    """
+    from bs4 import NavigableString, Tag
+
+    if isinstance(node, NavigableString):
+        return str(node)
+    if not isinstance(node, Tag):
+        return ""
+
+    name = (node.name or "").lower()
+    children = [c for c in node.children if isinstance(c, Tag)]
+
+    if name == "mfrac" and len(children) >= 2:
+        num = _walk_mathml(children[0]).strip()
+        den = _walk_mathml(children[1]).strip()
+        return f"\\frac{{{num}}}{{{den}}}"
+    if name == "msup" and len(children) >= 2:
+        base = _walk_mathml(children[0]).strip()
+        sup = _walk_mathml(children[1]).strip()
+        return f"{base}^{{{sup}}}"
+    if name == "msub" and len(children) >= 2:
+        base = _walk_mathml(children[0]).strip()
+        sub = _walk_mathml(children[1]).strip()
+        return f"{base}_{{{sub}}}"
+    if name == "msubsup" and len(children) >= 3:
+        base = _walk_mathml(children[0]).strip()
+        sub = _walk_mathml(children[1]).strip()
+        sup = _walk_mathml(children[2]).strip()
+        return f"{base}_{{{sub}}}^{{{sup}}}"
+    if name == "msqrt":
+        inner = "".join(_walk_mathml(c) for c in children).strip()
+        return f"\\sqrt{{{inner}}}"
+    if name == "mroot" and len(children) >= 2:
+        radicand = _walk_mathml(children[0]).strip()
+        index = _walk_mathml(children[1]).strip()
+        return f"\\sqrt[{index}]{{{radicand}}}"
+
+    if name in ("mn", "mi", "mo", "mtext"):
+        return node.get_text(strip=False)
+
+    # Containers (math/mrow/mstyle/unknown): concatenate children's output
+    return "".join(_walk_mathml(c) for c in node.children)
 
 
 def _html_math_to_latex(math_tag) -> str:
@@ -510,21 +661,20 @@ def _html_math_to_latex(math_tag) -> str:
     1. ``<math alttext="\\frac{1}{2}">`` — most modern textbook EPUBs include
        the official accessibility ``alttext`` attribute carrying LaTeX or
        readable text. Use it verbatim.
-    2. Fallback to MathML's rendered text content (loses structure for
-       complex equations, but keeps numbers and identifiers visible to
-       downstream LLM passes — preferable to silently dropping the math).
-    3. Empty or whitespace-only input → empty string (caller decides what
+    2. Walk the common MathML subset (``mfrac``/``msup``/``msub``/``msqrt``
+       etc.) so structure survives even when *alttext* is missing — see
+       :func:`_walk_mathml`.
+    3. Empty or whitespace-only output → empty string (caller decides what
        to do with the now-empty placeholder).
 
-    Future: a richer MathML→LaTeX converter (e.g. an in-house walker over
-    the common subset, or a maintained dep) can replace the alttext-first
-    path; the function signature stays the same.
+    Future: a richer MathML→LaTeX converter (e.g. a maintained dep) can
+    replace the walker; the function signature stays the same.
     """
     alt = (math_tag.get("alttext") or "").strip()
     if alt:
         return f"$${alt}$$"
-    text = (math_tag.get_text(strip=True) or "").strip()
-    return f"$${text}$$" if text else ""
+    latex = _walk_mathml(math_tag).strip()
+    return f"$${latex}$$" if latex else ""
 
 
 def _extract_figure(
@@ -842,6 +992,20 @@ def _epub_chapters(
     return chapters, chapter_texts, total_pages
 
 
+_SAFE_REF_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_\-]*$")
+_SAFE_EXT_RE = re.compile(r"^\.[A-Za-z0-9]{1,8}$")
+
+
+def _validate_attachment_ref(ref: str, *, kind: str) -> None:
+    if not _SAFE_REF_RE.match(ref or ""):
+        raise ValueError(f"unsafe {kind} ref {ref!r}: must match {_SAFE_REF_RE.pattern}")
+
+
+def _validate_attachment_extension(extension: str) -> None:
+    if not _SAFE_EXT_RE.match(extension or ""):
+        raise ValueError(f"unsafe attachment extension {extension!r}")
+
+
 def _export_chapter_attachments(chapter: Chapter, attachments_dir: Path) -> None:
     """Write figures + tables for a single chapter under ``attachments_dir``.
 
@@ -849,14 +1013,21 @@ def _export_chapter_attachments(chapter: Chapter, attachments_dir: Path) -> None
 
     - Figures → ``{ref}{extension}`` (e.g. ``fig-1-3.png`` / ``fig-1-3.svg``)
     - Tables → ``{ref}.md`` (e.g. ``tab-1-2.md``) — caption-prefixed markdown
+
+    Each ``ref`` and ``extension`` is regex-validated before joining with
+    *attachments_dir* so a hostile or buggy upstream cannot cause a path
+    traversal write outside *attachments_dir*.
     """
     if not chapter.figures and not chapter.tables:
         return
     attachments_dir.mkdir(parents=True, exist_ok=True)
     for fig in chapter.figures:
+        _validate_attachment_ref(fig.ref, kind="figure")
+        _validate_attachment_extension(fig.extension)
         target = attachments_dir / f"{fig.ref}{fig.extension}"
         target.write_bytes(fig.binary)
     for tab in chapter.tables:
+        _validate_attachment_ref(tab.ref, kind="table")
         target = attachments_dir / f"{tab.ref}.md"
         body = tab.markdown.strip() if tab.markdown else ""
         if tab.caption and body:
