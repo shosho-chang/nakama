@@ -174,6 +174,8 @@
 - [project_quality_uplift_next_2026_04_28.md](project_quality_uplift_next_2026_04_28.md) — **Quality Uplift pickup**：PR #187 grey-fix merged + VPS deployed → 7/9 ✅；下一步 = Phase 6 test coverage task prompt 凍結
 - Decisions：[docs/plans/2026-04-26-phase-6-test-coverage-decisions.md](../../docs/plans/2026-04-26-phase-6-test-coverage-decisions.md) — Phase 6 六題拍板（Q1-Q6 採 A：pytest-cov / hypothesis / dedupe deterministic / 三 agent / mock / 4 slice）
 - Task prompt：[docs/task-prompts/2026-04-26-phase-6-test-coverage.md](../../docs/task-prompts/2026-04-26-phase-6-test-coverage.md) — Phase 6 凍結 4 slice：tooling+8模組80% / FSM property / schema round-trip / 三 agent E2E
+- [feedback_measure_before_freeze.md](feedback_measure_before_freeze.md) — 凍結 task prompt 前必實量 baseline，plan 寫的「目前 X%」估計常差 20%+（Phase 6 plan 寫 <60% 實際 81%）
+- [feedback_no_regression_gate.md](feedback_no_regression_gate.md) — CI gate threshold 用 baseline round-down 5%/10%（不退步 gate），不用 aspirational；同哲學適用 SLO/latency budget
 - [feedback_log_search_fts5_pattern.md](feedback_log_search_fts5_pattern.md) — FTS5 unicode61 對 CJK 是整段一 token、record.exc_info 不可吞、html.escape 走 sentinel swap 三點教訓
 - [project_quality_uplift_vps_deployed_2026_04_26.md](project_quality_uplift_vps_deployed_2026_04_26.md) — 5 PR VPS 部署完成 2026-04-26：解鎖 Phase 5/7/8；路上抓到 logger init / endpoint 漏 https / bucket name trailing space 三 bug
 - [project_quality_uplift_sweep_done_2026_04_26.md](project_quality_uplift_sweep_done_2026_04_26.md) — 12-major sweep 三 PR 全 merged 2026-04-26（#161/#162/#163）；剩 Phase 4-8 + 修修 VPS pull/restart
