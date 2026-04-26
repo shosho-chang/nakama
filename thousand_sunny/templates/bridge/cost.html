@@ -193,6 +193,26 @@ body {
 .tok-cell { text-align: right; font-family: var(--nk-font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
 .cost-cell { text-align: right; font-family: var(--nk-font-mono); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .cost-hot { color: var(--nk-signal); }
+
+/* ── Latency table (Phase 5A) ── */
+.latency-section {}
+.latency-table { background: var(--nk-panel); border: var(--nk-border); width: 100%; }
+.latency-head {
+  display: grid; grid-template-columns: 130px 1fr repeat(5, 90px);
+  padding: 10px 16px; border-bottom: var(--nk-border);
+  font-family: var(--nk-font-mono); font-size: 9px; letter-spacing: 0.15em; color: var(--nk-ink-2); text-transform: uppercase;
+}
+.latency-row {
+  display: grid; grid-template-columns: 130px 1fr repeat(5, 90px);
+  padding: 11px 16px; border-bottom: var(--nk-border-hair); align-items: center;
+}
+.latency-row span { font-family: var(--nk-font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.latency-row .lat-agent { font-size: 11px; color: var(--nk-ink); letter-spacing: .1em; }
+.latency-row .lat-model { font-size: 12px; color: var(--nk-ink-2); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; padding-right: 10px; }
+.latency-row .lat-num { text-align: right; color: var(--nk-ink); }
+.latency-row .lat-num.lat-warn { color: var(--nk-signal); }
+.latency-empty { padding: 16px; font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-muted); text-align: center; background: var(--nk-panel); border: var(--nk-border-hair); border-top: 0; }
+
 .status-bar { margin-top: 12px; font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-muted); }
 
 :focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
@@ -305,6 +325,24 @@ body {
     </div>
   </div>
 
+  <!-- LLM latency p50/p95/p99 (Phase 5A) -->
+  <div class="latency-section" style="margin-top:28px">
+    <div class="nk-caps" style="margin-bottom:8px">LLM LATENCY · 模型延遲分布（end-to-end 含 retry）</div>
+    <div class="latency-table">
+      <div class="latency-head">
+        <span>AGENT</span>
+        <span>MODEL</span>
+        <span style="text-align:right">CALLS</span>
+        <span style="text-align:right">p50</span>
+        <span style="text-align:right">p95</span>
+        <span style="text-align:right">p99</span>
+        <span style="text-align:right">MAX</span>
+      </div>
+      <div id="latencyRows"></div>
+    </div>
+    <div id="latencyEmpty" class="latency-empty" style="display:none">尚無延遲資料 — instrument 部署後新 call 才會記錄</div>
+  </div>
+
   <div class="status-bar" id="statusBar">loading…</div>
 </div>
 
@@ -386,6 +424,7 @@ function render(data) {
 
   renderChart(timeseries);
   renderMatrix(summary, totalCost);
+  renderLatency(data.latency || []);
 }
 
 function renderChart(ts) {
@@ -481,6 +520,38 @@ function renderMatrix(summary, totalCost) {
   const totalTok = rows.reduce((s,r)=>s+r.tok, 0);
   document.getElementById('foot-tok').textContent  = fmtTok(totalTok);
   document.getElementById('foot-cost').textContent = fmtCost(totalCost);
+}
+
+function fmtMs(n) {
+  if (!n) return '—';
+  if (n >= 1000) return (n/1000).toFixed(1) + 's';
+  return n + 'ms';
+}
+
+function renderLatency(rows) {
+  const container = document.getElementById('latencyRows');
+  const empty = document.getElementById('latencyEmpty');
+  if (!rows || !rows.length) {
+    container.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  // p95 > 10s = warn (red); p99 > 30s = warn
+  const warn95 = 10000, warn99 = 30000;
+  container.innerHTML = rows.map(r => {
+    const p95cls = r.latency_p95_ms > warn95 ? ' lat-warn' : '';
+    const p99cls = r.latency_p99_ms > warn99 ? ' lat-warn' : '';
+    return `<div class="latency-row">
+      <span class="lat-agent">${(r.agent||'').toUpperCase()}</span>
+      <span class="lat-model" title="${r.model}">${r.model}</span>
+      <span class="lat-num">${(r.calls||0).toLocaleString('en-US')}</span>
+      <span class="lat-num">${fmtMs(r.latency_p50_ms)}</span>
+      <span class="lat-num${p95cls}">${fmtMs(r.latency_p95_ms)}</span>
+      <span class="lat-num${p99cls}">${fmtMs(r.latency_p99_ms)}</span>
+      <span class="lat-num">${fmtMs(r.latency_max_ms)}</span>
+    </div>`;
+  }).join('');
 }
 
 // Init — restore range

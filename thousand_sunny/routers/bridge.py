@@ -689,6 +689,7 @@ def cost_overview(
 
     summary_rows = state.get_cost_summary(agent=agent, days=days)
     timeseries_rows = state.get_cost_timeseries(agent=agent, days=days, bucket=bucket)
+    latency_rows = state.get_latency_summary(agent=agent, days=days)
 
     def _enrich(row: dict) -> dict:
         cost = calc_cost(
@@ -717,5 +718,6 @@ def cost_overview(
         "total_cost_usd": total_cost,
         "summary": summary,
         "timeseries": timeseries,
+        "latency": latency_rows,
         "pricing": pricing_map,
     }

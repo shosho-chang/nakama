@@ -15,6 +15,7 @@ tracking 跨 provider 一致：`BaseAgent.execute()` 呼叫 anthropic_client 的
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -195,14 +196,16 @@ def ask_gemini(
             config=types.GenerateContentConfig(**config_kwargs),
         )
 
+    start = time.perf_counter()
     response = with_retry(
         _call,
         max_attempts=3,
         backoff_base=2.0,
         retryable=_get_retryable_exceptions(),
     )
+    latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_usage(response, model)
+    _record_usage(response, model, latency_ms=latency_ms)
 
     text = getattr(response, "text", None)
     if not text:
@@ -264,14 +267,16 @@ def ask_gemini_multi(
             config=types.GenerateContentConfig(**config_kwargs),
         )
 
+    start = time.perf_counter()
     response = with_retry(
         _call,
         max_attempts=3,
         backoff_base=2.0,
         retryable=_get_retryable_exceptions(),
     )
+    latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_usage(response, model)
+    _record_usage(response, model, latency_ms=latency_ms)
 
     text = getattr(response, "text", None)
     if not text:
@@ -346,14 +351,16 @@ def ask_gemini_audio(
             config=types.GenerateContentConfig(**config_kwargs),
         )
 
+    start = time.perf_counter()
     response = with_retry(
         _call,
         max_attempts=3,
         backoff_base=2.0,
         retryable=_get_retryable_exceptions(),
     )
+    latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_usage(response, model)
+    _record_usage(response, model, latency_ms=latency_ms)
 
     if response_schema is not None:
         parsed = getattr(response, "parsed", None)
@@ -385,7 +392,7 @@ def _describe_finish(response: Any) -> str:
         return f"diagnostic 失敗: {e}"
 
 
-def _record_usage(response: Any, model: str) -> None:
+def _record_usage(response: Any, model: str, *, latency_ms: int = 0) -> None:
     """記錄 token 用量到 state.api_calls（失敗不影響主流程）。
 
     Reasoning model（Gemini 2.5 Pro）的 thinking token 也是 output 計費，必須併入
@@ -396,6 +403,7 @@ def _record_usage(response: Any, model: str) -> None:
     `cached_content_token_count` 單獨記錄到 cache_read_tokens 供 Bridge 觀測。
     Gemini 沒有 cache_write 計費（cache 要另外走 Context Caching API 建立，
     那才有寫入成本；這層 implicit cache 是 free write），固定填 0。
+    ``latency_ms`` 由 caller 提供（end-to-end 含 retry 時間）。
     """
     try:
         from shared.state import record_api_call
@@ -419,6 +427,7 @@ def _record_usage(response: Any, model: str) -> None:
             run_id=run_id,
             cache_read_tokens=cached_tokens,
             cache_write_tokens=0,
+            latency_ms=latency_ms,
         )
     except Exception as e:
         logger.debug(f"cost tracking 失敗（忽略）：{e}")
