@@ -125,7 +125,19 @@
 - 🟡 描述大致對但缺數字精確度（如「曲線下降」但沒寫 t≈10s）→ PR D 仍走 Sonnet 但加 prompt note
 - 🔴 描述模糊或誤解圖意（如把 schematic 當 line plot）→ PR D **必須升 Opus 4.7**，多燒 ~5x quota 但避免 284 figures 全做白工
 
-**修修整體決策**：PR D Vision LLM 用 _（Sonnet 4.6 / Sonnet 4.6 + 加強 prompt / Opus 4.7）_
+**修修整體決策**：**Sonnet 4.6**（保留 ADR-011 §3.4 default）— **DONE 2026-04-26**
+
+**評估方式**：派 Sonnet 4.6 sub-agent 對 13 張 figure 重跑 Vision describe（同 prompt template / domain role），跟既有 Opus 4.7 in-session description head-to-head。修修原以為既有是 Sonnet 跑的、人眼看圖評分變沒意義，故改用此 controlled comparison。對照報告：[`docs/research/2026-04-26-ch1-vision-sonnet-rerun.md`](../research/2026-04-26-ch1-vision-sonnet-rerun.md)。
+
+**Tally**：Sonnet 7 張略佳 / Opus 2 張略佳 / 4 張平手
+
+**Sonnet 整體不輸 Opus**（多數張數值精度、雙語、citation 更完整），cost 約 Opus 1/5。
+
+**已知 Sonnet 兩個 weakness（mitigation 已寫進）**：
+1. Anatomical localization in schematics（fig-1-6 PCr shuttle Sonnet 把 CrT 位置搞混）— 對 ch2 *Skeletal Muscle Structure* 預期 schematic 多，**ch2 ingest 時挑 2-3 張先 Sonnet 跑、修修人眼 spot-check**；不滿意再單獨升 Opus
+2. Minor blemishes（LaTeX `}}` typo + 雙語術語不一致）— driver post-process 可加 sanity check（grep + 中譯表）作 follow-up，非 PR D blocker
+
+**意外 finding**：互動 session Opus Read（PR C）vs Sonnet API 的差異可能比 model tier 差異更大 — Opus session 反而漏些 textbook anchor（Marathon% 算術、β-γ bond、Romijn fat fraction）。implication：未來 session 手動 Read 預期比 batch API 略差。
 
 ---
 
@@ -217,7 +229,7 @@
 2. **F2（aliases 欄位缺）**：手動補 / 加進 PR D 順手任務 / backfill script？_（待）_
 3. **F3（占位符沒 swap 成 image embed）**：(c) 兩個都做 — **DONE 2026-04-26**（V1 驗收解 block）
 4. **B1（4 個 noop page schema_version=1）**：接受 by-design / 改 ADR 強制 noop 也 lazy migrate？_（待）_
-5. **V1（Vision describe 品質）**：PR D Vision LLM 走 Sonnet 4.6 / Sonnet + 加強 prompt / Opus 4.7？_（待，F3 已解、可在 Obsidian 開 ch1.md 對照看圖了）_
+5. **V1（Vision describe 品質）**：**Sonnet 4.6**（保留 ADR-011 default）— **DONE 2026-04-26**（Sonnet rerun head-to-head 顯示 Sonnet 整體不輸 Opus；ch2 schematic 多，建議先挑 2-3 張 spot-check 再放手 batch）
 
 ---
 
