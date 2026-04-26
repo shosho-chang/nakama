@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+# Module-level: disable the SQLite log sink BEFORE any test module imports
+# `shared.log` and triggers handler setup. Tests that exercise the handler
+# itself (`test_log_handler.py`) explicitly opt out via monkeypatch.
+os.environ.setdefault("NAKAMA_LOG_DB_DISABLE", "1")
 
 
 @pytest.fixture(autouse=True)

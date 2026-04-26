@@ -1,7 +1,10 @@
-"""統一 logging：Python logger + KB/log.md 寫入。
+"""統一 logging：Python logger + KB/log.md 寫入 + SQLite FTS5 search index.
 
 `NAKAMA_LOG_FORMAT=json` 切到 JSON-line output（VPS observability 用）。
 未設或 `text` 維持人類可讀格式（dev / CI 預設）。
+
+`NAKAMA_LOG_DB_DISABLE=1` 跳過 SQLite log index handler（CI / unit tests
+should set this in conftest to avoid polluting `data/logs.db`).
 """
 
 import json
@@ -9,6 +12,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 from shared.obsidian_writer import append_to_file
 
@@ -51,6 +55,21 @@ _STANDARD_LOG_FIELDS = frozenset(
 )
 
 
+def _extract_extra(record: logging.LogRecord) -> dict:
+    """Pull caller-supplied `extra={...}` fields off a LogRecord.
+
+    Anything OUTSIDE _STANDARD_LOG_FIELDS that doesn't start with `_` is
+    treated as user-supplied structured context. Used by both JSONFormatter
+    and SQLiteLogHandler so the same fields reach stdout JSON and the
+    `/bridge/logs` extra column.
+    """
+    return {
+        key: value
+        for key, value in record.__dict__.items()
+        if key not in _STANDARD_LOG_FIELDS and not key.startswith("_")
+    }
+
+
 class JSONFormatter(logging.Formatter):
     """Emit a single JSON object per log record (newline-delimited).
 
@@ -72,11 +91,71 @@ class JSONFormatter(logging.Formatter):
         }
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
-        for key, value in record.__dict__.items():
-            if key in _STANDARD_LOG_FIELDS or key.startswith("_"):
-                continue
-            payload[key] = value
+        payload.update(_extract_extra(record))
         return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+class SQLiteLogHandler(logging.Handler):
+    """Persist log records to `data/logs.db` for `/bridge/logs` FTS search.
+
+    Synchronous insert per record (WAL mode keeps p99 < a few ms). DEBUG is
+    filtered via the handler's level threshold (default INFO) — debug volume
+    has low signal-to-noise for postmortem search.
+
+    On any insert error, falls back to `self.handleError(record)` which by
+    default prints to stderr and continues. This guarantees a broken log DB
+    can never crash the calling code path.
+    """
+
+    def __init__(
+        self,
+        *,
+        level: int = logging.INFO,
+        db_path: Path | None = None,
+    ) -> None:
+        super().__init__(level=level)
+        self._db_path = db_path
+        self._index = None
+
+    def _get_index(self):
+        # Lazy init so handler can be constructed in CI / tests without
+        # touching the filesystem until something actually emits.
+        if self._index is None:
+            from shared.log_index import LogIndex
+
+            self._index = (
+                LogIndex.from_path(self._db_path)
+                if self._db_path is not None
+                else LogIndex.from_default_path()
+            )
+        return self._index
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            extra = _extract_extra(record)
+            # `logger.exception()` sets exc_info; capture the traceback into
+            # extra so /bridge/logs can search inside it (FTS5 indexes
+            # extra_json). Without this, the most useful postmortem log
+            # type loses its stack trace at insert time.
+            if record.exc_info:
+                extra["exc"] = self.format_exc(record.exc_info)
+            self._get_index().insert(
+                ts=datetime.fromtimestamp(record.created, tz=timezone.utc),
+                level=record.levelname,
+                logger=record.name,
+                msg=record.getMessage(),
+                extra=extra,
+            )
+        except Exception:
+            # Logging itself must NEVER raise — fall back to stderr via
+            # logging.Handler default behavior.
+            self.handleError(record)
+
+    @staticmethod
+    def format_exc(exc_info) -> str:
+        """Format exc_info via the standard `Formatter.formatException` route.
+        Wrapped as a method so tests can monkeypatch if needed."""
+        return logging.Formatter().formatException(exc_info)
 
 
 def get_logger(name: str = "nakama") -> logging.Logger:
@@ -102,6 +181,12 @@ def get_logger(name: str = "nakama") -> logging.Logger:
                 logging.Formatter("[%(asctime)s] %(name)s %(levelname)s — %(message)s")
             )
         root.addHandler(handler)
+
+        # SQLite FTS5 sink for /bridge/logs search (Phase 5C). Disable in CI /
+        # tests via NAKAMA_LOG_DB_DISABLE=1 to avoid polluting data/logs.db.
+        if os.environ.get("NAKAMA_LOG_DB_DISABLE", "").lower() not in ("1", "true", "yes"):
+            root.addHandler(SQLiteLogHandler(level=logging.INFO))
+
         _initialized = True
 
     return logging.getLogger(name)

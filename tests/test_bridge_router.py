@@ -156,13 +156,48 @@ def test_docs_page_with_query_returns_results(client):
     assert ("<mark>" in body) or ("No matches" in body)
 
 
+# ── Phase 5C /bridge/logs ────────────────────────────────────────────────────
+
+
+def test_logs_page_renders_form_when_empty(client):
+    r = client.get("/bridge/logs")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    body = r.text
+    assert "Bridge · Logs" in body
+    assert 'name="q"' in body
+    assert 'name="level"' in body
+    assert 'name="logger"' in body
+    assert 'name="since"' in body
+
+
+def test_logs_page_with_query_does_not_500(client):
+    """Empty index is OK; just want a clean 200 with no FTS5 syntax crash."""
+    r = client.get("/bridge/logs?q=hello")
+    assert r.status_code == 200
+    body = r.text
+    assert ("<mark>" in body) or ("No log records" in body) or ("Empty filters" in body)
+
+
+def test_logs_page_relative_time_filter_does_not_500(client):
+    r = client.get("/bridge/logs?since=24h ago&until=1h")
+    assert r.status_code == 200
+
+
+def test_logs_page_bad_fts5_syntax_soft_fails(client):
+    """Unbalanced quote — FTS5 raises OperationalError; we soft-fail to empty list."""
+    r = client.get('/bridge/logs?q="unbalanced')
+    assert r.status_code == 200
+    assert "No log records" in r.text or "Empty filters" in r.text
+
+
 # ── chassis-nav unification regression ──────────────────────────────────────
 # Three taxonomies emerged across PR #136 / #152 / #157 because each new page
 # copy-pasted the chassis nav and diverged. PR A (2026-04-26) unified them to
-# the canonical 8-item form: uppercase + zh suffix + class="active" marker
-# + aria-current="page" on the active link for a11y.
+# the canonical form (8 → 9 items after Phase 5C added LOGS): uppercase + zh
+# suffix + class="active" marker + aria-current="page" on the active link.
 def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> None:
-    """Verify all 8 entries present, no legacy taxonomy, active link has both
+    """Verify all 9 entries present, no legacy taxonomy, active link has both
     `class="active"` and `aria-current="page"` regardless of attribute order."""
     for label, zh in [
         ("BRIDGE", "船橋"),
@@ -172,6 +207,7 @@ def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> No
         ("FRANKY", "船匠"),
         ("HEALTH", "巡檢"),
         ("DOCS", "文件"),
+        ("LOGS", "日誌"),
         ("VAULT", "秘庫"),
     ]:
         assert f'{label} <span class="zh">{zh}' in body, f"{path} missing {label}"
@@ -200,9 +236,10 @@ def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> No
         ("/bridge/franky", "FRANKY"),
         ("/bridge/health", "HEALTH"),
         ("/bridge/docs", "DOCS"),
+        ("/bridge/logs", "LOGS"),
     ],
 )
-def test_chassis_nav_canonical_8_items(client, path, active_label):
+def test_chassis_nav_canonical_9_items(client, path, active_label):
     r = client.get(path)
     assert r.status_code == 200
     _assert_canonical_chassis_nav(r.text, path, active_label)
