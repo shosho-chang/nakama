@@ -242,3 +242,83 @@ def test_result_has_expected_keys(vault, monkeypatch):
         "relevance_reason",
     }
     assert results[0]["path"] == "KB/Wiki/Sources/s1"
+
+
+# ---------------------------------------------------------------------------
+# Purpose-dispatched prompts (Slice D.2)
+# ---------------------------------------------------------------------------
+
+
+def _capture_prompt(monkeypatch) -> dict:
+    """Patch get_client so the prompt sent to Haiku is captured for assertions."""
+    captured: dict = {}
+
+    def _capture_messages_create(**kwargs):
+        captured["prompt"] = kwargs["messages"][0]["content"]
+        return SimpleNamespace(content=[SimpleNamespace(text="[]")])
+
+    client = MagicMock()
+    client.messages.create.side_effect = _capture_messages_create
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+    return captured
+
+
+def test_default_purpose_uses_general_intro(vault, monkeypatch):
+    """Default purpose is "general" — neutral KB-query framing, no YouTube wording."""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
+    captured = _capture_prompt(monkeypatch)
+
+    search_kb("Zone 2 訓練", vault)
+
+    assert "想查詢知識庫" in captured["prompt"]
+    assert "YouTube" not in captured["prompt"]
+
+
+def test_purpose_youtube_preserves_video_framing(vault, monkeypatch):
+    """purpose="youtube" 保留原本影片製作 lens — Zoro / Robin 影片 pipeline 用。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
+    captured = _capture_prompt(monkeypatch)
+
+    search_kb("睡眠科學", vault, purpose="youtube")
+
+    assert "YouTube 影片" in captured["prompt"]
+
+
+def test_purpose_seo_audit_frames_internal_link_intent(vault, monkeypatch):
+    """purpose="seo_audit" 給 Haiku 部落格 internal link 補強的上下文。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
+    captured = _capture_prompt(monkeypatch)
+
+    search_kb("zone 2 訓練", vault, purpose="seo_audit")
+
+    assert "SEO 體檢" in captured["prompt"]
+    assert "internal link" in captured["prompt"]
+    assert "YouTube" in captured["prompt"]  # 但只在「請排後」這條尾部提示
+
+
+def test_purpose_blog_compose_frames_article_writing(vault, monkeypatch):
+    """purpose="blog_compose" 給 Brook 撰文場景的 lens。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
+    captured = _capture_prompt(monkeypatch)
+
+    search_kb("肌力訓練飲食", vault, purpose="blog_compose")
+
+    assert "撰寫一篇部落格" in captured["prompt"]
+
+
+def test_all_purposes_produce_same_output_shape(vault, monkeypatch):
+    """所有 purpose 走同一套 JSON parsing；輸出 keys 不變。"""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body1")
+    client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
+    monkeypatch.setattr("agents.robin.kb_search.get_client", lambda: client)
+
+    for purpose in ("general", "youtube", "seo_audit", "blog_compose"):
+        results = search_kb("q", vault, purpose=purpose)  # type: ignore[arg-type]
+        assert results, f"purpose={purpose} returned empty"
+        assert set(results[0].keys()) == {
+            "type",
+            "title",
+            "path",
+            "preview",
+            "relevance_reason",
+        }
