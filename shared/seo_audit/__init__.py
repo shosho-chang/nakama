@@ -9,6 +9,7 @@ from __future__ import annotations
 from shared.seo_audit.headings import check_headings
 from shared.seo_audit.html_fetcher import FetchResult, fetch_html
 from shared.seo_audit.images import check_images
+from shared.seo_audit.llm_review import LLMLevel
 from shared.seo_audit.metadata import check_metadata
 from shared.seo_audit.performance import check_performance
 from shared.seo_audit.schema_markup import check_schema_markup
@@ -28,6 +29,7 @@ __all__ = [
     "CheckSeverity",
     "CheckStatus",
     "FetchResult",
+    "LLMLevel",
     "check_headings",
     "check_images",
     "check_metadata",
