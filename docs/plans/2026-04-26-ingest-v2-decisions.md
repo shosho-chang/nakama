@@ -22,7 +22,7 @@
 
 **選一個**：
 
-- [ ] **A — Step 1 + Step 2 並行**（建議；Step 3 等 ADR accept）
+- [x] **A — Step 1 + Step 2 並行**（建議；Step 3 等 ADR accept）
 - [ ] **B — 嚴格序貫 Step 1 → 2 → 3**
 - [ ] **C — 三步全並行**（Step 3 一邊 implement 一邊改 ADR；不建議：implement 跑半路若 ADR 改設計會 rework）
 
@@ -46,7 +46,7 @@
 
 **選一個**：
 
-- [ ] **A — 維持，等 v2 backfill 一次解決**（建議）
+- [x] **A — 維持，等 v2 backfill 一次解決**（建議）
 - [ ] **B — 立刻手動合併**
 - [ ] **C — 立刻刪 update sections，等 v2 重 ingest**
 
@@ -68,7 +68,7 @@ ADR convention：repo 既有 ADR 全部走「新增 + 舊版標 superseded」（
 
 **選一個**：
 
-- [ ] **A — 新 ADR-011，ADR-010 標 superseded**（建議；對齊 repo convention）
+- [x] **A — 新 ADR-011，ADR-010 標 superseded**（建議；對齊 repo convention）
 - [ ] **B — 直接改寫 ADR-010**
 - [ ] **C — 其他**
 
@@ -90,7 +90,7 @@ ADR convention：repo 既有 ADR 全部走「新增 + 舊版標 superseded」（
 
 **選一個**：
 
-- [ ] **A — Sonnet 4.6 預設**（建議；domain-aware prompt 補品質）
+- [x] **A — Sonnet 4.6 預設**（建議；domain-aware prompt 補品質）
 - [ ] **B — Opus 4.7 全程**
 - [ ] **C — Sonnet 預設、發現問題升 Opus**（A 的軟版）
 
