@@ -65,6 +65,26 @@ _V1_ONLY_FIELDS = frozenset({"status", "related_pages"})
 # Backup retention: 24h
 BACKUP_RETENTION = timedelta(hours=24)
 
+# Slug / book_id sanitization — block path traversal via LLM-emitted strings
+# (CJK + alphanumerics + underscore + dash; first char must be a word/CJK char
+# so empty-but-truthy values like "-" are rejected). The class deliberately
+# excludes `.` `/` `\` `..` so attackers can't coax a slug like
+# `../../../tmp/poc` into `_concept_abs_path` or `_backup_path`.
+_SAFE_SLUG_RE = re.compile(r"^[\w一-鿿][\w\-一-鿿]*$")
+
+
+def _validate_slug(value: str, *, kind: str = "slug") -> None:
+    """Reject path-traversal-shaped strings before they hit `Path` interpolation.
+
+    Used at every public write entry that takes an LLM-influenced identifier
+    (concept slug / book_id). `Path` does not collapse `..` at construction
+    time, so without this guard a slug `../../../tmp/poc` lets
+    `upsert_concept_page` write outside the vault.
+    """
+    if not isinstance(value, str) or not _SAFE_SLUG_RE.fullmatch(value):
+        raise ValueError(f"unsafe {kind}: {value!r}")
+
+
 # LLM diff-merge prompt（給 update_merge action 用；ADR-011 §3.3 Step 5）
 _DIFF_MERGE_PROMPT = """你是知識庫 aggregator。
 下方有既有 concept page body 與一段新 source 的 extract，請把新內容 merge 進主體段落
@@ -289,14 +309,23 @@ def _v1_to_v2_in_memory(fm: dict, body: str) -> tuple[dict, str, list[str]]:
     topics = fm.get("discussion_topics") or []
     v2_fm["discussion_topics"] = list(topics) if isinstance(topics, list) else []
 
-    # confidence: v1 had string ("medium"); v2 needs float | None
+    # confidence: v1 had string ("medium"); v2 needs float | None.
+    # Exclude bool from int/float branch (bool subclasses int in Python; we
+    # don't want `confidence: true` to silently become 1.0). Log unknown
+    # strings explicitly so the dry-run migration report shows the drop.
     conf = fm.get("confidence")
-    if isinstance(conf, (int, float)):
+    if isinstance(conf, bool):
+        v2_fm["confidence"] = None
+        changes.append(f"! confidence: bool {conf!r} dropped to None")
+    elif isinstance(conf, (int, float)):
         v2_fm["confidence"] = float(conf)
     elif isinstance(conf, str):
-        v2_fm["confidence"] = {"low": 0.3, "medium": 0.6, "high": 0.9}.get(conf.lower())
-        if v2_fm["confidence"] is not None:
-            changes.append(f"~ confidence: '{conf}' → {v2_fm['confidence']}")
+        mapped = {"low": 0.3, "medium": 0.6, "high": 0.9}.get(conf.lower())
+        v2_fm["confidence"] = mapped
+        if mapped is not None:
+            changes.append(f"~ confidence: '{conf}' → {mapped}")
+        else:
+            changes.append(f"! confidence: unknown string {conf!r} dropped to None")
     else:
         v2_fm["confidence"] = None
 
@@ -369,13 +398,25 @@ def list_existing_concepts() -> dict[str, dict]:
 def _ensure_h2_skeleton(body: str) -> str:
     """Ensure all H2_ORDER headings exist in body (fill missing with placeholder).
 
-    Idempotent: existing sections are preserved verbatim.
+    Idempotent: existing canonical sections are preserved verbatim, and any
+    non-canonical H2 sections (user-added `## Methods`, zh-prefixed
+    `## 定義（Definition）` from earlier Robin output, or future v3
+    sections) are appended after the canonical block — never silently
+    dropped. P1 「enrich, not destroy」.
     """
     sections = _split_h2_sections(body)
     rebuilt: list[str] = []
+    canonical = set(H2_ORDER)
     for h2 in H2_ORDER:
         content = sections.get(h2, PLACEHOLDER)
         rebuilt.append(f"{h2}\n\n{content.strip()}\n")
+    # Forward-compat: keep any leftover H2 (user-added or future schema) after
+    # the canonical block. Iterate in document order (Python 3.7+ dict).
+    for h2, content in sections.items():
+        if h2 == "__prefix__" or h2 in canonical:
+            continue
+        if h2.startswith("## "):
+            rebuilt.append(f"{h2}\n\n{content.strip() or PLACEHOLDER}\n")
     # Preserve any non-H2 prefix (e.g. `# Title`)
     prefix = sections.get("__prefix__", "")
     if prefix:
@@ -462,12 +503,16 @@ def _strip_legacy_update_blocks(body: str) -> tuple[str, int]:
 def update_mentioned_in(page_path: Path, source_link: str) -> bool:
     """Append source_link to mentioned_in list (idempotent).
 
+    Lazy-migrates v1 pages to v2 before writing so callers don't end up with a
+    hybrid frontmatter (v1 status/related_pages alongside v2 mentioned_in).
+
     Returns True if appended, False if already present.
     """
     loaded = _load_page(page_path)
     if loaded is None:
         return False
-    fm, body = loaded
+    raw_fm, raw_body = loaded
+    fm, body, _mig_changes = _v1_to_v2_in_memory(raw_fm, raw_body)
     mentioned = fm.get("mentioned_in") or []
     if not isinstance(mentioned, list):
         mentioned = []
@@ -490,11 +535,18 @@ def aggregate_conflict(
     uncertainty: str | None = None,
 ) -> None:
     """Append a structured conflict block under `## 文獻分歧 / Discussion`;
-    sync `discussion_topics` frontmatter."""
+    sync `discussion_topics` and `mentioned_in` frontmatter.
+
+    Lazy-migrates v1 pages to v2 before writing (otherwise re-emitting v1
+    `status` / `related_pages` alongside v2 fields produces an invalid
+    hybrid). Body block is idempotent: re-calling with the same
+    (topic, source_link, claims) does not double-append.
+    """
     loaded = _load_page(page_path)
     if loaded is None:
         raise FileNotFoundError(f"Page not found: {page_path}")
-    fm, body = loaded
+    raw_fm, raw_body = loaded
+    fm, body, _mig_changes = _v1_to_v2_in_memory(raw_fm, raw_body)
     block = ConflictBlock(
         topic=topic,
         existing_claim=existing_claim,
@@ -504,7 +556,8 @@ def aggregate_conflict(
         uncertainty=uncertainty,
     )
     new_md = _conflict_block_to_md(topic, source_link, block)
-    body = _append_to_section(body, DISCUSSION_HEADING, new_md)
+    if new_md.strip() not in body:
+        body = _append_to_section(body, DISCUSSION_HEADING, new_md)
 
     topics = fm.get("discussion_topics") or []
     if not isinstance(topics, list):
@@ -512,6 +565,16 @@ def aggregate_conflict(
     if topic not in topics:
         topics.append(topic)
     fm["discussion_topics"] = topics
+
+    # Cite source_link in body → must also appear in mentioned_in
+    # (symmetry with `upsert_concept_page(action='update_conflict')`).
+    mentioned = fm.get("mentioned_in") or []
+    if not isinstance(mentioned, list):
+        mentioned = []
+    if source_link not in mentioned:
+        mentioned.append(source_link)
+        fm["mentioned_in"] = mentioned
+
     fm["updated"] = date.today()
     _write_page_file(page_path, fm, body)
 
@@ -545,6 +608,7 @@ def upsert_concept_page(
         confidence: 0..1 (create only)
         now: timestamp injection for tests; defaults to UTC now
     """
+    _validate_slug(slug, kind="concept slug")
     if now is None:
         now = datetime.now(timezone.utc)
 
@@ -594,13 +658,35 @@ def upsert_concept_page(
     needs_legacy_strip = "## 更新（" in body
 
     if action == "noop":
-        # Only append mentioned_in (idempotent). Don't update `updated:`.
+        # Strip legacy `## 更新（date）` blocks if present — otherwise a v1
+        # page whose first v2 touch is a noop ends up permanently stuck with
+        # `schema_version=2` frontmatter + legacy body, because future reads
+        # short-circuit migration on `schema_version==2`.
+        body_changed = False
+        if needs_legacy_strip:
+            body, stripped = _strip_legacy_update_blocks(body)
+            if stripped:
+                body_changed = True
+                logger.info(
+                    f"stripped {stripped} legacy `## 更新` blocks on noop",
+                    extra={"slug": slug},
+                )
+        existing_mentioned = list(raw_fm.get("mentioned_in") or [])
         if source_link not in fm.get("mentioned_in", []):
             fm.setdefault("mentioned_in", []).append(source_link)
+        # Write when migration / legacy strip / new source_link — any of
+        # them counts as substantive change.
+        if mig_changes or body_changed or source_link not in existing_mentioned:
             _write_page_file(abs_path, fm, body)
             logger.info(
-                "concept noop (mentioned_in appended)",
-                extra={"slug": slug, "action": "noop", "source": source_link},
+                "concept noop persisted",
+                extra={
+                    "slug": slug,
+                    "action": "noop",
+                    "source": source_link,
+                    "migrated": bool(mig_changes),
+                    "stripped_legacy": body_changed,
+                },
             )
         return abs_path
 
@@ -662,7 +748,11 @@ def upsert_concept_page(
                 logger.info(f"stripped {stripped} legacy `## 更新` blocks", extra={"slug": slug})
         body = _ensure_h2_skeleton(body)
         new_md = _conflict_block_to_md(conflict.topic, source_link, conflict)
-        body = _append_to_section(body, DISCUSSION_HEADING, new_md)
+        # Idempotency: re-ingest / retry / double-drop should not double-append
+        # the same (topic, source_link) block. Frontmatter discussion_topics +
+        # mentioned_in already dedup below; this closes the body gap.
+        if new_md.strip() not in body:
+            body = _append_to_section(body, DISCUSSION_HEADING, new_md)
 
         topics = fm.get("discussion_topics") or []
         if conflict.topic not in topics:
@@ -704,6 +794,9 @@ def write_source_page(
     `source_md` is the body content (post chapter-summary prompt). Frontmatter
     is built from kwargs and validated against ChapterSourcePageV2.
     """
+    _validate_slug(book_id, kind="book_id")
+    if not isinstance(chapter_index, int) or chapter_index < 1:
+        raise ValueError(f"chapter_index must be a positive int, got {chapter_index!r}")
     page = ChapterSourcePageV2(
         lang=lang,
         book_id=book_id,
@@ -743,15 +836,24 @@ def upsert_book_entity(
     `chapters_ingested` counter auto-increments by scanning existing chapter
     source pages under KB/Wiki/Sources/Books/{book_id}/.
     """
+    _validate_slug(book_id, kind="book_id")
     rel = f"{KB_BOOK_ENTITIES_DIR}/{book_id}.md"
     abs_path = get_vault_path() / rel
 
-    # Count existing chapter source pages for this book
+    # Count existing chapter source pages for this book. Sort by extracted int
+    # so ch10 follows ch9, not ch1 (lex sort would render `ch1, ch10, ch11, ch2,
+    # ..., ch9` for an 11-chapter book — bug_003).
     sources_dir = get_vault_path() / KB_BOOK_SOURCES_DIR / book_id
     chapters_ingested = 0
     chapter_links: list[str] = []
+    _CH_NUM_RE = re.compile(r"^ch(\d+)$")
+
+    def _ch_sort_key(p: Path) -> tuple[int, str]:
+        m = _CH_NUM_RE.match(p.stem)
+        return (int(m.group(1)) if m else 10**9, p.stem)
+
     if sources_dir.exists():
-        for f in sorted(sources_dir.glob("ch*.md")):
+        for f in sorted(sources_dir.glob("ch*.md"), key=_ch_sort_key):
             chapters_ingested += 1
             chapter_links.append(f"- [[{f.stem}]]")
 

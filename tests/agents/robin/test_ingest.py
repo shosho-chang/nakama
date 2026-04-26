@@ -775,6 +775,26 @@ def test_execute_concept_action_noop_dispatches(pipeline, stub_kb_writer):
     assert stub_kb_writer.calls[0]["action"] == "noop"
 
 
+def test_execute_concept_action_create_with_malformed_conflict_still_dispatches(
+    pipeline, stub_kb_writer
+):
+    """bug_020: a `create` action carrying a stray conflict dict should not be
+    silently dropped — gate the conflict validation on action=='update_conflict'."""
+    pipeline._execute_concept_action(
+        {
+            "slug": "NewConcept",
+            "action": "create",
+            "title": "NewConcept",
+            "extracted_body": "## Definition\n\nfoo\n",
+            "conflict": {"reason": "defensive empty"},  # malformed but irrelevant
+        },
+        source_link="[[s]]",
+    )
+    assert len(stub_kb_writer.calls) == 1
+    assert stub_kb_writer.calls[0]["action"] == "create"
+    assert stub_kb_writer.calls[0]["conflict"] is None
+
+
 # ---------------------------------------------------------------------------
 # _create_entity_page  (entity 沿用 v1 schema)
 # ---------------------------------------------------------------------------

@@ -608,8 +608,16 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
             elif step == "executing":
                 concepts = sess["plan"].get("concepts", [])
                 entities = sess["plan"].get("entities", [])
-                total = len(concepts) + len(entities)
-                yield sse("status", {"msg": f"Robin 正在寫入 {total} 個 Wiki 頁面..."})
+                writes = sum(
+                    1
+                    for c in concepts
+                    if c.get("action") in ("create", "update_merge", "update_conflict")
+                ) + len(entities)
+                noop_count = sum(1 for c in concepts if c.get("action") == "noop")
+                msg = f"Robin 正在寫入 {writes} 個 Wiki 頁面"
+                if noop_count:
+                    msg += f"，並補充 {noop_count} 個既有頁面的引用"
+                yield sse("status", {"msg": msg + "..."})
 
                 await asyncio.to_thread(pipeline._execute_plan, sess["plan"], sess["summary_path"])
 
@@ -630,10 +638,16 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     for c in concepts
                     if c.get("action") in ("update_merge", "update_conflict")
                 ]
+                concept_noop = [
+                    c.get("title") or c.get("slug") or "?"
+                    for c in concepts
+                    if c.get("action") == "noop"
+                ]
                 entity_create = [e.get("title", "?") for e in entities]
                 sess["result"] = {
                     "created": concept_create + entity_create,
                     "updated": concept_update,
+                    "referenced": concept_noop,
                 }
                 sess["step"] = "done"
                 yield sse("done", {"redirect": "/done"})
@@ -775,6 +789,7 @@ async def done(
             "file_name": sess["file_name"],
             "created": sess["result"].get("created", []),
             "updated": sess["result"].get("updated", []),
+            "referenced": sess["result"].get("referenced", []),
         },
     )
 

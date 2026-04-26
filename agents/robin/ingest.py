@@ -491,14 +491,18 @@ class IngestPipeline:
             logger.warning(f"unknown concept action {action!r} for slug {slug}")
             return
 
+        # Only update_conflict consumes `conflict`; gate validation so a
+        # defensively-populated partial conflict dict on a non-conflict action
+        # does not silently drop the entire concept action (bug_020).
         conflict: ConflictBlock | None = None
-        conflict_data = item.get("conflict")
-        if conflict_data:
-            try:
-                conflict = ConflictBlock(**conflict_data)
-            except Exception as e:
-                logger.warning(f"invalid conflict block for {slug}: {e}")
-                return
+        if action == "update_conflict":
+            conflict_data = item.get("conflict")
+            if conflict_data:
+                try:
+                    conflict = ConflictBlock(**conflict_data)
+                except Exception as e:
+                    logger.warning(f"invalid conflict block for {slug}: {e}")
+                    return
 
         try:
             kb_writer.upsert_concept_page(

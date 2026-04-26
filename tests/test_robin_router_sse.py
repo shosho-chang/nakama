@@ -388,10 +388,15 @@ def test_events_step_executing_redirects_to_done(client, vault, monkeypatch):
     assert events[-1] == {"event": "done", "data": {"redirect": "/done"}}
     sess = mod.sessions[sid]
     assert sess["step"] == "done"
-    # created = concept create + entity create; updated = concept update_merge/conflict
-    assert sess["result"] == {"created": ["A", "C"], "updated": ["B"]}
+    # created = concept create + entity create; updated = concept update_merge/conflict;
+    # referenced = concept noop (none in this fixture)
+    assert sess["result"] == {
+        "created": ["A", "C"],
+        "updated": ["B"],
+        "referenced": [],
+    }
 
-    # status 應提示「寫入 3 個 Wiki 頁面」
+    # status 應提示「寫入 3 個 Wiki 頁面」(2 concept + 1 entity = 3 writes; no noop)
     status_msgs = [e["data"].get("msg", "") for e in events if e["event"] == "status"]
     assert any("3 個" in m for m in status_msgs)
 

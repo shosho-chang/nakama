@@ -659,3 +659,261 @@ class TestBackfillAll:
         reports = kb_writer.backfill_all_v1_pages(dry_run=True)
         assert len(reports) == 3
         assert all(r.from_version == 1 and r.to_version == 2 for r in reports)
+
+
+# ---------------------------------------------------------------------------
+# Slug validation (bug_009 path traversal)
+# ---------------------------------------------------------------------------
+
+
+class TestSlugValidation:
+    @pytest.mark.parametrize(
+        "bad_slug",
+        [
+            "../../../tmp/poc",
+            "../etc/passwd",
+            "foo/bar",
+            "foo\\bar",
+            "..",
+            ".",
+            "",
+            "-",  # leading non-word char
+            "foo bar",  # whitespace
+            "foo.md",  # extension hint
+        ],
+    )
+    def test_upsert_concept_page_rejects_unsafe_slug(self, vault, bad_slug):
+        with pytest.raises(ValueError, match="unsafe"):
+            kb_writer.upsert_concept_page(
+                slug=bad_slug,
+                action="create",
+                source_link="[[Sources/x]]",
+                title="X",
+                extracted_body="## Definition\n\nfoo\n",
+            )
+
+    @pytest.mark.parametrize(
+        "good_slug",
+        [
+            "肌酸代謝",
+            "creatine-metabolism",
+            "ATP_synthesis",
+            "PCr-system",
+            "energy-continuum-第1章",
+        ],
+    )
+    def test_upsert_concept_page_accepts_safe_slug(self, vault, good_slug):
+        # Should not raise; create a fresh page
+        path = kb_writer.upsert_concept_page(
+            slug=good_slug,
+            action="create",
+            source_link="[[Sources/x]]",
+            title=good_slug,
+            extracted_body="## Definition\n\nfoo\n",
+        )
+        assert path.exists()
+
+    def test_write_source_page_rejects_traversing_book_id(self, vault):
+        with pytest.raises(ValueError, match="unsafe book_id"):
+            kb_writer.write_source_page(
+                book_id="../../../tmp/poc",
+                chapter_index=1,
+                chapter_title="X",
+                source_md="body",
+            )
+
+    def test_upsert_book_entity_rejects_traversing_book_id(self, vault):
+        with pytest.raises(ValueError, match="unsafe book_id"):
+            kb_writer.upsert_book_entity(
+                book_id="../../../tmp/poc",
+                title="X",
+            )
+
+
+# ---------------------------------------------------------------------------
+# update_conflict body idempotency (bug_017)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateConflictIdempotent:
+    def test_double_call_does_not_double_append_body(self, vault):
+        # Seed v2 page so we go straight into update_conflict
+        kb_writer.upsert_concept_page(
+            slug="x",
+            action="create",
+            source_link="[[Sources/seed]]",
+            title="x",
+            extracted_body="## Definition\n\nfoo\n",
+        )
+        block = ConflictBlock(
+            topic="t",
+            existing_claim="e",
+            new_claim="n",
+        )
+        kb_writer.upsert_concept_page(
+            slug="x",
+            action="update_conflict",
+            source_link="[[Sources/foo]]",
+            conflict=block,
+        )
+        kb_writer.upsert_concept_page(
+            slug="x",
+            action="update_conflict",
+            source_link="[[Sources/foo]]",
+            conflict=block,
+        )
+        path = vault / kb_writer.KB_CONCEPTS_DIR / "x.md"
+        body = path.read_text(encoding="utf-8")
+        # Topic block must appear exactly once in body
+        assert body.count("### Topic: t") == 1
+        # Frontmatter discussion_topics also stays single
+        fm, _ = _read_page(path)
+        assert fm["discussion_topics"] == ["t"]
+        assert fm["mentioned_in"] == ["[[Sources/seed]]", "[[Sources/foo]]"]
+
+
+# ---------------------------------------------------------------------------
+# _ensure_h2_skeleton preserves non-canonical H2 (merged_bug_001)
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureH2SkeletonPreservation:
+    def test_user_added_h2_survives(self):
+        body = (
+            "## Definition\n\nfoo\n\n## Methods\n\n- v1 method\n\n## Sources\n\n- [[Sources/x]]\n"
+        )
+        out = kb_writer._ensure_h2_skeleton(body)
+        assert "## Methods" in out
+        assert "v1 method" in out
+        # Canonical heading still emitted
+        assert "## Core Principles" in out
+
+    def test_zh_prefixed_h2_survives(self):
+        body = "## 定義（Definition）\n\nfoo\n\n## Sources\n\n- [[Sources/x]]\n"
+        out = kb_writer._ensure_h2_skeleton(body)
+        assert "## 定義（Definition）" in out
+        assert "foo" in out
+
+
+# ---------------------------------------------------------------------------
+# noop strips legacy ## 更新 block on v1 page (bug_008)
+# ---------------------------------------------------------------------------
+
+
+class TestNoopStripsLegacy:
+    def test_v1_with_legacy_block_then_noop_strips(self, vault):
+        path = _make_v1_concept(vault, "x", with_legacy_block=True)
+        # Sanity: legacy block present before the call
+        assert "## 更新（" in path.read_text(encoding="utf-8")
+
+        kb_writer.upsert_concept_page(
+            slug="x",
+            action="noop",
+            source_link="[[Sources/new]]",
+        )
+        post = path.read_text(encoding="utf-8")
+        assert "## 更新（" not in post
+        fm, _ = _read_page(path)
+        assert fm["schema_version"] == 2
+        assert "[[Sources/new]]" in fm["mentioned_in"]
+
+
+# ---------------------------------------------------------------------------
+# Chapter list sort order (bug_003)
+# ---------------------------------------------------------------------------
+
+
+class TestUpsertBookEntityChapterSort:
+    def test_chapters_sorted_numerically_for_double_digit(self, vault):
+        # Seed 11 chapter source pages
+        sources_dir = vault / kb_writer.KB_BOOK_SOURCES_DIR / "foo-book"
+        sources_dir.mkdir(parents=True)
+        for n in range(1, 12):
+            (sources_dir / f"ch{n}.md").write_text(f"---\ntitle: ch{n}\n---\n", encoding="utf-8")
+
+        path = kb_writer.upsert_book_entity(
+            book_id="foo-book",
+            title="Foo",
+        )
+        body = path.read_text(encoding="utf-8")
+        # Lex sort would put ch10 before ch2; numeric sort respects 1<2<...<11
+        idx_ch1 = body.index("[[ch1]]")
+        idx_ch2 = body.index("[[ch2]]")
+        idx_ch9 = body.index("[[ch9]]")
+        idx_ch10 = body.index("[[ch10]]")
+        idx_ch11 = body.index("[[ch11]]")
+        assert idx_ch1 < idx_ch2 < idx_ch9 < idx_ch10 < idx_ch11
+
+
+# ---------------------------------------------------------------------------
+# aggregate_conflict / update_mentioned_in lazy-migrate + sync (merged_bug_016)
+# ---------------------------------------------------------------------------
+
+
+class TestAggregateConflictMigratesAndBacklinks:
+    def test_aggregate_conflict_appends_to_mentioned_in(self, vault):
+        path = _make_v1_concept(vault, "x")
+        kb_writer.aggregate_conflict(
+            page_path=path,
+            topic="t",
+            source_link="[[Sources/foo/ch1]]",
+            existing_claim="10-15s",
+            new_claim="1-10s",
+        )
+        fm, _ = _read_page(path)
+        # Lazy-migrated to v2
+        assert fm["schema_version"] == 2
+        # Source link appears in mentioned_in (symmetric with body citation)
+        assert "[[Sources/foo/ch1]]" in fm["mentioned_in"]
+        assert fm["discussion_topics"] == ["t"]
+
+    def test_update_mentioned_in_lazy_migrates(self, vault):
+        path = _make_v1_concept(vault, "x")
+        appended = kb_writer.update_mentioned_in(path, "[[Sources/new]]")
+        assert appended is True
+        fm, _ = _read_page(path)
+        assert fm["schema_version"] == 2
+        assert "[[Sources/new]]" in fm["mentioned_in"]
+
+
+# ---------------------------------------------------------------------------
+# Confidence migration edge cases (merged_bug_011)
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceMigrationEdgeCases:
+    def test_bool_true_dropped_to_none(self):
+        v1_fm = {
+            "title": "x",
+            "type": "concept",
+            "confidence": True,
+            "source_refs": [],
+            "tags": [],
+        }
+        v2_fm, _body, changes = kb_writer._v1_to_v2_in_memory(v1_fm, "## Definition\n\nfoo\n")
+        assert v2_fm["confidence"] is None
+        assert any("bool" in c for c in changes)
+
+    def test_unknown_string_logged(self):
+        v1_fm = {
+            "title": "x",
+            "type": "concept",
+            "confidence": "verified",
+            "source_refs": [],
+            "tags": [],
+        }
+        v2_fm, _body, changes = kb_writer._v1_to_v2_in_memory(v1_fm, "## Definition\n\nfoo\n")
+        assert v2_fm["confidence"] is None
+        assert any("unknown string" in c for c in changes)
+
+    def test_known_string_maps_correctly(self):
+        v1_fm = {
+            "title": "x",
+            "type": "concept",
+            "confidence": "high",
+            "source_refs": [],
+            "tags": [],
+        }
+        v2_fm, _body, changes = kb_writer._v1_to_v2_in_memory(v1_fm, "## Definition\n\nfoo\n")
+        assert v2_fm["confidence"] == 0.9
+        assert any("'high'" in c and "0.9" in c for c in changes)

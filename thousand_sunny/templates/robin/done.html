@@ -18,6 +18,7 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .dot-created { background: #4caf50; }
   .dot-updated { background: #ff9800; }
+  .dot-referenced { background: #9e9e9e; }
   .empty-result { font-size: 0.875rem; color: #aaa; padding: 0.5rem 0; }
   .btn-home { display: inline-block; margin-top: 2rem; padding: 0.75rem 2rem; background: #6c63ff; color: white; border-radius: 8px; text-decoration: none; font-size: 0.95rem; transition: background .2s; }
   .btn-home:hover { background: #574fd6; }
@@ -50,6 +51,15 @@
       <p class="empty-result">沒有更新任何頁面</p>
     {% endif %}
   </div>
+
+  {% if referenced %}
+  <div class="result-group">
+    <div class="result-label">補充引用（{{ referenced|length }}）</div>
+    {% for title in referenced %}
+    <div class="result-item"><span class="dot dot-referenced"></span>{{ title }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <a href="/" class="btn-home">← 返回 Inbox</a>
 </div>
