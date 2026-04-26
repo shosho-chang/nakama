@@ -106,6 +106,18 @@ def _cmd_digest(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_news(args: argparse.Namespace) -> int:
+    """Slice A: AI ecosystem daily digest from official blogs."""
+    from agents.franky.news_digest import run_news_digest
+
+    summary = run_news_digest(
+        dry_run=getattr(args, "dry_run", False),
+        no_publish=getattr(args, "no_publish", False),
+    )
+    print(summary)
+    return 0
+
+
 def _cmd_legacy_weekly(_args: argparse.Namespace) -> int:
     """Backward-compat: the current VPS cron still runs `python -m agents.franky` without args."""
     from agents.franky.agent import FrankyAgent
@@ -127,6 +139,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub.add_parser("backup-verify", help="Verify R2 daily backup (Slice 2)")
     sub.add_parser("digest", help="Send weekly digest to Slack DM (Slice 3)")
+    news = sub.add_parser("news", help="AI ecosystem daily digest (Slice A: official blogs)")
+    news.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run pipeline without writing vault, sending Slack, or persisting state.",
+    )
+    news.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="Write vault digest but skip Slack DM (dev use).",
+    )
     return parser
 
 
@@ -146,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         "alert": _cmd_alert,
         "backup-verify": _cmd_backup_verify,
         "digest": _cmd_digest,
+        "news": _cmd_news,
     }
     handler = dispatch.get(args.command, _cmd_legacy_weekly)
     return handler(args)

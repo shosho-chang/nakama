@@ -1,0 +1,39 @@
+# Franky AI news digest — 官方 blog RSS sources（Slice A）
+#
+# 加 source 直接 append。失敗 feed 會 log warning 但不擋整批。
+# scout_seen source key = "ai_news_blog"，dedup 用 entry.id (RSS GUID)
+# fallback 到 sha256(url)。
+#
+# 本檔僅 Slice A 範圍 — Reddit / X / GitHub trending 留 Slice B/C。
+
+feeds:
+  - name: anthropic_news
+    url: https://www.anthropic.com/news/rss.xml
+    publisher: Anthropic
+  - name: openai_news
+    url: https://openai.com/news/rss.xml
+    publisher: OpenAI
+  - name: google_research
+    url: https://research.google/blog/rss/
+    publisher: Google Research
+  - name: deepmind
+    url: https://deepmind.google/blog/rss.xml
+    publisher: Google DeepMind
+  - name: huggingface
+    url: https://huggingface.co/blog/feed.xml
+    publisher: Hugging Face
+  - name: meta_ai
+    url: https://ai.meta.com/blog/rss/
+    publisher: Meta AI
+  - name: vllm
+    url: https://blog.vllm.ai/feed.xml
+    publisher: vLLM
+  - name: langchain
+    url: https://blog.langchain.dev/rss/
+    publisher: LangChain
+  - name: simon_willison
+    url: https://simonwillison.net/atom/everything/
+    publisher: Simon Willison
+  - name: latent_space
+    url: https://www.latent.space/feed
+    publisher: Latent Space
