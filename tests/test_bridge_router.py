@@ -16,6 +16,7 @@ from shared.schemas.publishing import (
     DraftV1,
     PublishComplianceGateV1,
 )
+from thousand_sunny.routers.bridge import AGENT_ROSTER
 
 
 @pytest.fixture
@@ -871,7 +872,10 @@ def test_api_agents_returns_full_roster_with_state_derivation(client, monkeypatc
 
     import shared.state as state_module
 
-    monkeypatch.setattr(state_module, "get_cost_summary", lambda **kw: fake_today)
+    def fake_get_cost_summary(agent: str | None = None, days: int = 7) -> list[dict]:
+        return fake_today
+
+    monkeypatch.setattr(state_module, "get_cost_summary", fake_get_cost_summary)
 
     r = client.get("/bridge/api/agents")
     assert r.status_code == 200
@@ -879,18 +883,8 @@ def test_api_agents_returns_full_roster_with_state_derivation(client, monkeypatc
     assert "agents" in payload
     agents = {a["key"]: a for a in payload["agents"]}
 
-    # 9 個 agent 全到（roster 由 bridge.py 模組變數定義）
-    assert set(agents.keys()) == {
-        "robin",
-        "nami",
-        "zoro",
-        "brook",
-        "sanji",
-        "franky",
-        "usopp",
-        "chopper",
-        "sunny",
-    }
+    # 全 roster 都到（依 AGENT_ROSTER 的真實內容，不硬寫 9 個）
+    assert set(agents.keys()) == {a["key"] for a in AGENT_ROSTER}
 
     # robin: 有 today usage → online；input+output 跨 model 累加
     assert agents["robin"]["state"] == "online"
@@ -941,7 +935,10 @@ def test_api_agents_handles_none_token_fields(client, monkeypatch):
 
     import shared.state as state_module
 
-    monkeypatch.setattr(state_module, "get_cost_summary", lambda **kw: fake_today)
+    def fake_get_cost_summary(agent: str | None = None, days: int = 7) -> list[dict]:
+        return fake_today
+
+    monkeypatch.setattr(state_module, "get_cost_summary", fake_get_cost_summary)
 
     r = client.get("/bridge/api/agents")
     assert r.status_code == 200
