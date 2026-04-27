@@ -35,26 +35,40 @@ originSessionId: 2026-04-27-final
 
 ---
 
-## Phase 9 還缺的事（修修做、5 分鐘）
+## Phase 9 全綠 ✅（2026-04-27 收尾）
 
-GitHub Pro 升完了 + branch protection rule 設了但 API 顯示有 2 漏洞：
+修修升 GitHub Pro + 補完 branch protection 兩 click（enforce_admins + required status checks）+ 瀏覽器 smoke `/bridge/docs`。
 
+API state 確認：
 ```
-enforce_admins: False                  ← 修修還能 bypass
-required_status_checks.contexts: []    ← CI check 名單是空的
+enforce_admins: True
+required_status_checks.contexts: ["lint-and-test", "lint-pr-title"]
+required_linear_history: True
+allow_force_pushes: False
+allow_deletions: False
 ```
 
-**修修要回 Settings → Branches → 編輯 main rule**：
+Push test 驗證：直接 push main 真擋
+```
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+- Changes must be made through a pull request.
+- 2 of 2 required status checks are expected.
+```
 
-1. ☑ **「Do not allow bypassing the above settings」** ← 勾起來
-2. **「Status checks that are required」** 搜尋並加：
-   - `lint-and-test`
-   - `lint-pr-title`
-3. 設完叫我跑 push test，期待 `GH013: Repository rule violations`（沒「Bypassed」）
+**整體：7/9 ✅ + 2/9 ❎ Deferred = 該 ship 的全 ship**。
 
-順手：瀏覽器 smoke `/bridge/docs`（搜「memory」看 hits + highlight）。
+## 結案條件（2026-04-27 修修拍板）
 
-這三件做完 Phase 9 → ✅，整體 7/9 ✅ + 2/9 ❎ Deferred = 「全 ship 該 ship 的」。
+**整個 quality-bar-uplift 案 closed 條件**：
+
+1. Phase 7+8 deferred ✅ 已記
+2. **Bridge UI 大修正完成** — 修修專門撥時間統一整個 Bridge 美學體系
+   - 一併處理 `/bridge/docs` 兩個 friction：(a) result title clickable → markdown viewer route, (b) stats line 視覺凌亂
+   - 對齊 `feedback_aesthetic_first_class.md` + `docs/design-system.md`
+   - 範圍：所有 `/bridge/*` page
+3. UI 修完後 → 整個 quality-bar-uplift project 標 closed
+
+**Bridge UI 大修正未啟動，等修修分配時間。** 不在本 plan tracking 範圍 — 是 design 級工作不是 quality bar 補洞。
 
 ---
 
