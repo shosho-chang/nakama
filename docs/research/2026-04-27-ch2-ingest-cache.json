@@ -34,6 +34,6 @@
     "walker_nav_index": 7,
     "chapter_title": "Skeletal Muscle Structure and Function",
     "figure_model": "claude-sonnet-4-5 (Sonnet 4.6 alias) for 13 figs; claude-opus-4-7 for fig-7-9 + fig-7-10 (cyclic sub-type rerun, per PR #204 4-model triangulate verdict)",
-    "note": "fig-7-9 + fig-7-10 (cyclic sub-type) Opus 4.7 rerun done 2026-04-27 — fig-7-9 pre-staged in /tmp throwaway then promoted into cache; fig-7-10 in-session multimodal Read by driver. Other 13 figs Sonnet 4.6 cache retained (spot-check passed sub-types). Image > 5MB walker PNG resize via PIL LANCZOS to longest-side 1600px before Anthropic API (driver responsibility, see SKILL.md Step 4b note)."
+    "note": "fig-7-9 + fig-7-10 (cyclic sub-type) Opus 4.7 rerun done 2026-04-27 — fig-7-9 pre-staged in /tmp throwaway then promoted into cache; fig-7-10 in-session multimodal Read by driver. Other 13 figs Sonnet 4.6 cache retained (spot-check passed sub-types). Image > 5MB walker PNG resize via PIL LANCZOS to longest-side 1600px before Anthropic API (driver responsibility, see SKILL.md Step 2.a note)."
   }
 }

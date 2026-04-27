@@ -231,7 +231,7 @@ For each chapter (loop):
 
       def resize_under_5mb(img_path, limit=5_000_000, max_side=1600):
           img = Image.open(img_path)
-          while True:
+          while max_side > 200:
               w, h = img.size
               if max(w, h) > max_side:
                   ratio = max_side / max(w, h)
@@ -243,6 +243,7 @@ For each chapter (loop):
               if buf.tell() < limit:
                   return buf.getvalue()
               max_side -= 200
+          raise ValueError(f"cannot resize {img_path} under {limit} bytes")
       ```
 
    b. Use the prompt template at

@@ -90,7 +90,7 @@ import base64
 def resize_under_5mb(img_path, limit=5_000_000):
     img = Image.open(img_path)
     max_side = 1600
-    while True:
+    while max_side > 200:
         w, h = img.size
         if max(w, h) > max_side:
             ratio = max_side / max(w, h)
@@ -102,6 +102,7 @@ def resize_under_5mb(img_path, limit=5_000_000):
         if buf.tell() < limit:
             return base64.b64encode(buf.getvalue()).decode()
         max_side -= 200
+    raise ValueError(f"cannot resize {img_path} under {limit} bytes")
 ```
 
 LANCZOS 對 anatomical illustration 細節保留好（spot-check 三家驗證 fig-7-1 anatomical 描述精度未受影響）。
