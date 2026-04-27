@@ -13,7 +13,7 @@
 - [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — 6 PR 全 merged 2026-04-26（4 PR review + 2 follow-up bug fix #180/#181）；三軸線下游 unblock
 - [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — **SEO D.2 PR #183 + F PR #185 merged 2026-04-26**：用途 1+2+3 production；12 follow-up + 4 test gap
 - [project_seo_dataforseo_scrap_decision.md](project_seo_dataforseo_scrap_decision.md) — **SEO Slice E 不接 DataForSEO 2026-04-26**：health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋
-- [project_codebase_architecture_audit.md](project_codebase_architecture_audit.md) — **2026-04-27 audit**：12 候選（①⑤ PR #208 / ⑨ PR #211 / ⑪ PR #212 done；④ ② 下一輪）
+- [project_codebase_architecture_audit.md](project_codebase_architecture_audit.md) — **2026-04-27 audit**：12 候選（①⑤ PR #208 / ⑨ PR #211 / ⑪ PR #212 / ④ PR #214 done；② 下一輪）
 - [project_llm_facade_phase1.md](project_llm_facade_phase1.md) — **PR #208 merged 2026-04-27**：llm_context + llm_observability 抽出 + facade 加 ask_with_tools/audio；Phase 2-5 queued
 - Audit doc：[docs/research/2026-04-27-codebase-architecture-audit.md](../../docs/research/2026-04-27-codebase-architecture-audit.md) — 12 deepening 候選完整細節 + deletion test + ADR 衝突
 - Plan：[docs/plans/2026-04-27-llm-facade-deepening.md](../../docs/plans/2026-04-27-llm-facade-deepening.md) — LLM facade 5 PR migration plan
@@ -46,6 +46,7 @@
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_worktree_session_hygiene.md](feedback_worktree_session_hygiene.md) — worktree 用主 tree venv 絕對路徑 + 收尾 fetch 不 checkout main + bash cwd 不持久
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
+- [feedback_review_skill_default_for_focused_pr.md](feedback_review_skill_default_for_focused_pr.md) — focused PR（<100 LOC、單 domain、tests 綠）我自開的直接 /review，不問 ultrareview
 - [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁；2026-04-24 修長音檔 ~10% 線性漂移 bug（char_idx 當 ts 索引）+ regression test
 - [project_srt_align_tool.md](project_srt_align_tool.md) — SRT 對齊工具 shift/scale/auto/retime 四模式 + 踩過的坑
 - [feedback_short_clip_ground_truth.md](feedback_short_clip_ground_truth.md) — 長音檔 ASR 可疑時切 15s 短片段獨立跑同模型當 oracle
