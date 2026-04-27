@@ -36,10 +36,15 @@
 - Shape：SHALLOW interface 隱藏 deep impl
 - ADR-011 §3.5 可考慮收緊
 
-### ④ 內容檢查邏輯散在三處 — 沒統一 sanitizer
-- `agents/brook/compliance_scan.py` + `shared/gutenberg_validator.py:38-60` + `shared/kb_writer.py:73-86` + `shared/compliance/medical_claim_vocab.py`
-- 醫療詞彙 / block-level tag / slug regex 三套獨立規則；Chopper / Sanji 後要加 IG / Slack 規則 = 第四份
-- Shape：FALSE SHARING + DUPLICATED
+### ④ 內容檢查邏輯散在三處 — 沒統一 sanitizer（audit framing 誤判）**[DONE — PR #214]**
+- ~~audit 原描述「醫療詞彙 / block-level tag / slug regex 三套散在三處要統一」~~ **誤判**：三模組是三個不同關注點：
+  - `gutenberg_validator.py` = HTML/AST 結構驗證（wp: comment pairing、`<p>` cleanliness）
+  - `kb_writer.py:73-86` = LLM-emitted slug path traversal 防護（`Path` 不 collapse `..`）
+  - `compliance_scan.py` + `medical_claim_vocab.py` = 醫療詞彙黑名單
+- **真正的重複**只在第三組：Slice B 已產出完整 vocab（`medical_claim_vocab.py`，~50 patterns + TC↔SC mirror，Usopp publisher 在用），但 `compliance_scan.py` Phase 1 seed（6 patterns，自己 docstring 標 deprecated）沒被收掉，Brook compose + seo-audit-post skill 還在 import seed → compose-time gate 比 publish-time gate **更鬆**（同 content 兩 gate 結果不一致）
+- PR #214 完成 deprecation：抽 `disclaimer.py`（compose-time positive signal，跟 medical vocab polarity 相反 → 該分開）+ `__init__.py` 加 `scan_draft_compliance(text)` orchestrator + 3 callers migrate + 刪 seed module + test 搬到 `tests/shared/test_compliance.py`；net **−57 LOC**
+- 教訓：跟 ⑨ 一樣 audit shape 描述對錯模組 — 寫「散在三處沒統一」當下沒 verify 三模組真的在做同一件事；真實狀況是兩個分散場合的「真相之間」（gutenberg 結構 vs slug 安全 vs 醫療 vocab）拉一個 false unifier 才是 false sharing 反方向
+- Shape：DUPLICATED（兩 compliance scanner，**不是**三 sanitizer）
 
 ### ⑤ anthropic_client 跟 gemini_client 樣板重複 **[DONE — PR #208，併入 ①]**
 - `shared/anthropic_client.py` + `shared/gemini_client.py`
