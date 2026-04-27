@@ -239,12 +239,12 @@ handoff §2 教訓寫進 production code 路徑：
 
 vision_image_prep.py shared helper（handoff §2 third bullet）暫不開 — ingest driver 是唯一 caller，inline 即可；之後若 Brook / SEO 也要 vision call 再 promote 到 shared/。
 
-### 6.3 仍未解的兩件 acceptance
+### 6.3 acceptance status — fig-7-7 ✅ resolved，B1 待修修 sign-off
 
-- **fig-7-7 lateral arrow** — Sonnet 觀察的兩條 supraspinal 並列分支間的 left→right 水平箭頭，Grok / Gemini 沒提；Opus rerun 沒 cover 這張（不在 cyclic 子類別）。需修修開 [`fig-7-7.png`](file:///F:/Shosho%20LifeOS/Attachments/Books/biochemistry-sport-exercise-2024/ch7/fig-7-7.png) 半秒看一眼 → 真有 arrow → Sonnet 觀察更細，cache 描述保留；無 arrow → Sonnet hallucination，cache 描述要刪一句
-- **B1（4 個 noop page schema_version=1）** — driver 建議接受 by-design（已寫進 [`spot-check.md`](../research/2026-04-27-ch2-vision-spot-check.md) §「建議的修修 verdict」）
+- ~~fig-7-7 lateral arrow~~ → **2026-04-27 evening Opus 4.7 in-session resolution**：driver 直接看 fig-7-7.png 確認 left→right 水平箭頭存在，Sonnet + Opus 4.7（Anthropic 家族）兩家觀察一致，Grok / Gemini 是輕量 model 漏看 minor edge。**cache 描述保留無需修改**。完整紀錄見 [`spot-check.md`](../research/2026-04-27-ch2-vision-spot-check.md) § fig-7-7 Resolution
+- **B1（4 個 noop page schema_version=1）** — driver 建議接受 by-design（已寫進 [`spot-check.md`](../research/2026-04-27-ch2-vision-spot-check.md) §「建議的修修 verdict」）；待修修 sign-off
 
-兩者解了 PR D 啟動 Step B-F（attachments reindex / chapter source write / concept extract / acceptance / batch ch3-ch11）。
+B1 sign-off 後 PR D 啟動 Step B-F（attachments reindex / chapter source write / concept extract / acceptance / batch ch3-ch11，~5-8 hr wall time 寫進 vault）。
 
 ---
 

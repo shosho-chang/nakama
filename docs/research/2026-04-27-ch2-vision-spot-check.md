@@ -144,9 +144,22 @@ Raw 三家描述見 [`vision_triangulate_results.json`](../../.claude/worktrees/
 
 **Sonnet unique 一條 minor dispute**：Sonnet 寫「兩節點間另有一條從左指向右的水平箭頭，顯示皮質脊髓路徑對脊髓上路徑的側向調控」— **只 Sonnet 提**，Grok / Gemini 沒提這條 lateral arrow。
 
-→ 不影響主流程語意；如果原圖真有這條 lateral arrow，Sonnet 觀察更細；如果沒有就是 hallucination。**修修開圖瞄一眼 0.5 秒可解。**
+→ 不影響主流程語意；如果原圖真有這條 lateral arrow，Sonnet 觀察更細；如果沒有就是 hallucination。
 
-**Verdict（暫定）**：🟢（lateral arrow 屬細節，不影響主流程；待修修確認）
+**Resolution（2026-04-27 evening 補測，同 fig-7-9 4-model triangulate 方法論）**：driver 用 Opus 4.7 in-session multimodal Read 直接看 fig-7-7.png 仲裁：
+
+- **Opus 4.7**：✓ confirmed — 圖上確實有 left→right 水平箭頭，從左側 "Motor cortical & other corticospinal outputs" 矩形指向右側 "Other supraspinal and propriospinal outputs" 矩形
+
+| Model | lateral arrow 觀察 |
+|-------|------|
+| Sonnet 4.6 | ✓ 有（原 spot-check） |
+| Grok-4 | 未提 |
+| Gemini 2.5 Flash | 未提 |
+| **Opus 4.7（in-session）** | ✓ 有（confirmed） |
+
+→ 2-2 model split 但 **Sonnet + Opus 4.7（同 Anthropic 家族）兩家明確看到**，Grok/Gemini 是輕量 model 漏看（不是「沒有」，是 model attention 偏向主流程順序漏掉這條側向 minor edge）。Sonnet 觀察更細，cache 描述保留。
+
+**Verdict**：🟢 — lateral arrow 確實存在，cache 描述精準，無需修改。修修人眼確認此條已 unblock。
 
 ---
 
