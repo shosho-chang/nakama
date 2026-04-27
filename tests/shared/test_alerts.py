@@ -161,3 +161,134 @@ def test_alert_archive_failure_does_not_crash_alert(fake_slack, tmp_path, monkey
 
     fake_slack.post_plain.assert_called_once()  # Slack DM still went out
     assert any("incident archive failed" in r.message for r in caplog.records)
+
+
+# ---- Phase 6 Slice 2: deterministic dedupe edge cases -----------------------
+
+
+def test_alert_dedupe_multi_key_independent(fake_slack):
+    """Two dedupe keys fire independently — A's window doesn't suppress B."""
+    alerts.alert("error", "backup", "A1", dedupe_key="key-A")
+    alerts.alert("error", "backup", "B1", dedupe_key="key-B")
+    alerts.alert("error", "backup", "A2", dedupe_key="key-A")  # suppressed by A1
+    alerts.alert("error", "backup", "B2", dedupe_key="key-B")  # suppressed by B1
+
+    # A1 + B1 = 2 unsuppressed; A2 / B2 dedupe'd
+    assert fake_slack.post_plain.call_count == 2
+
+
+def test_alert_dedupe_fire_count_increments_per_unsuppressed(fake_slack):
+    """fire_count counts unsuppressed fires — with dedupe_minutes=0 every call fires."""
+    from shared.state import _get_conn
+
+    alerts.alert("error", "backup", "fire 1", dedupe_key="fc", dedupe_minutes=0)
+    alerts.alert("error", "backup", "fire 2", dedupe_key="fc", dedupe_minutes=0)
+    alerts.alert("error", "backup", "fire 3", dedupe_key="fc", dedupe_minutes=0)
+
+    row = (
+        _get_conn()
+        .execute("SELECT fire_count FROM alert_state WHERE dedup_key = ?", ("fc",))
+        .fetchone()
+    )
+    assert row["fire_count"] == 3
+
+
+def test_alert_dedupe_last_message_updates_on_unsuppressed_fire(fake_slack):
+    """ON CONFLICT UPDATE rewrites last_message — most recent unsuppressed wins."""
+    from shared.state import _get_conn
+
+    alerts.alert("error", "backup", "first one", dedupe_key="msg", dedupe_minutes=0)
+    alerts.alert("error", "backup", "middle", dedupe_key="msg", dedupe_minutes=0)
+    alerts.alert("error", "backup", "latest", dedupe_key="msg", dedupe_minutes=0)
+
+    row = (
+        _get_conn()
+        .execute(
+            "SELECT last_message, fire_count FROM alert_state WHERE dedup_key = ?",
+            ("msg",),
+        )
+        .fetchone()
+    )
+    assert row["last_message"] == "latest"
+    assert row["fire_count"] == 3
+
+
+def test_alert_dedupe_expired_window_refires(fake_slack):
+    """Once suppress_until is in the past, the same dedupe_key refires + bumps fire_count."""
+    from datetime import datetime, timezone
+
+    from shared.state import _get_conn
+
+    # Initial fire registers the row at default 30-min suppression
+    alerts.alert("error", "backup", "fire 1", dedupe_key="expired")
+    assert fake_slack.post_plain.call_count == 1
+
+    # Force-expire by rewriting suppress_until to a past timestamp
+    past = datetime(2020, 1, 1, tzinfo=timezone.utc).isoformat()
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE alert_state SET suppress_until = ? WHERE dedup_key = ?",
+        (past, "expired"),
+    )
+    conn.commit()
+
+    alerts.alert("error", "backup", "fire 2", dedupe_key="expired")
+    assert fake_slack.post_plain.call_count == 2  # window stale → fired again
+
+    row = conn.execute(
+        "SELECT fire_count, last_message, state FROM alert_state WHERE dedup_key = ?",
+        ("expired",),
+    ).fetchone()
+    assert row["fire_count"] == 2  # ON CONFLICT incremented
+    assert row["last_message"] == "fire 2"
+    assert row["state"] == "firing"
+
+
+def test_alert_dedupe_state_always_firing(fake_slack):
+    """shared.alerts has no resolve path — state stays 'firing' regardless of fire count.
+
+    The 'resolved' transition is owned by agents/franky/alert_router (ADR-007 §4),
+    not this module. Tests that touch alert_state via shared.alerts must not
+    expect state to ever flip — the schema's CHECK constraint allows 'resolved'
+    so a future Franky integration can use it, but shared.alerts itself only
+    writes 'firing'.
+    """
+    from shared.state import _get_conn
+
+    alerts.alert("error", "backup", "f1", dedupe_key="state-stays")
+    alerts.alert("error", "backup", "f2", dedupe_key="state-stays", dedupe_minutes=0)
+    alerts.alert("error", "backup", "f3", dedupe_key="state-stays", dedupe_minutes=0)
+
+    row = (
+        _get_conn()
+        .execute("SELECT state FROM alert_state WHERE dedup_key = ?", ("state-stays",))
+        .fetchone()
+    )
+    assert row["state"] == "firing"
+
+
+def test_alert_dedupe_long_message_truncated_to_2000(fake_slack):
+    """alerts.py slices message[:2000] before persisting to last_message."""
+    from shared.state import _get_conn
+
+    long_msg = "x" * 3000
+    alerts.alert("error", "backup", long_msg, dedupe_key="trunc")
+
+    row = (
+        _get_conn()
+        .execute("SELECT last_message FROM alert_state WHERE dedup_key = ?", ("trunc",))
+        .fetchone()
+    )
+    assert len(row["last_message"]) == 2000
+    assert row["last_message"] == "x" * 2000
+
+
+def test_alert_no_dedup_key_does_not_write_alert_state(fake_slack):
+    """dedup_key=None bypasses _record_fired — alert_state stays empty."""
+    from shared.state import _get_conn
+
+    alerts.alert("error", "backup", "no key", dedupe_key=None)
+
+    fake_slack.post_plain.assert_called_once()
+    n = _get_conn().execute("SELECT COUNT(*) AS n FROM alert_state").fetchone()["n"]
+    assert n == 0
