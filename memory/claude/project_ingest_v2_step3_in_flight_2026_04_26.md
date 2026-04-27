@@ -1,10 +1,39 @@
 ---
-name: ingest v2 Step 3 — PR A/B/180/186 + PR C 全部完成 2026-04-26；PR D 唯一剩 backlog
-description: PR #169 (A) / #178 (B) / #180 (walker fix-1) / #186 (walker fix-2) + PR C 重 ingest ch1 全完成；唯一 backlog 是 PR D 批 ingest ch2-ch11
+name: ingest v2 Step 3 — PR A/B/180/186/188/189 + PR C/F3/V1 全完成；PR D unblocked 唯一剩 backlog
+description: PR #169/#178/#180/#186/#188/#189 + PR C 重 ingest ch1 全完成；F3 placeholder swap + V1 Vision LLM Sonnet 4.6 鎖定；PR D 唯一 backlog 2026-04-27
 type: project
 originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
 ---
-2026-04-26 21:30 台北 sweep：PR A + B + 兩波 walker fix（#180 + #186）+ PR C 全部完成。**唯一 backlog 是 PR D 批 ingest ch2-ch11**（10 章重複 v2 流程，~1.5M token / ~5-8 hr wall time）。
+2026-04-27 update — F3 + V1 acceptance 解、PR D 全 spec / model selection blocker 都收。**唯一 backlog 是 PR D 批 ingest ch2-ch11**（10 章重複 v2 流程，~1.5M token / ~5-8 hr wall time）。
+
+## 2026-04-27 update — F3 + V1 acceptance 解 → PR D unblocked
+
+PR C 完成後跑 ch1 v2 acceptance 找到 3 個 finding，全處理完：
+
+- **F3 — chapter source body 占位符 leak**（user-facing：Obsidian 開不顯示圖）
+  - 13 個 `<<FIG:>>` + 2 個 `<<TAB:>>` 占位符 leak 進 vault page，Obsidian render 純文字、attachment 圖檔在但完全不顯示
+  - 雙因素：(1) Spec 缺口 — SKILL.md / chapter-summary.md 寫「保留占位符」沒明定要 swap 成 Obsidian image embed (2) PR C 互動 session 操作疏漏 — 連 llm_description 都沒 splice 進 body
+  - **解法 (c) 兩個都做**：
+    - (a) ch1.md 15 個 placeholders 手動 swap 完成（grep 0 殘留）
+    - (b) **PR #188 merged** — chapter-summary.md prompt 7 處改寫 + 新 "Placeholder swap rules" section / SKILL.md Step 4c "Pre-compose preparation" + 三條 swap rules / ADR-011 §3.3 Step 3 新 "Placeholder swap (強制)" 列 / §3.4.1 占位符生命週期 invariant / §6 zero-residue acceptance check
+- **V1 — PR D Vision LLM 模型選型**
+  - 原本 V1 寫「人眼看 6 張 figure 打分」是 misframed（圖檔是 EPUB binary 抽出來的當然清楚，要評的是 LLM description 精確度）
+  - **改用 Sonnet 4.6 sub-agent rerun + Opus head-to-head**（13/13 figure controlled comparison）
+  - **結果 (PR #189 merged)**：Sonnet 7 / Opus 2 / Tie 4 — Sonnet 4.6 整體不輸 Opus，多數張數值精度、雙語、citation 更完整
+  - **決定**：PR D 維持 ADR-011 §3.4 default Sonnet 4.6（cost ~Opus 1/5）
+  - **Mitigation**：ch2 schematic 多，先挑 2-3 張 spot-check 再放手 batch；fig-1-6 Sonnet 把 CrT 位置搞混顯示 anatomical localization 是潛在弱點
+  - **Surprise finding**：互動 session Opus Read（PR C）vs Sonnet API 差異可能比 model tier 差異更大 — Opus session 反而漏些 textbook anchor（Marathon% 算術、β-γ bond、Romijn fat fraction）。implication：未來 manual Read 預期比 batch API 略差
+- **F1 — 運動營養學.md 沒被 PR C 處理到** → 修修決策 (b)：等 PR D ingest ch7 自然命中
+- **F2 — 磷酸肌酸系統.md 等 v2 page frontmatter 缺 aliases 欄位** → 待修修決策（手動補 / PR D 順手 / backfill script）
+- **B1 — 4 個 noop page schema_version=1** → ADR-011 §4.3 by-design，待修修確認接受
+
+**Reference**：[`docs/plans/2026-04-26-ch1-v2-acceptance-checklist.md`](../../docs/plans/2026-04-26-ch1-v2-acceptance-checklist.md) 含完整 finding + 決策板 / [`docs/research/2026-04-26-ch1-vision-sonnet-rerun.md`](../../docs/research/2026-04-26-ch1-vision-sonnet-rerun.md) head-to-head report.
+
+---
+
+## 2026-04-26 historical — PR A/B/180/186 + PR C 全完成
+
+2026-04-26 21:30 台北 sweep：PR A + B + 兩波 walker fix（#180 + #186）+ PR C 全部完成。
 
 ## PR A — #169 (kb_writer + Robin v2 dispatcher) — MERGED 33f3095
 

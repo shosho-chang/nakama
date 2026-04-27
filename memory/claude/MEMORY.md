@@ -9,13 +9,15 @@
 - [project_robin_kb_search_untested.md](project_robin_kb_search_untested.md) — /kb/research E2E + kb-search skill PR #142 merged；server top_k=8 enhancement 待修
 - [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — ingest v2 4 原則 + Step 1/2/3 全 merged（PR A #169 + PR B #178）
 - [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — 三 bug 全結案：PR #169 merged + 4 頁 broken pages migration apply 完 2026-04-26 + A-11c
-- [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **ingest 軸線**：PR A/B/180/186 + PR C 全完成 2026-04-26；PR D 批 ingest ch2-ch11 唯一剩 backlog
+- [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **ingest 軸線**：F3 + V1 acceptance 解 2026-04-27（PR #188/#189）；Vision LLM = Sonnet 4.6；PR D unblocked 唯一剩 backlog
 - [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — 6 PR 全 merged 2026-04-26（4 PR review + 2 follow-up bug fix #180/#181）；三軸線下游 unblock
 - [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — **SEO D.2 PR #183 + F PR #185 merged 2026-04-26**：用途 1+2+3 production；12 follow-up + 4 test gap
 - [project_seo_dataforseo_scrap_decision.md](project_seo_dataforseo_scrap_decision.md) — **SEO Slice E 不接 DataForSEO 2026-04-26**：health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋
 - [feedback_init_py_alias_shadows_module.md](feedback_init_py_alias_shadows_module.md) — `__init__.py` 用 `import X as Y` 同名 alias 會 shadow submodule；monkeypatch 失靈訊息「'function' object」要立刻想到
 - [feedback_mathml2latex_abandoned.md](feedback_mathml2latex_abandoned.md) — mathml2latex PyPI 0.1.0 abandoned，MathML → LaTeX 走 alttext-first（不加 dep）
 - [feedback_kb_concept_aggregator_principle.md](feedback_kb_concept_aggregator_principle.md) — concept page = cross-source aggregator，禁止 `## 更新` todo dump，衝突寫 `## 文獻分歧`
+- [feedback_acceptance_target_clarity.md](feedback_acceptance_target_clarity.md) — 驗收 LLM artifact 要分清驗收對象（artifact 精確度 vs source material 品質），別寫人眼看圖打分這類 misframed item
+- [feedback_git_staging_cross_contamination.md](feedback_git_staging_cross_contamination.md) — git add specific-paths 不 isolate staging；多視窗開發 commit 前必 git status --short 確認別人 staged file 沒被一起 commit
 - Plan：[docs/plans/2026-04-26-ingest-v2-redesign-plan.md](../../docs/plans/2026-04-26-ingest-v2-redesign-plan.md) — ingest v2 redesign 完整 plan + §8 Decisions table（4 題拍板）
 - ADR：[docs/decisions/ADR-011-textbook-ingest-v2.md](../../docs/decisions/ADR-011-textbook-ingest-v2.md) — Step 2 ADR 凍結（5 sub-decisions / Pydantic schema / kb_writer signatures / Migration / Acceptance）
 - Inventory：[docs/research/2026-04-26-workflow-inventory.md](../../docs/research/2026-04-26-workflow-inventory.md) — 9 agent × 12 use case workflow catalog
