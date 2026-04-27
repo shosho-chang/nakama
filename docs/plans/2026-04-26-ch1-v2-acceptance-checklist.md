@@ -48,7 +48,12 @@
   - (a) 手動補（磷酸肌酸系統別名候選：`Phosphagen System`, `ATP-PCr 系統`, `磷酸原系統`, `anaerobic alactic 系統` — body line 24 已寫出）
   - (b) 加進 PR D 的順手任務（每章 ingest 完掃 frontmatter 補 aliases）
   - (c) 寫一個 backfill script 對所有 v2 page 一次補
-- **修修決策**：你決定
+- **修修決策**：(a) 手動補 — **DONE 2026-04-27**
+  - 7 個 v2 page 全 sweep 確認皆缺 aliases（systemic）
+  - 從各 page body 第一段抽中英別名 + 縮寫，寫進 frontmatter `domain:` 與 `mentioned_in:` 之間
+  - 全 quoted string，避免 yaml safety 陷阱（feedback_yaml_scalar_safety / feedback_yaml_unquoted_numbers）
+  - Aliases 補完後 grep 確認 7/7 page 有 `aliases:` 欄位
+  - 4 個 noop page（`能量連續體` / `糖解作用` / `有氧能量系統` / `無氧能量系統`）暫不補 — 屬 B1 by-design 範疇
 
 ---
 
@@ -135,6 +140,7 @@
 
 **已知 Sonnet 兩個 weakness（mitigation 已寫進）**：
 1. Anatomical localization in schematics（fig-1-6 PCr shuttle Sonnet 把 CrT 位置搞混）— 對 ch2 *Skeletal Muscle Structure* 預期 schematic 多，**ch2 ingest 時挑 2-3 張先 Sonnet 跑、修修人眼 spot-check**；不滿意再單獨升 Opus
+   - **2026-04-27 spot-check 跑完**：fig-7-1（anatomical multi-panel）/ fig-7-7（functional flowchart）/ fig-7-9（cyclic mechanism）三張不同 sub-type schematic 全 Sonnet 4.6 跑出，driver verdict 全 🟢 沒重蹈 fig-1-6 weakness。等修修在 Obsidian 對照原圖人眼確認 → 報告：[`docs/research/2026-04-27-ch2-vision-spot-check.md`](../research/2026-04-27-ch2-vision-spot-check.md)
 2. Minor blemishes（LaTeX `}}` typo + 雙語術語不一致）— driver post-process 可加 sanity check（grep + 中譯表）作 follow-up，非 PR D blocker
 
 **意外 finding**：互動 session Opus Read（PR C）vs Sonnet API 的差異可能比 model tier 差異更大 — Opus session 反而漏些 textbook anchor（Marathon% 算術、β-γ bond、Romijn fat fraction）。implication：未來 session 手動 Read 預期比 batch API 略差。
@@ -226,10 +232,11 @@
 驗收完，這 5 個板要拍才能解鎖 PR D：
 
 1. **F1（運動營養學漏網）**：補小 PR / 等 PR D 自然命中？(b)
-2. **F2（aliases 欄位缺）**：手動補 / 加進 PR D 順手任務 / backfill script？_（待）_
+2. **F2（aliases 欄位缺）**：手動補 / 加進 PR D 順手任務 / backfill script？(a) 手動補 — **DONE 2026-04-27**（7 個 v2 page 全補完）
 3. **F3（占位符沒 swap 成 image embed）**：(c) 兩個都做 — **DONE 2026-04-26**（V1 驗收解 block）
 4. **B1（4 個 noop page schema_version=1）**：接受 by-design / 改 ADR 強制 noop 也 lazy migrate？_（待）_
 5. **V1（Vision describe 品質）**：**Sonnet 4.6**（保留 ADR-011 default）— **DONE 2026-04-26**（Sonnet rerun head-to-head 顯示 Sonnet 整體不輸 Opus；ch2 schematic 多，建議先挑 2-3 張 spot-check 再放手 batch）
+   - ch2 spot-check（mitigation）：driver 已跑完 3 張 schematic，verdict 全 🟢；等修修人眼確認 → [`docs/research/2026-04-27-ch2-vision-spot-check.md`](../research/2026-04-27-ch2-vision-spot-check.md)
 
 ---
 
