@@ -198,7 +198,7 @@ class DocIndex:
             except UnicodeDecodeError as exc:
                 logger.warning("skip non-utf8 file path=%s err=%s", p, exc)
                 continue
-            rel = str(p.relative_to(self._repo_root))
+            rel = p.relative_to(self._repo_root).as_posix()
             title = self._extract_title(text, fallback=p.stem)
             body = self._strip_frontmatter(text)
             category = self._category_for(rel)
