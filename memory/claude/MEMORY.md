@@ -57,6 +57,7 @@
 - [user_hardware.md](user_hardware.md) — 開發機：RTX 5070 Ti 16GB VRAM + 64GB RAM
 - [project_hardware_purchase_evaluation.md](project_hardware_purchase_evaluation.md) — GPU 升級評估：Pro 4500/5000/6000 ladder + 自架 vs 雲端 hybrid 框架；上限 NTD 50 萬；revenue 來源是自由艦隊千人社群
 - [feedback_avoid_one_shot_summit.md](feedback_avoid_one_shot_summit.md) — 修修自陳「一次攻頂」反射；採購 / phase / scope 決策前主動 reframe 成 incremental，等真實 bottleneck 浮現再升級
+- [reference_github_plan_branch_protection.md](reference_github_plan_branch_protection.md) — GH free + private repo 不 enforce branch protection（API 403）；Pro $4/月解鎖；enforce_admins + required_status_checks contexts 兩個 silent gap
 - [user_domain_focus.md](user_domain_focus.md) — 內容領域四大面向：睡眠/飲食/運動/情緒 + 五大學科
 - [project_robin_content_nature.md](project_robin_content_nature.md) — PR #12 已 merge：兩層分類、6 類別 prompt、取消按鈕
 - [project_deck_dashboard_idea.md](project_deck_dashboard_idea.md) — 甲板儀表板想法：Thousand Sunny 首頁變 multi-agent 控制台（待設計、下次展開）
