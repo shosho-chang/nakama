@@ -13,13 +13,18 @@ originSessionId: 3d901e7b-183e-450a-a0bf-2f06311b6452
 - ⑨ doc_index — PR #211 merged 2026-04-27 為 `9362cfe`（**audit 描述誤判** — 不是 shallow pass-through，是 Windows path bug；`as_posix()` 一行 fix 修綠 `test_stats_returns_per_category_counts`）
 - ⑪ seo_enrich re-export — PR #212 merged 2026-04-27 為 `a095ad8`（`seo_audit/__init__.py` 早就 OK，只有 `seo_enrich` 是空的）
 - ④ sanitizer 收編 — PR #214 merged 2026-04-28 為 `97fe5b2`（**audit framing 誤判** — 不是「三套 sanitizer 統一」，而是兩個 compliance scanner 重複；只 migrate Brook compose + seo-audit skill 到 Slice B 完整 vocab，`gutenberg_validator` / `kb_writer` slug regex 是不同關注點留原處；net −57 LOC）
+- ② approval payload helpers push-down — PR #TBD merged 2026-04-28（**audit framing 第三次誤判** — audit 寫「FSM `ALL_STATUSES` 跟 payload `action_type` 兩個 namespace 沒鎖、漏寫 silent fail」全錯：兩 namespace 是不同維度根本不該鎖；silent fail 不存在因 Pydantic union + isinstance else-raise 已 fail-fast。real shape 是 4 個 helper 是 isinstance ladder anti-pattern → 把 `target_platform / title / diff_target_id` push down 成 PublishWpPostV1 / UpdateWpPostV1 的 `@property`，刪 4 helper；net +1 LOC，重點在 cohesion shift；不重開 ADR-006 因 FSM/DB schema/DoD 全沒動）
 
 **Pending ROI 排序**：
-- **② approval FSM + schema 鎖死** — Chopper Phase 2 blocker
-- **③ KB writer interface 收緊** / **⑥ memory tier interface** / **⑦ prompt loader 顯式 dep** / **⑩ anomaly 抽得不夠廣** — 中優先
+- **③ KB writer interface 收緊** / **⑥ memory tier interface** / **⑦ prompt loader 顯式 dep** / **⑩ anomaly 抽得不夠廣** — 中優先（需先 verify framing）
 - **⑧ Usopp publisher 600 行 monolith** — 等真要做 Chopper 留言 publisher 才動
 
-**audit skill 教訓（2 次驗證後）**：候選 ⑨ + ④ 都吃過 audit framing 誤判 — ⑨ 寫「shallow pass-through」結果是 FTS5 真實邏輯 + Windows path bug；④ 寫「三套 sanitizer 統一」結果是兩個 compliance scanner deprecation 沒收尾、第三方完全不該被綁進來。下次跑 skill **要把候選 deletion test + module shape 都對 file verify**，不要只看 audit 描述當真，跑 grilling step 3 時直接挑戰 audit 自己的 framing。
+**audit skill 教訓（3 次驗證後）**：候選 ⑨ + ④ + ② 都吃過 audit framing 誤判 —
+- ⑨ 寫「shallow pass-through」結果是 FTS5 真實邏輯 + Windows path bug
+- ④ 寫「三套 sanitizer 統一」結果是兩個 compliance scanner deprecation 沒收尾、第三方完全不該被綁進來
+- ② 寫「FSM 跟 payload 沒鎖、會 silent fail」結果兩件事都不成立，real shape 是 OOP polymorphism 漏寫
+
+**規律**：audit 看到 textual coupling 就反射說「沒鎖」，但實際上 Pydantic Literal + import-time assert + 顯式 raise 已經把 fail-fast 處理好；audit 真正能找到的是 cohesion 錯位（屬於 OOP 課題不是 type system 課題）。下次跑 skill **必須**對每個候選跑 deletion test + grep 真實 fail path（不只看 module 名）。
 
 **Why**：audit 的價值不在「找一次」，在「baseline 對照下次掃」。下次跑 skill 時拿這份比，看新候選浮現 / 老候選是否還在。
 
