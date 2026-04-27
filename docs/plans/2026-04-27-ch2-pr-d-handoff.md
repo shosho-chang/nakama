@@ -40,8 +40,8 @@
 
 **fig-7-9 / fig-7-10 描述狀態**：
 - 兩張屬 cyclic sub-type
-- 已 cache 一份 Sonnet 4.6 描述（先 run）
-- **若修修 verdict cyclic 升 Opus → 下個 session 重 run 這 2 張用 Opus**（其他 13 張仍用 Sonnet cache，spot-check 已通過子類別）
+- ~~已 cache 一份 Sonnet 4.6 描述（先 run）~~ → **2026-04-27 evening update：兩張已 Opus 4.7 rerun + cache 替換完成**（見 §7）
+- ~~若修修 verdict cyclic 升 Opus → 下個 session 重 run 這 2 張用 Opus~~ → **已執行**：基於 PR #204 4-model triangulate 強信號（Opus + Grok + Gemini 三家共識 vs Sonnet 1 家），driver 直接拍板 cyclic 升 Opus，無需修修人眼 verdict
 
 ### 1.2 PR D ingest driver inject pattern
 
@@ -209,7 +209,45 @@ PR D 預估 ch3-ch11（總 ~270 figures）若全 Sonnet API 跑：~$10-15；若 
 
 ---
 
-## 6. Reference
+## 6. Post-handoff Opus rerun（2026-04-27 evening continuation）
+
+PR #204 4-model triangulate 強信號（Opus + Grok + Gemini 三家共識對 Sonnet 1 家）已等同 verdict — driver 直接執行 cyclic 升 Opus，cache replace + SOP 文件化：
+
+### 6.1 cache update（fig-7-9 + fig-7-10）
+
+- **fig-7-9** ([`docs/research/2026-04-27-ch2-ingest-cache.json`](../research/2026-04-27-ch2-ingest-cache.json) `figures.fig-7-9`) — 從 Sonnet 4.6 (1593 chars) 換成 Opus 4.7 (1738 chars)：
+  - ✅ 4 step（不是 5）
+  - ✅ Step 1 = ATP hydrolysis（不是 crossbridge formation）
+  - ✅ Actin = yellow beads + tropomyosin/troponin / Myosin heads = orange（不是 Sonnet 「actin orange-brown」誤標）
+  - ✅ 順時針 + 中央 caption verbatim quote
+  - 來源：本 session pre-stage 進 `/tmp/fig-7-9-opus.txt`，promote 進 cache JSON
+- **fig-7-10** ([`docs/research/2026-04-27-ch2-ingest-cache.json`](../research/2026-04-27-ch2-ingest-cache.json) `figures.fig-7-10`) — 從 Sonnet 4.6 (1839 chars) 換成 Opus 4.7 in-session multimodal Read (2258 chars)：
+  - ✅ "2 Sarcomeres" 標籤（Sonnet 漏）
+  - ✅ I-band shaded **pink**（Sonnet 誤標 light blue）
+  - ✅ 顯式提 H. E. Huxley & J. Hanson sliding filament theory（Sonnet 漏 attribution）
+  - ✅ thin filament termination at M-line in panel (a)
+  - 注：fig-7-10 嚴格說是 a/b/c 三態 composite（非典型 cyclic）但 handoff 標 cyclic 子類別、保守起見一起升 Opus
+- **meta.figure_model + meta.note** 更新反映 13 figs Sonnet / 2 figs Opus 混用 + driver resize SOP
+
+### 6.2 5 MB image resize SOP 文件化
+
+handoff §2 教訓寫進 production code 路徑：
+
+- [`SKILL.md` Step 2.a](../../.claude/skills/textbook-ingest/SKILL.md) — 加 "5 MB image size limit (driver responsibility)" subsection + PIL LANCZOS 1600px helper snippet
+- [`vision-describe.md` Inputs 表](../../.claude/skills/textbook-ingest/prompts/vision-describe.md) — `{path}` 行下加 「Image size precondition」 blockquote 引用 SKILL.md helper
+
+vision_image_prep.py shared helper（handoff §2 third bullet）暫不開 — ingest driver 是唯一 caller，inline 即可；之後若 Brook / SEO 也要 vision call 再 promote 到 shared/。
+
+### 6.3 仍未解的兩件 acceptance
+
+- **fig-7-7 lateral arrow** — Sonnet 觀察的兩條 supraspinal 並列分支間的 left→right 水平箭頭，Grok / Gemini 沒提；Opus rerun 沒 cover 這張（不在 cyclic 子類別）。需修修開 [`fig-7-7.png`](file:///F:/Shosho%20LifeOS/Attachments/Books/biochemistry-sport-exercise-2024/ch7/fig-7-7.png) 半秒看一眼 → 真有 arrow → Sonnet 觀察更細，cache 描述保留；無 arrow → Sonnet hallucination，cache 描述要刪一句
+- **B1（4 個 noop page schema_version=1）** — driver 建議接受 by-design（已寫進 [`spot-check.md`](../research/2026-04-27-ch2-vision-spot-check.md) §「建議的修修 verdict」）
+
+兩者解了 PR D 啟動 Step B-F（attachments reindex / chapter source write / concept extract / acceptance / batch ch3-ch11）。
+
+---
+
+## 7. Reference
 
 - ch2 spot-check + multi-model triangulate：[`2026-04-27-ch2-vision-spot-check.md`](../research/2026-04-27-ch2-vision-spot-check.md)（PR #201）
 - ch1 acceptance checklist（B1 / F2 / 等）：[`2026-04-26-ch1-v2-acceptance-checklist.md`](2026-04-26-ch1-v2-acceptance-checklist.md)
