@@ -53,6 +53,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
+from shared.anthropic_client import set_current_agent  # noqa: E402
 from shared.gsc_client import GSCClient  # noqa: E402
 from shared.log import get_logger  # noqa: E402
 from shared.schemas.publishing import (  # noqa: E402
@@ -578,6 +579,7 @@ def enrich(
     tests inject a fake. `enable_serp=False` skips the call entirely (used by
     CLI `--no-serp` flag) and writes `phase: "1 (gsc-only)"`.
     """
+    set_current_agent("brook")  # SEO enrich 暫掛 brook，與 seo_audit/llm_review 對齊
     parsed = parse_keyword_research_input(input_path)
     target_site = resolve_target_site(parsed, override=target_site_override)
 
