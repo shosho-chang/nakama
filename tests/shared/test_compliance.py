@@ -1,10 +1,17 @@
-"""Tests for shared.compliance.medical_claim_vocab (ADR-005b §10)."""
+"""Tests for shared.compliance (ADR-005b §10).
+
+Covers:
+- `scan_text` / `scan(draft)` — publish gate (medical_claim_vocab)
+- `has_disclaimer` — compose-time positive disclaimer signal
+- `scan_draft_compliance` — orchestrator combining both into DraftComplianceV1
+"""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
 from shared import compliance, gutenberg_builder
+from shared.compliance import has_disclaimer, scan_draft_compliance
 from shared.compliance.medical_claim_vocab import (
     ABSOLUTE_ASSERTION_TERMS,
     MEDICAL_CLAIM_TERMS,
@@ -289,3 +296,67 @@ class TestSimplifiedChineseVariants:
         sc = scan_text("本产品可治愈糖尿病并且百分之百有效")
         assert tc.medical_claim == sc.medical_claim
         assert tc.absolute_assertion == sc.absolute_assertion
+
+
+# ---------------------------------------------------------------------------
+# Disclaimer detection (compose-time positive signal)
+# ---------------------------------------------------------------------------
+
+
+class TestDisclaimerDetection:
+    def test_僅供參考_matches(self):
+        assert has_disclaimer("本文僅供參考，不構成醫療建議。")
+
+    def test_請諮詢醫師_matches(self):
+        assert has_disclaimer("如有疑問請諮詢醫師。")
+
+    def test_非醫療建議_matches(self):
+        assert has_disclaimer("本內容非醫療建議。")
+
+    def test_english_variant_matches(self):
+        assert has_disclaimer("Disclaimer: This is not medical advice.")
+
+    def test_english_variant_is_case_insensitive(self):
+        assert has_disclaimer("THIS IS NOT MEDICAL ADVICE")
+
+    def test_no_disclaimer_returns_false(self):
+        assert not has_disclaimer("這篇文章介紹生活作息，沒有任何免責聲明。")
+
+
+# ---------------------------------------------------------------------------
+# scan_draft_compliance — compose-time orchestrator
+# ---------------------------------------------------------------------------
+
+
+class TestScanDraftCompliance:
+    def test_clean_text_with_disclaimer(self):
+        text = "本文介紹生活作息建議，僅供參考，請諮詢醫師。"
+        result = scan_draft_compliance(text)
+        assert result.claims_no_therapeutic_effect is True
+        assert result.has_disclaimer is True
+        assert result.detected_blacklist_hits == []
+
+    def test_text_with_medical_claim_flips_flag(self):
+        text = "這個方法可以治癒癌症。"
+        result = scan_draft_compliance(text)
+        assert result.claims_no_therapeutic_effect is False
+        assert result.detected_blacklist_hits  # non-empty
+
+    def test_missing_disclaimer_flagged(self):
+        text = "這篇文章介紹生活作息，沒有任何免責。"
+        result = scan_draft_compliance(text)
+        assert result.has_disclaimer is False
+
+    def test_returns_draft_compliance_v1(self):
+        result = scan_draft_compliance("無關緊要的句子")
+        assert isinstance(result, DraftComplianceV1)
+        # schema_version is the only Literal in the schema; sanity-check it.
+        assert result.schema_version == 1
+
+    def test_blacklist_hits_match_publish_gate(self):
+        # `detected_blacklist_hits` must equal the publish gate's `matched_terms`
+        # so HITL UI shows the same evidence the publisher will block on.
+        text = "百分之百治癒糖尿病。"
+        snapshot = scan_draft_compliance(text)
+        gate = scan_text(text)
+        assert snapshot.detected_blacklist_hits == list(gate.matched_terms)

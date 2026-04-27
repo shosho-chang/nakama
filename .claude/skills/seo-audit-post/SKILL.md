@@ -187,12 +187,14 @@ section ordering is part of the schema_version=1 contract.
 
 ## Caveats (important)
 
-1. **`agents/brook/compliance_scan.py` is SEED (6 patterns only)**. The
-   audit reuses `scan_publish_gate()` as a quick signal for L9 LLM
-   context. The LLM still does its own judgment — but L9 is known to
-   give false-negatives on terms outside the 6-pattern vocab. Each L9
-   `fix_suggestion` should mention the SEED status. Slice B medical
-   vocab upgrade will lift this.
+1. **L9 compliance pre-scan uses `shared.compliance.scan_text`** (Slice B
+   medical-claim vocab — full TC + SC mirror, ~50 patterns across
+   therapeutic / diagnostic / drug-analog / disease-prevention /
+   physiological / absolute-assertion buckets). The LLM still does its
+   own judgment in case the regex misses paraphrased or
+   context-dependent risk. Pre-scan output
+   (`medical_claim`/`absolute_assertion`/`matched_terms`) is fed into
+   the L9 prompt as evidence; LLM may add or escalate findings.
 2. **`agents/robin/kb_search.search_kb` requires `purpose="seo_audit"`**
    to escape the YouTube prompt baked in for Zoro's pipeline. The
    pipeline calls it correctly — do NOT bypass.
@@ -244,5 +246,5 @@ Parameterized extension points:
 | PageSpeed thin client | `shared/pagespeed_client.py` |
 | GSC thin client | `shared/gsc_client.py` |
 | KB ranker (purpose dispatch) | `agents/robin/kb_search.py` |
-| Compliance SEED | `agents/brook/compliance_scan.py` |
+| Compliance scan | `shared/compliance/medical_claim_vocab.py` (re-exported via `shared.compliance`) |
 | Capability card | `docs/capabilities/seo-audit-post.md` |

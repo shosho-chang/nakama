@@ -11,8 +11,8 @@
 - **不**做 deterministic check（那屬 metadata.py / headings.py / ...）
 - **不**做 KB query（caller 負責先呼 `agents.robin.kb_search.search_kb` with
   `purpose="seo_audit"`，把結果以 `kb_context` 餵進來）
-- **不**做 compliance regex scan（caller 負責先呼 `agents.brook.compliance_scan
-  .scan_publish_gate`，把 `compliance_findings` 餵進來）
+- **不**做 compliance regex scan（caller 負責先呼 `shared.compliance.scan_text`，
+  把 `compliance_findings` 餵進來）
 
 L9（藥事法）/ L10（schema vs internal link）兩條依賴 caller 注入的 context；缺
 context 時降級 `status="skip"` 並在 actual 標明缺哪一塊。
@@ -113,8 +113,8 @@ _RULES: tuple[dict[str, str], ...] = (
         "severity": "critical",
         "expected": "未提療效 / 治癒承諾 / 絕對保證；藥品提及不引導購買",
         "intent": (
-            "中文法規語境；reuse `agents/brook/compliance_scan.py` 的 SEED 結果"
-            " + LLM 補抓 SEED 詞庫漏網之魚。"
+            "中文法規語境；reuse `shared.compliance.scan_text` 的詞庫掃描結果"
+            " + LLM 補抓詞庫漏網之魚（如語境改寫、正↔簡 drift）。"
         ),
     },
     {
@@ -235,7 +235,7 @@ def _build_user_prompt(
         f"{text_excerpt}\n\n"
         f"KB context (similar pages from Robin KB, purpose=seo_audit):\n"
         f"{kb_context_str}\n\n"
-        f"Compliance pre-scan (from agents/brook/compliance_scan.py SEED):\n"
+        f"Compliance pre-scan (from shared.compliance.scan_text):\n"
         f"{compliance_str}\n\n"
         f"Rules to evaluate:\n{rules_block}\n\n"
         'Return JSON of shape {"L1": {"status":"...","actual":"...",'
@@ -334,9 +334,9 @@ def review(
         url: 目標 URL（注入 prompt 上下文用）。
         kb_context: caller 從 `search_kb(..., purpose="seo_audit")` 拿到的
             list[dict]；None / 空 list 會讓 L10 internal link 部分降級提醒。
-        compliance_findings: caller 從 `scan_publish_gate(text)` 拿到的 dict
-            （`{medical_claim, absolute_assertion, matched_terms}`）；None
-            會讓 L9 LLM 不知道 SEED 結果但仍會直接判斷。
+        compliance_findings: caller 從 `shared.compliance.scan_text(text)`
+            拿到的 dict（`{medical_claim, absolute_assertion, matched_terms}`）；
+            None 會讓 L9 LLM 看不到 scan 結果但仍會直接判斷。
         model: "sonnet" / "haiku" / "none"。"none" 直接回 12 條全 skip。
         text_excerpt_chars: HTML excerpt 上限字數（成本控制）。
 

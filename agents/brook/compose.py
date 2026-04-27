@@ -16,7 +16,6 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, ValidationError
 
-from agents.brook.compliance_scan import scan_draft_compliance, scan_publish_gate
 from agents.brook.style_profile_loader import (
     StyleProfile,
     detect_category,
@@ -24,6 +23,7 @@ from agents.brook.style_profile_loader import (
 )
 from shared import approval_queue, gutenberg_builder
 from shared.anthropic_client import ask_claude_multi, set_current_agent
+from shared.compliance import scan_draft_compliance, scan_text
 from shared.log import get_logger
 from shared.prompt_loader import load_prompt
 from shared.schemas.approval import PublishWpPostV1
@@ -514,7 +514,7 @@ def compose_and_enqueue(
     metadata, content = _parse_llm_output(payload)
 
     plaintext = _ast_to_plaintext(content.ast)
-    gate_flags: PublishComplianceGateV1 = scan_publish_gate(plaintext)
+    gate_flags: PublishComplianceGateV1 = scan_text(plaintext)
     draft_compliance = scan_draft_compliance(plaintext)
 
     tag_candidates = [str(t) for t in metadata.get("tags") or []]

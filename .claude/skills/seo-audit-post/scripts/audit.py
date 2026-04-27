@@ -136,9 +136,9 @@ def _default_kb_searcher(query: str, vault_path: Path, top_k: int) -> list[dict[
 
 
 def _default_compliance_scanner(text: str) -> dict[str, Any]:
-    from agents.brook.compliance_scan import scan_publish_gate
+    from shared.compliance import scan_text
 
-    gate = scan_publish_gate(text)
+    gate = scan_text(text)
     return {
         "medical_claim": gate.medical_claim,
         "absolute_assertion": gate.absolute_assertion,
