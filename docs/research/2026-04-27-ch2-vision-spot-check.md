@@ -201,6 +201,57 @@ Raw 三家描述見 [`vision_triangulate_results.json`](../../.claude/worktrees/
 
 ---
 
+## fig-7-9 Opus 4.7 head-to-head（2026-04-27 evening 補測）
+
+修修人眼 verdict 等待期間，driver 主動再跑 Opus 4.7（Anthropic 同模型家族 higher tier）對 fig-7-9 vision describe，看是否能解 dispute：
+
+```
+[claude-opus-4-7]
+
+Schematic diagram (cyclic flowchart) depicting the four-step crossbridge cycle（橫橋循環）...
+arranged clockwise around a central legend ...
+
+Step 1 (top): the myosin head hydrolyzes ATP via intrinsic ATPase activity into ADP + Pᵢ ...
+Step 2 (right): the energized myosin head binds actin to form a crossbridge（橫橋）, coinciding with release of inorganic phosphate (Pᵢ).
+Step 3 (bottom): the power stroke（動力衝程）...
+Step 4 (left): a fresh ATP binds the myosin head, causing detachment ...
+
+The illustration shows the thin filament — a double helix of actin（肌動蛋白）monomers (yellow beads) decorated with tropomyosin（原肌球蛋白）strands ... paired with the thick filament of myosin（肌球蛋白）showing protruding myosin heads (orange) emerging from the M-line region.
+```
+
+### 4-model dispute resolution
+
+| 對比項 | Sonnet 4.6 | Grok-4 | Gemini 2.5 Flash | **Opus 4.7** | 共識 |
+|--------|-----------|--------|------------------|--------------|------|
+| **Panel 數** | **5** | 4 | 4 | **4** | ✅ Grok+Gemini+Opus 共識 4 |
+| **Step 1 起點** | crossbridge formation | ATP hydrolysis | ATP hydrolysis | **ATP hydrolysis** | ✅ 三家共識 ATP hydrolysis |
+| **方向** | clockwise from upper-right | (n/a) | (n/a) | **clockwise** | ✅ 順時針確認 |
+| **Actin 顏色** | "**orange-brown**" twisted helix | "**red beaded**" | "**yellow** spherical with blue/purple" | **"yellow beads"** with tropomyosin/troponin | ✅ Gemini+Opus 共識 yellow |
+| **Myosin 顏色** | (沒明寫，Sonnet 把 actin 寫成 orange-brown) | "brown coiled" | (沒明寫) | **"orange" myosin heads** | Opus 點明 myosin = orange、actin = yellow |
+
+**Verdict**：Sonnet 4.6 在 fig-7-9 三點全錯，**Opus 4.7 + Grok-4 + Gemini 2.5 Flash 三家共識正確**：
+
+1. ✅ 4 step（不是 5）
+2. ✅ Step 1 = ATP hydrolysis（不是 crossbridge formation — Sonnet 把 step 2 誤讀為 step 1）
+3. ✅ Actin = yellow / Myosin = orange（Sonnet 把 myosin 顏色 "orange-brown" 套到 actin 身上）
+
+### 對 PR D 的 implication
+
+- **cyclic 子類別 Sonnet 4.6 確認有 systemic weakness**（不只 anatomical localization，連 panel sequence + 顏色標識都會誤讀）
+- **PR D ch2 cyclic 圖（fig-7-9 + fig-7-10）必須升 Opus 4.7** — 不需修修人眼 verdict 也能拍板（已有 3 家 model 對 1 家強信號）
+- 但 fig-7-7 lateral arrow 仍需修修人眼確認（這是另一條 dispute，三家描述沒重複）
+- 其他 13 張子類別（anatomical / flowchart / line plot）已 spot-check 通過，維持 Sonnet 4.6 cache 有效
+
+### 建議的修修 verdict
+
+- **fig-7-9 三點 dispute**：拍板「Sonnet 全錯，cyclic 升 Opus」（基於 4-model triangulate 強信號）
+- **fig-7-7 lateral arrow**：仍需修修開圖確認（半秒）
+- **B1 拍板**：driver 建議 (a) 接受 by-design
+
+driver 已 pre-stage：fig-7-9 Opus 4.7 描述 cache 在 [`/tmp/fig-7-9-opus.txt`](file:///C:/Users/Shosho/AppData/Local/Temp/fig-7-9-opus.txt)（throwaway，未 commit）。下個 session 啟動 PR D 時用此描述替代 cache 裡的 Sonnet 版本，並對 fig-7-10 也跑 Opus rerun。
+
+---
+
 ## Reference
 
 - V1 head-to-head：[`2026-04-26-ch1-vision-sonnet-rerun.md`](2026-04-26-ch1-vision-sonnet-rerun.md)
