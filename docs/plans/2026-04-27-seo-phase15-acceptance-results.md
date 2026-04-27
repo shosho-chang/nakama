@@ -10,14 +10,17 @@
 
 ## TL;DR
 
-三件全綠：
+三件全綠 + F5-B（CF rule）做完後 audit 真實 grade 拿到 **B+**：
 - ✅ **T1** 5 keyword enrich：5/5 phase=`1.5 (gsc + firecrawl)`，**enrich wall clock median=26s, P95~58s**（取代 SKILL.md `~15-25s` 估值）
 - ✅ **T2** Brook compose seo_context smoke：queue_row=1, title 看得出吸收 SEO，compliance 全綠
 - ✅ **T3** seo-audit-post + cost emit：報告寫出 41 條 rule，**A3 fix 確認 wire — brook agent 多了 sonnet-4-6 call (6549in/1432out, ~$0.04)**
+- ✅ **F5-B done 2026-04-27**：CF dashboard 加 `NakamaBot/1.0` skip rule。VPS curl shosho.tw 從 403 → 200。
+- ✅ **Re-audit real grade**：firecrawl fetcher 假 grade=D → **default httpx grade=B+**（27 pass / 9 warn / 1 fail / 4 skip / 0 critical）。SEO Phase 1.5 = **真正 100% 完成**。
 
 artifacts → `data/seo-acceptance-2026-04-27/`（gitignored，桌面 Cursor / Obsidian 可直接開）：
 - 5 份 `enriched-*.md`
-- 1 份 `audit-blog-zone-2-common-questions-20260427.md`
+- 1 份 `audit-blog-zone-2-common-questions-20260427.md`（first run, fake D）
+- 1 份 `audit-blog-zone-2-common-questions-20260427-real.md`（**re-run, real B+**）
 
 ---
 
@@ -97,17 +100,24 @@ artifacts → `data/seo-acceptance-2026-04-27/`（gitignored，桌面 Cursor / O
 
 ### Audit 報告摘要
 
-| 項目 | 值 |
-|---|---|
-| 報告 path（VPS） | `/tmp/seo-test/audit-blog-zone-2-common-questions-20260427.md` |
-| 報告 path（local） | `data/seo-acceptance-2026-04-27/audit-blog-zone-2-common-questions-20260427.md` |
-| audit_target | `https://shosho.tw/blog/zone-2-common-questions/` |
-| **overall_grade** | **D** ⚠️（見 follow-up #4） |
-| Pass / Warn / Fail / Skip | 16 / 9 / 8 / 8 |
-| 41 條 rule（M/O/H/I/S/SC/P/L1-L12/Fetch） | ✅ 全跑 |
-| GSC section | included（28 day, 100 row） |
-| KB section | skipped (vault_path 缺，VPS 沒 vault) |
-| wall clock | 30.8s |
+| 項目 | First run（firecrawl 假 grade） | **Re-run（CF rule + default httpx）** |
+|---|---|---|
+| 報告 path（local） | `audit-blog-zone-2-common-questions-20260427.md` | `audit-blog-zone-2-common-questions-20260427-real.md` |
+| audit_target | `https://shosho.tw/blog/zone-2-common-questions/` | 同 |
+| **overall_grade** | D ⚠️（fake — head 沒抓到） | **B+** ✅ |
+| Pass / Warn / Fail / Skip | 16 / 9 / 8 / 8 | **27 / 9 / 1 / 4** |
+| 41 條 rule（M/O/H/I/S/SC/P/L1-L12/Fetch） | ✅ 全跑 | ✅ 全跑 |
+| GSC section | included（28 day, 100 row） | included（28 day, 100 row） |
+| KB section | skipped (vault_path 缺) | skipped (vault_path 缺) |
+| wall clock | 30.8s（含 firecrawl scrape） | **30.9s（default httpx + GSC + Sonnet review）** |
+| Critical fixes（§2） | 5 條（M3 canonical / M5 viewport / O1-O3 OG）| **0 條** |
+| Warnings 主要 rule | M1 / M2 / I1 / I4 / I5 / SC2 / L7 / L8 / L10 / L11 / L12 等 | M2 / I1 / I4 / I5 / SC2 / L7 / L8 / L10 / L11 / L12 |
+
+**真實狀態**：shosho.tw zone 2 production 文章 metadata 齊全（M1/M3/M5/O1-O4 全 pass），剩 9 條 warning + 1 fail 是可以改進的 SEO 細節（meta description 字數 / image alt / lazy loading / BreadcrumbList schema / E-E-A-T 強化 / DOI 引用率 / last reviewed date）。
+
+→ 修修可以根據 §3 Warnings 一條一條修，每修完 re-audit 看 grade 上升。下一篇文章寫之前也建議拿 `seo-keyword-enrich` + `seo-audit-post` 走完 SEO 流程。
+
+**F4/F5-C 決議**：CF rule（F5-B）做完後，default httpx fetcher 從 VPS 直接通，這是 production 主路徑。`--via-firecrawl` flag 留為「caller IP 進不來」最終 fallback（外部 audit 競品 / 其他被擋的 zone），不再用於 shosho.tw 自家 audit。
 
 ### A3 cost emit 驗證 ✅
 
