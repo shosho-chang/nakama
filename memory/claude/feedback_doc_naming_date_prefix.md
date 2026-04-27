@@ -2,6 +2,7 @@
 name: 時間性 doc 檔名走 YYYY-MM-DD 前置（排序用）
 description: docs/plans · research · task-prompts 的時間性檔案用 YYYY-MM-DD-{topic}.md 前綴；runbooks · diagrams · principles · ADR 不加日期；phase-N-* 系列保留 phase 標識
 type: feedback
+originSessionId: 70b01225-94d6-4548-a285-53270c088e26
 ---
 **規則：給修修看的時間性 doc 檔名走 `YYYY-MM-DD-{topic}.md` 前置；常駐 doc 走純 topic；ADR 走 `ADR-NNN-{topic}.md`；phase 標識走 `phase-N-{topic}.md`。**
 
@@ -30,11 +31,28 @@ VS Code Explorer / Obsidian 內檔案是字典序排序。日期後置時 `textb
 
 | 資料夾 | 命名規則 | 為何不加 |
 |--------|---------|---------|
-| `docs/runbooks/` | `{action-target}.md` | 操作手冊常駐查閱，不是時間紀錄 |
+| `docs/runbooks/{action-target}.md` | 純 topic | **長期 reference runbook**（如 `cf-waf-skip-rules.md` 列出所有規則 + 加新規則 SOP）— 常駐查閱，不是時間紀錄 |
 | `docs/diagrams/` | `{topic}.md` | 常駐技術圖 |
 | `docs/principles/` | `{principle}.md` | 常駐原則 |
 | `docs/decisions/` (ADR) | `ADR-NNN-{topic}.md` | ADR 用編號排序 |
 | `docs/capabilities/` | `{capability}.md` | 常駐能力卡 |
+
+### Runbook 兩種：long-term reference vs one-shot task
+
+**這是 2026-04-27 修修要求補的細節**：runbook 不是一刀切「不加日期」，要分兩種：
+
+| 種類 | 檔名 | 例子 | 何時用 |
+|---|---|---|---|
+| **Long-term reference** | `{action-target}.md`（不加日期） | `cf-waf-skip-rules.md` / `deploy-usopp-vps.md` / `setup-wp-integration-credentials.md` | 列出所有同類規則 / SOP / 常駐查閱資訊 |
+| **One-shot task instruction**（要修修這次跑的） | `YYYY-MM-DD-{verb-target}.md` | `2026-04-27-add-nakamabot-cf-skip-rule.md` | 一次性 task — 修修跑完就不會再回頭看；連結到 long-term reference 表格更新 |
+
+**配對規則**：one-shot task doc 要 link 到 long-term reference doc（如 task doc 開頭寫「rule 加進 cf-waf-skip-rules.md 表格」）。Long-term reference 表格 row 也要 link 回 setup task doc 路徑（per cf-waf-skip-rules.md 表格新增「Setup task doc」column 範例）。
+
+**Why 修修要求**：要他執行的 runbook 跟 long-term reference 混在 `docs/runbooks/` 沒日期，他**不知道哪份是「現在要他做」哪份是「過去做完的紀錄」**。Date prefix 一眼看出 `2026-04-27-...` 是新的待做 task，純 topic 是常駐 reference。
+
+**配套規則**：要修修執行的 task doc **必須在主 worktree 立刻可見**（不能只在 PR worktree / feature branch 上等 PR merged）— 修修不會 git checkout 別人 branch 看 task doc。做法：
+- 寫主 worktree path（`F:/nakama/docs/runbooks/...`）讓修修立刻能在 Cursor / Obsidian 開
+- 同時 cherry-pick / 同步到 PR worktree commit 進 PR（兩邊內容一致；PR merge 後主 tree pull 自然 dedupe）
 
 ### Phase 標識
 
