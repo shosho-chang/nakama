@@ -27,13 +27,18 @@ import pytest
 from pydantic import BaseModel
 
 from shared import gutenberg_builder
-from shared.schemas.approval import PublishWpPostV1, UpdateWpPostV1
+from shared.schemas.approval import (
+    ApprovalPayloadV1Adapter,
+    PublishWpPostV1,
+    UpdateWpPostV1,
+)
 from shared.schemas.external.wordpress import WpPostV1, WpRenderedFieldV1
 from shared.schemas.publishing import (
     BlockNodeV1,
     CannibalizationWarningV1,
     DraftComplianceV1,
     DraftV1,
+    FeaturedImageBriefV1,
     GutenbergHTMLV1,
     KeywordMetricV1,
     PublishComplianceGateV1,
@@ -265,3 +270,123 @@ def test_schema_dump_json_is_string(factory: Callable[[], BaseModel]) -> None:
     out = original.model_dump_json()
     assert isinstance(out, str)
     assert len(out) > 0
+
+
+# ---------------------------------------------------------------------------
+# Discriminated union round-trip — ApprovalPayloadV1 production read path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        pytest.param(_publish_wp_post, id="PublishWpPostV1"),
+        pytest.param(_update_wp_post, id="UpdateWpPostV1"),
+    ],
+)
+def test_approval_payload_discriminated_union_roundtrip(
+    factory: Callable[[], BaseModel],
+) -> None:
+    """Round-trip via ``ApprovalPayloadV1Adapter`` — the production read path.
+
+    ``shared/approval_queue.claim_approved_drafts`` and
+    ``thousand_sunny/routers/bridge.py`` both decode payloads via the discriminated
+    ``TypeAdapter`` (not the member class directly). Discriminator drift — e.g.
+    a new ``action_type`` literal added to one member but not the union — would
+    silently mis-dispatch in production. This test locks the dispatch path.
+    """
+    original = factory()
+    dump = original.model_dump()
+    reborn = ApprovalPayloadV1Adapter.validate_python(dump)
+    assert type(reborn) is type(original), (
+        f"discriminated dispatch drift: dumped {type(original).__name__}, "
+        f"reborn {type(reborn).__name__}"
+    )
+    assert reborn == original
+
+
+# ---------------------------------------------------------------------------
+# All-optional-populated round-trip — locks Optional / default-empty branches
+# ---------------------------------------------------------------------------
+
+
+def _draft_with_optionals() -> DraftV1:
+    """DraftV1 with every Optional / default-empty field populated."""
+    return DraftV1(
+        schema_version=1,
+        draft_id="draft_20260427T120000_a1b2c3",
+        created_at=datetime(2026, 4, 27, 12, 0, 0, tzinfo=timezone.utc),
+        agent="brook",
+        operation_id="op_a1b2c3d4",
+        title="Round-trip schema test article (optionals populated)",
+        slug_candidates=["roundtrip-test", "fallback-slug"],
+        content=_gutenberg(),
+        excerpt="An excerpt of at least twenty characters present here.",
+        primary_category="blog",
+        secondary_categories=["sleep-science"],
+        tags=["sleep", "longevity"],
+        focus_keyword="roundtrip",
+        meta_description=(
+            "A meta description that is at least fifty chars long to pass validator."
+        ),
+        featured_image_brief=FeaturedImageBriefV1(
+            schema_version=1,
+            purpose="hero",
+            description="A serene night sky over mountains, soft moonlight.",
+            style="cinematic",
+            keywords=["sleep", "night", "calm"],
+        ),
+        compliance=DraftComplianceV1(
+            schema_version=1,
+            claims_no_therapeutic_effect=True,
+            has_disclaimer=True,
+            detected_blacklist_hits=["治癒", "保證"],
+        ),
+        style_profile_id="blog@0.1.0",
+    )
+
+
+def _seo_context_with_optionals() -> SEOContextV1:
+    """SEOContextV1 with competitor_serp_summary + source_keyword_research_path set."""
+    base = _seo_context()
+    return base.model_copy(
+        update={
+            "competitor_serp_summary": (
+                "Top 3 competitor URLs share a 'sleep cycle' anchor; "
+                "differentiation: add empirical references."
+            ),
+            "source_keyword_research_path": ("docs/research/2026-04-27-sleep-keyword-research.md"),
+            "related_keywords": [
+                KeywordMetricV1(
+                    schema_version=1,
+                    keyword="REM cycle",
+                    clicks=42,
+                    impressions=1300,
+                    ctr=0.0323,
+                    avg_position=11.2,
+                    source="gsc",
+                ),
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        pytest.param(_draft_with_optionals, id="DraftV1[all-optionals]"),
+        pytest.param(_seo_context_with_optionals, id="SEOContextV1[all-optionals]"),
+    ],
+)
+def test_optional_fields_roundtrip(factory: Callable[[], BaseModel]) -> None:
+    """JSON + dict round-trip when every Optional field is populated.
+
+    Catches serializer bugs that only surface when an Optional field is non-None
+    (e.g. a custom ``model_serializer`` that branches on ``getattr(self, x, None)``
+    and silently drops populated values).
+    """
+    original = factory()
+    json_reborn = type(original).model_validate_json(original.model_dump_json())
+    assert json_reborn == original
+    dict_reborn = type(original).model_validate(original.model_dump())
+    assert dict_reborn == original
