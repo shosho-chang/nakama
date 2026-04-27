@@ -139,7 +139,8 @@ python .claude/skills/seo-audit-post/scripts/audit.py \
     [--gsc-property "sc-domain:shosho.tw"] \
     [--no-kb] \
     [--strategy desktop] \
-    [--llm-level haiku|none]
+    [--llm-level haiku|none] \
+    [--via-firecrawl]
 ```
 
 `--llm-level=none` → skips L1-L12 (純 deterministic + PageSpeed + 可選
@@ -147,6 +148,11 @@ GSC/KB)，給 debug / quick check / 沒 ANTHROPIC_API_KEY 時用。
 
 `--no-kb` → skips KB query + report §7。當 audit URL 與 KB 主題不重疊
 （例如 audit 競品文章）時用。
+
+`--via-firecrawl` → 走 firecrawl scrape (formats=rawHtml) 抓 HTML，繞過 caller IP
+被 Cloudflare SBFM 擋的場景（VPS datacenter IP 打 shosho.tw 全 403）。每次
+audit +1 firecrawl credit。F5-C 2026-04-27 加，詳見
+`docs/plans/2026-04-27-seo-phase15-acceptance-results.md`。
 
 ### Step 5: Summary + Hand-off
 
