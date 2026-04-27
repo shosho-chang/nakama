@@ -37,21 +37,38 @@
 
 ## Phase 排序（按 leverage / dependency）
 
-| # | Phase | 維度 | Effort | Dep |
-|---|-------|------|--------|-----|
-| 1 | DR drill + secret rotation | DR D+→A | 5 天 | — |
-| 2 | Backup A 升級（multi-tier + integrity） | Backup B+→A | 3 天 | 配 1 |
-| 3 | Observability foundation | Obs C→B+ | 5 天 | — |
-| 4 | Incident postmortem 制度化 | Postmortem C+→A | 3 天 | 配 3 |
-| 5 | Observability advanced | Obs B+→A | 7 天 | dep 3 |
-| 6 | Test coverage 補齊 | Test B+→A | 7 天 | — |
-| 7 | Staging + feature flags | Staging C−→A | 8 天 | — |
-| 8 | CI/CD auto deploy | CI/CD A−→A | 4 天 | dep 7 |
-| 9 | 版本控管 polish + Doc A+ | 版控 / Doc | 3 天 | — |
+| # | Phase | 維度 | Effort | Status (2026-04-27) |
+|---|-------|------|--------|---|
+| 1 | DR drill + secret rotation | DR D+→A | 5 天 | ✅ #146 + #187 |
+| 2 | Backup A 升級（multi-tier + integrity） | Backup B+→A | 3 天 | ✅ #147 + #154 |
+| 3 | Observability foundation | Obs C→B+ | 5 天 | ✅ #152 |
+| 4 | Incident postmortem 制度化 | Postmortem C+→A | 3 天 | ✅ #166 + #187 |
+| 5 | Observability advanced | Obs B+→A | 7 天 | ✅ 6 sub-PR |
+| 6 | Test coverage 補齊 | Test B+→A | 7 天 | ✅ #190/#194/#195/#196 |
+| 7 | Staging + feature flags | Staging C−→A | 8 天 | ❎ **Deferred 2026-04-27** |
+| 8 | CI/CD auto deploy | CI/CD A−→A | 4 天 | ❎ **Deferred 2026-04-27** |
+| 9 | 版本控管 polish + Doc A+ | 版控 / Doc | 3 天 | 🟡 #157 + ops follow-up |
 
-**總計**：~45 工作日 ≈ 9-12 週 part-time，或 6-8 週 dedicated。
+**狀態：6/9 ✅ + 1/9 🟡 + 2/9 ❎ Deferred**
 
-前 4 個 phase（16 天）能把所有 < B 的維度拉到 A−。**最 cost-effective 的 first move 是 Phase 1+2 配對**：DR drill 強迫測 backup integrity，一次驗兩個維度。
+### Phase 7 + 8 deferred 決策（2026-04-27）
+
+**修修拍板 deferred** — 對 solo dev / pre-revenue / 個人 tooling 階段是 over-engineering。
+
+不做的 reasoning：
+- 已有 quality net 涵蓋 staging 95% value：CI 2400+ test、critical-path coverage gate、Franky 5min probe、live_wp Docker E2E、git revert ~5 min rollback
+- staging setup 5 工作天 + 1-2h/週 維護 → 投入 Chopper community / 內容生產 ROI 高 50-100x
+- nakama 沒有 multi-team 協作 / SLA 客戶 / 千萬用戶 — 沒有 staging design intent 對應的場景
+
+**Trigger 升回 active**（同時滿足才考慮）：
+1. 自由艦隊月活 100+ 付費會員
+2. Production touchpoint > 100/天
+3. 出現雲端 / 現有 quality net 解不了的具體 bottleneck
+
+**改做的事**（lightweight production safety net）：
+- Manual deploy checklist + rollback runbook（半天工作量、Phase 9 收完後可做）
+
+詳見 [memory/claude/project_quality_uplift_next_2026_04_28.md](../../memory/claude/project_quality_uplift_next_2026_04_28.md) 跟 [memory/claude/feedback_avoid_one_shot_summit.md](../../memory/claude/feedback_avoid_one_shot_summit.md)。
 
 ## Deliverable 清單
 

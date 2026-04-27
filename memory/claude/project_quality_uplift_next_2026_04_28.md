@@ -1,133 +1,141 @@
 ---
-name: Quality Uplift 下一輪起點 — PR #190 LGTM 待 merge + 4 步 pickup checklist
-description: PR #190 review LGTM 待 merge；subagent 重新盤點揭露 Phase 9 partial ship；下一輪建議順序：merge #190 → Phase 9 補洞 → Phase 6 Slice 2-4 → Phase 7 拍板
+name: Quality Uplift 9-phase final state — 6/9 ✅ + Phase 7+8 deferred + Phase 9 still 2 clicks
+description: 2026-04-27 final state：Phase 1-6 全 ship + Phase 7+8 修修拍板 deferred + Phase 9 程式 ship 但 branch protection 還缺 2 click 跟 browser smoke
 type: project
 created: 2026-04-26
 updated: 2026-04-27
-originSessionId: 2026-04-26-night → 2026-04-27-handoff
+originSessionId: 2026-04-27-final
 ---
 
-2026-04-26 night → 2026-04-27 handoff：本 session 凍結 Phase 6 task prompt + 開 Slice 1 PR #190 + 跑 review LGTM + subagent 重新盤點 9-phase。修修「清理對話、下一輪繼續做你建議的順序」→ 不在本 session merge，把 4 步 pickup checklist 寫進 memo 給下次。**取代之前所有 quality_uplift_next memo**。
+2026-04-27 收尾：本 session 推完 Phase 6 Slice 2/3/4（PR #194/#195/#196 全 merged）+ 修修升 GitHub Pro + 設 branch protection（partial）+ 修修拍板 Phase 7+8 deferred。**取代之前所有 quality_uplift_next memo**。
 
-**Why:** PR #190 CI 全綠 + 6 檔 / 335 lines + threshold 哲學一致 + 4 條 state path 涵蓋；ready to squash merge 但修修要下一輪做。Subagent 重盤揭露 Phase 9 是 partial ship — branch protection / `/bridge/docs` FTS5 / memory pruning 三個 plan deliverable 沒做（PR #157 沒涵蓋）。整體下修為 **6/9 ✅ + 1/9 🟡 + 1/9 ⚠️ partial + 1/9 ❌**。
+**Why:** Phase 6 收尾後重 frame 整個 plan：Phase 7 staging + Phase 8 auto deploy 對 solo dev / pre-revenue / 個人 tooling 階段是 over-engineering。CI 2400+ test + Franky probe + git revert ~5 min rollback 已 cover staging 95% 的 value。修修同意，並要求把「一次攻頂」反射列為要主動提醒的 feedback ([feedback_avoid_one_shot_summit.md](feedback_avoid_one_shot_summit.md))。
 
-**How to apply:** 開新對話讀完 `MEMORY.md` → 讀本 memo → 預設下一步 = **squash merge PR #190**，然後依下面 4 步 pickup checklist 推進。
-
----
-
-## 下一輪 pickup checklist（按性價比）
-
-1. **squash merge PR #190**（立刻可做）— CI 全綠 / review LGTM / minor notes 不 block，跟 `feedback_pr_review_merge_flow.md` 流程
-2. **Phase 9 partial ship 補洞**（1-2 天）— branch protection（修修 console 5 分鐘）+ `/bridge/docs` FTS5 search（我做）+ memory pruning（我做）→ 9/9 ✅
-3. **Phase 6 Slice 2-4**（5 天）— Slice 2 FSM property（2d）→ Slice 3 schema round-trip（1d）→ Slice 4 agent E2E（2d）→ Phase 6 ✅
-4. **Phase 7 staging 拍板**（卡修修）— 要不要花 $5-10/月開新 VPS；沒拍板 Phase 8 auto deploy 不能動
-
-順序原因：步驟 1 收尾本 session 工作；步驟 2 容易快速勝利；步驟 3 是 Phase 6 收尾；步驟 4 卡決策不能搶先。
+**How to apply:** 任何「要不要做完整 staging / auto-deploy / 大採購」之類問題，default 答案是「先確認真實 bottleneck，沒驗證的 ceiling 提升不買」。
 
 ---
 
-## PR #190 Review Verdict — **LGTM, ready to squash merge**
+## 9-phase final state
 
-| 項目 | 評估 |
-|---|---|
-| CI | 全綠（lint-and-test 2m35s + lint-pr-title 5s）|
-| Scope | 6 檔 / 335 lines，純 dev tooling + 補一個 endpoint test，無 production code 改動 |
-| Threshold 設計 | 不退步 gate 哲學一致；baseline round-down 5%/10% buffer 合理 |
-| Coverage gate script | exit code 標準（0/1/2）+ 邊角 case（missing module / pct=None / below threshold）三條都處理 |
-| Runbook | 全面 — 量法、哲學、流程、Phase 6 後 slice 預期 |
-| `/api/agents` 兩個新 test | 涵蓋 4 條 state path（online / idle / hold / offline）+ 跨 model sum + None defensive |
-
-### 3 個 Minor notes（不 block，Slice 4 conftest 一起處理）
-
-1. **`lambda **kw: fake_today` 不檢查真實 signature** — Slice 4 conftest autouse mock 應改用 `def fake_get_cost_summary(agent=None, days=7): return fake_today` 顯式對齊 `feedback_test_realism.md`
-2. **9 agent set hardcoded in test** — 改 `from thousand_sunny.routers.bridge import AGENT_ROSTER; assert set(agents.keys()) == {a["key"] for a in AGENT_ROSTER}` 防 drift
-3. **runbook table 跟 PR after 數字小退步** — `incident_archive` runbook 寫 baseline 93.13%、PR after 寫 93.08% 是 PR 加 2 個 test 後自然漂移（仍 ≥ 90%），不是 bug；runbook 「Baseline 2026-04-26」欄是「初始量」、跟 gate script 一致即可，無需修
-
----
-
-## 9-phase plan 重新盤點（subagent 2026-04-27 重盤揭露 partial ship）
-
-| # | Phase | 狀態 | 對應 PR / commit | 還欠什麼 |
+| # | Phase | 狀態 | 對應 PR / commit | 註 |
 |---|---|:---:|---|---|
 | 1 | DR drill + secret rotation | ✅ | #146 + #187 | — |
 | 2 | Backup A 升級 | ✅ | #147 + #154 | — |
 | 3 | Observability foundation | ✅ | #152 | — |
 | 4 | Incident postmortem | ✅ | #166 + #187 | — |
-| 5 | Observability advanced | ✅ | 6 sub-PR (#168/#170/#175/#182/#184/#177) | — |
-| **6** | **Test coverage** | 🟡 | d58ff51 (#190 待 merge) | **Slice 2-4 task prompt 已凍結未動工** |
-| 7 | Staging + feature flags | ❌ | — | 整 phase 沒開（要錢/新 VPS） |
-| 8 | CI/CD auto deploy | ❌ | — | blocked by 7 |
-| **9** | **版控 polish + Doc A+** | ⚠️ **partial** | #157 (部分) | **branch protection 沒設 + `/bridge/docs` FTS5 沒做 + memory pruning 沒跑** |
+| 5 | Observability advanced | ✅ | 6 sub-PR | — |
+| **6** | **Test coverage** | ✅ | #190/#194/#195/#196 | 4 slice 全 merged 2026-04-27 |
+| 7 | Staging + feature flags | ❎ **Deferred** | — | 修修拍板 over-eng for solo |
+| 8 | CI/CD auto deploy | ❎ **Deferred** | — | blocked by 7 + 同 over-eng |
+| **9** | **版控 polish + Doc A+** | 🟡 | #157 + 本 session | 程式 ship；branch protection 設好但有 2 漏洞 |
 
-整體：**6/9 ✅ + 1/9 🟡 + 1/9 ⚠️ + 1/9 ❌**（之前算 7/9 ✅ 是高估）。
+**整體：6/9 ✅ + 1/9 🟡 + 2/9 ❎ Deferred**
 
----
-
-## 細目
-
-### 🟡 Phase 6 Slice 2-4（task prompt 已凍結，開新 branch 即動工）
-
-- **Slice 2 — FSM property test**（hypothesis + `RuleBasedStateMachine` for approval_queue + alert dedupe edge cases）~ 2 天
-- **Slice 3 — Schema round-trip test**（10 個 V1 schema parametrize）~ 1 天
-- **Slice 4 — Agent E2E**（Robin/Brook/Zoro mock LLM + tmp_path vault）~ 2 天
-
-Slice 4 要併處理 PR #190 review 3 個 minor notes（lambda signature / AGENT_ROSTER import / 不需動 runbook）。
-
-### ⚠️ Phase 9 partial ship — 三個 plan 寫了沒做的小品
-
-| 項目 | 工作量 | 誰做 |
-|---|---|---|
-| GH branch protection rule | console 5 分鐘 | 修修手動（runbook 在 #157） |
-| `/bridge/docs` FTS5 search | ~1 天（可參照 Phase 5C logs FTS5 pattern） | 我 |
-| Memory pruning（過期 project memory 月度清） | ~0.5 天 | 我 |
-
-### ❌ Phase 7 + 8 — 卡修修決策
-
-- 開新 staging VPS（約 $5-10/月）vs 復用桌機 docker-compose（免費但桌機開機才能 staging deploy）
-- 沒 staging → Phase 8 auto deploy 不能做（沒 staging smoke step）
-
-### Plan 外但已做（額外加值，不算 9-phase 進度）
-
-- Phase 1.5 SEO audit + enrich（PR #173/#183/#185/#191/#192）
-- Ingest v2 walker + Vision（PR #169/#178/#186/#188/#189）
+「Quality bar A」實質達成 — Phase 7+8 deferred 不算缺口（是 enterprise team 才需要的 infra）。
 
 ---
 
-## Open follow-up（保留，不在下一輪 4 步範圍）
+## Phase 9 還缺的事（修修做、5 分鐘）
 
-### PR #187 留下（不阻塞）
+GitHub Pro 升完了 + branch protection rule 設了但 API 顯示有 2 漏洞：
 
-- **A5**（drill outcome）：現役 VPS `apt install sqlite3` — 修修手動 ssh
-- **A6**（drill outcome）：`verify_db()` table count -1（沒算 sqlite_sequence）— low pri
+```
+enforce_admins: False                  ← 修修還能 bypass
+required_status_checks.contexts: []    ← CI check 名單是空的
+```
+
+**修修要回 Settings → Branches → 編輯 main rule**：
+
+1. ☑ **「Do not allow bypassing the above settings」** ← 勾起來
+2. **「Status checks that are required」** 搜尋並加：
+   - `lint-and-test`
+   - `lint-pr-title`
+3. 設完叫我跑 push test，期待 `GH013: Repository rule violations`（沒「Bypassed」）
+
+順手：瀏覽器 smoke `/bridge/docs`（搜「memory」看 hits + highlight）。
+
+這三件做完 Phase 9 → ✅，整體 7/9 ✅ + 2/9 ❎ Deferred = 「全 ship 該 ship 的」。
+
+---
+
+## Phase 7+8 deferred 決策（2026-04-27）
+
+**決策：deferred until further notice**
+
+**Why deferred**：
+- nakama 是 solo dev / pre-revenue / 個人 tooling，沒有 multi-team 協作或 SLA 客戶
+- 已有的 quality net 已涵蓋 staging 95% value：CI 2400+ test、critical-path coverage gate、Franky probe 5min、live_wp Docker E2E、git revert ~5min rollback
+- staging setup 5 工作天 + 1-2h/週 維護 → 投入 Chopper community / 內容生產 ROI 高 50-100x
+- DS918+ 4GB RAM 跑得起來但 marginal；要升 8GB 才舒適
+
+**Trigger 升回 active**（同時成立才考慮）：
+1. 自由艦隊月活 100+ 付費會員
+2. Production touchpoint > 100/天
+3. 出現雲端 / 現有 quality net 解不了的具體 bottleneck
+
+**改做的事**（lightweight production safety net，半天工作量、Phase 9 收完後可做）：
+- Manual deploy checklist（10 行 markdown）：「pull → restart service → curl smoke → 驗 alert」
+- Rollback runbook（10 行）：「git revert HEAD → push → restart」
+- Franky probe 已自動跑（已有）
+
+**DS918+ 三題答案**（給未來參考）：
+- DSM 7.1.1 ✓ Container Manager 可裝
+- RAM 4GB（要做 staging 要升 8GB 才舒適）
+- 上行 300Mbps（充裕）
+
+DS918+ 留著做家用 NAS / 媒體櫃 / 個人 vault sync — 不浪費。
+
+---
+
+## Open follow-up（不阻塞，下次決定要不要做）
+
+### Phase 6 follow-up
+- **Slice 4b — Robin full IngestPipeline E2E**（~0.5-1 天）：本次 Slice 4 Robin 只 cover orchestration layer，full pipeline 6 個 LLM call site + 5+ vault page write 留 follow-up
+- **`UpdateWpPostV1.patch: dict` schema contract gap**：Slice 3 reviewer 抓到 `patch` 是無約束 dict 但實作只支援 JSON-primitive；獨立 PR 改 schema 加約束或 doc as contract
+
+### Phase 1-5 留下（從前 memo 帶過來）
+- **A5**：現役 VPS `apt install sqlite3` — 修修手動 ssh
+- **A6**：`verify_db()` table count -1 — low pri
 - **incident archive #3**：`list_pending_incidents` mtime → 改讀 frontmatter `detected_at`
-- **incident archive #4**：`_archive_alert` 用 dispatch `now` → 改 `alert.fired_at`（一行）
+- **incident archive #4**：`_archive_alert` 用 dispatch `now` → 改 `alert.fired_at`
 - **Mac vault sync hook**：repo `data/incidents-pending/` → vault `Incidents/YYYY/MM/`
 - **Bridge UI `/bridge/incidents`**：候選看頻率決定
-
-### 5B-3 anomaly daemon
-
-- **1-2 週後寫 `feedback_anomaly_3sigma_pattern.md`**：誤報多寡 / 真實抓到 issue 機率
+- **5B-3 anomaly daemon**：1-2 週後寫 `feedback_anomaly_3sigma_pattern.md`
 
 ### PR #187 service restart 決策（修修選）
-
-- nakama-usopp alert path 改了 `_archive` hook，systemd service 沒重啟 = sticky import；下次 publish 失敗 alert 不走 archive。修修決定立刻 restart 還是等下次 deploy 順手帶。
+nakama-usopp alert path 改了 `_archive` hook，systemd service 沒重啟 = sticky import；下次 publish 失敗 alert 不走 archive。修修決定立刻 restart 還是等下次 deploy 順手帶。
 
 ---
 
 ## 不要自己決定的事
 
-- **Phase 7 staging** — 規模大、要錢、要新 VPS，必先問
-- **PR #190 squash merge** — 修修明確說「下一輪繼續做你建議的順序」，本 session 不 merge
-- **ultrareview 連續 free quota 滿後** 是否 abandon → 走 self-review only — 修修決定（PR #187 / PR #190 都走 self-review pattern OK）
+- **Phase 7 重啟（staging）** — trigger 條件全滿足前不主動建議
+- **大採購（Pro 5000 / 6000）** — 套用 [feedback_avoid_one_shot_summit.md](feedback_avoid_one_shot_summit.md)
+- **production 完全自架** — 預設 Hybrid（cloud production + dev/batch 自架）
+
+---
+
+## 本 session 推進摘要
+
+| 項目 | 動作 |
+|---|---|
+| PR #190 | squash merged 6109f9b |
+| PR #194 (Slice 2) | open + review LGTM + merged dee19f4 |
+| PR #195 (Slice 3) | open + review +amend (discriminated union + all-optionals) + merged 1465753 |
+| PR #196 (Slice 4) | open + review + amend (Robin parametrize + Zoro dispatch + Brook nit) + merged 769a8e3 |
+| VPS cron | memory-prune cron 加進 crontab（每月 1 號 03:00 Asia/Taipei） |
+| GitHub Pro | 修修升完，branch protection API 真實 enforce |
+| Branch protection 設定 | 修修設好主框架 / 還缺 enforce_admins + required_checks |
+| Phase 7+8 拍板 | deferred until trigger conditions |
+
+**Tests: 2367 → 2422（+55）**。Critical-path coverage 8/8 全綠。
 
 ---
 
 ## 開始之前一定要先看
 
 - 本 memo
+- [feedback_avoid_one_shot_summit.md](feedback_avoid_one_shot_summit.md) — 修修自陳的「一次攻頂」反射要 reframe
+- [project_hardware_purchase_evaluation.md](project_hardware_purchase_evaluation.md) — GPU 升級 ladder + Hybrid 框架
 - 原 9-phase plan：`docs/plans/quality-bar-uplift-2026-04-25.md`
-- Phase 6 task prompt：`docs/task-prompts/2026-04-26-phase-6-test-coverage.md`（採 Q1-Q6 全 A）
-- Phase 6 decisions：`docs/plans/2026-04-26-phase-6-test-coverage-decisions.md`
-- [feedback_measure_before_freeze.md](feedback_measure_before_freeze.md) — 凍結前先量 baseline
-- [feedback_no_regression_gate.md](feedback_no_regression_gate.md) — gate threshold 哲學
-- [feedback_aesthetic_first_class.md](feedback_aesthetic_first_class.md) — 美學要求（適用 `/bridge/docs` UI）
+- [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動流程
