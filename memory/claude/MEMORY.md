@@ -175,15 +175,12 @@
 - [feedback_vps_deploy_smoke_browser.md](feedback_vps_deploy_smoke_browser.md) — nakama.shosho.tw 全域 CF SBFM 擋 curl 全 403（含已上線 route），VPS deploy smoke 要修修瀏覽器；self-verify 走 ssh+systemctl+journalctl 或 127.0.0.1 直連 uvicorn
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
 - Session handoff doc：[docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
-- [project_quality_uplift_review_2026_04_25.md](project_quality_uplift_review_2026_04_25.md) — 9-phase 5/9 完成 MERGED 2026-04-25（PR #146/147/152/154/157）+ 待修 12 major/minor 清單 + 修修 manual follow-up
-- [project_quality_uplift_next_2026_04_28.md](project_quality_uplift_next_2026_04_28.md) — **Quality Uplift pickup**：PR #190 LGTM 待 merge + Phase 9 partial ship 揭露；4 步 pickup checklist（merge → P9 補洞 → P6 Slice 2-4 → P7 拍板）
+- [project_quality_uplift_closed.md](project_quality_uplift_closed.md) — **Quality Uplift CLOSED 2026-04-27**：1-6+9 ✅ ship / 7+8 ❎ deferred / Bridge UI 排除在外（獨立 design 工作）
 - Decisions：[docs/plans/2026-04-26-phase-6-test-coverage-decisions.md](../../docs/plans/2026-04-26-phase-6-test-coverage-decisions.md) — Phase 6 六題拍板（Q1-Q6 採 A：pytest-cov / hypothesis / dedupe deterministic / 三 agent / mock / 4 slice）
 - Task prompt：[docs/task-prompts/2026-04-26-phase-6-test-coverage.md](../../docs/task-prompts/2026-04-26-phase-6-test-coverage.md) — Phase 6 凍結 4 slice：tooling+8模組80% / FSM property / schema round-trip / 三 agent E2E
 - [feedback_measure_before_freeze.md](feedback_measure_before_freeze.md) — 凍結 task prompt 前必實量 baseline，plan 寫的「目前 X%」估計常差 20%+（Phase 6 plan 寫 <60% 實際 81%）
 - [feedback_no_regression_gate.md](feedback_no_regression_gate.md) — CI gate threshold 用 baseline round-down 5%/10%（不退步 gate），不用 aspirational；同哲學適用 SLO/latency budget
 - [feedback_log_search_fts5_pattern.md](feedback_log_search_fts5_pattern.md) — FTS5 unicode61 對 CJK 是整段一 token、record.exc_info 不可吞、html.escape 走 sentinel swap 三點教訓
-- [project_quality_uplift_vps_deployed_2026_04_26.md](project_quality_uplift_vps_deployed_2026_04_26.md) — 5 PR VPS 部署完成 2026-04-26：解鎖 Phase 5/7/8；路上抓到 logger init / endpoint 漏 https / bucket name trailing space 三 bug
-- [project_quality_uplift_sweep_done_2026_04_26.md](project_quality_uplift_sweep_done_2026_04_26.md) — 12-major sweep 三 PR 全 merged 2026-04-26（#161/#162/#163）；剩 Phase 4-8 + 修修 VPS pull/restart
 - [feedback_subagent_shared_worktree.md](feedback_subagent_shared_worktree.md) — 並行 sub-agent 必開 `git worktree`，不可共用主 worktree（5-PR review 踩坑教訓）
 - [feedback_logger_init_before_load_config.md](feedback_logger_init_before_load_config.md) — module-level `logger = get_logger(...)` 必在 `load_config()` 之後；否則 LOG_FORMAT 鎖死 text（VPS deploy smoke 踩到）
 - [feedback_dotenv_empty_string_fallback.md](feedback_dotenv_empty_string_fallback.md) — `KEY=` 空值時 `os.getenv("K", default)` 回 ""；module-level coercion 必用 `or default` 防禦

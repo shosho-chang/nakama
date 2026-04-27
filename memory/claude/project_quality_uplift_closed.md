@@ -1,13 +1,14 @@
 ---
-name: Quality Uplift 9-phase final state — 6/9 ✅ + Phase 7+8 deferred + Phase 9 still 2 clicks
-description: 2026-04-27 final state：Phase 1-6 全 ship + Phase 7+8 修修拍板 deferred + Phase 9 程式 ship 但 branch protection 還缺 2 click 跟 browser smoke
+name: Quality Uplift 9-phase CLOSED — 7/9 ✅ + 2/9 deferred
+description: 2026-04-27 CLOSED：Phase 1-6+9 全 ship + Phase 7+8 修修拍板 deferred；Bridge UI 大修正不在本 project 範圍（獨立工作流）
 type: project
 created: 2026-04-26
 updated: 2026-04-27
+status: closed
 originSessionId: 2026-04-27-final
 ---
 
-2026-04-27 收尾：本 session 推完 Phase 6 Slice 2/3/4（PR #194/#195/#196 全 merged）+ 修修升 GitHub Pro + 設 branch protection（partial）+ 修修拍板 Phase 7+8 deferred。**取代之前所有 quality_uplift_next memo**。
+**STATUS: CLOSED 2026-04-27**（修修拍板）。整個 quality-bar-uplift project 收尾完成。Bridge UI 大修正視為 design 級獨立工作，不在本 project 範圍。**取代之前所有 quality_uplift_* memo**。
 
 **Why:** Phase 6 收尾後重 frame 整個 plan：Phase 7 staging + Phase 8 auto deploy 對 solo dev / pre-revenue / 個人 tooling 階段是 over-engineering。CI 2400+ test + Franky probe + git revert ~5 min rollback 已 cover staging 95% 的 value。修修同意，並要求把「一次攻頂」反射列為要主動提醒的 feedback ([feedback_avoid_one_shot_summit.md](feedback_avoid_one_shot_summit.md))。
 
@@ -57,18 +58,15 @@ remote: error: GH006: Protected branch update failed for refs/heads/main.
 
 **整體：7/9 ✅ + 2/9 ❎ Deferred = 該 ship 的全 ship**。
 
-## 結案條件（2026-04-27 修修拍板）
+## 結案（2026-04-27 修修拍板 CLOSED）
 
-**整個 quality-bar-uplift 案 closed 條件**：
+整個 quality-bar-uplift project 標 **closed**：
 
-1. Phase 7+8 deferred ✅ 已記
-2. **Bridge UI 大修正完成** — 修修專門撥時間統一整個 Bridge 美學體系
-   - 一併處理 `/bridge/docs` 兩個 friction：(a) result title clickable → markdown viewer route, (b) stats line 視覺凌亂
-   - 對齊 `feedback_aesthetic_first_class.md` + `docs/design-system.md`
-   - 範圍：所有 `/bridge/*` page
-3. UI 修完後 → 整個 quality-bar-uplift project 標 closed
+1. ✅ Phase 1-6 + 9 全 ship
+2. ✅ Phase 7+8 deferred 拍板
+3. ✅ Bridge UI 大修正排除在本 project 範圍（獨立 design 工作流，不算 quality bar 補洞）
 
-**Bridge UI 大修正未啟動，等修修分配時間。** 不在本 plan tracking 範圍 — 是 design 級工作不是 quality bar 補洞。
+未來再有 quality-bar 級工作要重啟時開新 plan，不沿用本 thread。
 
 ---
 
