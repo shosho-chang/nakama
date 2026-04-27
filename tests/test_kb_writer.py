@@ -275,6 +275,49 @@ class TestListExistingConcepts:
         assert set(out.keys()) == {"肌酸代謝", "糖解作用"}
         assert all(d["frontmatter"]["schema_version"] == 2 for d in out.values())
 
+    def test_frontmatter_with_triple_dash_in_quoted_value(self, vault):
+        """Regression: PR C ch1 lazy-migrate left 4 v2 pages with `---` inside
+        quoted wikilinks (e.g. `[[Title---Journal-Name]]`). The pre-fix
+        `_load_page` used naive `text.split("---", 2)` which split on the
+        in-string `---` and produced malformed YAML. Fix uses regex
+        `^---\\n...\\n---\\n` to anchor on line boundaries.
+        """
+        # Real-world wikilink with `---` separator (3 of these exist in vault)
+        long_link = (
+            '  - "[[International-Society-of-Sports-Nutrition-position-stand'
+            '---Journal-of-the-Society]]"\n'
+        )
+        page = (
+            "---\n"
+            "title: ATP再合成\n"
+            "type: concept\n"
+            "schema_version: 2\n"
+            "aliases:\n"
+            '  - "ATP Resynthesis"\n'
+            "mentioned_in:\n"
+            + long_link
+            + '  - "[[Sources/Books/biochemistry-sport-exercise-2024/ch1]]"\n'
+            "domain: 細胞能量代謝\n"
+            "---\n\n"
+            "## Definition\n\nbody content here\n"
+        )
+        path = vault / "KB" / "Wiki" / "Concepts" / "ATP再合成.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(page, encoding="utf-8")
+
+        loaded = kb_writer._load_page(path)
+        assert loaded is not None
+        fm, body = loaded
+        # Frontmatter must parse correctly despite `---` inside quoted value
+        assert fm["title"] == "ATP再合成"
+        assert fm["schema_version"] == 2
+        assert fm["aliases"] == ["ATP Resynthesis"]
+        assert len(fm["mentioned_in"]) == 2
+        assert any("Society" in s for s in fm["mentioned_in"])
+        # Body must be intact
+        assert "## Definition" in body
+        assert "body content here" in body
+
 
 # ---------------------------------------------------------------------------
 # update_mentioned_in
