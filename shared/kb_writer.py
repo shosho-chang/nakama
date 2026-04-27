@@ -160,22 +160,31 @@ def _backup_path(slug: str, ts: datetime) -> Path:
 # ---------------------------------------------------------------------------
 
 
+_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
+
+
 def _load_page(abs_path: Path) -> tuple[dict, str] | None:
-    """Read a vault page → (frontmatter dict, body str). None if not exists."""
+    """Read a vault page → (frontmatter dict, body str). None if not exists.
+
+    Uses line-anchored `^---\\n` regex (not naive str.split) so `---` appearing
+    inside quoted frontmatter values (e.g. wikilinks with `---` separator like
+    `[[Title-Subtitle---Journal-Name]]`) doesn't prematurely terminate the
+    frontmatter parse. Pre-fix this caused 4 PR C ch1 lazy-migrated concept
+    pages to silently parse as no-frontmatter, hiding their bodies from the
+    aggregator blob.
+    """
     if not abs_path.exists():
         return None
     raw = abs_path.read_text(encoding="utf-8")
-    if not raw.startswith("---"):
-        return ({}, raw)
-    parts = raw.split("---", 2)
-    if len(parts) < 3:
+    m = _FRONTMATTER_RE.match(raw)
+    if not m:
         return ({}, raw)
     try:
-        fm = yaml.safe_load(parts[1]) or {}
+        fm = yaml.safe_load(m.group(1)) or {}
     except yaml.YAMLError as e:
         logger.warning(f"YAML parse failed for {abs_path}: {e}")
         return ({}, raw)
-    body = parts[2].lstrip("\n")
+    body = raw[m.end() :]
     return (fm, body)
 
 
