@@ -24,13 +24,13 @@
 - Deletion test：刪了 → caller 直接 import provider，complexity 沒消失反而暴露 depth
 - Shape：SHALLOW + TESTABILITY-ABSTRACTION｜In-process
 
-### ② Approval queue FSM 跟 payload schema 沒對齊（audit framing 誤判）**[DONE — PR #TBD]**
+### ② Approval queue FSM 跟 payload schema 沒對齊（audit framing 誤判）**[DONE — PR #217]**
 - `shared/approval_queue.py:46-76` + `shared/schemas/approval.py:106-145`
 - ~~audit 原描述「FSM `ALL_STATUSES` 跟 payload `action_type` 兩個 namespace 沒鎖；Chopper Phase 2 加 `reply_comment` 必須兩邊手動同步、漏寫 silent fail」~~ **誤判（兩件事）**：
   1. **「沒鎖」不成立** — `ALL_STATUSES` 是 FSM 集合（status / 8 個值），跟 payload `action_type`（discriminator / 2 個值）是兩個語意完全不同的維度，根本不該鎖在一起；FSM 跟 DB CHECK 已經有 import-time assert 鎖了，action_type 由 Pydantic discriminated union 強制 Literal
   2. **「漏寫 silent fail」不存在** — 加新 action_type 時：Pydantic union 不認得會 `ValidationError`、`enqueue()` 內 4 helpers 走 `else: raise ValueError`、usopp dispatcher `isinstance else mark_failed`，每個 touch point 都是 explicit fail-fast 不 silent
 - **真正的 deepening 機會**：4 個 helper（`_target_platform / _target_site / _title_of / _diff_target_id`）是 isinstance ladder anti-pattern — 加新 payload type 要動 4 處 helper、邏輯散在 queue 層而非歸 payload class 自身
-- PR #TBD 完成 push-down：把 4 個 derived 屬性（`target_platform / title / diff_target_id`，`target_site` 已是 field）做成 PublishWpPostV1 / UpdateWpPostV1 的 `@property`，刪 4 個 helper（含全部 isinstance ladder）；新加 ReplyCommentV1 只需在 class 內 implement 3 個 property，不必動 `approval_queue.py`
+- PR #217 完成 push-down：把 4 個 derived 屬性（`target_platform / title / diff_target_id`，`target_site` 已是 field）做成 PublishWpPostV1 / UpdateWpPostV1 的 `@property`，刪 4 個 helper（含全部 isinstance ladder）；新加 ReplyCommentV1 只需在 class 內 implement 3 個 property，不必動 `approval_queue.py`
 - Net 影響：approval_queue.py −24 LOC / schemas/approval.py +29 LOC（+1 net），cohesion shift 才是重點而非行數
 - Shape：MISPLACED RESPONSIBILITY（derived attribute 的歸屬，不是 TIGHT COUPLING）
 - 教訓：跟 ④ 一樣 audit shape 描述不準 — 「兩個 namespace 沒鎖」是 false framing（兩個 namespace 不是同一個東西）；real shape 是 OOP polymorphism 漏寫
@@ -109,7 +109,7 @@
 - ⑨ doc_index Windows path bug — PR #211 merged 2026-04-27 為 `9362cfe`
 - ⑪ seo_enrich re-export — PR #212 merged 2026-04-27 為 `a095ad8`
 - ④ sanitizer 收編（compliance scanner 收編）— PR #214 merged 2026-04-28 為 `97fe5b2`
-- ② approval payload helpers push-down — PR #TBD merged 2026-04-28（audit framing 第三次誤判紀錄）
+- ② approval payload helpers push-down — PR #217 merged 2026-04-28（audit framing 第三次誤判紀錄）
 
 ---
 
