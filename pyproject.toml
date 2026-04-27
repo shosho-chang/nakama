@@ -69,6 +69,7 @@ transcription = [
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",                 # Phase 6: critical-path coverage gate
+    "hypothesis>=6.100",               # Phase 6 Slice 2: FSM property-based testing
     "ruff>=0.4.0",
     "pre-commit>=3.7.0",
 ]
