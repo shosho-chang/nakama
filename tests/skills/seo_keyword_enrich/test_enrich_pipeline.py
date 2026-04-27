@@ -623,6 +623,33 @@ def test_enrich_no_client_falls_back_to_from_env(
     assert out_path.exists()
 
 
+def test_enrich_sets_current_agent_for_cost_tracking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """enrich() 開頭必須 call set_current_agent — 否則 SERP summarize 的
+    Haiku call 會被歸到 agent='unknown'（修修在 2026-04-27 acceptance test
+    /bridge/cost UNKNOWN 行抓到的 follow-up F2）。"""
+    monkeypatch.setenv("GSC_PROPERTY_SHOSHO", "sc-domain:shosho.tw")
+    input_path = tmp_path / "kw.md"
+    input_path.write_text(_kw_research_md(), encoding="utf-8")
+    output_dir = tmp_path / "out"
+
+    captured: list[str] = []
+    monkeypatch.setattr(enrich_mod, "set_current_agent", lambda agent, **_: captured.append(agent))
+
+    enrich_mod.enrich(
+        input_path=input_path,
+        output_dir=output_dir,
+        client=_fake_client([]),
+    )
+
+    # 至少呼叫一次，第一次是 enrich() 開頭 set 的
+    assert captured, "enrich() did not call set_current_agent"
+    assert captured[0] == "brook", (
+        f"expected agent='brook' (對齊 llm_review.py SEO 暫掛 brook 設計)，actual={captured[0]!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------

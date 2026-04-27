@@ -46,6 +46,7 @@ from shared.log import get_logger  # noqa: E402
 from shared.seo_audit import (  # noqa: E402
     AuditCheck,
     AuditResult,
+    FetchResult,
     LLMLevel,
     check_headings,
     check_images,
@@ -54,6 +55,7 @@ from shared.seo_audit import (  # noqa: E402
     check_schema_markup,
     check_structure,
     fetch_html,
+    fetch_html_via_firecrawl,
     llm_review,  # noqa: E402
 )
 
@@ -79,6 +81,7 @@ GSCQuerier = Callable[[str, str, str], list[dict[str, Any]]]  # (property, start
 KBSearcher = Callable[[str, Path, int], list[dict[str, Any]]]  # (query, vault, top_k)
 ComplianceScanner = Callable[[str], dict[str, Any]]
 LLMReviewer = Callable[..., list[AuditCheck]]
+HtmlFetcher = Callable[[str], FetchResult]
 
 
 # ---------------------------------------------------------------------------
@@ -500,6 +503,7 @@ def audit(
     kb_searcher: KBSearcher | None = None,
     compliance_scanner: ComplianceScanner | None = None,
     llm_reviewer: LLMReviewer | None = None,
+    html_fetcher: HtmlFetcher | None = None,
     now_fn: Callable[[], datetime] | None = None,
 ) -> Path:
     """Run full audit pipeline and write markdown report. Returns the path.
@@ -507,15 +511,20 @@ def audit(
     All side-effecting collaborators are injectable. With everything `None`,
     the function wires real PageSpeed / GSC / Robin KB / compliance_scan / LLM
     review modules. Tests pass fakes.
+
+    `html_fetcher=None` 走 default `fetch_html`（httpx），CLI `--via-firecrawl`
+    會 inject `fetch_html_via_firecrawl` — 用於 caller IP 被 CF SBFM 擋的場景
+    （VPS datacenter IP 打 shosho.tw 會 403）。
     """
     pagespeed_runner = pagespeed_runner or _default_pagespeed_runner
     compliance_scanner = compliance_scanner or _default_compliance_scanner
+    html_fetcher = html_fetcher or fetch_html
 
     now = now_fn() if now_fn is not None else datetime.now(tz=timezone.utc)
     fetched_at_iso = now.astimezone(timezone.utc).isoformat()
 
     # 1. Fetch HTML
-    fetch = fetch_html(url)
+    fetch = html_fetcher(url)
     result = AuditResult(url=url, fetched_at=fetched_at_iso)
     result.checks.append(fetch.fetch_check)
 
@@ -712,6 +721,13 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default="sonnet",
         help="LLM semantic level; --llm-level=none skips L1-L12 (純 deterministic)",
     )
+    parser.add_argument(
+        "--via-firecrawl",
+        action="store_true",
+        help="Fetch target HTML via firecrawl scrape (formats=rawHtml). "
+        "用於 caller IP 被 CF SBFM 擋的場景（如 VPS datacenter IP 打 shosho.tw 全 403）。"
+        "每次 audit +1 firecrawl credit。",
+    )
     return parser.parse_args(argv)
 
 
@@ -733,6 +749,8 @@ def main(argv: list[str] | None = None) -> int:
         if vault_env:
             vault_path = Path(vault_env)
 
+    html_fetcher = fetch_html_via_firecrawl if args.via_firecrawl else None
+
     out_path = audit(
         url=args.url,
         output_dir=args.output_dir,
@@ -742,6 +760,7 @@ def main(argv: list[str] | None = None) -> int:
         vault_path=vault_path,
         pagespeed_strategy=args.strategy,
         llm_level=args.llm_level,
+        html_fetcher=html_fetcher,
     )
     print(json.dumps({"output_path": str(out_path)}, ensure_ascii=False))
     return 0
