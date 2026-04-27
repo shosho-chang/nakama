@@ -17,11 +17,8 @@ import pytest
 
 import agents.zoro.keyword_research as kw_mod
 import scripts.run_keyword_research as cli_mod
-from shared.anthropic_client import (
-    _record_usage_to_buffer,
-    start_usage_tracking,
-    stop_usage_tracking,
-)
+from shared.llm_context import start_usage_tracking, stop_usage_tracking
+from shared.llm_observability import record_call
 
 # ──────────────────────────────────────────────────────────────────────────
 # Item 2: auto_translate lowercase
@@ -82,28 +79,13 @@ def test_research_keywords_passes_today_iso_to_load_prompt(monkeypatch):
 # ──────────────────────────────────────────────────────────────────────────
 
 
-class _StubResponse:
-    """Minimal response shape that ``_record_usage_to_buffer`` consumes."""
-
-    def __init__(self, in_tok: int, out_tok: int):
-        self.usage = type(
-            "U",
-            (),
-            {
-                "input_tokens": in_tok,
-                "output_tokens": out_tok,
-                "cache_read_input_tokens": 0,
-                "cache_creation_input_tokens": 0,
-            },
-        )()
-
-
 def test_research_keywords_returns_usage_records(monkeypatch):
     """research_keywords must drain the buffer; each Claude call appends one record."""
 
     def _fake_ask_claude(*_a, **_kw):
-        # Simulate what the real wrapper does internally.
-        _record_usage_to_buffer("claude-sonnet-4-6", _StubResponse(120, 35))
+        # Simulate what the real wrapper does internally — record_call appends
+        # to the thread-local usage buffer (and best-effort to state.api_calls).
+        record_call(model="claude-sonnet-4-6", input_tokens=120, output_tokens=35)
         return '{"core_keywords": [], "youtube_titles": []}'
 
     _stub_collectors(monkeypatch)
@@ -125,7 +107,7 @@ def test_research_keywords_drains_buffer_on_exception(monkeypatch):
     """If synthesis raises, buffer must still clear so a reused thread doesn't inherit records."""
 
     def _boom(*_a, **_kw):
-        _record_usage_to_buffer("claude-sonnet-4-6", _StubResponse(50, 10))
+        record_call(model="claude-sonnet-4-6", input_tokens=50, output_tokens=10)
         raise RuntimeError("synthesis exploded")
 
     _stub_collectors(monkeypatch)

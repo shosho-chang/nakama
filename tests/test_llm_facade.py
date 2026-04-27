@@ -150,3 +150,78 @@ def test_ask_multi_forwards_thinking_budget_only_to_gemini():
     with patch("shared.llm.ask_claude_multi", return_value="ok") as m_claude:
         llm.ask_multi(messages, model="claude-sonnet-4-20250514", thinking_budget=128)
     assert "thinking_budget" not in m_claude.call_args.kwargs
+
+
+# ---------- ask_with_tools ----------
+
+
+def test_ask_with_tools_dispatches_claude_to_anthropic():
+    from shared import llm
+
+    messages = [{"role": "user", "content": "hi"}]
+    sentinel = object()
+    with patch("shared.llm.call_claude_with_tools", return_value=sentinel) as m:
+        out = llm.ask_with_tools(messages, tools=[], model="claude-haiku-4-5")
+
+    assert out is sentinel
+    m.assert_called_once()
+    assert m.call_args.kwargs["model"] == "claude-haiku-4-5"
+
+
+def test_ask_with_tools_raises_for_xai_model():
+    from shared import llm
+
+    with pytest.raises(NotImplementedError, match="anthropic"):
+        llm.ask_with_tools(
+            [{"role": "user", "content": "hi"}], tools=[], model="grok-4-fast-non-reasoning"
+        )
+
+
+def test_ask_with_tools_raises_for_gemini_model():
+    from shared import llm
+
+    with pytest.raises(NotImplementedError, match="anthropic"):
+        llm.ask_with_tools([{"role": "user", "content": "hi"}], tools=[], model="gemini-2.5-pro")
+
+
+def test_ask_with_tools_uses_router_with_tool_use_task(monkeypatch: pytest.MonkeyPatch):
+    """model=None 時應走 router task='tool_use'（預設 Haiku 4.5）。"""
+    monkeypatch.setenv("MODEL_BROOK_TOOL_USE", "claude-haiku-4-5")
+    from shared import llm
+    from shared.llm_context import set_current_agent
+
+    set_current_agent("brook", run_id=None)
+    with patch("shared.llm.call_claude_with_tools", return_value=object()) as m:
+        llm.ask_with_tools([{"role": "user", "content": "hi"}], tools=[])
+
+    assert m.call_args.kwargs["model"] == "claude-haiku-4-5"
+
+
+# ---------- ask_with_audio ----------
+
+
+def test_ask_with_audio_dispatches_gemini_by_default():
+    """預設 model='gemini-2.5-pro' → routes to ask_gemini_audio。"""
+    from shared import llm
+
+    sentinel = object()
+    with patch("shared.gemini_client.ask_gemini_audio", return_value=sentinel) as m:
+        out = llm.ask_with_audio("/tmp/clip.wav", "transcribe")
+
+    assert out is sentinel
+    m.assert_called_once()
+    assert m.call_args.kwargs["model"] == "gemini-2.5-pro"
+
+
+def test_ask_with_audio_raises_for_claude_model():
+    from shared import llm
+
+    with pytest.raises(NotImplementedError, match="google/Gemini"):
+        llm.ask_with_audio("/tmp/clip.wav", "transcribe", model="claude-sonnet-4-20250514")
+
+
+def test_ask_with_audio_raises_for_xai_model():
+    from shared import llm
+
+    with pytest.raises(NotImplementedError, match="google/Gemini"):
+        llm.ask_with_audio("/tmp/clip.wav", "transcribe", model="grok-4-fast-non-reasoning")

@@ -1,15 +1,17 @@
 """Google Gemini API wrapper：支援文字、音訊輸入 + JSON schema 結構化輸出。
 
 用法：
-- `ask_gemini(prompt, system=...)` — 純文字（給 facade / Robin ingest 用）
-- `ask_gemini_multi(messages, system=...)` — 多回合文字
-- `ask_gemini_audio(audio_path, prompt, ...)` — 音訊（transcriber 多模態仲裁用）
+- :func:`ask_gemini` — 純文字（給 facade / Robin ingest 用）
+- :func:`ask_gemini_multi` — 多回合文字
+- :func:`ask_gemini_audio` — 音訊（transcriber 多模態仲裁用）
 
-依賴 `google-genai>=1.73`（lazy import — 沒裝時不影響其他模組）。
+依賴 ``google-genai>=1.73``（lazy import — 沒裝時不影響其他模組）。
 
-Thread-local agent 與 `shared.anthropic_client` 共用（步驟 4 起），讓 cost
-tracking 跨 provider 一致：`BaseAgent.execute()` 呼叫 anthropic_client 的
-`set_current_agent("robin")`，Gemini 這邊 `_record_usage` 自動吃到同一個標記。
+Thread-local context 與 cost-tracking 入口統一在 :mod:`shared.llm_context` /
+:mod:`shared.llm_observability`，本檔只關心 Gemini-specific 的 request
+building、response parsing、token 抽取（thinking token 算入 output 等）。
+
+``set_current_agent`` 仍 re-export，:mod:`shared.transcriber` 在用。
 """
 
 from __future__ import annotations
@@ -19,7 +21,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from shared.anthropic_client import _local, set_current_agent  # re-export for existing callers
+from shared.llm_context import _local, set_current_agent  # re-export for existing callers
+from shared.llm_observability import record_call
 from shared.log import get_logger
 from shared.retry import with_retry
 
@@ -70,9 +73,9 @@ def get_client() -> Any:
 def _get_retryable_exceptions() -> tuple[type[Exception], ...]:
     """組出 google-genai 的可重試例外清單（lazy import）。
 
-    只白名單 5xx (`ServerError`) — 不含 base `APIError`，否則會把
-    4xx `ClientError`（壞 API key、400 bad request）也重試，浪費時間。
-    照 `shared/retry.py` 對 anthropic 的寫法，刻意只列具體子類。
+    只白名單 5xx (``ServerError``) — 不含 base ``APIError``，否則會把
+    4xx ``ClientError``（壞 API key、400 bad request）也重試，浪費時間。
+    照 :mod:`shared.retry` 對 anthropic 的寫法，刻意只列具體子類。
     """
     base = (TimeoutError, ConnectionError, OSError)
     try:
@@ -86,8 +89,9 @@ def _get_retryable_exceptions() -> tuple[type[Exception], ...]:
 def _require_gemini_model(model: str) -> None:
     """Fail fast if router resolved a non-Gemini model for a Gemini call.
 
-    對稱 anthropic_client._require_claude_model / xai_client._require_grok_model。
-    避免 google-genai SDK 對 non-gemini ID 噴模糊錯後被 retry 包住白等。
+    對稱 :func:`shared.anthropic_client._require_claude_model` /
+    :func:`shared.xai_client._require_grok_model`。避免 google-genai SDK 對
+    non-gemini ID 噴模糊錯後被 retry 包住白等。
     """
     if not model.startswith("gemini-"):
         raise ValueError(
@@ -100,13 +104,13 @@ def _require_gemini_model(model: str) -> None:
 def _clamp_thinking_budget(thinking_budget: int | None, max_tokens: int) -> int | None:
     """若 thinking_budget 會吃光 output quota，自動縮成 max_tokens // 4。
 
-    Gemini 2.5 的 thinking token 計入 max_output_tokens。當 `max_tokens=200 +
-    thinking_budget=512` 時 thinking 把整個 output quota 吃光，最終文字只回傳
+    Gemini 2.5 的 thinking token 計入 max_output_tokens。當 ``max_tokens=200 +
+    thinking_budget=512`` 時 thinking 把整個 output quota 吃光，最終文字只回傳
     幾個字（或 finish_reason=MAX_TOKENS），成本花了卻拿不到有用輸出。
 
     特殊語義保留：
-    - `None` → 不注入 ThinkingConfig，由 SDK 決定（Pro 家族是 dynamic）
-    - `<= 0` → 明確要關 thinking（Flash 支援傳 0）
+    - ``None`` → 不注入 ThinkingConfig，由 SDK 決定（Pro 家族是 dynamic）
+    - ``<= 0`` → 明確要關 thinking（Flash 支援傳 0）
     """
     if thinking_budget is None or thinking_budget <= 0:
         return thinking_budget
@@ -125,7 +129,7 @@ def _clamp_thinking_budget(thinking_budget: int | None, max_tokens: int) -> int 
 def _extract_system_messages(messages: list[dict], existing_system: str) -> tuple[list[dict], str]:
     """把 messages 裡 role="system" 的項目抽出來併進 system_instruction。
 
-    Gemini SDK `generate_content.contents` 只吃 role in (user, model)，
+    Gemini SDK ``generate_content.contents`` 只吃 role in (user, model)，
     傳入 role="system" 會在 runtime 被拒絕。這個 helper 讓 caller 用共通
     messages 格式（含 system），facade 層不用處理 provider 差異。
     """
@@ -161,14 +165,14 @@ def ask_gemini(
 
     自動重試（最多 3 次，指數退避）並記錄 token 用量（含 thinking token）。
 
-    `model=None` 時會走 `shared.llm_router.get_model()` 依當前 agent 解析。
+    ``model=None`` 時會走 :func:`shared.llm_router.get_model` 依當前 agent 解析。
     Resolved model 若不是 Gemini 系列會直接 raise。跨 provider 路由建議走
-    `shared.llm.ask()` facade。
+    :func:`shared.llm.ask` facade。
 
     Args:
-        thinking_budget: thinking token 上限。Gemini 2.5 Pro output 含 thinking 計費，
-            dynamic 模式常吃滿 max_tokens 讓成本爆掉。預設 512 對大部分 ingest /
-            摘要類任務足夠。要完全關掉 thinking 傳 0。
+        thinking_budget: thinking token 上限。Gemini 2.5 Pro output 含 thinking
+            計費，dynamic 模式常吃滿 max_tokens 讓成本爆掉。預設 512 對大部分
+            ingest / 摘要類任務足夠。要完全關掉 thinking 傳 0。
     """
     if model is None:
         from shared.llm_router import get_model
@@ -205,7 +209,7 @@ def ask_gemini(
     )
     latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_usage(response, model, latency_ms=latency_ms)
+    _record_gemini_usage(response, model, latency_ms=latency_ms)
 
     text = getattr(response, "text", None)
     if not text:
@@ -224,8 +228,9 @@ def ask_gemini_multi(
 ) -> str:
     """多回合 Gemini 請求。messages 用共通格式（role: user/assistant/model）。
 
-    Gemini SDK 自己的 `contents` 是 turn-based list；這裡把通用 messages
-    展平成 Gemini 期望的 Content 陣列。"""
+    Gemini SDK 自己的 ``contents`` 是 turn-based list；這裡把通用 messages
+    展平成 Gemini 期望的 Content 陣列。
+    """
     if model is None:
         from shared.llm_router import get_model
 
@@ -276,7 +281,7 @@ def ask_gemini_multi(
     )
     latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_usage(response, model, latency_ms=latency_ms)
+    _record_gemini_usage(response, model, latency_ms=latency_ms)
 
     text = getattr(response, "text", None)
     if not text:
@@ -360,7 +365,7 @@ def ask_gemini_audio(
     )
     latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_usage(response, model, latency_ms=latency_ms)
+    _record_gemini_usage(response, model, latency_ms=latency_ms)
 
     if response_schema is not None:
         parsed = getattr(response, "parsed", None)
@@ -392,22 +397,22 @@ def _describe_finish(response: Any) -> str:
         return f"diagnostic 失敗: {e}"
 
 
-def _record_usage(response: Any, model: str, *, latency_ms: int = 0) -> None:
-    """記錄 token 用量到 state.api_calls（失敗不影響主流程）。
+def _record_gemini_usage(response: Any, model: str, *, latency_ms: int = 0) -> None:
+    """把 Gemini-shape usage 抽成共通欄位後 delegate 給 observability.record_call。
 
     Reasoning model（Gemini 2.5 Pro）的 thinking token 也是 output 計費，必須併入
     output_tokens 否則 cost tracking 會少算大半（實測 thinking 常為 candidates 的 2-5 倍）。
 
-    Gemini 的 `prompt_token_count` 已經是「扣掉 cache 的」實際計費 input（與 xAI
+    Gemini 的 ``prompt_token_count`` 已經是「扣掉 cache 的」實際計費 input（與 xAI
     相反 — xAI 的 prompt_tokens 含 cached），所以這裡不需要再做減法。
-    `cached_content_token_count` 單獨記錄到 cache_read_tokens 供 Bridge 觀測。
+    ``cached_content_token_count`` 單獨記錄到 cache_read_tokens 供 Bridge 觀測。
     Gemini 沒有 cache_write 計費（cache 要另外走 Context Caching API 建立，
     那才有寫入成本；這層 implicit cache 是 free write），固定填 0。
-    ``latency_ms`` 由 caller 提供（end-to-end 含 retry 時間）。
+
+    Cost tracking 不影響主流程：response 形狀異常（測試 stub 沒帶 usage_metadata
+    等）或下游 record_call 出錯都吞掉，只記 debug log。
     """
     try:
-        from shared.state import record_api_call
-
         usage = getattr(response, "usage_metadata", None)
         if usage is None:
             return
@@ -417,17 +422,13 @@ def _record_usage(response: Any, model: str, *, latency_ms: int = 0) -> None:
         cached_tokens = getattr(usage, "cached_content_token_count", 0) or 0
         output_tokens = candidates_tokens + thoughts_tokens
 
-        agent = getattr(_local, "agent", "unknown")
-        run_id = getattr(_local, "run_id", None)
-        record_api_call(
-            agent=agent,
+        record_call(
             model=model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            run_id=run_id,
             cache_read_tokens=cached_tokens,
             cache_write_tokens=0,
             latency_ms=latency_ms,
         )
     except Exception as e:
-        logger.debug(f"cost tracking 失敗（忽略）：{e}")
+        logger.debug("cost tracking 失敗（忽略）：%s", e)
