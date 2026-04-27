@@ -13,6 +13,10 @@
 - [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — 6 PR 全 merged 2026-04-26（4 PR review + 2 follow-up bug fix #180/#181）；三軸線下游 unblock
 - [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — **SEO D.2 PR #183 + F PR #185 merged 2026-04-26**：用途 1+2+3 production；12 follow-up + 4 test gap
 - [project_seo_dataforseo_scrap_decision.md](project_seo_dataforseo_scrap_decision.md) — **SEO Slice E 不接 DataForSEO 2026-04-26**：health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋
+- [project_codebase_architecture_audit.md](project_codebase_architecture_audit.md) — **2026-04-27 audit**：12 deepening 候選 ROI 排序（① ⑤ done PR #208；④ ② 下一輪先動）
+- [project_llm_facade_phase1.md](project_llm_facade_phase1.md) — **PR #208 merged 2026-04-27**：llm_context + llm_observability 抽出 + facade 加 ask_with_tools/audio；Phase 2-5 queued
+- Audit doc：[docs/research/2026-04-27-codebase-architecture-audit.md](../../docs/research/2026-04-27-codebase-architecture-audit.md) — 12 deepening 候選完整細節 + deletion test + ADR 衝突
+- Plan：[docs/plans/2026-04-27-llm-facade-deepening.md](../../docs/plans/2026-04-27-llm-facade-deepening.md) — LLM facade 5 PR migration plan
 - [feedback_init_py_alias_shadows_module.md](feedback_init_py_alias_shadows_module.md) — `__init__.py` 用 `import X as Y` 同名 alias 會 shadow submodule；monkeypatch 失靈訊息「'function' object」要立刻想到
 - [feedback_mathml2latex_abandoned.md](feedback_mathml2latex_abandoned.md) — mathml2latex PyPI 0.1.0 abandoned，MathML → LaTeX 走 alttext-first（不加 dep）
 - [feedback_kb_concept_aggregator_principle.md](feedback_kb_concept_aggregator_principle.md) — concept page = cross-source aggregator，禁止 `## 更新` todo dump，衝突寫 `## 文獻分歧`
