@@ -62,22 +62,23 @@
 - Shape：DEEP 但 reusable 部分該抽出
 - ADR-001+006 預設此 coupling，動之前要評估
 
-### ⑨ `shared/doc_index.py` 純 pass-through
-- `shared/doc_index.py` (~220L)
-- 每個 function 1:1 對應底層 `state.db` query，沒商業邏輯
-- Deletion test：刪了 → caller 直接查 `files_processed` 表，**複雜度真的消失** ✓
-- Shape：SHALLOW pass-through
-- 連動：`tests/shared/test_doc_index.py::test_stats_returns_per_category_counts` pre-existing 失敗，動 ⑨ 時順手修
+### ⑨ `shared/doc_index.py` Windows path bug（audit 描述誤判）**[DONE — PR #211]**
+- `shared/doc_index.py` (272L)
+- ~~audit 原描述「純 pass-through `state.db`，每個 function 1:1 query」~~ **誤判**：實際是 FTS5 over markdown 的 search index，含真實商業邏輯（file walk + frontmatter/H1 title 抽取 + category bucketing + snippet HTML escape with sentinel swap，防 XSS）。Deletion test 不過，刪了複雜度不會消失。
+- 真正修的：`_walk_markdown` 用 `str(p.relative_to(...))` 在 Windows 產生 `\\` 分隔，`_category_for` split on `/` 全歸 `'other'`，所以 `stats()` 在 Windows dev 顯示 `{'other': 5}`、`/bridge/docs` per-category 計數壞掉（VPS Linux 沒事）。改 `as_posix()`。
+- 連動：`tests/shared/test_doc_index.py::test_stats_returns_per_category_counts` 先前在 Windows 紅，PR #211 修綠
+- 教訓：下次跑 audit skill 要把候選 deletion test 真的對 file 跑一次，不要只看模組名稱猜 shape
 
 ### ⑩ `shared/anomaly.py` 抽 56 行純數學 — false sharing
 - `shared/anomaly.py` + `agents/franky/anomaly_daemon.py`
 - 抽 3-sigma math 但 metric 選擇 / SQL agg 還在 franky 內，沒人 reuse
 - Shape：FALSE SHARING（抽得不夠廣）
 
-### ⑪ `shared/seo_audit/` + `shared/seo_enrich/` 沒 re-export — 只有 skill 看得見
+### ⑪ `shared/seo_audit/` + `shared/seo_enrich/` 沒 re-export — 只有 skill 看得見 **[seo_enrich DONE — PR #212；seo_audit 已 OK]**
 - `shared/seo_audit/*.py` (7 files) + `shared/seo_enrich/*.py` (3 files)
-- 純函式 in shared/ 但沒 re-export，Franky weekly health check 想用拿不到、要 hack import
-- Shape：FALSE SHARING（discoverability）
+- ~~純函式 in shared/ 但沒 re-export~~ — `seo_audit/__init__.py` 早就 re-export 過（Slice D.1 就做了）；只有 `seo_enrich/__init__.py` 之前是空的
+- PR #212 補 `seo_enrich/__init__.py` 三 module 公開 API（detect_cannibalization / filter_striking_distance / summarize_serp / load_cannibalization_thresholds），對齊 seo_audit 模式
+- Shape：FALSE SHARING（discoverability）→ resolved
 
 ### ⑫ SEO 三 skill 跨 boundary share schema — _ADR-009 已 acknowledge_
 - 不算候選：ADR-009 §Consequences §Risk #3 已記錄、有 schema_version + fixture mitigation
