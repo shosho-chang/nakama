@@ -36,8 +36,6 @@ from pydantic import ValidationError
 from shared.schemas.approval import (
     ApprovalPayloadV1,
     ApprovalPayloadV1Adapter,
-    PublishWpPostV1,
-    UpdateWpPostV1,
 )
 from shared.state import _get_conn
 
@@ -119,32 +117,6 @@ def _snippet(title: str, limit: int = 80) -> str:
     return title if len(title) <= limit else title[: limit - 1] + "…"
 
 
-def _target_platform(payload: ApprovalPayloadV1) -> str:
-    if isinstance(payload, (PublishWpPostV1, UpdateWpPostV1)):
-        return "wordpress"
-    raise ValueError(f"unknown payload type: {type(payload).__name__}")
-
-
-def _target_site(payload: ApprovalPayloadV1) -> str | None:
-    if isinstance(payload, (PublishWpPostV1, UpdateWpPostV1)):
-        return payload.target_site
-    return None
-
-
-def _title_of(payload: ApprovalPayloadV1) -> str:
-    if isinstance(payload, PublishWpPostV1):
-        return payload.draft.title
-    if isinstance(payload, UpdateWpPostV1):
-        return payload.change_summary
-    raise ValueError(f"no title extractor for {type(payload).__name__}")
-
-
-def _diff_target_id(payload: ApprovalPayloadV1) -> str | None:
-    if isinstance(payload, UpdateWpPostV1):
-        return str(payload.wp_post_id)
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Enqueue
 # ---------------------------------------------------------------------------
@@ -173,11 +145,11 @@ def enqueue(
         raise ValueError(f"initial_status must be pending or in_review, got {initial_status!r}")
 
     payload_json = payload_model.model_dump_json()
-    target_platform = _target_platform(payload_model)
-    target_site = _target_site(payload_model)
+    target_platform = payload_model.target_platform
+    target_site = payload_model.target_site
     action_type = payload_model.action_type
-    title_snippet = _snippet(_title_of(payload_model))
-    diff_target_id = _diff_target_id(payload_model)
+    title_snippet = _snippet(payload_model.title)
+    diff_target_id = payload_model.diff_target_id
     # ADR-005b §10: mirror payload.reviewer_compliance_ack to DB column for UI list filtering
     ack = 1 if getattr(payload_model, "reviewer_compliance_ack", False) else 0
 
@@ -494,11 +466,11 @@ def update_payload(
         ValueError: when expected_status is None and the draft id is not found.
     """
     payload_json = payload_model.model_dump_json()
-    target_platform = _target_platform(payload_model)
-    target_site = _target_site(payload_model)
+    target_platform = payload_model.target_platform
+    target_site = payload_model.target_site
     action_type = payload_model.action_type
-    title_snippet = _snippet(_title_of(payload_model))
-    diff_target_id = _diff_target_id(payload_model)
+    title_snippet = _snippet(payload_model.title)
+    diff_target_id = payload_model.diff_target_id
     ack = 1 if getattr(payload_model, "reviewer_compliance_ack", False) else 0
 
     conn = _get_conn()

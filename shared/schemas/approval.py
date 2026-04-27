@@ -2,6 +2,11 @@
 
 Discriminated union 以 `action_type` 為 discriminator。
 Reader 端必須用 `ApprovalPayloadV1Adapter.validate_python()` 才能觸發正確分派。
+
+每個 payload class 自暴露 `target_platform` / `title` / `diff_target_id` 三個
+derived property — 由 `shared.approval_queue.enqueue()` / `update_payload()` 用來
+寫入 approval_queue 表的 denorm 欄位。新增 payload type 只需在自己 class 實作這
+三個 property（+ `target_site` field）即可，不必動 queue 層的 isinstance ladder。
 """
 
 from __future__ import annotations
@@ -29,6 +34,18 @@ class PublishWpPostV1(BaseModel):
     reviewer_compliance_ack: bool = False
     scheduled_at: AwareDatetime | None = None
 
+    @property
+    def target_platform(self) -> str:
+        return "wordpress"
+
+    @property
+    def title(self) -> str:
+        return self.draft.title
+
+    @property
+    def diff_target_id(self) -> str | None:
+        return None  # 新發文沒有對齊的 existing post
+
 
 class UpdateWpPostV1(BaseModel):
     """更新既有 WP post；patch 若觸發 compliance scan，同樣要過 HITL gate。"""
@@ -43,6 +60,18 @@ class UpdateWpPostV1(BaseModel):
     draft_id: str
     compliance_flags: PublishComplianceGateV1
     reviewer_compliance_ack: bool = False
+
+    @property
+    def target_platform(self) -> str:
+        return "wordpress"
+
+    @property
+    def title(self) -> str:
+        return self.change_summary
+
+    @property
+    def diff_target_id(self) -> str | None:
+        return str(self.wp_post_id)
 
 
 # Pydantic v2 discriminated union：新增 action_type 時在此擴充，Pydantic 會自動依 action_type 分派
