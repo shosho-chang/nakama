@@ -113,7 +113,7 @@ Full contract in
   - `shared/schemas/site_mapping.py` — host → target_site
   - `shared/anthropic_client.py` — LLM client + cost tracking
   - `agents/robin/kb_search.py` — KB ranker (`purpose="seo_audit"` opt-in)
-  - `agents/brook/compliance_scan.py` — SEED compliance regex (L9 input)
+  - `shared/compliance/` — full medical-claim vocab + disclaimer (L9 input)
 - **Credentials**
   - `PAGESPEED_INSIGHTS_API_KEY` — required
   - `ANTHROPIC_API_KEY` — required (unless `--llm-level=none`)
