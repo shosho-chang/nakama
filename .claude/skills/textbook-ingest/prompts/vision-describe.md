@@ -25,6 +25,13 @@ retrieval can splice in lieu of seeing the original image.
 | `{ref}` | walker output `figures[].ref` | `fig-1-1` |
 | `{path}` | derived by skill driver: `{attachments-base-dir}/ch{n}/{ref}{extension}` (the walker emits `ref` + `extension` separately; the path is composed at Vision-call time using the same `--attachments-base-dir` passed to `parse_book.py`) | `Attachments/Books/biochemistry-sport-exercise-2024/ch1/fig-1-1.png` |
 
+> **Image size precondition**: `{path}` may resolve to a PNG > 5 MB
+> (anatomical illustrations, multi-panel composites). The Anthropic
+> vision API rejects base64 payloads > 5 MB. **Driver responsibility**
+> to resize before passing to Vision: PIL `LANCZOS` to longest-side
+> ≤ 1600 px, re-encode PNG with `optimize=True`. See `SKILL.md` Step 2.a
+> for the helper snippet.
+
 ---
 
 ## Domain mapping (derived from `{book_subtype}` + `{domain}`)

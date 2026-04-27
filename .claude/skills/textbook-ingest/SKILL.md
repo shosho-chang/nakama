@@ -212,6 +212,40 @@ For each chapter (loop):
 
    a. Read the image binary via `Read` tool on
       ``{attachments-base-dir}/ch{n}/{ref}{extension}``.
+
+      **5 MB image size limit (driver responsibility)**: textbook walker
+      PNGs frequently exceed 5 MB (anatomical illustrations, multi-panel
+      composites). The Anthropic vision API rejects base64-encoded images
+      > 5 MB with `400 invalid_request_error`. Before passing the image
+      to Vision (whether via in-session multimodal `Read` or batch API),
+      the driver MUST resize any PNG > 5 MB to longest-side ≤ 1600 px via
+      PIL `LANCZOS` resampling, re-encoding as PNG with `optimize=True`.
+      LANCZOS preserves anatomical detail at this size (verified on ch2
+      fig-7-1 anatomical multi-panel: spot-check by 3-model triangulate
+      showed no description-quality regression after resize). Sample
+      driver helper:
+
+      ```python
+      from PIL import Image
+      from io import BytesIO
+
+      def resize_under_5mb(img_path, limit=5_000_000, max_side=1600):
+          img = Image.open(img_path)
+          while max_side > 200:
+              w, h = img.size
+              if max(w, h) > max_side:
+                  ratio = max_side / max(w, h)
+                  img2 = img.resize((int(w*ratio), int(h*ratio)), Image.LANCZOS)
+              else:
+                  img2 = img
+              buf = BytesIO()
+              img2.convert("RGB").save(buf, format="PNG", optimize=True)
+              if buf.tell() < limit:
+                  return buf.getvalue()
+              max_side -= 200
+          raise ValueError(f"cannot resize {img_path} under {limit} bytes")
+      ```
+
    b. Use the prompt template at
       ``.claude/skills/textbook-ingest/prompts/vision-describe.md`` —
       fill in `{domain}`, `{book_subtype}`, `{book_title}`,
