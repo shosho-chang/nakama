@@ -51,6 +51,10 @@ def test_brook_compose_and_enqueue_happy_path(mock_brook_llm):
     assert result["title"] == "Brook E2E happy path test article"
     # compliance_flags is a real PublishComplianceGateV1, not just a dict
     assert hasattr(result["compliance_flags"], "medical_claim")
+    # tag_filter accepted "sleep" — locks lenient-pass semantics; will fail loud
+    # if the whitelist flips to strict and "sleep" gets dropped (or we change
+    # the helper payload to a tag not in the whitelist)
+    assert result["tag_filter_rejected"] == []
 
     # Row landed in approval_queue with the correct shape
     row = approval_queue.get_by_id(result["queue_row_id"])

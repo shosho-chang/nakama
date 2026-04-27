@@ -133,3 +133,75 @@ def test_robin_run_inbox_missing_returns_skip(tmp_path, monkeypatch):
 
     assert "Inbox 不存在" in summary
     fake_ingest.assert_not_called()
+
+
+# ── Extension dispatch table — locks EXTENSION_TO_RAW_DIR / SOURCE_TYPE drift ─
+
+
+@pytest.mark.parametrize(
+    "filename,expected_raw_dir,expected_source_type",
+    [
+        pytest.param("doc.md", "Articles", "article", id="md→article"),
+        pytest.param("paper.pdf", "Papers", "paper", id="pdf→paper"),
+        pytest.param("page.html", "Articles", "article", id="html→article"),
+        pytest.param("notes.txt", "Articles", "article", id="txt→article"),
+        pytest.param("book.epub", "Books", "book", id="epub→book"),
+    ],
+)
+def test_robin_extension_dispatch_table(
+    robin_e2e_env, monkeypatch, filename, expected_raw_dir, expected_source_type
+):
+    """Each supported extension maps to the correct Raw subdir + source_type."""
+    # Replace the seeded .md with a file of the parametrized extension
+    robin_e2e_env["src_file"].unlink()
+    src_file = robin_e2e_env["inbox"] / filename
+    src_file.write_bytes(b"sample content")
+
+    fake_ingest = MagicMock(return_value=None)
+    monkeypatch.setattr("agents.robin.ingest.IngestPipeline.ingest", fake_ingest, raising=True)
+
+    from agents.robin.agent import RobinAgent
+
+    RobinAgent(interactive=False).run()
+
+    fake_ingest.assert_called_once()
+    _, kw = fake_ingest.call_args
+    assert kw["raw_path"].parent.name == expected_raw_dir
+    assert kw["source_type"] == expected_source_type
+
+
+def test_robin_run_pipeline_error_does_not_abort_loop(robin_e2e_env, monkeypatch):
+    """If pipeline.ingest raises, the file is NOT marked processed and the loop continues.
+
+    Robin's ``_process_file`` exception handler (agent.py:74-79) logs and
+    continues; ``processed`` counter only increments on success. Locks the
+    ``X/Y`` semantics in the summary string.
+
+    ``kb_log`` is also patched out: the error path appends to KB/log.md via
+    ``shared.obsidian_writer.get_vault_path`` (separate import-binding from
+    ``agents.robin.agent.get_vault_path``); rather than chase every binding,
+    a no-op stub keeps the test focused on the loop-continuation invariant.
+    """
+    # Add a second valid file so we can verify "loop continues"
+    second_file = robin_e2e_env["inbox"] / "second.md"
+    second_file.write_text("body", encoding="utf-8")
+
+    call_count = {"n": 0}
+
+    def flaky_ingest(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("pipeline blew up")
+        return None
+
+    monkeypatch.setattr("agents.robin.ingest.IngestPipeline.ingest", flaky_ingest, raising=True)
+    monkeypatch.setattr("agents.robin.agent.kb_log", lambda *args, **kwargs: None)
+
+    from agents.robin.agent import RobinAgent
+
+    summary = RobinAgent(interactive=False).run()
+
+    # Both files attempted; only one succeeded
+    assert call_count["n"] == 2
+    # processed=1 / total=2 — loop continued past the first failure
+    assert "1/2" in summary

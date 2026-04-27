@@ -77,15 +77,25 @@ def fake_zoro_ask(
 ) -> str:
     """Stand-in for ``shared.llm.ask`` covering Zoro's two call sites:
 
-    1. Relevance judge (max_tokens=256) — returns score+domain+reason JSON.
-    2. compose_message (max_tokens=500) — returns natural-language Slack
-       text containing the topic title.
+    1. Relevance judge (``prompts/zoro/scout.md``) — returns score+domain+reason JSON.
+       System prompt opens with "你是 Zoro 的**相關性判準子系統**".
+    2. compose_message (``prompts/zoro/compose_message.md``) — returns
+       natural-language Slack text containing the topic title.
+       System prompt opens with "你是 Zoro（索隆）".
 
-    Discriminated by max_tokens so we don't depend on prompt-content sniffing.
+    Dispatch on **stable system-prompt content** (the role-identity sentence is
+    edit-rare). Falls back on max_tokens if both keywords are absent so a
+    future caller without a known prompt still gets a safe default.
     """
-    if max_tokens >= 500:
-        return f"關注趨勢：{prompt.splitlines()[0]}\n\n@Sanji @Robin 看怎麼想？"
-    return json.dumps({"score": 0.85, "domain": "睡眠", "reason": "fake judge"})
+    sys_text = system or ""
+    if "判準" in sys_text:
+        return json.dumps({"score": 0.85, "domain": "睡眠", "reason": "fake judge"})
+    if "索隆" in sys_text or max_tokens >= 500:
+        first_line = prompt.splitlines()[0] if prompt else ""
+        return f"關注趨勢：{first_line}\n\n@Sanji @Robin 看怎麼想？"
+    # Unknown caller — return judge JSON (cheap fail; relevance gate will skip
+    # the topic if score doesn't parse). Loud-fail variant would assert here.
+    return json.dumps({"score": 0.0, "domain": None, "reason": "unknown caller"})
 
 
 def fake_trending_health() -> list[dict[str, Any]]:
