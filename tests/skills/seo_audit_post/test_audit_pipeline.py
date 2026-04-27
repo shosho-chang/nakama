@@ -438,3 +438,57 @@ def test_resolve_target_site_does_not_misclassify_wfleet_prefix():
     # Ensure standard fleet host still works
     assert audit_mod._resolve_target_site("https://fleet.shosho.tw/some-page") == "wp_fleet"
     assert audit_mod._resolve_target_site("https://www.shosho.tw/some-page") == "wp_shosho"
+
+
+def test_audit_uses_injected_html_fetcher(tmp_path):
+    """F5-C 2026-04-27: audit() 必須接 html_fetcher 注入，不可 hard-wire fetch_html。
+
+    用於 caller IP 被 CF SBFM 擋的場景（VPS datacenter IP 打 shosho.tw 全 403），
+    走 firecrawl 為 fetcher 替代 default httpx。
+    """
+    from bs4 import BeautifulSoup
+
+    from shared.seo_audit.html_fetcher import FetchResult
+    from shared.seo_audit.types import AuditCheck
+
+    fake_calls = []
+
+    def _fake_fetcher(url):
+        fake_calls.append(url)
+        soup = BeautifulSoup(_FIXTURE_HTML, "html.parser")
+        check = AuditCheck(
+            rule_id="FETCH",
+            name="page fetched OK",
+            category="fetch",
+            severity="critical",
+            status="pass",
+            actual="fake fetcher 200",
+            expected="HTTP 2xx/3xx",
+            fix_suggestion="",
+            details={"fetcher": "fake"},
+        )
+        return FetchResult(
+            url=url,
+            final_url=url,
+            status_code=200,
+            content_type="text/html",
+            response_time_ms=10,
+            html=_FIXTURE_HTML,
+            soup=soup,
+            fetch_check=check,
+        )
+
+    out_path = audit_mod.audit(
+        url="https://shosho.tw/zone-2-training-guide",
+        output_dir=tmp_path,
+        focus_keyword="zone 2 訓練",
+        enable_kb=False,
+        pagespeed_runner=lambda u, s: _fake_pagespeed_response(),
+        compliance_scanner=_fake_compliance_scanner,
+        llm_reviewer=_fake_llm_reviewer,
+        html_fetcher=_fake_fetcher,
+        now_fn=_now,
+    )
+
+    assert fake_calls == ["https://shosho.tw/zone-2-training-guide"]
+    assert out_path.exists()

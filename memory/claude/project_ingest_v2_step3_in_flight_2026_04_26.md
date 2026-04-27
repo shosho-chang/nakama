@@ -1,12 +1,60 @@
 ---
-name: ingest v2 Step 3 — PR A/B/180/186/188/189 + PR C/F3/V1 全完成；PR D unblocked 唯一剩 backlog
-description: PR #169/#178/#180/#186/#188/#189 + PR C 重 ingest ch1 全完成；F3 placeholder swap + V1 Vision LLM Sonnet 4.6 鎖定；PR D 唯一 backlog 2026-04-27
+name: ingest v2 Step 3 — F2/ch2 spot-check 全完成；PR D 等修修 fig-7-9 verdict + B1 拍板才動
+description: F2 aliases sweep done + ch2 multi-model triangulate (PR #201) Sonnet vs Grok-4 vs Gemini fig-7-9 disagree on panel count；修修人眼仲裁範圍縮到一張圖三點
 type: project
 originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
 ---
-2026-04-27 update — F3 + V1 acceptance 解、PR D 全 spec / model selection blocker 都收。**唯一 backlog 是 PR D 批 ingest ch2-ch11**（10 章重複 v2 流程，~1.5M token / ~5-8 hr wall time）。
+2026-04-27 evening：F2 收尾 + ch2 spot-check 跑完 multi-model triangulate。**PR D 等修修對 fig-7-9 三點 + fig-7-7 lateral arrow + B1 noop schema_version 拍板才解 block**。
 
-## 2026-04-27 update — F3 + V1 acceptance 解 → PR D unblocked
+## 2026-04-27 evening update — F2 done + ch2 spot-check + multi-model triangulate (PR #201)
+
+### F2 (aliases 欄位缺) 收尾 (a) 手動補
+
+7 個 ch1 v2 page sweep 全 systemic 缺 aliases；從各 page body 第一段抽中英別名 + 縮寫補進 frontmatter（`domain:` 與 `mentioned_in:` 之間，全 quoted string）：
+
+- 磷酸肌酸系統：`Phosphocreatine System` / `ATP-PCr 系統` / `Phosphagen System` / `磷酸原系統` / `PCr 系統` / `anaerobic alactic 系統`
+- 葡萄糖丙胺酸循環：`Glucose-Alanine Cycle` / `Alanine Cycle`
+- 肌內三酸甘油酯：`Intramuscular Triacylglycerol` / `IMTG` / `intramuscular triglycerides` / `IMCL` / `intramyocellular lipid` / `肌內三酸甘油脂`
+- ATP再合成：`ATP Resynthesis` / `ATP 再生成` / `ATP regeneration`
+- 肌酸代謝：`Creatine Metabolism`
+- 磷酸肌酸能量穿梭：`Phosphocreatine Energy Shuttle` / `PCr Shuttle` / `Phosphocreatine Shuttle`
+- 肌酸激酶系統：`Creatine Kinase System` / `CK System`
+
+4 個 noop page（能量連續體 / 糖解作用 / 有氧能量系統 / 無氧能量系統）暫不補 — 屬 B1 by-design 範疇待修修拍板。
+
+### ch2 spot-check（V1 mitigation）+ multi-model triangulate
+
+修修建議走 multi-model triangulate（[`project_multi_model_panel_methodology.md`](project_multi_model_panel_methodology.md)）— 派 Sonnet 4.6 sub-agent + ad-hoc Gemini 2.5 Pro/Flash + Grok-4 vision call，三家對 fig-7-1 / fig-7-7 / fig-7-9 三張不同 sub-type schematic 同 prompt 跑 vision describe（含 ±500 chars surrounding text）：
+
+| Figure | 結果 | Verdict |
+|--------|------|---------|
+| **fig-7-1** anatomical multi-panel | 三家 consensus 三層連結組織包覆關係 + nucleus peripheral + 三層放大尺度 | 🟢 Sonnet 沒重蹈 fig-1-6 weakness |
+| **fig-7-7** functional flowchart | 三家 100% consensus 7 階層節點順序 + α/γ 並列；Sonnet 多提一條 lateral arrow（細節）| 🟢（待修修確認 lateral arrow） |
+| **fig-7-9** cyclic mechanism | **三家 disagree** on panel count（Sonnet 5 vs Grok+Gemini 共識 4）+ step 1 起點 + actin 顏色 | ⚠️ 修修要看 |
+
+**Multi-model triangulate 的方法論延伸實證**：原本要修修對 3 張全項細節人眼 spot-check（V1 mitigation），跑完三家 panel 之後修修要看的範圍縮到「一張圖三點 + 另一張一個 yes/no」。consensus 點不需人眼仲裁；dispute 點才要看 — 把 review effort 縮 70%+。Cost：3 張圖 × 2 新 model = 6 vision call ~$0.3-0.5（vs 修修 10 min × 3 圖人眼）。
+
+### PR D unblock 條件（按優先序）
+
+1. 修修對 fig-7-9 三點 dispute 給 verdict（panel 數 / step 1 起點 / actin 顏色）
+2. fig-7-7 lateral arrow yes/no（半秒可解）
+3. B1 拍板：4 個 noop page schema_version=1 接受 by-design / 改 ADR
+
+決策樹：
+
+- 三家 dispute Sonnet 都對 → PR D 維持 Sonnet（cost ~Opus 1/5）
+- 都錯 → cyclic 類別圖升 Opus；schematic / flowchart 維持 Sonnet
+- Mixed → 維持 Sonnet 但 prompt 加 mitigation note：「panel count 顯式 verify、起點要從圖上 numerical labels 確認」
+
+### Reference
+
+- 完整 doc：[`docs/research/2026-04-27-ch2-vision-spot-check.md`](../../docs/research/2026-04-27-ch2-vision-spot-check.md)（PR #201 squash 92ef9dd）
+- Raw triangulate JSON：`/tmp/vision_triangulate_results.json`（throwaway，未 commit）
+- ch1 acceptance checklist 已收尾 F2 (a) DONE：[`docs/plans/2026-04-26-ch1-v2-acceptance-checklist.md`](../../docs/plans/2026-04-26-ch1-v2-acceptance-checklist.md)（PR 0728535）
+
+---
+
+## 2026-04-27 morning historical — F3 + V1 acceptance 解 → PR D unblocked
 
 PR C 完成後跑 ch1 v2 acceptance 找到 3 個 finding，全處理完：
 

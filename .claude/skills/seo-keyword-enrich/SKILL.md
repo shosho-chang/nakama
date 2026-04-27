@@ -95,13 +95,16 @@ Missing required fields (no frontmatter block / wrong `type` / no
 - firecrawl quota: free tier ~500 credits/month; **1 search + 3 scrape ≈ 4 credits**
   per enrich → ~125 enrich/month ceiling on free tier
 - LLM cost: **~$0.005-0.011** per enrich (Haiku 4.5 ≤ 3000 in + ≤ 1500 out tokens)
-- Wall clock: **~15-25s** (firecrawl scrape dominates; GSC ~3-5s, Haiku ~3-5s)
+- Wall clock: **~20-60s, median 26s, P95 ~58s**（5-keyword acceptance benchmark
+  2026-04-27 — `docs/plans/2026-04-27-seo-phase15-acceptance-results.md`）—
+  firecrawl scrape dominates；GSC ~3-5s，Haiku ~3-5s。長 tail ~58s 多半是
+  firecrawl SERP scrape 等待。
 
 Present to user:
 
 ```
 預估：
-  時間：~20s
+  時間：~30s（中位數），可能到 60s
   成本：~$0.01（GSC 免費 + firecrawl free tier + Haiku 4.5 摘要）
   GSC property：<property>  (target_site=<app-name>)
   firecrawl SERP：top-3（about 4 credits）
@@ -215,8 +218,7 @@ Example: `enriched-morning-coffee-sleep-20260426.md`.
   credits/month → ~125 enrich/month ceiling. Exceeded → graceful fallback
   to `phase: "1.5 (gsc + serp-skipped)"`.
 - **LLM** (Haiku 4.5): ~$0.005-0.011 per enrich (3000 in + 1500 out tokens).
-- **Wall clock**: ~15-25s dominated by firecrawl scrape (3 × ~5s).
-  `--no-serp` brings it back to ~3-8s.
+- **Wall clock**: median 26s / P95 ~58s（5-keyword benchmark 2026-04-27 — `docs/plans/2026-04-27-seo-phase15-acceptance-results.md`），dominated by firecrawl scrape (3 × ~5-15s)。`--no-serp` brings it back to ~3-8s。
 - **Effective per-run cost**: ~$0.01 with SERP, ~$0 without.
 
 ---
