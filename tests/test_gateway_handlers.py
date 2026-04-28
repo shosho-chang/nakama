@@ -81,7 +81,7 @@ def test_handle_injects_memory_context_when_available():
         return _fake_response("end_turn", [_text_block("好的")])
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.agent_memory.format_as_context",
@@ -105,7 +105,7 @@ def test_handle_skips_memory_block_when_empty():
         return _fake_response("end_turn", [_text_block("好的")])
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.agent_memory.format_as_context", return_value=""),
     ):
@@ -119,7 +119,7 @@ def test_handle_returns_text_on_end_turn():
     """LLM 直接回文字（沒呼叫 tool），handler 返回該文字並保持 thread 存活。"""
     fake = _fake_response("end_turn", [_text_block("你好，我是 Nami！")])
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", return_value=fake),
+        patch("gateway.handlers.nami.ask_with_tools", return_value=fake),
         patch("gateway.handlers.nami.set_current_agent"),
     ):
         result = NamiHandler().handle("general", "嗨", "U1")
@@ -148,7 +148,7 @@ def test_ask_user_tool_triggers_continuation():
         ],
     )
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", return_value=fake),
+        patch("gateway.handlers.nami.ask_with_tools", return_value=fake),
         patch("gateway.handlers.nami.set_current_agent"),
     ):
         result = NamiHandler().handle("general", "幫我建立 project", "U1")
@@ -202,7 +202,7 @@ def test_create_project_tool_executes_and_writes():
 
     with (
         patch(
-            "gateway.handlers.nami.call_claude_with_tools",
+            "gateway.handlers.nami.ask_with_tools",
             side_effect=iter_responses,
         ),
         patch("gateway.handlers.nami.set_current_agent"),
@@ -250,7 +250,7 @@ def test_create_project_conflict_returns_error_to_loop():
 
     with (
         patch(
-            "gateway.handlers.nami.call_claude_with_tools",
+            "gateway.handlers.nami.ask_with_tools",
             side_effect=iter_responses,
         ),
         patch("gateway.handlers.nami.set_current_agent"),
@@ -290,7 +290,7 @@ def test_create_task_tool_writes_page():
 
     with (
         patch(
-            "gateway.handlers.nami.call_claude_with_tools",
+            "gateway.handlers.nami.ask_with_tools",
             side_effect=iter_responses,
         ),
         patch("gateway.handlers.nami.set_current_agent"),
@@ -341,7 +341,7 @@ def test_continue_flow_feeds_user_reply_as_tool_result():
         return fake_followup
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
         patch("gateway.handlers.nami.set_current_agent"),
     ):
         result = NamiHandler().continue_flow(NAMI_AGENT_FLOW, state, "research", "U1")
@@ -383,7 +383,7 @@ def test_list_tasks_tool_empty():
     ]
     with (
         patch(
-            "gateway.handlers.nami.call_claude_with_tools",
+            "gateway.handlers.nami.ask_with_tools",
             side_effect=iter_responses,
         ),
         patch("gateway.handlers.nami.set_current_agent"),
@@ -420,7 +420,7 @@ def test_update_task_changes_scheduled():
     )
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.list_files", return_value=[fake_file]),
         patch("gateway.handlers.nami.read_page", return_value=fake_content),
@@ -448,7 +448,7 @@ def test_update_task_not_found_returns_error():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.list_files", return_value=[]),
     ):
@@ -477,7 +477,7 @@ def test_update_task_mark_done():
     fake_content = "---\ntitle: 看牙醫\nstatus: to-do\npriority: normal\n---\n\n"
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.list_files", return_value=[fake_file]),
         patch("gateway.handlers.nami.read_page", return_value=fake_content),
@@ -508,7 +508,7 @@ def test_delete_task_removes_file():
     fake_content = "---\ntitle: 看牙醫\nstatus: to-do\n---\n\n"
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.list_files", return_value=[fake_file]),
         patch("gateway.handlers.nami.read_page", return_value=fake_content),
@@ -532,7 +532,7 @@ def test_delete_task_not_found():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.list_files", return_value=[]),
     ):
@@ -575,7 +575,7 @@ def test_delete_project_with_tasks():
     }
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.list_files", side_effect=fake_list_files),
         patch("gateway.handlers.nami.read_page", side_effect=lambda p: read_map.get(p)),
@@ -628,7 +628,7 @@ def test_create_calendar_event_happy_path():
 
     fake_created = _fake_cal_event(id_="evt42", title="跟 Angie 開會")
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.create_event",
@@ -692,7 +692,7 @@ def test_create_calendar_event_conflict_returns_error():
 
     with (
         patch(
-            "gateway.handlers.nami.call_claude_with_tools",
+            "gateway.handlers.nami.ask_with_tools",
             side_effect=_capture_and_respond,
         ),
         patch("gateway.handlers.nami.set_current_agent"),
@@ -732,7 +732,7 @@ def test_create_calendar_event_force_skips_conflict_check():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.create_event",
@@ -771,7 +771,7 @@ def test_create_calendar_event_also_create_task_false_skips_task():
 
     fake_created = _fake_cal_event(id_="evtBday", title="Angie 生日")
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.create_event",
@@ -813,7 +813,7 @@ def test_create_calendar_event_task_title_conflict_aborts_before_calendar():
     existing_content = "---\ntitle: 讀書會\nstatus: to-do\ntags: [task]\n---\n"
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.create_event",
@@ -856,7 +856,7 @@ def test_list_calendar_events_today():
         return events
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.list_events",
@@ -894,7 +894,7 @@ def test_update_calendar_event_by_title():
     )
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.find_events_by_title",
@@ -959,7 +959,7 @@ def test_update_calendar_event_syncs_linked_task():
     )
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.find_events_by_title",
@@ -1005,7 +1005,7 @@ def test_update_calendar_event_no_linked_task_silent():
     updated = _fake_cal_event(id_="evt42", title="讀書會", start="2026-04-26T14:00:00+08:00")
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.find_events_by_title",
@@ -1042,7 +1042,7 @@ def test_update_calendar_event_not_found():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.find_events_by_title",
@@ -1066,7 +1066,7 @@ def test_delete_calendar_event_happy_path():
     existing = _fake_cal_event(id_="evt99", title="舊會議")
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.find_events_by_title",
@@ -1101,7 +1101,7 @@ def test_delete_calendar_event_also_deletes_linked_task():
     task_content = "---\ntitle: 讀書會\nstatus: to-do\ncalendar_event_id: evt42\n---\n"
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.find_events_by_title",
@@ -1140,7 +1140,7 @@ def test_delete_calendar_event_task_not_found_silent():
     existing = _fake_cal_event(id_="evtOrphan", title="孤兒事件")
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.find_events_by_title",
@@ -1189,7 +1189,7 @@ def test_create_calendar_event_rollback_on_task_write_failure():
         return iter_responses.pop(0)
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.create_event",
@@ -1253,7 +1253,7 @@ def test_update_calendar_event_title_rename_write_before_delete():
         return True
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.find_events_by_title",
@@ -1289,7 +1289,7 @@ def test_calendar_tool_auth_error_returns_graceful_message():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "gateway.handlers.nami.google_calendar.list_events",
@@ -1313,7 +1313,7 @@ def test_max_iters_safety_break():
     )
     with (
         patch(
-            "gateway.handlers.nami.call_claude_with_tools",
+            "gateway.handlers.nami.ask_with_tools",
             return_value=infinite_tool_use,
         ),
         patch("gateway.handlers.nami.set_current_agent"),
@@ -1382,7 +1382,7 @@ def test_write_vault_note_happy_path():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.read_page", return_value=None),
         patch("gateway.handlers.nami.write_page") as mock_write,
@@ -1441,7 +1441,7 @@ def test_write_vault_note_rejects_forbidden_path():
         return resp
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture_tool_results),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture_tool_results),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.kb_log"),
     ):
@@ -1490,7 +1490,7 @@ def test_write_vault_note_rejects_path_traversal():
         return resp
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.kb_log"),
     ):
@@ -1538,7 +1538,7 @@ def test_write_vault_note_no_overwrite_by_default():
         return resp
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.read_page", return_value="existing content"),
         patch("gateway.handlers.nami.kb_log"),
@@ -1566,7 +1566,7 @@ def test_read_vault_note_returns_content():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.read_page", return_value="# 報價\n內容在這") as mock_read,
         patch("gateway.handlers.nami.kb_log"),
@@ -1612,7 +1612,7 @@ def test_read_vault_note_rejects_kb_path():
         return resp
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.kb_log"),
     ):
@@ -1660,7 +1660,7 @@ def test_list_vault_notes_returns_files():
         return resp
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=_capture),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=_capture),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("gateway.handlers.nami.list_files", return_value=fake_files),
         patch("gateway.handlers.nami.kb_log"),
@@ -1701,7 +1701,7 @@ def test_web_search_happy_path():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("shared.firecrawl_search.firecrawl_search", return_value=fake_results) as mock_search,
         patch("gateway.handlers.nami.emit"),
@@ -1732,7 +1732,7 @@ def test_fetch_url_happy_path():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("shared.web_scraper.scrape_url", return_value=fake_content) as mock_scrape,
         patch("gateway.handlers.nami.emit"),
@@ -1790,7 +1790,7 @@ def test_deep_research_flow():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "shared.firecrawl_search.firecrawl_search",
@@ -1847,7 +1847,7 @@ def test_pubmed_lookup_tool_renders_markdown():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch(
             "shared.pubmed_client.lookup",
@@ -1880,7 +1880,7 @@ def test_pubmed_lookup_tool_empty_query_returns_error():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("shared.pubmed_client.lookup") as mock_lookup,
     ):
@@ -1899,7 +1899,7 @@ def test_pubmed_lookup_tool_no_results_returns_friendly_message():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("shared.pubmed_client.lookup", return_value=[]),
     ):
@@ -1921,7 +1921,7 @@ def test_pubmed_lookup_tool_propagates_client_error():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("shared.pubmed_client.lookup", side_effect=PubMedClientError("HTTP 503")),
     ):
@@ -1941,7 +1941,7 @@ def test_pubmed_lookup_tool_caps_max_results_at_20():
     ]
 
     with (
-        patch("gateway.handlers.nami.call_claude_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
         patch("gateway.handlers.nami.set_current_agent"),
         patch("shared.pubmed_client.lookup", return_value=[]) as mock_lookup,
     ):

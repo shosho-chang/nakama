@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from gateway.handlers.base import BaseHandler, HandlerResponse
 from shared import agent_memory
-from shared.anthropic_client import set_current_agent
 from shared.llm import ask
+from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.memory import get_context
 from shared.prompt_loader import load_prompt

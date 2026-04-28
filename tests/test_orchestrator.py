@@ -51,7 +51,7 @@ def _fake_ask_factory(payloads: dict[str, str]):
     """依 thread-local agent 回傳對應文字；沒設定 agent 回 fallback。"""
 
     def fake_ask(prompt: str, **kwargs):
-        from shared.anthropic_client import _local
+        from shared.llm_context import _local
 
         agent = getattr(_local, "agent", None) or "unknown"
         return payloads.get(agent, f"[{agent} view]")
@@ -99,7 +99,7 @@ def test_run_brainstorm_participant_ask_failure_fills_placeholder() -> None:
     """單一參與者失敗不該讓整個 brainstorm 掛掉。"""
 
     def fake_ask(prompt: str, **kwargs):
-        from shared.anthropic_client import _local
+        from shared.llm_context import _local
 
         agent = getattr(_local, "agent", None)
         if agent == "sanji":
@@ -117,7 +117,7 @@ def test_run_brainstorm_participant_ask_failure_fills_placeholder() -> None:
 
 def test_run_brainstorm_synthesizer_failure_fills_placeholder() -> None:
     def fake_ask(prompt: str, **kwargs):
-        from shared.anthropic_client import _local
+        from shared.llm_context import _local
 
         agent = getattr(_local, "agent", None)
         if agent == "nami":
@@ -176,7 +176,7 @@ def test_run_brainstorm_sets_thread_local_agent_per_call() -> None:
     seen_agents: list[str] = []
 
     def fake_ask(prompt: str, **kwargs):
-        from shared.anthropic_client import _local
+        from shared.llm_context import _local
 
         with lock:
             seen_agents.append(getattr(_local, "agent", None) or "unset")

@@ -22,7 +22,6 @@ from zoneinfo import ZoneInfo
 
 from gateway.handlers.base import BaseHandler, Continuation, HandlerResponse
 from shared import agent_memory, google_calendar, google_gmail
-from shared.anthropic_client import call_claude_with_tools, set_current_agent
 from shared.events import emit
 from shared.google_calendar import CalendarEvent, GoogleCalendarAuthError
 from shared.google_gmail import GoogleGmailAuthError
@@ -32,6 +31,8 @@ from shared.lifeos_writer import (
     create_project_with_tasks,
     default_task_names,
 )
+from shared.llm import ask_with_tools
+from shared.llm_context import set_current_agent
 from shared.log import get_logger, kb_log
 from shared.memory_extractor import extract_in_background
 from shared.obsidian_writer import delete_page, list_files, read_page, write_page
@@ -734,7 +735,7 @@ class NamiHandler(BaseHandler):
             system_prompt = "你是 Nami，修修的 LifeOS 任務助手。用繁體中文。"
 
         for _ in range(_MAX_ITERS):
-            response = call_claude_with_tools(
+            response = ask_with_tools(
                 messages=messages,
                 tools=NAMI_TOOLS,
                 system=system_prompt,

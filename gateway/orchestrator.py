@@ -21,8 +21,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from shared.anthropic_client import set_current_agent
 from shared.llm import ask
+from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.prompt_loader import load_prompt
 

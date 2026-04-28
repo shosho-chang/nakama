@@ -134,8 +134,8 @@ def test_nl_route_intent_only():
 def test_nl_route_haiku_fallback():
     """無法匹配時 fallback 到 Haiku。"""
     mock_response = '{"agent": "franky", "intent": "system_status"}'
-    with patch("shared.anthropic_client.ask_claude", return_value=mock_response):
-        with patch("shared.anthropic_client.set_current_agent"):
+    with patch("shared.llm.ask", return_value=mock_response):
+        with patch("shared.llm_context.set_current_agent"):
             result = route_natural_language("伺服器還好嗎")
     assert result.agent == "franky"
     assert result.confidence == "haiku"
@@ -143,8 +143,8 @@ def test_nl_route_haiku_fallback():
 
 def test_nl_route_haiku_fallback_error():
     """Haiku 失敗時 default 到 nami。"""
-    with patch("shared.anthropic_client.ask_claude", side_effect=Exception("API down")):
-        with patch("shared.anthropic_client.set_current_agent"):
+    with patch("shared.llm.ask", side_effect=Exception("API down")):
+        with patch("shared.llm_context.set_current_agent"):
             result = route_natural_language("一些隨機的話")
     assert result.agent == "nami"
     assert result.confidence == "haiku"

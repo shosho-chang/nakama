@@ -186,7 +186,8 @@ def _haiku_classify(text: str) -> RouteResult:
     """用 Claude Haiku 分類 agent + intent（Tier 3 fallback）。"""
     _default = RouteResult(agent="nami", intent="general", text=text, confidence="haiku")
     try:
-        from shared.anthropic_client import ask_claude, set_current_agent
+        from shared.llm import ask
+        from shared.llm_context import set_current_agent
 
         set_current_agent("gateway")
         prompt = (
@@ -201,7 +202,7 @@ def _haiku_classify(text: str) -> RouteResult:
             '回覆 JSON：{{"agent": "agent_name", "intent": "intent_name"}}\n'
             "只回覆 JSON，不要其他文字。"
         )
-        raw = ask_claude(
+        raw = ask(
             prompt,
             model="claude-haiku-4-5-20251001",
             max_tokens=100,
