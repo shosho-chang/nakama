@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from shared.anthropic_client import ask_claude
 from shared.config import get_agent_config
+from shared.llm import ask
 from shared.log import get_logger
 from shared.obsidian_writer import list_files
 from shared.utils import read_text
@@ -53,7 +53,7 @@ def extract_style_profile(articles_dir: str = "KB/Raw/Articles") -> dict:
 
 {combined}"""
 
-    response = ask_claude(prompt, temperature=0.2)
+    response = ask(prompt, temperature=0.2)
 
     try:
         # 提取 JSON

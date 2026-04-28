@@ -122,7 +122,7 @@ def test_happy_path(monkeypatch, fake_audio, tmp_path):
         )
 
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     uncertainties = [
@@ -161,7 +161,7 @@ def test_single_failure_isolated(monkeypatch, fake_audio, tmp_path):
         )
 
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     uncertainties = [
@@ -196,7 +196,7 @@ def test_line_not_in_srt_skipped(monkeypatch, fake_audio, tmp_path):
         )
 
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     uncertainties = [
@@ -225,7 +225,7 @@ def test_prev_next_context_in_prompt(monkeypatch, fake_audio, tmp_path):
         )
 
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     arbitrate_uncertain(
@@ -257,7 +257,7 @@ def test_first_line_no_prev_context(monkeypatch, fake_audio, tmp_path):
         )
 
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     arbitrate_uncertain(
@@ -276,7 +276,7 @@ def test_tempfile_cleaned_on_extract_failure(monkeypatch, fake_audio):
         raise RuntimeError("ffmpeg 掛了")
 
     monkeypatch.setattr(arb, "extract_clip", boom_extract)
-    monkeypatch.setattr(arb, "ask_gemini_audio", lambda *a, **kw: None)
+    monkeypatch.setattr(arb, "ask_with_audio", lambda *a, **kw: None)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     result = arbitrate_uncertain(
@@ -313,7 +313,7 @@ def test_set_current_agent_called_in_worker_thread(monkeypatch, fake_audio, tmp_
 
     monkeypatch.setattr(arb, "set_current_agent", fake_set_agent)
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
 
     arbitrate_uncertain(
         fake_audio,
@@ -394,7 +394,7 @@ def test_refusal_downgraded_to_refused_verdict(monkeypatch, fake_audio, tmp_path
         )
 
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     result = arbitrate_uncertain(
@@ -438,7 +438,7 @@ def test_final_text_with_refusal_word_not_downgraded(monkeypatch, fake_audio, tm
         )
 
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     result = arbitrate_uncertain(
@@ -470,7 +470,7 @@ def test_normal_uncertain_not_treated_as_refused(monkeypatch, fake_audio, tmp_pa
         )
 
     monkeypatch.setattr(arb, "extract_clip", fake_extract_clip)
-    monkeypatch.setattr(arb, "ask_gemini_audio", fake_ask_gemini)
+    monkeypatch.setattr(arb, "ask_with_audio", fake_ask_gemini)
     monkeypatch.setattr(arb, "set_current_agent", lambda *a, **kw: None)
 
     result = arbitrate_uncertain(

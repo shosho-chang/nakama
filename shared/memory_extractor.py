@@ -18,7 +18,7 @@ from typing import Any
 
 from shared import agent_memory
 from shared.agent_memory import VALID_TYPES
-from shared.anthropic_client import ask_claude
+from shared.llm import ask
 from shared.log import get_logger
 
 logger = get_logger("nakama.memory_extractor")
@@ -186,7 +186,7 @@ def extract_from_messages(
     prompt = f"對話紀錄：\n\n{conversation}{subjects_block}\n\n請抽取記憶（JSON 陣列）。"
 
     try:
-        raw = ask_claude(
+        raw = ask(
             prompt=prompt,
             system=_EXTRACTOR_SYSTEM_PROMPT,
             model=_EXTRACTOR_MODEL,

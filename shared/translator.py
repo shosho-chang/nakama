@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from shared.anthropic_client import ask_claude
+from shared.llm import ask
 from shared.log import get_logger
 
 logger = get_logger("nakama.shared.translator")
@@ -120,7 +120,7 @@ def translate_segments(
         f"{numbered}"
     )
 
-    response = ask_claude(prompt, system=system, model=model, max_tokens=_BATCH_MAX_TOKENS)
+    response = ask(prompt, system=system, model=model, max_tokens=_BATCH_MAX_TOKENS)
 
     try:
         json_match = re.search(r"\[[\s\S]*\]", response)
@@ -139,7 +139,7 @@ def _translate_one_by_one(segments: list[str], *, system: str, model: str) -> li
     results = []
     for i, seg in enumerate(segments):
         try:
-            t = ask_claude(
+            t = ask(
                 f"翻譯成台灣繁體中文（只回傳譯文，不要其他說明）：\n\n{seg}",
                 system=system,
                 model=model,

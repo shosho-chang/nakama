@@ -27,12 +27,12 @@ from shared.llm_observability import record_call
 
 def test_auto_translate_lowercases_capitalized_response(monkeypatch):
     """Claude often returns ``Deep sleep`` — caller should see ``deep sleep``."""
-    monkeypatch.setattr(kw_mod, "ask_claude", lambda *a, **kw: "Deep Sleep")
+    monkeypatch.setattr(kw_mod, "ask", lambda *a, **kw: "Deep Sleep")
     assert kw_mod._auto_translate("深度睡眠") == "deep sleep"
 
 
 def test_auto_translate_strips_quotes_then_lowercases(monkeypatch):
-    monkeypatch.setattr(kw_mod, "ask_claude", lambda *a, **kw: '"Intermittent Fasting"')
+    monkeypatch.setattr(kw_mod, "ask", lambda *a, **kw: '"Intermittent Fasting"')
     assert kw_mod._auto_translate("間歇性斷食") == "intermittent fasting"
 
 
@@ -64,7 +64,7 @@ def test_research_keywords_passes_today_iso_to_load_prompt(monkeypatch):
     _stub_collectors(monkeypatch)
     monkeypatch.setattr(kw_mod, "load_prompt", _fake_load_prompt)
     monkeypatch.setattr(
-        kw_mod, "ask_claude", lambda *a, **kw: '{"core_keywords": [], "youtube_titles": []}'
+        kw_mod, "ask", lambda *a, **kw: '{"core_keywords": [], "youtube_titles": []}'
     )
 
     kw_mod.research_keywords("深度睡眠", content_type="youtube", en_topic="deep sleep")
@@ -82,7 +82,7 @@ def test_research_keywords_passes_today_iso_to_load_prompt(monkeypatch):
 def test_research_keywords_returns_usage_records(monkeypatch):
     """research_keywords must drain the buffer; each Claude call appends one record."""
 
-    def _fake_ask_claude(*_a, **_kw):
+    def _fake_ask(*_a, **_kw):
         # Simulate what the real wrapper does internally — record_call appends
         # to the thread-local usage buffer (and best-effort to state.api_calls).
         record_call(model="claude-sonnet-4-6", input_tokens=120, output_tokens=35)
@@ -90,7 +90,7 @@ def test_research_keywords_returns_usage_records(monkeypatch):
 
     _stub_collectors(monkeypatch)
     monkeypatch.setattr(kw_mod, "load_prompt", lambda *a, **kw: "stub")
-    monkeypatch.setattr(kw_mod, "ask_claude", _fake_ask_claude)
+    monkeypatch.setattr(kw_mod, "ask", _fake_ask)
 
     result = kw_mod.research_keywords("深度睡眠", en_topic="deep sleep")
 
@@ -112,7 +112,7 @@ def test_research_keywords_drains_buffer_on_exception(monkeypatch):
 
     _stub_collectors(monkeypatch)
     monkeypatch.setattr(kw_mod, "load_prompt", lambda *a, **kw: "stub")
-    monkeypatch.setattr(kw_mod, "ask_claude", _boom)
+    monkeypatch.setattr(kw_mod, "ask", _boom)
 
     with pytest.raises(RuntimeError, match="synthesis exploded"):
         kw_mod.research_keywords("深度睡眠", en_topic="deep sleep")

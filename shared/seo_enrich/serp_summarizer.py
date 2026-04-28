@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-from shared.anthropic_client import ask_claude
+from shared.llm import ask
 from shared.log import get_logger
 
 logger = get_logger("nakama.shared.seo_enrich.serp_summarizer")
@@ -102,7 +102,7 @@ def summarize_serp(pages: list[dict], primary_keyword: str) -> str | None:
     prompt = _PROMPT_TEMPLATE.format(kw=primary_keyword, n=n, pages_block=pages_block)
 
     try:
-        raw = ask_claude(
+        raw = ask(
             prompt,
             model=_HAIKU_MODEL,
             max_tokens=_MAX_TOKENS,

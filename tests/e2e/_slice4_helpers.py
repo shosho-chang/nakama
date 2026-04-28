@@ -46,7 +46,7 @@ def brook_llm_response_json() -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def fake_ask_claude_multi(
+def fake_ask_multi(
     messages: list[dict[str, Any]],
     *,
     system: str | None = None,
@@ -55,7 +55,7 @@ def fake_ask_claude_multi(
     temperature: float = 0.4,
     **_extra: Any,
 ) -> str:
-    """Stand-in for ``shared.anthropic_client.ask_claude_multi``.
+    """Stand-in for ``shared.llm.ask_multi``.
 
     Mirrors the real signature so kwargs the caller passes are validated by
     Python at call time — typo defense.

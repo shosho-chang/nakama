@@ -4,7 +4,7 @@ End-to-end: topic in → ``compose_and_enqueue`` → DraftV1 / PublishWpPostV1 �
 ``approval_queue`` row landing in ``status='pending'`` for HITL.
 
 What is mocked:
-- ``shared.anthropic_client.ask_claude_multi`` — returns fixed AST-shaped JSON
+- ``shared.anthropic_client.ask_multi`` — returns fixed AST-shaped JSON
   (``_slice4_helpers.brook_llm_response_json``) so no real Claude call.
 
 What is NOT mocked:
@@ -22,13 +22,13 @@ from __future__ import annotations
 import pytest
 
 from shared import approval_queue
-from tests.e2e._slice4_helpers import fake_ask_claude_multi
+from tests.e2e._slice4_helpers import fake_ask_multi
 
 
 @pytest.fixture
 def mock_brook_llm(monkeypatch):
     """Patch the Anthropic call site Brook uses."""
-    monkeypatch.setattr("agents.brook.compose.ask_claude_multi", fake_ask_claude_multi)
+    monkeypatch.setattr("agents.brook.compose.ask_multi", fake_ask_multi)
 
 
 def test_brook_compose_and_enqueue_happy_path(mock_brook_llm):
