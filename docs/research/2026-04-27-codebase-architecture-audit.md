@@ -58,15 +58,23 @@
 - singleton factory / set_current_agent / usage 計費 / retry 兩邊 200 行幾乎一樣；gemini 還 re-export anthropic 的 set_current_agent
 - Shape：DUPLICATED
 
-### ⑥ `get_context()` shallow interface 蓋 deep impl
-- `shared/memory.py:30-100` + `shared/agent_memory.py` + `shared/state.py:110-135`
-- 一函式三 input 內部讀 Tier 1/2/3 + truncate；bug 藏在 truncation，測試要同時 mock 檔案 + DB
-- Shape：SHALLOW interface 隱藏 deep impl
+### ⑥ `get_context()` shallow interface 蓋 deep impl（audit framing 誤判）**[NO-OP — verified 2026-04-28]**
+- `shared/memory.py:145-165`
+- ~~audit 原描述「一函式三 input 內部讀 Tier 1/2/3 + truncate；bug 藏在 truncation」~~ **誤判**：實際 `get_context()` 只讀 Tier 2（`shared.md` + `agents/{agent}.md`），15 行純 concat；不讀 Tier 1（CLAUDE.md 是 Claude Code 自動載入），不讀 Tier 3（`search_memory` 是 `shared.state` re-export，不在 `get_context` 路徑），不 truncate（`max_tokens=500` 跟 `task` 兩個參數都標 `預留給未來壓縮，目前未使用`）
+- **真正的 shape**：ADR-002 line 89-97 設計 `task` 篩 episodic、`max_tokens` 自動壓縮；Phase 1 只實作 step 1+2 的 shared+agent concat — 兩個參數是 ADR 預留 scaffolding，不是 dead code 也不是 deep impl 的 shallow facade
+- 不動 code 理由：兩個 unused 參數是 ADR-documented intentional preservation（升級到 episodic / 壓縮時介面不變），不能就 YAGNI 砍掉與 ADR 衝突；caller `agents/base.py:39` + `agents/robin/ingest.py:51` 已經傳 `task` 進去，將來實作時 caller 不必動
+- 教訓：audit 看到 doctring 提「Tier 1/2/3」就反射說「一函式蓋三 input」，沒實際 trace 函式 body 真讀什麼
+- Shape verdict：**incomplete vs ADR**（不是 SHALLOW interface 隱藏 deep impl）
 
-### ⑦ Prompt loader 隱式注入 shared partial — 呼叫端看不到依賴
+### ⑦ Prompt loader 隱式注入 shared partial — 呼叫端看不到依賴（部分 framing；ROI 偏低）**[DEFER — evaluated 2026-04-28]**
 - `shared/prompt_loader.py` + `prompts/shared/{domain,writing-style,vault-conventions}.md`
-- 改 `domain.md` 會無聲改 Robin / Brook / Nami 行為，agent code 看不出有這依賴
-- Shape：TIGHT COUPLING（implicit）
+- audit 原描述「改 `domain.md` 會無聲改 Robin / Brook / Nami 行為，agent code 看不出有這依賴」**部分對**：
+  - 16/40 prompt 用 partial token、13 caller 跨 9 agent/handler，blast radius 確實存在
+  - **但** `template.format_map(variables)` 對 unused token no-op，所以「implicit」只發生在實際用到 `{writing_style}` `{domain}` `{vault_conventions}` 的 prompt 上 — token 本身就是 in-template declaration（讀 `prompts/robin/summarize.md` 看到 `{writing_style}` 即知道有此依賴）
+  - agent code（Python）看不到依賴是真的，但 prompt 是 first-class 設計 artifact、template 自己 declare 算 OK
+- 不動 code 理由：cost > value — 16 prompt 加 frontmatter `partials:` declaration 或改成 explicit kwargs 都要動 13 caller，換來「在 Python 端也看得到 partial 依賴」邊際 clarity 偏低；token-as-declaration 已是事實上的 self-document
+- 觸發再評估條件：(a) 有第三方介接 prompt build pipeline（要 introspect 依賴）；(b) 增加 4+ 新 partial 變得難 grep
+- Shape verdict：**TIGHT COUPLING (implicit)**（framing 對但 ROI 偏低，DEFER）
 
 ### ⑧ Usopp publisher 600 行 monolith — 隱含 retry orchestration
 - `agents/usopp/publisher.py` + `shared/wordpress_client.py` + `shared/seopress_writer.py`
@@ -81,10 +89,13 @@
 - 連動：`tests/shared/test_doc_index.py::test_stats_returns_per_category_counts` 先前在 Windows 紅，PR #211 修綠
 - 教訓：下次跑 audit skill 要把候選 deletion test 真的對 file 跑一次，不要只看模組名稱猜 shape
 
-### ⑩ `shared/anomaly.py` 抽 56 行純數學 — false sharing
-- `shared/anomaly.py` + `agents/franky/anomaly_daemon.py`
-- 抽 3-sigma math 但 metric 選擇 / SQL agg 還在 franky 內，沒人 reuse
-- Shape：FALSE SHARING（抽得不夠廣）
+### ⑩ `shared/anomaly.py` 抽 56 行純數學 — false sharing（audit framing 誤判）**[NO-OP — verified 2026-04-28]**
+- `shared/anomaly.py` (76L, 兩函式 + 一 frozen dataclass) + `agents/franky/anomaly_daemon.py` (唯一 consumer) + `tests/shared/test_anomaly.py`
+- ~~audit 原描述「抽 3-sigma math 但 metric 選擇 / SQL agg 還在 franky 內，沒人 reuse」~~ **誤判**：模組 docstring (`shared/anomaly.py:1-9`) 明寫「Split…so the baseline / 3σ math can be unit-tested with plain `list[float]` inputs — no DB, no alert plumbing, no cron context」，分離目的是 testability 不是 reuse；`tests/shared/test_anomaly.py` 直接 import `BaselineStats / is_3sigma_anomaly / rolling_baseline` 用純 list 跑邊界測（cold-start / flat-baseline / one-sided），達成宣稱目的
+- 「false sharing」要求 abstraction 沒服務 stated purpose；這裡 stated purpose 是 testability、實際 達成，**不是 false sharing**；audit 把「沒第二個 consumer」直接等於「false sharing」忽略 testability 也算 valid stated purpose
+- 「metric 選擇 / SQL agg 應抽到 shared」違反 YAGNI：目前無第二個 anomaly consumer，Chopper / Brook / Robin 都不做 anomaly detection，現在抽是為虛構 reuse 設計
+- 教訓：audit 看到 single-consumer abstraction 就反射說「抽得不夠廣」，但 stated purpose 可能是 testability 而非 reuse — 該分清 false sharing（沒服務 purpose）vs YAGNI 過度抽象的反方向陷阱
+- Shape verdict：**intentional testability split**（不是 FALSE SHARING）
 
 ### ⑪ `shared/seo_audit/` + `shared/seo_enrich/` 沒 re-export — 只有 skill 看得見 **[seo_enrich DONE — PR #212；seo_audit 已 OK]**
 - `shared/seo_audit/*.py` (7 files) + `shared/seo_enrich/*.py` (3 files)
@@ -99,17 +110,45 @@
 
 ## ROI 排序（pending）
 
-**剩 pending**：
-- **③ KB writer interface 收緊** / **⑥ memory tier interface** / **⑦ prompt loader 顯式 dep** / **⑩ anomaly 抽得不夠廣** — 中優先，需先 verify framing
+**剩 pending（真有 code change 機會）**：
+- **③ KB writer interface 收緊** — ADR-011 §3.5 已 ack 待收緊，197-line dispatcher，唯一 caller `agents/robin/ingest.py:514`；中優先
 - **⑧ Usopp publisher** — ADR-001+006 設計如此，等實質要做 Chopper 留言 publisher 才動
-- **⑫** — ADR 已 acknowledge
 
-**已完成**：
+**No-op (framing 誤判 / 或 ROI 偏低，verified 不動 code)**：
+- ⑥ memory.get_context — ADR scaffolding 半實作，不是 SHALLOW interface 蓋 deep impl
+- ⑩ anomaly — testability split 達成 stated purpose，不是 false sharing
+- ⑦ prompt_loader — implicit 真存在但 token 本身是 in-template declaration，refactor cost > marginal clarity gain
+- ⑫ — ADR-009 已 acknowledge schema_version + fixture mitigation
+
+**已完成（PR merged）**：
 - ① + ⑤（合併處理）— PR #208 merged 2026-04-27 為 commit `e043e2a`
 - ⑨ doc_index Windows path bug — PR #211 merged 2026-04-27 為 `9362cfe`
 - ⑪ seo_enrich re-export — PR #212 merged 2026-04-27 為 `a095ad8`
 - ④ sanitizer 收編（compliance scanner 收編）— PR #214 merged 2026-04-28 為 `97fe5b2`
 - ② approval payload helpers push-down — PR #217 merged 2026-04-28（audit framing 第三次誤判紀錄）
+
+---
+
+## audit skill framing 誤判 ledger（5 件）
+
+| # | audit 寫的 shape | 真實 shape | 動 code? |
+|---|---|---|---|
+| ② | FSM 跟 payload 兩 namespace 沒鎖、漏寫 silent fail | OOP polymorphism 漏寫（isinstance ladder push down 成 @property）| Yes — PR #217 |
+| ④ | 三套 sanitizer（醫療詞彙 + tag + slug regex）散在三處 | 兩個 compliance scanner deprecation 沒收尾（其他兩個是不同關注點不該綁）| Yes — PR #214 |
+| ⑥ | 一函式三 input 內部讀 Tier 1/2/3 + truncate | ADR scaffolding 半實作，只讀 Tier 2，task / max_tokens 是預留參數 | No |
+| ⑨ | 純 pass-through `state.db`，每個 function 1:1 query | FTS5 over markdown index + Windows path bug | Yes — PR #211 |
+| ⑩ | 抽 3-sigma math 但其他抽得不夠廣，沒人 reuse | testability split 已達成 stated purpose，YAGNI 違反 false sharing 反向 | No |
+
+**meta 規律（5 次採樣）**：
+1. **textual coupling 反射** — audit 看到名字像 share/Tier/dispatcher 就反射說「沒鎖、太 shallow、抽得不夠廣」，但 Pydantic Literal + import-time assert + 顯式 raise 通常已處理 fail-fast
+2. **single consumer ≠ false sharing** — testability、edge-case isolation 是 valid stated purpose；audit 不該把「沒第二個 consumer」直接等於「false sharing」
+3. **dead param ≠ shallow facade** — ADR-documented intentional preservation（如 ADR-002 `task` / `max_tokens`）長得像 dead code，要對照 ADR 看 stated future use
+4. **真 hit 集中在 OOP 課題** — ② polymorphism / ④ deprecation / ⑨ Windows path / ⑪ re-export 都是 cohesion 錯位 / 漏 close-the-loop / OS-specific bug，不是 type system 課題
+
+**下次跑 skill 必須**：
+- 對每個候選跑 deletion test（讓編譯/測試 break）+ grep 真實 fail path（不只看 module 名）
+- 對照 ADR 看 dead param 是否是 documented preservation
+- 確認 abstraction 的 stated purpose（看 docstring + tests），別把 testability 當 false sharing
 
 ---
 
