@@ -609,8 +609,10 @@ def upsert_concept_page(
         action: one of create / update_merge / update_conflict / noop
             - create / update_conflict / noop: pure file I/O (no LLM call)
             - update_merge: 1× Claude Opus 4.7 diff-merge call via `_ask_llm`
-              (max_tokens=16000, temperature=0.2; ~$0.10–$0.50 per call). Caller
-              should batch-budget accordingly when ingesting many sources.
+              (max_tokens=16000, temperature=0.2; ~$0.15–$1.00 per call —
+              depends on existing body size; mature pages with full max_tokens
+              output reach ~$1.20 edge case). Caller should batch-budget
+              accordingly when ingesting many sources.
         source_link: wikilink form, e.g. "[[Sources/Books/foo/ch1]]"
         title: required for action=create
         domain: required for action=create (default "general" if missing)

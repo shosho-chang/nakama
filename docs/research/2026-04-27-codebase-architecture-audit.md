@@ -44,7 +44,7 @@
   - Caller `_execute_concept_action` 一次 call 把 whole bag 傳進去（line 514-523），不必知道哪個 action 要哪個 arg；deep module 介面正確
   - 拆 4 個 public function 等於把 dispatcher 推上 caller — caller 變成 isinstance ladder，**zero-net cohesion shift**
 - **真正的 friction**：`update_merge` 內部 `_ask_llm()` 走 Claude Opus 4.7 max_tokens=16000，但 docstring 沒標 cost；caller 看不出此 action 是 LLM 而其他 3 action 是純 I/O — leaky abstraction（這是 deep module 的常見 cost transparency 議題，**不是要重構成 shallow**）
-- 修法：docstring action 列表加 cost note（update_merge ~$0.10–$0.50 per call），其他 3 action 純 file I/O；caller 自行 batch-budget
+- 修法：docstring action 列表加 cost note（update_merge ~$0.15–$1.00 per call，mature page edge case 達 ~$1.20），其他 3 action 純 file I/O；caller 自行 batch-budget
 - 不拆 dispatcher 理由：(a) ADR-011 §3.5 凍結 (b) deep module 是 stated design pattern (c) caller 端 ladder 等價
 - 教訓：audit 用 Ousterhout 術語但反向使用 — small interface + large impl 是好事不是壞事；應分清 (i) deep module（小介面、大實作、cost 透明）vs (ii) leaky abstraction（小介面、大實作、cost 不透明）；後者修 docstring 不修架構
 - Shape verdict：**deep module + leaky abstraction（docstring 修，不重構）**
