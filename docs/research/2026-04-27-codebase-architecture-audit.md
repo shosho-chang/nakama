@@ -37,11 +37,17 @@
 - 不重開 ADR-006：本 PR 不改 FSM、不改 DB schema、不改 DoD；只是 derived attribute 歸位
 - ~~_可考慮重開 ADR-006_~~ — 不必
 
-### ③ KB writer 三層嵌套 — 4-action dispatcher 內部混 I/O + LLM + I/O
-- `shared/kb_writer.py:88-220, 382-500` + `agents/robin/ingest.py:477-530`
-- `upsert_concept_page(action, ...)` 250 行，`update_merge` 內部讀檔 → call LLM → 寫檔；呼叫端看不出代價
-- Shape：SHALLOW interface 隱藏 deep impl
-- ADR-011 §3.5 可考慮收緊
+### ③ KB writer 三層嵌套 — 4-action dispatcher 內部混 I/O + LLM + I/O（Ousterhout 術語誤用）**[NO-OP + docstring fix — verified 2026-04-28]**
+- `shared/kb_writer.py:591-786`（197 行，非 250）+ `agents/robin/ingest.py:484-526`（caller `_execute_concept_action`）
+- ~~audit「SHALLOW interface 隱藏 deep impl」當 bug 描述~~ **術語誤用**：Ousterhout 〈Philosophy of Software Design〉「**深模組（deep module）正是 small interface + large impl**」是該書推崇的設計範式，audit 把這形狀當 bug 倒過來
+  - ADR-011 §3.5 line 307 明寫「按 action 分派」— dispatcher 是 ADR 凍結設計
+  - Caller `_execute_concept_action` 一次 call 把 whole bag 傳進去（line 514-523），不必知道哪個 action 要哪個 arg；deep module 介面正確
+  - 拆 4 個 public function 等於把 dispatcher 推上 caller — caller 變成 isinstance ladder，**zero-net cohesion shift**
+- **真正的 friction**：`update_merge` 內部 `_ask_llm()` 走 Claude Opus 4.7 max_tokens=16000，但 docstring 沒標 cost；caller 看不出此 action 是 LLM 而其他 3 action 是純 I/O — leaky abstraction（這是 deep module 的常見 cost transparency 議題，**不是要重構成 shallow**）
+- 修法：docstring action 列表加 cost note（update_merge ~$0.10–$0.50 per call），其他 3 action 純 file I/O；caller 自行 batch-budget
+- 不拆 dispatcher 理由：(a) ADR-011 §3.5 凍結 (b) deep module 是 stated design pattern (c) caller 端 ladder 等價
+- 教訓：audit 用 Ousterhout 術語但反向使用 — small interface + large impl 是好事不是壞事；應分清 (i) deep module（小介面、大實作、cost 透明）vs (ii) leaky abstraction（小介面、大實作、cost 不透明）；後者修 docstring 不修架構
+- Shape verdict：**deep module + leaky abstraction（docstring 修，不重構）**
 
 ### ④ 內容檢查邏輯散在三處 — 沒統一 sanitizer（audit framing 誤判）**[DONE — PR #214]**
 - ~~audit 原描述「醫療詞彙 / block-level tag / slug regex 三套散在三處要統一」~~ **誤判**：三模組是三個不同關注點：
@@ -111,10 +117,10 @@
 ## ROI 排序（pending）
 
 **剩 pending（真有 code change 機會）**：
-- **③ KB writer interface 收緊** — ADR-011 §3.5 已 ack 待收緊，197-line dispatcher，唯一 caller `agents/robin/ingest.py:514`；中優先
 - **⑧ Usopp publisher** — ADR-001+006 設計如此，等實質要做 Chopper 留言 publisher 才動
 
-**No-op (framing 誤判 / 或 ROI 偏低，verified 不動 code)**：
+**No-op (framing 誤判 / 或 ROI 偏低，verified 不動架構)**：
+- ③ kb_writer dispatcher — Ousterhout 術語誤用（deep module 是好事），ADR-011 §3.5 凍結 dispatcher 設計；只 update_merge LLM cost 不透明 → docstring 1 行修
 - ⑥ memory.get_context — ADR scaffolding 半實作，不是 SHALLOW interface 蓋 deep impl
 - ⑩ anomaly — testability split 達成 stated purpose，不是 false sharing
 - ⑦ prompt_loader — implicit 真存在但 token 本身是 in-template declaration，refactor cost > marginal clarity gain
@@ -129,26 +135,29 @@
 
 ---
 
-## audit skill framing 誤判 ledger（5 件）
+## audit skill framing 誤判 ledger（6 件 / 12 候選 = 50%）
 
 | # | audit 寫的 shape | 真實 shape | 動 code? |
 |---|---|---|---|
 | ② | FSM 跟 payload 兩 namespace 沒鎖、漏寫 silent fail | OOP polymorphism 漏寫（isinstance ladder push down 成 @property）| Yes — PR #217 |
+| ③ | SHALLOW interface 隱藏 deep impl（誤當 bug） | Ousterhout deep module 正範式（small interface + large impl 是好事）；只 update_merge LLM cost 不透明，docstring 修 | Docs only — PR #220 |
 | ④ | 三套 sanitizer（醫療詞彙 + tag + slug regex）散在三處 | 兩個 compliance scanner deprecation 沒收尾（其他兩個是不同關注點不該綁）| Yes — PR #214 |
 | ⑥ | 一函式三 input 內部讀 Tier 1/2/3 + truncate | ADR scaffolding 半實作，只讀 Tier 2，task / max_tokens 是預留參數 | No |
 | ⑨ | 純 pass-through `state.db`，每個 function 1:1 query | FTS5 over markdown index + Windows path bug | Yes — PR #211 |
 | ⑩ | 抽 3-sigma math 但其他抽得不夠廣，沒人 reuse | testability split 已達成 stated purpose，YAGNI 違反 false sharing 反向 | No |
 
-**meta 規律（5 次採樣）**：
+**meta 規律（6 次採樣，半數誤判）**：
 1. **textual coupling 反射** — audit 看到名字像 share/Tier/dispatcher 就反射說「沒鎖、太 shallow、抽得不夠廣」，但 Pydantic Literal + import-time assert + 顯式 raise 通常已處理 fail-fast
 2. **single consumer ≠ false sharing** — testability、edge-case isolation 是 valid stated purpose；audit 不該把「沒第二個 consumer」直接等於「false sharing」
 3. **dead param ≠ shallow facade** — ADR-documented intentional preservation（如 ADR-002 `task` / `max_tokens`）長得像 dead code，要對照 ADR 看 stated future use
-4. **真 hit 集中在 OOP 課題** — ② polymorphism / ④ deprecation / ⑨ Windows path / ⑪ re-export 都是 cohesion 錯位 / 漏 close-the-loop / OS-specific bug，不是 type system 課題
+4. **Ousterhout 術語反向** — 「small interface + large impl」=「深模組」是該書推崇的設計範式；audit 卻把 `SHALLOW interface 隱藏 deep impl` 當 bug 描述（③）。應分清 (i) deep module（cost 透明）vs (ii) leaky abstraction（cost 不透明，docstring 修不重構）
+5. **真 hit 集中在 OOP 收尾課題** — ② polymorphism / ④ deprecation / ⑨ Windows path / ⑪ re-export 都是 cohesion 錯位 / 漏 close-the-loop / OS-specific bug，不是 type system 課題
 
 **下次跑 skill 必須**：
 - 對每個候選跑 deletion test（讓編譯/測試 break）+ grep 真實 fail path（不只看 module 名）
 - 對照 ADR 看 dead param 是否是 documented preservation
 - 確認 abstraction 的 stated purpose（看 docstring + tests），別把 testability 當 false sharing
+- 用 Ousterhout 術語前先 sanity check：deep module 是好事；分清「深模組」vs「leaky abstraction」（前者修架構、後者修 docstring）
 
 ---
 
