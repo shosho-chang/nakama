@@ -47,7 +47,7 @@ def test_zoro_handle_sets_current_agent_to_zoro():
     captured_agent: list[str | None] = []
 
     def fake_ask(**kwargs):
-        from shared.anthropic_client import _local
+        from shared.llm_context import _local
 
         captured_agent.append(getattr(_local, "agent", None))
         return "x"
