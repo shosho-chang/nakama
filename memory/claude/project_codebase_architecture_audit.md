@@ -15,7 +15,7 @@ originSessionId: 3d901e7b-183e-450a-a0bf-2f06311b6452
 - ④ sanitizer 收編 — PR #214 merged 2026-04-28 為 `97fe5b2`（audit framing 誤判 #2 — 兩個 compliance scanner deprecation；net −57 LOC）
 - ② approval payload helpers push-down — PR #217 merged 2026-04-28（audit framing 誤判 #3 — 真 shape 是 isinstance ladder push down @property）
 
-**No-op verified（framing 误判 / ROI 偏低）2026-04-28**：
+**No-op verified（framing 誤判 / ROI 偏低）2026-04-28**：
 - ⑥ memory.get_context — audit 寫「Tier 1/2/3 + truncate」全錯（誤判 #4），實際只讀 Tier 2、`task` / `max_tokens` 是 ADR-002 預留 scaffolding（line 89-97 寫明 future episodic + 壓縮）；保留參數 = 不動 code
 - ⑩ anomaly — audit 寫「false sharing 抽得不夠廣」誤判 #5：模組 docstring 言明 testability split，`tests/shared/test_anomaly.py` 用純 list 測，stated purpose 達成；YAGNI 不該為虛構 reuse 擴大；保留現狀
 - ⑦ prompt_loader — implicit 真存在（16/40 prompt 用 partial token、13 caller）但 `format_map` 對 unused token no-op、token 本身是 in-template declaration、refactor cost > marginal clarity gain；DEFER 直到有第三方 prompt build pipeline 介接

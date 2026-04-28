@@ -58,7 +58,7 @@
 - singleton factory / set_current_agent / usage 計費 / retry 兩邊 200 行幾乎一樣；gemini 還 re-export anthropic 的 set_current_agent
 - Shape：DUPLICATED
 
-### ⑥ `get_context()` shallow interface 蓋 deep impl（audit framing 误判）**[NO-OP — verified 2026-04-28]**
+### ⑥ `get_context()` shallow interface 蓋 deep impl（audit framing 誤判）**[NO-OP — verified 2026-04-28]**
 - `shared/memory.py:145-165`
 - ~~audit 原描述「一函式三 input 內部讀 Tier 1/2/3 + truncate；bug 藏在 truncation」~~ **誤判**：實際 `get_context()` 只讀 Tier 2（`shared.md` + `agents/{agent}.md`），15 行純 concat；不讀 Tier 1（CLAUDE.md 是 Claude Code 自動載入），不讀 Tier 3（`search_memory` 是 `shared.state` re-export，不在 `get_context` 路徑），不 truncate（`max_tokens=500` 跟 `task` 兩個參數都標 `預留給未來壓縮，目前未使用`）
 - **真正的 shape**：ADR-002 line 89-97 設計 `task` 篩 episodic、`max_tokens` 自動壓縮；Phase 1 只實作 step 1+2 的 shared+agent concat — 兩個參數是 ADR 預留 scaffolding，不是 dead code 也不是 deep impl 的 shallow facade
@@ -89,7 +89,7 @@
 - 連動：`tests/shared/test_doc_index.py::test_stats_returns_per_category_counts` 先前在 Windows 紅，PR #211 修綠
 - 教訓：下次跑 audit skill 要把候選 deletion test 真的對 file 跑一次，不要只看模組名稱猜 shape
 
-### ⑩ `shared/anomaly.py` 抽 56 行純數學 — false sharing（audit framing 误判）**[NO-OP — verified 2026-04-28]**
+### ⑩ `shared/anomaly.py` 抽 56 行純數學 — false sharing（audit framing 誤判）**[NO-OP — verified 2026-04-28]**
 - `shared/anomaly.py` (76L, 兩函式 + 一 frozen dataclass) + `agents/franky/anomaly_daemon.py` (唯一 consumer) + `tests/shared/test_anomaly.py`
 - ~~audit 原描述「抽 3-sigma math 但 metric 選擇 / SQL agg 還在 franky 內，沒人 reuse」~~ **誤判**：模組 docstring (`shared/anomaly.py:1-9`) 明寫「Split…so the baseline / 3σ math can be unit-tested with plain `list[float]` inputs — no DB, no alert plumbing, no cron context」，分離目的是 testability 不是 reuse；`tests/shared/test_anomaly.py` 直接 import `BaselineStats / is_3sigma_anomaly / rolling_baseline` 用純 list 跑邊界測（cold-start / flat-baseline / one-sided），達成宣稱目的
 - 「false sharing」要求 abstraction 沒服務 stated purpose；這裡 stated purpose 是 testability、實際 達成，**不是 false sharing**；audit 把「沒第二個 consumer」直接等於「false sharing」忽略 testability 也算 valid stated purpose
@@ -114,7 +114,7 @@
 - **③ KB writer interface 收緊** — ADR-011 §3.5 已 ack 待收緊，197-line dispatcher，唯一 caller `agents/robin/ingest.py:514`；中優先
 - **⑧ Usopp publisher** — ADR-001+006 設計如此，等實質要做 Chopper 留言 publisher 才動
 
-**No-op (framing 误判 / 或 ROI 偏低，verified 不動 code)**：
+**No-op (framing 誤判 / 或 ROI 偏低，verified 不動 code)**：
 - ⑥ memory.get_context — ADR scaffolding 半實作，不是 SHALLOW interface 蓋 deep impl
 - ⑩ anomaly — testability split 達成 stated purpose，不是 false sharing
 - ⑦ prompt_loader — implicit 真存在但 token 本身是 in-template declaration，refactor cost > marginal clarity gain
@@ -129,7 +129,7 @@
 
 ---
 
-## audit skill framing 误判 ledger（5 件）
+## audit skill framing 誤判 ledger（5 件）
 
 | # | audit 寫的 shape | 真實 shape | 動 code? |
 |---|---|---|---|
