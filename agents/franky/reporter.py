@@ -13,7 +13,7 @@ from datetime import date, timedelta
 
 import yaml
 
-from shared.anthropic_client import ask_claude
+from shared.llm import ask
 from shared.log import get_logger
 from shared.obsidian_writer import write_page
 from shared.prompt_loader import load_prompt
@@ -256,7 +256,7 @@ class ReportGenerator:
             blocked_count=str(len(stats.blockers)),
         )
 
-        body = ask_claude(prompt, system=memory_context, max_tokens=2048)
+        body = ask(prompt, system=memory_context, max_tokens=2048)
 
         return WeeklyReport(
             period=period,

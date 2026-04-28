@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 
-from shared.anthropic_client import ask_claude
+from shared.llm import ask
 from shared.log import get_logger
 from shared.schemas.publishing import SEOContextV1
 
@@ -119,7 +119,7 @@ def narrow_to_topic(
     )
 
     try:
-        raw_text = ask_claude(prompt, model=_NARROW_MODEL, max_tokens=_NARROW_MAX_TOKENS)
+        raw_text = ask(prompt, model=_NARROW_MODEL, max_tokens=_NARROW_MAX_TOKENS)
         parsed = _extract_json(raw_text)
         keep_related = _safe_indices(parsed.get("keep_related", []), len(ctx.related_keywords))
         keep_striking = _safe_indices(parsed.get("keep_striking", []), len(ctx.striking_distance))

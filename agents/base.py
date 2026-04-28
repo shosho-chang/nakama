@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from shared.anthropic_client import set_current_agent
+from shared.llm_context import set_current_agent
 from shared.log import get_logger, kb_log
 from shared.memory import get_context, remember
 from shared.notifier import send_email

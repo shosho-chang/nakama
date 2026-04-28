@@ -53,8 +53,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
-from shared.anthropic_client import set_current_agent  # noqa: E402
 from shared.gsc_client import GSCClient  # noqa: E402
+from shared.llm_context import set_current_agent  # noqa: E402
 from shared.log import get_logger  # noqa: E402
 from shared.schemas.publishing import (  # noqa: E402
     KeywordMetricV1,

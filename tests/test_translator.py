@@ -185,7 +185,7 @@ def test_translate_segments_uses_claude(tmp_path):
     glossary_file.write_text("terms: {}\n", encoding="utf-8")
     mock_response = '[{"index": 1, "translation": "粒線體是細胞的發電廠。"}]'
     with (
-        patch("shared.translator.ask_claude", return_value=mock_response),
+        patch("shared.translator.ask", return_value=mock_response),
         patch("shared.translator._GLOSSARY_PATH", glossary_file),
     ):
         result = translate_segments(["Mitochondria are the powerhouses of the cell."])
@@ -206,7 +206,7 @@ def test_translate_segments_json_fallback(tmp_path):
         return "降級譯文"
 
     with (
-        patch("shared.translator.ask_claude", side_effect=mock_claude),
+        patch("shared.translator.ask", side_effect=mock_claude),
         patch("shared.translator._GLOSSARY_PATH", glossary_file),
     ):
         result = translate_segments(["Original text."])
@@ -220,7 +220,7 @@ def test_translate_segments_partial_json(tmp_path):
     glossary_file.write_text("terms: {}\n", encoding="utf-8")
     mock_response = '[{"index": 1, "translation": "第一段"}]'
     with (
-        patch("shared.translator.ask_claude", return_value=mock_response),
+        patch("shared.translator.ask", return_value=mock_response),
         patch("shared.translator._GLOSSARY_PATH", glossary_file),
     ):
         result = translate_segments(["Seg one.", "Seg two."])

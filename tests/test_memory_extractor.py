@@ -131,7 +131,7 @@ def test_extract_from_messages_saves_memories():
     )
     messages = [{"role": "user", "content": "我早上頭腦最清楚，你叫我船長就好"}]
 
-    with patch("shared.memory_extractor.ask_claude", return_value=fake_response):
+    with patch("shared.memory_extractor.ask", return_value=fake_response):
         ids = memory_extractor.extract_from_messages("nami", "U1", messages)
 
     assert len(ids) == 2
@@ -150,7 +150,7 @@ def test_extract_from_messages_skips_invalid_items():
             {"type": "fact"},  # 缺 content
         ]
     )
-    with patch("shared.memory_extractor.ask_claude", return_value=fake_response):
+    with patch("shared.memory_extractor.ask", return_value=fake_response):
         ids = memory_extractor.extract_from_messages(
             "nami", "U1", [{"role": "user", "content": "x"}]
         )
@@ -162,7 +162,7 @@ def test_extract_from_messages_skips_invalid_items():
 
 def test_extract_from_messages_llm_failure_returns_empty():
     """LLM 失敗時應記 warning 並回空 list，不拋例外。"""
-    with patch("shared.memory_extractor.ask_claude", side_effect=RuntimeError("API down")):
+    with patch("shared.memory_extractor.ask", side_effect=RuntimeError("API down")):
         ids = memory_extractor.extract_from_messages(
             "nami", "U1", [{"role": "user", "content": "x"}]
         )
@@ -177,7 +177,7 @@ def test_extract_from_messages_empty_messages():
 @pytest.mark.real_extractor
 def test_extract_in_background_returns_thread():
     fake_response = "[]"
-    with patch("shared.memory_extractor.ask_claude", return_value=fake_response):
+    with patch("shared.memory_extractor.ask", return_value=fake_response):
         t = memory_extractor.extract_in_background(
             "nami", "U1", [{"role": "user", "content": "hi"}]
         )
@@ -196,7 +196,7 @@ def test_extract_injects_existing_memories_with_content():
         captured_prompt["value"] = prompt
         return "[]"
 
-    with patch("shared.memory_extractor.ask_claude", side_effect=_capture):
+    with patch("shared.memory_extractor.ask", side_effect=_capture):
         memory_extractor.extract_from_messages("nami", "U1", [{"role": "user", "content": "test"}])
 
     value = captured_prompt["value"]
@@ -215,7 +215,7 @@ def test_extract_no_subjects_block_when_empty():
         captured_prompt["value"] = prompt
         return "[]"
 
-    with patch("shared.memory_extractor.ask_claude", side_effect=_capture):
+    with patch("shared.memory_extractor.ask", side_effect=_capture):
         memory_extractor.extract_from_messages("nami", "U1", [{"role": "user", "content": "test"}])
 
     assert "已有記憶" not in captured_prompt["value"]
@@ -231,9 +231,9 @@ def test_extract_dedup_via_subject():
     )
     messages = [{"role": "user", "content": "x"}]
 
-    with patch("shared.memory_extractor.ask_claude", return_value=first_response):
+    with patch("shared.memory_extractor.ask", return_value=first_response):
         memory_extractor.extract_from_messages("nami", "U1", messages)
-    with patch("shared.memory_extractor.ask_claude", return_value=second_response):
+    with patch("shared.memory_extractor.ask", return_value=second_response):
         memory_extractor.extract_from_messages("nami", "U1", messages)
 
     saved = agent_memory.list_all("nami", "U1")

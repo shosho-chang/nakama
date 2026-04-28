@@ -36,7 +36,7 @@ def _reset_brook_tables_flag(monkeypatch):
 
 
 def _mk_llm_mock(responses: list[str]):
-    """Sequential mock for ask_claude_multi — each call pops the next response."""
+    """Sequential mock for ask_multi — each call pops the next response."""
     calls = iter(responses)
 
     def _fake(messages, **kwargs):
@@ -53,7 +53,7 @@ def _mk_llm_mock(responses: list[str]):
 def test_start_conversation_creates_row_and_returns_outline():
     """Happy path: 建對話 → 存 user msg + assistant response → 回傳 dict."""
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         side_effect=_mk_llm_mock(["這是一份關於睡眠的大綱：\n1. 節律\n2. 光照\n3. 飲食"]),
     ) as mock_llm:
         result = start_conversation(topic="睡眠品質", kb_context="")
@@ -67,7 +67,7 @@ def test_start_conversation_creates_row_and_returns_outline():
 def test_start_conversation_persists_both_messages():
     """assistant response + initial user prompt 都該寫進 brook_messages。"""
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         side_effect=_mk_llm_mock(["大綱 v1"]),
     ):
         result = start_conversation(topic="腸道健康", kb_context="KB 摘要內容")
@@ -86,7 +86,7 @@ def test_start_conversation_persists_both_messages():
 def test_start_conversation_without_kb_context_ok():
     """kb_context 空字串不炸（會當成無 KB）。"""
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         side_effect=_mk_llm_mock(["大綱"]),
     ):
         result = start_conversation(topic="運動恢復")
@@ -102,7 +102,7 @@ def test_start_conversation_without_kb_context_ok():
 def test_send_message_appends_and_returns_turn_count():
     """第二輪 send 回 turn_count=2（第一輪由 start_conversation 建的）。"""
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         side_effect=_mk_llm_mock(["大綱 v1", "第 2 段草稿"]),
     ):
         started = start_conversation(topic="睡眠")
@@ -121,7 +121,7 @@ def test_send_message_unknown_conversation_id_raises():
 def test_send_message_persists_user_and_assistant():
     """3 輪對話後 DB 應有 6 則訊息（每輪 user+assistant 各一）。"""
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         side_effect=_mk_llm_mock(["r1", "r2", "r3"]),
     ):
         started = start_conversation(topic="營養")
@@ -142,7 +142,7 @@ def test_send_message_persists_user_and_assistant():
 def test_get_conversations_orders_by_updated_at_desc():
     """新寫入的對話排前面。"""
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         side_effect=_mk_llm_mock(["r1", "r2", "r3"]),
     ):
         a = start_conversation(topic="A")
@@ -158,7 +158,7 @@ def test_get_conversations_orders_by_updated_at_desc():
 
 def test_get_conversations_respects_limit():
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         side_effect=_mk_llm_mock(["r"] * 5),
     ):
         for i in range(3):
@@ -179,7 +179,7 @@ def test_get_conversation_returns_none_for_unknown_id():
 
 def test_export_draft_calls_llm_and_flips_phase_to_done():
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         side_effect=_mk_llm_mock(["大綱", "完整文章 markdown"]),
     ):
         started = start_conversation(topic="睡眠")
@@ -205,7 +205,7 @@ def test_export_draft_passes_full_conversation_to_llm(monkeypatch):
             return "最終文章 v1"
         return "對話中 response"
 
-    monkeypatch.setattr("agents.brook.compose.ask_claude_multi", _capture)
+    monkeypatch.setattr("agents.brook.compose.ask_multi", _capture)
 
     def _fake_prompt(agent, name, **kw):
         conv = kw.get("conversation", "")

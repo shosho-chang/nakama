@@ -154,7 +154,7 @@ def test_compose_without_seo_does_not_call_narrow():
     """No seo_context → narrow_to_topic 完全不該被呼叫。"""
     fake = _valid_llm_response()
     with (
-        patch("agents.brook.compose.ask_claude_multi", return_value=fake) as mock_llm,
+        patch("agents.brook.compose.ask_multi", return_value=fake) as mock_llm,
         patch("agents.brook.seo_narrow.narrow_to_topic") as mock_narrow,
     ):
         compose_and_enqueue(topic="讀書心得", category="book-review")
@@ -170,7 +170,7 @@ def test_compose_with_seo_runs_narrow_and_appends_block():
     ctx = _ctx()
 
     with (
-        patch("agents.brook.compose.ask_claude_multi", return_value=fake) as mock_llm,
+        patch("agents.brook.compose.ask_multi", return_value=fake) as mock_llm,
         patch(
             "agents.brook.seo_narrow.narrow_to_topic",
             return_value=ctx,  # narrow 回原 ctx 簡化測試
@@ -271,7 +271,7 @@ def test_narrow_to_topic_filters_using_llm_indices():
         cannibalization_warnings=[_cannibal("zone 2")],
     )
     fake_llm_json = json.dumps({"keep_related": [0, 2], "keep_striking": [0], "keep_cannibal": [0]})
-    with patch("agents.brook.seo_narrow.ask_claude", return_value=fake_llm_json):
+    with patch("agents.brook.seo_narrow.ask", return_value=fake_llm_json):
         narrowed = narrow_to_topic(ctx, "zone 2 訓練", ["zone 2"])
 
     assert [k.keyword for k in narrowed.related_keywords] == ["有氧心率", "最大攝氧量"]
@@ -283,7 +283,7 @@ def test_narrow_to_topic_filters_using_llm_indices():
 
 def test_narrow_to_topic_falls_back_on_llm_error():
     ctx = _ctx()
-    with patch("agents.brook.seo_narrow.ask_claude", side_effect=RuntimeError("API down")):
+    with patch("agents.brook.seo_narrow.ask", side_effect=RuntimeError("API down")):
         result = narrow_to_topic(ctx, "zone 2 訓練", [])
     assert result == ctx  # 原 ctx 不變
 
@@ -302,7 +302,7 @@ def test_narrow_to_topic_drops_invalid_indices():
             "keep_cannibal": [],
         }
     )
-    with patch("agents.brook.seo_narrow.ask_claude", return_value=fake_llm_json):
+    with patch("agents.brook.seo_narrow.ask", return_value=fake_llm_json):
         narrowed = narrow_to_topic(ctx, "zone 2", [])
 
     assert [k.keyword for k in narrowed.related_keywords] == ["有氧心率", "睡眠"]
@@ -313,7 +313,7 @@ def test_narrow_to_topic_drops_invalid_indices():
 def test_narrow_to_topic_skips_when_all_lists_empty():
     """三個 list 全空 → 直接回原 ctx，不打 LLM。"""
     ctx = _ctx(related_keywords=[], striking_distance=[], cannibalization_warnings=[])
-    with patch("agents.brook.seo_narrow.ask_claude") as mock_llm:
+    with patch("agents.brook.seo_narrow.ask") as mock_llm:
         result = narrow_to_topic(ctx, "topic", [])
     mock_llm.assert_not_called()
     assert result == ctx
@@ -321,7 +321,7 @@ def test_narrow_to_topic_skips_when_all_lists_empty():
 
 def test_narrow_to_topic_falls_back_on_malformed_json():
     ctx = _ctx()
-    with patch("agents.brook.seo_narrow.ask_claude", return_value="not json at all"):
+    with patch("agents.brook.seo_narrow.ask", return_value="not json at all"):
         result = narrow_to_topic(ctx, "topic", [])
     assert result == ctx
 
@@ -334,7 +334,7 @@ def test_narrow_to_topic_falls_back_on_malformed_json():
 def test_narrow_returns_frozen_ctx_round_trip_json():
     ctx = _ctx()
     fake_llm_json = json.dumps({"keep_related": [0], "keep_striking": [0], "keep_cannibal": [0]})
-    with patch("agents.brook.seo_narrow.ask_claude", return_value=fake_llm_json):
+    with patch("agents.brook.seo_narrow.ask", return_value=fake_llm_json):
         narrowed = narrow_to_topic(ctx, "zone 2", [])
     # frozen 不能 mutate
     with pytest.raises(ValidationError):

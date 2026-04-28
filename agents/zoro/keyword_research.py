@@ -13,8 +13,8 @@ from agents.zoro.reddit_api import search_reddit_posts
 from agents.zoro.trends_api import get_trends
 from agents.zoro.twitter_api import search_recent_tweets
 from agents.zoro.youtube_api import search_top_videos
-from shared.anthropic_client import (
-    ask_claude,
+from shared.llm import ask
+from shared.llm_context import (
     set_current_agent,
     start_usage_tracking,
     stop_usage_tracking,
@@ -33,7 +33,7 @@ def _auto_translate(topic: str) -> str:
     Lower-cased before return so downstream dedup / filename / cache lookups
     match regardless of Claude's casing choice.
     """
-    raw = ask_claude(
+    raw = ask(
         "Translate the following topic to English."
         " Reply with ONLY the English term, nothing else."
         f"\n\n{topic}",
@@ -156,7 +156,7 @@ def _research_keywords_inner(
         reddit_data_en=reddit_data_en,
     )
 
-    raw = ask_claude(prompt, max_tokens=4096, temperature=0.5)
+    raw = ask(prompt, max_tokens=4096, temperature=0.5)
     result = _parse_claude_response(raw)
 
     # ── Attach raw data for Obsidian rendering ─────────────────────────

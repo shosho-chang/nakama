@@ -10,7 +10,8 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from shared.anthropic_client import ask_claude, set_current_agent
+from shared.llm import ask
+from shared.llm_context import set_current_agent
 from shared.utils import extract_frontmatter
 
 TOP_K = 8
@@ -115,10 +116,11 @@ def search_kb(
     )
 
     set_current_agent("robin")
-    # Use shared.anthropic_client.ask_claude wrapper so `record_api_call` fires
-    # (the previous direct `client.messages.create` skipped cost tracking — see
-    # follow-up A3 in project_seo_d2_f_merged_2026_04_26.md).
-    text = ask_claude(
+    # Route via shared.llm.ask facade so cost tracking fires through
+    # shared.llm_observability.record_call (the previous direct
+    # `client.messages.create` skipped cost tracking — see follow-up A3 in
+    # project_seo_d2_f_merged_2026_04_26.md).
+    text = ask(
         prompt,
         model="claude-haiku-4-5-20251001",
         max_tokens=1024,

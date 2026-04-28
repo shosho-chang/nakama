@@ -26,7 +26,8 @@ from typing import Any, Literal
 
 from bs4 import BeautifulSoup
 
-from shared.anthropic_client import ask_claude, set_current_agent
+from shared.llm import ask
+from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.seo_audit.types import AuditCheck
 
@@ -362,11 +363,12 @@ def review(
     )
 
     set_current_agent("brook")  # SEO audit 暫掛 brook，cost tracking 一致
-    # Use shared.anthropic_client.ask_claude wrapper so `record_api_call` fires
-    # (the previous direct `client.messages.create` skipped cost tracking — see
-    # follow-up A3 in project_seo_d2_f_merged_2026_04_26.md).
+    # Route via shared.llm.ask facade so cost tracking fires through
+    # shared.llm_observability.record_call (the previous direct
+    # `client.messages.create` skipped cost tracking — see follow-up A3 in
+    # project_seo_d2_f_merged_2026_04_26.md).
     try:
-        text = ask_claude(
+        text = ask(
             user,
             system=system,
             model=_model_for_level(model),

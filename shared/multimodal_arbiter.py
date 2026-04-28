@@ -4,7 +4,7 @@ pipeline：
     SRT + uncertainties (from Opus pass 1)
       → 反查每個 uncertain line 的時間戳
       → audio_clip.extract_clip 切出 ±padding 片段
-      → gemini_client.ask_gemini_audio 帶 Pydantic schema 仲裁
+      → shared.llm.ask_with_audio (Gemini) 帶 Pydantic schema 仲裁
       → 回傳 list[ArbitrationVerdict]（按原順序）
 
 設計原則：
@@ -24,7 +24,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from shared.audio_clip import extract_clip
-from shared.gemini_client import ask_gemini_audio, set_current_agent
+from shared.llm import ask_with_audio
+from shared.llm_context import set_current_agent
 from shared.log import get_logger
 
 logger = get_logger("nakama.multimodal_arbiter")
@@ -202,7 +203,7 @@ def _arbitrate_one(
     try:
         clip_path = extract_clip(audio_path, start, end, padding=padding)
         system, user = _build_prompt(uncertain, prev_text, next_text, start, end)
-        result: _GeminiResponse = ask_gemini_audio(
+        result: _GeminiResponse = ask_with_audio(
             clip_path,
             user,
             response_schema=_GeminiResponse,

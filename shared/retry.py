@@ -3,7 +3,7 @@
 用法：
     from shared.retry import with_retry
 
-    result = with_retry(ask_claude, prompt="...", system="...")
+    result = with_retry(ask, prompt="...", system="...")
 
     # 或直接用在任何 callable
     result = with_retry(

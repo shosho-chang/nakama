@@ -386,7 +386,7 @@ def _correct_with_llm(
             - 有仲裁時 qc_items 含 verdict/final_text/gemini_reasoning/confidence
             - 無仲裁時 qc_items 為原始 uncertainties（保持向下相容）
     """
-    from shared.anthropic_client import ask_claude
+    from shared.llm import ask
 
     entries = _extract_srt_texts(srt_content)
     if not entries:
@@ -460,7 +460,7 @@ def _correct_with_llm(
     prompt = f"請校正以下語音辨識逐字稿：\n\n{numbered_text}"
 
     logger.info(f"LLM 校正：{len(entries)} 行，模型 {model}")
-    raw = ask_claude(prompt, system=system, model=model, max_tokens=16384)
+    raw = ask(prompt, system=system, model=model, max_tokens=16384)
 
     # ── 解析 JSON 回傳 ──
     corrected, uncertainties = _parse_llm_response(raw, len(entries))

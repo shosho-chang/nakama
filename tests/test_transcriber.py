@@ -165,7 +165,7 @@ def test_correct_with_llm_basic():
     """測試 LLM 校正的完整流程（mock ask_claude，JSON 格式回傳）。"""
     mock_response = '{"corrections": {"2": "NMN是一種重要的分子"}, "uncertain": []}'
 
-    with patch("shared.anthropic_client.ask_claude", return_value=mock_response):
+    with patch("shared.llm.ask", return_value=mock_response):
         result, uncertainties = _correct_with_llm(
             _SAMPLE_SRT, context_files=[], model="claude-opus-4-7"
         )
@@ -189,7 +189,7 @@ def test_correct_with_llm_with_context(tmp_path):
 
     mock_response = '{"corrections": {"2": "NMN是一種重要的分子"}, "uncertain": []}'
 
-    with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
+    with patch("shared.llm.ask", return_value=mock_response) as mock_ask:
         _correct_with_llm(_SAMPLE_SRT, context_files=[str(ctx)])
         call_kwargs = mock_ask.call_args
         assert "李大華" in call_kwargs.kwargs["system"]
@@ -472,7 +472,7 @@ def test_transcribe_with_llm_correction_writes_qc(tmp_path):
 
     with (
         patch("shared.transcriber._get_asr_model", return_value=mock_model),
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
     ):
         from shared.transcriber import transcribe
 
@@ -520,7 +520,7 @@ def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
 
     with (
         patch("shared.transcriber._get_asr_model", return_value=mock_model),
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
     ):
         from shared.transcriber import transcribe
 
@@ -616,7 +616,7 @@ def test_correct_with_llm_with_uncertainties():
         '"suggestion": "李大花博士的研究", "reason": "人名不確定", "risk": "high"}]}'
     )
 
-    with patch("shared.anthropic_client.ask_claude", return_value=mock_response):
+    with patch("shared.llm.ask", return_value=mock_response):
         result, uncertainties = _correct_with_llm(_SAMPLE_SRT, context_files=[])
 
     assert "NMN是一種重要的分子" in result
@@ -629,7 +629,7 @@ def test_correct_with_llm_host_show_name():
     """host_name/show_name 出現在 system prompt。"""
     mock_response = '{"corrections": {}, "uncertain": []}'
 
-    with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
+    with patch("shared.llm.ask", return_value=mock_response) as mock_ask:
         _correct_with_llm(
             _SAMPLE_SRT,
             context_files=[],
@@ -646,7 +646,7 @@ def test_correct_with_llm_pinyin_in_prompt():
     """確認 prompt 中包含拼音標注。"""
     mock_response = '{"corrections": {}, "uncertain": []}'
 
-    with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
+    with patch("shared.llm.ask", return_value=mock_response) as mock_ask:
         _correct_with_llm(_SAMPLE_SRT, context_files=[])
         call_args = mock_ask.call_args
         prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
@@ -663,7 +663,7 @@ def test_correct_with_llm_project_context():
         "context_text": "NMN 是一種 NAD+ 前驅物",
     }
 
-    with patch("shared.anthropic_client.ask_claude", return_value=mock_response) as mock_ask:
+    with patch("shared.llm.ask", return_value=mock_response) as mock_ask:
         _correct_with_llm(_SAMPLE_SRT, context_files=[], project_context=proj_ctx)
         call_kwargs = mock_ask.call_args
         system = call_kwargs.kwargs["system"]
@@ -801,7 +801,7 @@ def test_correct_with_llm_no_uncertainties_skips_arbitration(tmp_path):
     mock_response = '{"corrections": {"2": "NMN是一種重要的分子"}, "uncertain": []}'
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch("shared.multimodal_arbiter.arbitrate_uncertain") as mock_arb,
     ):
         result, qc_items = _correct_with_llm(
@@ -825,7 +825,7 @@ def test_correct_with_llm_arbitration_disabled(tmp_path):
     )
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch("shared.multimodal_arbiter.arbitrate_uncertain") as mock_arb,
     ):
         _, qc_items = _correct_with_llm(
@@ -846,7 +846,7 @@ def test_correct_with_llm_no_audio_skips_arbitration():
     )
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch("shared.multimodal_arbiter.arbitrate_uncertain") as mock_arb,
     ):
         _, qc_items = _correct_with_llm(
@@ -887,7 +887,7 @@ def test_correct_with_llm_applies_verdicts(tmp_path):
     ]
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
     ):
         result, qc_items = _correct_with_llm(
@@ -922,7 +922,7 @@ def test_correct_with_llm_low_confidence_goes_to_qc(tmp_path):
     ]
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
     ):
         _, qc_items = _correct_with_llm(
@@ -954,7 +954,7 @@ def test_correct_with_llm_accept_suggestion_not_in_pass1_corrections(tmp_path):
     verdicts = [_make_verdict(3, "accept_suggestion", "李大花博士的研究", confidence=0.9)]
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
     ):
         result, qc_items = _correct_with_llm(
@@ -980,7 +980,7 @@ def test_correct_with_llm_uncertain_verdict_drops_correction(tmp_path):
     verdicts = [_make_verdict(2, "uncertain", "NMM是一種重要的分子", confidence=0.0)]
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
     ):
         result, qc_items = _correct_with_llm(
@@ -1008,7 +1008,7 @@ def test_correct_with_llm_refused_verdict_drops_correction_and_qc(tmp_path):
     verdicts = [_make_verdict(2, "refused", "NMM是一種重要的分子", confidence=0.0)]
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch("shared.multimodal_arbiter.arbitrate_uncertain", return_value=verdicts),
     ):
         result, qc_items = _correct_with_llm(
@@ -1034,7 +1034,7 @@ def test_correct_with_llm_arbitration_raises_fallback(tmp_path):
     )
 
     with (
-        patch("shared.anthropic_client.ask_claude", return_value=mock_response),
+        patch("shared.llm.ask", return_value=mock_response),
         patch(
             "shared.multimodal_arbiter.arbitrate_uncertain",
             side_effect=FileNotFoundError("音檔不見了"),

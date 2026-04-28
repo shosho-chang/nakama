@@ -101,7 +101,7 @@ def test_new_draft_id_pattern():
 
 def test_compose_and_enqueue_happy_path():
     fake_response = _valid_llm_response()
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake_response) as mock_llm:
+    with patch("agents.brook.compose.ask_multi", return_value=fake_response) as mock_llm:
         result = compose_and_enqueue(topic="讀書心得：原子習慣", category="book-review")
 
     assert mock_llm.called
@@ -130,7 +130,7 @@ def test_compose_and_enqueue_happy_path():
 def test_auto_category_detection():
     """category=None 時靠 detect_category 依 topic 關鍵字判斷。"""
     fake = _valid_llm_response()
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         result = compose_and_enqueue(topic="這本書帶我看見的三件事")
     assert result["category"] == "book-review"
 
@@ -153,7 +153,7 @@ def test_medical_claim_flags_propagate_to_payload():
             }
         ]
     )
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         result = compose_and_enqueue(topic="讀書心得：實證科學", category="book-review")
 
     assert result["compliance_flags"].medical_claim is True
@@ -171,7 +171,7 @@ def test_blacklisted_tags_rejected():
     fake = _valid_llm_response(
         tags=["book-review", "cancer-cure", "habits"],
     )
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         result = compose_and_enqueue(topic="讀書心得", category="book-review")
 
     row = _queue_row(result["queue_row_id"])
@@ -182,7 +182,7 @@ def test_blacklisted_tags_rejected():
 
 def test_llm_returns_non_json_raises_parse_error():
     with patch(
-        "agents.brook.compose.ask_claude_multi",
+        "agents.brook.compose.ask_multi",
         return_value="I'm sorry, I cannot comply.",
     ):
         with pytest.raises(ComposeOutputParseError):
@@ -191,14 +191,14 @@ def test_llm_returns_non_json_raises_parse_error():
 
 def test_empty_blocks_raises_parse_error():
     fake = _valid_llm_response(blocks=[])
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         with pytest.raises(ComposeOutputParseError):
             compose_and_enqueue(topic="讀書心得", category="book-review")
 
 
 def test_primary_category_override_wins_over_profile():
     fake = _valid_llm_response()
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         result = compose_and_enqueue(
             topic="科普文章",
             category="science",
@@ -214,7 +214,7 @@ def test_scheduled_at_propagated_to_payload():
 
     fake = _valid_llm_response()
     scheduled = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc)
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         result = compose_and_enqueue(
             topic="讀書心得",
             category="book-review",
@@ -228,7 +228,7 @@ def test_scheduled_at_propagated_to_payload():
 
 def test_default_tag_hints_used_when_llm_returns_empty_tags():
     fake = _valid_llm_response(tags=[])
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         result = compose_and_enqueue(topic="讀書心得", category="book-review")
     row = _queue_row(result["queue_row_id"])
     payload = ApprovalPayloadV1Adapter.validate_python(json.loads(row["payload"]))
@@ -239,7 +239,7 @@ def test_default_tag_hints_used_when_llm_returns_empty_tags():
 def test_llm_title_too_short_wraps_as_parse_error():
     """title < 5 字（DraftV1 下限）ValidationError 必須轉 ComposeOutputParseError。"""
     fake = _valid_llm_response(title="太短")
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         with pytest.raises(ComposeOutputParseError):
             compose_and_enqueue(topic="讀書心得", category="book-review")
 
@@ -267,7 +267,7 @@ def test_llm_missing_required_key_wraps_as_parse_error():
         ],
     }
     fake = json.dumps(body, ensure_ascii=False)
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         with pytest.raises(ComposeOutputParseError):
             compose_and_enqueue(topic="讀書心得", category="book-review")
 
@@ -275,6 +275,6 @@ def test_llm_missing_required_key_wraps_as_parse_error():
 def test_llm_bad_slug_pattern_wraps_as_parse_error():
     """LLM 送 CJK slug → DraftV1.slug_candidates pattern fail → ComposeOutputParseError。"""
     fake = _valid_llm_response(slug_candidates=["這是中文slug"])
-    with patch("agents.brook.compose.ask_claude_multi", return_value=fake):
+    with patch("agents.brook.compose.ask_multi", return_value=fake):
         with pytest.raises(ComposeOutputParseError):
             compose_and_enqueue(topic="讀書心得", category="book-review")

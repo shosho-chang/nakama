@@ -22,8 +22,9 @@ from agents.brook.style_profile_loader import (
     load_style_profile,
 )
 from shared import approval_queue, gutenberg_builder
-from shared.anthropic_client import ask_claude_multi, set_current_agent
 from shared.compliance import scan_draft_compliance, scan_text
+from shared.llm import ask_multi
+from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.prompt_loader import load_prompt
 from shared.schemas.approval import PublishWpPostV1
@@ -181,7 +182,7 @@ def start_conversation(
     system = _build_system_prompt(kb_context)
     messages = [{"role": "user", "content": user_msg}]
 
-    response = ask_claude_multi(messages, system=system, temperature=0.5)
+    response = ask_multi(messages, system=system, temperature=0.5)
     _save_message(conv_id, "assistant", response)
 
     logger.info(f"Brook 新對話：{conv_id} — {topic}")
@@ -211,7 +212,7 @@ def send_message(conversation_id: str, user_message: str) -> dict:
     messages = _build_messages_window(all_messages)
 
     system = _build_system_prompt(conv["kb_context"])
-    response = ask_claude_multi(messages, system=system, temperature=0.5)
+    response = ask_multi(messages, system=system, temperature=0.5)
     _save_message(conversation_id, "assistant", response)
 
     turn_count = len(all_messages) // 2 + 1
@@ -275,7 +276,7 @@ def export_draft(conversation_id: str) -> str:
 
     prompt = load_prompt("brook", "export", conversation=conversation_text)
     messages = [{"role": "user", "content": prompt}]
-    result = ask_claude_multi(messages, max_tokens=8192, temperature=0.3)
+    result = ask_multi(messages, max_tokens=8192, temperature=0.3)
 
     # 更新 phase
     conn = _get_conn()
@@ -503,7 +504,7 @@ def compose_and_enqueue(
     system_prompt = _build_compose_system_prompt(profile, narrowed_seo)
     user_msg = _build_user_request(topic, kb_context, source_content)
 
-    raw_text = ask_claude_multi(
+    raw_text = ask_multi(
         [{"role": "user", "content": user_msg}],
         system=system_prompt,
         model=model,
