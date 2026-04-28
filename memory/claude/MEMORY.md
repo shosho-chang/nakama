@@ -13,7 +13,7 @@
 - [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — 6 PR 全 merged 2026-04-26（4 PR review + 2 follow-up bug fix #180/#181）；三軸線下游 unblock
 - [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — **SEO D.2 PR #183 + F PR #185 merged 2026-04-26**：用途 1+2+3 production；12 follow-up + 4 test gap
 - [project_seo_dataforseo_scrap_decision.md](project_seo_dataforseo_scrap_decision.md) — **SEO Slice E 不接 DataForSEO 2026-04-26**：health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋
-- [project_codebase_architecture_audit.md](project_codebase_architecture_audit.md) — **2026-04-27 audit**：12 候選（①⑤ PR #208 / ⑨ PR #211 / ⑪ PR #212 / ④ PR #214 done；② 下一輪）
+- [project_codebase_architecture_audit.md](project_codebase_architecture_audit.md) — **audit 收束 2026-04-28**：12 候選（5 PR done / 5 framing 误判 verified no-op / ⑦ defer / ③ ADR-acked queued / ⑧ defer Chopper）
 - [project_llm_facade_phase1.md](project_llm_facade_phase1.md) — **PR #208 merged 2026-04-27**：llm_context + llm_observability 抽出 + facade 加 ask_with_tools/audio；Phase 2-5 queued
 - Audit doc：[docs/research/2026-04-27-codebase-architecture-audit.md](../../docs/research/2026-04-27-codebase-architecture-audit.md) — 12 deepening 候選完整細節 + deletion test + ADR 衝突
 - Plan：[docs/plans/2026-04-27-llm-facade-deepening.md](../../docs/plans/2026-04-27-llm-facade-deepening.md) — LLM facade 5 PR migration plan
