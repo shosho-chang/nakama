@@ -4,8 +4,9 @@ End-to-end: topic in → ``compose_and_enqueue`` → DraftV1 / PublishWpPostV1 �
 ``approval_queue`` row landing in ``status='pending'`` for HITL.
 
 What is mocked:
-- ``shared.anthropic_client.ask_multi`` — returns fixed AST-shaped JSON
-  (``_slice4_helpers.brook_llm_response_json``) so no real Claude call.
+- ``agents.brook.compose.ask_multi`` (caller binding for ``shared.llm.ask_multi``)
+  — returns fixed AST-shaped JSON (``_slice4_helpers.brook_llm_response_json``)
+  so no real Claude call.
 
 What is NOT mocked:
 - AST → Gutenberg HTML build (``shared.gutenberg_builder``)

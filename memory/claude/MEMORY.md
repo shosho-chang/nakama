@@ -14,7 +14,8 @@
 - [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — **SEO D.2 PR #183 + F PR #185 merged 2026-04-26**：用途 1+2+3 production；12 follow-up + 4 test gap
 - [project_seo_dataforseo_scrap_decision.md](project_seo_dataforseo_scrap_decision.md) — **SEO Slice E 不接 DataForSEO 2026-04-26**：health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋
 - [project_codebase_architecture_audit.md](project_codebase_architecture_audit.md) — **audit 全收束 2026-04-28**：12 候選（5 PR done / 6 framing 誤判 verified no-op / ⑦ defer / ⑧ defer Chopper），半數誤判率 6/12
-- [project_llm_facade_phase1.md](project_llm_facade_phase1.md) — **PR #208 merged 2026-04-27**：llm_context + llm_observability 抽出 + facade 加 ask_with_tools/audio；Phase 2-5 queued
+- [project_llm_facade_phase1.md](project_llm_facade_phase1.md) — **PR #208/#222/#223 merged**：production code 全走 facade；Phase 4 cosmetic + Phase 5 re-export 退場 queued
+- [feedback_facade_mock_caller_binding.md](feedback_facade_mock_caller_binding.md) — `from X import Y` caller 必 patch caller-module binding，patch source `X.Y` 不生效（plan PR #4 mock 收斂試錯結論）
 - Audit doc：[docs/research/2026-04-27-codebase-architecture-audit.md](../../docs/research/2026-04-27-codebase-architecture-audit.md) — 12 deepening 候選完整細節 + deletion test + ADR 衝突
 - Plan：[docs/plans/2026-04-27-llm-facade-deepening.md](../../docs/plans/2026-04-27-llm-facade-deepening.md) — LLM facade 5 PR migration plan
 - [feedback_init_py_alias_shadows_module.md](feedback_init_py_alias_shadows_module.md) — `__init__.py` 用 `import X as Y` 同名 alias 會 shadow submodule；monkeypatch 失靈訊息「'function' object」要立刻想到

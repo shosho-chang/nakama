@@ -180,7 +180,7 @@ def test_translate_segments_empty():
     assert translate_segments([]) == []
 
 
-def test_translate_segments_uses_claude(tmp_path):
+def test_translate_segments_uses_llm(tmp_path):
     glossary_file = tmp_path / "g.yaml"
     glossary_file.write_text("terms: {}\n", encoding="utf-8")
     mock_response = '[{"index": 1, "translation": "粒線體是細胞的發電廠。"}]'
@@ -198,7 +198,7 @@ def test_translate_segments_json_fallback(tmp_path):
     glossary_file.write_text("terms: {}\n", encoding="utf-8")
     call_count = 0
 
-    def mock_claude(prompt, **kwargs):
+    def mock_ask(prompt, **kwargs):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -206,7 +206,7 @@ def test_translate_segments_json_fallback(tmp_path):
         return "降級譯文"
 
     with (
-        patch("shared.translator.ask", side_effect=mock_claude),
+        patch("shared.translator.ask", side_effect=mock_ask),
         patch("shared.translator._GLOSSARY_PATH", glossary_file),
     ):
         result = translate_segments(["Original text."])
