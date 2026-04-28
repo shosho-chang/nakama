@@ -191,7 +191,9 @@ def test_cost_tracking_called(monkeypatch, fake_audio):
         recorded.update(kwargs)
 
     monkeypatch.setattr("shared.state.record_api_call", fake_record)
-    gc.set_current_agent("test-agent", run_id=7)
+    from shared.llm_context import set_current_agent
+
+    set_current_agent("test-agent", run_id=7)
 
     gc.ask_gemini_audio(fake_audio, "prompt")
 
@@ -380,8 +382,8 @@ def test_ask_gemini_multi_rejects_grok_model():
 def test_ask_gemini_guard_fires_via_router(monkeypatch):
     """MODEL_<AGENT> 被誤設成非 Gemini ID 時也要擋下來。"""
     monkeypatch.setenv("MODEL_ROBIN", "claude-sonnet-4-20250514")
-    from shared.anthropic_client import set_current_agent
     from shared.gemini_client import ask_gemini
+    from shared.llm_context import set_current_agent
 
     set_current_agent("robin", run_id=None)
     with pytest.raises(ValueError, match="non-Gemini model"):
@@ -392,7 +394,7 @@ def test_ask_gemini_resolves_model_via_router(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
     monkeypatch.setenv("MODEL_ROBIN", "gemini-2.5-pro")
     import shared.gemini_client as gc
-    from shared.anthropic_client import set_current_agent
+    from shared.llm_context import set_current_agent
 
     set_current_agent("robin", run_id=None)
 
@@ -405,12 +407,14 @@ def test_ask_gemini_resolves_model_via_router(monkeypatch):
     assert fake_client.models.generate_content.call_args.kwargs["model"] == "gemini-2.5-pro"
 
 
-def test_gemini_client_shares_local_with_anthropic():
-    """unified thread-local：anthropic_client.set_current_agent 也能標記 Gemini 呼叫。"""
-    from shared.anthropic_client import _local as a_local
+def test_gemini_client_uses_shared_llm_context_local():
+    """unified thread-local：所有 provider client 都從 shared.llm_context 共用 _local。"""
     from shared.gemini_client import _local as g_local
+    from shared.llm_context import _local as ctx_local
+    from shared.xai_client import _local as x_local
 
-    assert a_local is g_local  # 同一個 threading.local 物件
+    assert g_local is ctx_local
+    assert x_local is ctx_local
 
 
 # ── 步驟 4 follow-up：borderline bug 修復測試 ─────────────────────────

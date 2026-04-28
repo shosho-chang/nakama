@@ -38,7 +38,8 @@ def test_call_claude_with_tools_rejects_gpt_model():
 def test_ask_claude_guard_fires_via_router(monkeypatch: pytest.MonkeyPatch):
     """MODEL_<AGENT> 被誤設成非 Claude ID 時也要擋下來，不 retry。"""
     monkeypatch.setenv("MODEL_BROOK", "grok-4-fast-non-reasoning")
-    from shared.anthropic_client import ask_claude, set_current_agent
+    from shared.anthropic_client import ask_claude
+    from shared.llm_context import set_current_agent
 
     set_current_agent("brook", run_id=None)
     with pytest.raises(ValueError, match="non-Claude model"):

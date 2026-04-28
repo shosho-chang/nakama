@@ -290,7 +290,7 @@ def test_tempfile_cleaned_on_extract_failure(monkeypatch, fake_audio):
 
 
 def test_set_current_agent_called_in_worker_thread(monkeypatch, fake_audio, tmp_path):
-    """set_current_agent 必須在 worker thread 內被呼叫（gemini_client._local 是
+    """set_current_agent 必須在 worker thread 內被呼叫（shared.llm_context._local 是
     threading.local — 主線程設定 worker 讀不到）。記下每次呼叫的 thread id，
     驗證至少有一次不是主線程。"""
     import threading

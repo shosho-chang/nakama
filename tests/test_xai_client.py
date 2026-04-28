@@ -92,7 +92,7 @@ def test_ask_grok_resolves_model_via_router(monkeypatch, _fake_openai_response):
     monkeypatch.setenv("MODEL_SANJI", "grok-4-fast-non-reasoning")
 
     import shared.xai_client as xai
-    from shared.anthropic_client import set_current_agent
+    from shared.llm_context import set_current_agent
 
     set_current_agent("sanji", run_id=None)
 
@@ -128,7 +128,7 @@ def test_ask_grok_multi_rejects_gemini_model():
 def test_ask_grok_guard_fires_via_router(monkeypatch):
     """MODEL_<AGENT> 被誤設成非 Grok ID 時也要擋下來。"""
     monkeypatch.setenv("MODEL_SANJI", "claude-sonnet-4-20250514")
-    from shared.anthropic_client import set_current_agent
+    from shared.llm_context import set_current_agent
     from shared.xai_client import ask_grok
 
     set_current_agent("sanji", run_id=None)

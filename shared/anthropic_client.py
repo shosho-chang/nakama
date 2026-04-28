@@ -1,13 +1,11 @@
 """Anthropic Claude API wrapper，內建 retry + cost tracking。
 
-跨 provider 共用的 thread-local context 與 cost-tracking 入口已抽出到
+跨 provider 共用的 thread-local context 與 cost-tracking 入口在
 :mod:`shared.llm_context` / :mod:`shared.llm_observability`；本檔只關心
 Anthropic-specific 的 request building + response parsing。
 
-Backward-compat re-exports（``_local`` / ``set_current_agent`` /
-``start_usage_tracking`` / ``stop_usage_tracking``）在過渡期保留，讓既有
-``from shared.anthropic_client import set_current_agent`` 的 caller 不需要
-立刻 migration。新 caller 請改 import :mod:`shared.llm_context`。
+Thread-local 設置請直接 ``from shared.llm_context import set_current_agent``。
+跨 provider routing 走 :func:`shared.llm.ask`。
 """
 
 from __future__ import annotations
@@ -17,13 +15,7 @@ import time
 
 import anthropic
 
-# Backward-compat re-exports — 既有 caller 從這裡 import，過渡期不 break。
-from shared.llm_context import (
-    _local,
-    set_current_agent,
-    start_usage_tracking,
-    stop_usage_tracking,
-)
+from shared.llm_context import _local
 from shared.llm_observability import record_call
 from shared.log import get_logger
 from shared.retry import with_retry
@@ -31,14 +23,10 @@ from shared.retry import with_retry
 logger = get_logger("nakama.anthropic_client")
 
 __all__ = [
-    "_local",
     "ask_claude",
     "ask_claude_multi",
     "call_claude_with_tools",
     "get_client",
-    "set_current_agent",
-    "start_usage_tracking",
-    "stop_usage_tracking",
 ]
 
 _client: anthropic.Anthropic | None = None
