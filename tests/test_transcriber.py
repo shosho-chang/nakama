@@ -162,7 +162,7 @@ def test_replace_srt_texts_no_changes():
 
 
 def test_correct_with_llm_basic():
-    """測試 LLM 校正的完整流程（mock ask_claude，JSON 格式回傳）。"""
+    """測試 LLM 校正的完整流程（mock shared.llm.ask，JSON 格式回傳）。"""
     mock_response = '{"corrections": {"2": "NMN是一種重要的分子"}, "uncertain": []}'
 
     with patch("shared.llm.ask", return_value=mock_response):
