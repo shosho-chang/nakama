@@ -10,8 +10,6 @@
 Thread-local context 與 cost-tracking 入口統一在 :mod:`shared.llm_context` /
 :mod:`shared.llm_observability`，本檔只關心 Gemini-specific 的 request
 building、response parsing、token 抽取（thinking token 算入 output 等）。
-
-``set_current_agent`` 仍 re-export，:mod:`shared.transcriber` 在用。
 """
 
 from __future__ import annotations
@@ -21,7 +19,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from shared.llm_context import _local, set_current_agent  # re-export for existing callers
+from shared.llm_context import _local
 from shared.llm_observability import record_call
 from shared.log import get_logger
 from shared.retry import with_retry
@@ -38,7 +36,6 @@ __all__ = [
     "ask_gemini_multi",
     "ask_gemini_audio",
     "get_client",
-    "set_current_agent",  # 仍 re-export，multimodal_arbiter 在用
 ]
 
 

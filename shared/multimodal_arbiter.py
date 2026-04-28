@@ -184,7 +184,7 @@ def _arbitrate_one(
     """對單一 uncertain 項目做仲裁。回 None 表示該項應 skip（line 找不到）。
 
     在 worker thread 內執行 — 必須自己呼叫 `set_current_agent`，
-    因為 `gemini_client._local` 是 threading.local，主線程的設定讀不到。
+    因為 `shared.llm_context._local` 是 threading.local，主線程的設定讀不到。
     """
     set_current_agent("transcriber-arbiter", run_id=run_id)
 

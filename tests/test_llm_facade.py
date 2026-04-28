@@ -104,7 +104,7 @@ def test_ask_multi_dispatches_by_provider():
 def test_ask_with_none_model_uses_router(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MODEL_SANJI", "grok-4-fast-non-reasoning")
     from shared import llm
-    from shared.anthropic_client import set_current_agent
+    from shared.llm_context import set_current_agent
 
     set_current_agent("sanji", run_id=None)
 
