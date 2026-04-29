@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · SEO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-dur-fast:     80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Chassis ── */
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+/* ── Page header ── */
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: 1px solid var(--nk-rule);
+  padding: 18px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
+}
+.page-title {
+  font-family: var(--nk-font-display); font-size: 26px; font-weight: 500;
+  letter-spacing: -0.5px;
+}
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
+.header-meta {
+  font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3);
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+
+/* ── Main area ── */
+.main {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 40px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Section card ── */
+.section {
+  background: var(--nk-panel);
+  border: 1px solid var(--nk-rule);
+}
+.section-head {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--nk-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+.section-marker {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--nk-ink-3);
+  margin-bottom: 4px;
+}
+.section-title {
+  font-family: var(--nk-font-display);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  color: var(--nk-ink);
+}
+.section-title .zh {
+  color: var(--nk-muted);
+  font-family: var(--nk-font-zh);
+  font-size: 13px;
+  margin-left: 6px;
+}
+.section-status {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+}
+.section-status.pending { color: var(--nk-amber); }
+.section-status.deferred { color: var(--nk-indigo); }
+.section-body {
+  padding: 22px 20px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.section-body .lead {
+  font-size: 14px;
+  color: var(--nk-ink-2);
+  line-height: 1.6;
+}
+.section-body .meta {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-3);
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+}
+.section-body .meta code {
+  background: var(--nk-panel-2);
+  border: 1px solid var(--nk-hairline);
+  padding: 1px 6px;
+  font-size: 10.5px;
+}
+.section-body .deferred-note {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--nk-indigo);
+  background: var(--nk-panel-2);
+  border-left: 2px solid var(--nk-indigo);
+  padding: 10px 14px;
+  line-height: 1.55;
+}
+
+/* ── Footer hint ── */
+.foot-hint {
+  margin-top: 4px;
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--nk-muted);
+}
+.foot-hint a { color: var(--nk-ink-2); text-decoration: none; border-bottom: 1px dotted var(--nk-muted); }
+.foot-hint a:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
+</style>
+</head>
+<body>
+<header class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/seo" class="active" aria-current="page">SEO <span class="zh">優化</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
+    <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
+    <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
+    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
+    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
+  </nav>
+</header>
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/seo · 中控台 v1 — slice 1 foundation</div>
+    <h1 class="page-title">SEO 中控台 <span class="zh">SEO Control Center</span></h1>
+  </div>
+  <div class="header-meta">PRD #226 · slice 1</div>
+</section>
+
+<main class="main">
+  <!-- Section 1: 文章列表 -->
+  <article class="section" aria-labelledby="sec-articles">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 1 · ARTICLES</div>
+        <h2 class="section-title" id="sec-articles">文章列表 <span class="zh">SEO grade by post</span></h2>
+      </div>
+      <span class="section-status pending">PENDING SLICE</span>
+    </header>
+    <div class="section-body">
+      <p class="lead">
+        WP REST 拉 shosho.tw 全文章列表，配合 lazy audit 顯示每篇的 SEO 分數、focus
+        keyword、最近一次 audit 時間。從這裡點進去就能跑新 audit 或進 review session。
+      </p>
+      <p class="meta">
+        資料源 · <code>WP REST /wp/v2/posts</code> + <code>audit_results</code>
+        ／實作 · slice 後續 issue（#229）
+      </p>
+    </div>
+  </article>
+
+  <!-- Section 2: 攻擊關鍵字 -->
+  <article class="section" aria-labelledby="sec-keywords">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 2 · TARGET KEYWORDS</div>
+        <h2 class="section-title" id="sec-keywords">攻擊關鍵字 <span class="zh">target keywords on the offensive</span></h2>
+      </div>
+      <span class="section-status pending">PENDING SLICE</span>
+    </header>
+    <div class="section-body">
+      <p class="lead">
+        讀取 <code style="font-family:var(--nk-font-mono);background:var(--nk-panel-2);border:1px solid var(--nk-hairline);padding:1px 6px;font-size:11px">config/target-keywords.yaml</code>
+        列出目前在攻擊的關鍵字、每個對應 URL 與 goal_rank，並提供「找新關鍵字」入口跳到
+        Zoro 的 <code style="font-family:var(--nk-font-mono);background:var(--nk-panel-2);border:1px solid var(--nk-hairline);padding:1px 6px;font-size:11px">/bridge/zoro/keyword-research</code>。
+      </p>
+      <p class="meta">
+        資料源 · <code>config/target-keywords.yaml</code>
+        ／實作 · slice 後續 issue（#230）
+      </p>
+    </div>
+  </article>
+
+  <!-- Section 3: 排名變化 -->
+  <article class="section" aria-labelledby="sec-rank">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 3 · RANK CHANGE</div>
+        <h2 class="section-title" id="sec-rank">排名變化 <span class="zh">28-day rank delta</span></h2>
+      </div>
+      <span class="section-status deferred">DEFERRED</span>
+    </header>
+    <div class="section-body">
+      <p class="lead">
+        每個目標關鍵字 28 天平均排名 vs 前 28 天平均排名的 delta，搭配當期曝光數，
+        用來抓上升中或正在沉沒的關鍵字。
+      </p>
+      <p class="deferred-note">
+        ADR-008 Phase 2a-min 上線後啟用 · gsc_daily cron + gsc_rows 表落地後才有資料可查（issue #233）
+      </p>
+    </div>
+  </article>
+
+  <p class="foot-hint">
+    參考 · <a href="/bridge/docs?q=seo-control-center">PRD #226 (docs/plans/2026-04-29-seo-control-center-prd.md)</a>
+    · ADR-012 Zoro/Brook 邊界
+  </p>
+</main>
+</body>
+</html>

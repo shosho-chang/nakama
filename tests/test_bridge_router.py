@@ -195,14 +195,15 @@ def test_logs_page_bad_fts5_syntax_soft_fails(client):
 # ── chassis-nav unification regression ──────────────────────────────────────
 # Three taxonomies emerged across PR #136 / #152 / #157 because each new page
 # copy-pasted the chassis nav and diverged. PR A (2026-04-26) unified them to
-# the canonical form (8 → 9 items after Phase 5C added LOGS): uppercase + zh
-# suffix + class="active" marker + aria-current="page" on the active link.
+# the canonical form (8 → 9 items after Phase 5C added LOGS, 10 after SEO 中控台
+# slice 1 added SEO between DRAFTS and MEMORY).
 def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> None:
-    """Verify all 9 entries present, no legacy taxonomy, active link has both
+    """Verify all entries present, no legacy taxonomy, active link has both
     `class="active"` and `aria-current="page"` regardless of attribute order."""
     for label, zh in [
         ("BRIDGE", "船橋"),
         ("DRAFTS", "待審"),
+        ("SEO", "優化"),
         ("MEMORY", "記憶"),
         ("COST", "成本"),
         ("FRANKY", "船匠"),
@@ -232,6 +233,7 @@ def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> No
     [
         ("/bridge", "BRIDGE"),
         ("/bridge/drafts", "DRAFTS"),
+        ("/bridge/seo", "SEO"),
         ("/bridge/memory", "MEMORY"),
         ("/bridge/cost", "COST"),
         ("/bridge/franky", "FRANKY"),
