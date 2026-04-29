@@ -11,6 +11,12 @@ pipeline. The form synchronously runs the ~30-60s research and renders the
 markdown report inline; users get a ``下載 .md`` button to save the file
 themselves. **Vault writes stay forbidden here** — the LifeOS Project
 dataviewjs path is the only writer, by design (issue #231 acceptance).
+
+Slice 2 of PRD #255 (#258 / A′) adds:
+- POST side-effect: persist successful runs to ``keyword_research_runs``
+  table with ``triggered_by='web'`` (best-effort; never breaks render)
+- GET /history — paginated list of past runs
+- GET /history/{id} — detail with re-rendered markdown + .md re-download
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from agents.zoro.report_renderer import build_frontmatter, render_markdown
+from shared import keyword_research_history_store as kr_history
 from shared.log import get_logger
 from thousand_sunny.auth import check_auth
 
@@ -184,6 +191,20 @@ async def keyword_research_run(
     report_md = render_markdown(frontmatter, result)
     filename = _download_filename(topic_clean)
 
+    # Slice 2 (#258): persist the run so the user can browse history. This is
+    # best-effort — a db failure must not break the rendered report (the user
+    # already paid the 30-60s research wait).
+    try:
+        kr_history.insert_run(
+            topic=topic_clean,
+            en_topic=en_topic_clean,
+            content_type=content_type,  # type: ignore[arg-type]
+            report_md=report_md,
+            triggered_by="web",
+        )
+    except Exception as e:  # noqa: BLE001 — defensive; never break the user view
+        logger.warning(f"keyword_research_runs persist failed for topic={topic_clean!r}: {e}")
+
     return _templates.TemplateResponse(
         request,
         "zoro_keyword_research.html",
@@ -195,6 +216,107 @@ async def keyword_research_run(
             "report_md": report_md,
             "download_filename": filename,
             "error": None,
+        },
+    )
+
+
+# ── Slice 2 (#258 / A′) — keyword-research history ──────────────────────
+
+
+_HISTORY_PAGE_SIZE = 20
+
+
+@page_router.get("/keyword-research/history", response_class=HTMLResponse)
+async def keyword_research_history_list(
+    request: Request,
+    offset: int = 0,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Paginated list of past keyword-research runs.
+
+    Pagination contract:
+    - Page size fixed at ``_HISTORY_PAGE_SIZE`` (20).
+    - ``?offset=N`` advances; client decides what N to send via the
+      "Previous" / "Next" links the template renders.
+    - Negative offsets coerced to 0; offsets past the tail are clamped so
+      the user gets the last page rather than an empty page.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(
+            "/login?next=/bridge/zoro/keyword-research/history", status_code=302
+        )
+
+    total = kr_history.count_runs()
+    if total == 0:
+        safe_offset = 0
+    else:
+        # Clamp to a valid page boundary: max start is the offset of the last page.
+        last_page_offset = ((total - 1) // _HISTORY_PAGE_SIZE) * _HISTORY_PAGE_SIZE
+        safe_offset = max(0, min(offset, last_page_offset))
+    rows = kr_history.list_runs(limit=_HISTORY_PAGE_SIZE, offset=safe_offset)
+
+    # Pre-format created_at for display (Asia/Taipei).
+    display_rows = [
+        {**r, "created_at_taipei": kr_history.to_taipei_display(r["created_at"])} for r in rows
+    ]
+
+    has_prev = safe_offset > 0
+    has_next = safe_offset + _HISTORY_PAGE_SIZE < total
+    prev_offset = max(0, safe_offset - _HISTORY_PAGE_SIZE)
+    next_offset = safe_offset + _HISTORY_PAGE_SIZE
+
+    return _templates.TemplateResponse(
+        request,
+        "zoro_keyword_research_history.html",
+        {
+            "rows": display_rows,
+            "total": total,
+            "page_size": _HISTORY_PAGE_SIZE,
+            "offset": safe_offset,
+            "has_prev": has_prev,
+            "has_next": has_next,
+            "prev_offset": prev_offset,
+            "next_offset": next_offset,
+        },
+    )
+
+
+@page_router.get("/keyword-research/history/{run_id}", response_class=HTMLResponse)
+async def keyword_research_history_detail(
+    request: Request,
+    run_id: int,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Detail view of a single past run — full markdown + re-download.
+
+    Re-download POSTs to the existing ``/keyword-research/download`` endpoint
+    with the stored ``report_md`` as a hidden form field, so the file the user
+    saves is byte-identical to the row in db. This avoids re-running research
+    (which would consume LLM tokens and could yield different output).
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(
+            f"/login?next=/bridge/zoro/keyword-research/history/{run_id}",
+            status_code=302,
+        )
+
+    row = kr_history.get_run(run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="找不到這筆研究紀錄")
+
+    # The download endpoint computes its own filename from topic + today's
+    # date. For consistency with what the user sees, we compute it here for
+    # display and let the download endpoint regenerate it on submit (which
+    # uses *today's* date — by design, since the user is downloading today).
+    display_filename = _download_filename(row["topic"])
+
+    return _templates.TemplateResponse(
+        request,
+        "zoro_keyword_research_history_detail.html",
+        {
+            "row": row,
+            "created_at_taipei": kr_history.to_taipei_display(row["created_at"]),
+            "download_filename": display_filename,
         },
     )
 

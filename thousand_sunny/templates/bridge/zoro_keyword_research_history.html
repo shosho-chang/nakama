@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Zoro · 關鍵字研究 · 歷史</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-2:    #2a2a2a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-r-2:          2px;
+  --nk-border:       1px solid var(--nk-rule);
+  --nk-border-hair:  1px solid var(--nk-hairline);
+  --nk-dur-fast:     80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chassis {
+  background: var(--nk-chassis); color: var(--nk-chassis-fg);
+  padding: 0 40px; height: 48px;
+  display: flex; align-items: center; gap: 32px; flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot {
+  width: 14px; height: 14px;
+  border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative;
+}
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+.nk-breadcrumb {
+  background: var(--nk-panel-2); border-bottom: var(--nk-border-hair);
+  padding: 8px 40px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2);
+}
+.nk-breadcrumb-link { color: var(--nk-ink-2); text-decoration: none; border-bottom: 1px dotted transparent; transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast); }
+.nk-breadcrumb-link:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+.nk-breadcrumb-current { color: var(--nk-ink); font-weight: 500; }
+.nk-breadcrumb-sep { color: var(--nk-ink-3); font-family: var(--nk-font-mono); font-size: 11px; }
+
+.page-header {
+  background: var(--nk-panel); border-bottom: var(--nk-border);
+  padding: 18px 40px;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  flex-shrink: 0;
+}
+.page-title { font-family: var(--nk-font-display); font-size: 26px; font-weight: 500; letter-spacing: -0.5px; }
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
+.header-meta { font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3); letter-spacing: 0.12em; text-transform: uppercase; }
+
+.main { flex: 1; padding: 24px 40px 48px; display: flex; flex-direction: column; gap: 24px; }
+
+.section { background: var(--nk-panel); border: var(--nk-border); }
+.section-head {
+  padding: 16px 20px 14px; border-bottom: var(--nk-border-hair);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+}
+.section-marker { font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em; color: var(--nk-ink-3); margin-bottom: 4px; }
+.section-title { font-family: var(--nk-font-display); font-size: 19px; font-weight: 500; letter-spacing: -0.2px; }
+.section-body { padding: 22px 20px 26px; }
+
+table.history { width: 100%; border-collapse: collapse; }
+table.history thead th {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--nk-ink-3);
+  text-align: left; padding: 8px 10px;
+  border-bottom: 1px solid var(--nk-rule);
+  white-space: nowrap;
+}
+table.history tbody td {
+  padding: 10px; vertical-align: top;
+  border-bottom: var(--nk-border-hair); color: var(--nk-ink);
+}
+table.history tbody tr:last-child td { border-bottom: none; }
+table.history tbody tr:hover { background: var(--nk-panel-2); }
+.col-topic { min-width: 180px; }
+.col-en { min-width: 140px; color: var(--nk-ink-2); }
+.col-type { white-space: nowrap; font-family: var(--nk-font-mono); font-size: 12px; color: var(--nk-ink-2); }
+.col-when { white-space: nowrap; font-family: var(--nk-font-mono); font-size: 12px; color: var(--nk-ink-2); }
+.col-action { white-space: nowrap; }
+.history-link {
+  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-ink-2);
+  border-bottom: 1px dotted var(--nk-muted);
+}
+.history-link:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+
+.pagination {
+  display: flex; gap: 16px; align-items: center; padding: 14px 20px;
+  border-top: var(--nk-border-hair); font-family: var(--nk-font-mono); font-size: 11px;
+  color: var(--nk-ink-3); letter-spacing: 0.06em;
+}
+.pagination-link {
+  color: var(--nk-ink-2); text-decoration: none;
+  border: var(--nk-border); padding: 6px 12px; border-radius: var(--nk-r-2);
+  transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast);
+}
+.pagination-link:hover { color: var(--nk-signal); border-color: var(--nk-signal); }
+
+.empty {
+  padding: 40px 20px; text-align: center; color: var(--nk-ink-3); font-family: var(--nk-font-mono); font-size: 13px;
+}
+.empty a { color: var(--nk-signal); text-decoration: none; border-bottom: 1px dotted; }
+.empty a:hover { border-bottom-style: solid; }
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
+</style>
+</head>
+<body>
+
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='zoro') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "/bridge/zoro/keyword-research · 表單", "href": "/bridge/zoro/keyword-research", "is_current": false},
+  {"label": "ZORO · KEYWORD RESEARCH HISTORY", "href": none, "is_current": true},
+]) }}
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/zoro/keyword-research/history · 過往研究紀錄</div>
+    <h1 class="page-title">研究歷史 <span class="zh">Keyword Research History</span></h1>
+  </div>
+  <div class="header-meta">PRD #255 · Slice 2</div>
+</section>
+
+<main class="main">
+  <article class="section">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 1 · RUNS · {{ total }}</div>
+        <h2 class="section-title">過往研究 <span class="zh">{{ rows|length }} of {{ total }} on this page</span></h2>
+      </div>
+    </header>
+
+    {% if rows %}
+    <div class="section-body" style="padding-top:0;padding-bottom:0;">
+      <table class="history">
+        <thead>
+          <tr>
+            <th class="col-topic">TOPIC</th>
+            <th class="col-en">EN TOPIC</th>
+            <th class="col-type">TYPE</th>
+            <th class="col-when">CREATED</th>
+            <th class="col-action"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="col-topic">{{ r.topic }}</td>
+            <td class="col-en">{{ r.en_topic if r.en_topic else "—" }}</td>
+            <td class="col-type">{{ r.content_type }}</td>
+            <td class="col-when">{{ r.created_at_taipei }}</td>
+            <td class="col-action">
+              <a class="history-link" href="/bridge/zoro/keyword-research/history/{{ r.id }}">查看詳細 →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if has_prev or has_next %}
+    <div class="pagination">
+      <span>第 {{ offset + 1 }}–{{ offset + rows|length }} 筆 / 共 {{ total }}</span>
+      <span style="flex:1"></span>
+      {% if has_prev %}<a class="pagination-link" href="/bridge/zoro/keyword-research/history?offset={{ prev_offset }}">← Previous</a>{% endif %}
+      {% if has_next %}<a class="pagination-link" href="/bridge/zoro/keyword-research/history?offset={{ next_offset }}">Next →</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="empty">
+      尚無歷史研究紀錄。<br>
+      去 <a href="/bridge/zoro/keyword-research">關鍵字研究表單</a> 跑第一次。
+    </div>
+    {% endif %}
+  </article>
+</main>
+
+</body>
+</html>
