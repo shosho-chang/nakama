@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · SEO Audit · {{ audit.overall_grade }} · {{ audit.url }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-dur-fast:     80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: 1px solid var(--nk-rule);
+  padding: 18px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
+}
+.page-title {
+  font-family: var(--nk-font-display); font-size: 26px; font-weight: 500;
+  letter-spacing: -0.5px;
+}
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
+.header-meta {
+  font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3);
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+
+.main {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 40px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Hero — grade tile + counts. */
+.result-hero {
+  background: var(--nk-panel);
+  border: 1px solid var(--nk-rule);
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) 1fr;
+  gap: 0;
+}
+.grade-tile {
+  border-right: 1px solid var(--nk-hairline);
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.grade-letter {
+  font-family: var(--nk-font-display);
+  font-size: 92px;
+  font-weight: 500;
+  letter-spacing: -3px;
+  line-height: 1;
+}
+.grade-letter.grade-a    { color: var(--nk-jade); }
+.grade-letter.grade-bp,
+.grade-letter.grade-b    { color: var(--nk-indigo); }
+.grade-letter.grade-cp,
+.grade-letter.grade-c    { color: var(--nk-amber); }
+.grade-letter.grade-d,
+.grade-letter.grade-f    { color: var(--nk-crimson); }
+.grade-caption {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+
+.hero-body {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.hero-url {
+  font-family: var(--nk-font-mono);
+  font-size: 13px;
+  color: var(--nk-ink-2);
+  word-break: break-word;
+}
+.hero-url a { color: var(--nk-ink-2); text-decoration: none; border-bottom: 1px dotted var(--nk-muted); }
+.hero-url a:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-3);
+  letter-spacing: 0.06em;
+}
+.hero-meta .v { color: var(--nk-ink); margin-left: 6px; }
+
+.counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: 12px;
+  border-top: 1px solid var(--nk-hairline);
+  padding-top: 16px;
+}
+.count-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.count-cell .label {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+.count-cell .value {
+  font-family: var(--nk-font-display);
+  font-size: 26px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.count-cell.fail .value { color: var(--nk-crimson); }
+.count-cell.warn .value { color: var(--nk-amber); }
+.count-cell.pass .value { color: var(--nk-jade); }
+.count-cell.skip .value { color: var(--nk-muted); }
+
+.actions-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.run-action {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 8px 14px;
+  border: 1px solid var(--nk-rule);
+  color: var(--nk-ink-2);
+  background: var(--nk-panel);
+  cursor: pointer;
+  transition: border-color var(--nk-dur-fast), color var(--nk-dur-fast);
+}
+.run-action:hover, .run-action:focus-visible {
+  border-color: var(--nk-signal);
+  color: var(--nk-signal);
+}
+.run-action.primary {
+  border-color: var(--nk-signal);
+  color: var(--nk-signal);
+}
+
+/* Markdown report. */
+.report-card {
+  background: var(--nk-panel);
+  border: 1px solid var(--nk-rule);
+  display: flex;
+  flex-direction: column;
+}
+.report-head {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--nk-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+.report-head .title {
+  font-family: var(--nk-font-display);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+}
+.report-head .meta {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+.report-pre {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--nk-ink);
+  background: var(--nk-panel-2);
+  padding: 18px 20px;
+  border-top: 1px solid var(--nk-hairline);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 70vh;
+}
+
+.foot-hint {
+  margin-top: 4px;
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--nk-muted);
+}
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
+</style>
+</head>
+<body>
+<header class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/seo" class="active" aria-current="page">SEO <span class="zh">優化</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
+    <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
+    <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
+    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
+    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
+  </nav>
+</header>
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/seo/audits/by-id/{{ audit.id }} · audit result</div>
+    <h1 class="page-title">SEO Audit · {{ audit.overall_grade }} <span class="zh">體檢結果</span></h1>
+  </div>
+  <div class="header-meta">PRD #226 · slice 4 (#232)</div>
+</section>
+
+<main class="main">
+  <article class="result-hero" aria-labelledby="hero-grade">
+    <div class="grade-tile">
+      <div class="grade-letter grade-{{ audit.overall_grade | lower | replace('+', 'p') }}"
+           id="hero-grade" aria-label="overall grade {{ audit.overall_grade }}">{{ audit.overall_grade }}</div>
+      <div class="grade-caption">overall grade</div>
+    </div>
+    <div class="hero-body">
+      <div class="hero-url">
+        <a href="{{ audit.url }}" target="_blank" rel="noopener">{{ audit.url }}</a>
+      </div>
+      <div class="hero-meta">
+        {% if audit.target_site %}<span>site<span class="v">{{ audit.target_site }}</span></span>{% endif %}
+        {% if audit.wp_post_id %}<span>wp post<span class="v">#{{ audit.wp_post_id }}</span></span>{% endif %}
+        {% if audit.focus_keyword %}<span>focus<span class="v">{{ audit.focus_keyword }}</span></span>{% endif %}
+        <span>audited<span class="v">{{ (audit.audited_at or '')[:19].replace('T', ' ') }}</span></span>
+        <span>review<span class="v">{{ audit.review_status }}</span></span>
+      </div>
+      <div class="counts">
+        <div class="count-cell pass"><div class="label">pass</div><div class="value">{{ audit.pass_count }}</div></div>
+        <div class="count-cell warn"><div class="label">warn</div><div class="value">{{ audit.warn_count }}</div></div>
+        <div class="count-cell fail"><div class="label">fail</div><div class="value">{{ audit.fail_count }}</div></div>
+        <div class="count-cell skip"><div class="label">skip</div><div class="value">{{ audit.skip_count }}</div></div>
+      </div>
+      <div class="actions-row">
+        <a class="run-action primary" href="{{ review_url }}">review →</a>
+        <a class="run-action" href="/bridge/seo">回 SEO 中控台</a>
+        <a class="run-action" href="{{ audit.url }}" target="_blank" rel="noopener">看原文</a>
+      </div>
+    </div>
+  </article>
+
+  <article class="report-card" aria-labelledby="report-title">
+    <header class="report-head">
+      <span class="title" id="report-title">完整 audit markdown</span>
+      <span class="meta">{{ audit.suggestions | length }} 條 fail/warn 記錄 · raw report</span>
+    </header>
+    <pre class="report-pre">{{ audit.raw_markdown }}</pre>
+  </article>
+
+  <p class="foot-hint">
+    review UI 在 slice #234 上線；export to <a href="/bridge/drafts">/bridge/drafts</a> 在 slice #235。
+  </p>
+</main>
+</body>
+</html>

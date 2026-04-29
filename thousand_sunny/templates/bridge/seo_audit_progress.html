@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · SEO Audit · Running</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-dur-fast:     80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: 1px solid var(--nk-rule);
+  padding: 18px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
+}
+.page-title {
+  font-family: var(--nk-font-display); font-size: 26px; font-weight: 500;
+  letter-spacing: -0.5px;
+}
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
+.header-meta {
+  font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3);
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+
+.main {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 40px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  align-items: center;
+}
+
+.run-card {
+  background: var(--nk-panel);
+  border: 1px solid var(--nk-rule);
+  width: min(720px, 100%);
+  padding: 40px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.run-status {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  text-align: center;
+}
+.spinner {
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--nk-hairline);
+  border-top-color: var(--nk-signal);
+  border-radius: 50%;
+  animation: spin 1.1s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; border-top-color: var(--nk-signal); }
+}
+.run-title {
+  font-family: var(--nk-font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  color: var(--nk-ink);
+}
+.run-subtitle {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+.run-meta {
+  border-top: 1px solid var(--nk-hairline);
+  padding-top: 18px;
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px 16px;
+  font-size: 13px;
+  color: var(--nk-ink-2);
+  word-break: break-word;
+}
+.run-meta dt {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+.run-meta dd { font-family: var(--nk-font-sans); }
+.run-meta dd code {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  background: var(--nk-panel-2);
+  border: 1px solid var(--nk-hairline);
+  padding: 1px 6px;
+}
+
+.error-box {
+  border: 1px solid var(--nk-crimson);
+  background: var(--nk-panel-2);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.error-box .head {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-crimson);
+}
+.error-box .stage {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-3);
+  letter-spacing: 0.1em;
+}
+.error-box .detail {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.error-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.run-action {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 8px 14px;
+  border: 1px solid var(--nk-rule);
+  color: var(--nk-ink-2);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color var(--nk-dur-fast), color var(--nk-dur-fast);
+}
+.run-action:hover, .run-action:focus-visible {
+  border-color: var(--nk-signal);
+  color: var(--nk-signal);
+}
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
+</style>
+</head>
+<body data-job-id="{{ job_id }}" data-initial-status="{{ job.status }}">
+<header class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/seo" class="active" aria-current="page">SEO <span class="zh">優化</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
+    <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
+    <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
+    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
+    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
+  </nav>
+</header>
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/seo/audits/{{ job_id[:8] }}… · running audit</div>
+    <h1 class="page-title">SEO Audit <span class="zh">進行中</span></h1>
+  </div>
+  <div class="header-meta">PRD #226 · slice 4 (#232)</div>
+</section>
+
+<main class="main">
+  <article class="run-card" aria-live="polite" aria-atomic="false">
+    <div class="run-status" id="run-status">
+      <div class="spinner" id="run-spinner" aria-hidden="true"></div>
+      <div class="run-title" id="run-title">audit 進行中…</div>
+      <div class="run-subtitle" id="run-subtitle">est. 30–60s · 完成自動跳轉結果頁</div>
+    </div>
+
+    <div class="error-box" id="error-box" hidden>
+      <div class="head">audit failed</div>
+      <div class="stage" id="error-stage"></div>
+      <div class="detail" id="error-detail"></div>
+      <div class="error-actions">
+        <a class="run-action" href="/bridge/seo">回 SEO 中控台</a>
+        <a class="run-action" id="retry-link" href="/bridge/seo">重試</a>
+      </div>
+    </div>
+
+    <dl class="run-meta">
+      <dt>job id</dt>
+      <dd><code>{{ job_id }}</code></dd>
+      <dt>url</dt>
+      <dd><code>{{ job.url }}</code></dd>
+      {% if job.target_site %}
+      <dt>target site</dt>
+      <dd><code>{{ job.target_site }}</code></dd>
+      {% endif %}
+      {% if job.wp_post_id %}
+      <dt>wp post id</dt>
+      <dd><code>{{ job.wp_post_id }}</code></dd>
+      {% endif %}
+      {% if job.focus_keyword %}
+      <dt>focus keyword</dt>
+      <dd>{{ job.focus_keyword }}</dd>
+      {% endif %}
+      <dt>started at</dt>
+      <dd>{{ (job.started_at or '')[:19].replace('T', ' ') }}</dd>
+    </dl>
+  </article>
+</main>
+
+<script>
+(function () {
+  const body = document.body;
+  const jobId = body.dataset.jobId;
+  const statusEl = document.getElementById('run-status');
+  const titleEl = document.getElementById('run-title');
+  const subtitleEl = document.getElementById('run-subtitle');
+  const spinnerEl = document.getElementById('run-spinner');
+  const errBox = document.getElementById('error-box');
+  const errStageEl = document.getElementById('error-stage');
+  const errDetailEl = document.getElementById('error-detail');
+
+  let pollHandle = null;
+  let stopped = false;
+
+  function showError(stage, message) {
+    spinnerEl.hidden = true;
+    titleEl.textContent = 'audit 中斷';
+    subtitleEl.textContent = '看下方錯誤資訊或回上一頁重試';
+    errStageEl.textContent = stage ? ('stage: ' + stage) : '';
+    errDetailEl.textContent = message || '(no detail)';
+    errBox.hidden = false;
+  }
+
+  function tick() {
+    if (stopped) return;
+    fetch('/bridge/seo/audits/' + encodeURIComponent(jobId) + '/status', {
+      credentials: 'same-origin',
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('status http ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        if (data.status === 'done' && data.redirect_to) {
+          stopped = true;
+          window.location.href = data.redirect_to;
+          return;
+        }
+        if (data.status === 'error') {
+          stopped = true;
+          showError(data.error_stage, data.error_message);
+          return;
+        }
+        // still running — schedule next poll
+        pollHandle = setTimeout(tick, 2000);
+      })
+      .catch(function (e) {
+        // network blip — keep polling but slower
+        pollHandle = setTimeout(tick, 4000);
+      });
+  }
+
+  // Kick off after 1s so the user actually sees the spinner once.
+  pollHandle = setTimeout(tick, 1000);
+})();
+</script>
+
+<noscript>
+  <p style="text-align:center;padding:18px;font-family:var(--nk-font-mono);font-size:11px">
+    JavaScript 關閉時，請每 5 秒手動 reload 一次（瀏覽器 refresh 即可）。
+  </p>
+</noscript>
+</body>
+</html>

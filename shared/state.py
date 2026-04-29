@@ -278,6 +278,40 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_gsc_query
             ON gsc_rows(query);
 
+        -- PRD #226 §"Audit result schema" — SEO 中控台 v1 audit_results table.
+        -- Canonical DDL: migrations/006_audit_results.sql.
+        -- Owned by `shared/audit_results_store.py`; written by
+        -- `agents/brook/audit_runner` after each subprocess audit run.
+        CREATE TABLE IF NOT EXISTS audit_results (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_site       TEXT,
+            wp_post_id        INTEGER,
+            url               TEXT NOT NULL,
+            focus_keyword     TEXT NOT NULL DEFAULT '',
+            audited_at        TEXT NOT NULL,
+            overall_grade     TEXT NOT NULL
+                              CHECK (overall_grade IN ('A','B+','B','C+','C','D','F')),
+            pass_count        INTEGER NOT NULL DEFAULT 0,
+            warn_count        INTEGER NOT NULL DEFAULT 0,
+            fail_count        INTEGER NOT NULL DEFAULT 0,
+            skip_count        INTEGER NOT NULL DEFAULT 0,
+            suggestions_json  TEXT NOT NULL DEFAULT '[]',
+            raw_markdown      TEXT NOT NULL DEFAULT '',
+            review_status     TEXT NOT NULL DEFAULT 'fresh'
+                              CHECK (review_status IN
+                                     ('fresh','in_review','exported','archived')),
+            approval_queue_id INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_audit_results_post_audited_at
+            ON audit_results(target_site, wp_post_id, audited_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_audit_results_url
+            ON audit_results(url, audited_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_audit_results_review_status
+            ON audit_results(review_status, audited_at DESC);
+
         -- Phase 3 observability: per-job heartbeat (last-success + consecutive failure
         -- counter). Owned by `shared/heartbeat.py`; consumed by `/bridge/health`.
         CREATE TABLE IF NOT EXISTS heartbeats (
