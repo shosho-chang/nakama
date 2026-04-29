@@ -334,6 +334,38 @@ class WordPressClient:
         )
         return post
 
+    def list_posts(
+        self,
+        *,
+        per_page: int = 100,
+        status: str = "publish",
+        operation_id: str = "",
+    ) -> list[dict[str, Any]]:
+        """List published posts as raw WP REST dicts.
+
+        Returns the raw `/wp/v2/posts` array — callers project to whatever
+        view shape they need. Returning raw dicts (instead of `WpPostV1`)
+        keeps this method permissive: SEOPress / Bricks may add fields the
+        anti-corruption schema does not yet model (e.g. ``yoast_*``,
+        ``wpcf_*``), and the SEO control center list view only reads a
+        handful of keys (`id`, `title.rendered`, `link`, `modified`,
+        `meta`). Strict ``WpPostV1.model_validate`` here would refuse a
+        listing if any unknown field appeared, which would crash the
+        dashboard for a benign upstream change. Mutating endpoints
+        (`create_post`/`get_post`/`update_post`) keep strict validation.
+
+        Used by ``shared.wp_post_lister.list_posts`` (SEO control center).
+        """
+        raw = self._request(
+            "GET",
+            "wp/v2/posts",
+            params={"per_page": per_page, "status": status},
+            operation_id=operation_id,
+        )
+        if not isinstance(raw, list):
+            return []
+        return [r for r in raw if isinstance(r, dict)]
+
     def find_by_meta(
         self,
         meta_key: str,
