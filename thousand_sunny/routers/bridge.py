@@ -145,6 +145,19 @@ async def cost_page(request: Request, nakama_auth: str | None = Cookie(None)):
     return _templates.TemplateResponse(request, "cost.html", {})
 
 
+@page_router.get("/seo", response_class=HTMLResponse)
+async def seo_page(request: Request, nakama_auth: str | None = Cookie(None)):
+    """SEO 中控台 v1 — slice 1 foundation.
+
+    Three placeholder sections (article list / target keywords / rank change).
+    Real data wiring lives in downstream slices (#229 / #230 / #233).
+    Section 3 stays placeholder until ADR-008 Phase 2a-min lands.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/seo", status_code=302)
+    return _templates.TemplateResponse(request, "seo.html", {})
+
+
 # Stale thresholds (minutes) used to colour-code rows on /bridge/health.
 # `green` ≤ HEALTH_GREEN_MIN; HEALTH_GREEN_MIN < `yellow` ≤ HEALTH_YELLOW_MIN;
 # HEALTH_YELLOW_MIN < `orange` ≤ HEALTH_ORANGE_MIN; > HEALTH_ORANGE_MIN → `red`.
