@@ -7,6 +7,7 @@ Usage:
     python -m agents.franky backup-verify  # Slice 2: verify R2 daily snapshot
     python -m agents.franky digest       # Slice 3: weekly digest (5-section Slack DM)
     python -m agents.franky anomaly      # Phase 5B-3: 15-min anomaly daemon tick
+    python -m agents.franky gsc-daily    # ADR-008 Phase 2a-min: daily 7-day GSC pull → state.db
 
 The default (no-subcommand) path preserves existing cron behavior until Slice 3 flips
 the default to the new digest. See ADR-007 §11 for the module layout plan.
@@ -32,6 +33,7 @@ _JOB_NAME_BACKUP_VERIFY = "franky-r2-backup-verify"
 _JOB_NAME_DIGEST = "franky-weekly-report"
 _JOB_NAME_NEWS = "franky-news-digest"
 _JOB_NAME_ANOMALY = "nakama-anomaly-daemon"
+_JOB_NAME_GSC_DAILY = "franky-gsc-daily"
 
 
 def _cmd_health(_args: argparse.Namespace) -> int:
@@ -190,6 +192,36 @@ def _cmd_anomaly(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_gsc_daily(args: argparse.Namespace) -> int:
+    """ADR-008 Phase 2a-min — daily 7-day GSC pull → state.db gsc_rows.
+
+    Heartbeats: success on every non-fail verdict (skipped is fine — env not
+    yet provisioned is a config gap, not a cron-stuck signal). Failure
+    heartbeat fires only when the cron itself crashed or ``status='fail'``
+    (all keywords failed) so probe_cron_freshness doesn't false-positive
+    during early bring-up.
+    """
+    from agents.franky.jobs.gsc_daily import run_once
+
+    dry_run = getattr(args, "dry_run", False)
+    try:
+        result = run_once(dry_run=dry_run)
+    except Exception as exc:
+        if not dry_run:
+            record_failure(_JOB_NAME_GSC_DAILY, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+
+    print(json.dumps(result.to_summary_dict(), ensure_ascii=False, indent=2))
+
+    if dry_run:
+        return 0
+    if result.status == "fail":
+        record_failure(_JOB_NAME_GSC_DAILY, result.detail[:200])
+        return 1
+    record_success(_JOB_NAME_GSC_DAILY)
+    return 0
+
+
 def _cmd_legacy_weekly(_args: argparse.Namespace) -> int:
     """Backward-compat: the current VPS cron still runs `python -m agents.franky` without args."""
     from agents.franky.agent import FrankyAgent
@@ -223,6 +255,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write vault digest but skip Slack DM (dev use).",
     )
+    gsc = sub.add_parser(
+        "gsc-daily", help="ADR-008 Phase 2a-min: daily 7-day GSC pull → state.db gsc_rows"
+    )
+    gsc.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Parse keywords + compute window only; no GSC API call, no DB write.",
+    )
     return parser
 
 
@@ -244,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
         "digest": _cmd_digest,
         "news": _cmd_news,
         "anomaly": _cmd_anomaly,
+        "gsc-daily": _cmd_gsc_daily,
     }
     handler = dispatch.get(args.command, _cmd_legacy_weekly)
     return handler(args)

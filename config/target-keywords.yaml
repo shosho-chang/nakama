@@ -1,0 +1,21 @@
+# config/target-keywords.yaml
+#
+# Zoro / Usopp / Franky 三方共用 target keyword list（ADR-008 §6）。
+#
+# Schema：`shared/schemas/seo.py` `TargetKeywordListV1`。
+# Ownership rules:
+#   - Zoro: add / remove / update goal_rank
+#   - Usopp: append-only（publish 時自動加入 focus_keyword）
+#   - Franky: read-only（GSC daily cron 讀這份去 GSC API 撈排名資料）
+#   - 修修: 任何操作（CLI 手動）
+#
+# 併發寫入：用 filelock（`config/target-keywords.yaml.lock`）保護，避免 Zoro
+# 與 Usopp 同時寫入互蓋。
+#
+# 語言規範：`keyword` 統一繁中以 match GSC zh-TW；英文對照寫 `keyword_en`。
+#
+# 預設空 — Zoro Phase 1.5 開始時會 push 戰略關鍵字進來。
+
+schema_version: 1
+updated_at: "2026-04-29T00:00:00+08:00"
+keywords: []
