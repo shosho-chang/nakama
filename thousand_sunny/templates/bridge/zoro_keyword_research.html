@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Zoro · 關鍵字研究</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-2:    #2a2a2a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-r-2:          2px;
+  --nk-border:       1px solid var(--nk-rule);
+  --nk-border-hair:  1px solid var(--nk-hairline);
+  --nk-dur-fast:     80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Chassis ── */
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot {
+  width: 14px; height: 14px;
+  border: 2px solid var(--nk-chassis-fg); border-radius: 50%;
+  position: relative;
+}
+.chassis-dot::after {
+  content: ''; position: absolute; inset: 3px;
+  background: var(--nk-signal); border-radius: 50%;
+}
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+/* ── Page header ── */
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: var(--nk-border);
+  padding: 18px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
+}
+.page-title {
+  font-family: var(--nk-font-display); font-size: 26px; font-weight: 500;
+  letter-spacing: -0.5px;
+}
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
+.header-meta {
+  font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3);
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+
+/* ── Main area ── */
+.main {
+  flex: 1;
+  padding: 24px 40px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Section card (form / result / error) ── */
+.section {
+  background: var(--nk-panel);
+  border: var(--nk-border);
+}
+.section-head {
+  padding: 16px 20px 14px;
+  border-bottom: var(--nk-border-hair);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+.section-marker {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--nk-ink-3);
+  margin-bottom: 4px;
+}
+.section-title {
+  font-family: var(--nk-font-display);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  color: var(--nk-ink);
+}
+.section-title .zh {
+  color: var(--nk-muted);
+  font-family: var(--nk-font-zh);
+  font-size: 13px;
+  margin-left: 6px;
+}
+.section-status {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+}
+.section-status.idle { color: var(--nk-ink-3); }
+.section-status.ready { color: var(--nk-jade); }
+.section-status.fail { color: var(--nk-crimson); }
+.section-body {
+  padding: 22px 20px 26px;
+}
+
+/* ── Form ── */
+form.kw-form { display: flex; flex-direction: column; gap: 18px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+}
+.field-help {
+  font-size: 12px;
+  color: var(--nk-ink-3);
+  line-height: 1.55;
+}
+.nk-input, .nk-select {
+  background: var(--nk-panel-2);
+  border: var(--nk-border);
+  padding: 10px 12px;
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  color: var(--nk-ink);
+  border-radius: var(--nk-r-2);
+  outline: none;
+  width: 100%;
+  max-width: 480px;
+}
+.nk-select { cursor: pointer; max-width: 240px; }
+.nk-input:focus, .nk-select:focus { border-color: var(--nk-ink-2); }
+.nk-input::placeholder { color: var(--nk-muted); }
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.nk-btn-primary {
+  background: var(--nk-ink);
+  color: #fff;
+  border: none;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  cursor: pointer;
+  border-radius: var(--nk-r-2);
+  white-space: nowrap;
+  transition: background var(--nk-dur-fast);
+}
+.nk-btn-primary:hover { background: var(--nk-chassis-2); }
+.nk-btn-primary:disabled { background: var(--nk-muted); cursor: not-allowed; }
+
+.nk-btn-ghost {
+  background: transparent;
+  color: var(--nk-ink-2);
+  border: var(--nk-border);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  cursor: pointer;
+  border-radius: var(--nk-r-2);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast);
+}
+.nk-btn-ghost:hover { color: var(--nk-ink); border-color: var(--nk-ink-2); }
+
+/* ── Spinner ── */
+.spinner-row {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink-2);
+  letter-spacing: 0.06em;
+}
+.spinner-row.is-running { display: flex; }
+.spinner-dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--nk-hairline);
+  border-top-color: var(--nk-signal);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner-dot { animation: none; border-top-color: var(--nk-ink-2); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Result block ── */
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: var(--nk-border-hair);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-2);
+  letter-spacing: 0.04em;
+}
+.result-meta dt {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+  margin-bottom: 3px;
+}
+.result-meta dd { color: var(--nk-ink); }
+.result-meta-block { display: flex; flex-direction: column; }
+
+.result-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.report-frame {
+  background: var(--nk-panel-2);
+  border: var(--nk-border-hair);
+  padding: 24px 28px;
+  border-radius: var(--nk-r-2);
+}
+.report-frame h1, .report-frame h2, .report-frame h3 {
+  font-family: var(--nk-font-display);
+  color: var(--nk-ink);
+  font-weight: 500;
+  margin-top: 1.2em;
+  margin-bottom: 0.4em;
+  line-height: 1.3;
+}
+.report-frame h1 { font-size: 24px; margin-top: 0; letter-spacing: -0.4px; }
+.report-frame h2 { font-size: 18px; letter-spacing: -0.2px; padding-bottom: 6px; border-bottom: var(--nk-border-hair); }
+.report-frame h3 { font-size: 15px; }
+.report-frame p { line-height: 1.7; margin: 0.4em 0 0.9em; color: var(--nk-ink-2); }
+.report-frame ul, .report-frame ol { padding-left: 1.4em; margin: 0.4em 0 0.9em; color: var(--nk-ink-2); }
+.report-frame li { line-height: 1.65; margin-bottom: 0.2em; }
+.report-frame strong { color: var(--nk-ink); font-weight: 600; }
+.report-frame a { color: var(--nk-signal); text-decoration: none; border-bottom: 1px dotted; }
+.report-frame a:hover { border-bottom-style: solid; }
+.report-frame table {
+  border-collapse: collapse;
+  margin: 0.8em 0 1.2em;
+  width: 100%;
+  font-size: 12.5px;
+}
+.report-frame th, .report-frame td {
+  border: var(--nk-border-hair);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.report-frame th {
+  background: var(--nk-panel);
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+}
+.report-frame code {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  background: var(--nk-panel);
+  border: var(--nk-border-hair);
+  padding: 1px 5px;
+  border-radius: var(--nk-r-2);
+}
+.report-frame pre {
+  background: var(--nk-panel);
+  border: var(--nk-border-hair);
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  margin: 0.6em 0 1em;
+  border-radius: var(--nk-r-2);
+}
+.report-frame pre code { background: transparent; border: none; padding: 0; }
+.report-frame hr { border: none; border-top: var(--nk-border-hair); margin: 1.4em 0; }
+
+/* ── Error block ── */
+.error-block {
+  border: 1px solid var(--nk-crimson);
+  background: rgba(168,35,26,0.04);
+  padding: 16px 20px;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink);
+  line-height: 1.65;
+  border-radius: var(--nk-r-2);
+}
+.error-block strong { color: var(--nk-crimson); letter-spacing: 0.06em; }
+
+/* ── Footer hint ── */
+.foot-hint {
+  margin-top: 4px;
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--nk-muted);
+}
+.foot-hint a { color: var(--nk-ink-2); text-decoration: none; border-bottom: 1px dotted var(--nk-muted); }
+.foot-hint a:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
+</style>
+</head>
+<body>
+<header class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/seo" class="active" aria-current="page">SEO <span class="zh">優化</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
+    <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
+    <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
+    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
+    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
+  </nav>
+</header>
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/zoro/keyword-research · 雙語關鍵字研究</div>
+    <h1 class="page-title">關鍵字研究 <span class="zh">Keyword Research · Zoro</span></h1>
+  </div>
+  <div class="header-meta">PRD #226 · slice 7</div>
+</section>
+
+<main class="main">
+
+  <!-- ── Form section ── -->
+  <article class="section" aria-labelledby="sec-form">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 1 · 輸入主題</div>
+        <h2 class="section-title" id="sec-form">研究參數 <span class="zh">topic / type / english</span></h2>
+      </div>
+      <span class="section-status idle">{% if phase == 'result' %}DONE{% elif phase == 'error' %}FAILED{% else %}IDLE{% endif %}</span>
+    </header>
+    <div class="section-body">
+      <form class="kw-form" id="kwForm" method="post" action="/bridge/zoro/keyword-research" autocomplete="off">
+        <div class="field">
+          <label class="field-label" for="topic">主題 · TOPIC</label>
+          <input
+            class="nk-input"
+            id="topic"
+            name="topic"
+            type="text"
+            required
+            maxlength="200"
+            placeholder="例如：間歇性斷食"
+            value="{{ topic|e }}"
+          >
+          <span class="field-help">輸入要研究的中文主題；最長 200 字。</span>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="content_type">內容形式 · CONTENT TYPE</label>
+          <select class="nk-select" id="content_type" name="content_type">
+            <option value="blog"    {% if content_type == 'blog' %}selected{% endif %}>blog · 部落格</option>
+            <option value="youtube" {% if content_type == 'youtube' %}selected{% endif %}>youtube · YouTube 影片</option>
+          </select>
+          <span class="field-help">影響 Claude 標題建議的優化方向。</span>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="en_topic">英文主題 · EN TOPIC（可選）</label>
+          <input
+            class="nk-input"
+            id="en_topic"
+            name="en_topic"
+            type="text"
+            maxlength="200"
+            placeholder="留空 → 由 Claude 自動翻譯"
+            value="{{ en_topic|e }}"
+          >
+          <span class="field-help">指定英文等價詞可避免翻譯漂移；空白則由 pipeline 自動翻。</span>
+        </div>
+
+        <div class="form-actions">
+          <button class="nk-btn-primary" type="submit" id="kwSubmit">啟動研究</button>
+          <div class="spinner-row" id="kwSpinner" role="status" aria-live="polite">
+            <div class="spinner-dot"></div>
+            <span>正在研究關鍵字…（預計 30–60 秒，請保持頁面開啟）</span>
+          </div>
+        </div>
+      </form>
+    </div>
+  </article>
+
+  {% if phase == 'error' and error %}
+  <!-- ── Error section ── -->
+  <article class="section" aria-labelledby="sec-error">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 2 · 失敗</div>
+        <h2 class="section-title" id="sec-error">研究流程出錯 <span class="zh">retry available</span></h2>
+      </div>
+      <span class="section-status fail">FAILED</span>
+    </header>
+    <div class="section-body">
+      <div class="error-block">
+        <strong>ERROR</strong>
+        <p style="margin-top:8px;color:var(--nk-ink);">{{ error }}</p>
+      </div>
+      <p style="margin-top:14px;">
+        <a class="nk-btn-ghost" href="/bridge/zoro/keyword-research">↻ 重新填寫</a>
+      </p>
+    </div>
+  </article>
+  {% endif %}
+
+  {% if phase == 'result' and report_md %}
+  <!-- ── Result section ── -->
+  <article class="section" aria-labelledby="sec-result">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 2 · 報告</div>
+        <h2 class="section-title" id="sec-result">研究報告 <span class="zh">{{ topic }}</span></h2>
+      </div>
+      <span class="section-status ready">READY</span>
+    </header>
+    <div class="section-body">
+      <dl class="result-meta">
+        <div class="result-meta-block">
+          <dt>topic</dt>
+          <dd>{{ topic }}</dd>
+        </div>
+        {% if en_topic %}
+        <div class="result-meta-block">
+          <dt>en_topic</dt>
+          <dd>{{ en_topic }}</dd>
+        </div>
+        {% endif %}
+        <div class="result-meta-block">
+          <dt>content_type</dt>
+          <dd>{{ content_type }}</dd>
+        </div>
+        <div class="result-meta-block">
+          <dt>filename</dt>
+          <dd><code>{{ download_filename }}</code></dd>
+        </div>
+      </dl>
+
+      <div class="result-actions">
+        <!-- Server-side download fallback (always works, even with JS off) -->
+        <form method="post" action="/bridge/zoro/keyword-research/download" style="display:inline;">
+          <input type="hidden" name="topic" value="{{ topic|e }}">
+          <input type="hidden" name="content_type" value="{{ content_type|e }}">
+          <input type="hidden" name="en_topic" value="{{ en_topic|e }}">
+          <input type="hidden" name="report_md" value="{{ report_md|e }}">
+          <button class="nk-btn-primary" type="submit" id="kwDownloadBtn">下載 .md</button>
+        </form>
+        <a class="nk-btn-ghost" href="/bridge/zoro/keyword-research">+ 新研究</a>
+      </div>
+
+      <!-- Raw markdown for the renderer (client) — escaped, hidden from view -->
+      <textarea id="kwReportRaw" hidden>{{ report_md }}</textarea>
+      <!-- Rendered HTML lives here (filled on DOMContentLoaded) -->
+      <div class="report-frame" id="kwReportFrame">
+        <!-- Fallback (no-JS): rendered as preformatted text so the user still sees content -->
+        <pre style="white-space:pre-wrap;word-break:break-word;background:transparent;border:0;padding:0;">{{ report_md }}</pre>
+      </div>
+    </div>
+  </article>
+  {% endif %}
+
+  <p class="foot-hint">
+    參考 · <a href="/bridge/seo">SEO 中控台</a>
+    · ADR-012 Zoro/Brook 邊界
+    · PRD #226
+  </p>
+</main>
+
+<script>
+// ── Spinner UX during sync block ─────────────────────────────────────
+// Form submit → disable button + show spinner. Server returns the same
+// page (with `phase=result` or `phase=error`) — full page refresh, no SPA.
+(function () {
+  const form = document.getElementById('kwForm');
+  if (!form) return;
+  form.addEventListener('submit', function () {
+    const btn = document.getElementById('kwSubmit');
+    const spinner = document.getElementById('kwSpinner');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '研究中…';
+    }
+    if (spinner) {
+      spinner.classList.add('is-running');
+    }
+  });
+})();
+
+// ── Render the markdown report client-side ──────────────────────────
+// Reuses brook_chat.html's `marked` CDN dependency, plus DOMPurify to
+// sanitize the rendered HTML — the markdown body comes from LLM output
+// (research_keywords), so prompt-injection-induced <script> / event
+// handlers in the response would otherwise execute on innerHTML assign.
+(function () {
+  const raw = document.getElementById('kwReportRaw');
+  const frame = document.getElementById('kwReportFrame');
+  if (!raw || !frame || typeof marked === 'undefined') return;
+  marked.setOptions({ breaks: true, gfm: true });
+  // Strip the YAML frontmatter `--- ... ---` block before rendering so the
+  // rendered preview is pure body. Frontmatter still ships in the .md
+  // download (which uses raw `report_md`, not rendered HTML).
+  let body = raw.value;
+  const m = body.match(/^---\n[\s\S]*?\n---\n+/);
+  if (m) body = body.slice(m[0].length);
+  const rendered = marked.parse(body);
+  // DOMPurify guards against prompt-injection-induced HTML (e.g. LLM
+  // output containing `<script>` or `<img onerror=...>`). Without it,
+  // setting innerHTML on LLM markdown is a stored-XSS vector even for a
+  // single-user dev tool. If the CDN fails to load, fall back to a
+  // textContent-only render so we degrade safe rather than unsafe.
+  if (typeof DOMPurify !== 'undefined') {
+    frame.innerHTML = DOMPurify.sanitize(rendered);
+  } else {
+    frame.textContent = body;
+  }
+})();
+
+// ── Optional: client-side blob download enhancement ─────────────────
+// The form-post fallback always works; this overrides on click for users
+// with JS so the browser doesn't navigate away from the result page.
+(function () {
+  const btn = document.getElementById('kwDownloadBtn');
+  const raw = document.getElementById('kwReportRaw');
+  if (!btn || !raw) return;
+  btn.addEventListener('click', function (ev) {
+    try {
+      const filename = {{ download_filename|tojson if download_filename else "''" }};
+      if (!filename) return; // fall through to form post
+      ev.preventDefault();
+      const blob = new Blob([raw.value], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      // If blob path fails, let the form post fall through naturally.
+      console.warn('blob download failed, falling back to server', e);
+    }
+  });
+})();
+</script>
+</body>
+</html>
