@@ -157,3 +157,21 @@ python -m shared.memory_maintenance archive   # 歸檔舊低信心記憶
 - 讀取記憶：從 `memory/claude/MEMORY.md` 讀取索引，再讀取對應檔案
 - 寫入記憶：寫入 `memory/claude/` 下的對應 `.md` 檔，並更新 `memory/claude/MEMORY.md`
 - 格式規範同原本記憶系統（frontmatter: name, description, type）
+
+---
+
+## Agent skills
+
+下列三項 routing 提供給 mattpocock engineering skills（`to-issues`、`to-prd`、`github-triage`、`diagnose`、`tdd`、`improve-codebase-architecture`、`zoom-out`、`grill-with-docs`）讀取，避免每次 skill 跑起來都要重新探勘。
+
+### Issue tracker
+
+GitHub Issues（透過 `gh` CLI）；PR-first 文化，issue 用於需 triage / ADR-level / 外部 reporter 的工作。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+五個 canonical triage label（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）已 provision 在 GH repo，default 對映、無需 override。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context — 入口為根目錄 `CONTEXT-MAP.md`，各 agent 的 `CONTEXT.md` lazy-created。**ADR 在 `docs/decisions/` 不是 `docs/adr/`**。See `docs/agents/domain.md`.
