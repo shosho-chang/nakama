@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
-from shared import agent_memory, approval_queue, heartbeat, state
+from shared import agent_memory, approval_queue, heartbeat, state, wp_post_lister
 from shared.doc_index import DocIndex
 from shared.log_index import LogIndex
 from shared.pricing import calc_cost, get_pricing
@@ -145,17 +145,59 @@ async def cost_page(request: Request, nakama_auth: str | None = Cookie(None)):
     return _templates.TemplateResponse(request, "cost.html", {})
 
 
+# SEO control center — list both target sites combined.  Order kept stable so
+# the section ALWAYS shows wp_shosho first when present (modeled after the
+# `target-keywords.yaml` reading convention).
+_SEO_TARGET_SITES: tuple[str, ...] = ("wp_shosho", "wp_fleet")
+
+
+def _summarize_seo_post(post: wp_post_lister.WpPostSummaryV1, target_site: str) -> dict[str, Any]:
+    """Decorate a `WpPostSummaryV1` with placeholder grade/audit fields.
+
+    Slice #232 will replace `grade` / `last_audited_at` with real values from
+    the `audit_results` table; for now we hand the template a stable dict
+    shape so the slice #232 PR is a small, focused diff.
+    """
+    return {
+        "wp_post_id": post.wp_post_id,
+        "title": post.title,
+        "link": post.link,
+        "focus_keyword": post.focus_keyword,
+        "last_modified": post.last_modified,
+        "target_site": target_site,
+        # Placeholder — populated by slice #232 from audit_results.
+        "grade": None,
+        "last_audited_at": None,
+    }
+
+
 @page_router.get("/seo", response_class=HTMLResponse)
 async def seo_page(request: Request, nakama_auth: str | None = Cookie(None)):
-    """SEO 中控台 v1 — slice 1 foundation.
+    """SEO 中控台 v1 — section 1 wired to WP REST live pull (#229).
 
-    Three placeholder sections (article list / target keywords / rank change).
-    Real data wiring lives in downstream slices (#229 / #230 / #233).
-    Section 3 stays placeholder until ADR-008 Phase 2a-min lands.
+    Pulls up to 100 posts from each target site via `wp_post_lister.list_posts`
+    (1h server-side TTL cache; WP errors fall back to empty list).  Posts are
+    combined and sorted by `last_modified` desc.  Sections 2 (#230) / 3 (#233)
+    remain placeholders.
     """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/seo", status_code=302)
-    return _templates.TemplateResponse(request, "seo.html", {})
+
+    rows: list[dict[str, Any]] = []
+    for target_site in _SEO_TARGET_SITES:
+        for post in wp_post_lister.list_posts(target_site):  # type: ignore[arg-type]
+            rows.append(_summarize_seo_post(post, target_site))
+    # Combined sort: WP returns per-site sorted; combining requires re-sort.
+    rows.sort(key=lambda r: r["last_modified"], reverse=True)
+
+    return _templates.TemplateResponse(
+        request,
+        "seo.html",
+        {
+            "articles": rows,
+            "target_sites": list(_SEO_TARGET_SITES),
+        },
+    )
 
 
 # Stale thresholds (minutes) used to colour-code rows on /bridge/health.

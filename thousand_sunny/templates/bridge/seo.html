@@ -187,6 +187,137 @@ body {
   line-height: 1.55;
 }
 
+/* ── Article list section ── */
+.section.section-articles .section-body {
+  /* Tables use the full panel width with their own gutters. */
+  padding: 0;
+  gap: 0;
+}
+.articles-toolbar {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--nk-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-3);
+  letter-spacing: 0.04em;
+}
+.articles-toolbar .count { color: var(--nk-ink); }
+.articles-toolbar .source {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.articles-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.articles-table thead th {
+  text-align: left;
+  background: var(--nk-panel-2);
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+  font-weight: 500;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--nk-rule);
+  border-top: 1px solid var(--nk-hairline);
+  white-space: nowrap;
+}
+.articles-table tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--nk-hairline);
+  vertical-align: top;
+  line-height: 1.45;
+}
+.articles-table tbody tr:last-child td { border-bottom: none; }
+.articles-table tbody tr:hover { background: var(--nk-panel-2); }
+.articles-table .col-title { min-width: 280px; max-width: 460px; }
+.articles-table .col-keyword { white-space: nowrap; }
+.articles-table .col-modified { white-space: nowrap; }
+.articles-table .col-grade,
+.articles-table .col-audited,
+.articles-table .col-action { white-space: nowrap; }
+
+.article-title-link {
+  font-weight: 500;
+  color: var(--nk-ink);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.article-title-link:hover {
+  border-bottom-color: var(--nk-signal);
+  color: var(--nk-signal);
+}
+.article-site-tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-family: var(--nk-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid var(--nk-hairline);
+  color: var(--nk-ink-3);
+  background: var(--nk-panel);
+  vertical-align: 2px;
+}
+.article-keyword {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-2);
+  letter-spacing: 0.04em;
+}
+.article-keyword.is-empty { color: var(--nk-muted); }
+.article-modified {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-2);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.article-placeholder {
+  color: var(--nk-muted);
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+}
+.article-action-btn {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--nk-rule);
+  color: var(--nk-ink-3);
+  cursor: not-allowed;
+}
+.article-action-btn[disabled] { opacity: 0.6; }
+
+.articles-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--nk-ink-3);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.articles-empty .head {
+  font-family: var(--nk-font-display);
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  color: var(--nk-ink-2);
+  margin-bottom: 8px;
+}
+.articles-empty .body { line-height: 1.55; }
+
 /* ── Footer hint ── */
 .foot-hint {
   margin-top: 4px;
@@ -223,31 +354,81 @@ body {
 
 <section class="page-header">
   <div>
-    <div class="nk-caps">/seo · 中控台 v1 — slice 1 foundation</div>
+    <div class="nk-caps">/seo · 中控台 v1 — slice 2 article list</div>
     <h1 class="page-title">SEO 中控台 <span class="zh">SEO Control Center</span></h1>
   </div>
-  <div class="header-meta">PRD #226 · slice 1</div>
+  <div class="header-meta">PRD #226 · slice 2 (#229)</div>
 </section>
 
 <main class="main">
   <!-- Section 1: 文章列表 -->
-  <article class="section" aria-labelledby="sec-articles">
+  <article class="section section-articles" aria-labelledby="sec-articles">
     <header class="section-head">
       <div>
         <div class="section-marker">§ 1 · ARTICLES</div>
         <h2 class="section-title" id="sec-articles">文章列表 <span class="zh">SEO grade by post</span></h2>
       </div>
-      <span class="section-status pending">PENDING SLICE</span>
     </header>
     <div class="section-body">
-      <p class="lead">
-        WP REST 拉 shosho.tw 全文章列表，配合 lazy audit 顯示每篇的 SEO 分數、focus
-        keyword、最近一次 audit 時間。從這裡點進去就能跑新 audit 或進 review session。
-      </p>
-      <p class="meta">
-        資料源 · <code>WP REST /wp/v2/posts</code> + <code>audit_results</code>
-        ／實作 · slice 後續 issue（#229）
-      </p>
+      <div class="articles-toolbar">
+        <span>共 <span class="count">{{ articles|length }}</span> 篇 · 排序 last_modified ↓</span>
+        <span class="source">SOURCE · WP REST /wp/v2/posts · 1H CACHE</span>
+      </div>
+      {% if articles %}
+      <table class="articles-table" aria-describedby="sec-articles">
+        <thead>
+          <tr>
+            <th class="col-title">TITLE</th>
+            <th class="col-keyword">FOCUS KEYWORD</th>
+            <th class="col-modified">LAST MODIFIED</th>
+            <th class="col-grade">GRADE</th>
+            <th class="col-audited">LAST AUDITED</th>
+            <th class="col-action"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in articles %}
+          <tr>
+            <td class="col-title">
+              <a class="article-title-link" href="{{ a.link }}" target="_blank" rel="noopener">{{ a.title }}</a>
+              {% if a.target_site == 'wp_fleet' %}
+              <span class="article-site-tag" title="fleet.shosho.tw">FLEET</span>
+              {% endif %}
+            </td>
+            <td class="col-keyword">
+              {% if a.focus_keyword %}
+              <span class="article-keyword">{{ a.focus_keyword }}</span>
+              {% else %}
+              <span class="article-keyword is-empty">—</span>
+              {% endif %}
+            </td>
+            <td class="col-modified">
+              <span class="article-modified">{{ (a.last_modified or '')[:16].replace('T', ' ') }}</span>
+            </td>
+            <td class="col-grade">
+              <span class="article-placeholder" aria-label="grade not yet audited">—</span>
+            </td>
+            <td class="col-audited">
+              <span class="article-placeholder" aria-label="never audited">—</span>
+            </td>
+            <td class="col-action">
+              <button class="article-action-btn" type="button" disabled
+                      title="audit pipeline lands in slice #232">跑 audit</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="articles-empty">
+        <div class="head">沒有抓到文章</div>
+        <div class="body">
+          可能是 WP REST 暫時無法連線、或環境變數未設定。<br>
+          先看 <code>nakama.wp_post_lister</code> 在 logs 的 warning，
+          再檢查 <code>WP_SHOSHO_BASE_URL</code> / <code>WP_FLEET_BASE_URL</code>。
+        </div>
+      </div>
+      {% endif %}
     </div>
   </article>
 
