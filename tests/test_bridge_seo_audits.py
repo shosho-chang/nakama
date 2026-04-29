@@ -224,6 +224,30 @@ class TestProgressPage:
         # The progress page wires JS polling on /status.
         assert "/bridge/seo/audits/' + encodeURIComponent(jobId) + '/status" in body
 
+    def test_progress_page_error_box_hidden_until_status_error(self, authed_client):
+        """Regression: ``.error-box { display: flex }`` shadows the
+        user-agent ``[hidden] { display: none }`` rule (same specificity,
+        later declaration wins). Without an explicit
+        ``.error-box[hidden] { display: none }`` rule the box renders on
+        every progress-page load with the string ``audit failed`` visible
+        before the audit even completes. Pin the CSS rule presence.
+        """
+        import thousand_sunny.routers.bridge as bridge_module
+
+        with patch.object(bridge_module, "_run_audit_job", MagicMock()):
+            kick = authed_client.post(
+                "/bridge/seo/audits",
+                data={"url": "https://shosho.tw/x"},
+                follow_redirects=False,
+            )
+        job_id = kick.headers["location"].rsplit("/", 1)[-1]
+        body = authed_client.get(f"/bridge/seo/audits/{job_id}").text
+
+        # The element exists with the hidden attribute (JS reveals on error).
+        assert '<div class="error-box" id="error-box" hidden>' in body
+        # And the CSS keeps it hidden until JS toggles `hidden=false`.
+        assert ".error-box[hidden] { display: none; }" in body
+
     def test_unknown_job_returns_404(self, authed_client):
         r = authed_client.get("/bridge/seo/audits/deadbeef")
         assert r.status_code == 404
@@ -365,6 +389,12 @@ class TestResultPage:
         assert "rendered audit markdown" in body
         # review → button stub links to slice #234 route
         assert f"/bridge/seo/audits/{audit_id}/review" in body
+        # Result page upgrades the markdown source via inline JS — verify
+        # the carrier element + renderer hook are wired so the audit
+        # report shows as prose (heading hierarchy / list / blockquote)
+        # instead of monospace dump. JS-off fallback uses .fallback-pre.
+        assert '<div class="report-md fallback-pre" id="report-md">' in body
+        assert "el.classList.remove('fallback-pre');" in body
 
     def test_running_redirects_to_progress(self, authed_client):
         import thousand_sunny.routers.bridge as bridge_module

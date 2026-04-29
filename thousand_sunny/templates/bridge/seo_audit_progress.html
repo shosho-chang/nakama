@@ -184,6 +184,11 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+/* Restore HTML5 [hidden] semantics — the bare `display: flex` above shadows
+   the user-agent `[hidden] { display: none }` rule (same specificity, later
+   declaration wins), so without this re-assertion the error-box would render
+   on every progress-page load before the audit even completes. */
+.error-box[hidden] { display: none; }
 .error-box .head {
   font-family: var(--nk-font-mono);
   font-size: 11px;
