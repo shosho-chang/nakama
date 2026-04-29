@@ -44,7 +44,12 @@
 - [feedback_css_hidden_shadow.md](feedback_css_hidden_shadow.md) — CSS 對 selector 寫 `display:` 必同時補 `selector[hidden] { display: none }`，否則 `<div hidden>` 失效（PR #253 audit-failed 假警報根因）
 - [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
 - [feedback_worktree_leak_prevention_prompt.md](feedback_worktree_leak_prevention_prompt.md) — worktree-isolated agent prompt 防 leak 兩條剛性防線（pwd 第一步 + 完工 leak self-check），5 連勝零 leak
-- [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Ralph Loop plugin = single-prompt iter runner，不是 issue queue；2026-04-29 評估後決定不裝
+- [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Anthropic ralph-loop plugin = single-prompt iter runner，Matt 自己 reject；他改用 bash loop / Sandcastle，詳見 reference_sandcastle.md
+- [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock 的 AFK runner（github.com/mattpocock/sandcastle）TS lib，4-agent in Docker worktrees；2026-04-29 評估後 nakama 暫不裝
+- [project_seo_web_ui_completion_pr260.md](project_seo_web_ui_completion_pr260.md) — PR #260 (afk/seo-web-ui-completion) ship 4 slices A′+B′+E 2026-04-29 2h50m，待 review/merge
+- [feedback_phase3_single_worktree_proven.md](feedback_phase3_single_worktree_proven.md) — Phase 3 單 worktree 序列 AFK 對 nakama 規模夠用（PR #260 實證 28 tests 0 regression）；不需 sandcastle 多 worktree 並行
+- [feedback_setup_matt_pocock_skills_first.md](feedback_setup_matt_pocock_skills_first.md) — Matt skills 跑前必先 setup-matt-pocock-skills 落 docs/agents/* + CLAUDE.md `## Agent skills`；沒跑 skill 都自探勘+猜+用詞飄
+- [feedback_jinja_macro_caller_for_dialects.md](feedback_jinja_macro_caller_for_dialects.md) — 同 partial 多 dialect refactor 用 macro + caller block，比 include 強；chassis-nav 14 templates × 3 dialect 範本
 - [feedback_partial_agent_recovery.md](feedback_partial_agent_recovery.md) — killed agent partial work 先 inspect 再決定，常 near-complete 可手動接手（#229 教訓）
 - [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/2026-04-24-seo-prior-art.md
 - Research doc：[docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用

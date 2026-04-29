@@ -43,6 +43,8 @@ presentation layer（Web UI）。
 - **「SEO 中控台」** = `/bridge/seo` surface 的別名，SEO solution 操作 hub。v1 三 section：(1) WP 文章列表 + lazy audit 分數、(2) 攻擊中目標關鍵字（讀 `config/target-keywords.yaml`）、(3) 排名變化（v1.1 等 ADR-008 Phase 2a-min 落地接 `gsc_rows` db）；2026-04-29 grilling 凍結
 - **「audit review session」** = SEO 中控台底下「點進文章 → 跑新 audit → Y+ 左右對照」的單次審稿動作；以 `audit_results.suggestions_json` 落 db 持久化（resumable，無另開 session 表）；review 完成後一鍵 export 進 ADR-006 `approval_queue` 走既有 publish HITL — **不直接寫 WP**
 - **「slice」** = vertical slice = 跨層（schema / API / UI / tests）的薄完整路徑；對應現有 Slice A/B/C 慣例
+- **「chassis-nav」** = bridge surface 頂層 nav bar（落地後 `templates/bridge/_chassis_nav.html` partial 是 single source of truth）。Entry 兩種 lane：**agent-rooted**（ZORO、FRANKY 等對應 agent namespace，URL prefix `/bridge/<agent>/`）vs **topic-rooted**（SEO、DRAFTS、MEMORY、COST 等對應 cross-agent topic surface）。2026-04-29 grilling 凍結原則：「agent-rooted 頂層直到擠爆才 dropdown」。`aria-current` 嚴格對齊 URL，不表 user journey trail
+- **「breadcrumb」** = page-header 之上一行的 user journey trail（如 `← /bridge/seo · 找新關鍵字 → ZORO · KEYWORD RESEARCH`），用來補位 chassis-nav 失去的「從哪來」資訊。Always 顯示（不 referrer-detect），用既有 `nk-caps` token
 
 ## ADR location
 

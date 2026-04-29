@@ -53,7 +53,6 @@
       "Bash(npx *)",
       "Bash(powershell -Command \"Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile*)",
       "Bash(powershell -Command \"Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory*)",
-      "Bash(ssh nakama-vps *)",
       "Edit(~/.claude/skills/kb-ingest/**)",
       "Edit(~/.claude/skills/kb-ingest-workspace/**)",
       "Edit(~/.claude/skills/article-compose/**)",
@@ -70,7 +69,14 @@
       "Bash(git checkout -- *)",
       "Bash(git clean *)",
       "Bash(git branch -D *)",
-      "Edit(.env)"
+      "Edit(.env)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(rsync *)",
+      "Bash(git push origin main*)",
+      "Bash(git push * main)",
+      "Bash(gh pr merge *)",
+      "Bash(gh issue close *)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [
