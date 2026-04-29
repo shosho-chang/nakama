@@ -49,6 +49,7 @@ from shared.log import get_logger
 from shared.log_index import LogIndex
 from shared.pricing import calc_cost, get_pricing
 from shared.schemas.approval import ApprovalPayloadV1Adapter, PublishWpPostV1, UpdateWpPostV1
+from shared.schemas.publishing import PublishComplianceGateV1
 from thousand_sunny.auth import check_auth, require_auth_or_key
 
 _logger = get_logger("nakama.web.bridge")
@@ -700,6 +701,13 @@ async def seo_audit_review_page(
 
     suggestions = [_serialize_suggestion_for_template(s) for s in audit["suggestions"]]
     has_actionable = any(s["status"] in ("approved", "edited") for s in suggestions)
+    actionable_count = sum(1 for s in suggestions if s["status"] in ("approved", "edited"))
+    can_export = (
+        has_actionable
+        and audit.get("review_status") != "exported"
+        and bool(audit.get("target_site"))
+        and audit.get("wp_post_id") is not None
+    )
 
     return _templates.TemplateResponse(
         request,
@@ -710,6 +718,10 @@ async def seo_audit_review_page(
             "fetch_error": fetch_error,
             "suggestions": suggestions,
             "has_actionable": has_actionable,
+            "actionable_count": actionable_count,
+            "can_export": can_export,
+            "review_status": audit.get("review_status"),
+            "approval_queue_id": audit.get("approval_queue_id"),
             "edit_max_length": _REVIEW_EDIT_MAX,
         },
     )
@@ -799,6 +811,243 @@ async def seo_audit_review_edit(
     except audit_results_store.SuggestionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return _redirect_to_review(audit_id)
+
+
+# ---------------------------------------------------------------------------
+# /bridge/seo/audits/{id}/export — slice #235 / issue #235
+# ---------------------------------------------------------------------------
+#
+# Hand the reviewed audit off to the existing ADR-006 approval_queue:
+#   1. Collect approved + edited suggestions (rejected + pending excluded).
+#   2. Build an `UpdateWpPostV1` payload — `change_summary` is auto-generated;
+#      `proposed_changes` (in `patch`) is a markdown block formatted for
+#      reviewer reading on `/bridge/drafts/{id}`.
+#   3. `enqueue` the payload (status=pending, source_agent=brook).
+#   4. `mark_exported` writes the queue id back into `audit_results`.
+#   5. 303 redirect to `/bridge/drafts` so reviewer sees the new pending row.
+#
+# Re-export guard: if the audit row already shows `review_status='exported'`
+# the endpoint short-circuits with 409, surfacing the prior queue id so the
+# user knows where the existing entry lives.
+#
+# Atomicity: option (b) per issue #235 acceptance — `enqueue` and
+# `mark_exported` each commit their own rows because they share the singleton
+# sqlite connection from `shared.state._get_conn()` and both call
+# `conn.commit()` internally; wrapping in a single BEGIN IMMEDIATE would
+# require leaking commit-control into both deep modules, which is exactly
+# what their short interfaces try to hide. The practical risk is microsecond:
+# if the Python process crashes between step 3 and step 4, the queue ends up
+# with an orphan pending row whose `operation_id == seo_audit_export_<id>`
+# while the audit row still reads `review_status != 'exported'`. Recovery
+# path (manual): `SELECT id FROM approval_queue WHERE operation_id LIKE
+# 'seo_audit_export_%' AND id NOT IN (SELECT approval_queue_id FROM
+# audit_results WHERE approval_queue_id IS NOT NULL)` → for each, either run
+# `audit_results_store.mark_exported(audit_id, queue_id)` or transition the
+# orphan queue row to `archived` via `approval_queue.transition`.
+
+# Per-suggestion text rendered into `proposed_changes` is bounded by
+# `_REVIEW_EDIT_MAX` per field on input; the assembled markdown body itself
+# is left unbounded because reviewer-side `/bridge/drafts/{id}` already pages
+# the payload preview behind a `<pre>`.
+
+
+def _collect_export_suggestions(suggestions: list[Any]) -> list[dict[str, Any]]:
+    """Filter `audit_results.suggestions` down to the rows that should ship.
+
+    Only `approved` and `edited` are exported. For an `edited` row we swap
+    in `edited_value` — `suggested_value` is the LLM/deterministic seed and
+    must NOT survive into the exported payload when the reviewer overrode
+    it (per issue #235 acceptance).
+    """
+    out: list[dict[str, Any]] = []
+    for s in suggestions:
+        if s.status == "approved":
+            value = s.suggested_value
+        elif s.status == "edited":
+            # `update_suggestion(status='edited', edited_value=...)` is the
+            # only ingress path; the ValueError there guards `edited_value`
+            # being None, but we keep a defensive fallback so a corrupted
+            # blob doesn't silently ship empty text.
+            value = s.edited_value if s.edited_value else s.suggested_value
+        else:
+            continue
+        out.append(
+            {
+                "rule_id": s.rule_id,
+                "severity": s.severity,
+                "title": s.title,
+                "current_value": s.current_value or "",
+                "value": value or "",
+                "rationale": s.rationale or "",
+                "status": s.status,
+            }
+        )
+    return out
+
+
+def _format_proposed_changes_md(audit: dict[str, Any], picks: list[dict[str, Any]]) -> str:
+    """Render exported suggestions as a markdown block for HITL review.
+
+    The reviewer reads this on `/bridge/drafts/{id}` payload preview and
+    decides whether to `approve` (Usopp picks up + writes WP) or `reject`.
+    Format choice: human-friendly headers + bullet trio per suggestion (
+    現況 / 建議 / 為什麼) — easier to scan than raw JSON, easier to compare
+    side-by-side with the WP post.
+    """
+    lines: list[str] = []
+    lines.append(f"## SEO audit 改動建議（{len(picks)} 條）")
+    lines.append("")
+    audit_url = audit.get("url") or ""
+    if audit_url:
+        lines.append(f"- 來源 audit：`{audit_url}`")
+    target_site = audit.get("target_site") or ""
+    wp_post_id = audit.get("wp_post_id")
+    if target_site and wp_post_id is not None:
+        lines.append(f"- 目標：`{target_site}` · post #{wp_post_id}")
+    overall = audit.get("overall_grade") or ""
+    if overall:
+        lines.append(f"- 整體分數（audit 當下）：**{overall}**")
+    lines.append("")
+    for pick in picks:
+        title = pick["title"] or pick["rule_id"]
+        lines.append(f"### [{pick['rule_id']}] {title}")
+        # `severity` + `status` together help the reviewer triage; e.g. an
+        # `edited` warn vs a raw approved fail change urgency.
+        lines.append(f"- severity：`{pick['severity']}` · 來自：`{pick['status']}`")
+        lines.append(f"- 現況：{pick['current_value'] or '（無）'}")
+        lines.append(f"- 建議：{pick['value'] or '（無）'}")
+        if pick["rationale"]:
+            lines.append(f"- 為什麼：{pick['rationale']}")
+        lines.append("")
+    # Strip trailing blank line for a clean tail.
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
+
+
+def _build_export_change_summary(picks: list[dict[str, Any]]) -> str:
+    """One-liner reviewer sees on `/bridge/drafts` list view.
+
+    Examples:
+        "SEO audit: 接受 3 條建議（M2 + L9 + H4）"
+        "SEO audit: 接受 1 條建議（M1）"
+
+    Caps at the first 6 rule ids; beyond that we add `… +N` so the
+    title_snippet (capped at 80 chars by `approval_queue._snippet`) stays
+    informative without truncating mid-pill.
+    """
+    rule_ids = [p["rule_id"] for p in picks]
+    head = " + ".join(rule_ids[:6])
+    if len(rule_ids) > 6:
+        head = f"{head} … +{len(rule_ids) - 6}"
+    return f"SEO audit: 接受 {len(picks)} 條建議（{head}）"
+
+
+def _build_export_payload(
+    audit: dict[str, Any],
+    picks: list[dict[str, Any]],
+) -> UpdateWpPostV1:
+    """Construct the `UpdateWpPostV1` payload for `approval_queue.enqueue`.
+
+    The `patch` field is a free-form dict per ADR-006 §2; we put the
+    markdown block under a `proposed_changes` key so the reviewer-side UI
+    has a stable address to render. Usopp doesn't read `proposed_changes`
+    directly — that's the reviewer's discretionary edit step. Once approved,
+    Usopp's `update_post` action will need to translate the reviewer's
+    confirmed text into actual WP REST patches; that translation lives
+    outside this slice.
+
+    `compliance_flags`: this is an SEO metadata change, not new editorial
+    copy, so we ship the gate with both flags False. If a reviewer's edited
+    value contains medical-claim vocab, they will be the one to flip the
+    `reviewer_compliance_ack` toggle on `/bridge/drafts/{id}` before
+    approving — same defense-in-depth as Brook's compose path.
+    """
+    proposed_changes_md = _format_proposed_changes_md(audit, picks)
+    change_summary = _build_export_change_summary(picks)
+    return UpdateWpPostV1(
+        schema_version=1,
+        action_type="update_post",
+        target_site=audit["target_site"],  # type: ignore[arg-type]
+        wp_post_id=int(audit["wp_post_id"]),
+        patch={"proposed_changes": proposed_changes_md},
+        change_summary=change_summary,
+        draft_id=f"audit_{audit['id']}",
+        compliance_flags=PublishComplianceGateV1(
+            schema_version=1,
+            medical_claim=False,
+            absolute_assertion=False,
+            matched_terms=[],
+        ),
+        reviewer_compliance_ack=False,
+    )
+
+
+@page_router.post("/seo/audits/{audit_id:int}/export")
+async def seo_audit_export(audit_id: int, nakama_auth: str | None = Cookie(None)):
+    """Export reviewed audit → approval_queue + redirect to `/bridge/drafts`.
+
+    Behavior matrix (issue #235 acceptance):
+
+    - audit not found                              → 404
+    - audit is non-WP (no target_site / wp_post_id) → 422
+    - already exported                              → 409 with prior queue id
+    - zero approved+edited suggestions              → 409 (mirrors button gate)
+    - happy path                                    → enqueue + mark_exported
+                                                       → 303 → `/bridge/drafts`
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(
+            f"/login?next=/bridge/seo/audits/{audit_id}/review",
+            status_code=302,
+        )
+    audit = audit_results_store.get_by_id(audit_id)
+    if audit is None:
+        raise HTTPException(status_code=404, detail=f"audit_results.id={audit_id} not found")
+
+    if audit.get("review_status") == "exported":
+        existing = audit.get("approval_queue_id")
+        raise HTTPException(
+            status_code=409,
+            detail=f"already exported as queue #{existing}",
+        )
+
+    if not (audit.get("target_site") and audit.get("wp_post_id")):
+        # Non-WP audits have nothing to patch on WP REST → can't be exported.
+        raise HTTPException(
+            status_code=422,
+            detail="cannot export audit without target_site + wp_post_id (non-WP audit)",
+        )
+
+    picks = _collect_export_suggestions(audit["suggestions"])
+    if not picks:
+        # The button is disabled in the template when this is true; we still
+        # 409 server-side so a stale form-submit can't sneak past the gate.
+        raise HTTPException(
+            status_code=409,
+            detail="no approved or edited suggestions to export",
+        )
+
+    payload = _build_export_payload(audit, picks)
+    operation_id = f"seo_audit_export_{audit_id}"
+    queue_id = approval_queue.enqueue(
+        source_agent="brook",
+        payload_model=payload,
+        operation_id=operation_id,
+        priority=50,
+        initial_status="pending",
+    )
+    # Two-step write: see module-level note at the top of this section for
+    # the recovery rationale (option b — orphan queue row is the documented
+    # failure mode if Python crashes between these two lines).
+    audit_results_store.mark_exported(audit_id, queue_id)
+    _logger.info(
+        "seo_audit export audit_id=%d queue_id=%d picks=%d",
+        audit_id,
+        queue_id,
+        len(picks),
+    )
+    return RedirectResponse("/bridge/drafts", status_code=303)
 
 
 # Stale thresholds (minutes) used to colour-code rows on /bridge/health.
