@@ -1,8 +1,9 @@
 ---
-name: SEO 中控台 v1 design grilling 2026-04-29
-description: /grill-with-docs SEO 中控台 vision 凍結；ADR-012 zoro/brook 邊界落地；中控台 v1 + ADR-008 Phase 2a-min sequencing；PRD #226 + 9 slice 已建（#227 #228 ready-for-agent）
+name: SEO 中控台 v1 — 2/9 slice merged 2026-04-29 evening；critical path #229→#232→#234→#235；Ralph Loop 不存在要手動派
+description: PRD #226 + 9 slice。#227 (foundation) + #228 (GSC cron Phase 2a-min) merged 2026-04-29；4 slice ready-for-agent 等手動派；3 slice blocked
 type: project
 created: 2026-04-29
+updated: 2026-04-29
 confidence: high
 originSessionId: TBD
 ---
@@ -75,22 +76,58 @@ class AuditReviewSessionV1(BaseModel):
     approval_queue_id: int | None = None
 ```
 
-## Issues filed (2026-04-29)
+## Issues status (updated 2026-04-29 evening)
 
 | # | Slice | Status |
 |---|---|---|
 | 226 | PRD parent | ✅ on GitHub |
-| 227 | 1 — `/bridge/seo` foundation | 🟢 ready-for-agent (brief posted) |
-| 228 | 8 — GSC daily cron + gsc_rows db | 🟢 ready-for-agent (brief posted) |
-| 229 | 2 — article list (WP REST) | needs-triage (blocked by #227) |
-| 230 | 3 — target keywords section | needs-triage (blocked by #227) |
-| 231 | 7 — `/bridge/zoro/keyword-research` UI | needs-triage (blocked by #227) |
-| 232 | 4 — audit pipeline + run | needs-triage (blocked by #229) |
-| 233 | 9 — rank change section v1.1 | needs-triage (blocked by #228) |
-| 234 | 5 — Y+ review page | needs-triage (blocked by #232) |
-| 235 | 6 — export to approval_queue | needs-triage (blocked by #234) |
+| 227 | 1 — `/bridge/seo` foundation + chassis-nav × 9 | ✅ MERGED `cdb4558` |
+| 228 | 8 — GSC daily cron + gsc_rows db (Phase 2a-min) | ✅ MERGED `c79dd6d` |
+| 229 | 2 — article list (WP REST) | 🟢 ready-for-agent |
+| 230 | 3 — target keywords section | 🟢 ready-for-agent |
+| 231 | 7 — `/bridge/zoro/keyword-research` UI | 🟢 ready-for-agent |
+| 233 | 9 — rank change section v1.1 | 🟢 ready-for-agent (after #228) |
+| 232 | 4 — audit pipeline + run | ⛔ blocked by #229 |
+| 234 | 5 — Y+ review page | ⛔ blocked by #232 |
+| 235 | 6 — export to approval_queue | ⛔ blocked by #234 |
 
-當 blocker merge → `/github-triage` 該 issue → ready-for-agent → Ralph Loop 接。
+**Ralph Loop 不存在**：原 design memo 寫「ready-for-agent → Ralph Loop 接」是 placeholder，nakama 沒實作（grep `docs/ memory/ .github/ scripts/` 皆無）。**4 個 ready-for-agent issue 不會自動有 agent 跑**，下次 session 修修叫「下一步」/grab 一個手動派 worktree agent。
+
+## Follow-up issues from PR #237/#238
+
+- #239 `feat(gsc-client)`: expose `dimensionFilterGroups` kwarg on `GSCClient.query`（收 PR #238 `_get_service()` private API breach）
+- #240 `test(gsc-daily)`: add 5xx retry coverage（429 + 403 已測，500/502/503 分支沒測）
+
+## Critical path 還剩 4 條 sequential PR
+
+```
+#229 article list → #232 audit pipeline → #234 review UI → #235 export → /bridge/drafts
+```
+
+獨立 parallel 3 條：#230 / #231 / #233。
+
+## QA milestone 分層（決定何時做 end-to-end QA）
+
+| 里程碑 | 可驗什麼 |
+|---|---|
+| 修修 VPS 部署 #228 cron | 餵 1 個 keyword + 24h smoke：gsc_rows 有真資料 |
+| #229 merge | WebUI 看到文章列表（讀側登場）|
+| #232 merge | 對某文章跑 audit、後端產 suggestion list（核心初登場、無 review UI） |
+| #234 merge | 完整 audit + review session UX 跑得起來 |
+| **#235 merge** | **audit → review → approve → export → `/bridge/drafts` 通通通 — 真正 QA milestone** |
+
+## 修修 VPS 部署 slice 8 待辦
+
+- cron line：`0 3 * * * cd /home/nakama && /usr/bin/python3 -m agents.franky gsc-daily >> /var/log/nakama/franky-gsc-daily.log 2>&1`（VPS TZ=Asia/Taipei 不需 prefix）
+- 建議跟既有 Franky cron 對齊用 venv activation pattern 而非 system python3
+- `.env` 確認 `GCP_SERVICE_ACCOUNT_JSON` + `GSC_PROPERTY_SHOSHO`（fleet 可選）— 跟 Slice B PR #133 用同一把 sa
+- 第一次 cron 跑會 status='skipped'（target-keywords.yaml 空，預期）；等 Zoro Phase 1.5 push 第一個 keyword 才進 GSC API real call
+
+## 下一輪建議 dispatch
+
+**Window A**：#229 article list — 解 unblock #232 audit pipeline（critical path 起點）
+**Window B（並行）**：#233 rank change v1.1 — cheap win，獨立、剛好 #228 落地有 `rank_change_28d` helper
+（或 Window B = #230 keywords，純讀 yaml，更輕但等 Zoro 真 push keyword 才有意義）
 
 ## 開始實作前一定要看
 
