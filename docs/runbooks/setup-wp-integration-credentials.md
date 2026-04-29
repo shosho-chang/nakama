@@ -57,6 +57,8 @@ fleet 站裝了 **Fluent Security** plugin，預設會關掉 Application Passwor
 
 **備註**：兩個 bot 帳號都要確認能走 REST API（HTTPS 一定要開，Application Password 不支援 HTTP）。
 
+**Cloudflare WAF**：VPS 打 WP REST 會被 SBFM 擋（default httpx UA → 403 + interstitial HTML）。`shared/wordpress_client.py` 帶 `nakama-wordpress-client/1.0` UA；CF zone 對應的 skip rule 一覽 + 加新規則 SOP 在 [cf-waf-skip-rules.md](cf-waf-skip-rules.md)。
+
 ---
 
 ## 2. Google Cloud — Search Console + Analytics 4 API

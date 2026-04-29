@@ -316,6 +316,28 @@ def test_upload_media_merges_headers():
     assert headers["Content-Type"] == "image/jpeg"
 
 
+def test_headers_include_stable_user_agent_for_cf_bypass():
+    """Cloudflare Bot Fight Mode blocks `python-httpx/x.y` default UA with a
+    403 + interstitial HTML challenge (`<title>Just a moment...</title>`).
+    Every WP request must carry the stable `nakama-wordpress-client/1.0`
+    UA so the matching CF WAF skip rule can let it through. Without this
+    constant identifier, CF rules cannot be authored without resorting to
+    fragile per-IP allowlists.
+    """
+    from shared.wordpress_client import _USER_AGENT
+
+    client = _make_client()
+
+    with patch("httpx.Client") as mock_cls:
+        mock_cls.return_value = _mock_request(200, _post_body())
+        client.get_post(42, operation_id="op_ua_test")
+
+    call_kwargs = mock_cls.return_value.request.call_args.kwargs
+    headers = call_kwargs["headers"]
+    assert headers["User-Agent"] == _USER_AGENT
+    assert headers["User-Agent"] == "nakama-wordpress-client/1.0"  # pin the literal
+
+
 def test_upload_media_with_alt_text_does_not_crash():
     """upload_media's follow-up alt_text update also goes through _request; must not collide."""
     client = _make_client()

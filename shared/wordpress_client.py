@@ -9,6 +9,8 @@ Wraps WP REST v2 endpoints with:
 - Structured logging with operation_id (observability.md §2)
 - Password/token never logged — only last-4 of base64 (observability.md §9)
 - Anti-corruption: all responses parsed through WpPostV1 / WpMediaV1 / WpTermV1
+- Stable User-Agent `nakama-wordpress-client/1.0` so Cloudflare WAF can
+  whitelist the client (see `_USER_AGENT` constant + runbook)
 
 Design:
     WordPressClient is instantiated per-site (wp_shosho / wp_fleet).
@@ -63,6 +65,14 @@ _RATE_LIMIT_INTERVAL_S = 1.0  # minimum seconds between WP requests
 _RETRY_ATTEMPTS = 3  # max attempts (tenacity-style)
 _RETRY_BACKOFF = [2.0, 4.0, 8.0]  # seconds after attempt 1, 2, 3
 _WP_TIMEOUT_S = 3.0  # per-request connect+read timeout (reliability.md §7)
+
+# Stable identifier for Cloudflare WAF skip rules. Default httpx UA
+# (`python-httpx/x.y`) is on CF Bot Fight Mode block-list, returning 403 +
+# `<title>Just a moment...</title>` HTML challenge. Aligns with the
+# PR #111 pattern (`nakama-external-probe/1.0`); the matching CF WAF
+# bypass rule lives in the shosho.tw + fleet.shosho.tw zones — see
+# `docs/runbooks/setup-wp-integration-credentials.md`.
+_USER_AGENT = "nakama-wordpress-client/1.0"
 
 
 def _mask_password(b64_creds: str) -> str:
@@ -149,6 +159,7 @@ class WordPressClient:
             "Authorization": f"Basic {self._b64}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "User-Agent": _USER_AGENT,
         }
 
     def _rate_limit(self) -> None:
