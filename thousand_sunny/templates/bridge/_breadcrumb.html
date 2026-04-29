@@ -1,0 +1,33 @@
+{#
+  templates/bridge/_breadcrumb.html
+
+  Macro `breadcrumb(crumbs)` — render the user-journey trail above page-header.
+
+  Each item in `crumbs` is a dict-like:
+
+      [
+        {"label": "/bridge/seo · 找新關鍵字", "href": "/bridge/seo", "is_current": false},
+        {"label": "ZORO · KEYWORD RESEARCH",  "href": none,          "is_current": true},
+      ]
+
+  Visual contract: `nk-caps` token (small caps mono), separator `→` between
+  segments, `←` prepended to the first non-current crumb (back-affordance).
+  `is_current` items render as plain text (no link); others render as <a>.
+
+  Per CONTEXT-MAP "breadcrumb" term — always-shown (not referrer-detected),
+  positioned above page-header.
+#}
+{% macro breadcrumb(crumbs) -%}
+<nav class="nk-breadcrumb" aria-label="Breadcrumb">
+  {%- for crumb in crumbs %}
+    {%- if not loop.first %}
+  <span class="nk-breadcrumb-sep" aria-hidden="true">→</span>
+    {%- endif %}
+    {%- if crumb.is_current %}
+  <span class="nk-caps nk-breadcrumb-current" aria-current="location">{{ crumb.label }}</span>
+    {%- else %}
+  <a href="{{ crumb.href }}" class="nk-caps nk-breadcrumb-link">{% if loop.first %}← {% endif %}{{ crumb.label }}</a>
+    {%- endif %}
+  {%- endfor %}
+</nav>
+{%- endmacro %}

@@ -25,9 +25,7 @@
   health / docs / logs / vault. Unknown / missing → no entry marked.
 
   See CONTEXT-MAP "chassis-nav" for design principles (agent-rooted vs
-  topic-rooted lane; aria-current strictly URL-keyed). Slice 1 (#257)
-  adds the ZORO entry — intentionally absent here so Slice 0 stays a
-  pure-extract refactor with zero visual regression.
+  topic-rooted lane; aria-current strictly URL-keyed).
 #}
 {% macro chassis_nav(nav_active='', show_version=false) -%}
 <header class="chassis" role="banner">
@@ -42,6 +40,7 @@
     <a href="/bridge"{% if nav_active == 'bridge' %} class="active" aria-current="page"{% endif %}>BRIDGE <span class="zh">船橋</span></a>
     <a href="/bridge/drafts"{% if nav_active == 'drafts' %} class="active" aria-current="page"{% endif %}>DRAFTS <span class="zh">待審</span></a>
     <a href="/bridge/seo"{% if nav_active == 'seo' %} class="active" aria-current="page"{% endif %}>SEO <span class="zh">優化</span></a>
+    <a href="/bridge/zoro/keyword-research"{% if nav_active == 'zoro' %} class="active" aria-current="page"{% endif %}>ZORO <span class="zh">偵察</span></a>
     <a href="/bridge/memory"{% if nav_active == 'memory' %} class="active" aria-current="page"{% endif %}>MEMORY <span class="zh">記憶</span></a>
     <a href="/bridge/cost"{% if nav_active == 'cost' %} class="active" aria-current="page"{% endif %}>COST <span class="zh">成本</span></a>
     <a href="/bridge/franky"{% if nav_active == 'franky' %} class="active" aria-current="page"{% endif %}>FRANKY <span class="zh">船匠</span></a>

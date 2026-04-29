@@ -709,6 +709,11 @@ body {
                  href="/bridge/seo/audits/by-id/{{ a.latest_audit_id }}"
                  title="latest result">查 audit</a>
               {% endif %}
+              {% if a.wp_post_id %}
+              <a class="article-action-link"
+                 href="/bridge/seo/posts/{{ a.wp_post_id }}/audits"
+                 title="所有歷史 audit">查看歷史</a>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}

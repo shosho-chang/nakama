@@ -89,6 +89,36 @@ body {
 .chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
 .chassis-nav a.active { border-bottom-color: var(--nk-signal); }
 
+/* ── Breadcrumb ── */
+.nk-breadcrumb {
+  background: var(--nk-panel-2);
+  border-bottom: var(--nk-border-hair);
+  padding: 8px 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.nk-breadcrumb-link {
+  color: var(--nk-ink-2);
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+  transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast);
+}
+.nk-breadcrumb-link:hover {
+  color: var(--nk-signal);
+  border-bottom-color: var(--nk-signal);
+}
+.nk-breadcrumb-current {
+  color: var(--nk-ink);
+  font-weight: 500;
+}
+.nk-breadcrumb-sep {
+  color: var(--nk-ink-3);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+}
+
 /* ── Page header ── */
 .page-header {
   background: var(--nk-panel);
@@ -393,7 +423,13 @@ form.kw-form { display: flex; flex-direction: column; gap: 18px; }
 </head>
 <body>
 {% from "_chassis_nav.html" import chassis_nav %}
-{{ chassis_nav(nav_active='seo') }}
+{{ chassis_nav(nav_active='zoro') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "/bridge/seo · 找新關鍵字", "href": "/bridge/seo", "is_current": false},
+  {"label": "ZORO · KEYWORD RESEARCH",  "href": none,          "is_current": true},
+]) }}
 
 <section class="page-header">
   <div>

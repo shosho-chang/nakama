@@ -399,3 +399,41 @@ def test_slugify_topic_collapses_cjk_and_special_chars():
     # Truncation at 50 chars
     long = "a" * 100
     assert len(_slugify_topic(long)) == 50
+
+
+# ── Slice 1 (#257) chassis-nav + breadcrumb ─────────────────────────────
+
+
+def test_chassis_nav_zoro_active(authed_client):
+    """ZORO entry carries class=active + aria-current; SEO entry has neither.
+
+    Closes #245 — Issue is that the previous template hard-coded `class="active"
+    aria-current="page"` on the SEO entry on this Zoro surface, so screen readers
+    announced "SEO 優化, current page" while the user was actually on
+    `/bridge/zoro/keyword-research`. Slice 1 (#257) adds a real ZORO chassis-nav
+    entry and routes nav state via ``nav_active`` slug.
+    """
+    r = authed_client.get("/bridge/zoro/keyword-research")
+    assert r.status_code == 200
+    html = r.text
+
+    # ZORO entry exists and is active.
+    assert '<a href="/bridge/zoro/keyword-research" class="active" aria-current="page">ZORO' in html
+    # SEO entry exists but is NOT marked active or aria-current on this surface.
+    # (Use the closing tag fragment to anchor on the SEO link specifically.)
+    assert '<a href="/bridge/seo">SEO' in html
+    assert '<a href="/bridge/seo" class="active" aria-current="page">SEO' not in html
+
+
+def test_breadcrumb_renders_on_zoro_surface(authed_client):
+    """Breadcrumb above page-header always shown — not referrer-detected."""
+    r = authed_client.get("/bridge/zoro/keyword-research")
+    assert r.status_code == 200
+    html = r.text
+
+    # Trail back to SEO 中控台 + current location marker.
+    assert 'class="nk-breadcrumb"' in html
+    assert "/bridge/seo · 找新關鍵字" in html
+    assert "ZORO · KEYWORD RESEARCH" in html
+    # Current crumb uses aria-current="location" (not "page" — page is for nav).
+    assert 'aria-current="location"' in html
