@@ -330,3 +330,44 @@ class TestMarkExported:
         assert row is not None
         assert row["review_status"] == "exported"
         assert row["approval_queue_id"] == 2
+
+
+# ---------------------------------------------------------------------------
+# list_audits_by_post — Slice 3 / #259
+# ---------------------------------------------------------------------------
+
+
+class TestListAuditsByPost:
+    def test_empty_when_post_never_audited(self):
+        rows = audit_results_store.list_audits_by_post(99999)
+        assert rows == []
+
+    def test_returns_all_audits_for_post_sorted_desc(self):
+        from datetime import timedelta
+
+        base = _now_utc()
+        # Insert 3 audits across 2 days for the same post.
+        oldest = _insert(wp_post_id=42, audited_at=base - timedelta(days=2), grade="D")
+        middle = _insert(wp_post_id=42, audited_at=base - timedelta(days=1), grade="C")
+        newest = _insert(wp_post_id=42, audited_at=base, grade="B+")
+        # And an audit for a different post (must NOT appear in the result).
+        _insert(wp_post_id=99, audited_at=base, grade="A")
+
+        rows = audit_results_store.list_audits_by_post(42)
+        assert [r["id"] for r in rows] == [newest, middle, oldest]
+        assert [r["overall_grade"] for r in rows] == ["B+", "C", "D"]
+
+    def test_target_site_filter_scopes_results(self):
+        # Same wp_post_id but different sites — without target_site we see both,
+        # with target_site we see only one.
+        shosho_id = _insert(target_site="wp_shosho", wp_post_id=42, grade="A")
+        fleet_id = _insert(target_site="wp_fleet", wp_post_id=42, grade="F")
+
+        merged = audit_results_store.list_audits_by_post(42)
+        assert {r["id"] for r in merged} == {shosho_id, fleet_id}
+
+        only_shosho = audit_results_store.list_audits_by_post(42, target_site="wp_shosho")
+        assert [r["id"] for r in only_shosho] == [shosho_id]
+
+        only_fleet = audit_results_store.list_audits_by_post(42, target_site="wp_fleet")
+        assert [r["id"] for r in only_fleet] == [fleet_id]

@@ -615,6 +615,100 @@ async def seo_audit_view_by_id(
 
 
 # ---------------------------------------------------------------------------
+# /bridge/seo/posts/{wp_post_id}/audits — per-post audit history (Slice 3 / #259)
+# ---------------------------------------------------------------------------
+
+
+@page_router.get("/seo/posts/{wp_post_id:int}/audits", response_class=HTMLResponse)
+async def seo_post_audits_history(
+    wp_post_id: int,
+    request: Request,
+    target_site: str | None = None,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Read-only timeline of all audits for a single WP post.
+
+    Slice 3 of PRD #255 (#259 / E). Reads from existing `audit_results`
+    table (no schema migration needed — `migrations/006_audit_results.sql:34`
+    already supports multi-row per post). Linked from each row in
+    `/bridge/seo` article list.
+
+    `target_site` is an optional query param (`?target_site=wp_shosho`)
+    that scopes the history when the same `wp_post_id` could exist on both
+    `wp_shosho` and `wp_fleet`. Without it, audits across both sites are
+    merged in the timeline.
+    """
+    auth_next = f"/login?next=/bridge/seo/posts/{wp_post_id}/audits"
+    if target_site:
+        auth_next += f"?target_site={target_site}"
+    if not check_auth(nakama_auth):
+        return RedirectResponse(auth_next, status_code=302)
+
+    audits = audit_results_store.list_audits_by_post(wp_post_id, target_site=target_site)
+
+    # Build display-friendly rows. The template expects severity counts
+    # already broken out so it can render the badges without re-walking the
+    # suggestions list per row.
+    display_rows: list[dict[str, Any]] = []
+    for a in audits:
+        suggestions = a.get("suggestions") or []
+        # Status badge label per PRD #255 user story #14:
+        #   pending  — review_status='fresh' (no review touched)
+        #   partial  — review_status='in_review' (some suggestions reviewed)
+        #   exported — review_status='exported' (approval_queue row created)
+        review_status = a.get("review_status") or "fresh"
+        if review_status == "exported":
+            badge_label = (
+                f"✅ exported #{a.get('approval_queue_id')}"
+                if a.get("approval_queue_id") is not None
+                else "✅ exported"
+            )
+        elif review_status == "in_review":
+            badge_label = "📝 partial"
+        elif review_status == "archived":
+            badge_label = "📦 archived"
+        else:
+            badge_label = "⏸ pending"
+
+        display_rows.append(
+            {
+                "id": a.get("id"),
+                "audited_at": a.get("audited_at"),
+                "audited_at_display": (a.get("audited_at") or "")[:16].replace("T", " "),
+                "overall_grade": a.get("overall_grade"),
+                "fail_count": a.get("fail_count", 0),
+                "warn_count": a.get("warn_count", 0),
+                "review_status": review_status,
+                "review_status_label": badge_label,
+                "suggestions_total": len(suggestions),
+                "url": a.get("url"),
+                "focus_keyword": a.get("focus_keyword") or "",
+                "target_site": a.get("target_site"),
+            }
+        )
+
+    # First row's url / focus_keyword power the "+ 重 audit" prefilled form
+    # at the top of the page. If there are no audits we render the empty
+    # state and skip that affordance.
+    first_url = display_rows[0]["url"] if display_rows else None
+    first_focus_keyword = display_rows[0]["focus_keyword"] if display_rows else ""
+    first_target_site = display_rows[0]["target_site"] if display_rows else target_site
+
+    return _templates.TemplateResponse(
+        request,
+        "seo_audit_history.html",
+        {
+            "wp_post_id": wp_post_id,
+            "target_site": target_site,
+            "rows": display_rows,
+            "first_url": first_url,
+            "first_focus_keyword": first_focus_keyword,
+            "first_target_site": first_target_site,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # /bridge/seo/audits/{id}/review — Y+ tier review UX (slice #234, issue #234)
 # ---------------------------------------------------------------------------
 #

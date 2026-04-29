@@ -711,7 +711,7 @@ body {
               {% endif %}
               {% if a.wp_post_id %}
               <a class="article-action-link"
-                 href="/bridge/seo/posts/{{ a.wp_post_id }}/audits"
+                 href="/bridge/seo/posts/{{ a.wp_post_id }}/audits?target_site={{ a.target_site }}"
                  title="所有歷史 audit">查看歷史</a>
               {% endif %}
             </td>
