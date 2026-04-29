@@ -371,6 +371,141 @@ body {
 }
 .articles-empty .body { line-height: 1.55; }
 
+/* ── Target keywords section ── */
+.section.section-keywords .section-body {
+  /* Same full-bleed table convention as section 1. */
+  padding: 0;
+  gap: 0;
+}
+.keywords-toolbar {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--nk-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-3);
+  letter-spacing: 0.04em;
+}
+.keywords-toolbar .count { color: var(--nk-ink); }
+.keywords-toolbar .source {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.keywords-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.keywords-table thead th {
+  text-align: left;
+  background: var(--nk-panel-2);
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+  font-weight: 500;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--nk-rule);
+  border-top: 1px solid var(--nk-hairline);
+  white-space: nowrap;
+}
+.keywords-table tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--nk-hairline);
+  vertical-align: top;
+  line-height: 1.45;
+}
+.keywords-table tbody tr:last-child td { border-bottom: none; }
+.keywords-table tbody tr:hover { background: var(--nk-panel-2); }
+.keywords-table .col-keyword { min-width: 180px; }
+.keywords-table .col-url { min-width: 240px; }
+.keywords-table .col-goal,
+.keywords-table .col-rank,
+.keywords-table .col-impr { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.kw-keyword {
+  font-weight: 500;
+  color: var(--nk-ink);
+  font-family: var(--nk-font-zh);
+}
+.kw-keyword-en {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--nk-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--nk-ink-3);
+}
+.kw-url {
+  font-family: var(--nk-font-mono);
+  font-size: 11.5px;
+  color: var(--nk-ink-2);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  word-break: break-all;
+}
+.kw-url:hover { border-bottom-color: var(--nk-signal); color: var(--nk-signal); }
+.kw-rank {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink-2);
+}
+.kw-rank.is-empty { color: var(--nk-muted); }
+.kw-placeholder {
+  color: var(--nk-muted);
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+}
+
+.keywords-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--nk-ink-3);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.keywords-empty .head {
+  font-family: var(--nk-font-display);
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  color: var(--nk-ink-2);
+  margin-bottom: 8px;
+}
+.keywords-empty .body { line-height: 1.55; }
+
+/* Ghost-style button (mirrors zoro_keyword_research.html .nk-btn-ghost). */
+.section-head .section-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.nk-btn-ghost {
+  background: transparent;
+  color: var(--nk-ink-2);
+  border: 1px solid var(--nk-rule);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  cursor: pointer;
+  border-radius: 2px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast);
+}
+.nk-btn-ghost:hover { color: var(--nk-ink); border-color: var(--nk-ink-2); }
+.nk-btn-ghost:focus-visible { color: var(--nk-ink); border-color: var(--nk-ink-2); }
+
 /* ── Footer hint ── */
 .foot-hint {
   margin-top: 4px;
@@ -407,10 +542,10 @@ body {
 
 <section class="page-header">
   <div>
-    <div class="nk-caps">/seo · 中控台 v1 — slice 2 article list</div>
+    <div class="nk-caps">/seo · 中控台 v1 — slice 3 target keywords</div>
     <h1 class="page-title">SEO 中控台 <span class="zh">SEO Control Center</span></h1>
   </div>
-  <div class="header-meta">PRD #226 · slice 2 (#229)</div>
+  <div class="header-meta">PRD #226 · slice 2 (#229) + slice 3 (#230)</div>
 </section>
 
 <main class="main">
@@ -506,24 +641,74 @@ body {
   </article>
 
   <!-- Section 2: 攻擊關鍵字 -->
-  <article class="section" aria-labelledby="sec-keywords">
+  <article class="section section-keywords" aria-labelledby="sec-keywords">
     <header class="section-head">
       <div>
         <div class="section-marker">§ 2 · TARGET KEYWORDS</div>
         <h2 class="section-title" id="sec-keywords">攻擊關鍵字 <span class="zh">target keywords on the offensive</span></h2>
       </div>
-      <span class="section-status pending">PENDING SLICE</span>
+      <div class="section-head-actions">
+        <a class="nk-btn-ghost"
+           href="/bridge/zoro/keyword-research"
+           id="kw-research-cta"
+           aria-label="跳到 Zoro 關鍵字研究頁">+ 找新關鍵字</a>
+      </div>
     </header>
     <div class="section-body">
-      <p class="lead">
-        讀取 <code style="font-family:var(--nk-font-mono);background:var(--nk-panel-2);border:1px solid var(--nk-hairline);padding:1px 6px;font-size:11px">config/target-keywords.yaml</code>
-        列出目前在攻擊的關鍵字、每個對應 URL 與 goal_rank，並提供「找新關鍵字」入口跳到
-        Zoro 的 <code style="font-family:var(--nk-font-mono);background:var(--nk-panel-2);border:1px solid var(--nk-hairline);padding:1px 6px;font-size:11px">/bridge/zoro/keyword-research</code>。
-      </p>
-      <p class="meta">
-        資料源 · <code>config/target-keywords.yaml</code>
-        ／實作 · slice 後續 issue（#230）
-      </p>
+      <div class="keywords-toolbar">
+        <span>共 <span class="count">{{ target_keywords|length }}</span> 個目標關鍵字 · 來源 <code>config/target-keywords.yaml</code></span>
+        <span class="source">RANK COLUMNS · SLICE #233 (ADR-008 PHASE 2A-MIN)</span>
+      </div>
+      {% if target_keywords %}
+      <table class="keywords-table" aria-describedby="sec-keywords">
+        <thead>
+          <tr>
+            <th class="col-keyword">KEYWORD</th>
+            <th class="col-url">ATTACK URL</th>
+            <th class="col-goal">GOAL RANK</th>
+            <th class="col-rank">CURRENT RANK</th>
+            <th class="col-impr">IMPRESSIONS (28D)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for kw in target_keywords %}
+          <tr>
+            <td class="col-keyword">
+              <span class="kw-keyword">{{ kw.keyword }}</span>
+              {% if kw.keyword_en %}
+              <span class="kw-keyword-en">{{ kw.keyword_en }}</span>
+              {% endif %}
+            </td>
+            <td class="col-url">
+              <a class="kw-url" href="{{ kw.attack_url }}" target="_blank" rel="noopener">{{ kw.attack_url }}</a>
+            </td>
+            <td class="col-goal">
+              {% if kw.goal_rank %}
+              <span class="kw-rank">#{{ kw.goal_rank }}</span>
+              {% else %}
+              <span class="kw-rank is-empty" aria-label="goal rank unset">—</span>
+              {% endif %}
+            </td>
+            <td class="col-rank">
+              <span class="kw-placeholder" aria-label="current rank populated by slice #233">—</span>
+            </td>
+            <td class="col-impr">
+              <span class="kw-placeholder" aria-label="impressions populated by slice #233">—</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="keywords-empty">
+        <div class="head">尚無攻擊關鍵字</div>
+        <div class="body">
+          透過 Zoro 的關鍵字研究找新題目，或用 CLI 直接編輯
+          <code>config/target-keywords.yaml</code>。<br>
+          Usopp publish 文章時也會自動 append focus_keyword 進這份清單。
+        </div>
+      </div>
+      {% endif %}
     </div>
   </article>
 
