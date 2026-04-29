@@ -40,7 +40,9 @@
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
 - [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **SEO 軸線 pickup**：D.1 merged cc35218；D.1-followup（2 bug + 5 minor）待開 PR；D.2/E/F unblocked
 - [project_seo_phase15_acceptance_done_2026_04_27.md](project_seo_phase15_acceptance_done_2026_04_27.md) — **SEO Phase 1.5 真正落地 2026-04-27**：三件 acceptance 全綠 + F5-B CF rule + re-audit grade D→B+；PR #200 含 4 條 follow-up
-- [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 9/9 完工 2026-04-29**：audit→review→approval_queue→publish loop end-to-end；7 PR 一日內 merged；#245 a11y follow-up
+- [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 + PR #252/#253 部署 2026-04-29**：CF UA bypass + 3 UX bug 修；首篇 audit grade=C；L9 grade 設計 + Usopp DB lock 待拍板
+- [feedback_css_hidden_shadow.md](feedback_css_hidden_shadow.md) — CSS 對 selector 寫 `display:` 必同時補 `selector[hidden] { display: none }`，否則 `<div hidden>` 失效（PR #253 audit-failed 假警報根因）
+- [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
 - [feedback_worktree_leak_prevention_prompt.md](feedback_worktree_leak_prevention_prompt.md) — worktree-isolated agent prompt 防 leak 兩條剛性防線（pwd 第一步 + 完工 leak self-check），5 連勝零 leak
 - [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Ralph Loop plugin = single-prompt iter runner，不是 issue queue；2026-04-29 評估後決定不裝
 - [feedback_partial_agent_recovery.md](feedback_partial_agent_recovery.md) — killed agent partial work 先 inspect 再決定，常 near-complete 可手動接手（#229 教訓）

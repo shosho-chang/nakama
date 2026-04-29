@@ -114,24 +114,32 @@ class AuditReviewSessionV1(BaseModel):
 
 | 里程碑 | 可驗什麼 |
 |---|---|
-| 修修 VPS 部署 #228 cron | 餵 1 個 keyword + 24h smoke：gsc_rows 有真資料 |
-| #229 merge | WebUI 看到文章列表（讀側登場）|
-| #232 merge | 對某文章跑 audit、後端產 suggestion list（核心初登場、無 review UI） |
-| #234 merge | 完整 audit + review session UX 跑得起來 |
-| **#235 merge** | **audit → review → approve → export → `/bridge/drafts` 通通通 — 真正 QA milestone** |
+| ✅ #228 cron 部署 | 已 sync 回 cron.conf（commit 85a399c），4-30 03:00 首次跑 — 餵 keyword + 24h smoke 看 gsc_rows |
+| ✅ #235 merge | audit → review → approve → export → `/bridge/drafts` 通通通 — **真正 QA milestone**，等修修瀏覽器走一輪 |
 
-## 修修 VPS 部署 slice 8 待辦
+## 下一輪 QA + follow-up
 
-- cron line：`0 3 * * * cd /home/nakama && /usr/bin/python3 -m agents.franky gsc-daily >> /var/log/nakama/franky-gsc-daily.log 2>&1`（VPS TZ=Asia/Taipei 不需 prefix）
-- 建議跟既有 Franky cron 對齊用 venv activation pattern 而非 system python3
-- `.env` 確認 `GCP_SERVICE_ACCOUNT_JSON` + `GSC_PROPERTY_SHOSHO`（fleet 可選）— 跟 Slice B PR #133 用同一把 sa
-- 第一次 cron 跑會 status='skipped'（target-keywords.yaml 空，預期）；等 Zoro Phase 1.5 push 第一個 keyword 才進 GSC API real call
+### 已收
+- **PR #252 merged 2026-04-29** `af84253` — `WordPressClient` 加 stable UA `nakama-wordpress-client/1.0` + CF zone WAF skip rule（修修 console 設定 + curl 200 驗證 + VPS deploy）。解 `/bridge/seo` Section 1「共 0 篇」根因 = CF SBFM 擋 datacenter IP UA。docs/runbooks/2026-04-29-add-wp-client-cf-skip-rule.md 是 one-shot task doc，cf-waf-skip-rules.md 表格新增第 3 條 row。教訓進 [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md)
+- **PR #253 merged 2026-04-29** `3e252f9` — 三 UX bug 一起出：(1) `seo_audit_progress.html` `.error-box[hidden] { display: none }` 1 行 CSS 修「audit failed 假警報」（`.error-box { display: flex }` shadow 掉 `[hidden]`，教訓進 [feedback_css_hidden_shadow.md](feedback_css_hidden_shadow.md)）；(2) `seo_audit_result.html` `<pre>` → `<div id="report-md">` + ~150 LOC inline vanilla-JS minimal markdown 渲染（heading/list/table/blockquote/code/link/bold/italic/hr）+ prose CSS 用既有 `--nk-*` token；(3) `shared/wp_post_raw_fetcher.py` 加 `sanitize_review_html()` BS4 helper + `sanitize=True` default 砍 `notion-*/discussion-*/brxe-*` class + `data-token-*` attr + unwrap attributeless `<span>`，保留 Gutenberg `<!-- wp:...-->` + `wp-block-*` + href/src/alt（slice #235 `update_post` 用 `sanitize=False` opt-out）
 
-## 下一輪建議 dispatch
+### 第一篇 audit milestone（2026-04-29 16:08 台北）
+**`https://shosho.tw/blog/7-ways-reduce-inflammation/` audit_id=1, grade=C, suggestions=12**：integration 路徑 `/bridge/seo → POST /audits → background_task → polling → /result → /review → approve SC2 → /export → approval_queue#2`。完成路徑 30s wall clock，approve 1 條 export 進 `/bridge/drafts` queue。**Usopp publish 段沒走（daemon DB lock 阻塞，見 Issue B）**。修修 PR #253 後要繼續測下一篇。
 
-**Window A**：#229 article list — 解 unblock #232 audit pipeline（critical path 起點）
-**Window B（並行）**：#233 rank change v1.1 — cheap win，獨立、剛好 #228 落地有 `rank_change_28d` helper
-（或 Window B = #230 keywords，純讀 yaml，更輕但等 Zoro 真 push keyword 才有意義）
+### Open 設計問題（修修拍板）
+- **L9 grade 設計衝突**：`shared/compliance/medical_claim_vocab.py` SEED 詞庫 6 大類 45+ 詞 substring match `title + AST text`，severity=`critical`，一條 fail 拉 grade A→C 或更低（`audit.py:228-244` `_grade()` 規則）。但 L9 是台灣藥事法 legal compliance，**Google ranking 不掃中文藥事法詞庫** — 把它放進 SEO grade 是設計誤判（語意 conflate compliance + SEO）。三選項：(a) L9 `severity` 從 `critical` 降為 `warn`（最小，1 行）/ (b) 從 grade 計算拿掉、保留為 advisory note / (c) 拆 `seo_grade` + `compliance_grade` 兩個分數（最完整、需 ADR addendum + schema migration）。修修原話：「如果只是會讓我違反《藥事法》的廣告規範，那就完全不用擔心」→ 傾向 (a) 或 (b)，但等真實第二篇 audit 的 grade 觀感再拍
+
+### Issue B — Usopp daemon `database is locked` 規律性炸
+- `/var/log/nakama-usopp` traceback 規律 cluster：05:30-05:32（Robin pubmed digest cron `30 5 * * *`）+ 06:30（Franky AI news cron `30 6 * * *`）。`approval_queue.py:256` `claim_approved_drafts` 走 `BEGIN IMMEDIATE` 撞鎖
+- 不阻塞 today QA（cron 時段以外可正常 claim），但 export 後遇上 cron 時段會卡，Usopp publish 完整 end-to-end 還沒驗證
+- 修法候選：busy_timeout 拉長 / 加 retry-with-backoff / Robin / Franky cron 改寫成 short transactions
+- TODO：開 GH issue 追
+
+### 既有 follow-up
+- **GSC cron 24h smoke**：4-30 03:00 後檢查 `/var/log/nakama/franky-gsc-daily.log` + `gsc_rows` table（target-keywords.yaml 空時 status='skipped' 是預期）
+- #245 a11y follow-up
+- #239/#240 GSC client API breach + retry coverage
+- 修修第二篇 audit 待跑（驗 PR #253 三 fix UX）
 
 ## 開始實作前一定要看
 
