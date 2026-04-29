@@ -265,6 +265,74 @@ body {
 }
 .cards-pane-head .meta .has-actionable { color: var(--nk-jade); }
 
+/* Export bar — sticks to the top of the cards pane so the button is always
+   reachable while reviewer scrolls suggestion cards. */
+.export-bar {
+  border-bottom: 1px solid var(--nk-rule);
+  background: var(--nk-panel-2);
+  padding: 12px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.export-bar .summary {
+  flex: 1;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--nk-ink-2);
+  line-height: 1.5;
+}
+.export-bar .summary strong {
+  color: var(--nk-ink);
+  font-weight: 500;
+}
+.export-bar .summary .zh {
+  font-family: var(--nk-font-zh);
+  font-size: 12px;
+  color: var(--nk-ink-3);
+}
+.export-bar .summary.exported {
+  color: var(--nk-jade);
+}
+.export-form { margin: 0; }
+.export-btn {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 9px 18px;
+  border: 1px solid var(--nk-signal);
+  color: var(--nk-signal);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--nk-dur-fast), color var(--nk-dur-fast);
+}
+.export-btn:hover, .export-btn:focus-visible {
+  background: var(--nk-signal);
+  color: #fff;
+}
+.export-btn[disabled] {
+  border-color: var(--nk-rule);
+  color: var(--nk-muted);
+  background: transparent;
+  cursor: not-allowed;
+}
+.export-btn[disabled]:hover, .export-btn[disabled]:focus-visible {
+  background: transparent;
+  color: var(--nk-muted);
+}
+.export-bar .queue-link {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--nk-jade);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+.export-bar .queue-link:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+
 .cards-list {
   flex: 1;
   overflow-y: auto;
@@ -600,7 +668,7 @@ dialog.edit-dialog .cancel-btn:hover, dialog.edit-dialog .cancel-btn:focus-visib
       <span class="grade grade-{{ audit.overall_grade | lower | replace('+', 'p') }}">{{ audit.overall_grade }}</span>
     </span>
     <a href="/bridge/seo/audits/by-id/{{ audit.id }}">回 audit 結果</a>
-    <span>PRD #226 · slice 5 (#234)</span>
+    <span>PRD #226 · slice 5+6 (#234, #235)</span>
   </div>
 </section>
 
@@ -640,12 +708,43 @@ dialog.edit-dialog .cancel-btn:hover, dialog.edit-dialog .cancel-btn:focus-visib
       <span class="title">建議 <span class="zh">{{ suggestions|length }} 條 fail/warn</span></span>
       <span class="meta">
         {% if has_actionable %}
-        <span class="has-actionable">已有 approved/edited</span> · slice #235 export
+        <span class="has-actionable">已有 {{ actionable_count }} 條 approved/edited</span>
         {% else %}
         approve / edit / reject 任選
         {% endif %}
       </span>
     </header>
+    <div class="export-bar" role="region" aria-label="export to approval queue">
+      {% if review_status == 'exported' %}
+      <div class="summary exported">
+        <strong>已匯出至 approval queue #{{ approval_queue_id }}</strong>
+        <span class="zh">至 /bridge/drafts 完成 HITL 審核 → publish</span>
+      </div>
+      <a class="queue-link"
+         href="/bridge/drafts/{{ approval_queue_id }}"
+         aria-label="開啟 approval queue 條目 #{{ approval_queue_id }}">查 queue 條目 →</a>
+      {% else %}
+      <div class="summary">
+        {% if has_actionable %}
+        <strong>{{ actionable_count }} 條</strong> approved/edited 將匯出至 approval queue
+        <span class="zh">（rejected / pending 條目排除）</span>
+        {% else %}
+        <strong>還沒有可匯出的條目</strong>
+        <span class="zh">先 approve 或 edit 至少一條</span>
+        {% endif %}
+      </div>
+      <form class="export-form"
+            method="post"
+            action="/bridge/seo/audits/{{ audit.id }}/export">
+        <button type="submit"
+                class="export-btn"
+                {% if not can_export %}disabled aria-disabled="true"{% endif %}
+                title="{% if can_export %}匯出 {{ actionable_count }} 條 approved/edited 建議到 approval queue{% else %}{% if not has_actionable %}先 approve / edit 至少一條{% else %}此 audit 無 wp_post_id 不能匯出{% endif %}{% endif %}">
+          匯出至 approval queue →
+        </button>
+      </form>
+      {% endif %}
+    </div>
     <div class="cards-list" id="cards-list">
       {% if suggestions %}
         {% for s in suggestions %}
