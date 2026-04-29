@@ -17,6 +17,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import (
     APIRouter,
@@ -36,6 +37,7 @@ from shared import (
     agent_memory,
     approval_queue,
     audit_results_store,
+    gsc_rows_store,
     heartbeat,
     state,
     target_keywords,
@@ -172,6 +174,16 @@ async def cost_page(request: Request, nakama_auth: str | None = Cookie(None)):
 # `target-keywords.yaml` reading convention).
 _SEO_TARGET_SITES: tuple[str, ...] = ("wp_shosho", "wp_fleet")
 
+# Anchor for rolling rank windows. We use Taipei calendar so the 28-day window
+# matches the user's local "today" (cron + VPS are also Asia/Taipei per
+# `reference_vps_timezone.md`).
+_SEO_TZ = ZoneInfo("Asia/Taipei")
+
+# Below this absolute delta (positions) we treat the keyword as "flat" rather
+# than improving / declining. GSC position is a noisy float, so 0.0 strict
+# equality is too brittle — half a slot of movement is not a real trend.
+_RANK_FLAT_THRESHOLD = 0.5
+
 
 def _summarize_seo_post(post: wp_post_lister.WpPostSummaryV1, target_site: str) -> dict[str, Any]:
     """Decorate a `WpPostSummaryV1` with grade/audit fields from `audit_results`.
@@ -200,18 +212,16 @@ def _summarize_seo_post(post: wp_post_lister.WpPostSummaryV1, target_site: str) 
 
 
 def _summarize_target_keyword(kw: Any) -> dict[str, Any]:
-    """Decorate a ``TargetKeywordV1`` with placeholder rank columns.
-
-    Slice #233 (rank-change v1.1) will populate ``current_rank`` and
-    ``current_impressions`` from ``gsc_rows`` once ADR-008 Phase 2a-min is
-    live; until then we expose ``None`` so the template can render the dash
-    placeholder consistent with section 1's grade column.
+    """Decorate a ``TargetKeywordV1`` with the static fields needed by the
+    template (slice #230 shape).  Rank columns are attached separately by
+    ``_attach_rank_change`` so the read against ``gsc_rows`` happens exactly
+    once per row and the path is unit-testable.
 
     Attack URL: ``site`` is the canonical short host (``shosho.tw`` /
     ``fleet.shosho.tw``) per ADR-008 §6; we synthesize ``https://<site>``
-    for display because there is no per-keyword landing page in v1
-    (Usopp will populate ``source_post_id`` later, but goal_rank is set
-    against the site root for now).
+    because there is no per-keyword landing page in v1 (Usopp will populate
+    ``source_post_id`` later, but goal_rank is set against the site root
+    for now).
     """
     return {
         "keyword": kw.keyword,
@@ -220,38 +230,94 @@ def _summarize_target_keyword(kw: Any) -> dict[str, Any]:
         "attack_url": f"https://{kw.site}",
         "goal_rank": kw.goal_rank,
         "added_by": kw.added_by,
-        # Placeholders — populated by slice #233 from gsc_rows.
-        "current_rank": None,
-        "current_impressions": None,
     }
 
 
-def _load_target_keyword_rows() -> list[dict[str, Any]]:
-    """Load ``config/target-keywords.yaml`` for the SEO 中控台 §2 list.
+def _delta_direction(delta: Optional[float]) -> Optional[str]:
+    """Map a position delta to a render direction.
+
+    GSC ``position`` is "lower is better": current=5 vs prev=8 → delta=-3
+    (rank improved). The template paints negatives as a *green up* arrow
+    and positives as a *red down* arrow, hence this remap rather than
+    using sign of delta directly.
+
+    Returns ``None`` when delta is ``None`` (window has no rows on either
+    side).  Returns ``"flat"`` when ``abs(delta) < _RANK_FLAT_THRESHOLD``
+    so half-a-slot noise doesn't masquerade as movement.
+    """
+    if delta is None:
+        return None
+    if abs(delta) < _RANK_FLAT_THRESHOLD:
+        return "flat"
+    return "improved" if delta < 0 else "declined"
+
+
+def _attach_rank_change(
+    kw_row: dict[str, Any],
+    today: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """Enrich a target-keyword dict with current/prev rank, delta, impressions.
+
+    Reads ``gsc_rows`` via ``shared.gsc_rows_store.rank_change_28d``; that
+    helper already returns ``None`` for absent windows, which we surface
+    as the dash placeholder downstream.
+
+    Section 2 consumes ``current_rank`` / ``current_impressions``; section 3
+    additionally consumes ``prev_rank`` / ``delta`` / ``delta_direction``.
+    Both sections share this same row dict — single source of truth.
+    """
+    today_date = (today or datetime.now(_SEO_TZ)).astimezone(_SEO_TZ).date()
+    rc = gsc_rows_store.rank_change_28d(
+        keyword=kw_row["keyword"],
+        url=kw_row["attack_url"],
+        today=today_date,
+    )
+    return {
+        **kw_row,
+        "current_rank": rc.current_avg_pos,
+        "prev_rank": rc.prev_avg_pos,
+        "delta": rc.delta,
+        "delta_direction": _delta_direction(rc.delta),
+        "current_impressions": rc.current_impressions,
+    }
+
+
+def _load_target_keyword_rows(
+    today: Optional[datetime] = None,
+) -> list[dict[str, Any]]:
+    """Load ``config/target-keywords.yaml`` for the SEO 中控台 §2 list and
+    attach rolling 28d rank-change data from ``gsc_rows`` (slice #233).
 
     Returns an empty list when the file is missing OR the YAML has zero
     keywords (the seed file ships with ``keywords: []`` until Zoro Phase 1.5
     pushes the first attack keyword in).  Both shapes hand the template the
     same empty-state branch — see ``test_seo_page_target_keywords_empty_state``.
+
+    When ``gsc_rows`` is empty (cron has not yet run / no data for any
+    keyword) every row's rank columns gracefully become ``None`` so the
+    template renders dashes — see ``test_seo_page_section3_smoke_no_gsc_rows``.
     """
     doc = target_keywords.load_target_keywords()
     if doc is None or not doc.keywords:
         return []
-    return [_summarize_target_keyword(kw) for kw in doc.keywords]
+    rows = [_summarize_target_keyword(kw) for kw in doc.keywords]
+    return [_attach_rank_change(row, today=today) for row in rows]
 
 
 @page_router.get("/seo", response_class=HTMLResponse)
 async def seo_page(request: Request, nakama_auth: str | None = Cookie(None)):
-    """SEO 中控台 v1 — sections 1 + 2 live, section 3 deferred.
+    """SEO 中控台 v1 — sections 1 + 2 + 3 live (closes the v1 vision).
 
     Section 1 (#229 + #232): WP REST live pull (wp_shosho + wp_fleet,
     1h cache, WP errors → empty-state), joined with
     ``audit_results.latest_for_post`` for GRADE / LAST AUDITED columns.
-    Section 2 (#230): ``config/target-keywords.yaml`` via
+    Section 2 (#230 + #233): ``config/target-keywords.yaml`` via
     ``shared.target_keywords.load_target_keywords`` →
-    ``TargetKeywordListV1``; missing / empty file → empty-state.
-    Section 3 (#233): rank-change placeholder until ADR-008 Phase 2a-min
-    bridge query helper lands.
+    ``TargetKeywordListV1``; current_rank + impressions columns now read
+    from ``gsc_rows`` (slice #233).  Missing / empty file → empty-state.
+    Section 3 (#233): rank change panel — same target keyword rows + Δ
+    vs prev 28d.  When ``gsc_rows`` is entirely empty (cron not yet run)
+    every row gracefully renders "—".
     """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/seo", status_code=302)

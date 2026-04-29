@@ -463,6 +463,109 @@ body {
   font-size: 12px;
 }
 
+/* ── Section 3 · rank change ── */
+.section.section-rank .section-body {
+  /* Same full-bleed table convention as sections 1 + 2. */
+  padding: 0;
+  gap: 0;
+}
+.rank-toolbar {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--nk-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  color: var(--nk-ink-3);
+  letter-spacing: 0.04em;
+}
+.rank-toolbar .count { color: var(--nk-ink); }
+.rank-toolbar .source {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.rank-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.rank-table thead th {
+  text-align: left;
+  background: var(--nk-panel-2);
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+  font-weight: 500;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--nk-rule);
+  border-top: 1px solid var(--nk-hairline);
+  white-space: nowrap;
+}
+.rank-table tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--nk-hairline);
+  vertical-align: top;
+  line-height: 1.45;
+}
+.rank-table tbody tr:last-child td { border-bottom: none; }
+.rank-table tbody tr:hover { background: var(--nk-panel-2); }
+.rank-table .col-keyword { min-width: 180px; }
+.rank-table .col-url { min-width: 240px; }
+.rank-table .col-pos,
+.rank-table .col-delta,
+.rank-table .col-impr { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.rank-pos {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink-2);
+}
+.rank-pos.is-empty { color: var(--nk-muted); }
+
+/* Delta cell tokens — colour comes from CSS custom properties so an a11y
+ * audit can override per palette without touching every selector below. */
+.delta {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.delta-arrow {
+  font-size: 11px;
+  line-height: 1;
+  /* Up/down chevrons rendered from the underlying Unicode glyph; CSS keeps
+   * them aligned with the digits next to them. */
+}
+.delta.delta-improved { color: var(--nk-jade); }
+.delta.delta-declined { color: var(--nk-crimson); }
+.delta.delta-flat     { color: var(--nk-muted); }
+.delta.delta-empty    { color: var(--nk-muted); }
+
+.rank-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--nk-ink-3);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.rank-empty .head {
+  font-family: var(--nk-font-display);
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  color: var(--nk-ink-2);
+  margin-bottom: 8px;
+}
+.rank-empty .body { line-height: 1.55; }
+
 .keywords-empty {
   padding: 40px 20px;
   text-align: center;
@@ -542,10 +645,10 @@ body {
 
 <section class="page-header">
   <div>
-    <div class="nk-caps">/seo · 中控台 v1 — slice 3 target keywords</div>
+    <div class="nk-caps">/seo · 中控台 v1.1 — rank change live</div>
     <h1 class="page-title">SEO 中控台 <span class="zh">SEO Control Center</span></h1>
   </div>
-  <div class="header-meta">PRD #226 · slice 2 (#229) + slice 3 (#230)</div>
+  <div class="header-meta">PRD #226 · slice 2 (#229) · slice 3 (#230) · slice 9 (#233)</div>
 </section>
 
 <main class="main">
@@ -657,7 +760,7 @@ body {
     <div class="section-body">
       <div class="keywords-toolbar">
         <span>共 <span class="count">{{ target_keywords|length }}</span> 個目標關鍵字 · 來源 <code>config/target-keywords.yaml</code></span>
-        <span class="source">RANK COLUMNS · SLICE #233 (ADR-008 PHASE 2A-MIN)</span>
+        <span class="source">RANK COLUMNS · GSC ROLLING 28D</span>
       </div>
       {% if target_keywords %}
       <table class="keywords-table" aria-describedby="sec-keywords">
@@ -690,10 +793,18 @@ body {
               {% endif %}
             </td>
             <td class="col-rank">
-              <span class="kw-placeholder" aria-label="current rank populated by slice #233">—</span>
+              {% if kw.current_rank is not none %}
+              <span class="kw-rank">#{{ "%.1f"|format(kw.current_rank) }}</span>
+              {% else %}
+              <span class="kw-rank is-empty" aria-label="no GSC data yet">—</span>
+              {% endif %}
             </td>
             <td class="col-impr">
-              <span class="kw-placeholder" aria-label="impressions populated by slice #233">—</span>
+              {% if kw.current_impressions %}
+              <span class="kw-rank">{{ "{:,}".format(kw.current_impressions) }}</span>
+              {% else %}
+              <span class="kw-rank is-empty" aria-label="no impressions yet">—</span>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -713,22 +824,85 @@ body {
   </article>
 
   <!-- Section 3: 排名變化 -->
-  <article class="section" aria-labelledby="sec-rank">
+  <article class="section section-rank" aria-labelledby="sec-rank">
     <header class="section-head">
       <div>
         <div class="section-marker">§ 3 · RANK CHANGE</div>
         <h2 class="section-title" id="sec-rank">排名變化 <span class="zh">28-day rank delta</span></h2>
       </div>
-      <span class="section-status deferred">DEFERRED</span>
     </header>
     <div class="section-body">
-      <p class="lead">
-        每個目標關鍵字 28 天平均排名 vs 前 28 天平均排名的 delta，搭配當期曝光數，
-        用來抓上升中或正在沉沒的關鍵字。
-      </p>
-      <p class="deferred-note">
-        ADR-008 Phase 2a-min 上線後啟用 · gsc_daily cron + gsc_rows 表落地後才有資料可查（issue #233）
-      </p>
+      <div class="rank-toolbar">
+        <span>共 <span class="count">{{ target_keywords|length }}</span> 個目標關鍵字 · 視窗 28 天 vs 前 28 天</span>
+        <span class="source">SOURCE · gsc_rows · DAILY CRON 03:00</span>
+      </div>
+      {% if target_keywords %}
+      <table class="rank-table" aria-describedby="sec-rank">
+        <thead>
+          <tr>
+            <th class="col-keyword">KEYWORD</th>
+            <th class="col-url">ATTACK URL</th>
+            <th class="col-pos">CURRENT (28D)</th>
+            <th class="col-delta">Δ vs PREV 28D</th>
+            <th class="col-impr">IMPRESSIONS (28D)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for kw in target_keywords %}
+          <tr>
+            <td class="col-keyword">
+              <span class="kw-keyword">{{ kw.keyword }}</span>
+              {% if kw.keyword_en %}
+              <span class="kw-keyword-en">{{ kw.keyword_en }}</span>
+              {% endif %}
+            </td>
+            <td class="col-url">
+              <a class="kw-url" href="{{ kw.attack_url }}" target="_blank" rel="noopener">{{ kw.attack_url }}</a>
+            </td>
+            <td class="col-pos">
+              {% if kw.current_rank is not none %}
+              <span class="rank-pos">#{{ "%.1f"|format(kw.current_rank) }}</span>
+              {% else %}
+              <span class="rank-pos is-empty" aria-label="no GSC rows for this keyword yet">—</span>
+              {% endif %}
+            </td>
+            <td class="col-delta">
+              {% if kw.delta_direction == 'improved' %}
+              <span class="delta delta-improved" aria-label="rank improved by {{ "%.1f"|format(kw.delta|abs) }} positions">
+                <span class="delta-arrow" aria-hidden="true">▲</span>{{ "%.1f"|format(kw.delta|abs) }}
+              </span>
+              {% elif kw.delta_direction == 'declined' %}
+              <span class="delta delta-declined" aria-label="rank declined by {{ "%.1f"|format(kw.delta|abs) }} positions">
+                <span class="delta-arrow" aria-hidden="true">▼</span>{{ "%.1f"|format(kw.delta|abs) }}
+              </span>
+              {% elif kw.delta_direction == 'flat' %}
+              <span class="delta delta-flat" aria-label="rank essentially flat">
+                <span class="delta-arrow" aria-hidden="true">▬</span>flat
+              </span>
+              {% else %}
+              <span class="delta delta-empty" aria-label="no comparison data — prior 28d window empty">—</span>
+              {% endif %}
+            </td>
+            <td class="col-impr">
+              {% if kw.current_impressions %}
+              <span class="rank-pos">{{ "{:,}".format(kw.current_impressions) }}</span>
+              {% else %}
+              <span class="rank-pos is-empty" aria-label="no impressions yet">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="rank-empty">
+        <div class="head">尚無排名資料</div>
+        <div class="body">
+          先在 <code>config/target-keywords.yaml</code> push 攻擊關鍵字，
+          Franky GSC daily cron（03:00 Asia/Taipei）才會把 gsc_rows 補上。
+        </div>
+      </div>
+      {% endif %}
     </div>
   </article>
 
