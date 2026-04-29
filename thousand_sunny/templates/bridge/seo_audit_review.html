@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · SEO Audit Review · {{ audit.url }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-highlight:    #f7d77a;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-dur-fast:     80ms;
+  --nk-dur-slow:     1500ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: 14px;
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Chassis ── */
+.chassis {
+  background: var(--nk-chassis);
+  color: var(--nk-chassis-fg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+/* ── Page header ── */
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: 1px solid var(--nk-rule);
+  padding: 16px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 20px;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
+}
+.page-title {
+  font-family: var(--nk-font-display); font-size: 24px; font-weight: 500;
+  letter-spacing: -0.4px;
+}
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 14px; }
+.header-meta {
+  font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+}
+.header-meta a {
+  color: var(--nk-ink-2);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--nk-muted);
+}
+.header-meta a:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+
+.header-grade {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--nk-ink-3);
+}
+.header-grade .grade {
+  font-family: var(--nk-font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+.header-grade .grade.grade-a    { color: var(--nk-jade); }
+.header-grade .grade.grade-bp,
+.header-grade .grade.grade-b    { color: var(--nk-indigo); }
+.header-grade .grade.grade-cp,
+.header-grade .grade.grade-c    { color: var(--nk-amber); }
+.header-grade .grade.grade-d,
+.header-grade .grade.grade-f    { color: var(--nk-crimson); }
+
+/* ── Main split layout ── */
+.review {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(420px, 0.85fr);
+  min-height: 0;     /* let children manage scrolling */
+}
+@media (max-width: 1080px) {
+  .review { grid-template-columns: 1fr; }
+}
+
+/* Left pane — body textarea */
+.body-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--nk-panel);
+  border-right: 1px solid var(--nk-rule);
+  min-height: 0;
+}
+.body-pane-head {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--nk-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.body-pane-head .title {
+  font-family: var(--nk-font-display);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+}
+.body-pane-head .title .zh {
+  color: var(--nk-muted);
+  font-family: var(--nk-font-zh);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.body-pane-head .meta {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+.body-textarea-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.body-textarea {
+  flex: 1;
+  width: 100%;
+  border: none;
+  outline: none;
+  padding: 18px 24px 32px;
+  font-family: var(--nk-font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--nk-ink);
+  background: var(--nk-panel);
+  resize: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+}
+.body-textarea:focus { background: var(--nk-panel); }
+.body-textarea[readonly] { background: var(--nk-panel); }
+.body-textarea.highlight-yellow {
+  background: var(--nk-highlight);
+  transition: background var(--nk-dur-slow) ease-out;
+}
+.body-fetch-error {
+  margin: 16px 24px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--nk-crimson);
+  background: var(--nk-panel-2);
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink-2);
+  line-height: 1.55;
+}
+.body-fetch-error .label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-crimson);
+  margin-bottom: 4px;
+}
+
+/* Right pane — suggestion cards */
+.cards-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--nk-bench);
+  min-height: 0;
+}
+.cards-pane-head {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--nk-rule);
+  background: var(--nk-panel);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.cards-pane-head .title {
+  font-family: var(--nk-font-display);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+}
+.cards-pane-head .title .zh {
+  color: var(--nk-muted);
+  font-family: var(--nk-font-zh);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.cards-pane-head .meta {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+.cards-pane-head .meta .has-actionable { color: var(--nk-jade); }
+
+.cards-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cards-empty {
+  margin: 40px 24px;
+  padding: 24px;
+  background: var(--nk-panel);
+  border: 1px dashed var(--nk-rule);
+  text-align: center;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  color: var(--nk-ink-3);
+  letter-spacing: 0.04em;
+  line-height: 1.65;
+}
+.cards-empty .head {
+  font-family: var(--nk-font-display);
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  color: var(--nk-ink-2);
+  margin-bottom: 6px;
+}
+
+/* Card */
+.card {
+  background: var(--nk-panel);
+  border: 1px solid var(--nk-rule);
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color var(--nk-dur-fast);
+}
+.card.is-rejected { opacity: 0.65; }
+.card.is-rejected .card-title { text-decoration: line-through; }
+.card.is-approved { border-left: 3px solid var(--nk-jade); }
+.card.is-edited   { border-left: 3px solid var(--nk-amber); }
+.card.is-rejected { border-left: 3px solid var(--nk-muted); }
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.severity-chip {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  background: var(--nk-panel);
+}
+.severity-chip.fail { color: var(--nk-crimson); }
+.severity-chip.warn { color: var(--nk-amber); }
+.rule-id-pill {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--nk-ink-3);
+  background: var(--nk-panel-2);
+  padding: 2px 7px;
+  border: 1px solid var(--nk-hairline);
+}
+.card-title {
+  flex: 1;
+  font-family: var(--nk-font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--nk-ink);
+  line-height: 1.4;
+}
+
+.status-chip {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+}
+.status-chip.approved { color: var(--nk-jade); }
+.status-chip.edited   { color: var(--nk-amber); }
+.status-chip.rejected { color: var(--nk-muted); }
+
+.card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.card-fields .label {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+  margin-right: 6px;
+}
+.card-fields .field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.card-fields .field-content {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  background: var(--nk-panel-2);
+  border: 1px solid var(--nk-hairline);
+  padding: 7px 10px;
+  color: var(--nk-ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.card-fields .field-content.is-empty { color: var(--nk-muted); font-style: italic; }
+.card-fields .rationale {
+  font-family: var(--nk-font-zh);
+  font-size: 12.5px;
+  color: var(--nk-ink-2);
+  line-height: 1.6;
+}
+.card-fields .edited-note {
+  font-family: var(--nk-font-mono);
+  font-size: 10.5px;
+  color: var(--nk-amber);
+  letter-spacing: 0.06em;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid var(--nk-hairline);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+.action-form { margin: 0; display: inline-flex; }
+.action-btn {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  background: transparent;
+  border: 1px solid var(--nk-rule);
+  color: var(--nk-ink-2);
+  cursor: pointer;
+  transition: border-color var(--nk-dur-fast), color var(--nk-dur-fast);
+}
+.action-btn:hover, .action-btn:focus-visible {
+  border-color: var(--nk-signal);
+  color: var(--nk-signal);
+}
+.action-btn.is-active.approve {
+  border-color: var(--nk-jade);
+  color: var(--nk-jade);
+}
+.action-btn.is-active.edit {
+  border-color: var(--nk-amber);
+  color: var(--nk-amber);
+}
+.action-btn.is-active.reject {
+  border-color: var(--nk-muted);
+  color: var(--nk-muted);
+}
+.action-btn.show-in-body {
+  margin-left: auto;
+  border-style: dashed;
+}
+.action-btn.show-in-body[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Edit dialog (native <dialog>) */
+dialog.edit-dialog {
+  border: 1px solid var(--nk-rule);
+  background: var(--nk-panel);
+  color: var(--nk-ink);
+  padding: 0;
+  width: min(90vw, 640px);
+  max-height: 80vh;
+}
+dialog.edit-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+dialog.edit-dialog .dialog-form {
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+dialog.edit-dialog .dialog-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--nk-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+dialog.edit-dialog .dialog-head .title {
+  font-family: var(--nk-font-display);
+  font-size: 15px;
+  font-weight: 500;
+}
+dialog.edit-dialog .dialog-head .meta {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--nk-ink-3);
+  text-transform: uppercase;
+}
+dialog.edit-dialog .dialog-body {
+  padding: 14px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+dialog.edit-dialog .field-readonly {
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  background: var(--nk-panel-2);
+  border: 1px solid var(--nk-hairline);
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 100px;
+  overflow-y: auto;
+  color: var(--nk-ink);
+}
+dialog.edit-dialog .field-label {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nk-ink-3);
+}
+dialog.edit-dialog .edit-textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 10px 12px;
+  font-family: var(--nk-font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--nk-ink);
+  background: var(--nk-panel);
+  border: 1px solid var(--nk-rule);
+  resize: vertical;
+}
+dialog.edit-dialog .edit-textarea:focus {
+  outline: none;
+  border-color: var(--nk-signal);
+}
+dialog.edit-dialog .dialog-actions {
+  border-top: 1px solid var(--nk-hairline);
+  padding: 12px 18px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+dialog.edit-dialog .submit-btn {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 7px 14px;
+  border: 1px solid var(--nk-signal);
+  color: var(--nk-signal);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--nk-dur-fast), color var(--nk-dur-fast);
+}
+dialog.edit-dialog .submit-btn:hover, dialog.edit-dialog .submit-btn:focus-visible {
+  background: var(--nk-signal);
+  color: #fff;
+}
+dialog.edit-dialog .cancel-btn {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 7px 14px;
+  border: 1px solid var(--nk-rule);
+  color: var(--nk-ink-2);
+  background: transparent;
+  cursor: pointer;
+}
+dialog.edit-dialog .cancel-btn:hover, dialog.edit-dialog .cancel-btn:focus-visible {
+  border-color: var(--nk-ink-2);
+  color: var(--nk-ink);
+}
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
+</style>
+</head>
+<body>
+<header class="chassis">
+  <div class="chassis-brand">
+    <div class="chassis-dot"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+  </div>
+  <nav class="chassis-nav">
+    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/seo" class="active" aria-current="page">SEO <span class="zh">優化</span></a>
+    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
+    <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
+    <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
+    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
+    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
+    <a href="/">VAULT <span class="zh">秘庫</span></a>
+  </nav>
+</header>
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/seo/audits/{{ audit.id }}/review · 左右對照審查</div>
+    <h1 class="page-title">SEO Audit Review <span class="zh">逐條建議審查</span></h1>
+  </div>
+  <div class="header-meta">
+    <span class="header-grade">
+      grade
+      <span class="grade grade-{{ audit.overall_grade | lower | replace('+', 'p') }}">{{ audit.overall_grade }}</span>
+    </span>
+    <a href="/bridge/seo/audits/by-id/{{ audit.id }}">回 audit 結果</a>
+    <span>PRD #226 · slice 5 (#234)</span>
+  </div>
+</section>
+
+<main class="review">
+  <!-- Left: textarea (article body) -->
+  <section class="body-pane" aria-labelledby="body-pane-head">
+    <header class="body-pane-head" id="body-pane-head">
+      <span class="title">文章主體 <span class="zh">WP REST raw HTML</span></span>
+      <span class="meta">
+        {% if audit.target_site and audit.wp_post_id %}
+        {{ audit.target_site }} · post #{{ audit.wp_post_id }}
+        {% else %}
+        external
+        {% endif %}
+      </span>
+    </header>
+    {% if fetch_error %}
+    <div class="body-fetch-error" role="status">
+      <span class="label">未能載入文章主體</span>
+      {{ fetch_error }}
+    </div>
+    {% endif %}
+    <div class="body-textarea-wrap">
+      <textarea
+        class="body-textarea"
+        id="article-body"
+        readonly
+        spellcheck="false"
+        aria-label="文章主體（唯讀，slice #235 加可寫回 WP）"
+      >{{ raw_html }}</textarea>
+    </div>
+  </section>
+
+  <!-- Right: suggestion cards -->
+  <section class="cards-pane" aria-labelledby="cards-pane-head">
+    <header class="cards-pane-head" id="cards-pane-head">
+      <span class="title">建議 <span class="zh">{{ suggestions|length }} 條 fail/warn</span></span>
+      <span class="meta">
+        {% if has_actionable %}
+        <span class="has-actionable">已有 approved/edited</span> · slice #235 export
+        {% else %}
+        approve / edit / reject 任選
+        {% endif %}
+      </span>
+    </header>
+    <div class="cards-list" id="cards-list">
+      {% if suggestions %}
+        {% for s in suggestions %}
+        <article class="card status-{{ s.status }} is-{{ s.status }}"
+                 data-rule-id="{{ s.rule_id }}"
+                 data-current-value="{{ s.current_value }}"
+                 aria-labelledby="card-title-{{ loop.index }}">
+          <header class="card-head">
+            <span class="severity-chip {{ s.severity }}">{{ s.severity }}</span>
+            <span class="rule-id-pill">{{ s.rule_id }}</span>
+            <span class="card-title" id="card-title-{{ loop.index }}">{{ s.title }}</span>
+            {% if s.status == 'approved' %}
+            <span class="status-chip approved">approved</span>
+            {% elif s.status == 'edited' %}
+            <span class="status-chip edited">edited</span>
+            {% elif s.status == 'rejected' %}
+            <span class="status-chip rejected">rejected</span>
+            {% endif %}
+          </header>
+
+          <div class="card-fields">
+            <div class="field">
+              <span class="label">current</span>
+              {% if s.current_value %}
+              <div class="field-content">{{ s.current_value }}</div>
+              {% else %}
+              <div class="field-content is-empty">（無）</div>
+              {% endif %}
+            </div>
+            <div class="field">
+              <span class="label">suggested</span>
+              {% if s.suggested_value %}
+              <div class="field-content">{{ s.suggested_value }}</div>
+              {% else %}
+              <div class="field-content is-empty">（無）</div>
+              {% endif %}
+            </div>
+            {% if s.rationale %}
+            <div class="field">
+              <span class="label">why</span>
+              <p class="rationale">{{ s.rationale }}</p>
+            </div>
+            {% endif %}
+            {% if s.status == 'edited' and s.edited_value %}
+            <div class="field">
+              <span class="label">edited</span>
+              <div class="field-content">{{ s.edited_value }}</div>
+              <span class="edited-note">user edit; export 時取代 suggested_value</span>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="card-actions">
+            <form class="action-form"
+                  method="post"
+                  action="/bridge/seo/audits/{{ audit.id }}/suggestions/{{ s.rule_id }}/approve">
+              <button class="action-btn approve {% if s.status == 'approved' %}is-active{% endif %}"
+                      type="submit"
+                      aria-pressed="{{ 'true' if s.status == 'approved' else 'false' }}">approve</button>
+            </form>
+            <button class="action-btn edit {% if s.status == 'edited' %}is-active{% endif %}"
+                    type="button"
+                    data-edit-rule="{{ s.rule_id }}"
+                    aria-haspopup="dialog"
+                    aria-pressed="{{ 'true' if s.status == 'edited' else 'false' }}">edit</button>
+            <form class="action-form"
+                  method="post"
+                  action="/bridge/seo/audits/{{ audit.id }}/suggestions/{{ s.rule_id }}/reject">
+              <button class="action-btn reject {% if s.status == 'rejected' %}is-active{% endif %}"
+                      type="submit"
+                      aria-pressed="{{ 'true' if s.status == 'rejected' else 'false' }}">reject</button>
+            </form>
+            <button class="action-btn show-in-body"
+                    type="button"
+                    data-show-rule="{{ s.rule_id }}"
+                    {% if not s.current_value %}disabled aria-disabled="true"{% endif %}
+                    title="{% if s.current_value %}scroll 文章主體到這段{% else %}此 rule 沒有 current_value{% endif %}">[在左側顯示]</button>
+          </div>
+        </article>
+        {% endfor %}
+      {% else %}
+        <div class="cards-empty">
+          <div class="head">沒有 fail / warn 建議</div>
+          <div class="body">這篇 audit 全綠 — 沒有需要審查的條目。回到 <a href="/bridge/seo/audits/by-id/{{ audit.id }}">audit 結果頁</a>。</div>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+</main>
+
+<!-- Edit dialogs — one per suggestion (rendered alongside cards so we can
+     pre-fill values without runtime DOM building). -->
+{% for s in suggestions %}
+<dialog class="edit-dialog" id="edit-dialog-{{ s.rule_id }}" aria-labelledby="edit-dialog-title-{{ s.rule_id }}">
+  <form class="dialog-form"
+        method="post"
+        action="/bridge/seo/audits/{{ audit.id }}/suggestions/{{ s.rule_id }}/edit">
+    <header class="dialog-head">
+      <span class="title" id="edit-dialog-title-{{ s.rule_id }}">編輯 {{ s.rule_id }} · {{ s.title }}</span>
+      <span class="meta">{{ s.severity }} · max {{ edit_max_length }} chars</span>
+    </header>
+    <div class="dialog-body">
+      {% if s.current_value %}
+      <div>
+        <span class="field-label">current</span>
+        <div class="field-readonly">{{ s.current_value }}</div>
+      </div>
+      {% endif %}
+      <div>
+        <span class="field-label">suggested （參考）</span>
+        <div class="field-readonly">{{ s.suggested_value or '（無）' }}</div>
+      </div>
+      <div>
+        <label class="field-label" for="edit-textarea-{{ s.rule_id }}">your edit</label>
+        <textarea class="edit-textarea"
+                  id="edit-textarea-{{ s.rule_id }}"
+                  name="edited_value"
+                  rows="6"
+                  required
+                  minlength="1"
+                  maxlength="{{ edit_max_length }}"
+                  spellcheck="false">{{ s.edited_value if s.edited_value else s.suggested_value }}</textarea>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" class="cancel-btn" data-close-dialog="edit-dialog-{{ s.rule_id }}">取消</button>
+      <button type="submit" class="submit-btn">送出 edit</button>
+    </div>
+  </form>
+</dialog>
+{% endfor %}
+
+<script>
+(function () {
+  'use strict';
+
+  // ── [在左側顯示] — scroll textarea to current_value + briefly highlight ──
+  const textarea = document.getElementById('article-body');
+  let highlightTimer = null;
+
+  function showInBody(button) {
+    const ruleId = button.getAttribute('data-show-rule');
+    if (!ruleId || !textarea) return;
+    const card = document.querySelector('article.card[data-rule-id="' + cssEscape(ruleId) + '"]');
+    if (!card) return;
+    const currentValue = card.getAttribute('data-current-value') || '';
+    if (!currentValue) return;
+    const body = textarea.value || '';
+    const idx = body.indexOf(currentValue);
+    if (idx === -1) {
+      // No exact match — flash a brief notice on the button itself.
+      flashBriefly(button);
+      return;
+    }
+    // Position cursor + selection so the browser scrolls the textarea.
+    textarea.focus({ preventScroll: false });
+    textarea.setSelectionRange(idx, idx + currentValue.length);
+    // Approximate scroll: line index × line height. setSelectionRange
+    // doesn't always scroll, so we compute manually as a fallback.
+    const charsPerLine = 80;
+    const linesAbove = body.substring(0, idx).split('\n').length - 1;
+    const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 22;
+    textarea.scrollTop = Math.max(0, (linesAbove - 2) * lineHeight);
+    // Also scroll the body-pane wrapper into view if collapsed (mobile).
+    textarea.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+    // Highlight pulse via class swap.
+    textarea.classList.add('highlight-yellow');
+    if (highlightTimer) clearTimeout(highlightTimer);
+    highlightTimer = setTimeout(function () {
+      textarea.classList.remove('highlight-yellow');
+    }, 1500);
+  }
+
+  function flashBriefly(button) {
+    const prev = button.style.borderColor;
+    button.style.borderColor = 'var(--nk-crimson)';
+    setTimeout(function () { button.style.borderColor = prev; }, 1200);
+  }
+
+  // CSS.escape polyfill for older browsers (none on the target Mac/Win envs,
+  // but cheap insurance against unusual rule_id chars).
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(value);
+    }
+    return String(value).replace(/["\\]/g, '\\$&');
+  }
+
+  document.querySelectorAll('button.show-in-body[data-show-rule]').forEach(function (btn) {
+    btn.addEventListener('click', function () { showInBody(btn); });
+  });
+
+  // ── Edit dialog open/close ──
+  document.querySelectorAll('button[data-edit-rule]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const ruleId = btn.getAttribute('data-edit-rule');
+      const dialog = document.getElementById('edit-dialog-' + ruleId);
+      if (dialog && typeof dialog.showModal === 'function') {
+        dialog.showModal();
+        // Focus the textarea on open.
+        const ta = dialog.querySelector('textarea[name="edited_value"]');
+        if (ta) {
+          // Defer so showModal() finishes laying out before we focus.
+          requestAnimationFrame(function () { ta.focus(); ta.select(); });
+        }
+      }
+    });
+  });
+
+  document.querySelectorAll('button[data-close-dialog]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const dialogId = btn.getAttribute('data-close-dialog');
+      const dialog = document.getElementById(dialogId);
+      if (dialog && typeof dialog.close === 'function') dialog.close();
+    });
+  });
+})();
+</script>
+</body>
+</html>
