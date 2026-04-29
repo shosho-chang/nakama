@@ -624,24 +624,8 @@ body {
 </style>
 </head>
 <body>
-<header class="chassis">
-  <div class="chassis-brand">
-    <div class="chassis-dot"></div>
-    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
-  </div>
-  <nav class="chassis-nav">
-    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
-    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
-    <a href="/bridge/seo" class="active" aria-current="page">SEO <span class="zh">優化</span></a>
-    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
-    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
-    <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
-    <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
-    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
-    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
-    <a href="/">VAULT <span class="zh">秘庫</span></a>
-  </nav>
-</header>
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='seo') }}
 
 <section class="page-header">
   <div>
