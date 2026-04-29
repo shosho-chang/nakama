@@ -1,11 +1,11 @@
-"""Tests for /bridge/seo — SEO 中控台 v1 slices 1 + 2 + 3.
+"""Tests for /bridge/seo — SEO 中控台 v1 slices 1 + 2 + 3 + 9.
 
 Covers acceptance criteria from issue #227 (slice 1 foundation), issue #229
-(slice 2 article list section + WP REST live pull), and issue #230 (slice 3
-target keywords section + 找新關鍵字 button):
+(slice 2 article list section + WP REST live pull), issue #230 (slice 3
+target keywords section + 找新關鍵字 button), and issue #233 (slice 9 rank
+change section + section 2 rank columns wired to ``gsc_rows``):
 
-- GET /bridge/seo with auth → 200 + three section headings + ADR-008 deferred
-  note (slice 1)
+- GET /bridge/seo with auth → 200 + three section headings (slice 1)
 - GET /bridge/seo without auth → 302 to /login?next=/bridge/seo (slice 1)
 - /bridge/seo article list table renders post titles + focus_keyword (#229)
 - WP API failure → page still renders, with empty-state message (#229)
@@ -15,17 +15,23 @@ target keywords section + 找新關鍵字 button):
   ``TargetKeywordListV1.model_validate`` (#230)
 - Empty / missing yaml → empty-state copy, no crash (#230)
 - Each row shows keyword + attack URL + goal_rank ("—" if unset) +
-  placeholder current_rank / current_impressions columns (#230)
+  current_rank / current_impressions columns (#230 / #233)
 - ``+ 找新關鍵字`` ghost button links to /bridge/zoro/keyword-research (#230)
+- Section 3 deferred copy is gone, table is now wired to ``gsc_rows`` (#233)
+- Improved / declined / flat / no-prev-window deltas all render correctly (#233)
+- Section 2 current_rank + impressions columns surface real GSC values (#233)
+- Smoke: empty ``gsc_rows`` table → all rows render "—" without crash (#233)
 """
 
 from __future__ import annotations
 
 import importlib
 import textwrap
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -183,15 +189,28 @@ def test_seo_page_has_three_section_headings(authed_client):
     assert "§ 3 · RANK CHANGE" in body
 
 
-def test_seo_page_section_3_states_phase_2a_min_dependency(authed_client):
+def test_seo_page_section_3_is_live_not_deferred(authed_client):
+    """Slice #233 closes the v1 vision: §3 is no longer a deferred placeholder.
+
+    The old copy ("ADR-008 Phase 2a-min 上線後啟用") that this test used to
+    assert lived in section 3's deferred body and is now removed. The new
+    invariants are: no DEFERRED status pill, real toolbar source label, and
+    a graceful empty-state message that mentions the cron name (so the user
+    can self-diagnose whether the cron has run).
+    """
     import thousand_sunny.routers.bridge as bridge_module
 
     with _patch_lister(bridge_module, {}):
         r = authed_client.get("/bridge/seo")
     assert r.status_code == 200
     body = r.text
-    # The ADR-008 phase 2a-min deferred note has to appear verbatim (Acceptance criterion)
-    assert "ADR-008 Phase 2a-min 上線後啟用" in body
+    # No "DEFERRED" status pill on §3 anymore.
+    assert "DEFERRED" not in body
+    # The deferred ADR-008 wait copy is gone.
+    assert "ADR-008 Phase 2a-min 上線後啟用" not in body
+    # Section 3 toolbar surfaces the gsc_rows source name + cron schedule.
+    assert "gsc_rows" in body
+    assert "DAILY CRON 03:00" in body
 
 
 def test_seo_page_unauth_redirects_to_login(unauthed_client):
@@ -507,9 +526,11 @@ def test_seo_page_target_keywords_renders_rows(authed_client, tmp_path):
     # ambiguously.
     assert "goal rank unset" in body
 
-    # current_rank / current_impressions are placeholders (slice #233).
-    assert "current rank populated by slice #233" in body
-    assert "impressions populated by slice #233" in body
+    # With slice #233 live but no `gsc_rows` data populated for these
+    # keywords, both the current_rank and impressions cells gracefully show
+    # the dash placeholder rather than a number.
+    assert 'aria-label="no GSC data yet"' in body
+    assert 'aria-label="no impressions yet"' in body
 
     # No edit / delete UI per ADR-008 §6 ownership rules.
     assert "編輯" not in body
@@ -553,3 +574,310 @@ def test_seo_page_target_keywords_count_in_toolbar(authed_client, tmp_path):
     # Count badge shows 3 (the table also has 3 rows; count_text is the
     # toolbar element).
     assert '共 <span class="count">3</span> 個目標關鍵字' in body
+
+
+# ---------------------------------------------------------------------------
+# Slice 9 — issue #233 acceptance: §3 rank change wired to gsc_rows + §2
+# current_rank / impressions columns now read the same source.
+# ---------------------------------------------------------------------------
+#
+# Strategy: pin "today" to a fixed Taipei datetime by monkeypatching
+# `thousand_sunny.routers.bridge.datetime`. We then write `gsc_rows` rows
+# whose `date` columns are anchored to that fixed today, so the rolling
+# 28d windows are deterministic across CI runs (no midnight-boundary flake).
+
+_FIXED_TODAY = date(2026, 4, 30)
+_FIXED_NOW = datetime(2026, 4, 30, 9, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+
+
+class _FrozenDatetime(datetime):
+    """``datetime`` subclass with ``now()`` pinned to ``_FIXED_NOW``.
+
+    The bridge code does ``datetime.now(_SEO_TZ)`` inside
+    ``_attach_rank_change``; subclassing keeps every other ``datetime``
+    method (incl. ``astimezone``) intact while letting us pin "today".
+    """
+
+    @classmethod
+    def now(cls, tz=None):  # noqa: D401 — pin only, mirrors stdlib
+        if tz is None:
+            return _FIXED_NOW
+        return _FIXED_NOW.astimezone(tz)
+
+
+@pytest.fixture
+def freeze_today(monkeypatch):
+    """Pin bridge.datetime so the 28d rolling window is deterministic."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    monkeypatch.setattr(bridge_module, "datetime", _FrozenDatetime)
+    yield _FIXED_TODAY
+
+
+def _seed_gsc_row(
+    *,
+    keyword: str,
+    page: str,
+    days_ago: int,
+    impressions: int = 100,
+    position: float = 10.0,
+    site: str = "sc-domain:shosho.tw",
+    device: str = "desktop",
+):
+    """Build + upsert one gsc_rows row whose date is _FIXED_TODAY - days_ago."""
+    from shared import gsc_rows_store as _store
+    from shared.schemas.seo import GSCRowV1
+
+    row = GSCRowV1(
+        site=site,
+        date=_FIXED_TODAY - timedelta(days=days_ago),
+        query=keyword,
+        page=page,
+        country="twn",
+        device=device,  # type: ignore[arg-type]
+        clicks=0,
+        impressions=impressions,
+        ctr=0.0,
+        position=position,
+    )
+    _store.upsert_rows([row])
+
+
+def _two_keyword_yaml(tmp_path: Path) -> Path:
+    """Yaml fixture with two keywords whose attack URLs match seeded rows."""
+    return _write_target_keywords_yaml(
+        tmp_path,
+        """\
+        schema_version: 1
+        updated_at: "2026-04-29T00:00:00+08:00"
+        keywords:
+          - schema_version: 1
+            keyword: "肌酸 功效"
+            site: "shosho.tw"
+            added_by: "zoro"
+            added_at: "2026-04-29T08:00:00+08:00"
+            goal_rank: 5
+          - schema_version: 1
+            keyword: "睡眠 神經科學"
+            site: "shosho.tw"
+            added_by: "zoro"
+            added_at: "2026-04-29T08:00:00+08:00"
+        """,
+    )
+
+
+def test_seo_page_section3_renders_improved_delta(authed_client, tmp_path, freeze_today):
+    """Acceptance (improved): current=10, prev=14 → delta=-4 → up arrow + jade.
+
+    Recall the semantics: GSC ``position`` is "lower is better". A negative
+    delta (current_avg_pos - prev_avg_pos < 0) means the rank IMPROVED. The
+    template paints that as a green ▲ arrow, never the raw negative sign —
+    that's the readability invariant slice #233 sets up.
+    """
+    import thousand_sunny.routers.bridge as bridge_module
+
+    page_url = "https://shosho.tw"
+    keyword = "肌酸 功效"
+
+    # Prev window (today-55 .. today-28): position 14
+    _seed_gsc_row(keyword=keyword, page=page_url, days_ago=40, position=14.0, impressions=100)
+    # Current window (today-27 .. today): position 10
+    _seed_gsc_row(keyword=keyword, page=page_url, days_ago=5, position=10.0, impressions=200)
+
+    yaml_path = _two_keyword_yaml(tmp_path)
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+
+    # Improved delta surfaces with the up arrow class + correct magnitude.
+    assert "delta-improved" in body
+    assert "rank improved by 4.0 positions" in body
+    # Current 28d position rendered to 1 decimal.
+    assert "#10.0" in body
+    # The raw negative number is NOT shown; only the magnitude.
+    assert "-4.0" not in body
+    # Impressions cell shows the seeded value, comma-formatted.
+    assert "200" in body
+
+
+def test_seo_page_section3_renders_declined_delta(authed_client, tmp_path, freeze_today):
+    """Acceptance (declined): current=10, prev=5 → delta=+5 → down arrow + crimson."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    page_url = "https://shosho.tw"
+    keyword = "肌酸 功效"
+
+    _seed_gsc_row(keyword=keyword, page=page_url, days_ago=40, position=5.0, impressions=100)
+    _seed_gsc_row(keyword=keyword, page=page_url, days_ago=5, position=10.0, impressions=100)
+
+    yaml_path = _two_keyword_yaml(tmp_path)
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+
+    assert "delta-declined" in body
+    assert "rank declined by 5.0 positions" in body
+    # Current rank rendered.
+    assert "#10.0" in body
+
+
+def test_seo_page_section3_renders_flat_delta(authed_client, tmp_path, freeze_today):
+    """Acceptance (flat): |delta| < 0.5 → muted arrow + 'flat' label.
+
+    GSC returns floats; strict ``delta == 0`` is too brittle. Half a slot of
+    movement is treated as noise — see ``_RANK_FLAT_THRESHOLD`` in bridge.py.
+    """
+    import thousand_sunny.routers.bridge as bridge_module
+
+    page_url = "https://shosho.tw"
+    keyword = "肌酸 功效"
+
+    _seed_gsc_row(keyword=keyword, page=page_url, days_ago=40, position=10.0, impressions=100)
+    _seed_gsc_row(keyword=keyword, page=page_url, days_ago=5, position=10.2, impressions=100)
+
+    yaml_path = _two_keyword_yaml(tmp_path)
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+
+    assert "delta-flat" in body
+    assert "rank essentially flat" in body
+    # Neither improved nor declined should appear for this row's delta cell.
+    # (Other rows in the yaml fixture may still mark "no comparison data —".)
+    assert "rank improved by" not in body
+    assert "rank declined by" not in body
+
+
+def test_seo_page_section3_no_prev_window_shows_dash(authed_client, tmp_path, freeze_today):
+    """Acceptance (partial): current window has rows, prev window empty
+    → current pos + impressions render real values; Δ cell shows dash."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    page_url = "https://shosho.tw"
+    keyword = "肌酸 功效"
+
+    # Only current window — no prev window data.
+    _seed_gsc_row(keyword=keyword, page=page_url, days_ago=5, position=8.0, impressions=300)
+
+    yaml_path = _two_keyword_yaml(tmp_path)
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+
+    # Current-rank pos and impressions still render.
+    assert "#8.0" in body
+    assert "300" in body
+    # Δ cell flagged as having no comparison data.
+    assert "no comparison data" in body
+
+
+def test_seo_page_section3_smoke_no_gsc_rows(authed_client, tmp_path, freeze_today):
+    """Acceptance smoke: gsc_rows table empty → page still renders, every
+    row's current/prev/delta/impressions all show "—" gracefully."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    yaml_path = _two_keyword_yaml(tmp_path)
+
+    # Note: NO gsc_rows seeded here. The autouse `isolated_db` fixture gives
+    # us an empty state.db, so every rank_change_28d call returns all-None.
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+
+    # Page renders both keywords.
+    assert "肌酸 功效" in body
+    assert "睡眠 神經科學" in body
+    # Section 3's empty cells use the "no GSC rows" aria label.
+    assert 'aria-label="no GSC rows for this keyword yet"' in body
+    # Δ cells likewise show no-comparison dash.
+    assert "no comparison data" in body
+    # Section 2's rank columns also dash gracefully (single source of truth).
+    assert 'aria-label="no GSC data yet"' in body
+    assert 'aria-label="no impressions yet"' in body
+    # No raw exception leaked.
+    assert "Traceback" not in body
+
+
+def test_seo_page_section3_table_has_correct_columns(authed_client, tmp_path, freeze_today):
+    """Acceptance: §3 table headers match the issue spec exactly:
+    keyword / attack URL / current 28d avg position / Δ vs prev 28d /
+    current 28d impressions."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    yaml_path = _two_keyword_yaml(tmp_path)
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    body = r.text
+    # Section 3 column headers — verbatim per acceptance.
+    assert "CURRENT (28D)" in body
+    assert "Δ vs PREV 28D" in body
+    assert "IMPRESSIONS (28D)" in body
+    # Attack URL header (shared semantics with §2; reaffirmed here for §3).
+    assert "ATTACK URL" in body
+
+
+def test_seo_page_section2_columns_show_real_values(authed_client, tmp_path, freeze_today):
+    """Acceptance: §2's current_rank + impressions columns now read the
+    same gsc_rows source as §3 — single source of truth."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    page_url = "https://shosho.tw"
+    keyword = "肌酸 功效"
+
+    _seed_gsc_row(keyword=keyword, page=page_url, days_ago=5, position=7.5, impressions=1234)
+
+    yaml_path = _two_keyword_yaml(tmp_path)
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    body = r.text
+
+    # Pos rendered to 1 decimal in both sections.
+    # The body should contain "#7.5" *twice* (once in §2, once in §3) since
+    # both sections render the same row.
+    assert body.count("#7.5") >= 2
+    # Impressions formatted with comma separator.
+    assert "1,234" in body
+
+
+def test_seo_page_section3_empty_state_when_no_keywords(authed_client, tmp_path, freeze_today):
+    """When the yaml has no keywords, §3 falls back to the empty-state
+    message (mirrors §2's empty-state behaviour) and mentions the cron name
+    so the user can self-diagnose."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    yaml_path = _write_target_keywords_yaml(
+        tmp_path,
+        """\
+        schema_version: 1
+        updated_at: "2026-04-29T00:00:00+08:00"
+        keywords: []
+        """,
+    )
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+    # Section 3's empty-state copy (NOT the slice-1 deferred copy).
+    assert "尚無排名資料" in body
+    # Mentions the cron so user can self-diagnose.
+    assert "GSC daily cron" in body or "Franky GSC daily cron" in body
