@@ -6,6 +6,8 @@ originSessionId: 211fa78f-698e-45a6-9e46-142599efead2
 ---
 2026-04-27 evening：F2 收尾 + ch2 spot-check 跑完 multi-model triangulate。**PR D 等修修對 fig-7-9 三點 + fig-7-7 lateral arrow + B1 noop schema_version 拍板才解 block**。
 
+⚠️ **2026-04-29 ch2 cache reindex 損失**：`docs/research/2026-04-27-ch2-ingest-cache.json` 的 `fig-7-N` → `fig-2-N` working-tree rename（walker nav#7 → 人類 ch2 driver reindex）被 SEO Slice 1 worktree agent 的 `git reset --hard HEAD` 吃掉，reflog 救不回。教訓進 [feedback_no_reset_hard_in_worktree_cleanup.md](feedback_no_reset_hard_in_worktree_cleanup.md)。**重做方法**：mechanical sed 在 file 內 `fig-7-` → `fig-2-` 全部替換即可（內文文字不動，只 rename keys）。下次動 PR D 前順手做。
+
 ## 2026-04-27 evening update — F2 done + ch2 spot-check + multi-model triangulate (PR #201)
 
 ### F2 (aliases 欄位缺) 收尾 (a) 手動補

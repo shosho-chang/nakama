@@ -40,7 +40,7 @@
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
 - [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **SEO 軸線 pickup**：D.1 merged cc35218；D.1-followup（2 bug + 5 minor）待開 PR；D.2/E/F unblocked
 - [project_seo_phase15_acceptance_done_2026_04_27.md](project_seo_phase15_acceptance_done_2026_04_27.md) — **SEO Phase 1.5 真正落地 2026-04-27**：三件 acceptance 全綠 + F5-B CF rule + re-audit grade D→B+；PR #200 含 4 條 follow-up
-- [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 設計凍結 2026-04-29**：grilling 拍板表 + ADR-012 邊界 + Phase 2a-min sequencing；待 PRD
+- [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 — 2/9 slice merged 2026-04-29**：#227 foundation + #228 GSC cron 落地；4 ready-for-agent；critical path #229→#232→#234→#235；Ralph Loop 不存在要手動派
 - [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/2026-04-24-seo-prior-art.md
 - Research doc：[docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
 - Task prompt：[docs/task-prompts/phase-1-5-seo-solution.md](../../docs/task-prompts/phase-1-5-seo-solution.md) — Phase 1.5 凍結 4 sub-slice + 28 deterministic + 12 LLM rule + report 模板（PR #167 a985d14）
