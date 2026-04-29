@@ -253,6 +253,31 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_r2_backup_time
             ON r2_backup_checks(checked_at DESC);
 
+        -- ADR-008 §2 — Phase 2a-min GSC rows store.
+        -- Canonical DDL: migrations/005_gsc_rows.sql.
+        -- Owned by `shared/gsc_rows_store.py`; written by `agents/franky` GSC daily cron.
+        CREATE TABLE IF NOT EXISTS gsc_rows (
+            site         TEXT NOT NULL,
+            date         TEXT NOT NULL,
+            query        TEXT NOT NULL,
+            page         TEXT NOT NULL,
+            country      TEXT NOT NULL,
+            device       TEXT NOT NULL
+                         CHECK (device IN ('desktop', 'mobile', 'tablet')),
+            clicks       INTEGER NOT NULL,
+            impressions  INTEGER NOT NULL,
+            ctr          REAL    NOT NULL,
+            position     REAL    NOT NULL,
+            fetched_at   TEXT    NOT NULL,
+            PRIMARY KEY (site, date, query, page, country, device)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_gsc_site_date
+            ON gsc_rows(site, date DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_gsc_query
+            ON gsc_rows(query);
+
         -- Phase 3 observability: per-job heartbeat (last-success + consecutive failure
         -- counter). Owned by `shared/heartbeat.py`; consumed by `/bridge/health`.
         CREATE TABLE IF NOT EXISTS heartbeats (

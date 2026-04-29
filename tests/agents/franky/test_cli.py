@@ -197,3 +197,100 @@ def test_news_no_publish_still_records_heartbeat():
     hb = heartbeat.get_heartbeat("franky-news-digest")
     assert hb is not None
     assert hb.last_status == "success"
+
+
+# ---------------------------------------------------------------------------
+# franky gsc-daily（ADR-008 Phase 2a-min）
+# ---------------------------------------------------------------------------
+
+
+def test_gsc_daily_records_heartbeat_success_on_ok():
+    from agents.franky.jobs.gsc_daily import GscDailyResult
+    from shared import heartbeat
+
+    result = GscDailyResult(
+        operation_id="op_gsc_ok",
+        status="ok",
+        detail="window=[2026-04-20,2026-04-26] processed=3 rows=18",
+        keywords_total=3,
+        keywords_processed=3,
+        rows_written=18,
+    )
+    with patch("agents.franky.jobs.gsc_daily.run_once", return_value=result):
+        rc = main(["gsc-daily"])
+
+    assert rc == 0
+    hb = heartbeat.get_heartbeat("franky-gsc-daily")
+    assert hb is not None
+    assert hb.last_status == "success"
+    assert hb.consecutive_failures == 0
+
+
+def test_gsc_daily_records_heartbeat_success_on_skipped():
+    """Skipped (yaml empty / env missing) is a config gap, not a cron-stuck signal."""
+    from agents.franky.jobs.gsc_daily import GscDailyResult
+    from shared import heartbeat
+
+    result = GscDailyResult(
+        operation_id="op_gsc_skip",
+        status="skipped",
+        detail="keywords_yaml_empty",
+    )
+    with patch("agents.franky.jobs.gsc_daily.run_once", return_value=result):
+        rc = main(["gsc-daily"])
+
+    assert rc == 0
+    hb = heartbeat.get_heartbeat("franky-gsc-daily")
+    assert hb is not None
+    assert hb.last_status == "success"
+
+
+def test_gsc_daily_records_heartbeat_failure_on_status_fail():
+    """status='fail' (all keywords failed) → heartbeat fail, exit 1."""
+    from agents.franky.jobs.gsc_daily import GscDailyResult
+    from shared import heartbeat
+
+    result = GscDailyResult(
+        operation_id="op_gsc_fail",
+        status="fail",
+        detail="all_keywords_failed count=5",
+        keywords_total=5,
+        keywords_failed=5,
+    )
+    with patch("agents.franky.jobs.gsc_daily.run_once", return_value=result):
+        rc = main(["gsc-daily"])
+
+    assert rc == 1
+    hb = heartbeat.get_heartbeat("franky-gsc-daily")
+    assert hb is not None
+    assert hb.last_status == "fail"
+    assert "all_keywords_failed" in (hb.last_error or "")
+
+
+def test_gsc_daily_records_heartbeat_failure_on_uncaught_exception():
+    from shared import heartbeat
+
+    with patch("agents.franky.jobs.gsc_daily.run_once", side_effect=RuntimeError("api 5xx")):
+        with pytest.raises(RuntimeError):
+            main(["gsc-daily"])
+
+    hb = heartbeat.get_heartbeat("franky-gsc-daily")
+    assert hb is not None
+    assert hb.last_status == "fail"
+    assert "api 5xx" in (hb.last_error or "")
+
+
+def test_gsc_daily_dry_run_does_not_record_heartbeat():
+    """Dry-run is ad-hoc; heartbeat would corrupt cron-staleness signal."""
+    from agents.franky.jobs.gsc_daily import GscDailyResult
+    from shared import heartbeat
+
+    result = GscDailyResult(
+        operation_id="op_gsc_dry",
+        status="ok",
+        detail="dry_run window=[2026-04-20,2026-04-26]",
+    )
+    with patch("agents.franky.jobs.gsc_daily.run_once", return_value=result):
+        main(["gsc-daily", "--dry-run"])
+
+    assert heartbeat.get_heartbeat("franky-gsc-daily") is None
