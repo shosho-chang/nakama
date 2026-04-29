@@ -42,6 +42,7 @@ from shared import (
     state,
     target_keywords,
     wp_post_lister,
+    wp_post_raw_fetcher,
 )
 from shared.doc_index import DocIndex
 from shared.log import get_logger
@@ -610,6 +611,194 @@ async def seo_audit_view_by_id(
             "review_url": f"/bridge/seo/audits/{audit_id}/review",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# /bridge/seo/audits/{id}/review — Y+ tier review UX (slice #234, issue #234)
+# ---------------------------------------------------------------------------
+#
+# Layout:
+#   left  — textarea pre-filled with the WP post's content.raw (Gutenberg
+#           HTML). Read-only in this slice; slice #235 will wire the edited
+#           body back to WP REST + into approval_queue.
+#   right — list of suggestion cards (one per fail/warn entry). Each card
+#           supports approve / edit / reject + a `[在左側顯示]` button that
+#           scrolls the textarea to the matched current_value and briefly
+#           highlights it in yellow.
+#
+# State persistence (PRD §"Review semantics" Q9): per-suggestion status,
+# edited_value, reviewed_at all live in `audit_results.suggestions_json`.
+# Mutation endpoints rewrite that blob via `audit_results_store.update_suggestion`.
+# Re-visiting the page reads the same blob; statuses survive uvicorn restart.
+
+# Per-suggestion edit text cap (PRD #226 §"Implementation Decisions" form
+# pattern). 8000 chars accommodates long meta-description / image-alt edits
+# without blowing up the form post; suggestions exceeding this should fall
+# back to manual WP editing for v1.
+_REVIEW_EDIT_MAX = 8000
+
+
+def _serialize_suggestion_for_template(suggestion: Any) -> dict[str, Any]:
+    """Translate an `AuditSuggestionV1` into a template-friendly dict.
+
+    Keeps Jinja sandboxed from pydantic objects (which don't expose a
+    ``.get`` interface and force every template attr lookup through method
+    descriptors). Also pre-computes the ``severity_label`` zh string so the
+    template doesn't have to map.
+    """
+    return {
+        "rule_id": suggestion.rule_id,
+        "severity": suggestion.severity,
+        "title": suggestion.title,
+        "current_value": suggestion.current_value,
+        "suggested_value": suggestion.suggested_value,
+        "rationale": suggestion.rationale,
+        "status": suggestion.status,
+        "edited_value": suggestion.edited_value,
+        "reviewed_at": (
+            suggestion.reviewed_at.isoformat() if suggestion.reviewed_at is not None else None
+        ),
+    }
+
+
+@page_router.get("/seo/audits/{audit_id:int}/review", response_class=HTMLResponse)
+async def seo_audit_review_page(
+    audit_id: int,
+    request: Request,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Render the Y+ tier review UI: left textarea + right suggestion cards.
+
+    Resumable: each card reflects the current persisted ``status`` /
+    ``edited_value`` straight from the DB row. No client-side state.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(
+            f"/login?next=/bridge/seo/audits/{audit_id}/review",
+            status_code=302,
+        )
+    audit = audit_results_store.get_by_id(audit_id)
+    if audit is None:
+        raise HTTPException(status_code=404, detail=f"audit_results.id={audit_id} not found")
+
+    # Fetch raw HTML body. For non-WP audits (no target_site / wp_post_id)
+    # we skip the fetch and surface a friendly notice in the textarea panel.
+    raw_html = ""
+    fetch_error: Optional[str] = None
+    if audit.get("target_site") and audit.get("wp_post_id"):
+        result = wp_post_raw_fetcher.fetch_raw_html(
+            target_site=audit["target_site"],  # type: ignore[arg-type]
+            wp_post_id=int(audit["wp_post_id"]),
+            operation_id=f"review_audit_{audit_id}",
+        )
+        if result.ok:
+            raw_html = result.raw_html
+        else:
+            fetch_error = result.error_message
+    else:
+        fetch_error = "外站 / 非 WP audit 無 wp_post_id — 文章主體不可從 WP REST 抓取"
+
+    suggestions = [_serialize_suggestion_for_template(s) for s in audit["suggestions"]]
+    has_actionable = any(s["status"] in ("approved", "edited") for s in suggestions)
+
+    return _templates.TemplateResponse(
+        request,
+        "seo_audit_review.html",
+        {
+            "audit": audit,
+            "raw_html": raw_html,
+            "fetch_error": fetch_error,
+            "suggestions": suggestions,
+            "has_actionable": has_actionable,
+            "edit_max_length": _REVIEW_EDIT_MAX,
+        },
+    )
+
+
+def _require_audit_row(audit_id: int) -> dict[str, Any]:
+    audit = audit_results_store.get_by_id(audit_id)
+    if audit is None:
+        raise HTTPException(status_code=404, detail=f"audit_results.id={audit_id} not found")
+    return audit
+
+
+def _redirect_to_review(audit_id: int) -> RedirectResponse:
+    """303 back to the review page so the form-post resolves to a GET (PRG)."""
+    return RedirectResponse(f"/bridge/seo/audits/{audit_id}/review", status_code=303)
+
+
+@page_router.post("/seo/audits/{audit_id:int}/suggestions/{rule_id}/approve")
+async def seo_audit_review_approve(
+    audit_id: int,
+    rule_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Mark a single suggestion as approved."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(
+            f"/login?next=/bridge/seo/audits/{audit_id}/review",
+            status_code=302,
+        )
+    _require_audit_row(audit_id)
+    try:
+        audit_results_store.update_suggestion(
+            audit_id=audit_id,
+            rule_id=rule_id,
+            status="approved",
+        )
+    except audit_results_store.SuggestionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return _redirect_to_review(audit_id)
+
+
+@page_router.post("/seo/audits/{audit_id:int}/suggestions/{rule_id}/reject")
+async def seo_audit_review_reject(
+    audit_id: int,
+    rule_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Mark a single suggestion as rejected (excluded from export)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(
+            f"/login?next=/bridge/seo/audits/{audit_id}/review",
+            status_code=302,
+        )
+    _require_audit_row(audit_id)
+    try:
+        audit_results_store.update_suggestion(
+            audit_id=audit_id,
+            rule_id=rule_id,
+            status="rejected",
+        )
+    except audit_results_store.SuggestionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return _redirect_to_review(audit_id)
+
+
+@page_router.post("/seo/audits/{audit_id:int}/suggestions/{rule_id}/edit")
+async def seo_audit_review_edit(
+    audit_id: int,
+    rule_id: str,
+    edited_value: str = Form(..., min_length=1, max_length=_REVIEW_EDIT_MAX),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Mark a suggestion as edited and persist the user's replacement text."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(
+            f"/login?next=/bridge/seo/audits/{audit_id}/review",
+            status_code=302,
+        )
+    _require_audit_row(audit_id)
+    try:
+        audit_results_store.update_suggestion(
+            audit_id=audit_id,
+            rule_id=rule_id,
+            status="edited",
+            edited_value=edited_value,
+        )
+    except audit_results_store.SuggestionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return _redirect_to_review(audit_id)
 
 
 # Stale thresholds (minutes) used to colour-code rows on /bridge/health.
