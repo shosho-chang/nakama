@@ -47,6 +47,8 @@
 - [feedback_reuse_module_inspect_inner_text.md](feedback_reuse_module_inspect_inner_text.md) — reuse 既有 module 前 grep prompt / docstring / hardcoded literal，不只看 signature（kb_search YouTube hardcoded + compliance_scan SEED 教訓）
 - [feedback_branch_workflow.md](feedback_branch_workflow.md) — 多視窗開發用 feature branch + PR，不直接改 main
 - [feedback_worktree_session_hygiene.md](feedback_worktree_session_hygiene.md) — worktree 用主 tree venv 絕對路徑 + 收尾 fetch 不 checkout main + bash cwd 不持久
+- [feedback_worktree_absolute_path_leak.md](feedback_worktree_absolute_path_leak.md) — worktree-isolated agent 用 `F:/nakama/...` 絕對路徑 Edit/Write 會繞過隔離寫進 main tree（PR #237/#238 兩 agent 都踩到）
+- [feedback_no_reset_hard_in_worktree_cleanup.md](feedback_no_reset_hard_in_worktree_cleanup.md) — 清 worktree leak 永遠不用 `git reset --hard`（會吃無關 working-tree 改動，reflog 救不回；ch2 cache reindex 教訓）
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
 - [feedback_review_skill_default_for_focused_pr.md](feedback_review_skill_default_for_focused_pr.md) — focused PR（<100 LOC、單 domain、tests 綠）我自開的直接 /review，不問 ultrareview
 - [reference_git_recovery_after_truncation.md](reference_git_recovery_after_truncation.md) — Windows 多檔同秒截斷（.git/HEAD + index + working tree md）recovery：rewrite HEAD LF + mv index + git reset + git restore
