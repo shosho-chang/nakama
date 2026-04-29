@@ -41,7 +41,7 @@ python scripts/run_transcribe.py \
 ```
 
 Quote all paths — they often contain spaces on Windows (e.g.
-`F:/Shosho LifeOS/Projects/`).
+`E:/Shosho LifeOS/Projects/`).
 
 ## Exit Codes
 
