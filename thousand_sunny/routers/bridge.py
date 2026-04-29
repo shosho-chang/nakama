@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
-from shared import agent_memory, approval_queue, heartbeat, state, wp_post_lister
+from shared import agent_memory, approval_queue, heartbeat, state, target_keywords, wp_post_lister
 from shared.doc_index import DocIndex
 from shared.log_index import LogIndex
 from shared.pricing import calc_cost, get_pricing
@@ -171,14 +171,58 @@ def _summarize_seo_post(post: wp_post_lister.WpPostSummaryV1, target_site: str) 
     }
 
 
+def _summarize_target_keyword(kw: Any) -> dict[str, Any]:
+    """Decorate a ``TargetKeywordV1`` with placeholder rank columns.
+
+    Slice #233 (rank-change v1.1) will populate ``current_rank`` and
+    ``current_impressions`` from ``gsc_rows`` once ADR-008 Phase 2a-min is
+    live; until then we expose ``None`` so the template can render the dash
+    placeholder consistent with section 1's grade column.
+
+    Attack URL: ``site`` is the canonical short host (``shosho.tw`` /
+    ``fleet.shosho.tw``) per ADR-008 §6; we synthesize ``https://<site>``
+    for display because there is no per-keyword landing page in v1
+    (Usopp will populate ``source_post_id`` later, but goal_rank is set
+    against the site root for now).
+    """
+    return {
+        "keyword": kw.keyword,
+        "keyword_en": kw.keyword_en,
+        "site": kw.site,
+        "attack_url": f"https://{kw.site}",
+        "goal_rank": kw.goal_rank,
+        "added_by": kw.added_by,
+        # Placeholders — populated by slice #233 from gsc_rows.
+        "current_rank": None,
+        "current_impressions": None,
+    }
+
+
+def _load_target_keyword_rows() -> list[dict[str, Any]]:
+    """Load ``config/target-keywords.yaml`` for the SEO 中控台 §2 list.
+
+    Returns an empty list when the file is missing OR the YAML has zero
+    keywords (the seed file ships with ``keywords: []`` until Zoro Phase 1.5
+    pushes the first attack keyword in).  Both shapes hand the template the
+    same empty-state branch — see ``test_seo_page_target_keywords_empty_state``.
+    """
+    doc = target_keywords.load_target_keywords()
+    if doc is None or not doc.keywords:
+        return []
+    return [_summarize_target_keyword(kw) for kw in doc.keywords]
+
+
 @page_router.get("/seo", response_class=HTMLResponse)
 async def seo_page(request: Request, nakama_auth: str | None = Cookie(None)):
-    """SEO 中控台 v1 — section 1 wired to WP REST live pull (#229).
+    """SEO 中控台 v1 — sections 1 + 2 live, section 3 deferred.
 
-    Pulls up to 100 posts from each target site via `wp_post_lister.list_posts`
-    (1h server-side TTL cache; WP errors fall back to empty list).  Posts are
-    combined and sorted by `last_modified` desc.  Sections 2 (#230) / 3 (#233)
-    remain placeholders.
+    Section 1 (#229): WP REST live pull, combined wp_shosho + wp_fleet,
+    sorted by ``last_modified`` desc.  WP errors → empty-state.
+    Section 2 (#230): ``config/target-keywords.yaml`` via
+    ``shared.target_keywords.load_target_keywords`` →
+    ``TargetKeywordListV1``; missing / empty file → empty-state.
+    Section 3 (#233): rank-change placeholder until ADR-008 Phase 2a-min
+    bridge query helper lands.
     """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/seo", status_code=302)
@@ -190,12 +234,15 @@ async def seo_page(request: Request, nakama_auth: str | None = Cookie(None)):
     # Combined sort: WP returns per-site sorted; combining requires re-sort.
     rows.sort(key=lambda r: r["last_modified"], reverse=True)
 
+    keyword_rows = _load_target_keyword_rows()
+
     return _templates.TemplateResponse(
         request,
         "seo.html",
         {
             "articles": rows,
             "target_sites": list(_SEO_TARGET_SITES),
+            "target_keywords": keyword_rows,
         },
     )
 

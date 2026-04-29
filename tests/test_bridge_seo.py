@@ -1,7 +1,8 @@
-"""Tests for /bridge/seo — SEO 中控台 v1 slices 1 + 2.
+"""Tests for /bridge/seo — SEO 中控台 v1 slices 1 + 2 + 3.
 
-Covers acceptance criteria from issue #227 (slice 1 foundation) and issue
-#229 (slice 2 article list section + WP REST live pull):
+Covers acceptance criteria from issue #227 (slice 1 foundation), issue #229
+(slice 2 article list section + WP REST live pull), and issue #230 (slice 3
+target keywords section + 找新關鍵字 button):
 
 - GET /bridge/seo with auth → 200 + three section headings + ADR-008 deferred
   note (slice 1)
@@ -10,11 +11,19 @@ Covers acceptance criteria from issue #227 (slice 1 foundation) and issue
 - WP API failure → page still renders, with empty-state message (#229)
 - Listing combines wp_shosho + wp_fleet, sorted by `last_modified` desc (#229)
 - Grade / last_audited_at columns show "—" placeholder + audit button (#229)
+- /bridge/seo §2 reads ``config/target-keywords.yaml`` via
+  ``TargetKeywordListV1.model_validate`` (#230)
+- Empty / missing yaml → empty-state copy, no crash (#230)
+- Each row shows keyword + attack URL + goal_rank ("—" if unset) +
+  placeholder current_rank / current_impressions columns (#230)
+- ``+ 找新關鍵字`` ghost button links to /bridge/zoro/keyword-research (#230)
 """
 
 from __future__ import annotations
 
 import importlib
+import textwrap
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -353,3 +362,194 @@ def test_seo_page_renders_when_wp_api_unavailable(authed_client):
     # Empty-state copy renders rather than the table.
     assert "沒有抓到文章" in body
     assert "WP REST 暫時無法連線" in body
+
+
+# ---------------------------------------------------------------------------
+# Slice 3 — issue #230 acceptance: §2 target keywords list + 找新關鍵字 button
+# ---------------------------------------------------------------------------
+
+
+def _patch_target_keywords_path(yaml_path: Path):
+    """Patch ``shared.target_keywords.default_path`` to return ``yaml_path``.
+
+    Bridge does ``from shared import ... target_keywords`` then
+    ``target_keywords.load_target_keywords()`` (no path arg) — attribute lookup
+    at call time, so patching ``default_path`` on the canonical module works
+    regardless of caller binding.
+    """
+    from shared import target_keywords as _tk
+
+    return patch.object(_tk, "default_path", return_value=yaml_path)
+
+
+def _write_target_keywords_yaml(tmp_path: Path, body: str) -> Path:
+    """Write a fixture ``target-keywords.yaml`` and return the path."""
+    p = tmp_path / "target-keywords.yaml"
+    p.write_text(textwrap.dedent(body), encoding="utf-8")
+    return p
+
+
+def test_seo_page_target_keywords_button_links_to_zoro_research(authed_client, tmp_path):
+    """Acceptance: ``+ 找新關鍵字`` ghost button placed next to §2 heading,
+    links to ``/bridge/zoro/keyword-research``."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    # Empty-state branch is fine for the button check — the button lives in
+    # the section-head, not the body, so it renders regardless of list size.
+    yaml_path = _write_target_keywords_yaml(
+        tmp_path,
+        """\
+        schema_version: 1
+        updated_at: "2026-04-29T00:00:00+08:00"
+        keywords: []
+        """,
+    )
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+    assert "+ 找新關鍵字" in body
+    assert 'href="/bridge/zoro/keyword-research"' in body
+    # Ghost-style class (matches zoro_keyword_research.html pattern).
+    assert "nk-btn-ghost" in body
+
+
+def test_seo_page_target_keywords_empty_state(authed_client, tmp_path):
+    """Acceptance: empty keyword list → empty-state copy, no crash."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    yaml_path = _write_target_keywords_yaml(
+        tmp_path,
+        """\
+        schema_version: 1
+        updated_at: "2026-04-29T00:00:00+08:00"
+        keywords: []
+        """,
+    )
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+    assert "尚無攻擊關鍵字" in body
+    # Empty-state mentions the two writers (Zoro / CLI) per acceptance.
+    assert "Zoro" in body
+    assert "CLI" in body
+    # The keywords table itself does NOT render when empty.
+    assert '<table class="keywords-table"' not in body
+
+
+def test_seo_page_target_keywords_missing_yaml_does_not_crash(authed_client, tmp_path):
+    """Acceptance: missing ``config/target-keywords.yaml`` → empty-state,
+    not a 500."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    missing = tmp_path / "does-not-exist.yaml"
+    assert not missing.exists()
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(missing):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    assert "尚無攻擊關鍵字" in r.text
+
+
+def test_seo_page_target_keywords_renders_rows(authed_client, tmp_path):
+    """Acceptance: each row shows keyword + attack URL + goal_rank + placeholder
+    columns for current_rank / current_impressions (slice #233)."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    yaml_path = _write_target_keywords_yaml(
+        tmp_path,
+        """\
+        schema_version: 1
+        updated_at: "2026-04-29T00:00:00+08:00"
+        keywords:
+          - schema_version: 1
+            keyword: "深層睡眠"
+            keyword_en: "deep sleep"
+            site: "shosho.tw"
+            added_by: "zoro"
+            added_at: "2026-04-29T08:00:00+08:00"
+            goal_rank: 5
+          - schema_version: 1
+            keyword: "間歇性斷食"
+            site: "fleet.shosho.tw"
+            added_by: "usopp"
+            added_at: "2026-04-28T08:00:00+08:00"
+        """,
+    )
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+
+    # Both keyword strings render.
+    assert "深層睡眠" in body
+    assert "間歇性斷食" in body
+
+    # English alias renders alongside zh keyword when present.
+    assert "deep sleep" in body
+
+    # Attack URL is `https://<site>` per ADR-008 §6 site convention.
+    assert 'href="https://shosho.tw"' in body
+    assert 'href="https://fleet.shosho.tw"' in body
+
+    # goal_rank renders as "#5"; missing goal_rank renders the dash placeholder.
+    assert "#5" in body
+    # The second keyword has no goal_rank → its row should expose the
+    # explicit "goal rank unset" aria label so screen readers don't read "—"
+    # ambiguously.
+    assert "goal rank unset" in body
+
+    # current_rank / current_impressions are placeholders (slice #233).
+    assert "current rank populated by slice #233" in body
+    assert "impressions populated by slice #233" in body
+
+    # No edit / delete UI per ADR-008 §6 ownership rules.
+    assert "編輯" not in body
+    assert "刪除" not in body
+
+
+def test_seo_page_target_keywords_count_in_toolbar(authed_client, tmp_path):
+    """Toolbar shows the keyword count so the user can spot empty / large lists
+    at a glance (mirrors §1 article list toolbar)."""
+    import thousand_sunny.routers.bridge as bridge_module
+
+    yaml_path = _write_target_keywords_yaml(
+        tmp_path,
+        """\
+        schema_version: 1
+        updated_at: "2026-04-29T00:00:00+08:00"
+        keywords:
+          - schema_version: 1
+            keyword: "kw1"
+            site: "shosho.tw"
+            added_by: "zoro"
+            added_at: "2026-04-29T08:00:00+08:00"
+          - schema_version: 1
+            keyword: "kw2"
+            site: "shosho.tw"
+            added_by: "zoro"
+            added_at: "2026-04-29T08:00:00+08:00"
+          - schema_version: 1
+            keyword: "kw3"
+            site: "shosho.tw"
+            added_by: "zoro"
+            added_at: "2026-04-29T08:00:00+08:00"
+        """,
+    )
+
+    with _patch_lister(bridge_module, {}), _patch_target_keywords_path(yaml_path):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    body = r.text
+    # Count badge shows 3 (the table also has 3 rows; count_text is the
+    # toolbar element).
+    assert '共 <span class="count">3</span> 個目標關鍵字' in body
