@@ -133,6 +133,20 @@ def test_form_post_unauth_redirects_to_login(unauthed_client):
     assert r.headers["location"] == "/login?next=/bridge/zoro/keyword-research"
 
 
+def test_download_post_unauth_redirects_to_login(unauthed_client):
+    r = unauthed_client.post(
+        "/bridge/zoro/keyword-research/download",
+        data={
+            "topic": "睡眠",
+            "content_type": "blog",
+            "en_topic": "",
+            "report_md": "# stub",
+        },
+    )
+    assert r.status_code == 302
+    assert r.headers["location"] == "/login?next=/bridge/zoro/keyword-research"
+
+
 # ── POST happy path ──────────────────────────────────────────────────────
 
 

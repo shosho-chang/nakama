@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 <style>
 :root {
   --nk-bench:        #e8e6e1;
@@ -585,9 +586,10 @@ form.kw-form { display: flex; flex-direction: column; gap: 18px; }
 })();
 
 // ── Render the markdown report client-side ──────────────────────────
-// Reuses brook_chat.html's `marked` CDN dependency. The textarea#kwReportRaw
-// holds the server-escaped markdown source; we replace the no-JS <pre>
-// fallback with rendered HTML when JS is available.
+// Reuses brook_chat.html's `marked` CDN dependency, plus DOMPurify to
+// sanitize the rendered HTML — the markdown body comes from LLM output
+// (research_keywords), so prompt-injection-induced <script> / event
+// handlers in the response would otherwise execute on innerHTML assign.
 (function () {
   const raw = document.getElementById('kwReportRaw');
   const frame = document.getElementById('kwReportFrame');
@@ -599,7 +601,17 @@ form.kw-form { display: flex; flex-direction: column; gap: 18px; }
   let body = raw.value;
   const m = body.match(/^---\n[\s\S]*?\n---\n+/);
   if (m) body = body.slice(m[0].length);
-  frame.innerHTML = marked.parse(body);
+  const rendered = marked.parse(body);
+  // DOMPurify guards against prompt-injection-induced HTML (e.g. LLM
+  // output containing `<script>` or `<img onerror=...>`). Without it,
+  // setting innerHTML on LLM markdown is a stored-XSS vector even for a
+  // single-user dev tool. If the CDN fails to load, fall back to a
+  // textContent-only render so we degrade safe rather than unsafe.
+  if (typeof DOMPurify !== 'undefined') {
+    frame.innerHTML = DOMPurify.sanitize(rendered);
+  } else {
+    frame.textContent = body;
+  }
 })();
 
 // ── Optional: client-side blob download enhancement ─────────────────
