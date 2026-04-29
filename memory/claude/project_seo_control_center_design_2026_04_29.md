@@ -1,11 +1,11 @@
 ---
-name: SEO 中控台 v1 — 2/9 slice merged 2026-04-29 evening；critical path #229→#232→#234→#235；Ralph Loop 不存在要手動派
-description: PRD #226 + 9 slice。#227 (foundation) + #228 (GSC cron Phase 2a-min) merged 2026-04-29；4 slice ready-for-agent 等手動派；3 slice blocked
+name: SEO 中控台 v1 — 9/9 slices DONE 2026-04-29 deep night；audit→review→approval_queue→publish loop end-to-end 收束
+description: PRD #226 完成。9 PR merged：#227/#228/#243/#244/#246/#247/#248/#249/#250。#245 a11y follow-up + 多個 review concerns deferred
 type: project
 created: 2026-04-29
 updated: 2026-04-29
 confidence: high
-originSessionId: TBD
+originSessionId: 2026-04-29-seo-中控台-完工
 ---
 
 2026-04-29 /grill-with-docs SEO solution → Nakama bridge web UI 收斂結果。
@@ -76,22 +76,26 @@ class AuditReviewSessionV1(BaseModel):
     approval_queue_id: int | None = None
 ```
 
-## Issues status (updated 2026-04-29 evening)
+## Issues status (2026-04-29 完工)
 
-| # | Slice | Status |
-|---|---|---|
-| 226 | PRD parent | ✅ on GitHub |
-| 227 | 1 — `/bridge/seo` foundation + chassis-nav × 9 | ✅ MERGED `cdb4558` |
-| 228 | 8 — GSC daily cron + gsc_rows db (Phase 2a-min) | ✅ MERGED `c79dd6d` |
-| 229 | 2 — article list (WP REST) | 🟢 ready-for-agent |
-| 230 | 3 — target keywords section | 🟢 ready-for-agent |
-| 231 | 7 — `/bridge/zoro/keyword-research` UI | 🟢 ready-for-agent |
-| 233 | 9 — rank change section v1.1 | 🟢 ready-for-agent (after #228) |
-| 232 | 4 — audit pipeline + run | ⛔ blocked by #229 |
-| 234 | 5 — Y+ review page | ⛔ blocked by #232 |
-| 235 | 6 — export to approval_queue | ⛔ blocked by #234 |
+| # | Slice | PR | Commit |
+|---|---|---|---|
+| 226 | PRD parent | — | ✅ on GitHub |
+| 227 | 1 — `/bridge/seo` foundation | #237 | `cdb4558` |
+| 228 | 8 — GSC daily cron + gsc_rows db | #238 | `c79dd6d` |
+| 244 | 2 — article list (WP REST) | #244 | `209ac64` |
+| 246 | 3 — target keywords section | #246 | `dc800f0` |
+| 231 | 7 — keyword-research UI | #243 | `9dc38a7` (+我加 XSS DOMPurify + auth test) |
+| 232 | 4 — audit pipeline + run | #247 | post-merge |
+| 233 | 9 — rank change v1.1 | #248 | post-merge |
+| 234 | 5 — Y+ review page | #249 | post-merge |
+| 235 | 6 — export to approval_queue | #250 | post-merge |
 
-**Ralph Loop 不存在**：原 design memo 寫「ready-for-agent → Ralph Loop 接」是 placeholder，nakama 沒實作（grep `docs/ memory/ .github/ scripts/` 皆無）。**4 個 ready-for-agent issue 不會自動有 agent 跑**，下次 session 修修叫「下一步」/grab 一個手動派 worktree agent。
+**End-to-end**：`/bridge/seo` 看文章 → 跑 audit → review per-rule cards → export 進 ADR-006 `approval_queue` → `/bridge/drafts` HITL → publish via Usopp。
+
+**Ralph Loop**：見 `reference_ralph_loop_plugin.md` — 是 single-prompt iter runner 不是 issue queue runner。手動派 worktree agent 並行更快。
+
+**Worktree leak 防線**：見 `feedback_worktree_leak_prevention_prompt.md` — 5 連勝零 leak。
 
 ## Follow-up issues from PR #237/#238
 
