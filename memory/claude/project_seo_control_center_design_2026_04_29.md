@@ -40,7 +40,7 @@ originSessionId: 2026-04-29-seo-中控台-完工
 | Q6 UX tier | Y+ — 左 textarea + 右建議卡片 + `[在左側顯示]` 跳段按鈕；vanilla JS（無 SPA / htmx）|
 | Q6 source | WP REST raw HTML（Gutenberg blocks 醜但可寫回；歷史文章無原 markdown 是 hidden constraint）|
 | Q7 audit kick-off UX | Background task + redirect → `/bridge/seo/audits/{id}` polling status + auto redirect |
-| Q8 schema | `audit_results` 表，主鍵 `(target_site, wp_post_id)` + url secondary index；`suggestions_json` 整包 list[AuditSuggestionV1]|
+| Q8 schema | `audit_results` 表，**PK = `id INTEGER PRIMARY KEY AUTOINCREMENT`**（支持 multi-row per post，每跑 audit 新增一筆，2026-04-29 verify `migrations/006_audit_results.sql:34` 修正先前誤記為 composite PK）；index `(target_site, wp_post_id, audited_at DESC)` 取 latest + url secondary index；`suggestions_json` 整包 list[AuditSuggestionV1]|
 | Q9 review 持久化 | 直接寫進 `audit_results.suggestions_json` 各 suggestion 的 status / edited_value；無 session 表 |
 | Q10 export trigger | 至少 1 條 approved/edited 才 enable；reject + pending 不收 |
 | Q11 chassis-nav | 加 `<a href="/bridge/seo">SEO <span class="zh">優化</span></a>`，位置在 DRAFTS 後面 |
