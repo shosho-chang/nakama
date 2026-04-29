@@ -12,21 +12,42 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+)
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 
-from shared import agent_memory, approval_queue, heartbeat, state, wp_post_lister
+from shared import (
+    agent_memory,
+    approval_queue,
+    audit_results_store,
+    heartbeat,
+    state,
+    wp_post_lister,
+)
 from shared.doc_index import DocIndex
+from shared.log import get_logger
 from shared.log_index import LogIndex
 from shared.pricing import calc_cost, get_pricing
 from shared.schemas.approval import ApprovalPayloadV1Adapter, PublishWpPostV1, UpdateWpPostV1
 from thousand_sunny.auth import check_auth, require_auth_or_key
+
+_logger = get_logger("nakama.web.bridge")
 
 # ── Agent roster ─────────────────────────────────────────────────────────────
 # Static config for all 9 agents. "default_state" is the fallback when there
@@ -152,12 +173,16 @@ _SEO_TARGET_SITES: tuple[str, ...] = ("wp_shosho", "wp_fleet")
 
 
 def _summarize_seo_post(post: wp_post_lister.WpPostSummaryV1, target_site: str) -> dict[str, Any]:
-    """Decorate a `WpPostSummaryV1` with placeholder grade/audit fields.
+    """Decorate a `WpPostSummaryV1` with grade/audit fields from `audit_results`.
 
-    Slice #232 will replace `grade` / `last_audited_at` with real values from
-    the `audit_results` table; for now we hand the template a stable dict
-    shape so the slice #232 PR is a small, focused diff.
+    Slice #232 wires `latest_for_post` so previously-audited posts show their
+    most recent grade + `audited_at`.  Posts that have never been audited
+    keep `grade=None` / `last_audited_at=None`; the template renders "—".
     """
+    latest = audit_results_store.latest_for_post(target_site, post.wp_post_id)
+    grade = latest["overall_grade"] if latest else None
+    last_audited_at = latest["audited_at"] if latest else None
+    latest_audit_id = latest["id"] if latest else None
     return {
         "wp_post_id": post.wp_post_id,
         "title": post.title,
@@ -165,20 +190,22 @@ def _summarize_seo_post(post: wp_post_lister.WpPostSummaryV1, target_site: str) 
         "focus_keyword": post.focus_keyword,
         "last_modified": post.last_modified,
         "target_site": target_site,
-        # Placeholder — populated by slice #232 from audit_results.
-        "grade": None,
-        "last_audited_at": None,
+        "grade": grade,
+        "last_audited_at": last_audited_at,
+        # Surfaced so the template can link `[查 audit]` to the latest result
+        # page once any post has at least one audit row.
+        "latest_audit_id": latest_audit_id,
     }
 
 
 @page_router.get("/seo", response_class=HTMLResponse)
 async def seo_page(request: Request, nakama_auth: str | None = Cookie(None)):
-    """SEO 中控台 v1 — section 1 wired to WP REST live pull (#229).
+    """SEO 中控台 v1 — section 1 article list + grade column (#229 + #232).
 
     Pulls up to 100 posts from each target site via `wp_post_lister.list_posts`
-    (1h server-side TTL cache; WP errors fall back to empty list).  Posts are
-    combined and sorted by `last_modified` desc.  Sections 2 (#230) / 3 (#233)
-    remain placeholders.
+    (1h server-side TTL cache; WP errors fall back to empty list) and joins
+    `audit_results.latest_for_post` so the GRADE / LAST AUDITED columns reflect
+    real data.  Sections 2 (#230) / 3 (#233) remain placeholders.
     """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/seo", status_code=302)
@@ -196,6 +223,276 @@ async def seo_page(request: Request, nakama_auth: str | None = Cookie(None)):
         {
             "articles": rows,
             "target_sites": list(_SEO_TARGET_SITES),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# /bridge/seo/audits — kick-off + progress + result (slice 4 / issue #232)
+# ---------------------------------------------------------------------------
+#
+# Lifecycle:
+#   1. POST `/bridge/seo/audits` form (url, target_site, wp_post_id?, focus_keyword?)
+#      → generates job_id (UUID) + records "running" in `_audit_jobs`
+#      → BackgroundTask kicks `_run_audit_job(job_id, ...)` and returns 303 to
+#        `/bridge/seo/audits/{job_id}`
+#   2. GET `/bridge/seo/audits/{job_id}` renders progress page; JS polls every
+#      2s on `/bridge/seo/audits/{job_id}/status`
+#   3. GET `/bridge/seo/audits/{job_id}/status` → JSON
+#      `{status: 'running' | 'done' | 'error', audit_id, error_stage, ...}`
+#   4. On `done`, page meta-refresh redirects to
+#      `/bridge/seo/audits/{job_id}/result` which reads `audit_results.id` from
+#      the job record + DB and renders the result.
+#
+# `_audit_jobs` is an in-process dict; on uvicorn restart, in-flight jobs are
+# lost but persisted audits survive (DB row already written before the worker
+# crash). This is acceptable for v1 (single-host BackgroundTasks; no HA).
+# Acquired via `_audit_jobs_lock` for thread-safe writes from the worker.
+
+_AUDIT_FORM_URL_MAX = 2000
+_AUDIT_FORM_KEYWORD_MAX = 100
+
+_audit_jobs: dict[str, dict[str, Any]] = {}
+_audit_jobs_lock = threading.Lock()
+
+
+def _now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _set_audit_job(job_id: str, **fields: Any) -> None:
+    with _audit_jobs_lock:
+        existing = _audit_jobs.get(job_id, {})
+        existing.update(fields)
+        _audit_jobs[job_id] = existing
+
+
+def _get_audit_job(job_id: str) -> Optional[dict[str, Any]]:
+    with _audit_jobs_lock:
+        entry = _audit_jobs.get(job_id)
+        return dict(entry) if entry is not None else None
+
+
+def _run_audit_job(
+    *,
+    job_id: str,
+    url: str,
+    target_site: Optional[str],
+    wp_post_id: Optional[int],
+    focus_keyword: str,
+) -> None:
+    """BackgroundTask body — invoke audit_runner and stash result into `_audit_jobs`.
+
+    Imported lazily so test harnesses that monkeypatch `audit_runner.run`
+    target the right binding.
+    """
+    try:
+        from agents.brook import audit_runner  # local import per docstring rationale
+
+        # cast for runner: target_site may be str or None; runner accepts Literal.
+        result = audit_runner.run(
+            url,
+            target_site=target_site,  # type: ignore[arg-type]
+            wp_post_id=wp_post_id,
+            focus_keyword=focus_keyword,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any uncaught failure
+        _logger.exception("bridge audit BackgroundTask crashed job_id=%s", job_id)
+        _set_audit_job(
+            job_id,
+            status="error",
+            error_stage="bridge",
+            error_message=f"{type(exc).__name__}: {exc}",
+            finished_at=_now_utc_iso(),
+        )
+        return
+
+    if result.status == "ok":
+        _set_audit_job(
+            job_id,
+            status="done",
+            audit_id=result.audit_id,
+            finished_at=_now_utc_iso(),
+        )
+    else:
+        _set_audit_job(
+            job_id,
+            status="error",
+            error_stage=result.error_stage,
+            error_message=result.error_message,
+            finished_at=_now_utc_iso(),
+        )
+
+
+def _validate_target_site(raw: str) -> Optional[str]:
+    """Normalize the form-posted target_site value.
+
+    Empty string → None (external / non-WP audit). Any other value must be in
+    the supported `_SEO_TARGET_SITES` list, else 422.
+    """
+    if not raw:
+        return None
+    if raw not in _SEO_TARGET_SITES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"target_site must be empty or one of {_SEO_TARGET_SITES}",
+        )
+    return raw
+
+
+@page_router.post("/seo/audits")
+async def seo_audit_kick_off(
+    background_tasks: BackgroundTasks,
+    url: str = Form(..., min_length=1, max_length=_AUDIT_FORM_URL_MAX),
+    target_site: str = Form(""),
+    wp_post_id: Optional[int] = Form(None),
+    focus_keyword: str = Form("", max_length=_AUDIT_FORM_KEYWORD_MAX),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Kick off a new audit run via FastAPI BackgroundTasks.
+
+    Returns 303 → `/bridge/seo/audits/{job_id}` so the user lands on the
+    progress page; the audit subprocess runs in the background and updates
+    `_audit_jobs[job_id]` once finished.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/seo", status_code=302)
+
+    url_clean = url.strip()
+    if not url_clean.startswith(("http://", "https://")):
+        raise HTTPException(status_code=422, detail="url must start with http:// or https://")
+
+    resolved_site = _validate_target_site(target_site.strip())
+
+    job_id = uuid.uuid4().hex
+    _set_audit_job(
+        job_id,
+        status="running",
+        url=url_clean,
+        target_site=resolved_site,
+        wp_post_id=wp_post_id,
+        focus_keyword=focus_keyword.strip(),
+        started_at=_now_utc_iso(),
+    )
+
+    background_tasks.add_task(
+        _run_audit_job,
+        job_id=job_id,
+        url=url_clean,
+        target_site=resolved_site,
+        wp_post_id=wp_post_id,
+        focus_keyword=focus_keyword.strip(),
+    )
+
+    return RedirectResponse(f"/bridge/seo/audits/{job_id}", status_code=303)
+
+
+@page_router.get("/seo/audits/{job_id}", response_class=HTMLResponse)
+async def seo_audit_progress(
+    job_id: str,
+    request: Request,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Render the progress page. JS polls `/status` every 2s + auto-redirects."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/seo/audits/{job_id}", status_code=302)
+    job = _get_audit_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"audit job {job_id} not found")
+    return _templates.TemplateResponse(
+        request,
+        "seo_audit_progress.html",
+        {
+            "job_id": job_id,
+            "job": job,
+        },
+    )
+
+
+@page_router.get("/seo/audits/{job_id}/status")
+async def seo_audit_status(
+    job_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Polling endpoint for the progress page. JSON only."""
+    if not check_auth(nakama_auth):
+        return JSONResponse({"status": "unauthorized"}, status_code=401)
+    job = _get_audit_job(job_id)
+    if job is None:
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    return JSONResponse(
+        {
+            "status": job["status"],
+            "audit_id": job.get("audit_id"),
+            "error_stage": job.get("error_stage"),
+            "error_message": job.get("error_message"),
+            "started_at": job.get("started_at"),
+            "finished_at": job.get("finished_at"),
+            "redirect_to": (
+                f"/bridge/seo/audits/{job_id}/result" if job["status"] == "done" else None
+            ),
+        }
+    )
+
+
+@page_router.get("/seo/audits/{job_id}/result", response_class=HTMLResponse)
+async def seo_audit_result(
+    job_id: str,
+    request: Request,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Render the audit result page (overall_grade + counts + raw markdown)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/seo/audits/{job_id}/result", status_code=302)
+    job = _get_audit_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"audit job {job_id} not found")
+    if job["status"] != "done":
+        # Still running / errored — bounce back to progress page rather than
+        # showing a half-rendered result.
+        return RedirectResponse(f"/bridge/seo/audits/{job_id}", status_code=303)
+    audit_id = job.get("audit_id")
+    if audit_id is None:
+        raise HTTPException(status_code=500, detail=f"audit job {job_id} done but audit_id missing")
+    audit = audit_results_store.get_by_id(audit_id)
+    if audit is None:
+        raise HTTPException(
+            status_code=404, detail=f"audit_results.id={audit_id} not found (DB drift?)"
+        )
+    return _templates.TemplateResponse(
+        request,
+        "seo_audit_result.html",
+        {
+            "job_id": job_id,
+            "audit": audit,
+            "review_url": f"/bridge/seo/audits/{audit_id}/review",
+        },
+    )
+
+
+@page_router.get("/seo/audits/by-id/{audit_id:int}", response_class=HTMLResponse)
+async def seo_audit_view_by_id(
+    audit_id: int,
+    request: Request,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Direct DB-id-based view of a past audit result (no job context).
+
+    Section 1 of `/bridge/seo` links here when a post already has a latest
+    audit row, so the user can re-open the result without firing a new run.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/seo/audits/by-id/{audit_id}", status_code=302)
+    audit = audit_results_store.get_by_id(audit_id)
+    if audit is None:
+        raise HTTPException(status_code=404, detail=f"audit_results.id={audit_id} not found")
+    return _templates.TemplateResponse(
+        request,
+        "seo_audit_result.html",
+        {
+            "job_id": None,
+            "audit": audit,
+            "review_url": f"/bridge/seo/audits/{audit_id}/review",
         },
     )
 

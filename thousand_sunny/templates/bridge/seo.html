@@ -296,10 +296,63 @@ body {
   padding: 5px 10px;
   background: transparent;
   border: 1px solid var(--nk-rule);
-  color: var(--nk-ink-3);
+  color: var(--nk-ink-2);
+  cursor: pointer;
+  transition: border-color var(--nk-dur-fast), color var(--nk-dur-fast);
+}
+.article-action-btn:hover {
+  border-color: var(--nk-signal);
+  color: var(--nk-signal);
+}
+.article-action-btn:focus-visible {
+  border-color: var(--nk-signal);
+  color: var(--nk-signal);
+}
+.article-action-btn[disabled] {
+  opacity: 0.6;
   cursor: not-allowed;
 }
-.article-action-btn[disabled] { opacity: 0.6; }
+.article-action-form {
+  display: inline-block;
+  margin: 0;
+}
+.article-action-form + .article-action-link {
+  margin-left: 6px;
+}
+.article-action-link {
+  font-family: var(--nk-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--nk-ink-3);
+  border-bottom: 1px dotted var(--nk-muted);
+  padding-bottom: 1px;
+}
+.article-action-link:hover {
+  color: var(--nk-signal);
+  border-bottom-color: var(--nk-signal);
+}
+
+/* Grade chips — colour-coded by performance band. */
+.grade-chip {
+  display: inline-block;
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  background: var(--nk-panel);
+  font-variant-numeric: tabular-nums;
+}
+.grade-chip.grade-a    { color: var(--nk-jade); }
+.grade-chip.grade-bp,
+.grade-chip.grade-b    { color: var(--nk-indigo); }
+.grade-chip.grade-cp,
+.grade-chip.grade-c    { color: var(--nk-amber); }
+.grade-chip.grade-d,
+.grade-chip.grade-f    { color: var(--nk-crimson); }
 
 .articles-empty {
   padding: 40px 20px;
@@ -406,14 +459,34 @@ body {
               <span class="article-modified">{{ (a.last_modified or '')[:16].replace('T', ' ') }}</span>
             </td>
             <td class="col-grade">
+              {% if a.grade %}
+              <span class="grade-chip grade-{{ a.grade | lower | replace('+', 'p') }}"
+                    aria-label="grade {{ a.grade }}">{{ a.grade }}</span>
+              {% else %}
               <span class="article-placeholder" aria-label="grade not yet audited">—</span>
+              {% endif %}
             </td>
             <td class="col-audited">
+              {% if a.last_audited_at %}
+              <span class="article-modified">{{ (a.last_audited_at or '')[:16].replace('T', ' ') }}</span>
+              {% else %}
               <span class="article-placeholder" aria-label="never audited">—</span>
+              {% endif %}
             </td>
             <td class="col-action">
-              <button class="article-action-btn" type="button" disabled
-                      title="audit pipeline lands in slice #232">跑 audit</button>
+              <form class="article-action-form" method="post" action="/bridge/seo/audits">
+                <input type="hidden" name="url" value="{{ a.link }}">
+                <input type="hidden" name="target_site" value="{{ a.target_site }}">
+                <input type="hidden" name="wp_post_id" value="{{ a.wp_post_id }}">
+                <input type="hidden" name="focus_keyword" value="{{ a.focus_keyword }}">
+                <button class="article-action-btn" type="submit"
+                        title="kick off a fresh audit run">跑 audit</button>
+              </form>
+              {% if a.latest_audit_id %}
+              <a class="article-action-link"
+                 href="/bridge/seo/audits/by-id/{{ a.latest_audit_id }}"
+                 title="latest result">查 audit</a>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
