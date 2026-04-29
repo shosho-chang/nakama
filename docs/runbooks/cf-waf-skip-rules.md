@@ -23,6 +23,7 @@ Cloudflare Super Bot Fight Mode（SBFM）會擋 datacenter / VPS IP，無論 Use
 |---|---|---|---|
 | `nakama-external-probe/1.0` | GH Actions external uptime probe | PR #115（2026-04-24） | — (PR-inline) |
 | `NakamaBot/1.0` | seo-audit-post `fetch_html`（D.1 加） | PR #200（2026-04-27） | [2026-04-27-add-nakamabot-cf-skip-rule.md](2026-04-27-add-nakamabot-cf-skip-rule.md) |
+| `nakama-wordpress-client/1.0` | `shared/wordpress_client.py` — Usopp publish + SEO 中控台 wp_post_lister + audit pipeline | PR #252（2026-04-29） | [2026-04-29-add-wp-client-cf-skip-rule.md](2026-04-29-add-wp-client-cf-skip-rule.md) |
 
 加新 agent 要新 UA 時：
 1. Append 進這張表（含對應 task doc 連結）

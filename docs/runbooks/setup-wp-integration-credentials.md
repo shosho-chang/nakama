@@ -57,33 +57,7 @@ fleet 站裝了 **Fluent Security** plugin，預設會關掉 Application Passwor
 
 **備註**：兩個 bot 帳號都要確認能走 REST API（HTTPS 一定要開，Application Password 不支援 HTTP）。
 
----
-
-### 1c. Cloudflare WAF — 放行 `nakama-wordpress-client` UA（Bot Fight Mode bypass）
-
-**為什麼需要**：`shared/wordpress_client.py` 從 VPS 打 `https://shosho.tw/wp-json/...` 走 httpx，預設 User-Agent 是 `python-httpx/x.y`，會被 Cloudflare Bot Fight Mode 擋下，回 HTTP 403 + `<title>Just a moment...</title>` 的 challenge HTML。client 端會誤判為 WP auth 403。對齊 PR #111 external probe 的 `nakama-external-probe/1.0` 模式：client 帶穩定 UA，CF 為這個 UA 加 skip rule。
-
-**操作**：對 **shosho.tw** + **fleet.shosho.tw** 兩個 zone 各做一次（fleet 是同 zone subdomain，但 WAF rule 在 zone level 寫一次即可，所以實際只設定一次）：
-
-- [ ] CF dashboard → 進 `shosho.tw` zone → **Security → WAF → Custom rules** → **Create rule**
-  - Rule name: `Allow Nakama WordPressClient`
-  - When incoming requests match：
-    - Field: `User Agent` · Operator: `equals` · Value: `nakama-wordpress-client/1.0`
-    - And Field: `URI Path` · Operator: `starts with` · Value: `/wp-json/`
-    - And Field: `IP Source Address` · Operator: `equals` · Value: `202.182.107.202`（VPS IP — 三條 AND 收緊濫用面）
-  - Then take action: **Skip** → 勾起 **All remaining custom rules** + **Bot Fight Mode** + **Super Bot Fight Mode**（依 zone 啟用情況勾相應的 bot 防護層）
-  - Place at: **Top**（在其他 block rule 之前 evaluate）
-- [ ] 存檔 → CF 提示 「Rule deployed」
-- [ ] 驗證（VPS 上）：
-  ```bash
-  curl -sS -o /dev/null -w "%{http_code}\n" \
-    -A "nakama-wordpress-client/1.0" \
-    -u "$WP_SHOSHO_USERNAME:$WP_SHOSHO_APP_PASSWORD" \
-    "https://shosho.tw/wp-json/wp/v2/posts?per_page=1"
-  # 預期 200。若仍 403 + Just a moment HTML → CF rule order 沒對 / 或還沒生效（5-30s）
-  ```
-
-**操作後動作**：`git pull && systemctl restart thousand-sunny nakama-usopp` 拉到加 UA 的 wordpress_client.py 並重啟兩個 service。重啟前 service 仍跑舊版（無 UA），CF rule 即使設好也接不到流量。
+**Cloudflare WAF**：VPS 打 WP REST 會被 SBFM 擋（default httpx UA → 403 + interstitial HTML）。`shared/wordpress_client.py` 帶 `nakama-wordpress-client/1.0` UA；CF zone 對應的 skip rule 一覽 + 加新規則 SOP 在 [cf-waf-skip-rules.md](cf-waf-skip-rules.md)。
 
 ---
 
