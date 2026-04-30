@@ -99,6 +99,7 @@ class GSCClient:
         end_date: str,
         dimensions: list[str],
         row_limit: int = 1000,
+        dimension_filter_groups: list[dict] | None = None,
     ) -> list[dict[str, Any]]:
         """Search Analytics query — 返回 raw GSC rows。
 
@@ -110,6 +111,10 @@ class GSCClient:
             dimensions:  GSC 合法維度 — 常用 `["query", "page"]`（keyword-by-URL）。
             row_limit:   單頁上限 1000；本 wrapper 不做 pagination，呼叫方需要時自行
                          多次呼叫 + `startRow` offset（skill 層責任）。
+            dimension_filter_groups:
+                         GSC `dimensionFilterGroups` payload — list of filter group
+                         dicts（格式見 GSC Search Analytics API）。``None``（預設）→
+                         body 不帶此欄位，行為與原版相同。
 
         Returns:
             list of dict，對應 GSC 回傳 `rows[]`；每筆含 `keys`（依 dimensions 順序）
@@ -121,12 +126,14 @@ class GSCClient:
                 5xx（transient） — SDK 內建 retry 2 次後仍失敗才 propagate。
         """
         service = self._get_service()
-        body = {
+        body: dict[str, Any] = {
             "startDate": start_date,
             "endDate": end_date,
             "dimensions": dimensions,
             "rowLimit": row_limit,
         }
+        if dimension_filter_groups is not None:
+            body["dimensionFilterGroups"] = dimension_filter_groups
         logger.debug(
             "gsc_query site=%s start=%s end=%s dims=%s",
             site,
