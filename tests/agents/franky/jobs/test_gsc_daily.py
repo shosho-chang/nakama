@@ -14,6 +14,7 @@ Coverage (per task prompt §Acceptance):
 - run_once: missing GSC_PROPERTY_* env for one site → skips that site, others process
 - run_once: happy path with mocked GSC client → rows written, status='ok'
 - run_once: 429 then 200 → retries with backoff, eventual success
+- run_once: 5xx (500/502/503) then 200 → retries with backoff, eventual success
 - run_once: 429 exhausted → retryable error propagates as keyword failure
 - run_once: idempotent re-run on same day → row count unchanged
 """
@@ -92,34 +93,25 @@ def _gsc_raw_row(
 
 
 def _make_mock_client(rows_per_call: list[Any] | None = None) -> Any:
-    """Build a MagicMock GSCClient whose `_get_service().searchanalytics().query().execute()`
-    returns successive entries from `rows_per_call`.
+    """Build a MagicMock GSCClient whose ``query()`` returns successive entries from
+    ``rows_per_call``.
 
-    `rows_per_call` items can be:
-        list[dict]  → ok response, those rows
+    ``rows_per_call`` items can be:
+        list[dict]  → ok response (those rows returned directly)
         Exception   → raise that exception (e.g. HttpError 429)
     """
     client = MagicMock(spec=GSCClient)
-    service = MagicMock()
-    sa = MagicMock()
-    query_call = MagicMock()
-    execute = MagicMock()
-
-    client._get_service.return_value = service
-    service.searchanalytics.return_value = sa
-    sa.query.return_value = query_call
-    query_call.execute = execute
 
     if rows_per_call is None:
-        execute.return_value = {"rows": []}
+        client.query.return_value = []
     else:
         side_effects = []
         for entry in rows_per_call:
             if isinstance(entry, Exception):
                 side_effects.append(entry)
             else:
-                side_effects.append({"rows": entry})
-        execute.side_effect = side_effects
+                side_effects.append(entry)
+        client.query.side_effect = side_effects
     return client
 
 
@@ -292,7 +284,7 @@ def test_run_once_dry_run_makes_no_api_call(tmp_path):
     )
     assert result.status == "ok"
     assert "dry_run" in result.detail
-    client._get_service.assert_not_called()
+    client.query.assert_not_called()
     # And no DB writes
     out = gsc_rows_store.query(
         site="sc-domain:shosho.tw",
@@ -376,15 +368,12 @@ def test_run_once_happy_path_writes_rows(tmp_path):
     )
     assert len(written) == 2
 
-    # Verify GSC API call included date dimension (multi-day in one call)
-    service = client._get_service.return_value
-    call_args = service.searchanalytics.return_value.query.call_args
-    body = call_args.kwargs["body"]
-    assert "date" in body["dimensions"]
-    assert body["startDate"] == "2026-04-20"
-    assert body["endDate"] == "2026-04-26"
-    # And dimensionFilterGroups carried the keyword filter
-    assert body["dimensionFilterGroups"] == [
+    # Verify GSC API call included date dimension and keyword filter
+    call_args = client.query.call_args
+    assert "date" in call_args.kwargs["dimensions"]
+    assert call_args.kwargs["start_date"] == "2026-04-20"
+    assert call_args.kwargs["end_date"] == "2026-04-26"
+    assert call_args.kwargs["dimension_filter_groups"] == [
         {
             "filters": [
                 {
@@ -456,6 +445,36 @@ def test_run_once_retries_429_then_succeeds(tmp_path):
     client = _make_mock_client(
         rows_per_call=[
             _http_error(429),
+            rows,  # success on second attempt
+        ]
+    )
+    sleep_calls: list[float] = []
+    result = gsc_daily.run_once(
+        keywords_path=p,
+        today_taipei=date(2026, 4, 30),
+        client=client,
+        env={"GSC_PROPERTY_SHOSHO": "sc-domain:shosho.tw"},
+        sleep=lambda secs: sleep_calls.append(secs),
+    )
+    assert result.status == "ok"
+    assert result.keywords_processed == 1
+    assert result.keywords_failed == 0
+    assert result.rows_written == 1
+    assert len(sleep_calls) == 1, "exactly one backoff between attempts"
+    assert sleep_calls[0] >= 1.0  # base 2.0 ** 0 = 1.0 + jitter
+
+
+@pytest.mark.parametrize("status_code", [500, 502, 503])
+def test_run_once_retries_5xx_then_succeeds(tmp_path, status_code):
+    """One 5xx then 200 → keyword processed via retry (mirrors 429 test)."""
+    p = _make_keywords_yaml(
+        tmp_path,
+        keywords=[_kw_entry(keyword="肌酸 功效", site="shosho.tw")],
+    )
+    rows = [_gsc_raw_row(day=date(2026, 4, 22), query="肌酸 功效")]
+    client = _make_mock_client(
+        rows_per_call=[
+            _http_error(status_code),
             rows,  # success on second attempt
         ]
     )

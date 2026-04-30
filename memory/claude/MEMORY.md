@@ -44,7 +44,14 @@
 - [feedback_css_hidden_shadow.md](feedback_css_hidden_shadow.md) — CSS 對 selector 寫 `display:` 必同時補 `selector[hidden] { display: none }`，否則 `<div hidden>` 失效（PR #253 audit-failed 假警報根因）
 - [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
 - [feedback_worktree_leak_prevention_prompt.md](feedback_worktree_leak_prevention_prompt.md) — worktree-isolated agent prompt 防 leak 兩條剛性防線（pwd 第一步 + 完工 leak self-check），5 連勝零 leak
-- [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Ralph Loop plugin = single-prompt iter runner，不是 issue queue；2026-04-29 評估後決定不裝
+- [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Anthropic ralph-loop plugin = single-prompt iter runner，Matt 自己 reject；他改用 bash loop / Sandcastle，詳見 reference_sandcastle.md
+- [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock AFK runner 2026-04-30 試水 2/2 通過 → 正式採用；runbook 在 docs/runbooks/sandcastle.md
+- [feedback_gh_pr_merge_close_denied.md](feedback_gh_pr_merge_close_denied.md) — `gh pr merge` / `gh issue close` 在 deny list；auto-flow 必停在 merge / 用 PR body `closes #N` 替 issue close
+- [feedback_schedulewakeup_loop_only.md](feedback_schedulewakeup_loop_only.md) — ScheduleWakeup 是 /loop dynamic 專用、不是通用 timer；誤用會 re-fire 原 prompt 看起來像使用者重複下指令
+- [project_seo_web_ui_completion_pr260.md](project_seo_web_ui_completion_pr260.md) — PR #260 (afk/seo-web-ui-completion) ship 4 slices A′+B′+E 2026-04-29 2h50m，待 review/merge
+- [feedback_phase3_single_worktree_proven.md](feedback_phase3_single_worktree_proven.md) — Phase 3 單 worktree 序列 AFK 對 nakama 規模夠用（PR #260 實證 28 tests 0 regression）；不需 sandcastle 多 worktree 並行
+- [feedback_setup_matt_pocock_skills_first.md](feedback_setup_matt_pocock_skills_first.md) — Matt skills 跑前必先 setup-matt-pocock-skills 落 docs/agents/* + CLAUDE.md `## Agent skills`；沒跑 skill 都自探勘+猜+用詞飄
+- [feedback_jinja_macro_caller_for_dialects.md](feedback_jinja_macro_caller_for_dialects.md) — 同 partial 多 dialect refactor 用 macro + caller block，比 include 強；chassis-nav 14 templates × 3 dialect 範本
 - [feedback_partial_agent_recovery.md](feedback_partial_agent_recovery.md) — killed agent partial work 先 inspect 再決定，常 near-complete 可手動接手（#229 教訓）
 - [reference_seo_tools_landscape.md](reference_seo_tools_landscape.md) — SEO 工具地景：價格、API 契約坑、Health vertical 限制（DataForSEO 不能當 main 數據源）；詳見 docs/research/2026-04-24-seo-prior-art.md
 - Research doc：[docs/research/2026-04-24-seo-prior-art.md](../../docs/research/2026-04-24-seo-prior-art.md) — SEO solution prior-art：工具生態 + capability cards + 3 種 skill 切法選項，給 ADR 用
@@ -57,6 +64,7 @@
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
 - [feedback_review_skill_default_for_focused_pr.md](feedback_review_skill_default_for_focused_pr.md) — focused PR（<100 LOC、單 domain、tests 綠）我自開的直接 /review，不問 ultrareview
 - [reference_git_recovery_after_truncation.md](reference_git_recovery_after_truncation.md) — Windows 多檔同秒截斷（.git/HEAD + index + working tree md）recovery：rewrite HEAD LF + mv index + git reset + git restore
+- [project_disk_layout_e_primary.md](project_disk_layout_e_primary.md) — repo 主要落點 = E:\nakama（企業級 SSD）；F: 兩三次 git 損毀已退場（2026-04-30）
 - [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁；2026-04-24 修長音檔 ~10% 線性漂移 bug（char_idx 當 ts 索引）+ regression test
 - [project_srt_align_tool.md](project_srt_align_tool.md) — SRT 對齊工具 shift/scale/auto/retime 四模式 + 踩過的坑
 - [feedback_short_clip_ground_truth.md](feedback_short_clip_ground_truth.md) — 長音檔 ASR 可疑時切 15s 短片段獨立跑同模型當 oracle

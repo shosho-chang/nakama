@@ -17,7 +17,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 REPO = Path(__file__).resolve().parent.parent
 JSON_IN = REPO / "data" / "brook" / "shosho-posts.json"
-VAULT_OUT = Path(r"F:\Shosho LifeOS\Projects\Brook 風格訓練.md")
+VAULT_OUT = Path(r"E:\Shosho LifeOS\Projects\Brook 風格訓練.md")
 
 CAT_BOOK = "book-review"
 CAT_PEOPLE = {"people", "podcast"}
