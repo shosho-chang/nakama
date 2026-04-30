@@ -11,6 +11,7 @@ WhisperX 本地辨識（faster-whisper backend），
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -46,6 +47,14 @@ _cc_s2t = None
 # WhisperX ASR model lazy singleton
 _asr_model = None
 _asr_model_id = None
+
+# WhisperX align model lazy singleton（word-level timestamp，給 diarize 用）
+_align_model = None
+_align_metadata = None
+_align_language = None
+
+# pyannote diarization pipeline lazy singleton
+_diarize_pipeline = None
 
 
 def _get_cc():
@@ -798,6 +807,48 @@ def _get_asr_model(
     return _asr_model
 
 
+def _get_align_model(language: str, device: str = "cuda"):
+    """取得 WhisperX align model（word-level timestamps，lazy singleton）。
+
+    Chinese (zh) 用 wav2vec2 中文對齊模型；align 模型不存在時 raise，
+    呼叫端應 catch + fallback 到 segment-level timestamp（不影響純 SRT 輸出）。
+    """
+    global _align_model, _align_metadata, _align_language
+    if _align_model is not None and _align_language == language:
+        return _align_model, _align_metadata
+
+    import whisperx
+
+    logger.info(f"載入 WhisperX align 模型: {language}")
+    _align_model, _align_metadata = whisperx.load_align_model(
+        language_code=language,
+        device=device,
+    )
+    _align_language = language
+    return _align_model, _align_metadata
+
+
+def _get_diarize_pipeline(hf_token: str, device: str = "cuda"):
+    """取得 pyannote diarization pipeline（lazy singleton）。
+
+    需 HUGGINGFACE_TOKEN env + accept pyannote/speaker-diarization-3.1 EULA
+    （https://huggingface.co/pyannote/speaker-diarization-3.1）。失敗時呼叫端
+    fallback 到無 speaker label（仍出純 SRT，不出 .diar.srt）。
+    """
+    global _diarize_pipeline
+    if _diarize_pipeline is not None:
+        return _diarize_pipeline
+
+    from whisperx.diarize import DiarizationPipeline
+
+    logger.info("載入 pyannote diarization pipeline")
+    _diarize_pipeline = DiarizationPipeline(
+        use_auth_token=hf_token,
+        device=device,
+    )
+    return _diarize_pipeline
+
+
 def _build_initial_prompt(
     hotwords: list[str],
     project_context: dict | None,
@@ -851,7 +902,7 @@ def _dedupe_adjacent_repeats(text: str) -> str:
     return text
 
 
-def _whisperx_to_srt(segments: list[dict]) -> str:
+def _whisperx_to_srt(segments: list[dict], with_speakers: bool = False) -> str:
     """將 WhisperX segments 轉為 SRT 格式，超長 segment 拆成 ≤_MAX_SUBTITLE_CHARS 字 sub-cue。
 
     WhisperX 預設 segment 是 sentence-level（可能 100+ 字），對 SRT 顯示太長。
@@ -862,14 +913,21 @@ def _whisperx_to_srt(segments: list[dict]) -> str:
 
     全部 cue 完成後 post-process：
     4. `_redistribute_boundary_cuts` 修正 cue 邊界詞被切（然後 / 馬上 / 為什麼 等）
+
+    `with_speakers=True` 時：
+    - 從 segment 拿 `speaker` 欄（diarize 後 WhisperX 加上的）
+    - 每 cue 文字前加 `[SPEAKER_XX] ` prefix
+    - **跳過 redistribute** — diar SRT 跨 speaker 邊界 shift 會把字錯派到 speaker；
+      下游 repurpose 需要 speaker label 純度，邊界詞 cut 容忍。
     """
-    cues: list[tuple[float, float, str]] = []
+    cues: list[tuple] = []
     for seg in segments:
         seg_start = float(seg.get("start", 0.0))
         seg_end = float(seg.get("end", 0.0))
         text = (seg.get("text") or "").strip()
         if not text:
             continue
+        speaker = seg.get("speaker", "SPEAKER_??") if with_speakers else None
 
         text = _dedupe_adjacent_repeats(text)
         sub_texts = _split_sentences(text)
@@ -891,15 +949,21 @@ def _whisperx_to_srt(segments: list[dict]) -> str:
                 sub_start = seg_start
                 sub_end = seg_end
             cum += sub_len
-            cues.append((sub_start, sub_end, sub))
+            if with_speakers:
+                cues.append((sub_start, sub_end, sub, speaker))
+            else:
+                cues.append((sub_start, sub_end, sub))
 
-    cues = _redistribute_boundary_cuts(cues)
+    # 純 SRT 跑 redistribute；diar SRT 跳過（避免 cross-speaker char shift）
+    if not with_speakers:
+        cues = _redistribute_boundary_cuts(cues)
 
     lines: list[str] = []
-    for seq, (sub_start, sub_end, sub) in enumerate(cues, start=1):
-        ts_start = _seconds_to_srt_ts(sub_start)
-        ts_end = _seconds_to_srt_ts(sub_end)
-        lines.append(f"{seq}\n{ts_start} --> {ts_end}\n{sub}\n")
+    for seq, c in enumerate(cues, start=1):
+        ts_start = _seconds_to_srt_ts(c[0])
+        ts_end = _seconds_to_srt_ts(c[1])
+        prefix = f"[{c[3]}] " if with_speakers else ""
+        lines.append(f"{seq}\n{ts_start} --> {ts_end}\n{prefix}{c[2]}\n")
 
     return "\n".join(lines)
 
@@ -918,6 +982,7 @@ def transcribe(
     host_name: str = "張修修",
     show_name: str = "不正常人類研究所",
     use_multimodal_arbitration: bool = True,
+    use_diarization: bool = False,
     run_id: int | None = None,
 ) -> Path:
     """語音轉繁體中文 SRT 字幕（WhisperX + 可選 LLM 校正 + 可選 Gemini 仲裁）。
@@ -936,10 +1001,15 @@ def transcribe(
         show_name: 節目名稱（預設「不正常人類研究所」）
         use_multimodal_arbitration: 是否在 LLM 校正後用 Gemini 2.5 Pro audio 仲裁 uncertain 片段
             （僅在 use_llm_correction=True 時生效，多 $0.05–0.20/hr）
+        use_diarization: 是否跑 speaker diarization 並額外輸出 `{stem}.diar.srt`
+            （含 [SPEAKER_XX] prefix，給下游 repurpose 用）。預設 False — 純字幕用途
+            不需要。True 時純 SRT 仍照常輸出（dual-output：純 + diar 兩份）。
+            需 HUGGINGFACE_TOKEN env + accept pyannote/speaker-diarization-3.1 EULA。
+            align / diarize 任一失敗會 graceful warn 並跳過 .diar.srt（純 SRT 不受影響）。
         run_id: cost tracking 用的 run id（傳給 Gemini 客戶端）
 
     Returns:
-        SRT 字幕檔的 Path
+        純 SRT 字幕檔的 Path（diar SRT 若有產出，路徑 = `{stem}.diar.srt`，下游自己拼）。
     """
     audio_path = Path(audio_path)
     if not audio_path.exists():
@@ -1015,9 +1085,83 @@ def transcribe(
         # ── Pass 2：LLM/Gemini 可能在校正時加回標點，最終輸出前再過濾一次 ──
         srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
 
-    # ── 寫入最終 SRT ──
+    # ── 寫入最終純 SRT ──
     final_srt = output_dir / f"{audio_path.stem}.srt"
     final_srt.write_text(srt_content, encoding="utf-8")
-
     logger.info(f"完成！SRT 已儲存：{final_srt}")
+
+    # ── Diarization（可選，dual-output：多輸出一份 .diar.srt）──
+    # 純 SRT 已寫，diar SRT 是副產品。align / diarize 失敗時純 SRT 不受影響。
+    if use_diarization:
+        _write_diarization_srt(
+            audio=audio,
+            segs=segs,
+            detected_lang=detected_lang,
+            output_dir=output_dir,
+            audio_stem=audio_path.stem,
+        )
+
     return final_srt
+
+
+def _write_diarization_srt(
+    *,
+    audio,
+    segs: list[dict],
+    detected_lang: str,
+    output_dir: Path,
+    audio_stem: str,
+) -> Path | None:
+    """跑 align + diarize + 寫 `{stem}.diar.srt`。失敗時 graceful warn 回 None。
+
+    跟純 SRT 共用同一份 raw ASR segments（不重跑 ASR），只多 align + diarize 兩步。
+    align 失敗 → fallback 到 segment-level timestamp（diar SRT 仍可出，只是 speaker
+    對話切分較粗）。diarize 失敗（HF token 缺、license 沒 accept、pipeline error）
+    → 跳過 .diar.srt，純 SRT 不受影響。
+    """
+    import whisperx
+
+    aligned_segs = segs
+    try:
+        align_model_obj, align_metadata = _get_align_model(detected_lang)
+        aligned = whisperx.align(
+            segs,
+            align_model_obj,
+            align_metadata,
+            audio,
+            device="cuda",
+            return_char_alignments=False,
+        )
+        aligned_segs = aligned["segments"]
+        logger.info("Alignment 完成")
+    except Exception as e:
+        logger.warning(
+            f"Alignment 失敗（diar SRT 走 segment-level timestamp）: {type(e).__name__}: {e}"
+        )
+
+    hf_token = os.getenv("HUGGINGFACE_TOKEN")
+    if not hf_token:
+        logger.warning("HUGGINGFACE_TOKEN 未設定，跳過 diarization（不出 .diar.srt）")
+        return None
+
+    try:
+        diarize_pipeline = _get_diarize_pipeline(hf_token)
+        diarize_segments = diarize_pipeline(audio)
+        with_speakers_result = whisperx.assign_word_speakers(
+            diarize_segments,
+            {"segments": aligned_segs},
+        )
+        diar_segs = with_speakers_result["segments"]
+        logger.info("Diarization 完成")
+    except Exception as e:
+        logger.warning(
+            f"Diarization 失敗（跳過 .diar.srt，純 SRT 不受影響）: {type(e).__name__}: {e}"
+        )
+        return None
+
+    diar_content = _whisperx_to_srt(diar_segs, with_speakers=True)
+    diar_content = "\n".join(_process_srt_line(line) for line in diar_content.splitlines())
+    diar_srt = output_dir / f"{audio_stem}.diar.srt"
+    diar_srt.write_text(diar_content, encoding="utf-8")
+    logger.info(f"Diarization SRT 已儲存：{diar_srt}")
+    return diar_srt
