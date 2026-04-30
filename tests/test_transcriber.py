@@ -319,6 +319,7 @@ def _mock_whisperx_model(segments: list[dict], language: str = "zh") -> MagicMoc
 
 def test_transcribe_basic(tmp_path):
     """測試 transcribe() 的整合流程（mock WhisperX + 跳過 Auphonic + 跳過 diar）。"""
+    pytest.importorskip("whisperx")
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
@@ -355,6 +356,7 @@ def test_transcribe_basic(tmp_path):
 
 def test_transcribe_with_normalize(tmp_path):
     """normalize_audio=True 時呼叫 Auphonic。"""
+    pytest.importorskip("whisperx")
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
@@ -382,6 +384,7 @@ def test_transcribe_with_normalize(tmp_path):
 
 def test_transcribe_normalize_failure_continues(tmp_path):
     """Auphonic 失敗時應繼續用原始音檔。"""
+    pytest.importorskip("whisperx")
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
@@ -407,6 +410,7 @@ def test_transcribe_normalize_failure_continues(tmp_path):
 
 def test_transcribe_with_llm_correction_writes_qc(tmp_path):
     """transcribe() 開 LLM 校正 + uncertainties 時產出 .qc.md。"""
+    pytest.importorskip("whisperx")
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
@@ -452,6 +456,7 @@ def test_transcribe_file_not_found():
 
 def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
     """LLM 校正若加回標點，Pass 2 必須把它清掉（防止標點誤導下游 LLM 語氣判斷）。"""
+    pytest.importorskip("whisperx")
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
