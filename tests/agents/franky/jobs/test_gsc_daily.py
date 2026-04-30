@@ -14,6 +14,7 @@ Coverage (per task prompt §Acceptance):
 - run_once: missing GSC_PROPERTY_* env for one site → skips that site, others process
 - run_once: happy path with mocked GSC client → rows written, status='ok'
 - run_once: 429 then 200 → retries with backoff, eventual success
+- run_once: 5xx (500/502/503) then 200 → retries with backoff, eventual success
 - run_once: 429 exhausted → retryable error propagates as keyword failure
 - run_once: idempotent re-run on same day → row count unchanged
 """
@@ -444,6 +445,36 @@ def test_run_once_retries_429_then_succeeds(tmp_path):
     client = _make_mock_client(
         rows_per_call=[
             _http_error(429),
+            rows,  # success on second attempt
+        ]
+    )
+    sleep_calls: list[float] = []
+    result = gsc_daily.run_once(
+        keywords_path=p,
+        today_taipei=date(2026, 4, 30),
+        client=client,
+        env={"GSC_PROPERTY_SHOSHO": "sc-domain:shosho.tw"},
+        sleep=lambda secs: sleep_calls.append(secs),
+    )
+    assert result.status == "ok"
+    assert result.keywords_processed == 1
+    assert result.keywords_failed == 0
+    assert result.rows_written == 1
+    assert len(sleep_calls) == 1, "exactly one backoff between attempts"
+    assert sleep_calls[0] >= 1.0  # base 2.0 ** 0 = 1.0 + jitter
+
+
+@pytest.mark.parametrize("status_code", [500, 502, 503])
+def test_run_once_retries_5xx_then_succeeds(tmp_path, status_code):
+    """One 5xx then 200 → keyword processed via retry (mirrors 429 test)."""
+    p = _make_keywords_yaml(
+        tmp_path,
+        keywords=[_kw_entry(keyword="肌酸 功效", site="shosho.tw")],
+    )
+    rows = [_gsc_raw_row(day=date(2026, 4, 22), query="肌酸 功效")]
+    client = _make_mock_client(
+        rows_per_call=[
+            _http_error(status_code),
             rows,  # success on second attempt
         ]
     )
