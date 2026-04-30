@@ -7,7 +7,7 @@
     # 指定輸出 + LifeOS Project file（建議：人名/術語命中率差很多）
     python scripts/run_transcribe.py <audio_path> \
         --output-dir <dir> \
-        --project-file "F:/Shosho LifeOS/Projects/Angie.md"
+        --project-file "E:/Shosho LifeOS/Projects/Angie.md"
 
     # 跳過 Auphonic（省上傳時間；犧牲 ASR 品質）
     python scripts/run_transcribe.py <audio_path> --no-auphonic

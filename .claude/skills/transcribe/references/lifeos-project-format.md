@@ -7,7 +7,7 @@ where to find Project files and how to match them against audio filenames.
 ## Directory Location
 
 Read from env `LIFEOS_PROJECTS_DIR`. If unset:
-- Windows default: `F:/Shosho LifeOS/Projects/`
+- Windows default: `E:/Shosho LifeOS/Projects/`
 - Open-source deployments should set this env var explicitly.
 
 If the directory doesn't exist, skip Step 3 and ask the user to provide
