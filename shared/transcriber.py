@@ -32,7 +32,8 @@ _SENTENCE_END = re.compile(r"([。！？!?])")
 _CLAUSE_BREAK = re.compile(r"([，、；：,;:])")
 
 # 字幕每行最大字數
-_MAX_SUBTITLE_CHARS = 20
+_MAX_SUBTITLE_CHARS = 14
+_MAX_SUBTITLE_HARD = 22  # 容許 overflow 上限：保英文 compound name（Traveling Village = 17）+ 長 ASCII token
 
 # SRT 時間戳格式
 _SRT_TS_FMT = "{h:02d}:{m:02d}:{s:02d},{ms:03d}"
@@ -555,14 +556,25 @@ def _split_sentences(text: str) -> list[str]:
     return result
 
 
-def _force_break(text: str, max_chars: int) -> list[str]:
+_ASCII_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9'\-]*$")
+_BUF_TRAILING_ASCII_RE = re.compile(r"[A-Za-z][A-Za-z0-9'\- ]*$")
+
+
+def _force_break(text: str, max_chars: int, hard_max: int | None = None) -> list[str]:
     """強制斷行，避免切斷中文詞語與英文單字。
 
     走 jieba 中文分詞 + 英文 token，每個 chunk greedy 累加到 ≤max_chars 字停。
     若單一 token 已超過 max_chars（罕見：超長英文 / URL），該 token 獨立成 chunk。
+
+    soft / hard 雙閾值：
+    - soft = max_chars：常態目標
+    - hard = hard_max（預設 max_chars + 8）：當下個 token 是 ASCII 英文 / 接續英文單字的 chunk
+      時容許 overflow 到 hard，避免「Traveling Village」這類 compound 被切
     """
     import jieba
 
+    if hard_max is None:
+        hard_max = max_chars + 8
     tokens = list(jieba.cut(text, cut_all=False))
     chunks: list[str] = []
     buf = ""
@@ -570,19 +582,80 @@ def _force_break(text: str, max_chars: int) -> list[str]:
         if not tok.strip():
             buf += tok
             continue
+        # soft fits → take
         if len(buf) + len(tok) <= max_chars:
             buf += tok
+            continue
+        # soft 不夠但 hard 容許，且 token 是 ASCII 英文 + buf 結尾連續 ASCII 英文
+        # （保 compound name "Traveling Village" / "Hell Yes" 不被切，即使前面緊鄰中文無空格）→ overflow
+        is_ascii_english = bool(_ASCII_TOKEN_RE.match(tok))
+        buf_ends_english = bool(_BUF_TRAILING_ASCII_RE.search(buf))
+        if is_ascii_english and buf_ends_english and len(buf) + len(tok) <= hard_max:
+            buf += tok
+            continue
+        # 真要 break
+        if buf.strip():
+            chunks.append(buf.strip())
+        if len(tok) > hard_max:
+            chunks.append(tok)
+            buf = ""
         else:
-            if buf.strip():
-                chunks.append(buf.strip())
-            if len(tok) > max_chars:
-                chunks.append(tok)
-                buf = ""
-            else:
-                buf = tok
+            buf = tok
     if buf.strip():
         chunks.append(buf.strip())
     return chunks
+
+
+_BIGRAM_REDIST_SET = {
+    "然後", "因為", "所以", "但是", "可是", "如果", "不過", "其實",
+    "就是", "只是", "也是", "還是", "或是", "以及", "而且", "並且",
+    "可能", "應該", "可以", "需要", "必須", "已經", "正在", "剛剛",
+    "馬上", "立刻", "突然", "終於", "永遠", "一直", "覺得", "想要",
+    "希望", "知道", "了解", "理解", "明白", "記得", "忘記", "看到",
+    "這個", "那個", "這樣", "那樣", "這些", "那些", "什麼", "怎麼",
+    "因此", "於是", "或者", "雖然", "困難", "簡單", "辛苦", "大家",
+    "我們", "他們", "你們", "自己", "別人", "朋友", "家人",
+}
+_TRIGRAM_REDIST_SET = {"那時候", "這時候", "這個人", "那個人", "為什麼", "怎麼樣"}
+
+
+def _redistribute_boundary_cuts(cues: list[tuple[float, float, str]]) -> list[tuple[float, float, str]]:
+    """post-process：偵測 cue 邊界詞被切（bigram / trigram），把字 shift 到鄰近 cue。
+
+    範例：cue N 結尾「然」+ cue N+1 開頭「後」→ 「然」shift 到 cue N+1，cue N 結尾換成上一個字。
+    保守實作：只 shift 1-2 char，不動 timestamp（誤差 <0.5s 接受）。
+    """
+    if len(cues) < 2:
+        return cues
+    out = [list(c) for c in cues]
+    for i in range(len(out) - 1):
+        end_text = out[i][2].rstrip()
+        start_text = out[i + 1][2].lstrip()
+        if not end_text or not start_text:
+            continue
+        # bigram = end[-1] + start[0]
+        bg = end_text[-1] + start_text[0]
+        if bg in _BIGRAM_REDIST_SET:
+            # shift end[-1] 到 next cue 開頭
+            out[i][2] = end_text[:-1].rstrip()
+            out[i + 1][2] = end_text[-1] + start_text
+            continue
+        # trigram = end[-1] + start[:2]
+        if len(start_text) >= 2:
+            tg = end_text[-1] + start_text[:2]
+            if tg in _TRIGRAM_REDIST_SET:
+                out[i][2] = end_text[:-1].rstrip()
+                out[i + 1][2] = end_text[-1] + start_text
+                continue
+        # trigram = end[-2:] + start[0]
+        if len(end_text) >= 2:
+            tg = end_text[-2:] + start_text[0]
+            if tg in _TRIGRAM_REDIST_SET:
+                # shift start[0] 到前 cue 結尾
+                out[i + 1][2] = start_text[1:].lstrip()
+                out[i][2] = end_text + start_text[0]
+                continue
+    return [(c[0], c[1], c[2]) for c in out if c[2].strip()]
 
 
 def _split_by_pattern(pattern: re.Pattern, text: str) -> list[str]:
@@ -696,16 +769,41 @@ def _build_initial_prompt(
     return "、".join(deduped)
 
 
+_DEDUPE_KNOWN_BUGS = {
+    "本本尊": "本尊",  # FunASR-era bug 在 WhisperX 也偶發
+}
+
+
+def _dedupe_adjacent_repeats(text: str) -> str:
+    """去除 within-segment CJK 相鄰重複 2-4 char unit（Whisper hallucination 模式）。
+
+    範圍嚴格限於 CJK 範圍（U+4E00–U+9FFF），避免英文「ll/ee/oo」誤食、
+    口語「對對」「好好」這類正當疊字也保留（單字 doubling 不動）。
+    例：「花蓮花蓮回來」→「花蓮回來」、「不正常人類不正常人類」→「不正常人類」。
+    額外：whitelist 處理「本本尊」這類已知 1-char doubling bug。
+    """
+    for n in (4, 3, 2):
+        # 限 CJK，留一份
+        pattern = re.compile(r"([一-鿿]{" + str(n) + r"})\1+")
+        text = pattern.sub(r"\1", text)
+    for bug, fix in _DEDUPE_KNOWN_BUGS.items():
+        text = text.replace(bug, fix)
+    return text
+
+
 def _whisperx_to_srt(segments: list[dict]) -> str:
-    """將 WhisperX segments 轉為 SRT 格式，超長 segment 拆成 ≤20 字 sub-cue。
+    """將 WhisperX segments 轉為 SRT 格式，超長 segment 拆成 ≤_MAX_SUBTITLE_CHARS 字 sub-cue。
 
     WhisperX 預設 segment 是 sentence-level（可能 100+ 字），對 SRT 顯示太長。
     對每段：
-    1. `_split_sentences` 拆成 ≤_MAX_SUBTITLE_CHARS 字的子句
-    2. 子句時間戳走線性插值（按 char 位置在原 segment 內等比分配）
+    1. `_dedupe_adjacent_repeats` 去 within-segment Whisper 重複 hallucination
+    2. `_split_sentences` 拆成 ≤_MAX_SUBTITLE_CHARS 字的子句（含 ASCII 英文 hard overflow 容許）
+    3. 子句時間戳走線性插值（按 char 位置在原 segment 內等比分配）
+
+    全部 cue 完成後 post-process：
+    4. `_redistribute_boundary_cuts` 修正 cue 邊界詞被切（然後 / 馬上 / 為什麼 等）
     """
-    lines: list[str] = []
-    seq = 1
+    cues: list[tuple[float, float, str]] = []
     for seg in segments:
         seg_start = float(seg.get("start", 0.0))
         seg_end = float(seg.get("end", 0.0))
@@ -713,6 +811,7 @@ def _whisperx_to_srt(segments: list[dict]) -> str:
         if not text:
             continue
 
+        text = _dedupe_adjacent_repeats(text)
         sub_texts = _split_sentences(text)
         if not sub_texts:
             continue
@@ -732,10 +831,15 @@ def _whisperx_to_srt(segments: list[dict]) -> str:
                 sub_start = seg_start
                 sub_end = seg_end
             cum += sub_len
-            ts_start = _seconds_to_srt_ts(sub_start)
-            ts_end = _seconds_to_srt_ts(sub_end)
-            lines.append(f"{seq}\n{ts_start} --> {ts_end}\n{sub}\n")
-            seq += 1
+            cues.append((sub_start, sub_end, sub))
+
+    cues = _redistribute_boundary_cuts(cues)
+
+    lines: list[str] = []
+    for seq, (sub_start, sub_end, sub) in enumerate(cues, start=1):
+        ts_start = _seconds_to_srt_ts(sub_start)
+        ts_end = _seconds_to_srt_ts(sub_end)
+        lines.append(f"{seq}\n{ts_start} --> {ts_end}\n{sub}\n")
 
     return "\n".join(lines)
 
