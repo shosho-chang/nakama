@@ -106,7 +106,7 @@ Read `references/lifeos-project-format.md` for the fuzzy match algorithm.
 
 In short:
 1. Determine the LifeOS Projects directory from env `LIFEOS_PROJECTS_DIR`,
-   falling back to `F:/Shosho LifeOS/Projects/` on Windows.
+   falling back to `E:/Shosho LifeOS/Projects/` on Windows.
 2. `Glob: {projects_dir}/*.md`
 3. Extract keywords from the audio filename (e.g. `Angie-E42.wav` →
    `[angie, e42]`).
