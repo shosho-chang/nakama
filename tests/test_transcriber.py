@@ -9,15 +9,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.transcriber import (
+    _BUF_TRAILING_ASCII_RE,
+    _MAX_SUBTITLE_HARD,
     _add_pinyin,
     _build_initial_prompt,
     _correct_with_llm,
+    _dedupe_adjacent_repeats,
     _extract_hotwords,
     _extract_project_context,
     _extract_srt_texts,
     _force_break,
     _parse_llm_response,
     _process_srt_line,
+    _redistribute_boundary_cuts,
     _remove_punctuation,
     _replace_srt_texts,
     _seconds_to_srt_ts,
@@ -251,6 +255,47 @@ def test_force_break_long_english_token():
     assert "https://example.com/very-long-url-path-that-exceeds-limit" in full
 
 
+def test_force_break_ascii_compound_overflows_to_hard():
+    """soft/hard 雙閾值：ASCII 英文 compound name（如「Traveling Village」17 字）
+    超過 soft 14 但 ≤ hard 22 時應整體保留同一 chunk 不被切。
+    """
+    chunks = _force_break("Traveling Village然後它是由丹麥的一對夫婦", 14, 22)
+    # 「Traveling Village」必須整段在某個 chunk 內，不能跨 chunk 邊界切開
+    assert any("Traveling Village" in c for c in chunks)
+    # 該 chunk 確實 overflow 過 soft 14
+    assert any(len(c) > 14 and "Traveling Village" in c for c in chunks)
+
+
+def test_force_break_chinese_english_no_space_kept_together():
+    """iter3 fix：buf 結尾「個Hell」（中英連寫無空格）+ 下個 token「Yes」應走
+    trailing-ASCII regex search（不是 split(' ')[-1]）→ 兩個 ASCII token 連住保留。
+    對應觀察 case：「我覺得就是個Hell Yes然後這是」(max=14)。
+    """
+    chunks = _force_break("我覺得就是個Hell Yes然後這是", 14, 22)
+    # 「Hell Yes」必須在同一 chunk 內，不能被切到 chunk 邊界
+    cut_separated = any(
+        "Hell" in chunks[i]
+        and chunks[i].rstrip().endswith("Hell")
+        and chunks[i + 1].lstrip().startswith("Yes")
+        for i in range(len(chunks) - 1)
+    )
+    assert not cut_separated, "「Hell Yes」被切到 chunk 邊界"
+
+
+def test_buf_trailing_ascii_regex_detects_cases():
+    """`_BUF_TRAILING_ASCII_RE` 須抓 buf 結尾連續 ASCII 英文，含中英連寫無空格。"""
+    cases = [
+        ("以後對我們來說就是個Hell", True),  # 中英連寫無空格
+        ("Hello World ", True),  # 純英文 + trailing space
+        ("Traveling Village", True),  # 純英文 compound
+        ("以後對我們來說就是個", False),  # 純中文
+        ("純中文無英文", False),
+    ]
+    for text, expected in cases:
+        got = bool(_BUF_TRAILING_ASCII_RE.search(text))
+        assert got is expected, f"trailing-ascii({text!r}) = {got}, expected {expected}"
+
+
 def test_split_sentences_basic():
     sentences = _split_sentences("今天天氣真好。我們去散步吧。")
     assert sentences == ["今天天氣真好。", "我們去散步吧。"]
@@ -268,6 +313,116 @@ def test_split_sentences_no_punctuation():
 
 def test_split_sentences_empty():
     assert _split_sentences("") == []
+
+
+def test_max_subtitle_hard_accommodates_known_compound_names():
+    """`_MAX_SUBTITLE_HARD` 必須 > soft 上限，且能容下既知英文 compound name
+    （「Traveling Village」17 字）。改值前先確認新 hard 沒擠掉這些 case。"""
+    from shared.transcriber import _MAX_SUBTITLE_CHARS
+
+    assert _MAX_SUBTITLE_HARD > _MAX_SUBTITLE_CHARS
+    assert _MAX_SUBTITLE_HARD >= len("Traveling Village")
+
+
+def test_split_sentences_passes_hard_max_to_force_break():
+    """`_split_sentences` 走長句拆 _force_break 路徑時必須傳 _MAX_SUBTITLE_HARD，
+    讓 ASCII compound 能 overflow 到 hard ceiling（不依賴 _force_break 的 default）。
+    句子刻意做成「無句尾標點 + 無逗號 + > _MAX_SUBTITLE_CHARS」走第三條路徑。
+    """
+    text = "Traveling Village然後它是由丹麥的一對夫婦所創立"
+    chunks = _split_sentences(text)
+    # ASCII compound 不該被切成 Traveling / Village
+    for i in range(len(chunks) - 1):
+        assert not (
+            chunks[i].rstrip().endswith("Traveling")
+            and chunks[i + 1].lstrip().startswith("Village")
+        ), "「Traveling Village」被切到 chunk 邊界（hard 沒傳到 _force_break）"
+
+
+# ── _dedupe_adjacent_repeats（within-segment Whisper 重複 hallucination）──
+
+
+def test_dedupe_adjacent_repeats_cjk_2_to_4_chars():
+    """CJK 2-4 char unit 連續重複，留一份。"""
+    assert _dedupe_adjacent_repeats("花蓮花蓮回來") == "花蓮回來"
+    assert _dedupe_adjacent_repeats("超級超級棒") == "超級棒"
+    # 4 char unit
+    assert _dedupe_adjacent_repeats("數位遊牧數位遊牧") == "數位遊牧"
+    # 3 char unit
+    assert _dedupe_adjacent_repeats("不正常不正常人") == "不正常人"
+
+
+def test_dedupe_adjacent_repeats_no_false_positive():
+    """非重複文字應原樣保留（含 ASCII compound 不被誤食）。"""
+    assert _dedupe_adjacent_repeats("數位遊牧") == "數位遊牧"
+    assert _dedupe_adjacent_repeats("Traveling Village") == "Traveling Village"
+
+
+def test_dedupe_adjacent_repeats_skips_single_char_doubling():
+    """1-char doubling（「對對」「好好」）刻意不動 — 自動 collapse 會誤殺正當疊字
+    （口語「對對對」「好好好」是有意義的）。已知 bug 走 _DEDUPE_KNOWN_BUGS whitelist。
+    """
+    assert _dedupe_adjacent_repeats("對對對 好") == "對對對 好"
+    assert _dedupe_adjacent_repeats("好好") == "好好"
+
+
+def test_dedupe_adjacent_repeats_skips_ascii():
+    """ASCII 英文不在 dedupe 範圍（避免「OK OK OK」「ll/ee/oo」誤食）。"""
+    assert _dedupe_adjacent_repeats("OK OK OK") == "OK OK OK"
+    assert _dedupe_adjacent_repeats("hello hello") == "hello hello"
+
+
+def test_dedupe_adjacent_repeats_known_bug_whitelist():
+    """已知 1-char doubling bug（如「本本尊」）走 whitelist 點殺。"""
+    assert _dedupe_adjacent_repeats("本本尊") == "本尊"
+    assert _dedupe_adjacent_repeats("所以本本尊來分享") == "所以本尊來分享"
+
+
+# ── _redistribute_boundary_cuts（cue 邊界詞被切回收）──
+
+
+def test_redistribute_boundary_cuts_bigram_shift():
+    """cue N 結尾「然」+ cue N+1 開頭「後」→ 「然」shift 到 cue N+1（「然後」是高頻 bigram）。"""
+    cues = [(0.0, 1.0, "我們在越南的會安然"), (1.0, 2.0, "後結束以後我們就")]
+    out = _redistribute_boundary_cuts(cues)
+    assert out[0][2] == "我們在越南的會安"
+    assert out[1][2] == "然後結束以後我們就"
+
+
+def test_redistribute_boundary_cuts_trigram_shift():
+    """trigram「為什麼」「那時候」拼回偵測 → shift。"""
+    cues = [(0.0, 1.0, "我說那你為"), (1.0, 2.0, "什麼後來要去")]
+    out = _redistribute_boundary_cuts(cues)
+    assert out[0][2] == "我說那你"
+    assert out[1][2] == "為什麼後來要去"
+
+    cues2 = [(0.0, 1.0, "我那"), (1.0, 2.0, "時候會進")]
+    out2 = _redistribute_boundary_cuts(cues2)
+    assert out2[0][2] == "我"
+    assert out2[1][2] == "那時候會進"
+
+
+def test_redistribute_boundary_cuts_no_match_unchanged():
+    """邊界 bigram/trigram 不在 set 時 cue 文字不變。"""
+    cues = [(0.0, 1.0, "今天天氣"), (1.0, 2.0, "真的很好")]
+    out = _redistribute_boundary_cuts(cues)
+    assert out[0][2] == "今天天氣"
+    assert out[1][2] == "真的很好"
+
+
+def test_redistribute_boundary_cuts_short_input():
+    """0/1 cue 不動，timestamp 也保留。"""
+    assert _redistribute_boundary_cuts([]) == []
+    cues = [(0.0, 1.0, "單一 cue")]
+    assert _redistribute_boundary_cuts(cues) == cues
+
+
+def test_redistribute_boundary_cuts_preserves_timestamps():
+    """shift char 不應動 timestamp（誤差 <0.5s 接受，spec follow-up）。"""
+    cues = [(0.0, 1.5, "去花蓮然"), (1.5, 3.0, "後接下來")]
+    out = _redistribute_boundary_cuts(cues)
+    assert (out[0][0], out[0][1]) == (0.0, 1.5)
+    assert (out[1][0], out[1][1]) == (1.5, 3.0)
 
 
 # ── WhisperX → SRT 轉換 ──
@@ -295,6 +450,30 @@ def test_whisperx_to_srt_strips_whitespace():
     srt = _whisperx_to_srt(segments)
     assert "含前後空白" in srt
     assert "  含前後空白" not in srt
+
+
+def test_whisperx_to_srt_applies_dedupe_within_segment():
+    """`_whisperx_to_srt` 必須對每段呼叫 `_dedupe_adjacent_repeats` 去 within-segment
+    Whisper 重複 hallucination（觀察 case「花蓮花蓮回來」「不正常人類不正常人類」）。
+    """
+    segments = [{"start": 0.0, "end": 2.0, "text": "花蓮花蓮回來嗎"}]
+    srt = _whisperx_to_srt(segments)
+    assert "花蓮回來嗎" in srt
+    assert "花蓮花蓮" not in srt
+
+
+def test_whisperx_to_srt_applies_boundary_redistribute():
+    """`_whisperx_to_srt` 應在 cue 拆完後跑 `_redistribute_boundary_cuts`，
+    把高頻 bigram/trigram 拼回（觀察 case「然 | 後」拆兩 cue）。
+    """
+    segments = [
+        {"start": 0.0, "end": 2.0, "text": "我們在越南的會安然"},
+        {"start": 2.0, "end": 4.0, "text": "後結束以後我們就走了"},
+    ]
+    srt = _whisperx_to_srt(segments)
+    # 「然」應 shift 到第二 cue 開頭
+    assert "我們在越南的會安\n" in srt or "我們在越南的會安 " in srt
+    assert "然後結束" in srt
 
 
 # ── _build_initial_prompt ──

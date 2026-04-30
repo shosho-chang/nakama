@@ -32,8 +32,10 @@ _SENTENCE_END = re.compile(r"([。！？!?])")
 _CLAUSE_BREAK = re.compile(r"([，、；：,;:])")
 
 # 字幕每行最大字數
+# soft：常態目標 / hard：容許 overflow（保 ASCII 英文 compound name 不被切，
+# 例 Traveling Village = 17 字）
 _MAX_SUBTITLE_CHARS = 14
-_MAX_SUBTITLE_HARD = 22  # 容許 overflow 上限：保英文 compound name（Traveling Village = 17）+ 長 ASCII token
+_MAX_SUBTITLE_HARD = 22
 
 # SRT 時間戳格式
 _SRT_TS_FMT = "{h:02d}:{m:02d}:{s:02d},{ms:03d}"
@@ -552,7 +554,7 @@ def _split_sentences(text: str) -> list[str]:
                     result.append(clause)
                 else:
                     # Step 3: 強制斷行（不切斷英文單字）
-                    result.extend(_force_break(clause, _MAX_SUBTITLE_CHARS))
+                    result.extend(_force_break(clause, _MAX_SUBTITLE_CHARS, _MAX_SUBTITLE_HARD))
     return result
 
 
@@ -587,7 +589,8 @@ def _force_break(text: str, max_chars: int, hard_max: int | None = None) -> list
             buf += tok
             continue
         # soft 不夠但 hard 容許，且 token 是 ASCII 英文 + buf 結尾連續 ASCII 英文
-        # （保 compound name "Traveling Village" / "Hell Yes" 不被切，即使前面緊鄰中文無空格）→ overflow
+        # （保 compound name "Traveling Village" / "Hell Yes" 不被切，
+        #   即使前面緊鄰中文無空格）→ overflow
         is_ascii_english = bool(_ASCII_TOKEN_RE.match(tok))
         buf_ends_english = bool(_BUF_TRAILING_ASCII_RE.search(buf))
         if is_ascii_english and buf_ends_english and len(buf) + len(tok) <= hard_max:
@@ -607,19 +610,76 @@ def _force_break(text: str, max_chars: int, hard_max: int | None = None) -> list
 
 
 _BIGRAM_REDIST_SET = {
-    "然後", "因為", "所以", "但是", "可是", "如果", "不過", "其實",
-    "就是", "只是", "也是", "還是", "或是", "以及", "而且", "並且",
-    "可能", "應該", "可以", "需要", "必須", "已經", "正在", "剛剛",
-    "馬上", "立刻", "突然", "終於", "永遠", "一直", "覺得", "想要",
-    "希望", "知道", "了解", "理解", "明白", "記得", "忘記", "看到",
-    "這個", "那個", "這樣", "那樣", "這些", "那些", "什麼", "怎麼",
-    "因此", "於是", "或者", "雖然", "困難", "簡單", "辛苦", "大家",
-    "我們", "他們", "你們", "自己", "別人", "朋友", "家人",
+    "然後",
+    "因為",
+    "所以",
+    "但是",
+    "可是",
+    "如果",
+    "不過",
+    "其實",
+    "就是",
+    "只是",
+    "也是",
+    "還是",
+    "或是",
+    "以及",
+    "而且",
+    "並且",
+    "可能",
+    "應該",
+    "可以",
+    "需要",
+    "必須",
+    "已經",
+    "正在",
+    "剛剛",
+    "馬上",
+    "立刻",
+    "突然",
+    "終於",
+    "永遠",
+    "一直",
+    "覺得",
+    "想要",
+    "希望",
+    "知道",
+    "了解",
+    "理解",
+    "明白",
+    "記得",
+    "忘記",
+    "看到",
+    "這個",
+    "那個",
+    "這樣",
+    "那樣",
+    "這些",
+    "那些",
+    "什麼",
+    "怎麼",
+    "因此",
+    "於是",
+    "或者",
+    "雖然",
+    "困難",
+    "簡單",
+    "辛苦",
+    "大家",
+    "我們",
+    "他們",
+    "你們",
+    "自己",
+    "別人",
+    "朋友",
+    "家人",
 }
 _TRIGRAM_REDIST_SET = {"那時候", "這時候", "這個人", "那個人", "為什麼", "怎麼樣"}
 
 
-def _redistribute_boundary_cuts(cues: list[tuple[float, float, str]]) -> list[tuple[float, float, str]]:
+def _redistribute_boundary_cuts(
+    cues: list[tuple[float, float, str]],
+) -> list[tuple[float, float, str]]:
     """post-process：偵測 cue 邊界詞被切（bigram / trigram），把字 shift 到鄰近 cue。
 
     範例：cue N 結尾「然」+ cue N+1 開頭「後」→ 「然」shift 到 cue N+1，cue N 結尾換成上一個字。
