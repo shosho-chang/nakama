@@ -1,6 +1,6 @@
 ---
 name: Matt Pocock Sandcastle — TS library for AFK Claude Code in Docker worktrees
-description: github.com/mattpocock/sandcastle；5 templates；defaults sonnet-4-6；2026-04-30 首次試水成功 issue #240 → PR #263，3:56 wall，~$0.26
+description: github.com/mattpocock/sandcastle；5 templates；defaults sonnet-4-6；2026-04-30 試水 2/2 通過 (#240→PR#263 / #239→PR#264) → 正式採用，runbook 在 docs/runbooks/sandcastle.md
 type: reference
 created: 2026-04-29
 updated: 2026-04-30
@@ -82,8 +82,32 @@ Baseline 對照：[feedback_phase3_single_worktree_proven.md](feedback_phase3_si
 | 期望品質 | TDD 風格、結構複製現成 pattern | 創意架構、新 abstraction |
 | 監督模式 | AFK（睡覺/吃飯時跑）+ 醒來 review PR | 即時 iterate、邊做邊改方向 |
 
-### 下一步
+## 2026-04-30 第二試水結果（issue #239 → PR #264）
 
-- 第 2 試水：issue #239（API kwarg）— 等 #263 merge 後跑
-- 若 2/3 次成功 → 寫 sandcastle 操作手冊到 `docs/runbooks/`，正式採用
-- 若 ≥1 次連敗 → 回 single-worktree 模式
+成功且更實質：4-file 改動（2 production + 2 test），closes ADR-009 T6 encapsulation breach（switch `client._get_service()` private → `client.query()` public）。
+agent 自走 TDD（red 驗證 → green 實作）+ 自 P7-COMPLETION 報告。
+
+| | Trial #1 (#240) | Trial #2 (#239) |
+|---|---|---|
+| Wall | 3:56 | ~6:50 |
+| Context | 60k | 80k |
+| 估 cost | ~$0.26 | ~$0.40 |
+| Files | 1 test | 4（2 prod + 2 test） |
+| 涉及 production code | ❌ | ✅ |
+| TDD discipline | n/a（pure test add） | ✅ red→green |
+| Result | ✅ | ✅ |
+
+## 結論：正式採用
+
+**2/2 通過 → 過 「2/3 success」門檻**。Sandcastle 收進 nakama 工具集，runbook 在 [docs/runbooks/sandcastle.md](../../docs/runbooks/sandcastle.md)。
+
+退場條件保留（3 次連敗 / cost > baseline 2x / 一次嚴重 leak），但目前無觸發。
+
+### 採用後操作模板
+
+1. tag issue `sandcastle` label（先確認 acceptance 條件清楚）
+2. `cd E:\sandcastle-test\ && MSYS_NO_PATHCONV=1 npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts`
+3. agent 完工後在 host：rebase commit onto main、push、開 PR
+4. 在 host run `/review` + 手動 `gh pr merge --squash --delete-branch`（sandbox 擋 close/merge）
+
+完整 SOP 見 docs/runbooks/sandcastle.md。

@@ -45,7 +45,7 @@
 - [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
 - [feedback_worktree_leak_prevention_prompt.md](feedback_worktree_leak_prevention_prompt.md) — worktree-isolated agent prompt 防 leak 兩條剛性防線（pwd 第一步 + 完工 leak self-check），5 連勝零 leak
 - [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Anthropic ralph-loop plugin = single-prompt iter runner，Matt 自己 reject；他改用 bash loop / Sandcastle，詳見 reference_sandcastle.md
-- [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock AFK runner，2026-04-30 試水成功（issue #240 → PR #263）3:56 wall ~$0.26；4 坑裝 sandcastle 教訓 + 適用範圍
+- [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock AFK runner 2026-04-30 試水 2/2 通過 → 正式採用；runbook 在 docs/runbooks/sandcastle.md
 - [project_seo_web_ui_completion_pr260.md](project_seo_web_ui_completion_pr260.md) — PR #260 (afk/seo-web-ui-completion) ship 4 slices A′+B′+E 2026-04-29 2h50m，待 review/merge
 - [feedback_phase3_single_worktree_proven.md](feedback_phase3_single_worktree_proven.md) — Phase 3 單 worktree 序列 AFK 對 nakama 規模夠用（PR #260 實證 28 tests 0 regression）；不需 sandcastle 多 worktree 並行
 - [feedback_setup_matt_pocock_skills_first.md](feedback_setup_matt_pocock_skills_first.md) — Matt skills 跑前必先 setup-matt-pocock-skills 落 docs/agents/* + CLAUDE.md `## Agent skills`；沒跑 skill 都自探勘+猜+用詞飄
