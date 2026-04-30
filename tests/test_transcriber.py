@@ -454,6 +454,48 @@ def test_transcribe_file_not_found():
         transcribe("/nonexistent/audio.mp3")
 
 
+def test_transcribe_with_diarization(tmp_path, monkeypatch):
+    """use_diarization=True 走完 align + diarize + assign_word_speakers 全鏈。"""
+    pytest.importorskip("whisperx")
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "fake-token")
+
+    mock_model = _mock_whisperx_model([{"start": 0.0, "end": 2.0, "text": "测试一段。"}])
+    aligned_payload = {"segments": [{"start": 0.0, "end": 2.0, "text": "测试一段。", "words": []}]}
+    speakers_payload = {
+        "segments": [{"start": 0.0, "end": 2.0, "text": "测试一段。", "speaker": "SPEAKER_00"}]
+    }
+    mock_diarize_pipeline = MagicMock(return_value=MagicMock())
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch(
+            "shared.transcriber._get_align_model",
+            return_value=(MagicMock(), {"language": "zh"}),
+        ),
+        patch("shared.transcriber._get_diarize_pipeline", return_value=mock_diarize_pipeline),
+        patch("whisperx.load_audio", return_value=b"fake audio array"),
+        patch("whisperx.align", return_value=aligned_payload),
+        patch("whisperx.assign_word_speakers", return_value=speakers_payload),
+    ):
+        from shared.transcriber import transcribe
+
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,
+            use_diarization=True,
+        )
+
+    assert result.exists()
+    content = result.read_text(encoding="utf-8")
+    # diarize 後 SRT 應含 speaker label
+    assert "[SPEAKER_00]" in content
+    # diar pipeline 應被叫
+    mock_diarize_pipeline.assert_called_once()
+
+
 def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
     """LLM 校正若加回標點，Pass 2 必須把它清掉（防止標點誤導下游 LLM 語氣判斷）。"""
     pytest.importorskip("whisperx")

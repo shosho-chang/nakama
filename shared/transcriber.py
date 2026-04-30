@@ -906,7 +906,7 @@ def transcribe(
     # ── 轉為 SRT ──
     srt_content = _whisperx_to_srt(final_segs, with_speakers=speakers_assigned)
 
-    # ── 後處理：逐行簡轉繁 + 去標點（Pass 1：FunASR 輸出）──
+    # ── 後處理：逐行簡轉繁 + 去標點（Pass 1：ASR 輸出）──
     srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
 
     # ── LLM 校正（可選）──
