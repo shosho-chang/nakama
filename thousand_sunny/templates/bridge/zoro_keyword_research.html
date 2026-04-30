@@ -644,7 +644,7 @@ form.kw-form { display: flex; flex-direction: column; gap: 18px; }
   if (!btn || !raw) return;
   btn.addEventListener('click', function (ev) {
     try {
-      const filename = {{ download_filename|tojson if download_filename else "''" }};
+      const filename = {{ (download_filename or '')|tojson }};
       if (!filename) return; // fall through to form post
       ev.preventDefault();
       const blob = new Blob([raw.value], { type: 'text/markdown;charset=utf-8' });

@@ -121,6 +121,30 @@ def test_form_get_renders_three_fields(authed_client):
     assert "啟動研究" in body
 
 
+def test_form_get_inline_js_no_html_entity_escape(authed_client):
+    """Regression for #266 — Jinja autoescape was converting else-branch literal `''`
+    inside `<script>` to `&#39;&#39;`, producing `const filename = &#39;&#39;;` which
+    crashes JS parsing with `Unexpected token '&'` and breaks the blob-download
+    enhancement IIFE.
+
+    With ``(download_filename or '')|tojson`` the filter output is JSON-safe and
+    not autoescaped — for the no-prior-run case it renders ``""`` (empty JSON
+    string).
+    """
+    r = authed_client.get("/bridge/zoro/keyword-research")
+    assert r.status_code == 200
+    body = r.text
+    assert "const filename =" in body, "kwDownloadBtn IIFE missing"
+    # The bug-line: should NOT contain `&#39;` anywhere on the filename line.
+    for line in body.splitlines():
+        if "const filename =" in line:
+            assert "&#39;" not in line, f"autoescape regression on {line!r}"
+            assert 'const filename = ""' in line, (
+                f"expected empty JSON string default, got {line!r}"
+            )
+            break
+
+
 def test_form_get_unauth_redirects_to_login(unauthed_client):
     r = unauthed_client.get("/bridge/zoro/keyword-research")
     assert r.status_code == 302
