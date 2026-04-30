@@ -5,7 +5,7 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from thousand_sunny.routers import auth, bridge, bridge_zoro, brook, franky, zoro
+from thousand_sunny.routers import auth, bridge, bridge_zoro, brook, franky, repurpose, zoro
 
 app = FastAPI(docs_url=None, redoc_url=None)
 
@@ -32,3 +32,4 @@ else:
 
 app.include_router(zoro.router)
 app.include_router(brook.router)
+app.include_router(repurpose.page_router)

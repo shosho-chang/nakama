@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Repurpose</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-2:    #2a2a2a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-t-micro: 10px; --nk-t-xs: 11px; --nk-t-sm: 12px;
+  --nk-t-base: 14px;  --nk-t-md: 16px; --nk-t-lg: 19px;
+  --nk-r-2: 2px;
+  --nk-border:      1px solid var(--nk-rule);
+  --nk-border-hair: 1px solid var(--nk-hairline);
+  --nk-dur-fast: 80ms;
+  --nk-dur-base: 140ms;
+  --nk-ease-out: cubic-bezier(0.2,0.7,0.2,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: var(--nk-t-base);
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Chassis ── */
+.chassis {
+  background: var(--nk-chassis); color: var(--nk-chassis-fg);
+  padding: 0 40px; height: 48px;
+  display: flex; align-items: center; gap: 32px;
+  flex-shrink: 0; border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot {
+  width: 14px; height: 14px;
+  border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative;
+}
+.chassis-dot::after {
+  content: ''; position: absolute; inset: 3px;
+  background: var(--nk-signal); border-radius: 50%;
+}
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none;
+  color: var(--nk-chassis-fg-2); border-bottom: 2px solid transparent; padding-bottom: 2px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { color: #fff; border-bottom-color: var(--nk-signal); }
+
+/* ── Page header ── */
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: var(--nk-border);
+  padding: 18px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.page-title {
+  font-family: var(--nk-font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+}
+.page-meta {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-muted);
+  letter-spacing: 0.08em;
+}
+
+/* ── Run list ── */
+.list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 40px 40px;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+  margin-bottom: 10px;
+}
+.run-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--nk-panel);
+  border: var(--nk-border);
+}
+.run-table th {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+  font-weight: 500;
+  padding: 10px 16px;
+  text-align: left;
+  border-bottom: var(--nk-border);
+  background: var(--nk-panel-2);
+}
+.run-table td {
+  padding: 12px 16px;
+  border-bottom: var(--nk-border-hair);
+  vertical-align: middle;
+}
+.run-table tr:last-child td { border-bottom: none; }
+.run-table tr:hover td { background: var(--nk-panel-2); }
+.run-id {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-sm);
+  color: var(--nk-ink);
+  font-weight: 500;
+}
+.episode-type-chip {
+  display: inline-block;
+  font-family: var(--nk-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  background: var(--nk-bench-2);
+  color: var(--nk-ink-2);
+  border-radius: var(--nk-r-2);
+}
+.artifact-count {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-sm);
+  color: var(--nk-ink-2);
+}
+.artifact-count .num { color: var(--nk-jade); font-weight: 500; }
+.nk-link-arrow {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  letter-spacing: 0.08em;
+  color: var(--nk-signal);
+  text-decoration: none;
+  transition: color var(--nk-dur-fast);
+}
+.nk-link-arrow:hover { color: var(--nk-ink); }
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 64px 40px;
+  color: var(--nk-muted);
+}
+.empty-state .empty-icon {
+  font-family: var(--nk-font-mono);
+  font-size: 32px;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+.empty-state .empty-title {
+  font-family: var(--nk-font-display);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--nk-ink-2);
+  margin-bottom: 6px;
+}
+.empty-state .empty-hint {
+  font-size: var(--nk-t-sm);
+  line-height: 1.6;
+}
+
+/* focus rings */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal);
+}
+</style>
+</head>
+<body>
+
+<!-- Chassis -->
+{% from "_chassis_nav.html" import chassis_nav %}
+{% call chassis_nav(nav_active='bridge') %}{% endcall %}
+
+<!-- Page header -->
+<div class="page-header">
+  <div>
+    <div class="nk-caps" style="margin-bottom:4px">BROOK · REPURPOSE</div>
+    <div class="page-title">Repurpose Runs</div>
+  </div>
+  <div class="page-meta">{{ runs | length }} run{% if runs | length != 1 %}s{% endif %}</div>
+</div>
+
+<!-- List -->
+<div class="list-scroll">
+  {% if runs %}
+  <div class="nk-caps">ALL RUNS · 最新在前</div>
+  <table class="run-table">
+    <thead>
+      <tr>
+        <th>RUN ID</th>
+        <th>EPISODE TYPE</th>
+        <th>ARTIFACTS</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+      <tr>
+        <td><span class="run-id">{{ run.run_id }}</span></td>
+        <td>
+          {% if run.episode_type %}
+          <span class="episode-type-chip">{{ run.episode_type }}</span>
+          {% else %}
+          <span style="color:var(--nk-muted);font-size:var(--nk-t-xs)">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="artifact-count">
+            <span class="num">{{ run.artifact_count }}</span> file{% if run.artifact_count != 1 %}s{% endif %}
+          </span>
+        </td>
+        <td style="text-align:right">
+          <a href="/bridge/repurpose/{{ run.run_id }}" class="nk-link-arrow">REVIEW →</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">[ ]</div>
+    <div class="empty-title">No repurpose runs yet</div>
+    <div class="empty-hint">
+      Run the CLI pipeline to generate a run:<br>
+      <code style="font-family:var(--nk-font-mono);font-size:var(--nk-t-xs)">python -m scripts.run_repurpose &lt;srt&gt; --host 張修修 --guest 朱為民醫師</code>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+</body>
+</html>
