@@ -145,6 +145,39 @@ def test_query_empty_rows(fake_sa_json):
     assert rows == []
 
 
+def test_query_dimension_filter_groups_in_body(fake_sa_json):
+    """dimension_filter_groups kwarg is forwarded to the underlying API body."""
+    filters = [{"filters": [{"dimension": "query", "operator": "equals", "expression": "test kw"}]}]
+    with (
+        patch("shared.gsc_client.service_account.Credentials.from_service_account_file"),
+        patch("shared.gsc_client.build") as m_build,
+    ):
+        m_service = MagicMock()
+        m_build.return_value = m_service
+        execute = m_service.searchanalytics.return_value.query.return_value.execute
+        execute.return_value = {"rows": []}
+
+        client = GSCClient(service_account_json_path=fake_sa_json)
+        client.query(
+            site="sc-domain:shosho.tw",
+            start_date="2026-04-01",
+            end_date="2026-04-24",
+            dimensions=["query"],
+            dimension_filter_groups=filters,
+        )
+
+    m_service.searchanalytics.return_value.query.assert_called_once_with(
+        siteUrl="sc-domain:shosho.tw",
+        body={
+            "startDate": "2026-04-01",
+            "endDate": "2026-04-24",
+            "dimensions": ["query"],
+            "rowLimit": 1000,
+            "dimensionFilterGroups": filters,
+        },
+    )
+
+
 def test_query_service_built_once_across_calls(fake_sa_json):
     """同一 client 多次 query 只 build 一次 service（省 auth handshake）。"""
     with (
