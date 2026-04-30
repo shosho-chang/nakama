@@ -93,34 +93,25 @@ def _gsc_raw_row(
 
 
 def _make_mock_client(rows_per_call: list[Any] | None = None) -> Any:
-    """Build a MagicMock GSCClient whose `_get_service().searchanalytics().query().execute()`
-    returns successive entries from `rows_per_call`.
+    """Build a MagicMock GSCClient whose ``query()`` returns successive entries from
+    ``rows_per_call``.
 
-    `rows_per_call` items can be:
-        list[dict]  → ok response, those rows
+    ``rows_per_call`` items can be:
+        list[dict]  → ok response (those rows returned directly)
         Exception   → raise that exception (e.g. HttpError 429)
     """
     client = MagicMock(spec=GSCClient)
-    service = MagicMock()
-    sa = MagicMock()
-    query_call = MagicMock()
-    execute = MagicMock()
-
-    client._get_service.return_value = service
-    service.searchanalytics.return_value = sa
-    sa.query.return_value = query_call
-    query_call.execute = execute
 
     if rows_per_call is None:
-        execute.return_value = {"rows": []}
+        client.query.return_value = []
     else:
         side_effects = []
         for entry in rows_per_call:
             if isinstance(entry, Exception):
                 side_effects.append(entry)
             else:
-                side_effects.append({"rows": entry})
-        execute.side_effect = side_effects
+                side_effects.append(entry)
+        client.query.side_effect = side_effects
     return client
 
 
@@ -293,7 +284,7 @@ def test_run_once_dry_run_makes_no_api_call(tmp_path):
     )
     assert result.status == "ok"
     assert "dry_run" in result.detail
-    client._get_service.assert_not_called()
+    client.query.assert_not_called()
     # And no DB writes
     out = gsc_rows_store.query(
         site="sc-domain:shosho.tw",
@@ -377,15 +368,12 @@ def test_run_once_happy_path_writes_rows(tmp_path):
     )
     assert len(written) == 2
 
-    # Verify GSC API call included date dimension (multi-day in one call)
-    service = client._get_service.return_value
-    call_args = service.searchanalytics.return_value.query.call_args
-    body = call_args.kwargs["body"]
-    assert "date" in body["dimensions"]
-    assert body["startDate"] == "2026-04-20"
-    assert body["endDate"] == "2026-04-26"
-    # And dimensionFilterGroups carried the keyword filter
-    assert body["dimensionFilterGroups"] == [
+    # Verify GSC API call included date dimension and keyword filter
+    call_args = client.query.call_args
+    assert "date" in call_args.kwargs["dimensions"]
+    assert call_args.kwargs["start_date"] == "2026-04-20"
+    assert call_args.kwargs["end_date"] == "2026-04-26"
+    assert call_args.kwargs["dimension_filter_groups"] == [
         {
             "filters": [
                 {

@@ -257,23 +257,14 @@ def _query_with_retry(
     last_exc: Optional[BaseException] = None
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            # `GSCClient.query` doesn't expose `dimensionFilterGroups` directly;
-            # we drop down to the underlying service for the filter (the only
-            # reason — keeping the public client minimal per ADR-009 T6).
-            service = client._get_service()
-            body = {
-                "startDate": start_date,
-                "endDate": end_date,
-                "dimensions": dimensions,
-                "dimensionFilterGroups": dimension_filter_groups,
-                "rowLimit": _GSC_ROW_LIMIT,
-            }
-            resp = (
-                service.searchanalytics()
-                .query(siteUrl=site, body=body)
-                .execute(num_retries=0)  # we own the retry loop here
+            return client.query(
+                site=site,
+                start_date=start_date,
+                end_date=end_date,
+                dimensions=dimensions,
+                row_limit=_GSC_ROW_LIMIT,
+                dimension_filter_groups=dimension_filter_groups,
             )
-            return resp.get("rows", []) or []
         except HttpError as exc:
             last_exc = exc
             if not _is_retryable_http_error(exc) or attempt == _MAX_RETRIES:
