@@ -42,12 +42,12 @@
 - [project_seo_phase15_acceptance_done_2026_04_27.md](project_seo_phase15_acceptance_done_2026_04_27.md) — **SEO Phase 1.5 真正落地 2026-04-27**：三件 acceptance 全綠 + F5-B CF rule + re-audit grade D→B+；PR #200 含 4 條 follow-up
 - [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 + PR #252/#253 部署 2026-04-29**：CF UA bypass + 3 UX bug 修；首篇 audit grade=C；L9 grade 設計 + Usopp DB lock 待拍板
 - [feedback_css_hidden_shadow.md](feedback_css_hidden_shadow.md) — CSS 對 selector 寫 `display:` 必同時補 `selector[hidden] { display: none }`，否則 `<div hidden>` 失效（PR #253 audit-failed 假警報根因）
+- [feedback_jinja_inline_js_autoescape.md](feedback_jinja_inline_js_autoescape.md) — `<script>` 內 Jinja 表達式最終 filter 必須是 `tojson` 或 `safe`；`{{ x|tojson if x else "''" }}` 的 else 分支會被 autoescape 成 `&#39;` JS SyntaxError（#266/#268 教訓）
 - [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
 - [feedback_worktree_leak_prevention_prompt.md](feedback_worktree_leak_prevention_prompt.md) — worktree-isolated agent prompt 防 leak 兩條剛性防線（pwd 第一步 + 完工 leak self-check），5 連勝零 leak
 - [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Anthropic ralph-loop plugin = single-prompt iter runner，Matt 自己 reject；他改用 bash loop / Sandcastle，詳見 reference_sandcastle.md
 - [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock AFK runner 2026-04-30 試水 2/2 通過 → 正式採用；runbook 在 docs/runbooks/sandcastle.md
 - [feedback_schedulewakeup_loop_only.md](feedback_schedulewakeup_loop_only.md) — ScheduleWakeup 是 /loop dynamic 專用、不是通用 timer；誤用會 re-fire 原 prompt 看起來像使用者重複下指令
-- [project_seo_web_ui_completion_pr260.md](project_seo_web_ui_completion_pr260.md) — PR #260 (afk/seo-web-ui-completion) ship 4 slices A′+B′+E 2026-04-29 2h50m，待 review/merge
 - [feedback_phase3_single_worktree_proven.md](feedback_phase3_single_worktree_proven.md) — Phase 3 單 worktree 序列 AFK 對 nakama 規模夠用（PR #260 實證 28 tests 0 regression）；不需 sandcastle 多 worktree 並行
 - [feedback_setup_matt_pocock_skills_first.md](feedback_setup_matt_pocock_skills_first.md) — Matt skills 跑前必先 setup-matt-pocock-skills 落 docs/agents/* + CLAUDE.md `## Agent skills`；沒跑 skill 都自探勘+猜+用詞飄
 - [feedback_jinja_macro_caller_for_dialects.md](feedback_jinja_macro_caller_for_dialects.md) — 同 partial 多 dialect refactor 用 macro + caller block，比 include 強；chassis-nav 14 templates × 3 dialect 範本
