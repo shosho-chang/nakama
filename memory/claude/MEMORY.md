@@ -85,6 +85,7 @@
 - [feedback_pytest_monkeypatch_where_used.md](feedback_pytest_monkeypatch_where_used.md) — monkeypatch 要 patch code 實際讀名字的 namespace，不是原始定義處；module-level cache 同類陷阱
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
 - [feedback_run_dont_ask.md](feedback_run_dont_ask.md) — 修修 CEO+PM：能跑就直接跑不問；review 用表格/連結，不是 raw stdout
+- [feedback_minimize_manual_friction.md](feedback_minimize_manual_friction.md) — **最高指導原則**：減少修修手動操作，每個手動步驟 = 摩擦力；設計 default 自動化、scope 砍除前看下游 ripple、approval gate 並行不階段
 - [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
 - [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format
 - [feedback_search_skills_first.md](feedback_search_skills_first.md) — 開發前必須先搜尋現有 skills/MCP tools，不重複造輪子

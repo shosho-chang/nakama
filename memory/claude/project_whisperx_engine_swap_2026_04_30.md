@@ -1,6 +1,6 @@
 ---
-name: WhisperX 引擎 swap 完成 2026-04-30
-description: FunASR Paraformer-zh 退場、WhisperX (Whisper Large V3) 接手；裸 ASR 在 76min 真實訪談已贏 FunASR 全部維度 + 平手 MemoAI（Whisper V2）；PR #271 merged 884eb59；diarization 不在 scope（修修確認）
+name: WhisperX 引擎 swap 完成 2026-04-30（diarization 2026-05-01 反轉）
+description: FunASR Paraformer-zh 退場、WhisperX (Whisper Large V3) 接手；裸 ASR 在 76min 真實訪談已贏 FunASR 全部維度 + 平手 MemoAI（Whisper V2）；PR #271 merged 884eb59；**diarization PR #273 砍除後，2026-05-01 Line 1 grill 重新需要，待補回**
 type: project
 created: 2026-04-30
 confidence: high
@@ -9,6 +9,8 @@ confidence: high
 [ADR-013](../../docs/decisions/ADR-013-transcribe-engine-reconsideration.md) 落地。**PR #271 merged 884eb59 (2026-04-30)**。一日內完成 ADR + 實作 + review + 驗收。
 
 **2026-04-30 修修確認**：speaker diarization **不在 scope**。pyannote / align / `assign_word_speakers` / HF token / `--no-diarization` flag / `[SPEAKER_00]` SRT label 全砍。PR #273 收尾（ADR amendment + 程式碼移除 + runbook 砍）。
+
+**2026-05-01 反轉**：Line 1 podcast repurpose grill 時修修確認三 channel（blog 人物專訪 / FB 短文 / IG carousel）都需要 speaker label 來分訪問者 / 受訪者；blog 沒分 attribution 整篇 voice 失真。決定**重補 WhisperX 內建 diarization** — 修修選擇全自動化（選項 d）勝過人工手標 SRT（選項 a），呼應 [feedback_minimize_manual_friction.md](feedback_minimize_manual_friction.md) 最高指導原則。PR #273 砍掉的程式碼可從 git history 拉回（含 pyannote / align / assign_word_speakers / `--no-diarization` flag / `[SPEAKER_00]` SRT label / `test_transcribe_with_diarization` test）。ADR-013 amendment 第二輪：diarization 重新 in scope。
 
 **PR #274 SRT QA fix (b8da367)**：修修跑第二次測試前，掃完整 SRT (2055 cues) 找到兩類 bug：
 - **38 處中文詞被切到 cue 邊界**（force_break 不防中文 bigram）→ 改用 jieba 詞邊界。詳 [feedback_chinese_srt_word_boundary_jieba.md](feedback_chinese_srt_word_boundary_jieba.md)
