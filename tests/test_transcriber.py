@@ -476,6 +476,52 @@ def test_whisperx_to_srt_applies_boundary_redistribute():
     assert "然後結束" in srt
 
 
+def test_whisperx_to_srt_with_speakers_prefix():
+    """`with_speakers=True` 時每 cue 文字前加 [SPEAKER_XX] prefix。"""
+    segments = [
+        {"start": 0.0, "end": 2.0, "text": "今天天氣真好", "speaker": "SPEAKER_00"},
+        {"start": 2.0, "end": 4.0, "text": "我們去散步吧", "speaker": "SPEAKER_01"},
+    ]
+    srt = _whisperx_to_srt(segments, with_speakers=True)
+    assert "[SPEAKER_00] 今天天氣真好" in srt
+    assert "[SPEAKER_01] 我們去散步吧" in srt
+
+
+def test_whisperx_to_srt_with_speakers_missing_speaker_uses_placeholder():
+    """`with_speakers=True` 但 segment 沒 speaker 欄（diar 沒指派）→ [SPEAKER_??]。"""
+    segments = [{"start": 0.0, "end": 1.0, "text": "未指派 speaker"}]
+    srt = _whisperx_to_srt(segments, with_speakers=True)
+    assert "[SPEAKER_??] 未指派 speaker" in srt
+
+
+def test_whisperx_to_srt_with_speakers_skips_redistribute():
+    """`with_speakers=True` 跳過 `_redistribute_boundary_cuts`（避免 cross-speaker
+    char shift）。觀察 case：speaker 0 結尾「然」+ speaker 1 開頭「後」應**保持原狀**，
+    不該把「然」shift 到 speaker 1 的 cue（會把字錯派 speaker）。
+    """
+    segments = [
+        {"start": 0.0, "end": 2.0, "text": "我們在越南的會安然", "speaker": "SPEAKER_00"},
+        {
+            "start": 2.0,
+            "end": 4.0,
+            "text": "後結束以後我們就走了",
+            "speaker": "SPEAKER_01",
+        },
+    ]
+    srt = _whisperx_to_srt(segments, with_speakers=True)
+    # 「然」應留在 speaker 0 的 cue（未跨 speaker 邊界 shift）
+    assert "[SPEAKER_00] 我們在越南的會安然" in srt
+    assert "[SPEAKER_01] 後結束以後" in srt
+
+
+def test_whisperx_to_srt_with_speakers_default_off():
+    """default with_speakers=False 不該加 prefix（既有 caller 不變）。"""
+    segments = [{"start": 0.0, "end": 1.0, "text": "純字幕", "speaker": "SPEAKER_00"}]
+    srt = _whisperx_to_srt(segments)
+    assert "[SPEAKER_00]" not in srt
+    assert "純字幕" in srt
+
+
 # ── _build_initial_prompt ──
 
 
@@ -549,6 +595,46 @@ def test_get_asr_model_passes_anti_hallucination_options():
     assert asr_options["compression_ratio_threshold"] == 2.4
     assert asr_options["no_speech_threshold"] == 0.6
     assert asr_options["initial_prompt"] == "測試詞"
+
+
+def test_get_align_model_caches_per_language():
+    """`_get_align_model` lazy singleton：同 language 不重 load，換 language 則重 load。"""
+    pytest.importorskip("whisperx")
+    import shared.transcriber as t
+
+    t._align_model = None
+    t._align_metadata = None
+    t._align_language = None
+
+    with patch("whisperx.load_align_model") as mock_load:
+        mock_load.return_value = (MagicMock(name="model"), {"meta": "data"})
+        m1, meta1 = t._get_align_model("zh")
+        m2, meta2 = t._get_align_model("zh")  # cache hit
+        assert mock_load.call_count == 1
+        assert m1 is m2
+        assert meta1 == meta2 == {"meta": "data"}
+
+        # 換 language 重 load
+        mock_load.return_value = (MagicMock(name="model_en"), {"meta": "en"})
+        m3, _ = t._get_align_model("en")
+        assert mock_load.call_count == 2
+        assert m3 is not m1
+
+
+def test_get_diarize_pipeline_passes_hf_token():
+    """`_get_diarize_pipeline` 把 hf_token 傳進 DiarizationPipeline；singleton 不重建。"""
+    pytest.importorskip("whisperx")
+    import shared.transcriber as t
+
+    t._diarize_pipeline = None
+
+    with patch("whisperx.diarize.DiarizationPipeline") as mock_pipeline_cls:
+        mock_pipeline_cls.return_value = MagicMock(name="pipeline")
+        p1 = t._get_diarize_pipeline("hf_xxx_token")
+        p2 = t._get_diarize_pipeline("hf_xxx_token")  # singleton hit
+        assert mock_pipeline_cls.call_count == 1
+        assert p1 is p2
+        assert mock_pipeline_cls.call_args.kwargs["use_auth_token"] == "hf_xxx_token"
 
 
 # ── transcribe() 主函式（mock WhisperX）──
@@ -684,6 +770,147 @@ def test_transcribe_with_llm_correction_writes_qc(tmp_path):
     qc_content = qc_path.read_text(encoding="utf-8")
     assert "MEDIUM" in qc_content
     assert "測試問題" in qc_content
+
+
+def test_transcribe_default_no_diar_srt(tmp_path):
+    """default use_diarization=False → 不出 .diar.srt（純 SRT 才出）。"""
+    pytest.importorskip("whisperx")
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    mock_model = _mock_whisperx_model([{"start": 0, "end": 1, "text": "测试"}])
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake"),
+    ):
+        from shared.transcriber import transcribe
+
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,
+        )
+
+    assert result.exists()
+    assert not (tmp_path / "test.diar.srt").exists()
+
+
+def test_transcribe_diarize_dual_output(tmp_path, monkeypatch):
+    """use_diarization=True + HF token + diar 成功 → 純 SRT + .diar.srt 兩份。"""
+    pytest.importorskip("whisperx")
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "hf_test_token")
+
+    mock_model = _mock_whisperx_model([{"start": 0.0, "end": 2.0, "text": "受訪者答覆"}])
+
+    aligned = {"segments": [{"start": 0.0, "end": 2.0, "text": "受訪者答覆"}]}
+    diar_assigned = {
+        "segments": [{"start": 0.0, "end": 2.0, "text": "受訪者答覆", "speaker": "SPEAKER_01"}]
+    }
+    mock_pipeline = MagicMock()
+    mock_pipeline.return_value = MagicMock(name="diarize_segs")
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake"),
+        patch(
+            "shared.transcriber._get_align_model",
+            return_value=(MagicMock(name="align_model"), {"meta": "data"}),
+        ),
+        patch("whisperx.align", return_value=aligned),
+        patch("shared.transcriber._get_diarize_pipeline", return_value=mock_pipeline),
+        patch("whisperx.assign_word_speakers", return_value=diar_assigned),
+    ):
+        from shared.transcriber import transcribe
+
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,
+            use_diarization=True,
+        )
+
+    # 純 SRT 仍出
+    assert result.exists()
+    assert result.suffix == ".srt"
+    assert ".diar" not in result.stem  # transcribe() return 純 SRT 路徑
+
+    # diar SRT 多出一份，含 speaker prefix
+    diar_path = tmp_path / "test.diar.srt"
+    assert diar_path.exists()
+    diar_content = diar_path.read_text(encoding="utf-8")
+    assert "[SPEAKER_01]" in diar_content
+    assert "受訪者答覆" in diar_content
+
+
+def test_transcribe_diarize_no_hf_token_skips_diar(tmp_path, monkeypatch):
+    """use_diarization=True 但 HF_TOKEN 未設定 → 純 SRT 出 + 沒 .diar.srt（warn）。"""
+    pytest.importorskip("whisperx")
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    monkeypatch.delenv("HUGGINGFACE_TOKEN", raising=False)
+
+    mock_model = _mock_whisperx_model([{"start": 0, "end": 1, "text": "純字幕"}])
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake"),
+        patch(
+            "shared.transcriber._get_align_model",
+            return_value=(MagicMock(), {"meta": "data"}),
+        ),
+        patch("whisperx.align", return_value={"segments": []}),
+    ):
+        from shared.transcriber import transcribe
+
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,
+            use_diarization=True,
+        )
+
+    assert result.exists()  # 純 SRT 仍出
+    assert not (tmp_path / "test.diar.srt").exists()  # 沒 .diar.srt
+
+
+def test_transcribe_diarize_pipeline_failure_keeps_pure_srt(tmp_path, monkeypatch):
+    """diarize pipeline raise → 跳過 .diar.srt，純 SRT 不受影響。"""
+    pytest.importorskip("whisperx")
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"fake audio data")
+
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "hf_test_token")
+
+    mock_model = _mock_whisperx_model([{"start": 0, "end": 1, "text": "純字幕"}])
+
+    failing_pipeline = MagicMock(side_effect=RuntimeError("EULA not accepted"))
+
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake"),
+        patch(
+            "shared.transcriber._get_align_model",
+            return_value=(MagicMock(), {"meta": "data"}),
+        ),
+        patch("whisperx.align", return_value={"segments": []}),
+        patch("shared.transcriber._get_diarize_pipeline", return_value=failing_pipeline),
+    ):
+        from shared.transcriber import transcribe
+
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=False,
+            use_diarization=True,
+        )
+
+    assert result.exists()  # 純 SRT 仍出
+    assert not (tmp_path / "test.diar.srt").exists()
 
 
 def test_transcribe_file_not_found():

@@ -1,16 +1,40 @@
 # ADR-013: Transcribe 引擎重新選型 — FunASR 退場 / WhisperX 接手
 
 **Date:** 2026-04-30
-**Status:** Accepted（含 2026-04-30 Amendment：speaker diarization 移出 scope）
+**Status:** Accepted（含 2026-04-30 / 2026-05-01 兩輪 Amendment）
 **Supersedes:** Transcribe pipeline 中 FunASR 引擎選擇部分（ADR-001 line ~ 與 PR #9 commit message 對應的選型理由）
 
 ---
 
-## 2026-04-30 Amendment — speaker diarization 移出 scope
+## 2026-05-01 Amendment — diarization 反轉重新 in scope（dual-output）
+
+修修 Line 1 podcast repurpose grill 確認**三 channel（blog 人物專訪 / FB 短文 / IG carousel）都需要 speaker label** 才能分 attribution；blog 沒分整篇 voice 失真。對應 [feedback_minimize_manual_friction.md](../../memory/claude/feedback_minimize_manual_friction.md)：選 WhisperX 內建 diarization（全自動）勝過人工手標 SRT。
+
+**Dual-output 設計**：
+
+- 純 SRT（`{stem}.srt`）— 既有行為，永遠輸出，給 podcast 字幕用
+- diar SRT（`{stem}.diar.srt`）— **新增**，含 `[SPEAKER_XX]` prefix，給下游 repurpose（剪輯、人物採訪改寫）
+- 觸發：`transcribe(use_diarization=True)` 或 CLI `--diarize` flag（**default OFF**）
+- ASR 結果重用一次，align + diarize 多跑一次（~5-10 min wall-clock）；純 SRT 不受影響
+- Graceful fallback：HF token 缺 / pyannote license 沒 accept / pipeline error → log warn + 跳過 .diar.srt
+
+**重新 in scope**：
+
+- pyannote diarization + word-level alignment + `whisperx.assign_word_speakers` 鏈路
+- `pyannote.audio>=4.0` 依賴
+- `HUGGINGFACE_TOKEN` env + pyannote/speaker-diarization-3.1 EULA accept
+- SRT 內 `[SPEAKER_XX]` prefix（per-cue）
+- CLI `--diarize` flag（vs 2026-04-30 amendment 的 `--no-diarization`：default 反轉了）
+
+**演算法相容**：iter3 演算法（PR #276 ship 的 `_dedupe_adjacent_repeats` / `_force_break` soft-hard / `_redistribute_boundary_cuts`）對純 SRT 全套；diar SRT **跳過 redistribute** 避免 cross-speaker char shift（下游 repurpose 容忍邊界詞 cut，speaker 純度優先）。
+
+---
+
+## 2026-04-30 Amendment — speaker diarization 移出 scope（已被 2026-05-01 反轉）
 
 修修當天確認**不需要 speaker diarization**（Line 1 訪談 cleanup → narrative 用人耳/編輯處理，不靠演算法分軌）。
 
-下述項目自 D1 / Consequences scope 撤除：
+下述項目自 D1 / Consequences scope 撤除（**2026-05-01 Line 1 grill 後反轉重新 in scope，見上**）：
 
 - pyannote diarization、word-level alignment、`whisperx.assign_word_speakers` 全鏈路
 - `pyannote.audio` 依賴
@@ -18,7 +42,7 @@
 - SRT 內 `[SPEAKER_00]` label
 - CLI `--no-diarization` flag
 
-引擎本體（WhisperX = Whisper Large V3 + faster-whisper backend）落地不變；本 ADR 後續段落原文保留作歷史脈絡，**實際 ship 內容以本 amendment 為準**。
+引擎本體（WhisperX = Whisper Large V3 + faster-whisper backend）落地不變；本 ADR 後續段落原文保留作歷史脈絡。
 
 ---
 

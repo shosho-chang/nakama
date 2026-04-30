@@ -68,6 +68,14 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="完全跳過 Opus 校正（純 ASR 輸出）",
     )
+    parser.add_argument(
+        "--diarize",
+        action="store_true",
+        help=(
+            "額外輸出 {stem}.diar.srt（含 [SPEAKER_XX] prefix，給 repurpose 用）；"
+            "純 SRT 仍照常輸出。需 HUGGINGFACE_TOKEN env + pyannote EULA accept。"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -85,6 +93,8 @@ def main() -> None:
     if not args.no_auphonic:
         pipeline_parts.append("Auphonic normalization")
     pipeline_parts.append("WhisperX (large-v3)")
+    if args.diarize:
+        pipeline_parts.append("pyannote diarize → .diar.srt")
     if not args.no_llm_correction:
         pipeline_parts.append("Opus 校正")
         if not args.no_arbitration:
@@ -100,12 +110,16 @@ def main() -> None:
         normalize_audio=not args.no_auphonic,
         use_llm_correction=not args.no_llm_correction,
         use_multimodal_arbitration=not args.no_arbitration,
+        use_diarization=args.diarize,
     )
     elapsed = time.time() - started
 
     print("-" * 60)
     print(f"完成！耗時 {elapsed / 60:.1f} 分鐘")
     print(f"SRT: {srt_path}")
+    diar_path = srt_path.with_suffix(".diar.srt")
+    if diar_path.exists():
+        print(f"Diar SRT: {diar_path}")
     qc_path = srt_path.with_suffix(".qc.md")
     if qc_path.exists():
         print(f"QC:  {qc_path}")

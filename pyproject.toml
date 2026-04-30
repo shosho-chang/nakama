@@ -63,12 +63,15 @@ dependencies = [
 
 [project.optional-dependencies]
 transcription = [
-    # WhisperX: Whisper Large V3 ASR via faster-whisper backend
-    # 詳見 ADR-013-transcribe-engine-reconsideration.md
+    # WhisperX: Whisper Large V3 ASR + word-level alignment + (optional) speaker
+    # diarization via pyannote.audio
+    # 詳見 ADR-013-transcribe-engine-reconsideration.md（含 2026-05-01 diarization 反轉）
     # 安裝方式（GPU + CUDA 12.8）：
-    #   pip install whisperx
+    #   pip install whisperx pyannote.audio
     #   pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu128
+    # diarization 需 HUGGINGFACE_TOKEN env + pyannote/speaker-diarization-3.1 EULA accept
     "whisperx>=3.8",
+    "pyannote.audio>=4.0",
 ]
 dev = [
     "pytest>=8.0",
