@@ -2,7 +2,7 @@
 
 獨立模組，可被任何 agent 調用。
 支援 Auphonic 雲端前處理（normalization + 降噪）、
-WhisperX 本地辨識（faster-whisper backend + word-level alignment + pyannote diarization），
+WhisperX 本地辨識（faster-whisper backend），
 以及可選的 LLM 校正（Pinyin 輔助 + JSON diff + QC 報告 + Gemini 多模態仲裁）。
 
 引擎選型 rationale：docs/decisions/ADR-013-transcribe-engine-reconsideration.md
@@ -11,7 +11,6 @@ WhisperX 本地辨識（faster-whisper backend + word-level alignment + pyannote
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 
@@ -41,13 +40,9 @@ _SRT_TS_FMT = "{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 # OpenCC lazy singleton（避免重複載入字典）
 _cc_s2t = None
 
-# WhisperX model lazy singletons（含 ASR / align / diarize 三層）
+# WhisperX ASR model lazy singleton
 _asr_model = None
 _asr_model_id = None
-_align_model = None
-_align_metadata = None
-_align_language: str | None = None
-_diarize_pipeline = None
 
 
 def _get_cc():
@@ -660,43 +655,6 @@ def _get_asr_model(
     return _asr_model
 
 
-def _get_align_model(language: str, device: str = "cuda"):
-    """取得 WhisperX align model（word-level timestamps，lazy singleton）。
-
-    Chinese (zh) 用 wav2vec2 中文對齊模型；align 模型不存在時 raise，
-    呼叫端應 catch + skip alignment 走 segment-level timestamp。
-    """
-    global _align_model, _align_metadata, _align_language
-    if _align_model is not None and _align_language == language:
-        return _align_model, _align_metadata
-
-    import whisperx
-
-    logger.info(f"載入 WhisperX align 模型: {language}")
-    _align_model, _align_metadata = whisperx.load_align_model(
-        language_code=language,
-        device=device,
-    )
-    _align_language = language
-    return _align_model, _align_metadata
-
-
-def _get_diarize_pipeline(hf_token: str, device: str = "cuda"):
-    """取得 pyannote diarization pipeline（lazy singleton）。"""
-    global _diarize_pipeline
-    if _diarize_pipeline is not None:
-        return _diarize_pipeline
-
-    from whisperx.diarize import DiarizationPipeline
-
-    logger.info("載入 pyannote diarization pipeline")
-    _diarize_pipeline = DiarizationPipeline(
-        use_auth_token=hf_token,
-        device=device,
-    )
-    return _diarize_pipeline
-
-
 def _build_initial_prompt(
     hotwords: list[str],
     project_context: dict | None,
@@ -722,16 +680,13 @@ def _build_initial_prompt(
     return ("。".join(parts) + "。") if parts else ""
 
 
-def _whisperx_to_srt(segments: list[dict], with_speakers: bool = False) -> str:
+def _whisperx_to_srt(segments: list[dict]) -> str:
     """將 WhisperX segments 轉為 SRT 格式，超長 segment 拆成 ≤20 字 sub-cue。
 
     WhisperX 預設 segment 是 sentence-level（可能 100+ 字），對 SRT 顯示太長。
     對每段：
     1. `_split_sentences` 拆成 ≤_MAX_SUBTITLE_CHARS 字的子句
     2. 子句時間戳走線性插值（按 char 位置在原 segment 內等比分配）
-
-    segments: 每個 dict 有 start, end, text, 可能還有 speaker (diarization 後)。
-    with_speakers=True 時在文字前加 [SPEAKER_XX] prefix。
     """
     lines: list[str] = []
     seq = 1
@@ -741,11 +696,6 @@ def _whisperx_to_srt(segments: list[dict], with_speakers: bool = False) -> str:
         text = (seg.get("text") or "").strip()
         if not text:
             continue
-
-        speaker_prefix = ""
-        if with_speakers:
-            speaker = seg.get("speaker", "SPEAKER_??")
-            speaker_prefix = f"[{speaker}] "
 
         sub_texts = _split_sentences(text)
         if not sub_texts:
@@ -766,10 +716,9 @@ def _whisperx_to_srt(segments: list[dict], with_speakers: bool = False) -> str:
                 sub_start = seg_start
                 sub_end = seg_end
             cum += sub_len
-            content = speaker_prefix + sub
             ts_start = _seconds_to_srt_ts(sub_start)
             ts_end = _seconds_to_srt_ts(sub_end)
-            lines.append(f"{seq}\n{ts_start} --> {ts_end}\n{content}\n")
+            lines.append(f"{seq}\n{ts_start} --> {ts_end}\n{sub}\n")
             seq += 1
 
     return "\n".join(lines)
@@ -789,7 +738,6 @@ def transcribe(
     host_name: str = "張修修",
     show_name: str = "不正常人類研究所",
     use_multimodal_arbitration: bool = True,
-    use_diarization: bool = True,
     run_id: int | None = None,
 ) -> Path:
     """語音轉繁體中文 SRT 字幕（WhisperX + 可選 LLM 校正 + 可選 Gemini 仲裁）。
@@ -808,7 +756,6 @@ def transcribe(
         show_name: 節目名稱（預設「不正常人類研究所」）
         use_multimodal_arbitration: 是否在 LLM 校正後用 Gemini 2.5 Pro audio 仲裁 uncertain 片段
             （僅在 use_llm_correction=True 時生效，多 $0.05–0.20/hr）
-        use_diarization: 是否做 speaker diarization（pyannote，需 HUGGINGFACE_TOKEN env）
         run_id: cost tracking 用的 run id（傳給 Gemini 客戶端）
 
     Returns:
@@ -834,7 +781,7 @@ def transcribe(
         except Exception as e:
             logger.warning(f"跳過 Auphonic normalization: {e}")
 
-    # ── WhisperX 三階段：ASR → Align → Diarize ──
+    # ── WhisperX ASR ──
     import whisperx
 
     hotwords = _extract_hotwords(context_files)
@@ -860,51 +807,8 @@ def transcribe(
     detected_lang = transcription.get("language", language)
     logger.info(f"ASR 辨識完成，{len(segs)} segments，語言: {detected_lang}")
 
-    # ── Word-level alignment（diarization 需要才跑；align 失敗時 fallback 到 segment-level）──
-    aligned_segs = segs
-    if use_diarization:
-        try:
-            align_model_obj, align_metadata = _get_align_model(detected_lang)
-            aligned = whisperx.align(
-                segs,
-                align_model_obj,
-                align_metadata,
-                audio,
-                device="cuda",
-                return_char_alignments=False,
-            )
-            aligned_segs = aligned["segments"]
-            logger.info("Alignment 完成")
-        except Exception as e:
-            logger.warning(
-                f"Alignment 失敗（可能 {detected_lang} 無對應 align 模型）：{type(e).__name__}: {e}"
-            )
-
-    # ── Diarization（可選；無 HF token 或失敗時 fallback 到無 speaker label）──
-    final_segs = aligned_segs
-    speakers_assigned = False
-    if use_diarization:
-        hf_token = os.getenv("HUGGINGFACE_TOKEN")
-        if not hf_token:
-            logger.warning("HUGGINGFACE_TOKEN 未設定，跳過 diarization")
-        else:
-            try:
-                diarize_pipeline = _get_diarize_pipeline(hf_token)
-                diarize_segments = diarize_pipeline(audio)
-                with_speakers = whisperx.assign_word_speakers(
-                    diarize_segments,
-                    {"segments": aligned_segs},
-                )
-                final_segs = with_speakers["segments"]
-                speakers_assigned = True
-                logger.info("Diarization 完成")
-            except Exception as e:
-                logger.warning(
-                    f"Diarization 失敗，仍輸出 SRT 不含 speaker label: {type(e).__name__}: {e}"
-                )
-
     # ── 轉為 SRT ──
-    srt_content = _whisperx_to_srt(final_segs, with_speakers=speakers_assigned)
+    srt_content = _whisperx_to_srt(segs)
 
     # ── 後處理：逐行簡轉繁 + 去標點（Pass 1：ASR 輸出）──
     srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())

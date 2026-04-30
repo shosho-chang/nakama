@@ -246,25 +246,6 @@ def test_whisperx_to_srt_basic():
     assert "2\n00:00:01,780 --> 00:00:03,200\n我們去散步吧" in srt
 
 
-def test_whisperx_to_srt_with_speakers():
-    """diarization 後 segment 帶 speaker，SRT 加 [SPEAKER_XX] prefix。"""
-    segments = [
-        {"start": 0.0, "end": 1.0, "text": "你好嗎", "speaker": "SPEAKER_00"},
-        {"start": 1.0, "end": 2.0, "text": "我很好", "speaker": "SPEAKER_01"},
-    ]
-    srt = _whisperx_to_srt(segments, with_speakers=True)
-
-    assert "[SPEAKER_00] 你好嗎" in srt
-    assert "[SPEAKER_01] 我很好" in srt
-
-
-def test_whisperx_to_srt_speaker_missing_fallback():
-    """diarization 漏 assign 某 segment 時用 SPEAKER_?? 佔位。"""
-    segments = [{"start": 0.0, "end": 1.0, "text": "未知說話人"}]
-    srt = _whisperx_to_srt(segments, with_speakers=True)
-    assert "[SPEAKER_??] 未知說話人" in srt
-
-
 def test_whisperx_to_srt_empty():
     assert _whisperx_to_srt([]) == ""
     assert _whisperx_to_srt([{"start": 0, "end": 1, "text": ""}]) == ""
@@ -340,7 +321,6 @@ def test_transcribe_basic(tmp_path):
             str(audio),
             output_dir=str(tmp_path),
             normalize_audio=False,
-            use_diarization=False,
         )
 
     assert result.suffix == ".srt"
@@ -376,7 +356,6 @@ def test_transcribe_with_normalize(tmp_path):
             str(audio),
             output_dir=str(tmp_path),
             normalize_audio=True,
-            use_diarization=False,
         )
 
     mock_normalize.assert_called_once()
@@ -401,7 +380,6 @@ def test_transcribe_normalize_failure_continues(tmp_path):
             str(audio),
             output_dir=str(tmp_path),
             normalize_audio=True,
-            use_diarization=False,
         )
 
     # 即使 Auphonic 失敗，仍應產出 SRT
@@ -435,7 +413,6 @@ def test_transcribe_with_llm_correction_writes_qc(tmp_path):
             output_dir=str(tmp_path),
             normalize_audio=False,
             use_llm_correction=True,
-            use_diarization=False,
         )
 
     assert result.exists()
@@ -452,48 +429,6 @@ def test_transcribe_file_not_found():
 
     with pytest.raises(FileNotFoundError, match="音檔不存在"):
         transcribe("/nonexistent/audio.mp3")
-
-
-def test_transcribe_with_diarization(tmp_path, monkeypatch):
-    """use_diarization=True 走完 align + diarize + assign_word_speakers 全鏈。"""
-    pytest.importorskip("whisperx")
-    audio = tmp_path / "test.mp3"
-    audio.write_bytes(b"fake audio data")
-    monkeypatch.setenv("HUGGINGFACE_TOKEN", "fake-token")
-
-    mock_model = _mock_whisperx_model([{"start": 0.0, "end": 2.0, "text": "测试一段。"}])
-    aligned_payload = {"segments": [{"start": 0.0, "end": 2.0, "text": "测试一段。", "words": []}]}
-    speakers_payload = {
-        "segments": [{"start": 0.0, "end": 2.0, "text": "测试一段。", "speaker": "SPEAKER_00"}]
-    }
-    mock_diarize_pipeline = MagicMock(return_value=MagicMock())
-
-    with (
-        patch("shared.transcriber._get_asr_model", return_value=mock_model),
-        patch(
-            "shared.transcriber._get_align_model",
-            return_value=(MagicMock(), {"language": "zh"}),
-        ),
-        patch("shared.transcriber._get_diarize_pipeline", return_value=mock_diarize_pipeline),
-        patch("whisperx.load_audio", return_value=b"fake audio array"),
-        patch("whisperx.align", return_value=aligned_payload),
-        patch("whisperx.assign_word_speakers", return_value=speakers_payload),
-    ):
-        from shared.transcriber import transcribe
-
-        result = transcribe(
-            str(audio),
-            output_dir=str(tmp_path),
-            normalize_audio=False,
-            use_diarization=True,
-        )
-
-    assert result.exists()
-    content = result.read_text(encoding="utf-8")
-    # diarize 後 SRT 應含 speaker label
-    assert "[SPEAKER_00]" in content
-    # diar pipeline 應被叫
-    mock_diarize_pipeline.assert_called_once()
 
 
 def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
@@ -520,7 +455,6 @@ def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
             normalize_audio=False,
             use_llm_correction=True,
             use_multimodal_arbitration=False,
-            use_diarization=False,
         )
 
     content = result.read_text(encoding="utf-8")

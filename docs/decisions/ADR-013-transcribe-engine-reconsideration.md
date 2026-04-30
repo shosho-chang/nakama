@@ -1,8 +1,24 @@
 # ADR-013: Transcribe 引擎重新選型 — FunASR 退場 / WhisperX 接手
 
 **Date:** 2026-04-30
-**Status:** Accepted
+**Status:** Accepted（含 2026-04-30 Amendment：speaker diarization 移出 scope）
 **Supersedes:** Transcribe pipeline 中 FunASR 引擎選擇部分（ADR-001 line ~ 與 PR #9 commit message 對應的選型理由）
+
+---
+
+## 2026-04-30 Amendment — speaker diarization 移出 scope
+
+修修當天確認**不需要 speaker diarization**（Line 1 訪談 cleanup → narrative 用人耳/編輯處理，不靠演算法分軌）。
+
+下述項目自 D1 / Consequences scope 撤除：
+
+- pyannote diarization、word-level alignment、`whisperx.assign_word_speakers` 全鏈路
+- `pyannote.audio` 依賴
+- `HUGGINGFACE_TOKEN` env + 對應 runbook
+- SRT 內 `[SPEAKER_00]` label
+- CLI `--no-diarization` flag
+
+引擎本體（WhisperX = Whisper Large V3 + faster-whisper backend）落地不變；本 ADR 後續段落原文保留作歷史脈絡，**實際 ship 內容以本 amendment 為準**。
 
 ---
 
