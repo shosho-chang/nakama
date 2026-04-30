@@ -38,7 +38,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("audio_path", type=Path, help="音檔路徑")
     p.add_argument("--output-dir", type=Path, default=None, help="輸出目錄")
     p.add_argument(
-        "--language", type=str, default=None,
+        "--language",
+        type=str,
+        default=None,
         help="語言 hint（None = auto LID，中英 code-switch 也可 None）",
     )
     return p.parse_args()

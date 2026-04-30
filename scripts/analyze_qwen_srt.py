@@ -1,4 +1,5 @@
 """Quick QC for Qwen3-ASR SRT — extract plain text + check key terms vs WhisperX baseline."""
+
 import sys
 from pathlib import Path
 
@@ -40,14 +41,29 @@ def main() -> None:
     print()
 
     keywords = [
-        "數位", "数位", "诸位", "諸位",
-        "心酸", "辛酸",
-        "Paul", "保羅", "保罗",
-        "Traveling", "Travel", "Village", "village",
-        "Hell", "hell",
-        "花蓮", "花莲", "花连",
-        "本尊", "本本尊",
-        "可以喔", "可以齁", "Hello",
+        "數位",
+        "数位",
+        "诸位",
+        "諸位",
+        "心酸",
+        "辛酸",
+        "Paul",
+        "保羅",
+        "保罗",
+        "Traveling",
+        "Travel",
+        "Village",
+        "village",
+        "Hell",
+        "hell",
+        "花蓮",
+        "花莲",
+        "花连",
+        "本尊",
+        "本本尊",
+        "可以喔",
+        "可以齁",
+        "Hello",
     ]
     print(f"{'keyword':<15}{'Qwen':>6}{'WX-v2':>8}  ctx")
     print("-" * 80)

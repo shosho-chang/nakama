@@ -75,7 +75,10 @@ def srt_cues(path: Path) -> list[tuple[float, float, str]]:
         lines = block.split("\n")
         if len(lines) < 3:
             continue
-        m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})", lines[1])
+        m = re.match(
+            r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})",
+            lines[1],
+        )
         if not m:
             continue
         h1, m1, s1, ms1, h2, m2, s2, ms2 = map(int, m.groups())
@@ -103,14 +106,70 @@ def cue_length_dist(cues: list[tuple[float, float, str]]) -> dict:
 
 # 常見 bigram / trigram 不該被切到 cue 邊界
 COMMON_BIGRAMS = {
-    "然後", "因為", "所以", "但是", "可是", "如果", "不過", "其實",
-    "就是", "只是", "也是", "還是", "或是", "以及", "而且", "並且",
-    "可能", "應該", "可以", "需要", "必須", "已經", "正在", "剛剛",
-    "馬上", "立刻", "突然", "終於", "永遠", "一直", "覺得", "想要",
-    "希望", "知道", "了解", "理解", "明白", "記得", "忘記", "看到",
-    "這個", "那個", "這樣", "那樣", "這些", "那些", "什麼", "怎麼",
-    "為什麼", "因此", "於是", "或者", "雖然", "困難", "簡單", "辛苦",
-    "大家", "我們", "他們", "你們", "自己", "別人", "朋友", "家人",
+    "然後",
+    "因為",
+    "所以",
+    "但是",
+    "可是",
+    "如果",
+    "不過",
+    "其實",
+    "就是",
+    "只是",
+    "也是",
+    "還是",
+    "或是",
+    "以及",
+    "而且",
+    "並且",
+    "可能",
+    "應該",
+    "可以",
+    "需要",
+    "必須",
+    "已經",
+    "正在",
+    "剛剛",
+    "馬上",
+    "立刻",
+    "突然",
+    "終於",
+    "永遠",
+    "一直",
+    "覺得",
+    "想要",
+    "希望",
+    "知道",
+    "了解",
+    "理解",
+    "明白",
+    "記得",
+    "忘記",
+    "看到",
+    "這個",
+    "那個",
+    "這樣",
+    "那樣",
+    "這些",
+    "那些",
+    "什麼",
+    "怎麼",
+    "為什麼",
+    "因此",
+    "於是",
+    "或者",
+    "雖然",
+    "困難",
+    "簡單",
+    "辛苦",
+    "大家",
+    "我們",
+    "他們",
+    "你們",
+    "自己",
+    "別人",
+    "朋友",
+    "家人",
 }
 COMMON_TRIGRAMS = {"那時候", "這時候", "這個人", "那個人", "為什麼", "怎麼樣"}
 
@@ -177,7 +236,10 @@ def git_diff_transcriber() -> str:
     try:
         result = subprocess.run(
             ["git", "diff", "shared/transcriber.py"],
-            capture_output=True, text=True, cwd=ROOT, encoding="utf-8",
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            encoding="utf-8",
         )
         return result.stdout.strip()
     except Exception as e:
@@ -193,10 +255,16 @@ def run_whisperx(out_dir: Path) -> tuple[Path, float]:
             PYTHON310,
             str(ROOT / "scripts" / "run_transcribe.py"),
             str(TEST_AUDIO),
-            "--output-dir", str(out_dir),
-            "--no-auphonic", "--no-llm-correction", "--no-arbitration",
+            "--output-dir",
+            str(out_dir),
+            "--no-auphonic",
+            "--no-llm-correction",
+            "--no-arbitration",
         ],
-        capture_output=True, text=True, encoding="utf-8", cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=ROOT,
     )
     elapsed = time.time() - started
     if proc.returncode != 0:
@@ -241,12 +309,21 @@ def render_report(iter_num: int, note: str, srt_path: Path, elapsed: float, diff
     lines.append("")
     lines.append("| 版本 | n | avg 字 | max | exact 20 | ≤10 | ≥18 |")
     lines.append("|---|---|---|---|---|---|---|")
-    for name, c in [(f"iter{iter_num}", cues), ("v2 (PR#274)", v2_cues), ("v1 (PR#271)", v1_cues), ("MemoAI", memo_cues)]:
+    versions = [
+        (f"iter{iter_num}", cues),
+        ("v2 (PR#274)", v2_cues),
+        ("v1 (PR#271)", v1_cues),
+        ("MemoAI", memo_cues),
+    ]
+    for name, c in versions:
         d = cue_length_dist(c)
         if d.get("n", 0) == 0:
             lines.append(f"| {name} | — | — | — | — | — | — |")
         else:
-            lines.append(f"| {name} | {d['n']} | {d['avg']:.1f} | {d['max']} | {d['exact_max']} | {d['le_10']} | {d['ge_18']} |")
+            lines.append(
+                f"| {name} | {d['n']} | {d['avg']:.1f} | {d['max']} | "
+                f"{d['exact_max']} | {d['le_10']} | {d['ge_18']} |"
+            )
     lines.append("")
 
     lines.append("## Hallucination 檢查")
@@ -335,7 +412,8 @@ def main() -> None:
     report_path.write_text(report, encoding="utf-8")
     print(f"[iter{args.iter_num}] 報告 → {report_path}")
     print()
-    print(report[: report.find("## Algorithm change diff")] if "## Algorithm change diff" in report else report)
+    diff_anchor = "## Algorithm change diff"
+    print(report[: report.find(diff_anchor)] if diff_anchor in report else report)
 
 
 if __name__ == "__main__":
