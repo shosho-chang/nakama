@@ -1,12 +1,14 @@
 ---
 name: WhisperX 引擎 swap 完成 2026-04-30
-description: FunASR Paraformer-zh 退場、WhisperX V3 + pyannote diarization 接手；裸 ASR 在 76min 真實訪談已贏 FunASR 全部維度 + 平手 MemoAI（Whisper V2）；PR #271 merged 884eb59
+description: FunASR Paraformer-zh 退場、WhisperX (Whisper Large V3) 接手；裸 ASR 在 76min 真實訪談已贏 FunASR 全部維度 + 平手 MemoAI（Whisper V2）；PR #271 merged 884eb59；diarization 不在 scope（修修確認）
 type: project
 created: 2026-04-30
 confidence: high
 ---
 
 [ADR-013](../../docs/decisions/ADR-013-transcribe-engine-reconsideration.md) 落地。**PR #271 merged 884eb59 (2026-04-30)**。一日內完成 ADR + 實作 + review + 驗收。
+
+**2026-04-30 修修確認**：speaker diarization **不在 scope**。pyannote / align / `assign_word_speakers` / HF token / `--no-diarization` flag / `[SPEAKER_00]` SRT label 全砍。後續 PR #273 收尾（ADR amendment + 程式碼移除 + runbook 砍）。
 
 ## 結論先行
 
@@ -55,7 +57,6 @@ Reviewer agent 抓兩個 confidence ≥ 80 blocker，已修：
 
 ## 修修待做
 
-- 跑 [setup-huggingface-pyannote.md](../../docs/runbooks/setup-huggingface-pyannote.md) 拿 HF token + accept 兩個 pyannote EULA → 開 diarization 試水
 - 完整 pipeline 跑一輪（Auphonic + WhisperX + LLM 校正 + Gemini 仲裁）驗天花板
 - 完全退場 `funasr` dep（pyproject.toml + requirements.txt 已標 deprecated，下一輪可整段刪）
 - benchmark 結果 [docs/research/2026-04-30-whisperx-vs-memoai-results.md](../../docs/research/2026-04-30-whisperx-vs-memoai-results.md)
