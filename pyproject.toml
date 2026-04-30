@@ -26,6 +26,7 @@ dependencies = [
     # Transcription (post-processing)
     "opencc-python-reimplemented>=0.1.7",
     "pypinyin>=0.51",
+    "jieba>=0.42",
 
     # PDF parsing
     "pymupdf4llm>=1.27",

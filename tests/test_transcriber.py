@@ -15,6 +15,7 @@ from shared.transcriber import (
     _extract_hotwords,
     _extract_project_context,
     _extract_srt_texts,
+    _force_break,
     _parse_llm_response,
     _process_srt_line,
     _remove_punctuation,
@@ -212,6 +213,44 @@ def test_correct_with_llm_with_context(tmp_path):
 # ── 句子拆分 ──
 
 
+def test_force_break_chinese_word_boundary():
+    """jieba 走詞邊界切，不切常見雙字詞（PR #271 觀察 38 處詞被切到 cue 邊界）。
+
+    句子刻意 28 字（>20 上限）構成。每一刀都不該切「然後 / 怎麼 / 我們 / 因為」。
+    """
+    text = "然後我的直覺是對的因為光是第一個禮拜我們就看到太多生活方式"
+    chunks = _force_break(text, 20)
+    assert len(chunks) >= 2
+    for chunk in chunks:
+        assert len(chunk) <= 20
+    # 重組後字元應一致（順序保留）
+    assert "".join(chunks).replace(" ", "") == text.replace(" ", "")
+    # 不該切常見雙字詞
+    for bigram in ["然後", "因為", "我們", "怎麼"]:
+        if bigram in text:
+            # 如果原文有，切完拼回來也要保留
+            cut_separated = any(
+                chunks[i].endswith(bigram[0]) and chunks[i + 1].startswith(bigram[1])
+                for i in range(len(chunks) - 1)
+            )
+            assert not cut_separated, f"「{bigram}」被切到 chunk 邊界"
+
+
+def test_force_break_short_text():
+    """≤max_chars 的文字應原樣回傳（不必拆）。"""
+    chunks = _force_break("簡短句子", 20)
+    assert chunks == ["簡短句子"]
+
+
+def test_force_break_long_english_token():
+    """超長英文 token（>max_chars）應獨立成 chunk 不被破壞。"""
+    text = "看 https://example.com/very-long-url-path-that-exceeds-limit 連結"
+    chunks = _force_break(text, 20)
+    # URL token 不該被切成兩半
+    full = "".join(chunks)
+    assert "https://example.com/very-long-url-path-that-exceeds-limit" in full
+
+
 def test_split_sentences_basic():
     sentences = _split_sentences("今天天氣真好。我們去散步吧。")
     assert sentences == ["今天天氣真好。", "我們去散步吧。"]
@@ -262,19 +301,40 @@ def test_whisperx_to_srt_strips_whitespace():
 
 
 def test_build_initial_prompt_full():
+    """所有來源詞都 inline 進 prompt，不分 label。"""
     prompt = _build_initial_prompt(
         hotwords=["Traveling Village", "Paul"],
         project_context={"guest_name": "張安吉", "topic": "數位遊牧"},
         host_name="張修修",
         show_name="不正常人類研究所",
     )
-    assert "節目：不正常人類研究所" in prompt
-    assert "主持人：張修修" in prompt
-    assert "來賓：張安吉" in prompt
-    assert "主題：數位遊牧" in prompt
-    assert "Traveling Village" in prompt
-    assert "Paul" in prompt
-    assert prompt.endswith("。")
+    for term in ["不正常人類研究所", "張修修", "張安吉", "數位遊牧", "Traveling Village", "Paul"]:
+        assert term in prompt
+
+
+def test_build_initial_prompt_no_label_hallucination_pattern():
+    """不含「主持人：X」「節目：Y」等 label 結構 — Whisper 會在低 SNR 段
+    echo 整段 label 文字（PR #271 觀察到 cue 70 等 10 處輸出「主持人 張修修」
+    吃掉~110s 真實內容）。"""
+    prompt = _build_initial_prompt(
+        hotwords=["NMN"],
+        project_context={"guest_name": "張安吉", "topic": "數位遊牧"},
+        host_name="張修修",
+        show_name="不正常人類研究所",
+    )
+    for label in ["節目：", "主持人：", "來賓：", "主題：", "專名："]:
+        assert label not in prompt, f"prompt 仍含 label「{label}」可能觸發 hallucination"
+
+
+def test_build_initial_prompt_dedupe():
+    """重複詞只保留一份（host == guest 等邊界情境）。"""
+    prompt = _build_initial_prompt(
+        hotwords=["張修修"],
+        project_context={"guest_name": "張修修"},
+        host_name="張修修",
+        show_name="show",
+    )
+    assert prompt.count("張修修") == 1
 
 
 def test_build_initial_prompt_empty():
@@ -286,6 +346,30 @@ def test_build_initial_prompt_partial():
     """只有 hotwords 也應產出。"""
     prompt = _build_initial_prompt(["Foo Bar"], None)
     assert "Foo Bar" in prompt
+
+
+def test_get_asr_model_passes_anti_hallucination_options():
+    """`_get_asr_model` 必須把三件 anti-hallucination guard 傳給 whisperx.load_model
+    （condition_on_previous_text=False / compression_ratio_threshold / no_speech_threshold）。
+    PR #271 觀察到 cue 70 等 10 處 prompt-leak hallucination，三件套缺一就退化。
+    """
+    pytest.importorskip("whisperx")
+    import shared.transcriber as t
+
+    # reset singleton 避免被 cache 命中
+    t._asr_model = None
+    t._asr_model_id = None
+
+    with patch("whisperx.load_model") as mock_load:
+        mock_load.return_value = MagicMock()
+        t._get_asr_model("large-v3", initial_prompt="測試詞")
+
+    assert mock_load.called
+    asr_options = mock_load.call_args.kwargs["asr_options"]
+    assert asr_options["condition_on_previous_text"] is False
+    assert asr_options["compression_ratio_threshold"] == 2.4
+    assert asr_options["no_speech_threshold"] == 0.6
+    assert asr_options["initial_prompt"] == "測試詞"
 
 
 # ── transcribe() 主函式（mock WhisperX）──
