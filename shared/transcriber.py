@@ -556,33 +556,32 @@ def _split_sentences(text: str) -> list[str]:
 
 
 def _force_break(text: str, max_chars: int) -> list[str]:
-    """強制斷行，但不切斷英文單字。
+    """強制斷行，避免切斷中文詞語與英文單字。
 
-    遇到英文字詞時，往前找最近的中文字元或空格斷行。
-    如果整段都是英文且超過上限，則在空格處斷。
+    走 jieba 中文分詞 + 英文 token，每個 chunk greedy 累加到 ≤max_chars 字停。
+    若單一 token 已超過 max_chars（罕見：超長英文 / URL），該 token 獨立成 chunk。
     """
+    import jieba
+
+    tokens = list(jieba.cut(text, cut_all=False))
     chunks: list[str] = []
-    while len(text) > max_chars:
-        cut = max_chars
-        # 如果切點落在英文字母中間，往前找安全斷點
-        if cut < len(text) and re.match(r"[a-zA-Z]", text[cut]):
-            # 往前找非英文字母的位置
-            safe = cut
-            while safe > 0 and re.match(r"[a-zA-Z]", text[safe - 1]):
-                safe -= 1
-            if safe > 0:
-                cut = safe
+    buf = ""
+    for tok in tokens:
+        if not tok.strip():
+            buf += tok
+            continue
+        if len(buf) + len(tok) <= max_chars:
+            buf += tok
+        else:
+            if buf.strip():
+                chunks.append(buf.strip())
+            if len(tok) > max_chars:
+                chunks.append(tok)
+                buf = ""
             else:
-                # 整段開頭都是英文，往後找單字結尾
-                cut = max_chars
-                while cut < len(text) and re.match(r"[a-zA-Z]", text[cut]):
-                    cut += 1
-        chunk = text[:cut].strip()
-        if chunk:
-            chunks.append(chunk)
-        text = text[cut:].strip()
-    if text.strip():
-        chunks.append(text.strip())
+                buf = tok
+    if buf.strip():
+        chunks.append(buf.strip())
     return chunks
 
 
@@ -629,6 +628,13 @@ def _get_asr_model(
     `initial_prompt` 走 WhisperX 的 `asr_options` — WhisperX 的 transcribe() 不接
     initial_prompt，必須在 load 時就 bake 進去。Singleton key 包含 prompt，
     prompt 變了會 reload model。
+
+    Anti-hallucination 預設：低 SNR / silence 段 Whisper 容易 echo prompt 內容
+    或重複前一 segment（觀察到 cue 70 等 10 處輸出「主持人 張修修」吃掉~110s）。
+    用 faster-whisper 三件套防：
+    - `condition_on_previous_text=False` 不讓上一 segment 文字 propagate
+    - `compression_ratio_threshold=2.4` 過度重複 segment 視為 hallucination 丟掉
+    - `no_speech_threshold=0.6` silence 段更積極跳過
     """
     global _asr_model, _asr_model_id
 
@@ -639,7 +645,11 @@ def _get_asr_model(
     import whisperx
 
     logger.info(f"載入 WhisperX 模型: {model_id}（initial_prompt {len(initial_prompt)} 字）")
-    asr_options: dict = {}
+    asr_options: dict = {
+        "condition_on_previous_text": False,
+        "compression_ratio_threshold": 2.4,
+        "no_speech_threshold": 0.6,
+    }
     if initial_prompt:
         asr_options["initial_prompt"] = initial_prompt
 
@@ -648,7 +658,7 @@ def _get_asr_model(
         device=device,
         compute_type="float16",
         language="zh",
-        asr_options=asr_options or None,
+        asr_options=asr_options,
     )
     _asr_model_id = cache_key
     logger.info("WhisperX 模型載入完成")
@@ -661,23 +671,29 @@ def _build_initial_prompt(
     host_name: str = "",
     show_name: str = "",
 ) -> str:
-    """組成 Whisper `initial_prompt`（自然中文描述，非空白分隔關鍵字）。
+    """組成 Whisper `initial_prompt`（純逗號分隔詞表，非 label 結構）。
 
-    Whisper 接 initial_prompt 為自然語句，作為 LM 偏置；不像 FunASR 用 hotwords API。
+    Whisper 接 initial_prompt 作為 LM 偏置；用「主持人：X」「節目：Y」這種 label
+    結構在低 SNR / silence 段會 hallucinate 整段 label 文字（觀察到 cue 70 等
+    10 處出現「主持人 張修修」吃掉~110s 真實內容）。改純詞表後 Whisper 仍可
+    bias vocabulary 但不會 echo 整段 label。
     """
-    parts: list[str] = []
+    words: list[str] = []
     if show_name:
-        parts.append(f"節目：{show_name}")
+        words.append(show_name)
     if host_name:
-        parts.append(f"主持人：{host_name}")
+        words.append(host_name)
     if project_context:
         if guest := project_context.get("guest_name"):
-            parts.append(f"來賓：{guest}")
+            words.append(guest)
         if topic := project_context.get("topic"):
-            parts.append(f"主題：{topic}")
+            words.append(topic)
     if hotwords:
-        parts.append(f"專名：{', '.join(hotwords[:30])}")
-    return ("。".join(parts) + "。") if parts else ""
+        words.extend(hotwords[:30])
+    # de-dupe 保留順序
+    seen: set[str] = set()
+    deduped = [w for w in words if not (w in seen or seen.add(w))]
+    return "、".join(deduped)
 
 
 def _whisperx_to_srt(segments: list[dict]) -> str:
