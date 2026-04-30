@@ -8,7 +8,12 @@ confidence: high
 
 [ADR-013](../../docs/decisions/ADR-013-transcribe-engine-reconsideration.md) 落地。**PR #271 merged 884eb59 (2026-04-30)**。一日內完成 ADR + 實作 + review + 驗收。
 
-**2026-04-30 修修確認**：speaker diarization **不在 scope**。pyannote / align / `assign_word_speakers` / HF token / `--no-diarization` flag / `[SPEAKER_00]` SRT label 全砍。後續 PR #273 收尾（ADR amendment + 程式碼移除 + runbook 砍）。
+**2026-04-30 修修確認**：speaker diarization **不在 scope**。pyannote / align / `assign_word_speakers` / HF token / `--no-diarization` flag / `[SPEAKER_00]` SRT label 全砍。PR #273 收尾（ADR amendment + 程式碼移除 + runbook 砍）。
+
+**PR #274 SRT QA fix (b8da367)**：修修跑第二次測試前，掃完整 SRT (2055 cues) 找到兩類 bug：
+- **38 處中文詞被切到 cue 邊界**（force_break 不防中文 bigram）→ 改用 jieba 詞邊界。詳 [feedback_chinese_srt_word_boundary_jieba.md](feedback_chinese_srt_word_boundary_jieba.md)
+- **10 處 prompt-leak hallucination「主持人 張修修」吃掉 ~110s**（initial_prompt label 結構 + 缺 anti-hallucination guards）→ prompt 改純頓號詞表 + 三件 asr_options。詳 [feedback_whisper_hallucination_guards.md](feedback_whisper_hallucination_guards.md)
+- diagnostic tool `scripts/analyze_srt_cuts.py` 留下作 SRT QA
 
 ## 結論先行
 

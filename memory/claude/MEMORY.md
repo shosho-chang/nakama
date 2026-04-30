@@ -36,14 +36,17 @@
 - [feedback_no_secrets_in_chat.md](feedback_no_secrets_in_chat.md) — API key 等敏感資訊走 .env，不在對話框輸入
 - [project_code_review_2026_04_12.md](project_code_review_2026_04_12.md) — 首次 code review：9 項修復已合併（Path Traversal、Event Bus 多消費者、Logger 等）
 - [project_skills_development.md](project_skills_development.md) — Skills 開發體系：prior-art-research skill、find-skills、開發前先調研工作流程
+- [reference_external_skills_for_nakama.md](reference_external_skills_for_nakama.md) — 外部 GitHub Claude skills 候選清單（marketing/工程/Cloudflare/Python/GitHub/Podcast/平台整合/UI），含適用判斷與排除清單，**新功能開發前先翻**
 - [feedback_skill_design_principle.md](feedback_skill_design_principle.md) — Skill 三層架構：互動式 workflow→skill、確定性函式→shared/*.py、agent 只做觸發/編排；skill 粒度扁平、通常 agent-specific
 - [project_seo_solution_scope.md](project_seo_solution_scope.md) — SEO 方案下一個重點：內容建議 + 部落格體檢 + Brook compose 整合寫排行潛力草稿
 - [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **SEO 軸線 pickup**：D.1 merged cc35218；D.1-followup（2 bug + 5 minor）待開 PR；D.2/E/F unblocked
 - [project_seo_phase15_acceptance_done_2026_04_27.md](project_seo_phase15_acceptance_done_2026_04_27.md) — **SEO Phase 1.5 真正落地 2026-04-27**：三件 acceptance 全綠 + F5-B CF rule + re-audit grade D→B+；PR #200 含 4 條 follow-up
 - [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 + PR #252/#253 部署 2026-04-29**：CF UA bypass + 3 UX bug 修；首篇 audit grade=C；L9 grade 設計 + Usopp DB lock 待拍板
 - [project_three_content_lines.md](project_three_content_lines.md) — **三條內容生產線 2026-04-30 凍結**：Line 1 Podcast→訪談+FB+IG（**最緊急**）/ Line 2 讀書心得 / Line 3 文獻→科普；起手 Line 1 grill
-- [project_whisperx_engine_swap_2026_04_30.md](project_whisperx_engine_swap_2026_04_30.md) — **transcribe 引擎換 WhisperX 2026-04-30 + PR #271 merged 884eb59**：FunASR 退場；裸 ASR 76min 訪談贏全部 + 平手 MemoAI；diarization 不在 scope（修修確認，PR #273 砍）；funasr dep 待整段砍
+- [project_whisperx_engine_swap_2026_04_30.md](project_whisperx_engine_swap_2026_04_30.md) — **transcribe 引擎換 WhisperX 2026-04-30 + PR #271/273/274 merged**：FunASR 退場 + 裸 ASR 76min 訪談贏全部；diarization 不在 scope（PR #273 砍）；PR #274 修 38 處中文詞被切 + 10 處 prompt-leak；funasr dep 待整段砍
 - [feedback_whisperx_pip_torch_downgrade.md](feedback_whisperx_pip_torch_downgrade.md) — pip install whisperx 會把 torch 從 cu128 降成 CPU；ML 套件 install 後必驗 cuda.is_available()，補回 cu128 wheel
+- [feedback_whisper_hallucination_guards.md](feedback_whisper_hallucination_guards.md) — Whisper 系列必設 `condition_on_previous_text=False` + `compression_ratio_threshold=2.4` + `no_speech_threshold=0.6`；initial_prompt 不用「主持人：X」label 結構（會被 echo 吃掉真實 audio）
+- [feedback_chinese_srt_word_boundary_jieba.md](feedback_chinese_srt_word_boundary_jieba.md) — 中文 SRT `_force_break` 走 jieba 詞邊界 greedy 累加，不純 char-level 硬切（PR #274 修 38 處詞被切）
 - [feedback_css_hidden_shadow.md](feedback_css_hidden_shadow.md) — CSS 對 selector 寫 `display:` 必同時補 `selector[hidden] { display: none }`，否則 `<div hidden>` 失效（PR #253 audit-failed 假警報根因）
 - [feedback_jinja_inline_js_autoescape.md](feedback_jinja_inline_js_autoescape.md) — `<script>` 內 Jinja 表達式最終 filter 必須是 `tojson` 或 `safe`；`{{ x|tojson if x else "''" }}` 的 else 分支會被 autoescape 成 `&#39;` JS SyntaxError（#266/#268 教訓）
 - [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
@@ -150,6 +153,7 @@
 - [reference_oa_fulltext_apis.md](reference_oa_fulltext_apis.md) — PMC + Unpaywall 合法 OA PDF 下載 API 模式
 - [project_brook_image_pipeline.md](project_brook_image_pipeline.md) — Brook 圖片生成管線（blog/IG/YT 縮圖）下一輪專題
 - [project_repurpose_flow.md](project_repurpose_flow.md) — 部落格 → IG 知識圖表等平台內容重製，下一階段實作
+- [project_podcast_theme_video_repurpose.md](project_podcast_theme_video_repurpose.md) — **Line 1 補位**：訪談 → LLM 抽亮點 → 自動剪 10-20 min 主題影片 + SEO Title + YT Description + Thumbnail（YouTube 通路）
 - [project_envato_api_reality.md](project_envato_api_reality.md) — Envato Elements 無 API，用 Unsplash/Pexels/Flux 替代方案
 - [reference_infra_xcloud_vultr.md](reference_infra_xcloud_vultr.md) — VPS 規格 2vCPU/4GB，xCloud on Vultr，Cloudflare R2 備份
 - [project_case_studies_archive.md](project_case_studies_archive.md) — vault `Case Studies/` 目錄收錄對話案例，首份 2026-04-22 WP 整合規劃
