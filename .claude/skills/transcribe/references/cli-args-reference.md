@@ -96,7 +96,7 @@ Suggest the user disable that stage (`--no-llm-correction` /
 
 ## Python Environment
 
-Run from the Nakama repo root (`F:/nakama/` on Windows). The script uses
+Run from the Nakama repo root (`E:/nakama/` on Windows). The script uses
 `sys.path.insert(0, ...)` to find the `shared/` package, so it works
 anywhere — but `.env` is loaded from CWD, so running from repo root is
 simplest.

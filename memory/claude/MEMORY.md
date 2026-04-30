@@ -62,6 +62,7 @@
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
 - [feedback_review_skill_default_for_focused_pr.md](feedback_review_skill_default_for_focused_pr.md) — focused PR（<100 LOC、單 domain、tests 綠）我自開的直接 /review，不問 ultrareview
 - [reference_git_recovery_after_truncation.md](reference_git_recovery_after_truncation.md) — Windows 多檔同秒截斷（.git/HEAD + index + working tree md）recovery：rewrite HEAD LF + mv index + git reset + git restore
+- [project_disk_layout_e_primary.md](project_disk_layout_e_primary.md) — repo 主要落點 = E:\nakama（企業級 SSD）；F: 兩三次 git 損毀已退場（2026-04-30）
 - [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁；2026-04-24 修長音檔 ~10% 線性漂移 bug（char_idx 當 ts 索引）+ regression test
 - [project_srt_align_tool.md](project_srt_align_tool.md) — SRT 對齊工具 shift/scale/auto/retime 四模式 + 踩過的坑
 - [feedback_short_clip_ground_truth.md](feedback_short_clip_ground_truth.md) — 長音檔 ASR 可疑時切 15s 短片段獨立跑同模型當 oracle
