@@ -6,7 +6,7 @@
 1. 固定位移（shift）：`t_new = t_old + offset_s`
 2. 線性變換（linear）：`t_new = a * t_old + b`（同時修常數偏移與速率漂移）
 
-Auto 模式：呼叫 FunASR 重新辨識音檔，把 SRT 文字比對到 ASR 片段，
+Auto 模式：呼叫 WhisperX 重新辨識音檔，把 SRT 文字比對到 ASR 片段，
 用最小平方法解線性變換參數。文字比對用 char-level SequenceMatcher。
 """
 
@@ -141,19 +141,17 @@ class AsrSegment:
 def run_asr_segments(
     audio_path: str | Path,
     *,
-    asr_model: str = "paraformer-zh",
+    asr_model: str = "large-v3",
     hotwords: list[str] | None = None,
 ) -> list[AsrSegment]:
-    """跑 FunASR 取得 per-sentence 時間戳與文字（已簡轉繁）。
+    """跑 WhisperX 取得 per-sentence 時間戳與文字（已簡轉繁）。
 
     直接復用 shared.transcriber 的 model singleton。
-    回傳的 text 經過 OpenCC s2t 轉為繁體中文，以免與手工字幕做 char-level 比對時被字形差拉低。
+    回傳的 text 經過 OpenCC 轉為繁體中文，以免與手工字幕做 char-level 比對時被字形差拉低。
     """
     from shared.transcriber import (
-        _funasr_char_to_ts_idx,
+        _build_initial_prompt,
         _get_asr_model,
-        _get_ts_values,
-        _split_sentences,
         _to_traditional,
     )
 
@@ -161,78 +159,27 @@ def run_asr_segments(
     if not audio_path.exists():
         raise FileNotFoundError(f"音檔不存在：{audio_path}")
 
-    model = _get_asr_model(asr_model)
-    hotword_str = " ".join(hotwords) if hotwords else ""
+    import whisperx
+
+    initial_prompt = _build_initial_prompt(hotwords or [], None)
+    model = _get_asr_model(asr_model, initial_prompt=initial_prompt)
 
     logger.info(f"ASR 辨識中（{audio_path.name}，模型 {asr_model}）")
-    results = model.generate(
-        input=str(audio_path),
-        batch_size_s=300,
-        hotword=hotword_str,
-    )
+    audio = whisperx.load_audio(str(audio_path))
+    result = model.transcribe(audio, batch_size=16)
 
     segments: list[AsrSegment] = []
-    for item in results:
-        sentence_info = item.get("sentence_info")
-        if sentence_info:
-            for info in sentence_info:
-                s_text = (info.get("text") or "").strip()
-                if not s_text:
-                    continue
-                segments.append(
-                    AsrSegment(
-                        start_s=info["start"] / 1000.0,
-                        end_s=info["end"] / 1000.0,
-                        text=_to_traditional(s_text),
-                    )
-                )
-            continue
-
-        text = (item.get("text") or "").strip()
+    for seg in result.get("segments", []):
+        text = (seg.get("text") or "").strip()
         if not text:
             continue
-        timestamps = item.get("timestamp") or []
-        if not timestamps:
-            continue
-
-        sentences = _split_sentences(text)
-        is_char_level = len(timestamps) > len(sentences) * 2
-        if is_char_level:
-            # FunASR timestamp 只覆蓋可發音字，不能直接用 char_idx 查
-            char_to_ts_idx = _funasr_char_to_ts_idx(text, len(timestamps))
-            search_from = 0
-            for sentence in sentences:
-                if not sentence:
-                    continue
-                pos = text.find(sentence, search_from)
-                if pos < 0:
-                    stripped = sentence.strip()
-                    pos = text.find(stripped, search_from) if stripped else -1
-                    if pos >= 0:
-                        sentence_len = len(stripped)
-                    else:
-                        pos = search_from
-                        sentence_len = len(sentence)
-                else:
-                    sentence_len = len(sentence)
-
-                start_char = pos
-                end_char = min(pos + sentence_len - 1, len(text) - 1)
-                search_from = pos + sentence_len
-
-                ts_start = char_to_ts_idx[start_char]
-                ts_end = char_to_ts_idx[end_char]
-                start_ms, _ = _get_ts_values(timestamps[ts_start])
-                _, end_ms = _get_ts_values(timestamps[ts_end])
-                segments.append(
-                    AsrSegment(start_ms / 1000.0, end_ms / 1000.0, _to_traditional(sentence))
-                )
-        elif len(sentences) == len(timestamps):
-            for sentence, ts in zip(sentences, timestamps):
-                start_ms, end_ms = _get_ts_values(ts)
-                segments.append(
-                    AsrSegment(start_ms / 1000.0, end_ms / 1000.0, _to_traditional(sentence))
-                )
+        segments.append(
+            AsrSegment(
+                start_s=float(seg["start"]),
+                end_s=float(seg["end"]),
+                text=_to_traditional(text),
+            )
+        )
 
     logger.info(f"ASR 取得 {len(segments)} 個片段")
     return segments
@@ -544,7 +491,7 @@ def detect_transform(
     srt_path: str | Path,
     audio_path: str | Path,
     *,
-    asr_model: str = "paraformer-zh",
+    asr_model: str = "large-v3",
     ratio_threshold: float = 0.7,
     window_s: float = 45.0,
     hotwords: list[str] | None = None,

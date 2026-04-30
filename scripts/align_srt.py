@@ -77,7 +77,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--auto",
         action="store_true",
-        help="自動偵測全局線性變換 (a, b)：跑 FunASR 比對 SRT 文字後最小平方擬合",
+        help="自動偵測全局線性變換 (a, b)：跑 WhisperX 比對 SRT 文字後最小平方擬合",
     )
     parser.add_argument(
         "--retime",
@@ -98,8 +98,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--asr-model",
-        default="paraformer-zh",
-        help="auto：FunASR 模型 ID",
+        default="large-v3",
+        help="auto：WhisperX 模型 ID（faster-whisper backend）",
     )
     parser.add_argument(
         "--dry-run",

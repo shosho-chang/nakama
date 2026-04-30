@@ -251,7 +251,7 @@ def arbitrate_uncertain(
 
     Args:
         audio_path: 來源音檔
-        srt_content: FunASR 產出的 SRT（含時間戳）
+        srt_content: ASR 產出的 SRT（含時間戳）
         uncertainties: Opus pass 1 產出的 [{line, original, suggestion, reason, risk}, ...]
         model: Gemini 模型（預設 gemini-2.5-pro）
         run_id: cost tracking 用

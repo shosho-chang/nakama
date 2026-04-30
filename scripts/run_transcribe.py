@@ -1,4 +1,4 @@
-"""端到端跑一次 Transcriber pipeline（Auphonic + FunASR + LLM 校正 + Gemini 仲裁）。
+"""端到端跑一次 Transcriber pipeline（Auphonic + WhisperX + LLM 校正 + Gemini 仲裁）。
 
 用法：
     # 最小
@@ -14,6 +14,9 @@
 
     # 只跑 ASR + Opus，不做 Gemini 仲裁（省 Gemini 成本）
     python scripts/run_transcribe.py <audio_path> --no-arbitration
+
+    # 跳過 speaker diarization（單人錄音 / 不需要主持人/來賓分軌）
+    python scripts/run_transcribe.py <audio_path> --no-diarization
 """
 
 from __future__ import annotations
@@ -68,6 +71,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="完全跳過 Opus 校正（純 ASR 輸出）",
     )
+    parser.add_argument(
+        "--no-diarization",
+        action="store_true",
+        help="關閉 speaker diarization（單人錄音時用；多人訪談建議保留）",
+    )
     return parser.parse_args()
 
 
@@ -84,7 +92,9 @@ def main() -> None:
     pipeline_parts = []
     if not args.no_auphonic:
         pipeline_parts.append("Auphonic normalization")
-    pipeline_parts.append("FunASR")
+    pipeline_parts.append("WhisperX (large-v3)")
+    if not args.no_diarization:
+        pipeline_parts.append("pyannote diarization")
     if not args.no_llm_correction:
         pipeline_parts.append("Opus 校正")
         if not args.no_arbitration:
@@ -100,6 +110,7 @@ def main() -> None:
         normalize_audio=not args.no_auphonic,
         use_llm_correction=not args.no_llm_correction,
         use_multimodal_arbitration=not args.no_arbitration,
+        use_diarization=not args.no_diarization,
     )
     elapsed = time.time() - started
 
