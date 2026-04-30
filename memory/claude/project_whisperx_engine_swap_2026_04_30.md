@@ -1,12 +1,12 @@
 ---
 name: WhisperX 引擎 swap 完成 2026-04-30
-description: FunASR Paraformer-zh 退場、WhisperX V3 + pyannote diarization 接手；裸 ASR 在 76min 真實訪談已贏 FunASR 全部維度 + 平手 MemoAI（Whisper V2）
+description: FunASR Paraformer-zh 退場、WhisperX V3 + pyannote diarization 接手；裸 ASR 在 76min 真實訪談已贏 FunASR 全部維度 + 平手 MemoAI（Whisper V2）；PR #271 merged 884eb59
 type: project
 created: 2026-04-30
 confidence: high
 ---
 
-[ADR-013](../../docs/decisions/ADR-013-transcribe-engine-reconsideration.md) 落地。今日（2026-04-30）一日內完成 ADR + 實作 + 驗收。
+[ADR-013](../../docs/decisions/ADR-013-transcribe-engine-reconsideration.md) 落地。**PR #271 merged 884eb59 (2026-04-30)**。一日內完成 ADR + 實作 + review + 驗收。
 
 ## 結論先行
 
@@ -43,8 +43,19 @@ confidence: high
 3. **WhisperX `DiarizationPipeline` 在 `whisperx.diarize` 子模組**：不是 `whisperx.DiarizationPipeline`（top-level 沒 export）
 4. **WhisperX 預設輸出 segments 是 sentence-level，可能 100+ 字**：要在 `_whisperx_to_srt` 內用 `_split_sentences` + `_force_break` 拆 ≤20 字 sub-cue，timestamps 走線性插值
 
-## 待做
+## Post-merge fix (PR #271 review 抓到，同 PR 補完)
 
-- 修修跑 [setup-huggingface-pyannote.md](../../docs/runbooks/setup-huggingface-pyannote.md) 拿 HF token + accept 兩個 pyannote EULA → 開 diarization 試水
+Reviewer agent 抓兩個 confidence ≥ 80 blocker，已修：
+
+1. **`shared/srt_align.py` dangling import**：原 `run_asr_segments` 接 `_funasr_char_to_ts_idx` / `_get_ts_values`（已退場）+ `_get_asr_model`（簽章變了），第一次呼叫就 ImportError，`scripts/align_srt.py auto`/`retime` 模式直接死。Port 到 WhisperX：用 `model.transcribe(audio, batch_size=16)` 拿 segment-level start/end，砍 char-level fallback。CLI default `paraformer-zh` → `large-v3`。
+2. **diarize/align 路徑零測試**：5 個 transcribe() integration test 全 `use_diarization=False`；補 `test_transcribe_with_diarization` mock `_get_align_model` / `_get_diarize_pipeline` / `whisperx.align` / `whisperx.assign_word_speakers`，驗 SRT 含 `[SPEAKER_00]` + pipeline 有被叫。
+3. CI `pip install -e ".[dev]"` 不含 transcription extras 導致 5 個 mock-based test ImportError；5 個各加 `pytest.importorskip("whisperx")` 第一行讓沒裝環境 skip。
+
+順手修 4 處 docstring/comment 殘留 FunASR 字眼。
+
+## 修修待做
+
+- 跑 [setup-huggingface-pyannote.md](../../docs/runbooks/setup-huggingface-pyannote.md) 拿 HF token + accept 兩個 pyannote EULA → 開 diarization 試水
 - 完整 pipeline 跑一輪（Auphonic + WhisperX + LLM 校正 + Gemini 仲裁）驗天花板
+- 完全退場 `funasr` dep（pyproject.toml + requirements.txt 已標 deprecated，下一輪可整段刪）
 - benchmark 結果 [docs/research/2026-04-30-whisperx-vs-memoai-results.md](../../docs/research/2026-04-30-whisperx-vs-memoai-results.md)

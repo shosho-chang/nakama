@@ -42,7 +42,7 @@
 - [project_seo_phase15_acceptance_done_2026_04_27.md](project_seo_phase15_acceptance_done_2026_04_27.md) — **SEO Phase 1.5 真正落地 2026-04-27**：三件 acceptance 全綠 + F5-B CF rule + re-audit grade D→B+；PR #200 含 4 條 follow-up
 - [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 + PR #252/#253 部署 2026-04-29**：CF UA bypass + 3 UX bug 修；首篇 audit grade=C；L9 grade 設計 + Usopp DB lock 待拍板
 - [project_three_content_lines.md](project_three_content_lines.md) — **三條內容生產線 2026-04-30 凍結**：Line 1 Podcast→訪談+FB+IG（**最緊急**）/ Line 2 讀書心得 / Line 3 文獻→科普；起手 Line 1 grill
-- [project_whisperx_engine_swap_2026_04_30.md](project_whisperx_engine_swap_2026_04_30.md) — **transcribe 引擎換 WhisperX 2026-04-30**：FunASR 退場；裸 ASR 在 76min 訪談贏全部維度（中文同音字 / code-switch / 人名 / 簡繁 / 重複字）+ 平手 MemoAI；ADR-013 + 4 docs + 68 tests 全綠
+- [project_whisperx_engine_swap_2026_04_30.md](project_whisperx_engine_swap_2026_04_30.md) — **transcribe 引擎換 WhisperX 2026-04-30 + PR #271 merged 884eb59**：FunASR 退場；裸 ASR 76min 訪談贏全部 + 平手 MemoAI；review 補 srt_align port + diarize test + funasr dep 待整段砍
 - [feedback_whisperx_pip_torch_downgrade.md](feedback_whisperx_pip_torch_downgrade.md) — pip install whisperx 會把 torch 從 cu128 降成 CPU；ML 套件 install 後必驗 cuda.is_available()，補回 cu128 wheel
 - [feedback_css_hidden_shadow.md](feedback_css_hidden_shadow.md) — CSS 對 selector 寫 `display:` 必同時補 `selector[hidden] { display: none }`，否則 `<div hidden>` 失效（PR #253 audit-failed 假警報根因）
 - [feedback_jinja_inline_js_autoescape.md](feedback_jinja_inline_js_autoescape.md) — `<script>` 內 Jinja 表達式最終 filter 必須是 `tojson` 或 `safe`；`{{ x|tojson if x else "''" }}` 的 else 分支會被 autoescape 成 `&#39;` JS SyntaxError（#266/#268 教訓）
