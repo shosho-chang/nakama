@@ -399,3 +399,176 @@ def test_slugify_topic_collapses_cjk_and_special_chars():
     # Truncation at 50 chars
     long = "a" * 100
     assert len(_slugify_topic(long)) == 50
+
+
+# ── Slice 1 (#257) chassis-nav + breadcrumb ─────────────────────────────
+
+
+def test_chassis_nav_zoro_active(authed_client):
+    """ZORO entry carries class=active + aria-current; SEO entry has neither.
+
+    Closes #245 — Issue is that the previous template hard-coded `class="active"
+    aria-current="page"` on the SEO entry on this Zoro surface, so screen readers
+    announced "SEO 優化, current page" while the user was actually on
+    `/bridge/zoro/keyword-research`. Slice 1 (#257) adds a real ZORO chassis-nav
+    entry and routes nav state via ``nav_active`` slug.
+    """
+    r = authed_client.get("/bridge/zoro/keyword-research")
+    assert r.status_code == 200
+    html = r.text
+
+    # ZORO entry exists and is active.
+    assert '<a href="/bridge/zoro/keyword-research" class="active" aria-current="page">ZORO' in html
+    # SEO entry exists but is NOT marked active or aria-current on this surface.
+    # (Use the closing tag fragment to anchor on the SEO link specifically.)
+    assert '<a href="/bridge/seo">SEO' in html
+    assert '<a href="/bridge/seo" class="active" aria-current="page">SEO' not in html
+
+
+def test_breadcrumb_renders_on_zoro_surface(authed_client):
+    """Breadcrumb above page-header always shown — not referrer-detected."""
+    r = authed_client.get("/bridge/zoro/keyword-research")
+    assert r.status_code == 200
+    html = r.text
+
+    # Trail back to SEO 中控台 + current location marker.
+    assert 'class="nk-breadcrumb"' in html
+    assert "/bridge/seo · 找新關鍵字" in html
+    assert "ZORO · KEYWORD RESEARCH" in html
+    # Current crumb uses aria-current="location" (not "page" — page is for nav).
+    assert 'aria-current="location"' in html
+
+
+# ── Slice 2 (#258) keyword-research history ─────────────────────────────
+
+
+def test_history_list_unauth_redirects_to_login(unauthed_client):
+    r = unauthed_client.get("/bridge/zoro/keyword-research/history")
+    assert r.status_code == 302
+    assert r.headers["location"] == "/login?next=/bridge/zoro/keyword-research/history"
+
+
+def test_history_detail_unauth_redirects_to_login(unauthed_client):
+    r = unauthed_client.get("/bridge/zoro/keyword-research/history/42")
+    assert r.status_code == 302
+    assert r.headers["location"] == "/login?next=/bridge/zoro/keyword-research/history/42"
+
+
+def test_history_list_empty_state(authed_client):
+    """Empty db → list page renders empty-state copy with a link back to form."""
+    r = authed_client.get("/bridge/zoro/keyword-research/history")
+    assert r.status_code == 200
+    body = r.text
+    assert "尚無歷史研究紀錄" in body
+    # ZORO chassis-nav active on history surfaces too.
+    assert '<a href="/bridge/zoro/keyword-research" class="active" aria-current="page">ZORO' in body
+
+
+def test_history_detail_404_for_missing_id(authed_client):
+    r = authed_client.get("/bridge/zoro/keyword-research/history/99999")
+    assert r.status_code == 404
+
+
+def test_post_persists_run_with_triggered_by_web(authed_client, monkeypatch):
+    """Acceptance: successful POST inserts a row with triggered_by='web'."""
+    from shared import keyword_research_history_store as kr_history
+
+    monkeypatch.setattr(
+        "agents.zoro.keyword_research.research_keywords",
+        lambda *a, **kw: _FIXTURE_RESULT,
+    )
+
+    before = kr_history.count_runs()
+    r = authed_client.post(
+        "/bridge/zoro/keyword-research",
+        data={"topic": "持續的測試題", "content_type": "blog", "en_topic": ""},
+    )
+    assert r.status_code == 200
+    after = kr_history.count_runs()
+    assert after == before + 1
+    # Most-recent row should match what we POSTed.
+    rows = kr_history.list_runs(limit=1)
+    assert rows[0]["topic"] == "持續的測試題"
+    assert rows[0]["triggered_by"] == "web"
+    assert rows[0]["content_type"] == "blog"
+
+
+def test_post_render_unaffected_by_persist_failure(authed_client, monkeypatch):
+    """If insert_run raises, the user still sees the rendered report (best-effort)."""
+    monkeypatch.setattr(
+        "agents.zoro.keyword_research.research_keywords",
+        lambda *a, **kw: _FIXTURE_RESULT,
+    )
+
+    def _boom(**_kwargs):
+        raise RuntimeError("simulated db failure")
+
+    monkeypatch.setattr("shared.keyword_research_history_store.insert_run", _boom)
+
+    r = authed_client.post(
+        "/bridge/zoro/keyword-research",
+        data={"topic": "DB 壞掉題", "content_type": "blog", "en_topic": ""},
+    )
+    # User-facing render still 200; the failure goes to logs only.
+    assert r.status_code == 200
+    assert "READY" in r.text
+    assert "下載 .md" in r.text
+
+
+def test_history_list_renders_rows_and_pagination(authed_client):
+    """Insert 25 rows → first page shows 20, pagination shows Next."""
+    from shared import keyword_research_history_store as kr_history
+
+    for i in range(25):
+        kr_history.insert_run(
+            topic=f"題目 {i:02d}",
+            en_topic=None,
+            content_type="blog",
+            report_md=f"# row {i}",
+            triggered_by="web",
+        )
+
+    r = authed_client.get("/bridge/zoro/keyword-research/history")
+    assert r.status_code == 200
+    body = r.text
+    # Newest topic on page 1 is the last one inserted.
+    assert "題目 24" in body
+    # Oldest item (題目 00) should NOT be on page 1.
+    assert "題目 00" not in body
+    # Pagination — Next link present, Previous absent on first page.
+    assert "Next →" in body
+    assert "← Previous" not in body
+
+    # Page 2 shows the rest.
+    r2 = authed_client.get("/bridge/zoro/keyword-research/history?offset=20")
+    assert r2.status_code == 200
+    body2 = r2.text
+    assert "題目 04" in body2
+    assert "← Previous" in body2
+    assert "Next →" not in body2
+
+
+def test_history_detail_renders_full_markdown(authed_client):
+    from shared import keyword_research_history_store as kr_history
+
+    new_id = kr_history.insert_run(
+        topic="詳細頁的題目",
+        en_topic="detail page topic",
+        content_type="blog",
+        report_md="# 報告標題\n\n本文段落",
+        triggered_by="web",
+    )
+
+    r = authed_client.get(f"/bridge/zoro/keyword-research/history/{new_id}")
+    assert r.status_code == 200
+    body = r.text
+    assert "詳細頁的題目" in body
+    assert "detail page topic" in body
+    # Full markdown body is present in the textarea (for client-side render
+    # via marked) and in the no-JS <pre> fallback.
+    assert "# 報告標題" in body
+    assert "本文段落" in body
+    # Download form points at the existing /download endpoint.
+    assert 'action="/bridge/zoro/keyword-research/download"' in body
+    # ZORO chassis-nav remains active on detail surfaces.
+    assert '<a href="/bridge/zoro/keyword-research" class="active" aria-current="page">ZORO' in body

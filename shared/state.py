@@ -312,6 +312,26 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_audit_results_review_status
             ON audit_results(review_status, audited_at DESC);
 
+        -- PRD #255 §"Schema" — keyword_research_runs table for Slice 2 (#258 / A′).
+        -- Canonical DDL: migrations/007_keyword_research_runs.sql.
+        -- Owned by `shared/keyword_research_history_store.py`; written by
+        -- `thousand_sunny/routers/bridge_zoro.py` after a successful research run.
+        CREATE TABLE IF NOT EXISTS keyword_research_runs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic        TEXT NOT NULL,
+            en_topic     TEXT,
+            content_type TEXT NOT NULL CHECK (content_type IN ('blog', 'youtube')),
+            report_md    TEXT NOT NULL,
+            created_at   TEXT NOT NULL,
+            triggered_by TEXT NOT NULL CHECK (triggered_by IN ('web', 'lifeos'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_keyword_research_created_at
+            ON keyword_research_runs(created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_keyword_research_topic
+            ON keyword_research_runs(topic, created_at DESC);
+
         -- Phase 3 observability: per-job heartbeat (last-success + consecutive failure
         -- counter). Owned by `shared/heartbeat.py`; consumed by `/bridge/health`.
         CREATE TABLE IF NOT EXISTS heartbeats (

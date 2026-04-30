@@ -1,0 +1,58 @@
+{#
+  templates/bridge/_chassis_nav.html
+
+  Single source of truth for the bridge chassis header. Use the
+  `chassis_nav` macro from any bridge surface.
+
+  ┌────────────────────────────────────────────────────────────────────┐
+  │ Usage A — surfaces with no chassis-meta block (8 surfaces today):  │
+  │                                                                    │
+  │   {% from "_chassis_nav.html" import chassis_nav %}                │
+  │   {{ chassis_nav(nav_active='seo') }}                              │
+  └────────────────────────────────────────────────────────────────────┘
+  ┌────────────────────────────────────────────────────────────────────┐
+  │ Usage B — surfaces that show page-specific meta on the right       │
+  │ (5 surfaces today: bridge index, drafts, draft_detail, cost,       │
+  │ memory) — pass meta content via {% call %} block:                  │
+  │                                                                    │
+  │   {% from "_chassis_nav.html" import chassis_nav %}                │
+  │   {% call chassis_nav(nav_active='drafts', show_version=true) %}   │
+  │     <span>CPT <span class="val">SHOSHO</span></span>               │
+  │   {% endcall %}                                                    │
+  └────────────────────────────────────────────────────────────────────┘
+
+  `nav_active` slugs: bridge / drafts / seo / memory / cost / franky /
+  health / docs / logs / vault. Unknown / missing → no entry marked.
+
+  See CONTEXT-MAP "chassis-nav" for design principles (agent-rooted vs
+  topic-rooted lane; aria-current strictly URL-keyed).
+#}
+{% macro chassis_nav(nav_active='', show_version=false) -%}
+<header class="chassis" role="banner">
+  <div class="chassis-brand">
+    <div class="chassis-dot" aria-hidden="true"></div>
+    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+    {%- if show_version %}
+    <div class="chassis-version">v0.4</div>
+    {%- endif %}
+  </div>
+  <nav class="chassis-nav" aria-label="Bridge sections">
+    <a href="/bridge"{% if nav_active == 'bridge' %} class="active" aria-current="page"{% endif %}>BRIDGE <span class="zh">船橋</span></a>
+    <a href="/bridge/drafts"{% if nav_active == 'drafts' %} class="active" aria-current="page"{% endif %}>DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/seo"{% if nav_active == 'seo' %} class="active" aria-current="page"{% endif %}>SEO <span class="zh">優化</span></a>
+    <a href="/bridge/zoro/keyword-research"{% if nav_active == 'zoro' %} class="active" aria-current="page"{% endif %}>ZORO <span class="zh">偵察</span></a>
+    <a href="/bridge/memory"{% if nav_active == 'memory' %} class="active" aria-current="page"{% endif %}>MEMORY <span class="zh">記憶</span></a>
+    <a href="/bridge/cost"{% if nav_active == 'cost' %} class="active" aria-current="page"{% endif %}>COST <span class="zh">成本</span></a>
+    <a href="/bridge/franky"{% if nav_active == 'franky' %} class="active" aria-current="page"{% endif %}>FRANKY <span class="zh">船匠</span></a>
+    <a href="/bridge/health"{% if nav_active == 'health' %} class="active" aria-current="page"{% endif %}>HEALTH <span class="zh">巡檢</span></a>
+    <a href="/bridge/docs"{% if nav_active == 'docs' %} class="active" aria-current="page"{% endif %}>DOCS <span class="zh">文件</span></a>
+    <a href="/bridge/logs"{% if nav_active == 'logs' %} class="active" aria-current="page"{% endif %}>LOGS <span class="zh">日誌</span></a>
+    <a href="/"{% if nav_active == 'vault' %} class="active" aria-current="page"{% endif %}>VAULT <span class="zh">秘庫</span></a>
+  </nav>
+  {%- if caller is defined %}
+  <div class="chassis-meta">
+    {{ caller() }}
+  </div>
+  {%- endif %}
+</header>
+{%- endmacro %}

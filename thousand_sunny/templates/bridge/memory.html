@@ -444,28 +444,10 @@ body {
 <body>
 
 <!-- Chassis -->
-<div class="chassis">
-  <div class="chassis-brand">
-    <div class="chassis-dot"></div>
-    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
-    <div class="chassis-version">v0.4</div>
-  </div>
-  <nav class="chassis-nav">
-    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
-    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
-    <a href="/bridge/seo">SEO <span class="zh">優化</span></a>
-    <a href="/bridge/memory" class="active" aria-current="page">MEMORY <span class="zh">記憶</span></a>
-    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
-    <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
-    <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
-    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
-    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
-    <a href="/">VAULT <span class="zh">秘庫</span></a>
-  </nav>
-  <div class="chassis-meta">
-    <span>CPT <span class="val">SHOSHO</span></span>
-  </div>
-</div>
+{% from "_chassis_nav.html" import chassis_nav %}
+{% call chassis_nav(nav_active='memory', show_version=true) %}
+  <span>CPT <span class="val">SHOSHO</span></span>
+{% endcall %}
 
 <!-- Page header -->
 <div class="page-header">

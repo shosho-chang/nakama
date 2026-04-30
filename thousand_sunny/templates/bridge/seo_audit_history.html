@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · SEO · 歷次 Audit · post #{{ wp_post_id }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-2:    #2a2a2a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-r-2:          2px;
+  --nk-border:       1px solid var(--nk-rule);
+  --nk-border-hair:  1px solid var(--nk-hairline);
+  --nk-dur-fast:     80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans); font-size: 14px;
+  background: var(--nk-bench); color: var(--nk-ink);
+  min-height: 100vh; display: flex; flex-direction: column;
+}
+
+.chassis {
+  background: var(--nk-chassis); color: var(--nk-chassis-fg);
+  padding: 0 40px; height: 48px;
+  display: flex; align-items: center; gap: 32px; flex-shrink: 0;
+  border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
+.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
+  border-bottom: 2px solid transparent; padding-bottom: 2px;
+  display: flex; align-items: center; gap: 6px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
+.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
+
+.nk-breadcrumb {
+  background: var(--nk-panel-2); border-bottom: var(--nk-border-hair);
+  padding: 8px 40px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.nk-caps {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--nk-ink-2);
+}
+.nk-breadcrumb-link { color: var(--nk-ink-2); text-decoration: none; border-bottom: 1px dotted transparent; transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast); }
+.nk-breadcrumb-link:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+.nk-breadcrumb-current { color: var(--nk-ink); font-weight: 500; }
+.nk-breadcrumb-sep { color: var(--nk-ink-3); font-family: var(--nk-font-mono); font-size: 11px; }
+
+.page-header {
+  background: var(--nk-panel); border-bottom: var(--nk-border);
+  padding: 18px 40px;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  flex-shrink: 0;
+}
+.page-title { font-family: var(--nk-font-display); font-size: 26px; font-weight: 500; letter-spacing: -0.5px; }
+.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
+.header-meta { font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3); letter-spacing: 0.12em; text-transform: uppercase; }
+
+.main { flex: 1; padding: 24px 40px 48px; display: flex; flex-direction: column; gap: 24px; }
+
+.section { background: var(--nk-panel); border: var(--nk-border); }
+.section-head {
+  padding: 16px 20px 14px; border-bottom: var(--nk-border-hair);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+}
+.section-marker { font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em; color: var(--nk-ink-3); margin-bottom: 4px; }
+.section-title { font-family: var(--nk-font-display); font-size: 19px; font-weight: 500; letter-spacing: -0.2px; }
+.section-body { padding: 22px 20px 26px; }
+
+table.audit-history { width: 100%; border-collapse: collapse; }
+table.audit-history thead th {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--nk-ink-3);
+  text-align: left; padding: 8px 10px;
+  border-bottom: 1px solid var(--nk-rule);
+  white-space: nowrap;
+}
+table.audit-history tbody td {
+  padding: 10px; vertical-align: top;
+  border-bottom: var(--nk-border-hair); color: var(--nk-ink);
+}
+table.audit-history tbody tr:last-child td { border-bottom: none; }
+table.audit-history tbody tr:hover { background: var(--nk-panel-2); }
+.col-id { white-space: nowrap; font-family: var(--nk-font-mono); font-size: 12px; color: var(--nk-ink-2); }
+.col-when { white-space: nowrap; font-family: var(--nk-font-mono); font-size: 12px; }
+.col-grade { white-space: nowrap; }
+.col-fail-warn { white-space: nowrap; font-family: var(--nk-font-mono); font-size: 12px; }
+.col-status { white-space: nowrap; font-family: var(--nk-font-mono); font-size: 11px; }
+.col-action { white-space: nowrap; }
+
+.grade-chip {
+  display: inline-block;
+  padding: 3px 9px;
+  font-family: var(--nk-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid currentColor;
+  border-radius: var(--nk-r-2);
+}
+.grade-a, .grade-bp { color: var(--nk-jade); }
+.grade-b, .grade-cp { color: var(--nk-amber); }
+.grade-c, .grade-d, .grade-f { color: var(--nk-crimson); }
+
+.fail-pill, .warn-pill { padding: 1px 6px; border: 1px solid currentColor; border-radius: var(--nk-r-2); margin-right: 4px; }
+.fail-pill { color: var(--nk-crimson); }
+.warn-pill { color: var(--nk-amber); }
+
+.status-pill { padding: 2px 7px; border: 1px solid var(--nk-hairline); border-radius: var(--nk-r-2); color: var(--nk-ink-2); }
+.status-pill.exported { color: var(--nk-jade); border-color: currentColor; }
+.status-pill.partial { color: var(--nk-amber); border-color: currentColor; }
+
+.audit-link {
+  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; text-decoration: none; color: var(--nk-ink-2);
+  border-bottom: 1px dotted var(--nk-muted);
+  margin-right: 8px;
+}
+.audit-link:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+
+.empty {
+  padding: 40px 20px; text-align: center; color: var(--nk-ink-3); font-family: var(--nk-font-mono); font-size: 13px;
+}
+.empty a { color: var(--nk-signal); text-decoration: none; border-bottom: 1px dotted; }
+.empty a:hover { border-bottom-style: solid; }
+
+.rerun-form {
+  display: inline-flex; gap: 8px; align-items: center;
+}
+.rerun-form button {
+  background: transparent; color: var(--nk-ink-2); border: var(--nk-border);
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 5px 10px; cursor: pointer; border-radius: var(--nk-r-2);
+  transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast);
+}
+.rerun-form button:hover { color: var(--nk-signal); border-color: var(--nk-signal); }
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
+</style>
+</head>
+<body>
+
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='seo') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "/bridge/seo · 文章列表", "href": "/bridge/seo", "is_current": false},
+  {"label": "SEO · 歷次 AUDIT #" ~ wp_post_id, "href": none, "is_current": true},
+]) }}
+
+<section class="page-header">
+  <div>
+    <div class="nk-caps">/seo/posts/{{ wp_post_id }}/audits · 歷次 audit 紀錄</div>
+    <h1 class="page-title">歷次 Audit <span class="zh">post #{{ wp_post_id }} · {% if target_site %}{{ target_site }}{% else %}all sites{% endif %}</span></h1>
+  </div>
+  <div class="header-meta">PRD #255 · Slice 3</div>
+</section>
+
+<main class="main">
+  {% if rows %}
+  <article class="section">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 1 · TIMELINE · {{ rows|length }} run{{ '' if rows|length == 1 else 's' }}</div>
+        <h2 class="section-title">過往 audit <span class="zh">{{ first_url }}</span></h2>
+      </div>
+      <form class="rerun-form" method="post" action="/bridge/seo/audits">
+        <input type="hidden" name="url" value="{{ first_url|e }}">
+        <input type="hidden" name="target_site" value="{{ first_target_site|e if first_target_site else '' }}">
+        <input type="hidden" name="wp_post_id" value="{{ wp_post_id }}">
+        <input type="hidden" name="focus_keyword" value="{{ first_focus_keyword|e }}">
+        <button type="submit">+ 重 audit</button>
+      </form>
+    </header>
+    <div class="section-body" style="padding-top:0;padding-bottom:0;">
+      <table class="audit-history">
+        <thead>
+          <tr>
+            <th class="col-id">AUDIT ID</th>
+            <th class="col-when">AUDITED AT</th>
+            <th class="col-grade">GRADE</th>
+            <th class="col-fail-warn">FAIL / WARN</th>
+            <th class="col-status">REVIEW STATUS</th>
+            <th class="col-action"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="col-id">#{{ r.id }}</td>
+            <td class="col-when">{{ r.audited_at_display }}</td>
+            <td class="col-grade">
+              <span class="grade-chip grade-{{ r.overall_grade | lower | replace('+', 'p') }}"
+                    aria-label="grade {{ r.overall_grade }}">{{ r.overall_grade }}</span>
+            </td>
+            <td class="col-fail-warn">
+              <span class="fail-pill">{{ r.fail_count }}F</span>
+              <span class="warn-pill">{{ r.warn_count }}W</span>
+            </td>
+            <td class="col-status">
+              <span class="status-pill {% if r.review_status == 'exported' %}exported{% elif r.review_status == 'in_review' %}partial{% endif %}">
+                {{ r.review_status_label }}
+              </span>
+            </td>
+            <td class="col-action">
+              <a class="audit-link" href="/bridge/seo/audits/{{ r.id }}/review">看詳細 →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+  {% else %}
+  <article class="section">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 1 · NO AUDITS</div>
+        <h2 class="section-title">尚無 audit 紀錄 <span class="zh">post #{{ wp_post_id }}</span></h2>
+      </div>
+    </header>
+    <div class="empty">
+      這篇文章還沒跑過 audit。<br>
+      <a href="/bridge/seo">← 回 SEO 中控台</a> 從文章列表的 <code>跑 audit</code> button 開始。
+    </div>
+  </article>
+  {% endif %}
+</main>
+
+</body>
+</html>

@@ -235,6 +235,42 @@ def latest_for_post(target_site: str, wp_post_id: int) -> Optional[dict[str, Any
     return _row_to_dict(row)
 
 
+def list_audits_by_post(
+    wp_post_id: int,
+    target_site: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Return ALL audits for a `wp_post_id`, newest-first.
+
+    Slice 3 of PRD #255 (#259 / E) — backs the
+    `/bridge/seo/posts/{wp_post_id}/audits` history surface. Pass
+    `target_site` to scope to one site (when both `wp_shosho` and
+    `wp_fleet` could share an id); leave None to merge.
+
+    Returns empty list when the post has never been audited (the route
+    renders an empty-state page in that case).
+    """
+    conn = _get_conn()
+    if target_site is None:
+        rows = conn.execute(
+            """
+            SELECT * FROM audit_results
+            WHERE wp_post_id = ?
+            ORDER BY audited_at DESC, id DESC
+            """,
+            (wp_post_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT * FROM audit_results
+            WHERE target_site = ? AND wp_post_id = ?
+            ORDER BY audited_at DESC, id DESC
+            """,
+            (target_site, wp_post_id),
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def latest_for_url(url: str) -> Optional[dict[str, Any]]:
     """Return the newest audit row for a URL (no wp_post_id required).
 

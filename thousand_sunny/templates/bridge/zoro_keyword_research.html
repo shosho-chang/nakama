@@ -89,6 +89,36 @@ body {
 .chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
 .chassis-nav a.active { border-bottom-color: var(--nk-signal); }
 
+/* ── Breadcrumb ── */
+.nk-breadcrumb {
+  background: var(--nk-panel-2);
+  border-bottom: var(--nk-border-hair);
+  padding: 8px 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.nk-breadcrumb-link {
+  color: var(--nk-ink-2);
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+  transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast);
+}
+.nk-breadcrumb-link:hover {
+  color: var(--nk-signal);
+  border-bottom-color: var(--nk-signal);
+}
+.nk-breadcrumb-current {
+  color: var(--nk-ink);
+  font-weight: 500;
+}
+.nk-breadcrumb-sep {
+  color: var(--nk-ink-3);
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+}
+
 /* ── Page header ── */
 .page-header {
   background: var(--nk-panel);
@@ -392,24 +422,14 @@ form.kw-form { display: flex; flex-direction: column; gap: 18px; }
 </style>
 </head>
 <body>
-<header class="chassis">
-  <div class="chassis-brand">
-    <div class="chassis-dot"></div>
-    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
-  </div>
-  <nav class="chassis-nav">
-    <a href="/bridge">BRIDGE <span class="zh">船橋</span></a>
-    <a href="/bridge/drafts">DRAFTS <span class="zh">待審</span></a>
-    <a href="/bridge/seo" class="active" aria-current="page">SEO <span class="zh">優化</span></a>
-    <a href="/bridge/memory">MEMORY <span class="zh">記憶</span></a>
-    <a href="/bridge/cost">COST <span class="zh">成本</span></a>
-    <a href="/bridge/franky">FRANKY <span class="zh">船匠</span></a>
-    <a href="/bridge/health">HEALTH <span class="zh">巡檢</span></a>
-    <a href="/bridge/docs">DOCS <span class="zh">文件</span></a>
-    <a href="/bridge/logs">LOGS <span class="zh">日誌</span></a>
-    <a href="/">VAULT <span class="zh">秘庫</span></a>
-  </nav>
-</header>
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='zoro') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "/bridge/seo · 找新關鍵字", "href": "/bridge/seo", "is_current": false},
+  {"label": "ZORO · KEYWORD RESEARCH",  "href": none,          "is_current": true},
+]) }}
 
 <section class="page-header">
   <div>
@@ -545,6 +565,7 @@ form.kw-form { display: flex; flex-direction: column; gap: 18px; }
           <button class="nk-btn-primary" type="submit" id="kwDownloadBtn">下載 .md</button>
         </form>
         <a class="nk-btn-ghost" href="/bridge/zoro/keyword-research">+ 新研究</a>
+        <a class="nk-btn-ghost" href="/bridge/zoro/keyword-research/history">查看歷史 →</a>
       </div>
 
       <!-- Raw markdown for the renderer (client) — escaped, hidden from view -->

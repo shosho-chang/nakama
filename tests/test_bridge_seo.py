@@ -881,3 +881,59 @@ def test_seo_page_section3_empty_state_when_no_keywords(authed_client, tmp_path,
     assert "尚無排名資料" in body
     # Mentions the cron so user can self-diagnose.
     assert "GSC daily cron" in body or "Franky GSC daily cron" in body
+
+
+# ── Slice 1 (#257) chassis-nav + 查看歷史 row button ────────────────────
+
+
+def test_chassis_nav_seo_active_zoro_inactive(authed_client):
+    """SEO entry carries class=active + aria-current on /bridge/seo;
+    ZORO entry exists in the nav (post-Slice-1) but is NOT marked active here.
+    """
+    import thousand_sunny.routers.bridge as bridge_module
+
+    with _patch_lister(bridge_module, {}):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    html = r.text
+
+    # SEO entry is active on its own surface.
+    assert '<a href="/bridge/seo" class="active" aria-current="page">SEO' in html
+    # ZORO entry exists (added by Slice 1) but is plain (no active/aria-current).
+    assert '<a href="/bridge/zoro/keyword-research">ZORO' in html
+    assert (
+        '<a href="/bridge/zoro/keyword-research" class="active" aria-current="page">ZORO'
+        not in html
+    )
+
+
+def test_article_row_has_history_button(authed_client):
+    """Each /bridge/seo article row gets a `查看歷史` link to per-post history surface.
+
+    Slice 1 (#257) wires the link; Slice 3 (#259) implements the destination
+    `/bridge/seo/posts/{wp_post_id}/audits`. Until Slice 3 ships, the URL may
+    404 — but the row markup must be in place.
+    """
+    from shared import wp_post_lister
+
+    rows = [
+        wp_post_lister.WpPostSummaryV1(
+            wp_post_id=12345,
+            title="睡眠週期 sleep cycle",
+            link="https://shosho.tw/blog/sleep-cycle/",
+            focus_keyword="睡眠週期",
+            last_modified="2026-04-20T08:00:00",
+        ),
+    ]
+    import thousand_sunny.routers.bridge as bridge_module
+
+    with _patch_lister(bridge_module, {"wp_shosho": rows, "wp_fleet": []}):
+        r = authed_client.get("/bridge/seo")
+
+    assert r.status_code == 200
+    html = r.text
+
+    # The 查看歷史 link points to the per-post audits surface for this wp_post_id.
+    assert "/bridge/seo/posts/12345/audits" in html
+    assert "查看歷史" in html
