@@ -62,9 +62,14 @@ dependencies = [
 
 [project.optional-dependencies]
 transcription = [
-    # FunASR: 本地 ASR 引擎（需要 GPU 環境）
-    # 安裝方式：pip install funasr torch torchaudio
-    "funasr>=1.0.0",
+    # WhisperX: ASR + word-level alignment + (optional) speaker diarization via pyannote
+    # 詳見 ADR-013-transcribe-engine-reconsideration.md
+    # 安裝方式（GPU + CUDA 12.8）：
+    #   pip install whisperx pyannote.audio
+    #   pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu128
+    # 需 HUGGINGFACE_TOKEN + pyannote EULA accept（見 docs/runbooks/setup-huggingface-pyannote.md）
+    "whisperx>=3.8",
+    "pyannote.audio>=4.0",
 ]
 dev = [
     "pytest>=8.0",

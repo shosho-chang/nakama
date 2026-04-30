@@ -10,12 +10,11 @@ import pytest
 
 from shared.transcriber import (
     _add_pinyin,
+    _build_initial_prompt,
     _correct_with_llm,
     _extract_hotwords,
     _extract_project_context,
     _extract_srt_texts,
-    _funasr_to_srt,
-    _get_ts_values,
     _parse_llm_response,
     _process_srt_line,
     _remove_punctuation,
@@ -23,6 +22,7 @@ from shared.transcriber import (
     _seconds_to_srt_ts,
     _split_sentences,
     _to_traditional,
+    _whisperx_to_srt,
     _write_qc_report,
 )
 
@@ -48,19 +48,33 @@ def test_remove_punctuation_chinese():
     assert _remove_punctuation("你好，世界！") == "你好 世界"
 
 
-def test_remove_punctuation_keeps_english():
-    assert _remove_punctuation("Hello, world!") == "Hello, world!"
+def test_remove_punctuation_english_in_mixed():
+    """code-switch 文字裡的 ASCII 標點視為子句斷點 / 句尾，一律移除（per LLM prompt
+    `輸出文字不要包含任何標點符號`）。"""
+    assert _remove_punctuation("Hello, world!") == "Hello world"
 
 
 def test_remove_punctuation_mixed():
+    """中英混合：中文 + ASCII 標點都清掉，`+` 等運算符保留（不是標點）。"""
     assert _remove_punctuation("NAD+是一種，重要的coenzyme。") == "NAD+是一種 重要的coenzyme"
+    assert _remove_punctuation("跟Paul,有一個聚會") == "跟Paul 有一個聚會"
+    assert _remove_punctuation("Traveling Village.") == "Traveling Village"
 
 
 # ── 簡轉繁 ──
 
 
 def test_to_traditional():
-    assert _to_traditional("软件开发") == "軟件開發"
+    # s2twp mode：除了字形也轉台灣慣用詞彙 — 「软件」→「軟體」（非大陸式「軟件」）
+    assert _to_traditional("软件开发") == "軟體開發"
+
+
+def test_to_traditional_taiwan_vocab():
+    """s2twp 應做台灣詞彙轉換（不只字形）。"""
+    # 大陸：信息 / 台灣：資訊
+    assert _to_traditional("信息") == "資訊"
+    # 大陸：网络 / 台灣：網路
+    assert _to_traditional("网络") == "網路"
 
 
 def test_to_traditional_already_traditional():
@@ -195,21 +209,6 @@ def test_correct_with_llm_with_context(tmp_path):
         assert "李大華" in call_kwargs.kwargs["system"]
 
 
-# ── FunASR 時間戳解析 ──
-
-
-def test_get_ts_values_list():
-    assert _get_ts_values([100, 200]) == (100, 200)
-
-
-def test_get_ts_values_tuple():
-    assert _get_ts_values((100, 200)) == (100, 200)
-
-
-def test_get_ts_values_dict():
-    assert _get_ts_values({"start_time": 100, "end_time": 200}) == (100, 200)
-
-
 # ── 句子拆分 ──
 
 
@@ -232,181 +231,122 @@ def test_split_sentences_empty():
     assert _split_sentences("") == []
 
 
-# ── FunASR → SRT 轉換 ──
+# ── WhisperX → SRT 轉換 ──
 
 
-def test_funasr_to_srt_with_sentence_info():
-    """有 sentence_info 時，直接用它。"""
-    results = [
-        {
-            "text": "今天天氣真好。我們去散步吧。",
-            "sentence_info": [
-                {"text": "今天天氣真好。", "start": 380, "end": 1560},
-                {"text": "我們去散步吧。", "start": 1780, "end": 3200},
-            ],
-        }
+def test_whisperx_to_srt_basic():
+    """WhisperX segments 直接轉 SRT。"""
+    segments = [
+        {"start": 0.38, "end": 1.56, "text": "今天天氣真好"},
+        {"start": 1.78, "end": 3.2, "text": "我們去散步吧"},
     ]
-    srt = _funasr_to_srt(results)
+    srt = _whisperx_to_srt(segments)
 
-    assert "1\n00:00:00,380 --> 00:00:01,560\n今天天氣真好。" in srt
-    assert "2\n00:00:01,780 --> 00:00:03,200\n我們去散步吧。" in srt
+    assert "1\n00:00:00,380 --> 00:00:01,560\n今天天氣真好" in srt
+    assert "2\n00:00:01,780 --> 00:00:03,200\n我們去散步吧" in srt
 
 
-def test_funasr_to_srt_with_aligned_timestamps():
-    """沒有 sentence_info，但 timestamps 與句子數量一致。"""
-    results = [
-        {
-            "text": "今天天氣真好。我們去散步吧。",
-            "timestamp": [[380, 1560], [1780, 3200]],
-        }
+def test_whisperx_to_srt_with_speakers():
+    """diarization 後 segment 帶 speaker，SRT 加 [SPEAKER_XX] prefix。"""
+    segments = [
+        {"start": 0.0, "end": 1.0, "text": "你好嗎", "speaker": "SPEAKER_00"},
+        {"start": 1.0, "end": 2.0, "text": "我很好", "speaker": "SPEAKER_01"},
     ]
-    srt = _funasr_to_srt(results)
+    srt = _whisperx_to_srt(segments, with_speakers=True)
 
-    assert "1\n00:00:00,380 --> 00:00:01,560\n今天天氣真好。" in srt
-    assert "2\n00:00:01,780 --> 00:00:03,200\n我們去散步吧。" in srt
-
-
-def test_funasr_to_srt_with_dict_timestamps():
-    """時間戳是 dict 格式。"""
-    results = [
-        {
-            "text": "測試文字。",
-            "timestamp": [{"start_time": 500, "end_time": 2000}],
-        }
-    ]
-    srt = _funasr_to_srt(results)
-
-    assert "00:00:00,500 --> 00:00:02,000" in srt
-    assert "測試文字。" in srt
+    assert "[SPEAKER_00] 你好嗎" in srt
+    assert "[SPEAKER_01] 我很好" in srt
 
 
-def test_funasr_to_srt_unaligned_timestamps():
-    """timestamps 數量與句子數不一致，用首尾包整段。"""
-    results = [
-        {
-            "text": "一段很長的文字沒有標點",
-            "timestamp": [[100, 200], [300, 400], [500, 1000]],
-        }
-    ]
-    srt = _funasr_to_srt(results)
-
-    assert "00:00:00,100 --> 00:00:01,000" in srt
-    assert "一段很長的文字沒有標點" in srt
+def test_whisperx_to_srt_speaker_missing_fallback():
+    """diarization 漏 assign 某 segment 時用 SPEAKER_?? 佔位。"""
+    segments = [{"start": 0.0, "end": 1.0, "text": "未知說話人"}]
+    srt = _whisperx_to_srt(segments, with_speakers=True)
+    assert "[SPEAKER_??] 未知說話人" in srt
 
 
-def test_funasr_to_srt_no_timestamps():
-    """沒有時間戳，用 00:00:00 佔位。"""
-    results = [{"text": "只有文字沒有時間戳"}]
-    srt = _funasr_to_srt(results)
-
-    assert "00:00:00,000 --> 00:00:00,000" in srt
-    assert "只有文字沒有時間戳" in srt
+def test_whisperx_to_srt_empty():
+    assert _whisperx_to_srt([]) == ""
+    assert _whisperx_to_srt([{"start": 0, "end": 1, "text": ""}]) == ""
 
 
-def test_funasr_to_srt_empty():
-    assert _funasr_to_srt([]) == ""
-    assert _funasr_to_srt([{"text": ""}]) == ""
+def test_whisperx_to_srt_strips_whitespace():
+    segments = [{"start": 0.0, "end": 1.0, "text": "  含前後空白  "}]
+    srt = _whisperx_to_srt(segments)
+    assert "含前後空白" in srt
+    assert "  含前後空白" not in srt
 
 
-def test_funasr_to_srt_char_level_no_drift_with_punctuation():
-    """Regression：FunASR 的 timestamp 陣列只覆蓋可發音字，不含標點。
-
-    舊版 `_funasr_to_srt` 把 text 的 `char_idx`（含標點）當 timestamp 索引，
-    每遇一個標點就多計一格，造成時間戳線性漂移、末段 clamp 到 timestamp[-1]。
-    EP107 案例：81 min 音檔漂 ~10%（±250s），末段全擠在 01:21:38。
-
-    這個 test 塞 30 個等長句子（每句 14 可發音字 + 1 句號 = 15 字），
-    timestamp 陣列剛好 420 筆（30×14）均勻分布於 0–42s。
-    正確行為：每個 cue 的 start 線性遞增、最後一 cue 落在 ~40.6s。
-    舊 bug：最後兩 cue 都會被 clamp 到 ~41.9s。
-    """
-    sentence_body = "我們就是需要持續觀察這樣可以"  # 14 chars
-    assert len(sentence_body) == 14
-    text = (sentence_body + "。") * 30  # 30 × 15 = 450 chars, 420 non-punct
-
-    # 100ms 一個可發音字，總長 42s
-    timestamps = [[i * 100, i * 100 + 90] for i in range(420)]
-    assert len(timestamps) == 420
-
-    srt = _funasr_to_srt([{"text": text, "timestamp": timestamps}])
-
-    # 取每個 cue 的 start_s
-    import re
-
-    starts = []
-    for match in re.finditer(r"(\d\d):(\d\d):(\d\d),(\d{3})\s*-->", srt):
-        h, m, s, ms = map(int, match.groups())
-        starts.append(h * 3600 + m * 60 + s + ms / 1000)
-
-    assert len(starts) >= 25, f"預期 ~30 個 cue，得到 {len(starts)}"
-
-    # 1. 首 cue 接近 0（bug 不會影響頭段，只是 sanity check）
-    assert starts[0] < 1.0, f"首 cue 應在 <1s，得 {starts[0]}s"
-
-    # 2. 末 cue 應該在 ~40.6s（char position ≈ 406，100ms/char），不該被 clamp 到 41.9s
-    assert 39.5 < starts[-1] < 41.5, f"末 cue 漂移：應在 40.6s 附近，得 {starts[-1]}s"
-
-    # 3. 沒有連續兩個 cue start 時間相同（bug 會讓末段數個 cue 全 clamp 到同一個 ts）
-    dup_pairs = sum(1 for a, b in zip(starts, starts[1:]) if abs(a - b) < 0.01)
-    assert dup_pairs == 0, f"發現 {dup_pairs} 對相鄰 cue 時間重合（bug 特徵）"
-
-    # 4. 時間線性遞增（每 cue 約 +1.4s，容忍 ±0.3s）
-    for i in range(1, len(starts)):
-        gap = starts[i] - starts[i - 1]
-        assert 1.1 < gap < 1.7, f"cue {i} gap 異常：{gap}s（應 ~1.4s）"
+# ── _build_initial_prompt ──
 
 
-def test_funasr_to_srt_multiple_items():
-    """多個結果項（VAD 切出的多段）。"""
-    results = [
-        {
-            "text": "第一段。",
-            "timestamp": [[0, 2000]],
-        },
-        {
-            "text": "第二段。",
-            "timestamp": [[3000, 5000]],
-        },
-    ]
-    srt = _funasr_to_srt(results)
-
-    assert "1\n" in srt
-    assert "2\n" in srt
-    assert "第一段。" in srt
-    assert "第二段。" in srt
+def test_build_initial_prompt_full():
+    prompt = _build_initial_prompt(
+        hotwords=["Traveling Village", "Paul"],
+        project_context={"guest_name": "張安吉", "topic": "數位遊牧"},
+        host_name="張修修",
+        show_name="不正常人類研究所",
+    )
+    assert "節目：不正常人類研究所" in prompt
+    assert "主持人：張修修" in prompt
+    assert "來賓：張安吉" in prompt
+    assert "主題：數位遊牧" in prompt
+    assert "Traveling Village" in prompt
+    assert "Paul" in prompt
+    assert prompt.endswith("。")
 
 
-# ── transcribe() 主函式（mock FunASR）──
+def test_build_initial_prompt_empty():
+    """全部 None / 空 → 空字串。"""
+    assert _build_initial_prompt([], None) == ""
+
+
+def test_build_initial_prompt_partial():
+    """只有 hotwords 也應產出。"""
+    prompt = _build_initial_prompt(["Foo Bar"], None)
+    assert "Foo Bar" in prompt
+
+
+# ── transcribe() 主函式（mock WhisperX）──
+
+
+def _mock_whisperx_model(segments: list[dict], language: str = "zh") -> MagicMock:
+    """組一個 mock WhisperX model：`.transcribe()` 回 {segments, language} dict。"""
+    m = MagicMock()
+    m.transcribe.return_value = {"segments": segments, "language": language}
+    return m
 
 
 def test_transcribe_basic(tmp_path):
-    """測試 transcribe() 的整合流程（mock FunASR + 跳過 Auphonic）。"""
+    """測試 transcribe() 的整合流程（mock WhisperX + 跳過 Auphonic + 跳過 diar）。"""
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
-    # Mock FunASR model
-    mock_model = MagicMock()
-    mock_model.generate.return_value = [
-        {
-            "text": "这是简体中文的测试。软件开发很有趣。",
-            "timestamp": [[1000, 3000], [3500, 6000]],
-        }
-    ]
+    mock_model = _mock_whisperx_model(
+        [
+            {"start": 1.0, "end": 3.0, "text": "这是简体中文的测试。"},
+            {"start": 3.5, "end": 6.0, "text": "软件开发很有趣。"},
+        ]
+    )
 
-    with patch("shared.transcriber._get_asr_model", return_value=mock_model):
+    with (
+        patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake audio array"),
+    ):
         from shared.transcriber import transcribe
 
         result = transcribe(
             str(audio),
             output_dir=str(tmp_path),
-            normalize_audio=False,  # 跳過 Auphonic
+            normalize_audio=False,
+            use_diarization=False,
         )
 
     assert result.suffix == ".srt"
     assert result.exists()
 
     content = result.read_text(encoding="utf-8")
-    # 應已轉為繁體
+    # 應已轉為繁體（s2twp 模式）
     assert "這是簡體中文的測試" in content
     # 預設無標點 — 中文標點應被移除
     assert "，" not in content
@@ -421,16 +361,21 @@ def test_transcribe_with_normalize(tmp_path):
     normalized = tmp_path / "test_normalized.wav"
     normalized.write_bytes(b"normalized audio")
 
-    mock_model = MagicMock()
-    mock_model.generate.return_value = [{"text": "测试。", "timestamp": [[0, 1000]]}]
+    mock_model = _mock_whisperx_model([{"start": 0, "end": 1, "text": "测试。"}])
 
     with (
         patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake"),
         patch("shared.auphonic.normalize", return_value=normalized) as mock_normalize,
     ):
         from shared.transcriber import transcribe
 
-        transcribe(str(audio), output_dir=str(tmp_path), normalize_audio=True)
+        transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=True,
+            use_diarization=False,
+        )
 
     mock_normalize.assert_called_once()
 
@@ -440,16 +385,21 @@ def test_transcribe_normalize_failure_continues(tmp_path):
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
-    mock_model = MagicMock()
-    mock_model.generate.return_value = [{"text": "测试。", "timestamp": [[0, 1000]]}]
+    mock_model = _mock_whisperx_model([{"start": 0, "end": 1, "text": "测试。"}])
 
     with (
         patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake"),
         patch("shared.auphonic.normalize", side_effect=ValueError("No credits")),
     ):
         from shared.transcriber import transcribe
 
-        result = transcribe(str(audio), output_dir=str(tmp_path), normalize_audio=True)
+        result = transcribe(
+            str(audio),
+            output_dir=str(tmp_path),
+            normalize_audio=True,
+            use_diarization=False,
+        )
 
     # 即使 Auphonic 失敗，仍應產出 SRT
     assert result.exists()
@@ -460,8 +410,7 @@ def test_transcribe_with_llm_correction_writes_qc(tmp_path):
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
-    mock_model = MagicMock()
-    mock_model.generate.return_value = [{"text": "测试文字。", "timestamp": [[0, 1000]]}]
+    mock_model = _mock_whisperx_model([{"start": 0, "end": 1, "text": "测试文字。"}])
 
     mock_response = (
         '{"corrections": {}, "uncertain": ['
@@ -472,6 +421,7 @@ def test_transcribe_with_llm_correction_writes_qc(tmp_path):
 
     with (
         patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake"),
         patch("shared.llm.ask", return_value=mock_response),
     ):
         from shared.transcriber import transcribe
@@ -481,6 +431,7 @@ def test_transcribe_with_llm_correction_writes_qc(tmp_path):
             output_dir=str(tmp_path),
             normalize_audio=False,
             use_llm_correction=True,
+            use_diarization=False,
         )
 
     assert result.exists()
@@ -504,22 +455,14 @@ def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"fake audio data")
 
-    # 用 FunASR 真實 sentence_info 契約（punc_model 會加句號，per-sentence 時間戳）
-    mock_model = MagicMock()
-    mock_model.generate.return_value = [
-        {
-            "text": "这是第一句。",
-            "sentence_info": [
-                {"text": "这是第一句。", "start": 0, "end": 2000},
-            ],
-        }
-    ]
+    mock_model = _mock_whisperx_model([{"start": 0, "end": 2.0, "text": "这是第一句。"}])
 
     # LLM 把一整段帶標點回傳（含逗號、句號、問號、驚嘆號）
     mock_response = '{"corrections": {"1": "這是第一句，真的嗎？太好了！"}, "uncertain": []}'
 
     with (
         patch("shared.transcriber._get_asr_model", return_value=mock_model),
+        patch("whisperx.load_audio", return_value=b"fake"),
         patch("shared.llm.ask", return_value=mock_response),
     ):
         from shared.transcriber import transcribe
@@ -530,6 +473,7 @@ def test_transcribe_strips_llm_reintroduced_punctuation(tmp_path):
             normalize_audio=False,
             use_llm_correction=True,
             use_multimodal_arbitration=False,
+            use_diarization=False,
         )
 
     content = result.read_text(encoding="utf-8")

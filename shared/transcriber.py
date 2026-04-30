@@ -1,14 +1,17 @@
-"""語音轉繁體中文字幕：基於 FunASR Paraformer-zh 的本地 ASR pipeline。
+"""語音轉繁體中文字幕：基於 WhisperX (Whisper Large V3) 的本地 ASR pipeline。
 
 獨立模組，可被任何 agent 調用。
 支援 Auphonic 雲端前處理（normalization + 降噪）、
-FunASR 本地辨識（VAD + 時間戳 + 標點 + Hotword），
-以及可選的 LLM 校正（Pinyin 輔助 + JSON diff + QC 報告）。
+WhisperX 本地辨識（faster-whisper backend + word-level alignment + pyannote diarization），
+以及可選的 LLM 校正（Pinyin 輔助 + JSON diff + QC 報告 + Gemini 多模態仲裁）。
+
+引擎選型 rationale：docs/decisions/ADR-013-transcribe-engine-reconsideration.md
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -16,20 +19,18 @@ from shared.log import get_logger
 
 logger = get_logger("nakama.transcriber")
 
-# 中文句中標點 → 替換為空格
-_ZH_MID_PUNCTUATION = re.compile(r"[，、；：" "''（）《》【】…—～·]")
-# 中文句尾標點 → 直接移除
-_ZH_END_PUNCTUATION = re.compile(r"[。！？]")
+# 句中標點（中英）→ 替換為空格
+# 注意：英文 `,` 在中英 code-switch 文字裡通常是子句斷點而非英文文法逗號，
+# 一律當斷點處理；如果未來需要保留英文文法 `,`（如「Paul, my friend」）可加 detection。
+_ZH_MID_PUNCTUATION = re.compile(r"[，、；：" "''（）《》【】…—～·,;:]")
+# 句尾標點（中英）→ 直接移除
+_ZH_END_PUNCTUATION = re.compile(r"[。！？!?]|(?<=\S)\.(?=\s|$)")
 
-# FunASR 字級 timestamp 不覆蓋的字元（標點、空白、全形括號等）
-# 用於 `_funasr_to_srt` 將 text char 位置映射到 timestamp 索引。
-_FUNASR_NO_TS_CHAR = re.compile(r"[，、。！？；：,.!?;:\s\"'“”‘’（）()《》【】…—~～·]")
+# 句尾標點（用於拆分句子）
+_SENTENCE_END = re.compile(r"([。！？!?])")
 
-# 中文句尾標點（用於拆分句子）
-_SENTENCE_END = re.compile(r"([。！？])")
-
-# 中文逗號等次級斷點（用於長句再拆分）
-_CLAUSE_BREAK = re.compile(r"([，、；：])")
+# 逗號等次級斷點（用於長句再拆分）
+_CLAUSE_BREAK = re.compile(r"([，、；：,;:])")
 
 # 字幕每行最大字數
 _MAX_SUBTITLE_CHARS = 20
@@ -40,18 +41,22 @@ _SRT_TS_FMT = "{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 # OpenCC lazy singleton（避免重複載入字典）
 _cc_s2t = None
 
-# FunASR model lazy singleton
+# WhisperX model lazy singletons（含 ASR / align / diarize 三層）
 _asr_model = None
 _asr_model_id = None
+_align_model = None
+_align_metadata = None
+_align_language: str | None = None
+_diarize_pipeline = None
 
 
 def _get_cc():
-    """取得 OpenCC s2t converter（lazy singleton）。"""
+    """取得 OpenCC 簡轉繁 converter（lazy singleton，s2twp = 簡 → 台灣繁體含詞彙）。"""
     global _cc_s2t
     if _cc_s2t is None:
         from opencc import OpenCC
 
-        _cc_s2t = OpenCC("s2t")
+        _cc_s2t = OpenCC("s2twp")
     return _cc_s2t
 
 
@@ -528,159 +533,6 @@ def _parse_llm_response(raw: str, total_entries: int) -> tuple[dict[int, str], l
     return corrected, []
 
 
-def _get_ts_values(ts_item) -> tuple[int, int]:
-    """從時間戳項目中取得 (start_ms, end_ms)。
-
-    FunASR 時間戳格式可能是：
-    - List/tuple: [start_ms, end_ms]
-    - Dict: {"start_time": ms, "end_time": ms}
-    """
-    if isinstance(ts_item, dict):
-        return ts_item["start_time"], ts_item["end_time"]
-    return ts_item[0], ts_item[1]
-
-
-def _funasr_char_to_ts_idx(text: str, n_ts: int) -> list[int]:
-    """建立 `text` 每個字元位置 → FunASR timestamp 索引的映射。
-
-    FunASR 的 timestamp 陣列只覆蓋**可發音字**（跳過標點/空白/全形括號），
-    所以不能直接用 `char_idx` 當 timestamp 索引（長音檔會線性漂移 ~10%）。
-
-    策略：
-    1. 數出 text 裡所有可發音字元的位置（content chars）
-    2. 用線性比例把第 k 個 content char 映射到 timestamp[k * n_ts / n_content]
-       — 處理 FunASR 對英文單字的 tokenization 可能跟單字元計數不一致
-    3. 標點/空白位置繼承前一個可發音字的索引
-    """
-    n = len(text)
-    if n == 0 or n_ts == 0:
-        return [0] * n
-
-    content_positions = [i for i, ch in enumerate(text) if not _FUNASR_NO_TS_CHAR.match(ch)]
-    n_content = len(content_positions)
-    if n_content == 0:
-        return [0] * n
-
-    scale = n_ts / n_content
-    result = [0] * n
-    c_idx = 0
-    last_ts = 0
-    content_set = set(content_positions)
-    # 建立 content_position → ts_idx 的 lookup
-    content_to_ts: dict[int, int] = {}
-    for k, pos in enumerate(content_positions):
-        content_to_ts[pos] = min(n_ts - 1, int(k * scale))
-
-    for i in range(n):
-        if i in content_set:
-            last_ts = content_to_ts[i]
-        result[i] = last_ts
-        c_idx += 1  # not strictly needed but keeps signature symmetric
-
-    return result
-
-
-def _funasr_to_srt(results: list[dict]) -> str:
-    """將 FunASR 辨識結果轉為 SRT 格式字串。
-
-    FunASR 輸出格式：[{"text": "...", "timestamp": [[start_ms, end_ms], ...]}]
-
-    時間戳類型：
-    - sentence_info: per-sentence（最佳，直接用）
-    - 字級時間戳: len(timestamps) 對應可發音字（跳過標點），用 `_funasr_char_to_ts_idx` 對齊
-    - 句級時間戳: len(timestamps) == len(sentences)，直接配對
-    """
-    srt_parts: list[str] = []
-    seq = 1
-
-    for item in results:
-        text = item.get("text", "").strip()
-        if not text:
-            continue
-
-        # 優先使用 sentence_info（含逐句文字 + 時間戳）
-        sentence_info = item.get("sentence_info")
-        if sentence_info:
-            for info in sentence_info:
-                s_text = info.get("text", "").strip()
-                if not s_text:
-                    continue
-                start_s = info["start"] / 1000
-                end_s = info["end"] / 1000
-                start_ts = _seconds_to_srt_ts(start_s)
-                end_ts = _seconds_to_srt_ts(end_s)
-                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{s_text}\n")
-                seq += 1
-            continue
-
-        timestamps = item.get("timestamp", [])
-        if not timestamps:
-            srt_parts.append(f"{seq}\n00:00:00,000 --> 00:00:00,000\n{text}\n")
-            seq += 1
-            continue
-
-        sentences = _split_sentences(text)
-
-        # 判斷時間戳類型：字級（≈字數）還是句級（≈句數）
-        is_char_level = len(timestamps) > len(sentences) * 2
-
-        if is_char_level:
-            # 字級時間戳：FunASR 只給可發音字的 timestamp，必須把
-            # text char 位置正確映射到 timestamp 索引（不能直接用 char_idx）。
-            char_to_ts_idx = _funasr_char_to_ts_idx(text, len(timestamps))
-
-            search_from = 0
-            for sentence in sentences:
-                if not sentence:
-                    continue
-                # 找句子在 text 裡的位置（_split_sentences 可能做過 strip()）
-                pos = text.find(sentence, search_from)
-                if pos < 0:
-                    stripped = sentence.strip()
-                    pos = text.find(stripped, search_from) if stripped else -1
-                    if pos >= 0:
-                        sentence_len = len(stripped)
-                    else:
-                        # 找不到就 fallback：用當前 search_from 估位置
-                        pos = search_from
-                        sentence_len = len(sentence)
-                else:
-                    sentence_len = len(sentence)
-
-                start_char = pos
-                end_char = min(pos + sentence_len - 1, len(text) - 1)
-                search_from = pos + sentence_len
-
-                ts_start = char_to_ts_idx[start_char]
-                ts_end = char_to_ts_idx[end_char]
-
-                start_ms, _ = _get_ts_values(timestamps[ts_start])
-                _, end_ms = _get_ts_values(timestamps[ts_end])
-
-                start_ts = _seconds_to_srt_ts(start_ms / 1000)
-                end_ts = _seconds_to_srt_ts(end_ms / 1000)
-                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{sentence}\n")
-                seq += 1
-        elif len(sentences) == len(timestamps):
-            # 句級時間戳：完美對齊
-            for sentence, ts in zip(sentences, timestamps):
-                start_ms, end_ms = _get_ts_values(ts)
-                start_ts = _seconds_to_srt_ts(start_ms / 1000)
-                end_ts = _seconds_to_srt_ts(end_ms / 1000)
-                srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{sentence}\n")
-                seq += 1
-        else:
-            # Fallback：用首尾 timestamp 包整段
-            start_ms, _ = _get_ts_values(timestamps[0])
-            _, end_ms = _get_ts_values(timestamps[-1])
-            start_ts = _seconds_to_srt_ts(start_ms / 1000)
-            end_ts = _seconds_to_srt_ts(end_ms / 1000)
-            srt_parts.append(f"{seq}\n{start_ts} --> {end_ts}\n{text}\n")
-            seq += 1
-
-    return "\n".join(srt_parts)
-
-
 def _split_sentences(text: str) -> list[str]:
     """拆分文字為字幕段落，每段不超過 _MAX_SUBTITLE_CHARS 字。
 
@@ -772,24 +624,155 @@ def _process_srt_line(line: str) -> str:
     return line
 
 
-def _get_asr_model(model_id: str):
-    """取得 FunASR 模型（lazy singleton，避免重複載入）。"""
+def _get_asr_model(
+    model_id: str = "large-v3",
+    device: str = "cuda",
+    initial_prompt: str = "",
+):
+    """取得 WhisperX 模型（faster-whisper backend，lazy singleton）。
+
+    `initial_prompt` 走 WhisperX 的 `asr_options` — WhisperX 的 transcribe() 不接
+    initial_prompt，必須在 load 時就 bake 進去。Singleton key 包含 prompt，
+    prompt 變了會 reload model。
+    """
     global _asr_model, _asr_model_id
 
-    if _asr_model is not None and _asr_model_id == model_id:
+    cache_key = (model_id, initial_prompt)
+    if _asr_model is not None and _asr_model_id == cache_key:
         return _asr_model
 
-    from funasr import AutoModel
+    import whisperx
 
-    logger.info(f"載入 FunASR 模型: {model_id}")
-    _asr_model = AutoModel(
-        model=model_id,
-        vad_model="fsmn-vad",
-        punc_model="ct-punc-c",
+    logger.info(f"載入 WhisperX 模型: {model_id}（initial_prompt {len(initial_prompt)} 字）")
+    asr_options: dict = {}
+    if initial_prompt:
+        asr_options["initial_prompt"] = initial_prompt
+
+    _asr_model = whisperx.load_model(
+        model_id,
+        device=device,
+        compute_type="float16",
+        language="zh",
+        asr_options=asr_options or None,
     )
-    _asr_model_id = model_id
-    logger.info("FunASR 模型載入完成")
+    _asr_model_id = cache_key
+    logger.info("WhisperX 模型載入完成")
     return _asr_model
+
+
+def _get_align_model(language: str, device: str = "cuda"):
+    """取得 WhisperX align model（word-level timestamps，lazy singleton）。
+
+    Chinese (zh) 用 wav2vec2 中文對齊模型；align 模型不存在時 raise，
+    呼叫端應 catch + skip alignment 走 segment-level timestamp。
+    """
+    global _align_model, _align_metadata, _align_language
+    if _align_model is not None and _align_language == language:
+        return _align_model, _align_metadata
+
+    import whisperx
+
+    logger.info(f"載入 WhisperX align 模型: {language}")
+    _align_model, _align_metadata = whisperx.load_align_model(
+        language_code=language,
+        device=device,
+    )
+    _align_language = language
+    return _align_model, _align_metadata
+
+
+def _get_diarize_pipeline(hf_token: str, device: str = "cuda"):
+    """取得 pyannote diarization pipeline（lazy singleton）。"""
+    global _diarize_pipeline
+    if _diarize_pipeline is not None:
+        return _diarize_pipeline
+
+    from whisperx.diarize import DiarizationPipeline
+
+    logger.info("載入 pyannote diarization pipeline")
+    _diarize_pipeline = DiarizationPipeline(
+        use_auth_token=hf_token,
+        device=device,
+    )
+    return _diarize_pipeline
+
+
+def _build_initial_prompt(
+    hotwords: list[str],
+    project_context: dict | None,
+    host_name: str = "",
+    show_name: str = "",
+) -> str:
+    """組成 Whisper `initial_prompt`（自然中文描述，非空白分隔關鍵字）。
+
+    Whisper 接 initial_prompt 為自然語句，作為 LM 偏置；不像 FunASR 用 hotwords API。
+    """
+    parts: list[str] = []
+    if show_name:
+        parts.append(f"節目：{show_name}")
+    if host_name:
+        parts.append(f"主持人：{host_name}")
+    if project_context:
+        if guest := project_context.get("guest_name"):
+            parts.append(f"來賓：{guest}")
+        if topic := project_context.get("topic"):
+            parts.append(f"主題：{topic}")
+    if hotwords:
+        parts.append(f"專名：{', '.join(hotwords[:30])}")
+    return ("。".join(parts) + "。") if parts else ""
+
+
+def _whisperx_to_srt(segments: list[dict], with_speakers: bool = False) -> str:
+    """將 WhisperX segments 轉為 SRT 格式，超長 segment 拆成 ≤20 字 sub-cue。
+
+    WhisperX 預設 segment 是 sentence-level（可能 100+ 字），對 SRT 顯示太長。
+    對每段：
+    1. `_split_sentences` 拆成 ≤_MAX_SUBTITLE_CHARS 字的子句
+    2. 子句時間戳走線性插值（按 char 位置在原 segment 內等比分配）
+
+    segments: 每個 dict 有 start, end, text, 可能還有 speaker (diarization 後)。
+    with_speakers=True 時在文字前加 [SPEAKER_XX] prefix。
+    """
+    lines: list[str] = []
+    seq = 1
+    for seg in segments:
+        seg_start = float(seg.get("start", 0.0))
+        seg_end = float(seg.get("end", 0.0))
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
+
+        speaker_prefix = ""
+        if with_speakers:
+            speaker = seg.get("speaker", "SPEAKER_??")
+            speaker_prefix = f"[{speaker}] "
+
+        sub_texts = _split_sentences(text)
+        if not sub_texts:
+            continue
+
+        total_chars = sum(len(t) for t in sub_texts)
+        if total_chars == 0:
+            continue
+
+        duration = max(0.0, seg_end - seg_start)
+        cum = 0
+        for sub in sub_texts:
+            sub_len = len(sub)
+            if duration > 0:
+                sub_start = seg_start + duration * cum / total_chars
+                sub_end = seg_start + duration * (cum + sub_len) / total_chars
+            else:
+                sub_start = seg_start
+                sub_end = seg_end
+            cum += sub_len
+            content = speaker_prefix + sub
+            ts_start = _seconds_to_srt_ts(sub_start)
+            ts_end = _seconds_to_srt_ts(sub_end)
+            lines.append(f"{seq}\n{ts_start} --> {ts_end}\n{content}\n")
+            seq += 1
+
+    return "\n".join(lines)
 
 
 def transcribe(
@@ -800,15 +783,16 @@ def transcribe(
     project_file: str | Path | None = None,
     use_llm_correction: bool = False,
     llm_model: str = "claude-opus-4-7",
-    asr_model: str = "paraformer-zh",
+    asr_model: str = "large-v3",
     normalize_audio: bool = True,
     output_dir: str | Path | None = None,
     host_name: str = "張修修",
     show_name: str = "不正常人類研究所",
     use_multimodal_arbitration: bool = True,
+    use_diarization: bool = True,
     run_id: int | None = None,
 ) -> Path:
-    """語音轉繁體中文 SRT 字幕。
+    """語音轉繁體中文 SRT 字幕（WhisperX + 可選 LLM 校正 + 可選 Gemini 仲裁）。
 
     Args:
         audio_path: 音檔路徑（MP3, WAV, M4A 等）
@@ -817,13 +801,14 @@ def transcribe(
         project_file: LifeOS Podcast Project 檔案路徑，自動提取來賓/主題/術語 context
         use_llm_correction: 是否啟用 LLM 校正（預設 False，啟用會產生 API 成本）
         llm_model: LLM 校正使用的模型（預設 Opus，~$0.40/小時音檔）
-        asr_model: FunASR 模型 ID（預設 paraformer-zh）
+        asr_model: WhisperX 模型大小（預設 large-v3；可選 medium / small / base）
         normalize_audio: 是否先用 Auphonic 做 normalization（預設 True）
         output_dir: 輸出目錄（預設與音檔同目錄）
         host_name: 主持人名稱（預設「張修修」）
         show_name: 節目名稱（預設「不正常人類研究所」）
         use_multimodal_arbitration: 是否在 LLM 校正後用 Gemini 2.5 Pro audio 仲裁 uncertain 片段
             （僅在 use_llm_correction=True 時生效，多 $0.05–0.20/hr）
+        use_diarization: 是否做 speaker diarization（pyannote，需 HUGGINGFACE_TOKEN env）
         run_id: cost tracking 用的 run id（傳給 Gemini 客戶端）
 
     Returns:
@@ -849,28 +834,77 @@ def transcribe(
         except Exception as e:
             logger.warning(f"跳過 Auphonic normalization: {e}")
 
-    # ── FunASR 辨識 ──
-    model = _get_asr_model(asr_model)
+    # ── WhisperX 三階段：ASR → Align → Diarize ──
+    import whisperx
 
     hotwords = _extract_hotwords(context_files)
-    hotword_str = " ".join(hotwords) if hotwords else ""
+    proj_ctx = _extract_project_context(project_file) if project_file else None
+    initial_prompt = _build_initial_prompt(hotwords, proj_ctx, host_name, show_name)
     if hotwords:
-        logger.info(f"Hotwords: {hotwords[:10]}{'...' if len(hotwords) > 10 else ''}")
+        head = hotwords[:10]
+        suffix = "..." if len(hotwords) > 10 else ""
+        logger.info(f"Hotwords ({len(hotwords)}): {head}{suffix}")
+    if initial_prompt:
+        logger.info(f"Initial prompt 長度: {len(initial_prompt)}")
+
+    model = _get_asr_model(asr_model, initial_prompt=initial_prompt)
 
     logger.info(f"開始 ASR 辨識（模型: {asr_model}）")
-    results = model.generate(
-        input=str(audio_path),
-        batch_size_s=300,
-        hotword=hotword_str,
-    )
+    audio = whisperx.load_audio(str(audio_path))
+    transcription = model.transcribe(audio, batch_size=16, language=language)
 
-    if not results or not results[0].get("text"):
-        raise RuntimeError("FunASR 辨識結果為空")
+    if not transcription.get("segments"):
+        raise RuntimeError("WhisperX 辨識結果為空")
 
-    logger.info(f"ASR 辨識完成，文字長度: {len(results[0]['text'])}")
+    segs = transcription["segments"]
+    detected_lang = transcription.get("language", language)
+    logger.info(f"ASR 辨識完成，{len(segs)} segments，語言: {detected_lang}")
+
+    # ── Word-level alignment（diarization 需要才跑；align 失敗時 fallback 到 segment-level）──
+    aligned_segs = segs
+    if use_diarization:
+        try:
+            align_model_obj, align_metadata = _get_align_model(detected_lang)
+            aligned = whisperx.align(
+                segs,
+                align_model_obj,
+                align_metadata,
+                audio,
+                device="cuda",
+                return_char_alignments=False,
+            )
+            aligned_segs = aligned["segments"]
+            logger.info("Alignment 完成")
+        except Exception as e:
+            logger.warning(
+                f"Alignment 失敗（可能 {detected_lang} 無對應 align 模型）：{type(e).__name__}: {e}"
+            )
+
+    # ── Diarization（可選；無 HF token 或失敗時 fallback 到無 speaker label）──
+    final_segs = aligned_segs
+    speakers_assigned = False
+    if use_diarization:
+        hf_token = os.getenv("HUGGINGFACE_TOKEN")
+        if not hf_token:
+            logger.warning("HUGGINGFACE_TOKEN 未設定，跳過 diarization")
+        else:
+            try:
+                diarize_pipeline = _get_diarize_pipeline(hf_token)
+                diarize_segments = diarize_pipeline(audio)
+                with_speakers = whisperx.assign_word_speakers(
+                    diarize_segments,
+                    {"segments": aligned_segs},
+                )
+                final_segs = with_speakers["segments"]
+                speakers_assigned = True
+                logger.info("Diarization 完成")
+            except Exception as e:
+                logger.warning(
+                    f"Diarization 失敗，仍輸出 SRT 不含 speaker label: {type(e).__name__}: {e}"
+                )
 
     # ── 轉為 SRT ──
-    srt_content = _funasr_to_srt(results)
+    srt_content = _whisperx_to_srt(final_segs, with_speakers=speakers_assigned)
 
     # ── 後處理：逐行簡轉繁 + 去標點（Pass 1：FunASR 輸出）──
     srt_content = "\n".join(_process_srt_line(line) for line in srt_content.splitlines())
