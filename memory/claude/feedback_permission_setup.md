@@ -7,7 +7,13 @@ originSessionId: 2c7f6b5e-13d0-472f-ad8b-1f3485a54a41
 已在 `.claude/settings.json` 設定 `acceptEdits` 模式（VS Code 中顯示為 "Edit Automatically"）。
 
 **allow：** WebFetch、WebSearch、pytest、pip、agents.*、git 本地操作（status/log/diff/add/commit/stash）、gh CLI
-**deny：** rm、rmdir、git push --force、git reset --hard、git checkout --、git clean、git branch -D、Edit(.env)
+**deny：** rm、rmdir、sudo、systemctl、git reset --hard、git checkout --、git clean、Edit(.env)、ssh、scp、rsync
+
+**2026-05-01 移出 deny**（GitHub Pro server-side branch protection 已 enforce main 保護後，4 條 push rule + branch -D 變 redundant）：
+- `git branch -D` — squash merge 政策下 `-d` 永遠 fail，reflog 90 天保底
+- `git push origin main*` / `git push * main` — server `required_pull_request_reviews` 已擋
+- `git push --force *` / `git push -f *` — server `allow_force_pushes: false` 已擋 main；feature branch force push 是合法 PR rebase 工作流不該被擋
+- 詳見 [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) + [feedback_rule_interaction_audit.md](feedback_rule_interaction_audit.md) + [reference_github_plan_branch_protection.md](reference_github_plan_branch_protection.md)
 
 **Why:** 修修每次都要手動 approve 太多操作，希望安全的自動放行、危險的硬擋。
 **How to apply:** 刪除檔案時禁止 rm，改用 PowerShell 回收桶（CLAUDE.md 已記載）。settings.json 跨平台共用（git 追蹤），settings.local.json 各機器獨立（gitignore）。

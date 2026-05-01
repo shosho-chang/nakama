@@ -15,7 +15,7 @@ originSessionId: b5636c88-2145-418f-b98f-ef364ae150df
 1. PR 開好 → 視 PR 規模/風險判斷要不要派 review sub-agent（純 hygiene/單 bug fix 跳過；feature/動 schema/動 auth 要派）
 2. Review 嚴格度：只有 blocker（bug / 安全漏洞 / 破壞既有行為 / 新增 secret leak）才停下找修修討論；nit / style suggestion 不打斷
 3. Merge 策略：`gh pr merge <N> --squash --delete-branch`（符合 repo history）
-4. Merge 後：`git checkout main && git pull origin main`，本地 branch `git branch -d <name>`（已 merged 才用 -d；不要 -D）
+4. Merge 後：`git checkout main && git pull origin main`，本地 branch `git branch -D <name>`（squash merge 政策下 git ancestry 不存在，`-d` 永遠 fail；`-D` 由 reflog 90 天保底，丟失不了）
 5. 把待測試 / follow-up 事項更新到 `project_pending_tasks.md`
 6. 結束時告知修修「已 auto-merge PR #N」+ 一句 summary
 
