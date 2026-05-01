@@ -89,6 +89,7 @@
 - [project_session_2026_05_01_line1_sandcastle_round2.md](project_session_2026_05_01_line1_sandcastle_round2.md) — **收工 2026-05-01**：Line 1 Slice 2/3/4 merged (PR #295/#297) + sandcastle round 1+2 戰績（4/4 通過）+ multi-agent review 17 真問題零誤判；critical path 4/10 done 等 5/6 樣本 unblock
 - [feedback_minimize_manual_friction.md](feedback_minimize_manual_friction.md) — **最高指導原則**：減少修修手動操作，每個手動步驟 = 摩擦力；設計 default 自動化、scope 砍除前看下游 ripple、approval gate 並行不階段
 - [feedback_quality_over_speed_cost.md](feedback_quality_over_speed_cost.md) — **最高指導原則**：品質 > 速度 > 省錢；模型選 Sonnet/Opus、架構選 multi-stage、context 不砍碎；例外：deterministic / batch / 內部 pipeline
+- [feedback_sync_before_grill.md](feedback_sync_before_grill.md) — 跨 session 起手必跑 3 條 sync 檢查（git log main / reflog / gh issue list），避免重複 grill；2026-05-01 Line 1 PRD 重複教訓
 - [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
 - [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format
 - [feedback_search_skills_first.md](feedback_search_skills_first.md) — 開發前必須先搜尋現有 skills/MCP tools，不重複造輪子
