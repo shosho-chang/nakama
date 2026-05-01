@@ -245,6 +245,27 @@ def test_main_dry_run_lists_expected_artifacts(capsys):
         assert fb_filename(tonal) in out
 
 
+def test_main_dry_run_includes_resolved_run_dir(capsys):
+    """Dry run preview must include the resolved run dir path (computable, no I/O)."""
+    with (
+        patch("scripts.run_repurpose.BlogRenderer"),
+        patch("scripts.run_repurpose.FBRenderer"),
+        patch("scripts.run_repurpose.IGRenderer"),
+        patch("scripts.run_repurpose.RepurposeEngine"),
+        patch.object(
+            sys, "argv", ["run_repurpose.py", "ep99.srt", "--dry-run", "--slug", "my-ep"]
+        ),
+    ):
+        run_repurpose.main()
+
+    out = capsys.readouterr().out
+    assert "Run dir" in out
+    # Slug appears in the run dir path
+    assert "my-ep" in out
+    # data/repurpose/ root path appears
+    assert "data" in out and "repurpose" in out
+
+
 def test_main_dry_run_with_skip_channel_omits_filenames(capsys):
     with (
         patch("scripts.run_repurpose.BlogRenderer"),
@@ -491,8 +512,37 @@ def test_print_cost_summary_records(capsys):
     assert "in=3,000" in out
     assert "out=1,300" in out
     # Sonnet 4.6: 3000*$3 + 1300*$15 = $9000 + $19500 = $28500 / 1M = $0.0285
-    assert "$0.02" in out  # rough match (rounding)
+    # Tighten substring to exact 4-decimal print to catch magnitude regressions.
+    assert "$0.0285" in out
     assert "FBRenderer" in out  # caveat printed
+
+
+def test_print_cost_summary_includes_cache_tokens(capsys):
+    """Cache write/read tokens factored into total cost (Anthropic pricing)."""
+    records = [
+        {
+            "model": "claude-sonnet-4-6",
+            "input_tokens": 1000,
+            "output_tokens": 500,
+            "cache_write_tokens": 4000,
+            "cache_read_tokens": 8000,
+        },
+    ]
+    run_repurpose._print_cost_summary(records)
+    out = capsys.readouterr().out
+    # Total: 1000*3 + 500*15 + 4000*3.75 + 8000*0.30 = 3000 + 7500 + 15000 + 2400 = 27900 → $0.0279
+    assert "$0.0279" in out
+    assert "cache_w=4,000" in out
+    assert "cache_r=8,000" in out
+
+
+def test_print_cost_summary_omits_zero_cache_breakdown(capsys):
+    """When cache tokens are 0, breakdown only shows in/out (not noise)."""
+    records = [{"input_tokens": 1000, "output_tokens": 500}]
+    run_repurpose._print_cost_summary(records)
+    out = capsys.readouterr().out
+    assert "cache_w" not in out
+    assert "cache_r" not in out
 
 
 def test_print_cost_summary_handles_missing_token_keys(capsys):

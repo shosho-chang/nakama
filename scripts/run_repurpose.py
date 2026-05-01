@@ -59,8 +59,11 @@ from agents.brook.repurpose_engine import (  # noqa: E402
     BLOG_FILENAME,
     FB_TONALS,
     IG_FILENAME,
+    STAGE1_FILENAME,
+    ChannelRenderer,
     EpisodeMetadata,
     RepurposeEngine,
+    _resolve_run_dir,
     fb_filename,
 )
 from shared.llm_context import start_usage_tracking, stop_usage_tracking  # noqa: E402
@@ -72,6 +75,11 @@ CHANNEL_CHOICES = ("blog", "fb", "ig")
 # Source: anthropic.com/pricing as of 2026-05; update when prices change.
 _SONNET_46_INPUT_PER_MTOK = 3.0
 _SONNET_46_OUTPUT_PER_MTOK = 15.0
+# Anthropic prompt-caching pricing (per 1M tokens, USD):
+# - Cache write: 1.25× input rate (5-min ephemeral cache)
+# - Cache read:  0.10× input rate (90% discount when prompt prefix hits)
+_SONNET_46_CACHE_WRITE_PER_MTOK = 3.75
+_SONNET_46_CACHE_READ_PER_MTOK = 0.30
 
 
 def _parse_args() -> argparse.Namespace:
@@ -93,7 +101,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--guest",
         default=None,
-        help="來賓姓名（default: 由 LLM 從 SRT 上下文推斷）",
+        help=(
+            "來賓姓名（推薦提供；省略時回退到佔位符『受訪者』，"
+            "Stage 1 從 SRT 上下文推斷 quotes[].speaker，但 Stage 2 prompt 會用佔位符）"
+        ),
     )
     parser.add_argument(
         "--slug",
@@ -124,13 +135,13 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _build_renderers(skip_channels: set[str]) -> dict[str, object]:
+def _build_renderers(skip_channels: set[str]) -> dict[str, ChannelRenderer]:
     """Build the renderers dict for RepurposeEngine, omitting skipped channels.
 
     Order matters only for human-readable plan output; engine fans out in
     parallel regardless. ``dict`` preserves insertion order in 3.7+.
     """
-    renderers: dict[str, object] = {}
+    renderers: dict[str, ChannelRenderer] = {}
     if "blog" not in skip_channels:
         renderers["blog"] = BlogRenderer()
     if "fb" not in skip_channels:
@@ -154,17 +165,25 @@ def _expected_filenames(channels: list[str]) -> list[str]:
 
 def _print_dry_run_plan(args: argparse.Namespace, channels: list[str]) -> None:
     """Print the execution plan without making any LLM call."""
-    expected = ["stage1.json", *_expected_filenames(channels)]
+    expected = [STAGE1_FILENAME, *_expected_filenames(channels)]
+    slug = args.slug or args.srt_path.stem
+    # Run dir is purely computed (no mkdir / I/O) — preview the resolved path.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    preview_date = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    run_dir = _resolve_run_dir(slug, preview_date)
     print("=" * 60)
     print("DRY RUN — no LLM calls will be made")
     print("=" * 60)
     print(f"SRT path     : {args.srt_path}")
     print(f"Host         : {args.host}")
-    print(f"Guest        : {args.guest or '(LLM-inferred from SRT)'}")
-    print(f"Slug         : {args.slug or args.srt_path.stem}")
+    print(f"Guest        : {args.guest or '(omitted — placeholder 受訪者)'}")
+    print(f"Slug         : {slug}")
     print(f"Podcast URL  : {args.podcast_url or '(empty)'}")
     print(f"Channels     : {channels or '(none — all skipped)'}")
     print(f"Skip         : {sorted(set(args.skip_channel)) or '(none)'}")
+    print(f"Run dir      : {run_dir}")
     print(f"Expected outputs ({len(expected)}):")
     for filename in expected:
         print(f"  - {filename}")
@@ -173,6 +192,9 @@ def _print_dry_run_plan(args: argparse.Namespace, channels: list[str]) -> None:
 
 def _print_cost_summary(usage_records: list[dict]) -> None:
     """Print a rough Sonnet 4.6 cost estimate from main-thread usage records.
+
+    Includes prompt-caching token cost (cache_read_tokens at 0.1× input rate,
+    cache_write_tokens at 1.25× input rate).
 
     Limitation: FBRenderer's 4 parallel calls run in worker threads where
     thread-local ``_local.usage_buffer`` is not inherited, so they are NOT
@@ -185,15 +207,25 @@ def _print_cost_summary(usage_records: list[dict]) -> None:
 
     total_in = sum(int(r.get("input_tokens") or 0) for r in usage_records)
     total_out = sum(int(r.get("output_tokens") or 0) for r in usage_records)
+    total_cw = sum(int(r.get("cache_write_tokens") or 0) for r in usage_records)
+    total_cr = sum(int(r.get("cache_read_tokens") or 0) for r in usage_records)
     cost = (
-        total_in * _SONNET_46_INPUT_PER_MTOK + total_out * _SONNET_46_OUTPUT_PER_MTOK
+        total_in * _SONNET_46_INPUT_PER_MTOK
+        + total_out * _SONNET_46_OUTPUT_PER_MTOK
+        + total_cw * _SONNET_46_CACHE_WRITE_PER_MTOK
+        + total_cr * _SONNET_46_CACHE_READ_PER_MTOK
     ) / 1_000_000
+    breakdown_parts = [f"in={total_in:,}", f"out={total_out:,}"]
+    if total_cw:
+        breakdown_parts.append(f"cache_w={total_cw:,}")
+    if total_cr:
+        breakdown_parts.append(f"cache_r={total_cr:,}")
     print(
         f"Cost (main-thread calls only): ~${cost:.4f} "
-        f"({len(usage_records)} calls, in={total_in:,} / out={total_out:,} tokens)"
+        f"({len(usage_records)} calls, {' / '.join(breakdown_parts)} tokens)"
     )
     print(
-        "  ⚠️  FBRenderer's 4 parallel calls run in worker threads and are NOT "
+        "  Note: FBRenderer's 4 parallel calls run in worker threads and are NOT "
         "counted above (tracked via API call DB only); see module docstring."
     )
 
@@ -221,7 +253,7 @@ def _run_engine(args: argparse.Namespace, renderers: dict[str, object]) -> int:
 
     engine = RepurposeEngine(
         extractor=Line1Extractor(),
-        renderers=renderers,  # type: ignore[arg-type]
+        renderers=renderers,
     )
 
     print("=" * 60)
@@ -263,7 +295,11 @@ def main() -> None:
     renderers = _build_renderers(skip_set)
 
     if not renderers:
-        print("Error: all channels skipped — nothing to do.", file=sys.stderr)
+        print(
+            "Error: all channels skipped — nothing to do "
+            "(remove at least one --skip-channel flag).",
+            file=sys.stderr,
+        )
         sys.exit(2)
 
     if args.dry_run:
