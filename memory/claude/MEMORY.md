@@ -231,3 +231,4 @@
 - [feedback_alert_dedup_window_per_interval.md](feedback_alert_dedup_window_per_interval.md) — sustained-state alert dedup_window 必對齊 expected interval，default 15min 對 daily 失敗會炸 96 alerts/day
 - [feedback_rule_interaction_audit.md](feedback_rule_interaction_audit.md) — 加 deny rule / 「不要 X」前審 3 題互動；squash × `-d` × `-D deny` 6 天 stale branch 案例
 - QA：[docs/plans/2026-05-01-line-1-qa-acceptance.md](../../docs/plans/2026-05-01-line-1-qa-acceptance.md) — Brook Line 1 端到端驗收 7 phase checklist + Beta sign-off 表 + diagnostics；Mac 跑 Phase 0+B 已驗綠
+- [project_session_2026_05_02_mac_sandcastle.md](project_session_2026_05_02_mac_sandcastle.md) — **收工 2026-05-02**：Mac sandcastle setup 上線（PR #306+#307+#308 三 PR chain）；round 3 通過解 #270；6 個 Mac gotcha 全清；桌機 sync templates + image rebuild 待辦
