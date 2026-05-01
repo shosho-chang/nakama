@@ -11,7 +11,7 @@ You are working in **nakama** — a Python AI Agent team for Health & Wellness c
 
 ## Open `sandcastle`-labeled issues
 
-!`gh issue list --label sandcastle --state open --json number,title,labels --jq '.[] | "#\(.number) \(.title) — labels: \([.labels[].name] | join(\",\"))"'`
+!`gh issue list --label sandcastle --state open --json number,title,labels --jq '.[] | "#\(.number) \(.title) — labels: \([.labels[].name] | join(","))"'`
 
 ## Recent commits on main (last 10)
 
