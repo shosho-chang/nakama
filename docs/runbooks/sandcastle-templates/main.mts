@@ -12,6 +12,11 @@ import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 await run({
   name: "nakama",
 
+  // Target repo — sandcastle anchors `.sandcastle/` artifacts (worktrees, logs, env, patches)
+  // and git operations here. Relative paths resolve against process.cwd().
+  // Layout: sandcastle-test/ (where this runs) is sibling to nakama/ (target).
+  cwd: "../nakama",
+
   sandbox: docker({
     // Custom-built image with node + python3 + gh + Claude Code CLI.
     imageName: "sandcastle:nakama",
