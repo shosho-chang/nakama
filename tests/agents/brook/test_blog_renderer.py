@@ -2,14 +2,12 @@
 
 Covers:
 - Protocol conformance: BlogRenderer satisfies ChannelRenderer at runtime
-- LLM mock test: Stage1Result → ChannelArtifact with blog.md
-- Artifact filename and channel name
-- Frontmatter completeness: all required keys present
-- Body has ≥3 H2 sections (narrative chapter titles)
-- Body has ≥1 blockquote (受訪者引述)
-- Podcast link appears in artifact content
-- Word count warning when outside 988-3954 range
-- Golden output structure test: curated Stage 1 JSON → 8 H2 / frontmatter / blockquote
+- LLM mock test: Stage1Result → ChannelArtifact with BLOG_FILENAME
+- Frontmatter completeness + scalar safety (round-trip with hostile chars)
+- Body has ≥3 H2 sections + ≥1 blockquote + podcast link
+- Word count warning matches StyleProfile bounds (config/style-profiles/people.yaml)
+- Defensive Stage 1 dict access (typed errors on missing/empty fields)
+- Golden output structure: 8 H2 / frontmatter / blockquote / trailing newline
 """
 
 from __future__ import annotations
@@ -18,13 +16,18 @@ import logging
 import re
 from unittest.mock import patch
 
+import pytest
+import yaml
+
 from agents.brook.blog_renderer import BlogRenderer
 from agents.brook.repurpose_engine import (
+    BLOG_FILENAME,
     ChannelArtifact,
     ChannelRenderer,
     EpisodeMetadata,
     Stage1Result,
 )
+from agents.brook.style_profile_loader import StyleProfile
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -96,7 +99,6 @@ _STAGE1_DATA = {
     "episode_type": "narrative_journey",
 }
 
-# Golden blog body returned by mocked LLM — 8 H2 sections, blockquotes, podcast link
 _GOLDEN_BLOG_BODY = """\
 『死亡』是一件華人社會避之唯恐不及的話題。孔子說：「未知生，焉知死」，但我始終認為，若沒有去好好了解並且思考「死亡」這件事情，我就不能真正的「活著」。
 
@@ -119,7 +121,7 @@ _GOLDEN_BLOG_BODY = """\
 
 他把多年的臨床觀察整理成「四道人生」，一個幫助病人與家屬走過生命終點的具體工具。
 
-> 「在生命最後的時候，人最需要做的就是這四件事。」——朱為民
+>「在生命最後的時候，人最需要做的就是這四件事。」（EP67 朱為民）
 
 這四道，不是儀式，而是一種對話的勇氣。
 
@@ -129,7 +131,7 @@ _GOLDEN_BLOG_BODY = """\
 
 ## 從診間到舞台，他選擇大聲說出「死亡」
 
-> 「我發現很多人在面對死亡的時候都沒有準備，所以我決定要專注在這個領域。」——朱為民
+>「我發現很多人在面對死亡的時候都沒有準備，所以我決定要專注在這個領域。」（EP67 朱為民）
 
 他的 TEDxTaipei 演講、他的著作、他的診間——每一個場合，都是一次對死亡禁忌的正面挑戰。
 
@@ -137,13 +139,13 @@ _GOLDEN_BLOG_BODY = """\
 
 朱為民持續透過演講、書寫和診間工作，推廣善終觀念，讓更多人在清醒有尊嚴的狀態下告別。
 
-> 「善終就是在清醒有尊嚴的狀態下離開，還能夠跟最重要的人好好道別。」——朱為民
+>「善終就是在清醒有尊嚴的狀態下離開，還能夠跟最重要的人好好道別。」（EP67 朱為民）
 
 這句話，讓我重新想了好久。
 
 ## 如果你也沒想過死，你真的活著嗎？
 
-> 「如果你沒有好好思考過死亡，你就沒有辦法真正地活著。」——朱為民
+>「如果你沒有好好思考過死亡，你就沒有辦法真正地活著。」（EP67 朱為民）
 
 死亡不是禁忌。是邀請。邀請你好好想想，你真正在乎的是什麼。
 
@@ -159,8 +161,31 @@ _GOLDEN_BLOG_BODY = """\
 """
 
 
-def _make_stage1_result() -> Stage1Result:
-    return Stage1Result(data=_STAGE1_DATA, source_repr="test SRT[:200]")
+def _stub_profile(
+    *,
+    body: str = "stub profile",
+    word_count_min: int = 1000,
+    word_count_max: int = 4000,
+    primary_category: str = "people",
+    tags: tuple[str, ...] = ("people", "podcast", "interview"),
+) -> StyleProfile:
+    return StyleProfile(
+        profile_id="people@0.1.0-test",
+        category="people",
+        primary_category=primary_category,
+        body=body,
+        word_count_min=word_count_min,
+        word_count_max=word_count_max,
+        forbid_emoji=False,
+        default_tag_hints=tags,
+        detect_keywords=("podcast", "EP"),
+    )
+
+
+def _make_stage1_result(data: dict | None = None) -> Stage1Result:
+    return Stage1Result(
+        data=data if data is not None else _STAGE1_DATA, source_repr="<srt 200 chars>"
+    )
 
 
 def _make_metadata(podcast_url: str = "https://example.com/ep67") -> EpisodeMetadata:
@@ -171,13 +196,17 @@ def _make_metadata(podcast_url: str = "https://example.com/ep67") -> EpisodeMeta
     )
 
 
+def _renderer() -> BlogRenderer:
+    return BlogRenderer(style_profile=_stub_profile())
+
+
 # ---------------------------------------------------------------------------
 # Protocol conformance
 # ---------------------------------------------------------------------------
 
 
 def test_blog_renderer_satisfies_channel_renderer_protocol():
-    assert isinstance(BlogRenderer(people_md="stub"), ChannelRenderer)
+    assert isinstance(_renderer(), ChannelRenderer)
 
 
 # ---------------------------------------------------------------------------
@@ -186,35 +215,40 @@ def test_blog_renderer_satisfies_channel_renderer_protocol():
 
 
 def test_render_returns_single_artifact():
-    renderer = BlogRenderer(people_md="stub profile")
-    stage1 = _make_stage1_result()
-    meta = _make_metadata()
-
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(stage1, meta)
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     assert isinstance(artifacts, list)
     assert len(artifacts) == 1
     assert isinstance(artifacts[0], ChannelArtifact)
 
 
-def test_render_artifact_filename_and_channel():
-    renderer = BlogRenderer(people_md="stub")
+def test_render_artifact_uses_BLOG_FILENAME_constant():
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     artifact = artifacts[0]
-    assert artifact.filename == "blog.md"
+    assert artifact.filename == BLOG_FILENAME, (
+        "BlogRenderer must use BLOG_FILENAME constant, not hardcoded 'blog.md'"
+    )
     assert artifact.channel == "blog"
 
 
-def test_render_passes_model_sonnet_46():
-    renderer = BlogRenderer(people_md="stub")
+def test_render_passes_model_sonnet_46_by_default():
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY) as mock_llm:
-        renderer.render(_make_stage1_result(), _make_metadata())
+        _renderer().render(_make_stage1_result(), _make_metadata())
 
     call_kwargs = mock_llm.call_args
     assert call_kwargs.kwargs.get("model") == "claude-sonnet-4-6"
+
+
+def test_render_accepts_model_override():
+    """Caller can inject a different model for testing or A/B."""
+    renderer = BlogRenderer(style_profile=_stub_profile(), model="claude-opus-4-7")
+    with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY) as mock_llm:
+        renderer.render(_make_stage1_result(), _make_metadata())
+
+    assert mock_llm.call_args.kwargs.get("model") == "claude-opus-4-7"
 
 
 # ---------------------------------------------------------------------------
@@ -223,59 +257,125 @@ def test_render_passes_model_sonnet_46():
 
 
 def _parse_frontmatter(content: str) -> dict:
-    """Extract YAML frontmatter keys from blog.md content."""
+    """Extract YAML frontmatter via yaml.safe_load round-trip."""
     m = re.match(r"^---\n(.*?)\n---\n", content, re.DOTALL)
     assert m, f"frontmatter block not found in:\n{content[:200]}"
-    import yaml
-
     return yaml.safe_load(m.group(1)) or {}
 
 
 def test_render_frontmatter_has_all_required_keys():
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     fm = _parse_frontmatter(artifacts[0].content)
     for key in ("title", "meta_description", "category", "tags", "podcast_episode_url"):
         assert key in fm, f"frontmatter missing key: {key}"
 
 
-def test_render_frontmatter_category_is_people():
-    renderer = BlogRenderer(people_md="stub")
+def test_render_frontmatter_category_from_profile():
+    """category sourced from StyleProfile.primary_category, not hardcoded."""
+    profile = _stub_profile(primary_category="custom-cat")
+    renderer = BlogRenderer(style_profile=profile)
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
         artifacts = renderer.render(_make_stage1_result(), _make_metadata())
 
     fm = _parse_frontmatter(artifacts[0].content)
-    assert fm["category"] == "people"
+    assert fm["category"] == "custom-cat"
+
+
+def test_render_frontmatter_tags_from_profile():
+    """tags sourced from StyleProfile.default_tag_hints (no hardcoded ['people','podcast'])."""
+    profile = _stub_profile(tags=("alpha", "beta", "gamma"))
+    renderer = BlogRenderer(style_profile=profile)
+    with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
+        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+
+    fm = _parse_frontmatter(artifacts[0].content)
+    assert fm["tags"] == ["alpha", "beta", "gamma"]
 
 
 def test_render_frontmatter_title_from_stage1():
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     fm = _parse_frontmatter(artifacts[0].content)
     assert fm["title"] == _STAGE1_DATA["title_candidates"][0]
 
 
 def test_render_frontmatter_meta_description_from_stage1():
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     fm = _parse_frontmatter(artifacts[0].content)
     assert fm["meta_description"] == _STAGE1_DATA["meta_description"]
 
 
 def test_render_frontmatter_podcast_url_from_metadata():
-    renderer = BlogRenderer(people_md="stub")
     url = "https://example.com/ep99"
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata(podcast_url=url))
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata(podcast_url=url))
 
     fm = _parse_frontmatter(artifacts[0].content)
     assert fm["podcast_episode_url"] == url
+
+
+# ---------------------------------------------------------------------------
+# YAML scalar safety (per feedback_yaml_scalar_safety.md)
+# ---------------------------------------------------------------------------
+
+
+def test_render_frontmatter_round_trips_hostile_title():
+    """Title with `:`, `"`, `『』`, em-dash should round-trip via yaml.safe_load."""
+    hostile_title = '朱醫師: "活著"的意義 — 一個『不正常』的選擇'
+    data = {**_STAGE1_DATA, "title_candidates": [hostile_title, "filler 2", "filler 3"]}
+    with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
+        artifacts = _renderer().render(_make_stage1_result(data), _make_metadata())
+
+    fm = _parse_frontmatter(artifacts[0].content)
+    assert fm["title"] == hostile_title
+
+
+def test_render_frontmatter_collapses_newlines_in_meta_description():
+    """meta_description with `\\n` must be collapsed (per feedback_yaml_scalar_safety.md)."""
+    multi_line_desc = '第一行\n第二行：含冒號\r\n第三行 "含引號" 收尾'
+    data = {**_STAGE1_DATA, "meta_description": multi_line_desc}
+    with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
+        artifacts = _renderer().render(_make_stage1_result(data), _make_metadata())
+
+    fm = _parse_frontmatter(artifacts[0].content)
+    # All newlines collapsed to single spaces
+    assert "\n" not in fm["meta_description"]
+    assert "\r" not in fm["meta_description"]
+    # Content semantically preserved
+    assert "第一行" in fm["meta_description"]
+    assert "第二行" in fm["meta_description"]
+    assert "第三行" in fm["meta_description"]
+
+
+# ---------------------------------------------------------------------------
+# Defensive Stage 1 dict access
+# ---------------------------------------------------------------------------
+
+
+def test_render_raises_typed_error_when_title_candidates_missing():
+    data = {k: v for k, v in _STAGE1_DATA.items() if k != "title_candidates"}
+    with pytest.raises(ValueError, match="title_candidates"):
+        with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
+            _renderer().render(_make_stage1_result(data), _make_metadata())
+
+
+def test_render_raises_typed_error_when_title_candidates_empty():
+    data = {**_STAGE1_DATA, "title_candidates": []}
+    with pytest.raises(ValueError, match="title_candidates"):
+        with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
+            _renderer().render(_make_stage1_result(data), _make_metadata())
+
+
+def test_render_raises_typed_error_when_meta_description_missing():
+    data = {k: v for k, v in _STAGE1_DATA.items() if k != "meta_description"}
+    with pytest.raises(ValueError, match="meta_description"):
+        with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
+            _renderer().render(_make_stage1_result(data), _make_metadata())
 
 
 # ---------------------------------------------------------------------------
@@ -284,53 +384,55 @@ def test_render_frontmatter_podcast_url_from_metadata():
 
 
 def _extract_body(content: str) -> str:
-    """Return the markdown body after the YAML frontmatter block."""
     m = re.match(r"^---\n.*?\n---\n(.*)", content, re.DOTALL)
     assert m, "could not extract body from content"
     return m.group(1)
 
 
 def test_render_body_has_h2_sections():
-    """Blog body must have ≥3 H2 sections."""
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     body = _extract_body(artifacts[0].content)
     h2_sections = re.findall(r"^##\s+.+", body, re.MULTILINE)
-    assert len(h2_sections) >= 3, f"expected ≥3 H2 sections, got {len(h2_sections)}"
+    assert len(h2_sections) >= 3
 
 
 def test_render_body_has_blockquote():
-    """Blog body must have ≥1 blockquote (受訪者引述)."""
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     body = _extract_body(artifacts[0].content)
     blockquotes = re.findall(r"^>", body, re.MULTILINE)
-    assert len(blockquotes) >= 1, "expected ≥1 blockquote in body"
+    assert len(blockquotes) >= 1
 
 
 def test_render_content_has_podcast_link():
-    """Artifact content must include the podcast episode URL somewhere."""
-    renderer = BlogRenderer(people_md="stub")
     url = "https://example.com/ep67"
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata(podcast_url=url))
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata(podcast_url=url))
 
     assert url in artifacts[0].content
 
 
+def test_render_content_ends_with_trailing_newline():
+    """blog.md should end with `\\n` per POSIX text-file convention."""
+    with patch("agents.brook.blog_renderer.ask_multi", return_value="lorem ipsum dolor"):
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
+
+    assert artifacts[0].content.endswith("\n")
+
+
 # ---------------------------------------------------------------------------
-# Word count warning
+# Word count warning — bounds from StyleProfile
 # ---------------------------------------------------------------------------
 
 
-def test_render_warns_when_body_too_short(caplog):
-    """Body < 988 chars → log warning."""
-    renderer = BlogRenderer(people_md="stub")
-    short_body = "很短" * 10  # 20 chars — too short
+def test_render_warns_when_body_below_profile_minimum(caplog):
+    """Body shorter than profile.word_count_min → warning."""
+    profile = _stub_profile(word_count_min=1000, word_count_max=4000)
+    renderer = BlogRenderer(style_profile=profile)
+    short_body = "很短" * 10  # 20 chars
     with patch("agents.brook.blog_renderer.ask_multi", return_value=short_body):
         with caplog.at_level(logging.WARNING, logger="nakama.brook.blog_renderer"):
             renderer.render(_make_stage1_result(), _make_metadata())
@@ -338,10 +440,11 @@ def test_render_warns_when_body_too_short(caplog):
     assert any("word count" in r.message.lower() or "字數" in r.message for r in caplog.records)
 
 
-def test_render_warns_when_body_too_long(caplog):
-    """Body > 3954 chars → log warning."""
-    renderer = BlogRenderer(people_md="stub")
-    long_body = "這是一個很長的段落。" * 500  # 5000 chars — too long
+def test_render_warns_when_body_above_profile_maximum(caplog):
+    """Body longer than profile.word_count_max → warning."""
+    profile = _stub_profile(word_count_min=1000, word_count_max=4000)
+    renderer = BlogRenderer(style_profile=profile)
+    long_body = "這是一個很長的段落。" * 500  # ~5000 chars
     with patch("agents.brook.blog_renderer.ask_multi", return_value=long_body):
         with caplog.at_level(logging.WARNING, logger="nakama.brook.blog_renderer"):
             renderer.render(_make_stage1_result(), _make_metadata())
@@ -350,9 +453,9 @@ def test_render_warns_when_body_too_long(caplog):
 
 
 def test_render_no_warning_for_normal_length(caplog):
-    """Body in 988-3954 range → no word count warning."""
-    renderer = BlogRenderer(people_md="stub")
-    # _GOLDEN_BLOG_BODY is ~1200 chars — within range
+    """Body in range → no word count warning."""
+    profile = _stub_profile(word_count_min=500, word_count_max=4000)
+    renderer = BlogRenderer(style_profile=profile)
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
         with caplog.at_level(logging.WARNING, logger="nakama.brook.blog_renderer"):
             renderer.render(_make_stage1_result(), _make_metadata())
@@ -363,40 +466,55 @@ def test_render_no_warning_for_normal_length(caplog):
     assert not word_count_warns
 
 
+def test_word_count_bounds_pulled_from_profile_not_hardcoded():
+    """Profile bounds must drive the validator — change profile → bounds change."""
+    tight_profile = _stub_profile(word_count_min=10000, word_count_max=20000)
+    renderer = BlogRenderer(style_profile=tight_profile)
+    # _GOLDEN_BLOG_BODY is ~1200 chars — far below tight_profile.min=10000
+    import logging as _logging
+
+    caplog_handler = _logging.getLogger("nakama.brook.blog_renderer")
+    triggered = []
+    handler = _logging.Handler()
+    handler.emit = lambda record: triggered.append(record.getMessage())
+    caplog_handler.addHandler(handler)
+    try:
+        with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
+            renderer.render(_make_stage1_result(), _make_metadata())
+    finally:
+        caplog_handler.removeHandler(handler)
+
+    assert any("10000" in m for m in triggered), (
+        "warning must reference profile-derived minimum 10000, not a hardcoded value"
+    )
+
+
 # ---------------------------------------------------------------------------
-# Golden output structure test
+# Golden output structure
 # ---------------------------------------------------------------------------
 
 
 def test_golden_output_8_h2_sections():
-    """Curated Stage 1 JSON → golden blog body has 8 H2 sections."""
-    renderer = BlogRenderer(people_md="stub profile")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     body = _extract_body(artifacts[0].content)
     h2_sections = re.findall(r"^##\s+.+", body, re.MULTILINE)
-    assert len(h2_sections) >= 8, (
-        f"golden body should have ≥8 H2 sections, got {len(h2_sections)}: " + str(h2_sections)
-    )
+    assert len(h2_sections) >= 8
 
 
 def test_golden_output_has_gold_quote_h2():
-    """Blog body has a gold quote H2 matching pattern ## 『...』."""
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     body = _extract_body(artifacts[0].content)
     gold_h2 = re.findall(r"^##\s+『.*?』", body, re.MULTILINE)
-    assert gold_h2, "expected gold quote H2 (## 『...』) in body"
+    assert gold_h2
 
 
 def test_golden_output_has_blockquote():
-    """Golden body has ≥1 blockquote."""
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     body = _extract_body(artifacts[0].content)
     blockquotes = re.findall(r"^>", body, re.MULTILINE)
@@ -404,10 +522,8 @@ def test_golden_output_has_blockquote():
 
 
 def test_golden_output_frontmatter_complete():
-    """Golden output has complete frontmatter with all required keys."""
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY):
-        artifacts = renderer.render(_make_stage1_result(), _make_metadata())
+        artifacts = _renderer().render(_make_stage1_result(), _make_metadata())
 
     fm = _parse_frontmatter(artifacts[0].content)
     assert fm["title"]
@@ -423,12 +539,21 @@ def test_golden_output_frontmatter_complete():
 
 
 def test_stage1_data_in_llm_prompt():
-    """Stage 1 JSON must appear in the LLM messages."""
-    renderer = BlogRenderer(people_md="stub")
     with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY) as mock_llm:
-        renderer.render(_make_stage1_result(), _make_metadata())
+        _renderer().render(_make_stage1_result(), _make_metadata())
 
     messages = mock_llm.call_args.args[0]
     combined = " ".join(m["content"] for m in messages)
     assert "identity_sketch" in combined or "身份速寫" in combined
     assert "turning_point" in combined or "轉折" in combined
+
+
+def test_blockquote_format_instruction_in_prompt():
+    """Prompt must teach the LLM the people.md blockquote convention `（EP## 姓名）`."""
+    with patch("agents.brook.blog_renderer.ask_multi", return_value=_GOLDEN_BLOG_BODY) as mock_llm:
+        _renderer().render(_make_stage1_result(), _make_metadata())
+
+    messages = mock_llm.call_args.args[0]
+    combined = " ".join(m["content"] for m in messages)
+    assert "EP##" in combined or "EP" in combined
+    assert "（" in combined  # full-width parens in convention example

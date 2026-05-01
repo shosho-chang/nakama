@@ -176,6 +176,17 @@ def test_extract_json_passthrough_when_no_fence():
     assert _extract_json(raw) == '{"key": "value"}'
 
 
+def test_extract_json_prefers_last_fenced_block():
+    """When LLM emits multiple fences, last is the real answer (not first)."""
+    raw = (
+        "Here's an example schema:\n"
+        '```json\n{"example": true}\n```\n'
+        "And the actual answer:\n"
+        '```json\n{"actual": "answer"}\n```\n'
+    )
+    assert _extract_json(raw) == '{"actual": "answer"}'
+
+
 # ---------------------------------------------------------------------------
 # LLM mock test — basic happy path
 # ---------------------------------------------------------------------------
@@ -197,7 +208,8 @@ def test_extract_returns_stage1_result_on_valid_json():
     assert len(data["hooks"]) >= 3
     assert len(data["quotes"]) >= 5
     assert len(data["title_candidates"]) >= 3
-    assert result.source_repr == _FIXTURE_SRT[:200]
+    # source_repr is a length-only summary (no raw SRT bytes — PII-safe per review)
+    assert result.source_repr.startswith("<srt ") and "chars>" in result.source_repr
 
 
 def test_extract_passes_model_sonnet_46():
@@ -269,6 +281,98 @@ def test_extract_raises_after_two_failures():
     with patch("agents.brook.line1_extractor.ask_multi", return_value=bad_response):
         with pytest.raises(ValueError, match="Stage 1 extraction failed"):
             extractor.extract("srt text", meta)
+
+
+def test_extract_retry_prompt_includes_corrective_note():
+    """On retry, an extra user message must tell the LLM what failed previously.
+
+    Resending the same prompt verbatim wastes a round-trip on deterministic LLM
+    errors. Reviewer asked for an explicit corrective note.
+    """
+    extractor = Line1Extractor(people_md="stub")
+    meta = EpisodeMetadata(slug="ep1", host="張修修", extra={"guest": "Guest"})
+    bad_response = '{"hooks": ["only one"], "episode_type": "listicle"}'
+    valid_response = json.dumps(_VALID_STAGE1, ensure_ascii=False)
+
+    with patch(
+        "agents.brook.line1_extractor.ask_multi", side_effect=[bad_response, valid_response]
+    ) as mock_llm:
+        extractor.extract("srt text", meta)
+
+    assert mock_llm.call_count == 2
+    second_messages = mock_llm.call_args_list[1].args[0]
+    second_combined = " ".join(m["content"] for m in second_messages)
+    # Corrective note keywords
+    assert "schema" in second_combined or "驗證" in second_combined or "錯誤" in second_combined
+
+
+def test_extract_rejects_invalid_episode_type():
+    """episode_type must be one of the four enum values; bad value triggers retry."""
+    extractor = Line1Extractor(people_md="stub")
+    meta = EpisodeMetadata(slug="ep1", host="張修修", extra={"guest": "Guest"})
+    bad = {**_VALID_STAGE1, "episode_type": "off-grid-mystery"}
+    bad_response = json.dumps(bad, ensure_ascii=False)
+    valid_response = json.dumps(_VALID_STAGE1, ensure_ascii=False)
+
+    with patch(
+        "agents.brook.line1_extractor.ask_multi", side_effect=[bad_response, valid_response]
+    ) as mock_llm:
+        result = extractor.extract("srt", meta)
+
+    assert mock_llm.call_count == 2
+    assert result.data["episode_type"] == "narrative_journey"
+
+
+def test_extract_rejects_meta_description_too_short():
+    """meta_description below 80 chars → ValidationError → retry."""
+    extractor = Line1Extractor(people_md="stub")
+    meta = EpisodeMetadata(slug="ep1", host="張修修", extra={"guest": "Guest"})
+    bad = {**_VALID_STAGE1, "meta_description": "太短了"}
+    bad_response = json.dumps(bad, ensure_ascii=False)
+    valid_response = json.dumps(_VALID_STAGE1, ensure_ascii=False)
+
+    with patch(
+        "agents.brook.line1_extractor.ask_multi", side_effect=[bad_response, valid_response]
+    ) as mock_llm:
+        result = extractor.extract("srt", meta)
+
+    assert mock_llm.call_count == 2
+    assert len(result.data["meta_description"]) >= 80
+
+
+def test_extract_accepts_non_narrative_episode_type():
+    """Schema accepts each of the four episode types — coverage gap fix."""
+    extractor = Line1Extractor(people_md="stub")
+    meta = EpisodeMetadata(slug="ep1", host="張修修", extra={"guest": "Guest"})
+    for episode_type in ("narrative_journey", "myth_busting", "framework", "listicle"):
+        data = {**_VALID_STAGE1, "episode_type": episode_type}
+        with patch(
+            "agents.brook.line1_extractor.ask_multi",
+            return_value=json.dumps(data, ensure_ascii=False),
+        ):
+            result = extractor.extract("srt", meta)
+        assert result.data["episode_type"] == episode_type
+
+
+def test_extract_prompt_defines_each_episode_type():
+    """Prompt must include 1-line gloss per episode_type so LLM can route correctly."""
+    extractor = Line1Extractor(people_md="stub")
+    meta = EpisodeMetadata(slug="ep1", host="張修修", extra={"guest": "Guest"})
+    valid_response = json.dumps(_VALID_STAGE1, ensure_ascii=False)
+
+    with patch("agents.brook.line1_extractor.ask_multi", return_value=valid_response) as mock_llm:
+        extractor.extract("srt", meta)
+
+    messages = mock_llm.call_args_list[0].args[0]
+    combined = " ".join(m["content"] for m in messages)
+    # Each enum name appears AND has accompanying gloss text
+    for type_name in ("narrative_journey", "myth_busting", "framework", "listicle"):
+        assert type_name in combined, f"missing episode_type {type_name} in prompt"
+    # Gloss keywords
+    assert "敘事弧" in combined or "人生敘事" in combined  # narrative_journey gloss
+    assert "迷思" in combined or "誤解" in combined  # myth_busting gloss
+    assert "方法論" in combined or "步驟" in combined  # framework gloss
+    assert "清單" in combined or "列舉" in combined  # listicle gloss
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +451,9 @@ def test_golden_fixture_srt_text_in_prompt():
 
     messages = mock_llm.call_args.args[0]
     combined = " ".join(m["content"] for m in messages)
-    assert "SPEAKER_00" in combined or "善終" in combined
+    # Both SRT structure (SPEAKER labels) AND content must carry through
+    assert "SPEAKER_00" in combined
+    assert "善終" in combined
 
 
 def test_speaker_mapping_in_prompt():
