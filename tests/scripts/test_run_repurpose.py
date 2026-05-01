@@ -252,9 +252,7 @@ def test_main_dry_run_includes_resolved_run_dir(capsys):
         patch("scripts.run_repurpose.FBRenderer"),
         patch("scripts.run_repurpose.IGRenderer"),
         patch("scripts.run_repurpose.RepurposeEngine"),
-        patch.object(
-            sys, "argv", ["run_repurpose.py", "ep99.srt", "--dry-run", "--slug", "my-ep"]
-        ),
+        patch.object(sys, "argv", ["run_repurpose.py", "ep99.srt", "--dry-run", "--slug", "my-ep"]),
     ):
         run_repurpose.main()
 
