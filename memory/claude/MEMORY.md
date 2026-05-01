@@ -231,3 +231,6 @@
 - [feedback_alert_dedup_window_per_interval.md](feedback_alert_dedup_window_per_interval.md) — sustained-state alert dedup_window 必對齊 expected interval，default 15min 對 daily 失敗會炸 96 alerts/day
 - [feedback_rule_interaction_audit.md](feedback_rule_interaction_audit.md) — 加 deny rule / 「不要 X」前審 3 題互動；squash × `-d` × `-D deny` 6 天 stale branch 案例
 - QA：[docs/plans/2026-05-01-line-1-qa-acceptance.md](../../docs/plans/2026-05-01-line-1-qa-acceptance.md) — Brook Line 1 端到端驗收 7 phase checklist + Beta sign-off 表 + diagnostics；Mac 跑 Phase 0+B 已驗綠
+- [project_script_video_phase2a.md](project_script_video_phase2a.md) — **Script-Driven Video Production**：修修最高價值 workflow 自動化；grill 7 分岔凍結 + PRD #310 approved + ADR-015 Accepted + Plan 5 slice，待 commit + Phase 2b to-issues 拆 slice
+- ADR：[docs/decisions/ADR-015-script-driven-video-production.md](../../docs/decisions/ADR-015-script-driven-video-production.md) — script-driven video 架構 7 grill 分岔凍結（不套 ADR-014 RepurposeEngine、Remotion 不 render 整片、FCPXML 1.10 → DaVinci）
+- Plan：[docs/plans/2026-05-02-script-driven-video-production.md](../../docs/plans/2026-05-02-script-driven-video-production.md) — Phase 1 5 slice 拆分 + 技術選型調研（Remotion / sqlite-vec / BGE-M3 / FCPXML / PyMuPDF4llm）
