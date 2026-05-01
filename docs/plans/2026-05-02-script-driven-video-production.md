@@ -1,7 +1,7 @@
 # Script-Driven Video Production — Phase 1 Implementation Plan
 
 **Date:** 2026-05-02
-**Status:** Phase 2a draft（待 PRD #310 approve 後升 final）
+**Status:** Final（PRD #310 approved 2026-05-02 / ADR-015 Accepted）
 **PRD:** [#310](https://github.com/shosho-chang/nakama/issues/310)
 **ADR:** [docs/decisions/ADR-015-script-driven-video-production.md](../decisions/ADR-015-script-driven-video-production.md)
 **Owner:** Brook（Composer agent）+ video subproject（Node.js / Remotion）
