@@ -352,11 +352,7 @@ def test_write_failure_isolated_from_other_channels(tmp_path, monkeypatch):
         """Filename pointing into nonexistent subdir → FileNotFoundError on write."""
 
         def render(self, stage1, metadata):
-            return [
-                ChannelArtifact(
-                    filename="missing_subdir/x.md", content="x", channel="bad"
-                )
-            ]
+            return [ChannelArtifact(filename="missing_subdir/x.md", content="x", channel="bad")]
 
     blog_renderer = _FakeRenderer("blog.md", "blog")
     engine = RepurposeEngine(
