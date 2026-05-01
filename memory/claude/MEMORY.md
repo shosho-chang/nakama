@@ -86,6 +86,7 @@
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
 - [feedback_run_dont_ask.md](feedback_run_dont_ask.md) — 修修 CEO+PM：能跑就直接跑不問；review 用表格/連結，不是 raw stdout
 - [feedback_no_handoff_to_user_mid_work.md](feedback_no_handoff_to_user_mid_work.md) — **最高指導原則（高於品質）**：grill 完→我接手做完→修修最後驗收；中間 ultrareview / pause-for-approval 都是違規 friction；PR review 走 multi-agent 並行替代
+- [project_session_2026_05_01_line1_sandcastle_round2.md](project_session_2026_05_01_line1_sandcastle_round2.md) — **收工 2026-05-01**：Line 1 Slice 2/3/4 merged (PR #295/#297) + sandcastle round 1+2 戰績（4/4 通過）+ multi-agent review 17 真問題零誤判；critical path 4/10 done 等 5/6 樣本 unblock
 - [feedback_minimize_manual_friction.md](feedback_minimize_manual_friction.md) — **最高指導原則**：減少修修手動操作，每個手動步驟 = 摩擦力；設計 default 自動化、scope 砍除前看下游 ripple、approval gate 並行不階段
 - [feedback_quality_over_speed_cost.md](feedback_quality_over_speed_cost.md) — **最高指導原則**：品質 > 速度 > 省錢；模型選 Sonnet/Opus、架構選 multi-stage、context 不砍碎；例外：deterministic / batch / 內部 pipeline
 - [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
