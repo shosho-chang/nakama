@@ -63,17 +63,13 @@
       "Bash(rmdir *)",
       "Bash(sudo *)",
       "Bash(systemctl *)",
-      "Bash(git push --force *)",
-      "Bash(git push -f *)",
       "Bash(git reset --hard *)",
       "Bash(git checkout -- *)",
       "Bash(git clean *)",
       "Edit(.env)",
       "Bash(ssh *)",
       "Bash(scp *)",
-      "Bash(rsync *)",
-      "Bash(git push origin main*)",
-      "Bash(git push * main)"
+      "Bash(rsync *)"
     ],
     "defaultMode": "acceptEdits",
     "additionalDirectories": [
