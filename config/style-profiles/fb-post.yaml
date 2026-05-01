@@ -6,8 +6,9 @@ category: fb-post
 primary_category: fb-post
 style_profile_md: agents/brook/style-profiles/fb-post.md
 word_count:
-  # 訪談宣傳 800-1500 + 個人感想 1500-3500，取聯集
-  min: 600
+  # 訪談宣傳 800-1500 字（chars）+ 個人感想 1500-3500 字（chars），union floor 800
+  # 單位 = 中文字元數（CJK chars，不含空白）；同 fb-post.md §1 / §10
+  min: 800
   max: 3500
 forbid_emoji: false
 default_tag_hints:
