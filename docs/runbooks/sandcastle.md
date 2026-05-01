@@ -26,41 +26,52 @@ npm --version       # ≥ 10.x
 gh auth status      # logged in，token 含 repo scope
 ```
 
-## One-time setup（修修桌機已做完，這節參考用）
+## One-time setup（跨平台）
 
-裝在 nakama repo **外部** `E:\sandcastle-test\`，避免污染 nakama node_modules：
+Sandcastle 裝在 nakama repo **外部 sibling 目錄**，避免污染 nakama node_modules。客製過的 4 個 templates 凍結在 nakama repo `docs/runbooks/sandcastle-templates/`，從那邊拷貝即可（不要再從別處抄）。
+
+平台對照：
+
+| Platform | sandcastle-test 路徑 | nakama 路徑 |
+|---|---|---|
+| macOS / Linux | `~/Documents/sandcastle-test/` | `~/Documents/nakama/` |
+| Windows | `E:\sandcastle-test\` | `E:\nakama\` |
 
 ```bash
-cd E:/sandcastle-test
+# macOS / Linux 範例（Windows 換對應路徑、用 Git Bash 或 WSL）
+cd ~/Documents/sandcastle-test  # 不存在就先 mkdir
 npm init -y
 npm install --save-dev @ai-hero/sandcastle tsx
-mkdir .sandcastle
-# 從 templates/ 拷 4 個客製檔到 .sandcastle/
-cp templates/Dockerfile      .sandcastle/Dockerfile
-cp templates/main.mts        .sandcastle/main.mts
-cp templates/prompt.md       .sandcastle/prompt.md
-cp templates/.env.example    .sandcastle/.env.example
-# 補 .gitignore（sandcastle 預設）
-printf '.env\nlogs/\nworktrees/\n' > .sandcastle/.gitignore
-# 從 templates/ 拷 .env 並手填 secrets
-cp .sandcastle/.env.example  .sandcastle/.env
-# 編輯 .sandcastle/.env 補 ANTHROPIC_API_KEY（從 nakama .env）+ GH_TOKEN（gh auth token）
+
+mkdir -p .sandcastle
+cp ~/Documents/nakama/docs/runbooks/sandcastle-templates/Dockerfile     .sandcastle/Dockerfile
+cp ~/Documents/nakama/docs/runbooks/sandcastle-templates/main.mts        .sandcastle/main.mts
+cp ~/Documents/nakama/docs/runbooks/sandcastle-templates/prompt.md       .sandcastle/prompt.md
+cp ~/Documents/nakama/docs/runbooks/sandcastle-templates/.env.example    .sandcastle/.env.example
+
+printf '.env\nlogs/\nworktrees/\nnode_modules/\n' > .sandcastle/.gitignore
+
+# 填 .env (secrets — 不要打進 chat)
+grep "^ANTHROPIC_API_KEY=" ~/Documents/nakama/.env > .sandcastle/.env
+echo "GH_TOKEN=$(gh auth token)" >> .sandcastle/.env
 ```
 
-Build image（一次性 ~5 分鐘）：
+Build image（一次性 ~5-10 分鐘）：
 
 ```bash
-cd E:/sandcastle-test
+cd ~/Documents/sandcastle-test
 docker build -t sandcastle:nakama -f .sandcastle/Dockerfile .sandcastle
 ```
 
-驗證：
+驗證（macOS / Linux）：
 
 ```bash
-MSYS_NO_PATHCONV=1 docker run --rm --entrypoint python3 sandcastle:nakama --version    # → Python 3.11.x
-MSYS_NO_PATHCONV=1 docker run --rm --entrypoint gh sandcastle:nakama --version          # → gh 2.x
-MSYS_NO_PATHCONV=1 docker run --rm --entrypoint /home/agent/.local/bin/claude sandcastle:nakama --version
+docker run --rm --entrypoint python3 sandcastle:nakama --version    # → Python 3.11.x
+docker run --rm --entrypoint gh sandcastle:nakama --version          # → gh 2.x
+docker run --rm --entrypoint /home/agent/.local/bin/claude sandcastle:nakama --version
 ```
+
+Windows 用 Git Bash 跑 docker 要加 `MSYS_NO_PATHCONV=1` 前綴（path mangling 防護，下方坑段詳述）。
 
 ## Run procedure
 
@@ -75,7 +86,10 @@ gh issue edit <N> --add-label "sandcastle"
 ### 2. 確認 nakama working tree 乾淨
 
 ```bash
-cd E:/nakama
+# macOS/Linux
+cd ~/Documents/nakama
+# Windows: cd E:/nakama
+
 git status --short   # 應為空；若有未 commit 改動 → stash 後再跑
 git stash push -m "before-sandcastle" -- <file1> <file2>
 ```
@@ -83,6 +97,11 @@ git stash push -m "before-sandcastle" -- <file1> <file2>
 ### 3. 跑 sandcastle
 
 ```bash
+# macOS/Linux
+cd ~/Documents/sandcastle-test
+npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts
+
+# Windows (Git Bash)
 cd E:/sandcastle-test
 MSYS_NO_PATHCONV=1 npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts
 ```
@@ -92,7 +111,7 @@ MSYS_NO_PATHCONV=1 npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts
 - 容器啟動 → `pip install` 跑完（~30s）
 - agent 拉 `gh issue list --label sandcastle` → 看到目標 issue
 - agent explore → plan → write test → run pytest → commit `SANDCASTLE: ...`
-- agent 試 `gh issue close N` → **被 sandbox 擋**（已知，留在 PR body 用 `closes #N` auto-close 替代）
+- agent commit message 含 `Closes #N`（PR merge 時 GitHub auto-close）— round 2 驗證 `gh issue close` 不再被 sandbox 擋，但走 PR auto-close 仍是 canonical 路徑
 - 輸出 `<promise>COMPLETE</promise>`
 - 主機端 sandcastle 把 worktree branch merge 回當前 HEAD
 
@@ -103,16 +122,18 @@ MSYS_NO_PATHCONV=1 npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts
 agent 是 merge 回**當前 host branch**。如果你不想把 commit 留在那條 branch，rebase 出來：
 
 ```bash
-cd E:/nakama
+# macOS/Linux: cd ~/Documents/nakama
+# Windows: cd E:/nakama
+
 # 假設目前在 chore/something，commit 是 da7aef5
 git switch -c sandcastle/issue-<N>
 git branch -f chore/something <previous-HEAD>     # 把原 branch label 退回
-git rebase --onto main <previous-HEAD> sandcastle/issue-<N>   # 只留 SANDCASTLE commit on main
+git rebase --onto main <previous-HEAD> sandcastle/issue-<N>   # 只留 sandcastle commit on main
 git push -u origin sandcastle/issue-<N>
-gh pr create --base main --title "..." --body "... closes #<N>"
+gh pr create --base main --title "..." --body "... Closes #<N>"
 ```
 
-`closes #<N>` 寫在 PR body，merge 時 GitHub 會自動 close issue（因為 sandbox 擋 `gh issue close`）。
+`Closes #<N>` 寫在 PR body，merge 時 GitHub 會自動 close issue。
 
 ### 5. Review + merge
 
@@ -123,15 +144,15 @@ gh pr merge <PR#> --squash --delete-branch
 git switch chore/something && git stash pop   # 還原 stash
 ```
 
-## 4 個已知坑（預先警示）
+## 已知坑（預先警示）
 
-1. **`npx sandcastle init` 互動 prompt 不吃 CLI flag** — `--template/--agent/--model` 設了仍會卡 4 個 clack `select`。**解：跳過 init、手動建 `.sandcastle/`**（已是 above setup 流程）。
+1. **`npx sandcastle init` 互動 prompt 不吃 CLI flag**（跨平台） — `--template/--agent/--model` 設了仍會卡 4 個 clack `select`。**解：跳過 init、從 `docs/runbooks/sandcastle-templates/` 拷檔手動建 `.sandcastle/`**（已是 above setup 流程）。
 
-2. **`.sandcastle/.env` lookup 是 `<cwd>/.sandcastle/.env`，cwd 是 target repo** — 我們把 `.sandcastle/` 放在 sandcastle-test 但 sandcastle 找的是 `nakama/.sandcastle/.env`。**解：`main.mts` 內顯式 `docker({ env: { ANTHROPIC_API_KEY: ..., GH_TOKEN: ... } })` + 跑 `tsx --env-file=.sandcastle/.env`**（templates/main.mts 已含此修正）。
+2. **`.sandcastle/.env` lookup 是 `<cwd>/.sandcastle/.env`，cwd 是 target repo**（跨平台） — 我們把 `.sandcastle/` 放在 sandcastle-test 但 sandcastle 找的是 `nakama/.sandcastle/.env`。**解：`main.mts` 內顯式 `docker({ env: { ANTHROPIC_API_KEY: ..., GH_TOKEN: ... } })` + 跑 `tsx --env-file=.sandcastle/.env`**（templates/main.mts 已含此修正）。
 
-3. **MSYS path mangling 把 `/home/agent/...` 解成 `C:/Program Files/Git/home/agent/...`** — `docker run --entrypoint /home/agent/...` 直接炸。**解：前綴 `MSYS_NO_PATHCONV=1`**（已寫進指令範例）。
+3. **MSYS path mangling 把 `/home/agent/...` 解成 `C:/Program Files/Git/home/agent/...`**（**Windows only**） — `docker run --entrypoint /home/agent/...` 直接炸。**解：前綴 `MSYS_NO_PATHCONV=1`**。macOS / Linux 不會踩。
 
-4. **container 內 `gh issue close` 被 sandbox 擋** — agent 完工但無法 close issue。**解：PR body 寫 `closes #N` 走 GitHub auto-close，或 host 端手動 close**。
+4. **container 內 `gh issue close` 曾被 sandbox 擋**（historical，round 2 之後不再擋） — round 1 PR #263 / #264 時 sandbox 政策擋 `gh issue close`，round 2（PR #288/#289）已 work。仍建議走 PR body `Closes #N` auto-close 為 canonical 路徑，避免依賴 sandbox 政策飄移。
 
 ## Exit criteria（採用後監控）
 
@@ -144,11 +165,16 @@ git switch chore/something && git stash pop   # 還原 stash
 退場做：
 
 ```bash
-# Mac/Linux 等價
 docker rmi sandcastle:nakama
 docker image prune -f
 gh label delete sandcastle --yes
-# Windows 用 PowerShell 回收桶刪 E:\sandcastle-test\
+
+# macOS/Linux: 刪 sandcastle-test/
+rm -rf ~/Documents/sandcastle-test  # CLAUDE.md rm deny — 改用 mv 進垃圾桶或 Finder 拖
+
+# Windows: PowerShell 回收桶刪 E:\sandcastle-test\
+# Add-Type -AssemblyName Microsoft.VisualBasic
+# [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('E:\sandcastle-test', 'OnlyErrorDialogs', 'SendToRecycleBin')
 ```
 
 並更新 [memory/claude/reference_sandcastle.md](../../memory/claude/reference_sandcastle.md) 記錄退場理由。

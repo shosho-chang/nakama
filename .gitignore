@@ -46,3 +46,7 @@ data/*
 
 # Test fixtures (large audio + pipeline outputs)
 tests/files/
+
+# Sandcastle artifacts (worktrees / logs / patches written into target repo cwd)
+# See docs/runbooks/sandcastle.md
+.sandcastle/
