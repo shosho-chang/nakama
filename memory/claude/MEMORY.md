@@ -230,3 +230,4 @@
 - [feedback_probe_registry_verify_producer.md](feedback_probe_registry_verify_producer.md) — 加 probe registry 前必 grep producer call site，docstring 列名單 ≠ 已 instrument（5B-1 false-green 教訓）
 - [feedback_alert_dedup_window_per_interval.md](feedback_alert_dedup_window_per_interval.md) — sustained-state alert dedup_window 必對齊 expected interval，default 15min 對 daily 失敗會炸 96 alerts/day
 - [feedback_rule_interaction_audit.md](feedback_rule_interaction_audit.md) — 加 deny rule / 「不要 X」前審 3 題互動；squash × `-d` × `-D deny` 6 天 stale branch 案例
+- QA：[docs/plans/2026-05-01-line-1-qa-acceptance.md](../../docs/plans/2026-05-01-line-1-qa-acceptance.md) — Brook Line 1 端到端驗收 7 phase checklist + Beta sign-off 表 + diagnostics；Mac 跑 Phase 0+B 已驗綠
