@@ -213,7 +213,7 @@ body {
 
 <!-- Chassis -->
 {% from "_chassis_nav.html" import chassis_nav %}
-{% call chassis_nav(nav_active='bridge') %}{% endcall %}
+{{ chassis_nav(nav_active='repurpose') }}
 
 <!-- Page header -->
 <div class="page-header">
@@ -265,8 +265,8 @@ body {
     <div class="empty-icon">[ ]</div>
     <div class="empty-title">No repurpose runs yet</div>
     <div class="empty-hint">
-      Run the CLI pipeline to generate a run:<br>
-      <code style="font-family:var(--nk-font-mono);font-size:var(--nk-t-xs)">python -m scripts.run_repurpose &lt;srt&gt; --host 張修修 --guest 朱為民醫師</code>
+      CLI orchestrator lands in Slice 9 (#292).<br>
+      Once shipped: <code style="font-family:var(--nk-font-mono);font-size:var(--nk-t-xs)">python -m scripts.run_repurpose &lt;srt&gt; --host 張修修 --guest &lt;guest&gt;</code>
     </div>
   </div>
   {% endif %}

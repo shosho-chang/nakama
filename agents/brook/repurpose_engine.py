@@ -69,7 +69,23 @@ from shared.log import get_logger
 logger = get_logger("nakama.brook.repurpose_engine")
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
-_DATA_ROOT = Path("data/repurpose")
+
+# Public constants — shared with thousand_sunny.routers.repurpose so the I/O
+# scheme has a single source of truth.
+DATA_ROOT = Path("data/repurpose")
+FB_TONALS: tuple[str, ...] = ("light", "emotional", "serious", "neutral")
+STAGE1_FILENAME = "stage1.json"
+BLOG_FILENAME = "blog.md"
+IG_FILENAME = "ig-cards.json"
+
+
+def fb_filename(tonal: str) -> str:
+    """Return the FB renderer output filename for a tonal variant."""
+    return f"fb-{tonal}.md"
+
+
+# Internal alias retained for engine internals; routers should import DATA_ROOT.
+_DATA_ROOT = DATA_ROOT
 
 
 # ---------------------------------------------------------------------------
@@ -203,12 +219,23 @@ class ChannelRenderer(Protocol):
 # ---------------------------------------------------------------------------
 
 
-def _make_run_dir(slug: str, date: str) -> Path:
-    """Resolve and create the output directory for this run."""
-    slug_safe = re.sub(r"[^A-Za-z0-9_-]+", "-", slug).strip("-")[:60] or "episode"
-    run_dir = _DATA_ROOT / f"{date}-{slug_safe}"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    return run_dir
+def _resolve_run_dir(slug: str, date: str) -> Path:
+    """Resolve the output directory path for this run (does NOT create it).
+
+    Slug sanitization order:
+        1. Replace anything outside [A-Za-z0-9_-] with '-'.
+        2. Strip leading/trailing '-' (turn ``"--abc--"`` into ``"abc"``).
+        3. Truncate to 60 chars, then rstrip '-' again so a mid-segment cut
+           does not leave a trailing dash (e.g. ``"a-b-c"[:5] == "a-b-c"`` but
+           ``"a-b-c-"[:5] == "a-b-c"`` after rstrip).
+        4. Fall back to ``"episode"`` if the result is empty.
+
+    The directory is NOT created here so that a Stage 1 failure does not leave
+    an empty leftover directory. The caller mkdirs before writing artifacts.
+    """
+    slug_safe = re.sub(r"[^A-Za-z0-9_-]+", "-", slug).strip("-")
+    slug_safe = slug_safe[:60].rstrip("-") or "episode"
+    return _DATA_ROOT / f"{date}-{slug_safe}"
 
 
 class RepurposeEngine:
@@ -273,21 +300,25 @@ class RepurposeEngine:
             ``ChannelArtifacts`` with ``run_dir``, ``stage1``, ``artifacts``,
             and any ``errors``.
         """
-        if not metadata.date:
-            metadata.date = datetime.now(_TAIPEI).strftime("%Y-%m-%d")
-
-        run_dir = _make_run_dir(metadata.slug, metadata.date)
+        # Resolve date locally — do NOT mutate caller's metadata.
+        run_date = metadata.date or datetime.now(_TAIPEI).strftime("%Y-%m-%d")
+        run_dir = _resolve_run_dir(metadata.slug, run_date)
         logger.info(f"repurpose run_dir={run_dir} slug={metadata.slug!r}")
 
         # ── Stage 1 ──────────────────────────────────────────────────────────
+        # Extract first; mkdir AFTER success so a failed extractor does not
+        # leave an empty leftover directory on disk.
         stage1 = self._extractor.extract(source_input, metadata)
-        stage1_path = run_dir / "stage1.json"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        stage1_path = run_dir / STAGE1_FILENAME
         stage1_path.write_text(
             json.dumps(stage1.data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         logger.info(f"stage1 written → {stage1_path}")
 
         # ── Stage 2 fan-out ───────────────────────────────────────────────────
+        # Per-renderer error isolation covers BOTH renderer execution AND
+        # artifact disk write — a OSError on one channel must not abort peers.
         result = ChannelArtifacts(run_dir=run_dir, stage1=stage1)
         futures: dict = {}
 
@@ -300,13 +331,19 @@ class RepurposeEngine:
                 channel_name = futures[fut]
                 try:
                     artifacts = fut.result()
-                    for artifact in artifacts:
-                        path = run_dir / artifact.filename
-                        path.write_text(artifact.content, encoding="utf-8")
-                        result.artifacts.append(artifact)
-                        logger.info(f"artifact written → {path}")
                 except Exception as exc:
                     logger.error(f"renderer {channel_name!r} failed: {exc}", exc_info=True)
                     result.errors[channel_name] = exc
+                    continue
+                for artifact in artifacts:
+                    path = run_dir / artifact.filename
+                    try:
+                        path.write_text(artifact.content, encoding="utf-8")
+                    except OSError as exc:
+                        logger.error(f"write {path} failed: {exc}", exc_info=True)
+                        result.errors[channel_name] = exc
+                        continue
+                    result.artifacts.append(artifact)
+                    logger.info(f"artifact written → {path}")
 
         return result

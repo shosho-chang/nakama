@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 import time
 
+import pytest
+
 from agents.brook.repurpose_engine import (
     ChannelArtifact,
     ChannelRenderer,
@@ -287,18 +289,106 @@ def test_run_dir_cjk_slug_sanitized(tmp_path, monkeypatch):
 
 
 def test_run_dir_auto_date(tmp_path, monkeypatch):
-    """Empty date in metadata is auto-set to today (Asia/Taipei)."""
+    """Empty date in metadata is auto-resolved to today (Asia/Taipei) for the run_dir name.
+
+    The engine must NOT mutate the caller's EpisodeMetadata — date is resolved
+    locally; see test_metadata_date_not_mutated_on_run for the no-mutation contract.
+    """
     monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
 
     engine = RepurposeEngine(extractor=_FakeExtractor(), renderers={})
     meta = EpisodeMetadata(slug="auto-date")
     result = engine.run("src", meta)
 
-    assert meta.date != ""  # was filled in
-    # Name has the date prefix
+    # run_dir name has YYYY-MM-DD prefix (auto-resolved Asia/Taipei date)
     import re
 
     assert re.match(r"\d{4}-\d{2}-\d{2}-", result.run_dir.name)
+
+
+def test_metadata_date_not_mutated_on_run(tmp_path, monkeypatch):
+    """engine.run() must NOT mutate the caller's EpisodeMetadata.date.
+
+    Regression: previous version assigned `metadata.date = ...` in place when
+    empty, surprising callers reusing one EpisodeMetadata for batch runs.
+    """
+    monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
+
+    engine = RepurposeEngine(extractor=_FakeExtractor(), renderers={})
+    meta = EpisodeMetadata(slug="immutable", date="")
+    engine.run("src", meta)
+
+    assert meta.date == "", "engine mutated metadata.date — caller contract broken"
+
+
+def test_no_leftover_dir_when_extractor_fails(tmp_path, monkeypatch):
+    """Stage 1 extractor failure must NOT leave an empty run dir on disk."""
+    monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
+
+    class _ExploderExtractor:
+        def extract(self, source_input, metadata):
+            raise RuntimeError("Stage 1 boom")
+
+    engine = RepurposeEngine(extractor=_ExploderExtractor(), renderers={})
+    meta = EpisodeMetadata(slug="extract-fail", date="2026-05-01")
+
+    with pytest.raises(RuntimeError, match="Stage 1 boom"):
+        engine.run("src", meta)
+
+    expected_dir = tmp_path / "2026-05-01-extract-fail"
+    assert not expected_dir.exists(), "extractor failure left leftover dir on disk"
+
+
+def test_write_failure_isolated_from_other_channels(tmp_path, monkeypatch):
+    """OSError on one channel's write must NOT abort other channel writes.
+
+    Regression: previously path.write_text was outside the try/except, so a
+    disk-write failure on channel A would escape `run()` entirely and the
+    "per-renderer error isolation" claim would silently drop B/C artifacts.
+    """
+    monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
+
+    class _BadFilenameRenderer:
+        """Filename pointing into nonexistent subdir → FileNotFoundError on write."""
+
+        def render(self, stage1, metadata):
+            return [
+                ChannelArtifact(
+                    filename="missing_subdir/x.md", content="x", channel="bad"
+                )
+            ]
+
+    blog_renderer = _FakeRenderer("blog.md", "blog")
+    engine = RepurposeEngine(
+        extractor=_FakeExtractor(),
+        renderers={"blog": blog_renderer, "bad": _BadFilenameRenderer()},
+    )
+    meta = EpisodeMetadata(slug="write-fail", date="2026-05-01")
+    result = engine.run("src", meta)
+
+    # Good channel still wrote its artifact
+    assert (result.run_dir / "blog.md").exists()
+    # Bad channel recorded as error, no crash
+    assert "bad" in result.errors
+    assert isinstance(result.errors["bad"], OSError | ValueError)
+
+
+def test_slug_truncation_no_trailing_dash(tmp_path, monkeypatch):
+    """Slug truncated mid-segment must rstrip trailing dash (regression).
+
+    Previous order: ``.strip("-")[:60]`` left a trailing dash if the cut
+    landed on a separator. Fix: ``[:60].rstrip("-")``.
+    """
+    monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
+
+    # Slug crafted so [:60] lands on a dash: 59 'a' + '-' + filler
+    slug = "a" * 59 + "-" + "b" * 10
+    engine = RepurposeEngine(extractor=_FakeExtractor(), renderers={})
+    meta = EpisodeMetadata(slug=slug, date="2026-05-01")
+    result = engine.run("src", meta)
+
+    name = result.run_dir.name
+    assert not name.endswith("-"), f"trailing dash leaked into run_dir name: {name!r}"
 
 
 # ---------------------------------------------------------------------------

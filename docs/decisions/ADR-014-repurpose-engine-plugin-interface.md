@@ -113,8 +113,14 @@ Usopp WP draft) lands in Slice 10 and follows the PR #140 mutation pattern
   does not validate `stage1.data` structure.
 - `ChannelRenderer.render()` is synchronous; renderers that need async
   (e.g. streaming SSE) must wrap themselves or use a future interface.
-- `max_workers=6` default covers 6 parallel Stage 2 calls (Blog + 4×FB + IG);
-  callers with more renderers should raise `max_workers` explicitly.
+- `max_workers=6` default leaves headroom for future renderers. Line 1's
+  default wiring fans out **3 parallel renderer calls** (Blog + FB + IG) —
+  `FBRenderer.render()` returns a 4-element list (the 4 tonal variants) within
+  one call, not 4 separate calls. Callers wiring more renderers should raise
+  `max_workers` explicitly.
+- Engine assumes renderers treat `stage1.data` as immutable. Concurrent
+  renderers share the same `Stage1Result.data` dict by reference; mutating it
+  in-place would race with peers.
 
 ## Alternatives Considered
 
@@ -140,5 +146,4 @@ third-party plugins exist.
 - `agents/brook/repurpose_engine.py` — canonical implementation
 - `tests/test_repurpose_engine.py` — acceptance tests
 - `memory/claude/reference_bridge_ui_mutation_pattern.md` — Slice 10 mutation pattern
-- ADR-001 — Brook = Composer role
-- ADR-012 — Brook = inward processing boundary
+- ADR-001 — Brook = Composer role (inward processing per Brook/Zoro boundary in PRD §Brook 角色已釐清)

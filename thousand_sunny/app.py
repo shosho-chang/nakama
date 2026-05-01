@@ -13,6 +13,7 @@ app.include_router(auth.router)
 app.include_router(bridge.router)
 app.include_router(bridge.page_router)
 app.include_router(bridge_zoro.page_router)
+app.include_router(repurpose.page_router)
 # Franky /healthz must be mounted unconditionally — UptimeRobot probes this regardless of
 # DISABLE_ROBIN or any other feature flag (ADR-007 §2).
 app.include_router(franky.router)
@@ -32,4 +33,3 @@ else:
 
 app.include_router(zoro.router)
 app.include_router(brook.router)
-app.include_router(repurpose.page_router)
