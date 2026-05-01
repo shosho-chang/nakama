@@ -823,6 +823,25 @@ def test_new_operation_id_matches_draft_pattern():
     assert re.fullmatch(r"op_[0-9a-f]{8}", op_id)
 
 
+# ---------------------------------------------------------------------------
+# Connection PRAGMA contract (issue #270)
+# ---------------------------------------------------------------------------
+
+
+class TestConnectionPragmas:
+    def test_busy_timeout_is_30000ms(self):
+        """busy_timeout must give Usopp 30 s to wait out Robin/Franky cron writes.
+
+        Robin pubmed digest cron (05:30) and Franky AI news cron (06:30) hold
+        a SQLite write lock for several seconds.  With busy_timeout=5000 Usopp's
+        claim_approved_drafts() raised 'database is locked' before the lock cleared.
+        30 000 ms covers the observed cron window with headroom.  See issue #270.
+        """
+        conn = state._get_conn()
+        row = conn.execute("PRAGMA busy_timeout").fetchone()
+        assert row[0] == 30000
+
+
 # Sanity: conftest's isolated_db autouse ensures every test gets a fresh tmp DB.
 # If this ever stops working, tests will cross-contaminate through state.db.
 def test_conftest_isolated_db_active():
