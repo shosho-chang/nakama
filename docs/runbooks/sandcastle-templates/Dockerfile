@@ -35,5 +35,15 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 WORKDIR /home/agent
 
+# Make /home/agent world-writable so sandcastle can write `.gitconfig` (and other lifecycle
+# artifacts) under any host UID. Sandcastle runs the container with `--user $hostUid:$hostGid`
+# (see src/sandboxes/docker.ts), but image-side `/home/agent` is owned by UID 1000.
+# On macOS, host UID is typically 501-503 (NOT 1000), so the running user can't write into
+# its own home dir → `git config --global --add safe.directory ...` fails with "Permission denied".
+# Linux desktops with UID 1000 dodge this; Windows Docker Desktop maps differently and dodges it too.
+USER root
+RUN chmod -R 0777 /home/agent
+USER agent
+
 # Sandcastle bind-mounts the git worktree at /home/agent/workspace at container start.
 ENTRYPOINT ["sleep", "infinity"]
