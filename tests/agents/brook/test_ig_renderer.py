@@ -260,6 +260,34 @@ def test_episode_type_card_count_covers_all_sub_template_directives():
     )
 
 
+def test_sub_template_directive_card_count_matches_constant():
+    """Each directive's `{type} N 卡` claim must match EPISODE_TYPE_CARD_COUNT.
+
+    Stronger drift guard than key-set equality: catches edits like changing
+    `narrative_journey 5 卡` → `narrative_journey 6 卡` in the directive
+    text without updating EPISODE_TYPE_CARD_COUNT[narrative_journey]=5.
+    Such drift would silently produce LLM outputs whose card count fails
+    post-validation (raise) — catch at unit-test time instead.
+    """
+    import re
+
+    pattern = re.compile(r"\*\*(\w+)\s+(\d+)\s+卡")
+    for episode_type, directive in _SUB_TEMPLATE_DIRECTIVES.items():
+        match = pattern.search(directive)
+        assert match is not None, (
+            f"directive for {episode_type} missing canonical `**{{type}} N 卡**` header"
+        )
+        type_name, claimed_count = match.group(1), int(match.group(2))
+        assert type_name == episode_type, (
+            f"directive header type {type_name!r} ≠ dict key {episode_type!r}"
+        )
+        assert claimed_count == EPISODE_TYPE_CARD_COUNT[episode_type], (
+            f"directive for {episode_type} claims {claimed_count} 卡 but "
+            f"EPISODE_TYPE_CARD_COUNT[{episode_type!r}]="
+            f"{EPISODE_TYPE_CARD_COUNT[episode_type]} — drift"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Prompt content
 # ---------------------------------------------------------------------------
@@ -480,6 +508,78 @@ def test_render_total_char_count_outside_band_warns_not_raises(caplog):
     assert len(warnings) >= 1, "expected total_char_count band warning"
 
 
+def test_render_total_char_count_missing_warns_not_raises(caplog):
+    """Missing `total_char_count` field warns instead of raising.
+
+    Strictness symmetry: out-of-band → warn (already), missing → warn (this).
+    Per-card hard limits already catch runaway content; treating missing
+    field as fail-close was a strictness asymmetry from the first commit.
+    """
+    payload = _build_valid_cards("narrative_journey")
+    del payload["total_char_count"]
+    with patch(
+        "agents.brook.ig_renderer.ask_multi",
+        return_value=json.dumps(payload, ensure_ascii=False),
+    ):
+        with caplog.at_level(logging.WARNING, logger="nakama.brook.ig_renderer"):
+            artifact = _renderer().render(_make_stage1_result(), _make_metadata())[0]
+
+    assert artifact.filename == IG_FILENAME
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any("total_char_count missing" in m for m in msgs), (
+        f"expected missing-total warning, got {msgs}"
+    )
+
+
+def test_render_total_char_count_bool_warns_not_raises(caplog):
+    """`total_char_count: true` (bool) must not pass int check (Python quirk)."""
+    payload = _build_valid_cards("narrative_journey")
+    payload["total_char_count"] = True  # would pass isinstance(int) without bool guard
+    with patch(
+        "agents.brook.ig_renderer.ask_multi",
+        return_value=json.dumps(payload, ensure_ascii=False),
+    ):
+        with caplog.at_level(logging.WARNING, logger="nakama.brook.ig_renderer"):
+            artifact = _renderer().render(_make_stage1_result(), _make_metadata())[0]
+
+    assert artifact.filename == IG_FILENAME
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any("not an integer" in m for m in msgs), (
+        f"expected not-integer warning for bool total, got {msgs}"
+    )
+
+
+def test_render_card_count_missing_field_raises_distinct_message(caplog):
+    """Missing `card_count` field reports differently from a wrong value."""
+    payload = _build_valid_cards("narrative_journey")
+    del payload["card_count"]
+    with patch(
+        "agents.brook.ig_renderer.ask_multi",
+        return_value=json.dumps(payload, ensure_ascii=False),
+    ):
+        with pytest.raises(ValueError, match="missing 'card_count' field"):
+            _renderer().render(_make_stage1_result(), _make_metadata())
+
+
+def test_render_warns_when_card_char_count_lies(caplog):
+    """LLM-claimed `char_count` ≠ actual headline+body length triggers warning."""
+    payload = _build_valid_cards("narrative_journey")
+    # Truthful headline+body length is in `char_count`; lie by inflating.
+    payload["cards"][2]["char_count"] = 999
+    with patch(
+        "agents.brook.ig_renderer.ask_multi",
+        return_value=json.dumps(payload, ensure_ascii=False),
+    ):
+        with caplog.at_level(logging.WARNING, logger="nakama.brook.ig_renderer"):
+            artifact = _renderer().render(_make_stage1_result(), _make_metadata())[0]
+
+    assert artifact.filename == IG_FILENAME
+    msgs = [r.getMessage() for r in caplog.records]
+    assert any("char_count=999" in m and "≠ actual" in m for m in msgs), (
+        f"expected char_count drift warning, got {msgs}"
+    )
+
+
 def test_render_episode_type_payload_mismatch_raises():
     """payload's episode_type must match Stage 1's episode_type."""
     payload = _build_valid_cards("narrative_journey")
@@ -499,7 +599,15 @@ def test_render_episode_type_payload_mismatch_raises():
 
 @pytest.mark.parametrize(
     "missing_key",
-    ["episode_type", "identity_sketch", "origin", "turning_point", "rebirth", "quotes"],
+    [
+        "episode_type",
+        "identity_sketch",
+        "origin",
+        "turning_point",
+        "rebirth",
+        "quotes",
+        "present_action",
+    ],
 )
 def test_render_raises_on_missing_required_field(missing_key):
     bad_data = {k: v for k, v in _BASE_STAGE1.items() if k != missing_key}

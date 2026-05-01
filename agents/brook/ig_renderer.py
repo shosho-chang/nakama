@@ -103,19 +103,24 @@ _SUB_TEMPLATE_DIRECTIVES: dict[EpisodeType, str] = {
         "**framework 5 卡**（架構／工具教學；ig-carousel.md §2.3）\n"
         "- C1 封面（Bait）：「{X} 的 N 步驟」/「{大師} 的 {框架名}」（≤10 字）\n"
         "- C2 定義（Hook）：框架解決什麼問題（一句話）\n"
-        "- C3 步驟 1+2（Reel）：兩步驟並列（如框架 ≥4 步驟，這裡放前半）\n"
-        "- C4 步驟 3+N（Reel）：後續步驟（含執行重點）\n"
+        "- C3 步驟前半（Reel）：N 步驟拆兩半，C3 放前 ceil(N/2) 步\n"
+        "- C4 步驟後半（Reel）：後續步驟（含執行重點）\n"
         "- C5 落地 CTA：DM 模板索取 / 聽 EP 細節\n"
-        "- Stage 1 schema 沒有專屬 framework_steps[] 欄位；從 stage1.quotes / "
-        "stage1.present_action / stage1.rebirth 抽出 N 步驟\n"
+        "- Stage 1 schema 沒有專屬 framework_steps[] 欄位；**優先順序**：\n"
+        "  (1) `stage1.present_action`（受訪者操作性建議最常落腳處）\n"
+        "  (2) `stage1.rebirth`（受訪者突破時建立的方法論）\n"
+        "  (3) `stage1.quotes`（搭配引用，作為佐證）\n"
+        "- 資訊量超出單卡時，**拆兩張卡而不是放寬字數**（per ig-carousel.md §2.2）\n"
     ),
     "listicle": (
         "**listicle 10 卡**（清單型；ig-carousel.md §2.4）\n"
         "- C1 封面（Bait）：「{N} 個 {對象} 你必須知道」（≤10 字）\n"
         "- C2-C9 項目 1-8（Reel）：每卡一個 item，標題 4-6 字 + 1-2 句說明\n"
         "- C10 落地 CTA：全清單存檔 / DM PDF / Podcast 詳細介紹\n"
-        "- Stage 1 schema 沒有專屬 listicle_items[] 欄位；從 stage1.quotes / "
-        "stage1.present_action 派生 8 個 items（**來賓的成果／教學整理**，不是修修推薦）\n"
+        "- Stage 1 schema 沒有專屬 listicle_items[] 欄位；**優先順序**：\n"
+        "  (1) `stage1.quotes`（受訪者明確列舉時的金句）\n"
+        "  (2) `stage1.present_action`（成果／教學整理）\n"
+        "- 主體：**來賓的成果／教學整理**，不是修修推薦\n"
     ),
 }
 
@@ -203,6 +208,9 @@ def _build_messages(
 
 {directive}
 
+> **重要**：請依此 directive 執行；不要把 stage1.episode_type 當作可重新分類的標籤
+> （它是 Stage 1 對 podcast 主敘事結構的分類，已決定本 carousel 的卡數與骨架）。
+
 ### 字數硬限（ig-carousel.md §5）
 
 - **封面卡標題（C1）**：≤{_COVER_HEADLINE_MAX} 字
@@ -215,7 +223,8 @@ def _build_messages(
 ### 必做
 
 - 每卡只服務 1 個 atomic idea
-- 卡 1 hook 走 ig-carousel.md §3 公式庫之一（具體、反直覺、數字醒目）
+- **卡 1 hook 來源**：若 `stage1.hooks[]` 中有與本子模板契合的，**優先選用或改寫**；
+  否則從 ig-carousel.md §3 公式庫衍生。不要無視 Stage 1 已經提煉好的候選 hook
 - 落地卡 1-2 個 CTA（不超過 2 個）；podcast 引流 carousel 必含「聽 EP 完整版」CTA
 - AIDA 四階段都對應到（Bait / Hook / Reel / Land）
 - 主體永遠是**來賓**的故事／成果／教學，**不是修修自己的**
@@ -232,6 +241,7 @@ def _build_messages(
 - 禁止 5 個 CTA 並列在落地卡（讀者癱瘓）
 - 禁止單卡放整段反思散文（每卡一個 atomic idea）
 - 禁止用簡體中文或日式漢字
+- 禁止輸出非 metadata 提供的 URL（DM / Save / Follow / 課程連結等以**文字**描述代替）
 
 ### 輸出格式
 
@@ -270,8 +280,18 @@ def _validate_cards_payload(
 ) -> None:
     """Validate the parsed JSON payload against IG carousel hard limits.
 
+    Strictness policy (deliberate asymmetry):
+    - **Hard raise**: schema shape (types, missing fields, wrong card count,
+      role sequence, per-card char limits) — these are unambiguous LLM bugs.
+    - **Soft warn**: ``total_char_count`` outside [150, 300] — narrow drift
+      (e.g. 295 vs 300) shouldn't fail-close the pipeline; the per-card hard
+      limits already prevent runaway cases. Missing ``total_char_count`` is
+      treated the same way (warn, infer from cards).
+    - **Soft warn**: ``char_count`` per card not matching ``len(headline) +
+      len(body)`` — same rationale (headline/body limits are the real guard).
+
     Raises:
-        ValueError: If schema is malformed or any limit is violated.
+        ValueError: If schema is malformed or any hard limit is violated.
     """
     if not isinstance(payload, dict):
         raise ValueError(f"IGRenderer: LLM output is not a JSON object: {type(payload).__name__}")
@@ -292,9 +312,12 @@ def _validate_cards_payload(
             f"for episode_type={episode_type!r}"
         )
 
-    if payload.get("card_count") != expected_card_count:
+    # Distinguish missing vs wrong-valued ``card_count`` for clearer error.
+    if "card_count" not in payload:
+        raise ValueError("IGRenderer: payload missing 'card_count' field")
+    if payload["card_count"] != expected_card_count:
         raise ValueError(
-            f"IGRenderer: card_count={payload.get('card_count')} declares "
+            f"IGRenderer: card_count={payload['card_count']!r} declares "
             f"≠ actual cards length {len(cards)}"
         )
 
@@ -327,12 +350,44 @@ def _validate_cards_payload(
                 f"exceeds limit {_CARD_BODY_MAX}"
             )
 
+        # Soft warn: per-card char_count vs actual headline+body length.
+        # Hard raise would make the LLM "lying" about counts fail-close, but
+        # we already have the per-card hard limits guarding runaway content.
+        actual_count = len(headline) + len(body)
+        declared_count = card["char_count"]
+        if not isinstance(declared_count, int) or isinstance(declared_count, bool):
+            logger.warning(
+                "ig card %s char_count=%r is not an integer (got %s); using actual %d",
+                expected_role,
+                declared_count,
+                type(declared_count).__name__,
+                actual_count,
+            )
+        elif declared_count != actual_count:
+            logger.warning(
+                "ig card %s char_count=%d ≠ actual headline+body length %d",
+                expected_role,
+                declared_count,
+                actual_count,
+            )
+
+    # ``total_char_count``: soft band warning. Both missing and out-of-band
+    # produce a warning rather than raise — the per-card hard limits above
+    # are the real guard. ``bool`` excluded from int check (Python: True == 1
+    # passes isinstance check, would mask a malformed ``true`` payload).
     total = payload.get("total_char_count")
-    if not isinstance(total, int):
-        raise ValueError(f"IGRenderer: total_char_count must be int, got {type(total).__name__}")
-    # Soft band — log warning rather than raise, since LLM small drift is
-    # tolerable (a 295 vs 300 split shouldn't fail-close the whole pipeline).
-    if total < _TOTAL_CHAR_MIN or total > _TOTAL_CHAR_MAX:
+    if total is None:
+        logger.warning(
+            "ig total_char_count missing for episode_type=%s; inferring from cards",
+            episode_type,
+        )
+    elif isinstance(total, bool) or not isinstance(total, int):
+        logger.warning(
+            "ig total_char_count=%r is not an integer (got %s); ignoring",
+            total,
+            type(total).__name__,
+        )
+    elif total < _TOTAL_CHAR_MIN or total > _TOTAL_CHAR_MAX:
         logger.warning(
             "ig total_char_count=%d outside soft band [%d, %d] for episode_type=%s",
             total,
@@ -394,7 +449,17 @@ class IGRenderer:
         expected_count = EPISODE_TYPE_CARD_COUNT[episode_type]
 
         # Validate other required Stage 1 fields up front (fail fast).
-        for key in ("identity_sketch", "origin", "turning_point", "rebirth", "quotes"):
+        # ``present_action`` is added because framework / listicle directives
+        # use it as the primary sub-extraction source — silent absence would
+        # let LLM hallucinate steps from thin air.
+        for key in (
+            "identity_sketch",
+            "origin",
+            "turning_point",
+            "rebirth",
+            "quotes",
+            "present_action",
+        ):
             _require_stage1_field(data, key)
 
         podcast_episode_url = metadata.extra.get("podcast_episode_url", "")
