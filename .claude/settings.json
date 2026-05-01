@@ -68,7 +68,6 @@
       "Bash(git reset --hard *)",
       "Bash(git checkout -- *)",
       "Bash(git clean *)",
-      "Bash(git branch -D *)",
       "Edit(.env)",
       "Bash(ssh *)",
       "Bash(scp *)",
