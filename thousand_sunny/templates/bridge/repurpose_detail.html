@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Repurpose · {{ run.run_id }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --nk-bench:        #e8e6e1;
+  --nk-bench-2:      #dfddd6;
+  --nk-panel:        #ffffff;
+  --nk-panel-2:      #f4f2ec;
+  --nk-chassis:      #1a1a1a;
+  --nk-chassis-2:    #2a2a2a;
+  --nk-chassis-fg:   #e8e6e1;
+  --nk-chassis-fg-2: #98958e;
+  --nk-ink:          #0d0d0d;
+  --nk-ink-2:        #4a4a46;
+  --nk-ink-3:        #6a6a64;
+  --nk-muted:        #98958e;
+  --nk-rule:         #c8c5be;
+  --nk-hairline:     #dcd9d2;
+  --nk-signal:       #ff5a1f;
+  --nk-amber:        #c8a656;
+  --nk-jade:         #3f7a5a;
+  --nk-crimson:      #a8231a;
+  --nk-indigo:       #2a3a5c;
+  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
+  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
+  --nk-t-micro: 10px; --nk-t-xs: 11px; --nk-t-sm: 12px;
+  --nk-t-base: 14px;  --nk-t-md: 16px; --nk-t-lg: 19px;
+  --nk-r-2: 2px;
+  --nk-border:      1px solid var(--nk-rule);
+  --nk-border-hair: 1px solid var(--nk-hairline);
+  --nk-shadow-popover: 0 4px 16px rgba(13,13,13,.10), 0 1px 3px rgba(13,13,13,.08);
+  --nk-dur-fast: 80ms;
+  --nk-dur-base: 140ms;
+  --nk-ease-out: cubic-bezier(0.2,0.7,0.2,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.001ms !important; }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--nk-font-sans);
+  font-size: var(--nk-t-base);
+  background: var(--nk-bench);
+  color: var(--nk-ink);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Chassis ── */
+.chassis {
+  background: var(--nk-chassis); color: var(--nk-chassis-fg);
+  padding: 0 40px; height: 48px;
+  display: flex; align-items: center; gap: 32px;
+  flex-shrink: 0; border-bottom: 1px solid #000;
+}
+.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chassis-dot {
+  width: 14px; height: 14px;
+  border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative;
+}
+.chassis-dot::after {
+  content: ''; position: absolute; inset: 3px;
+  background: var(--nk-signal); border-radius: 50%;
+}
+.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
+.chassis-nav { flex: 1; display: flex; gap: 24px; }
+.chassis-nav a {
+  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; text-decoration: none;
+  color: var(--nk-chassis-fg-2); border-bottom: 2px solid transparent; padding-bottom: 2px;
+  transition: color var(--nk-dur-fast);
+}
+.chassis-nav a:hover { color: #fff; }
+.chassis-nav a.active { color: #fff; border-bottom-color: var(--nk-signal); }
+
+/* ── Page header ── */
+.page-header {
+  background: var(--nk-panel);
+  border-bottom: var(--nk-border);
+  padding: 14px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.breadcrumb {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-muted);
+}
+.breadcrumb a { color: var(--nk-muted); text-decoration: none; }
+.breadcrumb a:hover { color: var(--nk-ink-2); }
+.breadcrumb .sep { margin: 0 6px; }
+.run-id-display {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-sm);
+  color: var(--nk-ink);
+  font-weight: 500;
+}
+.episode-type-chip {
+  display: inline-block;
+  font-family: var(--nk-font-mono);
+  font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 3px 7px; background: var(--nk-bench-2); color: var(--nk-ink-2);
+  border-radius: var(--nk-r-2); margin-left: 10px;
+}
+.pending-notice {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-amber);
+  letter-spacing: 0.08em;
+}
+
+/* ── 3-panel layout ── */
+.panels-wrap {
+  flex: 1;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: var(--nk-rule);
+  padding: 1px;
+}
+.panel {
+  background: var(--nk-panel);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.panel-header {
+  padding: 12px 18px 10px;
+  border-bottom: var(--nk-border);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.panel-label {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--nk-ink-2);
+  font-weight: 500;
+}
+.panel-label .panel-channel {
+  color: var(--nk-ink);
+  margin-left: 6px;
+}
+.panel-status-placeholder {
+  font-family: var(--nk-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--nk-muted);
+  border: var(--nk-border);
+  padding: 3px 7px;
+  border-radius: var(--nk-r-2);
+}
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+/* ── FB tonal tabs ── */
+.fb-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: var(--nk-border);
+  flex-shrink: 0;
+}
+.fb-tab {
+  font-family: var(--nk-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--nk-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--nk-dur-fast);
+}
+.fb-tab:hover { color: var(--nk-ink-2); }
+.fb-tab.active { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
+.fb-pane { display: none; }
+.fb-pane.active { display: block; }
+
+/* ── Content display ── */
+.artifact-content {
+  font-size: var(--nk-t-sm);
+  line-height: 1.7;
+  color: var(--nk-ink-2);
+  white-space: pre-wrap;
+  font-family: var(--nk-font-zh);
+}
+.artifact-content.mono {
+  font-family: var(--nk-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.empty-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--nk-muted);
+  gap: 8px;
+}
+.empty-panel .empty-icon {
+  font-family: var(--nk-font-mono);
+  font-size: 20px;
+  opacity: 0.3;
+}
+.empty-panel .empty-hint {
+  font-family: var(--nk-font-mono);
+  font-size: var(--nk-t-xs);
+  letter-spacing: 0.08em;
+}
+
+/* ── Stage 1 aside ── */
+.stage1-aside {
+  background: var(--nk-panel);
+  border-top: var(--nk-border);
+  padding: 10px 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.stage1-aside .nk-caps { margin-bottom: 0; }
+.stage1-quotes {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.quote-chip {
+  flex-shrink: 0;
+  font-family: var(--nk-font-zh);
+  font-size: var(--nk-t-xs);
+  color: var(--nk-ink-2);
+  background: var(--nk-panel-2);
+  border: var(--nk-border-hair);
+  border-radius: var(--nk-r-2);
+  padding: 4px 10px;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* focus rings */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal);
+}
+</style>
+</head>
+<body>
+
+<!-- Chassis -->
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='repurpose') }}
+
+<!-- Page header -->
+<div class="page-header">
+  <div>
+    <div class="breadcrumb">
+      <a href="/bridge/repurpose">Repurpose</a>
+      <span class="sep">›</span>
+      <span class="run-id-display">{{ run.run_id }}</span>
+      {% if run.stage1.episode_type %}
+      <span class="episode-type-chip">{{ run.stage1.episode_type }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="pending-notice">SLICE 10 → mutation 尚未實作</div>
+</div>
+
+<!-- 3-panel surface -->
+<div class="panels-wrap">
+
+  <!-- ── Panel 1: Blog ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-label">P1 <span class="panel-channel">BLOG</span></span>
+      <span class="panel-status-placeholder">APPROVE (Slice 10)</span>
+    </div>
+    <div class="panel-body">
+      {% if run.blog %}
+      <div class="artifact-content">{{ run.blog }}</div>
+      {% else %}
+      <div class="empty-panel">
+        <div class="empty-icon">[ ]</div>
+        <div class="empty-hint">blog.md not yet generated</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Panel 2: FB (4 tonal tabs) ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-label">P2 <span class="panel-channel">FACEBOOK</span></span>
+      <span class="panel-status-placeholder">APPROVE (Slice 10)</span>
+    </div>
+    <div class="fb-tabs" id="fbTabs">
+      {% for tonal in fb_tonals %}
+      <button class="fb-tab{% if loop.first %} active{% endif %}"
+              onclick="switchFBTab('{{ tonal }}')"
+              data-tonal="{{ tonal }}"
+              id="fb-tab-{{ tonal }}">
+        {{ tonal }}
+      </button>
+      {% endfor %}
+    </div>
+    <div class="panel-body">
+      {% for tonal in fb_tonals %}
+      <div class="fb-pane{% if loop.first %} active{% endif %}" id="fb-pane-{{ tonal }}">
+        {% if run.fb[tonal] %}
+        <div class="artifact-content">{{ run.fb[tonal] }}</div>
+        {% else %}
+        <div class="empty-panel" style="min-height:160px">
+          <div class="empty-icon">[ ]</div>
+          <div class="empty-hint">fb-{{ tonal }}.md not yet generated</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── Panel 3: IG ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-label">P3 <span class="panel-channel">INSTAGRAM</span></span>
+      <span class="panel-status-placeholder">APPROVE (Slice 10)</span>
+    </div>
+    <div class="panel-body">
+      {% if run.ig %}
+      <div class="artifact-content mono">{{ run.ig }}</div>
+      {% else %}
+      <div class="empty-panel">
+        <div class="empty-icon">[ ]</div>
+        <div class="empty-hint">ig-cards.json not yet generated</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- Stage 1 quote preview strip -->
+{% if run.stage1.quotes %}
+<div class="stage1-aside">
+  <span class="nk-caps" style="flex-shrink:0">GOLD QUOTES</span>
+  <div class="stage1-quotes">
+    {% for q in run.stage1.quotes %}
+    <span class="quote-chip" title="{{ q }}">{{ q }}</span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+function switchFBTab(tonal) {
+  document.querySelectorAll('.fb-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.fb-pane').forEach(p => p.classList.remove('active'));
+  const tab = document.getElementById('fb-tab-' + tonal);
+  const pane = document.getElementById('fb-pane-' + tonal);
+  if (tab) tab.classList.add('active');
+  if (pane) pane.classList.add('active');
+}
+</script>
+
+</body>
+</html>

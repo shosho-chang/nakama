@@ -21,8 +21,9 @@
   │   {% endcall %}                                                    │
   └────────────────────────────────────────────────────────────────────┘
 
-  `nav_active` slugs: bridge / drafts / seo / memory / cost / franky /
-  health / docs / logs / vault. Unknown / missing → no entry marked.
+  `nav_active` slugs: bridge / drafts / seo / zoro / repurpose / memory /
+  cost / franky / health / docs / logs / vault. Unknown / missing →
+  no entry marked.
 
   See CONTEXT-MAP "chassis-nav" for design principles (agent-rooted vs
   topic-rooted lane; aria-current strictly URL-keyed).
@@ -41,6 +42,7 @@
     <a href="/bridge/drafts"{% if nav_active == 'drafts' %} class="active" aria-current="page"{% endif %}>DRAFTS <span class="zh">待審</span></a>
     <a href="/bridge/seo"{% if nav_active == 'seo' %} class="active" aria-current="page"{% endif %}>SEO <span class="zh">優化</span></a>
     <a href="/bridge/zoro/keyword-research"{% if nav_active == 'zoro' %} class="active" aria-current="page"{% endif %}>ZORO <span class="zh">偵察</span></a>
+    <a href="/bridge/repurpose"{% if nav_active == 'repurpose' %} class="active" aria-current="page"{% endif %}>REPURPOSE <span class="zh">重製</span></a>
     <a href="/bridge/memory"{% if nav_active == 'memory' %} class="active" aria-current="page"{% endif %}>MEMORY <span class="zh">記憶</span></a>
     <a href="/bridge/cost"{% if nav_active == 'cost' %} class="active" aria-current="page"{% endif %}>COST <span class="zh">成本</span></a>
     <a href="/bridge/franky"{% if nav_active == 'franky' %} class="active" aria-current="page"{% endif %}>FRANKY <span class="zh">船匠</span></a>
