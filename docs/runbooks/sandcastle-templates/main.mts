@@ -52,8 +52,13 @@ await run({
       // Install Python deps fresh per iteration.
       // requirements.txt drives runtime + test deps; pyproject.toml is canonical for CI but
       // requirements.txt is faster for sandcastle's per-iter setup.
+      //
+      // Sandcastle's default hook timeout is 60s — too short for 60+ pip deps from a
+      // cold container. Bump to 10 min for resolve + download.
+      // (Future opt: pre-install deps in Dockerfile build for cache hit; revisit if
+      // per-iteration pip install dominates wall-clock cost.)
       onSandboxReady: [
-        { command: "pip install -r requirements.txt -q" },
+        { command: "pip install -r requirements.txt -q", timeoutMs: 600000 },
       ],
     },
   },
