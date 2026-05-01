@@ -45,5 +45,11 @@ USER root
 RUN chmod -R 0777 /home/agent
 USER agent
 
+# Pre-install dev tools (pytest / ruff / hypothesis / pytest-cov) so agent doesn't
+# self-install on every iteration. Saves ~10-15s wall per trial. These are NOT in
+# nakama's requirements.txt (CI uses pyproject.toml [project.optional-dependencies.dev]),
+# so the per-iter `pip install -r requirements.txt` hook misses them.
+RUN python3 -m pip install --user pytest ruff hypothesis pytest-cov
+
 # Sandcastle bind-mounts the git worktree at /home/agent/workspace at container start.
 ENTRYPOINT ["sleep", "infinity"]

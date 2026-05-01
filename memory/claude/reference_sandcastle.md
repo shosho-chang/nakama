@@ -1,9 +1,9 @@
 ---
 name: Matt Pocock Sandcastle — TS library for AFK Claude Code in Docker worktrees
-description: github.com/mattpocock/sandcastle；5 templates；defaults sonnet-4-6；2026-04-30 試水 2/2 通過 (#240→PR#263 / #239→PR#264) → 正式採用，runbook 在 docs/runbooks/sandcastle.md
+description: github.com/mattpocock/sandcastle；5 templates；defaults sonnet-4-6；3/3 試水通過（桌機 Win 2 + Mac 1）；templates 凍結進 docs/runbooks/sandcastle-templates/；runbook 在 docs/runbooks/sandcastle.md
 type: reference
 created: 2026-04-29
-updated: 2026-04-30
+updated: 2026-05-02
 ---
 
 Matt Pocock 的 AFK runner，**TS library** in Docker，跟 mattpocock/skills repo 是 paired 工具但分開 repo。**不是** Anthropic claude-code-plugins 的 ralph-loop plugin（Matt 自己拒絕後者）。
@@ -97,17 +97,54 @@ agent 自走 TDD（red 驗證 → green 實作）+ 自 P7-COMPLETION 報告。
 | TDD discipline | n/a（pure test add） | ✅ red→green |
 | Result | ✅ | ✅ |
 
-## 結論：正式採用
+## 2026-05-02 第三試水結果（Mac AFK 首跑，issue #270 → PR #307）
 
-**2/2 通過 → 過 「2/3 success」門檻**。Sandcastle 收進 nakama 工具集，runbook 在 [docs/runbooks/sandcastle.md](../../docs/runbooks/sandcastle.md)。
+Mac MacBook Pro 副機首次裝 sandcastle setup，目標 issue #270（Usopp daemon `database is locked` busy_timeout 拉長）。Setup 一次性裝 ~45 min（含 6 個 Mac-specific gotcha 除錯，全凍結進 PR #306 templates），trial run wall 4:23、1 iter、context 81k。
 
-退場條件保留（3 次連敗 / cost > baseline 2x / 一次嚴重 leak），但目前無觸發。
+| | Trial #1 (#240) | Trial #2 (#239) | Trial #3 (#270) |
+|---|---|---|---|
+| Host | 桌機 Win | 桌機 Win | **Mac** |
+| Wall | 3:56 | ~6:50 | ~4:23 |
+| Context | 60k | 80k | 81k |
+| pip install (cold) | n/a | n/a | 92.5s |
+| 估 cost | ~$0.26 | ~$0.40 | ~$0.30 |
+| Files | 1 test | 4 (2 prod + 2 test) | 2 (1 prod + 1 test) |
+| Production code | ❌ | ✅ | ✅ |
+| TDD discipline | n/a | ✅ red→green | ✅ red→green |
+| Self P7-COMPLETION | n/a | ✅ | ✅ |
+| Result | ✅ | ✅ | ✅ |
 
-### 採用後操作模板
+**Agent 行為亮點**：
+- Issue body 寫「修 `approval_queue.py:256`」但同時提「PR #85 把 PRAGMA 收齊在 `_get_conn()`」— agent 沿 reference 找到 `shared/state.py:26` 的 central PRAGMA location，正確 redirect 修對地方
+- 自己 `pip3 install pytest hypothesis ruff` 補 dev tools（Dockerfile 沒預裝）
+- Acceptance #2/#3（VPS smoke + 3-day observation）標 deferred 給 host operator，不貪心
+
+## Mac setup 6 個 gotcha（PR #306 全清）
+
+桌機 Windows trial 1+2 累 4 坑，Mac trial 新踩 6 個：
+
+1. **Templates 漏 `cwd` 設定**（跨平台） — sandcastle 預設 `process.cwd()` 當 target，sandcastle-test 不是 git repo會炸。修：`main.mts` 加 `cwd: "../nakama"`。
+2. **`.gitignore` 沒屏蔽 `.sandcastle/` artifacts**（跨平台） — sandcastle 在 cwd 寫 `.sandcastle/{worktrees,logs,patches}/`，污染 nakama working tree。修：nakama `.gitignore` 加 `.sandcastle/`。
+3. **Mac host UID 502 ≠ image agent UID 1000**（**Mac only**） — sandcastle `--user $hostUid` 跑 container，host 502 進 image 沒 `/home/agent` 寫權限 → SandboxLifecycle.ts 第一步 `git config --global` 直接炸 (exit 255)。修：Dockerfile 末尾 `chmod -R 0777 /home/agent`。Linux UID 1000 dodge；Windows Docker Desktop UID mapping 不同也 dodge。
+4. **Hook timeout 60s 對 nakama 太短**（跨平台） — 預設 `GIT_SETUP_TIMEOUT_MS = 60000`，nakama requirements.txt 61 行 deps cold container 90s+。修：`main.mts` hook 加 `timeoutMs: 600000`（10 min）。
+5. **`prompt.md` jq expression backslash escape**（跨平台） — 寫成 `join(\",\")` jq parser unexpected token `\\`。修：拿掉多餘 escape 成 `join(",")`，shell single-quote 已包整段不需二次 escape。
+6. **Docker not in PATH on Mac shell**（**Mac only**） — Docker Desktop 安裝沒自動進 zsh PATH。修：用 absolute path `/Applications/Docker.app/Contents/Resources/bin/docker` 或 `PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"` 前綴。
+
+加上桌機 round 1 那 4 坑（init prompt / .env lookup / MSYS path mangling / `gh issue close` 擋）— 完整 10 坑全清，templates 凍結在 [docs/runbooks/sandcastle-templates/](../../docs/runbooks/sandcastle-templates/) 跨機 sync。
+
+## 結論：3/3 通過 → 信心擴大
+
+**正式採用 + Mac AFK 副機 unblock**。Sandcastle 收進 nakama 工具集，runbook 在 [docs/runbooks/sandcastle.md](../../docs/runbooks/sandcastle.md)；canonical templates 在 [docs/runbooks/sandcastle-templates/](../../docs/runbooks/sandcastle-templates/)。
+
+退場條件保留（3 次連敗 / cost > baseline 2x / 一次嚴重 leak），目前無觸發。
+
+### 採用後操作模板（跨平台）
 
 1. tag issue `sandcastle` label（先確認 acceptance 條件清楚）
-2. `cd E:\sandcastle-test\ && MSYS_NO_PATHCONV=1 npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts`
-3. agent 完工後在 host：rebase commit onto main、push、開 PR
-4. 在 host run `/review` + 手動 `gh pr merge --squash --delete-branch`（sandbox 擋 close/merge）
+2. 跑 sandcastle：
+   - **macOS**：`cd ~/Documents/sandcastle-test && npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts`
+   - **Windows (Git Bash)**：`cd E:\sandcastle-test\ && MSYS_NO_PATHCONV=1 npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts`
+3. agent 完工後在 host：sandcastle 已 merge 進 host current branch；push branch + 開 PR
+4. 在 host run `/review` + `gh pr merge --squash --delete-branch`（round 2 後 `gh issue close` 不再被擋，但走 PR auto-close 仍是 canonical 路徑）
 
 完整 SOP 見 docs/runbooks/sandcastle.md。
