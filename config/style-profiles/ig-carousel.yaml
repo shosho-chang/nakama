@@ -1,0 +1,15 @@
+profile_id: ig-carousel@0.1.0
+category: ig-carousel
+# Platform profile（同 fb-post，不走 DraftV1）
+primary_category: ig-carousel
+style_profile_md: agents/brook/style-profiles/ig-carousel.md
+word_count:
+  # 整篇 carousel 全部卡片總字數
+  min: 150
+  max: 300
+forbid_emoji: false
+default_tag_hints:
+  - instagram
+  - carousel
+# Platform profile 不參與 detect_category 自動分類
+detect_keywords: []

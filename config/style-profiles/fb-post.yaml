@@ -1,0 +1,19 @@
+profile_id: fb-post@0.1.0
+category: fb-post
+# Platform profile（不是 blog publishing 的 primary_category）—
+# 不會餵進 DraftV1（DraftV1.primary_category Literal 不含 fb-post）
+# Slice 7 FBRenderer 會直接用此 profile，不走 compose.py / DraftV1
+primary_category: fb-post
+style_profile_md: agents/brook/style-profiles/fb-post.md
+word_count:
+  # 訪談宣傳 800-1500 + 個人感想 1500-3500，取聯集
+  min: 600
+  max: 3500
+forbid_emoji: false
+default_tag_hints:
+  - facebook
+  - podcast
+  - interview
+# Platform profile 不參與 detect_category 自動分類
+# （由 IGRenderer / FBRenderer 直接 load_style_profile("fb-post") 取用）
+detect_keywords: []
