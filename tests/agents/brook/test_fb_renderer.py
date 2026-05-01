@@ -230,6 +230,21 @@ def test_render_tonal_directive_appears_in_each_prompt():
     )
 
 
+def test_tonal_directives_cover_all_fb_tonals_one_to_one():
+    """`_TONAL_DIRECTIVES.keys()` must equal `set(FB_TONALS)` exactly.
+
+    Drift guard: if someone adds a tonal to FB_TONALS without updating the
+    directive map (or vice versa), `_build_messages` would raise KeyError
+    inside a worker thread, producing a confusing error path. This test
+    catches the drift at unit-test time before that happens.
+    """
+    assert set(_TONAL_DIRECTIVES.keys()) == set(FB_TONALS), (
+        f"FB_TONALS={set(FB_TONALS)} vs "
+        f"_TONAL_DIRECTIVES.keys()={set(_TONAL_DIRECTIVES.keys())} drift — "
+        f"add/remove the missing tonal in both places"
+    )
+
+
 def test_tonal_directives_are_actually_different():
     """Sanity: the 4 tonal directives are non-trivially distinct strings."""
     bodies = list(_TONAL_DIRECTIVES.values())

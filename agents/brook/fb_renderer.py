@@ -70,7 +70,6 @@ _TONAL_DIRECTIVES: dict[Tonal, str] = {
         "- 修修自我吐槽密度高，括號吐槽 2-3 個\n"
         "- 開場 hook 偏 §3.C 反差／自我吐槽（「這應該是我笑得最誇張⋯⋯」式）\n"
         "- 句尾助詞「哈哈」「啦」「喔」自然散佈\n"
-        "- 樣本參考：fb-interview-2.txt 周慕姿（笑到哭那場）\n"
     ),
     "emotional": (
         "**tonal=emotional（感性）**\n"
@@ -78,23 +77,21 @@ _TONAL_DIRECTIVES: dict[Tonal, str] = {
         "- 私人共鳴段加重：修修個人故事與來賓對照、自我露出至少 2 段\n"
         "- 開場 hook 偏 §3.D 個人連結式（「我追隨最久」「兩年前的這個時候」）\n"
         "- 結尾走感謝段或人生展望句（「迴向給」「希望」「等不及」）\n"
-        "- 樣本參考：fb-article-5.txt 輝誠老師、fb-article-3.txt Intel 離職\n"
     ),
     "serious": (
         "**tonal=serious（嚴肅）**\n"
         "- emoji 極少：最多 1 個 ☺️ 在結尾；正文不用 emoji\n"
         "- 議題倡議口吻：用具體量化數字（百分比、研究、立法案例）建立急迫性\n"
-        "- 開場 hook 偏 §3.B 時點切入或 §3.A EP 編號 + 戲劇性副標\n"
+        "- 開場 hook 走 §3.A EP 編號 + 戲劇性副標（嚴肅議題的 hook 仍是訪談宣傳，"
+        "**不要用 §3.B 時點切入**——那是子場景 B 個人感想專用）\n"
         "- 結尾走呼籲段（「大家一起來⋯⋯」「強烈推薦」）\n"
-        "- 樣本參考：fb-article-4.txt 失控的焦慮世代\n"
     ),
     "neutral": (
         "**tonal=neutral（一般、純資訊）**\n"
         "- emoji 最少：0-1 個整篇\n"
         "- 純資訊／結構化：偏列表、客觀介紹來賓功業、量化背書多\n"
         "- 開場 hook 偏 §3.A EP 編號 + 戲劇性副標（直接破題）\n"
-        "- 結尾走 CTA（折扣碼、訪談連結）+ 簡短期待句\n"
-        "- 樣本參考：fb-interview-1.txt 王文靜、fb-article-2.txt 12 本書\n"
+        "- 結尾走 CTA（podcast 訪談連結）+ 簡短期待句\n"
     ),
 }
 
@@ -176,13 +173,21 @@ def _build_messages(
 
 ### 結構（fb-post.md §2.A 訪談宣傳骨架）
 
-1. **開場 hook**：依上方 tonal 指令選擇 §3 開場 pattern；使用 EP 編號 + 戲劇性副標
-   或時點/反差 hook，第一句／第一段就鎖住讀者
-2. **來賓速寫（1-2 段）**：用 identity_sketch 建立「這人值得聽」、量化背書
-3. **人物背景／轉折故事（2-4 段）**：用 origin / turning_point / rebirth 材料展開
-4. **訪談亮點預告（1-2 段）**：用 present_action 預告本集亮點，不全劇透
-5. **CTA 段**：podcast 收聽連結 + 課程連結（如適用）；「想聽完整版去 podcast」
-6. **結尾留白／展望句**：依 tonal 指令選結尾風格
+> **重要**：忽略 `stage1.episode_type` 的語義（那是 Stage 1 內部給人物文 / 部落格用
+> 的分類）；本任務一律走 子場景 A 訪談宣傳結構，不要因為 `episode_type=narrative_journey`
+> 就漂移到 §2.B 個人感想骨架。
+
+1. **開場 hook**：從 `stage1.hooks[]` 選一個與 tonal 指令最契合的 §3 pattern，
+   必要時改寫；第一句／第一段就鎖住讀者
+2. **來賓速寫（1-2 段）**：用 `identity_sketch` 建立「這人值得聽」、量化背書（從
+   `quotes[]` 或 `present_action` 抽具體數字）
+3. **人物背景／轉折故事（2-4 段）**：用 `origin / turning_point / rebirth` 三欄展開
+4. **訪談亮點預告（1-2 段）**：用 `present_action` 預告本集亮點，**不全劇透**
+   （留懸念引人去聽 podcast）
+5. **CTA 段**：podcast 收聽連結（從上方 metadata 拿；**不要捏造其他 URL**——若
+   metadata 沒提供課程連結，就只放 podcast URL，不可虛構任何外部 URL）
+6. **結尾留白／展望句**：依 tonal 指令選結尾風格；可參考 `ending_direction` 提示
+   的方向
 
 ### 字數與格式
 
@@ -197,12 +202,14 @@ def _build_messages(
 
 ### 禁止
 
-- 禁止輸出 markdown 標題（`#` `##` `###`）
-- 禁止 hashtag（`#健康` `#podcast`）
+- 禁止以 `#` `##` `###` 開頭的 markdown 標題行（行內 `#` 字元 OK，例如書名）
+- 禁止 hashtag（`#健康` `#podcast` 形式）
 - 禁止 YAML frontmatter
 - 禁止 takeaway bullet list
 - 禁止劇透完整訪談內容（要留懸念引人去聽）
 - 禁止用簡體中文或日式漢字
+- 禁止捏造任何外部 URL（課程連結、社群連結、書籍購買連結等）；只能放
+  metadata 提供的 podcast URL
 
 請直接輸出 FB 貼文純文字（從第一段開始，無需任何前置說明、無需 markdown
 fence）。Podcast 連結 `{podcast_episode_url}` 須出現在 CTA 段。
@@ -267,7 +274,8 @@ class FBRenderer:
     ) -> None:
         self._profile = style_profile or load_style_profile(_FB_PROFILE_CATEGORY)
         self._model = model or _DEFAULT_MODEL
-        self._max_workers = max_workers
+        # Cap at len(FB_TONALS): more workers than tonals just creates idle threads.
+        self._max_workers = min(max_workers, len(FB_TONALS))
 
     def render(self, stage1: Stage1Result, metadata: EpisodeMetadata) -> list[ChannelArtifact]:
         """Render 4 fb-{tonal}.md variants in parallel.
