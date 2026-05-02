@@ -44,7 +44,17 @@ VS Code Explorer / Obsidian 內檔案是字典序排序。日期後置時 `textb
 | 種類 | 檔名 | 例子 | 何時用 |
 |---|---|---|---|
 | **Long-term reference** | `{action-target}.md`（不加日期） | `cf-waf-skip-rules.md` / `deploy-usopp-vps.md` / `setup-wp-integration-credentials.md` | 列出所有同類規則 / SOP / 常駐查閱資訊 |
-| **One-shot task instruction**（要修修這次跑的） | `YYYY-MM-DD-{verb-target}.md` | `2026-04-27-add-nakamabot-cf-skip-rule.md` | 一次性 task — 修修跑完就不會再回頭看；連結到 long-term reference 表格更新 |
+| **One-shot task instruction**（要修修這次跑的） | `YYYY-MM-DD-{verb-target}.md` | `2026-04-27-add-nakamabot-cf-skip-rule.md` / `2026-05-02-davinci-import-smoke.md` | 一次性 task — 修修跑完就不會再回頭看；連結到 long-term reference 表格更新 |
+
+**⚠️ Default = 加日期，反覆教訓（2026-04-27 / 2026-05-02 兩次踩同坑）**：
+
+寫 runbook 時若想到「未來也會跑」、「這是 acceptance gate template」、「概念上 evergreen」就跳 long-term reference 軌 = **反射性誤判**。判斷標準是「**修修現在拿到要做嗎**」：
+
+- 「修修現在 PR #320 ship 了，要他跑 smoke」→ **one-shot，加日期** ← 即使概念上每次 ship 都會跑
+- 「列出所有 CF skip rule 表格供查閱」→ long-term reference，不加日期
+- 「DaVinci smoke 通用 SOP（不綁特定 PR）」→ long-term reference，不加日期 — **但這是另一份 doc**，one-shot 要 link 進去
+
+寫完落檔前的 self-check：「**這份是不是綁特定 PR / Slice / 日期事件？**」是 → date prefix。修修不會去 grep evergreen 找「我這次要做的事」。
 
 **配對規則**：one-shot task doc 要 link 到 long-term reference doc（如 task doc 開頭寫「rule 加進 cf-waf-skip-rules.md 表格」）。Long-term reference 表格 row 也要 link 回 setup task doc 路徑（per cf-waf-skip-rules.md 表格新增「Setup task doc」column 範例）。
 
