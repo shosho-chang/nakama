@@ -43,6 +43,8 @@ data/*
 
 # Build artifacts
 *.egg-info/
+video/node_modules/
+video/dist/
 
 # Test fixtures (large audio + pipeline outputs)
 tests/files/
