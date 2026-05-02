@@ -84,7 +84,12 @@ def run(episode_id: str) -> EpisodeResult:
 
 
 def _stage0_extract(paths: "_EpisodePaths") -> None:
-    """Extract aroll-audio.mp3 and aroll-video.mp4 from raw_recording.mp4."""
+    """Extract aroll-audio.wav (PCM s16le) and aroll-video.mp4 from raw_recording.mp4.
+
+    WAV is required because Stage 1 ``mistake_removal._load_wav`` uses the
+    stdlib ``wave`` module, which only reads RIFF/WAV. MP3 would silently
+    fail downstream.
+    """
     if paths.aroll_audio.exists() and paths.aroll_video.exists():
         logger.debug("Stage 0: streams already extracted, skipping ffmpeg")
         return
@@ -92,7 +97,7 @@ def _stage0_extract(paths: "_EpisodePaths") -> None:
     if not paths.raw_recording.exists():
         raise FileNotFoundError(f"raw_recording.mp4 not found: {paths.raw_recording}")
 
-    # Extract audio
+    # Extract audio as PCM WAV (Stage 1 reader requirement)
     subprocess.run(
         [
             "ffmpeg",
@@ -101,9 +106,7 @@ def _stage0_extract(paths: "_EpisodePaths") -> None:
             str(paths.raw_recording),
             "-vn",
             "-acodec",
-            "libmp3lame",
-            "-q:a",
-            "2",
+            "pcm_s16le",
             str(paths.aroll_audio),
         ],
         check=True,
@@ -147,7 +150,10 @@ def _stage2_parse(paths: "_EpisodePaths", cuts: list[CutPoint]) -> Manifest:
     """
     manifest_path = paths.episode_dir / "manifest.json"
 
-    parser_dist = _VIDEO_DIR / "dist" / "parser" / "parse.js"
+    # tsc currently emits to dist/src/parser/ because tsconfig.rootDir = "."
+    # to keep tests + remotion.config in the typecheck scope. Cleaner fix
+    # (rootDir="src" + split typecheck tsconfig) is tracked as follow-up.
+    parser_dist = _VIDEO_DIR / "dist" / "src" / "parser" / "parse.js"
     if not parser_dist.exists():
         raise RuntimeError(
             f"video/ subproject is not built — run: cd {_VIDEO_DIR} && npm install && npm run build"
@@ -175,6 +181,16 @@ def _stage2_parse(paths: "_EpisodePaths", cuts: list[CutPoint]) -> Manifest:
     data["aroll_audio"] = str(paths.aroll_audio)
     data["aroll_video"] = str(paths.aroll_video)
     data["cuts"] = [dataclasses.asdict(c) for c in cuts]
+
+    # Override parser's word-count placeholder with source-media duration:
+    # CutPoint timestamps live in source-time seconds (from mistake_removal),
+    # so fcpxml_emitter needs total_frames anchored to the same scale.
+    # Slice 2 will replace this with WhisperX-derived duration when ASR lands.
+    import wave
+
+    with wave.open(str(paths.aroll_audio), "rb") as wf:
+        source_sec = wf.getnframes() / wf.getframerate()
+    data["total_frames"] = round(source_sec * data["fps"])
 
     manifest = Manifest.model_validate(data)
     manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
@@ -210,7 +226,7 @@ class _EpisodePaths:
 
     @property
     def aroll_audio(self) -> Path:
-        return self.episode_dir / "aroll-audio.mp3"
+        return self.episode_dir / "aroll-audio.wav"
 
     @property
     def aroll_video(self) -> Path:

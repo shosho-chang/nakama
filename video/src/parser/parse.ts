@@ -184,3 +184,47 @@ function buildARollFull(block: DirectiveBlock, startFrame: number): ARollFullSce
     aroll_start_sec: 0.0, // refined by WhisperX in Slice 2
   };
 }
+
+// ---------------------------------------------------------------------------
+// CLI entry — invoked by the Python pipeline's Stage 2 subprocess
+//
+//   node parse.js --script <path-to-script.md> --out <path-to-manifest.json>
+//
+// Episode ID is derived from the parent directory of --out
+// (data/script_video/<episode_id>/manifest.json), matching the convention
+// in agents/brook/script_video/pipeline.py.
+// ---------------------------------------------------------------------------
+
+import { readFileSync, writeFileSync } from "fs";
+import { basename, dirname } from "path";
+import { fileURLToPath } from "url";
+
+function runCli(argv: string[]): void {
+  const scriptIdx = argv.indexOf("--script");
+  const outIdx = argv.indexOf("--out");
+  const scriptPath = argv[scriptIdx + 1];
+  const outPath = argv[outIdx + 1];
+  if (scriptIdx === -1 || outIdx === -1 || scriptPath === undefined || outPath === undefined) {
+    process.stderr.write(
+      "Usage: node parse.js --script <script.md> --out <manifest.json>\n",
+    );
+    process.exit(2);
+  }
+
+  const episodeId = basename(dirname(outPath));
+  const scriptText = readFileSync(scriptPath, "utf-8");
+
+  try {
+    const manifest = parseScript(scriptText, episodeId);
+    writeFileSync(outPath, JSON.stringify(manifest, null, 2));
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  }
+}
+
+// Run only when invoked directly (not when imported by tests / other modules).
+const entry = process.argv[1];
+if (entry !== undefined && entry === fileURLToPath(import.meta.url)) {
+  runCli(process.argv.slice(2));
+}

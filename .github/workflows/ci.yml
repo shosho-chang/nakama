@@ -17,8 +17,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install ffmpeg (required by shared/audio_clip + transcriber)
+      - name: Install ffmpeg (required by shared/audio_clip + transcriber + script_video pipeline)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install video/ subproject deps
+        run: npm install --prefix video
+
+      - name: Build video/ TS parser
+        run: npm run build --prefix video
+
+      - name: Run video/ vitest
+        run: npm test --prefix video
 
       - name: Install dependencies
         run: pip install -e ".[dev]"
