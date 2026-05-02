@@ -232,6 +232,6 @@
 - [feedback_rule_interaction_audit.md](feedback_rule_interaction_audit.md) — 加 deny rule / 「不要 X」前審 3 題互動；squash × `-d` × `-D deny` 6 天 stale branch 案例
 - QA：[docs/plans/2026-05-01-line-1-qa-acceptance.md](../../docs/plans/2026-05-01-line-1-qa-acceptance.md) — Brook Line 1 端到端驗收 7 phase checklist + Beta sign-off 表 + diagnostics；Mac 跑 Phase 0+B 已驗綠
 - [project_session_2026_05_02_mac_sandcastle.md](project_session_2026_05_02_mac_sandcastle.md) — **收工 2026-05-02**：Mac sandcastle setup 上線（PR #306+#307+#308 三 PR chain）；round 3 通過解 #270；6 個 Mac gotcha 全清；桌機 sync templates + image rebuild 待辦
-- [project_script_video_phase2a.md](project_script_video_phase2a.md) — **Script-Driven Video Production Phase 2a closed**（PR #311 merged）；Phase 2b to-issues quiz 已發修修待回 4 確認；下次 session 接手起手點
+- [project_script_video_phase2a.md](project_script_video_phase2a.md) — **Script-Driven Video Phase 2a/2b/2c closed** + Phase 3 sandcastle dispatch Slice 1 #313 in-flight；5 slice issue #313-#317 chain；下次 session pickup = sandcastle PR review + DaVinci smoke + merge
 - ADR：[docs/decisions/ADR-015-script-driven-video-production.md](../../docs/decisions/ADR-015-script-driven-video-production.md) — script-driven video 架構 7 grill 分岔凍結（不套 ADR-014 RepurposeEngine、Remotion 不 render 整片、FCPXML 1.10 → DaVinci）
 - Plan：[docs/plans/2026-05-02-script-driven-video-production.md](../../docs/plans/2026-05-02-script-driven-video-production.md) — Phase 1 5 slice 拆分 + 技術選型調研（Remotion / sqlite-vec / BGE-M3 / FCPXML / PyMuPDF4llm）

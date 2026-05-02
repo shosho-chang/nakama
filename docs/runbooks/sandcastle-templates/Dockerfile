@@ -51,5 +51,14 @@ USER agent
 # so the per-iter `pip install -r requirements.txt` hook misses them.
 RUN python3 -m pip install --user pytest ruff hypothesis pytest-cov
 
+# Re-chmod /home/agent/.local after pip install — files written above are owned UID 1000,
+# but sandcastle runs container with --user $hostUid (Mac UID 501-503), so the per-iter
+# `pip install -r requirements.txt` hook fails permission denied on transitive dep updates
+# (e.g. readability-lxml → sgmllib.py rewrite). Earlier line-45 chmod runs before pip install,
+# so dev-tool .local tree misses the 0777 sweep.
+USER root
+RUN chmod -R 0777 /home/agent/.local
+USER agent
+
 # Sandcastle bind-mounts the git worktree at /home/agent/workspace at container start.
 ENTRYPOINT ["sleep", "infinity"]
