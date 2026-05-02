@@ -4,7 +4,7 @@ Stage 0: Extract audio/video streams from raw_recording.mp4
 Stage 1: WhisperX ASR + Mistake Removal (clap marker detection)
 Stage 2: DSL Parser → Manifest  (TypeScript parser via subprocess)
 Stage 3: Quote Visualisation    (Slice 3 — stub)
-Stage 4: Remotion B-roll Render (Slice 2 — stub)
+Stage 4: Hyperframes B-roll Render (Slice 2 — stub)
 Stage 5: FCPXML + SRT emit
 
 CLI: python -m agents.brook.script_video --episode <id>
@@ -66,7 +66,7 @@ def run(episode_id: str) -> EpisodeResult:
     # Stage 3 ─ quote visualisation (stub, Slice 3)
     _stage3_quote_stub(manifest)
 
-    # Stage 4 ─ Remotion B-roll render (stub, Slice 2)
+    # Stage 4 ─ Hyperframes B-roll render (stub, Slice 2)
     _stage4_render_stub(manifest)
 
     # Stage 5 ─ FCPXML + SRT emit
@@ -157,7 +157,7 @@ def _stage2_parse(paths: "_EpisodePaths", cuts: list[CutPoint]) -> Manifest:
     manifest_path = paths.episode_dir / "manifest.json"
 
     # tsc currently emits to dist/src/parser/ because tsconfig.rootDir = "."
-    # to keep tests + remotion.config in the typecheck scope. Cleaner fix
+    # to keep tests in the typecheck scope. Cleaner fix
     # (rootDir="src" + split typecheck tsconfig) is tracked as follow-up.
     parser_dist = _VIDEO_DIR / "dist" / "src" / "parser" / "parse.js"
     if not parser_dist.exists():
@@ -209,8 +209,8 @@ def _stage3_quote_stub(manifest: Manifest) -> None:
 
 
 def _stage4_render_stub(manifest: Manifest) -> None:
-    """Remotion B-roll render — stub until Slice 2."""
-    logger.debug("Stage 4: Remotion render stub (Slice 2)")
+    """Hyperframes B-roll render — stub until Slice 2."""
+    logger.debug("Stage 4: Hyperframes render stub (Slice 2)")
 
 
 # ---------------------------------------------------------------------------

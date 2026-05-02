@@ -40,7 +40,7 @@ export type ARollPipScene = SceneBase & {
   aroll_start_sec: number;
   /**
    * Slide structure stays an open dict in Slice 1 (no spec yet).
-   * Slice 2 #314 will introduce a Slide type when Remotion ARollPip lands.
+   * Slice 2 #314 will introduce a Slide type when the Hyperframes ARollPip composition lands.
    */
   slide?: Record<string, unknown> | null;
   pip_position: "top-left" | "top-right" | "bottom-left" | "bottom-right";

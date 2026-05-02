@@ -33,7 +33,7 @@ class ARollPipScene(SceneBase):
     type: Literal["aroll-pip"] = "aroll-pip"
     aroll_start_sec: float
     # Slide structure stays an open dict in Slice 1 (no spec yet).
-    # Slice 2 #314 will introduce a Slide model when Remotion ARollPip lands.
+    # Slice 2 #314 will introduce a Slide model when the Hyperframes ARollPip composition lands.
     slide: dict | None = None
     pip_position: Literal["top-left", "top-right", "bottom-left", "bottom-right"]
 
