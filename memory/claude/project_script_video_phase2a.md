@@ -1,12 +1,12 @@
 ---
-name: Script-Driven Video Production Phase 1-4 closed → Phase 5 等 DaVinci smoke + merge
-description: 修修最高價值 workflow 自動化專案 — Phase 0-4 全 closed（PRD/ADR/Plan/5 issue/sandcastle round 2 ship Slice 1/multi-agent review 修 8 findings），Phase 5 squash merge 等修修 DaVinci import smoke (#320 HITL gate)
+name: Script-Driven Video Production Phase 5 — PR #320 head 1d7ad8d 等 DaVinci smoke
+description: Phase 0-4 closed + Phase 5 mac e2e session 加 5 bug fix + 翻轉 cut 語意（NG lookback → keep retake）+ 加 e2e CI test，PR #320 head 1d7ad8d 等修修 DaVinci import smoke 後 squash merge
 type: project
 created: 2026-05-02
 updated: 2026-05-02
 ---
 
-修修 2026-05-02 grill 凍結「腳本式 YouTube 影片自動化」workflow。Phase 0-4 全 closed，Phase 5 等修修 DaVinci import smoke 後 squash merge。
+修修 2026-05-02 grill 凍結「腳本式 YouTube 影片自動化」workflow。Phase 0-4 全 closed，Phase 5 mac e2e session 修了 5 bug + 翻轉 cut 語意；PR #320 head 1d7ad8d 等修修 DaVinci import smoke 後 squash merge。
 
 ## Phase 進度
 
@@ -27,7 +27,24 @@ updated: 2026-05-02
   - Convergence on 3 finding（fps cross-lang drift / mistake_removal silent loss / stub style inconsistency）
   - **Commit 7d4a4f3 解 2 blocker + 6 major**：CLI test added / lxml 結構驗證 / `<asset-clip>` / fps Literal[30] / source_id+match_index / Citation+Slide / `detect_alignment_cuts` raises / Stage 1 fallback fix / 砍 `_python_fallback_parser`
   - Tests 25 → 35 passed（+5 CLI +3 lxml +1 alignment +1 asset-clip rename）
-- 🔄 **Phase 5** — 等修修 DaVinci import smoke (HITL gate) → squash merge PR #320 → close #313
+- 🔄 **Phase 5 mac e2e session 2026-05-02** — Phase 4 後修修在 mac 跑 e2e 端到端，發現 sandcastle agent 35 unit test 全綠但 **pipeline 從沒跑通** → 5 個 ship-blocker bug 全修：
+  - **Commit 987ef15** — 4 bug fix + 3 e2e test + CI 加 Node provisioning：
+    - tsc rootDir="." 讓 dist/parser/ 不存在 → pipeline.py path → `dist/src/parser/parse.js`
+    - Stage 0 ffmpeg 出 mp3 但 Stage 1 stdlib `wave` 只認 RIFF → 改 `pcm_s16le` + 副檔名 `.wav`
+    - parse.ts 只 export parseScript() 沒 CLI main → node 跑沒寫 manifest.json → 加 argv handler + `import.meta.url` guard
+    - manifest.total_frames 來自 parser word-count placeholder (~30 frames) 不是 source duration → fcpxml 縮 8s → 0.5s timeline → pipeline.py 用 `wave.open()` overwrite
+    - `tests/brook/script_video/test_pipeline_e2e.py` — 3 e2e regression test，skip if no ffmpeg/node/dist
+    - `.github/workflows/ci.yml` — `actions/setup-node@v4` + npm install + tsc build + vitest
+  - **Commit 1d7ad8d** — cut 語意翻轉：
+    - 原本：cut [marker − 3s, marker − 0.5s] (NG lookback) — **跟修修 workflow 反的**（保留 silence + clap，刪 lead-up）
+    - 新：cut [voice onset BEFORE marker, voice onset AFTER marker − 4 frames] — 砍失敗 take + 拍兩下 + 構思 silence，留 retake 前 4 frame buffer (~133ms @ 30fps)
+    - 新 `_find_voice_onset()`：LPF 3kHz（去 clap 高頻）+ 3 consecutive frame guard（去 impulse residue + filter ringing）
+    - `_group_double_claps` return 改 `_MarkerBounds(midpoint + clap_start + clap_end)` 給 VAD 精確邊界
+    - 連續 marker → cuts overlap → fcpxml_emitter._build_segments 自然 merge cascade
+    - 46 pytest pass（既有 19 + 7 voice-aware synth + 3 voice onset unit）+ ruff clean
+  - **Worktree leak 已清** — `.claude/worktrees/agent-aed8564fc242aa3a3` 2026-05-02 unlock + remove 完
+  - **新 worktree** `.claude/worktrees/pr-320-smoke` (active) — 修修 DaVinci import 對 worktree 內 `data/script_video/smoke-001/out/episode.fcpxml`
+  - 等 DaVinci smoke (HITL gate) → squash merge PR #320 → close #313
 
 ## 5 Slice 拆分（Phase 2b 落 issue + Phase 3 進度）
 
@@ -71,7 +88,7 @@ updated: 2026-05-02
 1. 看 PR #320 狀態 — `gh pr view 320 --json state,mergeStateStatus,statusCheckRollup`
 2. 修修若已 DaVinci import smoke pass → squash merge + close #313 + 開 Slice 2 #314 hands-on
 3. 修修若 DaVinci 抓 schema warning → diagnose + 開 fix commit
-4. Worktree leak 清：`.claude/worktrees/agent-aed8564fc242aa3a3` locked，git worktree remove --force / unlock 都被 deny rule 擋；需 修修 settings.json 暫解 deny / 或 rm -rf 走回收桶 PowerShell
+4. ~~Worktree leak 清~~：2026-05-02 已清。實測 `git worktree unlock` + `git worktree remove` 都不在 deny list（deny 只擋 `rm` / `rmdir` / `git reset --hard` / `git checkout --` / `git clean`），前一輪「被 deny rule 擋」是誤判，正確流程：unlock → remove，dir 空乾淨
 5. Slice 2 #314 dispatch 走 Claude Design 視覺探索 + Claude Code 落地（hands-on，非 sandcastle）
 
 ## 文件 / artifacts 索引
