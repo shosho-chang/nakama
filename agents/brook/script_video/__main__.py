@@ -13,6 +13,13 @@ import sys
 
 
 def main(argv: list[str] | None = None) -> None:
+    # Load .env before importing pipeline modules — Slice 2+ adds shared.anthropic_client
+    # (Robin metadata + BGE-M3 path) which reads ANTHROPIC_API_KEY at import time.
+    # Per feedback_explicit_load_dotenv_for_non_db_paths.
+    from shared.config import load_config
+
+    load_config()
+
     parser = argparse.ArgumentParser(
         prog="python -m agents.brook.script_video",
         description="Script-Driven Video Production pipeline",
@@ -48,7 +55,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             paths.validate()
             print(f"Episode '{args.episode}': inputs OK")
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
         return
@@ -56,7 +63,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         result = pipeline.run(args.episode)
         print(f"Done: {result.fcpxml_path}")
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
     except Exception as exc:

@@ -15,6 +15,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import re
 import subprocess
 from pathlib import Path
 
@@ -27,6 +28,11 @@ logger = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DATA_ROOT = _REPO_ROOT / "data" / "script_video"
 _VIDEO_DIR = _REPO_ROOT / "video"
+
+# Episode IDs become subdirectory names under _DATA_ROOT, so they must not
+# contain path separators, '..' traversal, or other characters that could
+# escape the data sandbox. First char excludes '.' to avoid hidden dirs.
+_EPISODE_ID_PATTERN = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +247,23 @@ class _EpisodePaths:
         return self.episode_dir / "out"
 
     def validate(self) -> None:
+        # Path-traversal guard — reject episode IDs that could escape _DATA_ROOT.
+        # Sandcastle threat model: episode_id may flow from untrusted sources
+        # (issue body, future Bridge UI form). Without this check ffmpeg + the
+        # FCPXML writer would happily emit to attacker-controlled paths.
+        if not _EPISODE_ID_PATTERN.fullmatch(self.episode_id):
+            raise ValueError(
+                f"Invalid episode_id: {self.episode_id!r} (must match [A-Za-z0-9_-][A-Za-z0-9._-]*)"
+            )
+        if ".." in self.episode_id:
+            raise ValueError(f"Invalid episode_id: {self.episode_id!r} (contains '..')")
+        # Defence-in-depth: also verify the resolved episode_dir lives under
+        # _DATA_ROOT — guards against symlink shenanigans + future regex drift.
+        resolved = self.episode_dir.resolve()
+        if not resolved.is_relative_to(_DATA_ROOT.resolve()):
+            raise ValueError(
+                f"episode_id {self.episode_id!r} resolves outside data root: {resolved}"
+            )
         if not self.episode_dir.exists():
             raise FileNotFoundError(
                 f"Episode directory not found: {self.episode_dir}\n"

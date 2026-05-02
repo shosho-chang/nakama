@@ -131,6 +131,6 @@ class Manifest(BaseModel):
     fps: Literal[30] = 30
     total_frames: int
     scenes: list[Scene]
-    aroll_audio: str  # absolute path to aroll-audio.mp3
+    aroll_audio: str  # absolute path to aroll-audio.wav (PCM s16le, see pipeline._stage0_extract)
     aroll_video: str  # absolute path to aroll-video.mp4
     cuts: list[ManifestCutPoint]

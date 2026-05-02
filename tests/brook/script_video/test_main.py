@@ -84,3 +84,41 @@ def test_dry_run_missing_script_exits_one(
     assert exc.value.code == 1
     err = capsys.readouterr().err
     assert "script.md" in err
+
+
+@pytest.mark.parametrize(
+    "malicious",
+    [
+        "../etc/passwd",
+        "..",
+        "../../foo",
+        "foo/bar",
+        "foo\\bar",
+        ".hidden",
+        "foo..bar",
+        "with space",
+        "",
+    ],
+)
+def test_path_traversal_episode_id_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    malicious: str,
+) -> None:
+    """Path-traversal / disallowed-char episode IDs exit 1 before touching disk."""
+    from agents.brook.script_video import pipeline
+
+    monkeypatch.setattr(pipeline, "_DATA_ROOT", tmp_path)
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--episode", malicious, "--dry-run"])
+    assert exc.value.code in (1, 2)  # argparse may reject empty before us
+    err = capsys.readouterr().err
+    # Either argparse usage error OR our validator's message
+    assert (
+        "Invalid episode_id" in err
+        or "outside data root" in err
+        or "argument --episode" in err  # argparse for empty
+        or "expected one argument" in err
+    )

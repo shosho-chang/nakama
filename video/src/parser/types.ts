@@ -31,7 +31,7 @@ export type SceneBase = {
 
 export type ARollFullScene = SceneBase & {
   type: "aroll-full";
-  /** In-point into aroll-audio.mp3/mp4 (seconds). */
+  /** In-point into aroll-audio.wav (seconds). */
   aroll_start_sec: number;
 };
 
@@ -115,7 +115,7 @@ export type Manifest = {
   fps: 30;
   total_frames: number;
   scenes: Scene[];
-  /** Absolute path to aroll-audio.mp3 */
+  /** Absolute path to aroll-audio.wav (PCM s16le, extracted by pipeline._stage0_extract) */
   aroll_audio: string;
   /** Absolute path to aroll-video.mp4 */
   aroll_video: string;
