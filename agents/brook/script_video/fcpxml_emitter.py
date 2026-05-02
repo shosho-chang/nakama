@@ -158,13 +158,16 @@ def _build_fcpxml(manifest: Manifest) -> ET.ElementTree:
     )
     spine = ET.SubElement(sequence, "spine")
 
-    # Emit one clip per kept segment
+    # Emit one asset-clip per kept segment.
+    # FCPXML 1.10 spec: <asset-clip> for whole-asset references; <clip> is for
+    # sub-element compositions. DaVinci tolerates both, but Final Cut Pro rejects
+    # <clip ref=...>. Use <asset-clip> for portable interchange.
     timeline_cursor = 0.0
     for src_start, src_end in segments:
         seg_dur = src_end - src_start
         ET.SubElement(
             spine,
-            "clip",
+            "asset-clip",
             name=aroll_path.stem,
             ref="r2",
             offset=_dur(timeline_cursor),

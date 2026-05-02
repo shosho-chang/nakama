@@ -118,7 +118,7 @@ def test_no_cuts_emits_one_clip(tmp_path: Path) -> None:
     out = tmp_path / "ep001" / "out" / "episode.fcpxml"
     emit(manifest, out)
     root = _parse_fcpxml(out)
-    clips = root.findall("library/event/project/sequence/spine/clip")
+    clips = root.findall("library/event/project/sequence/spine/asset-clip")
     assert len(clips) == 1
 
 
@@ -127,7 +127,7 @@ def test_no_cuts_clip_offset_is_zero(tmp_path: Path) -> None:
     out = tmp_path / "ep001" / "out" / "episode.fcpxml"
     emit(manifest, out)
     root = _parse_fcpxml(out)
-    clip = root.find("library/event/project/sequence/spine/clip")
+    clip = root.find("library/event/project/sequence/spine/asset-clip")
     assert clip is not None
     assert clip.get("offset") == "0s"
     assert clip.get("start") == "0s"
@@ -148,7 +148,7 @@ def test_one_cut_emits_two_clips(tmp_path: Path) -> None:
     out = tmp_path / "ep001" / "out" / "episode.fcpxml"
     emit(manifest, out)
     root = _parse_fcpxml(out)
-    clips = root.findall("library/event/project/sequence/spine/clip")
+    clips = root.findall("library/event/project/sequence/spine/asset-clip")
     assert len(clips) == 2
 
 
@@ -165,7 +165,7 @@ def test_two_cuts_emit_three_clips(tmp_path: Path) -> None:
     out = tmp_path / "ep001" / "out" / "episode.fcpxml"
     emit(manifest, out)
     root = _parse_fcpxml(out)
-    clips = root.findall("library/event/project/sequence/spine/clip")
+    clips = root.findall("library/event/project/sequence/spine/asset-clip")
     assert len(clips) == 3
 
 
@@ -270,3 +270,75 @@ def test_xmllint_wellformed(tmp_path: Path) -> None:
         text=True,
     )
     assert result.returncode == 0, f"xmllint errors:\n{result.stderr}"
+
+
+# ---------------------------------------------------------------------------
+# lxml structural validation — schema-equivalent rigour without a vendored .xsd
+# ---------------------------------------------------------------------------
+#
+# Acceptance criterion (#313) asks for `xmllint --schema fcpxml.xsd` validation.
+# Apple does not ship the FCPXML 1.10 .xsd as a standalone download; the canonical
+# schema lives inside Final Cut Pro.app/Contents/Resources/ and is not redistributable
+# under a clear licence. Until Slice 5 vendors a community-maintained copy or
+# DaVinci Resolve ships one, we substitute these checks:
+#
+#   - lxml strict parse (catches malformed XML, illegal entities, namespace errors)
+#   - root element + version exact match
+#   - referential integrity: every `ref` resolves to a declared resource id
+#   - asset-clip (not clip) used for whole-asset references — FCP rejects <clip ref=...>
+#
+# These cover the spirit of schema validation (well-formedness + structural rules)
+# while DaVinci import smoke (修修 manual gate) catches the remaining schema drift.
+
+
+def test_fcpxml_lxml_strict_parse(tmp_path: Path) -> None:
+    """lxml strict parse — stricter than xml.etree on malformed entities/namespaces."""
+    from lxml import etree as lxml_etree
+
+    cuts = [
+        CutPoint(
+            type="ripple-delete", start_sec=10.0, end_sec=20.0, reason="marker", confidence=0.9
+        )
+    ]
+    manifest = _make_manifest(total_sec=60.0, cuts=cuts, tmp_path=tmp_path)
+    out = tmp_path / "ep001" / "out" / "episode.fcpxml"
+    emit(manifest, out)
+    parser = lxml_etree.XMLParser(recover=False, no_network=True)
+    lxml_etree.parse(str(out), parser)  # raises on any structural error
+
+
+def test_fcpxml_referential_integrity(tmp_path: Path) -> None:
+    """Every ref attribute must resolve to a declared resource id."""
+    manifest = _make_manifest(total_sec=60.0, cuts=[], tmp_path=tmp_path)
+    out = tmp_path / "ep001" / "out" / "episode.fcpxml"
+    emit(manifest, out)
+    root = _parse_fcpxml(out)
+
+    # Collect declared resource ids (asset, format, effect, …)
+    declared = {el.get("id") for el in root.findall("resources/*") if el.get("id")}
+    # Collect ref attrs from spine + sequence
+    refs = set()
+    for el in root.iter():
+        ref = el.get("ref")
+        if ref:
+            refs.add(ref)
+    fmt = root.find("library/event/project/sequence")
+    if fmt is not None and fmt.get("format"):
+        refs.add(fmt.get("format"))
+
+    missing = refs - declared
+    assert not missing, f"refs {missing} have no matching <resources> entry"
+
+
+def test_fcpxml_uses_asset_clip_not_clip(tmp_path: Path) -> None:
+    """Asset references must use <asset-clip>, not <clip> — FCP rejects the latter."""
+    manifest = _make_manifest(total_sec=60.0, cuts=[], tmp_path=tmp_path)
+    out = tmp_path / "ep001" / "out" / "episode.fcpxml"
+    emit(manifest, out)
+    root = _parse_fcpxml(out)
+    spine = root.find("library/event/project/sequence/spine")
+    assert spine is not None
+    # No bare <clip ref=...> children; all asset references go via asset-clip
+    for child in spine:
+        if child.tag == "clip" and child.get("ref"):
+            pytest.fail(f"<clip ref={child.get('ref')!r}> found — use <asset-clip> for asset refs")

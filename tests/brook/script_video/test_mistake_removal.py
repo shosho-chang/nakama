@@ -143,3 +143,15 @@ def test_highpass_filter_attenuates_low_freq() -> None:
     assert rms_out < rms_in * 0.01, (
         f"HPF should suppress 100 Hz by >40 dB; rms_in={rms_in:.4f} rms_out={rms_out:.6f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Alignment fallback (β) — Slice 1 must raise so callers cannot silent no-op
+# ---------------------------------------------------------------------------
+
+
+def test_alignment_cuts_raises_not_implemented() -> None:
+    from agents.brook.script_video.mistake_removal import detect_alignment_cuts
+
+    with pytest.raises(NotImplementedError, match="Slice 2"):
+        detect_alignment_cuts([{"word": "x", "start": 0.0, "end": 0.1}], ["x"])

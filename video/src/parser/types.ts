@@ -38,7 +38,11 @@ export type ARollFullScene = SceneBase & {
 export type ARollPipScene = SceneBase & {
   type: "aroll-pip";
   aroll_start_sec: number;
-  slide: Record<string, unknown>;
+  /**
+   * Slide structure stays an open dict in Slice 1 (no spec yet).
+   * Slice 2 #314 will introduce a Slide type when Remotion ARollPip lands.
+   */
+  slide?: Record<string, unknown> | null;
   pip_position: "top-left" | "top-right" | "bottom-left" | "bottom-right";
 };
 
@@ -55,6 +59,12 @@ export type BBox = {
   y1: number;
 };
 
+export type Citation = {
+  title: string;
+  page: number;
+  author?: string;
+};
+
 export type DocumentQuoteScene = SceneBase & {
   type: "document-quote";
   page_image_path: string;
@@ -62,7 +72,17 @@ export type DocumentQuoteScene = SceneBase & {
   image_height: number;
   highlights: BBox[];
   variant: "highlighter-sweep" | "ken-burns" | "spotlight";
-  citation: { title: string; page: number; author?: string };
+  citation: Citation;
+  /**
+   * Robin KB join key — populated by Slice 4's robin_metadata adapter
+   * (ADR-015 §Q4-2). Slice 3 may emit a synthetic source_id when KB lookup misses.
+   */
+  source_id: string;
+  /**
+   * Markdown override for fuzzy matches (ADR-015 §Q4-3); null/undefined means top-1.
+   * Slice 4 fuzzy match honours this; Slice 3 exact-match path leaves it null.
+   */
+  match_index?: number | null;
 };
 
 export type QuoteCardScene = SceneBase & {

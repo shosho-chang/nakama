@@ -6,8 +6,10 @@ Primary path (α): audio spike detection
   - Group pairs of peaks < ``max_clap_gap_sec`` apart → double-clap marker
   - Each marker → CutPoint covering (segment_start → marker_time − 0.5 s)
 
-Alignment fallback (β): Slice 2+ — stub logs a warning if whisperx_words are
-provided (Phase 1 does not perform Needleman-Wunsch alignment).
+Alignment fallback (β): Slice 2+ — `detect_alignment_cuts()` will run
+Needleman-Wunsch over WhisperX words ↔ script words and standalone-emit
+review markers (ADR-015 §Q3). Phase 1 only ships α; β attempt raises so
+callers cannot silently lose the WhisperX input.
 """
 
 from __future__ import annotations
@@ -40,7 +42,6 @@ def detect_clap_markers(
     hp_cutoff_hz: float = 3000.0,
     threshold_ratio: float = 0.3,
     max_clap_gap_sec: float = 0.30,
-    whisperx_words: Sequence[dict] | None = None,
 ) -> list[CutPoint]:
     """Detect double-clap markers and return the regions to ripple-delete.
 
@@ -54,18 +55,8 @@ def detect_clap_markers(
         Energy peaks below ``threshold_ratio × max_energy`` are ignored.
     max_clap_gap_sec:
         Maximum gap between two consecutive peaks that forms a double-clap.
-    whisperx_words:
-        Optional word-level ASR results.  If provided, the alignment fallback
-        (β) is attempted; in Phase 1 this only logs a warning.
     """
     audio, sr = _load_wav(audio_path)
-
-    if whisperx_words:
-        logger.warning(
-            "WhisperX alignment fallback (β) not implemented in Slice 1 — "
-            "marker-primary (α) path used; WhisperX words ignored."
-        )
-
     filtered = _highpass_filter(audio, sr, hp_cutoff_hz)
     peak_times = _detect_energy_peaks(filtered, sr, threshold_ratio)
     marker_times = _group_double_claps(peak_times, max_clap_gap_sec)
@@ -93,6 +84,18 @@ def detect_clap_markers(
         audio_path.name,
     )
     return cuts
+
+
+def detect_alignment_cuts(
+    whisperx_words: Sequence[dict],
+    script_words: Sequence[str],
+) -> list[CutPoint]:
+    """Find unmarked retakes via WhisperX ↔ script alignment (β fallback).
+
+    Slice 2+ — runs Needleman-Wunsch DP over the two word streams and emits
+    review markers for repeated-then-corrected segments (ADR-015 §Q3 spec).
+    """
+    raise NotImplementedError("Alignment fallback (β): Slice 2 — see ADR-015 §Q3")
 
 
 # ---------------------------------------------------------------------------

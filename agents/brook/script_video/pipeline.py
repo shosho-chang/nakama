@@ -52,10 +52,7 @@ def run(episode_id: str) -> EpisodeResult:
 
     # Stage 1 ─ WhisperX ASR + mistake removal
     whisperx_words = _stage1_whisperx(paths)
-    cuts = mistake_removal.detect_clap_markers(
-        paths.aroll_audio,
-        whisperx_words=whisperx_words or None,
-    )
+    cuts = mistake_removal.detect_clap_markers(paths.aroll_audio)
 
     # Stage 2 ─ DSL parse → manifest.json
     manifest = _stage2_parse(paths, cuts)
@@ -131,46 +128,45 @@ def _stage0_extract(paths: "_EpisodePaths") -> None:
 
 
 def _stage1_whisperx(paths: "_EpisodePaths") -> list[dict]:
-    """Run WhisperX ASR if available; return word-level timestamps or empty list."""
-    import importlib.util
-
-    if importlib.util.find_spec("whisperx") is None:
-        logger.warning(
-            "Stage 1: whisperx not installed — skipping ASR, alignment fallback (β) disabled"
-        )
-        return []
-
-    # Invoke whisperx transcription and return word-level results.
-    # Full integration: Slice 2+ (reuses .claude/skills/transcribe/SKILL.md).
-    raise NotImplementedError("WhisperX integration: Slice 2")
+    """Stage 1 ASR — Slice 1 only ships marker-primary path; ASR lands in Slice 2."""
+    # Slice 1 marker-primary (α) does not need WhisperX. Returning [] keeps
+    # downstream pipeline running on the marker-only path; Slice 2 will wire
+    # in `.claude/skills/transcribe` and gate alignment fallback (β) on the
+    # word-level output.
+    logger.debug("Stage 1: ASR deferred to Slice 2; marker-primary path only")
+    return []
 
 
 def _stage2_parse(paths: "_EpisodePaths", cuts: list[CutPoint]) -> Manifest:
-    """Parse script.md into a Manifest via the TypeScript Node.js parser."""
+    """Parse script.md into a Manifest via the TypeScript Node.js parser.
+
+    ADR-015 §Q1 chose a process-boundary architecture between Python orchestrator
+    and the Node.js video subproject; there is no in-process Python DSL fallback
+    on purpose. If `video/node_modules/` is missing, fail fast with a clear
+    bring-up command rather than silently degrading to a partial parser.
+    """
     manifest_path = paths.episode_dir / "manifest.json"
 
-    if _VIDEO_DIR.exists() and ((_VIDEO_DIR / "node_modules").exists()):
-        # Invoke compiled TypeScript parser
-        result = subprocess.run(
-            [
-                "node",
-                str(_VIDEO_DIR / "dist" / "parser" / "parse.js"),
-                "--script",
-                str(paths.script_md),
-                "--out",
-                str(manifest_path),
-            ],
-            capture_output=True,
-            text=True,
+    parser_dist = _VIDEO_DIR / "dist" / "parser" / "parse.js"
+    if not parser_dist.exists():
+        raise RuntimeError(
+            f"video/ subproject is not built — run: cd {_VIDEO_DIR} && npm install && npm run build"
         )
-        if result.returncode != 0:
-            raise RuntimeError(f"TypeScript parser failed:\n{result.stderr}")
-    else:
-        # Fallback: minimal Python DSL parser (aroll-full only)
-        logger.warning(
-            "Stage 2: TypeScript parser not built — using Python fallback parser (aroll-full only)"
-        )
-        _python_fallback_parser(paths, manifest_path)
+
+    result = subprocess.run(
+        [
+            "node",
+            str(parser_dist),
+            "--script",
+            str(paths.script_md),
+            "--out",
+            str(manifest_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"TypeScript parser failed:\n{result.stderr}")
 
     # Load and augment with cuts
     with manifest_path.open() as f:
@@ -183,40 +179,6 @@ def _stage2_parse(paths: "_EpisodePaths", cuts: list[CutPoint]) -> Manifest:
     manifest = Manifest.model_validate(data)
     manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     return manifest
-
-
-def _python_fallback_parser(paths: "_EpisodePaths", manifest_path: Path) -> None:
-    """Minimal Python DSL parser: one ARollFull scene for the full recording."""
-    from agents.brook.script_video.manifest import ARollFullScene
-
-    # Estimate duration from audio file length if available
-    total_frames = 0
-    if paths.aroll_audio.exists():
-        try:
-            import wave
-
-            with wave.open(str(paths.aroll_audio), "rb") as wf:
-                total_frames = int(wf.getnframes() / wf.getframerate() * 30)
-        except Exception:
-            pass
-
-    scene = ARollFullScene(
-        id="scene-0001",
-        start_frame=0,
-        duration_frames=total_frames,
-        aroll_start_sec=0.0,
-    )
-    data = {
-        "episode_id": paths.episode_id,
-        "fps": 30,
-        "total_frames": total_frames,
-        "scenes": [scene.model_dump()],
-        "aroll_audio": str(paths.aroll_audio),
-        "aroll_video": str(paths.aroll_video),
-        "cuts": [],
-    }
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _stage3_quote_stub(manifest: Manifest) -> None:
