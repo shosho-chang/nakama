@@ -104,9 +104,10 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ Nakama `state.db` daily 04:00 Taipei → R2 `nakama-backup` bucket，retention 30 天（PR #88）
 - ✅ 見 [project_nakama_backup_deployed.md](project_nakama_backup_deployed.md)
 - ✅ Franky 擴展 `r2_backup_verify` 檢查 `nakama-backup` bucket 的 freshness（PR #99 merged，並 PR #100 加入 Bridge dashboard 曝光）
-- ⬜ R2 bucket-scoped token 分離（寫 nakama-backup / 讀 xcloud-backup 兩份 key）
-- ⬜ xCloud fleet 整站 tarball 缺口（fleet 目前只有 DB dump，沒有 file tarball — 修修去 xCloud console 檢查）
-- ✅ xCloud 已改 daily + 15 天 retention（修修 2026-04-24 設定完成）
+- ✅ R2 bucket-scoped token 分離（2026-05-03 production 已用 mode-scoped；CF dashboard 4 token 全留 — 攻擊面沒擴大、純命名 hygiene；詳見 [project_nakama_backup_deployed.md](project_nakama_backup_deployed.md) §CF Token list 現況）
+- ✅ xCloud fleet 整站 tarball 缺口（2026-05-03 修修開啟 Files backup，daily + 30 天 retention）
+- ✅ xCloud shosho 已改 daily + 15 天 retention（修修 2026-04-24 設定完成）
+- ⬜ **Franky verify per-prefix 缺口**（silent failure 風險）：`agents/franky/r2_backup_verify.py:42` 用 `FRANKY_R2_PREFIX=` (留空 = 整 bucket)，shosho daily fresh 物件會掩蓋 fleet 突然 stale 的訊號。要拆 `prefix=shosho/` + `prefix=fleet/` 兩個 verify run 分別算 freshness、分別 alert。比照 nakama-backup 多 bucket 解法（PR #99）但這裡是同 bucket 內 multi-prefix
 
 **Phase 1 Wave 2（foundation 已合併，見 project_phase1_foundation_pr.md）：**
 - ✅ VPS baseline 壓測 24h（2026-04-24 analyze）：**GREEN** — CPU p95 2%, RAM p95 1.73GB (threshold 3GB), avail 低點 1.99GB, Load 1m p95 0.15. ADR-007 §6 門檻全過，Phase 1 full workload 可推進
