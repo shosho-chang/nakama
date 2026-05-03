@@ -10,6 +10,7 @@
 - [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — ingest v2 4 原則 + Step 1/2/3 全 merged（PR A #169 + PR B #178）
 - [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — 三 bug 全結案：PR #169 merged + 4 頁 broken pages migration apply 完 2026-04-26 + A-11c
 - [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **ingest 軸線**：F3 + V1 acceptance 解 2026-04-27（PR #188/#189）；Vision LLM = Sonnet 4.6；PR D unblocked 唯一剩 backlog
+- [project_textbook_ingest_2026_05_03_ch1_ch4.md](project_textbook_ingest_2026_05_03_ch1_ch4.md) — **2026-05-03 進度**：ch1 重 ingest（新 ch3-style）+ ch4 完成（reuse cached vision）；ch5-ch11 batch 待修修 GO；vault E: vs F: 教訓 + Python /tmp 教訓
 - [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — 6 PR 全 merged 2026-04-26（4 PR review + 2 follow-up bug fix #180/#181）；三軸線下游 unblock
 - [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — **SEO D.2 PR #183 + F PR #185 merged 2026-04-26**：用途 1+2+3 production；12 follow-up + 4 test gap
 - [project_seo_dataforseo_scrap_decision.md](project_seo_dataforseo_scrap_decision.md) — **SEO Slice E 不接 DataForSEO 2026-04-26**：health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋
@@ -28,7 +29,7 @@
 - Inventory：[docs/research/2026-04-26-workflow-inventory.md](../../docs/research/2026-04-26-workflow-inventory.md) — 9 agent × 12 use case workflow catalog
 - [project_mempalace_evaluation.md](project_mempalace_evaluation.md) — MemPalace 放棄觀望（2026-04-19 結論）：CJK 只改一半 + 無 auto-extraction + API churn
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
-- [reference_vault_paths_mac.md](reference_vault_paths_mac.md) — Mac Shosho LifeOS vault：`/Users/shosho/Documents/Shosho LifeOS/`（跨平台對照 Windows F:）
+- [reference_vault_paths_mac.md](reference_vault_paths_mac.md) — Mac vault `/Users/shosho/Documents/Shosho LifeOS/` + Windows **active = `E:\Shosho LifeOS\`**（F: 已停用、stale Syncthing 殘留要避開）
 - [reference_vps_ssh.md](reference_vps_ssh.md) — VPS SSH alias `nakama-vps` → root@202.182.107.202
 - [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」三字當 trigger → 自動存記憶 + commit & push
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
