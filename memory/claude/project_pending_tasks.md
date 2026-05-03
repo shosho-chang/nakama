@@ -125,6 +125,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ Usopp VPS 部署材料（PR #98 merged 2026-04-24）— systemd unit + runbook；等修修手動套用
 - ✅ Usopp Slice C2a — Docker WP 6.4.3 + SEOPress 9.4.1 staging E2E 黃金路徑（PR #101 merged 2026-04-24）
 - ✅ Usopp Slice C2b — LiteSpeed Day 1 實測完成（2026-04-24）：`LITESPEED_PURGE_METHOD=noop` 為生產正解；REST endpoint 不存在、WP hook auto-purge 已覆蓋；決策表與 code follow-up 清單見 [docs/runbooks/litespeed-purge.md](../../docs/runbooks/litespeed-purge.md)
+- ✅ **Usopp #270 closed 2026-05-03 晚** — `busy_timeout` 5s→30s 修法 (PR #320) merged + VPS deploy；acceptance #1 (code-level) 驗綠；#2/#3 改「下次真實 publish 時順便觀察」不卡 issue。VPS ssh 實查發現 `publish_jobs` 0 row ever、`approval_queue` 2 row 全 pending，SEO 中控台 publishing pipeline 從 4/29 ship 後 0 publish ever（修修尚未排時間跑 SEO workflow，非 bug）。不開 follow-up issue
 
 **Phase 1 foundation borderline follow-ups（6 項，全部完成）：**
 - ✅ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` + `foreign_keys=ON` 移到 `_get_conn()`（ADR-006 §5 四條 PRAGMA 收齊，PR #85 2026-04-23）

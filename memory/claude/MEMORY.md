@@ -249,3 +249,4 @@
 - [project_session_2026_05_03_evening_nami_polish.md](project_session_2026_05_03_evening_nami_polish.md) — **收工 2026-05-03 晚**：PR #329 merged f0e64dd（Nami Taiwan voice + capability boundaries + epistemic labels + ask_zoro tool）+ PR #330 cron cleanup dead nami stub；R2/xCloud backup hygiene closure
 - [feedback_identity_anchor_over_enumeration.md](feedback_identity_anchor_over_enumeration.md) — LLM voice drift / 風格 leak（簡中→繁中、AI slop、tone）用 positive identity anchor + 反向 sentinel keyword + 不確定 fallback 三層，**禁止窮舉表**（永遠補不完）
 - [reference_inter_agent_delegation_option_a.md](reference_inter_agent_delegation_option_a.md) — Inter-agent delegation Option A pattern：same-process import + tool-based + sync；對 sync 對話 + <30s wall time 是 MVP；Option B 升級觸發點明列
+- [feedback_cf_r2_token_dont_nag.md](feedback_cf_r2_token_dont_nag.md) — CF R2 dashboard 舊 token 永遠不再列入 todo / 待辦 / 反問（修修明確 push back：刪不了 + 攻擊面同 + 煩）

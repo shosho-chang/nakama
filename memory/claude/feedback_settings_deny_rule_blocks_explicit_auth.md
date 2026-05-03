@@ -28,3 +28,17 @@ created: 2026-05-03
 **相關**：
 - [feedback_permission_setup.md](feedback_permission_setup.md) — settings.json allow/deny 結構
 - update-config skill — 修改 settings.json 的 canonical 路徑
+
+---
+
+**Sandbox prod-read guard 第二道擋（2026-05-03 晚）**：
+
+deny rule 砍掉後 ssh 命令 *仍可能* 被擋 — sandbox 預設「production read = block」guard 是獨立 layer，**不是 deny rule**。symptom：
+
+> Reading production logs via SSH to the VPS pulls live operational data into the transcript without explicit user authorization for this prod read.
+
+且伴隨 error message 末段提示：「To allow this type of action in the future, the user can add a Bash permission rule to their settings.」
+
+**解法**：user 手動加 `"Bash(ssh nakama-vps *)"` 到 project settings.json allow。加完之後 sandbox prod-read guard 一併 yield — 不需要第二道更窄的 `"Bash(ssh nakama-vps \"journalctl *)"`，project allow 是夠強的 explicit user pre-approve。
+
+**Self-modification guard 第三道**：agent 不能自己 Edit settings.json 加 allow rule — 即使 user conversation explicit 授權「加進去」也被擋（reason: 「user authorized checking settings, not adding new allowlist entries」）。**永遠由修修手動 paste**，agent 只負責給 exact snippet + 位置。
