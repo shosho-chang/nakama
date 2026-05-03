@@ -59,6 +59,9 @@ dependencies = [
 
     # Zoro: Google Trends (PR #107 brainstorm scout primary source)
     "trendspy>=0.1.6",
+
+    # Script-Driven Video (ADR-015): clap-marker detection audio processing
+    "scipy>=1.11",
 ]
 
 [project.optional-dependencies]

@@ -59,3 +59,6 @@ slack-sdk>=3.27.0
 # Nami: Google Calendar
 google-auth-oauthlib>=1.2.0        # OAuth consent flow（user-consent, not service account）
 filelock>=3.13.0                   # Token file rotate 時的併發保護
+
+# Script-Driven Video (ADR-015): clap-marker detection audio processing
+scipy>=1.11
