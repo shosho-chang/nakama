@@ -62,12 +62,10 @@
       "Bash(rm *)",
       "Bash(rmdir *)",
       "Bash(sudo *)",
-      "Bash(systemctl *)",
       "Bash(git reset --hard *)",
       "Bash(git checkout -- *)",
       "Bash(git clean *)",
       "Edit(.env)",
-      "Bash(ssh *)",
       "Bash(scp *)",
       "Bash(rsync *)"
     ],
