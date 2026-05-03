@@ -97,31 +97,36 @@ def _cmd_alert(args: argparse.Namespace) -> int:
 
 def _cmd_backup_verify(_args: argparse.Namespace) -> int:
     from agents.franky.alert_router import make_default_sink
-    from agents.franky.r2_backup_verify import verify_once
+    from agents.franky.r2_backup_verify import verify_all_prefixes
 
     try:
-        result = verify_once()
+        results = verify_all_prefixes()
     except Exception as exc:
         record_failure(_JOB_NAME_BACKUP_VERIFY, f"{type(exc).__name__}: {exc}"[:200])
         raise
 
-    summary = {
-        "operation_id": result["operation_id"],
-        "status": result["status"],
-        "detail": result["detail"],
-        "alert_emitted": result["alert"] is not None,
-    }
+    summary = [
+        {
+            "prefix": r["prefix"],
+            "operation_id": r["operation_id"],
+            "status": r["status"],
+            "detail": r["detail"],
+            "alert_emitted": r["alert"] is not None,
+        }
+        for r in results
+    ]
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    # Dispatch any critical alert through the normal router (dedup + Slack)
-    if result["alert"] is not None:
-        sink = make_default_sink()
-        sink(result["alert"])
+    # Dispatch any critical alerts through the normal router (per-prefix dedup + Slack)
+    sink = make_default_sink()
+    for r in results:
+        if r["alert"] is not None:
+            sink(r["alert"])
     # The cron itself succeeded (it ran and produced a verdict, possibly emitting an
     # alert about the *backed-up data* being stale). probe_cron_freshness watches the
     # cron's liveness; the backup-content alert path is probe_r2_backup_nakama's job.
     record_success(_JOB_NAME_BACKUP_VERIFY)
-    # Exit 0 on ok/too-early-fail; exit 1 only if Critical alert emitted (cron noise signal)
-    return 1 if result["alert"] is not None else 0
+    # Exit 0 on ok/too-early-fail; exit 1 only if any prefix emitted Critical alert
+    return 1 if any(r["alert"] is not None for r in results) else 0
 
 
 def _cmd_digest(_args: argparse.Namespace) -> int:
