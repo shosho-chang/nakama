@@ -1,86 +1,48 @@
 ---
-name: textbook ingest 2026-05-03 — ch1 重 ingest + ch4 完成（Wiley Biochemistry）
-description: 2026-05-03 session 推進 ch1 (重 ingest 新算法 ch3-style) + ch4 (用 cached vision 跳過 vision call)；ch5-ch11 batch 待修修 GO；踩到 vault E: vs F: 教訓
+name: BSE textbook ingest 完成 2026-05-03 — parallel pilot success + ADR-016
+description: BSE textbook (biochemistry-sport-exercise-2024) ch1-ch11 fully ingested 2026-05-03 via parallel Phase A subagents (Opus 4.7 background, staged-write for figs ≥ 20) + Robin Phase B reconciliation; 104 new Concept stubs / Book Entity status complete; ADR-016 + SKILL.md 固化；同期啟動 Sport Nutrition 4E (Jeukendrup) 17 章平行 ingest（separate window, Phase A 8/17 by reset）
 type: project
 ---
 
-2026-05-03 桌機 session 啟動 textbook ingest 軸線 PR D 後續工作（ingest Wiley *Biochemistry for Sport and Exercise Metabolism*）。
+2026-05-03 桌機 session 把 textbook ingest 軸線推到階段性大關 — BSE 全書完成 + parallel architecture 驗證 + ADR-016 固化 + 同期啟動下一本書（Sport Nutrition 4E）。
 
-## 完成項目
+## End-state — BSE (biochemistry-sport-exercise-2024)
 
-| 動作 | 路徑 | 結果 |
+| 階段 | 動作 | 結果 |
 |------|------|------|
-| ch9 → ch4 attachments rename | `E:\Shosho LifeOS\Attachments\Books\biochemistry-sport-exercise-2024\ch4\` | 28 figs + 4 tables 重命名 fig-9-N → fig-4-N / tab-9-N → tab-4-N |
-| ch1.md 重 ingest | `E:\Shosho LifeOS\KB\Wiki\Sources\Books\biochemistry-sport-exercise-2024\ch1.md` | 覆寫；舊版 493 行（中文敘事 PR C 風格）→ 新版 702 行（ch3-style 結構化英文 + bullet-定義 + 5 mermaid + 7 verbatim quotes + 11/11 PR C concept page wikilinks）；schema_version=2 / 13 figs 全 vision-described / ingested_at 2026-05-03 |
-| ch4.md 新建 | `E:\Shosho LifeOS\KB\Wiki\Sources\Books\biochemistry-sport-exercise-2024\ch4.md` | 1053 行 / 28 figs / 4 tables / 6 mermaid / Proteins 完整章；用 `/tmp/2026-04-27-ch4-ingest-cache.json` 的 28 個 vision description 跳過 vision call；ingested_at 2026-05-03 |
-| Book Entity 更新 | `E:\Shosho LifeOS\KB\Wiki\Entities\Books\biochemistry-sport-exercise-2024.md` | chapters_ingested: 1 → 4；狀態表 ch1-ch4 標 ✓ ingested |
+| Phase A 序列（前 session） | ch1-ch4 ingest | ch1 PR C 中文敘事版（2026-04-13）+ ch2 PR C；ch1 重 ingest 2026-05-03 用 ch3-style 結構化英文 (702 行)；ch4 用 cached vision 跳過 vision call (1053 行) |
+| Phase A 序列（本 session 前段） | ch5 + ch6 manual in main session | ch5 851 行 / 38 figs / 2 tables / 6 mermaid；ch6 560 行 / 25 figs (fig-6-12 stray arrow) / 0 tables / 5 mermaid |
+| Phase A 平行 pilot | ch7 + ch8 background subagents (Opus 4.7) | ch7 877 行 / 19 figs / 11.2 min wall；ch8 445 行 / 17 figs (含 fig-8-2..8-8 inline equations rasterized) / 8.2 min wall — 單 Write OK，無 staged-write |
+| Phase A 平行 large（first attempt） | ch9 + ch10 + ch11 single-Write | **三章全 watchdog timeout @ compose phase** — figs 數 26/44/36 都超過 20 threshold |
+| Phase A 平行 large（retry, staged-write） | 加 W1 skeleton + W2-Wn Edit + W-final mermaid 校正 protocol | ch9 787 行 / 14.5 min；ch10 965 行 / 16.9 min；ch11 716 行 (fig-11-28 sprinter clipart artifact) / 19.6 min — 全 success |
+| Phase B Robin reconcile | wikilink extract → Concept dedup → create stubs → mentioned_in append → Book Entity / index / log | 594 wikilink occurrences / 117 unique slugs / **104 new Concept stubs** / 6 existing updated / Book Entity 4→11 + status:complete / KB/index.md + KB/log.md 寫入 / wall time 10 min / **idempotent** |
 
-## 待修修 review 後 GO 才動的 Phase 4（ch5-ch11 batch）
+**詳細 architecture / pilot metrics / staged-write protocol 全進 [ADR-016](../../docs/decisions/ADR-016-parallel-textbook-ingest.md)** — SKILL.md 三處 minimal edit (Workflow Overview parallel callout + Pitfalls staged-write bullet + References table)。
 
-| Human ch | Walker nav | 標題 | Fig 數 | Table 數 | Walker LOC |
-|----------|-----------|-------|------|--------|-----------|
-| 5 | 10 | Carbohydrates | 38 | 2 | 622 |
-| 6 | 11 | Lipids | 26 | 0 | 363 |
-| 7 | 12 | Metabolic Regulation | 19 | 2 | 597 |
-| 8 | 13 | Techniques | 17 | 3 | 303 |
-| 9 | 14 | HIE | 26 | 2 | 1224 |
-| 10 | 15 | Endurance | 44 | 0 | 1370 |
-| 11 | 16 | HIIT | 36 | 3 | 1442 |
-| **合計** | — | — | **206 figs** | **12 tables** | **5921 lines walker** |
+## 同期啟動：Sport Nutrition 4E (Jeukendrup & Gleeson, Human Kinetics)
 
-**預估**（Opus 4.7 全程，per 修修指示「最高品質優先」）：
-- Vision describe 206 figs（Opus 4.7 multimodal Read in-session）：~80-150 min
-- Compose 7 章 ch3-style：~3-5 hr
-- Concept extract + 4-action dispatch：~1 hr
-- **Total wall time**: 5-8 hr
-- **$ cost**: Max 200 quota（無額外 API 費）
+- EPUB 拷到 `E:\textbook-ingest\new-book\Sport Nutrition, 4E_ Sport Nutr - Asker Jeukendrup, Msc, PhD.epub`
+- 17 章（Chapter 1-17，walker nav = human ch，**不用 rebase**）
+- Slug：`sport-nutrition-jeukendrup-2024`
+- New window dispatch prompt 在 `E:\textbook-ingest\sport-nutrition-jeukendrup-2024\NEW-WINDOW-PROMPT.md`
+- **Status by reset**：walker 17/17 ✓，Phase A 8/17（batch 1 = ch1-ch8 done）；batch 2 = ch9-ch17 還沒 dispatch；Phase B 沒開始
+- Style ref：用 BSE ch5.md（cross-book ref，format 同 / domain 不同 OK）
+- Phase B 待 Phase A 全完成後另起 session 跑（可參考此次 BSE Phase B 的 Robin prompt — 概念 dedup 邏輯通用）
 
-下個 session pick up 時：
-1. 再次確認寫到 **E:\Shosho LifeOS\**（不是 F:！見下方教訓）
-2. 對 `E:\Shosho LifeOS\Attachments\Books\biochemistry-sport-exercise-2024\` 的 `ch10`-`ch16` 做 walker nav → 人類 ch reindex（ch10→ch5 / ch11→ch6 / ... / ch16→ch11）+ 內部檔案 fig-N-X → fig-(N-5)-X / tab-N-X → tab-(N-5)-X
-3. 每章從 `/tmp/textbook-ingest-bse/chapters/ch{nav}.md` 讀 walker output（**注意**：/tmp 在 git-bash 解到 `C:\Users\Shosho\AppData\Local\Temp\`，Python Windows native 不認 /tmp 路徑，要用 `r'C:\Users\Shosho\AppData\Local\Temp\textbook-ingest-bse\chapters\chN.md'`）
-4. 每章 vision describe 走 in-session Opus multimodal Read（一張一張或並行）
-5. 用 ch4.md 那種 Python 組裝 script pattern（見 `C:\Users\Shosho\AppData\Local\Temp\write_ch4.py`）批量產 ch5-ch11
-6. 中途暫停節奏：ch5 + ch6 完成後再 pause 一次給修修看（不要一口氣 7 章衝完）
-7. 完工後 Book Entity status: complete + chapters_ingested: 11
+## 教訓
 
-## 教訓 1：vault 在 E: 不是 F:（最大坑）
-
-整 session 我寫進 **stale F:\Shosho LifeOS\** 而不是 active **E:\Shosho LifeOS\**，等修修發現才復原（cp F: → E: + 重做 E: 上 attachments rename）。memory 之前只記了 repo 從 F: 搬到 E:（`project_disk_layout_e_primary.md`），vault 那塊一直寫 F:。
-
-**已修 memory 三處**：
-- `reference_vault_paths_mac.md`（這次 session 改寫）— E: active + F: stale + obsidian.json `"open":true` 查證方法 + 事件作教訓
-- `project_disk_layout_e_primary.md` How to apply 加 vault 路徑也是 E:
-- `MEMORY.md` L31 同步改寫
-
-**下次防雷 SOP**：寫 vault 之前 verify Obsidian active vault：
-```bash
-cat /c/Users/Shosho/AppData/Roaming/obsidian/obsidian.json | python -m json.tool 2>/dev/null | grep -B1 '"open": true'
-```
-
-## 教訓 2：cached vision 是巨大省時
-
-ch1 reuse 既有 frontmatter 13 figs description（PR C Opus in-session 跑出來的）+ ch4 reuse 上次 session pre-stage 的 `/tmp/2026-04-27-ch4-ingest-cache.json` 28 figs description → 兩章都跳過 vision call → 整輪 wall time ~30 min（vs 預估 30-60 min/章）。
-
-→ ch5-ch11 沒有 cache，得 fresh vision describe，wall time / token usage 才是真實基準。
-
-## 教訓 3：Python Windows native 不認 /tmp
-
-```python
-# ❌ Windows native python 不認
-open('/tmp/file.json')   # FileNotFoundError
-
-# ✅ 用 cygpath 轉成 Windows 絕對路徑
-open(r'C:\Users\Shosho\AppData\Local\Temp\file.json', encoding='utf-8')
-```
-
-而且 default cp1252 codec 解 UTF-8 會 charmap 炸 → 永遠加 `encoding='utf-8'`。
+1. **Vault 在 E: 不是 F:**（避免 stale 路徑） — SOP：寫前查 `obsidian.json` `"open": true`
+2. **Python Windows native 不認 /tmp** — 用 `r'C:\Users\Shosho\AppData\Local\Temp\...'` + `encoding='utf-8'`；2026-05-03 改 staging 到 `E:\textbook-ingest\` 對使用者更友善
+3. **Cached vision 是巨大省時** — ch1 (PR C frontmatter cache) + ch4 (`/tmp` json cache) 跳過 vision call → ~30 min/章 → 兩章 30 min total。subagent retry 沒 cache 是真痛點 — 未來 SKILL 改 W0 step：subagent vision describe 完寫 cache 到 `/tmp/vision-cache-{book}-{ch}.json`，retry 從 cache load
+4. **Parallel subagent architecture works** — Phase A share-nothing fan-out + Phase B serial reconcile = 5x wall time speedup（7-章 BSE batch 31 min wall vs 序列 150 min；詳 ADR-016 §3 pilot metrics）
+5. **Stream watchdog 600s threshold** — figs ≥ 20 章節必 staged-write protocol（W1 skeleton + W2-Wn Edit per section + W-final mermaid count fix），否則 compose phase generation 超過 600s 沒 tool call 被 kill。pilot 三章 first-attempt 全 fail 才發現
+6. **Subagent 自我修正 emergent** — 五個 phase A subagent 全主動：辨認 walker artifact 並依 precedent 處理 / grep mermaid count 校正 frontmatter / W-final 抓自己的 duplicate fig embed 並修。Prompt 應 invite self-verification 不要假設第一輪 perfect
 
 ## Reference
 
-- 上 session pre-stage cache + handoff doc：`docs/plans/2026-04-27-ch2-pr-d-handoff.md`
-- ADR：`docs/decisions/ADR-011-textbook-ingest-v2.md`
-- Skill：`.claude/skills/textbook-ingest/SKILL.md`
-- 上條 ingest memory：`project_ingest_v2_step3_in_flight_2026_04_26.md`（ch1/ch2 PR C 細節）
-- vault path memory：`reference_vault_paths_mac.md`（這次更新）
-- 桌機 disk layout：`project_disk_layout_e_primary.md`（這次更新）
+- ADR：`docs/decisions/ADR-011-textbook-ingest-v2.md` (v2) + `docs/decisions/ADR-016-parallel-textbook-ingest.md` (parallel architecture, this session)
+- Skill：`.claude/skills/textbook-ingest/SKILL.md`（更新含 parallel callout）
+- Prior session memory：`project_ingest_v2_step3_in_flight_2026_04_26.md`
+- Vault path memory：`reference_vault_paths_mac.md`
+- 桌機 disk layout：`project_disk_layout_e_primary.md`
+- Walker pipeline：`.claude/skills/textbook-ingest/scripts/parse_book.py`

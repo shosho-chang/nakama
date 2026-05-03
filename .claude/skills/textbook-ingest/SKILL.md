@@ -72,6 +72,8 @@ Step 5. Build Book Entity index page              [Write final entry page]
 Step 6. Smoke-check + sync hint                   [Tell user to wait Obsidian Sync]
 ```
 
+> **Parallel execution path** ([ADR-016](../../../docs/decisions/ADR-016-parallel-textbook-ingest.md)): if the goal is to compress wall-time on a multi-chapter book and quality matters, dispatch Step 4 (ingest each chapter) as N parallel background subagents (Phase A), then run a single Robin subagent for cross-chapter Concept dedup + Book Entity / index / log updates (Phase B). Pilot achieved ~5x speedup on 7-chapter BSE batch; staged-write protocol mandatory for chapters with figs ≥ 20 (else 600s stream watchdog timeout). Use the parameterized prompt templates: [`prompts/phase-a-subagent.md`](prompts/phase-a-subagent.md) for per-chapter dispatch + [`prompts/phase-b-reconciliation.md`](prompts/phase-b-reconciliation.md) for the Robin reconcile run.
+
 ### Step 1 — Parse args from user message
 
 Extract:
@@ -530,6 +532,13 @@ See `docs/capabilities/textbook-ingest.md` for the full capability card.
   ~2.6M tokens) some chapters will exceed even Opus 1M context per
   turn; ``parse_book.py`` warns when a chapter > 200 pages and offers
   to sub-split.
+- **Stream watchdog timeout in parallel mode** — if running parallel
+  Phase A subagents (per [ADR-016](../../../docs/decisions/ADR-016-parallel-textbook-ingest.md)),
+  chapters with figures ≥ 20 will trip the 600s tool-call watchdog when
+  Write generates a single large compose. Use the staged-write protocol
+  (W1 skeleton + W2..Wn Edit per section + W-final mermaid count fix).
+  Pilot: ch9 (26 figs) / ch10 (44 figs) / ch11 (36 figs) all timed out on
+  first attempt; all succeeded on retry with staged-write. See ADR-016 §2.2.
 
 See ``memory/claude/feedback_skill_scaffolding_pitfalls.md`` for general
 skill scaffolding pitfalls (sys.path shim, 4-backtick fences, etc.).
@@ -540,7 +549,9 @@ skill scaffolding pitfalls (sys.path shim, 4-backtick fences, etc.).
 
 | When | Read |
 |---|---|
-| Final design | `docs/decisions/ADR-010-textbook-ingest.md` |
+| Final design (v1) | `docs/decisions/ADR-010-textbook-ingest.md` |
+| v2 redesign (Karpathy aggregator + Vision + 4-action) | `docs/decisions/ADR-011-textbook-ingest-v2.md` |
+| Parallel execution architecture (Phase A/B + staged-write) | `docs/decisions/ADR-016-parallel-textbook-ingest.md` |
 | Design process | `docs/plans/2026-04-25-textbook-ingest-design.md` |
 | KB Wiki philosophy | [Karpathy gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) |
 | PDF parser | `shared/pdf_parser.py` |
