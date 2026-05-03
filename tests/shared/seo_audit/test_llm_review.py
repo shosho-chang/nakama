@@ -12,9 +12,19 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from anthropic import Anthropic
 from bs4 import BeautifulSoup
 
 from shared.seo_audit.llm_review import _RULE_IDS, _RULES, review
+
+# A6 follow-up (PR #192 deferred): mock Anthropic client with `spec=Anthropic`
+# so calls to non-existent SDK methods raise AttributeError instead of silently
+# returning truthy MagicMock — see feedback_mock_use_spec.md (PR #132 → #135 GSC
+# `Credentials.authorize()` regression that bare MagicMock missed).
+#
+# B3 (firecrawl) intentionally not covered here: firecrawl 4.23 attaches `scrape`
+# at instance-level via dynamic attribute, so `spec=FirecrawlApp` would block the
+# real method call. Left in backlog until SDK exposes scrape on the class.
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,9 +44,24 @@ def _full_response_dict(default_status: str = "pass") -> dict:
 
 
 def _mock_client(text: str) -> MagicMock:
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
     client.messages.create.return_value = SimpleNamespace(content=[SimpleNamespace(text=text)])
     return client
+
+
+def test_llm_client_mock_spec_blocks_nonexistent_methods():
+    """Regression for A6 — `spec=Anthropic` rejects calls to fake SDK methods.
+
+    This is the property that bare `MagicMock()` lacked (PR #132 GSC bug:
+    `Credentials.authorize()` was removed by google-auth 2.x but mock truthified
+    every attr access, masking the AttributeError until production smoke).
+    """
+    client = MagicMock(spec=Anthropic)
+    # Real method exists
+    assert hasattr(client, "messages")
+    # Fake method blocked
+    with pytest.raises(AttributeError):
+        client.fake_method_that_does_not_exist_on_anthropic()
 
 
 def _patch_client(monkeypatch, client) -> dict:
@@ -117,7 +142,7 @@ def test_prompt_includes_url_focus_keyword_and_all_rule_ids(soup_simple, monkeyp
         captured["kwargs"] = kwargs
         return SimpleNamespace(content=[SimpleNamespace(text=json.dumps(_full_response_dict()))])
 
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
     client.messages.create.side_effect = _capturing_create
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
@@ -133,7 +158,7 @@ def test_prompt_includes_url_focus_keyword_and_all_rule_ids(soup_simple, monkeyp
 def test_focus_keyword_none_renders_skip_hint(soup_simple, monkeypatch):
     soup, html = soup_simple
     captured = {}
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
 
     def _capture(**kwargs):
         captured["kwargs"] = kwargs
@@ -165,7 +190,7 @@ def test_kb_context_injected_into_prompt(soup_simple, monkeypatch):
         },
     ]
     captured = {}
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
 
     def _capture(**kwargs):
         captured["kwargs"] = kwargs
@@ -189,7 +214,7 @@ def test_compliance_findings_injected_into_prompt(soup_simple, monkeypatch):
         "matched_terms": ["治癒癌症", "保證治好"],
     }
     captured = {}
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
 
     def _capture(**kwargs):
         captured["kwargs"] = kwargs
@@ -216,7 +241,7 @@ def test_text_excerpt_capped_by_param(monkeypatch):
     html = f"<html><body><p>{long_text}</p></body></html>"
     soup = BeautifulSoup(html, "html.parser")
     captured = {}
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
 
     def _capture(**kwargs):
         captured["kwargs"] = kwargs
@@ -246,7 +271,7 @@ def test_text_excerpt_capped_by_param(monkeypatch):
 def test_model_sonnet_default(soup_simple, monkeypatch):
     soup, html = soup_simple
     captured = {}
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
 
     def _capture(**kwargs):
         captured["kwargs"] = kwargs
@@ -262,7 +287,7 @@ def test_model_sonnet_default(soup_simple, monkeypatch):
 def test_model_haiku_when_level_haiku(soup_simple, monkeypatch):
     soup, html = soup_simple
     captured = {}
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
 
     def _capture(**kwargs):
         captured["kwargs"] = kwargs
@@ -277,7 +302,7 @@ def test_model_haiku_when_level_haiku(soup_simple, monkeypatch):
 
 def test_model_none_skips_all_no_api_call(soup_simple, monkeypatch):
     soup, html = soup_simple
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     checks = review(soup, html, focus_keyword="x", url="https://shosho.tw/x", model="none")
@@ -294,7 +319,7 @@ def test_model_none_skips_all_no_api_call(soup_simple, monkeypatch):
 
 def test_api_error_falls_back_to_all_skip(soup_simple, monkeypatch):
     soup, html = soup_simple
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
     client.messages.create.side_effect = RuntimeError("Anthropic API down")
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
@@ -373,7 +398,7 @@ def test_response_with_prose_prefix_then_json(soup_simple, monkeypatch):
 
 
 def test_soup_none_with_empty_html_short_circuits_skip(monkeypatch):
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     checks = review(None, "", focus_keyword="x", url="https://shosho.tw/x")
@@ -385,7 +410,7 @@ def test_soup_none_with_empty_html_short_circuits_skip(monkeypatch):
 def test_llm_response_object_shape_unexpected(soup_simple, monkeypatch):
     """response.content[0].text 不存在 → all skip。"""
     soup, html = soup_simple
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
     # response 缺 .content
     client.messages.create.return_value = SimpleNamespace()
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
@@ -420,7 +445,7 @@ def test_l9_seed_caveat_instruction_in_system_prompt(soup_simple, monkeypatch):
     with the SEED-scan caveat per references/check-rule-catalog.md."""
     soup, html = soup_simple
     captured: dict = {}
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
 
     def _capture(**kwargs):
         captured["kwargs"] = kwargs
@@ -458,7 +483,7 @@ def test_a3_llm_call_invokes_record_call_for_cost_tracking(soup_simple, monkeypa
         content=[SimpleNamespace(text=json.dumps(payload))],
         usage=usage,
     )
-    client = MagicMock()
+    client = MagicMock(spec=Anthropic)
     client.messages.create.return_value = response
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
