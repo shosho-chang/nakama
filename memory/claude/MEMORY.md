@@ -10,7 +10,7 @@
 - [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) — ingest v2 4 原則 + Step 1/2/3 全 merged（PR A #169 + PR B #178）
 - [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md) — 三 bug 全結案：PR #169 merged + 4 頁 broken pages migration apply 完 2026-04-26 + A-11c
 - [project_ingest_v2_step3_in_flight_2026_04_26.md](project_ingest_v2_step3_in_flight_2026_04_26.md) — **ingest 軸線**：F3 + V1 acceptance 解 2026-04-27（PR #188/#189）；Vision LLM = Sonnet 4.6；PR D unblocked 唯一剩 backlog
-- [project_textbook_ingest_2026_05_03_ch1_ch4.md](project_textbook_ingest_2026_05_03_ch1_ch4.md) — **2026-05-03 進度**：ch1 重 ingest（新 ch3-style）+ ch4 完成（reuse cached vision）；ch5-ch11 batch 待修修 GO；vault E: vs F: 教訓 + Python /tmp 教訓
+- [project_textbook_ingest_2026_05_03_ch1_ch4.md](project_textbook_ingest_2026_05_03_ch1_ch4.md) — **BSE 全書 2026-05-03 完成**：ch1-ch11 parallel pilot (8 phase A subagents + 1 Robin phase B) / 104 new Concept stubs / Book Entity complete / ADR-016 固化；同期啟 Sport Nutrition 4E (8/17 by reset)
 - [project_2026_04_26_4pr_merged_bugs_followup.md](project_2026_04_26_4pr_merged_bugs_followup.md) — 6 PR 全 merged 2026-04-26（4 PR review + 2 follow-up bug fix #180/#181）；三軸線下游 unblock
 - [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — **SEO D.2 PR #183 + F PR #185 merged 2026-04-26**：用途 1+2+3 production；12 follow-up + 4 test gap
 - [project_seo_dataforseo_scrap_decision.md](project_seo_dataforseo_scrap_decision.md) — **SEO Slice E 不接 DataForSEO 2026-04-26**：health fallback 高 + actionability 低 + GSC+firecrawl 已覆蓋
@@ -89,6 +89,8 @@
 - [feedback_no_handoff_to_user_mid_work.md](feedback_no_handoff_to_user_mid_work.md) — **最高指導原則（高於品質）**：grill 完→我接手做完→修修最後驗收；中間 ultrareview / pause-for-approval 都是違規 friction；PR review 走 multi-agent 並行替代
 - [project_session_2026_05_01_line1_sandcastle_round2.md](project_session_2026_05_01_line1_sandcastle_round2.md) — **收工 2026-05-01**：Line 1 Slice 2/3/4 merged (PR #295/#297) + sandcastle round 1+2 戰績（4/4 通過）+ multi-agent review 17 真問題零誤判；critical path 4/10 done 等 5/6 樣本 unblock
 - [feedback_minimize_manual_friction.md](feedback_minimize_manual_friction.md) — **最高指導原則**：減少修修手動操作，每個手動步驟 = 摩擦力；設計 default 自動化、scope 砍除前看下游 ripple、approval gate 並行不階段
+- [feedback_env_naming_grep_first.md](feedback_env_naming_grep_first.md) — 要修修申請 API token / 設 env key / 命名前必先 grep code 既有 convention，不能憑印象設計（2026-05-03 R2 token rename 摩擦教訓）
+- [project_session_2026_05_03_pm_backlog_r2.md](project_session_2026_05_03_pm_backlog_r2.md) — **收工 2026-05-03 下午**：PR #325 backlog cleanup + R2 token sync + 命名摩擦教訓 + dual-window 安全收尾
 - [feedback_quality_over_speed_cost.md](feedback_quality_over_speed_cost.md) — **最高指導原則**：品質 > 速度 > 省錢；模型選 Sonnet/Opus、架構選 multi-stage、context 不砍碎；例外：deterministic / batch / 內部 pipeline
 - [feedback_sync_before_grill.md](feedback_sync_before_grill.md) — 跨 session 起手必跑 3 條 sync 檢查（git log main / reflog / gh issue list），避免重複 grill；2026-05-01 Line 1 PRD 重複教訓
 - [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
