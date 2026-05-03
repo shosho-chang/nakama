@@ -156,7 +156,14 @@ def test_summarize_sanitizes_input_pages() -> None:
 
 
 def test_summarize_uses_haiku_model() -> None:
-    """Model id 必須是 Haiku 4.5（cost / latency 設計依據）。"""
+    """Model id 必須是 canonical Haiku 4.5 ID（cost / latency 設計依據）。
+
+    Tightened from `startswith("claude-haiku-4-5")` to exact match against the
+    module constant — prefix would let typos like `claude-haiku-4-5-20251002`
+    pass silently (F3 follow-up gap).
+    """
+    from shared.seo_enrich.serp_summarizer import _HAIKU_MODEL
+
     captured: dict = {}
 
     def _capture(prompt: str, *, model: str = "", max_tokens: int = 0):
@@ -167,7 +174,7 @@ def test_summarize_uses_haiku_model() -> None:
     with patch("shared.seo_enrich.serp_summarizer.ask", side_effect=_capture):
         summarize_serp(_pages(1), "kw")
 
-    assert captured["model"].startswith("claude-haiku-4-5")
+    assert captured["model"] == _HAIKU_MODEL == "claude-haiku-4-5-20251001"
     assert captured["max_tokens"] >= 1000  # leave headroom for ~1500 token output
 
 
@@ -180,3 +187,28 @@ def test_summarize_handles_missing_fields_in_pages() -> None:
     with patch("shared.seo_enrich.serp_summarizer.ask", return_value="ok summary"):
         out = summarize_serp(minimal_pages, "kw")
     assert out == "ok summary"
+
+
+def test_summarize_skips_non_dict_pages() -> None:
+    """F2 follow-up: non-dict page elements skipped with warn — must not leak
+    AttributeError past `summarize_serp`'s `try/except` (which only wraps the
+    LLM call, not page formatting)."""
+    mixed_pages = [
+        {"url": "https://example.com/p1", "title": "ok", "content_markdown": "正文"},
+        "not a dict",  # type: ignore[list-item]
+        None,  # type: ignore[list-item]
+        {"url": "https://example.com/p2", "title": "ok2", "content_markdown": "更多"},
+    ]
+    captured: dict = {}
+
+    def _capture(prompt: str, **kw):
+        captured["prompt"] = prompt
+        return "ok summary"
+
+    with patch("shared.seo_enrich.serp_summarizer.ask", side_effect=_capture):
+        out = summarize_serp(mixed_pages, "kw")
+
+    assert out == "ok summary"
+    sent = captured["prompt"]
+    assert "https://example.com/p1" in sent
+    assert "https://example.com/p2" in sent

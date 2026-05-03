@@ -435,3 +435,44 @@ def test_l9_seed_caveat_instruction_in_system_prompt(soup_simple, monkeypatch):
     assert "L9" in system
     assert "SEED scan" in system
     assert "醫療" in system  # 詞庫升級中
+
+
+# ---------------------------------------------------------------------------
+# A3 follow-up — LLM call routes through ask_claude → record_call (cost tracking)
+# ---------------------------------------------------------------------------
+
+
+def test_a3_llm_call_invokes_record_call_for_cost_tracking(soup_simple, monkeypatch):
+    """A3 follow-up: previous direct `client.messages.create` call skipped cost
+    tracking; PR #192 routed through `shared.llm.ask` → `ask_claude` →
+    `_record_anthropic_usage` → `record_call`. Assert `record_call` fires."""
+    soup, html = soup_simple
+    payload = _full_response_dict("pass")
+    usage = SimpleNamespace(
+        input_tokens=1234,
+        output_tokens=567,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=0,
+    )
+    response = SimpleNamespace(
+        content=[SimpleNamespace(text=json.dumps(payload))],
+        usage=usage,
+    )
+    client = MagicMock()
+    client.messages.create.return_value = response
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
+
+    record_calls: list[dict] = []
+
+    def _fake_record(**kwargs):
+        record_calls.append(kwargs)
+
+    monkeypatch.setattr("shared.anthropic_client.record_call", _fake_record)
+
+    review(soup, html, focus_keyword="x", url="https://shosho.tw/x")
+
+    assert len(record_calls) == 1
+    captured = record_calls[0]
+    assert captured["model"] == "claude-sonnet-4-6"
+    assert captured["input_tokens"] == 1234
+    assert captured["output_tokens"] == 567

@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-04-26T13
+updated: 2026-05-03
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
@@ -43,7 +43,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 
 **Robin：**
 - ✅ `/kb/research` E2E 2026-04-25 重驗通過 → kb-search skill 化已完成（Window B PR #142 merged，見 Skill 化工程段）
-- 🚧 **PR #141 OPEN** — Reader UI polish：clipboard paste-to-vault（`POST /upload-paste-image`，10 MB cap，Asia/Taipei TZ filename）+ metadata 卡片補 type/content_nature/lang pills + DOI/PMID 連結；72 robin router tests 全綠 / 7 新 test。等 review/merge + 修修本機 browser 實測（截圖→Ctrl+V）
+- ✅ **PR #141 merged 2026-04-25** — Reader UI polish 原含 paste-image 但砍掉（user 想不到 use case，教訓 [feedback_todo_needs_use_case.md](feedback_todo_needs_use_case.md)），留純 meta-card pills + DOI/PMID 連結（+13 lines）
 - ⬜ KB Research UI 呈現方式（修修想再改）
 
 **Phase 4 Bridge UI：**
@@ -75,7 +75,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ **T1 benchmark on shosho.tw 2026-04-25**：跑 `/keyword-research zone 2 訓練` → `/seo-keyword-enrich` 真資料對 90 striking + 30 cannibalization。Mechanical 全綠（schema / GSC / filter / wall clock），quality 抓到 4 點：(1) related/striking 沒 topic 過濾→F3 凍結（見下）；(2) brand query 「張修修」被建議 301 首頁→ F2 修；(3) homepage + section 同時排同字算 cannibalization → F2 修；(4) recommendation 是 template 不是 LLM → Phase 1.5 firecrawl+LLM 解
 - ✅ **PR #138 merged 2026-04-25** `7921d7e` — F2 cannibalization 白名單（brand_query_patterns + homepage_equivalent_patterns，site-specific 在 yaml seed、baked-in 為空 list 對 OSS friendly）+ F4 enrich.py 自己 load_dotenv（解 `set -a && source .env` 痛點，per [feedback_explicit_load_dotenv_for_non_db_paths.md](feedback_explicit_load_dotenv_for_non_db_paths.md)）。6 條新測試 + 1 改 round-trip exempt 規則。82 pass
 - ✅ **F3=A 凍結**（2026-04-25，PR #138）：Slice B 維持 site-wide raw GSC posture（zero-LLM 契約守住），topic relevance 過濾在 Slice C Brook compose 內做（Claude Haiku batch rank ~$0.005/run）。理由：(1) 不破壞 Slice B 凍結契約；(2) site-wide SEOContextV1 未來可重用給「站台 SEO 全景儀表板」消費者；(3) Brook 本就 LLM 規劃，narrow 是自然延伸。寫進 phase-1-seo-solution.md §C.1 / §C.2 / §C.4.1 / §C.5
-- 🚧 **PR #139 OPEN — Slice C：Brook compose `seo_context` opt-in 整合**：`agents/brook/seo_block.py`（T2 sanitization + T11 token budget priority `striking > related > SERP`）+ `agents/brook/seo_narrow.py`（Claude Haiku narrow，LLM 失敗 fallback 不 raise）+ `compose.py` 加 `seo_context` + `core_keywords` kwargs；`seo_context=None` 路徑 byte-identical 雙保險（test_seo_context_none_equals_default_arg + test_compose_without_seo_does_not_call_narrow）。15 新 test，1480 全綠 + ruff 綠
+- ✅ **PR #139 merged 2026-04-25** — Slice C：Brook compose `seo_context` opt-in 整合（agents/brook/seo_block.py + seo_narrow.py + compose.py kwargs；15 新 test）
 - ✅ **Phase 1.5 D.1 + D.2 + F merged 2026-04-26**（PR #173/#181/#183/#185）— 用途 1（keyword-research）+ 2（seo-audit-post）已 production；用途 3（Brook 整合）near-production 缺 E
   - 詳見 [project_seo_d2_f_merged_2026_04_26.md](project_seo_d2_f_merged_2026_04_26.md) — 12 follow-up + 4 test gap
   - **修修瀏覽器待辦**：(1) T1 production benchmark on `seo-keyword-enrich`（5 keyword P95 wall-clock）；(2) Brook compose 端到端 smoke `compose_and_enqueue(seo_context=<enriched.md>)`；(3) `/bridge/cost` 觀察 D.2 LLM 成本「沒出現」印證 follow-up A3
@@ -93,7 +93,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ PubMed OA 全文自動下載（PR #70，PMC + Unpaywall 兩層 fallback）
 - ✅ PubMed 雙語閱讀本機整合（PR #71，source 頁 link → reader）
 - ⬜ 觀察 pymupdf4llm 對多欄學術 PDF 品質，不夠好再上 Docling/BabelDOC
-- 🚧 **PR #143 OPEN — Nami `pubmed_lookup` tool**（取代 Deep Research 的 medical lookup 路徑）：`shared/pubmed_client.py` 包 NCBI Entrez E-utilities（esearch + esummary + lookup），Nami tool 接 query/max_results/since_year，render markdown 含 PubMed/PMC/DOI 三連結。21 新 test 全綠（16 client + 5 handler），全 repo 1494 pass。需要深讀全文時 PMID 可丟給既有 pubmed-to-reader pipeline 拿雙語版。VPS `.env` 加 `PUBMED_API_KEY` 為 optional（NCBI 免費 5 分鐘申請；無 key 也能跑）
+- ✅ **PR #143 merged 2026-04-25** — Nami `pubmed_lookup` tool：`shared/pubmed_client.py`（NCBI Entrez E-utilities）+ Nami tool（query/max_results/since_year）+ markdown render（PubMed/PMC/DOI 三連結）。21 新 test 全綠。VPS 部署時 `.env` 可選加 `PUBMED_API_KEY`（NCBI 免費 5 分鐘申請；無 key 也能跑）
 
 **基礎建設：**
 - ✅ Robin 核心流程 `kb_search.py` 0% → 100%（PR #119 merged，順手修 `"Entities"` type normalize bug）+ `ingest.py` 0% → 100%（PR #121 merged 60 tests，路上修 2 個 Linux CI case-sensitive bug）
@@ -144,7 +144,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - Follow-up backlog 全部清空
 
 **Mac 2026-04-24 晚間 session（桌機同時做 PR #97 Usopp Slice C1）：**
-- 分工 doc: [docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md)
+- 分工 doc: [docs/archive/task-prompts/2026-04-24-mac-handoff.md](../../docs/archive/task-prompts/2026-04-24-mac-handoff.md)
 - ✅ 任務 A：LifeOS `tpl-project.md` + `tpl-action.md` 對齊 gold standard（純 vault，已完成）
 - ✅ 任務 B：Franky `r2_backup_verify` 擴展 `nakama-backup` bucket freshness（PR #99 merged）+ Bridge dashboard 曝光（PR #100 merged）
 - ✅ 桌機：PR #97 Slice C1 + PR #98 VPS 部署材料 + PR #101 Slice C2a
@@ -162,7 +162,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ PR #120 merged — memory: feedback_pytest_monkeypatch_where_used
 
 **Mac 2026-04-24 晚間 Part 2 session（桌機 Robin kb_search + coverage 並行）：**
-- 分工 doc: [docs/task-prompts/2026-04-24-mac-p2-handoff.md](../../docs/task-prompts/2026-04-24-mac-p2-handoff.md)
+- 分工 doc: [docs/archive/task-prompts/2026-04-24-mac-p2-handoff.md](../../docs/archive/task-prompts/2026-04-24-mac-p2-handoff.md)
 - ✅ 任務 D1 → PR #122 merged — `docs/decisions/ADR-009-seo-solution-architecture.md`（ADR 凍結 3 skill + SEOContextV1 + Brook opt-in 整合契約）
 - ✅ 任務 T1 → PR #123 merged — `shared/agent_memory.py` tech debt：`update()` `conn.rollback()` + `MemoryType = Literal[...]` + `_validate_type()` + docstring audit + `shared/memory_extractor.py` import `VALID_TYPES` + `thousand_sunny/routers/bridge.py` 1-char description fix（drive-by）
 - 踩坑新 feedback：[feedback_defensive_vs_bug_fix_claim.md](feedback_defensive_vs_bug_fix_claim.md)（PR #123 reviewer 發現 rollback 原本就不 leak，claim 降級 defensive hardening）
@@ -191,13 +191,13 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - 桌機在 Mac 出門期間做三件零衝突小工：memory reconcile（本 PR）+ SSE events coverage + project-bootstrap template drift 掃描
 
 **2026-04-25 晚桌機 Bridge drafts UI session（Mac kb/research E2E + Slice C scaffolding 並行）：**
-- 分工 doc: [docs/task-prompts/2026-04-25-desktop-handoff.md](../../docs/task-prompts/2026-04-25-desktop-handoff.md)
+- 分工 doc: [docs/archive/task-prompts/2026-04-25-desktop-handoff.md](../../docs/archive/task-prompts/2026-04-25-desktop-handoff.md)
 - ✅ **PR #136 merged 2026-04-25** — `feat(bridge)`: drafts queue UI scaffolding (read-only)。30 tests / lint 全綠，本機 uvicorn 4 acceptance scenario 實測通過。Independent review by sub-agent：no blocker, ready to merge（FastAPI Jinja2 預設 autoescape 啟用、auth pattern 跟既有 page route 一致、open redirect 不可能因 path int validator、soft-fail catch 完整）。Phase 2 backlog 5 項見上面 Bridge UI 段
 - ✅ **PR #137 merged 2026-04-25** — `fix(approval-queue)`: count_by_status() 取代 `len(list_by_status())`。閉迴圈 PR #136 reviewer 抓到的真 bug（pending > 50 時 hub badge 封頂在 50 + 浪費 query 50 row payload）。新 helper 走 SELECT COUNT(*) WHERE status=? + source_agent filter；drafts.html 補 truncate banner（list 真截斷時告訴 reviewer 隊伍超量）；67 tests passed。**Drafts UI Phase 2 backlog 5 項剩 4 項**：(a) approve/reject/edit mutation API + UI、(c) detail 頁顯示 error_log、(d) `payload_pretty` 改 `model_dump_json(indent=2)`、(e) ~~drafts.html truncate hint~~ 已合 #137
 - ✅ **VPS 部署完成 2026-04-25**：修修跑完 `git pull && systemctl restart thousand-sunny`，PR #136 + #137 線上生效。Drafts UI Phase 1 完整收尾（routes / templates / hub badge / count_by_status / truncate banner）
 
 **2026-04-25 晚 dual-window session（教訓：同機雙視窗必須用 `git worktree`）：**
-- 分工 doc: [docs/task-prompts/2026-04-25-dual-window-allocation.md](../../docs/task-prompts/2026-04-25-dual-window-allocation.md) + Window B 六要素 [docs/task-prompts/2026-04-25-window-b-kb-search.md](../../docs/task-prompts/2026-04-25-window-b-kb-search.md)
+- 分工 doc: [docs/archive/task-prompts/2026-04-25-dual-window-allocation.md](../../docs/archive/task-prompts/2026-04-25-dual-window-allocation.md) + Window B 六要素 [docs/archive/task-prompts/2026-04-25-window-b-kb-search.md](../../docs/archive/task-prompts/2026-04-25-window-b-kb-search.md)
 - 教訓：[feedback_dual_window_worktree.md](feedback_dual_window_worktree.md) — 兩視窗各自 `git checkout -b` 在同 working tree → 未 commit 改動跨 branch 互踩。手動 stash + cherry-pick 才把 SEO Slice C / Bridge mutations 兩堆改動分到對的 PR
 - ✅ **PR #139 OPEN（Window A）** — Brook seo_context 整合（Slice C，見上 SEO 段）
 - ✅ **PR #140 merged（Window B）** — Bridge drafts mutations（4 endpoint + FSM 擴 `pending→rejected` / `failed→pending` + 13 tests + native dialog modal + status-aware action panel + ERROR LOG box；新教訓 [feedback_fsm_audit_columns_actor_check.md](feedback_fsm_audit_columns_actor_check.md) + [reference_bridge_ui_mutation_pattern.md](reference_bridge_ui_mutation_pattern.md)）
@@ -225,7 +225,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 **Ingest v2 Step 3 implementation（2026-04-26 ready to start）：**
 - ✅ **Step 1 PR #164 merged** `c2b529b` — config env 順序 + obsidian yaml fold + migration script + tests + decisions doc
 - ✅ **Step 2 PR #165 merged** `694b50d` — ADR-011 完整稿 + ADR-010 標 Superseded + plan §8 Decisions 表（修修 4 題全 A）
-- ⬜ **Migration apply（修修 user action）**：`python -m scripts.migrate_broken_concept_frontmatter --vault "F:/Shosho LifeOS" --apply` — 修 4 頁 broken concept page（ATP再合成 / 神經保護作用 / 肌酸代謝 / 膳食補充劑安全性），預設寫 `.bak`
+- ✅ **Migration apply 完成 2026-04-26**：4 頁 broken concept page 全 apply（ATP再合成 / 神經保護作用 / 肌酸代謝 / 膳食補充劑安全性），詳見 [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md)
 - 🚧 **Step 3 開工順序**（per ADR-011 §6 Acceptance）：
   1. `shared/schemas/kb.py` — 6 個 Pydantic class（已凍結 §3.5.3）
   2. `shared/kb_writer.py` — 7 個 function（已凍結 §3.5.1）+ migrate_v1_to_v2 + backfill_all_v1_pages
@@ -235,7 +235,7 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
   6. 改 `parse_book.py` `_epub_html_to_text` walker（圖/表/公式）+ Vision describe（Sonnet 4.6）
   7. 重 ingest ch1 + retrieval acceptance test
   8. 批 ingest 剩 10 章
-- ⬜ **A-11c follow-up**（low pri）：`shared/lifeos_writer.py:193` 加 `width=10**9`（同 obsidian_writer fix），use case：Nami 寫 Task/Project 含長 wikilink frontmatter 防 corruption
+- ✅ **A-11c done in PR #169**：`shared/lifeos_writer.py:200` 已加 `width=10**9` + long-wikilink regression test
 - 詳見 [project_textbook_ingest_v2_design.md](project_textbook_ingest_v2_design.md) + [project_robin_aggregator_gap.md](project_robin_aggregator_gap.md)
 
 **Vault ingest 工程 baseline（下波待開）：**

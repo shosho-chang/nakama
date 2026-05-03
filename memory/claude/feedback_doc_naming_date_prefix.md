@@ -25,7 +25,7 @@ VS Code Explorer / Obsidian 內檔案是字典序排序。日期後置時 `textb
 格式：`YYYY-MM-DD-{kebab-case-topic}.md`，例：
 - `docs/plans/2026-04-25-textbook-ingest-design.md`
 - `docs/plans/2026-04-25-textbook-ingest-decisions.md`
-- `docs/task-prompts/2026-04-25-dual-window-allocation.md`
+- `docs/archive/task-prompts/2026-04-25-dual-window-allocation.md`
 
 ### 不加日期（純 topic 或既有編號）
 

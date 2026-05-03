@@ -72,9 +72,16 @@ def _sanitize(text: str) -> str:
 
 
 def _format_pages_block(pages: list[dict]) -> str:
-    """Format pages 為 enumerated markdown block 給 LLM 讀。"""
+    """Format pages 為 enumerated markdown block 給 LLM 讀。
+
+    Non-dict elements (e.g. malformed upstream output) 跳過並 warn — 比 leaking
+    AttributeError 過 caller's try/except 好（caller 只 catch ``ask()`` 失敗）。
+    """
     blocks: list[str] = []
     for i, p in enumerate(pages, start=1):
+        if not isinstance(p, dict):
+            logger.warning("serp_summarize_skip_non_dict idx=%d type=%s", i, type(p).__name__)
+            continue
         title = _sanitize(str(p.get("title", "") or ""))
         url = _sanitize(str(p.get("url", "") or ""))
         content = _sanitize(str(p.get("content_markdown", "") or ""))
