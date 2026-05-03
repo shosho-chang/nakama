@@ -72,9 +72,14 @@ TODO-cross-refs
 
 Use distinctive `TODO-<section-id>` placeholders so Edit string-match is unambiguous later.
 
-**W2..Wn**: For EACH section, do ONE Edit call replacing the `TODO-<id>` placeholder with the actual rendered content. Each Edit is bounded (1-3K tokens) → watchdog sees periodic tool activity.
+**W2..Wn**: For EACH section, do ONE Edit call replacing the `TODO-<id>` placeholder with the actual rendered content. Each Edit is bounded (1-3K tokens) → watchdog sees periodic tool activity. **Issue tool calls back-to-back without elaborate intermediate planning** — if you pause for >5 min between calls, watchdog may stall (ch11 retry-1 pilot incident).
 
-**W-final**: Count actual mermaid blocks in body (search for ` ```mermaid `). If frontmatter `mermaid_diagrams:` doesn't match, do one final Edit to fix.
+**W-final (MANDATORY two-part audit — do not skip)**:
+
+1. Use Grep tool with pattern `^```mermaid$` on your output file. Count results. Edit frontmatter `mermaid_diagrams:` to that exact integer.
+2. **Hard constraint check**: if count < 3, add more mermaid blocks (one Edit each) until count ≥ 3. Do NOT lower the bar by editing frontmatter to match a sub-3 body — add real concept maps where they clarify cause-and-effect / decision tree / cascade. Re-grep + re-update frontmatter after additions.
+
+**Why mandatory ≥3**: ch3 Sport Nutrition pilot (B1 batch) wrote frontmatter `mermaid_diagrams: 4` but body only had 2 — agent committed to count in W1 skeleton then forgot to backfill. Original ingest required user-triggered re-run (~210k tokens) to fix. The W-final audit is the cheapest possible insurance against this regression.
 
 # Inputs (read in order)
 
@@ -138,13 +143,44 @@ walker_nav_chapter: {walker_nav_chapter}
 
 ## Body idioms (consistent with style ref)
 - `**bold-define**` for new technical terms on first use
-- `> verbatim quote` for definitional/key sentences quoted directly from textbook (don't paraphrase the most important definitions). Aim for 5-10 verbatim quotes per chapter.
-- `![[fig-{chapter_index}-X.png]]` then italic caption `*Figure {chapter_index}.X. <caption>*`
-- Tables: `![[tab-{chapter_index}-X.md]]` embed or render inline as markdown table if short
-- Mermaid concept maps: 3-5 per chapter at sections that benefit (cascades, decision trees, comparisons, timelines)
+- `> "verbatim quote"` for definitional/key sentences quoted directly from textbook (don't paraphrase the most important definitions). **Aim for 8-15+ verbatim quotes per chapter — every quote = an authoritative citation anchor for downstream RAG agents. No upper bound; if the chapter is dense (e.g. metabolism / regulation / fatigue mechanism chapters) target 20-40.**
+- `![[Attachments/Books/{book_id}/ch{chapter_index}/fig-{chapter_index}-X.{extension}]]` then italic caption `*Figure {chapter_index}.X. <caption>*`
+- Tables: render inline as markdown table by reading content from `tab-{chapter_index}-X.md` and inlining (do NOT use `![[tab.md]]` transclusion — visually fragmenting and RAG can't read transcluded content)
+- Mermaid concept maps: ≥3 per chapter (HARD CONSTRAINT, verified at W-final). Place at high-leverage sections: cascades, decision trees, hormonal × intracellular regulation cross-talk, intensity × fuel × fatigue × mitigation matrices, signalling pathway integrations.
 - `$LaTeX$` inline math for any equation/reaction
-- `[[wikilink]]` (繁體中文 for concept refs). Aim for 10-20+. **Don't worry if wikilink targets don't exist** — phase B creates them.
+- `[[wikilink]]` (繁體中文 for concept refs). **Aim for 100+ on dense metabolic/regulatory chapters; 50+ on standard chapters.** Higher density = better RAG hit rate. **Don't worry if wikilink targets don't exist** — phase B creates them.
 - Body main narrative in structured English (academic but readable, bullet definitions, no long unbroken paragraphs). Only wikilinks and select captions are Chinese.
+
+## Fig llm_description format (new convention — better RAG retrieval)
+
+Don't write llm_description as flowing prose paragraph. Use **structured `**bold**` markers** for every label / panel / component / pathway node so downstream RAG keyword-matching lands in structurally-bracketed labels rather than buried in prose. Pattern:
+
+```
+llm_description: |
+  **Figure type**: <one-line type, e.g. "Three-panel anatomical schematic of skeletal muscle ultrastructure">
+  **Panel (a)**: <description with **bold** for every named component, label, axis, color cue>
+  **Panel (b)**: ...
+  **Concept linkage**: <one-line tying this figure to the body section that uses it>
+```
+
+Why: ch3 Sport Nutrition pilot diff (B1 vs C-full retry) showed prose llm_descriptions had keyword hits buried in 12-line paragraphs; structured-bold versions had every anatomical term findable. Downstream Robin/Chopper RAG retrieval precision is materially higher with structured-bold.
+
+# Cross-reference handling (MANDATORY title mapping table)
+
+The driver MUST inject an explicit chapter title mapping table for the WHOLE BOOK in `{domain_hint_paragraph}` or as a separate variable, and you MUST use ONLY those exact aliases when writing `## Cross-references within this book`. Do NOT improvise alias titles from your training data — old editions of the same textbook commonly have different chapter titles, leading to LLM hallucination.
+
+Example mapping table the driver provides:
+
+```
+[[ch1|Nutrients and Recommended Intakes]]
+[[ch2|Healthy Eating]]
+[[ch3|Fuel Sources for Muscle and Exercise Metabolism]]
+... (one line per chapter in this book)
+```
+
+Pick the 6-12 most relevant siblings for THIS chapter (not all of them — relevance > completeness), and write each with a one-line rationale tying that sibling to a specific section of THIS chapter (e.g. "extends §3.4's ATP discussion into whole-body bioenergetics").
+
+**Why mandatory**: ch3 Sport Nutrition pilot (B1 batch) wrote 6 hallucinated cross-ref aliases using old-edition TOC titles (`[[ch1|Sport Nutrition Foundations]]` instead of correct `[[ch1|Nutrients and Recommended Intakes]]`); required user-triggered manual fix. Adding the title mapping in the retry-batch prompt eliminated all hallucinations.
 
 # Walker artifact handling
 
@@ -172,20 +208,22 @@ You CAN read anything you need to. The constraint is on writes.
 # Process
 1. Read walker output `{walker_chapter_path}` in full.
 2. Read style reference `{style_ref_path}` in full. Internalize frontmatter shape, section organization, idiom usage.
-3. Glob `{attachments_dir}\*.png` and `*.md` to inventory. Verify count matches expected ({fig_count} figs + {table_count} tables).
-4. Vision-describe each `fig-{chapter_index}-X.png`: use Read tool on the PNG path. Write 5-7 line `llm_description` with molecular components / pathway arrows / labels / regulatory points / color cues / axes / units. Apply walker artifact precedent if needed.
+3. Glob `{attachments_dir}\*.{png,jpg}` and `*.md` to inventory. Verify count matches expected ({fig_count} figs + {table_count} tables).
+4. Vision-describe each `fig-{chapter_index}-X.{ext}`: use Read tool on the image path. Write `llm_description` using the **structured `**bold**` markers** convention (see Body idioms above) — every label / panel / component / pathway node bracketed for RAG keyword retrieval. Apply walker artifact precedent if needed.
 5. Read each `tab-{chapter_index}-X.md`.
 6. **W1**: Write `ch{chapter_index}.md` = full frontmatter (all fig llm_descriptions + tables + mermaid count placeholder) + body skeleton with `TODO-<id>` placeholders.
-7. **W2..Wn**: One Edit call per section, replacing `TODO-<id>` with rendered content.
-8. **W-final**: Verify mermaid_diagrams count matches actual ` ```mermaid ` blocks. Fix if off.
+7. **W2..Wn**: One Edit call per section, replacing `TODO-<id>` with rendered content. Issue back-to-back; don't pause for elaborate planning between calls.
+8. **W-final part 1**: Grep `^```mermaid$` on output file. Count matches. Edit frontmatter `mermaid_diagrams:` to that exact integer.
+9. **W-final part 2 (HARD CONSTRAINT)**: If count < 3, add mermaid blocks (one Edit each) until count ≥ 3. Do NOT lower the bar by editing frontmatter to match a sub-3 body. Re-grep + re-update frontmatter after additions.
 
-# Quality bar
-- Every fig llm_description from real vision read (not caption inference).
-- Verbatim quotes ≥ 5-8.
-- Mermaid concept maps ≥ 3 (use where they actually clarify cascade / decision / timeline).
-- Wikilinks ≥ 10, covering core concepts the chapter introduces.
+# Quality bar (hard constraints unless noted)
+- Every fig llm_description from real vision read (not caption inference) **with structured `**bold**` markers**.
+- Verbatim quotes ≥ 8 (no upper bound — every quote = authoritative citation anchor for downstream RAG).
+- **Mermaid concept maps ≥ 3 (HARD — verified at W-final, must add if under).**
+- Wikilinks ≥ 50 standard / ≥ 100 dense metabolic-or-regulatory chapters.
 - Body in structured English with bullet definitions; not long unbroken prose.
 - Frontmatter YAML must parse cleanly.
+- Cross-references use ONLY the chapter title mapping table (zero LLM-invented aliases).
 
 # DoD report (≤ 300 words)
 - Line count

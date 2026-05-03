@@ -91,7 +91,7 @@
 - [feedback_minimize_manual_friction.md](feedback_minimize_manual_friction.md) — **最高指導原則**：減少修修手動操作，每個手動步驟 = 摩擦力；設計 default 自動化、scope 砍除前看下游 ripple、approval gate 並行不階段
 - [feedback_env_naming_grep_first.md](feedback_env_naming_grep_first.md) — 要修修申請 API token / 設 env key / 命名前必先 grep code 既有 convention，不能憑印象設計（2026-05-03 R2 token rename 摩擦教訓）
 - [project_session_2026_05_03_pm_backlog_r2.md](project_session_2026_05_03_pm_backlog_r2.md) — **收工 2026-05-03 下午**：PR #325 backlog cleanup + R2 token sync + 命名摩擦教訓 + dual-window 安全收尾
-- [feedback_quality_over_speed_cost.md](feedback_quality_over_speed_cost.md) — **最高指導原則**：品質 > 速度 > 省錢；模型選 Sonnet/Opus、架構選 multi-stage、context 不砍碎；例外：deterministic / batch / 內部 pipeline
+- [feedback_quality_over_speed_cost.md](feedback_quality_over_speed_cost.md) — **最高指導原則（全域適用：程式碼 / ingest / compose / 任何 LLM 出品）**：品質 > 速度 > 省錢；soft target ≥X 不該當「達標就停」藉口（C-min vs C-full、mermaid ≥3 同邏輯）
 - [feedback_sync_before_grill.md](feedback_sync_before_grill.md) — 跨 session 起手必跑 3 條 sync 檢查（git log main / reflog / gh issue list），避免重複 grill；2026-05-01 Line 1 PRD 重複教訓
 - [feedback_direct_recommendations.md](feedback_direct_recommendations.md) — 開放問題直接給建議 + 理由，不預設反問選項；真有歧異才問
 - [feedback_ci_precheck.md](feedback_ci_precheck.md) — commit 前跑 ruff check + ruff format，不只 format
@@ -245,3 +245,4 @@
 - Plan：[docs/plans/2026-05-02-script-driven-video-production.md](../../docs/plans/2026-05-02-script-driven-video-production.md) — Phase 1 5 slice 拆分 + 技術選型調研（Remotion / sqlite-vec / BGE-M3 / FCPXML / PyMuPDF4llm）
 - [project_session_2026_05_03_pr320_ship.md](project_session_2026_05_03_pr320_ship.md) — **收工 2026-05-03**：PR #320 Slice 1 ship + Usopp #270 VPS deploy（busy_timeout 30s active 10:54:08）+ sandcastle templates 桌機 sync + image v4 rebuild + Docker AutoStart=true + settings.json 砍 ssh/systemctl deny
 - [feedback_settings_deny_rule_blocks_explicit_auth.md](feedback_settings_deny_rule_blocks_explicit_auth.md) — settings.json deny rule 優先於 conversation explicit auth；命中 deny 三條退路（user 自跑 / 砍 deny / 加 specific allow）
+- [feedback_status_cross_check_before_redispatch.md](feedback_status_cross_check_before_redispatch.md) — 看到「待跑 / pending」前必看 log.md + spot check artifact + count，不憑單一 timeline 字串 redispatch（Sport Nutrition Phase B 浪費 115K tokens 教訓）

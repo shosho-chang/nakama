@@ -539,6 +539,34 @@ See `docs/capabilities/textbook-ingest.md` for the full capability card.
   (W1 skeleton + W2..Wn Edit per section + W-final mermaid count fix).
   Pilot: ch9 (26 figs) / ch10 (44 figs) / ch11 (36 figs) all timed out on
   first attempt; all succeeded on retry with staged-write. See ADR-016 §2.2.
+- **Mermaid count "soft target" trap** — `mermaid_diagrams: ≥3` in the
+  prompt was originally framed as a quality bar, not a hard constraint.
+  Sport Nutrition ch3 pilot (B1 batch, 36 figs) wrote frontmatter
+  `mermaid_diagrams: 4` but body only had 2 — agent committed to count
+  in W1 skeleton then skipped the backfill at W-final. **Fix baked into
+  prompt template**: W-final is now mandatory two-part audit
+  (Grep + count + update frontmatter, then if < 3 add more). Don't lower
+  the bar by editing frontmatter to match a sub-3 body.
+- **Cross-ref alias hallucination from old editions** — when writing
+  `## Cross-references within this book`, the LLM may pull chapter
+  titles from old editions of the same textbook in its training data.
+  Sport Nutrition ch3 pilot (B1 batch) wrote 6 hallucinated aliases
+  (`[[ch1|Sport Nutrition Foundations]]` instead of correct
+  `[[ch1|Nutrients and Recommended Intakes]]`). **Fix baked into
+  prompt template**: driver MUST inject explicit chapter title mapping
+  table for the whole book; subagent must use ONLY those exact aliases.
+- **Fig llm_description style — prose vs structured** — pilot diff
+  showed prose paragraphs bury keyword hits; **structured `**bold**`
+  markers** (Panel/component labels bolded) yield materially better
+  RAG retrieval precision. New convention enforced in template.
+- **Walker → human chapter index rebase** — for trade textbooks with
+  pre-chapter front matter (Title/Copyright/Dedication/Contents/
+  Preface/Infographic-Finder/Acknowledgments), walker EPUB nav numbers
+  shift. Sport Nutrition pilot: walker chapters 9-25 = human ch1-17.
+  Driver runs `rebase.py` to remap walker outputs + figure refs +
+  outline.json before dispatching Phase A. Idempotency safeguard
+  required — second-run protection against treating already-renamed
+  human ch1 as new walker front matter.
 
 See ``memory/claude/feedback_skill_scaffolding_pitfalls.md`` for general
 skill scaffolding pitfalls (sys.path shim, 4-backtick fences, etc.).
