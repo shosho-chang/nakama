@@ -1,6 +1,8 @@
 FROM node:22-bookworm
 
 # Install system dependencies (+ python3 — nakama is Python)
+# libxml2-utils provides xmllint, used by Slice 1 #313 acceptance for FCPXML 1.10 schema validation.
+# Other slices may also schema-validate XML/HTML emitters, so it's a stable dev-tool.
 RUN apt-get update && apt-get install -y \
   git \
   curl \
@@ -8,6 +10,7 @@ RUN apt-get update && apt-get install -y \
   python3 \
   python3-pip \
   python3-venv \
+  libxml2-utils \
   && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
@@ -17,6 +20,11 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
   | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
   && apt-get update && apt-get install -y gh \
   && rm -rf /var/lib/apt/lists/*
+
+# TypeScript compiler (tsc) — Slice 1 acceptance + future video/ subproject TS lint.
+# Global install so per-iter `npm install` doesn't need to fetch tsc each time.
+# Done as root before USER agent switch — npm global writes to /usr/local/lib/node_modules.
+RUN npm install -g typescript
 
 # Rename the base image's "node" user (UID 1000) to "agent" so bind-mounts map cleanly.
 RUN usermod -d /home/agent -m -l agent node
@@ -50,6 +58,15 @@ USER agent
 # nakama's requirements.txt (CI uses pyproject.toml [project.optional-dependencies.dev]),
 # so the per-iter `pip install -r requirements.txt` hook misses them.
 RUN python3 -m pip install --user pytest ruff hypothesis pytest-cov
+
+# Re-chmod /home/agent/.local after pip install — files written above are owned UID 1000,
+# but sandcastle runs container with --user $hostUid (Mac UID 501-503), so the per-iter
+# `pip install -r requirements.txt` hook fails permission denied on transitive dep updates
+# (e.g. readability-lxml → sgmllib.py rewrite). Earlier line-45 chmod runs before pip install,
+# so dev-tool .local tree misses the 0777 sweep.
+USER root
+RUN chmod -R 0777 /home/agent/.local
+USER agent
 
 # Sandcastle bind-mounts the git worktree at /home/agent/workspace at container start.
 ENTRYPOINT ["sleep", "infinity"]
