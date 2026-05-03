@@ -209,3 +209,64 @@ def test_fetch_top_n_empty_markdown_skipped(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert len(results) == 1
     assert results[0]["url"] == "https://example.com/p1"
+
+
+def test_fetch_top_n_dict_doc_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F1 follow-up: firecrawl-py v2 SDK 偶爾把 Document 物件 dump 成 dict
+    （`_scrape_markdown` line 140-142 fallback path）。dict 也要能拿到 markdown。"""
+    monkeypatch.setattr(
+        "shared.firecrawl_serp.firecrawl_search",
+        lambda *a, **kw: _fake_search_result(1),
+    )
+
+    fake_app = MagicMock()
+    # Return a plain dict instead of a Document — `getattr(doc, "markdown", None)`
+    # will be None, and the `isinstance(doc, dict)` branch fills it in.
+    fake_app.scrape.return_value = {"markdown": "從 dict 拿到的內文", "metadata": {}}
+
+    with patch("firecrawl.FirecrawlApp", return_value=fake_app):
+        results = fetch_top_n_serp("kw", n=1)
+
+    assert len(results) == 1
+    assert results[0]["content_markdown"] == "從 dict 拿到的內文"
+
+
+def test_fetch_top_n_quota_402_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F4 follow-up: explicit 402 (Payment Required, quota exhausted) at scrape
+    stage → individual scrape skipped, partial-list semantics holds.
+    Generic-Exception path already covered; this names the production failure."""
+    monkeypatch.setattr(
+        "shared.firecrawl_serp.firecrawl_search",
+        lambda *a, **kw: _fake_search_result(2),
+    )
+
+    fake_app = MagicMock()
+    fake_app.scrape.side_effect = [
+        Exception("402 Payment Required: monthly quota exhausted"),
+        _fake_doc("survives"),
+    ]
+    with patch("firecrawl.FirecrawlApp", return_value=fake_app):
+        results = fetch_top_n_serp("kw", n=2)
+
+    assert len(results) == 1
+    assert results[0]["content_markdown"] == "survives"
+
+
+def test_fetch_top_n_quota_429_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F4 follow-up: explicit 429 (Too Many Requests, rate limit) at scrape
+    stage → individual scrape skipped。"""
+    monkeypatch.setattr(
+        "shared.firecrawl_serp.firecrawl_search",
+        lambda *a, **kw: _fake_search_result(2),
+    )
+
+    fake_app = MagicMock()
+    fake_app.scrape.side_effect = [
+        _fake_doc("first ok"),
+        Exception("429 Too Many Requests: rate limit, retry in 60s"),
+    ]
+    with patch("firecrawl.FirecrawlApp", return_value=fake_app):
+        results = fetch_top_n_serp("kw", n=2)
+
+    assert len(results) == 1
+    assert results[0]["content_markdown"] == "first ok"

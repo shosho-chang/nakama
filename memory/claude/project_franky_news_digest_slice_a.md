@@ -15,7 +15,7 @@ PR #171 squash merged `4c12abd` 2026-04-26。VPS git pull + cron 加好。
 - 修 prompt 在 `prompts/franky/news_curate.md` + `news_score.md`
 - 加 source 在 `config/ai_news_sources.yaml`（feedparser 解析，bozo / 404 graceful skip）
 - 結構沿用 `agents/robin/pubmed_digest.py` pattern
-- 設計 doc：`docs/task-prompts/2026-04-26-franky-news-slice-a.md`
+- 設計 doc：`docs/archive/task-prompts/2026-04-26-franky-news-slice-a.md`
 
 ## 8 個 active RSS（VPS 跑通驗證）
 

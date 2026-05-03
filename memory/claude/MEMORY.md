@@ -217,10 +217,10 @@
 - [feedback_count_vs_list_len.md](feedback_count_vs_list_len.md) — UI badge/stat 用專屬 `count_*()` 走 `SELECT COUNT(*)`，不要 `len(list_*())` — list API 通常有 LIMIT 預設值會 silent 封頂
 - [feedback_vps_deploy_smoke_browser.md](feedback_vps_deploy_smoke_browser.md) — nakama.shosho.tw 全域 CF SBFM 擋 curl 全 403（含已上線 route），VPS deploy smoke 要修修瀏覽器；self-verify 走 ssh+systemctl+journalctl 或 127.0.0.1 直連 uvicorn
 - Task prompt convention：[docs/task-prompts/phase-1-usopp-publisher.md](../../docs/task-prompts/phase-1-usopp-publisher.md) — P9 六要素範本，跨檔任務 dispatch 前凍結範圍/驗收/邊界
-- Session handoff doc：[docs/task-prompts/2026-04-24-mac-handoff.md](../../docs/task-prompts/2026-04-24-mac-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
+- Session handoff doc：[docs/archive/task-prompts/2026-04-24-mac-handoff.md](../../docs/archive/task-prompts/2026-04-24-mac-handoff.md) — 多機並行格式：桌機在動什麼 + Mac 不能碰 + 兩個 zero-overlap 任務 + P9 六要素
 - [project_quality_uplift_closed.md](project_quality_uplift_closed.md) — **Quality Uplift CLOSED 2026-04-27**：1-6+9 ✅ ship / 7+8 ❎ deferred / Bridge UI 排除在外（獨立 design 工作）
 - Decisions：[docs/plans/2026-04-26-phase-6-test-coverage-decisions.md](../../docs/plans/2026-04-26-phase-6-test-coverage-decisions.md) — Phase 6 六題拍板（Q1-Q6 採 A：pytest-cov / hypothesis / dedupe deterministic / 三 agent / mock / 4 slice）
-- Task prompt：[docs/task-prompts/2026-04-26-phase-6-test-coverage.md](../../docs/task-prompts/2026-04-26-phase-6-test-coverage.md) — Phase 6 凍結 4 slice：tooling+8模組80% / FSM property / schema round-trip / 三 agent E2E
+- Task prompt：[docs/archive/task-prompts/2026-04-26-phase-6-test-coverage.md](../../docs/archive/task-prompts/2026-04-26-phase-6-test-coverage.md) — Phase 6 凍結 4 slice：tooling+8模組80% / FSM property / schema round-trip / 三 agent E2E
 - [feedback_measure_before_freeze.md](feedback_measure_before_freeze.md) — 凍結 task prompt 前必實量 baseline，plan 寫的「目前 X%」估計常差 20%+（Phase 6 plan 寫 <60% 實際 81%）
 - [feedback_no_regression_gate.md](feedback_no_regression_gate.md) — CI gate threshold 用 baseline round-down 5%/10%（不退步 gate），不用 aspirational；同哲學適用 SLO/latency budget
 - [feedback_log_search_fts5_pattern.md](feedback_log_search_fts5_pattern.md) — FTS5 unicode61 對 CJK 是整段一 token、record.exc_info 不可吞、html.escape 走 sentinel swap 三點教訓

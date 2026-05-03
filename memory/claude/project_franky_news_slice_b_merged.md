@@ -13,7 +13,7 @@ PR #176 squash merged 2026-04-26 為 commit `a91dc38`。Slice A 留下兩個 sou
 - `config/ai_news_sources.yaml` — 加 4 個 GitHub atom feed（vllm-project/vllm、ggerganov/llama.cpp、huggingface/transformers、langchain-ai/langchain），沿用 RSS path 0 code 改動
 - `agents/franky/news_digest.py` — gather_candidates() 後 try/except 包 anthropic_html.gather_candidates()；merge 後跨 source 重新 sort by recency
 - `tests/agents/franky/news/test_anthropic_html.py` — 22 tests
-- `docs/task-prompts/2026-04-26-franky-news-slice-b.md` — P9 task prompt 凍結
+- `docs/archive/task-prompts/2026-04-26-franky-news-slice-b.md` — P9 task prompt 凍結
 
 ## Why（Slice B = Slice A 缺口補完）
 
