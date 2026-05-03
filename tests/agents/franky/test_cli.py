@@ -59,13 +59,16 @@ def test_backup_verify_records_success_when_status_ok():
     from shared import heartbeat
 
     with patch(
-        "agents.franky.r2_backup_verify.verify_once",
-        return_value={
-            "operation_id": "op_y",
-            "status": "ok",
-            "detail": "fresh",
-            "alert": None,
-        },
+        "agents.franky.r2_backup_verify.verify_all_prefixes",
+        return_value=[
+            {
+                "operation_id": "op_y",
+                "status": "ok",
+                "detail": "fresh",
+                "alert": None,
+                "prefix": "",
+            }
+        ],
     ):
         rc = main(["backup-verify"])
 
@@ -97,13 +100,16 @@ def test_backup_verify_records_success_even_when_alert_emitted():
     )
     with (
         patch(
-            "agents.franky.r2_backup_verify.verify_once",
-            return_value={
-                "operation_id": "op_z",
-                "status": "stale",
-                "detail": "...",
-                "alert": fake_alert,
-            },
+            "agents.franky.r2_backup_verify.verify_all_prefixes",
+            return_value=[
+                {
+                    "operation_id": "op_z",
+                    "status": "stale",
+                    "detail": "...",
+                    "alert": fake_alert,
+                    "prefix": "",
+                }
+            ],
         ),
         patch("agents.franky.alert_router.make_default_sink", return_value=MagicMock()),
     ):
@@ -120,7 +126,7 @@ def test_backup_verify_records_failure_on_uncaught_exception():
     from shared import heartbeat
 
     with patch(
-        "agents.franky.r2_backup_verify.verify_once",
+        "agents.franky.r2_backup_verify.verify_all_prefixes",
         side_effect=RuntimeError("boto crash"),
     ):
         with pytest.raises(RuntimeError):

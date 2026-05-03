@@ -238,7 +238,8 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             ON health_probe_state(last_status, last_check_at DESC);
 
         -- ADR-007 §5 R2 backup verification history.
-        -- Canonical DDL lives in migrations/004_r2_backup_checks.sql.
+        -- Canonical DDL lives in migrations/004_r2_backup_checks.sql
+        -- + migrations/008_r2_backup_checks_prefix.sql (added `prefix` column).
         CREATE TABLE IF NOT EXISTS r2_backup_checks (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             checked_at          TEXT NOT NULL,
@@ -247,11 +248,15 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             latest_object_mtime TEXT,
             status              TEXT NOT NULL
                                 CHECK (status IN ('ok', 'stale', 'missing', 'too_small')),
-            detail              TEXT
+            detail              TEXT,
+            prefix              TEXT NOT NULL DEFAULT ''
         );
 
         CREATE INDEX IF NOT EXISTS idx_r2_backup_time
             ON r2_backup_checks(checked_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_r2_backup_prefix_time
+            ON r2_backup_checks(prefix, checked_at DESC);
 
         -- ADR-008 §2 — Phase 2a-min GSC rows store.
         -- Canonical DDL: migrations/005_gsc_rows.sql.
@@ -349,11 +354,13 @@ def _init_tables(conn: sqlite3.Connection) -> None:
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
+    # r2_backup_checks 曾經沒有 prefix 欄位（migration 008 前）。
     # ALTER TABLE ADD COLUMN 沒有 IF NOT EXISTS 語法，用 try/except 補。
     for col_ddl in (
         "ALTER TABLE api_calls ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE api_calls ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE api_calls ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE r2_backup_checks ADD COLUMN prefix TEXT NOT NULL DEFAULT ''",
     ):
         try:
             conn.execute(col_ddl)
