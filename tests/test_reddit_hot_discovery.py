@@ -205,3 +205,48 @@ def test_hot_skips_posts_missing_created_utc():
         posts = reddit_api.hot_in_health_subreddits()
 
     assert [p["title"] for p in posts] == ["valid"]
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# search_reddit_posts — subreddit_allowlist for zh-content keyword_research
+# (GH #33 Item 4: reddit_zh query 精度)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _empty_search_response() -> MagicMock:
+    fake = MagicMock()
+    fake.json.return_value = {"data": {"children": []}}
+    fake.raise_for_status = MagicMock()
+    return fake
+
+
+def test_search_reddit_posts_without_allowlist_uses_global_search_url():
+    """Backward compat: bare call hits /search.json, no restrict_sr param."""
+    with patch("httpx.get", return_value=_empty_search_response()) as mock_get:
+        reddit_api.search_reddit_posts("creatine")
+
+    args, kwargs = mock_get.call_args
+    assert args[0] == "https://www.reddit.com/search.json"
+    assert "restrict_sr" not in kwargs["params"]
+
+
+def test_search_reddit_posts_with_allowlist_uses_multi_subreddit_url():
+    """allowlist → URL becomes /r/sub1+sub2+.../search.json + restrict_sr=on."""
+    allowlist = ["longevity", "nutrition", "biohacking"]
+    with patch("httpx.get", return_value=_empty_search_response()) as mock_get:
+        reddit_api.search_reddit_posts("深度睡眠", subreddit_allowlist=allowlist)
+
+    args, kwargs = mock_get.call_args
+    assert args[0] == "https://www.reddit.com/r/longevity+nutrition+biohacking/search.json"
+    assert kwargs["params"]["restrict_sr"] == "on"
+    assert kwargs["params"]["q"] == "深度睡眠"
+
+
+def test_search_reddit_posts_empty_allowlist_falls_back_to_global():
+    """Falsy allowlist (empty list, None) keeps legacy global search."""
+    with patch("httpx.get", return_value=_empty_search_response()) as mock_get:
+        reddit_api.search_reddit_posts("topic", subreddit_allowlist=[])
+
+    args, kwargs = mock_get.call_args
+    assert args[0] == "https://www.reddit.com/search.json"
+    assert "restrict_sr" not in kwargs["params"]

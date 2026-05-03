@@ -50,8 +50,9 @@ def _stub_collectors(monkeypatch):
         lambda *_: {"trend_direction": "stable", "related_top": [], "related_rising": []},
     )
     monkeypatch.setattr(kw_mod, "get_suggestions", lambda *_: {"suggestions": []})
-    monkeypatch.setattr(kw_mod, "search_recent_tweets", lambda *_: {"tweets": []})
-    monkeypatch.setattr(kw_mod, "search_reddit_posts", lambda *_: {"posts": []})
+    # `**__` swallows new kwargs (subreddit_allowlist / region) added for GH #33 Item 4+5
+    monkeypatch.setattr(kw_mod, "search_recent_tweets", lambda *_, **__: {"tweets": []})
+    monkeypatch.setattr(kw_mod, "search_reddit_posts", lambda *_, **__: {"posts": []})
 
 
 def test_research_keywords_passes_today_iso_to_load_prompt(monkeypatch):
@@ -72,6 +73,99 @@ def test_research_keywords_passes_today_iso_to_load_prompt(monkeypatch):
     assert "today_iso" in captured, "load_prompt must receive today_iso (Item 3)"
     expected = datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
     assert captured["today_iso"] == expected, "today_iso should be Asia/Taipei wall-clock date"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# GH #33 Item 4 + 5 — reddit_zh / twitter_zh language channel biasing
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_reddit_zh_collector_passes_subreddit_allowlist():
+    """reddit_zh must invoke search_reddit_posts with the health subreddit allowlist
+    so zh queries don't land on r/moneyfengcn etc. (eval finding 2026-04-19)."""
+    captured_calls: list[dict] = []
+
+    def _spy_reddit(*args, **kwargs):
+        captured_calls.append({"args": args, "kwargs": kwargs})
+        return {"posts": []}
+
+    def _spy_twitter(*args, **kwargs):
+        return {"tweets": []}
+
+    # We don't actually need to invoke the full pipeline — just verify the
+    # collector dict construction. Monkeypatch the leaf functions and run
+    # research_keywords with a stubbed Claude ask.
+    from unittest.mock import patch as _patch
+
+    with (
+        _patch.object(kw_mod, "search_reddit_posts", side_effect=_spy_reddit),
+        _patch.object(kw_mod, "search_recent_tweets", side_effect=_spy_twitter),
+        _patch.object(kw_mod, "search_top_videos", return_value={"top_videos": [], "avg_views": 0}),
+        _patch.object(
+            kw_mod,
+            "get_trends",
+            return_value={"trend_direction": "stable", "related_top": [], "related_rising": []},
+        ),
+        _patch.object(kw_mod, "get_suggestions", return_value={"suggestions": []}),
+        _patch.object(kw_mod, "load_prompt", return_value="stub"),
+        _patch.object(
+            kw_mod,
+            "ask",
+            return_value='{"core_keywords": [], "youtube_titles": []}',
+        ),
+    ):
+        kw_mod.research_keywords("深度睡眠", content_type="blog", en_topic="deep sleep")
+
+    # Two reddit calls: zh (with allowlist) + en (without)
+    zh_calls = [c for c in captured_calls if c["args"] and c["args"][0] == "深度睡眠"]
+    en_calls = [c for c in captured_calls if c["args"] and c["args"][0] == "deep sleep"]
+    assert len(zh_calls) == 1
+    assert len(en_calls) == 1
+    # zh must have allowlist
+    assert "subreddit_allowlist" in zh_calls[0]["kwargs"]
+    assert zh_calls[0]["kwargs"]["subreddit_allowlist"] == kw_mod._HEALTH_SUBREDDITS
+    # en must NOT have allowlist (legacy global search behaviour)
+    assert "subreddit_allowlist" not in en_calls[0]["kwargs"]
+
+
+def test_twitter_zh_collector_passes_region_tw_tzh():
+    """twitter_zh must invoke search_recent_tweets(region='tw-tzh') so DDG biases
+    to Taiwan zh-TW results (eval finding 2026-04-19 — Charles Zhang zh-CN dominance)."""
+    captured_calls: list[dict] = []
+
+    def _spy_twitter(*args, **kwargs):
+        captured_calls.append({"args": args, "kwargs": kwargs})
+        return {"tweets": []}
+
+    from unittest.mock import patch as _patch
+
+    with (
+        _patch.object(kw_mod, "search_recent_tweets", side_effect=_spy_twitter),
+        _patch.object(kw_mod, "search_reddit_posts", return_value={"posts": []}),
+        _patch.object(kw_mod, "search_top_videos", return_value={"top_videos": [], "avg_views": 0}),
+        _patch.object(
+            kw_mod,
+            "get_trends",
+            return_value={"trend_direction": "stable", "related_top": [], "related_rising": []},
+        ),
+        _patch.object(kw_mod, "get_suggestions", return_value={"suggestions": []}),
+        _patch.object(kw_mod, "load_prompt", return_value="stub"),
+        _patch.object(
+            kw_mod,
+            "ask",
+            return_value='{"core_keywords": [], "youtube_titles": []}',
+        ),
+    ):
+        kw_mod.research_keywords("深度睡眠", content_type="blog", en_topic="deep sleep")
+
+    zh_calls = [c for c in captured_calls if c["args"] and c["args"][0] == "深度睡眠"]
+    en_calls = [c for c in captured_calls if c["args"] and c["args"][0] == "deep sleep"]
+    assert len(zh_calls) == 1
+    assert len(en_calls) == 1
+    # zh must have region=tw-tzh
+    assert zh_calls[0]["kwargs"].get("region") == "tw-tzh"
+    # en must NOT have region (legacy DDG default)
+    assert "region" not in en_calls[0]["kwargs"]
 
 
 # ──────────────────────────────────────────────────────────────────────────
