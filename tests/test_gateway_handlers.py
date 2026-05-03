@@ -1954,6 +1954,195 @@ def test_pubmed_lookup_tool_caps_max_results_at_20():
 # ── /pubmed_lookup ──────────────────────────────────────────────────
 
 
+# ── ask_zoro tool（inter-agent delegation） ─────────────────────────
+
+
+def test_ask_zoro_trend_check_happy_path():
+    """ask_zoro(trend_check) → 呼叫 trends_api.get_trends 並 render 摘要。"""
+    fake_trends = {
+        "trend_direction": "rising",
+        "related_top": [
+            {"query": "intermittent fasting", "value": 100},
+            {"query": "16:8 fasting", "value": 80},
+        ],
+        "related_rising": [{"query": "circadian fasting", "value": "+250%"}],
+    }
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "ask_zoro",
+                    {"query": "fasting", "capability": "trend_check"},
+                    id_="toolu_az1",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("斷食最近 3 個月在升")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("agents.zoro.trends_api.get_trends", return_value=fake_trends) as mock_trends,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        result = NamiHandler().handle("general", "fasting 趨勢如何", "U1")
+
+    mock_trends.assert_called_once_with("fasting")
+    event_calls = [c for c in mock_emit.call_args_list if c[0][1] == "ask_zoro"]
+    assert len(event_calls) == 1
+    assert event_calls[0][0][2]["capability"] == "trend_check"
+    assert "斷食" in result.text
+
+
+def test_ask_zoro_social_listening_uses_health_subreddits_first():
+    """social_listening 先試 hot_in_health_subreddits，title 比對成功就用，不退到 fallback。"""
+    matched_post = {
+        "title": "Daily creatine for cognitive aging",
+        "url": "https://reddit.com/r/longevity/abc",
+        "score": 312,
+        "num_comments": 86,
+        "subreddit": "longevity",
+    }
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "ask_zoro",
+                    {"query": "creatine", "capability": "social_listening"},
+                    id_="toolu_az2",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("Reddit 上 creatine 最熱的是這篇")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "agents.zoro.reddit_api.hot_in_health_subreddits",
+            return_value=[matched_post],
+        ) as mock_hot,
+        patch("agents.zoro.reddit_api.search_reddit_posts") as mock_search,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "Reddit 上 creatine 紅嗎", "U1")
+
+    mock_hot.assert_called_once()
+    mock_search.assert_not_called()  # 比對到就不退 fallback
+
+
+def test_ask_zoro_social_listening_falls_back_to_search_when_no_health_match():
+    """hot_in_health_subreddits 沒匹配時退到全 Reddit search。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "ask_zoro",
+                    {"query": "rare-keyword", "capability": "social_listening"},
+                    id_="toolu_az3",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("找到全 Reddit search 結果")]),
+    ]
+    fallback_post = {
+        "title": "rare-keyword discussion",
+        "url": "https://reddit.com/r/random/xyz",
+        "score": 5,
+        "num_comments": 2,
+        "subreddit": "random",
+    }
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("agents.zoro.reddit_api.hot_in_health_subreddits", return_value=[]),
+        patch(
+            "agents.zoro.reddit_api.search_reddit_posts",
+            return_value={"posts": [fallback_post]},
+        ) as mock_search,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "Reddit 上 rare-keyword 紅嗎", "U1")
+
+    mock_search.assert_called_once_with("rare-keyword", max_results=10)
+
+
+def test_ask_zoro_keyword_research_invokes_zoro_orchestrator():
+    """keyword_research → 呼叫 research_keywords()，render keywords + titles + sources。"""
+    fake_kr = {
+        "keywords": ["fasting", "intermittent fasting", "16:8"],
+        "blog_titles": ["斷食的科學基礎", "16:8 一週實踐心得"],
+        "sources_used": ["trends", "reddit", "youtube"],
+        "sources_failed": [],
+        "analysis_summary": "斷食關鍵字機會主要在中文長尾",
+    }
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "ask_zoro",
+                    {"query": "斷食", "capability": "keyword_research"},
+                    id_="toolu_az4",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("Zoro 提了三個方向")]),
+    ]
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "agents.zoro.keyword_research.research_keywords",
+            return_value=fake_kr,
+        ) as mock_kr,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "斷食關鍵字研究", "U1")
+
+    mock_kr.assert_called_once_with("斷食", content_type="blog")
+
+
+def test_ask_zoro_invalid_capability_returns_error():
+    """無效 capability → is_error=True，不 import 任何 zoro module。"""
+    outcome = NamiHandler()._tool_ask_zoro({"query": "x", "capability": "wrong_cap"})
+    assert outcome.is_error is True
+    assert "capability 必須是" in outcome.content
+
+
+def test_ask_zoro_empty_query_returns_error():
+    outcome = NamiHandler()._tool_ask_zoro({"query": "  ", "capability": "trend_check"})
+    assert outcome.is_error is True
+    assert "query" in outcome.content
+
+
+def test_ask_zoro_zoro_failure_propagates_to_loop():
+    """Zoro module 內 raise → 包成 is_error=True 的 _ToolOutcome（不炸 loop）。"""
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("Zoro down")
+
+    with patch("agents.zoro.trends_api.get_trends", side_effect=boom):
+        outcome = NamiHandler()._tool_ask_zoro({"query": "x", "capability": "trend_check"})
+
+    assert outcome.is_error is True
+    assert "Zoro" in outcome.content
+
+
+# ── /ask_zoro ───────────────────────────────────────────────────────
+
+
 def test_format_event_message():
     payload = {"title": "研究完成", "path": "reports/intel.md"}
     fallback, blocks = format_event_message("zoro", "intel_ready", payload)

@@ -605,6 +605,44 @@ NAMI_TOOLS: list[dict] = [
     },
     # ── / Web research tools ──────────────────────────────────────
     {
+        "name": "ask_zoro",
+        "description": (
+            "把超出你能力的 social listening / trend / KOL / 關鍵字熱度類 query 委託給 "
+            "Zoro（劍士，情報偵察）。Zoro 能做：\n"
+            "- trend_check: Google Trends — 看一個關鍵字的 3 個月趨勢方向（rising/"
+            "declining/stable）+ 相關熱搜 + 上升搜尋。快（<10s）。\n"
+            "- social_listening: Reddit 健康類 subreddit (r/longevity, r/biohacking, "
+            "r/nutrition, r/sleep 等) 24-48h 內 hot post 列表。快（<10s）。\n"
+            "- keyword_research: 中英雙語完整關鍵字研究（Trends + Reddit + YouTube + "
+            "Twitter + autocomplete + LLM 合成標題建議）。慢（30-60s）。\n"
+            "**何時用**：船長問「最近社群熱議」「XX 在 Reddit 紅嗎」「XX 趨勢如何」"
+            "「想知道 XX 的關鍵字機會」。\n"
+            "**何時不用**：一般 web search / 新聞報導 / 學術研究——你自己用 web_search/"
+            "pubmed_lookup 即可，不要繞道 Zoro。\n"
+            "**收到結果後**：用你自己的 Nami 口吻 paraphrase 給船長，不要照貼 Zoro "
+            "結構化原文（船長看到的是你不是 Zoro）。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "要問 Zoro 的內容（中英皆可，保留原始問題語意）",
+                },
+                "capability": {
+                    "type": "string",
+                    "enum": ["trend_check", "social_listening", "keyword_research"],
+                    "description": (
+                        "trend_check = Google Trends 趨勢方向（快）；"
+                        "social_listening = Reddit 健康類熱門 post（快）；"
+                        "keyword_research = 完整關鍵字研究全套（慢，30-60s）"
+                    ),
+                },
+            },
+            "required": ["query", "capability"],
+        },
+    },
+    {
         "name": "ask_user",
         "description": (
             "當必要資訊缺失時向使用者問一個澄清問題。"
@@ -868,6 +906,8 @@ class NamiHandler(BaseHandler):
                 return self._tool_fetch_url(tool_input)
             if name == "pubmed_lookup":
                 return self._tool_pubmed_lookup(tool_input)
+            if name == "ask_zoro":
+                return self._tool_ask_zoro(tool_input)
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
         except VaultRuleViolation as e:
             return _ToolOutcome(content=f"Vault 規則違反：{e}", is_error=True)
@@ -1874,6 +1914,115 @@ class NamiHandler(BaseHandler):
                     "since_year": since_year,
                 },
                 "log": f"pubmed: {query!r} ({len(results)} hits)",
+            },
+        )
+
+    def _tool_ask_zoro(self, input_: dict) -> _ToolOutcome:
+        query = str(input_.get("query", "")).strip()
+        capability = str(input_.get("capability", "")).strip()
+        if not query:
+            return _ToolOutcome(content="query 不能為空", is_error=True)
+        if capability not in ("trend_check", "social_listening", "keyword_research"):
+            return _ToolOutcome(
+                content=(
+                    "capability 必須是 trend_check / social_listening / keyword_research，"
+                    f"收到：{capability!r}"
+                ),
+                is_error=True,
+            )
+
+        try:
+            if capability == "trend_check":
+                from agents.zoro.trends_api import get_trends
+
+                data = get_trends(query)
+                if not data:
+                    return _ToolOutcome(
+                        content=(
+                            f"Zoro 報：Google Trends 查不到「{query}」資料（API 失敗或無數據）"
+                        )
+                    )
+                top = data.get("related_top", [])
+                rising = data.get("related_rising", [])
+                lines = [
+                    f"Zoro 報 Google Trends「{query}」（過去 3 個月）：",
+                    f"- 趨勢方向：{data.get('trend_direction', 'unknown')}",
+                ]
+                if top:
+                    top_str = ", ".join(f"{r['query']}({r['value']})" for r in top[:10])
+                    lines.append(f"- 相關熱搜 top {len(top[:10])}：{top_str}")
+                if rising:
+                    rising_str = ", ".join(f"{r['query']}({r['value']})" for r in rising[:5])
+                    lines.append(f"- 上升搜尋 top {len(rising[:5])}：{rising_str}")
+                content = "\n".join(lines)
+
+            elif capability == "social_listening":
+                from agents.zoro.reddit_api import (
+                    hot_in_health_subreddits,
+                    search_reddit_posts,
+                )
+
+                # 先試健康 subreddit hot，title 模糊比對
+                hot = hot_in_health_subreddits(limit=50, max_age_hours=48)
+                q_lower = query.lower()
+                matched = [p for p in hot if q_lower in p.get("title", "").lower()][:10]
+                if matched:
+                    posts = matched
+                    source_label = "r/health-subreddits hot 24-48h"
+                else:
+                    # 退到全 Reddit search
+                    fallback = search_reddit_posts(query, max_results=10)
+                    posts = fallback.get("posts", [])
+                    source_label = "Reddit search (year)"
+
+                if not posts:
+                    return _ToolOutcome(content=f"Zoro 報：Reddit 上找不到「{query}」相關熱門貼文")
+
+                lines = [f"Zoro 報 Reddit「{query}」（{source_label}，{len(posts)} 篇）："]
+                for p in posts[:10]:
+                    title = p.get("title", "")
+                    url = p.get("url", "")
+                    score = p.get("score", 0)
+                    comments = p.get("num_comments", 0)
+                    sub = p.get("subreddit", "")
+                    lines.append(
+                        f"- [{title}]({url}) — {score} upvote / {comments} comment / r/{sub}"
+                    )
+                content = "\n".join(lines)
+
+            else:  # keyword_research
+                from agents.zoro.keyword_research import research_keywords
+
+                data = research_keywords(query, content_type="blog")
+                if not data:
+                    return _ToolOutcome(content=f"Zoro keyword research 失敗：「{query}」")
+                keywords = data.get("keywords", [])[:10]
+                titles = data.get("blog_titles", [])[:5]
+                used = data.get("sources_used", [])
+                failed = data.get("sources_failed", [])
+                summary = (data.get("analysis_summary", "") or "")[:500]
+                lines = [
+                    f"Zoro 報完整關鍵字研究「{query}」：",
+                    f"- Keywords (top 10): {keywords}",
+                    f"- Blog title 建議 (top 5): {titles}",
+                    f"- Sources used: {used}",
+                ]
+                if failed:
+                    lines.append(f"- Sources failed: {failed}")
+                if summary:
+                    lines.append(f"- Analysis: {summary}")
+                content = "\n".join(lines)
+
+        except Exception as e:
+            logger.exception(f"ask_zoro {capability} failed for query={query!r}")
+            return _ToolOutcome(content=f"Zoro 執行 {capability} 失敗：{e}", is_error=True)
+
+        return _ToolOutcome(
+            content=content,
+            event={
+                "name": "ask_zoro",
+                "payload": {"query": query, "capability": capability},
+                "log": f"ask_zoro: {capability} {query!r}",
             },
         )
 
