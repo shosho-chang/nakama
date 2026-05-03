@@ -250,3 +250,5 @@
 - [feedback_identity_anchor_over_enumeration.md](feedback_identity_anchor_over_enumeration.md) — LLM voice drift / 風格 leak（簡中→繁中、AI slop、tone）用 positive identity anchor + 反向 sentinel keyword + 不確定 fallback 三層，**禁止窮舉表**（永遠補不完）
 - [reference_inter_agent_delegation_option_a.md](reference_inter_agent_delegation_option_a.md) — Inter-agent delegation Option A pattern：same-process import + tool-based + sync；對 sync 對話 + <30s wall time 是 MVP；Option B 升級觸發點明列
 - [feedback_cf_r2_token_dont_nag.md](feedback_cf_r2_token_dont_nag.md) — CF R2 dashboard 舊 token 永遠不再列入 todo / 待辦 / 反問（修修明確 push back：刪不了 + 攻擊面同 + 煩）
+- [project_session_2026_05_04_5pr_ship.md](project_session_2026_05_04_5pr_ship.md) — **收工 2026-05-04 凌晨**：5 PR 序列 dispatch + 全 squash merged（Nami round 3 / Franky per-prefix / A6 mock spec / kw zh-channels / memory hygiene）+ Usopp #270 closed + SEO 中控台 5 天 0 publish 真議題揭開
+- [feedback_branch_protection_strict_serial_merge.md](feedback_branch_protection_strict_serial_merge.md) — GH branch protection strict + enforce_admins + auto-merge disabled 三層擋；序列 merge cycle 痛點 + update-branch + poll-CI + merge 流程
