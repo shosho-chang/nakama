@@ -9,7 +9,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from agents.zoro.autocomplete import get_suggestions
-from agents.zoro.reddit_api import search_reddit_posts
+from agents.zoro.reddit_api import _HEALTH_SUBREDDITS, search_reddit_posts
 from agents.zoro.trends_api import get_trends
 from agents.zoro.twitter_api import search_recent_tweets
 from agents.zoro.youtube_api import search_top_videos
@@ -95,9 +95,15 @@ def _research_keywords_inner(
         "trends_en": lambda: get_trends(en_topic),
         "autocomplete_zh": lambda: get_suggestions(topic),
         "autocomplete_en": lambda: get_suggestions(en_topic),
-        "twitter_zh": lambda: search_recent_tweets(topic),
+        # GH #33 Item 5 — twitter_zh biases DDG region to Taiwan zh-TW so
+        # results aren't dominated by zh-CN KOLs (the Charles Zhang precedent
+        # in 2026-04-19 eval).
+        "twitter_zh": lambda: search_recent_tweets(topic, region="tw-tzh"),
         "twitter_en": lambda: search_recent_tweets(en_topic),
-        "reddit_zh": lambda: search_reddit_posts(topic),
+        # GH #33 Item 4 — reddit_zh restricts to the health subreddit allowlist
+        # so the zh query doesn't land on unrelated Chinese-content subreddits
+        # (the r/moneyfengcn 「意识是什么」 precedent in 2026-04-19 eval).
+        "reddit_zh": lambda: search_reddit_posts(topic, subreddit_allowlist=_HEALTH_SUBREDDITS),
         "reddit_en": lambda: search_reddit_posts(en_topic),
     }
 
