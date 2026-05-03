@@ -233,7 +233,7 @@
 - [feedback_rule_interaction_audit.md](feedback_rule_interaction_audit.md) — 加 deny rule / 「不要 X」前審 3 題互動；squash × `-d` × `-D deny` 6 天 stale branch 案例
 - QA：[docs/plans/2026-05-01-line-1-qa-acceptance.md](../../docs/plans/2026-05-01-line-1-qa-acceptance.md) — Brook Line 1 端到端驗收 7 phase checklist + Beta sign-off 表 + diagnostics；Mac 跑 Phase 0+B 已驗綠
 - [project_session_2026_05_02_mac_sandcastle.md](project_session_2026_05_02_mac_sandcastle.md) — **收工 2026-05-02**：Mac sandcastle setup 上線（PR #306+#307+#308 三 PR chain）；round 3 通過解 #270；6 個 Mac gotcha 全清；桌機 sync templates + image rebuild 待辦
-- [project_script_video_phase2a.md](project_script_video_phase2a.md) — **Script-Driven Video Phase 5 mac e2e** PR #320 head 1d7ad8d：抓 5 bug 全修（path/codec/CLI main/total_frames/cut 語意翻轉）+ 3 e2e CI test + 46 pytest pass；等修修 DaVinci smoke
+- [project_script_video_phase2a.md](project_script_video_phase2a.md) — **Script-Driven Video Slice 1 SHIPPED 2026-05-03** PR #320 squash bb5d54d + Hyperframes swap (替代 Remotion) + DaVinci smoke 桌機通過；Slice 2 #314 unblocked 等修修 Claude Design hands-on
 - [project_video_workflow_design_2026_05_02.md](project_video_workflow_design_2026_05_02.md) — 修修錄影 cue workflow 凍結：失敗拍兩下 / 成功不用 cue / 4 frame lead-in (133ms@30fps) / voice onset LPF+3consec guard / cascade merge
 - [feedback_e2e_smoke_for_subprocess_pipelines.md](feedback_e2e_smoke_for_subprocess_pipelines.md) — subprocess-stitched pipeline (Python↔Node↔ffmpeg) 必加 e2e fixture test 進 CI；per-stage unit test 全綠 ≠ e2e 通（PR #320 5 bug 教訓）
 - Runbook：[docs/runbooks/2026-05-02-davinci-import-smoke.md](../../docs/runbooks/2026-05-02-davinci-import-smoke.md) — DaVinci import smoke runbook（one-shot task instruction，PR #320 用）
@@ -241,3 +241,5 @@
 - [feedback_multi_agent_review_three_lens.md](feedback_multi_agent_review_three_lens.md) — PR review 用 3 parallel agent w/ isolation worktree，lens = correctness / test-gap / API-design；PR #320 實證 2 blocker + 6 major + reviewer convergence high-signal
 - ADR：[docs/decisions/ADR-015-script-driven-video-production.md](../../docs/decisions/ADR-015-script-driven-video-production.md) — script-driven video 架構 7 grill 分岔凍結（不套 ADR-014 RepurposeEngine、Remotion 不 render 整片、FCPXML 1.10 → DaVinci）
 - Plan：[docs/plans/2026-05-02-script-driven-video-production.md](../../docs/plans/2026-05-02-script-driven-video-production.md) — Phase 1 5 slice 拆分 + 技術選型調研（Remotion / sqlite-vec / BGE-M3 / FCPXML / PyMuPDF4llm）
+- [project_session_2026_05_03_pr320_ship.md](project_session_2026_05_03_pr320_ship.md) — **收工 2026-05-03**：PR #320 Slice 1 ship + Usopp #270 VPS deploy（busy_timeout 30s active 10:54:08）+ sandcastle templates 桌機 sync + image v4 rebuild + Docker AutoStart=true + settings.json 砍 ssh/systemctl deny
+- [feedback_settings_deny_rule_blocks_explicit_auth.md](feedback_settings_deny_rule_blocks_explicit_auth.md) — settings.json deny rule 優先於 conversation explicit auth；命中 deny 三條退路（user 自跑 / 砍 deny / 加 specific allow）
