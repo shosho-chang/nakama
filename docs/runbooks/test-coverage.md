@@ -1,6 +1,6 @@
 # Test Coverage — 量測 + critical-path gate
 
-**Owner:** Phase 6 Slice 1（[task prompt](../task-prompts/2026-04-26-phase-6-test-coverage.md)）
+**Owner:** Phase 6 Slice 1（[task prompt](../archive/task-prompts/2026-04-26-phase-6-test-coverage.md)）
 **Decisions source:** [Q1=A 採用 pytest-cov + critical-path 80% gate + 整體不擋](../plans/2026-04-26-phase-6-test-coverage-decisions.md)
 
 ---
