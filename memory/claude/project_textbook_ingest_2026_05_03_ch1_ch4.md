@@ -25,7 +25,7 @@ type: project
 - 17 章（Chapter 1-17，walker nav = human ch，**不用 rebase**）
 - Slug：`sport-nutrition-jeukendrup-2024`
 - New window dispatch prompt 在 `E:\textbook-ingest\sport-nutrition-jeukendrup-2024\NEW-WINDOW-PROMPT.md`
-- **Status by reset**：walker 17/17 ✓，Phase A 8/17（batch 1 = ch1-ch8 done）；batch 2 = ch9-ch17 還沒 dispatch；Phase B 沒開始
+- **Status (true as of 2026-05-03 PM)**：✅ 全 17 章 Phase A complete（兩 batch 8+9 done 2026-05-02）+ ch3 C-full re-ingest（2026-05-03）+ Phase B reconciliation done（440 new Concept stubs + 45 existing updated；下午 idempotent re-verify 0 new + 0 update 確認收斂）+ Book Entity status: complete + KB/index.md + KB/log.md 寫入完成
 - Style ref：用 BSE ch5.md（cross-book ref，format 同 / domain 不同 OK）
 - Phase B 待 Phase A 全完成後另起 session 跑（可參考此次 BSE Phase B 的 Robin prompt — 概念 dedup 邏輯通用）
 

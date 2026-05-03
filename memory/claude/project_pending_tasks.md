@@ -4,7 +4,7 @@ description: 當前已知的待辦項目，下次對話時提醒修修
 type: project
 tags: [todo, pending]
 created: 2026-04-11
-updated: 2026-05-03
+updated: 2026-05-03 (Sport Nutrition 4E full complete)
 confidence: high
 ttl: 90d
 originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
