@@ -139,11 +139,14 @@ def test_scrape_firecrawl_no_api_key():
 def test_scrape_firecrawl_success():
     mock_response = MagicMock()
     mock_response.markdown = "# Article\n\nContent here " * 10
-    mock_app = MagicMock()
-    mock_app.scrape_url.return_value = mock_response
+    from firecrawl import Firecrawl
+
+    # spec=instance（不是 class）— Firecrawl 用 delegation，方法在 __init__ 才綁
+    mock_app = MagicMock(spec=Firecrawl(api_key="dummy-spec"))
+    mock_app.scrape.return_value = mock_response
     with (
         patch.dict("os.environ", {"FIRECRAWL_API_KEY": "test-key"}),
-        patch("firecrawl.FirecrawlApp", return_value=mock_app),
+        patch("firecrawl.Firecrawl", return_value=mock_app),
     ):
         result = _scrape_firecrawl("https://example.com")
     assert "Article" in result
@@ -152,11 +155,14 @@ def test_scrape_firecrawl_success():
 def test_scrape_firecrawl_empty_response():
     mock_response = MagicMock()
     mock_response.markdown = None
-    mock_app = MagicMock()
-    mock_app.scrape_url.return_value = mock_response
+    from firecrawl import Firecrawl
+
+    # spec=instance（不是 class）— Firecrawl 用 delegation，方法在 __init__ 才綁
+    mock_app = MagicMock(spec=Firecrawl(api_key="dummy-spec"))
+    mock_app.scrape.return_value = mock_response
     with (
         patch.dict("os.environ", {"FIRECRAWL_API_KEY": "test-key"}),
-        patch("firecrawl.FirecrawlApp", return_value=mock_app),
+        patch("firecrawl.Firecrawl", return_value=mock_app),
     ):
         with pytest.raises(RuntimeError, match="空內容"):
             _scrape_firecrawl("https://example.com")
@@ -188,13 +194,16 @@ def test_scrape_auto_falls_back_to_readability():
 def test_scrape_auto_falls_back_to_firecrawl():
     mock_response = MagicMock()
     mock_response.markdown = "# JS Page\n\n" + "content " * 50
-    mock_app = MagicMock()
-    mock_app.scrape_url.return_value = mock_response
+    from firecrawl import Firecrawl
+
+    # spec=instance（不是 class）— Firecrawl 用 delegation，方法在 __init__ 才綁
+    mock_app = MagicMock(spec=Firecrawl(api_key="dummy-spec"))
+    mock_app.scrape.return_value = mock_response
     with (
         patch("shared.web_scraper._fetch_html", return_value=_SHORT_HTML),
         patch("trafilatura.extract", return_value=None),
         patch.dict("os.environ", {"FIRECRAWL_API_KEY": "test-key"}),
-        patch("firecrawl.FirecrawlApp", return_value=mock_app),
+        patch("firecrawl.Firecrawl", return_value=mock_app),
     ):
         result = _scrape_auto("https://example.com")
     assert "JS Page" in result
@@ -236,11 +245,14 @@ def test_scrape_url_mode_string():
 def test_scrape_url_mode_firecrawl():
     mock_response = MagicMock()
     mock_response.markdown = "# Test\n\n" + "word " * 50
-    mock_app = MagicMock()
-    mock_app.scrape_url.return_value = mock_response
+    from firecrawl import Firecrawl
+
+    # spec=instance（不是 class）— Firecrawl 用 delegation，方法在 __init__ 才綁
+    mock_app = MagicMock(spec=Firecrawl(api_key="dummy-spec"))
+    mock_app.scrape.return_value = mock_response
     with (
         patch.dict("os.environ", {"FIRECRAWL_API_KEY": "key"}),
-        patch("firecrawl.FirecrawlApp", return_value=mock_app),
+        patch("firecrawl.Firecrawl", return_value=mock_app),
     ):
         result = scrape_url("https://example.com", mode=ScraperMode.FIRECRAWL)
     assert "Test" in result
