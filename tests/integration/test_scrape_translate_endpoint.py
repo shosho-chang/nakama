@@ -15,6 +15,10 @@ Validates the new BackgroundTask-based behaviour:
   returns: the BG body has run and the placeholder file is overwritten with
   the ``URLDispatcher`` output.
 - Same-URL repeat short-circuits to ``/read?file={existing}`` (acceptance #6).
+- Slice 4 (issue #355): the BG task constructs ``URLDispatcherConfig`` with
+  ``image_downloader_fn`` + ``attachments_abs_dir`` + ``vault_relative_prefix``
+  pointed at ``KB/Attachments/inbox/{slug}/`` so external images are
+  downloaded vault-side and the markdown body uses vault-relative paths.
 
 Mocking note: tests inject ``URLDispatcher.dispatch`` via ``monkeypatch`` on
 ``thousand_sunny.routers.robin.URLDispatcher`` (the caller-binding) so the
@@ -294,3 +298,124 @@ def test_scrape_translate_same_url_short_circuits(client):
     instance.dispatch.assert_not_called()
     # Still exactly one file — no extra placeholder written.
     assert sorted(p.name for p in inbox.glob("*.md")) == ["already-here.md"]
+
+
+# ── Slice 4: image-downloader config injection (issue #355) ──────────────────
+
+
+def test_scrape_translate_injects_image_downloader_config(client, monkeypatch, tmp_path):
+    """Slice 4: BG task wires URLDispatcherConfig with image-fetch hook + paths.
+
+    The router must construct the config such that the dispatcher receives:
+    - ``image_downloader_fn`` set to ``_image_downloader_adapter``
+    - ``attachments_abs_dir`` = ``{vault}/KB/Attachments/inbox/{slug}/``
+    - ``vault_relative_prefix`` = ``"KB/Attachments/inbox/{slug}/"``
+
+    We assert this by intercepting the ``URLDispatcher`` constructor in the
+    router caller-binding and snapshotting the config it receives. This locks
+    in the contract for downstream image downloads landing under the per-slug
+    folder (cross-device sync).
+    """
+    tc, _inbox = client
+    auth = _auth_cookie(tc)
+
+    captured: dict[str, object] = {}
+    fake_result = IngestResult(
+        status="ready",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="# T\n\n" + ("body\n" * 80),
+        title="T",
+        original_url="https://example.com/image-host",
+    )
+
+    def _spy_constructor(config):
+        captured["config"] = config
+        instance = MagicMock()
+        instance.dispatch.return_value = fake_result
+        return instance
+
+    monkeypatch.setattr(
+        "thousand_sunny.routers.robin.URLDispatcher",
+        _spy_constructor,
+    )
+
+    tc.post(
+        "/scrape-translate",
+        data={"url": "https://example.com/image-host"},
+        cookies={"nakama_auth": auth},
+        follow_redirects=False,
+    )
+
+    config = captured["config"]
+    assert config.image_downloader_fn is not None, "image_downloader_fn must be wired"
+
+    # attachments_abs_dir lands under {vault}/KB/Attachments/inbox/{slug}/
+    assert config.attachments_abs_dir is not None
+    assert config.attachments_abs_dir.parent == tmp_path / "KB" / "Attachments" / "inbox"
+    # vault_relative_prefix matches the slug path with trailing slash
+    assert config.vault_relative_prefix is not None
+    assert config.vault_relative_prefix.startswith("KB/Attachments/inbox/")
+    assert config.vault_relative_prefix.endswith("/")
+    # And the slug is consistent across both fields
+    slug_from_dir = config.attachments_abs_dir.name
+    slug_from_prefix = config.vault_relative_prefix.removeprefix("KB/Attachments/inbox/").rstrip(
+        "/"
+    )
+    assert slug_from_dir == slug_from_prefix
+
+
+def test_scrape_translate_image_adapter_calls_real_downloader(client, monkeypatch, tmp_path):
+    """Adapter funnels into ``shared.image_fetcher.download_markdown_images``.
+
+    This is the smoke wire — we patch the real downloader to a recording mock
+    and verify the adapter (which the router injects) calls it with the
+    kwarg shape (``dest_dir`` + ``vault_relative_prefix``) that the
+    underlying function expects. Catches the positional/keyword translation
+    breaking silently if either side's signature drifts.
+    """
+    tc, _inbox = client
+    auth = _auth_cookie(tc)
+
+    raw_md = "# T\n\n![](https://example.com/img.png)\n" + ("body\n" * 80)
+    rewritten = "# T\n\n![](KB/Attachments/inbox/x/img-1.png)\n" + ("body\n" * 80)
+
+    captured: dict[str, object] = {}
+
+    def _fake_download(md_text, *, dest_dir, vault_relative_prefix, **_kw):
+        captured["md_text"] = md_text
+        captured["dest_dir"] = dest_dir
+        captured["vault_relative_prefix"] = vault_relative_prefix
+        return rewritten, ["KB/Attachments/inbox/x/img-1.png"]
+
+    monkeypatch.setattr(
+        "thousand_sunny.routers.robin.download_markdown_images",
+        _fake_download,
+    )
+    # Stub URLDispatcher to actually invoke the configured downloader so we
+    # exercise the adapter inside the router's BG task end-to-end.
+    from agents.robin.url_dispatcher import URLDispatcher as RealURLDispatcher
+
+    monkeypatch.setattr(
+        "thousand_sunny.routers.robin.URLDispatcher",
+        lambda config: RealURLDispatcher(
+            type(config)(
+                scrape_url_fn=lambda _u: raw_md,
+                image_downloader_fn=config.image_downloader_fn,
+                attachments_abs_dir=config.attachments_abs_dir,
+                vault_relative_prefix=config.vault_relative_prefix,
+            )
+        ),
+    )
+
+    tc.post(
+        "/scrape-translate",
+        data={"url": "https://example.com/post"},
+        cookies={"nakama_auth": auth},
+        follow_redirects=False,
+    )
+
+    # Adapter must have called the underlying function with kwargs.
+    assert captured["md_text"] == raw_md
+    assert isinstance(captured["dest_dir"], Path)
+    assert str(captured["vault_relative_prefix"]).startswith("KB/Attachments/inbox/")
