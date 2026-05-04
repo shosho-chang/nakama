@@ -586,6 +586,41 @@ def test_scrape_translate_filename_collision_adds_counter(client, vault, monkeyp
     assert len(counter_files) == 1
 
 
+def test_flip_placeholder_to_failed_recovery_failure_logs_only(client, vault, monkeypatch):
+    """When the recovery write itself raises, the helper logs and returns silently.
+
+    Slice 1 ``_flip_placeholder_to_failed`` is the last-resort path that runs
+    when ``_ingest_url_in_background`` outer ``except`` already fired. If the
+    recovery write also fails (vault truly unreachable, disk full), there's
+    nothing more we can do — but the function must NOT propagate, since
+    FastAPI's BackgroundTasks doesn't surface exceptions to callers and a
+    raise here would just silently terminate the task without logging.
+    """
+    _, mod = client
+    placeholder = vault / "Inbox" / "kb"
+    placeholder.mkdir(parents=True, exist_ok=True)
+    target = placeholder / "stuck.md"
+    target.write_text("---\nfulltext_status: processing\n---\nbody\n", encoding="utf-8")
+
+    class _BoomWriter:
+        def __init__(self, *_a, **_kw):
+            raise RuntimeError("vault unreachable for recovery")
+
+    monkeypatch.setattr(mod, "InboxWriter", _BoomWriter)
+
+    # Must not raise.
+    mod._flip_placeholder_to_failed(
+        placeholder_path=target,
+        url="https://example.com/x",
+        exc=RuntimeError("original BG crash"),
+        source_type="article",
+        content_nature="popular_science",
+    )
+
+    # Original placeholder unchanged — recovery didn't run, but no crash either.
+    assert "fulltext_status: processing" in target.read_text(encoding="utf-8")
+
+
 def test_scrape_translate_scrape_failure_writes_failed_row(client, vault, monkeypatch):
     """Slice 1: scraper 失敗不再 422，改寫入 status=failed inbox row。"""
     tc, mod = client

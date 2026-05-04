@@ -211,6 +211,42 @@ def test_scrape_translate_short_content_writes_failed_status(client):
     assert "疑似 bot 擋頁" in content
 
 
+# ── BG task crash recovery ──────────────────────────────────────────────────
+
+
+def test_scrape_translate_bg_crash_flips_placeholder_to_failed(client):
+    """BG task crashing on URLDispatcher init must flip the row to ❌, not stay 🔄.
+
+    Slice 1 has no delete UI (Slice 5 #356 adds it), so a placeholder stuck on
+    ``processing`` would be permanently invisible to the user — the recovery
+    write in ``_flip_placeholder_to_failed`` is the only off-ramp.
+    """
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+
+    with patch(
+        "thousand_sunny.routers.robin.URLDispatcher",
+        spec=URLDispatcher,
+        side_effect=RuntimeError("dispatcher boom"),
+    ):
+        resp = tc.post(
+            "/scrape-translate",
+            data={"url": "https://example.com/crashed"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    # Route still returned 303 — BG task crash is invisible to caller.
+    assert resp.status_code == 303
+    md_files = list(inbox.glob("*.md"))
+    assert len(md_files) == 1
+    content = md_files[0].read_text(encoding="utf-8")
+    # Recovery write replaced the processing placeholder with a failed row.
+    assert "fulltext_status: failed" in content
+    assert "fulltext_layer: unknown" in content
+    assert "後台任務崩潰" in content
+
+
 # ── Same-URL short-circuit (acceptance #6) ──────────────────────────────────
 
 
