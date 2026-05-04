@@ -104,6 +104,7 @@ Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS
 - `Journals/` — 完全禁止寫入
 - `KB/Raw/` — 不可改寫原文，僅可補全 frontmatter
 - `KB/Wiki/` — 主要工作區，可自由建立與更新
+- `KB/Annotations/` — Reader annotation store（ADR-017）；僅 Reader 寫入，每個 source slug 一個 `.md` 檔
 - `KB/index.md` — 每次新增/更新 Wiki 頁面後必須同步更新
 - `KB/log.md` — Append-only，不可修改歷史紀錄
 - 頁面內容用繁體中文，frontmatter key 用英文，專有名詞保留原文附英文翻譯

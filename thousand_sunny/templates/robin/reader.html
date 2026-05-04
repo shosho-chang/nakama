@@ -256,9 +256,13 @@
     // ── State ──
     const FILENAME = '{{ filename }}';
     const BASE = '{{ base | default("inbox") }}';
+    const SLUG = {{ slug | tojson }};
     const FRONTMATTER_RAW = {{ frontmatter_raw | tojson }};
     const IS_BILINGUAL = {{ is_bilingual | tojson }};
-    let mdSource = {{ content | tojson }};
+    // Pure source content — never mutated by annotation saves (ADR-017)
+    const mdSource = {{ content | tojson }};
+    // Mutable annotation state — loaded from server, updated client-side
+    let annotationsData = {{ annotations | tojson }};
     let pendingSelectedText = '';
 
     const readerContent = document.getElementById('readerContent');
@@ -271,6 +275,36 @@
     const modalContext = document.getElementById('modalContext');
     const modalInput = document.getElementById('modalInput');
 
+    // ── Build annotated markdown from pure source + annotation data ──
+
+    function buildAnnotatedMd() {
+      let md = mdSource;
+
+      // Phase 1: Insert ==highlights==
+      for (const item of annotationsData) {
+        if (item.type !== 'highlight') continue;
+        const m = findInStr(item.text, md);
+        if (!m) continue;
+        if (md.substring(Math.max(0, m.index - 2), m.index) === '==') continue;
+        md = md.substring(0, m.index) + '==' + m[0] + '==' + md.substring(m.index + m[0].length);
+      }
+
+      // Phase 2: Insert > [!annotation] callouts after the relevant paragraph
+      for (const item of annotationsData) {
+        if (item.type !== 'annotation') continue;
+        const m = findInStr(item.ref, md);
+        if (!m) continue;
+        const searchFrom = m.index + m[0].length;
+        let paraEnd = md.indexOf('\n\n', searchFrom);
+        if (paraEnd === -1) paraEnd = md.length;
+        const noteLines = item.note.split('\n').map(l => '> ' + l).join('\n');
+        const block = `\n\n> [!annotation] ${item.ref}\n${noteLines}\n`;
+        md = md.substring(0, paraEnd) + block + md.substring(paraEnd);
+      }
+
+      return md;
+    }
+
     // ── Rendering (two-pass to avoid marked.js wrapping sidenotes in <p>) ──
 
     function render() {
@@ -279,7 +313,7 @@
       const annRefs = [];
       let annCounter = 0;
 
-      let md = mdSource.replace(
+      let md = buildAnnotatedMd().replace(
         /^> \[!annotation\]\s*(.*)\n((?:^> .*(?:\n|$))*)/gm,
         function(match, refLine, body) {
           annCounter++;
@@ -401,44 +435,28 @@
       return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    function findInSource(text) {
+    // Find text in a given string (or mdSource if omitted); returns RegExp exec result with .index
+    function findInStr(text, src) {
+      src = (src !== undefined) ? src : mdSource;
       const escaped = escapeRegex(text);
       const flexPattern = escaped.replace(/\s+/g, '\\s+');
       const regex = new RegExp(flexPattern);
-      return mdSource.match(regex);
+      return regex.exec(src);
     }
 
-    function highlightInSource(text) {
-      const match = findInSource(text);
-      if (match) {
-        const idx = mdSource.indexOf(match[0]);
-        mdSource = mdSource.substring(0, idx) + '==' + match[0] + '==' + mdSource.substring(idx + match[0].length);
-        return true;
-      }
-      return false;
+    function addHighlight(text) {
+      if (!findInStr(text)) return false;
+      if (annotationsData.some(a => a.type === 'highlight' && a.text === text)) return true;
+      annotationsData.push({ type: 'highlight', text, created_at: new Date().toISOString() });
+      return true;
     }
 
-    function addAnnotationInSource(text, note) {
-      const match = findInSource(text);
-      if (!match) return false;
-      const idx = mdSource.indexOf(match[0]);
-
-      // Highlight the text if not already
-      const before2 = mdSource.substring(Math.max(0, idx - 2), idx);
-      if (before2 !== '==') {
-        mdSource = mdSource.substring(0, idx) + '==' + match[0] + '==' + mdSource.substring(idx + match[0].length);
-      }
-
-      // Find end of paragraph
-      const searchFrom = mdSource.indexOf(match[0], idx) + match[0].length;
-      let paraEnd = mdSource.indexOf('\n\n', searchFrom);
-      if (paraEnd === -1) paraEnd = mdSource.length;
-
-      // Build annotation block
-      const refText = text.substring(0, 60).replace(/\n/g, ' ');
-      const noteLines = note.split('\n').map(l => '> ' + l).join('\n');
-      const block = `\n\n> [!annotation] ${refText}\n${noteLines}\n`;
-      mdSource = mdSource.substring(0, paraEnd) + block + mdSource.substring(paraEnd);
+    function addAnnotation(text, note) {
+      if (!findInStr(text)) return false;
+      // Ensure the annotated text is also highlighted
+      addHighlight(text);
+      const ref = text.substring(0, 60).replace(/\n/g, ' ');
+      annotationsData.push({ type: 'annotation', ref, note, created_at: new Date().toISOString() });
       return true;
     }
 
@@ -452,13 +470,19 @@
     }
 
     async function saveContent() {
-      const form = new FormData();
-      form.append('filename', FILENAME);
-      form.append('base', BASE);
-      const fullContent = FRONTMATTER_RAW ? FRONTMATTER_RAW + '\n' + mdSource : mdSource;
-      form.append('content', fullContent);
+      const payload = {
+        slug: SLUG,
+        source_filename: FILENAME,
+        base: BASE,
+        items: annotationsData,
+        updated_at: new Date().toISOString(),
+      };
       try {
-        const res = await fetch('/save-annotations', { method: 'POST', body: form });
+        const res = await fetch('/save-annotations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
         if (res.ok) showSaved();
       } catch (e) {
         console.error('Save failed:', e);
@@ -489,7 +513,7 @@
         e.preventDefault();
         const text = getSelectedText();
         if (!text) return;
-        if (highlightInSource(text)) {
+        if (addHighlight(text)) {
           window.getSelection().removeAllRanges();
           saveAndRender();
         }
@@ -522,7 +546,7 @@
     function confirmAnnotation() {
       const note = modalInput.value.trim();
       if (!note) { closeModal(); return; }
-      if (addAnnotationInSource(pendingSelectedText, note)) {
+      if (addAnnotation(pendingSelectedText, note)) {
         window.getSelection().removeAllRanges();
         saveAndRender();
       }

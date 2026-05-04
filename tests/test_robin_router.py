@@ -275,6 +275,50 @@ def test_read_source_happy_path_md(client, vault, monkeypatch):
 
     r = tc.get("/read", params={"file": "foo.md"})
     assert r.status_code == 200
+    # Slug and empty annotations injected into page
+    assert "foo" in r.text  # slug derived from filename
+    assert "annotationsData" in r.text or "[]" in r.text  # JS array present
+
+
+def test_read_source_passes_existing_annotations(client, vault, monkeypatch):
+    """Existing annotations are loaded from KB/Annotations/ and injected into the page."""
+    import importlib
+
+    import shared.annotation_store as ann_mod
+    import thousand_sunny.routers.robin as robin_mod
+
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    importlib.reload(ann_mod)
+    importlib.reload(robin_mod)
+
+    monkeypatch.setattr(robin_mod, "fetch_images", lambda p: 0)
+
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    (inbox / "bar.md").write_text("# Bar\n\nHello world", encoding="utf-8")
+
+    # Pre-populate annotation store
+    store = ann_mod.AnnotationStore()
+    store.save(
+        ann_mod.AnnotationSet(
+            slug="bar",
+            source_filename="bar.md",
+            base="inbox",
+            items=[ann_mod.Highlight(text="Hello world", created_at="2026-01-01T00:00:00Z")],
+            updated_at="2026-01-01T00:00:00Z",
+        )
+    )
+
+    # Reload router so it picks up the patched vault path
+    app2 = __import__("fastapi", fromlist=["FastAPI"]).FastAPI()
+    app2.include_router(robin_mod.router)
+    from fastapi.testclient import TestClient as TC2
+
+    tc2 = TC2(app2, follow_redirects=False)
+
+    r = tc2.get("/read", params={"file": "bar.md"})
+    assert r.status_code == 200
+    assert "Hello world" in r.text
 
 
 def test_read_source_without_frontmatter(client, vault, monkeypatch):
@@ -328,33 +372,95 @@ def test_serve_vault_file_not_found_404(client, vault):
 
 
 # ---------------------------------------------------------------------------
-# POST /save-annotations
+# POST /save-annotations  (JSON endpoint — ADR-017)
 # ---------------------------------------------------------------------------
+
+_ANN_PAYLOAD = {
+    "slug": "doc",
+    "source_filename": "doc.md",
+    "base": "inbox",
+    "items": [{"type": "highlight", "text": "hello", "created_at": "2026-01-01T00:00:00Z"}],
+    "updated_at": "2026-01-01T00:00:00Z",
+}
 
 
 def test_save_annotations_auth_required(auth_client):
     tc, _, _ = auth_client
-    r = tc.post("/save-annotations", data={"filename": "x.md", "content": "y"})
+    r = tc.post("/save-annotations", json=_ANN_PAYLOAD)
     assert r.status_code == 403
 
 
-def test_save_annotations_missing_file_404(client, vault):
+def test_save_annotations_unknown_base_400(client, vault):
     tc, _ = client
-    (vault / "Inbox" / "kb").mkdir(parents=True)
-    r = tc.post("/save-annotations", data={"filename": "missing.md", "content": "body"})
-    assert r.status_code == 404
+    payload = {**_ANN_PAYLOAD, "base": "unknown-base"}
+    r = tc.post("/save-annotations", json=payload)
+    assert r.status_code == 400
 
 
-def test_save_annotations_writes_file(client, vault):
+def test_save_annotations_writes_to_kb_annotations(client, vault, monkeypatch):
+    """Saves AnnotationSet to KB/Annotations/{slug}.md; source file NOT mutated."""
+    import importlib
+
+    import shared.annotation_store as ann_mod
+    import thousand_sunny.routers.robin as robin_mod
+
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    importlib.reload(ann_mod)
+    importlib.reload(robin_mod)
+
     tc, _ = client
-    inbox = vault / "Inbox" / "kb"
-    inbox.mkdir(parents=True)
-    (inbox / "doc.md").write_text("orig", encoding="utf-8")
 
-    r = tc.post("/save-annotations", data={"filename": "doc.md", "content": "new body"})
+    r = tc.post("/save-annotations", json=_ANN_PAYLOAD)
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
-    assert (inbox / "doc.md").read_text("utf-8") == "new body"
+
+    ann_file = vault / "KB" / "Annotations" / "doc.md"
+    assert ann_file.exists(), "annotation file must be created in KB/Annotations/"
+    content = ann_file.read_text("utf-8")
+    assert "hello" in content
+    assert "highlight" in content
+
+
+def test_save_annotations_does_not_mutate_source(client, vault, monkeypatch):
+    """Original source file must remain unchanged after save."""
+    import importlib
+
+    import shared.annotation_store as ann_mod
+    import thousand_sunny.routers.robin as robin_mod
+
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    importlib.reload(ann_mod)
+    importlib.reload(robin_mod)
+
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    source_text = "# Pure Source\n\nSome content here."
+    (inbox / "doc.md").write_text(source_text, encoding="utf-8")
+
+    tc, _ = client
+    tc.post("/save-annotations", json=_ANN_PAYLOAD)
+
+    assert (inbox / "doc.md").read_text("utf-8") == source_text
+
+
+def test_save_annotations_sources_base(client, vault, monkeypatch):
+    """base=sources is also accepted and writes to KB/Annotations/."""
+    import importlib
+
+    import shared.annotation_store as ann_mod
+    import thousand_sunny.routers.robin as robin_mod
+
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    importlib.reload(ann_mod)
+    importlib.reload(robin_mod)
+
+    (vault / "KB" / "Wiki" / "Sources").mkdir(parents=True)
+    payload = {**_ANN_PAYLOAD, "base": "sources", "slug": "src-doc"}
+
+    tc, _ = client
+    r = tc.post("/save-annotations", json=payload)
+    assert r.status_code == 200
+    assert (vault / "KB" / "Annotations" / "src-doc.md").exists()
 
 
 # ---------------------------------------------------------------------------

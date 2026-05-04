@@ -7,6 +7,9 @@ class VaultRuleViolation(Exception):
     """路徑違反 vault 規則時拋出。"""
 
 
+# Reader 可寫入的路徑前綴（annotation persistence — ADR-017）
+READER_WRITE_WHITELIST = ("KB/Annotations/",)
+
 # Nami 可寫入的路徑前綴
 _NAMI_WRITE_WHITELIST = ("Nami/Notes/",)
 
@@ -66,3 +69,13 @@ def assert_nami_can_read(relative_path: str) -> None:
             return
     allowed = ", ".join(_NAMI_READ_WHITELIST)
     raise VaultRuleViolation(f"Nami 不可讀取此路徑：{relative_path}。允許的前綴：{allowed}")
+
+
+def assert_reader_can_write(relative_path: str) -> None:
+    """Reader annotation store 寫入前驗證路徑合法。違規 raise VaultRuleViolation。"""
+    normalized = _normalize(relative_path)
+    for prefix in READER_WRITE_WHITELIST:
+        if _is_under_prefix(normalized, prefix):
+            return
+    allowed = ", ".join(READER_WRITE_WHITELIST)
+    raise VaultRuleViolation(f"Reader 不可寫入此路徑：{relative_path}。允許的前綴：{allowed}")
