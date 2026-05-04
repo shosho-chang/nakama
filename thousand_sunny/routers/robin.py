@@ -226,6 +226,24 @@ async def save_annotations(
     return {"status": "ok"}
 
 
+@router.post("/sync-annotations/{slug}")
+async def sync_annotations(
+    slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Sync AnnotationStore[slug] annotations into matching Concept page ## 個人觀點 sections.
+
+    Returns a SyncReport with counts and any errors (ADR-017 Slice 2).
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(403)
+    from agents.robin.annotation_merger import ConceptPageAnnotationMerger
+
+    merger = ConceptPageAnnotationMerger()
+    report = await asyncio.to_thread(merger.sync_source_to_concepts, slug)
+    return report
+
+
 @router.post("/mark-read")
 async def mark_read(
     filename: str = Form(...),

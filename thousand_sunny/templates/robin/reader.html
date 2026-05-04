@@ -184,6 +184,8 @@
     <div class="header-right">
       <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解 · T 切換譯文</span>
       <span class="save-indicator" id="saveIndicator">已儲存</span>
+      <span class="save-indicator" id="syncIndicator"></span>
+      <button class="header-btn" id="syncBtn" onclick="syncToKB()">同步到 KB</button>
       <button class="header-btn" id="bilingualToggle" onclick="cycleBilingual()" title="T">雙語</button>
       <button class="header-btn" id="darkToggle" onclick="toggleDark()">Dark</button>
     </div>
@@ -561,6 +563,37 @@
     modalOverlay.addEventListener('click', function(e) {
       if (e.target === modalOverlay) closeModal();
     });
+
+    // ── Sync to KB ──
+
+    const syncIndicator = document.getElementById('syncIndicator');
+    const syncBtn = document.getElementById('syncBtn');
+
+    async function syncToKB() {
+      if (!SLUG) return;
+      syncBtn.disabled = true;
+      syncIndicator.textContent = '同步中…';
+      syncIndicator.style.opacity = '1';
+      syncIndicator.style.color = 'var(--text-muted)';
+      try {
+        const res = await fetch('/sync-annotations/' + encodeURIComponent(SLUG), { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          const updated = (data.concepts_updated || []).length;
+          syncIndicator.textContent = updated > 0 ? `已同步 ${updated} 個概念 ✓` : '無匹配概念';
+          syncIndicator.style.color = updated > 0 ? '#4caf50' : 'var(--text-muted)';
+        } else {
+          syncIndicator.textContent = '同步失敗';
+          syncIndicator.style.color = '#e53935';
+        }
+      } catch (e) {
+        syncIndicator.textContent = '同步失敗';
+        syncIndicator.style.color = '#e53935';
+      } finally {
+        syncBtn.disabled = false;
+        setTimeout(() => { syncIndicator.style.opacity = '0'; }, 3000);
+      }
+    }
 
     // ── Finish reading ──
 
