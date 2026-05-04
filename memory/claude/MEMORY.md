@@ -257,3 +257,4 @@
 - [project_session_2026_05_04_pipeline_arch.md](project_session_2026_05_04_pipeline_arch.md) — **收工 2026-05-04 早**：七層架構凍結 + Line 1 拆兩子模式 + Script-Driven Video 重定位 Stage 5 工具 + Nami #332 + Franky #333 deploy verified；下個 session 開 Line 2 讀書心得手跑流程
 - [project_session_2026_05_04_pm_annotation_ship.md](project_session_2026_05_04_pm_annotation_ship.md) — **收工 2026-05-04 下午**：PRD #337 三 slice 全 ship（PR #342/#343/#344）+ ADR-017 凍結；Line 2 critical path blocker 解掉；Reader 本機 only，VPS 只 vault_rules 純新增
 - [feedback_powershell_allow_exact_prefix.md](feedback_powershell_allow_exact_prefix.md) — PowerShell 回收桶命令必嚴格對齊 settings allow prefix；不能加 `-NoProfile`、不能 `foreach`、不能 fallback Python send2trash
+- [project_session_2026_05_04_evening_ingest_grill.md](project_session_2026_05_04_evening_ingest_grill.md) — **收工 2026-05-04 晚**：QA Phase 0 綠 / Phase 1.x 撞 /scrape-translate 對學術 JS site 不夠 → 拍板 Stage 1 ingest engine unify（不裝 Playwright runtime）；**新對話起手答 5 個 grill 問題凍 scope**
