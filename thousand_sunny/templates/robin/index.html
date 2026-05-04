@@ -40,6 +40,7 @@
   .status-icon { font-size: 1rem; flex-shrink: 0; }
   .status-icon[data-status="processing"] { color: #6c63ff; }
   .status-icon[data-status="ready"] { color: #2e7d32; }
+  .status-icon[data-status="translating"] { color: #6c63ff; }
   .status-icon[data-status="translated"] { color: #2e7d32; }
   .status-icon[data-status="failed"] { color: #c62828; }
   .status-source { font-size: 0.7rem; color: #888; margin-left: 0.4rem; }
@@ -182,6 +183,8 @@
               <span class="status-icon" data-status="processing" title="處理中">🔄</span>
             {% elif file.fulltext_status == "ready" %}
               <span class="status-icon" data-status="ready" title="可讀">✅</span>
+            {% elif file.fulltext_status == "translating" %}
+              <span class="status-icon" data-status="translating" title="翻譯中…">🔄</span>
             {% elif file.fulltext_status == "translated" %}
               <span class="status-icon" data-status="translated" title="已翻譯（可讀雙語版）">📖</span>
             {% elif file.fulltext_status == "failed" %}
