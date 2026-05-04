@@ -30,6 +30,7 @@ from shared.annotation_store import (
     get_annotation_store,
 )
 from shared.config import get_agent_config, get_vault_path
+from shared.discard_service import DiscardService
 from shared.log import get_logger
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.utils import extract_frontmatter, read_text, slugify
@@ -280,6 +281,71 @@ async def mark_read(
         raise HTTPException(404, detail=f"找不到檔案：{filename}")
     mark_file_read(file_path)
     return {"status": "ok"}
+
+
+@router.get("/discard-info")
+async def discard_info(
+    file: str,
+    base: str = "inbox",
+    nakama_auth: str | None = Cookie(None),
+):
+    """Return ``{ slug, annotation_count }`` so frontend can render confirm prompt.
+
+    Used by the「丟掉這篇」reader header button + inbox row delete button to
+    fetch the count BEFORE showing the dialog (PRD §User Stories U24
+    confirm 文字「丟掉「{filename}」**和 {N} 條 annotation**？」).
+
+    Slice 5 (issue #356).
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(403)
+    base_dir = _resolve_reader_base(base)
+    file_path = safe_resolve(base_dir, file)
+    if not file_path.exists():
+        raise HTTPException(404, detail=f"找不到檔案：{file}")
+    service = DiscardService()
+    slug, count = service.annotation_count_for(file_path)
+    return {"slug": slug, "annotation_count": count}
+
+
+@router.post("/discard")
+async def discard(
+    file: str,
+    base: str = "inbox",
+    nakama_auth: str | None = Cookie(None),
+):
+    """Send a vault file (and its annotation companion) to recycle bin.
+
+    Slice 5 (issue #356) — backs the reader header「丟掉這篇」button + inbox
+    row delete button (PRD §User Stories U24/U25). The destructive logic
+    lives in ``shared.discard_service.DiscardService`` so the endpoint stays
+    a thin wrapper (auth + path resolution + redirect).
+
+    Confirmation prompt 由前端 dialog 處理（POST 時已經確認過），所以後端直接
+    執行；caller 不需要再傳 confirm flag。404 when the file doesn't exist
+    means the inbox row was already gone (race with another tab) — frontend
+    treats this as a successful discard.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+    base_dir = _resolve_reader_base(base)
+    file_path = safe_resolve(base_dir, file)
+    # Idempotent: if the file is already gone we still call into the service
+    # so any orphan annotation companion gets cleaned up.
+    service = DiscardService()
+    report = service.discard(file_path, base=base)
+    logger.info(
+        "discard endpoint: %s (deleted_file=%s, annotation_deleted=%s, count=%d)",
+        file_path.name,
+        report.deleted_file,
+        report.annotation_deleted,
+        report.annotation_count,
+    )
+
+    response = RedirectResponse("/", status_code=303)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
 
 
 _VALID_SOURCE_TYPES = {"article", "paper", "book", "video", "podcast"}

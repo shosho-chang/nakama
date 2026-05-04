@@ -42,6 +42,98 @@
   .status-icon[data-status="ready"] { color: #2e7d32; }
   .status-icon[data-status="failed"] { color: #c62828; }
   .status-source { font-size: 0.7rem; color: #888; margin-left: 0.4rem; }
+
+  /* ── Discard hover action (Slice 5, #356) ────────────────────────────────
+     The delete button is a hover-revealed action so it doesn't compete with
+     the primary "Read" + "Start Ingest" CTAs at rest. Stays focusable for
+     keyboard navigation (always in the DOM, only opacity hides it). On
+     touch / narrow viewports we surface it permanently because there's no
+     hover. */
+  .file-card { position: relative; transition: box-shadow 0.15s; }
+  .file-card:hover { box-shadow: 0 1px 8px rgba(0,0,0,.10); }
+  .btn-discard {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.85rem;
+    background: transparent;
+    color: #888;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .file-card:hover .btn-discard,
+  .btn-discard:focus-visible { opacity: 1; }
+  .btn-discard:hover,
+  .btn-discard:focus-visible { color: #c62828; border-color: #c62828; background: #fff5f5; }
+  .btn-discard:disabled { opacity: 0.5 !important; cursor: progress; color: #aaa; border-color: transparent; }
+  @media (hover: none) {
+    .btn-discard { opacity: 1; }
+  }
+
+  /* Native <dialog> confirm — same shape as reader.html, single source of
+     wording (PRD §U24) so the inline-confirm matches the reader experience.
+     dc-* classes scoped to this dialog element only. */
+  dialog.discard-confirm {
+    border: 1px solid #e5e5e5;
+    background: #fff;
+    color: #333;
+    padding: 0;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 480px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  dialog.discard-confirm::backdrop { background: rgba(0,0,0,0.45); }
+  dialog.discard-confirm .dc-head {
+    padding: 1rem 1.25rem 0.5rem;
+    font-size: 1rem;
+    color: #1a1a1a;
+    font-weight: 600;
+  }
+  dialog.discard-confirm .dc-body {
+    padding: 0.25rem 1.25rem 1rem;
+    font-size: 0.9rem;
+    color: #333;
+    line-height: 1.7;
+  }
+  dialog.discard-confirm .dc-body strong { color: #c62828; }
+  dialog.discard-confirm .dc-hint {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 0.5rem;
+  }
+  dialog.discard-confirm .dc-actions {
+    padding: 0.75rem 1.25rem 1.1rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  dialog.discard-confirm .dc-actions button {
+    padding: 0.45rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  dialog.discard-confirm .dc-cancel {
+    background: #f0f0f0;
+    color: #666;
+    border-color: #f0f0f0;
+  }
+  dialog.discard-confirm .dc-cancel:hover,
+  dialog.discard-confirm .dc-cancel:focus-visible { opacity: 0.8; }
+  dialog.discard-confirm .dc-confirm {
+    background: #c62828;
+    color: #fff;
+    border-color: #c62828;
+  }
+  dialog.discard-confirm .dc-confirm:hover,
+  dialog.discard-confirm .dc-confirm:focus-visible { background: #ad1f1f; border-color: #ad1f1f; }
+  dialog.discard-confirm .dc-confirm:disabled { opacity: 0.6; cursor: progress; }
 </style>
 </head>
 <body>
@@ -78,7 +170,10 @@
 
   {% if files %}
     {% for file in files %}
-    <div class="file-card">
+    <div class="file-card" data-filename="{{ file.name }}">
+      <button type="button" class="btn-discard" title="丟掉這篇 (進回收桶)"
+              onclick="openDiscardDialog('{{ file.name }}')"
+              aria-label="丟掉 {{ file.name }}">丟掉</button>
       <div class="file-top">
         <div class="file-info">
           <div class="file-name">
@@ -132,12 +227,92 @@
   </div>
   {% endif %}
 </div>
+
+<!-- Discard Confirm Dialog (Slice 5, #356) — shared across all rows -->
+<dialog id="discardDialog" class="discard-confirm" aria-labelledby="discardDialogTitle">
+  <form id="discardForm" method="post">
+    <div class="dc-head" id="discardDialogTitle">確認丟棄</div>
+    <div class="dc-body" id="discardDialogBody">
+      <!-- Body rendered by openDiscardDialog() so {filename} + count match
+           the file the user clicked. -->
+    </div>
+    <div class="dc-actions">
+      <button type="button" class="dc-cancel" onclick="closeDiscardDialog()">取消</button>
+      <button type="submit" class="dc-confirm" id="discardConfirmBtn">丟棄</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
   function onScrapeSubmit() {
     const btn = document.getElementById('scrapeBtn');
     btn.disabled = true;
     btn.textContent = '抓取中…';
     return true;
+  }
+
+  // ── Discard ("丟掉這篇") inline confirm flow (Slice 5, #356) ──
+  // PRD §U25: inbox row 也有刪除按鈕 (不點進 reader 也能 batch 清理).
+  // We share one <dialog> across all rows, populating filename + count when
+  // the row's "丟掉" button is clicked.
+  const _discardDialog = document.getElementById('discardDialog');
+  const _discardForm = document.getElementById('discardForm');
+  const _discardConfirmBtn = document.getElementById('discardConfirmBtn');
+  const _discardDialogBody = document.getElementById('discardDialogBody');
+  let _discardActiveBtn = null;  // track in-flight row button so we re-enable on cancel
+
+  function _renderDiscardBody(filename, annotationCount) {
+    // PRD §U24 wording: 「丟掉「{filename}」**和 {N} 條 annotation**？此操作可從 Windows 回收桶還原」
+    const safeName = String(filename)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const annClause = annotationCount > 0
+      ? ` 和 <strong>${annotationCount} 條 annotation</strong>`
+      : '';
+    _discardDialogBody.innerHTML =
+      `丟掉「${safeName}」${annClause}？` +
+      `<div class="dc-hint">此操作可從 Windows 回收桶還原。</div>`;
+  }
+
+  async function openDiscardDialog(filename) {
+    if (!_discardDialog || !filename) return;
+    _discardActiveBtn = document.activeElement;
+    _renderDiscardBody(filename, 0);
+    try {
+      const params = new URLSearchParams({ file: filename, base: 'inbox' });
+      const res = await fetch('/discard-info?' + params.toString());
+      if (res.ok) {
+        const data = await res.json();
+        _renderDiscardBody(filename, data.annotation_count || 0);
+      }
+    } catch (e) {
+      console.warn('discard-info fetch failed:', e);
+    }
+    const params = new URLSearchParams({ file: filename, base: 'inbox' });
+    _discardForm.action = '/discard?' + params.toString();
+    if (typeof _discardDialog.showModal === 'function') {
+      _discardDialog.showModal();
+    }
+  }
+
+  function closeDiscardDialog() {
+    if (_discardDialog && typeof _discardDialog.close === 'function') {
+      _discardDialog.close();
+    }
+    if (_discardActiveBtn) {
+      _discardActiveBtn.disabled = false;
+      _discardActiveBtn = null;
+    }
+  }
+
+  if (_discardForm) {
+    _discardForm.addEventListener('submit', function () {
+      if (_discardActiveBtn) _discardActiveBtn.disabled = true;
+      if (_discardConfirmBtn) {
+        _discardConfirmBtn.disabled = true;
+        _discardConfirmBtn.textContent = '丟棄中…';
+      }
+    });
   }
 </script>
 </body>
