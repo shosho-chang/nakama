@@ -146,9 +146,9 @@
   </form>
 </div>
 <div class="container">
-  <!-- URL 抓取 + 翻譯 -->
+  <!-- URL 抓取 -->
   <div class="url-card">
-    <h2>從 URL 抓取並翻譯</h2>
+    <h2>從 URL 抓取</h2>
     <form id="scrapeForm" method="post" action="/scrape-translate" onsubmit="return onScrapeSubmit()">
       <div class="url-row">
         <input class="url-input" type="url" name="url" id="urlInput" placeholder="https://www.nature.com/articles/..." required>
@@ -164,9 +164,9 @@
             <option value="commentary">評論</option>
           </select>
         </div>
-        <button type="submit" id="scrapeBtn">抓取 + 翻譯</button>
+        <button type="submit" id="scrapeBtn">抓取</button>
       </div>
-      <div class="url-hint">抓取後自動翻譯成雙語版，並在 Reader 中開啟</div>
+      <div class="url-hint">抓取後在 Inbox 列出，可在 Reader 中翻譯</div>
     </form>
   </div>
 
