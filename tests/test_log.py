@@ -23,9 +23,7 @@ import pytest
 
 def _make_cp1252_stream() -> io.TextIOWrapper:
     """Build a TextIOWrapper that mirrors Windows default sys.stdout encoding."""
-    return io.TextIOWrapper(
-        io.BytesIO(), encoding="cp1252", errors="strict", write_through=True
-    )
+    return io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict", write_through=True)
 
 
 def test_force_utf8_console_flips_cp1252_to_utf8():
