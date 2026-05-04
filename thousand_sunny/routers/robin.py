@@ -415,19 +415,37 @@ def _ingest_url_in_background(
     Slice 1 has no delete UI to recover (Slice 5 #356 adds the delete button).
     """
     try:
-        # Slice 1 base config (readability+firecrawl via shared.web_scraper)
-        # extended in Slice 4 with image fetch hook so external image URLs
-        # land under ``KB/Attachments/inbox/{slug}/`` and the markdown is
-        # rewritten to vault-relative paths (cross-device sync friendly).
-        # Slice 2 will further widen this with ``fetch_fulltext_fn`` for the
-        # academic 5-layer fallback — see ``URLDispatcherConfig`` docstring.
+        # Combined config: Slice 4 image fetch (per-URL slug dir) + Slice 2 academic
+        # 5-layer fallback (pubmed PDF dir). Separate slots avoid path collision
+        # when a URL routes through both pipelines (general readability + image,
+        # vs academic fetch_fulltext bypass).
+        import os
+
+        from agents.robin.pubmed_fulltext import fetch_fulltext as _fetch_fulltext
+
         slug = placeholder_path.stem
-        attachments_abs_dir = get_vault_path() / "KB" / "Attachments" / "inbox" / slug
-        vault_relative_prefix = f"KB/Attachments/inbox/{slug}/"
+        image_attachments_abs_dir = get_vault_path() / "KB" / "Attachments" / "inbox" / slug
+        image_vault_relative_prefix = f"KB/Attachments/inbox/{slug}/"
+
+        # Academic fetch_fulltext only activates when email is configured —
+        # NCBI / Unpaywall both require contact email. Without it, academic
+        # URLs fall through to the general readability path (Slice 1 baseline).
+        _email = (
+            os.environ.get("UNPAYWALL_EMAIL") or os.environ.get("NOTIFY_TO", "")
+        ).strip() or None
+        _ncbi_key = os.environ.get("PUBMED_API_KEY") or None
+        _fulltext_dir = get_vault_path() / "KB" / "Attachments" / "pubmed"
+        _fulltext_prefix = "KB/Attachments/pubmed"
+
         config = URLDispatcherConfig(
+            fetch_fulltext_fn=_fetch_fulltext if _email else None,
             image_downloader_fn=_image_downloader_adapter,
-            attachments_abs_dir=attachments_abs_dir,
-            vault_relative_prefix=vault_relative_prefix,
+            email=_email,
+            ncbi_api_key=_ncbi_key,
+            fulltext_attachments_abs_dir=_fulltext_dir if _email else None,
+            fulltext_vault_relative_prefix=_fulltext_prefix if _email else None,
+            image_attachments_abs_dir=image_attachments_abs_dir,
+            image_vault_relative_prefix=image_vault_relative_prefix,
         )
         dispatcher = URLDispatcher(config)
         result = dispatcher.dispatch(url)
