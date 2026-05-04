@@ -30,6 +30,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from agents.robin.url_dispatcher import URLDispatcher
 from shared.schemas.ingest_result import IngestResult
 
 
@@ -88,7 +89,7 @@ def test_scrape_translate_redirects_to_inbox_not_reader(client):
         original_url="https://example.com/article",
     )
 
-    with patch("thousand_sunny.routers.robin.URLDispatcher") as MockDispatcher:
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
         instance = MockDispatcher.return_value
         instance.dispatch.return_value = fake_result
 
@@ -124,7 +125,7 @@ def test_scrape_translate_writes_placeholder_synchronously(client):
         original_url="https://example.com/post",
     )
 
-    with patch("thousand_sunny.routers.robin.URLDispatcher") as MockDispatcher:
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
         instance = MockDispatcher.return_value
         instance.dispatch.return_value = fake_result
 
@@ -192,7 +193,7 @@ def test_scrape_translate_short_content_writes_failed_status(client):
         note="抓取結果太短，疑似 bot 擋頁",
     )
 
-    with patch("thousand_sunny.routers.robin.URLDispatcher") as MockDispatcher:
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
         instance = MockDispatcher.return_value
         instance.dispatch.return_value = fake_result
 
@@ -234,7 +235,7 @@ def test_scrape_translate_same_url_short_circuits(client):
         encoding="utf-8",
     )
 
-    with patch("thousand_sunny.routers.robin.URLDispatcher") as MockDispatcher:
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
         instance = MockDispatcher.return_value
         # Should NOT be called when short-circuiting.
         instance.dispatch.side_effect = AssertionError(
@@ -250,5 +251,10 @@ def test_scrape_translate_same_url_short_circuits(client):
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "/read?file=already-here.md"
+    # Direct contract: short-circuit means URLDispatcher class was never even
+    # instantiated by the route (BG task wasn't scheduled). The file-count
+    # assertion below is a secondary check — both must hold.
+    MockDispatcher.assert_not_called()
+    instance.dispatch.assert_not_called()
     # Still exactly one file — no extra placeholder written.
     assert sorted(p.name for p in inbox.glob("*.md")) == ["already-here.md"]

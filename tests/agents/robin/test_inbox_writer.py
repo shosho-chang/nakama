@@ -91,12 +91,19 @@ def test_write_to_inbox_failed_writes_note_into_frontmatter(tmp_path: Path):
     assert "疑似 bot 擋頁" in body
 
 
-def test_write_to_inbox_failed_does_not_write_empty_body_only(tmp_path: Path):
-    """Even a failed result produces a file (so the inbox row is visible)."""
+def test_write_to_inbox_failed_body_contains_user_facing_note(tmp_path: Path):
+    """Failed body must surface the < 200-char hint, not be a vacuous file.
+
+    Without this check the file's mere existence (``st_size > 0``) would be
+    trivially true — a frontmatter alone is non-empty. The user-facing hint
+    is the actual contract: when the reader opens a failed row, they see
+    "疑似 bot 擋頁" not a blank page.
+    """
     writer = InboxWriter(tmp_path)
     path = writer.write_to_inbox(_failed_result(), slug="blocked")
     assert path.exists()
-    assert path.stat().st_size > 0
+    body = read_text(path).split("---\n", 2)[-1]
+    assert "疑似 bot 擋頁" in body
 
 
 # ── Filename collision (acceptance #5) ───────────────────────────────────────
@@ -219,3 +226,43 @@ def test_write_to_inbox_strips_newlines_in_frontmatter_values(tmp_path: Path):
     fm, _ = extract_frontmatter(read_text(path))
     # Frontmatter still parseable + title rendered as a single line.
     assert "\n" not in fm["title"]
+
+
+def test_write_to_inbox_round_trip_title_with_yaml_special_chars(tmp_path: Path):
+    """Real-world headline punctuation must survive ``yaml.safe_load`` round-trip.
+
+    Headlines routinely contain ``"``, ``:``, ``!``, and Windows-path-like
+    backslashes — the writer must escape them inside double-quoted scalars
+    so the same string comes back unchanged. ``feedback_yaml_scalar_safety``:
+    test using real ``yaml.safe_load`` not substring assertion, so an
+    over-aggressive escape that produces invalid YAML still fails this test.
+    """
+    import yaml
+
+    nasty_title = 'He said "go" — back\\slash: now! exclaim'
+    nasty_url = 'https://example.com/q?x="quoted"&y=back\\slash'
+    nasty_note = 'multi "quote" and back\\slash and colon: here'
+    result = IngestResult(
+        status="failed",
+        fulltext_layer="readability",
+        fulltext_source='Display "label" with quotes',
+        markdown="",
+        title=nasty_title,
+        original_url=nasty_url,
+        note=nasty_note,
+    )
+
+    writer = InboxWriter(tmp_path)
+    path = writer.write_to_inbox(result, slug="nasty")
+
+    content = read_text(path)
+    # Round-trip via real YAML parser — exposes any escape that produced
+    # invalid YAML or stripped meaningful chars.
+    raw_fm = content.split("---\n", 2)[1]
+    parsed = yaml.safe_load(raw_fm)
+
+    assert parsed["title"] == nasty_title
+    assert parsed["original_url"] == nasty_url
+    assert parsed["source"] == nasty_url
+    assert parsed["fulltext_source"] == 'Display "label" with quotes'
+    assert parsed["note"] == nasty_note

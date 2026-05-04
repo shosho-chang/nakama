@@ -115,7 +115,7 @@ def test_unknown_status_rejected():
     with pytest.raises(ValidationError):
         IngestResult.model_validate(
             {
-                "status": "in_progress",  # not in literal — Slice 1 only ready/failed
+                "status": "in_progress",  # not in literal — must be processing/ready/translated/failed  # noqa: E501
                 "fulltext_layer": "readability",
                 "fulltext_source": "Readability",
                 "markdown": "body",
@@ -123,6 +123,26 @@ def test_unknown_status_rejected():
                 "original_url": "https://example.com/",
             }
         )
+
+
+@pytest.mark.parametrize("status", ["processing", "ready", "translated", "failed"])
+def test_all_status_lifecycle_states_accepted(status):
+    """The four lifecycle states (PRD §Pipeline) must round-trip cleanly.
+
+    ``processing`` is written by InboxWriter.write_placeholder before the BG
+    task runs; ``translated`` is set by Slice 3's /translate endpoint after
+    writing the bilingual variant; ``ready`` and ``failed`` are the
+    URLDispatcher.dispatch terminal states.
+    """
+    result = IngestResult(
+        status=status,
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="body" * 60 if status != "failed" else "",
+        title="t",
+        original_url="https://example.com/",
+    )
+    assert result.status == status
 
 
 def test_extra_field_rejected():
@@ -156,22 +176,34 @@ def test_error_and_note_default_none():
     assert result.note is None
 
 
-# ── Academic layers reserved for Slice 2 ────────────────────────────────────
+# ── Layer literal: full enum reserved for Slice 2-4 ────────────────────────
 
 
 @pytest.mark.parametrize(
     "layer",
     [
-        "academic_pmc",
-        "academic_europe_pmc",
-        "academic_unpaywall",
-        "academic_publisher_html",
-        "academic_arxiv",
-        "academic_biorxiv",
+        # Slice 1 emits readability + (future) firecrawl + unknown.
+        "readability",
+        "firecrawl",
+        # Slice 2 emits these — names align with pubmed_fulltext.fetch_fulltext
+        # ``source`` return values so the adapter can pass them through verbatim.
+        "pmc",
+        "europe_pmc",
+        "unpaywall",
+        "publisher_html",
+        "arxiv",
+        "biorxiv",
+        # Pre-route exception path (no layer ran successfully).
+        "unknown",
     ],
 )
-def test_academic_layers_accepted(layer):
-    """Slice 2 will emit these — schema must accept them now to avoid migration."""
+def test_all_layer_values_accepted(layer):
+    """Schema must accept every reserved layer to avoid Slice 2-4 migration.
+
+    Layer names use bare values (no ``academic_`` prefix) so the Slice 2
+    adapter can pass ``pubmed_fulltext.fetch_fulltext`` ``source`` return
+    values through verbatim — see ``shared.schemas.ingest_result`` docstring.
+    """
     result = IngestResult(
         status="ready",
         fulltext_layer=layer,

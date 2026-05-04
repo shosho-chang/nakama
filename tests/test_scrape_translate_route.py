@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from agents.robin.url_dispatcher import URLDispatcher
 from shared.schemas.ingest_result import IngestResult
 
 
@@ -73,7 +74,7 @@ def test_scrape_translate_success_redirects_to_inbox(client):
     """Slice 1: 成功 paste → 立刻 303 回 inbox view ``/``，不再等翻譯。"""
     auth = _auth_cookie(client)
 
-    with patch("thousand_sunny.routers.robin.URLDispatcher") as MockDispatcher:
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
         instance = MockDispatcher.return_value
         instance.dispatch.return_value = _ready("https://example.com/article")
 
@@ -97,7 +98,7 @@ def test_scrape_translate_creates_md_file(client, tmp_path):
     auth = _auth_cookie(client)
     inbox = tmp_path / "Inbox" / "kb"
 
-    with patch("thousand_sunny.routers.robin.URLDispatcher") as MockDispatcher:
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
         instance = MockDispatcher.return_value
         instance.dispatch.return_value = _ready("https://nature.com/articles/s123")
 
@@ -132,7 +133,7 @@ def test_scrape_translate_dispatcher_error_writes_failed_file(client, tmp_path):
         error="RuntimeError: connection refused",
     )
 
-    with patch("thousand_sunny.routers.robin.URLDispatcher") as MockDispatcher:
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
         instance = MockDispatcher.return_value
         instance.dispatch.return_value = failed
 

@@ -12,16 +12,27 @@ Scope (per PRD §Testing Decisions / "只測外部行為"):
 - Title is extracted from ``# heading`` when present, else falls back to
   netloc + path.
 
-Slice 2 will add academic_* path tests when the dispatcher gains source
-detection — those tests will live here too once the layers are wired.
+Slice 2 will add academic-source path tests (PMC / Europe PMC / Unpaywall /
+publisher HTML / arXiv / bioRxiv) when the dispatcher gains URL pattern
+detection — those tests will live here once the layers are wired.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from agents.robin.url_dispatcher import MIN_CONTENT_CHARS, URLDispatcher
+from agents.robin.url_dispatcher import MIN_CONTENT_CHARS, URLDispatcher, URLDispatcherConfig
 from shared.schemas.ingest_result import IngestResult
+
+
+def _make(scrape_fn):
+    """Construct a URLDispatcher wired only to the given scrape function.
+
+    Slice 1 helper — Slice 2+ tests will pass full ``URLDispatcherConfig``
+    with fetch_fulltext_fn / email / etc. directly.
+    """
+    return URLDispatcher(URLDispatcherConfig(scrape_url_fn=scrape_fn))
+
 
 # ── Happy path ───────────────────────────────────────────────────────────────
 
@@ -29,7 +40,7 @@ from shared.schemas.ingest_result import IngestResult
 def test_dispatch_general_url_routes_to_readability():
     """Slice 1: every URL goes through the readability layer."""
     big_md = "# Article Title\n\n" + ("body line.\n" * 80)
-    dispatcher = URLDispatcher(scrape_url_fn=lambda _url: big_md)
+    dispatcher = _make(lambda _url: big_md)
 
     result = dispatcher.dispatch("https://example.com/post")
 
@@ -46,7 +57,7 @@ def test_dispatch_general_url_routes_to_readability():
 def test_dispatch_extracts_title_from_first_h1():
     big_body = "body line.\n" * 80
     md = f"# Awesome Title\n\n{big_body}"
-    dispatcher = URLDispatcher(scrape_url_fn=lambda _url: md)
+    dispatcher = _make(lambda _url: md)
 
     result = dispatcher.dispatch("https://example.com/post")
 
@@ -55,7 +66,7 @@ def test_dispatch_extracts_title_from_first_h1():
 
 def test_dispatch_falls_back_to_url_when_no_h1():
     md = "no heading just text.\n" * 80
-    dispatcher = URLDispatcher(scrape_url_fn=lambda _url: md)
+    dispatcher = _make(lambda _url: md)
 
     result = dispatcher.dispatch("https://example.com/foo/bar")
 
@@ -69,7 +80,7 @@ def test_dispatch_falls_back_to_url_when_no_h1():
 def test_dispatch_short_content_marked_failed():
     """Acceptance #4: under-threshold output → status=failed + bot-blocked note."""
     short_md = "tiny"
-    dispatcher = URLDispatcher(scrape_url_fn=lambda _url: short_md)
+    dispatcher = _make(lambda _url: short_md)
 
     result = dispatcher.dispatch("https://example.com/blocked")
 
@@ -84,8 +95,8 @@ def test_dispatch_threshold_boundary():
     accept_md = "x" * MIN_CONTENT_CHARS
     reject_md = "x" * (MIN_CONTENT_CHARS - 1)
 
-    accept = URLDispatcher(scrape_url_fn=lambda _url: accept_md).dispatch("https://example.com/a")
-    reject = URLDispatcher(scrape_url_fn=lambda _url: reject_md).dispatch("https://example.com/b")
+    accept = _make(lambda _url: accept_md).dispatch("https://example.com/a")
+    reject = _make(lambda _url: reject_md).dispatch("https://example.com/b")
 
     assert accept.status == "ready"
     assert reject.status == "failed"
@@ -100,13 +111,17 @@ def test_dispatch_scraper_exception_caught():
     def boom(_url: str) -> str:
         raise RuntimeError("connection refused")
 
-    dispatcher = URLDispatcher(scrape_url_fn=boom)
+    dispatcher = _make(boom)
     result = dispatcher.dispatch("https://unreachable.example.com/x")
 
     assert result.status == "failed"
     assert "RuntimeError" in (result.error or "")
     assert "connection refused" in (result.error or "")
     assert result.original_url == "https://unreachable.example.com/x"
+    # Pre-route exception → ``unknown`` layer (not a misleading ``readability``
+    # label that suggests a layer actually ran).
+    assert result.fulltext_layer == "unknown"
+    assert result.fulltext_source == "(未知)"
 
 
 # ── Input validation ─────────────────────────────────────────────────────────
@@ -115,7 +130,7 @@ def test_dispatch_scraper_exception_caught():
 @pytest.mark.parametrize("bad", ["", "   ", "\n", None])
 def test_dispatch_empty_url_raises(bad):
     """Empty / whitespace URLs are caller bugs — surface immediately."""
-    dispatcher = URLDispatcher(scrape_url_fn=lambda _u: "should not be called")
+    dispatcher = _make(lambda _u: "should not be called")
     with pytest.raises((ValueError, TypeError)):
         dispatcher.dispatch(bad)
 

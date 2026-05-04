@@ -8,25 +8,29 @@
   ``IngestResult`` rather than letting them crash the BackgroundTask.
 - < 200-char hard-block (the "疑似 bot 擋頁" UI hint specified by issue #352).
 
-Slice 1 scope: readability + firecrawl fallback only. Both layers are already
-implemented inside ``shared.web_scraper.scrape_url`` (trafilatura → readability
-→ firecrawl), so this dispatcher is intentionally a thin caller. The
-``fulltext_layer`` field is set to ``"readability"`` whenever the local layers
-win and ``"firecrawl"`` when ``shared.web_scraper`` fell through to Firecrawl —
-the readability label covers both Trafilatura and readability-lxml since the
-PRD treats them as a single "local readability layer".
+Slice 1 scope: readability + firecrawl fallback only via
+``shared.web_scraper.scrape_url`` (trafilatura → readability → firecrawl).
+``shared.web_scraper`` does not surface which sub-layer actually won, so
+Slice 1 always emits ``fulltext_layer="readability"`` for non-empty results;
+the schema reserves ``firecrawl`` for when Slice 2 splits the layer signal
+out of ``shared.web_scraper``. Pre-route exceptions emit
+``fulltext_layer="unknown"`` so a failed scrape isn't mislabelled as a
+specific working layer.
 
 **Slice 2 will add academic source detection** — academic URL pattern matching,
 PMID/DOI extraction, reverse lookup (DOI → efetch → PMID), and routing into
 ``agents.robin.pubmed_fulltext.fetch_fulltext`` for the 5-layer OA fallback.
-arXiv / bioRxiv preprint handlers also land in Slice 2. The ``IngestResult``
-``fulltext_layer`` literal already lists every academic_* value so Slice 2
-won't break the schema or rewrite already-stored frontmatter.
+arXiv / bioRxiv preprint handlers also land in Slice 2. ``URLDispatcherConfig``
+already exposes the seven injection points Slice 2-4 need (fetch_fulltext_fn /
+image_downloader_fn / attachments_abs_dir / vault_relative_prefix / email /
+ncbi_api_key) so the constructor signature won't change.
 """
 
 from __future__ import annotations
 
-from typing import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from shared.log import get_logger
@@ -46,13 +50,40 @@ MIN_CONTENT_CHARS = 200
 _LAYER_DISPLAY: dict[IngestFullTextLayer, str] = {
     "readability": "Readability",
     "firecrawl": "Firecrawl",
-    "academic_pmc": "PubMed Central",
-    "academic_europe_pmc": "Europe PMC",
-    "academic_unpaywall": "Unpaywall",
-    "academic_publisher_html": "Publisher HTML",
-    "academic_arxiv": "arXiv",
-    "academic_biorxiv": "bioRxiv",
+    "pmc": "PubMed Central",
+    "europe_pmc": "Europe PMC",
+    "unpaywall": "Unpaywall",
+    "publisher_html": "Publisher HTML",
+    "arxiv": "arXiv",
+    "biorxiv": "bioRxiv",
+    "unknown": "(未知)",
 }
+
+
+@dataclass(frozen=True)
+class URLDispatcherConfig:
+    """Constructor-injected config for ``URLDispatcher``.
+
+    Slice 1 only uses ``scrape_url_fn``. Slice 2 wires the academic 5-layer
+    via ``fetch_fulltext_fn`` plus its required ``attachments_abs_dir`` /
+    ``vault_relative_prefix`` / ``email`` / ``ncbi_api_key`` (matching the
+    ``agents.robin.pubmed_fulltext.fetch_fulltext`` signature). Slice 4 wires
+    ``image_downloader_fn`` for ``KB/Attachments/inbox/{slug}/`` image fetch.
+
+    Constructor injection (over reading ``shared.config`` inside ``dispatch()``)
+    keeps the dispatcher decoupled from robin agent globals and makes it
+    open-source-ready (``feedback_open_source_ready``): no hardcoded personal
+    email, swappable backends, no implicit vault-path coupling.
+    """
+
+    scrape_url_fn: Callable[[str], str] | None = None
+    fetch_fulltext_fn: Callable[..., Any] | None = None
+    image_downloader_fn: Callable[..., Any] | None = None
+
+    attachments_abs_dir: Path | None = None
+    vault_relative_prefix: str | None = None
+    email: str | None = None
+    ncbi_api_key: str | None = None
 
 
 def _title_from_url(url: str) -> str:
@@ -79,13 +110,14 @@ class URLDispatcher:
     final state (ready / failed) and the UI never gets stuck on 🔄.
     """
 
-    def __init__(self, scrape_url_fn: Callable[[str], str] | None = None) -> None:
-        """Inject the scrape function for testability.
+    def __init__(self, config: URLDispatcherConfig | None = None) -> None:
+        """Inject ``URLDispatcherConfig``; defaults to all-None config.
 
-        Default uses ``shared.web_scraper.scrape_url`` (lazy import so the
-        tests that monkeypatch it don't have to deal with module reload).
+        ``scrape_url_fn`` defaults to lazy-imported ``shared.web_scraper.scrape_url``
+        when not injected, so Slice 1 callers can pass ``URLDispatcherConfig()``
+        (or omit the argument entirely) and still get the production scraper.
         """
-        self._scrape_url_fn = scrape_url_fn
+        self._config = config or URLDispatcherConfig()
 
     def dispatch(self, url: str) -> IngestResult:
         """Fetch ``url``, return an ``IngestResult``.
@@ -104,7 +136,7 @@ class URLDispatcher:
         if not url or not url.strip():
             raise ValueError("url must be non-empty")
 
-        scrape_fn = self._scrape_url_fn or self._default_scrape
+        scrape_fn = self._config.scrape_url_fn or self._default_scrape
 
         try:
             markdown = scrape_fn(url)
@@ -112,8 +144,8 @@ class URLDispatcher:
             logger.warning("URL fetch failed (%s): %s", url, exc)
             return IngestResult(
                 status="failed",
-                fulltext_layer="readability",
-                fulltext_source=_LAYER_DISPLAY["readability"],
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
                 markdown="",
                 title=_title_from_url(url),
                 original_url=url,

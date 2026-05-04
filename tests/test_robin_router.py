@@ -516,10 +516,11 @@ def test_scrape_translate_invalid_types_fallback_defaults(client, vault, monkeyp
     """
     tc, mod = client
 
+    from agents.robin.url_dispatcher import URLDispatcher
     from shared.schemas.ingest_result import IngestResult
 
     big_md = "# Title\n\n" + ("body line.\n" * 80)
-    fake_dispatcher_cls = MagicMock()
+    fake_dispatcher_cls = MagicMock(spec=URLDispatcher)
     fake_dispatcher_cls.return_value.dispatch.return_value = IngestResult(
         status="ready",
         fulltext_layer="readability",
@@ -553,9 +554,10 @@ def test_scrape_translate_filename_collision_adds_counter(client, vault, monkeyp
     """Slice 1: placeholder writer 沿用既有 collision counter pattern。"""
     tc, mod = client
 
+    from agents.robin.url_dispatcher import URLDispatcher
     from shared.schemas.ingest_result import IngestResult
 
-    fake_dispatcher_cls = MagicMock()
+    fake_dispatcher_cls = MagicMock(spec=URLDispatcher)
     fake_dispatcher_cls.return_value.dispatch.return_value = IngestResult(
         status="ready",
         fulltext_layer="readability",
@@ -588,18 +590,19 @@ def test_scrape_translate_scrape_failure_writes_failed_row(client, vault, monkey
     """Slice 1: scraper 失敗不再 422，改寫入 status=failed inbox row。"""
     tc, mod = client
 
+    from agents.robin.url_dispatcher import URLDispatcher
     from shared.schemas.ingest_result import IngestResult
 
     failed = IngestResult(
         status="failed",
-        fulltext_layer="readability",
-        fulltext_source="Readability",
+        fulltext_layer="unknown",
+        fulltext_source="(未知)",
         markdown="",
         title="example.com",
         original_url="https://example.com/",
         error="RuntimeError: boom",
     )
-    fake_dispatcher_cls = MagicMock()
+    fake_dispatcher_cls = MagicMock(spec=URLDispatcher)
     fake_dispatcher_cls.return_value.dispatch.return_value = failed
     monkeypatch.setattr(mod, "URLDispatcher", fake_dispatcher_cls)
 

@@ -5,10 +5,15 @@ the outcome of a single URL fetch attempt to ``agents.robin.inbox_writer.InboxWr
 and any downstream caller (Reader UI status column, BackgroundTask logger).
 
 The ``fulltext_layer`` enum lists every layer the dispatcher can route through.
-Slice 1 only emits ``readability`` / ``firecrawl``; the academic_* values are
-reserved for Slice 2 which will wire ``agents.robin.pubmed_fulltext.fetch_fulltext``
-plus arxiv / biorxiv handlers behind the same ``IngestResult`` contract.
-Listing them all up-front prevents a Slice 2 schema migration from breaking
+Slice 1 emits ``readability`` (general path) or ``unknown`` (pre-route exception).
+Slice 2 will emit ``pmc`` / ``europe_pmc`` / ``unpaywall`` / ``publisher_html``
+(via ``agents.robin.pubmed_fulltext.fetch_fulltext`` reuse) plus ``arxiv`` /
+``biorxiv`` (preprint API). Layer names are bare (no ``academic_`` prefix) to
+align with ``pubmed_fulltext.fetch_fulltext`` ``source`` return values
+(``pmc`` / ``europe_pmc`` / ``unpaywall``) so the Slice 2 adapter can pass
+them through verbatim.
+
+Listing every value up-front prevents a Slice 2 schema migration from breaking
 already-written ``Inbox/kb/{slug}.md`` frontmatter or forcing a callers-rewrite.
 
 Aligns with ``docs/principles/schemas.md``:
@@ -25,26 +30,35 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # ── Status / layer literals ──────────────────────────────────────────────────
 #
-# Slice 1 emits ``ready`` (markdown >= 200 chars) or ``failed`` (under threshold
-# or fetch error). Slice 2+ may add intermediate states only by extending this
-# Literal — InboxWriter / reader template both branch on the literal directly.
+# Lifecycle states an inbox row passes through:
+#   processing → ready → translated   (happy path through Slice 1+3)
+#   processing → failed                (scrape error / < 200 char / BG crash)
+#
+# ``processing`` is written synchronously by the placeholder writer before the
+# BackgroundTask runs — InboxWriter must accept it on the way in even though
+# URLDispatcher.dispatch() never returns it. ``translated`` is reserved for
+# Slice 3's ``/translate`` endpoint (writes ``{slug}-bilingual.md`` and updates
+# the original frontmatter to track that the bilingual variant exists).
 
-IngestStatus = Literal["ready", "failed"]
+IngestStatus = Literal["processing", "ready", "translated", "failed"]
 
-# ``readability`` covers both Trafilatura and readability-lxml — the Slice 1
-# dispatcher delegates to ``shared.web_scraper.scrape_url`` which already runs
-# trafilatura → readability-lxml as a single "local readability layer". The
-# distinction (which sub-engine actually won) is not surfaced; if Slice 2 wants
-# per-engine telemetry, it can expand this Literal without breaking writes.
+# Layer values align with ``pubmed_fulltext.fetch_fulltext`` ``source`` return
+# values so the Slice 2 adapter can pass them through unchanged. ``readability``
+# covers both Trafilatura and readability-lxml — the Slice 1 dispatcher
+# delegates to ``shared.web_scraper.scrape_url`` which runs them in sequence
+# as one "local readability layer" without surfacing which sub-engine won.
+# ``unknown`` is for the pre-route exception path (no layer ran successfully).
+# Slice 2 will introduce per-layer telemetry by widening this Literal.
 IngestFullTextLayer = Literal[
     "readability",
     "firecrawl",
-    "academic_pmc",
-    "academic_europe_pmc",
-    "academic_unpaywall",
-    "academic_publisher_html",
-    "academic_arxiv",
-    "academic_biorxiv",
+    "pmc",
+    "europe_pmc",
+    "unpaywall",
+    "publisher_html",
+    "arxiv",
+    "biorxiv",
+    "unknown",
 ]
 
 

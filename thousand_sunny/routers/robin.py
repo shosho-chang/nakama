@@ -22,7 +22,7 @@ from agents.robin.image_fetcher import fetch_images
 from agents.robin.inbox_writer import InboxWriter
 from agents.robin.ingest import IngestPipeline
 from agents.robin.kb_search import search_kb
-from agents.robin.url_dispatcher import URLDispatcher
+from agents.robin.url_dispatcher import URLDispatcher, URLDispatcherConfig
 from shared.annotation_store import (
     AnnotationSet,
     AnnotationStore,
@@ -317,11 +317,18 @@ def _ingest_url_in_background(
     Replaces the placeholder file in-place so the inbox row's filename never
     changes (the user can bookmark it once they redirect back to inbox view).
 
-    Lazy-imports ``URLDispatcher`` / ``InboxWriter`` so test patches against
-    ``thousand_sunny.routers.robin`` module bindings still work.
+    On crash (anything raised by dispatcher / writer / vault path resolution),
+    we still attempt a best-effort overwrite of the placeholder with
+    ``fulltext_status=failed`` so the inbox row flips off 🔄. Without this
+    fallback a writer crash would leave the row stuck on "處理中" forever and
+    Slice 1 has no delete UI to recover (Slice 5 #356 adds the delete button).
     """
     try:
-        dispatcher = URLDispatcher()
+        # Slice 1: default config (URLDispatcher reaches into shared.web_scraper
+        # for the readability+firecrawl chain). Slice 2 will widen this to
+        # ``URLDispatcherConfig(fetch_fulltext_fn=fetch_fulltext, email=cfg["email"], ...)``
+        # to wire the academic 5-layer reuse — see ``URLDispatcherConfig`` docstring.
+        dispatcher = URLDispatcher(URLDispatcherConfig())
         result = dispatcher.dispatch(url)
         writer = InboxWriter(_get_inbox())
         writer.write_to_inbox(
@@ -331,8 +338,58 @@ def _ingest_url_in_background(
             source_type=source_type,
             content_nature=content_nature,
         )
-    except Exception:  # noqa: BLE001 — never let a BackgroundTask raise
+    except Exception as exc:  # noqa: BLE001 — never let a BackgroundTask raise
         logger.exception("scrape-translate background task crashed (url=%s)", url)
+        _flip_placeholder_to_failed(
+            placeholder_path=placeholder_path,
+            url=url,
+            exc=exc,
+            source_type=source_type,
+            content_nature=content_nature,
+        )
+
+
+def _flip_placeholder_to_failed(
+    *,
+    placeholder_path: Path,
+    url: str,
+    exc: BaseException,
+    source_type: str,
+    content_nature: str,
+) -> None:
+    """Best-effort overwrite of the placeholder when the BG task itself crashes.
+
+    Wrapped in its own try/except: if even this recovery write fails (vault
+    unreachable, disk full), we log and give up — the row will stay 🔄 but
+    that's no worse than the pre-fix behaviour.
+    """
+    from shared.schemas.ingest_result import IngestResult
+
+    try:
+        crash_result = IngestResult(
+            status="failed",
+            fulltext_layer="unknown",
+            fulltext_source="(後台任務崩潰)",
+            markdown="",
+            title=placeholder_path.stem,
+            original_url=url,
+            error=f"{type(exc).__name__}: {exc}",
+            note="後台任務崩潰，請重試或檢查日誌",
+        )
+        writer = InboxWriter(_get_inbox())
+        writer.write_to_inbox(
+            crash_result,
+            slug=placeholder_path.stem,
+            existing_path=placeholder_path,
+            source_type=source_type,
+            content_nature=content_nature,
+        )
+    except Exception:  # noqa: BLE001 — last-resort logging
+        logger.exception(
+            "could not flip placeholder to failed (placeholder=%s, url=%s)",
+            placeholder_path,
+            url,
+        )
 
 
 @router.post("/scrape-translate")
