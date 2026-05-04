@@ -14,7 +14,15 @@ from shared.log import force_utf8_console
 
 force_utf8_console()
 
-from thousand_sunny.routers import auth, bridge, bridge_zoro, brook, franky, repurpose, zoro  # noqa: E402
+from thousand_sunny.routers import (  # noqa: E402
+    auth,
+    bridge,
+    bridge_zoro,
+    brook,
+    franky,
+    repurpose,
+    zoro,
+)
 
 app = FastAPI(docs_url=None, redoc_url=None)
 
