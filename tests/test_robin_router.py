@@ -289,6 +289,35 @@ def test_read_source_without_frontmatter(client, vault, monkeypatch):
     assert r.status_code == 200
 
 
+def test_read_source_renders_annotations_overlay(client, vault, monkeypatch):
+    """ADR-017 Q3：Reader render 時 fetch 原檔 + AnnotationStore.load，
+    rendered page 含 annotation 資料供前端 overlay。"""
+    from datetime import datetime, timezone
+
+    from shared.annotation_store import AnnotationStore
+    from shared.schemas.annotation import AnnotationSet, Highlight
+
+    tc, mod = client
+    monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    (inbox / "doc.md").write_text("plain source", encoding="utf-8")
+
+    # 預先存一條 highlight 到 store
+    ts = datetime(2026, 5, 4, 12, 0, 0, tzinfo=timezone.utc)
+    ann_set = AnnotationSet(
+        source_slug="doc",
+        source_path="Inbox/kb/doc.md",
+        marks=[Highlight(id="hl-test-overlay", reftext="x", created_at=ts, modified_at=ts)],
+    )
+    AnnotationStore().save(ann_set)
+
+    r = tc.get("/read", params={"file": "doc.md"})
+    assert r.status_code == 200
+    # rendered page 必須含 mark id（前端 JS overlay 用）
+    assert "hl-test-overlay" in r.text
+
+
 # ---------------------------------------------------------------------------
 # GET /files/{path}
 # ---------------------------------------------------------------------------
@@ -332,29 +361,55 @@ def test_serve_vault_file_not_found_404(client, vault):
 # ---------------------------------------------------------------------------
 
 
+def _annotation_payload(slug: str = "doc") -> dict:
+    """ADR-017 schema — Reader POST 給 /save-annotations 的 JSON body 形狀。"""
+    return {
+        "schema_version": 1,
+        "source_slug": slug,
+        "source_path": f"Inbox/kb/{slug}.md",
+        "last_synced_at": None,
+        "marks": [
+            {
+                "type": "hl",
+                "id": "hl-1",
+                "reftext": "important sentence",
+                "created_at": "2026-05-04T12:00:00+00:00",
+                "modified_at": "2026-05-04T12:00:00+00:00",
+            }
+        ],
+    }
+
+
 def test_save_annotations_auth_required(auth_client):
     tc, _, _ = auth_client
-    r = tc.post("/save-annotations", data={"filename": "x.md", "content": "y"})
+    r = tc.post("/save-annotations", json=_annotation_payload())
     assert r.status_code == 403
 
 
-def test_save_annotations_missing_file_404(client, vault):
-    tc, _ = client
-    (vault / "Inbox" / "kb").mkdir(parents=True)
-    r = tc.post("/save-annotations", data={"filename": "missing.md", "content": "body"})
-    assert r.status_code == 404
-
-
-def test_save_annotations_writes_file(client, vault):
+def test_save_annotations_writes_to_store_and_leaves_source_untouched(client, vault):
+    """ADR-017 Q3 + Q6：annotation 寫到 KB/Annotations/{slug}.md，原檔不再 mutate。"""
     tc, _ = client
     inbox = vault / "Inbox" / "kb"
     inbox.mkdir(parents=True)
-    (inbox / "doc.md").write_text("orig", encoding="utf-8")
+    (inbox / "doc.md").write_text("original source", encoding="utf-8")
 
-    r = tc.post("/save-annotations", data={"filename": "doc.md", "content": "new body"})
+    r = tc.post("/save-annotations", json=_annotation_payload("doc"))
+
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
-    assert (inbox / "doc.md").read_text("utf-8") == "new body"
+    # 原檔保純（未 mutate）
+    assert (inbox / "doc.md").read_text("utf-8") == "original source"
+    # AnnotationSet 寫到 KB/Annotations/{slug}.md
+    annotation_file = vault / "KB" / "Annotations" / "doc.md"
+    assert annotation_file.exists()
+
+
+def test_save_annotations_rejects_invalid_payload(client, vault):
+    """schema_version 缺失 / marks type discriminator 錯 → 422。"""
+    tc, _ = client
+    bad_payload = {"source_slug": "doc", "marks": [{"type": "unknown"}]}
+    r = tc.post("/save-annotations", json=bad_payload)
+    assert r.status_code == 422
 
 
 # ---------------------------------------------------------------------------

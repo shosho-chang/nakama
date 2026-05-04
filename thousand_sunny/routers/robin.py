@@ -21,8 +21,10 @@ from agents.robin.agent import (
 from agents.robin.image_fetcher import fetch_images
 from agents.robin.ingest import IngestPipeline
 from agents.robin.kb_search import search_kb
+from shared.annotation_store import AnnotationStore, compute_annotation_slug
 from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
+from shared.schemas.annotation import AnnotationSet
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.utils import extract_frontmatter, read_text, slugify
 from thousand_sunny.auth import check_auth, require_auth_or_key
@@ -34,6 +36,7 @@ templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "robin")
 )
 pipeline = IngestPipeline()
+_annotation_store = AnnotationStore()
 
 
 def _send_to_recycle_bin(path: Path) -> None:
@@ -162,6 +165,11 @@ async def read_source(
     if frontmatter and content.startswith("---"):
         frontmatter_raw = content[: content.index("---", 3) + 3]
 
+    # ADR-017 §2.3：載 AnnotationSet 給前端 overlay 使用；空檔回 None。
+    source_slug = compute_annotation_slug(base, file)
+    ann_set = _annotation_store.load(source_slug)
+    annotations_json = ann_set.model_dump_json() if ann_set else "null"
+
     return templates.TemplateResponse(
         request,
         "reader.html",
@@ -174,6 +182,8 @@ async def read_source(
             "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
             "is_read": is_file_read(file_path),
             "is_bilingual": bool(frontmatter.get("bilingual")),
+            "source_slug": source_slug,
+            "annotations_json": annotations_json,
         },
     )
 
@@ -196,18 +206,16 @@ async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
 
 @router.post("/save-annotations")
 async def save_annotations(
-    filename: str = Form(...),
-    content: str = Form(...),
-    base: str = Form("inbox"),
+    payload: AnnotationSet,
     nakama_auth: str | None = Cookie(None),
 ):
+    """寫 AnnotationSet 到 KB/Annotations/{source-slug}.md（ADR-017 §2.3）。
+
+    原檔保純不再 mutate；Reader 渲染時 fetch 原檔 + AnnotationStore.load 兩份 overlay。
+    """
     if not check_auth(nakama_auth):
         raise HTTPException(403)
-    base_dir = _resolve_reader_base(base)
-    file_path = safe_resolve(base_dir, filename)
-    if not file_path.exists():
-        raise HTTPException(404, detail=f"找不到檔案：{filename}")
-    file_path.write_text(content, encoding="utf-8")
+    _annotation_store.save(payload)
     return {"status": "ok"}
 
 

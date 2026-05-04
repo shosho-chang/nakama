@@ -256,8 +256,12 @@
     // ── State ──
     const FILENAME = '{{ filename }}';
     const BASE = '{{ base | default("inbox") }}';
+    const SOURCE_SLUG = '{{ source_slug | default("") }}';
     const FRONTMATTER_RAW = {{ frontmatter_raw | tojson }};
     const IS_BILINGUAL = {{ is_bilingual | tojson }};
+    // ADR-017: AnnotationSet from KB/Annotations/{slug}.md，由 server 端載入後 overlay。
+    // Slice 1 此處只 expose 資料；overlay 渲染與 POST 走 Slice 1 後續工程，UI 手動驗收。
+    const ANNOTATIONS_JSON = {{ annotations_json | safe }};
     let mdSource = {{ content | tojson }};
     let pendingSelectedText = '';
 

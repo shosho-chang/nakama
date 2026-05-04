@@ -17,6 +17,9 @@ _NAMI_READ_WHITELIST = (
     "TaskNotes/Tasks/",
 )
 
+# Annotation 寫入路徑（ADR-017）— Reader save / Robin sync 共用 single source of truth
+ANNOTATIONS_PREFIX = "KB/Annotations/"
+
 
 def _normalize(relative_path: str) -> str:
     """正規化路徑並驗證無 traversal。回傳 POSIX 格式字串。"""
