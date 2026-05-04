@@ -178,3 +178,23 @@ GitHub Issues（透過 `gh` CLI）；PR-first 文化，issue 用於需 triage / 
 ### Domain docs
 
 Multi-context — 入口為根目錄 `CONTEXT-MAP.md`，各 agent 的 `CONTEXT.md` lazy-created。**ADR 在 `docs/decisions/` 不是 `docs/adr/`**。See `docs/agents/domain.md`.
+
+### Sandcastle PR auto review + merge
+
+Sandcastle 跑出 PR 後 **Claude 自動 review + 自動 merge**（修修非工程師、明確不參與工程 review/merge）。原則同 [feedback_pr_review_merge_flow.md](memory/claude/feedback_pr_review_merge_flow.md) + [feedback_review_skill_default_for_focused_pr.md](memory/claude/feedback_review_skill_default_for_focused_pr.md)，下面是 sandcastle-specific gate。
+
+**Auto-merge gate**（全部成立才 merge）:
+- `code-review:code-review` skill 回 no blocking issue（confidence ≥ 80 的 bug / security / 行為破壞 才算 blocker；nit / style 不停下）
+- `gh pr checks` 全綠（或無 required check）
+- 無 merge conflict
+- PR 來自 `sandcastle/` 開頭 branch（修修自寫的 PR 不在自動 scope）
+
+**Halt + 一句話報修修**: review 出 critical / CI 紅 / conflict / 非 sandcastle PR。
+
+**流程**:
+1. Sandcastle push branch + open PR（runbook 已含）
+2. `Skill code-review:code-review` 跑 review
+3. PASS → `gh pr merge --squash --delete-branch` + `git pull origin main` + 推下一個 sandcastle 隊列（若有依賴的 ready slice，自動 add `sandcastle` label + 跑下一輪）
+4. FAIL → 留 PR + 一句話報原因
+
+不用 `/ultrareview`（付費 cloud，修修自己手動觸發）。

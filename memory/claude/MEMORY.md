@@ -255,3 +255,5 @@
 - [project_content_pipeline_arch.md](project_content_pipeline_arch.md) — **內容流程七層架構 2026-05-04 凍結**：CONTENT-PIPELINE.md + Lines/Agents × Stages 兩矩陣 + 4 結構性觀察 + 3 結構性優先序
 - [feedback_pipeline_anchored_planning.md](feedback_pipeline_anchored_planning.md) — **規劃功能必 anchor 七層**：「開發 X / 下一步做什麼」對話前必 anchor stage + 對照矩陣 + 檢視優先序，禁止 spontaneous 列清單
 - [project_session_2026_05_04_pipeline_arch.md](project_session_2026_05_04_pipeline_arch.md) — **收工 2026-05-04 早**：七層架構凍結 + Line 1 拆兩子模式 + Script-Driven Video 重定位 Stage 5 工具 + Nami #332 + Franky #333 deploy verified；下個 session 開 Line 2 讀書心得手跑流程
+- [project_session_2026_05_04_pr341_revert.md](project_session_2026_05_04_pr341_revert.md) — **2026-05-04 中**：grill→PRD #337→issue #338-340 後我自跑 /tdd 違反 sandcastle 紀律，PR #341 revert；防呆 plan SUPERSEDED by 下午 auto-review-merge workflow
+- [project_session_2026_05_04_pm_prd337_3pr.md](project_session_2026_05_04_pm_prd337_3pr.md) — **收工 2026-05-04 下午**：PRD #337 三 slice 全 ship（PR #342/#343/#344）+ sandcastle auto-review-merge workflow 立並跑通；review 抓 75-tier follow-up（未 block）
