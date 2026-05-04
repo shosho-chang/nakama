@@ -1,6 +1,6 @@
 # ADR-018: Annotation lifecycle redesign
 
-**Status:** Proposed — pending 2026-05-04 grill final review
+**Status:** Accepted（修修 2026-05-04 夜 grill 後 freeze）
 **Supersedes:** [ADR-017](./ADR-017-annotation-kb-integration.md)
 **Date:** 2026-05-04
 **Deciders:** shosho-chang
