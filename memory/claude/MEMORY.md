@@ -43,7 +43,7 @@
 - [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **SEO 軸線 pickup**：D.1 merged cc35218；D.1-followup（2 bug + 5 minor）待開 PR；D.2/E/F unblocked
 - [project_seo_phase15_acceptance_done_2026_04_27.md](project_seo_phase15_acceptance_done_2026_04_27.md) — **SEO Phase 1.5 真正落地 2026-04-27**：三件 acceptance 全綠 + F5-B CF rule + re-audit grade D→B+；PR #200 含 4 條 follow-up
 - [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 + PR #252/#253 部署 2026-04-29**：CF UA bypass + 3 UX bug 修；首篇 audit grade=C；L9 grade 設計 + Usopp DB lock 待拍板
-- [project_three_content_lines.md](project_three_content_lines.md) — **三條內容生產線 2026-04-30 凍結**：Line 1 Podcast→訪談+FB+IG（**最緊急**）/ Line 2 讀書心得 / Line 3 文獻→科普；起手 Line 1 grill
+- [project_three_content_lines.md](project_three_content_lines.md) — **三條內容生產線 v1 2026-04-30**（**SUPERSEDED 2026-05-04** by CONTENT-PIPELINE.md + project_content_pipeline_arch.md，保留歷史）
 - [project_memory_dream_consolidation.md](project_memory_dream_consolidation.md) — **Memory Dream 待辦**：給 memory_maintenance.py 加 `dream` subcommand 移植 mem0 LLM-judge UPDATE/DELETE，解 stale memory supersede（觸發點 Qwen2.5/Qwen3 confusion）；ASR 軸線後做
 - ASR research：[docs/research/2026-04-30-asr-engine-prior-art.md](../../docs/research/2026-04-30-asr-engine-prior-art.md) — Top 2 候選：WhisperX (D1 chosen) + Qwen3-ASR-1.7B (D2 alternative)；MiMo / Parakeet / SenseVoice Tier 2-3
 - [project_whisperx_engine_swap_2026_04_30.md](project_whisperx_engine_swap_2026_04_30.md) — **transcribe 引擎換 WhisperX 2026-04-30 + PR #271/273/274 merged**：FunASR 退場 + 裸 ASR 76min 訪談贏全部；diarization 不在 scope（PR #273 砍）；PR #274 修 38 處中文詞被切 + 10 處 prompt-leak；funasr dep 待整段砍
@@ -250,3 +250,8 @@
 - [feedback_identity_anchor_over_enumeration.md](feedback_identity_anchor_over_enumeration.md) — LLM voice drift / 風格 leak（簡中→繁中、AI slop、tone）用 positive identity anchor + 反向 sentinel keyword + 不確定 fallback 三層，**禁止窮舉表**（永遠補不完）
 - [reference_inter_agent_delegation_option_a.md](reference_inter_agent_delegation_option_a.md) — Inter-agent delegation Option A pattern：same-process import + tool-based + sync；對 sync 對話 + <30s wall time 是 MVP；Option B 升級觸發點明列
 - [feedback_cf_r2_token_dont_nag.md](feedback_cf_r2_token_dont_nag.md) — CF R2 dashboard 舊 token 永遠不再列入 todo / 待辦 / 反問（修修明確 push back：刪不了 + 攻擊面同 + 煩）
+- [project_session_2026_05_04_5pr_ship.md](project_session_2026_05_04_5pr_ship.md) — **收工 2026-05-04 凌晨**：5 PR 序列 dispatch + 全 squash merged（Nami round 3 / Franky per-prefix / A6 mock spec / kw zh-channels / memory hygiene）+ Usopp #270 closed + SEO 中控台 5 天 0 publish 真議題揭開
+- [feedback_branch_protection_strict_serial_merge.md](feedback_branch_protection_strict_serial_merge.md) — GH branch protection strict + enforce_admins + auto-merge disabled 三層擋；序列 merge cycle 痛點 + update-branch + poll-CI + merge 流程
+- [project_content_pipeline_arch.md](project_content_pipeline_arch.md) — **內容流程七層架構 2026-05-04 凍結**：CONTENT-PIPELINE.md + Lines/Agents × Stages 兩矩陣 + 4 結構性觀察 + 3 結構性優先序
+- [feedback_pipeline_anchored_planning.md](feedback_pipeline_anchored_planning.md) — **規劃功能必 anchor 七層**：「開發 X / 下一步做什麼」對話前必 anchor stage + 對照矩陣 + 檢視優先序，禁止 spontaneous 列清單
+- [project_session_2026_05_04_pipeline_arch.md](project_session_2026_05_04_pipeline_arch.md) — **收工 2026-05-04 早**：七層架構凍結 + Line 1 拆兩子模式 + Script-Driven Video 重定位 Stage 5 工具 + Nami #332 + Franky #333 deploy verified；下個 session 開 Line 2 讀書心得手跑流程

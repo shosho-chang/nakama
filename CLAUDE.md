@@ -9,6 +9,8 @@
 Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS，產出同步至 Obsidian LifeOS。
 詳細架構與 Agent 列表見 `ARCHITECTURE.md`、Agent 職責變更見 `docs/decisions/ADR-001-agent-role-assignments.md`。
 
+**內容流程七層架構見 [`CONTENT-PIPELINE.md`](CONTENT-PIPELINE.md)** — 任何「開發 X」對話必先 anchor 在某個 stage（1 收集 / 2 閱讀註記 / 3 整合 / 4 輸出 / 5 製作 / 6 發布 / 7 監控），不可 spontaneous 開發。詳見 [feedback_pipeline_anchored_planning](memory/claude/feedback_pipeline_anchored_planning.md)。
+
 ---
 
 ## 工作方法論

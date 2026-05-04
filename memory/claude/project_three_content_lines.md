@@ -1,9 +1,22 @@
 ---
-name: 三條內容生產線需求（2026-04-30 凍結）
-description: 修修最緊急的內容生產 Line 1（Podcast→訪談+FB+IG）/ Line 2（讀書心得→blog+YT+IG）/ Line 3（文獻→科普文章→IG）；Line 1 優先
+name: 三條內容生產線需求（2026-04-30 凍結 / 2026-05-04 superseded by CONTENT-PIPELINE.md）
+description: 修修最緊急的內容生產 Line 1（Podcast→訪談+FB+IG）/ Line 2（讀書心得→blog+YT+IG）/ Line 3（文獻→科普文章→IG）；Line 1 優先；2026-05-04 v2 grill 已細化為七層架構
 type: project
 created: 2026-04-30
+updated: 2026-05-04
 ---
+
+> ⚠️ **2026-05-04 SUPERSEDED**：本檔內容已被 [CONTENT-PIPELINE.md](../../CONTENT-PIPELINE.md) + [project_content_pipeline_arch.md](project_content_pipeline_arch.md) 取代並細化。下方 v1 內容保留為歷史紀錄，**規劃時請以 CONTENT-PIPELINE.md 為準**。
+>
+> v2 重要 delta：
+> - **Script-Driven Video 不是 Line 4**，是 Stage 5 影片 channel 的工具（三條 line 都可走）
+> - **Line 1 拆兩子模式**：1a 一般訪談 / 1b 訪問新書作者（後者走 Line 2 Stage 2-3）
+> - **Stage 4「原子文章」概念**：Line 2 是修修手寫（agent 不介入）/ Line 1 是 transcribe / Line 3 是 LLM 輔助
+> - **Line 2 流程修修這週手跑**，痛點浮現再決定 Stage 2-3 annotation 細節，不可 over-design
+
+---
+
+## v1 原始內容（2026-04-30）
 
 修修 2026-04-30 凍結三條內容生產線，**Line 1 是當前最緊急功能**。SEO 部落格體檢功能延後。
 
