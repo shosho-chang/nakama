@@ -181,6 +181,31 @@ def test_get_inbox_files_lists_supported_extensions(client, vault):
     assert "bar.unsupported" not in names
 
 
+def test_get_inbox_files_extracts_title_from_frontmatter(client, vault):
+    """frontmatter.title 應該被 surface 到 file dict 給 inbox row 顯示。
+
+    Bug context (2026-05-04 smoke):
+    URL ingest 寫入時 frontmatter title 是真實標題（"Physical activity types..."），
+    但 index.html 顯示的是 file.name（slug），User 看到 ugly 檔名以為標題沒抓到。
+    這個 test 守住 _get_inbox_files 必須暴露 frontmatter.title 給 template 用。
+    """
+    _, mod = client
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    pretty = inbox / "uglyslug.md"
+    pretty.write_text(
+        '---\ntitle: "Physical activity and mortality"\nfulltext_status: ready\n---\n\nbody\n',
+        encoding="utf-8",
+    )
+    bare = inbox / "no-frontmatter.md"
+    bare.write_text("just text\n", encoding="utf-8")
+
+    files = {f["name"]: f for f in mod._get_inbox_files()}
+    assert files["uglyslug.md"]["title"] == "Physical activity and mortality"
+    # No frontmatter → empty title (template falls back to file.name).
+    assert files["no-frontmatter.md"]["title"] == ""
+
+
 def test_get_inbox_files_small_file_shows_bytes(client, vault):
     """size_kb 為 0 → 顯示 bytes 而非 KB。"""
     _, mod = client
