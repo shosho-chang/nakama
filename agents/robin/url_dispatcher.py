@@ -418,9 +418,21 @@ class URLDispatcher:
             return None
 
     def _extract_doi_from_html(self, url: str, *, timeout: float = 15.0) -> str | None:
-        """Fetch publisher page and extract DOI from ``citation_doi`` meta tag."""
+        """Fetch publisher page and extract DOI from ``citation_doi`` meta tag.
+
+        Two-stage fetch:
+          1. plain httpx with our UA — fast, no quota cost
+          2. Firecrawl raw HTML fallback — bypasses bot detection / cloudflare
+             (Lancet, NEJM, Cell etc. block plain httpx with a custom UA)
+
+        Failures at every stage are logged at WARNING (not DEBUG) so the
+        operator sees publisher detection→DOI extract failures in production
+        logs. Without this, the dispatcher silently falls through to the
+        readability scraper and the user gets page chrome labelled "ready".
+        """
         cfg = self._config
         ua = f"Nakama-Robin/1.0 (+{cfg.email})" if cfg.email else "Nakama-Robin/1.0"
+        html: str | None = None
         try:
             r = httpx.get(
                 url,
@@ -429,10 +441,58 @@ class URLDispatcher:
                 follow_redirects=True,
             )
             r.raise_for_status()
+            html = r.text
         except Exception as exc:
-            logger.debug("Publisher meta-tag fetch failed (%s): %s", url, exc)
+            logger.warning(
+                "Publisher meta-tag fetch via httpx failed (%s): %s — trying Firecrawl",
+                url,
+                exc,
+            )
+
+        doi = self._parse_citation_doi(html) if html else None
+        if doi:
+            return doi
+
+        if html is not None:
+            # httpx succeeded but no citation_doi meta tag in HTML — likely the
+            # publisher gated the article behind JS and httpx got chrome only.
+            logger.warning(
+                "Publisher meta-tag absent in httpx HTML (%s) — trying Firecrawl",
+                url,
+            )
+
+        # Firecrawl fallback. Will raise if FIRECRAWL_API_KEY missing or quota
+        # exhausted; treat any failure as "no DOI" — caller falls through to
+        # readability path with the existing log signal.
+        try:
+            from shared.web_scraper import fetch_html_via_firecrawl
+
+            logger.info("Publisher meta-tag fallback to Firecrawl: %s", url)
+            fc_html = fetch_html_via_firecrawl(url)
+        except Exception as exc:
+            logger.warning(
+                "Publisher meta-tag Firecrawl fallback failed (%s): %s — no DOI extracted",
+                url,
+                exc,
+            )
             return None
-        m_tag = _META_CITATION_DOI_RE.search(r.text)
+
+        doi = self._parse_citation_doi(fc_html)
+        if doi:
+            return doi
+
+        logger.warning(
+            "Publisher meta-tag absent in both httpx and Firecrawl HTML (%s) — no DOI extracted",
+            url,
+        )
+        return None
+
+    @staticmethod
+    def _parse_citation_doi(html: str | None) -> str | None:
+        """Pull the ``content`` value out of a ``<meta name="citation_doi">`` tag."""
+        if not html:
+            return None
+        m_tag = _META_CITATION_DOI_RE.search(html)
         if not m_tag:
             return None
         m_val = _CONTENT_ATTR_RE.search(m_tag.group(0))

@@ -660,3 +660,147 @@ def test_parse_arxiv_atom_extracts_title_and_summary():
 
 def test_parse_arxiv_atom_empty_xml_returns_empty_strings():
     assert _parse_arxiv_atom("<feed></feed>") == ("", "")
+
+
+# ── Bug #(Lancet repro): publisher DOI extract failure → Firecrawl fallback ──
+#
+# Reproduced live 2026-05-04 against
+#   https://www.thelancet.com/journals/eclinm/article/PIIS2589-5370(25)00676-5/fulltext
+# Before fix: httpx with Nakama-Robin UA was bot-blocked → silent DEBUG log →
+# fall through to readability → user got page chrome ("Skip to Main Content"
+# / "ADVERTISEMENT") labelled "Readability ⚠️" but flagged as ready.
+#
+# After fix: httpx failure is WARN, Firecrawl raw-HTML fallback is attempted,
+# the meta-tag is re-parsed from Firecrawl's anti-bot HTML, and the DOI
+# resolves correctly.
+
+_LANCET_FULL_HTML = (
+    "<html><head>"
+    '<meta name="citation_title" content="Some article">'
+    '<meta name="citation_doi" content="10.1016/j.eclinm.2025.103193">'
+    "</head><body>article body</body></html>"
+)
+
+
+def _publisher_dispatcher() -> URLDispatcher:
+    """Dispatcher with email set so _extract_doi_from_html builds a UA."""
+    return URLDispatcher(URLDispatcherConfig(email="test@example.com"))
+
+
+def test_extract_doi_httpx_connect_error_warns_and_falls_back_to_firecrawl(monkeypatch, caplog):
+    """httpx ConnectError → WARN logged + Firecrawl fallback attempted + DOI extracted."""
+    import logging
+
+    import agents.robin.url_dispatcher as mod
+
+    def boom_get(url, *, headers=None, timeout=None, follow_redirects=None, **kw):
+        raise httpx.ConnectError("blocked by cloudflare")
+
+    fc_calls: list[str] = []
+
+    def fake_firecrawl(url):
+        fc_calls.append(url)
+        return _LANCET_FULL_HTML
+
+    monkeypatch.setattr(mod.httpx, "get", boom_get)
+    monkeypatch.setattr("shared.web_scraper.fetch_html_via_firecrawl", fake_firecrawl)
+
+    dispatcher = _publisher_dispatcher()
+    with caplog.at_level(logging.WARNING, logger="nakama.robin.url_dispatcher"):
+        doi = dispatcher._extract_doi_from_html(
+            "https://www.thelancet.com/journals/eclinm/article/PIIS2589-5370(25)00676-5/fulltext"
+        )
+
+    assert doi == "10.1016/j.eclinm.2025.103193"
+    assert fc_calls == [
+        "https://www.thelancet.com/journals/eclinm/article/PIIS2589-5370(25)00676-5/fulltext"
+    ]
+    # WARN should mention the httpx failure (not silent DEBUG anymore).
+    warning_text = " ".join(rec.message for rec in caplog.records if rec.levelname == "WARNING")
+    assert "httpx" in warning_text.lower() or "publisher" in warning_text.lower()
+
+
+def test_extract_doi_httpx_returns_chrome_only_html_falls_back_to_firecrawl(monkeypatch, caplog):
+    """httpx 200 but no citation_doi tag → WARN logged + Firecrawl fallback used."""
+    import logging
+
+    import agents.robin.url_dispatcher as mod
+
+    chrome_only = (
+        "<html><head><title>Skip to Main Content</title></head>"
+        "<body><div>ADVERTISEMENT</div></body></html>"
+    )
+
+    def fake_get(url, *, headers=None, timeout=None, follow_redirects=None, **kw):
+        class R:
+            text = chrome_only
+
+            def raise_for_status(self):
+                pass
+
+        return R()
+
+    fc_calls: list[str] = []
+
+    def fake_firecrawl(url):
+        fc_calls.append(url)
+        return _LANCET_FULL_HTML
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    monkeypatch.setattr("shared.web_scraper.fetch_html_via_firecrawl", fake_firecrawl)
+
+    dispatcher = _publisher_dispatcher()
+    with caplog.at_level(logging.WARNING, logger="nakama.robin.url_dispatcher"):
+        doi = dispatcher._extract_doi_from_html(
+            "https://www.thelancet.com/journals/eclinm/article/PIIS2589-5370(25)00676-5/fulltext"
+        )
+
+    assert doi == "10.1016/j.eclinm.2025.103193"
+    assert len(fc_calls) == 1
+    warning_text = " ".join(rec.message for rec in caplog.records if rec.levelname == "WARNING")
+    assert "absent" in warning_text.lower() or "meta" in warning_text.lower()
+
+
+def test_extract_doi_firecrawl_html_parsed_correctly(monkeypatch):
+    """Firecrawl-returned HTML with citation_doi meta tag → DOI extracted correctly."""
+    import agents.robin.url_dispatcher as mod
+
+    def boom_get(url, **kw):
+        raise httpx.ConnectError("blocked")
+
+    monkeypatch.setattr(mod.httpx, "get", boom_get)
+    monkeypatch.setattr(
+        "shared.web_scraper.fetch_html_via_firecrawl",
+        lambda _url: _LANCET_FULL_HTML,
+    )
+
+    dispatcher = _publisher_dispatcher()
+    doi = dispatcher._extract_doi_from_html("https://www.thelancet.com/article/x")
+
+    assert doi == "10.1016/j.eclinm.2025.103193"
+
+
+def test_extract_doi_both_httpx_and_firecrawl_fail_returns_none_with_warn(monkeypatch, caplog):
+    """Both layers fail → WARN logged, returns None (preserves fall-through)."""
+    import logging
+
+    import agents.robin.url_dispatcher as mod
+
+    def boom_get(url, **kw):
+        raise httpx.ConnectError("blocked")
+
+    def boom_firecrawl(url):
+        raise RuntimeError("FIRECRAWL_API_KEY 未設定")
+
+    monkeypatch.setattr(mod.httpx, "get", boom_get)
+    monkeypatch.setattr("shared.web_scraper.fetch_html_via_firecrawl", boom_firecrawl)
+
+    dispatcher = _publisher_dispatcher()
+    with caplog.at_level(logging.WARNING, logger="nakama.robin.url_dispatcher"):
+        doi = dispatcher._extract_doi_from_html("https://www.thelancet.com/article/x")
+
+    assert doi is None
+    warnings = [rec for rec in caplog.records if rec.levelname == "WARNING"]
+    assert len(warnings) >= 2  # httpx warn + firecrawl warn
+    combined = " ".join(rec.message for rec in warnings).lower()
+    assert "firecrawl" in combined
