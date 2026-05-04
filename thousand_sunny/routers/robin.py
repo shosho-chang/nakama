@@ -21,6 +21,12 @@ from agents.robin.agent import (
 from agents.robin.image_fetcher import fetch_images
 from agents.robin.ingest import IngestPipeline
 from agents.robin.kb_search import search_kb
+from shared.annotation_store import (
+    AnnotationSet,
+    AnnotationStore,
+    annotation_slug,
+    get_annotation_store,
+)
 from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
 from shared.state import is_file_read, mark_file_processed, mark_file_read
@@ -162,15 +168,22 @@ async def read_source(
     if frontmatter and content.startswith("---"):
         frontmatter_raw = content[: content.index("---", 3) + 3]
 
+    slug = annotation_slug(file, frontmatter)
+    ann_store: AnnotationStore = get_annotation_store()
+    ann_set = ann_store.load(slug)
+    annotations = [item.model_dump() for item in ann_set.items] if ann_set else []
+
     return templates.TemplateResponse(
         request,
         "reader.html",
         {
             "filename": file,
             "base": base,
+            "slug": slug,
             "content": body,
             "frontmatter": frontmatter,
             "frontmatter_raw": frontmatter_raw,
+            "annotations": annotations,
             "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
             "is_read": is_file_read(file_path),
             "is_bilingual": bool(frontmatter.get("bilingual")),
@@ -196,18 +209,20 @@ async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
 
 @router.post("/save-annotations")
 async def save_annotations(
-    filename: str = Form(...),
-    content: str = Form(...),
-    base: str = Form("inbox"),
+    ann_set: AnnotationSet,
     nakama_auth: str | None = Cookie(None),
 ):
+    """Accept a structured AnnotationSet and persist to KB/Annotations/{slug}.md.
+
+    The original source file is never mutated (ADR-017).
+    """
     if not check_auth(nakama_auth):
         raise HTTPException(403)
-    base_dir = _resolve_reader_base(base)
-    file_path = safe_resolve(base_dir, filename)
-    if not file_path.exists():
-        raise HTTPException(404, detail=f"找不到檔案：{filename}")
-    file_path.write_text(content, encoding="utf-8")
+    # Validate that the declared base is known (prevents arbitrary slug writes from
+    # unknown bases, even though KB/Annotations/ is the uniform destination).
+    _resolve_reader_base(ann_set.base)
+    store: AnnotationStore = get_annotation_store()
+    store.save(ann_set)
     return {"status": "ok"}
 
 
