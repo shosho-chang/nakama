@@ -412,7 +412,10 @@ def test_save_annotations_writes_to_kb_annotations(client, vault, monkeypatch):
 
     r = tc.post("/save-annotations", json=_ANN_PAYLOAD)
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    data = r.json()
+    assert data["status"] == "ok"
+    assert "unsynced_count" in data
+    assert data["unsynced_count"] == 1  # 1 item, never synced
 
     ann_file = vault / "KB" / "Annotations" / "doc.md"
     assert ann_file.exists(), "annotation file must be created in KB/Annotations/"

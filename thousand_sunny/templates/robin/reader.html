@@ -27,6 +27,8 @@
     --finish-bg: #4caf50;
     --finish-done-bg: #e8f5e9;
     --finish-done-text: #2e7d32;
+    --badge-warn-bg: #fff3cd;
+    --badge-warn-text: #856404;
   }
   body.dark {
     --bg: #1a1a2e;
@@ -49,6 +51,8 @@
     --finish-bg: #2e7d32;
     --finish-done-bg: #1b4332;
     --finish-done-text: #81c784;
+    --badge-warn-bg: #5c4800;
+    --badge-warn-text: #ffc107;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -60,6 +64,10 @@
   .header-left h1 { font-size: 1rem; color: var(--text-heading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .header-right { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
   .badge-read { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--finish-done-bg); color: var(--finish-done-text); font-weight: 600; }
+  .badge-sync { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; font-weight: 600; }
+  .badge-sync[hidden] { display: none; }
+  .badge-sync.warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
+  .badge-sync.ok { background: var(--finish-done-bg); color: var(--finish-done-text); }
   .save-indicator { font-size: 0.75rem; color: #4caf50; opacity: 0; transition: opacity 0.3s; }
   .save-indicator.show { opacity: 1; }
   .header-btn { font-size: 0.75rem; padding: 0.25rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); cursor: pointer; color: var(--text-muted); transition: all 0.2s; }
@@ -180,6 +188,7 @@
     <div class="header-left">
       <h1>{{ filename }}</h1>
       <span class="badge-read" id="readBadge" {% if not is_read %}style="display:none"{% endif %}>已閱讀</span>
+      <span id="syncBadge" class="badge-sync"></span>
     </div>
     <div class="header-right">
       <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解 · T 切換譯文</span>
@@ -265,12 +274,14 @@
     const mdSource = {{ content | tojson }};
     // Mutable annotation state — loaded from server, updated client-side
     let annotationsData = {{ annotations | tojson }};
+    let unsyncedCount = {{ unsynced_count }};
     let pendingSelectedText = '';
 
     const readerContent = document.getElementById('readerContent');
     const darkToggle = document.getElementById('darkToggle');
     const bilingualToggle = document.getElementById('bilingualToggle');
     const saveIndicator = document.getElementById('saveIndicator');
+    const syncBadge = document.getElementById('syncBadge');
     const finishBtn = document.getElementById('finishBtn');
     const readBadge = document.getElementById('readBadge');
     const modalOverlay = document.getElementById('modalOverlay');
@@ -462,6 +473,20 @@
       return true;
     }
 
+    // ── Sync badge ──
+
+    function updateSyncBadge(count) {
+      unsyncedCount = count;
+      if (count > 0) {
+        syncBadge.textContent = count + ' 條未 sync';
+        syncBadge.className = 'badge-sync warn';
+      } else {
+        syncBadge.textContent = '✓ 全部 sync';
+        syncBadge.className = 'badge-sync ok';
+      }
+    }
+    updateSyncBadge(unsyncedCount);
+
     // ── Auto-save ──
 
     let saveTimer;
@@ -485,7 +510,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (res.ok) showSaved();
+        if (res.ok) {
+          showSaved();
+          const data = await res.json();
+          if (typeof data.unsynced_count === 'number') updateSyncBadge(data.unsynced_count);
+        }
       } catch (e) {
         console.error('Save failed:', e);
       }
@@ -582,6 +611,7 @@
           const updated = (data.concepts_updated || []).length;
           syncIndicator.textContent = updated > 0 ? `已同步 ${updated} 個概念 ✓` : '無匹配概念';
           syncIndicator.style.color = updated > 0 ? '#4caf50' : 'var(--text-muted)';
+          if (typeof data.unsynced_count === 'number') updateSyncBadge(data.unsynced_count);
         } else {
           syncIndicator.textContent = '同步失敗';
           syncIndicator.style.color = '#e53935';

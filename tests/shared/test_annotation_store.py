@@ -183,11 +183,41 @@ def test_delete_nonexistent_is_noop(store: AnnotationStore, tmp_path: Path, monk
     store.delete("ghost-slug")  # must not raise
 
 
-def test_mark_synced_is_noop(store: AnnotationStore, tmp_path: Path, monkeypatch):
+def test_mark_synced_nonexistent_slug_does_not_raise(
+    store: AnnotationStore, tmp_path: Path, monkeypatch
+):
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
     importlib.reload(mod)
     store = mod.AnnotationStore()
-    store.mark_synced("any-slug")  # must not raise
+    store.mark_synced("ghost-slug")  # file doesn't exist → must not raise
+
+
+def test_mark_synced_persists_last_synced_at(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    store = mod.AnnotationStore()
+
+    ann_set = mod.AnnotationSet(
+        slug="synced-article",
+        source_filename="synced-article.md",
+        base="inbox",
+        items=[
+            {
+                "type": "highlight",
+                "text": "hello",
+                "created_at": "2026-01-01T00:00:00Z",
+                "modified_at": "2026-01-01T00:00:00Z",
+            }
+        ],
+    )
+    store.save(ann_set)
+    assert store.load("synced-article").last_synced_at is None
+
+    store.mark_synced("synced-article")
+
+    loaded = store.load("synced-article")
+    assert loaded.last_synced_at is not None
+    assert "T" in loaded.last_synced_at
 
 
 # ── AnnotationStore: file written to correct location ────────────────────────
@@ -291,3 +321,95 @@ def test_slug_leading_trailing_hyphens_stripped():
     slug = annotation_slug(" - My Title - .md")
     assert not slug.startswith("-")
     assert not slug.endswith("-")
+
+
+# ── AnnotationStore.unsynced_count ───────────────────────────────────────────
+
+# Timestamps used in fixtures: T0 (old) < T1 (sync) < T2 (new)
+_T0 = "2026-01-01T00:00:00Z"
+_T1 = "2026-06-01T12:00:00Z"  # simulated last_synced_at
+_T2 = "2026-12-01T00:00:00Z"  # after sync
+
+
+def _store_with_synced(tmp_path, monkeypatch, last_synced_at, item_dicts):
+    """Save an AnnotationSet with the given item dicts and last_synced_at, return store."""
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    store = mod.AnnotationStore()
+    ann_set = mod.AnnotationSet(
+        slug="art",
+        source_filename="art.md",
+        base="inbox",
+        items=item_dicts,  # dicts → Pydantic discriminated union validation
+        last_synced_at=last_synced_at,
+    )
+    store.save(ann_set)
+    return store
+
+
+def test_unsynced_count_no_store_entry_returns_zero(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    store = mod.AnnotationStore()
+    assert store.unsynced_count("ghost") == 0
+
+
+def test_unsynced_count_never_synced_returns_all(tmp_path: Path, monkeypatch):
+    """last_synced_at=None → all items unsynced."""
+    items = [
+        {"type": "highlight", "text": "a", "created_at": _T0, "modified_at": _T0},
+        {"type": "annotation", "ref": "b", "note": "n", "created_at": _T0, "modified_at": _T0},
+        {"type": "highlight", "text": "c", "created_at": _T0, "modified_at": _T0},
+    ]
+    store = _store_with_synced(tmp_path, monkeypatch, None, items)
+    assert store.unsynced_count("art") == 3
+
+
+def test_unsynced_count_all_synced_returns_zero(tmp_path: Path, monkeypatch):
+    """All items modified before last_synced_at → 0 unsynced."""
+    items = [
+        {"type": "highlight", "text": "a", "created_at": _T0, "modified_at": _T0},
+        {"type": "annotation", "ref": "b", "note": "n", "created_at": _T0, "modified_at": _T0},
+    ]
+    store = _store_with_synced(tmp_path, monkeypatch, _T1, items)
+    assert store.unsynced_count("art") == 0
+
+
+def test_unsynced_count_partial(tmp_path: Path, monkeypatch):
+    """Items after last_synced_at are unsynced; earlier items are not."""
+    items = [
+        {"type": "highlight", "text": "old", "created_at": _T0, "modified_at": _T0},
+        {"type": "highlight", "text": "new", "created_at": _T2, "modified_at": _T2},
+    ]
+    store = _store_with_synced(tmp_path, monkeypatch, _T1, items)
+    assert store.unsynced_count("art") == 1
+
+
+def test_unsynced_count_highlights_only(tmp_path: Path, monkeypatch):
+    """Pure highlights, never synced."""
+    items = [
+        {"type": "highlight", "text": "x", "created_at": _T0, "modified_at": _T0},
+        {"type": "highlight", "text": "y", "created_at": _T0, "modified_at": _T0},
+    ]
+    store = _store_with_synced(tmp_path, monkeypatch, None, items)
+    assert store.unsynced_count("art") == 2
+
+
+def test_unsynced_count_annotations_only(tmp_path: Path, monkeypatch):
+    """Pure annotations, never synced."""
+    items = [
+        {"type": "annotation", "ref": "r1", "note": "n1", "created_at": _T0, "modified_at": _T0},
+        {"type": "annotation", "ref": "r2", "note": "n2", "created_at": _T0, "modified_at": _T0},
+    ]
+    store = _store_with_synced(tmp_path, monkeypatch, None, items)
+    assert store.unsynced_count("art") == 2
+
+
+def test_unsynced_count_mixed(tmp_path: Path, monkeypatch):
+    """Mixed highlight + annotation, never synced, both counted."""
+    items = [
+        {"type": "highlight", "text": "hi", "created_at": _T0, "modified_at": _T0},
+        {"type": "annotation", "ref": "ref", "note": "note", "created_at": _T0, "modified_at": _T0},
+    ]
+    store = _store_with_synced(tmp_path, monkeypatch, None, items)
+    assert store.unsynced_count("art") == 2
