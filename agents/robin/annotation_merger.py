@@ -43,6 +43,7 @@ class SyncReport(BaseModel):
     annotations_merged: int
     skipped_annotations: int
     errors: list[str]
+    unsynced_count: int = 0
 
 
 # ---------------------------------------------------------------------------

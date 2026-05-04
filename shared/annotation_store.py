@@ -26,6 +26,7 @@ class Highlight(BaseModel):
     type: Literal["highlight"] = "highlight"
     text: str
     created_at: str = Field(default_factory=lambda: _now_iso())
+    modified_at: str = Field(default_factory=lambda: _now_iso())
 
 
 class Annotation(BaseModel):
@@ -33,6 +34,7 @@ class Annotation(BaseModel):
     ref: str
     note: str
     created_at: str = Field(default_factory=lambda: _now_iso())
+    modified_at: str = Field(default_factory=lambda: _now_iso())
 
 
 AnnotationItem = Annotated[Union[Highlight, Annotation], Field(discriminator="type")]
@@ -44,6 +46,7 @@ class AnnotationSet(BaseModel):
     base: str
     items: list[AnnotationItem] = Field(default_factory=list)
     updated_at: str = Field(default_factory=lambda: _now_iso())
+    last_synced_at: str | None = None
 
 
 # ── Slug ──────────────────────────────────────────────────────────────────────
@@ -125,7 +128,27 @@ class AnnotationStore:
                 path.unlink()
 
     def mark_synced(self, slug: str) -> None:
-        """No-op placeholder — future Obsidian sync hook."""
+        """Persist last_synced_at timestamp so unsynced_count reflects post-sync state."""
+        lock = _lock_for(slug)
+        with lock:
+            path = _annotations_dir() / f"{slug}.md"
+            if not path.exists():
+                return
+            ann_set = _parse(path.read_text(encoding="utf-8"), slug)
+            ann_set.last_synced_at = _now_iso()
+            path.write_text(_serialize(ann_set), encoding="utf-8")
+
+    def unsynced_count(self, slug: str) -> int:
+        """Count items whose modified_at is after last_synced_at.
+
+        Returns len(items) when never synced (last_synced_at is None), 0 when no file.
+        """
+        ann_set = self.load(slug)
+        if ann_set is None:
+            return 0
+        if ann_set.last_synced_at is None:
+            return len(ann_set.items)
+        return sum(1 for item in ann_set.items if item.modified_at > ann_set.last_synced_at)
 
 
 _store = AnnotationStore()
@@ -146,12 +169,14 @@ def _serialize(ann_set: AnnotationSet) -> str:
         ensure_ascii=False,
         indent=2,
     )
+    synced_line = f'last_synced_at: "{ann_set.last_synced_at}"\n' if ann_set.last_synced_at else ""
     return (
         f"---\n"
         f"slug: {ann_set.slug}\n"
         f"source: {ann_set.source_filename}\n"
         f"base: {ann_set.base}\n"
         f'updated_at: "{ann_set.updated_at}"\n'
+        f"{synced_line}"
         f"---\n\n"
         f"```json\n{items_json}\n```\n"
     )
@@ -185,6 +210,7 @@ def _parse(text: str, slug: str) -> AnnotationSet:
         base=fm.get("base", "inbox"),
         items=items,
         updated_at=fm.get("updated_at", _now_iso()),
+        last_synced_at=fm.get("last_synced_at") or None,
     )
 
 

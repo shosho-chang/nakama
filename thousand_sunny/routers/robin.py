@@ -184,6 +184,7 @@ async def read_source(
             "frontmatter": frontmatter,
             "frontmatter_raw": frontmatter_raw,
             "annotations": annotations,
+            "unsynced_count": ann_store.unsynced_count(slug),
             "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
             "is_read": is_file_read(file_path),
             "is_bilingual": bool(frontmatter.get("bilingual")),
@@ -223,7 +224,7 @@ async def save_annotations(
     _resolve_reader_base(ann_set.base)
     store: AnnotationStore = get_annotation_store()
     store.save(ann_set)
-    return {"status": "ok"}
+    return {"status": "ok", "unsynced_count": store.unsynced_count(ann_set.slug)}
 
 
 @router.post("/sync-annotations/{slug}")
@@ -241,6 +242,10 @@ async def sync_annotations(
 
     merger = ConceptPageAnnotationMerger()
     report = await asyncio.to_thread(merger.sync_source_to_concepts, slug)
+    store: AnnotationStore = get_annotation_store()
+    if not report.errors:
+        await asyncio.to_thread(store.mark_synced, slug)
+    report.unsynced_count = store.unsynced_count(slug)
     return report
 
 

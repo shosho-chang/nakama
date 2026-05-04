@@ -120,6 +120,7 @@ def test_sync_annotations_store_not_found(client, monkeypatch):
     data = res.json()
     assert data["annotations_merged"] == 0
     assert len(data["errors"]) > 0
+    assert "unsynced_count" in data
 
 
 def test_sync_annotations_empty_returns_zero_count(client, monkeypatch):
@@ -147,6 +148,7 @@ def test_sync_annotations_empty_returns_zero_count(client, monkeypatch):
     data = res.json()
     assert data["annotations_merged"] == 0
     assert data["source_slug"] == "empty-src"
+    assert "unsynced_count" in data
 
 
 def test_sync_annotations_success(client, monkeypatch):
@@ -175,3 +177,4 @@ def test_sync_annotations_success(client, monkeypatch):
     assert data["annotations_merged"] == 3
     assert "肌酸代謝" in data["concepts_updated"]
     assert data["errors"] == []
+    assert data["unsynced_count"] == 0  # no annotation file → unsynced_count=0
