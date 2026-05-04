@@ -553,3 +553,43 @@ def test_inbox_view_renders_translating_status_icon(client):
     assert resp.status_code == 200
     assert 'data-status="translating"' in resp.text
     assert "翻譯中" in resp.text  # title attribute on the icon span
+
+
+# ── _flip_status_to_translating direct unit coverage ─────────────────────────
+
+
+def test_flip_status_to_translating_no_field_is_silent_noop(client, tmp_path: Path):
+    """File without ``fulltext_status`` field → silent no-op (count==0 branch).
+
+    Covers the early-return path when the regex doesn't match — same
+    contract as ``_flip_status_to_translated``. Without this test the
+    line goes uncovered, which dropped routers/robin.py below the 95%
+    critical-path coverage gate.
+    """
+    import thousand_sunny.routers.robin as robin_module
+
+    legacy = tmp_path / "no-frontmatter.md"
+    legacy.write_text("# Just a heading\n\nbody\n", encoding="utf-8")
+    before = legacy.read_text(encoding="utf-8")
+    robin_module._flip_status_to_translating(legacy)
+    assert legacy.read_text(encoding="utf-8") == before  # untouched
+
+
+def test_flip_status_to_translating_unreadable_source_logs_and_returns(
+    client, tmp_path: Path, monkeypatch
+):
+    """OSError from ``read_text`` → exception logged, no raise (defensive branch).
+
+    Mirrors ``_flip_status_to_translated``'s OSError handler. Tests the
+    ``except OSError`` clause that the happy-path tests can't reach.
+    """
+    import thousand_sunny.routers.robin as robin_module
+
+    bogus = tmp_path / "vanished.md"  # never created → read_text raises
+
+    def _boom(_path):
+        raise OSError("simulated read failure")
+
+    monkeypatch.setattr(robin_module, "read_text", _boom)
+    # Must not raise; logger.exception is the only side effect.
+    robin_module._flip_status_to_translating(bogus)
