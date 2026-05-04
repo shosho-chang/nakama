@@ -10,23 +10,27 @@
 
 ## Phase 0 — Pre-flight checklist
 
-### 0.1 環境變數
+### 0.1 環境變數（**presence-only check，不可印 value**）
 
 ```bash
 cd E:/nakama
-grep -E "^VAULT_PATH|^DISABLE_ROBIN|^ANTHROPIC_API_KEY" .env
-# 期待：VAULT_PATH 指 active vault（記憶說 Windows active = E:\Shosho LifeOS\，
-#       .env 可能 stale 指 F:\Shosho LifeOS\ — 兩邊有 Syncthing 殘留同名 dir，
-#       下游若有歧異請拍板更新 .env）
-# 期待：DISABLE_ROBIN 不存在或空（本機需要 Robin）
-# 期待：ANTHROPIC_API_KEY 有值（sync 走 LLM merge）
+# 只驗 key 存在 + 印路徑類非 secret 值；secret 類只回 set/MISSING
+grep -q "^VAULT_PATH=." .env && echo "VAULT_PATH: $(grep ^VAULT_PATH .env | cut -d= -f2)" || echo "VAULT_PATH: MISSING"
+grep -q "^DISABLE_ROBIN=." .env && echo "DISABLE_ROBIN: present (本機應該不設)" || echo "DISABLE_ROBIN: unset (OK)"
+grep -q "^ANTHROPIC_API_KEY=." .env && echo "ANTHROPIC_API_KEY: set" || echo "ANTHROPIC_API_KEY: MISSING"
+# 期待：VAULT_PATH 指 active vault（Windows active = E:\Shosho LifeOS\）
+# 期待：DISABLE_ROBIN unset（本機需要 Robin）
+# 期待：ANTHROPIC_API_KEY set（sync 走 LLM merge）
 ```
+
+> ⚠️ **不可寫**：`grep ^ANTHROPIC_API_KEY .env`（會把整把 key plaintext 印到 stdout/transcript）。
+> Lesson learned：2026-05-04 寫 QA doc 時踩過一次，rotate 過 key — see [feedback_no_secrets_in_chat.md](../../memory/claude/feedback_no_secrets_in_chat.md)。
 
 ### 0.1b Vault path 真實落點驗
 
 ```bash
-echo "VAULT_PATH=$(grep ^VAULT_PATH .env | cut -d= -f2)"
-ls -la "$(grep ^VAULT_PATH .env | cut -d= -f2 | tr -d '\"')/KB/Wiki/Sources/" 2>/dev/null | head -3
+VAULT="$(grep ^VAULT_PATH .env | cut -d= -f2 | tr -d '\"')"
+ls -la "$VAULT/KB/Wiki/Sources/" 2>/dev/null | head -3
 # 期待：列出 Sources/ 下實檔案；空的話 .env 路徑指錯
 ```
 
