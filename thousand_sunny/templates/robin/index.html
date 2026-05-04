@@ -187,7 +187,7 @@
             {% elif file.fulltext_status == "failed" %}
               <span class="status-icon" data-status="failed" title="失敗">❌</span>
             {% endif %}
-            {{ file.name }}
+            <span title="{{ file.name }}">{{ file.title or file.name }}</span>
             {% if file.is_read %}<span class="badge-read">已閱讀</span>{% endif %}
           </div>
           <div class="file-meta">
