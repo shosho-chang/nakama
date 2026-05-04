@@ -37,6 +37,11 @@
   .url-card button { background: #6c63ff; font-size: 0.85rem; padding: 0.5rem 1rem; }
   .url-card button:disabled { opacity: 0.5; cursor: not-allowed; }
   .url-hint { font-size: 0.75rem; color: #aaa; margin-top: 0.5rem; }
+  .status-icon { font-size: 1rem; flex-shrink: 0; }
+  .status-icon[data-status="processing"] { color: #6c63ff; }
+  .status-icon[data-status="ready"] { color: #2e7d32; }
+  .status-icon[data-status="failed"] { color: #c62828; }
+  .status-source { font-size: 0.7rem; color: #888; margin-left: 0.4rem; }
 </style>
 </head>
 <body>
@@ -77,10 +82,20 @@
       <div class="file-top">
         <div class="file-info">
           <div class="file-name">
+            {% if file.fulltext_status == "processing" %}
+              <span class="status-icon" data-status="processing" title="處理中">🔄</span>
+            {% elif file.fulltext_status == "ready" %}
+              <span class="status-icon" data-status="ready" title="可讀">✅</span>
+            {% elif file.fulltext_status == "failed" %}
+              <span class="status-icon" data-status="failed" title="失敗">❌</span>
+            {% endif %}
             {{ file.name }}
             {% if file.is_read %}<span class="badge-read">已閱讀</span>{% endif %}
           </div>
-          <div class="file-meta">{{ file.size }}</div>
+          <div class="file-meta">
+            {{ file.size }}
+            {% if file.fulltext_source %}<span class="status-source">· {{ file.fulltext_source }}</span>{% endif %}
+          </div>
         </div>
       </div>
       <div class="file-actions">

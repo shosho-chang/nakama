@@ -9,7 +9,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
@@ -19,8 +19,10 @@ from agents.robin.agent import (
     SOURCE_TYPE_TO_RAW_DIR,
 )
 from agents.robin.image_fetcher import fetch_images
+from agents.robin.inbox_writer import InboxWriter
 from agents.robin.ingest import IngestPipeline
 from agents.robin.kb_search import search_kb
+from agents.robin.url_dispatcher import URLDispatcher
 from shared.annotation_store import (
     AnnotationSet,
     AnnotationStore,
@@ -118,6 +120,19 @@ def _get_inbox_files() -> list[dict]:
     for f in sorted(inbox.iterdir()):
         if f.is_file() and f.suffix.lower() in supported:
             size_kb = f.stat().st_size // 1024
+            # Slice 1 (issue #352): inbox row status icon — read frontmatter
+            # ``fulltext_status`` if present (URL ingest pipeline writes it).
+            # Files without that field (manual drops, legacy placeholders) get
+            # an empty status string so the template suppresses the icon.
+            status = ""
+            source_label = ""
+            if f.suffix.lower() == ".md":
+                try:
+                    fm, _ = extract_frontmatter(read_text(f))
+                    status = str(fm.get("fulltext_status", "") or "")
+                    source_label = str(fm.get("fulltext_source", "") or "")
+                except OSError:
+                    pass
             files.append(
                 {
                     "name": f.name,
@@ -125,6 +140,8 @@ def _get_inbox_files() -> list[dict]:
                     "type": EXTENSION_TO_SOURCE_TYPE.get(f.suffix.lower(), "article"),
                     "annotatable": f.suffix.lower() in (".md", ".txt"),
                     "is_read": is_file_read(f),
+                    "fulltext_status": status,
+                    "fulltext_source": source_label,
                 }
             )
     return files
@@ -265,77 +282,127 @@ async def mark_read(
     return {"status": "ok"}
 
 
+_VALID_SOURCE_TYPES = {"article", "paper", "book", "video", "podcast"}
+_VALID_CONTENT_NATURES = {
+    "popular_science",
+    "research",
+    "textbook",
+    "clinical_protocol",
+    "narrative",
+    "commentary",
+}
+
+
+def _slug_from_url(url: str) -> str:
+    """Same slug derivation the legacy ``/scrape-translate`` used (line 311).
+
+    Kept as a free function so the BackgroundTask can derive the same name
+    the placeholder writer used (without re-doing the slugify dance inline).
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return slugify(parsed.netloc + parsed.path)[:60] or "scraped"
+
+
+def _ingest_url_in_background(
+    *,
+    url: str,
+    placeholder_path: Path,
+    source_type: str,
+    content_nature: str,
+) -> None:
+    """BackgroundTask body: dispatch URL → write final IngestResult into placeholder.
+
+    Replaces the placeholder file in-place so the inbox row's filename never
+    changes (the user can bookmark it once they redirect back to inbox view).
+
+    Lazy-imports ``URLDispatcher`` / ``InboxWriter`` so test patches against
+    ``thousand_sunny.routers.robin`` module bindings still work.
+    """
+    try:
+        dispatcher = URLDispatcher()
+        result = dispatcher.dispatch(url)
+        writer = InboxWriter(_get_inbox())
+        writer.write_to_inbox(
+            result,
+            slug=placeholder_path.stem,
+            existing_path=placeholder_path,
+            source_type=source_type,
+            content_nature=content_nature,
+        )
+    except Exception:  # noqa: BLE001 — never let a BackgroundTask raise
+        logger.exception("scrape-translate background task crashed (url=%s)", url)
+
+
 @router.post("/scrape-translate")
 async def scrape_translate(
+    background_tasks: BackgroundTasks,
     url: str = Form(...),
     source_type: str = Form("article"),
     content_nature: str = Form("popular_science"),
     nakama_auth: str | None = Cookie(None),
 ):
-    """從 URL 抓取網頁並翻譯成雙語 Markdown，存入 inbox。"""
+    """Stage 1 URL ingest entry-point (PRD docs/plans/2026-05-04-stage-1-ingest-unify.md).
+
+    Slice 1 behaviour (issue #352):
+
+    1. Validate auth + form values (allowlist source_type / content_nature).
+    2. Same-URL short-circuit: if any inbox file's frontmatter already has
+       ``original_url == url``, redirect straight to ``/read`` without
+       re-fetching.
+    3. Write a ``status='processing'`` placeholder file under
+       ``Inbox/kb/{slug}.md`` so the inbox view immediately shows a 🔄 row.
+    4. Schedule a ``BackgroundTask`` that runs ``URLDispatcher.dispatch()``
+       and overwrites the placeholder with the final ``IngestResult`` (ready
+       or failed).
+    5. Redirect 303 → ``/`` (inbox view) so the user sees their pending row.
+
+    Slice 2+ will widen URLDispatcher to academic 5-layer fallback. Slice 3
+    will wire image_fetcher. Slice 4 will add discard / translate buttons.
+    """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
 
-    _VALID_SOURCE_TYPES = {"article", "paper", "book", "video", "podcast"}
-    _VALID_CONTENT_NATURES = {
-        "popular_science",
-        "research",
-        "textbook",
-        "clinical_protocol",
-        "narrative",
-        "commentary",
-    }
     source_type = source_type if source_type in _VALID_SOURCE_TYPES else "article"
     content_nature = (
         content_nature if content_nature in _VALID_CONTENT_NATURES else "popular_science"
-    )  # noqa: E501
+    )
 
-    from shared.translator import translate_document
-    from shared.web_scraper import scrape_url
+    inbox = _get_inbox()
+    writer = InboxWriter(inbox)
 
-    try:
-        raw_text = await asyncio.to_thread(scrape_url, url)
-    except RuntimeError as e:
-        raise HTTPException(422, detail=f"無法擷取頁面：{e}")
+    # Same-URL short-circuit (PRD §Pipeline / API "短路條件" + acceptance #6).
+    existing = writer.find_existing_for_url(url)
+    if existing is not None:
+        logger.info("scrape-translate short-circuit (existing url): %s", existing.name)
+        response = RedirectResponse(f"/read?file={existing.name}", status_code=303)
+        if nakama_auth:
+            response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+        return response
 
-    try:
-        bilingual_md = await asyncio.to_thread(translate_document, raw_text)
-    except Exception as e:
-        logger.error(f"翻譯失敗：{e}")
-        bilingual_md = raw_text  # 翻譯失敗時保留原文
-
-    # 以 URL slug 命名文件
+    slug = _slug_from_url(url)
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
-    slug = slugify(parsed.netloc + parsed.path)[:60] or "scraped"
-    filename = f"{slug}.md"
-    inbox = _get_inbox()
-    inbox.mkdir(parents=True, exist_ok=True)
-    dest = inbox / filename
-    # 避免覆蓋現有檔案
-    counter = 1
-    while dest.exists():
-        dest = inbox / f"{slug}-{counter}.md"
-        counter += 1
-    filename = dest.name
-
-    # 清理換行符防止 YAML 注入；source_type/content_nature 已通過 allowlist 驗證
-    safe_title = f"{parsed.netloc}{parsed.path}".replace("\n", "").replace("\r", "")
-    safe_url = url.replace("\n", "").replace("\r", "")
-    frontmatter = (
-        "---\n"
-        f'title: "{safe_title}"\n'
-        f'source: "{safe_url}"\n'
-        f"source_type: {source_type}\n"
-        f"content_nature: {content_nature}\n"
-        "bilingual: true\n"
-        "---\n\n"
+    placeholder_title = f"{parsed.netloc}{parsed.path}".strip("/") or url
+    placeholder_path = writer.write_placeholder(
+        slug=slug,
+        original_url=url,
+        title=placeholder_title,
+        source_type=source_type,
+        content_nature=content_nature,
     )
-    dest.write_text(frontmatter + bilingual_md, encoding="utf-8")
-    logger.info(f"scrape-translate 完成：{filename}")
 
-    response = RedirectResponse(f"/read?file={filename}", status_code=303)
+    background_tasks.add_task(
+        _ingest_url_in_background,
+        url=url,
+        placeholder_path=placeholder_path,
+        source_type=source_type,
+        content_nature=content_nature,
+    )
+
+    response = RedirectResponse("/", status_code=303)
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response

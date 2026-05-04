@@ -509,17 +509,26 @@ def test_scrape_translate_unauth_redirect(auth_client):
 
 
 def test_scrape_translate_invalid_types_fallback_defaults(client, vault, monkeypatch):
-    """source_type / content_nature 非 allowlist 值 → 退回預設。"""
+    """source_type / content_nature 非 allowlist 值 → 退回預設。
+
+    Slice 1 (issue #352): /scrape-translate 改成 BackgroundTask + redirect /;
+    本 case mock URLDispatcher 確認 form allowlist 仍 work + frontmatter 寫入預設值。
+    """
     tc, mod = client
 
-    def fake_scrape(url):
-        return "raw page content"
+    from shared.schemas.ingest_result import IngestResult
 
-    def fake_translate(text):
-        return f"bilingual:{text}"
-
-    monkeypatch.setattr("shared.web_scraper.scrape_url", fake_scrape)
-    monkeypatch.setattr("shared.translator.translate_document", fake_translate)
+    big_md = "# Title\n\n" + ("body line.\n" * 80)
+    fake_dispatcher_cls = MagicMock()
+    fake_dispatcher_cls.return_value.dispatch.return_value = IngestResult(
+        status="ready",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown=big_md,
+        title="Title",
+        original_url="https://example.com/path",
+    )
+    monkeypatch.setattr(mod, "URLDispatcher", fake_dispatcher_cls)
 
     (vault / "Inbox" / "kb").mkdir(parents=True)
 
@@ -541,9 +550,21 @@ def test_scrape_translate_invalid_types_fallback_defaults(client, vault, monkeyp
 
 
 def test_scrape_translate_filename_collision_adds_counter(client, vault, monkeypatch):
+    """Slice 1: placeholder writer 沿用既有 collision counter pattern。"""
     tc, mod = client
-    monkeypatch.setattr("shared.web_scraper.scrape_url", lambda u: "raw")
-    monkeypatch.setattr("shared.translator.translate_document", lambda t: f"bi:{t}")
+
+    from shared.schemas.ingest_result import IngestResult
+
+    fake_dispatcher_cls = MagicMock()
+    fake_dispatcher_cls.return_value.dispatch.return_value = IngestResult(
+        status="ready",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="# T\n\n" + ("body\n" * 80),
+        title="T",
+        original_url="https://example.com/foo",
+    )
+    monkeypatch.setattr(mod, "URLDispatcher", fake_dispatcher_cls)
 
     inbox = vault / "Inbox" / "kb"
     inbox.mkdir(parents=True)
@@ -563,35 +584,33 @@ def test_scrape_translate_filename_collision_adds_counter(client, vault, monkeyp
     assert len(counter_files) == 1
 
 
-def test_scrape_translate_scrape_failure_returns_422(client, vault, monkeypatch):
+def test_scrape_translate_scrape_failure_writes_failed_row(client, vault, monkeypatch):
+    """Slice 1: scraper 失敗不再 422，改寫入 status=failed inbox row。"""
     tc, mod = client
 
-    def fake_scrape(url):
-        raise RuntimeError("boom")
+    from shared.schemas.ingest_result import IngestResult
 
-    monkeypatch.setattr("shared.web_scraper.scrape_url", fake_scrape)
-    (vault / "Inbox" / "kb").mkdir(parents=True)
+    failed = IngestResult(
+        status="failed",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="",
+        title="example.com",
+        original_url="https://example.com/",
+        error="RuntimeError: boom",
+    )
+    fake_dispatcher_cls = MagicMock()
+    fake_dispatcher_cls.return_value.dispatch.return_value = failed
+    monkeypatch.setattr(mod, "URLDispatcher", fake_dispatcher_cls)
 
-    r = tc.post("/scrape-translate", data={"url": "https://example.com/"})
-    assert r.status_code == 422
-
-
-def test_scrape_translate_translate_failure_keeps_original(client, vault, monkeypatch):
-    """translate 失敗 → bilingual_md 退回 raw_text（line 267）。"""
-    tc, mod = client
-    monkeypatch.setattr("shared.web_scraper.scrape_url", lambda u: "raw page")
-
-    def fake_translate(text):
-        raise RuntimeError("translate boom")
-
-    monkeypatch.setattr("shared.translator.translate_document", fake_translate)
     (vault / "Inbox" / "kb").mkdir(parents=True)
 
     r = tc.post("/scrape-translate", data={"url": "https://example.com/"})
     assert r.status_code == 303
     files = list((vault / "Inbox" / "kb").glob("*.md"))
+    assert len(files) == 1
     content = files[0].read_text("utf-8")
-    assert "raw page" in content  # fallback 保留 raw
+    assert "fulltext_status: failed" in content
 
 
 # ---------------------------------------------------------------------------
