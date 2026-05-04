@@ -20,12 +20,14 @@ import json
 import sys
 from datetime import datetime, timezone
 
-from shared.heartbeat import record_failure, record_success
+# Windows cp1252 stdout 無法印中文 — 統一 UTF-8（feedback_windows_stdout_utf8）.
+# Must run before imports that build module-level loggers (StreamHandler
+# captures sys.stdout at attach time).
+from shared.log import force_utf8_console
 
-# Windows cp1252 stdout 無法印中文 — 統一 UTF-8（feedback_windows_stdout_utf8）
-for _stream in (sys.stdout, sys.stderr):
-    if hasattr(_stream, "reconfigure"):
-        _stream.reconfigure(encoding="utf-8", errors="replace")
+force_utf8_console()
+
+from shared.heartbeat import record_failure, record_success  # noqa: E402
 
 # Phase 5B-2 — heartbeat keys consumed by probe_cron_freshness via CRON_SCHEDULES.
 # Stable across releases (changing breaks the probe's prior-state continuity).

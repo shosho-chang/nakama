@@ -5,7 +5,16 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from thousand_sunny.routers import auth, bridge, bridge_zoro, brook, franky, repurpose, zoro
+# Windows uvicorn inherits cp1252 stdout/stderr → any 中文 log message would
+# raise UnicodeEncodeError per-record (logging then floods stderr with stack
+# traces and silently drops the message). Force UTF-8 BEFORE any router
+# import — routers create module-level loggers via shared.log.get_logger,
+# which captures sys.stdout at handler-attach time.
+from shared.log import force_utf8_console
+
+force_utf8_console()
+
+from thousand_sunny.routers import auth, bridge, bridge_zoro, brook, franky, repurpose, zoro  # noqa: E402
 
 app = FastAPI(docs_url=None, redoc_url=None)
 
