@@ -219,14 +219,14 @@ def _scrape_firecrawl(url: str) -> str:
         raise RuntimeError("FIRECRAWL_API_KEY 未設定，無法使用 Firecrawl")
 
     try:
-        from firecrawl import FirecrawlApp
+        from firecrawl import Firecrawl
     except ImportError as e:
         raise RuntimeError("firecrawl-py 未安裝") from e
 
     logger.info(f"Firecrawl 擷取：{url}")
     try:
-        app = FirecrawlApp(api_key=api_key)
-        result = app.scrape_url(url, params={"formats": ["markdown"]})
+        app = Firecrawl(api_key=api_key)
+        result = app.scrape(url, formats=["markdown"])
         md = result.markdown or ""
         if not md:
             raise RuntimeError("Firecrawl 回傳空內容")
