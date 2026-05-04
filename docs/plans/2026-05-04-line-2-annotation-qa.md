@@ -15,9 +15,19 @@
 ```bash
 cd E:/nakama
 grep -E "^VAULT_PATH|^DISABLE_ROBIN|^ANTHROPIC_API_KEY" .env
-# 期待：VAULT_PATH 指 F:/Shosho LifeOS（或修修當前 active 路徑）
+# 期待：VAULT_PATH 指 active vault（記憶說 Windows active = E:\Shosho LifeOS\，
+#       .env 可能 stale 指 F:\Shosho LifeOS\ — 兩邊有 Syncthing 殘留同名 dir，
+#       下游若有歧異請拍板更新 .env）
 # 期待：DISABLE_ROBIN 不存在或空（本機需要 Robin）
 # 期待：ANTHROPIC_API_KEY 有值（sync 走 LLM merge）
+```
+
+### 0.1b Vault path 真實落點驗
+
+```bash
+echo "VAULT_PATH=$(grep ^VAULT_PATH .env | cut -d= -f2)"
+ls -la "$(grep ^VAULT_PATH .env | cut -d= -f2 | tr -d '\"')/KB/Wiki/Sources/" 2>/dev/null | head -3
+# 期待：列出 Sources/ 下實檔案；空的話 .env 路徑指錯
 ```
 
 ### 0.2 套件 + 服務
@@ -46,7 +56,7 @@ grep -E "^VAULT_PATH|^DISABLE_ROBIN|^ANTHROPIC_API_KEY" .env
 ### 0.5 Vault 狀態 baseline
 
 ```bash
-ls "F:/Shosho LifeOS/KB/Annotations/" 2>/dev/null
+ls "${VAULT_PATH}/KB/Annotations/" 2>/dev/null
 # 期待：不存在或為空 dir（這次 QA 從零開始，避免舊 annotation 干擾）
 # 若有舊檔 → 移到備份 dir 不要刪
 ```
@@ -59,7 +69,7 @@ ls "F:/Shosho LifeOS/KB/Annotations/" 2>/dev/null
 
 ### 1.1 Inbox 一般 markdown
 
-1. 在 `F:/Shosho LifeOS/Inbox/` 隨便放一個 `.md` 檔（或挑現有的）
+1. 在 `${VAULT_PATH}/Inbox/` 隨便放一個 `.md` 檔（或挑現有的）
 2. Browser 開 `http://127.0.0.1:8000/` → 應看到 Inbox 列表
 3. 點檔案 → reader 應渲染 markdown body
 
@@ -82,7 +92,7 @@ ls "F:/Shosho LifeOS/KB/Annotations/" 2>/dev/null
 > 這條是 Line 2 critical path — 修修要看一本中文書但**從未實測**過 EPUB ingest 中文書的實際成果。
 
 1. 從修修書庫挑一本**短的**中文 EPUB（< 200 頁理想）
-2. 丟 `F:/Shosho LifeOS/Inbox/`
+2. 丟 `${VAULT_PATH}/Inbox/`
 3. 走 Reader `/start` flow → 走完 ingest pipeline → 結果在 `KB/Wiki/Sources/<book-slug>.md`
 4. 開那個 markdown 檢查
 
@@ -125,10 +135,10 @@ ls "F:/Shosho LifeOS/KB/Annotations/" 2>/dev/null
 ### 2.2 檢視 KB/Annotations/ 物理檔
 
 ```bash
-ls "F:/Shosho LifeOS/KB/Annotations/"
+ls "${VAULT_PATH}/KB/Annotations/"
 # 期待：出現 <slug>.md（slug 對應 source filename / frontmatter title）
 
-cat "F:/Shosho LifeOS/KB/Annotations/<slug>.md"
+cat "${VAULT_PATH}/KB/Annotations/<slug>.md"
 # 期待：
 # - frontmatter 含 schema_version / source_slug / source_path / last_synced_at: null（還沒 sync）
 # - body 是 structured callout：每條 highlight + annotation 帶 stable id / reftext / created_at / modified_at / note
@@ -170,7 +180,7 @@ cat "F:/Shosho LifeOS/KB/Annotations/<slug>.md"
 
 ```bash
 # 紀錄 baseline
-cp "F:/Shosho LifeOS/KB/Wiki/Concepts/<concept>.md" /tmp/concept-before.md
+cp "${VAULT_PATH}/KB/Wiki/Concepts/<concept>.md" /tmp/concept-before.md
 ```
 
 ### 3.2 觸發 sync
@@ -187,7 +197,7 @@ cp "F:/Shosho LifeOS/KB/Wiki/Concepts/<concept>.md" /tmp/concept-before.md
 ### 3.3 驗 Concept page mutation
 
 ```bash
-diff /tmp/concept-before.md "F:/Shosho LifeOS/KB/Wiki/Concepts/<concept>.md"
+diff /tmp/concept-before.md "${VAULT_PATH}/KB/Wiki/Concepts/<concept>.md"
 # 期待 diff：
 # - 多了 ## 個人觀點 section（如果之前沒有）
 # - section 內含 boundary marker：<!-- annotation-from: <slug> --> ... <!-- /annotation-from: <slug> -->
@@ -204,7 +214,7 @@ diff /tmp/concept-before.md "F:/Shosho LifeOS/KB/Wiki/Concepts/<concept>.md"
 ### 3.4 KB/Annotations/<slug>.md last_synced_at 更新
 
 ```bash
-grep last_synced_at "F:/Shosho LifeOS/KB/Annotations/<slug>.md"
+grep last_synced_at "${VAULT_PATH}/KB/Annotations/<slug>.md"
 # 期待：last_synced_at: <剛才 sync 的 ISO timestamp>
 ```
 
@@ -218,7 +228,7 @@ grep last_synced_at "F:/Shosho LifeOS/KB/Annotations/<slug>.md"
 3. 觀察 Concept page
 
 ```bash
-diff <(cat "F:/Shosho LifeOS/KB/Wiki/Concepts/<concept>.md") /tmp/concept-after-1st-sync.md
+diff <(cat "${VAULT_PATH}/KB/Wiki/Concepts/<concept>.md") /tmp/concept-after-1st-sync.md
 # 期待：無 diff（content-identical）
 ```
 
@@ -244,10 +254,10 @@ diff <(cat "F:/Shosho LifeOS/KB/Wiki/Concepts/<concept>.md") /tmp/concept-after-
 ### 4.3 驗 Concept page
 
 ```bash
-grep -c "annotation-from:" "F:/Shosho LifeOS/KB/Wiki/Concepts/<concept>.md"
+grep -c "annotation-from:" "${VAULT_PATH}/KB/Wiki/Concepts/<concept>.md"
 # 期待：4（兩個 source × 開/關 boundary marker）
 
-grep "annotation-from:" "F:/Shosho LifeOS/KB/Wiki/Concepts/<concept>.md"
+grep "annotation-from:" "${VAULT_PATH}/KB/Wiki/Concepts/<concept>.md"
 # 期待：兩 source slug 各出現一次 open marker、一次 close marker
 ```
 
@@ -317,7 +327,7 @@ Slack DM Nami / 或本機 /project-bootstrap "讀書心得 — <書名>"
 ```
 
 期待生成：
-- `F:/Shosho LifeOS/Projects/<project-name>.md`
+- `${VAULT_PATH}/Projects/<project-name>.md`
 - `Tasks/` 下 3 個 default task
 
 **人工 gate**：
@@ -342,7 +352,7 @@ Slack DM Nami / 或本機 /project-bootstrap "讀書心得 — <書名>"
 修修這次手跑過程，**任何卡 / 慢 / 不順 / 想多一個按鈕**的點都記下來：
 
 ```markdown
-F:/Shosho LifeOS/Inbox/qa-line2-bugs-2026-05-04.md
+${VAULT_PATH}/Inbox/qa-line2-bugs-2026-05-04.md
 
 # Line 2 QA Bug Log — 2026-05-04
 
