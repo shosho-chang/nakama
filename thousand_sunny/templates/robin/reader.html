@@ -705,8 +705,18 @@
         if (res.ok) {
           const data = await res.json();
           const updated = (data.concepts_updated || []).length;
-          syncIndicator.textContent = updated > 0 ? `已同步 ${updated} 個概念 ✓` : '無匹配概念';
-          syncIndicator.style.color = updated > 0 ? '#4caf50' : 'var(--text-muted)';
+          const errors = data.errors || [];
+          if (errors.length > 0) {
+            // LLM contract / API broke — surface the real reason instead of silent「無匹配概念」
+            syncIndicator.textContent = `⚠️ 同步錯誤：${errors[0]}`;
+            syncIndicator.style.color = '#e53935';
+          } else if (data.short_circuited) {
+            syncIndicator.textContent = '已是最新，無需同步';
+            syncIndicator.style.color = 'var(--text-muted)';
+          } else {
+            syncIndicator.textContent = updated > 0 ? `已同步 ${updated} 個概念 ✓` : '無匹配概念';
+            syncIndicator.style.color = updated > 0 ? '#4caf50' : 'var(--text-muted)';
+          }
           if (typeof data.unsynced_count === 'number') updateSyncBadge(data.unsynced_count);
         } else {
           syncIndicator.textContent = '同步失敗';

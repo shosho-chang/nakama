@@ -118,6 +118,7 @@ def call_claude_with_tools(
     system: str = "",
     model: str | None = None,
     max_tokens: int = 2048,
+    tool_choice: dict | None = None,
 ) -> anthropic.types.Message:
     """呼叫 Claude 的 tool-use API，回傳完整 Message 物件（含 stop_reason、content blocks）。
 
@@ -136,6 +137,9 @@ def call_claude_with_tools(
         model: 模型。``None`` 則走 :func:`shared.llm_router.get_model` 用
             ``task="tool_use"``（預設 Haiku 4.5，tool-routing 任務通常夠用）。
         max_tokens: 最大輸出 token 數
+        tool_choice: Anthropic ``tool_choice`` 參數，例如
+            ``{"type": "tool", "name": "merge_annotations"}`` 強迫 LLM 走指定 tool
+            （替代 raw-text JSON 不穩契約用）。``None`` 時讓 LLM 自由決定。
 
     Returns:
         ``anthropic.types.Message``（含 content + stop_reason + usage）
@@ -158,6 +162,8 @@ def call_claude_with_tools(
             kwargs["system"] = [
                 {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
             ]
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
         return client.messages.create(**kwargs)
 
     start = time.perf_counter()

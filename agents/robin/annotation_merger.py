@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import NamedTuple
 
 from pydantic import BaseModel
 
@@ -44,6 +45,43 @@ class SyncReport(BaseModel):
     skipped_annotations: int
     errors: list[str]
     unsynced_count: int = 0
+    short_circuited: bool = False
+
+
+class MergerLLMResult(NamedTuple):
+    """Typed result for sync LLM call.
+
+    Distinguishes empty match (LLM 真判斷 0 匹配，``error=None``) from LLM/contract
+    failure（``error`` 非空），so caller can surface a real error to the UI 而非
+    silent swallow 為「無匹配概念」（QA 2026-05-04 卡點 #7 教訓）。
+    """
+
+    matches: dict[str, str]  # {concept_slug: callout_block}
+    error: str | None  # None on success (incl. empty matches); error msg on failure
+
+
+_MERGE_TOOL = {
+    "name": "merge_annotations",
+    "description": (
+        "Map annotations to matching concept pages with callout blocks. "
+        "Return concept_matches as an object whose keys are concept slugs and "
+        "values are the full callout markdown block to insert into that concept page."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "concept_matches": {
+                "type": "object",
+                "description": (
+                    "Map of concept_slug → callout_block markdown string. "
+                    "Empty object means no matches."
+                ),
+                "additionalProperties": {"type": "string"},
+            }
+        },
+        "required": ["concept_matches"],
+    },
+}
 
 
 # ---------------------------------------------------------------------------
@@ -86,30 +124,37 @@ def _replace_marker_block(body: str, source_slug: str, callout_block: str) -> st
 # ---------------------------------------------------------------------------
 
 
-def _ask_merger_llm(prompt: str) -> dict[str, str]:
-    """Call LLM to map annotations → concept callout blocks.
+def _ask_merger_llm(prompt: str) -> MergerLLMResult:
+    """Call LLM via tool_use forced JSON to map annotations → concept callout blocks.
 
-    Returns:
-        {concept_slug: callout_block_markdown_string}
-    Malformed / empty LLM output → returns {} (caller skips gracefully).
+    Reasoning models (Opus 4.7) historically produced unstable raw-text JSON for
+    this prompt（QA 2026-05-04 觀察 2/3 sync 失敗於 ``json.loads``）。改走
+    Anthropic ``tool_use`` + ``tool_choice`` forced invocation：schema 由 SDK
+    強制驗證，不可能噴 markdown fence / commentary 飄出來。
     """
-    from shared.llm import ask
+    from shared.anthropic_client import call_claude_with_tools
 
-    raw = ask(
-        prompt=prompt,
-        model="claude-opus-4-7",
-        max_tokens=8000,
-        temperature=0.2,
-    )
     try:
-        result = json.loads(raw)
-        if not isinstance(result, dict):
-            logger.warning("merger LLM returned non-dict JSON", extra={"raw": raw[:200]})
-            return {}
-        return {k: v for k, v in result.items() if isinstance(k, str) and isinstance(v, str)}
-    except (json.JSONDecodeError, AttributeError):
-        logger.warning("merger LLM returned invalid JSON", extra={"raw": raw[:200]})
-        return {}
+        message = call_claude_with_tools(
+            messages=[{"role": "user", "content": prompt}],
+            tools=[_MERGE_TOOL],
+            tool_choice={"type": "tool", "name": "merge_annotations"},
+            model="claude-opus-4-7",
+            max_tokens=8000,
+        )
+    except Exception as e:
+        logger.exception("merger LLM API error")
+        return MergerLLMResult(matches={}, error=f"LLM API 錯誤：{type(e).__name__}: {e}")
+
+    tool_use_blocks = [b for b in message.content if getattr(b, "type", None) == "tool_use"]
+    if not tool_use_blocks:
+        logger.warning("merger LLM did not invoke tool", extra={"stop_reason": message.stop_reason})
+        return MergerLLMResult(matches={}, error="LLM 未呼叫 merge_annotations tool")
+
+    raw_matches = tool_use_blocks[0].input.get("concept_matches", {})
+    # tool_use schema 已保證 dict[str, str]，但仍 sanity filter 以防 SDK 飄。
+    matches = {k: v for k, v in raw_matches.items() if isinstance(k, str) and isinstance(v, str)}
+    return MergerLLMResult(matches=matches, error=None)
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +196,18 @@ class ConceptPageAnnotationMerger:
                 errors=[],
             )
 
+        # Idempotency short-circuit: 沒有新動的 annotation → 不打 LLM，省 $ 又
+        # 避免 reasoning model 重打撞 invalid-JSON 概率（QA 卡點 #7 sync2 重現）。
+        if store.unsynced_count(slug) == 0:
+            return SyncReport(
+                source_slug=slug,
+                concepts_updated=[],
+                annotations_merged=0,
+                skipped_annotations=0,
+                errors=[],
+                short_circuited=True,
+            )
+
         concept_slugs = self._list_concept_slugs()
         prompt = load_prompt(
             "robin",
@@ -163,7 +220,16 @@ class ConceptPageAnnotationMerger:
                 indent=2,
             ),
         )
-        linkage: dict[str, str] = _ask_merger_llm(prompt)
+        llm_result = _ask_merger_llm(prompt)
+        if llm_result.error is not None:
+            return SyncReport(
+                source_slug=slug,
+                concepts_updated=[],
+                annotations_merged=0,
+                skipped_annotations=0,
+                errors=[llm_result.error],
+            )
+        linkage: dict[str, str] = llm_result.matches
 
         concepts_updated: list[str] = []
         skipped = 0
