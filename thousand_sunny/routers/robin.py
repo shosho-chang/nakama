@@ -31,6 +31,7 @@ from shared.annotation_store import (
 )
 from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
+from shared.image_fetcher import download_markdown_images
 from shared.log import get_logger
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.utils import extract_frontmatter, read_text, slugify
@@ -371,6 +372,29 @@ def _slug_from_url(url: str) -> str:
     return slugify(parsed.netloc + parsed.path)[:60] or "scraped"
 
 
+def _image_downloader_adapter(
+    markdown: str,
+    attachments_abs_dir: Path,
+    vault_relative_prefix: str,
+) -> tuple[str, list[str]]:
+    """Adapter from URLDispatcher's positional shape to ``download_markdown_images`` kwargs.
+
+    ``URLDispatcher`` calls the configured downloader as
+    ``downloader(markdown, attachments_abs_dir, vault_relative_prefix)`` (so the
+    schema-of-protocol matches what was promised in PR #357 review). The
+    underlying ``shared.image_fetcher.download_markdown_images`` uses keyword
+    arguments + a different parameter name (``dest_dir`` rather than
+    ``attachments_abs_dir``). This adapter bridges the two without refactoring
+    the existing image_fetcher (it has its own callers + tests we don't want
+    to touch in Slice 4 scope).
+    """
+    return download_markdown_images(
+        markdown,
+        dest_dir=attachments_abs_dir,
+        vault_relative_prefix=vault_relative_prefix,
+    )
+
+
 def _ingest_url_in_background(
     *,
     url: str,
@@ -390,11 +414,21 @@ def _ingest_url_in_background(
     Slice 1 has no delete UI to recover (Slice 5 #356 adds the delete button).
     """
     try:
-        # Slice 1: default config (URLDispatcher reaches into shared.web_scraper
-        # for the readability+firecrawl chain). Slice 2 will widen this to
-        # ``URLDispatcherConfig(fetch_fulltext_fn=fetch_fulltext, email=cfg["email"], ...)``
-        # to wire the academic 5-layer reuse — see ``URLDispatcherConfig`` docstring.
-        dispatcher = URLDispatcher(URLDispatcherConfig())
+        # Slice 1 base config (readability+firecrawl via shared.web_scraper)
+        # extended in Slice 4 with image fetch hook so external image URLs
+        # land under ``KB/Attachments/inbox/{slug}/`` and the markdown is
+        # rewritten to vault-relative paths (cross-device sync friendly).
+        # Slice 2 will further widen this with ``fetch_fulltext_fn`` for the
+        # academic 5-layer fallback — see ``URLDispatcherConfig`` docstring.
+        slug = placeholder_path.stem
+        attachments_abs_dir = get_vault_path() / "KB" / "Attachments" / "inbox" / slug
+        vault_relative_prefix = f"KB/Attachments/inbox/{slug}/"
+        config = URLDispatcherConfig(
+            image_downloader_fn=_image_downloader_adapter,
+            attachments_abs_dir=attachments_abs_dir,
+            vault_relative_prefix=vault_relative_prefix,
+        )
+        dispatcher = URLDispatcher(config)
         result = dispatcher.dispatch(url)
         writer = InboxWriter(_get_inbox())
         writer.write_to_inbox(
