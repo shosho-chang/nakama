@@ -4,22 +4,26 @@ Validates the on-demand translate endpoint that 修修 triggers from the
 reader header after eyeballing the original-language fulltext:
 
 - Auth gate redirects to /login.
-- Successful POST returns 303 → ``/read?file={slug}-bilingual.md`` (the
-  bilingual reader). FastAPI runs ``BackgroundTasks`` AFTER the response
-  in TestClient, so by the time POST returns the BG body has finished
-  and the bilingual file + frontmatter mutation are observable.
+- Successful POST returns 303 → ``/`` (the inbox view). FastAPI runs
+  ``BackgroundTasks`` AFTER the response in TestClient, so by the time
+  POST returns the BG body has finished and the bilingual file +
+  frontmatter mutation are observable. Redirect target is the inbox so
+  the user can watch the row's 🔄 (translating) icon flip to 📖
+  (translated) — NOT ``/read?file={slug}-bilingual.md``, which used to
+  race the BG write and 404 every long article (see
+  ``test_translate_redirects_to_inbox_not_bilingual_reader``).
 - Bilingual short-circuit: when ``{slug}-bilingual.md`` already exists,
   the endpoint redirects WITHOUT scheduling a new BG task and WITHOUT
   re-running ``translate_document`` (mirrors ``/pubmed-to-reader`` line
-  499 short-circuit pattern).
-- After successful translation, the original ``Inbox/kb/{slug}.md``
-  frontmatter is updated in-place to ``fulltext_status: translated``
-  (acceptance #4).
-- Translator failure leaves the original frontmatter untouched and
-  surfaces a 500-ish — we do NOT silently swallow into the bilingual
-  reader (different from /pubmed-to-reader's "fall back to raw md"
-  behaviour because the original fulltext is already readable on its
-  own under URL ingest).
+  499 short-circuit pattern). The short-circuit redirect IS direct to
+  the bilingual reader because the file is already there — no race.
+- Before scheduling the BG task, the original ``Inbox/kb/{slug}.md``
+  frontmatter is flipped to ``fulltext_status: translating``. After BG
+  completes it's flipped to ``translated`` (acceptance #4).
+- Translator failure leaves the source frontmatter on ``translating``
+  (intentionally visible — the row stays ``translating`` so the user
+  can notice + retry rather than the row silently snapping back to
+  ``ready`` and hiding the failure).
 
 Mocking note: ``shared.translator.translate_document`` is the function
 ``thousand_sunny.routers.robin._translate_in_background`` calls via
@@ -99,7 +103,12 @@ def test_translate_requires_auth(client):
 
 
 def test_translate_writes_bilingual_and_redirects(client):
-    """POST → BG runs translate_document → writes bilingual.md → 303 to reader."""
+    """POST → BG runs translate_document → writes bilingual.md → 303 to inbox.
+
+    Redirect target is ``/`` (inbox), NOT ``/read?file={stem}-bilingual.md``
+    — see ``test_translate_redirects_to_inbox_not_bilingual_reader`` for
+    the dedicated regression covering why.
+    """
     tc, inbox = client
     auth = _auth_cookie(tc)
     _seed_ready_file(inbox, name="example.md")
@@ -121,7 +130,7 @@ def test_translate_writes_bilingual_and_redirects(client):
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/read?file=example-bilingual.md"
+    assert resp.headers["location"] == "/"
     mock_translate.assert_called_once()
 
     bilingual = inbox / "example-bilingual.md"
@@ -261,12 +270,17 @@ def test_translate_rejects_path_traversal(client):
     assert resp.status_code in (400, 403, 404)
 
 
-def test_translate_bg_failure_leaves_original_status_ready(client):
+def test_translate_bg_failure_leaves_original_status_translating(client):
     """Translator crash must NOT flip the source frontmatter to ``translated``.
 
-    Otherwise the inbox row would lie ("✅ 雙語") even though the bilingual
-    file was never written. Recovery: status stays ``ready``, the user can
-    retry from the reader header without losing the original.
+    With the inbox-redirect contract (race-fix), the route flips the source
+    to ``translating`` BEFORE scheduling the BG task — so a translator
+    crash leaves the row stuck on ``translating`` rather than snapping
+    back to ``ready``. That visible "in flight, never finished" surface
+    is the recovery affordance: the user notices the row isn't moving
+    and can retry. (Pre-fix behaviour was "stays ``ready`` so user can
+    retry"; post-fix the equivalent is "stays ``translating`` so user
+    can notice + retry.")
     """
     tc, inbox = client
     auth = _auth_cookie(tc)
@@ -287,8 +301,9 @@ def test_translate_bg_failure_leaves_original_status_ready(client):
     # contract as ``/scrape-translate`` — recovery is observable in inbox).
     assert resp.status_code == 303
     text = original.read_text(encoding="utf-8")
-    assert "fulltext_status: ready" in text
+    assert "fulltext_status: translating" in text
     assert "fulltext_status: translated" not in text
+    assert "fulltext_status: ready" not in text
     # Bilingual file never created.
     assert not (inbox / "example-bilingual.md").exists()
 
@@ -389,3 +404,192 @@ def test_translate_does_not_double_translate_bilingual_filename(client):
     assert resp.status_code == 303
     assert resp.headers["location"] == "/read?file=example-bilingual.md"
     mock_translate.assert_not_called()
+
+
+# ── Race-fix regressions: redirect target + ``translating`` lifecycle ─────────
+
+
+def test_translate_redirects_to_inbox_not_bilingual_reader(client):
+    """Race regression: POST /translate must NOT redirect to the bilingual reader.
+
+    The original Slice-3 implementation redirected to
+    ``/read?file={stem}-bilingual.md`` immediately after scheduling the
+    BG task. On long articles (BMJ Medicine, 326 paragraphs ≈ 3 min)
+    the redirect raced the BG write and produced HTTP 404
+    ``找不到檔案：{stem}-bilingual.md`` for every user. Reproduced live
+    2026-05-04.
+
+    The fix sends the user back to the inbox so they can watch the row's
+    🔄 (translating) icon flip to 📖 (translated) before clicking 「閱讀」.
+    This test simulates the BG NOT YET RUNNING by skipping the BG
+    execution entirely (``add_task`` is patched to a no-op) and asserts
+    the redirect goes to ``/`` regardless of the bilingual file's
+    existence.
+    """
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+    _seed_ready_file(inbox, name="example.md")
+
+    with patch("thousand_sunny.routers.robin.BackgroundTasks.add_task"):
+        # BG never runs → bilingual file is never written. The race-buggy
+        # version of /translate would still 303 to /read?file=example-bilingual.md
+        # under this exact setup, which is what users hit live.
+        resp = tc.post(
+            "/translate",
+            params={"file": "example.md"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/", (
+        "Translate route must redirect to inbox '/' so the user doesn't "
+        "race the BG-written bilingual file. Redirecting to "
+        "'/read?file=...-bilingual.md' caused 404s on long articles."
+    )
+    # Bilingual file genuinely doesn't exist yet — confirms the race
+    # window we'd otherwise hit if redirect went straight to /read.
+    assert not (inbox / "example-bilingual.md").exists()
+
+
+def test_translate_flips_source_to_translating_before_redirect(client):
+    """``ready`` → ``translating`` transition observable immediately after redirect.
+
+    Companion to ``test_translate_redirects_to_inbox_not_bilingual_reader``:
+    the redirect goes to the inbox, and the inbox row must show the
+    in-flight 🔄 icon — which requires the source frontmatter to flip
+    to ``fulltext_status: translating`` BEFORE the redirect is issued
+    (not lazily inside the BG body, otherwise there's a window where
+    the row still shows ✅ ready and invites a second click).
+
+    We simulate "BG hasn't run" by patching ``add_task`` to a no-op so
+    the only state change observable is the synchronous flip the route
+    handler did.
+    """
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+    original = _seed_ready_file(inbox, name="example.md")
+    assert "fulltext_status: ready" in original.read_text(encoding="utf-8")
+
+    with patch("thousand_sunny.routers.robin.BackgroundTasks.add_task"):
+        resp = tc.post(
+            "/translate",
+            params={"file": "example.md"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    text = original.read_text(encoding="utf-8")
+    assert "fulltext_status: translating" in text
+    assert "fulltext_status: ready" not in text
+    assert "fulltext_status: translated" not in text  # BG hasn't run yet
+
+
+def test_translate_full_lifecycle_translating_then_translated(client):
+    """End-to-end: ``ready`` → (sync) ``translating`` → (BG) ``translated``.
+
+    Asserts the regex in ``_flip_status_to_translated`` correctly
+    rewrites the new ``translating`` intermediate scalar — without
+    this, the BG task would silently no-op the second flip and the row
+    would stay stuck on 🔄 even after the bilingual file was written.
+
+    TestClient drives BackgroundTasks AFTER the response body is sent,
+    so by the time ``post`` returns the BG body has finished and we
+    can observe the FINAL ``translated`` state in one read.
+    """
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+    original = _seed_ready_file(inbox, name="example.md")
+
+    with patch(
+        "thousand_sunny.routers.robin.translate_document",
+        return_value="# Test article\n\n> 測試文章\n\nFirst paragraph.\n\n> 第一段。\n",
+    ):
+        resp = tc.post(
+            "/translate",
+            params={"file": "example.md"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/"
+    text = original.read_text(encoding="utf-8")
+    # Final state after BG ran: must be ``translated``, NOT stuck on
+    # ``translating`` (regression for the regex matching the new state).
+    assert "fulltext_status: translated" in text
+    assert "fulltext_status: translating" not in text
+    assert "fulltext_status: ready" not in text
+    # Bilingual file actually written by the BG body.
+    assert (inbox / "example-bilingual.md").exists()
+
+
+def test_inbox_view_renders_translating_status_icon(client):
+    """Inbox row 🔄 + ``data-status="translating"`` for in-flight rows.
+
+    Mirrors ``test_inbox_view_renders_translated_status_icon`` for the
+    new intermediate state. Without this template branch the row would
+    fall through and render no icon at all while the BG task is in
+    flight, hiding the "translating" surface from the user.
+    """
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+    (inbox / "in-flight.md").write_text(
+        "---\n"
+        'title: "x"\n'
+        'source: "https://example.com/x"\n'
+        'original_url: "https://example.com/x"\n'
+        "source_type: article\n"
+        "content_nature: popular_science\n"
+        "fulltext_status: translating\n"
+        "fulltext_layer: readability\n"
+        'fulltext_source: "Readability"\n'
+        "---\n\nbody\n",
+        encoding="utf-8",
+    )
+
+    resp = tc.get("/", cookies={"nakama_auth": auth})
+    assert resp.status_code == 200
+    assert 'data-status="translating"' in resp.text
+    assert "翻譯中" in resp.text  # title attribute on the icon span
+
+
+# ── _flip_status_to_translating direct unit coverage ─────────────────────────
+
+
+def test_flip_status_to_translating_no_field_is_silent_noop(client, tmp_path: Path):
+    """File without ``fulltext_status`` field → silent no-op (count==0 branch).
+
+    Covers the early-return path when the regex doesn't match — same
+    contract as ``_flip_status_to_translated``. Without this test the
+    line goes uncovered, which dropped routers/robin.py below the 95%
+    critical-path coverage gate.
+    """
+    import thousand_sunny.routers.robin as robin_module
+
+    legacy = tmp_path / "no-frontmatter.md"
+    legacy.write_text("# Just a heading\n\nbody\n", encoding="utf-8")
+    before = legacy.read_text(encoding="utf-8")
+    robin_module._flip_status_to_translating(legacy)
+    assert legacy.read_text(encoding="utf-8") == before  # untouched
+
+
+def test_flip_status_to_translating_unreadable_source_logs_and_returns(
+    client, tmp_path: Path, monkeypatch
+):
+    """OSError from ``read_text`` → exception logged, no raise (defensive branch).
+
+    Mirrors ``_flip_status_to_translated``'s OSError handler. Tests the
+    ``except OSError`` clause that the happy-path tests can't reach.
+    """
+    import thousand_sunny.routers.robin as robin_module
+
+    bogus = tmp_path / "vanished.md"  # never created → read_text raises
+
+    def _boom(_path):
+        raise OSError("simulated read failure")
+
+    monkeypatch.setattr(robin_module, "read_text", _boom)
+    # Must not raise; logger.exception is the only side effect.
+    robin_module._flip_status_to_translating(bogus)

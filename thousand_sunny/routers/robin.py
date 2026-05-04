@@ -638,6 +638,34 @@ def _flip_status_to_translated(source_path: Path) -> None:
     source_path.write_text(new_text, encoding="utf-8")
 
 
+def _flip_status_to_translating(source_path: Path) -> None:
+    """Mutate ``fulltext_status`` in the source frontmatter to ``translating``.
+
+    Mirror of :func:`_flip_status_to_translated`. The ``translating`` state
+    is a transient intermediate marker (``ready`` → ``translating`` →
+    ``translated``) that the inbox row can render so 修修 sees the file is
+    in flight rather than (a) being dumped onto a 404 bilingual reader page
+    or (b) clicking 「翻譯」 a second time. The BG task flips it forward
+    to ``translated`` on completion via :func:`_flip_status_to_translated`,
+    so a crash mid-translate leaves the row stuck on ``translating`` —
+    intentional surface so the user can notice + retry rather than the row
+    silently snapping back to ``ready`` and hiding the failure.
+
+    Silent no-op if the file lacks the field — same contract as the
+    ``translated`` flipper.
+    """
+    try:
+        text = read_text(source_path)
+    except OSError:
+        logger.exception("could not read source for status flip: %s", source_path)
+        return
+    new_text, count = _FULLTEXT_STATUS_RE.subn("fulltext_status: translating", text, count=1)
+    if count == 0:
+        logger.info("no fulltext_status field to flip in %s — skipping", source_path.name)
+        return
+    source_path.write_text(new_text, encoding="utf-8")
+
+
 def _translate_in_background(
     *,
     source_path: Path,
@@ -703,12 +731,24 @@ async def translate(
        straight to the reader without scheduling a BG task — mirrors
        ``/pubmed-to-reader`` line 499 and the PRD §Pipeline / API
        "短路條件" / acceptance #6.
-    4. Else schedule ``_translate_in_background`` and redirect.
+    4. Else flip the source row to ``fulltext_status: translating``,
+       schedule ``_translate_in_background``, and redirect back to the
+       inbox view (``/``) — NOT ``/read?file={stem}-bilingual.md``.
+
+    Why the redirect target is ``/`` and not the bilingual reader:
+    translation takes ~3min on a long article; redirecting straight to
+    ``/read?file={stem}-bilingual.md`` raced the BG write and 404'd
+    every long article (BMJ Medicine reproduction 2026-05-04). Sending
+    the user back to the inbox lets them watch the 🔄 (translating)
+    icon flip to 📖 (translated), then click 「閱讀」 to jump in once the
+    file actually exists. Costs one extra click but trades a 100%
+    failure mode for a 0% one.
 
     The BG task writes ``Inbox/kb/{stem}-bilingual.md`` and mutates the
     source frontmatter to ``fulltext_status: translated``. On translator
-    crash neither side-effect happens — the source row stays ``ready``
-    so the user can retry without losing anything.
+    crash the bilingual file is never written; the source row is left in
+    ``translating`` so the failure is visible (mirror of the
+    "no silent fallback to raw" choice in ``_translate_in_background``).
     """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
@@ -728,12 +768,19 @@ async def translate(
             response.set_cookie("nakama_auth", nakama_auth, httponly=True)
         return response
 
+    # Flip BEFORE scheduling so the inbox row reflects "in flight" the
+    # moment the user is redirected back. Doing it inside the BG body
+    # would leave a window where the row still shows ✅ ready but the
+    # translate button is being processed → looks idle, invites a
+    # second click.
+    _flip_status_to_translating(source_path)
+
     background_tasks.add_task(
         _translate_in_background,
         source_path=source_path,
         bilingual_path=bilingual_path,
     )
-    response = RedirectResponse(f"/read?file={bilingual_path.name}", status_code=303)
+    response = RedirectResponse("/", status_code=303)
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
