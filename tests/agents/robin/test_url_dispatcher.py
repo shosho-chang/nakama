@@ -1,7 +1,8 @@
-"""URLDispatcher tests (Slice 1, issue #352).
+"""URLDispatcher tests (Slice 1 + Slice 2, issues #352 / #353).
 
 Scope (per PRD §Testing Decisions / "只測外部行為"):
 
+Slice 1:
 - ``dispatch(url)`` routes general URL into the readability path and produces
   a ``status='ready'`` ``IngestResult`` with the markdown intact.
 - < 200-char hard block produces ``status='failed'`` + the "疑似 bot 擋頁"
@@ -12,16 +13,32 @@ Scope (per PRD §Testing Decisions / "只測外部行為"):
 - Title is extracted from ``# heading`` when present, else falls back to
   netloc + path.
 
-Slice 2 will add academic-source path tests (PMC / Europe PMC / Unpaywall /
-publisher HTML / arXiv / bioRxiv) when the dispatcher gains URL pattern
-detection — those tests will live here once the layers are wired.
+Slice 2:
+- Academic URL pattern detection (PubMed / DOI / arXiv / bioRxiv / medRxiv /
+  publisher domain) routes correctly.
+- DOI → PMID reverse-lookup (mocked NCBI esearch).
+- PubMed URL dispatches via configured fetch_fulltext_fn.
+- arXiv / bioRxiv / medRxiv dispatch via their respective APIs (mocked).
+- Without fetch_fulltext_fn configured, academic pubmed/doi/publisher URLs
+  fall through to the readability path.
+- OA layers (pmc / europe_pmc / unpaywall) carry ✓ in display label;
+  general scrape layers carry ⚠️.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import httpx
 import pytest
 
-from agents.robin.url_dispatcher import MIN_CONTENT_CHARS, URLDispatcher, URLDispatcherConfig
+from agents.robin.url_dispatcher import (
+    MIN_CONTENT_CHARS,
+    URLDispatcher,
+    URLDispatcherConfig,
+    _detect_academic_source,
+    _parse_arxiv_atom,
+)
 from shared.schemas.ingest_result import IngestResult
 
 
@@ -38,7 +55,7 @@ def _make(scrape_fn):
 
 
 def test_dispatch_general_url_routes_to_readability():
-    """Slice 1: every URL goes through the readability layer."""
+    """Slice 1: every non-academic URL goes through the readability layer."""
     big_md = "# Article Title\n\n" + ("body line.\n" * 80)
     dispatcher = _make(lambda _url: big_md)
 
@@ -47,7 +64,7 @@ def test_dispatch_general_url_routes_to_readability():
     assert isinstance(result, IngestResult)
     assert result.status == "ready"
     assert result.fulltext_layer == "readability"
-    assert result.fulltext_source == "Readability"
+    assert result.fulltext_source == "Readability ⚠️"
     assert result.markdown == big_md
     assert result.original_url == "https://example.com/post"
     assert result.error is None
@@ -155,3 +172,491 @@ def test_default_scrape_fn_uses_shared_web_scraper(monkeypatch):
 
     assert calls["url"] == "https://example.com/page"
     assert result.status == "ready"
+
+
+# ── Slice 2: academic pattern detection ────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "url,exp_kind,exp_id",
+    [
+        ("https://pubmed.ncbi.nlm.nih.gov/12345678/", "pubmed", "12345678"),
+        ("https://pubmed.ncbi.nlm.nih.gov/12345678", "pubmed", "12345678"),
+        ("https://doi.org/10.1016/j.cell.2024.01.001", "doi", "10.1016/j.cell.2024.01.001"),
+        (
+            "https://dx.doi.org/10.1038/s41586-024-00001-0",
+            "doi",
+            "10.1038/s41586-024-00001-0",
+        ),
+        ("https://arxiv.org/abs/2301.12345", "arxiv", "2301.12345"),
+        ("https://arxiv.org/pdf/2301.12345v2.pdf", "arxiv", "2301.12345"),
+        (
+            "https://www.biorxiv.org/content/10.1101/2024.01.01.000001v1",
+            "biorxiv",
+            "10.1101/2024.01.01.000001",
+        ),
+        (
+            "https://www.medrxiv.org/content/10.1101/2024.01.01.24300001v2.full",
+            "medrxiv",
+            "10.1101/2024.01.01.24300001",
+        ),
+    ],
+)
+def test_detect_academic_source_patterns(url, exp_kind, exp_id):
+    result = _detect_academic_source(url)
+    assert result is not None, f"Expected academic source for {url!r}"
+    kind, ident = result
+    assert kind == exp_kind
+    assert ident == exp_id
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/article/123",
+        "https://blog.example.com/2024/01/post",
+        "https://medium.com/@author/post",
+        "https://news.google.com/article/abc",
+    ],
+)
+def test_detect_academic_source_non_academic_returns_none(url):
+    assert _detect_academic_source(url) is None
+
+
+def test_detect_publisher_domain_without_doi_returns_publisher():
+    """bmj.com subdomain without DOI in path → ('publisher', url)."""
+    url = "https://bmjmedicine.bmj.com/content/5/1/e001513"
+    result = _detect_academic_source(url)
+    assert result is not None
+    assert result[0] == "publisher"
+
+
+def test_detect_publisher_domain_with_doi_in_path_returns_doi():
+    """Publisher URL that embeds a DOI in the path → ('doi', doi_str)."""
+    url = "https://link.springer.com/article/10.1007/s00125-024-06100-3"
+    result = _detect_academic_source(url)
+    assert result is not None
+    assert result[0] == "doi"
+    assert result[1].startswith("10.")
+
+
+# ── Slice 2: DOI → PMID lookup ───────────────────────────────────────────────
+
+
+def _make_fulltext_dispatcher(tmp_path: Path, fetch_fn=None) -> URLDispatcher:
+    """Helper: dispatcher wired with fetch_fulltext_fn and tmp_path attachments."""
+    return URLDispatcher(
+        URLDispatcherConfig(
+            fetch_fulltext_fn=fetch_fn or (lambda *a, **kw: {}),
+            email="test@example.com",
+            attachments_abs_dir=tmp_path,
+            vault_relative_prefix="KB/Attachments/pubmed",
+        )
+    )
+
+
+def test_doi_to_pmid_returns_first_hit(monkeypatch, tmp_path):
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, params=None, headers=None, timeout=None, **kw):
+        class R:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"esearchresult": {"idlist": ["39999999"]}}
+
+        return R()
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    dispatcher = _make_fulltext_dispatcher(tmp_path)
+    pmid = dispatcher._doi_to_pmid("10.1016/j.cell.2024.01.001")
+    assert pmid == "39999999"
+
+
+def test_doi_to_pmid_no_email_returns_none():
+    dispatcher = URLDispatcher(URLDispatcherConfig())
+    assert dispatcher._doi_to_pmid("10.1016/j.cell.2024.01.001") is None
+
+
+def test_doi_to_pmid_empty_idlist_returns_none(monkeypatch, tmp_path):
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, params=None, headers=None, timeout=None, **kw):
+        class R:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"esearchresult": {"idlist": []}}
+
+        return R()
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    dispatcher = _make_fulltext_dispatcher(tmp_path)
+    assert dispatcher._doi_to_pmid("10.9999/notinpubmed") is None
+
+
+def test_doi_to_pmid_http_error_returns_none(monkeypatch, tmp_path):
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, params=None, headers=None, timeout=None, **kw):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    dispatcher = _make_fulltext_dispatcher(tmp_path)
+    assert dispatcher._doi_to_pmid("10.1016/j.cell.2024.01.001") is None
+
+
+# ── Slice 2: PubMed URL dispatch via fetch_fulltext ──────────────────────────
+
+
+def test_dispatch_pubmed_url_calls_fetch_fulltext(tmp_path):
+    """PubMed URL extracts PMID directly and routes to fetch_fulltext."""
+    md_file = tmp_path / "12345678.md"
+    md_file.write_text("# BMJ Medicine Full Text\n\n" + "content.\n" * 80, encoding="utf-8")
+
+    ft_calls: list[str] = []
+
+    def fake_ft(pmid, *, attachments_abs_dir, vault_relative_prefix, email, ncbi_api_key=None):
+        ft_calls.append(pmid)
+        return {"status": "oa_html", "source": "publisher_html", "html_relpath": "...", "note": ""}
+
+    dispatcher = _make_fulltext_dispatcher(tmp_path, fetch_fn=fake_ft)
+    result = dispatcher.dispatch("https://pubmed.ncbi.nlm.nih.gov/12345678/")
+
+    assert ft_calls == ["12345678"]
+    assert result.status == "ready"
+    assert result.fulltext_layer == "publisher_html"
+    assert "Publisher HTML" in result.fulltext_source
+
+
+def test_dispatch_pubmed_url_not_found_marks_failed(tmp_path):
+    """fetch_fulltext returning not_found → status='failed' with note."""
+
+    def fake_ft(pmid, *, attachments_abs_dir, vault_relative_prefix, email, ncbi_api_key=None):
+        return {"status": "not_found", "source": None, "note": "no OA version"}
+
+    dispatcher = _make_fulltext_dispatcher(tmp_path, fetch_fn=fake_ft)
+    result = dispatcher.dispatch("https://pubmed.ncbi.nlm.nih.gov/99999999/")
+
+    assert result.status == "failed"
+    assert result.fulltext_layer == "unknown"
+    assert "no OA version" in (result.note or "")
+
+
+def test_dispatch_pubmed_without_fulltext_fn_falls_through_to_readability():
+    """No fetch_fulltext_fn → PubMed URL falls through to general readability."""
+    big_md = "# Title\n\n" + ("text\n" * 80)
+    dispatcher = URLDispatcher(URLDispatcherConfig(scrape_url_fn=lambda _: big_md))
+    result = dispatcher.dispatch("https://pubmed.ncbi.nlm.nih.gov/12345678/")
+    assert result.status == "ready"
+    assert result.fulltext_layer == "readability"
+
+
+def test_dispatch_fetch_fulltext_exception_returns_failed(tmp_path):
+    """fetch_fulltext raising → status='failed', exception message in error."""
+
+    def boom(*a, **kw):
+        raise RuntimeError("network timeout")
+
+    dispatcher = _make_fulltext_dispatcher(tmp_path, fetch_fn=boom)
+    result = dispatcher.dispatch("https://pubmed.ncbi.nlm.nih.gov/12345678/")
+
+    assert result.status == "failed"
+    assert "RuntimeError" in (result.error or "")
+
+
+# ── Slice 2: DOI URL dispatch ─────────────────────────────────────────────────
+
+
+def test_dispatch_doi_url_resolves_pmid_then_dispatches(monkeypatch, tmp_path):
+    """doi.org URL → esearch PMID → fetch_fulltext."""
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, params=None, headers=None, timeout=None, **kw):
+        class R:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"esearchresult": {"idlist": ["39999999"]}}
+
+        return R()
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+
+    md_file = tmp_path / "39999999.md"
+    md_file.write_text("# OA Title\n\n" + "content.\n" * 80, encoding="utf-8")
+
+    def fake_ft(pmid, *, attachments_abs_dir, vault_relative_prefix, email, ncbi_api_key=None):
+        return {"status": "oa_html", "source": "europe_pmc", "html_relpath": "...", "note": ""}
+
+    dispatcher = _make_fulltext_dispatcher(tmp_path, fetch_fn=fake_ft)
+    result = dispatcher.dispatch("https://doi.org/10.1136/bmjmed-001513")
+
+    assert result.status == "ready"
+    assert result.fulltext_layer == "europe_pmc"
+    assert "OA from Europe PMC" in result.fulltext_source
+
+
+def test_dispatch_doi_pmid_not_found_falls_through_to_readability(monkeypatch, tmp_path):
+    """doi.org URL → esearch returns empty → fall through to readability."""
+    import agents.robin.url_dispatcher as mod
+
+    big_md = "# Fallback\n\n" + ("text.\n" * 80)
+
+    def fake_get(url, *, params=None, headers=None, timeout=None, **kw):
+        class R:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"esearchresult": {"idlist": []}}
+
+        return R()
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+
+    dispatcher = URLDispatcher(
+        URLDispatcherConfig(
+            fetch_fulltext_fn=lambda *a, **kw: {},
+            scrape_url_fn=lambda _: big_md,
+            email="test@example.com",
+            attachments_abs_dir=tmp_path,
+            vault_relative_prefix="KB/Attachments/pubmed",
+        )
+    )
+    result = dispatcher.dispatch("https://doi.org/10.9999/not-in-pubmed")
+
+    assert result.status == "ready"
+    assert result.fulltext_layer == "readability"
+
+
+# ── Slice 2: arXiv dispatch ───────────────────────────────────────────────────
+
+_ARXIV_ATOM_SAMPLE = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title type="html">ArXiv Query Interface</title>
+  <entry>
+    <id>http://arxiv.org/abs/2301.12345v1</id>
+    <title>Deep Learning for Health Outcomes</title>
+    <summary>  We present a comprehensive study of deep learning
+approaches for predicting health outcomes from clinical records.
+Our method achieves state-of-the-art performance on multiple benchmarks.
+The proposed architecture combines attention mechanisms with novel
+regularization techniques suitable for high-dimensional clinical data.
+We validate on three large cohort studies with over 100,000 patients.
+    </summary>
+  </entry>
+</feed>"""
+
+
+def test_dispatch_arxiv_url_routes_to_arxiv_api(monkeypatch):
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, params=None, timeout=None, **kw):
+        class R:
+            text = _ARXIV_ATOM_SAMPLE
+
+            def raise_for_status(self):
+                pass
+
+        return R()
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    result = URLDispatcher(URLDispatcherConfig()).dispatch("https://arxiv.org/abs/2301.12345")
+
+    assert result.status == "ready"
+    assert result.fulltext_layer == "arxiv"
+    assert "arXiv" in result.fulltext_source
+    assert "Deep Learning" in result.title
+    assert "deep learning" in result.markdown.lower()
+
+
+def test_dispatch_arxiv_api_failure_returns_failed(monkeypatch):
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, params=None, timeout=None, **kw):
+        raise httpx.ConnectError("timeout")
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    result = URLDispatcher(URLDispatcherConfig()).dispatch("https://arxiv.org/abs/0000.00000")
+
+    assert result.status == "failed"
+
+
+def test_dispatch_arxiv_pdf_url_detects_id(monkeypatch):
+    """arxiv.org/pdf/{id}v2.pdf → same routing as abs URL."""
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, params=None, timeout=None, **kw):
+        class R:
+            text = _ARXIV_ATOM_SAMPLE
+
+            def raise_for_status(self):
+                pass
+
+        return R()
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    result = URLDispatcher(URLDispatcherConfig()).dispatch("https://arxiv.org/pdf/2301.12345v2.pdf")
+
+    assert result.status == "ready"
+    assert result.fulltext_layer == "arxiv"
+
+
+# ── Slice 2: bioRxiv / medRxiv dispatch ──────────────────────────────────────
+
+_BIORXIV_JSON_SAMPLE = {
+    "messages": [{"status": "ok"}],
+    "collection": [
+        {
+            "doi": "10.1101/2024.01.01.000001",
+            "title": "Exercise Impacts on Sleep Quality",
+            "abstract": (
+                "Physical exercise has been widely studied for its effects on human health. "
+                "In this study we investigate the relationship between exercise intensity and "
+                "sleep quality using actigraphy in a randomized controlled trial of 500 "
+                "participants over 12 weeks. Results show significant improvements in sleep "
+                "onset latency and total sleep time with moderate-intensity aerobic exercise."
+            ),
+            "date": "2024-01-01",
+        }
+    ],
+}
+
+
+def test_dispatch_biorxiv_url_routes_to_biorxiv_api(monkeypatch):
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, timeout=None, **kw):
+        class R:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return _BIORXIV_JSON_SAMPLE
+
+        return R()
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    result = URLDispatcher(URLDispatcherConfig()).dispatch(
+        "https://www.biorxiv.org/content/10.1101/2024.01.01.000001v1"
+    )
+
+    assert result.status == "ready"
+    assert result.fulltext_layer == "biorxiv"
+    assert "bioRxiv" in result.fulltext_source
+    assert "Exercise" in result.title
+
+
+def test_dispatch_medrxiv_url_uses_biorxiv_layer(monkeypatch):
+    """medRxiv uses biorxiv layer but medrxiv display label."""
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, timeout=None, **kw):
+        class R:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return _BIORXIV_JSON_SAMPLE
+
+        return R()
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    result = URLDispatcher(URLDispatcherConfig()).dispatch(
+        "https://www.medrxiv.org/content/10.1101/2024.01.01.24300001v1"
+    )
+
+    assert result.status == "ready"
+    assert result.fulltext_layer == "biorxiv"
+    assert "medRxiv" in result.fulltext_source
+
+
+def test_dispatch_biorxiv_api_failure_returns_failed(monkeypatch):
+    import agents.robin.url_dispatcher as mod
+
+    def fake_get(url, *, timeout=None, **kw):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(mod.httpx, "get", fake_get)
+    result = URLDispatcher(URLDispatcherConfig()).dispatch(
+        "https://www.biorxiv.org/content/10.1101/2024.01.01.000001v1"
+    )
+
+    assert result.status == "failed"
+
+
+# ── Slice 2: oa_html read from disk ──────────────────────────────────────────
+
+
+def test_dispatch_fulltext_oa_html_reads_md_file(tmp_path):
+    """oa_html result: dispatcher reads {pmid}.md from attachments_abs_dir."""
+    md_file = tmp_path / "12345.md"
+    md_content = "# Europe PMC Full Text\n\n" + "paragraph.\n" * 80
+    md_file.write_text(md_content, encoding="utf-8")
+
+    def fake_ft(pmid, *, attachments_abs_dir, vault_relative_prefix, email, ncbi_api_key=None):
+        return {
+            "status": "oa_html",
+            "source": "europe_pmc",
+            "html_relpath": f"KB/Attachments/pubmed/{pmid}.md",
+            "note": "",
+        }
+
+    dispatcher = _make_fulltext_dispatcher(tmp_path, fetch_fn=fake_ft)
+    result = dispatcher.dispatch("https://pubmed.ncbi.nlm.nih.gov/12345/")
+
+    assert result.status == "ready"
+    assert result.markdown == md_content
+    assert result.fulltext_layer == "europe_pmc"
+    assert "OA from Europe PMC" in result.fulltext_source
+
+
+def test_dispatch_fulltext_oa_html_missing_md_marks_failed(tmp_path):
+    """oa_html but .md file not written → status='failed'."""
+
+    def fake_ft(pmid, *, attachments_abs_dir, vault_relative_prefix, email, ncbi_api_key=None):
+        return {"status": "oa_html", "source": "europe_pmc", "html_relpath": "...", "note": ""}
+
+    dispatcher = _make_fulltext_dispatcher(tmp_path, fetch_fn=fake_ft)
+    result = dispatcher.dispatch("https://pubmed.ncbi.nlm.nih.gov/99999/")
+
+    assert result.status == "failed"
+
+
+# ── Slice 2: display label quality signals ───────────────────────────────────
+
+
+def test_readability_layer_has_warning_indicator():
+    """General scrape path label carries ⚠️ (uncertain quality)."""
+    big_md = "# T\n\n" + ("text\n" * 80)
+    result = URLDispatcher(URLDispatcherConfig(scrape_url_fn=lambda _: big_md)).dispatch(
+        "https://example.com/post"
+    )
+    assert "⚠️" in result.fulltext_source
+
+
+def test_oa_layers_have_checkmark_indicator():
+    """OA layer display labels carry ✓."""
+    import agents.robin.url_dispatcher as _mod
+
+    assert "✓" in _mod._LAYER_DISPLAY["pmc"]
+    assert "✓" in _mod._LAYER_DISPLAY["europe_pmc"]
+    assert "✓" in _mod._LAYER_DISPLAY["unpaywall"]
+
+
+# ── _parse_arxiv_atom ─────────────────────────────────────────────────────────
+
+
+def test_parse_arxiv_atom_extracts_title_and_summary():
+    title, abstract = _parse_arxiv_atom(_ARXIV_ATOM_SAMPLE)
+    assert title == "Deep Learning for Health Outcomes"
+    assert "deep learning" in abstract.lower()
+
+
+def test_parse_arxiv_atom_empty_xml_returns_empty_strings():
+    assert _parse_arxiv_atom("<feed></feed>") == ("", "")

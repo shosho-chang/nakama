@@ -227,6 +227,7 @@
           {% if frontmatter.created %}<span><span class="meta-label">Added</span>{{ frontmatter.created }}</span>{% endif %}
           {% if frontmatter.doi %}<span><span class="meta-label">DOI</span><a href="https://doi.org/{{ frontmatter.doi }}" target="_blank" rel="noopener">{{ frontmatter.doi }}</a></span>{% endif %}
           {% if frontmatter.pmid %}<span><span class="meta-label">PMID</span><a href="https://pubmed.ncbi.nlm.nih.gov/{{ frontmatter.pmid }}/" target="_blank" rel="noopener">{{ frontmatter.pmid }}</a></span>{% endif %}
+          {% if frontmatter.fulltext_source %}<span><span class="meta-label">Full text</span>{{ frontmatter.fulltext_source }}</span>{% endif %}
           {% if frontmatter.source %}<span><span class="meta-label">Source</span><a href="{{ frontmatter.source }}" target="_blank" rel="noopener">{{ frontmatter.source[:60] }}{% if frontmatter.source|length > 60 %}…{% endif %}</a></span>{% endif %}
         </div>
         {% if frontmatter.tags %}

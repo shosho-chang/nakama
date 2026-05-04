@@ -12,26 +12,32 @@ Slice 1 scope: readability + firecrawl fallback only via
 ``shared.web_scraper.scrape_url`` (trafilatura → readability → firecrawl).
 ``shared.web_scraper`` does not surface which sub-layer actually won, so
 Slice 1 always emits ``fulltext_layer="readability"`` for non-empty results;
-the schema reserves ``firecrawl`` for when Slice 2 splits the layer signal
-out of ``shared.web_scraper``. Pre-route exceptions emit
+the schema reserves ``firecrawl`` for when a future slice splits the layer
+signal out of ``shared.web_scraper``. Pre-route exceptions emit
 ``fulltext_layer="unknown"`` so a failed scrape isn't mislabelled as a
 specific working layer.
 
-**Slice 2 will add academic source detection** — academic URL pattern matching,
-PMID/DOI extraction, reverse lookup (DOI → efetch → PMID), and routing into
-``agents.robin.pubmed_fulltext.fetch_fulltext`` for the 5-layer OA fallback.
-arXiv / bioRxiv preprint handlers also land in Slice 2. ``URLDispatcherConfig``
-already exposes the seven injection points Slice 2-4 need (fetch_fulltext_fn /
-image_downloader_fn / attachments_abs_dir / vault_relative_prefix / email /
-ncbi_api_key) so the constructor signature won't change.
+Slice 2 adds academic source detection — URL pattern matching, PMID/DOI
+extraction, DOI → PMID reverse lookup (NCBI esearch), and routing into
+``agents.robin.pubmed_fulltext.fetch_fulltext`` for the 5-layer OA fallback
+(PMC → Europe PMC → Unpaywall → publisher HTML). arXiv and bioRxiv/medRxiv
+preprints route to their respective APIs instead of ``fetch_fulltext``.
+``URLDispatcherConfig`` exposes the injection points (fetch_fulltext_fn /
+attachments_abs_dir / vault_relative_prefix / email / ncbi_api_key) for the
+router to wire. When ``fetch_fulltext_fn`` is not configured, academic
+pubmed/doi/publisher patterns fall through to readability; arXiv/bioRxiv still
+route via their own lightweight APIs since those need no injection.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
+
+import httpx
 
 from shared.log import get_logger
 from shared.schemas.ingest_result import IngestFullTextLayer, IngestResult
@@ -39,25 +45,151 @@ from shared.schemas.ingest_result import IngestFullTextLayer, IngestResult
 logger = get_logger("nakama.robin.url_dispatcher")
 
 # < 200 字硬擋 threshold (PRD §Solution / issue #352 acceptance #4).
-# Below this we mark the result failed with a "疑似 bot 擋頁" note so the UI
-# row tells 修修 the page was likely chrome-only / blocked rather than a real
-# article. The threshold is intentionally low — full-content classification
-# is left to 修修's eyeball per PRD §Implementation Decisions.
 MIN_CONTENT_CHARS = 200
 
-# Display labels — kept here (not on the consumer side) so Slice 2 can
-# extend the layer→label map alongside the new literal values.
+# ── Academic URL patterns ─────────────────────────────────────────────────────
+
+_PUBMED_URL_RE = re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)/?$", re.IGNORECASE)
+_DOI_URL_RE = re.compile(r"(?:dx\.)?doi\.org/(10\.\d{4,}/[^\s?&#]+)", re.IGNORECASE)
+# DOI embedded in URL path (e.g. Springer: /article/10.1007/s00125-024-06100-3)
+_DOI_IN_PATH_RE = re.compile(r"/(10\.\d{4,}/[^\s?&#/\"']{4,})")
+_ARXIV_URL_RE = re.compile(
+    r"arxiv\.org/(?:abs|pdf|html)/([^\s/?#]+?)(?:v\d+)?(?:\.pdf)?$",
+    re.IGNORECASE,
+)
+_BIORXIV_URL_RE = re.compile(
+    r"biorxiv\.org/content/(10\.\d{4,}/[^\s?&#]+?)(?:v\d+)?(?:\.full(?:\.pdf)?|\.pdf)?(?:[?#].*)?$",
+    re.IGNORECASE,
+)
+_MEDRXIV_URL_RE = re.compile(
+    r"medrxiv\.org/content/(10\.\d{4,}/[^\s?&#]+?)(?:v\d+)?(?:\.full(?:\.pdf)?|\.pdf)?(?:[?#].*)?$",
+    re.IGNORECASE,
+)
+
+# Two-step citation_doi meta-tag extraction: locate the tag, then pull content=.
+_META_CITATION_DOI_RE = re.compile(
+    r"<meta\s[^>]{0,300}citation_doi[^>]{0,300}>",
+    re.IGNORECASE | re.DOTALL,
+)
+_CONTENT_ATTR_RE = re.compile(r'\bcontent\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
+
+# Known academic publisher hostnames (subdomain-aware via _is_publisher_domain).
+_PUBLISHER_DOMAINS: frozenset[str] = frozenset(
+    [
+        "thelancet.com",
+        "bmj.com",
+        "nature.com",
+        "cell.com",
+        "nejm.org",
+        "science.org",
+        "plos.org",
+        "link.springer.com",
+        "onlinelibrary.wiley.com",
+        "jamanetwork.com",
+        "academic.oup.com",
+        "sciencedirect.com",
+    ]
+)
+
+# External API endpoints
+_NCBI_ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+_ARXIV_API = "https://export.arxiv.org/api/query"
+_BIORXIV_API = "https://api.biorxiv.org/details"
+
+# Display labels — OA sources get ✓ (quality signal); scrapers get ⚠️.
+# Kept here so Slice 2 can extend alongside new literal values.
 _LAYER_DISPLAY: dict[IngestFullTextLayer, str] = {
-    "readability": "Readability",
-    "firecrawl": "Firecrawl",
-    "pmc": "PubMed Central",
-    "europe_pmc": "Europe PMC",
-    "unpaywall": "Unpaywall",
-    "publisher_html": "Publisher HTML",
-    "arxiv": "arXiv",
-    "biorxiv": "bioRxiv",
+    "readability": "Readability ⚠️",
+    "firecrawl": "Firecrawl ⚠️",
+    "pmc": "OA from PMC ✓",
+    "europe_pmc": "OA from Europe PMC ✓",
+    "unpaywall": "OA from Unpaywall ✓",
+    "publisher_html": "Publisher HTML ⚠️",
+    "arxiv": "arXiv Preprint",
+    "biorxiv": "bioRxiv Preprint",
     "unknown": "(未知)",
 }
+
+# arXiv Atom entry parser
+_ARXIV_ENTRY_RE = re.compile(r"<entry>(.*?)</entry>", re.DOTALL)
+
+
+def _is_publisher_domain(hostname: str) -> bool:
+    """True when hostname is (or is a subdomain of) a known academic publisher."""
+    return any(hostname == d or hostname.endswith("." + d) for d in _PUBLISHER_DOMAINS)
+
+
+def _detect_academic_source(url: str) -> tuple[str, str] | None:
+    """Classify a URL as an academic source and extract its key identifier.
+
+    Returns one of:
+      ``("pubmed", pmid)``      — PubMed article page
+      ``("doi", doi_str)``      — doi.org redirector or DOI embedded in URL path
+      ``("arxiv", arxiv_id)``   — arXiv abstract / PDF
+      ``("biorxiv", doi_str)``  — bioRxiv preprint
+      ``("medrxiv", doi_str)``  — medRxiv preprint
+      ``("publisher", url)``    — known publisher domain; no DOI in URL path
+      ``None``                  — not an academic source
+    """
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+
+    # PubMed article page
+    m = _PUBMED_URL_RE.search(url)
+    if m:
+        return ("pubmed", m.group(1))
+
+    # doi.org / dx.doi.org redirector
+    if "doi.org" in hostname:
+        m = _DOI_URL_RE.search(url)
+        if m:
+            return ("doi", m.group(1).rstrip(".,;)/>"))
+
+    # arXiv
+    if "arxiv.org" in hostname:
+        m = _ARXIV_URL_RE.search(url)
+        if m:
+            return ("arxiv", m.group(1))
+
+    # bioRxiv
+    if "biorxiv.org" in hostname:
+        m = _BIORXIV_URL_RE.search(url)
+        if m:
+            return ("biorxiv", m.group(1).rstrip(".,;)/>"))
+
+    # medRxiv
+    if "medrxiv.org" in hostname:
+        m = _MEDRXIV_URL_RE.search(url)
+        if m:
+            return ("medrxiv", m.group(1).rstrip(".,;)/>"))
+
+    # Publisher URL: DOI in path wins; otherwise needs HTML meta-tag fetch.
+    if _is_publisher_domain(hostname):
+        m = _DOI_IN_PATH_RE.search(url)
+        if m:
+            return ("doi", m.group(1).rstrip(".,;)/>"))
+        return ("publisher", url)
+
+    return None
+
+
+def _parse_arxiv_atom(xml: str) -> tuple[str, str]:
+    """Extract ``(title, abstract)`` from an arXiv Atom API response."""
+    m = _ARXIV_ENTRY_RE.search(xml)
+    if not m:
+        return ("", "")
+    entry = m.group(1)
+    title_m = re.search(r"<title>(.*?)</title>", entry, re.DOTALL)
+    summary_m = re.search(r"<summary>(.*?)</summary>", entry, re.DOTALL)
+    title = title_m.group(1).strip().replace("\n", " ") if title_m else ""
+    abstract = summary_m.group(1).strip() if summary_m else ""
+    return (title, abstract)
+
+
+def _title_from_url(url: str) -> str:
+    """Best-effort title from URL for placeholder + failed cases."""
+    parsed = urlparse(url)
+    return f"{parsed.netloc}{parsed.path}".strip("/") or url
 
 
 @dataclass(frozen=True)
@@ -86,56 +218,46 @@ class URLDispatcherConfig:
     ncbi_api_key: str | None = None
 
 
-def _title_from_url(url: str) -> str:
-    """Best-effort title from URL for placeholder + failed cases.
-
-    InboxWriter overrides this with the first ``# heading`` line of the
-    markdown when the dispatcher succeeds, but failed results still get a
-    readable title (so the row in inbox view isn't blank).
-    """
-    parsed = urlparse(url)
-    return f"{parsed.netloc}{parsed.path}".strip("/") or url
-
-
 class URLDispatcher:
     """Route a URL into the right scraping layer and return an ``IngestResult``.
 
-    Slice 1 implementation: readability + firecrawl (both via the existing
-    ``shared.web_scraper.scrape_url`` chain). Academic fall-back layers are
-    Slice 2.
+    Slice 1: readability + firecrawl (both via ``shared.web_scraper.scrape_url``).
+    Slice 2: academic source detection → 5-layer OA fallback / preprint APIs.
 
-    The dispatcher swallows scraper exceptions and converts them into
-    ``status='failed'`` results — the BackgroundTask caller never sees a
-    raised exception, so the inbox placeholder always gets updated to its
-    final state (ready / failed) and the UI never gets stuck on 🔄.
+    The dispatcher swallows scraper / API exceptions and converts them into
+    ``status='failed'`` results — the BackgroundTask caller never sees a raised
+    exception, so the inbox placeholder always gets updated to its final state.
     """
 
     def __init__(self, config: URLDispatcherConfig | None = None) -> None:
-        """Inject ``URLDispatcherConfig``; defaults to all-None config.
-
-        ``scrape_url_fn`` defaults to lazy-imported ``shared.web_scraper.scrape_url``
-        when not injected, so Slice 1 callers can pass ``URLDispatcherConfig()``
-        (or omit the argument entirely) and still get the production scraper.
-        """
         self._config = config or URLDispatcherConfig()
 
     def dispatch(self, url: str) -> IngestResult:
         """Fetch ``url``, return an ``IngestResult``.
 
-        Args:
-            url: The URL the user pasted. Must be non-empty; URLDispatcher
-                does NOT validate URL format beyond non-emptiness — let the
-                caller's form validation handle that.
-
-        Returns:
-            ``IngestResult`` with ``status`` set to either ``ready`` (markdown
-            >= 200 chars, written by ``InboxWriter``) or ``failed`` (scrape
-            error, empty content, or < 200-char hard-block). Never raises
-            on scraper failure — only ``ValueError`` for an empty URL.
+        Academic source detection (Slice 2) runs first; arXiv/bioRxiv always
+        route via their own APIs. pubmed/doi/publisher routing only activates
+        when ``fetch_fulltext_fn`` is configured; otherwise falls through to the
+        general readability path below.
         """
         if not url or not url.strip():
             raise ValueError("url must be non-empty")
 
+        # ── Academic routing (Slice 2) ────────────────────────────────────────
+        academic = _detect_academic_source(url)
+        if academic is not None:
+            kind, identifier = academic
+            if kind == "arxiv":
+                return self._dispatch_arxiv(identifier, url)
+            if kind in ("biorxiv", "medrxiv"):
+                return self._dispatch_biorxiv(identifier, kind, url)
+            # pubmed / doi / publisher — only when fetch_fulltext_fn is wired
+            if self._config.fetch_fulltext_fn is not None:
+                pmid = self._resolve_pmid(kind, identifier)
+                if pmid is not None:
+                    return self._dispatch_via_fulltext(pmid, url)
+
+        # ── General readability path (Slice 1) ────────────────────────────────
         scrape_fn = self._config.scrape_url_fn or self._default_scrape
 
         try:
@@ -155,8 +277,6 @@ class URLDispatcher:
 
         layer = self._infer_layer(markdown)
 
-        # < 200-char hard block (PRD §Solution bullet 3 / issue #352 #4).
-        # Even when scrape didn't throw, treat under-threshold output as bot-blocked.
         if len(markdown) < MIN_CONTENT_CHARS:
             return IngestResult(
                 status="failed",
@@ -182,6 +302,286 @@ class URLDispatcher:
             note=None,
         )
 
+    # ── Slice 2 academic handlers ─────────────────────────────────────────────
+
+    def _resolve_pmid(self, kind: str, identifier: str) -> str | None:
+        """Resolve (kind, identifier) → PMID, or None on failure.
+
+        "pubmed": identifier is already the PMID.
+        "doi": reverse-lookup via NCBI esearch.
+        "publisher": fetch page HTML, extract citation_doi, then esearch.
+        """
+        if kind == "pubmed":
+            return identifier
+        if kind == "doi":
+            return self._doi_to_pmid(identifier)
+        if kind == "publisher":
+            doi = self._extract_doi_from_html(identifier)
+            return self._doi_to_pmid(doi) if doi else None
+        return None
+
+    def _doi_to_pmid(self, doi: str) -> str | None:
+        """Reverse-lookup PMID for a DOI via NCBI esearch. Returns None on any failure."""
+        cfg = self._config
+        if not cfg.email:
+            return None
+        params: dict[str, str] = {
+            "db": "pubmed",
+            "term": f"{doi}[doi]",
+            "retmode": "json",
+            "retmax": "1",
+        }
+        if cfg.ncbi_api_key:
+            params["api_key"] = cfg.ncbi_api_key
+        try:
+            r = httpx.get(
+                _NCBI_ESEARCH,
+                params=params,
+                headers={"User-Agent": f"Nakama-Robin/1.0 (+{cfg.email})"},
+                timeout=15.0,
+            )
+            r.raise_for_status()
+            ids = r.json().get("esearchresult", {}).get("idlist", [])
+            return ids[0] if ids else None
+        except Exception as exc:
+            logger.warning("DOI→PMID lookup failed (%s): %s", doi, exc)
+            return None
+
+    def _extract_doi_from_html(self, url: str, *, timeout: float = 15.0) -> str | None:
+        """Fetch publisher page and extract DOI from ``citation_doi`` meta tag."""
+        cfg = self._config
+        ua = f"Nakama-Robin/1.0 (+{cfg.email})" if cfg.email else "Nakama-Robin/1.0"
+        try:
+            r = httpx.get(
+                url,
+                headers={"User-Agent": ua},
+                timeout=timeout,
+                follow_redirects=True,
+            )
+            r.raise_for_status()
+        except Exception as exc:
+            logger.debug("Publisher meta-tag fetch failed (%s): %s", url, exc)
+            return None
+        m_tag = _META_CITATION_DOI_RE.search(r.text)
+        if not m_tag:
+            return None
+        m_val = _CONTENT_ATTR_RE.search(m_tag.group(0))
+        if not m_val:
+            return None
+        doi = m_val.group(1).strip()
+        return doi if doi.startswith("10.") else None
+
+    def _fulltext_to_markdown(self, ft: Any, pmid: str) -> str:
+        """Convert a FullTextResult's downloaded files to markdown content."""
+        cfg = self._config
+        if cfg.attachments_abs_dir is None:
+            return ""
+        status = ft.get("status")
+        if status == "oa_html":
+            md_path = cfg.attachments_abs_dir / f"{pmid}.md"
+            if md_path.exists():
+                try:
+                    return md_path.read_text(encoding="utf-8")
+                except OSError:
+                    pass
+        elif status == "oa_downloaded":
+            pdf_path = cfg.attachments_abs_dir / f"{pmid}.pdf"
+            if pdf_path.exists():
+                try:
+                    from shared.pdf_parser import parse_pdf  # lazy — heavy dep
+
+                    return parse_pdf(pdf_path)
+                except Exception as exc:
+                    logger.warning("PDF parse failed (pmid=%s): %s", pmid, exc)
+        return ""
+
+    def _dispatch_via_fulltext(self, pmid: str, original_url: str) -> IngestResult:
+        """Route a PMID through the 5-layer OA fallback engine."""
+        cfg = self._config
+        try:
+            ft = cfg.fetch_fulltext_fn(
+                pmid,
+                attachments_abs_dir=cfg.attachments_abs_dir,
+                vault_relative_prefix=cfg.vault_relative_prefix or "",
+                email=cfg.email,
+                ncbi_api_key=cfg.ncbi_api_key,
+            )
+        except Exception as exc:
+            logger.warning("fetch_fulltext failed (pmid=%s): %s", pmid, exc)
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=_title_from_url(original_url),
+                original_url=original_url,
+                error=f"{type(exc).__name__}: {exc}",
+                note=None,
+            )
+
+        ft_status = ft.get("status")
+        if ft_status in ("needs_manual", "not_found"):
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=_title_from_url(original_url),
+                original_url=original_url,
+                error=None,
+                note=ft.get("note") or "無法取得 OA 全文，請手動下載",
+            )
+
+        source = ft.get("source")
+        layer: IngestFullTextLayer = source if source in _LAYER_DISPLAY else "unknown"
+        markdown = self._fulltext_to_markdown(ft, pmid)
+
+        if not markdown or len(markdown) < MIN_CONTENT_CHARS:
+            return IngestResult(
+                status="failed",
+                fulltext_layer=layer,
+                fulltext_source=_LAYER_DISPLAY[layer],
+                markdown="",
+                title=_title_from_url(original_url),
+                original_url=original_url,
+                error=None,
+                note="全文下載後內容太短或無法解析",
+            )
+
+        title = self._title_from_markdown(markdown) or _title_from_url(original_url)
+        return IngestResult(
+            status="ready",
+            fulltext_layer=layer,
+            fulltext_source=_LAYER_DISPLAY[layer],
+            markdown=markdown,
+            title=title,
+            original_url=original_url,
+            error=None,
+            note=None,
+        )
+
+    def _dispatch_arxiv(self, arxiv_id: str, original_url: str) -> IngestResult:
+        """Fetch arXiv paper metadata via Atom API and build markdown."""
+        try:
+            r = httpx.get(
+                _ARXIV_API,
+                params={"id_list": arxiv_id, "max_results": "1"},
+                timeout=15.0,
+            )
+            r.raise_for_status()
+        except Exception as exc:
+            logger.warning("arXiv API failed (%s): %s", arxiv_id, exc)
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=_title_from_url(original_url),
+                original_url=original_url,
+                error=f"{type(exc).__name__}: {exc}",
+                note=None,
+            )
+
+        title, abstract = _parse_arxiv_atom(r.text)
+        if not abstract:
+            return IngestResult(
+                status="failed",
+                fulltext_layer="arxiv",
+                fulltext_source=_LAYER_DISPLAY["arxiv"],
+                markdown="",
+                title=title or _title_from_url(original_url),
+                original_url=original_url,
+                error=None,
+                note="arXiv API 回傳空摘要",
+            )
+
+        markdown = (f"# {title}\n\n" if title else "") + abstract + "\n"
+        if len(markdown) < MIN_CONTENT_CHARS:
+            return IngestResult(
+                status="failed",
+                fulltext_layer="arxiv",
+                fulltext_source=_LAYER_DISPLAY["arxiv"],
+                markdown="",
+                title=title or _title_from_url(original_url),
+                original_url=original_url,
+                error=None,
+                note="arXiv 摘要太短",
+            )
+
+        return IngestResult(
+            status="ready",
+            fulltext_layer="arxiv",
+            fulltext_source=_LAYER_DISPLAY["arxiv"],
+            markdown=markdown,
+            title=title or _title_from_url(original_url),
+            original_url=original_url,
+            error=None,
+            note=None,
+        )
+
+    def _dispatch_biorxiv(self, doi: str, server: str, original_url: str) -> IngestResult:
+        """Fetch bioRxiv / medRxiv paper via biorxiv.org API."""
+        display = "medRxiv Preprint" if server == "medrxiv" else _LAYER_DISPLAY["biorxiv"]
+        try:
+            r = httpx.get(f"{_BIORXIV_API}/{server}/{doi}", timeout=15.0)
+            r.raise_for_status()
+            data = r.json()
+        except Exception as exc:
+            logger.warning("bioRxiv API failed (%s/%s): %s", server, doi, exc)
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=_title_from_url(original_url),
+                original_url=original_url,
+                error=f"{type(exc).__name__}: {exc}",
+                note=None,
+            )
+
+        collection = data.get("collection", [])
+        if not collection:
+            return IngestResult(
+                status="failed",
+                fulltext_layer="biorxiv",
+                fulltext_source=display,
+                markdown="",
+                title=_title_from_url(original_url),
+                original_url=original_url,
+                error=None,
+                note="bioRxiv API 未找到論文",
+            )
+
+        paper = collection[-1]
+        paper_title = str(paper.get("title", "")).strip()
+        abstract = str(paper.get("abstract", "")).strip()
+        markdown = (f"# {paper_title}\n\n" if paper_title else "") + abstract + "\n"
+
+        if len(markdown) < MIN_CONTENT_CHARS:
+            return IngestResult(
+                status="failed",
+                fulltext_layer="biorxiv",
+                fulltext_source=display,
+                markdown="",
+                title=paper_title or _title_from_url(original_url),
+                original_url=original_url,
+                error=None,
+                note="bioRxiv 摘要太短",
+            )
+
+        return IngestResult(
+            status="ready",
+            fulltext_layer="biorxiv",
+            fulltext_source=display,
+            markdown=markdown,
+            title=paper_title or _title_from_url(original_url),
+            original_url=original_url,
+            error=None,
+            note=None,
+        )
+
+    # ── General helpers ───────────────────────────────────────────────────────
+
     @staticmethod
     def _default_scrape(url: str) -> str:
         """Default scraper: existing 3-layer ``shared.web_scraper.scrape_url``.
@@ -196,14 +596,12 @@ class URLDispatcher:
 
     @staticmethod
     def _infer_layer(markdown: str) -> IngestFullTextLayer:
-        """Slice 1 dispatcher always returns ``readability`` for non-empty output.
+        """General readability path always returns ``readability``.
 
-        ``shared.web_scraper.scrape_url`` already runs trafilatura → readability
-        → firecrawl internally and returns one merged markdown blob with no
-        layer signal. Surfacing per-engine telemetry would require refactoring
-        ``shared.web_scraper`` (out of scope for Slice 1). We label everything
-        under the "Readability" umbrella for now; Slice 2 will introduce
-        per-layer reporting alongside academic detection.
+        ``shared.web_scraper.scrape_url`` runs trafilatura → readability →
+        firecrawl internally with no per-engine telemetry exposed. We label
+        everything under the "Readability" umbrella; the ⚠️ indicator in
+        ``_LAYER_DISPLAY`` signals that quality is uncertain vs OA layers.
         """
         return "readability"
 

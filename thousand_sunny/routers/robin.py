@@ -324,11 +324,26 @@ def _ingest_url_in_background(
     Slice 1 has no delete UI to recover (Slice 5 #356 adds the delete button).
     """
     try:
-        # Slice 1: default config (URLDispatcher reaches into shared.web_scraper
-        # for the readability+firecrawl chain). Slice 2 will widen this to
-        # ``URLDispatcherConfig(fetch_fulltext_fn=fetch_fulltext, email=cfg["email"], ...)``
-        # to wire the academic 5-layer reuse — see ``URLDispatcherConfig`` docstring.
-        dispatcher = URLDispatcher(URLDispatcherConfig())
+        import os
+
+        from agents.robin.pubmed_fulltext import fetch_fulltext as _fetch_fulltext
+
+        _email = (
+            os.environ.get("UNPAYWALL_EMAIL") or os.environ.get("NOTIFY_TO", "")
+        ).strip() or None
+        _ncbi_key = os.environ.get("PUBMED_API_KEY") or None
+        _attachments_dir = get_vault_path() / "KB" / "Attachments" / "pubmed"
+        _vault_prefix = "KB/Attachments/pubmed"
+
+        dispatcher = URLDispatcher(
+            URLDispatcherConfig(
+                fetch_fulltext_fn=_fetch_fulltext if _email else None,
+                email=_email,
+                ncbi_api_key=_ncbi_key,
+                attachments_abs_dir=_attachments_dir if _email else None,
+                vault_relative_prefix=_vault_prefix if _email else None,
+            )
+        )
         result = dispatcher.dispatch(url)
         writer = InboxWriter(_get_inbox())
         writer.write_to_inbox(
