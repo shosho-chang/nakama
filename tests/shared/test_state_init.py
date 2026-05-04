@@ -15,8 +15,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 
 def _make_pre_migration_db(db_path: Path) -> None:
     """Create a state.db with the OLD r2_backup_checks schema (no `prefix`).
@@ -97,7 +95,7 @@ def test_init_tables_migrates_pre_existing_db_without_prefix_column(
     monkeypatch.setattr(state, "get_db_path", lambda: db_path)
 
     try:
-        conn = state._get_conn()  # this is what dies on the bug
+        state._get_conn()  # this is what dies on the bug
     finally:
         # Make sure subsequent tests still get their own isolated_db fixture.
         if state._conn is not None:
@@ -117,9 +115,7 @@ def test_init_tables_migrates_pre_existing_db_without_prefix_column(
         check_conn.close()
 
 
-def test_init_tables_is_idempotent_on_already_migrated_db(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_init_tables_is_idempotent_on_already_migrated_db(tmp_path: Path, monkeypatch) -> None:
     """Calling _init_tables twice in a row must not raise (real-world
     behavior — every server restart re-enters _init_tables)."""
     db_path = tmp_path / "state.db"
