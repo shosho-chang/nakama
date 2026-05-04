@@ -7,6 +7,11 @@
 - Catching scraper exceptions and turning them into ``status='failed'``
   ``IngestResult`` rather than letting them crash the BackgroundTask.
 - < 200-char hard-block (the "疑似 bot 擋頁" UI hint specified by issue #352).
+- Image fetch hook (Slice 4): when ``image_downloader_fn`` is configured,
+  external image URLs in the scraped markdown are downloaded to vault and
+  the markdown body is rewritten to vault-relative paths before the
+  ``IngestResult`` is constructed (single-shot, no post-build mutation —
+  honours ``docs/principles/schemas.md`` value-object semantics).
 
 Slice 1 scope: readability + firecrawl fallback only via
 ``shared.web_scraper.scrape_url`` (trafilatura → readability → firecrawl).
@@ -171,16 +176,70 @@ class URLDispatcher:
 
         title = self._title_from_markdown(markdown) or _title_from_url(url)
 
+        # Slice 4: image fetch + markdown rewrite. Runs only when the caller
+        # injected ``image_downloader_fn`` AND its required attachments paths
+        # (the router does; unit tests for the dispatcher's layer logic don't
+        # need to). We compute the rewritten markdown + image_paths first and
+        # then construct ``IngestResult`` once — no post-construction mutation,
+        # so ``IngestResult`` stays a value-object per ``docs/principles/schemas.md``.
+        rewritten_markdown, image_paths = self._maybe_download_images(markdown, url)
+
         return IngestResult(
             status="ready",
             fulltext_layer=layer,
             fulltext_source=_LAYER_DISPLAY[layer],
-            markdown=markdown,
+            markdown=rewritten_markdown,
+            image_paths=image_paths,
             title=title,
             original_url=url,
             error=None,
             note=None,
         )
+
+    def _maybe_download_images(self, markdown: str, url: str) -> tuple[str, list[str]]:
+        """Run the configured image downloader, or return inputs unchanged.
+
+        Returns a ``(markdown, image_paths)`` pair so the caller can build the
+        IngestResult once. When the downloader is not configured, or required
+        config fields (``attachments_abs_dir`` / ``vault_relative_prefix``) are
+        missing, this is a no-op — the original markdown flows through with an
+        empty ``image_paths`` list (Slice 1 baseline behaviour).
+
+        Downloader exceptions are caught + logged but do NOT fail the dispatch
+        — image-fetch failure should degrade to "no images, original markdown"
+        rather than tag the whole ingest as failed (single bad image must not
+        kill an otherwise-good article — same defence philosophy as the scrape
+        exception handler above).
+        """
+        downloader = self._config.image_downloader_fn
+        attachments_abs_dir = self._config.attachments_abs_dir
+        vault_relative_prefix = self._config.vault_relative_prefix
+        if downloader is None or attachments_abs_dir is None or vault_relative_prefix is None:
+            return markdown, []
+
+        try:
+            rewritten, paths = downloader(
+                markdown,
+                attachments_abs_dir,
+                vault_relative_prefix,
+            )
+        except Exception as exc:  # noqa: BLE001 — degrade, don't fail
+            logger.warning(
+                "image downloader failed (url=%s): %s — keeping original markdown",
+                url,
+                exc,
+            )
+            return markdown, []
+
+        # Defensive: a misbehaving downloader could return non-list paths.
+        # Normalise so downstream Pydantic validation doesn't blow up.
+        if not isinstance(paths, list):
+            logger.warning(
+                "image downloader returned non-list image_paths (%s); coercing to []",
+                type(paths).__name__,
+            )
+            paths = []
+        return rewritten, paths
 
     @staticmethod
     def _default_scrape(url: str) -> str:
