@@ -32,6 +32,7 @@ from shared.annotation_store import (
 from shared.config import get_agent_config, get_vault_path
 from shared.log import get_logger
 from shared.state import is_file_read, mark_file_processed, mark_file_read
+from shared.translator import translate_document
 from shared.utils import extract_frontmatter, read_text, slugify
 from thousand_sunny.auth import check_auth, require_auth_or_key
 from thousand_sunny.helpers import safe_resolve, sse
@@ -465,6 +466,158 @@ async def scrape_translate(
     return response
 
 
+_BILINGUAL_SUFFIX = "-bilingual.md"
+_FULLTEXT_STATUS_RE = re.compile(r"^fulltext_status:\s*\S+\s*$", re.MULTILINE)
+_BILINGUAL_FRONTMATTER = (
+    "---\n"
+    'title: "{title} — 雙語閱讀版"\n'
+    'source: "{source}"\n'
+    'original_url: "{source}"\n'
+    "source_type: {source_type}\n"
+    "content_nature: {content_nature}\n"
+    "fulltext_status: translated\n"
+    "fulltext_layer: {layer}\n"
+    'fulltext_source: "{fulltext_source}"\n'
+    "bilingual: true\n"
+    'derived_from: "Inbox/kb/{stem}.md"\n'
+    "---\n\n"
+)
+
+
+def _bilingual_path_for(source_path: Path) -> Path:
+    """Return the ``-bilingual.md`` sibling path for a Slice 3 inbox source.
+
+    Idempotent for already-bilingual inputs: re-translating a path that
+    already ends in ``-bilingual.md`` returns the SAME path (defends
+    against a UI bug where the bilingual reader re-posts its own filename).
+    """
+    if source_path.name.endswith(_BILINGUAL_SUFFIX):
+        return source_path
+    return source_path.with_name(source_path.stem + _BILINGUAL_SUFFIX)
+
+
+def _flip_status_to_translated(source_path: Path) -> None:
+    """Mutate ``fulltext_status`` in the source frontmatter to ``translated``.
+
+    Targeted regex replace on the single status line — keeps the rest of
+    the YAML block (and the markdown body) byte-for-byte identical so
+    annotation references that were anchored to the body still resolve.
+    Silent no-op if the file lacks the field (manual drops, legacy
+    placeholders) — we don't synthesise a status retroactively.
+    """
+    try:
+        text = read_text(source_path)
+    except OSError:
+        logger.exception("could not read source for status flip: %s", source_path)
+        return
+    new_text, count = _FULLTEXT_STATUS_RE.subn("fulltext_status: translated", text, count=1)
+    if count == 0:
+        logger.info("no fulltext_status field to flip in %s — skipping", source_path.name)
+        return
+    source_path.write_text(new_text, encoding="utf-8")
+
+
+def _translate_in_background(
+    *,
+    source_path: Path,
+    bilingual_path: Path,
+) -> None:
+    """BackgroundTask body: run translate_document → write bilingual.md → flip status.
+
+    Mirrors the ``/pubmed-to-reader`` translate flow but with two
+    differences: (a) the source is the URL-ingested ``Inbox/kb/{slug}.md``
+    rather than ``KB/Attachments/pubmed/{pmid}.{pdf,md}``, and (b) on
+    translator failure we do NOT write a partial bilingual file — the
+    user can read the original under the same inbox row, so silently
+    falling back like the PubMed path would just hide the failure.
+    """
+    try:
+        content = read_text(source_path)
+    except OSError:
+        logger.exception("translate BG: could not read source %s", source_path)
+        return
+    fm, body = extract_frontmatter(content)
+    raw_md = body or content
+
+    try:
+        bilingual_md = translate_document(raw_md)
+    except Exception:  # noqa: BLE001 — never let a BackgroundTask raise
+        logger.exception("translate BG crashed for %s", source_path.name)
+        return
+
+    title = str(fm.get("title", source_path.stem) or source_path.stem)
+    source_url = str(fm.get("original_url", fm.get("source", "")) or "")
+    source_type = str(fm.get("source_type", "article") or "article")
+    content_nature = str(fm.get("content_nature", "popular_science") or "popular_science")
+    layer = str(fm.get("fulltext_layer", "readability") or "readability")
+    fulltext_source = str(fm.get("fulltext_source", "Readability") or "Readability")
+
+    frontmatter = _BILINGUAL_FRONTMATTER.format(
+        title=title.replace('"', '\\"'),
+        source=source_url.replace('"', '\\"'),
+        source_type=source_type,
+        content_nature=content_nature,
+        layer=layer,
+        fulltext_source=fulltext_source.replace('"', '\\"'),
+        stem=source_path.stem,
+    )
+    bilingual_path.write_text(frontmatter + bilingual_md, encoding="utf-8")
+    _flip_status_to_translated(source_path)
+    logger.info("translate BG complete: %s", bilingual_path.name)
+
+
+@router.post("/translate")
+async def translate(
+    background_tasks: BackgroundTasks,
+    file: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Trigger on-demand translation of an inbox source (Slice 3, issue #354).
+
+    Flow (PRD docs/plans/2026-05-04-stage-1-ingest-unify.md §Pipeline / API):
+
+    1. Auth gate.
+    2. Validate ``file`` (markdown only, no path traversal).
+    3. Short-circuit: if ``{stem}-bilingual.md`` already exists, redirect
+       straight to the reader without scheduling a BG task — mirrors
+       ``/pubmed-to-reader`` line 499 and the PRD §Pipeline / API
+       "短路條件" / acceptance #6.
+    4. Else schedule ``_translate_in_background`` and redirect.
+
+    The BG task writes ``Inbox/kb/{stem}-bilingual.md`` and mutates the
+    source frontmatter to ``fulltext_status: translated``. On translator
+    crash neither side-effect happens — the source row stays ``ready``
+    so the user can retry without losing anything.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    inbox = _get_inbox()
+    source_path = safe_resolve(inbox, file)
+    if not source_path.exists():
+        raise HTTPException(404, detail=f"找不到檔案：{file}")
+    if source_path.suffix.lower() != ".md":
+        raise HTTPException(400, detail="只有 markdown 檔案能翻譯")
+
+    bilingual_path = _bilingual_path_for(source_path)
+    if bilingual_path.exists():
+        logger.info("translate short-circuit (bilingual exists): %s", bilingual_path.name)
+        response = RedirectResponse(f"/read?file={bilingual_path.name}", status_code=303)
+        if nakama_auth:
+            response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+        return response
+
+    background_tasks.add_task(
+        _translate_in_background,
+        source_path=source_path,
+        bilingual_path=bilingual_path,
+    )
+    response = RedirectResponse(f"/read?file={bilingual_path.name}", status_code=303)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
 _PUBMED_FT_DIR = "KB/Attachments/pubmed"
 _PMID_RE = re.compile(r"^\d+$")
 
@@ -506,8 +659,12 @@ async def pubmed_to_reader(
     pdf_path = attachments_dir / f"{pmid}.pdf"
     html_md_path = attachments_dir / f"{pmid}.md"
 
+    # Lazy rebind so test suites patching ``shared.translator.translate_document``
+    # (e.g. tests/test_pubmed_to_reader_route.py) still hit this branch — without
+    # the lazy import this function would close over the module-level binding
+    # imported at the top of the file, bypassing the patch.
     from shared.pdf_parser import parse_pdf
-    from shared.translator import translate_document
+    from shared.translator import translate_document  # noqa: F811
 
     raw_md: str
     source_kind: str
