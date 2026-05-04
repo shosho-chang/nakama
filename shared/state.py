@@ -255,8 +255,10 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_r2_backup_time
             ON r2_backup_checks(checked_at DESC);
 
-        CREATE INDEX IF NOT EXISTS idx_r2_backup_prefix_time
-            ON r2_backup_checks(prefix, checked_at DESC);
+        -- NOTE: idx_r2_backup_prefix_time references the `prefix` column
+        -- added by migration 008. On a pre-migration DB the column does not
+        -- yet exist, so the CREATE INDEX is deferred to the post-migration
+        -- phase below (after the ALTER TABLE try/except loop runs).
 
         -- ADR-008 §2 — Phase 2a-min GSC rows store.
         -- Canonical DDL: migrations/005_gsc_rows.sql.
@@ -366,6 +368,16 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             conn.execute(col_ddl)
         except sqlite3.OperationalError:
             pass  # 欄位已存在
+
+    # Indexes that depend on columns added by the ALTER TABLE block above
+    # MUST be created here, after the migrations have run. On a pre-migration
+    # DB the column does not exist yet, so this CREATE INDEX cannot live in
+    # the executescript() block at the top of this function — it would die
+    # with `sqlite3.OperationalError: no such column: prefix`.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_r2_backup_prefix_time "
+        "ON r2_backup_checks(prefix, checked_at DESC)"
+    )
 
     # FTS5 虛擬表需要獨立建立（不支援 IF NOT EXISTS 語法）
     try:
