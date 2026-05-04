@@ -52,8 +52,8 @@ def test_dispatch_with_image_downloader_returns_rewritten_markdown(tmp_path: Pat
     config = URLDispatcherConfig(
         scrape_url_fn=lambda _u: raw_md,
         image_downloader_fn=fake_downloader,
-        attachments_abs_dir=tmp_path / "attachments",
-        vault_relative_prefix="KB/Attachments/inbox/post/",
+        image_attachments_abs_dir=tmp_path / "attachments",
+        image_vault_relative_prefix="KB/Attachments/inbox/post/",
     )
     result = URLDispatcher(config).dispatch("https://example.com/post")
 
@@ -76,8 +76,8 @@ def test_dispatch_calls_downloader_with_positional_signature(tmp_path: Path):
     config = URLDispatcherConfig(
         scrape_url_fn=lambda _u: raw_md,
         image_downloader_fn=mock,
-        attachments_abs_dir=tmp_path / "att",
-        vault_relative_prefix="KB/Attachments/inbox/x/",
+        image_attachments_abs_dir=tmp_path / "att",
+        image_vault_relative_prefix="KB/Attachments/inbox/x/",
     )
     URLDispatcher(config).dispatch("https://example.com/x")
 
@@ -137,8 +137,8 @@ def test_dispatch_real_image_fetcher_signature_compatibility(tmp_path: Path, mon
     config = URLDispatcherConfig(
         scrape_url_fn=lambda _u: raw_md,
         image_downloader_fn=adapter,
-        attachments_abs_dir=tmp_path / "inbox-img",
-        vault_relative_prefix="KB/Attachments/inbox/x/",
+        image_attachments_abs_dir=tmp_path / "inbox-img",
+        image_vault_relative_prefix="KB/Attachments/inbox/x/",
     )
     result = URLDispatcher(config).dispatch("https://example.com/x")
 
@@ -172,8 +172,8 @@ def test_dispatch_with_downloader_but_missing_paths_is_no_op(tmp_path: Path):
     config = URLDispatcherConfig(
         scrape_url_fn=lambda _u: md,
         image_downloader_fn=mock,
-        attachments_abs_dir=tmp_path / "att",
-        vault_relative_prefix=None,
+        image_attachments_abs_dir=tmp_path / "att",
+        image_vault_relative_prefix=None,
     )
     result = URLDispatcher(config).dispatch("https://example.com/post")
 
@@ -195,8 +195,8 @@ def test_dispatch_downloader_exception_degrades_gracefully(tmp_path: Path):
     config = URLDispatcherConfig(
         scrape_url_fn=lambda _u: md,
         image_downloader_fn=boom,
-        attachments_abs_dir=tmp_path / "att",
-        vault_relative_prefix="KB/Attachments/inbox/post/",
+        image_attachments_abs_dir=tmp_path / "att",
+        image_vault_relative_prefix="KB/Attachments/inbox/post/",
     )
     result = URLDispatcher(config).dispatch("https://example.com/post")
 
@@ -216,8 +216,8 @@ def test_dispatch_downloader_returning_garbage_paths_coerced_to_empty(tmp_path: 
     config = URLDispatcherConfig(
         scrape_url_fn=lambda _u: md,
         image_downloader_fn=naughty,
-        attachments_abs_dir=tmp_path / "att",
-        vault_relative_prefix="KB/Attachments/inbox/post/",
+        image_attachments_abs_dir=tmp_path / "att",
+        image_vault_relative_prefix="KB/Attachments/inbox/post/",
     )
     result = URLDispatcher(config).dispatch("https://example.com/post")
 
@@ -236,8 +236,8 @@ def test_dispatch_short_content_does_not_call_downloader(tmp_path: Path):
     config = URLDispatcherConfig(
         scrape_url_fn=lambda _u: short_md,
         image_downloader_fn=mock,
-        attachments_abs_dir=tmp_path / "att",
-        vault_relative_prefix="KB/Attachments/inbox/post/",
+        image_attachments_abs_dir=tmp_path / "att",
+        image_vault_relative_prefix="KB/Attachments/inbox/post/",
     )
     result = URLDispatcher(config).dispatch("https://example.com/blocked")
 
@@ -256,8 +256,8 @@ def test_dispatch_scrape_exception_does_not_call_downloader(tmp_path: Path):
     config = URLDispatcherConfig(
         scrape_url_fn=boom,
         image_downloader_fn=mock,
-        attachments_abs_dir=tmp_path / "att",
-        vault_relative_prefix="KB/Attachments/inbox/post/",
+        image_attachments_abs_dir=tmp_path / "att",
+        image_vault_relative_prefix="KB/Attachments/inbox/post/",
     )
     result = URLDispatcher(config).dispatch("https://broken.example.com/x")
 

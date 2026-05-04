@@ -350,18 +350,18 @@ def test_scrape_translate_injects_image_downloader_config(client, monkeypatch, t
     config = captured["config"]
     assert config.image_downloader_fn is not None, "image_downloader_fn must be wired"
 
-    # attachments_abs_dir lands under {vault}/KB/Attachments/inbox/{slug}/
-    assert config.attachments_abs_dir is not None
-    assert config.attachments_abs_dir.parent == tmp_path / "KB" / "Attachments" / "inbox"
-    # vault_relative_prefix matches the slug path with trailing slash
-    assert config.vault_relative_prefix is not None
-    assert config.vault_relative_prefix.startswith("KB/Attachments/inbox/")
-    assert config.vault_relative_prefix.endswith("/")
+    # image_attachments_abs_dir lands under {vault}/KB/Attachments/inbox/{slug}/
+    assert config.image_attachments_abs_dir is not None
+    assert config.image_attachments_abs_dir.parent == tmp_path / "KB" / "Attachments" / "inbox"
+    # image_vault_relative_prefix matches the slug path with trailing slash
+    assert config.image_vault_relative_prefix is not None
+    assert config.image_vault_relative_prefix.startswith("KB/Attachments/inbox/")
+    assert config.image_vault_relative_prefix.endswith("/")
     # And the slug is consistent across both fields
-    slug_from_dir = config.attachments_abs_dir.name
-    slug_from_prefix = config.vault_relative_prefix.removeprefix("KB/Attachments/inbox/").rstrip(
-        "/"
-    )
+    slug_from_dir = config.image_attachments_abs_dir.name
+    slug_from_prefix = config.image_vault_relative_prefix.removeprefix(
+        "KB/Attachments/inbox/"
+    ).rstrip("/")
     assert slug_from_dir == slug_from_prefix
 
 
@@ -402,8 +402,8 @@ def test_scrape_translate_image_adapter_calls_real_downloader(client, monkeypatc
             type(config)(
                 scrape_url_fn=lambda _u: raw_md,
                 image_downloader_fn=config.image_downloader_fn,
-                attachments_abs_dir=config.attachments_abs_dir,
-                vault_relative_prefix=config.vault_relative_prefix,
+                image_attachments_abs_dir=config.image_attachments_abs_dir,
+                image_vault_relative_prefix=config.image_vault_relative_prefix,
             )
         ),
     )
