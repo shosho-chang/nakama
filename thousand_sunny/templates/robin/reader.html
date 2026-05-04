@@ -271,6 +271,9 @@
       <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解 · T 切換譯文</span>
       <span class="save-indicator" id="saveIndicator">已儲存</span>
       <span class="save-indicator" id="syncIndicator"></span>
+      {% if not is_bilingual %}
+      <button class="header-btn" id="translateBtn" onclick="triggerTranslate()" title="後台翻譯成台灣繁體中文後跳雙語閱讀模式">翻譯成中文</button>
+      {% endif %}
       <button class="header-btn" id="syncBtn" onclick="syncToKB()">同步到 KB</button>
       <button class="header-btn" id="bilingualToggle" onclick="cycleBilingual()" title="T">雙語</button>
       <button class="header-btn is-discard" id="discardBtn" type="button" onclick="openDiscardDialog()">丟掉這篇</button>
@@ -714,6 +717,40 @@
       } finally {
         syncBtn.disabled = false;
         setTimeout(() => { syncIndicator.style.opacity = '0'; }, 3000);
+      }
+    }
+
+    // ── Translate (Slice 3, issue #354) ──
+    // 修修 30 秒看完原文 → 按按鈕 → 後台 translate_document → 跳雙語 reader。
+    // BG 任務 + bilingual short-circuit 由 server 處理；前端只負責 UI 狀態與 form post。
+
+    async function triggerTranslate() {
+      const btn = document.getElementById('translateBtn');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      const original = btn.textContent;
+      // 沿用 inbox 🔄 spinner 同 emoji 表示「處理中」，視覺上 inline 不打斷閱讀
+      btn.textContent = '🔄 翻譯中…';
+      try {
+        const params = new URLSearchParams({ file: FILENAME });
+        const res = await fetch('/translate?' + params.toString(), {
+          method: 'POST',
+          // 接受 303 redirect → 直接讓瀏覽器跳到 bilingual reader
+          redirect: 'follow',
+        });
+        if (res.ok || res.redirected) {
+          // 後台已寫好雙語檔（FastAPI BackgroundTask 在 response 後執行完成才返回）
+          window.location.href = res.url;
+          return;
+        }
+        // 非預期狀態：把按鈕還原讓使用者重試
+        btn.disabled = false;
+        btn.textContent = original;
+        console.error('Translate failed:', res.status);
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = original;
+        console.error('Translate error:', e);
       }
     }
 
