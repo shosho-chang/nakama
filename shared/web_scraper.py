@@ -226,7 +226,9 @@ def _scrape_firecrawl(url: str) -> str:
     logger.info(f"Firecrawl 擷取：{url}")
     try:
         app = Firecrawl(api_key=api_key)
-        result = app.scrape(url, formats=["markdown"])
+        # only_main_content=True 抽文章主體，不含 navigation / ad / share chrome
+        # （Lancet 等 JS 渲染站不加這個會拉整頁 chrome 給 translator 翻譯廢內容）
+        result = app.scrape(url, formats=["markdown"], only_main_content=True)
         md = result.markdown or ""
         if not md:
             raise RuntimeError("Firecrawl 回傳空內容")
