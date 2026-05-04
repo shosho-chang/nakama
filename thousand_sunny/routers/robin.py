@@ -129,16 +129,19 @@ def _get_inbox_files() -> list[dict]:
             # an empty status string so the template suppresses the icon.
             status = ""
             source_label = ""
+            title = ""
             if f.suffix.lower() == ".md":
                 try:
                     fm, _ = extract_frontmatter(read_text(f))
                     status = str(fm.get("fulltext_status", "") or "")
                     source_label = str(fm.get("fulltext_source", "") or "")
+                    title = str(fm.get("title", "") or "").strip()
                 except OSError:
                     pass
             files.append(
                 {
                     "name": f.name,
+                    "title": title,
                     "size": f"{size_kb} KB" if size_kb >= 1 else f"{f.stat().st_size} B",
                     "type": EXTENSION_TO_SOURCE_TYPE.get(f.suffix.lower(), "article"),
                     "annotatable": f.suffix.lower() in (".md", ".txt"),
