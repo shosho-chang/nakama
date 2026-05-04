@@ -179,6 +179,83 @@
   .modal-cancel:hover { opacity: 0.8; }
   .modal-confirm { background: var(--accent); color: white; }
   .modal-confirm:hover { background: var(--accent-hover); }
+
+  /* ── Discard button + native <dialog> confirm (Slice 5, #356) ────────────
+     The discard ("丟掉這篇") button reuses .header-btn for default/hover/focus
+     parity with sibling buttons. The danger semantic only surfaces on hover —
+     the button at rest stays muted so it doesn't compete with the primary
+     翻譯/同步 actions, and the confirm dialog is where 修修 actually commits.
+     States: default (muted) / hover (border + text crimson) / focus-visible
+     (outline) / disabled (faded, in-flight). */
+  .header-btn.is-discard:hover,
+  .header-btn.is-discard:focus-visible { border-color: #c62828; color: #c62828; }
+  body.dark .header-btn.is-discard:hover,
+  body.dark .header-btn.is-discard:focus-visible { border-color: #ef5350; color: #ef5350; }
+  .header-btn.is-discard:disabled { opacity: 0.5; cursor: progress; border-color: var(--border); color: var(--text-faint); }
+
+  /* Native <dialog> confirm — mirrors the Bridge draft_detail modal pattern
+     (single dialog element, browser-managed backdrop, no fade JS). */
+  dialog.discard-confirm {
+    border: 1px solid var(--border);
+    background: var(--modal-bg);
+    color: var(--text);
+    padding: 0;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 480px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  dialog.discard-confirm::backdrop { background: rgba(0,0,0,0.45); }
+  dialog.discard-confirm .dc-head {
+    padding: 1rem 1.25rem 0.5rem;
+    font-size: 1rem;
+    color: var(--text-heading);
+    font-weight: 600;
+  }
+  dialog.discard-confirm .dc-body {
+    padding: 0.25rem 1.25rem 1rem;
+    font-size: 0.9rem;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  dialog.discard-confirm .dc-body strong { color: #c62828; }
+  body.dark dialog.discard-confirm .dc-body strong { color: #ef5350; }
+  dialog.discard-confirm .dc-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+  }
+  dialog.discard-confirm .dc-actions {
+    padding: 0.75rem 1.25rem 1.1rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  dialog.discard-confirm .dc-actions button {
+    padding: 0.45rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  dialog.discard-confirm .dc-cancel {
+    background: var(--btn-muted-bg);
+    color: var(--btn-muted-text);
+    border-color: var(--btn-muted-bg);
+  }
+  dialog.discard-confirm .dc-cancel:hover,
+  dialog.discard-confirm .dc-cancel:focus-visible { opacity: 0.8; }
+  dialog.discard-confirm .dc-confirm {
+    background: #c62828;
+    color: #fff;
+    border-color: #c62828;
+  }
+  dialog.discard-confirm .dc-confirm:hover,
+  dialog.discard-confirm .dc-confirm:focus-visible { background: #ad1f1f; border-color: #ad1f1f; }
+  body.dark dialog.discard-confirm .dc-confirm { background: #ef5350; border-color: #ef5350; }
+  body.dark dialog.discard-confirm .dc-confirm:hover,
+  body.dark dialog.discard-confirm .dc-confirm:focus-visible { background: #d63d3d; border-color: #d63d3d; }
+  dialog.discard-confirm .dc-confirm:disabled { opacity: 0.6; cursor: progress; }
 </style>
 </head>
 <body>
@@ -199,6 +276,7 @@
       {% endif %}
       <button class="header-btn" id="syncBtn" onclick="syncToKB()">同步到 KB</button>
       <button class="header-btn" id="bilingualToggle" onclick="cycleBilingual()" title="T">雙語</button>
+      <button class="header-btn is-discard" id="discardBtn" type="button" onclick="openDiscardDialog()">丟掉這篇</button>
       <button class="header-btn" id="darkToggle" onclick="toggleDark()">Dark</button>
     </div>
   </div>
@@ -265,6 +343,20 @@
       </div>
     </div>
   </div>
+
+  <!-- Discard Confirm Dialog (Slice 5, #356) — native <dialog>, no JS framework -->
+  <dialog id="discardDialog" class="discard-confirm" aria-labelledby="discardDialogTitle">
+    <form id="discardForm" method="post">
+      <div class="dc-head" id="discardDialogTitle">確認丟棄</div>
+      <div class="dc-body" id="discardDialogBody">
+        <!-- Body text rendered by openDiscardDialog() so {filename} + count are exact. -->
+      </div>
+      <div class="dc-actions">
+        <button type="button" class="dc-cancel" onclick="closeDiscardDialog()">取消</button>
+        <button type="submit" class="dc-confirm" id="discardConfirmBtn">丟棄</button>
+      </div>
+    </form>
+  </dialog>
 
   <script>
     // ── State ──
@@ -679,6 +771,76 @@
       } catch (e) {
         console.error('Mark read failed:', e);
       }
+    }
+
+    // ── Discard ("丟掉這篇") flow (Slice 5, #356) ──
+    // Frontend GETs /discard-info?file=&base= for the annotation count, then
+    // shows a native <dialog> confirm with the exact PRD §U24 wording. On
+    // submit, the form posts to /discard with the same params; server-side
+    // DiscardService recycles the file + connected annotation companion.
+
+    const discardBtn = document.getElementById('discardBtn');
+    const discardDialog = document.getElementById('discardDialog');
+    const discardForm = document.getElementById('discardForm');
+    const discardConfirmBtn = document.getElementById('discardConfirmBtn');
+    const discardDialogBody = document.getElementById('discardDialogBody');
+
+    function buildDiscardBody(annotationCount) {
+      // PRD §U24 exact wording: 「丟掉「{filename}」**和 {N} 條 annotation**？
+      // 此操作可從 Windows 回收桶還原」. Bold the annotation clause; soften the
+      // post-action hint with .dc-hint so the eye lands on the count first.
+      const safeName = String(FILENAME)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      const annClause = annotationCount > 0
+        ? ` 和 <strong>${annotationCount} 條 annotation</strong>`
+        : '';
+      discardDialogBody.innerHTML =
+        `丟掉「${safeName}」${annClause}？` +
+        `<div class="dc-hint">此操作可從 Windows 回收桶還原。</div>`;
+    }
+
+    async function openDiscardDialog() {
+      if (!discardDialog) return;
+      // Default body with 0 annotations so the dialog opens instantly even if
+      // /discard-info is slow; we replace as soon as the count comes back.
+      buildDiscardBody(0);
+      try {
+        const params = new URLSearchParams({ file: FILENAME, base: BASE });
+        const res = await fetch('/discard-info?' + params.toString());
+        if (res.ok) {
+          const data = await res.json();
+          buildDiscardBody(data.annotation_count || 0);
+        }
+      } catch (e) {
+        // Network error → keep the 0-count body; user can still confirm.
+        console.warn('discard-info fetch failed:', e);
+      }
+      const params = new URLSearchParams({ file: FILENAME, base: BASE });
+      discardForm.action = '/discard?' + params.toString();
+      if (typeof discardDialog.showModal === 'function') {
+        discardDialog.showModal();
+      }
+    }
+
+    function closeDiscardDialog() {
+      if (discardDialog && typeof discardDialog.close === 'function') {
+        discardDialog.close();
+      }
+    }
+
+    if (discardForm) {
+      discardForm.addEventListener('submit', function () {
+        // Disable both buttons to prevent double-submit; the form still
+        // posts (we do NOT preventDefault).
+        if (discardBtn) discardBtn.disabled = true;
+        if (discardConfirmBtn) {
+          discardConfirmBtn.disabled = true;
+          discardConfirmBtn.textContent = '丟棄中…';
+        }
+      });
     }
 
     // ── Init ──
