@@ -16,6 +16,54 @@ from pathlib import Path
 
 from shared.obsidian_writer import append_to_file
 
+# ── Windows stdout/stderr UTF-8 ──
+
+
+def force_utf8_console(streams=None) -> None:
+    """Reconfigure ``sys.stdout`` / ``sys.stderr`` to UTF-8.
+
+    Windows Python defaults to cp1252 for stdout/stderr — any Chinese
+    character emitted via ``print()`` / ``logging.StreamHandler`` raises
+    ``UnicodeEncodeError: 'charmap' codec can't encode characters``. The
+    logging module's default fallback is to print a per-message stack trace
+    to stderr and silently drop the original record, which makes real logs
+    unreadable in dev. (See ``memory/claude/feedback_windows_stdout_utf8``.)
+
+    This helper:
+    - Is idempotent — safe to call multiple times. ``TextIOWrapper.reconfigure``
+      is a no-op when the encoding already matches.
+    - Uses ``errors="replace"`` so a stray un-encodable code point degrades
+      to ``?`` instead of raising on shutdown / weird console replacements.
+    - Skips streams without ``reconfigure`` (e.g. wrapped pipes, custom
+      sinks set by test fixtures that intentionally override encoding).
+
+    Call from every entry point that may emit Chinese log messages on
+    Windows — agent CLIs (``python -m agents.<name>``) and the
+    ``thousand_sunny`` uvicorn server. Also invoked from ``get_logger``
+    so any importer of ``shared.log`` is protected even when the entry
+    point forgets to call it directly.
+
+    Args:
+        streams: Optional iterable of streams to reconfigure. Defaults to
+            ``(sys.stdout, sys.stderr)`` — production callers always omit
+            this. Tests pass explicit fakes to avoid fighting with
+            pytest's capture mechanism (which replaces sys.stdout per
+            test and would mask reconfigure effects).
+    """
+    if streams is None:
+        streams = (sys.stdout, sys.stderr)
+    for stream in streams:
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                # Stream may already be detached / wrapped in a way that
+                # rejects reconfigure (e.g. some IDE consoles). Logging
+                # must never crash the host program.
+                pass
+
+
 # ── Python logger ──
 
 _initialized = False
@@ -161,6 +209,14 @@ class SQLiteLogHandler(logging.Handler):
 def get_logger(name: str = "nakama") -> logging.Logger:
     global _initialized
     if not _initialized:
+        # Force UTF-8 console BEFORE attaching the StreamHandler. The
+        # handler captures the current sys.stdout reference; reconfiguring
+        # afterwards still works (TextIOWrapper.reconfigure mutates in
+        # place) but doing it first keeps the call site explicit. Belt-and-
+        # suspenders for entry points that import shared.log without first
+        # calling force_utf8_console themselves.
+        force_utf8_console()
+
         # Lazy-load .env so module-level `logger = get_logger(...)` (e.g. in
         # `scripts/backup_nakama_state.py`) sees `NAKAMA_LOG_FORMAT=json` even
         # when the caller's `main()` hasn't run `load_config()` yet. Without
