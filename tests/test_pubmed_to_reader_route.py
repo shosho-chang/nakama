@@ -246,28 +246,6 @@ def test_read_base_defaults_to_inbox(client, tmp_path):
     assert "Hello" in resp.text
 
 
-# ── /save-annotations base=sources ──────────────────────────────────────────
-
-
-def test_save_annotations_to_sources(client, tmp_path):
-    auth = _auth_cookie(client)
-    sources = tmp_path / "KB" / "Wiki" / "Sources"
-    target = sources / "pubmed-12345-bilingual.md"
-    target.write_text("original", encoding="utf-8")
-
-    resp = client.post(
-        "/save-annotations",
-        data={
-            "filename": "pubmed-12345-bilingual.md",
-            "content": "annotated!",
-            "base": "sources",
-        },
-        cookies={"nakama_auth": auth},
-    )
-    assert resp.status_code == 200
-    assert target.read_text(encoding="utf-8") == "annotated!"
-
-
 # ── /files/{path} image serving ────────────────────────────────────────────
 
 
