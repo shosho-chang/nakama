@@ -675,10 +675,10 @@ def test_parse_arxiv_atom_empty_xml_returns_empty_strings():
 # resolves correctly.
 
 _LANCET_FULL_HTML = (
-    '<html><head>'
+    "<html><head>"
     '<meta name="citation_title" content="Some article">'
     '<meta name="citation_doi" content="10.1016/j.eclinm.2025.103193">'
-    '</head><body>article body</body></html>'
+    "</head><body>article body</body></html>"
 )
 
 
@@ -687,9 +687,7 @@ def _publisher_dispatcher() -> URLDispatcher:
     return URLDispatcher(URLDispatcherConfig(email="test@example.com"))
 
 
-def test_extract_doi_httpx_connect_error_warns_and_falls_back_to_firecrawl(
-    monkeypatch, caplog
-):
+def test_extract_doi_httpx_connect_error_warns_and_falls_back_to_firecrawl(monkeypatch, caplog):
     """httpx ConnectError → WARN logged + Firecrawl fallback attempted + DOI extracted."""
     import logging
 
@@ -705,9 +703,7 @@ def test_extract_doi_httpx_connect_error_warns_and_falls_back_to_firecrawl(
         return _LANCET_FULL_HTML
 
     monkeypatch.setattr(mod.httpx, "get", boom_get)
-    monkeypatch.setattr(
-        "shared.web_scraper.fetch_html_via_firecrawl", fake_firecrawl
-    )
+    monkeypatch.setattr("shared.web_scraper.fetch_html_via_firecrawl", fake_firecrawl)
 
     dispatcher = _publisher_dispatcher()
     with caplog.at_level(logging.WARNING, logger="nakama.robin.url_dispatcher"):
@@ -724,9 +720,7 @@ def test_extract_doi_httpx_connect_error_warns_and_falls_back_to_firecrawl(
     assert "httpx" in warning_text.lower() or "publisher" in warning_text.lower()
 
 
-def test_extract_doi_httpx_returns_chrome_only_html_falls_back_to_firecrawl(
-    monkeypatch, caplog
-):
+def test_extract_doi_httpx_returns_chrome_only_html_falls_back_to_firecrawl(monkeypatch, caplog):
     """httpx 200 but no citation_doi tag → WARN logged + Firecrawl fallback used."""
     import logging
 
@@ -753,9 +747,7 @@ def test_extract_doi_httpx_returns_chrome_only_html_falls_back_to_firecrawl(
         return _LANCET_FULL_HTML
 
     monkeypatch.setattr(mod.httpx, "get", fake_get)
-    monkeypatch.setattr(
-        "shared.web_scraper.fetch_html_via_firecrawl", fake_firecrawl
-    )
+    monkeypatch.setattr("shared.web_scraper.fetch_html_via_firecrawl", fake_firecrawl)
 
     dispatcher = _publisher_dispatcher()
     with caplog.at_level(logging.WARNING, logger="nakama.robin.url_dispatcher"):
@@ -788,9 +780,7 @@ def test_extract_doi_firecrawl_html_parsed_correctly(monkeypatch):
     assert doi == "10.1016/j.eclinm.2025.103193"
 
 
-def test_extract_doi_both_httpx_and_firecrawl_fail_returns_none_with_warn(
-    monkeypatch, caplog
-):
+def test_extract_doi_both_httpx_and_firecrawl_fail_returns_none_with_warn(monkeypatch, caplog):
     """Both layers fail → WARN logged, returns None (preserves fall-through)."""
     import logging
 
@@ -803,9 +793,7 @@ def test_extract_doi_both_httpx_and_firecrawl_fail_returns_none_with_warn(
         raise RuntimeError("FIRECRAWL_API_KEY 未設定")
 
     monkeypatch.setattr(mod.httpx, "get", boom_get)
-    monkeypatch.setattr(
-        "shared.web_scraper.fetch_html_via_firecrawl", boom_firecrawl
-    )
+    monkeypatch.setattr("shared.web_scraper.fetch_html_via_firecrawl", boom_firecrawl)
 
     dispatcher = _publisher_dispatcher()
     with caplog.at_level(logging.WARNING, logger="nakama.robin.url_dispatcher"):
