@@ -9,7 +9,8 @@ description: >
   "textbook ingest <path>" / "教科書 ingest <path>". Do NOT use for
   short articles / single papers (that is Robin Reader ``/start`` flow),
   for keyword research (use ``keyword-research``), or for KB query
-  (use ``kb-search``). Runs Mac-side via Claude Code Opus 4.7 1M context.
+  (use ``kb-search``). Runs on any desktop (Mac / Windows / Linux) with
+  Claude Code and Opus 4.7 1M context.
 ---
 
 # Textbook Ingest — Whole-book → KB Wiki Pipeline
@@ -49,6 +50,22 @@ Do NOT trigger for:
 
 ## Prerequisites
 
+**OS / machine requirements**
+
+- Any desktop with the vault locally mounted: **Mac, Windows, or Linux** all
+  work. PRD #378 user stories say "Mac" as an example, not a constraint.
+- **Cannot run on VPS** — 2 vCPU / 4 GB RAM is insufficient, and VPS has no
+  Claude Code installation.
+- Claude Code installed and on `PATH` (required for `--watch` daemon and for
+  the interactive skill driver).
+- Claude Code subscription that includes **`claude-opus-4-7` with 1M context**
+  (Max 200 plan). One mid-size book ≈ 1.8M tokens.
+- `NAKAMA_AUTH` cookie environment variable set — copy from the browser
+  session after logging into the web UI (Reader uses cookie auth for API
+  calls made during queue-mode ingestion).
+
+**Codebase / vault requirements**
+
 - ``shared/pdf_parser.py`` available (pymupdf4llm extracts page-level text)
 - ``shared/obsidian_writer.write_page`` available (writes vault MD files)
 - ``shared/config.get_vault_path()`` resolves to the vault root with `KB/`
@@ -58,8 +75,6 @@ Do NOT trigger for:
   - ``KB/Wiki/Sources/Books/``
   - ``KB/Wiki/Concepts/`` (shared cross-source pool)
   - ``KB/Wiki/Entities/`` (shared cross-source pool)
-- Claude Code session running on Mac (or wherever vault is locally mounted)
-- Max 200 subscription quota available — one mid-size book ≈ 1.8M tokens
 
 ## Workflow Overview
 
