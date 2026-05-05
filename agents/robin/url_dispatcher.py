@@ -394,7 +394,6 @@ class URLDispatcher:
         - missing ``zotero_root`` / ``vault_root`` config
         - unknown item key (``KeyError``)
         - item with no usable attachment (``NoAttachmentError``)
-        - PDF-only item (``NotImplementedError`` — Slice 2 #390)
         - any other exception inside the sync pipeline
         """
         cfg = self._config
@@ -444,18 +443,6 @@ class URLDispatcher:
                 original_url=original_url,
                 error=None,
                 note="該 Zotero item 沒有 HTML snapshot 也沒有 PDF attachment",
-            )
-        except NotImplementedError as exc:
-            logger.warning("zotero PDF path not yet implemented: %s", exc)
-            return IngestResult(
-                status="failed",
-                fulltext_layer="unknown",
-                fulltext_source=_LAYER_DISPLAY["unknown"],
-                markdown="",
-                title=f"Zotero item {item_key}",
-                original_url=original_url,
-                error=None,
-                note="PDF-only Zotero item 路徑未實作（待 Slice 2 #390）",
             )
         except Exception as exc:  # noqa: BLE001 — convert to failed result
             logger.warning("zotero sync failed unexpectedly: %s", exc)
