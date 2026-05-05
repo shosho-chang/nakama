@@ -268,3 +268,33 @@ def test_csp_header_absent_on_root(app_client):
     # / is the Robin inbox — must not get the strict reader CSP because it
     # legitimately uses inline <script> blocks.
     assert "content-security-policy" not in {k.lower() for k in r.headers}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/books/{book_id} — book metadata (book_version_hash for Reader JS)
+# ---------------------------------------------------------------------------
+
+
+def test_api_book_metadata_returns_book_row(app_client):
+    tc, _ = app_client
+    blob = epub_clean()
+    files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
+    data = {"book_id": "meta-id", "title": "Meta", "lang_pair": "en-zh"}
+    tc.post("/books/upload", data=data, files=files)
+
+    r = tc.get("/api/books/meta-id")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["book_id"] == "meta-id"
+    assert body["title"] == "Meta"
+    assert body["lang_pair"] == "en-zh"
+    assert body["has_original"] is False
+    assert isinstance(body["book_version_hash"], str)
+    assert len(body["book_version_hash"]) == 64
+    assert "created_at" in body
+
+
+def test_api_book_metadata_404(app_client):
+    tc, _ = app_client
+    r = tc.get("/api/books/no-such-book")
+    assert r.status_code == 404

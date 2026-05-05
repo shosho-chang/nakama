@@ -96,3 +96,33 @@ updated_at: "2026-05-04T00:00:00Z"
   them as-is), but future saves overwrite only the annotation store.
 - **Phase 2 upgrade points**: cross-process file locking (fcntl), Obsidian sync
   via `mark_synced`, migration tool for existing annotated sources.
+
+## Amendment 2026-05-05: book extension (schema_version=2)
+
+**Why.** Paper sources keyed annotations by `source_filename` plus a plain
+`ref` / `text` field — fine for short markdown where the text itself is a
+stable anchor. Books are different: an EPUB is paginated, the same passage
+appears in multiple translations of the same book, and the bilingual EPUB the
+Reader serves is rebuilt by `epub_sanitizer.sanitize_epub` (changing the
+file's bytes and therefore the on-disk hash) every upload. We need (a) a CFI
+anchor that survives reflow inside one EPUB, (b) a chapter-level Comment item
+type for long-form reflection that doesn't have to point at a single span,
+and (c) a `book_version_hash` on every item so the Reader can detect when a
+re-uploaded book invalidates older anchors.
+
+**What changed.** `shared/schemas/annotations.py` now exposes
+`schema_version=2` as a discriminator on `AnnotationSet`. Three v2 item
+types: `HighlightV2` (cfi + text_excerpt), `AnnotationV2` (cfi + text_excerpt
++ note), `CommentV2` (chapter_ref + optional cfi_anchor + body). v2 sets
+declare `base="books"` (vs v1's `base="inbox"`). Storage is unchanged:
+`KB/Annotations/{slug}.md` with the same per-slug `threading.Lock`.
+`thousand_sunny/routers/books.py` exposes `GET/POST /api/books/{id}/annotations`
+operating on v2 only, plus `GET /api/books/{id}` for Reader JS to read
+`book_version_hash`.
+
+**Compat.** Legacy aliases (`Highlight`, `Annotation`, `AnnotationSet`) keep
+pointing at the v1 shapes so existing `tests/shared/test_annotation_store.py`
+and the Robin paper-reader code path keep working untouched. v1 paper files
+and v2 book files coexist in the same `KB/Annotations/` directory; the
+discriminated union on `schema_version` selects the right model on load. No
+migration is required for existing v1 files.

@@ -137,6 +137,14 @@ async def book_reader(
     return templates.TemplateResponse(request, "book_reader.html", {"book": book})
 
 
+@router.get("/api/books/{book_id}")
+async def book_metadata(book_id: str):
+    book = get_book(book_id)
+    if book is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+    return book.model_dump()
+
+
 @router.get("/api/books/{book_id}/file")
 async def book_file(
     book_id: str,
