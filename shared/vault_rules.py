@@ -8,7 +8,7 @@ class VaultRuleViolation(Exception):
 
 
 # Reader 可寫入的路徑前綴（annotation persistence — ADR-017）
-READER_WRITE_WHITELIST = ("KB/Annotations/",)
+READER_WRITE_WHITELIST = ("KB/Annotations/", "KB/Wiki/Sources/Books/")
 
 # Nami 可寫入的路徑前綴
 _NAMI_WRITE_WHITELIST = ("Nami/Notes/",)
