@@ -566,6 +566,25 @@ if (ingestBtn) {
   ingestBtn.addEventListener('click', requestIngest);
 }
 
+const deleteBookBtn = document.getElementById('deleteBookBtn');
+if (deleteBookBtn) {
+  deleteBookBtn.addEventListener('click', async () => {
+    if (!confirm('刪除整本書？此動作會同時清掉註解、進度與 ingest 紀錄，且無法復原。')) return;
+    const prevText = deleteBookBtn.textContent;
+    deleteBookBtn.disabled = true;
+    deleteBookBtn.textContent = '刪除中⋯';
+    try {
+      const r = await fetch(`/api/books/${encodeURIComponent(BOOK_ID)}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error(await r.text());
+      window.location.href = '/books';
+    } catch (err) {
+      alert('刪除失敗：' + err.message);
+      deleteBookBtn.disabled = false;
+      deleteBookBtn.textContent = prevText;
+    }
+  });
+}
+
 // ── Progress state (Slice 3C) ────────────────────────────────────────────────
 //
 // Mirrors GET/PUT /api/books/{id}/progress with three reliability layers:

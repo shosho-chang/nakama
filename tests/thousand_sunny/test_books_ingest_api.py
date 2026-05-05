@@ -153,3 +153,79 @@ def test_csp_header_present_on_ingest_api(app_client):
     csp = r.headers.get("content-security-policy", "")
     assert "script-src" in csp
     assert "'self'" in csp
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/books/{id}/ingest-request — cancel queued ingest
+# ---------------------------------------------------------------------------
+
+
+def test_delete_ingest_request_cancels_queued(app_client):
+    _upload(app_client, "alpha", with_original=True)
+    app_client.post("/api/books/alpha/ingest-request")
+
+    r = app_client.delete("/api/books/alpha/ingest-request")
+    assert r.status_code == 200
+    assert app_client.get("/api/books/alpha").json()["ingest_status"] == "never"
+
+
+def test_delete_ingest_request_returns_409_when_not_queued(app_client):
+    _upload(app_client, "alpha", with_original=True)
+    r = app_client.delete("/api/books/alpha/ingest-request")
+    assert r.status_code == 409
+
+
+def test_delete_ingest_request_refuses_when_ingesting(app_client):
+    _upload(app_client, "alpha", with_original=True)
+    app_client.post("/api/books/alpha/ingest-request")
+    from shared.book_queue import mark_status
+
+    mark_status("alpha", "ingesting")
+    r = app_client.delete("/api/books/alpha/ingest-request")
+    assert r.status_code == 409
+    assert app_client.get("/api/books/alpha").json()["ingest_status"] == "ingesting"
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/books/{id} — full book removal
+# ---------------------------------------------------------------------------
+
+
+def test_delete_book_removes_row_files_and_queue(app_client, books_dir):
+    _upload(app_client, "alpha", with_original=True)
+    app_client.post("/api/books/alpha/ingest-request")
+
+    r = app_client.delete("/api/books/alpha")
+    assert r.status_code == 200
+    assert app_client.get("/api/books/alpha").status_code == 404
+    assert not (books_dir / "alpha").exists()
+
+
+def test_delete_book_404_when_missing(app_client):
+    r = app_client.delete("/api/books/nonexistent")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /api/books/{id}/cover — bytes from EPUB extracted at upload time
+# ---------------------------------------------------------------------------
+
+
+def test_get_cover_404_when_no_cover_in_epub(app_client):
+    _upload(app_client, "alpha", with_original=True)
+    r = app_client.get("/api/books/alpha/cover")
+    assert r.status_code == 404
+
+
+def test_get_cover_returns_image_bytes_from_epub_with_cover(app_client):
+    from tests.shared._epub_fixtures import epub_with_cover
+
+    files = {"bilingual": ("c.epub", epub_with_cover(), "application/epub+zip")}
+    data = {"book_id": "alpha", "title": "T", "lang_pair": "en-zh"}
+    r = app_client.post("/books/upload", data=data, files=files)
+    assert r.status_code == 303
+
+    r = app_client.get("/api/books/alpha/cover")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/")
+    assert len(r.content) > 0
