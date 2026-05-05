@@ -799,11 +799,41 @@ window.addEventListener('pagehide', () => {
   flushProgressSync();
 });
 
+// ── Page navigation (keyboard) ───────────────────────────────────────────────
+//
+// <foliate-view> doesn't bind nav keys; the upstream demo
+// (vendor/foliate-js/reader.js:138,191-192) wires its own keydown handler on
+// both the host document and each iframe doc as it loads. Without this the
+// first page renders but ←/→ does nothing on desktop. Skip when a modal is
+// open or when typing in a form field, and stay out of the way of selection
+// extension (Shift+Arrow) and browser shortcuts (Ctrl/Cmd/Alt combos).
+function handleNavKey(e) {
+  if (document.querySelector('dialog[open]')) return;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  const k = e.key;
+  if (k === 'ArrowLeft' || k === 'PageUp') {
+    e.preventDefault();
+    view.goLeft();
+  } else if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') {
+    e.preventDefault();
+    view.goRight();
+  }
+}
+document.addEventListener('keydown', handleNavKey);
+
 // ── view event wiring ────────────────────────────────────────────────────────
 
 view.addEventListener('load', e => {
   const doc = e.detail && e.detail.doc;
-  if (doc) attachSelectionListener(doc);
+  if (doc) {
+    attachSelectionListener(doc);
+    // Mirror the host-level keydown into each iframe doc so keys still work
+    // when focus is inside the EPUB content (foliate-js demo does the same in
+    // vendor/foliate-js/reader.js:195).
+    doc.addEventListener('keydown', handleNavKey);
+  }
 });
 
 view.addEventListener('relocate', e => {
