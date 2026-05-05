@@ -13,7 +13,13 @@ import httpx
 import pytest
 
 from shared import pubmed_client
-from shared.pubmed_client import PubMedClientError, esearch, esummary, lookup
+from shared.pubmed_client import (
+    PubMedClientError,
+    efetch_abstracts,
+    esearch,
+    esummary,
+    lookup,
+)
 
 
 def _fake_response(payload: dict, status_code: int = 200):
@@ -284,3 +290,221 @@ def test_lookup_short_circuits_when_esearch_empty(monkeypatch):
 
     monkeypatch.setattr(pubmed_client.httpx, "get", fake_get)
     assert lookup("nonsense xxxyyy") == []
+
+
+# ---------------------------------------------------------------------------
+# efetch_abstracts (XML)
+# ---------------------------------------------------------------------------
+
+
+def _fake_xml_response(content: bytes, status_code: int = 200):
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = status_code
+    resp.content = content
+    if status_code >= 400:
+        resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            f"HTTP {status_code}", request=MagicMock(), response=resp
+        )
+    else:
+        resp.raise_for_status.return_value = None
+    return resp
+
+
+_EFETCH_XML = b"""<?xml version="1.0"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>42081737</PMID>
+      <Article>
+        <Journal>
+          <ISSN IssnType="Electronic">1438-8871</ISSN>
+          <Title>Journal of medical Internet research</Title>
+          <ISOAbbreviation>J Med Internet Res</ISOAbbreviation>
+          <JournalIssue>
+            <PubDate>
+              <Year>2026</Year>
+              <Month>May</Month>
+              <Day>5</Day>
+            </PubDate>
+          </JournalIssue>
+        </Journal>
+        <ArticleTitle>Wearable activity prediction of depression onset.</ArticleTitle>
+        <Abstract>
+          <AbstractText Label="BACKGROUND">Background sentence.</AbstractText>
+          <AbstractText Label="METHODS">Methods sentence.</AbstractText>
+          <AbstractText Label="RESULTS">Activity dropped 4 months prior.</AbstractText>
+        </Abstract>
+        <AuthorList>
+          <Author>
+            <LastName>Smith</LastName>
+            <ForeName>John</ForeName>
+          </Author>
+          <Author>
+            <LastName>Lee</LastName>
+            <ForeName>Wendy</ForeName>
+          </Author>
+        </AuthorList>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>42066751</PMID>
+      <Article>
+        <Journal>
+          <Title>Cell</Title>
+          <JournalIssue>
+            <PubDate>
+              <MedlineDate>2026 Apr-May</MedlineDate>
+            </PubDate>
+          </JournalIssue>
+        </Journal>
+        <ArticleTitle>Single-paragraph abstract test.</ArticleTitle>
+        <Abstract>
+          <AbstractText>Plain unstructured abstract.</AbstractText>
+        </Abstract>
+        <AuthorList>
+          <Author>
+            <CollectiveName>The Long Life Consortium</CollectiveName>
+          </Author>
+        </AuthorList>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>
+"""
+
+
+def test_efetch_abstracts_parses_structured_abstract(monkeypatch):
+    monkeypatch.setattr(
+        pubmed_client.httpx,
+        "get",
+        lambda url, params, timeout: _fake_xml_response(_EFETCH_XML),
+    )
+    out = efetch_abstracts(["42081737", "42066751"])
+    assert len(out) == 2
+
+    first = out[0]
+    assert first["pmid"] == "42081737"
+    assert first["title"] == "Wearable activity prediction of depression onset."
+    assert first["journal"] == "Journal of medical Internet research"
+    assert first["issn"] == "1438-8871"
+    # Structured abstract 應保留 label 前綴
+    assert "BACKGROUND: Background sentence." in first["abstract"]
+    assert "METHODS: Methods sentence." in first["abstract"]
+    assert "RESULTS: Activity dropped 4 months prior." in first["abstract"]
+    assert first["pub_date"] == "2026 May 5"
+    assert first["authors"] == "John Smith, Wendy Lee"
+    assert first["url"] == "https://pubmed.ncbi.nlm.nih.gov/42081737/"
+
+
+def test_efetch_abstracts_handles_unstructured_abstract_and_collective_author(monkeypatch):
+    monkeypatch.setattr(
+        pubmed_client.httpx,
+        "get",
+        lambda url, params, timeout: _fake_xml_response(_EFETCH_XML),
+    )
+    out = efetch_abstracts(["42081737", "42066751"])
+    second = out[1]
+    assert second["pmid"] == "42066751"
+    # 沒 ISSN
+    assert second["issn"] == ""
+    # 沒 Year，fallback MedlineDate
+    assert second["pub_date"] == "2026 Apr-May"
+    # CollectiveName 取代個人作者
+    assert second["authors"] == "The Long Life Consortium"
+    # Unstructured abstract 不加 label 前綴
+    assert second["abstract"] == "Plain unstructured abstract."
+
+
+def test_efetch_abstracts_empty_input_no_api_call(monkeypatch):
+    called = False
+
+    def fake_get(*a, **kw):
+        nonlocal called
+        called = True
+        return _fake_xml_response(b"")
+
+    monkeypatch.setattr(pubmed_client.httpx, "get", fake_get)
+    assert efetch_abstracts([]) == []
+    assert called is False
+
+
+def test_efetch_abstracts_http_error_raises(monkeypatch):
+    monkeypatch.setattr(
+        pubmed_client.httpx,
+        "get",
+        lambda url, params, timeout: _fake_xml_response(b"", status_code=503),
+    )
+    with pytest.raises(PubMedClientError, match="HTTP"):
+        efetch_abstracts(["12345"])
+
+
+def test_efetch_abstracts_malformed_xml_raises(monkeypatch):
+    monkeypatch.setattr(
+        pubmed_client.httpx,
+        "get",
+        lambda url, params, timeout: _fake_xml_response(b"<not>valid</xml"),
+    )
+    with pytest.raises(PubMedClientError, match="XML"):
+        efetch_abstracts(["12345"])
+
+
+def test_efetch_abstracts_skips_article_without_pmid(monkeypatch):
+    """缺 PMID 的 article 應被跳過，不影響其他 article 解析。"""
+    xml = b"""<?xml version="1.0"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <Article>
+        <Journal><Title>Broken</Title></Journal>
+        <ArticleTitle>No PMID article</ArticleTitle>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>99999999</PMID>
+      <Article>
+        <Journal><Title>Good Journal</Title></Journal>
+        <ArticleTitle>Good article</ArticleTitle>
+        <Abstract><AbstractText>Has abstract.</AbstractText></Abstract>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>
+"""
+    monkeypatch.setattr(
+        pubmed_client.httpx,
+        "get",
+        lambda url, params, timeout: _fake_xml_response(xml),
+    )
+    out = efetch_abstracts(["99999999"])
+    assert len(out) == 1
+    assert out[0]["pmid"] == "99999999"
+
+
+def test_efetch_abstracts_inline_tag_text_preserved(monkeypatch):
+    """Title / abstract 內若有 <i> / <sub> 等 inline tag，內文要保留（去 tag、保 text）。"""
+    xml = b"""<?xml version="1.0"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>1</PMID>
+      <Article>
+        <Journal><Title>Test J</Title></Journal>
+        <ArticleTitle>Effect of <i>Lactobacillus</i> on H<sub>2</sub>O metabolism.</ArticleTitle>
+        <Abstract><AbstractText>The <i>in vitro</i> result was clear.</AbstractText></Abstract>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>
+"""
+    monkeypatch.setattr(
+        pubmed_client.httpx,
+        "get",
+        lambda url, params, timeout: _fake_xml_response(xml),
+    )
+    out = efetch_abstracts(["1"])
+    assert out[0]["title"] == "Effect of Lactobacillus on H2O metabolism."
+    assert out[0]["abstract"] == "The in vitro result was clear."

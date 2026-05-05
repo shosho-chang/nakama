@@ -1,0 +1,73 @@
+# Robin PubMed digest 期刊黑名單
+#
+# 在 fetch + dedup 後、curate 前 hard-filter；命中的 candidate 直接丟棄，
+# LLM 不會看到、curate token 不浪費。
+#
+# 設計理由：修修觀察到 saved search RSS 池被 MDPI / 部分 Frontiers 高發表頻率
+# 期刊霸佔（光 Nutrients 一刊在 120 筆 RSS 池佔 52 筆/43%），把頂刊全擠出。
+# 用 negative filter 把已知不要的 publisher 砍掉，正向擴充頂刊由
+# pubmed_feeds.yaml 的 top_journals_high_signal feed 處理。
+#
+# 比對方式：journal name 走 normalized key（小寫 + `&`→`and` + 只留 a-z0-9），
+# 與 shared/journal_metrics.py 的 _normalize_title() 一致，吸收標點/大小寫差異。
+#
+# 維護：要加新 publisher 直接 append；要保留某刊就從 list 移除即可。
+
+block:
+  # ────────────────────────── MDPI 全系（高發表頻率 + 同行評審品質爭議）
+  # 修修確認 2026-05-05：MDPI 全 block。光 Nutrients 一刊在 5/5 digest 就吃 5 個 slot。
+  - Nutrients
+  - International journal of molecular sciences
+  - International journal of environmental research and public health
+  - Sensors (Basel, Switzerland)
+  - Medicina (Kaunas, Lithuania)
+  - Pathogens (Basel, Switzerland)
+  - Cells
+  - Genes
+  - Foods
+  - Antioxidants
+  - Molecules (Basel, Switzerland)
+  - Microorganisms
+  - Diagnostics (Basel, Switzerland)
+  - Healthcare (Basel, Switzerland)
+  - Vaccines
+  - Biology (Basel, Switzerland)
+  - Brain sciences (Basel, Switzerland)
+  - Children (Basel, Switzerland)
+  - Life (Basel, Switzerland)
+  - Metabolites
+  - Biomedicines
+  - Pharmaceutics
+  - Pharmaceuticals (Basel, Switzerland)
+  - Toxins
+  - Cancers (Basel, Switzerland)
+  - Journal of clinical medicine
+  - Journal of personalized medicine
+  - Journal of functional morphology and kinesiology
+
+  # ────────────────────────── Frontiers 部分系列（高發表頻率 + 編輯品質參差）
+  # 修修確認 2026-05-05：保留 Frontiers in immunology + Frontiers in endocrinology，
+  # 其他 Frontiers 系全 block。
+  - Frontiers in public health
+  - Frontiers in cellular and infection microbiology
+  - Frontiers in nutrition
+  - Frontiers in microbiology
+  - Frontiers in psychology
+  - Frontiers in pharmacology
+  - Frontiers in psychiatry
+  - Frontiers in cardiovascular medicine
+  - Frontiers in neurology
+  - Frontiers in physiology
+  - Frontiers in medicine
+  - Frontiers in aging neuroscience
+  - Frontiers in oncology
+  - Frontiers in plant science
+  - Frontiers in genetics
+  - Frontiers in pediatrics
+  - Frontiers in human neuroscience
+  - Frontiers in behavioral neuroscience
+  - Frontiers in cell and developmental biology
+  - Frontiers in molecular biosciences
+  - Frontiers in sports and active living
+  - Frontiers in big data
+  - Frontiers in bioengineering and biotechnology
