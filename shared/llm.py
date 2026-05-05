@@ -158,10 +158,14 @@ def ask_with_tools(
     system: str = "",
     model: str | None = None,
     max_tokens: int = 2048,
+    tool_choice: dict | None = None,
 ) -> "anthropic.types.Message":
     """tool-use API：回傳完整 Message（含 stop_reason、content blocks）以驅動 agent loop。
 
     ``model=None`` 時走 router ``task="tool_use"``（預設 Haiku 4.5）。
+
+    ``tool_choice`` 用於強制 Claude 呼叫特定 tool（例如確保結構化 JSON 輸出）：
+    ``{"type": "tool", "name": "my_tool"}`` 強制呼叫，``None`` 讓 Claude 自行決定。
 
     目前只 Anthropic 有 production-ready 的 tool-use 流程。Grok / Gemini
     各有 tool-use 但 schema / 回傳語意不同，這層 facade 暫不混淆 — 改
@@ -179,6 +183,7 @@ def ask_with_tools(
             system=system,
             model=model,
             max_tokens=max_tokens,
+            tool_choice=tool_choice,
         )
     raise NotImplementedError(
         f"ask_with_tools 目前只支援 anthropic（收到 provider='{provider}', "
