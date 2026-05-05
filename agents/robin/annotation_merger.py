@@ -1,14 +1,22 @@
-"""ConceptPageAnnotationMerger — syncs annotations to Concept page ## 個人觀點 section.
+"""ConceptPageAnnotationMerger — syncs reader annotations into Concept pages.
 
-ADR-017 Slice 2: per-source full-replace via HTML comment boundary markers.
+ADR-017 Slice 2 + Slice 5 (book extension): per-source full-replace via HTML
+comment boundary markers, dispatched on schema_version.
 
-Flow:
+Flow (shared):
   1. Load AnnotationSet from store
   2. Short-circuit if nothing changed since last sync (idempotency)
-  3. Filter to Annotation items only (Highlight items are not synced — ADR-017 §Q4 asymmetric)
-  4. List existing concept slugs from vault
-  5. LLM (tool_use forced JSON): annotations + concept list → {concept_slug: callout_block_str}
-  6. For each concept in result: insert / replace boundary-marked block in ## 個人觀點
+  3. Dispatch on schema_version
+
+v1 paper path (AnnotationSet):
+  - Filter to Annotation items only (Highlight not synced — ADR-017 §Q4 asymmetric)
+  - LLM (tool_use forced JSON): annotations + concept list → {concept_slug: callout_block}
+  - Insert / replace boundary-marked block in each matched Concept page ## 個人觀點
+
+v2 book path (AnnotationSetV2):
+  - Comments → ``KB/Wiki/Sources/Books/{book_id}/notes.md`` via book_notes_writer
+  - Annotations → Concept page ## 讀者註記 via _ask_merger_llm_v2 (highlights skipped, same §Q4)
+  - Per-book boundary markers keep multi-book aggregation isolated
 """
 
 from __future__ import annotations
@@ -123,7 +131,7 @@ def _replace_marker_block(body: str, source_slug: str, callout_block: str) -> st
 # ---------------------------------------------------------------------------
 
 
-def _ask_merger_llm(prompt: str, concept_slugs=None) -> dict[str, str]:
+def _ask_merger_llm(prompt: str) -> dict[str, str]:
     """Call LLM to map annotations → concept callout blocks using forced tool_use.
 
     Uses tool_choice to guarantee structured JSON output — eliminates the raw-text
@@ -158,17 +166,24 @@ def _ask_merger_llm(prompt: str, concept_slugs=None) -> dict[str, str]:
 
 
 class ConceptPageAnnotationMerger:
-    """Syncs annotations from AnnotationStore[slug] into Concept page ## 個人觀點 sections."""
+    """Syncs reader annotations into Concept pages, dispatched on schema_version.
+
+    v1 → ## 個人觀點 (papers, AnnotationSet)
+    v2 → ## 讀者註記 (books, AnnotationSetV2) + comments to KB/Wiki/Sources/Books/.../notes.md
+    """
 
     def sync_source_to_concepts(self, slug: str) -> SyncReport:
-        """Read annotations for slug, merge into matching concept pages.
+        """Read annotations for slug, dispatch on schema_version, merge.
 
         Args:
-            slug: source slug (e.g. "sport-nutrition-ch3")
+            slug: source slug (e.g. "sport-nutrition-ch3" for v1 paper, or
+                book_id like "kahneman-thinking-fast-slow" for v2 book)
 
         Returns:
             SyncReport with counts, updated concept slugs, and any errors.
         """
+        from shared.annotation_store import AnnotationSetV2
+
         store = get_annotation_store()
         ann_set = store.load(slug)
 
@@ -194,6 +209,11 @@ class ConceptPageAnnotationMerger:
                 unsynced_count=0,
             )
 
+        if isinstance(ann_set, AnnotationSetV2):
+            return self._sync_v2(ann_set)
+        return self._sync_v1(ann_set, slug)
+
+    def _sync_v1(self, ann_set, slug: str) -> SyncReport:
         annotations = [item for item in ann_set.items if item.type == "annotation"]
         if not annotations:
             return SyncReport(
@@ -271,16 +291,66 @@ class ConceptPageAnnotationMerger:
             return []
         return sorted(p.stem for p in concepts_dir.glob("*.md"))
 
+    def _sync_v2(self, ann_set) -> SyncReport:
+        """v2 book path: comments → notes.md (Slice 5B), annotations → concepts ## 讀者註記.
+
+        Highlights are not synced (ADR-017 §Q4 — same asymmetric rule as v1).
+        Comments do not propagate to concept pages (per PRD #378 user-story 32:
+        readers' subjective reflections must not pollute the cross-source aggregator);
+        they are routed to a per-book notes.md instead.
+        """
+        from agents.robin.book_notes_writer import write_notes
+
+        book_id = ann_set.book_id
+
+        # 1. Comments → KB/Wiki/Sources/Books/{book_id}/notes.md (idempotent on empty list)
+        comments = [i for i in ann_set.items if i.type == "comment"]
+        write_notes(book_id, comments)
+
+        # 2. Annotations → Concept page ## 讀者註記 (LLM-matched)
+        annotations = [i for i in ann_set.items if i.type == "annotation"]
+        if not annotations:
+            return SyncReport(
+                source_slug=book_id,
+                concepts_updated=[],
+                annotations_merged=0,
+                skipped_annotations=0,
+                errors=[],
+            )
+
+        concept_slugs = _list_concept_slugs_v2()
+        try:
+            mapping = _ask_merger_llm_v2(annotations, concept_slugs)
+        except MergerLLMError as exc:
+            logger.error(
+                "annotation merger v2 LLM failed",
+                extra={"book_id": book_id, "error": str(exc)},
+            )
+            return SyncReport(
+                source_slug=book_id,
+                concepts_updated=[],
+                annotations_merged=len(annotations),
+                skipped_annotations=0,
+                errors=["⚠️ 同步錯誤：LLM 回傳格式錯誤，請重試"],
+            )
+
+        concepts_updated, skipped, errors = _upsert_concept_blocks_v2(book_id, mapping)
+        return SyncReport(
+            source_slug=book_id,
+            concepts_updated=concepts_updated,
+            annotations_merged=len(annotations),
+            skipped_annotations=skipped,
+            errors=errors,
+        )
+
 
 # ---------------------------------------------------------------------------
-# v2 book path — ## 讀者註記
+# v2 book path helpers — ## 讀者註記
 # ---------------------------------------------------------------------------
-
-_KB_CONCEPTS_SIMPLE = "KB/Concepts"
 
 
 def _list_concept_slugs_v2() -> list[str]:
-    concepts_dir = get_vault_path() / _KB_CONCEPTS_SIMPLE
+    concepts_dir = get_vault_path() / KB_CONCEPTS_DIR
     if not concepts_dir.exists():
         return []
     return sorted(p.stem for p in concepts_dir.glob("*.md"))
@@ -342,25 +412,35 @@ def _ask_merger_llm_v2(items, concept_slugs: list[str]) -> dict[str, str]:
     raise MergerLLMError("merger LLM did not invoke merge_annotations tool (v2)")
 
 
-def _upsert_concept_blocks(
-    slug_or_book_id: str,
-    mapping: dict[str, str],
-    section_heading: str,
-    replace_fn,
-) -> None:
-    """Write callout blocks into concept pages in KB/Concepts/."""
-    concepts_dir = get_vault_path() / _KB_CONCEPTS_SIMPLE
+def _upsert_concept_blocks_v2(
+    book_id: str, mapping: dict[str, str]
+) -> tuple[list[str], int, list[str]]:
+    """Write v2 callout blocks into Concept pages. Returns (updated, skipped, errors)."""
+    concepts_dir = get_vault_path() / KB_CONCEPTS_DIR
+    concepts_updated: list[str] = []
+    skipped = 0
+    errors: list[str] = []
+
     for concept_slug, callout_block in mapping.items():
         concept_path = concepts_dir / f"{concept_slug}.md"
         if not concept_path.exists():
+            logger.warning(
+                "concept not found, skipping v2 annotation sync",
+                extra={"concept_slug": concept_slug, "book_id": book_id},
+            )
+            skipped += 1
             continue
         result = _load_page(concept_path)
         if result is None:
+            errors.append(f"failed to load concept page: {concept_slug}")
             continue
         fm, body = result
-        updated_body = replace_fn(body, slug_or_book_id, callout_block.strip())
+        updated_body = _replace_v2_marker_block(body, book_id, callout_block.strip())
         if updated_body != body:
             _write_page_file(concept_path, fm, updated_body)
+            concepts_updated.append(concept_slug)
+
+    return concepts_updated, skipped, errors
 
 
 # ---------------------------------------------------------------------------
@@ -368,42 +448,10 @@ def _upsert_concept_blocks(
 # ---------------------------------------------------------------------------
 
 
-def sync_annotations_for_slug(slug: str) -> None:
-    """Load AnnotationSet from store; dispatch on schema_version:
-    v1 → _ask_merger_llm + ## 個人觀點 path (unchanged)
-    v2 → _ask_merger_llm_v2 + ## 讀者註記 path (book sources)"""
-    from shared.annotation_store import AnnotationSetV2, get_annotation_store
-    from shared.prompt_loader import load_prompt
+def sync_annotations_for_slug(slug: str) -> SyncReport:
+    """Public dispatch entry point — forwards to ConceptPageAnnotationMerger.
 
-    store = get_annotation_store()
-    ann_set = store.load(slug)
-    if ann_set is None:
-        return
-
-    concept_slugs = _list_concept_slugs_v2()
-
-    if isinstance(ann_set, AnnotationSetV2):
-        items = [i for i in ann_set.items if i.type != "comment"]
-        if not items:
-            return
-        mapping = _ask_merger_llm_v2(items, concept_slugs)
-        _upsert_concept_blocks(
-            ann_set.book_id, mapping, _V2_SECTION_HEADING, _replace_v2_marker_block
-        )
-    else:
-        annotations = [i for i in ann_set.items if i.type == "annotation"]
-        if not annotations:
-            return
-        prompt = load_prompt(
-            "robin",
-            "merge_annotations",
-            source_slug=slug,
-            concept_slugs=", ".join(concept_slugs) if concept_slugs else "(none)",
-            annotations_json=json.dumps(
-                [a.model_dump() for a in annotations],
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )
-        mapping = _ask_merger_llm(prompt, concept_slugs)
-        _upsert_concept_blocks(slug, mapping, _SECTION_HEADING, _replace_marker_block)
+    The merger's ``sync_source_to_concepts`` method handles v1/v2 dispatch,
+    idempotency, and (for v2) routes comments to ``book_notes_writer``.
+    """
+    return ConceptPageAnnotationMerger().sync_source_to_concepts(slug)
