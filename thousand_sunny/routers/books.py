@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from shared.annotation_store import AnnotationSetV2, get_annotation_store
+from shared.book_queue import enqueue as enqueue_book
 from shared.book_storage import (
     BookStorageError,
     get_book,
@@ -144,12 +145,34 @@ async def book_reader(
     return templates.TemplateResponse(request, "book_reader.html", {"book": book})
 
 
+def _ingest_status(book_id: str) -> str:
+    row = (
+        _get_conn()
+        .execute("SELECT status FROM book_ingest_queue WHERE book_id = ?", (book_id,))
+        .fetchone()
+    )
+    return row["status"] if row else "never"
+
+
 @router.get("/api/books/{book_id}")
 async def book_metadata(book_id: str):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
-    return book.model_dump()
+    data = book.model_dump()
+    data["ingest_status"] = _ingest_status(book_id)
+    return data
+
+
+@router.post("/api/books/{book_id}/ingest-request")
+async def post_ingest_request(book_id: str):
+    book = get_book(book_id)
+    if book is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+    if not book.has_original:
+        raise HTTPException(400, detail="book has no original EN file to ingest")
+    enqueue_book(book_id)
+    return {"ok": True}
 
 
 @router.get("/api/books/{book_id}/file")
