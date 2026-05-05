@@ -13,40 +13,42 @@ import threading
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Literal, Union
-
-from pydantic import BaseModel, Field
 
 from shared.config import get_vault_path
+from shared.schemas.annotations import (
+    AnnotationItemV1,
+    AnnotationItemV2,
+    AnnotationSetV1,
+    AnnotationSetV2,
+    AnnotationV1,
+    AnnotationV2,
+    CommentV2,
+    HighlightV1,
+    HighlightV2,
+)
 
-# ── Schema ────────────────────────────────────────────────────────────────────
+# ── Legacy-name aliases (existing callers import Highlight/Annotation/AnnotationSet) ──
 
+Highlight = HighlightV1
+Annotation = AnnotationV1
+AnnotationItem = AnnotationItemV1
+AnnotationSet = AnnotationSetV1
 
-class Highlight(BaseModel):
-    type: Literal["highlight"] = "highlight"
-    text: str
-    created_at: str = Field(default_factory=lambda: _now_iso())
-    modified_at: str = Field(default_factory=lambda: _now_iso())
-
-
-class Annotation(BaseModel):
-    type: Literal["annotation"] = "annotation"
-    ref: str
-    note: str
-    created_at: str = Field(default_factory=lambda: _now_iso())
-    modified_at: str = Field(default_factory=lambda: _now_iso())
-
-
-AnnotationItem = Annotated[Union[Highlight, Annotation], Field(discriminator="type")]
-
-
-class AnnotationSet(BaseModel):
-    slug: str
-    source_filename: str
-    base: str
-    items: list[AnnotationItem] = Field(default_factory=list)
-    updated_at: str = Field(default_factory=lambda: _now_iso())
-    last_synced_at: str | None = None
+__all__ = [
+    "Highlight",
+    "Annotation",
+    "AnnotationItem",
+    "AnnotationSet",
+    "HighlightV1",
+    "AnnotationV1",
+    "AnnotationItemV1",
+    "AnnotationSetV1",
+    "HighlightV2",
+    "AnnotationV2",
+    "CommentV2",
+    "AnnotationItemV2",
+    "AnnotationSetV2",
+]
 
 
 # ── Slug ──────────────────────────────────────────────────────────────────────

@@ -44,7 +44,9 @@ AnnotationSetV2 = ann_schemas.AnnotationSetV2
 
 
 def test_highlight_v1_round_trip():
-    h = HighlightV1(text="selected", created_at="2026-01-01T00:00:00Z", modified_at="2026-01-01T00:00:00Z")
+    h = HighlightV1(
+        text="selected", created_at="2026-01-01T00:00:00Z", modified_at="2026-01-01T00:00:00Z"
+    )
     assert h.type == "highlight"
     restored = HighlightV1(**h.model_dump())
     assert restored == h
@@ -67,7 +69,9 @@ def test_annotation_set_v1_round_trip():
         source_filename="paper-x.md",
         base="inbox",
         items=[
-            HighlightV1(text="t", created_at="2026-01-01T00:00:00Z", modified_at="2026-01-01T00:00:00Z"),
+            HighlightV1(
+                text="t", created_at="2026-01-01T00:00:00Z", modified_at="2026-01-01T00:00:00Z"
+            ),
         ],
         updated_at="2026-01-01T00:00:00Z",
     )
@@ -226,10 +230,18 @@ def test_annotation_set_v2_base_must_be_books():
 @pytest.mark.parametrize(
     "model_cls,base_kwargs",
     [
-        (HighlightV1, dict(text="t", created_at="2026-01-01T00:00:00Z", modified_at="2026-01-01T00:00:00Z")),
+        (
+            HighlightV1,
+            dict(text="t", created_at="2026-01-01T00:00:00Z", modified_at="2026-01-01T00:00:00Z"),
+        ),
         (
             AnnotationV1,
-            dict(ref="r", note="n", created_at="2026-01-01T00:00:00Z", modified_at="2026-01-01T00:00:00Z"),
+            dict(
+                ref="r",
+                note="n",
+                created_at="2026-01-01T00:00:00Z",
+                modified_at="2026-01-01T00:00:00Z",
+            ),
         ),
         (
             HighlightV2,
