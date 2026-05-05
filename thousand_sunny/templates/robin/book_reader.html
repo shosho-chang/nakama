@@ -12,6 +12,9 @@
     --text-muted: #666;
     --accent: #6c63ff;
     --border: #e5e5e5;
+    --highlight: #f4d03f;
+    --annotation: #f08c4a;
+    --comment: #4a90d9;
   }
   body.dark {
     --bg: #1a1a1a;
@@ -20,6 +23,9 @@
     --text-muted: #aaa;
     --accent: #9d97ff;
     --border: #333;
+    --highlight: #d4b020;
+    --annotation: #c66a2a;
+    --comment: #5a9bdf;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -37,12 +43,57 @@
   foliate-view { display: block; height: 100%; width: 100%; background: var(--surface); }
   .loading, .error-banner { padding: 2rem; text-align: center; color: var(--text-muted); }
   .error-banner { color: #c62828; }
+
+  /* Selection popup — three quick-action buttons (H / A / C) */
+  .ann-popup { position: fixed; z-index: 50; display: flex; gap: 0.25rem; padding: 0.3rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15); }
+  .ann-popup[hidden] { display: none; }
+  .ann-popup button { background: transparent; border: 1px solid transparent; color: var(--text); border-radius: 6px; padding: 0.35rem 0.6rem; font-size: 0.85rem; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+  .ann-popup button:hover, .ann-popup button:focus-visible { background: var(--bg); border-color: var(--accent); outline: none; }
+  .ann-popup button.h-btn { color: var(--text); }
+  .ann-popup button.a-btn { color: var(--text); }
+  .ann-popup button.c-btn { color: var(--text); }
+
+  /* Native <dialog> styling — modal for A and C */
+  dialog.ann-dialog { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; max-width: 560px; width: 92%; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25); }
+  dialog.ann-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+  dialog.ann-dialog h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.6rem; color: var(--text); }
+  dialog.ann-dialog .excerpt { font-size: 0.8rem; color: var(--text-muted); background: var(--bg); border-left: 3px solid var(--accent); padding: 0.5rem 0.6rem; margin-bottom: 0.75rem; max-height: 4.5rem; overflow: auto; line-height: 1.4; }
+  dialog.ann-dialog .row { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.75rem; }
+  dialog.ann-dialog label { font-size: 0.8rem; color: var(--text-muted); }
+  dialog.ann-dialog select, dialog.ann-dialog textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.6rem; font: inherit; font-size: 0.9rem; width: 100%; resize: vertical; }
+  dialog.ann-dialog select:focus, dialog.ann-dialog textarea:focus { outline: none; border-color: var(--accent); }
+  dialog.ann-dialog textarea { min-height: 4.5rem; }
+  dialog#ann-comment-modal textarea { min-height: 11rem; }
+  dialog.ann-dialog .checkbox-row { display: flex; gap: 0.5rem; align-items: center; flex-direction: row; }
+  dialog.ann-dialog .checkbox-row input[type=checkbox] { accent-color: var(--accent); }
+  dialog.ann-dialog .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+  dialog.ann-dialog .actions button { font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  dialog.ann-dialog .actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  dialog.ann-dialog .actions button:hover, dialog.ann-dialog .actions button:focus-visible { outline: none; border-color: var(--accent); }
+
+  /* Comments sidebar — slides in from the right */
+  #comments-sidebar { position: fixed; top: 56px; right: 0; bottom: 0; width: 360px; max-width: 90vw; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.2s ease-out; z-index: 20; }
+  #comments-sidebar:not([hidden]) { transform: translateX(0); }
+  #comments-sidebar header { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  #comments-sidebar header h2 { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+  #comments-sidebar .body { flex: 1; overflow: auto; padding: 0.5rem 0.75rem; }
+  #comments-sidebar .empty { padding: 1.5rem 1rem; text-align: center; font-size: 0.85rem; color: var(--text-muted); }
+  .comment-card { padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; cursor: pointer; background: var(--bg); transition: border-color 0.12s; }
+  .comment-card:hover, .comment-card:focus-visible { border-color: var(--comment); outline: none; }
+  .comment-card .chap { font-size: 0.72rem; color: var(--comment); font-weight: 600; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.02em; }
+  .comment-card .preview { font-size: 0.85rem; line-height: 1.45; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+  .comment-card.expanded .preview { max-height: none; }
+
+  /* Toast — surfaces POST failures without blocking the reader */
+  #ann-toast { position: fixed; right: 1rem; bottom: 1rem; max-width: 360px; background: #c62828; color: #fff; padding: 0.6rem 0.85rem; border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); font-size: 0.85rem; z-index: 100; opacity: 0; transform: translateY(8px); transition: opacity 0.18s, transform 0.18s; pointer-events: none; }
+  #ann-toast.show { opacity: 1; transform: translateY(0); }
+
   @media (prefers-reduced-motion: reduce) {
-    body, foliate-view, .icon-btn { transition: none; }
+    body, foliate-view, .icon-btn, #comments-sidebar, #ann-toast { transition: none; }
   }
 </style>
 </head>
-<body>
+<body data-book-version-hash="{{ book.book_version_hash }}">
 <div class="reader-bar">
   <div class="left">
     <a href="/books" class="back">← 書架</a>
@@ -51,12 +102,68 @@
   </div>
   <nav class="right">
     <a href="/" class="icon-btn" style="text-decoration:none">📥 Inbox</a>
+    <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 反思</button>
     <button type="button" class="icon-btn" id="darkToggle" aria-label="切換深色模式" aria-pressed="false">🌙 夜間</button>
   </nav>
 </div>
 <div class="reader-shell">
   <foliate-view id="view"></foliate-view>
 </div>
+
+<div id="ann-popup" class="ann-popup" hidden role="toolbar" aria-label="標註選單">
+  <button type="button" class="h-btn" data-action="highlight">H 螢光</button>
+  <button type="button" class="a-btn" data-action="annotation">A 註解</button>
+  <button type="button" class="c-btn" data-action="comment">C 反思</button>
+</div>
+
+<dialog id="ann-note-modal" class="ann-dialog" aria-labelledby="ann-note-title">
+  <form method="dialog">
+    <h2 id="ann-note-title">A 註解 · 加上 1–3 句的想法</h2>
+    <div class="excerpt" id="ann-note-excerpt"></div>
+    <div class="row">
+      <label for="ann-note-text">註解內容</label>
+      <textarea id="ann-note-text" rows="3" placeholder="一兩句你的想法⋯"></textarea>
+    </div>
+    <div class="actions">
+      <button type="button" value="cancel" data-cancel>取消</button>
+      <button type="submit" class="primary" value="save">儲存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="ann-comment-modal" class="ann-dialog" aria-labelledby="ann-comment-title">
+  <form method="dialog">
+    <h2 id="ann-comment-title">C 反思 · 章節層級的長段思考</h2>
+    <div class="row">
+      <label for="ann-comment-chapter">章節</label>
+      <select id="ann-comment-chapter"></select>
+    </div>
+    <div class="row checkbox-row">
+      <input type="checkbox" id="ann-comment-anchor">
+      <label for="ann-comment-anchor">把這個反思錨定到目前選取的位置（CFI）</label>
+    </div>
+    <div class="row">
+      <label for="ann-comment-body">反思內容</label>
+      <textarea id="ann-comment-body" rows="14" placeholder="500–2000+ 字，沒有上限⋯"></textarea>
+    </div>
+    <div class="actions">
+      <button type="button" value="cancel" data-cancel>取消</button>
+      <button type="submit" class="primary" value="save">儲存</button>
+    </div>
+  </form>
+</dialog>
+
+<aside id="comments-sidebar" hidden aria-label="反思列表">
+  <header>
+    <h2>💬 反思</h2>
+    <button type="button" class="icon-btn" id="commentsClose" aria-label="關閉側欄">×</button>
+  </header>
+  <div class="body" id="comments-list">
+    <div class="empty">尚無反思。選取文字後按「C 反思」即可新增。</div>
+  </div>
+</aside>
+
+<div id="ann-toast" role="status" aria-live="polite"></div>
 
 <script type="module" src="/static/book_reader.js"></script>
 </body>
