@@ -1,14 +1,15 @@
-"""Tests for ``agents/robin/zotero_assets.py`` — Slice 1 #389 Cycles 8-11.
+"""Tests for ``agents/robin/zotero_assets.py`` — Slice 1 #389 + Slice 2 #390.
 
-Pure-function module: copy snapshot ``_assets/`` into vault + rewrite MD
-image src to vault-relative paths.
+Pure-function module:
+- copy snapshot ``_assets/`` into vault + rewrite MD image src (Slice 1)
+- extract PDF figures page-by-page into vault ``_assets/`` (Slice 2)
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from agents.robin.zotero_assets import copy_assets, rewrite_image_paths
+from agents.robin.zotero_assets import copy_assets, extract_pdf_figures, rewrite_image_paths
 
 # ---------------------------------------------------------------------------
 # copy_assets
@@ -114,3 +115,81 @@ def test_rewrite_image_paths_no_change_when_no_assets_refs():
     """MD without any ``_assets/`` references is returned verbatim."""
     md = "# Heading\n\nPlain text body, no images."
     assert rewrite_image_paths(md, "Attachments/zotero/my-slug/_assets") == md
+
+
+# ---------------------------------------------------------------------------
+# extract_pdf_figures (Slice 2 #390)
+# ---------------------------------------------------------------------------
+
+
+def _make_text_only_pdf(path: Path) -> None:
+    """Create a real PDF with text only (no embedded images)."""
+    import fitz
+
+    doc = fitz.Document()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((50, 100), "Sample research content without any images.")
+    doc.save(str(path))
+    doc.close()
+
+
+def _make_pdf_with_one_image(path: Path) -> None:
+    """Create a real PDF with one embedded PNG image."""
+    import fitz
+
+    doc = fitz.Document()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((50, 100), "Paper with an embedded figure.")
+    pix = fitz.Pixmap(fitz.csRGB, (0, 0, 4, 4), False)
+    page.insert_image(fitz.Rect(50, 150, 200, 300), stream=pix.tobytes("png"))
+    doc.save(str(path))
+    doc.close()
+
+
+def test_extract_pdf_figures_text_only_pdf(tmp_path: Path):
+    """PDF with no embedded images → empty asset_map, vault_assets_dir not created."""
+    pdf = tmp_path / "text_only.pdf"
+    _make_text_only_pdf(pdf)
+    vault_assets_dir = tmp_path / "_assets"
+
+    result = extract_pdf_figures(pdf, vault_assets_dir)
+
+    assert result == {}
+    assert not vault_assets_dir.exists()
+
+
+def test_extract_pdf_figures_with_image(tmp_path: Path):
+    """PDF with one embedded image → non-empty asset_map, image file in vault dir."""
+    pdf = tmp_path / "with_image.pdf"
+    _make_pdf_with_one_image(pdf)
+    vault_assets_dir = tmp_path / "_assets"
+
+    result = extract_pdf_figures(pdf, vault_assets_dir)
+
+    assert len(result) == 1
+    assert vault_assets_dir.is_dir()
+    written = list(vault_assets_dir.iterdir())
+    assert len(written) == 1
+    filename = written[0].name
+    assert filename.startswith("fig-p001-")
+    assert filename in result.values()
+
+
+def test_extract_pdf_figures_page_by_page(tmp_path: Path):
+    """Two-page PDF with one distinct image per page → at least one unique image extracted."""
+    import fitz
+
+    doc = fitz.Document()
+    for page_num in range(2):
+        page = doc.new_page(width=595, height=842)
+        pix = fitz.Pixmap(fitz.csRGB, (0, 0, 4 + page_num, 4 + page_num), False)
+        page.insert_image(fitz.Rect(50, 50, 200, 200), stream=pix.tobytes("png"))
+    pdf = tmp_path / "two_page.pdf"
+    doc.save(str(pdf))
+    doc.close()
+
+    vault_assets_dir = tmp_path / "_assets"
+    result = extract_pdf_figures(pdf, vault_assets_dir)
+
+    assert len(result) >= 1
+    assert vault_assets_dir.is_dir()

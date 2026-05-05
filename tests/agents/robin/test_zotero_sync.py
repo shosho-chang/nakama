@@ -1,8 +1,9 @@
-"""Integration test for ``agents/robin/zotero_sync.sync_zotero_item`` (Slice 1 #389).
+"""Integration tests for ``agents/robin/zotero_sync.sync_zotero_item`` (Slice 1 #389, Slice 2 #390).
 
-Single happy-path test exercising the full HTML pipeline: fixture SQLite +
-real on-disk snapshot + real Trafilatura → IngestResult ready for inbox
-writer.
+Covers:
+- Slice 1 HTML happy path (fixture SQLite + snapshot + Trafilatura → IngestResult)
+- Slice 2 PDF fallback path (fixture SQLite + real PDF + parse_pdf → IngestResult)
+- Regression: item with both HTML+PDF → HTML is chosen
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from agents.robin.zotero_sync import sync_zotero_item
 from tests.agents.robin._zotero_fixture import (
     add_html_snapshot,
     add_journal_article,
+    add_pdf_attachment,
     init_zotero_lib,
 )
 
@@ -94,3 +96,86 @@ def test_sync_zotero_item_html_path_end_to_end(tmp_path: Path):
 
     # original_url is the zotero:// URI form.
     assert result.original_url == "zotero://select/library/items/ABC12345"
+
+
+# ---------------------------------------------------------------------------
+# Slice 2: PDF fallback path (#390)
+# ---------------------------------------------------------------------------
+
+
+def _make_real_pdf_bytes(text: str) -> bytes:
+    """Build minimal real PDF bytes containing ``text`` using PyMuPDF."""
+    import fitz
+
+    doc = fitz.Document()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((50, 100), text)
+    return doc.tobytes()
+
+
+def test_sync_zotero_item_pdf_path_end_to_end(tmp_path: Path):
+    """PDF-only item → IngestResult with fulltext_layer='zotero_pdf'."""
+    pdf_bytes = _make_real_pdf_bytes(
+        "Sleep research paper. Contains scientific content on circadian rhythms."
+    )
+
+    fixture = init_zotero_lib(tmp_path / "Zotero")
+    parent_id = add_journal_article(fixture, item_key="PDF12345", title="A PDF Paper on Sleep")
+    add_pdf_attachment(
+        fixture,
+        parent_item_id=parent_id,
+        attachment_key="PDF00001",
+        body=pdf_bytes,
+    )
+
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+
+    result, slug = sync_zotero_item(
+        "PDF12345",
+        zotero_root=fixture.zotero_root,
+        vault_root=vault_root,
+    )
+
+    assert slug == "A-PDF-Paper-on-Sleep"
+    assert result.status == "ready"
+    assert result.fulltext_layer == "zotero_pdf"
+    assert result.fulltext_source == "Zotero PDF"
+    assert result.attachment_type == "application/pdf"
+    assert result.zotero_item_key == "PDF12345"
+    assert result.original_url == "zotero://select/library/items/PDF12345"
+    assert len(result.markdown) > 0
+
+
+def test_sync_zotero_item_html_preferred_over_pdf_no_regression(tmp_path: Path):
+    """Item with both HTML snapshot and PDF → HTML is still chosen (Q1 lock from Slice 1)."""
+    fixture = init_zotero_lib(tmp_path / "Zotero")
+    parent_id = add_journal_article(fixture, item_key="BOTH1234", title="A Paper on Mitochondria")
+    add_html_snapshot(
+        fixture,
+        parent_item_id=parent_id,
+        attachment_key="HTML0001",
+        body=_REAL_SNAPSHOT_HTML,
+    )
+    add_pdf_attachment(
+        fixture,
+        parent_item_id=parent_id,
+        attachment_key="PDF00002",
+    )
+    # Fake _assets/ image for the HTML snapshot path.
+    (fixture.storage_dir / "HTML0001" / "_assets").mkdir()
+    (fixture.storage_dir / "HTML0001" / "_assets" / "fig1.png").write_bytes(
+        b"\x89PNG\r\n\x1a\n fake png bytes"
+    )
+
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+
+    result, slug = sync_zotero_item(
+        "BOTH1234",
+        zotero_root=fixture.zotero_root,
+        vault_root=vault_root,
+    )
+
+    assert result.attachment_type == "text/html"
+    assert result.fulltext_layer == "zotero_html_snapshot"
