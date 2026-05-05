@@ -42,6 +42,19 @@
   .reader-bar .right { display: flex; gap: 0.5rem; align-items: center; }
   .icon-btn { background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 0.4rem 0.7rem; font-size: 0.85rem; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
   .icon-btn:hover, .icon-btn:focus-visible { border-color: var(--accent); background: var(--bg); outline: none; }
+  .icon-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+  .icon-btn:disabled:hover { border-color: var(--border); background: transparent; }
+  .icon-btn.is-queued { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .icon-btn.is-queued:hover, .icon-btn.is-queued:focus-visible { background: var(--accent); border-color: var(--accent); }
+  .ingest-wrap { position: relative; display: inline-flex; }
+  .ingest-wrap[data-disabled-reason]:hover::after,
+  .ingest-wrap[data-disabled-reason]:focus-within::after {
+    content: attr(data-disabled-reason);
+    position: absolute; top: calc(100% + 6px); right: 0;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.4rem 0.55rem; font-size: 0.75rem; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12); z-index: 12;
+  }
   .reader-shell { height: calc(100vh - 56px); width: 100%; }
   foliate-view { display: block; height: 100%; width: 100%; background: var(--surface); }
   .loading, .error-banner { padding: 2rem; text-align: center; color: var(--text-muted); }
@@ -105,6 +118,9 @@
   </div>
   <nav class="right">
     <a href="/" class="icon-btn" style="text-decoration:none">📥 Inbox</a>
+    <span class="ingest-wrap" id="ingestWrap">
+      <button type="button" class="icon-btn" id="ingestBtn" aria-label="送出整本書 ingest 請求" disabled>📥 Ingest 整本書</button>
+    </span>
     <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 反思</button>
     <button type="button" class="icon-btn" id="darkToggle" aria-label="切換深色模式" aria-pressed="false">🌙 夜間</button>
   </nav>

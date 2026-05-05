@@ -50,7 +50,8 @@ async def books_library(request: Request, nakama_auth: str | None = Cookie(None)
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/books", status_code=302)
     books = list_books()
-    return templates.TemplateResponse(request, "books_library.html", {"books": books})
+    enriched = [{**b.model_dump(), "ingest_status": _ingest_status(b.book_id)} for b in books]
+    return templates.TemplateResponse(request, "books_library.html", {"books": enriched})
 
 
 @router.get("/books/upload", response_class=HTMLResponse)
