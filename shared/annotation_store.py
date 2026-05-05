@@ -13,40 +13,42 @@ import threading
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Literal, Union
-
-from pydantic import BaseModel, Field
 
 from shared.config import get_vault_path
+from shared.schemas.annotations import (
+    AnnotationItemV1,
+    AnnotationItemV2,
+    AnnotationSetV1,
+    AnnotationSetV2,
+    AnnotationV1,
+    AnnotationV2,
+    CommentV2,
+    HighlightV1,
+    HighlightV2,
+)
 
-# ── Schema ────────────────────────────────────────────────────────────────────
+# ── Legacy-name aliases (existing callers import Highlight/Annotation/AnnotationSet) ──
 
+Highlight = HighlightV1
+Annotation = AnnotationV1
+AnnotationItem = AnnotationItemV1
+AnnotationSet = AnnotationSetV1
 
-class Highlight(BaseModel):
-    type: Literal["highlight"] = "highlight"
-    text: str
-    created_at: str = Field(default_factory=lambda: _now_iso())
-    modified_at: str = Field(default_factory=lambda: _now_iso())
-
-
-class Annotation(BaseModel):
-    type: Literal["annotation"] = "annotation"
-    ref: str
-    note: str
-    created_at: str = Field(default_factory=lambda: _now_iso())
-    modified_at: str = Field(default_factory=lambda: _now_iso())
-
-
-AnnotationItem = Annotated[Union[Highlight, Annotation], Field(discriminator="type")]
-
-
-class AnnotationSet(BaseModel):
-    slug: str
-    source_filename: str
-    base: str
-    items: list[AnnotationItem] = Field(default_factory=list)
-    updated_at: str = Field(default_factory=lambda: _now_iso())
-    last_synced_at: str | None = None
+__all__ = [
+    "Highlight",
+    "Annotation",
+    "AnnotationItem",
+    "AnnotationSet",
+    "HighlightV1",
+    "AnnotationV1",
+    "AnnotationItemV1",
+    "AnnotationSetV1",
+    "HighlightV2",
+    "AnnotationV2",
+    "CommentV2",
+    "AnnotationItemV2",
+    "AnnotationSetV2",
+]
 
 
 # ── Slug ──────────────────────────────────────────────────────────────────────
@@ -106,7 +108,7 @@ def _lock_for(slug: str) -> threading.Lock:
 class AnnotationStore:
     """CRUD for annotation sets stored as ``KB/Annotations/{slug}.md``."""
 
-    def save(self, ann_set: AnnotationSet) -> None:
+    def save(self, ann_set: AnnotationSetV1 | AnnotationSetV2) -> None:
         lock = _lock_for(ann_set.slug)
         with lock:
             d = _annotations_dir()
@@ -114,7 +116,7 @@ class AnnotationStore:
             path = d / f"{ann_set.slug}.md"
             path.write_text(_serialize(ann_set), encoding="utf-8")
 
-    def load(self, slug: str) -> AnnotationSet | None:
+    def load(self, slug: str) -> AnnotationSetV1 | AnnotationSetV2 | None:
         path = _annotations_dir() / f"{slug}.md"
         if not path.exists():
             return None
@@ -163,13 +165,26 @@ def get_annotation_store() -> AnnotationStore:
 _JSON_BLOCK_RE = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
 
 
-def _serialize(ann_set: AnnotationSet) -> str:
+def _serialize(ann_set: AnnotationSetV1 | AnnotationSetV2) -> str:
     items_json = json.dumps(
         [item.model_dump() for item in ann_set.items],
         ensure_ascii=False,
         indent=2,
     )
     synced_line = f'last_synced_at: "{ann_set.last_synced_at}"\n' if ann_set.last_synced_at else ""
+    if isinstance(ann_set, AnnotationSetV2):
+        return (
+            f"---\n"
+            f"slug: {ann_set.slug}\n"
+            f"schema_version: 2\n"
+            f"book_id: {ann_set.book_id}\n"
+            f"book_version_hash: {ann_set.book_version_hash}\n"
+            f"base: books\n"
+            f'updated_at: "{ann_set.updated_at}"\n'
+            f"{synced_line}"
+            f"---\n\n"
+            f"```json\n{items_json}\n```\n"
+        )
     return (
         f"---\n"
         f"slug: {ann_set.slug}\n"
@@ -182,7 +197,7 @@ def _serialize(ann_set: AnnotationSet) -> str:
     )
 
 
-def _parse(text: str, slug: str) -> AnnotationSet:
+def _parse(text: str, slug: str) -> AnnotationSetV1 | AnnotationSetV2:
     fm: dict[str, str] = {}
     if text.startswith("---"):
         try:
@@ -194,21 +209,45 @@ def _parse(text: str, slug: str) -> AnnotationSet:
                 k, _, v = line.partition(":")
                 fm[k.strip()] = v.strip().strip('"')
 
-    items: list[AnnotationItem] = []
+    raw_items: list[dict] = []
     m = _JSON_BLOCK_RE.search(text)
     if m:
-        for raw in json.loads(m.group(1)):
+        raw_items = json.loads(m.group(1))
+
+    is_v2 = fm.get("schema_version") == "2" or fm.get("base") == "books"
+
+    if is_v2:
+        items_v2: list[AnnotationItemV2] = []
+        for raw in raw_items:
             t = raw.get("type")
             if t == "highlight":
-                items.append(Highlight(**raw))
+                items_v2.append(HighlightV2(**raw))
             elif t == "annotation":
-                items.append(Annotation(**raw))
+                items_v2.append(AnnotationV2(**raw))
+            elif t == "comment":
+                items_v2.append(CommentV2(**raw))
+        return AnnotationSetV2(
+            slug=fm.get("slug", slug),
+            book_id=fm.get("book_id", slug),
+            book_version_hash=fm.get("book_version_hash", ""),
+            base="books",
+            items=items_v2,
+            updated_at=fm.get("updated_at", _now_iso()),
+            last_synced_at=fm.get("last_synced_at") or None,
+        )
 
+    items_v1: list[AnnotationItemV1] = []
+    for raw in raw_items:
+        t = raw.get("type")
+        if t == "highlight":
+            items_v1.append(Highlight(**raw))
+        elif t == "annotation":
+            items_v1.append(Annotation(**raw))
     return AnnotationSet(
         slug=fm.get("slug", slug),
         source_filename=fm.get("source", ""),
         base=fm.get("base", "inbox"),
-        items=items,
+        items=items_v1,
         updated_at=fm.get("updated_at", _now_iso()),
         last_synced_at=fm.get("last_synced_at") or None,
     )

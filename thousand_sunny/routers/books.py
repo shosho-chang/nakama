@@ -15,6 +15,7 @@ from fastapi import APIRouter, Cookie, File, Form, HTTPException, Request, Uploa
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from shared.annotation_store import AnnotationSetV2, get_annotation_store
 from shared.book_storage import (
     BookStorageError,
     get_book,
@@ -153,3 +154,31 @@ async def book_file(
     except FileNotFoundError as exc:
         raise HTTPException(404, detail=str(exc)) from exc
     return Response(content=blob, media_type="application/epub+zip")
+
+
+@router.get("/api/books/{book_id}/annotations")
+async def get_annotations(book_id: str):
+    book = get_book(book_id)
+    if book is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+    store = get_annotation_store()
+    ann_set = store.load(book_id)
+    if ann_set is None:
+        ann_set = AnnotationSetV2(
+            slug=book_id,
+            book_id=book_id,
+            book_version_hash=book.book_version_hash,
+            items=[],
+        )
+    return ann_set.model_dump()
+
+
+@router.post("/api/books/{book_id}/annotations")
+async def post_annotations(book_id: str, payload: AnnotationSetV2):
+    if payload.book_id != book_id:
+        raise HTTPException(422, detail="book_id in URL does not match payload")
+    book = get_book(book_id)
+    if book is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+    get_annotation_store().save(payload)
+    return {"ok": True}

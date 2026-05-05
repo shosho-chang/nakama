@@ -413,3 +413,189 @@ def test_unsynced_count_mixed(tmp_path: Path, monkeypatch):
     ]
     store = _store_with_synced(tmp_path, monkeypatch, None, items)
     assert store.unsynced_count("art") == 2
+
+
+# ── Slice 2 (v2) — book-rooted annotation sets ───────────────────────────────
+
+_V2_HASH = "a" * 64
+_V2_TS = "2026-05-05T00:00:00Z"
+
+
+def _v2_set(slug: str, items: list[dict] | None = None):
+    """Construct an AnnotationSetV2 via dicts so the discriminated union runs."""
+    ann_v2 = pytest.importorskip(
+        "shared.schemas.annotations",
+        reason="shared.schemas.annotations is the production module Slice 2A must create",
+    )
+    return ann_v2.AnnotationSetV2(
+        slug=slug,
+        book_id=slug,
+        book_version_hash=_V2_HASH,
+        items=items or [],
+        updated_at=_V2_TS,
+    )
+
+
+def test_v2_set_save_and_load_round_trip(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    store = mod.AnnotationStore()
+
+    ann = _v2_set(
+        "how-to-live",
+        items=[
+            {
+                "type": "highlight",
+                "cfi": "epubcfi(/6/4!/4/2:0)",
+                "text_excerpt": "selected line",
+                "book_version_hash": _V2_HASH,
+                "created_at": _V2_TS,
+                "modified_at": _V2_TS,
+            },
+            {
+                "type": "comment",
+                "chapter_ref": "ch01.xhtml",
+                "cfi_anchor": None,
+                "body": "Long prose reflection...",
+                "book_version_hash": _V2_HASH,
+                "created_at": _V2_TS,
+                "modified_at": _V2_TS,
+            },
+        ],
+    )
+    store.save(ann)
+
+    loaded = store.load("how-to-live")
+    assert loaded is not None
+    assert loaded.schema_version == 2
+    assert loaded.book_id == "how-to-live"
+    assert loaded.book_version_hash == _V2_HASH
+    assert loaded.base == "books"
+    assert len(loaded.items) == 2
+    assert loaded.items[0].type == "highlight"
+    assert loaded.items[0].cfi.startswith("epubcfi(")
+    assert loaded.items[1].type == "comment"
+    assert loaded.items[1].chapter_ref == "ch01.xhtml"
+
+
+def test_v2_set_writes_schema_version_in_frontmatter(tmp_path: Path, monkeypatch):
+    """Dispatch on load relies on the frontmatter; pin the on-disk shape."""
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    store = mod.AnnotationStore()
+
+    store.save(_v2_set("disk-shape"))
+    raw = (tmp_path / "KB" / "Annotations" / "disk-shape.md").read_text(encoding="utf-8")
+    assert "schema_version: 2" in raw
+    assert "book_id: disk-shape" in raw
+    assert "base: books" in raw
+
+
+def test_v1_and_v2_coexist_in_same_dir(tmp_path: Path, monkeypatch):
+    """A paper slug and a book slug each get their own file; load returns
+    the matching schema for each."""
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    store = mod.AnnotationStore()
+
+    paper = mod.AnnotationSet(
+        slug="paper-x",
+        source_filename="paper-x.md",
+        base="inbox",
+        items=[Highlight(text="paper highlight", created_at=_T0, modified_at=_T0)],
+        updated_at=_T0,
+    )
+    book = _v2_set(
+        "book-x",
+        items=[
+            {
+                "type": "highlight",
+                "cfi": "epubcfi(/6/4!/4/2:0)",
+                "text_excerpt": "book highlight",
+                "book_version_hash": _V2_HASH,
+                "created_at": _V2_TS,
+                "modified_at": _V2_TS,
+            }
+        ],
+    )
+    store.save(paper)
+    store.save(book)
+
+    loaded_paper = store.load("paper-x")
+    loaded_book = store.load("book-x")
+    assert loaded_paper is not None
+    assert loaded_book is not None
+    assert getattr(loaded_paper, "source_filename", None) == "paper-x.md"
+    assert getattr(loaded_book, "book_id", None) == "book-x"
+
+
+def test_v2_concurrent_save_no_lost_update(tmp_path: Path, monkeypatch):
+    """10 threads writing the same v2 slug — final file is loadable + non-empty."""
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    store = mod.AnnotationStore()
+
+    errors: list[Exception] = []
+
+    def worker(idx: int) -> None:
+        try:
+            ann = _v2_set(
+                "race-book",
+                items=[
+                    {
+                        "type": "highlight",
+                        "cfi": f"epubcfi(/6/{idx}!/4/2:0)",
+                        "text_excerpt": f"text-{idx}",
+                        "book_version_hash": _V2_HASH,
+                        "created_at": _V2_TS,
+                        "modified_at": _V2_TS,
+                    }
+                ],
+            )
+            store.save(ann)
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"v2 concurrent save raised: {errors}"
+    loaded = store.load("race-book")
+    assert loaded is not None
+    assert loaded.schema_version == 2
+    assert len(loaded.items) == 1
+
+
+def test_v2_set_unsynced_count(tmp_path: Path, monkeypatch):
+    """unsynced_count must work uniformly across v1 and v2."""
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    store = mod.AnnotationStore()
+
+    ann = _v2_set(
+        "unsynced-book",
+        items=[
+            {
+                "type": "highlight",
+                "cfi": "epubcfi(/6/4!/4/2:0)",
+                "text_excerpt": "x",
+                "book_version_hash": _V2_HASH,
+                "created_at": _V2_TS,
+                "modified_at": _V2_TS,
+            },
+            {
+                "type": "comment",
+                "chapter_ref": "ch1.xhtml",
+                "cfi_anchor": None,
+                "body": "y",
+                "book_version_hash": _V2_HASH,
+                "created_at": _V2_TS,
+                "modified_at": _V2_TS,
+            },
+        ],
+    )
+    store.save(ann)
+    assert store.unsynced_count("unsynced-book") == 2
