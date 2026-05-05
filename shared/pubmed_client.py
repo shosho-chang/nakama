@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 from typing import Any
+from xml.etree import ElementTree as ET
 
 import httpx
 
@@ -57,14 +58,18 @@ def esearch(
     *,
     max_results: int = 10,
     since_year: int | None = None,
+    sort: str = "relevance",
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> list[str]:
-    """Find PMIDs by query. Sorted by relevance (NCBI default).
+    """Find PMIDs by query.
 
     Args:
         query: PubMed search expression（英文，可含 MeSH / boolean operators）
         max_results: 上限筆數（NCBI hard cap 10000，但 quick lookup 場景 ≤ 50）
         since_year: 限 ``YYYY:YYYY[Date - Publication]`` 格式的年份下限
+        sort: NCBI sort 順序，預設 ``"relevance"``。Robin digest 走
+            ``"pub_date"`` 拿最新（PubMed 接受的值列表見
+            https://www.ncbi.nlm.nih.gov/books/NBK25499/#chapter4.ESearch）
         timeout: HTTP timeout（秒）
 
     Returns:
@@ -86,7 +91,7 @@ def esearch(
         "term": term,
         "retmode": "json",
         "retmax": str(max(1, min(max_results, 200))),
-        "sort": "relevance",
+        "sort": sort,
     }
 
     try:
@@ -204,3 +209,142 @@ def lookup(
     if not pmids:
         return []
     return esummary(pmids)
+
+
+def efetch_abstracts(
+    pmids: list[str],
+    *,
+    timeout: float = 30.0,
+) -> list[dict[str, Any]]:
+    """Batch efetch PubMed XML 解出 abstract 與基本欄位。
+
+    esummary 不含 abstract（NCBI API 設計）；Robin curate 需要 abstract，所以
+    eutils-type feed 走這條 efetch path 補 abstract。輸出 dict 與
+    ``agents/robin/pubmed_digest.py:_parse_entry`` 對齊：
+
+    keys: pmid, title, journal, abstract, pub_date, authors, url, issn
+
+    Empty input → empty output（不打 API）。XML 解析失敗的單篇記 warning 跳過，
+    不整批 raise（避免一兩篇損壞 entry 帶倒整個 feed）。
+    """
+    if not pmids:
+        return []
+
+    params = {
+        **_common_params(),
+        "db": "pubmed",
+        "id": ",".join(pmids),
+        "rettype": "abstract",
+        "retmode": "xml",
+    }
+
+    try:
+        resp = httpx.get(f"{_BASE}/efetch.fcgi", params=params, timeout=timeout)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        raise PubMedClientError(f"efetch HTTP 失敗：{e}") from e
+
+    try:
+        root = ET.fromstring(resp.content)
+    except ET.ParseError as e:
+        raise PubMedClientError(f"efetch XML 解析失敗：{e}") from e
+
+    out: list[dict[str, Any]] = []
+    for article in root.findall(".//PubmedArticle"):
+        try:
+            parsed = _parse_pubmed_article(article)
+        except Exception as e:  # noqa: BLE001 — XML schema 變動 / 缺欄位太多種，整體 catch
+            pmid_el = article.find(".//PMID")
+            pmid_str = pmid_el.text if pmid_el is not None else "?"
+            logger.warning("efetch article parse failed pmid=%s err=%s", pmid_str, e)
+            continue
+        if parsed:
+            out.append(parsed)
+    return out
+
+
+def _parse_pubmed_article(article: ET.Element) -> dict[str, Any] | None:
+    """從一個 <PubmedArticle> element 抽出 candidate dict。"""
+    pmid_el = article.find(".//PMID")
+    if pmid_el is None or not pmid_el.text:
+        return None
+    pmid = pmid_el.text.strip()
+
+    title_el = article.find(".//ArticleTitle")
+    title = _text_with_inline(title_el).strip() if title_el is not None else ""
+    if not title:
+        return None
+
+    journal_el = article.find(".//Journal/Title")
+    journal = (journal_el.text or "").strip() if journal_el is not None else ""
+    # Fallback: ISOAbbreviation（短名）
+    if not journal:
+        iso_el = article.find(".//Journal/ISOAbbreviation")
+        if iso_el is not None and iso_el.text:
+            journal = iso_el.text.strip()
+
+    issn_el = article.find(".//Journal/ISSN")
+    issn = (issn_el.text or "").strip() if issn_el is not None else ""
+
+    # Abstract — 多段 <AbstractText Label="BACKGROUND"> 等需要拼接，保留 label 前綴
+    abstract_parts: list[str] = []
+    for abs_text in article.findall(".//Abstract/AbstractText"):
+        text = _text_with_inline(abs_text).strip()
+        if not text:
+            continue
+        label = abs_text.get("Label")
+        if label:
+            abstract_parts.append(f"{label}: {text}")
+        else:
+            abstract_parts.append(text)
+    abstract = "\n".join(abstract_parts)
+
+    # Pub date — 取 <PubDate>，組成 "YYYY MMM DD" 風格（與 RSS path 對齊）
+    pub_date = ""
+    pubdate_el = article.find(".//Journal/JournalIssue/PubDate")
+    if pubdate_el is not None:
+        year = (pubdate_el.findtext("Year") or "").strip()
+        month = (pubdate_el.findtext("Month") or "").strip()
+        day = (pubdate_el.findtext("Day") or "").strip()
+        medline = (pubdate_el.findtext("MedlineDate") or "").strip()
+        if year:
+            pub_date = " ".join(filter(None, [year, month, day]))
+        elif medline:
+            pub_date = medline
+
+    # Authors — "First Last, First Last, ..." 與 RSS path 對齊
+    author_names: list[str] = []
+    for author in article.findall(".//AuthorList/Author"):
+        last = (author.findtext("LastName") or "").strip()
+        fore = (author.findtext("ForeName") or "").strip()
+        collective = (author.findtext("CollectiveName") or "").strip()
+        if last and fore:
+            author_names.append(f"{fore} {last}")
+        elif last:
+            author_names.append(last)
+        elif collective:
+            author_names.append(collective)
+    authors = ", ".join(author_names)
+
+    return {
+        "pmid": pmid,
+        "title": title,
+        "journal": journal,
+        "abstract": abstract,
+        "pub_date": pub_date,
+        "authors": authors,
+        "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+        "issn": issn,
+    }
+
+
+def _text_with_inline(el: ET.Element) -> str:
+    """串接 element text + 所有 inline child（保留 <i> / <sub> 等的內文，去 tag）。"""
+    parts: list[str] = []
+    if el.text:
+        parts.append(el.text)
+    for child in el:
+        parts.append(_text_with_inline(child))
+        if child.tail:
+            parts.append(child.tail)
+    return "".join(parts)
