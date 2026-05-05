@@ -523,6 +523,13 @@ view.addEventListener('draw-annotation', e => {
     await view.open(file);
     applyColumns();
     pushReaderStyles();
+    // foliate-js view.open() doesn't auto-render the first page — the demo
+    // (vendor/foliate-js/reader.js) calls renderer.next() right after open
+    // to kick off pagination. Without this the paginator sits idle and the
+    // reader shell stays blank.
+    if (view.renderer && typeof view.renderer.next === 'function') {
+      try { await view.renderer.next(); } catch (_) { /* first-page nav noop */ }
+    }
 
     // Load metadata + annotations after the book opens so sections are
     // available for chapter <select> population.
