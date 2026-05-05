@@ -130,12 +130,16 @@ def _get_inbox_files() -> list[dict]:
             status = ""
             source_label = ""
             title = ""
+            is_zotero_ready = False
             if f.suffix.lower() == ".md":
                 try:
                     fm, _ = extract_frontmatter(read_text(f))
                     status = str(fm.get("fulltext_status", "") or "")
                     source_label = str(fm.get("fulltext_source", "") or "")
                     title = str(fm.get("title", "") or "").strip()
+                    # Zotero-sourced files with a bilingual sibling ready show
+                    # the "Ingest to KB" affordance (Slice 3 #391).
+                    is_zotero_ready = fm.get("source_type") == "zotero" and status == "translated"
                 except OSError:
                     pass
             files.append(
@@ -148,6 +152,7 @@ def _get_inbox_files() -> list[dict]:
                     "is_read": is_file_read(f),
                     "fulltext_status": status,
                     "fulltext_source": source_label,
+                    "is_zotero_ready": is_zotero_ready,
                 }
             )
     return files
@@ -800,6 +805,35 @@ async def translate(
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
+
+
+@router.post("/zotero-ingest/{slug}")
+async def zotero_ingest(slug: str, nakama_auth: str | None = Cookie(None)):
+    """Fan out a Zotero inbox item to raw + annotated source pages (Slice 3 #391).
+
+    Requires the bilingual sibling (``{slug}-bilingual.md``) to exist — the
+    inbox row only shows this button when ``fulltext_status == 'translated'``,
+    so the guard is an invariant at the UI level. Returns 400 if the sibling
+    is missing (manual navigation to the URL while translation is in flight).
+
+    POST → 303 redirect to ``/`` on success.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    import os as _os
+
+    from agents.robin.zotero_ingest import produce_source_pages
+
+    _zotero_root = Path(_os.environ.get("ZOTERO_LIBRARY_PATH") or (Path.home() / "Zotero"))
+    try:
+        produce_source_pages(slug, vault_root=get_vault_path(), zotero_root=_zotero_root)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    return RedirectResponse("/", status_code=303)
 
 
 _PUBMED_FT_DIR = "KB/Attachments/pubmed"
