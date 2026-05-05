@@ -18,6 +18,8 @@ readability-lxml>=0.8.4  # Web scraping：備選去噪方案
 
 # Database
 # sqlite3 is built-in
+sqlite-vec>=0.1.9          # KB hybrid retrieval: vec0 virtual table for dense-vector lane
+model2vec>=0.8.0           # KB hybrid retrieval: potion-base-8M 256-dim static embeddings
 
 # Zoro: Keyword Research
 google-api-python-client>=2.100.0  # YouTube Data API v3 + GSC Search Analytics

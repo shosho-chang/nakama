@@ -1,7 +1,8 @@
 """Tests for agents/robin/kb_search.py.
 
 覆蓋：vault walking / frontmatter title fallback / type normalization /
-preview truncation / Claude Haiku ranking response parsing 各路徑。
+preview truncation / Claude Haiku ranking response parsing 各路徑，
+以及 engine="hybrid" 委派路徑（issue #431）。
 
 Claude client 全 mock（feedback_test_api_isolation.md）。
 """
@@ -335,3 +336,86 @@ def test_invalid_purpose_raises_value_error(vault):
     _mk_page(vault / "KB" / "Wiki" / "Concepts", "x", "X", "body")
     with pytest.raises(ValueError, match="Unknown purpose"):
         search_kb("q", vault, purpose="not_a_real_purpose")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# engine="hybrid" path (issue #431)
+# ---------------------------------------------------------------------------
+
+
+def test_engine_haiku_is_default(vault, monkeypatch):
+    """engine defaults to 'haiku' — existing haiku path unchanged."""
+    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body1")
+    client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
+
+    results = search_kb("query", vault)
+    assert results  # haiku path fired
+    client.messages.create.assert_called_once()
+
+
+def test_engine_hybrid_delegates_to_kb_hybrid_search(vault, monkeypatch):
+    """engine='hybrid' calls kb_hybrid_search.search() — NOT the Haiku LLM.
+
+    Patches shared.kb_hybrid_search.search at the module level (correct
+    approach: _hybrid_results does `from shared import kb_hybrid_search`
+    then `kb_hybrid_search.search(...)` — attribute lookup on the module
+    object, so patching the module attribute is effective).
+    """
+    from shared.kb_hybrid_search import SearchHit
+
+    fake_hit = SearchHit(
+        chunk_id=1,
+        path="KB/Wiki/Concepts/test",
+        heading="定義",
+        page_title="Test Concept",
+        chunk_text="chunk body text here",
+        rrf_score=0.05,
+        lane_ranks={"bm25": 1, "vec": 2},
+    )
+    monkeypatch.setattr("shared.kb_hybrid_search.search", lambda q, tk: [fake_hit])
+
+    client = _mock_claude_response("[]")
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
+
+    results = search_kb("query", vault, engine="hybrid")
+
+    # Haiku should NOT have been called
+    client.messages.create.assert_not_called()
+    assert len(results) == 1
+    assert set(results[0].keys()) == {"type", "title", "path", "preview", "relevance_reason"}
+    assert results[0]["path"] == "KB/Wiki/Concepts/test"
+    assert results[0]["title"] == "Test Concept"
+    assert results[0]["type"] == "concept"
+
+
+def test_engine_hybrid_deduplicates_by_page(vault, monkeypatch):
+    """Multiple chunks from the same page → only one result per page path."""
+    from shared.kb_hybrid_search import SearchHit
+
+    hits = [
+        SearchHit(
+            chunk_id=i,
+            path="KB/Wiki/Concepts/same-page",
+            heading=f"Section {i}",
+            page_title="Same Page",
+            chunk_text=f"chunk {i}",
+            rrf_score=0.05 - i * 0.001,
+            lane_ranks={"bm25": i + 1},
+        )
+        for i in range(3)
+    ]
+    monkeypatch.setattr("shared.kb_hybrid_search.search", lambda q, tk: hits)
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: _mock_claude_response("[]"))
+
+    results = search_kb("query", vault, engine="hybrid")
+    assert len(results) == 1
+
+
+def test_engine_hybrid_empty_index_returns_empty(vault, monkeypatch):
+    """engine='hybrid' with no indexed data returns []."""
+    monkeypatch.setattr("shared.kb_hybrid_search.search", lambda q, tk: [])
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: _mock_claude_response("[]"))
+
+    results = search_kb("query", vault, engine="hybrid")
+    assert results == []

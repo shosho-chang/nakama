@@ -3,6 +3,10 @@
 `purpose` parameter（ADR-009 Phase 1.5 Slice D.2）讓 caller 在共享 vault scan +
 Haiku ranking pipeline 的同時，根據場景換 prompt 框架（YouTube 製作 / SEO audit
 internal link / blog 撰稿 / 通用查詢），避免 Haiku 在錯誤上下文排序 KB 結果。
+
+`engine` parameter（issue #431 Phase 1a）：
+  "haiku"  — 既有 LLM ranker 路徑（default，零改動既有 caller）
+  "hybrid" — BM25 + dense-vec RRF 路徑（shared.kb_hybrid_search）
 """
 
 import json
@@ -19,6 +23,7 @@ TOP_K = 8
 _SUBDIR_TO_TYPE = {"Sources": "source", "Concepts": "concept", "Entities": "entity"}
 
 Purpose = Literal["youtube", "seo_audit", "blog_compose", "general"]
+Engine = Literal["haiku", "hybrid"]
 
 
 def _build_purpose_intro(purpose: Purpose, query: str) -> str:
@@ -50,28 +55,61 @@ def _build_purpose_intro(purpose: Purpose, query: str) -> str:
     )
 
 
+def _hybrid_results(query: str, vault_path: Path, top_k: int) -> list[dict]:
+    """Delegate to shared.kb_hybrid_search and map SearchHit → dict schema."""
+    from shared import kb_hybrid_search  # noqa: PLC0415
+
+    hits = kb_hybrid_search.search(query, top_k)
+    seen_paths: set[str] = set()
+    results: list[dict] = []
+    for hit in hits:
+        if hit.path in seen_paths:
+            continue
+        seen_paths.add(hit.path)
+        # Derive type from path segment (e.g. "KB/Wiki/Concepts/..." → "concept")
+        parts = hit.path.split("/")
+        subdir = parts[2] if len(parts) >= 3 else ""
+        page_type = _SUBDIR_TO_TYPE.get(subdir, "concept")
+        results.append(
+            {
+                "type": page_type,
+                "title": hit.page_title,
+                "path": hit.path,
+                "preview": hit.chunk_text[:200],
+                "relevance_reason": "",
+            }
+        )
+        if len(results) >= top_k:
+            break
+    return results
+
+
 def search_kb(
     query: str,
     vault_path: Path,
     top_k: int = TOP_K,
     *,
     purpose: Purpose = "general",
+    engine: Engine = "haiku",
 ) -> list[dict]:
-    """Return KB pages relevant to `query`, ranked by Claude Haiku.
+    """Return KB pages relevant to `query`, ranked by the chosen engine.
 
     Scans KB/Wiki/Sources, Concepts, Entities and asks Claude to rank
     by relevance to the given query string. Returns up to `top_k` results,
-    each with keys: type, title, path, relevance_reason.
+    each with keys: type, title, path, preview, relevance_reason.
 
     Args:
         query: free-text query (article topic / focus keyword / video subject).
         vault_path: Obsidian vault root containing `KB/Wiki/{Sources,Concepts,Entities}`.
         top_k: maximum results to return.
         purpose: framing context for the LLM ranker. Defaults to "general"
-            (neutral). Pass `"seo_audit"` from `seo-audit-post` skill,
-            `"youtube"` from Zoro / Robin video pipeline, `"blog_compose"`
-            from Brook compose. Output schema is identical across purposes.
+            (neutral). Only used when engine="haiku".
+        engine: retrieval engine.
+            "haiku"  — Claude Haiku LLM ranker (default, existing behaviour).
+            "hybrid" — BM25 + dense-vec RRF (requires indexed kb_index.db).
     """
+    if engine == "hybrid":
+        return _hybrid_results(query, vault_path, top_k)
     wiki_path = vault_path / "KB" / "Wiki"
     pages: list[dict] = []
 
