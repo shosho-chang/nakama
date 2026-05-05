@@ -67,6 +67,7 @@ const commentsSidebar = document.getElementById('comments-sidebar');
 const commentsList = document.getElementById('comments-list');
 const commentsToggle = document.getElementById('commentsToggle');
 const commentsClose = document.getElementById('commentsClose');
+const addCommentBtn = document.getElementById('addCommentBtn');
 const toast = document.getElementById('ann-toast');
 
 let currentSet = null;       // AnnotationSetV2 mirror
@@ -202,7 +203,7 @@ function rebuildCommentsSidebar() {
   if (comments.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = '尚無反思。選取文字後按「C 反思」即可新增。';
+    empty.textContent = '尚無反思。點上方 + 新增章節反思，或選取文字後按「C 反思」錨定到具體段落。';
     commentsList.appendChild(empty);
     return;
   }
@@ -488,6 +489,7 @@ commentsToggle.addEventListener('click', () => {
   setSidebarOpen(commentsSidebar.hidden);
 });
 commentsClose.addEventListener('click', () => setSidebarOpen(false));
+addCommentBtn.addEventListener('click', openCommentModal);
 
 // ── Ingest button (Slice 4D) ─────────────────────────────────────────────────
 //
@@ -501,9 +503,14 @@ commentsClose.addEventListener('click', () => setSidebarOpen(false));
 const ingestBtn = document.getElementById('ingestBtn');
 const ingestWrap = document.getElementById('ingestWrap');
 
+// The ingest button is a state-machine: its current text + dataset.mode tell the
+// click handler which API to call. queued is the only cancellable state — once
+// the LLM ingest starts (status='ingesting') the API refuses (409) since the
+// background job can't be aborted mid-run.
 function applyIngestState({ has_original, ingest_status }) {
   if (!ingestBtn || !ingestWrap) return;
   ingestBtn.classList.remove('is-queued');
+  ingestBtn.dataset.mode = 'ingest';
   if (!has_original) {
     ingestBtn.disabled = true;
     ingestBtn.textContent = '📥 Ingest 整本書';
@@ -511,10 +518,17 @@ function applyIngestState({ has_original, ingest_status }) {
     return;
   }
   ingestWrap.removeAttribute('data-disabled-reason');
-  if (ingest_status === 'queued' || ingest_status === 'ingesting') {
+  if (ingest_status === 'queued') {
+    ingestBtn.disabled = false;
+    ingestBtn.classList.add('is-queued');
+    ingestBtn.dataset.mode = 'cancel';
+    ingestBtn.textContent = '📥 取消 Queued';
+    return;
+  }
+  if (ingest_status === 'ingesting') {
     ingestBtn.disabled = true;
     ingestBtn.classList.add('is-queued');
-    ingestBtn.textContent = ingest_status === 'ingesting' ? '📥 Ingesting' : '📥 Queued';
+    ingestBtn.textContent = '📥 Ingesting';
     return;
   }
   if (ingest_status === 'ingested') {
@@ -525,7 +539,7 @@ function applyIngestState({ has_original, ingest_status }) {
   }
   if (ingest_status === 'partial' || ingest_status === 'failed') {
     ingestBtn.disabled = false;
-    ingestBtn.textContent = ingest_status === 'partial' ? '📥 重試 ingest' : '📥 重試 ingest';
+    ingestBtn.textContent = '📥 重試 ingest';
     return;
   }
   ingestBtn.disabled = false;
@@ -550,8 +564,7 @@ async function requestIngest() {
       ingestBtn.textContent = prevText;
       return;
     }
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.textContent = '📥 Queued';
+    applyIngestState({ has_original: true, ingest_status: 'queued' });
   } catch (err) {
     console.error('ingest request error', err);
     showToast(`Ingest 送出失敗：${String(err.message || err)}`);
@@ -560,8 +573,60 @@ async function requestIngest() {
   }
 }
 
+async function cancelIngest() {
+  if (!ingestBtn) return;
+  const prevText = ingestBtn.textContent;
+  ingestBtn.disabled = true;
+  ingestBtn.textContent = '📥 取消中⋯';
+  try {
+    const r = await fetch(
+      `/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
+      { method: 'DELETE' },
+    );
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '');
+      console.error('ingest cancel failed', r.status, detail);
+      showToast(`取消失敗 (HTTP ${r.status})`);
+      ingestBtn.disabled = false;
+      ingestBtn.textContent = prevText;
+      return;
+    }
+    applyIngestState({ has_original: true, ingest_status: 'never' });
+  } catch (err) {
+    console.error('ingest cancel error', err);
+    showToast(`取消失敗：${String(err.message || err)}`);
+    ingestBtn.disabled = false;
+    ingestBtn.textContent = prevText;
+  }
+}
+
 if (ingestBtn) {
-  ingestBtn.addEventListener('click', requestIngest);
+  ingestBtn.addEventListener('click', () => {
+    if (ingestBtn.dataset.mode === 'cancel') {
+      cancelIngest();
+    } else {
+      requestIngest();
+    }
+  });
+}
+
+const deleteBookBtn = document.getElementById('deleteBookBtn');
+if (deleteBookBtn) {
+  deleteBookBtn.addEventListener('click', async () => {
+    if (!confirm('刪除整本書？此動作會同時清掉註解、進度與 ingest 紀錄，且無法復原。')) return;
+    const prevText = deleteBookBtn.textContent;
+    deleteBookBtn.disabled = true;
+    deleteBookBtn.textContent = '刪除中⋯';
+    try {
+      const r = await fetch(`/api/books/${encodeURIComponent(BOOK_ID)}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error(await r.text());
+      window.location.href = '/books';
+    } catch (err) {
+      alert('刪除失敗：' + err.message);
+      deleteBookBtn.disabled = false;
+      deleteBookBtn.textContent = prevText;
+    }
+  });
 }
 
 // ── Progress state (Slice 3C) ────────────────────────────────────────────────

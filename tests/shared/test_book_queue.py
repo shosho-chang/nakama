@@ -35,6 +35,8 @@ schemas = pytest.importorskip(
 enqueue = book_queue.enqueue
 next_queued = book_queue.next_queued
 mark_status = book_queue.mark_status
+cancel = book_queue.cancel
+delete_queue_row = book_queue.delete_queue_row
 QueueStatusError = book_queue.QueueStatusError
 
 
@@ -207,6 +209,44 @@ def test_mark_status_unknown_book_raises(book):
 # ---------------------------------------------------------------------------
 # Schema — BookIngestQueueEntry
 # ---------------------------------------------------------------------------
+
+
+def test_cancel_removes_queued_row(book):
+    enqueue("alpha")
+    assert cancel("alpha") is True
+    assert next_queued() is None
+
+
+def test_cancel_no_op_when_no_row(book):
+    assert cancel("alpha") is False
+
+
+def test_cancel_refuses_when_ingesting(book):
+    enqueue("alpha")
+    mark_status("alpha", "ingesting")
+    assert cancel("alpha") is False
+    from shared.state import _get_conn
+
+    row = (
+        _get_conn()
+        .execute("SELECT status FROM book_ingest_queue WHERE book_id=?", ("alpha",))
+        .fetchone()
+    )
+    assert row["status"] == "ingesting"
+
+
+def test_delete_queue_row_force_removes_any_status(book):
+    enqueue("alpha")
+    mark_status("alpha", "ingesting")
+    delete_queue_row("alpha")
+    from shared.state import _get_conn
+
+    row = (
+        _get_conn()
+        .execute("SELECT status FROM book_ingest_queue WHERE book_id=?", ("alpha",))
+        .fetchone()
+    )
+    assert row is None
 
 
 def test_book_ingest_queue_entry_round_trip():
