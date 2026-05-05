@@ -88,9 +88,10 @@ def test_fetch_feed_unknown_type_returns_empty_with_warning(pipeline_no_io, capl
 def test_fetch_eutils_chains_esearch_efetch_and_tags_feed_source(pipeline_no_io, monkeypatch):
     captured_term = {}
 
-    def fake_esearch(term, *, max_results):
+    def fake_esearch(term, *, max_results, sort=None):
         captured_term["term"] = term
         captured_term["max_results"] = max_results
+        captured_term["sort"] = sort
         return ["111", "222"]
 
     def fake_efetch(pmids):
@@ -116,6 +117,51 @@ def test_fetch_eutils_chains_esearch_efetch_and_tags_feed_source(pipeline_no_io,
     assert "(JAMA[TA]) AND (sleep)" in captured_term["term"]
     assert "[PDAT]" in captured_term["term"]
     assert captured_term["max_results"] == 50
+    # sort 必須是 pub_date，否則 retmax 截斷時拿到 NCBI 的 relevance 集而非最新
+    assert captured_term["sort"] == "pub_date"
+
+
+def test_fetch_eutils_pdat_date_range_uses_last_n_days(pipeline_no_io, monkeypatch):
+    """凍結 datetime.now，驗證 PDAT 子句 ("YYYY/MM/DD"[PDAT] : "YYYY/MM/DD"[PDAT])
+    日期數學正確：since = today - days，end = today，皆 Asia/Taipei。
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    fixed_now = datetime(2026, 5, 5, 6, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(pd, "datetime", FakeDatetime)
+
+    captured_term = {}
+
+    def fake_esearch(term, *, max_results, sort=None):
+        captured_term["term"] = term
+        return []
+
+    monkeypatch.setattr(pd, "esearch", fake_esearch)
+
+    pipeline_no_io._fetch_eutils({"name": "x", "type": "eutils", "term": "JAMA[TA]", "days": 14})
+
+    # 14 天前 = 2026-04-21；今天 = 2026-05-05
+    assert '"2026/04/21"[PDAT] : "2026/05/05"[PDAT]' in captured_term["term"]
+
+
+def test_fetch_eutils_uses_default_days_and_limit(pipeline_no_io, monkeypatch):
+    """yaml 沒寫 days/limit 應走 default 14 / 80。"""
+    captured = {}
+
+    def fake_esearch(term, *, max_results, sort=None):
+        captured["max_results"] = max_results
+        return []
+
+    monkeypatch.setattr(pd, "esearch", fake_esearch)
+    pipeline_no_io._fetch_eutils({"name": "x", "type": "eutils", "term": "JAMA[TA]"})
+    assert captured["max_results"] == 80
 
 
 def test_fetch_eutils_empty_term_returns_empty(pipeline_no_io, monkeypatch):

@@ -58,14 +58,18 @@ def esearch(
     *,
     max_results: int = 10,
     since_year: int | None = None,
+    sort: str = "relevance",
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> list[str]:
-    """Find PMIDs by query. Sorted by relevance (NCBI default).
+    """Find PMIDs by query.
 
     Args:
         query: PubMed search expression（英文，可含 MeSH / boolean operators）
         max_results: 上限筆數（NCBI hard cap 10000，但 quick lookup 場景 ≤ 50）
         since_year: 限 ``YYYY:YYYY[Date - Publication]`` 格式的年份下限
+        sort: NCBI sort 順序，預設 ``"relevance"``。Robin digest 走
+            ``"pub_date"`` 拿最新（PubMed 接受的值列表見
+            https://www.ncbi.nlm.nih.gov/books/NBK25499/#chapter4.ESearch）
         timeout: HTTP timeout（秒）
 
     Returns:
@@ -87,7 +91,7 @@ def esearch(
         "term": term,
         "retmode": "json",
         "retmax": str(max(1, min(max_results, 200))),
-        "sort": "relevance",
+        "sort": sort,
     }
 
     try:

@@ -287,7 +287,7 @@ class PubMedDigestPipeline(BaseAgent):
         full_term = f"({term}) AND {date_clause}"
 
         try:
-            pmids = esearch(full_term, max_results=limit)
+            pmids = esearch(full_term, max_results=limit, sort="pub_date")
         except PubMedClientError as e:
             self.logger.warning(f"[{name}] esearch 失敗：{e}")
             return []
