@@ -154,8 +154,13 @@ def zotero_env(tmp_path: Path, monkeypatch):
 
     slug = "Sleep-Research-Paper"
 
-    # Inbox working MD
-    inbox_fm = _INBOX_FRONTMATTER_TEMPLATE.format(attachment_path=str(attachment_path))
+    # Inbox working MD — Windows backslashes in YAML double-quoted scalars must be
+    # escaped (`\U` would otherwise be parsed as a Unicode escape and fail the whole
+    # frontmatter). Production InboxWriter._yaml_double_quoted does this; the test
+    # fixture mirrors that behavior here.
+    inbox_fm = _INBOX_FRONTMATTER_TEMPLATE.format(
+        attachment_path=str(attachment_path).replace("\\", "\\\\")
+    )
     inbox_body = "Circadian rhythms govern sleep architecture in mammals.\n"
     (inbox_dir / f"{slug}.md").write_text(inbox_fm + inbox_body, encoding="utf-8")
 
