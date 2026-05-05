@@ -58,6 +58,8 @@ IngestFullTextLayer = Literal[
     "publisher_html",
     "arxiv",
     "biorxiv",
+    "zotero_html_snapshot",
+    "zotero_pdf",
     "unknown",
 ]
 
@@ -97,3 +99,14 @@ class IngestResult(BaseModel):
     note: str | None = None
     """Human-readable hint for the UI. Used for the Slice 1 < 200-char hard
     block: ``"抓取結果太短，疑似 bot 擋頁"``. ``None`` on success."""
+
+    # ── Zotero-specific (None for non-Zotero ingests) ────────────────────────
+    #
+    # Populated by ``agents.robin.zotero_sync.sync_zotero_item`` so the
+    # downstream ``InboxWriter`` can emit Zotero-aware frontmatter
+    # (``zotero_item_key`` / ``zotero_attachment_path`` / ``attachment_type``)
+    # without changing its public signature. Future per-source ingest paths
+    # (EPUB / podcast) can add their own optional fields the same way.
+    zotero_item_key: str | None = None
+    zotero_attachment_path: str | None = None
+    attachment_type: Literal["text/html", "application/pdf"] | None = None
