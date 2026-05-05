@@ -37,7 +37,10 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
   .book-card { background: var(--surface); border-radius: 12px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: 0.75rem; transition: box-shadow 0.15s, transform 0.15s; text-decoration: none; color: inherit; }
   .book-card:hover, .book-card:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.10); transform: translateY(-2px); outline: none; }
-  .cover-placeholder { aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(135deg, #ede9fe 0%, #dbeafe 100%); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 2.5rem; font-weight: 700; letter-spacing: -0.05em; }
+  .cover { position: relative; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--bg); }
+  .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cover img.broken { display: none; }
+  .cover-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, #ede9fe 0%, #dbeafe 100%); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 2.5rem; font-weight: 700; letter-spacing: -0.05em; }
   .book-title { font-size: 0.95rem; font-weight: 600; color: var(--text); line-height: 1.4; word-break: break-word; }
   .book-author { font-size: 0.8rem; color: var(--text-muted); }
   .book-meta { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: auto; }
@@ -74,7 +77,10 @@
     <div class="grid">
       {% for book in books %}
       <a class="book-card" href="/books/{{ book.book_id }}">
-        <div class="cover-placeholder" aria-hidden="true">{{ book.title[:1]|upper }}</div>
+        <div class="cover" aria-hidden="true">
+          <img src="/api/books/{{ book.book_id }}/cover" alt="" loading="lazy">
+          <div class="cover-placeholder">{{ book.title[:1]|upper }}</div>
+        </div>
         <div class="book-title">{{ book.title }}</div>
         {% if book.author %}<div class="book-author">{{ book.author }}</div>{% endif %}
         <div class="book-meta">
@@ -107,5 +113,6 @@
     </div>
   {% endif %}
 </div>
+<script type="module" src="/static/books_library.js"></script>
 </body>
 </html>

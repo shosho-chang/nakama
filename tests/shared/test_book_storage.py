@@ -37,6 +37,9 @@ books_schema = pytest.importorskip(
 
 store_book_files = storage.store_book_files
 read_book_blob = storage.read_book_blob
+read_cover_blob = storage.read_cover_blob
+delete_book_files = storage.delete_book_files
+delete_book = storage.delete_book
 insert_book = storage.insert_book
 get_book = storage.get_book
 list_books = storage.list_books
@@ -287,3 +290,70 @@ def test_books_table_book_id_is_primary_key():
     rows = conn.execute("PRAGMA table_info(books)").fetchall()
     pk_cols = {row[1] for row in rows if row[5]}  # row[5] = pk flag
     assert pk_cols == {"book_id"}
+
+
+# ---------------------------------------------------------------------------
+# Cover storage
+# ---------------------------------------------------------------------------
+
+
+def test_read_cover_blob_returns_none_when_absent(books_dir):
+    store_book_files("alpha", bilingual=epub_clean())
+    assert read_cover_blob("alpha") is None
+
+
+def test_store_and_read_cover_round_trip(books_dir):
+    store_book_files("alpha", bilingual=epub_clean(), cover=(b"\xff\xd8\xfffake-jpg", ".jpg"))
+    blob = read_cover_blob("alpha")
+    assert blob is not None
+    cover_bytes, ext = blob
+    assert cover_bytes == b"\xff\xd8\xfffake-jpg"
+    assert ext == "jpg"
+
+
+def test_store_cover_replaces_stale_extension(books_dir):
+    store_book_files("alpha", bilingual=epub_clean(), cover=(b"old-png", ".png"))
+    store_book_files("alpha", bilingual=epub_clean(), cover=(b"new-jpg", ".jpg"))
+    blob = read_cover_blob("alpha")
+    assert blob == (b"new-jpg", "jpg")
+    assert not (books_dir / "alpha" / "cover.png").exists()
+
+
+# ---------------------------------------------------------------------------
+# Delete
+# ---------------------------------------------------------------------------
+
+
+def test_delete_book_files_removes_directory(books_dir):
+    store_book_files(
+        "alpha",
+        bilingual=epub_clean(),
+        original=epub_with_cover(),
+        cover=(b"jpg", ".jpg"),
+    )
+    delete_book_files("alpha")
+    assert not (books_dir / "alpha").exists()
+
+
+def test_delete_book_files_idempotent_on_missing(books_dir):
+    delete_book_files("never-existed")  # must not raise
+
+
+def test_delete_book_removes_db_row(books_dir):
+    insert_book(
+        Book(
+            book_id="alpha",
+            title="Alpha",
+            author=None,
+            lang_pair="en-zh",
+            genre=None,
+            isbn=None,
+            published_year=None,
+            has_original=False,
+            book_version_hash="a" * 64,
+            created_at="2026-05-05T00:00:00+00:00",
+        )
+    )
+    assert delete_book("alpha") is True
+    assert get_book("alpha") is None
+    assert delete_book("alpha") is False  # second call no-op

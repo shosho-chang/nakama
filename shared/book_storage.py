@@ -4,6 +4,7 @@ Filesystem layout (rooted at ``NAKAMA_BOOKS_DIR``, fallback ``data/books/``):
 
     data/books/{book_id}/bilingual.epub
     data/books/{book_id}/original.epub   (only if has_original=True)
+    data/books/{book_id}/cover{ext}      (only if EPUB had a cover image)
 
 SQLite table: ``books`` — provisioned by ``shared.state._init_tables``.
 """
@@ -11,6 +12,7 @@ SQLite table: ``books`` — provisioned by ``shared.state._init_tables``.
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 from pathlib import Path
 from typing import Literal
@@ -60,14 +62,23 @@ def store_book_files(
     *,
     bilingual: bytes,
     original: bytes | None = None,
+    cover: tuple[bytes, str] | None = None,
 ) -> None:
-    """Write bilingual.epub (and optionally original.epub) under data/books/{book_id}/."""
+    """Write bilingual.epub (and optionally original.epub + cover) under data/books/{book_id}/.
+
+    ``cover`` is ``(bytes, ext)`` where ``ext`` is the suffix including dot (``.jpg``, ``.png``).
+    """
     _check_book_id(book_id)
     book_dir = _books_root() / book_id
     book_dir.mkdir(parents=True, exist_ok=True)
     (book_dir / "bilingual.epub").write_bytes(bilingual)
     if original is not None:
         (book_dir / "original.epub").write_bytes(original)
+    if cover is not None:
+        cover_bytes, ext = cover
+        for stale in book_dir.glob("cover.*"):
+            stale.unlink()
+        (book_dir / f"cover{ext}").write_bytes(cover_bytes)
 
 
 def read_book_blob(book_id: str, *, lang: Literal["bilingual", "en"]) -> bytes:
@@ -82,6 +93,37 @@ def read_book_blob(book_id: str, *, lang: Literal["bilingual", "en"]) -> bytes:
     if not path.exists():
         raise FileNotFoundError(f"Book file not found: {path}")
     return path.read_bytes()
+
+
+def read_cover_blob(book_id: str) -> tuple[bytes, str] | None:
+    """Return ``(bytes, ext)`` for ``cover.*`` if present, else ``None``.
+
+    ``ext`` is the lowercase file suffix without dot (``"jpg"``, ``"png"``).
+    """
+    _check_book_id(book_id)
+    book_dir = _books_root() / book_id
+    if not book_dir.exists():
+        return None
+    for path in book_dir.glob("cover.*"):
+        return path.read_bytes(), path.suffix.lstrip(".").lower()
+    return None
+
+
+def delete_book_files(book_id: str) -> None:
+    """Remove ``data/books/{book_id}/`` and all contents. No-op if absent."""
+    _check_book_id(book_id)
+    book_dir = _books_root() / book_id
+    if book_dir.exists():
+        shutil.rmtree(book_dir)
+
+
+def delete_book(book_id: str) -> bool:
+    """Remove the row from the ``books`` table. Returns True if a row was deleted."""
+    _check_book_id(book_id)
+    conn = _get_conn()
+    cur = conn.execute("DELETE FROM books WHERE book_id = ?", (book_id,))
+    conn.commit()
+    return cur.rowcount > 0
 
 
 # ---------------------------------------------------------------------------
