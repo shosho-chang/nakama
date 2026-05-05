@@ -23,14 +23,14 @@ import pytest
 @pytest.fixture
 def vault(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
-    (tmp_path / "KB" / "Concepts").mkdir(parents=True)
+    (tmp_path / "KB" / "Wiki" / "Concepts").mkdir(parents=True)
     (tmp_path / "KB" / "Annotations").mkdir(parents=True)
     return tmp_path
 
 
 def _write_concept_stub(vault: Path, slug: str = "anchoring-effect") -> Path:
     """Create a minimal ConceptPageV2 stub so the merger can upsert into it."""
-    p = vault / "KB" / "Concepts" / f"{slug}.md"
+    p = vault / "KB" / "Wiki" / "Concepts" / f"{slug}.md"
     p.write_text(
         f"""---
 slug: {slug}
@@ -129,7 +129,7 @@ def test_v2_set_dispatches_to_v2_merger(vault: Path, monkeypatch):
 
     merger_mod.sync_annotations_for_slug("how-to-live")
 
-    body = (vault / "KB" / "Concepts" / "anchoring-effect.md").read_text(encoding="utf-8")
+    body = (vault / "KB" / "Wiki" / "Concepts" / "anchoring-effect.md").read_text(encoding="utf-8")
     assert "## 讀者註記" in body
     assert "from how-to-live 讀者註記" in body
 
@@ -141,7 +141,7 @@ def test_v2_attribution_distinguishes_from_paper_attribution(vault: Path, monkey
     if not hasattr(merger_mod, "sync_annotations_for_slug"):
         pytest.skip("v2 dispatch entry point not yet implemented")
 
-    p = vault / "KB" / "Concepts" / "anchoring-effect.md"
+    p = vault / "KB" / "Wiki" / "Concepts" / "anchoring-effect.md"
     p.write_text(
         """---
 slug: anchoring-effect
@@ -195,7 +195,7 @@ def test_v2_re_sync_does_not_double_append(vault: Path, monkeypatch):
     merger_mod.sync_annotations_for_slug("how-to-live")
     merger_mod.sync_annotations_for_slug("how-to-live")
 
-    body = (vault / "KB" / "Concepts" / "anchoring-effect.md").read_text(encoding="utf-8")
+    body = (vault / "KB" / "Wiki" / "Concepts" / "anchoring-effect.md").read_text(encoding="utf-8")
     # Each annotation-from boundary marker appears at most once
     assert body.count("<!-- annotation-from: how-to-live -->") <= 1
     assert body.count("from how-to-live") <= 2  # heading + body line
@@ -227,6 +227,34 @@ def test_v2_comment_items_not_synced_to_concept_pages(vault: Path, monkeypatch):
 
     types_seen = {getattr(it, "type", None) for it in captured}
     assert "comment" not in types_seen, f"merger leaked comments to LLM input: {types_seen}"
+
+
+def test_v2_comment_items_routed_to_notes_md(vault: Path, monkeypatch):
+    """End-to-end: a v2 sync run with a Comment item must produce
+    KB/Wiki/Sources/Books/{book_id}/notes.md grouped by chapter (Slice 5B).
+    Catches the Slice 5 wiring gap where book_notes_writer was defined but
+    never invoked from the sync entry point."""
+    merger_mod = pytest.importorskip("agents.robin.annotation_merger")
+    if not hasattr(merger_mod, "sync_annotations_for_slug"):
+        pytest.skip("v2 dispatch entry point not yet implemented")
+
+    _write_concept_stub(vault, "anchoring-effect")
+    _write_v2_annotation_set(vault, "how-to-live")  # contains 1 comment in ch03.xhtml
+
+    monkeypatch.setattr(
+        merger_mod,
+        "_ask_merger_llm_v2",
+        lambda items, _slugs: {},
+        raising=False,
+    )
+    merger_mod.sync_annotations_for_slug("how-to-live")
+
+    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "how-to-live" / "notes.md"
+    assert notes_path.exists(), f"notes.md not written at {notes_path}"
+    body = notes_path.read_text(encoding="utf-8")
+    assert "Long reflection prose" in body
+    assert "ch03.xhtml" in body  # chapter_ref preserved as H2
+    assert "book_id: how-to-live" in body  # frontmatter wired
 
 
 # ---------------------------------------------------------------------------
@@ -265,12 +293,12 @@ def test_v1_paper_set_still_works_after_dispatch_extension(vault: Path, monkeypa
     monkeypatch.setattr(
         merger_mod,
         "_ask_merger_llm",
-        lambda items, _slugs: {"sleep-debt": "> from paper-x"},
+        lambda _prompt: {"sleep-debt": "> from paper-x"},
         raising=False,
     )
     merger_mod.sync_annotations_for_slug("paper-x")
 
-    body = (vault / "KB" / "Concepts" / "sleep-debt.md").read_text(encoding="utf-8")
+    body = (vault / "KB" / "Wiki" / "Concepts" / "sleep-debt.md").read_text(encoding="utf-8")
     assert "## 個人觀點" in body
     assert "from paper-x" in body
     assert "## 讀者註記" not in body  # v1 doesn't trigger v2 section
