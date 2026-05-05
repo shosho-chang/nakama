@@ -353,6 +353,22 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_heartbeats_status
             ON heartbeats(last_status, last_run_at DESC);
+
+        -- Slice 1C: bilingual EPUB book library.
+        -- Canonical DDL: migrations/009_books.sql.
+        -- Owned by shared/book_storage.py; written by the Reader /books/upload route.
+        CREATE TABLE IF NOT EXISTS books (
+            book_id           TEXT PRIMARY KEY,
+            title             TEXT NOT NULL,
+            author            TEXT,
+            lang_pair         TEXT NOT NULL,
+            genre             TEXT,
+            isbn              TEXT,
+            published_year    INTEGER,
+            has_original      INTEGER NOT NULL DEFAULT 0,
+            book_version_hash TEXT NOT NULL,
+            created_at        TEXT NOT NULL
+        );
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
