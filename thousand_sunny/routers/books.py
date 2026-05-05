@@ -8,6 +8,7 @@ land in later slices.
 from __future__ import annotations
 
 import hashlib
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,6 +34,11 @@ from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.books")
 router = APIRouter()
+
+# Serialize writes to the shared SQLite connection. Python's sqlite3 wrapper
+# isn't fully thread-safe at the connection-state level (commit/rollback
+# interleave under concurrent threads); see memory/claude/reference_sqlite_python_pitfalls.md.
+_progress_write_lock = threading.Lock()
 templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "robin")
 )
@@ -219,20 +225,20 @@ async def put_book_progress(book_id: str, payload: BookProgress):
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     conn = _get_conn()
-    conn.execute(
-        """INSERT OR REPLACE INTO book_progress
-           (book_id, last_cfi, last_chapter_ref, last_spread_idx,
-            percent, total_reading_seconds, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (
-            payload.book_id,
-            payload.last_cfi,
-            payload.last_chapter_ref,
-            payload.last_spread_idx,
-            payload.percent,
-            payload.total_reading_seconds,
-            payload.updated_at,
-        ),
-    )
-    conn.commit()
+    with _progress_write_lock, conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO book_progress
+               (book_id, last_cfi, last_chapter_ref, last_spread_idx,
+                percent, total_reading_seconds, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                payload.book_id,
+                payload.last_cfi,
+                payload.last_chapter_ref,
+                payload.last_spread_idx,
+                payload.percent,
+                payload.total_reading_seconds,
+                payload.updated_at,
+            ),
+        )
     return {"ok": True}
