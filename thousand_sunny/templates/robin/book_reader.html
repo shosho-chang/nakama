@@ -175,6 +175,20 @@
   </form>
 </dialog>
 
+<dialog id="ingest-confirm-modal" class="ann-dialog" aria-labelledby="ingest-confirm-title">
+  <form method="dialog">
+    <h2 id="ingest-confirm-title">📥 Ingest 整本書？</h2>
+    <div class="excerpt">
+      送出後會把這本書排進 ingest queue。實際 ingest 要在桌機（Mac 或 Windows）的 Claude Code 跑
+      <code>/textbook-ingest --from-queue</code> 才會執行 — 一輪約 30 分鐘 + Opus token。
+    </div>
+    <div class="actions">
+      <button type="button" value="cancel" data-cancel>取消</button>
+      <button type="submit" class="primary" value="confirm">送出 Ingest</button>
+    </div>
+  </form>
+</dialog>
+
 <aside id="comments-sidebar" hidden aria-label="反思列表">
   <header>
     <h2>💬 反思</h2>

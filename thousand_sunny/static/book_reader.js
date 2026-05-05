@@ -532,7 +532,13 @@ function applyIngestState({ has_original, ingest_status }) {
   ingestBtn.textContent = '📥 Ingest 整本書';
 }
 
-async function requestIngest() {
+const ingestConfirmModal = document.getElementById('ingest-confirm-modal');
+if (ingestConfirmModal) {
+  ingestConfirmModal.querySelector('[data-cancel]')
+    .addEventListener('click', () => ingestConfirmModal.close('cancel'));
+}
+
+async function postIngestRequest() {
   if (!ingestBtn) return;
   const prevText = ingestBtn.textContent;
   ingestBtn.disabled = true;
@@ -558,6 +564,24 @@ async function requestIngest() {
     ingestBtn.disabled = false;
     ingestBtn.textContent = prevText;
   }
+}
+
+function requestIngest() {
+  if (!ingestConfirmModal) {
+    // Fallback if the template hasn't been updated — still gate behind a
+    // native confirm() so a stale page can't fire a 30-minute job by mistake.
+    if (!confirm('送出 Ingest 請求？實際執行需在桌機 Claude Code 跑 /textbook-ingest --from-queue。')) return;
+    postIngestRequest();
+    return;
+  }
+  ingestConfirmModal.returnValue = '';
+  ingestConfirmModal.showModal();
+}
+
+if (ingestConfirmModal) {
+  ingestConfirmModal.addEventListener('close', () => {
+    if (ingestConfirmModal.returnValue === 'confirm') postIngestRequest();
+  });
 }
 
 if (ingestBtn) {
