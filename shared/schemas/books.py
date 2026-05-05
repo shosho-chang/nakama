@@ -48,3 +48,17 @@ class Book(BaseModel):
     has_original: bool
     book_version_hash: str
     created_at: str
+
+
+class BookProgress(BaseModel):
+    """Per-book reading position stored in the ``book_progress`` table."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    book_id: str
+    last_cfi: str | None
+    last_chapter_ref: str | None
+    last_spread_idx: int
+    percent: float
+    total_reading_seconds: int
+    updated_at: str  # ISO-8601 + offset

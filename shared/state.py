@@ -369,6 +369,20 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             book_version_hash TEXT NOT NULL,
             created_at        TEXT NOT NULL
         );
+
+        -- Slice 3A: per-book reading position.
+        -- Canonical DDL: migrations/010_book_progress.sql.
+        -- Owned by thousand_sunny/routers/books.py (GET/PUT /api/books/{id}/progress).
+        CREATE TABLE IF NOT EXISTS book_progress (
+            book_id               TEXT PRIMARY KEY,
+            last_cfi              TEXT,
+            last_chapter_ref      TEXT,
+            last_spread_idx       INTEGER NOT NULL DEFAULT 0,
+            percent               REAL    NOT NULL DEFAULT 0.0,
+            total_reading_seconds INTEGER NOT NULL DEFAULT 0,
+            updated_at            TEXT    NOT NULL,
+            FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
+        );
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
