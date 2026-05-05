@@ -8,23 +8,38 @@ land in later slices.
 from __future__ import annotations
 
 import hashlib
+import io
 import threading
+import zipfile
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Cookie, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from shared.annotation_store import AnnotationSetV2, get_annotation_store
-from shared.book_queue import enqueue as enqueue_book
+from shared.book_queue import (
+    cancel as cancel_book,
+)
+from shared.book_queue import (
+    delete_queue_row,
+)
+from shared.book_queue import (
+    enqueue as enqueue_book,
+)
 from shared.book_storage import (
     BookStorageError,
+    delete_book_files,
     get_book,
     insert_book,
     list_books,
     read_book_blob,
+    read_cover_blob,
     store_book_files,
+)
+from shared.book_storage import (
+    delete_book as delete_book_row,
 )
 from shared.epub_metadata import MalformedEPUBError, extract_metadata
 from shared.epub_sanitizer import EPUBStructureError, sanitize_epub
@@ -32,6 +47,30 @@ from shared.log import get_logger
 from shared.schemas.books import Book, BookProgress
 from shared.state import _get_conn
 from thousand_sunny.auth import check_auth
+
+_COVER_EXT_MEDIA_TYPES = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "svg": "image/svg+xml",
+}
+
+
+def _extract_cover_bytes(epub_bytes: bytes, cover_path: str | None) -> tuple[bytes, str] | None:
+    """Return ``(bytes, ext)`` for the cover entry inside an EPUB zip, or None."""
+    if not cover_path:
+        return None
+    ext = PurePosixPath(cover_path).suffix.lower()
+    if ext not in {f".{k}" for k in _COVER_EXT_MEDIA_TYPES}:
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(epub_bytes)) as zf:
+            return zf.read(cover_path), ext
+    except (KeyError, zipfile.BadZipFile):
+        return None
+
 
 logger = get_logger("nakama.web.books")
 router = APIRouter()
@@ -98,8 +137,10 @@ async def books_upload(
         else:
             original_bytes = None
 
+    cover_blob = _extract_cover_bytes(sanitized, meta.cover_path)
+
     try:
-        store_book_files(book_id, bilingual=sanitized, original=original_bytes)
+        store_book_files(book_id, bilingual=sanitized, original=original_bytes, cover=cover_blob)
     except BookStorageError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
 
@@ -173,6 +214,54 @@ async def post_ingest_request(book_id: str):
     if not book.has_original:
         raise HTTPException(400, detail="book has no original EN file to ingest")
     enqueue_book(book_id)
+    return {"ok": True}
+
+
+@router.delete("/api/books/{book_id}/ingest-request")
+async def delete_ingest_request(book_id: str):
+    """Cancel a queued ingest. 409 if the book is already ingesting/done."""
+    if get_book(book_id) is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+    if not cancel_book(book_id):
+        raise HTTPException(409, detail="ingest cannot be cancelled (not queued)")
+    return {"ok": True}
+
+
+@router.get("/api/books/{book_id}/cover")
+async def book_cover(book_id: str):
+    if get_book(book_id) is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+    blob = read_cover_blob(book_id)
+    if blob is None:
+        raise HTTPException(404, detail="no cover image stored for this book")
+    cover_bytes, ext = blob
+    return Response(
+        content=cover_bytes,
+        media_type=_COVER_EXT_MEDIA_TYPES.get(ext, "application/octet-stream"),
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.delete("/api/books/{book_id}")
+async def delete_book_endpoint(book_id: str, nakama_auth: str | None = Cookie(None)):
+    """Remove the book entirely — DB rows (books / queue / progress), EPUB blobs,
+    and the annotation file. Idempotent on partial state."""
+    if not check_auth(nakama_auth):
+        raise HTTPException(403, detail="not authenticated")
+    if get_book(book_id) is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+
+    delete_queue_row(book_id)
+
+    conn = _get_conn()
+    with _progress_write_lock, conn:
+        conn.execute("DELETE FROM book_progress WHERE book_id = ?", (book_id,))
+
+    get_annotation_store().delete(book_id)
+    delete_book_files(book_id)
+    delete_book_row(book_id)
+
+    logger.info("deleted book %s", book_id)
     return {"ok": True}
 
 

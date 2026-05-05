@@ -49,6 +49,34 @@ def enqueue(book_id: str) -> None:
             )
 
 
+def cancel(book_id: str) -> bool:
+    """Delete the queue row for ``book_id`` if its status is ``queued``.
+
+    Returns True if a row was removed; False if no row exists or the entry has
+    already started ingesting (which we cannot abort safely from the API).
+    """
+    with _lock:
+        conn = _get_conn()
+        with conn:
+            cur = conn.execute(
+                "DELETE FROM book_ingest_queue WHERE book_id = ? AND status = 'queued'",
+                (book_id,),
+            )
+            return cur.rowcount > 0
+
+
+def delete_queue_row(book_id: str) -> None:
+    """Remove any queue row for ``book_id`` regardless of status.
+
+    Used during full book deletion — bypasses the ``cancel()`` safety check
+    because the book itself is going away.
+    """
+    with _lock:
+        conn = _get_conn()
+        with conn:
+            conn.execute("DELETE FROM book_ingest_queue WHERE book_id = ?", (book_id,))
+
+
 def next_queued() -> str | None:
     """Return the oldest book_id with status='queued', or None if empty.
 
