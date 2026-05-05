@@ -12,8 +12,14 @@ Coverage:
   - store returns None → error in report
   - missing concept page → skip + increment skipped count
   - happy path: annotations + existing concept page → page updated
+  - idempotency short-circuit: LLM skipped when nothing new since last sync
+  - MergerLLMError surfaced to report.errors (not silently swallowed)
+- _ask_merger_llm (unit):
+  - tool_use response parsed into {concept_slug: callout_block} dict
+  - raises MergerLLMError when no tool_use block in response
 
-LLM boundary (_ask_merger_llm) is monkeypatched throughout.
+LLM boundary (_ask_merger_llm) is monkeypatched throughout (integration tests).
+ask_with_tools is monkeypatched for _ask_merger_llm unit tests.
 AnnotationStore is monkeypatched on the merger module's namespace.
 Vault is isolated to tmp_path via VAULT_PATH env.
 """
@@ -21,13 +27,16 @@ Vault is isolated to tmp_path via VAULT_PATH env.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import agents.robin.annotation_merger as mod
 from agents.robin.annotation_merger import (
     ConceptPageAnnotationMerger,
+    MergerLLMError,
     SyncReport,
+    _ask_merger_llm,
     _replace_marker_block,
 )
 from shared.annotation_store import Annotation, AnnotationSet, Highlight
@@ -284,6 +293,94 @@ def test_sync_idempotent(vault, monkeypatch):
     after_second = concept_page.read_text(encoding="utf-8")
 
     assert after_first == after_second
+
+
+def test_short_circuit_nothing_unsynced(vault, monkeypatch):
+    """When all items are older than last_synced_at, LLM is never called."""
+    ann_set = AnnotationSet(
+        slug="synced-src",
+        source_filename="synced-src.md",
+        base="inbox",
+        last_synced_at="2026-05-05T00:00:00Z",
+        items=[
+            Annotation(
+                ref="ref",
+                note="note",
+                created_at="2026-05-04T00:00:00Z",
+                modified_at="2026-05-04T00:00:00Z",
+            )
+        ],
+    )
+    monkeypatch.setattr(mod, "get_annotation_store", lambda: _make_store(ann_set))
+
+    llm_calls: list[str] = []
+
+    def should_not_be_called(prompt: str) -> dict:
+        llm_calls.append(prompt)
+        return {}
+
+    monkeypatch.setattr(mod, "_ask_merger_llm", should_not_be_called)
+
+    merger = ConceptPageAnnotationMerger()
+    report = merger.sync_source_to_concepts("synced-src")
+
+    assert llm_calls == [], "LLM must not be called when nothing is unsynced"
+    assert report.concepts_updated == []
+    assert report.errors == []
+    assert report.annotations_merged == 0
+
+
+def test_llm_error_surfaces_to_report_errors(vault, monkeypatch):
+    """MergerLLMError from _ask_merger_llm must appear in SyncReport.errors."""
+    ann_set = AnnotationSet(
+        slug="err-src",
+        source_filename="err-src.md",
+        base="inbox",
+        items=[Annotation(ref="ref", note="note", created_at="2026-05-04T00:00:00Z")],
+    )
+    monkeypatch.setattr(mod, "get_annotation_store", lambda: _make_store(ann_set))
+
+    def raise_error(prompt: str) -> dict:
+        raise MergerLLMError("merger LLM did not invoke merge_annotations tool")
+
+    monkeypatch.setattr(mod, "_ask_merger_llm", raise_error)
+
+    merger = ConceptPageAnnotationMerger()
+    report = merger.sync_source_to_concepts("err-src")
+
+    assert len(report.errors) > 0
+    assert any("同步錯誤" in e for e in report.errors)
+    assert report.concepts_updated == []
+
+
+def test_ask_merger_llm_parses_tool_response(monkeypatch):
+    """_ask_merger_llm parses a tool_use block into {concept_slug: callout_block}."""
+    import shared.llm as llm_mod
+
+    tool_block = SimpleNamespace(
+        type="tool_use",
+        name="merge_annotations",
+        input={"mapping": {"肌酸代謝": "> [!annotation] from [[src]] · note"}},
+    )
+    mock_response = SimpleNamespace(content=[tool_block])
+    monkeypatch.setattr(llm_mod, "ask_with_tools", lambda *a, **kw: mock_response)
+
+    result = _ask_merger_llm("test prompt")
+
+    assert result == {"肌酸代謝": "> [!annotation] from [[src]] · note"}
+
+
+def test_ask_merger_llm_raises_on_no_tool_block(monkeypatch):
+    """_ask_merger_llm raises MergerLLMError when response has no merge_annotations block."""
+    import shared.llm as llm_mod
+
+    # Response with no tool_use blocks (e.g. text only)
+    text_block = SimpleNamespace(type="text", text="some text without tool call")
+    mock_response = SimpleNamespace(content=[text_block])
+    monkeypatch.setattr(llm_mod, "ask_with_tools", lambda *a, **kw: mock_response)
+
+    with pytest.raises(MergerLLMError):
+        _ask_merger_llm("test prompt")
 
 
 # ---------------------------------------------------------------------------
