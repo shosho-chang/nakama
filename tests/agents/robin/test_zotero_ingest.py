@@ -379,3 +379,57 @@ def test_zotero_ingest_route_end_to_end(route_client):
     # Cross-link frontmatter
     assert f'annotated_sibling: "{slug}--annotated.md"' in raw_content
     assert f'raw_source: "{slug}.md"' in ann_content
+
+
+def test_zotero_ingest_route_auth_fail_redirects_to_login(route_client, monkeypatch):
+    """Without a valid auth cookie, POST /zotero-ingest → 302 to /login."""
+    client, env = route_client
+
+    # Re-enable auth (route_client fixture cleared password to allow happy path)
+    monkeypatch.setenv("WEB_PASSWORD", "secret")
+    monkeypatch.setenv("WEB_SECRET", "salt")
+    import thousand_sunny.auth as auth_module
+    import thousand_sunny.routers.robin as robin_module
+
+    importlib.reload(auth_module)
+    importlib.reload(robin_module)
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(robin_module.router)
+    fresh = TestClient(app, follow_redirects=False)
+
+    resp = fresh.post(f"/zotero-ingest/{env['slug']}")
+
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/login"
+
+
+def test_zotero_ingest_route_missing_inbox_returns_404(route_client):
+    """Inbox file not found → produce_source_pages raises FileNotFoundError → 404."""
+    client, _ = route_client
+
+    resp = client.post("/zotero-ingest/nonexistent-slug-xyz")
+
+    assert resp.status_code == 404
+
+
+def test_zotero_ingest_route_non_zotero_inbox_returns_400(route_client):
+    """Inbox file without zotero_item_key → ValueError → 400."""
+    client, env = route_client
+    vault_root = env["vault_root"]
+
+    # Seed an inbox file without zotero frontmatter
+    plain_slug = "plain-url-source"
+    plain_path = vault_root / "Inbox" / "kb" / f"{plain_slug}.md"
+    plain_path.parent.mkdir(parents=True, exist_ok=True)
+    plain_path.write_text(
+        '---\noriginal_url: "https://example.com/post"\n---\n\nbody\n',
+        encoding="utf-8",
+    )
+
+    resp = client.post(f"/zotero-ingest/{plain_slug}")
+
+    assert resp.status_code == 400
