@@ -44,6 +44,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from agents.robin.zotero_reader import NoAttachmentError, parse_zotero_uri
 from shared.log import get_logger
 from shared.schemas.ingest_result import IngestFullTextLayer, IngestResult
 
@@ -233,6 +234,12 @@ class URLDispatcherConfig:
     email: str | None = None
     ncbi_api_key: str | None = None
 
+    # Zotero sync paths (Slice 1 #389). Both must be set for ``zotero://`` URIs
+    # to dispatch successfully; otherwise the URI returns a failed IngestResult
+    # with a "Zotero 未配置" hint visible in the inbox row UI.
+    zotero_root: Path | None = None
+    vault_root: Path | None = None
+
 
 class URLDispatcher:
     """Route a URL into the right scraping layer and return an ``IngestResult``.
@@ -258,6 +265,11 @@ class URLDispatcher:
         """
         if not url or not url.strip():
             raise ValueError("url must be non-empty")
+
+        # ── Zotero routing (Slice 1 #389) ────────────────────────────────────
+        zotero_item_key = parse_zotero_uri(url)
+        if zotero_item_key is not None:
+            return self._dispatch_zotero(zotero_item_key, url)
 
         # ── Academic routing (Slice 2) ────────────────────────────────────────
         academic = _detect_academic_source(url)
@@ -371,6 +383,92 @@ class URLDispatcher:
             )
             paths = []
         return rewritten, paths
+
+    # ── Slice 1 Zotero handler ────────────────────────────────────────────────
+
+    def _dispatch_zotero(self, item_key: str, original_url: str) -> IngestResult:
+        """Route a ``zotero://`` URI through ``zotero_sync.sync_zotero_item``.
+
+        Produces a failed ``IngestResult`` (visible in the inbox row UI) on:
+
+        - missing ``zotero_root`` / ``vault_root`` config
+        - unknown item key (``KeyError``)
+        - item with no usable attachment (``NoAttachmentError``)
+        - PDF-only item (``NotImplementedError`` — Slice 2 #390)
+        - any other exception inside the sync pipeline
+        """
+        cfg = self._config
+        if cfg.zotero_root is None or cfg.vault_root is None:
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=f"Zotero item {item_key}",
+                original_url=original_url,
+                error=None,
+                note="Zotero 未配置（zotero_root + vault_root 必須提供）",
+            )
+
+        # Lazy import to avoid hard dep on Trafilatura at module load time
+        # (matches the lazy-import pattern of ``_default_scrape``).
+        from agents.robin.zotero_sync import sync_zotero_item
+
+        try:
+            result, _slug = sync_zotero_item(
+                item_key,
+                zotero_root=cfg.zotero_root,
+                vault_root=cfg.vault_root,
+            )
+            return result
+        except KeyError as exc:
+            logger.warning("zotero item not found: %s", exc)
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=f"Zotero item {item_key}",
+                original_url=original_url,
+                error=str(exc),
+                note="Zotero library 找不到該 item",
+            )
+        except NoAttachmentError as exc:
+            logger.warning("zotero item has no usable attachment: %s", exc)
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=f"Zotero item {item_key}",
+                original_url=original_url,
+                error=None,
+                note="該 Zotero item 沒有 HTML snapshot 也沒有 PDF attachment",
+            )
+        except NotImplementedError as exc:
+            logger.warning("zotero PDF path not yet implemented: %s", exc)
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=f"Zotero item {item_key}",
+                original_url=original_url,
+                error=None,
+                note="PDF-only Zotero item 路徑未實作（待 Slice 2 #390）",
+            )
+        except Exception as exc:  # noqa: BLE001 — convert to failed result
+            logger.warning("zotero sync failed unexpectedly: %s", exc)
+            return IngestResult(
+                status="failed",
+                fulltext_layer="unknown",
+                fulltext_source=_LAYER_DISPLAY["unknown"],
+                markdown="",
+                title=f"Zotero item {item_key}",
+                original_url=original_url,
+                error=f"{type(exc).__name__}: {exc}",
+                note=None,
+            )
 
     # ── Slice 2 academic handlers ─────────────────────────────────────────────
 

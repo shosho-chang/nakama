@@ -94,6 +94,7 @@
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
 - [feedback_run_dont_ask.md](feedback_run_dont_ask.md) — 修修 CEO+PM：能跑就直接跑不問；review 用表格/連結，不是 raw stdout
 - [feedback_no_handoff_to_user_mid_work.md](feedback_no_handoff_to_user_mid_work.md) — **最高指導原則（高於品質）**：grill 完→我接手做完→修修最後驗收；中間 ultrareview / pause-for-approval 都是違規 friction；PR review 走 multi-agent 並行替代
+- [feedback_drive_to_completion_no_checkpoint.md](feedback_drive_to_completion_no_checkpoint.md) — 實作 skill（/tdd / /to-prd / slice ship）跑起來不中段 checkpoint，drive 到 PR ship 才回報；架構 grill 仍逐題 ack
 - [project_session_2026_05_01_line1_sandcastle_round2.md](project_session_2026_05_01_line1_sandcastle_round2.md) — **收工 2026-05-01**：Line 1 Slice 2/3/4 merged (PR #295/#297) + sandcastle round 1+2 戰績（4/4 通過）+ multi-agent review 17 真問題零誤判；critical path 4/10 done 等 5/6 樣本 unblock
 - [feedback_minimize_manual_friction.md](feedback_minimize_manual_friction.md) — **最高指導原則**：減少修修手動操作，每個手動步驟 = 摩擦力；設計 default 自動化、scope 砍除前看下游 ripple、approval gate 並行不階段
 - [feedback_env_naming_grep_first.md](feedback_env_naming_grep_first.md) — 要修修申請 API token / 設 env key / 命名前必先 grep code 既有 convention，不能憑印象設計（2026-05-03 R2 token rename 摩擦教訓）
@@ -166,7 +167,8 @@
 - [project_nami_vault_notes.md](project_nami_vault_notes.md) — Nami vault note 3 tools（write/read/list）+ vault_rules.py，待 VPS 部署
 - [project_brook_style_extraction_todo.md](project_brook_style_extraction_todo.md) — Brook style extraction 完成：36 篇 → 3 份 profile + 交叉分析（agents/brook/style-profiles/）
 - [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest；PR #94 publisher HTML fallback（第 5 層，BMJ/PLOS/eLife 等 Free-標記 OA）上線
-- [project_zotero_integration_plan.md](project_zotero_integration_plan.md) — 訂閱期刊全文走 Zotero（非 publisher login）；待開工，Phase A–D 框架已定
+- [project_zotero_integration_plan.md](project_zotero_integration_plan.md) — 訂閱期刊全文走 Zotero（非 publisher login）；2026-05-05 升 primary，Phase B-F 已 grill 全拍
+- [project_zotero_integration_grill_2026_05_05.md](project_zotero_integration_grill_2026_05_05.md) — **grill 2026-05-05 凍結 Q1-Q10**：item-as-unit / SQLite 直連 / 兩檔 ingest pattern / MVP scope；ADR-018 + ADR-019 落地
 - [reference_vps_timezone.md](reference_vps_timezone.md) — VPS TZ 是 Asia/Taipei，cron 用本機時區；日期 filename 要 `ZoneInfo("Asia/Taipei")`
 - [feedback_gitignore_negation.md](feedback_gitignore_negation.md) — .gitignore 子檔再 include 要用 `data/*` + `!data/file`，不是 `data/` + `!data/file`
 - [feedback_design_deviation_discovery.md](feedback_design_deviation_discovery.md) — 實作時發現現成輕量方案 → flag deviation，不默默換方案
@@ -274,7 +276,7 @@
 - [project_session_2026_05_04_overnight_smoke_followup.md](project_session_2026_05_04_overnight_smoke_followup.md) — **收工 2026-05-04 夜 + overnight**：Stage 1 manual smoke 暴露 5 bug + 1 UX miss → 6 PR (#369-#374) overnight dispatch ready；3/5 hit lint failure / 1/5 hit coverage gate（main context 手動補）；早上 verify + serial merge
 - [feedback_subagent_ci_gates_local_verify.md](feedback_subagent_ci_gates_local_verify.md) — Sub-agent dispatch acceptance 必含 ruff check / format / critical-path coverage 預檢；只跑自己 test 通過 = CI fail = wasted dispatch（overnight 6 PR 教訓）
 - [feedback_progress_report_anchor_arch.md](feedback_progress_report_anchor_arch.md) — 報告進度開頭一律先列七層架構兩張矩陣（Lines × Stages + Agents × Stages），再講軸線細節 + 開放議題
-- [project_epub_book_translation_grill_2026_05_05.md](project_epub_book_translation_grill_2026_05_05.md) — **EPUB 整本翻譯升級 pre-grill 凍結**：跨章節飄移 + genre routing 兩痛點；3-level 升級候選（級別 1 genre+cache / 級別 2 sample-extract+sliding window）；12 grill 議題；plan doc 在 docs/plans/2026-05-05-epub-book-translation-grill-prep.md
+- [project_epub_book_translation_grill_2026_05_05.md](project_epub_book_translation_grill_2026_05_05.md) — **SUPERSEDED 2026-05-05**：翻譯外包 Immersive Translate；剩 EPUB Reader + annotation/comment + ingest 串接，凍在 project_epub_reader_prd_2026_05_05.md
 - [project_session_2026_05_05_evening_zotero_ci_qa_blocked.md](project_session_2026_05_05_evening_zotero_ci_qa_blocked.md) — **收工 2026-05-05 evening**：TDD = sandcastle by default 原則拍板；Zotero 3 PR ruff/coverage CI 全綠等 squash；QA Step 1 撞修修另一視窗 git checkout main race 中止；下次起手 verify branch + worktree 跑 QA
 - 🚨 [feedback_sandcastle_delegation_audit.md](feedback_sandcastle_delegation_audit.md) — **必讀**：multi-slice workflow 起手必掃「可並行 sandcastle」+「P0 prereq 提前 fire」+「HITL test / sub-issue 拆解可機械化」清單；2026-05-05 EPUB Reader serialize 痛教訓
 - [feedback_token_efficient_smoke_testing.md](feedback_token_efficient_smoke_testing.md) — Playwright screenshot 慎用（一張 30-50k token），改 evaluate / snapshot；只在真要看美學 drift 時才拍

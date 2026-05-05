@@ -266,3 +266,80 @@ def test_write_to_inbox_round_trip_title_with_yaml_special_chars(tmp_path: Path)
     assert parsed["source"] == nasty_url
     assert parsed["fulltext_source"] == 'Display "label" with quotes'
     assert parsed["note"] == nasty_note
+
+
+# ── Slice 1 #389 — Zotero frontmatter + dedup ───────────────────────────────
+
+
+def _zotero_ready_result(item_key: str = "ZOTERO12") -> IngestResult:
+    body = "# Sample Paper\n\n" + ("body line.\n" * 80)
+    return IngestResult(
+        status="ready",
+        fulltext_layer="zotero_html_snapshot",
+        fulltext_source="Zotero HTML snapshot",
+        markdown=body,
+        title="Sample Paper",
+        original_url=f"zotero://select/library/items/{item_key}",
+        zotero_item_key=item_key,
+        zotero_attachment_path="/Zotero/storage/HTML0001/snapshot.html",
+        attachment_type="text/html",
+    )
+
+
+def test_write_to_inbox_with_zotero_result_emits_zotero_frontmatter(tmp_path: Path):
+    """Frontmatter contains zotero_item_key / zotero_attachment_path / attachment_type."""
+    writer = InboxWriter(tmp_path)
+    writer.write_to_inbox(_zotero_ready_result(), slug="sample-paper")
+
+    fm, _ = extract_frontmatter(read_text(tmp_path / "sample-paper.md"))
+    assert fm["zotero_item_key"] == "ZOTERO12"
+    assert fm["zotero_attachment_path"] == "/Zotero/storage/HTML0001/snapshot.html"
+    assert fm["attachment_type"] == "text/html"
+
+
+def test_write_to_inbox_with_zotero_result_overrides_source_type(tmp_path: Path):
+    """source_type auto-overrides to ``zotero`` when result has zotero_item_key,
+    regardless of the kwarg passed by caller."""
+    writer = InboxWriter(tmp_path)
+    writer.write_to_inbox(_zotero_ready_result(), slug="sample-paper", source_type="article")
+
+    fm, _ = extract_frontmatter(read_text(tmp_path / "sample-paper.md"))
+    assert fm["source_type"] == "zotero"
+
+
+def test_write_to_inbox_non_zotero_result_omits_zotero_fields(tmp_path: Path):
+    """Existing URL ingest path stays clean — no zotero_* keys leak into frontmatter."""
+    writer = InboxWriter(tmp_path)
+    writer.write_to_inbox(_ready_result(), slug="hello")
+
+    fm, _ = extract_frontmatter(read_text(tmp_path / "hello.md"))
+    assert "zotero_item_key" not in fm
+    assert "zotero_attachment_path" not in fm
+    assert "attachment_type" not in fm
+    assert fm["source_type"] == "article"  # default unchanged
+
+
+def test_find_existing_for_zotero_item_returns_match(tmp_path: Path):
+    """After writing a Zotero-sourced inbox file, lookup by item_key finds it."""
+    writer = InboxWriter(tmp_path)
+    expected = writer.write_to_inbox(_zotero_ready_result(item_key="ZOTERO12"), slug="sample")
+
+    found = writer.find_existing_for_zotero_item("ZOTERO12")
+    assert found == expected
+
+
+def test_find_existing_for_zotero_item_returns_none_when_no_match(tmp_path: Path):
+    """Mismatched item_key → None (no false positives via partial-string match)."""
+    writer = InboxWriter(tmp_path)
+    writer.write_to_inbox(_zotero_ready_result(item_key="ZOTERO12"), slug="sample")
+
+    assert writer.find_existing_for_zotero_item("OTHER999") is None
+
+
+def test_find_existing_for_zotero_item_ignores_url_only_files(tmp_path: Path):
+    """Inbox files from URL ingest (no zotero_item_key frontmatter) → not matched."""
+    writer = InboxWriter(tmp_path)
+    writer.write_to_inbox(_ready_result(url="https://example.com/x"), slug="url-article")
+
+    # Looking up any Zotero key should miss — URL inbox file lacks zotero_item_key.
+    assert writer.find_existing_for_zotero_item("ZOTERO12") is None

@@ -153,10 +153,10 @@
 <div class="container">
   <!-- URL 抓取 -->
   <div class="url-card">
-    <h2>從 URL 抓取</h2>
+    <h2>從 URL 或 Zotero 抓取</h2>
     <form id="scrapeForm" method="post" action="/scrape-translate" onsubmit="return onScrapeSubmit()">
       <div class="url-row">
-        <input class="url-input" type="url" name="url" id="urlInput" placeholder="https://www.nature.com/articles/..." required>
+        <input class="url-input" type="text" name="url" id="urlInput" placeholder="https://www.nature.com/... 或 zotero://select/library/items/..." pattern="(https?|zotero)://.+" required>
         <div class="url-selects">
           <select name="source_type" class="type-select">
             <option value="article">Article</option>

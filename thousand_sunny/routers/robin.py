@@ -369,8 +369,17 @@ def _slug_from_url(url: str) -> str:
 
     Kept as a free function so the BackgroundTask can derive the same name
     the placeholder writer used (without re-doing the slugify dance inline).
+
+    Zotero URIs get a clean ``zotero-{itemKey}`` slug instead of the
+    urlparse-based default which would produce noisy ``selectlibraryitems...``.
     """
     from urllib.parse import urlparse
+
+    from agents.robin.zotero_reader import parse_zotero_uri
+
+    item_key = parse_zotero_uri(url)
+    if item_key is not None:
+        return f"zotero-{item_key.lower()}"
 
     parsed = urlparse(url)
     return slugify(parsed.netloc + parsed.path)[:60] or "scraped"
@@ -440,6 +449,11 @@ def _ingest_url_in_background(
         _fulltext_dir = get_vault_path() / "KB" / "Attachments" / "pubmed"
         _fulltext_prefix = "KB/Attachments/pubmed"
 
+        # Zotero sync paths (Slice 1 #389). Default to ``~/Zotero/`` per修修's
+        # Windows / Mac install convention; ``ZOTERO_LIBRARY_PATH`` env var
+        # overrides for non-default installs.
+        _zotero_root = Path(os.environ.get("ZOTERO_LIBRARY_PATH") or (Path.home() / "Zotero"))
+
         config = URLDispatcherConfig(
             fetch_fulltext_fn=_fetch_fulltext if _email else None,
             image_downloader_fn=_image_downloader_adapter,
@@ -449,6 +463,8 @@ def _ingest_url_in_background(
             fulltext_vault_relative_prefix=_fulltext_prefix if _email else None,
             image_attachments_abs_dir=image_attachments_abs_dir,
             image_vault_relative_prefix=image_vault_relative_prefix,
+            zotero_root=_zotero_root,
+            vault_root=get_vault_path(),
         )
         dispatcher = URLDispatcher(config)
         result = dispatcher.dispatch(url)
