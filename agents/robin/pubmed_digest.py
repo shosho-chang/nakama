@@ -16,7 +16,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -29,9 +29,11 @@ from agents.base import BaseAgent
 from agents.robin.pubmed_fulltext import FullTextResult, fetch_fulltext
 from shared import llm
 from shared.config import get_vault_path
+from shared.journal_blocklist import is_blocked as is_journal_blocked
 from shared.journal_metrics import lookup as journal_lookup
 from shared.obsidian_writer import append_to_file, write_page
 from shared.prompt_loader import load_prompt
+from shared.pubmed_client import PubMedClientError, efetch_abstracts, esearch
 from shared.state import is_seen, mark_seen
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
@@ -94,6 +96,24 @@ class PubMedDigestPipeline(BaseAgent):
         if not fresh:
             return f"候選 {len(all_candidates)} 筆全數已見過，略過"
 
+        # 2.5 Blocklist filter — 把 MDPI / 部分 Frontiers 等指定 publisher 期刊踢掉。
+        # 保留 fresh_seen_for_mark：dedup 後的全部 PMID（含 blocked），給 step 8
+        # mark_seen 用，避免 blocked PMID 明天再被 fetch + dedup 一次。
+        fresh_seen_for_mark = list(fresh)
+        fresh = [c for c in fresh if not is_journal_blocked(c.get("journal", ""))]
+        blocked_n = len(fresh_seen_for_mark) - len(fresh)
+        if blocked_n:
+            self.logger.info(
+                f"blocklist 過濾掉 {blocked_n} 筆 MDPI/Frontiers 期刊，剩 {len(fresh)} 筆"
+            )
+
+        if not fresh:
+            # 仍要 mark_seen 那批 blocked，避免明天重複 fetch
+            if not self.dry_run:
+                for c in fresh_seen_for_mark:
+                    mark_seen(_SOURCE_NAME, c["pmid"], c.get("url"))
+            return f"候選 {len(all_candidates)} 筆，blocklist 過濾後 0 筆"
+
         # 3. Enrich with journal tier
         for c in fresh:
             info = journal_lookup(journal_name=c["journal"], issn=c.get("issn"))
@@ -144,9 +164,10 @@ class PubMedDigestPipeline(BaseAgent):
             self._update_kb_index(digest_path, len(scored))
 
         # 8. 標記所有今次處理到的 PMID 為 seen（避免明天再抓到重複；
-        #    即便未入選也記，因為已經 curate 過了）
+        #    即便未入選也記，因為已經 curate 過了）。
+        #    fresh_seen_for_mark 含 blocklist 過掉的，避免 blocked PMID 明天再 fetch。
         if not self.dry_run:
-            for c in fresh:
+            for c in fresh_seen_for_mark:
                 mark_seen(_SOURCE_NAME, c["pmid"], c.get("url"))
 
         oa_count = sum(1 for i in scored if i.get("fulltext", {}).get("status") == "oa_downloaded")
@@ -219,6 +240,16 @@ class PubMedDigestPipeline(BaseAgent):
     # ------------------------------------------------------------------
 
     def _fetch_feed(self, feed_config: dict) -> list[dict]:
+        feed_type = feed_config.get("type", "rss")
+        if feed_type == "rss":
+            return self._fetch_rss(feed_config)
+        elif feed_type == "eutils":
+            return self._fetch_eutils(feed_config)
+        else:
+            self.logger.warning(f"未知 feed type={feed_type} name={feed_config.get('name')}，略過")
+            return []
+
+    def _fetch_rss(self, feed_config: dict) -> list[dict]:
         url = feed_config["url"]
         parsed = feedparser.parse(url)
         if parsed.bozo and not parsed.entries:
@@ -230,6 +261,52 @@ class PubMedDigestPipeline(BaseAgent):
             item = self._parse_entry(entry, feed_config.get("name", "default"))
             if item:
                 items.append(item)
+        return items
+
+    def _fetch_eutils(self, feed_config: dict) -> list[dict]:
+        """Eutils-type feed：esearch 拿 PMID 後 efetch 補 abstract，與 RSS path schema 對齊。
+
+        - 動態組 last N 天日期範圍（Asia/Taipei，PubMed 以 PDAT 過濾）
+        - retmax 由 feed_config['limit'] 控制，sort=pub_date desc
+        - 失敗時 log warning + 回 [] —— 與 RSS feed 失敗對齊（不帶倒整個 digest）
+        """
+        name = feed_config.get("name", "default")
+        term = (feed_config.get("term") or "").strip()
+        if not term:
+            self.logger.warning(f"[{name}] eutils feed 缺 term，略過")
+            return []
+
+        days = int(feed_config.get("days", 14))
+        limit = int(feed_config.get("limit", 80))
+
+        today = datetime.now(ZoneInfo("Asia/Taipei"))
+        since = today - timedelta(days=days)
+        date_clause = (
+            f'("{since.strftime("%Y/%m/%d")}"[PDAT] : "{today.strftime("%Y/%m/%d")}"[PDAT])'
+        )
+        full_term = f"({term}) AND {date_clause}"
+
+        try:
+            pmids = esearch(full_term, max_results=limit, sort="pub_date")
+        except PubMedClientError as e:
+            self.logger.warning(f"[{name}] esearch 失敗：{e}")
+            return []
+
+        if not pmids:
+            self.logger.info(f"[{name}] esearch 0 命中（{days} 天內）")
+            return []
+
+        try:
+            articles = efetch_abstracts(pmids)
+        except PubMedClientError as e:
+            self.logger.warning(f"[{name}] efetch 失敗：{e}")
+            return []
+
+        items = []
+        for art in articles:
+            item = dict(art)
+            item["feed_source"] = name
+            items.append(item)
         return items
 
     @staticmethod
