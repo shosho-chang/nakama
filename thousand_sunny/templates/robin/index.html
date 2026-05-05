@@ -141,9 +141,14 @@
 <body>
 <div class="header">
   <h1><span>🏴‍☠️</span>Robin · Inbox</h1>
-  <form method="post" action="/logout" style="margin:0">
-    <button type="submit" style="background:transparent;color:#888;padding:0;font-size:0.875rem">登出</button>
-  </form>
+  <div style="display:flex;align-items:center;gap:1rem">
+    <nav style="display:flex;gap:0.75rem;font-size:0.875rem">
+      <a href="/books" style="color:#6c63ff;text-decoration:none">📚 書架</a>
+    </nav>
+    <form method="post" action="/logout" style="margin:0">
+      <button type="submit" style="background:transparent;color:#888;padding:0;font-size:0.875rem">登出</button>
+    </form>
+  </div>
 </div>
 <div class="container">
   <!-- URL 抓取 -->

@@ -1,9 +1,11 @@
 """Thousand Sunny — Nakama web server entry point."""
 
 import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 # Windows uvicorn inherits cp1252 stdout/stderr → any 中文 log message would
 # raise UnicodeEncodeError per-record (logging then floods stderr with stack
@@ -14,6 +16,7 @@ from shared.log import force_utf8_console
 
 force_utf8_console()
 
+from thousand_sunny.middleware.csp import add_csp_middleware  # noqa: E402
 from thousand_sunny.routers import (  # noqa: E402
     auth,
     bridge,
@@ -25,6 +28,9 @@ from thousand_sunny.routers import (  # noqa: E402
 )
 
 app = FastAPI(docs_url=None, redoc_url=None)
+
+# Reader CSP must be installed BEFORE routes so middleware wraps everything.
+add_csp_middleware(app)
 
 app.include_router(auth.router)
 app.include_router(bridge.router)
@@ -38,9 +44,23 @@ app.include_router(franky.page_router)
 
 # Robin（KB ingest + reader）僅本機執行，VPS 設 DISABLE_ROBIN=1 跳過
 if not os.getenv("DISABLE_ROBIN"):
-    from thousand_sunny.routers import robin
+    from thousand_sunny.routers import books, robin
 
     app.include_router(robin.router)
+    app.include_router(books.router)
+
+    # foliate-js must be served from the same origin as /books/* so CSP
+    # ``script-src 'self'`` allows it. Mount the vendored submodule under
+    # /vendor/foliate-js/ as static files. Missing dir (fresh checkout
+    # forgot ``git submodule update --init``) → skip the mount and log;
+    # the reader page will fail to load JS but /books library still works.
+    _foliate_dir = Path(__file__).resolve().parent.parent / "vendor" / "foliate-js"
+    if _foliate_dir.is_dir():
+        app.mount(
+            "/vendor/foliate-js",
+            StaticFiles(directory=str(_foliate_dir)),
+            name="foliate-js",
+        )
 else:
 
     @app.get("/")
