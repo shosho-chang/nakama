@@ -39,6 +39,28 @@ _SKIP_SECTIONS = frozenset(
 
 _MIN_CHUNK_CHARS = 30
 
+_KB_SUBDIRS = frozenset({"Sources", "Concepts", "Entities"})
+
+
+def _normalize_wikilink(raw: str) -> str | None:
+    """Convert a raw wikilink target to a canonical KB path, or None if not KB.
+
+    Examples:
+      "Concepts/overtraining"    → "KB/Wiki/Concepts/overtraining"
+      "Sources/paper-name"       → "KB/Wiki/Sources/paper-name"
+      "KB/Wiki/Entities/foo"     → "KB/Wiki/Entities/foo"  (already canonical)
+      "external-note"            → None  (not a KB wiki path)
+    """
+    # Strip display alias: [[Target|Display]] → "Target"
+    raw = raw.split("|")[0].strip()
+    if raw.startswith("KB/Wiki/"):
+        return raw
+    # Match Concepts/X, Sources/X, Entities/X
+    for subdir in _KB_SUBDIRS:
+        if raw.startswith(f"{subdir}/"):
+            return f"KB/Wiki/{raw}"
+    return None
+
 
 @dataclass
 class IndexStats:
@@ -145,9 +167,20 @@ def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
             fm, body = extract_frontmatter(content)
             page_title: str = fm.get("title") or md_file.stem
 
-            # Collect wikilinks for the caller (stats / graph building)
-            for wl in _WIKILINK_RE.findall(content):
+            # Collect wikilinks and persist to kb_wikilinks
+            raw_wikilinks = _WIKILINK_RE.findall(content)
+            for wl in raw_wikilinks:
                 stats.wikilinks.append(wl)
+
+            # Remove stale wikilinks and chunks for this page
+            db.execute("DELETE FROM kb_wikilinks WHERE src_path = ?", (page_path,))
+            for raw_wl in raw_wikilinks:
+                dst = _normalize_wikilink(raw_wl)
+                if dst and dst != page_path:
+                    db.execute(
+                        "INSERT INTO kb_wikilinks(src_path, dst_path) VALUES (?, ?)",
+                        (page_path, dst),
+                    )
 
             # Remove stale chunks for this page
             old_rowids: list[int] = [

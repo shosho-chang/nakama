@@ -280,3 +280,93 @@ def test_index_vault_sources_concepts_entities_all_indexed(vault_10):
             (f"KB/Wiki/{subdir}/%",),
         ).fetchone()
         assert rows[0] > 0, f"no chunks for subdir {subdir}"
+
+
+# ---------------------------------------------------------------------------
+# Wikilink persistence (issue #433 Phase 1b)
+# ---------------------------------------------------------------------------
+
+
+def test_index_vault_wikilinks_persisted_to_db(tmp_path):
+    """Wikilinks [[X]] in page body are persisted to kb_wikilinks table."""
+    wiki = tmp_path / "KB" / "Wiki" / "Concepts"
+    wiki.mkdir(parents=True)
+    _make_page(
+        wiki,
+        "concept-a",
+        title="Concept A",
+        body=(
+            "## 定義\n"
+            "這是 concept-a 的定義。"
+            "[[Concepts/concept-b]] 是相關概念，[[Sources/source-x]] 是引用來源。\n" + "x" * 60
+        ),
+    )
+
+    conn = make_conn()
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        index_vault(tmp_path, conn)
+
+    rows = conn.execute("SELECT src_path, dst_path FROM kb_wikilinks").fetchall()
+    assert rows, "kb_wikilinks must have at least one row"
+    src_paths = {r[0] for r in rows}
+    dst_paths = {r[1] for r in rows}
+    assert "KB/Wiki/Concepts/concept-a" in src_paths
+    assert "KB/Wiki/Concepts/concept-b" in dst_paths
+    assert "KB/Wiki/Sources/source-x" in dst_paths
+
+
+def test_index_vault_mentioned_in_frontmatter_persisted(tmp_path):
+    """Wikilinks in frontmatter (mentioned_in field) are also persisted."""
+    wiki = tmp_path / "KB" / "Wiki" / "Concepts"
+    wiki.mkdir(parents=True)
+    _make_page(
+        wiki,
+        "concept-c",
+        title="Concept C",
+        body="## Section\n" + "x" * 60,
+        frontmatter_extra=(
+            'mentioned_in:\n  - "[[Sources/paper-one]]"\n  - "[[Sources/paper-two]]"\n'
+        ),
+    )
+
+    conn = make_conn()
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        index_vault(tmp_path, conn)
+
+    dst_paths = {r[0] for r in conn.execute("SELECT dst_path FROM kb_wikilinks").fetchall()}
+    assert "KB/Wiki/Sources/paper-one" in dst_paths
+    assert "KB/Wiki/Sources/paper-two" in dst_paths
+
+
+def test_index_vault_wikilinks_removed_on_reindex(tmp_path):
+    """Old wikilinks for a page are removed before re-indexing (no stale edges)."""
+    wiki = tmp_path / "KB" / "Wiki" / "Concepts"
+    wiki.mkdir(parents=True)
+    page = wiki / "mutable-wl.md"
+    page.write_text(
+        "---\ntitle: Mutable\n---\n## Section\n[[Concepts/old-target]] mention here " + "x" * 50,
+        encoding="utf-8",
+    )
+
+    conn = make_conn()
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        index_vault(tmp_path, conn)
+
+    old_rows = conn.execute("SELECT dst_path FROM kb_wikilinks").fetchall()
+    assert any("old-target" in r[0] for r in old_rows)
+
+    import time
+
+    time.sleep(0.01)
+    page.write_text(
+        "---\ntitle: Mutable\n---\n## Section\n[[Concepts/new-target]] different link " + "x" * 50,
+        encoding="utf-8",
+    )
+
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        index_vault(tmp_path, conn)
+
+    new_rows = conn.execute("SELECT dst_path FROM kb_wikilinks").fetchall()
+    dst_set = {r[0] for r in new_rows}
+    assert "KB/Wiki/Concepts/new-target" in dst_set
+    assert not any("old-target" in d for d in dst_set), "stale wikilink must be removed"

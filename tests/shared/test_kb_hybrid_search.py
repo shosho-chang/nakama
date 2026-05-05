@@ -256,3 +256,185 @@ def test_make_conn_creates_all_tables():
     # FTS5 shadow tables include the _data table
     assert any("kb_chunks" in t for t in tables)
     assert any("kb_vectors" in t for t in tables)
+
+
+# ---------------------------------------------------------------------------
+# Wikilink lane (issue #433 Phase 1b)
+# ---------------------------------------------------------------------------
+
+
+def _insert_wikilink(conn, src_path: str, dst_path: str) -> None:
+    conn.execute(
+        "INSERT INTO kb_wikilinks(src_path, dst_path) VALUES (?,?)",
+        (src_path, dst_path),
+    )
+
+
+@pytest.fixture
+def wikilink_db():
+    """In-memory DB for wikilink lane tests.
+
+    Structure:
+      concept-a (rowid=1): BM25-matches "concept-a unique alpha"
+      sources-x (rowid=2): concept-a links OUT to sources-x
+      sources-y (rowid=3): concept-a links OUT to sources-y
+      concept-b (rowid=4): concept-a links OUT to concept-b
+
+    Wikilinks:
+      KB/Wiki/Concepts/concept-a → KB/Wiki/Sources/sources-x
+      KB/Wiki/Concepts/concept-a → KB/Wiki/Sources/sources-y
+      KB/Wiki/Concepts/concept-a → KB/Wiki/Concepts/concept-b
+    """
+    conn = make_conn()
+
+    _insert_chunk(
+        conn,
+        1,
+        "conceptalpha unique distinctive text long",
+        "",
+        "Concept A",
+        "KB/Wiki/Concepts/concept-a",
+    )
+    _insert_vec(conn, 1, _unit_vec(256, 20))
+
+    _insert_chunk(
+        conn,
+        2,
+        "sourceresearch material content findings",
+        "",
+        "Source X",
+        "KB/Wiki/Sources/sources-x",
+    )
+    _insert_vec(conn, 2, _unit_vec(256, 21))
+
+    _insert_chunk(
+        conn,
+        3,
+        "source y background context information",
+        "",
+        "Source Y",
+        "KB/Wiki/Sources/sources-y",
+    )
+    _insert_vec(conn, 3, _unit_vec(256, 22))
+
+    _insert_chunk(
+        conn,
+        4,
+        "concept b related information details",
+        "",
+        "Concept B",
+        "KB/Wiki/Concepts/concept-b",
+    )
+    _insert_vec(conn, 4, _unit_vec(256, 23))
+
+    _insert_wikilink(conn, "KB/Wiki/Concepts/concept-a", "KB/Wiki/Sources/sources-x")
+    _insert_wikilink(conn, "KB/Wiki/Concepts/concept-a", "KB/Wiki/Sources/sources-y")
+    _insert_wikilink(conn, "KB/Wiki/Concepts/concept-a", "KB/Wiki/Concepts/concept-b")
+
+    conn.commit()
+    return conn
+
+
+def test_make_conn_creates_wikilinks_table():
+    """make_conn() must initialize kb_wikilinks table."""
+    conn = make_conn()
+    tables = {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+    }
+    assert "kb_wikilinks" in tables
+
+
+def test_wikilink_lane_outgoing_links(wikilink_db):
+    """BM25 hits concept-a; wikilink lane pulls in its 3 outgoing neighbors."""
+    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 99)):
+        hits = search(
+            "conceptalpha unique distinctive",
+            top_k=10,
+            lanes=("bm25", "wikilink"),
+            db=wikilink_db,
+        )
+
+    paths = {h.path for h in hits}
+    assert "KB/Wiki/Sources/sources-x" in paths
+    assert "KB/Wiki/Sources/sources-y" in paths
+    assert "KB/Wiki/Concepts/concept-b" in paths
+
+
+def test_wikilink_lane_incoming_links(wikilink_db):
+    """Query hits sources-x; wikilink lane finds concept-a via incoming edge."""
+    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 99)):
+        hits = search(
+            "sourceresearch material content",
+            top_k=10,
+            lanes=("bm25", "wikilink"),
+            db=wikilink_db,
+        )
+
+    paths = {h.path for h in hits}
+    assert "KB/Wiki/Concepts/concept-a" in paths
+
+
+def test_wikilink_lane_rank_in_lane_ranks(wikilink_db):
+    """Wikilink-only hits must have 'wikilink' key in lane_ranks, no BM25/vec."""
+    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 99)):
+        hits = search(
+            "conceptalpha unique distinctive",
+            top_k=10,
+            lanes=("bm25", "wikilink"),
+            db=wikilink_db,
+        )
+
+    hit_by_path = {h.path: h for h in hits}
+    sx = hit_by_path.get("KB/Wiki/Sources/sources-x")
+    assert sx is not None, "sources-x must be in results"
+    assert "wikilink" in sx.lane_ranks
+    assert "bm25" not in sx.lane_ranks
+    assert "vec" not in sx.lane_ranks
+
+
+def test_bm25_vec_lanes_no_wikilink_regression(rrf_db):
+    """lanes=('bm25','vec') without 'wikilink' — exact pre-#433 behavior, no wikilink key."""
+    with patch("shared.kb_embedder.embed", return_value=_query_emb_at_dim0()):
+        hits = search("sleep sleep sleep", top_k=10, lanes=("bm25", "vec"), db=rrf_db)
+
+    assert len(hits) == 3
+    paths = [h.path for h in hits]
+    assert paths[0] == "KB/Wiki/Concepts/sleep-research"
+    assert paths[-1] == "KB/Wiki/Concepts/exercise"
+    for h in hits:
+        assert "wikilink" not in h.lane_ranks
+
+
+def test_rrf_3lane_wikilink_score():
+    """Hand-calc: page that appears only in wikilink lane at rank 1 → score = 1/(60+1)."""
+    conn = make_conn()
+
+    # bm25-hit: matches query text, links to wikilink-target
+    _insert_chunk(
+        conn, 1, "anchor page text for query match", "", "Anchor", "KB/Wiki/Concepts/anchor"
+    )
+    _insert_vec(conn, 1, _unit_vec(256, 0))
+
+    # wikilink-target: does NOT match BM25/vec query
+    _insert_chunk(
+        conn, 2, "unrelated filler words zzz qqq xxx", "", "Target", "KB/Wiki/Concepts/wl-target"
+    )
+    _insert_vec(conn, 2, _unit_vec(256, 1))
+
+    _insert_wikilink(conn, "KB/Wiki/Concepts/anchor", "KB/Wiki/Concepts/wl-target")
+    conn.commit()
+
+    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 99)):
+        hits = search(
+            "anchor page text query match",
+            top_k=10,
+            lanes=("bm25", "wikilink"),
+            db=conn,
+        )
+
+    hit_by_path = {h.path: h for h in hits}
+    tgt = hit_by_path.get("KB/Wiki/Concepts/wl-target")
+    assert tgt is not None, "wikilink-target must appear in results"
+    assert "wikilink" in tgt.lane_ranks
+    expected_score = 1.0 / (_RRF_K + tgt.lane_ranks["wikilink"])
+    assert abs(tgt.rrf_score - expected_score) < 1e-9
