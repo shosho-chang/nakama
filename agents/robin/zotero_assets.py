@@ -53,7 +53,6 @@ def rewrite_image_paths(md: str, vault_prefix: str) -> str:
     relative ``_assets/`` prefix is replaced, not bare occurrences elsewhere
     in body text.
     """
-    return (
-        md.replace("](_assets/", f"]({vault_prefix}/")
-        .replace('src="_assets/', f'src="{vault_prefix}/')
+    return md.replace("](_assets/", f"]({vault_prefix}/").replace(
+        'src="_assets/', f'src="{vault_prefix}/'
     )

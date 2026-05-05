@@ -59,15 +59,18 @@ def sync_zotero_item(
     # snapshot's figures preserved (the existing URL-scrape path drops them
     # because PR #355 image first-class delegates to a separate downloader).
     html = item.attachment_path.read_text(encoding="utf-8")
-    md = trafilatura.extract(
-        html,
-        output_format="markdown",
-        include_comments=False,
-        include_tables=True,
-        include_images=True,
-        include_links=True,
-        favor_recall=True,
-    ) or ""
+    md = (
+        trafilatura.extract(
+            html,
+            output_format="markdown",
+            include_comments=False,
+            include_tables=True,
+            include_images=True,
+            include_links=True,
+            favor_recall=True,
+        )
+        or ""
+    )
 
     # Copy snapshot's _assets/ to vault; rewrite image src.
     vault_assets_dir = vault_root / "KB" / "Attachments" / "zotero" / slug / "_assets"

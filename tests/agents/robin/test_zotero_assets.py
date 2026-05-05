@@ -10,7 +10,6 @@ from pathlib import Path
 
 from agents.robin.zotero_assets import copy_assets, rewrite_image_paths
 
-
 # ---------------------------------------------------------------------------
 # copy_assets
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ Public surface (TDD-driven, grow as tests demand):
 
 - ``parse_zotero_uri(uri)`` — extract itemKey from ``zotero://select/library/items/{key}`` URIs.
 - ``ZoteroItem`` — value object: metadata + selected primary attachment.
-- ``ZoteroReader(zotero_root)`` — open the local library, ``get_item(key)`` returns a ``ZoteroItem``.
+- ``ZoteroReader(zotero_root)`` — open library; ``get_item(key)`` returns a ``ZoteroItem``.
 """
 
 from __future__ import annotations

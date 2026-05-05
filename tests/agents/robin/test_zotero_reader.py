@@ -29,7 +29,6 @@ from tests.agents.robin._zotero_fixture import (
     init_zotero_lib,
 )
 
-
 # ---------------------------------------------------------------------------
 # parse_zotero_uri
 # ---------------------------------------------------------------------------
@@ -43,12 +42,12 @@ def test_parse_zotero_uri_extracts_item_key():
 @pytest.mark.parametrize(
     "uri",
     [
-        "",                                                    # empty
-        "https://example.com/paper",                           # plain web URL
-        "zotero://collection/library/Foo",                     # wrong path
-        "zotero://select/library/items/",                      # missing key
-        "zotero://select/groups/123/items/ABC12345",           # group library (out of MVP scope)
-        "zotero://select/library/items/abc12345 extra",        # trailing garbage
+        "",  # empty
+        "https://example.com/paper",  # plain web URL
+        "zotero://collection/library/Foo",  # wrong path
+        "zotero://select/library/items/",  # missing key
+        "zotero://select/groups/123/items/ABC12345",  # group library (out of MVP scope)
+        "zotero://select/library/items/abc12345 extra",  # trailing garbage
     ],
 )
 def test_parse_zotero_uri_returns_none_for_invalid(uri: str):

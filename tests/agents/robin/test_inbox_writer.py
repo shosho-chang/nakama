@@ -281,7 +281,7 @@ def _zotero_ready_result(item_key: str = "ZOTERO12") -> IngestResult:
         title="Sample Paper",
         original_url=f"zotero://select/library/items/{item_key}",
         zotero_item_key=item_key,
-        zotero_attachment_path=f"/Zotero/storage/HTML0001/snapshot.html",
+        zotero_attachment_path="/Zotero/storage/HTML0001/snapshot.html",
         attachment_type="text/html",
     )
 
