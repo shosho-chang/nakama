@@ -60,9 +60,9 @@ def test_book_progress_foreign_key_to_books():
 
     conn = _get_conn()
     fks = conn.execute("PRAGMA foreign_key_list(book_progress)").fetchall()
-    assert any(
-        fk[2] == "books" and fk[3] == "book_id" and fk[4] == "book_id" for fk in fks
-    ), f"no FK book_progress.book_id → books.book_id; got {fks}"
+    assert any(fk[2] == "books" and fk[3] == "book_id" and fk[4] == "book_id" for fk in fks), (
+        f"no FK book_progress.book_id → books.book_id; got {fks}"
+    )
 
 
 def test_book_progress_fk_blocks_orphan_insert():
