@@ -67,6 +67,7 @@ const commentsSidebar = document.getElementById('comments-sidebar');
 const commentsList = document.getElementById('comments-list');
 const commentsToggle = document.getElementById('commentsToggle');
 const commentsClose = document.getElementById('commentsClose');
+const addCommentBtn = document.getElementById('addCommentBtn');
 const toast = document.getElementById('ann-toast');
 
 let currentSet = null;       // AnnotationSetV2 mirror
@@ -202,7 +203,7 @@ function rebuildCommentsSidebar() {
   if (comments.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = '尚無反思。選取文字後按「C 反思」即可新增。';
+    empty.textContent = '尚無反思。點上方 + 新增章節反思，或選取文字後按「C 反思」錨定到具體段落。';
     commentsList.appendChild(empty);
     return;
   }
@@ -488,6 +489,7 @@ commentsToggle.addEventListener('click', () => {
   setSidebarOpen(commentsSidebar.hidden);
 });
 commentsClose.addEventListener('click', () => setSidebarOpen(false));
+addCommentBtn.addEventListener('click', openCommentModal);
 
 // ── Ingest button (Slice 4D) ─────────────────────────────────────────────────
 //
