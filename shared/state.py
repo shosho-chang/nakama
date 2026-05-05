@@ -399,6 +399,26 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             error          TEXT,
             FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
         );
+
+        -- S4: 👍/👎 ground truth signals parsed from digest.md checkboxes.
+        -- Canonical DDL: migrations/013_kb_search_feedback.sql.
+        -- Owned by shared/kb_search_feedback_store.py; written by
+        -- agents.robin.book_digest_writer.write_digest() on each sync.
+        -- Dual-use: future Chopper retrieval QA dataset.
+        CREATE TABLE IF NOT EXISTS kb_search_feedback (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id    TEXT    NOT NULL,
+            item_cfi   TEXT    NOT NULL,
+            query_text TEXT    NOT NULL DEFAULT '',
+            hit_path   TEXT    NOT NULL,
+            signal     TEXT    NOT NULL CHECK (signal IN ('up', 'down')),
+            marked_at  TEXT    NOT NULL,
+            source     TEXT    NOT NULL DEFAULT 'digest',
+            UNIQUE (book_id, item_cfi, hit_path)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_kb_search_feedback_book
+            ON kb_search_feedback(book_id, marked_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
