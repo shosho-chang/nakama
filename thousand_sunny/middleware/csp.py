@@ -19,7 +19,11 @@ _CSP_POLICY = (
     "script-src 'self'; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob:; "
-    "frame-src 'none'; "
+    # foliate-js's paginator loads chapter HTML into iframes whose src is a
+    # blob: URL of the same origin. 'none' blocks them and the reader can't
+    # render anything. 'self' covers srcdoc fallback; blob: covers the
+    # paginator's primary path.
+    "frame-src 'self' blob:; "
     "object-src 'none'; "
     "base-uri 'self'"
 )
