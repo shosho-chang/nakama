@@ -1,0 +1,223 @@
+"""Write KB/Wiki/Sources/Books/{book_id}/digest.md from AnnotationSetV2.
+
+Full-replace semantics: each call overwrites the file entirely. Idempotent.
+
+Surfaces related KB pages via hybrid search (purpose="book_review") for each
+H/A/C item. Wikilinks are reverse-surfaced from concept pages that have
+annotation-from: {book_id} boundary markers written by annotation_merger v2.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+from agents.robin.kb_search import search_kb
+from shared.annotation_store import get_annotation_store
+from shared.config import get_vault_path
+from shared.vault_rules import assert_reader_can_write
+
+
+@dataclass
+class DigestReport:
+    """Summary of a write_digest() run."""
+
+    book_id: str
+    chapters_rendered: int
+    items_rendered: dict  # {"h": int, "a": int, "c": int}
+    hits_per_item_avg: float
+    render_duration_ms: int
+    errors: list[str] = field(default_factory=list)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _extract_chapter_ref(cfi: str) -> str:
+    """Derive chapter identifier from EPUB CFI string.
+
+    Prefers the explicit ID from epubcfi(/6/N[id]!/...). Falls back to the
+    spine index number so items from the same chapter still group together.
+    """
+    m = re.search(r"/6/\d+\[([^\]]+)\]!", cfi)
+    if m:
+        return m.group(1)
+    m = re.search(r"/6/(\d+)!", cfi)
+    if m:
+        return f"spine-{m.group(1)}"
+    return "unknown"
+
+
+def _surface_wikilinks(book_id: str, vault_path: Path) -> list[str]:
+    """Return concept slugs whose pages carry annotation-from: {book_id} markers.
+
+    Reverse-surfaces annotation_merger v2 results at zero extra LLM cost.
+    """
+    concepts_dir = vault_path / "KB" / "Wiki" / "Concepts"
+    if not concepts_dir.exists():
+        return []
+    marker = f"<!-- annotation-from: {book_id} -->"
+    slugs: list[str] = []
+    for p in sorted(concepts_dir.glob("*.md")):
+        try:
+            if marker in p.read_text(encoding="utf-8"):
+                slugs.append(p.stem)
+        except Exception:  # noqa: BLE001
+            continue
+    return slugs
+
+
+def _render_item_block(
+    item,
+    book_id: str,
+    vault_path: Path,
+    wikilinks_line: str,
+    errors: list[str],
+) -> tuple[str, int]:
+    """Render a single annotation item as a markdown block.
+
+    Returns (block_text, hits_count).
+    """
+    if item.type == "highlight":
+        query = item.text_excerpt
+        label = "H"
+        body_text = item.text_excerpt
+        cfi = item.cfi
+    elif item.type == "annotation":
+        query = f"{item.text_excerpt}\n{item.note}"
+        label = "A"
+        body_text = f"{item.text_excerpt}\n\n> {item.note}"
+        cfi = item.cfi
+    else:  # comment
+        query = item.body[:500]
+        label = "C"
+        body_text = item.body
+        cfi = item.cfi_anchor or ""
+
+    try:
+        hits = search_kb(
+            query[:500],
+            vault_path,
+            top_k=3,
+            purpose="book_review",
+            engine="hybrid",
+        )
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"search_kb failed ({label}): {exc}")
+        hits = []
+
+    deep_link = f"/books/{book_id}#cfi={cfi}" if cfi else f"/books/{book_id}"
+
+    hits_lines = (
+        "\n".join(f"  - [[{h['path']}]] — {h.get('relevance_reason', '')}" for h in hits)
+        if hits
+        else "  _(no KB hits)_"
+    )
+
+    block = (
+        f"**{label}** {body_text}\n\n"
+        f"🔗 {wikilinks_line}\n\n"
+        f"📚 KB 相關：\n{hits_lines}\n\n"
+        f"📖 [開回 Reader]({deep_link})"
+    )
+    return block, len(hits)
+
+
+def write_digest(book_id: str) -> DigestReport:
+    """Generate and write KB/Wiki/Sources/Books/{book_id}/digest.md.
+
+    Loads AnnotationSetV2 for book_id, groups items by chapter, calls
+    search_kb(engine="hybrid", purpose="book_review", top_k=3) per item,
+    and renders a chapter-structured markdown digest. Full-replace.
+
+    Returns a DigestReport describing what was rendered.
+    """
+    start_ms = int(time.monotonic() * 1000)
+    errors: list[str] = []
+    vault_path = get_vault_path()
+
+    ann_set = get_annotation_store().load(book_id)
+    if ann_set is None or not hasattr(ann_set, "book_id"):
+        return DigestReport(
+            book_id=book_id,
+            chapters_rendered=0,
+            items_rendered={"h": 0, "a": 0, "c": 0},
+            hits_per_item_avg=0.0,
+            render_duration_ms=int(time.monotonic() * 1000) - start_ms,
+            errors=[f"no annotations found for book_id={book_id!r}"],
+        )
+
+    # Group items by chapter ref, preserving first-occurrence order.
+    chapters: dict[str, list] = {}
+    for item in ann_set.items:
+        if item.type == "comment":
+            ch = item.chapter_ref
+        else:
+            ch = _extract_chapter_ref(item.cfi)
+        chapters.setdefault(ch, []).append(item)
+
+    # Within each chapter: sort H/A by CFI, comments by chapter_ref (stable).
+    for ch_items in chapters.values():
+        ch_items.sort(key=lambda i: getattr(i, "cfi", "") or getattr(i, "chapter_ref", ""))
+
+    # Reverse-surface concept wikilinks written by annotation_merger v2.
+    wikilinks = _surface_wikilinks(book_id, vault_path)
+    wikilinks_line = (
+        " ".join(f"[[Concepts/{slug}]]" for slug in wikilinks)
+        if wikilinks
+        else "_none yet — run KB sync first_"
+    )
+
+    h_count = a_count = c_count = 0
+    total_hits = 0
+    total_items = 0
+    sections: list[str] = []
+
+    for ch_idx, (ch_ref, ch_items) in enumerate(chapters.items(), start=1):
+        heading = f"## Ch{ch_idx} {ch_ref}"
+        blocks: list[str] = []
+        for item in ch_items:
+            block, hit_count = _render_item_block(item, book_id, vault_path, wikilinks_line, errors)
+            blocks.append(block)
+            total_hits += hit_count
+            total_items += 1
+            if item.type == "highlight":
+                h_count += 1
+            elif item.type == "annotation":
+                a_count += 1
+            else:
+                c_count += 1
+        sections.append(heading + "\n\n" + "\n\n---\n\n".join(blocks))
+
+    frontmatter = (
+        f"---\n"
+        f"type: book_digest\n"
+        f"book_id: {book_id}\n"
+        f'book_entity: "[[Sources/Books/{book_id}]]"\n'
+        f"schema_version: 1\n"
+        f'updated_at: "{_now_iso()}"\n'
+        f"---\n"
+    )
+    content = frontmatter + "\n" + "\n\n".join(sections) + ("\n" if sections else "")
+
+    relative = f"KB/Wiki/Sources/Books/{book_id}/digest.md"
+    assert_reader_can_write(relative)
+    dest = vault_path / relative
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(content, encoding="utf-8")
+
+    duration_ms = int(time.monotonic() * 1000) - start_ms
+    hits_per_item_avg = total_hits / total_items if total_items > 0 else 0.0
+
+    return DigestReport(
+        book_id=book_id,
+        chapters_rendered=len(chapters),
+        items_rendered={"h": h_count, "a": a_count, "c": c_count},
+        hits_per_item_avg=hits_per_item_avg,
+        render_duration_ms=duration_ms,
+        errors=errors,
+    )

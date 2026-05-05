@@ -22,7 +22,7 @@ TOP_K = 8
 
 _SUBDIR_TO_TYPE = {"Sources": "source", "Concepts": "concept", "Entities": "entity"}
 
-Purpose = Literal["youtube", "seo_audit", "blog_compose", "general"]
+Purpose = Literal["youtube", "seo_audit", "blog_compose", "general", "book_review"]
 Engine = Literal["haiku", "hybrid"]
 
 
@@ -49,9 +49,15 @@ def _build_purpose_intro(purpose: Purpose, query: str) -> str:
         )
     if purpose == "general":
         return f"使用者想查詢知識庫中與下列主題相關的頁面：\n「{query}」"
+    if purpose == "book_review":
+        return (
+            f"使用者正在讀一本書並寫讀書心得，剛劃線了書中的一段話，請從 KB 中找出可作為對照、"
+            f"佐證、或延伸閱讀的頁面 — 優先 PubMed digest / 其他書同主題章節 / 既有 Concept 頁面。"
+            f"劃線文字：\n「{query}」"
+        )
     raise ValueError(
         f"Unknown purpose: {purpose!r}; expected one of "
-        f'("youtube", "seo_audit", "blog_compose", "general")'
+        f'("youtube", "seo_audit", "blog_compose", "general", "book_review")'
     )
 
 
