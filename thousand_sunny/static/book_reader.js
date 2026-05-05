@@ -485,6 +485,241 @@ commentsToggle.addEventListener('click', () => {
 });
 commentsClose.addEventListener('click', () => setSidebarOpen(false));
 
+// ── Progress state (Slice 3C) ────────────────────────────────────────────────
+//
+// Mirrors GET/PUT /api/books/{id}/progress with three reliability layers:
+//
+// 1. 5-second debounce on `relocate` for normal page-flips — coalesces rapid
+//    bursts (the user paging through 10 spreads in 5s = 1 PUT, not 10).
+// 2. Synchronous flush on visibilitychange(hidden) and beforeunload, the
+//    latter via sendBeacon so the request survives the tab dying.
+// 3. localStorage["book-progress-{id}"] mirrors every successful PUT. If the
+//    PUT fails we keep the cached payload so the next relocate-burst retries.
+//    Multi-tab discipline: on each PUT we re-read localStorage and only keep
+//    our snapshot if our updated_at is >= the cached updated_at; otherwise
+//    another tab is ahead and we skip writing this round.
+
+const PROGRESS_KEY = `book-progress-${BOOK_ID}`;
+const PROGRESS_DEBOUNCE_MS = 5000;
+const READING_GAP_CAP_S = 60;
+
+const progressBarEl = document.getElementById('reader-progress');
+const progressBarFill = progressBarEl ? progressBarEl.querySelector('.bar') : null;
+
+let currentProgress = null;       // last BookProgress sent / cached
+let pendingProgress = null;       // next BookProgress to send (latest wins)
+let progressDebounceTimer = null;
+let lastRelocateAt = 0;           // wall-clock ms of last relocate, for reading-time delta
+let totalReadingSeconds = 0;
+
+function readProgressCache() {
+  try {
+    const raw = localStorage.getItem(PROGRESS_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || obj.book_id !== BOOK_ID) return null;
+    return obj;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeProgressCache(payload) {
+  try {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(payload));
+  } catch (_) { /* quota / private mode — non-fatal */ }
+}
+
+function updateProgressBar(percent) {
+  if (!progressBarEl || !progressBarFill) return;
+  const pct = Math.max(0, Math.min(1, Number.isFinite(percent) ? percent : 0));
+  progressBarFill.style.width = `${(pct * 100).toFixed(2)}%`;
+  progressBarEl.dataset.state = pct > 0 ? 'reading' : 'empty';
+  progressBarEl.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
+}
+
+function buildProgressFromRelocate(detail) {
+  const tocHref = detail.tocItem && detail.tocItem.href ? detail.tocItem.href : null;
+  let chapterRef = tocHref;
+  if (!chapterRef && typeof detail.index === 'number' && view.book && view.book.sections) {
+    const sec = view.book.sections[detail.index];
+    if (sec) chapterRef = sec.id || sec.href || `section-${detail.index}`;
+  }
+  const fraction = typeof detail.fraction === 'number' ? detail.fraction : 0;
+  const cfi = typeof detail.cfi === 'string' ? detail.cfi : null;
+  const spreadIdx = typeof detail.index === 'number' ? detail.index : 0;
+
+  const now = Date.now();
+  if (lastRelocateAt > 0) {
+    const deltaS = Math.min(READING_GAP_CAP_S, Math.max(0, (now - lastRelocateAt) / 1000));
+    totalReadingSeconds += Math.round(deltaS);
+  }
+  lastRelocateAt = now;
+
+  return {
+    book_id: BOOK_ID,
+    last_cfi: cfi,
+    last_chapter_ref: chapterRef,
+    last_spread_idx: spreadIdx,
+    percent: Math.max(0, Math.min(1, fraction)),
+    total_reading_seconds: totalReadingSeconds,
+    updated_at: nowIso(),
+  };
+}
+
+async function putProgress(payload) {
+  // Returns true on 2xx, false otherwise. Caller decides retry policy.
+  try {
+    const r = await fetch(
+      `/api/books/${encodeURIComponent(BOOK_ID)}/progress`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+    );
+    if (!r.ok) {
+      console.warn('progress PUT failed', r.status);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('progress PUT error', err);
+    return false;
+  }
+}
+
+async function flushProgress() {
+  if (!pendingProgress) return;
+  const payload = pendingProgress;
+  pendingProgress = null;
+  if (progressDebounceTimer) {
+    clearTimeout(progressDebounceTimer);
+    progressDebounceTimer = null;
+  }
+
+  // Multi-tab: if another tab wrote a newer snapshot while we waited, defer to it.
+  const cached = readProgressCache();
+  if (cached && cached.updated_at && cached.updated_at > payload.updated_at) {
+    currentProgress = cached;
+    return;
+  }
+
+  const ok = await putProgress(payload);
+  if (ok) {
+    currentProgress = payload;
+    writeProgressCache(payload);
+  } else {
+    // Keep payload as pending so the next relocate-burst retries it (but with
+    // a fresher updated_at). Also leave the prior cache untouched.
+    pendingProgress = payload;
+  }
+}
+
+function flushProgressSync() {
+  // Used by visibilitychange(hidden) and beforeunload. Prefers sendBeacon so
+  // the request survives the tab dying; falls back to fetch+keepalive.
+  if (!pendingProgress) return;
+  const payload = pendingProgress;
+  pendingProgress = null;
+  if (progressDebounceTimer) {
+    clearTimeout(progressDebounceTimer);
+    progressDebounceTimer = null;
+  }
+
+  const cached = readProgressCache();
+  if (cached && cached.updated_at && cached.updated_at > payload.updated_at) {
+    currentProgress = cached;
+    return;
+  }
+
+  const url = `/api/books/${encodeURIComponent(BOOK_ID)}/progress`;
+  const body = JSON.stringify(payload);
+  let queued = false;
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' });
+      queued = navigator.sendBeacon(url, blob);
+    }
+  } catch (_) { /* fall through to fetch */ }
+
+  if (!queued) {
+    try {
+      fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: true,
+      }).catch(() => { /* best-effort during unload */ });
+    } catch (_) { /* ignore */ }
+  }
+
+  // Optimistically mirror to localStorage even if we didn't await — sendBeacon
+  // gives us no completion signal, so cache is our local source of truth.
+  currentProgress = payload;
+  writeProgressCache(payload);
+}
+
+function scheduleProgressWrite(payload) {
+  pendingProgress = payload;
+  if (progressDebounceTimer) clearTimeout(progressDebounceTimer);
+  progressDebounceTimer = setTimeout(() => {
+    progressDebounceTimer = null;
+    flushProgress();
+  }, PROGRESS_DEBOUNCE_MS);
+}
+
+async function fetchProgress() {
+  // Returns BookProgress on success, or the localStorage cache on failure, or null.
+  try {
+    const r = await fetch(`/api/books/${encodeURIComponent(BOOK_ID)}/progress`);
+    if (!r.ok) {
+      console.warn('progress GET failed', r.status);
+      return readProgressCache();
+    }
+    return await r.json();
+  } catch (err) {
+    console.warn('progress GET error', err);
+    return readProgressCache();
+  }
+}
+
+async function restoreProgress(progress) {
+  // Try last_cfi first; on throw OR on goTo rejection, fall back to chapter
+  // ref; on full failure, stay at page 0 and warn.
+  if (!progress) return;
+  totalReadingSeconds = progress.total_reading_seconds || 0;
+  updateProgressBar(progress.percent || 0);
+
+  if (progress.last_cfi) {
+    try {
+      await view.goTo(progress.last_cfi);
+      return;
+    } catch (err) {
+      console.warn('restore: last_cfi failed, falling back to chapter', err);
+    }
+  }
+  if (progress.last_chapter_ref) {
+    try {
+      await view.goTo(progress.last_chapter_ref);
+      return;
+    } catch (err) {
+      console.warn('restore: last_chapter_ref failed, staying at page 0', err);
+    }
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushProgressSync();
+});
+window.addEventListener('beforeunload', () => {
+  flushProgressSync();
+});
+window.addEventListener('pagehide', () => {
+  // pagehide fires on bfcache-eligible navigations where beforeunload doesn't.
+  flushProgressSync();
+});
+
 // ── view event wiring ────────────────────────────────────────────────────────
 
 view.addEventListener('load', e => {
@@ -501,6 +736,10 @@ view.addEventListener('relocate', e => {
     const sec = view.book.sections[detail.index];
     if (sec) currentChapter = sec.id || sec.href || `section-${detail.index}`;
   }
+
+  const payload = buildProgressFromRelocate(detail);
+  updateProgressBar(payload.percent);
+  scheduleProgressWrite(payload);
 });
 
 // foliate-js requires a `draw-annotation` listener for our addAnnotation calls
@@ -529,6 +768,18 @@ view.addEventListener('draw-annotation', e => {
     // reader shell stays blank.
     if (view.renderer && typeof view.renderer.next === 'function') {
       try { await view.renderer.next(); } catch (_) { /* first-page nav noop */ }
+    }
+
+    // Restore reading position before annotation work so we don't paint
+    // overlays for a page the reader is about to leave. fetchProgress falls
+    // back to localStorage on network failure.
+    const progress = await fetchProgress();
+    if (progress) {
+      currentProgress = progress;
+      await restoreProgress(progress);
+      // Reset the wall-clock anchor — time spent away from the reader between
+      // sessions shouldn't count toward total_reading_seconds.
+      lastRelocateAt = 0;
     }
 
     // Load metadata + annotations after the book opens so sections are
