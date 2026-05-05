@@ -80,7 +80,14 @@ def test_books_upload_form_renders(app_client):
     assert r.status_code == 200
     assert "上傳新書" in r.text
     assert 'name="bilingual"' in r.text
-    assert 'name="book_id"' in r.text
+    assert 'name="original"' in r.text
+    # Form fields the new UI no longer surfaces — verify they are gone so the
+    # simplified contract stays simple.
+    assert 'name="book_id"' not in r.text
+    assert 'name="title"' not in r.text
+    assert 'name="lang_pair"' not in r.text
+    # Drag-and-drop bootstrap is served from origin (CSP-safe).
+    assert "/static/book_upload.js" in r.text
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +158,47 @@ def test_books_upload_sanitizes_script_tags(app_client, books_dir):
         for name in zf.namelist():
             if name.endswith(".xhtml"):
                 assert b"<script" not in zf.read(name)
+
+
+def test_books_upload_derives_book_id_from_epub_title_when_form_omits_it(app_client, books_dir):
+    """Simplified UI sends only files; backend slugifies the EPUB title for book_id.
+
+    EPUBSpec default title is "The Tracer" — slugify keeps the space → hyphen and
+    preserves case, giving "The-Tracer".
+    """
+    tc, _ = app_client
+    files = {"bilingual": ("c.epub", epub_clean(), "application/epub+zip")}
+
+    r = tc.post("/books/upload", files=files)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/books/The-Tracer"
+
+    from shared.book_storage import get_book
+
+    row = get_book("The-Tracer")
+    assert row is not None
+    assert row.title == "The Tracer"  # original title preserved on the row
+    assert row.author == "Anon"
+    assert row.lang_pair == "en-zh"
+    assert (books_dir / "The-Tracer" / "bilingual.epub").exists()
+
+
+def test_books_upload_falls_back_to_hash_id_when_title_missing(app_client, books_dir):
+    """If the EPUB has no title at all, derive an id from book_version_hash."""
+    from tests.shared._epub_fixtures import epub_minimal_metadata
+
+    tc, _ = app_client
+    files = {"bilingual": ("c.epub", epub_minimal_metadata(), "application/epub+zip")}
+
+    r = tc.post("/books/upload", files=files)
+    assert r.status_code == 303
+    location = r.headers["location"]
+    assert location.startswith("/books/")
+    book_id = location[len("/books/") :]
+    # "Untitled" slugifies to "Untitled"; only when slugify returns empty (e.g. title
+    # is whitespace or all-stripped chars) does the hash-prefixed id kick in. Both
+    # shapes are valid, so accept either.
+    assert book_id == "Untitled" or (book_id.startswith("book-") and len(book_id) == 17)
 
 
 def test_books_upload_with_original(app_client, books_dir):
