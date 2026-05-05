@@ -573,6 +573,30 @@ skill scaffolding pitfalls (sys.path shim, 4-backtick fences, etc.).
 
 ---
 
+## --watch mode
+
+Run once in a terminal at the start of your day. The daemon polls the ingest
+queue every 60 seconds and automatically dispatches `/textbook-ingest
+--from-queue` whenever a book is waiting. HITL prompts (chapter confirmation,
+section questions) appear in the same terminal — answer there.
+
+```bash
+python .claude/skills/textbook-ingest/scripts/queue_processor.py watch
+# custom poll interval (seconds):
+python .claude/skills/textbook-ingest/scripts/queue_processor.py watch --interval 30
+```
+
+**Graceful stop**: press Ctrl+C once. The current ingest runs to completion
+before the daemon exits — LLM work is never interrupted mid-chapter.
+
+**Idle noise**: one log line per 5 × interval (minimum 5 min) when the queue
+is empty; silent otherwise.
+
+**Requirements**: `claude` CLI must be in `PATH` (i.e. Claude Code is
+installed on the machine running the daemon).
+
+---
+
 ## --from-queue mode
 
 When invoked with `--from-queue`, skip the interactive path and process the
