@@ -46,6 +46,7 @@ from shared.epub_sanitizer import EPUBStructureError, sanitize_epub
 from shared.log import get_logger
 from shared.schemas.books import Book, BookProgress
 from shared.state import _get_conn
+from shared.utils import slugify
 from thousand_sunny.auth import check_auth
 
 _COVER_EXT_MEDIA_TYPES = {
@@ -103,14 +104,21 @@ async def books_upload_form(request: Request, nakama_auth: str | None = Cookie(N
 @router.post("/books/upload")
 async def books_upload(
     bilingual: UploadFile = File(...),
-    book_id: str = Form(...),
+    original: UploadFile | None = File(None),
+    book_id: str | None = Form(None),
     title: str = Form(""),
     lang_pair: str = Form("en-zh"),
     genre: str = Form(""),
     author: str = Form(""),
-    original: UploadFile | None = File(None),
     nakama_auth: str | None = Cookie(None),
 ):
+    """Upload a bilingual EPUB (and optional EN original).
+
+    The simplified UI sends only the two file fields; everything else is derived
+    from the EPUB metadata. The remaining ``Form`` parameters are kept for
+    direct API callers (scripted batch uploads, tests) — they all default and
+    fall back to extracted values when omitted.
+    """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
 
@@ -137,17 +145,22 @@ async def books_upload(
         else:
             original_bytes = None
 
+    sha = hashlib.sha256(sanitized).hexdigest()
+    final_title = (title.strip() or (meta.title or "").strip()) or "Untitled"
+    final_author = (author.strip() or (meta.author or "").strip()) or None
+    final_genre = genre.strip() or None
+    final_lang_pair = lang_pair.strip() or "en-zh"
+
+    if not book_id:
+        candidate = slugify(final_title)
+        book_id = candidate or f"book-{sha[:12]}"
+
     cover_blob = _extract_cover_bytes(sanitized, meta.cover_path)
 
     try:
         store_book_files(book_id, bilingual=sanitized, original=original_bytes, cover=cover_blob)
     except BookStorageError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
-
-    final_title = (title.strip() or (meta.title or "").strip()) or book_id
-    final_author = (author.strip() or (meta.author or "").strip()) or None
-    final_genre = genre.strip() or None
-    final_lang_pair = lang_pair.strip() or "en-zh"
 
     book = Book(
         book_id=book_id,
@@ -158,7 +171,7 @@ async def books_upload(
         isbn=meta.isbn,
         published_year=meta.published_year,
         has_original=has_original,
-        book_version_hash=hashlib.sha256(sanitized).hexdigest(),
+        book_version_hash=sha,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     insert_book(book)
