@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 書架</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 2rem; }
+  .header { max-width: 960px; margin: 0 auto 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .header h1 { font-size: 1.5rem; color: #1a1a1a; }
+  .header h1 span { font-size: 1.5rem; margin-right: 0.5rem; }
+  .nav { display: flex; gap: 0.75rem; align-items: center; font-size: 0.875rem; }
+  .nav a { color: #6c63ff; text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s; }
+  .nav a:hover, .nav a:focus-visible { border-color: #6c63ff; outline: none; }
+  .nav a.active { color: #1a1a1a; font-weight: 600; }
+  .container { max-width: 960px; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: flex-end; margin-bottom: 1.25rem; }
+  .btn-upload { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.55rem 1.2rem; background: #6c63ff; color: white; border: none; border-radius: 8px; font-size: 0.9rem; text-decoration: none; transition: background 0.2s; }
+  .btn-upload:hover, .btn-upload:focus-visible { background: #574fd6; outline: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+  .book-card { background: white; border-radius: 12px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: 0.75rem; transition: box-shadow 0.15s, transform 0.15s; text-decoration: none; color: inherit; }
+  .book-card:hover, .book-card:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.10); transform: translateY(-2px); outline: none; }
+  .cover-placeholder { aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(135deg, #ede9fe 0%, #dbeafe 100%); display: flex; align-items: center; justify-content: center; color: #6c63ff; font-size: 2.5rem; font-weight: 700; letter-spacing: -0.05em; }
+  .book-title { font-size: 0.95rem; font-weight: 600; color: #1a1a1a; line-height: 1.4; word-break: break-word; }
+  .book-author { font-size: 0.8rem; color: #666; }
+  .book-meta { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: auto; }
+  .badge { font-size: 0.65rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: #ede9fe; color: #6c63ff; font-weight: 600; letter-spacing: 0.02em; }
+  .badge.original { background: #e8f5e9; color: #2e7d32; }
+  .empty { text-align: center; color: #888; padding: 3rem; background: white; border-radius: 12px; }
+  .empty .icon { font-size: 2.5rem; }
+  .empty p { margin-top: 0.5rem; font-size: 0.9rem; }
+  .empty a { color: #6c63ff; text-decoration: none; font-weight: 600; }
+  .empty a:hover, .empty a:focus-visible { text-decoration: underline; outline: none; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><span>📚</span>Robin · 書架</h1>
+  <nav class="nav">
+    <a href="/">📥 Inbox</a>
+    <a href="/books" class="active">📚 書架</a>
+  </nav>
+</div>
+<div class="container">
+  <div class="toolbar">
+    <a href="/books/upload" class="btn-upload">📤 上傳新書</a>
+  </div>
+  {% if books %}
+    <div class="grid">
+      {% for book in books %}
+      <a class="book-card" href="/books/{{ book.book_id }}">
+        <div class="cover-placeholder" aria-hidden="true">{{ book.title[:1]|upper }}</div>
+        <div class="book-title">{{ book.title }}</div>
+        {% if book.author %}<div class="book-author">{{ book.author }}</div>{% endif %}
+        <div class="book-meta">
+          <span class="badge">{{ book.lang_pair }}</span>
+          {% if book.has_original %}<span class="badge original">含原文</span>{% endif %}
+          {% if book.genre %}<span class="badge">{{ book.genre }}</span>{% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <div class="icon">📭</div>
+      <strong>書架是空的</strong>
+      <p><a href="/books/upload">上傳第一本書</a></p>
+    </div>
+  {% endif %}
+</div>
+</body>
+</html>
