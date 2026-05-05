@@ -109,7 +109,7 @@ def test_sanitize_strips_inline_on_handlers():
 def test_sanitize_walks_every_xhtml_in_zip():
     spec = EPUBSpec(
         chapters={
-            "ch1.xhtml": '<html><body><script>a()</script><p>one</p></body></html>',
+            "ch1.xhtml": "<html><body><script>a()</script><p>one</p></body></html>",
             "ch2.xhtml": '<html><body><p onclick="b()">two</p></body></html>',
             "ch3.xhtml": '<html><body><img onerror="c()" src="x"/></body></html>',
         },
