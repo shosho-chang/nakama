@@ -110,6 +110,32 @@ hits_wikilink = search(q, lanes=("bm25", "vec", "wikilink"))
 | Search latency (BM25+vec+wikilink, 845 pages) | <80 ms (extra graph fan-out) |
 | LLM cost per search | $0 (no LLM call) |
 
+## Ground Truth Signal Collection (S4)
+
+Each KB hit rendered in `KB/Wiki/Sources/Books/{id}/digest.md` includes two Obsidian
+native checkboxes:
+
+```markdown
+  - [[KB/Wiki/Concepts/sleep-debt]] — Directly supports the annotation.
+  - [ ] 👍 相關 <!-- fb: cfi=epubcfi(/6/4[ch01]!/4/2:0) path=KB/Wiki/Concepts/sleep-debt -->
+  - [ ] 👎 不相關 <!-- fb: cfi=epubcfi(/6/4[ch01]!/4/2:0) path=KB/Wiki/Concepts/sleep-debt -->
+```
+
+**Workflow:** User clicks a checkbox in Obsidian → next `write_digest()` call
+(`book_digest_writer.parse_existing_feedback`) parses the `<!-- fb: ... -->` comments,
+upserts `signal = "up" | "down"` rows into `kb_search_feedback` (state.db), and
+re-renders the digest with `[x]` preserved for all marked hits.
+
+**Dual-use:** `kb_search_feedback` accumulates as the ground truth dataset for future
+Chopper retrieval QA benchmarks — enabling offline precision/recall evaluation of the
+hybrid engine without any extra annotation tooling.
+
+| Module | Role |
+|--------|------|
+| `agents.robin.book_digest_writer.parse_existing_feedback` | Parse `(cfi, path, signal)` from digest.md |
+| `shared.kb_search_feedback_store.upsert_feedback` | Idempotent upsert on `(book_id, item_cfi, hit_path)` |
+| `kb_search_feedback` table (state.db) | Persistent signal store |
+
 ## Extension Points
 
 - **Different vault path**: `index_vault(your_vault_path, db)` — no config change needed
