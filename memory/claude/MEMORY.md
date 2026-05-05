@@ -1,5 +1,10 @@
 # Memory Index
 
+- [project_session_2026_05_05_evening_reader_qa.md](project_session_2026_05_05_evening_reader_qa.md) — **5/5 evening 收工**：Reader 5 slice QA 全跑完 + 抓 3 hidden bug 補 PR #417/#418/#419 + 開 5 follow-up issue #420-#424（3 ready-for-agent / 2 needs-info）
+- [project_epub_reader_prd_2026_05_05.md](project_epub_reader_prd_2026_05_05.md) — **EPUB Reader 全規劃凍結**：PRD #378 + 5 slice issues #379-#383 + grill 9 題凍結 + sandcastle execution plan（保留下次起手 reference）
+- [feedback_deep_module_wiring_gap.md](feedback_deep_module_wiring_gap.md) — 深模組 + 單元測試全綠 ≠ 生產接通；新 public API 必補穿過真 caller 的 integration test（PR #414→#419 教訓）
+- [feedback_test_fixture_path_constants.md](feedback_test_fixture_path_constants.md) — test fixture 路徑必走 production constant，不能複製 hardcoded literal（fixture + 壞掉的常數會內部一致 tests 全綠 production 寫到不存在的目錄；PR #419 Slice 5 教訓）
+- [feedback_auto_mode_run_full_workflow.md](feedback_auto_mode_run_full_workflow.md) — auto mode 跑 Matt workflow 時 phase 之間自動接下一個，不停在 handoff
 - [project_nakama_overview.md](project_nakama_overview.md) — 專案總覽：Agent 全員、工作流程、狀態、基礎設施、Tech Stack
 - [user_profile.md](user_profile.md) — 修修的角色、偏好、知識背景
 - [feedback_dev_workflow.md](feedback_dev_workflow.md) — 完整開發流程規範：角色分工、六個 Phase、交接原則、技術選型要上網調研
