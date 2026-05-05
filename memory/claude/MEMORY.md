@@ -58,7 +58,9 @@
 - [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
 - [feedback_worktree_leak_prevention_prompt.md](feedback_worktree_leak_prevention_prompt.md) — worktree-isolated agent prompt 防 leak 兩條剛性防線（pwd 第一步 + 完工 leak self-check），5 連勝零 leak
 - [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Anthropic ralph-loop plugin = single-prompt iter runner，Matt 自己 reject；他改用 bash loop / Sandcastle，詳見 reference_sandcastle.md
-- [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock AFK runner 3/3 通過（桌機 Win 2 + Mac 1）；templates 凍結 docs/runbooks/sandcastle-templates/；runbook 在 docs/runbooks/sandcastle.md
+- [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock AFK runner 4/4 通過（桌機 Win 3 + Mac 1）；2026-05-05 首次 multi-issue batch (3 issues / 1 invocation / ~12 min) 成功；templates 凍結 docs/runbooks/sandcastle-templates/；runbook 在 docs/runbooks/sandcastle.md
+- [feedback_csp_books_reader_inline_blocked.md](feedback_csp_books_reader_inline_blocked.md) — `/books*` 與 `/api/books*` 強制 `script-src 'self'`：inline `<script>` 與 `onerror=`/`onclick=` 都被靜默擋；UI 行為走 `/static/<page>.js`（PR #427 → #428 教訓）
+- [feedback_uvicorn_reload_form_signature_stale.md](feedback_uvicorn_reload_form_signature_stale.md) — uvicorn `--reload` 在 Windows 偶發 log "Reloading..." 但 OpenAPI schema 沒換；改 Form/File 簽章後驗 `curl /openapi.json` 看 required 欄位、`taskkill /F` 重啟才保險（PR #429 撞）
 - [feedback_schedulewakeup_loop_only.md](feedback_schedulewakeup_loop_only.md) — ScheduleWakeup 是 /loop dynamic 專用、不是通用 timer；誤用會 re-fire 原 prompt 看起來像使用者重複下指令
 - [feedback_phase3_single_worktree_proven.md](feedback_phase3_single_worktree_proven.md) — Phase 3 單 worktree 序列 AFK 對 nakama 規模夠用（PR #260 實證 28 tests 0 regression）；不需 sandcastle 多 worktree 並行
 - [feedback_setup_matt_pocock_skills_first.md](feedback_setup_matt_pocock_skills_first.md) — Matt skills 跑前必先 setup-matt-pocock-skills 落 docs/agents/* + CLAUDE.md `## Agent skills`；沒跑 skill 都自探勘+猜+用詞飄
@@ -275,3 +277,4 @@
 - [feedback_format_before_commit_hitl_tests.md](feedback_format_before_commit_hitl_tests.md) — HITL test 檔 commit 前必先 ruff format（避免 CI fail → linter 修改 → system-reminder 重 dump 整檔）
 - [project_incident_2026_05_05_prefix_bug_anthropic_key.md](project_incident_2026_05_05_prefix_bug_anthropic_key.md) — 5/5 雙故障：state.db prefix 欄位 migration 順序 bug + Anthropic key 401；ALTER 1 行 hotfix + key rotation；**監控系統自身被同 bug 殺死靜默 false-green**
 - [project_pubmed_top_journal_blind_spot_2026_05_05.md](project_pubmed_top_journal_blind_spot_2026_05_05.md) — **PR #415 ship**：PubMed RSS sort-by-date 必被高頻刊物霸佔（單 saved search 永遠 0 頂刊）；MDPI/Frontiers blocklist + 頂刊白名單 eutils feed 雙修；blocked PMID 仍 mark_seen
+- [project_session_2026_05_05_late_line2_digest_prd.md](project_session_2026_05_05_late_line2_digest_prd.md) — **收工 2026-05-05 late**：Line 2 digest + hybrid retrieval grill 5 輪凍結 / PRD #430 + S1-S4 (#431-#434) ready；vault 845 pages 8.45x zaferdace 警戒；起手 dispatch #431 sandcastle
