@@ -1,6 +1,6 @@
 ---
 name: Matt Pocock Sandcastle — TS library for AFK Claude Code in Docker worktrees
-description: github.com/mattpocock/sandcastle；5 templates；defaults sonnet-4-6；3/3 試水通過（桌機 Win 2 + Mac 1）；templates 凍結進 docs/runbooks/sandcastle-templates/；runbook 在 docs/runbooks/sandcastle.md
+description: github.com/mattpocock/sandcastle；5 templates；defaults sonnet-4-6；4/4 通過（桌機 Win 3 + Mac 1）含首次 multi-issue batch run；templates 凍結進 docs/runbooks/sandcastle-templates/；runbook 在 docs/runbooks/sandcastle.md
 type: reference
 created: 2026-04-29
 updated: 2026-05-02
@@ -132,7 +132,27 @@ Mac MacBook Pro 副機首次裝 sandcastle setup，目標 issue #270（Usopp dae
 
 加上桌機 round 1 那 4 坑（init prompt / .env lookup / MSYS path mangling / `gh issue close` 擋）— 完整 10 坑全清，templates 凍結在 [docs/runbooks/sandcastle-templates/](../../docs/runbooks/sandcastle-templates/) 跨機 sync。
 
-## 結論：3/3 通過 → 信心擴大
+## 2026-05-05 第四試水結果（首次 multi-issue batch，PR #426）
+
+桌機 Win，3 issue 一次跑（FU-2 #421 reader sidebar 反思入口、FU-3 #422 queue_processor --watch、FU-5 #424 textbook-ingest OS-neutral docs），`maxIterations: 5` + `merge-to-head` strategy。
+
+| | Trial 1 (#240) | Trial 2 (#239) | Trial 3 (#270) | Trial 4 (3 issues) |
+|---|---|---|---|---|
+| Host | 桌機 Win | 桌機 Win | Mac | 桌機 Win |
+| Wall | 3:56 | ~6:50 | ~4:23 | **~12 min** |
+| Files | 1 test | 4 (2+2) | 2 (1+1) | 4 across 3 commits |
+| Production code | ❌ | ✅ | ✅ | ✅ |
+| Multi-issue | ❌ | ❌ | ❌ | ✅（3 個） |
+| Result | ✅ | ✅ | ✅ | ✅ 3/3 commits 落地 |
+
+**亮點**：
+- agent 沒因 prompt.md「UI/aesthetic out of scope」自我跳過 #421 — 那是 wiring（既有 modal + 既有 .icon-btn），不是真的設計工作，agent 正確判斷做了
+- 一次 invocation 12 min vs 三次 invocation 估計 18-21 min（sandbox setup 攤平）— multi-issue batch 是 throughput 倍增器
+- 全部 sonnet-4-6，估 cost ~$1 整個 batch
+
+**操作教訓**：merge-to-head 把 3 commits 都疊到 host branch，PR review 變寬（3 個 unrelated domain）；若要 focused PR-per-issue 得 cherry-pick 拆出來。下次 multi-issue batch 看 issue 是否 same-domain；不同 domain 還是分批跑乾淨。
+
+## 結論：4/4 通過 → 信心擴大 + multi-issue 模式進入工具箱
 
 **正式採用 + Mac AFK 副機 unblock**。Sandcastle 收進 nakama 工具集，runbook 在 [docs/runbooks/sandcastle.md](../../docs/runbooks/sandcastle.md)；canonical templates 在 [docs/runbooks/sandcastle-templates/](../../docs/runbooks/sandcastle-templates/)。
 
