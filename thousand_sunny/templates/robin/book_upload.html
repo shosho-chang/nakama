@@ -44,7 +44,7 @@
   <form class="card" method="post" action="/books/upload" enctype="multipart/form-data">
     <div class="field">
       <label for="book_id">書籍 ID <span class="hint">（檔名安全字串，不能含 / \ 或 ..）</span></label>
-      <input type="text" id="book_id" name="book_id" required placeholder="how-to-live-1962" pattern="[^/\\\x00]+" maxlength="200">
+      <input type="text" id="book_id" name="book_id" required placeholder="how-to-live-1962" pattern="[^/\\.][^/\\]*" maxlength="200">
     </div>
 
     <div class="field">

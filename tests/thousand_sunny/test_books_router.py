@@ -195,7 +195,10 @@ def test_book_reader_200_when_exists(app_client):
     assert r.status_code == 200
     assert "Render" in r.text
     assert "foliate-view" in r.text
-    assert "/vendor/foliate-js/view.js" in r.text
+    # Reader bootstrap JS lives in /static/ (not inline) so CSP `script-src
+    # 'self'` lets it execute. The reader module then imports the foliate-js
+    # ESM entry from /vendor/foliate-js/.
+    assert "/static/book_reader.js" in r.text
 
 
 # ---------------------------------------------------------------------------

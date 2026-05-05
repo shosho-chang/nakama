@@ -61,6 +61,15 @@ if not os.getenv("DISABLE_ROBIN"):
             StaticFiles(directory=str(_foliate_dir)),
             name="foliate-js",
         )
+
+    # Reader-side JS lives under /static/ so CSP `script-src 'self'` accepts it.
+    _static_dir = Path(__file__).resolve().parent / "static"
+    if _static_dir.is_dir():
+        app.mount(
+            "/static",
+            StaticFiles(directory=str(_static_dir)),
+            name="static",
+        )
 else:
 
     @app.get("/")
