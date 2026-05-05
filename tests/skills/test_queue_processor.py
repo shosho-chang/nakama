@@ -119,7 +119,9 @@ def test_mark_writes_ingesting(tmp_path):
             f"import os; os.environ['DB_PATH']={str(tmp_path / 'state.db')!r}; "
             f"import sys; sys.path.insert(0, {str(REPO_ROOT)!r}); "
             "from shared.state import _get_conn; "
-            "row = _get_conn().execute('SELECT status, started_at FROM book_ingest_queue WHERE book_id=?', ('alpha',)).fetchone(); "
+            "row = _get_conn().execute("
+            "'SELECT status, started_at FROM book_ingest_queue WHERE book_id=?',"
+            " ('alpha',)).fetchone(); "
             "print(row['status']); print(row['started_at'])",
         ],
         env=_env(tmp_path),

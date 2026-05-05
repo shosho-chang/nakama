@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -62,3 +62,17 @@ class BookProgress(BaseModel):
     percent: float
     total_reading_seconds: int
     updated_at: str  # ISO-8601 + offset
+
+
+class BookIngestQueueEntry(BaseModel):
+    """Queue row from the ``book_ingest_queue`` table."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    book_id: str
+    status: Literal["queued", "ingesting", "ingested", "partial", "failed"]
+    requested_at: str
+    started_at: Optional[str]
+    completed_at: Optional[str]
+    chapters_done: int
+    error: Optional[str]
