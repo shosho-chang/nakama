@@ -5,6 +5,10 @@ Full-replace semantics: each call overwrites the file entirely. Idempotent.
 Surfaces related KB pages via hybrid search (purpose="book_review") for each
 H/A/C item. Wikilinks are reverse-surfaced from concept pages that have
 annotation-from: {book_id} boundary markers written by annotation_merger v2.
+
+S4: each KB hit renders two Obsidian checkboxes (👍/👎). On re-sync,
+existing marks are parsed back, persisted to kb_search_feedback, and
+re-rendered as [x] so the state survives the full-replace.
 """
 
 from __future__ import annotations
@@ -19,6 +23,10 @@ from agents.robin.kb_search import search_kb
 from shared.annotation_store import get_annotation_store
 from shared.config import get_vault_path
 from shared.vault_rules import assert_reader_can_write
+
+# Regex patterns for parsing feedback checkboxes embedded in digest.md.
+_FB_UP_RE = re.compile(r"- \[([ x])\] 👍 相關 <!-- fb: cfi=([^\s>]+) path=([^\s>]+) -->")
+_FB_DOWN_RE = re.compile(r"- \[([ x])\] 👎 不相關 <!-- fb: cfi=([^\s>]+) path=([^\s>]+) -->")
 
 
 @dataclass
@@ -35,6 +43,35 @@ class DigestReport:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_existing_feedback(
+    digest_path: Path,
+) -> list[tuple[str, str, str | None]]:
+    """Parse (item_cfi, hit_path, signal) tuples from an existing digest.md.
+
+    signal is "up", "down", or None (neither checkbox checked).
+    Returns an entry for every (cfi, path) pair found in the file.
+    """
+    text = digest_path.read_text(encoding="utf-8")
+
+    up_states: dict[tuple[str, str], bool] = {}
+    for m in _FB_UP_RE.finditer(text):
+        up_states[(m.group(2), m.group(3))] = m.group(1) == "x"
+
+    down_states: dict[tuple[str, str], bool] = {}
+    for m in _FB_DOWN_RE.finditer(text):
+        down_states[(m.group(2), m.group(3))] = m.group(1) == "x"
+
+    all_keys = set(up_states) | set(down_states)
+    results: list[tuple[str, str, str | None]] = []
+    for key in sorted(all_keys):
+        cfi, path = key
+        is_up = up_states.get(key, False)
+        is_down = down_states.get(key, False)
+        signal: str | None = "up" if is_up else ("down" if is_down else None)
+        results.append((cfi, path, signal))
+    return results
 
 
 def _extract_chapter_ref(cfi: str) -> str:
@@ -77,10 +114,13 @@ def _render_item_block(
     vault_path: Path,
     wikilinks_line: str,
     errors: list[str],
+    existing_feedback: dict[tuple[str, str], str] | None = None,
 ) -> tuple[str, int]:
     """Render a single annotation item as a markdown block.
 
-    Returns (block_text, hits_count).
+    Returns (block_text, hits_count). Each KB hit renders two Obsidian
+    checkboxes (👍/👎) whose state is restored from existing_feedback when
+    available, keyed by (item_cfi, hit_path).
     """
     if item.type == "highlight":
         query = item.text_excerpt
@@ -112,11 +152,23 @@ def _render_item_block(
 
     deep_link = f"/books/{book_id}#cfi={cfi}" if cfi else f"/books/{book_id}"
 
-    hits_lines = (
-        "\n".join(f"  - [[{h['path']}]] — {h.get('relevance_reason', '')}" for h in hits)
-        if hits
-        else "  _(no KB hits)_"
-    )
+    fb = existing_feedback or {}
+    if hits:
+        hit_parts: list[str] = []
+        for h in hits:
+            path = h["path"]
+            reason = h.get("relevance_reason", "")
+            sig = fb.get((cfi, path)) if cfi else None
+            up_check = "[x]" if sig == "up" else "[ ]"
+            down_check = "[x]" if sig == "down" else "[ ]"
+            hit_parts.append(
+                f"  - [[{path}]] — {reason}\n"
+                f"  - {up_check} 👍 相關 <!-- fb: cfi={cfi} path={path} -->\n"
+                f"  - {down_check} 👎 不相關 <!-- fb: cfi={cfi} path={path} -->"
+            )
+        hits_lines = "\n".join(hit_parts)
+    else:
+        hits_lines = "  _(no KB hits)_"
 
     block = (
         f"**{label}** {body_text}\n\n"
@@ -134,6 +186,10 @@ def write_digest(book_id: str) -> DigestReport:
     search_kb(engine="hybrid", purpose="book_review", top_k=3) per item,
     and renders a chapter-structured markdown digest. Full-replace.
 
+    S4: before rendering, parses any existing 👍/👎 checkboxes from the
+    current file, upserts non-null signals to kb_search_feedback, and
+    preserves checked state in the newly written digest.
+
     Returns a DigestReport describing what was rendered.
     """
     start_ms = int(time.monotonic() * 1000)
@@ -150,6 +206,38 @@ def write_digest(book_id: str) -> DigestReport:
             render_duration_ms=int(time.monotonic() * 1000) - start_ms,
             errors=[f"no annotations found for book_id={book_id!r}"],
         )
+
+    # S4: parse existing feedback before overwriting the file.
+    relative = f"KB/Wiki/Sources/Books/{book_id}/digest.md"
+    dest = vault_path / relative
+    existing_feedback: dict[tuple[str, str], str] = {}
+    if dest.exists():
+        raw = parse_existing_feedback(dest)
+        # Build cfi→query map for DB storage (query derived from annotation items).
+        cfi_to_query: dict[str, str] = {}
+        for item in ann_set.items:
+            if item.type == "highlight":
+                cfi_to_query[item.cfi] = item.text_excerpt
+            elif item.type == "annotation":
+                cfi_to_query[item.cfi] = f"{item.text_excerpt}\n{item.note}"
+            elif item.type == "comment" and item.cfi_anchor:
+                cfi_to_query[item.cfi_anchor] = item.body[:500]
+
+        from shared.kb_search_feedback_store import upsert_feedback
+
+        for cfi, hit_path, signal in raw:
+            if signal is not None:
+                existing_feedback[(cfi, hit_path)] = signal
+                try:
+                    upsert_feedback(
+                        book_id=book_id,
+                        item_cfi=cfi,
+                        query_text=cfi_to_query.get(cfi, ""),
+                        hit_path=hit_path,
+                        signal=signal,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"upsert_feedback failed: {exc}")
 
     # Group items by chapter ref, preserving first-occurrence order.
     chapters: dict[str, list] = {}
@@ -181,7 +269,9 @@ def write_digest(book_id: str) -> DigestReport:
         heading = f"## Ch{ch_idx} {ch_ref}"
         blocks: list[str] = []
         for item in ch_items:
-            block, hit_count = _render_item_block(item, book_id, vault_path, wikilinks_line, errors)
+            block, hit_count = _render_item_block(
+                item, book_id, vault_path, wikilinks_line, errors, existing_feedback
+            )
             blocks.append(block)
             total_hits += hit_count
             total_items += 1
@@ -204,9 +294,7 @@ def write_digest(book_id: str) -> DigestReport:
     )
     content = frontmatter + "\n" + "\n\n".join(sections) + ("\n" if sections else "")
 
-    relative = f"KB/Wiki/Sources/Books/{book_id}/digest.md"
     assert_reader_can_write(relative)
-    dest = vault_path / relative
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(content, encoding="utf-8")
 

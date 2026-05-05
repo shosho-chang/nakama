@@ -304,3 +304,141 @@ def test_empty_annotations_no_crash(vault, mock_search):
 def test_vault_rules_allow_digest_path():
     rules = pytest.importorskip("shared.vault_rules")
     assert "KB/Wiki/Sources/Books/" in rules.READER_WRITE_WHITELIST
+
+
+# ---------------------------------------------------------------------------
+# S4: 👍/👎 ground truth signal — parse_existing_feedback + DB persistence
+# ---------------------------------------------------------------------------
+
+parse_existing_feedback = digest_mod.parse_existing_feedback
+
+_CFI1 = "epubcfi(/6/4[ch01]!/4/2:0)"
+_CFI2 = "epubcfi(/6/4[ch01]!/4/6:5)"
+_CFI3 = "epubcfi(/6/4[ch01]!/4/10:0)"
+_PATH_A = "KB/Wiki/Concepts/alpha"
+_PATH_B = "KB/Wiki/Concepts/beta"
+_PATH_C = "KB/Wiki/Concepts/gamma"
+
+
+def _write_digest_with_marks(
+    vault: Path,
+    book_id: str,
+    marks: list[tuple[str, str, str | None]],
+) -> Path:
+    """Create a digest.md with pre-marked checkboxes.
+
+    marks: list of (cfi, hit_path, signal) where signal is "up", "down", or None.
+    """
+    dest = vault / "KB" / "Wiki" / "Sources" / "Books" / book_id / "digest.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = ["---\ntype: book_digest\n---\n\n## Ch1 ch01\n\n"]
+    for cfi, path, signal in marks:
+        up_check = "[x]" if signal == "up" else "[ ]"
+        down_check = "[x]" if signal == "down" else "[ ]"
+        lines.append(
+            f"  - [[{path}]] — reason\n"
+            f"  - {up_check} 👍 相關 <!-- fb: cfi={cfi} path={path} -->\n"
+            f"  - {down_check} 👎 不相關 <!-- fb: cfi={cfi} path={path} -->\n\n"
+        )
+    dest.write_text("".join(lines), encoding="utf-8")
+    return dest
+
+
+def test_parse_existing_feedback_mixed_marks(vault: Path):
+    """parse_existing_feedback returns (cfi, path, signal) for all hits."""
+    marks = [
+        (_CFI1, _PATH_A, "up"),
+        (_CFI2, _PATH_B, "down"),
+        (_CFI3, _PATH_C, None),
+    ]
+    dest = _write_digest_with_marks(vault, "test-book", marks)
+
+    result = parse_existing_feedback(dest)
+
+    assert len(result) == 3
+    by_key = {(cfi, path): sig for cfi, path, sig in result}
+    assert by_key[(_CFI1, _PATH_A)] == "up"
+    assert by_key[(_CFI2, _PATH_B)] == "down"
+    assert by_key[(_CFI3, _PATH_C)] is None
+
+
+def test_parse_existing_feedback_all_unchecked(vault: Path):
+    """All-unchecked digest returns all None signals."""
+    marks = [
+        (_CFI1, _PATH_A, None),
+        (_CFI2, _PATH_B, None),
+    ]
+    dest = _write_digest_with_marks(vault, "test-book", marks)
+    result = parse_existing_feedback(dest)
+    assert all(sig is None for _, _, sig in result)
+
+
+def test_parse_existing_feedback_empty_file(vault: Path):
+    """Digest with no checkbox markup returns empty list."""
+    dest = vault / "KB" / "Wiki" / "Sources" / "Books" / "test-book" / "digest.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text("---\ntype: book_digest\n---\n\n## Ch1\n\nno hits here\n", encoding="utf-8")
+    assert parse_existing_feedback(dest) == []
+
+
+def test_sync_round_trip_preserves_feedback_and_writes_db(
+    vault: Path, saved_annotations, mock_search
+):
+    """After marking hits in digest.md, re-sync preserves marks + persists to DB."""
+    import shared.state as state
+
+    # First write — creates fresh digest with all-unchecked checkboxes.
+    write_digest("test-book")
+
+    digest_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "test-book" / "digest.md"
+    content = digest_path.read_text(encoding="utf-8")
+
+    # Mark the first two 👍 checkboxes as checked.
+    marked_content = content.replace("[ ] 👍", "[x] 👍", 2)
+    assert marked_content.count("[x] 👍") == 2, "fixture must produce ≥2 👍 checkboxes"
+    digest_path.write_text(marked_content, encoding="utf-8")
+
+    # Second write — parse-back → DB upsert → re-render preserving marks.
+    write_digest("test-book")
+
+    # DB must have exactly 2 "up" rows for this book.
+    conn = state._get_conn()
+    rows = conn.execute("SELECT * FROM kb_search_feedback WHERE book_id = 'test-book'").fetchall()
+    assert len(rows) == 2
+    assert all(row["signal"] == "up" for row in rows)
+
+    # New digest must still show [x] for the two marked hits.
+    new_content = digest_path.read_text(encoding="utf-8")
+    assert new_content.count("[x] 👍") == 2
+
+
+def test_schema_feedback_table_exists_and_unique_constraint(isolated_db: Path):
+    """kb_search_feedback table must exist with unique (book_id, item_cfi, hit_path)."""
+    import shared.state as state
+
+    conn = state._get_conn()
+
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='kb_search_feedback'"
+    ).fetchone()
+    assert row is not None, "kb_search_feedback table not found"
+
+    now = "2026-05-05T00:00:00Z"
+    conn.execute(
+        "INSERT INTO kb_search_feedback"
+        " (book_id, item_cfi, query_text, hit_path, signal, marked_at, source)"
+        " VALUES (?,?,?,?,?,?,?)",
+        ("book1", "cfi1", "query", "path1", "up", now, "digest"),
+    )
+    conn.commit()
+
+    # Upsert via store: same unique key, different signal → update in place.
+    from shared.kb_search_feedback_store import upsert_feedback
+
+    upsert_feedback(
+        book_id="book1", item_cfi="cfi1", query_text="q2", hit_path="path1", signal="down"
+    )
+
+    rows = conn.execute("SELECT * FROM kb_search_feedback WHERE book_id='book1'").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["signal"] == "down"
