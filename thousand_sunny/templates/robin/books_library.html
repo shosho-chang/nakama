@@ -35,15 +35,12 @@
   .btn-upload { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.55rem 1.2rem; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 0.9rem; text-decoration: none; transition: background 0.2s; }
   .btn-upload:hover, .btn-upload:focus-visible { background: #574fd6; outline: none; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
-  .book-card-wrap { position: relative; }
   .book-card { background: var(--surface); border-radius: 12px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: 0.75rem; transition: box-shadow 0.15s, transform 0.15s; text-decoration: none; color: inherit; }
   .book-card:hover, .book-card:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.10); transform: translateY(-2px); outline: none; }
-  .cover { aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--bg); display: flex; align-items: center; justify-content: center; }
-  .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cover { position: relative; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--bg); }
+  .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   .cover img.broken { display: none; }
   .cover-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, #ede9fe 0%, #dbeafe 100%); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 2.5rem; font-weight: 700; letter-spacing: -0.05em; }
-  .cancel-ingest { position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(255,255,255,0.95); border: 1px solid var(--ingest-pending); color: var(--ingest-pending); border-radius: 999px; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 0.85rem; line-height: 1; padding: 0; transition: background 0.12s, color 0.12s; }
-  .cancel-ingest:hover, .cancel-ingest:focus-visible { background: var(--ingest-pending); color: #fff; outline: none; }
   .book-title { font-size: 0.95rem; font-weight: 600; color: var(--text); line-height: 1.4; word-break: break-word; }
   .book-author { font-size: 0.8rem; color: var(--text-muted); }
   .book-meta { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: auto; }
@@ -79,39 +76,33 @@
   {% if books %}
     <div class="grid">
       {% for book in books %}
-      <div class="book-card-wrap">
-        <a class="book-card" href="/books/{{ book.book_id }}">
-          <div class="cover" aria-hidden="true">
-            <img src="/api/books/{{ book.book_id }}/cover" alt="" loading="lazy"
-                 onerror="this.classList.add('broken'); this.insertAdjacentHTML('afterend', '<div class=&quot;cover-placeholder&quot;>{{ book.title[:1]|upper|e }}</div>');">
-          </div>
-          <div class="book-title">{{ book.title }}</div>
-          {% if book.author %}<div class="book-author">{{ book.author }}</div>{% endif %}
-          <div class="book-meta">
-            <span class="badge">{{ book.lang_pair }}</span>
-            {% if book.genre %}<span class="badge">{{ book.genre }}</span>{% endif %}
-            {% if not book.has_original %}
-              <span class="badge-ingest" data-status="no-original" title="尚未上傳 EN 原檔，無法 ingest">未上傳 EN</span>
-            {% elif book.ingest_status == "queued" %}
-              <span class="badge-ingest" data-status="queued" title="已排入 ingest 佇列">queued</span>
-            {% elif book.ingest_status == "ingesting" %}
-              <span class="badge-ingest" data-status="ingesting" title="正在 ingest">ingesting</span>
-            {% elif book.ingest_status == "ingested" %}
-              <span class="badge-ingest" data-status="ingested" title="ingest 完成">ingested</span>
-            {% elif book.ingest_status == "partial" %}
-              <span class="badge-ingest" data-status="partial" title="部分章節 ingest 失敗">partial</span>
-            {% elif book.ingest_status == "failed" %}
-              <span class="badge-ingest" data-status="failed" title="ingest 失敗">failed</span>
-            {% else %}
-              <span class="badge-ingest" data-status="never" title="尚未送出 ingest 請求">never</span>
-            {% endif %}
-          </div>
-        </a>
-        {% if book.ingest_status == "queued" %}
-        <button type="button" class="cancel-ingest" aria-label="取消 ingest"
-                data-book-id="{{ book.book_id }}" title="取消 ingest">×</button>
-        {% endif %}
-      </div>
+      <a class="book-card" href="/books/{{ book.book_id }}">
+        <div class="cover" aria-hidden="true">
+          <img src="/api/books/{{ book.book_id }}/cover" alt="" loading="lazy">
+          <div class="cover-placeholder">{{ book.title[:1]|upper }}</div>
+        </div>
+        <div class="book-title">{{ book.title }}</div>
+        {% if book.author %}<div class="book-author">{{ book.author }}</div>{% endif %}
+        <div class="book-meta">
+          <span class="badge">{{ book.lang_pair }}</span>
+          {% if book.genre %}<span class="badge">{{ book.genre }}</span>{% endif %}
+          {% if not book.has_original %}
+            <span class="badge-ingest" data-status="no-original" title="尚未上傳 EN 原檔，無法 ingest">未上傳 EN</span>
+          {% elif book.ingest_status == "queued" %}
+            <span class="badge-ingest" data-status="queued" title="已排入 ingest 佇列">queued</span>
+          {% elif book.ingest_status == "ingesting" %}
+            <span class="badge-ingest" data-status="ingesting" title="正在 ingest">ingesting</span>
+          {% elif book.ingest_status == "ingested" %}
+            <span class="badge-ingest" data-status="ingested" title="ingest 完成">ingested</span>
+          {% elif book.ingest_status == "partial" %}
+            <span class="badge-ingest" data-status="partial" title="部分章節 ingest 失敗">partial</span>
+          {% elif book.ingest_status == "failed" %}
+            <span class="badge-ingest" data-status="failed" title="ingest 失敗">failed</span>
+          {% else %}
+            <span class="badge-ingest" data-status="never" title="尚未送出 ingest 請求">never</span>
+          {% endif %}
+        </div>
+      </a>
       {% endfor %}
     </div>
   {% else %}
@@ -122,25 +113,6 @@
     </div>
   {% endif %}
 </div>
-<script>
-  document.querySelectorAll('.cancel-ingest').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const bookId = btn.dataset.bookId;
-      if (!confirm('取消這本書的 ingest？')) return;
-      btn.disabled = true;
-      try {
-        const r = await fetch(`/api/books/${encodeURIComponent(bookId)}/ingest-request`,
-                              { method: 'DELETE' });
-        if (!r.ok) throw new Error(await r.text());
-        location.reload();
-      } catch (err) {
-        alert('取消失敗：' + err.message);
-        btn.disabled = false;
-      }
-    });
-  });
-</script>
+<script type="module" src="/static/books_library.js"></script>
 </body>
 </html>
