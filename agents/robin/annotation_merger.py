@@ -30,6 +30,10 @@ _SECTION_HEADING = "## 個人觀點"
 _MARKER_OPEN_TMPL = "<!-- annotation-from: {slug} -->"
 _MARKER_CLOSE_TMPL = "<!-- /annotation-from: {slug} -->"
 
+_V2_SECTION_HEADING = "## 讀者註記"
+_V2_MARKER_OPEN_TMPL = "<!-- annotation-from: {book_id} -->"
+_V2_MARKER_CLOSE_TMPL = "<!-- end-annotation-from: {book_id} -->"
+
 _MERGER_TOOL: dict = {
     "name": "merge_annotations",
     "description": (
@@ -119,7 +123,7 @@ def _replace_marker_block(body: str, source_slug: str, callout_block: str) -> st
 # ---------------------------------------------------------------------------
 
 
-def _ask_merger_llm(prompt: str) -> dict[str, str]:
+def _ask_merger_llm(prompt: str, concept_slugs=None) -> dict[str, str]:
     """Call LLM to map annotations → concept callout blocks using forced tool_use.
 
     Uses tool_choice to guarantee structured JSON output — eliminates the raw-text
@@ -266,3 +270,140 @@ class ConceptPageAnnotationMerger:
         if not concepts_dir.exists():
             return []
         return sorted(p.stem for p in concepts_dir.glob("*.md"))
+
+
+# ---------------------------------------------------------------------------
+# v2 book path — ## 讀者註記
+# ---------------------------------------------------------------------------
+
+_KB_CONCEPTS_SIMPLE = "KB/Concepts"
+
+
+def _list_concept_slugs_v2() -> list[str]:
+    concepts_dir = get_vault_path() / _KB_CONCEPTS_SIMPLE
+    if not concepts_dir.exists():
+        return []
+    return sorted(p.stem for p in concepts_dir.glob("*.md"))
+
+
+def _replace_v2_marker_block(body: str, book_id: str, callout_block: str) -> str:
+    """Insert or replace per-book annotation block in ## 讀者註記 section. Idempotent."""
+    open_marker = _V2_MARKER_OPEN_TMPL.format(book_id=book_id)
+    close_marker = _V2_MARKER_CLOSE_TMPL.format(book_id=book_id)
+    full_block = f"{open_marker}\n{callout_block}\n{close_marker}"
+
+    if open_marker in body and close_marker in body:
+        start = body.index(open_marker)
+        end = body.index(close_marker) + len(close_marker)
+        return body[:start] + full_block + body[end:]
+
+    if _V2_SECTION_HEADING in body:
+        section_start = body.index(_V2_SECTION_HEADING) + len(_V2_SECTION_HEADING)
+        m = re.search(r"\n## ", body[section_start:])
+        if m:
+            insert_at = section_start + m.start()
+            return body[:insert_at] + "\n\n" + full_block + body[insert_at:]
+        return body.rstrip("\n") + "\n\n" + full_block + "\n"
+
+    return body.rstrip("\n") + f"\n\n{_V2_SECTION_HEADING}\n\n{full_block}\n"
+
+
+def _ask_merger_llm_v2(items, concept_slugs: list[str]) -> dict[str, str]:
+    """LLM call for v2 book items → per-concept callout mapping (tool_use forced JSON)."""
+    from shared.llm import ask_with_tools
+
+    items_json = json.dumps(
+        [i.model_dump() for i in items],
+        ensure_ascii=False,
+        indent=2,
+    )
+    prompt = (
+        f"You are a knowledge-base curator. Map the following book highlights and annotations "
+        f"to the most relevant concept pages.\n\n"
+        f"Existing concept slugs:\n{', '.join(concept_slugs) if concept_slugs else '(none)'}\n\n"
+        f"Book annotations (JSON):\n{items_json}\n\n"
+        f"For each matched concept, produce a callout block attributed to the book source. "
+        f"Only include concepts with a genuine thematic match."
+    )
+
+    response = ask_with_tools(
+        messages=[{"role": "user", "content": prompt}],
+        tools=[_MERGER_TOOL],
+        model="claude-opus-4-7",
+        max_tokens=8000,
+        tool_choice={"type": "tool", "name": "merge_annotations"},
+    )
+
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "merge_annotations":
+            mapping = block.input.get("mapping", {})
+            return {k: v for k, v in mapping.items() if isinstance(k, str) and isinstance(v, str)}
+
+    raise MergerLLMError("merger LLM did not invoke merge_annotations tool (v2)")
+
+
+def _upsert_concept_blocks(
+    slug_or_book_id: str,
+    mapping: dict[str, str],
+    section_heading: str,
+    replace_fn,
+) -> None:
+    """Write callout blocks into concept pages in KB/Concepts/."""
+    concepts_dir = get_vault_path() / _KB_CONCEPTS_SIMPLE
+    for concept_slug, callout_block in mapping.items():
+        concept_path = concepts_dir / f"{concept_slug}.md"
+        if not concept_path.exists():
+            continue
+        result = _load_page(concept_path)
+        if result is None:
+            continue
+        fm, body = result
+        updated_body = replace_fn(body, slug_or_book_id, callout_block.strip())
+        if updated_body != body:
+            _write_page_file(concept_path, fm, updated_body)
+
+
+# ---------------------------------------------------------------------------
+# Public dispatch entry point
+# ---------------------------------------------------------------------------
+
+
+def sync_annotations_for_slug(slug: str) -> None:
+    """Load AnnotationSet from store; dispatch on schema_version:
+    v1 → _ask_merger_llm + ## 個人觀點 path (unchanged)
+    v2 → _ask_merger_llm_v2 + ## 讀者註記 path (book sources)"""
+    from shared.annotation_store import AnnotationSetV2, get_annotation_store
+    from shared.prompt_loader import load_prompt
+
+    store = get_annotation_store()
+    ann_set = store.load(slug)
+    if ann_set is None:
+        return
+
+    concept_slugs = _list_concept_slugs_v2()
+
+    if isinstance(ann_set, AnnotationSetV2):
+        items = [i for i in ann_set.items if i.type != "comment"]
+        if not items:
+            return
+        mapping = _ask_merger_llm_v2(items, concept_slugs)
+        _upsert_concept_blocks(
+            ann_set.book_id, mapping, _V2_SECTION_HEADING, _replace_v2_marker_block
+        )
+    else:
+        annotations = [i for i in ann_set.items if i.type == "annotation"]
+        if not annotations:
+            return
+        prompt = load_prompt(
+            "robin",
+            "merge_annotations",
+            source_slug=slug,
+            concept_slugs=", ".join(concept_slugs) if concept_slugs else "(none)",
+            annotations_json=json.dumps(
+                [a.model_dump() for a in annotations],
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+        mapping = _ask_merger_llm(prompt, concept_slugs)
+        _upsert_concept_blocks(slug, mapping, _SECTION_HEADING, _replace_marker_block)
