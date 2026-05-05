@@ -159,7 +159,7 @@
 - [project_nami_vault_notes.md](project_nami_vault_notes.md) — Nami vault note 3 tools（write/read/list）+ vault_rules.py，待 VPS 部署
 - [project_brook_style_extraction_todo.md](project_brook_style_extraction_todo.md) — Brook style extraction 完成：36 篇 → 3 份 profile + 交叉分析（agents/brook/style-profiles/）
 - [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest；PR #94 publisher HTML fallback（第 5 層，BMJ/PLOS/eLife 等 Free-標記 OA）上線
-- [project_zotero_integration_plan.md](project_zotero_integration_plan.md) — 訂閱期刊全文走 Zotero（非 publisher login）；待開工，Phase A–D 框架已定
+- [project_zotero_integration_plan.md](project_zotero_integration_plan.md) — **2026-05-05 升 primary ingest path**：OA + 訂閱都走 Zotero；要蓋 Zotero → Obsidian sync 橋（Phase B/C/D），不重做 capture
 - [reference_vps_timezone.md](reference_vps_timezone.md) — VPS TZ 是 Asia/Taipei，cron 用本機時區；日期 filename 要 `ZoneInfo("Asia/Taipei")`
 - [feedback_gitignore_negation.md](feedback_gitignore_negation.md) — .gitignore 子檔再 include 要用 `data/*` + `!data/file`，不是 `data/` + `!data/file`
 - [feedback_design_deviation_discovery.md](feedback_design_deviation_discovery.md) — 實作時發現現成輕量方案 → flag deviation，不默默換方案
@@ -268,3 +268,5 @@
 - [feedback_subagent_ci_gates_local_verify.md](feedback_subagent_ci_gates_local_verify.md) — Sub-agent dispatch acceptance 必含 ruff check / format / critical-path coverage 預檢；只跑自己 test 通過 = CI fail = wasted dispatch（overnight 6 PR 教訓）
 - [feedback_progress_report_anchor_arch.md](feedback_progress_report_anchor_arch.md) — 報告進度開頭一律先列七層架構兩張矩陣（Lines × Stages + Agents × Stages），再講軸線細節 + 開放議題
 - [project_epub_book_translation_grill_2026_05_05.md](project_epub_book_translation_grill_2026_05_05.md) — **EPUB 整本翻譯升級 pre-grill 凍結**：跨章節飄移 + genre routing 兩痛點；3-level 升級候選（級別 1 genre+cache / 級別 2 sample-extract+sliding window）；12 grill 議題；plan doc 在 docs/plans/2026-05-05-epub-book-translation-grill-prep.md
+- [project_session_2026_05_05_zotero_pivot.md](project_session_2026_05_05_zotero_pivot.md) — **收工 2026-05-05 早**：7 PR (#369-#375) merge + QA Step 2 Nature URL ingest pipeline 跑通但 quality 不滿意 → URL scrape 不再 primary，Zotero 升 primary；昨天 5 slice 重定位（Slice 3 翻譯 keep / 1+2+4 escape hatch）
+- [feedback_dont_recompete_on_capture_quality.md](feedback_dont_recompete_on_capture_quality.md) — DIY URL scrape 永遠贏不了 Zotero browser snapshot；缺的是 Zotero → Obsidian 橋，不是 capture 重做（2026-05-05 Nature QA 教訓）
