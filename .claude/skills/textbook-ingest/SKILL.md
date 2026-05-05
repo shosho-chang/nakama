@@ -573,6 +573,50 @@ skill scaffolding pitfalls (sys.path shim, 4-backtick fences, etc.).
 
 ---
 
+## --from-queue mode
+
+When invoked with `--from-queue`, skip the interactive path and process the
+next book waiting in `book_ingest_queue`. One book per invocation — each
+ingest is a 5-15 min operation; no value in chaining inside one session.
+
+**Step-by-step:**
+
+1. **Discover** — run `python scripts/queue_processor.py next`.
+   - Exit code 1 → print `Queue empty, nothing to ingest.` and return cleanly.
+   - Exit code 0 → capture the printed `book_id` (strip whitespace).
+
+2. **Claim** — `python scripts/queue_processor.py mark <book_id> ingesting`.
+   Exit non-zero is unexpected (race condition); raise and stop.
+
+3. **Locate EPUB** — the original EN file lives at
+   `data/books/<book_id>/original.epub` (written by the upload route).
+   Raise `FileNotFoundError` if it doesn't exist.
+
+4. **Parse** — call `parse_book.py` on that path (same as normal invocation):
+   ```
+   python scripts/parse_book.py data/books/<book_id>/original.epub
+   ```
+   Capture the JSON outline. Count `len(outline["chapters"])` for `N`.
+
+5. **Ingest** — run the standard Phase A + Phase B pipeline against the parsed
+   outline, exactly as in the interactive `textbook-ingest` flow.
+   Use `book_id` as the `source_slug` for KB pages.
+
+6. **Finalize (success)** —
+   `python scripts/queue_processor.py mark <book_id> ingested --chapters <N>`.
+
+7. **Finalize (exception)** — on any unhandled exception:
+   ```
+   python scripts/queue_processor.py mark <book_id> failed --error "<exc>"
+   ```
+   Then re-raise so the operator sees the full traceback.
+
+**queue_processor.py** lives in `scripts/`. Its `--help` lists `next` and
+`mark`. Invalid status or unknown book_id exits 2 — treat as a bug, not a
+retry signal.
+
+---
+
 ## References
 
 | When | Read |
