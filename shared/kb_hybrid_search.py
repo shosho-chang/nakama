@@ -72,6 +72,14 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             indexed_at TEXT    NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS kb_wikilinks (
+            src_path TEXT NOT NULL,
+            dst_path TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_wikilinks_src ON kb_wikilinks(src_path)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_wikilinks_dst ON kb_wikilinks(dst_path)")
     # FTS5 virtual tables don't support IF NOT EXISTS — use try/except
     try:
         conn.execute("""
@@ -137,6 +145,75 @@ class SearchHit:
 # ---------------------------------------------------------------------------
 
 
+def _wikilink_lane(
+    conn: sqlite3.Connection,
+    candidates: dict[int, dict[str, int]],
+) -> None:
+    """Expand candidates with 1-hop wikilink neighbors (both directions).
+
+    For each path already in `candidates`, find all pages that this path
+    links to (outgoing) and all pages that link to this path (incoming).
+    Those neighbor pages' chunks are added to `candidates` with a "wikilink"
+    rank (1 = most edges to existing candidates, ties broken alphabetically).
+    Modifies `candidates` in place.
+    """
+    if not candidates:
+        return
+
+    # Resolve paths for current candidates
+    base_paths: set[str] = set()
+    for rowid in candidates:
+        row = conn.execute("SELECT path FROM kb_chunks WHERE rowid = ?", (rowid,)).fetchone()
+        if row:
+            base_paths.add(row["path"])
+
+    if not base_paths:
+        return
+
+    ph = ",".join("?" * len(base_paths))
+    base_list = list(base_paths)
+
+    # Outgoing edges: pages that base_paths link to
+    out_rows = conn.execute(
+        f"SELECT dst_path FROM kb_wikilinks WHERE src_path IN ({ph})",
+        base_list,
+    ).fetchall()
+    # Incoming edges: pages that link to base_paths
+    in_rows = conn.execute(
+        f"SELECT src_path FROM kb_wikilinks WHERE dst_path IN ({ph})",
+        base_list,
+    ).fetchall()
+
+    neighbor_paths = {r[0] for r in out_rows} | {r[0] for r in in_rows}
+    neighbor_paths -= base_paths
+
+    if not neighbor_paths:
+        return
+
+    # Rank neighbors by edge count to base candidates (most connected = rank 1)
+    conn_count: dict[str, int] = {}
+    for path in neighbor_paths:
+        out_cnt = conn.execute(
+            f"SELECT COUNT(*) FROM kb_wikilinks WHERE src_path = ? AND dst_path IN ({ph})",
+            [path] + base_list,
+        ).fetchone()[0]
+        in_cnt = conn.execute(
+            f"SELECT COUNT(*) FROM kb_wikilinks WHERE dst_path = ? AND src_path IN ({ph})",
+            [path] + base_list,
+        ).fetchone()[0]
+        conn_count[path] = out_cnt + in_cnt
+
+    sorted_neighbors = sorted(neighbor_paths, key=lambda p: (-conn_count[p], p))
+
+    for rank, neighbor_path in enumerate(sorted_neighbors):
+        chunk_rows = conn.execute(
+            "SELECT rowid FROM kb_chunks WHERE path = ?", (neighbor_path,)
+        ).fetchall()
+        for chunk_row in chunk_rows:
+            rowid = chunk_row[0]
+            candidates.setdefault(rowid, {}).setdefault("wikilink", rank + 1)
+
+
 def search(
     query: str,
     top_k: int = 10,
@@ -144,12 +221,13 @@ def search(
     lanes: tuple[str, ...] = ("bm25", "vec"),
     db: sqlite3.Connection | None = None,
 ) -> list[SearchHit]:
-    """BM25 + dense-vec dual-lane RRF-k=60 hybrid search.
+    """BM25 + dense-vec + wikilink RRF-k=60 hybrid search.
 
     Args:
         query:  free-text query (supports both Latin and CJK text).
         top_k:  maximum number of results to return.
-        lanes:  active retrieval lanes; subset of ("bm25", "vec").
+        lanes:  active retrieval lanes; subset of ("bm25", "vec", "wikilink").
+                "wikilink" expands BM25/vec hits with 1-hop structural neighbors.
                 Pass lanes=("bm25",) or lanes=("vec",) to run a single lane.
         db:     connection override for tests; uses module-level conn if None.
 
@@ -184,6 +262,9 @@ def search(
         ).fetchall()
         for rank, row in enumerate(rows):
             candidates.setdefault(row[0], {})["vec"] = rank + 1
+
+    if "wikilink" in lanes:
+        _wikilink_lane(conn, candidates)
 
     # Reciprocal Rank Fusion: score = Σ 1/(k + rank_in_lane)
     scored: list[tuple[int, float, dict[str, int]]] = []

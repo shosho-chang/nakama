@@ -14,7 +14,16 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from fastapi import APIRouter, Cookie, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -314,15 +323,29 @@ async def get_annotations(book_id: str):
     return ann_set.model_dump()
 
 
+def _write_digest_in_background(book_id: str) -> None:
+    try:
+        from agents.robin.book_digest_writer import write_digest  # noqa: PLC0415
+
+        write_digest(book_id)
+    except Exception:
+        logger.exception("book digest background task failed for book_id=%s", book_id)
+
+
 @router.post("/api/books/{book_id}/annotations")
-async def post_annotations(book_id: str, payload: AnnotationSetV2):
+async def post_annotations(
+    book_id: str,
+    payload: AnnotationSetV2,
+    background_tasks: BackgroundTasks,
+):
     if payload.book_id != book_id:
         raise HTTPException(422, detail="book_id in URL does not match payload")
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     get_annotation_store().save(payload)
-    return {"ok": True}
+    background_tasks.add_task(_write_digest_in_background, book_id)
+    return {"ok": True, "digest_status": "queued"}
 
 
 @router.get("/api/books/{book_id}/progress")

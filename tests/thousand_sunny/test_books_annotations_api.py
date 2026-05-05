@@ -269,3 +269,43 @@ def test_csp_header_present_on_annotations_api(app_client):
     csp = r.headers.get("content-security-policy", "")
     assert "script-src" in csp
     assert "'self'" in csp
+
+
+# ---------------------------------------------------------------------------
+# Background digest trigger (issue #432)
+# ---------------------------------------------------------------------------
+
+
+def test_post_annotations_dispatches_digest_background_task(app_client, monkeypatch):
+    """POST annotations must immediately return 200 with digest_status='queued'
+    and dispatch write_digest as a background task exactly once."""
+    calls: list[str] = []
+
+    def fake_write_digest(book_id: str):
+        calls.append(book_id)
+
+    import agents.robin.book_digest_writer as bdw
+
+    monkeypatch.setattr(bdw, "write_digest", fake_write_digest)
+
+    _upload(app_client, "digest-book")
+    payload = _v2_payload("digest-book")
+    r = app_client.post("/api/books/digest-book/annotations", json=payload)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("digest_status") == "queued"
+    # TestClient runs background tasks synchronously; write_digest must have been called
+    assert calls == ["digest-book"], f"expected write_digest called once, got: {calls}"
+
+
+def test_post_annotations_digest_status_queued_in_response(app_client, monkeypatch):
+    """Response must include digest_status='queued' regardless of digest outcome."""
+    monkeypatch.setattr(
+        "agents.robin.book_digest_writer.write_digest",
+        lambda book_id: None,
+    )
+    _upload(app_client, "status-check")
+    r = app_client.post("/api/books/status-check/annotations", json=_v2_payload("status-check"))
+    assert r.status_code == 200
+    assert r.json()["digest_status"] == "queued"
