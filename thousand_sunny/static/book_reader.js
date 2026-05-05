@@ -109,6 +109,10 @@ async function fetchBookMetadata() {
     if (!r.ok) return;
     const meta = await r.json();
     if (meta.book_version_hash) bookVersionHash = meta.book_version_hash;
+    applyIngestState({
+      has_original: meta.has_original === true,
+      ingest_status: typeof meta.ingest_status === 'string' ? meta.ingest_status : 'never',
+    });
   } catch (err) {
     console.warn('book metadata fetch failed', err);
   }
@@ -484,6 +488,81 @@ commentsToggle.addEventListener('click', () => {
   setSidebarOpen(commentsSidebar.hidden);
 });
 commentsClose.addEventListener('click', () => setSidebarOpen(false));
+
+// ── Ingest button (Slice 4D) ─────────────────────────────────────────────────
+//
+// Reader-side trigger for the whole-book ingest pipeline (Slices 4A–4C). The
+// button is gated on `has_original` — uploads without an EN original cannot be
+// ingested, so we surface an inline tooltip instead of a silent disabled state.
+// On 200 we lock the button into the "Queued" state; the badge on the library
+// page is the source of truth for downstream status (ingesting / ingested /
+// partial / failed). Single user, manual refresh — no polling here.
+
+const ingestBtn = document.getElementById('ingestBtn');
+const ingestWrap = document.getElementById('ingestWrap');
+
+function applyIngestState({ has_original, ingest_status }) {
+  if (!ingestBtn || !ingestWrap) return;
+  ingestBtn.classList.remove('is-queued');
+  if (!has_original) {
+    ingestBtn.disabled = true;
+    ingestBtn.textContent = '📥 Ingest 整本書';
+    ingestWrap.setAttribute('data-disabled-reason', '上傳 EN 原檔以啟用 ingest');
+    return;
+  }
+  ingestWrap.removeAttribute('data-disabled-reason');
+  if (ingest_status === 'queued' || ingest_status === 'ingesting') {
+    ingestBtn.disabled = true;
+    ingestBtn.classList.add('is-queued');
+    ingestBtn.textContent = ingest_status === 'ingesting' ? '📥 Ingesting' : '📥 Queued';
+    return;
+  }
+  if (ingest_status === 'ingested') {
+    ingestBtn.disabled = true;
+    ingestBtn.classList.add('is-queued');
+    ingestBtn.textContent = '📥 Ingested';
+    return;
+  }
+  if (ingest_status === 'partial' || ingest_status === 'failed') {
+    ingestBtn.disabled = false;
+    ingestBtn.textContent = ingest_status === 'partial' ? '📥 重試 ingest' : '📥 重試 ingest';
+    return;
+  }
+  ingestBtn.disabled = false;
+  ingestBtn.textContent = '📥 Ingest 整本書';
+}
+
+async function requestIngest() {
+  if (!ingestBtn) return;
+  const prevText = ingestBtn.textContent;
+  ingestBtn.disabled = true;
+  ingestBtn.textContent = '📥 送出中⋯';
+  try {
+    const r = await fetch(
+      `/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+    );
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '');
+      console.error('ingest request failed', r.status, detail);
+      showToast(`Ingest 送出失敗 (HTTP ${r.status})`);
+      ingestBtn.disabled = false;
+      ingestBtn.textContent = prevText;
+      return;
+    }
+    ingestBtn.classList.add('is-queued');
+    ingestBtn.textContent = '📥 Queued';
+  } catch (err) {
+    console.error('ingest request error', err);
+    showToast(`Ingest 送出失敗：${String(err.message || err)}`);
+    ingestBtn.disabled = false;
+    ingestBtn.textContent = prevText;
+  }
+}
+
+if (ingestBtn) {
+  ingestBtn.addEventListener('click', requestIngest);
+}
 
 // ── Progress state (Slice 3C) ────────────────────────────────────────────────
 //
