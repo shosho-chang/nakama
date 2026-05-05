@@ -27,7 +27,8 @@ from shared.book_storage import (
 from shared.epub_metadata import MalformedEPUBError, extract_metadata
 from shared.epub_sanitizer import EPUBStructureError, sanitize_epub
 from shared.log import get_logger
-from shared.schemas.books import Book
+from shared.schemas.books import Book, BookProgress
+from shared.state import _get_conn
 from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.books")
@@ -189,4 +190,49 @@ async def post_annotations(book_id: str, payload: AnnotationSetV2):
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     get_annotation_store().save(payload)
+    return {"ok": True}
+
+
+@router.get("/api/books/{book_id}/progress")
+async def get_book_progress(book_id: str):
+    if get_book(book_id) is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+    conn = _get_conn()
+    row = conn.execute("SELECT * FROM book_progress WHERE book_id = ?", (book_id,)).fetchone()
+    if row is None:
+        return BookProgress(
+            book_id=book_id,
+            last_cfi=None,
+            last_chapter_ref=None,
+            last_spread_idx=0,
+            percent=0.0,
+            total_reading_seconds=0,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        ).model_dump()
+    return dict(row)
+
+
+@router.put("/api/books/{book_id}/progress")
+async def put_book_progress(book_id: str, payload: BookProgress):
+    if payload.book_id != book_id:
+        raise HTTPException(422, detail="book_id in URL does not match payload")
+    if get_book(book_id) is None:
+        raise HTTPException(404, detail=f"book not found: {book_id}")
+    conn = _get_conn()
+    conn.execute(
+        """INSERT OR REPLACE INTO book_progress
+           (book_id, last_cfi, last_chapter_ref, last_spread_idx,
+            percent, total_reading_seconds, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            payload.book_id,
+            payload.last_cfi,
+            payload.last_chapter_ref,
+            payload.last_spread_idx,
+            payload.percent,
+            payload.total_reading_seconds,
+            payload.updated_at,
+        ),
+    )
+    conn.commit()
     return {"ok": True}
