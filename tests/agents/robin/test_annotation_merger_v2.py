@@ -120,7 +120,9 @@ def test_v2_set_dispatches_to_v2_merger(vault: Path, monkeypatch):
     # Stub the LLM call so the test stays hermetic.
     def fake_extract(items, _concept_slugs):
         return {
-            "anchoring-effect": "> [!quote] from how-to-live 讀者註記\n> anchoring is the dominant prior",
+            "anchoring-effect": (
+                "> [!quote] from how-to-live 讀者註記\n> anchoring is the dominant prior"
+            ),
         }
 
     monkeypatch.setattr(merger_mod, "_ask_merger_llm_v2", fake_extract, raising=False)
