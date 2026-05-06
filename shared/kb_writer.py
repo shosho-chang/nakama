@@ -283,7 +283,7 @@ def _v1_to_v2_in_memory(fm: dict, body: str) -> tuple[dict, str, list[str]]:
     v2_fm: dict = {}
     changes: list[str] = []
 
-    if fm.get("schema_version") == 2:
+    if (fm.get("schema_version") or 0) >= 2:
         return (dict(fm), body, [])
 
     # 必填 fields 映射
