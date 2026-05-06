@@ -1,4 +1,4 @@
-﻿"""InboxWriter tests (Slice 1, issue #352).
+"""InboxWriter tests (Slice 1, issue #352).
 
 Scope (per PRD §Testing Decisions):
 
@@ -266,4 +266,3 @@ def test_write_to_inbox_round_trip_title_with_yaml_special_chars(tmp_path: Path)
     assert parsed["source"] == nasty_url
     assert parsed["fulltext_source"] == 'Display "label" with quotes'
     assert parsed["note"] == nasty_note
-

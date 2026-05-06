@@ -1,4 +1,4 @@
-﻿"""URLDispatcher tests (Slice 1 + Slice 2, issues #352 / #353).
+"""URLDispatcher tests (Slice 1 + Slice 2, issues #352 / #353).
 
 Scope (per PRD §Testing Decisions / "只測外部行為"):
 
@@ -804,4 +804,3 @@ def test_extract_doi_both_httpx_and_firecrawl_fail_returns_none_with_warn(monkey
     assert len(warnings) >= 2  # httpx warn + firecrawl warn
     combined = " ".join(rec.message for rec in warnings).lower()
     assert "firecrawl" in combined
-
