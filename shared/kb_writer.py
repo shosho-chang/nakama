@@ -129,7 +129,6 @@ def _ask_llm(prompt: str, *, system: str = "", max_tokens: int = 16000) -> str:
         system=system,
         model="claude-opus-4-7",
         max_tokens=max_tokens,
-        temperature=0.2,
     )
 
 

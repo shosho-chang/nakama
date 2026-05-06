@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Gemini panel audit — ADR-020 v3 textbook ingest rewrite.
 
 Multi-agent panel step 3 of 5:
@@ -26,8 +27,12 @@ load_dotenv(REPO_ROOT / ".env")
 
 from shared.gemini_client import ask_gemini  # noqa: E402
 
-ADR_020 = (REPO_ROOT / "docs/decisions/ADR-020-textbook-ingest-v3-rewrite.md").read_text(encoding="utf-8")
-CODEX_AUDIT = (REPO_ROOT / "docs/research/2026-05-06-codex-adr-020-audit.md").read_text(encoding="utf-8")
+ADR_020 = (REPO_ROOT / "docs/decisions/ADR-020-textbook-ingest-v3-rewrite.md").read_text(
+    encoding="utf-8"
+)
+CODEX_AUDIT = (REPO_ROOT / "docs/research/2026-05-06-codex-adr-020-audit.md").read_text(
+    encoding="utf-8"
+)
 
 SYSTEM = (
     "You are an independent third-party auditor providing a second opinion on an ADR. "
@@ -115,11 +120,11 @@ Begin your 6-section Gemini audit now."""
 
 
 def main() -> int:
-    print(f"=== Gemini panel audit dispatch ===", file=sys.stderr)
-    print(f"Prompt size: {len(PROMPT)} chars (~{len(PROMPT)//4} tokens)", file=sys.stderr)
-    print(f"Model: gemini-2.5-pro", file=sys.stderr)
-    print(f"Max output: 8192, thinking budget: 2048", file=sys.stderr)
-    print(f"---", file=sys.stderr)
+    print("=== Gemini panel audit dispatch ===", file=sys.stderr)
+    print(f"Prompt size: {len(PROMPT)} chars (~{len(PROMPT) // 4} tokens)", file=sys.stderr)
+    print("Model: gemini-2.5-pro", file=sys.stderr)
+    print("Max output: 8192, thinking budget: 2048", file=sys.stderr)
+    print("---", file=sys.stderr)
 
     response = ask_gemini(
         PROMPT,
