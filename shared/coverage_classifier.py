@@ -35,9 +35,18 @@ Classify each claim as:
 - secondary: supporting details, examples, quantitative values that support primary claims
 - nuance: edge cases, exceptions, caveats, context-dependent statements
 
-Respond with a JSON array. Each item:
+OUTPUT FORMAT — STRICT:
+- Return EXACTLY one JSON array and nothing else.
+- Do NOT wrap the JSON in markdown code fences (no ```json, no ```).
+- Do NOT add prose, headings, commentary, or explanation before or after the JSON.
+- Do NOT add a trailing comment.
+- The first character of your response MUST be `[` and the last MUST be `]`.
+
+Each item must have this exact shape:
 {{"type": "primary"|"secondary"|"nuance", "text": "<claim text>"}}
-No extra text — ONLY the JSON array.
+
+Aim for completeness: extract every distinct factual claim in the chapter.
+A typical textbook chapter yields 20-60 claims; do not stop after 5.
 
 CHAPTER TEXT:
 {chapter_text}
@@ -161,6 +170,52 @@ def run_acceptance_gate(manifest: CoverageManifest) -> tuple[bool, list[str]]:
     return (len(reasons) == 0), reasons
 
 
+def _parse_json_array_tolerant(response: str) -> list | None:
+    """Best-effort parse of an LLM response into a JSON array.
+
+    Handles three common deviations from strict JSON:
+      1. Markdown fences: ```json\n[...]\n``` or ```\n[...]\n```
+      2. Leading/trailing prose around the array
+      3. Whitespace padding
+
+    Returns the parsed list, or None if no parse succeeds.
+    """
+    if not response:
+        return None
+
+    s = response.strip()
+
+    # Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+    if s.startswith("```"):
+        first_nl = s.find("\n")
+        if first_nl != -1:
+            s = s[first_nl + 1 :]
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3].rstrip()
+
+    s = s.strip()
+
+    # Direct attempt
+    try:
+        parsed = json.loads(s)
+        return parsed if isinstance(parsed, list) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: extract the outermost [...] substring
+    start = s.find("[")
+    end = s.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        candidate = s[start : end + 1]
+        try:
+            parsed = json.loads(candidate)
+            return parsed if isinstance(parsed, list) else None
+        except json.JSONDecodeError:
+            return None
+
+    return None
+
+
 def extract_claims(
     chapter_text: str,
     *,
@@ -178,10 +233,13 @@ def extract_claims(
     prompt = _EXTRACT_CLAIMS_PROMPT.format(chapter_text=chapter_text[:8000])
     response = _ask_llm(prompt)
 
-    try:
-        raw = json.loads(response)
-    except json.JSONDecodeError:
-        logger.warning("extract_claims: LLM returned non-JSON response; returning []")
+    raw = _parse_json_array_tolerant(response)
+    if raw is None:
+        snippet = (response or "")[:500].replace("\n", "\\n")
+        logger.warning(
+            "extract_claims: LLM returned non-JSON response; returning []. raw[:500]=%r",
+            snippet,
+        )
         return []
 
     if not isinstance(raw, list):

@@ -243,6 +243,28 @@ def test_extract_claims_invalid_json_returns_empty():
     assert claims == []
 
 
+def test_extract_claims_tolerates_markdown_json_fence():
+    fenced = "```json\n" + _EXTRACT_STUB + "\n```"
+    claims = extract_claims("Chapter text.", _ask_llm=lambda p: fenced)
+    assert len(claims) == 3
+
+
+def test_extract_claims_tolerates_plain_fence():
+    fenced = "```\n" + _EXTRACT_STUB + "\n```"
+    claims = extract_claims("Chapter text.", _ask_llm=lambda p: fenced)
+    assert len(claims) == 3
+
+
+def test_extract_claims_tolerates_prose_around_array():
+    wrapped = (
+        "Sure! Here are the extracted claims:\n\n"
+        + _EXTRACT_STUB
+        + "\n\nLet me know if you need more."
+    )
+    claims = extract_claims("Chapter text.", _ask_llm=lambda p: wrapped)
+    assert len(claims) == 3
+
+
 def test_extract_claims_empty_list_response():
     claims = extract_claims("Chapter text.", _ask_llm=lambda p: "[]")
     assert claims == []
