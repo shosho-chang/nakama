@@ -1,5 +1,8 @@
 # Memory Index
 
+- [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **🚨 戰略級破洞 5/6**：KB Concept 622 頁中 544 (87.5%) 是 phase-b-reconciliation 空殼、index.md 0 條 Concepts、log.md 停 4/25；ADR-016 沉默違反 ADR-011 P1 aggregator 哲學；hybrid retrieval 升級 GIGO 暫緩；下次起手寫 ADR-018 v3 rewrite 草稿、可選 /codex:rescue 獨立評估
+- [feedback_adr_principle_conflict_check.md](feedback_adr_principle_conflict_check.md) — 寫新 ADR / 改 pipeline 前必 explicit cross-check 受影響的既有 P-level 原則 verbatim quote + 證明仍滿足；ADR-016 違反 ADR-011 P1 沒人發現是設計級 bug 源頭
+- [feedback_subagent_prompt_must_inline_principles.md](feedback_subagent_prompt_must_inline_principles.md) — Subagent 從零起跳沒有 memory；最高指導原則（品質>速度>成本 等）必 inline verbatim 進 prompt，不能依賴 surface；ADR-016 phase B subagent 違反指導原則的 root cause
 - [project_session_2026_05_06_overnight_4issue_sandcastle_ship.md](project_session_2026_05_06_overnight_4issue_sandcastle_ship.md) — **5/6 早報（修修睡覺期間獨力 ship）**：PR sync 5 條全 squash + sandcastle batch ship #431/#432/#433/#434（PR #436/#437/#438）— Line 2 hybrid retrieval engine + book digest + wikilink lane + ground truth signal 全產線就緒；待修修 manual smoke
 - [feedback_context_offload_isolated_subsystem.md](feedback_context_offload_isolated_subsystem.md) — **守 context window 的關鍵是 offload 工作到不會 surface 結果的子系統**（不是壓縮 prompt）：sandcastle docker > Agent tool > background bash > Monitor 4 級 isolation；主線只做 orchestration，5/6 AFK 4hr / 9 task / 22% context 實證
 - [project_session_2026_05_05_evening_reader_qa.md](project_session_2026_05_05_evening_reader_qa.md) — **5/5 evening 收工**：Reader 5 slice QA 全跑完 + 抓 3 hidden bug 補 PR #417/#418/#419 + 開 5 follow-up issue #420-#424（3 ready-for-agent / 2 needs-info）
