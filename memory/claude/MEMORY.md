@@ -1,6 +1,9 @@
 # Memory Index
 
-- [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **🚨 戰略級破洞 5/6**：KB Concept 622 頁中 544 (87.5%) 是 phase-b-reconciliation 空殼、index.md 0 條 Concepts、log.md 停 4/25；ADR-016 沉默違反 ADR-011 P1 aggregator 哲學；hybrid retrieval 升級 GIGO 暫緩；下次起手寫 ADR-018 v3 rewrite 草稿、可選 /codex:rescue 獨立評估
+- [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **🚨 戰略級破洞 5/6**：KB Concept 622 頁中 544 (87.5%) 是 phase-b-reconciliation 空殼；ADR-016 沉默違反 ADR-011 P1 aggregator；ADR-020 v3 rewrite draft 起手 + Codex audit 已跑（GPT-5 抓到 3 件 Claude 漏看 drift）+ Gemini panel pending
+- [project_multi_agent_panel_skill_todo.md](project_multi_agent_panel_skill_todo.md) — 5/6 ADR-020 audit 實證 multi-model panel 比單 Claude 高 signal；5 步驟流程 + 各家強項 cheat sheet + 待用 skill-creator 凍結成 `multi-agent-panel` skill
+- [project_session_2026_05_06_adr_020_panel.md](project_session_2026_05_06_adr_020_panel.md) — 5/6 收工 handoff：ADR-020 v2 Accepted + Codex/Gemini panel 全跑完；下次起手 a→b→d→c (commit/push → /to-issues 拆 8 slice → multi-agent-panel skill 凍結 → S1 動工)
+- [feedback_context_budget_200k_250k.md](feedback_context_budget_200k_250k.md) — Opus 1M context 不代表沒上限；Messages 區塊 200k 警戒 / 250k 硬上限；自我監控不依賴修修提醒
 - [feedback_adr_principle_conflict_check.md](feedback_adr_principle_conflict_check.md) — 寫新 ADR / 改 pipeline 前必 explicit cross-check 受影響的既有 P-level 原則 verbatim quote + 證明仍滿足；ADR-016 違反 ADR-011 P1 沒人發現是設計級 bug 源頭
 - [feedback_subagent_prompt_must_inline_principles.md](feedback_subagent_prompt_must_inline_principles.md) — Subagent 從零起跳沒有 memory；最高指導原則（品質>速度>成本 等）必 inline verbatim 進 prompt，不能依賴 surface；ADR-016 phase B subagent 違反指導原則的 root cause
 - [project_session_2026_05_06_overnight_4issue_sandcastle_ship.md](project_session_2026_05_06_overnight_4issue_sandcastle_ship.md) — **5/6 早報（修修睡覺期間獨力 ship）**：PR sync 5 條全 squash + sandcastle batch ship #431/#432/#433/#434（PR #436/#437/#438）— Line 2 hybrid retrieval engine + book digest + wikilink lane + ground truth signal 全產線就緒；待修修 manual smoke

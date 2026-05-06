@@ -80,18 +80,22 @@ ADR-016 把 ADR-011 §3.3 Step 4「Concept extract with conflict detection」的
 
 修修 2026-05-06 對話末尾講「**我現在開始不信任你的能力了，我需要找另外一個 model 來一起工作**」→ 安裝 codex-plugin-cc + OpenAI Codex CLI 0.128.0。下次 strategic review 應該主動 invoke `/codex:rescue` 拿 GPT-5 獨立評估，避免單一 model bias。
 
-## 下次 session 起手
+## ADR-020 v2 凍結 (2026-05-06 same day)
 
-**不要直接動 code**。應該先：
+走完三家 multi-agent panel:
+- Claude v1 draft → Codex (GPT-5) audit → Gemini 2.5 Pro audit → Claude v2 integrate → 修修 sign-off
+- v2 status: **Accepted**，文件 [`docs/decisions/ADR-020-textbook-ingest-v3-rewrite.md`](../../docs/decisions/ADR-020-textbook-ingest-v3-rewrite.md)
+- 兩份 audit verbatim 存 `docs/research/2026-05-06-{codex,gemini}-adr-020-audit.md`
 
-1. 開 `docs/decisions/ADR-018-textbook-ingest-v3-rewrite.md` 草稿
-2. 凍結 v3 新 invariants：
-   - concept aggregation 不可與 source page write 解耦
-   - stub == ingest fail（不接受 stub action）
-   - acceptance criteria 必含「concept body word count > X 字」hard gate
-   - index.md/log.md sync baked into `kb_writer`，不靠人類記憶
-3. 處理既有 544 個 stub 的策略（重 ingest？批次補 aggregator content？放著？）
-4. **動工前先讓修修看 ADR-018 草稿** + 可選擇 `/codex:rescue` 獨立評估
+v2 凍結的 invariants:
+- Three-phase: Lossless Source Ingest + Per-Chapter Sync Concept Aggregation (4-action dispatcher 重啟) + Concept Maturity Model L1/L2/L3
+- Verbatim body + LLM structured wrapper（不 paraphrase）
+- BGE-M3 + bge-reranker-large + Parent-Child chunking + Hybrid retrieval (non-negotiable, Gemini 必修)
+- Bilingual term mapping discipline: concept frontmatter 加 `en_source_terms` 欄位，每次 ingest populate
+- Vision 6-class triage（Quantitative / Structural / Process / Comparative / Tabular / Decorative + multi-panel grouping）
+- LLM-classified coverage manifest (primary/secondary/nuance hierarchical, 不用 regex)
+- L3 active stub == ingest fail；L2 stub 是 productive workflow state（Cori cycle 等 niche-but-critical 有歸宿）
+- 既有 544 stub cleanup: S8 一次性 re-ingest Sport Nutrition + BSE
 
 ## 暫緩的工作（優先級低於 ADR-018）
 
