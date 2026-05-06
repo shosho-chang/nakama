@@ -114,6 +114,24 @@ def _resolve_reader_base(base: str) -> Path:
     return resolver()
 
 
+def _looks_like_web_clipper(fm: dict) -> bool:
+    """True when frontmatter looks like Obsidian Web Clipper output.
+
+    Web Clipper writes ``tags: [clippings, ...]`` (YAML list) or rarely a bare
+    string. We also accept any md with a ``source`` URL but no ``original_url``
+    key as a permissive fallback (covers Web Clipper variants with custom tag
+    templates).
+    """
+    tags = fm.get("tags")
+    if isinstance(tags, list) and "clippings" in tags:
+        return True
+    if isinstance(tags, str) and tags.strip() == "clippings":
+        return True
+    if fm.get("source") and not fm.get("original_url"):
+        return True
+    return False
+
+
 def _get_inbox_files() -> list[dict]:
     inbox = _get_inbox()
     if not inbox.exists():
@@ -148,6 +166,16 @@ def _get_inbox_files() -> list[dict]:
                     status = str(fm.get("fulltext_status", "") or "")
                     source_label = str(fm.get("fulltext_source", "") or "")
                     title = str(fm.get("title", "") or "").strip()
+                    # Obsidian Web Clipper files (Chrome plugin) drop into
+                    # Inbox/kb/ with their own frontmatter shape (no
+                    # fulltext_status / fulltext_source — just title / source /
+                    # author / tags=[clippings]). Synthesise a display row so
+                    # the inbox lists them as "ready" with a "Web Clipper"
+                    # source label, without rewriting the user's vault file.
+                    if not status and _looks_like_web_clipper(fm):
+                        status = "ready"
+                        if not source_label:
+                            source_label = "Web Clipper"
                 except OSError:
                     pass
             files.append(

@@ -266,3 +266,47 @@ def test_write_to_inbox_round_trip_title_with_yaml_special_chars(tmp_path: Path)
     assert parsed["source"] == nasty_url
     assert parsed["fulltext_source"] == 'Display "label" with quotes'
     assert parsed["note"] == nasty_note
+
+
+# ── Web Clipper dedup (Inbox/kb 既有檔 wire-up) ────────────────────────────
+
+
+def test_find_existing_for_url_matches_source_for_web_clipper(tmp_path: Path):
+    """Web Clipper drops files with `source` only (no `original_url`).
+
+    Re-pasting the same URL into /scrape-translate should short-circuit to the
+    existing clipped file rather than producing a duplicate row.
+    """
+    web_clipper_md = (
+        "---\n"
+        'title: "Sample Paper"\n'
+        'source: "https://example.com/paper"\n'
+        "tags:\n"
+        "  - clippings\n"
+        "---\n\n"
+        "body\n"
+    )
+    (tmp_path / "sample-paper.md").write_text(web_clipper_md, encoding="utf-8")
+
+    writer = InboxWriter(tmp_path)
+    found = writer.find_existing_for_url("https://example.com/paper")
+
+    assert found is not None
+    assert found.name == "sample-paper.md"
+
+
+def test_find_existing_for_url_still_matches_original_url_for_robin_files(
+    tmp_path: Path,
+):
+    """Robin-written files (with both `source` and `original_url`) still match."""
+    writer = InboxWriter(tmp_path)
+    expected = writer.write_to_inbox(_ready_result("https://example.com/x"), slug="x")
+
+    assert writer.find_existing_for_url("https://example.com/x") == expected
+
+
+def test_find_existing_for_url_no_match_returns_none(tmp_path: Path):
+    writer = InboxWriter(tmp_path)
+    writer.write_to_inbox(_ready_result("https://example.com/x"), slug="x")
+
+    assert writer.find_existing_for_url("https://example.com/other") is None

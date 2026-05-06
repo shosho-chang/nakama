@@ -89,11 +89,17 @@ class InboxWriter:
     # ── Public API ───────────────────────────────────────────────────────────
 
     def find_existing_for_url(self, original_url: str) -> Path | None:
-        """Return the inbox path whose frontmatter ``original_url`` matches, or None.
+        """Return the inbox path whose frontmatter URL matches, or None.
 
         Used by the ``/scrape-translate`` endpoint to short-circuit re-pasting
         of an already-ingested URL. Reads every ``*.md`` in the inbox dir (cheap
         — inbox is intended to be small + transient). Returns the first match.
+
+        Matches either ``original_url`` (Robin's URL-ingest format) or ``source``
+        (Obsidian Web Clipper format, which only writes ``source``). Robin-written
+        files contain both keys with the same value, so the second branch is a
+        no-op for them; Web Clipper files only have ``source``, so the second
+        branch is what catches dedup against pre-clipped papers.
         """
         if not self._inbox_dir.exists():
             return None
@@ -105,7 +111,7 @@ class InboxWriter:
             except OSError:
                 continue
             fm, _ = extract_frontmatter(content)
-            if fm.get("original_url") == original_url:
+            if fm.get("original_url") == original_url or fm.get("source") == original_url:
                 return path
         return None
 
