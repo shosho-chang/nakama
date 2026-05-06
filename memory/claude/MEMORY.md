@@ -10,11 +10,13 @@
 - [project_session_2026_05_06_overnight_4issue_sandcastle_ship.md](project_session_2026_05_06_overnight_4issue_sandcastle_ship.md) — **5/6 早報（修修睡覺期間獨力 ship）**：PR sync 5 條全 squash + sandcastle batch ship #431/#432/#433/#434（PR #436/#437/#438）— Line 2 hybrid retrieval engine + book digest + wikilink lane + ground truth signal 全產線就緒；待修修 manual smoke
 - [feedback_context_offload_isolated_subsystem.md](feedback_context_offload_isolated_subsystem.md) — **守 context window 的關鍵是 offload 工作到不會 surface 結果的子系統**（不是壓縮 prompt）：sandcastle docker > Agent tool > background bash > Monitor 4 級 isolation；主線只做 orchestration，5/6 AFK 4hr / 9 task / 22% context 實證
 - [feedback_dispatch_everything_minimize_main_context.md](feedback_dispatch_everything_minimize_main_context.md) — **最高指導原則**：所有可 dispatch 的工作（code edit / review fix / conflict resolve / refactor / rebase）一律 dispatch sandcastle/sub-agent，main context 反射動作改成 dispatch；5/4 520k breach 教訓；main context 唯一合法用途：決策 / orchestration / final approval
+- [project_session_2026_05_06_07_s8_burn_handoff.md](project_session_2026_05_06_07_s8_burn_handoff.md) — **🚨 5/6→5/7 S8 batch 燒爛收工**：S0-S7 ship 後 28 章 batch 3 PASS / 21 FAIL / 4 ERROR；root cause = chapter-source.md 叫 LLM emit body 違反 ADR-020 §Phase 1 verbatim 設計；同時 LLM 走 API 不走 Max quota 燒 $25-30；修修拍板 Path B（架構修 verbatim 從 walker literal + 保留 API path 雙選）；信任受損可能改 Codex GPT-5.5；fresh context 起手直接讀本 handoff
 - [project_session_2026_05_05_evening_reader_qa.md](project_session_2026_05_05_evening_reader_qa.md) — **5/5 evening 收工**：Reader 5 slice QA 全跑完 + 抓 3 hidden bug 補 PR #417/#418/#419 + 開 5 follow-up issue #420-#424（3 ready-for-agent / 2 needs-info）
 - [project_epub_reader_prd_2026_05_05.md](project_epub_reader_prd_2026_05_05.md) — **EPUB Reader 全規劃凍結**：PRD #378 + 5 slice issues #379-#383 + grill 9 題凍結 + sandcastle execution plan（保留下次起手 reference）
 - [feedback_deep_module_wiring_gap.md](feedback_deep_module_wiring_gap.md) — 深模組 + 單元測試全綠 ≠ 生產接通；新 public API 必補穿過真 caller 的 integration test（PR #414→#419 教訓）
 - [feedback_test_fixture_path_constants.md](feedback_test_fixture_path_constants.md) — test fixture 路徑必走 production constant，不能複製 hardcoded literal（fixture + 壞掉的常數會內部一致 tests 全綠 production 寫到不存在的目錄；PR #419 Slice 5 教訓）
 - [feedback_auto_mode_run_full_workflow.md](feedback_auto_mode_run_full_workflow.md) — auto mode 跑 Matt workflow 時 phase 之間自動接下一個，不停在 handoff
+- [feedback_no_self_review.md](feedback_no_self_review.md) — **修修不做 PR review**；ship 完默認 dispatch review skill / agent 群跑，不要被動等修修看
 - [project_nakama_overview.md](project_nakama_overview.md) — 專案總覽：Agent 全員、工作流程、狀態、基礎設施、Tech Stack
 - [user_profile.md](user_profile.md) — 修修的角色、偏好、知識背景
 - [feedback_dev_workflow.md](feedback_dev_workflow.md) — 完整開發流程規範：角色分工、六個 Phase、交接原則、技術選型要上網調研
@@ -177,8 +179,9 @@
 - [project_nami_vault_notes.md](project_nami_vault_notes.md) — Nami vault note 3 tools（write/read/list）+ vault_rules.py，待 VPS 部署
 - [project_brook_style_extraction_todo.md](project_brook_style_extraction_todo.md) — Brook style extraction 完成：36 篇 → 3 份 profile + 交叉分析（agents/brook/style-profiles/）
 - [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest；PR #94 publisher HTML fallback（第 5 層，BMJ/PLOS/eLife 等 Free-標記 OA）上線
-- [project_zotero_integration_plan.md](project_zotero_integration_plan.md) — 訂閱期刊全文走 Zotero（非 publisher login）；2026-05-05 升 primary，Phase B-F 已 grill 全拍
-- [project_zotero_integration_grill_2026_05_05.md](project_zotero_integration_grill_2026_05_05.md) — **grill 2026-05-05 凍結 Q1-Q10**：item-as-unit / SQLite 直連 / 兩檔 ingest pattern / MVP scope；ADR-018 + ADR-019 落地
+- [project_zotero_qa_2026_05_06_pivot_to_webclipper.md](project_zotero_qa_2026_05_06_pivot_to_webclipper.md) — **🔴 戰略 pivot 2026-05-06**：Zotero QA 14 finding → 全砍 Zotero、pivot Obsidian Web Clipper、放棄 PDF 翻譯；下次起手砍 Zotero PR + 開 ingest grill
+- ~~[project_zotero_integration_plan.md](project_zotero_integration_plan.md)~~ — **superseded by Web Clipper pivot 2026-05-06**
+- ~~[project_zotero_integration_grill_2026_05_05.md](project_zotero_integration_grill_2026_05_05.md)~~ — **superseded by Web Clipper pivot 2026-05-06**
 - [reference_vps_timezone.md](reference_vps_timezone.md) — VPS TZ 是 Asia/Taipei，cron 用本機時區；日期 filename 要 `ZoneInfo("Asia/Taipei")`
 - [feedback_gitignore_negation.md](feedback_gitignore_negation.md) — .gitignore 子檔再 include 要用 `data/*` + `!data/file`，不是 `data/` + `!data/file`
 - [feedback_design_deviation_discovery.md](feedback_design_deviation_discovery.md) — 實作時發現現成輕量方案 → flag deviation，不默默換方案
