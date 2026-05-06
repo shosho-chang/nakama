@@ -153,10 +153,10 @@
 <div class="container">
   <!-- URL 抓取 -->
   <div class="url-card">
-    <h2>從 URL 或 Zotero 抓取</h2>
+    <h2>從 URL 抓取</h2>
     <form id="scrapeForm" method="post" action="/scrape-translate" onsubmit="return onScrapeSubmit()">
       <div class="url-row">
-        <input class="url-input" type="text" name="url" id="urlInput" placeholder="https://www.nature.com/... 或 zotero://select/library/items/..." pattern="(https?|zotero)://.+" required>
+        <input class="url-input" type="text" name="url" id="urlInput" placeholder="https://www.nature.com/..." pattern="https?://.+" required>
         <div class="url-selects">
           <select name="source_type" class="type-select">
             <option value="article">Article</option>
@@ -207,11 +207,6 @@
       <div class="file-actions">
         {% if file.annotatable %}
           <a href="/read?file={{ file.name }}" class="btn-read">閱讀</a>
-        {% endif %}
-        {% if file.is_zotero_ready %}
-          <form method="post" action="/zotero-ingest/{{ file.name[:-3] }}" style="margin:0">
-            <button type="submit" style="background:#2e7d32" title="將 Zotero item fan-out 成 raw + annotated source pages 到 KB/Wiki/Sources/">Ingest to KB</button>
-          </form>
         {% endif %}
         <form method="post" action="/start" style="margin:0;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
           <input type="hidden" name="filename" value="{{ file.name }}">

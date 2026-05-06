@@ -490,10 +490,10 @@
     }
 
     // ── Bilingual mode ──
-    // states: 'off' → 'on' (show translation) → 'hidden' (hide translation) → 'off'
-    const BILINGUAL_STATES = ['off', 'on', 'hidden'];
-    const BILINGUAL_LABELS = { off: '雙語', on: '譯文 ✓', hidden: '譯文 ✗' };
-    // IS_BILINGUAL=true（從 scrape-translate 產生的雙語檔案）時，首次開啟預設 'on'
+    // 2 states: 'on' (show translation) ↔ 'off' (hide translation).
+    // Bilingual files default to 'on'; non-bilingual files (no translation
+    // blockquotes in body) ignore the toggle visually but state still persists.
+    const BILINGUAL_LABELS = { off: '譯文 ✗', on: '譯文 ✓' };
     let bilingualState = localStorage.getItem('robin-bilingual') || (IS_BILINGUAL ? 'on' : 'off');
 
     function applyBilingual() {
@@ -501,18 +501,15 @@
       if (bilingualState === 'on') {
         readerContent.classList.add('bilingual');
         bilingualToggle.classList.add('active');
-      } else if (bilingualState === 'hidden') {
-        readerContent.classList.add('bilingual', 'bilingual-hidden');
-        bilingualToggle.classList.add('active');
       } else {
+        readerContent.classList.add('bilingual', 'bilingual-hidden');
         bilingualToggle.classList.remove('active');
       }
       bilingualToggle.textContent = BILINGUAL_LABELS[bilingualState];
     }
 
     function cycleBilingual() {
-      const idx = BILINGUAL_STATES.indexOf(bilingualState);
-      bilingualState = BILINGUAL_STATES[(idx + 1) % BILINGUAL_STATES.length];
+      bilingualState = bilingualState === 'on' ? 'off' : 'on';
       localStorage.setItem('robin-bilingual', bilingualState);
       applyBilingual();
     }

@@ -1,9 +1,10 @@
 # ADR-019: Two-file Source Ingest Pattern (Raw + Annotated)
 
-**Status:** Accepted
+**Status:** Superseded (2026-05-06) — Zotero pipeline removed
+**Superseded reason:** 與 ADR-018 一同 superseded。Two-file fan-out (raw `{slug}.md` + annotated `{slug}--annotated.md`) pattern 原本綁在 Zotero ingest path（`agents/robin/zotero_ingest.py` `produce_source_pages`）；Zotero 整合全砍後此模式無實作載體。Annotated source page 概念可能在新 ingest grill（Web Clipper pipeline + Document/EPUB Reader 一致性）後重新挑揀，但要等 grill 結論再寫新 ADR，不直接沿用本 ADR。詳見 `memory/claude/project_zotero_qa_2026_05_06_pivot_to_webclipper.md`.
 **Date:** 2026-05-05
 **Deciders:** shosho-chang
-**Related:** ADR-018, ADR-017 (annotation KB integration), PR #354 (bilingual reader), [project_zotero_integration_grill_2026_05_05.md](../../memory/claude/project_zotero_integration_grill_2026_05_05.md)
+**Related:** ADR-018, ADR-017 (annotation KB integration), PR #354 (bilingual reader)
 
 ---
 
