@@ -1,7 +1,7 @@
 # Memory Index
 
 - [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **🚨 戰略級破洞 5/6**：KB Concept 622 頁中 544 (87.5%) 是 phase-b-reconciliation 空殼；ADR-016 沉默違反 ADR-011 P1 aggregator；ADR-020 v3 rewrite draft 起手 + Codex audit 已跑（GPT-5 抓到 3 件 Claude 漏看 drift）+ Gemini panel pending
-- [project_multi_agent_panel_skill_todo.md](project_multi_agent_panel_skill_todo.md) — 5/6 ADR-020 audit 實證 multi-model panel 比單 Claude 高 signal；5 步驟流程 + 各家強項 cheat sheet + 待用 skill-creator 凍結成 `multi-agent-panel` skill
+- [project_multi_agent_panel_skill_todo.md](project_multi_agent_panel_skill_todo.md) — **5/6 ADR-020 panel 實證 → 同日 skill freeze 完成**：user-level `multi-agent-panel` skill at `C:/Users/Shosho/.claude/skills/multi-agent-panel/`（SKILL.md + 3 references + Python dispatch template）下次走 `/multi-agent-panel` 觸發
 - [project_session_2026_05_06_adr_020_panel.md](project_session_2026_05_06_adr_020_panel.md) — 5/6 收工 handoff：ADR-020 v2 Accepted + Codex/Gemini panel 全跑完；下次起手 a→b→d→c (commit/push → /to-issues 拆 8 slice → multi-agent-panel skill 凍結 → S1 動工)
 - [feedback_context_budget_200k_250k.md](feedback_context_budget_200k_250k.md) — Opus 1M context 不代表沒上限；Messages 區塊 200k 警戒 / 250k 硬上限；自我監控不依賴修修提醒
 - [feedback_session_start_must_read_memory_md.md](feedback_session_start_must_read_memory_md.md) — **每次 session 開始 / compact reload 第一個 tool call 必讀 MEMORY.md**；compact 後 context 重啟、之前讀過的也丟失；handoff doc 是任務級不能取代規則級 MEMORY 索引；5/3 + 5/6 兩次跑 F: stale vault 同錯重犯教訓

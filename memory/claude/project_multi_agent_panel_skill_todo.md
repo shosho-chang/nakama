@@ -1,9 +1,23 @@
 ---
-name: Multi-agent panel review/brainstorm 工作流 — 待用 skill-creator 凍結成 skill
-description: 2026-05-06 ADR-020 audit 過程實證 multi-model panel 比單 Claude 高 signal — Codex (GPT-5) 抓到 3 件 Claude 漏看的 implementation drift；待跑完 ADR-020 後用 skill-creator 把流程歸納成 multi-agent-panel skill（觸發 trigger + 各家強項 mapping + 5 步驟）
+name: Multi-agent panel skill — 已 freeze (2026-05-06)
+description: 2026-05-06 ADR-020 audit 過程實證 multi-model panel 比單 Claude 高 signal；同日用 skill-creator 凍結成 user-level `multi-agent-panel` skill at `C:/Users/Shosho/.claude/skills/multi-agent-panel/`（SKILL.md + 3 references + Gemini dispatch template）
 type: project
 created: 2026-05-06
+status: frozen
 ---
+
+## ✅ Skill freeze status (2026-05-06)
+
+User-level skill `multi-agent-panel` 已 ship at `C:/Users/Shosho/.claude/skills/multi-agent-panel/`:
+- `SKILL.md` — 5-step workflow + auto-detect graceful degradation
+- `references/model-strengths.md` — 4-model cheat sheet + observation log
+- `references/dispatch-prompts.md` — Codex + Gemini canonical audit prompt template
+- `references/integration-matrix.md` — 3-way integration table format
+- `assets/gemini_dispatch_template.py` — Python dispatch script template
+
+Skill description 強 trigger on: panel review / second opinion / cross-model audit / ADR review / strategic decision / contract drift。
+
+下次跑 panel 走 `/multi-agent-panel` 或 Claude 自動觸發即可。Observations log 會持續 append（每次跑 panel 後 update model-strengths.md 末段）。
 
 ## Trigger / use cases
 
