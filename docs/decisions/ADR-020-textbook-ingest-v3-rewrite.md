@@ -1,4 +1,4 @@
-# ADR-020: Textbook Ingest v3 — Lossless Source + Sync Concept Aggregation + Bilingual RAG
+# ADR-020: Textbook Ingest v3 — Raw Layer + Lossless Source + Sync Concept Aggregation + Bilingual RAG
 
 **Status:** Accepted
 **Date:** 2026-05-06
@@ -32,11 +32,37 @@
 
 ## Decision
 
-Three-phase ingest pipeline replacing ADR-016 Phase A/B 拆分，加上配套的 RAG architecture + multilingual discipline + maturity model:
+Four-phase ingest pipeline replacing ADR-016 Phase A/B 拆分，加上配套的 RAG architecture + multilingual discipline + maturity model. Phase 0 lossless EPUB→Raw 對齊 vault 分層原則（Raw = immutable source of truth, Wiki = LLM-加工成品，per CLAUDE.md vault 規則）:
+
+### Phase 0 — Lossless EPUB Conversion
+
+EPUB / PDF / HTML → `KB/Raw/Books/{book-title}.md` 整本 raw markdown，**無 LLM 補述、無切 chapter**。對齊 CLAUDE.md vault 分層: Raw = immutable source of truth, Wiki = LLM-加工成品。
+
+工具選型 spike（S0 slice 決定）:
+
+| 工具 | 強項 | 弱項 |
+|---|---|---|
+| **pandoc** | mature document converter；markdown 輸出結構清楚 | 複雜 EPUB (多重 stylesheet / embedded font) 可能 lose info |
+| **ebooklib (Python)** | 純 Python，可 programmatic 控制 chapter boundary | markdown 輸出粗糙，需自寫 renderer |
+| **Calibre `ebook-convert`** | GUI/CLI 雙模式；圖檔抽取最完整 | markdown 輸出 verbose，需 post-process |
+
+選型優先順序: **lossless > 結構簡潔 > 圖檔 path 一致性**。S0 spike 同一本 BSE 跑三家比對 markdown 完整度（含 figure / table / section heading / inline equation 還原率）。
+
+Output 規範:
+- 純 markdown — heading / paragraph / list / image link / inline code / inline math 保留
+- 圖檔抽到 `Attachments/Books/{book-id}/{fig-name}.{ext}`（per-book 子目錄，命名 spike 階段定）
+- Frontmatter minimal（`title` / `source_epub_path` / `converted_date` / `converter_tool` / `converter_version` / `book_id`）
+- 不切 chapter（chapter boundary 由 Phase 1 LLM 識別 — 因為 EPUB internal chapter division 不一定符合教科書真章節邏輯）
+
+Why Phase 0 layer:
+- **Vault 分層**：Raw immutable，Wiki 才是 LLM-加工成品 — 既有 CLAUDE.md 規範
+- **Phase 1 從 Raw 讀**：未來 LLM prompt 改 / Sonnet 升級 / RAG 重 index，都不需重 parse EPUB；Raw 是穩定 substrate
+- **可 diff / backup / sync**：純文字 markdown 跨 device 同步無 EPUB binary 痛點，git 也能 diff verbatim 改動
+- **跨 agent reuse**：其他 agent（Robin paper digest cross-reference / Brook reference page generator）讀 Raw 不必經 LLM
 
 ### Phase 1 — Lossless Source Ingest（per chapter, parallelizable）
 
-Walker EPUB extract → Source page `KB/Wiki/Sources/Books/{book_id}/ch{n}.md` 結構：
+從 `KB/Raw/Books/{book-title}.md` 讀 → LLM 切 chapter boundary + Source page `KB/Wiki/Sources/Books/{book_id}/ch{n}.md` 結構：
 
 ```
 [YAML frontmatter — 完整 metadata + figures[].llm_description (triaged) + tables[]]
@@ -363,16 +389,17 @@ Codex audit §5 提案。Body 仍 paraphrased（claim-dense）+ 每節 short ver
 
 | Slice | What | Replaces | Effort |
 |---|---|---|---|
-| **S1** | Phase 1 walker → verbatim body + LLM wrapper prompt | `chapter-summary.md` v2 prompt | 1-2 days |
+| **S0** | EPUB → Raw markdown converter (pandoc / ebooklib / Calibre 三家 spike + 選型 + writer 寫 `KB/Raw/Books/`) | new feature (Phase 0 補 vault 分層) | 1 day |
+| **S1** | Phase 1 walker (**改從 `KB/Raw/Books/` 讀**) → verbatim body + LLM wrapper prompt | `chapter-summary.md` v2 prompt | 1-2 days |
 | **S2** | Phase 2 in-chapter sync concept dispatch + per-concept lock + 4-action revival | `phase-a-subagent.md` 「禁碰 Concept」HARD CONSTRAINT | 2-3 days |
 | **S3** | Concept Maturity Model classifier (high-value detection) + L1/L2/L3 routing | `phase-b-reconciliation.md` Step 3 stub generation | 2-3 days |
 | **S4** | Coverage manifest LLM classifier (primary/secondary/nuance) + acceptance gate | ADR-011 §6 placeholder/figures/concepts acceptance | 2-3 days |
 | **S5** | Vision 6-class triage classifier + multi-panel grouping | `vision-describe.md` + `phase-a-subagent.md` 「every fig」rule | 2 days |
 | **S6** | RAG infrastructure: BGE-M3 backend + bge-reranker-large + Parent-Child chunking + Hybrid retrieval pipeline | 既有 PR #436 hybrid retrieval Phase 1a (model2vec backend) | 3-4 days |
 | **S7** | Bilingual term mapping (`en_source_terms` extraction + populate) + query expansion in retrieval | new feature | 1-2 days |
-| **S8** | Cleanup re-ingest Sport Nutrition 4E + BSE | one-shot operation | 1 day |
+| **S8** | Cleanup re-ingest Sport Nutrition 4E + BSE (含 Phase 0 EPUB→Raw + Phase 1-3 完整流程) | one-shot operation | 1 day |
 
-S1-S7 sequential（每 slice merge 才開下一個 slice 避免 context drift）。S8 是 cleanup，S1-S7 全 ship 後一次性跑。
+S0-S7 sequential（每 slice merge 才開下一個 slice 避免 context drift；S0 → S1 dependency 強，S1 必須有 Raw producer 才能讀）。S8 是 cleanup，S0-S7 全 ship 後一次性跑。
 
 ---
 
