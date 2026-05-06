@@ -52,3 +52,13 @@ tests/files/
 # Sandcastle artifacts (worktrees / logs / patches written into target repo cwd)
 # See docs/runbooks/sandcastle.md
 .sandcastle/
+
+# Codex CLI local config (parallel to CLAUDE.md / .claude/)
+AGENTS.md
+.agents/
+
+# Claude Code worktrees (per-agent isolation)
+.claude/worktrees/
+
+# Preflight / pipeline run reports
+docs/runs/
