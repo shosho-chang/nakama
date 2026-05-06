@@ -66,6 +66,28 @@ DEFAULT_CH2 = """<?xml version="1.0" encoding="utf-8"?>
 </html>
 """
 
+CH_WITH_TABLE = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapter 3</title></head>
+<body>
+<h1>Chapter 3: Nutrition Data</h1>
+<table>
+  <tr><th>Nutrient</th><th>Amount</th><th>DV%</th></tr>
+  <tr><td>Protein</td><td>20g</td><td>40%</td></tr>
+  <tr><td>Fat</td><td>10g</td><td>13%</td></tr>
+</table>
+</body>
+</html>
+"""
+
+# 1×1 transparent PNG bytes (valid minimal PNG)
+_TINY_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0dIDATx\x9cc\x00"
+    b"\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
 
 @dataclass
 class EPUBSpec:
@@ -237,3 +259,57 @@ def epub_malformed_opf() -> bytes:
 
 def epub_with_cover() -> bytes:
     return make_epub_blob(EPUBSpec(cover_item=True))
+
+
+def epub_with_image_in_chapter() -> bytes:
+    """EPUB whose chapter body contains an <img> referencing the cover PNG."""
+    ch1 = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapter 1</title></head>
+<body>
+<h1>Chapter 1: Introduction</h1>
+<p>Body text with <strong>bold</strong> and <em>italic</em>.</p>
+<img src="cover.png" alt="Figure 1.1: Diagram"/>
+</body>
+</html>
+"""
+    return make_epub_blob(EPUBSpec(chapters={"ch1.xhtml": ch1}, cover_item=True))
+
+
+def epub_with_table() -> bytes:
+    """EPUB whose chapter contains a three-column HTML table."""
+    return make_epub_blob(EPUBSpec(chapters={"ch3.xhtml": CH_WITH_TABLE}))
+
+
+def epub_multi_chapter_ordered() -> bytes:
+    """EPUB with three chapters; spine order ch1 → ch2 → ch3."""
+    ch3 = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapter 3</title></head>
+<body><h1>Chapter 3</h1><p>Third chapter.</p></body>
+</html>
+"""
+    nav = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>Contents</title></head>
+<body>
+<nav epub:type="toc" id="toc">
+  <h1>Contents</h1>
+  <ol>
+    <li><a href="ch1.xhtml">Chapter 1</a></li>
+    <li><a href="ch2.xhtml">Chapter 2</a></li>
+    <li><a href="ch3.xhtml">Chapter 3</a></li>
+  </ol>
+</nav>
+</body>
+</html>
+"""
+    return make_epub_blob(
+        EPUBSpec(
+            chapters={"ch1.xhtml": DEFAULT_CH1, "ch2.xhtml": DEFAULT_CH2, "ch3.xhtml": ch3},
+            nav_xhtml=nav,
+        )
+    )

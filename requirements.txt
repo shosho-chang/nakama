@@ -39,9 +39,10 @@ jieba>=0.42                         # 中文分詞：SRT sub-cue 拆分在詞邊
 pymupdf4llm>=1.27
 pdfplumber>=0.11          # 精確表格提取（研究論文/教科書 with_tables=True）
 
-# EPUB parsing (textbook-ingest skill — ebook-format primary path per ADR-010)
+# EPUB parsing (textbook-ingest skill — ebook-format primary path per ADR-010; raw_ingest per ADR-020)
 ebooklib>=0.18            # EPUB structural reader (spine + TOC + metadata)
 beautifulsoup4>=4.12      # EPUB HTML → plain text + heading extraction
+markdownify>=1.2          # HTML → Markdown (ADR-020 Phase 0 raw converter)
 
 # Utilities
 python-dateutil>=2.9

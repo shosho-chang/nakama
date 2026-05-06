@@ -42,11 +42,19 @@ EPUB / PDF / HTML → `KB/Raw/Books/{book-title}.md` 整本 raw markdown，**無
 
 | 工具 | 強項 | 弱項 |
 |---|---|---|
-| **pandoc** | mature document converter；markdown 輸出結構清楚 | 複雜 EPUB (多重 stylesheet / embedded font) 可能 lose info |
-| **ebooklib (Python)** | 純 Python，可 programmatic 控制 chapter boundary | markdown 輸出粗糙，需自寫 renderer |
-| **Calibre `ebook-convert`** | GUI/CLI 雙模式；圖檔抽取最完整 | markdown 輸出 verbose，需 post-process |
+| **pandoc** | mature document converter；markdown 輸出結構清楚 | table 輸出 space-aligned grid（非 GFM pipe）；需外部 binary（~34 MB）；anchor stub 雜訊 |
+| **ebooklib + markdownify (Python)** | 純 Python；GFM pipe table；spine order explicit；programmatic path rewrite | markdownify 不轉換 MathML（Phase 0 可接受） |
+| **Calibre `ebook-convert`** | 圖檔抽取最完整 | ~100 MB system install；非 pip；subprocess only |
 
-選型優先順序: **lossless > 結構簡潔 > 圖檔 path 一致性**。S0 spike 同一本 BSE 跑三家比對 markdown 完整度（含 figure / table / section heading / inline equation 還原率）。
+**選型決定（S0 spike 完成）：ebooklib 0.20 + markdownify 1.2.2**
+
+選型優先順序: **lossless > 結構簡潔 > 圖檔 path 一致性**。Spike 詳細比對見 [`docs/spike/2026-05-06-epub-converter.md`](../spike/2026-05-06-epub-converter.md)。
+
+選型理由摘要:
+1. **GFM pipe table** — pandoc space-aligned grid 非標準，Obsidian/GitHub 皆支援 pipe table
+2. **In-process path rewrite** — BeautifulSoup 前處理直接改寫 `<img src>` 為 vault-relative path，無需 subprocess round-trip
+3. **Pure Python, 零 binary dep** — ebooklib + markdownify 無 binary；已在 requirements.txt（ebooklib）
+4. **Explicit spine order** — `book.spine` 以 `[(idref, linear)]` 回傳讀取順序，chapter boundary 偵測確定性高
 
 Output 規範:
 - 純 markdown — heading / paragraph / list / image link / inline code / inline math 保留
