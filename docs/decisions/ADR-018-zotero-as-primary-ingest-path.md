@@ -1,9 +1,10 @@
 # ADR-018: Zotero as Primary Ingest Path
 
-**Status:** Accepted
+**Status:** Superseded (2026-05-06) — Web Clipper pivot
+**Superseded reason:** 2026-05-06 evening QA 14 finding 後，Zotero 整合三 PR (Slice 1/2/3) 全砍。Pivot 到 Obsidian Web Clipper（Chrome plugin）作為 canonical paper ingest 路徑 — 直接 publisher HTML 抓進 `Inbox/kb/`，無翻譯插件 DOM injection、structure 保留、化學記號 (`<sub>` / `<sup>`) verbatim。Zotero `zotero://` URI 路徑（含 attachment vs parent itemKey UX gotcha + Zotero 7 SingleFile 模式 `_assets/` 不存在等問題）放棄。詳見 `memory/claude/project_zotero_qa_2026_05_06_pivot_to_webclipper.md`.
 **Date:** 2026-05-05
 **Deciders:** shosho-chang
-**Related:** ADR-019, PR #352-356 (Stage 1 ingest 重定位為 escape hatch), `agents/robin/CONTEXT.md`, [project_zotero_integration_grill_2026_05_05.md](../../memory/claude/project_zotero_integration_grill_2026_05_05.md)
+**Related:** ADR-019, PR #352-356 (Stage 1 ingest 重定位為 escape hatch), `agents/robin/CONTEXT.md`
 
 ---
 
