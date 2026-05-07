@@ -33,10 +33,30 @@ _client: anthropic.Anthropic | None = None
 
 
 def get_client() -> anthropic.Anthropic:
-    """取得或建立 Anthropic client（singleton）。"""
+    """取得或建立 Anthropic client（singleton）。
+
+    Auth precedence:
+    1. ``ANTHROPIC_API_KEY`` (api_key) — 標準 host / API-key billing 路徑
+    2. ``CLAUDE_CODE_OAUTH_TOKEN`` (auth_token) — Path C sandcastle/OAuth → Max quota
+
+    OAuth tokens (``sk-ant-oat01-…``) ride the Authorization Bearer header via
+    the SDK's ``auth_token`` kwarg; API keys ride ``x-api-key``. Container env
+    in sandcastle Stage 4 only provides the OAuth token, so the fallback is
+    not optional.
+    """
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        if api_key:
+            _client = anthropic.Anthropic(api_key=api_key)
+        elif oauth_token:
+            _client = anthropic.Anthropic(auth_token=oauth_token)
+        else:
+            raise RuntimeError(
+                "Neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set; "
+                "host runs need API key, sandcastle runs need OAuth token."
+            )
     return _client
 
 
