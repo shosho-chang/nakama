@@ -23,6 +23,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from shared import brook_synthesize_store as _store
 from shared.log import get_logger
 from shared.schemas.brook_synthesize import (
     BrookSynthesizeStore,
@@ -37,8 +38,10 @@ from ._constants import (
     OUTLINE_MAX_SECTIONS,
     OUTLINE_MIN_REFS_PER_SECTION,
     OUTLINE_MIN_SECTIONS,
+    REJECT_DISCOUNT_FACTOR,
 )
 from ._outline import OutlineDraftError, draft_outline
+from ._reject_discount import apply_reject_discount
 from ._search import gather_evidence
 from ._store_writer import persist
 
@@ -106,6 +109,22 @@ def synthesize(
         engine=BROOK_SYNTHESIZE_ENGINE,
         db=db,
     )
+
+    # Reject-aware down-rank (issue #460, ADR-021 §4): when a prior store
+    # exists for this slug, replay its `reject_evidence_entirely` actions as
+    # a multiplicative discount on each rejected slug's chunk scores. We do
+    # this *after* dedupe (so the discount sees the canonical rrf_score) and
+    # *before* outline drafting (so the LLM sees a re-ranked pool). First-run
+    # / no-prior-store path is a no-op.
+    prior_user_actions: list = []
+    if _store.exists(slug):
+        try:
+            prior_user_actions = list(_store.read(slug).user_actions)
+        except Exception:  # pragma: no cover — corrupt store should not block
+            logger.exception("synthesize.prior_actions_read_failed slug=%s", slug)
+            prior_user_actions = []
+    pool = apply_reject_discount(pool, prior_user_actions)
+
     outline = draft_outline(topic, keywords, pool, ask_fn=ask_fn)
     store = persist(
         slug=slug,
@@ -137,6 +156,8 @@ __all__ = [
     "OUTLINE_MIN_REFS_PER_SECTION",
     "OUTLINE_MIN_SECTIONS",
     "OutlineDraftError",
+    "REJECT_DISCOUNT_FACTOR",
     "SynthesizeResult",
+    "apply_reject_discount",
     "synthesize",
 ]

@@ -38,6 +38,21 @@ OUTLINE_MAX_SECTIONS: Final[int] = 7
 #: is too thin to call "synthesized").
 OUTLINE_MIN_REFS_PER_SECTION: Final[int] = 2
 
+#: Multiplicative discount factor applied per ``reject_evidence_entirely``
+#: action against an evidence slug (issue #460, ADR-021 §4 Reject 機制).
+#:
+#: ``discounted = base_rrf * (REJECT_DISCOUNT_FACTOR ** reject_count)``
+#:
+#: 0.5 means each reject halves the score. Multiplicative (not additive) so
+#: a high-base slug with one reject can still beat a low-base no-reject slug
+#: — the explicit Gemini push-back: preserve serendipitous rediscovery
+#: rather than implementing a "naughty list" hard-hide.
+#:
+#: Tunable: bench against future re-run sessions and adjust if the down-rank
+#: is too aggressive (slug never returns) or too soft (rejected slug stays
+#: top-1). Hooked here so we can flip it without touching the ranker.
+REJECT_DISCOUNT_FACTOR: Final[float] = 0.5
+
 
 __all__ = [
     "BROOK_SYNTHESIZE_ENGINE",
@@ -46,4 +61,5 @@ __all__ = [
     "OUTLINE_MAX_SECTIONS",
     "OUTLINE_MIN_REFS_PER_SECTION",
     "OUTLINE_MIN_SECTIONS",
+    "REJECT_DISCOUNT_FACTOR",
 ]
