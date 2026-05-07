@@ -88,12 +88,23 @@ def _run(vault_root: Path, *, report_dir: Path | None = None) -> int:
             records.append(record)
             continue
 
-        try:
-            payload, _ = _pick_chapter(payloads, chapter_index)
-        except Exception as exc:
-            record["error"] = str(exc)
-            records.append(record)
-            continue
+        # Match walker payload by chapter_title from frontmatter (filename idx
+        # ambiguous: batch writes use walker_pos, CLI single-chapter writes
+        # use real_ch_num after _pick_chapter D4 reassign).
+        title = (fm.get("chapter_title") or "").strip()
+        payload = None
+        if title:
+            for p in payloads:
+                if (p.chapter_title or "").strip() == title:
+                    payload = p
+                    break
+        if payload is None:
+            try:
+                payload, _ = _pick_chapter(payloads, chapter_index)
+            except Exception as exc:
+                record["error"] = f"no walker match for title='{title}': {exc}"
+                records.append(record)
+                continue
 
         acc = compute_acceptance(
             page_body=page_body,
