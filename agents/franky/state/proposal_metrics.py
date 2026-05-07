@@ -1,4 +1,4 @@
-"""Proposal lifecycle CRUD + FSM (ADR-022 §6).
+"""Proposal lifecycle CRUD + FSM (ADR-023 §6).
 
 Persistence layer for the franky evolution-loop proposal lifecycle:
 
@@ -44,7 +44,7 @@ from shared.schemas.proposal_metrics import (
 from shared.state import _get_conn
 
 # ---------------------------------------------------------------------------
-# FSM SoT (ADR-022 §6)
+# FSM SoT (ADR-023 §6)
 # ---------------------------------------------------------------------------
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {

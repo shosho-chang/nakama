@@ -420,7 +420,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_kb_search_feedback_book
             ON kb_search_feedback(book_id, marked_at DESC);
 
-        -- ADR-022 §6 Franky evolution-loop proposal lifecycle.
+        -- ADR-023 §6 Franky evolution-loop proposal lifecycle.
         -- Canonical DDL: migrations/014_proposal_metrics.sql.
         -- Owned by agents/franky/state/proposal_metrics.py (CRUD + FSM).
         -- Schema is frozen at v1; future columns use `__v2` suffix.

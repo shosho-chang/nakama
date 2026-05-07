@@ -1,9 +1,9 @@
-"""Franky evolution-loop proposal lifecycle schema (ADR-022 §6).
+"""Franky evolution-loop proposal lifecycle schema (ADR-023 §6).
 
 `ProposalMetricV1` mirrors the `proposal_metrics` table row shape used by the
 weekly synthesis (S3) → triage → ship → retrospective (S4) lifecycle. Schema
 is frozen at v1; future column additions use a `__v2` suffix migration so old
-column semantics are preserved (see ADR-022 §"Cost guard").
+column semantics are preserved (see ADR-023 §"Cost guard").
 
 Schema follows docs/principles/schemas.md:
     - extra="forbid" + frozen=True
@@ -86,7 +86,7 @@ class ProposalFrontmatterV1(BaseModel):
 class ProposalMetricV1(BaseModel):
     """Schema-validated view of a `proposal_metrics` row.
 
-    Field ordering mirrors migration 014 / ADR-022 §6 verbatim.
+    Field ordering mirrors migration 014 / ADR-023 §6 verbatim.
     Timestamps are stored as ISO 8601 strings (matches existing state.db
     convention — see `alert_state`, `r2_backup_checks`).
     """

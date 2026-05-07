@@ -1,6 +1,6 @@
 """Extract the 5 mandatory frontmatter keys from a vault page or issue body.
 
-ADR-022 §6 — every proposal must declare 5 keys before it can enter the
+ADR-023 §6 — every proposal must declare 5 keys before it can enter the
 `proposal_metrics` table:
 
     proposal_id      — slug, unique within state.db

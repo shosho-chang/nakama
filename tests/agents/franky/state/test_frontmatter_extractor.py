@@ -1,4 +1,4 @@
-"""Frontmatter extractor unit tests (ADR-022 §6)."""
+"""Frontmatter extractor unit tests (ADR-023 §6)."""
 
 from __future__ import annotations
 

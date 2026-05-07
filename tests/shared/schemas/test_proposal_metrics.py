@@ -1,4 +1,4 @@
-"""Schema tests for ProposalMetricV1 / ProposalFrontmatterV1 (ADR-022 §6)."""
+"""Schema tests for ProposalMetricV1 / ProposalFrontmatterV1 (ADR-023 §6)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from shared.schemas.proposal_metrics import (
 
 
 def test_required_frontmatter_keys_match_spec():
-    # ADR-022 §6 mandates exactly these 5 keys; lock the constant down.
+    # ADR-023 §6 mandates exactly these 5 keys; lock the constant down.
     assert REQUIRED_FRONTMATTER_KEYS == (
         "proposal_id",
         "metric_type",

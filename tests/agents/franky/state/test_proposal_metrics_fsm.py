@@ -1,4 +1,4 @@
-"""FSM + CRUD tests for proposal_metrics (ADR-022 §6).
+"""FSM + CRUD tests for proposal_metrics (ADR-023 §6).
 
 Covers:
     - every legal transition fires (named helpers + generic transition)
@@ -234,7 +234,7 @@ def test_transition_unknown_proposal_raises():
 
 
 def test_allowed_transitions_matches_adr_022_section_6():
-    # Per ADR-022 §6 narrative:
+    # Per ADR-023 §6 narrative:
     # candidate → promoted → triaged → ready|wontfix → shipped → verified|rejected
     # Plus reject is reachable as a defensive escape from non-terminal states.
     assert ALLOWED_TRANSITIONS["candidate"] == {"promoted", "rejected"}

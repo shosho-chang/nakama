@@ -1,16 +1,16 @@
 -- migrations/014_proposal_metrics.sql
 --
--- ADR-022 §6 — proposal_metrics table.
+-- ADR-023 §6 — proposal_metrics table.
 --
 -- Purpose: persistence layer for the franky evolution-loop proposal lifecycle
 -- (candidate → promoted → triaged → ready|wontfix → shipped → verified|rejected).
 -- The retrospective module reads this table to answer "did we actually get
 -- stronger?" — without it, retrospective is narrative not feedback.
 --
--- Schema is canonical per ADR-022 §6 (18 columns + CHECK constraints + UNIQUE
+-- Schema is canonical per ADR-023 §6 (18 columns + CHECK constraints + UNIQUE
 -- proposal_id). Schema_version=1 is implicit by table identity; future column
 -- additions MUST use a `__v2` suffix migration to preserve old-column semantics
--- (see ADR-022 §"Cost guard"). Do NOT change column meanings in place.
+-- (see ADR-023 §"Cost guard"). Do NOT change column meanings in place.
 --
 -- Status FSM SoT (ALLOWED_TRANSITIONS) lives in
 -- `agents/franky/state/proposal_metrics.py`. The CHECK enum below is a manual
