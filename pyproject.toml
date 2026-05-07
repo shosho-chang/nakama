@@ -39,6 +39,7 @@ dependencies = [
     # KB hybrid retrieval (issue #431)
     "sqlite-vec>=0.1.9",   # vec0 virtual table for dense-vector lane
     "model2vec>=0.8.0",    # potion-base-8M 256-dim static embeddings
+    "FlagEmbedding>=1.4.0", # BGE-M3 1024-dim default backend (ADR-022); ~2.3GB model on first use
 
     # Utilities
     "python-dateutil>=2.9",

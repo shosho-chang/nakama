@@ -2,7 +2,10 @@
 
 覆蓋：vault walking / frontmatter title fallback / type normalization /
 preview truncation / Claude Haiku ranking response parsing 各路徑，
-以及 engine="hybrid" 委派路徑（issue #431）。
+以及 engine="hybrid" 委派路徑（ADR-021 §2 — 預設 engine）。
+
+ADR-021 §2 後 default engine 改 hybrid；haiku 路徑的 vault-walking 測試
+顯式傳 ``engine="haiku"``。
 
 Claude client 全 mock（feedback_test_api_isolation.md）。
 """
@@ -55,7 +58,7 @@ def test_empty_vault_returns_empty_list(tmp_path, monkeypatch):
     client = _mock_claude_response("[]")
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    assert search_kb("anything", tmp_path) == []
+    assert search_kb("anything", tmp_path, engine="haiku") == []
     client.messages.create.assert_not_called()
 
 
@@ -64,7 +67,7 @@ def test_vault_with_only_empty_subdirs_returns_empty(vault, monkeypatch):
     client = _mock_claude_response("[]")
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    assert search_kb("topic", vault) == []
+    assert search_kb("topic", vault, engine="haiku") == []
     client.messages.create.assert_not_called()
 
 
@@ -86,7 +89,7 @@ def test_type_normalization_sources_concepts_entities(vault, monkeypatch):
     )
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    results = search_kb("睡眠", vault)
+    results = search_kb("睡眠", vault, engine="haiku")
     types = {r["type"] for r in results}
     assert types == {"source", "concept", "entity"}
 
@@ -96,7 +99,7 @@ def test_title_from_frontmatter_preferred_over_filename(vault, monkeypatch):
     client = _mock_claude_response('[{"index": 1, "relevance_reason": "主題相關"}]')
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    results = search_kb("睡眠科學", vault)
+    results = search_kb("睡眠科學", vault, engine="haiku")
     assert results[0]["title"] == "為什麼要睡覺"
 
 
@@ -108,7 +111,7 @@ def test_title_falls_back_to_filename_when_frontmatter_missing(vault, monkeypatc
     client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    results = search_kb("query", vault)
+    results = search_kb("query", vault, engine="haiku")
     assert results[0]["title"] == "no-frontmatter"
 
 
@@ -127,7 +130,7 @@ def test_preview_truncated_to_200_chars(vault, monkeypatch):
     client.messages.create.side_effect = _capture_messages_create
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    search_kb("q", vault)
+    search_kb("q", vault, engine="haiku")
     # preview 在 prompt 裡；不該含完整 500 個 A
     assert "A" * 200 in captured["prompt"]
     assert "A" * 201 not in captured["prompt"]
@@ -146,7 +149,7 @@ def test_happy_path_returns_ranked_pages_with_reasons(vault, monkeypatch):
     )
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    results = search_kb("主題", vault)
+    results = search_kb("主題", vault, engine="haiku")
     assert len(results) == 2
     # Order matches LLM ranking
     assert results[0]["title"] == "Page 2"
@@ -160,7 +163,7 @@ def test_response_without_json_array_returns_empty(vault, monkeypatch):
     client = _mock_claude_response("Sorry, I could not find anything relevant.")
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    assert search_kb("主題", vault) == []
+    assert search_kb("主題", vault, engine="haiku") == []
 
 
 def test_response_with_invalid_json_returns_empty(vault, monkeypatch):
@@ -169,7 +172,7 @@ def test_response_with_invalid_json_returns_empty(vault, monkeypatch):
     client = _mock_claude_response('[{"index": 1, invalid-json: true}]')
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    assert search_kb("主題", vault) == []
+    assert search_kb("主題", vault, engine="haiku") == []
 
 
 def test_out_of_range_index_is_skipped(vault, monkeypatch):
@@ -180,7 +183,7 @@ def test_out_of_range_index_is_skipped(vault, monkeypatch):
     )
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    results = search_kb("q", vault)
+    results = search_kb("q", vault, engine="haiku")
     assert len(results) == 1
     assert results[0]["title"] == "Only"
 
@@ -193,7 +196,7 @@ def test_response_with_prose_prefix_then_json_parses_array(vault, monkeypatch):
     )
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    results = search_kb("q", vault)
+    results = search_kb("q", vault, engine="haiku")
     assert len(results) == 1
     assert results[0]["relevance_reason"] == "相關"
 
@@ -220,7 +223,7 @@ def test_unreadable_file_is_skipped_gracefully(vault, monkeypatch):
     client = _mock_claude_response("[]")
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    assert search_kb("q", vault) == []
+    assert search_kb("q", vault, engine="haiku") == []
     client.messages.create.assert_not_called()
 
 
@@ -234,7 +237,7 @@ def test_result_has_expected_keys(vault, monkeypatch):
     client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
-    results = search_kb("q", vault)
+    results = search_kb("q", vault, engine="haiku")
     assert set(results[0].keys()) == {
         "type",
         "title",
@@ -269,7 +272,7 @@ def test_default_purpose_uses_general_intro(vault, monkeypatch):
     _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
     captured = _capture_prompt(monkeypatch)
 
-    search_kb("Zone 2 訓練", vault)
+    search_kb("Zone 2 訓練", vault, engine="haiku")
 
     assert "想查詢知識庫" in captured["prompt"]
     assert "YouTube" not in captured["prompt"]
@@ -280,7 +283,7 @@ def test_purpose_youtube_preserves_video_framing(vault, monkeypatch):
     _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
     captured = _capture_prompt(monkeypatch)
 
-    search_kb("睡眠科學", vault, purpose="youtube")
+    search_kb("睡眠科學", vault, purpose="youtube", engine="haiku")
 
     assert "YouTube 影片" in captured["prompt"]
 
@@ -290,7 +293,7 @@ def test_purpose_seo_audit_frames_internal_link_intent(vault, monkeypatch):
     _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
     captured = _capture_prompt(monkeypatch)
 
-    search_kb("zone 2 訓練", vault, purpose="seo_audit")
+    search_kb("zone 2 訓練", vault, purpose="seo_audit", engine="haiku")
 
     assert "SEO 體檢" in captured["prompt"]
     assert "internal link" in captured["prompt"]
@@ -302,7 +305,7 @@ def test_purpose_blog_compose_frames_article_writing(vault, monkeypatch):
     _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "P1", "body")
     captured = _capture_prompt(monkeypatch)
 
-    search_kb("肌力訓練飲食", vault, purpose="blog_compose")
+    search_kb("肌力訓練飲食", vault, purpose="blog_compose", engine="haiku")
 
     assert "撰寫一篇部落格" in captured["prompt"]
 
@@ -314,7 +317,7 @@ def test_all_purposes_produce_same_output_shape(vault, monkeypatch):
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     for purpose in ("general", "youtube", "seo_audit", "blog_compose"):
-        results = search_kb("q", vault, purpose=purpose)  # type: ignore[arg-type]
+        results = search_kb("q", vault, purpose=purpose, engine="haiku")  # type: ignore[arg-type]
         assert results, f"purpose={purpose} returned empty"
         assert set(results[0].keys()) == {
             "type",
@@ -335,7 +338,7 @@ def test_invalid_purpose_raises_value_error(vault):
     不再 silently fall through 到 general。"""
     _mk_page(vault / "KB" / "Wiki" / "Concepts", "x", "X", "body")
     with pytest.raises(ValueError, match="Unknown purpose"):
-        search_kb("q", vault, purpose="not_a_real_purpose")  # type: ignore[arg-type]
+        search_kb("q", vault, purpose="not_a_real_purpose", engine="haiku")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -343,15 +346,29 @@ def test_invalid_purpose_raises_value_error(vault):
 # ---------------------------------------------------------------------------
 
 
-def test_engine_haiku_is_default(vault, monkeypatch):
-    """engine defaults to 'haiku' — existing haiku path unchanged."""
-    _mk_page(vault / "KB" / "Wiki" / "Sources", "s1", "Page 1", "body1")
-    client = _mock_claude_response('[{"index": 1, "relevance_reason": "r"}]')
+def test_engine_hybrid_is_default(vault, monkeypatch):
+    """ADR-021 §2: engine defaults to 'hybrid' — Haiku must be opt-in."""
+    from shared.kb_hybrid_search import SearchHit
+
+    fake_hit = SearchHit(
+        chunk_id=7,
+        path="KB/Wiki/Concepts/test",
+        heading="定義",
+        page_title="Test",
+        chunk_text="x",
+        rrf_score=0.05,
+        lane_ranks={"bm25": 1},
+    )
+    monkeypatch.setattr("shared.kb_hybrid_search.search", lambda q, tk: [fake_hit])
+    client = _mock_claude_response("[]")
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: client)
 
     results = search_kb("query", vault)
-    assert results  # haiku path fired
-    client.messages.create.assert_called_once()
+
+    # Haiku must NOT fire — hybrid is the default lens.
+    client.messages.create.assert_not_called()
+    assert len(results) == 1
+    assert results[0]["chunk_id"] == 7  # chunk-level metadata present
 
 
 def test_engine_hybrid_delegates_to_kb_hybrid_search(vault, monkeypatch):
@@ -383,14 +400,33 @@ def test_engine_hybrid_delegates_to_kb_hybrid_search(vault, monkeypatch):
     # Haiku should NOT have been called
     client.messages.create.assert_not_called()
     assert len(results) == 1
-    assert set(results[0].keys()) == {"type", "title", "path", "preview", "relevance_reason"}
+    # ADR-021 §2 + Codex #5: hybrid wrapper must expose chunk-level metadata.
+    assert set(results[0].keys()) == {
+        "type",
+        "title",
+        "path",
+        "preview",
+        "relevance_reason",
+        "chunk_text",
+        "heading",
+        "chunk_id",
+        "rrf_score",
+    }
     assert results[0]["path"] == "KB/Wiki/Concepts/test"
     assert results[0]["title"] == "Test Concept"
     assert results[0]["type"] == "concept"
+    assert results[0]["chunk_id"] == 1
+    assert results[0]["heading"] == "定義"
+    assert results[0]["chunk_text"] == "chunk body text here"
+    assert results[0]["rrf_score"] == pytest.approx(0.05)
 
 
-def test_engine_hybrid_deduplicates_by_page(vault, monkeypatch):
-    """Multiple chunks from the same page → only one result per page path."""
+def test_engine_hybrid_keeps_multiple_chunks_per_page(vault, monkeypatch):
+    """Multiple chunks from the same page → all kept (one per chunk).
+
+    Brook synthesize builds evidence cards per-chunk; deduplicating by page
+    would collapse two distinct annotations on the same source.
+    """
     from shared.kb_hybrid_search import SearchHit
 
     hits = [
@@ -409,7 +445,35 @@ def test_engine_hybrid_deduplicates_by_page(vault, monkeypatch):
     monkeypatch.setattr("shared.anthropic_client.get_client", lambda: _mock_claude_response("[]"))
 
     results = search_kb("query", vault, engine="hybrid")
+    assert len(results) == 3
+    assert [r["chunk_id"] for r in results] == [0, 1, 2]
+
+
+def test_engine_hybrid_annotation_chunk_has_annotation_type(vault, monkeypatch):
+    """Annotation chunks (KB/Annotations/{slug}) → type='annotation'.
+
+    ADR-021 §2: annotation chunks are indexed by `_index_annotations` under
+    `KB/Annotations/{slug}` (not under `KB/Wiki/...`). The wrapper must stamp
+    `type='annotation'` so Brook synthesize can route the evidence correctly.
+    """
+    from shared.kb_hybrid_search import SearchHit
+
+    hit = SearchHit(
+        chunk_id=42,
+        path="KB/Annotations/why-we-sleep",
+        heading="",
+        page_title="why-we-sleep annotations",
+        chunk_text="The brain consolidates memory during REM.",
+        rrf_score=0.04,
+        lane_ranks={"bm25": 1, "vec": 2},
+    )
+    monkeypatch.setattr("shared.kb_hybrid_search.search", lambda q, tk: [hit])
+    monkeypatch.setattr("shared.anthropic_client.get_client", lambda: _mock_claude_response("[]"))
+
+    results = search_kb("睡眠", vault, engine="hybrid")
     assert len(results) == 1
+    assert results[0]["type"] == "annotation"
+    assert results[0]["path"] == "KB/Annotations/why-we-sleep"
 
 
 def test_engine_hybrid_empty_index_returns_empty(vault, monkeypatch):
