@@ -11,11 +11,14 @@ from agents.franky import news_digest as nd
 
 
 @pytest.fixture(autouse=True)
-def _no_anthropic_html_fetch(monkeypatch):
-    """Default: Slice B Anthropic HTML scraper returns []. Tests that exercise
+def _no_extra_source_fetch(monkeypatch):
+    """Default: stub all non-RSS sources to return []. Tests that exercise
     multi-source merge can override locally. Without this, every test would
-    trigger a real httpx call to anthropic.com/news (Slice B regression risk)."""
+    trigger real httpx calls to anthropic.com / api.github.com (Slice B + S1
+    regression risk)."""
     monkeypatch.setattr(nd.anthropic_html, "gather_candidates", lambda **kw: [])
+    monkeypatch.setattr(nd.awesome_diff, "gather_candidates", lambda *a, **kw: [])
+    monkeypatch.setattr(nd.github_trending, "gather_candidates", lambda *a, **kw: [])
 
 
 # ---------- _parse_json --------------------------------------------------------
@@ -141,7 +144,7 @@ def test_run_dry_run_does_not_write_or_publish(tmp_path, monkeypatch):
 
     def _fake_ask(prompt, max_tokens=None, **kw):
         fake_llm_calls.append(prompt[:50])
-        if "篩出當日" in prompt or "candidates" in prompt.lower() or "5-8 條" in prompt:
+        if "篩出當日" in prompt or "candidates" in prompt.lower() or "8-12 條" in prompt:
             return _curate_response(["i1"])
         return _score_response()
 
@@ -176,7 +179,7 @@ def test_run_no_publish_writes_vault_but_skips_slack(tmp_path, monkeypatch):
     monkeypatch.setattr(
         nd.llm,
         "ask",
-        lambda p, **kw: _curate_response(["i1"]) if "5-8 條" in p else _score_response(),
+        lambda p, **kw: _curate_response(["i1"]) if "8-12 條" in p else _score_response(),
     )
 
     write_mock = MagicMock()
@@ -204,7 +207,7 @@ def test_run_full_path_writes_vault_and_sends_slack(tmp_path, monkeypatch):
     monkeypatch.setattr(
         nd.llm,
         "ask",
-        lambda p, **kw: _curate_response(["i1"]) if "5-8 條" in p else _score_response(),
+        lambda p, **kw: _curate_response(["i1"]) if "8-12 條" in p else _score_response(),
     )
 
     write_mock = MagicMock()
@@ -248,7 +251,7 @@ def test_run_unknown_item_id_in_curate_skipped(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [_make_candidate("real")])
 
     def _ask(prompt, **kw):
-        if "5-8 條" in prompt:
+        if "8-12 條" in prompt:
             return _curate_response(["hallucinated_id"])  # not in candidates
         return _score_response()
 
@@ -276,7 +279,7 @@ def test_run_pick_false_items_filtered_out(tmp_path, monkeypatch):
     score_call = {"n": 0}
 
     def _ask(prompt, **kw):
-        if "5-8 條" in prompt:
+        if "8-12 條" in prompt:
             return _curate_response(["a", "b"])
         score_call["n"] += 1
         if score_call["n"] == 1:
@@ -308,7 +311,7 @@ def test_run_all_pick_false_returns_no_picks(tmp_path, monkeypatch):
     monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [_make_candidate()])
 
     def _ask(prompt, **kw):
-        if "5-8 條" in prompt:
+        if "8-12 條" in prompt:
             return _curate_response(["i1"])
         bad = json.loads(_score_response())
         bad["pick"] = False
@@ -334,7 +337,7 @@ def test_run_curate_dropped_no_id_logs_warning(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [_make_candidate("real")])
 
     def _ask(prompt, **kw):
-        if "5-8 條" in prompt:
+        if "8-12 條" in prompt:
             return json.dumps(
                 {
                     "selected": [
@@ -380,7 +383,7 @@ def test_run_score_failure_per_item_continues(tmp_path, monkeypatch):
     call_count = {"score": 0}
 
     def _ask(prompt, **kw):
-        if "5-8 條" in prompt:
+        if "8-12 條" in prompt:
             return _curate_response(["a", "b"])
         # First score raises, second succeeds
         call_count["score"] += 1
@@ -424,7 +427,7 @@ def test_run_merges_rss_and_anthropic_html_candidates(tmp_path, monkeypatch):
     captured: dict = {}
 
     def _ask(prompt, **kw):
-        if "5-8 條" in prompt:
+        if "8-12 條" in prompt:
             # Capture which item_ids reached curate, in order
             captured["prompt"] = prompt
             return _curate_response(["anthropic-news-claude", "rss-a"])
@@ -465,7 +468,7 @@ def test_run_anthropic_html_failure_does_not_block_rss(tmp_path, monkeypatch):
     monkeypatch.setattr(
         nd.llm,
         "ask",
-        lambda p, **kw: _curate_response(["rss"]) if "5-8 條" in p else _score_response(),
+        lambda p, **kw: _curate_response(["rss"]) if "8-12 條" in p else _score_response(),
     )
     monkeypatch.setattr(nd, "write_page", MagicMock())
     monkeypatch.setattr(nd, "append_to_file", MagicMock())
