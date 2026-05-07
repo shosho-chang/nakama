@@ -119,11 +119,14 @@ def search_kb(
     wiki_path = vault_path / "KB" / "Wiki"
     pages: list[dict] = []
 
+    # ADR-021 §2 + Codex amendment: recursive `rglob("*.md")` so nested files
+    # like `KB/Wiki/Sources/Books/{book_id}/notes.md` get scanned too. Subdirs
+    # kept synchronized with `shared/kb_indexer._KB_SUBDIRS` + `_SUBDIR_TO_TYPE`.
     for subdir in ("Sources", "Concepts", "Entities"):
         dir_path = wiki_path / subdir
         if not dir_path.exists():
             continue
-        for md_file in sorted(dir_path.glob("*.md")):
+        for md_file in sorted(dir_path.rglob("*.md")):
             try:
                 content = md_file.read_text(encoding="utf-8")
             except Exception:
@@ -134,11 +137,12 @@ def search_kb(
             # Normalise type: "Sources" → "source", "Concepts" → "concept",
             # "Entities" → "entity".
             page_type = _SUBDIR_TO_TYPE[subdir]
+            rel = md_file.relative_to(wiki_path).with_suffix("").as_posix()
             pages.append(
                 {
                     "type": page_type,
                     "title": title,
-                    "path": f"KB/Wiki/{subdir}/{md_file.stem}",
+                    "path": f"KB/Wiki/{rel}",
                     "preview": preview,
                 }
             )
