@@ -138,6 +138,28 @@ Step 5 修修右螢幕寫稿、左螢幕 viewer
 - engine 預設走 **hybrid**（BM25 + dense）不走 Haiku — Haiku ranker 在 corpus > 50 條時 prompt token 會爆
 - 評估計畫：實作前先跑 mini-bench（K=8/15/30 × Haiku/hybrid × 5 個歷史 Project），看 recall/precision，再 freeze 預設
 
+**Freeze（2026-05-07，#457 mini-bench HITL）**：
+
+| 設定 | 值 |
+|---|---|
+| `BROOK_SYNTHESIZE_TOP_K` | **15** |
+| `BROOK_SYNTHESIZE_ENGINE` | **hybrid** |
+
+bench 結果見 `docs/research/2026-05-07-brook-synthesize-bench.md`（5 topics × 2 engines × 3 K，corpus = BGE-M3 1024d full re-embed × 13 pubmed sources）。
+
+| Engine | K | Recall | Precision |
+|---|---|---|---|
+| haiku | 8 | 1.00 | 0.87 |
+| haiku | 15 | 0.90 | 0.88 |
+| haiku | 30 | 0.90 | 0.95 |
+| hybrid | 8 | 0.83 | 0.88 |
+| **hybrid** | **15** | **1.00** | **0.76** |
+| hybrid | 30 | 1.00 | 0.45 |
+
+**Why hybrid + K=15**：full recall + 仍乾淨（precision 0.76）+ chunk-level metadata（heading / chunk_id）對 outline drafter 有用。Haiku K=8 純數字最優但只回 path，做 synthesize 時下游缺結構。K=30 在 hybrid 降到 0.45 precision，雜訊太多。
+
+**Caveat**：corpus 小（13 papers × 5 topics × 2-3 ground truth/topic）— 樣本脆弱。**長期 plan**：corpus 長大 + 實際 synthesize 跑一段時間後（>10 個 Project synthesize），重跑 bench 並依實況調整。fixture 在 `tests/fixtures/brook_bench_topics.yaml`，需隨 corpus 演化補新 topic。
+
 ### 4. Brook 輸出存 server-side sidecar，不寫進 vault（Fork B = U）
 
 Brook synthesize 的 evidence pool + draft outline 存 **Thousand Sunny server-side store**（不在 vault），格式：

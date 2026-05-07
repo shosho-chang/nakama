@@ -8,50 +8,46 @@
 # Slug format: relative to vault root, e.g. `KB/Wiki/Concepts/creatine.md`
 # or `KB/Wiki/Sources/some-pubmed-digest.md`. Substring match is used (so
 # either the full path or just a filename stem works).
+#
+# 2026-05-07 re-curated by Claude against actual corpus (13 pubmed papers
+# in KB/Wiki/Sources/). Original placeholder topics (creatine / overtraining
+# / blue zones / protein-MPS) had zero corpus coverage and yielded all-zero
+# recall. New topics align with what was actually ingested.
 
 topics:
-  - id: creatine_cognitive
-    query: 肌酸對認知功能的影響
-    description: bilingual recall test — Chinese query, mixed-language corpus
+  - id: exercise_cardiovascular
+    query: 運動對心血管健康的影響
+    description: Chinese query — exercise × cardiovascular outcomes
     ground_truth:
-      # TODO: shosho manually curate from corpus
-      - creatine
-      - cognitive-function
-      - brain-energy-metabolism
+      - pubmed-41876208  # Physical activity patterns × MACE in hypertension
+      - pubmed-42087386  # Lifelong exercise × CD4 T cell immunometabolism
 
-  - id: overtraining_recovery
-    query: 過度訓練的恢復策略
-    description: training science — recovery / HRV / parasympathetic
+  - id: sleep_performance
+    query: sleep caffeine napping athletic performance
+    description: English query — sleep × performance / caffeine / napping
     ground_truth:
-      # TODO: shosho manually curate from corpus
-      - overtraining
-      - recovery
-      - hrv
+      - pubmed-42086212  # Napping + caffeine + repeated-sprint performance
+      - pubmed-42086588  # Eye movement kinematics × circadian sleep substates
+      - pubmed-42087855  # Remnant cholesterol × OSA × coronary heart disease
 
-  - id: blue_zones
-    query: blue zones longevity practices
-    description: English query, longevity / lifestyle entities
+  - id: microbiome_inflammation
+    query: 腸道菌與慢性發炎
+    description: Chinese query — gut microbiota × inflammation / immunity
     ground_truth:
-      # TODO: shosho manually curate from corpus
-      - blue-zones
-      - longevity
-      - okinawa
-      - sardinia
+      - pubmed-42087805  # Gut microbiota × chronic inflammation × lipid mediators
+      - pubmed-42087590  # Eubacterium rectale EVs × cancer cachexia
+      - pubmed-42090020  # Probiotic × recurrent respiratory infections in children
 
-  - id: protein_muscle_synthesis
-    query: 蛋白質攝取量與肌肉合成
-    description: nutrition / MPS / leucine threshold
+  - id: pediatric_exercise
+    query: 兒童青少年運動介入
+    description: Chinese query — pediatric exercise interventions
     ground_truth:
-      # TODO: shosho manually curate from corpus
-      - protein-intake
-      - muscle-protein-synthesis
-      - leucine
+      - pubmed-41850726  # Exercise interventions in children/adolescents (cancer)
+      - pubmed-42090020  # Probiotic × children respiratory infections
 
-  - id: sleep_cognitive
-    query: sleep deprivation cognitive performance
-    description: English query, sleep × cognition cross-domain
+  - id: longevity_social
+    query: aging longevity social isolation
+    description: English query — aging / social / lifestyle longevity factors
     ground_truth:
-      # TODO: shosho manually curate from corpus
-      - sleep-deprivation
-      - cognitive-performance
-      - sleep
+      - pubmed-42090157  # Personality traits × social isolation in older adults
+      - pubmed-42087386  # Lifelong exercise × immunometabolism (longevity)
