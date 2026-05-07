@@ -623,3 +623,22 @@ updated_at: "2026-05-07T00:00:00Z"
     assert s1.files_indexed == 1
     assert s2.files_indexed == 0
     assert s2.files_skipped == 1
+
+
+# ---------------------------------------------------------------------------
+# _resolve_vault_path() — N452 / ADR-022 follow-up
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_vault_path_honors_VAULT_PATH_env(tmp_path, monkeypatch):
+    """`VAULT_PATH` env var (canonical override per shared.config) wins over
+    config.yaml + repo-root fallback."""
+    from shared import config as _cfg
+    from shared.kb_indexer import _resolve_vault_path
+
+    # Reset config cache so the env var is re-read by get_vault_path()
+    monkeypatch.setattr(_cfg, "_config", None, raising=False)
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+
+    resolved = _resolve_vault_path()
+    assert resolved == tmp_path
