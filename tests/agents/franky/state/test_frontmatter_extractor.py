@@ -75,13 +75,16 @@ def test_extract_no_block_raises():
         extract("just a markdown body, no frontmatter at all")
 
 
-@pytest.mark.parametrize("missing_key", [
-    "proposal_id",
-    "metric_type",
-    "success_metric",
-    "related_adr",
-    "related_issues",
-])
+@pytest.mark.parametrize(
+    "missing_key",
+    [
+        "proposal_id",
+        "metric_type",
+        "success_metric",
+        "related_adr",
+        "related_issues",
+    ],
+)
 def test_extract_missing_each_required_key(missing_key: str):
     base = {
         "proposal_id": "p-id",

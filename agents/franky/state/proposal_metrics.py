@@ -139,9 +139,7 @@ def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 def _check_transition(current: str, target: str) -> None:
     if current not in ALLOWED_TRANSITIONS:
-        raise IllegalStatusTransitionError(
-            f"current status {current!r} is not a known FSM state"
-        )
+        raise IllegalStatusTransitionError(f"current status {current!r} is not a known FSM state")
     if target not in ALLOWED_TRANSITIONS[current]:
         raise IllegalStatusTransitionError(
             f"illegal transition {current!r} → {target!r}; "
@@ -317,9 +315,7 @@ def mark_wontfix(proposal_id: str, reason: str) -> dict[str, Any]:
     `wontfix_reason` column is added (deferred to schema __v2)."""
     row = get(proposal_id)
     if row is None:
-        raise IllegalStatusTransitionError(
-            f"proposal_id {proposal_id!r} not found"
-        )
+        raise IllegalStatusTransitionError(f"proposal_id {proposal_id!r} not found")
     extra: dict[str, Any] = {}
     if not row.get("baseline_source"):
         extra["baseline_source"] = f"wontfix: {reason}"

@@ -273,6 +273,7 @@ def test_hooks_fire_at_promote_ship_verify(inserted):
 def test_hook_failure_does_not_break_transition(inserted):
     def boom(_row):
         raise RuntimeError("hook is broken")
+
     pm.on_promote_hooks.append(boom)
     out = pm.mark_promoted(inserted)
     # Transition still committed even though the hook raised.

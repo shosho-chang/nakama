@@ -55,9 +55,7 @@ class MissingFrontmatterKeyError(FrontmatterExtractError):
 
     def __init__(self, missing: list[str]):
         self.missing = sorted(missing)
-        super().__init__(
-            "proposal frontmatter missing required keys: " + ", ".join(self.missing)
-        )
+        super().__init__("proposal frontmatter missing required keys: " + ", ".join(self.missing))
 
 
 # ---------------------------------------------------------------------------
@@ -85,9 +83,7 @@ def _find_yaml_block(text: str) -> str:
     m = _FENCED_BLOCK_RE.search(text)
     if m:
         return m.group("body")
-    raise NoFrontmatterFoundError(
-        "no leading `---` block or ```yaml frontmatter``` fence found"
-    )
+    raise NoFrontmatterFoundError("no leading `---` block or ```yaml frontmatter``` fence found")
 
 
 def _coerce_list(value: object) -> list[str]:
