@@ -11,7 +11,9 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ARTIFACT_PATH = REPO_ROOT / "docs/decisions/ADR-021-annotation-substance-store-and-brook-synthesize.md"
+ARTIFACT_PATH = (
+    REPO_ROOT / "docs/decisions/ADR-021-annotation-substance-store-and-brook-synthesize.md"
+)
 CODEX_AUDIT_PATH = REPO_ROOT / "docs/research/2026-05-07-codex-adr-021-audit.md"
 OUTPUT_PATH = REPO_ROOT / "docs/research/2026-05-07-gemini-adr-021-audit.md"
 SUPPORTING = [
@@ -24,6 +26,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(REPO_ROOT / ".env")
 except ImportError:
     pass
@@ -47,7 +50,8 @@ ARTIFACT = ARTIFACT_PATH.read_text(encoding="utf-8")
 CODEX_AUDIT = CODEX_AUDIT_PATH.read_text(encoding="utf-8")
 SUPPORTING_TEXT = "\n\n---\n\n".join(
     f"# {p.relative_to(REPO_ROOT)}\n\n{p.read_text(encoding='utf-8')}"
-    for p in SUPPORTING if p.exists()
+    for p in SUPPORTING
+    if p.exists()
 )
 
 PROMPT = f"""Audit the ADR draft below. Codex has already done a thorough code-grounded push-back. Your job is to find what BOTH Claude and Codex missed using a different reasoning chain.
@@ -103,7 +107,10 @@ PROMPT = f"""Audit the ADR draft below. Codex has already done a thorough code-g
 - Save the output to {OUTPUT_PATH} (the calling script will write it)
 """
 
-print(f"[gemini-panel] Dispatching audit on ADR-021... (artifact: {len(ARTIFACT)} chars, codex: {len(CODEX_AUDIT)} chars)", file=sys.stderr)
+print(
+    f"[gemini-panel] Dispatching audit on ADR-021... (artifact: {len(ARTIFACT)} chars, codex: {len(CODEX_AUDIT)} chars)",
+    file=sys.stderr,
+)
 
 audit = ask_gemini(
     PROMPT,
