@@ -20,10 +20,10 @@ from shared.source_ingest import verbatim_paragraph_match_pct
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Strip wrapper blocks inserted by _assemble_body.  Matches:
-#   \n\n### Section concept map\n\n{anything}\n\n### Wikilinks introduced\n\n{bullet lines}
-_RE_STRIP_WRAPPER = re.compile(
-    r"\n\n### Section concept map\n\n.*?\n\n### Wikilinks introduced\n\n(?:- \[\[.*?\]\]\n)*",
+# Strip the trailing chapter appendix block (Patch 3, 2026-05-08):
+#   \n\n---\n\n## Section Concept Maps\n…\Z
+_RE_STRIP_APPENDIX = re.compile(
+    r"\n\n---\n\n## Section Concept Maps\n.*\Z",
     re.DOTALL,
 )
 # Reverse V2 figure transform: ![[path]]\n*alt* → ![alt](path)
@@ -31,8 +31,8 @@ _RE_REVERSE_V2 = re.compile(r"!\[\[([^\]]+)\]\]\n\*([^*]*)\*")
 
 
 def _normalize(assembled: str) -> str:
-    """Strip wrappers + reverse V2 to recover the verbatim body."""
-    stripped = _RE_STRIP_WRAPPER.sub("", assembled)
+    """Strip appendix + reverse V2 to recover the verbatim body."""
+    stripped = _RE_STRIP_APPENDIX.sub("", assembled)
     return _RE_REVERSE_V2.sub(lambda m: f"![{m.group(2)}]({m.group(1)})", stripped)
 
 
@@ -50,18 +50,25 @@ def test_v2_figure_transform_byte_equivalent():
     assert "![ATP cycle](" not in result
 
 
-def test_wrapper_inserts_after_section_block():
-    """2-section chapter → wrappers land on H2 boundaries, not mid-paragraph."""
+def test_appendix_at_chapter_end():
+    """2-section chapter → body has no metadata interleave; appendix lands at end."""
     body = "# Ch\n\n## Sec A\n\nParagraph A.\n\n## Sec B\n\nParagraph B."
     sections = [
         {"anchor": "Sec A", "concept_map_md": "mapA", "wikilinks": ["TermA"]},
         {"anchor": "Sec B", "concept_map_md": "mapB", "wikilinks": ["TermB"]},
     ]
     result = _assemble_body(body, ["Sec A", "Sec B"], [], sections, "book")
-    sec_a_wrapper_pos = result.index("### Section concept map\n\nmapA")
+    # No interleave: appendix anchor comes strictly AFTER both sections
+    appendix_pos = result.index("\n\n---\n\n## Section Concept Maps")
+    sec_a_pos = result.index("## Sec A")
     sec_b_pos = result.index("## Sec B")
-    para_a_pos = result.index("Paragraph A.")
-    assert para_a_pos < sec_a_wrapper_pos < sec_b_pos
+    para_b_pos = result.index("Paragraph B.")
+    assert sec_a_pos < sec_b_pos < para_b_pos < appendix_pos
+    # Both concept maps + wikilinks present in appendix
+    assert "### Sec A\n\nmapA" in result
+    assert "### Sec B\n\nmapB" in result
+    assert "- [[TermA]]" in result
+    assert "- [[TermB]]" in result
 
 
 def test_verbatim_100pct_by_construction():
@@ -97,11 +104,12 @@ def test_multi_section_three_sections():
 
 
 def test_single_section_chapter():
-    """1-section chapter → exactly 1 wrapper emitted."""
+    """1-section chapter → 1 appendix block at end with one concept-map subsection."""
     body = "## Only Section\n\nSome text."
     sections = [{"anchor": "Only Section", "concept_map_md": "only_map", "wikilinks": ["OnlyTerm"]}]
     result = _assemble_body(body, ["Only Section"], [], sections, "book")
-    assert result.count("### Section concept map") == 1
+    assert result.count("## Section Concept Maps") == 1
+    assert "### Only Section\n\nonly_map" in result
     assert "- [[OnlyTerm]]" in result
 
 
@@ -109,8 +117,8 @@ def test_zero_section_chapter():
     """0-section walker → body with figure transform only, no wrappers."""
     body = "# Intro\n\nJust text.\n\n![fig](Attachments/Books/b/f.png)"
     result = _assemble_body(body, [], [], [], "b")
-    assert "### Section concept map" not in result
-    assert "### Wikilinks introduced" not in result
+    assert "## Section Concept Maps" not in result
+    assert "## Wikilinks Introduced" not in result
     assert "![[Attachments/Books/b/f.png]]" in result
 
 
@@ -131,17 +139,17 @@ def test_section_anchor_count_mismatch_fail_fast():
 
 
 def test_no_mid_paragraph_wrapper_edge_case():
-    """'## ' appearing mid-line is NOT a section boundary; wrapper stays on real H2 only."""
+    """'## ' appearing mid-line is preserved verbatim — body untouched, appendix at end."""
     body = (
         "## Real Section\n\nSome text with ## not-a-heading in the middle of a line.\n\nMore text."
     )
     sections = [{"anchor": "Real Section", "concept_map_md": "map", "wikilinks": ["T"]}]
     result = _assemble_body(body, ["Real Section"], [], sections, "book")
-    assert result.count("### Section concept map") == 1
     assert "## not-a-heading in the middle of a line." in result
-    wrapper_pos = result.index("### Section concept map")
+    appendix_pos = result.index("\n\n---\n\n## Section Concept Maps")
     mid_line_pos = result.index("## not-a-heading")
-    assert mid_line_pos < wrapper_pos
+    more_text_pos = result.index("More text.")
+    assert mid_line_pos < more_text_pos < appendix_pos
 
 
 # ---------------------------------------------------------------------------

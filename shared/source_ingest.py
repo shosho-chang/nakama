@@ -27,6 +27,14 @@ _RE_FIGURE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _RE_TABLE_ROW = re.compile(r"^\|")
 _RE_BOLD_CAPTION = re.compile(r"^\*\*(.+)\*\*$")
 
+# EPUB internal links:
+#   [text](chapter12.xhtml)            — chapter file
+#   [text](chapter12.xhtml#sec-1)      — chapter file with anchor
+#   [text](#c10-bib-0048)              — in-page anchor (bibliography ref)
+# Negative lookbehind on `!` keeps figure syntax `![alt](path)` untouched.
+_RE_EPUB_FILE_LINK = re.compile(r"(?<!!)\[([^\]]+)\]\([^)]*\.x?html(?:#[^)]*)?\)")
+_RE_EPUB_ANCHOR_LINK = re.compile(r"(?<!!)\[([^\]]+)\]\(#[^)]+\)")
+
 
 class RawMarkdownParseError(ValueError):
     """Raised when the raw markdown file is missing required structure."""
@@ -164,7 +172,20 @@ def _parse_raw_file(content: str, raw_path: Path) -> tuple[str, str]:
         )
 
     body = content[end + 5 :]  # skip closing "\n---\n"
+    body = _strip_epub_internal_links(body)
     return str(book_id), body
+
+
+def _strip_epub_internal_links(text: str) -> str:
+    """Remove EPUB internal markdown links so Obsidian doesn't auto-stub them.
+
+    Replaces ``[text](chapter12.xhtml)`` and ``[text](#bib-0048)`` with the
+    bare link text. Image syntax ``![alt](path)`` is preserved (negative
+    lookbehind on ``!``).
+    """
+    text = _RE_EPUB_FILE_LINK.sub(r"\1", text)
+    text = _RE_EPUB_ANCHOR_LINK.sub(r"\1", text)
+    return text
 
 
 def _split_into_chapters(body: str) -> list[tuple[str, str]]:

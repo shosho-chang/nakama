@@ -25,24 +25,26 @@ from scripts.run_s8_preflight import (
 # ---------------------------------------------------------------------------
 
 
-def test_normalize_strips_section_wrappers():
+def test_normalize_strips_chapter_appendix():
+    """Patch 3 (2026-05-08): metadata moved from per-section interleave to chapter-end appendix."""
     body = (
         "## Section One\n\nParagraph A.\n\n"
-        "### Section concept map\n\n"
+        "## Section Two\n\nParagraph B.\n\n"
+        "---\n\n"
+        "## Section Concept Maps\n\n"
+        "### Section One\n\n"
         "```mermaid\nflowchart LR\n  A --> B\n```\n\n"
-        "### Wikilinks introduced\n\n"
+        "### Section Two\n\n"
+        "```mermaid\nflowchart LR\n  C --> D\n```\n\n"
+        "## Wikilinks Introduced\n\n"
         "- [[TermA]]\n"
         "- [[TermB]]\n"
-        "## Section Two\n\nParagraph B.\n\n"
-        "### Section concept map\n\n"
-        "```mermaid\nflowchart LR\n  C --> D\n```\n\n"
-        "### Wikilinks introduced\n\n"
         "- [[TermC]]\n"
     )
     result = normalize_for_verbatim_compare(body)
 
-    assert "### Section concept map" not in result
-    assert "### Wikilinks introduced" not in result
+    assert "## Section Concept Maps" not in result
+    assert "## Wikilinks Introduced" not in result
     assert "TermA" not in result
     assert "TermC" not in result
     # Original section content preserved
@@ -197,9 +199,11 @@ def test_acceptance_pass_all_4():
     page_body = (
         "## Methods\n\n"
         "Glucose is the primary fuel.\n\n"
-        "### Section concept map\n\n"
+        "---\n\n"
+        "## Section Concept Maps\n\n"
+        "### Methods\n\n"
         "```mermaid\nflowchart LR\n  Glucose --> ATP\n```\n\n"
-        "### Wikilinks introduced\n\n"
+        "## Wikilinks Introduced\n\n"
         "- [[Glucose]]\n"
     )
     acc = compute_acceptance(

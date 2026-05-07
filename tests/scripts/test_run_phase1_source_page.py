@@ -80,7 +80,10 @@ def test_dry_run_writes_real_file(tmp_path: Path) -> None:
     content = out_path.read_text()
     assert content.startswith("---\n")
     assert "Sec A" in content
-    assert content.count("### Section concept map") == 2
+    # Patch 3 (2026-05-08): metadata moved to single chapter-end appendix.
+    assert content.count("## Section Concept Maps") == 1
+    assert "### Sec A" in content
+    assert "### Sec B" in content
 
 
 def test_json_parse_retry_then_succeed(tmp_path: Path) -> None:

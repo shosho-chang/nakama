@@ -72,6 +72,12 @@ BACKUP_RETENTION = timedelta(hours=24)
 # `../../../tmp/poc` into `_concept_abs_path` or `_backup_path`.
 _SAFE_SLUG_RE = re.compile(r"^[\w一-鿿][\w\-一-鿿]*$")
 
+# Concept slug — relaxed to match Obsidian wikilink targets (allows spaces,
+# parens, `+`, `'`). Reject Windows-illegal path chars and traversal patterns.
+# Keeps book_id strict; only concept slug uses this relaxed form.
+_CONCEPT_SLUG_FORBIDDEN_RE = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
+_CONCEPT_SLUG_FIRST_CHAR_RE = re.compile(r"[\w一-鿿(]")
+
 
 def _validate_slug(value: str, *, kind: str = "slug") -> None:
     """Reject path-traversal-shaped strings before they hit `Path` interpolation.
@@ -80,8 +86,27 @@ def _validate_slug(value: str, *, kind: str = "slug") -> None:
     (concept slug / book_id). `Path` does not collapse `..` at construction
     time, so without this guard a slug `../../../tmp/poc` lets
     `upsert_concept_page` write outside the vault.
+
+    For ``kind="concept slug"`` the rules are relaxed to accept Obsidian
+    wikilink targets like ``"NADPH oxidase"`` and ``"Na+-K+ pump"`` — only
+    Windows-illegal path chars (``/ \\ : * ? " < > |``) and ``..`` traversal
+    are blocked.
     """
-    if not isinstance(value, str) or not _SAFE_SLUG_RE.fullmatch(value):
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"unsafe {kind}: {value!r}")
+
+    if kind == "concept slug":
+        if (
+            ".." in value
+            or _CONCEPT_SLUG_FORBIDDEN_RE.search(value)
+            or value != value.strip()
+            or value.startswith(".")
+            or not _CONCEPT_SLUG_FIRST_CHAR_RE.match(value)
+        ):
+            raise ValueError(f"unsafe {kind}: {value!r}")
+        return
+
+    if not _SAFE_SLUG_RE.fullmatch(value):
         raise ValueError(f"unsafe {kind}: {value!r}")
 
 

@@ -284,27 +284,32 @@ def _assemble_body(
     if not walker_section_anchors:
         return body
 
-    # Split on H2 line-start boundaries; capturing group retains headings in result.
-    # parts layout: [pre_h2, "## Heading1", text1, "## Heading2", text2, ...]
-    parts = re.split(r"^(## .+)$", body, flags=re.MULTILINE)
+    # Body stays pure textbook (walker verbatim + figure transform). All LLM
+    # metadata (per-section concept maps + wikilinks) goes into a single
+    # appendix at the chapter end, separated by `---`. This keeps the H2/H3
+    # section flow visually clean in Obsidian.
+    concept_map_blocks: list[str] = []
+    all_wikilinks: list[str] = []
+    seen_wl: set[str] = set()
+    for sec in sections_json:
+        anchor = sec["anchor"]
+        cmap = sec.get("concept_map_md", "").rstrip()
+        concept_map_blocks.append(f"### {anchor}\n\n{cmap}")
+        for wl in sec.get("wikilinks", []):
+            term = wl.strip("[]").strip()
+            if term and term not in seen_wl:
+                seen_wl.add(term)
+                all_wikilinks.append(term)
 
-    out: list[str] = [parts[0]]
-    for j in range(1, len(parts), 2):
-        heading = parts[j]
-        content = parts[j + 1] if j + 1 < len(parts) else ""
-        sec = sections_json[(j - 1) // 2]
-        wikilinks_md = "\n".join(f"- [[{wl.strip('[]')}]]" for wl in sec.get("wikilinks", []))
-        wrapper = (
-            "\n\n### Section concept map\n\n"
-            f"{sec['concept_map_md']}\n\n"
-            "### Wikilinks introduced\n\n"
-            f"{wikilinks_md}\n"
-        )
-        out.append(heading)
-        out.append(content)
-        out.append(wrapper)
-
-    return "".join(out)
+    appendix = (
+        "\n\n---\n\n"
+        "## Section Concept Maps\n\n"
+        + "\n\n".join(concept_map_blocks)
+        + "\n\n## Wikilinks Introduced\n\n"
+        + "\n".join(f"- [[{t}]]" for t in all_wikilinks)
+        + "\n"
+    )
+    return body + appendix
 
 
 # ---------------------------------------------------------------------------
@@ -700,19 +705,22 @@ class AcceptanceResult:
     acceptance_pass: bool
 
 
+def _strip_chapter_appendix(page_body: str) -> str:
+    """Remove the trailing `---\\n\\n## Section Concept Maps\\n…` appendix block."""
+    return re.sub(
+        r"\n\n---\n\n## Section Concept Maps\n.*\Z",
+        "",
+        page_body,
+        flags=re.DOTALL,
+    )
+
+
 def normalize_for_verbatim_compare(page_body: str) -> str:
     """Strip designed non-verbatim content; return what should match walker.verbatim_body.
 
     Caller must strip the YAML frontmatter block before passing page_body.
     """
-    # Strip per-section wrapper blocks inserted by _assemble_body:
-    # \n\n### Section concept map\n\n[mermaid]\n\n### Wikilinks introduced\n\n[bullet lines]
-    body = re.sub(
-        r"\n\n### Section concept map\n\n.*?\n\n### Wikilinks introduced\n\n(?:- \[\[.*?\]\]\n)*",
-        "",
-        page_body,
-        flags=re.DOTALL,
-    )
+    body = _strip_chapter_appendix(page_body)
     # Reverse V2 figure transform: ![[vault_path]]\n*alt* → ![alt](vault_path)
     body = re.sub(
         r"!\[\[([^\]]+)\]\]\n\*([^*]*)\*",
@@ -741,7 +749,7 @@ def verbatim_match_pct(page_body: str, walker_verbatim: str) -> float:
 
 def section_anchors_match(page_body: str, walker_section_anchors: list[str]) -> bool:
     """Exact list equality of H2 heading texts in page_body vs walker section anchors."""
-    page_h2s = re.findall(r"^## (.+)$", page_body, re.MULTILINE)
+    page_h2s = re.findall(r"^## (.+)$", _strip_chapter_appendix(page_body), re.MULTILINE)
     return page_h2s == walker_section_anchors
 
 
