@@ -301,11 +301,34 @@ CREATE INDEX IF NOT EXISTS idx_r2_backup_time
 */5 * * * * nakama flock -n /var/lock/franky_health.lock \
   /home/nakama/.venv/bin/python -m agents.franky.health_check \
   >> /var/log/nakama/franky.log 2>&1
+
+# Weekly：context snapshot regen（ADR-022 §3 Phase 1，pre-RAG 路徑；S2a 落地）
+30 21 * * 0 nakama flock -n /var/lock/franky_context_snapshot.lock \
+  /home/nakama/.venv/bin/python -m agents.franky.state.context_snapshot regenerate \
+  >> /var/log/nakama/franky.log 2>&1
 ```
 
 - `flock -n` 拿不到鎖直接退出（不排隊）
 - Python 這端在 entry point 啟動 `cron_runs` row，結束時 update status（遵守 `reliability.md` §10 transaction 包寫）
 - 統一透過 `shared/cron_wrapper.py` 的 context manager 處理 operation_id 生成與 cron_runs 寫入
+
+**Cron table（Phase 1 + ADR-022 amendments）**：
+
+| Job | 頻率（台北 TZ） | Module | Lock file |
+|---|---|---|---|
+| Health check | 每 5 分鐘 | `agents.franky.health_check` | `/var/lock/franky_health.lock` |
+| R2 backup verify | 每日 03:00 | `agents.franky.r2_backup_verify` | `/var/lock/franky_r2.lock` |
+| Weekly digest | 週一 10:00 | `agents.franky.weekly_digest` | `/var/lock/franky_weekly.lock` |
+| News digest | 每日 06:30 | `agents.franky.news_digest` | `/var/lock/franky_news.lock` |
+| **Context snapshot regen**（ADR-022 §3 Phase 1，S2a） | **週日 21:30** | `agents.franky.state.context_snapshot regenerate` | `/var/lock/franky_context_snapshot.lock` |
+
+**Context snapshot runbook（S2a）**：
+
+- Output：`agents/franky/state/franky_context_snapshot.md`（gitignored — runtime artifact）
+- Token budget 上限 9k（active priorities 1k / ADR 4k / issues 2k / MEMORY 2k）
+- 失敗降級：個別 block builder 對 missing file / git CLI 不存在 / `gh` 不可用各自回 fallback string，不整體 crash
+- 手動驗證：`python -m agents.franky.state.context_snapshot regenerate --dry-run`（render 到 stdout，不寫檔）
+- 下游 consumer：score + synthesis prompt 直接讀取本檔（S2b / S3 落地時 wire）
 
 ### 8. 告警三級制（僅列 Phase 1 infra 相關）
 
