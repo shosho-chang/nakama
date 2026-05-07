@@ -1,6 +1,6 @@
 """Unit + integration tests for agents/franky/state/context_snapshot.py.
 
-Per ADR-022 §3 Phase 1 (S2a) acceptance criteria: each block builder gets a
+Per ADR-023 §3 Phase 1 (S2a) acceptance criteria: each block builder gets a
 fixture set (with git fake / gh mock / MEMORY missing fallback), plus an
 integration test that runs ``regenerate`` against a tmpdir and asserts all
 four sections are present and the total token count stays under 9k.

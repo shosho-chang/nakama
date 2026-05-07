@@ -53,5 +53,5 @@ tests/files/
 # See docs/runbooks/sandcastle.md
 .sandcastle/
 
-# Franky context snapshot (regenerated weekly per ADR-022 §3 Phase 1)
+# Franky context snapshot (regenerated weekly per ADR-023 §3 Phase 1)
 agents/franky/state/franky_context_snapshot.md

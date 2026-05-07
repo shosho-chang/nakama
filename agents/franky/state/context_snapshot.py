@@ -89,6 +89,7 @@ def _run_git(args: list[str], cwd: Path | None = None) -> str:
         text=True,
         encoding="utf-8",
         check=False,
+        timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -101,7 +102,7 @@ def get_repo_sha() -> str:
     """Short git HEAD SHA（snapshot 版本控制，frontmatter 用）。"""
     try:
         return _run_git(["rev-parse", "--short", "HEAD"]).strip()
-    except (RuntimeError, FileNotFoundError):
+    except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired):
         return "unknown"
 
 
@@ -192,7 +193,7 @@ def list_recent_adrs(
                 pathspec,
             ]
         )
-    except (RuntimeError, FileNotFoundError):
+    except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired):
         return []
 
     seen: set[str] = set()
@@ -264,8 +265,9 @@ def fetch_open_issues(limit: int = 15) -> list[dict]:
             text=True,
             encoding="utf-8",
             check=False,
+            timeout=30,
         )
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
     if result.returncode != 0:
         return []
@@ -317,7 +319,7 @@ def build_recent_memory_changes(
         log_out = _run_git(
             ["log", since, "--pretty=format:%H", "--reverse", "--", rel]
         )
-    except (RuntimeError, FileNotFoundError):
+    except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired):
         return "_git log failed — cannot build memory diff._\n"
 
     commits = [c.strip() for c in log_out.splitlines() if c.strip()]
@@ -327,7 +329,7 @@ def build_recent_memory_changes(
     base = commits[0] + "^"
     try:
         diff_out = _run_git(["diff", base, "HEAD", "--", rel])
-    except (RuntimeError, FileNotFoundError):
+    except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired):
         return "_git diff failed — cannot build memory diff._\n"
 
     added: list[str] = []
