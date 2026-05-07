@@ -370,3 +370,256 @@ def test_index_vault_wikilinks_removed_on_reindex(tmp_path):
     dst_set = {r[0] for r in new_rows}
     assert "KB/Wiki/Concepts/new-target" in dst_set
     assert not any("old-target" in d for d in dst_set), "stale wikilink must be removed"
+
+
+# ---------------------------------------------------------------------------
+# Recursive rglob — nested Books directory (ADR-021 §2 / Codex amendment)
+# ---------------------------------------------------------------------------
+
+
+def test_index_vault_indexes_nested_books_dir(tmp_path):
+    """Nested KB/Wiki/Sources/Books/{book_id}/notes.md should be indexed.
+
+    Pre-fix the scan loop used dir_path.glob("*.md") which is non-recursive,
+    so only root-level Sources/*.md got indexed. ADR-021 §2 + Codex amendment
+    switch to rglob so per-book subdirs (digest/notes/etc.) are now first-class
+    KB content.
+    """
+    nested = tmp_path / "KB" / "Wiki" / "Sources" / "Books" / "atomic-habits"
+    nested.mkdir(parents=True)
+    (nested / "notes.md").write_text(
+        "---\ntitle: Atomic Habits Notes\n---\n## 第一章\n"
+        "habit stacking 是把新習慣黏在既有習慣上的技巧，研究顯示效果顯著。",
+        encoding="utf-8",
+    )
+
+    conn = make_conn()
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        stats = index_vault(tmp_path, conn)
+
+    assert stats.files_indexed == 1
+    rows = conn.execute(
+        "SELECT path, heading_context FROM kb_chunks WHERE path LIKE 'KB/Wiki/Sources/Books/%'"
+    ).fetchall()
+    assert rows, "nested Books/{book_id}/notes.md must be indexed"
+    paths = {r[0] for r in rows}
+    assert "KB/Wiki/Sources/Books/atomic-habits/notes" in paths
+    titles = {r[1] for r in rows}
+    assert "Atomic Habits Notes" in titles
+
+
+# ---------------------------------------------------------------------------
+# KB/Annotations indexer (ADR-021 §2)
+# ---------------------------------------------------------------------------
+
+
+def _write_annotation_file(tmp_path: Path, slug: str, content: str) -> Path:
+    """Write a KB/Annotations/{slug}.md file and return the path."""
+    d = tmp_path / "KB" / "Annotations"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{slug}.md"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def test_index_vault_annotations_v3_chunks_per_item(tmp_path):
+    """Each v3 highlight/annotation/reflection item becomes one chunk.
+
+    chunk_text source by item type:
+      highlight  → text
+      annotation → note
+      reflection → body
+    """
+    annotation_md = """---
+slug: atomic-habits
+schema_version: 3
+base: books
+book_id: atomic-habits
+book_version_hash: abc123
+updated_at: "2026-05-07T00:00:00Z"
+---
+
+```json
+[
+  {
+    "type": "highlight",
+    "schema_version": 3,
+    "cfi": "epubcfi(/6/2!/4/2/2)",
+    "text_excerpt": "habit stacking",
+    "book_version_hash": "abc123",
+    "text": "habit stacking is the technique of binding new habits to existing ones",
+    "created_at": "2026-05-07T00:00:00Z",
+    "modified_at": "2026-05-07T00:00:00Z"
+  },
+  {
+    "type": "annotation",
+    "schema_version": 3,
+    "cfi": "epubcfi(/6/2!/4/2/4)",
+    "text_excerpt": "habit stacking",
+    "note": "this maps to my morning coffee → push-up routine — works",
+    "created_at": "2026-05-07T00:00:00Z",
+    "modified_at": "2026-05-07T00:00:00Z"
+  },
+  {
+    "type": "reflection",
+    "schema_version": 3,
+    "chapter_ref": "Chapter 5",
+    "body": "the chapter argues identity-based habits beat outcome-based ones",
+    "created_at": "2026-05-07T00:00:00Z",
+    "modified_at": "2026-05-07T00:00:00Z"
+  }
+]
+```
+"""
+    _write_annotation_file(tmp_path, "atomic-habits", annotation_md)
+
+    conn = make_conn()
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        stats = index_vault(tmp_path, conn)
+
+    assert stats.files_indexed == 1
+    rows = conn.execute(
+        "SELECT chunk_text, section, heading_context, path FROM kb_chunks "
+        "WHERE path = 'KB/Annotations/atomic-habits' ORDER BY rowid"
+    ).fetchall()
+    assert len(rows) == 3, "expected 3 chunks (1 per annotation item)"
+
+    chunk_texts = [r[0] for r in rows]
+    sections = [r[1] for r in rows]
+
+    # highlight → text (the body), not the excerpt
+    assert "habit stacking is the technique" in chunk_texts[0]
+    assert sections[0] == "highlight"
+
+    # annotation → note
+    assert "morning coffee" in chunk_texts[1]
+    assert sections[1] == "annotation"
+
+    # reflection → body, with chapter_ref folded into section
+    assert "identity-based habits" in chunk_texts[2]
+    assert sections[2] == "reflection|Chapter 5"
+
+    # heading_context carries source slug (book_id for v3 book sets)
+    for row in rows:
+        assert row[2] == "atomic-habits"
+
+
+def test_index_vault_annotations_v1_paper_indexed(tmp_path):
+    """v1 paper-style annotation files are upgraded → indexed transparently.
+
+    AC: indexer reuses annotation_store parsing rather than re-implementing it,
+    so legacy v1 (paper) files just work.
+    """
+    annotation_md = """---
+slug: creatine-paper
+source: creatine-cognitive-2024.md
+base: inbox
+updated_at: "2026-05-07T00:00:00Z"
+---
+
+```json
+[
+  {
+    "type": "highlight",
+    "text": "creatine supplementation improved working memory in vegetarians",
+    "created_at": "2026-05-07T00:00:00Z",
+    "modified_at": "2026-05-07T00:00:00Z"
+  },
+  {
+    "type": "annotation",
+    "ref": "Methods §2",
+    "note": "n=121, double-blind RCT — solid design",
+    "created_at": "2026-05-07T00:00:00Z",
+    "modified_at": "2026-05-07T00:00:00Z"
+  }
+]
+```
+"""
+    _write_annotation_file(tmp_path, "creatine-paper", annotation_md)
+
+    conn = make_conn()
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        index_vault(tmp_path, conn)
+
+    rows = conn.execute(
+        "SELECT chunk_text, section, heading_context FROM kb_chunks "
+        "WHERE path = 'KB/Annotations/creatine-paper' ORDER BY rowid"
+    ).fetchall()
+    assert len(rows) == 2
+    assert any("working memory" in r[0] for r in rows)
+    assert any("double-blind" in r[0] for r in rows)
+    # source slug = source_filename for paper sets
+    assert all(r[2] == "creatine-cognitive-2024.md" for r in rows)
+
+
+def test_index_vault_annotations_query_finds_chunk(tmp_path):
+    """End-to-end: indexed annotation chunk is queryable via FTS5 MATCH."""
+    annotation_md = """---
+slug: longevity-book
+schema_version: 3
+base: books
+book_id: longevity-book
+updated_at: "2026-05-07T00:00:00Z"
+---
+
+```json
+[
+  {
+    "type": "reflection",
+    "schema_version": 3,
+    "chapter_ref": "Chapter 3",
+    "body": "rapamycin extends lifespan in mice via mTOR inhibition",
+    "created_at": "2026-05-07T00:00:00Z",
+    "modified_at": "2026-05-07T00:00:00Z"
+  }
+]
+```
+"""
+    _write_annotation_file(tmp_path, "longevity-book", annotation_md)
+
+    conn = make_conn()
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        index_vault(tmp_path, conn)
+
+    rows = conn.execute(
+        "SELECT chunk_text, section, path FROM kb_chunks WHERE kb_chunks MATCH ?",
+        ("rapamycin",),
+    ).fetchall()
+    assert rows, "FTS query must find the annotation chunk"
+    assert any("KB/Annotations/longevity-book" == r[2] for r in rows)
+    assert any("Chapter 3" in r[1] for r in rows)
+
+
+def test_index_vault_annotations_incremental_skip(tmp_path):
+    """Unchanged annotation file is skipped on re-index (mtime_ns short-circuit)."""
+    annotation_md = """---
+slug: stable
+schema_version: 3
+base: inbox
+source: stable.md
+updated_at: "2026-05-07T00:00:00Z"
+---
+
+```json
+[
+  {
+    "type": "highlight",
+    "schema_version": 3,
+    "text_excerpt": "x",
+    "text": "stable highlight body that is long enough to index",
+    "created_at": "2026-05-07T00:00:00Z",
+    "modified_at": "2026-05-07T00:00:00Z"
+  }
+]
+```
+"""
+    _write_annotation_file(tmp_path, "stable", annotation_md)
+
+    conn = make_conn()
+    with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
+        s1 = index_vault(tmp_path, conn)
+        s2 = index_vault(tmp_path, conn)
+
+    assert s1.files_indexed == 1
+    assert s2.files_indexed == 0
+    assert s2.files_skipped == 1
