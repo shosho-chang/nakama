@@ -178,6 +178,26 @@ def list_by_status(status: ProposalStatus) -> list[dict[str, Any]]:
     return [_row_to_dict(r) for r in rows]  # type: ignore[misc]
 
 
+def list_for_month(year: int, month: int) -> list[dict[str, Any]]:
+    """All proposals created in the given calendar month, oldest first.
+
+    Includes every status so the retrospective sees the full funnel.
+    """
+    import calendar
+
+    _, last_day = calendar.monthrange(year, month)
+    start = f"{year:04d}-{month:02d}-01T00:00:00+00:00"
+    end = f"{year:04d}-{month:02d}-{last_day:02d}T23:59:59+00:00"
+    conn = _get_conn()
+    rows = conn.execute(
+        "SELECT * FROM proposal_metrics"
+        " WHERE created_at >= ? AND created_at <= ?"
+        " ORDER BY created_at ASC",
+        (start, end),
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]  # type: ignore[misc]
+
+
 # ---------------------------------------------------------------------------
 # Insert
 # ---------------------------------------------------------------------------
@@ -382,6 +402,7 @@ __all__ = [
     "get",
     "insert_candidate",
     "list_by_status",
+    "list_for_month",
     "mark_promoted",
     "mark_ready",
     "mark_rejected",
