@@ -71,7 +71,12 @@ identity matching; a wrong anchor causes a fatal error.
    backfill descriptions.
 
 4. **Anchor identity.** `sections[i].anchor` MUST equal `section_anchors[i]`
-   exactly — same string, same order (no `## ` prefix). If you cannot satisfy
+   **byte-for-byte**, including Unicode punctuation. DO NOT normalize curly
+   apostrophes (`'` U+2019) to ASCII (`'` U+0027), DO NOT replace en-dash (`–`)
+   or em-dash (`—`) with hyphens (`-`), DO NOT change no-break spaces. The runner
+   does an NFKC-tolerant fallback compare for safety, but you should still emit
+   anchors verbatim — drift here triggers a warning log even when the run
+   continues. Same string, same order, no `## ` prefix. If you cannot satisfy
    this for any section, return JSON with an `"error"` key describing the problem
    rather than guessing an anchor.
 
@@ -144,8 +149,9 @@ Hard rules — violations fail the acceptance gate:
 - Output ONLY JSON. No markdown fences around the JSON. No prose. No commentary.
 - DO NOT emit a "body" field. DO NOT include verbatim chapter text.
 - figures[].vision_status = "caption_only". DO NOT write "llm_description".
-- sections[i].anchor MUST equal section_anchors[i] exactly (no "## " prefix, same order).
-  If you cannot satisfy this for any section, return { "error": "<reason>" }.
+- sections[i].anchor MUST equal section_anchors[i] byte-for-byte, including Unicode
+  punctuation (keep curly quotes ‘ ’ “ ”, en-dash –, em-dash —, no-break space verbatim).
+  No "## " prefix, same order. If you cannot satisfy this for any section, return { "error": "<reason>" }.
 - concept_map_md: one ```mermaid block per section, max ~12 nodes,
   reflecting actual concept relationships in that section (not decorative).
 - wikilinks: [[Term]] format, book-relevant terms only (no stop-words).

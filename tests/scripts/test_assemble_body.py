@@ -142,3 +142,69 @@ def test_no_mid_paragraph_wrapper_edge_case():
     wrapper_pos = result.index("### Section concept map")
     mid_line_pos = result.index("## not-a-heading")
     assert mid_line_pos < wrapper_pos
+
+
+# ---------------------------------------------------------------------------
+# Stage 1a.1 — NFKC-tolerant anchor comparison tests
+# ---------------------------------------------------------------------------
+
+
+def test_anchor_curly_vs_ascii_apostrophe_tolerated():
+    """NFKC + custom norm: curly-apostrophe (U+2019) vs ASCII-apostrophe (U+0027) tolerated.
+
+    This is the exact failure that triggered Stage 1a.1: the walker preserves the
+    typographic apostrophe verbatim from the source EPUB, while the LLM silently
+    normalizes to ASCII.  After the patch, assembly succeeds and the body H2 retains
+    the walker (curly) form — the LLM anchor is used only for matching, never emitted.
+    """
+    walker_anchor = "1.5 Why Can’t a Marathon be Sprinted?"  # U+2019 curly apostrophe
+    llm_anchor = "1.5 Why Can't a Marathon be Sprinted?"  # U+0027 ASCII apostrophe
+    body = f"## {walker_anchor}\n\nSome text."
+    sections = [{"anchor": llm_anchor, "concept_map_md": "m", "wikilinks": []}]
+    result = _assemble_body(body, [walker_anchor], [], sections, "bse")
+    # Body uses walker anchor (curly apostrophe), not LLM's ASCII form
+    assert f"## {walker_anchor}" in result
+
+
+def test_anchor_em_dash_vs_hyphen_tolerated():
+    """Dash-variant drift: em-dash (U+2014) vs en-dash (U+2013) are both normalized to '-'.
+
+    Both dash variants map to ASCII hyphen-minus after custom normalization, so they
+    equalize even though pure NFKC leaves them unchanged.  Note: em-dash (U+2014) vs
+    double-ASCII-hyphen '--' is NOT tolerated — they differ in length after normalization.
+    """
+    walker_anchor = "1.3 ATP—Energy Currency"  # em-dash U+2014
+    llm_anchor = "1.3 ATP–Energy Currency"  # en-dash U+2013 (LLM changed variant)
+    body = f"## {walker_anchor}\n\nText."
+    sections = [{"anchor": llm_anchor, "concept_map_md": "m", "wikilinks": []}]
+    result = _assemble_body(body, [walker_anchor], [], sections, "bse")
+    # Body retains walker anchor (em-dash)
+    assert f"## {walker_anchor}" in result
+
+
+def test_anchor_real_word_change_still_fails():
+    """Genuine word/content change is still rejected even with NFKC-tolerant compare."""
+    walker_anchor = "1.5 Why Can’t a Marathon be Sprinted?"
+    llm_anchor = "1.5 Why Can a Marathon be Sprinted?"  # removed "n't" — word change
+    body = f"## {walker_anchor}\n\nText."
+    sections = [{"anchor": llm_anchor, "concept_map_md": "m", "wikilinks": []}]
+    with pytest.raises(ValueError, match="section anchor mismatch at index 0"):
+        _assemble_body(body, [walker_anchor], [], sections, "bse")
+
+
+def test_anchor_drift_logs_warning(caplog):
+    """Tolerated punctuation drift emits a WARNING with both raw anchor strings visible."""
+    import logging
+
+    walker_anchor = "1.5 Why Can’t Stop"  # curly apostrophe U+2019
+    llm_anchor = "1.5 Why Can't Stop"  # ASCII apostrophe U+0027
+    body = f"## {walker_anchor}\n\nText."
+    sections = [{"anchor": llm_anchor, "concept_map_md": "m", "wikilinks": []}]
+    with caplog.at_level(logging.WARNING, logger="s8-preflight"):
+        _assemble_body(body, [walker_anchor], [], sections, "bse")
+    drift_msgs = [r for r in caplog.records if "anchor punctuation drift" in r.getMessage()]
+    assert drift_msgs, "expected WARNING about anchor punctuation drift to be logged"
+    msg = drift_msgs[0].getMessage()
+    # Both raw strings must appear via %r formatting
+    assert "walker=" in msg
+    assert "llm_json=" in msg

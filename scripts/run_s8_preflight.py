@@ -43,6 +43,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -220,6 +221,27 @@ def _llm_observability_snapshot() -> tuple[int, int, float]:
 # ---------------------------------------------------------------------------
 
 
+def _anchor_equiv(a: str, b: str) -> bool:
+    """NFKC-normalize before compare. Tolerates curly↔straight quotes,
+    en/em dash variants, no-break space — punctuation drift LLMs commonly
+    introduce. Still strict on word/order changes.
+
+    Pure NFKC alone does not equalize U+2019/U+2018 curly quotes with U+0027,
+    nor en/em dashes with hyphen-minus; the additional replacements below cover
+    the cases the docstring claims. Walker anchor remains canonical — only the
+    COMPARISON is tolerant; the body H2 is always written from the walker text.
+    """
+
+    def _norm(s: str) -> str:
+        s = unicodedata.normalize("NFKC", s)
+        s = s.replace("‘", "'").replace("’", "'")
+        s = s.replace("“", '"').replace("”", '"')
+        s = s.replace("–", "-").replace("—", "-")
+        return s
+
+    return _norm(a) == _norm(b)
+
+
 def _assemble_body(
     walker_verbatim_body: str,
     walker_section_anchors: list[str],
@@ -235,18 +257,24 @@ def _assemble_body(
     Body is verbatim by construction — LLM only supplies concept_map_md and
     wikilinks; all paragraph text comes solely from walker_verbatim_body.
     """
-    # Fail-fast: exact identity check (order + text).
-    # Recovery is impossible — a mismatch means the LLM JSON anchor is wrong, not the walker.
+    # Fail-fast on count mismatch — recovery is impossible.
     if len(sections_json) != len(walker_section_anchors):
         i = min(len(sections_json), len(walker_section_anchors))
         w = walker_section_anchors[i] if i < len(walker_section_anchors) else "<missing>"
         lj = sections_json[i]["anchor"] if i < len(sections_json) else "<missing>"
         raise ValueError(f"section anchor mismatch at index {i}: walker={w!r} vs llm_json={lj!r}")
     for i, (w_anchor, sec) in enumerate(zip(walker_section_anchors, sections_json)):
-        if sec["anchor"] != w_anchor:
+        if not _anchor_equiv(w_anchor, sec["anchor"]):
             raise ValueError(
                 f"section anchor mismatch at index {i}: "
                 f"walker={w_anchor!r} vs llm_json={sec['anchor']!r}"
+            )
+        if sec["anchor"] != w_anchor:
+            log.warning(
+                "anchor punctuation drift tolerated at index %d: walker=%r vs llm_json=%r",
+                i,
+                w_anchor,
+                sec["anchor"],
             )
 
     # V2 figure transform: ![alt](vault_path) → ![[vault_path]]\n*alt*
