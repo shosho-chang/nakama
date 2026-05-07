@@ -196,9 +196,7 @@ def append_user_action(slug: str, action: UserAction) -> BrookSynthesizeStore:
         return write(updated)
 
 
-def update_outline_final(
-    slug: str, sections: list[OutlineSection]
-) -> BrookSynthesizeStore:
+def update_outline_final(slug: str, sections: list[OutlineSection]) -> BrookSynthesizeStore:
     """Replace `outline_final`. Raises `StoreNotFoundError` when missing."""
     with _lock_for(slug):
         current = read(slug)
