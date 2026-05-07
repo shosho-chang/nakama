@@ -14,6 +14,12 @@
 
   // ── Theme ────────────────────────────────────────────────────────────────
   function applyTheme(theme) {
+    // Native <dialog> renders in the top layer and does not inherit CSS
+    // variables from the .review-shell ancestor; apply on documentElement so
+    // the brk-* var overrides reach top-layer descendants too.
+    const root = document.documentElement;
+    root.classList.toggle("brk-dark", theme === "dark");
+    root.classList.toggle("brk-light", theme !== "dark");
     shell.classList.toggle("brk-dark", theme === "dark");
     shell.classList.toggle("brk-light", theme !== "dark");
   }
