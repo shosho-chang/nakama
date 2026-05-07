@@ -29,6 +29,11 @@ When a skill instruction says "look in `docs/adr/`," substitute `docs/decisions/
 
 Context-scoped ADRs (e.g. `agents/<name>/docs/decisions/`) are **lazy** — none exist yet. When a decision is local to one agent's internals and would clutter the system-level ADR list, write it there instead.
 
+## Retrieval defaults
+
+- **Embedder**: `BGE-M3` (1024-dim, cross-lingual) is the KB retrieval default per [ADR-022](../decisions/ADR-022-multilingual-embedding-default.md). The legacy `potion-base-8M` (256-dim, English-only) is opt-in via `NAKAMA_EMBED_BACKEND=potion`.
+- **Vector store**: `data/kb_index.db` `kb_vectors` is `vec0(embedding float[1024])`. Dim mismatch between the loaded model and the table fails loudly at `kb_hybrid_search.get_kb_conn()` time — re-run `python -m shared.kb_indexer --rebuild` when the embedder dim changes.
+
 ## Other domain artefacts
 
 Skills should also know about these neighbouring directories — they're not consumed by skill prompts directly, but linking out to them is often the right move:
