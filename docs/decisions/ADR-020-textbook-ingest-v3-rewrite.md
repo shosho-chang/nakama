@@ -499,6 +499,150 @@ created_by: phase-2-concept-dispatcher
 
 ---
 
+## Phase 1.5 — Verbatim Verification & Concept Acceptance Freeze (frozen 2026-05-07)
+
+### Purpose
+
+Stage 1c shipped `compute_acceptance` in `scripts/run_s8_preflight.py`. This section freezes the exact algorithm so future edits to the runner cannot silently drift the gate. Any PR that changes the algorithm body in `run_s8_preflight.py` **must** also update this section (link the rule in the commit body).
+
+Standalone verifier CLIs expose the gate for operator use between ingest batches:
+- `scripts/verify_verbatim.py` — single-chapter (Stage 2 / 4.5 spot-check)
+- `scripts/verify_staging.py` — aggregate over all staged chapters (Stage 5.0 sign-off)
+
+---
+
+### `normalize_for_verbatim_compare` algorithm
+
+**Source**: `scripts/run_s8_preflight.py:675`
+
+**Purpose**: Strip all content that `_assemble_body` legitimately adds (concept maps, wikilink wrappers, figure transform) so the remainder should exactly match `walker.verbatim_body`.
+
+**Caller contract**: Caller must strip the YAML frontmatter block before passing `page_body`.
+
+**Steps (in order)**:
+
+1. **Strip section wrapper blocks** — Remove every occurrence of:
+   ```
+   \n\n### Section concept map\n\n<DOTALL content>\n\n### Wikilinks introduced\n\n(- [[...]]\n)*
+   ```
+   Uses `re.DOTALL` so the concept map content spans multiple lines.
+
+2. **Reverse V2 figure transform** — Convert `![[vault_path]]\n*alt*` back to `![alt](vault_path)`.
+   Regex: `!\[\[([^\]]+)\]\]\n\*([^*]*)\*` → `![group2](group1)`.
+
+3. **Trim trailing whitespace per line** — `"\n".join(line.rstrip() for line in body.split("\n"))`.
+
+**Not done**: punctuation normalize, case normalize, paragraph reorder — the gate is structural fidelity, not semantic.
+
+---
+
+### `verbatim_match_pct` algorithm
+
+**Source**: `scripts/run_s8_preflight.py:699`
+
+**Purpose**: Paragraph-level substring match; returns 0.0–1.0.
+
+**Steps**:
+
+1. Call `normalize_for_verbatim_compare(page_body)` → `normalized`.
+2. Split `walker_verbatim` on `"\n\n"` and filter non-empty paragraphs → `paragraphs`.
+3. If `paragraphs` is empty, return `1.0`.
+4. For each paragraph `p`, score `1.0` if `p in normalized` else `0.0`.
+5. Return `mean(scores)`.
+
+**Gate threshold**: `verbatim_match_pct >= 0.99` (99% of walker paragraphs must appear as substrings).
+
+---
+
+### `section_anchors_match` algorithm
+
+**Source**: `scripts/run_s8_preflight.py:714`
+
+**Purpose**: Exact list equality (order + text) of H2 headings.
+
+**Steps**:
+
+1. Extract all `## <text>` headings from `page_body` via `re.findall(r"^## (.+)$", page_body, re.MULTILINE)` → `page_h2s`.
+2. Return `page_h2s == walker_section_anchors`.
+
+**Gate threshold**: must equal `True` (zero tolerance for reordering or missing/extra sections).
+
+---
+
+### 4-rule acceptance gate
+
+**Source**: `scripts/run_s8_preflight.py:720` (`compute_acceptance`)
+
+| Rule | Field | Threshold | Notes |
+|---|---|---|---|
+| **verbatim_match_pct** | `verbatim_ok` | `≥ 0.99` | paragraph substring match after normalization |
+| **section_anchors_match** | `anchors_match` | `== True` | exact list equality; order-sensitive |
+| **figures_embedded** | `figures_ok` | `== walker_figures_count` | counts `[[Attachments/Books/` occurrences in body |
+| **wikilinks** | `wikilinks_ok` | `≥ char_count // 2000` | dynamic threshold; short chapters allowed fewer wikilinks |
+
+`compute_acceptance` returns `AcceptanceResult` with all rule results plus measurements. `acceptance_pass = True` iff all 4 rules pass. On any failure, measurements are logged at `WARNING` level.
+
+**Frozen**: these thresholds are normative. Implementation changes require updating this table.
+
+---
+
+### L2/L3 concept hard rules
+
+**Source**: `shared/concept_validators.py` (Stage 1.5)
+
+**Motivation**: 2026-05-06 ingest produced 544/622 (87.5%) empty concept stubs via Phase B reconciliation. L2/L3 rules prevent recurrence. See [project_kb_corpus_stub_crisis_2026_05_06.md](../../memory/claude/project_kb_corpus_stub_crisis_2026_05_06.md).
+
+#### Forbidden strings (both L2 and L3)
+
+```python
+L2_FORBIDDEN_STRINGS = L3_FORBIDDEN_STRINGS = [
+    "Will be enriched later",   # phase-b-reconciliation stub marker
+    "TODO",
+    "Placeholder",
+    "(this chapter)",           # _build_seed_body residue from 5/6 ingest
+]
+```
+
+#### L2 rules (`validate_l2_concept`)
+
+| Rule | Threshold |
+|---|---|
+| `min_word_count` | body word count ≥ 200 |
+| `must_include_paragraph_from_chapter` | at least 1 element of `source_paragraphs` must appear as a substring in `body` |
+| `forbidden_strings` | none of the strings above may appear in `body` |
+
+#### L3 rules (`validate_l3_concept`)
+
+| Rule | Threshold |
+|---|---|
+| `min_word_count` | body word count ≥ 200 |
+| `min_source_paragraphs` | paragraphs from ≥ 2 distinct chapters must appear as substrings in `body` |
+| `forbidden_strings` | same list as L2 |
+
+Violations raise `IngestFailError` (defined in `shared/concept_dispatch.py`, imported by `concept_validators.py`). The chapter ingest must be aborted and the slug reported for human intervention.
+
+**Wiring status (2026-05-07)**: `shared/concept_validators.py` ships standalone with `# STAGE-1.5-AMBIGUITY` marker. Injection into `dispatch_concept()` requires threading `source_paragraphs` through the call signature — deferred to Stage 4.5/5.3.
+
+---
+
+### Affected Principles & Conflict Check
+
+Per [feedback_adr_principle_conflict_check.md](../../memory/claude/feedback_adr_principle_conflict_check.md): any ADR change to the pipeline must list affected P-level invariants and prove the new design still satisfies them.
+
+#### ADR-011 P1 (Karpathy aggregator)
+
+> **P1 — Karpathy aggregator**: Concept page 是 cross-source evidence aggregator，不是 oracle、不是 changelog；新 source 進來要把資訊真正 merge 進 concept body 主體（Definition / Core Principles / Practical Applications），有衝突另闢 `## 文獻分歧 / Discussion` 結構化記錄
+
+**How L2/L3 rules satisfy P1**: The `min_word_count ≥ 200` rule ensures concept bodies are substantive, not empty one-liners. The `must_include_paragraph_from_chapter` rule (L2) and `min_source_paragraphs ≥ 2` rule (L3) ensure bodies contain actual aggregated source material. The `forbidden_strings` list bans the exact deferred-TODO pattern that made 544 pages useless aggregators. Together, the rules enforce that "new source must truly merge content into the body" by making it impossible to write a page that doesn't contain any source text.
+
+#### ADR-016 §2.1 row B
+
+> **§2.1 row B**: 提取 wikilinks → dedupe vs existing Concepts → 創 stub Concept pages → update `mentioned_in:` 全 dedupe → Book Entity status / KB/index.md / KB/log.md — **serial within itself** (共享 mutable state)
+
+**Supersedes ADR-016 §2.1 row B**: The Phase B "create stub Concept pages" behavior is explicitly forbidden by the `forbidden_strings` rule (`"Will be enriched later"` etc.) and the `min_word_count ≥ 200` rule. ADR-016 §2.1 row B stub creation was the direct mechanism that produced the 87.5% empty corpus. This section **supersedes ADR-016 §2.1 row B** for the stub-creation semantics. The serial-execution coordination rule (advisory lock per concept) in ADR-020 §Phase 2 replaces the Phase B serial architecture.
+
+---
+
 ## Multi-agent panel sign-off
 
 本 ADR 已過三家 panel:
