@@ -4,7 +4,7 @@
 **Date**: 2026-05-07
 **Author**: Claude Opus 4.7（修修 grill 5 fork 後共識）
 **Scope**: 把 Franky 從「monitor / news-digest agent」重定義為「evolution agent」 — 把外部 AI 訊號接到 Nakama 內部架構決策的 closed loop
-**Purpose**: 此文件**不是 ADR**，是 panel triangulation 的 input artifact。Codex / Gemini 應該對 5 個 fork 的選擇 + open questions 做 push-back，整合後才寫 ADR-022。
+**Purpose**: 此文件**不是 ADR**，是 panel triangulation 的 input artifact。Codex / Gemini 應該對 5 個 fork 的選擇 + open questions 做 push-back，整合後才寫 ADR-023。
 
 ---
 
@@ -213,7 +213,7 @@ weekly synthesis 產 proposal 時，若涉及 architectural lock-in（碰某個 
 
 ---
 
-## 6. Implementation skeleton（先列，不展開 — ADR-022 ship 後 to-issues 拆 slice）
+## 6. Implementation skeleton（先列，不展開 — ADR-023 ship 後 to-issues 拆 slice）
 
 預估 4 個 vertical slice：
 
@@ -237,6 +237,6 @@ weekly synthesis 產 proposal 時，若涉及 architectural lock-in（碰某個 
 
 ---
 
-## 8. Decisions log（panel 整合後寫進 ADR-022）
+## 8. Decisions log（panel 整合後寫進 ADR-023）
 
-待 panel 跑完，把 panel 採納的修正 + reject 的 critique 整合，再寫 ADR-022。
+待 panel 跑完，把 panel 採納的修正 + reject 的 critique 整合，再寫 ADR-023。
