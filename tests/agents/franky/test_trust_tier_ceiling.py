@@ -194,9 +194,7 @@ def test_pipeline_caps_experimental_score_during_run(tmp_path, monkeypatch):
     monkeypatch.setattr(nd, "append_to_file", MagicMock())
     monkeypatch.setattr(nd, "mark_seen", MagicMock())
 
-    pipeline = nd.NewsDigestPipeline(
-        dry_run=True, feeds_config_path=cfg, slack_bot=MagicMock()
-    )
+    pipeline = nd.NewsDigestPipeline(dry_run=True, feeds_config_path=cfg, slack_bot=MagicMock())
     summary = pipeline.run()
     assert "selected=1" in summary
     assert "experimental" in str(pipeline._trust_tier_breakdown)

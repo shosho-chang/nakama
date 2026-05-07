@@ -45,6 +45,7 @@ def _github_api_headers() -> dict[str, str]:
         headers["Authorization"] = f"Bearer {token}"
     return headers
 
+
 logger = get_logger("nakama.franky.news.github_trending")
 
 TRENDING_URL = "https://github.com/trending/python"

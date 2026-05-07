@@ -41,6 +41,7 @@ def _github_api_headers() -> dict[str, str]:
         headers["Authorization"] = f"Bearer {token}"
     return headers
 
+
 logger = get_logger("nakama.franky.news.awesome_diff")
 
 PUBLISHER_PREFIX = "Awesome"
@@ -48,9 +49,7 @@ FEED_NAME = "awesome_diff"
 SOURCE_KEY = "ai_news_blog"
 
 _HTTP_TIMEOUT = 30
-_USER_AGENT = (
-    "Mozilla/5.0 (compatible; Nakama-Franky/0.1; +https://github.com/shosho-chang/nakama)"
-)
+_USER_AGENT = "Mozilla/5.0 (compatible; Nakama-Franky/0.1; +https://github.com/shosho-chang/nakama)"
 _API = "https://api.github.com"
 _SUMMARY_CAP = 1500
 # Match "- [Name](url) — desc" or "- [Name](url) - desc" (allow blank desc)
@@ -134,9 +133,7 @@ def gather_candidates(
                 if change_ts > 0
                 else ""
             )
-            age_hours = (
-                round((now.timestamp() - change_ts) / 3600.0, 2) if change_ts > 0 else 0.0
-            )
+            age_hours = round((now.timestamp() - change_ts) / 3600.0, 2) if change_ts > 0 else 0.0
             summary = link["desc"] or f"New entry in {cfg.name}"
             candidates.append(
                 {
@@ -167,9 +164,7 @@ def diff_added_links(old_text: str, new_text: str) -> list[dict]:
     ``new_text`` but not in ``old_text``. Uniqueness keyed on URL.
     """
     old_urls = {
-        m.group(2)
-        for line in (old_text or "").splitlines()
-        if (m := _LINK_LINE_RE.match(line))
+        m.group(2) for line in (old_text or "").splitlines() if (m := _LINK_LINE_RE.match(line))
     }
     out: list[dict] = []
     seen_urls: set[str] = set()

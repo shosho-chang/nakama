@@ -1,11 +1,11 @@
 """Tests for the new S1 news sources (ADR-022 §2 S1):
 
-  - github_trending sanity check (one fixture per rule)
-  - github_trending end-to-end with mocked HTTP
-  - awesome_diff link extraction + diff
-  - news_curate prompt accepts 8-12 picks (string check)
-  - news_digest integration: candidate count + trust tier distribution
-    with all four sources stubbed (no network)
+- github_trending sanity check (one fixture per rule)
+- github_trending end-to-end with mocked HTTP
+- awesome_diff link extraction + diff
+- news_curate prompt accepts 8-12 picks (string check)
+- news_digest integration: candidate count + trust tier distribution
+  with all four sources stubbed (no network)
 """
 
 from __future__ import annotations
@@ -333,15 +333,9 @@ github_trending:
     }
 
     monkeypatch.setattr(nd, "gather_candidates", lambda *a, **kw: [rss_cand])
-    monkeypatch.setattr(
-        nd.anthropic_html, "gather_candidates", lambda **kw: [anthropic_cand]
-    )
-    monkeypatch.setattr(
-        nd.awesome_diff, "gather_candidates", lambda *a, **kw: [awesome_cand]
-    )
-    monkeypatch.setattr(
-        nd.github_trending, "gather_candidates", lambda *a, **kw: [trending_cand]
-    )
+    monkeypatch.setattr(nd.anthropic_html, "gather_candidates", lambda **kw: [anthropic_cand])
+    monkeypatch.setattr(nd.awesome_diff, "gather_candidates", lambda *a, **kw: [awesome_cand])
+    monkeypatch.setattr(nd.github_trending, "gather_candidates", lambda *a, **kw: [trending_cand])
 
     # LLM stub: curate picks all 4, score returns deliberately too-high overall
     # for the trending one to verify the ceiling.
@@ -397,9 +391,7 @@ github_trending:
 
     monkeypatch.setattr(nd.llm, "ask", fake_ask)
 
-    pipeline = nd.NewsDigestPipeline(
-        dry_run=True, feeds_config_path=cfg, slack_bot=MagicMock()
-    )
+    pipeline = nd.NewsDigestPipeline(dry_run=True, feeds_config_path=cfg, slack_bot=MagicMock())
     summary = pipeline.run()
 
     assert "fetch=4" in summary
