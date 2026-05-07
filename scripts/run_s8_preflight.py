@@ -651,8 +651,121 @@ def _candidate_en_terms(term: str, chapter_text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Coverage manifest + acceptance gate
+# Deterministic acceptance gate (Stage 1c — ADR-020 D2)
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class AcceptanceResult:
+    """Structured output from compute_acceptance — all 4 rule results plus measurements."""
+
+    verbatim_match: float  # 0.0–1.0; gate: ≥ 0.99
+    verbatim_ok: bool
+    anchors_match: bool
+    figures_embedded: int
+    figures_expected: int
+    figures_ok: bool
+    wikilinks_count: int
+    char_count: int
+    wikilinks_threshold: int  # char_count // 2000; dynamic so short chapters don't over-require
+    wikilinks_ok: bool
+    acceptance_pass: bool
+
+
+def normalize_for_verbatim_compare(page_body: str) -> str:
+    """Strip designed non-verbatim content; return what should match walker.verbatim_body.
+
+    Caller must strip the YAML frontmatter block before passing page_body.
+    """
+    # Strip per-section wrapper blocks inserted by _assemble_body:
+    # \n\n### Section concept map\n\n[mermaid]\n\n### Wikilinks introduced\n\n[bullet lines]
+    body = re.sub(
+        r"\n\n### Section concept map\n\n.*?\n\n### Wikilinks introduced\n\n(?:- \[\[.*?\]\]\n)*",
+        "",
+        page_body,
+        flags=re.DOTALL,
+    )
+    # Reverse V2 figure transform: ![[vault_path]]\n*alt* → ![alt](vault_path)
+    body = re.sub(
+        r"!\[\[([^\]]+)\]\]\n\*([^*]*)\*",
+        lambda m: f"![{m.group(2)}]({m.group(1)})",
+        body,
+    )
+    # Trim trailing whitespace per line
+    body = "\n".join(line.rstrip() for line in body.split("\n"))
+    return body
+
+
+def verbatim_match_pct(page_body: str, walker_verbatim: str) -> float:
+    """Paragraph-level substring match; returns 0.0–1.0.
+
+    Splits walker_verbatim on blank lines into paragraphs. For each paragraph,
+    returns 1.0 if it appears as a substring of normalize_for_verbatim_compare(page_body),
+    else 0.0. Returns mean.
+    """
+    normalized = normalize_for_verbatim_compare(page_body)
+    paragraphs = [p for p in walker_verbatim.split("\n\n") if p.strip()]
+    if not paragraphs:
+        return 1.0
+    matches = sum(1 for p in paragraphs if p in normalized)
+    return matches / len(paragraphs)
+
+
+def section_anchors_match(page_body: str, walker_section_anchors: list[str]) -> bool:
+    """Exact list equality of H2 heading texts in page_body vs walker section anchors."""
+    page_h2s = re.findall(r"^## (.+)$", page_body, re.MULTILINE)
+    return page_h2s == walker_section_anchors
+
+
+def compute_acceptance(
+    page_body: str,
+    walker_verbatim: str,
+    walker_section_anchors: list[str],
+    walker_figures_count: int,
+    wikilinks_introduced: list[str],
+) -> AcceptanceResult:
+    """Run 4-rule deterministic acceptance gate. Logs every measurement on fail."""
+    vm = verbatim_match_pct(page_body, walker_verbatim)
+    anchors_ok = section_anchors_match(page_body, walker_section_anchors)
+
+    fig_embedded = len(re.findall(r"\[\[Attachments/Books/", page_body))
+    fig_ok = fig_embedded == walker_figures_count
+
+    char_count = len(page_body)
+    wl_threshold = char_count // 2000
+    wl_count = len(wikilinks_introduced)
+    wl_ok = wl_count >= wl_threshold
+
+    ok = vm >= 0.99 and anchors_ok and fig_ok and wl_ok
+
+    if not ok:
+        log.warning(
+            "Acceptance FAIL: verbatim=%.4f(ok=%s) anchors=%s "
+            "figs=%d/%d(ok=%s) wikilinks=%d/%d(ok=%s)",
+            vm,
+            vm >= 0.99,
+            anchors_ok,
+            fig_embedded,
+            walker_figures_count,
+            fig_ok,
+            wl_count,
+            wl_threshold,
+            wl_ok,
+        )
+
+    return AcceptanceResult(
+        verbatim_match=vm,
+        verbatim_ok=vm >= 0.99,
+        anchors_match=anchors_ok,
+        figures_embedded=fig_embedded,
+        figures_expected=walker_figures_count,
+        figures_ok=fig_ok,
+        wikilinks_count=wl_count,
+        char_count=char_count,
+        wikilinks_threshold=wl_threshold,
+        wikilinks_ok=wl_ok,
+        acceptance_pass=ok,
+    )
 
 
 def run_coverage_gate(
@@ -664,83 +777,59 @@ def run_coverage_gate(
     dispatch_log: list[dict],
     vault_root: Path,
 ) -> tuple[bool, list[str], dict]:
-    """Run claim-extraction + acceptance gate. Returns (passed, reasons, manifest_dict)."""
-    from shared.coverage_classifier import (
-        ConceptDispatchEntry,
-        CoverageManifest,
-        check_claim_in_page,
-        extract_claims,
-        run_acceptance_gate,
-        write_coverage_manifest,
-    )
-    from shared.source_ingest import verbatim_paragraph_match_pct
-
-    log.info("Coverage: extracting claims from chapter via LLM…")
-    claims = extract_claims(payload.verbatim_body, _ask_llm=_ask_llm)
-    log.info("Coverage: %d claims extracted", len(claims))
+    """Run deterministic 4-rule acceptance gate. Returns (passed, reasons, metrics_dict)."""
+    import yaml as _yaml
 
     page_text = source_page_path.read_text(encoding="utf-8")
-    log.info("Coverage: checking %d claims against vault page…", len(claims))
-    for c in claims:
+
+    # Strip frontmatter to get bare body for verbatim comparison
+    fm_match = re.match(r"^---\n(.*?)\n---\n", page_text, re.DOTALL)
+    page_body = page_text[fm_match.end() :] if fm_match else page_text
+
+    # Extract wikilinks_introduced from frontmatter YAML for rule 4
+    wikilinks_introduced: list[str] = []
+    if fm_match:
         try:
-            c.found_in_page = check_claim_in_page(c, page_text, _ask_llm=_ask_llm)
-        except Exception as e:
-            log.warning("check_claim_in_page error: %s", e)
-            c.found_in_page = False
+            fm = _yaml.safe_load(fm_match.group(1))
+            if isinstance(fm, dict):
+                wikilinks_introduced = list(fm.get("wikilinks_introduced") or [])
+        except Exception:
+            pass
 
-    verbatim_pct = verbatim_paragraph_match_pct(payload.verbatim_body, page_text)
+    acc = compute_acceptance(
+        page_body=page_body,
+        walker_verbatim=payload.verbatim_body,
+        walker_section_anchors=payload.section_anchors,
+        walker_figures_count=figures_count,
+        wikilinks_introduced=wikilinks_introduced,
+    )
 
-    dispatch_entries = [
-        ConceptDispatchEntry(
-            slug=entry.get("slug", "?"),
-            action=entry.get("action", "?"),
+    reasons: list[str] = []
+    if not acc.verbatim_ok:
+        reasons.append(f"verbatim_match={acc.verbatim_match:.4f} < 0.99")
+    if not acc.anchors_match:
+        reasons.append("section_anchors_match=False")
+    if not acc.figures_ok:
+        reasons.append(
+            f"figures_embedded={acc.figures_embedded}"
+            f" != walker.figures_count={acc.figures_expected}"
         )
-        for entry in dispatch_log
-    ]
+    if not acc.wikilinks_ok:
+        reasons.append(
+            f"wikilinks={acc.wikilinks_count} < threshold={acc.wikilinks_threshold}"
+            f" (char_count={acc.char_count})"
+        )
 
-    manifest = CoverageManifest(
-        chapter_index=payload.chapter_index,
-        book_id=payload.book_id,
-        claims_extracted_by_llm=claims,
-        figures_count=figures_count,
-        figures_embedded=figures_count,  # source page should embed all detected figures
-        tables_transcluded=0,
-        verbatim_paragraph_match_pct=verbatim_pct,
-        concept_dispatch_log=dispatch_entries,
-    )
-
-    passed, reasons = run_acceptance_gate(manifest)
-    manifest.acceptance_status = "pass" if passed else "fail"
-    manifest.acceptance_reasons = reasons
-
-    manifest_path = (
-        vault_root
-        / "KB"
-        / "Wiki.staging"
-        / "Sources"
-        / "Books"
-        / payload.book_id
-        / f"ch{payload.chapter_index}.coverage.json"
-    )
-    write_coverage_manifest(manifest, manifest_path)
-    log.info(
-        "Coverage: gate=%s missing(P/S/N)=%.1f/%.1f/%.1f manifest=%s",
-        manifest.acceptance_status,
-        manifest.primary_claims_missing_pct,
-        manifest.secondary_claims_missing_pct,
-        manifest.nuance_claims_missing_pct,
-        manifest_path,
-    )
     return (
-        passed,
+        acc.acceptance_pass,
         reasons,
         {
-            "primary_total": sum(1 for c in claims if c.claim_type == "primary"),
-            "primary_missing_pct": manifest.primary_claims_missing_pct,
-            "secondary_missing_pct": manifest.secondary_claims_missing_pct,
-            "nuance_missing_pct": manifest.nuance_claims_missing_pct,
-            "verbatim_pct": verbatim_pct,
-            "manifest_path": str(manifest_path),
+            "primary_total": 0,
+            "primary_missing_pct": 0.0,
+            "secondary_missing_pct": 0.0,
+            "nuance_missing_pct": 0.0,
+            "verbatim_pct": acc.verbatim_match * 100,
+            "manifest_path": "",
         },
     )
 
@@ -915,8 +1004,6 @@ def run_preflight(args) -> PreflightResult:
     result.figures_described = fig_desc
 
     if args.dry_run:
-        from shared.source_ingest import verbatim_paragraph_match_pct
-
         try:
             source_page_path = run_phase1_source_page(
                 payload,
@@ -927,8 +1014,8 @@ def run_preflight(args) -> PreflightResult:
             result.source_page_path = str(source_page_path)
         except Exception as e:
             result.fatal_error = f"Phase 1 dry-run failed: {e!r}"
-        result.verbatim_match_pct = verbatim_paragraph_match_pct(
-            payload.verbatim_body, payload.verbatim_body
+        result.verbatim_match_pct = (
+            verbatim_match_pct(payload.verbatim_body, payload.verbatim_body) * 100
         )
         result.acceptance_pass = False
         result.acceptance_reasons = ["dry-run — no acceptance check performed"]

@@ -52,17 +52,6 @@ CHAPTER TEXT:
 {chapter_text}
 """
 
-_CHECK_CLAIM_PROMPT = """\
-Does the following vault page cover this claim?
-
-CLAIM: {claim_text}
-
-VAULT PAGE:
-{page_text}
-
-Respond with exactly one word: true or false
-"""
-
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -255,38 +244,6 @@ def extract_claims(
             claims.append(ClaimUnit(text=text, claim_type=claim_type))
 
     return claims
-
-
-def check_claim_in_page(
-    claim: ClaimUnit,
-    vault_page_text: str,
-    *,
-    _ask_llm: Callable[[str], str] | None = None,
-) -> bool:
-    """Ask LLM whether the vault page covers the given claim.
-
-    Defaults to False on unrecognised LLM response.
-    """
-    if _ask_llm is None:
-        from shared.kb_writer import _ask_llm as _default
-
-        _ask_llm = _default
-
-    prompt = _CHECK_CLAIM_PROMPT.format(
-        claim_text=claim.text,
-        page_text=vault_page_text[:6000],
-    )
-    response = _ask_llm(prompt)
-    lower = response.strip().lower()
-    if "true" in lower:
-        return True
-    if "false" in lower:
-        return False
-    logger.warning(
-        "check_claim_in_page: unexpected response '%s'; defaulting to False",
-        response[:60],
-    )
-    return False
 
 
 def write_coverage_manifest(manifest: CoverageManifest, path: Path) -> None:

@@ -1,7 +1,7 @@
 """Tests for shared.coverage_classifier (ADR-020 S4).
 
-Acceptance gate tests are deterministic. LLM-calling functions
-(extract_claims, check_claim_in_page) accept _ask_llm stub to avoid real API calls.
+Acceptance gate tests are deterministic. extract_claims accepts _ask_llm stub
+to avoid real API calls.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from shared.coverage_classifier import (
     ClaimUnit,
     ConceptDispatchEntry,
     CoverageManifest,
-    check_claim_in_page,
     extract_claims,
     run_acceptance_gate,
     write_coverage_manifest,
@@ -268,35 +267,6 @@ def test_extract_claims_tolerates_prose_around_array():
 def test_extract_claims_empty_list_response():
     claims = extract_claims("Chapter text.", _ask_llm=lambda p: "[]")
     assert claims == []
-
-
-# ---------------------------------------------------------------------------
-# check_claim_in_page (LLM-stubbed)
-# ---------------------------------------------------------------------------
-
-
-def test_check_claim_true_response():
-    claim = ClaimUnit("ATP is the energy currency.", "primary")
-    result = check_claim_in_page(claim, "Page text.", _ask_llm=lambda p: "true")
-    assert result is True
-
-
-def test_check_claim_false_response():
-    claim = ClaimUnit("Missing concept.", "primary")
-    result = check_claim_in_page(claim, "Page text.", _ask_llm=lambda p: "false")
-    assert result is False
-
-
-def test_check_claim_defaults_false_on_invalid():
-    claim = ClaimUnit("Some claim.", "primary")
-    result = check_claim_in_page(claim, "Page.", _ask_llm=lambda p: "UNKNOWN XYZ")
-    assert result is False
-
-
-def test_check_claim_case_insensitive_true():
-    claim = ClaimUnit("ATP.", "primary")
-    result = check_claim_in_page(claim, "Page.", _ask_llm=lambda p: "Found: True")
-    assert result is True
 
 
 # ---------------------------------------------------------------------------
