@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import yaml
+
 from agents.base import BaseAgent
-from agents.franky.news import anthropic_html
+from agents.franky.news import anthropic_html, awesome_diff, github_trending
 from agents.franky.news.official_blogs import (
     SOURCE_KEY,
     FeedConfig,
@@ -79,8 +81,18 @@ class NewsDigestPipeline(BaseAgent):
         self.dry_run = dry_run
         self.no_publish = no_publish
         self._slack_bot_override = slack_bot
-        self.feeds: list[FeedConfig] = load_feeds(feeds_config_path or _FEEDS_CONFIG)
+        cfg_path = feeds_config_path or _FEEDS_CONFIG
+        self.feeds: list[FeedConfig] = load_feeds(cfg_path)
+        # ADR-023 §2 S1: load extra source blocks from the same yaml.
+        raw_cfg: dict = {}
+        if cfg_path.exists():
+            with open(cfg_path, encoding="utf-8") as f:
+                raw_cfg = yaml.safe_load(f) or {}
+        self.awesome_configs = awesome_diff.load_awesome_configs(raw_cfg.get("awesome_diff"))
+        self.trending_config = github_trending.load_trending_config(raw_cfg.get("github_trending"))
         self.operation_id = _new_op_id()
+        self._source_breakdown: dict[str, int] = {}
+        self._trust_tier_breakdown: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Main pipeline
@@ -101,7 +113,32 @@ class NewsDigestPipeline(BaseAgent):
         except Exception as e:
             self.logger.warning(f"anthropic_html source failed: {e}", exc_info=True)
             anthropic_candidates = []
-        candidates = rss_candidates + anthropic_candidates
+        try:
+            awesome_candidates = awesome_diff.gather_candidates(
+                self.awesome_configs, skip_seen=skip_seen
+            )
+        except Exception as e:
+            self.logger.warning(f"awesome_diff source failed: {e}", exc_info=True)
+            awesome_candidates = []
+        try:
+            trending_candidates = github_trending.gather_candidates(
+                self.trending_config, skip_seen=skip_seen
+            )
+        except Exception as e:
+            self.logger.warning(f"github_trending source failed: {e}", exc_info=True)
+            trending_candidates = []
+        candidates = (
+            rss_candidates + anthropic_candidates + awesome_candidates + trending_candidates
+        )
+        # Per-source telemetry — used by --dry-run smoke + integration tests
+        # to verify the trust tier distribution.
+        self._source_breakdown = {
+            "rss": len(rss_candidates),
+            "anthropic_html": len(anthropic_candidates),
+            "awesome_diff": len(awesome_candidates),
+            "github_trending": len(trending_candidates),
+        }
+        self._trust_tier_breakdown = _count_trust_tiers(candidates)
         # Re-sort across sources by recency (each gather sorts internally, but
         # the merged list needs one more pass).
         candidates.sort(key=lambda c: c.get("published_ts", 0.0), reverse=True)
@@ -110,7 +147,9 @@ class NewsDigestPipeline(BaseAgent):
 
         self.logger.info(
             f"news_digest: {len(candidates)} fresh candidates after dedupe "
-            f"(rss={len(rss_candidates)}, anthropic_html={len(anthropic_candidates)})"
+            f"(rss={len(rss_candidates)}, anthropic_html={len(anthropic_candidates)}, "
+            f"awesome_diff={len(awesome_candidates)}, github_trending={len(trending_candidates)}; "
+            f"trust_tiers={self._trust_tier_breakdown})"
         )
 
         # 2. Curate (one LLM call)
@@ -145,6 +184,9 @@ class NewsDigestPipeline(BaseAgent):
             except Exception as e:
                 self.logger.warning(f"Score {item_id!r} 失敗：{e}")
                 continue
+            # ADR-023 §2 S1: experimental low-trust tier — cap overall + per-dim
+            # at the candidate's score_ceiling (default 4 for trending).
+            score_result = _apply_trust_ceiling(cand, score_result, logger=self.logger)
             scored.append(
                 {
                     "candidate": cand,
@@ -188,6 +230,7 @@ class NewsDigestPipeline(BaseAgent):
 
         return (
             f"fetch={len(candidates)} selected={len(scored)} "
+            f"sources={self._source_breakdown} trust_tiers={self._trust_tier_breakdown} "
             f"digest={digest_relpath or '(skipped)'} slack_ts={slack_ts or '(skipped)'} "
             f"op={self.operation_id} (dry_run={self.dry_run} no_publish={self.no_publish})"
         )
@@ -325,6 +368,60 @@ class NewsDigestPipeline(BaseAgent):
 
 
 # ----------------------------------------------------------------------
+# Trust tier helpers (ADR-023 §2 S1)
+# ----------------------------------------------------------------------
+
+
+def _count_trust_tiers(candidates: list[dict]) -> dict[str, int]:
+    """Group candidate count by trust_tier (default `full_trust` if absent)."""
+    out: dict[str, int] = {}
+    for c in candidates:
+        tier = c.get("trust_tier") or "full_trust"
+        out[tier] = out.get(tier, 0) + 1
+    return out
+
+
+def _apply_trust_ceiling(cand: dict, score_result: dict, *, logger=None) -> dict:
+    """If the candidate is experimental tier with a score_ceiling, cap the
+    LLM-returned ``overall`` and per-dim ``scores`` at that ceiling.
+
+    Pure-ish: returns a new dict (does not mutate input). Keeps non-numeric
+    or missing fields untouched.
+    """
+    ceiling = cand.get("score_ceiling")
+    if ceiling is None:
+        return score_result
+    try:
+        ceiling = float(ceiling)
+    except (TypeError, ValueError):
+        return score_result
+
+    out = dict(score_result)
+    overall = out.get("overall")
+    if isinstance(overall, (int, float)) and overall > ceiling:
+        if logger is not None:
+            logger.info(
+                f"trust ceiling: cap overall {overall} → {ceiling} "
+                f"(item_id={cand.get('item_id')}, tier={cand.get('trust_tier')})"
+            )
+        out["overall"] = ceiling
+
+    scores = out.get("scores")
+    if isinstance(scores, dict):
+        new_scores = {}
+        for k, v in scores.items():
+            if isinstance(v, (int, float)) and v > ceiling:
+                new_scores[k] = ceiling
+            else:
+                new_scores[k] = v
+        out["scores"] = new_scores
+
+    out["trust_tier"] = cand.get("trust_tier")
+    out["score_ceiling_applied"] = ceiling
+    return out
+
+
+# ----------------------------------------------------------------------
 # Pure render functions (no side effects)
 # ----------------------------------------------------------------------
 
@@ -436,4 +533,6 @@ __all__ = [
     "_render_digest_body",
     "_render_slack_text",
     "_parse_json",
+    "_apply_trust_ceiling",
+    "_count_trust_tiers",
 ]
