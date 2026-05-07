@@ -26,7 +26,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -45,9 +45,7 @@ TOTAL_BUDGET_TOKENS = sum(BUDGETS.values())  # 9_000
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MEMORY_INDEX = REPO_ROOT / "memory" / "claude" / "MEMORY.md"
 ADR_DIR = REPO_ROOT / "docs" / "decisions"
-SNAPSHOT_PATH = (
-    REPO_ROOT / "agents" / "franky" / "state" / "franky_context_snapshot.md"
-)
+SNAPSHOT_PATH = REPO_ROOT / "agents" / "franky" / "state" / "franky_context_snapshot.md"
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
@@ -288,8 +286,7 @@ def build_top_open_issues(limit: int = 15) -> str:
         title = (it.get("title") or "").strip()
         labels_raw = it.get("labels") or []
         labels = ",".join(
-            (lbl.get("name") if isinstance(lbl, dict) else str(lbl))
-            for lbl in labels_raw
+            (lbl.get("name") if isinstance(lbl, dict) else str(lbl)) for lbl in labels_raw
         )
         created = (it.get("createdAt") or "")[:10]  # YYYY-MM-DD
         lbl_part = f" [{labels}]" if labels else ""
@@ -316,9 +313,7 @@ def build_recent_memory_changes(
 
     try:
         # Find earliest commit in the window for this file; diff against its parent.
-        log_out = _run_git(
-            ["log", since, "--pretty=format:%H", "--reverse", "--", rel]
-        )
+        log_out = _run_git(["log", since, "--pretty=format:%H", "--reverse", "--", rel])
     except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired):
         return "_git log failed — cannot build memory diff._\n"
 
@@ -455,7 +450,9 @@ def _safe_write(text: str) -> None:
         if buf is not None:
             buf.write(text.encode("utf-8", errors="replace"))
         else:
-            sys.stdout.write(text.encode("utf-8", errors="replace").decode("ascii", errors="replace"))
+            sys.stdout.write(
+                text.encode("utf-8", errors="replace").decode("ascii", errors="replace")
+            )
 
 
 if __name__ == "__main__":  # pragma: no cover
