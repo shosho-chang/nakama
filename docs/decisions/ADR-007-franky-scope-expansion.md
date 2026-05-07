@@ -321,6 +321,7 @@ CREATE INDEX IF NOT EXISTS idx_r2_backup_time
 | Weekly digest | 週一 10:00 | `agents.franky.weekly_digest` | `/var/lock/franky_weekly.lock` |
 | News digest | 每日 06:30 | `agents.franky.news_digest` | `/var/lock/franky_news.lock` |
 | **Context snapshot regen**（ADR-023 §3 Phase 1，S2a） | **週日 21:30** | `agents.franky.state.context_snapshot regenerate` | `/var/lock/franky_context_snapshot.lock` |
+| **Weekly synthesis**（ADR-023 §7 S3） | **週日 22:00** | `agents.franky synthesis` | `/var/lock/franky_synthesis.lock` |
 
 **Context snapshot runbook（S2a）**：
 
