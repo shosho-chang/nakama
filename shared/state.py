@@ -458,6 +458,32 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_proposal_metrics_week
             ON proposal_metrics(week_iso, created_at DESC);
+
+        -- ADR-023 §7 S2b: 5-dim shadow scoring table.
+        -- Canonical DDL: migrations/015_news_score_shadow.sql.
+        -- Owned by agents/franky/news_digest.py._write_shadow_score().
+        CREATE TABLE IF NOT EXISTS news_score_shadow (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation_id    TEXT    NOT NULL,
+            item_id         TEXT    NOT NULL,
+            scored_at       TEXT    NOT NULL,
+            signal          REAL    NOT NULL,
+            novelty         REAL    NOT NULL,
+            actionability   REAL    NOT NULL,
+            noise           REAL    NOT NULL,
+            relevance       REAL    NOT NULL,
+            overall_v1      REAL    NOT NULL,
+            overall_v2      REAL    NOT NULL,
+            pick_shadow     INTEGER NOT NULL CHECK (pick_shadow IN (0, 1)),
+            relevance_ref   TEXT,
+            UNIQUE (operation_id, item_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_news_score_shadow_op
+            ON news_score_shadow(operation_id, scored_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_news_score_shadow_item
+            ON news_score_shadow(item_id, scored_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
@@ -666,6 +692,50 @@ def record_api_call(
                WHERE id = ?""",
             (input_tokens, output_tokens, run_id),
         )
+    conn.commit()
+
+
+def record_score_shadow(
+    operation_id: str,
+    item_id: str,
+    signal: float,
+    novelty: float,
+    actionability: float,
+    noise: float,
+    relevance: float,
+    overall_v1: float,
+    overall_v2: float,
+    pick_shadow: bool,
+    relevance_ref: Optional[str] = None,
+) -> None:
+    """記錄一筆 5-dim shadow score（ADR-023 §7 S2b）。
+
+    UNIQUE (operation_id, item_id) — 重複 upsert 視為 no-op（INSERT OR IGNORE）。
+    shadow mode 期間此表純記錄，不影響 pick gate 主路徑。
+    """
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT OR IGNORE INTO news_score_shadow
+               (operation_id, item_id, scored_at,
+                signal, novelty, actionability, noise, relevance,
+                overall_v1, overall_v2, pick_shadow, relevance_ref)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            operation_id,
+            item_id,
+            now,
+            signal,
+            novelty,
+            actionability,
+            noise,
+            relevance,
+            overall_v1,
+            overall_v2,
+            int(pick_shadow),
+            relevance_ref,
+        ),
+    )
     conn.commit()
 
 

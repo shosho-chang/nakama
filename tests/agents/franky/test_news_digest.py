@@ -119,8 +119,9 @@ def _curate_response(item_ids):
 def _score_response():
     return json.dumps(
         {
-            "scores": {"signal": 5, "novelty": 4, "actionability": 5, "noise": 5},
-            "overall": 4.7,
+            "scores": {"signal": 5, "novelty": 4, "actionability": 5, "noise": 5, "relevance": 3},
+            "overall": 4.6,
+            "overall_4dim": 4.7,
             "one_line_verdict": "Claude 4.7 1M context 釋出",
             "why_it_matters": "對 Nakama 全 stack 直接受惠",
             "key_finding": "今天起 paid API 可用",
@@ -284,9 +285,9 @@ def test_run_pick_false_items_filtered_out(tmp_path, monkeypatch):
         score_call["n"] += 1
         if score_call["n"] == 1:
             return _score_response()
+        # Force pick=False via shadow gate: relevance=1 fails the relevance ≥ 2 guard.
         bad = json.loads(_score_response())
-        bad["pick"] = False
-        bad["overall"] = 1.2
+        bad["scores"]["relevance"] = 1
         return json.dumps(bad)
 
     monkeypatch.setattr(nd.llm, "ask", _ask)
@@ -313,8 +314,9 @@ def test_run_all_pick_false_returns_no_picks(tmp_path, monkeypatch):
     def _ask(prompt, **kw):
         if "8-12 條" in prompt:
             return _curate_response(["i1"])
+        # Force pick=False via shadow gate: relevance=1 fails the relevance ≥ 2 guard.
         bad = json.loads(_score_response())
-        bad["pick"] = False
+        bad["scores"]["relevance"] = 1
         return json.dumps(bad)
 
     monkeypatch.setattr(nd.llm, "ask", _ask)

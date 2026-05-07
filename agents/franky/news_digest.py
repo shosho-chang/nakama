@@ -1,7 +1,7 @@
 """Franky AI news daily digest（Slice A — official blogs only）。
 
 每天 06:30 台北跑：抓 10+ 個 AI 大廠官方 blog RSS → curate 5-8 條精選 →
-score 每條 → 寫 vault digest 頁 → Slack DM 推給修修。
+score 每條（5-dim shadow mode，ADR-023 §7 S2b）→ 寫 vault digest 頁 → Slack DM 推給修修。
 
 設計沿用 agents/robin/pubmed_digest.PubMedDigestPipeline。
 路徑：KB/Wiki/Digests/AI/YYYY-MM-DD.md（Asia/Taipei TZ）。
@@ -40,10 +40,49 @@ from shared.state import mark_seen
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 _FEEDS_CONFIG = _ROOT / "config" / "ai_news_sources.yaml"
+_SNAPSHOT_PATH = Path(__file__).parent / "state" / "franky_context_snapshot.md"
 
 
 def _new_op_id() -> str:
     return f"op_{uuid.uuid4().hex[:8]}"
+
+
+def _load_context_snapshot(path: Path = _SNAPSHOT_PATH) -> str:
+    """Load franky_context_snapshot.md for Relevance scoring. Returns "" if absent."""
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def _compute_4dim_overall(scores: dict) -> float:
+    """4-dim weighted average used as shadow-mode pick gate base."""
+    return (
+        scores.get("signal", 0) * 1.5
+        + scores.get("novelty", 0) * 1.0
+        + scores.get("actionability", 0) * 1.2
+        + scores.get("noise", 0) * 1.0
+    ) / 4.7
+
+
+def _compute_5dim_overall(scores: dict) -> float:
+    """5-dim weighted average (ADR-023 §7 S2b shadow record)."""
+    return (
+        scores.get("signal", 0) * 1.5
+        + scores.get("novelty", 0) * 1.0
+        + scores.get("actionability", 0) * 1.2
+        + scores.get("noise", 0) * 1.0
+        + scores.get("relevance", 0) * 1.3
+    ) / 6.0
+
+
+def _shadow_pick(scores: dict, overall_4dim: float) -> bool:
+    """Shadow mode gate: 4-dim overall gate + relevance ≥ 2.
+
+    The pick gate stays at the OLD overall threshold during shadow week so that
+    the daily digest is unaffected. Relevance ≥ 2 is the new wide guard.
+    After human review at week end, gate becomes relevance ≥ 3.
+    """
+    return overall_4dim >= 3.5 and scores.get("signal", 0) >= 3 and scores.get("relevance", 0) >= 2
 
 
 def _today_taipei() -> str:
@@ -187,6 +226,9 @@ class NewsDigestPipeline(BaseAgent):
             # ADR-023 §2 S1: experimental low-trust tier — cap overall + per-dim
             # at the candidate's score_ceiling (default 4 for trending).
             score_result = _apply_trust_ceiling(cand, score_result, logger=self.logger)
+            # ADR-023 §7 S2b: record shadow scores (both 4-dim and 5-dim) to DB.
+            if not self.dry_run:
+                _write_shadow_score(self.operation_id, item_id, score_result)
             scored.append(
                 {
                     "candidate": cand,
@@ -264,7 +306,12 @@ class NewsDigestPipeline(BaseAgent):
         return _parse_json(response)
 
     def _score(self, cand: dict, curate_meta: dict) -> dict:
-        """單篇深度評分。"""
+        """單篇深度評分（5-dim shadow mode，ADR-023 §7 S2b）。
+
+        Python overrides LLM-computed overall and pick with deterministic
+        formula so the pick gate is exact regardless of LLM arithmetic.
+        """
+        context_snapshot = _load_context_snapshot()
         prompt = load_prompt(
             "franky",
             "news_score",
@@ -275,9 +322,19 @@ class NewsDigestPipeline(BaseAgent):
             summary=cand["summary"][:1500] if cand["summary"] else "（無 summary）",
             curate_reason=str(curate_meta.get("reason", "")),
             category=str(curate_meta.get("category", "meta")),
+            context_snapshot=context_snapshot,
         )
         response = llm.ask(prompt, max_tokens=1024)
-        return _parse_json(response)
+        result = _parse_json(response)
+
+        # Python-compute both overalls and shadow pick gate — don't trust LLM arithmetic.
+        scores = result.get("scores", {})
+        overall_4dim = _compute_4dim_overall(scores)
+        overall_5dim = _compute_5dim_overall(scores)
+        result["overall_4dim"] = round(overall_4dim, 2)
+        result["overall"] = round(overall_5dim, 2)
+        result["pick"] = _shadow_pick(scores, overall_4dim)
+        return result
 
     # ------------------------------------------------------------------
     # Vault writers
@@ -365,6 +422,36 @@ class NewsDigestPipeline(BaseAgent):
             operation_id=self.operation_id,
         )
         return bot.post_plain(text, context="news_digest")
+
+
+# ----------------------------------------------------------------------
+# Shadow score DB writer (ADR-023 §7 S2b)
+# ----------------------------------------------------------------------
+
+
+def _write_shadow_score(operation_id: str, item_id: str, score_result: dict) -> None:
+    """Write one shadow score row to state.db. Failures are non-fatal."""
+    try:
+        from shared.state import record_score_shadow
+
+        scores = score_result.get("scores", {})
+        record_score_shadow(
+            operation_id=operation_id,
+            item_id=item_id,
+            signal=float(scores.get("signal", 0)),
+            novelty=float(scores.get("novelty", 0)),
+            actionability=float(scores.get("actionability", 0)),
+            noise=float(scores.get("noise", 0)),
+            relevance=float(scores.get("relevance", 0)),
+            overall_v1=float(score_result.get("overall_4dim", 0)),
+            overall_v2=float(score_result.get("overall", 0)),
+            pick_shadow=bool(score_result.get("pick", False)),
+            relevance_ref=score_result.get("relevance_ref"),
+        )
+    except Exception as exc:
+        import logging
+
+        logging.getLogger("nakama.franky").debug("shadow score write failed: %s", exc)
 
 
 # ----------------------------------------------------------------------
@@ -460,11 +547,13 @@ def _render_digest_entry(rank: int, item: dict) -> list[str]:
         f"- **Category**: `{meta.get('category', 'meta')}`",
         f"- **Published**: {cand['published']} ({cand.get('age_hours', 0):.1f}h ago)",
         (
-            f"- **Score**: {score.get('overall', '—')}  "
+            f"- **Score**: {score.get('overall', '—')} (5-dim) / "
+            f"{score.get('overall_4dim', '—')} (4-dim)  "
             f"(S{scores.get('signal', '—')}/"
             f"N{scores.get('novelty', '—')}/"
             f"A{scores.get('actionability', '—')}/"
-            f"Q{scores.get('noise', '—')})"
+            f"Q{scores.get('noise', '—')}/"
+            f"R{scores.get('relevance', '—')})"
         ),
         f"- **Verdict**: {score.get('one_line_verdict', '')}",
         f"- **Why**: {score.get('why_it_matters', '')}",
@@ -535,4 +624,9 @@ __all__ = [
     "_parse_json",
     "_apply_trust_ceiling",
     "_count_trust_tiers",
+    "_compute_4dim_overall",
+    "_compute_5dim_overall",
+    "_shadow_pick",
+    "_load_context_snapshot",
+    "_write_shadow_score",
 ]
