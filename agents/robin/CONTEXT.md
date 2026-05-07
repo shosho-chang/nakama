@@ -73,6 +73,53 @@ _Avoid_: 雙語 reader pair（用 bilingual reader）
 
 修修第二次貼**同 item 的 `zotero://` link** → **skip 不覆寫**，return existing inbox path。仿既有 `inbox_writer.find_existing_for_url()` 對 `original_url` reverse-lookup 的 short-circuit 模式（這次比對的是 frontmatter `zotero_item_key`）。Force-update / 重抓 metadata 等 Phase 2 加 explicit「re-sync」UI 按鈕。
 
+## Annotation / Reflection 寫稿流程詞彙（2026-05-07 panel-revised v2）
+
+> v1（早上 grill）的「File 1 / File 2 雙檔」+「Brook 寫進 Project 頁面」+「sequential HITL」三個方案被 Codex+Gemini panel 翻案。下面是 ADR-021 v2 凍結的詞彙。
+
+**Annotation set**（W3C 風 v3 schema）:
+單檔 canonical at `KB/Annotations/{slug}.md`，**沒有 derived view 在 vault 內**。每個 item 同時帶 target（位置）+ body（內容）— 不再分「位置檔」跟「內容檔」。三型：HighlightV3 / AnnotationV3 / ReflectionV3。
+_Avoid_: File 1 / File 2（v1 詞彙，已棄）；annotated source page（ADR-017 v2 詞彙，已棄）
+
+**Reflection**:
+v3 schema 內的 `ReflectionV3` type — 章節級 / 整本級的長思考，不綁特定 span。code 內既有 `CommentV2` 升 v3 改名 `ReflectionV3`，留 alias。
+_Avoid_: comment（對 user 講都用 reflection）
+
+**Evidence pool**:
+Brook synthesize 的中間產出之一 — 對 Project 主題做 KB 廣搜後選出的 evidence 清單，每條附 chunk_text + hit_reason + source slug。**存 server-side store `data/brook_synthesize/{slug}.json`，不寫進 vault**。Web UI evidence panel 的資料源。
+_Avoid_: 引用清單, search results
+
+**Outline draft**:
+Brook synthesize 的另一個中間產出 — title 候選 / 段落小標 / 每段引用哪些 evidence。跟 evidence pool 一起在**同一次 Brook call** 產出（unified synthesize），不是兩段。存同 server-side store。
+_Avoid_: structure, plan
+
+**Outline final**:
+修修 Web UI in-context review 後 finalize 的 outline — Brook 依 reject/move 動作 regenerate 過、修修 Web UI 認可的版本。修修 Step 5 寫稿照這個寫。Project 頁面內由修修手動取用（複製 / 重寫，不 auto-write）。
+
+**Server-side synthesize store**:
+Brook synthesize 輸出的 single source of truth — `data/brook_synthesize/{project_slug}.json`，VPS 存。**Vault 完全看不到**。Web UI route `/projects/{slug}` 讀寫此 store。
+
+## Workflow（Line 3 文獻科普 Stage 4 — ADR-021 v2 凍結）
+
+```
+Step 1 修修開 Project 頁面 + 定主題（Obsidian 手寫）
+Step 2 Zoro keyword research（agent backend → Project frontmatter）
+Step 3 Brook unified synthesize（agent backend）：
+  廣搜 → evidence pool + draft outline（一次產，綁定每段引用哪條 evidence）
+  → 寫 server-side synthesize store
+Step 4 修修 Web UI 內 in-context review：
+  - 對著 outline 結構看 evidence
+  - reject / 移段 動作（顆粒度：「這條 evidence 從第 3 段拿掉」）
+  - finalize → Brook regenerate outline（廣搜結果 cached，不重撈）
+Step 5 修修右螢幕 Obsidian 寫稿、左螢幕 Web UI viewer 渲染 outline final + evidence
+```
+
+## 跟 ADR-022 multilingual embedding 的 dependency
+
+ADR-021 v2 Brook 廣搜 cross-lingual 命中靠 ADR-022 切 BGE-M3 為全 KB 預設。**ADR-022 必須先 ship**。過渡期 Brook 走 multi-query（繁中 + 英文 keywords 兩 query 合併），ADR-022 ship 後改回 single-query。
+
 ## Flagged ambiguities
 
-（grill 2026-05-05 後 — 暫無 unresolved 詞彙衝突）
+- 既有 `book_digest_writer.py` / `book_notes_writer.py` / `annotation_merger.py` 的角色 — ADR-021 v2 不再讓它們參與 retrieve canonical 路徑，但保留為 optional view；實作時評估是否棄用
+- Robin CONTEXT 上方 Zotero language section 隨 PR #451 過期 — 獨立 cleanup（不在本 ADR scope）
+- BGE-M3 對繁中 query 命中質量（ADR-022 mini-bench 任務）
