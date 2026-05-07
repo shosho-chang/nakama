@@ -438,3 +438,37 @@ def test_rrf_3lane_wikilink_score():
     assert "wikilink" in tgt.lane_ranks
     expected_score = 1.0 / (_RRF_K + tgt.lane_ranks["wikilink"])
     assert abs(tgt.rrf_score - expected_score) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# get_kb_conn(check_dim=...) — N452 / ADR-022 follow-up
+# ---------------------------------------------------------------------------
+
+
+def test_get_kb_conn_check_dim_false_skips_assertion(tmp_path, monkeypatch):
+    """`check_dim=False` lets the conn open even when kb_vectors dim
+    disagrees with the active embedder — the rebuild CLI relies on this."""
+    import shared.kb_hybrid_search as khs
+
+    db_path = tmp_path / "kb_index.db"
+    monkeypatch.setenv("NAKAMA_KB_INDEX_DB_PATH", str(db_path))
+    # Pre-create the DB with kb_vectors at a dim that won't match the embedder.
+    seed = khs.make_conn(db_path, dim=256)
+    seed.close()
+
+    # Reset module-level cache
+    monkeypatch.setattr(khs, "_conn", None, raising=False)
+    # Force embedder to report a different dim than the table
+    monkeypatch.setattr(khs.kb_embedder, "current_dim", lambda: 1024)
+    monkeypatch.setattr(khs.kb_embedder, "current_backend", lambda: "bge-m3")
+
+    # check_dim=True → must raise
+    with pytest.raises(RuntimeError, match="Embedding dim mismatch"):
+        khs.get_kb_conn(check_dim=True)
+
+    # Reset cache, then check_dim=False → must NOT raise
+    monkeypatch.setattr(khs, "_conn", None, raising=False)
+    conn = khs.get_kb_conn(check_dim=False)
+    assert conn is not None
+    conn.close()
+    monkeypatch.setattr(khs, "_conn", None, raising=False)
