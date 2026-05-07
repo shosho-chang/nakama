@@ -8,6 +8,10 @@
 - [feedback_auto_mode_run_full_workflow.md](feedback_auto_mode_run_full_workflow.md) — auto mode 跑 Matt workflow 時 phase 之間自動接下一個，不停在 handoff
 - [project_nakama_overview.md](project_nakama_overview.md) — 專案總覽：Agent 全員、工作流程、狀態、基礎設施、Tech Stack
 - [user_profile.md](user_profile.md) — 修修的角色、偏好、知識背景
+- [project_session_2026_05_07_adr021_v2_ship_handoff.md](project_session_2026_05_07_adr021_v2_ship_handoff.md) — **5/7 收工 handoff**：ADR-021 v2 + ADR-022 全 ship；Reader verify 卡 Playwright login；bench 待修修本機跑 + freeze；下 session 起手 sequence 完整
+- [feedback_use_mcp_browser_for_ui_verify.md](feedback_use_mcp_browser_for_ui_verify.md) — UI verify 用 Playwright MCP 代跑機械步驟（navigate/click/snapshot/network），只留視覺判讀給修修
+- [feedback_local_shell_ops_just_do_it.md](feedback_local_shell_ops_just_do_it.md) — auto mode 下本機 reversible shell ops 直接跑（pip / python -m / CLI），不丟給修修；只在 GUI / 跨機器 / shared infra 才停
+- [feedback_wakeup_completion_not_session_end.md](feedback_wakeup_completion_not_session_end.md) — wakeup 重複觸發≠session 結束；該任務做完 surface 下一步（HITL gate / 下個 AFK wave），不要回「無下一步」
 - [user_vault_access_pattern.md](user_vault_access_pattern.md) — Obsidian 只看時間軸 + Project 頁面，KB/Agent 內容期望走 Web UI；vault 簡潔性是 first-class concern
 - [feedback_dev_workflow.md](feedback_dev_workflow.md) — 完整開發流程規範：角色分工、六個 Phase、交接原則、技術選型要上網調研
 - [project_adr002_status.md](project_adr002_status.md) — ADR-002 記憶系統 Phase 1-3 完成，Phase 4 待 MemPalace
