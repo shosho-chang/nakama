@@ -37,25 +37,31 @@ def get_client() -> anthropic.Anthropic:
 
     Auth precedence:
     1. ``ANTHROPIC_API_KEY`` (api_key) — 標準 host / API-key billing 路徑
-    2. ``CLAUDE_CODE_OAUTH_TOKEN`` (auth_token) — Path C sandcastle/OAuth → Max quota
+    2. ``ANTHROPIC_AUTH_TOKEN`` (auth_token) — sandcastle Path C 的 subprocess-safe
+       槽位 (Anthropic SDK 自動 discover；Claude Code CLI 不會吃這名字)
+    3. ``CLAUDE_CODE_OAUTH_TOKEN`` (auth_token) — host fallback when developer 只
+       set 了這個變數；container 內這個變數會被 Claude Code CLI 消費掉，所以
+       container 內請改用 ``ANTHROPIC_AUTH_TOKEN``
 
     OAuth tokens (``sk-ant-oat01-…``) ride the Authorization Bearer header via
-    the SDK's ``auth_token`` kwarg; API keys ride ``x-api-key``. Container env
-    in sandcastle Stage 4 only provides the OAuth token, so the fallback is
-    not optional.
+    the SDK's ``auth_token`` kwarg; API keys ride ``x-api-key``.
     """
     global _client
     if _client is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
-        oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        oauth_token = (
+            os.environ.get("ANTHROPIC_AUTH_TOKEN")
+            or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        )
         if api_key:
             _client = anthropic.Anthropic(api_key=api_key)
         elif oauth_token:
             _client = anthropic.Anthropic(auth_token=oauth_token)
         else:
             raise RuntimeError(
-                "Neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set; "
-                "host runs need API key, sandcastle runs need OAuth token."
+                "Neither ANTHROPIC_API_KEY nor ANTHROPIC_AUTH_TOKEN / "
+                "CLAUDE_CODE_OAUTH_TOKEN is set; host runs need API key, "
+                "sandcastle runs need OAuth token."
             )
     return _client
 
