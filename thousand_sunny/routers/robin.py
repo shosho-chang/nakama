@@ -114,14 +114,44 @@ def _resolve_reader_base(base: str) -> Path:
     return resolver()
 
 
+def _looks_like_web_clipper(fm: dict) -> bool:
+    """True when frontmatter looks like Obsidian Web Clipper output.
+
+    Web Clipper writes ``tags: [clippings, ...]`` (YAML list) or rarely a bare
+    string. We also accept any md with a ``source`` URL but no ``original_url``
+    key as a permissive fallback (covers Web Clipper variants with custom tag
+    templates).
+    """
+    tags = fm.get("tags")
+    if isinstance(tags, list) and "clippings" in tags:
+        return True
+    if isinstance(tags, str) and tags.strip() == "clippings":
+        return True
+    if fm.get("source") and not fm.get("original_url"):
+        return True
+    return False
+
+
 def _get_inbox_files() -> list[dict]:
     inbox = _get_inbox()
     if not inbox.exists():
         return []
     supported = set(EXTENSION_TO_RAW_DIR.keys())
+    # Collapse `{stem}.md` + `{stem}-bilingual.md` siblings: when the bilingual
+    # variant exists, hide the raw `{stem}.md` so the inbox lists one row per
+    # logical source. The bilingual file is what the user reads + annotates;
+    # the raw sibling stays on disk for re-translation but is not user-facing.
+    bilingual_stems = {
+        f.name[: -len("-bilingual.md")]
+        for f in inbox.iterdir()
+        if f.is_file() and f.name.endswith("-bilingual.md")
+    }
     files = []
     for f in sorted(inbox.iterdir()):
         if f.is_file() and f.suffix.lower() in supported:
+            if f.suffix.lower() == ".md" and not f.name.endswith("-bilingual.md"):
+                if f.stem in bilingual_stems:
+                    continue
             size_kb = f.stat().st_size // 1024
             # Slice 1 (issue #352): inbox row status icon — read frontmatter
             # ``fulltext_status`` if present (URL ingest pipeline writes it).
@@ -130,16 +160,22 @@ def _get_inbox_files() -> list[dict]:
             status = ""
             source_label = ""
             title = ""
-            is_zotero_ready = False
             if f.suffix.lower() == ".md":
                 try:
                     fm, _ = extract_frontmatter(read_text(f))
                     status = str(fm.get("fulltext_status", "") or "")
                     source_label = str(fm.get("fulltext_source", "") or "")
                     title = str(fm.get("title", "") or "").strip()
-                    # Zotero-sourced files with a bilingual sibling ready show
-                    # the "Ingest to KB" affordance (Slice 3 #391).
-                    is_zotero_ready = fm.get("source_type") == "zotero" and status == "translated"
+                    # Obsidian Web Clipper files (Chrome plugin) drop into
+                    # Inbox/kb/ with their own frontmatter shape (no
+                    # fulltext_status / fulltext_source — just title / source /
+                    # author / tags=[clippings]). Synthesise a display row so
+                    # the inbox lists them as "ready" with a "Web Clipper"
+                    # source label, without rewriting the user's vault file.
+                    if not status and _looks_like_web_clipper(fm):
+                        status = "ready"
+                        if not source_label:
+                            source_label = "Web Clipper"
                 except OSError:
                     pass
             files.append(
@@ -152,7 +188,6 @@ def _get_inbox_files() -> list[dict]:
                     "is_read": is_file_read(f),
                     "fulltext_status": status,
                     "fulltext_source": source_label,
-                    "is_zotero_ready": is_zotero_ready,
                 }
             )
     return files
@@ -374,17 +409,8 @@ def _slug_from_url(url: str) -> str:
 
     Kept as a free function so the BackgroundTask can derive the same name
     the placeholder writer used (without re-doing the slugify dance inline).
-
-    Zotero URIs get a clean ``zotero-{itemKey}`` slug instead of the
-    urlparse-based default which would produce noisy ``selectlibraryitems...``.
     """
     from urllib.parse import urlparse
-
-    from agents.robin.zotero_reader import parse_zotero_uri
-
-    item_key = parse_zotero_uri(url)
-    if item_key is not None:
-        return f"zotero-{item_key.lower()}"
 
     parsed = urlparse(url)
     return slugify(parsed.netloc + parsed.path)[:60] or "scraped"
@@ -454,11 +480,6 @@ def _ingest_url_in_background(
         _fulltext_dir = get_vault_path() / "KB" / "Attachments" / "pubmed"
         _fulltext_prefix = "KB/Attachments/pubmed"
 
-        # Zotero sync paths (Slice 1 #389). Default to ``~/Zotero/`` per修修's
-        # Windows / Mac install convention; ``ZOTERO_LIBRARY_PATH`` env var
-        # overrides for non-default installs.
-        _zotero_root = Path(os.environ.get("ZOTERO_LIBRARY_PATH") or (Path.home() / "Zotero"))
-
         config = URLDispatcherConfig(
             fetch_fulltext_fn=_fetch_fulltext if _email else None,
             image_downloader_fn=_image_downloader_adapter,
@@ -468,8 +489,6 @@ def _ingest_url_in_background(
             fulltext_vault_relative_prefix=_fulltext_prefix if _email else None,
             image_attachments_abs_dir=image_attachments_abs_dir,
             image_vault_relative_prefix=image_vault_relative_prefix,
-            zotero_root=_zotero_root,
-            vault_root=get_vault_path(),
         )
         dispatcher = URLDispatcher(config)
         result = dispatcher.dispatch(url)
@@ -573,10 +592,12 @@ async def scrape_translate(
     writer = InboxWriter(inbox)
 
     # Same-URL short-circuit (PRD §Pipeline / API "短路條件" + acceptance #6).
+    # Always redirect to inbox (`/`) — the new-ingest path also lands there, so
+    # the user sees a consistent destination whether the URL was new or repeat.
     existing = writer.find_existing_for_url(url)
     if existing is not None:
         logger.info("scrape-translate short-circuit (existing url): %s", existing.name)
-        response = RedirectResponse(f"/read?file={existing.name}", status_code=303)
+        response = RedirectResponse("/", status_code=303)
         if nakama_auth:
             response.set_cookie("nakama_auth", nakama_auth, httponly=True)
         return response
@@ -805,35 +826,6 @@ async def translate(
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
-
-
-@router.post("/zotero-ingest/{slug}")
-async def zotero_ingest(slug: str, nakama_auth: str | None = Cookie(None)):
-    """Fan out a Zotero inbox item to raw + annotated source pages (Slice 3 #391).
-
-    Requires the bilingual sibling (``{slug}-bilingual.md``) to exist — the
-    inbox row only shows this button when ``fulltext_status == 'translated'``,
-    so the guard is an invariant at the UI level. Returns 400 if the sibling
-    is missing (manual navigation to the URL while translation is in flight).
-
-    POST → 303 redirect to ``/`` on success.
-    """
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login", status_code=302)
-
-    import os as _os
-
-    from agents.robin.zotero_ingest import produce_source_pages
-
-    _zotero_root = Path(_os.environ.get("ZOTERO_LIBRARY_PATH") or (Path.home() / "Zotero"))
-    try:
-        produce_source_pages(slug, vault_root=get_vault_path(), zotero_root=_zotero_root)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(400, detail=str(exc)) from exc
-
-    return RedirectResponse("/", status_code=303)
 
 
 _PUBMED_FT_DIR = "KB/Attachments/pubmed"
