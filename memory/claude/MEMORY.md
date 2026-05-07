@@ -121,6 +121,7 @@
 - [feedback_mock_use_spec.md](feedback_mock_use_spec.md) — mock 第三方 SDK 要 `spec=` / `autospec=True`，否則 MagicMock 預設 truthy 會掩蓋 nonexistent-method bug
 - [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
 - [feedback_panel_triangulated_judgment.md](feedback_panel_triangulated_judgment.md) — Panel review 後 strategic fork 直接整合判斷不要 defer 回 user，三家 audit 已消化 confirmation bias
+- [feedback_proactive_context_warning.md](feedback_proactive_context_warning.md) — 大 artifact / panel / commit 後主動提 context token 狀態 + /compact 建議，不要等 user 跑 /context 才發現超載
 - [feedback_deep_module_vs_leaky_abstraction.md](feedback_deep_module_vs_leaky_abstraction.md) — 「short interface + deep impl」是 Ousterhout 深模組（好事），不是 shallow facade；cost 不透明走 docstring 不重構
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
 - [feedback_llm_pipeline_consume_all_fields.md](feedback_llm_pipeline_consume_all_fields.md) — prompt 教 LLM 輸出的 schema 欄位必須在 pipeline 內 consume，不然 schema drift 默默 leak（PR #171 review 抓到 pick=false 例）
