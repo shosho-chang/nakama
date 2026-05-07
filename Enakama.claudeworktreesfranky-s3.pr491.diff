@@ -1,0 +1,1605 @@
+diff --git a/agents/franky/__main__.py b/agents/franky/__main__.py
+index e4740a0..4fdc9a5 100644
+--- a/agents/franky/__main__.py
++++ b/agents/franky/__main__.py
+@@ -8,6 +8,7 @@
+     python -m agents.franky digest       # Slice 3: weekly digest (5-section Slack DM)
+     python -m agents.franky anomaly      # Phase 5B-3: 15-min anomaly daemon tick
+     python -m agents.franky gsc-daily    # ADR-008 Phase 2a-min: daily 7-day GSC pull → state.db
++    python -m agents.franky synthesis    # ADR-023 §7 S3: weekly synthesis → proposal inbox
+ 
+ The default (no-subcommand) path preserves existing cron behavior until Slice 3 flips
+ the default to the new digest. See ADR-007 §11 for the module layout plan.
+@@ -36,6 +37,7 @@
+ _JOB_NAME_NEWS = "franky-news-digest"
+ _JOB_NAME_ANOMALY = "nakama-anomaly-daemon"
+ _JOB_NAME_GSC_DAILY = "franky-gsc-daily"
++_JOB_NAME_SYNTHESIS = "franky-news-synthesis"
+ 
+ 
+ def _cmd_health(_args: argparse.Namespace) -> int:
+@@ -229,6 +231,37 @@ def _cmd_gsc_daily(args: argparse.Namespace) -> int:
+     return 0
+ 
+ 
++def _cmd_synthesis(args: argparse.Namespace) -> int:
++    """ADR-023 §7 S3 — weekly synthesis → two-stage proposal inbox."""
++    from agents.franky.news_synthesis import _re_scan_and_promote_page, run_synthesis
++
++    if getattr(args, "re_scan_promotions", False):
++        target = getattr(args, "page", None)
++        if not target:
++            print(
++                "--re-scan-promotions requires --page <vault-page-path>",
++                file=__import__("sys").stderr,
++            )
++            return 2
++        _re_scan_and_promote_page(target)
++        return 0
++
++    dry_run = getattr(args, "dry_run", False)
++    try:
++        summary = run_synthesis(
++            dry_run=dry_run,
++            no_publish=getattr(args, "no_publish", False),
++        )
++    except Exception as exc:
++        if not dry_run:
++            record_failure(_JOB_NAME_SYNTHESIS, f"{type(exc).__name__}: {exc}"[:200])
++        raise
++    print(summary)
++    if not dry_run:
++        record_success(_JOB_NAME_SYNTHESIS)
++    return 0
++
++
+ def _cmd_legacy_weekly(_args: argparse.Namespace) -> int:
+     """Backward-compat: the current VPS cron still runs `python -m agents.franky` without args."""
+     from agents.franky.agent import FrankyAgent
+@@ -270,6 +303,30 @@ def _build_parser() -> argparse.ArgumentParser:
+         action="store_true",
+         help="Parse keywords + compute window only; no GSC API call, no DB write.",
+     )
++    synthesis = sub.add_parser(
++        "synthesis",
++        help="ADR-023 §7 S3: weekly synthesis → two-stage proposal inbox (週日 22:00)",
++    )
++    synthesis.add_argument(
++        "--dry-run",
++        action="store_true",
++        help="Run pipeline without writing vault, DB insert, or Slack DM.",
++    )
++    synthesis.add_argument(
++        "--no-publish",
++        action="store_true",
++        help="Write vault + DB but skip Slack DM.",
++    )
++    synthesis.add_argument(
++        "--re-scan-promotions",
++        action="store_true",
++        help="Scan a Weekly vault page for promote=true candidates and open GH issues.",
++    )
++    synthesis.add_argument(
++        "--page",
++        metavar="PATH",
++        help="Path to vault page for --re-scan-promotions.",
++    )
+     return parser
+ 
+ 
+@@ -292,6 +349,7 @@ def main(argv: list[str] | None = None) -> int:
+         "news": _cmd_news,
+         "anomaly": _cmd_anomaly,
+         "gsc-daily": _cmd_gsc_daily,
++        "synthesis": _cmd_synthesis,
+     }
+     handler = dispatch.get(args.command, _cmd_legacy_weekly)
+     return handler(args)
+diff --git a/agents/franky/news_synthesis.py b/agents/franky/news_synthesis.py
+new file mode 100644
+index 0000000..2772f2c
+--- /dev/null
++++ b/agents/franky/news_synthesis.py
+@@ -0,0 +1,745 @@
++"""Franky weekly synthesis — two-stage proposal inbox（ADR-023 §1 Weekly + §7 S3）。
++
++每週日 22:00 台北 cron 觸發：
++  Input:  7 天 picked items（從 KB/Wiki/Digests/AI/YYYY-MM-DD.md 讀取）
++          + franky_context_snapshot（pre-RAG，S2a 產物）
++  LLM:    pattern detection 三類（trend / adr_invalidation / issue_match）
++  Output: 0-3 條 candidate proposal
++
++Two-stage inbox：
++  Stage 1（無條件）: 所有 candidates 寫進 KB/Wiki/Digests/AI/Weekly-YYYY-WW.md
++                     + 寫進 proposal_metrics（status=candidate）
++  Stage 2（條件）:   promote=true OR ≥2-item rule 命中 → gh issue create
++                     + mark_promoted in proposal_metrics
++
++Subcommand modes（agents/franky/__main__.py 端 dispatch）：
++  python -m agents.franky synthesis              # full path
++  python -m agents.franky synthesis --dry-run    # 不寫 vault、不插 DB、不送 Slack
++  python -m agents.franky synthesis --no-publish # 寫 vault + DB 但不送 Slack DM
++  python -m agents.franky synthesis --re-scan-promotions  # 掃現有 Weekly page promote=true
++"""
++
++from __future__ import annotations
++
++import json
++import re
++import subprocess
++import uuid
++from datetime import datetime, timedelta
++from pathlib import Path
++from typing import Any
++from zoneinfo import ZoneInfo
++
++import yaml
++
++from agents.base import BaseAgent
++from agents.franky.state.proposal_metrics import insert_candidate, mark_promoted
++from shared import llm
++from shared.obsidian_writer import append_to_file, read_page, write_page
++from shared.prompt_loader import load_prompt
++from shared.schemas.proposal_metrics import ProposalFrontmatterV1
++
++_TAIPEI = ZoneInfo("Asia/Taipei")
++_SNAPSHOT_PATH = Path(__file__).parent / "state" / "franky_context_snapshot.md"
++_WEEKLY_DIGEST_DIR = "KB/Wiki/Digests/AI"
++
++
++# ---------------------------------------------------------------------------
++# Panel recommended deterministic positive list (ADR-023 §5)
++# ---------------------------------------------------------------------------
++
++# Patterns that trigger panel_recommended=True regardless of LLM judgment.
++# Each is a compiled regex tested against the full candidate text (proposal_id +
++# title + description + related_adr + related_issues joined).
++_PANEL_TRIGGERS: list[re.Pattern] = [
++    # 1. Mentions accepted ADR number
++    re.compile(r"\bADR-\d+\b"),
++    # 2. Involves changing agent public contract (agents/<name>/__main__ or shared API)
++    re.compile(r"\bagents/[a-z]+/__main__\b|\bshared\s+API\b", re.IGNORECASE),
++    # 3. Introduces new persistent dependency (pyproject / requirements)
++    re.compile(r"\bpyproject\.toml\b|\brequirements\.txt\b", re.IGNORECASE),
++    # 4. Changes storage schema (state.db migration)
++    re.compile(r"\bstate\.db\b|\bmigration\b", re.IGNORECASE),
++    # 5. Changes HITL boundary (ADR-006 approval queue behaviour)
++    re.compile(r"\bADR-006\b|\bHITL\b|\bapproval queue\b", re.IGNORECASE),
++    # 6. Changes Slack/GitHub automation permissions
++    re.compile(
++        r"\bSlack\s+permission\b|\bGitHub\s+(Actions|automation|permission)\b",
++        re.IGNORECASE,
++    ),
++]
++
++
++def _panel_trigger_text(cand: dict[str, Any]) -> str:
++    """Build the searchable text blob for panel_recommended detection."""
++    parts = [
++        cand.get("proposal_id", ""),
++        cand.get("title", ""),
++        cand.get("description", ""),
++        " ".join(cand.get("related_adr", [])),
++        cand.get("direct_adr_mapping", "") or "",
++    ]
++    return " ".join(parts)
++
++
++def _apply_panel_recommended(cand: dict[str, Any]) -> dict[str, Any]:
++    """Return a copy of `cand` with `panel_recommended` bool + preserved reasons.
++
++    List-triggered = always True. LLM-supplied reasons in panel_recommended_reasons
++    are preserved in all cases.
++    """
++    text = _panel_trigger_text(cand)
++    list_triggered = any(p.search(text) for p in _PANEL_TRIGGERS)
++
++    out = dict(cand)
++    out["panel_recommended"] = list_triggered
++    # Preserve any LLM-supplied reasons; do not lose them.
++    out.setdefault("panel_recommended_reasons", [])
++    return out
++
++
++# ---------------------------------------------------------------------------
++# Hard quality gate (ADR-023 §7 S3)
++# ---------------------------------------------------------------------------
++
++
++def _passes_quality_gate(cand: dict[str, Any]) -> bool:
++    """Return True if candidate passes the hard gate before Stage 2 issue creation.
++
++    Passes if:
++    (a) len(supporting_item_ids) >= 2, OR
++    (b) direct_issue_mapping is set (non-null, non-empty), OR
++    (c) direct_adr_mapping is set (non-null, non-empty).
++    """
++    items = cand.get("supporting_item_ids") or []
++    if len(items) >= 2:
++        return True
++    direct_issue = cand.get("direct_issue_mapping")
++    if direct_issue:
++        return True
++    direct_adr = cand.get("direct_adr_mapping")
++    if direct_adr:
++        return True
++    return False
++
++
++# ---------------------------------------------------------------------------
++# Collect 7-day picks from vault
++# ---------------------------------------------------------------------------
++
++# Match `## N. Title` heading in a daily digest page.
++_SECTION_RE = re.compile(
++    r"^## (\d+)\.\s+(.+?)$",
++    re.MULTILINE,
++)
++# Extract Publisher line
++_PUBLISHER_RE = re.compile(r"^\s*-\s+\*\*Publisher\*\*:\s*(.+)$", re.MULTILINE)
++# Extract URL from the → line
++_URL_RE = re.compile(r"^\s*-\s+\*\*→\*\*\s+\[([^\]]+)\]", re.MULTILINE)
++# Extract Verdict line
++_VERDICT_RE = re.compile(r"^\s*-\s+\*\*Verdict\*\*:\s*(.+)$", re.MULTILINE)
++# Extract Why line
++_WHY_RE = re.compile(r"^\s*-\s+\*\*Why\*\*:\s*(.+)$", re.MULTILINE)
++
++
++def _parse_digest_page(text: str, *, date: str) -> list[dict[str, Any]]:
++    """Extract picked items from a daily digest vault page.
++
++    Returns list of dicts with item_id=YYYY-MM-DD-{rank}.
++    item_id is synthetic (the original RSS GUID is not stored in the vault page).
++    """
++    if not text:
++        return []
++
++    sections = _SECTION_RE.findall(text)
++    if not sections:
++        return []
++
++    items: list[dict[str, Any]] = []
++    # Split body into per-item sections for targeted extraction.
++    positions = [(m.start(), m.group(1), m.group(2)) for m in _SECTION_RE.finditer(text)]
++
++    for idx, (pos, rank_str, title) in enumerate(positions):
++        rank = int(rank_str)
++        end = positions[idx + 1][0] if idx + 1 < len(positions) else len(text)
++        chunk = text[pos:end]
++
++        pub_m = _PUBLISHER_RE.search(chunk)
++        url_m = _URL_RE.search(chunk)
++        verdict_m = _VERDICT_RE.search(chunk)
++        why_m = _WHY_RE.search(chunk)
++
++        items.append(
++            {
++                "item_id": f"{date}-{rank}",
++                "date": date,
++                "rank": rank,
++                "title": title.strip(),
++                "publisher": pub_m.group(1).strip() if pub_m else "",
++                "url": url_m.group(1).strip() if url_m else "",
++                "verdict": verdict_m.group(1).strip() if verdict_m else "",
++                "why": why_m.group(1).strip() if why_m else "",
++            }
++        )
++    return items
++
++
++def _collect_seven_day_picks(*, now: datetime | None = None) -> list[dict[str, Any]]:
++    """Read up to 7 daily digest pages and return all picked items.
++
++    Pages are from KB/Wiki/Digests/AI/YYYY-MM-DD.md for the 7 most recent days.
++    Missing pages are silently skipped (no digest that day).
++    """
++    if now is None:
++        now = datetime.now(tz=_TAIPEI)
++    items: list[dict[str, Any]] = []
++    for offset in range(7):
++        day = (now - timedelta(days=offset)).date()
++        date_str = day.isoformat()
++        page_path = f"{_WEEKLY_DIGEST_DIR}/{date_str}.md"
++        text = read_page(page_path)
++        if text:
++            items.extend(_parse_digest_page(text, date=date_str))
++    return items
++
++
++# ---------------------------------------------------------------------------
++# Context snapshot loader
++# ---------------------------------------------------------------------------
++
++
++def _load_context_snapshot(path: Path = _SNAPSHOT_PATH) -> str:
++    """Load pre-RAG context snapshot. Returns empty string if file absent."""
++    if not path.exists():
++        return ""
++    return path.read_text(encoding="utf-8")
++
++
++# ---------------------------------------------------------------------------
++# ISO week helpers
++# ---------------------------------------------------------------------------
++
++
++def _iso_week_tag(dt: datetime) -> str:
++    """Return ISO week string in lowercase: 2026-w18 (not W18, to satisfy proposal_id regex)."""
++    iso = dt.isocalendar()
++    return f"{iso.year}-w{iso.week:02d}"
++
++
++def _iso_week_display(dt: datetime) -> str:
++    """Return display ISO week string: 2026-W18 (for vault page filename)."""
++    iso = dt.isocalendar()
++    return f"{iso.year}-W{iso.week:02d}"
++
++
++# ---------------------------------------------------------------------------
++# LLM synthesis call
++# ---------------------------------------------------------------------------
++
++
++def _new_op_id() -> str:
++    return f"op_{uuid.uuid4().hex[:8]}"
++
++
++def _parse_json(text: str) -> dict:
++    """Extract JSON object from LLM response (tolerates markdown fence / prose wrapper)."""
++    text = text.strip()
++    start = text.find("{")
++    end = text.rfind("}")
++    if start == -1 or end == -1 or end < start:
++        raise ValueError(f"LLM 回應找不到 JSON：{text[:200]}")
++    return json.loads(text[start : end + 1])
++
++
++def _build_picks_summary(picks: list[dict[str, Any]]) -> str:
++    """Format picks for LLM prompt injection."""
++    if not picks:
++        return "（本週無精選）"
++    lines: list[str] = []
++    current_date = None
++    for p in picks:
++        if p["date"] != current_date:
++            current_date = p["date"]
++            lines.append(f"\n### {current_date}")
++        lines.append(
++            f"- [{p['item_id']}] **{p['title']}** ({p['publisher']})"
++            + (f"\n  Verdict: {p['verdict']}" if p["verdict"] else "")
++            + (f"\n  Why: {p['why']}" if p["why"] else "")
++            + (f"\n  URL: {p['url']}" if p["url"] else "")
++        )
++    return "\n".join(lines)
++
++
++# ---------------------------------------------------------------------------
++# GH issue creation
++# ---------------------------------------------------------------------------
++
++
++def _create_gh_issue(
++    cand: dict[str, Any],
++    *,
++    week_display: str,
++    vault_page_path: str,
++) -> int | None:
++    """Create a GitHub issue for a promoted candidate. Returns the issue number or None."""
++    title = f"[Franky proposal] {cand['title']}"
++
++    # Build YAML frontmatter block for issue body
++    fm_lines = [
++        "```yaml frontmatter",
++        f"proposal_id: {cand['proposal_id']}",
++        f"metric_type: {cand['metric_type']}",
++        f'success_metric: "{cand["success_metric"]}"',
++        f"related_adr: {json.dumps(cand.get('related_adr') or [])}",
++        f"related_issues: {json.dumps(cand.get('related_issues') or [])}",
++        f"panel_recommended: {'true' if cand.get('panel_recommended') else 'false'}",
++        "promote: true",
++        "```",
++    ]
++
++    body_lines = [
++        *fm_lines,
++        "",
++        f"**Weekly synthesis**: {week_display}",
++        f"**Pattern type**: {cand.get('pattern_type', '')}",
++        f"**Vault page**: {vault_page_path}",
++        "",
++        "## Description",
++        "",
++        cand.get("description", ""),
++        "",
++        "## Success metric",
++        "",
++        cand.get("success_metric", ""),
++        "",
++        "## Supporting items",
++        "",
++        *[f"- `{iid}`" for iid in (cand.get("supporting_item_ids") or [])],
++    ]
++
++    if cand.get("try_cost_estimate"):
++        body_lines += ["", f"**Try cost estimate**: {cand['try_cost_estimate']}"]
++    if cand.get("panel_recommended_reasons"):
++        body_lines += [
++            "",
++            "## Panel recommended reasons",
++            "",
++            *[f"- {r}" for r in cand["panel_recommended_reasons"]],
++        ]
++
++    body = "\n".join(body_lines)
++
++    try:
++        result = subprocess.run(
++            [
++                "gh",
++                "issue",
++                "create",
++                "--title",
++                title,
++                "--body",
++                body,
++                "--label",
++                "franky-proposal,needs-triage",
++            ],
++            capture_output=True,
++            text=True,
++            encoding="utf-8",
++            check=False,
++            timeout=30,
++        )
++    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
++        raise RuntimeError(f"gh CLI unavailable: {exc}") from exc
++
++    if result.returncode != 0:
++        raise RuntimeError(f"gh issue create failed: {result.stderr.strip()}")
++
++    # Parse issue number from URL output (e.g. https://github.com/user/repo/issues/123)
++    url = result.stdout.strip()
++    m = re.search(r"/issues/(\d+)$", url)
++    if m:
++        return int(m.group(1))
++    return None
++
++
++# ---------------------------------------------------------------------------
++# Vault page renderer
++# ---------------------------------------------------------------------------
++
++
++def _render_weekly_page(
++    *,
++    week_display: str,
++    candidates: list[dict[str, Any]],
++    op_id: str,
++    picks_count: int,
++) -> tuple[dict, str]:
++    """Return (frontmatter_dict, body_markdown) for the weekly vault page."""
++    # Build frontmatter — all candidates share one page.
++    # The page-level frontmatter holds synthesis metadata; per-candidate
++    # frontmatter is embedded inside the page body as fenced YAML blocks.
++    frontmatter: dict[str, Any] = {
++        "week_iso": week_display,
++        "created_by": "franky",
++        "operation_id": op_id,
++        "picks_count": picks_count,
++        "candidate_count": len(candidates),
++        "type": "weekly_synthesis",
++    }
++
++    lines = [
++        f"# Franky Weekly Synthesis — {week_display}",
++        "",
++        f"候選來源：{picks_count} 條 7 天精選 / {len(candidates)} 條 proposal candidates",
++        "",
++        "---",
++        "",
++    ]
++    for idx, cand in enumerate(candidates, 1):
++        lines += [
++            f"## Candidate {idx}: {cand['title']}",
++            "",
++            "```yaml frontmatter",
++            f"proposal_id: {cand['proposal_id']}",
++            f"metric_type: {cand['metric_type']}",
++            f'success_metric: "{cand["success_metric"]}"',
++            f"related_adr: {json.dumps(cand.get('related_adr') or [])}",
++            f"related_issues: {json.dumps(cand.get('related_issues') or [])}",
++            f"panel_recommended: {'true' if cand.get('panel_recommended') else 'false'}",
++            "promote: false",
++            "```",
++            "",
++            f"**Pattern type**: `{cand.get('pattern_type', '')}`",
++            f"**Try cost estimate**: {cand.get('try_cost_estimate', '')}",
++            "",
++            cand.get("description", ""),
++            "",
++            "**Supporting items**:",
++            *[f"- `{iid}`" for iid in (cand.get("supporting_item_ids") or [])],
++        ]
++        if cand.get("direct_issue_mapping"):
++            lines.append(f"**Direct issue mapping**: {cand['direct_issue_mapping']}")
++        if cand.get("direct_adr_mapping"):
++            lines.append(f"**Direct ADR mapping**: {cand['direct_adr_mapping']}")
++        if cand.get("panel_recommended_reasons"):
++            lines += [
++                "",
++                "**Panel recommended reasons**:",
++                *[f"- {r}" for r in cand["panel_recommended_reasons"]],
++            ]
++        lines += ["", "---", ""]
++
++    return frontmatter, "\n".join(lines)
++
++
++# ---------------------------------------------------------------------------
++# Re-scan promotions (--re-scan-promotions flow)
++# ---------------------------------------------------------------------------
++
++
++def _extract_promote_flag(text: str) -> bool:
++    """Return True if the page contains `promote: true` in its fenced YAML blocks."""
++    # Match `promote: true` in either leading YAML block or fenced blocks.
++    return bool(re.search(r"^promote:\s+true\s*$", text, re.MULTILINE))
++
++
++def _re_scan_and_promote_page(page_path: str) -> None:
++    """Read a weekly vault page, extract any promote=true candidates, create issues.
++
++    Used by --re-scan-promotions CLI flag. Operates on a single page path.
++    """
++    path = Path(page_path)
++    if not path.exists():
++        return
++    text = path.read_text(encoding="utf-8")
++    if not _extract_promote_flag(text):
++        return
++
++    # Extract the page-level frontmatter to get proposal_id (leading --- block).
++    # We look for fenced frontmatter blocks (one per candidate) and promote each.
++    # Pattern: ```yaml frontmatter\n...\nproposal_id: ...\n...\npromote: true\n```
++    fenced_pattern = re.compile(
++        r"```ya?ml\s+frontmatter\s*\n(?P<body>.*?)\n```",
++        re.DOTALL | re.IGNORECASE,
++    )
++    for m in fenced_pattern.finditer(text):
++        block = m.group("body")
++        try:
++            parsed = yaml.safe_load(block) or {}
++        except yaml.YAMLError:
++            continue
++        if not isinstance(parsed, dict):
++            continue
++        promote = parsed.get("promote", False)
++        if not promote:
++            continue
++        proposal_id = parsed.get("proposal_id")
++        if not proposal_id:
++            continue
++
++        # Build a minimal candidate dict for issue creation.
++        cand: dict[str, Any] = {
++            "proposal_id": proposal_id,
++            "title": proposal_id,  # best we can do without full parse
++            "metric_type": parsed.get("metric_type", "checklist"),
++            "success_metric": parsed.get("success_metric", ""),
++            "related_adr": parsed.get("related_adr") or [],
++            "related_issues": parsed.get("related_issues") or [],
++            "panel_recommended": parsed.get("panel_recommended", False),
++            "description": "",
++            "supporting_item_ids": [],
++            "panel_recommended_reasons": [],
++            "try_cost_estimate": "",
++            "pattern_type": "",
++        }
++        try:
++            issue_number = _create_gh_issue(
++                cand,
++                week_display=path.stem,  # e.g. "Weekly-2026-W18"
++                vault_page_path=str(page_path),
++            )
++            mark_promoted(proposal_id, issue_number=issue_number)
++        except Exception:
++            pass  # Non-fatal; human can retry
++
++
++# ---------------------------------------------------------------------------
++# Main pipeline
++# ---------------------------------------------------------------------------
++
++
++class NewsSynthesisPipeline(BaseAgent):
++    """Franky weekly synthesis 子流程（ADR-023 §7 S3）。"""
++
++    name = "franky"
++
++    def __init__(
++        self,
++        *,
++        dry_run: bool = False,
++        no_publish: bool = False,
++        slack_bot: Any | None = None,
++    ) -> None:
++        super().__init__()
++        self.dry_run = dry_run
++        self.no_publish = no_publish
++        self._slack_bot_override = slack_bot
++        self.operation_id = _new_op_id()
++
++    # ------------------------------------------------------------------
++
++    def run(self) -> str:
++        now = datetime.now(tz=_TAIPEI)
++        week_tag = _iso_week_tag(now)  # e.g. 2026-w18
++        week_display = _iso_week_display(now)  # e.g. 2026-W18
++
++        # 1. Collect 7-day picks
++        picks = _collect_seven_day_picks(now=now)
++        if not picks:
++            return f"7 天無精選，略過 synthesis（week={week_display}）"
++
++        # 2. Load context snapshot
++        context_snapshot = _load_context_snapshot()
++
++        # 3. LLM synthesis call
++        picks_summary = _build_picks_summary(picks)
++        try:
++            candidates = self._run_synthesis_llm(picks_summary, context_snapshot, week_tag)
++        except Exception as e:
++            self.logger.error(f"synthesis LLM 失敗：{e}", exc_info=True)
++            return f"synthesis LLM 失敗：{e}"
++
++        # 4. Apply panel_recommended deterministic list to each candidate
++        candidates = [_apply_panel_recommended(c) for c in candidates]
++
++        stage2_count = 0
++        stage1_count = len(candidates)
++        vault_page_path: str = ""
++
++        if not self.dry_run:
++            # 5. Stage 1: write vault page (unconditional)
++            vault_relpath = f"{_WEEKLY_DIGEST_DIR}/Weekly-{week_display}.md"
++            vault_page_path = vault_relpath
++            frontmatter, body = _render_weekly_page(
++                week_display=week_display,
++                candidates=candidates,
++                op_id=self.operation_id,
++                picks_count=len(picks),
++            )
++            write_page(vault_relpath, frontmatter, body)
++            self._append_kb_log(vault_relpath, stage1_count)
++
++            # 6. Insert proposal_metrics rows (status=candidate) + Stage 2 conditional
++            for cand in candidates:
++                self._insert_and_maybe_promote(
++                    cand,
++                    week_tag=week_tag,
++                    week_display=week_display,
++                    vault_page_path=vault_page_path,
++                    stage2_counter=lambda: None,
++                )
++                if _passes_quality_gate(cand):
++                    stage2_count += 1
++
++        # 7. Slack DM summary
++        slack_ts: str | None = None
++        if not self.dry_run and not self.no_publish:
++            slack_ts = self._send_slack_summary(
++                week_display=week_display,
++                stage1_count=stage1_count,
++                stage2_count=stage2_count,
++                vault_relpath=vault_page_path,
++            )
++
++        return (
++            f"week={week_display} picks={len(picks)} candidates={stage1_count} "
++            f"stage2_issued={stage2_count} vault={vault_page_path or '(skipped)'} "
++            f"slack_ts={slack_ts or '(skipped)'} op={self.operation_id} "
++            f"(dry_run={self.dry_run} no_publish={self.no_publish})"
++        )
++
++    # ------------------------------------------------------------------
++    # LLM
++    # ------------------------------------------------------------------
++
++    def _run_synthesis_llm(
++        self,
++        picks_summary: str,
++        context_snapshot: str,
++        week_tag: str,
++    ) -> list[dict[str, Any]]:
++        """One LLM call → 0-3 candidate proposals."""
++        prompt = load_prompt(
++            "franky",
++            "news_synthesis",
++            picks_summary=picks_summary,
++            context_snapshot=context_snapshot or "（未找到 context snapshot）",
++        )
++        raw = llm.ask(prompt, max_tokens=4096)
++        parsed = _parse_json(raw)
++        candidates = parsed.get("candidates") or []
++        self.logger.info(f"synthesis LLM returned {len(candidates)} candidates (week={week_tag})")
++        return candidates
++
++    # ------------------------------------------------------------------
++    # Stage 1 + 2 logic
++    # ------------------------------------------------------------------
++
++    def _insert_and_maybe_promote(
++        self,
++        cand: dict[str, Any],
++        *,
++        week_tag: str,
++        week_display: str,
++        vault_page_path: str,
++        stage2_counter: Any,
++    ) -> None:
++        """Insert proposal_metrics row + conditionally open GH issue (Stage 2)."""
++        try:
++            fm = ProposalFrontmatterV1(
++                proposal_id=cand["proposal_id"],
++                metric_type=cand["metric_type"],
++                success_metric=cand["success_metric"],
++                related_adr=cand.get("related_adr") or [],
++                related_issues=cand.get("related_issues") or [],
++            )
++            insert_candidate(
++                fm,
++                week_iso=week_tag,
++                panel_recommended=bool(cand.get("panel_recommended")),
++                try_cost_estimate=cand.get("try_cost_estimate"),
++                source_item_ids=cand.get("supporting_item_ids") or [],
++            )
++        except Exception as e:
++            self.logger.warning(f"insert_candidate failed for {cand.get('proposal_id')}: {e}")
++            return
++
++        # Stage 2: ≥2-item rule fires unconditionally if quality gate passes
++        if _passes_quality_gate(cand):
++            self._create_issue_and_promote(
++                cand,
++                week_display=week_display,
++                vault_page_path=vault_page_path,
++            )
++
++    def _create_issue_and_promote(
++        self,
++        cand: dict[str, Any],
++        *,
++        week_display: str,
++        vault_page_path: str,
++    ) -> None:
++        """Open GH issue + mark_promoted in proposal_metrics."""
++        try:
++            issue_number = _create_gh_issue(
++                cand,
++                week_display=week_display,
++                vault_page_path=vault_page_path,
++            )
++            mark_promoted(cand["proposal_id"], issue_number=issue_number)
++            self.logger.info(f"Stage 2: opened issue #{issue_number} for {cand['proposal_id']}")
++        except Exception as e:
++            self.logger.error(
++                f"Stage 2 issue create failed for {cand.get('proposal_id')}: {e}",
++                exc_info=True,
++            )
++
++    # ------------------------------------------------------------------
++    # Vault log
++    # ------------------------------------------------------------------
++
++    def _append_kb_log(self, relpath: str, count: int) -> None:
++        try:
++            from datetime import date
++
++            today = date.today().isoformat()
++            append_to_file(
++                "KB/log.md",
++                f"- {today}: Franky weekly synthesis → [{relpath}]({relpath}) "
++                f"({count} candidates)\n",
++            )
++        except Exception as e:
++            self.logger.debug(f"KB/log.md append failed: {e}")
++
++    # ------------------------------------------------------------------
++    # Slack DM
++    # ------------------------------------------------------------------
++
++    def _send_slack_summary(
++        self,
++        *,
++        week_display: str,
++        stage1_count: int,
++        stage2_count: int,
++        vault_relpath: str,
++    ) -> str | None:
++        bot = self._slack_bot_override
++        if bot is None:
++            from agents.franky.slack_bot import FrankySlackBot
++
++            bot = FrankySlackBot.from_env()
++
++        text = "\n".join(
++            [
++                f"Franky Weekly Synthesis — {week_display}",
++                f"Stage 1 candidates: {stage1_count}",
++                f"Stage 2 issued: {stage2_count}",
++                f"vault: {vault_relpath}",
++                f"op={self.operation_id}",
++            ]
++        )
++        return bot.post_plain(text, context="news_synthesis")
++
++
++# ---------------------------------------------------------------------------
++# Public entry points
++# ---------------------------------------------------------------------------
++
++
++def run_synthesis(*, dry_run: bool = False, no_publish: bool = False) -> str:
++    """Run weekly synthesis. Returns a summary string."""
++    pipeline = NewsSynthesisPipeline(dry_run=dry_run, no_publish=no_publish)
++    if dry_run:
++        return pipeline.run()
++    pipeline.execute()
++    return f"op={pipeline.operation_id}"
+diff --git a/docs/decisions/ADR-007-franky-scope-expansion.md b/docs/decisions/ADR-007-franky-scope-expansion.md
+index b6490af..c115f3e 100644
+--- a/docs/decisions/ADR-007-franky-scope-expansion.md
++++ b/docs/decisions/ADR-007-franky-scope-expansion.md
+@@ -321,6 +321,7 @@ CREATE INDEX IF NOT EXISTS idx_r2_backup_time
+ | Weekly digest | 週一 10:00 | `agents.franky.weekly_digest` | `/var/lock/franky_weekly.lock` |
+ | News digest | 每日 06:30 | `agents.franky.news_digest` | `/var/lock/franky_news.lock` |
+ | **Context snapshot regen**（ADR-023 §3 Phase 1，S2a） | **週日 21:30** | `agents.franky.state.context_snapshot regenerate` | `/var/lock/franky_context_snapshot.lock` |
++| **Weekly synthesis**（ADR-023 §7 S3） | **週日 22:00** | `agents.franky synthesis` | `/var/lock/franky_synthesis.lock` |
+ 
+ **Context snapshot runbook（S2a）**：
+ 
+diff --git a/prompts/franky/news_synthesis.md b/prompts/franky/news_synthesis.md
+new file mode 100644
+index 0000000..8743a6b
+--- /dev/null
++++ b/prompts/franky/news_synthesis.md
+@@ -0,0 +1,77 @@
++你是 Franky，負責每週日分析過去 7 天的 AI 新聞精選，從中提取對 Nakama 專案或修修的 Claude Code 工作流有價值的 0-3 條 candidate proposal。
++
++## Nakama 內部 Context（pre-RAG snapshot）
++
++{context_snapshot}
++
++## 7 天精選摘要
++
++{picks_summary}
++
++---
++
++## 任務
++
++分析以上 7 天資訊，偵測以下三類 pattern：
++
++**(a) 趨勢（trend）**
++多家（≥2 條新聞，不同來源）做同件事——同一技術、同一架構、同一方向。例如：多個框架同週推出 structured output；多家宣布 MCP server 整合。
++
++**(b) ADR 挑戰（adr_invalidation）**
++某條消息可能推翻或大幅動搖 Nakama 某個 ADR 的假設。例如：我們 ADR-020 依賴 BGE-M3，但某新聞揭露更輕量、準確度更高的替代品。
++
++**(c) Issue 匹配（issue_match）**
++某條消息與 Nakama backlog issue 或 ADR open question 高度匹配，有望直接加速推進某個卡住的任務。
++
++---
++
++## 輸出格式
++
++輸出**嚴格 JSON**，不加任何其他文字。候選可以是 0 條——若這週沒有強訊號就回傳空 candidates 陣列。
++
++```json
++{{
++  "candidates": [
++    {{
++      "proposal_id": "franky-proposal-YYYY-wXX-N",
++      "title": "一句話標題（繁體中文，≤50 字）",
++      "pattern_type": "trend|adr_invalidation|issue_match",
++      "description": "3-5 句說明這條 proposal 的來源、論據、為何對 Nakama 有價值（繁體中文）",
++      "metric_type": "quantitative|checklist|human_judged",
++      "success_metric": "明確可驗收的成功條件，1-2 句（繁體中文）",
++      "related_adr": ["ADR-020"],
++      "related_issues": ["#449"],
++      "try_cost_estimate": "$X + Yhr",
++      "panel_recommended_reasons": [],
++      "supporting_item_ids": ["YYYY-MM-DD-N", "YYYY-MM-DD-N"],
++      "direct_issue_mapping": "#449",
++      "direct_adr_mapping": null
++    }}
++  ]
++}}
++```
++
++---
++
++## 欄位規則
++
++- **proposal_id**：格式 `franky-proposal-YYYY-wXX-N`，全小寫英數與連字號，N 從 1 起（e.g., `franky-proposal-2026-w18-1`）
++- **supporting_item_ids**：7 天精選摘要中的 item_id 格式為 `YYYY-MM-DD-{{rank}}`（e.g., `2026-05-06-2`）
++- **direct_issue_mapping**：若此 proposal 直接對應一個已知 open issue，填 `#N`；否則填 `null`
++- **direct_adr_mapping**：若此 proposal 直接反映某個 ADR 假設改變，填 `ADR-N`；否則填 `null`
++- **metric_type**：
++  - `quantitative` — 有數字可量化（e.g., cost 降 30%、latency 降 50ms）
++  - `checklist` — 可以用 ✓/✗ 項目清單驗收（e.g., feature shipped + smoke test 過）
++  - `human_judged` — 需要修修主觀評判（e.g., 輸出品質提升）
++- **try_cost_estimate**：預估試驗成本（LLM API 費用 + 人工時間）
++- **panel_recommended_reasons**：若你認為此 proposal 涉及架構影響，在此列出原因；若無可空陣列
++
++---
++
++## 品質守則
++
++1. **0 條比 3 條弱 proposal 好**：不要為了湊數而產出，每條都要能 stand alone 作為有意義的 Nakama 進化方向
++2. **supporting_item_ids 必須真實對應精選摘要中的條目**，不能捏造 item_id
++3. **趨勢類需要真正多家**：同一家公司兩篇文章不算趨勢；需要不同 publisher
++4. **ADR 挑戰類要具體**：「可能影響 ADR-020」不夠，要說「ADR-020 §3 假設 BGE-M3 是最佳 embedding model，但 XYZ 實測顯示 ABC 模型在繁中 recall@10 勝出 15%」
++5. **Issue 匹配類要能加速推進**：不是「這條新聞跟 issue 相關」，而是「看完這條新聞，issue #449 的技術路徑 X 確認可行 / 有新的更好替代方案 Y」
+diff --git a/tests/agents/franky/test_news_synthesis.py b/tests/agents/franky/test_news_synthesis.py
+new file mode 100644
+index 0000000..16cc263
+--- /dev/null
++++ b/tests/agents/franky/test_news_synthesis.py
+@@ -0,0 +1,210 @@
++"""Tests for agents/franky/news_synthesis.py — hard quality gate + core pipeline."""
++
++from __future__ import annotations
++
++import json
++from unittest.mock import MagicMock
++
++from agents.franky import news_synthesis as ns
++
++# ---------------------------------------------------------------------------
++# Helpers
++# ---------------------------------------------------------------------------
++
++
++def _make_candidate(
++    proposal_id="franky-proposal-2026-w18-1",
++    pattern_type="trend",
++    supporting_item_ids=("2026-05-06-1", "2026-05-07-2"),
++    direct_issue_mapping=None,
++    direct_adr_mapping=None,
++    metric_type="checklist",
++    success_metric="Feature shipped and smoke test passes",
++    related_adr=None,
++    related_issues=None,
++):
++    return {
++        "proposal_id": proposal_id,
++        "title": "Test proposal",
++        "pattern_type": pattern_type,
++        "description": "Test description",
++        "metric_type": metric_type,
++        "success_metric": success_metric,
++        "related_adr": related_adr or [],
++        "related_issues": related_issues or [],
++        "try_cost_estimate": "$1 + 1hr",
++        "panel_recommended_reasons": [],
++        "supporting_item_ids": list(supporting_item_ids),
++        "direct_issue_mapping": direct_issue_mapping,
++        "direct_adr_mapping": direct_adr_mapping,
++    }
++
++
++def _make_pick(date="2026-05-06", rank=1, title="Claude 5 released", publisher="Anthropic"):
++    return {
++        "item_id": f"{date}-{rank}",
++        "date": date,
++        "rank": rank,
++        "title": title,
++        "publisher": publisher,
++        "url": f"https://anthropic.com/news/{date}-{rank}",
++        "verdict": "Big release",
++        "why": "Important for Nakama",
++    }
++
++
++# ---------------------------------------------------------------------------
++# Hard quality gate
++# ---------------------------------------------------------------------------
++
++
++def test_quality_gate_two_supporting_items_passes():
++    cand = _make_candidate(supporting_item_ids=["2026-05-06-1", "2026-05-07-2"])
++    assert ns._passes_quality_gate(cand) is True
++
++
++def test_quality_gate_one_item_direct_issue_passes():
++    cand = _make_candidate(
++        supporting_item_ids=["2026-05-06-1"],
++        direct_issue_mapping="#449",
++    )
++    assert ns._passes_quality_gate(cand) is True
++
++
++def test_quality_gate_one_item_direct_adr_passes():
++    cand = _make_candidate(
++        supporting_item_ids=["2026-05-06-1"],
++        direct_adr_mapping="ADR-020",
++    )
++    assert ns._passes_quality_gate(cand) is True
++
++
++def test_quality_gate_one_item_no_mapping_fails():
++    cand = _make_candidate(supporting_item_ids=["2026-05-06-1"])
++    assert ns._passes_quality_gate(cand) is False
++
++
++def test_quality_gate_zero_items_fails():
++    cand = _make_candidate(supporting_item_ids=[])
++    assert ns._passes_quality_gate(cand) is False
++
++
++def test_quality_gate_exactly_two_items_passes():
++    cand = _make_candidate(supporting_item_ids=["2026-05-06-1", "2026-05-06-2"])
++    assert ns._passes_quality_gate(cand) is True
++
++
++def test_quality_gate_three_items_passes():
++    cand = _make_candidate(supporting_item_ids=["2026-05-05-1", "2026-05-06-1", "2026-05-07-1"])
++    assert ns._passes_quality_gate(cand) is True
++
++
++# ---------------------------------------------------------------------------
++# Digest page parser
++# ---------------------------------------------------------------------------
++
++
++def test_parse_digest_page_extracts_items():
++    page_text = """---
++date: 2026-05-06
++created_by: franky
++---
++
++# AI 每日情報 — 2026-05-06
++
++> Editor note here
++
++**候選總數**：20　**精選**：2
++
++---
++
++## 1. Claude 5 released
++
++- **Publisher**: Anthropic
++- **Category**: `model_release`
++- **Published**: 2026-05-06T08:00:00+00:00 (4.0h ago)
++- **Score**: 4.6 (5-dim) / 4.7 (4-dim)  (S5/N4/A5/Q5/R3)
++- **Verdict**: Claude 5 大型發布
++- **Why**: 對 Nakama 全 stack 有直接影響
++- **Key**: 今天起 paid API 可用
++- **Noise note**: 無明顯炒作
++- **→** [https://anthropic.com/claude5](https://anthropic.com/claude5)
++
++## 2. GPT-5 released
++
++- **Publisher**: OpenAI
++- **Category**: `model_release`
++- **Published**: 2026-05-06T10:00:00+00:00 (2.0h ago)
++- **Score**: 4.2 (5-dim) / 4.3 (4-dim)  (S4/N4/A4/Q5/R2)
++- **Verdict**: GPT-5 發布
++- **Why**: 競爭格局改變
++- **Key**: Multimodal improvements
++- **Noise note**: 無
++- **→** [https://openai.com/gpt5](https://openai.com/gpt5)
++"""
++    items = ns._parse_digest_page(page_text, date="2026-05-06")
++    assert len(items) == 2
++    assert items[0]["item_id"] == "2026-05-06-1"
++    assert items[0]["title"] == "Claude 5 released"
++    assert items[0]["publisher"] == "Anthropic"
++    assert items[1]["item_id"] == "2026-05-06-2"
++
++
++def test_parse_digest_page_empty_returns_empty():
++    items = ns._parse_digest_page("", date="2026-05-06")
++    assert items == []
++
++
++def test_parse_digest_page_no_items_returns_empty():
++    page_text = "---\ndate: 2026-05-06\n---\n\n# AI 每日情報 — 2026-05-06\n\n無精選\n"
++    items = ns._parse_digest_page(page_text, date="2026-05-06")
++    assert items == []
++
++
++# ---------------------------------------------------------------------------
++# Dry-run: no vault write, no DB insert, no issue create
++# ---------------------------------------------------------------------------
++
++
++def test_run_dry_run_does_not_write_vault_or_db(monkeypatch):
++    monkeypatch.setattr(ns, "_collect_seven_day_picks", lambda now=None: [_make_pick()])
++    monkeypatch.setattr(ns, "_load_context_snapshot", lambda: "")
++
++    synthesis_json = json.dumps(
++        {"candidates": [_make_candidate(supporting_item_ids=["2026-05-06-1", "2026-05-07-1"])]}
++    )
++    monkeypatch.setattr(ns.llm, "ask", lambda *a, **kw: synthesis_json)
++
++    write_mock = MagicMock()
++    monkeypatch.setattr(ns, "write_page", write_mock)
++    insert_mock = MagicMock()
++    monkeypatch.setattr(ns, "insert_candidate", insert_mock)
++    gh_mock = MagicMock()
++    monkeypatch.setattr(ns, "_create_gh_issue", gh_mock)
++
++    pipeline = ns.NewsSynthesisPipeline(dry_run=True, slack_bot=MagicMock())
++    result = pipeline.run()
++
++    write_mock.assert_not_called()
++    insert_mock.assert_not_called()
++    gh_mock.assert_not_called()
++    assert "dry_run=True" in result
++
++
++def test_run_no_picks_returns_skip_message(monkeypatch):
++    monkeypatch.setattr(ns, "_collect_seven_day_picks", lambda now=None: [])
++    monkeypatch.setattr(ns, "_load_context_snapshot", lambda: "")
++
++    pipeline = ns.NewsSynthesisPipeline(dry_run=True)
++    result = pipeline.run()
++    assert "略過" in result or "無精選" in result or "skip" in result.lower()
++
++
++def test_run_llm_failure_returns_error_summary(monkeypatch):
++    monkeypatch.setattr(ns, "_collect_seven_day_picks", lambda now=None: [_make_pick()])
++    monkeypatch.setattr(ns, "_load_context_snapshot", lambda: "")
++    monkeypatch.setattr(ns.llm, "ask", MagicMock(side_effect=RuntimeError("LLM down")))
++
++    pipeline = ns.NewsSynthesisPipeline(dry_run=True)
++    result = pipeline.run()
++    assert "失敗" in result or "error" in result.lower()
+diff --git a/tests/agents/franky/test_panel_recommended_positive_list.py b/tests/agents/franky/test_panel_recommended_positive_list.py
+new file mode 100644
+index 0000000..7a49569
+--- /dev/null
++++ b/tests/agents/franky/test_panel_recommended_positive_list.py
+@@ -0,0 +1,163 @@
++"""Tests for panel_recommended deterministic positive list (ADR-023 §5)."""
++
++from __future__ import annotations
++
++from agents.franky import news_synthesis as ns
++
++
++def _cand(description="", related_adr=None, related_issues=None, title="Test"):
++    return {
++        "proposal_id": "franky-proposal-2026-w18-1",
++        "title": title,
++        "pattern_type": "trend",
++        "description": description,
++        "metric_type": "checklist",
++        "success_metric": "Success",
++        "related_adr": related_adr or [],
++        "related_issues": related_issues or [],
++        "try_cost_estimate": "$1 + 1hr",
++        "panel_recommended_reasons": [],
++        "supporting_item_ids": ["2026-05-06-1", "2026-05-07-1"],
++        "direct_issue_mapping": None,
++        "direct_adr_mapping": None,
++    }
++
++
++# ---------------------------------------------------------------------------
++# Trigger 1: mentions accepted ADR number
++# ---------------------------------------------------------------------------
++
++
++def test_panel_recommended_mentions_adr_number_in_description():
++    cand = _cand(description="This ADR-020 assumption may be invalidated by new BGE-M4.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++def test_panel_recommended_adr_in_related_adr_field():
++    cand = _cand(related_adr=["ADR-016"])
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++def test_panel_recommended_adr_in_direct_adr_mapping():
++    cand = dict(_cand(), direct_adr_mapping="ADR-023")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++# ---------------------------------------------------------------------------
++# Trigger 2: involves changing agent public contract
++# ---------------------------------------------------------------------------
++
++
++def test_panel_recommended_agent_contract_change():
++    cand = _cand(description="We should change agents/robin/__main__ to add new subcommand.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++def test_panel_recommended_shared_api_change():
++    cand = _cand(description="Update shared API for llm.ask to support streaming.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++# ---------------------------------------------------------------------------
++# Trigger 3: introduces new persistent dependency
++# ---------------------------------------------------------------------------
++
++
++def test_panel_recommended_new_pyproject_dep():
++    cand = _cand(description="Add sentence-transformers to pyproject.toml for local reranking.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++def test_panel_recommended_requirements_mention():
++    cand = _cand(description="We need to add this to requirements.txt.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++# ---------------------------------------------------------------------------
++# Trigger 4: changes storage schema (state.db migration)
++# ---------------------------------------------------------------------------
++
++
++def test_panel_recommended_storage_schema_change():
++    cand = _cand(description="Add column to state.db for tracking retry counts.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++def test_panel_recommended_migration_mention():
++    cand = _cand(description="Requires a new migration for the proposal_metrics table.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++# ---------------------------------------------------------------------------
++# Trigger 5: changes HITL boundary
++# ---------------------------------------------------------------------------
++
++
++def test_panel_recommended_hitl_change():
++    cand = _cand(description="This would change the ADR-006 approval queue behavior.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++# ---------------------------------------------------------------------------
++# Trigger 6: changes Slack/GitHub automation permissions
++# ---------------------------------------------------------------------------
++
++
++def test_panel_recommended_slack_permission_change():
++    cand = _cand(description="Franky needs Slack permission to read messages, not just write.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++def test_panel_recommended_github_automation_change():
++    cand = _cand(description="Add GitHub Actions workflow that auto-triages issues.")
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
++
++
++# ---------------------------------------------------------------------------
++# No trigger: LLM determines no (list not triggered)
++# ---------------------------------------------------------------------------
++
++
++def test_panel_recommended_no_trigger_returns_false():
++    cand = _cand(
++        description="Consider trying a new CSS framework for the blog front-end.",
++        related_adr=[],
++    )
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is False
++
++
++def test_panel_recommended_preserves_llm_reasons():
++    """LLM-supplied reasons in the input are preserved in the output."""
++    cand = _cand(
++        description="Just a tool comparison, no architectural impact.",
++    )
++    cand["panel_recommended_reasons"] = ["LLM said interesting"]
++    result = ns._apply_panel_recommended(cand)
++    # Whether triggered or not, pre-existing LLM reasons are preserved
++    assert "LLM said interesting" in result["panel_recommended_reasons"]
++
++
++# ---------------------------------------------------------------------------
++# LLM cannot override list trigger
++# ---------------------------------------------------------------------------
++
++
++def test_panel_recommended_list_trigger_overrides_llm_no():
++    """If list triggers, panel_recommended is True regardless of LLM input reasons."""
++    cand = _cand(description="Change agents/brook/__main__ contract significantly.")
++    # Even if panel_recommended_reasons is empty (LLM didn't add any), list match forces yes
++    result = ns._apply_panel_recommended(cand)
++    assert result["panel_recommended"] is True
+diff --git a/tests/agents/franky/test_synthesis_two_stage_inbox.py b/tests/agents/franky/test_synthesis_two_stage_inbox.py
+new file mode 100644
+index 0000000..b1c1e64
+--- /dev/null
++++ b/tests/agents/franky/test_synthesis_two_stage_inbox.py
+@@ -0,0 +1,271 @@
++"""Tests for two-stage inbox: Stage 1 always writes vault, Stage 2 is conditional."""
++
++from __future__ import annotations
++
++import json
++from unittest.mock import MagicMock
++
++from agents.franky import news_synthesis as ns
++
++
++def _make_pick(date="2026-05-06", rank=1):
++    return {
++        "item_id": f"{date}-{rank}",
++        "date": date,
++        "rank": rank,
++        "title": "Some AI news",
++        "publisher": "Anthropic",
++        "url": "https://anthropic.com/news",
++        "verdict": "Big news",
++        "why": "Important",
++    }
++
++
++def _synthesis_json_no_promote(week_iso="2026-w18"):
++    return json.dumps(
++        {
++            "candidates": [
++                {
++                    "proposal_id": f"franky-proposal-{week_iso}-1",
++                    "title": "Test proposal",
++                    "pattern_type": "trend",
++                    "description": "Trend detected",
++                    "metric_type": "checklist",
++                    "success_metric": "Feature shipped",
++                    "related_adr": [],
++                    "related_issues": [],
++                    "try_cost_estimate": "$1 + 1hr",
++                    "panel_recommended_reasons": [],
++                    "supporting_item_ids": ["2026-05-06-1", "2026-05-07-1"],
++                    "direct_issue_mapping": None,
++                    "direct_adr_mapping": None,
++                }
++            ]
++        }
++    )
++
++
++# ---------------------------------------------------------------------------
++# Stage 1: unconditional vault write
++# ---------------------------------------------------------------------------
++
++
++def test_stage1_always_writes_vault_page(monkeypatch):
++    """Stage 1: vault page written even when promote=false."""
++    monkeypatch.setattr(ns, "_collect_seven_day_picks", lambda now=None: [_make_pick()])
++    monkeypatch.setattr(ns, "_load_context_snapshot", lambda: "")
++    monkeypatch.setattr(ns.llm, "ask", lambda *a, **kw: _synthesis_json_no_promote())
++
++    write_mock = MagicMock()
++    monkeypatch.setattr(ns, "write_page", write_mock)
++    monkeypatch.setattr(ns, "append_to_file", MagicMock())
++    monkeypatch.setattr(ns, "insert_candidate", MagicMock(return_value=1))
++    monkeypatch.setattr(ns, "_create_gh_issue", MagicMock())
++
++    pipeline = ns.NewsSynthesisPipeline(dry_run=False, no_publish=True, slack_bot=MagicMock())
++    pipeline.run()
++
++    # vault page should be written
++    assert write_mock.called
++    # path should be KB/Wiki/Digests/AI/Weekly-YYYY-WW.md
++    call_args = write_mock.call_args
++    path_arg = call_args.args[0] if call_args.args else call_args.kwargs.get("relative_path", "")
++    assert "Weekly-" in path_arg
++    assert path_arg.endswith(".md")
++
++
++def test_stage2_weak_singleton_does_not_create_issue(monkeypatch):
++    """Stage 2: no GH issue when candidate has 1 supporting item + no direct mapping."""
++    weak_json = json.dumps(
++        {
++            "candidates": [
++                {
++                    "proposal_id": "franky-proposal-2026-w18-1",
++                    "title": "Weak singleton",
++                    "pattern_type": "trend",
++                    "description": "Only one item supports this.",
++                    "metric_type": "checklist",
++                    "success_metric": "Feature shipped",
++                    "related_adr": [],
++                    "related_issues": [],
++                    "try_cost_estimate": "$1 + 1hr",
++                    "panel_recommended_reasons": [],
++                    "supporting_item_ids": ["2026-05-06-1"],  # only 1
++                    "direct_issue_mapping": None,
++                    "direct_adr_mapping": None,
++                }
++            ]
++        }
++    )
++    monkeypatch.setattr(ns, "_collect_seven_day_picks", lambda now=None: [_make_pick()])
++    monkeypatch.setattr(ns, "_load_context_snapshot", lambda: "")
++    monkeypatch.setattr(ns.llm, "ask", lambda *a, **kw: weak_json)
++    monkeypatch.setattr(ns, "write_page", MagicMock())
++    monkeypatch.setattr(ns, "append_to_file", MagicMock())
++    monkeypatch.setattr(ns, "insert_candidate", MagicMock(return_value=1))
++
++    gh_mock = MagicMock()
++    monkeypatch.setattr(ns, "_create_gh_issue", gh_mock)
++
++    pipeline = ns.NewsSynthesisPipeline(dry_run=False, no_publish=True, slack_bot=MagicMock())
++    pipeline.run()
++
++    gh_mock.assert_not_called()
++
++
++def test_stage2_two_item_rule_creates_issue(monkeypatch):
++    """Stage 2: GH issue created when candidate has ≥2 supporting items (even promote=false)."""
++    monkeypatch.setattr(ns, "_collect_seven_day_picks", lambda now=None: [_make_pick()])
++    monkeypatch.setattr(ns, "_load_context_snapshot", lambda: "")
++    monkeypatch.setattr(ns.llm, "ask", lambda *a, **kw: _synthesis_json_no_promote())
++    monkeypatch.setattr(ns, "write_page", MagicMock())
++    monkeypatch.setattr(ns, "append_to_file", MagicMock())
++    monkeypatch.setattr(ns, "insert_candidate", MagicMock(return_value=1))
++
++    gh_mock = MagicMock(return_value=101)
++    monkeypatch.setattr(ns, "_create_gh_issue", gh_mock)
++    mark_promoted_mock = MagicMock()
++    monkeypatch.setattr(ns, "mark_promoted", mark_promoted_mock)
++
++    # Two supporting items → ≥2-item rule fires → issue created
++    pipeline = ns.NewsSynthesisPipeline(dry_run=False, no_publish=True, slack_bot=MagicMock())
++    pipeline.run()
++
++    gh_mock.assert_called_once()
++    mark_promoted_mock.assert_called_once()
++
++
++def test_stage2_quality_gate_fails_no_issue(monkeypatch):
++    """Candidate with 1 item + no direct mapping → fails gate → no GH issue."""
++    weak_json = json.dumps(
++        {
++            "candidates": [
++                {
++                    "proposal_id": "franky-proposal-2026-w18-1",
++                    "title": "Weak proposal",
++                    "pattern_type": "trend",
++                    "description": "Weak",
++                    "metric_type": "checklist",
++                    "success_metric": "Feature shipped",
++                    "related_adr": [],
++                    "related_issues": [],
++                    "try_cost_estimate": "$1 + 1hr",
++                    "panel_recommended_reasons": [],
++                    "supporting_item_ids": ["2026-05-06-1"],  # only 1 item
++                    "direct_issue_mapping": None,
++                    "direct_adr_mapping": None,
++                }
++            ]
++        }
++    )
++    monkeypatch.setattr(ns, "_collect_seven_day_picks", lambda now=None: [_make_pick()])
++    monkeypatch.setattr(ns, "_load_context_snapshot", lambda: "")
++    monkeypatch.setattr(ns.llm, "ask", lambda *a, **kw: weak_json)
++    monkeypatch.setattr(ns, "write_page", MagicMock())
++    monkeypatch.setattr(ns, "append_to_file", MagicMock())
++    monkeypatch.setattr(ns, "insert_candidate", MagicMock(return_value=1))
++
++    gh_mock = MagicMock()
++    monkeypatch.setattr(ns, "_create_gh_issue", gh_mock)
++
++    pipeline = ns.NewsSynthesisPipeline(dry_run=False, no_publish=True, slack_bot=MagicMock())
++    pipeline.run()
++
++    gh_mock.assert_not_called()
++
++
++def test_proposal_metrics_row_inserted_with_candidate_status(monkeypatch):
++    """DB row inserted with status=candidate for every Stage 1 candidate."""
++    monkeypatch.setattr(ns, "_collect_seven_day_picks", lambda now=None: [_make_pick()])
++    monkeypatch.setattr(ns, "_load_context_snapshot", lambda: "")
++    monkeypatch.setattr(ns.llm, "ask", lambda *a, **kw: _synthesis_json_no_promote())
++    monkeypatch.setattr(ns, "write_page", MagicMock())
++    monkeypatch.setattr(ns, "append_to_file", MagicMock())
++    monkeypatch.setattr(ns, "_create_gh_issue", MagicMock(return_value=101))
++    monkeypatch.setattr(ns, "mark_promoted", MagicMock())
++
++    insert_mock = MagicMock(return_value=42)
++    monkeypatch.setattr(ns, "insert_candidate", insert_mock)
++
++    pipeline = ns.NewsSynthesisPipeline(dry_run=False, no_publish=True, slack_bot=MagicMock())
++    pipeline.run()
++
++    insert_mock.assert_called_once()
++    # Verify it was called with a ProposalFrontmatterV1 and week_iso kwarg
++    call_args = insert_mock.call_args
++    assert "week_iso" in call_args.kwargs
++
++
++def test_rescan_promotions_creates_issue_for_promoted_page(monkeypatch, tmp_path):
++    """re_scan_promotions reads a weekly page with promote=true in fenced block, opens GH issue."""
++    weekly_page = tmp_path / "Weekly-2026-W18.md"
++    weekly_page.write_text(
++        """---
++week_iso: 2026-W18
++created_by: franky
++---
++
++# Franky Weekly Synthesis — 2026-W18
++
++## Candidate 1: Test proposal
++
++```yaml frontmatter
++proposal_id: franky-proposal-2026-w18-1
++metric_type: checklist
++success_metric: Feature shipped
++related_adr: []
++related_issues: []
++panel_recommended: false
++promote: true
++```
++
++Some description.
++""",
++        encoding="utf-8",
++    )
++
++    gh_mock = MagicMock(return_value=99)
++    monkeypatch.setattr(ns, "_create_gh_issue", gh_mock)
++    mark_promoted_mock = MagicMock()
++    monkeypatch.setattr(ns, "mark_promoted", mark_promoted_mock)
++
++    # Provide the path directly
++    ns._re_scan_and_promote_page(str(weekly_page))
++
++    gh_mock.assert_called_once()
++    mark_promoted_mock.assert_called_once()
++
++
++def test_rescan_promotions_no_action_for_promote_false(monkeypatch, tmp_path):
++    """re_scan_promotions does nothing when promote=false in fenced block."""
++    weekly_page = tmp_path / "Weekly-2026-W18.md"
++    weekly_page.write_text(
++        """---
++week_iso: 2026-W18
++created_by: franky
++---
++
++# Franky Weekly Synthesis — 2026-W18
++
++## Candidate 1
++
++```yaml frontmatter
++proposal_id: franky-proposal-2026-w18-1
++metric_type: checklist
++success_metric: Feature shipped
++related_adr: []
++related_issues: []
++panel_recommended: false
++promote: false
++```
++
++Some description.
++""",
++        encoding="utf-8",
++    )
++
++    gh_mock = MagicMock()
++    monkeypatch.setattr(ns, "_create_gh_issue", gh_mock)
++
++    ns._re_scan_and_promote_page(str(weekly_page))
++    gh_mock.assert_not_called()

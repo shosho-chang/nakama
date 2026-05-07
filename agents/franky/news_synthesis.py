@@ -33,7 +33,14 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from agents.base import BaseAgent
-from agents.franky.state.proposal_metrics import insert_candidate, mark_promoted
+from agents.franky.state.proposal_metrics import (
+    ProposalNotFoundError,
+    insert_candidate,
+    mark_promoted,
+)
+from agents.franky.state.proposal_metrics import (
+    get as get_proposal,
+)
 from shared import llm
 from shared.obsidian_writer import append_to_file, read_page, write_page
 from shared.prompt_loader import load_prompt
@@ -492,6 +499,15 @@ def _re_scan_and_promote_page(page_path: str) -> None:
             "try_cost_estimate": "",
             "pattern_type": "",
         }
+        # Idempotency guard: skip rows already past `candidate` so re-running
+        # `--re-scan-promotions` (e.g. after a transient GH outage) does not
+        # spam duplicate issues for proposals already promoted.
+        try:
+            existing = get_proposal(proposal_id)
+        except ProposalNotFoundError:
+            existing = None
+        if existing is not None and existing.get("status") != "candidate":
+            continue
         try:
             issue_number = _create_gh_issue(
                 cand,
