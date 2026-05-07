@@ -1,8 +1,13 @@
-# Franky AI news digest — sources（Slice A 官方 blog + Slice B GitHub releases）
+# Franky AI news digest — sources（Slice A 官方 blog + Slice B GitHub releases + S1 場景化）
 #
 # 加 source 直接 append。失敗 feed 會 log warning 但不擋整批。
 # scout_seen source key = "ai_news_blog"，dedup 用 entry.id (RSS GUID)
 # fallback 到 sha256(url)。
+#
+# Trust tier（ADR-022 §2 S1）：
+#   - full_trust（預設，不寫欄位）：score 全範圍 1-5
+#   - experimental：score ceiling 4，repo sanity check 後才進 curate（age ≥ 30d /
+#     stars ≥ 100 / has README + license / 近期 commit 活動，任一 fail 直接砍）
 #
 # 已驗證（Slice A 2026-04-26 dry-run smoke）：以下 RSS/atom feed 全回 200。
 #
@@ -56,3 +61,44 @@ feeds:
   - name: github_langchain
     url: https://github.com/langchain-ai/langchain/releases.atom
     publisher: GitHub langchain-ai/langchain
+
+  # ---- 場景化 source（ADR-022 §2 S1 — full trust） ----
+  # Anthropic Cookbook + Claude Code releases 直接對應修修兩大 evolve 焦點
+  # （Nakama agent / Claude Code 工作流）。用 GitHub releases atom 同既有路徑。
+  - name: github_anthropic_cookbook
+    url: https://github.com/anthropics/anthropic-cookbook/releases.atom
+    publisher: GitHub anthropics/anthropic-cookbook
+  - name: github_claude_code
+    url: https://github.com/anthropics/claude-code/releases.atom
+    publisher: GitHub anthropics/claude-code
+
+# ---- Awesome-list README diff sources（ADR-022 §2 S1 — full trust） ----
+# 比對 README.md 兩次 commit 之間的 unified diff，新增條目 → 候選。
+# 由 agents/franky/news/awesome_diff.py 處理（不是 RSS）。
+awesome_diff:
+  - name: awesome_mcp_servers
+    repo: punkpeye/awesome-mcp-servers
+    path: README.md
+    publisher: awesome-mcp-servers
+  - name: awesome_claude_code
+    repo: hesreallyhim/awesome-claude-code
+    path: README.md
+    publisher: awesome-claude-code
+
+# ---- GitHub trending（ADR-022 §2 S1 — experimental low-trust） ----
+# trust_tier: experimental → score ceiling 4；repo sanity check 任一 fail 砍。
+# 由 agents/franky/news/github_trending.py 處理。
+github_trending:
+  language: python
+  topic_filter:
+    - agent
+    - llm
+    - mcp
+    - claude
+  trust_tier: experimental
+  sanity:
+    min_age_days: 30
+    min_stars: 100
+    require_readme: true
+    require_license: true
+    recent_commit_days: 90
