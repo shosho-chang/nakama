@@ -2,8 +2,12 @@
 
 `index_vault(vault_path, db)` 接受已初始化的 SQLite connection
 （sqlite-vec 已 load，kb_* tables 已存在），
-掃 KB/Wiki/{Sources,Concepts,Entities}，
-按 H2 切 chunk，mtime_ns 增量跳過未改檔案。
+掃 KB/Wiki/{Sources,Concepts,Entities}（recursive，含 nested Books/{book_id}/）
++ KB/Annotations/，按 H2 切 chunk，mtime_ns 增量跳過未改檔案。
+
+Annotation 檔（KB/Annotations/{slug}.md，ADR-021 §2）走獨立路徑：
+parse JSON code block 為 v1/v2/v3 items，每個 highlight.text / annotation.note /
+reflection.body 各成一個 chunk，metadata 帶 source_slug + item_type + chapter_ref。
 
 Typical usage:
     from shared.kb_hybrid_search import make_conn
@@ -24,6 +28,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from shared import kb_embedder
+from shared.annotation_store import upgrade_to_v3
+from shared.schemas.annotations import (
+    AnnotationSetV3,
+    AnnotationV3,
+    HighlightV3,
+    ReflectionV3,
+)
 from shared.utils import extract_frontmatter
 
 # H2 heading marker (e.g. "## 定義")
@@ -39,6 +50,9 @@ _SKIP_SECTIONS = frozenset(
 
 _MIN_CHUNK_CHARS = 30
 
+# Wiki subdirectories scanned recursively for H2-chunked content.
+# ADR-021 §2: do NOT scan KB/Wiki/Syntheses (path doesn't exist). Annotations
+# are handled via the dedicated `_index_annotations` path, not as a Wiki subdir.
 _KB_SUBDIRS = frozenset({"Sources", "Concepts", "Entities"})
 
 
@@ -140,13 +154,18 @@ def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
     wiki_path = vault_path / "KB" / "Wiki"
     now = datetime.now(timezone.utc).isoformat()
 
-    for subdir in ("Sources", "Concepts", "Entities"):
+    # ADR-021 §2 + Codex amendment: recursive `rglob("*.md")` so nested files
+    # like `KB/Wiki/Sources/Books/{book_id}/notes.md` get indexed too.
+    for subdir in sorted(_KB_SUBDIRS):
         dir_path = wiki_path / subdir
         if not dir_path.exists():
             continue
 
-        for md_file in sorted(dir_path.glob("*.md")):
-            page_path = f"KB/Wiki/{subdir}/{md_file.stem}"
+        for md_file in sorted(dir_path.rglob("*.md")):
+            # Build canonical page_path from path-relative-to-Wiki, strip ".md".
+            # e.g. KB/Wiki/Sources/Books/atomic-habits/notes
+            rel = md_file.relative_to(wiki_path).with_suffix("").as_posix()
+            page_path = f"KB/Wiki/{rel}"
             mtime_ns = md_file.stat().st_mtime_ns
 
             # Incremental shortcut: skip if mtime_ns unchanged
@@ -231,7 +250,154 @@ def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
 
         db.commit()
 
+    _index_annotations(vault_path, db, stats, now)
+    db.commit()
+
     return stats
+
+
+def _annotation_chunks(ann_set: AnnotationSetV3, page_path: str) -> list[dict]:
+    """Convert v3 annotation items into chunk dicts.
+
+    ADR-021 §2 chunk shape:
+      - HighlightV3   → text  (the highlighted content)
+      - AnnotationV3  → note  (user's short note tied to a span)
+      - ReflectionV3  → body  (chapter-level long-form reflection)
+
+    Metadata is folded into the existing 4-column FTS schema:
+      - chunk_text:     the body text above
+      - section:        item_type (with chapter_ref appended if present)
+      - heading_context: source slug — falls back to source_filename / book_id / slug
+      - path:           KB/Annotations/{slug}  (multiple chunks per page is fine,
+                        same as H2 chunks per Wiki page)
+    """
+    # Source identifier — ADR-021 §2 says "source slug from AnnotationSet.source_filename".
+    # v3 sets carry either source_filename (paper) or book_id (book); fall back to slug.
+    source_slug = ann_set.source_filename or ann_set.book_id or ann_set.slug
+
+    chunks: list[dict] = []
+    for item in ann_set.items:
+        if isinstance(item, HighlightV3):
+            text = item.text
+            chapter_ref: str | None = None
+        elif isinstance(item, AnnotationV3):
+            text = item.note
+            chapter_ref = None
+        elif isinstance(item, ReflectionV3):
+            text = item.body
+            chapter_ref = item.chapter_ref
+        else:  # pragma: no cover — discriminated union exhausts above
+            continue
+
+        text = (text or "").strip()
+        if not text:
+            continue
+
+        # Pack item_type + optional chapter_ref into `section`. Down-stream consumers
+        # parse on the "|" separator if they need the chapter.
+        section = item.type if not chapter_ref else f"{item.type}|{chapter_ref}"
+
+        chunks.append(
+            {
+                "chunk_text": text,
+                "section": section,
+                "heading_context": source_slug,
+                "path": page_path,
+            }
+        )
+    return chunks
+
+
+def _index_annotations(
+    vault_path: Path,
+    db: sqlite3.Connection,
+    stats: IndexStats,
+    now: str,
+) -> None:
+    """Scan KB/Annotations/*.md and index each item as one chunk (ADR-021 §2).
+
+    Reuses ``shared.annotation_store._parse`` (via ``upgrade_to_v3``) to read v1/v2/v3
+    transparently, so we never re-implement JSON parsing here.
+    """
+    # Local import to avoid a module-load-time circular: annotation_store imports
+    # shared.config (vault path), and we don't want kb_indexer importing config either.
+    from shared.annotation_store import _parse  # noqa: PLC0415
+
+    annotations_dir = vault_path / "KB" / "Annotations"
+    if not annotations_dir.exists():
+        return
+
+    for md_file in sorted(annotations_dir.glob("*.md")):
+        slug = md_file.stem
+        page_path = f"KB/Annotations/{slug}"
+        mtime_ns = md_file.stat().st_mtime_ns
+
+        # Incremental shortcut — same shape as the Wiki loop.
+        meta_row = db.execute(
+            "SELECT mtime_ns FROM kb_index_meta WHERE path = ?",
+            (page_path,),
+        ).fetchone()
+        if meta_row is not None and meta_row[0] == mtime_ns:
+            stats.files_skipped += 1
+            continue
+
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        try:
+            ann_set = upgrade_to_v3(_parse(content, slug))
+        except Exception:
+            # Malformed JSON / unknown shape — skip rather than crash full index.
+            continue
+
+        fhash = _file_hash(md_file)
+
+        # Remove stale chunks for this page (no wikilinks tracked for annotation pages).
+        old_rowids: list[int] = [
+            r[0]
+            for r in db.execute(
+                "SELECT rowid FROM kb_chunks WHERE path = ?",
+                (page_path,),
+            ).fetchall()
+        ]
+        if old_rowids:
+            placeholders = ",".join("?" * len(old_rowids))
+            db.execute(
+                f"DELETE FROM kb_vectors WHERE rowid IN ({placeholders})",
+                old_rowids,
+            )
+            db.execute("DELETE FROM kb_chunks WHERE path = ?", (page_path,))
+            stats.chunks_removed += len(old_rowids)
+
+        chunks = _annotation_chunks(ann_set, page_path)
+        if chunks:
+            embeddings = kb_embedder.embed_batch([c["chunk_text"] for c in chunks])
+            for chunk, emb in zip(chunks, embeddings):
+                cur = db.execute(
+                    "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
+                    "VALUES (?, ?, ?, ?)",
+                    (
+                        chunk["chunk_text"],
+                        chunk["section"],
+                        chunk["heading_context"],
+                        chunk["path"],
+                    ),
+                )
+                rowid: int = cur.lastrowid  # type: ignore[assignment]
+                db.execute(
+                    "INSERT INTO kb_vectors(rowid, embedding) VALUES (?, ?)",
+                    (rowid, emb.tobytes()),
+                )
+                stats.chunks_added += 1
+
+        db.execute(
+            """INSERT OR REPLACE INTO kb_index_meta (path, mtime_ns, file_hash, indexed_at)
+               VALUES (?, ?, ?, ?)""",
+            (page_path, mtime_ns, fhash, now),
+        )
+        stats.files_indexed += 1
 
 
 # ---------------------------------------------------------------------------
