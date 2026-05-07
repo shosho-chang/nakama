@@ -248,11 +248,11 @@ def test_load_topics_real_fixture():
     assert len(topics) == 5
     ids = {t.id for t in topics}
     assert {
-        "creatine_cognitive",
-        "overtraining_recovery",
-        "blue_zones",
-        "protein_muscle_synthesis",
-        "sleep_cognitive",
+        "exercise_cardiovascular",
+        "sleep_performance",
+        "microbiome_inflammation",
+        "pediatric_exercise",
+        "longevity_social",
     } == ids
     # Each topic must have a non-empty query
     assert all(t.query.strip() for t in topics)
@@ -278,7 +278,7 @@ def test_main_writes_report_with_mocked_search(tmp_path, monkeypatch):
     rc = main(
         [
             "--topic",
-            "creatine_cognitive",
+            "exercise_cardiovascular",
             "--k",
             "8",
             "--engine",
@@ -290,5 +290,5 @@ def test_main_writes_report_with_mocked_search(tmp_path, monkeypatch):
     assert rc == 0
     assert out.exists()
     content = out.read_text(encoding="utf-8")
-    assert "creatine_cognitive" in content
+    assert "exercise_cardiovascular" in content
     assert "hybrid-8" in content
