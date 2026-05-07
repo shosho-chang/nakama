@@ -183,17 +183,15 @@ def list_for_month(year: int, month: int) -> list[dict[str, Any]]:
 
     Includes every status so the retrospective sees the full funnel.
     """
-    import calendar
-
-    _, last_day = calendar.monthrange(year, month)
     start = f"{year:04d}-{month:02d}-01T00:00:00+00:00"
-    end = f"{year:04d}-{month:02d}-{last_day:02d}T23:59:59+00:00"
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    end_exclusive = f"{next_year:04d}-{next_month:02d}-01T00:00:00+00:00"
     conn = _get_conn()
     rows = conn.execute(
         "SELECT * FROM proposal_metrics"
-        " WHERE created_at >= ? AND created_at <= ?"
+        " WHERE created_at >= ? AND created_at < ?"
         " ORDER BY created_at ASC",
-        (start, end),
+        (start, end_exclusive),
     ).fetchall()
     return [_row_to_dict(r) for r in rows]  # type: ignore[misc]
 
