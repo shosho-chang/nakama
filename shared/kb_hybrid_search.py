@@ -135,16 +135,23 @@ def assert_dim_alignment(conn: sqlite3.Connection) -> None:
         )
 
 
-def get_kb_conn() -> sqlite3.Connection:
+def get_kb_conn(*, check_dim: bool = True) -> sqlite3.Connection:
     """Return the module-level kb_index DB connection (lazy-opened).
 
     Asserts ``kb_embedder.current_dim() == kb_vectors_dim`` on first open
     (ADR-022). Mismatch raises RuntimeError immediately.
+
+    Args:
+        check_dim: When True (default), run ``assert_dim_alignment`` after open.
+                   The ``kb_indexer --rebuild`` CLI passes False because the
+                   rebuild path is precisely what fixes the dim mismatch — the
+                   assertion would otherwise block the only recovery route.
     """
     global _conn
     if _conn is None:
         _conn = _open_conn(_get_kb_db_path())
-        assert_dim_alignment(_conn)
+        if check_dim:
+            assert_dim_alignment(_conn)
     return _conn
 
 
