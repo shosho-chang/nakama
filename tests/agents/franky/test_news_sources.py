@@ -379,7 +379,13 @@ github_trending:
 
         return _json.dumps(
             {
-                "scores": {"signal": 5, "novelty": 5, "actionability": 5, "noise": 5},
+                "scores": {
+                    "signal": 5,
+                    "novelty": 5,
+                    "actionability": 5,
+                    "noise": 5,
+                    "relevance": 3,
+                },
                 "overall": 5.0,
                 "one_line_verdict": "v",
                 "why_it_matters": "w",

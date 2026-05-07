@@ -55,7 +55,7 @@ def _full_trust_cand(**overrides) -> dict:
 def test_ceiling_caps_overall_above_ceiling():
     cand = _trending_cand()
     score = {
-        "scores": {"signal": 5, "novelty": 4, "actionability": 5, "noise": 5},
+        "scores": {"signal": 5, "novelty": 4, "actionability": 5, "noise": 5, "relevance": 3},
         "overall": 4.7,
         "pick": True,
     }
@@ -72,19 +72,25 @@ def test_ceiling_caps_overall_above_ceiling():
 def test_ceiling_no_op_when_overall_below_ceiling():
     cand = _trending_cand()
     score = {
-        "scores": {"signal": 3, "novelty": 2, "actionability": 3, "noise": 4},
+        "scores": {"signal": 3, "novelty": 2, "actionability": 3, "noise": 4, "relevance": 3},
         "overall": 3.0,
         "pick": True,
     }
     out = _apply_trust_ceiling(cand, score)
     assert out["overall"] == 3.0
-    assert out["scores"] == {"signal": 3, "novelty": 2, "actionability": 3, "noise": 4}
+    assert out["scores"] == {
+        "signal": 3,
+        "novelty": 2,
+        "actionability": 3,
+        "noise": 4,
+        "relevance": 3,
+    }
 
 
 def test_ceiling_skipped_for_full_trust_candidate():
     cand = _full_trust_cand()
     score = {
-        "scores": {"signal": 5, "novelty": 5, "actionability": 5, "noise": 5},
+        "scores": {"signal": 5, "novelty": 5, "actionability": 5, "noise": 5, "relevance": 3},
         "overall": 5.0,
         "pick": True,
     }
@@ -98,7 +104,7 @@ def test_ceiling_skipped_for_full_trust_candidate():
 def test_ceiling_does_not_mutate_input():
     cand = _trending_cand()
     score = {
-        "scores": {"signal": 5, "novelty": 5, "actionability": 5, "noise": 5},
+        "scores": {"signal": 5, "novelty": 5, "actionability": 5, "noise": 5, "relevance": 3},
         "overall": 5.0,
     }
     _apply_trust_ceiling(cand, score)
@@ -178,7 +184,13 @@ def test_pipeline_caps_experimental_score_during_run(tmp_path, monkeypatch):
             )
         return _json.dumps(
             {
-                "scores": {"signal": 5, "novelty": 5, "actionability": 5, "noise": 5},
+                "scores": {
+                    "signal": 5,
+                    "novelty": 5,
+                    "actionability": 5,
+                    "noise": 5,
+                    "relevance": 3,
+                },
                 "overall": 4.8,
                 "one_line_verdict": "v",
                 "why_it_matters": "w",
