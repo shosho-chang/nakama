@@ -21,8 +21,8 @@ news_digest 的 merge 階段可直接拼進 candidates list。
 from __future__ import annotations
 
 import hashlib
-import re
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable

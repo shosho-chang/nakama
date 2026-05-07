@@ -17,7 +17,6 @@ from unittest.mock import MagicMock
 from agents.franky import news_digest as nd
 from agents.franky.news import awesome_diff, github_trending
 
-
 # ---------------------------------------------------------------------------
 # github_trending.sanity_check — one fixture per rule
 # ---------------------------------------------------------------------------

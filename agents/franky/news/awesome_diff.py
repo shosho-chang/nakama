@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import os
 from typing import Any, Iterable
 
 import httpx
