@@ -2,7 +2,7 @@
 
 DB schema (canonical reference: migrations/012_kb_hybrid.sql):
   kb_chunks   — FTS5(chunk_text, section, heading_context, path UNINDEXED)
-  kb_vectors  — vec0(embedding float[256])
+  kb_vectors  — vec0(embedding float[1024])  # ADR-022: BGE-M3 default
   kb_index_meta — (path, mtime_ns, file_hash, indexed_at)
 
 The index DB lives in kb_index.db (separate from state.db) because sqlite-vec
@@ -49,7 +49,7 @@ def _get_kb_db_path() -> Path:
     return Path(__file__).resolve().parent.parent / "data" / "kb_index.db"
 
 
-def _open_conn(db_path: Path) -> sqlite3.Connection:
+def _open_conn(db_path: Path, *, dim: int = kb_embedder.DIM_BGE_M3) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -58,12 +58,12 @@ def _open_conn(db_path: Path) -> sqlite3.Connection:
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
     conn.enable_load_extension(False)
-    _init_schema(conn)
+    _init_schema(conn, dim=dim)
     return conn
 
 
-def _init_schema(conn: sqlite3.Connection) -> None:
-    """Create kb_* tables if they don't exist yet."""
+def _init_schema(conn: sqlite3.Connection, *, dim: int = kb_embedder.DIM_BGE_M3) -> None:
+    """Create kb_* tables if they don't exist yet. `dim` controls vec0 column width."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS kb_index_meta (
             path       TEXT PRIMARY KEY,
@@ -94,24 +94,68 @@ def _init_schema(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass  # already exists
     try:
-        conn.execute("CREATE VIRTUAL TABLE kb_vectors USING vec0(embedding float[256])")
+        conn.execute(f"CREATE VIRTUAL TABLE kb_vectors USING vec0(embedding float[{dim}])")
     except sqlite3.OperationalError:
         pass  # already exists
     conn.commit()
 
 
+def kb_vectors_dim(conn: sqlite3.Connection) -> int:
+    """Inspect kb_vectors vec0 schema → declared embedding dim."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='kb_vectors'"
+    ).fetchone()
+    if row is None or row[0] is None:
+        raise RuntimeError("kb_vectors table not present in DB")
+    sql = row[0]
+    # Format: "... vec0(embedding float[1024])"
+    import re as _re
+
+    m = _re.search(r"float\[(\d+)\]", sql)
+    if m is None:
+        raise RuntimeError(f"Cannot parse kb_vectors dim from SQL: {sql!r}")
+    return int(m.group(1))
+
+
+def assert_dim_alignment(conn: sqlite3.Connection) -> None:
+    """ADR-022: fail loudly if embedder dim != kb_vectors dim.
+
+    Catches the silent miscompare where kb_vectors was built with a different
+    backend than the one currently active. Run this once at connection open.
+    """
+    table_dim = kb_vectors_dim(conn)
+    model_dim = kb_embedder.current_dim()
+    if model_dim != table_dim:
+        raise RuntimeError(
+            f"Embedding dim mismatch: kb_embedder backend "
+            f"'{kb_embedder.current_backend()}' produces {model_dim}-d vectors but "
+            f"kb_vectors table is float[{table_dim}]. Re-index with "
+            f"`python -m shared.kb_indexer --rebuild` or set "
+            f"NAKAMA_EMBED_BACKEND to match the table dim."
+        )
+
+
 def get_kb_conn() -> sqlite3.Connection:
-    """Return the module-level kb_index DB connection (lazy-opened)."""
+    """Return the module-level kb_index DB connection (lazy-opened).
+
+    Asserts ``kb_embedder.current_dim() == kb_vectors_dim`` on first open
+    (ADR-022). Mismatch raises RuntimeError immediately.
+    """
     global _conn
     if _conn is None:
         _conn = _open_conn(_get_kb_db_path())
+        assert_dim_alignment(_conn)
     return _conn
 
 
-def make_conn(db_path: str | Path = ":memory:") -> sqlite3.Connection:
+def make_conn(
+    db_path: str | Path = ":memory:", *, dim: int = kb_embedder.DIM_BGE_M3
+) -> sqlite3.Connection:
     """Create and initialize a fresh connection — for tests or CLI use.
 
     Passing ":memory:" creates an in-memory DB (no file, lost on close).
+    `dim` controls the vec0 embedding column width (default 1024 for BGE-M3;
+    legacy potion tests pass dim=256).
     """
     if str(db_path) == ":memory:":
         conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -119,9 +163,9 @@ def make_conn(db_path: str | Path = ":memory:") -> sqlite3.Connection:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
-        _init_schema(conn)
+        _init_schema(conn, dim=dim)
         return conn
-    return _open_conn(Path(db_path))
+    return _open_conn(Path(db_path), dim=dim)
 
 
 # ---------------------------------------------------------------------------
