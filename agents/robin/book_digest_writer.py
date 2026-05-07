@@ -132,7 +132,7 @@ def _render_item_block(
         label = "A"
         body_text = f"{item.text_excerpt}\n\n> {item.note}"
         cfi = item.cfi
-    else:  # comment
+    else:  # comment (v2) / reflection (v3) — same shape, renamed in ADR-021 §1
         query = item.body[:500]
         label = "C"
         body_text = item.body
@@ -220,7 +220,7 @@ def write_digest(book_id: str) -> DigestReport:
                 cfi_to_query[item.cfi] = item.text_excerpt
             elif item.type == "annotation":
                 cfi_to_query[item.cfi] = f"{item.text_excerpt}\n{item.note}"
-            elif item.type == "comment" and item.cfi_anchor:
+            elif item.type in ("comment", "reflection") and item.cfi_anchor:
                 cfi_to_query[item.cfi_anchor] = item.body[:500]
 
         from shared.kb_search_feedback_store import upsert_feedback
@@ -242,8 +242,13 @@ def write_digest(book_id: str) -> DigestReport:
     # Group items by chapter ref, preserving first-occurrence order.
     chapters: dict[str, list] = {}
     for item in ann_set.items:
-        if item.type == "comment":
-            ch = item.chapter_ref
+        if item.type in ("comment", "reflection"):
+            # ADR-021 §1: v3 reflections use the same chapter_ref as v2 comments;
+            # fall back to the cfi_anchor's spine index if chapter_ref is None.
+            anchor = getattr(item, "cfi_anchor", None)
+            ch = item.chapter_ref or (
+                _extract_chapter_ref(anchor) if anchor else "unknown"
+            )
         else:
             ch = _extract_chapter_ref(item.cfi)
         chapters.setdefault(ch, []).append(item)

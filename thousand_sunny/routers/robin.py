@@ -28,6 +28,7 @@ from shared.annotation_store import (
     AnnotationStore,
     annotation_slug,
     get_annotation_store,
+    upgrade_to_v3,
 )
 from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
@@ -286,7 +287,9 @@ async def save_annotations(
     # unknown bases, even though KB/Annotations/ is the uniform destination).
     _resolve_reader_base(ann_set.base)
     store: AnnotationStore = get_annotation_store()
-    store.save(ann_set)
+    # ADR-021 §1: persist as v3 (the Reader UI still posts the v1 shape; we upgrade
+    # at the boundary so the on-disk store is uniformly v3 going forward).
+    store.save(upgrade_to_v3(ann_set))
     return {"status": "ok", "unsynced_count": store.unsynced_count(ann_set.slug)}
 
 
