@@ -460,7 +460,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             ON proposal_metrics(week_iso, created_at DESC);
 
         -- ADR-023 §7 S2b: 5-dim shadow scoring table.
-        -- Canonical DDL: migrations/014_news_score_shadow.sql.
+        -- Canonical DDL: migrations/015_news_score_shadow.sql.
         -- Owned by agents/franky/news_digest.py._write_shadow_score().
         CREATE TABLE IF NOT EXISTS news_score_shadow (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
