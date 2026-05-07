@@ -62,7 +62,7 @@ def _insert_vec(conn, rowid: int, emb: np.ndarray):
 @pytest.fixture
 def rrf_db():
     """In-memory DB with 3 pre-inserted chunks/vectors for RRF math tests."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
 
     # A (rowid=1): matches "sleep sleep" BM25 query; far from query vec
     _insert_chunk(
@@ -212,7 +212,7 @@ def test_chunk_text_truncated_to_token_budget():
     """chunk_text in SearchHit is capped at _TOKEN_BUDGET_CHARS chars."""
     from shared.kb_hybrid_search import _TOKEN_BUDGET_CHARS
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     long_text = "word " * 1000  # ~5000 chars
     _insert_chunk(conn, 1, long_text, "Sec", "Title", "KB/Wiki/Concepts/long")
     _insert_vec(conn, 1, _unit_vec(256, 0))
@@ -232,7 +232,7 @@ def test_chunk_text_truncated_to_token_budget():
 
 def test_search_empty_db_returns_empty():
     """Querying an empty index returns []."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 0)):
         hits = search("anything", db=conn)
     assert hits == []
@@ -245,7 +245,7 @@ def test_search_empty_db_returns_empty():
 
 def test_make_conn_creates_all_tables():
     """make_conn() initializes all 3 required tables."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     tables = {
         r[0]
         for r in conn.execute(
@@ -285,7 +285,7 @@ def wikilink_db():
       KB/Wiki/Concepts/concept-a → KB/Wiki/Sources/sources-y
       KB/Wiki/Concepts/concept-a → KB/Wiki/Concepts/concept-b
     """
-    conn = make_conn()
+    conn = make_conn(dim=256)
 
     _insert_chunk(
         conn,
@@ -337,7 +337,7 @@ def wikilink_db():
 
 def test_make_conn_creates_wikilinks_table():
     """make_conn() must initialize kb_wikilinks table."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     tables = {
         r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     }
@@ -407,7 +407,7 @@ def test_bm25_vec_lanes_no_wikilink_regression(rrf_db):
 
 def test_rrf_3lane_wikilink_score():
     """Hand-calc: page that appears only in wikilink lane at rank 1 → score = 1/(60+1)."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
 
     # bm25-hit: matches query text, links to wikilink-target
     _insert_chunk(
