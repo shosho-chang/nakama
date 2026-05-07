@@ -393,7 +393,7 @@ def test_index_vault_indexes_nested_books_dir(tmp_path):
         encoding="utf-8",
     )
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         stats = index_vault(tmp_path, conn)
 
@@ -473,7 +473,7 @@ updated_at: "2026-05-07T00:00:00Z"
 """
     _write_annotation_file(tmp_path, "atomic-habits", annotation_md)
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         stats = index_vault(tmp_path, conn)
 
@@ -537,7 +537,7 @@ updated_at: "2026-05-07T00:00:00Z"
 """
     _write_annotation_file(tmp_path, "creatine-paper", annotation_md)
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(tmp_path, conn)
 
@@ -577,7 +577,7 @@ updated_at: "2026-05-07T00:00:00Z"
 """
     _write_annotation_file(tmp_path, "longevity-book", annotation_md)
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(tmp_path, conn)
 
@@ -615,7 +615,7 @@ updated_at: "2026-05-07T00:00:00Z"
 """
     _write_annotation_file(tmp_path, "stable", annotation_md)
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         s1 = index_vault(tmp_path, conn)
         s2 = index_vault(tmp_path, conn)
