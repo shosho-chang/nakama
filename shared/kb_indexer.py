@@ -232,3 +232,87 @@ def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
         db.commit()
 
     return stats
+
+
+# ---------------------------------------------------------------------------
+# Rebuild: drop kb_vectors + kb_chunks + kb_index_meta, recreate at current
+# embedder dim, full re-embed. ADR-022 — needed when embedder dim changes
+# (e.g. potion 256 → bge-m3 1024).
+# ---------------------------------------------------------------------------
+
+
+def rebuild_index(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
+    """Drop & recreate kb_vectors at the current embedder dim, full re-embed.
+
+    Wipes kb_chunks / kb_vectors / kb_index_meta / kb_wikilinks rows so the
+    follow-up ``index_vault`` walks every page from scratch. The vec0 vtab
+    is dropped + recreated at ``kb_embedder.current_dim()``.
+    """
+    # FTS5 + vec0 tables can't be ALTERed — drop + recreate.
+    db.execute("DROP TABLE IF EXISTS kb_vectors")
+    db.execute("DELETE FROM kb_chunks")
+    db.execute("DELETE FROM kb_index_meta")
+    db.execute("DELETE FROM kb_wikilinks")
+    target_dim = kb_embedder.current_dim()
+    db.execute(f"CREATE VIRTUAL TABLE kb_vectors USING vec0(embedding float[{target_dim}])")
+    db.commit()
+    return index_vault(vault_path, db)
+
+
+def _resolve_vault_path() -> Path:
+    """Resolve the vault root from env or repo-root fallback."""
+    import os as _os
+
+    env_path = _os.environ.get("NAKAMA_VAULT_PATH") or _os.environ.get("OBSIDIAN_VAULT_PATH")
+    if env_path:
+        return Path(env_path)
+    # Fallback: <repo_root>/vault — local-dev convenience.
+    return Path(__file__).resolve().parent.parent / "vault"
+
+
+def _main() -> None:
+    import argparse  # noqa: PLC0415
+
+    from shared.kb_hybrid_search import get_kb_conn  # noqa: PLC0415
+
+    parser = argparse.ArgumentParser(
+        prog="python -m shared.kb_indexer",
+        description="KB vault indexer (incremental by default; --rebuild for full re-embed).",
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help=(
+            "Drop kb_vectors + clear kb_chunks/kb_index_meta/kb_wikilinks, "
+            "recreate vec0 at the current embedder dim, full re-embed."
+        ),
+    )
+    parser.add_argument(
+        "--vault",
+        type=Path,
+        default=None,
+        help="Vault root (defaults to NAKAMA_VAULT_PATH / OBSIDIAN_VAULT_PATH / <repo>/vault).",
+    )
+    args = parser.parse_args()
+
+    vault = args.vault if args.vault is not None else _resolve_vault_path()
+    if not vault.exists():
+        raise SystemExit(f"Vault path does not exist: {vault}")
+
+    conn = get_kb_conn()
+    if args.rebuild:
+        print(
+            f"[rebuild] backend={kb_embedder.current_backend()} "
+            f"dim={kb_embedder.current_dim()} vault={vault}"
+        )
+        stats = rebuild_index(vault, conn)
+    else:
+        stats = index_vault(vault, conn)
+    print(
+        f"files_indexed={stats.files_indexed} files_skipped={stats.files_skipped} "
+        f"chunks_added={stats.chunks_added} chunks_removed={stats.chunks_removed}"
+    )
+
+
+if __name__ == "__main__":
+    _main()

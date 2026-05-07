@@ -156,7 +156,7 @@ def test_split_h2_chunks_path_stored():
 
 def test_index_vault_10_pages(vault_10):
     """index_vault on 10-page fixture produces correct files_indexed count."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         stats = index_vault(vault_10, conn)
 
@@ -167,7 +167,7 @@ def test_index_vault_10_pages(vault_10):
 
 def test_index_vault_frontmatter_title_stored(vault_10):
     """Frontmatter title should appear as heading_context in kb_chunks."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(vault_10, conn)
 
@@ -180,7 +180,7 @@ def test_index_vault_frontmatter_title_stored(vault_10):
 
 def test_index_vault_references_section_not_indexed(vault_10):
     """Source pages have ## References — those chunks must NOT be indexed."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(vault_10, conn)
 
@@ -191,7 +191,7 @@ def test_index_vault_references_section_not_indexed(vault_10):
 
 def test_index_vault_wikilinks_extracted(vault_10):
     """Wikilinks [[...]] appear in IndexStats.wikilinks."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         stats = index_vault(vault_10, conn)
 
@@ -200,7 +200,7 @@ def test_index_vault_wikilinks_extracted(vault_10):
 
 def test_index_vault_chunk_and_vector_rowids_match(vault_10):
     """Every rowid in kb_chunks should have a matching rowid in kb_vectors."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(vault_10, conn)
 
@@ -220,7 +220,7 @@ def test_index_vault_incremental_skips_unchanged_files(tmp_path):
     wiki.mkdir(parents=True)
     _make_page(wiki, "stable", title="Stable Page", body="## Section\n" + "x" * 60)
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         stats1 = index_vault(tmp_path, conn)
         stats2 = index_vault(tmp_path, conn)
@@ -238,7 +238,7 @@ def test_index_vault_reindexes_changed_file(tmp_path):
     page = wiki / "mutable.md"
     page.write_text("---\ntitle: Mutable\n---\n## Section\n" + "x" * 60, encoding="utf-8")
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(tmp_path, conn)
 
@@ -270,7 +270,7 @@ def test_index_vault_reindexes_changed_file(tmp_path):
 
 def test_index_vault_sources_concepts_entities_all_indexed(vault_10):
     """All 3 subdirectory types produce chunks with correct path prefixes."""
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(vault_10, conn)
 
@@ -302,7 +302,7 @@ def test_index_vault_wikilinks_persisted_to_db(tmp_path):
         ),
     )
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(tmp_path, conn)
 
@@ -329,7 +329,7 @@ def test_index_vault_mentioned_in_frontmatter_persisted(tmp_path):
         ),
     )
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(tmp_path, conn)
 
@@ -348,7 +348,7 @@ def test_index_vault_wikilinks_removed_on_reindex(tmp_path):
         encoding="utf-8",
     )
 
-    conn = make_conn()
+    conn = make_conn(dim=256)
     with patch("shared.kb_embedder.embed_batch", side_effect=_fixed_embed_batch):
         index_vault(tmp_path, conn)
 
