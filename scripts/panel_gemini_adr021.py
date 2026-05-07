@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+# ruff: noqa: E501, E402
 """Gemini panel audit for ADR-021 (annotation substance store + Brook synthesize).
 
 Step 3 of multi-agent-panel skill: Gemini reads Claude draft AND Codex audit,
