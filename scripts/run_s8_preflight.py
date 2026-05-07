@@ -40,6 +40,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -60,6 +61,9 @@ if str(_REPO_ROOT) not in sys.path:
 # ---------------------------------------------------------------------------
 
 DEFAULT_VAULT_ROOT = r"E:\Shosho LifeOS"
+
+# V2 figure transform regex — matches raw markdown figure syntax ![alt](path)
+_RE_FIG_RAW = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 DEFAULT_RAW_PATH_REL = "KB/Raw/Books/biochemistry-for-sport-and-exercise-maclaren.md"
 DEFAULT_BOOK_ID = "biochemistry-for-sport-and-exercise-maclaren"
 DEFAULT_CHAPTER_INDEX = 1
@@ -209,6 +213,70 @@ def _llm_observability_snapshot() -> tuple[int, int, float]:
                 float(fn.get("cost_usd", 0.0)),
             )
     return 0, 0, 0.0
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — body assembly (pure, no I/O)
+# ---------------------------------------------------------------------------
+
+
+def _assemble_body(
+    walker_verbatim_body: str,
+    walker_section_anchors: list[str],
+    walker_figures: list[dict],  # STAGE-1A-AMBIGUITY: spec says {filename, alt_text, ...} but
+    # FigureRef (shared/source_ingest.py) uses vault_path not filename.
+    # The body text contains the full vault_path already, so the V2 transform
+    # operates via regex on the body — walker_figures is reserved for callers.
+    sections_json: list[dict],  # each: {anchor: str, concept_map_md: str, wikilinks: list[str]}
+    book_id: str,
+) -> str:
+    """Assemble a lossless chapter body from walker verbatim text + LLM sections JSON.
+
+    Body is verbatim by construction — LLM only supplies concept_map_md and
+    wikilinks; all paragraph text comes solely from walker_verbatim_body.
+    """
+    # Fail-fast: exact identity check (order + text).
+    # Recovery is impossible — a mismatch means the LLM JSON anchor is wrong, not the walker.
+    if len(sections_json) != len(walker_section_anchors):
+        i = min(len(sections_json), len(walker_section_anchors))
+        w = walker_section_anchors[i] if i < len(walker_section_anchors) else "<missing>"
+        lj = sections_json[i]["anchor"] if i < len(sections_json) else "<missing>"
+        raise ValueError(f"section anchor mismatch at index {i}: walker={w!r} vs llm_json={lj!r}")
+    for i, (w_anchor, sec) in enumerate(zip(walker_section_anchors, sections_json)):
+        if sec["anchor"] != w_anchor:
+            raise ValueError(
+                f"section anchor mismatch at index {i}: "
+                f"walker={w_anchor!r} vs llm_json={sec['anchor']!r}"
+            )
+
+    # V2 figure transform: ![alt](vault_path) → ![[vault_path]]\n*alt*
+    body = _RE_FIG_RAW.sub(lambda m: f"![[{m.group(2)}]]\n*{m.group(1)}*", walker_verbatim_body)
+
+    # Zero-section chapter: return verbatim body with figure transform only.
+    if not walker_section_anchors:
+        return body
+
+    # Split on H2 line-start boundaries; capturing group retains headings in result.
+    # parts layout: [pre_h2, "## Heading1", text1, "## Heading2", text2, ...]
+    parts = re.split(r"^(## .+)$", body, flags=re.MULTILINE)
+
+    out: list[str] = [parts[0]]
+    for j in range(1, len(parts), 2):
+        heading = parts[j]
+        content = parts[j + 1] if j + 1 < len(parts) else ""
+        sec = sections_json[(j - 1) // 2]
+        wikilinks_md = "\n".join(f"- [[{wl.strip('[]')}]]" for wl in sec.get("wikilinks", []))
+        wrapper = (
+            "\n\n### Section concept map\n\n"
+            f"{sec['concept_map_md']}\n\n"
+            "### Wikilinks introduced\n\n"
+            f"{wikilinks_md}\n"
+        )
+        out.append(heading)
+        out.append(content)
+        out.append(wrapper)
+
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------
