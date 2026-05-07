@@ -20,6 +20,8 @@ readability-lxml>=0.8.4  # Web scraping：備選去噪方案
 # sqlite3 is built-in
 sqlite-vec>=0.1.9          # KB hybrid retrieval: vec0 virtual table for dense-vector lane
 model2vec>=0.8.0           # KB hybrid retrieval: potion-base-8M 256-dim static embeddings
+FlagEmbedding>=1.4.0       # KB hybrid retrieval: BGE-M3 1024-dim default backend (ADR-022).
+                           # Heavy dep — ~2.3GB model weight downloaded on first use.
 
 # Zoro: Keyword Research
 google-api-python-client>=2.100.0  # YouTube Data API v3 + GSC Search Analytics
