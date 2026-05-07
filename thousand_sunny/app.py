@@ -43,6 +43,16 @@ app.include_router(repurpose.page_router)
 app.include_router(franky.router)
 app.include_router(franky.page_router)
 
+# /static must mount unconditionally — /projects/{slug} (issue #458) ships with
+# Robin disabled (VPS) too, and pulls /static/projects/{tokens,review}.css/js.
+_static_dir = Path(__file__).resolve().parent / "static"
+if _static_dir.is_dir():
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(_static_dir)),
+        name="static",
+    )
+
 # Robin（KB ingest + reader）僅本機執行，VPS 設 DISABLE_ROBIN=1 跳過
 if not os.getenv("DISABLE_ROBIN"):
     from thousand_sunny.routers import books, robin
@@ -62,15 +72,6 @@ if not os.getenv("DISABLE_ROBIN"):
             StaticFiles(directory=str(_foliate_dir)),
             name="foliate-js",
         )
-
-    # Reader-side JS lives under /static/ so CSP `script-src 'self'` accepts it.
-    _static_dir = Path(__file__).resolve().parent / "static"
-    if _static_dir.is_dir():
-        app.mount(
-            "/static",
-            StaticFiles(directory=str(_static_dir)),
-            name="static",
-        )
 else:
 
     @app.get("/")
@@ -81,3 +82,4 @@ else:
 app.include_router(zoro.router)
 app.include_router(brook.router)
 app.include_router(projects.router)
+app.include_router(projects.page_router)

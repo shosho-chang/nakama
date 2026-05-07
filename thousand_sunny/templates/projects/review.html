@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ store.topic or store.project_slug }} · Brook synthesize · review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,500;1,400;1,500&family=Noto+Serif+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/static/projects/tokens.css" />
+  <link rel="stylesheet" href="/static/projects/review.css" />
+</head>
+<body>
+{# All template state is server-rendered. JS handles selection / reject / theme.
+   Mirrors the React component tree in
+   N458-brook-review-mode/project/brook/screen.jsx — top bar, two-pane grid,
+   <dialog> reject confirm. #}
+<div class="review-shell brk-root brk-light"
+     id="review-shell"
+     data-state="default"
+     data-project-slug="{{ store.project_slug }}"
+     data-highlight-terms="{{ store.keywords | join('|') | e }}">
+
+  {# ── top bar ───────────────────────────────────────────────────────── #}
+  <header class="review-topbar">
+    <div class="review-brand">
+      <div class="review-brand__name">Brook</div>
+      <div class="review-brand__rule" aria-hidden="true"></div>
+      <div class="brk-caps">synthesize · 綜合稿</div>
+    </div>
+
+    <div class="review-meta">
+      <div class="brk-caps review-meta__caps">
+        /projects/{{ store.project_slug }}
+        {% if store.updated_at %}&nbsp;·&nbsp; updated {{ store.updated_at }}{% endif %}
+        &nbsp;·&nbsp; pool {{ store.evidence_pool | length }} sources
+      </div>
+      <h1 class="brk-zh review-meta__topic">{{ store.topic or store.project_slug }}</h1>
+      {# topicEn is in the Claude Design mock but not in real schema. Hide gracefully. #}
+      <div class="review-meta__keywords" aria-label="關鍵字">
+        {% for k, is_zh in keyword_pairs %}
+          <span class="review-keyword{% if is_zh %} is-zh{% endif %}">{{ k }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="review-actions">
+      <div class="review-actions__row">
+        <button type="button"
+                class="review-theme-toggle"
+                id="review-theme-toggle"
+                aria-label="切換深淺主題">theme</button>
+        <button type="button" class="btn btn-ghost" id="btn-save-draft">暫存草稿</button>
+        <button type="button"
+                class="btn btn-primary"
+                id="btn-finalize"
+                data-finalized="{{ 'true' if store.outline_final else 'false' }}">
+          {% if store.outline_final %}已定稿 · finalized{% else %}定稿這份綜合 · finalize{% endif %}
+        </button>
+      </div>
+      <div class="brk-caps review-actions__caption">
+        {{ store.outline_draft | length }} sections · {{ store.user_actions | length }} actions
+      </div>
+    </div>
+  </header>
+
+  {# ── main grid ─────────────────────────────────────────────────────── #}
+  <div class="review-main">
+    {# ── outline panel (left) ────────────────────────────────────────── #}
+    <nav class="review-outline" aria-label="大綱 · outline">
+      <div class="review-outline__header">
+        <div class="brk-caps">大綱 · outline · {{ store.outline_draft | length }} sections</div>
+      </div>
+      <ul class="review-outline__list" role="list">
+        {% for section in store.outline_draft %}
+          {% set numeral = section.section %}
+          <li>
+            <button type="button"
+                    class="review-outline-item{% if loop.first %} is-active{% endif %}"
+                    id="outline-item-{{ section.section }}"
+                    data-section-id="{{ section.section }}"
+                    data-evidence-refs="{{ section.evidence_refs | join(',') }}"
+                    aria-pressed="{% if loop.first %}true{% else %}false{% endif %}">
+              <span class="review-outline-item__row">
+                <span class="review-outline-item__numeral">{{ numeral }}.</span>
+                <span class="review-outline-item__heading brk-zh">{{ section.heading }}</span>
+              </span>
+              <span class="review-outline-item__footer">
+                <span>{{ section.evidence_refs | length }} cite{% if section.evidence_refs | length != 1 %}s{% endif %}</span>
+                <span class="review-outline-item__reviewing" aria-hidden="true">▸ reviewing</span>
+              </span>
+            </button>
+          </li>
+        {% else %}
+          <li class="review-outline__empty brk-caps" style="padding: 18px 32px;">
+            outline_draft 為空 — 請先執行 Brook synthesize
+          </li>
+        {% endfor %}
+      </ul>
+    </nav>
+
+    {# ── evidence panel (right) ──────────────────────────────────────── #}
+    <section class="review-evidence" aria-label="證據池 · evidence">
+      <div class="review-evidence__header" id="evidence-header">
+        <div class="brk-caps review-evidence__caps">
+          §<span id="evidence-section-num">{{ store.outline_draft[0].section if store.outline_draft else '—' }}</span>
+          · evidence pool · <span id="evidence-count">{{ store.evidence_pool | length }}</span> sources
+          · sorted by relevance ↓
+        </div>
+        <h2 class="brk-zh review-evidence__heading" id="evidence-heading">
+          {{ store.outline_draft[0].heading if store.outline_draft else '—' }}
+        </h2>
+      </div>
+
+      <div class="review-evidence__body" id="evidence-body">
+        {% if not store.evidence_pool %}
+          <div class="review-state" data-state="empty">
+            <div class="review-state__title">這個專案還沒有任何被拉進來的證據。</div>
+            <div class="review-state__body">
+              Brook 的 retrieval pass 在語料庫中沒有命中。等待 synthesize flow 寫入。
+            </div>
+          </div>
+        {% else %}
+          {# `evidence_cards` is a normalised view-model built in the route —
+             see _view_model_for_evidence in routers/projects.py. Each card has
+             slug / paper_title / heading_in_paper / excerpt / relevance_pct /
+             hit_reason / sections_referenced (csv of section ints). #}
+          {% for card in evidence_cards %}
+            <article class="review-evidence-card"
+                     id="evidence-card-{{ card.slug }}"
+                     role="article"
+                     data-evidence-slug="{{ card.slug }}"
+                     data-section-refs="{{ card.sections_referenced }}">
+              <header class="review-evidence-card__header">
+                <div class="review-evidence-card__meta">
+                  <div class="brk-caps review-evidence-card__caps">
+                    <span>{{ card.slug }}</span>
+                    {% if card.heading_in_paper %}
+                      <span class="sep">·</span>
+                      <span>paper://{{ card.slug }}</span>
+                    {% endif %}
+                  </div>
+                  <h3 class="review-evidence-card__title">{{ card.paper_title }}</h3>
+                  {# authors / journal / year are not in real chunks → omit. #}
+                </div>
+                <div class="review-evidence-card__relevance">
+                  <div class="brk-caps review-evidence-card__relevance-label">relevance</div>
+                  <div class="review-evidence-card__relevance-value">
+                    {% if card.relevance_pct is not none %}{{ card.relevance_pct }}<span class="review-evidence-card__relevance-unit">%</span>{% else %}—{% endif %}
+                  </div>
+                </div>
+              </header>
+
+              {% if card.heading_in_paper %}
+              <div class="review-evidence-card__heading brk-zh">{{ card.heading_in_paper }}</div>
+              {% endif %}
+
+              <blockquote class="review-evidence-card__excerpt"
+                          data-excerpt="true">{{ card.excerpt }}</blockquote>
+
+              <footer class="review-evidence-card__footer">
+                <div class="review-evidence-card__pulled">
+                  ↳ {{ card.hit_reason or '—' }}
+                </div>
+                <div class="review-evidence-card__reject-row">
+                  <button type="button"
+                          class="reject-btn"
+                          data-reject="section"
+                          data-evidence-slug="{{ card.slug }}"
+                          aria-label="從本段拿掉證據 {{ card.slug }}">從這段拿掉</button>
+                  <button type="button"
+                          class="reject-btn reject-btn--global"
+                          data-reject="global"
+                          data-evidence-slug="{{ card.slug }}"
+                          aria-label="整條下架證據 {{ card.slug }}">整條不要</button>
+                </div>
+              </footer>
+            </article>
+          {% endfor %}
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  {# ── reject confirm dialog ─────────────────────────────────────────── #}
+  <dialog class="review-confirm" id="reject-dialog" aria-labelledby="reject-dialog-title">
+    <form method="dialog" id="reject-form">
+      <div class="review-confirm__head">
+        <div class="brk-caps review-confirm__caps" id="reject-dialog-kind">
+          整條不要 · global down-rank
+        </div>
+        <h2 class="review-confirm__title" id="reject-dialog-title">
+          確定要把這條證據從整個專案下架嗎？
+        </h2>
+      </div>
+      <div class="review-confirm__body">
+        <div class="review-confirm__evidence-meta" id="reject-dialog-meta">—</div>
+        <div class="review-confirm__effects">
+          <div class="brk-caps review-confirm__effects-caps">會發生什麼事</div>
+          <ul id="reject-dialog-effects">
+            <li>本條證據將從專案的可選池移除（依 grain 影響整段或整個專案）。</li>
+            <li>未來的 retrieval pass 會將該段落降權，paper 仍可被其他段落引用。</li>
+            <li>此操作會被記錄於 user_actions audit trail。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="review-confirm__foot">
+        <button type="button" class="btn btn-ghost" id="reject-cancel">取消</button>
+        <button type="submit" class="btn btn-danger" id="reject-confirm">是的，下架</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+
+<script src="/static/projects/review.js" type="module"></script>
+</body>
+</html>
