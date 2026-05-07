@@ -27,7 +27,12 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from shared.annotation_store import AnnotationSetV2, get_annotation_store
+from shared.annotation_store import (
+    AnnotationSetV2,
+    AnnotationSetV3,
+    get_annotation_store,
+    upgrade_to_v3,
+)
 from shared.book_queue import (
     cancel as cancel_book,
 )
@@ -335,15 +340,37 @@ def _write_digest_in_background(book_id: str) -> None:
 @router.post("/api/books/{book_id}/annotations")
 async def post_annotations(
     book_id: str,
-    payload: AnnotationSetV2,
+    payload: dict,
     background_tasks: BackgroundTasks,
 ):
-    if payload.book_id != book_id:
+    """Accept either an ``AnnotationSetV2`` (legacy book reader payloads) or an
+    ``AnnotationSetV3`` (post ADR-021 §1 round-trip from a Reader that already
+    received a v3 GET response). Both are upgraded/normalised to v3 on disk.
+    """
+    from pydantic import ValidationError
+
+    schema_version = payload.get("schema_version")
+    try:
+        if schema_version == 3:
+            ann_set: AnnotationSetV2 | AnnotationSetV3 = AnnotationSetV3.model_validate(payload)
+        else:
+            ann_set = AnnotationSetV2.model_validate(payload)
+    except ValidationError as exc:
+        # Surface validation failures as 422 — same shape FastAPI produced when the
+        # endpoint declared ``payload: AnnotationSetV2`` directly.
+        raise HTTPException(422, detail=exc.errors()) from exc
+
+    payload_book_id = ann_set.book_id if ann_set.book_id is not None else book_id
+    if payload_book_id != book_id:
         raise HTTPException(422, detail="book_id in URL does not match payload")
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
-    get_annotation_store().save(payload)
+    # ADR-021 §1: book Reader still posts v2 payloads; upgrade to v3 at the save
+    # boundary so the on-disk store is uniformly v3 (existing BackgroundTasks digest
+    # writer pattern is preserved — only ADR-021 v1's prose regenerate hook was
+    # cancelled, and that hook never landed in code).
+    get_annotation_store().save(upgrade_to_v3(ann_set))
     background_tasks.add_task(_write_digest_in_background, book_id)
     return {"ok": True, "digest_status": "queued"}
 
