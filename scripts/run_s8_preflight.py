@@ -326,8 +326,14 @@ def _build_phase1_prompt(payload, *, book_title: str, ingest_date: str) -> str:
         "VERBATIM BODY (copy unchanged):\n\n"
         f"{payload.verbatim_body}\n\n"
         "---\n\n"
-        "Output the complete chapter source markdown now (YAML frontmatter + body). "
-        "No preamble, no commentary, no code fences around the page itself."
+        "Output a single JSON object with exactly two top-level keys:\n"
+        '  "frontmatter": { all frontmatter fields including wikilinks_introduced (list), '
+        'section_anchors (list), vision_status: "caption_only", figures metadata }\n'
+        '  "sections": [ { "anchor": "<heading text from section_anchors — no ## prefix>", '
+        '"concept_map_md": "```mermaid\\nflowchart LR\\n  A --> B\\n```", '
+        '"wikilinks": ["Term", ...] }, ... ]\n'
+        "Include one entry per item in section_anchors, in the same order.\n"
+        "Respond with raw JSON only — no markdown fences, no preamble, no commentary."
     )
 
 
@@ -343,14 +349,68 @@ def _strip_outer_fence(text: str) -> str:
     return s
 
 
-def run_phase1_source_page(payload, *, vault_root: Path, book_title: str) -> Path:
-    """Run Phase 1 — emit the chapter source page to the staging vault."""
-    from shared.source_ingest import verbatim_paragraph_match_pct  # noqa: F401
+def _parse_phase1_json(raw: str, payload, prompt: str) -> dict:
+    """Parse and schema-validate LLM JSON. Retries once on JSONDecodeError; no retry on schema mismatch."""
 
-    prompt = _build_phase1_prompt(payload, book_title=book_title, ingest_date=str(date.today()))
-    log.info("Phase 1: calling LLM for source page (model=%s)", PREFLIGHT_MODEL)
-    page_md = _ask_llm(prompt, max_tokens=16000)
-    page_md = _strip_outer_fence(page_md)
+    def _parse(text: str) -> dict:
+        return json.loads(_strip_outer_fence(text))
+
+    try:
+        parsed = _parse(raw)
+    except json.JSONDecodeError:
+        log.warning("Phase 1: LLM returned non-JSON, retrying once…")
+        parsed = _parse(_ask_llm(prompt, max_tokens=16000))
+
+    if not isinstance(parsed.get("frontmatter"), dict):
+        raise ValueError(f"LLM 'frontmatter' not a dict: keys={list(parsed.keys())}")
+    if not isinstance(parsed.get("sections"), list):
+        raise ValueError(f"LLM 'sections' not a list: keys={list(parsed.keys())}")
+    if len(parsed["sections"]) != len(payload.section_anchors):
+        raise ValueError(
+            f"sections count mismatch: LLM={len(parsed['sections'])} walker={len(payload.section_anchors)}"
+        )
+    return parsed
+
+
+def run_phase1_source_page(
+    payload, *, vault_root: Path, book_title: str, dry_run: bool = False
+) -> Path:
+    """Run Phase 1 — emit the chapter source page to the staging vault."""
+    import yaml as _yaml
+
+    if dry_run:
+        parsed: dict = {
+            "frontmatter": {
+                "title": payload.chapter_title,
+                "chapter_index": payload.chapter_index,
+                "book_id": payload.book_id,
+                "vision_status": "caption_only",
+                "wikilinks_introduced": [],
+                "section_anchors": payload.section_anchors,
+            },
+            "sections": [
+                {
+                    "anchor": a,
+                    "concept_map_md": "```mermaid\nflowchart LR\n  A --> B\n```",
+                    "wikilinks": [],
+                }
+                for a in payload.section_anchors
+            ],
+        }
+    else:
+        prompt = _build_phase1_prompt(payload, book_title=book_title, ingest_date=str(date.today()))
+        log.info("Phase 1: calling LLM for source page (model=%s)", PREFLIGHT_MODEL)
+        parsed = _parse_phase1_json(_ask_llm(prompt, max_tokens=16000), payload, prompt)
+
+    body = _assemble_body(
+        payload.verbatim_body,
+        payload.section_anchors,
+        payload.figures,
+        parsed["sections"],
+        payload.book_id,
+    )
+    fm_yaml = _yaml.dump(parsed["frontmatter"], allow_unicode=True, default_flow_style=False)
+    page_md = f"---\n{fm_yaml}---\n\n{body}"
 
     out_path = (
         vault_root
@@ -363,7 +423,15 @@ def run_phase1_source_page(payload, *, vault_root: Path, book_title: str) -> Pat
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(page_md, encoding="utf-8")
-    log.info("Phase 1: wrote %s (%d bytes)", out_path, len(page_md))
+
+    if dry_run:
+        print(
+            f"[dry-run] wrote ch{payload.chapter_index}.md "
+            f"({len(page_md)} chars, {len(payload.section_anchors)} sections, "
+            f"{len(payload.figures)} figures)"
+        )
+    else:
+        log.info("Phase 1: wrote %s (%d bytes)", out_path, len(page_md))
     return out_path
 
 
@@ -789,6 +857,7 @@ def _pick_chapter(payloads, requested_index: int) -> tuple[object, str]:
                 f"selected real chapter {requested_index} = '{chosen.chapter_title}' "
                 f"(walker index {chosen.chapter_index})"
             )
+            chosen.chapter_index = requested_index  # D4: filename uses real chapter number
         else:
             note = f"requested index {requested_index} = '{chosen.chapter_title}'"
         return chosen, note
@@ -846,9 +915,18 @@ def run_preflight(args) -> PreflightResult:
     result.figures_described = fig_desc
 
     if args.dry_run:
-        log.info("DRY-RUN: skipping all LLM calls and writes")
         from shared.source_ingest import verbatim_paragraph_match_pct
 
+        try:
+            source_page_path = run_phase1_source_page(
+                payload,
+                vault_root=vault_root,
+                book_title=args.book_title or payload.book_id,
+                dry_run=True,
+            )
+            result.source_page_path = str(source_page_path)
+        except Exception as e:
+            result.fatal_error = f"Phase 1 dry-run failed: {e!r}"
         result.verbatim_match_pct = verbatim_paragraph_match_pct(
             payload.verbatim_body, payload.verbatim_body
         )
@@ -988,7 +1066,11 @@ def main() -> int:
     print(f">> {result.recommendation()}")
     print("=" * 70)
 
-    return 0 if result.acceptance_pass and not result.fatal_error else 2
+    if result.fatal_error:
+        return 2
+    if args.dry_run:
+        return 0
+    return 0 if result.acceptance_pass else 2
 
 
 if __name__ == "__main__":
