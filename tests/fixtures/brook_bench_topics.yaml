@@ -1,0 +1,57 @@
+# Brook synthesize mini-bench fixtures (ADR-021 §3 + Codex amendment #6, issue #457).
+#
+# 5 representative Project topics × {K=8,15,30} × {hybrid, haiku} = 30 runs.
+# Recall is computed against `ground_truth` slugs — manually curated KB paths
+# that *should* surface for the topic. Empty / TODO list → harness reports
+# retrieved hits without recall (still useful for eyeballing).
+#
+# Slug format: relative to vault root, e.g. `KB/Wiki/Concepts/creatine.md`
+# or `KB/Wiki/Sources/some-pubmed-digest.md`. Substring match is used (so
+# either the full path or just a filename stem works).
+
+topics:
+  - id: creatine_cognitive
+    query: 肌酸對認知功能的影響
+    description: bilingual recall test — Chinese query, mixed-language corpus
+    ground_truth:
+      # TODO: shosho manually curate from corpus
+      - creatine
+      - cognitive-function
+      - brain-energy-metabolism
+
+  - id: overtraining_recovery
+    query: 過度訓練的恢復策略
+    description: training science — recovery / HRV / parasympathetic
+    ground_truth:
+      # TODO: shosho manually curate from corpus
+      - overtraining
+      - recovery
+      - hrv
+
+  - id: blue_zones
+    query: blue zones longevity practices
+    description: English query, longevity / lifestyle entities
+    ground_truth:
+      # TODO: shosho manually curate from corpus
+      - blue-zones
+      - longevity
+      - okinawa
+      - sardinia
+
+  - id: protein_muscle_synthesis
+    query: 蛋白質攝取量與肌肉合成
+    description: nutrition / MPS / leucine threshold
+    ground_truth:
+      # TODO: shosho manually curate from corpus
+      - protein-intake
+      - muscle-protein-synthesis
+      - leucine
+
+  - id: sleep_cognitive
+    query: sleep deprivation cognitive performance
+    description: English query, sleep × cognition cross-domain
+    ground_truth:
+      # TODO: shosho manually curate from corpus
+      - sleep-deprivation
+      - cognitive-performance
+      - sleep
