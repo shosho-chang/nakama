@@ -302,7 +302,7 @@ CREATE INDEX IF NOT EXISTS idx_r2_backup_time
   /home/nakama/.venv/bin/python -m agents.franky.health_check \
   >> /var/log/nakama/franky.log 2>&1
 
-# Weekly：context snapshot regen（ADR-022 §3 Phase 1，pre-RAG 路徑；S2a 落地）
+# Weekly：context snapshot regen（ADR-023 §3 Phase 1，pre-RAG 路徑；S2a 落地）
 30 21 * * 0 nakama flock -n /var/lock/franky_context_snapshot.lock \
   /home/nakama/.venv/bin/python -m agents.franky.state.context_snapshot regenerate \
   >> /var/log/nakama/franky.log 2>&1
@@ -312,7 +312,7 @@ CREATE INDEX IF NOT EXISTS idx_r2_backup_time
 - Python 這端在 entry point 啟動 `cron_runs` row，結束時 update status（遵守 `reliability.md` §10 transaction 包寫）
 - 統一透過 `shared/cron_wrapper.py` 的 context manager 處理 operation_id 生成與 cron_runs 寫入
 
-**Cron table（Phase 1 + ADR-022 amendments）**：
+**Cron table（Phase 1 + ADR-023 amendments）**：
 
 | Job | 頻率（台北 TZ） | Module | Lock file |
 |---|---|---|---|
@@ -320,7 +320,7 @@ CREATE INDEX IF NOT EXISTS idx_r2_backup_time
 | R2 backup verify | 每日 03:00 | `agents.franky.r2_backup_verify` | `/var/lock/franky_r2.lock` |
 | Weekly digest | 週一 10:00 | `agents.franky.weekly_digest` | `/var/lock/franky_weekly.lock` |
 | News digest | 每日 06:30 | `agents.franky.news_digest` | `/var/lock/franky_news.lock` |
-| **Context snapshot regen**（ADR-022 §3 Phase 1，S2a） | **週日 21:30** | `agents.franky.state.context_snapshot regenerate` | `/var/lock/franky_context_snapshot.lock` |
+| **Context snapshot regen**（ADR-023 §3 Phase 1，S2a） | **週日 21:30** | `agents.franky.state.context_snapshot regenerate` | `/var/lock/franky_context_snapshot.lock` |
 
 **Context snapshot runbook（S2a）**：
 

@@ -1,4 +1,4 @@
-"""Franky context snapshot regenerator（ADR-022 §3 Phase 1，pre-RAG 路徑）。
+"""Franky context snapshot regenerator（ADR-023 §3 Phase 1，pre-RAG 路徑）。
 
 每週日 21:30 台北 cron 觸發，產出 `agents/franky/state/franky_context_snapshot.md`，
 inject 進 score + synthesis prompt。不依賴 ADR-020 RAG infra。
@@ -379,7 +379,7 @@ def build_snapshot(
     body = (
         frontmatter
         + "\n# Franky Context Snapshot\n\n"
-        + "Pre-RAG substrate per ADR-022 §3 Phase 1。inject 進 score + synthesis prompt。\n\n"
+        + "Pre-RAG substrate per ADR-023 §3 Phase 1。inject 進 score + synthesis prompt。\n\n"
         + "## 1. Active priorities\n\n"
         + block1.rstrip()
         + "\n\n"
@@ -414,7 +414,7 @@ def regenerate(*, dry_run: bool = False, output_path: Path = SNAPSHOT_PATH) -> s
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m agents.franky.state.context_snapshot",
-        description="Regenerate franky context snapshot (ADR-022 §3 Phase 1).",
+        description="Regenerate franky context snapshot (ADR-023 §3 Phase 1).",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
     regen = sub.add_parser("regenerate", help="Regenerate franky_context_snapshot.md")
