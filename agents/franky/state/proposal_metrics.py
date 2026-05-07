@@ -38,7 +38,6 @@ from typing import Any, Callable, Optional
 
 from shared.schemas.proposal_metrics import (
     ProposalFrontmatterV1,
-    ProposalMetricV1,
     ProposalStatus,
 )
 from shared.state import _get_conn

@@ -26,7 +26,6 @@ from agents.franky.state.proposal_metrics import (
 )
 from shared.schemas.proposal_metrics import ProposalFrontmatterV1
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

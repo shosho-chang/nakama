@@ -13,7 +13,6 @@ from agents.franky.state.frontmatter_extractor import (
     extract_from_path,
 )
 
-
 VAULT_PAGE = textwrap.dedent(
     """\
     ---
