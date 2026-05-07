@@ -426,14 +426,23 @@ def rebuild_index(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
 
 
 def _resolve_vault_path() -> Path:
-    """Resolve the vault root from env or repo-root fallback."""
-    import os as _os
+    """Resolve the vault root via the project's canonical config helper.
 
-    env_path = _os.environ.get("NAKAMA_VAULT_PATH") or _os.environ.get("OBSIDIAN_VAULT_PATH")
-    if env_path:
-        return Path(env_path)
-    # Fallback: <repo_root>/vault — local-dev convenience.
-    return Path(__file__).resolve().parent.parent / "vault"
+    Delegates to ``shared.config.get_vault_path()``, which already honors the
+    ``VAULT_PATH`` env var ahead of ``config.yaml``. Falls back to ``<repo>/vault``
+    only if config loading fails (e.g. running outside the repo).
+    """
+    try:
+        from shared.config import get_vault_path  # noqa: PLC0415
+
+        return get_vault_path()
+    except Exception:
+        import os as _os  # noqa: PLC0415
+
+        override = _os.environ.get("VAULT_PATH")
+        if override:
+            return Path(override)
+        return Path(__file__).resolve().parent.parent / "vault"
 
 
 def _main() -> None:
@@ -457,7 +466,7 @@ def _main() -> None:
         "--vault",
         type=Path,
         default=None,
-        help="Vault root (defaults to NAKAMA_VAULT_PATH / OBSIDIAN_VAULT_PATH / <repo>/vault).",
+        help="Vault root (defaults to VAULT_PATH env / config.yaml vault_path / <repo>/vault).",
     )
     args = parser.parse_args()
 
@@ -465,7 +474,9 @@ def _main() -> None:
     if not vault.exists():
         raise SystemExit(f"Vault path does not exist: {vault}")
 
-    conn = get_kb_conn()
+    # ADR-022: skip dim assertion on --rebuild — that's the path that fixes
+    # the very mismatch the assertion would refuse to open the conn for.
+    conn = get_kb_conn(check_dim=not args.rebuild)
     if args.rebuild:
         print(
             f"[rebuild] backend={kb_embedder.current_backend()} "
