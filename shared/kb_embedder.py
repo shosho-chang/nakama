@@ -85,9 +85,7 @@ def embed(text: str, *, backend: EmbedBackend | None = None) -> np.ndarray:
     return embed_batch([text], backend=backend)[0]
 
 
-def embed_batch(
-    texts: list[str], *, backend: EmbedBackend | None = None
-) -> list[np.ndarray]:
+def embed_batch(texts: list[str], *, backend: EmbedBackend | None = None) -> list[np.ndarray]:
     """Embed a list of texts → list of float32 numpy arrays."""
     if not texts:
         return []
