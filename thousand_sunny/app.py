@@ -23,6 +23,7 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge_zoro,
     brook,
     franky,
+    projects,
     repurpose,
     zoro,
 )
@@ -79,3 +80,4 @@ else:
 
 app.include_router(zoro.router)
 app.include_router(brook.router)
+app.include_router(projects.router)
