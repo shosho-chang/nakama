@@ -246,9 +246,7 @@ def write_digest(book_id: str) -> DigestReport:
             # ADR-021 §1: v3 reflections use the same chapter_ref as v2 comments;
             # fall back to the cfi_anchor's spine index if chapter_ref is None.
             anchor = getattr(item, "cfi_anchor", None)
-            ch = item.chapter_ref or (
-                _extract_chapter_ref(anchor) if anchor else "unknown"
-            )
+            ch = item.chapter_ref or (_extract_chapter_ref(anchor) if anchor else "unknown")
         else:
             ch = _extract_chapter_ref(item.cfi)
         chapters.setdefault(ch, []).append(item)
