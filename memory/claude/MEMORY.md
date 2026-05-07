@@ -8,6 +8,7 @@
 - [feedback_auto_mode_run_full_workflow.md](feedback_auto_mode_run_full_workflow.md) — auto mode 跑 Matt workflow 時 phase 之間自動接下一個，不停在 handoff
 - [project_nakama_overview.md](project_nakama_overview.md) — 專案總覽：Agent 全員、工作流程、狀態、基礎設施、Tech Stack
 - [user_profile.md](user_profile.md) — 修修的角色、偏好、知識背景
+- [user_vault_access_pattern.md](user_vault_access_pattern.md) — Obsidian 只看時間軸 + Project 頁面，KB/Agent 內容期望走 Web UI；vault 簡潔性是 first-class concern
 - [feedback_dev_workflow.md](feedback_dev_workflow.md) — 完整開發流程規範：角色分工、六個 Phase、交接原則、技術選型要上網調研
 - [project_adr002_status.md](project_adr002_status.md) — ADR-002 記憶系統 Phase 1-3 完成，Phase 4 待 MemPalace
 - [project_pending_tasks.md](project_pending_tasks.md) — 待辦：VPS 部署 + 端到端測試（Robin/Zoro/Brook）、Nami 開發、補測試
@@ -119,6 +120,8 @@
 - [feedback_test_realism.md](feedback_test_realism.md) — mock integration test 時輸入形狀要對齊真實契約，別為了測試好寫造不可能的資料
 - [feedback_mock_use_spec.md](feedback_mock_use_spec.md) — mock 第三方 SDK 要 `spec=` / `autospec=True`，否則 MagicMock 預設 truthy 會掩蓋 nonexistent-method bug
 - [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
+- [feedback_panel_triangulated_judgment.md](feedback_panel_triangulated_judgment.md) — Panel review 後 strategic fork 直接整合判斷不要 defer 回 user，三家 audit 已消化 confirmation bias
+- [feedback_proactive_context_warning.md](feedback_proactive_context_warning.md) — 大 artifact / panel / commit 後主動提 context token 狀態 + /compact 建議，不要等 user 跑 /context 才發現超載
 - [feedback_deep_module_vs_leaky_abstraction.md](feedback_deep_module_vs_leaky_abstraction.md) — 「short interface + deep impl」是 Ousterhout 深模組（好事），不是 shallow facade；cost 不透明走 docstring 不重構
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
 - [feedback_llm_pipeline_consume_all_fields.md](feedback_llm_pipeline_consume_all_fields.md) — prompt 教 LLM 輸出的 schema 欄位必須在 pipeline 內 consume，不然 schema drift 默默 leak（PR #171 review 抓到 pick=false 例）
