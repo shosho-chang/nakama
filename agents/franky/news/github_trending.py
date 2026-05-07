@@ -1,6 +1,6 @@
 """GitHub trending Python fetcher — Franky news S1 experimental low-trust source.
 
-Trust tier semantics（ADR-022 §2 S1）：
+Trust tier semantics（ADR-023 §2 S1）：
   - 此 source 屬 experimental low-trust → 候選帶 ``trust_tier: experimental``，
     下游 score 階段對其 cap 到 4（不能拿 5）。
   - 進 curate pool 前先跑 repo sanity check（age / stars / README / license /
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -32,6 +33,17 @@ from dateutil import parser as dateparser
 
 from shared.log import get_logger
 from shared.state import is_seen
+
+
+def _github_api_headers() -> dict[str, str]:
+    """Auth header for api.github.com calls. Without GITHUB_TOKEN env var the
+    unauth limit is 60 req/hr shared by host IP — exhausted within a single
+    cron run. With token: 5000 req/hr per token."""
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 logger = get_logger("nakama.franky.news.github_trending")
 
@@ -179,7 +191,7 @@ def sanity_check(
 ) -> tuple[bool, str]:
     """Return (ok, reason). All five rules must pass; first fail wins.
 
-    Rules（ADR-022 §2 S1）：
+    Rules（ADR-023 §2 S1）：
       1. age ≥ min_age_days（created_at）
       2. stars ≥ min_stars（stargazers_count）
       3. has README（require_readme=True 時）
@@ -250,7 +262,7 @@ def _fetch_repo_metadata(owner: str, repo: str) -> dict | None:
     try:
         resp = httpx.get(
             api_url,
-            headers={"User-Agent": _USER_AGENT, "Accept": "application/vnd.github+json"},
+            headers={"User-Agent": _USER_AGENT, **_github_api_headers()},
             timeout=_HTTP_TIMEOUT,
             follow_redirects=True,
         )
@@ -265,7 +277,7 @@ def _fetch_repo_metadata(owner: str, repo: str) -> dict | None:
     try:
         readme_resp = httpx.get(
             f"https://api.github.com/repos/{owner}/{repo}/readme",
-            headers={"User-Agent": _USER_AGENT, "Accept": "application/vnd.github+json"},
+            headers={"User-Agent": _USER_AGENT, **_github_api_headers()},
             timeout=_HTTP_TIMEOUT,
             follow_redirects=True,
         )

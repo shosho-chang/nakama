@@ -22,12 +22,24 @@ import hashlib
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import os
 from typing import Any, Iterable
 
 import httpx
 
 from shared.log import get_logger
 from shared.state import is_seen
+
+
+def _github_api_headers() -> dict[str, str]:
+    """Auth header for api.github.com calls. Without GITHUB_TOKEN env var the
+    unauth limit is 60 req/hr shared by host IP — combined with github_trending
+    that exhausts in a single run. With token: 5000 req/hr per token."""
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 logger = get_logger("nakama.franky.news.awesome_diff")
 
@@ -180,7 +192,7 @@ def _fetch_readme_pair(
     on this path that is older than the lookback boundary.
     """
     cutoff = now - timedelta(days=lookback_days)
-    headers = {"User-Agent": _USER_AGENT, "Accept": "application/vnd.github+json"}
+    headers = {"User-Agent": _USER_AGENT, **_github_api_headers()}
 
     # 1. List commits touching this path
     try:

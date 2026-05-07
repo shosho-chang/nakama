@@ -11,7 +11,7 @@
 
 從以下 {total_candidates} 條候選 AI blog 文章中，挑出 **8-12 條**「修修今天該知道」的精選，並標註類別。
 
-候選來源已擴張（ADR-022 §2 S1）：
+候選來源已擴張（ADR-023 §2 S1）：
 - 官方 blog RSS / GitHub release atom — full trust，正常評分
 - Anthropic Cookbook + Claude Code releases — full trust，與 Nakama / Claude Code 工作流高度相關
 - awesome-mcp-servers / awesome-claude-code README diff — full trust，反映生態新增條目

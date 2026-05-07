@@ -83,7 +83,7 @@ class NewsDigestPipeline(BaseAgent):
         self._slack_bot_override = slack_bot
         cfg_path = feeds_config_path or _FEEDS_CONFIG
         self.feeds: list[FeedConfig] = load_feeds(cfg_path)
-        # ADR-022 §2 S1: load extra source blocks from the same yaml.
+        # ADR-023 §2 S1: load extra source blocks from the same yaml.
         raw_cfg: dict = {}
         if cfg_path.exists():
             with open(cfg_path, encoding="utf-8") as f:
@@ -184,7 +184,7 @@ class NewsDigestPipeline(BaseAgent):
             except Exception as e:
                 self.logger.warning(f"Score {item_id!r} 失敗：{e}")
                 continue
-            # ADR-022 §2 S1: experimental low-trust tier — cap overall + per-dim
+            # ADR-023 §2 S1: experimental low-trust tier — cap overall + per-dim
             # at the candidate's score_ceiling (default 4 for trending).
             score_result = _apply_trust_ceiling(cand, score_result, logger=self.logger)
             scored.append(
@@ -368,7 +368,7 @@ class NewsDigestPipeline(BaseAgent):
 
 
 # ----------------------------------------------------------------------
-# Trust tier helpers (ADR-022 §2 S1)
+# Trust tier helpers (ADR-023 §2 S1)
 # ----------------------------------------------------------------------
 
 
