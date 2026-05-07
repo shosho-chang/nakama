@@ -46,6 +46,10 @@ class NoFrontmatterFoundError(FrontmatterExtractError):
     """Input text had no recognisable YAML frontmatter block."""
 
 
+class FrontmatterParseError(FrontmatterExtractError):
+    """The YAML block was located but could not be parsed (malformed YAML)."""
+
+
 class MissingFrontmatterKeyError(FrontmatterExtractError):
     """The frontmatter block is missing one or more of the 5 required keys."""
 
@@ -108,12 +112,16 @@ def extract(text: str) -> ProposalFrontmatterV1:
 
     Raises:
         NoFrontmatterFoundError: no YAML block at all.
+        FrontmatterParseError: block found but malformed YAML.
         MissingFrontmatterKeyError: block parsed but >=1 of the 5 keys absent.
         pydantic.ValidationError: a key was present but failed schema (e.g.
             invalid metric_type enum, malformed proposal_id slug).
     """
     block = _find_yaml_block(text)
-    parsed = yaml.safe_load(block) or {}
+    try:
+        parsed = yaml.safe_load(block) or {}
+    except yaml.YAMLError as exc:
+        raise FrontmatterParseError(f"malformed YAML in frontmatter block: {exc}") from exc
     if not isinstance(parsed, dict):
         raise FrontmatterExtractError(
             f"frontmatter must be a YAML mapping, got {type(parsed).__name__}"

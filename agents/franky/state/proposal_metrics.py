@@ -311,13 +311,20 @@ def mark_ready(proposal_id: str) -> dict[str, Any]:
 
 
 def mark_wontfix(proposal_id: str, reason: str) -> dict[str, Any]:
-    """Terminal wontfix from triage. `reason` is appended to baseline_source
-    so retrospective can surface it without a new column."""
-    return transition(
-        proposal_id,
-        "wontfix",
-        extra_fields={"baseline_source": f"wontfix: {reason}"},
-    )
+    """Terminal wontfix from triage. `reason` is written to baseline_source
+    only when that column is empty, so quantitative proposals' real
+    baseline_source set at insert is preserved (review feedback PR #481).
+    Quantitative + wontfix loses the reason — acceptable until a dedicated
+    `wontfix_reason` column is added (deferred to schema __v2)."""
+    row = get(proposal_id)
+    if row is None:
+        raise IllegalStatusTransitionError(
+            f"proposal_id {proposal_id!r} not found"
+        )
+    extra: dict[str, Any] = {}
+    if not row.get("baseline_source"):
+        extra["baseline_source"] = f"wontfix: {reason}"
+    return transition(proposal_id, "wontfix", extra_fields=extra)
 
 
 def mark_shipped(
