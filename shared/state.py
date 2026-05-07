@@ -419,6 +419,45 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_kb_search_feedback_book
             ON kb_search_feedback(book_id, marked_at DESC);
+
+        -- ADR-023 §6 Franky evolution-loop proposal lifecycle.
+        -- Canonical DDL: migrations/014_proposal_metrics.sql.
+        -- Owned by agents/franky/state/proposal_metrics.py (CRUD + FSM).
+        -- Schema is frozen at v1; future columns use `__v2` suffix.
+        CREATE TABLE IF NOT EXISTS proposal_metrics (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id         TEXT NOT NULL UNIQUE,
+            issue_number        INTEGER,
+            week_iso            TEXT NOT NULL,
+            related_adr         TEXT,
+            related_issues      TEXT,
+            metric_type         TEXT NOT NULL
+                                CHECK (metric_type IN ('quantitative','checklist','human_judged')),
+            success_metric      TEXT NOT NULL,
+            baseline_source     TEXT,
+            baseline_value      TEXT,
+            post_ship_value     TEXT,
+            verification_owner  TEXT,
+            try_cost_estimate   TEXT,
+            panel_recommended   INTEGER NOT NULL CHECK (panel_recommended IN (0,1)),
+            status              TEXT NOT NULL
+                                CHECK (status IN ('candidate','promoted','triaged','ready',
+                                                  'wontfix','shipped','verified','rejected')),
+            created_at          TEXT NOT NULL,
+            promoted_at         TEXT,
+            triaged_at          TEXT,
+            shipped_at          TEXT,
+            verified_at         TEXT,
+            related_pr          TEXT,
+            related_commit      TEXT,
+            source_item_ids     TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_proposal_metrics_status
+            ON proposal_metrics(status, created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_proposal_metrics_week
+            ON proposal_metrics(week_iso, created_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
