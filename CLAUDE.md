@@ -111,6 +111,16 @@ Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS
 
 ---
 
+## AFK / 並行 dispatch 派工規則
+
+**Default = Sandcastle**，不是「sandcastle 或 local agent worktree 二選一」。理由見 [feedback_dual_window_worktree.md](memory/claude/feedback_dual_window_worktree.md) 與 [feedback_sandcastle_default.md](memory/claude/feedback_sandcastle_default.md)。
+
+- **AFK / 多並行任務 / 長跑 batch** → Sandcastle（cloud sandbox 物理隔離，無共享檔案系統）
+- **本機 Agent tool 的 `isolation:worktree`** 只「名義隔離」— sub-agent Bash cwd 不真釘住，`cd <worktree>` 後可能回主 repo path（4/25、5/5、5/6、5/7 反覆踩到）。**僅** 在單一短任務、能盯住整段執行的場景使用
+- 派工前必讀：`memory/claude/feedback_sandcastle_default.md`（不靠 MEMORY.md index — index 會 stale）
+
+---
+
 ## 檔案刪除規則
 
 禁止使用 `rm` / `rmdir`（已在 `.claude/settings.json` deny）。
