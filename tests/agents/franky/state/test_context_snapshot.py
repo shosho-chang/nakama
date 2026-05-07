@@ -10,12 +10,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 from agents.franky.state import context_snapshot as cs
-
 
 # ---------------------------------------------------------------------------
 # token utility
@@ -211,7 +207,9 @@ def test_fetch_open_issues_nonzero_returncode(monkeypatch):
 def test_fetch_open_issues_parses_json(monkeypatch):
     class R:
         returncode = 0
-        stdout = json.dumps([{"number": 1, "title": "t", "labels": [], "createdAt": "2026-05-07T00:00:00Z"}])
+        stdout = json.dumps(
+            [{"number": 1, "title": "t", "labels": [], "createdAt": "2026-05-07T00:00:00Z"}]
+        )
         stderr = ""
 
     monkeypatch.setattr(cs.subprocess, "run", lambda *a, **kw: R())
