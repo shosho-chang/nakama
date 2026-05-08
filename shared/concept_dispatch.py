@@ -214,3 +214,48 @@ def _check_hard_invariants(path: Path, *, maturity_level: str | None) -> None:
                 f"< {_L3_BODY_MIN_WORDS} (ADR-020 hard min). "
                 "Ingest aborted — report this slug for human intervention."
             )
+
+
+def reconcile_mentioned_in(dispatched: list[dict], source_link: str) -> int:
+    """Ensure every dispatched concept's page (if it exists) has source_link in mentioned_in.
+
+    Handles L1 alias entries and failed dispatches equally — if a concept page
+    exists on disk for the canonical slug, it gets a source_link entry.
+    Idempotent: running twice does not duplicate entries.
+
+    Args:
+        dispatched: list of dispatch log entries from run_phase2_dispatch.
+                    Each entry must have a ``"slug"`` key.
+        source_link: wikilink to the source chapter, e.g.
+                     ``"[[Sources/Books/bse-2024/ch3]]"``.
+
+    Returns:
+        Count of concept pages actually updated.
+    """
+    import shared.kb_writer as kw
+    from shared.config import get_vault_path
+    from shared.kb_writer import update_mentioned_in
+
+    concept_dir = get_vault_path() / kw.KB_CONCEPTS_DIR
+    updated = 0
+    seen: set[str] = set()
+
+    for entry in dispatched:
+        slug = entry.get("slug", "")
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+
+        page_path = concept_dir / f"{slug}.md"
+        if not page_path.exists():
+            continue
+
+        if update_mentioned_in(page_path, source_link):
+            updated += 1
+            logger.info(
+                "reconcile_mentioned_in: %s ← %s",
+                slug,
+                source_link,
+            )
+
+    return updated

@@ -666,6 +666,10 @@ def run_phase2_dispatch(
 
         log_entries.append(entry)
 
+    from shared.concept_dispatch import reconcile_mentioned_in
+
+    reconcile_mentioned_in(log_entries, source_link)
+
     return log_entries
 
 

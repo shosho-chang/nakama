@@ -16,6 +16,7 @@ import yaml
 from shared.concept_dispatch import (
     IngestFailError,
     dispatch_concept,
+    reconcile_mentioned_in,
 )
 
 # ---------------------------------------------------------------------------
@@ -431,3 +432,74 @@ def test_advisory_lock_key_is_concept_prefixed(vault, mem_conn, monkeypatch):
         lock_conn=mem_conn,
     )
     assert "concept_creatine" in acquired_keys
+
+
+# ---------------------------------------------------------------------------
+# reconcile_mentioned_in (issue #499)
+# ---------------------------------------------------------------------------
+
+_SEED_BODY = "## Definition\n\nContent about this concept.\n" * 5
+
+
+def test_reconcile_mentioned_in_adds_backlink(vault):
+    """An L1 alias entry in ch3 still updates the concept page from ch1."""
+    dispatch_concept(
+        "atp",
+        "create",
+        "[[Sources/Books/bse-2024/ch1]]",
+        title="ATP",
+        extracted_body=_SEED_BODY,
+        domain="biochemistry",
+    )
+
+    # ch3 dispatch log — ATP was L1 (alias only, no concept page written)
+    dispatched_ch3 = [{"slug": "atp", "term": "ATP", "level": "L1", "action": "alias"}]
+    count = reconcile_mentioned_in(dispatched_ch3, "[[Sources/Books/bse-2024/ch3]]")
+
+    assert count == 1
+    fm, _ = _parse_concept(vault, "atp")
+    assert "[[Sources/Books/bse-2024/ch1]]" in fm["mentioned_in"]
+    assert "[[Sources/Books/bse-2024/ch3]]" in fm["mentioned_in"]
+
+
+def test_reconcile_mentioned_in_idempotent(vault):
+    """Re-running reconcile does not duplicate mentioned_in entries."""
+    dispatch_concept(
+        "atp",
+        "create",
+        "[[Sources/Books/bse-2024/ch1]]",
+        title="ATP",
+        extracted_body=_SEED_BODY,
+        domain="biochemistry",
+    )
+    source_ch3 = "[[Sources/Books/bse-2024/ch3]]"
+    dispatched = [{"slug": "atp"}]
+
+    reconcile_mentioned_in(dispatched, source_ch3)
+    reconcile_mentioned_in(dispatched, source_ch3)
+
+    fm, _ = _parse_concept(vault, "atp")
+    assert fm["mentioned_in"].count(source_ch3) == 1
+
+
+def test_reconcile_mentioned_in_skips_missing_pages(vault):
+    """Concepts with no existing page are silently skipped."""
+    dispatched = [{"slug": "nonexistent-concept", "level": "L2", "action": "create"}]
+    count = reconcile_mentioned_in(dispatched, "[[Sources/Books/bse-2024/ch1]]")
+    assert count == 0
+
+
+def test_reconcile_mentioned_in_skips_duplicate_slugs(vault):
+    """Same slug appearing twice in dispatched list is processed once."""
+    dispatch_concept(
+        "atp",
+        "create",
+        "[[Sources/Books/bse-2024/ch1]]",
+        title="ATP",
+        extracted_body=_SEED_BODY,
+        domain="biochemistry",
+    )
+    source_ch3 = "[[Sources/Books/bse-2024/ch3]]"
+    dispatched = [{"slug": "atp"}, {"slug": "atp"}]  # duplicate
+    count = reconcile_mentioned_in(dispatched, source_ch3)
+    assert count == 1  # only updated once
