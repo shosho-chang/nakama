@@ -8,6 +8,8 @@ Usage:
     python -m agents.franky digest       # Slice 3: weekly digest (5-section Slack DM)
     python -m agents.franky anomaly      # Phase 5B-3: 15-min anomaly daemon tick
     python -m agents.franky gsc-daily    # ADR-008 Phase 2a-min: daily 7-day GSC pull → state.db
+    python -m agents.franky synthesis    # ADR-023 §7 S3: weekly synthesis → proposal inbox
+    python -m agents.franky retrospective  # ADR-023 §7 S4: monthly retrospective
 
 The default (no-subcommand) path preserves existing cron behavior until Slice 3 flips
 the default to the new digest. See ADR-007 §11 for the module layout plan.
@@ -36,6 +38,8 @@ _JOB_NAME_DIGEST = "franky-weekly-report"
 _JOB_NAME_NEWS = "franky-news-digest"
 _JOB_NAME_ANOMALY = "nakama-anomaly-daemon"
 _JOB_NAME_GSC_DAILY = "franky-gsc-daily"
+_JOB_NAME_SYNTHESIS = "franky-news-synthesis"
+_JOB_NAME_RETROSPECTIVE = "franky-news-retrospective"
 
 
 def _cmd_health(_args: argparse.Namespace) -> int:
@@ -229,6 +233,57 @@ def _cmd_gsc_daily(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_synthesis(args: argparse.Namespace) -> int:
+    """ADR-023 §7 S3 — weekly synthesis → two-stage proposal inbox."""
+    from agents.franky.news_synthesis import _re_scan_and_promote_page, run_synthesis
+
+    if getattr(args, "re_scan_promotions", False):
+        target = getattr(args, "page", None)
+        if not target:
+            print(
+                "--re-scan-promotions requires --page <vault-page-path>",
+                file=__import__("sys").stderr,
+            )
+            return 2
+        _re_scan_and_promote_page(target)
+        return 0
+
+    dry_run = getattr(args, "dry_run", False)
+    try:
+        summary = run_synthesis(
+            dry_run=dry_run,
+            no_publish=getattr(args, "no_publish", False),
+        )
+    except Exception as exc:
+        if not dry_run:
+            record_failure(_JOB_NAME_SYNTHESIS, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+    print(summary)
+    if not dry_run:
+        record_success(_JOB_NAME_SYNTHESIS)
+    return 0
+
+
+def _cmd_retrospective(args: argparse.Namespace) -> int:
+    """ADR-023 §7 S4 — monthly retrospective → metric_type 三類處理 + vault + Slack."""
+    from agents.franky.news_retrospective import run_retrospective
+
+    dry_run = getattr(args, "dry_run", False)
+    try:
+        summary = run_retrospective(
+            dry_run=dry_run,
+            no_publish=getattr(args, "no_publish", False),
+        )
+    except Exception as exc:
+        if not dry_run:
+            record_failure(_JOB_NAME_RETROSPECTIVE, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+    print(summary)
+    if not dry_run:
+        record_success(_JOB_NAME_RETROSPECTIVE)
+    return 0
+
+
 def _cmd_legacy_weekly(_args: argparse.Namespace) -> int:
     """Backward-compat: the current VPS cron still runs `python -m agents.franky` without args."""
     from agents.franky.agent import FrankyAgent
@@ -270,6 +325,44 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Parse keywords + compute window only; no GSC API call, no DB write.",
     )
+    synthesis = sub.add_parser(
+        "synthesis",
+        help="ADR-023 §7 S3: weekly synthesis → two-stage proposal inbox (週日 22:00)",
+    )
+    synthesis.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run pipeline without writing vault, DB insert, or Slack DM.",
+    )
+    synthesis.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="Write vault + DB but skip Slack DM.",
+    )
+    synthesis.add_argument(
+        "--re-scan-promotions",
+        action="store_true",
+        help="Scan a Weekly vault page for promote=true candidates and open GH issues.",
+    )
+    synthesis.add_argument(
+        "--page",
+        metavar="PATH",
+        help="Path to vault page for --re-scan-promotions.",
+    )
+    retro = sub.add_parser(
+        "retrospective",
+        help="ADR-023 §7 S4: monthly retrospective — metric_type 三類處理 (月底最後週日 22:00)",
+    )
+    retro.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run pipeline without writing vault, DB updates, or Slack DM.",
+    )
+    retro.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="Write vault but skip Slack DM.",
+    )
     return parser
 
 
@@ -292,6 +385,8 @@ def main(argv: list[str] | None = None) -> int:
         "news": _cmd_news,
         "anomaly": _cmd_anomaly,
         "gsc-daily": _cmd_gsc_daily,
+        "synthesis": _cmd_synthesis,
+        "retrospective": _cmd_retrospective,
     }
     handler = dispatch.get(args.command, _cmd_legacy_weekly)
     return handler(args)

@@ -185,7 +185,9 @@ def test_post_annotations_full_replace_overwrites(app_client):
 
     got = app_client.get("/api/books/alpha/annotations").json()
     assert len(got["items"]) == 2
-    assert {it["type"] for it in got["items"]} == {"annotation", "comment"}
+    # ADR-021 §1: book POST upgrades v2 ``comment`` → v3 ``reflection`` on save;
+    # GET round-trip surfaces the v3 type alongside the unchanged ``annotation``.
+    assert {it["type"] for it in got["items"]} == {"annotation", "reflection"}
 
 
 def test_post_annotations_404_when_book_missing(app_client):

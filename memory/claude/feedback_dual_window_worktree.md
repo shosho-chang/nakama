@@ -21,6 +21,10 @@ git worktree add ../nakama-window-b feat/window-b-branch
 
 **How to apply**：
 - 同機開第二個視窗前，**第一件事就是 `git worktree add`**
+- **長 AFK pipeline / 多並行 dispatch 觸發**（任何 Stage gate 跨 hour、batch 跑超過 30 min、多 sandcastle 或 sub-agent 連續 dispatch）— 開跑前 **第一動作** = `git worktree add` 鎖專屬 worktree pinned 到 work branch。**不問另一視窗在不在、有沒有口頭約定**。
+  - 為何：口頭協議無法在 git 層強制（4/25、5/5、5/6、5/7 四次踩到）；對方任何時候可能切 branch / reset / checkout；branch 一切走 working tree 換掉、跑到一半的 batch crash；AFK 期間沒人盯，恢復成本 = 重跑 + 找哪些 staging 檔該丟
+  - 觸發樣式：「會 AFK ~Nhr 跑 batch」「分 X 個 stage 連續 dispatch」「整晚跑」「邊吃飯邊跑」「同時派 N 個 agent / sandcastle」
+  - **2026-05-07 補強**：local Agent tool `isolation:worktree` 不真釘 cwd — sub-agent 一個 `cd <worktree>` 後續 Bash call 可能回主 repo path（S1+S5 同一 quirk）。AFK + 並行任務一律走 **Sandcastle**，本機 Agent worktree 只在單一短任務、能盯住的場景用
 - 跨機器（Mac vs 桌機）走 [feedback_multi_machine_parallel.md](feedback_multi_machine_parallel.md) — 各自 clone、用對方 open PR file list 挑零重疊任務
 - 寫雙視窗交接 prompt 時，§開工 checklist 必含「`pwd` 確認在獨立 worktree」「`git status` clean 才動手」「commit 前 `git diff main --stat` 對齊範圍」
 - 範例：[docs/archive/task-prompts/2026-04-25-dual-window-allocation.md](../../docs/archive/task-prompts/2026-04-25-dual-window-allocation.md)、[docs/archive/task-prompts/2026-04-25-window-b-kb-search.md](../../docs/archive/task-prompts/2026-04-25-window-b-kb-search.md)

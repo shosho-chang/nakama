@@ -102,9 +102,17 @@ def vault_5(tmp_path_factory):
 # ---------------------------------------------------------------------------
 
 
-def test_e2e_index_and_query(vault_5):
+def test_e2e_index_and_query(vault_5, monkeypatch):
     """Full pipeline: index 5 pages → query → top-k contains expected slugs."""
-    conn = make_conn()
+    # Pin to potion (256-d) so this E2E test doesn't pull BGE-M3 (~2.3 GB).
+    monkeypatch.setenv("NAKAMA_EMBED_BACKEND", "potion")
+    import importlib
+
+    from shared import kb_embedder as _kb_embedder
+
+    importlib.reload(_kb_embedder)
+
+    conn = make_conn(dim=256)
     stats = index_vault(vault_5, conn)
 
     assert stats.files_indexed == 5

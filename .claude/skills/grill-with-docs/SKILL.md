@@ -79,3 +79,17 @@ Only offer to create an ADR when all three are true:
 3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons
 
 If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
+
+### After ADR drafted: consider panel triangulation
+
+When an ADR draft has been committed but before the user ships the decision, ask: "這個 ADR 要不要先用 `multi-agent-panel` skill 跑 panel review？"
+
+Trigger panel when the ADR involves any of:
+
+- **Architectural lock-in** — hard to undo within 6 months (data model, ingest pipeline, contract between agents)
+- **Numerical claims** — costs, latencies, throughput estimates that Claude can't verify from code alone
+- **Strong stated preference among multiple valid alternatives** — Claude rejected option B/C with confidence; that confidence is exactly where confirmation bias bites
+
+Skip panel for ADRs that just document a constraint (e.g. "we use Postgres because the team already runs Postgres") — there's no decision to triangulate, just a fact to record.
+
+Panel adds ~10-20 min wall time + ~$1-3 per run. Worth it on architectural ADRs where a wrong call costs days; not worth it on glossary updates or constraint records.

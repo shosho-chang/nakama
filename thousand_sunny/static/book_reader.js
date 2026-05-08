@@ -165,11 +165,18 @@ async function persistSet(nextSet) {
   }
 }
 
+// ADR-021 §1: ``comment`` (v2) was renamed to ``reflection`` (v3). Treat them as
+// equivalent here so a v3 GET round-trip renders the sidebar + chapter overlays
+// without any wire-format change on the popup write path.
+function isReflection(item) {
+  return item.type === 'reflection' || item.type === 'comment';
+}
+
 function renderHighlight(item) {
   // Best-effort: invalid CFI throws; bump the broken counter and move on.
   let color = ANN_HIGHLIGHT_COLOR;
   if (item.type === 'annotation') color = ANN_NOTE_COLOR;
-  else if (item.type === 'comment') color = ANN_COMMENT_ANCHOR_COLOR;
+  else if (isReflection(item)) color = ANN_COMMENT_ANCHOR_COLOR;
   try {
     view.addAnnotation({ value: item.cfi || item.cfi_anchor, color });
     return true;
@@ -185,8 +192,8 @@ function renderAllExisting() {
   for (const item of currentSet.items) {
     if (item.type === 'highlight' || item.type === 'annotation') {
       if (!renderHighlight(item)) broken += 1;
-    } else if (item.type === 'comment') {
-      // Only render an overlay if the comment carries a cfi_anchor.
+    } else if (isReflection(item)) {
+      // Only render an overlay if the reflection carries a cfi_anchor.
       if (item.cfi_anchor) {
         if (!renderHighlight(item)) broken += 1;
       }
@@ -198,7 +205,8 @@ function renderAllExisting() {
 
 function rebuildCommentsSidebar() {
   if (!currentSet) return;
-  const comments = currentSet.items.filter(it => it.type === 'comment');
+  // v3 ``reflection`` + legacy v2 ``comment`` both feed the chapter-reflection sidebar.
+  const comments = currentSet.items.filter(isReflection);
   commentsList.innerHTML = '';
   if (comments.length === 0) {
     const empty = document.createElement('div');

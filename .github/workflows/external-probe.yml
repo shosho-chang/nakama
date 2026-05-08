@@ -16,7 +16,9 @@ on:
   schedule:
     # GitHub cron 強制 UTC，不支援時區（見 reference_github_actions_probe.md）。
     # 排程可能延遲 5-15 分鐘（公有 runner 滿載時），SLA 不是承諾值。
-    - cron: '*/5 * * * *'
+    # 頻率 15 min：96 runs/day × 30 ≈ 2,880 min/月（GHA 每 job 至少計 1 min），
+    # 控制在 3,000 min Actions quota 之內。降頻動機見 2026-05-07 對話。
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       simulate_down:

@@ -2,7 +2,7 @@
 
 ## 0. Memory
 
-每次對話開始時，讀取 `memory/claude/MEMORY.md` 載入持久記憶索引。需要詳細內容時再讀取個別記憶檔。
+每次對話開始時，讀取 `memory/claude/MEMORY.md` 載入持久記憶索引。需要詳細內容時再讀取個別記憶檔。寫入紀律見 [Memory 寫入紀律](#memory-寫入紀律)節。
 
 ---
 
@@ -111,6 +111,32 @@ Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS
 
 ---
 
+## 工作面紀律 (Worktree)
+
+**主倉庫 `E:\nakama` 是 metadata-only**，不在這裡改檔／checkout 工作 branch／commit。詳細血淚見 2026-05-08 cleanup session。
+
+- **每個 task 開 sibling worktree**：`git worktree add E:\nakama-<topic> -b feat/<topic> origin/main`
+- **subagent dispatch** 走 Sandcastle (default) 或本機 `isolation: worktree`（見下節）
+- **memory 寫入** 永遠不在 `E:\nakama`，要在 sibling worktree 或專屬 memory worktree
+- **Stash 紀律**：用 `-m "<message>"` 命名，**不要** `git stash pop stash@{0}`（多視窗下 index 會漂移）— 用 `git stash list` 找 message 再 pop ref name
+- **branch 命名**：feature 用 `feat/<topic>`，cleanup 用 `chore/<topic>`，docs/research 用 `docs/<topic>`
+
+## AFK / 並行 dispatch
+
+**Default = Sandcastle**（cloud isolation）。本機 `isolation: worktree` 只用於單一短任務且能盯住整段執行。詳見 `memory/claude/feedback_sandcastle_default.md`。
+
+## Multi-agent 協作 (Claude + Codex)
+
+當 Codex 上線後，記憶系統按 agent + 語言切割。詳細 schema 見 [`memory/SCHEMA.md`](memory/SCHEMA.md)。
+
+- **讀寫範圍**：Claude 讀寫 `memory/shared/**` + `memory/claude/**`；Codex 讀寫 `memory/shared/**` + `memory/codex/**`
+- **`memory/shared/**` 強制 bilingual frontmatter**（`name_zh` / `name_en` / `description_zh` / `description_en`）— 否則跨語言 agent 找不到
+- **shared/ 是 rare-write curated**：CREATE 自由，UPDATE 走 `.lock` file 機制；衝突絕不 silent last-write-wins，必呼叫 user 介入
+- **`INDEX.md` 是 generated artifact**，任何 agent 都不直接編輯（由 `shared/memory_maintenance.py reindex` 重建）
+- **session-end trigger**（清對話 / 對話結束 / 收工）走 ephemeral handoff `.nakama/session_handoff_{timestamp}.md`，不寫 durable memory，不 git commit。詳見 [feedback_conversation_end.md](memory/claude/feedback_conversation_end.md)
+
+---
+
 ## 檔案刪除規則
 
 禁止使用 `rm` / `rmdir`（已在 `.claude/settings.json` deny）。
@@ -152,14 +178,37 @@ python -m shared.memory_maintenance archive   # 歸檔舊低信心記憶
 
 ---
 
-## Claude 記憶系統（跨平台）
+## Memory 寫入紀律
 
-**覆寫預設行為**：不使用平台特定的 `~/.claude/projects/…/memory/` 路徑。
-所有記憶統一存放於 repo 內的 `memory/claude/`，透過 git 跨平台共用。
+**覆寫平台預設**：不用 `~/.claude/projects/…/memory/`。所有記憶在 repo 內 `memory/`，git 跨平台共用。詳細 schema 見 [`memory/SCHEMA.md`](memory/SCHEMA.md)，行為設計見 `docs/research/2026-05-08-memory-system-redesign-v2.md`。
 
-- 讀取記憶：從 `memory/claude/MEMORY.md` 讀取索引，再讀取對應檔案
-- 寫入記憶：寫入 `memory/claude/` 下的對應 `.md` 檔，並更新 `memory/claude/MEMORY.md`
-- 格式規範同原本記憶系統（frontmatter: name, description, type）
+### 寫入觸發三層
+
+| 層 | 訊號 | 動作 |
+|----|------|------|
+| **L1 明確** | User 說「記下這個 / save / remember X / update memory」 | 立即寫 durable memory，inline 確認 |
+| **L2 強訊號** | User 明確 correction（「不要 X，要 Y」）／強烈 validation（「對，這方向繼續」）／發現新 stable user/project 事實 | 寫 durable memory，inline 確認 |
+| **L3 session 邊界** | 「清對話 / 對話結束 / 收工」單獨出現 | **不**自動寫 durable memory；改寫到 `.nakama/session_handoff_{timestamp}.md`（gitignored）|
+
+### Branch 紀律
+
+- Memory commit 走 `paths-ignore`（不跑 CI），可直 push main
+- **絕不** 在 feature branch commit memory（會污染 PR scope）
+- 寫入 worktree 永遠不是 `E:\nakama`，是 sibling worktree
+
+### 結構速覽
+
+```
+memory/
+├── shared/{user,project,reference,decision}/    # 跨 agent，bilingual 強制
+├── claude/feedback/                             # Claude 專屬行為調整
+├── codex/feedback/                              # Codex 專屬行為調整
+├── _archive/YYYY-MM/                            # 自動 rotate 的舊記憶
+├── INDEX.md                                     # GENERATED, 不可手編
+└── SCHEMA.md                                    # 詳細規則
+```
+
+過渡期 `memory/claude/*.md`（既有 297 檔）跟 `memory/shared.md` `memory/agents/{robin,franky}.md`（舊 schema）並存，未來 Phase 2 用 `memory_maintenance.py migrate` 漸進遷移。
 
 ---
 
