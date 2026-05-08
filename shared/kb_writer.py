@@ -647,6 +647,9 @@ def upsert_concept_page(
         confidence: 0..1 (create only)
         now: timestamp injection for tests; defaults to UTC now
     """
+    from shared.concept_canonicalize import canonicalize
+
+    slug = canonicalize(slug)
     _validate_slug(slug, kind="concept slug")
     if now is None:
         now = datetime.now(timezone.utc)

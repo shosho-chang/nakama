@@ -567,9 +567,15 @@ def _extract_concepts_from_source_page(source_md: str) -> list[str]:
 
 
 def _slug_from_term(term: str) -> str:
-    """Filesystem-safe slug. Keep CJK; replace whitespace + path separators."""
+    """Filesystem-safe slug from a raw surface form.
+
+    Pipes through canonicalize() first so variant surface forms (e.g. "ATP",
+    "Adenosine Triphosphate", "atps") all resolve to the same slug ("atp").
+    """
+    from shared.concept_canonicalize import canonicalize
+
+    s = canonicalize(term)
     bad = '<>:"/\\|?*\n\r\t'
-    s = term
     for ch in bad:
         s = s.replace(ch, "-")
     return s.strip("- ").strip()
