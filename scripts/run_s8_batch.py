@@ -258,6 +258,11 @@ def _process_chapter(
             lvl = entry.get("level", "?")
             if lvl in res.concept_levels:
                 res.concept_levels[lvl] += 1
+        # Post-dispatch reassembly: FM + body appendix from same dispatch_log
+        # (B14/B15 fix wiring; mirrors run_s8_preflight main flow).
+        from scripts.run_s8_preflight import _rewrite_source_page_with_dispatch_log
+
+        _rewrite_source_page_with_dispatch_log(source_page_path, payload, dispatch_log)
     except Exception as e:
         log.exception("Phase 2 crashed for %s ch%s", payload.book_id, payload.chapter_index)
         res.fatal_error = f"Phase 2 dispatch failed: {e!r}"
