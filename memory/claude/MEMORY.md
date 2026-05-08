@@ -39,7 +39,8 @@
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
 - [reference_vault_paths_mac.md](reference_vault_paths_mac.md) — Mac vault `/Users/shosho/Documents/Shosho LifeOS/` + Windows **active = `E:\Shosho LifeOS\`**（F: 已停用、stale Syncthing 殘留要避開）
 - [reference_vps_ssh.md](reference_vps_ssh.md) — VPS SSH alias `nakama-vps` → root@202.182.107.202
-- [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」三字當 trigger → 自動存記憶 + commit & push
+- [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」走 ephemeral handoff（`.nakama/`），**不再** auto-commit/push；durable memory 走 L1/L2 in-conversation trigger
+- [reference_github_actions_paths_ignore_deadlock.md](reference_github_actions_paths_ignore_deadlock.md) — paths-ignore + required-check 死鎖：必加 ci-skip.yml 鏡像 paths workflow 才能 unblock 純 docs PR
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
 - [project_plugins_installed.md](project_plugins_installed.md) — 已安裝 6 個 Claude Code plugin（含 playwright、firecrawl）+ 評估不裝清單
 - [feedback_no_secrets_in_chat.md](feedback_no_secrets_in_chat.md) — API key 等敏感資訊走 .env，不在對話框輸入
