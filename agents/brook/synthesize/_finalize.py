@@ -98,8 +98,7 @@ def regenerate_outline_final(
     )
     if not discounted_pool:
         raise ValueError(
-            f"finalize: evidence pool is empty for slug={slug!r}; "
-            "nothing to draft an outline from"
+            f"finalize: evidence pool is empty for slug={slug!r}; nothing to draft an outline from"
         )
 
     # 2. Re-draft the outline against the discounted pool. We pass the

@@ -159,9 +159,7 @@ def test_regenerate_applies_global_reject_discount(isolated_store):
     # In the evidence block, gamma should appear before alpha (alpha sunk).
     alpha_pos = prompt.find("- alpha:")
     gamma_pos = prompt.find("- gamma:")
-    assert gamma_pos < alpha_pos, (
-        "alpha should be discounted below gamma after 2 rejects"
-    )
+    assert gamma_pos < alpha_pos, "alpha should be discounted below gamma after 2 rejects"
 
 
 def test_regenerate_honours_per_section_reject(isolated_store):

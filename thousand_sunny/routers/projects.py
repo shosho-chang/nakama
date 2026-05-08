@@ -264,9 +264,7 @@ async def project_review_page(
     # draft is stale once finalize ran. Pick the canonical outline for the
     # template loop in one place so the template doesn't branch.
     is_writing_mode = bool(store.outline_final)
-    outline_for_render = (
-        list(store.outline_final) if is_writing_mode else list(store.outline_draft)
-    )
+    outline_for_render = list(store.outline_final) if is_writing_mode else list(store.outline_draft)
     return _templates.TemplateResponse(
         request,
         "review.html",
