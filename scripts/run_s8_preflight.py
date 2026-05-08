@@ -273,6 +273,55 @@ def _anchor_equiv(a: str, b: str) -> bool:
     return _norm(a) == _norm(b)
 
 
+def _render_appendix_from_dispatch_log(
+    sections_json: list[dict],
+    dispatch_log: list[dict],
+) -> str:
+    """Build the full chapter appendix from dispatch log data.
+
+    Concept maps come from ``sections_json``; wikilinks and aliases come from
+    ``dispatch_log`` so both the body and frontmatter can share one source of
+    truth (B14 fix).
+
+    L2/L3 dispatched concepts → ``[[wikilink]]`` in ``## Wikilinks Introduced``.
+    L1 alias entries → plain-text bullets in ``## Aliases Recorded`` (B15 fix —
+    2-of-3 panel decision: demote L1 to plain text, not stub wikilink).
+    """
+    concept_map_blocks: list[str] = []
+    for sec in sections_json:
+        anchor = sec["anchor"]
+        cmap = sec.get("concept_map_md", "").rstrip()
+        concept_map_blocks.append(f"### {anchor}\n\n{cmap}")
+
+    seen: set[str] = set()
+    wikilinks: list[str] = []
+    aliases: list[str] = []
+    for entry in dispatch_log:
+        level = entry.get("level", "?")
+        slug = entry.get("slug", "")
+        term = entry.get("term", slug)
+        if level == "L1":
+            if term and term not in seen:
+                seen.add(term)
+                aliases.append(term)
+        elif level in ("L2", "L3") and slug:
+            if slug not in seen:
+                seen.add(slug)
+                wikilinks.append(slug)
+
+    appendix = "\n\n---\n\n## Section Concept Maps\n\n"
+    appendix += "\n\n".join(concept_map_blocks)
+    if wikilinks:
+        appendix += "\n\n## Wikilinks Introduced\n\n"
+        appendix += "\n".join(f"- [[{wl}]]" for wl in wikilinks)
+        appendix += "\n"
+    if aliases:
+        appendix += "\n\n## Aliases Recorded\n\n"
+        appendix += "\n".join(f"- {a}" for a in aliases)
+        appendix += "\n"
+    return appendix
+
+
 def _assemble_body(
     walker_verbatim_body: str,
     walker_section_anchors: list[str],
@@ -282,11 +331,16 @@ def _assemble_body(
     # operates via regex on the body — walker_figures is reserved for callers.
     sections_json: list[dict],  # each: {anchor: str, concept_map_md: str, wikilinks: list[str]}
     book_id: str,
+    dispatch_log: list[dict] | None = None,
 ) -> str:
     """Assemble a lossless chapter body from walker verbatim text + LLM sections JSON.
 
     Body is verbatim by construction — LLM only supplies concept_map_md and
     wikilinks; all paragraph text comes solely from walker_verbatim_body.
+
+    When ``dispatch_log`` is provided the appendix is derived from it so that
+    wikilinks and aliases come from a single source of truth (issue #500).
+    When omitted the legacy sections_json wikilinks are used (backward compat).
     """
     # Fail-fast on count mismatch — recovery is impossible.
     if len(sections_json) != len(walker_section_anchors):
@@ -319,6 +373,12 @@ def _assemble_body(
     # metadata (per-section concept maps + wikilinks) goes into a single
     # appendix at the chapter end, separated by `---`. This keeps the H2/H3
     # section flow visually clean in Obsidian.
+    if dispatch_log is not None:
+        appendix = _render_appendix_from_dispatch_log(sections_json, dispatch_log)
+        return body + appendix
+
+    # Legacy path: derive wikilinks from sections_json (used when dispatch_log
+    # is not yet available, e.g. dry-run or Phase 1 before Phase 2 runs).
     concept_map_blocks: list[str] = []
     all_wikilinks: list[str] = []
     seen_wl: set[str] = set()

@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from scripts.run_s8_preflight import _assemble_body
+from scripts.run_s8_preflight import _assemble_body, _render_appendix_from_dispatch_log
 from shared.source_ingest import verbatim_paragraph_match_pct
 
 # ---------------------------------------------------------------------------
@@ -198,6 +198,60 @@ def test_anchor_real_word_change_still_fails():
     sections = [{"anchor": llm_anchor, "concept_map_md": "m", "wikilinks": []}]
     with pytest.raises(ValueError, match="section anchor mismatch at index 0"):
         _assemble_body(body, [walker_anchor], [], sections, "bse")
+
+
+# ---------------------------------------------------------------------------
+# dispatch_log-derived appendix (issue #500)
+# ---------------------------------------------------------------------------
+
+
+def test_fm_count_matches_body_count():
+    """When dispatch_log drives the appendix, body wikilink count == L2/L3 count."""
+    sections = [
+        {"anchor": "Sec A", "concept_map_md": "mapA", "wikilinks": ["TermA", "TermB", "TermC"]}
+    ]
+    dispatch_log = [
+        {"slug": "terma", "term": "TermA", "level": "L2", "action": "create"},
+        {"slug": "termb", "term": "TermB", "level": "L3", "action": "create"},
+        {"slug": "termc", "term": "TermC", "level": "L1", "action": "alias"},  # L1 → plain text
+    ]
+    body = "## Sec A\n\nSome text."
+    result = _assemble_body(body, ["Sec A"], [], sections, "book", dispatch_log=dispatch_log)
+
+    # Count [[...]] items in ## Wikilinks Introduced section
+    wl_section = result.split("## Wikilinks Introduced")[-1].split("##")[0]
+    wikilink_items = [line for line in wl_section.splitlines() if line.startswith("- [[")]
+    assert len(wikilink_items) == 2, f"expected 2 wikilinks (L2+L3), got {len(wikilink_items)}"
+
+
+def test_l1_demoted_to_plain_text():
+    """L1 alias entries appear in ## Aliases Recorded with no [[ syntax."""
+    sections = [{"anchor": "Sec A", "concept_map_md": "map", "wikilinks": []}]
+    dispatch_log = [
+        {"slug": "atp", "term": "ATP", "level": "L1", "action": "alias"},
+        {"slug": "glucose", "term": "Glucose", "level": "L1", "action": "alias"},
+    ]
+    body = "## Sec A\n\nContent."
+    result = _assemble_body(body, ["Sec A"], [], sections, "book", dispatch_log=dispatch_log)
+
+    assert "## Aliases Recorded" in result, "## Aliases Recorded section must be present"
+    aliases_section = result.split("## Aliases Recorded")[-1]
+    assert "[[" not in aliases_section, "L1 aliases must NOT contain [[ wikilink syntax"
+    assert "ATP" in aliases_section
+    assert "Glucose" in aliases_section
+
+
+def test_render_appendix_from_dispatch_log_only_l2_l3_wikilinked():
+    """_render_appendix_from_dispatch_log: only L2/L3 get [[...]], not L1."""
+    sections = [{"anchor": "Sec", "concept_map_md": "map", "wikilinks": []}]
+    dispatch_log = [
+        {"slug": "atp", "term": "ATP", "level": "L1", "action": "alias"},
+        {"slug": "lactate", "term": "Lactate", "level": "L2", "action": "create"},
+    ]
+    appendix = _render_appendix_from_dispatch_log(sections, dispatch_log)
+    assert "- [[lactate]]" in appendix
+    assert "- [[atp]]" not in appendix
+    assert "ATP" in appendix  # appears in Aliases Recorded
 
 
 def test_anchor_drift_logs_warning(caplog):
