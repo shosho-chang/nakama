@@ -196,6 +196,19 @@ def _real_chapters_in(payloads) -> list:
     return [p for p in payloads if pat.match(p.chapter_title or "")]
 
 
+def _renumber_to_real(payloads: list) -> list:
+    """Mutate `chapter_index` to 1..N by real-chapter order.
+
+    Mirrors run_s8_preflight._pick_chapter line ~1344. Without this, walker
+    front-matter entries offset the index — e.g. with 2 front-matter entries
+    walker yields real ch1 at chapter_index=3, and run_phase1_source_page
+    writes the file as ch3.md, colliding with the real ch3 output.
+    """
+    for i, p in enumerate(payloads, 1):
+        p.chapter_index = i
+    return payloads
+
+
 # ---------------------------------------------------------------------------
 # Single-chapter driver
 # ---------------------------------------------------------------------------
@@ -769,6 +782,7 @@ def run_batch(args) -> int:
                 "Phase 0 raw file may have been re-extracted with broken H1 headings"
             )
             continue
+        _renumber_to_real(real)
         for i, p in enumerate(real, 1):
             iteration.append((key, meta, p, i))
 

@@ -7,7 +7,39 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from scripts.run_s8_batch import ChapterResult, _run_spot_checks
+from types import SimpleNamespace
+
+from scripts.run_s8_batch import (
+    ChapterResult,
+    _real_chapters_in,
+    _renumber_to_real,
+    _run_spot_checks,
+)
+
+
+def test_renumber_to_real_aligns_with_preflight_convention():
+    """Batch must rewrite chapter_index to real chapter num (1..N).
+
+    Regression: 5/8 P0 batch wrote real ch1 to ch3.md because walker yielded
+    2 front-matter entries before chapter 1, leaving real ch1 at
+    chapter_index=3. Filenames must match real chapter numbers, matching
+    run_s8_preflight._pick_chapter behavior.
+    """
+    payloads = [
+        SimpleNamespace(chapter_index=1, chapter_title="Front Matter"),
+        SimpleNamespace(chapter_index=2, chapter_title="Preface"),
+        SimpleNamespace(chapter_index=3, chapter_title="1 Energy Sources"),
+        SimpleNamespace(chapter_index=4, chapter_title="2 Skeletal Muscle"),
+        SimpleNamespace(chapter_index=5, chapter_title="3 Biochemical Concepts"),
+    ]
+    real = _real_chapters_in(payloads)
+    assert [p.chapter_title for p in real] == [
+        "1 Energy Sources",
+        "2 Skeletal Muscle",
+        "3 Biochemical Concepts",
+    ]
+    _renumber_to_real(real)
+    assert [p.chapter_index for p in real] == [1, 2, 3]
 
 
 def _make_pass_result(vault_root: Path, book_id: str, ch_idx: int) -> ChapterResult:
