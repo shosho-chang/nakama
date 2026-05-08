@@ -1,0 +1,30 @@
+[
+  {
+    "slug": "atp",
+    "term": "ATP",
+    "level": "L2",
+    "action": "create",
+    "signals": ["primary_fuel", "energy_currency"]
+  },
+  {
+    "slug": "glycolysis",
+    "term": "Glycolysis",
+    "level": "L2",
+    "action": "create",
+    "signals": ["metabolic_pathway", "anaerobic"]
+  },
+  {
+    "slug": "krebs-cycle",
+    "term": "Krebs Cycle",
+    "level": "L2",
+    "action": "create",
+    "signals": ["aerobic_metabolism", "citric_acid_cycle"]
+  },
+  {
+    "slug": "energy-system",
+    "term": "Energy Systems",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  }
+]

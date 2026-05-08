@@ -1125,10 +1125,43 @@ def compute_acceptance_7(
     if not c6_ok:
         reasons.append(f"C6: {len(c6_pairs)} canonical-slug collision(s): {c6_pairs[:3]}")
 
-    # --- C7 — golden fixture (skip until #501 lands) -------------------------
+    # --- C7 — golden fixture round-trip (issue #501) --------------------------
+    # Active only when the source page is BSE chapter 3 (the sole approved
+    # golden fixture). For all other books/chapters c7_skipped stays True so
+    # existing call sites are not affected.
+    _GOLDEN_FIXTURE = (
+        _REPO_ROOT / "tests" / "fixtures" / "golden" / "bse-ch3-expected" / "bse-ch3.md"
+    )
+    _BSE_CH3_BOOK_ID = "biochemistry-for-sport-and-exercise-maclaren"
+
     c7_ok = True
     c7_skipped = True
-    # When #501 is done: load fixture, re-ingest, compare byte-for-byte.
+    if (
+        _GOLDEN_FIXTURE.exists()
+        and _BSE_CH3_BOOK_ID in str(source_page_path)
+        and source_page_path.name == "ch3.md"
+    ):
+        c7_skipped = False
+        golden_text = _GOLDEN_FIXTURE.read_text(encoding="utf-8")
+        golden_wl_match = re.search(
+            r"## Wikilinks Introduced\n(.*?)(?=\n## |\Z)", golden_text, re.DOTALL
+        )
+        golden_slugs = (
+            sorted(re.findall(r"\[\[([^\]]+)\]\]", golden_wl_match.group(1)))
+            if golden_wl_match
+            else []
+        )
+        fresh_slugs = sorted(body_slugs)
+        if golden_slugs == fresh_slugs:
+            c7_ok = True
+        else:
+            c7_ok = False
+            extra = set(fresh_slugs) - set(golden_slugs)
+            missing = set(golden_slugs) - set(fresh_slugs)
+            reasons.append(
+                f"C7: wikilinks diverged from golden fixture "
+                f"(+{len(extra)} extra, -{len(missing)} missing)"
+            )
 
     ok = c1_ok and c2_ok and c3_ok and c4_ok and c5_ok and c6_ok and c7_ok
 
