@@ -34,7 +34,6 @@ from shared import brook_synthesize_store as _store
 from shared.log import get_logger
 from shared.schemas.brook_synthesize import (
     BrookSynthesizeStore,
-    EvidencePoolItem,
     OutlineSection,
     UserAction,
 )
