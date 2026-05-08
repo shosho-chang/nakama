@@ -905,6 +905,178 @@ def compute_acceptance(
     )
 
 
+@dataclass
+class AcceptanceResult7:
+    """Structured output from compute_acceptance_7 — 7-condition file-based gate."""
+
+    # C1 — dispatch log clean
+    c1_dispatch_ok: bool
+    c1_dispatch_errors: list[dict]
+
+    # C2 — all body wikilinks resolve to concept pages in staging
+    c2_wikilinks_resolve_ok: bool
+    c2_unresolved: list[str]
+
+    # C3 — FM wikilinks_introduced count == body appendix [[…]] count
+    c3_fm_body_count_ok: bool
+    c3_fm_count: int
+    c3_body_count: int
+
+    # C4 — zero writes to live KB/Wiki/Concepts/ (slugs absent from live dir)
+    c4_no_live_writes_ok: bool
+    c4_live_slugs: list[str]
+
+    # C5 — zero placeholder stubs in concept pages
+    c5_no_placeholders_ok: bool
+    c5_placeholder_hits: list[tuple[str, str]]  # (slug, pattern)
+
+    # C6 — zero canonical-slug collisions in dispatched terms
+    c6_no_collisions_ok: bool
+    c6_collision_pairs: list[tuple[str, str]]  # (term_a, term_b) sharing same slug
+
+    # C7 — golden fixture round-trip (skipped until #501 lands)
+    c7_golden_ok: bool
+    c7_skipped: bool
+
+    acceptance_pass: bool
+    reasons: list[str]
+
+
+_PLACEHOLDER_PATTERNS_GATE = (
+    "_(尚無內容)_",
+    "Will be enriched",
+    "phase-b-reconciliation",
+    "Stub — auto-created by Phase B",
+)
+
+
+def compute_acceptance_7(
+    *,
+    source_page_path: Path,
+    dispatch_log: list[dict],
+    staging_concepts_dir: Path,
+    live_concepts_dir: Path,
+) -> "AcceptanceResult7":
+    """7-condition file-based acceptance gate (ADR-020 §P0.5, issue #502).
+
+    Scans disk artifacts rather than writer internal state.  All 7 conditions
+    must pass for acceptance_pass=True.  Condition 7 (golden fixture) is skipped
+    until test_golden_chapter fixture (#501) lands; it always returns True.
+
+    Args:
+        source_page_path:     Written source page file (ch{n}.md in staging).
+        dispatch_log:         Phase 2 dispatch log entries, each a dict with
+                              at least ``slug``, ``level``, ``action``; error
+                              entries have ``error`` or action in
+                              (dispatch-error / ingest-fail / classifier-skipped).
+        staging_concepts_dir: Path to the staging concept-page directory.
+        live_concepts_dir:    Path to the live (non-staging) concept-page dir.
+                              C4 asserts no dispatched slug exists here.
+    """
+    from shared.concept_canonicalize import report_collisions
+
+    reasons: list[str] = []
+
+    # --- C1 — dispatch log: 0 errors -----------------------------------------
+    _error_actions = {"dispatch-error", "ingest-fail", "classifier-skipped"}
+    c1_errors = [e for e in dispatch_log if e.get("action") in _error_actions or e.get("error")]
+    c1_ok = len(c1_errors) == 0
+    if not c1_ok:
+        reasons.append(f"C1: {len(c1_errors)} dispatch error(s) in log")
+
+    # --- C2 — body [[slug]] resolve to staging concept pages -----------------
+    page_text = source_page_path.read_text(encoding="utf-8")
+    # Extract only the ## Wikilinks Introduced section from the appendix
+    wl_section_match = re.search(
+        r"## Wikilinks Introduced\n(.*?)(?=\n## |\Z)", page_text, re.DOTALL
+    )
+    body_slugs: list[str] = []
+    if wl_section_match:
+        body_slugs = re.findall(r"\[\[([^\]]+)\]\]", wl_section_match.group(1))
+    c2_unresolved = [s for s in body_slugs if not (staging_concepts_dir / f"{s}.md").exists()]
+    c2_ok = len(c2_unresolved) == 0
+    if not c2_ok:
+        reasons.append(f"C2: {len(c2_unresolved)} unresolved wikilink(s): {c2_unresolved[:5]}")
+
+    # --- C3 — FM wikilinks_introduced count == body appendix count -----------
+    fm_match = re.match(r"^---\n(.*?)\n---\n", page_text, re.DOTALL)
+    fm_wl_count = 0
+    if fm_match:
+        try:
+            import yaml as _yaml
+
+            fm = _yaml.safe_load(fm_match.group(1))
+            if isinstance(fm, dict):
+                fm_wl_count = len(fm.get("wikilinks_introduced") or [])
+        except Exception:
+            pass
+    body_wl_count = len(body_slugs)
+    c3_ok = fm_wl_count == body_wl_count
+    if not c3_ok:
+        reasons.append(
+            f"C3: FM wikilinks_introduced={fm_wl_count} != body appendix count={body_wl_count}"
+        )
+
+    # --- C4 — zero writes to live KB/Wiki/Concepts/ --------------------------
+    all_slugs = [e.get("slug", "") for e in dispatch_log if e.get("slug")]
+    c4_live = [s for s in all_slugs if (live_concepts_dir / f"{s}.md").exists()]
+    c4_ok = len(c4_live) == 0
+    if not c4_ok:
+        reasons.append(f"C4: {len(c4_live)} slug(s) found in live KB/Wiki/: {c4_live[:5]}")
+
+    # --- C5 — zero placeholder stubs in concept pages ------------------------
+    c5_hits: list[tuple[str, str]] = []
+    if staging_concepts_dir.exists():
+        for page in staging_concepts_dir.glob("*.md"):
+            text = page.read_text(encoding="utf-8", errors="replace")
+            for pat in _PLACEHOLDER_PATTERNS_GATE:
+                if pat in text:
+                    c5_hits.append((page.stem, pat))
+                    break  # one hit per page is enough
+    c5_ok = len(c5_hits) == 0
+    if not c5_ok:
+        reasons.append(f"C5: {len(c5_hits)} concept page(s) contain placeholder stubs")
+
+    # --- C6 — zero canonical-slug collisions ---------------------------------
+    terms = [
+        e.get("term") or e.get("slug", "") for e in dispatch_log if e.get("term") or e.get("slug")
+    ]
+    c6_pairs = report_collisions(terms)
+    c6_ok = len(c6_pairs) == 0
+    if not c6_ok:
+        reasons.append(f"C6: {len(c6_pairs)} canonical-slug collision(s): {c6_pairs[:3]}")
+
+    # --- C7 — golden fixture (skip until #501 lands) -------------------------
+    c7_ok = True
+    c7_skipped = True
+    # When #501 is done: load fixture, re-ingest, compare byte-for-byte.
+
+    ok = c1_ok and c2_ok and c3_ok and c4_ok and c5_ok and c6_ok and c7_ok
+
+    if not ok:
+        log.warning("7-condition acceptance gate FAIL — conditions: %s", reasons)
+
+    return AcceptanceResult7(
+        c1_dispatch_ok=c1_ok,
+        c1_dispatch_errors=c1_errors,
+        c2_wikilinks_resolve_ok=c2_ok,
+        c2_unresolved=c2_unresolved,
+        c3_fm_body_count_ok=c3_ok,
+        c3_fm_count=fm_wl_count,
+        c3_body_count=body_wl_count,
+        c4_no_live_writes_ok=c4_ok,
+        c4_live_slugs=c4_live,
+        c5_no_placeholders_ok=c5_ok,
+        c5_placeholder_hits=c5_hits,
+        c6_no_collisions_ok=c6_ok,
+        c6_collision_pairs=c6_pairs,
+        c7_golden_ok=c7_ok,
+        c7_skipped=c7_skipped,
+        acceptance_pass=ok,
+        reasons=reasons,
+    )
+
+
 def run_coverage_gate(
     *,
     payload,
@@ -914,58 +1086,26 @@ def run_coverage_gate(
     dispatch_log: list[dict],
     vault_root: Path,
 ) -> tuple[bool, list[str], dict]:
-    """Run deterministic 4-rule acceptance gate. Returns (passed, reasons, metrics_dict)."""
-    import yaml as _yaml
+    """Run 7-condition file-based acceptance gate. Returns (passed, reasons, metrics_dict)."""
+    staging_concepts_dir = vault_root / "KB" / "Wiki.staging" / "Concepts"
+    live_concepts_dir = vault_root / "KB" / "Wiki" / "Concepts"
 
-    page_text = source_page_path.read_text(encoding="utf-8")
-
-    # Strip frontmatter to get bare body for verbatim comparison
-    fm_match = re.match(r"^---\n(.*?)\n---\n", page_text, re.DOTALL)
-    page_body = page_text[fm_match.end() :] if fm_match else page_text
-
-    # Extract wikilinks_introduced from frontmatter YAML for rule 4
-    wikilinks_introduced: list[str] = []
-    if fm_match:
-        try:
-            fm = _yaml.safe_load(fm_match.group(1))
-            if isinstance(fm, dict):
-                wikilinks_introduced = list(fm.get("wikilinks_introduced") or [])
-        except Exception:
-            pass
-
-    acc = compute_acceptance(
-        page_body=page_body,
-        walker_verbatim=payload.verbatim_body,
-        walker_section_anchors=payload.section_anchors,
-        walker_figures_count=figures_count,
-        wikilinks_introduced=wikilinks_introduced,
+    acc7 = compute_acceptance_7(
+        source_page_path=source_page_path,
+        dispatch_log=dispatch_log,
+        staging_concepts_dir=staging_concepts_dir,
+        live_concepts_dir=live_concepts_dir,
     )
 
-    reasons: list[str] = []
-    if not acc.verbatim_ok:
-        reasons.append(f"verbatim_match={acc.verbatim_match:.4f} < 0.99")
-    if not acc.anchors_match:
-        reasons.append("section_anchors_match=False")
-    if not acc.figures_ok:
-        reasons.append(
-            f"figures_embedded={acc.figures_embedded}"
-            f" != walker.figures_count={acc.figures_expected}"
-        )
-    if not acc.wikilinks_ok:
-        reasons.append(
-            f"wikilinks={acc.wikilinks_count} < threshold={acc.wikilinks_threshold}"
-            f" (char_count={acc.char_count})"
-        )
-
     return (
-        acc.acceptance_pass,
-        reasons,
+        acc7.acceptance_pass,
+        acc7.reasons,
         {
             "primary_total": 0,
             "primary_missing_pct": 0.0,
             "secondary_missing_pct": 0.0,
             "nuance_missing_pct": 0.0,
-            "verbatim_pct": acc.verbatim_match * 100,
+            "verbatim_pct": 0.0,
             "manifest_path": "",
         },
     )

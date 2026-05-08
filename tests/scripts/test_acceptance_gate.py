@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from scripts.run_s8_preflight import (
     compute_acceptance,
+    compute_acceptance_7,
     normalize_for_verbatim_compare,
     section_anchors_match,
     verbatim_match_pct,
@@ -242,3 +243,277 @@ def test_acceptance_fail_logs_measurements():
     assert hasattr(acc, "figures_embedded")
     assert hasattr(acc, "wikilinks_count")
     assert hasattr(acc, "wikilinks_threshold")
+
+
+# ---------------------------------------------------------------------------
+# 7-condition file-based acceptance gate (issue #502, P0.5)
+# ---------------------------------------------------------------------------
+
+
+def _make_source_page(
+    tmp_path: Path, *, fm_wikilinks: list[str], body_wikilinks: list[str]
+) -> Path:
+    """Write a minimal source page with FM wikilinks_introduced and body appendix."""
+    fm_list = "\n".join(f"- {w}" for w in fm_wikilinks)
+    body_list = "\n".join(f"- [[{w}]]" for w in body_wikilinks)
+    content = (
+        f"---\ntitle: Test Chapter\nwikilinks_introduced:\n{fm_list}\n---\n"
+        f"## Sec\n\nText.\n\n---\n\n## Section Concept Maps\n\n### Sec\n\nmap\n\n"
+        f"## Wikilinks Introduced\n\n{body_list}\n"
+    )
+    p = tmp_path / "ch1.md"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def test_c1_dispatch_log_clean_pass(tmp_path: Path) -> None:
+    """C1 passes when dispatch_log has 0 errors."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    dispatch_log = [
+        {"slug": "atp", "term": "ATP", "level": "L2", "action": "create"},
+    ]
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=dispatch_log,
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c1_dispatch_ok is True
+    assert acc.c1_dispatch_errors == []
+
+
+def test_c1_dispatch_log_error_fail(tmp_path: Path) -> None:
+    """C1 fails when dispatch_log contains a dispatch-error entry."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    dispatch_log = [
+        {"slug": "atp", "term": "ATP", "level": "L2", "action": "dispatch-error", "error": "boom"},
+    ]
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=dispatch_log,
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c1_dispatch_ok is False
+    assert len(acc.c1_dispatch_errors) == 1
+
+
+def test_c2_wikilinks_resolve_pass(tmp_path: Path) -> None:
+    """C2 passes when all body [[slug]] concept pages exist in staging."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "atp.md").write_text("# ATP", encoding="utf-8")
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=["[[atp]]"], body_wikilinks=["atp"])
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c2_wikilinks_resolve_ok is True
+    assert acc.c2_unresolved == []
+
+
+def test_c2_wikilinks_resolve_fail(tmp_path: Path) -> None:
+    """C2 fails when a body [[slug]] has no concept page in staging."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    # atp.md is NOT created — unresolved
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=["[[atp]]"], body_wikilinks=["atp"])
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c2_wikilinks_resolve_ok is False
+    assert "atp" in acc.c2_unresolved
+
+
+def test_c3_fm_body_count_match_pass(tmp_path: Path) -> None:
+    """C3 passes when FM wikilinks_introduced count == body appendix [[…]] count."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(
+        tmp_path, fm_wikilinks=["[[atp]]", "[[glucose]]"], body_wikilinks=["atp", "glucose"]
+    )
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c3_fm_body_count_ok is True
+    assert acc.c3_fm_count == 2
+    assert acc.c3_body_count == 2
+
+
+def test_c3_fm_body_count_mismatch_fail(tmp_path: Path) -> None:
+    """C3 fails when FM count != body appendix count."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    # FM says 2, body only has 1
+    page = _make_source_page(
+        tmp_path, fm_wikilinks=["[[atp]]", "[[glucose]]"], body_wikilinks=["atp"]
+    )
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c3_fm_body_count_ok is False
+    assert acc.c3_fm_count == 2
+    assert acc.c3_body_count == 1
+
+
+def test_c4_no_live_writes_pass(tmp_path: Path) -> None:
+    """C4 passes when dispatched slugs are absent from live KB/Wiki/Concepts/."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    dispatch_log = [{"slug": "atp", "term": "ATP", "level": "L2", "action": "create"}]
+    # live does NOT have atp.md
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=dispatch_log,
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c4_no_live_writes_ok is True
+    assert acc.c4_live_slugs == []
+
+
+def test_c4_no_live_writes_fail(tmp_path: Path) -> None:
+    """C4 fails when a dispatched slug exists in live KB/Wiki/Concepts/."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    (live / "atp.md").write_text("# ATP", encoding="utf-8")  # leaked to live dir
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    dispatch_log = [{"slug": "atp", "term": "ATP", "level": "L2", "action": "create"}]
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=dispatch_log,
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c4_no_live_writes_ok is False
+    assert "atp" in acc.c4_live_slugs
+
+
+def test_c5_no_placeholders_pass(tmp_path: Path) -> None:
+    """C5 passes when no concept pages contain placeholder stub text."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "atp.md").write_text("# ATP\n\nATP is the energy currency.", encoding="utf-8")
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c5_no_placeholders_ok is True
+    assert acc.c5_placeholder_hits == []
+
+
+def test_c5_no_placeholders_fail(tmp_path: Path) -> None:
+    """C5 fails when a concept page contains a placeholder stub pattern."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "stub.md").write_text(
+        "# Stub\n\nWill be enriched in phase-b-reconciliation.", encoding="utf-8"
+    )
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c5_no_placeholders_ok is False
+    assert any(slug == "stub" for slug, _ in acc.c5_placeholder_hits)
+
+
+def test_c6_no_collisions_pass(tmp_path: Path) -> None:
+    """C6 passes when dispatched terms have no canonical-slug collisions."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    dispatch_log = [
+        {"slug": "atp", "term": "ATP", "level": "L2", "action": "create"},
+        {"slug": "glucose", "term": "glucose", "level": "L2", "action": "create"},
+    ]
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=dispatch_log,
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c6_no_collisions_ok is True
+    assert acc.c6_collision_pairs == []
+
+
+def test_c6_no_collisions_fail(tmp_path: Path) -> None:
+    """C6 fails when two dispatched terms canonicalize to the same slug."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    # "Glucose" and "glucose" both canonicalize to "glucose" → collision
+    dispatch_log = [
+        {"slug": "glucose", "term": "Glucose", "level": "L2", "action": "create"},
+        {"slug": "glucose", "term": "glucose", "level": "L2", "action": "noop"},
+    ]
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=dispatch_log,
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c6_no_collisions_ok is False
+    assert len(acc.c6_collision_pairs) >= 1
+
+
+def test_c7_golden_skipped_always_pass(tmp_path: Path) -> None:
+    """C7 is skipped (returns True) until golden fixture #501 lands."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c7_golden_ok is True
+    assert acc.c7_skipped is True
