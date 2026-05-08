@@ -40,6 +40,7 @@ from ._constants import (
     OUTLINE_MIN_SECTIONS,
     REJECT_DISCOUNT_FACTOR,
 )
+from ._finalize import regenerate_outline_final
 from ._outline import OutlineDraftError, draft_outline
 from ._reject_discount import apply_reject_discount
 from ._search import gather_evidence
@@ -159,5 +160,6 @@ __all__ = [
     "REJECT_DISCOUNT_FACTOR",
     "SynthesizeResult",
     "apply_reject_discount",
+    "regenerate_outline_final",
     "synthesize",
 ]

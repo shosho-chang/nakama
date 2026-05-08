@@ -220,6 +220,64 @@ def test_review_has_aria_landmarks_and_labels(app_client: TestClient):
     assert "從本段拿掉證據 penland-2020" in body
 
 
+# ── writing mode (issue #462) ────────────────────────────────────────────────
+
+
+def test_review_renders_review_mode_when_no_outline_final(app_client: TestClient):
+    _seed_realistic()
+    r = app_client.get("/projects/sleep-architecture-choline")
+    assert r.status_code == 200
+    body = r.text
+    assert 'data-mode="review"' in body
+    # finalize button is enabled (no `disabled` attribute on the button)
+    assert "定稿這份綜合 · finalize" in body
+    # reject buttons are not disabled
+    assert "從這段拿掉" in body
+    # writing-mode caption absent
+    assert "synthesize · review · 綜合稿" in body
+
+
+def test_review_renders_writing_mode_when_outline_final_set(app_client: TestClient):
+    """When outline_final is non-empty, panel is in writing mode:
+    - data-mode="writing"
+    - finalize button shows finalized state + disabled
+    - reject buttons disabled
+    - outline panel renders outline_final (not outline_draft)
+    """
+    _seed_realistic()
+    # Stamp an outline_final that differs from outline_draft so we can tell
+    # which one rendered.
+    store.update_outline_final(
+        "sleep-architecture-choline",
+        [
+            OutlineSection(
+                section=1,
+                heading="定稿後的第一段標題",
+                evidence_refs=["lieberman-2015"],
+            ),
+            OutlineSection(
+                section=2,
+                heading="定稿後的第二段標題",
+                evidence_refs=["penland-2020"],
+            ),
+        ],
+    )
+    r = app_client.get("/projects/sleep-architecture-choline")
+    assert r.status_code == 200
+    body = r.text
+    assert 'data-mode="writing"' in body
+    # finalize button reflects finalized + disabled
+    assert "已定稿 · finalized" in body
+    assert "disabled" in body
+    # outline_final headings rendered
+    assert "定稿後的第一段標題" in body
+    assert "定稿後的第二段標題" in body
+    # outline_draft headings NOT rendered in the outline list
+    assert "為什麼膽鹼會出現在睡眠研究的對話裡" not in body
+    # writing mode caption present
+    assert "synthesize · writing · 寫稿模式" in body
+
+
 # ── slug guard ───────────────────────────────────────────────────────────────
 
 

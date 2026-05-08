@@ -19,6 +19,7 @@
 <div class="review-shell brk-root brk-light"
      id="review-shell"
      data-state="default"
+     data-mode="{% if store.outline_final %}writing{% else %}review{% endif %}"
      data-project-slug="{{ store.project_slug }}"
      data-highlight-terms="{{ store.keywords | join('|') | e }}">
 
@@ -27,7 +28,13 @@
     <div class="review-brand">
       <div class="review-brand__name">Brook</div>
       <div class="review-brand__rule" aria-hidden="true"></div>
-      <div class="brk-caps">synthesize · 綜合稿</div>
+      <div class="brk-caps" id="review-mode-caps">
+        {% if store.outline_final %}
+          synthesize · writing · 寫稿模式
+        {% else %}
+          synthesize · review · 綜合稿
+        {% endif %}
+      </div>
     </div>
 
     <div class="review-meta">
@@ -55,7 +62,8 @@
         <button type="button"
                 class="btn btn-primary"
                 id="btn-finalize"
-                data-finalized="{{ 'true' if store.outline_final else 'false' }}">
+                data-finalized="{{ 'true' if store.outline_final else 'false' }}"
+                {% if store.outline_final %}disabled aria-disabled="true"{% endif %}>
           {% if store.outline_final %}已定稿 · finalized{% else %}定稿這份綜合 · finalize{% endif %}
         </button>
       </div>
@@ -70,10 +78,13 @@
     {# ── outline panel (left) ────────────────────────────────────────── #}
     <nav class="review-outline" aria-label="大綱 · outline">
       <div class="review-outline__header">
-        <div class="brk-caps">大綱 · outline · {{ store.outline_draft | length }} sections</div>
+        <div class="brk-caps">
+          {% if is_writing_mode %}定稿大綱 · finalized outline{% else %}大綱 · outline{% endif %}
+          · {{ outline_for_render | length }} sections
+        </div>
       </div>
       <ul class="review-outline__list" role="list">
-        {% for section in store.outline_draft %}
+        {% for section in outline_for_render %}
           {% set numeral = section.section %}
           <li>
             <button type="button"
@@ -94,7 +105,7 @@
           </li>
         {% else %}
           <li class="review-outline__empty brk-caps" style="padding: 18px 32px;">
-            outline_draft 為空 — 請先執行 Brook synthesize
+            outline 為空 — 請先執行 Brook synthesize
           </li>
         {% endfor %}
       </ul>
@@ -104,12 +115,12 @@
     <section class="review-evidence" aria-label="證據池 · evidence">
       <div class="review-evidence__header" id="evidence-header">
         <div class="brk-caps review-evidence__caps">
-          §<span id="evidence-section-num">{{ store.outline_draft[0].section if store.outline_draft else '—' }}</span>
+          §<span id="evidence-section-num">{{ outline_for_render[0].section if outline_for_render else '—' }}</span>
           · evidence pool · <span id="evidence-count">{{ store.evidence_pool | length }}</span> sources
           · sorted by relevance ↓
         </div>
         <h2 class="brk-zh review-evidence__heading" id="evidence-heading">
-          {{ store.outline_draft[0].heading if store.outline_draft else '—' }}
+          {{ outline_for_render[0].heading if outline_for_render else '—' }}
         </h2>
       </div>
 
@@ -168,11 +179,13 @@
                           class="reject-btn"
                           data-reject="section"
                           data-evidence-slug="{{ card.slug }}"
+                          {% if store.outline_final %}disabled aria-disabled="true"{% endif %}
                           aria-label="從本段拿掉證據 {{ card.slug }}">從這段拿掉</button>
                   <button type="button"
                           class="reject-btn reject-btn--global"
                           data-reject="global"
                           data-evidence-slug="{{ card.slug }}"
+                          {% if store.outline_final %}disabled aria-disabled="true"{% endif %}
                           aria-label="整條下架證據 {{ card.slug }}">整條不要</button>
                 </div>
               </footer>
