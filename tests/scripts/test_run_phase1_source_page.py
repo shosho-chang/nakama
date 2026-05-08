@@ -134,3 +134,19 @@ def test_filename_uses_real_chapter_index(tmp_path: Path) -> None:
     out_path = run_phase1_source_page(payload, vault_root=tmp_path, book_title="Test", dry_run=True)
 
     assert out_path.name == "ch7.md"
+
+
+def test_phase1_prompt_contains_prioritized_concepts_instruction() -> None:
+    """Phase 1 prompt template demands prioritized_concepts (issue #498).
+
+    Checks that _build_phase1_prompt emits 'prioritized_concepts' and '5' or '7'
+    as part of the runtime prompt, so the LLM sees the constraint on every call.
+    No LLM call made — only checks the built prompt string.
+    """
+    from scripts.run_s8_preflight import _build_phase1_prompt
+
+    payload = _payload(chapter_index=1, section_anchors=["Sec A"])
+    prompt = _build_phase1_prompt(payload, book_title="Test Book", ingest_date="2026-05-08")
+    assert "prioritized_concepts" in prompt, "prompt must reference prioritized_concepts field"
+    assert "5" in prompt and "7" in prompt, "prompt must state the 5-7 concept count constraint"
+    assert "justification" in prompt, "prompt must demand per-concept justification"

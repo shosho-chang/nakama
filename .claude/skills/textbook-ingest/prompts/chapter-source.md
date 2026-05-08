@@ -44,9 +44,20 @@ the last MUST be `}`.
       "concept_map_md": "```mermaid\nflowchart LR\n  A --> B\n```",
       "wikilinks": ["Term1", "Term2"]
     }
+  ],
+  "prioritized_concepts": [
+    {
+      "term": "Term1",
+      "justification": "1-2 sentence explanation of why this concept is critical to this chapter."
+    }
   ]
 }
 ```
+
+`prioritized_concepts` is **required**: emit exactly 5–7 entries for the whole chapter — the most
+critical named concepts a student must master. Each entry needs `term` (source-language string) and
+`justification` (1–2 sentences). This field is parsed by downstream tooling to drive Phase 2
+concept promotion; emit fewer than 5 or more than 7 and the entry will be flagged.
 
 `sections[i].anchor` is the heading text WITHOUT the `## ` prefix — exactly as
 it appears in `section_anchors` from the walker. The runner uses this for
@@ -114,8 +125,20 @@ identity matching; a wrong anchor causes a fatal error.
 
 ## Wikilinks coverage
 
-Be comprehensive. A typical biochemistry chapter introduces 20-40 wikilink-worthy
-concepts. Include terms that:
+**Two-tier model — emit both:**
+
+**Tier 1 – `prioritized_concepts` (5–7, required):**
+Select the 5–7 concepts a student *must* master from this chapter. Prioritization criteria:
+
+- Central to the chapter argument (not just incidentally mentioned)
+- Tested as a building block in later sections or chapters
+- Named, non-trivial (not stop-words or chapter numbers)
+
+Each must include a 1–2 sentence `justification` explaining *why* it is critical.
+**Do not exceed 7.** If you list everything you found you have failed this constraint.
+
+**Tier 2 – `wikilinks` / `wikilinks_introduced` (comprehensive):**
+A typical biochemistry chapter introduces 20–40 wikilink-worthy concepts. Include terms that:
 
 - Appear in a section heading
 - Are **bolded** or *italicised* on first use
@@ -139,23 +162,30 @@ Your only job is to emit structured JSON — do NOT write any body text.
 
 Output ONLY a JSON object with this exact shape:
 {
-  "frontmatter": { title, book_id, chapter_index, chapter_title,
+  “frontmatter”: { title, book_id, chapter_index, chapter_title,
                    section_anchors, wikilinks_introduced, figures,
                    tables_overview, ingest_date, vision_status },
-  "sections":    [ { anchor, concept_map_md, wikilinks }, ... ]
+  “sections”:    [ { anchor, concept_map_md, wikilinks }, ... ],
+  “prioritized_concepts”: [
+    { “term”: “<source-language term>”, “justification”: “<1-2 sentences why critical>” },
+    ...
+  ]
 }
 
 Hard rules — violations fail the acceptance gate:
 - Output ONLY JSON. No markdown fences around the JSON. No prose. No commentary.
-- DO NOT emit a "body" field. DO NOT include verbatim chapter text.
-- figures[].vision_status = "caption_only". DO NOT write "llm_description".
+- DO NOT emit a “body” field. DO NOT include verbatim chapter text.
+- figures[].vision_status = “caption_only”. DO NOT write “llm_description”.
 - sections[i].anchor MUST equal section_anchors[i] byte-for-byte, including Unicode
-  punctuation (keep curly quotes ‘ ’ “ ”, en-dash –, em-dash —, no-break space verbatim).
-  No "## " prefix, same order. If you cannot satisfy this for any section, return { "error": "<reason>" }.
+  punctuation (keep curly quotes ‘ ‘ “ “, en-dash –, em-dash —, no-break space verbatim).
+  No “## “ prefix, same order. If you cannot satisfy this for any section, return { “error”: “<reason>” }.
 - concept_map_md: one ```mermaid block per section, max ~12 nodes,
   reflecting actual concept relationships in that section (not decorative).
 - wikilinks: [[Term]] format, book-relevant terms only (no stop-words).
 - Wikilinks must be in SOURCE LANGUAGE (English for English text, 繁中 for 繁中 text).
+- prioritized_concepts: exactly 5–7 entries, each with “term” and “justification”.
+  Do NOT list everything; prioritize ruthlessly. Justification must explain why the
+  concept is load-bearing for a student mastering this chapter (not just “it appears”).
 
 Chapter metadata:
 - Chapter index: {chapter_index}
