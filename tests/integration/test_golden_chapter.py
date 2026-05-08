@@ -139,15 +139,19 @@ def test_c7_detects_wikilink_divergence(tmp_path: Path) -> None:
     live_dir.mkdir(parents=True)
 
     # Tamper: add a spurious wikilink to the source page's appendix.
+    # Insert position is order-independent (right after the heading) so this
+    # works regardless of which slug ends up first in the wikilinks list.
     original = source_page.read_text(encoding="utf-8")
     tampered = original.replace(
-        "## Wikilinks Introduced\n\n- [[atp]]",
-        "## Wikilinks Introduced\n\n- [[atp]]\n- [[spurious-concept]]",
+        "## Wikilinks Introduced\n\n",
+        "## Wikilinks Introduced\n\n- [[spurious-concept]]\n",
+        1,
     )
     # Also add a FM entry to keep C3 consistent (FM count == body count).
     tampered = tampered.replace(
-        "wikilinks_introduced:\n- atp\n",
-        "wikilinks_introduced:\n- atp\n- spurious-concept\n",
+        "wikilinks_introduced:\n",
+        "wikilinks_introduced:\n- spurious-concept\n",
+        1,
     )
     source_page.write_text(tampered, encoding="utf-8")
 
