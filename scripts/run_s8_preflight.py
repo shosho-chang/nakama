@@ -169,6 +169,37 @@ def _patch_kb_writer_to_staging() -> None:
     )
 
 
+def _patch_alias_map_to_staging() -> None:
+    """Monkey-patch ``shared.concept_classifier.append_alias_entry`` so the L1
+    alias map is written to ``KB/Wiki.staging/_alias_map.md`` instead of the
+    real ``KB/Wiki/_alias_map.md``. The original function hardcodes the
+    ``KB/Wiki`` segment; we wrap it without touching shared/.
+    """
+    from shared import concept_classifier as cc
+
+    if getattr(cc, "_s8_staging_patched", False):
+        return
+
+    def _staged_append_alias_entry(term: str, source_link: str, vault_path: Path) -> None:
+        alias_file = vault_path / "KB" / "Wiki.staging" / "_alias_map.md"
+        alias_file.parent.mkdir(parents=True, exist_ok=True)
+        entry = f"{term} | {source_link}"
+        if alias_file.exists():
+            content = alias_file.read_text(encoding="utf-8")
+            if entry in content:
+                return
+            alias_file.write_text(content.rstrip("\n") + f"\n{entry}\n", encoding="utf-8")
+        else:
+            alias_file.write_text(
+                "# L1 Alias Map (STAGING)\n\nterm | source\n--- | ---\n" + entry + "\n",
+                encoding="utf-8",
+            )
+
+    cc.append_alias_entry = _staged_append_alias_entry
+    cc._s8_staging_patched = True
+    log.info("alias map redirected → KB/Wiki.staging/_alias_map.md")
+
+
 # ---------------------------------------------------------------------------
 # LLM helpers — use shared.llm.ask with cost tracking
 # ---------------------------------------------------------------------------
@@ -1008,6 +1039,7 @@ def run_preflight(args) -> PreflightResult:
 
     os.environ.setdefault("VAULT_PATH", str(vault_root))
     _patch_kb_writer_to_staging()
+    _patch_alias_map_to_staging()
 
     raw_path = vault_root / DEFAULT_RAW_PATH_REL
     if args.raw_path:

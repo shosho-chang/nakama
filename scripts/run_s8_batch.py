@@ -51,6 +51,7 @@ if str(_REPO_ROOT) not in sys.path:
 # Reuse all the heavy lifting from the preflight runner — frozen API.
 from scripts.run_s8_preflight import (  # noqa: E402
     PREFLIGHT_MODEL,
+    _patch_alias_map_to_staging,
     _patch_kb_writer_to_staging,
     run_coverage_gate,
     run_figure_triage,
@@ -158,39 +159,6 @@ class ChapterResult:
 # ---------------------------------------------------------------------------
 # Cost helpers
 # ---------------------------------------------------------------------------
-
-
-def _patch_alias_map_to_staging() -> None:
-    """Monkey-patch ``shared.concept_classifier.append_alias_entry`` so the L1
-    alias map is written to ``KB/Wiki.staging/_alias_map.md`` instead of the
-    real ``KB/Wiki/_alias_map.md``. The original function hardcodes the
-    ``KB/Wiki`` segment; we wrap it without touching shared/.
-    """
-    from shared import concept_classifier as cc
-
-    if getattr(cc, "_s8_staging_patched", False):
-        return
-
-    def _staged_append_alias_entry(term: str, source_link: str, vault_path: Path) -> None:
-        alias_file = vault_path / "KB" / "Wiki.staging" / "_alias_map.md"
-        alias_file.parent.mkdir(parents=True, exist_ok=True)
-        entry = f"{term} | {source_link}"
-        if alias_file.exists():
-            content = alias_file.read_text(encoding="utf-8")
-            if entry in content:
-                return
-            alias_file.write_text(
-                content.rstrip("\n") + f"\n{entry}\n", encoding="utf-8"
-            )
-        else:
-            alias_file.write_text(
-                "# L1 Alias Map (STAGING)\n\nterm | source\n--- | ---\n" + entry + "\n",
-                encoding="utf-8",
-            )
-
-    cc.append_alias_entry = _staged_append_alias_entry
-    cc._s8_staging_patched = True
-    log.info("alias map redirected → KB/Wiki.staging/_alias_map.md")
 
 
 def _drain_usage_buffer() -> tuple[int, int, int, int, float]:
@@ -379,7 +347,7 @@ def _run_spot_checks(results: list[ChapterResult], vault_root: Path, n: int = 5)
         item["wikilinks_total"] = len(wikilinks)
 
         concept_dir = vault_root / "KB" / "Wiki.staging" / "Concepts"
-        alias_map_path = concept_dir / "alias_map.md"
+        alias_map_path = vault_root / "KB" / "Wiki.staging" / "_alias_map.md"
         alias_map_text = (
             alias_map_path.read_text(encoding="utf-8") if alias_map_path.exists() else ""
         )
