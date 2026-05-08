@@ -227,13 +227,85 @@
     });
   }
 
-  // ── Save / finalize stubs (server side ops not in scope here) ────────────
+  // ── Save draft stub ──────────────────────────────────────────────────────
   const saveBtn = document.getElementById("btn-save-draft");
   if (saveBtn) {
     saveBtn.addEventListener("click", () => {
-      // Placeholder — outline_final POST hook can land later.
+      // Placeholder — outline_final POST hook is the finalize button below.
       saveBtn.textContent = "已暫存";
       setTimeout(() => (saveBtn.textContent = "暫存草稿"), 1200);
+    });
+  }
+
+  // ── Mode toggle helpers ──────────────────────────────────────────────────
+  // Issue #462 / ADR-021 §3 Step 4: after finalize, the panel becomes a
+  // read-only viewer. We disable reject buttons + flip data-mode so the CSS
+  // adjusts type scale + column width for a reading session (left screen
+  // viewer, right screen Obsidian).
+  function enterWritingMode() {
+    shell.dataset.mode = "writing";
+    document.querySelectorAll(".reject-btn").forEach((b) => {
+      b.disabled = true;
+      b.setAttribute("aria-disabled", "true");
+    });
+    const finalizeBtn = document.getElementById("btn-finalize");
+    if (finalizeBtn) {
+      finalizeBtn.disabled = true;
+      finalizeBtn.setAttribute("aria-disabled", "true");
+      finalizeBtn.dataset.finalized = "true";
+      finalizeBtn.textContent = "已定稿 · finalized";
+    }
+    const modeCaps = document.getElementById("review-mode-caps");
+    if (modeCaps) modeCaps.textContent = "synthesize · writing · 寫稿模式";
+  }
+
+  // ── Finalize ─────────────────────────────────────────────────────────────
+  const finalizeBtn = document.getElementById("btn-finalize");
+  if (finalizeBtn) {
+    finalizeBtn.addEventListener("click", async () => {
+      if (finalizeBtn.disabled) return;
+      if (finalizeBtn.dataset.finalized === "true") return;
+      const original = finalizeBtn.textContent;
+      finalizeBtn.disabled = true;
+      finalizeBtn.setAttribute("aria-disabled", "true");
+      finalizeBtn.textContent = "定稿中…";
+      try {
+        const res = await fetch(`/api/projects/${slug}/synthesize`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "finalize_outline" }),
+        });
+        if (!res.ok) throw new Error("finalize failed: " + res.status);
+        const updated = await res.json();
+        // Optimistic: flip into writing mode immediately so the user gets
+        // the reading-surface treatment without waiting for a reload. The
+        // outline panel's text content reflects the *draft* until reload —
+        // we surface a soft hint instead of trying to rebuild the DOM in
+        // JS (which would diverge from the server-rendered template).
+        if (updated && Array.isArray(updated.outline_final) && updated.outline_final.length) {
+          enterWritingMode();
+          // Reload so the outline panel renders outline_final.
+          // Tiny delay so the user sees the button state flip first
+          // (200ms mirrors --brk-dur-slow but stays out of the visual
+          // jank of reduced-motion preferences).
+          const reduced =
+            window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          setTimeout(() => window.location.reload(), reduced ? 0 : 200);
+        } else {
+          // Server returned but no outline_final — restore button so user can retry.
+          finalizeBtn.disabled = false;
+          finalizeBtn.removeAttribute("aria-disabled");
+          finalizeBtn.textContent = original;
+        }
+      } catch (err) {
+        console.error(err);
+        finalizeBtn.disabled = false;
+        finalizeBtn.removeAttribute("aria-disabled");
+        finalizeBtn.textContent = original;
+        alert("定稿失敗，請重試。");
+      }
     });
   }
 })();

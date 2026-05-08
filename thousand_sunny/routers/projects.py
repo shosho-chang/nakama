@@ -10,8 +10,11 @@ Exposes:
 - ``POST /api/projects/{slug}/synthesize`` → mutates the store. Body shape
   is a discriminated union over ``op``: ``append_user_action`` appends one
   ``UserAction`` to the audit trail, ``update_outline_final`` replaces the
-  ``outline_final`` array. 404 when the slug has not been materialised yet —
-  the API never bootstraps an empty store (ADR-021 §4).
+  ``outline_final`` array, ``finalize_outline`` (issue #462, ADR-021 §3
+  Step 4) regenerates ``outline_final`` from the cached evidence pool +
+  user_actions without re-running KB retrieval. 404 when the slug has not
+  been materialised yet — the API never bootstraps an empty store
+  (ADR-021 §4).
 - ``GET /projects/{slug}`` → renders the review-mode page (issue #458).
   HMAC cookie auth, 404 when no store, 302 to /login when unauthenticated.
 """
@@ -64,7 +67,24 @@ class UpdateOutlineFinalBody(BaseModel):
     outline_final: list[OutlineSection]
 
 
-SynthesizePostBody = Union[AppendUserActionBody, UpdateOutlineFinalBody]
+class FinalizeOutlineBody(BaseModel):
+    """Trigger Brook outline regeneration from cached evidence + user_actions.
+
+    No payload — the slug + cached store is the whole input. Issue #462,
+    ADR-021 §3 Step 4: "finalize → Brook 重新 generate outline（廣搜結果
+    cached，不重撈）".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    op: Literal["finalize_outline"]
+
+
+SynthesizePostBody = Union[
+    AppendUserActionBody,
+    UpdateOutlineFinalBody,
+    FinalizeOutlineBody,
+]
 
 
 class _PostEnvelope(BaseModel):
@@ -131,6 +151,19 @@ async def post_synthesize(
     try:
         if isinstance(body, AppendUserActionBody):
             return brook_synthesize_store.append_user_action(slug, body.action)
+        if isinstance(body, FinalizeOutlineBody):
+            # ADR-021 §3 Step 4: regenerate outline from cached pool + actions
+            # (no KB re-search). Late import: pulling agents.* eagerly drags
+            # the LLM router into Sunny startup, which the test fixtures
+            # explicitly opt out of.
+            from agents.brook.synthesize import regenerate_outline_final
+
+            try:
+                return regenerate_outline_final(slug)
+            except ValueError as exc:
+                # Empty pool or LLM contract violation — surface as 422 so
+                # the client can show a meaningful error in writing-mode UI.
+                raise HTTPException(status_code=422, detail=str(exc))
         # UpdateOutlineFinalBody — exhaustive on the union.
         return brook_synthesize_store.update_outline_final(slug, body.outline_final)
     except StoreNotFoundError:
@@ -227,6 +260,11 @@ async def project_review_page(
     store = brook_synthesize_store.read(slug)
     keyword_pairs = [(k, _is_zh(k)) for k in store.keywords]
     evidence_cards = _evidence_view_model(store)
+    # Issue #462: in writing mode the user reads the finalised outline; the
+    # draft is stale once finalize ran. Pick the canonical outline for the
+    # template loop in one place so the template doesn't branch.
+    is_writing_mode = bool(store.outline_final)
+    outline_for_render = list(store.outline_final) if is_writing_mode else list(store.outline_draft)
     return _templates.TemplateResponse(
         request,
         "review.html",
@@ -234,5 +272,7 @@ async def project_review_page(
             "store": store,
             "keyword_pairs": keyword_pairs,
             "evidence_cards": evidence_cards,
+            "is_writing_mode": is_writing_mode,
+            "outline_for_render": outline_for_render,
         },
     )

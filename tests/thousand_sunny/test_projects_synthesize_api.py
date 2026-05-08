@@ -24,6 +24,7 @@ from shared.schemas.brook_synthesize import (
     BrookSynthesizeStore,
     EvidencePoolItem,
     OutlineSection,
+    UserAction,
 )
 
 
@@ -187,6 +188,115 @@ def test_post_unknown_op_returns_422(app_client: TestClient):
 
 
 # ── Slug guard ───────────────────────────────────────────────────────────────
+
+
+# ── POST finalize_outline (issue #462) ──────────────────────────────────────
+
+
+def test_post_finalize_outline_regenerates_via_cached_pool(app_client: TestClient, monkeypatch):
+    """`finalize_outline` op writes outline_final from cached evidence + actions.
+
+    Mocks the LLM at the synthesize package boundary so we don't need a
+    live model. Verifies (a) the route returns the updated store, (b) the
+    outline_final array is populated, (c) outline_draft is preserved, (d)
+    user_actions are preserved.
+    """
+    import json as _json
+
+    _seed()
+    # Append a per-section reject so we can assert it's honoured in finalize.
+    store.append_user_action(
+        "creatine-cognitive",
+        UserAction(
+            timestamp="2026-05-08T00:00:00+00:00",
+            action="reject_from_section",
+            section=1,
+            evidence_slug="rae-2003",
+        ),
+    )
+    # Need at least 2 evidence slugs in the pool to satisfy outline contract.
+    # Read existing then re-write with a fatter pool.
+    s = store.read("creatine-cognitive")
+    s2 = s.model_copy(
+        update={
+            "evidence_pool": [
+                EvidencePoolItem(
+                    slug="rae-2003",
+                    chunks=[{"chunk_id": 1, "rrf_score": 0.9, "heading": "h1"}],
+                    hit_reason="rrf",
+                ),
+                EvidencePoolItem(
+                    slug="benton-2011",
+                    chunks=[{"chunk_id": 2, "rrf_score": 0.8, "heading": "h2"}],
+                    hit_reason="rrf",
+                ),
+            ]
+        }
+    )
+    store.write(s2)
+
+    # Mock the LLM via draft_outline's ask_fn path. The finalize entry
+    # point lets the default ask resolve through the router; here we swap
+    # the module-level ask with a fake that returns a valid outline JSON.
+    fake_outline = _json.dumps(
+        {
+            "sections": [
+                {
+                    "section": i + 1,
+                    "heading": f"第 {i + 1} 段",
+                    "evidence_refs": ["rae-2003", "benton-2011"],
+                }
+                for i in range(5)
+            ]
+        }
+    )
+
+    from agents.brook.synthesize import _outline as outline_mod
+
+    monkeypatch.setattr(outline_mod, "_default_ask", lambda *a, **kw: fake_outline)
+
+    r = app_client.post(
+        "/api/projects/creatine-cognitive/synthesize",
+        json={"op": "finalize_outline"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["outline_final"]) == 5
+    # outline_draft preserved
+    assert len(body["outline_draft"]) == 1
+    # user_actions preserved
+    assert len(body["user_actions"]) == 1
+    # per-section reject honoured: section 1's evidence_refs no longer contain rae-2003
+    section_one = body["outline_final"][0]
+    assert section_one["section"] == 1
+    assert "rae-2003" not in section_one["evidence_refs"]
+    # other sections retain rae-2003
+    assert any("rae-2003" in s["evidence_refs"] for s in body["outline_final"][1:])
+
+
+def test_post_finalize_outline_404_when_store_missing(app_client: TestClient):
+    r = app_client.post(
+        "/api/projects/no-such-slug/synthesize",
+        json={"op": "finalize_outline"},
+    )
+    assert r.status_code == 404
+
+
+def test_post_finalize_outline_422_when_pool_empty(app_client: TestClient, monkeypatch):
+    """An empty evidence pool surfaces as 422 (LLM contract failure)."""
+    s = BrookSynthesizeStore(
+        project_slug="empty-pool",
+        topic="t",
+        keywords=[],
+        evidence_pool=[],
+        outline_draft=[],
+    )
+    store.create(s)
+    r = app_client.post(
+        "/api/projects/empty-pool/synthesize",
+        json={"op": "finalize_outline"},
+    )
+    assert r.status_code == 422
 
 
 def test_slug_with_dotdot_rejected(app_client: TestClient):

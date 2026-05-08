@@ -444,6 +444,50 @@ body { background: var(--brk-bg); }
 }
 .review-theme-toggle:focus-visible { outline: none; box-shadow: var(--brk-focus); }
 
+/* ── writing mode (issue #462) ──────────────────────────────────────────
+   Visual diff vs review mode:
+   - reject buttons hidden (already disabled at the DOM level; we also
+     visually retire them so the eye doesn't snag)
+   - serif body type bumped to --brk-t-read-2 / --brk-lh-read so a long
+     focus session at the left screen is comfortable
+   - card max-width tightens — modeled on book column width, not list
+     density
+   - finalize button stays on the topbar but shows the "finalized" pill
+     state (handled inline by the disabled style)
+   The reading column on the left of a dual-screen setup is what the user
+   stares at while writing on the right (in Obsidian); we treat it as a
+   reading surface, not a tool surface. */
+.review-shell[data-mode="writing"] .review-evidence-card__reject-row {
+  display: none;
+}
+.review-shell[data-mode="writing"] .review-evidence-card__excerpt {
+  font-size: var(--brk-t-read-2);
+  line-height: var(--brk-lh-read);
+}
+.review-shell[data-mode="writing"] .review-evidence__body {
+  /* slightly tighter column for sustained reading; mirrors a book page */
+  max-width: 760px;
+}
+.review-shell[data-mode="writing"] .review-outline-item__heading {
+  font-size: var(--brk-t-lg);
+}
+.review-shell[data-mode="writing"] .review-outline-item__reviewing {
+  /* "▸ reviewing" caption is wrong in writing mode */
+  display: none !important;
+}
+.review-shell[data-mode="writing"] #review-mode-caps {
+  color: var(--brk-good);
+}
+/* writing-mode body class on <body> when JS swaps in (avoids reflow on
+   first paint since the template already sets data-mode server-side). */
+@media (prefers-reduced-motion: no-preference) {
+  .review-shell[data-mode="writing"] .review-evidence-card {
+    transition:
+      background var(--brk-dur-base) var(--brk-ease),
+      opacity var(--brk-dur-base) var(--brk-ease);
+  }
+}
+
 /* ── reject confirm dialog ──────────────────────────────────────────── */
 dialog.review-confirm {
   width: 540px;
