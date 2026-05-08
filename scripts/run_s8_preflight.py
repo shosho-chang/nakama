@@ -403,6 +403,63 @@ def _assemble_body(
     return body + appendix
 
 
+def _rewrite_source_page_with_dispatch_log(
+    source_page_path: Path,
+    payload,
+    dispatch_log: list[dict],
+) -> None:
+    """Post-Phase-2 reassembly — rebuild source page with dispatch_log as single
+    source of truth for both FM ``wikilinks_introduced`` and body appendix
+    (B14/B15 fix wiring; sandcastle commit 7a07a4e added the helpers but never
+    called them).
+
+    Reads the Phase 1 sidecar JSON for sections_json + frontmatter, re-runs
+    ``_assemble_body`` with ``dispatch_log`` (so appendix has ``## Wikilinks
+    Introduced`` from L2/L3 + ``## Aliases Recorded`` from L1), updates FM
+    ``wikilinks_introduced`` to match dispatched L2/L3 slugs, and writes back.
+    """
+    sidecar_path = source_page_path.with_suffix(".phase1.json")
+    if not sidecar_path.exists():
+        log.warning(
+            "Phase 1 sidecar missing at %s — skipping post-dispatch reassembly "
+            "(legacy Phase 1 appendix kept; FM/body counts may diverge).",
+            sidecar_path,
+        )
+        return
+    parsed = json.loads(sidecar_path.read_text(encoding="utf-8"))
+
+    # Single source of truth: dispatch_log L2/L3 slugs become FM wikilinks_introduced.
+    seen: set[str] = set()
+    new_wl: list[str] = []
+    for entry in dispatch_log:
+        if entry.get("level") in ("L2", "L3"):
+            slug = entry.get("slug", "")
+            if slug and slug not in seen:
+                seen.add(slug)
+                new_wl.append(slug)
+    parsed["frontmatter"]["wikilinks_introduced"] = new_wl
+
+    import yaml as _yaml
+
+    body = _assemble_body(
+        payload.verbatim_body,
+        payload.section_anchors,
+        payload.figures,
+        parsed["sections"],
+        payload.book_id,
+        dispatch_log=dispatch_log,
+    )
+    fm_yaml = _yaml.dump(parsed["frontmatter"], allow_unicode=True, default_flow_style=False)
+    page_md = f"---\n{fm_yaml}---\n\n{body}"
+    source_page_path.write_text(page_md, encoding="utf-8")
+    log.info(
+        "Phase 2 post-dispatch: rewrote %s (%d FM wikilinks, %d dispatch entries)",
+        source_page_path,
+        len(new_wl),
+        len(dispatch_log),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 — chapter source page generation
 # ---------------------------------------------------------------------------
@@ -547,6 +604,12 @@ def run_phase1_source_page(
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(page_md, encoding="utf-8")
+
+    # Sidecar JSON for post-Phase-2 reassembly (B14 fix wiring) — stores parsed
+    # sections_json + frontmatter so _rewrite_with_dispatch_log can rebuild the
+    # appendix from dispatch_log without re-calling LLM.
+    sidecar_path = out_path.with_suffix(".phase1.json")
+    sidecar_path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if dry_run:
         print(
@@ -1037,11 +1100,27 @@ def compute_acceptance_7(
     if not c5_ok:
         reasons.append(f"C5: {len(c5_hits)} concept page(s) contain placeholder stubs")
 
-    # --- C6 — zero canonical-slug collisions ---------------------------------
+    # --- C6 — zero UNINTENDED canonical-slug collisions ----------------------
+    # report_collisions returns ALL pairs that map to the same canonical, including
+    # those merged via the seed-alias dict (e.g. "Lactic acid" + "Lactate" → both
+    # map to "lactate" by design). Those are intentional dedupe — the panel
+    # decision was for canonicalize to MERGE fragmented variants. C6 should only
+    # flag UNINTENDED collisions (ones that surface a new fragmentation case
+    # needing a seed dict entry).
+    import unicodedata as _ud
+
+    from shared.concept_canonicalize import _SEED_ALIAS  # noqa: PLC2701
+
+    def _is_intentional(term_a: str, term_b: str) -> bool:
+        a = _ud.normalize("NFKC", term_a).casefold().strip()
+        b = _ud.normalize("NFKC", term_b).casefold().strip()
+        return a in _SEED_ALIAS or b in _SEED_ALIAS
+
     terms = [
         e.get("term") or e.get("slug", "") for e in dispatch_log if e.get("term") or e.get("slug")
     ]
-    c6_pairs = report_collisions(terms)
+    raw_pairs = report_collisions(terms)
+    c6_pairs = [(a, b) for (a, b) in raw_pairs if not _is_intentional(a, b)]
     c6_ok = len(c6_pairs) == 0
     if not c6_ok:
         reasons.append(f"C6: {len(c6_pairs)} canonical-slug collision(s): {c6_pairs[:3]}")
@@ -1097,6 +1176,12 @@ def run_coverage_gate(
         live_concepts_dir=live_concepts_dir,
     )
 
+    # Verbatim metric still surfaced for the report — strip FM, then strip
+    # appendix, then compare against walker.verbatim_body.
+    raw = source_page_path.read_text(encoding="utf-8")
+    body_only = raw.split("\n---\n", 2)[-1] if raw.startswith("---\n") else raw
+    verbatim_pct_value = verbatim_match_pct(body_only, payload.verbatim_body) * 100
+
     return (
         acc7.acceptance_pass,
         acc7.reasons,
@@ -1105,7 +1190,7 @@ def run_coverage_gate(
             "primary_missing_pct": 0.0,
             "secondary_missing_pct": 0.0,
             "nuance_missing_pct": 0.0,
-            "verbatim_pct": 0.0,
+            "verbatim_pct": verbatim_pct_value,
             "manifest_path": "",
         },
     )
@@ -1327,6 +1412,8 @@ def run_preflight(args) -> PreflightResult:
             if lvl in result.concept_levels:
                 result.concept_levels[lvl] += 1
         result.concept_dir = str(vault_root / "KB" / "Wiki.staging" / "Concepts")
+        # Post-dispatch reassembly: FM + body appendix from same dispatch_log.
+        _rewrite_source_page_with_dispatch_log(source_page_path, payload, dispatch_log)
     except Exception as e:
         log.exception("Phase 2 dispatch crashed")
         result.gaps_observed.append(f"Phase 2 dispatch raised: {e!r}")

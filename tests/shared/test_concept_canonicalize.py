@@ -51,6 +51,17 @@ def test_plural_strip_s_only_not_es():
     assert result == "enzyme", f"expected 'enzyme', got {result!r}"
 
 
+def test_plural_strip_skips_double_s_singular():
+    # Regression: BSE ch3 5/8 PM ingest hit "atomic mass" → "atomic mas" because
+    # the naive -s rule stripped from singular -ss words. -ss endings are always
+    # singular in English (mass, pass, class, glass, process, business, address).
+    assert canonicalize("mass") == "mass"
+    assert canonicalize("atomic mass") == "atomic mass"
+    assert canonicalize("law of conservation of mass") == "law of conservation of mass"
+    assert canonicalize("class") == "class"
+    assert canonicalize("process") == "process"
+
+
 # ---------- acronym ↔ full-name (seed dict) ----------
 
 

@@ -56,6 +56,13 @@ def canonicalize(surface: str) -> str:
 
     for suffix, replacement in _PLURAL_RULES:
         if s.endswith(suffix):
+            # Skip generic "-s" strip when the word ends in "-ss" — these are
+            # singular-only English words (mass / pass / class / glass /
+            # process / business / address) that the naive plural rule
+            # mis-handles. Without this check, "atomic mass" → "atomic mas"
+            # (BSE ch3 ingest 5/8 PM regression).
+            if suffix == "s" and s.endswith("ss"):
+                continue
             stem = s[: -len(suffix)] + replacement if suffix else s
             if len(stem) < _MIN_STEM_LEN:
                 continue
