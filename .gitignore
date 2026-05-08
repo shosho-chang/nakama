@@ -55,3 +55,11 @@ tests/files/
 
 # Franky context snapshot (regenerated weekly per ADR-023 §3 Phase 1)
 agents/franky/state/franky_context_snapshot.md
+
+# Ephemeral session handoffs (Tier 2 memory — local-only, consumed/deleted next session).
+# See memory/claude/feedback_conversation_end.md and
+# docs/research/2026-05-08-memory-system-redesign-v2.md.
+.nakama/
+
+# Lock files for shared/ memory updates (working-tree-only state).
+memory/**/*.lock
