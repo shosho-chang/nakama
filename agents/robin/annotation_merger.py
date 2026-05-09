@@ -364,7 +364,29 @@ class ConceptPageAnnotationMerger:
         ADR-021 §1: post-migration sets use V3 schema regardless of source
         kind. ``book_id`` presence is the canonical discriminator (set by
         ``upgrade_to_v3`` at save boundaries).
+
+        Defensive guard: ``base="books"`` with ``book_id=None`` is structurally
+        valid per the schema (both fields permit defaults) but semantically
+        malformed — the book set lost its identifier somewhere upstream.
+        Routing it to the paper path would write annotations to ``## 個人觀點``
+        with the bare slug as the marker, polluting concept pages. Treat as
+        an error and surface it in the SyncReport rather than misroute.
         """
+        if ann_set.base == "books" and ann_set.book_id is None:
+            logger.error(
+                "v3 sync: malformed book set (base=books, book_id=None)",
+                extra={"slug": slug},
+            )
+            return SyncReport(
+                source_slug=slug,
+                concepts_updated=[],
+                annotations_merged=0,
+                skipped_annotations=0,
+                errors=[
+                    "⚠️ 同步錯誤：V3 book set 缺少 book_id（base=books），"
+                    "無法判定書名空間，請檢查 KB/Annotations 檔案。"
+                ],
+            )
         if ann_set.book_id is not None:
             return self._sync_v3_book(ann_set)
         return self._sync_v3_paper(ann_set, slug)
@@ -372,9 +394,12 @@ class ConceptPageAnnotationMerger:
     def _sync_v3_book(self, ann_set) -> SyncReport:
         """v3 book path: mirrors _sync_v2 dispatch.
 
-        ReflectionV3 → notes.md (chapter_ref required; reflections without
-        chapter_ref are dropped with a logged warning since notes.md groups by
-        chapter heading and a None heading would render as ``## None``).
+        ReflectionV3 → notes.md (chapter_ref required-ish; ``None`` is dropped
+        since the writer would render a literal ``## None`` heading. Empty
+        strings are passed through to match the V2 ``CommentV2.chapter_ref:
+        str`` semantics — V2 also accepted ``""`` and rendered an empty H2
+        rather than dropping the body, and we must not silently regress that
+        for migrated stores).
 
         AnnotationV3 → Concept page ## 讀者註記 via _ask_merger_llm_v2 +
         _upsert_concept_blocks_v2 (item shape — text_excerpt / note / cfi —
@@ -389,7 +414,10 @@ class ConceptPageAnnotationMerger:
         book_id = ann_set.book_id
 
         reflections = [i for i in ann_set.items if i.type == "reflection"]
-        reflections_with_chapter = [r for r in reflections if r.chapter_ref]
+        # ``is not None`` rather than truthy: empty-string chapter_refs were
+        # rendered as ``## `` (empty H2) in the v2 path; dropping them under
+        # v3 would be silent data loss for V2→V3 migrated stores.
+        reflections_with_chapter = [r for r in reflections if r.chapter_ref is not None]
         dropped = len(reflections) - len(reflections_with_chapter)
         if dropped:
             logger.warning(

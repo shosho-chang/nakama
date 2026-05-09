@@ -445,3 +445,115 @@ def test_n2_v2_book_set_unchanged_after_v3_branch(vault: Path, monkeypatch):
     notes_body = notes_path.read_text(encoding="utf-8")
     assert "V2 comment prose" in notes_body
     assert "ch01.xhtml" in notes_body
+
+
+# ---------------------------------------------------------------------------
+# F1 (codex review): malformed V3 set with base="books" + book_id=None must
+# NOT silently route to paper sync — it must surface as a SyncReport error.
+# ---------------------------------------------------------------------------
+
+
+def test_v3_book_set_missing_book_id_returns_error_not_paper_route(vault: Path, monkeypatch):
+    """base='books' + book_id=None must surface a SyncReport error, not misroute."""
+    import agents.robin.annotation_merger as merger_mod
+    from shared.annotation_store import AnnotationStore
+    from shared.schemas.annotations import AnnotationSetV3, AnnotationV3
+
+    ts = "2026-05-09T00:00:00Z"
+    h = "a" * 64
+    AnnotationStore().save(
+        AnnotationSetV3(
+            slug="orphan-book-set",
+            base="books",
+            book_id=None,
+            book_version_hash=h,
+            items=[
+                AnnotationV3(
+                    cfi="epubcfi(/6/4!/4/2:0)",
+                    text_excerpt="some excerpt",
+                    note="some note",
+                    book_version_hash=h,
+                    created_at=ts,
+                    modified_at=ts,
+                ),
+            ],
+            updated_at=ts,
+        )
+    )
+
+    paper_called: list[str] = []
+    book_called: list[str] = []
+    monkeypatch.setattr(
+        merger_mod.ConceptPageAnnotationMerger,
+        "_sync_v3_paper",
+        lambda self, ann_set, slug: paper_called.append(slug) or None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        merger_mod.ConceptPageAnnotationMerger,
+        "_sync_v3_book",
+        lambda self, ann_set: book_called.append(ann_set.slug) or None,
+        raising=False,
+    )
+
+    report = merger_mod.sync_annotations_for_slug("orphan-book-set")
+    assert paper_called == [], "must not route base='books' book_id=None to paper sync"
+    assert book_called == [], "must not route base='books' book_id=None to book sync either"
+    assert report.errors and any("book_id" in e for e in report.errors)
+    assert report.annotations_merged == 0
+
+
+# ---------------------------------------------------------------------------
+# F2 (codex review): empty-string chapter_ref must be passed through (V2 parity),
+# not dropped by truthy filter — V2 rendered '## ' empty heading + body, which
+# is degenerate but not silent data loss. Drop only when chapter_ref is None.
+# ---------------------------------------------------------------------------
+
+
+def test_v3_book_empty_string_chapter_ref_passed_through_not_dropped(
+    vault: Path, monkeypatch, caplog
+):
+    """Empty-string chapter_ref reaches notes.md (V2 parity); only None drops."""
+    import agents.robin.annotation_merger as merger_mod
+    from shared.annotation_store import AnnotationStore
+    from shared.schemas.annotations import AnnotationSetV3, ReflectionV3
+
+    ts = "2026-05-09T00:00:00Z"
+    h = "a" * 64
+    AnnotationStore().save(
+        AnnotationSetV3(
+            slug="emptychap-book",
+            base="books",
+            book_id="emptychap-book",
+            book_version_hash=h,
+            items=[
+                ReflectionV3(
+                    chapter_ref="",
+                    cfi_anchor=None,
+                    body="empty-chapter reflection must survive",
+                    created_at=ts,
+                    modified_at=ts,
+                ),
+                ReflectionV3(
+                    chapter_ref=None,
+                    cfi_anchor=None,
+                    body="None-chapter reflection should be dropped",
+                    created_at=ts,
+                    modified_at=ts,
+                ),
+            ],
+            updated_at=ts,
+        )
+    )
+    monkeypatch.setattr(merger_mod, "_ask_merger_llm_v2", lambda items, _slugs: {}, raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="nakama.robin.annotation_merger"):
+        merger_mod.sync_annotations_for_slug("emptychap-book")
+
+    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "emptychap-book" / "notes.md"
+    body = notes_path.read_text(encoding="utf-8")
+    # Empty-string chapter_ref survived (V2 parity — degenerate '## ' heading is OK)
+    assert "empty-chapter reflection must survive" in body
+    # None-chapter dropped + warned
+    assert "None-chapter reflection should be dropped" not in body
+    assert any("dropping reflections without chapter_ref" in r.getMessage() for r in caplog.records)
