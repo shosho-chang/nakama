@@ -34,6 +34,7 @@ from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
 from shared.image_fetcher import download_markdown_images
 from shared.log import get_logger
+from shared.reading_source_registry import InboxKey, ReadingSourceRegistry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
 from shared.utils import extract_frontmatter, read_text, slugify
@@ -232,7 +233,17 @@ async def read_source(
     if frontmatter and content.startswith("---"):
         frontmatter_raw = content[: content.index("---", 3) + 3]
 
-    slug = annotation_slug(file, frontmatter)
+    # ADR-024 Slice 2 (#510): inbox-side slug derives from ReadingSourceRegistry
+    # so the bilingual-sibling collapse rule mirrors _get_inbox_files. The
+    # sources-side base (KB/Wiki/Sources/...) keeps the legacy ad-hoc derivation
+    # since the registry only models BookKey + InboxKey today.
+    if base == "inbox":
+        rs = ReadingSourceRegistry().resolve(InboxKey(f"Inbox/kb/{file}"))
+        if rs is None:
+            raise HTTPException(404, detail=f"找不到檔案：{file}")
+        slug = rs.annotation_key
+    else:
+        slug = annotation_slug(file, frontmatter)
     ann_store: AnnotationStore = get_annotation_store()
     ann_set = ann_store.load(slug)
     annotations = [item.model_dump() for item in ann_set.items] if ann_set else []

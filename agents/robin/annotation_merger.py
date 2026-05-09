@@ -1,7 +1,8 @@
 """ConceptPageAnnotationMerger — syncs reader annotations into Concept pages.
 
-ADR-017 Slice 2 + Slice 5 (book extension): per-source full-replace via HTML
-comment boundary markers, dispatched on schema_version.
+ADR-017 Slice 2 + Slice 5 (book extension) + ADR-021 §1 (V3 unified store):
+per-source full-replace via HTML comment boundary markers, dispatched on
+schema_version.
 
 Flow (shared):
   1. Load AnnotationSet from store
@@ -17,6 +18,18 @@ v2 book path (AnnotationSetV2):
   - Comments → ``KB/Wiki/Sources/Books/{book_id}/notes.md`` via book_notes_writer
   - Annotations → Concept page ## 讀者註記 via _ask_merger_llm_v2 (highlights skipped, same §Q4)
   - Per-book boundary markers keep multi-book aggregation isolated
+
+v3 unified path (AnnotationSetV3):
+  - Discriminated by ``book_id`` presence:
+    * book set (``book_id is not None``) — mirrors v2 book path:
+        ReflectionV3 → notes.md (chapter_ref required; missing-ref reflections
+        are dropped with a warning since notes.md groups by chapter heading)
+        AnnotationV3 → ## 讀者註記 (re-uses v2 helpers; item shape compatible)
+        HighlightV3 → skipped (ADR-017 §Q4 asymmetric)
+    * paper set (``book_id is None``) — mirrors v1 paper path:
+        AnnotationV3 → ## 個人觀點 with per-source markers
+        ReflectionV3 → skipped + warned (no v1-paper Reader UI surface)
+        HighlightV3 → skipped (ADR-017 §Q4 asymmetric)
 """
 
 from __future__ import annotations
@@ -177,12 +190,12 @@ class ConceptPageAnnotationMerger:
 
         Args:
             slug: source slug (e.g. "sport-nutrition-ch3" for v1 paper, or
-                book_id like "kahneman-thinking-fast-slow" for v2 book)
+                book_id like "kahneman-thinking-fast-slow" for v2/v3 book)
 
         Returns:
             SyncReport with counts, updated concept slugs, and any errors.
         """
-        from shared.annotation_store import AnnotationSetV2
+        from shared.annotation_store import AnnotationSetV2, AnnotationSetV3
 
         store = get_annotation_store()
         ann_set = store.load(slug)
@@ -209,6 +222,8 @@ class ConceptPageAnnotationMerger:
                 unsynced_count=0,
             )
 
+        if isinstance(ann_set, AnnotationSetV3):
+            return self._sync_v3(ann_set, slug)
         if isinstance(ann_set, AnnotationSetV2):
             return self._sync_v2(ann_set)
         return self._sync_v1(ann_set, slug)
@@ -337,6 +352,170 @@ class ConceptPageAnnotationMerger:
         concepts_updated, skipped, errors = _upsert_concept_blocks_v2(book_id, mapping)
         return SyncReport(
             source_slug=book_id,
+            concepts_updated=concepts_updated,
+            annotations_merged=len(annotations),
+            skipped_annotations=skipped,
+            errors=errors,
+        )
+
+    def _sync_v3(self, ann_set, slug: str) -> SyncReport:
+        """v3 unified path: book vs paper sub-discrimination via ``book_id``.
+
+        ADR-021 §1: post-migration sets use V3 schema regardless of source
+        kind. ``book_id`` presence is the canonical discriminator (set by
+        ``upgrade_to_v3`` at save boundaries).
+        """
+        if ann_set.book_id is not None:
+            return self._sync_v3_book(ann_set)
+        return self._sync_v3_paper(ann_set, slug)
+
+    def _sync_v3_book(self, ann_set) -> SyncReport:
+        """v3 book path: mirrors _sync_v2 dispatch.
+
+        ReflectionV3 → notes.md (chapter_ref required; reflections without
+        chapter_ref are dropped with a logged warning since notes.md groups by
+        chapter heading and a None heading would render as ``## None``).
+
+        AnnotationV3 → Concept page ## 讀者註記 via _ask_merger_llm_v2 +
+        _upsert_concept_blocks_v2 (item shape — text_excerpt / note / cfi —
+        matches AnnotationV2; the LLM input contract via model_dump is
+        compatible).
+
+        HighlightV3 → skipped (ADR-017 §Q4 asymmetric — highlights are not
+        synced to concept pages, same as v1 + v2).
+        """
+        from agents.robin.book_notes_writer import write_notes
+
+        book_id = ann_set.book_id
+
+        reflections = [i for i in ann_set.items if i.type == "reflection"]
+        reflections_with_chapter = [r for r in reflections if r.chapter_ref]
+        dropped = len(reflections) - len(reflections_with_chapter)
+        if dropped:
+            logger.warning(
+                "v3 book sync: dropping reflections without chapter_ref",
+                extra={"book_id": book_id, "dropped_count": dropped},
+            )
+        write_notes(book_id, reflections_with_chapter)
+
+        annotations = [i for i in ann_set.items if i.type == "annotation"]
+        if not annotations:
+            return SyncReport(
+                source_slug=book_id,
+                concepts_updated=[],
+                annotations_merged=0,
+                skipped_annotations=0,
+                errors=[],
+            )
+
+        concept_slugs = _list_concept_slugs_v2()
+        try:
+            mapping = _ask_merger_llm_v2(annotations, concept_slugs)
+        except MergerLLMError as exc:
+            logger.error(
+                "annotation merger v3 book LLM failed",
+                extra={"book_id": book_id, "error": str(exc)},
+            )
+            return SyncReport(
+                source_slug=book_id,
+                concepts_updated=[],
+                annotations_merged=len(annotations),
+                skipped_annotations=0,
+                errors=["⚠️ 同步錯誤：LLM 回傳格式錯誤，請重試"],
+            )
+
+        concepts_updated, skipped, errors = _upsert_concept_blocks_v2(book_id, mapping)
+        return SyncReport(
+            source_slug=book_id,
+            concepts_updated=concepts_updated,
+            annotations_merged=len(annotations),
+            skipped_annotations=skipped,
+            errors=errors,
+        )
+
+    def _sync_v3_paper(self, ann_set, slug: str) -> SyncReport:
+        """v3 paper path: mirrors _sync_v1 structure.
+
+        AnnotationV3 → ## 個人觀點 section with ``<!-- annotation-from: {slug} -->``
+        markers (re-uses _replace_marker_block + _ask_merger_llm).
+
+        ReflectionV3 on paper sets is dropped + warned: V1 paper had no
+        comment kind and there is no Reader UI surface for paper-side
+        reflections. Reflections are intentionally a book-only concept.
+
+        HighlightV3 → skipped (ADR-017 §Q4 asymmetric).
+        """
+        reflections = [i for i in ann_set.items if i.type == "reflection"]
+        if reflections:
+            logger.warning(
+                "v3 paper sync: dropping reflections (no Reader UI surface for paper reflections)",
+                extra={"slug": slug, "dropped_count": len(reflections)},
+            )
+
+        annotations = [i for i in ann_set.items if i.type == "annotation"]
+        if not annotations:
+            return SyncReport(
+                source_slug=slug,
+                concepts_updated=[],
+                annotations_merged=0,
+                skipped_annotations=0,
+                errors=[],
+            )
+
+        concept_slugs = self._list_concept_slugs()
+        prompt = load_prompt(
+            "robin",
+            "merge_annotations",
+            source_slug=slug,
+            concept_slugs=", ".join(concept_slugs) if concept_slugs else "(none)",
+            annotations_json=json.dumps(
+                [a.model_dump() for a in annotations],
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+        try:
+            linkage: dict[str, str] = _ask_merger_llm(prompt)
+        except MergerLLMError as exc:
+            logger.error(
+                "annotation merger v3 paper LLM failed",
+                extra={"source_slug": slug, "error": str(exc)},
+            )
+            return SyncReport(
+                source_slug=slug,
+                concepts_updated=[],
+                annotations_merged=len(annotations),
+                skipped_annotations=0,
+                errors=["⚠️ 同步錯誤：LLM 回傳格式錯誤，請重試"],
+            )
+
+        concepts_updated: list[str] = []
+        skipped = 0
+        errors: list[str] = []
+
+        for concept_slug, callout_block in linkage.items():
+            concept_path = get_vault_path() / KB_CONCEPTS_DIR / f"{concept_slug}.md"
+            if not concept_path.exists():
+                logger.warning(
+                    "concept not found, skipping v3 paper annotation sync",
+                    extra={"concept_slug": concept_slug, "source_slug": slug},
+                )
+                skipped += 1
+                continue
+
+            result = _load_page(concept_path)
+            if result is None:
+                errors.append(f"failed to load concept page: {concept_slug}")
+                continue
+            fm, body = result
+
+            updated_body = _replace_marker_block(body, slug, callout_block.strip())
+            if updated_body != body:
+                _write_page_file(concept_path, fm, updated_body)
+                concepts_updated.append(concept_slug)
+
+        return SyncReport(
+            source_slug=slug,
             concepts_updated=concepts_updated,
             annotations_merged=len(annotations),
             skipped_annotations=skipped,
