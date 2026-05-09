@@ -44,7 +44,7 @@ import re
 import sys
 import time
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -1248,18 +1248,34 @@ def run_coverage_gate(
     raw = source_page_path.read_text(encoding="utf-8")
     body_only = raw.split("\n---\n", 2)[-1] if raw.startswith("---\n") else raw
     verbatim_pct_value = verbatim_match_pct(body_only, payload.verbatim_body) * 100
+    metrics = {
+        "primary_total": 0,
+        "primary_missing_pct": 0.0,
+        "secondary_missing_pct": 0.0,
+        "nuance_missing_pct": 0.0,
+        "verbatim_pct": verbatim_pct_value,
+    }
+
+    manifest_path = source_page_path.with_suffix(".coverage.json")
+    manifest = {
+        "schema_version": 1,
+        "source_page_path": str(source_page_path),
+        "book_id": getattr(payload, "book_id", ""),
+        "chapter_index": getattr(payload, "chapter_index", 0),
+        "concept_dispatch_log": dispatch_log,
+        "acceptance_gate_7": asdict(acc7),
+        "metrics": metrics,
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    metrics["manifest_path"] = str(manifest_path)
 
     return (
         acc7.acceptance_pass,
         acc7.reasons,
-        {
-            "primary_total": 0,
-            "primary_missing_pct": 0.0,
-            "secondary_missing_pct": 0.0,
-            "nuance_missing_pct": 0.0,
-            "verbatim_pct": verbatim_pct_value,
-            "manifest_path": "",
-        },
+        metrics,
     )
 
 

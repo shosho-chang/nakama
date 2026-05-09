@@ -48,13 +48,15 @@ def _collect_chapters(vault_root: Path) -> list[tuple[str, int, Path]]:
     return result
 
 
-def _load_dispatch_log(staged_path: Path) -> list[dict]:
+_MISSING_DISPATCH_SIDECAR_REASON = "C1/C4/C6: missing dispatch sidecar; cannot verify dispatch evidence"
+
+
+def _load_dispatch_log(staged_path: Path) -> list[dict] | None:
     """Load the adjacent Phase 2 dispatch log when present.
 
-    Current S8 runs may expose the log through a coverage manifest sidecar;
-    older staging directories may only have the source page. In that case the
-    artifact gate still checks C2/C3/C5/C7 from disk and treats C1/C4/C6 as
-    vacuously clean.
+    Current S8 runs expose the log through a coverage manifest sidecar. Missing
+    evidence returns ``None`` so aggregate verification fails loudly instead of
+    treating C1/C4/C6 as vacuously clean.
     """
     candidates = [
         staged_path.with_suffix(".coverage.json"),
@@ -71,7 +73,7 @@ def _load_dispatch_log(staged_path: Path) -> list[dict]:
         raw_log = data.get("concept_dispatch_log") if isinstance(data, dict) else data
         if isinstance(raw_log, list):
             return [entry for entry in raw_log if isinstance(entry, dict)]
-    return []
+    return None
 
 
 def _run(vault_root: Path, *, report_dir: Path | None = None) -> int:
@@ -143,13 +145,20 @@ def _run(vault_root: Path, *, report_dir: Path | None = None) -> int:
             walker_figures_count=len(payload.figures),
             wikilinks_introduced=wikilinks_introduced,
         )
+        dispatch_log = _load_dispatch_log(staged_path)
+        missing_dispatch_sidecar = dispatch_log is None
         acc7 = compute_acceptance_7(
             source_page_path=staged_path,
-            dispatch_log=_load_dispatch_log(staged_path),
+            dispatch_log=dispatch_log or [],
             staging_concepts_dir=vault_root / "KB" / "Wiki.staging" / "Concepts",
             live_concepts_dir=vault_root / "KB" / "Wiki" / "Concepts",
         )
-        record["acceptance_pass"] = acc4.acceptance_pass and acc7.acceptance_pass
+        acc7_pass = acc7.acceptance_pass and not missing_dispatch_sidecar
+        acc7_reasons = list(acc7.reasons)
+        if missing_dispatch_sidecar:
+            acc7_reasons.append(_MISSING_DISPATCH_SIDECAR_REASON)
+
+        record["acceptance_pass"] = acc4.acceptance_pass and acc7_pass
         record["rules"] = {
             "verbatim_match_pct": {
                 "value": round(acc4.verbatim_match, 4),
@@ -171,8 +180,8 @@ def _run(vault_root: Path, *, report_dir: Path | None = None) -> int:
                 "pass": acc4.wikilinks_ok,
             },
             "artifact_gate_7": {
-                "pass": acc7.acceptance_pass,
-                "reasons": acc7.reasons,
+                "pass": acc7_pass,
+                "reasons": acc7_reasons,
             },
         }
         records.append(record)

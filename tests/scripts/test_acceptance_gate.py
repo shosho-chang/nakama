@@ -6,8 +6,10 @@ section_anchors_match, and compute_acceptance.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +19,7 @@ from scripts.run_s8_preflight import (
     compute_acceptance,
     compute_acceptance_7,
     normalize_for_verbatim_compare,
+    run_coverage_gate,
     section_anchors_match,
     verbatim_match_pct,
 )
@@ -569,3 +572,40 @@ def test_c7_golden_skipped_always_pass(tmp_path: Path) -> None:
     )
     assert acc.c7_golden_ok is True
     assert acc.c7_skipped is True
+
+
+def test_run_coverage_gate_persists_dispatch_sidecar(tmp_path: Path) -> None:
+    """Normal S8 producer path writes the evidence verify_staging consumes."""
+    vault_root = tmp_path / "vault"
+    staging = vault_root / "KB" / "Wiki.staging" / "Concepts"
+    staging.mkdir(parents=True)
+    (staging / "atp.md").write_text(_valid_concept_page(), encoding="utf-8")
+    (vault_root / "KB" / "Wiki" / "Concepts").mkdir(parents=True)
+
+    source_page = _make_source_page(
+        tmp_path,
+        fm_wikilinks=["[[atp]]"],
+        body_wikilinks=["atp"],
+    )
+    dispatch_log = [{"slug": "atp", "term": "ATP", "level": "L2", "action": "create"}]
+    payload = SimpleNamespace(
+        book_id="book-a",
+        chapter_index=1,
+        verbatim_body="## Sec\n\nText.",
+    )
+
+    passed, reasons, metrics = run_coverage_gate(
+        payload=payload,
+        source_page_path=source_page,
+        figures_count=0,
+        figures_described=0,
+        dispatch_log=dispatch_log,
+        vault_root=vault_root,
+    )
+
+    manifest_path = Path(metrics["manifest_path"])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert passed is True, reasons
+    assert manifest_path == source_page.with_suffix(".coverage.json")
+    assert manifest["concept_dispatch_log"] == dispatch_log
+    assert manifest["acceptance_gate_7"]["acceptance_pass"] is True
