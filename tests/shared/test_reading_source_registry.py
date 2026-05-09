@@ -134,9 +134,7 @@ def test_resolve_ebook_bilingual_only_true_bilingual(
     assert "lang_pair" not in rs.metadata
 
 
-def test_resolve_ebook_phase1_monolingual_zh(
-    registry: ReadingSourceRegistry, books_dir: Path
-):
+def test_resolve_ebook_phase1_monolingual_zh(registry: ReadingSourceRegistry, books_dir: Path):
     book_id = "gamma-book"
     _store_book(book_id, has_original=False, language="zh-TW")
 
@@ -174,9 +172,7 @@ def test_resolve_ebook_missing(registry: ReadingSourceRegistry, books_dir: Path)
     assert registry.resolve(BookKey("never-inserted")) is None
 
 
-def test_resolve_ebook_orphan_blob_no_db_row(
-    registry: ReadingSourceRegistry, books_dir: Path
-):
+def test_resolve_ebook_orphan_blob_no_db_row(registry: ReadingSourceRegistry, books_dir: Path):
     """Blob on disk but no DB row → None (DB is the source of truth)."""
     from shared.book_storage import store_book_files
 
@@ -241,9 +237,7 @@ def test_resolve_inbox_bilingual_only(registry: ReadingSourceRegistry, vault: Pa
     assert rs.variants[0].path == "Inbox/kb/qux-bilingual.md"
 
 
-def test_resolve_inbox_both_siblings_canonicalize(
-    registry: ReadingSourceRegistry, vault: Path
-):
+def test_resolve_inbox_both_siblings_canonicalize(registry: ReadingSourceRegistry, vault: Path):
     _copy_fixture("baz.md", vault)
     _copy_fixture("baz-bilingual.md", vault)
 
@@ -304,9 +298,7 @@ def test_resolve_inbox_bilingual_only_with_title_keeps_user_facing_title(
     assert rs.title == "Qux"
 
 
-def test_resolve_inbox_missing_lang_frontmatter(
-    registry: ReadingSourceRegistry, vault: Path
-):
+def test_resolve_inbox_missing_lang_frontmatter(registry: ReadingSourceRegistry, vault: Path):
     _copy_fixture("no-lang.md", vault)
 
     rs = registry.resolve(InboxKey("Inbox/kb/no-lang.md"))
@@ -373,9 +365,7 @@ def test_no_fastapi_imports():
         text=True,
         cwd=Path(__file__).resolve().parents[2],
     )
-    assert result.returncode == 0, (
-        f"stdout={result.stdout!r} stderr={result.stderr!r}"
-    )
+    assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert "OK" in result.stdout
 
 
@@ -398,9 +388,7 @@ def test_vault_root_required(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_ebook_malformed_blob(
-    registry: ReadingSourceRegistry, books_dir: Path, caplog
-):
+def test_resolve_ebook_malformed_blob(registry: ReadingSourceRegistry, books_dir: Path, caplog):
     """NB1: blob is a valid zip but missing OPF / dc:language → returns
     ``None`` + WARNING; does not raise.
     """
@@ -422,15 +410,10 @@ def test_resolve_ebook_malformed_blob(
     rs = registry.resolve(BookKey(book_id))
 
     assert rs is None
-    assert any(
-        getattr(rec, "category", None) == "ebook_blob_read_failed"
-        for rec in caplog.records
-    )
+    assert any(getattr(rec, "category", None) == "ebook_blob_read_failed" for rec in caplog.records)
 
 
-def test_resolve_ebook_blob_io_error(
-    registry: ReadingSourceRegistry, books_dir: Path, caplog
-):
+def test_resolve_ebook_blob_io_error(registry: ReadingSourceRegistry, books_dir: Path, caplog):
     """NB1: blob is registered in DB but missing on disk at resolve time →
     returns ``None`` + WARNING; does not raise ``FileNotFoundError``.
     """
@@ -448,15 +431,10 @@ def test_resolve_ebook_blob_io_error(
     rs = registry.resolve(BookKey(book_id))
 
     assert rs is None
-    assert any(
-        getattr(rec, "category", None) == "ebook_blob_read_failed"
-        for rec in caplog.records
-    )
+    assert any(getattr(rec, "category", None) == "ebook_blob_read_failed" for rec in caplog.records)
 
 
-def test_resolve_inbox_malformed_frontmatter(
-    registry: ReadingSourceRegistry, vault: Path, caplog
-):
+def test_resolve_inbox_malformed_frontmatter(registry: ReadingSourceRegistry, vault: Path, caplog):
     """NB1: malformed YAML in frontmatter → returns ``None`` + WARNING;
     does not raise.
     """
@@ -472,6 +450,5 @@ def test_resolve_inbox_malformed_frontmatter(
 
     assert rs is None
     assert any(
-        getattr(rec, "category", None) == "inbox_frontmatter_parse_failed"
-        for rec in caplog.records
+        getattr(rec, "category", None) == "inbox_frontmatter_parse_failed" for rec in caplog.records
     )

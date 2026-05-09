@@ -239,9 +239,7 @@ class ReadingSourceRegistry:
             try:
                 target.relative_to(vault_resolved)
             except ValueError as exc:
-                raise ValueError(
-                    f"InboxKey path escapes vault: {relative_path!r}"
-                ) from exc
+                raise ValueError(f"InboxKey path escapes vault: {relative_path!r}") from exc
 
         original_path = self._vault / logical_original
         bilingual_path = self._vault / logical_bilingual
@@ -272,9 +270,7 @@ class ReadingSourceRegistry:
             # annotation_key. annotation_slug currently falls back to
             # "untitled", but if a future change drops that fallback we want
             # an early loud failure instead of a silently broken join key.
-            raise ValueError(
-                f"annotation_slug returned empty for inbox path {relative_path!r}"
-            )
+            raise ValueError(f"annotation_slug returned empty for inbox path {relative_path!r}")
 
         # Determine the original-side frontmatter for primary_lang. In case
         # (b) bilingual-only, primary_lang derives from the bilingual sibling
