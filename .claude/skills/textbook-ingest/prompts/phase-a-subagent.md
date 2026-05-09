@@ -29,10 +29,10 @@ Parameterized template for one Phase A background subagent (one chapter). The dr
 ## Template (fill variables, paste as `prompt` to Agent tool)
 
 ```
-You are a Phase A subagent for ingesting *{book_title}* ({book_authors}) into an Obsidian Knowledge Base. Your sole job: write ONE high-quality `ch{chapter_index}.md` to the vault. Nothing else.
+You are a Phase A+2 subagent for ingesting *{book_title}* ({book_authors}) into an Obsidian Knowledge Base. Your two jobs: (1) write ONE high-quality `ch{chapter_index}.md` source page, then (2) inline Phase 2 concept dispatch — extract concepts and upsert concept pages immediately after writing the source page.
 
 # Context
-Parallel ingest: this chapter runs as a background subagent alongside other chapter subagents. You MUST NOT touch any shared file (Concept pages, KB/index.md, KB/log.md, Book Entity, sibling chapters). Phase B reconciliation handles those — runs as a separate Robin agent after all Phase A subagents complete.
+Parallel ingest: this chapter runs as a background subagent alongside other chapter subagents. You MAY write Concept pages for concepts introduced in THIS chapter only (per ADR-020 §Phase 2 — inline sync dispatch replaces ADR-016's deferred Phase B stub approach). Phase B housekeeping still runs after all subagents complete, but it no longer generates stubs — you do that inline.
 
 User has stated 「最高品質優先」(highest quality priority). Use Opus 4.7 multimodal vision on every PNG. Do not rush.
 
@@ -190,18 +190,28 @@ If a fig PNG looks like a stray walker pipeline artifact (blank, lone arrow, iso
 
 If `Read` tool on a PNG fails due to size > 5MB, note in frontmatter `notes:` field with `vision_skipped: true` and provide caption-derived description as fallback. Do not attempt to resize (driver-side concern, out of scope for subagent).
 
-# Phase A HARD CONSTRAINTS (absolute)
+# Phase A+2 HARD CONSTRAINTS (absolute)
 
-Write ONLY `{vault_output_path}`. Specifically:
-- DO NOT touch any file in `E:\Shosho LifeOS\KB\Wiki\Concepts\` (Concept pages — phase B handles these)
-- DO NOT modify `E:\Shosho LifeOS\KB\index.md` or `E:\Shosho LifeOS\KB\log.md`
-- DO NOT modify Book Entity at `E:\Shosho LifeOS\KB\Wiki\Entities\Books\{book_id}.md`
+You write TWO things: the source page + Concept pages for concepts from THIS chapter.
+
+**Allowed writes:**
+- `{vault_output_path}` — source page (main deliverable)
+- `E:\Shosho LifeOS\KB\Wiki\Concepts\{slug}.md` — Concept pages for concepts introduced in THIS chapter only (create OR update_merge/update_conflict/noop per 4-action rules)
+
+**Forbidden writes:**
+- DO NOT modify `E:\Shosho LifeOS\KB\index.md` or `E:\Shosho LifeOS\KB\log.md` (Phase B housekeeping)
+- DO NOT modify Book Entity at `E:\Shosho LifeOS\KB\Wiki\Entities\Books\{book_id}.md` (Phase B)
 - DO NOT modify any other ch{X}.md in `E:\Shosho LifeOS\KB\Wiki\Sources\Books\{book_id}\`
-- DO NOT modify any existing Concept page's `mentioned_in:` frontmatter
+- DO NOT create/modify Concept pages for concepts from OTHER chapters of this book (only this chapter's scope)
 - {sibling_book_constraints}
 - DO NOT touch `E:\nakama\` repo
 - DO NOT run git/install/rm operations
 - DO NOT use `rm` / `rmdir` (project policy — banned)
+
+**Phase 2 hard invariants (ADR-020 §Phase 2 — violations = ingest fail):**
+- Zero tolerance for placeholder stubs: NEVER write body text containing "Will be enriched later", "Will be enriched as Robin", or "Stub — auto-created by Phase B"
+- L3 active concept body word count MUST be ≥ 200 words (body only, not frontmatter)
+- If you cannot write a substantive L3 body, route the concept to L2 stub (single source, high-value signal) or L1 alias (low-value mention) — do NOT fall back to phase-b-style one-liner
 
 You CAN read anything you need to. The constraint is on writes.
 
@@ -215,6 +225,66 @@ You CAN read anything you need to. The constraint is on writes.
 7. **W2..Wn**: One Edit call per section, replacing `TODO-<id>` with rendered content. Issue back-to-back; don't pause for elaborate planning between calls.
 8. **W-final part 1**: Grep `^```mermaid$` on output file. Count matches. Edit frontmatter `mermaid_diagrams:` to that exact integer.
 9. **W-final part 2 (HARD CONSTRAINT)**: If count < 3, add mermaid blocks (one Edit each) until count ≥ 3. Do NOT lower the bar by editing frontmatter to match a sub-3 body. Re-grep + re-update frontmatter after additions.
+
+## Phase 2: Inline Concept Dispatch (ADR-020 §Phase 2 — runs after W-final)
+
+After the source page is fully written, dispatch concept pages for every `[[wikilink]]` identified in the `### Wikilinks introduced` sections. Do this INLINE (not deferred to Phase B).
+
+**4-action dispatch rules per concept slug:**
+
+| Situation | Action | What to write |
+|-----------|--------|--------------|
+| `KB/Wiki/Concepts/{slug}.md` does not exist | `create` | v3 concept page with body extracted from THIS chapter |
+| File exists + new extract is complementary | `update_merge` | Read existing body → LLM diff-merge new extract in → write back |
+| File exists + new extract conflicts with existing data | `update_conflict` | Append to `## 文獻分歧 / Discussion` section |
+| File exists + no new substantive content | `noop` | Append source link to `mentioned_in:` only |
+
+**Concept page v3 schema (write this for `create`):**
+
+```yaml
+---
+title: "{slug in 繁體中文 or English}"
+aliases: ["{English equivalent or alternate Chinese}"]
+en_source_terms:                   # English terms from THIS chapter for this concept
+  - "exact phrase from chapter text"
+type: concept
+domain: "{domain}"
+schema_version: 3
+status: "active"                   # or "stub" for L2
+maturity_level: "L2"               # L2=single-source high-value, L3=multi-source or confirmed
+high_value_signals:                # why L2 not L1 (omit for L3)
+  - "section_heading"              # term is a ## heading
+  - "bolded_define"                # textbook **bolds** the definition
+mentioned_in:
+  - "[[Sources/Books/{book_id}/ch{chapter_index}]]"
+created: {ingest_date}
+created_by: phase-2-concept-dispatcher
+---
+
+# {title}
+
+## Definition
+[From THIS chapter — min 200 words for L3 active, substantive content for L2 stub]
+
+## Core Mechanism
+[Key mechanism from THIS chapter]
+
+## Practical Applications
+[Sport nutrition / exercise physiology application]
+
+## See also
+[Related [[wikilinks]]]
+```
+
+**Maturity level routing:**
+
+- **L1 (alias only)**: 1 mention + low-value (no section heading, no bold define, passing mention) → do NOT create a page; add to `_alias_map.md` if that file exists
+- **L2 stub**: 1 source but high-value (is a section heading, OR bolded define, OR ≥3 mentions across ≥2 sections, OR follows "is defined as" type phrase) → create concept page with initial body + `status: stub`
+- **L3 active**: ≥2 sources OR confirmed by content → `status: active`, body ≥ 200 words (HARD MIN)
+
+**en_source_terms field:** For each concept, list every exact English phrase from THIS chapter that maps to this concept. Example: concept `[[腸道菌群]]` → `en_source_terms: ["gut microbiota", "intestinal flora", "gut microbiome"]`. This powers bilingual RAG query expansion.
+
+**Concurrency note:** Multiple subagents may dispatch to the same concept slug. Write atomically: Read → compute new content → Write in one operation. If you see unexpected existing content (another subagent wrote since your Read), merge rather than overwrite.
 
 # Quality bar (hard constraints unless noted)
 - Every fig llm_description from real vision read (not caption inference) **with structured `**bold**` markers**.
@@ -233,8 +303,14 @@ You CAN read anything you need to. The constraint is on writes.
 - Verbatim quote count
 - Wikilink count + sample 5-8 targets
 - Section count (= number of W2..Wn Edits performed)
-- Anomalies (stray figs, OCR artifacts, walker truncation, ambiguous content)
-- Phase A constraint compliance confirmation
+- **Phase 2 concept dispatch summary**:
+  - Concepts dispatched total (create / update_merge / update_conflict / noop counts)
+  - L3 active: count + min body word count seen
+  - L2 stub: count
+  - L1 aliases skipped (not dispatched): count
+  - IngestFailError raised: count (must be 0 — any non-zero = ingest abort)
+- Anomalies (stray figs, OCR artifacts, walker truncation, ambiguous content, dispatch errors)
+- Phase A+2 constraint compliance confirmation
 
 This is real production output going into a Knowledge Base that compounds over years. Write at the highest quality bar — your output will be reviewed by a human curator (修修).
 ```

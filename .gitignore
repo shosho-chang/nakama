@@ -53,10 +53,20 @@ tests/files/
 # See docs/runbooks/sandcastle.md
 .sandcastle/
 
-# Franky context snapshot (regenerated weekly per ADR-023 §3 Phase 1)
+# Codex CLI local config (parallel to CLAUDE.md / .claude/)
+AGENTS.md
+.agents/
+
+# Claude Code worktrees (per-agent isolation)
+.claude/worktrees/
+
+# Preflight / pipeline run reports
+docs/runs/
+
+# Franky context snapshot (regenerated weekly per ADR-023 Phase 1)
 agents/franky/state/franky_context_snapshot.md
 
-# Ephemeral session handoffs (Tier 2 memory — local-only, consumed/deleted next session).
+# Ephemeral session handoffs (Tier 2 memory; local-only, consumed/deleted next session).
 # See memory/claude/feedback_conversation_end.md and
 # docs/research/2026-05-08-memory-system-redesign-v2.md.
 .nakama/

@@ -1,0 +1,76 @@
+---
+schema_version: 3
+title: cholesterol
+type: concept
+domain: biochemistry
+aliases: []
+mentioned_in:
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch6]]'
+source_refs: []
+discussion_topics: []
+confidence: null
+tags: []
+created: 2026-05-08
+updated: 2026-05-08
+en_source_terms:
+- cholesterol
+- Cholesterol
+maturity_level: L2
+high_value_signals:
+- bolded_define
+---
+
+The membrane itself consists of lipids and proteins (to which carbohydrates may be attached), where the basic structural framework is the *lipid bilayer*. Membrane lipids include *phospholipids* (lipids with a phosphate group attached), *cholesterol* (a steroid with a hydroxyl group attached) and *glycolipids* (lipids with carbohydrate groups attached).
+
+Proteins in the plasma membrane are divided into two categories – *integral proteins* or *peripheral proteins*. Most integral proteins are also referred to as *transmembrane proteins*, meaning they span right across the lipid bilayer and are in contact with both the intracellular and extracellular fluid. In contrast, peripheral proteins tend to associate with membrane lipids or integral proteins at either the inner or outer surface of the membrane. Membrane proteins have a variety of functions which are essential for maintaining cell viability.
+
+## Definition
+
+
+cholesterol is a staged golden-fixture concept for BSE chapter 3. It is retained as a non-placeholder concept page so the acceptance gate can verify schema quality.
+
+## Core Principles
+
+Lipids carry out a variety of functions within the human body, including structural roles in membranes, energy storage, hormone signalling, and roles relevant to sport and exercise performance.
+
+In the context of membranes, lipids provide the fundamental structural framework via the lipid bilayer, with phospholipids, cholesterol, and glycolipids each contributing distinct structural and functional properties. Membrane proteins (integral/transmembrane and peripheral) are embedded in or associated with this lipid bilayer and carry out functions essential for cell viability.
+
+Key metabolic processes involving lipids include:
+- *Lipolysis* – the breakdown of triacylglycerols into fatty acids and glycerol.
+- *β-oxidation* – the stepwise oxidation of fatty acids to generate acetyl-CoA, which feeds into the TCA cycle to produce ATP.
+- *Lipogenesis* – the synthesis of fatty acids, including from excess carbohydrates that can be converted into fatty acids.
+- *Ketogenesis* – the formation of ketone bodies from acetyl-CoA when fatty acid oxidation is high.
+
+Each of these processes is regulated by key enzymes, and the ATP yield from fatty acid oxidation can be calculated based on the number of acetyl-CoA, NADH and FADH₂ molecules generated.
+
+## Sub-concepts
+
+- *Triacylglycerol* – a glycerol backbone esterified with three fatty acids; the major storage form of lipids.
+- *Fatty acids* – can be *saturated* (no C=C double bonds) or *unsaturated* (one or more C=C double bonds), differing in their structural geometry and physical properties.
+- *Lipoproteins* – particles that transport lipids in blood; they differ in density, composition, and physiological role (e.g. chylomicrons, VLDL, LDL, HDL).
+- *Cholesterol* – a steroid molecule with a hydroxyl group whose structure is similar to that of steroid hormones, from which such hormones are derived.
+- *Phospholipids* – lipids with a phosphate group attached; a major component of the lipid bilayer in cell membranes.
+- *Glycolipids* – lipids with carbohydrate groups attached; found in cell membranes alongside phospholipids and cholesterol.
+- *Lipid bilayer* – the basic structural framework of the plasma membrane, formed from membrane lipids.
+- *Integral proteins* – membrane proteins embedded within the lipid bilayer; most are *transmembrane proteins* that span the bilayer and contact both intracellular and extracellular fluid.
+- *Peripheral proteins* – membrane proteins that associate with membrane lipids or integral proteins at either the inner or outer surface of the membrane, without spanning the bilayer.
+- *Ketone bodies* – formed from acetyl-CoA derived from fatty acid β-oxidation.
+- *Fatty acid transport* – fatty acids are transported in the blood (typically bound to albumin), across the plasma membrane, and across the mitochondrial membrane (involving carnitine-mediated shuttling) to reach the site of β-oxidation.
+
+## Field-level Controversies
+
+## 文獻分歧 / Discussion
+
+## Practical Applications
+
+Lipids play important roles in sport and exercise, serving as a major fuel source during prolonged, lower-intensity activity through mobilisation (lipolysis) and oxidation (β-oxidation) of fatty acids. Understanding lipoprotein profiles, cholesterol metabolism, and the conversion of excess dietary carbohydrate into fatty acids is relevant to nutrition, training adaptation, and metabolic health in athletes.
+
+The structural roles of lipids in plasma membranes also underpin cellular processes essential for exercise physiology, including transport of substrates (e.g. fatty acids, glucose) across membranes via integral/transmembrane proteins, and signalling at the cell surface.
+
+## Related Concepts
+
+## Sources
+
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch6]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]

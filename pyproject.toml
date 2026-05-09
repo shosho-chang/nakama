@@ -35,6 +35,7 @@ dependencies = [
     # EPUB parsing (textbook-ingest skill — ebook-format primary path per ADR-010)
     "ebooklib>=0.18",            # EPUB structural reader (spine + TOC + metadata)
     "beautifulsoup4>=4.12",      # EPUB HTML → plain text + heading extraction
+    "markdownify>=1.2",          # HTML → Markdown (ADR-020 Phase 0 raw converter)
 
     # KB hybrid retrieval (issue #431)
     "sqlite-vec>=0.1.9",   # vec0 virtual table for dense-vector lane

@@ -1,5 +1,10 @@
 # Memory Index
 
+- [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **5/6 KB corpus stub crisis**：KB Concept 大量空殼；ADR-020 textbook ingest rewrite 起手背景；任何 textbook ingest repair 必先讀。
+- [project_session_2026_05_06_07_s8_burn_handoff.md](project_session_2026_05_06_07_s8_burn_handoff.md) — **5/6→5/7 S8 batch burn handoff**：28 章 batch 大量 FAIL/ERROR，root cause 是 LLM emit body 違反 verbatim 設計；後續修復需避開 LLM batch。
+- [project_session_2026_05_07_path_b_plan_handoff.md](project_session_2026_05_07_path_b_plan_handoff.md) — **5/7 Path B plan handoff**：verbatim 從 walker literal 重組、保留 API path；Stage 1a 起手修 `_assemble_body` + tests。
+- [feedback_session_start_must_read_memory_md.md](feedback_session_start_must_read_memory_md.md) — 每次 session / compact reload 第一個 tool call 必讀 MEMORY.md；handoff doc 不能取代規則級 memory index。
+- [feedback_adr_principle_conflict_check.md](feedback_adr_principle_conflict_check.md) — 寫新 ADR / 改 pipeline 前必 explicit cross-check 受影響的既有 P-level 原則，避免 ADR 間沉默衝突。
 - [project_session_2026_05_08_adr021_complete_handoff.md](project_session_2026_05_08_adr021_complete_handoff.md) — **5/8 收工**：ADR-021 全 9 issue ship 完（#452-#460 全 merged）+ design-system.md v0→v1 + Reader UI #453 HITL B 區全 PASS + bench freeze (hybrid K=15)。剩 #461 E2E + #462 writing mode（前者 HITL final、後者 AFK ready）
 - [project_session_2026_05_06_overnight_4issue_sandcastle_ship.md](project_session_2026_05_06_overnight_4issue_sandcastle_ship.md) — **5/6 早報（修修睡覺期間獨力 ship）**：PR sync 5 條全 squash + sandcastle batch ship #431/#432/#433/#434（PR #436/#437/#438）— Line 2 hybrid retrieval engine + book digest + wikilink lane + ground truth signal 全產線就緒；待修修 manual smoke
 - [project_session_2026_05_05_evening_reader_qa.md](project_session_2026_05_05_evening_reader_qa.md) — **5/5 evening 收工**：Reader 5 slice QA 全跑完 + 抓 3 hidden bug 補 PR #417/#418/#419 + 開 5 follow-up issue #420-#424（3 ready-for-agent / 2 needs-info）
