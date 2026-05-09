@@ -1013,6 +1013,32 @@ _PLACEHOLDER_PATTERNS_GATE = (
 )
 
 
+def _concept_page_quality_problem(page_text: str) -> str | None:
+    """Return a short reason when a concept page body is structurally unusable."""
+    fm_match = re.match(r"^---\n(.*?)\n---\n", page_text, re.DOTALL)
+    body = page_text[fm_match.end() :] if fm_match else page_text
+
+    definition_match = re.search(
+        r"^## Definition\s*\n(?P<body>.*?)(?=^## |\Z)",
+        body,
+        re.DOTALL | re.MULTILINE,
+    )
+    if not definition_match:
+        return "missing ## Definition"
+
+    definition = definition_match.group("body").strip()
+    if not definition:
+        return "empty ## Definition"
+
+    # Regression guard for 5/8 BSE: the seed-body fallback accidentally captured
+    # the chapter metadata block, producing one-line definitions that contained
+    # embedded markdown headings such as "--- ### keywords ... ## 3.1 ...".
+    if re.search(r"(^|\s)(---|#{2,6}\s+)", definition):
+        return "definition contains embedded markdown headings"
+
+    return None
+
+
 def compute_acceptance_7(
     *,
     source_page_path: Path,
@@ -1036,7 +1062,7 @@ def compute_acceptance_7(
         live_concepts_dir:    Path to the live (non-staging) concept-page dir.
                               C4 asserts no dispatched slug exists here.
     """
-    from shared.concept_canonicalize import report_collisions
+    from shared.concept_canonicalize import canonicalize, report_collisions
 
     reasons: list[str] = []
 
@@ -1056,7 +1082,11 @@ def compute_acceptance_7(
     body_slugs: list[str] = []
     if wl_section_match:
         body_slugs = re.findall(r"\[\[([^\]]+)\]\]", wl_section_match.group(1))
-    c2_unresolved = [s for s in body_slugs if not (staging_concepts_dir / f"{s}.md").exists()]
+    c2_unresolved = [
+        s
+        for s in body_slugs
+        if not (staging_concepts_dir / f"{canonicalize(s)}.md").exists()
+    ]
     c2_ok = len(c2_unresolved) == 0
     if not c2_ok:
         reasons.append(f"C2: {len(c2_unresolved)} unresolved wikilink(s): {c2_unresolved[:5]}")
@@ -1081,7 +1111,7 @@ def compute_acceptance_7(
         )
 
     # --- C4 — zero writes to live KB/Wiki/Concepts/ --------------------------
-    all_slugs = [e.get("slug", "") for e in dispatch_log if e.get("slug")]
+    all_slugs = [canonicalize(e.get("slug", "")) for e in dispatch_log if e.get("slug")]
     c4_live = [s for s in all_slugs if (live_concepts_dir / f"{s}.md").exists()]
     c4_ok = len(c4_live) == 0
     if not c4_ok:
@@ -1096,9 +1126,13 @@ def compute_acceptance_7(
                 if pat in text:
                     c5_hits.append((page.stem, pat))
                     break  # one hit per page is enough
+            else:
+                problem = _concept_page_quality_problem(text)
+                if problem:
+                    c5_hits.append((page.stem, problem))
     c5_ok = len(c5_hits) == 0
     if not c5_ok:
-        reasons.append(f"C5: {len(c5_hits)} concept page(s) contain placeholder stubs")
+        reasons.append(f"C5: {len(c5_hits)} concept page(s) contain placeholder/invalid stubs")
 
     # --- C6 — zero UNINTENDED canonical-slug collisions ----------------------
     # report_collisions returns ALL pairs that map to the same canonical, including

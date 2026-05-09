@@ -49,8 +49,8 @@
     "signals": []
   },
   {
-    "slug": "nucleu",
-    "term": "nucleu",
+    "slug": "nucleus",
+    "term": "nucleus",
     "level": "L2",
     "action": "create",
     "signals": []
@@ -357,8 +357,8 @@
     "signals": []
   },
   {
-    "slug": "atp hydrolysi",
-    "term": "atp hydrolysi",
+    "slug": "atp hydrolysis",
+    "term": "atp hydrolysis",
     "level": "L2",
     "action": "create",
     "signals": []
@@ -406,8 +406,8 @@
     "signals": []
   },
   {
-    "slug": "hydrolysi",
-    "term": "hydrolysi",
+    "slug": "hydrolysis",
+    "term": "hydrolysis",
     "level": "L2",
     "action": "create",
     "signals": []
@@ -735,8 +735,8 @@
     "signals": []
   },
   {
-    "slug": "nucleolu",
-    "term": "nucleolu",
+    "slug": "nucleolus",
+    "term": "nucleolus",
     "level": "L2",
     "action": "create",
     "signals": []
@@ -798,8 +798,8 @@
     "signals": []
   },
   {
-    "slug": "golgi apparatu",
-    "term": "golgi apparatu",
+    "slug": "golgi apparatus",
+    "term": "golgi apparatus",
     "level": "L2",
     "action": "create",
     "signals": []

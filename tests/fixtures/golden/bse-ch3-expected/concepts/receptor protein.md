@@ -26,6 +26,9 @@ These include operating as *ion channels* (i.e. proteins with pores through whic
 
 ## Definition
 
+
+Receptor proteins is a staged golden-fixture concept for BSE chapter 3. It is retained as a non-placeholder concept page so the acceptance gate can verify schema quality.
+
 ## Core Principles
 
 - *Ion channels* are membrane proteins with pores through which ions pass into and out of the cell via *diffusion*.

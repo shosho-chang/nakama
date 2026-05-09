@@ -1,12 +1,14 @@
 """Tests for shared/kb_embedder.py.
 
-model2vec is mocked (spec=) to avoid loading the 25 MB potion model during test
-runs; BGE-M3 path is mocked at the encode level.
+model2vec is mocked to avoid loading the 25 MB potion model during test runs;
+BGE-M3 path is mocked at the encode level.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import sys
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import numpy as np
 
@@ -19,9 +21,7 @@ import shared.kb_embedder as kb_embedder
 
 def _make_mock_model(dim: int = 256) -> MagicMock:
     """Return a mock StaticModel that returns fixed-shape float32 arrays."""
-    from model2vec import StaticModel
-
-    mock = MagicMock(spec=StaticModel)
+    mock = MagicMock()
     mock.encode.side_effect = lambda texts, **_: np.random.rand(len(texts), dim).astype(np.float32)
     return mock
 
@@ -68,13 +68,13 @@ def test_embed_batch_empty_input_returns_empty_list(monkeypatch):
 
 def test_potion_lazy_loads_once(monkeypatch):
     monkeypatch.setattr(kb_embedder, "_potion_model", None)
+    fake_static_model = SimpleNamespace(from_pretrained=MagicMock(return_value=_make_mock_model()))
+    monkeypatch.setitem(sys.modules, "model2vec", SimpleNamespace(StaticModel=fake_static_model))
 
-    with patch("model2vec.StaticModel.from_pretrained") as fp:
-        fp.return_value = _make_mock_model()
-        m1 = kb_embedder._get_potion_model()
-        m2 = kb_embedder._get_potion_model()
+    m1 = kb_embedder._get_potion_model()
+    m2 = kb_embedder._get_potion_model()
 
-    fp.assert_called_once_with(kb_embedder._POTION_MODEL_NAME)
+    fake_static_model.from_pretrained.assert_called_once_with(kb_embedder._POTION_MODEL_NAME)
     assert m1 is m2
 
 

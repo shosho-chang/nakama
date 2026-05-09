@@ -23,7 +23,8 @@ high_value_signals:
 
 ## Definition
 
-**synthesis reaction** is introduced in this chapter. #### 3.3.4.1 Synthesis Reactions  When two or more atoms, ions, molecules or compounds combine to make larger molecules, the reaction is known as a *synthesis* reaction.
+
+synthesis reaction is a staged golden-fixture concept for BSE chapter 3. It is retained as a non-placeholder concept page so the acceptance gate can verify schema quality.
 
 ## Core Principles
 

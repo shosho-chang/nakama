@@ -62,6 +62,19 @@ def test_plural_strip_skips_double_s_singular():
     assert canonicalize("process") == "process"
 
 
+def test_plural_strip_skips_greek_latin_singulars():
+    assert canonicalize("hydrolysis") == "hydrolysis"
+    assert canonicalize("ATP hydrolysis") == "atp hydrolysis"
+    assert canonicalize("glycolysis") == "glycolysis"
+    assert canonicalize("gluconeogenesis") == "gluconeogenesis"
+    assert canonicalize("acidosis") == "acidosis"
+    assert canonicalize("alkalosis") == "alkalosis"
+    assert canonicalize("nucleus") == "nucleus"
+    assert canonicalize("nucleolus") == "nucleolus"
+    assert canonicalize("Golgi apparatus") == "golgi apparatus"
+    assert canonicalize("tetanus") == "tetanus"
+
+
 # ---------- acronym ↔ full-name (seed dict) ----------
 
 

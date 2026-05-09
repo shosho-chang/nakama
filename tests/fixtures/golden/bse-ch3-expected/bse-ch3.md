@@ -244,7 +244,7 @@ wikilinks_introduced:
 - proton
 - neutron
 - electron
-- nucleu
+- nucleus
 - electron shell
 - atomic number
 - mass number
@@ -288,14 +288,14 @@ wikilinks_introduced:
 - law of conservation of mass
 - exergonic reaction
 - endergonic reaction
-- atp hydrolysi
+- atp hydrolysis
 - calorie
 - kilocalorie
 - joule
 - kilojoule
 - synthesis reaction
 - decomposition reaction
-- hydrolysi
+- hydrolysis
 - reversible reaction
 - phosphorylation
 - dephosphorylation
@@ -342,7 +342,7 @@ wikilinks_introduced:
 - histone
 - nuclear envelope
 - nuclear pore
-- nucleolu
+- nucleolus
 - ribosome
 - cytoplasm
 - cytosol
@@ -351,7 +351,7 @@ wikilinks_introduced:
 - rough endoplasmic reticulum
 - smooth endoplasmic reticulum
 - sarcoplasmic reticulum
-- golgi apparatu
+- golgi apparatus
 - golgi cisternae
 - mitochondria
 - cristae
@@ -1151,7 +1151,7 @@ flowchart LR
 - [[proton]]
 - [[neutron]]
 - [[electron]]
-- [[nucleu]]
+- [[nucleus]]
 - [[electron shell]]
 - [[atomic number]]
 - [[mass number]]
@@ -1195,14 +1195,14 @@ flowchart LR
 - [[law of conservation of mass]]
 - [[exergonic reaction]]
 - [[endergonic reaction]]
-- [[atp hydrolysi]]
+- [[atp hydrolysis]]
 - [[calorie]]
 - [[kilocalorie]]
 - [[joule]]
 - [[kilojoule]]
 - [[synthesis reaction]]
 - [[decomposition reaction]]
-- [[hydrolysi]]
+- [[hydrolysis]]
 - [[reversible reaction]]
 - [[phosphorylation]]
 - [[dephosphorylation]]
@@ -1249,7 +1249,7 @@ flowchart LR
 - [[histone]]
 - [[nuclear envelope]]
 - [[nuclear pore]]
-- [[nucleolu]]
+- [[nucleolus]]
 - [[ribosome]]
 - [[cytoplasm]]
 - [[cytosol]]
@@ -1258,7 +1258,7 @@ flowchart LR
 - [[rough endoplasmic reticulum]]
 - [[smooth endoplasmic reticulum]]
 - [[sarcoplasmic reticulum]]
-- [[golgi apparatu]]
+- [[golgi apparatus]]
 - [[golgi cisternae]]
 - [[mitochondria]]
 - [[cristae]]

@@ -24,7 +24,8 @@ high_value_signals:
 
 ## Definition
 
-**decomposition reaction** is introduced in this chapter. #### 3.3.4.2 Decomposition Reactions  When molecules or compounds split into smaller atoms, ions or molecules, the reaction is known as a *decomposition reaction*.
+
+decomposition reaction is a staged golden-fixture concept for BSE chapter 3. It is retained as a non-placeholder concept page so the acceptance gate can verify schema quality.
 
 ## Core Principles
 

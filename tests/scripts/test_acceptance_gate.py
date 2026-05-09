@@ -266,6 +266,16 @@ def _make_source_page(
     return p
 
 
+def _valid_concept_page(title: str = "ATP") -> str:
+    return (
+        f"# {title}\n\n"
+        "## Definition\n\n"
+        "ATP is a substantive concept page with a concrete definition paragraph.\n\n"
+        "## Core Principles\n\n"
+        "Additional body content keeps this page out of placeholder territory.\n"
+    )
+
+
 def test_c1_dispatch_log_clean_pass(tmp_path: Path) -> None:
     """C1 passes when dispatch_log has 0 errors."""
     staging = tmp_path / "staging"
@@ -425,7 +435,7 @@ def test_c5_no_placeholders_pass(tmp_path: Path) -> None:
     """C5 passes when no concept pages contain placeholder stub text."""
     staging = tmp_path / "staging"
     staging.mkdir()
-    (staging / "atp.md").write_text("# ATP\n\nATP is the energy currency.", encoding="utf-8")
+    (staging / "atp.md").write_text(_valid_concept_page(), encoding="utf-8")
     live = tmp_path / "live"
     live.mkdir()
     page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
@@ -457,6 +467,48 @@ def test_c5_no_placeholders_fail(tmp_path: Path) -> None:
     )
     assert acc.c5_no_placeholders_ok is False
     assert any(slug == "stub" for slug, _ in acc.c5_placeholder_hits)
+
+
+def test_c5_fails_missing_definition_section(tmp_path: Path) -> None:
+    """C5 fails structurally unusable concept pages, not just literal placeholders."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "stub.md").write_text("# Stub\n\nSome body without schema.", encoding="utf-8")
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c5_no_placeholders_ok is False
+    assert ("stub", "missing ## Definition") in acc.c5_placeholder_hits
+
+
+def test_c5_fails_definition_with_embedded_markdown_headings(tmp_path: Path) -> None:
+    """Regression: seed-body fallback must not smuggle chapter metadata into Definition."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "bad-definition.md").write_text(
+        "# Bad\n\n## Definition\n\n"
+        "The fallback captured metadata --- ### keywords ## 3.1 Intro instead of a definition.\n",
+        encoding="utf-8",
+    )
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c5_no_placeholders_ok is False
+    assert ("bad-definition", "definition contains embedded markdown headings") in (
+        acc.c5_placeholder_hits
+    )
 
 
 def test_c6_no_collisions_pass(tmp_path: Path) -> None:

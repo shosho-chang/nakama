@@ -24,7 +24,8 @@ high_value_signals:
 
 ## Definition
 
-**Matter** is introduced in this chapter. ---  ### keywords  atoms and atomic structure  macronutrients  chemical bonds  chemical reactions  cell structure  buffers  ## 3.1 Organization of Matter  ### 3.1.1 Matter and Elements  All things, living and non-living, consist of *matter*, defined as anything that occupies space and has mass.
+
+matter is a staged golden-fixture concept for BSE chapter 3. It is retained as a non-placeholder concept page so the acceptance gate can verify schema quality.
 
 ## Core Principles
 

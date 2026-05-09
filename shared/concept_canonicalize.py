@@ -39,6 +39,17 @@ _PLURAL_RULES: tuple[tuple[str, str], ...] = (
     ("s", ""),  # enzymes → enzyme, atps → atp
 )
 
+# Greek/Latin-derived singulars that end in "s" are common in biochemistry.
+# The generic plural rule must not turn hydrolysis -> hydrolysi or nucleus -> nucleu.
+_SINGULAR_S_SUFFIXES: tuple[str, ...] = (
+    "sis",  # analysis, hydrolysis, glycolysis
+    "osis",  # acidosis, alkalosis
+    "asis",
+    "esis",  # gluconeogenesis, biogenesis
+    "ysis",
+    "us",  # nucleus, nucleolus, apparatus, tetanus
+)
+
 # Minimum stem length after stripping to avoid false matches ("as" → "a").
 _MIN_STEM_LEN = 3
 
@@ -61,7 +72,7 @@ def canonicalize(surface: str) -> str:
             # process / business / address) that the naive plural rule
             # mis-handles. Without this check, "atomic mass" → "atomic mas"
             # (BSE ch3 ingest 5/8 PM regression).
-            if suffix == "s" and s.endswith("ss"):
+            if suffix == "s" and (s.endswith("ss") or s.endswith(_SINGULAR_S_SUFFIXES)):
                 continue
             stem = s[: -len(suffix)] + replacement if suffix else s
             if len(stem) < _MIN_STEM_LEN:

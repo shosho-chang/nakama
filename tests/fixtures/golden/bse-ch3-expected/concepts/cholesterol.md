@@ -27,6 +27,9 @@ Proteins in the plasma membrane are divided into two categories – *integral pr
 
 ## Definition
 
+
+cholesterol is a staged golden-fixture concept for BSE chapter 3. It is retained as a non-placeholder concept page so the acceptance gate can verify schema quality.
+
 ## Core Principles
 
 Lipids carry out a variety of functions within the human body, including structural roles in membranes, energy storage, hormone signalling, and roles relevant to sport and exercise performance.

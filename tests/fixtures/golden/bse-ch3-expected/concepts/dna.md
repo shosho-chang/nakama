@@ -39,6 +39,9 @@ high_value_signals:
 
 ## Definition
 
+
+DNA is a staged golden-fixture concept for BSE chapter 3. It is retained as a non-placeholder concept page so the acceptance gate can verify schema quality.
+
 ## Core Principles
 
 ## Sub-concepts

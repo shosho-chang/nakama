@@ -28,7 +28,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts.run_s8_preflight import _pick_chapter, compute_acceptance  # noqa: E402
+from scripts.run_s8_preflight import (  # noqa: E402
+    _pick_chapter,
+    compute_acceptance,
+    compute_acceptance_7,
+)
 from shared.source_ingest import walk_book_to_chapters  # noqa: E402
 
 _FM_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
@@ -42,6 +46,32 @@ def _collect_chapters(vault_root: Path) -> list[tuple[str, int, Path]]:
         if m:
             result.append((book_id, int(m.group(1)), p))
     return result
+
+
+def _load_dispatch_log(staged_path: Path) -> list[dict]:
+    """Load the adjacent Phase 2 dispatch log when present.
+
+    Current S8 runs may expose the log through a coverage manifest sidecar;
+    older staging directories may only have the source page. In that case the
+    artifact gate still checks C2/C3/C5/C7 from disk and treats C1/C4/C6 as
+    vacuously clean.
+    """
+    candidates = [
+        staged_path.with_suffix(".coverage.json"),
+        staged_path.with_suffix(".dispatch.json"),
+        staged_path.with_suffix(".dispatch_log.json"),
+    ]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        raw_log = data.get("concept_dispatch_log") if isinstance(data, dict) else data
+        if isinstance(raw_log, list):
+            return [entry for entry in raw_log if isinstance(entry, dict)]
+    return []
 
 
 def _run(vault_root: Path, *, report_dir: Path | None = None) -> int:
@@ -106,33 +136,43 @@ def _run(vault_root: Path, *, report_dir: Path | None = None) -> int:
                 records.append(record)
                 continue
 
-        acc = compute_acceptance(
+        acc4 = compute_acceptance(
             page_body=page_body,
             walker_verbatim=payload.verbatim_body,
             walker_section_anchors=payload.section_anchors,
             walker_figures_count=len(payload.figures),
             wikilinks_introduced=wikilinks_introduced,
         )
-        record["acceptance_pass"] = acc.acceptance_pass
+        acc7 = compute_acceptance_7(
+            source_page_path=staged_path,
+            dispatch_log=_load_dispatch_log(staged_path),
+            staging_concepts_dir=vault_root / "KB" / "Wiki.staging" / "Concepts",
+            live_concepts_dir=vault_root / "KB" / "Wiki" / "Concepts",
+        )
+        record["acceptance_pass"] = acc4.acceptance_pass and acc7.acceptance_pass
         record["rules"] = {
             "verbatim_match_pct": {
-                "value": round(acc.verbatim_match, 4),
+                "value": round(acc4.verbatim_match, 4),
                 "threshold": 0.99,
-                "pass": acc.verbatim_ok,
+                "pass": acc4.verbatim_ok,
             },
             "section_anchors_match": {
-                "value": acc.anchors_match,
-                "pass": acc.anchors_match,
+                "value": acc4.anchors_match,
+                "pass": acc4.anchors_match,
             },
             "figures_embedded": {
-                "value": acc.figures_embedded,
-                "expected": acc.figures_expected,
-                "pass": acc.figures_ok,
+                "value": acc4.figures_embedded,
+                "expected": acc4.figures_expected,
+                "pass": acc4.figures_ok,
             },
             "wikilinks": {
-                "value": acc.wikilinks_count,
-                "threshold": acc.wikilinks_threshold,
-                "pass": acc.wikilinks_ok,
+                "value": acc4.wikilinks_count,
+                "threshold": acc4.wikilinks_threshold,
+                "pass": acc4.wikilinks_ok,
+            },
+            "artifact_gate_7": {
+                "pass": acc7.acceptance_pass,
+                "reasons": acc7.reasons,
             },
         }
         records.append(record)
