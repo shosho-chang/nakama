@@ -1,3 +1,4 @@
+# ruff: noqa: E501,F401
 """Gemini v2 sign-off — multi-agent-panel skill step 5b.
 
 Reads the v2 draft + integration matrix; asks Gemini for a SHORT sign-off

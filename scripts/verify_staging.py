@@ -48,7 +48,9 @@ def _collect_chapters(vault_root: Path) -> list[tuple[str, int, Path]]:
     return result
 
 
-_MISSING_DISPATCH_SIDECAR_REASON = "C1/C4/C6: missing dispatch sidecar; cannot verify dispatch evidence"
+_MISSING_DISPATCH_SIDECAR_REASON = (
+    "C1/C4/C6: missing dispatch sidecar; cannot verify dispatch evidence"
+)
 
 
 def _load_dispatch_log(staged_path: Path) -> list[dict] | None:

@@ -1,3 +1,4 @@
+# ruff: noqa: E501,F401
 """Gemini panel audit dispatch — multi-agent-panel skill step 3.
 
 Reads:

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from shared.source_ingest import _strip_epub_internal_links, walk_book_to_chapters
 
 
