@@ -1,5 +1,7 @@
 # Memory Index
 
+- [feedback_commit_scope_discipline.md](feedback_commit_scope_discipline.md) — **commit 範圍紀律**：「Commit only: …」是 turn-binding，其他同 turn 產出留 working tree 不主動 commit。
+- [project_n511_v2_revisions_pending.md](project_n511_v2_revisions_pending.md) — **N511 v1 Brief 兩條設計錯誤**：has_evidence_track=False 必走 defer；EPUB inspector 走 variant path 或注入 loader。v2 鋪台用。
 - [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **5/6 KB corpus stub crisis**：KB Concept 大量空殼；ADR-020 textbook ingest rewrite 起手背景；任何 textbook ingest repair 必先讀。
 - [project_session_2026_05_06_07_s8_burn_handoff.md](project_session_2026_05_06_07_s8_burn_handoff.md) — **5/6→5/7 S8 batch burn handoff**：28 章 batch 大量 FAIL/ERROR，root cause 是 LLM emit body 違反 verbatim 設計；後續修復需避開 LLM batch。
 - [project_session_2026_05_07_path_b_plan_handoff.md](project_session_2026_05_07_path_b_plan_handoff.md) — **5/7 Path B plan handoff**：verbatim 從 walker literal 重組、保留 API path；Stage 1a 起手修 `_assemble_body` + tests。
