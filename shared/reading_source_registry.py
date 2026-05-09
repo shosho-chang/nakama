@@ -343,7 +343,12 @@ class ReadingSourceRegistry:
             has_evidence_track = True
             evidence_reason = None
 
-        title = str(user_facing_fm.get("title") or Path(user_facing_path).stem)
+        # F7 fix: fall back to the *logical original* stem so the
+        # `-bilingual` suffix never leaks into ReadingSource.title for
+        # bilingual-only docs missing a frontmatter title. logical_original
+        # collapses both siblings to the plain stem, so plain-only / both
+        # cases keep the same fallback they had before.
+        title = str(user_facing_fm.get("title") or Path(logical_original).stem)
         author_raw = user_facing_fm.get("author")
         author = str(author_raw) if author_raw else None
 

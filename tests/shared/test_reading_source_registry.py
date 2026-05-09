@@ -269,6 +269,41 @@ def test_resolve_inbox_both_siblings_canonicalize(
     )
 
 
+def test_resolve_inbox_bilingual_only_no_title_falls_back_to_logical_stem(
+    registry: ReadingSourceRegistry, vault: Path
+):
+    """F7 regression: bilingual-only inbox doc with NO frontmatter ``title``
+    must fall back to the **logical original** stem (``foo``) — never to the
+    user-facing bilingual stem (``foo-bilingual``). The ``-bilingual`` suffix
+    must not leak into ``ReadingSource.title``.
+    """
+    bilingual = vault / "Inbox" / "kb" / "foo-bilingual.md"
+    bilingual.write_text(
+        "---\nlang: en\nderived_from: foo.md\n---\n\nbody only.\n",
+        encoding="utf-8",
+    )
+
+    rs = registry.resolve(InboxKey("Inbox/kb/foo-bilingual.md"))
+
+    assert rs is not None
+    assert rs.title == "foo"
+    assert rs.title != "foo-bilingual"
+
+
+def test_resolve_inbox_bilingual_only_with_title_keeps_user_facing_title(
+    registry: ReadingSourceRegistry, vault: Path
+):
+    """F7 invariant: when bilingual frontmatter HAS a ``title``, registry
+    keeps it (does not silently switch to logical stem).
+    """
+    _copy_fixture("qux-bilingual.md", vault)
+
+    rs = registry.resolve(InboxKey("Inbox/kb/qux-bilingual.md"))
+
+    assert rs is not None
+    assert rs.title == "Qux"
+
+
 def test_resolve_inbox_missing_lang_frontmatter(
     registry: ReadingSourceRegistry, vault: Path
 ):
