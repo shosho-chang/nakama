@@ -54,6 +54,8 @@ presentation layer（Web UI）。
 - **「B-roll segment」** = ADR-015 凍結概念。Hyperframes **不 render 整支影片**，只 render 各 scene 為個別 mp4 clips（per-segment file），FCPXML 把它們塞進 V2-V4 軌道；A-roll 留 V1。架構反轉的核心
 - **「Mode A / Mode B」** = ADR-015 引用視覺化雙模式。**Mode A** = `<DocumentQuote>` 真實 PDF 頁 + 螢光筆動畫（PyMuPDF bbox + 三變體 highlighter-sweep / ken-burns / spotlight）；**Mode B** = `<QuoteCard>` 風格化引文卡（紙質背景 + 思源宋體 + 頁碼引註）。markdown DSL `mode=` 切換
 - **「per-episode 目錄」** = `data/script_video/<episode-id>/` 自包含結構：script.md + raw_recording.mp4 + refs/ (PDF) + out/ (FCPXML / SRT / b_roll mp4)。跨集共享：`_cache/embeddings/<sha256>.npy`（同 PDF 第二次用直接讀）
+- **「bilingual mode」** = 修修同時擁有 source-language 檔（英文 EPUB / 英文 article）+ 自翻的對照雙語檔（用 Immersive Translate 翻的雙語 EPUB / `/translate` 產的 -bilingual.md）兩份載體。Reader 走並排雙語 layout、ingest 走 source-language 檔。既有實作預設此 mode，schema 寫死 `lang_pair="en-zh"` + `has_original=True` 為硬性前提
+- **「monolingual-zh mode」** = 修修只有一份中文檔（台版中譯書 / 中文 native 書 / 中文網路文章），無對應 source-language 原檔可 ingest。Reader 必須 single-column layout、ingest pipeline 直接吃這份中文檔、translator 對此 mode 是 noop。2026-05-08 grill 凍結為跟 bilingual mode 平行的獨立 mode（不是雙語特例），因為 reader UI / translator / ingest prompt 三處對純中文 source 結構性需要不同處理
 
 ## ADR location
 
