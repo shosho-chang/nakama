@@ -5,8 +5,10 @@
 **Worktree:** `E:/nakama-N509-source-registry`
 **Status:** Plan only — no LLM batch, no Sandcastle dispatch, no code yet
 **Author:** Claude (Opus 4.7) — handed off by 修修 2026-05-09
-**Revision:** v2 (rework after Codex audit + 修修 Q1/Q2/Q3 拍板)
-**Audit trail:** `docs/research/2026-05-09-N509-codex-audit-reclassified.md`
+**Revision:** v3 (micro-rework after self-review NB1-NB4 + N2/N3/N6 — edge-case contracts tightened)
+**Audit trail:**
+- v1 → v2 reclassification: `docs/research/2026-05-09-N509-codex-audit-reclassified.md`
+- v2 self-review (basis for v3 micro-rework): `docs/research/2026-05-09-N509-v2-self-review.md`
 
 ---
 
@@ -17,6 +19,14 @@ ADR-024 main defines a **Reading Source** as "an ebook, web document, or inbox d
 - **URL ingest cancelled** — web capture goes through Toast / Obsidian Clipper, which physically lands files in `Inbox/kb/`. Web documents ARE inbox documents in this system; they are **not** a separate `SourceKind`.
 - **Textbook-grade is a promotion mode**, not a Reading Source kind. Textbook ingest never produces or consumes a `ReadingSource`; it operates on EPUBs / Raw markdown directly. `KB/Wiki/Sources/...` is **promotion output** — never a Reading Source.
 - **Reading Source has exactly two kinds:** `ebook` and `inbox_document`.
+
+> **Note on issue #509 body divergence (per N2 self-review finding)**
+> Issue #509 body says "ebook, Inbox document, web document, and textbook-grade source" (4 kinds). v2/v3 deliberately reduce to **2 kinds** because:
+> - ADR-024 §Context groups "Inbox / web document reading" as one category (web docs come via Toast / Obsidian Clipper, physically landing in `Inbox/kb/`).
+> - 修修 verbal direction (2026-05-09): "URL ingest 已取消; web capture 交給 browser/Obsidian plugin" → web is metadata, not kind.
+> - ADR-024 §Decision: textbook is a *promotion mode* applied to ebook source; never produces a `ReadingSource`.
+>
+> The issue body framing predates the post-PR-#441 ADR-024 + verbal direction. #509 v3 implements the latest design. Future readers landing here from issue #509 should expect this divergence.
 
 修修 拍板 2026-05-09 (Q1/Q2/Q3):
 
@@ -201,13 +211,21 @@ class ReadingSource(BaseModel):
 
     evidence_reason: str | None = None
     """Short stable reason code when has_evidence_track=False; None when True.
-    Defined codes:
+
+    Closed set for schema_version=1:
         'no_original_uploaded' — ebook with has_original=False; only
                                  bilingual.epub blob exists.
         'bilingual_only_inbox' — inbox_document where only the
                                  -bilingual.md sibling exists; no plain
                                  original sibling on disk.
+
     Downstream slices may match on this reason code to apply policy.
+
+    Extensibility (per N6 self-review): the closed set is FROZEN for
+    schema_version=1. Later slices MAY extend with new codes only if they
+    (a) bump `schema_version` on `ReadingSource`, (b) document the new code
+    in this docstring, (c) update downstream policy in #511 / #513 / #514
+    to handle it. Silent extension is forbidden.
     """
 
     variants: list[SourceVariant] = Field(default_factory=list, min_length=1)
@@ -218,10 +236,17 @@ class ReadingSource(BaseModel):
 
     metadata: dict[str, str] = Field(default_factory=dict)
     """Cheap pass-through string-only metadata.
-        ebook → isbn, published_year, lang_pair (legacy reference, not
-                source-of-truth), original_metadata_lang (raw before normalize)
-        inbox → original_url, fulltext_layer, fulltext_source (per
-                IngestResult frontmatter contract)
+
+    NB3 contract (per v3 self-review): `lang_pair` is NEVER passed through
+    even though `Book.lang_pair` exists in main. Consumers MUST use
+    `ReadingSource.primary_lang` for language semantics. Re-deriving language
+    from `Book.lang_pair` on the downstream side bypasses Q1 and is
+    explicitly forbidden by §6 boundary 13.
+
+        ebook → isbn, published_year, original_metadata_lang
+                (raw `metadata.lang` before _normalize_primary_lang)
+        inbox → original_url, fulltext_layer, fulltext_source
+                (per IngestResult frontmatter contract)
     """
 ```
 
@@ -294,12 +319,23 @@ class ReadingSourceRegistry:
 
 #### Ebook (`BookKey`)
 
-1. `book = book_storage.get_book(book_id)`. If `None` → return `None`.
+> **Error handling contract (NB1, per v3 self-review)**: every step below that
+> calls `book_storage.*` or `extract_metadata` MUST be wrapped so that any
+> uncaught exception (`BookStorageError`, `FileNotFoundError`, IO error,
+> `MalformedEPUBError`) results in `_resolve_book` **returning `None` and
+> logging a `WARNING`** via `shared.log.get_logger("nakama.shared.reading_source_registry")`.
+> The registry NEVER propagates uncontrolled exceptions to callers. Tests
+> `test_resolve_ebook_malformed_blob` + `test_resolve_ebook_blob_io_error`
+> cover this contract; see §7 R2 for the unified policy.
+
+1. `book = book_storage.get_book(book_id)`. If `None` → return `None`. On unexpected exception → return `None` + log WARNING.
 2. **Derive primary_lang from upstream metadata, not lang_pair (per Q1):**
    - Pick blob to introspect: `lang="en"` if `book.has_original` else `lang="bilingual"`.
-   - `blob = book_storage.read_book_blob(book_id, lang=blob_lang)`.
-   - `metadata = extract_metadata(blob)`.
-   - `primary_lang = _normalize_primary_lang(metadata.lang)`.
+   - Wrap blob read + metadata extract in try/except (NB1 contract):
+     - `blob = book_storage.read_book_blob(book_id, lang=blob_lang)`
+     - `metadata = extract_metadata(blob)`
+   - On any failure (`BookStorageError`, `FileNotFoundError`, `MalformedEPUBError`, generic IO) → return `None` + log WARNING (`category="ebook_blob_read_failed"`, include `book_id`).
+   - On success: `primary_lang = _normalize_primary_lang(metadata.lang)`.
 3. Build identity:
    - `source_id = f"ebook:{book_id}"`.
    - `annotation_key = book_id` (matches existing `KB/Annotations/{book_id}.md` reader save path).
@@ -311,7 +347,9 @@ class ReadingSourceRegistry:
      - Append `SourceVariant(role="display", format="epub", lang=primary_lang, path=f"data/books/{book_id}/bilingual.epub")` — note `lang` reflects what's actually in the blob (e.g. `"zh-Hant"` for a Phase 1 monolingual-zh book; `"en"` for a true bilingual file).
 5. Set `has_evidence_track = book.has_original`.
 6. Set `evidence_reason = None` if `has_evidence_track` else `"no_original_uploaded"`.
-7. Metadata pass-through: `isbn`, `published_year`, `lang_pair` (legacy reference), `original_metadata_lang` (raw `metadata.lang` before normalize).
+7. Metadata pass-through (NB3 contract — `lang_pair` deliberately excluded):
+   - `isbn`, `published_year`, `original_metadata_lang` (raw `metadata.lang` before normalize, useful for debugging "why did primary_lang come out as X").
+   - **Do NOT include `Book.lang_pair`** even though it exists on `Book`. Per Q1 + §6 boundary 13, downstream consumers must read `ReadingSource.primary_lang` for language semantics; passing `lang_pair` through would seduce re-derivation.
 
 #### Inbox document (`InboxKey`)
 
@@ -325,11 +363,23 @@ class ReadingSourceRegistry:
    - If neither exists → return `None`.
 4. **Identity (per canonicalization rule):**
    - `source_id = f"inbox:{logical_original}"` (always — even if only bilingual exists on disk; logical_original is the stable anchor).
+
+> ⚠️ **Design callout (N3 self-review) — `source_id` may refer to a non-existent path**
+>
+> In case (b) bilingual-only, the file at `logical_original` does NOT exist on disk, but `source_id` still uses it as the stable anchor. This is intentional:
+>
+> - If the user later re-translates and the original sibling appears, `source_id` remains stable (the new file just slots into the existing logical identity).
+> - If the user later deletes the bilingual sibling and only the original survives, `source_id` remains stable too.
+>
+> **Trade-off**: `source_id` is **NOT a filesystem lookup key**; it is a **logical identity**. Implementations doing `Path(source_id.removeprefix("inbox:")).is_file()` will get `False` in case (b). To open / read the actual file, **always use `variants[*].path`**. Test 8 (`test_resolve_inbox_bilingual_only`) explicitly asserts this behavior.
+
 5. **Pick the user-facing file for `annotation_key` (mirrors `_get_inbox_files` collapse rule):**
    - If `bilingual_exists`: user-facing = bilingual.
    - Else: user-facing = original.
-   - Read user-facing file's frontmatter.
-   - `annotation_key = annotation_slug(Path(user_facing_path).name, user_facing_frontmatter)`.
+   - Wrap `read_text` + `extract_frontmatter` in try/except (NB1 contract):
+     - On `OSError` (file disappeared between `is_file()` check and read) or YAML parse failure → return `None` + log WARNING (`category="inbox_frontmatter_parse_failed"`, include `relative_path`).
+   - On success: `annotation_key = annotation_slug(Path(user_facing_path).name, user_facing_frontmatter)`.
+   - **NB4 contract**: if `annotation_slug` returns an empty string (frontmatter title empty AND filename stem produces no slug chars), `_resolve_inbox` raises `ValueError` with a message identifying the offending path. Do NOT emit a `ReadingSource` with empty `annotation_key`. See §7 R6 + §5 self-imposed gate.
 6. **Build variants — three single-file cases explicit (per F9 fix):**
 
    | Case | Original on disk | Bilingual on disk | Variants | has_evidence_track | evidence_reason |
@@ -340,7 +390,7 @@ class ReadingSourceRegistry:
 
 7. **primary_lang (per Q1 — frontmatter, never inferred):**
    - For (a) and (c): from original sibling's frontmatter `lang` field.
-   - For (b): from bilingual sibling's frontmatter `lang` field (often missing → `"unknown"`).
+   - For (b) bilingual-only: from bilingual sibling's frontmatter `lang` field (often missing → `"unknown"`). **NB2 contract — case (b) `primary_lang` is best-effort / low-confidence**: translator's `lang:` convention is not pinned (may write source lang OR target lang OR be empty). Downstream slices (#511 / #513 / #514) reading `primary_lang` MUST consult `evidence_reason == "bilingual_only_inbox"` and treat the value as low-confidence — never as authoritative evidence-language truth. See §7 R7.
    - Apply `_normalize_primary_lang`.
 8. **Title** and **author**: from user-facing sibling's frontmatter (`title`, `author`).
 9. **Metadata pass-through:** `original_url`, `fulltext_layer`, `fulltext_source` from user-facing frontmatter (string-coerced).
@@ -361,9 +411,12 @@ class ReadingSourceRegistry:
 | 10 | `test_resolve_inbox_missing_lang_frontmatter` | `Inbox/kb/foo.md` with frontmatter that has no `lang:` field. | `primary_lang == "unknown"` (does NOT default to `"en"`). |
 | 11 | `test_resolve_inbox_missing_path` | Empty inbox. | Returns `None`. |
 | 12 | `test_resolve_inbox_path_outside_vault` | `InboxKey("../../etc/passwd")` or path traversal attempt. | Raises `ValueError` (path normalization rejects escape). |
-| 13 | `test_resolve_inbox_empty_annotation_slug` | Inbox file whose frontmatter title is empty AND filename stem produces empty slug after slugify. | Either raises a controlled exception OR returns ReadingSource with `annotation_key == ""` and a TODO/log warning — pick one explicitly in implementation, do not silently produce malformed key. |
+| 13 | `test_resolve_inbox_empty_annotation_slug` | Inbox file whose frontmatter title is empty AND filename stem produces empty slug after slugify. | **`pytest.raises(ValueError)`** with error message identifying the offending path. Does NOT return a `ReadingSource` with empty `annotation_key`. Locked by §5 self-imposed gate + §7 R6 contract. (NB4 contract — pinned in v3.) |
 | 14 | `test_no_fastapi_imports` | `python -c "import shared.reading_source_registry"` in subprocess and assert no `fastapi` / `thousand_sunny` modules in `sys.modules` afterwards. | Pass — confirms reusability outside route handlers. |
 | 15 | `test_vault_root_required` | `ReadingSourceRegistry(vault_root=None)` when `get_vault_path()` raises (e.g. unconfigured env). | Constructor fails fast with clear error; does not silently swallow. |
+| 16 | `test_resolve_ebook_malformed_blob` | Book row exists; blob bytes are valid zip but missing OPF / `<dc:language>` (`MalformedEPUBError` or similar). | Returns `None` (not raises). Logs WARNING with `category="ebook_blob_read_failed"` + `book_id`. (NB1 contract — pinned in v3.) |
+| 17 | `test_resolve_ebook_blob_io_error` | Book row exists; `data/books/{book_id}/{original,bilingual}.epub` deleted from disk between DB row insert and resolve call. | Returns `None` (not raises). Logs WARNING. (NB1 contract.) |
+| 18 | `test_resolve_inbox_malformed_frontmatter` | `Inbox/kb/foo.md` exists but YAML frontmatter is malformed (e.g. unclosed quotes, tab indentation). | Returns `None` (not raises). Logs WARNING with `category="inbox_frontmatter_parse_failed"` + `relative_path`. (NB1 contract.) |
 
 **Removed from v1 plan (no longer applicable):**
 - `test_resolve_kb_source` and any `KBSourceKey` test — `kb_source` kind dropped.
@@ -399,7 +452,11 @@ class ReadingSourceRegistry:
 - [ ] `primary_lang` derives from upstream metadata only — no `Book.lang_pair.split` anywhere in code (asserted by `grep -n 'lang_pair' shared/reading_source_registry.py shared/schemas/reading_source.py` returning at most legacy-comment matches).
 - [ ] `primary_lang` never returns `"bilingual"`.
 - [ ] `primary_lang` returns `"unknown"` (not `"en"`) when upstream metadata is missing.
-- [ ] `evidence_reason` uses the closed set `{None, "no_original_uploaded", "bilingual_only_inbox"}`.
+- [ ] `evidence_reason` uses the closed set `{None, "no_original_uploaded", "bilingual_only_inbox"}`. **Closed for schema_version=1**; extension requires bumping `schema_version` + docstring update + downstream policy update (per N6 v3 contract).
+- [ ] **NB1 (v3)**: every blob-read / metadata-extract / frontmatter-parse failure inside `_resolve_book` or `_resolve_inbox` returns `None` + logs WARNING via `shared.log.get_logger("nakama.shared.reading_source_registry")`. Registry NEVER propagates uncontrolled exceptions to callers. Asserted by tests 16/17/18.
+- [ ] **NB3 (v3)**: `Book.lang_pair` is NOT included in `ReadingSource.metadata` for ebook resolution. Asserted by `grep -n '"lang_pair"' shared/reading_source_registry.py` returning zero matches and an explicit assertion in tests 1-3 that `"lang_pair" not in result.metadata`.
+- [ ] **NB4 (v3)**: `_resolve_inbox` raises `ValueError` (with message identifying the offending path) when `annotation_slug` would return an empty string. Asserted by test 13.
+- [ ] **NB2 (v3)**: case (b) bilingual-only inbox `primary_lang` is documented as low-confidence in schema docstring + §4.3 step 7 + §7 R7. No code-level enforcement at #509; downstream policy contract.
 - [ ] `python -m pytest tests/shared/test_reading_source_registry.py -v` 全綠.
 - [ ] `python -m ruff check shared/ tests/shared/` no error.
 - [ ] PR body contains a P7-COMPLETION self-review block.
@@ -434,11 +491,12 @@ class ReadingSourceRegistry:
 | # | Item | Mitigation |
 |---|---|---|
 | R1 | One extra blob read per `_resolve_book` (for `extract_metadata` to get primary_lang) | Cheap (EPUB OPF parse <100ms); registry is not a hot path. If a slice later proves it needs caching, add `lru_cache` on `(book_id, blob_hash)` then. |
-| R2 | `extract_metadata` may fail on malformed EPUB (`MalformedEPUBError`) | Catch + return `None` from `_resolve_book` (treat as if book row didn't exist); log warning. Add a test `test_resolve_ebook_malformed_blob`. |
+| R2 | **NB1 unified failure policy (v3)**: any blob-read / metadata-extract / frontmatter-parse failure inside `_resolve_book` or `_resolve_inbox` (e.g. `MalformedEPUBError`, `BookStorageError`, `FileNotFoundError`, generic IO error, malformed YAML in inbox frontmatter) | **Contract**: catch the exception, `return None` from the resolve method, log a `WARNING`-level message via `shared.log.get_logger("nakama.shared.reading_source_registry")` with structured fields `category` (`"ebook_blob_read_failed"` / `"inbox_frontmatter_parse_failed"`) and the input key. **Never** propagate uncontrolled exceptions to the caller. Tests 16/17/18 cover the three categories. Asserted by §5 self-imposed gate (NB1). |
 | R3 | `BookMetadata.lang` may be a multilang string (`"en;zh-TW"`) — EPUB spec allows multiple `<dc:language>` tags | `extract_metadata` currently takes the first; document this in the helper. If a future ebook has multi-lang OPF and we need finer behavior, extend the helper not the registry. |
 | R4 | PR #507 merging will introduce `Book.mode`; #511 / #513 / #514 may consume `Book.mode` directly | Out of scope for #509. Registry surface is stable across PR #507 merge. Note in PR description: "no migration needed when PR #507 lands". |
 | R5 | Inbox `path_outside_vault` security check needs path-resolution carefully on Windows (case-insensitive) | Use `Path.resolve()` + `is_relative_to(vault_root)` check; covered by test 12. |
-| R6 | Empty-slug edge case (test 13) — annotation_slug returns empty string when frontmatter title is empty AND filename produces no slug chars | Pick one behavior explicitly: raise or return with empty `annotation_key` + log warning. Default lean: **raise `ValueError`**; #510 owners can relax later if needed. |
+| R6 | **NB4 contract lock (v3)**: empty-slug edge case (test 13) — annotation_slug returns empty string when frontmatter title is empty AND filename produces no slug chars | **Contract**: `_resolve_inbox` raises `ValueError` with a message identifying the offending path. #509 does NOT emit a `ReadingSource` with empty `annotation_key`. Locked in §5 self-imposed gate (NB4) and asserted by test 13. #510 must align if it needs different behavior — relaxation requires a #509 follow-up PR, not silent override. |
+| R7 | **NB2 low-confidence primary_lang (v3)**: case (b) bilingual-only inbox `primary_lang` derived from bilingual sibling frontmatter is best-effort — translator's `lang:` convention is not pinned (may write source lang OR target lang OR be empty) | **Contract surface**: schema docstring on `evidence_reason` + §4.3 inbox step 7 (b). Downstream slices (#511 / #513 / #514) **MUST** treat `evidence_reason == "bilingual_only_inbox"` as a signal that `primary_lang` is low-confidence and is not authoritative evidence-language truth. #509 surfaces flag + reason; downstream picks policy per Q2. No code-level enforcement at #509. |
 | Q-OPEN-1 | Should `metadata.original_metadata_lang` (raw before normalize) be preserved on `ReadingSource.metadata`? | **Lean: yes** — useful for debugging "why is primary_lang 'unknown'?" without re-reading the EPUB. |
 
 ---
@@ -510,3 +568,36 @@ class ReadingSourceRegistry:
 | Test matrix | 9 tests | **15 tests** — added: orphan blob, lang normalization, sibling canonicalize, missing lang frontmatter, path outside vault, empty annotation_slug, vault_root required, Phase 1 monolingual-zh case |
 | Phase 1 PRD (PR #507) | Not mentioned | §3, §6 #12, §10 explicit references; §11 R4 risk noted — N1, N3 |
 | `kb_source` fixture | Included | Removed |
+
+---
+
+## 12. v2 → v3 Micro-rework summary (edge-case contracts tightened)
+
+v3 is a micro-rework: no architectural changes; only edge-case contracts tightened per `docs/research/2026-05-09-N509-v2-self-review.md`.
+
+| # | Self-review finding | v2 state | v3 contract |
+|---|---|---|---|
+| **NB1** | Error handling coverage incomplete (only `extract_metadata` was specified) | §7 R2 covered only `MalformedEPUBError` | **Unified failure policy**: every blob-read / metadata-extract / frontmatter-parse failure → return `None` + WARNING log via `shared.log.get_logger("nakama.shared.reading_source_registry")`. NEVER propagate uncontrolled exceptions. §4.3 ebook step 1/2 + inbox step 5 wrapped explicitly. New tests 16/17/18. §5 self-imposed gate added. |
+| **NB2** | bilingual-only inbox `primary_lang` ambiguity | Implicit best-effort | **Documented contract**: case (b) `primary_lang` is best-effort / low-confidence; downstream slices (#511 / #513 / #514) **MUST** consult `evidence_reason == "bilingual_only_inbox"` and treat lang as low-confidence. New §7 R7 + §4.3 inbox step 7 (b) note + §5 self-imposed gate. No code-level enforcement at #509 per Q2. |
+| **NB3** | `metadata.lang_pair` legacy passthrough | `lang_pair` exposed as "legacy reference" in metadata | **Removed entirely**: §4.3 ebook step 7 + §4.1 schema docstring forbid passing `lang_pair` through. `grep -n '"lang_pair"' shared/reading_source_registry.py` must return zero matches. Tests 1-3 explicitly assert `"lang_pair" not in result.metadata`. §5 self-imposed gate added. |
+| **NB4** | Test 13 implementation-choice loose ("raise OR return empty") | §7 R6 had "lean: raise" but not pinned | **Locked**: `_resolve_inbox` raises `ValueError` with offending-path message when `annotation_slug` returns empty. Test 13 rewritten to `pytest.raises(ValueError)`. §7 R6 promoted to "Contract"; §5 self-imposed gate added. |
+| **N2** | Issue #509 body 4-kind framing divergence not explicitly noted | §0 said "2 kinds" without acknowledging issue body | **Explicit divergence note** added to §0 — quotes 4-kind issue body, justifies 2-kind reduction via ADR-024 §Context + 修修 verbal + textbook-as-promotion-mode. |
+| **N3** | bilingual-only `source_id` refers to non-existent path (reverse-intuitive) | Buried in step 4 prose + test 8 parenthetical | **Promoted to bold design callout** in §4.3 inbox after step 4: explicit "logical identity, NOT filesystem lookup key; use `variants[*].path` for file access". |
+| **N6** | `evidence_reason` closed set extensibility unclear | Closed set listed but no extension protocol | **Extension protocol documented** in schema docstring: closed for `schema_version=1`; future extension requires (a) bump `schema_version`, (b) docstring update, (c) downstream policy update. §5 self-imposed gate updated. |
+
+**Test count**: 15 → **18** (added test 16 `test_resolve_ebook_malformed_blob`, test 17 `test_resolve_ebook_blob_io_error`, test 18 `test_resolve_inbox_malformed_frontmatter`).
+
+**Self-imposed gates**: 13 → **17** (added NB1 / NB2 / NB3 / NB4 + extended evidence_reason gate with N6 extension protocol).
+
+**Boundaries**: 16 (unchanged; v3 doesn't add new boundaries — it tightens contracts within existing boundary scope).
+
+**Items NOT changed in v3 (still v2-as-shipped)**:
+- 2-kind `SourceKind` enum
+- `source_id` / `annotation_key` two-field model
+- Inbox sibling canonicalization rule
+- Single canonical ebook path syntax
+- Three-case inbox single-file rule
+- Q1 / Q2 / Q3 拍板 contracts
+- §6 boundaries (12-16 stay; new contracts referenced from boundaries 13/14)
+- Plan §8 step-by-step execution plan
+- §9 downstream slice dependencies
