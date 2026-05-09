@@ -70,10 +70,16 @@ PreflightReason = Literal[
     "very_long",
     "no_chapters_detected",
     "frontmatter_minimal",
+    "inspector_error",
     "ok",
 ]
 """Closed for ``schema_version=1``. Multiple reasons may co-exist on one
 report. ``ok`` is reserved for the all-clear ``proceed_full_promotion`` case.
+
+``inspector_error`` is the policy-level reason for Row 1 (any inspector
+failure → ``defer``); details live in ``PreflightReport.error``. Distinct
+from ``frontmatter_minimal`` which is a markdown-quality risk, not an
+inspector failure marker.
 """
 
 PreflightRiskCode = Literal[
@@ -162,5 +168,17 @@ class PreflightReport(BaseModel):
                 "recommended_action='proceed_full_promotion' requires "
                 "has_evidence_track=True; missing evidence must default to "
                 "'defer' or 'annotation_only_sync'"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _hard_invariant_error_implies_defer(self) -> PreflightReport:
+        if self.error is not None and self.recommended_action != "defer":
+            raise ValueError(
+                f"error is not None requires recommended_action='defer'; "
+                f"got recommended_action={self.recommended_action!r}. Inspector "
+                f"failures must surface as defer per Brief §4.2 row 1; "
+                f"downstream slices (#513-#517) MUST NOT consume an error+non-defer "
+                f"combination."
             )
         return self

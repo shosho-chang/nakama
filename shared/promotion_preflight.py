@@ -27,6 +27,8 @@ from collections.abc import Callable
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
+import yaml
+
 from shared.epub_metadata import MalformedEPUBError, extract_metadata
 from shared.log import get_logger
 from shared.schemas.preflight_report import (
@@ -37,7 +39,6 @@ from shared.schemas.preflight_report import (
     PreflightSizeSummary,
 )
 from shared.schemas.reading_source import ReadingSource, SourceVariant
-from shared.utils import extract_frontmatter
 
 # Imported under TYPE_CHECKING to keep ``shared.book_storage`` out of the
 # runtime import surface — ``shared.reading_source_registry`` imports
@@ -130,7 +131,26 @@ class PromotionPreflight:
         (``role="display"`` per #509 invariant).
         """
         variant = self._select_variant(reading_source)
-        if reading_source.kind == "ebook":
+        if variant is None:
+            # ReadingSource invariants violated upstream (e.g. registry bug,
+            # malformed test fixture). Surface as defer-path inspector_error
+            # rather than crash so downstream gets the documented contract.
+            _logger.warning(
+                "preflight variant selection failed",
+                extra={
+                    "category": "preflight_variant_selection_failed",
+                    "source_id": reading_source.source_id,
+                    "has_evidence_track": reading_source.has_evidence_track,
+                },
+            )
+            inspection = _empty_inspection(
+                error=(
+                    f"variant_selection_failed: has_evidence_track="
+                    f"{reading_source.has_evidence_track} but no matching "
+                    f"role variant present (source_id={reading_source.source_id!r})"
+                )
+            )
+        elif reading_source.kind == "ebook":
             inspection = self._inspect_ebook(variant)
         else:
             inspection = self._inspect_markdown(variant)
@@ -164,29 +184,25 @@ class PromotionPreflight:
     # ── Variant selection ───────────────────────────────────────────────────
 
     @staticmethod
-    def _select_variant(reading_source: ReadingSource) -> SourceVariant:
+    def _select_variant(reading_source: ReadingSource) -> SourceVariant | None:
         """Pick the variant the inspector reads. Deterministic.
 
         ``has_evidence_track=True``  → ``role="original"`` (factual evidence).
         ``has_evidence_track=False`` → the one ``role="display"`` variant.
+
+        Returns ``None`` when the documented #509 ReadingSource invariants
+        are violated (defensive — caller routes to a defer-path inspector
+        error rather than crashing).
         """
         if reading_source.has_evidence_track:
             for v in reading_source.variants:
                 if v.role == "original":
                     return v
-            # ReadingSource enforces this invariant in #509, but be loud if
-            # someone bypasses construction validation.
-            raise ValueError(
-                f"has_evidence_track=True but no variant has role='original' "
-                f"(source_id={reading_source.source_id!r})"
-            )
+            return None
         for v in reading_source.variants:
             if v.role == "display":
                 return v
-        raise ValueError(
-            f"has_evidence_track=False but no variant has role='display' "
-            f"(source_id={reading_source.source_id!r})"
-        )
+        return None
 
     # ── Inspectors ──────────────────────────────────────────────────────────
 
@@ -194,12 +210,14 @@ class PromotionPreflight:
         """Inspect an EPUB variant. Returns a dict with raw inspection
         metrics; ``run()`` composes the PreflightReport from this.
 
-        Failure mode: any IO / parse failure → return a populated dict with
-        ``error`` set and zero counts. NEVER raises.
+        Failure mode: documented IO / parse failure → return a populated dict
+        with ``error`` set and zero counts. NEVER raises documented errors;
+        programmer errors (TypeError, AttributeError, KeyboardInterrupt) are
+        intentionally allowed to propagate so test feedback stays meaningful.
         """
         try:
             blob = self._blob_loader(variant.path)
-        except Exception as exc:  # noqa: BLE001 — unified failure policy
+        except _LOADER_FAILURES as exc:
             _logger.warning(
                 "ebook blob load failed",
                 extra={"category": "preflight_ebook_load_failed", "path": variant.path},
@@ -214,16 +232,10 @@ class PromotionPreflight:
                 extra={"category": "preflight_ebook_parse_failed", "path": variant.path},
             )
             return _empty_inspection(error=f"epub_parse_failed: {exc!s}")
-        except Exception as exc:  # noqa: BLE001
-            _logger.warning(
-                "ebook metadata extract failed",
-                extra={"category": "preflight_ebook_parse_failed", "path": variant.path},
-            )
-            return _empty_inspection(error=f"epub_parse_failed: {exc!s}")
 
         try:
             body_text = _extract_epub_body_text(blob)
-        except Exception as exc:  # noqa: BLE001
+        except _EPUB_BODY_FAILURES as exc:
             _logger.warning(
                 "ebook body text extract failed",
                 extra={"category": "preflight_ebook_body_failed", "path": variant.path},
@@ -280,7 +292,7 @@ class PromotionPreflight:
         """
         try:
             blob = self._blob_loader(variant.path)
-        except Exception as exc:  # noqa: BLE001
+        except _LOADER_FAILURES as exc:
             _logger.warning(
                 "inbox blob load failed",
                 extra={"category": "preflight_inbox_load_failed", "path": variant.path},
@@ -296,9 +308,14 @@ class PromotionPreflight:
             )
             return _empty_inspection(error=f"inbox_decode_failed: {exc!s}")
 
+        # Strict frontmatter parse: shared.utils.extract_frontmatter swallows
+        # YAMLError and returns ({}, content) — that would let malformed
+        # frontmatter slip past as an empty dict and produce a falsely-clean
+        # preflight. Use the local strict variant so YAML errors surface as
+        # inspector errors.
         try:
-            frontmatter, body = extract_frontmatter(content)
-        except Exception as exc:  # noqa: BLE001
+            frontmatter, body = _strict_extract_frontmatter(content)
+        except yaml.YAMLError as exc:
             _logger.warning(
                 "inbox frontmatter parse failed",
                 extra={"category": "preflight_inbox_fm_failed", "path": variant.path},
@@ -375,9 +392,11 @@ class PromotionPreflight:
         proceed-with-warnings).
         """
         if inspection["error"] is not None:
-            # Row 1: inspector error → defer with placeholder reason; details
-            # in PreflightReport.error field.
-            return ("defer", ["frontmatter_minimal"])
+            # Row 1: inspector error → defer. ``inspector_error`` reason
+            # explicitly distinguishes inspector-side failure from a
+            # markdown-quality risk (``frontmatter_minimal``); details
+            # remain in PreflightReport.error.
+            return ("defer", ["inspector_error"])
 
         word_count: int = inspection["word_count_estimate"]
         chapter_count: int = inspection["chapter_count"]
@@ -454,6 +473,39 @@ def _word_count(text: str) -> int:
     if not text:
         return 0
     return len(_WHITESPACE_RUN.split(text.strip())) if text.strip() else 0
+
+
+# Documented failure modes for the boundary calls — narrow tuples so
+# programmer errors (TypeError, AttributeError) propagate.
+_LOADER_FAILURES = (OSError, FileNotFoundError, KeyError, ValueError)
+"""Loader can raise IO-style errors or KeyError when keyed by missing path.
+ValueError covers test loaders that explicitly reject paths."""
+
+_EPUB_BODY_FAILURES = (
+    zipfile.BadZipFile,
+    ET.ParseError,
+    KeyError,
+    OSError,
+    UnicodeDecodeError,
+)
+"""EPUB body extraction touches zip + XML + UTF-8; these are the
+expected failure modes."""
+
+
+def _strict_extract_frontmatter(content: str) -> tuple[dict, str]:
+    """Like ``shared.utils.extract_frontmatter`` but lets ``yaml.YAMLError``
+    propagate. Mirrors ``shared.reading_source_registry._strict_parse_frontmatter``
+    so a malformed-YAML inbox surfaces as an inspector error instead of
+    silently emerging as an empty-frontmatter clean preflight."""
+    if not content.startswith("---"):
+        return {}, content
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return {}, content
+    fm = yaml.safe_load(parts[1])
+    if not isinstance(fm, dict):
+        fm = {}
+    return fm, parts[2].strip()
 
 
 def _ocr_noise_ratio(text: str) -> float:

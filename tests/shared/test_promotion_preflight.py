@@ -36,6 +36,7 @@ from pydantic import ValidationError
 from shared.promotion_preflight import PromotionPreflight
 from shared.schemas.preflight_report import (
     PreflightAction,
+    PreflightReason,
     PreflightReport,
     PreflightSizeSummary,
 )
@@ -401,6 +402,9 @@ def test_preflight_inspector_error_falls_back_to_defer(caplog):
     assert report.recommended_action == "defer"
     assert report.error is not None
     assert "blob_load_failed" in report.error
+    # Row 1 emits the dedicated inspector_error reason, NOT the markdown-only
+    # frontmatter_minimal risk code (codex F2 fix).
+    assert report.reasons == ["inspector_error"]
     assert any(
         getattr(rec, "category", None) == "preflight_ebook_load_failed" for rec in caplog.records
     )
@@ -563,3 +567,115 @@ def test_preflight_no_partial_promotion_only_in_action_enum():
         "skip",
     }
     assert set(args) == expected, f"PreflightAction args mismatch: {set(args)} != {expected}"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Codex review fix-ups (P0 / P1)
+# ───────────────────────────────────────────────────────────────────────────
+
+
+# F1 (P0): error is not None ⇒ recommended_action == "defer" pydantic invariant
+def test_preflight_report_error_implies_defer_invariant():
+    """Codex F1: PreflightReport with error set AND recommended_action != defer
+    must raise ValidationError. Inspector failures must surface as defer per
+    Brief §4.2 Row 1; downstream slices MUST NOT consume an error+non-defer
+    combination."""
+    base_kwargs = dict(
+        source_id="ebook:x",
+        primary_lang="en",
+        primary_lang_confidence="high",
+        has_evidence_track=True,
+        evidence_reason=None,
+        size=PreflightSizeSummary(
+            chapter_count=0,
+            word_count_estimate=0,
+            char_count_estimate=0,
+            rough_token_estimate=0,
+        ),
+        risks=[],
+        reasons=["inspector_error"],
+        error="blob_load_failed: simulated",
+    )
+
+    # error + defer is allowed.
+    PreflightReport(recommended_action="defer", **base_kwargs)
+
+    # error + skip / annotation_only_sync / proceed_with_warnings must raise.
+    for bad_action in ("skip", "annotation_only_sync", "proceed_with_warnings"):
+        with pytest.raises(ValidationError, match="recommended_action='defer'"):
+            PreflightReport(recommended_action=bad_action, **base_kwargs)
+
+
+# F4 (P1): malformed ReadingSource (invariants violated) → defer-path inspector_error
+def test_preflight_variant_selection_failure_routes_to_defer(caplog):
+    """Codex F4: a malformed ReadingSource (has_evidence_track=True without an
+    'original' variant) must surface as defer-path inspector_error rather than
+    crashing preflight."""
+    rs = ReadingSource(
+        source_id="ebook:malformed",
+        annotation_key="malformed",
+        kind="ebook",
+        title="Malformed",
+        author=None,
+        primary_lang="en",
+        has_evidence_track=True,
+        evidence_reason=None,
+        # ReadingSource invariants documented but not Pydantic-enforced —
+        # constructor accepts a display-only variant under has_evidence_track=True.
+        variants=[
+            SourceVariant(
+                role="display",
+                format="epub",
+                lang="bilingual",
+                path="data/books/malformed/bilingual.epub",
+            ),
+        ],
+        metadata={},
+    )
+
+    def _never_called_loader(path: str) -> bytes:
+        raise AssertionError("loader must not be called when variant selection fails")
+
+    caplog.set_level("WARNING", logger="nakama.shared.promotion_preflight")
+    pf = PromotionPreflight(blob_loader=_never_called_loader)
+    report = pf.run(rs)
+
+    assert report.recommended_action == "defer"
+    assert report.error is not None
+    assert "variant_selection_failed" in report.error
+    assert report.reasons == ["inspector_error"]
+    assert any(
+        getattr(rec, "category", None) == "preflight_variant_selection_failed"
+        for rec in caplog.records
+    )
+
+
+# F6 (P1): malformed YAML frontmatter → inspector error (not silently swallowed)
+def test_preflight_malformed_frontmatter_routes_to_defer():
+    """Codex F6: malformed YAML frontmatter must surface as inspector_error.
+    shared.utils.extract_frontmatter swallows YAMLError silently — preflight's
+    strict variant must NOT, otherwise a malformed inbox could pass as a
+    falsely-clean preflight."""
+    rs = _inbox_source(relative_path="Inbox/kb/bad.md", has_evidence_track=True)
+    # Malformed YAML: unclosed bracket. yaml.safe_load raises YAMLError.
+    bad_content = b"---\ntitle: [unclosed\nlang: en\n---\n# Section\nbody text " * 100
+
+    def loader(path: str) -> bytes:
+        return bad_content
+
+    pf = PromotionPreflight(blob_loader=loader)
+    report = pf.run(rs)
+
+    assert report.recommended_action == "defer"
+    assert report.error is not None
+    assert "frontmatter_parse_failed" in report.error
+    assert report.reasons == ["inspector_error"]
+
+
+# F2 (P1) cross-check: PreflightReason Literal includes inspector_error
+def test_preflight_reason_includes_inspector_error():
+    """Codex F2: PreflightReason Literal must include 'inspector_error' so
+    Row 1 can emit a semantically correct reason for any inspector failure
+    (markdown frontmatter_minimal is no longer a generic placeholder)."""
+    args = typing.get_args(PreflightReason)
+    assert "inspector_error" in args, f"PreflightReason must include 'inspector_error'; got {args}"
