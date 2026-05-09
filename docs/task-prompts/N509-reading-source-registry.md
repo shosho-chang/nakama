@@ -1,4 +1,4 @@
-# Agent Brief — N509 Reading Source Registry (ADR-024 Slice 1) — v2
+# Agent Brief — N509 Reading Source Registry (ADR-024 Slice 1) — v3
 
 **Issue:** [#509](https://github.com/shosho-chang/nakama/issues/509)
 **Parent PRD:** #508

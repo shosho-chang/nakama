@@ -1,4 +1,4 @@
-# N509 — Reading Source Registry (ADR-024 Slice 1) — v2
+# N509 — Reading Source Registry (ADR-024 Slice 1) — v3
 
 **Issue:** #509
 **Branch:** `impl/N509-reading-source-registry`
