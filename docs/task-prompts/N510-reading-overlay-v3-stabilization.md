@@ -245,7 +245,7 @@ def _sync_v3_paper(self, ann_set: AnnotationSetV3, slug: str) -> SyncReport:
 
 - Do NOT remove `_sync_v1` or `_sync_v2`. They remain known-good fallbacks for un-migrated stores.
 - Reuse `_dispatch_book_items` / `_replace_v2_marker_block` helpers if extractable; if extraction adds risk, duplicate the small body and refactor in a follow-up.
-- The `book_notes_writer.write_notes(book_id, comments)` at line 302-308 of `_sync_v2` accepts a list of items with `body` / `chapter_ref` / `cfi_anchor` / `modified_at` shape. `ReflectionV3` exposes the same (per `shared/schemas/annotations.py:163-189`). **Confirm before reusing**; if not duck-typed, add a 5-line adapter (NOT a rewrite).
+- The `book_notes_writer.write_notes(book_id, comments)` at line 302-308 of `_sync_v2` accepts a list of items with `body` / `chapter_ref` / `cfi_anchor` / `modified_at` shape. `ReflectionV3` declares those same field names (per `shared/schemas/annotations.py:163-189`), but **the investigation note (§4) explicitly did NOT audit whether `write_notes` duck-types those fields at runtime**. Implementer MUST verify by reading the function body before reusing; if not duck-typed, add a 5-line adapter (NOT a rewrite). T-N6 is the gate here.
 
 ### 4.2 Inbox reader page migration in `routers/robin.py:235`
 

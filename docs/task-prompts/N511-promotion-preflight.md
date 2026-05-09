@@ -146,9 +146,14 @@ Either way, that's a separate slice. **`#511` MUST NOT add enumeration silently*
 from typing import Callable
 
 BlobLoader = Callable[[str], bytes]
-"""Maps a SourceVariant.path string to the raw file bytes. Production callers
-(thousand_sunny endpoints) inject a loader that resolves vault_root + path
-and reads from disk. Tests inject an in-memory dict-backed loader.
+"""Maps a SourceVariant.path string to the raw file bytes. Future production
+callers (consumer slices like #516 Review UI or batch tooling) will inject
+a loader that resolves vault_root + path and reads from disk; tests inject
+an in-memory dict-backed loader.
+
+Production wiring is intentionally outside this slice — see §8. #511 ships
+the schema + service + injection contract; the call-site composition is
+the consumer slice's PR.
 
 Preflight never imports book_storage / vault helpers. Path resolution is
 the loader's job, not preflight's. This keeps preflight pure-deterministic
@@ -279,16 +284,18 @@ class PreflightReport(BaseModel):
 
 Per ADR-024 + `agents/robin/CONTEXT.md`: factual claims require evidence. Preflight defaults missing-evidence cases to `defer` / `annotation_only_sync` — never `partial_promotion_only` (which is removed from this slice's enum entirely; see §4.1 docstring).
 
-| Inputs | `recommended_action` | `reasons` |
-|---|---|---|
-| `has_evidence_track=True` AND no high-severity risks | `proceed_full_promotion` | `["ok"]` |
-| `has_evidence_track=True` AND ≥1 medium-severity risk AND no high-severity | `proceed_with_warnings` | risk codes |
-| `has_evidence_track=True` AND ≥1 high-severity risk | `defer` | risk codes |
-| `has_evidence_track=False` AND `word_count_estimate < 1000` | `annotation_only_sync` | `["missing_evidence_track", "very_short"]` |
-| `has_evidence_track=False` AND (`weak_toc` OR `no_chapters_detected`) AND `word_count_estimate < 5000` | `annotation_only_sync` | `["missing_evidence_track", "weak_toc"]` |
-| `has_evidence_track=False` AND `word_count_estimate >= 1000` (and no auto-`annotation_only_sync` trigger above) | `defer` | `["missing_evidence_track"]` (+ `"low_confidence_lang"` if `evidence_reason == "bilingual_only_inbox"`) |
-| inspector `error` set | `defer` | `["frontmatter_minimal"]` (placeholder; details in `error`) |
-| `word_count_estimate < 200` AND no errors | `skip` | `["very_short"]` |
+**Precedence**: rows are evaluated top-down; **first match wins**. Implementation should mirror this order in code so the determinism is reflected in the call sequence.
+
+| # | Inputs | `recommended_action` | `reasons` |
+|---|---|---|---|
+| 1 | inspector `error` set | `defer` | `["frontmatter_minimal"]` (placeholder; details in `error`) |
+| 2 | `word_count_estimate < 200` AND no errors | `skip` | `["very_short"]` |
+| 3 | `has_evidence_track=False` AND `200 <= word_count_estimate < 1000` | `annotation_only_sync` | `["missing_evidence_track", "very_short"]` |
+| 4 | `has_evidence_track=False` AND (`weak_toc` OR `no_chapters_detected`) AND `word_count_estimate < 5000` | `annotation_only_sync` | `["missing_evidence_track", "weak_toc"]` |
+| 5 | `has_evidence_track=False` AND `word_count_estimate >= 1000` (and rule 4 didn't fire) | `defer` | `["missing_evidence_track"]` (+ `"low_confidence_lang"` if `evidence_reason == "bilingual_only_inbox"`) |
+| 6 | `has_evidence_track=True` AND ≥1 high-severity risk | `defer` | risk codes |
+| 7 | `has_evidence_track=True` AND ≥1 medium-severity risk AND no high-severity | `proceed_with_warnings` | risk codes |
+| 8 | `has_evidence_track=True` AND no high-severity risks | `proceed_full_promotion` | `["ok"]` |
 
 **Hard invariant (Pydantic-enforced, T7 asserts)**:
 
@@ -325,9 +332,10 @@ class PromotionPreflight:
         registry: ReadingSourceRegistry | None = None,
     ) -> None:
         """`blob_loader` resolves a SourceVariant.path → file bytes.
-        Production wiring at the call site (e.g. `thousand_sunny/routers/...`)
-        composes it from the project's vault helpers; tests inject in-memory
-        loaders.
+        Future production wiring will compose this from the project's vault
+        helpers in a consumer slice (`#516` Review UI or any batch tooling
+        caller) — that's their PR, not this slice's. Tests inject in-memory
+        dict-backed loaders.
 
         `registry` is optional — preflight does NOT call it on the hot path
         (input is already a ReadingSource); kept as a convenience for callers
