@@ -155,7 +155,7 @@ def main() -> int:
 
     print("=== Gemini panel audit dispatch ===", file=sys.stderr)
     print(f"Topic: {TOPIC}", file=sys.stderr)
-    print(f"Prompt size: {len(prompt)} chars (~{len(prompt)//4} tokens)", file=sys.stderr)
+    print(f"Prompt size: {len(prompt)} chars (~{len(prompt) // 4} tokens)", file=sys.stderr)
     print("Model: gemini-2.5-pro", file=sys.stderr)
     print("---", file=sys.stderr)
 

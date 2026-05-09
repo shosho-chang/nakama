@@ -49,9 +49,8 @@ def get_client() -> anthropic.Anthropic:
     global _client
     if _client is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
-        oauth_token = (
-            os.environ.get("ANTHROPIC_AUTH_TOKEN")
-            or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        oauth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get(
+            "CLAUDE_CODE_OAUTH_TOKEN"
         )
         if api_key:
             _client = anthropic.Anthropic(api_key=api_key)

@@ -1083,9 +1083,7 @@ def compute_acceptance_7(
     if wl_section_match:
         body_slugs = re.findall(r"\[\[([^\]]+)\]\]", wl_section_match.group(1))
     c2_unresolved = [
-        s
-        for s in body_slugs
-        if not (staging_concepts_dir / f"{canonicalize(s)}.md").exists()
+        s for s in body_slugs if not (staging_concepts_dir / f"{canonicalize(s)}.md").exists()
     ]
     c2_ok = len(c2_unresolved) == 0
     if not c2_ok:
