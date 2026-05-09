@@ -749,9 +749,9 @@ Per Brief §6. Repeated here as one-line callouts:
 3. Add `SourcePageReviewItem` + `ConceptReviewItem` + `ReviewItem` discriminated union with V1 invariants.
 4. Add `CommitBatch` with V9 invariant + ISO timestamp validator.
 5. Add `PromotionManifest` with V2/V3/V4/V6/V8 invariants + ISO timestamp validator.
-6. Add `tests/shared/test_promotion_manifest.py` skeleton with T1-T15 marked `@pytest.mark.xfail` (red).
+6. Add `tests/shared/test_promotion_manifest.py` skeleton with T1-T15 marked `@pytest.mark.xfail` (red). **Local-only TDD scaffolding** — `xfail` markers track red→green progression while implementing one schema invariant at a time. The final PR **must contain zero committed `@pytest.mark.xfail` / `@pytest.mark.skip` markers**. Strip each marker as the test goes green; if a test is genuinely undeliverable, raise it as a blocker before opening the PR rather than leaving a `skip` in the committed tree.
 7. Add `tests/fixtures/promotion_manifest/*.json` fixtures.
-8. Un-xfail and fill tests one at a time as schema invariants pass.
+8. Un-xfail and fill tests one at a time as schema invariants pass. Every `@pytest.mark.xfail` / `@pytest.mark.skip` is stripped before commit; PR delivers a fully-green suite, no markers.
 9. `python -m pytest tests/shared/test_promotion_manifest.py -v` clean.
 10. `python -m ruff check shared/schemas/promotion_manifest.py tests/shared/test_promotion_manifest.py` clean.
 11. `python -m ruff format --check shared/schemas/promotion_manifest.py tests/shared/test_promotion_manifest.py` clean.

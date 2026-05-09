@@ -345,7 +345,7 @@ def now_iso_utc() -> str:
 - [ ] Discriminator (`item_kind`) on `Annotated[Union[SourcePageReviewItem, ConceptReviewItem], Field(discriminator="item_kind")]`
 - [ ] All Literal enums 用 `Literal[...]`，**不**用 `Enum`（per `docs/principles/schemas.md`）
 - [ ] `schema_version: Literal[1] = 1` first field on `PromotionManifest`
-- [ ] Test 檔零 `fastapi` / `thousand_sunny` / `agents.robin` import (asserted by T1 subprocess check)
+- [ ] Test 檔零 `fastapi` / `thousand_sunny` / `agents.robin` import (asserted by T15 subprocess check)
 - [ ] `source_id` 接收成 `str`，**不** parse、不 validate format（schema 是 transport，不是 identity 規約）
 - [ ] **Closed-set extension protocol**: 每個 `Literal` 是 frozen for `schema_version=1`；新增成員必須 (a) bump `schema_version`、(b) 更新 docstring、(c) 更新 #515 / #516 downstream policy。Silent extension forbidden（mirrors #509 N6 contract）.
 - [ ] **No state machine logic**: schema 只 validate state shape，不 model state transition。Status transition 邏輯（`needs_review` → `partial` → `complete` etc.）是 #515 的責任。
