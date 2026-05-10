@@ -59,14 +59,18 @@ def test_traversal_via_nested_segment_rejected(vault: Path):
         loader("foo/../../etc/passwd")
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="Backslash is a regular filename character on POSIX, not a path "
+    "separator. Backslash-based traversal is a Windows-specific attack vector; "
+    "on POSIX ``..\\\\etc\\\\passwd`` is a single filename segment with no "
+    "literal ``..`` part, and the impl correctly does not reject it.",
+)
 def test_traversal_via_backslash_rejected(vault: Path):
-    """Windows-style separator with traversal is still rejected because
-    ``Path.parts`` recognises the separator on the host OS, and we also
-    walk the POSIX parts as a belt-and-suspenders check."""
+    """Windows-style backslash traversal is rejected on Windows hosts where
+    ``Path.parts`` parses backslash as a separator and surfaces a literal
+    ``..`` part token. POSIX is exempt — see the ``skipif`` reason."""
     loader = VaultBlobLoader(vault_root=vault)
-    # On POSIX hosts ``..\\foo`` is one path segment that starts with ``..``;
-    # on Windows it's parsed as a parent traversal. We only check the
-    # explicit ``..`` segment so we accept either platform's interpretation.
     with pytest.raises(ValueError):
         loader("..\\etc\\passwd")
 
@@ -96,15 +100,24 @@ def test_loader_rejects_posix_absolute_on_any_host(vault: Path):
     sys.platform == "win32",
     reason="Symlink creation requires admin on Windows; covered via `..` check.",
 )
-def test_loader_rejects_symlink_escaping_vault(vault: Path, tmp_path: Path):
+def test_loader_rejects_symlink_escaping_vault(
+    vault: Path, tmp_path_factory: pytest.TempPathFactory
+):
     """A symlink whose target lives outside the vault must be rejected.
 
     The first-line ``..`` guard doesn't catch this — the literal path
     ``data/escape.txt`` is clean. The second-line check (``relative_to``
     against the resolved vault root) catches it because ``resolve()``
     follows the symlink first.
+
+    The target lives in a sibling tmp dir created via ``tmp_path_factory``
+    so it is genuinely outside ``vault_root``. Using the per-test
+    ``tmp_path`` would not work because the ``vault`` fixture returns
+    ``tmp_path`` itself — any file under ``tmp_path`` would still be
+    inside the vault and the resolved symlink would NOT escape.
     """
-    target_outside = tmp_path / "secret.txt"
+    outside_root = tmp_path_factory.mktemp("symlink_outside")
+    target_outside = outside_root / "secret.txt"
     target_outside.write_bytes(b"top secret")
     link = vault / "data" / "escape.txt"
     os.symlink(target_outside, link)
