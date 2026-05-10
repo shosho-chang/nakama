@@ -113,11 +113,29 @@ Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS
 
 ## 工作面紀律 (Worktree)
 
-**主倉庫 `E:\nakama` 是 metadata-only**，不在這裡改檔／checkout 工作 branch／commit。詳細血淚見 2026-05-08 cleanup session。
+**最高原則：主倉庫 `E:\nakama` 是 control plane，不是 write surface。**  
+除非修修明確授權「這次例外可以直接在主 worktree 改這些檔案」，否則不要在 `E:\nakama` 改檔、產生檔案、checkout 工作 branch、commit、或寫 durable memory。詳細血淚見 2026-05-08 cleanup session 與 2026-05-10 multi-window cleanup。
 
-- **每個 task 開 sibling worktree**：`git worktree add E:\nakama-<topic> -b feat/<topic> origin/main`
+`E:\nakama` 只允許做：
+
+- `git status` / `git log` / `git diff` / 讀檔
+- `git fetch` / `git pull --ff-only` 同步 main
+- 建立或移除 sibling worktree
+- merge 已 review 且 CI green 的 PR
+
+任何會寫檔的任務都必須先開 task-specific sibling worktree：
+
+```powershell
+git switch main
+git fetch --prune
+git pull --ff-only
+git worktree add E:\nakama-<topic> -b <branch-name> origin/main
+```
+
+- **每個 task 開 sibling worktree**：例如 `E:\nakama-N513-source-map-builder`、`E:\nakama-toast-inbox-importer`、`E:\nakama-memory-update`
 - **subagent dispatch** 走 Sandcastle (default) 或本機 `isolation: worktree`（見下節）
 - **memory 寫入** 永遠不在 `E:\nakama`，要在 sibling worktree 或專屬 memory worktree
+- **禁止 `git add .`**：只 stage 明確列出的 path，避免多視窗下把 unrelated memory、review artifact、screenshot、generated file 混進 PR
 - **Stash 紀律**：用 `-m "<message>"` 命名，**不要** `git stash pop stash@{0}`（多視窗下 index 會漂移）— 用 `git stash list` 找 message 再 pop ref name
 - **branch 命名**：feature 用 `feat/<topic>`，cleanup 用 `chore/<topic>`，docs/research 用 `docs/<topic>`
 
