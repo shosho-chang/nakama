@@ -24,8 +24,11 @@ from shared.schemas.preflight_report import PreflightAction
 ManifestUiStatus = Literal["needs_review", "partial", "complete", "failed"]
 """Closed for ``schema_version=1``. Mirrors
 ``shared.schemas.promotion_manifest.ManifestStatus``; duplicated here as a
-display-side closed enum so the UI surface does not import the manifest
-module's status enum directly (the service decouples them).
+display-side closed enum so this UI value-object does not pull in the full
+manifest schema. The router and service still import
+:class:`HumanDecisionKind` from the manifest module — the decoupling here
+applies only to the status display enum, not to every manifest enum needed
+at the route boundary.
 """
 
 

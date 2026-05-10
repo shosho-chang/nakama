@@ -276,6 +276,10 @@ class PromotionReviewService:
         Raises ``ValueError`` when:
         - no resolver injected
         - resolver returns ``None`` for ``source_id``
+        - an existing manifest for ``source_id`` already carries persisted
+          ``human_decision``s or ``commit_batches`` (re-running ``/start``
+          is treated as destructive; explicit replace flow with
+          ``replaces_manifest_id`` is tracked as future-slice work)
         - preflight returns an action ∉ ``{proceed_full_promotion,
           proceed_with_warnings}``
         - builder returns ``error is not None``
@@ -289,6 +293,24 @@ class PromotionReviewService:
         rs = self._source_resolver.resolve(source_id)
         if rs is None:
             raise ValueError(f"source_id={source_id!r} did not resolve to a ReadingSource")
+
+        # Brief §3 labels POST /start as "First-time start review". An existing
+        # manifest with recorded decisions or commit batches is preserved
+        # state — overwriting it would silently destroy human work and the
+        # audit trail. ADR-024's replaces_manifest_id flow is intentionally
+        # not wired here; surface a hard error so misclicks / reloads /
+        # double-POSTs cannot lose data.
+        existing = self._manifest_store.load(source_id)
+        if existing is not None and (
+            any(item.human_decision is not None for item in existing.items)
+            or len(existing.commit_batches) > 0
+        ):
+            raise ValueError(
+                f"start_review would overwrite a manifest with persisted "
+                f"human decisions or commit batches for source_id="
+                f"{source_id!r}; an explicit re-start / replaces_manifest_id "
+                f"flow is not yet implemented (tracked as future-slice work)"
+            )
 
         report = self._preflight.run(rs)
         if report.recommended_action not in _PREFLIGHT_PROCEED_ACTIONS:
@@ -401,10 +423,13 @@ class PromotionReviewService:
             if item.human_decision is not None and item.human_decision.decision == "approve"
         ]
 
-        # Even when no items are approved we still call the commit service so
-        # the resulting CommitOutcome can express the failure cleanly via the
-        # F1-analog schema invariant. The service will record a "no items"
-        # failed batch.
+        # Even when no items are approved we still call the commit service:
+        # ``_compute_promotion_status`` returns ``"failed"`` for empty
+        # ``item_ids`` (no approved + no deferred + no rejected), so the
+        # batch is recorded as failed without short-circuiting here. The
+        # CommitOutcome F1-analog invariant fires in the converse direction
+        # (``error is not None ⇒ approved=[] AND status=failed``); for the
+        # empty-batch path ``error`` stays ``None``.
         outcome = self._commit_service.commit(
             manifest,
             batch_id,

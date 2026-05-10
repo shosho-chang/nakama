@@ -245,6 +245,51 @@ def test_st2_service_start_review_chains_preflight_builder_engine():
     assert reloaded.manifest_id == manifest.manifest_id
 
 
+# ── ST2b — start_review refuses to overwrite a manifest with persisted state ──
+
+
+def test_st2b_service_start_review_refuses_overwrite_when_decisions_exist():
+    """Re-running ``/start`` on a source whose manifest already carries
+    ``human_decision`` records (or commit batches) raises ``ValueError`` and
+    leaves the existing manifest untouched. Brief §3 labels ``/start`` as
+    "First-time start review"; this guard prevents reload / double-POST data
+    loss until the explicit ``replaces_manifest_id`` flow lands.
+    """
+    store = _DictManifestStore()
+    existing = _load_mixed_manifest()  # has human_decision on concept_hrv_001
+    store.save(existing)
+
+    rs = ReadingSource(
+        source_id="ebook:alpha-book",
+        annotation_key="alpha-book",
+        kind="ebook",
+        title="Alpha Book",
+        primary_lang="en",
+        has_evidence_track=True,
+        evidence_reason=None,
+        variants=[
+            SourceVariant(
+                role="original",
+                format="markdown",
+                lang="en",
+                path="Inbox/kb/sample.md",
+            )
+        ],
+    )
+    service = _build_service(manifest_store=store, sources=[rs])
+
+    import pytest
+
+    with pytest.raises(ValueError, match="would overwrite a manifest"):
+        service.start_review("ebook:alpha-book")
+
+    # Existing manifest preserved — same manifest_id, same items.
+    reloaded = store.load("ebook:alpha-book")
+    assert reloaded is not None
+    assert reloaded.manifest_id == existing.manifest_id
+    assert any(it.human_decision is not None for it in reloaded.items)
+
+
 # ── ST3 — commit_approved filters to approve-only ─────────────────────────────
 
 

@@ -48,8 +48,24 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "promotio
 _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 # Documented HTTP-boundary failures for service calls. Narrow tuple per
-# #511 F5 lesson — programmer errors propagate.
+# #511 F5 lesson — programmer errors propagate. The catch sites separate
+# OSError (server-side IO failure → 5xx) from ValueError / KeyError
+# (client-supplied or lookup miss → 4xx) via :func:`_http_status_for`.
 _HTTP_BOUNDARY_FAILURES: tuple[type[BaseException], ...] = (ValueError, KeyError, OSError)
+
+
+def _http_status_for(exc: BaseException, *, lookup_status: int = 400) -> int:
+    """Map a boundary failure to an HTTP status code.
+
+    ``OSError`` (filesystem persistence failure) is server-side and maps to
+    500. Everything else in ``_HTTP_BOUNDARY_FAILURES`` is treated as the
+    caller-supplied ``lookup_status`` (400 for malformed input / duplicate
+    batch_id, 404 for record-not-found semantics in ``decide_item``).
+    """
+    if isinstance(exc, OSError):
+        return 500
+    return lookup_status
+
 
 # Allowed human-decision values, mirrored from #512 Literal so the route
 # layer can reject unknown form values with 400 before hitting the service.
@@ -221,7 +237,7 @@ async def decide_item(
             note=note_value,
         )
     except _HTTP_BOUNDARY_FAILURES as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=_http_status_for(exc, lookup_status=404), detail=str(exc))
 
     # HTMX in-place swap — return the partial.
     if request.headers.get("HX-Request") == "true":
@@ -264,7 +280,7 @@ async def commit_source(
             vault_root=get_vault_path(),
         )
     except _HTTP_BOUNDARY_FAILURES as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=_http_status_for(exc, lookup_status=400), detail=str(exc))
 
     manifest = service.load_review_session(source_id)
     state = service.state_for(source_id)
@@ -307,7 +323,7 @@ async def start_review(
     try:
         service.start_review(source_id)
     except _HTTP_BOUNDARY_FAILURES as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=_http_status_for(exc, lookup_status=400), detail=str(exc))
 
     return RedirectResponse(f"/promotion-review/source/{source_id_b64}", status_code=303)
 
