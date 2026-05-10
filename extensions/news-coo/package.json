@@ -1,0 +1,32 @@
+{
+  "name": "news-coo",
+  "version": "0.1.0",
+  "description": "Browser extension that extracts main web page content and delivers clean Markdown into the Nakama Obsidian vault.",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "build": "npm run clean && rolldown -c && node scripts/copy-assets.mjs",
+    "check": "tsc --noEmit",
+    "clean": "node scripts/clean.mjs",
+    "lint": "eslint src vitest.config.ts rolldown.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "defuddle": "^0.18.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/chrome": "^0.0.268",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^10.3.0",
+    "globals": "^17.6.0",
+    "happy-dom": "^20.9.0",
+    "rolldown": "^1.0.0",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.59.2",
+    "vitest": "^4.1.5"
+  }
+}
