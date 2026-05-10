@@ -1,8 +1,35 @@
 // Shared types between popup / options / background / content.
-// Filled out per slice; S1 skeleton only.
 
 export interface NewsCooVersion {
   readonly version: 1;
 }
 
 export const NEWS_COO_VERSION: NewsCooVersion = { version: 1 };
+
+export interface ImageRef {
+  src: string;
+  alt: string;
+  title?: string;
+}
+
+export interface PubMedMetadata {
+  doi?: string;
+  pmid?: string;
+  journal?: string;
+}
+
+export interface ExtractedPage {
+  url: string;
+  title: string;
+  markdown: string;
+  description: string;
+  author: string;
+  published: string;
+  imageRefs: ImageRef[];
+  // Optional Defuddle metadata surfaced in frontmatter
+  site?: string;
+  language?: string;
+  wordCount?: number;
+  favicon?: string;
+  pubmed?: PubMedMetadata;
+}
