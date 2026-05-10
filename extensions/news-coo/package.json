@@ -4,7 +4,6 @@
   "description": "Browser extension that extracts main web page content and delivers clean Markdown into the Nakama Obsidian vault.",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.15.0",
   "scripts": {
     "build": "npm run clean && rolldown -c && node scripts/copy-assets.mjs",
     "check": "tsc --noEmit",
