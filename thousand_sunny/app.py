@@ -24,6 +24,7 @@ from thousand_sunny.routers import (  # noqa: E402
     brook,
     franky,
     projects,
+    promotion_review,
     repurpose,
     zoro,
 )
@@ -83,3 +84,10 @@ app.include_router(zoro.router)
 app.include_router(brook.router)
 app.include_router(projects.router)
 app.include_router(projects.page_router)
+
+# Promotion Review UI (ADR-024 Slice 8 / issue #516). The router carries no
+# wired service by default — production wiring must call
+# ``thousand_sunny.routers.promotion_review.set_service(...)`` after
+# constructing a ``PromotionReviewService``. Without that, the routes return
+# 503. Tests reload the module to inject a fake service.
+app.include_router(promotion_review.router)

@@ -1,0 +1,163 @@
+{# Per-item review card. Used inline in review.html and as an HTMX swap target
+   on POST /decide. Hard invariants per Brief §4.4:
+   - U2: tokens-only via CSS classes (no inline color/font/spacing)
+   - U3: semantic <article>, <button type="button">, ARIA labels, keyboard activation
+#}
+<article class="prom-card prom-card--{{ item.recommendation }}"
+         id="prom-card-{{ item.item_id }}"
+         data-item-id="{{ item.item_id }}"
+         data-item-kind="{{ item.item_kind }}"
+         data-recommendation="{{ item.recommendation }}"
+         data-decision="{% if item.human_decision %}{{ item.human_decision.decision }}{% else %}none{% endif %}"
+         role="article"
+         aria-label="Review item {{ item.item_id }}">
+
+  <header class="prom-card__header">
+    <div class="prom-card__title-row">
+      <span class="brk-mono prom-card__id">{{ item.item_id }}</span>
+      <span class="prom-action prom-action--{{ item.action }}" aria-label="action {{ item.action }}">
+        {{ item.action }}
+      </span>
+      <span class="prom-pill prom-pill--{{ item.recommendation }}"
+            aria-label="recommendation {{ item.recommendation }}">
+        {{ item.recommendation }}
+      </span>
+      {% if item.human_decision %}
+        <span class="prom-pill prom-pill--decision-{{ item.human_decision.decision }}"
+              aria-label="human decision {{ item.human_decision.decision }}">
+          ↳ {{ item.human_decision.decision }}
+        </span>
+      {% endif %}
+    </div>
+    <h3 class="prom-card__heading">
+      {% if item.item_kind == "concept" %}
+        {{ item.concept_label }}
+      {% elif item.chapter_ref %}
+        {{ item.chapter_ref }}
+      {% else %}
+        {{ item.item_id }}
+      {% endif %}
+    </h3>
+  </header>
+
+  <div class="prom-card__body">
+    <p class="prom-card__reason">{{ item.reason }}</p>
+
+    {% if item.evidence %}
+      <section class="prom-evidence" aria-label="Evidence excerpts">
+        <div class="brk-caps prom-evidence__caps">evidence · {{ item.evidence | length }}</div>
+        <ul class="prom-evidence__list" role="list">
+          {% for ev in item.evidence[:2] %}
+            <li class="prom-evidence__row">
+              <span class="brk-mono prom-evidence__locator">{{ ev.locator }}</span>
+              <blockquote class="prom-evidence__excerpt">{{ ev.excerpt }}</blockquote>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if item.evidence | length > 2 %}
+          <details class="prom-evidence__more">
+            <summary class="brk-caps">show {{ item.evidence | length - 2 }} more</summary>
+            <ul class="prom-evidence__list" role="list">
+              {% for ev in item.evidence[2:] %}
+                <li class="prom-evidence__row">
+                  <span class="brk-mono prom-evidence__locator">{{ ev.locator }}</span>
+                  <blockquote class="prom-evidence__excerpt">{{ ev.excerpt }}</blockquote>
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if item.risk %}
+      <section class="prom-risks" aria-label="Risk flags">
+        <div class="brk-caps prom-risks__caps">risks</div>
+        <ul class="prom-risks__list" role="list">
+          {% for r in item.risk %}
+            <li class="prom-risk prom-risk--{{ r.severity }}"
+                aria-label="risk {{ r.code }} severity {{ r.severity }}">
+              <span class="prom-risk__code">{{ r.code }}</span>
+              <span class="brk-caps prom-risk__severity">{{ r.severity }}</span>
+              <span class="prom-risk__desc">{{ r.description }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    <section class="prom-metrics" aria-label="Confidence and salience">
+      <div class="prom-metric">
+        <div class="brk-caps prom-metric__caps">confidence</div>
+        <div class="prom-metric__row">
+          <span class="brk-mono prom-metric__num">{{ "%.2f" | format(item.confidence) }}</span>
+          <span class="prom-bar" aria-hidden="true">
+            <span class="prom-bar__fill" style="--prom-bar-fill: {{ (item.confidence * 100) | round(0, 'floor') | int }}%"></span>
+          </span>
+        </div>
+      </div>
+      <div class="prom-metric prom-metric--small">
+        <div class="brk-caps prom-metric__caps">source_importance</div>
+        <div class="brk-mono prom-metric__num">{{ "%.2f" | format(item.source_importance) }}</div>
+      </div>
+      <div class="prom-metric prom-metric--small">
+        <div class="brk-caps prom-metric__caps">reader_salience</div>
+        <div class="brk-mono prom-metric__num">{{ "%.2f" | format(item.reader_salience) }}</div>
+      </div>
+      {% if item.item_kind == "concept" and item.canonical_match %}
+        <div class="prom-metric prom-metric--small">
+          <div class="brk-caps prom-metric__caps">match · {{ item.canonical_match.match_basis }}</div>
+          <div class="brk-mono prom-metric__num">{{ "%.2f" | format(item.canonical_match.confidence) }}</div>
+        </div>
+      {% endif %}
+    </section>
+
+    {% if item.human_decision and item.human_decision.note %}
+      <p class="prom-card__note">
+        <span class="brk-caps prom-card__note-caps">note</span>
+        {{ item.human_decision.note }}
+      </p>
+    {% endif %}
+  </div>
+
+  <footer class="prom-card__footer">
+    <form class="prom-decide-form"
+          hx-post="/promotion-review/source/{{ encoded_id }}/decide/{{ item.item_id }}"
+          hx-target="#prom-card-{{ item.item_id }}"
+          hx-swap="outerHTML"
+          method="post"
+          action="/promotion-review/source/{{ encoded_id }}/decide/{{ item.item_id }}">
+      <label class="prom-note-label">
+        <span class="brk-caps">note (optional)</span>
+        <input class="prom-note-input"
+               type="text"
+               name="note"
+               value="{% if item.human_decision and item.human_decision.note %}{{ item.human_decision.note }}{% endif %}"
+               aria-label="Decision note for {{ item.item_id }}" />
+      </label>
+      <div class="prom-decide-buttons">
+        <button type="submit"
+                class="prom-btn prom-btn--approve{% if item.human_decision and item.human_decision.decision == 'approve' %} is-active{% endif %}"
+                name="decision"
+                value="approve"
+                aria-label="approve item {{ item.item_id }}">
+          approve
+        </button>
+        <button type="submit"
+                class="prom-btn prom-btn--reject{% if item.human_decision and item.human_decision.decision == 'reject' %} is-active{% endif %}"
+                name="decision"
+                value="reject"
+                aria-label="reject item {{ item.item_id }}">
+          reject
+        </button>
+        <button type="submit"
+                class="prom-btn prom-btn--defer{% if item.human_decision and item.human_decision.decision == 'defer' %} is-active{% endif %}"
+                name="decision"
+                value="defer"
+                aria-label="defer item {{ item.item_id }}">
+          defer
+        </button>
+      </div>
+    </form>
+  </footer>
+</article>
