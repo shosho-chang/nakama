@@ -22,6 +22,11 @@ Brief §5 acceptance T1-T16 plus regression coverage:
 Regression test (F1-analog from #513 codex review):
 
 - T17 ConceptPromotionResult error ⇒ items=[] model_validator rejects mismatch
+
+Regression tests added post-review (#527 codex):
+
+- update_conflict_global risk flag uses caller's min_global_confidence
+  (not the module-level default) — fixes hardcoded threshold bug
 """
 
 from __future__ import annotations
@@ -1090,3 +1095,61 @@ def test_expected_result_create_global_fixture_is_valid():
     assert item.recommendation == "include"
     assert len(item.evidence) >= 1  # C4
     assert item.confidence >= 0.75  # C4
+
+
+# ── Post-review regression tests (codex #527) ───────────────────────────────
+
+
+def test_propose_update_conflict_uses_caller_min_global_confidence():
+    """Regression for codex #527 finding: ``_build_update_conflict_item`` was
+    hardcoding ``_DEFAULT_MIN_GLOBAL_CONFIDENCE`` (0.75) for the
+    ``cross_lingual_uncertain`` risk flag gate, ignoring the caller's
+    ``min_global_confidence`` parameter.
+
+    Setup:
+    - Caller overrides ``min_global_confidence=0.85`` (above default 0.75).
+    - Semantic match with ``confidence=0.80``.
+    - Pre-fix: ``0.80 < 0.75`` is False → no risk flag attached.
+    - Post-fix: ``0.80 < 0.85`` (caller's threshold) is True → flag attached.
+
+    Row 5 fires because ``0.80 < 0.85`` (caller's threshold) AND ``0.80 >=
+    0.50`` (LOW_CONFIDENCE_DROP_THRESHOLD), routing to update_conflict_global.
+    Row 4 does NOT fire because ``0.80 < 0.85``.
+    """
+    sm = _source_map(
+        items=[
+            _source_page_item(
+                chapter_ref="ch-1",
+                excerpts=["心率變異 (HRV) 是核心訓練指標。"],
+            ),
+            _source_page_item(
+                chapter_ref="ch-2",
+                excerpts=["心率變異 (HRV) 是核心訓練指標。"],
+            ),
+        ]
+    )
+    matcher = _CannedMatcher(_semantic_outcome(confidence=0.80, conflicts=[]))
+    engine = ConceptPromotionEngine()
+
+    result = engine.propose(
+        reading_source=_ebook_source(),
+        source_map=sm,
+        kb_index=_EmptyKBIndex(),
+        matcher=matcher,
+        min_global_confidence=0.85,
+    )
+
+    assert result.error is None
+    assert len(result.items) >= 1
+    conflict_items = [i for i in result.items if i.action == "update_conflict_global"]
+    assert conflict_items, (
+        f"expected update_conflict_global routing; got actions: {[i.action for i in result.items]}"
+    )
+    item = conflict_items[0]
+    assert item.recommendation == "defer", "C2: update_conflict_global ⇒ defer"
+    cross_lingual_flags = [r for r in item.risk if r.code == "cross_lingual_uncertain"]
+    assert cross_lingual_flags, (
+        "Pre-fix bug: cross_lingual_uncertain flag missing because "
+        "_build_update_conflict_item used hardcoded 0.75 instead of caller's "
+        "min_global_confidence=0.85; post-fix should attach the flag."
+    )

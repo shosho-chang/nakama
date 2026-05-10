@@ -436,6 +436,7 @@ class ConceptPromotionEngine:
                 canonical_match=canonical,
                 primary_lang=primary_lang,
                 conflict_signals=conflict,
+                min_global_confidence=min_global_confidence,
                 reason=(
                     f"exact alias match against {canonical.matched_concept_path} "
                     f"but content conflicts: {', '.join(conflict)}"
@@ -471,6 +472,7 @@ class ConceptPromotionEngine:
                     canonical_match=canonical,
                     primary_lang=primary_lang,
                     conflict_signals=conflict,
+                    min_global_confidence=min_global_confidence,
                     reason=(
                         f"low-confidence cross-lingual match "
                         f"({canonical.confidence:.2f}); requires human review"
@@ -487,12 +489,17 @@ class ConceptPromotionEngine:
                 ),
             )
 
-        # Row 6: match_basis="none" AND recurrence ≥ threshold AND raw_quotes ≥ 3
-        # ⇒ create_global_concept.
+        # Row 6: match_basis="none" AND recurrence ≥ threshold AND
+        # ≥3 NON-BLANK raw_quotes ⇒ create_global_concept.
+        # Non-blank gate mirrors the whitespace filter inside
+        # _quotes_to_evidence so the C4 invariant (create_global ⇒
+        # ≥1 EvidenceAnchor) cannot be violated by the post-gate
+        # downgrade of whitespace-only quotes (codex #527 finding).
+        non_blank_quote_count = sum(1 for q in candidate.raw_quotes if q.strip())
         if (
             canonical.match_basis == "none"
             and recurrence >= min_recurrence_for_global
-            and len(candidate.raw_quotes) >= _MIN_RAW_QUOTES_FOR_CREATE_GLOBAL
+            and non_blank_quote_count >= _MIN_RAW_QUOTES_FOR_CREATE_GLOBAL
         ):
             return _build_create_global_item(
                 candidate=candidate,
@@ -751,12 +758,19 @@ def _build_update_conflict_item(
     canonical_match: CanonicalMatch,
     primary_lang: str,
     conflict_signals: list[str],
+    min_global_confidence: float,
     reason: str,
 ) -> ConceptReviewItem:
     """Build an ``update_conflict_global`` ConceptReviewItem.
 
     C2: ``recommendation="defer"`` (always) — conflict must go to human
     review queue. Evidence still attached so reviewer can inspect.
+
+    ``min_global_confidence`` gates the ``cross_lingual_uncertain`` risk
+    flag — a confidence below the caller's chosen threshold attaches the
+    flag. Mirrors ``_build_create_global_item``'s parameter contract;
+    prior to codex #527 fix this used the module-level default which
+    silently miscalibrated when callers overrode the threshold.
     """
     evidence = _quotes_to_evidence(candidate)
     risks: list[RiskFlag] = []
@@ -774,7 +788,7 @@ def _build_update_conflict_item(
         )
     if (
         canonical_match.match_basis in {"semantic", "translation"}
-        and canonical_match.confidence < _DEFAULT_MIN_GLOBAL_CONFIDENCE
+        and canonical_match.confidence < min_global_confidence
     ):
         risks.append(
             RiskFlag(
