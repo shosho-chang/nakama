@@ -1,0 +1,808 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Promotion Review UI (ADR-024 Slice 8 / issue #516)
+
+   Tokens-only — every color, font, spacing, radius value is a `var(--brk-*)`
+   reference into the canonical `tokens.css` (loaded alongside this file).
+   No hardcoded hex / rgb / fontnames here. Brief §4.4 U2 + §5 self-imposed
+   gate forbid hardcoding; CI greps for offenders.
+
+   Dense operational tool — table-style list + card-stack review surface.
+   Editorial restraint: hairline rules, ≤4px radius, single terracotta
+   accent for active state + focus ring. AAA contrast on body text via
+   `--brk-ink` on `--brk-bg`.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.prom-shell {
+  background: var(--brk-bg);
+  color: var(--brk-ink);
+  font-family: var(--brk-font-sans);
+  font-size: var(--brk-t-base);
+  line-height: var(--brk-lh-base);
+  min-height: 100vh;
+  padding: var(--brk-s-5) var(--brk-s-7);
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+
+.prom-topbar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--brk-s-2);
+  padding-bottom: var(--brk-s-5);
+  border-bottom: 1px solid var(--brk-rule);
+  margin-bottom: var(--brk-s-6);
+}
+
+.prom-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--brk-s-3);
+  color: var(--brk-ink-3);
+}
+
+.prom-topbar__name {
+  font-family: var(--brk-font-sans);
+  font-weight: 600;
+  font-size: var(--brk-t-sm);
+  color: var(--brk-ink-2);
+}
+
+.prom-topbar__rule {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: var(--brk-rule);
+}
+
+.prom-topbar__back {
+  font-family: var(--brk-font-mono);
+  font-size: var(--brk-t-xs);
+  color: var(--brk-mark);
+  text-decoration: none;
+  letter-spacing: var(--brk-track-caps);
+  padding: var(--brk-s-1) var(--brk-s-2);
+  border-radius: var(--brk-r-2);
+}
+
+.prom-topbar__back:hover {
+  color: var(--brk-mark-2);
+  background: var(--brk-mark-soft);
+}
+
+.prom-topbar__back:focus-visible {
+  outline: none;
+  box-shadow: var(--brk-focus);
+}
+
+.prom-topbar__title {
+  font-family: var(--brk-font-serif);
+  font-size: var(--brk-t-xl);
+  line-height: var(--brk-lh-snug);
+  font-weight: 500;
+  letter-spacing: var(--brk-track-tight);
+  color: var(--brk-ink);
+  margin: 0;
+}
+
+.prom-topbar__caption,
+.prom-topbar__meta {
+  display: flex;
+  gap: var(--brk-s-4);
+  flex-wrap: wrap;
+  color: var(--brk-ink-3);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────── */
+
+.prom-empty {
+  background: var(--brk-panel);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-3);
+  padding: var(--brk-s-7);
+  display: grid;
+  gap: var(--brk-s-3);
+}
+
+.prom-empty__title {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  font-size: var(--brk-t-md);
+  line-height: var(--brk-lh-snug);
+  color: var(--brk-ink);
+  margin: 0;
+}
+
+.prom-empty__body {
+  font-family: var(--brk-font-zh);
+  font-size: var(--brk-t-base);
+  line-height: var(--brk-lh-read);
+  color: var(--brk-ink-2);
+  margin: 0;
+}
+
+/* ── List view (table) ───────────────────────────────────────────────── */
+
+.prom-list {
+  display: block;
+}
+
+.prom-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--brk-panel);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-3);
+  overflow: hidden;
+}
+
+.prom-table thead th {
+  text-align: left;
+  padding: var(--brk-s-3) var(--brk-s-4);
+  background: var(--brk-bg-2);
+  border-bottom: 1px solid var(--brk-rule);
+  color: var(--brk-ink-3);
+  font-weight: 500;
+}
+
+.prom-row td {
+  padding: var(--brk-s-4);
+  border-bottom: 1px solid var(--brk-rule-2);
+  vertical-align: top;
+}
+
+.prom-row:last-child td {
+  border-bottom: none;
+}
+
+.prom-row__id {
+  display: grid;
+  gap: var(--brk-s-1);
+  max-width: 480px;
+}
+
+.prom-row__summary {
+  font-family: var(--brk-font-sans);
+  font-size: var(--brk-t-xs);
+  color: var(--brk-ink-3);
+  line-height: var(--brk-lh-base);
+}
+
+.prom-row__lang {
+  font-size: var(--brk-t-sm);
+  color: var(--brk-ink-2);
+}
+
+.prom-row__manifest-empty {
+  color: var(--brk-ink-3);
+}
+
+/* ── Pills (preflight + manifest status + decision) ──────────────────── */
+
+.prom-pill {
+  display: inline-block;
+  padding: var(--brk-s-1) var(--brk-s-3);
+  border-radius: var(--brk-r-3);
+  font-family: var(--brk-font-mono);
+  font-size: var(--brk-t-micro);
+  letter-spacing: var(--brk-track-caps);
+  text-transform: uppercase;
+  border: 1px solid var(--brk-rule);
+  background: var(--brk-panel);
+  color: var(--brk-ink-2);
+  white-space: nowrap;
+}
+
+/* preflight action variants */
+.prom-pill--proceed_full_promotion {
+  border-color: var(--brk-good);
+  color: var(--brk-good);
+  background: var(--brk-bg-2);
+}
+
+.prom-pill--proceed_with_warnings {
+  border-color: var(--brk-warn);
+  color: var(--brk-warn);
+  background: var(--brk-bg-2);
+}
+
+.prom-pill--annotation_only_sync,
+.prom-pill--defer,
+.prom-pill--skip {
+  border-color: var(--brk-rule);
+  color: var(--brk-ink-3);
+}
+
+/* recommendation variants */
+.prom-pill--include {
+  border-color: var(--brk-good);
+  color: var(--brk-good);
+}
+
+.prom-pill--exclude {
+  border-color: var(--brk-danger);
+  color: var(--brk-danger);
+}
+
+.prom-pill--defer {
+  border-color: var(--brk-warn);
+  color: var(--brk-warn);
+}
+
+/* manifest status variants */
+.prom-pill--status-needs_review {
+  border-color: var(--brk-warn);
+  color: var(--brk-warn);
+}
+
+.prom-pill--status-partial {
+  border-color: var(--brk-mark);
+  color: var(--brk-mark);
+}
+
+.prom-pill--status-complete {
+  border-color: var(--brk-good);
+  color: var(--brk-good);
+}
+
+.prom-pill--status-failed {
+  border-color: var(--brk-danger);
+  color: var(--brk-danger);
+}
+
+/* human decision variants */
+.prom-pill--decision-approve {
+  border-color: var(--brk-good);
+  color: var(--brk-good);
+  background: var(--brk-bg-2);
+}
+
+.prom-pill--decision-reject {
+  border-color: var(--brk-danger);
+  color: var(--brk-danger);
+  background: var(--brk-bg-2);
+}
+
+.prom-pill--decision-defer {
+  border-color: var(--brk-warn);
+  color: var(--brk-warn);
+  background: var(--brk-bg-2);
+}
+
+.prom-pill--decision-undecided {
+  border-color: var(--brk-rule);
+  color: var(--brk-ink-3);
+}
+
+/* ── Action badge (top-right of card) ────────────────────────────────── */
+
+.prom-action {
+  display: inline-block;
+  padding: var(--brk-s-1) var(--brk-s-2);
+  border-radius: var(--brk-r-2);
+  font-family: var(--brk-font-mono);
+  font-size: var(--brk-t-micro);
+  letter-spacing: var(--brk-track-caps);
+  text-transform: uppercase;
+  background: var(--brk-bg-2);
+  color: var(--brk-ink-2);
+  border: 1px solid var(--brk-rule);
+  white-space: nowrap;
+}
+
+.prom-action--create,
+.prom-action--create_global_concept {
+  border-color: var(--brk-good);
+  color: var(--brk-good);
+}
+
+.prom-action--update_merge,
+.prom-action--update_merge_global {
+  border-color: var(--brk-mark);
+  color: var(--brk-mark);
+}
+
+.prom-action--update_conflict,
+.prom-action--update_conflict_global {
+  border-color: var(--brk-danger);
+  color: var(--brk-danger);
+}
+
+.prom-action--keep_source_local,
+.prom-action--noop,
+.prom-action--exclude {
+  border-color: var(--brk-rule);
+  color: var(--brk-ink-3);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.prom-btn {
+  font-family: var(--brk-font-sans);
+  font-size: var(--brk-t-sm);
+  font-weight: 500;
+  padding: var(--brk-s-2) var(--brk-s-4);
+  border-radius: var(--brk-r-3);
+  border: 1px solid var(--brk-rule);
+  background: var(--brk-panel);
+  color: var(--brk-ink);
+  cursor: pointer;
+  transition: border-color var(--brk-dur-base) var(--brk-ease),
+              background var(--brk-dur-base) var(--brk-ease),
+              color var(--brk-dur-base) var(--brk-ease);
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+}
+
+.prom-btn:hover {
+  border-color: var(--brk-mark);
+  color: var(--brk-mark);
+}
+
+.prom-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--brk-focus);
+}
+
+.prom-btn:active {
+  background: var(--brk-mark-soft);
+}
+
+.prom-btn[disabled],
+.prom-btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.prom-btn--primary {
+  background: var(--brk-mark);
+  border-color: var(--brk-mark);
+  color: var(--brk-bg);
+}
+
+.prom-btn--primary:hover {
+  background: var(--brk-mark-2);
+  border-color: var(--brk-mark-2);
+  color: var(--brk-bg);
+}
+
+.prom-btn--lg {
+  font-size: var(--brk-t-base);
+  padding: var(--brk-s-3) var(--brk-s-5);
+}
+
+.prom-btn--approve.is-active {
+  background: var(--brk-bg-2);
+  border-color: var(--brk-good);
+  color: var(--brk-good);
+}
+
+.prom-btn--reject.is-active {
+  background: var(--brk-bg-2);
+  border-color: var(--brk-danger);
+  color: var(--brk-danger);
+}
+
+.prom-btn--defer.is-active {
+  background: var(--brk-bg-2);
+  border-color: var(--brk-warn);
+  color: var(--brk-warn);
+}
+
+/* ── Progress bar (review.html) ──────────────────────────────────────── */
+
+.prom-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--brk-s-5);
+  background: var(--brk-panel);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-3);
+  padding: var(--brk-s-4) var(--brk-s-5);
+  margin-bottom: var(--brk-s-5);
+  align-items: center;
+}
+
+.prom-progress__counts {
+  display: flex;
+  gap: var(--brk-s-6);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.prom-progress__count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--brk-s-2);
+}
+
+.prom-progress__num {
+  font-family: var(--brk-font-mono);
+  font-size: var(--brk-t-lg);
+  font-weight: 500;
+  color: var(--brk-ink);
+}
+
+.prom-progress__breakdown {
+  display: flex;
+  gap: var(--brk-s-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.prom-progress__commit {
+  display: grid;
+  gap: var(--brk-s-2);
+  justify-items: end;
+}
+
+.prom-progress__last {
+  color: var(--brk-ink-3);
+}
+
+/* ── Commit batch list ───────────────────────────────────────────────── */
+
+.prom-batches {
+  margin-bottom: var(--brk-s-5);
+  padding: var(--brk-s-3) var(--brk-s-5);
+  background: var(--brk-bg-2);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-3);
+}
+
+.prom-batches__caps {
+  margin-bottom: var(--brk-s-2);
+}
+
+.prom-batches__list {
+  display: grid;
+  gap: var(--brk-s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prom-batch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--brk-s-3);
+  padding: var(--brk-s-2) 0;
+  border-top: 1px dotted var(--brk-rule-2);
+  align-items: baseline;
+  font-size: var(--brk-t-xs);
+}
+
+.prom-batch:first-child {
+  border-top: none;
+}
+
+.prom-batch--failed {
+  color: var(--brk-danger);
+}
+
+.prom-batch--complete {
+  color: var(--brk-good);
+}
+
+.prom-batch__id {
+  color: var(--brk-ink-2);
+}
+
+.prom-batch__errors {
+  color: var(--brk-danger);
+}
+
+/* ── Item card ───────────────────────────────────────────────────────── */
+
+.prom-items {
+  display: grid;
+  gap: var(--brk-s-4);
+}
+
+.prom-items__caps {
+  margin-bottom: var(--brk-s-2);
+}
+
+.prom-card {
+  background: var(--brk-panel);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-3);
+  padding: var(--brk-s-5);
+  display: grid;
+  gap: var(--brk-s-3);
+  transition: background var(--brk-dur-base) var(--brk-ease),
+              border-color var(--brk-dur-base) var(--brk-ease);
+}
+
+.prom-card:hover {
+  background: var(--brk-panel-2);
+}
+
+.prom-card[data-decision="approve"] {
+  border-left: 3px solid var(--brk-good);
+}
+
+.prom-card[data-decision="reject"] {
+  border-left: 3px solid var(--brk-danger);
+}
+
+.prom-card[data-decision="defer"] {
+  border-left: 3px solid var(--brk-warn);
+}
+
+.prom-card__header {
+  display: grid;
+  gap: var(--brk-s-2);
+}
+
+.prom-card__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--brk-s-2);
+  align-items: center;
+}
+
+.prom-card__id {
+  font-size: var(--brk-t-xs);
+  color: var(--brk-ink-3);
+}
+
+.prom-card__heading {
+  font-family: var(--brk-font-zh);
+  font-size: var(--brk-t-md);
+  line-height: var(--brk-lh-snug);
+  font-weight: 500;
+  color: var(--brk-ink);
+  margin: 0;
+}
+
+.prom-card__body {
+  display: grid;
+  gap: var(--brk-s-3);
+}
+
+.prom-card__reason {
+  font-family: var(--brk-font-zh);
+  font-size: var(--brk-t-sm);
+  line-height: var(--brk-lh-read);
+  color: var(--brk-ink-2);
+  margin: 0;
+}
+
+.prom-card__note {
+  font-family: var(--brk-font-zh);
+  font-size: var(--brk-t-xs);
+  color: var(--brk-ink-3);
+  margin: 0;
+  display: flex;
+  gap: var(--brk-s-2);
+  align-items: baseline;
+}
+
+.prom-card__note-caps {
+  flex-shrink: 0;
+}
+
+/* ── Evidence section ────────────────────────────────────────────────── */
+
+.prom-evidence {
+  background: var(--brk-bg-2);
+  border-radius: var(--brk-r-2);
+  padding: var(--brk-s-3) var(--brk-s-4);
+  display: grid;
+  gap: var(--brk-s-2);
+}
+
+.prom-evidence__caps {
+  color: var(--brk-ink-3);
+}
+
+.prom-evidence__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--brk-s-2);
+}
+
+.prom-evidence__row {
+  display: grid;
+  gap: var(--brk-s-1);
+  padding: var(--brk-s-2);
+  background: var(--brk-panel);
+  border-left: 2px solid var(--brk-rule);
+  border-radius: var(--brk-r-1);
+}
+
+.prom-evidence__locator {
+  font-size: var(--brk-t-micro);
+  color: var(--brk-ink-3);
+}
+
+.prom-evidence__excerpt {
+  font-family: var(--brk-font-serif);
+  font-size: var(--brk-t-sm);
+  line-height: var(--brk-lh-read);
+  color: var(--brk-ink);
+  margin: 0;
+  padding: 0;
+}
+
+.prom-evidence__more summary {
+  cursor: pointer;
+  color: var(--brk-mark);
+  padding: var(--brk-s-1) 0;
+}
+
+.prom-evidence__more summary:focus-visible {
+  outline: none;
+  box-shadow: var(--brk-focus);
+  border-radius: var(--brk-r-2);
+}
+
+/* ── Risks section ───────────────────────────────────────────────────── */
+
+.prom-risks {
+  display: grid;
+  gap: var(--brk-s-2);
+}
+
+.prom-risks__caps {
+  color: var(--brk-ink-3);
+}
+
+.prom-risks__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--brk-s-1);
+}
+
+.prom-risk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--brk-s-2);
+  align-items: baseline;
+  padding: var(--brk-s-2) var(--brk-s-3);
+  background: var(--brk-bg-2);
+  border-left: 3px solid var(--brk-warn);
+  border-radius: var(--brk-r-1);
+  font-size: var(--brk-t-xs);
+}
+
+.prom-risk--low {
+  border-left-color: var(--brk-rule);
+}
+
+.prom-risk--medium {
+  border-left-color: var(--brk-warn);
+}
+
+.prom-risk--high {
+  border-left-color: var(--brk-danger);
+}
+
+.prom-risk__code {
+  font-family: var(--brk-font-mono);
+  color: var(--brk-ink);
+}
+
+.prom-risk__severity {
+  color: var(--brk-ink-3);
+}
+
+.prom-risk__desc {
+  color: var(--brk-ink-2);
+  flex: 1;
+  min-width: 240px;
+}
+
+/* ── Metrics row ─────────────────────────────────────────────────────── */
+
+.prom-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--brk-s-5);
+  align-items: flex-end;
+  padding-top: var(--brk-s-2);
+  border-top: 1px dotted var(--brk-rule-2);
+}
+
+.prom-metric {
+  display: grid;
+  gap: var(--brk-s-1);
+}
+
+.prom-metric__caps {
+  color: var(--brk-ink-3);
+}
+
+.prom-metric__row {
+  display: flex;
+  align-items: center;
+  gap: var(--brk-s-2);
+}
+
+.prom-metric__num {
+  font-size: var(--brk-t-md);
+  color: var(--brk-ink);
+}
+
+.prom-metric--small .prom-metric__num {
+  font-size: var(--brk-t-sm);
+}
+
+.prom-bar {
+  display: inline-block;
+  width: 120px;
+  height: 6px;
+  background: var(--brk-bg-2);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-1);
+  overflow: hidden;
+  position: relative;
+}
+
+.prom-bar__fill {
+  display: block;
+  height: 100%;
+  width: var(--prom-bar-fill, 0%);
+  background: var(--brk-mark);
+  transition: width var(--brk-dur-base) var(--brk-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prom-bar__fill {
+    transition: none;
+  }
+  .prom-card,
+  .prom-btn {
+    transition: none;
+  }
+}
+
+/* ── Decision form ───────────────────────────────────────────────────── */
+
+.prom-card__footer {
+  border-top: 1px dotted var(--brk-rule-2);
+  padding-top: var(--brk-s-3);
+}
+
+.prom-decide-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--brk-s-3);
+  align-items: flex-end;
+}
+
+.prom-note-label {
+  display: grid;
+  gap: var(--brk-s-1);
+  flex: 1;
+  min-width: 240px;
+}
+
+.prom-note-input {
+  font-family: var(--brk-font-sans);
+  font-size: var(--brk-t-sm);
+  padding: var(--brk-s-2) var(--brk-s-3);
+  background: var(--brk-bg-2);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-2);
+  color: var(--brk-ink);
+}
+
+.prom-note-input:focus-visible {
+  outline: none;
+  box-shadow: var(--brk-focus);
+  border-color: var(--brk-mark);
+}
+
+.prom-decide-buttons {
+  display: flex;
+  gap: var(--brk-s-2);
+}

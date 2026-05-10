@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "manifest_id": "mfst_beta_001",
+  "source_id": "inbox:Inbox/kb/beta-article.md",
+  "created_at": "2026-05-10T12:00:00Z",
+  "status": "needs_review",
+  "replaces_manifest_id": null,
+  "recommender": {
+    "model_name": "claude-opus-4-7",
+    "model_version": "2026-04",
+    "run_params": {},
+    "recommended_at": "2026-05-10T12:00:00Z"
+  },
+  "items": [
+    {
+      "item_kind": "source_page",
+      "item_id": "src_whole_001",
+      "recommendation": "include",
+      "action": "create",
+      "reason": "Whole article covers a single mechanism with citation.",
+      "evidence": [
+        {
+          "kind": "section_quote",
+          "source_path": "Inbox/kb/beta-article.md",
+          "locator": "L42-L58",
+          "excerpt": "Cold exposure transiently increases brown adipose activity.",
+          "confidence": 0.84
+        }
+      ],
+      "risk": [],
+      "confidence": 0.84,
+      "source_importance": 0.7,
+      "reader_salience": 0.6,
+      "target_kb_path": "KB/Wiki/Sources/beta-article/whole.md",
+      "chapter_ref": "whole",
+      "prior_decision": null,
+      "human_decision": null
+    },
+    {
+      "item_kind": "concept",
+      "item_id": "concept_bat_001",
+      "recommendation": "include",
+      "action": "create_global_concept",
+      "reason": "Brown adipose tissue is the article's main subject.",
+      "evidence": [
+        {
+          "kind": "section_quote",
+          "source_path": "Inbox/kb/beta-article.md",
+          "locator": "L42-L58",
+          "excerpt": "Brown adipose tissue (BAT) burns calories via thermogenesis.",
+          "confidence": 0.82
+        }
+      ],
+      "risk": [],
+      "confidence": 0.82,
+      "source_importance": 0.8,
+      "reader_salience": 0.6,
+      "concept_label": "Brown Adipose Tissue",
+      "evidence_language": "en",
+      "canonical_match": null,
+      "prior_decision": null,
+      "human_decision": null
+    }
+  ],
+  "commit_batches": [],
+  "metadata": {}
+}

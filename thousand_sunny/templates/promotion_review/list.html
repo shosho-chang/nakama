@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Promotion Review · pending sources</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,500;1,400;1,500&family=Noto+Serif+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/static/projects/tokens.css" />
+  <link rel="stylesheet" href="/static/promotion_review.css" />
+</head>
+<body class="brk-root brk-light">
+<main class="prom-shell" data-mode="list">
+  <header class="prom-topbar">
+    <div class="prom-topbar__brand">
+      <span class="prom-topbar__name">Thousand Sunny</span>
+      <span class="prom-topbar__rule" aria-hidden="true"></span>
+      <span class="brk-caps">promotion · review · pending</span>
+    </div>
+    <h1 class="prom-topbar__title">Promotion Review · 待審核來源</h1>
+    <div class="brk-caps prom-topbar__caption">
+      {{ rows | length }} source{% if rows | length != 1 %}s{% endif %} · proceed_full / proceed_with_warnings only
+    </div>
+  </header>
+
+  <section class="prom-list" aria-label="待審核 Reading Sources">
+    {% if not rows %}
+      <div class="prom-empty">
+        <p class="prom-empty__title">沒有待審核的 Reading Source。</p>
+        <p class="prom-empty__body">
+          目前沒有任何來源通過 preflight 並等待人工審核。把 EPUB 或 inbox markdown 推進
+          promotion 流程後，這個列表會出現可審核的條目。
+        </p>
+      </div>
+    {% else %}
+      <table class="prom-table" role="table">
+        <thead>
+          <tr>
+            <th scope="col" class="brk-caps">source_id</th>
+            <th scope="col" class="brk-caps">lang</th>
+            <th scope="col" class="brk-caps">preflight</th>
+            <th scope="col" class="brk-caps">manifest</th>
+            <th scope="col" class="brk-caps">action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr class="prom-row" data-source-id="{{ row.state.source_id }}">
+              <td class="prom-row__id">
+                <span class="brk-mono">{{ row.state.source_id }}</span>
+                <span class="prom-row__summary">{{ row.state.preflight_summary }}</span>
+              </td>
+              <td class="prom-row__lang brk-mono">{{ row.state.primary_lang }}</td>
+              <td class="prom-row__preflight">
+                <span class="prom-pill prom-pill--{{ row.state.preflight_action }}">
+                  {{ row.state.preflight_action }}
+                </span>
+              </td>
+              <td class="prom-row__manifest">
+                {% if row.state.has_existing_manifest %}
+                  <span class="prom-pill prom-pill--status-{{ row.state.manifest_status }}">
+                    {{ row.state.manifest_status }}
+                  </span>
+                {% else %}
+                  <span class="brk-caps prom-row__manifest-empty">尚未建立</span>
+                {% endif %}
+              </td>
+              <td class="prom-row__action">
+                <a class="prom-btn prom-btn--primary"
+                   href="/promotion-review/source/{{ row.encoded_id }}"
+                   aria-label="開啟 {{ row.state.source_id }} 的審核頁">
+                  {% if row.state.has_existing_manifest %}繼續審核{% else %}查看 / 開始審核{% endif %}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </section>
+</main>
+</body>
+</html>
