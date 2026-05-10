@@ -1,7 +1,12 @@
 ---
+type: project
+visibility: claude
+agent: claude
+confidence: high
+created: 2026-05-10
+expires: permanent
 name: News Coo 命名與職責切分
 description: Browser extension 改名 News Coo（撤回 Den Den Mushi）；職責縮窄為純 extract+delivery，翻譯交給 Robin
-type: project
 ---
 
 撤回前一輪的 Den Den Mushi 命名（2026-05-10 同日內 pivot）。改用 **News Coo** 並把 scope 縮窄。
@@ -45,4 +50,4 @@ News Coo PR 不依賴 Robin 改動；Robin auto-translate trigger 也不 block N
 - 新 repo `E:\news-coo`，不要再用 `den-den-mushi` 命名
 - 若已建 `den-den-mushi` worktree / branch / file → 全部撤回重建
 - News Coo 範圍嚴守「extract + deliver」，**翻譯 / bilingual / glossary 任何議題不在 News Coo PR 內討論**
-- 對應 PRD: `docs/prds/2026-05-10-toast-nakama-inbox-importer.md` 仍有效，但「Toast」字眼後續實作時改 News Coo（PRD 是 Codex 早上 grill prep，未鎖名）
+- 對應 PRD: `docs/prds/2026-05-10-news-coo-inbox-importer.md`（PR #532 rewritten 版本；原檔名 `2026-05-10-toast-nakama-inbox-importer.md` 已 git mv 改名）

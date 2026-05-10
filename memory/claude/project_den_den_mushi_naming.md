@@ -1,9 +1,14 @@
 ---
+type: project
+visibility: claude
+agent: claude
+confidence: high
+created: 2026-05-10
+expires: permanent
 status: DEPRECATED 2026-05-10
 superseded_by: project_news_coo_naming_and_scope.md
 name: Den Den Mushi 命名決策
 description: Standalone Chrome extension 命名分層：repo / manifest / 簡稱 / code identifier 對應
-type: project
 ---
 
 Standalone Chrome extension（網頁抓取 + LLM 翻譯 + 寫入 Vault），與 Nakama 其他 agent 不同 process / 不同 repo。

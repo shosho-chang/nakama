@@ -1,10 +1,15 @@
 ---
-name: News Coo Grill 拍板總表 2026-05-10
-description: News Coo browser extension MVP grill 全決策表；對應 PRD docs/prds/2026-05-10-toast-nakama-inbox-importer.md
 type: project
+visibility: claude
+agent: claude
+confidence: high
+created: 2026-05-10
+expires: 2026-08-10
+name: News Coo Grill 拍板總表 2026-05-10
+description: News Coo browser extension MVP grill 全決策表；對應 PRD docs/prds/2026-05-10-news-coo-inbox-importer.md
 ---
 
-2026-05-10 grill session 結論。對應 PRD `docs/prds/2026-05-10-toast-nakama-inbox-importer.md`（Codex draft 早上版），用 News Coo 取代 PRD 中的「Toast」字眼。
+2026-05-10 grill session 結論。對應 PRD `docs/prds/2026-05-10-news-coo-inbox-importer.md`（PR #532 rewritten 版本；原 Codex AM draft 檔名 `2026-05-10-toast-nakama-inbox-importer.md` 已 git mv 改名）。
 
 ## 命名 + Scope
 
