@@ -1,15 +1,17 @@
 import { quickClip } from "./quickClip.js";
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "clip-page",
-    title: "News Coo: Clip page",
-    contexts: ["page"],
-  });
-  chrome.contextMenus.create({
-    id: "clip-selection",
-    title: "News Coo: Clip selection",
-    contexts: ["selection"],
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "clip-page",
+      title: "News Coo: Clip page",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: "clip-selection",
+      title: "News Coo: Clip selection",
+      contexts: ["selection"],
+    });
   });
 });
 

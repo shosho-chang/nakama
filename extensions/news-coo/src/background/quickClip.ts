@@ -57,7 +57,7 @@ export async function quickClip(
 
   try {
     const result = await deps.writePageToVault(handle, response.page, {
-      fetchImages: false,
+      fetchImages: true,
     });
     deps.notifySuccess(result.slug);
   } catch (err) {

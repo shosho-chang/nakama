@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir } from "node:fs/promises";
+import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 
@@ -8,9 +8,17 @@ await mkdir(dist, { recursive: true });
 
 await copyFile(resolve(root, "manifest.json"), resolve(dist, "manifest.json"));
 
-const publicDir = resolve(root, "public");
-for (const file of await readdir(publicDir)) {
-  await copyFile(join(publicDir, file), join(dist, file));
+async function copyTree(srcDir, destDir) {
+  await mkdir(destDir, { recursive: true });
+  for (const name of await readdir(srcDir)) {
+    const src = join(srcDir, name);
+    const dest = join(destDir, name);
+    const s = await stat(src);
+    if (s.isDirectory()) await copyTree(src, dest);
+    else await copyFile(src, dest);
+  }
 }
 
-console.log("[copy-assets] manifest + public/* copied to dist/");
+await copyTree(resolve(root, "public"), dist);
+
+console.log("[copy-assets] manifest + public/** copied to dist/");
