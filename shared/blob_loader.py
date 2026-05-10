@@ -120,9 +120,7 @@ class VaultBlobLoader:
         try:
             target.relative_to(root)
         except ValueError as exc:
-            raise ValueError(
-                f"path resolves outside {label}: {path!r} → {target}"
-            ) from exc
+            raise ValueError(f"path resolves outside {label}: {path!r} → {target}") from exc
         # ``read_bytes`` raises FileNotFoundError / IsADirectoryError /
         # PermissionError naturally; per the upstream contract we want IO
         # failures to propagate as OSError (with FileNotFoundError as the
@@ -157,7 +155,7 @@ class VaultBlobLoader:
         # match the books prefix.
         posix_parts = PurePosixPath(path).parts
         if posix_parts[: len(_BOOKS_PREFIX_PARTS)] == _BOOKS_PREFIX_PARTS:
-            sub = "/".join(posix_parts[len(_BOOKS_PREFIX_PARTS):])
+            sub = "/".join(posix_parts[len(_BOOKS_PREFIX_PARTS) :])
             return self._books_root, sub, "books_root"
         return self._vault_root, path, "vault_root"
 

@@ -156,7 +156,4 @@ def test_registry_resolves_ebook_when_books_live_outside_vault(
     assert rs.source_id == f"ebook:{book_id}"
     # Variant path is the logical ``data/books/...`` string — the loader
     # is responsible for routing it to the right root.
-    assert any(
-        v.path == f"data/books/{book_id}/bilingual.epub"
-        for v in rs.variants
-    )
+    assert any(v.path == f"data/books/{book_id}/bilingual.epub" for v in rs.variants)
