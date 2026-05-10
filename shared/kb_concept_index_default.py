@@ -1,4 +1,4 @@
-"""Filesystem-backed ``KBConceptIndex`` adapter (ADR-024 Slice 10 / N518a).
+"""Filesystem-backed ``KBConceptIndex`` adapter (ADR-024 Slice 10 / N518a-b).
 
 Production implementation of the ``KBConceptIndex`` Protocol declared in
 ``shared.concept_promotion_engine`` (#514). Scans ``KB/Wiki/Concepts/``
@@ -17,9 +17,19 @@ Hard invariants (per N518 brief §4):
 - Bare ``except Exception`` is forbidden (#511 F5 lesson) — narrow the
   catch to documented ``yaml.YAMLError`` / ``OSError`` / ``ValueError``.
 
-The index lazy-scans on first call and caches per-instance. Production
-wiring constructs one instance at app startup; tests usually construct
-fresh per-fixture so the cache doesn't leak.
+Cache invalidation strategy (N518b carry-over C1):
+
+The index lazy-scans on first call. Subsequent calls re-stat the
+``concepts_root`` directory's mtime and rescan only when it changes.
+Trade-off: picks up new / deleted concept files at the cost of one
+``stat()`` per query. The overhead is negligible compared to the alias
+matching loop, and avoiding stale state in long-running uvicorn processes
+is more important than shaving a microsecond. Modifying an existing
+concept file's content (without changing the parent directory mtime)
+will NOT invalidate the cache — that's an accepted limitation for the
+shape of N518's promotion workflow (concepts grow append-only during a
+review session). Callers needing strong freshness can construct a new
+index instance.
 """
 
 from __future__ import annotations
@@ -70,6 +80,11 @@ class VaultKBConceptIndex:
         self._concepts_root = Path(concepts_root)
         self._entries_cache: list[KBConceptEntry] | None = None
         self._alias_lookup_cache: dict[str, KBConceptEntry] | None = None
+        # Last observed mtime of ``concepts_root``. The cache is invalidated
+        # when this changes (file added / removed in the directory). See
+        # N518b C1 — keeps long-running uvicorn processes from serving
+        # stale concept lists after a manual KB edit.
+        self._cached_mtime_ns: int | None = None
 
     # ── Protocol API ──────────────────────────────────────────────────────
 
@@ -113,14 +128,23 @@ class VaultKBConceptIndex:
     # ── Internal scan + cache ─────────────────────────────────────────────
 
     def _entries(self) -> list[KBConceptEntry]:
-        if self._entries_cache is None:
+        # mtime-based invalidation (N518b C1). Callers in long-running
+        # processes (uvicorn) get fresh state when the directory changes;
+        # short-lived per-test instances pay one stat() and stay cached.
+        current_mtime = self._current_mtime_ns()
+        if self._entries_cache is None or current_mtime != self._cached_mtime_ns:
             self._entries_cache = self._scan()
+            self._alias_lookup_cache = None  # force rebuild on next lookup
+            self._cached_mtime_ns = current_mtime
         return self._entries_cache
 
     def _alias_lookup(self) -> dict[str, KBConceptEntry]:
+        # Touch _entries() first so mtime invalidation runs before we read
+        # the alias cache.
+        entries = self._entries()
         if self._alias_lookup_cache is None:
             mapping: dict[str, KBConceptEntry] = {}
-            for entry in self._entries():
+            for entry in entries:
                 # Index canonical_label too — engines commonly search by
                 # the page's primary name in addition to declared aliases.
                 for alias in (entry.canonical_label, *entry.aliases):
@@ -134,6 +158,22 @@ class VaultKBConceptIndex:
                     mapping.setdefault(norm, entry)
             self._alias_lookup_cache = mapping
         return self._alias_lookup_cache
+
+    def _current_mtime_ns(self) -> int | None:
+        """Read ``concepts_root.stat().st_mtime_ns`` defensively.
+
+        Returns ``None`` when the directory is missing or stat() raises
+        ``OSError`` — that's the same signal as "no entries", and we
+        treat ``None != None`` as False so a missing-then-still-missing
+        directory doesn't trigger a redundant rescan."""
+        try:
+            return self._concepts_root.stat().st_mtime_ns
+        except OSError:
+            # Missing dir / permission denied / broken symlink. The scan
+            # itself handles these gracefully (returns []); we just want
+            # to remember "we tried and there was nothing" without
+            # forcing endless rescans.
+            return None
 
     def _scan(self) -> list[KBConceptEntry]:
         if not self._concepts_root.is_dir():

@@ -122,6 +122,15 @@ Concrete deliverables:
 
 ## 3. 輸入
 
+**Updated 2026-05-10 (N518b):** the original §3 listed
+``KBConceptIndex.list_global_concepts()`` for the index Protocol. That
+method does not exist. The actual Protocol declared in
+``shared.concept_promotion_engine`` is
+``lookup(alias: str) -> KBConceptEntry | None`` plus
+``aliases_starting_with(prefix: str) -> list[str]`` — these are the
+methods the wired ``VaultKBConceptIndex`` adapter implements. The block
+under "Adapter contracts" below has the corrected signatures.
+
 ### Caller contract — startup wiring
 
 `thousand_sunny/app.py` must construct services with these adapters and call `set_service(...)` BEFORE any request handler runs. Recommended pattern: FastAPI `lifespan` async context manager.
@@ -151,10 +160,16 @@ class ClaimExtractor(Protocol):
 
 # from shared/concept_promotion_engine.py
 class ConceptMatcher(Protocol):
-    def match(self, source_local: SourceLocalConcept, candidates: list[GlobalConcept]) -> ConceptMatchResult: ...
+    def match(
+        self,
+        candidate: ConceptCandidate,
+        kb_index: KBConceptIndex,
+        primary_lang: str,
+    ) -> MatchOutcome: ...
 
 class KBConceptIndex(Protocol):
-    def list_global_concepts(self) -> list[GlobalConcept]: ...
+    def lookup(self, alias: str) -> KBConceptEntry | None: ...
+    def aliases_starting_with(self, prefix: str) -> list[str]: ...
 
 # from shared/promotion_review_service.py
 class ReadingSourceLister(Protocol):
@@ -164,7 +179,12 @@ class SourceResolver(Protocol):
     def resolve(self, source_id: str) -> ReadingSource | None: ...
 ```
 
-(Implementer must verify exact signatures in the upstream files; quotes above are illustrative.)
+(N518b 2026-05-10: signatures cross-checked against the actual Protocol
+declarations in ``shared/concept_promotion_engine.py`` and
+``shared/promotion_review_service.py``. The original draft had
+``list_global_concepts`` which does not exist; ``lookup`` +
+``aliases_starting_with`` are the real Protocol methods that the wired
+``VaultKBConceptIndex`` implements.)
 
 ### Documentation hierarchy
 
@@ -418,7 +438,21 @@ The original brief estimated ~1500-2000 LOC and 1.5-2 days. With LLM-backed adap
 
 Sub-slice split (optional, if reviewer wants thinner PRs):
 
-- **N518a**: blob_loader + source_resolver + reading_source_lister + kb_concept_index + app wiring (no extractor/matcher yet — fail at start_review). ~half day.
-- **N518b**: dry_run_extractor + dry_run_matcher + Playwright smoke. ~half day.
+- **N518a** ✅ (PR #541, merged 2026-05-10): blob_loader + source_resolver
+  + reading_source_lister + kb_concept_index + app wiring. Extractor /
+  matcher are STUBs raising ``NotImplementedError`` at ``start_review``.
+- **N518b** ✅ (this PR #540 / 2026-05-10): dry_run_extractor +
+  dry_run_matcher deterministic bodies + RT1-RT3 route tests + 5
+  carry-over cleanups (C1 mtime cache invalidation; C2 extract wiring
+  helpers to ``promotion_wiring.py``; C3 source_resolver namespace
+  warning log; C4 manifest path location TODO; C5 test fixture vault
+  subdirectory pattern). PT1-PT4 Playwright smoke deferred — no
+  Playwright harness in repo; route + service tests cover same behaviour.
+- **N518c** (open): if 修修 confirms manifest path defaults
+  (``data/`` vs ``vault/.``), bundle that decision + Playwright harness
+  bring-up. Otherwise close N518 after this PR merges.
+- **N519** (LLM-backed adapters): separate brief; ~half day per adapter
+  + LLM cost/cancel/bounding harness. Behind same ``NAKAMA_PROMOTION_MODE``
+  gate; no rewiring needed.
 
 Single-PR is also acceptable if implementer keeps wiring + dry-run + smoke together (still <1500 LOC).
