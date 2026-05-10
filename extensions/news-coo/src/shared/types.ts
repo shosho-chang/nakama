@@ -26,5 +26,10 @@ export interface ExtractedPage {
   author: string;
   published: string;
   imageRefs: ImageRef[];
+  // Optional Defuddle metadata surfaced in frontmatter
+  site?: string;
+  language?: string;
+  wordCount?: number;
+  favicon?: string;
   pubmed?: PubMedMetadata;
 }

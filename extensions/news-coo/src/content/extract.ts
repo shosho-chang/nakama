@@ -39,5 +39,9 @@ export function extractPage(doc: Document, url: string): ExtractedPage {
     author: result.author ?? "",
     published: result.published ?? "",
     imageRefs,
+    site: result.site || undefined,
+    language: result.language || undefined,
+    wordCount: result.wordCount || undefined,
+    favicon: result.favicon || undefined,
   };
 }

@@ -21,3 +21,42 @@ h1 {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.vault-section {
+  margin-top: 24px;
+}
+
+.vault-status {
+  margin: 0 0 12px;
+  color: #666;
+}
+
+@media (prefers-color-scheme: dark) {
+  .vault-status {
+    color: #999;
+  }
+}
+
+.vault-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  padding: 6px 14px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button[hidden] {
+  display: none;
+}
