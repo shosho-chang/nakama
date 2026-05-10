@@ -1,5 +1,9 @@
 # Memory Index
 
+- [project_news_coo_naming_and_scope.md](project_news_coo_naming_and_scope.md) — **News Coo 命名 + scope 切分 2026-05-10**：撤回 Den Den Mushi；News Coo = 瀏覽器 ext 純 extract+deliver；翻譯交 Robin（auto-trigger 待 grill）
+- [project_news_coo_grill_decisions.md](project_news_coo_grill_decisions.md) — **News Coo grill 全決策表 2026-05-10**：FSA 直寫 / 新 repo + npm Defuddle / image 必備寫 KB/Attachments/web / selection+highlights seed+context menu+kbd shortcut / PubMed detector / 7-slice 實作規劃
+- ~~[project_den_den_mushi_naming.md](project_den_den_mushi_naming.md)~~ — **DEPRECATED 同日撤回**，改 News Coo（見上）
+
 - [feedback_commit_scope_discipline.md](feedback_commit_scope_discipline.md) — **commit 範圍紀律**：「Commit only: …」是 turn-binding，其他同 turn 產出留 working tree 不主動 commit。
 - [project_n511_v2_revisions_pending.md](project_n511_v2_revisions_pending.md) — **N511 v1 Brief 兩條設計錯誤**：has_evidence_track=False 必走 defer；EPUB inspector 走 variant path 或注入 loader。v2 鋪台用。
 - [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **5/6 KB corpus stub crisis**：KB Concept 大量空殼；ADR-020 textbook ingest rewrite 起手背景；任何 textbook ingest repair 必先讀。
