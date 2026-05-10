@@ -1,10 +1,22 @@
-# PRD Draft — Toast -> Nakama Inbox Importer
+# PRD — News Coo Inbox Importer
 
-**Status**: Draft for grill-with-docs  
-**Author**: Codex  
-**Created**: 2026-05-10  
-**Stage anchor**: Stage 1 Discovery / import, feeding Stage 2 Reading Source and Stage 3 Source Promotion  
+**Status**: Frozen (post-grill)
+**Author**: Codex (initial draft) → revised by Claude after 2026-05-10 grill
+**Created**: 2026-05-10
+**Last revised**: 2026-05-10
+**Stage anchor**: Stage 1 Discovery / import, feeding Stage 2 Reading Source and Stage 3 Source Promotion
 **Related**: ADR-024 Source Promotion, #509 Reading Source Registry, #510 Reading Overlay V3, #511 Promotion Preflight, #512 Promotion Manifest
+**Implementation repo**: `E:\news-coo` (local; not pushed to GitHub for V1)
+**Issue tracker**: This Nakama repo, label `area:news-coo`
+
+---
+
+## 0. Revision history
+
+| Date | Change |
+|------|--------|
+| 2026-05-10 (AM) | Initial draft as `2026-05-10-toast-nakama-inbox-importer.md` (Codex). Assumed Toast fork + backend POST endpoint + bilingual format inside extension. |
+| 2026-05-10 (PM) | Renamed to News Coo. Grill flipped scope: standalone extension named **News Coo**, FSA direct write, **no backend endpoint**, translation moved to Robin (separate workstream). Old filename preserved in git history (renamed via `git mv`). |
 
 ---
 
@@ -16,13 +28,14 @@ The missing piece is the Stage 1 browser-side import path:
 
 1. 修修 reads a useful web page in Chrome.
 2. The browser extension extracts the main article/document content.
-3. It produces clean Markdown files in `Inbox/kb/`.
-4. Reader opens the imported file for highlight / annotation / reflection.
-5. Later, Source Promotion decides whether that source deserves formal KB integration.
+3. It writes a clean Markdown file (with downloaded images) into `Inbox/kb/` directly via File System Access API.
+4. Robin's existing translator pipeline picks up unprocessed files (separate workstream) and writes the bilingual sibling.
+5. Reader opens the imported file for highlight / annotation / reflection.
+6. Later, Source Promotion decides whether that source deserves formal KB integration.
 
-Earlier Zotero work was superseded because publisher/web HTML capture produced cleaner Markdown than PDF/Zotero-derived paths, but the pipeline lacked a robust "web page -> clean Inbox/kb Reading Source" bridge. The current direction is to use **Toast** as the primary extension/controller while borrowing Obsidian Clipper / Defuddle-style main-content extraction and Markdown formatting.
+Earlier Zotero work was superseded because publisher/web HTML capture produced cleaner Markdown than PDF/Zotero-derived paths, but the pipeline lacked a robust "web page → clean Inbox/kb Reading Source" bridge. Manual Obsidian Web Clipper usage proved Defuddle quality wins, but Clipper-produced files have no automatic translation trigger and Clipper itself does not match Nakama's frontmatter / image-folder conventions.
 
-This PRD is intentionally a **grill prep draft**. It captures current decisions and open questions before implementation.
+News Coo is a small (~800-1000 LOC) standalone Chrome extension that solves exactly this gap: Defuddle extraction + Nakama-conventional frontmatter + image download + FSA write to vault. It explicitly does not handle translation or any LLM call — that remains Robin's job.
 
 ---
 
@@ -30,104 +43,123 @@ This PRD is intentionally a **grill prep draft**. It captures current decisions 
 
 ### V1 Goals
 
-- Provide a one-click browser workflow that imports the current web page into Nakama's `Inbox/kb/` as Reader-ready Markdown.
-- Produce a clean **original/evidence track** when possible.
-- Produce a clean **bilingual/display track** when requested.
-- Reuse/adapt proven main-content extraction so imports exclude navigation, sidebars, ads, cookie banners, recommended articles, forms, and other page chrome.
+- One-click (and one-keystroke) Chrome extension flow that imports the current web page into the Nakama Obsidian vault under `Inbox/kb/{slug}.md`.
+- Download referenced images into `KB/Attachments/web/{slug}/` mirroring the existing `shared/image_fetcher.py` convention; rewrite markdown image refs to vault-relative paths.
+- Produce a clean **original/evidence track** (no nav, no sidebar, no ads, no recommendation widgets, no cookie banners, no comments).
 - Emit frontmatter compatible with #509 Reading Source Registry and #511 Promotion Preflight.
-- Preserve enough provenance for future Source Promotion: canonical URL, captured time, title, author/site, language, extraction method, and source relationship.
-- Keep the Reader and Source Promotion pipeline downstream of `Inbox/kb/`; the plugin must not write formal KB pages directly.
+- Preserve enough provenance for Source Promotion: canonical URL, captured time, title, author/site, language, extraction method, source relationship.
+- Allow selection-aware clipping (only the selected text becomes the file content) and pre-clip highlight collection (highlights flow into frontmatter as annotation seeds for ADR-021).
+- Provide both **Preview mode** (popup with editable metadata) and **Quick mode** (one-keystroke save with no preview).
+- Detect specific high-value source types (V1: PubMed) to add domain-specific frontmatter (`doi`, `pmid`).
 
 ### Non-Goals
 
-- No direct KB promotion.
-- No `KB/Wiki/Sources/...` writes.
+- No translation (Robin owns this; News Coo never invokes an LLM).
+- No bilingual file generation.
+- No Reader rendering (Robin owns the Reader surface).
+- No POST to a Nakama backend endpoint — direct FSA write only.
+- No KB promotion or `KB/Wiki/...` writes.
 - No Concept / Entity extraction.
 - No Promotion Manifest creation or commit.
-- No Review UI.
-- No replacement for ebook import.
-- No revival of Zotero as the primary ingest path.
+- No multi-vault support (one vault per browser profile).
+- No Firefox / Safari (Chrome MV3 only V1).
+- No revival of Zotero as primary ingest path.
 - No raw full-DOM dump as the canonical import artifact.
 - No long copyrighted full-text publication outside the private vault.
 
 ---
 
-## 3. Current Decisions
+## 3. Frozen Decisions
 
 ### D1. Web documents land as Inbox documents
 
-Web pages captured by the browser extension become files under `Inbox/kb/`. Downstream they are `ReadingSource.kind == "inbox_document"` rather than a separate kind.
+Web pages captured by News Coo become files under `Inbox/kb/`. Downstream they are `ReadingSource.kind == "inbox_document"` rather than a separate kind.
 
-### D2. Toast is the controller; extraction quality is delegated/reused
+### D2. News Coo is a thin delivery extension
 
-Toast should own the user-facing extension flow: translate/import/open Reader. It should not rely on naive rendered-DOM capture. It should reuse or adapt Obsidian Clipper / Defuddle / Readability-style main-content extraction.
+News Coo owns: extraction, frontmatter, slug, dedup, image download, FSA write. It does **not** own translation, bilingual format, glossary, LLM invocation, Reader rendering, or any post-import processing.
 
-### D3. Track split follows #509
+### D3. Direct FSA write — no backend endpoint
 
-The importer should prefer two files:
+News Coo writes to the local Obsidian vault via the File System Access API. No HTTP call to Nakama is made. The user picks the vault root once at install/options time; News Coo persists the directory handle in IndexedDB and re-validates on each launch. If the handle is invalidated (revoked permission, vault path changed), News Coo prompts the user to re-pick.
 
-- `slug.md` — original/evidence track.
-- `slug-bilingual.md` — bilingual/display track.
+### D4. Track split follows #509
 
-When both exist, #509 canonicalizes them as the same logical source. The bilingual file is the user-facing Reader file; the original file is the factual evidence track.
+The importer produces:
 
-### D4. Bilingual-only is allowed but lower confidence
+- `Inbox/kb/{slug}.md` — original/evidence track (the only file News Coo writes).
+- `Inbox/kb/{slug}-bilingual.md` — bilingual/display track, **created later by Robin's translator pipeline** (separate PR / workstream, not News Coo).
 
-If the importer can only produce `slug-bilingual.md`, #509 and #511 must treat this as `has_evidence_track=False` with `evidence_reason="bilingual_only_inbox"`. Source Promotion then defaults to conservative actions such as `defer` or `annotation_only_sync`.
+When both exist, #509 canonicalizes them as the same logical source.
 
-### D5. Stage 1 import must not bypass Stage 3 safeguards
+### D5. Bilingual-only imports are NOT a News Coo case
 
-The plugin may help capture and read sources. It must not decide that a source is KB-grade, write formal Concept pages, or commit claims into KB. Those decisions belong to Source Promotion and review.
+News Coo always writes the original. The bilingual sibling appears later when Robin processes the file. `Flow C` from the original PRD draft (bilingual-only imports) is no longer a News Coo case — it can only arise from manual / external sources.
+
+### D6. Stage 1 import must not bypass Stage 3 safeguards
+
+News Coo may help capture and read sources. It must not decide that a source is KB-grade, write formal Concept pages, or commit claims into KB. Those decisions belong to Source Promotion and review.
+
+### D7. Image conventions mirror existing Nakama infrastructure
+
+News Coo mirrors `shared/image_fetcher.py`:
+
+- Path: `KB/Attachments/web/{slug}/img-N.{ext}`
+- Hard limit: 20 MB per image
+- Timeout: 15 s per fetch
+- Failed fetches: keep remote URL inline (don't break markdown), set `images_partial: true` in frontmatter
+- Supported formats: jpg, png, webp, gif, svg, tiff, bmp, avif
+
+This requires the user's vault root permission to cover both `Inbox/` and `KB/`. The picker prompt will be the vault root, not `Inbox/kb/` directly.
+
+### D8. Robin's auto-translate trigger is out of News Coo scope
+
+The "watcher / endpoint that detects new `Inbox/kb/*.md` without `-bilingual` sibling and runs `translator.py`" is a separate Robin enhancement, with its own grill / PR. News Coo MVP can ship without it; users see only the original file initially, the bilingual sibling appears once Robin gets the wire-up. Reader still works for the original.
 
 ---
 
 ## 4. User Workflows
 
-### Flow A — Import Original Only
+### Flow A — Quick Clip (default keyboard / context menu)
 
 1. 修修 opens a web page.
-2. Toast extracts the main readable content.
-3. Toast writes `Inbox/kb/{slug}.md`.
-4. Toast optionally opens Nakama Reader for that file.
-5. Reader supports highlights / annotations / reflections.
-6. Later #511/#513/#514 decide whether to promote.
+2. Either:
+   - Presses `Alt+Shift+Q` (quick clip shortcut), or
+   - Right-clicks anywhere on page → `News Coo: Clip page`.
+3. News Coo extracts (Defuddle), downloads images, generates frontmatter + slug, writes file.
+4. Toast notification shows `✓ Saved Inbox/kb/{slug}.md`.
+5. No popup is opened. No confirmation needed.
 
-Use when the page is already Chinese, or when 修修 only wants the original source first.
+### Flow B — Preview Clip (toolbar icon)
 
-### Flow B — Import Original + Bilingual
+1. 修修 opens a web page.
+2. Clicks News Coo toolbar icon (or `Alt+Shift+N`).
+3. Popup opens showing: title (editable), author, site, word count, image count, slug preview, dedup warning if applicable.
+4. 修修 confirms or edits → `Save` button.
+5. Same write as Flow A; popup shows result; auto-closes after 2 s.
 
-1. 修修 opens an English page.
-2. Toast extracts the main readable content as original Markdown.
-3. Toast translates/formats a bilingual display track.
-4. Toast writes:
-   - `Inbox/kb/{slug}.md`
-   - `Inbox/kb/{slug}-bilingual.md`
-5. Reader lists one logical source and opens the bilingual display file.
-6. Annotations attach to the canonical annotation key from the bilingual sibling.
-7. Source Promotion uses the original file as evidence.
+### Flow C — Selection Clip
 
-This is the target happy path.
+1. 修修 selects text on the page (`window.getSelection()` is non-empty).
+2. Either keyboard / context menu / popup `Save` triggers selection-aware extraction.
+3. Only selected content is processed (Defuddle is given the selection's HTML, not full document).
+4. Frontmatter records `extraction_method: selection`, `selection_only: true`.
+5. Otherwise identical to Flow A/B.
 
-### Flow C — Bilingual Only
+### Flow D — Highlights Seed
 
-1. Toast cannot or does not preserve original clean Markdown.
-2. Toast writes only `Inbox/kb/{slug}-bilingual.md`.
-3. Reader can still be used.
-4. #511 preflight marks the source as missing evidence track.
-5. Promotion defaults to conservative behavior.
+1. While reading, 修修 selects text passages and presses a "mark" shortcut (TBD in S6 implementation; possibly `Alt+Shift+M`).
+2. Each marked passage is recorded in `chrome.storage.session` keyed by tab.
+3. When a clip is finally triggered (any flow), accumulated highlights for the tab are included in the file: frontmatter `highlights: [{text, offset}]` + body section `## Highlights` with quote blocks.
+4. Highlights are then cleared for that tab.
+5. Robin's annotation pipeline (ADR-021) can later promote these highlights into formal annotations.
 
-This is acceptable for reading convenience but not ideal for factual KB integration.
+### Flow E — Duplicate URL
 
-### Flow D — Duplicate Import
-
-1. 修修 imports a URL already present in `Inbox/kb/`.
-2. The importer detects the existing source by canonical URL or normalized slug.
-3. It offers one of:
-   - open existing Reader item;
-   - refresh bilingual track;
-   - create a versioned duplicate.
-
-The exact duplicate policy is an open grill question.
+1. 修修 imports a URL whose slug `{slug}.md` already exists under `Inbox/kb/`.
+2. **Preview mode**: popup shows "已存在 (captured at {time})" with three buttons: `Open existing` (opens vault file via `obsidian://` URI for now, TBD), `Overwrite`, `Save as {slug}-2.md`.
+3. **Quick mode**: silently saves as `{slug}-2.md` (auto-increment), notification mentions the suffix.
+4. Canonical URL collision across different slugs is **not detected by News Coo** (Robin owns vault-wide dedup awareness in its own time).
 
 ---
 
@@ -135,118 +167,100 @@ The exact duplicate policy is an open grill question.
 
 ### 5.1 Naming
 
-Preferred shape:
-
 ```text
 Inbox/kb/{slug}.md
-Inbox/kb/{slug}-bilingual.md
+KB/Attachments/web/{slug}/img-1.{ext}
+KB/Attachments/web/{slug}/img-2.{ext}
+...
 ```
 
-Rules:
+Slug rules:
 
-- `slug` should be deterministic from title/canonical URL with collision handling.
-- The bilingual file must use the `-bilingual.md` suffix.
-- If both files exist, they represent one logical Reading Source.
-- If only the bilingual file exists, the logical original path may not exist; downstream must use `ReadingSource.variants[*].path`, never parse `source_id` as a real path.
+- Source: page title (preferred) or canonical URL hostname + path.
+- Lowercase, replace non-word characters with `-`, collapse runs of `-`, trim leading/trailing `-`.
+- Preserve CJK characters verbatim.
+- Maximum 80 characters.
+- Collision: append `-2`, `-3`, ... until free.
 
-### 5.2 Original Frontmatter
+### 5.2 Frontmatter (original — the only file News Coo writes)
 
-Required or strongly preferred:
+Required:
 
 ```yaml
 ---
 title: Example Article Title
 source_url: https://example.com/article
 canonical_url: https://example.com/article
-captured_at: 2026-05-10T00:00:00+08:00
+captured_at: 2026-05-10T14:32:18+08:00
 source_type: web_document
 stage: 1
 lang: en
+extraction_method: defuddle
+news_coo_version: 1
+---
+```
+
+Strongly preferred when available from Defuddle:
+
+```yaml
 site_name: Example
 author: Author Name
 published: 2026-05-01
-extraction_method: defuddle
-toast_import_version: 1
----
+description: Short description from meta tag.
+word_count: 1842
+favicon: https://example.com/favicon.ico
+```
+
+News Coo–specific extensions:
+
+```yaml
+selection_only: false
+highlights:
+  - text: "Selected passage"
+    offset: 1024
+images_partial: false
+images_count: 3
+```
+
+PubMed detector adds:
+
+```yaml
+doi: 10.1001/jama.2024.12345
+pmid: 38765432
+journal: JAMA
 ```
 
 Notes:
 
 - `source_type: web_document` is metadata only. It is not a #509 `ReadingSource.kind`.
-- `lang` should describe the original content language when known.
-- `canonical_url` should be preferred over the tab URL when available.
-- Unknown metadata should be omitted rather than hallucinated.
+- Unknown metadata is omitted, never hallucinated.
+- Image refs in body markdown use vault-relative paths: `![alt](KB/Attachments/web/{slug}/img-1.jpg)`.
 
-### 5.3 Bilingual Frontmatter
+### 5.3 Bilingual frontmatter (NOT News Coo's responsibility)
 
-Required or strongly preferred:
-
-```yaml
----
-title: Example Article Title
-source_url: https://example.com/article
-canonical_url: https://example.com/article
-captured_at: 2026-05-10T00:00:00+08:00
-source_type: web_document
-stage: 1
-lang: bilingual
-bilingual: true
-derived_from: Inbox/kb/example-article-title.md
-site_name: Example
-author: Author Name
-published: 2026-05-01
-extraction_method: defuddle
-translation_method: toast
-toast_import_version: 1
----
-```
-
-Notes:
-
-- `derived_from` must point to the original file when it exists.
-- If original is unavailable, `derived_from` should be omitted or point to the logical source only if #509/#511 explicitly accept that convention.
-- Bilingual display text is not the factual evidence track.
+When Robin's translator pipeline later writes `Inbox/kb/{slug}-bilingual.md`, frontmatter shape per existing `translator.py` convention. News Coo never writes this file.
 
 ---
 
 ## 6. Content Contract
 
-### Original Markdown
+The original Markdown file should preserve:
 
-The original file should preserve:
+- Article/document heading hierarchy.
+- Paragraphs, lists, tables, code blocks, math / chemical notation.
+- Image references with alt text (rewritten to vault-relative paths after image download).
+- Citation/reference sections when present in main content.
 
-- article/document heading structure;
-- paragraphs;
-- lists;
-- tables when possible;
-- code blocks when present;
-- math / chemical notation when possible;
-- useful image references or image placeholders;
-- citation/reference sections when they are part of the main content.
+It should exclude (Defuddle handles this):
 
-It should exclude:
+- Navigation, sidebars, footers, headers.
+- Ads, share widgets, newsletter signups, cookie banners.
+- Comments, recommended articles, related links.
+- Hidden / aria-hidden elements.
 
-- navigation;
-- cookie banners;
-- login prompts;
-- newsletter signups;
-- ads;
-- sidebars;
-- related/recommended articles;
-- comments;
-- share widgets;
-- footer boilerplate.
+Selection mode (Flow C) follows the same rules but applied to the selection subtree only.
 
-### Bilingual Markdown
-
-The bilingual file should preserve the same section structure as the original, with translated display content.
-
-Open design questions:
-
-- Whether to interleave original + translation paragraph by paragraph.
-- Whether to display translation only and rely on `derived_from` for evidence.
-- Whether to reuse the existing `translate_document()` bilingual format.
-- How to keep annotation anchors stable across original and bilingual files.
+Highlights (Flow D) are appended at end of body in a `## Highlights` section as quote blocks, in selection order.
 
 ---
 
@@ -254,234 +268,205 @@ Open design questions:
 
 ### With #509 Reading Source Registry
 
-The importer must create files that #509 can resolve as an `InboxKey`:
+News Coo files must satisfy `ReadingSource.kind == "inbox_document"` resolution:
 
-- original only -> one original variant, `has_evidence_track=True`;
-- original + bilingual -> original + display variants, `has_evidence_track=True`;
-- bilingual only -> one display variant, `has_evidence_track=False`, `evidence_reason="bilingual_only_inbox"`.
+- File path: `Inbox/kb/{slug}.md`.
+- Frontmatter has `source_type: web_document`, `stage: 1`, `lang`, `captured_at`.
+- One variant when bilingual sibling absent: `has_evidence_track=True`, single `original` variant.
+- When Robin later writes `{slug}-bilingual.md`: two variants (original + display), `has_evidence_track=True`.
 
 ### With #510 Reading Overlay
 
-Reader annotation keys should follow the bilingual sibling collapse rule. If both `slug.md` and `slug-bilingual.md` exist, the user-facing bilingual sibling defines the annotation key.
+Reader annotation keys follow the bilingual sibling collapse rule (Robin's territory, not News Coo's).
 
 ### With #511 Promotion Preflight
 
-Preflight must be able to inspect the imported source without special web-document code. It should see a normal `ReadingSource` with variants and evidence flags.
+Preflight inspects the imported source as a normal `ReadingSource` with variants and evidence flags. News Coo–specific fields (`extraction_method`, `news_coo_version`, `selection_only`, `highlights`) are passive metadata; preflight does not require knowledge of them.
+
+### With ADR-021 Annotation Substance Store
+
+`highlights[]` in frontmatter is a Robin-readable seed for annotation promotion. Robin (not News Coo) decides whether to materialize each highlight as a formal annotation.
 
 ### With #513-#516 Source Promotion
 
-The importer must not write promotion outputs. It only prepares source material. Source Map Builder, Concept Promotion, Commit Gate, and Review UI own formal KB changes.
+News Coo writes nothing under `KB/Wiki/`. Source Map Builder, Concept Promotion, Commit Gate, and Review UI own all formal KB changes.
+
+### With Robin auto-translate (future, separate workstream)
+
+News Coo writes the original. Robin (when wired) detects unprocessed files and writes the bilingual sibling. The contract between the two is: News Coo guarantees a vault file with valid frontmatter and a clean main-content body; Robin reads that file, translates, and writes a sibling. No direct IPC.
 
 ---
 
-## 8. Architecture Options To Grill
+## 8. Architecture (Frozen)
 
-### Option A — Extension writes files directly to vault
+### Repo
 
-The Chrome extension writes `.md` files directly into the local vault path.
+`E:\news-coo` (standalone, local-only for V1).
 
-Pros:
+### Stack
 
-- Lowest backend work.
-- Works offline if translation/extraction is local or extension-provided.
-- Simple mental model.
+- Chrome MV3
+- TypeScript strict, Rolldown, Vitest + happy-dom, ESLint typescript-eslint recommended-type-checked
+- Defuddle ^0.18.1 (npm dep)
+- File System Access API for vault writes
+- IndexedDB for FSA handle persistence
 
-Cons:
+### Permissions
 
-- Browser extension filesystem access is constrained.
-- Vault path differs across machines.
-- Harder to validate file contract centrally.
-- Harder to support VPS/browser separation.
+```json
+{
+  "permissions": ["activeTab", "storage", "contextMenus"],
+  "host_permissions": ["<all_urls>"]
+}
+```
 
-### Option B — Extension POSTs to local Nakama API
+### Surfaces
 
-The extension sends extracted content and metadata to a local Thousand Sunny endpoint. Nakama writes `Inbox/kb/`.
+- Toolbar action → popup (Preview mode default)
+- `Alt+Shift+N` → opens popup (same as toolbar)
+- `Alt+Shift+Q` → Quick mode (no popup)
+- Right-click context menu → "News Coo: Clip page" / "News Coo: Clip selection"
+- Options page → vault picker, handle status, re-pick, default mode (preview/quick) toggle
 
-Pros:
+### Data flow
 
-- Centralized validation.
-- Easier tests.
-- Can reuse Nakama config for vault path.
-- Can enforce #509-compatible frontmatter and naming.
-- Better audit log / duplicate detection.
+```
+content script (Defuddle, image references collected)
+    ↕ message passing
+service worker (image fetch via fetch(), CORS-permitted)
+    ↕ message passing
+popup or background (assembles frontmatter, writes via FSA)
+```
 
-Cons:
+### Code reuse
 
-- Requires local server running.
-- Needs auth / CORS / extension permissions.
-- More backend work.
-
-### Option C — Extension exports Markdown, user/Obsidian handles save
-
-The plugin creates Markdown and hands it to Obsidian or downloads it.
-
-Pros:
-
-- Simple and safe.
-- Minimal permissions.
-
-Cons:
-
-- More manual friction.
-- Harder to guarantee exact `Inbox/kb/` placement and sibling pairing.
-- Less useful as a reliable Nakama pipeline.
-
-### Current Lean
-
-Lean toward **Option B** for Nakama integration, with an MVP fallback that can export Markdown for manual inspection. Grill should validate whether the extra backend endpoint is worth it for V1.
+- Defuddle: npm dep, no vendoring.
+- ~100 LOC adapted from Obsidian Web Clipper `src/content.ts:199-296` (Defuddle wrap + shadow DOM flatten + URL normalization). MIT attribution in `NOTICE`.
+- ~700 LOC new TypeScript.
 
 ---
 
-## 9. Extraction And Translation Strategy
+## 9. Implementation Slices
 
-### Extraction
+### S1 — Skeleton ✅ Done 2026-05-10
 
-Candidates:
+Repo init at `E:\news-coo`, MV3 manifest, rolldown + vitest + ESLint scaffolding, popup / options / sw / content stubs, LICENSE + NOTICE + README. `npm run check / build / test / lint` all clean.
 
-- Defuddle-style extraction from Obsidian Web Clipper.
-- Mozilla Readability-style extraction.
-- Existing Toast DOM pipeline plus main-content extraction adapter.
+### S2 — Extraction (Defuddle wrapper + content-script wiring + PubMed detector)
 
-Acceptance requirement:
+- Add Defuddle to content script with shadow-DOM flatten + URL normalization (adapt from Clipper, MIT attribution).
+- Define EXTRACT message: popup/background → content → returns `{markdown, metadata, imageRefs[]}`.
+- Add PubMed site detector (URL host match `pubmed.ncbi.nlm.nih.gov` or `ncbi.nlm.nih.gov/pmc/`) → extract `doi`, `pmid`, `journal`.
+- Tests: extraction wrapper, PubMed detector, message routing.
 
-- Raw rendered DOM capture is not enough.
-- Extraction must be tested against multiple page types and must visibly exclude page chrome.
+### S3 — FSA writer (vault picker, frontmatter, slug, dedup)
 
-### Translation
+- Options-page vault picker using `showDirectoryPicker()`.
+- IndexedDB persistence for `FileSystemDirectoryHandle`; verify on each launch.
+- Slug generator (per §5.1).
+- Frontmatter generator (per §5.2).
+- Dedup: `getFileHandle({create:false})` to test existence; preview mode prompts, quick mode auto-suffix.
+- Write `Inbox/kb/{slug}.md`.
+- Tests: slug, frontmatter, dedup logic, mocked FSA writer.
 
-Candidates:
+### S4 — Image fetcher
 
-- Toast's existing translation flow.
-- Nakama backend `translate_document()` / glossary flow.
-- A hybrid: Toast extracts and sends original Markdown to Nakama for translation.
+- Mirror `shared/image_fetcher.py` behavior (limits, timeouts, format support, failure handling).
+- Fetch images from content script (host_permissions covers all URLs); fall back to remote URL on CORS / timeout failure.
+- Write to `KB/Attachments/web/{slug}/img-N.{ext}`.
+- Rewrite markdown body image references to vault-relative paths.
+- Set `images_partial: true` if any failed; `images_count` always.
+- Tests: extension detection, path generation, failure fallback (mocked fetch).
 
-Open questions:
+### S5 — UX surfaces (popup preview, quick mode, context menu, kbd shortcut)
 
-- Where API keys live.
-- Whether translation should use Nakama's Taiwan terminology glossary.
-- Whether cost logging belongs to Nakama backend.
-- How failures surface in the extension UI.
-- Whether bilingual formatting should be generated by backend or extension.
+- Popup preview UI: title (editable input) + author + site + word count + image count + slug preview + dedup warning + Save button.
+- Quick mode: triggered by `Alt+Shift+Q` or context menu, no popup, toast notification on success.
+- Context menu registration in service worker (page-action vs selection variant).
+- Toast notification mechanism (in-page or chrome.notifications).
+- Tests: popup state machine, quick-mode flow.
+
+### S6 — Selection-aware clipping + highlights seed
+
+- Detect `window.getSelection()` non-empty in content script; pass selection HTML to Defuddle wrapper.
+- "Mark" shortcut to capture highlights into `chrome.storage.session` per tab.
+- Include accumulated highlights in clipped file (frontmatter + `## Highlights` body section).
+- Clear highlights on successful save.
+- Tests: selection serialization, highlight accumulator state.
+
+### S7 — Polish
+
+- i18n (en + zh-TW) for popup and options strings; TS const dictionaries.
+- Error states: extraction failure, FSA permission revoked, image-fetch CORS failure rendered cleanly.
+- Test coverage: aim for >80% on `src/extract/`, `src/vault/`, `src/shared/`.
+- README install instructions for unpacked extension load.
+
+Each slice is one issue (S2 → S7 = 6 issues). Open in Nakama repo with label `area:news-coo`. PR for each slice merges directly to News Coo `main`. News Coo doesn't yet have a GitHub remote — issues live in Nakama; code is local-only V1.
 
 ---
 
 ## 10. MVP Acceptance
 
-### Functional Acceptance
+### Functional
 
-- Import a normal article into `Inbox/kb/{slug}.md`.
-- Import the same article as original + bilingual sibling.
-- Reader can open the imported source.
-- Reader list collapses original + bilingual siblings into one logical item.
-- Highlight / annotation / reflection save works.
-- #509 resolves the imported files correctly.
-- #511 preflight can run on the resulting `ReadingSource`.
-- Duplicate import does not silently overwrite user annotations.
+- Quick clip via `Alt+Shift+Q` writes `Inbox/kb/{slug}.md` and downloads images to `KB/Attachments/web/{slug}/`.
+- Preview clip via popup shows accurate metadata and respects user edits.
+- Selection clip writes selection-only content with `selection_only: true`.
+- Highlights flow into a saved file's frontmatter when accumulated.
+- Duplicate URL handled per Flow E without overwrite by default in quick mode.
+- Robin Reader (existing) opens the resulting file correctly.
+- #509 resolves the imported file as `inbox_document`.
+- #511 preflight runs without News Coo–specific code.
 
-### Quality Acceptance
+### Quality
 
-- Main content extraction excludes navigation, sidebar, ads, recommendation widgets, cookie banners, and footer boilerplate.
-- Original and bilingual files preserve heading hierarchy.
-- Frontmatter contains enough provenance for future audit.
-- Bilingual-only imports are explicitly marked as missing evidence track downstream.
+- Defuddle output excludes navigation, sidebar, ads, recommendations, cookie banners, footer.
+- Frontmatter contains all required fields per §5.2.
+- Slug is deterministic and collision-safe.
+- Image fetch failures degrade gracefully to remote URL (file is still useful).
+- Vault writes never land outside `Inbox/kb/` or `KB/Attachments/web/`.
 
-### Test Fixtures
+### Test fixtures
 
-Use at least five fixture pages:
+Five fixture pages stored as `tests/fixtures/*.html`:
 
-1. A clean blog article.
-2. A news article with ads and related links.
-3. A scientific/publisher article with abstract and numbered sections.
-4. A page with tables / math / chemical notation.
-5. A hostile page with sidebars, cookie banner, newsletter prompt, and comments.
-
----
-
-## 11. Proposed Implementation Slices
-
-### Slice 1 — Grill + PRD Freeze
-
-- Run grill-with-docs against this PRD.
-- Freeze decisions:
-  - vault direct vs Nakama API;
-  - extraction engine;
-  - translation location;
-  - duplicate policy;
-  - frontmatter contract;
-  - image handling;
-  - snapshot retention.
-
-### Slice 2 — Backend Import Endpoint Or File Contract Validator
-
-If Option B wins:
-
-- Add a local authenticated endpoint that accepts extracted original/bilingual Markdown and writes `Inbox/kb/`.
-- Validate frontmatter and sibling pairing.
-- Return Reader URL.
-
-If Option A/C wins:
-
-- Add a deterministic validator script/test for plugin-generated files.
-
-### Slice 3 — Toast Fork Adapter
-
-- Implement extraction + import action in Toast fork.
-- Add settings for Nakama endpoint or vault path.
-- Add import status UI.
-- Add failure messages and retry behavior.
-
-### Slice 4 — Fixture-Based Extraction Tests
-
-- Add local HTML fixtures.
-- Assert output excludes chrome and preserves headings.
-- Assert frontmatter contract.
-
-### Slice 5 — Manual Smoke + Reader Integration
-
-- Import 3-5 real pages.
-- Open Reader.
-- Save annotations.
-- Run #509/#511 checks.
-- Record follow-ups.
+1. Clean blog article (zero ads, structured headings).
+2. News article with ads, related links, comments.
+3. Scientific publisher article (Nature / NEJM / similar) with abstract, numbered sections, references, math.
+4. Page with tables and inline math (medical journal).
+5. Hostile page: heavy sidebars, cookie banner, newsletter prompt, comments, share widgets.
 
 ---
 
-## 12. Grill Questions
+## 11. Risks
 
-1. Should V1 write directly to vault, POST to Nakama, or support both?
-2. Should translation run in Toast or Nakama backend?
-3. Is `slug.md` + `slug-bilingual.md` mandatory for high-quality import, or is bilingual-only acceptable as common V1?
-4. Do we store raw HTML snapshots? If yes, where?
-5. How should images be handled: remote URLs, local attachments, or placeholders?
-6. What is the duplicate policy for same canonical URL?
-7. Should import immediately open Reader?
-8. What minimum metadata is required before the importer refuses to write?
-9. How do we avoid capturing translated DOM injected by other browser extensions?
-10. What failure state should the user see if extraction succeeds but translation fails?
-11. Should scientific tables be preserved as Markdown, HTML, or deferred?
-12. Is this plugin personal-only, or should it be structured for eventual public release?
-13. Should Toast import support "original only", "bilingual only", and "both" as explicit modes?
-14. Does Nakama need an Inbox import log for audit/debug?
-15. What is the smallest useful MVP that lets 修修 read real articles this week?
+- **FSA permission revocation**: User clears site data → handle invalidated. Mitigation: explicit re-pick prompt with friendly message.
+- **CORS-blocked images**: Some sites block cross-origin image fetches. Mitigation: graceful fallback to remote URL + `images_partial: true` flag.
+- **Defuddle quality regression**: Upstream Defuddle changes could break extraction. Mitigation: pin minor version in package.json; fixture tests catch regressions.
+- **Filename collisions across canonical URLs**: Different URLs producing same slug. Mitigation: canonical URL is preferred slug source; auto-suffix on collision.
+- **Vault path differences across machines**: News Coo only knows the picker-selected root; not portable across machines. Acceptable for V1 (single-machine personal tool).
+- **Copyright**: Full-text capture stays in private vault. No re-publication path exists in News Coo.
 
 ---
 
-## 13. Open Risks
+## 12. Out of scope (record of explicitly rejected ideas)
 
-- Browser extension permissions may make direct vault write impractical.
-- Translation output format may drift from existing Reader expectations.
-- Main-content extraction quality may vary widely by site.
-- Bilingual-only convenience may accidentally be treated as factual evidence unless #511 policy remains strict.
-- Remote images may break later or leak browsing context.
-- Full-text copyright boundaries must remain private-vault only.
-- If the plugin bypasses Nakama validation, future agents may receive malformed `Inbox/kb/` files.
+- Backend POST to Nakama (rejected: violates standalone scope, adds endpoint engineering).
+- Translation in-extension (rejected: Robin owns it, glossary already in backend).
+- Bilingual file generation (rejected: same).
+- Reader rendering (rejected: Robin owns Reader).
+- Side panel UI (deferred to V2; popup sufficient for V1).
+- Multi-vault support (deferred to V2).
+- Firefox / Safari support (deferred to V2).
+- YouTube transcript import (deferred to V2; goes through yt-dlp on backend).
+- Per-site templates beyond PubMed (deferred to V2; PubMed is the highest-value daily case).
+- Highlight SVG overlay on live page (rejected: simplified version stores in chrome.storage without DOM injection).
+- History log / clip count statistics (rejected: vault file existence is source of truth).
 
 ---
 
-## 14. Definition Of Done For This PRD
+## 13. Definition Of Done (PRD-level)
 
-- This file is merged to main.
-- A grill-with-docs session is run against it.
-- Grill output either updates this PRD or creates a follow-up implementation brief.
-- A GitHub issue is opened for the first implementation slice only after decisions are frozen.
-
+- This PRD is merged to Nakama main.
+- 6 issues filed in Nakama with label `area:news-coo`, one per slice (S2-S7), each with: scope, files affected, DoD, test plan.
+- News Coo S1 skeleton is committed in `E:\news-coo` with passing `check / build / lint / test`.
