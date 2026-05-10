@@ -1,0 +1,37 @@
+News Coo
+========
+
+This project is built on top of the following open-source work. All of it
+is MIT-licensed and used in accordance with each project's terms.
+
+Defuddle
+--------
+News Coo depends on Defuddle (https://github.com/kepano/defuddle) by
+@kepano for main-content extraction and HTML→Markdown conversion. Defuddle
+is consumed as an npm dependency; no source is vendored.
+
+  Copyright (c) Steph Ango (kepano)
+  License: MIT
+
+Obsidian Web Clipper
+--------------------
+News Coo's content-script extraction wrapper (in src/content/) adapts the
+pattern used by Obsidian Web Clipper
+(https://github.com/obsidianmd/obsidian-clipper) for invoking Defuddle,
+shadow-DOM flattening, and relative-URL normalization. Approximately 100
+lines of TypeScript follow that approach. No template engine, highlighter,
+reader-mode, side-panel, or interpreter code is reused.
+
+  Copyright (c) Obsidian
+  License: MIT
+
+Toast Translate
+---------------
+The build-system layout (rolldown + vitest + happy-dom + ESLint
+TypeScript-strict configuration) is patterned after Toast Translate
+(https://github.com/lawrencelinky/toast-translate) by Lawrence Lin.
+Configuration files are similar by convention; no runtime source is
+reused.
+
+  Copyright (c) 2026 Lawrence Lin
+  License: MIT
