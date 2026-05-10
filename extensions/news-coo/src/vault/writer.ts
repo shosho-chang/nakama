@@ -1,5 +1,11 @@
 // FSA vault writer — writes Inbox/kb/{slug}.md (PRD §5.1).
 
+import type { ExtractedPage } from "../shared/types.js";
+import { buildFrontmatter } from "./frontmatter.js";
+import type { FrontmatterOptions } from "./frontmatter.js";
+import { fetchAndRewriteImages } from "./imageFetcher.js";
+import { slugify } from "./slug.js";
+
 export interface WriteResult {
   slug: string;
   path: string;
@@ -51,4 +57,35 @@ export async function writeToVault(
   await writable.close();
 
   return { slug: finalSlug, path: `Inbox/kb/${finalSlug}.md` };
+}
+
+export interface WritePageOptions {
+  fetchImages?: boolean;
+  frontmatterOpts?: Omit<FrontmatterOptions, "imagesPartial" | "imagesCount">;
+}
+
+export async function writePageToVault(
+  root: FileSystemDirectoryHandle,
+  page: ExtractedPage,
+  opts: WritePageOptions = {},
+): Promise<WriteResult> {
+  const slug = slugify(page.title);
+  let markdown = page.markdown;
+  let imagesPartial = false;
+  let imagesCount = page.imageRefs.length;
+
+  if (opts.fetchImages && page.imageRefs.length > 0) {
+    const img = await fetchAndRewriteImages(root, slug, markdown, page.url);
+    markdown = img.rewrittenMarkdown;
+    imagesPartial = img.failedCount > 0;
+    imagesCount = img.savedCount;
+  }
+
+  const frontmatter = buildFrontmatter(page, {
+    ...opts.frontmatterOpts,
+    imagesPartial,
+    imagesCount,
+  });
+
+  return writeToVault(root, slug, frontmatter + "\n" + markdown);
 }
