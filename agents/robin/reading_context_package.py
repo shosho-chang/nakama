@@ -669,7 +669,9 @@ def _build_missing_piece_prompts(
         if not cluster.annotation_refs:
             continue
         has_quote = any(
-            cluster.label in sq.locator or cluster.label in sq.source for sq in source_quotes
+            _label_token_match(cluster.label, sq.locator)
+            or _label_token_match(cluster.label, sq.source)
+            for sq in source_quotes
         )
         if has_quote:
             continue
@@ -680,3 +682,18 @@ def _build_missing_piece_prompts(
             )
         )
     return out
+
+
+def _label_token_match(label: str, haystack: str) -> bool:
+    """Return ``True`` when ``label`` appears as a complete token in ``haystack``.
+
+    A token boundary is any character outside ``[A-Za-z0-9_\\-]`` or a string
+    edge. Prevents prefix collisions where a cluster label like ``ch-1``
+    would otherwise substring-match an unrelated ``ch-10`` source quote and
+    cause ``_build_missing_piece_prompts`` to silently drop the missing
+    prompt for ``ch-1``.
+    """
+    if not label:
+        return False
+    pattern = rf"(?<![A-Za-z0-9_\-]){re.escape(label)}(?![A-Za-z0-9_\-])"
+    return re.search(pattern, haystack) is not None

@@ -142,6 +142,12 @@ class Question(BaseModel):
     W5: ``text`` MUST end with ``?`` or ``？``. The schema validator rejects
     constructions that omit the terminal so a future LLM-backed
     question-generation cannot accidentally produce an assertive statement.
+
+    W3 / W4: ``text`` MUST NOT contain first-person tokens or
+    ``"I think"``-style opinion patterns. Mirrors the surface-layer sweep so
+    a ``Question`` instance constructed directly (e.g. via
+    ``model_validate_json`` from disk) cannot bypass the no-ghostwriting
+    boundary.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -151,7 +157,7 @@ class Question(BaseModel):
     related_clusters: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _w5_question_ends_with_question_mark(self) -> Question:
+    def _w3_w4_w5_no_ghostwriting(self) -> Question:
         stripped = self.text.rstrip()
         if not stripped or not stripped.endswith(_TERMINAL_QUESTION_PUNCT):
             raise ValueError(
@@ -159,6 +165,18 @@ class Question(BaseModel):
                 f"got text={self.text!r}. Questions are open prompts, not "
                 f"assertions; the writing-assist surface refuses to mint a "
                 f"Question whose text reads like a statement."
+            )
+        if _has_i_think(self.text):
+            raise ValueError(
+                f"W4 violation: Question.text contains an 'I think' / "
+                f"'我認為' pattern; got text={self.text!r}. Questions must "
+                f"surface 修修's open prompts, not authored opinions."
+            )
+        if _has_first_person(self.text):
+            raise ValueError(
+                f"W3 violation: Question.text contains a first-person token; "
+                f"got text={self.text!r}. Questions must be phrased without "
+                f"first-person voice."
             )
         return self
 
@@ -204,6 +222,11 @@ class MissingPiecePrompt(BaseModel):
     (``.`` / ``。``). Phrasing is a need-statement (``HRV 訓練: 需要更多 evidence``),
     not an assertion (``HRV 訓練 needs more evidence.``). The schema validator
     rejects accidental terminal punctuation at construct time.
+
+    W3 / W4: ``text`` MUST NOT contain first-person tokens or
+    ``"I think"``-style opinion patterns. Mirrors the surface-layer sweep so
+    a ``MissingPiecePrompt`` instance constructed directly cannot bypass the
+    no-ghostwriting boundary.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -212,7 +235,7 @@ class MissingPiecePrompt(BaseModel):
     text: str
 
     @model_validator(mode="after")
-    def _w6_missing_piece_no_terminal_punct(self) -> MissingPiecePrompt:
+    def _w3_w4_w6_no_ghostwriting(self) -> MissingPiecePrompt:
         stripped = self.text.rstrip()
         if stripped.endswith((".", "。")):
             raise ValueError(
@@ -220,6 +243,16 @@ class MissingPiecePrompt(BaseModel):
                 f"or '。'; got text={self.text!r}. A missing-piece prompt is "
                 f"phrased as a need (e.g. '...: 需要更多 evidence'), not an "
                 f"assertion; terminal punctuation reads as a closed claim."
+            )
+        if _has_i_think(self.text):
+            raise ValueError(
+                f"W4 violation: MissingPiecePrompt.text contains an "
+                f"'I think' / '我認為' pattern; got text={self.text!r}."
+            )
+        if _has_first_person(self.text):
+            raise ValueError(
+                f"W3 violation: MissingPiecePrompt.text contains a "
+                f"first-person token; got text={self.text!r}."
             )
         return self
 

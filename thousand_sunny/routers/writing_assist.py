@@ -45,10 +45,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from shared.log import get_logger
-from shared.schemas.reading_context_package import (
-    ReadingContextPackage,
-    WritingAssistOutput,
-)
+from shared.schemas.reading_context_package import ReadingContextPackage
 from shared.writing_assist_surface import WritingAssistSurface
 from thousand_sunny.auth import check_auth
 
@@ -243,13 +240,3 @@ def _build_default_service(package_root: Path) -> WritingAssistService:
     """Helper for app wiring + tests that want the default disk-backed
     service. Tests typically inject their own fake instead."""
     return _DefaultWritingAssistService(package_root=package_root)
-
-
-def _output_to_template_context(output: WritingAssistOutput) -> dict:
-    """Helper that flattens the output into a Jinja-friendly context.
-    Currently the template directly walks the output object, so this is
-    kept as a hook for future template restructuring."""
-    return {
-        "section_blocks": list(output.section_blocks),
-        "pointer_index": dict(output.pointer_index),
-    }

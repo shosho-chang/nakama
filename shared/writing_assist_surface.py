@@ -310,9 +310,12 @@ def _validate_no_ghostwriting(output: WritingAssistOutput) -> None:
                 )
 
         # W3 / W4 sweeps: heading + question prompts + missing-piece prompts
-        # MUST NOT contain first-person or "I think"-pattern tokens.
-        # Excerpts in evidence_pointers are explicitly EXCLUDED — they are
-        # quoted source content, not authored.
+        # + evidence-pointer source/locator MUST NOT contain first-person or
+        # "I think"-pattern tokens. Excerpts in evidence_pointers are
+        # explicitly EXCLUDED — they are quoted source content, not authored.
+        # ``EvidenceItem.source`` and ``.locator`` ARE swept because
+        # ``compute_non_excerpt_char_count`` treats them as authored content
+        # for W7; the layered defense must keep both rules consistent.
         _check_no_first_person_or_opinion(
             block.heading,
             field_path=f"section_blocks[{block_idx}].heading",
@@ -326,6 +329,15 @@ def _validate_no_ghostwriting(output: WritingAssistOutput) -> None:
             _check_no_first_person_or_opinion(
                 prompt,
                 field_path=f"section_blocks[{block_idx}].missing_piece_prompts[{prompt_idx}]",
+            )
+        for ep_idx, ep in enumerate(block.evidence_pointers):
+            _check_no_first_person_or_opinion(
+                ep.source,
+                field_path=f"section_blocks[{block_idx}].evidence_pointers[{ep_idx}].source",
+            )
+            _check_no_first_person_or_opinion(
+                ep.locator,
+                field_path=f"section_blocks[{block_idx}].evidence_pointers[{ep_idx}].locator",
             )
 
     # Pointer index keys + values are short, ASCII identifiers; W3/W4 still

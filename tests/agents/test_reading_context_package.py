@@ -248,6 +248,28 @@ def test_bt9_build_missing_piece_prompts_when_evidence_gap():
         assert not prompt.text.rstrip().endswith((".", "。"))
 
 
+# ── BT9b — label-token boundary regression (prefix collision) ──────────────
+
+
+def test_bt9b_label_token_match_avoids_prefix_collision():
+    """``_label_token_match`` must reject prefix collisions: a cluster
+    labeled ``ch-1`` must not silently inherit evidence from a ``ch-10``
+    source quote. Pre-fix substring match would false-match; post-fix
+    token-bounded match correctly distinguishes."""
+    from agents.robin.reading_context_package import _label_token_match
+
+    # Exact label match in source-quote source string passes.
+    assert _label_token_match("ch-1", "alpha-book · ch-1") is True
+    # Prefix collision must NOT match.
+    assert _label_token_match("ch-1", "alpha-book · ch-10") is False
+    # Path-style locator both directions.
+    assert _label_token_match("ch-1", "alpha-book/ch-1.md#L3") is True
+    assert _label_token_match("ch-1", "alpha-book/ch-10.md#L3") is False
+    # Alphanumeric prefix collision (e.g. RMSSD vs RMSSDx).
+    assert _label_token_match("RMSSD", "concept · RMSSD") is True
+    assert _label_token_match("RMSSD", "concept · RMSSDx") is False
+
+
 # ── BT10 — subprocess: no LLM clients ───────────────────────────────────────
 
 

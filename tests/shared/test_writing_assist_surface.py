@@ -179,38 +179,12 @@ def test_wt3_section_block_heading_no_terminal_punctuation_at_schema_level():
     ],
 )
 def test_wt4_no_first_person_or_opinion_in_question_prompts(violating_text: str):
-    """Constructing a SectionBlock whose question_prompts contain a W3 / W4
-    violation must fail at surface render time. We can't construct via the
-    schema directly because question_prompts requires terminal '?'; so we
-    add the '?' and let render() catch the W3/W4 sweep."""
-    block = SectionBlock(
-        heading="ch-1",
-        question_prompts=[f"{violating_text}?"],
-    )
-    output = WritingAssistOutput(
-        package_source_id="ebook:alpha-book",
-        section_blocks=[block],
-    )
-    # The rendered output construction itself doesn't validate cross-field
-    # W3/W4 (those sweeps live in render()), so we drive the render path.
-    surface_with_package = WritingAssistSurface()
-    package = ReadingContextPackage(
-        source_id="ebook:alpha-book",
-        idea_clusters=[
-            IdeaCluster(cluster_id="clu_ch-1", label="ch-1", annotation_refs=[]),
-        ],
-        questions=[
-            Question(
-                question_id="q_v",
-                text=f"{violating_text}?",
-                related_clusters=["clu_ch-1"],
-            )
-        ],
-    )
-    with pytest.raises(ValueError, match=r"ghostwriting detected: W[34]"):
-        surface_with_package.render(package)
-    # Suppress unused-warning on auxiliary objects.
-    assert output.section_blocks
+    """W3/W4 enforcement at the inner (schema) layer: a ``Question`` whose
+    text contains a first-person or opinion pattern fails at construction
+    time. The surface-render layer is the outer ring (covers heading,
+    pointer_index, and evidence_pointer source/locator)."""
+    with pytest.raises(ValueError, match=r"W[34] violation"):
+        Question(question_id="q_v", text=f"{violating_text}?")
 
 
 # ── WT5 — W1 heading / prompt sentence-terminal sweep ───────────────────────
@@ -255,22 +229,9 @@ def test_wt5_no_completed_sentence_in_non_excerpt_fields():
     ],
 )
 def test_wt6_no_i_think_patterns(violating_text: str):
-    surface = WritingAssistSurface()
-    package = ReadingContextPackage(
-        source_id="ebook:alpha-book",
-        idea_clusters=[
-            IdeaCluster(cluster_id="clu_ch-1", label="ch-1", annotation_refs=[]),
-        ],
-        questions=[
-            Question(
-                question_id="q_v",
-                text=violating_text,
-                related_clusters=["clu_ch-1"],
-            )
-        ],
-    )
-    with pytest.raises(ValueError, match=r"ghostwriting detected: W[34]"):
-        surface.render(package)
+    """W4 ``I think`` / ``我認為`` enforcement at the inner (schema) layer."""
+    with pytest.raises(ValueError, match="W4 violation"):
+        Question(question_id="q_v", text=violating_text)
 
 
 # ── WT7 — W5 question prompt terminal '?' ───────────────────────────────────
@@ -375,6 +336,58 @@ def test_wt10_evidence_excerpt_unaffected_by_no_ghostwriting_rules():
     assert output.section_blocks
     block = output.section_blocks[0]
     assert any("I think" in p.excerpt for p in block.evidence_pointers)
+
+
+# ── WT10b — surface sweeps evidence_pointer source/locator for W3/W4 ────────
+
+
+def test_wt10b_surface_sweeps_evidence_pointer_source_for_first_person():
+    """Regression: an ``EvidenceItem.source`` carrying a first-person token
+    must be rejected by the surface render sweep. Pre-fix the W3/W4 sweep
+    skipped ``source`` and ``locator`` even though ``compute_non_excerpt_char_count``
+    counted them — making the layered defense inconsistent. Post-fix the
+    sweep includes those fields.
+    """
+    surface = WritingAssistSurface()
+    annotation = EvidenceItem(
+        item_kind="annotation",
+        locator="anno:foo",
+        excerpt="A normal annotation excerpt with no authored voice.",
+        source="我的訓練筆記",  # W3 first-person token in source field
+    )
+    package = ReadingContextPackage(
+        source_id="ebook:alpha-book",
+        annotations=[annotation],
+        idea_clusters=[
+            IdeaCluster(
+                cluster_id="clu_ch-1",
+                label="ch-1",
+                annotation_refs=["anno:foo"],
+            )
+        ],
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"ghostwriting detected: W3.*evidence_pointers",
+    ):
+        surface.render(package)
+
+
+# ── WT10c — MissingPiecePrompt schema enforces W3/W4 at construct time ─────
+
+
+def test_wt10c_missing_piece_prompt_schema_rejects_first_person_and_opinion():
+    """Regression: ``MissingPiecePrompt.text`` carries inner-layer W3 + W4
+    enforcement so a future LLM-backed enrichment cannot bypass via the
+    schema by directly constructing a prompt. Mirrors ``Question``'s
+    schema-layer protection."""
+    with pytest.raises(ValueError, match="W3 violation"):
+        MissingPiecePrompt(prompt_id="m1", text="我們需要更多 evidence")
+    with pytest.raises(ValueError, match="W4 violation"):
+        MissingPiecePrompt(prompt_id="m2", text="我認為需要更多 evidence")
+    # And the existing W6 + healthy text still pass.
+    healthy = MissingPiecePrompt(prompt_id="m3", text="ch-1: 需要更多 evidence")
+    assert healthy.text.endswith("evidence")
 
 
 # ── WT11 — subprocess: no shared.book_storage ──────────────────────────────
