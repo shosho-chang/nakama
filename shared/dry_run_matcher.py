@@ -1,43 +1,89 @@
-"""Dry-run ``ConceptMatcher`` STUB (ADR-024 Slice 10 / N518a).
+"""Dry-run ``ConceptMatcher`` (ADR-024 Slice 10 / N518b).
 
-**N518a is stub-only.** This module satisfies the ``ConceptMatcher``
-Protocol shape (``shared.concept_promotion_engine.ConceptMatcher``) so
-``PromotionReviewService.__init__`` can construct successfully at app
-startup, but the ``match()`` method raises ``NotImplementedError`` when
-called. The full deterministic body lands in **N518b** (separate PR).
+Deterministic, non-LLM placeholder implementation of the ``ConceptMatcher``
+Protocol declared in ``shared.concept_promotion_engine`` (#514). Used by the
+production wiring when ``NAKAMA_PROMOTION_MODE=dry_run`` (the default in
+N518) so the promotion review surface can be exercised without any LLM call.
 
-Future N518b body: always returns "no global match" + low confidence so
-the engine routes everything to source-local concepts in dry-run mode.
+**Why "always uncertain".** The dry-run mode's job is to make the review UI
+surface every claim/concept as needs-human-judgment so 修修 sees the full
+review flow. Returning ``match_basis="none"`` + low confidence ensures that
+the engine routes:
+
+- candidates with sufficient recurrence + evidence → ``create_global_concept``
+  (so the create-global path is exercised end-to-end);
+- candidates with insufficient recurrence/evidence → ``keep_source_local``.
+
+Either way the result is observable in the review UI without depending on
+KB content or matcher cleverness. The full LLM-backed matcher lands in
+**N519** behind the same ``NAKAMA_PROMOTION_MODE`` gate.
+
+Determinism contract (W2 / brief §6 boundary 3 / AT19):
+
+- ``match(candidate, kb_index, primary_lang)`` is a pure function. Same
+  inputs → byte-identical output.
+- Every call returns ``CanonicalMatch(match_basis="none",
+  matched_concept_path=None, confidence=0.0)`` and an empty
+  ``conflict_signals`` list. The ``"none"`` basis + ``None`` path
+  satisfies the V10 invariant on ``CanonicalMatch``.
+- NO ``anthropic`` import (W2 / WT10 subprocess gate).
+- NO env reads, no filesystem IO.
 """
 
 from __future__ import annotations
 
 from shared.schemas.concept_promotion import (
     ConceptCandidate,
-    KBConceptEntry,  # noqa: F401 — Protocol shape
+    KBConceptEntry,  # noqa: F401 — Protocol shape (only used for type docs)
     MatchOutcome,
 )
+from shared.schemas.promotion_manifest import CanonicalMatch
+
+_DRY_RUN_CONFIDENCE = 0.0
+"""Confidence baseline for the dry-run matcher. Zero is the lowest legal
+value on ``CanonicalMatch``; combined with ``match_basis="none"`` it routes
+every candidate through the engine's "no global match" rows. Brief §8 +
+AT19 require ``confidence ≤ 0.1`` (low). We use 0.0 to make the intent
+explicit — this is not a real match, this is a placeholder."""
 
 
 class DryRunConceptMatcher:
-    """STUB — satisfies the ``ConceptMatcher`` Protocol but raises on call.
+    """Deterministic dry-run ``ConceptMatcher`` (no LLM, no network).
 
-    Production wiring (``thousand_sunny.app`` lifespan) constructs this
-    class for ``NAKAMA_PROMOTION_MODE=dry_run`` so the service constructs
-    cleanly. Calling ``match()`` raises ``NotImplementedError`` — the
-    real body (deterministic "no match" outcome) lands in N518b.
+    Production wiring (``thousand_sunny.app`` lifespan → ``promotion_wiring``)
+    constructs this class for ``NAKAMA_PROMOTION_MODE=dry_run`` (the default
+    in N518). The full LLM-backed matcher lands in N519 behind the same
+    config gate.
+
+    Stateless — no constructor arguments, no per-instance state. Pure
+    function semantics: same call always returns equivalent values.
     """
 
     def match(
         self,
         candidate: ConceptCandidate,
-        kb_index,  # KBConceptIndex Protocol — left untyped to avoid runtime import cycle
+        kb_index,  # KBConceptIndex Protocol — left untyped to avoid runtime cycle
         primary_lang: str,
     ) -> MatchOutcome:
-        """Raise ``NotImplementedError`` per N518a stub-only contract.
+        """Return a "no global match" outcome with zero confidence.
 
-        The real body — return a ``MatchOutcome`` with
-        ``CanonicalMatch(match_basis="none", confidence=0.0)`` — is
-        implemented in N518b.
+        Inputs are accepted to satisfy the Protocol shape but are NOT
+        consulted. The dry-run policy is "always uncertain" — every
+        candidate routes to the source-local / human-review queue so
+        the review UI surfaces the full flow.
+
+        Returns a frozen ``MatchOutcome`` with:
+
+        - ``canonical_match.match_basis = "none"``
+        - ``canonical_match.confidence = 0.0``
+        - ``canonical_match.matched_concept_path = None``
+        - ``conflict_signals = []``
         """
-        raise NotImplementedError("DryRunConceptMatcher.match: full impl deferred to N518b")
+        return MatchOutcome(
+            canonical_match=CanonicalMatch(
+                match_basis="none",
+                confidence=_DRY_RUN_CONFIDENCE,
+                matched_concept_path=None,
+            ),
+            conflict_signals=[],
+        )

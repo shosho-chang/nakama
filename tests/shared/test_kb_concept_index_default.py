@@ -203,16 +203,62 @@ def test_concept_with_missing_name_uses_stem(concepts_root: Path, caplog: pytest
     assert entries[0].canonical_label == "Stemmed"
 
 
-def test_index_caches_scan(concepts_root: Path):
-    """Repeat lookups don't re-walk the filesystem."""
+def test_index_caches_scan_when_directory_unchanged(concepts_root: Path, monkeypatch):
+    """Repeat lookups don't re-walk the filesystem when nothing changed.
+
+    Updated for N518b C1: cache invalidation is now mtime-based on
+    ``concepts_root``. We monkeypatch ``VaultKBConceptIndex._current_mtime_ns``
+    to return a stable value so the cache is honoured even though the
+    filesystem actually changed underneath. This proves the cache path
+    executes; the ``test_index_invalidates_cache_when_directory_mtime_changes``
+    test below proves the invalidation path.
+    """
     _write_concept(concepts_root, "HRV")
     idx = VaultKBConceptIndex(concepts_root=concepts_root)
 
     # Prime the cache.
     first = idx.list_entries()
-    # Add a new file AFTER first scan — cached scan should not pick it up.
+    stable_mtime = idx._current_mtime_ns()
+
+    # Force the index to see a stable mtime (same as during prime).
+    monkeypatch.setattr(VaultKBConceptIndex, "_current_mtime_ns", lambda self: stable_mtime)
+
+    # Add a new file — the index should NOT pick it up because we faked
+    # the mtime as unchanged.
     _write_concept(concepts_root, "ColdBrew")
     second = idx.list_entries()
 
-    # Same length because the second call hits the cache.
     assert len(first) == len(second) == 1
+
+
+def test_index_invalidates_cache_when_directory_mtime_changes(concepts_root: Path):
+    """N518b C1: adding a new concept file changes the directory mtime,
+    which invalidates the cache so the new entry is picked up on the next
+    call. This is the regression test for the carry-over from PR #541
+    review (long-running uvicorn would never see new concepts otherwise)."""
+    import os
+    import time
+
+    _write_concept(concepts_root, "HRV")
+    idx = VaultKBConceptIndex(concepts_root=concepts_root)
+
+    # Prime the cache.
+    first = idx.list_entries()
+    assert len(first) == 1
+
+    # Bump the directory mtime by writing a new concept. On most platforms
+    # adding a directory entry updates the parent dir's mtime; we also
+    # explicitly bump it to handle filesystems with low-resolution mtime
+    # (some CI runners on FAT-style filesystems have 2s granularity).
+    _write_concept(concepts_root, "ColdBrew")
+    # Sleep briefly + explicit utime so even low-res filesystems see a change.
+    time.sleep(0.01)
+    new_time = time.time() + 1.0
+    os.utime(concepts_root, (new_time, new_time))
+
+    second = idx.list_entries()
+
+    # Cache invalidated — new file picked up.
+    assert len(second) == 2
+    labels = {e.canonical_label for e in second}
+    assert labels == {"HRV", "ColdBrew"}
