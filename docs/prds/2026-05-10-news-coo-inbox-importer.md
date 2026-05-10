@@ -6,7 +6,7 @@
 **Last revised**: 2026-05-10
 **Stage anchor**: Stage 1 Discovery / import, feeding Stage 2 Reading Source and Stage 3 Source Promotion
 **Related**: ADR-024 Source Promotion, #509 Reading Source Registry, #510 Reading Overlay V3, #511 Promotion Preflight, #512 Promotion Manifest
-**Implementation repo**: `E:\news-coo` (local; not pushed to GitHub for V1)
+**Implementation path**: `extensions/news-coo/` in this Nakama monorepo (subtree-imported from original standalone `E:\news-coo` on 2026-05-10)
 **Issue tracker**: This Nakama repo, label `area:news-coo`
 
 ---
