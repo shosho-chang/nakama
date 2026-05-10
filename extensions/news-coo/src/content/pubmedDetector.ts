@@ -1,10 +1,20 @@
 import type { PubMedMetadata } from "../shared/types.js";
 
-const PUBMED_URL_RE =
-  /(?:pubmed\.ncbi\.nlm\.nih\.gov|ncbi\.nlm\.nih\.gov\/pmc\/)/;
-
 export function isPubMedUrl(url: string): boolean {
-  return PUBMED_URL_RE.test(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.hostname === "pubmed.ncbi.nlm.nih.gov") return true;
+  if (
+    (parsed.hostname === "www.ncbi.nlm.nih.gov" ||
+      parsed.hostname === "ncbi.nlm.nih.gov") &&
+    parsed.pathname.startsWith("/pmc/")
+  )
+    return true;
+  return false;
 }
 
 export function extractPubMedMetadata(doc: Document): PubMedMetadata {

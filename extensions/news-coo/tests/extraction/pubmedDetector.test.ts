@@ -33,6 +33,25 @@ describe("isPubMedUrl", () => {
   it("does not match unrelated sites", () => {
     expect(isPubMedUrl("https://example.com/paper")).toBe(false);
   });
+
+  it("rejects subdomain-spoofed hosts", () => {
+    expect(
+      isPubMedUrl("https://pubmed.ncbi.nlm.nih.gov.attacker.com/x"),
+    ).toBe(false);
+  });
+
+  it("rejects URLs that merely embed the hostname in path or query", () => {
+    expect(
+      isPubMedUrl("https://attacker.com/?ref=pubmed.ncbi.nlm.nih.gov"),
+    ).toBe(false);
+    expect(
+      isPubMedUrl("https://attacker.com/ncbi.nlm.nih.gov/pmc/x"),
+    ).toBe(false);
+  });
+
+  it("rejects malformed URLs", () => {
+    expect(isPubMedUrl("not a url")).toBe(false);
+  });
 });
 
 describe("extractPubMedMetadata", () => {

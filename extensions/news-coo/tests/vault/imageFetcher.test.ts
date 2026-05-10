@@ -42,17 +42,39 @@ class MemDirHandle {
   }
 }
 
+function streamFor(buf: ArrayBuffer, chunkSize = 64 * 1024): ReadableStream<Uint8Array> {
+  const u8 = new Uint8Array(buf);
+  let offset = 0;
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= u8.byteLength) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(offset + chunkSize, u8.byteLength);
+      controller.enqueue(u8.slice(offset, end));
+      offset = end;
+    },
+  });
+}
+
 function mockResponse(opts: {
   ok?: boolean;
   status?: number;
   contentType?: string;
   body?: ArrayBuffer;
   contentLength?: string;
+  bodyStream?: ReadableStream<Uint8Array> | null;
 }): Response {
   const body = opts.body ?? new ArrayBuffer(4);
+  const stream =
+    opts.bodyStream === null
+      ? null
+      : (opts.bodyStream ?? streamFor(body));
   return {
     ok: opts.ok ?? true,
     status: opts.status ?? 200,
+    body: stream,
     headers: {
       get: (k: string) => {
         if (k === "content-type") return opts.contentType ?? "image/jpeg";
@@ -60,7 +82,6 @@ function mockResponse(opts: {
         return null;
       },
     },
-    arrayBuffer: async () => body,
   } as unknown as Response;
 }
 
@@ -149,7 +170,7 @@ describe("fetchAndRewriteImages", () => {
     expect(result.rewrittenMarkdown).toBe(md);
   });
 
-  it("rejects images over 20 MB via actual buffer size", async () => {
+  it("aborts mid-stream when body exceeds 20 MB without a Content-Length header", async () => {
     const root = new MemDirHandle("vault");
     vi.mocked(fetch).mockResolvedValue(
       mockResponse({
@@ -162,6 +183,44 @@ describe("fetchAndRewriteImages", () => {
       root as unknown as FileSystemDirectoryHandle,
       "big-slug2",
       "![big](https://example.com/img.jpg)",
+      "https://example.com",
+    );
+
+    expect(result.savedCount).toBe(0);
+    expect(result.failedCount).toBe(1);
+  });
+
+  it("aborts mid-stream when server lies and Content-Length under-reports actual body size", async () => {
+    const root = new MemDirHandle("vault");
+    vi.mocked(fetch).mockResolvedValue(
+      mockResponse({
+        contentType: "image/jpeg",
+        contentLength: "1024",
+        body: new ArrayBuffer(21 * 1024 * 1024),
+      }),
+    );
+
+    const result = await fetchAndRewriteImages(
+      root as unknown as FileSystemDirectoryHandle,
+      "lying-slug",
+      "![big](https://example.com/img.jpg)",
+      "https://example.com",
+    );
+
+    expect(result.savedCount).toBe(0);
+    expect(result.failedCount).toBe(1);
+  });
+
+  it("returns null when response body stream is missing", async () => {
+    const root = new MemDirHandle("vault");
+    vi.mocked(fetch).mockResolvedValue(
+      mockResponse({ contentType: "image/png", bodyStream: null }),
+    );
+
+    const result = await fetchAndRewriteImages(
+      root as unknown as FileSystemDirectoryHandle,
+      "no-body-slug",
+      "![x](https://example.com/x.png)",
       "https://example.com",
     );
 
@@ -203,7 +262,7 @@ describe("fetchAndRewriteImages", () => {
 
   it("handles multiple images, deduplicates same URL", async () => {
     const root = new MemDirHandle("vault");
-    vi.mocked(fetch).mockResolvedValue(
+    vi.mocked(fetch).mockImplementation(async () =>
       mockResponse({ contentType: "image/gif", body: new ArrayBuffer(10) }),
     );
 

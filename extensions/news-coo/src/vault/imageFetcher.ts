@@ -74,15 +74,40 @@ async function downloadImage(
     const resp = await fetch(url, { signal: controller.signal });
     if (!resp.ok) return null;
 
-    // Reject if Content-Length already exceeds limit.
-    const lengthHeader = resp.headers.get("content-length");
-    if (lengthHeader !== null && parseInt(lengthHeader, 10) > MAX_IMAGE_BYTES)
-      return null;
+    const declared = resp.headers.get("content-length");
+    if (declared !== null) {
+      const n = parseInt(declared, 10);
+      if (Number.isFinite(n) && n > MAX_IMAGE_BYTES) return null;
+    }
 
-    const buf = await resp.arrayBuffer();
-    if (buf.byteLength > MAX_IMAGE_BYTES) return null;
+    // Stream and abort once the running total exceeds MAX_IMAGE_BYTES, so
+    // missing/lying Content-Length cannot force a multi-GB buffer into RAM.
+    const body = resp.body;
+    if (body === null) return null;
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_IMAGE_BYTES) {
+        controller.abort();
+        return null;
+      }
+      chunks.push(value);
+    }
 
-    return { buf, contentType: resp.headers.get("content-type") ?? "" };
+    const buf = new Uint8Array(total);
+    let offset = 0;
+    for (const c of chunks) {
+      buf.set(c, offset);
+      offset += c.byteLength;
+    }
+    return {
+      buf: buf.buffer,
+      contentType: resp.headers.get("content-type") ?? "",
+    };
   } catch {
     return null;
   } finally {
