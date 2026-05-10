@@ -13,6 +13,12 @@ backend.
 
 S1 skeleton. Buildable, lintable, testable. No real extraction yet.
 
+## Location
+
+Lives in the Nakama monorepo at `extensions/news-coo/`. History preserved via
+`git subtree add` from the original standalone `E:\news-coo` repo on 2026-05-10.
+Future open-sourcing can split this back out via `git subtree split` if needed.
+
 ## Stack
 
 - Chrome MV3
@@ -25,11 +31,12 @@ S1 skeleton. Buildable, lintable, testable. No real extraction yet.
 ## Local development
 
 ```bash
-pnpm install
-pnpm build       # → dist/
-pnpm test        # vitest
-pnpm check       # tsc --noEmit
-pnpm lint        # eslint
+cd extensions/news-coo
+npm install
+npm run build       # → dist/
+npm test            # vitest
+npm run check       # tsc --noEmit
+npm run lint        # eslint
 ```
 
 Load `dist/` as an unpacked extension in `chrome://extensions`.
