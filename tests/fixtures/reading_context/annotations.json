@@ -1,0 +1,32 @@
+[
+  {
+    "locator": "anno:ebook:alpha-book:cfi-001",
+    "text": "RMSSD short-window response distinguishes acute fatigue from chronic overreaching",
+    "chapter_ref": "ch-1",
+    "tags": ["highlight"]
+  },
+  {
+    "locator": "anno:ebook:alpha-book:cfi-002",
+    "text": "Autonomic balance — sympathetic vs parasympathetic — sets the resting baseline",
+    "chapter_ref": "ch-1",
+    "tags": ["highlight"]
+  },
+  {
+    "locator": "anno:ebook:alpha-book:cfi-003",
+    "text": "Why does RMSSD respond faster than SDNN to overtraining patterns",
+    "chapter_ref": "ch-1",
+    "tags": ["question"]
+  },
+  {
+    "locator": "anno:ebook:alpha-book:cfi-004",
+    "text": "Acute:chronic ratio — Tim Gabbett — under 0.8 is undertraining, over 1.5 is risky",
+    "chapter_ref": "ch-3",
+    "tags": ["highlight"]
+  },
+  {
+    "locator": "anno:ebook:alpha-book:cfi-005",
+    "text": "Sleep architecture interacts with training adaptation — REM vs deep — does taper rebuild deep first",
+    "chapter_ref": "ch-3",
+    "tags": ["question"]
+  }
+]
