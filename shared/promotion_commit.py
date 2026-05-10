@@ -80,7 +80,8 @@ programmer errors and propagate."""
 
 _BACKUP_TIMESTAMP_FMT = "%Y%m%dT%H%M%SZ"
 """ISO-8601 compact timestamp for backup filenames (e.g.
-``foo.md.bak.20260510T120000Z``). Caller-tunable via constructor."""
+``foo.md.bak.20260510T120000Z``). Module-level constant; not tunable in v=1
+(adapter constructors take ``vault_root`` only)."""
 
 
 def _now_iso_utc() -> str:

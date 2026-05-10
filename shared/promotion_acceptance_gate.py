@@ -114,17 +114,17 @@ class AcceptanceGate:
         # G2 / G1 — target_kb_path presence and vault containment.
         target = item.target_kb_path if isinstance(item, SourcePageReviewItem) else None
         if isinstance(item, ConceptReviewItem):
-            # Concept items: derive target_kb_path from canonical_match if
-            # set (update path) or from a synthesized concept slug. The
-            # commit service computes the final path; the gate accepts the
-            # service-computed value via item.target_kb_path-equivalent
-            # passed through ConceptReviewItem.
+            # v=1 concept-path resolution: only items whose
+            # ``canonical_match.matched_concept_path`` is set are commitable.
+            # Items with ``canonical_match=None`` or ``match_basis="none"``
+            # surface ``target_kb_path_missing`` and the service skips them.
+            # Synthesizing a slug for keep-source-local concepts is
+            # explicitly out of scope for v=1 (PR #528 deviation #3) and
+            # tracked for a future slice.
             cm = item.canonical_match
             if cm is not None and cm.matched_concept_path:
                 target = cm.matched_concept_path
             else:
-                # No matched_concept_path — service must synthesize. We surface
-                # the missing path as a finding so the service skips this item.
                 target = None
 
         if not target or not target.strip():
