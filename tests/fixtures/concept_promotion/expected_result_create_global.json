@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "source_id": "ebook:alpha-book",
+  "primary_lang": "en",
+  "candidates_extracted": 1,
+  "items": [
+    {
+      "item_kind": "concept",
+      "item_id": "cand_001_hrv is a biomarker",
+      "recommendation": "include",
+      "action": "create_global_concept",
+      "reason": "recurring across 2 chapters; no global match found; 2 evidence quotes available",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "concept://cand_001_hrv is a biomarker",
+          "locator": "concept-quote-1",
+          "excerpt": "HRV is a biomarker. Studies show correlation with mortality.",
+          "confidence": 0.7
+        },
+        {
+          "kind": "chapter_quote",
+          "source_path": "concept://cand_001_hrv is a biomarker",
+          "locator": "concept-quote-2",
+          "excerpt": "HRV is a biomarker. Studies show correlation with mortality.",
+          "confidence": 0.7
+        }
+      ],
+      "risk": [],
+      "confidence": 0.75,
+      "source_importance": 0.7,
+      "reader_salience": 0.0,
+      "concept_label": "HRV is a biomarker",
+      "evidence_language": "en",
+      "canonical_match": null,
+      "prior_decision": null,
+      "human_decision": null
+    }
+  ],
+  "risks": [],
+  "error": null
+}
