@@ -26,6 +26,7 @@ from thousand_sunny.routers import (  # noqa: E402
     projects,
     promotion_review,
     repurpose,
+    writing_assist,
     zoro,
 )
 
@@ -91,3 +92,12 @@ app.include_router(projects.page_router)
 # constructing a ``PromotionReviewService``. Without that, the routes return
 # 503. Tests reload the module to inject a fake service.
 app.include_router(promotion_review.router)
+
+# Writing Assist scaffold (ADR-024 Slice 9 / issue #517). Same dependency-
+# injection pattern as #516 — no service wired by default; production must
+# call ``thousand_sunny.routers.writing_assist.set_service(...)`` after
+# constructing a ``WritingAssistService``. Without that, the routes return
+# 503. Tests reload the module to inject a fake service. The route NEVER
+# composes prose — only renders scaffold structure; the surface enforces
+# W1-W7 no-ghostwriting invariants.
+app.include_router(writing_assist.router)

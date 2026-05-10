@@ -1,0 +1,298 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Writing Assist scaffold (ADR-024 Slice 9 / issue #517)
+
+   Tokens-only — every color, font, spacing, radius value is a `var(--brk-*)`
+   reference into the canonical `tokens.css` (loaded alongside this file).
+   No hardcoded hex / rgb / fontnames here. Brief §5 RT3 + §5 self-imposed
+   gate forbid hardcoding; CI greps for offenders.
+
+   Dense scaffold-tool aesthetic — outline overview at top, per-section
+   blocks below. Editorial restraint: hairline rules, ≤4px radius, terracotta
+   accent reserved for the active outline anchor + focus ring. AAA contrast
+   on body text via `--brk-ink` on `--brk-bg`.
+
+   Architectural marker: this stylesheet styles SCAFFOLD chrome only —
+   headings, lists, blockquotes for excerpts. There is no "intro paragraph"
+   or "conclusion" style class; rendering 修修's voice as prose is forbidden
+   at the surface layer (W1-W7). The blockquote class IS the only place
+   prose-shaped content is rendered (because it's quoted source content).
+   ───────────────────────────────────────────────────────────────────────── */
+
+.wa-shell {
+  background: var(--brk-bg);
+  color: var(--brk-ink);
+  font-family: var(--brk-font-sans);
+  font-size: var(--brk-t-base);
+  line-height: var(--brk-lh-base);
+  min-height: 100vh;
+  padding: var(--brk-s-5) var(--brk-s-7);
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+
+.wa-topbar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--brk-s-2);
+  padding-bottom: var(--brk-s-5);
+  border-bottom: 1px solid var(--brk-rule);
+  margin-bottom: var(--brk-s-6);
+}
+
+.wa-topbar__brand {
+  color: var(--brk-ink-3);
+  letter-spacing: var(--brk-track-caps);
+}
+
+.wa-topbar__title {
+  font-family: var(--brk-font-serif);
+  font-size: var(--brk-t-xl);
+  line-height: var(--brk-lh-snug);
+  font-weight: 500;
+  letter-spacing: var(--brk-track-tight);
+  color: var(--brk-ink);
+  margin: 0;
+}
+
+.wa-topbar__caption {
+  color: var(--brk-ink-3);
+  margin: 0;
+}
+
+/* ── Error / empty states ────────────────────────────────────────────── */
+
+.wa-error,
+.wa-empty {
+  background: var(--brk-panel);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-3);
+  padding: var(--brk-s-7);
+  display: grid;
+  gap: var(--brk-s-3);
+}
+
+.wa-error {
+  border-color: var(--brk-danger);
+}
+
+.wa-error__title,
+.wa-empty__title {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  font-size: var(--brk-t-md);
+  line-height: var(--brk-lh-snug);
+  color: var(--brk-ink);
+  margin: 0;
+}
+
+.wa-error__body {
+  color: var(--brk-danger);
+  margin: 0;
+  word-break: break-word;
+}
+
+.wa-error__hint,
+.wa-empty__body {
+  color: var(--brk-ink-3);
+  margin: 0;
+}
+
+/* ── Outline overview ────────────────────────────────────────────────── */
+
+.wa-overview {
+  background: var(--brk-panel);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-3);
+  padding: var(--brk-s-5) var(--brk-s-6);
+  margin-bottom: var(--brk-s-6);
+  display: grid;
+  gap: var(--brk-s-3);
+}
+
+.wa-overview__caps {
+  color: var(--brk-ink-3);
+  margin: 0;
+}
+
+.wa-overview__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--brk-s-2);
+}
+
+.wa-overview__item {
+  margin: 0;
+}
+
+.wa-overview__link {
+  color: var(--brk-mark);
+  text-decoration: none;
+  font-size: var(--brk-t-sm);
+  letter-spacing: var(--brk-track-caps);
+  padding: var(--brk-s-1) var(--brk-s-2);
+  border-radius: var(--brk-r-2);
+}
+
+.wa-overview__link:hover {
+  color: var(--brk-mark-2);
+  background: var(--brk-mark-soft);
+}
+
+.wa-overview__link:focus-visible {
+  outline: none;
+  box-shadow: var(--brk-focus);
+}
+
+/* ── Section blocks ──────────────────────────────────────────────────── */
+
+.wa-blocks {
+  display: grid;
+  gap: var(--brk-s-7);
+}
+
+.wa-block {
+  display: grid;
+  gap: var(--brk-s-4);
+  padding: var(--brk-s-5) 0;
+  border-top: 1px solid var(--brk-rule);
+}
+
+.wa-block:first-child {
+  border-top: none;
+}
+
+.wa-block__heading {
+  font-family: var(--brk-font-serif);
+  font-size: var(--brk-t-lg);
+  line-height: var(--brk-lh-snug);
+  letter-spacing: var(--brk-track-tight);
+  color: var(--brk-ink);
+  font-weight: 500;
+  margin: 0;
+}
+
+.wa-block__group {
+  display: grid;
+  gap: var(--brk-s-2);
+}
+
+.wa-block__caps {
+  color: var(--brk-ink-3);
+  margin: 0;
+  letter-spacing: var(--brk-track-caps);
+}
+
+.wa-block__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--brk-s-3);
+}
+
+.wa-block__item {
+  display: grid;
+  gap: var(--brk-s-1);
+  padding: var(--brk-s-3) var(--brk-s-4);
+  border: 1px solid var(--brk-rule-2);
+  border-radius: var(--brk-r-2);
+  background: var(--brk-panel);
+  color: var(--brk-ink);
+}
+
+.wa-block__item--question {
+  border-left: 2px solid var(--brk-mark);
+  font-family: var(--brk-font-zh);
+}
+
+.wa-block__item--missing {
+  border-left: 2px solid var(--brk-warn);
+  font-family: var(--brk-font-zh);
+}
+
+.wa-block__item--evidence {
+  background: var(--brk-bg-2);
+}
+
+.wa-block__pointer-meta {
+  display: flex;
+  gap: var(--brk-s-2);
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--brk-ink-3);
+}
+
+.wa-block__locator,
+.wa-block__pointer-id {
+  font-size: var(--brk-t-xs);
+  color: var(--brk-ink-3);
+}
+
+.wa-block__excerpt {
+  font-family: var(--brk-font-serif);
+  font-size: var(--brk-t-read);
+  line-height: var(--brk-lh-read);
+  color: var(--brk-ink);
+  border-left: 3px solid var(--brk-rule);
+  padding: var(--brk-s-2) var(--brk-s-4);
+  margin: 0;
+  background: var(--brk-bg-2);
+  font-style: italic;
+}
+
+.wa-block__source {
+  color: var(--brk-ink-3);
+  margin: 0;
+}
+
+/* ── Pills (evidence kind) ───────────────────────────────────────────── */
+
+.wa-pill {
+  display: inline-block;
+  padding: var(--brk-s-1) var(--brk-s-2);
+  border-radius: var(--brk-r-2);
+  font-size: var(--brk-t-micro);
+  letter-spacing: var(--brk-track-caps);
+  text-transform: uppercase;
+  border: 1px solid var(--brk-rule);
+  background: var(--brk-panel);
+  color: var(--brk-ink-2);
+  white-space: nowrap;
+}
+
+.wa-pill--annotation {
+  border-color: var(--brk-mark);
+  color: var(--brk-mark);
+}
+
+.wa-pill--source_quote {
+  border-color: var(--brk-good);
+  color: var(--brk-good);
+}
+
+.wa-pill--concept_link {
+  border-color: var(--brk-warn);
+  color: var(--brk-warn);
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────── */
+
+.wa-footer {
+  margin-top: var(--brk-s-7);
+  padding-top: var(--brk-s-5);
+  border-top: 1px solid var(--brk-rule);
+  color: var(--brk-ink-3);
+  text-align: center;
+}
+
+/* ── Reduced-motion accommodations ───────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-overview__link {
+    transition: none;
+  }
+}

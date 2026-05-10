@@ -1,0 +1,166 @@
+{# ─────────────────────────────────────────────────────────────────────────
+   Writing Assist scaffold (ADR-024 Slice 9 / issue #517)
+
+   Renders the WritingAssistOutput as a navigable scaffold:
+     - section blocks  → <section> with <h2> heading + bulleted prompts
+     - question prompts → <ul> of open-ended <li> questions (terminal '?')
+     - evidence pointers → <blockquote> for excerpts so screen readers +
+       visual scan distinguish quoted source from authored content
+     - missing-piece prompts → <ul> with explicit "needs evidence" framing
+
+   Hard architectural invariants (ADR-024 §Decision):
+   - NO authored prose in body — only headings, bullets, blockquoted excerpts
+   - NO first-person voice in any non-excerpt copy
+   - NO LLM-rendered "summary" or "intro" paragraph
+
+   Tokens-only design — every color / font / spacing is a `var(--brk-*)`
+   reference into the canonical `tokens.css` (loaded alongside
+   `writing_assist.css`). No hardcoded hex / rgb / fontnames. Brief §5 RT3
+   asserts the no-hardcoded-tokens rule.
+   ─────────────────────────────────────────────────────────────────────────#}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Writing Assist · {{ package.source_id if package else encoded_id }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,500;1,400;1,500&family=Noto+Serif+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/static/projects/tokens.css" />
+  <link rel="stylesheet" href="/static/writing_assist.css" />
+</head>
+<body class="brk-root brk-light">
+<main class="wa-shell"
+      data-mode="scaffold"
+      data-encoded-id="{{ encoded_id }}"
+      data-source-id="{{ package.source_id if package else '' }}">
+
+  <header class="wa-topbar">
+    <div class="wa-topbar__brand">
+      <span class="brk-caps">writing assist · stage 3 → 4 · scaffold only</span>
+    </div>
+    <h1 class="wa-topbar__title">
+      {{ package.source_id if package else encoded_id }}
+    </h1>
+    <p class="wa-topbar__caption">
+      <span class="brk-caps">scaffold only · 不代寫正文</span>
+    </p>
+  </header>
+
+  {% if error_message %}
+    <section class="wa-error" aria-label="Package build error" role="alert">
+      <p class="wa-error__title">這份 package 建構失敗</p>
+      <p class="wa-error__body brk-mono">{{ error_message }}</p>
+      <p class="wa-error__hint">
+        <span class="brk-caps">retry · 重跑 builder 或檢查上游 source map</span>
+      </p>
+    </section>
+  {% elif output is none %}
+    <section class="wa-empty" aria-label="No output rendered">
+      <p class="wa-empty__title">No scaffold to render.</p>
+    </section>
+  {% else %}
+
+    {% if output.section_blocks | length == 0 %}
+      <section class="wa-empty" aria-label="No clusters yet">
+        <p class="wa-empty__title">這份 source 還沒形成 idea clusters。</p>
+        <p class="wa-empty__body">
+          <span class="brk-caps">需要先做 reading overlay · annotations · digest</span>
+        </p>
+      </section>
+    {% else %}
+
+      <section class="wa-overview" aria-label="Outline overview">
+        <p class="brk-caps wa-overview__caps">outline · {{ output.section_blocks | length }} clusters</p>
+        <ol class="wa-overview__list" role="list">
+          {% for block in output.section_blocks %}
+            {% set block_id = "block-" ~ loop.index %}
+            <li class="wa-overview__item">
+              <a href="#{{ block_id }}" class="wa-overview__link brk-mono">
+                {{ block.heading }}
+              </a>
+            </li>
+          {% endfor %}
+        </ol>
+      </section>
+
+      <section class="wa-blocks" aria-label="Section blocks">
+        {% for block in output.section_blocks %}
+          {% set block_id = "block-" ~ loop.index %}
+          <section class="wa-block"
+                   id="{{ block_id }}"
+                   aria-labelledby="{{ block_id }}-heading">
+            <h2 class="wa-block__heading" id="{{ block_id }}-heading">
+              {{ block.heading }}
+            </h2>
+
+            {% if block.question_prompts %}
+              <div class="wa-block__group" aria-label="Open questions for this section">
+                <p class="brk-caps wa-block__caps">open questions</p>
+                <ul class="wa-block__list" role="list">
+                  {% for prompt in block.question_prompts %}
+                    <li class="wa-block__item wa-block__item--question">
+                      {{ prompt }}
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endif %}
+
+            {% if block.evidence_pointers %}
+              <div class="wa-block__group" aria-label="Evidence pointers for this section">
+                <p class="brk-caps wa-block__caps">evidence pointers · {{ block.evidence_pointers | length }}</p>
+                <ul class="wa-block__list" role="list">
+                  {% for pointer in block.evidence_pointers %}
+                    {% set pointer_id = output.pointer_index.get(pointer.locator, "") %}
+                    <li class="wa-block__item wa-block__item--evidence">
+                      <span class="wa-block__pointer-meta">
+                        <span class="wa-pill wa-pill--{{ pointer.item_kind }} brk-mono">
+                          {{ pointer.item_kind }}
+                        </span>
+                        <span class="wa-block__locator brk-mono">{{ pointer.locator }}</span>
+                        {% if pointer_id %}
+                          <span class="wa-block__pointer-id brk-mono">#{{ pointer_id }}</span>
+                        {% endif %}
+                      </span>
+                      <blockquote class="wa-block__excerpt"
+                                  cite="{{ pointer.locator }}">
+                        {{ pointer.excerpt }}
+                      </blockquote>
+                      <p class="wa-block__source brk-caps">{{ pointer.source }}</p>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endif %}
+
+            {% if block.missing_piece_prompts %}
+              <div class="wa-block__group" aria-label="Missing pieces for this section">
+                <p class="brk-caps wa-block__caps">missing pieces</p>
+                <ul class="wa-block__list" role="list">
+                  {% for prompt in block.missing_piece_prompts %}
+                    <li class="wa-block__item wa-block__item--missing">
+                      {{ prompt }}
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endif %}
+          </section>
+        {% endfor %}
+      </section>
+
+    {% endif %}
+
+  {% endif %}
+
+  <footer class="wa-footer" aria-label="Writing assist boundary notice">
+    <p class="brk-caps">
+      stage 4 boundary · scaffold only · 修修 hand-writes Line 2 atomic content
+    </p>
+  </footer>
+</main>
+</body>
+</html>
