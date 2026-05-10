@@ -1,6 +1,6 @@
 """Behavior tests for ``shared.source_map_builder`` (ADR-024 Slice 5 / #513).
 
-17 tests covering Brief §5:
+Brief §5 acceptance T1-T17 plus regression coverage:
 
 - T1  long-source ebook (5 chapters) → ≥5 items + 1 ``index`` overview
 - T2  short-source markdown → 1 ``whole`` consolidated item
@@ -20,6 +20,11 @@
 - T16 markdown with 3 H2 sections → 3 items with chapter_ref sec-1/sec-2/sec-3
 - T17 SourceMapBuildResult round-trips via model_dump / model_validate
 
+Regression tests added post-review (#526 codex):
+
+- F1-analog ``error is not None ⇒ items=[]`` model_validator rejects mismatch
+- root-OPF EPUB (``content.opf`` at archive root) extracts spine items
+
 Tests inject in-memory dict-backed ``blob_loader`` callables so no real
 filesystem / vault is touched.
 """
@@ -33,8 +38,13 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from shared.schemas.promotion_manifest import EvidenceAnchor, RiskFlag
+from shared.schemas.promotion_manifest import (
+    EvidenceAnchor,
+    RiskFlag,
+    SourcePageReviewItem,
+)
 from shared.schemas.reading_source import ReadingSource, SourceVariant
 from shared.schemas.source_map import (
     ClaimExtractionResult,
@@ -894,3 +904,137 @@ def test_build_malformed_epub_routes_to_error_state():
     # Either epub_parse_failed or epub_body_failed depending on which step
     # fails first; both are acceptable.
     assert "epub_parse_failed" in result.error or "epub_body_failed" in result.error
+
+
+# ── Post-review regression tests (codex #526) ───────────────────────────────
+
+
+def test_source_map_build_result_error_implies_empty_items_invariant():
+    """F1-analog: schema-level ``error ⇒ items=[]`` model_validator.
+
+    Mirrors PR #523's ``test_preflight_report_error_implies_defer_invariant``.
+    Builder failures must surface as ``items=[]`` + ``error=...``; downstream
+    slices (#514-#517) MUST NOT consume an error+non-empty-items combination.
+
+    Codex review on PR #526 flagged this gap as a P0 analog (no
+    ``model_validator`` was previously enforcing the docstring claim).
+    """
+    # Valid: error set, items empty (the documented failure shape).
+    SourceMapBuildResult(
+        source_id="ebook:foo",
+        primary_lang="en",
+        has_evidence_track=True,
+        chapters_inspected=0,
+        items=[],
+        risks=[],
+        error="extractor_failed: simulated",
+    )
+
+    # Construct one valid SourcePageReviewItem to put on the invalid result.
+    item = SourcePageReviewItem(
+        item_id="foo::index",
+        recommendation="defer",
+        action="create",
+        reason="placeholder",
+        evidence=[],
+        risk=[],
+        confidence=0.5,
+        source_importance=0.5,
+        reader_salience=0.0,
+        target_kb_path="KB/Wiki/Sources/foo/index.md",
+        chapter_ref="index",
+    )
+
+    # Invalid: error set AND items non-empty → model_validator raises.
+    with pytest.raises(ValidationError, match="error is not None requires items"):
+        SourceMapBuildResult(
+            source_id="ebook:foo",
+            primary_lang="en",
+            has_evidence_track=True,
+            chapters_inspected=1,
+            items=[item],
+            risks=[],
+            error="extractor_failed: simulated",
+        )
+
+
+def _make_root_opf_epub_blob() -> bytes:
+    """Minimal EPUB with content.opf + chapters at the archive ROOT (no
+    ``OEBPS/`` prefix). Many real-world EPUB generators do this; the standard
+    fixture in ``_epub_fixtures.py`` always uses ``OEBPS/`` so it can't
+    exercise the root-OPF code path.
+    """
+    import io
+    import zipfile
+
+    container_xml = (
+        '<?xml version="1.0"?>'
+        '<container version="1.0" '
+        'xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+        "<rootfiles>"
+        '<rootfile full-path="content.opf" '
+        'media-type="application/oebps-package+xml"/>'
+        "</rootfiles>"
+        "</container>"
+    )
+    opf_xml = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" '
+        'unique-identifier="bookid">'
+        '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        '<dc:identifier id="bookid">urn:isbn:9780000000001</dc:identifier>'
+        "<dc:title>Root OPF Book</dc:title>"
+        "<dc:language>en</dc:language>"
+        "</metadata>"
+        '<manifest><item id="ch1" href="ch1.xhtml" '
+        'media-type="application/xhtml+xml"/></manifest>'
+        '<spine><itemref idref="ch1"/></spine>'
+        "</package>"
+    )
+    ch1 = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        "<!DOCTYPE html>"
+        '<html xmlns="http://www.w3.org/1999/xhtml">'
+        "<head><title>Chapter 1</title></head>"
+        "<body><h1>Root chapter</h1>"
+        "<p>" + ("body word " * 60) + "</p>"
+        "</body></html>"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            zipfile.ZipInfo("mimetype"),
+            "application/epub+zip",
+            compress_type=zipfile.ZIP_STORED,
+        )
+        zf.writestr("META-INF/container.xml", container_xml)
+        zf.writestr("content.opf", opf_xml)
+        zf.writestr("ch1.xhtml", ch1)
+    return buf.getvalue()
+
+
+def test_build_root_opf_epub_extracts_spine():
+    """Regression for codex #526 finding: EPUB with content.opf at archive root.
+
+    ``PurePosixPath("content.opf").parent`` is ``PurePosixPath(".")`` and
+    ``str(...)`` is ``"."``. Prior to fix, the truthy ``opf_dir`` guard
+    produced ``"./ch1.xhtml"`` paths that didn't match ``zf.namelist()``
+    keys (which lack the leading ``./``), so all spine items were silently
+    dropped → ``items=[]`` with no error set. Fix normalizes ``opf_dir == "."``
+    to ``""``.
+    """
+    blob = _make_root_opf_epub_blob()
+
+    rs = _ebook_source(book_id="root-opf-book")
+    loader = _dict_loader({rs.variants[0].path: blob})
+    builder = SourceMapBuilder(blob_loader=loader)
+    result = builder.build(rs, _CannedExtractor(_full_extraction()))
+
+    assert result.error is None, f"unexpected error: {result.error}"
+    assert result.chapters_inspected >= 1, (
+        "root-OPF spine resolution silently dropped chapter — opf_dir guard regression"
+    )
+    assert len(result.items) >= 1
+    assert any(item.chapter_ref != "whole" for item in result.items) or any(
+        item.chapter_ref == "whole" for item in result.items
+    )

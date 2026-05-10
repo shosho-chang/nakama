@@ -25,13 +25,20 @@ Hard invariants enforced by the builder (see ``SourceMapBuilder`` docstring):
 - B4 Sum of all emitted excerpt chars ≤ 30% of inspected chapter chars.
 - B5 ``SourcePageReviewItem.chapter_ref`` unique within ``items``.
 - B6 Extractor failure (narrow exception tuple) → ``items=[]`` + ``error=...``.
+
+Hard invariant enforced on this schema (Pydantic ``model_validator``):
+
+- ``error is not None`` ⇒ ``items == []``.
+  Builder failures MUST surface as empty items + error message; downstream
+  slices (#514-#517) MUST NOT consume an error+non-empty-items combination.
+  Mirrors the F1-analog fix on ``PreflightReport`` (#511).
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shared.schemas.promotion_manifest import (
     RiskFlag,
@@ -174,3 +181,15 @@ class SourceMapBuildResult(BaseModel):
     exception tuple caught a documented failure. On error, ``items=[]``
     and the caller is responsible for routing to ``defer`` (mirrors #511
     inspector_error policy)."""
+
+    @model_validator(mode="after")
+    def _hard_invariant_error_implies_empty_items(self) -> SourceMapBuildResult:
+        if self.error is not None and self.items:
+            raise ValueError(
+                f"error is not None requires items=[]; got {len(self.items)} "
+                f"item(s) with error={self.error!r}. Builder failures must "
+                f"surface as empty items + error per Brief §6 / B6; downstream "
+                f"slices (#514-#517) MUST NOT consume an error+non-empty-items "
+                f"combination. Mirrors #511 F1 inspector_error/defer pattern."
+            )
+        return self

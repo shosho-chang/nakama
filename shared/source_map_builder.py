@@ -848,6 +848,13 @@ def _extract_epub_spine_items(blob: bytes) -> list[tuple[str, str]]:
         opf_path = _find_opf_path(zf.read("META-INF/container.xml"))
         opf_root = ET.fromstring(zf.read(opf_path).decode("utf-8", errors="replace"))
         opf_dir = str(PurePosixPath(opf_path).parent)
+        if opf_dir == ".":
+            # Root-level OPF (PurePosixPath("content.opf").parent is ".").
+            # Truthy "." would prefix manifest hrefs with "./" which won't
+            # match zipfile.namelist() keys; normalize to "" so the
+            # ``if opf_dir else href`` guard in _build_manifest_map skips
+            # the prefix entirely.
+            opf_dir = ""
 
         manifest_map = _build_manifest_map(opf_root, opf_dir)
         spine = opf_root.find(f"{{{_NS_OPF}}}spine")
