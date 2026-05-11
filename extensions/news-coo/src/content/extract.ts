@@ -3,6 +3,7 @@
 
 import Defuddle from "defuddle/full";
 import type { ExtractedPage, ImageRef } from "../shared/types.js";
+import { dispatchCleaners } from "./siteCleaners/index.js";
 
 function collectImageRefs(
   doc: Document,
@@ -33,13 +34,21 @@ export function extractPage(
   url: string,
   selectionHtml?: string,
 ): ExtractedPage {
-  let targetDoc = doc;
+  let targetDoc: Document;
   if (selectionHtml) {
     // Create a minimal document containing only the selected fragment so
     // Defuddle operates on the selection rather than the full page.
     targetDoc = doc.implementation.createHTMLDocument(doc.title);
     targetDoc.body.innerHTML = selectionHtml;
+  } else {
+    // Clone the live page so site cleaners never mutate the user's tab.
+    // ADR-025 invariant: cleaners run on a clone, never the live document.
+    targetDoc = doc.implementation.createHTMLDocument(doc.title);
+    targetDoc.documentElement.innerHTML = doc.documentElement.innerHTML;
   }
+  // Run per-site DOM cleaners (no-op for non-matching hosts and for
+  // selection-clip paths where the user already curated the content).
+  dispatchCleaners(targetDoc, url, { skip: Boolean(selectionHtml) });
   const result = new Defuddle(targetDoc, { url, separateMarkdown: true }).parse();
   const imageRefs = collectImageRefs(targetDoc, result.content, url);
   return {
