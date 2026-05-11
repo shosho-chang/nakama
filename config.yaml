@@ -8,7 +8,7 @@ notification:
 agents:
   robin:
     description: "Knowledge Base — 攝入來源、產出摘要、維護 Wiki"
-    inbox_path: Inbox/kb
+    inbox_path: Inbox
     trigger: manual  # Web UI 觸發，不走 cron（cron 會繞過 review 流程）
     style_profile: config/style-profile.json
 
