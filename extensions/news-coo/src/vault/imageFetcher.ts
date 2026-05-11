@@ -119,10 +119,8 @@ async function resolveAttachmentDir(
   root: FileSystemDirectoryHandle,
   slug: string,
 ): Promise<FileSystemDirectoryHandle> {
-  const kb = await root.getDirectoryHandle("KB", { create: true });
-  const att = await kb.getDirectoryHandle("Attachments", { create: true });
-  const web = await att.getDirectoryHandle("web", { create: true });
-  return web.getDirectoryHandle(slug, { create: true });
+  const att = await root.getDirectoryHandle("attachments", { create: true });
+  return att.getDirectoryHandle(slug, { create: true });
 }
 
 async function writeImageFile(
@@ -164,7 +162,7 @@ export async function fetchAndRewriteImages(
   let failedCount = 0;
 
   const dir = await resolveAttachmentDir(root, slug);
-  const vaultPrefix = `KB/Attachments/web/${slug}`;
+  const vaultPrefix = `attachments/${slug}`;
 
   for (let i = 0; i < uniqueUrls.length; i++) {
     const url = uniqueUrls[i];

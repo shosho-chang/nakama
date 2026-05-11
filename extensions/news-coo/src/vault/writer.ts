@@ -20,17 +20,6 @@ export interface WriteResult {
   path: string;
 }
 
-async function resolveDir(
-  root: FileSystemDirectoryHandle,
-  parts: string[],
-): Promise<FileSystemDirectoryHandle> {
-  let dir = root;
-  for (const part of parts) {
-    dir = await dir.getDirectoryHandle(part, { create: true });
-  }
-  return dir;
-}
-
 async function fileExists(
   dir: FileSystemDirectoryHandle,
   name: string,
@@ -47,8 +36,7 @@ export async function checkSlugExists(
   root: FileSystemDirectoryHandle,
   slug: string,
 ): Promise<boolean> {
-  const inboxDir = await resolveDir(root, ["Inbox", "kb"]);
-  return fileExists(inboxDir, `${slug}.md`);
+  return fileExists(root, `${slug}.md`);
 }
 
 export async function writeToVaultExact(
@@ -56,12 +44,11 @@ export async function writeToVaultExact(
   slug: string,
   content: string,
 ): Promise<WriteResult> {
-  const inboxDir = await resolveDir(root, ["Inbox", "kb"]);
-  const fileHandle = await inboxDir.getFileHandle(`${slug}.md`, { create: true });
+  const fileHandle = await root.getFileHandle(`${slug}.md`, { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write(content);
   await writable.close();
-  return { slug, path: `Inbox/kb/${slug}.md` };
+  return { slug, path: `${slug}.md` };
 }
 
 export async function writeToVault(
@@ -69,24 +56,22 @@ export async function writeToVault(
   slug: string,
   content: string,
 ): Promise<WriteResult> {
-  const inboxDir = await resolveDir(root, ["Inbox", "kb"]);
-
   // Collision detection: auto-suffix until free slot.
   let finalSlug = slug;
   let suffix = 2;
-  while (await fileExists(inboxDir, `${finalSlug}.md`)) {
+  while (await fileExists(root, `${finalSlug}.md`)) {
     finalSlug = `${slug}-${suffix}`;
     suffix++;
   }
 
-  const fileHandle = await inboxDir.getFileHandle(`${finalSlug}.md`, {
+  const fileHandle = await root.getFileHandle(`${finalSlug}.md`, {
     create: true,
   });
   const writable = await fileHandle.createWritable();
   await writable.write(content);
   await writable.close();
 
-  return { slug: finalSlug, path: `Inbox/kb/${finalSlug}.md` };
+  return { slug: finalSlug, path: `${finalSlug}.md` };
 }
 
 export interface WritePageOptions {
