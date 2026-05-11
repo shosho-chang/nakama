@@ -38,7 +38,7 @@ class MemDirHandle {
   }
 
   attachmentDir(slug: string): MemDirHandle | undefined {
-    return this.dirs.get("KB")?.dirs.get("Attachments")?.dirs.get("web")?.dirs.get(slug);
+    return this.dirs.get("attachments")?.dirs.get(slug);
   }
 }
 
@@ -124,7 +124,7 @@ describe("fetchAndRewriteImages", () => {
     expect(result.savedCount).toBe(1);
     expect(result.failedCount).toBe(0);
     expect(result.rewrittenMarkdown).toBe(
-      "![alt](KB/Attachments/web/my-slug/img-1.png)",
+      "![alt](attachments/my-slug/img-1.png)",
     );
     const dir = root.attachmentDir("my-slug");
     expect(dir?.files.has("img-1.png")).toBe(true);

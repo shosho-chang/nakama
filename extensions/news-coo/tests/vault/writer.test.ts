@@ -55,9 +55,6 @@ class MemDirHandle {
     return this.files.get(name);
   }
 
-  getInboxKb(): MemDirHandle | undefined {
-    return this.dirs.get("Inbox")?.dirs.get("kb");
-  }
 }
 
 describe("writeToVault", () => {
@@ -71,9 +68,9 @@ describe("writeToVault", () => {
     );
 
     expect(result.slug).toBe("test-article");
-    expect(result.path).toBe("Inbox/kb/test-article.md");
+    expect(result.path).toBe("test-article.md");
 
-    const file = root.getInboxKb()?.getFile("test-article.md");
+    const file = root.getFile("test-article.md");
     expect(file).toBeDefined();
     expect(file?.content()).toBe(content);
   });
@@ -96,7 +93,7 @@ describe("writeToVault", () => {
     );
 
     expect(result.slug).toBe("my-article-2");
-    expect(result.path).toBe("Inbox/kb/my-article-2.md");
+    expect(result.path).toBe("my-article-2.md");
   });
 
   it("increments suffix past -2 when needed", async () => {
@@ -148,8 +145,8 @@ describe("writeToVaultExact", () => {
       "exact content",
     );
     expect(result.slug).toBe("exact-slug");
-    expect(result.path).toBe("Inbox/kb/exact-slug.md");
-    expect(root.getInboxKb()?.getFile("exact-slug.md")?.content()).toBe("exact content");
+    expect(result.path).toBe("exact-slug.md");
+    expect(root.getFile("exact-slug.md")?.content()).toBe("exact content");
   });
 
   it("overwrites content when called twice with the same slug", async () => {
@@ -164,7 +161,7 @@ describe("writeToVaultExact", () => {
       "dup",
       "second",
     );
-    expect(root.getInboxKb()?.getFile("dup.md")?.content()).toBe("second");
+    expect(root.getFile("dup.md")?.content()).toBe("second");
   });
 });
 
@@ -186,7 +183,7 @@ describe("writePageToVault", () => {
       FAKE_PAGE,
     );
     expect(result.slug).toBe("test-article");
-    expect(result.path).toBe("Inbox/kb/test-article.md");
+    expect(result.path).toBe("test-article.md");
   });
 
   it("skips image fetching when fetchImages is false", async () => {
@@ -216,7 +213,7 @@ describe("writePageToVault", () => {
       FAKE_PAGE,
       { highlights: [{ text: "notable passage" }] },
     );
-    const file = root.getInboxKb()?.getFile("test-article.md");
+    const file = root.getFile("test-article.md");
     expect(file?.content()).toContain("notable passage");
   });
 });
