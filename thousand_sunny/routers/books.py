@@ -91,11 +91,7 @@ def _extract_body_sample(epub_bytes: bytes) -> str | None:
     """
     try:
         with zipfile.ZipFile(io.BytesIO(epub_bytes)) as zf:
-            xhtml_names = [
-                n
-                for n in zf.namelist()
-                if n.lower().endswith((".xhtml", ".html"))
-            ]
+            xhtml_names = [n for n in zf.namelist() if n.lower().endswith((".xhtml", ".html"))]
             if not xhtml_names:
                 return None
             # Sort to pick the first content document deterministically;
@@ -197,10 +193,7 @@ async def books_upload(
     if mode not in _VALID_MODE_FORM_VALUES:
         raise HTTPException(
             400,
-            detail=(
-                f"invalid mode={mode!r}; expected one of "
-                f"{sorted(_VALID_MODE_FORM_VALUES)}"
-            ),
+            detail=(f"invalid mode={mode!r}; expected one of {sorted(_VALID_MODE_FORM_VALUES)}"),
         )
 
     bilingual_bytes = (

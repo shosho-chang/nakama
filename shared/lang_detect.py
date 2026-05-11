@@ -52,8 +52,8 @@ def _is_han(ch: str) -> bool:
     Chinese, Japanese kanji, and Korean hanja). Excludes punctuation."""
     cp = ord(ch)
     return (
-        0x4E00 <= cp <= 0x9FFF       # CJK Unified Ideographs
-        or 0x3400 <= cp <= 0x4DBF    # CJK Unified Ideographs Extension A
+        0x4E00 <= cp <= 0x9FFF  # CJK Unified Ideographs
+        or 0x3400 <= cp <= 0x4DBF  # CJK Unified Ideographs Extension A
         or 0x20000 <= cp <= 0x2A6DF  # Extension B
     )
 
@@ -61,9 +61,9 @@ def _is_han(ch: str) -> bool:
 def _is_hangul(ch: str) -> bool:
     cp = ord(ch)
     return (
-        0xAC00 <= cp <= 0xD7AF        # Hangul syllables
-        or 0x1100 <= cp <= 0x11FF     # Hangul Jamo
-        or 0x3130 <= cp <= 0x318F     # Hangul Compatibility Jamo
+        0xAC00 <= cp <= 0xD7AF  # Hangul syllables
+        or 0x1100 <= cp <= 0x11FF  # Hangul Jamo
+        or 0x3130 <= cp <= 0x318F  # Hangul Compatibility Jamo
     )
 
 

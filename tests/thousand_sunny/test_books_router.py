@@ -248,9 +248,7 @@ def test_upload_zh_epub_auto_detects_monolingual_zh(app_client, books_dir):
     assert row.has_original is False
 
 
-def test_upload_zh_epub_without_metadata_lang_falls_back_to_body_sample(
-    app_client, books_dir
-):
+def test_upload_zh_epub_without_metadata_lang_falls_back_to_body_sample(app_client, books_dir):
     """When EPUB metadata.lang is absent, the route extracts a body sample
     and falls back to ``shared.lang_detect``. zh body → monolingual-zh."""
     from tests.shared._epub_fixtures import epub_monolingual_zh

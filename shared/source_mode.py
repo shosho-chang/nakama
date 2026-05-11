@@ -44,11 +44,7 @@ def _is_zh_lang_code(lang: str | None) -> bool:
     if not lang:
         return False
     normalised = lang.strip().lower().replace("_", "-")
-    return (
-        normalised.startswith("zh")
-        or normalised == "zho"
-        or normalised == "chi"
-    )
+    return normalised.startswith("zh") or normalised == "zho" or normalised == "chi"
 
 
 def _is_en_lang_code(lang: str | None) -> bool:
