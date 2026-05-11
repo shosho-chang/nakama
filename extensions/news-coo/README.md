@@ -9,15 +9,89 @@ It is a thin delivery extension — translation, bilingual rendering, and
 Reader integration are handled downstream by the Robin agent on the Nakama
 backend.
 
-## Status
+## Install (unpacked)
 
-S1 skeleton. Buildable, lintable, testable. No real extraction yet.
+1. Clone the repo and install dependencies:
+   ```bash
+   git clone https://github.com/shosho-chang/nakama.git
+   cd nakama/extensions/news-coo
+   npm install
+   npm run build        # outputs to dist/
+   ```
 
-## Location
+2. Open Chrome and navigate to `chrome://extensions`.
 
-Lives in the Nakama monorepo at `extensions/news-coo/`. History preserved via
-`git subtree add` from the original standalone `E:\news-coo` repo on 2026-05-10.
-Future open-sourcing can split this back out via `git subtree split` if needed.
+3. Enable **Developer mode** (toggle in the top-right corner).
+
+4. Click **Load unpacked** and select the `extensions/news-coo/dist/` folder.
+
+5. The News Coo icon appears in your toolbar. Pin it for quick access.
+
+## First-time setup
+
+1. Click the News Coo icon → an error panel appears: "No vault selected."
+2. Click **Retry** — it opens the **Options** page.  
+   Alternatively, right-click the icon → **Options**.
+3. Click **Pick folder** and select your Obsidian vault root (the folder that
+   contains your `.obsidian/` directory).
+4. Chrome asks for read/write permission — click **Allow**.
+5. The status line shows `Vault: <folder-name>`. You are ready to clip.
+
+## Usage
+
+### Normal clip (with preview)
+
+1. Navigate to any article you want to save.
+2. Press **Alt+Shift+N** (or click the extension icon).
+3. The popup shows a preview with editable **Title**, **Author**, and **Site**
+   fields, plus the auto-generated slug path `Inbox/kb/<slug>.md`.
+4. Optionally highlight passages first (Alt+Shift+M per selection) — the
+   highlight count appears in the preview badge.
+5. Click **Save**. The file is written to your vault. The popup shows the
+   final path.
+
+### Quick clip (no preview)
+
+Press **Alt+Shift+Q** from any page. The extension extracts, writes, and
+sends a Chrome notification — no popup required.
+
+### Mark a selection as highlight
+
+Select text on a page, then press **Alt+Shift+M**. The selection is stored
+in session storage and included in the next clip for that tab.
+
+### Context menu
+
+Right-click any page → **News Coo — Clip this page** to trigger a quick clip
+without using the keyboard shortcut.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| Alt+Shift+N | Open popup (preview before saving) |
+| Alt+Shift+Q | Quick-clip directly to vault |
+| Alt+Shift+M | Mark selected text as highlight |
+
+To change shortcuts: `chrome://extensions/shortcuts`
+
+## Error states
+
+| Error message | Cause | Resolution |
+|---|---|---|
+| No vault selected | Extension was just installed or vault was cleared | Open Options → Pick folder |
+| Vault permission revoked | Chrome cleared site permissions | Open Options → Pick folder again |
+| Could not reach page | Content script not injected (e.g. chrome:// page) | Reload the tab or navigate to a regular URL |
+| Extraction failed | Page content is empty or unsupported | Try on a different page |
+| Write failed | Disk full, read-only filesystem, or quota exceeded | Free disk space and try again |
+
+## Language support
+
+The popup, options page, and notifications automatically switch to **繁體中文**
+when Chrome's UI language is set to `zh-TW` or `zh-Hant`. All other locales
+use English.
+
+To switch Chrome's language: `chrome://settings/languages` → Add `Chinese (Traditional)` → Move to top → Relaunch.
 
 ## Stack
 
@@ -33,26 +107,17 @@ Future open-sourcing can split this back out via `git subtree split` if needed.
 ```bash
 cd extensions/news-coo
 npm install
-npm run build       # → dist/
-npm test            # vitest
-npm run check       # tsc --noEmit
-npm run lint        # eslint
+npm run build          # → dist/
+npm test               # vitest
+npm run test:coverage  # vitest + coverage report (thresholds enforced)
+npm run check          # tsc --noEmit
+npm run lint           # eslint
 ```
 
-Load `dist/` as an unpacked extension in `chrome://extensions`.
+## Location in monorepo
 
-## Implementation slices
-
-1. **S1 skeleton** ← we are here
-2. S2 extraction (Defuddle wrap + content-script wiring + PubMed detector)
-3. S3 FSA writer (vault picker, frontmatter, slug, dedup)
-4. S4 image fetcher (mirrors `shared/image_fetcher.py` conventions)
-5. S5 UX surfaces (popup preview, quick mode, context menu, kbd shortcut)
-6. S6 selection-aware clipping + highlights seed
-7. S7 polish (i18n, error states, CORS-fallback, test coverage)
-
-See `docs/` and the Nakama-side decision memory
-`memory/claude/project_news_coo_grill_decisions.md` for details.
+Lives at `extensions/news-coo/`. History preserved via
+`git subtree add` from the original standalone `E:\news-coo` repo on 2026-05-10.
 
 ## License
 

@@ -13,6 +13,8 @@ import { MSG_EXTRACT } from "../shared/messages.js";
 import type { ExtractResponse } from "../shared/messages.js";
 import type { ExtractedPage } from "../shared/types.js";
 import { getHighlights, clearHighlights } from "../shared/highlights.js";
+import { t } from "../i18n/locale.js";
+import { configureErrorPanel } from "./errorView.js";
 
 export interface PopupDeps {
   loadHandle: () => Promise<FileSystemDirectoryHandle | null>;
@@ -74,23 +76,15 @@ export async function initPopup(deps: PopupDeps): Promise<void> {
   // Load vault handle.
   const handle = await deps.loadHandle();
   if (!handle) {
-    el<HTMLParagraphElement>("error-msg").textContent =
-      "No vault selected. Open extension options to pick a folder.";
+    configureErrorPanel(t("noVaultSelected"), () => void chrome.runtime.openOptionsPage());
     showOnly("state-error");
-    el<HTMLButtonElement>("btn-retry").addEventListener("click", () =>
-      void chrome.runtime.openOptionsPage(),
-    );
     return;
   }
 
   const ok = await deps.verifyHandle(handle);
   if (!ok) {
-    el<HTMLParagraphElement>("error-msg").textContent =
-      "Vault permission revoked. Open extension options to re-pick.";
+    configureErrorPanel(t("vaultPermissionRevoked"), () => void chrome.runtime.openOptionsPage());
     showOnly("state-error");
-    el<HTMLButtonElement>("btn-retry").addEventListener("click", () =>
-      void chrome.runtime.openOptionsPage(),
-    );
     return;
   }
 
@@ -102,12 +96,8 @@ export async function initPopup(deps: PopupDeps): Promise<void> {
     if (!tab?.id) throw new Error("no active tab");
     tabId = tab.id;
   } catch {
-    el<HTMLParagraphElement>("error-msg").textContent =
-      "Could not determine active tab.";
+    configureErrorPanel(t("noActiveTab"), () => void initPopup(deps));
     showOnly("state-error");
-    el<HTMLButtonElement>("btn-retry").addEventListener("click", () =>
-      void initPopup(deps),
-    );
     return;
   }
 
@@ -115,22 +105,14 @@ export async function initPopup(deps: PopupDeps): Promise<void> {
   try {
     response = await deps.sendExtract(tabId);
   } catch {
-    el<HTMLParagraphElement>("error-msg").textContent =
-      "Could not reach page. Try reloading the tab.";
+    configureErrorPanel(t("pageUnreachable"), () => void initPopup(deps));
     showOnly("state-error");
-    el<HTMLButtonElement>("btn-retry").addEventListener("click", () =>
-      void initPopup(deps),
-    );
     return;
   }
 
   if (!response.ok) {
-    el<HTMLParagraphElement>("error-msg").textContent =
-      `Extraction failed: ${response.error}`;
+    configureErrorPanel(t("extractionFailed", response.error), () => void initPopup(deps));
     showOnly("state-error");
-    el<HTMLButtonElement>("btn-retry").addEventListener("click", () =>
-      void initPopup(deps),
-    );
     return;
   }
 
@@ -146,16 +128,19 @@ export async function initPopup(deps: PopupDeps): Promise<void> {
   el<HTMLInputElement>("field-site").value = page.site ?? new URL(page.url).hostname;
 
   const wcEl = el<HTMLSpanElement>("field-word-count");
-  if (page.wordCount) wcEl.textContent = `${page.wordCount} words`;
+  if (page.wordCount) wcEl.textContent = t("wordCount", String(page.wordCount));
 
   const icEl = el<HTMLSpanElement>("field-image-count");
-  if (page.imageRefs.length > 0)
-    icEl.textContent = `${page.imageRefs.length} image${page.imageRefs.length !== 1 ? "s" : ""}`;
+  if (page.imageRefs.length > 0) {
+    const key = page.imageRefs.length === 1 ? "imageCount" : "imageCountPlural";
+    icEl.textContent = t(key, String(page.imageRefs.length));
+  }
 
   const hcEl = el<HTMLSpanElement>("field-highlight-count");
   if (hcEl) {
     if (highlights.length > 0) {
-      hcEl.textContent = `${highlights.length} highlight${highlights.length !== 1 ? "s" : ""}`;
+      const key = highlights.length === 1 ? "highlightCount" : "highlightCountPlural";
+      hcEl.textContent = t(key, String(highlights.length));
       hcEl.hidden = false;
     }
   }
@@ -234,7 +219,7 @@ async function doWrite(
     el<HTMLElement>("saved-path").textContent = result.path;
     showOnly("state-saved");
   } catch (err) {
-    el<HTMLParagraphElement>("error-msg").textContent = `Write failed: ${String(err)}`;
+    configureErrorPanel(t("writeFailed", String(err)), () => showOnly("state-preview"));
     showOnly("state-error");
   }
 }

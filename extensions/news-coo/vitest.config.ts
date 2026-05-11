@@ -14,8 +14,14 @@ export default defineConfig({
         "src/background/serviceWorker.ts",
         "src/content/contentScript.ts",
         "src/popup/popup.ts",
-        "src/options/options.ts"
-      ]
-    }
-  }
+        "src/options/options.ts",
+      ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
+      },
+    },
+  },
 });

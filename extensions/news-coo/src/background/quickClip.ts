@@ -5,6 +5,7 @@ import { getHighlights, clearHighlights } from "../shared/highlights.js";
 import { MSG_EXTRACT } from "../shared/messages.js";
 import type { ExtractResponse } from "../shared/messages.js";
 import type { Highlight } from "../vault/frontmatter.js";
+import { t } from "../i18n/locale.js";
 
 export interface QuickClipDeps {
   loadHandle: () => Promise<FileSystemDirectoryHandle | null>;
@@ -38,13 +39,13 @@ export async function quickClip(
 ): Promise<void> {
   const handle = await deps.loadHandle();
   if (!handle) {
-    deps.notifyError("No vault selected. Open options to pick a folder.");
+    deps.notifyError(t("noVaultSelectedShort"));
     return;
   }
 
   const ok = await deps.verifyHandle(handle);
   if (!ok) {
-    deps.notifyError("Vault permission revoked. Open extension options to re-pick.");
+    deps.notifyError(t("vaultPermissionRevoked"));
     return;
   }
 
@@ -52,12 +53,12 @@ export async function quickClip(
   try {
     response = await deps.sendExtract(tabId);
   } catch {
-    deps.notifyError("Could not reach page. Try reloading the tab.");
+    deps.notifyError(t("pageUnreachable"));
     return;
   }
 
   if (!response.ok) {
-    deps.notifyError(`Extraction failed: ${response.error}`);
+    deps.notifyError(t("extractionFailed", response.error));
     return;
   }
 
@@ -75,6 +76,6 @@ export async function quickClip(
     await deps.clearHighlights(tabId);
     deps.notifySuccess(result.slug);
   } catch (err) {
-    deps.notifyError(`Write failed: ${String(err)}`);
+    deps.notifyError(t("writeFailed", String(err)));
   }
 }
