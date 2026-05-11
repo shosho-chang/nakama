@@ -489,6 +489,24 @@ describe("bmjCleaner", () => {
     bmjCleaner.clean(doc, "https://www.bmj.com/x");
     expect(doc.querySelector("a.xref-bibr")!.getAttribute("href")).toBe("#ref-1");
   });
+
+  it("matches BMJ subdomains (BJSM, etc.)", () => {
+    expect(bmjCleaner.matches("bjsm.bmj.com", "https://bjsm.bmj.com/x")).toBe(true);
+    expect(bmjCleaner.matches("ard.bmj.com", "https://ard.bmj.com/x")).toBe(true);
+  });
+
+  it("injects meta[name=author] from dc.Creator", () => {
+    const doc = makeDoc(`
+      <head>
+        <meta name="dc.Creator" content="Neil Richard Munro">
+        <meta name="dc.Creator" content="Samantha Teague">
+      </head>
+      <body><p>x</p></body>
+    `);
+    bmjCleaner.clean(doc, "https://bjsm.bmj.com/content/60/8/590");
+    const meta = doc.querySelector('head meta[name="author"]')!;
+    expect(meta.getAttribute("content")).toBe("Neil Richard Munro, Samantha Teague");
+  });
 });
 
 describe("sciencedirectCleaner", () => {

@@ -68,6 +68,40 @@ export const bmjCleaner: SiteCleaner = {
       report.removedNodeCount++;
     }
 
+    // Inject `<meta name="author">` from dc.Creator (BMJ family ships one
+    // tag per author). Falls back to `.contributor-list .name` if missing.
+    const head = doc.querySelector("head");
+    if (head && !head.querySelector('meta[name="author"]')?.getAttribute("content")) {
+      const dcCreators = Array.from(
+        doc.querySelectorAll<HTMLMetaElement>(
+          'meta[name="dc.Creator"], meta[name="DC.Creator"], meta[name="citation_author"]',
+        ),
+      ).map((m) => m.content?.trim()).filter((s): s is string => !!s);
+      let authorString = dcCreators.join(", ");
+      if (!authorString) {
+        const contribItems = Array.from(
+          doc.querySelectorAll<HTMLElement>(".contributor-list > li, .contributors li"),
+        );
+        const names: string[] = [];
+        for (const li of contribItems) {
+          const given = li.querySelector(".name-given, [class*='given-name']")?.textContent?.trim() ?? "";
+          const surname = li.querySelector(".name-surname, [class*='family-name'], [class*='surname']")?.textContent?.trim() ?? "";
+          const full = `${given} ${surname}`.trim();
+          if (full) names.push(full);
+        }
+        authorString = names.join(", ");
+      }
+      if (authorString) {
+        const existing = head.querySelector('meta[name="author"]');
+        if (existing) existing.remove();
+        const meta = doc.createElement("meta");
+        meta.setAttribute("name", "author");
+        meta.setAttribute("content", authorString);
+        head.appendChild(meta);
+        report.removedNodeCount++;
+      }
+    }
+
     return report;
   },
 };
