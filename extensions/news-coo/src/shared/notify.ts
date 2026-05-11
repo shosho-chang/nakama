@@ -5,7 +5,7 @@ export function notifySuccess(slug: string): void {
     type: "basic",
     iconUrl: "icons/icon-48.png",
     title: t("notifySuccessTitle"),
-    message: `Inbox/kb/${slug}.md`,
+    message: `${slug}.md`,
   });
 }
 

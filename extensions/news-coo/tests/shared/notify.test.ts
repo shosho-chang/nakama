@@ -32,7 +32,7 @@ describe("notifySuccess", () => {
     const create = setupChrome();
     notifySuccess("my-slug");
     const opts = create.mock.calls[0][1] as { message: string };
-    expect(opts.message).toBe("Inbox/kb/my-slug.md");
+    expect(opts.message).toBe("my-slug.md");
   });
 
   it("uses localised title (English)", () => {
