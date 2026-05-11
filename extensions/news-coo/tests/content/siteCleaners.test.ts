@@ -115,9 +115,10 @@ describe("lancetCleaner", () => {
     // dropBlock and ctrl gone
     expect(doc.querySelectorAll(".dropBlock.reference-citations").length).toBe(0);
     expect(doc.querySelectorAll(".reference-citations__ctrl").length).toBe(0);
-    // citation marker preserved
-    const sups = Array.from(doc.querySelectorAll("sup")).map((s) => s.textContent);
-    expect(sups).toContain("1,2");
+    // citation markers preserved as anchored sup → #ref-N
+    const supAnchors = Array.from(doc.querySelectorAll("sup a"));
+    expect(supAnchors.map((a) => a.getAttribute("href"))).toEqual(["#ref-1", "#ref-2"]);
+    expect(supAnchors.map((a) => a.textContent)).toEqual(["1", "2"]);
     // Reference body text gone from prose
     expect(doc.body.textContent).not.toContain("Lee, HW");
     // Surrounding prose preserved
@@ -170,12 +171,47 @@ describe("lancetCleaner", () => {
     expect(section.querySelector("h2")?.textContent).toBe("References");
     const lis = section.querySelectorAll("ol > li");
     expect(lis.length).toBe(2);
+    expect(lis[0].id).toBe("ref-1");
+    expect(lis[1].id).toBe("ref-2");
     expect(lis[0].textContent).toContain("Lee, HW");
     expect(lis[0].textContent).toContain("Isolation of the etiologic agent");
+    // The "View in article" reverse link should be gone
+    expect(lis[0].textContent).not.toContain("1.");
     expect(lis[1].textContent).toContain("Vaheri, A");
     // ARIA structure replaced
     expect(section.querySelectorAll('[role="list"]').length).toBe(0);
     expect(section.querySelectorAll('[role="listitem"]').length).toBe(0);
+  });
+
+  it("preserves external links (Crossref/PubMed/Scholar) as real anchors in each <li>", () => {
+    const doc = makeDoc(`
+      <body><article><section id="references">
+        <h2>References</h2>
+        <div><div role="list">
+          <div role="listitem">
+            <div class="citations">
+              <div class="citation-content">
+                <div class="label"><a>1.</a></div>
+                <div>Lee, HW</div>
+              </div>
+              <div class="external-links">
+                <div class="core-xlink-crossref"><a href="https://doi.org/10.1093/x">Crossref</a></div>
+                <div class="core-xlink-pubmed"><a href="https://pubmed.ncbi.nlm.nih.gov/24670/">PubMed</a></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </section></article></body>
+    `);
+    lancetCleaner.clean(doc, "https://www.thelancet.com/x");
+    const li = doc.querySelector("section#references ol > li")!;
+    const anchors = Array.from(li.querySelectorAll("a"));
+    const hrefs = anchors.map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("https://doi.org/10.1093/x");
+    expect(hrefs).toContain("https://pubmed.ncbi.nlm.nih.gov/24670/");
+    const texts = anchors.map((a) => a.textContent);
+    expect(texts).toContain("Crossref");
+    expect(texts).toContain("PubMed");
   });
 
   it("warns (without throwing) when section#references is missing", () => {

@@ -46,22 +46,30 @@ export const lancetCleaner: SiteCleaner = {
       warnings: [],
     };
 
-    // 1. Replace every inline reference drop-block with just its <sup> marker.
-    //    Lancet's marker is wrapped inside the dropBlock; if we delete the
-    //    whole dropBlock the citation number disappears too.
+    // 1. Replace every inline reference drop-block with an anchored <sup>
+    //    pointing at #ref-N. Lancet's marker is wrapped inside the dropBlock;
+    //    if we delete the whole dropBlock the citation number disappears too.
+    //    "1,2" becomes <sup><a href="#ref-1">1</a>,<a href="#ref-2">2</a></sup>.
     const dropBlocks = Array.from(
       doc.querySelectorAll<HTMLElement>(".dropBlock.reference-citations"),
     );
     for (const block of dropBlocks) {
       const sup = block.querySelector<HTMLElement>("sup");
-      if (sup) {
-        // Preserve the citation number (e.g. "1,2") in plain superscript.
-        const replacement = doc.createElement("sup");
-        replacement.textContent = sup.textContent ?? "";
-        block.replaceWith(replacement);
+      const newSup = doc.createElement("sup");
+      const raw = (sup?.textContent ?? "").trim();
+      const nums = raw.split(/[,\s]+/).filter((p) => /^\d+$/.test(p));
+      if (nums.length === 0) {
+        newSup.textContent = raw;
       } else {
-        block.remove();
+        nums.forEach((n, i) => {
+          const a = doc.createElement("a");
+          a.setAttribute("href", `#ref-${n}`);
+          a.textContent = n;
+          newSup.appendChild(a);
+          if (i < nums.length - 1) newSup.appendChild(doc.createTextNode(","));
+        });
       }
+      block.replaceWith(newSup);
       report.removedNodeCount++;
     }
 
@@ -75,15 +83,37 @@ export const lancetCleaner: SiteCleaner = {
       );
       if (items.length > 0) {
         const ol = doc.createElement("ol");
-        for (const item of items) {
+        items.forEach((item, idx) => {
+          const n = idx + 1;
           const li = doc.createElement("li");
-          // Pull the canonical citation block; fall back to entire item text.
-          const citation = item.querySelector<HTMLElement>(".citation-content")
+          li.id = `ref-${n}`;
+          // Citation body — strip the in-list "View in article" reverse anchor.
+          const cc = item.querySelector<HTMLElement>(".citation-content")
             ?? item.querySelector<HTMLElement>(".citations")
             ?? item;
-          li.innerHTML = citation.innerHTML;
+          const cloned = cc.cloneNode(true) as HTMLElement;
+          for (const label of Array.from(cloned.querySelectorAll(".label"))) {
+            label.remove();
+          }
+          li.innerHTML = cloned.innerHTML;
+          // External-link badges (Crossref → DOI, PubMed, Google Scholar) —
+          // keep as plain anchors so Markdown emits real links instead of
+          // the publisher-internal "View in article" stubs.
+          const extLinks = Array.from(
+            item.querySelectorAll<HTMLAnchorElement>(".external-links a"),
+          );
+          if (extLinks.length > 0) {
+            li.appendChild(doc.createTextNode(" "));
+            extLinks.forEach((a, i) => {
+              const newA = doc.createElement("a");
+              newA.setAttribute("href", a.getAttribute("href") ?? "");
+              newA.textContent = (a.textContent ?? "").trim();
+              li.appendChild(newA);
+              if (i < extLinks.length - 1) li.appendChild(doc.createTextNode(" · "));
+            });
+          }
           ol.appendChild(li);
-        }
+        });
         // Keep the heading; replace the ARIA-list wrapper with the real <ol>.
         const h2 = refsSection.querySelector<HTMLElement>("h2") ?? doc.createElement("h2");
         if (!h2.textContent) h2.textContent = "References";
