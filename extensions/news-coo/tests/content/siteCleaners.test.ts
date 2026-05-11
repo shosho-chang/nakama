@@ -5,6 +5,7 @@ import { atyponCleaner } from "../../src/content/siteCleaners/atypon.js";
 import { natureCleaner } from "../../src/content/siteCleaners/nature.js";
 import { jamaCleaner } from "../../src/content/siteCleaners/jama.js";
 import { bmjCleaner } from "../../src/content/siteCleaners/bmj.js";
+import { sciencedirectCleaner } from "../../src/content/siteCleaners/sciencedirect.js";
 import type { CleanReport, SiteCleaner } from "../../src/content/siteCleaners/types.js";
 
 function makeDoc(html: string): Document {
@@ -453,5 +454,87 @@ describe("bmjCleaner", () => {
     `);
     bmjCleaner.clean(doc, "https://www.bmj.com/x");
     expect(doc.querySelector("a.xref-bibr")!.getAttribute("href")).toBe("#ref-1");
+  });
+});
+
+describe("sciencedirectCleaner", () => {
+  it("matches sciencedirect.com", () => {
+    expect(sciencedirectCleaner.matches("www.sciencedirect.com", "https://www.sciencedirect.com/x")).toBe(true);
+    expect(sciencedirectCleaner.matches("sciencedirect.com", "https://sciencedirect.com/x")).toBe(true);
+    expect(sciencedirectCleaner.matches("nature.com", "https://nature.com/x")).toBe(false);
+  });
+
+  it("rewrites body reference anchors to DOI from ol.references", () => {
+    const doc = makeDoc(`
+      <body>
+        <p>Aging is<a class="anchor" href="#bib1" data-xocs-content-type="reference" data-xocs-content-id="bib1"><sup>1</sup></a>.</p>
+        <ol class="references">
+          <li>
+            <span class="label"><a class="anchor" href="#bbib1" id="ref-id-bib1">1</a></span>
+            <span class="reference" id="sref1">
+              <div class="contribution">Kroemer et al.</div>
+              <div class="host">Cell, 188 (2025),
+                <a class="anchor" href="https://doi.org/10.1016/j.cell.2025.03.011">DOI</a>
+              </div>
+            </span>
+          </li>
+        </ol>
+      </body>
+    `);
+    const report = sciencedirectCleaner.clean(doc, "https://www.sciencedirect.com/science/article/pii/X");
+    const a = doc.querySelector('a[data-xocs-content-id="bib1"]')!;
+    expect(a.getAttribute("href")).toBe("https://doi.org/10.1016/j.cell.2025.03.011");
+    expect(a.getAttribute("target")).toBe("_blank");
+    expect(report.removedNodeCount).toBeGreaterThan(0);
+  });
+
+  it("falls back to pii link when no DOI is present", () => {
+    const doc = makeDoc(`
+      <body>
+        <a class="anchor" href="#bib2" data-xocs-content-type="reference" data-xocs-content-id="bib2">2</a>
+        <ol class="references">
+          <li>
+            <span class="label"><a class="anchor" href="#bbib2" id="ref-id-bib2">2</a></span>
+            <span class="reference">
+              <a href="/science/article/pii/S0092867423008577/pdfft?md5=x">PDF</a>
+              <a href="/science/article/pii/S0092867423008577">Article</a>
+            </span>
+          </li>
+        </ol>
+      </body>
+    `);
+    sciencedirectCleaner.clean(doc, "https://www.sciencedirect.com/x");
+    const a = doc.querySelector('a[data-xocs-content-id="bib2"]')!;
+    expect(a.getAttribute("href")).toBe(
+      "https://www.sciencedirect.com/science/article/pii/S0092867423008577",
+    );
+  });
+
+  it("collapses author-group buttons to clean 'First Last' list", () => {
+    const doc = makeDoc(`
+      <body>
+        <div id="author-group">
+          <button data-xocs-content-type="author">
+            <span class="given-name">Jiaming</span> <span class="surname">Li</span>
+            <span class="author-ref"><sup>1</sup></span>
+            <span class="author-ref"><sup>3</sup></span>
+          </button>,
+          <button data-xocs-content-type="author">
+            <span class="given-name">Beier</span> <span class="surname">Jiang</span>
+            <span class="author-ref"><sup>4</sup></span>
+          </button>
+        </div>
+      </body>
+    `);
+    sciencedirectCleaner.clean(doc, "https://www.sciencedirect.com/x");
+    const p = doc.querySelector("#author-group p.author")!;
+    expect(p.textContent).toBe("Jiaming Li, Beier Jiang");
+    expect(doc.querySelectorAll("#author-group button").length).toBe(0);
+  });
+
+  it("warns when no references list is present", () => {
+    const doc = makeDoc(`<body><p>nothing</p></body>`);
+    const report = sciencedirectCleaner.clean(doc, "https://www.sciencedirect.com/x");
+    expect(report.warnings.some((w) => w.includes("no ol.references"))).toBe(true);
   });
 });

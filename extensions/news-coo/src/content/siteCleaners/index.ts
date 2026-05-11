@@ -10,12 +10,14 @@ import { atyponCleaner } from "./atypon.js";
 import { natureCleaner } from "./nature.js";
 import { jamaCleaner } from "./jama.js";
 import { bmjCleaner } from "./bmj.js";
+import { sciencedirectCleaner } from "./sciencedirect.js";
 
 const CLEANERS: SiteCleaner[] = [
-  atyponCleaner,  // Lancet, NEJM, and other Atypon-platform journals
-  natureCleaner,  // Nature.com family
-  jamaCleaner,    // JAMA Network
-  bmjCleaner,     // BMJ.com (Highwire Press)
+  atyponCleaner,        // Lancet, NEJM, and other Atypon-platform journals
+  natureCleaner,        // Nature.com family
+  jamaCleaner,          // JAMA Network
+  bmjCleaner,           // BMJ.com (Highwire Press)
+  sciencedirectCleaner, // ScienceDirect (Elsevier) — Cell, Lancet sister journals, etc.
 ];
 
 export interface DispatchSummary {
