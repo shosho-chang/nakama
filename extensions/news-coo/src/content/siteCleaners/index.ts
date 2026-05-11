@@ -6,10 +6,16 @@
 // - Selection-clip path bypass: caller decides via `runCleaners`'s selection arg.
 
 import type { CleanReport, SiteCleaner } from "./types.js";
-import { lancetCleaner } from "./lancet.js";
+import { atyponCleaner } from "./atypon.js";
+import { natureCleaner } from "./nature.js";
+import { jamaCleaner } from "./jama.js";
+import { bmjCleaner } from "./bmj.js";
 
 const CLEANERS: SiteCleaner[] = [
-  lancetCleaner,
+  atyponCleaner,  // Lancet, NEJM, and other Atypon-platform journals
+  natureCleaner,  // Nature.com family
+  jamaCleaner,    // JAMA Network
+  bmjCleaner,     // BMJ.com (Highwire Press)
 ];
 
 export interface DispatchSummary {
