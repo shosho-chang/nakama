@@ -1,6 +1,8 @@
-// Lancet family cleaner — preserves citation markers and the bottom
-// References list while stripping inline reference drop-block bodies that
-// Defuddle otherwise inlines into prose (ADR-025 root cause).
+// Lancet family cleaner — preserves citation markers, strips inline reference
+// drop-block bodies, and points each in-text citation directly at the paper's
+// canonical URL (DOI > PubMed > Scholar) so a single click on the superscript
+// number opens the cited paper. The bottom References list still renders
+// with full metadata + per-source links for browsing.
 //
 // DOM structure observed 2026-05-11 on PIIS1473-3099(23)00128-7:
 //
@@ -16,14 +18,17 @@
 //   <section id="references">
 //     <h2>References</h2>
 //     <div><div role="list">
-//       <div role="listitem"><div id="bib1" class="citations">…</div></div>
+//       <div role="listitem"><div id="bib1" class="citations">
+//         <div class="citation-content">…</div>
+//         <div class="external-links">
+//           <a href="https://doi.org/…">Crossref</a>
+//           <a href="https://pubmed.ncbi.nlm.nih.gov/…">PubMed</a>
+//           …
+//         </div>
+//       </div></div>
 //       …
 //     </div></div>
 //   </section>
-//
-// We replace each <span class="dropBlock"> with just the <sup> marker, then
-// rewrite the ARIA-role list at the bottom into <ol>/<li> so Defuddle picks
-// it up as the canonical references section.
 
 import type { CleanReport, SiteCleaner } from "./types.js";
 
@@ -31,6 +36,26 @@ const LANCET_HOSTS = [
   "thelancet.com",
   "www.thelancet.com",
 ];
+
+// Order = preference. First match wins as the body sup target.
+const PRIMARY_LINK_CLASSES = [
+  "core-xlink-crossref",      // DOI via Crossref
+  "core-xlink-pubmed",        // PubMed
+  "core-xlink-google-scholar", // Google Scholar fallback
+];
+
+function pickPrimaryLink(item: Element): string | null {
+  for (const cls of PRIMARY_LINK_CLASSES) {
+    const a = item.querySelector<HTMLAnchorElement>(`.${cls} a[href]`);
+    const href = a?.getAttribute("href");
+    if (href && /^https?:/i.test(href)) return href;
+  }
+  // Last resort: first absolute external link in the item.
+  const any = item.querySelector<HTMLAnchorElement>(
+    '.external-links a[href^="http"]',
+  );
+  return any?.getAttribute("href") ?? null;
+}
 
 export const lancetCleaner: SiteCleaner = {
   name: "lancet",
@@ -46,10 +71,23 @@ export const lancetCleaner: SiteCleaner = {
       warnings: [],
     };
 
-    // 1. Replace every inline reference drop-block with an anchored <sup>
-    //    pointing at #ref-N. Lancet's marker is wrapped inside the dropBlock;
-    //    if we delete the whole dropBlock the citation number disappears too.
-    //    "1,2" becomes <sup><a href="#ref-1">1</a>,<a href="#ref-2">2</a></sup>.
+    // First, build a number → primary URL map from the bottom References list.
+    // Done up front so the body-marker rewrite can attach DOI hrefs in one pass.
+    const numberToUrl = new Map<number, string>();
+    const refsSection = doc.querySelector<HTMLElement>("section#references");
+    const items = refsSection
+      ? Array.from(refsSection.querySelectorAll<HTMLElement>('[role="listitem"]'))
+      : [];
+    items.forEach((item, idx) => {
+      const url = pickPrimaryLink(item);
+      if (url) numberToUrl.set(idx + 1, url);
+    });
+
+    // 1. Replace every inline reference drop-block with anchored <sup>.
+    //    Anchor href = paper URL (DOI/PubMed/Scholar) when we resolved one,
+    //    falling back to in-document #fn:N otherwise. Lancet's marker is
+    //    wrapped inside the dropBlock; deleting the whole dropBlock would
+    //    remove the citation number too.
     const dropBlocks = Array.from(
       doc.querySelectorAll<HTMLElement>(".dropBlock.reference-citations"),
     );
@@ -63,7 +101,12 @@ export const lancetCleaner: SiteCleaner = {
       } else {
         nums.forEach((n, i) => {
           const a = doc.createElement("a");
-          a.setAttribute("href", `#fn:${n}`);
+          const url = numberToUrl.get(parseInt(n, 10));
+          a.setAttribute("href", url ?? `#fn:${n}`);
+          if (url) {
+            a.setAttribute("target", "_blank");
+            a.setAttribute("rel", "noopener");
+          }
           a.textContent = n;
           newSup.appendChild(a);
           if (i < nums.length - 1) newSup.appendChild(doc.createTextNode(","));
@@ -75,18 +118,14 @@ export const lancetCleaner: SiteCleaner = {
 
     // 2. Rewrite the bottom References section into semantic <ol>/<li>.
     //    Defuddle skips ARIA-role-only lists; converting to real list tags
-    //    makes the canonical reference list survive into the markdown.
-    const refsSection = doc.querySelector<HTMLElement>("section#references");
+    //    keeps the canonical reference list in the markdown for browsing.
     if (refsSection) {
-      const items = Array.from(
-        refsSection.querySelectorAll<HTMLElement>('[role="listitem"]'),
-      );
       if (items.length > 0) {
         const ol = doc.createElement("ol");
         items.forEach((item, idx) => {
           const n = idx + 1;
           const li = doc.createElement("li");
-          li.id = `fn:${n}`;
+          li.id = `ref-${n}`;
           // Citation body — strip the in-list "View in article" reverse anchor.
           const cc = item.querySelector<HTMLElement>(".citation-content")
             ?? item.querySelector<HTMLElement>(".citations")
@@ -96,9 +135,8 @@ export const lancetCleaner: SiteCleaner = {
             label.remove();
           }
           li.innerHTML = cloned.innerHTML;
-          // External-link badges (Crossref → DOI, PubMed, Google Scholar) —
-          // keep as plain anchors so Markdown emits real links instead of
-          // the publisher-internal "View in article" stubs.
+          // External-link badges (Crossref → DOI, PubMed, Google Scholar)
+          // appended as plain anchors so Markdown emits real outbound links.
           const extLinks = Array.from(
             item.querySelectorAll<HTMLAnchorElement>(".external-links a"),
           );
@@ -120,7 +158,6 @@ export const lancetCleaner: SiteCleaner = {
         refsSection.innerHTML = "";
         refsSection.appendChild(h2);
         refsSection.appendChild(ol);
-        // Remove the role attribute so downstream extractors don't mis-classify.
         refsSection.removeAttribute("role");
       } else {
         report.warnings.push("references section present but no role=listitem children");

@@ -102,20 +102,16 @@ describe("lancetCleaner", () => {
     expect(lancetCleaner.matches("nature.com", "https://nature.com/")).toBe(false);
   });
 
-  it("replaces dropBlock with just the <sup> marker (preserves citation number)", () => {
+  it("replaces dropBlock with sup; falls back to #fn:N when no DOI is resolvable", () => {
     const doc = makeDoc(`
       <body>
         <div role="paragraph">Hantaan virus was discovered in 1976,<span class="dropBlock reference-citations"><a class="reference-citations__ctrl"><sup>1,2</sup></a><div class="dropBlock__holder"><div>Lee, HW. Isolation of the etiologic agent...</div></div></span> and then several other hantaviruses...</div>
       </body>
     `);
-    expect(doc.querySelectorAll(".dropBlock.reference-citations").length).toBe(1);
     const report = lancetCleaner.clean(doc, "https://www.thelancet.com/x");
-    expect(report.matched).toBe(true);
     expect(report.removedNodeCount).toBe(1);
-    // dropBlock and ctrl gone
     expect(doc.querySelectorAll(".dropBlock.reference-citations").length).toBe(0);
-    expect(doc.querySelectorAll(".reference-citations__ctrl").length).toBe(0);
-    // citation markers preserved as anchored sup → #ref-N
+    // No external link table → in-doc fallback
     const supAnchors = Array.from(doc.querySelectorAll("sup a"));
     expect(supAnchors.map((a) => a.getAttribute("href"))).toEqual(["#fn:1", "#fn:2"]);
     expect(supAnchors.map((a) => a.textContent)).toEqual(["1", "2"]);
@@ -124,6 +120,64 @@ describe("lancetCleaner", () => {
     // Surrounding prose preserved
     expect(doc.body.textContent).toContain("Hantaan virus was discovered in 1976");
     expect(doc.body.textContent).toContain("and then several other hantaviruses");
+  });
+
+  it("attaches DOI/PubMed URL directly to body sup when refs section provides external links", () => {
+    const doc = makeDoc(`
+      <body>
+        <div role="paragraph">x<span class="dropBlock reference-citations"><a class="reference-citations__ctrl"><sup>1,3</sup></a><div class="dropBlock__holder"></div></span>y</div>
+        <section id="references">
+          <h2>References</h2>
+          <div><div role="list">
+            <div role="listitem">
+              <div class="citations">
+                <div class="citation-content"><div>Lee, HW</div></div>
+                <div class="external-links">
+                  <div class="core-xlink-crossref"><a href="https://doi.org/10.1093/ref-1">Crossref</a></div>
+                </div>
+              </div>
+            </div>
+            <div role="listitem">
+              <div class="citations">
+                <div class="citation-content"><div>filler</div></div>
+              </div>
+            </div>
+            <div role="listitem">
+              <div class="citations">
+                <div class="citation-content"><div>Brock, J</div></div>
+                <div class="external-links">
+                  <div class="core-xlink-pubmed"><a href="https://pubmed.ncbi.nlm.nih.gov/3/">PubMed</a></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </section>
+      </body>
+    `);
+    lancetCleaner.clean(doc, "https://www.thelancet.com/x");
+    const supAnchors = Array.from(doc.querySelectorAll("sup a"));
+    expect(supAnchors.map((a) => a.getAttribute("href"))).toEqual([
+      "https://doi.org/10.1093/ref-1",
+      "https://pubmed.ncbi.nlm.nih.gov/3/",
+    ]);
+    expect(supAnchors.every((a) => a.getAttribute("target") === "_blank")).toBe(true);
+  });
+
+  it("prefers Crossref → PubMed → Scholar in that order", () => {
+    const doc = makeDoc(`
+      <body>
+        <div role="paragraph">x<span class="dropBlock reference-citations"><sup>1</sup></span></div>
+        <section id="references"><div><div role="list"><div role="listitem"><div class="citations">
+          <div class="external-links">
+            <div class="core-xlink-google-scholar"><a href="https://scholar/x">Scholar</a></div>
+            <div class="core-xlink-pubmed"><a href="https://pubmed/x">PubMed</a></div>
+            <div class="core-xlink-crossref"><a href="https://doi.org/x">Crossref</a></div>
+          </div>
+        </div></div></div></div></section>
+      </body>
+    `);
+    lancetCleaner.clean(doc, "https://www.thelancet.com/x");
+    expect(doc.querySelector("sup a")?.getAttribute("href")).toBe("https://doi.org/x");
   });
 
   it("falls back to plain remove when dropBlock has no <sup>", () => {
@@ -171,8 +225,8 @@ describe("lancetCleaner", () => {
     expect(section.querySelector("h2")?.textContent).toBe("References");
     const lis = section.querySelectorAll("ol > li");
     expect(lis.length).toBe(2);
-    expect(lis[0].id).toBe("fn:1");
-    expect(lis[1].id).toBe("fn:2");
+    expect(lis[0].id).toBe("ref-1");
+    expect(lis[1].id).toBe("ref-2");
     expect(lis[0].textContent).toContain("Lee, HW");
     expect(lis[0].textContent).toContain("Isolation of the etiologic agent");
     // The "View in article" reverse link should be gone
