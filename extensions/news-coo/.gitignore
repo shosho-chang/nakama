@@ -9,3 +9,4 @@ coverage/
 *.zip
 .env
 .env.local
+tmp/
