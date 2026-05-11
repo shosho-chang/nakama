@@ -238,7 +238,8 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             ON health_probe_state(last_status, last_check_at DESC);
 
         -- ADR-007 §5 R2 backup verification history.
-        -- Canonical DDL lives in migrations/004_r2_backup_checks.sql.
+        -- Canonical DDL lives in migrations/004_r2_backup_checks.sql
+        -- + migrations/008_r2_backup_checks_prefix.sql (added `prefix` column).
         CREATE TABLE IF NOT EXISTS r2_backup_checks (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             checked_at          TEXT NOT NULL,
@@ -247,11 +248,17 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             latest_object_mtime TEXT,
             status              TEXT NOT NULL
                                 CHECK (status IN ('ok', 'stale', 'missing', 'too_small')),
-            detail              TEXT
+            detail              TEXT,
+            prefix              TEXT NOT NULL DEFAULT ''
         );
 
         CREATE INDEX IF NOT EXISTS idx_r2_backup_time
             ON r2_backup_checks(checked_at DESC);
+
+        -- NOTE: idx_r2_backup_prefix_time references the `prefix` column
+        -- added by migration 008. On a pre-migration DB the column does not
+        -- yet exist, so the CREATE INDEX is deferred to the post-migration
+        -- phase below (after the ALTER TABLE try/except loop runs).
 
         -- ADR-008 §2 — Phase 2a-min GSC rows store.
         -- Canonical DDL: migrations/005_gsc_rows.sql.
@@ -346,19 +353,164 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_heartbeats_status
             ON heartbeats(last_status, last_run_at DESC);
+
+        -- Slice 1C: bilingual EPUB book library.
+        -- Canonical DDL: migrations/009_books.sql.
+        -- Owned by shared/book_storage.py; written by the Reader /books/upload route.
+        CREATE TABLE IF NOT EXISTS books (
+            book_id           TEXT PRIMARY KEY,
+            title             TEXT NOT NULL,
+            author            TEXT,
+            lang_pair         TEXT NOT NULL,
+            genre             TEXT,
+            isbn              TEXT,
+            published_year    INTEGER,
+            has_original      INTEGER NOT NULL DEFAULT 0,
+            book_version_hash TEXT NOT NULL,
+            created_at        TEXT NOT NULL,
+            -- Phase 1 monolingual-zh pilot — see migrations/016_book_mode.sql.
+            mode              TEXT NOT NULL DEFAULT 'bilingual-en-zh'
+        );
+
+        -- Slice 3A: per-book reading position.
+        -- Canonical DDL: migrations/010_book_progress.sql.
+        -- Owned by thousand_sunny/routers/books.py (GET/PUT /api/books/{id}/progress).
+        CREATE TABLE IF NOT EXISTS book_progress (
+            book_id               TEXT PRIMARY KEY,
+            last_cfi              TEXT,
+            last_chapter_ref      TEXT,
+            last_spread_idx       INTEGER NOT NULL DEFAULT 0,
+            percent               REAL    NOT NULL DEFAULT 0.0,
+            total_reading_seconds INTEGER NOT NULL DEFAULT 0,
+            updated_at            TEXT    NOT NULL,
+            FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
+        );
+
+        -- Slice 4A: ingest queue for background textbook ingestion.
+        -- Canonical DDL: migrations/011_book_ingest_queue.sql.
+        -- Owned by shared/book_queue.py; consumed by queue_processor CLI (Slice 4C).
+        -- PK on book_id: at most one active queue row per book.
+        CREATE TABLE IF NOT EXISTS book_ingest_queue (
+            book_id        TEXT PRIMARY KEY,
+            status         TEXT NOT NULL DEFAULT 'queued'
+                           CHECK (status IN ('queued','ingesting','ingested','partial','failed')),
+            requested_at   TEXT NOT NULL,
+            started_at     TEXT,
+            completed_at   TEXT,
+            chapters_done  INTEGER NOT NULL DEFAULT 0,
+            error          TEXT,
+            FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
+        );
+
+        -- S4: 👍/👎 ground truth signals parsed from digest.md checkboxes.
+        -- Canonical DDL: migrations/013_kb_search_feedback.sql.
+        -- Owned by shared/kb_search_feedback_store.py; written by
+        -- agents.robin.book_digest_writer.write_digest() on each sync.
+        -- Dual-use: future Chopper retrieval QA dataset.
+        CREATE TABLE IF NOT EXISTS kb_search_feedback (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id    TEXT    NOT NULL,
+            item_cfi   TEXT    NOT NULL,
+            query_text TEXT    NOT NULL DEFAULT '',
+            hit_path   TEXT    NOT NULL,
+            signal     TEXT    NOT NULL CHECK (signal IN ('up', 'down')),
+            marked_at  TEXT    NOT NULL,
+            source     TEXT    NOT NULL DEFAULT 'digest',
+            UNIQUE (book_id, item_cfi, hit_path)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_kb_search_feedback_book
+            ON kb_search_feedback(book_id, marked_at DESC);
+
+        -- ADR-023 §6 Franky evolution-loop proposal lifecycle.
+        -- Canonical DDL: migrations/014_proposal_metrics.sql.
+        -- Owned by agents/franky/state/proposal_metrics.py (CRUD + FSM).
+        -- Schema is frozen at v1; future columns use `__v2` suffix.
+        CREATE TABLE IF NOT EXISTS proposal_metrics (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id         TEXT NOT NULL UNIQUE,
+            issue_number        INTEGER,
+            week_iso            TEXT NOT NULL,
+            related_adr         TEXT,
+            related_issues      TEXT,
+            metric_type         TEXT NOT NULL
+                                CHECK (metric_type IN ('quantitative','checklist','human_judged')),
+            success_metric      TEXT NOT NULL,
+            baseline_source     TEXT,
+            baseline_value      TEXT,
+            post_ship_value     TEXT,
+            verification_owner  TEXT,
+            try_cost_estimate   TEXT,
+            panel_recommended   INTEGER NOT NULL CHECK (panel_recommended IN (0,1)),
+            status              TEXT NOT NULL
+                                CHECK (status IN ('candidate','promoted','triaged','ready',
+                                                  'wontfix','shipped','verified','rejected')),
+            created_at          TEXT NOT NULL,
+            promoted_at         TEXT,
+            triaged_at          TEXT,
+            shipped_at          TEXT,
+            verified_at         TEXT,
+            related_pr          TEXT,
+            related_commit      TEXT,
+            source_item_ids     TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_proposal_metrics_status
+            ON proposal_metrics(status, created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_proposal_metrics_week
+            ON proposal_metrics(week_iso, created_at DESC);
+
+        -- ADR-023 §7 S2b: 5-dim shadow scoring table.
+        -- Canonical DDL: migrations/015_news_score_shadow.sql.
+        -- Owned by agents/franky/news_digest.py._write_shadow_score().
+        CREATE TABLE IF NOT EXISTS news_score_shadow (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation_id    TEXT    NOT NULL,
+            item_id         TEXT    NOT NULL,
+            scored_at       TEXT    NOT NULL,
+            signal          REAL    NOT NULL,
+            novelty         REAL    NOT NULL,
+            actionability   REAL    NOT NULL,
+            noise           REAL    NOT NULL,
+            relevance       REAL    NOT NULL,
+            overall_v1      REAL    NOT NULL,
+            overall_v2      REAL    NOT NULL,
+            pick_shadow     INTEGER NOT NULL CHECK (pick_shadow IN (0, 1)),
+            relevance_ref   TEXT,
+            UNIQUE (operation_id, item_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_news_score_shadow_op
+            ON news_score_shadow(operation_id, scored_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_news_score_shadow_item
+            ON news_score_shadow(item_id, scored_at DESC);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
+    # r2_backup_checks 曾經沒有 prefix 欄位（migration 008 前）。
     # ALTER TABLE ADD COLUMN 沒有 IF NOT EXISTS 語法，用 try/except 補。
     for col_ddl in (
         "ALTER TABLE api_calls ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE api_calls ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE api_calls ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE r2_backup_checks ADD COLUMN prefix TEXT NOT NULL DEFAULT ''",
     ):
         try:
             conn.execute(col_ddl)
         except sqlite3.OperationalError:
             pass  # 欄位已存在
+
+    # Indexes that depend on columns added by the ALTER TABLE block above
+    # MUST be created here, after the migrations have run. On a pre-migration
+    # DB the column does not exist yet, so this CREATE INDEX cannot live in
+    # the executescript() block at the top of this function — it would die
+    # with `sqlite3.OperationalError: no such column: prefix`.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_r2_backup_prefix_time "
+        "ON r2_backup_checks(prefix, checked_at DESC)"
+    )
 
     # FTS5 虛擬表需要獨立建立（不支援 IF NOT EXISTS 語法）
     try:
@@ -542,6 +694,50 @@ def record_api_call(
                WHERE id = ?""",
             (input_tokens, output_tokens, run_id),
         )
+    conn.commit()
+
+
+def record_score_shadow(
+    operation_id: str,
+    item_id: str,
+    signal: float,
+    novelty: float,
+    actionability: float,
+    noise: float,
+    relevance: float,
+    overall_v1: float,
+    overall_v2: float,
+    pick_shadow: bool,
+    relevance_ref: Optional[str] = None,
+) -> None:
+    """記錄一筆 5-dim shadow score（ADR-023 §7 S2b）。
+
+    UNIQUE (operation_id, item_id) — 重複 upsert 視為 no-op（INSERT OR IGNORE）。
+    shadow mode 期間此表純記錄，不影響 pick gate 主路徑。
+    """
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT OR IGNORE INTO news_score_shadow
+               (operation_id, item_id, scored_at,
+                signal, novelty, actionability, noise, relevance,
+                overall_v1, overall_v2, pick_shadow, relevance_ref)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            operation_id,
+            item_id,
+            now,
+            signal,
+            novelty,
+            actionability,
+            noise,
+            relevance,
+            overall_v1,
+            overall_v2,
+            int(pick_shadow),
+            relevance_ref,
+        ),
+    )
     conn.commit()
 
 

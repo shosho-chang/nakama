@@ -1,5 +1,6 @@
 """gateway/handlers 單元測試（Nami agent-loop 版本）。"""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,8 @@ from gateway.handlers.nami import (
     _extract_frontmatter,
     _slugify,
 )
+
+NAMI_PERSONA = Path(__file__).resolve().parents[1] / "prompts" / "nami" / "agent_system.md"
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -2141,6 +2144,66 @@ def test_ask_zoro_zoro_failure_propagates_to_loop():
 
 
 # ── /ask_zoro ───────────────────────────────────────────────────────
+
+
+# ── Persona regression（Bug 2 round 3：ask_zoro escape hatch + social heat + 數字 source） ──
+#
+# Round 3 補三條規則進 prompts/nami/agent_system.md，這些 test 守住規則不被未來 prompt
+# refactor 默默拔掉。Test 只 assert 字串子串存在，不 assert 完整段落 — 給 prompt 風格演進
+# 留 wiggle room、但禁忌詞清單與「same-process」概念必須留下。
+
+
+def _persona_text() -> str:
+    return NAMI_PERSONA.read_text(encoding="utf-8")
+
+
+def test_persona_forbids_zoro_offline_escape_hatch():
+    """Bug 2 變形：「Zoro 偵察線掛掉所以我自己抓 Reddit」→ prompt 必須點名禁演此 pattern。"""
+    text = _persona_text()
+    assert "ask_zoro 失敗 / 不調用時的禁演" in text
+    assert "same-process" in text.lower()
+    assert "偵察線" in text
+    assert "Zoro 不會" in text
+
+
+def test_persona_lists_social_heat_forbidden_phrases():
+    """sans ask_zoro(social_listening) 不可用 social heat 詞包裝 web_search 結果。"""
+    text = _persona_text()
+    assert "Social heat 描述禁忌詞" in text
+    for phrase in ("廣傳", "引發熱議", "獲得大量討論", "現在燒的", "聲量"):
+        assert phrase in text, f"social heat 禁忌詞清單缺『{phrase}』"
+
+
+def test_persona_requires_source_for_numbers():
+    """具體數字必附 source / 標 [推測] / 改 vague 寫法 — 防 vague 引用 + 具體數字 hallucination。"""
+    text = _persona_text()
+    assert "數字 / 統計數據" in text
+    assert "vague 引用" in text.lower() or "vague 引用" in text
+    # 三條退路都要在 prompt 裡明寫
+    assert "附 source" in text
+    assert "[推測]" in text
+    assert "降級寫法" in text or "降低風險" in text
+
+
+def test_persona_keeps_taiwan_voice_anchor_from_round1():
+    """確保 round 1 (PR #329) 既有的 Taiwan voice anchor + 簡中 leak sentinel 沒被 round 3 壓掉。"""
+    text = _persona_text()
+    assert "刺胳針" in text
+    assert "柳葉刀" in text  # 反向 sentinel — leak 警示對照
+    assert "科學人" in text or "Hello醫師" in text  # positive identity anchor
+
+
+def test_persona_keeps_epistemic_three_label_taxonomy():
+    """確保 round 1 三類標籤（事實 / 推測 / 不知道）框架完整保留。"""
+    text = _persona_text()
+    assert "事實 / 推測 / 不知道" in text
+    assert "**[推測]**" in text
+    # 三類各自至少出現一次
+    for label in ("**事實**", "**推測**", "**不知道**"):
+        assert label in text, f"epistemic 標籤『{label}』被壓掉"
+
+
+# ── /Persona regression ─────────────────────────────────────────────
 
 
 def test_format_event_message():

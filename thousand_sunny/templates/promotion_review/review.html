@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Promotion Review · {{ state.source_id if state else encoded_id }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,500;1,400;1,500&family=Noto+Serif+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="/static/projects/tokens.css" />
+  <link rel="stylesheet" href="/static/promotion_review.css" />
+</head>
+<body class="brk-root brk-light">
+<main class="prom-shell"
+      data-mode="review"
+      data-encoded-id="{{ encoded_id }}"
+      data-manifest-status="{% if manifest %}{{ manifest.status }}{% else %}none{% endif %}">
+
+  <header class="prom-topbar">
+    <div class="prom-topbar__brand">
+      <a class="prom-topbar__back" href="/promotion-review/" aria-label="Back to pending list">
+        ← back to list
+      </a>
+      <span class="prom-topbar__rule" aria-hidden="true"></span>
+      <span class="brk-caps">promotion · review · per-source</span>
+    </div>
+    <h1 class="prom-topbar__title">
+      {% if state %}{{ state.source_id }}{% else %}{{ encoded_id }}{% endif %}
+    </h1>
+    <div class="prom-topbar__meta">
+      {% if state %}
+        <span class="brk-caps">lang · {{ state.primary_lang }}</span>
+        <span class="brk-caps">preflight · {{ state.preflight_action }}</span>
+        {% if manifest %}
+          <span class="brk-caps">status · {{ manifest.status }}</span>
+        {% endif %}
+      {% endif %}
+    </div>
+  </header>
+
+  {% if not manifest %}
+    <section class="prom-empty" aria-label="Manifest not yet built">
+      <p class="prom-empty__title">這個來源尚未建立 promotion manifest。</p>
+      <p class="prom-empty__body">
+        按下 “Start review” 之後，Robin/shared 服務會跑 preflight → source map builder →
+        concept promotion engine，產出 review items 給你檢閱。每個 item 含 recommendation、
+        reason、evidence、risk、confidence、source_importance、reader_salience。
+      </p>
+      <form method="post" action="/promotion-review/source/{{ encoded_id }}/start">
+        <button type="submit"
+                class="prom-btn prom-btn--primary prom-btn--lg"
+                aria-label="Start promotion review for this source">
+          Start review
+        </button>
+      </form>
+    </section>
+  {% else %}
+
+    {# ── Progress + commit bar ─────────────────────────────────────────── #}
+    <section class="prom-progress" aria-label="Review progress">
+      <div class="prom-progress__counts">
+        <div class="prom-progress__count">
+          <span class="brk-mono prom-progress__num">{{ approved_count }}</span>
+          <span class="brk-caps">/{{ manifest.items | length }} approved</span>
+        </div>
+        <div class="prom-progress__breakdown">
+          <span class="brk-caps">decisions</span>
+          <span class="prom-pill prom-pill--decision-approve">{{ decision_counts.approve }} approve</span>
+          <span class="prom-pill prom-pill--decision-reject">{{ decision_counts.reject }} reject</span>
+          <span class="prom-pill prom-pill--decision-defer">{{ decision_counts.defer }} defer</span>
+          <span class="prom-pill prom-pill--decision-undecided">{{ decision_counts.undecided }} undecided</span>
+        </div>
+      </div>
+      <div class="prom-progress__commit">
+        {% if last_commit_outcome %}
+          <div class="brk-caps prom-progress__last">
+            last batch · {{ last_commit_outcome.batch.batch_id }} · {{ last_commit_outcome.batch.promotion_status }}
+          </div>
+        {% endif %}
+        <form method="post" action="/promotion-review/source/{{ encoded_id }}/commit">
+          <input type="hidden" name="batch_id"
+                 value="batch_{{ manifest.manifest_id }}_{{ manifest.commit_batches | length + 1 }}" />
+          <button type="submit"
+                  class="prom-btn prom-btn--primary"
+                  {% if approved_count == 0 %}disabled aria-disabled="true"{% endif %}
+                  aria-label="Commit approved items">
+            {% if approved_count == 0 %}
+              commit (no approvals yet)
+            {% else %}
+              commit {{ approved_count }} approved
+            {% endif %}
+          </button>
+        </form>
+      </div>
+    </section>
+
+    {# ── Recent commit batches summary ─────────────────────────────────── #}
+    {% if manifest.commit_batches %}
+      <section class="prom-batches" aria-label="Commit history">
+        <div class="brk-caps prom-batches__caps">commit batches · {{ manifest.commit_batches | length }}</div>
+        <ul class="prom-batches__list" role="list">
+          {% for batch in manifest.commit_batches %}
+            <li class="prom-batch prom-batch--{{ batch.promotion_status }}">
+              <span class="brk-mono prom-batch__id">{{ batch.batch_id }}</span>
+              <span class="brk-caps">{{ batch.promotion_status }}</span>
+              <span class="brk-mono">approved {{ batch.approved_item_ids | length }}</span>
+              <span class="brk-mono">deferred {{ batch.deferred_item_ids | length }}</span>
+              <span class="brk-mono">rejected {{ batch.rejected_item_ids | length }}</span>
+              <span class="brk-mono">touched {{ batch.touched_files | length }}</span>
+              {% if batch.errors %}
+                <span class="prom-batch__errors brk-caps">{{ batch.errors | length }} error(s)</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    {# ── Item list ─────────────────────────────────────────────────────── #}
+    <section class="prom-items" aria-label="Review items">
+      <div class="brk-caps prom-items__caps">items · {{ manifest.items | length }}</div>
+      {% for item in manifest.items %}
+        {% include "_item_card.html" %}
+      {% endfor %}
+    </section>
+
+  {% endif %}
+</main>
+</body>
+</html>

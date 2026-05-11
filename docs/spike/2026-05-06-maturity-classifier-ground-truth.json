@@ -1,0 +1,122 @@
+[
+  {
+    "id": "gt-001",
+    "term": "creatine phosphate",
+    "source_book": "biochemistry-sport-exercise-2024",
+    "chapter": "ch3",
+    "context_excerpt": "## Creatine Phosphate\n\n**Creatine phosphate** (also called phosphocreatine) is defined as the immediate phosphate donor for ATP resynthesis during maximal-intensity exercise. Creatine phosphate donates its phosphate group to ADP via the creatine kinase reaction. Creatine phosphate stores in muscle are limited, sustaining maximal effort for only 6-10 seconds.",
+    "panel_claude": "L2",
+    "panel_codex": "L2",
+    "panel_gemini": "L2",
+    "ground_truth": "L2",
+    "rationale": "Section heading + bolded define + definition phrase. Single source → L2."
+  },
+  {
+    "id": "gt-002",
+    "term": "adenosine triphosphate",
+    "source_book": "biochemistry-sport-exercise-2024",
+    "chapter": "ch1",
+    "context_excerpt": "ATP appears briefly as a passing mention in the introduction.",
+    "panel_claude": "L1",
+    "panel_codex": "L1",
+    "panel_gemini": "L1",
+    "ground_truth": "L1",
+    "rationale": "Single passing mention, no section heading, no bold, no definition phrase, appears only once. L1 alias."
+  },
+  {
+    "id": "gt-003",
+    "term": "glycogen",
+    "source_book": "biochemistry-sport-exercise-2024",
+    "chapter": "ch4",
+    "context_excerpt": "## Glycogen Storage and Utilisation\n\nGlycogen is referred to as the principal carbohydrate fuel reserve in animals. Glycogen is stored predominantly in liver and skeletal muscle. During exercise, glycogen utilisation increases with intensity. Liver glycogen maintains blood glucose; muscle glycogen fuels local contraction.",
+    "panel_claude": "L2",
+    "panel_codex": "L2",
+    "panel_gemini": "L3",
+    "ground_truth": "L2",
+    "rationale": "Heading + definition phrase. Single source. Gemini disagreement overruled by majority (2/3 L2)."
+  },
+  {
+    "id": "gt-004",
+    "term": "lactate threshold",
+    "source_book": "sport-nutrition-jeukendrup-2024",
+    "chapter": "ch5",
+    "context_excerpt": "The concept of exercise appears as a general term in the introduction without any definition or special marking.",
+    "panel_claude": "L1",
+    "panel_codex": "L1",
+    "panel_gemini": "L1",
+    "ground_truth": "L1",
+    "rationale": "Generic term, no high-value signal. L1."
+  },
+  {
+    "id": "gt-005",
+    "term": "mitochondrial biogenesis",
+    "source_book": "biochemistry-sport-exercise-2024",
+    "chapter": "ch7",
+    "context_excerpt": "### Mitochondrial Biogenesis\n\nMitochondrial biogenesis is defined as the growth and division of pre-existing mitochondria. **Mitochondrial biogenesis** is stimulated by endurance exercise training via PGC-1α activation. Mitochondrial biogenesis occurs across multiple pathways in chapter 7 and chapter 8.",
+    "panel_claude": "L2",
+    "panel_codex": "L2",
+    "panel_gemini": "L2",
+    "ground_truth": "L2",
+    "rationale": "Heading + definition phrase + bolded define. Single source → L2. Unanimous panel."
+  },
+  {
+    "id": "gt-006",
+    "term": "beta-oxidation",
+    "source_book": "biochemistry-sport-exercise-2024",
+    "chapter": "ch5",
+    "context_excerpt": "## Beta-oxidation\n\nBeta-oxidation is referred to as the metabolic pathway for fatty acid degradation. **Beta-oxidation** proceeds through sequential removal of two-carbon units as acetyl-CoA. The rate of beta-oxidation increases during fasted exercise. Beta-oxidation is regulated by malonyl-CoA inhibition of CPT-1.",
+    "panel_claude": "L2",
+    "panel_codex": "L2",
+    "panel_gemini": "L2",
+    "ground_truth": "L2",
+    "rationale": "Heading + definition phrase + bolded define + freq_multi_section (≥3 occurrences, multiple sections). Unanimous L2."
+  },
+  {
+    "id": "gt-007",
+    "term": "book",
+    "source_book": "sport-nutrition-jeukendrup-2024",
+    "chapter": "ch1",
+    "context_excerpt": "This book provides a comprehensive overview of sport nutrition.",
+    "panel_claude": "L1",
+    "panel_codex": "L1",
+    "panel_gemini": "L1",
+    "ground_truth": "L1",
+    "rationale": "Generic word, not a domain concept. L1."
+  },
+  {
+    "id": "gt-008",
+    "term": "periodisation",
+    "source_book": "sport-nutrition-jeukendrup-2024",
+    "chapter": "ch12",
+    "context_excerpt": "Periodisation is mentioned three times across two sections but without a formal definition or bold marking.",
+    "panel_claude": "L1",
+    "panel_codex": "L2",
+    "panel_gemini": "L1",
+    "ground_truth": "L1",
+    "rationale": "No section heading, no bold, no definition phrase. Appears multiple times but below high-value threshold. Majority L1 (2/3)."
+  },
+  {
+    "id": "gt-009",
+    "term": "substrate utilisation",
+    "source_book": "biochemistry-sport-exercise-2024",
+    "chapter": "ch3",
+    "context_excerpt": "## Substrate Utilisation During Exercise\n\nSubstrate utilisation 定義為運動期間能量底物的選擇與消耗。Substrate utilisation varies with exercise intensity. At low intensity, fat oxidation predominates; at high intensity, carbohydrate substrate utilisation increases.",
+    "panel_claude": "L2",
+    "panel_codex": "L2",
+    "panel_gemini": "L2",
+    "ground_truth": "L2",
+    "rationale": "Heading + Chinese 定義為 definition phrase + freq_multi_section. Unanimous L2."
+  },
+  {
+    "id": "gt-010",
+    "term": "protein synthesis",
+    "source_book": "sport-nutrition-jeukendrup-2024",
+    "chapter": "ch8",
+    "context_excerpt": "Protein synthesis is a common biochemistry term mentioned in passing in the context of muscle adaptation. No definition, not bolded, not a section heading.",
+    "panel_claude": "L1",
+    "panel_codex": "L1",
+    "panel_gemini": "L1",
+    "ground_truth": "L1",
+    "rationale": "Passing mention, no high-value signals. Unanimous L1."
+  }
+]

@@ -14,18 +14,42 @@ logger = get_logger("nakama.zoro.twitter")
 _DDG_URL = "https://html.duckduckgo.com/html/"
 
 
-def search_recent_tweets(topic: str, max_results: int = 10) -> dict:
+def search_recent_tweets(
+    topic: str,
+    max_results: int = 10,
+    *,
+    region: str | None = None,
+) -> dict:
     """Search for popular tweets about a topic via DuckDuckGo site search.
 
     No API key needed — uses DuckDuckGo HTML search to find x.com results.
 
-    Returns dict with keys: tweets (list of dicts with text, url, username).
-    Returns empty dict on failure.
+    Args:
+        topic: Search query.
+        max_results: Maximum tweets to return.
+        region: DuckDuckGo region code passed as the ``kl`` query param. Use
+            ``"tw-tzh"`` to bias results toward Taiwan / Traditional Chinese,
+            ``"us-en"`` for US English, etc. Defaults to None (DDG default
+            region — typically broad / all-locale).
+
+            keyword_research's ``twitter_zh`` channel passes ``"tw-tzh"`` so
+            results favor Taiwan tweets and avoid zh-CN KOL noise (GH #33
+            Item 5 eval finding — unrestricted DDG search picked up Charles
+            Zhang's zh-CN tweets that triggered Mandarin-mainland-focused
+            YouTube title seeds).
+
+    Returns:
+        dict with keys: tweets (list of dicts with text, url, username).
+        Returns empty dict on failure.
     """
+    params = {"q": f"{topic} site:x.com"}
+    if region:
+        params["kl"] = region
+
     try:
         resp = httpx.get(
             _DDG_URL,
-            params={"q": f"{topic} site:x.com"},
+            params=params,
             headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

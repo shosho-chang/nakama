@@ -1,16 +1,16 @@
 """python -m agents.robin 的入口。"""
 
 import argparse
-import sys
 
-# Windows cp1252 stdout 無法印中文 — 統一 UTF-8（log 檔也會用到）
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+# Windows cp1252 stdout 無法印中文 — 統一 UTF-8（log 檔也會用到）。
+# Helper handles idempotency + missing reconfigure() (wrapped streams).
+from shared.log import force_utf8_console
 
-from agents.robin.agent import RobinAgent
-from agents.robin.pubmed_digest import PubMedDigestPipeline
-from shared.heartbeat import record_failure, record_success
+force_utf8_console()
+
+from agents.robin.agent import RobinAgent  # noqa: E402
+from agents.robin.pubmed_digest import PubMedDigestPipeline  # noqa: E402
+from shared.heartbeat import record_failure, record_success  # noqa: E402
 
 # Phase 5B-2 — heartbeat key consumed by probe_cron_freshness via CRON_SCHEDULES.
 # Stable across releases (changing breaks the probe's prior-state continuity).

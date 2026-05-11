@@ -33,10 +33,35 @@ _client: anthropic.Anthropic | None = None
 
 
 def get_client() -> anthropic.Anthropic:
-    """取得或建立 Anthropic client（singleton）。"""
+    """取得或建立 Anthropic client（singleton）。
+
+    Auth precedence:
+    1. ``ANTHROPIC_API_KEY`` (api_key) — 標準 host / API-key billing 路徑
+    2. ``ANTHROPIC_AUTH_TOKEN`` (auth_token) — sandcastle Path C 的 subprocess-safe
+       槽位 (Anthropic SDK 自動 discover；Claude Code CLI 不會吃這名字)
+    3. ``CLAUDE_CODE_OAUTH_TOKEN`` (auth_token) — host fallback when developer 只
+       set 了這個變數；container 內這個變數會被 Claude Code CLI 消費掉，所以
+       container 內請改用 ``ANTHROPIC_AUTH_TOKEN``
+
+    OAuth tokens (``sk-ant-oat01-…``) ride the Authorization Bearer header via
+    the SDK's ``auth_token`` kwarg; API keys ride ``x-api-key``.
+    """
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        oauth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get(
+            "CLAUDE_CODE_OAUTH_TOKEN"
+        )
+        if api_key:
+            _client = anthropic.Anthropic(api_key=api_key)
+        elif oauth_token:
+            _client = anthropic.Anthropic(auth_token=oauth_token)
+        else:
+            raise RuntimeError(
+                "Neither ANTHROPIC_API_KEY nor ANTHROPIC_AUTH_TOKEN / "
+                "CLAUDE_CODE_OAUTH_TOKEN is set; host runs need API key, "
+                "sandcastle runs need OAuth token."
+            )
     return _client
 
 
@@ -118,6 +143,7 @@ def call_claude_with_tools(
     system: str = "",
     model: str | None = None,
     max_tokens: int = 2048,
+    tool_choice: dict | None = None,
 ) -> anthropic.types.Message:
     """呼叫 Claude 的 tool-use API，回傳完整 Message 物件（含 stop_reason、content blocks）。
 
@@ -136,6 +162,8 @@ def call_claude_with_tools(
         model: 模型。``None`` 則走 :func:`shared.llm_router.get_model` 用
             ``task="tool_use"``（預設 Haiku 4.5，tool-routing 任務通常夠用）。
         max_tokens: 最大輸出 token 數
+        tool_choice: 強制 tool 選擇策略（例如 ``{"type": "tool", "name": "my_tool"}``
+            強制呼叫特定 tool 以確保結構化輸出）。``None`` 表示讓 Claude 自行決定。
 
     Returns:
         ``anthropic.types.Message``（含 content + stop_reason + usage）
@@ -158,6 +186,8 @@ def call_claude_with_tools(
             kwargs["system"] = [
                 {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
             ]
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
         return client.messages.create(**kwargs)
 
     start = time.perf_counter()

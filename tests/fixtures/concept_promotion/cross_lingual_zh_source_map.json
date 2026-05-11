@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "source_id": "ebook:zh-book",
+  "primary_lang": "zh-Hant",
+  "has_evidence_track": true,
+  "chapters_inspected": 2,
+  "items": [
+    {
+      "item_kind": "source_page",
+      "item_id": "zh-book::ch-1",
+      "recommendation": "include",
+      "action": "create",
+      "reason": "ch-1: claim",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/zh-book/original.epub",
+          "locator": "cfi-ch-1-1",
+          "excerpt": "心率變異是自律神經平衡的指標。",
+          "confidence": 0.85
+        }
+      ],
+      "risk": [],
+      "confidence": 0.7,
+      "source_importance": 0.5,
+      "reader_salience": 0.0,
+      "target_kb_path": "KB/Wiki/Sources/zh-book/ch-1.md",
+      "chapter_ref": "ch-1",
+      "prior_decision": null,
+      "human_decision": null
+    },
+    {
+      "item_kind": "source_page",
+      "item_id": "zh-book::ch-2",
+      "recommendation": "include",
+      "action": "create",
+      "reason": "ch-2: claim",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/zh-book/original.epub",
+          "locator": "cfi-ch-2-1",
+          "excerpt": "心率變異是自律神經平衡的指標。",
+          "confidence": 0.85
+        }
+      ],
+      "risk": [],
+      "confidence": 0.7,
+      "source_importance": 0.5,
+      "reader_salience": 0.0,
+      "target_kb_path": "KB/Wiki/Sources/zh-book/ch-2.md",
+      "chapter_ref": "ch-2",
+      "prior_decision": null,
+      "human_decision": null
+    }
+  ],
+  "risks": [],
+  "error": null
+}

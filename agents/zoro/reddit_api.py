@@ -27,25 +27,59 @@ _HEALTH_SUBREDDITS = [
 ]
 
 
-def search_reddit_posts(topic: str, max_results: int = 10) -> dict:
+def search_reddit_posts(
+    topic: str,
+    max_results: int = 10,
+    *,
+    subreddit_allowlist: list[str] | None = None,
+) -> dict:
     """Search Reddit for popular posts about a topic.
 
-    Uses Reddit's public JSON API (no API key needed).
-    Searches across all of Reddit, sorted by relevance within the past month.
+    Uses Reddit's public JSON API (no API key needed). Searches by relevance
+    within the past year.
 
-    Returns dict with keys: posts (list of dicts with title, score, comments, url, etc.).
-    Returns empty dict on failure.
+    Args:
+        topic: Search query.
+        max_results: Maximum posts to return.
+        subreddit_allowlist: If provided, restrict the search to these subreddits
+            via Reddit's `r/sub1+sub2+.../search.json?restrict_sr=on` syntax.
+            Defaults to None (search all of Reddit).
+
+            keyword_research's ``reddit_zh`` channel passes :data:`_HEALTH_SUBREDDITS`
+            to keep zh-content discussions on-topic — unrestricted Chinese queries
+            land on r/moneyfengcn etc. (GH #33 Item 4 eval finding).
+
+    Returns:
+        dict with keys: posts (list of dicts with title, score, comments, url, etc.).
+        Returns empty dict on failure.
     """
+    if subreddit_allowlist:
+        url = f"https://www.reddit.com/r/{'+'.join(subreddit_allowlist)}/search.json"
+        params = {
+            "q": topic,
+            "sort": "relevance",
+            "t": "year",
+            "limit": min(max_results, 25),
+            "type": "link",
+            # restrict_sr=on tells Reddit to confine the search to the listed
+            # subreddits even when the multi-sub URL is used. Without it Reddit
+            # may broaden to all-of-Reddit on low-hit zh queries.
+            "restrict_sr": "on",
+        }
+    else:
+        url = _SEARCH_URL
+        params = {
+            "q": topic,
+            "sort": "relevance",
+            "t": "year",
+            "limit": min(max_results, 25),
+            "type": "link",
+        }
+
     try:
         resp = httpx.get(
-            _SEARCH_URL,
-            params={
-                "q": topic,
-                "sort": "relevance",
-                "t": "year",
-                "limit": min(max_results, 25),
-                "type": "link",
-            },
+            url,
+            params=params,
             headers={"User-Agent": "nakama-bot/1.0 (keyword research)"},
             timeout=10,
         )

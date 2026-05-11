@@ -1,0 +1,423 @@
+"""Integration tests for ``POST /scrape-translate`` (Slice 1, issue #352).
+
+Validates the new BackgroundTask-based behaviour:
+
+- Auth gate still redirects to /login.
+- Successful POST returns 303 → ``/`` (inbox view), NOT ``/read``.
+  (Slice 1 design: user always lands on inbox so they see the placeholder
+  row pulse-loading before the BackgroundTask finishes.)
+- A placeholder ``Inbox/kb/{slug}.md`` is written synchronously with
+  ``fulltext_status: processing`` so the inbox view has something to render
+  the moment the redirect lands.
+- ``BackgroundTasks.add_task`` is invoked with ``_ingest_url_in_background``
+  (BG task is scheduled, not run inline). FastAPI runs background tasks
+  AFTER the response in TestClient, so we assert behaviour AFTER the POST
+  returns: the BG body has run and the placeholder file is overwritten with
+  the ``URLDispatcher`` output.
+- Same-URL repeat short-circuits to ``/read?file={existing}`` (acceptance #6).
+- Slice 4 (issue #355): the BG task constructs ``URLDispatcherConfig`` with
+  ``image_downloader_fn`` + ``attachments_abs_dir`` + ``vault_relative_prefix``
+  pointed at ``KB/Attachments/inbox/{slug}/`` so external images are
+  downloaded vault-side and the markdown body uses vault-relative paths.
+
+Mocking note: tests inject ``URLDispatcher.dispatch`` via ``monkeypatch`` on
+``thousand_sunny.routers.robin.URLDispatcher`` (the caller-binding) so the
+BackgroundTask uses the mock rather than the real ``shared.web_scraper``.
+"""
+
+from __future__ import annotations
+
+import importlib
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from agents.robin.url_dispatcher import URLDispatcher
+from shared.schemas.ingest_result import IngestResult
+
+
+@pytest.fixture
+def client(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("DISABLE_ROBIN", raising=False)
+    monkeypatch.setenv("WEB_PASSWORD", "testpass")
+    monkeypatch.setenv("WEB_SECRET", "testsecret")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    inbox = tmp_path / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+
+    import thousand_sunny.app as app_module
+    import thousand_sunny.auth as auth_module
+    import thousand_sunny.routers.auth as auth_router_module
+    import thousand_sunny.routers.robin as robin_module
+
+    importlib.reload(auth_module)
+    importlib.reload(auth_router_module)
+    importlib.reload(robin_module)
+    importlib.reload(app_module)
+    return TestClient(app_module.app, follow_redirects=False), inbox
+
+
+def _auth_cookie(client):
+    resp = client.post("/login", data={"password": "testpass"}, follow_redirects=False)
+    return resp.cookies.get("nakama_auth", "")
+
+
+# ── Auth gate ────────────────────────────────────────────────────────────────
+
+
+def test_scrape_translate_requires_auth(client):
+    tc, _inbox = client
+    resp = tc.post("/scrape-translate", data={"url": "https://example.com"})
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["location"]
+
+
+# ── Redirect target switched from /read to / (Slice 1 design) ────────────────
+
+
+def test_scrape_translate_redirects_to_inbox_not_reader(client):
+    """Slice 1 changes redirect target — endpoint no longer waits for fetch."""
+    tc, _inbox = client
+    auth = _auth_cookie(tc)
+
+    fake_result = IngestResult(
+        status="ready",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="# T\n\n" + ("body\n" * 80),
+        title="T",
+        original_url="https://example.com/article",
+    )
+
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
+        instance = MockDispatcher.return_value
+        instance.dispatch.return_value = fake_result
+
+        resp = tc.post(
+            "/scrape-translate",
+            data={
+                "url": "https://example.com/article",
+                "source_type": "article",
+                "content_nature": "popular_science",
+            },
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/"
+
+
+# ── Placeholder + BackgroundTask scheduling ──────────────────────────────────
+
+
+def test_scrape_translate_writes_placeholder_synchronously(client):
+    """The placeholder file appears the moment the POST returns."""
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+
+    fake_result = IngestResult(
+        status="ready",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="# Hello\n\n" + ("text\n" * 80),
+        title="Hello",
+        original_url="https://example.com/post",
+    )
+
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
+        instance = MockDispatcher.return_value
+        instance.dispatch.return_value = fake_result
+
+        tc.post(
+            "/scrape-translate",
+            data={"url": "https://example.com/post"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    md_files = list(inbox.glob("*.md"))
+    assert len(md_files) == 1
+    content = md_files[0].read_text(encoding="utf-8")
+    # By the time TestClient returns, BackgroundTask has run → status=ready.
+    assert "fulltext_status: ready" in content
+    assert "original_url:" in content
+    assert "https://example.com/post" in content
+
+
+def test_scrape_translate_bg_task_scheduled(client):
+    """Verify the route schedules ``_ingest_url_in_background`` on BackgroundTasks."""
+    tc, _inbox = client
+    auth = _auth_cookie(tc)
+
+    fake_add_task = MagicMock()
+
+    # FastAPI's BackgroundTasks instance is constructed per-request — to assert
+    # scheduling we patch the module-level helper that the route delegates to.
+    with (
+        patch("thousand_sunny.routers.robin._ingest_url_in_background") as mock_bg,
+        patch(
+            "thousand_sunny.routers.robin.BackgroundTasks.add_task",
+            side_effect=lambda fn, **kw: fake_add_task(fn, **kw),
+        ),
+    ):
+        resp = tc.post(
+            "/scrape-translate",
+            data={"url": "https://example.com/scheduled"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    fake_add_task.assert_called_once()
+    fn, kw = fake_add_task.call_args[0][0], fake_add_task.call_args[1]
+    assert fn is mock_bg
+    assert kw["url"] == "https://example.com/scheduled"
+
+
+# ── Failed dispatch path (< 200 chars) ───────────────────────────────────────
+
+
+def test_scrape_translate_short_content_writes_failed_status(client):
+    """URLDispatcher returning failed → file frontmatter shows fulltext_status: failed."""
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+
+    fake_result = IngestResult(
+        status="failed",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="",
+        title="example.com/short",
+        original_url="https://example.com/short",
+        note="抓取結果太短，疑似 bot 擋頁",
+    )
+
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
+        instance = MockDispatcher.return_value
+        instance.dispatch.return_value = fake_result
+
+        tc.post(
+            "/scrape-translate",
+            data={"url": "https://example.com/short"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    md_files = list(inbox.glob("*.md"))
+    assert len(md_files) == 1
+    content = md_files[0].read_text(encoding="utf-8")
+    assert "fulltext_status: failed" in content
+    assert "疑似 bot 擋頁" in content
+
+
+# ── BG task crash recovery ──────────────────────────────────────────────────
+
+
+def test_scrape_translate_bg_crash_flips_placeholder_to_failed(client):
+    """BG task crashing on URLDispatcher init must flip the row to ❌, not stay 🔄.
+
+    Slice 1 has no delete UI (Slice 5 #356 adds it), so a placeholder stuck on
+    ``processing`` would be permanently invisible to the user — the recovery
+    write in ``_flip_placeholder_to_failed`` is the only off-ramp.
+    """
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+
+    with patch(
+        "thousand_sunny.routers.robin.URLDispatcher",
+        spec=URLDispatcher,
+        side_effect=RuntimeError("dispatcher boom"),
+    ):
+        resp = tc.post(
+            "/scrape-translate",
+            data={"url": "https://example.com/crashed"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    # Route still returned 303 — BG task crash is invisible to caller.
+    assert resp.status_code == 303
+    md_files = list(inbox.glob("*.md"))
+    assert len(md_files) == 1
+    content = md_files[0].read_text(encoding="utf-8")
+    # Recovery write replaced the processing placeholder with a failed row.
+    assert "fulltext_status: failed" in content
+    assert "fulltext_layer: unknown" in content
+    assert "後台任務崩潰" in content
+
+
+# ── Same-URL short-circuit (acceptance #6) ──────────────────────────────────
+
+
+def test_scrape_translate_same_url_short_circuits(client):
+    """Re-pasting a URL whose ingest already produced a file skips the BG task."""
+    tc, inbox = client
+    auth = _auth_cookie(tc)
+
+    # Pre-populate inbox with a finished ingest for the same URL.
+    existing = inbox / "already-here.md"
+    existing.write_text(
+        "---\n"
+        'title: "x"\n'
+        'source: "https://example.com/dup"\n'
+        'original_url: "https://example.com/dup"\n'
+        "source_type: article\n"
+        "content_nature: popular_science\n"
+        "fulltext_status: ready\n"
+        "fulltext_layer: readability\n"
+        'fulltext_source: "Readability"\n'
+        "---\n\nbody\n",
+        encoding="utf-8",
+    )
+
+    with patch("thousand_sunny.routers.robin.URLDispatcher", spec=URLDispatcher) as MockDispatcher:
+        instance = MockDispatcher.return_value
+        # Should NOT be called when short-circuiting.
+        instance.dispatch.side_effect = AssertionError(
+            "URLDispatcher.dispatch must not run on URL repeat"
+        )
+
+        resp = tc.post(
+            "/scrape-translate",
+            data={"url": "https://example.com/dup"},
+            cookies={"nakama_auth": auth},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    # Short-circuit redirects back to inbox root (UI option A: unified redirect),
+    # not to /read?file=... — the inbox row already shows the existing file.
+    assert resp.headers["location"] == "/"
+    # Direct contract: short-circuit means URLDispatcher class was never even
+    # instantiated by the route (BG task wasn't scheduled). The file-count
+    # assertion below is a secondary check — both must hold.
+    MockDispatcher.assert_not_called()
+    instance.dispatch.assert_not_called()
+    # Still exactly one file — no extra placeholder written.
+    assert sorted(p.name for p in inbox.glob("*.md")) == ["already-here.md"]
+
+
+# ── Slice 4: image-downloader config injection (issue #355) ──────────────────
+
+
+def test_scrape_translate_injects_image_downloader_config(client, monkeypatch, tmp_path):
+    """Slice 4: BG task wires URLDispatcherConfig with image-fetch hook + paths.
+
+    The router must construct the config such that the dispatcher receives:
+    - ``image_downloader_fn`` set to ``_image_downloader_adapter``
+    - ``attachments_abs_dir`` = ``{vault}/KB/Attachments/inbox/{slug}/``
+    - ``vault_relative_prefix`` = ``"KB/Attachments/inbox/{slug}/"``
+
+    We assert this by intercepting the ``URLDispatcher`` constructor in the
+    router caller-binding and snapshotting the config it receives. This locks
+    in the contract for downstream image downloads landing under the per-slug
+    folder (cross-device sync).
+    """
+    tc, _inbox = client
+    auth = _auth_cookie(tc)
+
+    captured: dict[str, object] = {}
+    fake_result = IngestResult(
+        status="ready",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="# T\n\n" + ("body\n" * 80),
+        title="T",
+        original_url="https://example.com/image-host",
+    )
+
+    def _spy_constructor(config):
+        captured["config"] = config
+        instance = MagicMock()
+        instance.dispatch.return_value = fake_result
+        return instance
+
+    monkeypatch.setattr(
+        "thousand_sunny.routers.robin.URLDispatcher",
+        _spy_constructor,
+    )
+
+    tc.post(
+        "/scrape-translate",
+        data={"url": "https://example.com/image-host"},
+        cookies={"nakama_auth": auth},
+        follow_redirects=False,
+    )
+
+    config = captured["config"]
+    assert config.image_downloader_fn is not None, "image_downloader_fn must be wired"
+
+    # image_attachments_abs_dir lands under {vault}/KB/Attachments/inbox/{slug}/
+    assert config.image_attachments_abs_dir is not None
+    assert config.image_attachments_abs_dir.parent == tmp_path / "KB" / "Attachments" / "inbox"
+    # image_vault_relative_prefix matches the slug path with trailing slash
+    assert config.image_vault_relative_prefix is not None
+    assert config.image_vault_relative_prefix.startswith("KB/Attachments/inbox/")
+    assert config.image_vault_relative_prefix.endswith("/")
+    # And the slug is consistent across both fields
+    slug_from_dir = config.image_attachments_abs_dir.name
+    slug_from_prefix = config.image_vault_relative_prefix.removeprefix(
+        "KB/Attachments/inbox/"
+    ).rstrip("/")
+    assert slug_from_dir == slug_from_prefix
+
+
+def test_scrape_translate_image_adapter_calls_real_downloader(client, monkeypatch, tmp_path):
+    """Adapter funnels into ``shared.image_fetcher.download_markdown_images``.
+
+    This is the smoke wire — we patch the real downloader to a recording mock
+    and verify the adapter (which the router injects) calls it with the
+    kwarg shape (``dest_dir`` + ``vault_relative_prefix``) that the
+    underlying function expects. Catches the positional/keyword translation
+    breaking silently if either side's signature drifts.
+    """
+    tc, _inbox = client
+    auth = _auth_cookie(tc)
+
+    raw_md = "# T\n\n![](https://example.com/img.png)\n" + ("body\n" * 80)
+    rewritten = "# T\n\n![](KB/Attachments/inbox/x/img-1.png)\n" + ("body\n" * 80)
+
+    captured: dict[str, object] = {}
+
+    def _fake_download(md_text, *, dest_dir, vault_relative_prefix, **_kw):
+        captured["md_text"] = md_text
+        captured["dest_dir"] = dest_dir
+        captured["vault_relative_prefix"] = vault_relative_prefix
+        return rewritten, ["KB/Attachments/inbox/x/img-1.png"]
+
+    monkeypatch.setattr(
+        "thousand_sunny.routers.robin.download_markdown_images",
+        _fake_download,
+    )
+    # Stub URLDispatcher to actually invoke the configured downloader so we
+    # exercise the adapter inside the router's BG task end-to-end.
+    from agents.robin.url_dispatcher import URLDispatcher as RealURLDispatcher
+
+    monkeypatch.setattr(
+        "thousand_sunny.routers.robin.URLDispatcher",
+        lambda config: RealURLDispatcher(
+            type(config)(
+                scrape_url_fn=lambda _u: raw_md,
+                image_downloader_fn=config.image_downloader_fn,
+                image_attachments_abs_dir=config.image_attachments_abs_dir,
+                image_vault_relative_prefix=config.image_vault_relative_prefix,
+            )
+        ),
+    )
+
+    tc.post(
+        "/scrape-translate",
+        data={"url": "https://example.com/post"},
+        cookies={"nakama_auth": auth},
+        follow_redirects=False,
+    )
+
+    # Adapter must have called the underlying function with kwargs.
+    assert captured["md_text"] == raw_md
+    assert isinstance(captured["dest_dir"], Path)
+    assert str(captured["vault_relative_prefix"]).startswith("KB/Attachments/inbox/")

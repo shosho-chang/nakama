@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "manifest_id": "mfst_with_concept_001",
+  "source_id": "ebook:abc123",
+  "created_at": "2026-05-09T12:00:00Z",
+  "status": "needs_review",
+  "replaces_manifest_id": null,
+  "recommender": {
+    "model_name": "claude-opus-4-7",
+    "model_version": "2026-04",
+    "run_params": {},
+    "recommended_at": "2026-05-09T12:00:00Z"
+  },
+  "items": [
+    {
+      "item_kind": "concept",
+      "item_id": "concept_hrv_001",
+      "recommendation": "include",
+      "action": "create_global_concept",
+      "reason": "Concept appears in multiple chapters with consistent definition.",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/abc123/original.epub",
+          "locator": "epubcfi(/6/14[ch3]!/4/2/16/1:0,/6/14[ch3]!/4/2/16/1:240)",
+          "excerpt": "HRV is a key biomarker of autonomic balance...",
+          "confidence": 0.92
+        }
+      ],
+      "risk": [],
+      "confidence": 0.91,
+      "source_importance": 0.9,
+      "reader_salience": 0.8,
+      "concept_label": "Heart Rate Variability",
+      "evidence_language": "en",
+      "canonical_match": {
+        "match_basis": "exact_alias",
+        "confidence": 0.97,
+        "matched_concept_path": "KB/Wiki/Concepts/HRV.md"
+      },
+      "prior_decision": null,
+      "human_decision": null
+    }
+  ],
+  "commit_batches": [],
+  "metadata": {}
+}

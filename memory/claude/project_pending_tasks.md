@@ -125,6 +125,21 @@ originSessionId: cbf94814-ac39-48c7-af66-32e399edf699
 - ✅ Usopp VPS 部署材料（PR #98 merged 2026-04-24）— systemd unit + runbook；等修修手動套用
 - ✅ Usopp Slice C2a — Docker WP 6.4.3 + SEOPress 9.4.1 staging E2E 黃金路徑（PR #101 merged 2026-04-24）
 - ✅ Usopp Slice C2b — LiteSpeed Day 1 實測完成（2026-04-24）：`LITESPEED_PURGE_METHOD=noop` 為生產正解；REST endpoint 不存在、WP hook auto-purge 已覆蓋；決策表與 code follow-up 清單見 [docs/runbooks/litespeed-purge.md](../../docs/runbooks/litespeed-purge.md)
+- ✅ **Usopp #270 closed 2026-05-03 晚** — `busy_timeout` 5s→30s 修法 (PR #320) merged + VPS deploy；acceptance #1 (code-level) 驗綠；#2/#3 改「下次真實 publish 時順便觀察」不卡 issue。VPS ssh 實查發現 `publish_jobs` 0 row ever、`approval_queue` 2 row 全 pending，SEO 中控台 publishing pipeline 從 4/29 ship 後 0 publish ever（修修尚未排時間跑 SEO workflow，非 bug）。不開 follow-up issue
+
+**2026-05-04 凌晨 5 PR ship session（修修「Nami 和工程小修全部先做一做」+ A 直接 squash merge）**：
+- ✅ **PR #331 merged** `39abe4f` — memory hygiene（CF token nag-suppress + sandbox prod-read guard 補充）
+- ✅ **PR #332 merged** `1996335` — Nami persona round 3：ask_zoro escape hatch 禁演 + social heat 描述禁忌詞 >12 條 + 數字必附 source 規則。修法解 5/3 晚 Slack DM 多輪測試 Bug 2 變形（Nami 演「Zoro 偵察線掛掉所以我自己抓 Reddit」+ social heat hallucination）。詳見 [project_session_2026_05_04_5pr_ship.md](project_session_2026_05_04_5pr_ship.md)
+- ✅ **PR #333 merged** `496a7ea` — Franky verify per-prefix isolation：migration 008 加 `r2_backup_checks.prefix` column + composite index；`_consecutive_fail_days(prefix)` per-prefix counting；AlertV1 dedup_key=`r2_backup_missing:<prefix>`；新 `verify_all_prefixes()` 從 `FRANKY_R2_PREFIXES` CSV env 讀 list；fallback `FRANKY_R2_PREFIX` legacy；`_init_tables` 自動 ALTER TABLE
+- ✅ **PR #334 merged** `d4a3914` — A6 follow-up：`tests/shared/seo_audit/test_llm_review.py` 14 處 `MagicMock()` → `MagicMock(spec=Anthropic)` + 1 條 regression test
+- ✅ **PR #335 merged** `7782dca` — keyword-research zh-channel biasing (GH #33 Item 4+5)：reddit_zh 加 `subreddit_allowlist=_HEALTH_SUBREDDITS` 限制在健康 subreddit；twitter_zh 加 `region="tw-tzh"` DDG region bias 台灣繁中；reddit_en / twitter_en 不變
+- ⏸ **B3 firecrawl mock spec deferred** — firecrawl 4.23 `.scrape()` 是 instance dynamic attr，`MagicMock(spec=FirecrawlApp)` 會 block 真 method call。等 SDK 升級或加 per-method spec list 再做。詳見 [feedback_mock_use_spec.md](feedback_mock_use_spec.md) §SDK class spec vs instance attrs
+- ⏸ **B4 firecrawl Location country wiring deferred** — firecrawl 4.23 沒 export Location class
+- ⏸ **Issue #145 Bridge edit/requeue audit gap deferred** — 需「真有 forensics 需求」才有意義；SEO 中控台 5 天 0 publish 表示沒人會找 audit log
+- ⏳ **修修 deploy 待辦**（merge 後做）：
+  - #332 Nami：`ssh nakama-vps "cd /home/nakama && git pull && systemctl restart nakama-gateway"`
+  - #333 Franky：`ssh nakama-vps "cd /home/nakama && git pull"` + 編輯 `.env` 加 `FRANKY_R2_PREFIXES=shosho/,fleet/`
+  - #335 keyword-research：next 跑 `/keyword-research <topic>` 自動生效，無 deploy
 
 **Phase 1 foundation borderline follow-ups（6 項，全部完成）：**
 - ✅ `PRAGMA synchronous=NORMAL` + `busy_timeout=5000` + `foreign_keys=ON` 移到 `_get_conn()`（ADR-006 §5 四條 PRAGMA 收齊，PR #85 2026-04-23）

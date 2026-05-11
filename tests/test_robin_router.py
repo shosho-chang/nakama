@@ -181,6 +181,107 @@ def test_get_inbox_files_lists_supported_extensions(client, vault):
     assert "bar.unsupported" not in names
 
 
+def test_get_inbox_files_extracts_title_from_frontmatter(client, vault):
+    """frontmatter.title 應該被 surface 到 file dict 給 inbox row 顯示。
+
+    Bug context (2026-05-04 smoke):
+    URL ingest 寫入時 frontmatter title 是真實標題（"Physical activity types..."），
+    但 index.html 顯示的是 file.name（slug），User 看到 ugly 檔名以為標題沒抓到。
+    這個 test 守住 _get_inbox_files 必須暴露 frontmatter.title 給 template 用。
+    """
+    _, mod = client
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    pretty = inbox / "uglyslug.md"
+    pretty.write_text(
+        '---\ntitle: "Physical activity and mortality"\nfulltext_status: ready\n---\n\nbody\n',
+        encoding="utf-8",
+    )
+    bare = inbox / "no-frontmatter.md"
+    bare.write_text("just text\n", encoding="utf-8")
+
+    files = {f["name"]: f for f in mod._get_inbox_files()}
+    assert files["uglyslug.md"]["title"] == "Physical activity and mortality"
+    # No frontmatter → empty title (template falls back to file.name).
+    assert files["no-frontmatter.md"]["title"] == ""
+
+
+def test_get_inbox_files_synthesizes_status_for_web_clipper(client, vault):
+    """Obsidian Web Clipper files (no fulltext_status, tags=[clippings]) get
+    a synthesised display row with status='ready' + source='Web Clipper' so
+    the inbox list shows them with the ✅ icon and a meaningful source label.
+    """
+    _, mod = client
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    clipped = inbox / "clipped-paper.md"
+    clipped.write_text(
+        "---\n"
+        'title: "Clipped Paper"\n'
+        'source: "https://example.com/paper"\n'
+        "tags:\n"
+        "  - clippings\n"
+        "---\n\nbody content\n",
+        encoding="utf-8",
+    )
+
+    files = {f["name"]: f for f in mod._get_inbox_files()}
+    row = files["clipped-paper.md"]
+    assert row["fulltext_status"] == "ready"
+    assert row["fulltext_source"] == "Web Clipper"
+    assert row["title"] == "Clipped Paper"
+
+
+def test_looks_like_web_clipper_detects_tags_list(client):
+    _, mod = client
+    assert mod._looks_like_web_clipper({"tags": ["clippings", "research"]}) is True
+
+
+def test_looks_like_web_clipper_detects_tags_string(client):
+    _, mod = client
+    assert mod._looks_like_web_clipper({"tags": "clippings"}) is True
+
+
+def test_looks_like_web_clipper_falls_back_to_source_without_original_url(client):
+    """Web Clipper variants with custom tag templates still get caught by the
+    'source without original_url' permissive fallback."""
+    _, mod = client
+    assert mod._looks_like_web_clipper({"source": "https://example.com/x"}) is True
+
+
+def test_looks_like_web_clipper_rejects_robin_files(client):
+    """Robin-written files have BOTH source + original_url — must NOT trip
+    the Web Clipper detector (would synthesise the wrong source label)."""
+    _, mod = client
+    fm = {
+        "source": "https://example.com/x",
+        "original_url": "https://example.com/x",
+        "fulltext_status": "ready",
+    }
+    assert mod._looks_like_web_clipper(fm) is False
+
+
+def test_get_inbox_files_does_not_overwrite_explicit_status(client, vault):
+    """File with explicit fulltext_status is not touched by the Web Clipper
+    synthesiser (status stays whatever the user / pipeline wrote)."""
+    _, mod = client
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    f = inbox / "explicit.md"
+    f.write_text(
+        "---\n"
+        'title: "Explicit"\n'
+        'source: "https://example.com/x"\n'
+        "tags:\n  - clippings\n"
+        "fulltext_status: failed\n"
+        "---\nbody\n",
+        encoding="utf-8",
+    )
+
+    files = {x["name"]: x for x in mod._get_inbox_files()}
+    assert files["explicit.md"]["fulltext_status"] == "failed"
+
+
 def test_get_inbox_files_small_file_shows_bytes(client, vault):
     """size_kb 為 0 → 顯示 bytes 而非 KB。"""
     _, mod = client
@@ -275,6 +376,50 @@ def test_read_source_happy_path_md(client, vault, monkeypatch):
 
     r = tc.get("/read", params={"file": "foo.md"})
     assert r.status_code == 200
+    # Slug and empty annotations injected into page
+    assert "foo" in r.text  # slug derived from filename
+    assert "annotationsData" in r.text or "[]" in r.text  # JS array present
+
+
+def test_read_source_passes_existing_annotations(client, vault, monkeypatch):
+    """Existing annotations are loaded from KB/Annotations/ and injected into the page."""
+    import importlib
+
+    import shared.annotation_store as ann_mod
+    import thousand_sunny.routers.robin as robin_mod
+
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    importlib.reload(ann_mod)
+    importlib.reload(robin_mod)
+
+    monkeypatch.setattr(robin_mod, "fetch_images", lambda p: 0)
+
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    (inbox / "bar.md").write_text("# Bar\n\nHello world", encoding="utf-8")
+
+    # Pre-populate annotation store
+    store = ann_mod.AnnotationStore()
+    store.save(
+        ann_mod.AnnotationSet(
+            slug="bar",
+            source_filename="bar.md",
+            base="inbox",
+            items=[ann_mod.Highlight(text="Hello world", created_at="2026-01-01T00:00:00Z")],
+            updated_at="2026-01-01T00:00:00Z",
+        )
+    )
+
+    # Reload router so it picks up the patched vault path
+    app2 = __import__("fastapi", fromlist=["FastAPI"]).FastAPI()
+    app2.include_router(robin_mod.router)
+    from fastapi.testclient import TestClient as TC2
+
+    tc2 = TC2(app2, follow_redirects=False)
+
+    r = tc2.get("/read", params={"file": "bar.md"})
+    assert r.status_code == 200
+    assert "Hello world" in r.text
 
 
 def test_read_source_without_frontmatter(client, vault, monkeypatch):
@@ -328,33 +473,98 @@ def test_serve_vault_file_not_found_404(client, vault):
 
 
 # ---------------------------------------------------------------------------
-# POST /save-annotations
+# POST /save-annotations  (JSON endpoint — ADR-017)
 # ---------------------------------------------------------------------------
+
+_ANN_PAYLOAD = {
+    "slug": "doc",
+    "source_filename": "doc.md",
+    "base": "inbox",
+    "items": [{"type": "highlight", "text": "hello", "created_at": "2026-01-01T00:00:00Z"}],
+    "updated_at": "2026-01-01T00:00:00Z",
+}
 
 
 def test_save_annotations_auth_required(auth_client):
     tc, _, _ = auth_client
-    r = tc.post("/save-annotations", data={"filename": "x.md", "content": "y"})
+    r = tc.post("/save-annotations", json=_ANN_PAYLOAD)
     assert r.status_code == 403
 
 
-def test_save_annotations_missing_file_404(client, vault):
+def test_save_annotations_unknown_base_400(client, vault):
     tc, _ = client
-    (vault / "Inbox" / "kb").mkdir(parents=True)
-    r = tc.post("/save-annotations", data={"filename": "missing.md", "content": "body"})
-    assert r.status_code == 404
+    payload = {**_ANN_PAYLOAD, "base": "unknown-base"}
+    r = tc.post("/save-annotations", json=payload)
+    assert r.status_code == 400
 
 
-def test_save_annotations_writes_file(client, vault):
+def test_save_annotations_writes_to_kb_annotations(client, vault, monkeypatch):
+    """Saves AnnotationSet to KB/Annotations/{slug}.md; source file NOT mutated."""
+    import importlib
+
+    import shared.annotation_store as ann_mod
+    import thousand_sunny.routers.robin as robin_mod
+
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    importlib.reload(ann_mod)
+    importlib.reload(robin_mod)
+
     tc, _ = client
+
+    r = tc.post("/save-annotations", json=_ANN_PAYLOAD)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ok"
+    assert "unsynced_count" in data
+    assert data["unsynced_count"] == 1  # 1 item, never synced
+
+    ann_file = vault / "KB" / "Annotations" / "doc.md"
+    assert ann_file.exists(), "annotation file must be created in KB/Annotations/"
+    content = ann_file.read_text("utf-8")
+    assert "hello" in content
+    assert "highlight" in content
+
+
+def test_save_annotations_does_not_mutate_source(client, vault, monkeypatch):
+    """Original source file must remain unchanged after save."""
+    import importlib
+
+    import shared.annotation_store as ann_mod
+    import thousand_sunny.routers.robin as robin_mod
+
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    importlib.reload(ann_mod)
+    importlib.reload(robin_mod)
+
     inbox = vault / "Inbox" / "kb"
     inbox.mkdir(parents=True)
-    (inbox / "doc.md").write_text("orig", encoding="utf-8")
+    source_text = "# Pure Source\n\nSome content here."
+    (inbox / "doc.md").write_text(source_text, encoding="utf-8")
 
-    r = tc.post("/save-annotations", data={"filename": "doc.md", "content": "new body"})
+    tc, _ = client
+    tc.post("/save-annotations", json=_ANN_PAYLOAD)
+
+    assert (inbox / "doc.md").read_text("utf-8") == source_text
+
+
+def test_save_annotations_sources_base(client, vault, monkeypatch):
+    """base=sources is also accepted and writes to KB/Annotations/."""
+    import importlib
+
+    import shared.annotation_store as ann_mod
+    import thousand_sunny.routers.robin as robin_mod
+
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    importlib.reload(ann_mod)
+    importlib.reload(robin_mod)
+
+    (vault / "KB" / "Wiki" / "Sources").mkdir(parents=True)
+    payload = {**_ANN_PAYLOAD, "base": "sources", "slug": "src-doc"}
+
+    tc, _ = client
+    r = tc.post("/save-annotations", json=payload)
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
-    assert (inbox / "doc.md").read_text("utf-8") == "new body"
+    assert (vault / "KB" / "Annotations" / "src-doc.md").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -400,17 +610,27 @@ def test_scrape_translate_unauth_redirect(auth_client):
 
 
 def test_scrape_translate_invalid_types_fallback_defaults(client, vault, monkeypatch):
-    """source_type / content_nature 非 allowlist 值 → 退回預設。"""
+    """source_type / content_nature 非 allowlist 值 → 退回預設。
+
+    Slice 1 (issue #352): /scrape-translate 改成 BackgroundTask + redirect /;
+    本 case mock URLDispatcher 確認 form allowlist 仍 work + frontmatter 寫入預設值。
+    """
     tc, mod = client
 
-    def fake_scrape(url):
-        return "raw page content"
+    from agents.robin.url_dispatcher import URLDispatcher
+    from shared.schemas.ingest_result import IngestResult
 
-    def fake_translate(text):
-        return f"bilingual:{text}"
-
-    monkeypatch.setattr("shared.web_scraper.scrape_url", fake_scrape)
-    monkeypatch.setattr("shared.translator.translate_document", fake_translate)
+    big_md = "# Title\n\n" + ("body line.\n" * 80)
+    fake_dispatcher_cls = MagicMock(spec=URLDispatcher)
+    fake_dispatcher_cls.return_value.dispatch.return_value = IngestResult(
+        status="ready",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown=big_md,
+        title="Title",
+        original_url="https://example.com/path",
+    )
+    monkeypatch.setattr(mod, "URLDispatcher", fake_dispatcher_cls)
 
     (vault / "Inbox" / "kb").mkdir(parents=True)
 
@@ -432,9 +652,22 @@ def test_scrape_translate_invalid_types_fallback_defaults(client, vault, monkeyp
 
 
 def test_scrape_translate_filename_collision_adds_counter(client, vault, monkeypatch):
+    """Slice 1: placeholder writer 沿用既有 collision counter pattern。"""
     tc, mod = client
-    monkeypatch.setattr("shared.web_scraper.scrape_url", lambda u: "raw")
-    monkeypatch.setattr("shared.translator.translate_document", lambda t: f"bi:{t}")
+
+    from agents.robin.url_dispatcher import URLDispatcher
+    from shared.schemas.ingest_result import IngestResult
+
+    fake_dispatcher_cls = MagicMock(spec=URLDispatcher)
+    fake_dispatcher_cls.return_value.dispatch.return_value = IngestResult(
+        status="ready",
+        fulltext_layer="readability",
+        fulltext_source="Readability",
+        markdown="# T\n\n" + ("body\n" * 80),
+        title="T",
+        original_url="https://example.com/foo",
+    )
+    monkeypatch.setattr(mod, "URLDispatcher", fake_dispatcher_cls)
 
     inbox = vault / "Inbox" / "kb"
     inbox.mkdir(parents=True)
@@ -454,35 +687,69 @@ def test_scrape_translate_filename_collision_adds_counter(client, vault, monkeyp
     assert len(counter_files) == 1
 
 
-def test_scrape_translate_scrape_failure_returns_422(client, vault, monkeypatch):
+def test_flip_placeholder_to_failed_recovery_failure_logs_only(client, vault, monkeypatch):
+    """When the recovery write itself raises, the helper logs and returns silently.
+
+    Slice 1 ``_flip_placeholder_to_failed`` is the last-resort path that runs
+    when ``_ingest_url_in_background`` outer ``except`` already fired. If the
+    recovery write also fails (vault truly unreachable, disk full), there's
+    nothing more we can do — but the function must NOT propagate, since
+    FastAPI's BackgroundTasks doesn't surface exceptions to callers and a
+    raise here would just silently terminate the task without logging.
+    """
+    _, mod = client
+    placeholder = vault / "Inbox" / "kb"
+    placeholder.mkdir(parents=True, exist_ok=True)
+    target = placeholder / "stuck.md"
+    target.write_text("---\nfulltext_status: processing\n---\nbody\n", encoding="utf-8")
+
+    class _BoomWriter:
+        def __init__(self, *_a, **_kw):
+            raise RuntimeError("vault unreachable for recovery")
+
+    monkeypatch.setattr(mod, "InboxWriter", _BoomWriter)
+
+    # Must not raise.
+    mod._flip_placeholder_to_failed(
+        placeholder_path=target,
+        url="https://example.com/x",
+        exc=RuntimeError("original BG crash"),
+        source_type="article",
+        content_nature="popular_science",
+    )
+
+    # Original placeholder unchanged — recovery didn't run, but no crash either.
+    assert "fulltext_status: processing" in target.read_text(encoding="utf-8")
+
+
+def test_scrape_translate_scrape_failure_writes_failed_row(client, vault, monkeypatch):
+    """Slice 1: scraper 失敗不再 422，改寫入 status=failed inbox row。"""
     tc, mod = client
 
-    def fake_scrape(url):
-        raise RuntimeError("boom")
+    from agents.robin.url_dispatcher import URLDispatcher
+    from shared.schemas.ingest_result import IngestResult
 
-    monkeypatch.setattr("shared.web_scraper.scrape_url", fake_scrape)
-    (vault / "Inbox" / "kb").mkdir(parents=True)
+    failed = IngestResult(
+        status="failed",
+        fulltext_layer="unknown",
+        fulltext_source="(未知)",
+        markdown="",
+        title="example.com",
+        original_url="https://example.com/",
+        error="RuntimeError: boom",
+    )
+    fake_dispatcher_cls = MagicMock(spec=URLDispatcher)
+    fake_dispatcher_cls.return_value.dispatch.return_value = failed
+    monkeypatch.setattr(mod, "URLDispatcher", fake_dispatcher_cls)
 
-    r = tc.post("/scrape-translate", data={"url": "https://example.com/"})
-    assert r.status_code == 422
-
-
-def test_scrape_translate_translate_failure_keeps_original(client, vault, monkeypatch):
-    """translate 失敗 → bilingual_md 退回 raw_text（line 267）。"""
-    tc, mod = client
-    monkeypatch.setattr("shared.web_scraper.scrape_url", lambda u: "raw page")
-
-    def fake_translate(text):
-        raise RuntimeError("translate boom")
-
-    monkeypatch.setattr("shared.translator.translate_document", fake_translate)
     (vault / "Inbox" / "kb").mkdir(parents=True)
 
     r = tc.post("/scrape-translate", data={"url": "https://example.com/"})
     assert r.status_code == 303
     files = list((vault / "Inbox" / "kb").glob("*.md"))
+    assert len(files) == 1
     content = files[0].read_text("utf-8")
-    assert "raw page" in content  # fallback 保留 raw
+    assert "fulltext_status: failed" in content
 
 
 # ---------------------------------------------------------------------------

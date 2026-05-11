@@ -9,7 +9,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
@@ -19,11 +19,24 @@ from agents.robin.agent import (
     SOURCE_TYPE_TO_RAW_DIR,
 )
 from agents.robin.image_fetcher import fetch_images
+from agents.robin.inbox_writer import InboxWriter
 from agents.robin.ingest import IngestPipeline
 from agents.robin.kb_search import search_kb
+from agents.robin.url_dispatcher import URLDispatcher, URLDispatcherConfig
+from shared.annotation_store import (
+    AnnotationSet,
+    AnnotationStore,
+    annotation_slug,
+    get_annotation_store,
+    upgrade_to_v3,
+)
 from shared.config import get_agent_config, get_vault_path
+from shared.discard_service import DiscardService
+from shared.image_fetcher import download_markdown_images
 from shared.log import get_logger
+from shared.reading_source_registry import InboxKey, ReadingSourceRegistry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
+from shared.translator import translate_document
 from shared.utils import extract_frontmatter, read_text, slugify
 from thousand_sunny.auth import check_auth, require_auth_or_key
 from thousand_sunny.helpers import safe_resolve, sse
@@ -103,22 +116,80 @@ def _resolve_reader_base(base: str) -> Path:
     return resolver()
 
 
+def _looks_like_web_clipper(fm: dict) -> bool:
+    """True when frontmatter looks like Obsidian Web Clipper output.
+
+    Web Clipper writes ``tags: [clippings, ...]`` (YAML list) or rarely a bare
+    string. We also accept any md with a ``source`` URL but no ``original_url``
+    key as a permissive fallback (covers Web Clipper variants with custom tag
+    templates).
+    """
+    tags = fm.get("tags")
+    if isinstance(tags, list) and "clippings" in tags:
+        return True
+    if isinstance(tags, str) and tags.strip() == "clippings":
+        return True
+    if fm.get("source") and not fm.get("original_url"):
+        return True
+    return False
+
+
 def _get_inbox_files() -> list[dict]:
     inbox = _get_inbox()
     if not inbox.exists():
         return []
     supported = set(EXTENSION_TO_RAW_DIR.keys())
+    # Collapse `{stem}.md` + `{stem}-bilingual.md` siblings: when the bilingual
+    # variant exists, hide the raw `{stem}.md` so the inbox lists one row per
+    # logical source. The bilingual file is what the user reads + annotates;
+    # the raw sibling stays on disk for re-translation but is not user-facing.
+    bilingual_stems = {
+        f.name[: -len("-bilingual.md")]
+        for f in inbox.iterdir()
+        if f.is_file() and f.name.endswith("-bilingual.md")
+    }
     files = []
     for f in sorted(inbox.iterdir()):
         if f.is_file() and f.suffix.lower() in supported:
+            if f.suffix.lower() == ".md" and not f.name.endswith("-bilingual.md"):
+                if f.stem in bilingual_stems:
+                    continue
             size_kb = f.stat().st_size // 1024
+            # Slice 1 (issue #352): inbox row status icon — read frontmatter
+            # ``fulltext_status`` if present (URL ingest pipeline writes it).
+            # Files without that field (manual drops, legacy placeholders) get
+            # an empty status string so the template suppresses the icon.
+            status = ""
+            source_label = ""
+            title = ""
+            if f.suffix.lower() == ".md":
+                try:
+                    fm, _ = extract_frontmatter(read_text(f))
+                    status = str(fm.get("fulltext_status", "") or "")
+                    source_label = str(fm.get("fulltext_source", "") or "")
+                    title = str(fm.get("title", "") or "").strip()
+                    # Obsidian Web Clipper files (Chrome plugin) drop into
+                    # Inbox/kb/ with their own frontmatter shape (no
+                    # fulltext_status / fulltext_source — just title / source /
+                    # author / tags=[clippings]). Synthesise a display row so
+                    # the inbox lists them as "ready" with a "Web Clipper"
+                    # source label, without rewriting the user's vault file.
+                    if not status and _looks_like_web_clipper(fm):
+                        status = "ready"
+                        if not source_label:
+                            source_label = "Web Clipper"
+                except OSError:
+                    pass
             files.append(
                 {
                     "name": f.name,
+                    "title": title,
                     "size": f"{size_kb} KB" if size_kb >= 1 else f"{f.stat().st_size} B",
                     "type": EXTENSION_TO_SOURCE_TYPE.get(f.suffix.lower(), "article"),
                     "annotatable": f.suffix.lower() in (".md", ".txt"),
                     "is_read": is_file_read(f),
+                    "fulltext_status": status,
+                    "fulltext_source": source_label,
                 }
             )
     return files
@@ -162,15 +233,33 @@ async def read_source(
     if frontmatter and content.startswith("---"):
         frontmatter_raw = content[: content.index("---", 3) + 3]
 
+    # ADR-024 Slice 2 (#510): inbox-side slug derives from ReadingSourceRegistry
+    # so the bilingual-sibling collapse rule mirrors _get_inbox_files. The
+    # sources-side base (KB/Wiki/Sources/...) keeps the legacy ad-hoc derivation
+    # since the registry only models BookKey + InboxKey today.
+    if base == "inbox":
+        rs = ReadingSourceRegistry().resolve(InboxKey(f"Inbox/kb/{file}"))
+        if rs is None:
+            raise HTTPException(404, detail=f"找不到檔案：{file}")
+        slug = rs.annotation_key
+    else:
+        slug = annotation_slug(file, frontmatter)
+    ann_store: AnnotationStore = get_annotation_store()
+    ann_set = ann_store.load(slug)
+    annotations = [item.model_dump() for item in ann_set.items] if ann_set else []
+
     return templates.TemplateResponse(
         request,
         "reader.html",
         {
             "filename": file,
             "base": base,
+            "slug": slug,
             "content": body,
             "frontmatter": frontmatter,
             "frontmatter_raw": frontmatter_raw,
+            "annotations": annotations,
+            "unsynced_count": ann_store.unsynced_count(slug),
             "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
             "is_read": is_file_read(file_path),
             "is_bilingual": bool(frontmatter.get("bilingual")),
@@ -196,19 +285,45 @@ async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
 
 @router.post("/save-annotations")
 async def save_annotations(
-    filename: str = Form(...),
-    content: str = Form(...),
-    base: str = Form("inbox"),
+    ann_set: AnnotationSet,
     nakama_auth: str | None = Cookie(None),
 ):
+    """Accept a structured AnnotationSet and persist to KB/Annotations/{slug}.md.
+
+    The original source file is never mutated (ADR-017).
+    """
     if not check_auth(nakama_auth):
         raise HTTPException(403)
-    base_dir = _resolve_reader_base(base)
-    file_path = safe_resolve(base_dir, filename)
-    if not file_path.exists():
-        raise HTTPException(404, detail=f"找不到檔案：{filename}")
-    file_path.write_text(content, encoding="utf-8")
-    return {"status": "ok"}
+    # Validate that the declared base is known (prevents arbitrary slug writes from
+    # unknown bases, even though KB/Annotations/ is the uniform destination).
+    _resolve_reader_base(ann_set.base)
+    store: AnnotationStore = get_annotation_store()
+    # ADR-021 §1: persist as v3 (the Reader UI still posts the v1 shape; we upgrade
+    # at the boundary so the on-disk store is uniformly v3 going forward).
+    store.save(upgrade_to_v3(ann_set))
+    return {"status": "ok", "unsynced_count": store.unsynced_count(ann_set.slug)}
+
+
+@router.post("/sync-annotations/{slug}")
+async def sync_annotations(
+    slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Sync AnnotationStore[slug] annotations into matching Concept page ## 個人觀點 sections.
+
+    Returns a SyncReport with counts and any errors (ADR-017 Slice 2).
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(403)
+    from agents.robin.annotation_merger import ConceptPageAnnotationMerger
+
+    merger = ConceptPageAnnotationMerger()
+    report = await asyncio.to_thread(merger.sync_source_to_concepts, slug)
+    store: AnnotationStore = get_annotation_store()
+    if not report.errors:
+        await asyncio.to_thread(store.mark_synced, slug)
+    report.unsynced_count = store.unsynced_count(slug)
+    return report
 
 
 @router.post("/mark-read")
@@ -227,77 +342,501 @@ async def mark_read(
     return {"status": "ok"}
 
 
+@router.get("/discard-info")
+async def discard_info(
+    file: str,
+    base: str = "inbox",
+    nakama_auth: str | None = Cookie(None),
+):
+    """Return ``{ slug, annotation_count }`` so frontend can render confirm prompt.
+
+    Used by the「丟掉這篇」reader header button + inbox row delete button to
+    fetch the count BEFORE showing the dialog (PRD §User Stories U24
+    confirm 文字「丟掉「{filename}」**和 {N} 條 annotation**？」).
+
+    Slice 5 (issue #356).
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(403)
+    base_dir = _resolve_reader_base(base)
+    file_path = safe_resolve(base_dir, file)
+    if not file_path.exists():
+        raise HTTPException(404, detail=f"找不到檔案：{file}")
+    service = DiscardService()
+    slug, count = service.annotation_count_for(file_path)
+    return {"slug": slug, "annotation_count": count}
+
+
+@router.post("/discard")
+async def discard(
+    file: str,
+    base: str = "inbox",
+    nakama_auth: str | None = Cookie(None),
+):
+    """Send a vault file (and its annotation companion) to recycle bin.
+
+    Slice 5 (issue #356) — backs the reader header「丟掉這篇」button + inbox
+    row delete button (PRD §User Stories U24/U25). The destructive logic
+    lives in ``shared.discard_service.DiscardService`` so the endpoint stays
+    a thin wrapper (auth + path resolution + redirect).
+
+    Confirmation prompt 由前端 dialog 處理（POST 時已經確認過），所以後端直接
+    執行；caller 不需要再傳 confirm flag。404 when the file doesn't exist
+    means the inbox row was already gone (race with another tab) — frontend
+    treats this as a successful discard.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+    base_dir = _resolve_reader_base(base)
+    file_path = safe_resolve(base_dir, file)
+    # Idempotent: if the file is already gone we still call into the service
+    # so any orphan annotation companion gets cleaned up.
+    service = DiscardService()
+    report = service.discard(file_path, base=base)
+    logger.info(
+        "discard endpoint: %s (deleted_file=%s, annotation_deleted=%s, count=%d)",
+        file_path.name,
+        report.deleted_file,
+        report.annotation_deleted,
+        report.annotation_count,
+    )
+
+    response = RedirectResponse("/", status_code=303)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
+_VALID_SOURCE_TYPES = {"article", "paper", "book", "video", "podcast"}
+_VALID_CONTENT_NATURES = {
+    "popular_science",
+    "research",
+    "textbook",
+    "clinical_protocol",
+    "narrative",
+    "commentary",
+}
+
+
+def _slug_from_url(url: str) -> str:
+    """Same slug derivation the legacy ``/scrape-translate`` used (line 311).
+
+    Kept as a free function so the BackgroundTask can derive the same name
+    the placeholder writer used (without re-doing the slugify dance inline).
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return slugify(parsed.netloc + parsed.path)[:60] or "scraped"
+
+
+def _image_downloader_adapter(
+    markdown: str,
+    attachments_abs_dir: Path,
+    vault_relative_prefix: str,
+) -> tuple[str, list[str]]:
+    """Adapter from URLDispatcher's positional shape to ``download_markdown_images`` kwargs.
+
+    ``URLDispatcher`` calls the configured downloader as
+    ``downloader(markdown, attachments_abs_dir, vault_relative_prefix)`` (so the
+    schema-of-protocol matches what was promised in PR #357 review). The
+    underlying ``shared.image_fetcher.download_markdown_images`` uses keyword
+    arguments + a different parameter name (``dest_dir`` rather than
+    ``attachments_abs_dir``). This adapter bridges the two without refactoring
+    the existing image_fetcher (it has its own callers + tests we don't want
+    to touch in Slice 4 scope).
+    """
+    return download_markdown_images(
+        markdown,
+        dest_dir=attachments_abs_dir,
+        vault_relative_prefix=vault_relative_prefix,
+    )
+
+
+def _ingest_url_in_background(
+    *,
+    url: str,
+    placeholder_path: Path,
+    source_type: str,
+    content_nature: str,
+) -> None:
+    """BackgroundTask body: dispatch URL → write final IngestResult into placeholder.
+
+    Replaces the placeholder file in-place so the inbox row's filename never
+    changes (the user can bookmark it once they redirect back to inbox view).
+
+    On crash (anything raised by dispatcher / writer / vault path resolution),
+    we still attempt a best-effort overwrite of the placeholder with
+    ``fulltext_status=failed`` so the inbox row flips off 🔄. Without this
+    fallback a writer crash would leave the row stuck on "處理中" forever and
+    Slice 1 has no delete UI to recover (Slice 5 #356 adds the delete button).
+    """
+    try:
+        # Combined config: Slice 4 image fetch (per-URL slug dir) + Slice 2 academic
+        # 5-layer fallback (pubmed PDF dir). Separate slots avoid path collision
+        # when a URL routes through both pipelines (general readability + image,
+        # vs academic fetch_fulltext bypass).
+        import os
+
+        from agents.robin.pubmed_fulltext import fetch_fulltext as _fetch_fulltext
+
+        slug = placeholder_path.stem
+        image_attachments_abs_dir = get_vault_path() / "KB" / "Attachments" / "inbox" / slug
+        image_vault_relative_prefix = f"KB/Attachments/inbox/{slug}/"
+
+        # Academic fetch_fulltext only activates when email is configured —
+        # NCBI / Unpaywall both require contact email. Without it, academic
+        # URLs fall through to the general readability path (Slice 1 baseline).
+        _email = (
+            os.environ.get("UNPAYWALL_EMAIL") or os.environ.get("NOTIFY_TO", "")
+        ).strip() or None
+        _ncbi_key = os.environ.get("PUBMED_API_KEY") or None
+        _fulltext_dir = get_vault_path() / "KB" / "Attachments" / "pubmed"
+        _fulltext_prefix = "KB/Attachments/pubmed"
+
+        config = URLDispatcherConfig(
+            fetch_fulltext_fn=_fetch_fulltext if _email else None,
+            image_downloader_fn=_image_downloader_adapter,
+            email=_email,
+            ncbi_api_key=_ncbi_key,
+            fulltext_attachments_abs_dir=_fulltext_dir if _email else None,
+            fulltext_vault_relative_prefix=_fulltext_prefix if _email else None,
+            image_attachments_abs_dir=image_attachments_abs_dir,
+            image_vault_relative_prefix=image_vault_relative_prefix,
+        )
+        dispatcher = URLDispatcher(config)
+        result = dispatcher.dispatch(url)
+        writer = InboxWriter(_get_inbox())
+        writer.write_to_inbox(
+            result,
+            slug=placeholder_path.stem,
+            existing_path=placeholder_path,
+            source_type=source_type,
+            content_nature=content_nature,
+        )
+    except Exception as exc:  # noqa: BLE001 — never let a BackgroundTask raise
+        logger.exception("scrape-translate background task crashed (url=%s)", url)
+        _flip_placeholder_to_failed(
+            placeholder_path=placeholder_path,
+            url=url,
+            exc=exc,
+            source_type=source_type,
+            content_nature=content_nature,
+        )
+
+
+def _flip_placeholder_to_failed(
+    *,
+    placeholder_path: Path,
+    url: str,
+    exc: BaseException,
+    source_type: str,
+    content_nature: str,
+) -> None:
+    """Best-effort overwrite of the placeholder when the BG task itself crashes.
+
+    Wrapped in its own try/except: if even this recovery write fails (vault
+    unreachable, disk full), we log and give up — the row will stay 🔄 but
+    that's no worse than the pre-fix behaviour.
+    """
+    from shared.schemas.ingest_result import IngestResult
+
+    try:
+        crash_result = IngestResult(
+            status="failed",
+            fulltext_layer="unknown",
+            fulltext_source="(後台任務崩潰)",
+            markdown="",
+            title=placeholder_path.stem,
+            original_url=url,
+            error=f"{type(exc).__name__}: {exc}",
+            note="後台任務崩潰，請重試或檢查日誌",
+        )
+        writer = InboxWriter(_get_inbox())
+        writer.write_to_inbox(
+            crash_result,
+            slug=placeholder_path.stem,
+            existing_path=placeholder_path,
+            source_type=source_type,
+            content_nature=content_nature,
+        )
+    except Exception:  # noqa: BLE001 — last-resort logging
+        logger.exception(
+            "could not flip placeholder to failed (placeholder=%s, url=%s)",
+            placeholder_path,
+            url,
+        )
+
+
 @router.post("/scrape-translate")
 async def scrape_translate(
+    background_tasks: BackgroundTasks,
     url: str = Form(...),
     source_type: str = Form("article"),
     content_nature: str = Form("popular_science"),
     nakama_auth: str | None = Cookie(None),
 ):
-    """從 URL 抓取網頁並翻譯成雙語 Markdown，存入 inbox。"""
+    """Stage 1 URL ingest entry-point (PRD docs/plans/2026-05-04-stage-1-ingest-unify.md).
+
+    Slice 1 behaviour (issue #352):
+
+    1. Validate auth + form values (allowlist source_type / content_nature).
+    2. Same-URL short-circuit: if any inbox file's frontmatter already has
+       ``original_url == url``, redirect straight to ``/read`` without
+       re-fetching.
+    3. Write a ``status='processing'`` placeholder file under
+       ``Inbox/kb/{slug}.md`` so the inbox view immediately shows a 🔄 row.
+    4. Schedule a ``BackgroundTask`` that runs ``URLDispatcher.dispatch()``
+       and overwrites the placeholder with the final ``IngestResult`` (ready
+       or failed).
+    5. Redirect 303 → ``/`` (inbox view) so the user sees their pending row.
+
+    Slice 2+ will widen URLDispatcher to academic 5-layer fallback. Slice 3
+    will wire image_fetcher. Slice 4 will add discard / translate buttons.
+    """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
 
-    _VALID_SOURCE_TYPES = {"article", "paper", "book", "video", "podcast"}
-    _VALID_CONTENT_NATURES = {
-        "popular_science",
-        "research",
-        "textbook",
-        "clinical_protocol",
-        "narrative",
-        "commentary",
-    }
     source_type = source_type if source_type in _VALID_SOURCE_TYPES else "article"
     content_nature = (
         content_nature if content_nature in _VALID_CONTENT_NATURES else "popular_science"
-    )  # noqa: E501
+    )
 
-    from shared.translator import translate_document
-    from shared.web_scraper import scrape_url
+    inbox = _get_inbox()
+    writer = InboxWriter(inbox)
 
-    try:
-        raw_text = await asyncio.to_thread(scrape_url, url)
-    except RuntimeError as e:
-        raise HTTPException(422, detail=f"無法擷取頁面：{e}")
+    # Same-URL short-circuit (PRD §Pipeline / API "短路條件" + acceptance #6).
+    # Always redirect to inbox (`/`) — the new-ingest path also lands there, so
+    # the user sees a consistent destination whether the URL was new or repeat.
+    existing = writer.find_existing_for_url(url)
+    if existing is not None:
+        logger.info("scrape-translate short-circuit (existing url): %s", existing.name)
+        response = RedirectResponse("/", status_code=303)
+        if nakama_auth:
+            response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+        return response
 
-    try:
-        bilingual_md = await asyncio.to_thread(translate_document, raw_text)
-    except Exception as e:
-        logger.error(f"翻譯失敗：{e}")
-        bilingual_md = raw_text  # 翻譯失敗時保留原文
-
-    # 以 URL slug 命名文件
+    slug = _slug_from_url(url)
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
-    slug = slugify(parsed.netloc + parsed.path)[:60] or "scraped"
-    filename = f"{slug}.md"
-    inbox = _get_inbox()
-    inbox.mkdir(parents=True, exist_ok=True)
-    dest = inbox / filename
-    # 避免覆蓋現有檔案
-    counter = 1
-    while dest.exists():
-        dest = inbox / f"{slug}-{counter}.md"
-        counter += 1
-    filename = dest.name
-
-    # 清理換行符防止 YAML 注入；source_type/content_nature 已通過 allowlist 驗證
-    safe_title = f"{parsed.netloc}{parsed.path}".replace("\n", "").replace("\r", "")
-    safe_url = url.replace("\n", "").replace("\r", "")
-    frontmatter = (
-        "---\n"
-        f'title: "{safe_title}"\n'
-        f'source: "{safe_url}"\n'
-        f"source_type: {source_type}\n"
-        f"content_nature: {content_nature}\n"
-        "bilingual: true\n"
-        "---\n\n"
+    placeholder_title = f"{parsed.netloc}{parsed.path}".strip("/") or url
+    placeholder_path = writer.write_placeholder(
+        slug=slug,
+        original_url=url,
+        title=placeholder_title,
+        source_type=source_type,
+        content_nature=content_nature,
     )
-    dest.write_text(frontmatter + bilingual_md, encoding="utf-8")
-    logger.info(f"scrape-translate 完成：{filename}")
 
-    response = RedirectResponse(f"/read?file={filename}", status_code=303)
+    background_tasks.add_task(
+        _ingest_url_in_background,
+        url=url,
+        placeholder_path=placeholder_path,
+        source_type=source_type,
+        content_nature=content_nature,
+    )
+
+    response = RedirectResponse("/", status_code=303)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
+_BILINGUAL_SUFFIX = "-bilingual.md"
+_FULLTEXT_STATUS_RE = re.compile(r"^fulltext_status:\s*\S+\s*$", re.MULTILINE)
+_BILINGUAL_FRONTMATTER = (
+    "---\n"
+    'title: "{title} — 雙語閱讀版"\n'
+    'source: "{source}"\n'
+    'original_url: "{source}"\n'
+    "source_type: {source_type}\n"
+    "content_nature: {content_nature}\n"
+    "fulltext_status: translated\n"
+    "fulltext_layer: {layer}\n"
+    'fulltext_source: "{fulltext_source}"\n'
+    "bilingual: true\n"
+    'derived_from: "Inbox/kb/{stem}.md"\n'
+    "---\n\n"
+)
+
+
+def _bilingual_path_for(source_path: Path) -> Path:
+    """Return the ``-bilingual.md`` sibling path for a Slice 3 inbox source.
+
+    Idempotent for already-bilingual inputs: re-translating a path that
+    already ends in ``-bilingual.md`` returns the SAME path (defends
+    against a UI bug where the bilingual reader re-posts its own filename).
+    """
+    if source_path.name.endswith(_BILINGUAL_SUFFIX):
+        return source_path
+    return source_path.with_name(source_path.stem + _BILINGUAL_SUFFIX)
+
+
+def _flip_status_to_translated(source_path: Path) -> None:
+    """Mutate ``fulltext_status`` in the source frontmatter to ``translated``.
+
+    Targeted regex replace on the single status line — keeps the rest of
+    the YAML block (and the markdown body) byte-for-byte identical so
+    annotation references that were anchored to the body still resolve.
+    Silent no-op if the file lacks the field (manual drops, legacy
+    placeholders) — we don't synthesise a status retroactively.
+    """
+    try:
+        text = read_text(source_path)
+    except OSError:
+        logger.exception("could not read source for status flip: %s", source_path)
+        return
+    new_text, count = _FULLTEXT_STATUS_RE.subn("fulltext_status: translated", text, count=1)
+    if count == 0:
+        logger.info("no fulltext_status field to flip in %s — skipping", source_path.name)
+        return
+    source_path.write_text(new_text, encoding="utf-8")
+
+
+def _flip_status_to_translating(source_path: Path) -> None:
+    """Mutate ``fulltext_status`` in the source frontmatter to ``translating``.
+
+    Mirror of :func:`_flip_status_to_translated`. The ``translating`` state
+    is a transient intermediate marker (``ready`` → ``translating`` →
+    ``translated``) that the inbox row can render so 修修 sees the file is
+    in flight rather than (a) being dumped onto a 404 bilingual reader page
+    or (b) clicking 「翻譯」 a second time. The BG task flips it forward
+    to ``translated`` on completion via :func:`_flip_status_to_translated`,
+    so a crash mid-translate leaves the row stuck on ``translating`` —
+    intentional surface so the user can notice + retry rather than the row
+    silently snapping back to ``ready`` and hiding the failure.
+
+    Silent no-op if the file lacks the field — same contract as the
+    ``translated`` flipper.
+    """
+    try:
+        text = read_text(source_path)
+    except OSError:
+        logger.exception("could not read source for status flip: %s", source_path)
+        return
+    new_text, count = _FULLTEXT_STATUS_RE.subn("fulltext_status: translating", text, count=1)
+    if count == 0:
+        logger.info("no fulltext_status field to flip in %s — skipping", source_path.name)
+        return
+    source_path.write_text(new_text, encoding="utf-8")
+
+
+def _translate_in_background(
+    *,
+    source_path: Path,
+    bilingual_path: Path,
+) -> None:
+    """BackgroundTask body: run translate_document → write bilingual.md → flip status.
+
+    Mirrors the ``/pubmed-to-reader`` translate flow but with two
+    differences: (a) the source is the URL-ingested ``Inbox/kb/{slug}.md``
+    rather than ``KB/Attachments/pubmed/{pmid}.{pdf,md}``, and (b) on
+    translator failure we do NOT write a partial bilingual file — the
+    user can read the original under the same inbox row, so silently
+    falling back like the PubMed path would just hide the failure.
+    """
+    try:
+        content = read_text(source_path)
+    except OSError:
+        logger.exception("translate BG: could not read source %s", source_path)
+        return
+    fm, body = extract_frontmatter(content)
+    raw_md = body or content
+
+    try:
+        bilingual_md = translate_document(raw_md)
+    except Exception:  # noqa: BLE001 — never let a BackgroundTask raise
+        logger.exception("translate BG crashed for %s", source_path.name)
+        return
+
+    title = str(fm.get("title", source_path.stem) or source_path.stem)
+    source_url = str(fm.get("original_url", fm.get("source", "")) or "")
+    source_type = str(fm.get("source_type", "article") or "article")
+    content_nature = str(fm.get("content_nature", "popular_science") or "popular_science")
+    layer = str(fm.get("fulltext_layer", "readability") or "readability")
+    fulltext_source = str(fm.get("fulltext_source", "Readability") or "Readability")
+
+    frontmatter = _BILINGUAL_FRONTMATTER.format(
+        title=title.replace('"', '\\"'),
+        source=source_url.replace('"', '\\"'),
+        source_type=source_type,
+        content_nature=content_nature,
+        layer=layer,
+        fulltext_source=fulltext_source.replace('"', '\\"'),
+        stem=source_path.stem,
+    )
+    bilingual_path.write_text(frontmatter + bilingual_md, encoding="utf-8")
+    _flip_status_to_translated(source_path)
+    logger.info("translate BG complete: %s", bilingual_path.name)
+
+
+@router.post("/translate")
+async def translate(
+    background_tasks: BackgroundTasks,
+    file: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Trigger on-demand translation of an inbox source (Slice 3, issue #354).
+
+    Flow (PRD docs/plans/2026-05-04-stage-1-ingest-unify.md §Pipeline / API):
+
+    1. Auth gate.
+    2. Validate ``file`` (markdown only, no path traversal).
+    3. Short-circuit: if ``{stem}-bilingual.md`` already exists, redirect
+       straight to the reader without scheduling a BG task — mirrors
+       ``/pubmed-to-reader`` line 499 and the PRD §Pipeline / API
+       "短路條件" / acceptance #6.
+    4. Else flip the source row to ``fulltext_status: translating``,
+       schedule ``_translate_in_background``, and redirect back to the
+       inbox view (``/``) — NOT ``/read?file={stem}-bilingual.md``.
+
+    Why the redirect target is ``/`` and not the bilingual reader:
+    translation takes ~3min on a long article; redirecting straight to
+    ``/read?file={stem}-bilingual.md`` raced the BG write and 404'd
+    every long article (BMJ Medicine reproduction 2026-05-04). Sending
+    the user back to the inbox lets them watch the 🔄 (translating)
+    icon flip to 📖 (translated), then click 「閱讀」 to jump in once the
+    file actually exists. Costs one extra click but trades a 100%
+    failure mode for a 0% one.
+
+    The BG task writes ``Inbox/kb/{stem}-bilingual.md`` and mutates the
+    source frontmatter to ``fulltext_status: translated``. On translator
+    crash the bilingual file is never written; the source row is left in
+    ``translating`` so the failure is visible (mirror of the
+    "no silent fallback to raw" choice in ``_translate_in_background``).
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    inbox = _get_inbox()
+    source_path = safe_resolve(inbox, file)
+    if not source_path.exists():
+        raise HTTPException(404, detail=f"找不到檔案：{file}")
+    if source_path.suffix.lower() != ".md":
+        raise HTTPException(400, detail="只有 markdown 檔案能翻譯")
+
+    bilingual_path = _bilingual_path_for(source_path)
+    if bilingual_path.exists():
+        logger.info("translate short-circuit (bilingual exists): %s", bilingual_path.name)
+        response = RedirectResponse(f"/read?file={bilingual_path.name}", status_code=303)
+        if nakama_auth:
+            response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+        return response
+
+    # Flip BEFORE scheduling so the inbox row reflects "in flight" the
+    # moment the user is redirected back. Doing it inside the BG body
+    # would leave a window where the row still shows ✅ ready but the
+    # translate button is being processed → looks idle, invites a
+    # second click.
+    _flip_status_to_translating(source_path)
+
+    background_tasks.add_task(
+        _translate_in_background,
+        source_path=source_path,
+        bilingual_path=bilingual_path,
+    )
+    response = RedirectResponse("/", status_code=303)
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
@@ -344,8 +883,12 @@ async def pubmed_to_reader(
     pdf_path = attachments_dir / f"{pmid}.pdf"
     html_md_path = attachments_dir / f"{pmid}.md"
 
+    # Lazy rebind so test suites patching ``shared.translator.translate_document``
+    # (e.g. tests/test_pubmed_to_reader_route.py) still hit this branch — without
+    # the lazy import this function would close over the module-level binding
+    # imported at the top of the file, bypassing the patch.
     from shared.pdf_parser import parse_pdf
-    from shared.translator import translate_document
+    from shared.translator import translate_document  # noqa: F811
 
     raw_md: str
     source_kind: str

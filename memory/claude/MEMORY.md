@@ -1,7 +1,28 @@
 # Memory Index
 
+- [feedback_auto_merge_after_review.md](feedback_auto_merge_after_review.md) — **PR review pass 後 auto-merge 不要再問**（user explicit 2026-05-10）：跑 review skill → 修 ≥80 score bug → CI 綠 → 直接 squash-merge + inline 報告，不再徵求授權
+- [project_news_coo_naming_and_scope.md](project_news_coo_naming_and_scope.md) — **News Coo 命名 + scope 切分 2026-05-10**：撤回 Den Den Mushi；News Coo = 瀏覽器 ext 純 extract+deliver；翻譯交 Robin（auto-trigger 待 grill）
+- [project_news_coo_grill_decisions.md](project_news_coo_grill_decisions.md) — **News Coo grill 全決策表 2026-05-10**：FSA 直寫 / 新 repo + npm Defuddle / image 必備寫 KB/Attachments/web / selection+highlights seed+context menu+kbd shortcut / PubMed detector / 7-slice 實作規劃
+- ~~[project_den_den_mushi_naming.md](project_den_den_mushi_naming.md)~~ — **DEPRECATED 同日撤回**，改 News Coo（見上）
+
+- [feedback_agent_isolation_worktree_nesting.md](feedback_agent_isolation_worktree_nesting.md) — **Agent tool `isolation: worktree` nests under `.claude/worktrees/` (= 主 repo 內)** — `find_dotenv()` 走上撈主 `.env` 污染；dispatch 時 pre-create sibling `E:/nakama-<topic>` 並**不加** `isolation`（2026-05-10 N518a 教訓）
+- [feedback_commit_scope_discipline.md](feedback_commit_scope_discipline.md) — **commit 範圍紀律**：「Commit only: …」是 turn-binding，其他同 turn 產出留 working tree 不主動 commit。
+- [project_n511_v2_revisions_pending.md](project_n511_v2_revisions_pending.md) — **N511 v1 Brief 兩條設計錯誤**：has_evidence_track=False 必走 defer；EPUB inspector 走 variant path 或注入 loader。v2 鋪台用。
+- [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **5/6 KB corpus stub crisis**：KB Concept 大量空殼；ADR-020 textbook ingest rewrite 起手背景；任何 textbook ingest repair 必先讀。
+- [project_session_2026_05_06_07_s8_burn_handoff.md](project_session_2026_05_06_07_s8_burn_handoff.md) — **5/6→5/7 S8 batch burn handoff**：28 章 batch 大量 FAIL/ERROR，root cause 是 LLM emit body 違反 verbatim 設計；後續修復需避開 LLM batch。
+- [project_session_2026_05_07_path_b_plan_handoff.md](project_session_2026_05_07_path_b_plan_handoff.md) — **5/7 Path B plan handoff**：verbatim 從 walker literal 重組、保留 API path；Stage 1a 起手修 `_assemble_body` + tests。
+- [feedback_session_start_must_read_memory_md.md](feedback_session_start_must_read_memory_md.md) — 每次 session / compact reload 第一個 tool call 必讀 MEMORY.md；handoff doc 不能取代規則級 memory index。
+- [feedback_adr_principle_conflict_check.md](feedback_adr_principle_conflict_check.md) — 寫新 ADR / 改 pipeline 前必 explicit cross-check 受影響的既有 P-level 原則，避免 ADR 間沉默衝突。
+- [project_session_2026_05_08_adr021_complete_handoff.md](project_session_2026_05_08_adr021_complete_handoff.md) — **5/8 收工**：ADR-021 全 9 issue ship 完（#452-#460 全 merged）+ design-system.md v0→v1 + Reader UI #453 HITL B 區全 PASS + bench freeze (hybrid K=15)。剩 #461 E2E + #462 writing mode（前者 HITL final、後者 AFK ready）
+- [project_session_2026_05_06_overnight_4issue_sandcastle_ship.md](project_session_2026_05_06_overnight_4issue_sandcastle_ship.md) — **5/6 早報（修修睡覺期間獨力 ship）**：PR sync 5 條全 squash + sandcastle batch ship #431/#432/#433/#434（PR #436/#437/#438）— Line 2 hybrid retrieval engine + book digest + wikilink lane + ground truth signal 全產線就緒；待修修 manual smoke
+- [project_session_2026_05_05_evening_reader_qa.md](project_session_2026_05_05_evening_reader_qa.md) — **5/5 evening 收工**：Reader 5 slice QA 全跑完 + 抓 3 hidden bug 補 PR #417/#418/#419 + 開 5 follow-up issue #420-#424（3 ready-for-agent / 2 needs-info）
+- [project_epub_reader_prd_2026_05_05.md](project_epub_reader_prd_2026_05_05.md) — **EPUB Reader 全規劃凍結**：PRD #378 + 5 slice issues #379-#383 + grill 9 題凍結 + sandcastle execution plan（保留下次起手 reference）
+- [feedback_deep_module_wiring_gap.md](feedback_deep_module_wiring_gap.md) — 深模組 + 單元測試全綠 ≠ 生產接通；新 public API 必補穿過真 caller 的 integration test（PR #414→#419 教訓）
+- [feedback_test_fixture_path_constants.md](feedback_test_fixture_path_constants.md) — test fixture 路徑必走 production constant，不能複製 hardcoded literal（fixture + 壞掉的常數會內部一致 tests 全綠 production 寫到不存在的目錄；PR #419 Slice 5 教訓）
+- [feedback_auto_mode_run_full_workflow.md](feedback_auto_mode_run_full_workflow.md) — auto mode 跑 Matt workflow 時 phase 之間自動接下一個，不停在 handoff
 - [project_nakama_overview.md](project_nakama_overview.md) — 專案總覽：Agent 全員、工作流程、狀態、基礎設施、Tech Stack
 - [user_profile.md](user_profile.md) — 修修的角色、偏好、知識背景
+- [user_vault_access_pattern.md](user_vault_access_pattern.md) — Obsidian 只看時間軸 + Project 頁面，KB/Agent 內容期望走 Web UI；vault 簡潔性是 first-class concern
 - [feedback_dev_workflow.md](feedback_dev_workflow.md) — 完整開發流程規範：角色分工、六個 Phase、交接原則、技術選型要上網調研
 - [project_adr002_status.md](project_adr002_status.md) — ADR-002 記憶系統 Phase 1-3 完成，Phase 4 待 MemPalace
 - [project_pending_tasks.md](project_pending_tasks.md) — 待辦：VPS 部署 + 端到端測試（Robin/Zoro/Brook）、Nami 開發、補測試
@@ -31,7 +52,8 @@
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
 - [reference_vault_paths_mac.md](reference_vault_paths_mac.md) — Mac vault `/Users/shosho/Documents/Shosho LifeOS/` + Windows **active = `E:\Shosho LifeOS\`**（F: 已停用、stale Syncthing 殘留要避開）
 - [reference_vps_ssh.md](reference_vps_ssh.md) — VPS SSH alias `nakama-vps` → root@202.182.107.202
-- [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」三字當 trigger → 自動存記憶 + commit & push
+- [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」走 ephemeral handoff（`.nakama/`），**不再** auto-commit/push；durable memory 走 L1/L2 in-conversation trigger
+- [reference_github_actions_paths_ignore_deadlock.md](reference_github_actions_paths_ignore_deadlock.md) — paths-ignore + required-check 死鎖：必加 ci-skip.yml 鏡像 paths workflow 才能 unblock 純 docs PR
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
 - [project_plugins_installed.md](project_plugins_installed.md) — 已安裝 6 個 Claude Code plugin（含 playwright、firecrawl）+ 評估不裝清單
 - [feedback_no_secrets_in_chat.md](feedback_no_secrets_in_chat.md) — API key 等敏感資訊走 .env，不在對話框輸入
@@ -43,7 +65,7 @@
 - [project_seo_phase15_pickup.md](project_seo_phase15_pickup.md) — **SEO 軸線 pickup**：D.1 merged cc35218；D.1-followup（2 bug + 5 minor）待開 PR；D.2/E/F unblocked
 - [project_seo_phase15_acceptance_done_2026_04_27.md](project_seo_phase15_acceptance_done_2026_04_27.md) — **SEO Phase 1.5 真正落地 2026-04-27**：三件 acceptance 全綠 + F5-B CF rule + re-audit grade D→B+；PR #200 含 4 條 follow-up
 - [project_seo_control_center_design_2026_04_29.md](project_seo_control_center_design_2026_04_29.md) — **SEO 中控台 v1 + PR #252/#253 部署 2026-04-29**：CF UA bypass + 3 UX bug 修；首篇 audit grade=C；L9 grade 設計 + Usopp DB lock 待拍板
-- [project_three_content_lines.md](project_three_content_lines.md) — **三條內容生產線 2026-04-30 凍結**：Line 1 Podcast→訪談+FB+IG（**最緊急**）/ Line 2 讀書心得 / Line 3 文獻→科普；起手 Line 1 grill
+- [project_three_content_lines.md](project_three_content_lines.md) — **三條內容生產線 v1 2026-04-30**（**SUPERSEDED 2026-05-04** by CONTENT-PIPELINE.md + project_content_pipeline_arch.md，保留歷史）
 - [project_memory_dream_consolidation.md](project_memory_dream_consolidation.md) — **Memory Dream 待辦**：給 memory_maintenance.py 加 `dream` subcommand 移植 mem0 LLM-judge UPDATE/DELETE，解 stale memory supersede（觸發點 Qwen2.5/Qwen3 confusion）；ASR 軸線後做
 - ASR research：[docs/research/2026-04-30-asr-engine-prior-art.md](../../docs/research/2026-04-30-asr-engine-prior-art.md) — Top 2 候選：WhisperX (D1 chosen) + Qwen3-ASR-1.7B (D2 alternative)；MiMo / Parakeet / SenseVoice Tier 2-3
 - [project_whisperx_engine_swap_2026_04_30.md](project_whisperx_engine_swap_2026_04_30.md) — **transcribe 引擎換 WhisperX 2026-04-30 + PR #271/273/274 merged**：FunASR 退場 + 裸 ASR 76min 訪談贏全部；diarization 不在 scope（PR #273 砍）；PR #274 修 38 處中文詞被切 + 10 處 prompt-leak；funasr dep 待整段砍
@@ -58,7 +80,9 @@
 - [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
 - [feedback_worktree_leak_prevention_prompt.md](feedback_worktree_leak_prevention_prompt.md) — worktree-isolated agent prompt 防 leak 兩條剛性防線（pwd 第一步 + 完工 leak self-check），5 連勝零 leak
 - [reference_ralph_loop_plugin.md](reference_ralph_loop_plugin.md) — Anthropic ralph-loop plugin = single-prompt iter runner，Matt 自己 reject；他改用 bash loop / Sandcastle，詳見 reference_sandcastle.md
-- [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock AFK runner 3/3 通過（桌機 Win 2 + Mac 1）；templates 凍結 docs/runbooks/sandcastle-templates/；runbook 在 docs/runbooks/sandcastle.md
+- [reference_sandcastle.md](reference_sandcastle.md) — Matt Pocock AFK runner 4/4 通過（桌機 Win 3 + Mac 1）；2026-05-05 首次 multi-issue batch (3 issues / 1 invocation / ~12 min) 成功；templates 凍結 docs/runbooks/sandcastle-templates/；runbook 在 docs/runbooks/sandcastle.md
+- [feedback_csp_books_reader_inline_blocked.md](feedback_csp_books_reader_inline_blocked.md) — `/books*` 與 `/api/books*` 強制 `script-src 'self'`：inline `<script>` 與 `onerror=`/`onclick=` 都被靜默擋；UI 行為走 `/static/<page>.js`（PR #427 → #428 教訓）
+- [feedback_uvicorn_reload_form_signature_stale.md](feedback_uvicorn_reload_form_signature_stale.md) — uvicorn `--reload` 在 Windows 偶發 log "Reloading..." 但 OpenAPI schema 沒換；改 Form/File 簽章後驗 `curl /openapi.json` 看 required 欄位、`taskkill /F` 重啟才保險（PR #429 撞）
 - [feedback_schedulewakeup_loop_only.md](feedback_schedulewakeup_loop_only.md) — ScheduleWakeup 是 /loop dynamic 專用、不是通用 timer；誤用會 re-fire 原 prompt 看起來像使用者重複下指令
 - [feedback_phase3_single_worktree_proven.md](feedback_phase3_single_worktree_proven.md) — Phase 3 單 worktree 序列 AFK 對 nakama 規模夠用（PR #260 實證 28 tests 0 regression）；不需 sandcastle 多 worktree 並行
 - [feedback_setup_matt_pocock_skills_first.md](feedback_setup_matt_pocock_skills_first.md) — Matt skills 跑前必先 setup-matt-pocock-skills 落 docs/agents/* + CLAUDE.md `## Agent skills`；沒跑 skill 都自探勘+猜+用詞飄
@@ -87,6 +111,7 @@
 - [feedback_no_premature_execution.md](feedback_no_premature_execution.md) — 「幫我看一下」≠「幫我做」，嚴守六 Phase 交接點
 - [feedback_run_dont_ask.md](feedback_run_dont_ask.md) — 修修 CEO+PM：能跑就直接跑不問；review 用表格/連結，不是 raw stdout
 - [feedback_no_handoff_to_user_mid_work.md](feedback_no_handoff_to_user_mid_work.md) — **最高指導原則（高於品質）**：grill 完→我接手做完→修修最後驗收；中間 ultrareview / pause-for-approval 都是違規 friction；PR review 走 multi-agent 並行替代
+- [feedback_drive_to_completion_no_checkpoint.md](feedback_drive_to_completion_no_checkpoint.md) — 實作 skill（/tdd / /to-prd / slice ship）跑起來不中段 checkpoint，drive 到 PR ship 才回報；架構 grill 仍逐題 ack
 - [project_session_2026_05_01_line1_sandcastle_round2.md](project_session_2026_05_01_line1_sandcastle_round2.md) — **收工 2026-05-01**：Line 1 Slice 2/3/4 merged (PR #295/#297) + sandcastle round 1+2 戰績（4/4 通過）+ multi-agent review 17 真問題零誤判；critical path 4/10 done 等 5/6 樣本 unblock
 - [feedback_minimize_manual_friction.md](feedback_minimize_manual_friction.md) — **最高指導原則**：減少修修手動操作，每個手動步驟 = 摩擦力；設計 default 自動化、scope 砍除前看下游 ripple、approval gate 並行不階段
 - [feedback_env_naming_grep_first.md](feedback_env_naming_grep_first.md) — 要修修申請 API token / 設 env key / 命名前必先 grep code 既有 convention，不能憑印象設計（2026-05-03 R2 token rename 摩擦教訓）
@@ -110,6 +135,8 @@
 - [feedback_test_realism.md](feedback_test_realism.md) — mock integration test 時輸入形狀要對齊真實契約，別為了測試好寫造不可能的資料
 - [feedback_mock_use_spec.md](feedback_mock_use_spec.md) — mock 第三方 SDK 要 `spec=` / `autospec=True`，否則 MagicMock 預設 truthy 會掩蓋 nonexistent-method bug
 - [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
+- [feedback_panel_triangulated_judgment.md](feedback_panel_triangulated_judgment.md) — Panel review 後 strategic fork 直接整合判斷不要 defer 回 user，三家 audit 已消化 confirmation bias
+- [feedback_proactive_context_warning.md](feedback_proactive_context_warning.md) — 大 artifact / panel / commit 後主動提 context token 狀態 + /compact 建議，不要等 user 跑 /context 才發現超載
 - [feedback_deep_module_vs_leaky_abstraction.md](feedback_deep_module_vs_leaky_abstraction.md) — 「short interface + deep impl」是 Ousterhout 深模組（好事），不是 shallow facade；cost 不透明走 docstring 不重構
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
 - [feedback_llm_pipeline_consume_all_fields.md](feedback_llm_pipeline_consume_all_fields.md) — prompt 教 LLM 輸出的 schema 欄位必須在 pipeline 內 consume，不然 schema drift 默默 leak（PR #171 review 抓到 pick=false 例）
@@ -159,7 +186,8 @@
 - [project_nami_vault_notes.md](project_nami_vault_notes.md) — Nami vault note 3 tools（write/read/list）+ vault_rules.py，待 VPS 部署
 - [project_brook_style_extraction_todo.md](project_brook_style_extraction_todo.md) — Brook style extraction 完成：36 篇 → 3 份 profile + 交叉分析（agents/brook/style-profiles/）
 - [project_robin_pubmed_digest.md](project_robin_pubmed_digest.md) — Robin PubMed 每日 digest；PR #94 publisher HTML fallback（第 5 層，BMJ/PLOS/eLife 等 Free-標記 OA）上線
-- [project_zotero_integration_plan.md](project_zotero_integration_plan.md) — 訂閱期刊全文走 Zotero（非 publisher login）；待開工，Phase A–D 框架已定
+- [project_zotero_integration_plan.md](project_zotero_integration_plan.md) — 訂閱期刊全文走 Zotero（非 publisher login）；2026-05-05 升 primary，Phase B-F 已 grill 全拍
+- [project_zotero_integration_grill_2026_05_05.md](project_zotero_integration_grill_2026_05_05.md) — **grill 2026-05-05 凍結 Q1-Q10**：item-as-unit / SQLite 直連 / 兩檔 ingest pattern / MVP scope；ADR-018 + ADR-019 落地
 - [reference_vps_timezone.md](reference_vps_timezone.md) — VPS TZ 是 Asia/Taipei，cron 用本機時區；日期 filename 要 `ZoneInfo("Asia/Taipei")`
 - [feedback_gitignore_negation.md](feedback_gitignore_negation.md) — .gitignore 子檔再 include 要用 `data/*` + `!data/file`，不是 `data/` + `!data/file`
 - [feedback_design_deviation_discovery.md](feedback_design_deviation_discovery.md) — 實作時發現現成輕量方案 → flag deviation，不默默換方案
@@ -246,3 +274,34 @@
 - [project_session_2026_05_03_pr320_ship.md](project_session_2026_05_03_pr320_ship.md) — **收工 2026-05-03**：PR #320 Slice 1 ship + Usopp #270 VPS deploy（busy_timeout 30s active 10:54:08）+ sandcastle templates 桌機 sync + image v4 rebuild + Docker AutoStart=true + settings.json 砍 ssh/systemctl deny
 - [feedback_settings_deny_rule_blocks_explicit_auth.md](feedback_settings_deny_rule_blocks_explicit_auth.md) — settings.json deny rule 優先於 conversation explicit auth；命中 deny 三條退路（user 自跑 / 砍 deny / 加 specific allow）
 - [feedback_status_cross_check_before_redispatch.md](feedback_status_cross_check_before_redispatch.md) — 看到「待跑 / pending」前必看 log.md + spot check artifact + count，不憑單一 timeline 字串 redispatch（Sport Nutrition Phase B 浪費 115K tokens 教訓）
+- [project_session_2026_05_03_evening_nami_polish.md](project_session_2026_05_03_evening_nami_polish.md) — **收工 2026-05-03 晚**：PR #329 merged f0e64dd（Nami Taiwan voice + capability boundaries + epistemic labels + ask_zoro tool）+ PR #330 cron cleanup dead nami stub；R2/xCloud backup hygiene closure
+- [feedback_identity_anchor_over_enumeration.md](feedback_identity_anchor_over_enumeration.md) — LLM voice drift / 風格 leak（簡中→繁中、AI slop、tone）用 positive identity anchor + 反向 sentinel keyword + 不確定 fallback 三層，**禁止窮舉表**（永遠補不完）
+- [reference_inter_agent_delegation_option_a.md](reference_inter_agent_delegation_option_a.md) — Inter-agent delegation Option A pattern：same-process import + tool-based + sync；對 sync 對話 + <30s wall time 是 MVP；Option B 升級觸發點明列
+- [feedback_cf_r2_token_dont_nag.md](feedback_cf_r2_token_dont_nag.md) — CF R2 dashboard 舊 token 永遠不再列入 todo / 待辦 / 反問（修修明確 push back：刪不了 + 攻擊面同 + 煩）
+- [project_session_2026_05_04_5pr_ship.md](project_session_2026_05_04_5pr_ship.md) — **收工 2026-05-04 凌晨**：5 PR 序列 dispatch + 全 squash merged（Nami round 3 / Franky per-prefix / A6 mock spec / kw zh-channels / memory hygiene）+ Usopp #270 closed + SEO 中控台 5 天 0 publish 真議題揭開
+- [feedback_branch_protection_strict_serial_merge.md](feedback_branch_protection_strict_serial_merge.md) — GH branch protection strict + enforce_admins + auto-merge disabled 三層擋；序列 merge cycle 痛點 + update-branch + poll-CI + merge 流程
+- [project_content_pipeline_arch.md](project_content_pipeline_arch.md) — **內容流程七層架構 2026-05-04 凍結**：CONTENT-PIPELINE.md + Lines/Agents × Stages 兩矩陣 + 4 結構性觀察 + 3 結構性優先序
+- [feedback_pipeline_anchored_planning.md](feedback_pipeline_anchored_planning.md) — **規劃功能必 anchor 七層**：「開發 X / 下一步做什麼」對話前必 anchor stage + 對照矩陣 + 檢視優先序，禁止 spontaneous 列清單
+- [project_session_2026_05_04_pipeline_arch.md](project_session_2026_05_04_pipeline_arch.md) — **收工 2026-05-04 早**：七層架構凍結 + Line 1 拆兩子模式 + Script-Driven Video 重定位 Stage 5 工具 + Nami #332 + Franky #333 deploy verified；下個 session 開 Line 2 讀書心得手跑流程
+- [project_session_2026_05_04_pm_annotation_ship.md](project_session_2026_05_04_pm_annotation_ship.md) — **收工 2026-05-04 下午**：PRD #337 三 slice 全 ship（PR #342/#343/#344）+ ADR-017 凍結；Line 2 critical path blocker 解掉；Reader 本機 only，VPS 只 vault_rules 純新增
+- [feedback_powershell_allow_exact_prefix.md](feedback_powershell_allow_exact_prefix.md) — PowerShell 回收桶命令必嚴格對齊 settings allow prefix；不能加 `-NoProfile`、不能 `foreach`、不能 fallback Python send2trash
+- [project_session_2026_05_04_evening_ingest_grill.md](project_session_2026_05_04_evening_ingest_grill.md) — 2026-05-04 晚 pre-grill 起點：QA Phase 0 綠 / Phase 1.x 撞 /scrape-translate；5 grill 問題在 §5（已凍結 → 見 evening_ingest_prd）
+- [project_session_2026_05_04_evening_ingest_prd.md](project_session_2026_05_04_evening_ingest_prd.md) — **收工 2026-05-04 晚**：Stage 1 ingest unify PRD #351 ship + 5 slice (#352-356) ready-for-agent；6 grill 凍 scope（B2-B / 全抓圖 / 砍字數 heuristic / C3 deferred / E1 hybrid / 失敗檔丟棄）；**下個 session 起手 dispatch Slice 1 #352**
+- [feedback_grill_scope_not_perf_optim.md](feedback_grill_scope_not_perf_optim.md) — scope freeze grill 不該問 perf optim（每週用量）；on-demand async 個人工具數量不影響架構（Q1 修修 push back 教訓）
+- [feedback_grep_existing_feature_behavior.md](feedback_grep_existing_feature_behavior.md) — grill 推論既有 feature 行為前必 grep code 入口 docstring + 主流程；別憑 memory / 命名（Q5 PubMed digest 「abstract-only」修修 push back 教訓）
+- [project_session_2026_05_04_late_stage1_ingest_ship.md](project_session_2026_05_04_late_stage1_ingest_ship.md) — **收工 2026-05-04 晚**：Stage 1 ingest 5 slice 全 ship（PR #357 schema/dispatcher + #359 翻譯 + #360 圖片 + #361 discard + #363 academic 5 層）；1 sandcastle + 3 Agent 並行；Slice 1 attachments_abs_dir slot 衝突 Slice 2 順帶修；修修 urlencode WIP stashed
+- [feedback_sandcastle_env_drift_check.md](feedback_sandcastle_env_drift_check.md) — Sandcastle .env API key 不會自動同步 nakama/.env rotation；first AgentError "Invalid API key" 直接 grep sync 不 debug 容器
+- [feedback_shared_config_slot_anti_pattern.md](feedback_shared_config_slot_anti_pattern.md) — dataclass 多 consumer 共用 generic slot last-writer-wins anti-pattern；命名前綴 fulltext_/image_ 預防（URLDispatcherConfig Slice 1 教訓）
+- [project_session_2026_05_04_overnight_smoke_followup.md](project_session_2026_05_04_overnight_smoke_followup.md) — **收工 2026-05-04 夜 + overnight**：Stage 1 manual smoke 暴露 5 bug + 1 UX miss → 6 PR (#369-#374) overnight dispatch ready；3/5 hit lint failure / 1/5 hit coverage gate（main context 手動補）；早上 verify + serial merge
+- [feedback_subagent_ci_gates_local_verify.md](feedback_subagent_ci_gates_local_verify.md) — Sub-agent dispatch acceptance 必含 ruff check / format / critical-path coverage 預檢；只跑自己 test 通過 = CI fail = wasted dispatch（overnight 6 PR 教訓）
+- [feedback_progress_report_anchor_arch.md](feedback_progress_report_anchor_arch.md) — 報告進度開頭一律先列七層架構兩張矩陣（Lines × Stages + Agents × Stages），再講軸線細節 + 開放議題
+- [project_epub_book_translation_grill_2026_05_05.md](project_epub_book_translation_grill_2026_05_05.md) — **SUPERSEDED 2026-05-05**：翻譯外包 Immersive Translate；剩 EPUB Reader + annotation/comment + ingest 串接，凍在 project_epub_reader_prd_2026_05_05.md
+- [project_session_2026_05_05_evening_zotero_ci_qa_blocked.md](project_session_2026_05_05_evening_zotero_ci_qa_blocked.md) — **收工 2026-05-05 evening**：TDD = sandcastle by default 原則拍板；Zotero 3 PR ruff/coverage CI 全綠等 squash；QA Step 1 撞修修另一視窗 git checkout main race 中止；下次起手 verify branch + worktree 跑 QA
+- 🚨 [feedback_sandcastle_delegation_audit.md](feedback_sandcastle_delegation_audit.md) — **必讀**：multi-slice workflow 起手必掃「可並行 sandcastle」+「P0 prereq 提前 fire」+「HITL test / sub-issue 拆解可機械化」清單；2026-05-05 EPUB Reader serialize 痛教訓
+- [feedback_token_efficient_smoke_testing.md](feedback_token_efficient_smoke_testing.md) — Playwright screenshot 慎用（一張 30-50k token），改 evaluate / snapshot；只在真要看美學 drift 時才拍
+- [feedback_minimal_subagent_prompt.md](feedback_minimal_subagent_prompt.md) — single-worktree subagent prompt 不要要 P7 完整報告（5-10k 字）；改成 commit hash + 一句 trade-off
+- [feedback_format_before_commit_hitl_tests.md](feedback_format_before_commit_hitl_tests.md) — HITL test 檔 commit 前必先 ruff format（避免 CI fail → linter 修改 → system-reminder 重 dump 整檔）
+- [project_incident_2026_05_05_prefix_bug_anthropic_key.md](project_incident_2026_05_05_prefix_bug_anthropic_key.md) — 5/5 雙故障：state.db prefix 欄位 migration 順序 bug + Anthropic key 401；ALTER 1 行 hotfix + key rotation；**監控系統自身被同 bug 殺死靜默 false-green**
+- [project_pubmed_top_journal_blind_spot_2026_05_05.md](project_pubmed_top_journal_blind_spot_2026_05_05.md) — **PR #415 ship**：PubMed RSS sort-by-date 必被高頻刊物霸佔（單 saved search 永遠 0 頂刊）；MDPI/Frontiers blocklist + 頂刊白名單 eutils feed 雙修；blocked PMID 仍 mark_seen
+- [project_session_2026_05_05_late_line2_digest_prd.md](project_session_2026_05_05_late_line2_digest_prd.md) — **收工 2026-05-05 late**：Line 2 digest + hybrid retrieval grill 5 輪凍結 / PRD #430 + S1-S4 (#431-#434) ready；vault 845 pages 8.45x zaferdace 警戒；起手 dispatch #431 sandcastle
+- [project_pr_sync_2026_05_05_late_handoff.md](project_pr_sync_2026_05_05_late_handoff.md) — **PR sync 中斷 handoff 2026-05-05 late**：#425 merged + #410/#418 closed + #397 rebase 解；等 CI green squash #419/#435/#397，再處理 #398/#399 stack rebase，最後 dispatch #431 sandcastle

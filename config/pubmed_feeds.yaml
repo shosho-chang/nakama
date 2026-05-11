@@ -1,17 +1,40 @@
-# PubMed RSS feeds — Robin 每日 digest 的來源
+# PubMed feeds — Robin 每日 digest 的來源
 #
-# 每個 feed 是一個 saved search 的 RSS URL。可用多個 feed 分領域，
-# 也可用一個廣查 query 的 feed（目前就是這個）。新增 feed 直接 append。
+# 兩種 feed type：
+#   - rss:    PubMed saved search RSS URL（修修在 PubMed UI 建好 saved search 後拿 RSS）
+#   - eutils: 直接寫 PubMed esearch term，code 動態組 last N 天 + esearch + efetch 抓 abstract
 #
-# 如何取得 URL：
-#   1. 到 pubmed.ncbi.nlm.nih.gov 登入帳號
-#   2. 建立 / 編輯 saved search
-#   3. 右上角 Create RSS → 複製 URL
-#
-# Robin 會對所有 feed 的 PMID 去重；歷史看過的（state.db scout_seen）不會重複處理。
+# Robin 對所有 feed 的 PMID 跨 feed 去重；歷史看過的（state.db scout_seen）不會重複處理。
+# Blocklist（config/journal_blocklist.yaml）會在 dedup 後 hard-filter 掉指定 publisher 的期刊。
 
 feeds:
   - name: wellness_longevity_broad
+    type: rss
     url: https://pubmed.ncbi.nlm.nih.gov/rss/search/1PIb741EQUegdLmYL_qqSKED_eRaInAMxDWg9K7cdz3EcOXMAY/?limit=120&utm_campaign=pubmed-2&fc=20250728234019
     # 修修的 saved search（2025-07-28 建立）：廣泛涵蓋睡眠/飲食/運動/情緒
     # 以及慢性病管理、抗老、腸道微生物、代謝健康作為長壽面向之一。
+
+  - name: top_journals_high_signal
+    type: eutils
+    days: 14   # 動態組 last N 天日期範圍（ZoneInfo Asia/Taipei）
+    limit: 80  # esearch retmax，廣度足夠 + 不爆 curate prompt token
+    # 22 家頂刊白名單 + 主題關鍵字。實測 4 週命中 ~800 篇主題相關，
+    # 限制近 14 天 + retmax 80 拿到 ~50 筆是預期 batch size。
+    # 期刊白名單抽掉了所有「子刊」中本身已被 broad search 撈到的（避免 dedup 浪費），
+    # 保留旗艦本刊 + Sports Medicine 三家（Br J Sports Med / Med Sci Sports Exerc / Sports Med）。
+    term: |
+      ("JAMA"[TA] OR "JAMA Intern Med"[TA] OR "JAMA Netw Open"[TA] OR
+       "Lancet"[TA] OR "Lancet Neurol"[TA] OR "Lancet Diabetes Endocrinol"[TA] OR
+       "Lancet Healthy Longev"[TA] OR
+       "N Engl J Med"[TA] OR
+       "Nature"[TA] OR "Nat Med"[TA] OR "Nat Commun"[TA] OR
+       "Sci Adv"[TA] OR "Science"[TA] OR
+       "BMJ"[TA] OR
+       "Cell"[TA] OR "Cell Metab"[TA] OR
+       "Br J Sports Med"[TA] OR "Med Sci Sports Exerc"[TA] OR "Sports Med"[TA] OR
+       "Int J Sport Nutr Exerc Metab"[TA] OR "J Sport Health Sci"[TA])
+      AND
+      (sleep OR exercise OR "physical activity" OR nutrition OR diet OR
+       longevity OR microbiome OR mindfulness OR depression OR fasting OR
+       sarcopenia OR mortality OR "mental health" OR metabolic OR obesity OR
+       cardiovascular OR "resistance training" OR aerobic OR "chronic disease")

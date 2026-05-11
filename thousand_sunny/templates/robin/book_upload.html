@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 上傳新書</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --accent: #6c63ff;
+    --accent-soft: #ede9fe;
+    --border: #ddd;
+    --error: #c62828;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); padding: 2rem; color: var(--text); }
+  .header { max-width: 680px; margin: 0 auto 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .header h1 { font-size: 1.5rem; }
+  .header h1 span { font-size: 1.5rem; margin-right: 0.5rem; }
+  .nav { display: flex; gap: 0.75rem; align-items: center; font-size: 0.875rem; }
+  .nav a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s; }
+  .nav a:hover, .nav a:focus-visible { border-color: var(--accent); outline: none; }
+  .container { max-width: 680px; margin: 0 auto; }
+  .card { background: var(--surface); border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .dropzone { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; padding: 2rem 1.25rem; border: 2px dashed var(--border); border-radius: 12px; background: #fafafa; transition: border-color 0.15s, background 0.15s; cursor: pointer; }
+  .dropzone:hover, .dropzone.is-hover { border-color: var(--accent); background: var(--accent-soft); }
+  .dropzone.is-required[data-empty="true"] { border-style: dashed; }
+  .dropzone.is-filled { border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
+  .dropzone .icon { font-size: 2rem; line-height: 1; }
+  .dropzone .label { font-size: 0.95rem; font-weight: 600; }
+  .dropzone .hint { font-size: 0.8rem; color: var(--text-muted); }
+  .dropzone .filename { font-size: 0.85rem; color: var(--accent); font-family: ui-monospace, "SF Mono", Menlo, monospace; word-break: break-all; }
+  .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .dropzone-stack { display: flex; flex-direction: column; gap: 0.9rem; }
+  .actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1.5rem; }
+  .btn-cancel { padding: 0.55rem 1.2rem; background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; text-decoration: none; transition: background 0.15s, border-color 0.15s; }
+  .btn-cancel:hover, .btn-cancel:focus-visible { background: #f0f0f0; border-color: #bbb; outline: none; }
+  .btn-submit { padding: 0.55rem 1.2rem; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; }
+  .btn-submit:hover, .btn-submit:focus-visible { background: #574fd6; outline: none; }
+  .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+  .lead { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.1rem; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><span>📤</span>上傳新書</h1>
+  <nav class="nav">
+    <a href="/">📥 Inbox</a>
+    <a href="/books">📚 書架</a>
+  </nav>
+</div>
+<div class="container">
+  <form class="card" id="upload-form" method="post" action="/books/upload" enctype="multipart/form-data">
+    <p class="lead">標題、作者、封面從 EPUB metadata 自動抓。語言固定 EN→中。</p>
+    <div class="dropzone-stack">
+      <label class="dropzone is-required" data-empty="true" data-target="bilingual" id="dropzone-bilingual">
+        <span class="icon">📖</span>
+        <span class="label">雙語版 EPUB</span>
+        <span class="hint">必填 · 點擊或拖入 .epub</span>
+        <span class="filename" data-filename></span>
+        <input type="file" name="bilingual" accept=".epub,application/epub+zip" required>
+      </label>
+      <label class="dropzone" data-empty="true" data-target="original" id="dropzone-original">
+        <span class="icon">📕</span>
+        <span class="label">EN 原檔 EPUB</span>
+        <span class="hint">選填 · 之後 ingest 才用得到</span>
+        <span class="filename" data-filename></span>
+        <input type="file" name="original" accept=".epub,application/epub+zip">
+      </label>
+    </div>
+    <div class="actions">
+      <a href="/books" class="btn-cancel">取消</a>
+      <button type="submit" class="btn-submit">上傳</button>
+    </div>
+  </form>
+</div>
+<script type="module" src="/static/book_upload.js"></script>
+</body>
+</html>

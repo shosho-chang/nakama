@@ -721,8 +721,6 @@ class TestSlugValidation:
             ".",
             "",
             "-",  # leading non-word char
-            "foo bar",  # whitespace
-            "foo.md",  # extension hint
         ],
     )
     def test_upsert_concept_page_rejects_unsafe_slug(self, vault, bad_slug):

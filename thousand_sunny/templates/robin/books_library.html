@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 書架</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --accent: #6c63ff;
+    --border: #e5e5e5;
+    --ingest-pending: #b07d12;
+    --ingest-pending-bg: #fff4d3;
+    --ingest-ok: #1f6c30;
+    --ingest-ok-bg: #d6efdc;
+    --ingest-partial: #b35511;
+    --ingest-partial-bg: #ffe2cc;
+    --ingest-fail: #b32424;
+    --ingest-fail-bg: #ffd4d4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); padding: 2rem; }
+  .header { max-width: 960px; margin: 0 auto 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .header h1 { font-size: 1.5rem; color: var(--text); }
+  .header h1 span { font-size: 1.5rem; margin-right: 0.5rem; }
+  .nav { display: flex; gap: 0.75rem; align-items: center; font-size: 0.875rem; }
+  .nav a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s; }
+  .nav a:hover, .nav a:focus-visible { border-color: var(--accent); outline: none; }
+  .nav a.active { color: var(--text); font-weight: 600; }
+  .container { max-width: 960px; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: flex-end; margin-bottom: 1.25rem; }
+  .btn-upload { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.55rem 1.2rem; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 0.9rem; text-decoration: none; transition: background 0.2s; }
+  .btn-upload:hover, .btn-upload:focus-visible { background: #574fd6; outline: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+  .book-card { background: var(--surface); border-radius: 12px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: 0.75rem; transition: box-shadow 0.15s, transform 0.15s; text-decoration: none; color: inherit; }
+  .book-card:hover, .book-card:focus-visible { box-shadow: 0 4px 16px rgba(0,0,0,.10); transform: translateY(-2px); outline: none; }
+  .cover { position: relative; aspect-ratio: 2 / 3; border-radius: 8px; overflow: hidden; background: var(--bg); }
+  .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cover img.broken { display: none; }
+  .cover-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, #ede9fe 0%, #dbeafe 100%); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 2.5rem; font-weight: 700; letter-spacing: -0.05em; }
+  .book-title { font-size: 0.95rem; font-weight: 600; color: var(--text); line-height: 1.4; word-break: break-word; }
+  .book-author { font-size: 0.8rem; color: var(--text-muted); }
+  .book-meta { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: auto; }
+  .badge { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 999px; background: #ede9fe; color: var(--accent); font-weight: 600; letter-spacing: 0.02em; }
+  .badge.original { background: var(--ingest-ok-bg); color: var(--ingest-ok); }
+  .badge-ingest { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 999px; font-weight: 600; letter-spacing: 0.02em; border: 1px solid transparent; }
+  .badge-ingest[data-status="no-original"] { background: var(--text-muted); color: var(--bg); }
+  .badge-ingest[data-status="queued"],
+  .badge-ingest[data-status="ingesting"] { background: var(--ingest-pending-bg); color: var(--ingest-pending); }
+  .badge-ingest[data-status="ingested"] { background: var(--ingest-ok-bg); color: var(--ingest-ok); }
+  .badge-ingest[data-status="partial"] { background: var(--ingest-partial-bg); color: var(--ingest-partial); }
+  .badge-ingest[data-status="failed"] { background: var(--ingest-fail-bg); color: var(--ingest-fail); }
+  .badge-ingest[data-status="never"] { background: transparent; color: var(--text-muted); border-color: var(--border); }
+  .empty { text-align: center; color: #888; padding: 3rem; background: var(--surface); border-radius: 12px; }
+  .empty .icon { font-size: 2.5rem; }
+  .empty p { margin-top: 0.5rem; font-size: 0.9rem; }
+  .empty a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .empty a:hover, .empty a:focus-visible { text-decoration: underline; outline: none; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><span>📚</span>Robin · 書架</h1>
+  <nav class="nav">
+    <a href="/">📥 Inbox</a>
+    <a href="/books" class="active">📚 書架</a>
+  </nav>
+</div>
+<div class="container">
+  <div class="toolbar">
+    <a href="/books/upload" class="btn-upload">📤 上傳新書</a>
+  </div>
+  {% if books %}
+    <div class="grid">
+      {% for book in books %}
+      <a class="book-card" href="/books/{{ book.book_id }}">
+        <div class="cover" aria-hidden="true">
+          <img src="/api/books/{{ book.book_id }}/cover" alt="" loading="lazy">
+          <div class="cover-placeholder">{{ book.title[:1]|upper }}</div>
+        </div>
+        <div class="book-title">{{ book.title }}</div>
+        {% if book.author %}<div class="book-author">{{ book.author }}</div>{% endif %}
+        <div class="book-meta">
+          <span class="badge">{{ book.lang_pair }}</span>
+          {% if book.genre %}<span class="badge">{{ book.genre }}</span>{% endif %}
+          {% if not book.has_original %}
+            <span class="badge-ingest" data-status="no-original" title="尚未上傳 EN 原檔，無法 ingest">未上傳 EN</span>
+          {% elif book.ingest_status == "queued" %}
+            <span class="badge-ingest" data-status="queued" title="已排入 ingest 佇列">queued</span>
+          {% elif book.ingest_status == "ingesting" %}
+            <span class="badge-ingest" data-status="ingesting" title="正在 ingest">ingesting</span>
+          {% elif book.ingest_status == "ingested" %}
+            <span class="badge-ingest" data-status="ingested" title="ingest 完成">ingested</span>
+          {% elif book.ingest_status == "partial" %}
+            <span class="badge-ingest" data-status="partial" title="部分章節 ingest 失敗">partial</span>
+          {% elif book.ingest_status == "failed" %}
+            <span class="badge-ingest" data-status="failed" title="ingest 失敗">failed</span>
+          {% else %}
+            <span class="badge-ingest" data-status="never" title="尚未送出 ingest 請求">never</span>
+          {% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <div class="icon">📭</div>
+      <strong>書架是空的</strong>
+      <p><a href="/books/upload">上傳第一本書</a></p>
+    </div>
+  {% endif %}
+</div>
+<script type="module" src="/static/books_library.js"></script>
+</body>
+</html>

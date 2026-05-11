@@ -9,7 +9,8 @@ description: >
   "textbook ingest <path>" / "教科書 ingest <path>". Do NOT use for
   short articles / single papers (that is Robin Reader ``/start`` flow),
   for keyword research (use ``keyword-research``), or for KB query
-  (use ``kb-search``). Runs Mac-side via Claude Code Opus 4.7 1M context.
+  (use ``kb-search``). Runs on any desktop (Mac / Windows / Linux) with
+  Claude Code and Opus 4.7 1M context.
 ---
 
 # Textbook Ingest — Whole-book → KB Wiki Pipeline
@@ -49,6 +50,22 @@ Do NOT trigger for:
 
 ## Prerequisites
 
+**OS / machine requirements**
+
+- Any desktop with the vault locally mounted: **Mac, Windows, or Linux** all
+  work. PRD #378 user stories say "Mac" as an example, not a constraint.
+- **Cannot run on VPS** — 2 vCPU / 4 GB RAM is insufficient, and VPS has no
+  Claude Code installation.
+- Claude Code installed and on `PATH` (required for `--watch` daemon and for
+  the interactive skill driver).
+- Claude Code subscription that includes **`claude-opus-4-7` with 1M context**
+  (Max 200 plan). One mid-size book ≈ 1.8M tokens.
+- `NAKAMA_AUTH` cookie environment variable set — copy from the browser
+  session after logging into the web UI (Reader uses cookie auth for API
+  calls made during queue-mode ingestion).
+
+**Codebase / vault requirements**
+
 - ``shared/pdf_parser.py`` available (pymupdf4llm extracts page-level text)
 - ``shared/obsidian_writer.write_page`` available (writes vault MD files)
 - ``shared/config.get_vault_path()`` resolves to the vault root with `KB/`
@@ -58,8 +75,6 @@ Do NOT trigger for:
   - ``KB/Wiki/Sources/Books/``
   - ``KB/Wiki/Concepts/`` (shared cross-source pool)
   - ``KB/Wiki/Entities/`` (shared cross-source pool)
-- Claude Code session running on Mac (or wherever vault is locally mounted)
-- Max 200 subscription quota available — one mid-size book ≈ 1.8M tokens
 
 ## Workflow Overview
 
@@ -570,6 +585,74 @@ See `docs/capabilities/textbook-ingest.md` for the full capability card.
 
 See ``memory/claude/feedback_skill_scaffolding_pitfalls.md`` for general
 skill scaffolding pitfalls (sys.path shim, 4-backtick fences, etc.).
+
+---
+
+## --watch mode
+
+Run once in a terminal at the start of your day. The daemon polls the ingest
+queue every 60 seconds and automatically dispatches `/textbook-ingest
+--from-queue` whenever a book is waiting. HITL prompts (chapter confirmation,
+section questions) appear in the same terminal — answer there.
+
+```bash
+python .claude/skills/textbook-ingest/scripts/queue_processor.py watch
+# custom poll interval (seconds):
+python .claude/skills/textbook-ingest/scripts/queue_processor.py watch --interval 30
+```
+
+**Graceful stop**: press Ctrl+C once. The current ingest runs to completion
+before the daemon exits — LLM work is never interrupted mid-chapter.
+
+**Idle noise**: one log line per 5 × interval (minimum 5 min) when the queue
+is empty; silent otherwise.
+
+**Requirements**: `claude` CLI must be in `PATH` (i.e. Claude Code is
+installed on the machine running the daemon).
+
+---
+
+## --from-queue mode
+
+When invoked with `--from-queue`, skip the interactive path and process the
+next book waiting in `book_ingest_queue`. One book per invocation — each
+ingest is a 5-15 min operation; no value in chaining inside one session.
+
+**Step-by-step:**
+
+1. **Discover** — run `python scripts/queue_processor.py next`.
+   - Exit code 1 → print `Queue empty, nothing to ingest.` and return cleanly.
+   - Exit code 0 → capture the printed `book_id` (strip whitespace).
+
+2. **Claim** — `python scripts/queue_processor.py mark <book_id> ingesting`.
+   Exit non-zero is unexpected (race condition); raise and stop.
+
+3. **Locate EPUB** — the original EN file lives at
+   `data/books/<book_id>/original.epub` (written by the upload route).
+   Raise `FileNotFoundError` if it doesn't exist.
+
+4. **Parse** — call `parse_book.py` on that path (same as normal invocation):
+   ```
+   python scripts/parse_book.py data/books/<book_id>/original.epub
+   ```
+   Capture the JSON outline. Count `len(outline["chapters"])` for `N`.
+
+5. **Ingest** — run the standard Phase A + Phase B pipeline against the parsed
+   outline, exactly as in the interactive `textbook-ingest` flow.
+   Use `book_id` as the `source_slug` for KB pages.
+
+6. **Finalize (success)** —
+   `python scripts/queue_processor.py mark <book_id> ingested --chapters <N>`.
+
+7. **Finalize (exception)** — on any unhandled exception:
+   ```
+   python scripts/queue_processor.py mark <book_id> failed --error "<exc>"
+   ```
+   Then re-raise so the operator sees the full traceback.
+
+**queue_processor.py** lives in `scripts/`. Its `--help` lists `next` and
+`mark`. Invalid status or unknown book_id exits 2 — treat as a bug, not a
+retry signal.
 
 ---
 

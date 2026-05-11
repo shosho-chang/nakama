@@ -26,3 +26,34 @@ originSessionId: cleanup-pr-135-2026-04-25
 - [feedback_test_realism.md](feedback_test_realism.md) — mock 輸入形狀要對齊真實契約
 - [feedback_model_construct_bypasses_validators.md](feedback_model_construct_bypasses_validators.md) — pydantic `model_construct()` 跳過 validator 的同類陷阱
 - [reference_api_contract_pitfalls.md](reference_api_contract_pitfalls.md) §Google Auth — 此案例的 SDK 變動細節
+
+---
+
+**SDK class spec 對 instance dynamic attr 不生效（2026-05-04 firecrawl 4.23 案例）**：
+
+PR #334 A6 follow-up 想對 `tests/shared/test_firecrawl_serp.py` 補 spec，發現 `MagicMock(spec=FirecrawlApp)` 會 **block** 真 method call。實測：
+
+```python
+>>> from firecrawl import FirecrawlApp
+>>> from unittest.mock import MagicMock
+>>> hasattr(MagicMock(spec=FirecrawlApp), 'scrape')
+False  # ← class 上沒有 scrape，instance __init__ 才動態掛
+```
+
+**Why**：firecrawl 4.23 的 `Firecrawl` / `FirecrawlApp` class 上只有 `parse` method；`scrape` 是 instance 通過 `__init__` 用 `self.v2 = ...` 之類 dynamic 掛上的。`spec=ClassName` 只看 class 上的 attribute，不認 instance-only attr。對比：
+
+```python
+>>> from anthropic import Anthropic
+>>> hasattr(MagicMock(spec=Anthropic), 'messages')
+True  # ← Anthropic class 上有 messages 屬性，spec 認得
+```
+
+**How to apply**：
+
+- Mock 第三方 SDK 用 `spec=Class` 前先驗 `hasattr(MagicMock(spec=Class), 'target_method')`
+- 若 False（class 上沒掛）三條退路：
+  1. **`spec=instance`**：先 `inst = ClassName(api_key='dummy')` 再 `MagicMock(spec=inst)`，instance attr 都認得
+  2. **`spec=['method1', 'method2', ...]`**：顯式列表
+  3. **`autospec=True` with `create_autospec(Class, instance=True)`**：autospec instance variant
+- Anthropic / OpenAI 多數 SDK 走 class-attr → `spec=ClassName` work
+- Firecrawl / 部分 wrapper SDK 走 instance dynamic attr → 上述退路

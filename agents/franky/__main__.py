@@ -8,6 +8,8 @@ Usage:
     python -m agents.franky digest       # Slice 3: weekly digest (5-section Slack DM)
     python -m agents.franky anomaly      # Phase 5B-3: 15-min anomaly daemon tick
     python -m agents.franky gsc-daily    # ADR-008 Phase 2a-min: daily 7-day GSC pull → state.db
+    python -m agents.franky synthesis    # ADR-023 §7 S3: weekly synthesis → proposal inbox
+    python -m agents.franky retrospective  # ADR-023 §7 S4: monthly retrospective
 
 The default (no-subcommand) path preserves existing cron behavior until Slice 3 flips
 the default to the new digest. See ADR-007 §11 for the module layout plan.
@@ -20,12 +22,14 @@ import json
 import sys
 from datetime import datetime, timezone
 
-from shared.heartbeat import record_failure, record_success
+# Windows cp1252 stdout 無法印中文 — 統一 UTF-8（feedback_windows_stdout_utf8）.
+# Must run before imports that build module-level loggers (StreamHandler
+# captures sys.stdout at attach time).
+from shared.log import force_utf8_console
 
-# Windows cp1252 stdout 無法印中文 — 統一 UTF-8（feedback_windows_stdout_utf8）
-for _stream in (sys.stdout, sys.stderr):
-    if hasattr(_stream, "reconfigure"):
-        _stream.reconfigure(encoding="utf-8", errors="replace")
+force_utf8_console()
+
+from shared.heartbeat import record_failure, record_success  # noqa: E402
 
 # Phase 5B-2 — heartbeat keys consumed by probe_cron_freshness via CRON_SCHEDULES.
 # Stable across releases (changing breaks the probe's prior-state continuity).
@@ -34,6 +38,8 @@ _JOB_NAME_DIGEST = "franky-weekly-report"
 _JOB_NAME_NEWS = "franky-news-digest"
 _JOB_NAME_ANOMALY = "nakama-anomaly-daemon"
 _JOB_NAME_GSC_DAILY = "franky-gsc-daily"
+_JOB_NAME_SYNTHESIS = "franky-news-synthesis"
+_JOB_NAME_RETROSPECTIVE = "franky-news-retrospective"
 
 
 def _cmd_health(_args: argparse.Namespace) -> int:
@@ -97,31 +103,36 @@ def _cmd_alert(args: argparse.Namespace) -> int:
 
 def _cmd_backup_verify(_args: argparse.Namespace) -> int:
     from agents.franky.alert_router import make_default_sink
-    from agents.franky.r2_backup_verify import verify_once
+    from agents.franky.r2_backup_verify import verify_all_prefixes
 
     try:
-        result = verify_once()
+        results = verify_all_prefixes()
     except Exception as exc:
         record_failure(_JOB_NAME_BACKUP_VERIFY, f"{type(exc).__name__}: {exc}"[:200])
         raise
 
-    summary = {
-        "operation_id": result["operation_id"],
-        "status": result["status"],
-        "detail": result["detail"],
-        "alert_emitted": result["alert"] is not None,
-    }
+    summary = [
+        {
+            "prefix": r["prefix"],
+            "operation_id": r["operation_id"],
+            "status": r["status"],
+            "detail": r["detail"],
+            "alert_emitted": r["alert"] is not None,
+        }
+        for r in results
+    ]
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    # Dispatch any critical alert through the normal router (dedup + Slack)
-    if result["alert"] is not None:
-        sink = make_default_sink()
-        sink(result["alert"])
+    # Dispatch any critical alerts through the normal router (per-prefix dedup + Slack)
+    sink = make_default_sink()
+    for r in results:
+        if r["alert"] is not None:
+            sink(r["alert"])
     # The cron itself succeeded (it ran and produced a verdict, possibly emitting an
     # alert about the *backed-up data* being stale). probe_cron_freshness watches the
     # cron's liveness; the backup-content alert path is probe_r2_backup_nakama's job.
     record_success(_JOB_NAME_BACKUP_VERIFY)
-    # Exit 0 on ok/too-early-fail; exit 1 only if Critical alert emitted (cron noise signal)
-    return 1 if result["alert"] is not None else 0
+    # Exit 0 on ok/too-early-fail; exit 1 only if any prefix emitted Critical alert
+    return 1 if any(r["alert"] is not None for r in results) else 0
 
 
 def _cmd_digest(_args: argparse.Namespace) -> int:
@@ -222,6 +233,57 @@ def _cmd_gsc_daily(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_synthesis(args: argparse.Namespace) -> int:
+    """ADR-023 §7 S3 — weekly synthesis → two-stage proposal inbox."""
+    from agents.franky.news_synthesis import _re_scan_and_promote_page, run_synthesis
+
+    if getattr(args, "re_scan_promotions", False):
+        target = getattr(args, "page", None)
+        if not target:
+            print(
+                "--re-scan-promotions requires --page <vault-page-path>",
+                file=__import__("sys").stderr,
+            )
+            return 2
+        _re_scan_and_promote_page(target)
+        return 0
+
+    dry_run = getattr(args, "dry_run", False)
+    try:
+        summary = run_synthesis(
+            dry_run=dry_run,
+            no_publish=getattr(args, "no_publish", False),
+        )
+    except Exception as exc:
+        if not dry_run:
+            record_failure(_JOB_NAME_SYNTHESIS, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+    print(summary)
+    if not dry_run:
+        record_success(_JOB_NAME_SYNTHESIS)
+    return 0
+
+
+def _cmd_retrospective(args: argparse.Namespace) -> int:
+    """ADR-023 §7 S4 — monthly retrospective → metric_type 三類處理 + vault + Slack."""
+    from agents.franky.news_retrospective import run_retrospective
+
+    dry_run = getattr(args, "dry_run", False)
+    try:
+        summary = run_retrospective(
+            dry_run=dry_run,
+            no_publish=getattr(args, "no_publish", False),
+        )
+    except Exception as exc:
+        if not dry_run:
+            record_failure(_JOB_NAME_RETROSPECTIVE, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+    print(summary)
+    if not dry_run:
+        record_success(_JOB_NAME_RETROSPECTIVE)
+    return 0
+
+
 def _cmd_legacy_weekly(_args: argparse.Namespace) -> int:
     """Backward-compat: the current VPS cron still runs `python -m agents.franky` without args."""
     from agents.franky.agent import FrankyAgent
@@ -263,6 +325,44 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Parse keywords + compute window only; no GSC API call, no DB write.",
     )
+    synthesis = sub.add_parser(
+        "synthesis",
+        help="ADR-023 §7 S3: weekly synthesis → two-stage proposal inbox (週日 22:00)",
+    )
+    synthesis.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run pipeline without writing vault, DB insert, or Slack DM.",
+    )
+    synthesis.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="Write vault + DB but skip Slack DM.",
+    )
+    synthesis.add_argument(
+        "--re-scan-promotions",
+        action="store_true",
+        help="Scan a Weekly vault page for promote=true candidates and open GH issues.",
+    )
+    synthesis.add_argument(
+        "--page",
+        metavar="PATH",
+        help="Path to vault page for --re-scan-promotions.",
+    )
+    retro = sub.add_parser(
+        "retrospective",
+        help="ADR-023 §7 S4: monthly retrospective — metric_type 三類處理 (月底最後週日 22:00)",
+    )
+    retro.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run pipeline without writing vault, DB updates, or Slack DM.",
+    )
+    retro.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="Write vault but skip Slack DM.",
+    )
     return parser
 
 
@@ -285,6 +385,8 @@ def main(argv: list[str] | None = None) -> int:
         "news": _cmd_news,
         "anomaly": _cmd_anomaly,
         "gsc-daily": _cmd_gsc_daily,
+        "synthesis": _cmd_synthesis,
+        "retrospective": _cmd_retrospective,
     }
     handler = dispatch.get(args.command, _cmd_legacy_weekly)
     return handler(args)

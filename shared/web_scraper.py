@@ -219,19 +219,63 @@ def _scrape_firecrawl(url: str) -> str:
         raise RuntimeError("FIRECRAWL_API_KEY 未設定，無法使用 Firecrawl")
 
     try:
-        from firecrawl import FirecrawlApp
+        from firecrawl import Firecrawl
     except ImportError as e:
         raise RuntimeError("firecrawl-py 未安裝") from e
 
     logger.info(f"Firecrawl 擷取：{url}")
     try:
-        app = FirecrawlApp(api_key=api_key)
-        result = app.scrape_url(url, params={"formats": ["markdown"]})
+        app = Firecrawl(api_key=api_key)
+        # only_main_content=True 抽文章主體，不含 navigation / ad / share chrome
+        # （Lancet 等 JS 渲染站不加這個會拉整頁 chrome 給 translator 翻譯廢內容）
+        result = app.scrape(url, formats=["markdown"], only_main_content=True)
         md = result.markdown or ""
         if not md:
             raise RuntimeError("Firecrawl 回傳空內容")
         logger.debug(f"Firecrawl 成功：{len(md)} 字元")
         return md
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Firecrawl API 呼叫失敗：{e}") from e
+
+
+def fetch_html_via_firecrawl(url: str) -> str:
+    """用 Firecrawl 抓取頁面的原始 HTML（供 meta-tag / 結構化抽取使用）。
+
+    與 ``_scrape_firecrawl`` 不同：
+    - ``_scrape_firecrawl`` 回傳已經抽過主體的 markdown（適合給 translator）
+    - ``fetch_html_via_firecrawl`` 回傳完整 raw HTML（meta tag 仍在 ``<head>``）
+
+    用途：當 plain httpx 被 publisher（如 Lancet / NEJM）的 bot 偵測 / cloudflare
+    擋下，無法讀到 ``<meta name="citation_doi">`` 時，改用 Firecrawl 的 anti-bot
+    基礎建設取得相同頁面的 HTML，再跑相同的 regex 抽 DOI。
+
+    需要 FIRECRAWL_API_KEY 環境變數。
+
+    Raises:
+        RuntimeError: API key 未設定、firecrawl-py 未安裝、或 API 呼叫失敗
+    """
+    api_key = os.environ.get("FIRECRAWL_API_KEY")
+    if not api_key:
+        raise RuntimeError("FIRECRAWL_API_KEY 未設定，無法使用 Firecrawl")
+
+    try:
+        from firecrawl import Firecrawl
+    except ImportError as e:
+        raise RuntimeError("firecrawl-py 未安裝") from e
+
+    logger.info(f"Firecrawl 抓 raw HTML：{url}")
+    try:
+        app = Firecrawl(api_key=api_key)
+        # rawHtml: 不抽主體、不去 chrome — 我們要 <head> 裡的 meta tag。
+        # only_main_content 預設 False（Firecrawl 端行為），這裡明確不傳。
+        result = app.scrape(url, formats=["rawHtml"])
+        html = result.raw_html or result.html or ""
+        if not html:
+            raise RuntimeError("Firecrawl 回傳空 HTML")
+        logger.debug(f"Firecrawl raw HTML 成功：{len(html)} 字元")
+        return html
     except RuntimeError:
         raise
     except Exception as e:

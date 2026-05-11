@@ -27,6 +27,8 @@
     --finish-bg: #4caf50;
     --finish-done-bg: #e8f5e9;
     --finish-done-text: #2e7d32;
+    --badge-warn-bg: #fff3cd;
+    --badge-warn-text: #856404;
   }
   body.dark {
     --bg: #1a1a2e;
@@ -49,6 +51,8 @@
     --finish-bg: #2e7d32;
     --finish-done-bg: #1b4332;
     --finish-done-text: #81c784;
+    --badge-warn-bg: #5c4800;
+    --badge-warn-text: #ffc107;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -60,6 +64,10 @@
   .header-left h1 { font-size: 1rem; color: var(--text-heading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .header-right { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
   .badge-read { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--finish-done-bg); color: var(--finish-done-text); font-weight: 600; }
+  .badge-sync { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; font-weight: 600; }
+  .badge-sync[hidden] { display: none; }
+  .badge-sync.warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
+  .badge-sync.ok { background: var(--finish-done-bg); color: var(--finish-done-text); }
   .save-indicator { font-size: 0.75rem; color: #4caf50; opacity: 0; transition: opacity 0.3s; }
   .save-indicator.show { opacity: 1; }
   .header-btn { font-size: 0.75rem; padding: 0.25rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); cursor: pointer; color: var(--text-muted); transition: all 0.2s; }
@@ -171,6 +179,83 @@
   .modal-cancel:hover { opacity: 0.8; }
   .modal-confirm { background: var(--accent); color: white; }
   .modal-confirm:hover { background: var(--accent-hover); }
+
+  /* ── Discard button + native <dialog> confirm (Slice 5, #356) ────────────
+     The discard ("丟掉這篇") button reuses .header-btn for default/hover/focus
+     parity with sibling buttons. The danger semantic only surfaces on hover —
+     the button at rest stays muted so it doesn't compete with the primary
+     翻譯/同步 actions, and the confirm dialog is where 修修 actually commits.
+     States: default (muted) / hover (border + text crimson) / focus-visible
+     (outline) / disabled (faded, in-flight). */
+  .header-btn.is-discard:hover,
+  .header-btn.is-discard:focus-visible { border-color: #c62828; color: #c62828; }
+  body.dark .header-btn.is-discard:hover,
+  body.dark .header-btn.is-discard:focus-visible { border-color: #ef5350; color: #ef5350; }
+  .header-btn.is-discard:disabled { opacity: 0.5; cursor: progress; border-color: var(--border); color: var(--text-faint); }
+
+  /* Native <dialog> confirm — mirrors the Bridge draft_detail modal pattern
+     (single dialog element, browser-managed backdrop, no fade JS). */
+  dialog.discard-confirm {
+    border: 1px solid var(--border);
+    background: var(--modal-bg);
+    color: var(--text);
+    padding: 0;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 480px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  dialog.discard-confirm::backdrop { background: rgba(0,0,0,0.45); }
+  dialog.discard-confirm .dc-head {
+    padding: 1rem 1.25rem 0.5rem;
+    font-size: 1rem;
+    color: var(--text-heading);
+    font-weight: 600;
+  }
+  dialog.discard-confirm .dc-body {
+    padding: 0.25rem 1.25rem 1rem;
+    font-size: 0.9rem;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  dialog.discard-confirm .dc-body strong { color: #c62828; }
+  body.dark dialog.discard-confirm .dc-body strong { color: #ef5350; }
+  dialog.discard-confirm .dc-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+  }
+  dialog.discard-confirm .dc-actions {
+    padding: 0.75rem 1.25rem 1.1rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  dialog.discard-confirm .dc-actions button {
+    padding: 0.45rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  dialog.discard-confirm .dc-cancel {
+    background: var(--btn-muted-bg);
+    color: var(--btn-muted-text);
+    border-color: var(--btn-muted-bg);
+  }
+  dialog.discard-confirm .dc-cancel:hover,
+  dialog.discard-confirm .dc-cancel:focus-visible { opacity: 0.8; }
+  dialog.discard-confirm .dc-confirm {
+    background: #c62828;
+    color: #fff;
+    border-color: #c62828;
+  }
+  dialog.discard-confirm .dc-confirm:hover,
+  dialog.discard-confirm .dc-confirm:focus-visible { background: #ad1f1f; border-color: #ad1f1f; }
+  body.dark dialog.discard-confirm .dc-confirm { background: #ef5350; border-color: #ef5350; }
+  body.dark dialog.discard-confirm .dc-confirm:hover,
+  body.dark dialog.discard-confirm .dc-confirm:focus-visible { background: #d63d3d; border-color: #d63d3d; }
+  dialog.discard-confirm .dc-confirm:disabled { opacity: 0.6; cursor: progress; }
 </style>
 </head>
 <body>
@@ -180,11 +265,18 @@
     <div class="header-left">
       <h1>{{ filename }}</h1>
       <span class="badge-read" id="readBadge" {% if not is_read %}style="display:none"{% endif %}>已閱讀</span>
+      <span id="syncBadge" class="badge-sync"></span>
     </div>
     <div class="header-right">
       <span class="shortcuts-hint">Ctrl+B 標記 · Ctrl+Shift+C 註解 · T 切換譯文</span>
       <span class="save-indicator" id="saveIndicator">已儲存</span>
+      <span class="save-indicator" id="syncIndicator"></span>
+      {% if not is_bilingual %}
+      <button class="header-btn" id="translateBtn" onclick="triggerTranslate()" title="後台翻譯成台灣繁體中文後跳雙語閱讀模式">翻譯成中文</button>
+      {% endif %}
+      <button class="header-btn" id="syncBtn" onclick="syncToKB()">同步到 KB</button>
       <button class="header-btn" id="bilingualToggle" onclick="cycleBilingual()" title="T">雙語</button>
+      <button class="header-btn is-discard" id="discardBtn" type="button" onclick="openDiscardDialog()">丟掉這篇</button>
       <button class="header-btn" id="darkToggle" onclick="toggleDark()">Dark</button>
     </div>
   </div>
@@ -216,6 +308,7 @@
           {% if frontmatter.created %}<span><span class="meta-label">Added</span>{{ frontmatter.created }}</span>{% endif %}
           {% if frontmatter.doi %}<span><span class="meta-label">DOI</span><a href="https://doi.org/{{ frontmatter.doi }}" target="_blank" rel="noopener">{{ frontmatter.doi }}</a></span>{% endif %}
           {% if frontmatter.pmid %}<span><span class="meta-label">PMID</span><a href="https://pubmed.ncbi.nlm.nih.gov/{{ frontmatter.pmid }}/" target="_blank" rel="noopener">{{ frontmatter.pmid }}</a></span>{% endif %}
+          {% if frontmatter.fulltext_source %}<span><span class="meta-label">Full text</span>{{ frontmatter.fulltext_source }}</span>{% endif %}
           {% if frontmatter.source %}<span><span class="meta-label">Source</span><a href="{{ frontmatter.source }}" target="_blank" rel="noopener">{{ frontmatter.source[:60] }}{% if frontmatter.source|length > 60 %}…{% endif %}</a></span>{% endif %}
         </div>
         {% if frontmatter.tags %}
@@ -252,24 +345,74 @@
     </div>
   </div>
 
+  <!-- Discard Confirm Dialog (Slice 5, #356) — native <dialog>, no JS framework -->
+  <dialog id="discardDialog" class="discard-confirm" aria-labelledby="discardDialogTitle">
+    <form id="discardForm" method="post">
+      <div class="dc-head" id="discardDialogTitle">確認丟棄</div>
+      <div class="dc-body" id="discardDialogBody">
+        <!-- Body text rendered by openDiscardDialog() so {filename} + count are exact. -->
+      </div>
+      <div class="dc-actions">
+        <button type="button" class="dc-cancel" onclick="closeDiscardDialog()">取消</button>
+        <button type="submit" class="dc-confirm" id="discardConfirmBtn">丟棄</button>
+      </div>
+    </form>
+  </dialog>
+
   <script>
     // ── State ──
     const FILENAME = '{{ filename }}';
     const BASE = '{{ base | default("inbox") }}';
+    const SLUG = {{ slug | tojson }};
     const FRONTMATTER_RAW = {{ frontmatter_raw | tojson }};
     const IS_BILINGUAL = {{ is_bilingual | tojson }};
-    let mdSource = {{ content | tojson }};
+    // Pure source content — never mutated by annotation saves (ADR-017)
+    const mdSource = {{ content | tojson }};
+    // Mutable annotation state — loaded from server, updated client-side
+    let annotationsData = {{ annotations | tojson }};
+    let unsyncedCount = {{ unsynced_count }};
     let pendingSelectedText = '';
 
     const readerContent = document.getElementById('readerContent');
     const darkToggle = document.getElementById('darkToggle');
     const bilingualToggle = document.getElementById('bilingualToggle');
     const saveIndicator = document.getElementById('saveIndicator');
+    const syncBadge = document.getElementById('syncBadge');
     const finishBtn = document.getElementById('finishBtn');
     const readBadge = document.getElementById('readBadge');
     const modalOverlay = document.getElementById('modalOverlay');
     const modalContext = document.getElementById('modalContext');
     const modalInput = document.getElementById('modalInput');
+
+    // ── Build annotated markdown from pure source + annotation data ──
+
+    function buildAnnotatedMd() {
+      let md = mdSource;
+
+      // Phase 1: Insert ==highlights==
+      for (const item of annotationsData) {
+        if (item.type !== 'highlight') continue;
+        const m = findInStr(item.text, md);
+        if (!m) continue;
+        if (md.substring(Math.max(0, m.index - 2), m.index) === '==') continue;
+        md = md.substring(0, m.index) + '==' + m[0] + '==' + md.substring(m.index + m[0].length);
+      }
+
+      // Phase 2: Insert > [!annotation] callouts after the relevant paragraph
+      for (const item of annotationsData) {
+        if (item.type !== 'annotation') continue;
+        const m = findInStr(item.ref, md);
+        if (!m) continue;
+        const searchFrom = m.index + m[0].length;
+        let paraEnd = md.indexOf('\n\n', searchFrom);
+        if (paraEnd === -1) paraEnd = md.length;
+        const noteLines = item.note.split('\n').map(l => '> ' + l).join('\n');
+        const block = `\n\n> [!annotation] ${item.ref}\n${noteLines}\n`;
+        md = md.substring(0, paraEnd) + block + md.substring(paraEnd);
+      }
+
+      return md;
+    }
 
     // ── Rendering (two-pass to avoid marked.js wrapping sidenotes in <p>) ──
 
@@ -279,7 +422,7 @@
       const annRefs = [];
       let annCounter = 0;
 
-      let md = mdSource.replace(
+      let md = buildAnnotatedMd().replace(
         /^> \[!annotation\]\s*(.*)\n((?:^> .*(?:\n|$))*)/gm,
         function(match, refLine, body) {
           annCounter++;
@@ -347,10 +490,10 @@
     }
 
     // ── Bilingual mode ──
-    // states: 'off' → 'on' (show translation) → 'hidden' (hide translation) → 'off'
-    const BILINGUAL_STATES = ['off', 'on', 'hidden'];
-    const BILINGUAL_LABELS = { off: '雙語', on: '譯文 ✓', hidden: '譯文 ✗' };
-    // IS_BILINGUAL=true（從 scrape-translate 產生的雙語檔案）時，首次開啟預設 'on'
+    // 2 states: 'on' (show translation) ↔ 'off' (hide translation).
+    // Bilingual files default to 'on'; non-bilingual files (no translation
+    // blockquotes in body) ignore the toggle visually but state still persists.
+    const BILINGUAL_LABELS = { off: '譯文 ✗', on: '譯文 ✓' };
     let bilingualState = localStorage.getItem('robin-bilingual') || (IS_BILINGUAL ? 'on' : 'off');
 
     function applyBilingual() {
@@ -358,18 +501,15 @@
       if (bilingualState === 'on') {
         readerContent.classList.add('bilingual');
         bilingualToggle.classList.add('active');
-      } else if (bilingualState === 'hidden') {
-        readerContent.classList.add('bilingual', 'bilingual-hidden');
-        bilingualToggle.classList.add('active');
       } else {
+        readerContent.classList.add('bilingual', 'bilingual-hidden');
         bilingualToggle.classList.remove('active');
       }
       bilingualToggle.textContent = BILINGUAL_LABELS[bilingualState];
     }
 
     function cycleBilingual() {
-      const idx = BILINGUAL_STATES.indexOf(bilingualState);
-      bilingualState = BILINGUAL_STATES[(idx + 1) % BILINGUAL_STATES.length];
+      bilingualState = bilingualState === 'on' ? 'off' : 'on';
       localStorage.setItem('robin-bilingual', bilingualState);
       applyBilingual();
     }
@@ -401,46 +541,44 @@
       return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    function findInSource(text) {
+    // Find text in a given string (or mdSource if omitted); returns RegExp exec result with .index
+    function findInStr(text, src) {
+      src = (src !== undefined) ? src : mdSource;
       const escaped = escapeRegex(text);
       const flexPattern = escaped.replace(/\s+/g, '\\s+');
       const regex = new RegExp(flexPattern);
-      return mdSource.match(regex);
+      return regex.exec(src);
     }
 
-    function highlightInSource(text) {
-      const match = findInSource(text);
-      if (match) {
-        const idx = mdSource.indexOf(match[0]);
-        mdSource = mdSource.substring(0, idx) + '==' + match[0] + '==' + mdSource.substring(idx + match[0].length);
-        return true;
-      }
-      return false;
-    }
-
-    function addAnnotationInSource(text, note) {
-      const match = findInSource(text);
-      if (!match) return false;
-      const idx = mdSource.indexOf(match[0]);
-
-      // Highlight the text if not already
-      const before2 = mdSource.substring(Math.max(0, idx - 2), idx);
-      if (before2 !== '==') {
-        mdSource = mdSource.substring(0, idx) + '==' + match[0] + '==' + mdSource.substring(idx + match[0].length);
-      }
-
-      // Find end of paragraph
-      const searchFrom = mdSource.indexOf(match[0], idx) + match[0].length;
-      let paraEnd = mdSource.indexOf('\n\n', searchFrom);
-      if (paraEnd === -1) paraEnd = mdSource.length;
-
-      // Build annotation block
-      const refText = text.substring(0, 60).replace(/\n/g, ' ');
-      const noteLines = note.split('\n').map(l => '> ' + l).join('\n');
-      const block = `\n\n> [!annotation] ${refText}\n${noteLines}\n`;
-      mdSource = mdSource.substring(0, paraEnd) + block + mdSource.substring(paraEnd);
+    function addHighlight(text) {
+      if (!findInStr(text)) return false;
+      if (annotationsData.some(a => a.type === 'highlight' && a.text === text)) return true;
+      annotationsData.push({ type: 'highlight', text, created_at: new Date().toISOString() });
       return true;
     }
+
+    function addAnnotation(text, note) {
+      if (!findInStr(text)) return false;
+      // Ensure the annotated text is also highlighted
+      addHighlight(text);
+      const ref = text.substring(0, 60).replace(/\n/g, ' ');
+      annotationsData.push({ type: 'annotation', ref, note, created_at: new Date().toISOString() });
+      return true;
+    }
+
+    // ── Sync badge ──
+
+    function updateSyncBadge(count) {
+      unsyncedCount = count;
+      if (count > 0) {
+        syncBadge.textContent = count + ' 條未 sync';
+        syncBadge.className = 'badge-sync warn';
+      } else {
+        syncBadge.textContent = '✓ 全部 sync';
+        syncBadge.className = 'badge-sync ok';
+      }
+    }
+    updateSyncBadge(unsyncedCount);
 
     // ── Auto-save ──
 
@@ -452,14 +590,24 @@
     }
 
     async function saveContent() {
-      const form = new FormData();
-      form.append('filename', FILENAME);
-      form.append('base', BASE);
-      const fullContent = FRONTMATTER_RAW ? FRONTMATTER_RAW + '\n' + mdSource : mdSource;
-      form.append('content', fullContent);
+      const payload = {
+        slug: SLUG,
+        source_filename: FILENAME,
+        base: BASE,
+        items: annotationsData,
+        updated_at: new Date().toISOString(),
+      };
       try {
-        const res = await fetch('/save-annotations', { method: 'POST', body: form });
-        if (res.ok) showSaved();
+        const res = await fetch('/save-annotations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          showSaved();
+          const data = await res.json();
+          if (typeof data.unsynced_count === 'number') updateSyncBadge(data.unsynced_count);
+        }
       } catch (e) {
         console.error('Save failed:', e);
       }
@@ -489,7 +637,7 @@
         e.preventDefault();
         const text = getSelectedText();
         if (!text) return;
-        if (highlightInSource(text)) {
+        if (addHighlight(text)) {
           window.getSelection().removeAllRanges();
           saveAndRender();
         }
@@ -522,7 +670,7 @@
     function confirmAnnotation() {
       const note = modalInput.value.trim();
       if (!note) { closeModal(); return; }
-      if (addAnnotationInSource(pendingSelectedText, note)) {
+      if (addAnnotation(pendingSelectedText, note)) {
         window.getSelection().removeAllRanges();
         saveAndRender();
       }
@@ -537,6 +685,78 @@
     modalOverlay.addEventListener('click', function(e) {
       if (e.target === modalOverlay) closeModal();
     });
+
+    // ── Sync to KB ──
+
+    const syncIndicator = document.getElementById('syncIndicator');
+    const syncBtn = document.getElementById('syncBtn');
+
+    async function syncToKB() {
+      if (!SLUG) return;
+      syncBtn.disabled = true;
+      syncIndicator.textContent = '同步中…';
+      syncIndicator.style.opacity = '1';
+      syncIndicator.style.color = 'var(--text-muted)';
+      try {
+        const res = await fetch('/sync-annotations/' + encodeURIComponent(SLUG), { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          const updated = (data.concepts_updated || []).length;
+          const errors = data.errors || [];
+          if (errors.length > 0) {
+            syncIndicator.textContent = '⚠️ 同步錯誤';
+            syncIndicator.style.color = '#e53935';
+          } else {
+            syncIndicator.textContent = updated > 0 ? `已同步 ${updated} 個概念 ✓` : '無匹配概念';
+            syncIndicator.style.color = updated > 0 ? '#4caf50' : 'var(--text-muted)';
+          }
+          if (typeof data.unsynced_count === 'number') updateSyncBadge(data.unsynced_count);
+        } else {
+          syncIndicator.textContent = '同步失敗';
+          syncIndicator.style.color = '#e53935';
+        }
+      } catch (e) {
+        syncIndicator.textContent = '同步失敗';
+        syncIndicator.style.color = '#e53935';
+      } finally {
+        syncBtn.disabled = false;
+        setTimeout(() => { syncIndicator.style.opacity = '0'; }, 3000);
+      }
+    }
+
+    // ── Translate (Slice 3, issue #354) ──
+    // 修修 30 秒看完原文 → 按按鈕 → 後台 translate_document → 跳雙語 reader。
+    // BG 任務 + bilingual short-circuit 由 server 處理；前端只負責 UI 狀態與 form post。
+
+    async function triggerTranslate() {
+      const btn = document.getElementById('translateBtn');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      const original = btn.textContent;
+      // 沿用 inbox 🔄 spinner 同 emoji 表示「處理中」，視覺上 inline 不打斷閱讀
+      btn.textContent = '🔄 翻譯中…';
+      try {
+        const params = new URLSearchParams({ file: FILENAME });
+        const res = await fetch('/translate?' + params.toString(), {
+          method: 'POST',
+          // 接受 303 redirect → 直接讓瀏覽器跳到 bilingual reader
+          redirect: 'follow',
+        });
+        if (res.ok || res.redirected) {
+          // 後台已寫好雙語檔（FastAPI BackgroundTask 在 response 後執行完成才返回）
+          window.location.href = res.url;
+          return;
+        }
+        // 非預期狀態：把按鈕還原讓使用者重試
+        btn.disabled = false;
+        btn.textContent = original;
+        console.error('Translate failed:', res.status);
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = original;
+        console.error('Translate error:', e);
+      }
+    }
 
     // ── Finish reading ──
 
@@ -555,6 +775,76 @@
       } catch (e) {
         console.error('Mark read failed:', e);
       }
+    }
+
+    // ── Discard ("丟掉這篇") flow (Slice 5, #356) ──
+    // Frontend GETs /discard-info?file=&base= for the annotation count, then
+    // shows a native <dialog> confirm with the exact PRD §U24 wording. On
+    // submit, the form posts to /discard with the same params; server-side
+    // DiscardService recycles the file + connected annotation companion.
+
+    const discardBtn = document.getElementById('discardBtn');
+    const discardDialog = document.getElementById('discardDialog');
+    const discardForm = document.getElementById('discardForm');
+    const discardConfirmBtn = document.getElementById('discardConfirmBtn');
+    const discardDialogBody = document.getElementById('discardDialogBody');
+
+    function buildDiscardBody(annotationCount) {
+      // PRD §U24 exact wording: 「丟掉「{filename}」**和 {N} 條 annotation**？
+      // 此操作可從 Windows 回收桶還原」. Bold the annotation clause; soften the
+      // post-action hint with .dc-hint so the eye lands on the count first.
+      const safeName = String(FILENAME)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      const annClause = annotationCount > 0
+        ? ` 和 <strong>${annotationCount} 條 annotation</strong>`
+        : '';
+      discardDialogBody.innerHTML =
+        `丟掉「${safeName}」${annClause}？` +
+        `<div class="dc-hint">此操作可從 Windows 回收桶還原。</div>`;
+    }
+
+    async function openDiscardDialog() {
+      if (!discardDialog) return;
+      // Default body with 0 annotations so the dialog opens instantly even if
+      // /discard-info is slow; we replace as soon as the count comes back.
+      buildDiscardBody(0);
+      try {
+        const params = new URLSearchParams({ file: FILENAME, base: BASE });
+        const res = await fetch('/discard-info?' + params.toString());
+        if (res.ok) {
+          const data = await res.json();
+          buildDiscardBody(data.annotation_count || 0);
+        }
+      } catch (e) {
+        // Network error → keep the 0-count body; user can still confirm.
+        console.warn('discard-info fetch failed:', e);
+      }
+      const params = new URLSearchParams({ file: FILENAME, base: BASE });
+      discardForm.action = '/discard?' + params.toString();
+      if (typeof discardDialog.showModal === 'function') {
+        discardDialog.showModal();
+      }
+    }
+
+    function closeDiscardDialog() {
+      if (discardDialog && typeof discardDialog.close === 'function') {
+        discardDialog.close();
+      }
+    }
+
+    if (discardForm) {
+      discardForm.addEventListener('submit', function () {
+        // Disable both buttons to prevent double-submit; the form still
+        // posts (we do NOT preventDefault).
+        if (discardBtn) discardBtn.disabled = true;
+        if (discardConfirmBtn) {
+          discardConfirmBtn.disabled = true;
+          discardConfirmBtn.textContent = '丟棄中…';
+        }
+      });
     }
 
     // ── Init ──
