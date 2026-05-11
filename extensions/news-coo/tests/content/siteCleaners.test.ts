@@ -490,6 +490,19 @@ describe("bmjCleaner", () => {
     expect(doc.querySelector("a.xref-bibr")!.getAttribute("href")).toBe("#ref-1");
   });
 
+  it("promotes .fulltext-view div to <article> for Defuddle main-content scoring", () => {
+    const doc = makeDoc(`
+      <body>
+        <div class="fulltext-view"><div id="sec-1"><p>Body paragraph.</p></div></div>
+      </body>
+    `);
+    bmjCleaner.clean(doc, "https://bjsm.bmj.com/x");
+    expect(doc.querySelector("div.fulltext-view")).toBeNull();
+    const art = doc.querySelector("article.fulltext-view")!;
+    expect(art).not.toBeNull();
+    expect(art.querySelector("#sec-1")).not.toBeNull();
+  });
+
   it("matches BMJ subdomains (BJSM, etc.)", () => {
     expect(bmjCleaner.matches("bjsm.bmj.com", "https://bjsm.bmj.com/x")).toBe(true);
     expect(bmjCleaner.matches("ard.bmj.com", "https://ard.bmj.com/x")).toBe(true);

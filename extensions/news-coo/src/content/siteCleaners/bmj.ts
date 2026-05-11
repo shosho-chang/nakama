@@ -37,6 +37,20 @@ export const bmjCleaner: SiteCleaner = {
       warnings: [],
     };
 
+    // Promote the article body so Defuddle's main-content heuristic picks it.
+    // BMJ wraps full text in `<div class="fulltext-view">`, which Defuddle's
+    // density-based scorer overlooks in favour of the dense abstract block —
+    // so the resulting markdown is just the abstract + author affiliations.
+    // Wrap (or convert) it into a semantic <article> element.
+    const fulltext = doc.querySelector<HTMLElement>(".fulltext-view");
+    if (fulltext && fulltext.tagName !== "ARTICLE") {
+      const article = doc.createElement("article");
+      article.className = "fulltext-view";
+      while (fulltext.firstChild) article.appendChild(fulltext.firstChild);
+      fulltext.replaceWith(article);
+      report.removedNodeCount++;
+    }
+
     // Map the ref-N anchor id → DOI from the bottom <ol class="cit-list">.
     const idToUrl = new Map<string, string>();
     const items = Array.from(doc.querySelectorAll<HTMLElement>("ol.cit-list > li"));
