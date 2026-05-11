@@ -464,15 +464,16 @@ describe("sciencedirectCleaner", () => {
     expect(sciencedirectCleaner.matches("nature.com", "https://nature.com/x")).toBe(false);
   });
 
-  it("rewrites body reference anchors to DOI from ol.references", () => {
+  it("replaces body anchor with flat <sup><a> pointing at DOI from ol.references", () => {
     const doc = makeDoc(`
+      <head></head>
       <body>
-        <p>Aging is<a class="anchor" href="#bib1" data-xocs-content-type="reference" data-xocs-content-id="bib1"><sup>1</sup></a>.</p>
+        <p>Aging is<a class="anchor" href="#bib1" data-xocs-content-type="reference" data-xocs-content-id="bib1"><span><span><sup>1</sup></span></span></a>.</p>
         <ol class="references">
           <li>
             <span class="label"><a class="anchor" href="#bbib1" id="ref-id-bib1">1</a></span>
             <span class="reference" id="sref1">
-              <div class="contribution">Kroemer et al.</div>
+              <div class="contribution">Kroemer et al. From geroscience.</div>
               <div class="host">Cell, 188 (2025),
                 <a class="anchor" href="https://doi.org/10.1016/j.cell.2025.03.011">DOI</a>
               </div>
@@ -482,16 +483,19 @@ describe("sciencedirectCleaner", () => {
       </body>
     `);
     const report = sciencedirectCleaner.clean(doc, "https://www.sciencedirect.com/science/article/pii/X");
-    const a = doc.querySelector('a[data-xocs-content-id="bib1"]')!;
+    const sup = doc.querySelector("p sup")!;
+    const a = sup.querySelector("a")!;
     expect(a.getAttribute("href")).toBe("https://doi.org/10.1016/j.cell.2025.03.011");
     expect(a.getAttribute("target")).toBe("_blank");
+    expect(a.textContent).toBe("1");
     expect(report.removedNodeCount).toBeGreaterThan(0);
   });
 
   it("falls back to pii link when no DOI is present", () => {
     const doc = makeDoc(`
+      <head></head>
       <body>
-        <a class="anchor" href="#bib2" data-xocs-content-type="reference" data-xocs-content-id="bib2">2</a>
+        <p><a class="anchor" href="#bib2" data-xocs-content-type="reference" data-xocs-content-id="bib2"><sup>2</sup></a></p>
         <ol class="references">
           <li>
             <span class="label"><a class="anchor" href="#bbib2" id="ref-id-bib2">2</a></span>
@@ -504,20 +508,43 @@ describe("sciencedirectCleaner", () => {
       </body>
     `);
     sciencedirectCleaner.clean(doc, "https://www.sciencedirect.com/x");
-    const a = doc.querySelector('a[data-xocs-content-id="bib2"]')!;
+    const a = doc.querySelector("p sup a")!;
     expect(a.getAttribute("href")).toBe(
       "https://www.sciencedirect.com/science/article/pii/S0092867423008577",
     );
   });
 
-  it("collapses author-group buttons to clean 'First Last' list", () => {
+  it("rebuilds ol.references as ol#references with citation text + paper link", () => {
     const doc = makeDoc(`
+      <head></head>
+      <body>
+        <ol class="references">
+          <li>
+            <span class="label"><a id="ref-id-bib1">1</a></span>
+            <span class="reference">
+              <div class="contribution">Kroemer et al. From geroscience.</div>
+              <div class="host">Cell, 188 (2025), <a href="https://doi.org/10.1016/j.cell.2025.03.011">DOI</a></div>
+            </span>
+          </li>
+        </ol>
+      </body>
+    `);
+    sciencedirectCleaner.clean(doc, "https://www.sciencedirect.com/x");
+    expect(doc.querySelector("ol.references")).toBeNull();
+    const li = doc.querySelector("ol#references > li#ref-1")!;
+    expect(li.textContent).toContain("Kroemer et al. From geroscience.");
+    const paperA = li.querySelector("a")!;
+    expect(paperA.getAttribute("href")).toBe("https://doi.org/10.1016/j.cell.2025.03.011");
+  });
+
+  it("injects <meta name='author'> from #author-group", () => {
+    const doc = makeDoc(`
+      <head></head>
       <body>
         <div id="author-group">
           <button data-xocs-content-type="author">
             <span class="given-name">Jiaming</span> <span class="surname">Li</span>
             <span class="author-ref"><sup>1</sup></span>
-            <span class="author-ref"><sup>3</sup></span>
           </button>,
           <button data-xocs-content-type="author">
             <span class="given-name">Beier</span> <span class="surname">Jiang</span>
@@ -527,9 +554,8 @@ describe("sciencedirectCleaner", () => {
       </body>
     `);
     sciencedirectCleaner.clean(doc, "https://www.sciencedirect.com/x");
-    const p = doc.querySelector("#author-group p.author")!;
-    expect(p.textContent).toBe("Jiaming Li, Beier Jiang");
-    expect(doc.querySelectorAll("#author-group button").length).toBe(0);
+    const meta = doc.querySelector('head meta[name="author"]')!;
+    expect(meta.getAttribute("content")).toBe("Jiaming Li, Beier Jiang");
   });
 
   it("warns when no references list is present", () => {
