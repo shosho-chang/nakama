@@ -222,6 +222,127 @@ def test_books_upload_with_original(app_client, books_dir):
 
 
 # ---------------------------------------------------------------------------
+# Mode-aware upload — Phase 1 monolingual-zh pilot.
+# ---------------------------------------------------------------------------
+
+
+def test_upload_zh_epub_auto_detects_monolingual_zh(app_client, books_dir):
+    """The simplified UI sends ``mode=auto`` (or omits the param, which
+    defaults to ``auto``). Detection must read EPUB metadata.lang=zh-TW
+    and store the book as monolingual-zh."""
+    from tests.shared._epub_fixtures import epub_monolingual_zh
+
+    tc, _ = app_client
+    blob = epub_monolingual_zh()
+    files = {"bilingual": ("zh.epub", blob, "application/epub+zip")}
+    data = {"book_id": "zh-pilot-auto"}
+    r = tc.post("/books/upload", data=data, files=files)
+    assert r.status_code == 303
+
+    from shared.book_storage import get_book
+
+    row = get_book("zh-pilot-auto")
+    assert row is not None
+    assert row.mode == "monolingual-zh"
+    assert row.lang_pair == "zh-zh"
+    assert row.has_original is False
+
+
+def test_upload_zh_epub_without_metadata_lang_falls_back_to_body_sample(
+    app_client, books_dir
+):
+    """When EPUB metadata.lang is absent, the route extracts a body sample
+    and falls back to ``shared.lang_detect``. zh body → monolingual-zh."""
+    from tests.shared._epub_fixtures import epub_monolingual_zh
+
+    tc, _ = app_client
+    blob = epub_monolingual_zh(declare_lang=False)
+    files = {"bilingual": ("zh-no-lang.epub", blob, "application/epub+zip")}
+    data = {"book_id": "zh-body-fallback"}
+    r = tc.post("/books/upload", data=data, files=files)
+    assert r.status_code == 303
+
+    from shared.book_storage import get_book
+
+    row = get_book("zh-body-fallback")
+    assert row is not None
+    assert row.mode == "monolingual-zh"
+
+
+def test_upload_en_epub_resolves_to_bilingual_en_zh(app_client, books_dir):
+    """Existing English-only upload path must keep its previous behaviour —
+    ``mode=auto`` sees ``language=en`` and resolves to bilingual-en-zh."""
+    tc, _ = app_client
+    blob = epub_clean()  # EPUBSpec default language="en"
+    files = {"bilingual": ("en.epub", blob, "application/epub+zip")}
+    data = {"book_id": "en-default"}
+    r = tc.post("/books/upload", data=data, files=files)
+    assert r.status_code == 303
+
+    from shared.book_storage import get_book
+
+    row = get_book("en-default")
+    assert row is not None
+    assert row.mode == "bilingual-en-zh"
+
+
+def test_upload_explicit_mode_overrides_detection(app_client, books_dir):
+    """Caller can pin ``mode=monolingual-zh`` even on an English EPUB —
+    operator override path. Useful when metadata.lang is misleading."""
+    tc, _ = app_client
+    blob = epub_clean()  # English
+    files = {"bilingual": ("forced.epub", blob, "application/epub+zip")}
+    data = {"book_id": "forced-zh", "mode": "monolingual-zh"}
+    r = tc.post("/books/upload", data=data, files=files)
+    assert r.status_code == 303
+
+    from shared.book_storage import get_book
+
+    row = get_book("forced-zh")
+    assert row is not None
+    assert row.mode == "monolingual-zh"
+
+
+def test_upload_invalid_mode_value_returns_400(app_client):
+    tc, _ = app_client
+    blob = epub_clean()
+    files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
+    data = {"book_id": "bad-mode", "mode": "klingon"}
+    r = tc.post("/books/upload", data=data, files=files)
+    assert r.status_code == 400
+    assert "invalid mode" in r.text
+
+
+def test_upload_with_only_original_field_succeeds(app_client, books_dir):
+    """Per PRD §4.5 S2: bilingual is optional. If only ``original`` is
+    supplied, route promotes it into the bilingual slot so the Reader has
+    a display copy, treats book as bilingual-only (has_original=False)."""
+    tc, _ = app_client
+    blob = epub_clean()
+    files = {"original": ("only-orig.epub", blob, "application/epub+zip")}
+    data = {"book_id": "orig-only"}
+    r = tc.post("/books/upload", data=data, files=files)
+    assert r.status_code == 303
+
+    # bilingual.epub slot should still exist (promoted from the original
+    # bytes), so the Reader can render the book.
+    assert (books_dir / "orig-only" / "bilingual.epub").exists()
+
+    from shared.book_storage import get_book
+
+    row = get_book("orig-only")
+    assert row is not None
+    # No paired original archived → has_original=False
+    assert row.has_original is False
+
+
+def test_upload_with_neither_field_returns_400(app_client):
+    tc, _ = app_client
+    r = tc.post("/books/upload", data={"book_id": "ghost"})
+    assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # GET /books/{book_id}
 # ---------------------------------------------------------------------------
 

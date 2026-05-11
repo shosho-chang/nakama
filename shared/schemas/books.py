@@ -6,6 +6,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from shared.source_mode import DEFAULT_MODE, Mode
+
 
 class TocEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -41,6 +43,9 @@ class Book(BaseModel):
     book_id: str
     title: str
     author: str | None
+    # Phase 1 monolingual-zh pilot — see docs/plans/2026-05-10-monolingual-zh-pilot-minimal.md.
+    # Default preserves back-compat for any caller that hasn't migrated yet.
+    mode: Mode = DEFAULT_MODE
     lang_pair: str
     genre: str | None
     isbn: str | None

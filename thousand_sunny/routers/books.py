@@ -59,9 +59,14 @@ from shared.epub_metadata import MalformedEPUBError, extract_metadata
 from shared.epub_sanitizer import EPUBStructureError, sanitize_epub
 from shared.log import get_logger
 from shared.schemas.books import Book, BookProgress
+from shared.source_mode import DEFAULT_MODE, Mode, detect_book_mode
 from shared.state import _get_conn
 from shared.utils import slugify
 from thousand_sunny.auth import check_auth
+
+# Allowed values for the upload form ``mode`` parameter. ``"auto"`` triggers
+# server-side detection from EPUB metadata.lang + body sample.
+_VALID_MODE_FORM_VALUES = {"auto", "monolingual-zh", "bilingual-en-zh"}
 
 _COVER_EXT_MEDIA_TYPES = {
     "jpg": "image/jpeg",
@@ -71,6 +76,46 @@ _COVER_EXT_MEDIA_TYPES = {
     "webp": "image/webp",
     "svg": "image/svg+xml",
 }
+
+
+_BODY_SAMPLE_CHARS = 1500
+"""How many characters of EPUB body to feed langdetect when metadata.lang is
+absent. ~1.5K is plenty for confident classification and stays small enough
+that the upload route remains snappy."""
+
+
+def _extract_body_sample(epub_bytes: bytes) -> str | None:
+    """Pull a short text sample from the first XHTML chapter for lang
+    detection fallback. Returns ``None`` on any parse failure — caller
+    treats absence of a body sample as "rely on default mode".
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(epub_bytes)) as zf:
+            xhtml_names = [
+                n
+                for n in zf.namelist()
+                if n.lower().endswith((".xhtml", ".html"))
+            ]
+            if not xhtml_names:
+                return None
+            # Sort to pick the first content document deterministically;
+            # nav.xhtml may be present but it's TOC noise — skip it.
+            xhtml_names.sort()
+            for name in xhtml_names:
+                if "nav" in name.lower():
+                    continue
+                raw = zf.read(name).decode("utf-8", errors="replace")
+                # Strip tags crudely — we only need a representative chunk
+                # for langdetect; perfect HTML stripping isn't required.
+                import re as _re
+
+                stripped = _re.sub(r"<[^>]+>", " ", raw)
+                stripped = _re.sub(r"\s+", " ", stripped).strip()
+                if len(stripped) >= 100:
+                    return stripped[:_BODY_SAMPLE_CHARS]
+            return None
+    except (zipfile.BadZipFile, KeyError, UnicodeDecodeError):
+        return None
 
 
 def _extract_cover_bytes(epub_bytes: bytes, cover_path: str | None) -> tuple[bytes, str] | None:
@@ -117,28 +162,62 @@ async def books_upload_form(request: Request, nakama_auth: str | None = Cookie(N
 
 @router.post("/books/upload")
 async def books_upload(
-    bilingual: UploadFile = File(...),
+    bilingual: UploadFile | None = File(None),
     original: UploadFile | None = File(None),
     book_id: str | None = Form(None),
     title: str = Form(""),
-    lang_pair: str = Form("en-zh"),
+    lang_pair: str = Form(""),
     genre: str = Form(""),
     author: str = Form(""),
+    mode: str = Form("auto"),
     nakama_auth: str | None = Cookie(None),
 ):
-    """Upload a bilingual EPUB (and optional EN original).
+    """Upload an EPUB.
 
-    The simplified UI sends only the two file fields; everything else is derived
-    from the EPUB metadata. The remaining ``Form`` parameters are kept for
-    direct API callers (scripted batch uploads, tests) — they all default and
-    fall back to extracted values when omitted.
+    Two supported shapes (PRD #507 Phase 1 minimal):
+
+    - **monolingual** — single EPUB in the ``bilingual`` slot (Phase 1
+      keeps the slot name; Phase 2 will rename to ``display``). Mode
+      auto-detected from EPUB metadata.lang + body sample, or pinned
+      explicitly via the ``mode`` form param.
+    - **bilingual-with-original** — both ``bilingual`` (paired display
+      copy) and ``original`` (English source EPUB) provided; ``mode``
+      resolves to ``bilingual-en-zh`` by default. ``original``-only with
+      no ``bilingual`` is also accepted (treated as "the original *is*
+      what I want to read") — original bytes get copied into the
+      bilingual.epub slot too so the Reader has something to render.
+
+    The simplified UI sends only the file fields; everything else
+    defaults / is derived. Form params are kept for direct API callers
+    (scripted batch uploads, tests).
     """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login", status_code=302)
 
-    bilingual_bytes = await bilingual.read()
+    if mode not in _VALID_MODE_FORM_VALUES:
+        raise HTTPException(
+            400,
+            detail=(
+                f"invalid mode={mode!r}; expected one of "
+                f"{sorted(_VALID_MODE_FORM_VALUES)}"
+            ),
+        )
+
+    bilingual_bytes = await bilingual.read() if bilingual is not None and bilingual.filename else b""
+    original_bytes_raw = await original.read() if original is not None and original.filename else b""
+
+    if not bilingual_bytes and not original_bytes_raw:
+        raise HTTPException(
+            400, detail="upload requires at least one EPUB file (bilingual or original)"
+        )
+
+    # Track whether the upload truly carries a paired ``original``. When
+    # only ``original`` was uploaded, we promote it into the bilingual
+    # slot (so the Reader has a display copy) but treat the book as
+    # bilingual-only — there's no second variant worth archiving.
+    has_paired_original = bool(bilingual_bytes) and bool(original_bytes_raw)
     if not bilingual_bytes:
-        raise HTTPException(400, detail="bilingual EPUB is empty")
+        bilingual_bytes = original_bytes_raw
 
     try:
         sanitized = sanitize_epub(bilingual_bytes)
@@ -150,20 +229,31 @@ async def books_upload(
     except MalformedEPUBError as exc:
         raise HTTPException(400, detail=f"could not parse EPUB metadata: {exc}") from exc
 
-    original_bytes: bytes | None = None
-    has_original = False
-    if original is not None and original.filename:
-        original_bytes = await original.read()
-        if original_bytes:
-            has_original = True
-        else:
-            original_bytes = None
+    has_original = has_paired_original
+    original_bytes = original_bytes_raw if has_original else None
 
     sha = hashlib.sha256(sanitized).hexdigest()
     final_title = (title.strip() or (meta.title or "").strip()) or "Untitled"
     final_author = (author.strip() or (meta.author or "").strip()) or None
     final_genre = genre.strip() or None
-    final_lang_pair = lang_pair.strip() or "en-zh"
+
+    # Resolve mode — explicit form value wins; ``"auto"`` consults metadata
+    # then a body sample.
+    if mode == "auto":
+        body_sample = _extract_body_sample(sanitized)
+        resolved_mode: Mode = detect_book_mode(meta.lang, body_sample)
+    else:
+        resolved_mode = mode  # type: ignore[assignment]
+
+    # ``lang_pair`` is the legacy free-text field; honour an explicit form
+    # value, otherwise derive from the resolved mode so existing callers
+    # see consistent values.
+    if lang_pair.strip():
+        final_lang_pair = lang_pair.strip()
+    elif resolved_mode == "monolingual-zh":
+        final_lang_pair = "zh-zh"
+    else:
+        final_lang_pair = "en-zh"
 
     if not book_id:
         candidate = slugify(final_title)
@@ -180,6 +270,7 @@ async def books_upload(
         book_id=book_id,
         title=final_title,
         author=final_author,
+        mode=resolved_mode,
         lang_pair=final_lang_pair,
         genre=final_genre,
         isbn=meta.isbn,
@@ -189,7 +280,13 @@ async def books_upload(
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     insert_book(book)
-    logger.info("uploaded book %s (title=%s, has_original=%s)", book_id, final_title, has_original)
+    logger.info(
+        "uploaded book %s (title=%s, mode=%s, has_original=%s)",
+        book_id,
+        final_title,
+        resolved_mode,
+        has_original,
+    )
 
     response = RedirectResponse(f"/books/{book_id}", status_code=303)
     if nakama_auth:
