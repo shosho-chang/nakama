@@ -33,9 +33,9 @@ from shared.state import _get_conn
 
 @pytest.fixture
 def robin_e2e_env(tmp_path, monkeypatch):
-    """Mount tmp_path as the vault and prep a fresh Inbox/kb folder."""
+    """Mount tmp_path as the vault and prep a fresh Inbox folder."""
     vault = tmp_path / "vault"
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox"
     inbox.mkdir(parents=True)
 
     # Make a fake .md file in Inbox; supported extensions in
