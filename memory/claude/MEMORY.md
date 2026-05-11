@@ -5,6 +5,9 @@
 - [project_news_coo_grill_decisions.md](project_news_coo_grill_decisions.md) — **News Coo grill 全決策表 2026-05-10**：FSA 直寫 / 新 repo + npm Defuddle / image 必備寫 KB/Attachments/web / selection+highlights seed+context menu+kbd shortcut / PubMed detector / 7-slice 實作規劃
 - ~~[project_den_den_mushi_naming.md](project_den_den_mushi_naming.md)~~ — **DEPRECATED 同日撤回**，改 News Coo（見上）
 
+- [feedback_local_shell_ops_just_do_it.md](feedback_local_shell_ops_just_do_it.md) — **本機 shell ops auto mode 下直接做**：pip / python -m / 本機 CLI 在修修本機 dev 環境且 auto mode 開著時 Claude 直接執行，不要丟給修修
+- [feedback_use_mcp_browser_for_ui_verify.md](feedback_use_mcp_browser_for_ui_verify.md) — **UI verify 走 Playwright MCP**：機械步驟（navigate / select / click / 看 network）走 `mcp__plugin_playwright_playwright__*`，只把視覺判讀留給修修
+- [feedback_wakeup_completion_not_session_end.md](feedback_wakeup_completion_not_session_end.md) — **wakeup task done ≠ session end**：ScheduleWakeup 回來時若 task 已在中間 interactive 輪做完，auto mode 下要主動 surface 下一步，不要當無事可做停掉
 - [feedback_worktree_submodule_not_auto_init.md](feedback_worktree_submodule_not_auto_init.md) — **`git worktree add` 不會自動 init submodule** — foliate-js 在新 worktree 是空目錄，reader 頁 vendor/*.js 全 404、`thousand_sunny.app` boot 時跳過 mount；開 book-related worktree 必先 `git submodule update --init`，且若已 boot uvicorn 要重啟（2026-05-10 mono-zh pilot acceptance 教訓）
 - [feedback_agent_isolation_worktree_nesting.md](feedback_agent_isolation_worktree_nesting.md) — **Agent tool `isolation: worktree` nests under `.claude/worktrees/` (= 主 repo 內)** — `find_dotenv()` 走上撈主 `.env` 污染；dispatch 時 pre-create sibling `E:/nakama-<topic>` 並**不加** `isolation`（2026-05-10 N518a 教訓）
 - [feedback_commit_scope_discipline.md](feedback_commit_scope_discipline.md) — **commit 範圍紀律**：「Commit only: …」是 turn-binding，其他同 turn 產出留 working tree 不主動 commit。
