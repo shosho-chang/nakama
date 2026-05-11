@@ -2,9 +2,18 @@
 
 import type { ExtractedPage } from "../shared/types.js";
 import { buildFrontmatter } from "./frontmatter.js";
-import type { FrontmatterOptions } from "./frontmatter.js";
+import type { FrontmatterOptions, Highlight } from "./frontmatter.js";
 import { fetchAndRewriteImages } from "./imageFetcher.js";
 import { slugify } from "./slug.js";
+
+export function buildHighlightsSection(highlights: Highlight[]): string {
+  if (highlights.length === 0) return "";
+  const lines = ["", "## Highlights", ""];
+  for (const h of highlights) {
+    lines.push(`> ${h.text}`, "");
+  }
+  return lines.join("\n");
+}
 
 export interface WriteResult {
   slug: string;
@@ -83,6 +92,7 @@ export async function writeToVault(
 export interface WritePageOptions {
   fetchImages?: boolean;
   frontmatterOpts?: Omit<FrontmatterOptions, "imagesPartial" | "imagesCount">;
+  highlights?: Highlight[];
 }
 
 export async function writePageToVault(
@@ -102,11 +112,13 @@ export async function writePageToVault(
     imagesCount = img.savedCount;
   }
 
+  const highlights = opts.highlights ?? [];
   const frontmatter = buildFrontmatter(page, {
     ...opts.frontmatterOpts,
     imagesPartial,
     imagesCount,
+    highlights,
   });
 
-  return writeToVault(root, slug, frontmatter + "\n" + markdown);
+  return writeToVault(root, slug, frontmatter + "\n" + markdown + buildHighlightsSection(highlights));
 }

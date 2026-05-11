@@ -21,7 +21,7 @@ function makeDeps(overrides: Partial<QuickClipDeps> = {}): QuickClipDeps {
   return {
     loadHandle: vi.fn().mockResolvedValue(FAKE_HANDLE),
     verifyHandle: vi.fn().mockResolvedValue(true),
-    sendExtract: vi.fn().mockResolvedValue({ ok: true, page: FAKE_PAGE }),
+    sendExtract: vi.fn().mockResolvedValue({ ok: true, page: FAKE_PAGE, selectionOnly: false }),
     notifySuccess: vi.fn(),
     notifyError: vi.fn(),
     writePageToVault: vi.fn().mockResolvedValue(FAKE_RESULT),

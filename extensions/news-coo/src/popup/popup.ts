@@ -3,13 +3,16 @@ import {
   checkSlugExists,
   writeToVault,
   writeToVaultExact,
+  buildHighlightsSection,
 } from "../vault/writer.js";
 import type { WriteResult } from "../vault/writer.js";
 import { buildFrontmatter } from "../vault/frontmatter.js";
+import type { Highlight } from "../vault/frontmatter.js";
 import { slugify } from "../vault/slug.js";
 import { MSG_EXTRACT } from "../shared/messages.js";
 import type { ExtractResponse } from "../shared/messages.js";
 import type { ExtractedPage } from "../shared/types.js";
+import { getHighlights, clearHighlights } from "../shared/highlights.js";
 
 export interface PopupDeps {
   loadHandle: () => Promise<FileSystemDirectoryHandle | null>;
@@ -19,7 +22,15 @@ export interface PopupDeps {
   writeExact: (root: FileSystemDirectoryHandle, slug: string, content: string) => Promise<WriteResult>;
   writeAutoSuffix: (root: FileSystemDirectoryHandle, slug: string, content: string) => Promise<WriteResult>;
   slugify: (title: string) => string;
-  buildContent: (page: ExtractedPage, title: string, author: string) => string;
+  buildContent: (
+    page: ExtractedPage,
+    title: string,
+    author: string,
+    selectionOnly: boolean,
+    highlights: Highlight[],
+  ) => string;
+  getHighlights: (tabId: number) => Promise<Highlight[]>;
+  clearHighlights: (tabId: number) => Promise<void>;
 }
 
 // DOM helpers — safe to call even in test contexts where elements are pre-built.
@@ -45,9 +56,16 @@ function buildPageContent(
   page: ExtractedPage,
   title: string,
   author: string,
+  selectionOnly: boolean,
+  highlights: Highlight[],
 ): string {
   const synthetic: ExtractedPage = { ...page, title, author };
-  return buildFrontmatter(synthetic) + "\n" + page.markdown;
+  const fm = buildFrontmatter(synthetic, {
+    selectionOnly,
+    highlights,
+    extractionMethod: selectionOnly ? "selection" : "defuddle",
+  });
+  return fm + "\n" + page.markdown + buildHighlightsSection(highlights);
 }
 
 export async function initPopup(deps: PopupDeps): Promise<void> {
@@ -117,6 +135,10 @@ export async function initPopup(deps: PopupDeps): Promise<void> {
   }
 
   const page = response.page;
+  const selectionOnly = response.selectionOnly;
+
+  // Read accumulated highlights for this tab.
+  const highlights = await deps.getHighlights(tabId);
 
   // Populate preview form.
   el<HTMLInputElement>("field-title").value = page.title;
@@ -129,6 +151,17 @@ export async function initPopup(deps: PopupDeps): Promise<void> {
   const icEl = el<HTMLSpanElement>("field-image-count");
   if (page.imageRefs.length > 0)
     icEl.textContent = `${page.imageRefs.length} image${page.imageRefs.length !== 1 ? "s" : ""}`;
+
+  const hcEl = el<HTMLSpanElement>("field-highlight-count");
+  if (hcEl) {
+    if (highlights.length > 0) {
+      hcEl.textContent = `${highlights.length} highlight${highlights.length !== 1 ? "s" : ""}`;
+      hcEl.hidden = false;
+    }
+  }
+
+  const badgeEl = el<HTMLSpanElement>("badge-selection-only");
+  if (badgeEl) badgeEl.hidden = !selectionOnly;
 
   // Live slug computation.
   const slugEl = el<HTMLElement>("field-slug");
@@ -152,19 +185,22 @@ export async function initPopup(deps: PopupDeps): Promise<void> {
   // Save handler.
   el<HTMLFormElement>("form-preview").addEventListener("submit", (e) => {
     e.preventDefault();
-    void handleSave(page, handle, deps);
+    void handleSave(page, handle, tabId, selectionOnly, highlights, deps);
   });
 }
 
 async function handleSave(
   page: ExtractedPage,
   handle: FileSystemDirectoryHandle,
+  tabId: number,
+  selectionOnly: boolean,
+  highlights: Highlight[],
   deps: PopupDeps,
 ): Promise<void> {
   const title = el<HTMLInputElement>("field-title").value;
   const author = el<HTMLInputElement>("field-author").value;
   const slug = deps.slugify(title);
-  const content = deps.buildContent(page, title, author);
+  const content = deps.buildContent(page, title, author, selectionOnly, highlights);
 
   const exists = await deps.checkSlugExists(handle, slug);
   if (exists) {
@@ -172,10 +208,10 @@ async function handleSave(
     showOnly("state-dedup");
 
     el<HTMLButtonElement>("btn-overwrite").onclick = () =>
-      void doWrite(deps.writeExact(handle, slug, content));
+      void doWrite(deps.writeExact(handle, slug, content), tabId, deps);
 
     el<HTMLButtonElement>("btn-suffix").onclick = () =>
-      void doWrite(deps.writeAutoSuffix(handle, slug, content));
+      void doWrite(deps.writeAutoSuffix(handle, slug, content), tabId, deps);
 
     el<HTMLButtonElement>("btn-cancel-dedup").onclick = () =>
       showOnly("state-preview");
@@ -183,13 +219,18 @@ async function handleSave(
     return;
   }
 
-  void doWrite(deps.writeExact(handle, slug, content));
+  void doWrite(deps.writeExact(handle, slug, content), tabId, deps);
 }
 
-async function doWrite(writePromise: Promise<WriteResult>): Promise<void> {
+async function doWrite(
+  writePromise: Promise<WriteResult>,
+  tabId: number,
+  deps: PopupDeps,
+): Promise<void> {
   showOnly("state-saving");
   try {
     const result = await writePromise;
+    await deps.clearHighlights(tabId);
     el<HTMLElement>("saved-path").textContent = result.path;
     showOnly("state-saved");
   } catch (err) {
@@ -210,6 +251,8 @@ if (typeof chrome !== "undefined" && typeof chrome.tabs !== "undefined") {
     writeAutoSuffix: writeToVault,
     slugify,
     buildContent: buildPageContent,
+    getHighlights,
+    clearHighlights,
   };
   void initPopup(realDeps);
 }
