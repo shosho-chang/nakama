@@ -34,6 +34,27 @@ async function fileExists(
   }
 }
 
+export async function checkSlugExists(
+  root: FileSystemDirectoryHandle,
+  slug: string,
+): Promise<boolean> {
+  const inboxDir = await resolveDir(root, ["Inbox", "kb"]);
+  return fileExists(inboxDir, `${slug}.md`);
+}
+
+export async function writeToVaultExact(
+  root: FileSystemDirectoryHandle,
+  slug: string,
+  content: string,
+): Promise<WriteResult> {
+  const inboxDir = await resolveDir(root, ["Inbox", "kb"]);
+  const fileHandle = await inboxDir.getFileHandle(`${slug}.md`, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+  return { slug, path: `Inbox/kb/${slug}.md` };
+}
+
 export async function writeToVault(
   root: FileSystemDirectoryHandle,
   slug: string,
