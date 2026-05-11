@@ -27,6 +27,7 @@ dependencies = [
     "opencc-python-reimplemented>=0.1.7",
     "pypinyin>=0.51",
     "jieba>=0.42",
+    "langdetect>=1.0.9",         # monolingual-zh pilot: lang ID for upload mode auto-detect
 
     # PDF parsing
     "pymupdf4llm>=1.27",

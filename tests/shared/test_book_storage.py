@@ -279,6 +279,7 @@ def test_books_table_columns_match_schema():
         "has_original",
         "book_version_hash",
         "created_at",
+        "mode",
     }
     assert expected.issubset(cols), f"missing columns: {expected - cols}"
 
@@ -290,6 +291,35 @@ def test_books_table_book_id_is_primary_key():
     rows = conn.execute("PRAGMA table_info(books)").fetchall()
     pk_cols = {row[1] for row in rows if row[5]}  # row[5] = pk flag
     assert pk_cols == {"book_id"}
+
+
+# ---------------------------------------------------------------------------
+# Mode field — Phase 1 monolingual-zh pilot.
+# ---------------------------------------------------------------------------
+
+
+def test_book_mode_defaults_to_bilingual_en_zh():
+    """Existing callers that don't pass ``mode`` get the back-compat
+    default; this is the contract that lets the migration land without
+    rewriting every test fixture in the repo."""
+    book = _make_book()
+    assert book.mode == "bilingual-en-zh"
+
+
+def test_book_mode_round_trips_monolingual_zh():
+    book = _make_book(book_id="zh-pilot", mode="monolingual-zh", has_original=False)
+    insert_book(book)
+    retrieved = get_book("zh-pilot")
+    assert retrieved is not None
+    assert retrieved.mode == "monolingual-zh"
+
+
+def test_book_mode_rejects_unknown_value():
+    """Pydantic ``Mode`` is a closed Literal — third value must raise."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _make_book(mode="cantonese-only")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
