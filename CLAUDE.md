@@ -182,8 +182,8 @@ cp .env.example .env  # 填入 API keys
 
 # 手動執行單一 agent
 python -m agents.robin
-python -m agents.nami
 python -m agents.zoro
+# Nami: 走 nakama-gateway Slack 服務 (gateway/handlers/nami.py), 不是 cron-style
 
 # 測試
 python -m pytest tests/
