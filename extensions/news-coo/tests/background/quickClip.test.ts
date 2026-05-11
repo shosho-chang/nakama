@@ -21,7 +21,9 @@ function makeDeps(overrides: Partial<QuickClipDeps> = {}): QuickClipDeps {
   return {
     loadHandle: vi.fn().mockResolvedValue(FAKE_HANDLE),
     verifyHandle: vi.fn().mockResolvedValue(true),
-    sendExtract: vi.fn().mockResolvedValue({ ok: true, page: FAKE_PAGE }),
+    sendExtract: vi.fn().mockResolvedValue({ ok: true, page: FAKE_PAGE, selectionOnly: false }),
+    getHighlights: vi.fn().mockResolvedValue([]),
+    clearHighlights: vi.fn().mockResolvedValue(undefined),
     notifySuccess: vi.fn(),
     notifyError: vi.fn(),
     writePageToVault: vi.fn().mockResolvedValue(FAKE_RESULT),
@@ -95,5 +97,47 @@ describe("quickClip", () => {
     await quickClip(1, deps);
 
     expect(deps.writePageToVault).not.toHaveBeenCalled();
+  });
+
+  it("threads selectionOnly + extractionMethod 'selection' to frontmatter when selection clipped", async () => {
+    const writeSpy = vi.fn().mockResolvedValue(FAKE_RESULT);
+    const deps = makeDeps({
+      sendExtract: vi.fn().mockResolvedValue({ ok: true, page: FAKE_PAGE, selectionOnly: true }),
+      writePageToVault: writeSpy,
+    });
+    await quickClip(1, deps);
+
+    const opts = writeSpy.mock.calls[0][2] as { frontmatterOpts?: { selectionOnly?: boolean; extractionMethod?: string } };
+    expect(opts.frontmatterOpts?.selectionOnly).toBe(true);
+    expect(opts.frontmatterOpts?.extractionMethod).toBe("selection");
+  });
+
+  it("threads accumulated highlights into write and clears them after success", async () => {
+    const writeSpy = vi.fn().mockResolvedValue(FAKE_RESULT);
+    const highlights = [{ text: "passage one" }, { text: "passage two" }];
+    const clearSpy = vi.fn().mockResolvedValue(undefined);
+    const deps = makeDeps({
+      getHighlights: vi.fn().mockResolvedValue(highlights),
+      clearHighlights: clearSpy,
+      writePageToVault: writeSpy,
+    });
+    await quickClip(42, deps);
+
+    const opts = writeSpy.mock.calls[0][2] as { highlights?: typeof highlights };
+    expect(opts.highlights).toEqual(highlights);
+    expect(clearSpy).toHaveBeenCalledWith(42);
+  });
+
+  it("does not clear highlights when write fails", async () => {
+    const clearSpy = vi.fn();
+    const deps = makeDeps({
+      getHighlights: vi.fn().mockResolvedValue([{ text: "x" }]),
+      clearHighlights: clearSpy,
+      writePageToVault: vi.fn().mockRejectedValue(new Error("disk full")),
+    });
+    await quickClip(1, deps);
+
+    expect(clearSpy).not.toHaveBeenCalled();
+    expect(deps.notifyError).toHaveBeenCalledOnce();
   });
 });

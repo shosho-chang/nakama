@@ -47,6 +47,13 @@
         "mac": "Alt+Shift+Q"
       },
       "description": "Quick clip current page to vault (no preview)"
+    },
+    "mark_highlight": {
+      "suggested_key": {
+        "default": "Alt+Shift+M",
+        "mac": "Alt+Shift+M"
+      },
+      "description": "Mark selected text as a highlight for this page"
     }
   }
 }

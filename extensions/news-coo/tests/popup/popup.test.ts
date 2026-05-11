@@ -32,6 +32,8 @@ function buildDOM(): void {
           <input id="field-site" type="text" readonly />
           <span id="field-word-count"></span>
           <span id="field-image-count"></span>
+          <span id="field-highlight-count" hidden></span>
+          <span id="badge-selection-only" hidden></span>
           <code id="field-slug"></code>
           <p id="dedup-warning" hidden></p>
           <button type="submit" id="btn-save">Save</button>
@@ -70,12 +72,14 @@ function makeDeps(overrides: Partial<PopupDeps> = {}): PopupDeps {
   return {
     loadHandle: vi.fn().mockResolvedValue(FAKE_HANDLE),
     verifyHandle: vi.fn().mockResolvedValue(true),
-    sendExtract: vi.fn().mockResolvedValue({ ok: true, page: FAKE_PAGE }),
+    sendExtract: vi.fn().mockResolvedValue({ ok: true, page: FAKE_PAGE, selectionOnly: false }),
     checkSlugExists: vi.fn().mockResolvedValue(false),
     writeExact: vi.fn().mockResolvedValue(FAKE_RESULT),
     writeAutoSuffix: vi.fn().mockResolvedValue({ slug: "test-article-2", path: "Inbox/kb/test-article-2.md" }),
     slugify: (title: string) => title.toLowerCase().replace(/\s+/g, "-"),
-    buildContent: (_page, title, _author) => `---\ntitle: ${title}\n---\n\ncontent`,
+    buildContent: (_page, title, _author, _selectionOnly, _highlights) => `---\ntitle: ${title}\n---\n\ncontent`,
+    getHighlights: vi.fn().mockResolvedValue([]),
+    clearHighlights: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

@@ -13,6 +13,7 @@ export interface FrontmatterOptions {
   highlights?: Highlight[];
   imagesPartial?: boolean;
   imagesCount?: number;
+  extractionMethod?: "defuddle" | "selection";
 }
 
 function yamlStr(v: string): string {
@@ -44,7 +45,7 @@ export function buildFrontmatter(
   lines.push("source_type: web_document");
   lines.push("stage: 1");
   lines.push(field("lang", page.language ?? "en"));
-  lines.push("extraction_method: defuddle");
+  lines.push(`extraction_method: ${opts.extractionMethod ?? "defuddle"}`);
   lines.push("news_coo_version: 1");
 
   // Optional Defuddle fields
