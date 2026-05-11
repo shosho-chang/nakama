@@ -7,7 +7,6 @@ import pytest
 
 from shared.source_mode import DEFAULT_MODE, detect_book_mode
 
-
 # Reuse zh / en bodies from the lang_detect tests via local definition so this
 # test file stands alone without cross-test imports.
 

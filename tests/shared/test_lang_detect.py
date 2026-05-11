@@ -8,7 +8,6 @@ import pytest
 
 from shared.lang_detect import detect_lang
 
-
 # ── zh fixtures ──────────────────────────────────────────────────────────────
 
 ZH_TW_SCIENCE = (

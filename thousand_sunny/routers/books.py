@@ -59,7 +59,7 @@ from shared.epub_metadata import MalformedEPUBError, extract_metadata
 from shared.epub_sanitizer import EPUBStructureError, sanitize_epub
 from shared.log import get_logger
 from shared.schemas.books import Book, BookProgress
-from shared.source_mode import DEFAULT_MODE, Mode, detect_book_mode
+from shared.source_mode import Mode, detect_book_mode
 from shared.state import _get_conn
 from shared.utils import slugify
 from thousand_sunny.auth import check_auth
@@ -203,8 +203,12 @@ async def books_upload(
             ),
         )
 
-    bilingual_bytes = await bilingual.read() if bilingual is not None and bilingual.filename else b""
-    original_bytes_raw = await original.read() if original is not None and original.filename else b""
+    bilingual_bytes = (
+        await bilingual.read() if bilingual is not None and bilingual.filename else b""
+    )
+    original_bytes_raw = (
+        await original.read() if original is not None and original.filename else b""
+    )
 
     if not bilingual_bytes and not original_bytes_raw:
         raise HTTPException(
