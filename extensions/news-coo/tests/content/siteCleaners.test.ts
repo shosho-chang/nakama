@@ -102,29 +102,86 @@ describe("lancetCleaner", () => {
     expect(lancetCleaner.matches("nature.com", "https://nature.com/")).toBe(false);
   });
 
-  it("removes .dropBlock.reference-citations and .reference-citations__ctrl", () => {
+  it("replaces dropBlock with just the <sup> marker (preserves citation number)", () => {
     const doc = makeDoc(`
       <body>
-        <p>Hantaan virus was discovered in 1976,
-          <sup>1</sup>
-          <div class="dropBlock reference-citations">
-            <div class="reference-citations__ctrl">close</div>
-            <div>Lee, HW. Isolation of the etiologic agent...</div>
-          </div>
-          and then several other hantaviruses...
-        </p>
+        <div role="paragraph">Hantaan virus was discovered in 1976,<span class="dropBlock reference-citations"><a class="reference-citations__ctrl"><sup>1,2</sup></a><div class="dropBlock__holder"><div>Lee, HW. Isolation of the etiologic agent...</div></div></span> and then several other hantaviruses...</div>
       </body>
     `);
-    const before = doc.querySelectorAll(".dropBlock.reference-citations").length;
-    expect(before).toBe(1);
+    expect(doc.querySelectorAll(".dropBlock.reference-citations").length).toBe(1);
     const report = lancetCleaner.clean(doc, "https://www.thelancet.com/x");
     expect(report.matched).toBe(true);
-    expect(report.removedNodeCount).toBeGreaterThanOrEqual(1);
+    expect(report.removedNodeCount).toBe(1);
+    // dropBlock and ctrl gone
     expect(doc.querySelectorAll(".dropBlock.reference-citations").length).toBe(0);
     expect(doc.querySelectorAll(".reference-citations__ctrl").length).toBe(0);
+    // citation marker preserved
+    const sups = Array.from(doc.querySelectorAll("sup")).map((s) => s.textContent);
+    expect(sups).toContain("1,2");
+    // Reference body text gone from prose
+    expect(doc.body.textContent).not.toContain("Lee, HW");
     // Surrounding prose preserved
     expect(doc.body.textContent).toContain("Hantaan virus was discovered in 1976");
     expect(doc.body.textContent).toContain("and then several other hantaviruses");
+  });
+
+  it("falls back to plain remove when dropBlock has no <sup>", () => {
+    const doc = makeDoc(`<body><p>x<div class="dropBlock reference-citations">orphan</div>y</p></body>`);
+    lancetCleaner.clean(doc, "https://www.thelancet.com/x");
+    expect(doc.querySelectorAll(".dropBlock.reference-citations").length).toBe(0);
+    expect(doc.body.textContent).not.toContain("orphan");
+  });
+
+  it("rewrites bottom section#references ARIA list into <ol>/<li>", () => {
+    const doc = makeDoc(`
+      <body>
+        <article>
+          <p>body</p>
+          <section id="references" role="list-container">
+            <h2>References</h2>
+            <div>
+              <div role="list">
+                <div role="listitem">
+                  <div class="citations">
+                    <div class="citation-content">
+                      <div class="label"><a>1.</a></div>
+                      <div>Lee, HW</div>
+                      <div><strong>Isolation of the etiologic agent</strong></div>
+                    </div>
+                  </div>
+                </div>
+                <div role="listitem">
+                  <div class="citations">
+                    <div class="citation-content">
+                      <div class="label"><a>2.</a></div>
+                      <div>Vaheri, A</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </article>
+      </body>
+    `);
+    lancetCleaner.clean(doc, "https://www.thelancet.com/x");
+    const section = doc.querySelector("section#references")!;
+    expect(section.getAttribute("role")).toBeNull();
+    expect(section.querySelector("h2")?.textContent).toBe("References");
+    const lis = section.querySelectorAll("ol > li");
+    expect(lis.length).toBe(2);
+    expect(lis[0].textContent).toContain("Lee, HW");
+    expect(lis[0].textContent).toContain("Isolation of the etiologic agent");
+    expect(lis[1].textContent).toContain("Vaheri, A");
+    // ARIA structure replaced
+    expect(section.querySelectorAll('[role="list"]').length).toBe(0);
+    expect(section.querySelectorAll('[role="listitem"]').length).toBe(0);
+  });
+
+  it("warns (without throwing) when section#references is missing", () => {
+    const doc = makeDoc("<body><article>no refs section</article></body>");
+    const report = lancetCleaner.clean(doc, "https://www.thelancet.com/x");
+    expect(report.warnings).toContain("no section#references found");
   });
 
   it("returns 0 removed (and triggers stale signal upstream) when page has none", () => {
