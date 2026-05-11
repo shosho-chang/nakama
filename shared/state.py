@@ -367,7 +367,9 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             published_year    INTEGER,
             has_original      INTEGER NOT NULL DEFAULT 0,
             book_version_hash TEXT NOT NULL,
-            created_at        TEXT NOT NULL
+            created_at        TEXT NOT NULL,
+            -- Phase 1 monolingual-zh pilot — see migrations/016_book_mode.sql.
+            mode              TEXT NOT NULL DEFAULT 'bilingual-en-zh'
         );
 
         -- Slice 3A: per-book reading position.

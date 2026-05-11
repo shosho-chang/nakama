@@ -13,7 +13,7 @@ description: News Coo browser extension MVP grill 全決策表；對應 PRD docs
 
 ## 命名 + Scope
 
-- **Repo**: `E:\news-coo`（standalone）
+- **Repo path**: `extensions/news-coo/` in Nakama monorepo（原獨立 repo `E:\news-coo` 已 subtree-import 進來 2026-05-10）
 - **Manifest name**: `News Coo`
 - **Code identifier**: `NewsCoo`
 - **Scope（嚴守）**: 瀏覽器 extraction + delivery 進 vault；**不做翻譯、bilingual format、glossary**

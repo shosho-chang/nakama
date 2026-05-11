@@ -134,6 +134,7 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
     # Imports are local so the cost (sqlite-backed registry init, schema
     # parsing) stays out of cold-start when ``DISABLE_ROBIN=1``.
     from shared.blob_loader import VaultBlobLoader
+    from shared.book_storage import books_root as _books_root
     from shared.concept_promotion_engine import ConceptPromotionEngine
     from shared.dry_run_extractor import DryRunClaimExtractor
     from shared.dry_run_matcher import DryRunConceptMatcher
@@ -164,12 +165,22 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
         )
 
     registry = ReadingSourceRegistry(vault_root=config.vault_root)
-    blob_loader = VaultBlobLoader(vault_root=config.vault_root)
+    # Books live outside the vault (cwd-relative or NAKAMA_BOOKS_DIR) —
+    # see shared.book_storage docstring for the rationale (F06 fix
+    # 2026-05-10). Both the lister (which enumerates {book_id}/ subdirs)
+    # and the blob loader (which resolves data/books/{book_id}/... path
+    # strings emitted by ReadingSourceRegistry) must source the same
+    # books root, otherwise list-view + variant-read see different trees.
+    books_root_path = _books_root()
+    blob_loader = VaultBlobLoader(
+        vault_root=config.vault_root,
+        books_root=books_root_path,
+    )
     source_resolver = RegistrySourceResolver(registry=registry)
     source_lister = RegistryReadingSourceLister(
         registry=registry,
         inbox_root=config.vault_root / "Inbox" / "kb",
-        books_root=config.vault_root / "data" / "books",
+        books_root=books_root_path,
     )
     kb_index = VaultKBConceptIndex(
         concepts_root=config.vault_root / "KB" / "Wiki" / "Concepts",

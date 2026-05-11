@@ -67,8 +67,11 @@ class RegistryReadingSourceLister:
     - ``registry``: a ``ReadingSourceRegistry`` to resolve each candidate.
     - ``inbox_root``: absolute path to ``{vault}/Inbox/kb`` — the directory
       to walk for ``InboxKey`` candidates.
-    - ``books_root``: absolute path to ``{vault}/data/books`` — the
-      directory to walk for ``BookKey`` candidates. The lister enumerates
+    - ``books_root``: absolute path to the on-disk books root. **Lives
+      outside the Obsidian vault** — production wiring sources this from
+      ``shared.book_storage.books_root()`` (cwd-relative or
+      ``NAKAMA_BOOKS_DIR``) so that the lister enumerates the same
+      directory ``store_book_files`` writes to. The lister enumerates
       child directories (one per ``book_id``) rather than touching the
       ``books`` SQLite table directly; that keeps the adapter usable in
       tests that don't initialize the DB. Each candidate is then resolved

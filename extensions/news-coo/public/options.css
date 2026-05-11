@@ -1,0 +1,82 @@
+body {
+  margin: 0;
+  padding: 32px;
+  max-width: 720px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  color: #1a1a1a;
+  background: #fafaf7;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #f0eee8;
+    background: #1a1a1a;
+  }
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.vault-section {
+  margin-top: 24px;
+}
+
+.vault-status {
+  margin: 0 0 12px;
+  color: #666;
+}
+
+@media (prefers-color-scheme: dark) {
+  .vault-status {
+    color: #999;
+  }
+}
+
+.vault-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  background: #c46a3d;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+button:focus-visible {
+  outline: 2px solid #c46a3d;
+  outline-offset: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  button {
+    background: #d97a4d;
+  }
+  button:focus-visible {
+    outline-color: #d97a4d;
+  }
+}
+
+button[hidden] {
+  display: none;
+}

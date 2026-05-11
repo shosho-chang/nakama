@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>News Coo</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main id="root">
+      <h1>News Coo</h1>
+
+      <section id="state-loading" hidden>
+        <p class="muted">Extracting page…</p>
+      </section>
+
+      <section id="state-preview" hidden>
+        <form id="form-preview">
+          <label for="field-title">Title</label>
+          <input id="field-title" type="text" name="title" autocomplete="off" />
+
+          <label for="field-author">Author</label>
+          <input id="field-author" type="text" name="author" autocomplete="off" />
+
+          <label for="field-site">Site</label>
+          <input id="field-site" type="text" name="site" readonly />
+
+          <div class="meta-row">
+            <span id="field-word-count" class="muted"></span>
+            <span id="field-image-count" class="muted"></span>
+            <span id="field-highlight-count" class="muted" hidden></span>
+            <span id="badge-selection-only" class="badge" hidden>Selection only</span>
+          </div>
+
+          <div class="slug-row">
+            <span class="label-muted">File</span>
+            <code id="field-slug"></code>
+          </div>
+
+          <p id="dedup-warning" class="warning" hidden>
+            File already exists — you will be asked to overwrite or rename.
+          </p>
+
+          <button type="submit" id="btn-save">Save to Vault</button>
+        </form>
+      </section>
+
+      <section id="state-dedup" hidden>
+        <p class="warning">
+          <code id="dedup-existing-path"></code> already exists.
+        </p>
+        <div class="btn-row">
+          <button id="btn-overwrite">Overwrite</button>
+          <button id="btn-suffix">Save as -2</button>
+          <button id="btn-cancel-dedup" class="btn-ghost">Cancel</button>
+        </div>
+      </section>
+
+      <section id="state-saving" hidden>
+        <p class="muted">Saving…</p>
+      </section>
+
+      <section id="state-saved" hidden>
+        <p class="success">Saved — <code id="saved-path"></code></p>
+      </section>
+
+      <section id="state-error" hidden>
+        <p id="error-msg" class="error-msg"></p>
+        <button id="btn-retry">Retry</button>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
