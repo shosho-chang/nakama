@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { writeToVault } from "../../src/vault/writer.js";
+import {
+  writeToVault,
+  writeToVaultExact,
+  checkSlugExists,
+  writePageToVault,
+} from "../../src/vault/writer.js";
+import type { ExtractedPage } from "../../src/shared/types.js";
 
 // In-memory FSA directory tree.
 class MemFileHandle {
@@ -104,5 +110,113 @@ describe("writeToVault", () => {
       content,
     );
     expect(result.slug).toBe("art-3");
+  });
+});
+
+describe("checkSlugExists", () => {
+  it("returns false when the slug file does not exist", async () => {
+    const root = new MemDirHandle("vault");
+    const exists = await checkSlugExists(
+      root as unknown as FileSystemDirectoryHandle,
+      "nonexistent-slug",
+    );
+    expect(exists).toBe(false);
+  });
+
+  it("returns true when the slug file already exists", async () => {
+    const root = new MemDirHandle("vault");
+    // Pre-create the file via writeToVaultExact.
+    await writeToVaultExact(
+      root as unknown as FileSystemDirectoryHandle,
+      "existing-slug",
+      "content",
+    );
+    const exists = await checkSlugExists(
+      root as unknown as FileSystemDirectoryHandle,
+      "existing-slug",
+    );
+    expect(exists).toBe(true);
+  });
+});
+
+describe("writeToVaultExact", () => {
+  it("creates the file at Inbox/kb/{slug}.md with exact content", async () => {
+    const root = new MemDirHandle("vault");
+    const result = await writeToVaultExact(
+      root as unknown as FileSystemDirectoryHandle,
+      "exact-slug",
+      "exact content",
+    );
+    expect(result.slug).toBe("exact-slug");
+    expect(result.path).toBe("Inbox/kb/exact-slug.md");
+    expect(root.getInboxKb()?.getFile("exact-slug.md")?.content()).toBe("exact content");
+  });
+
+  it("overwrites content when called twice with the same slug", async () => {
+    const root = new MemDirHandle("vault");
+    await writeToVaultExact(
+      root as unknown as FileSystemDirectoryHandle,
+      "dup",
+      "first",
+    );
+    await writeToVaultExact(
+      root as unknown as FileSystemDirectoryHandle,
+      "dup",
+      "second",
+    );
+    expect(root.getInboxKb()?.getFile("dup.md")?.content()).toBe("second");
+  });
+});
+
+const FAKE_PAGE: ExtractedPage = {
+  url: "https://example.com/article",
+  title: "Test Article",
+  markdown: "# Hello",
+  description: "",
+  author: "Author",
+  published: "2026-05-11",
+  imageRefs: [],
+};
+
+describe("writePageToVault", () => {
+  it("writes a file derived from page title slug", async () => {
+    const root = new MemDirHandle("vault");
+    const result = await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      FAKE_PAGE,
+    );
+    expect(result.slug).toBe("test-article");
+    expect(result.path).toBe("Inbox/kb/test-article.md");
+  });
+
+  it("skips image fetching when fetchImages is false", async () => {
+    const root = new MemDirHandle("vault");
+    const result = await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      FAKE_PAGE,
+      { fetchImages: false },
+    );
+    expect(result.slug).toBe("test-article");
+  });
+
+  it("uses empty highlights when none provided", async () => {
+    const root = new MemDirHandle("vault");
+    const result = await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      FAKE_PAGE,
+      {},
+    );
+    expect(result.path).toContain("test-article");
+  });
+
+  it("includes highlights section when highlights provided", async () => {
+    const root = new MemDirHandle("vault");
+    await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      FAKE_PAGE,
+      { highlights: [{ text: "notable passage" }] },
+    );
+    const file = root.getInboxKb()?.getFile("test-article.md");
+    expect(file?.content()).toContain("notable passage");
   });
 });
