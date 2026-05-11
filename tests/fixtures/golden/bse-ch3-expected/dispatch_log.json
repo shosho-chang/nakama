@@ -1,0 +1,1010 @@
+[
+  {
+    "slug": "matter",
+    "term": "matter",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "element",
+    "term": "element",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "trace element",
+    "term": "trace element",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "atom",
+    "term": "atom",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "proton",
+    "term": "proton",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "neutron",
+    "term": "neutron",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "electron",
+    "term": "electron",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "nucleus",
+    "term": "nucleus",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "electron shell",
+    "term": "electron shell",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "atomic number",
+    "term": "atomic number",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "mass number",
+    "term": "mass number",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "isotope",
+    "term": "isotope",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "stable isotope",
+    "term": "stable isotope",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "atomic mass",
+    "term": "atomic mass",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "dalton",
+    "term": "dalton",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "atomic mass unit",
+    "term": "atomic mass unit",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "ionization",
+    "term": "ionization",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "ion",
+    "term": "ion",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "anion",
+    "term": "anion",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "cation",
+    "term": "cation",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "molecule",
+    "term": "molecule",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "compound",
+    "term": "compound",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "inorganic compound",
+    "term": "inorganic compound",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "organic compound",
+    "term": "organic compound",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "macronutrient",
+    "term": "macronutrient",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "chemical bonding",
+    "term": "chemical bonding",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "valence shell",
+    "term": "valence shell",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "ionic bond",
+    "term": "ionic bond",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "covalent bond",
+    "term": "covalent bond",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "polar covalent bond",
+    "term": "polar covalent bond",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "electronegativity",
+    "term": "electronegativity",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "molecular formula",
+    "term": "molecular formula",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "molecular weight",
+    "term": "molecular weight",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "constitutional formula",
+    "term": "constitutional formula",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "isomer",
+    "term": "isomer",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "functional group",
+    "term": "functional group",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "hydroxyl",
+    "term": "hydroxyl",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "phosphate group",
+    "term": "phosphate group",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "chemical reaction",
+    "term": "chemical reaction",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "reactant",
+    "term": "reactant",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "product",
+    "term": "product",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "metabolism",
+    "term": "metabolism",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "exercise metabolism",
+    "term": "exercise metabolism",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "energy",
+    "term": "energy",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "chemical energy",
+    "term": "chemical energy",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "potential energy",
+    "term": "potential energy",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "kinetic energy",
+    "term": "kinetic energy",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "law of conservation of energy",
+    "term": "law of conservation of energy",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "law of conservation of mass",
+    "term": "law of conservation of mass",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "exergonic reaction",
+    "term": "exergonic reaction",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "endergonic reaction",
+    "term": "endergonic reaction",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "atp hydrolysis",
+    "term": "atp hydrolysis",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "calorie",
+    "term": "calorie",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "kilocalorie",
+    "term": "kilocalorie",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "joule",
+    "term": "joule",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "kilojoule",
+    "term": "kilojoule",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "synthesis reaction",
+    "term": "synthesis reaction",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "decomposition reaction",
+    "term": "decomposition reaction",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "hydrolysis",
+    "term": "hydrolysis",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "reversible reaction",
+    "term": "reversible reaction",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "phosphorylation",
+    "term": "phosphorylation",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "dephosphorylation",
+    "term": "dephosphorylation",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "exchange reaction",
+    "term": "exchange reaction",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "oxidation",
+    "term": "oxidation",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "reduction",
+    "term": "reduction",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "dehydrogenation",
+    "term": "dehydrogenation",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "reducing equivalent",
+    "term": "reducing equivalent",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "oxidative phosphorylation",
+    "term": "oxidative phosphorylation",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "substrate phosphorylation",
+    "term": "substrate phosphorylation",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "electron acceptor",
+    "term": "electron acceptor",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "water",
+    "term": "water",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "intracellular fluid",
+    "term": "intracellular fluid",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "extracellular fluid",
+    "term": "extracellular fluid",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "hydrophilic",
+    "term": "hydrophilic",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "hydrophobic",
+    "term": "hydrophobic",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "solvent",
+    "term": "solvent",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "solute",
+    "term": "solute",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "solution",
+    "term": "solution",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "mole",
+    "term": "mole",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "molarity",
+    "term": "molarity",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "acid",
+    "term": "acid",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "base",
+    "term": "base",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "salt",
+    "term": "salt",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "proton acceptor",
+    "term": "proton acceptor",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "lactate",
+    "term": "lactate",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "ph scale",
+    "term": "ph scale",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "buffer",
+    "term": "buffer",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "haemoglobin",
+    "term": "haemoglobin",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "cell",
+    "term": "cell",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "plasma membrane",
+    "term": "plasma membrane",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "lipid bilayer",
+    "term": "lipid bilayer",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "phospholipid",
+    "term": "phospholipid",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "cholesterol",
+    "term": "cholesterol",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "glycolipid",
+    "term": "glycolipid",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "integral protein",
+    "term": "integral protein",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "peripheral protein",
+    "term": "peripheral protein",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "transmembrane protein",
+    "term": "transmembrane protein",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "ion channel",
+    "term": "ion channel",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "transporter protein",
+    "term": "transporter protein",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "receptor protein",
+    "term": "receptor protein",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "chromosome",
+    "term": "chromosome",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "dna",
+    "term": "dna",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "histone",
+    "term": "histone",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "nuclear envelope",
+    "term": "nuclear envelope",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "nuclear pore",
+    "term": "nuclear pore",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "nucleolus",
+    "term": "nucleolus",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "ribosome",
+    "term": "ribosome",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "cytoplasm",
+    "term": "cytoplasm",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "cytosol",
+    "term": "cytosol",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "organelle",
+    "term": "organelle",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "endoplasmic reticulum",
+    "term": "endoplasmic reticulum",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "rough endoplasmic reticulum",
+    "term": "rough endoplasmic reticulum",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "smooth endoplasmic reticulum",
+    "term": "smooth endoplasmic reticulum",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "sarcoplasmic reticulum",
+    "term": "sarcoplasmic reticulum",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "golgi apparatus",
+    "term": "golgi apparatus",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "golgi cisternae",
+    "term": "golgi cisternae",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "mitochondria",
+    "term": "mitochondria",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "cristae",
+    "term": "cristae",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "mitochondrial matrix",
+    "term": "mitochondrial matrix",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "cytoskeleton",
+    "term": "cytoskeleton",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "microfilament",
+    "term": "microfilament",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "intermediate filament",
+    "term": "intermediate filament",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "microtubule",
+    "term": "microtubule",
+    "level": "L2",
+    "action": "create",
+    "signals": []
+  },
+  {
+    "slug": "non-polar-covalent-bond",
+    "term": "non-polar covalent bond",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "carboxyl",
+    "term": "carboxyl",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "amino-group",
+    "term": "amino group",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "adenosine-triphosphate",
+    "term": "adenosine triphosphate",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "atpase",
+    "term": "ATPase",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "atp-synthase",
+    "term": "ATP synthase",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "anabolic-reactions",
+    "term": "anabolic reactions",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "condensation-reactions",
+    "term": "condensation reactions",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "catabolic-reactions",
+    "term": "catabolic reactions",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "redox-reactions",
+    "term": "redox reactions",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "adenosine-diphosphate",
+    "term": "adenosine diphosphate",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "avogadro's-number",
+    "term": "Avogadro's number",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "proton-donor",
+    "term": "proton donor",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "carbonic-acid-bicarbonate-buffer-system",
+    "term": "carbonic acid-bicarbonate buffer system",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "carnosine",
+    "term": "carnosine",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "phosphocreatine",
+    "term": "phosphocreatine",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "nucleus-(cell)",
+    "term": "nucleus (cell)",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "actin",
+    "term": "actin",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "myosin",
+    "term": "myosin",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "desmin",
+    "term": "desmin",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  },
+  {
+    "slug": "tubulin",
+    "term": "tubulin",
+    "level": "L1",
+    "action": "alias",
+    "signals": []
+  }
+]

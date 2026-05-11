@@ -206,6 +206,82 @@ def test_get_inbox_files_extracts_title_from_frontmatter(client, vault):
     assert files["no-frontmatter.md"]["title"] == ""
 
 
+def test_get_inbox_files_synthesizes_status_for_web_clipper(client, vault):
+    """Obsidian Web Clipper files (no fulltext_status, tags=[clippings]) get
+    a synthesised display row with status='ready' + source='Web Clipper' so
+    the inbox list shows them with the ✅ icon and a meaningful source label.
+    """
+    _, mod = client
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    clipped = inbox / "clipped-paper.md"
+    clipped.write_text(
+        "---\n"
+        'title: "Clipped Paper"\n'
+        'source: "https://example.com/paper"\n'
+        "tags:\n"
+        "  - clippings\n"
+        "---\n\nbody content\n",
+        encoding="utf-8",
+    )
+
+    files = {f["name"]: f for f in mod._get_inbox_files()}
+    row = files["clipped-paper.md"]
+    assert row["fulltext_status"] == "ready"
+    assert row["fulltext_source"] == "Web Clipper"
+    assert row["title"] == "Clipped Paper"
+
+
+def test_looks_like_web_clipper_detects_tags_list(client):
+    _, mod = client
+    assert mod._looks_like_web_clipper({"tags": ["clippings", "research"]}) is True
+
+
+def test_looks_like_web_clipper_detects_tags_string(client):
+    _, mod = client
+    assert mod._looks_like_web_clipper({"tags": "clippings"}) is True
+
+
+def test_looks_like_web_clipper_falls_back_to_source_without_original_url(client):
+    """Web Clipper variants with custom tag templates still get caught by the
+    'source without original_url' permissive fallback."""
+    _, mod = client
+    assert mod._looks_like_web_clipper({"source": "https://example.com/x"}) is True
+
+
+def test_looks_like_web_clipper_rejects_robin_files(client):
+    """Robin-written files have BOTH source + original_url — must NOT trip
+    the Web Clipper detector (would synthesise the wrong source label)."""
+    _, mod = client
+    fm = {
+        "source": "https://example.com/x",
+        "original_url": "https://example.com/x",
+        "fulltext_status": "ready",
+    }
+    assert mod._looks_like_web_clipper(fm) is False
+
+
+def test_get_inbox_files_does_not_overwrite_explicit_status(client, vault):
+    """File with explicit fulltext_status is not touched by the Web Clipper
+    synthesiser (status stays whatever the user / pipeline wrote)."""
+    _, mod = client
+    inbox = vault / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    f = inbox / "explicit.md"
+    f.write_text(
+        "---\n"
+        'title: "Explicit"\n'
+        'source: "https://example.com/x"\n'
+        "tags:\n  - clippings\n"
+        "fulltext_status: failed\n"
+        "---\nbody\n",
+        encoding="utf-8",
+    )
+
+    files = {x["name"]: x for x in mod._get_inbox_files()}
+    assert files["explicit.md"]["fulltext_status"] == "failed"
+
+
 def test_get_inbox_files_small_file_shows_bytes(client, vault):
     """size_kb 為 0 → 顯示 bytes 而非 KB。"""
     _, mod = client

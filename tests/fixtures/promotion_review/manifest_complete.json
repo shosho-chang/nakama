@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "manifest_id": "mfst_gamma_001",
+  "source_id": "ebook:gamma-book",
+  "created_at": "2026-05-10T12:00:00Z",
+  "status": "complete",
+  "replaces_manifest_id": null,
+  "recommender": {
+    "model_name": "claude-opus-4-7",
+    "model_version": "2026-04",
+    "run_params": {},
+    "recommended_at": "2026-05-10T12:00:00Z"
+  },
+  "items": [
+    {
+      "item_kind": "source_page",
+      "item_id": "src_ch1_001",
+      "recommendation": "include",
+      "action": "create",
+      "reason": "Chapter 1 establishes the framework.",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/gamma-book/original.epub",
+          "locator": "epubcfi(/6/4[ch1]!/4/2/16/1:0,/6/4[ch1]!/4/2/16/1:200)",
+          "excerpt": "Sleep architecture follows a 90-minute ultradian rhythm.",
+          "confidence": 0.94
+        }
+      ],
+      "risk": [],
+      "confidence": 0.94,
+      "source_importance": 0.95,
+      "reader_salience": 0.9,
+      "target_kb_path": "KB/Wiki/Sources/gamma-book/chapter-1.md",
+      "chapter_ref": "ch-1",
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "approve",
+        "decided_at": "2026-05-09T14:00:00Z",
+        "decided_by": "shosho",
+        "note": null
+      }
+    }
+  ],
+  "commit_batches": [
+    {
+      "batch_id": "batch_gamma_001",
+      "created_at": "2026-05-09T14:00:30Z",
+      "approved_item_ids": ["src_ch1_001"],
+      "deferred_item_ids": [],
+      "rejected_item_ids": [],
+      "touched_files": [
+        {
+          "path": "KB/Wiki/Sources/gamma-book/chapter-1.md",
+          "operation": "create",
+          "before_hash": null,
+          "after_hash": "0123abcdef0123abcdef0123abcdef0123abcdef0123abcdef0123abcdef0123",
+          "backup_path": null
+        }
+      ],
+      "errors": [],
+      "promotion_status": "complete"
+    }
+  ],
+  "metadata": {}
+}

@@ -1,5 +1,19 @@
 # Memory Index
 
+- [feedback_auto_merge_after_review.md](feedback_auto_merge_after_review.md) — **PR review pass 後 auto-merge 不要再問**（user explicit 2026-05-10）：跑 review skill → 修 ≥80 score bug → CI 綠 → 直接 squash-merge + inline 報告，不再徵求授權
+- [project_news_coo_naming_and_scope.md](project_news_coo_naming_and_scope.md) — **News Coo 命名 + scope 切分 2026-05-10**：撤回 Den Den Mushi；News Coo = 瀏覽器 ext 純 extract+deliver；翻譯交 Robin（auto-trigger 待 grill）
+- [project_news_coo_grill_decisions.md](project_news_coo_grill_decisions.md) — **News Coo grill 全決策表 2026-05-10**：FSA 直寫 / 新 repo + npm Defuddle / image 必備寫 KB/Attachments/web / selection+highlights seed+context menu+kbd shortcut / PubMed detector / 7-slice 實作規劃
+- ~~[project_den_den_mushi_naming.md](project_den_den_mushi_naming.md)~~ — **DEPRECATED 同日撤回**，改 News Coo（見上）
+
+- [feedback_agent_isolation_worktree_nesting.md](feedback_agent_isolation_worktree_nesting.md) — **Agent tool `isolation: worktree` nests under `.claude/worktrees/` (= 主 repo 內)** — `find_dotenv()` 走上撈主 `.env` 污染；dispatch 時 pre-create sibling `E:/nakama-<topic>` 並**不加** `isolation`（2026-05-10 N518a 教訓）
+- [feedback_commit_scope_discipline.md](feedback_commit_scope_discipline.md) — **commit 範圍紀律**：「Commit only: …」是 turn-binding，其他同 turn 產出留 working tree 不主動 commit。
+- [project_n511_v2_revisions_pending.md](project_n511_v2_revisions_pending.md) — **N511 v1 Brief 兩條設計錯誤**：has_evidence_track=False 必走 defer；EPUB inspector 走 variant path 或注入 loader。v2 鋪台用。
+- [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **5/6 KB corpus stub crisis**：KB Concept 大量空殼；ADR-020 textbook ingest rewrite 起手背景；任何 textbook ingest repair 必先讀。
+- [project_session_2026_05_06_07_s8_burn_handoff.md](project_session_2026_05_06_07_s8_burn_handoff.md) — **5/6→5/7 S8 batch burn handoff**：28 章 batch 大量 FAIL/ERROR，root cause 是 LLM emit body 違反 verbatim 設計；後續修復需避開 LLM batch。
+- [project_session_2026_05_07_path_b_plan_handoff.md](project_session_2026_05_07_path_b_plan_handoff.md) — **5/7 Path B plan handoff**：verbatim 從 walker literal 重組、保留 API path；Stage 1a 起手修 `_assemble_body` + tests。
+- [feedback_session_start_must_read_memory_md.md](feedback_session_start_must_read_memory_md.md) — 每次 session / compact reload 第一個 tool call 必讀 MEMORY.md；handoff doc 不能取代規則級 memory index。
+- [feedback_adr_principle_conflict_check.md](feedback_adr_principle_conflict_check.md) — 寫新 ADR / 改 pipeline 前必 explicit cross-check 受影響的既有 P-level 原則，避免 ADR 間沉默衝突。
+- [project_session_2026_05_08_adr021_complete_handoff.md](project_session_2026_05_08_adr021_complete_handoff.md) — **5/8 收工**：ADR-021 全 9 issue ship 完（#452-#460 全 merged）+ design-system.md v0→v1 + Reader UI #453 HITL B 區全 PASS + bench freeze (hybrid K=15)。剩 #461 E2E + #462 writing mode（前者 HITL final、後者 AFK ready）
 - [project_session_2026_05_06_overnight_4issue_sandcastle_ship.md](project_session_2026_05_06_overnight_4issue_sandcastle_ship.md) — **5/6 早報（修修睡覺期間獨力 ship）**：PR sync 5 條全 squash + sandcastle batch ship #431/#432/#433/#434（PR #436/#437/#438）— Line 2 hybrid retrieval engine + book digest + wikilink lane + ground truth signal 全產線就緒；待修修 manual smoke
 - [feedback_context_offload_isolated_subsystem.md](feedback_context_offload_isolated_subsystem.md) — **守 context window 的關鍵是 offload 工作到不會 surface 結果的子系統**（不是壓縮 prompt）：sandcastle docker > Agent tool > background bash > Monitor 4 級 isolation；主線只做 orchestration，5/6 AFK 4hr / 9 task / 22% context 實證
 - [project_session_2026_05_05_evening_reader_qa.md](project_session_2026_05_05_evening_reader_qa.md) — **5/5 evening 收工**：Reader 5 slice QA 全跑完 + 抓 3 hidden bug 補 PR #417/#418/#419 + 開 5 follow-up issue #420-#424（3 ready-for-agent / 2 needs-info）
@@ -9,6 +23,7 @@
 - [feedback_auto_mode_run_full_workflow.md](feedback_auto_mode_run_full_workflow.md) — auto mode 跑 Matt workflow 時 phase 之間自動接下一個，不停在 handoff
 - [project_nakama_overview.md](project_nakama_overview.md) — 專案總覽：Agent 全員、工作流程、狀態、基礎設施、Tech Stack
 - [user_profile.md](user_profile.md) — 修修的角色、偏好、知識背景
+- [user_vault_access_pattern.md](user_vault_access_pattern.md) — Obsidian 只看時間軸 + Project 頁面，KB/Agent 內容期望走 Web UI；vault 簡潔性是 first-class concern
 - [feedback_dev_workflow.md](feedback_dev_workflow.md) — 完整開發流程規範：角色分工、六個 Phase、交接原則、技術選型要上網調研
 - [project_adr002_status.md](project_adr002_status.md) — ADR-002 記憶系統 Phase 1-3 完成，Phase 4 待 MemPalace
 - [project_pending_tasks.md](project_pending_tasks.md) — 待辦：VPS 部署 + 端到端測試（Robin/Zoro/Brook）、Nami 開發、補測試
@@ -38,7 +53,8 @@
 - [reference_vps_paths.md](reference_vps_paths.md) — VPS 路徑：repo=/home/nakama/，data=/home/nakama/data/
 - [reference_vault_paths_mac.md](reference_vault_paths_mac.md) — Mac vault `/Users/shosho/Documents/Shosho LifeOS/` + Windows **active = `E:\Shosho LifeOS\`**（F: 已停用、stale Syncthing 殘留要避開）
 - [reference_vps_ssh.md](reference_vps_ssh.md) — VPS SSH alias `nakama-vps` → root@202.182.107.202
-- [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」三字當 trigger → 自動存記憶 + commit & push
+- [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」走 ephemeral handoff（`.nakama/`），**不再** auto-commit/push；durable memory 走 L1/L2 in-conversation trigger
+- [reference_github_actions_paths_ignore_deadlock.md](reference_github_actions_paths_ignore_deadlock.md) — paths-ignore + required-check 死鎖：必加 ci-skip.yml 鏡像 paths workflow 才能 unblock 純 docs PR
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
 - [project_plugins_installed.md](project_plugins_installed.md) — 已安裝 6 個 Claude Code plugin（含 playwright、firecrawl）+ 評估不裝清單
 - [feedback_no_secrets_in_chat.md](feedback_no_secrets_in_chat.md) — API key 等敏感資訊走 .env，不在對話框輸入
@@ -120,6 +136,8 @@
 - [feedback_test_realism.md](feedback_test_realism.md) — mock integration test 時輸入形狀要對齊真實契約，別為了測試好寫造不可能的資料
 - [feedback_mock_use_spec.md](feedback_mock_use_spec.md) — mock 第三方 SDK 要 `spec=` / `autospec=True`，否則 MagicMock 預設 truthy 會掩蓋 nonexistent-method bug
 - [feedback_design_rationale_trace.md](feedback_design_rationale_trace.md) — 寫「保留 X 是為了 Y」的 rationale 前要實際 trace pipeline，不靠直覺
+- [feedback_panel_triangulated_judgment.md](feedback_panel_triangulated_judgment.md) — Panel review 後 strategic fork 直接整合判斷不要 defer 回 user，三家 audit 已消化 confirmation bias
+- [feedback_proactive_context_warning.md](feedback_proactive_context_warning.md) — 大 artifact / panel / commit 後主動提 context token 狀態 + /compact 建議，不要等 user 跑 /context 才發現超載
 - [feedback_deep_module_vs_leaky_abstraction.md](feedback_deep_module_vs_leaky_abstraction.md) — 「short interface + deep impl」是 Ousterhout 深模組（好事），不是 shallow facade；cost 不透明走 docstring 不重構
 - [feedback_llm_cost_estimation.md](feedback_llm_cost_estimation.md) — 估 LLM 成本要連 output（含 thinking）一起估，reasoning model output 才是主成本
 - [feedback_llm_pipeline_consume_all_fields.md](feedback_llm_pipeline_consume_all_fields.md) — prompt 教 LLM 輸出的 schema 欄位必須在 pipeline 內 consume，不然 schema drift 默默 leak（PR #171 review 抓到 pick=false 例）

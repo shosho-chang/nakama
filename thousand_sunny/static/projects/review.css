@@ -1,0 +1,559 @@
+/* /projects/{slug} review mode — layout + components.
+   Tokens from tokens.css; no hard-coded colours / fonts here.
+   Class structure mirrors the React component tree in
+   N458-brook-review-mode/project/brook/screen.jsx. */
+
+/* ── reset + shell ──────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body { background: var(--brk-bg); }
+
+.review-shell {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── top bar ────────────────────────────────────────────────────────── */
+.review-topbar {
+  padding: 20px 40px 18px 40px;
+  background: var(--brk-bg);
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.review-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 4px;
+}
+.review-brand__name {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--brk-ink);
+  letter-spacing: -0.3px;
+}
+.review-brand__rule {
+  width: 1px;
+  height: 22px;
+  background: var(--brk-rule);
+}
+
+.review-meta { flex: 1; min-width: 0; }
+.review-meta__caps { margin-bottom: 6px; }
+.review-meta__topic {
+  font-size: var(--brk-t-xl);
+  line-height: var(--brk-lh-snug);
+  color: var(--brk-ink);
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  max-width: 880px;
+  margin: 0;
+}
+.review-meta__topic-en {
+  font-style: italic;
+  font-size: 14px;
+  color: var(--brk-ink-3);
+  margin-top: 4px;
+}
+.review-meta__keywords {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.review-keyword {
+  font-family: var(--brk-font-mono);
+  font-size: 11px;
+  padding: 3px 9px;
+  border: 1px solid var(--brk-rule);
+  color: var(--brk-ink-2);
+  background: var(--brk-bg-2);
+  letter-spacing: 0.06em;
+}
+.review-keyword.is-zh {
+  font-family: var(--brk-font-zh);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.review-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  padding-top: 4px;
+}
+.review-actions__row { display: flex; gap: 8px; }
+.review-actions__caption { color: var(--brk-ink-3); }
+.review-actions__caption.is-good { color: var(--brk-good); }
+
+/* ── main grid ──────────────────────────────────────────────────────── */
+.review-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 440px 1fr;
+  min-height: 0;
+  border-top: 1px solid var(--brk-rule);
+}
+
+/* ── outline panel ──────────────────────────────────────────────────── */
+.review-outline {
+  background: var(--brk-bg-2);
+  border-right: 1px solid var(--brk-rule);
+  overflow: auto;
+  padding: 24px 0 60px;
+}
+.review-outline__header { padding: 0 32px 12px; }
+.review-outline__list { list-style: none; margin: 0; padding: 0; }
+
+.review-outline-item {
+  padding: 18px 32px 20px;
+  cursor: pointer;
+  position: relative;
+  border-left: 3px solid transparent;
+  background: transparent;
+  transition: background var(--brk-dur-fast) var(--brk-ease);
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  font: inherit;
+  color: inherit;
+}
+.review-outline-item:hover {
+  background: var(--brk-panel-2);
+}
+.review-outline-item.is-active {
+  border-left-color: var(--brk-rule-active);
+  background: var(--brk-mark-soft);
+}
+.review-outline-item:focus-visible {
+  outline: none;
+  box-shadow: var(--brk-focus);
+}
+.review-outline-item[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.review-outline-item__row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.review-outline-item__numeral {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  color: var(--brk-ink-3);
+  font-size: 18px;
+  letter-spacing: 0.5px;
+  min-width: 22px;
+}
+.review-outline-item.is-active .review-outline-item__numeral {
+  color: var(--brk-mark);
+}
+.review-outline-item__heading {
+  font-family: var(--brk-font-zh);
+  font-size: var(--brk-t-lg);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--brk-ink);
+  letter-spacing: -0.2px;
+}
+.review-outline-item__heading-en {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  color: var(--brk-ink-3);
+  font-size: 13px;
+  margin-bottom: 8px;
+  margin-left: 34px;
+}
+.review-outline-item__gist {
+  font-family: var(--brk-font-zh);
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--brk-ink-2);
+  margin-left: 34px;
+  padding-right: 12px;
+}
+.review-outline-item__footer {
+  margin-left: 34px;
+  margin-top: 10px;
+  display: flex;
+  gap: 14px;
+  font-family: var(--brk-font-mono);
+  font-size: 11px;
+  color: var(--brk-muted);
+  letter-spacing: 0.06em;
+}
+.review-outline-item__warn { color: var(--brk-warn); }
+.review-outline-item__reviewing {
+  margin-left: auto;
+  color: var(--brk-mark);
+  display: none;
+}
+.review-outline-item.is-active .review-outline-item__reviewing { display: inline; }
+
+/* ── evidence panel ─────────────────────────────────────────────────── */
+.review-evidence {
+  overflow: auto;
+  position: relative;
+  background: var(--brk-bg);
+}
+.review-evidence__header {
+  padding: 24px 56px 20px;
+  position: sticky;
+  top: 0;
+  background: var(--brk-bg);
+  z-index: 1;
+  border-bottom: 1px solid var(--brk-rule);
+}
+.review-evidence__caps { margin-bottom: 6px; }
+.review-evidence__heading {
+  font-family: var(--brk-font-zh);
+  font-size: var(--brk-t-xl);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.3px;
+  color: var(--brk-ink);
+  max-width: 720px;
+  margin: 0;
+}
+.review-evidence__heading-en {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--brk-ink-3);
+  margin-top: 4px;
+}
+
+.review-evidence__body {
+  padding: 28px 56px 80px;
+  max-width: 920px;
+}
+
+.review-evidence-card {
+  background: var(--brk-panel);
+  border: 1px solid var(--brk-rule);
+  padding: 22px 26px 18px;
+  margin-bottom: 18px;
+  position: relative;
+  transition: background var(--brk-dur-base) var(--brk-ease),
+              opacity var(--brk-dur-base) var(--brk-ease);
+}
+.review-evidence-card:hover { background: var(--brk-panel-2); }
+.review-evidence-card[aria-disabled="true"] { opacity: 0.55; }
+.review-evidence-card.is-rejected { opacity: 0.5; }
+.review-evidence-card[hidden] { display: none; }
+
+.review-evidence-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  gap: 16px;
+}
+.review-evidence-card__meta { flex: 1; min-width: 0; }
+.review-evidence-card__caps { margin-bottom: 6px; }
+.review-evidence-card__caps .sep { margin: 0 8px; color: var(--brk-rule); }
+.review-evidence-card__title {
+  font-family: var(--brk-font-serif);
+  font-size: 19px;
+  line-height: 1.3;
+  color: var(--brk-ink);
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  margin: 0 0 4px;
+}
+.review-evidence-card__authors {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--brk-ink-3);
+}
+
+.review-evidence-card__relevance {
+  text-align: right;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.review-evidence-card__relevance-label {
+  color: var(--brk-ink-3);
+  margin-bottom: 4px;
+}
+.review-evidence-card__relevance-value {
+  font-family: var(--brk-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  color: var(--brk-ink);
+  font-weight: 500;
+}
+.review-evidence-card__relevance-unit {
+  font-size: 11px;
+  color: var(--brk-muted);
+}
+
+.review-evidence-card__heading {
+  font-family: var(--brk-font-zh);
+  font-size: 13px;
+  color: var(--brk-ink-2);
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px dotted var(--brk-rule);
+  letter-spacing: 0.2px;
+}
+.review-evidence-card__excerpt {
+  margin: 0;
+  padding: 4px 0 12px 18px;
+  font-family: var(--brk-font-serif);
+  font-size: var(--brk-t-read);
+  line-height: var(--brk-lh-read);
+  color: var(--brk-ink);
+  border-left: 2px solid var(--brk-mark);
+}
+.review-evidence-card__excerpt mark {
+  background: var(--brk-mark-bg);
+  color: var(--brk-ink);
+  padding: 0 2px;
+}
+.review-evidence-card__note {
+  color: var(--brk-warn);
+  margin-top: 10px;
+}
+
+.review-evidence-card__footer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--brk-rule);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.review-evidence-card__pulled {
+  font-family: var(--brk-font-mono);
+  font-size: 11px;
+  color: var(--brk-muted);
+  letter-spacing: 0.04em;
+}
+.review-evidence-card__reject-row { display: flex; gap: 8px; }
+
+/* ── states ─────────────────────────────────────────────────────────── */
+.review-state {
+  padding: 60px 0;
+  max-width: 540px;
+}
+.review-state__title {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  font-size: 28px;
+  line-height: 1.3;
+  color: var(--brk-ink-2);
+  margin-bottom: 14px;
+  letter-spacing: -0.3px;
+}
+.review-state__body {
+  font-family: var(--brk-font-serif);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--brk-ink-3);
+  margin-bottom: 24px;
+}
+.review-state__error-caps { color: var(--brk-danger); margin-bottom: 12px; }
+.review-state__row { display: flex; gap: 10px; }
+
+/* ── buttons ────────────────────────────────────────────────────────── */
+.btn {
+  font-family: var(--brk-font-zh);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  padding: 9px 16px;
+  cursor: pointer;
+  border-radius: var(--brk-r-3);
+  transition: background var(--brk-dur-base) var(--brk-ease),
+              border-color var(--brk-dur-base) var(--brk-ease);
+  border: 1px solid transparent;
+}
+.btn:focus-visible { outline: none; box-shadow: var(--brk-focus); }
+
+.btn-primary {
+  background: var(--brk-ink);
+  color: var(--brk-bg);
+  border-color: var(--brk-ink);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--brk-ink-2);
+  border-color: var(--brk-rule);
+}
+.btn-danger {
+  background: var(--brk-danger);
+  color: #fff;
+  border-color: var(--brk-danger);
+}
+.btn-disabled,
+.btn[disabled] {
+  background: var(--brk-bg-2);
+  color: var(--brk-muted);
+  border-color: var(--brk-rule);
+  cursor: not-allowed;
+}
+
+.reject-btn {
+  font-family: var(--brk-font-zh);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  padding: 6px 11px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--brk-ink-2);
+  border: 1px solid var(--brk-rule);
+  border-radius: var(--brk-r-2);
+  transition: background var(--brk-dur-fast) var(--brk-ease);
+}
+.reject-btn:focus-visible { outline: none; box-shadow: var(--brk-focus); }
+.reject-btn--global {
+  color: var(--brk-danger);
+  border-color: var(--brk-danger);
+}
+.reject-btn[disabled] { cursor: not-allowed; opacity: 0.5; }
+
+/* ── theme toggle ───────────────────────────────────────────────────── */
+.review-theme-toggle {
+  background: transparent;
+  border: 1px solid var(--brk-rule);
+  color: var(--brk-ink-3);
+  font-family: var(--brk-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  cursor: pointer;
+  border-radius: var(--brk-r-2);
+}
+.review-theme-toggle:focus-visible { outline: none; box-shadow: var(--brk-focus); }
+
+/* ── writing mode (issue #462) ──────────────────────────────────────────
+   Visual diff vs review mode:
+   - reject buttons hidden (already disabled at the DOM level; we also
+     visually retire them so the eye doesn't snag)
+   - serif body type bumped to --brk-t-read-2 / --brk-lh-read so a long
+     focus session at the left screen is comfortable
+   - card max-width tightens — modeled on book column width, not list
+     density
+   - finalize button stays on the topbar but shows the "finalized" pill
+     state (handled inline by the disabled style)
+   The reading column on the left of a dual-screen setup is what the user
+   stares at while writing on the right (in Obsidian); we treat it as a
+   reading surface, not a tool surface. */
+.review-shell[data-mode="writing"] .review-evidence-card__reject-row {
+  display: none;
+}
+.review-shell[data-mode="writing"] .review-evidence-card__excerpt {
+  font-size: var(--brk-t-read-2);
+  line-height: var(--brk-lh-read);
+}
+.review-shell[data-mode="writing"] .review-evidence__body {
+  /* slightly tighter column for sustained reading; mirrors a book page */
+  max-width: 760px;
+}
+.review-shell[data-mode="writing"] .review-outline-item__heading {
+  font-size: var(--brk-t-lg);
+}
+.review-shell[data-mode="writing"] .review-outline-item__reviewing {
+  /* "▸ reviewing" caption is wrong in writing mode */
+  display: none !important;
+}
+.review-shell[data-mode="writing"] #review-mode-caps {
+  color: var(--brk-good);
+}
+/* writing-mode body class on <body> when JS swaps in (avoids reflow on
+   first paint since the template already sets data-mode server-side). */
+@media (prefers-reduced-motion: no-preference) {
+  .review-shell[data-mode="writing"] .review-evidence-card {
+    transition:
+      background var(--brk-dur-base) var(--brk-ease),
+      opacity var(--brk-dur-base) var(--brk-ease);
+  }
+}
+
+/* ── reject confirm dialog ──────────────────────────────────────────── */
+dialog.review-confirm {
+  width: 540px;
+  max-width: calc(100vw - 32px);
+  background: var(--brk-panel);
+  color: var(--brk-ink);
+  border: 1px solid var(--brk-rule);
+  padding: 0;
+  border-radius: var(--brk-r-2);
+}
+dialog.review-confirm::backdrop {
+  background: rgba(28, 24, 18, 0.5);
+  backdrop-filter: blur(2px);
+}
+.review-confirm__head {
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid var(--brk-rule);
+}
+.review-confirm__caps {
+  color: var(--brk-danger);
+  margin-bottom: 6px;
+}
+.review-confirm__title {
+  font-family: var(--brk-font-zh);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--brk-ink);
+  letter-spacing: -0.2px;
+  margin: 0;
+}
+.review-confirm__body { padding: 18px 28px; }
+.review-confirm__evidence-meta {
+  font-family: var(--brk-font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--brk-ink-3);
+  margin-bottom: 10px;
+}
+.review-confirm__evidence-title {
+  font-family: var(--brk-font-serif);
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--brk-ink);
+  margin-bottom: 14px;
+}
+.review-confirm__effects {
+  background: var(--brk-bg-2);
+  padding: 14px 16px;
+  border-left: 2px solid var(--brk-rule);
+}
+.review-confirm__effects-caps { margin-bottom: 8px; }
+.review-confirm__effects ul {
+  margin: 0;
+  padding-left: 18px;
+  font-family: var(--brk-font-zh);
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--brk-ink-2);
+}
+.review-confirm__foot {
+  padding: 16px 28px 20px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--brk-rule);
+  background: var(--brk-bg-2);
+}

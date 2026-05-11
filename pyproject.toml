@@ -27,6 +27,7 @@ dependencies = [
     "opencc-python-reimplemented>=0.1.7",
     "pypinyin>=0.51",
     "jieba>=0.42",
+    "langdetect>=1.0.9",         # monolingual-zh pilot: lang ID for upload mode auto-detect
 
     # PDF parsing
     "pymupdf4llm>=1.27",
@@ -35,10 +36,12 @@ dependencies = [
     # EPUB parsing (textbook-ingest skill — ebook-format primary path per ADR-010)
     "ebooklib>=0.18",            # EPUB structural reader (spine + TOC + metadata)
     "beautifulsoup4>=4.12",      # EPUB HTML → plain text + heading extraction
+    "markdownify>=1.2",          # HTML → Markdown (ADR-020 Phase 0 raw converter)
 
     # KB hybrid retrieval (issue #431)
     "sqlite-vec>=0.1.9",   # vec0 virtual table for dense-vector lane
     "model2vec>=0.8.0",    # potion-base-8M 256-dim static embeddings
+    "FlagEmbedding>=1.4.0", # BGE-M3 1024-dim default backend (ADR-022); ~2.3GB model on first use
 
     # Utilities
     "python-dateutil>=2.9",

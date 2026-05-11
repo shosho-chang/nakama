@@ -1,0 +1,153 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Brook · Synthesize — Review Mode tokens
+   Editorial review surface. Type-driven, density-tolerant, calm.
+   Light = paper. Dark = bound-volume reading (warm near-black, cream ink).
+
+   Source of truth for /projects/{slug} review UI (issue #458).
+   Verbatim port from Claude Design handoff bundle
+   (N458-brook-review-mode/project/brook/tokens.css). Token names retain the
+   `--brk-*` prefix — no collision exists with thousand_sunny static (the
+   tree only has book_reader.js / book_upload.js / books_library.js, none
+   of which define CSS custom properties).
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root,
+.brk-light {
+  /* paper + ink */
+  --brk-bg:        #f6f1e7;   /* warm paper, lower-blue than pure cream — easier on eyes */
+  --brk-bg-2:      #efe9dc;   /* recessed: outline rail, gutters */
+  --brk-panel:     #fbf8f1;   /* evidence card face — slightly brighter than bg */
+  --brk-panel-2:   #f1ecdf;   /* hovered card */
+  --brk-rule:      #d9d1bf;   /* 1px hairline */
+  --brk-rule-2:    #e8e1cd;   /* dotted divider */
+
+  --brk-ink:       #1c1812;   /* body text — 16.4:1 on bg, AAA */
+  --brk-ink-2:     #4a4337;   /* secondary — 8.2:1 AA */
+  --brk-ink-3:     #6e6553;   /* tertiary, captions */
+  --brk-muted:     #9c9078;   /* metadata, tick units */
+
+  /* one accent — a deep, restrained terracotta. Not orange-bright,
+     not blood-red. Reserved for the active section, focus rings,
+     and confirm-reject. */
+  --brk-mark:      #9d4a2c;   /* the only chromatic accent */
+  --brk-mark-soft: rgba(157, 74, 44, 0.08);
+  --brk-mark-2:    #7d3a23;   /* hover/pressed */
+
+  /* margin-rule color for the active outline section */
+  --brk-rule-active: #9d4a2c;
+
+  /* semantic — used sparingly */
+  --brk-warn:      #8a6d20;   /* citation-incomplete amber */
+  --brk-danger:    #8a2a1c;   /* destructive confirm */
+  --brk-good:      #3a5d3e;   /* finalized */
+
+  /* highlighter for relevance-excerpt match */
+  --brk-mark-bg:   rgba(157, 74, 44, 0.14);
+
+  color-scheme: light;
+}
+
+.brk-dark {
+  /* warm reading dark — never #000; references the felt of an old library */
+  --brk-bg:        #1a1611;   /* warm near-black */
+  --brk-bg-2:      #221d16;   /* recessed */
+  --brk-panel:     #1f1a14;   /* evidence card face */
+  --brk-panel-2:   #2a241b;   /* hover */
+  --brk-rule:      #3a322a;
+  --brk-rule-2:    #2c261e;
+
+  --brk-ink:       #ece4d2;   /* cream — 14.6:1 AAA */
+  --brk-ink-2:     #b8af9b;   /* 7.8:1 AA */
+  --brk-ink-3:     #847b68;
+  --brk-muted:     #5d5648;
+
+  --brk-mark:      #d97a52;   /* terracotta brightened for dark */
+  --brk-mark-soft: rgba(217, 122, 82, 0.10);
+  --brk-mark-2:    #e6926a;
+  --brk-rule-active: #d97a52;
+
+  --brk-warn:      #c9a64a;
+  --brk-danger:    #d96a4f;
+  --brk-good:      #7ca97f;
+
+  --brk-mark-bg:   rgba(217, 122, 82, 0.18);
+
+  color-scheme: dark;
+}
+
+/* ── typography ─────────────────────────────────────────────────────── */
+:root {
+  /* serif: zh-Hant first, latin to match — Source Han Serif TC + Source Serif Pro */
+  --brk-font-serif:  "Source Serif Pro", "Noto Serif TC", "Source Han Serif TC", "Songti TC", Georgia, serif;
+  --brk-font-zh:     "Noto Serif TC", "Source Han Serif TC", "PingFang TC", "Songti TC", serif;
+  /* sans: warm geometric — Manrope is the closest open match to Söhne's calm feel */
+  --brk-font-sans:   "Manrope", "Noto Sans TC", "PingFang TC", -apple-system, sans-serif;
+  /* mono — only for slugs, counts, ids */
+  --brk-font-mono:   "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+
+  /* size scale — generous for long reads. Body baseline 17px serif. */
+  --brk-t-micro:  11px;   /* mono labels */
+  --brk-t-xs:     12px;
+  --brk-t-sm:     14px;
+  --brk-t-base:   15px;   /* sans body */
+  --brk-t-read:   17px;   /* serif evidence body */
+  --brk-t-read-2: 19px;   /* serif evidence pull */
+  --brk-t-md:     20px;   /* outline gist */
+  --brk-t-lg:     24px;   /* outline section heading */
+  --brk-t-xl:     32px;   /* page topic */
+  --brk-t-2xl:    44px;   /* hero number, rare */
+
+  /* line-height: serif body needs ≥ 1.6 for zh; sans labels 1.4 */
+  --brk-lh-tight:  1.18;
+  --brk-lh-snug:   1.35;
+  --brk-lh-base:   1.5;
+  --brk-lh-read:   1.7;   /* serif evidence body — eye comfort */
+
+  /* tracking */
+  --brk-track-caps: 0.16em;
+  --brk-track-tight: -0.012em;
+
+  /* spacing — 4px grid */
+  --brk-s-1:  4px;  --brk-s-2:  8px;  --brk-s-3: 12px;
+  --brk-s-4: 16px;  --brk-s-5: 20px;  --brk-s-6: 24px;
+  --brk-s-7: 32px;  --brk-s-8: 40px;  --brk-s-9: 56px;
+  --brk-s-10: 72px; --brk-s-11: 96px;
+
+  /* radius — minimal. nothing is rounder than 4px. */
+  --brk-r-1: 1px;
+  --brk-r-2: 2px;
+  --brk-r-3: 4px;     /* buttons only */
+
+  /* motion */
+  --brk-dur-fast: 90ms;
+  --brk-dur-base: 160ms;
+  --brk-dur-slow: 280ms;
+  --brk-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --brk-ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* focus — terracotta, two-step ring against bg */
+  --brk-focus: 0 0 0 2px var(--brk-bg), 0 0 0 4px var(--brk-mark);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --brk-dur-fast: 0ms; --brk-dur-base: 0ms; --brk-dur-slow: 0ms; }
+}
+
+.brk-root {
+  background: var(--brk-bg);
+  color: var(--brk-ink);
+  font-family: var(--brk-font-sans);
+  font-size: var(--brk-t-base);
+  line-height: var(--brk-lh-base);
+  font-feature-settings: "ss01", "cv11", "tnum";
+}
+.brk-serif { font-family: var(--brk-font-serif); }
+.brk-zh    { font-family: var(--brk-font-zh); }
+.brk-mono  { font-family: var(--brk-font-mono); font-variant-numeric: tabular-nums; }
+.brk-caps  {
+  font-family: var(--brk-font-mono);
+  font-size: var(--brk-t-micro);
+  letter-spacing: var(--brk-track-caps);
+  text-transform: uppercase;
+  color: var(--brk-ink-3);
+}

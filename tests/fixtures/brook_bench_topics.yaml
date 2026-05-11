@@ -1,0 +1,53 @@
+# Brook synthesize mini-bench fixtures (ADR-021 §3 + Codex amendment #6, issue #457).
+#
+# 5 representative Project topics × {K=8,15,30} × {hybrid, haiku} = 30 runs.
+# Recall is computed against `ground_truth` slugs — manually curated KB paths
+# that *should* surface for the topic. Empty / TODO list → harness reports
+# retrieved hits without recall (still useful for eyeballing).
+#
+# Slug format: relative to vault root, e.g. `KB/Wiki/Concepts/creatine.md`
+# or `KB/Wiki/Sources/some-pubmed-digest.md`. Substring match is used (so
+# either the full path or just a filename stem works).
+#
+# 2026-05-07 re-curated by Claude against actual corpus (13 pubmed papers
+# in KB/Wiki/Sources/). Original placeholder topics (creatine / overtraining
+# / blue zones / protein-MPS) had zero corpus coverage and yielded all-zero
+# recall. New topics align with what was actually ingested.
+
+topics:
+  - id: exercise_cardiovascular
+    query: 運動對心血管健康的影響
+    description: Chinese query — exercise × cardiovascular outcomes
+    ground_truth:
+      - pubmed-41876208  # Physical activity patterns × MACE in hypertension
+      - pubmed-42087386  # Lifelong exercise × CD4 T cell immunometabolism
+
+  - id: sleep_performance
+    query: sleep caffeine napping athletic performance
+    description: English query — sleep × performance / caffeine / napping
+    ground_truth:
+      - pubmed-42086212  # Napping + caffeine + repeated-sprint performance
+      - pubmed-42086588  # Eye movement kinematics × circadian sleep substates
+      - pubmed-42087855  # Remnant cholesterol × OSA × coronary heart disease
+
+  - id: microbiome_inflammation
+    query: 腸道菌與慢性發炎
+    description: Chinese query — gut microbiota × inflammation / immunity
+    ground_truth:
+      - pubmed-42087805  # Gut microbiota × chronic inflammation × lipid mediators
+      - pubmed-42087590  # Eubacterium rectale EVs × cancer cachexia
+      - pubmed-42090020  # Probiotic × recurrent respiratory infections in children
+
+  - id: pediatric_exercise
+    query: 兒童青少年運動介入
+    description: Chinese query — pediatric exercise interventions
+    ground_truth:
+      - pubmed-41850726  # Exercise interventions in children/adolescents (cancer)
+      - pubmed-42090020  # Probiotic × children respiratory infections
+
+  - id: longevity_social
+    query: aging longevity social isolation
+    description: English query — aging / social / lifestyle longevity factors
+    ground_truth:
+      - pubmed-42090157  # Personality traits × social isolation in older adults
+      - pubmed-42087386  # Lifelong exercise × immunometabolism (longevity)

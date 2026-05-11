@@ -1,0 +1,41 @@
+name: CI (skip-pass)
+
+# Companion to ci.yml: when ci.yml's paths-ignore matches all changed paths
+# the workflow is skipped, leaving the required `lint-and-test` status check
+# unfilled and the PR blocked. This workflow runs ONLY in that case (mirror
+# the ignore filters as positive `paths`) and emits a successful job named
+# `lint-and-test` to satisfy branch protection.
+#
+# Mutual exclusion with ci.yml:
+#   - ci.yml runs when ANY path is outside the ignore list
+#   - this workflow runs when ANY path matches the ignore list
+#   - mixed PRs: both run; both succeed; branch protection happy
+#   - pure docs/memory: only this runs; ci.yml skipped silently; check satisfied
+#   - pure code: only ci.yml runs (does real work); this skipped
+#
+# Keep `paths` here in sync with ci.yml's `paths-ignore`. If they drift the
+# deadlock returns. See docs/research/2026-05-08-memory-system-redesign-v2.md
+# for context.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '**.md'
+      - 'memory/**'
+      - '.github/ISSUE_TEMPLATE/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '**.md'
+      - 'memory/**'
+      - '.github/ISSUE_TEMPLATE/**'
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-pass (no code changes)
+        run: echo "All changed paths matched ci.yml paths-ignore filter; lint-and-test auto-passes."

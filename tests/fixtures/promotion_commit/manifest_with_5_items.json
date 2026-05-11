@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "manifest_id": "mfst_commit_5items_001",
+  "source_id": "ebook:alpha-book",
+  "created_at": "2026-05-10T12:00:00Z",
+  "status": "needs_review",
+  "replaces_manifest_id": null,
+  "recommender": {
+    "model_name": "claude-opus-4-7",
+    "model_version": "2026-04",
+    "run_params": {},
+    "recommended_at": "2026-05-10T12:00:00Z"
+  },
+  "items": [
+    {
+      "item_kind": "source_page",
+      "item_id": "src_ch1_001",
+      "recommendation": "include",
+      "action": "create",
+      "reason": "Chapter 1 introduces autonomic balance with strong evidence.",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/alpha-book/original.epub",
+          "locator": "epubcfi(/6/4[ch1]!/4/2/16/1:0,/6/4[ch1]!/4/2/16/1:200)",
+          "excerpt": "Heart rate variability reflects autonomic balance between sympathetic and parasympathetic input.",
+          "confidence": 0.92
+        }
+      ],
+      "risk": [],
+      "confidence": 0.91,
+      "source_importance": 0.9,
+      "reader_salience": 0.85,
+      "target_kb_path": "KB/Wiki/Sources/alpha-book/chapter-1.md",
+      "chapter_ref": "ch-1",
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "approve",
+        "decided_at": "2026-05-10T13:00:00Z",
+        "decided_by": "shosho",
+        "note": null
+      }
+    },
+    {
+      "item_kind": "source_page",
+      "item_id": "src_ch2_001",
+      "recommendation": "include",
+      "action": "create",
+      "reason": "Chapter 2 quantifies HRV biomarkers with key numbers.",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/alpha-book/original.epub",
+          "locator": "epubcfi(/6/8[ch2]!/4/2/4/1:0,/6/8[ch2]!/4/2/4/1:180)",
+          "excerpt": "RMSSD values below 20 ms indicate elevated sympathetic dominance.",
+          "confidence": 0.88
+        }
+      ],
+      "risk": [],
+      "confidence": 0.87,
+      "source_importance": 0.85,
+      "reader_salience": 0.8,
+      "target_kb_path": "KB/Wiki/Sources/alpha-book/chapter-2.md",
+      "chapter_ref": "ch-2",
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "approve",
+        "decided_at": "2026-05-10T13:00:00Z",
+        "decided_by": "shosho",
+        "note": null
+      }
+    },
+    {
+      "item_kind": "source_page",
+      "item_id": "src_ch3_001",
+      "recommendation": "include",
+      "action": "create",
+      "reason": "Chapter 3 covers practical interventions; OCR noise present.",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/alpha-book/original.epub",
+          "locator": "epubcfi(/6/12[ch3]!/4/2/4/1:0,/6/12[ch3]!/4/2/4/1:160)",
+          "excerpt": "Slow paced breathing at 6 breaths per minute increases vagal tone.",
+          "confidence": 0.86
+        }
+      ],
+      "risk": [],
+      "confidence": 0.85,
+      "source_importance": 0.82,
+      "reader_salience": 0.78,
+      "target_kb_path": "KB/Wiki/Sources/alpha-book/chapter-3.md",
+      "chapter_ref": "ch-3",
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "reject",
+        "decided_at": "2026-05-10T13:00:00Z",
+        "decided_by": "shosho",
+        "note": "OCR noise too high"
+      }
+    },
+    {
+      "item_kind": "concept",
+      "item_id": "concept_hrv_001",
+      "recommendation": "include",
+      "action": "create_global_concept",
+      "reason": "HRV concept appears across multiple chapters with consistent definition.",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/alpha-book/original.epub",
+          "locator": "epubcfi(/6/4[ch1]!/4/2/16/1:0,/6/4[ch1]!/4/2/16/1:240)",
+          "excerpt": "HRV is a key biomarker of autonomic balance.",
+          "confidence": 0.92
+        }
+      ],
+      "risk": [],
+      "confidence": 0.91,
+      "source_importance": 0.9,
+      "reader_salience": 0.8,
+      "concept_label": "Heart Rate Variability",
+      "evidence_language": "en",
+      "canonical_match": {
+        "match_basis": "exact_alias",
+        "confidence": 0.97,
+        "matched_concept_path": "KB/Wiki/Concepts/HRV.md"
+      },
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "approve",
+        "decided_at": "2026-05-10T13:00:00Z",
+        "decided_by": "shosho",
+        "note": null
+      }
+    },
+    {
+      "item_kind": "concept",
+      "item_id": "concept_vagal_001",
+      "recommendation": "include",
+      "action": "create_global_concept",
+      "reason": "Vagal tone is referenced across chapters with measurement context.",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/alpha-book/original.epub",
+          "locator": "epubcfi(/6/12[ch3]!/4/2/4/1:0,/6/12[ch3]!/4/2/4/1:120)",
+          "excerpt": "Vagal tone increases with slow paced breathing.",
+          "confidence": 0.88
+        }
+      ],
+      "risk": [],
+      "confidence": 0.86,
+      "source_importance": 0.82,
+      "reader_salience": 0.75,
+      "concept_label": "Vagal Tone",
+      "evidence_language": "en",
+      "canonical_match": {
+        "match_basis": "none",
+        "confidence": 0.0,
+        "matched_concept_path": null
+      },
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "reject",
+        "decided_at": "2026-05-10T13:00:00Z",
+        "decided_by": "shosho",
+        "note": "Concept too generic"
+      }
+    }
+  ],
+  "commit_batches": [],
+  "metadata": {}
+}

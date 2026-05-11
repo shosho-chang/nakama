@@ -1,10 +1,18 @@
 """Filesystem + SQLite persistence for translated EPUB books.
 
-Filesystem layout (rooted at ``NAKAMA_BOOKS_DIR``, fallback ``data/books/``):
+Filesystem layout (rooted at ``NAKAMA_BOOKS_DIR``, fallback ``data/books/``
+**resolved against cwd, NOT against the vault**):
 
-    data/books/{book_id}/bilingual.epub
-    data/books/{book_id}/original.epub   (only if has_original=True)
-    data/books/{book_id}/cover{ext}      (only if EPUB had a cover image)
+    {books_root}/{book_id}/bilingual.epub
+    {books_root}/{book_id}/original.epub   (only if has_original=True)
+    {books_root}/{book_id}/cover{ext}      (only if EPUB had a cover image)
+
+EPUB binaries deliberately live **outside the Obsidian vault** so they
+do not participate in vault sync — only post-ingest markdown lands in
+the vault. The single source of truth for the books root is
+``books_root()`` below; all other modules that need to enumerate or
+resolve book paths (``RegistryReadingSourceLister``, ``VaultBlobLoader``,
+``thousand_sunny.promotion_wiring``) must pull from it.
 
 SQLite table: ``books`` — provisioned by ``shared.state._init_tables``.
 """
@@ -48,8 +56,30 @@ def _check_book_id(book_id: str) -> None:
         raise BookStorageError("book_id contains parent-traversal sequence")
 
 
-def _books_root() -> Path:
+def books_root() -> Path:
+    """Return the on-disk root directory holding all books.
+
+    Resolution order:
+
+    - ``NAKAMA_BOOKS_DIR`` env var if set (absolute or relative to cwd).
+    - Fallback ``data/books`` (relative to cwd).
+
+    The books root deliberately lives **outside the Obsidian vault** —
+    EPUB binaries are local-machine-only and do not participate in vault
+    sync. Only post-ingest markdown lands in the vault. Callers that
+    enumerate or resolve book paths (``RegistryReadingSourceLister``,
+    ``VaultBlobLoader``, the ``thousand_sunny`` promotion wiring) must
+    source their books root from this function so that the lister
+    enumerates the same directory ``store_book_files`` writes to and the
+    blob loader resolves ``data/books/...`` paths there.
+    """
     return Path(os.environ.get("NAKAMA_BOOKS_DIR", _DEFAULT_BOOKS_DIR))
+
+
+# Internal alias preserved so the in-module callers below still type-check
+# at the original name. New code outside this module should import the
+# public ``books_root`` symbol.
+_books_root = books_root
 
 
 # ---------------------------------------------------------------------------
@@ -137,8 +167,8 @@ def insert_book(book: Book) -> None:
     conn.execute(
         """INSERT OR REPLACE INTO books
            (book_id, title, author, lang_pair, genre, isbn, published_year,
-            has_original, book_version_hash, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            has_original, book_version_hash, created_at, mode)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             book.book_id,
             book.title,
@@ -150,6 +180,7 @@ def insert_book(book: Book) -> None:
             1 if book.has_original else 0,
             book.book_version_hash,
             book.created_at,
+            book.mode,
         ),
     )
     conn.commit()
@@ -172,10 +203,15 @@ def list_books() -> list[Book]:
 
 
 def _row_to_book(row: sqlite3.Row) -> Book:
+    # ``mode`` defends against rows written before the migration applied;
+    # the schema-default fires when the column is absent or NULL.
+    keys = row.keys() if hasattr(row, "keys") else []
+    mode_value = row["mode"] if "mode" in keys and row["mode"] else "bilingual-en-zh"
     return Book(
         book_id=row["book_id"],
         title=row["title"],
         author=row["author"],
+        mode=mode_value,
         lang_pair=row["lang_pair"],
         genre=row["genre"],
         isbn=row["isbn"],

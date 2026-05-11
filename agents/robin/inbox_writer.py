@@ -89,28 +89,17 @@ class InboxWriter:
     # ── Public API ───────────────────────────────────────────────────────────
 
     def find_existing_for_url(self, original_url: str) -> Path | None:
-        """Return the inbox path whose frontmatter ``original_url`` matches, or None.
+        """Return the inbox path whose frontmatter URL matches, or None.
 
         Used by the ``/scrape-translate`` endpoint to short-circuit re-pasting
         of an already-ingested URL. Reads every ``*.md`` in the inbox dir (cheap
         — inbox is intended to be small + transient). Returns the first match.
-        """
-        return self._find_by_frontmatter("original_url", original_url)
 
-    def find_existing_for_zotero_item(self, item_key: str) -> Path | None:
-        """Return the inbox path whose frontmatter ``zotero_item_key`` matches, or None.
-
-        Slice 1 #389 — used by the Zotero dispatch path so re-pasting the same
-        ``zotero://`` link short-circuits to the existing inbox file rather
-        than overwriting (and losing annotation references).
-        """
-        return self._find_by_frontmatter("zotero_item_key", item_key)
-
-    def _find_by_frontmatter(self, key: str, value: str) -> Path | None:
-        """Linear scan of inbox markdowns for a frontmatter key/value match.
-
-        Shared backend for ``find_existing_for_url`` / ``find_existing_for_zotero_item``.
-        Inbox is intended to be small + transient; full directory scan is cheap.
+        Matches either ``original_url`` (Robin's URL-ingest format) or ``source``
+        (Obsidian Web Clipper format, which only writes ``source``). Robin-written
+        files contain both keys with the same value, so the second branch is a
+        no-op for them; Web Clipper files only have ``source``, so the second
+        branch is what catches dedup against pre-clipped papers.
         """
         if not self._inbox_dir.exists():
             return None
@@ -122,7 +111,7 @@ class InboxWriter:
             except OSError:
                 continue
             fm, _ = extract_frontmatter(content)
-            if fm.get(key) == value:
+            if fm.get("original_url") == original_url or fm.get("source") == original_url:
                 return path
         return None
 
@@ -191,23 +180,15 @@ class InboxWriter:
 
         dest = existing_path if existing_path is not None else self._next_available_path(slug)
 
-        # Zotero-sourced ingests force ``source_type`` to ``"zotero"`` — the
-        # caller's kwarg default ``"article"`` is for URL ingest and would mis-tag
-        # the row.
-        effective_source_type = "zotero" if result.zotero_item_key is not None else source_type
-
         frontmatter = self._serialise_frontmatter(
             title=result.title,
             original_url=result.original_url,
-            source_type=effective_source_type,
+            source_type=source_type,
             content_nature=content_nature,
             fulltext_status=result.status,
             fulltext_layer=result.fulltext_layer,
             fulltext_source=result.fulltext_source,
             note=result.note,
-            zotero_item_key=result.zotero_item_key,
-            zotero_attachment_path=result.zotero_attachment_path,
-            attachment_type=result.attachment_type,
         )
 
         if result.status == "failed":
@@ -253,9 +234,6 @@ class InboxWriter:
         fulltext_layer: str,
         fulltext_source: str,
         note: str | None,
-        zotero_item_key: str | None = None,
-        zotero_attachment_path: str | None = None,
-        attachment_type: str | None = None,
     ) -> str:
         """Return YAML frontmatter block (newline-delimited, ends with ``---\\n\\n``).
 
@@ -281,13 +259,5 @@ class InboxWriter:
         ]
         if note:
             lines.append(f'note: "{_yaml_double_quoted(note)}"')
-        # Zotero-specific fields (Slice 1 #389) — emitted only when present so
-        # URL-ingest frontmatter stays free of zotero_* keys.
-        if zotero_item_key is not None:
-            lines.append(f"zotero_item_key: {_yaml_safe(zotero_item_key)}")
-        if zotero_attachment_path is not None:
-            lines.append(f'zotero_attachment_path: "{_yaml_double_quoted(zotero_attachment_path)}"')
-        if attachment_type is not None:
-            lines.append(f"attachment_type: {_yaml_safe(attachment_type)}")
         lines.extend(["---", ""])
         return "\n".join(lines) + "\n"

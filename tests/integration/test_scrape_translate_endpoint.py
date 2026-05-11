@@ -290,7 +290,9 @@ def test_scrape_translate_same_url_short_circuits(client):
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/read?file=already-here.md"
+    # Short-circuit redirects back to inbox root (UI option A: unified redirect),
+    # not to /read?file=... — the inbox row already shows the existing file.
+    assert resp.headers["location"] == "/"
     # Direct contract: short-circuit means URLDispatcher class was never even
     # instantiated by the route (BG task wasn't scheduled). The file-count
     # assertion below is a secondary check — both must hold.

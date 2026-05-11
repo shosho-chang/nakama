@@ -20,6 +20,8 @@ readability-lxml>=0.8.4  # Web scraping：備選去噪方案
 # sqlite3 is built-in
 sqlite-vec>=0.1.9          # KB hybrid retrieval: vec0 virtual table for dense-vector lane
 model2vec>=0.8.0           # KB hybrid retrieval: potion-base-8M 256-dim static embeddings
+FlagEmbedding>=1.4.0       # KB hybrid retrieval: BGE-M3 1024-dim default backend (ADR-022).
+                           # Heavy dep — ~2.3GB model weight downloaded on first use.
 
 # Zoro: Keyword Research
 google-api-python-client>=2.100.0  # YouTube Data API v3 + GSC Search Analytics
@@ -30,6 +32,7 @@ trendspy>=0.1.6                    # Google Trends (pytrends successor; pytrends
 opencc-python-reimplemented>=0.1.7  # 簡→繁（s2twp 模式）
 pypinyin>=0.51                      # LLM 校正：拼音輔助同音字辨識
 jieba>=0.42                         # 中文分詞：SRT sub-cue 拆分在詞邊界，不切斷雙字詞
+langdetect>=1.0.9                   # monolingual-zh pilot: lang ID for upload mode auto-detect
 # ASR (GPU 環境另裝): pip install whisperx pyannote.audio
 #   torch / torchaudio / torchvision 須 cu128 build：
 #   pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu128
@@ -39,9 +42,10 @@ jieba>=0.42                         # 中文分詞：SRT sub-cue 拆分在詞邊
 pymupdf4llm>=1.27
 pdfplumber>=0.11          # 精確表格提取（研究論文/教科書 with_tables=True）
 
-# EPUB parsing (textbook-ingest skill — ebook-format primary path per ADR-010)
+# EPUB parsing (textbook-ingest skill — ebook-format primary path per ADR-010; raw_ingest per ADR-020)
 ebooklib>=0.18            # EPUB structural reader (spine + TOC + metadata)
 beautifulsoup4>=4.12      # EPUB HTML → plain text + heading extraction
+markdownify>=1.2          # HTML → Markdown (ADR-020 Phase 0 raw converter)
 
 # Utilities
 python-dateutil>=2.9

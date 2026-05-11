@@ -1,8 +1,10 @@
 # Phase B reconciliation prompt template
 
-Parameterized template for the single Robin background subagent that reconciles a textbook's Phase A output: extracts wikilinks → dedupes against existing Concept pages → creates stubs → updates `mentioned_in:` backlinks → updates Book Entity status / KB/index.md / KB/log.md.
+Parameterized template for the single Robin background subagent that does cross-book housekeeping after Phase A+2 completes: audits backlink consistency → updates `mentioned_in:` gaps → flags unresolved wikilinks → updates Book Entity status / KB/index.md / KB/log.md.
 
-Dispatched ONCE per book after all Phase A subagents complete. See [ADR-016](../../../docs/decisions/ADR-016-parallel-textbook-ingest.md) §2.1 for why this is serial (shared mutable state — can't parallelize).
+**ADR-020 §Cross-source post-pass**: Phase A+2 subagents already inline-dispatch concept pages during ingest (S2). Phase B no longer creates stub Concept pages — that was the ADR-016 deferred approach superseded by inline dispatch. Phase B is now pure housekeeping.
+
+Dispatched ONCE per book after all Phase A+2 subagents complete. See [ADR-020](../../../docs/decisions/ADR-020-textbook-ingest-v3.md) §Phase-B for why this is serial (shared mutable state — can't parallelize).
 
 Driver fills variables and dispatches via `Agent({subagent_type: 'general-purpose', model: 'opus', run_in_background: true, prompt: <filled template>})`.
 
@@ -24,17 +26,22 @@ Driver fills variables and dispatches via `Agent({subagent_type: 'general-purpos
 ## Template (fill variables, paste as `prompt` to Agent tool)
 
 ```
-You are the Phase B reconciliation agent for the *{book_title}* (`{book_id}`) Obsidian KB ingest. Phase A produced {chapter_count} chapter pages (`ch1.md` through `ch{chapter_count}.md`) at `{book_sources_dir}\`. Your job: reconcile the karpathy-style cross-source wiki.
+You are the Phase B housekeeping agent for the *{book_title}* (`{book_id}`) Obsidian KB ingest. Phase A+2 produced {chapter_count} chapter pages (`ch1.md` through `ch{chapter_count}.md`) at `{book_sources_dir}\` AND inline-dispatched Concept pages per ADR-020 §Phase 2. Your job: post-ingest housekeeping — backlink consistency + gap audit + Book Entity + KB/index.md + KB/log.md.
 
 # Mission
 
-Make the wiki consistent: every `[[wikilink]]` in ch1-ch{chapter_count} should resolve to a Concept page that lists the chapter in `mentioned_in:` backlinks. Plus update Book Entity status + KB/index.md + KB/log.md.
+Ensure the wiki is consistent AFTER inline concept dispatch already ran:
+1. Every `[[wikilink]]` in ch1-ch{chapter_count} that maps to a Concept page has that chapter listed in its `mentioned_in:` frontmatter.
+2. Wikilinks with NO Concept page are flagged in the DoD report for human follow-up (do NOT create stubs — inline dispatch during Phase A+2 was the right time; stubs here create placeholder debt).
+3. Book Entity + KB/index.md + KB/log.md are updated.
 
 # Context
 
-Karpathy-style wiki design (per `docs/decisions/ADR-010-textbook-ingest.md`): Concept pages are shared across all KB sources. Each Concept's frontmatter `mentioned_in:` is a list of wikilinks back to source pages (chapters, articles) that reference it. When a new source mentions an existing concept, append to `mentioned_in` (no duplicate). When a new concept appears, create a stub Concept page.
+Karpathy-style wiki design (per `docs/decisions/ADR-010-textbook-ingest.md`): Concept pages are shared across all KB sources. Each Concept's frontmatter `mentioned_in:` is a list of wikilinks back to source pages (chapters, articles) that reference it.
 
-Earlier chapters (e.g. ch1-ch4 if part of a multi-session ingest) MAY already have Concept pages with partial mentioned_in. Handle reconciliation for ALL {chapter_count} chapters in case any have gaps.
+Phase A+2 subagents inline-dispatch Concept pages during ingest (ADR-020 S2). Phase B is NOT responsible for concept creation. It is responsible for catching any `mentioned_in:` gaps that inline dispatch may have missed (race conditions, dispatched noop without backlink update, etc.).
+
+Earlier chapters (e.g. ch1-ch4 if part of a multi-session ingest) MAY already have Concept pages with partial mentioned_in. Handle gap-fill for ALL {chapter_count} chapters.
 
 # Inputs (read in order)
 
@@ -77,32 +84,21 @@ Glob `E:\Shosho LifeOS\KB\Wiki\Concepts\*.md` to inventory existing slugs. For e
 - **NEW** (no file exists at `Concepts\{slug}.md`): needs stub creation in Step 3
 - **EXISTING** (file exists): needs mentioned_in update if chapters not already listed (Step 4)
 
-## Step 3 — Create stub Concept pages (NEW set)
+## Step 3 — Backlink consistency audit (gap report — no stub creation)
 
-For each new concept_slug, write `E:\Shosho LifeOS\KB\Wiki\Concepts\{slug}.md`:
+Phase A+2 inline dispatch already created Concept pages for concepts it dispatched. Phase B audits consistency and reports gaps.
 
-```yaml
----
-title: {slug}
-type: concept
-domain: {domain}
-mentioned_in:
-  - "[[Sources/Books/{book_id}/ch{N}]]"  # one per chapter that mentions
-schema_version: 1
-created: {ingest_date}
-created_by: phase-b-reconciliation
-status: stub
----
+**For each concept_slug in your map:**
 
-# {slug}
+- **EXISTS** with correct `mentioned_in:` entries → no action needed (note as "consistent" in DoD)
+- **EXISTS** but missing some `mentioned_in:` entries → backlink gap; handled in Step 4
+- **DOES NOT EXIST** → this is an unresolved wikilink; **DO NOT create a stub page**. Record it in the DoD gap list for human follow-up.
 
-(Stub — auto-created by Phase B reconciliation {ingest_date} to resolve wikilinks from {book_title} ingest. Will be enriched as Robin processes future ingests or as 修修 fills in body.)
-```
+**Why no stubs**: ADR-020 §Phase 2 mandates that Concept pages carry substantive body content — "Will be enriched later" stubs are explicitly forbidden (0 tolerance). Phase A+2 subagents had the chapter context to write real bodies; Phase B does not. Any concept page that wasn't created inline was either an L1 alias (intentionally not dispatched) or an error that needs human attention.
 
-**Slug filename sanitization**:
-- Chinese characters: keep as-is (Obsidian supports Unicode filenames)
-- Forward slash (`/`): replace with `-` for filename safety; preserve original in frontmatter `title`
-- Other illegal Windows filename chars (`:`, `*`, `?`, `<`, `>`, `|`, `"`, `\`): sanitize by replacing with `-`; preserve original in frontmatter `title`
+Build two lists for the DoD report:
+- `gap_concepts`: slugs with NO existing page (unresolved wikilinks) — report count + up to 20 sample slugs
+- `backlink_gaps`: existing pages missing some `mentioned_in:` entries — handled in Step 4
 
 ## Step 4 — Update mentioned_in on EXISTING Concept pages
 
@@ -142,8 +138,8 @@ Read `E:\Shosho LifeOS\KB\log.md` to learn its format. Append a new entry at the
 
 ```
 {ingest_date} — {book_title} (`{book_id}`) ch1-ch{chapter_count} ingest milestone:
-  - Phase A complete ({chapter_count} chapters) {pilot_notes_optional}
-  - Phase B reconciliation: {N_new} new Concept pages stubbed, {N_updated} existing Concept pages backlink-updated
+  - Phase A+2 complete ({chapter_count} chapters, inline concept dispatch) {pilot_notes_optional}
+  - Phase B housekeeping: {N_updated} existing Concept pages backlink-updated; {N_gaps} unresolved wikilinks flagged for human follow-up
   - Book Entity status: complete
 ```
 
@@ -160,8 +156,9 @@ Read `E:\Shosho LifeOS\KB\log.md` to learn its format. Append a new entry at the
 # DoD report (≤ 400 words)
 
 - Wikilink targets total / unique
-- New Concept pages created (count + 5-10 sample slugs)
-- Existing Concept pages updated (count + 5-10 sample slugs)
+- Concept pages with consistent backlinks (count — no action needed)
+- Existing Concept pages with backlink gaps updated (count + 5-10 sample slugs)
+- **Unresolved wikilinks** (no Concept page exists — for human follow-up): count + up to 20 sample slugs
 - Skipped (chapter cross-refs, entity refs, etc.): count
 - Book Entity status update: confirmed (before → after value)
 - KB/index.md: entries added (count + locations)

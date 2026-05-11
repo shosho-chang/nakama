@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "manifest_id": "mfst_complete_001",
+  "source_id": "ebook:abc123",
+  "created_at": "2026-05-09T12:00:00Z",
+  "status": "complete",
+  "replaces_manifest_id": null,
+  "recommender": {
+    "model_name": "claude-opus-4-7",
+    "model_version": "2026-04",
+    "run_params": {},
+    "recommended_at": "2026-05-09T12:00:00Z"
+  },
+  "items": [
+    {
+      "item_kind": "source_page",
+      "item_id": "page_ch3_001",
+      "recommendation": "include",
+      "action": "create",
+      "reason": "High-density evidence on HRV measurement protocol.",
+      "evidence": [
+        {
+          "kind": "chapter_quote",
+          "source_path": "data/books/abc123/original.epub",
+          "locator": "epubcfi(/6/14[ch3]!/4/2/16/1:0,/6/14[ch3]!/4/2/16/1:240)",
+          "excerpt": "HRV is a key biomarker of autonomic balance...",
+          "confidence": 0.92
+        }
+      ],
+      "risk": [],
+      "confidence": 0.88,
+      "source_importance": 0.85,
+      "reader_salience": 0.78,
+      "target_kb_path": null,
+      "chapter_ref": null,
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "approve",
+        "decided_at": "2026-05-09T12:00:00Z",
+        "decided_by": "shosho",
+        "note": null
+      }
+    },
+    {
+      "item_kind": "source_page",
+      "item_id": "page_ch4_001",
+      "recommendation": "exclude",
+      "action": "noop",
+      "reason": "Tangential to KB scope.",
+      "evidence": [],
+      "risk": [],
+      "confidence": 0.7,
+      "source_importance": 0.3,
+      "reader_salience": 0.2,
+      "target_kb_path": null,
+      "chapter_ref": null,
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "reject",
+        "decided_at": "2026-05-09T12:00:00Z",
+        "decided_by": "shosho",
+        "note": "out of scope"
+      }
+    }
+  ],
+  "commit_batches": [
+    {
+      "batch_id": "b_final_001",
+      "created_at": "2026-05-09T12:00:00Z",
+      "approved_item_ids": [
+        "page_ch3_001"
+      ],
+      "deferred_item_ids": [],
+      "rejected_item_ids": [
+        "page_ch4_001"
+      ],
+      "touched_files": [
+        {
+          "path": "KB/Wiki/Sources/why-we-sleep/chapter-3.md",
+          "operation": "create",
+          "before_hash": null,
+          "after_hash": "sha256:abc123def456",
+          "backup_path": null
+        }
+      ],
+      "errors": [],
+      "promotion_status": "complete"
+    }
+  ],
+  "metadata": {}
+}
