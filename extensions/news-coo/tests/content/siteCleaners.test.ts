@@ -318,6 +318,40 @@ describe("atyponCleaner", () => {
     expect(lis.length).toBe(1);
     expect(lis[0].id).toBe("ref-1");
   });
+
+  it("injects meta[name=author] from dc.Creator meta tags (NEJM)", () => {
+    const doc = makeDoc(`
+      <head>
+        <meta name="dc.Creator" content="Kerry S. Courneya">
+        <meta name="dc.Creator" content="Janette L. Vardy">
+      </head>
+      <body><p>x</p></body>
+    `);
+    atyponCleaner.clean(doc, "https://www.nejm.org/doi/10.1056/x");
+    const meta = doc.querySelector('head meta[name="author"]')!;
+    expect(meta.getAttribute("content")).toBe("Kerry S. Courneya, Janette L. Vardy");
+  });
+
+  it("falls back to .contributors span[property=author] for author meta", () => {
+    const doc = makeDoc(`
+      <head></head>
+      <body>
+        <div class="contributors">
+          <span property="author">
+            <span property="givenName">Kerry S.</span>
+            <span property="familyName">Courneya</span>
+          </span>
+          <span property="author">
+            <span property="givenName">Janette L.</span>
+            <span property="familyName">Vardy</span>
+          </span>
+        </div>
+      </body>
+    `);
+    atyponCleaner.clean(doc, "https://www.nejm.org/doi/10.1056/x");
+    const meta = doc.querySelector('head meta[name="author"]')!;
+    expect(meta.getAttribute("content")).toBe("Kerry S. Courneya, Janette L. Vardy");
+  });
 });
 
 describe("natureCleaner", () => {

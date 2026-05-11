@@ -184,6 +184,43 @@ export const atyponCleaner: SiteCleaner = {
       report.warnings.push("no references section found (tried " + REFS_SECTION_SELECTORS.join(", ") + ")");
     }
 
+    // 4. Inject `<meta name="author">` so Defuddle's metadata extractor picks
+    //    up the right author. NEJM exposes authors via `meta[name="dc.Creator"]`
+    //    (one per author); fall back to the .contributors author block.
+    const head = doc.querySelector("head");
+    if (head && !head.querySelector('meta[name="author"]')?.getAttribute("content")) {
+      const dcCreators = Array.from(
+        doc.querySelectorAll<HTMLMetaElement>(
+          'meta[name="dc.Creator"], meta[name="DC.Creator"]',
+        ),
+      ).map((m) => m.content?.trim()).filter((s): s is string => !!s);
+      let authorString = dcCreators.join(", ");
+      if (!authorString) {
+        const contribAuthors = Array.from(
+          doc.querySelectorAll<HTMLElement>(
+            '.contributors span[property="author"], .core-authors span[property="author"]',
+          ),
+        );
+        const names: string[] = [];
+        for (const span of contribAuthors) {
+          const given = span.querySelector('[property="givenName"]')?.textContent?.trim() ?? "";
+          const surname = span.querySelector('[property="familyName"]')?.textContent?.trim() ?? "";
+          const full = `${given} ${surname}`.trim();
+          if (full) names.push(full);
+        }
+        authorString = names.join(", ");
+      }
+      if (authorString) {
+        const existing = head.querySelector('meta[name="author"]');
+        if (existing) existing.remove();
+        const meta = doc.createElement("meta");
+        meta.setAttribute("name", "author");
+        meta.setAttribute("content", authorString);
+        head.appendChild(meta);
+        report.removedNodeCount++;
+      }
+    }
+
     return report;
   },
 };
