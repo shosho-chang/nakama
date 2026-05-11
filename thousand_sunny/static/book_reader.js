@@ -62,6 +62,7 @@ const noteText = document.getElementById('ann-note-text');
 const commentModal = document.getElementById('ann-comment-modal');
 const commentChapter = document.getElementById('ann-comment-chapter');
 const commentAnchor = document.getElementById('ann-comment-anchor');
+const commentAnchorRow = document.getElementById('ann-comment-anchor-row');
 const commentBody = document.getElementById('ann-comment-body');
 const commentsSidebar = document.getElementById('comments-sidebar');
 const commentsList = document.getElementById('comments-list');
@@ -69,6 +70,34 @@ const commentsToggle = document.getElementById('commentsToggle');
 const commentsClose = document.getElementById('commentsClose');
 const addCommentBtn = document.getElementById('addCommentBtn');
 const toast = document.getElementById('ann-toast');
+
+// Annotation detail bubble (δ.1) — appears when user clicks an annotated
+// span. Reuses the foliate-js ``show-annotation`` event so we don't have
+// to re-implement hit testing.
+const annBubble = document.getElementById('ann-bubble');
+const annBubbleClose = document.getElementById('annBubbleClose');
+const annBubbleKind = annBubble ? annBubble.querySelector('[data-kind]') : null;
+const annBubbleExcerpt = annBubble ? annBubble.querySelector('[data-excerpt]') : null;
+const annBubbleNote = annBubble ? annBubble.querySelector('[data-note]') : null;
+const annBubbleMeta = annBubble ? annBubble.querySelector('[data-meta]') : null;
+
+// Reading-progress footer (δ.2).
+const rpfChapter = document.getElementById('rpfChapter');
+const rpfPosition = document.getElementById('rpfPosition');
+const rpfPercent = document.getElementById('rpfPercent');
+
+// section.href → real chapter label, walked from view.book.toc once the
+// EPUB opens. Falls back to section.id / href when TOC is incomplete (δ.3).
+const _chapterLabelByHref = new Map();
+
+// ζ.5 — TOC ancestry. ``_chapterEntries`` is the flat list of "chapter-
+// level" TOC entries (heuristic: depth 1 if Parts exist at depth 0, else
+// depth 0). ``_chapterIndexByHref`` maps every section.href in a chapter's
+// subtree → that chapter's index in the flat list. Used by the progress
+// footer to show "第 X / Y 章" and the right chapter title even when
+// foliate-js's deepest tocItem is a sub-heading like "支柱一：身分".
+let _chapterEntries = [];
+const _chapterIndexByHref = new Map();
 
 let currentSet = null;       // AnnotationSetV2 mirror
 let bookVersionHash = document.body.dataset.bookVersionHash || '';
@@ -223,44 +252,212 @@ function rebuildCommentsSidebar() {
 
     const chap = document.createElement('div');
     chap.className = 'chap';
-    chap.textContent = c.chapter_ref || '(無章節)';
+    // δ.3 / ε.3 — robust chapter label lookup tries multiple href key shapes
+    // (full path / basename / decoded) before falling back to the raw ref.
+    chap.textContent = _labelForChapterRef(c.chapter_ref);
     card.appendChild(chap);
 
     const preview = document.createElement('div');
     preview.className = 'preview';
     const body = c.body || '';
-    const collapsed = body.length > 80 ? `${body.slice(0, 80)}…` : body;
-    preview.textContent = collapsed;
+    // ε.4 — sidebar always shows the same fixed-length preview; the full
+    // body lives behind the click → modal. The previous toggle-in-place
+    // pattern made the card grow unboundedly inside the 360-px sidebar.
+    preview.textContent = body.length > 80 ? `${body.slice(0, 80)}…` : body;
     card.appendChild(preview);
 
-    let expanded = false;
-    const toggle = () => {
-      expanded = !expanded;
-      preview.textContent = expanded ? body : collapsed;
-      card.classList.toggle('expanded', expanded);
-    };
-    card.addEventListener('click', toggle);
+    const open = () => openReflectionModal(c);
+    card.addEventListener('click', open);
     card.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        toggle();
+        open();
       }
     });
     commentsList.appendChild(card);
   }
 }
 
-function populateChapterSelect() {
-  if (!view.book || !view.book.sections) return;
-  commentChapter.innerHTML = '';
-  view.book.sections.forEach((section, idx) => {
-    const opt = document.createElement('option');
-    const ref = section.id || section.href || `section-${idx}`;
-    opt.value = ref;
-    opt.textContent = section.label || section.id || section.href || `Section ${idx + 1}`;
-    commentChapter.appendChild(opt);
+// ε.4 — reflection full-text viewer. Sidebar cards now open this modal on
+// click; the previous inline expand is replaced because a multi-paragraph
+// reflection is unreadable in the 360-px sidebar width.
+const reflectionModal = document.getElementById('reflection-modal');
+const reflectionModalChapter = document.getElementById('reflectionModalChapter');
+const reflectionModalTime = document.getElementById('reflectionModalTime');
+const reflectionModalBody = document.getElementById('reflectionModalBody');
+
+function openReflectionModal(item) {
+  if (!reflectionModal) return;
+  reflectionModalChapter.textContent = _labelForChapterRef(item.chapter_ref);
+  reflectionModalTime.textContent = item.created_at || '';
+  reflectionModalBody.textContent = item.body || '';
+  reflectionModal.showModal();
+}
+
+// δ.3 / ε.3 — walk view.book.toc (recursive children) and build a href →
+// label map. EPUB TOC hrefs and spine section hrefs frequently disagree on
+// directory prefix (TOC uses paths relative to the OPF, spine sections may
+// be absolute or include the OEBPS/ prefix), so we index three keys per
+// TOC entry: the bare path, the basename, and the percent-decoded path.
+// Lookup tries full path → basename → decoded path before giving up.
+function _hrefKeys(rawHref) {
+  if (!rawHref) return [];
+  const bare = rawHref.split('#')[0];
+  const keys = new Set([bare]);
+  // Strip leading directory segments → basename. Tolerates both / and \.
+  const base = bare.split(/[\\/]/).pop();
+  if (base) keys.add(base);
+  // Some EPUBs URL-encode TOC hrefs but spine sections come back decoded.
+  try {
+    const decoded = decodeURIComponent(bare);
+    keys.add(decoded);
+    const decodedBase = decoded.split(/[\\/]/).pop();
+    if (decodedBase) keys.add(decodedBase);
+  } catch (_) { /* invalid % escape — ignore */ }
+  return [...keys];
+}
+
+function _buildChapterLabelMap() {
+  _chapterLabelByHref.clear();
+  _chapterEntries = [];
+  _chapterIndexByHref.clear();
+  if (!view.book || !view.book.toc) return;
+
+  // First pass: build the flat "chapter level" list.
+  // Heuristic: if any depth-0 entry has children, treat depth-0 as Parts
+  // and depth-1 as Chapters. Otherwise depth-0 IS the chapter level.
+  const top = view.book.toc;
+  const hasParts = top.some(e => e.subitems && e.subitems.length);
+  const chapterDepth = hasParts ? 1 : 0;
+
+  const collectChapterEntries = (entries, depth) => {
+    for (const entry of entries || []) {
+      if (depth === chapterDepth) _chapterEntries.push(entry);
+      if (entry.subitems && entry.subitems.length) {
+        collectChapterEntries(entry.subitems, depth + 1);
+      }
+    }
+  };
+  collectChapterEntries(top, 0);
+
+  // Second pass: full label map (deepest-leaf-first-wins for backward
+  // compat with the inline reflection-card title), AND href → chapter
+  // index map (every href in a chapter's subtree maps to that chapter).
+  const walkLabel = (entries) => {
+    for (const entry of entries || []) {
+      if (entry.href && entry.label) {
+        const label = entry.label.trim();
+        for (const key of _hrefKeys(entry.href)) {
+          if (!_chapterLabelByHref.has(key)) _chapterLabelByHref.set(key, label);
+        }
+      }
+      if (entry.subitems && entry.subitems.length) walkLabel(entry.subitems);
+    }
+  };
+  walkLabel(top);
+
+  _chapterEntries.forEach((chapter, chapterIdx) => {
+    const collectHrefs = (entry) => {
+      if (entry.href) {
+        for (const key of _hrefKeys(entry.href)) {
+          if (!_chapterIndexByHref.has(key)) _chapterIndexByHref.set(key, chapterIdx);
+        }
+      }
+      if (entry.subitems) entry.subitems.forEach(collectHrefs);
+    };
+    collectHrefs(chapter);
   });
-  if (currentChapter) commentChapter.value = currentChapter;
+
+  // Diagnostic — surfaces in browser console when TOC matching fails so
+  // the failure mode is visible without re-running the build.
+  console.debug(
+    'chapter label map built',
+    {
+      labels: _chapterLabelByHref.size,
+      chapters: _chapterEntries.length,
+      hasParts,
+      chapterDepth,
+      chapter_titles: _chapterEntries.map(c => c.label),
+    },
+  );
+}
+
+// ζ.5 — given the current relocate detail, find which chapter the user is
+// in. Walks up tocItem ancestry by matching href to ``_chapterIndexByHref``.
+function _resolveCurrentChapter(detail) {
+  // Try the deepest tocItem first; fall back to the section href via the
+  // index map.
+  const candidates = [];
+  if (detail.tocItem && detail.tocItem.href) candidates.push(detail.tocItem.href);
+  if (view.book && view.book.sections && detail.section
+      && typeof detail.section.current === 'number') {
+    const sec = view.book.sections[detail.section.current];
+    if (sec && sec.href) candidates.push(sec.href);
+    if (sec && sec.id) candidates.push(sec.id);
+  }
+  for (const href of candidates) {
+    for (const key of _hrefKeys(href)) {
+      if (_chapterIndexByHref.has(key)) {
+        const idx = _chapterIndexByHref.get(key);
+        return { idx, entry: _chapterEntries[idx] };
+      }
+    }
+  }
+  return null;
+}
+
+function _chapterLabelFor(section, idx) {
+  for (const key of _hrefKeys(section.href || section.id || '')) {
+    if (_chapterLabelByHref.has(key)) return _chapterLabelByHref.get(key);
+  }
+  return section.label || section.id || section.href || `Section ${idx + 1}`;
+}
+
+function _labelForChapterRef(rawRef) {
+  for (const key of _hrefKeys(rawRef || '')) {
+    if (_chapterLabelByHref.has(key)) return _chapterLabelByHref.get(key);
+  }
+  return rawRef || '(無章節)';
+}
+
+function populateChapterSelect() {
+  // ζ.2 — list only TOC chapter-level entries (skip spine sections that
+  // don't correspond to a TOC chapter, like sub-heading anchors or back
+  // matter without a TOC entry). Falls back to all sections when TOC
+  // resolution failed (rare but defensive).
+  commentChapter.innerHTML = '';
+  if (_chapterEntries.length > 0) {
+    _chapterEntries.forEach((chapter) => {
+      const opt = document.createElement('option');
+      opt.value = (chapter.href || '').split('#')[0];
+      opt.textContent = (chapter.label || chapter.href || 'Chapter').trim();
+      commentChapter.appendChild(opt);
+    });
+  } else if (view.book && view.book.sections) {
+    view.book.sections.forEach((section, idx) => {
+      const opt = document.createElement('option');
+      const ref = section.id || section.href || `section-${idx}`;
+      opt.value = ref;
+      opt.textContent = _chapterLabelFor(section, idx);
+      commentChapter.appendChild(opt);
+    });
+  }
+
+  // Pre-select the chapter the user is currently reading. ``currentChapter``
+  // tracks the section href, but the dropdown values are TOC chapter hrefs
+  // — match them via the chapter index map.
+  if (currentChapter) {
+    let matchedHref = null;
+    for (const key of _hrefKeys(currentChapter)) {
+      if (_chapterIndexByHref.has(key)) {
+        const idx = _chapterIndexByHref.get(key);
+        const ch = _chapterEntries[idx];
+        if (ch && ch.href) { matchedHref = ch.href.split('#')[0]; break; }
+      }
+    }
+    if (matchedHref) commentChapter.value = matchedHref;
+    else commentChapter.value = currentChapter;
+  }
 }
 
 // ── Selection capture ────────────────────────────────────────────────────────
@@ -376,11 +573,11 @@ async function actionHighlight() {
     cfi: lastSelection.cfi,
     text_excerpt: lastSelection.text,
     book_version_hash: bookVersionHash,
+    text: lastSelection.text,
     created_at: ts,
     modified_at: ts,
   };
   hidePopup();
-  // Render first; if persist fails, leave the overlay (user may retry).
   try { view.addAnnotation({ value: item.cfi, color: ANN_HIGHLIGHT_COLOR }); } catch (_) { /* ignore */ }
   await appendItemAndPersist(item);
 }
@@ -426,7 +623,11 @@ function openCommentModal() {
   populateChapterSelect();
   commentBody.value = '';
   commentAnchor.checked = false;
-  commentAnchor.disabled = !(lastSelection && lastSelection.cfi);
+  // δ.4 — only show the "綁到剛選取的段落" toggle when there is a live
+  // selection; otherwise the row is irrelevant noise.
+  const hasSelection = !!(lastSelection && lastSelection.cfi);
+  commentAnchor.disabled = !hasSelection;
+  if (commentAnchorRow) commentAnchorRow.hidden = !hasSelection;
   hidePopup();
   commentModal.showModal();
   setTimeout(() => commentBody.focus(), 0);
@@ -473,6 +674,10 @@ popup.addEventListener('click', e => {
 // Modal cancel buttons
 noteModal.querySelector('[data-cancel]').addEventListener('click', () => noteModal.close('cancel'));
 commentModal.querySelector('[data-cancel]').addEventListener('click', () => commentModal.close('cancel'));
+if (reflectionModal) {
+  const closeBtn = reflectionModal.querySelector('[data-cancel]');
+  if (closeBtn) closeBtn.addEventListener('click', () => reflectionModal.close('cancel'));
+}
 
 // Modal submit handlers — intercept the dialog's submit so we can validate
 // and POST before the dialog closes.
@@ -906,6 +1111,11 @@ view.addEventListener('load', e => {
     // when focus is inside the EPUB content (foliate-js demo does the same in
     // vendor/foliate-js/reader.js:195).
     doc.addEventListener('keydown', handleNavKey);
+    // ζ.4 — clicks inside the iframe don't bubble to the host document, so
+    // the click-outside-dismiss handler above never sees them. Mirror it
+    // here. The deferred check leaves the bubble alone if a fresh
+    // show-annotation just (re-)opened it for a different annotation.
+    doc.addEventListener('click', _maybeDismissBubble);
   }
 });
 
@@ -921,7 +1131,138 @@ view.addEventListener('relocate', e => {
 
   const payload = buildProgressFromRelocate(detail);
   updateProgressBar(payload.percent);
+  updateProgressFooter(detail);
   scheduleProgressWrite(payload);
+});
+
+// δ.2 / ε.2 — fixed-bottom progress footer showing real chapter title +
+// position + percent. ``detail.index`` is consumed by foliate-js's internal
+// ``#onRelocate`` and stripped before the public event fires; the position
+// counter must read ``detail.section.{current,total}`` (a 0-based section
+// index + total) instead.
+function updateProgressFooter(detail) {
+  if (!rpfChapter || !rpfPosition || !rpfPercent) return;
+
+  // ζ.5 — chapter title + X / Y 章 are derived from the TOC chapter level,
+  // not from foliate's deepest tocItem (which would surface "支柱一：身分"
+  // instead of the parent chapter "投資組合人生的四大支柱") and not from
+  // detail.section (spine sections include sub-files that aren't chapters).
+  const chapter = _resolveCurrentChapter(detail);
+  const totalChapters = _chapterEntries.length;
+
+  if (chapter && chapter.entry && chapter.entry.label) {
+    rpfChapter.textContent = chapter.entry.label.trim();
+    rpfPosition.textContent = totalChapters > 0
+      ? `第 ${chapter.idx + 1} / ${totalChapters} 章`
+      : '第 — / — 章';
+  } else {
+    // Fallback for positions outside any chapter (e.g. front matter):
+    // show whatever label foliate has, drop the X/Y count.
+    if (detail.tocItem && detail.tocItem.label) {
+      rpfChapter.textContent = detail.tocItem.label.trim();
+    } else {
+      rpfChapter.textContent = '—';
+    }
+    rpfPosition.textContent = totalChapters > 0
+      ? `共 ${totalChapters} 章`
+      : '';
+  }
+
+  const pct = typeof detail.fraction === 'number' ? detail.fraction : 0;
+  rpfPercent.textContent = `${Math.round(pct * 100)}%`;
+}
+
+// δ.1 / ζ.1 / ζ.3 — annotation detail bubble. Behaviours:
+// - Highlights (no note) DO NOT pop the bubble — there's nothing extra to
+//   show beyond the colored overlay itself.
+// - Annotations show only the note (skip the redundant excerpt — the user
+//   already sees the highlighted text on the page).
+// - Reflections with a cfi_anchor show the body text.
+// - Click anywhere outside the bubble dismisses it (handled separately).
+let _bubbleShownAt = 0;
+
+function showAnnotationBubble(value) {
+  if (!annBubble || !currentSet || !Array.isArray(currentSet.items)) return;
+  const item = currentSet.items.find(it => (it.cfi || it.cfi_anchor) === value);
+  if (!item) return;
+  // ζ.1 — highlights have nothing to add beyond the overlay color.
+  if (item.type === 'highlight') return;
+
+  const kind = item.type === 'comment' ? 'reflection' : item.type;
+  annBubbleKind.textContent = ({
+    annotation: '註解',
+    reflection: '反思',
+  })[kind] || kind;
+  annBubbleKind.dataset.kind = kind;
+
+  // ζ.3 — annotations: show ONLY the note (skip the excerpt; user already
+  // sees the highlighted text on the page). Reflections: show the body
+  // (no excerpt either — reflections don't carry one in v3 schema).
+  annBubbleExcerpt.hidden = true;
+  annBubbleExcerpt.textContent = '';
+  const noteText = item.note || item.body || '';
+  if (noteText) {
+    annBubbleNote.hidden = false;
+    annBubbleNote.textContent = noteText;
+  } else {
+    annBubbleNote.hidden = true;
+    annBubbleNote.textContent = '';
+  }
+  const created = item.created_at || '';
+  annBubbleMeta.textContent = created ? `建立於 ${created}` : '';
+  annBubble.hidden = false;
+  _bubbleShownAt = Date.now();
+}
+
+function hideAnnotationBubble() {
+  if (annBubble) annBubble.hidden = true;
+}
+
+view.addEventListener('show-annotation', e => {
+  const value = e.detail && e.detail.value;
+  if (value) showAnnotationBubble(value);
+});
+
+// ε.1 — foliate-js attaches overlays to the **currently-loaded section
+// iframe only**. When the user paginates into a section that hasn't been
+// rendered before, a fresh overlayer is created and the previously-applied
+// annotations are NOT re-attached automatically. The library emits
+// ``create-overlay`` on each new section iframe; re-running the full render
+// is cheap (addAnnotation is a no-op for non-current sections so cross-talk
+// is not a concern) and keeps highlights visible across navigation +
+// after closing the detail bubble (which itself triggers a re-paint that
+// can drop overlays in some EPUBs).
+view.addEventListener('create-overlay', () => {
+  if (currentSet && Array.isArray(currentSet.items)) renderAllExisting();
+});
+
+if (annBubbleClose) annBubbleClose.addEventListener('click', hideAnnotationBubble);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && annBubble && !annBubble.hidden) {
+    e.preventDefault();
+    hideAnnotationBubble();
+  }
+});
+// ζ.4 — click anywhere outside the bubble dismisses it. Two paths:
+// (a) clicks on the host document (outside the iframe entirely)
+// (b) clicks INSIDE an iframe (handled in the ``load`` handler, see below)
+// Both defer with setTimeout(0) so a click that just fired
+// ``show-annotation`` (which re-shows the bubble for a different item)
+// doesn't get immediately undone.
+function _maybeDismissBubble() {
+  setTimeout(() => {
+    if (!annBubble || annBubble.hidden) return;
+    // If the bubble was just (re-)shown within this same click cycle,
+    // leave it alone. The 30 ms window absorbs ordering jitter between
+    // the foliate hit-test handler and our document listener.
+    if (Date.now() - _bubbleShownAt < 30) return;
+    hideAnnotationBubble();
+  }, 0);
+}
+document.addEventListener('click', e => {
+  if (!annBubble || annBubble.hidden) return;
+  if (annBubble.contains(e.target)) return;
+  _maybeDismissBubble();
 });
 
 // foliate-js requires a `draw-annotation` listener for our addAnnotation calls
@@ -963,6 +1304,10 @@ view.addEventListener('draw-annotation', e => {
       // sessions shouldn't count toward total_reading_seconds.
       lastRelocateAt = 0;
     }
+
+    // δ.3 — build href→label map from view.book.toc; populated once after
+    // view.open() finishes so view.book is ready.
+    _buildChapterLabelMap();
 
     // Load metadata + annotations after the book opens so sections are
     // available for chapter <select> population.

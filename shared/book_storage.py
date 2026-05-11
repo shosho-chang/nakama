@@ -167,8 +167,8 @@ def insert_book(book: Book) -> None:
     conn.execute(
         """INSERT OR REPLACE INTO books
            (book_id, title, author, lang_pair, genre, isbn, published_year,
-            has_original, book_version_hash, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            has_original, book_version_hash, created_at, mode)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             book.book_id,
             book.title,
@@ -180,6 +180,7 @@ def insert_book(book: Book) -> None:
             1 if book.has_original else 0,
             book.book_version_hash,
             book.created_at,
+            book.mode,
         ),
     )
     conn.commit()
@@ -202,10 +203,15 @@ def list_books() -> list[Book]:
 
 
 def _row_to_book(row: sqlite3.Row) -> Book:
+    # ``mode`` defends against rows written before the migration applied;
+    # the schema-default fires when the column is absent or NULL.
+    keys = row.keys() if hasattr(row, "keys") else []
+    mode_value = row["mode"] if "mode" in keys and row["mode"] else "bilingual-en-zh"
     return Book(
         book_id=row["book_id"],
         title=row["title"],
         author=row["author"],
+        mode=mode_value,
         lang_pair=row["lang_pair"],
         genre=row["genre"],
         isbn=row["isbn"],

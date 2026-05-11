@@ -39,6 +39,54 @@
   .reader-bar .back:hover, .reader-bar .back:focus-visible { border-color: var(--accent); outline: none; }
   .reader-bar .title { font-size: 0.95rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .reader-bar .meta { font-size: 0.8rem; color: var(--text-muted); }
+  .mode-badge { font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+  .mode-badge-zh { background: var(--accent-soft, #ede9fe); color: var(--accent, #6c63ff); border-color: var(--accent, #6c63ff); }
+  .mode-badge-bi { background: transparent; }
+
+  /* Annotation detail bubble — fixed at viewport bottom, above the progress
+     footer. Width capped so long excerpts wrap, height capped with scroll
+     so a long note never blows up to fill the screen. */
+  .ann-bubble { position: fixed; left: 50%; bottom: 3rem; transform: translateX(-50%); z-index: 80;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px;
+    padding: 0.85rem 1rem 0.7rem; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    width: min(640px, calc(100vw - 2rem)); max-height: 50vh; overflow-y: auto;
+  }
+  .ann-bubble[hidden] { display: none; }
+  .ann-bubble-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem; }
+  .ann-bubble-kind { font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 999px; }
+  .ann-bubble-kind[data-kind="highlight"] { background: var(--highlight); color: #1a1a1a; }
+  .ann-bubble-kind[data-kind="annotation"] { background: var(--annotation); color: #fff; }
+  .ann-bubble-kind[data-kind="reflection"] { background: var(--comment); color: #fff; }
+  .ann-bubble-close { background: transparent; border: none; color: var(--text-muted); font-size: 1.2rem; line-height: 1; padding: 0 0.25rem; cursor: pointer; border-radius: 6px; }
+  .ann-bubble-close:hover, .ann-bubble-close:focus-visible { background: var(--bg); color: var(--text); outline: none; }
+  .ann-bubble-excerpt { font-size: 0.9rem; line-height: 1.55; padding: 0.4rem 0.6rem; border-left: 3px solid var(--accent); background: var(--bg); border-radius: 4px; margin-bottom: 0.5rem; white-space: pre-wrap; }
+  .ann-bubble-note { font-size: 0.92rem; line-height: 1.55; color: var(--text); white-space: pre-wrap; padding-top: 0.4rem; border-top: 1px dashed var(--border); }
+  .ann-bubble-note[hidden] { display: none; }
+  .ann-bubble-meta { margin-top: 0.5rem; font-size: 0.72rem; color: var(--text-muted); }
+
+  /* Reading progress footer — fixed strip at viewport bottom showing chapter
+     position + percent. Lives below the bubble in z-order so opening the
+     bubble doesn't push it. */
+  .reader-progress-footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9;
+    display: flex; align-items: center; justify-content: center; gap: 0.55rem;
+    padding: 0.4rem 1rem; background: var(--surface); border-top: 1px solid var(--border);
+    font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; overflow: hidden;
+  }
+  .reader-progress-footer .rpf-chapter { color: var(--text); font-weight: 500; max-width: 50vw; overflow: hidden; text-overflow: ellipsis; }
+  .reader-progress-footer .rpf-sep { opacity: 0.5; }
+  .reader-progress-footer .rpf-percent { font-variant-numeric: tabular-nums; }
+  /* Pad reader-shell so the footer doesn't cover content. */
+  .reader-shell { padding-bottom: 2.2rem; }
+
+  /* Full-text reflection viewer — wider than the standard ann-dialog so a
+     500-2000 char reflection is comfortable to read. */
+  dialog.reflection-dialog { max-width: 720px; width: 92%; }
+  .reflection-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .reflection-modal-head h2 { margin: 0; }
+  .reflection-modal-meta { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.7rem; }
+  .reflection-modal-meta .rm-chapter { color: var(--text); font-weight: 500; }
+  .reflection-modal-meta .rm-sep { opacity: 0.5; margin: 0 0.4rem; }
+  .reflection-modal-body { font-size: 0.95rem; line-height: 1.7; color: var(--text); white-space: pre-wrap; max-height: 65vh; overflow-y: auto; padding: 0.5rem 0.2rem; }
   .reader-bar .right { display: flex; gap: 0.5rem; align-items: center; }
   .icon-btn { background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 0.4rem 0.7rem; font-size: 0.85rem; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
   .icon-btn:hover, .icon-btn:focus-visible { border-color: var(--accent); background: var(--bg); outline: none; }
@@ -109,18 +157,25 @@
   }
 </style>
 </head>
-<body data-book-version-hash="{{ book.book_version_hash }}">
+<body data-book-version-hash="{{ book.book_version_hash }}" data-book-mode="{{ book.mode }}">
 <div class="reader-bar">
   <div class="left">
     <a href="/books" class="back">← 書架</a>
     <span class="title" title="{{ book.title }}">{{ book.title }}</span>
     {% if book.author %}<span class="meta">· {{ book.author }}</span>{% endif %}
+    {% if book.mode == "monolingual-zh" %}
+    <span class="mode-badge mode-badge-zh" title="純中文書 — Phase 1 pilot">純中文</span>
+    {% else %}
+    <span class="mode-badge mode-badge-bi" title="雙語：英文原檔 + 繁中對照">雙語</span>
+    {% endif %}
   </div>
   <nav class="right">
     <a href="/" class="icon-btn" style="text-decoration:none">📥 Inbox</a>
+    {% if book.mode != "monolingual-zh" %}
     <span class="ingest-wrap" id="ingestWrap">
       <button type="button" class="icon-btn" id="ingestBtn" aria-label="送出整本書 ingest 請求" disabled>📥 Ingest 整本書</button>
     </span>
+    {% endif %}
     <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 反思</button>
     <button type="button" class="icon-btn" id="darkToggle" aria-label="切換深色模式" aria-pressed="false">🌙 夜間</button>
     <button type="button" class="icon-btn" id="deleteBookBtn" aria-label="刪除整本書" title="刪除整本書">🗑️</button>
@@ -131,6 +186,29 @@
 </div>
 <div class="reader-shell">
   <foliate-view id="view"></foliate-view>
+</div>
+
+<!-- Annotation detail bubble — shows saved excerpt + note when user clicks
+     a highlighted span in the page. Hidden by default; positioned fixed at
+     the bottom of the viewport so it never obscures the selection itself. -->
+<div id="ann-bubble" class="ann-bubble" hidden role="dialog" aria-label="標註內容">
+  <div class="ann-bubble-head">
+    <span class="ann-bubble-kind" data-kind></span>
+    <button type="button" class="ann-bubble-close" id="annBubbleClose" aria-label="關閉">×</button>
+  </div>
+  <div class="ann-bubble-excerpt" data-excerpt></div>
+  <div class="ann-bubble-note" data-note hidden></div>
+  <div class="ann-bubble-meta" data-meta></div>
+</div>
+
+<!-- Reading progress footer —章節 X / Y · NN% · CFI tooltip. Fixed bottom
+     bar that shows the user where they are in the book. -->
+<div id="reader-progress-footer" class="reader-progress-footer" aria-live="polite">
+  <span class="rpf-chapter" id="rpfChapter">—</span>
+  <span class="rpf-sep">·</span>
+  <span class="rpf-position" id="rpfPosition">第 — / — 章</span>
+  <span class="rpf-sep">·</span>
+  <span class="rpf-percent" id="rpfPercent">0%</span>
 </div>
 
 <div id="ann-popup" class="ann-popup" hidden role="toolbar" aria-label="標註選單">
@@ -161,9 +239,9 @@
       <label for="ann-comment-chapter">章節</label>
       <select id="ann-comment-chapter"></select>
     </div>
-    <div class="row checkbox-row">
+    <div class="row checkbox-row" id="ann-comment-anchor-row" hidden>
       <input type="checkbox" id="ann-comment-anchor">
-      <label for="ann-comment-anchor">把這個反思錨定到目前選取的位置（CFI）</label>
+      <label for="ann-comment-anchor">綁到剛選取的段落（除了章節之外，也記住確切位置）</label>
     </div>
     <div class="row">
       <label for="ann-comment-body">反思內容</label>
@@ -186,6 +264,24 @@
     <div class="empty">尚無反思。點上方 + 新增章節反思，或選取文字後按「C 反思」錨定到具體段落。</div>
   </div>
 </aside>
+
+<!-- ε.4 — full-text reflection viewer. Side-bar cards only show a 80-char
+     preview; clicking a card opens this dialog with the full body, chapter
+     label, and timestamps so a multi-paragraph reflection is readable. -->
+<dialog id="reflection-modal" class="ann-dialog reflection-dialog" aria-labelledby="reflection-modal-title">
+  <form method="dialog">
+    <div class="reflection-modal-head">
+      <h2 id="reflection-modal-title">💬 反思</h2>
+      <button type="button" value="cancel" data-cancel class="icon-btn" aria-label="關閉">×</button>
+    </div>
+    <div class="reflection-modal-meta">
+      <span class="rm-chapter" id="reflectionModalChapter">—</span>
+      <span class="rm-sep">·</span>
+      <span class="rm-time" id="reflectionModalTime">—</span>
+    </div>
+    <div class="reflection-modal-body" id="reflectionModalBody"></div>
+  </form>
+</dialog>
 
 <div id="ann-toast" role="status" aria-live="polite"></div>
 

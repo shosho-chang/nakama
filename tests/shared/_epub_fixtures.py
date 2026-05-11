@@ -246,6 +246,53 @@ def epub_clean() -> bytes:
     return make_epub_blob()
 
 
+_ZH_BODY_PARA = (
+    "粒線體是細胞內負責產生能量的胞器，透過氧化磷酸化將養分轉換為三磷酸腺苷。"
+    "近年研究顯示，粒線體功能失調與多種神經退化性疾病的發生密切相關。"
+    "本書將探討粒線體生物學的核心概念，並回顧相關的臨床轉譯研究。"
+)
+
+
+def epub_monolingual_zh(*, declare_lang: bool = True) -> bytes:
+    """Pure-Chinese EPUB for monolingual-zh pilot tests.
+
+    ``declare_lang=True`` sets ``<dc:language>zh-TW</dc:language>`` so
+    ``shared.source_mode.detect_book_mode`` resolves via metadata path.
+    ``declare_lang=False`` clears the metadata language so callers can
+    exercise the body-sample fallback in ``detect_lang``.
+    """
+    chapters = {
+        "ch1.xhtml": f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>第一章</title></head>
+<body>
+<h1>第一章 引言</h1>
+<p>{_ZH_BODY_PARA}</p>
+</body>
+</html>
+""",
+        "ch2.xhtml": f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>第二章</title></head>
+<body>
+<h1>第二章 章節討論</h1>
+<p>{_ZH_BODY_PARA}</p>
+</body>
+</html>
+""",
+    }
+    return make_epub_blob(
+        EPUBSpec(
+            title="粒線體生物學導論",
+            creator="測試作者",
+            language="zh-TW" if declare_lang else None,
+            chapters=chapters,
+        )
+    )
+
+
 def epub_minimal_metadata() -> bytes:
     """EPUB with ONLY identifier — title/creator/language/date all missing."""
     return make_epub_blob(
