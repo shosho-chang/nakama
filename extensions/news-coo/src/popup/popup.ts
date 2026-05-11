@@ -155,7 +155,7 @@ export async function initPopup(deps: PopupDeps): Promise<void> {
   async function updateSlug(): Promise<void> {
     const title = el<HTMLInputElement>("field-title").value;
     const slug = deps.slugify(title);
-    slugEl.textContent = `Inbox/kb/${slug}.md`;
+    slugEl.textContent = `${slug}.md`;
     const exists = await deps.checkSlugExists(handle!, slug);
     dedupWarnEl.hidden = !exists;
   }
@@ -189,7 +189,7 @@ async function handleSave(
 
   const exists = await deps.checkSlugExists(handle, slug);
   if (exists) {
-    el<HTMLElement>("dedup-existing-path").textContent = `Inbox/kb/${slug}.md`;
+    el<HTMLElement>("dedup-existing-path").textContent = `${slug}.md`;
     showOnly("state-dedup");
 
     el<HTMLButtonElement>("btn-overwrite").onclick = () =>

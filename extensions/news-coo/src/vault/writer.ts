@@ -1,4 +1,4 @@
-// FSA vault writer — writes Inbox/kb/{slug}.md (PRD §5.1).
+// FSA vault writer — writes {slug}.md at vault root.
 
 import type { ExtractedPage } from "../shared/types.js";
 import { buildFrontmatter } from "./frontmatter.js";
