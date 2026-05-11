@@ -28,12 +28,23 @@ function collectImageRefs(
   );
 }
 
-export function extractPage(doc: Document, url: string): ExtractedPage {
-  const result = new Defuddle(doc, { url, separateMarkdown: true }).parse();
-  const imageRefs = collectImageRefs(doc, result.content, url);
+export function extractPage(
+  doc: Document,
+  url: string,
+  selectionHtml?: string,
+): ExtractedPage {
+  let targetDoc = doc;
+  if (selectionHtml) {
+    // Create a minimal document containing only the selected fragment so
+    // Defuddle operates on the selection rather than the full page.
+    targetDoc = doc.implementation.createHTMLDocument(doc.title);
+    targetDoc.body.innerHTML = selectionHtml;
+  }
+  const result = new Defuddle(targetDoc, { url, separateMarkdown: true }).parse();
+  const imageRefs = collectImageRefs(targetDoc, result.content, url);
   return {
     url,
-    title: result.title ?? "",
+    title: result.title || doc.title || "",
     markdown: result.contentMarkdown ?? "",
     description: result.description ?? "",
     author: result.author ?? "",
