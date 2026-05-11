@@ -63,7 +63,7 @@ export const lancetCleaner: SiteCleaner = {
       } else {
         nums.forEach((n, i) => {
           const a = doc.createElement("a");
-          a.setAttribute("href", `#ref-${n}`);
+          a.setAttribute("href", `#fn:${n}`);
           a.textContent = n;
           newSup.appendChild(a);
           if (i < nums.length - 1) newSup.appendChild(doc.createTextNode(","));
@@ -86,7 +86,7 @@ export const lancetCleaner: SiteCleaner = {
         items.forEach((item, idx) => {
           const n = idx + 1;
           const li = doc.createElement("li");
-          li.id = `ref-${n}`;
+          li.id = `fn:${n}`;
           // Citation body — strip the in-list "View in article" reverse anchor.
           const cc = item.querySelector<HTMLElement>(".citation-content")
             ?? item.querySelector<HTMLElement>(".citations")

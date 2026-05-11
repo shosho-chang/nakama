@@ -117,7 +117,7 @@ describe("lancetCleaner", () => {
     expect(doc.querySelectorAll(".reference-citations__ctrl").length).toBe(0);
     // citation markers preserved as anchored sup → #ref-N
     const supAnchors = Array.from(doc.querySelectorAll("sup a"));
-    expect(supAnchors.map((a) => a.getAttribute("href"))).toEqual(["#ref-1", "#ref-2"]);
+    expect(supAnchors.map((a) => a.getAttribute("href"))).toEqual(["#fn:1", "#fn:2"]);
     expect(supAnchors.map((a) => a.textContent)).toEqual(["1", "2"]);
     // Reference body text gone from prose
     expect(doc.body.textContent).not.toContain("Lee, HW");
@@ -171,8 +171,8 @@ describe("lancetCleaner", () => {
     expect(section.querySelector("h2")?.textContent).toBe("References");
     const lis = section.querySelectorAll("ol > li");
     expect(lis.length).toBe(2);
-    expect(lis[0].id).toBe("ref-1");
-    expect(lis[1].id).toBe("ref-2");
+    expect(lis[0].id).toBe("fn:1");
+    expect(lis[1].id).toBe("fn:2");
     expect(lis[0].textContent).toContain("Lee, HW");
     expect(lis[0].textContent).toContain("Isolation of the etiologic agent");
     // The "View in article" reverse link should be gone
