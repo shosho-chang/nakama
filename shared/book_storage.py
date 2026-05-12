@@ -1,7 +1,9 @@
 """Filesystem + SQLite persistence for translated EPUB books.
 
-Filesystem layout (rooted at ``NAKAMA_BOOKS_DIR``, fallback ``data/books/``
-**resolved against cwd, NOT against the vault**):
+Filesystem layout (rooted at ``NAKAMA_BOOKS_DIR``, fallback
+``{repo_root}/data/books/`` — anchored to the ``shared`` package on
+disk, NOT to cwd, so uvicorn run from a sibling git worktree still
+resolves the same books directory the main repo uses):
 
     {books_root}/{book_id}/bilingual.epub
     {books_root}/{book_id}/original.epub   (only if has_original=True)
@@ -28,7 +30,15 @@ from typing import Literal
 from shared.schemas.books import Book
 from shared.state import _get_conn
 
-_DEFAULT_BOOKS_DIR = "data/books"
+# Repo root = parent of the ``shared`` package containing this file.
+# Anchoring the default books dir to the package location (NOT cwd)
+# means uvicorn spawned from anywhere — Scheduled Task, sibling worktree,
+# random shell — still resolves the same on-disk books directory the
+# main repo uses. The previous cwd-relative default silently routed
+# books into per-worktree ``data/books/`` directories that got wiped
+# when the worktree was removed.
+_PACKAGE_REPO_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_BOOKS_DIR = _PACKAGE_REPO_ROOT / "data" / "books"
 _MAX_BOOK_ID_LEN = 200
 
 
@@ -62,7 +72,9 @@ def books_root() -> Path:
     Resolution order:
 
     - ``NAKAMA_BOOKS_DIR`` env var if set (absolute or relative to cwd).
-    - Fallback ``data/books`` (relative to cwd).
+    - Fallback ``{repo_root}/data/books`` — anchored to the location of
+      the ``shared`` package on disk (NOT cwd). Decouples books from
+      the working directory of whatever process imported the module.
 
     The books root deliberately lives **outside the Obsidian vault** —
     EPUB binaries are local-machine-only and do not participate in vault
