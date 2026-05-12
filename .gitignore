@@ -73,3 +73,8 @@ agents/franky/state/franky_context_snapshot.md
 
 # Lock files for shared/ memory updates (working-tree-only state).
 memory/**/*.lock
+
+# curl cookie jars (may contain session tokens)
+cookie.txt
+cookies.txt
+*.cookies.txt
