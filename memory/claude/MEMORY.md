@@ -15,11 +15,13 @@
 - [project_kb_corpus_stub_crisis_2026_05_06.md](project_kb_corpus_stub_crisis_2026_05_06.md) — **5/6 KB corpus stub crisis**：KB Concept 大量空殼；ADR-020 textbook ingest rewrite 起手背景；任何 textbook ingest repair 必先讀。
 - [project_session_2026_05_06_07_s8_burn_handoff.md](project_session_2026_05_06_07_s8_burn_handoff.md) — **5/6→5/7 S8 batch burn handoff**：28 章 batch 大量 FAIL/ERROR，root cause 是 LLM emit body 違反 verbatim 設計；後續修復需避開 LLM batch。
 - [project_session_2026_05_07_path_b_plan_handoff.md](project_session_2026_05_07_path_b_plan_handoff.md) — **5/7 Path B plan handoff**：verbatim 從 walker literal 重組、保留 API path；Stage 1a 起手修 `_assemble_body` + tests。
+- [project_session_2026_05_07_pm_stage4_batch_handoff.md](project_session_2026_05_07_pm_stage4_batch_handoff.md) — **5/7 PM Stage 4 batch in-flight**：Path B 1a-1.5 全 ship + 2/3 全 PASS + Path C OAuth 撞 anti-automation 429 → fallback Path A worktree-isolated host batch 跑中（BSE 11/11 ✅、SN 2/17 in flight）；下次起手 = 確認 batch 完成→ Stage 4.5/5/6
 - [feedback_session_start_must_read_memory_md.md](feedback_session_start_must_read_memory_md.md) — 每次 session / compact reload 第一個 tool call 必讀 MEMORY.md；handoff doc 不能取代規則級 memory index。
 - [feedback_adr_principle_conflict_check.md](feedback_adr_principle_conflict_check.md) — 寫新 ADR / 改 pipeline 前必 explicit cross-check 受影響的既有 P-level 原則，避免 ADR 間沉默衝突。
 - [project_session_2026_05_08_adr021_complete_handoff.md](project_session_2026_05_08_adr021_complete_handoff.md) — **5/8 收工**：ADR-021 全 9 issue ship 完（#452-#460 全 merged）+ design-system.md v0→v1 + Reader UI #453 HITL B 區全 PASS + bench freeze (hybrid K=15)。剩 #461 E2E + #462 writing mode（前者 HITL final、後者 AFK ready）
 - [project_session_2026_05_06_overnight_4issue_sandcastle_ship.md](project_session_2026_05_06_overnight_4issue_sandcastle_ship.md) — **5/6 早報（修修睡覺期間獨力 ship）**：PR sync 5 條全 squash + sandcastle batch ship #431/#432/#433/#434（PR #436/#437/#438）— Line 2 hybrid retrieval engine + book digest + wikilink lane + ground truth signal 全產線就緒；待修修 manual smoke
 - [feedback_context_offload_isolated_subsystem.md](feedback_context_offload_isolated_subsystem.md) — **守 context window 的關鍵是 offload 工作到不會 surface 結果的子系統**（不是壓縮 prompt）：sandcastle docker > Agent tool > background bash > Monitor 4 級 isolation；主線只做 orchestration，5/6 AFK 4hr / 9 task / 22% context 實證
+- [feedback_sandcastle_default.md](feedback_sandcastle_default.md) — **能進 sandcastle 的就一定要進**：implementation 並行 wave 預設走 Agent isolation:worktree，不在主 tree 序列做
 - [project_session_2026_05_05_evening_reader_qa.md](project_session_2026_05_05_evening_reader_qa.md) — **5/5 evening 收工**：Reader 5 slice QA 全跑完 + 抓 3 hidden bug 補 PR #417/#418/#419 + 開 5 follow-up issue #420-#424（3 ready-for-agent / 2 needs-info）
 - [project_epub_reader_prd_2026_05_05.md](project_epub_reader_prd_2026_05_05.md) — **EPUB Reader 全規劃凍結**：PRD #378 + 5 slice issues #379-#383 + grill 9 題凍結 + sandcastle execution plan（保留下次起手 reference）
 - [feedback_deep_module_wiring_gap.md](feedback_deep_module_wiring_gap.md) — 深模組 + 單元測試全綠 ≠ 生產接通；新 public API 必補穿過真 caller 的 integration test（PR #414→#419 教訓）
@@ -58,6 +60,7 @@
 - [reference_vault_paths_mac.md](reference_vault_paths_mac.md) — Mac vault `/Users/shosho/Documents/Shosho LifeOS/` + Windows **active = `E:\Shosho LifeOS\`**（F: 已停用、stale Syncthing 殘留要避開）
 - [reference_vps_ssh.md](reference_vps_ssh.md) — VPS SSH alias `nakama-vps` → root@202.182.107.202
 - [feedback_conversation_end.md](feedback_conversation_end.md) — 「清對話」走 ephemeral handoff（`.nakama/`），**不再** auto-commit/push；durable memory 走 L1/L2 in-conversation trigger
+- [feedback_cross_session_continuity.md](feedback_cross_session_continuity.md) — User 在 new session 說「你之前/剛剛」= 上一個 session 的我做的，從 fs/git/log 推，不反覆強調 conversation log 沒做（PCIe 診斷教訓）
 - [reference_github_actions_paths_ignore_deadlock.md](reference_github_actions_paths_ignore_deadlock.md) — paths-ignore + required-check 死鎖：必加 ci-skip.yml 鏡像 paths workflow 才能 unblock 純 docs PR
 - [feedback_permission_setup.md](feedback_permission_setup.md) — acceptEdits 模式 + allow/deny 規則，rm 改回收桶，跨平台共用
 - [project_plugins_installed.md](project_plugins_installed.md) — 已安裝 6 個 Claude Code plugin（含 playwright、firecrawl）+ 評估不裝清單
@@ -80,6 +83,7 @@
 - [feedback_whisperx_pip_torch_downgrade.md](feedback_whisperx_pip_torch_downgrade.md) — pip install whisperx 會把 torch 從 cu128 降成 CPU；ML 套件 install 後必驗 cuda.is_available()，補回 cu128 wheel
 - [feedback_whisper_hallucination_guards.md](feedback_whisper_hallucination_guards.md) — Whisper 系列必設 `condition_on_previous_text=False` + `compression_ratio_threshold=2.4` + `no_speech_threshold=0.6`；initial_prompt 不用「主持人：X」label 結構（會被 echo 吃掉真實 audio）
 - [feedback_chinese_srt_word_boundary_jieba.md](feedback_chinese_srt_word_boundary_jieba.md) — 中文 SRT `_force_break` 走 jieba 詞邊界 greedy 累加，不純 char-level 硬切（PR #274 修 38 處詞被切）
+- [feedback_chinese_classical_judgment.md](feedback_chinese_classical_judgment.md) — 「好生 / 甚是 / 俱已 / 方才」等台灣繁中文雅副詞 Claude 易誤判 ASR 錯字；「不認得的詞」先當合法用法，baseline 對比 ≠ ground truth
 - [feedback_css_hidden_shadow.md](feedback_css_hidden_shadow.md) — CSS 對 selector 寫 `display:` 必同時補 `selector[hidden] { display: none }`，否則 `<div hidden>` 失效（PR #253 audit-failed 假警報根因）
 - [feedback_jinja_inline_js_autoescape.md](feedback_jinja_inline_js_autoescape.md) — `<script>` 內 Jinja 表達式最終 filter 必須是 `tojson` 或 `safe`；`{{ x|tojson if x else "''" }}` 的 else 分支會被 autoescape 成 `&#39;` JS SyntaxError（#266/#268 教訓）
 - [feedback_cf_bot_challenge_403_html.md](feedback_cf_bot_challenge_403_html.md) — client 收 403 + body 是 HTML（「Just a moment...」）= CF SBFM challenge 不是 auth fail；datacenter IP 必補穩定 UA + CF zone skip rule（PR #252 教訓）
@@ -128,6 +132,8 @@
 - [feedback_search_skills_first.md](feedback_search_skills_first.md) — 開發前必須先搜尋現有 skills/MCP tools，不重複造輪子
 - [feedback_prior_art_includes_internal_setup.md](feedback_prior_art_includes_internal_setup.md) — Prior-art audit 必含 repo 既有 runbooks + env keys + GCP setup；新建是 exception 要論證
 - [user_hardware.md](user_hardware.md) — 開發機：RTX 5070 Ti 16GB VRAM + 64GB RAM
+- [project_pcie_link_instability_2026_05_01.md](project_pcie_link_instability_2026_05_01.md) — **第三次掛機 2026-05-01**：hard hang 累計 3 次，修修明令全面暫停 GPU 重工作；transcribe 路徑也納入禁區直到查清
+- [feedback_no_gpu_heavy_work_until_user_ok.md](feedback_no_gpu_heavy_work_until_user_ok.md) — **P0 紅線**：桌機 GPU 重工作（refine/transcribe/任何 ASR/inference）一律不跑直到修修親口解禁；新 session 起手必讀
 - [project_hardware_purchase_evaluation.md](project_hardware_purchase_evaluation.md) — GPU 升級評估：Pro 4500/5000/6000 ladder + 自架 vs 雲端 hybrid 框架；上限 NTD 50 萬；revenue 來源是自由艦隊千人社群
 - [feedback_avoid_one_shot_summit.md](feedback_avoid_one_shot_summit.md) — 修修自陳「一次攻頂」反射；採購 / phase / scope 決策前主動 reframe 成 incremental，等真實 bottleneck 浮現再升級
 - [reference_github_plan_branch_protection.md](reference_github_plan_branch_protection.md) — GH free + private repo 不 enforce branch protection（API 403）；Pro $4/月解鎖；enforce_admins + required_status_checks contexts 兩個 silent gap
