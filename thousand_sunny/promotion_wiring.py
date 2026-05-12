@@ -64,24 +64,26 @@ class PromotionWiringConfig:
 
 
 def load_promotion_wiring_config() -> PromotionWiringConfig:
-    """Read ``NAKAMA_*`` env vars + apply documented defaults.
+    """Read vault + ``NAKAMA_*`` env vars + apply documented defaults.
 
     Required:
-    - ``NAKAMA_VAULT_ROOT`` — absolute path to the Obsidian vault root.
+    - ``VAULT_PATH`` — absolute path to the Obsidian vault root. The
+      canonical, repo-wide vault var used by ``shared.config``,
+      ``kb_writer``, ``discard_service`` etc.
 
     Optional:
     - ``NAKAMA_PROMOTION_MANIFEST_ROOT`` (default ``{vault}/.promotion-manifests``)
     - ``NAKAMA_READING_CONTEXT_PACKAGE_ROOT`` (default ``{vault}/.reading-context-packages``)
     - ``NAKAMA_PROMOTION_MODE`` (default ``"dry_run"``)
 
-    Raises ``RuntimeError`` when ``NAKAMA_VAULT_ROOT`` is missing — startup
-    must surface bad config loudly so operator visibility is preserved
-    (W4 / brief §6 boundary 7).
+    Raises ``RuntimeError`` when ``VAULT_PATH`` is missing — startup must
+    surface bad config loudly so operator visibility is preserved (W4 /
+    brief §6 boundary 7).
     """
-    vault_raw = os.environ.get("NAKAMA_VAULT_ROOT")
+    vault_raw = os.environ.get("VAULT_PATH")
     if not vault_raw:
         raise RuntimeError(
-            "NAKAMA_VAULT_ROOT is required when Robin/promotion wiring is enabled. "
+            "VAULT_PATH is required when Robin/promotion wiring is enabled. "
             "Set it in .env or unset DISABLE_ROBIN to skip wiring."
         )
     vault_root = Path(vault_raw)

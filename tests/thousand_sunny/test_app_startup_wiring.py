@@ -8,7 +8,7 @@ Brief §5 wiring tests:
 - WT3  ``GET /promotion-review/`` returns 200 (not 503) after wiring.
 - WT4  ``GET /writing-assist/{id_b64}`` for missing package → 404 (not 503).
 - WT5  ``DISABLE_ROBIN=1`` skips wiring.
-- WT6  Missing ``NAKAMA_VAULT_ROOT`` → startup raises.
+- WT6  Missing ``VAULT_PATH`` → startup raises.
 - WT7  ``NAKAMA_PROMOTION_MODE=llm`` → startup raises ``RuntimeError``
         mentioning N519.
 - WT8  Adapter modules expose no top-level instances.
@@ -48,7 +48,7 @@ def _b64(source_id: str) -> str:
 def _make_minimal_vault(root: Path) -> Path:
     """Create a minimal vault tree the app expects to scan at startup.
 
-    Returns the vault root (for use as ``NAKAMA_VAULT_ROOT``).
+    Returns the vault root (for use as ``VAULT_PATH``).
     """
     (root / "Inbox" / "kb").mkdir(parents=True)
     (root / "data" / "books").mkdir(parents=True)
@@ -85,7 +85,7 @@ def vault_with_robin(tmp_path: Path, monkeypatch) -> Path:
     vault = _make_minimal_vault(tmp_path / "vault")
     # Reroute book storage to the same dir the lister will enumerate.
     monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(vault / "data" / "books"))
-    monkeypatch.setenv("NAKAMA_VAULT_ROOT", str(vault))
+    monkeypatch.setenv("VAULT_PATH", str(vault))
     # Ensure NO DISABLE_ROBIN — we want the lifespan to fire.
     monkeypatch.delenv("DISABLE_ROBIN", raising=False)
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "dry_run")
@@ -160,9 +160,9 @@ def test_wt4_app_get_writing_assist_missing_package_returns_404_not_503(
 def test_wt5_app_disable_robin_skips_wiring(tmp_path: Path, monkeypatch):
     vault = _make_minimal_vault(tmp_path / "vault")
     monkeypatch.setenv("DISABLE_ROBIN", "1")
-    # NAKAMA_VAULT_ROOT not required when DISABLE_ROBIN is set; we set
+    # VAULT_PATH not required when DISABLE_ROBIN is set; we set
     # it anyway so any leak doesn't blow up.
-    monkeypatch.setenv("NAKAMA_VAULT_ROOT", str(vault))
+    monkeypatch.setenv("VAULT_PATH", str(vault))
     _disable_auth(monkeypatch)
 
     app_module = _reload_app_modules()
@@ -188,16 +188,16 @@ def test_wt5_app_disable_robin_skips_wiring(tmp_path: Path, monkeypatch):
 
 
 def test_wt6_app_bad_config_raises_when_vault_root_missing(tmp_path: Path, monkeypatch):
-    """Missing ``NAKAMA_VAULT_ROOT`` (with Robin enabled) must crash the
+    """Missing ``VAULT_PATH`` (with Robin enabled) must crash the
     lifespan — silent fallback is forbidden by W4."""
     monkeypatch.delenv("DISABLE_ROBIN", raising=False)
-    monkeypatch.delenv("NAKAMA_VAULT_ROOT", raising=False)
+    monkeypatch.delenv("VAULT_PATH", raising=False)
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "dry_run")
     _disable_auth(monkeypatch)
 
     app_module = _reload_app_modules()
 
-    with pytest.raises(RuntimeError, match="NAKAMA_VAULT_ROOT"):
+    with pytest.raises(RuntimeError, match="VAULT_PATH"):
         with TestClient(app_module.app):
             pass
 
@@ -210,7 +210,7 @@ def test_wt7_app_llm_mode_raises_in_n518a(tmp_path: Path, monkeypatch):
     clear message pointing at N519."""
     vault = _make_minimal_vault(tmp_path / "vault")
     monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(vault / "data" / "books"))
-    monkeypatch.setenv("NAKAMA_VAULT_ROOT", str(vault))
+    monkeypatch.setenv("VAULT_PATH", str(vault))
     monkeypatch.delenv("DISABLE_ROBIN", raising=False)
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "llm")
     _disable_auth(monkeypatch)
@@ -226,7 +226,7 @@ def test_app_unknown_promotion_mode_raises(tmp_path: Path, monkeypatch):
     """Unknown mode also raises, with a clear message naming the field."""
     vault = _make_minimal_vault(tmp_path / "vault")
     monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(vault / "data" / "books"))
-    monkeypatch.setenv("NAKAMA_VAULT_ROOT", str(vault))
+    monkeypatch.setenv("VAULT_PATH", str(vault))
     monkeypatch.delenv("DISABLE_ROBIN", raising=False)
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "rumpelstiltskin")
     _disable_auth(monkeypatch)

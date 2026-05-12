@@ -55,7 +55,7 @@ async def _lifespan(app_: FastAPI):
     routers fall through to their 503 default. The ``/`` redirect path
     elsewhere still works.
 
-    Startup failures (missing ``NAKAMA_VAULT_ROOT``, unknown promotion
+    Startup failures (missing ``VAULT_PATH``, unknown promotion
     mode) propagate as ``RuntimeError`` so uvicorn / systemd surface the
     crash to the operator (W4) — silent fallback would mask the misconfig.
     """

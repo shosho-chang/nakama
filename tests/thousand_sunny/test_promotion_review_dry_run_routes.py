@@ -105,7 +105,7 @@ def configured_app(vault: Path, monkeypatch):
     """App reloaded with env vars pointing at the per-test vault."""
     books_dir = vault / "data" / "books"
     monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(books_dir))
-    monkeypatch.setenv("NAKAMA_VAULT_ROOT", str(vault))
+    monkeypatch.setenv("VAULT_PATH", str(vault))
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "dry_run")
     monkeypatch.setenv(
         "NAKAMA_PROMOTION_MANIFEST_ROOT",
