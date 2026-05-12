@@ -25,6 +25,7 @@
 // reader doesn't have to bounce through JAMA first.
 
 import type { CleanReport, SiteCleaner } from "./types.js";
+import { wireFigureBlockIds } from "./figureAnchors.js";
 
 const JAMA_HOSTS = ["jamanetwork.com", "www.jamanetwork.com"];
 
@@ -77,6 +78,11 @@ export const jamaCleaner: SiteCleaner = {
     if (refs.length === 0) {
       report.warnings.push("no div.reference items found");
     }
+
+    // Wire in-text figure references to local Obsidian block IDs so links
+    // like "Figure 1" navigate to the figure inside the saved markdown
+    // instead of jamanetwork.com. JAMA uses `<figure id="...">` semantically.
+    wireFigureBlockIds(doc);
 
     // Rewrite body sup anchors that point at #refId into the paper URL.
     const refAnchors = Array.from(

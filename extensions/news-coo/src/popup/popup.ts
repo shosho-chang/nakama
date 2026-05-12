@@ -1,12 +1,9 @@
 import { loadHandle, verifyHandle } from "../vault/handle.js";
 import {
   checkSlugExists,
-  writeToVault,
-  writeToVaultExact,
-  buildHighlightsSection,
+  writePageToVault,
 } from "../vault/writer.js";
-import type { WriteResult } from "../vault/writer.js";
-import { buildFrontmatter } from "../vault/frontmatter.js";
+import type { WritePageOptions, WriteResult } from "../vault/writer.js";
 import type { Highlight } from "../vault/frontmatter.js";
 import { slugify } from "../vault/slug.js";
 import { MSG_EXTRACT } from "../shared/messages.js";
@@ -21,16 +18,14 @@ export interface PopupDeps {
   verifyHandle: (h: FileSystemDirectoryHandle) => Promise<boolean>;
   sendExtract: (tabId: number) => Promise<ExtractResponse>;
   checkSlugExists: (root: FileSystemDirectoryHandle, slug: string) => Promise<boolean>;
-  writeExact: (root: FileSystemDirectoryHandle, slug: string, content: string) => Promise<WriteResult>;
-  writeAutoSuffix: (root: FileSystemDirectoryHandle, slug: string, content: string) => Promise<WriteResult>;
-  slugify: (title: string) => string;
-  buildContent: (
+  // Single page-aware writer — handles image fetching (default on), frontmatter,
+  // highlights, and dedup mode (exact vs auto-suffix) in one call.
+  writePage: (
+    root: FileSystemDirectoryHandle,
     page: ExtractedPage,
-    title: string,
-    author: string,
-    selectionOnly: boolean,
-    highlights: Highlight[],
-  ) => string;
+    opts: WritePageOptions,
+  ) => Promise<WriteResult>;
+  slugify: (title: string) => string;
   getHighlights: (tabId: number) => Promise<Highlight[]>;
   clearHighlights: (tabId: number) => Promise<void>;
 }
@@ -54,20 +49,23 @@ function showOnly(visibleId: string): void {
   }
 }
 
-function buildPageContent(
-  page: ExtractedPage,
+function makeWriteOpts(
   title: string,
   author: string,
   selectionOnly: boolean,
   highlights: Highlight[],
-): string {
-  const synthetic: ExtractedPage = { ...page, title, author };
-  const fm = buildFrontmatter(synthetic, {
-    selectionOnly,
+  exact: boolean,
+): WritePageOptions {
+  return {
+    exact,
+    titleOverride: title,
+    authorOverride: author,
     highlights,
-    extractionMethod: selectionOnly ? "selection" : "defuddle",
-  });
-  return fm + "\n" + page.markdown + buildHighlightsSection(highlights);
+    frontmatterOpts: {
+      selectionOnly,
+      extractionMethod: selectionOnly ? "selection" : "defuddle",
+    },
+  };
 }
 
 export async function initPopup(deps: PopupDeps): Promise<void> {
@@ -185,7 +183,8 @@ async function handleSave(
   const title = el<HTMLInputElement>("field-title").value;
   const author = el<HTMLInputElement>("field-author").value;
   const slug = deps.slugify(title);
-  const content = deps.buildContent(page, title, author, selectionOnly, highlights);
+  const baseOpts = (exact: boolean) =>
+    makeWriteOpts(title, author, selectionOnly, highlights, exact);
 
   const exists = await deps.checkSlugExists(handle, slug);
   if (exists) {
@@ -193,10 +192,10 @@ async function handleSave(
     showOnly("state-dedup");
 
     el<HTMLButtonElement>("btn-overwrite").onclick = () =>
-      void doWrite(deps.writeExact(handle, slug, content), tabId, deps);
+      void doWrite(deps.writePage(handle, page, baseOpts(true)), tabId, deps);
 
     el<HTMLButtonElement>("btn-suffix").onclick = () =>
-      void doWrite(deps.writeAutoSuffix(handle, slug, content), tabId, deps);
+      void doWrite(deps.writePage(handle, page, baseOpts(false)), tabId, deps);
 
     el<HTMLButtonElement>("btn-cancel-dedup").onclick = () =>
       showOnly("state-preview");
@@ -204,7 +203,7 @@ async function handleSave(
     return;
   }
 
-  void doWrite(deps.writeExact(handle, slug, content), tabId, deps);
+  void doWrite(deps.writePage(handle, page, baseOpts(true)), tabId, deps);
 }
 
 async function doWrite(
@@ -232,10 +231,8 @@ if (typeof chrome !== "undefined" && typeof chrome.tabs !== "undefined") {
     sendExtract: (tabId) =>
       chrome.tabs.sendMessage(tabId, { type: MSG_EXTRACT }),
     checkSlugExists,
-    writeExact: writeToVaultExact,
-    writeAutoSuffix: writeToVault,
+    writePage: writePageToVault,
     slugify,
-    buildContent: buildPageContent,
     getHighlights,
     clearHighlights,
   };

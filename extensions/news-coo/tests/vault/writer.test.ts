@@ -196,6 +196,52 @@ describe("writePageToVault", () => {
     expect(result.slug).toBe("test-article");
   });
 
+  it("uses titleOverride/authorOverride for slug and frontmatter", async () => {
+    const root = new MemDirHandle("vault");
+    const result = await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      FAKE_PAGE,
+      {
+        titleOverride: "Edited Title From Form",
+        authorOverride: "Edited Author",
+      },
+    );
+    expect(result.slug).toBe("edited-title-from-form");
+    const file = root.getFile("edited-title-from-form.md");
+    expect(file?.content()).toContain("Edited Title From Form");
+    expect(file?.content()).toContain("Edited Author");
+  });
+
+  it("overwrites existing file when exact=true", async () => {
+    const root = new MemDirHandle("vault");
+    await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      FAKE_PAGE,
+      { exact: true },
+    );
+    await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      { ...FAKE_PAGE, markdown: "# Second Pass" },
+      { exact: true },
+    );
+    // Same slug — no auto-suffix.
+    expect(root.getFile("test-article.md")?.content()).toContain("Second Pass");
+    expect(root.getFile("test-article-2.md")).toBeUndefined();
+  });
+
+  it("auto-suffixes by default (exact=false) when slug exists", async () => {
+    const root = new MemDirHandle("vault");
+    await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      FAKE_PAGE,
+    );
+    const result = await writePageToVault(
+      root as unknown as FileSystemDirectoryHandle,
+      FAKE_PAGE,
+    );
+    expect(result.slug).toBe("test-article-2");
+  });
+
   it("uses empty highlights when none provided", async () => {
     const root = new MemDirHandle("vault");
     const result = await writePageToVault(

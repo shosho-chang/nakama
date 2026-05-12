@@ -20,6 +20,7 @@
 // DOI lives conveniently in `data-doi` on the <div class="cit"> wrapper.
 
 import type { CleanReport, SiteCleaner } from "./types.js";
+import { wireFigureBlockIds } from "./figureAnchors.js";
 
 const BMJ_HOSTS = ["bmj.com", "www.bmj.com"];
 
@@ -81,6 +82,14 @@ export const bmjCleaner: SiteCleaner = {
       a.setAttribute("rel", "noopener");
       report.removedNodeCount++;
     }
+
+    // Wire in-text figure references to local Obsidian block IDs. BMJ
+    // Highwire uses `<div class="fig" id="F1">` rather than semantic <figure>
+    // and `<div class="caption">` for the caption, so we override both.
+    wireFigureBlockIds(doc, {
+      figureSelector: "figure, div.fig",
+      captionSelector: "figcaption, .caption, .fig-caption",
+    });
 
     // Inject `<meta name="author">` from dc.Creator (BMJ family ships one
     // tag per author). Falls back to `.contributor-list .name` if missing.
