@@ -66,7 +66,6 @@ export async function quickClip(
 
   try {
     const result = await deps.writePageToVault(handle, response.page, {
-      fetchImages: true,
       highlights,
       frontmatterOpts: {
         selectionOnly: response.selectionOnly,

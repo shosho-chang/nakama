@@ -364,8 +364,8 @@ describe("natureCleaner", () => {
   it("rewrites in-text citation anchors to the DOI from the matching <li>", () => {
     const doc = makeDoc(`
       <body>
-        <p>cells age<sup><a href="/articles/x#ref-CR1" data-test="citation-ref" data-track-action="reference anchor">1</a></sup>.</p>
-        <ol>
+        <p>cells age<sup><a id="ref-link-abc" href="/articles/x#ref-CR1" data-test="citation-ref" data-track-action="reference anchor">1</a></sup>.</p>
+        <ol class="c-article-references">
           <li class="c-article-references__item" data-counter="1.">
             <p class="c-article-references__text" id="ref-CR1">Hou Y. Ageing as a risk factor for neurodegenerative disease.</p>
             <p class="c-article-references__links">
@@ -377,9 +377,112 @@ describe("natureCleaner", () => {
       </body>
     `);
     natureCleaner.clean(doc, "https://www.nature.com/articles/x");
-    const a = doc.querySelector('a[data-test="citation-ref"]')!;
+    const a = doc.querySelector("sup a")!;
     expect(a.getAttribute("href")).toBe("https://doi.org/10.1038/s41582-019-0244-7");
     expect(a.getAttribute("target")).toBe("_blank");
+    // Attributes Defuddle keys off must be stripped so it doesn't rebuild the
+    // sup as an internal `#fn:N` anchor and lose our DOI href.
+    expect(a.getAttribute("id")).toBeNull();
+    expect(a.getAttribute("data-test")).toBeNull();
+    expect(a.getAttribute("data-track-action")).toBeNull();
+  });
+
+  it("neutralises the bottom references list so Defuddle leaves it alone", () => {
+    const doc = makeDoc(`
+      <body>
+        <ol class="c-article-references c-article-references--numbered">
+          <li class="c-article-references__item" data-counter="1.">
+            <p class="c-article-references__text" id="ref-CR1">x</p>
+          </li>
+          <li class="c-article-references__item" data-counter="2.">
+            <p class="c-article-references__text" id="ref-CR2">y</p>
+          </li>
+        </ol>
+      </body>
+    `);
+    natureCleaner.clean(doc, "https://www.nature.com/x");
+    const ol = doc.querySelector("ol")!;
+    expect(ol.className).not.toMatch(/article-references/);
+    const lis = doc.querySelectorAll("li");
+    for (const li of Array.from(lis)) {
+      expect(li.getAttribute("data-counter")).toBeNull();
+      expect(li.className).not.toMatch(/c-article-references__item/);
+    }
+    expect(doc.querySelector("#ref-CR1")).toBeNull();
+    expect(doc.querySelector("#ref-CR2")).toBeNull();
+  });
+
+  it("wires in-text figure references to Obsidian block IDs", () => {
+    const doc = makeDoc(`
+      <body>
+        <p>cluster 2 (Fig. <a href="https://www.nature.com/articles/x#Fig3" data-track-action="figure anchor">3c</a>).</p>
+        <figure>
+          <figcaption><b id="Fig3" class="c-article-section__figure-caption">Fig. 3: caption text</b></figcaption>
+          <picture><img src="//media.springernature.com/full/path/Fig3.png" alt="Fig 3"></picture>
+        </figure>
+      </body>
+    `);
+    natureCleaner.clean(doc, "https://www.nature.com/x");
+    const a = doc.querySelector('a[href^="#"]')!;
+    expect(a.getAttribute("href")).toBe("#^Fig3");
+    const figcaption = doc.querySelector("figcaption")!;
+    expect(figcaption.textContent).toContain("^Fig3");
+  });
+
+  it("leaves figure anchors alone when no matching <figure id> exists in the doc", () => {
+    const doc = makeDoc(`
+      <body>
+        <p>see Fig. <a href="https://www.nature.com/articles/x#Fig9">9</a></p>
+      </body>
+    `);
+    natureCleaner.clean(doc, "https://www.nature.com/x");
+    expect(doc.querySelector("a")!.getAttribute("href")).toBe(
+      "https://www.nature.com/articles/x#Fig9",
+    );
+  });
+
+  it("promotes lw685 thumbnail figure URLs to full resolution", () => {
+    const doc = makeDoc(`
+      <body>
+        <figure>
+          <picture>
+            <source type="image/webp" srcset="//media.springernature.com/lw685/path/Fig1.png?as=webp">
+            <img src="//media.springernature.com/lw685/path/Fig1.png" alt="Fig 1">
+          </picture>
+        </figure>
+      </body>
+    `);
+    natureCleaner.clean(doc, "https://www.nature.com/x");
+    const img = doc.querySelector("img")!;
+    expect(img.getAttribute("src")).toBe(
+      "//media.springernature.com/full/path/Fig1.png",
+    );
+    const source = doc.querySelector("source")!;
+    expect(source.getAttribute("srcset")).toBe(
+      "//media.springernature.com/full/path/Fig1.png?as=webp",
+    );
+  });
+
+  it("removes figure 'Full size image' pill buttons that link to nature.com", () => {
+    const doc = makeDoc(`
+      <body>
+        <figure>
+          <figcaption><b id="Fig1">Fig. 1</b></figcaption>
+          <div class="c-article-section__figure-content">
+            <picture>
+              <img src="//media.springernature.com/lw685/.../Fig1.png" alt="Fig 1">
+            </picture>
+            <div class="c-article-section__figure-link">
+              <a class="c-article__pill-button" href="/articles/x/figures/1">Full size image</a>
+            </div>
+          </div>
+        </figure>
+      </body>
+    `);
+    natureCleaner.clean(doc, "https://www.nature.com/x");
+    expect(doc.querySelector(".c-article-section__figure-link")).toBeNull();
+    // The inline image must survive — vault image fetcher rewrites its src.
+    expect(doc.querySelector("img")).not.toBeNull();
   });
 
   it("falls back to PubMed when no Article/DOI link present", () => {
@@ -397,7 +500,7 @@ describe("natureCleaner", () => {
       </body>
     `);
     natureCleaner.clean(doc, "https://www.nature.com/x");
-    expect(doc.querySelector('a[data-test="citation-ref"]')!.getAttribute("href")).toBe(
+    expect(doc.querySelector("sup a")!.getAttribute("href")).toBe(
       "https://pubmed.ncbi.nlm.nih.gov/123/",
     );
   });

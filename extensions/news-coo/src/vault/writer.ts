@@ -75,7 +75,18 @@ export async function writeToVault(
 }
 
 export interface WritePageOptions {
+  // Default: true. Downloading images to `attachments/<slug>/` and rewriting
+  // markdown image refs to local vault paths is the only sensible behaviour —
+  // remote-only refs go stale and don't render offline. Pass `false` to opt
+  // out for tests or unusual flows.
   fetchImages?: boolean;
+  // When true, write to `{slug}.md` regardless of collisions (overwrites).
+  // Default false: auto-suffix `-2`, `-3`… until a free slot is found.
+  exact?: boolean;
+  // Override title/author after extraction (popup form lets the user edit
+  // them before save). The slug derives from the effective title.
+  titleOverride?: string;
+  authorOverride?: string;
   frontmatterOpts?: Omit<FrontmatterOptions, "imagesPartial" | "imagesCount">;
   highlights?: Highlight[];
 }
@@ -85,25 +96,34 @@ export async function writePageToVault(
   page: ExtractedPage,
   opts: WritePageOptions = {},
 ): Promise<WriteResult> {
-  const slug = slugify(page.title);
-  let markdown = page.markdown;
+  const effectivePage: ExtractedPage = {
+    ...page,
+    title: opts.titleOverride ?? page.title,
+    author: opts.authorOverride ?? page.author,
+  };
+  const slug = slugify(effectivePage.title);
+  let markdown = effectivePage.markdown;
   let imagesPartial = false;
-  let imagesCount = page.imageRefs.length;
+  let imagesCount = effectivePage.imageRefs.length;
 
-  if (opts.fetchImages && page.imageRefs.length > 0) {
-    const img = await fetchAndRewriteImages(root, slug, markdown, page.url);
+  // fetchImages defaults to true — only `=== false` opts out.
+  if (opts.fetchImages !== false && effectivePage.imageRefs.length > 0) {
+    const img = await fetchAndRewriteImages(root, slug, markdown, effectivePage.url);
     markdown = img.rewrittenMarkdown;
     imagesPartial = img.failedCount > 0;
     imagesCount = img.savedCount;
   }
 
   const highlights = opts.highlights ?? [];
-  const frontmatter = buildFrontmatter(page, {
+  const frontmatter = buildFrontmatter(effectivePage, {
     ...opts.frontmatterOpts,
     imagesPartial,
     imagesCount,
     highlights,
   });
 
-  return writeToVault(root, slug, frontmatter + "\n" + markdown + buildHighlightsSection(highlights));
+  const content = frontmatter + "\n" + markdown + buildHighlightsSection(highlights);
+  return opts.exact
+    ? writeToVaultExact(root, slug, content)
+    : writeToVault(root, slug, content);
 }

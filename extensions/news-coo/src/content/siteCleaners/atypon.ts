@@ -21,6 +21,7 @@
 // <sup> so a single click jumps to the paper.
 
 import type { CleanReport, SiteCleaner } from "./types.js";
+import { wireFigureBlockIds } from "./figureAnchors.js";
 
 const ATYPON_HOSTS = [
   "thelancet.com",
@@ -183,6 +184,12 @@ export const atyponCleaner: SiteCleaner = {
     } else {
       report.warnings.push("no references section found (tried " + REFS_SECTION_SELECTORS.join(", ") + ")");
     }
+
+    // 3b. Wire in-text figure references to local Obsidian block IDs so
+    //     "see Fig. 2" type links stay inside the saved markdown. Atypon
+    //     platforms (Lancet, NEJM) typically use `<figure id="fig2">`-style
+    //     semantic markup, which the helper's default extractor handles.
+    wireFigureBlockIds(doc);
 
     // 4. Inject `<meta name="author">` so Defuddle's metadata extractor picks
     //    up the right author. NEJM exposes authors via `meta[name="dc.Creator"]`

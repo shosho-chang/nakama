@@ -74,10 +74,8 @@ function makeDeps(overrides: Partial<PopupDeps> = {}): PopupDeps {
     verifyHandle: vi.fn().mockResolvedValue(true),
     sendExtract: vi.fn().mockResolvedValue({ ok: true, page: FAKE_PAGE, selectionOnly: false }),
     checkSlugExists: vi.fn().mockResolvedValue(false),
-    writeExact: vi.fn().mockResolvedValue(FAKE_RESULT),
-    writeAutoSuffix: vi.fn().mockResolvedValue({ slug: "test-article-2", path: "Inbox/kb/test-article-2.md" }),
+    writePage: vi.fn().mockResolvedValue(FAKE_RESULT),
     slugify: (title: string) => title.toLowerCase().replace(/\s+/g, "-"),
-    buildContent: (_page, title, _author, _selectionOnly, _highlights) => `---\ntitle: ${title}\n---\n\ncontent`,
     getHighlights: vi.fn().mockResolvedValue([]),
     clearHighlights: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -192,9 +190,9 @@ describe("initPopup — state: preview → saving → saved (no collision)", () 
     setupChrome();
   });
 
-  it("calls writeExact and shows saved state on form submit", async () => {
-    const writeExact = vi.fn().mockResolvedValue(FAKE_RESULT);
-    const deps = makeDeps({ writeExact });
+  it("calls writePage (exact) and shows saved state on form submit", async () => {
+    const writePage = vi.fn().mockResolvedValue(FAKE_RESULT);
+    const deps = makeDeps({ writePage });
     await initPopup(deps);
 
     document.getElementById("form-preview")!.dispatchEvent(
@@ -205,7 +203,8 @@ describe("initPopup — state: preview → saving → saved (no collision)", () 
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(writeExact).toHaveBeenCalledOnce();
+    expect(writePage).toHaveBeenCalledOnce();
+    expect(writePage.mock.calls[0][2]).toMatchObject({ exact: true });
     expect(document.getElementById("state-saved")?.hidden).toBe(false);
     expect(document.getElementById("saved-path")?.textContent).toBe(
       "Inbox/kb/test-article.md",
@@ -232,11 +231,11 @@ describe("initPopup — state: preview → dedup-prompt → overwrite / suffix",
     expect(document.getElementById("state-dedup")?.hidden).toBe(false);
   });
 
-  it("overwrite button calls writeExact and shows saved", async () => {
-    const writeExact = vi.fn().mockResolvedValue(FAKE_RESULT);
+  it("overwrite button calls writePage with exact=true and shows saved", async () => {
+    const writePage = vi.fn().mockResolvedValue(FAKE_RESULT);
     const deps = makeDeps({
       checkSlugExists: vi.fn().mockResolvedValue(true),
-      writeExact,
+      writePage,
     });
     await initPopup(deps);
 
@@ -251,18 +250,19 @@ describe("initPopup — state: preview → dedup-prompt → overwrite / suffix",
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(writeExact).toHaveBeenCalledOnce();
+    expect(writePage).toHaveBeenCalledOnce();
+    expect(writePage.mock.calls[0][2]).toMatchObject({ exact: true });
     expect(document.getElementById("state-saved")?.hidden).toBe(false);
   });
 
-  it("suffix button calls writeAutoSuffix and shows saved", async () => {
-    const writeAutoSuffix = vi.fn().mockResolvedValue({
+  it("suffix button calls writePage with exact=false (auto-suffix) and shows saved", async () => {
+    const writePage = vi.fn().mockResolvedValue({
       slug: "test-article-2",
       path: "Inbox/kb/test-article-2.md",
     });
     const deps = makeDeps({
       checkSlugExists: vi.fn().mockResolvedValue(true),
-      writeAutoSuffix,
+      writePage,
     });
     await initPopup(deps);
 
@@ -277,7 +277,8 @@ describe("initPopup — state: preview → dedup-prompt → overwrite / suffix",
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(writeAutoSuffix).toHaveBeenCalledOnce();
+    expect(writePage).toHaveBeenCalledOnce();
+    expect(writePage.mock.calls[0][2]).toMatchObject({ exact: false });
     expect(document.getElementById("state-saved")?.hidden).toBe(false);
     expect(document.getElementById("saved-path")?.textContent).toBe(
       "Inbox/kb/test-article-2.md",

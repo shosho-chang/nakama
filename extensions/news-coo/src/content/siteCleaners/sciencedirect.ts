@@ -42,6 +42,7 @@
 //   inject a `<meta name="author">` into <head> for Defuddle to pick up.
 
 import type { CleanReport, SiteCleaner } from "./types.js";
+import { wireFigureBlockIds } from "./figureAnchors.js";
 
 const SD_HOSTS = ["sciencedirect.com", "www.sciencedirect.com"];
 
@@ -181,6 +182,11 @@ export const sciencedirectCleaner: SiteCleaner = {
       }
       refsList.replaceWith(newOl);
     }
+
+    // 3b. Wire in-text figure references to local Obsidian block IDs.
+    //     ScienceDirect figures use `<figure id="fig0010">` semantically, so
+    //     the helper's default extractor (figure.id) handles them.
+    wireFigureBlockIds(doc);
 
     // 4. Inject `<meta name="author">` so Defuddle's metadata extractor
     //    doesn't fall back to the abstract heading.
