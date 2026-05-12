@@ -84,9 +84,17 @@
         <div class="book-title">{{ book.title }}</div>
         {% if book.author %}<div class="book-author">{{ book.author }}</div>{% endif %}
         <div class="book-meta">
-          <span class="badge">{{ book.lang_pair }}</span>
+          {% if book.mode == "monolingual-zh" %}
+            <span class="badge">純中文</span>
+          {% elif book.mode == "bilingual-en-zh" %}
+            <span class="badge">EN→中</span>
+          {% else %}
+            <span class="badge">{{ book.lang_pair }}</span>
+          {% endif %}
           {% if book.genre %}<span class="badge">{{ book.genre }}</span>{% endif %}
-          {% if not book.has_original %}
+          {% if book.mode == "monolingual-zh" %}
+            {# Monolingual zh: no EN ingest pipeline applies — skip the EN/ingest badge. #}
+          {% elif not book.has_original %}
             <span class="badge-ingest" data-status="no-original" title="尚未上傳 EN 原檔，無法 ingest">未上傳 EN</span>
           {% elif book.ingest_status == "queued" %}
             <span class="badge-ingest" data-status="queued" title="已排入 ingest 佇列">queued</span>
@@ -99,7 +107,7 @@
           {% elif book.ingest_status == "failed" %}
             <span class="badge-ingest" data-status="failed" title="ingest 失敗">failed</span>
           {% else %}
-            <span class="badge-ingest" data-status="never" title="尚未送出 ingest 請求">never</span>
+            <span class="badge-ingest" data-status="never" title="EN 原檔已上傳，尚未送出 ingest 請求（章節抽取／KB 入庫）">未 ingest</span>
           {% endif %}
         </div>
       </a>

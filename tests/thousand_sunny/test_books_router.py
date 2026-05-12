@@ -66,7 +66,10 @@ def test_books_library_lists_inserted_book(app_client, books_dir):
     r2 = tc.get("/books")
     assert r2.status_code == 200
     assert "Alpha Book" in r2.text
-    assert "en-zh" in r2.text
+    # bilingual-en-zh mode renders as the human-readable 「EN→中」 badge
+    # (template fix in #569); the raw ``en-zh`` lang_pair string is only
+    # surfaced in the DB row, not the rendered HTML.
+    assert "EN→中" in r2.text
 
 
 # ---------------------------------------------------------------------------
