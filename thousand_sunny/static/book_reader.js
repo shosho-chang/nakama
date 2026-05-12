@@ -105,6 +105,93 @@ let currentChapter = '';     // section.id or section.href, follows relocate
 let lastSelection = null;    // { cfi, text, range }
 
 const SIDEBAR_KEY = 'bookReaderSidebarOpen';
+const TOC_SIDEBAR_KEY = 'bookReaderTocSidebarOpen';
+
+// TOC sidebar — populated from ``_chapterEntries`` once view.book.toc is
+// walked. Highlights the chapter that contains the current reading position.
+const tocSidebar = document.getElementById('toc-sidebar');
+const tocToggle = document.getElementById('tocToggle');
+const tocClose = document.getElementById('tocClose');
+const tocList = document.getElementById('toc-list');
+let _currentChapterIdx = -1;
+
+function renderTocSidebar() {
+  if (!tocList) return;
+  tocList.innerHTML = '';
+  if (!_chapterEntries || _chapterEntries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = '這本書沒有可顯示的目錄。';
+    tocList.appendChild(empty);
+    return;
+  }
+  _chapterEntries.forEach((entry, idx) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toc-item';
+    btn.dataset.idx = String(idx);
+    const num = document.createElement('span');
+    num.className = 'toc-num';
+    num.textContent = String(idx + 1).padStart(2, '0');
+    const label = document.createElement('span');
+    label.className = 'toc-label';
+    label.textContent = (entry.label || entry.href || `Chapter ${idx + 1}`).trim();
+    btn.appendChild(num);
+    btn.appendChild(label);
+    btn.addEventListener('click', async () => {
+      const href = entry.href;
+      if (!href) return;
+      setTocSidebarOpen(false);
+      try {
+        await view.goTo(href);
+      } catch (err) {
+        console.warn('toc: goTo failed', href, err);
+      }
+    });
+    tocList.appendChild(btn);
+  });
+  updateTocCurrent(_currentChapterIdx);
+}
+
+function updateTocCurrent(idx) {
+  _currentChapterIdx = idx;
+  if (!tocList) return;
+  const items = tocList.querySelectorAll('.toc-item');
+  items.forEach((el) => {
+    const i = Number(el.dataset.idx);
+    if (i === idx) {
+      el.classList.add('is-current');
+      el.setAttribute('aria-current', 'true');
+    } else {
+      el.classList.remove('is-current');
+      el.removeAttribute('aria-current');
+    }
+  });
+  // Scroll the current chapter into view if the sidebar is open.
+  if (tocSidebar && !tocSidebar.hidden) {
+    const cur = tocList.querySelector('.toc-item.is-current');
+    if (cur && typeof cur.scrollIntoView === 'function') {
+      cur.scrollIntoView({ block: 'nearest' });
+    }
+  }
+}
+
+function setTocSidebarOpen(open) {
+  if (!tocSidebar || !tocToggle) return;
+  tocSidebar.hidden = !open;
+  tocToggle.setAttribute('aria-pressed', open ? 'true' : 'false');
+  localStorage.setItem(TOC_SIDEBAR_KEY, open ? '1' : '0');
+  if (open) updateTocCurrent(_currentChapterIdx);
+}
+
+if (tocToggle) {
+  tocToggle.addEventListener('click', () => {
+    setTocSidebarOpen(tocSidebar.hidden);
+  });
+}
+if (tocClose) {
+  tocClose.addEventListener('click', () => setTocSidebarOpen(false));
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1150,6 +1237,8 @@ function updateProgressFooter(detail) {
   const chapter = _resolveCurrentChapter(detail);
   const totalChapters = _chapterEntries.length;
 
+  updateTocCurrent(chapter ? chapter.idx : -1);
+
   if (chapter && chapter.entry && chapter.entry.label) {
     rpfChapter.textContent = chapter.entry.label.trim();
     rpfPosition.textContent = totalChapters > 0
@@ -1308,6 +1397,7 @@ view.addEventListener('draw-annotation', e => {
     // δ.3 — build href→label map from view.book.toc; populated once after
     // view.open() finishes so view.book is ready.
     _buildChapterLabelMap();
+    renderTocSidebar();
 
     // Load metadata + annotations after the book opens so sections are
     // available for chapter <select> population.
@@ -1331,6 +1421,8 @@ view.addEventListener('draw-annotation', e => {
     // Restore sidebar visibility from previous session.
     const sidebarOpen = localStorage.getItem(SIDEBAR_KEY) === '1';
     setSidebarOpen(sidebarOpen);
+    const tocOpen = localStorage.getItem(TOC_SIDEBAR_KEY) === '1';
+    setTocSidebarOpen(tocOpen);
   } catch (err) {
     const shell = document.querySelector('.reader-shell');
     if (shell) {
