@@ -54,19 +54,19 @@
 </div>
 <div class="container">
   <form class="card" id="upload-form" method="post" action="/books/upload" enctype="multipart/form-data">
-    <p class="lead">標題、作者、封面從 EPUB metadata 自動抓。語言固定 EN→中。</p>
+    <p class="lead">標題、作者、封面從 EPUB metadata 自動抓。支援雙語版（EN→中）與純中文版，模式自動偵測。</p>
     <div class="dropzone-stack">
       <label class="dropzone is-required" data-empty="true" data-target="bilingual" id="dropzone-bilingual">
         <span class="icon">📖</span>
-        <span class="label">雙語版 EPUB</span>
-        <span class="hint">必填 · 點擊或拖入 .epub</span>
+        <span class="label">雙語版 / 純中文 EPUB</span>
+        <span class="hint">必填 · 點擊或拖入 .epub（雙語、純中文皆可）</span>
         <span class="filename" data-filename></span>
         <input type="file" name="bilingual" accept=".epub,application/epub+zip" required>
       </label>
       <label class="dropzone" data-empty="true" data-target="original" id="dropzone-original">
         <span class="icon">📕</span>
         <span class="label">EN 原檔 EPUB</span>
-        <span class="hint">選填 · 之後 ingest 才用得到</span>
+        <span class="hint">選填 · 雙語版上傳時若附 EN 原檔可保留作再 ingest 來源</span>
         <span class="filename" data-filename></span>
         <input type="file" name="original" accept=".epub,application/epub+zip">
       </label>
