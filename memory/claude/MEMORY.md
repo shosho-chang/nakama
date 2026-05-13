@@ -1,5 +1,6 @@
 # Memory Index
 
+- [feedback_delete_branch_on_merge_default.md](feedback_delete_branch_on_merge_default.md) — **新 repo bootstrap 必開 deleteBranchOnMerge**：default `false` 會讓每次 PR merge 後 head branch 殘留 origin；`gh repo edit --delete-branch-on-merge` 一次解（2026-05-12 nakama 教訓）
 - [feedback_auto_merge_after_review.md](feedback_auto_merge_after_review.md) — **PR review pass 後 auto-merge 不要再問**（user explicit 2026-05-10）：跑 review skill → 修 ≥80 score bug → CI 綠 → 直接 squash-merge + inline 報告，不再徵求授權
 - [project_news_coo_naming_and_scope.md](project_news_coo_naming_and_scope.md) — **News Coo 命名 + scope 切分 2026-05-10**：撤回 Den Den Mushi；News Coo = 瀏覽器 ext 純 extract+deliver；翻譯交 Robin（auto-trigger 待 grill）
 - [project_news_coo_grill_decisions.md](project_news_coo_grill_decisions.md) — **News Coo grill 全決策表 2026-05-10**：FSA 直寫 / 新 repo + npm Defuddle / image 必備寫 KB/Attachments/web / selection+highlights seed+context menu+kbd shortcut / PubMed detector / 7-slice 實作規劃
