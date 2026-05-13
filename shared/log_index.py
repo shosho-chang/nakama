@@ -291,6 +291,7 @@ class LogIndex:
         since: datetime,
         until: datetime,
         levels: tuple[str, ...] | None = None,
+        exclude_loggers: tuple[str, ...] | None = None,
     ) -> dict[str, int]:
         """Return {hour_bucket_iso: count} over `[since, until)` (UTC),
         bucketed by ``strftime('%Y-%m-%dT%H', ts)``.
@@ -299,6 +300,12 @@ class LogIndex:
         aggregation (with `levels=('ERROR', 'CRITICAL')`) and for the
         "active baseline hours" set (without levels filter, so silent
         hours don't poison the baseline).
+
+        ``exclude_loggers`` filters out rows whose ``logger`` field exactly
+        matches any entry — used by ``check_error_rate_spike`` to skip its
+        own ``nakama.alerts`` dispatch lines and avoid a self-feeding loop
+        (defense in depth: ``shared.alerts.alert`` was also changed to
+        log at WARNING, but the filter survives future regressions).
 
         Half-open range: rows with ts == until are excluded. Hour bucket
         keys look like ``"2026-04-26T14"`` — UTC, no timezone suffix
@@ -317,6 +324,10 @@ class LogIndex:
             placeholders = ",".join("?" * len(levels))
             sql += f" AND level IN ({placeholders})"
             params.extend(levels)
+        if exclude_loggers:
+            placeholders = ",".join("?" * len(exclude_loggers))
+            sql += f" AND logger NOT IN ({placeholders})"
+            params.extend(exclude_loggers)
         sql += " GROUP BY hour_bucket"
         rows = conn.execute(sql, params).fetchall()
         return {row["hour_bucket"]: int(row["n"]) for row in rows}

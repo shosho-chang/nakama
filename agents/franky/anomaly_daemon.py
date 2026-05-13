@@ -66,6 +66,13 @@ MIN_CRON_CLUSTER_SIZE = 2
 # Slack DM dedup window for repeating anomalies (Q4 = 60 min).
 DEDUP_MINUTES = 60
 
+# Loggers whose rows must NOT be counted as errors by check_error_rate_spike.
+# `nakama.alerts` emits a line every time alert("error", ...) is dispatched —
+# counting those creates a self-feeding loop where each spike alert raises the
+# next tick's error count. Belt-and-suspenders with the WARNING-level change in
+# shared.alerts (2026-05-13 incident).
+SPIKE_EXCLUDE_LOGGERS: tuple[str, ...] = ("nakama.alerts",)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -332,11 +339,13 @@ def check_error_rate_spike(*, now: datetime | None = None) -> list[AnomalyV1]:
             since=baseline_start,
             until=baseline_end,
             levels=("ERROR", "CRITICAL"),
+            exclude_loggers=SPIKE_EXCLUDE_LOGGERS,
         )
         current_errors = log_index.count_by_hour(
             since=current_start,
             until=now,
             levels=("ERROR", "CRITICAL"),
+            exclude_loggers=SPIKE_EXCLUDE_LOGGERS,
         )
     except sqlite3.OperationalError:
         logger.warning("logs.db query failed, skipping error_rate_spike", exc_info=True)
