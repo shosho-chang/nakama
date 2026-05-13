@@ -211,8 +211,8 @@ def test_count_by_hour_exclude_loggers(idx: LogIndex):
     """exclude_loggers drops matching logger rows — guards check_error_rate_spike
     from counting its own nakama.alerts dispatch lines (2026-05-13 feedback loop)."""
     base = datetime(2026, 5, 13, 6, 0, tzinfo=timezone.utc)
-    idx.insert(ts=base, level="ERROR", logger="nakama.alerts", msg="anomaly alert dispatch", extra={})
-    idx.insert(ts=base, level="ERROR", logger="nakama.alerts", msg="another dispatch", extra={})
+    idx.insert(ts=base, level="ERROR", logger="nakama.alerts", msg="dispatch 1", extra={})
+    idx.insert(ts=base, level="ERROR", logger="nakama.alerts", msg="dispatch 2", extra={})
     idx.insert(ts=base, level="ERROR", logger="nakama.news_coo", msg="real error", extra={})
 
     since = base - timedelta(hours=1)
