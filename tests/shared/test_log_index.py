@@ -205,3 +205,42 @@ def test_limit_and_offset(idx: LogIndex):
     assert len(page1) == 3
     assert len(page2) == 3
     assert {h.msg for h in page1} & {h.msg for h in page2} == set()
+
+
+def test_count_by_hour_exclude_loggers(idx: LogIndex):
+    """exclude_loggers drops matching logger rows — guards check_error_rate_spike
+    from counting its own nakama.alerts dispatch lines (2026-05-13 feedback loop)."""
+    base = datetime(2026, 5, 13, 6, 0, tzinfo=timezone.utc)
+    idx.insert(ts=base, level="ERROR", logger="nakama.alerts", msg="dispatch 1", extra={})
+    idx.insert(ts=base, level="ERROR", logger="nakama.alerts", msg="dispatch 2", extra={})
+    idx.insert(ts=base, level="ERROR", logger="nakama.news_coo", msg="real error", extra={})
+
+    since = base - timedelta(hours=1)
+    until = base + timedelta(hours=1)
+
+    no_filter = idx.count_by_hour(since=since, until=until, levels=("ERROR",))
+    assert sum(no_filter.values()) == 3
+
+    filtered = idx.count_by_hour(
+        since=since,
+        until=until,
+        levels=("ERROR",),
+        exclude_loggers=("nakama.alerts",),
+    )
+    assert sum(filtered.values()) == 1
+
+
+def test_count_by_hour_exclude_loggers_multi(idx: LogIndex):
+    """Multiple logger names — all excluded simultaneously."""
+    base = datetime(2026, 5, 13, 6, 0, tzinfo=timezone.utc)
+    idx.insert(ts=base, level="ERROR", logger="nakama.alerts", msg="a", extra={})
+    idx.insert(ts=base, level="ERROR", logger="nakama.heartbeat", msg="b", extra={})
+    idx.insert(ts=base, level="ERROR", logger="nakama.real", msg="c", extra={})
+
+    filtered = idx.count_by_hour(
+        since=base - timedelta(hours=1),
+        until=base + timedelta(hours=1),
+        levels=("ERROR",),
+        exclude_loggers=("nakama.alerts", "nakama.heartbeat"),
+    )
+    assert sum(filtered.values()) == 1

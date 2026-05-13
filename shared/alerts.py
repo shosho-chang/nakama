@@ -68,7 +68,13 @@ def alert(
         logger.warning(message, extra=log_extra)
         return
     if severity == "error":
-        logger.error(message, extra={**log_extra, "dedupe_key": dedupe_key})
+        # WARNING (not ERROR) per module docstring contract — the caller already
+        # logged the underlying failure at ERROR; this line records the dispatch.
+        # Counting it as ERROR feeds Franky's check_error_rate_spike, which then
+        # calls alert("error", ...) again, sustaining a self-amplifying loop
+        # (2026-05-13 incident: 8-day backup miss → spike alerts replaced the
+        # original signal as the dominant error class).
+        logger.warning(message, extra={**log_extra, "dedupe_key": dedupe_key})
         if dedupe_key and _is_suppressed(dedupe_key):
             logger.info(
                 "alert suppressed (within dedupe window)",
