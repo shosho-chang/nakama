@@ -28,15 +28,6 @@
   .btn-read:hover { background: #6c63ff; color: white; }
   button { padding: 0.55rem 1.2rem; background: #6c63ff; color: white; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; white-space: nowrap; transition: background .2s; }
   button:hover { background: #574fd6; }
-  .url-card { background: white; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); border: 1px solid #e8e5ff; }
-  .url-card h2 { font-size: 0.9rem; color: #6c63ff; font-weight: 600; margin-bottom: 0.75rem; }
-  .url-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end; }
-  .url-input { flex: 1; min-width: 200px; padding: 0.5rem 0.75rem; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; outline: none; transition: border-color .2s; }
-  .url-input:focus { border-color: #6c63ff; }
-  .url-selects { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  .url-card button { background: #6c63ff; font-size: 0.85rem; padding: 0.5rem 1rem; }
-  .url-card button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .url-hint { font-size: 0.75rem; color: #aaa; margin-top: 0.5rem; }
   .status-icon { font-size: 1rem; flex-shrink: 0; }
   .status-icon[data-status="processing"] { color: #6c63ff; }
   .status-icon[data-status="ready"] { color: #2e7d32; }
@@ -151,30 +142,6 @@
   </div>
 </div>
 <div class="container">
-  <!-- URL 抓取 -->
-  <div class="url-card">
-    <h2>從 URL 抓取</h2>
-    <form id="scrapeForm" method="post" action="/scrape-translate" onsubmit="return onScrapeSubmit()">
-      <div class="url-row">
-        <input class="url-input" type="text" name="url" id="urlInput" placeholder="https://www.nature.com/..." pattern="https?://.+" required>
-        <div class="url-selects">
-          <select name="source_type" class="type-select">
-            <option value="article">Article</option>
-            <option value="paper">Paper</option>
-          </select>
-          <select name="content_nature" class="type-select">
-            <option value="popular_science">科普</option>
-            <option value="research">研究文獻</option>
-            <option value="textbook">教科書</option>
-            <option value="commentary">評論</option>
-          </select>
-        </div>
-        <button type="submit" id="scrapeBtn">抓取</button>
-      </div>
-      <div class="url-hint">抓取後在 Inbox 列出，可在 Reader 中翻譯</div>
-    </form>
-  </div>
-
   {% if files %}
     {% for file in files %}
     <div class="file-card" data-filename="{{ file.name }}">
@@ -255,13 +222,6 @@
 </dialog>
 
 <script>
-  function onScrapeSubmit() {
-    const btn = document.getElementById('scrapeBtn');
-    btn.disabled = true;
-    btn.textContent = '抓取中…';
-    return true;
-  }
-
   // ── Discard ("丟掉這篇") inline confirm flow (Slice 5, #356) ──
   // PRD §U25: inbox row 也有刪除按鈕 (不點進 reader 也能 batch 清理).
   // We share one <dialog> across all rows, populating filename + count when
