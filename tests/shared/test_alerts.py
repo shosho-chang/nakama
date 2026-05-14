@@ -51,6 +51,24 @@ def test_alert_error_calls_slack(fake_slack):
     assert kwargs["context"] == "alert/backup"
 
 
+def test_alert_error_logs_at_warning_not_error(fake_slack, caplog):
+    """severity='error' alerts log at WARNING per module docstring contract.
+
+    Counting them as ERROR feeds Franky's check_error_rate_spike, which calls
+    alert("error", ...) on detection, sustaining a self-feeding loop
+    (2026-05-13 incident: 8-day backup miss → spike alerts replaced the
+    original signal as the dominant ERROR class).
+    """
+    caplog.set_level("DEBUG", logger="nakama.alerts")
+    alerts.alert("error", "backup", "R2 upload failed")
+
+    alert_records = [r for r in caplog.records if r.name == "nakama.alerts"]
+    assert alert_records, "expected at least one nakama.alerts log record"
+    # The dispatch line must be WARNING — NOT ERROR.
+    dispatch = next(r for r in alert_records if "R2 upload failed" in r.message)
+    assert dispatch.levelname == "WARNING"
+
+
 def test_alert_error_with_dedupe_key_records_state(fake_slack):
     from shared.state import _get_conn
 

@@ -270,6 +270,54 @@ def test_error_rate_spike_alerts_on_burst(log_index):
     assert anomalies[0].current == 50.0
 
 
+def test_error_rate_spike_ignores_nakama_alerts_logger(log_index):
+    """nakama.alerts ERROR rows MUST NOT count toward the spike — they're the
+    daemon's own dispatch lines and would create a self-feeding loop
+    (2026-05-13 incident: 8-day backup miss drove spike alerts that then
+    replaced the original signal as the dominant error class)."""
+    now = datetime(2026, 5, 13, 12, 0, tzinfo=timezone.utc)
+    # 30 active baseline hours, all clean.
+    for h in range(2, 32):
+        for i in range(5):
+            _seed_log_row(log_index, ts=now - timedelta(hours=h, minutes=i), level="INFO")
+    # 50 ERROR rows in current window — but ALL from nakama.alerts (the loop).
+    for i in range(50):
+        _seed_log_row(
+            log_index,
+            ts=now - timedelta(minutes=10 + i // 10),
+            level="ERROR",
+            logger="nakama.alerts",
+            msg="anomaly error_rate_spike for _global ...",
+        )
+    assert check_error_rate_spike(now=now) == []
+
+
+def test_error_rate_spike_counts_real_errors_alongside_alerts(log_index):
+    """Real ERROR rows still trigger — only nakama.alerts is excluded."""
+    now = datetime(2026, 5, 13, 12, 0, tzinfo=timezone.utc)
+    for h in range(2, 32):
+        for i in range(5):
+            _seed_log_row(log_index, ts=now - timedelta(hours=h, minutes=i), level="INFO")
+    # 40 real errors + 20 nakama.alerts dispatches → only the 40 should count.
+    for i in range(40):
+        _seed_log_row(
+            log_index,
+            ts=now - timedelta(minutes=5 + i // 8),
+            level="ERROR",
+            logger="nakama.news_coo",
+        )
+    for i in range(20):
+        _seed_log_row(
+            log_index,
+            ts=now - timedelta(minutes=5 + i // 4),
+            level="ERROR",
+            logger="nakama.alerts",
+        )
+    anomalies = check_error_rate_spike(now=now)
+    assert len(anomalies) == 1
+    assert anomalies[0].current == 40.0
+
+
 def test_error_rate_spike_critical_level_also_counts(log_index):
     """CRITICAL is in the level filter alongside ERROR (task prompt §3 contract)."""
     now = datetime(2026, 4, 26, 12, 0, tzinfo=timezone.utc)
