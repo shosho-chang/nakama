@@ -1012,8 +1012,16 @@ class AcceptanceResult7:
     reasons: list[str]
 
 
+# `_(尚無內容)_` is intentionally NOT in this list: it is the legitimate
+# section-level TODO marker emitted by the concept page template for
+# discretionary sections (Field-level Controversies / Discussion /
+# Related Concepts) that the author may fill in later. A page with a
+# populated Definition + Core Principles but a Discussion section marked
+# `_(尚無內容)_` is still a valid concept page — the gate is meant to catch
+# *whole-page* lazy stubs ("Will be enriched in Phase B"), not honestly-
+# marked section-level TODOs. See 2026-05-15 ingest run where 578 legacy
+# concept pages with this marker were misclassified as stubs.
 _PLACEHOLDER_PATTERNS_GATE = (
-    "_(尚無內容)_",
     "Will be enriched",
     "phase-b-reconciliation",
     "Stub — auto-created by Phase B",
