@@ -15,9 +15,9 @@
 
 .PARAMETER Book
     Which book to ingest:
-      - bse  — Biochemistry for Sport and Exercise (MacLaren), 11 chapters
-      - sn   — Sport Nutrition (Jeukendrup) 4E, 17 chapters
-      - all  — both books (default)
+      - bse  -- Biochemistry for Sport and Exercise (MacLaren), 11 chapters
+      - sn   -- Sport Nutrition (Jeukendrup) 4E, 17 chapters
+      - all  -- both books (default)
 
 .PARAMETER DryRun
     Run walker + classifier only, no LLM calls, no vault writes.
@@ -74,11 +74,14 @@ $ExpiresAt = $Creds.claudeAiOauth.expiresAt
 if ($ExpiresAt) {
     # JS epoch in ms.
     $ExpiryDate = (Get-Date '1970-01-01').AddMilliseconds([double]$ExpiresAt)
-    $DaysLeft = ($ExpiryDate - (Get-Date)).TotalDays
-    if ($DaysLeft -lt 1) {
-        throw "OAuth token expires in $([int]$DaysLeft) day(s). Refresh with 'claude /login' before running."
+    $HoursLeft = ($ExpiryDate - (Get-Date)).TotalHours
+    if ($HoursLeft -lt 0) {
+        throw "OAuth token already expired (at $($ExpiryDate.ToString('u'))). Refresh with 'claude /login' before running."
     }
-    Write-Host ("OAuth token: ...{0} (expires {1:yyyy-MM-dd}, {2:N0} days left)" -f $OAuth.Substring($OAuth.Length - 8), $ExpiryDate, $DaysLeft) -ForegroundColor DarkGray
+    if ($HoursLeft -lt 1) {
+        Write-Host ("WARNING: OAuth token expires in {0:N1} hour(s) -- refresh soon with 'claude /login'." -f $HoursLeft) -ForegroundColor Yellow
+    }
+    Write-Host ("OAuth token: ...{0} (expires {1:yyyy-MM-dd HH:mm}, {2:N1} hours left)" -f $OAuth.Substring($OAuth.Length - 8), $ExpiryDate, $HoursLeft) -ForegroundColor DarkGray
 }
 
 $SubType = $Creds.claudeAiOauth.subscriptionType
@@ -133,6 +136,6 @@ Write-Host "----------------------------------------------------------------"
 if ($exit -eq 0) {
     Write-Host "Done. Review staging: $env:VAULT_PATH\KB\Wiki.staging\Sources\Books\" -ForegroundColor Green
 } else {
-    Write-Host "Exit code $exit — see logs above and docs\runs\ for the report." -ForegroundColor Red
+    Write-Host "Exit code $exit -- see logs above and docs\runs\ for the report." -ForegroundColor Red
 }
 exit $exit
