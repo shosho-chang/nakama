@@ -639,10 +639,17 @@ def run_figure_triage(payload) -> tuple[dict[str, int], int, int]:
         "Tabular": 0,
         "Decorative": 0,
     }
+    # Heuristic-only stub: when caption keywords miss, default to Decorative
+    # rather than triggering an LLM call. figure_triage.classify_figure treats
+    # ``_ask_llm=None`` as "use the default" (a real Sonnet call), not "skip",
+    # so we have to pass a concrete callable to keep this hot loop API-free.
+    _no_llm = lambda _prompt: "Decorative"  # noqa: E731
+
     described = 0
     for fig in payload.figures:
-        # Heuristic only — defer LLM fallback to keep preflight cheap unless needed
-        cls, conf = classify_figure(caption=fig.alt_text, alt_text=fig.alt_text)
+        cls, conf = classify_figure(
+            caption=fig.alt_text, alt_text=fig.alt_text, _ask_llm=_no_llm
+        )
         counts[cls] = counts.get(cls, 0) + 1
         if cls != "Decorative":
             described += 1

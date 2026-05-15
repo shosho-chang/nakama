@@ -245,15 +245,18 @@ def _process_chapter(
     res.figures_count = len(payload.figures)
     res.tables_count = len(payload.tables)
 
+    if dry_run:
+        # Skip figure triage entirely — when alt_text matches no heuristic
+        # keyword, classify_figure falls through to an LLM call which is not
+        # what "dry-run" should do.
+        res.status = "pass"
+        res.wall_seconds = time.perf_counter() - t0
+        return res
+
     fig_counts, fig_dec, fig_desc = run_figure_triage(payload)
     res.figure_class_counts = fig_counts
     res.figures_decorative = fig_dec
     res.figures_described = fig_desc
-
-    if dry_run:
-        res.status = "pass"
-        res.wall_seconds = time.perf_counter() - t0
-        return res
 
     # Phase 1
     try:
