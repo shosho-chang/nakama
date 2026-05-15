@@ -12,8 +12,12 @@ USAGE (run on host with vault access)
 
     cd E:\\nakama
     .venv\\Scripts\\Activate.ps1
-    $env:ANTHROPIC_API_KEY = "sk-ant-..."
-    $env:VAULT_PATH        = "E:\\Shosho LifeOS"
+    # Max Plan auth (preferred — bills nothing, uses subscription quota):
+    $env:CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-..."
+    $env:VAULT_PATH              = "E:\\Shosho LifeOS"
+
+    # Easier — use the wrapper which sets env vars for you:
+    .\\scripts\\Invoke-IngestTextbook.ps1 -Book biochemistry-for-sport-and-exercise-maclaren
 
     # Default — every real chapter in BSE + SN
     python -m scripts.run_s8_batch
@@ -47,6 +51,12 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+# Force Max Plan billing — even if a parent shell exported ANTHROPIC_API_KEY,
+# `shared.anthropic_client.get_client()` will refuse the API key and require
+# an OAuth token. Textbook ingest must never charge the API budget; see ADR-020
+# and shared/anthropic_client.py:get_client docstring.
+os.environ["NAKAMA_REQUIRE_MAX_PLAN"] = "1"
 
 # Reuse all the heavy lifting from the preflight runner — frozen API.
 from scripts.run_s8_preflight import (  # noqa: E402

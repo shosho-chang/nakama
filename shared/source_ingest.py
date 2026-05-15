@@ -23,6 +23,13 @@ logger = get_logger("nakama.shared.source_ingest")
 
 _RE_H1 = re.compile(r"^# (.+)$")
 _RE_H2 = re.compile(r"^## (.+)$")
+# Real chapters in textbooks typically begin "1 Title", "2 Title", "10 Title".
+# When ≥2 H1s in the book match this shape, we switch to "prefix mode" and
+# treat any H1 without a numeric prefix as front/back matter (Preface, Index,
+# Acknowledgments, License) and drop it. Avoids the 2026-05 BSE staging bug
+# where Preface + book-title H1 were counted as ordinals 1-2, offsetting every
+# real chapter_index by +2.
+_RE_CHAPTER_PREFIX = re.compile(r"^(\d+)\s+(.+)$")
 _RE_FIGURE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _RE_TABLE_ROW = re.compile(r"^\|")
 _RE_BOLD_CAPTION = re.compile(r"^\*\*(.+)\*\*$")
@@ -112,16 +119,42 @@ def walk_book_to_chapters(raw_markdown_path: Path | str) -> list[ChapterPayload]
         logger.info("No H1 chapters found in %s", raw_path.name)
         return []
 
+    numbered = [
+        (m.group(1), title, body)
+        for (title, body) in chapter_slices
+        for m in [_RE_CHAPTER_PREFIX.match(title)]
+        if m
+    ]
+    use_prefix_mode = len(numbered) >= 2
+
     payloads = []
-    for idx, (title, chapter_body) in enumerate(chapter_slices, start=1):
-        payload = _build_payload(
-            book_id=book_id,
-            raw_path=str(raw_path),
-            chapter_index=idx,
-            chapter_title=title,
-            verbatim_body=chapter_body,
-        )
-        payloads.append(payload)
+    if use_prefix_mode:
+        dropped = len(chapter_slices) - len(numbered)
+        if dropped:
+            logger.info(
+                "Prefix mode: dropping %d non-chapter H1(s) from %s (Preface/Index/etc.)",
+                dropped,
+                raw_path.name,
+            )
+        for prefix, title, chapter_body in numbered:
+            payload = _build_payload(
+                book_id=book_id,
+                raw_path=str(raw_path),
+                chapter_index=int(prefix),
+                chapter_title=title,
+                verbatim_body=chapter_body,
+            )
+            payloads.append(payload)
+    else:
+        for idx, (title, chapter_body) in enumerate(chapter_slices, start=1):
+            payload = _build_payload(
+                book_id=book_id,
+                raw_path=str(raw_path),
+                chapter_index=idx,
+                chapter_title=title,
+                verbatim_body=chapter_body,
+            )
+            payloads.append(payload)
 
     logger.info("Walked %d chapters from %s", len(payloads), raw_path.name)
     return payloads

@@ -457,3 +457,82 @@ def test_tables_are_inline_table_instances(tmp_path):
     p = _write_raw(_RAW_WITH_TABLE, tmp_path)
     payloads = walk_book_to_chapters(p)
     assert all(isinstance(t, InlineTable) for t in payloads[0].tables)
+
+
+# ---------------------------------------------------------------------------
+# Prefix mode — real-world textbook with front/back-matter H1s (BSE bug fix)
+# ---------------------------------------------------------------------------
+
+_RAW_WITH_FRONT_MATTER = (
+    _FRONTMATTER
+    + """
+# Sport Nutrition
+
+A book about sport nutrition.
+
+# Preface
+
+Acknowledgments and so on.
+
+# 1 Nutrients
+
+Chapter 1 body.
+
+## 1.1 Macronutrients
+
+Carbs, fats, proteins.
+
+# 2 Healthy Eating
+
+Chapter 2 body.
+
+## 2.1 Principles
+
+Eat well.
+
+# 10 Vitamins and Minerals
+
+Chapter 10 body (note: jumps from 2 to 10).
+
+## 10.1 Vitamins
+
+Vitamin A, B, C.
+
+# Index
+
+Index entries.
+"""
+)
+
+
+def test_prefix_mode_drops_front_and_back_matter(tmp_path):
+    p = _write_raw(_RAW_WITH_FRONT_MATTER, tmp_path)
+    payloads = walk_book_to_chapters(p)
+    assert len(payloads) == 3
+    assert [ch.chapter_title for ch in payloads] == [
+        "1 Nutrients",
+        "2 Healthy Eating",
+        "10 Vitamins and Minerals",
+    ]
+
+
+def test_prefix_mode_chapter_index_from_title_digit(tmp_path):
+    p = _write_raw(_RAW_WITH_FRONT_MATTER, tmp_path)
+    payloads = walk_book_to_chapters(p)
+    assert [ch.chapter_index for ch in payloads] == [1, 2, 10]
+
+
+def test_prefix_mode_preserves_body(tmp_path):
+    """Front-matter content must not leak into the first chapter body."""
+    p = _write_raw(_RAW_WITH_FRONT_MATTER, tmp_path)
+    payloads = walk_book_to_chapters(p)
+    assert "A book about sport nutrition" not in payloads[0].verbatim_body
+    assert "Acknowledgments" not in payloads[0].verbatim_body
+    assert "Index entries" not in payloads[-1].verbatim_body
+
+
+def test_ordinal_fallback_when_no_numeric_prefix(tmp_path):
+    """Books without numeric-prefix titles keep the legacy ordinal behavior."""
+    p = _write_raw(_RAW_TWO_CHAPTERS, tmp_path)
+    payloads = walk_book_to_chapters(p)
+    assert [ch.chapter_index for ch in payloads] == [1, 2]

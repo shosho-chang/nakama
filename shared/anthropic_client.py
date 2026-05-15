@@ -45,14 +45,34 @@ def get_client() -> anthropic.Anthropic:
 
     OAuth tokens (``sk-ant-oat01-…``) ride the Authorization Bearer header via
     the SDK's ``auth_token`` kwarg; API keys ride ``x-api-key``.
+
+    Max Plan hard lock — when ``NAKAMA_REQUIRE_MAX_PLAN=1``, ``ANTHROPIC_API_KEY``
+    is ignored entirely and an OAuth token is required. Set this in workflows
+    that must never bill the API (e.g. textbook ingest 走訂閱 quota)，so
+    accidentally inheriting an API_KEY env var from a parent shell does not
+    silently switch to billing.
     """
     global _client
     if _client is None:
+        require_max_plan = os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1"
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         oauth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get(
             "CLAUDE_CODE_OAUTH_TOKEN"
         )
-        if api_key:
+        if require_max_plan:
+            if not oauth_token:
+                raise RuntimeError(
+                    "NAKAMA_REQUIRE_MAX_PLAN=1 but no OAuth token set. "
+                    "Set ANTHROPIC_AUTH_TOKEN or CLAUDE_CODE_OAUTH_TOKEN "
+                    "(sk-ant-oat01-…) before invoking."
+                )
+            if api_key:
+                logger.warning(
+                    "NAKAMA_REQUIRE_MAX_PLAN=1: ignoring ANTHROPIC_API_KEY, "
+                    "using OAuth token for Max Plan quota."
+                )
+            _client = anthropic.Anthropic(auth_token=oauth_token)
+        elif api_key:
             _client = anthropic.Anthropic(api_key=api_key)
         elif oauth_token:
             _client = anthropic.Anthropic(auth_token=oauth_token)
