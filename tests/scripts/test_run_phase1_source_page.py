@@ -86,8 +86,13 @@ def test_dry_run_writes_real_file(tmp_path: Path) -> None:
     assert "### Sec B" in content
 
 
-def test_json_parse_retry_then_succeed(tmp_path: Path) -> None:
+def test_json_parse_retry_then_succeed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """First LLM call: bad JSON. Second: valid. Retry triggered, body assembled."""
+    # Force MAX_PLAN routing so the patch on `_ask_llm` is taken (otherwise
+    # run_phase1_source_page branches to `_ask_llm_streaming` for SDK path).
+    monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "1")
     payload = _payload()
     valid = _valid_json_for(payload)
 
@@ -99,8 +104,11 @@ def test_json_parse_retry_then_succeed(tmp_path: Path) -> None:
     assert content.startswith("---\n")
 
 
-def test_json_parse_double_fail_raises(tmp_path: Path) -> None:
+def test_json_parse_double_fail_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Both LLM calls return malformed JSON → raises (not silent)."""
+    monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "1")
     payload = _payload()
 
     with patch("scripts.run_s8_preflight._ask_llm", return_value="not json at all"):
@@ -108,8 +116,11 @@ def test_json_parse_double_fail_raises(tmp_path: Path) -> None:
             run_phase1_source_page(payload, vault_root=tmp_path, book_title="Test")
 
 
-def test_schema_section_count_mismatch_fail_fast(tmp_path: Path) -> None:
+def test_schema_section_count_mismatch_fail_fast(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """LLM JSON has wrong len(sections) → ValueError with no retry (schema error ≠ parse error)."""
+    monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "1")
     payload = _payload(section_anchors=["Sec A", "Sec B"])
 
     wrong_json = json.dumps(
