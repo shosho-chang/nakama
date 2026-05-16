@@ -42,6 +42,27 @@ def test_renumber_to_real_aligns_with_preflight_convention():
     assert [p.chapter_index for p in real] == [1, 2, 3]
 
 
+def test_real_chapters_accepts_chapter_prefix_acsm_style():
+    """ACSM uses 'CHAPTER N Title' (uppercase). Walker must still pick them as real chapters."""
+    payloads = [
+        SimpleNamespace(chapter_index=1, chapter_title="Foreword"),
+        SimpleNamespace(chapter_index=2, chapter_title="Preface"),
+        SimpleNamespace(chapter_index=3, chapter_title="Contents"),
+        SimpleNamespace(
+            chapter_index=4,
+            chapter_title="CHAPTER 1 Benefits and Risks Associated With Physical Activity",
+        ),
+        SimpleNamespace(chapter_index=5, chapter_title="CHAPTER 2 Preparticipation Evaluation"),
+        SimpleNamespace(chapter_index=6, chapter_title="APPENDIX A Common Medications"),
+    ]
+    real = _real_chapters_in(payloads)
+    assert [p.chapter_title for p in real] == [
+        "CHAPTER 1 Benefits and Risks Associated With Physical Activity",
+        "CHAPTER 2 Preparticipation Evaluation",
+    ]
+    # APPENDIX A must NOT match — appendices are not real chapters.
+
+
 def _make_pass_result(vault_root: Path, book_id: str, ch_idx: int) -> ChapterResult:
     src_dir = vault_root / "KB" / "Wiki.staging" / "Sources" / "Books" / book_id
     src_dir.mkdir(parents=True, exist_ok=True)
