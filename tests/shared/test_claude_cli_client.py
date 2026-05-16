@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 import subprocess
-from unittest.mock import patch
 
 import pytest
 
 from shared import claude_cli_client as cli
-
 
 _SAMPLE_OK = {
     "type": "result",
@@ -25,7 +23,9 @@ _SAMPLE_OK = {
 }
 
 
-def _fake_completed(stdout: str, returncode: int = 0, stderr: str = "") -> subprocess.CompletedProcess:
+def _fake_completed(
+    stdout: str, returncode: int = 0, stderr: str = ""
+) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(
         args=["claude"], returncode=returncode, stdout=stdout, stderr=stderr
     )
@@ -141,7 +141,9 @@ def test_ask_via_cli_is_error_payload_raises(fake_claude_on_path, monkeypatch):
         "api_error_status": 429,
         "result": "",
     }
-    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _fake_completed(json.dumps(err_payload)))
+    monkeypatch.setattr(
+        subprocess, "run", lambda *a, **kw: _fake_completed(json.dumps(err_payload))
+    )
     from shared import claude_cli_client as mod
 
     monkeypatch.setattr(mod, "with_retry", lambda fn, **kw: fn())
