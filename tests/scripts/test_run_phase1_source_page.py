@@ -86,9 +86,7 @@ def test_dry_run_writes_real_file(tmp_path: Path) -> None:
     assert "### Sec B" in content
 
 
-def test_json_parse_retry_then_succeed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_json_parse_retry_then_succeed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """First LLM call: bad JSON. Second: valid. Retry triggered, body assembled."""
     # Force MAX_PLAN routing so the patch on `_ask_llm` is taken (otherwise
     # run_phase1_source_page branches to `_ask_llm_streaming` for SDK path).
@@ -104,9 +102,7 @@ def test_json_parse_retry_then_succeed(
     assert content.startswith("---\n")
 
 
-def test_json_parse_double_fail_raises(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_json_parse_double_fail_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Both LLM calls return malformed JSON → raises (not silent)."""
     monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "1")
     payload = _payload()
