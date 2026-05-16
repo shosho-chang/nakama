@@ -238,9 +238,10 @@ def render_layer2_table(results: list[HybridResult]) -> str:
         if len(top) > 50:
             top = "…" + top[-47:]
         err = r.error[:30] + "…" if r.error and len(r.error) > 30 else (r.error or "—")
+        gt_total = len(r.matched_ground_truth) + len(r.missed_ground_truth)
         lines.append(
             f"| {r.topic_id} | {r.recall_at_k * 100:.0f}% "
-            f"| {len(r.matched_ground_truth)}/{len(r.matched_ground_truth) + len(r.missed_ground_truth)} "
+            f"| {len(r.matched_ground_truth)}/{gt_total} "
             f"| `{top}` | {err} |"
         )
     return "\n".join(lines)
