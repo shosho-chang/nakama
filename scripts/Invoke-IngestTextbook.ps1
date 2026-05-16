@@ -15,9 +15,10 @@
 
 .PARAMETER Book
     Which book to ingest:
-      - bse  -- Biochemistry for Sport and Exercise (MacLaren), 11 chapters
-      - sn   -- Sport Nutrition (Jeukendrup) 4E, 17 chapters
-      - all  -- both books (default)
+      - bse   -- Biochemistry for Sport and Exercise (MacLaren), 11 chapters
+      - sn    -- Sport Nutrition (Jeukendrup) 4E, 17 chapters
+      - acsm  -- ACSM's Guidelines for Exercise Testing and Prescription (12e), 12 chapters
+      - all   -- bse,sn,acsm (default)
 
 .PARAMETER DryRun
     Run walker + classifier only, no LLM calls, no vault writes.
@@ -38,12 +39,22 @@
 
 .EXAMPLE
     .\scripts\Invoke-IngestTextbook.ps1
-    Full re-ingest of both books (BSE 11ch + Sport Nutrition 17ch).
+    Full re-ingest of all books (BSE 11ch + SN 17ch + ACSM 12ch).
+
+.NOTES
+    OAuth handling: this wrapper validates ~\.claude\.credentials.json (subscription
+    tier + expiry) but does NOT pin CLAUDE_CODE_OAUTH_TOKEN into the subprocess env.
+    Long batches (>=1h) can outlive a single token; the subprocess would otherwise
+    keep using the stale value and silently 401 mid-batch. By leaving the env unset,
+    the claude CLI subprocess reads credentials.json fresh per call and picks up the
+    refreshToken-driven rotation automatically. See
+    memory/claude/feedback_oauth_env_pinning_long_batch.md for the 2026-05-16
+    incident that motivated this.
 #>
 
 [CmdletBinding()]
 param(
-    [ValidateSet('bse', 'sn', 'all')]
+    [ValidateSet('bse', 'sn', 'acsm', 'all')]
     [string]$Book = 'all',
 
     [switch]$DryRun,
@@ -90,8 +101,16 @@ Write-Host "Subscription: $SubType  / Rate tier: $RateLimit" -ForegroundColor Da
 
 # --- 3. Configure env for this process only -------------------------------
 # Process-scope env vars do NOT persist after the script exits.
-$env:CLAUDE_CODE_OAUTH_TOKEN = $OAuth
-$env:ANTHROPIC_AUTH_TOKEN = $OAuth          # Anthropic SDK prefers this name
+#
+# IMPORTANT: do NOT set $env:CLAUDE_CODE_OAUTH_TOKEN. The claude CLI subprocess
+# inherits parent env, and pinning the OAuth token here would keep an expired
+# value live across the batch even after credentials.json gets refreshed by
+# another foreground session. Leaving it unset forces the subprocess to read
+# credentials.json fresh per invocation. See the NOTES block above.
+if ($env:CLAUDE_CODE_OAUTH_TOKEN) {
+    Write-Host "Clearing CLAUDE_CODE_OAUTH_TOKEN from this process (subprocess reads credentials.json fresh)." -ForegroundColor Yellow
+    Remove-Item Env:\CLAUDE_CODE_OAUTH_TOKEN
+}
 $env:NAKAMA_REQUIRE_MAX_PLAN = '1'           # Hard lock in anthropic_client
 $env:VAULT_PATH = $VaultPath
 
@@ -112,7 +131,7 @@ if (-not (Test-Path $VenvPython)) {
 
 # --- 5. Build python args --------------------------------------------------
 $BooksArg = switch ($Book) {
-    'all' { 'bse,sn' }
+    'all' { 'bse,sn,acsm' }
     default { $Book }
 }
 

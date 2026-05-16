@@ -85,6 +85,7 @@ PRICE_CACHE_WRITE_PER_MTOK = 3.75
 EXPECTED_REAL_CHAPTERS = {
     "biochemistry-for-sport-and-exercise-maclaren": 11,
     "sport-nutrition-jeukendrup-4e": 17,
+    "acsm-guidelines-exercise-testing-prescription": 12,
 }
 
 # Book registry.
@@ -98,6 +99,11 @@ BOOKS = {
         "book_id": "sport-nutrition-jeukendrup-4e",
         "book_title": "Sport Nutrition (Jeukendrup) 4E",
         "raw_rel": "KB/Raw/Books/sport-nutrition-jeukendrup-4e.md",
+    },
+    "acsm": {
+        "book_id": "acsm-guidelines-exercise-testing-prescription",
+        "book_title": "ACSM's Guidelines for Exercise Testing and Prescription (12e)",
+        "raw_rel": "KB/Raw/Books/acsm-guidelines-exercise-testing-prescription.md",
     },
 }
 
@@ -195,8 +201,11 @@ def _drain_usage_buffer() -> tuple[int, int, int, int, float]:
 
 
 def _real_chapters_in(payloads) -> list:
-    """Return the subset of walker payloads whose title matches `<digit>+ <Word>`."""
-    pat = re.compile(r"^\s*\d+\s+[A-Za-z]")
+    """Return the subset of walker payloads whose title looks like a real chapter.
+
+    Matches BSE/SN style "1 Energy Sources" and ACSM style "CHAPTER 1 Benefits...".
+    """
+    pat = re.compile(r"^\s*(?:CHAPTER\s+)?\d+\s+[A-Za-z]", re.IGNORECASE)
     return [p for p in payloads if pat.match(p.chapter_title or "")]
 
 

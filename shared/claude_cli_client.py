@@ -169,6 +169,15 @@ def _invoke(
     # with project instructions intended for interactive sessions.
     sub_cwd = tempfile.gettempdir()
 
+    # Default 600s covers all typical chapters. Large chapters (>200K chars)
+    # need more time for Phase 1 source page generation; override via
+    # NAKAMA_CLAUDE_CLI_TIMEOUT (seconds) when the next batch is known to have
+    # a long-tail chapter. Real incidents motivating this: SN ch11 (234K chars)
+    # and ACSM ch11 (Neurologic Diseases) both hit the 600s wall.
+    try:
+        timeout_s = int(os.environ.get("NAKAMA_CLAUDE_CLI_TIMEOUT", "600"))
+    except ValueError:
+        timeout_s = 600
     try:
         proc = subprocess.run(
             args,
@@ -176,7 +185,7 @@ def _invoke(
             capture_output=True,
             text=True,
             encoding="utf-8",
-            timeout=600,
+            timeout=timeout_s,
             check=False,
             env=sub_env,
             cwd=sub_cwd,

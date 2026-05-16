@@ -1545,11 +1545,12 @@ def _pick_chapter(payloads, requested_index: int) -> tuple[object, str]:
 
     # Walker numbers chapters from 1 by H1 order, but real ch1 is rarely walker[0]:
     # books typically have title-page + preface/contents/foreword before chapter 1.
-    # Heuristic: real chapters have titles starting with `<digit>+ <Word>` (e.g. "1 Energy Sources").
+    # Heuristic: real chapters have titles starting with `<digit>+ <Word>` (e.g. "1 Energy Sources")
+    # or optionally prefixed with "CHAPTER " (e.g. "CHAPTER 1 Benefits..." — ACSM style).
     # Find the i-th such title for requested_index = i.
     import re as _re
 
-    chapter_pattern = _re.compile(r"^\s*\d+\s+[A-Za-z]")
+    chapter_pattern = _re.compile(r"^\s*(?:CHAPTER\s+)?\d+\s+[A-Za-z]", _re.IGNORECASE)
     real_chapters = [p for p in payloads if chapter_pattern.match(p.chapter_title or "")]
     if real_chapters and 1 <= requested_index <= len(real_chapters):
         chosen = real_chapters[requested_index - 1]
