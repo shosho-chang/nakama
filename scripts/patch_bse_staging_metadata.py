@@ -2,9 +2,11 @@
 
 Diagnostic (2026-05-15):
 - ch12.md byte-identical to ch10.md; ch13.md byte-identical to ch11.md → delete dupes + sidecars
-- ch1.md, ch2.md, ch7.md, ch8.md, ch9.md, ch10.md, ch11.md frontmatter.chapter_index offset +2
-  (walker had counted book-title + Preface H1 as ordinals 1-2; chapter_title prefix is canonical)
-- ch5/ch6/ch7/ch8 phase1.json sidecars have internal title/index mismatch (older walker run) — realign
+- ch1.md, ch2.md, ch7.md, ch8.md, ch9.md, ch10.md, ch11.md frontmatter.chapter_index
+  offset +2 (walker had counted book-title + Preface H1 as ordinals 1-2; chapter_title
+  prefix is canonical)
+- ch5/ch6/ch7/ch8 phase1.json sidecars have internal title/index mismatch
+  (older walker run) — realign
 
 Body content, chapter_title, filenames are all correct. No LLM call.
 
@@ -21,7 +23,10 @@ import re
 import sys
 from pathlib import Path
 
-STAGING = Path(r"E:\Shosho LifeOS\KB\Wiki.staging\Sources\Books\biochemistry-for-sport-and-exercise-maclaren")
+STAGING = Path(
+    r"E:\Shosho LifeOS\KB\Wiki.staging\Sources\Books"
+    r"\biochemistry-for-sport-and-exercise-maclaren"
+)
 
 # Files whose frontmatter chapter_index needs setting to the canonical value
 # (the integer prefix of chapter_title, which is correct in every file).
@@ -44,11 +49,20 @@ DELETE = ["ch12.md", "ch12.phase1.json", "ch13.md", "ch13.phase1.json"]
 SIDECAR_FIX = {
     "ch5.phase1.json": {"chapter_index": 5, "chapter_title": "5 Carbohydrates"},
     "ch6.phase1.json": {"chapter_index": 6, "chapter_title": "6 Lipids"},
-    "ch7.phase1.json": {"chapter_index": 7, "chapter_title": "7 Principles of Metabolic Regulation"},
-    "ch8.phase1.json": {"chapter_index": 8, "chapter_title": "8 Techniques for Exercise Metabolism"},
+    "ch7.phase1.json": {
+        "chapter_index": 7,
+        "chapter_title": "7 Principles of Metabolic Regulation",
+    },
+    "ch8.phase1.json": {
+        "chapter_index": 8,
+        "chapter_title": "8 Techniques for Exercise Metabolism",
+    },
     "ch9.phase1.json": {"chapter_index": 9, "chapter_title": "9 High-Intensity Exercise (HIE)"},
     "ch10.phase1.json": {"chapter_index": 10, "chapter_title": "10 Endurance Exercise"},
-    "ch11.phase1.json": {"chapter_index": 11, "chapter_title": "11 High-intensity Intermittent Exercise"},
+    "ch11.phase1.json": {
+        "chapter_index": 11,
+        "chapter_title": "11 High-intensity Intermittent Exercise",
+    },
 }
 
 
@@ -87,7 +101,9 @@ def _patch_sidecar(path: Path, fix: dict, apply: bool) -> dict | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--apply", action="store_true", help="Actually write changes (default: dry-run)")
+    ap.add_argument(
+        "--apply", action="store_true", help="Actually write changes (default: dry-run)"
+    )
     args = ap.parse_args()
 
     if not STAGING.is_dir():

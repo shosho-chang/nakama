@@ -1,4 +1,4 @@
-"""One-off cleanup: truncate Definition sections corrupted by the
+r"""One-off cleanup: truncate Definition sections corrupted by the
 2026-05-08 BSE seed-body fallback regression.
 
 The regression caused the Phase B seed-body builder to capture the
@@ -64,7 +64,8 @@ def _process(page_path: Path) -> tuple[bool, str]:
     if not _POLLUTION_BOUNDARY.search(raw_def):
         return False, "clean"
 
-    title_match = re.search(r"^title:\s*(.+)$", text[: fm_match.end() if fm_match else 0], re.MULTILINE)
+    fm_text = text[: fm_match.end() if fm_match else 0]
+    title_match = re.search(r"^title:\s*(.+)$", fm_text, re.MULTILINE)
     title = title_match.group(1).strip() if title_match else page_path.stem
 
     cleaned = _clean_definition(raw_def, title)

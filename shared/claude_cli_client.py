@@ -115,7 +115,9 @@ def _flatten_messages(messages: list[dict]) -> str:
             # Claude tool-use shape: list of content blocks. Concatenate text
             # blocks only; tool_use blocks are unsupported and dropped.
             text_parts = [
-                b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+                b.get("text", "")
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
             ]
             content = "\n".join(text_parts)
         parts.append(f"[{role}]\n{content}")
