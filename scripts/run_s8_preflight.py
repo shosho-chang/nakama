@@ -231,8 +231,8 @@ def _ask_llm_streaming(prompt: str, *, system: str = "", max_tokens: int = 64000
     parity.
     """
     import time
-    import anthropic
-    from shared.anthropic_client import get_client, _record_anthropic_usage
+
+    from shared.anthropic_client import _record_anthropic_usage, get_client
 
     client = get_client()
     kwargs: dict = {
@@ -1270,9 +1270,7 @@ def compute_acceptance_7(
         if batch_start_time is None:
             reasons.append(f"C4: {len(c4_live)} slug(s) found in live KB/Wiki/: {c4_live[:5]}")
         else:
-            reasons.append(
-                f"C4: {len(c4_live)} live slug(s) modified by this batch: {c4_live[:5]}"
-            )
+            reasons.append(f"C4: {len(c4_live)} live slug(s) modified by this batch: {c4_live[:5]}")
 
     # --- C5 — zero placeholder stubs in concept pages ------------------------
     c5_hits: list[tuple[str, str]] = []

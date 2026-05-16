@@ -19,6 +19,7 @@ Usage:
     python -m scripts.promote_sn_to_live --dry-run
     python -m scripts.promote_sn_to_live
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,13 +37,12 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 VAULT_ROOT = Path("E:/Shosho LifeOS")
-STAGING_BOOK_DIR = VAULT_ROOT / "KB" / "Wiki.staging" / "Sources" / "Books" / "sport-nutrition-jeukendrup-4e"
-LIVE_BOOK_DIR = VAULT_ROOT / "KB" / "Wiki" / "Sources" / "Books" / "sport-nutrition-jeukendrup-4e"
+SN_BOOK_ID = "sport-nutrition-jeukendrup-4e"
+STAGING_BOOK_DIR = VAULT_ROOT / "KB" / "Wiki.staging" / "Sources" / "Books" / SN_BOOK_ID
+LIVE_BOOK_DIR = VAULT_ROOT / "KB" / "Wiki" / "Sources" / "Books" / SN_BOOK_ID
 STAGING_CONCEPTS_DIR = VAULT_ROOT / "KB" / "Wiki.staging" / "Concepts"
 LIVE_CONCEPTS_DIR = VAULT_ROOT / "KB" / "Wiki" / "Concepts"
 LOG_PATH = VAULT_ROOT / "KB" / "log.md"
-
-SN_BOOK_ID = "sport-nutrition-jeukendrup-4e"
 SN_MENTIONED_PATTERN = re.compile(rf"Sources/Books/{re.escape(SN_BOOK_ID)}/")
 
 
@@ -155,14 +155,20 @@ def promote_concepts(*, dry_run: bool) -> tuple[int, int, int]:
 
 def append_log(*, ch_new: int, ch_overwrite: int, c_new: int, c_merged: int, dry_run: bool) -> None:
     today = datetime.date.today().isoformat()
+    ch_summary = f"new: {ch_new}, overwrite: {ch_overwrite}"
+    pipeline_note = (
+        "ch1-10 + ch12-17 via L3 CLI Max Plan; "
+        "ch11 via SDK + 64K streaming (Phase 1 output cap workaround for ch11's "
+        "234K-char Nutrition Supplements chapter)"
+    )
     entry = f"""
 ## {today} — SN textbook v3 ingest promoted to live
 
-- 17 chapter source pages → KB/Wiki/Sources/Books/{SN_BOOK_ID}/ (new: {ch_new}, overwrite: {ch_overwrite})
+- 17 chapter source pages → KB/Wiki/Sources/Books/{SN_BOOK_ID}/ ({ch_summary})
 - {c_new} new concept pages → KB/Wiki/Concepts/
 - {c_merged} existing concept pages merged (BSE+SN mentioned_in union)
 - All 17 chapters pass 7-condition acceptance gate (delta C4 mode)
-- Pipeline: ch1-10 + ch12-17 via L3 CLI Max Plan; ch11 via SDK + 64K streaming (Phase 1 output cap workaround for ch11's 234K-char Nutrition Supplements chapter)
+- Pipeline: {pipeline_note}
 """
     if dry_run:
         print(f"\n[log.md APPEND PREVIEW]:\n{entry}")
@@ -180,12 +186,18 @@ def main() -> int:
     print(f"=== SN promotion ({mode}) ===\n")
     print("[chapters] staging → live:")
     ch_new, ch_overwrite = promote_chapters(dry_run=args.dry_run)
-    print(f"\n[concepts] staging → live:")
+    print("\n[concepts] staging → live:")
     c_new, c_merged, c_unchanged = promote_concepts(dry_run=args.dry_run)
-    print(f"\n=== Summary ===")
+    print("\n=== Summary ===")
     print(f"  Chapters: {ch_new} new + {ch_overwrite} overwrite")
     print(f"  Concepts: {c_new} new + {c_merged} merged + {c_unchanged} unchanged (no SN delta)")
-    append_log(ch_new=ch_new, ch_overwrite=ch_overwrite, c_new=c_new, c_merged=c_merged, dry_run=args.dry_run)
+    append_log(
+        ch_new=ch_new,
+        ch_overwrite=ch_overwrite,
+        c_new=c_new,
+        c_merged=c_merged,
+        dry_run=args.dry_run,
+    )
     return 0
 
 

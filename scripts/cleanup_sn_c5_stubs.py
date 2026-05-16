@@ -15,6 +15,7 @@ truthful state: "this concept exists as a wikilink target, definition TBD".
 Usage:
     python -m scripts.cleanup_sn_c5_stubs
 """
+
 from __future__ import annotations
 
 import re
