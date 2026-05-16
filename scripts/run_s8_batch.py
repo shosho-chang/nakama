@@ -226,6 +226,7 @@ def _process_chapter(
     real_index: int,
     vault_root: Path,
     dry_run: bool,
+    batch_start_time: float | None = None,
 ) -> ChapterResult:
     t0 = time.perf_counter()
     res = ChapterResult(
@@ -298,6 +299,7 @@ def _process_chapter(
             figures_described=res.figures_described,
             dispatch_log=res.concept_dispatch,
             vault_root=vault_root,
+            batch_start_time=batch_start_time,
         )
         res.acceptance_pass = passed
         res.acceptance_reasons = reasons
@@ -733,6 +735,10 @@ def write_blockers(reasons: list[str], path: Path) -> None:
 
 def run_batch(args) -> int:
     t_start = time.perf_counter()
+    # Wall-clock epoch — used by C4 in compute_acceptance_7 to distinguish
+    # "live page touched by this batch" (real violation) from "concept already
+    # shipped by a previous textbook" (expected when ingesting SN after BSE).
+    batch_wall_start = time.time()
 
     vault_root = Path(args.vault_root)
     if not vault_root.exists():
@@ -836,6 +842,7 @@ def run_batch(args) -> int:
                 real_index=real_idx,
                 vault_root=vault_root,
                 dry_run=args.dry_run,
+                batch_start_time=batch_wall_start,
             )
         except Exception as e:
             log.exception("uncaught exception in chapter driver")

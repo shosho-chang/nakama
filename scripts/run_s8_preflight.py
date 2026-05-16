@@ -218,6 +218,44 @@ def _ask_llm(prompt: str, *, system: str = "", max_tokens: int = 8000) -> str:
     )
 
 
+def _ask_llm_streaming(prompt: str, *, system: str = "", max_tokens: int = 64000) -> str:
+    """Streaming Anthropic call for long-form Phase 1 (SDK path, API_KEY billing).
+
+    Synchronous ``messages.create`` raises if ``max_tokens`` is large enough that the
+    request could exceed 10 min. SN ch11 (234K chars, 14 sections of supplement detail)
+    needs ~64K output tokens. Use this when MAX_PLAN is OFF and we need headroom.
+    Caller responsibility: only invoke when ``NAKAMA_REQUIRE_MAX_PLAN != "1"`` (SDK
+    path) — under MAX_PLAN the CLI subprocess can't do streaming either.
+
+    Records the same usage rows as :func:`shared.anthropic_client.ask_claude` for cost
+    parity.
+    """
+    import time
+
+    from shared.anthropic_client import _record_anthropic_usage, get_client
+
+    client = get_client()
+    kwargs: dict = {
+        "model": PREFLIGHT_MODEL,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2,
+    }
+    if system:
+        kwargs["system"] = system
+
+    start = time.perf_counter()
+    chunks: list[str] = []
+    with client.messages.stream(**kwargs) as stream:
+        for text in stream.text_stream:
+            chunks.append(text)
+        final = stream.get_final_message()
+    latency_ms = int((time.perf_counter() - start) * 1000)
+
+    _record_anthropic_usage(final, PREFLIGHT_MODEL, latency_ms=latency_ms)
+    return "".join(chunks)
+
+
 def _llm_observability_snapshot() -> tuple[int, int, float]:
     """Read cumulative input/output tokens + cost from llm_observability if available."""
     try:
@@ -607,7 +645,17 @@ def run_phase1_source_page(
     else:
         prompt = _build_phase1_prompt(payload, book_title=book_title, ingest_date=str(date.today()))
         log.info("Phase 1: calling LLM for source page (model=%s)", PREFLIGHT_MODEL)
-        parsed = _parse_phase1_json(_ask_llm(prompt, max_tokens=16000), payload, prompt)
+        # SN ch11 (Nutrition Supplements, 234K chars, 14 sections of dense supplement
+        # content) overflowed the previous 16K budget when Claude emitted long per-section
+        # mermaid concept maps. CLI path under MAX_PLAN drops max_tokens entirely (capped
+        # at ~8K by claude binary default).
+        # Under SDK path we need 64K, but Anthropic SDK refuses synchronous calls that
+        # may exceed 10 min — must use streaming for max_tokens this large.
+        if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
+            response_text = _ask_llm(prompt, max_tokens=64000)
+        else:
+            response_text = _ask_llm_streaming(prompt, max_tokens=64000)
+        parsed = _parse_phase1_json(response_text, payload, prompt)
 
     body = _assemble_body(
         payload.verbatim_body,
@@ -1123,6 +1171,7 @@ def compute_acceptance_7(
     dispatch_log: list[dict],
     staging_concepts_dir: Path,
     live_concepts_dir: Path,
+    batch_start_time: float | None = None,
 ) -> "AcceptanceResult7":
     """7-condition file-based acceptance gate (ADR-020 §P0.5, issue #502).
 
@@ -1138,7 +1187,18 @@ def compute_acceptance_7(
                               (dispatch-error / ingest-fail / classifier-skipped).
         staging_concepts_dir: Path to the staging concept-page directory.
         live_concepts_dir:    Path to the live (non-staging) concept-page dir.
-                              C4 asserts no dispatched slug exists here.
+                              C4 asserts no dispatched slug exists here, OR if
+                              ``batch_start_time`` is given, no live concept
+                              page was modified after the batch began.
+        batch_start_time:     Epoch seconds when the batch started. When given,
+                              C4 only flags live concept pages whose mtime is
+                              strictly after this timestamp (i.e. modified by
+                              this batch run). Lets a subsequent textbook reuse
+                              concepts already promoted to live by a prior book
+                              (e.g. SN dispatch overlapping with BSE-shipped
+                              glucose/creatine/etc.) without false-positive FAIL.
+                              When None (default), legacy strict mode applies:
+                              any live slug presence fails C4.
     """
     from shared.concept_canonicalize import canonicalize, report_collisions
 
@@ -1186,12 +1246,31 @@ def compute_acceptance_7(
             f"C3: FM wikilinks_introduced={fm_wl_count} != body appendix count={body_wl_count}"
         )
 
-    # --- C4 — zero writes to live KB/Wiki/Concepts/ --------------------------
+    # --- C4 — zero writes to live KB/Wiki/Concepts/ by THIS batch ----------
+    # Strict mode (batch_start_time=None): any pre-existing live slug fails.
+    # Delta mode (batch_start_time set): only live pages with mtime > batch_start
+    # count as violations — i.e., page was modified by this batch.
     all_slugs = [canonicalize(e.get("slug", "")) for e in dispatch_log if e.get("slug")]
-    c4_live = [s for s in all_slugs if (live_concepts_dir / f"{s}.md").exists()]
+    c4_live: list[str] = []
+    for s in all_slugs:
+        live_path = live_concepts_dir / f"{s}.md"
+        if not live_path.exists():
+            continue
+        if batch_start_time is None:
+            c4_live.append(s)
+        else:
+            try:
+                if live_path.stat().st_mtime > batch_start_time:
+                    c4_live.append(s)
+            except OSError:
+                # Treat unreadable files conservatively as untouched.
+                pass
     c4_ok = len(c4_live) == 0
     if not c4_ok:
-        reasons.append(f"C4: {len(c4_live)} slug(s) found in live KB/Wiki/: {c4_live[:5]}")
+        if batch_start_time is None:
+            reasons.append(f"C4: {len(c4_live)} slug(s) found in live KB/Wiki/: {c4_live[:5]}")
+        else:
+            reasons.append(f"C4: {len(c4_live)} live slug(s) modified by this batch: {c4_live[:5]}")
 
     # --- C5 — zero placeholder stubs in concept pages ------------------------
     c5_hits: list[tuple[str, str]] = []
@@ -1307,8 +1386,14 @@ def run_coverage_gate(
     figures_described: int,
     dispatch_log: list[dict],
     vault_root: Path,
+    batch_start_time: float | None = None,
 ) -> tuple[bool, list[str], dict]:
-    """Run 7-condition file-based acceptance gate. Returns (passed, reasons, metrics_dict)."""
+    """Run 7-condition file-based acceptance gate. Returns (passed, reasons, metrics_dict).
+
+    Pass ``batch_start_time`` (epoch float) when the caller is part of a multi-
+    book or post-promotion run: C4 then becomes a delta check (live pages
+    touched by THIS batch) instead of strict presence check.
+    """
     staging_concepts_dir = vault_root / "KB" / "Wiki.staging" / "Concepts"
     live_concepts_dir = vault_root / "KB" / "Wiki" / "Concepts"
 
@@ -1317,12 +1402,19 @@ def run_coverage_gate(
         dispatch_log=dispatch_log,
         staging_concepts_dir=staging_concepts_dir,
         live_concepts_dir=live_concepts_dir,
+        batch_start_time=batch_start_time,
     )
 
     # Verbatim metric still surfaced for the report — strip FM, then strip
     # appendix, then compare against walker.verbatim_body.
+    # NOTE: split with maxsplit=1 (not 2): for chapters with an end appendix the
+    # 2-split `[-1]` accidentally returned the appendix-only block; chapters
+    # without an extra `---` after the title H1 (e.g. SN textbook) then
+    # measured ~7% verbatim instead of the actual ~100%. _strip_chapter_appendix
+    # (called inside normalize_for_verbatim_compare) handles the trailing block.
     raw = source_page_path.read_text(encoding="utf-8")
-    body_only = raw.split("\n---\n", 2)[-1] if raw.startswith("---\n") else raw
+    fm_parts = raw.split("\n---\n", 1)
+    body_only = fm_parts[1] if raw.startswith("---\n") and len(fm_parts) > 1 else raw
     verbatim_pct_value = verbatim_match_pct(body_only, payload.verbatim_body) * 100
     metrics = {
         "primary_total": 0,
