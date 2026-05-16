@@ -8,6 +8,46 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 
+def test_dedup_concepts_singular_plural_collapsed():
+    """Singular + plural forms of same concept collapse to one entry."""
+    from scripts.run_s8_preflight import _dedup_concepts_by_canonical
+
+    deduped, dropped = _dedup_concepts_by_canonical(
+        ["transcription factor", "ATP", "transcription factors"]
+    )
+    assert deduped == ["transcription factor", "ATP"]
+    assert dropped == [("transcription factor", "transcription factors")]
+
+
+def test_dedup_concepts_literal_duplicate_collapsed():
+    """Literal duplicates (same surface form twice) collapse to one entry."""
+    from scripts.run_s8_preflight import _dedup_concepts_by_canonical
+
+    deduped, dropped = _dedup_concepts_by_canonical(
+        ["electron transfer chain", "ATP", "electron transfer chain"]
+    )
+    assert deduped == ["electron transfer chain", "ATP"]
+    assert dropped == [("electron transfer chain", "electron transfer chain")]
+
+
+def test_dedup_concepts_preserves_order_no_dups():
+    """No duplicates → list unchanged, dropped is empty."""
+    from scripts.run_s8_preflight import _dedup_concepts_by_canonical
+
+    deduped, dropped = _dedup_concepts_by_canonical(["ATP", "lactate", "pyruvate"])
+    assert deduped == ["ATP", "lactate", "pyruvate"]
+    assert dropped == []
+
+
+def test_dedup_concepts_seed_alias_merged():
+    """Seed-alias variants (Lactic Acid → lactate) collapse to canonical."""
+    from scripts.run_s8_preflight import _dedup_concepts_by_canonical
+
+    deduped, dropped = _dedup_concepts_by_canonical(["lactate", "Lactic Acid"])
+    assert deduped == ["lactate"]
+    assert dropped == [("lactate", "Lactic Acid")]
+
+
 def test_patch_alias_map_to_staging_importable_from_preflight():
     """_patch_alias_map_to_staging must be importable from run_s8_preflight."""
     from scripts.run_s8_preflight import _patch_alias_map_to_staging  # noqa: F401

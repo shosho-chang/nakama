@@ -1,6 +1,6 @@
 ---
 schema_version: 3
-title: Nucleus
+title: nucleus
 type: concept
 domain: biochemistry
 aliases: []
@@ -11,9 +11,8 @@ discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
-- Nucleus
 - nucleus
 maturity_level: L2
 high_value_signals:
@@ -40,49 +39,49 @@ high_value_signals:
 
 ## Definition
 
-A foundational chapter on basic chemistry and cell biology relevant to sport and exercise biochemistry, covering atomic and molecular structure, chemical reactions, energy, water, acids/bases, and basic cell architecture.
+A chemical reaction is a process in which atoms or molecules interact to form new substances, involving the making or breaking of chemical bonds. Energy is the capacity to do work, measured in units such as joules (J) or calories (cal). An atom is the smallest unit of a chemical element; an ion is a charged atom or molecule; a molecule consists of two or more atoms bonded together; a compound is a molecule containing two or more different elements. Acids are proton (H⁺) donors, bases are proton acceptors, and salts are ionic compounds formed from the neutralisation of an acid by a base. The mole is the SI unit of amount of substance; molar refers to a one-mole-per-litre concentration; molarity expresses the number of moles of solute per litre of solution.
 
 ## Core Principles
 
-- The human body is composed of a defined set of main chemical elements, organised into atoms with characteristic atomic structure.
-- Matter exists at multiple levels of organisation: atoms, ions, molecules, and compounds, distinguished by composition and charge.
-- Chemical bonds form between atoms; ionic bonds involve transfer of electrons and electrostatic attraction, whereas covalent bonds involve sharing of electrons.
-- A chemical reaction is the transformation of reactants into products; reactions are classified energetically as endergonic (energy-absorbing) or exergonic (energy-releasing).
-- Energy is the capacity to do work and is quantified in defined units of energy.
-- ATP functions as the principal energy currency within the cell, coupling exergonic to endergonic processes.
-- Common reaction types include synthesis, decomposition, reversible, exchange, phosphorylation/dephosphorylation, and oxidation/reduction reactions.
-- Water acts as a biological solvent due to its polar chemical property, supporting solute dissolution and transport.
-- The mole, molar, and molarity provide quantitative descriptions of chemical amount and concentration.
-- Acids, bases, and salts are defined by their behaviour in solution; the pH scale quantifies acidity and alkalinity.
-- Basic cell structure includes the plasma membrane, nucleus, cytoplasm, and mitochondria, each with distinct roles.
+- The human body is composed primarily of a small set of chemical elements (notably C, H, O, N, with Ca, P, K, S, Na, Cl, Mg as major minerals).
+- Atomic structure consists of a nucleus of protons and neutrons surrounded by electrons in shells; this structure underpins bonding behaviour.
+- Ionic bonds form by transfer of electrons between atoms producing charged ions held together by electrostatic attraction; covalent bonds form by sharing of electron pairs between atoms.
+- Chemical reactions are classified energetically as exergonic (net release of free energy) or endergonic (net absorption of free energy).
+- ATP functions as the universal energy currency of the cell, coupling exergonic catabolic reactions to endergonic processes via phosphorylation and dephosphorylation.
+- The pH scale (0–14) quantifies hydrogen ion concentration: values below 7 are acidic, above 7 are alkaline (basic), and 7 is neutral.
+- Water’s polarity and ability to form hydrogen bonds underpin its role as the universal biological solvent.
 
 ## Sub-concepts
 
-- Atomic structure and the main chemical elements in the human body
-- Atoms vs. ions vs. molecules vs. compounds
-- Ionic bonds vs. covalent bonds
-- Endergonic vs. exergonic reactions
-- Energy and units of energy
-- ATP and cellular energy transfer
-- Reaction types: synthesis, decomposition, reversible, exchange, phosphorylation/dephosphorylation, oxidation/reduction
-- Water as a solvent; polarity
-- Mole, molar, molarity
-- Acids, bases, salts
-- pH scale; acidic and alkaline
-- Cell structure: plasma membrane, nucleus, cytoplasm, mitochondria
+- **Atoms, ions, molecules, compounds**: distinctions in composition and charge.
+- **Ionic vs covalent bonding**: electron transfer vs electron sharing.
+- **Reaction types**: synthesis (anabolic), decomposition (catabolic), reversible, exchange, phosphorylation/dephosphorylation, and oxidation/reduction (redox).
+- **Energetics**: endergonic vs exergonic reactions; energy units (joule, calorie).
+- **ATP cycle**: phosphorylation stores energy; dephosphorylation (hydrolysis) releases it for cellular work.
+- **Water chemistry**: solvent properties, polarity, hydrogen bonding.
+- **Quantitative chemistry**: mole, molar, molarity.
+- **Acid–base chemistry**: acids, bases, salts, pH scale, acidic vs alkaline solutions.
+- **Cell structure basics**: plasma membrane (selective barrier), nucleus (genetic control), cytoplasm (metabolic milieu), mitochondria (ATP production).
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
-- Provides the chemical and cellular vocabulary required to interpret metabolic and biochemical processes in sport and exercise contexts.
-- Underpins understanding of ATP-driven energy transfer relevant to muscle contraction and exercise metabolism.
-- Supports interpretation of acid–base balance (pH) during exercise.
-- Frames the role of water as a solvent in physiological fluids and hydration.
+- Understanding ATP turnover underpins analysis of energy supply during sport and exercise.
+- pH regulation is critical for interpreting acid–base balance during high-intensity exercise (e.g. lactic acidosis).
+- Molarity and mole calculations are foundational for preparing physiological and biochemical solutions in laboratory and clinical contexts.
+- Knowledge of redox and phosphorylation reactions is essential for understanding metabolic pathways such as glycolysis, the TCA cycle and oxidative phosphorylation.
+- Cell structural knowledge (mitochondria in particular) supports interpretation of aerobic capacity and training adaptations.
 
 ## Related Concepts
+
+_(尚無內容)_
 
 ## Sources
 

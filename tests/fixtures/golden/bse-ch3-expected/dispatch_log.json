@@ -3,1008 +3,1450 @@
     "slug": "matter",
     "term": "matter",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\matter.md"
   },
   {
     "slug": "element",
-    "term": "element",
+    "term": "elements",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "trace element",
-    "term": "trace element",
-    "level": "L2",
-    "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\element.md"
   },
   {
     "slug": "atom",
-    "term": "atom",
+    "term": "atoms",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\atom.md"
   },
   {
     "slug": "proton",
-    "term": "proton",
+    "term": "protons",
     "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\proton.md"
   },
   {
     "slug": "neutron",
-    "term": "neutron",
+    "term": "neutrons",
     "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\neutron.md"
   },
   {
     "slug": "electron",
-    "term": "electron",
+    "term": "electrons",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\electron.md"
   },
   {
     "slug": "nucleus",
     "term": "nucleus",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\nucleus.md"
   },
   {
     "slug": "electron shell",
-    "term": "electron shell",
+    "term": "electron shells",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\electron shell.md"
   },
   {
     "slug": "atomic number",
     "term": "atomic number",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\atomic number.md"
   },
   {
     "slug": "mass number",
     "term": "mass number",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\mass number.md"
   },
   {
     "slug": "isotope",
-    "term": "isotope",
+    "term": "isotopes",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "stable isotope",
-    "term": "stable isotope",
-    "level": "L2",
-    "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\isotope.md"
   },
   {
     "slug": "atomic mass",
     "term": "atomic mass",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\atomic mass.md"
   },
   {
     "slug": "dalton",
     "term": "dalton",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "atomic mass unit",
-    "term": "atomic mass unit",
-    "level": "L2",
-    "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\dalton.md"
   },
   {
     "slug": "ionization",
     "term": "ionization",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\ionization.md"
   },
   {
     "slug": "ion",
-    "term": "ion",
+    "term": "ions",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\ion.md"
   },
   {
     "slug": "anion",
     "term": "anion",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\anion.md"
   },
   {
     "slug": "cation",
     "term": "cation",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\cation.md"
   },
   {
     "slug": "molecule",
-    "term": "molecule",
+    "term": "molecules",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\molecule.md"
   },
   {
     "slug": "compound",
-    "term": "compound",
+    "term": "compounds",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "inorganic compound",
-    "term": "inorganic compound",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "organic compound",
-    "term": "organic compound",
-    "level": "L2",
-    "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\compound.md"
   },
   {
     "slug": "macronutrient",
-    "term": "macronutrient",
+    "term": "macronutrients",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\macronutrient.md"
+  },
+  {
+    "slug": "trace element",
+    "term": "trace elements",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\trace element.md"
+  },
+  {
+    "slug": "inorganic compound",
+    "term": "inorganic compounds",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\inorganic compound.md"
+  },
+  {
+    "slug": "organic compound",
+    "term": "organic compounds",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\organic compound.md"
   },
   {
     "slug": "chemical bonding",
     "term": "chemical bonding",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\chemical bonding.md"
+  },
+  {
+    "slug": "ionic bond",
+    "term": "ionic bonds",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\ionic bond.md"
+  },
+  {
+    "slug": "covalent bond",
+    "term": "covalent bonds",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\covalent bond.md"
   },
   {
     "slug": "valence shell",
     "term": "valence shell",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "ionic bond",
-    "term": "ionic bond",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "covalent bond",
-    "term": "covalent bond",
-    "level": "L2",
-    "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\valence shell.md"
   },
   {
     "slug": "polar covalent bond",
-    "term": "polar covalent bond",
+    "term": "polar covalent bonds",
     "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\polar covalent bond.md"
+  },
+  {
+    "slug": "non-polar covalent bond",
+    "term": "non-polar covalent bonds",
+    "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\non-polar covalent bond.md"
   },
   {
     "slug": "electronegativity",
     "term": "electronegativity",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\electronegativity.md"
   },
   {
     "slug": "molecular formula",
     "term": "molecular formula",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\molecular formula.md"
   },
   {
     "slug": "molecular weight",
     "term": "molecular weight",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\molecular weight.md"
   },
   {
     "slug": "constitutional formula",
     "term": "constitutional formula",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "isomer",
-    "term": "isomer",
-    "level": "L2",
-    "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\constitutional formula.md"
   },
   {
     "slug": "functional group",
-    "term": "functional group",
+    "term": "functional groups",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\functional group.md"
   },
   {
-    "slug": "hydroxyl",
-    "term": "hydroxyl",
+    "slug": "isomer",
+    "term": "isomers",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "phosphate group",
-    "term": "phosphate group",
-    "level": "L2",
-    "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\isomer.md"
   },
   {
     "slug": "chemical reaction",
-    "term": "chemical reaction",
+    "term": "chemical reactions",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\chemical reaction.md"
   },
   {
     "slug": "reactant",
-    "term": "reactant",
+    "term": "reactants",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\reactant.md"
   },
   {
     "slug": "product",
-    "term": "product",
+    "term": "products",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\product.md"
   },
   {
     "slug": "metabolism",
     "term": "metabolism",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\metabolism.md"
   },
   {
     "slug": "exercise metabolism",
     "term": "exercise metabolism",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\exercise metabolism.md"
   },
   {
     "slug": "energy",
     "term": "energy",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\energy.md"
   },
   {
     "slug": "chemical energy",
     "term": "chemical energy",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\chemical energy.md"
   },
   {
     "slug": "potential energy",
     "term": "potential energy",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\potential energy.md"
   },
   {
     "slug": "kinetic energy",
     "term": "kinetic energy",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "law of conservation of energy",
-    "term": "law of conservation of energy",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "law of conservation of mass",
-    "term": "law of conservation of mass",
-    "level": "L2",
-    "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\kinetic energy.md"
   },
   {
     "slug": "exergonic reaction",
-    "term": "exergonic reaction",
+    "term": "exergonic reactions",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\exergonic reaction.md"
   },
   {
     "slug": "endergonic reaction",
-    "term": "endergonic reaction",
+    "term": "endergonic reactions",
     "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\endergonic reaction.md"
   },
   {
-    "slug": "atp hydrolysis",
-    "term": "atp hydrolysis",
+    "slug": "law of conservation of mass",
+    "term": "Law of Conservation of Mass",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\law of conservation of mass.md"
   },
   {
-    "slug": "calorie",
-    "term": "calorie",
+    "slug": "law of conservation of energy",
+    "term": "Law of Conservation of Energy",
     "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\law of conservation of energy.md"
   },
   {
-    "slug": "kilocalorie",
-    "term": "kilocalorie",
+    "slug": "atp",
+    "term": "ATP",
     "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
     "action": "create",
-    "signals": []
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\atp.md"
   },
   {
-    "slug": "joule",
-    "term": "joule",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "kilojoule",
-    "term": "kilojoule",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "synthesis reaction",
-    "term": "synthesis reaction",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "decomposition reaction",
-    "term": "decomposition reaction",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "hydrolysis",
-    "term": "hydrolysis",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "reversible reaction",
-    "term": "reversible reaction",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "phosphorylation",
-    "term": "phosphorylation",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "dephosphorylation",
-    "term": "dephosphorylation",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "exchange reaction",
-    "term": "exchange reaction",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "oxidation",
-    "term": "oxidation",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "reduction",
-    "term": "reduction",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "dehydrogenation",
-    "term": "dehydrogenation",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "reducing equivalent",
-    "term": "reducing equivalent",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "oxidative phosphorylation",
-    "term": "oxidative phosphorylation",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "substrate phosphorylation",
-    "term": "substrate phosphorylation",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "electron acceptor",
-    "term": "electron acceptor",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "water",
-    "term": "water",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "intracellular fluid",
-    "term": "intracellular fluid",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "extracellular fluid",
-    "term": "extracellular fluid",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "hydrophilic",
-    "term": "hydrophilic",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "hydrophobic",
-    "term": "hydrophobic",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "solvent",
-    "term": "solvent",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "solute",
-    "term": "solute",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "solution",
-    "term": "solution",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "mole",
-    "term": "mole",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "molarity",
-    "term": "molarity",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "acid",
-    "term": "acid",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "base",
-    "term": "base",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "salt",
-    "term": "salt",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "proton acceptor",
-    "term": "proton acceptor",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "lactate",
-    "term": "lactate",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "ph scale",
-    "term": "ph scale",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "buffer",
-    "term": "buffer",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "haemoglobin",
-    "term": "haemoglobin",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "cell",
-    "term": "cell",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "plasma membrane",
-    "term": "plasma membrane",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "lipid bilayer",
-    "term": "lipid bilayer",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "phospholipid",
-    "term": "phospholipid",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "cholesterol",
-    "term": "cholesterol",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "glycolipid",
-    "term": "glycolipid",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "integral protein",
-    "term": "integral protein",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "peripheral protein",
-    "term": "peripheral protein",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "transmembrane protein",
-    "term": "transmembrane protein",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "ion channel",
-    "term": "ion channel",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "transporter protein",
-    "term": "transporter protein",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "receptor protein",
-    "term": "receptor protein",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "chromosome",
-    "term": "chromosome",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "dna",
-    "term": "dna",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "histone",
-    "term": "histone",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "nuclear envelope",
-    "term": "nuclear envelope",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "nuclear pore",
-    "term": "nuclear pore",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "nucleolus",
-    "term": "nucleolus",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "ribosome",
-    "term": "ribosome",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "cytoplasm",
-    "term": "cytoplasm",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "cytosol",
-    "term": "cytosol",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "organelle",
-    "term": "organelle",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "endoplasmic reticulum",
-    "term": "endoplasmic reticulum",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "rough endoplasmic reticulum",
-    "term": "rough endoplasmic reticulum",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "smooth endoplasmic reticulum",
-    "term": "smooth endoplasmic reticulum",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "sarcoplasmic reticulum",
-    "term": "sarcoplasmic reticulum",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "golgi apparatus",
-    "term": "golgi apparatus",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "golgi cisternae",
-    "term": "golgi cisternae",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "mitochondria",
-    "term": "mitochondria",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "cristae",
-    "term": "cristae",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "mitochondrial matrix",
-    "term": "mitochondrial matrix",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "cytoskeleton",
-    "term": "cytoskeleton",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "microfilament",
-    "term": "microfilament",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "intermediate filament",
-    "term": "intermediate filament",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "microtubule",
-    "term": "microtubule",
-    "level": "L2",
-    "action": "create",
-    "signals": []
-  },
-  {
-    "slug": "non-polar-covalent-bond",
-    "term": "non-polar covalent bond",
+    "slug": "adp",
+    "term": "ADP",
     "level": "L1",
-    "action": "alias",
-    "signals": []
-  },
-  {
-    "slug": "carboxyl",
-    "term": "carboxyl",
-    "level": "L1",
-    "action": "alias",
-    "signals": []
-  },
-  {
-    "slug": "amino-group",
-    "term": "amino group",
-    "level": "L1",
-    "action": "alias",
-    "signals": []
-  },
-  {
-    "slug": "adenosine-triphosphate",
-    "term": "adenosine triphosphate",
-    "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
     "slug": "atpase",
     "term": "ATPase",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "atp-synthase",
+    "slug": "atp synthase",
     "term": "ATP synthase",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "anabolic-reactions",
+    "slug": "atp hydrolysis",
+    "term": "ATP hydrolysis",
+    "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\atp hydrolysis.md"
+  },
+  {
+    "slug": "kilocalorie",
+    "term": "kilocalorie",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\kilocalorie.md"
+  },
+  {
+    "slug": "kilojoule",
+    "term": "kilojoule",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\kilojoule.md"
+  },
+  {
+    "slug": "calorie",
+    "term": "calorie",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\calorie.md"
+  },
+  {
+    "slug": "megajoule",
+    "term": "megajoule",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\megajoule.md"
+  },
+  {
+    "slug": "synthesis reaction",
+    "term": "synthesis reactions",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\synthesis reaction.md"
+  },
+  {
+    "slug": "anabolic reaction",
     "term": "anabolic reactions",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "condensation-reactions",
+    "slug": "condensation reaction",
     "term": "condensation reactions",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "catabolic-reactions",
+    "slug": "decomposition reaction",
+    "term": "decomposition reactions",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\decomposition reaction.md"
+  },
+  {
+    "slug": "catabolic reaction",
     "term": "catabolic reactions",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "redox-reactions",
+    "slug": "hydrolysis",
+    "term": "hydrolysis",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\hydrolysis.md"
+  },
+  {
+    "slug": "reversible reaction",
+    "term": "reversible reactions",
+    "level": "L2",
+    "signals": [
+      "section_heading"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\reversible reaction.md"
+  },
+  {
+    "slug": "phosphorylation",
+    "term": "phosphorylation",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\phosphorylation.md"
+  },
+  {
+    "slug": "dephosphorylation",
+    "term": "dephosphorylation",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\dephosphorylation.md"
+  },
+  {
+    "slug": "exchange reaction",
+    "term": "exchange reactions",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\exchange reaction.md"
+  },
+  {
+    "slug": "oxidation",
+    "term": "oxidation",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\oxidation.md"
+  },
+  {
+    "slug": "reduction",
+    "term": "reduction",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\reduction.md"
+  },
+  {
+    "slug": "redox reaction",
     "term": "redox reactions",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "adenosine-diphosphate",
-    "term": "adenosine diphosphate",
-    "level": "L1",
-    "action": "alias",
-    "signals": []
+    "slug": "oxidative phosphorylation",
+    "term": "oxidative phosphorylation",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\oxidative phosphorylation.md"
   },
   {
-    "slug": "avogadro's-number",
+    "slug": "substrate phosphorylation",
+    "term": "substrate phosphorylation",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\substrate phosphorylation.md"
+  },
+  {
+    "slug": "dehydrogenation",
+    "term": "dehydrogenation",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\dehydrogenation.md"
+  },
+  {
+    "slug": "reducing equivalent",
+    "term": "reducing equivalents",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\reducing equivalent.md"
+  },
+  {
+    "slug": "water",
+    "term": "water",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\water.md"
+  },
+  {
+    "slug": "intracellular fluid",
+    "term": "intracellular fluid",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\intracellular fluid.md"
+  },
+  {
+    "slug": "extracellular fluid",
+    "term": "extracellular fluid",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\extracellular fluid.md"
+  },
+  {
+    "slug": "hydrophilic",
+    "term": "hydrophilic",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\hydrophilic.md"
+  },
+  {
+    "slug": "hydrophobic",
+    "term": "hydrophobic",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\hydrophobic.md"
+  },
+  {
+    "slug": "solvent",
+    "term": "solvent",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\solvent.md"
+  },
+  {
+    "slug": "solute",
+    "term": "solute",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\solute.md"
+  },
+  {
+    "slug": "solution",
+    "term": "solution",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section",
+      "definition_phrase"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\solution.md"
+  },
+  {
+    "slug": "dehydration",
+    "term": "dehydration",
+    "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\dehydration.md"
+  },
+  {
+    "slug": "mole",
+    "term": "mole",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section",
+      "definition_phrase"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\mole.md"
+  },
+  {
+    "slug": "molarity",
+    "term": "molarity",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\molarity.md"
+  },
+  {
+    "slug": "avogadro's number",
     "term": "Avogadro's number",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "proton-donor",
-    "term": "proton donor",
+    "slug": "acid",
+    "term": "acid",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\acid.md"
+  },
+  {
+    "slug": "base",
+    "term": "base",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\base.md"
+  },
+  {
+    "slug": "salt",
+    "term": "salt",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\salt.md"
+  },
+  {
+    "slug": "ph scale",
+    "term": "pH scale",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\ph scale.md"
+  },
+  {
+    "slug": "buffer",
+    "term": "buffers",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\buffer.md"
+  },
+  {
+    "slug": "lactate",
+    "term": "lactic acid",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\lactate.md"
+  },
+  {
+    "slug": "lactate",
+    "term": "lactate",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\lactate.md"
+  },
+  {
+    "slug": "carbonic acid",
+    "term": "carbonic acid",
+    "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\carbonic acid.md"
+  },
+  {
+    "slug": "bicarbonate ion",
+    "term": "bicarbonate ions",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "carbonic-acid-bicarbonate-buffer-system",
+    "slug": "carbonic acid-bicarbonate buffer system",
     "term": "carbonic acid-bicarbonate buffer system",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
     "slug": "carnosine",
     "term": "carnosine",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
     "slug": "phosphocreatine",
     "term": "phosphocreatine",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
-    "slug": "nucleus-(cell)",
-    "term": "nucleus (cell)",
-    "level": "L1",
-    "action": "alias",
-    "signals": []
+    "slug": "haemoglobin",
+    "term": "haemoglobin",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\haemoglobin.md"
+  },
+  {
+    "slug": "plasma membrane",
+    "term": "plasma membrane",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\plasma membrane.md"
+  },
+  {
+    "slug": "lipid bilayer",
+    "term": "lipid bilayer",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\lipid bilayer.md"
+  },
+  {
+    "slug": "phospholipid",
+    "term": "phospholipids",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\phospholipid.md"
+  },
+  {
+    "slug": "cholesterol",
+    "term": "cholesterol",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\cholesterol.md"
+  },
+  {
+    "slug": "glycolipid",
+    "term": "glycolipids",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\glycolipid.md"
+  },
+  {
+    "slug": "integral protein",
+    "term": "integral proteins",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\integral protein.md"
+  },
+  {
+    "slug": "peripheral protein",
+    "term": "peripheral proteins",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\peripheral protein.md"
+  },
+  {
+    "slug": "transmembrane protein",
+    "term": "transmembrane proteins",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\transmembrane protein.md"
+  },
+  {
+    "slug": "ion channel",
+    "term": "ion channels",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\ion channel.md"
+  },
+  {
+    "slug": "transporter protein",
+    "term": "transporter proteins",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\transporter protein.md"
+  },
+  {
+    "slug": "receptor protein",
+    "term": "receptor proteins",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\receptor protein.md"
+  },
+  {
+    "slug": "dna",
+    "term": "DNA",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\dna.md"
+  },
+  {
+    "slug": "gene",
+    "term": "genes",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\gene.md"
+  },
+  {
+    "slug": "chromosome",
+    "term": "chromosomes",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\chromosome.md"
+  },
+  {
+    "slug": "histone",
+    "term": "histones",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\histone.md"
+  },
+  {
+    "slug": "nuclear envelope",
+    "term": "nuclear envelope",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\nuclear envelope.md"
+  },
+  {
+    "slug": "nuclear pore",
+    "term": "nuclear pores",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\nuclear pore.md"
+  },
+  {
+    "slug": "nucleolus",
+    "term": "nucleolus",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\nucleolus.md"
+  },
+  {
+    "slug": "ribosome",
+    "term": "ribosomes",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\ribosome.md"
+  },
+  {
+    "slug": "cytoplasm",
+    "term": "cytoplasm",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\cytoplasm.md"
+  },
+  {
+    "slug": "cytosol",
+    "term": "cytosol",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\cytosol.md"
+  },
+  {
+    "slug": "organelle",
+    "term": "organelles",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\organelle.md"
+  },
+  {
+    "slug": "endoplasmic reticulum",
+    "term": "endoplasmic reticulum",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\endoplasmic reticulum.md"
+  },
+  {
+    "slug": "rough endoplasmic reticulum",
+    "term": "rough endoplasmic reticulum",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\rough endoplasmic reticulum.md"
+  },
+  {
+    "slug": "smooth endoplasmic reticulum",
+    "term": "smooth endoplasmic reticulum",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\smooth endoplasmic reticulum.md"
+  },
+  {
+    "slug": "sarcoplasmic reticulum",
+    "term": "sarcoplasmic reticulum",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\sarcoplasmic reticulum.md"
+  },
+  {
+    "slug": "golgi apparatus",
+    "term": "Golgi apparatus",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\golgi apparatus.md"
+  },
+  {
+    "slug": "mitochondria",
+    "term": "mitochondria",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\mitochondria.md"
+  },
+  {
+    "slug": "cristae",
+    "term": "cristae",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\cristae.md"
+  },
+  {
+    "slug": "mitochondrial matrix",
+    "term": "mitochondrial matrix",
+    "level": "L2",
+    "signals": [
+      "bolded_define"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\mitochondrial matrix.md"
+  },
+  {
+    "slug": "cytoskeleton",
+    "term": "cytoskeleton",
+    "level": "L2",
+    "signals": [
+      "section_heading",
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\cytoskeleton.md"
+  },
+  {
+    "slug": "microfilament",
+    "term": "microfilaments",
+    "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\microfilament.md"
+  },
+  {
+    "slug": "intermediate filament",
+    "term": "intermediate filaments",
+    "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\intermediate filament.md"
+  },
+  {
+    "slug": "microtubule",
+    "term": "microtubules",
+    "level": "L2",
+    "signals": [
+      "bolded_define",
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\microtubule.md"
   },
   {
     "slug": "actin",
     "term": "actin",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
     "slug": "myosin",
     "term": "myosin",
     "level": "L1",
-    "action": "alias",
-    "signals": []
-  },
-  {
-    "slug": "desmin",
-    "term": "desmin",
-    "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
   },
   {
     "slug": "tubulin",
     "term": "tubulin",
     "level": "L1",
-    "action": "alias",
-    "signals": []
+    "signals": [],
+    "action": "alias"
+  },
+  {
+    "slug": "desmin",
+    "term": "desmin",
+    "level": "L1",
+    "signals": [],
+    "action": "alias"
+  },
+  {
+    "slug": "glucose",
+    "term": "glucose",
+    "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\glucose.md"
+  },
+  {
+    "slug": "carbohydrate",
+    "term": "carbohydrates",
+    "level": "L2",
+    "signals": [
+      "freq_multi_section"
+    ],
+    "action": "create",
+    "path": "E:\\Shosho LifeOS\\KB\\Wiki.staging\\Concepts\\carbohydrate.md"
+  },
+  {
+    "slug": "sodium chloride",
+    "term": "sodium chloride",
+    "level": "L1",
+    "signals": [],
+    "action": "alias"
   }
 ]

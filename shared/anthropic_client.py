@@ -45,14 +45,34 @@ def get_client() -> anthropic.Anthropic:
 
     OAuth tokens (``sk-ant-oat01-…``) ride the Authorization Bearer header via
     the SDK's ``auth_token`` kwarg; API keys ride ``x-api-key``.
+
+    Max Plan hard lock — when ``NAKAMA_REQUIRE_MAX_PLAN=1``, ``ANTHROPIC_API_KEY``
+    is ignored entirely and an OAuth token is required. Set this in workflows
+    that must never bill the API (e.g. textbook ingest 走訂閱 quota)，so
+    accidentally inheriting an API_KEY env var from a parent shell does not
+    silently switch to billing.
     """
     global _client
     if _client is None:
+        require_max_plan = os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1"
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         oauth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get(
             "CLAUDE_CODE_OAUTH_TOKEN"
         )
-        if api_key:
+        if require_max_plan:
+            if not oauth_token:
+                raise RuntimeError(
+                    "NAKAMA_REQUIRE_MAX_PLAN=1 but no OAuth token set. "
+                    "Set ANTHROPIC_AUTH_TOKEN or CLAUDE_CODE_OAUTH_TOKEN "
+                    "(sk-ant-oat01-…) before invoking."
+                )
+            if api_key:
+                logger.warning(
+                    "NAKAMA_REQUIRE_MAX_PLAN=1: ignoring ANTHROPIC_API_KEY, "
+                    "using OAuth token for Max Plan quota."
+                )
+            _client = anthropic.Anthropic(auth_token=oauth_token)
+        elif api_key:
             _client = anthropic.Anthropic(api_key=api_key)
         elif oauth_token:
             _client = anthropic.Anthropic(auth_token=oauth_token)
@@ -107,12 +127,23 @@ def ask_claude(
     Resolved model 若不是 Claude 系列會直接 raise — 避免 Anthropic SDK 對
     非 ``claude-`` ID 噴模糊錯誤後自動 retry 3 次浪費時間。跨 provider 路由請
     改走 :func:`shared.llm.ask`。
+
+    Max Plan routing — when ``NAKAMA_REQUIRE_MAX_PLAN=1`` is set, the call
+    is dispatched through ``claude -p`` subprocess (see
+    :mod:`shared.claude_cli_client`) instead of the SDK. OAuth tokens used
+    with the bare SDK get hard-rate-limited by Anthropic; the CLI binary
+    carries the auth identity that actually gets the subscription quota.
     """
     if model is None:
         from shared.llm_router import get_model
 
         model = get_model(agent=getattr(_local, "agent", None), task="default")
     _require_claude_model(model)
+
+    if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
+        from shared.claude_cli_client import ask_via_cli
+
+        return ask_via_cli(prompt, system=system, model=model)
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -174,6 +205,14 @@ def call_claude_with_tools(
         model = get_model(agent=getattr(_local, "agent", None), task="tool_use")
     _require_claude_model(model)
 
+    if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
+        raise NotImplementedError(
+            "call_claude_with_tools is not supported under NAKAMA_REQUIRE_MAX_PLAN=1. "
+            "The Claude Code CLI (`claude -p`) does not expose raw tool-use JSON; tool "
+            "execution happens inside the CLI process. Use SDK with API key for tool-use "
+            "flows, or rework to plain text generation."
+        )
+
     def _call() -> anthropic.types.Message:
         client = get_client()
         kwargs: dict = {
@@ -229,6 +268,11 @@ def ask_claude_multi(
 
         model = get_model(agent=getattr(_local, "agent", None), task="default")
     _require_claude_model(model)
+
+    if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
+        from shared.claude_cli_client import ask_multi_via_cli
+
+        return ask_multi_via_cli(messages, system=system, model=model)
 
     def _call() -> anthropic.types.Message:
         client = get_client()

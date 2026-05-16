@@ -12,8 +12,12 @@ USAGE (run on host with vault access)
 
     cd E:\\nakama
     .venv\\Scripts\\Activate.ps1
-    $env:ANTHROPIC_API_KEY = "sk-ant-..."
-    $env:VAULT_PATH        = "E:\\Shosho LifeOS"
+    # Max Plan auth (preferred — bills nothing, uses subscription quota):
+    $env:CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-..."
+    $env:VAULT_PATH              = "E:\\Shosho LifeOS"
+
+    # Easier — use the wrapper which sets env vars for you:
+    .\\scripts\\Invoke-IngestTextbook.ps1 -Book biochemistry-for-sport-and-exercise-maclaren
 
     # Default — every real chapter in BSE + SN
     python -m scripts.run_s8_batch
@@ -235,15 +239,18 @@ def _process_chapter(
     res.figures_count = len(payload.figures)
     res.tables_count = len(payload.tables)
 
+    if dry_run:
+        # Skip figure triage entirely — when alt_text matches no heuristic
+        # keyword, classify_figure falls through to an LLM call which is not
+        # what "dry-run" should do.
+        res.status = "pass"
+        res.wall_seconds = time.perf_counter() - t0
+        return res
+
     fig_counts, fig_dec, fig_desc = run_figure_triage(payload)
     res.figure_class_counts = fig_counts
     res.figures_decorative = fig_dec
     res.figures_described = fig_desc
-
-    if dry_run:
-        res.status = "pass"
-        res.wall_seconds = time.perf_counter() - t0
-        return res
 
     # Phase 1
     try:
@@ -790,6 +797,17 @@ def run_batch(args) -> int:
         write_blockers(blockers, _REPO_ROOT / DEFAULT_BLOCKERS_PATH)
         return 2
 
+    if args.start_chapter and args.start_chapter > 1:
+        before = len(iteration)
+        iteration = [entry for entry in iteration if entry[3] >= args.start_chapter]
+        log.info(
+            "--start-chapter %d: skipping first %d (was %d, now %d)",
+            args.start_chapter,
+            before - len(iteration),
+            before,
+            len(iteration),
+        )
+
     if args.max_chapters:
         iteration = iteration[: args.max_chapters]
         log.info("--max-chapters: limiting to first %d", args.max_chapters)
@@ -955,6 +973,12 @@ def parse_args() -> argparse.Namespace:
         default=str(_REPO_ROOT / DEFAULT_REPORT_PATH),
     )
     p.add_argument(
+        "--start-chapter",
+        type=int,
+        default=0,
+        help="skip chapters with real-index < this value; useful to resume mid-batch (default: 0 = no skip)",
+    )
+    p.add_argument(
         "--max-chapters",
         type=int,
         default=0,
@@ -978,6 +1002,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # Force Max Plan billing — even if a parent shell exported ANTHROPIC_API_KEY,
+    # `shared.anthropic_client.get_client()` will refuse the API key and require
+    # an OAuth token. Textbook ingest must never charge the API budget; see ADR-020
+    # and shared/anthropic_client.py:get_client docstring.
+    # Set inside main (not module top-level) so importing this module from tests
+    # does not pollute the global env and reroute unrelated SDK calls to CLI.
+    os.environ["NAKAMA_REQUIRE_MAX_PLAN"] = "1"
+
     args = parse_args()
     log.info("=== S8 batch starting ===")
     log.info(

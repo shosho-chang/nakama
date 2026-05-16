@@ -536,11 +536,37 @@ def _parse_phase1_json(raw: str, payload, prompt: str) -> dict:
     def _parse(text: str) -> dict:
         return json.loads(_strip_outer_fence(text))
 
+    def _dump_debug(label: str, text: str, exc: Exception) -> None:
+        # Always dump on parse failure so the operator can see what the LLM
+        # actually returned (refusal, free-text, truncation, etc.) instead of
+        # only seeing "JSONDecodeError line 1 col 1" with no body.
+        from datetime import datetime as _dt
+
+        debug_dir = Path(os.environ.get("NAKAMA_PHASE1_DEBUG_DIR", ".nakama/phase1_debug"))
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        ts = _dt.now().strftime("%Y%m%dT%H%M%S")
+        slug = f"{payload.book_id}-ch{payload.chapter_index}-{ts}-{label}"
+        (debug_dir / f"{slug}.response.txt").write_text(text or "<EMPTY>", encoding="utf-8")
+        (debug_dir / f"{slug}.prompt.txt").write_text(prompt, encoding="utf-8")
+        log.warning(
+            "Phase 1 parse failure debug: prompt=%d chars, response=%d chars, error=%s; dumped to %s",
+            len(prompt),
+            len(text or ""),
+            exc,
+            debug_dir / f"{slug}.response.txt",
+        )
+
     try:
         parsed = _parse(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        _dump_debug("attempt1", raw, e)
         log.warning("Phase 1: LLM returned non-JSON, retrying once…")
-        parsed = _parse(_ask_llm(prompt, max_tokens=16000))
+        raw2 = _ask_llm(prompt, max_tokens=16000)
+        try:
+            parsed = _parse(raw2)
+        except json.JSONDecodeError as e2:
+            _dump_debug("attempt2", raw2, e2)
+            raise
 
     if not isinstance(parsed.get("frontmatter"), dict):
         raise ValueError(f"LLM 'frontmatter' not a dict: keys={list(parsed.keys())}")
@@ -639,10 +665,15 @@ def run_figure_triage(payload) -> tuple[dict[str, int], int, int]:
         "Tabular": 0,
         "Decorative": 0,
     }
+    # Heuristic-only stub: when caption keywords miss, default to Decorative
+    # rather than triggering an LLM call. figure_triage.classify_figure treats
+    # ``_ask_llm=None`` as "use the default" (a real Sonnet call), not "skip",
+    # so we have to pass a concrete callable to keep this hot loop API-free.
+    _no_llm = lambda _prompt: "Decorative"  # noqa: E731
+
     described = 0
     for fig in payload.figures:
-        # Heuristic only — defer LLM fallback to keep preflight cheap unless needed
-        cls, conf = classify_figure(caption=fig.alt_text, alt_text=fig.alt_text)
+        cls, conf = classify_figure(caption=fig.alt_text, alt_text=fig.alt_text, _ask_llm=_no_llm)
         counts[cls] = counts.get(cls, 0) + 1
         if cls != "Decorative":
             described += 1
@@ -704,6 +735,38 @@ def _slug_from_term(term: str) -> str:
     return s.strip("- ").strip()
 
 
+def _dedup_concepts_by_canonical(concepts: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+    """Collapse concept surface forms that share a canonical slug.
+
+    Phase 1's LLM alias extraction often emits both singular/plural pairs
+    ("transcription factor" + "transcription factors") and literal duplicates
+    ("electron transfer chain" twice from two different sections). Both
+    cases produce identical canonical slugs via ``canonicalize`` — and
+    without this dedup they each enter the dispatch loop. The first creates
+    a page; the second hits FileExistsError and still gets logged. The C6
+    acceptance gate then flags the pair as an unintended canonical-slug
+    collision, even though they were destined for the same page on disk.
+
+    Returns ``(deduped_list, dropped_pairs)`` where ``dropped_pairs`` is a
+    list of ``(kept_term, dropped_term)`` for log visibility. First
+    occurrence wins; LLM output order tends to surface the more canonical
+    form first (it appears earlier in the chapter text).
+    """
+    from shared.concept_canonicalize import canonicalize
+
+    seen: dict[str, str] = {}
+    out: list[str] = []
+    dropped: list[tuple[str, str]] = []
+    for term in concepts:
+        c = canonicalize(term)
+        if c in seen:
+            dropped.append((seen[c], term))
+            continue
+        seen[c] = term
+        out.append(term)
+    return out, dropped
+
+
 def run_phase2_dispatch(
     *,
     payload,
@@ -722,6 +785,13 @@ def run_phase2_dispatch(
 
     source_md = source_page_path.read_text(encoding="utf-8")
     concepts = _extract_concepts_from_source_page(source_md)
+    concepts, dropped_dups = _dedup_concepts_by_canonical(concepts)
+    if dropped_dups:
+        log.info(
+            "Phase 2: deduped %d concept(s) by canonical slug: %s",
+            len(dropped_dups),
+            dropped_dups[:5],
+        )
     log.info("Phase 2: %d concepts identified for dispatch", len(concepts))
 
     book_id = payload.book_id
@@ -1005,8 +1075,16 @@ class AcceptanceResult7:
     reasons: list[str]
 
 
+# `_(尚無內容)_` is intentionally NOT in this list: it is the legitimate
+# section-level TODO marker emitted by the concept page template for
+# discretionary sections (Field-level Controversies / Discussion /
+# Related Concepts) that the author may fill in later. A page with a
+# populated Definition + Core Principles but a Discussion section marked
+# `_(尚無內容)_` is still a valid concept page — the gate is meant to catch
+# *whole-page* lazy stubs ("Will be enriched in Phase B"), not honestly-
+# marked section-level TODOs. See 2026-05-15 ingest run where 578 legacy
+# concept pages with this marker were misclassified as stubs.
 _PLACEHOLDER_PATTERNS_GATE = (
-    "_(尚無內容)_",
     "Will be enriched",
     "phase-b-reconciliation",
     "Stub — auto-created by Phase B",

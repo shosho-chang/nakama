@@ -6,12 +6,14 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch6]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - Glycolipids
 - glycolipids
@@ -19,6 +21,7 @@ maturity_level: L2
 high_value_signals:
 - bolded_define
 ---
+
 
 The membrane itself consists of lipids and proteins (to which carbohydrates may be attached), where the basic structural framework is the *lipid bilayer*. Membrane lipids include *phospholipids* (lipids with a phosphate group attached), *cholesterol* (a steroid with a hydroxyl group attached) and *glycolipids* (lipids with carbohydrate groups attached).
 
@@ -41,13 +44,17 @@ The plasma membrane is a structure composed of lipids and proteins (to which car
     - *Cholesterol* — a steroid with a hydroxyl group attached.
     - *Glycolipids* — lipids with carbohydrate groups attached.
 - **Membrane proteins**
-    - *Integral proteins* — most are *transmembrane proteins* spanning the lipid bilayer.
+    - *Integral proteins* — most are *transmembrane proteins* spanning the lipid bilayer and in contact with both the intracellular and extracellular fluid.
     - *Peripheral proteins* — associate with lipids or integral proteins at the inner or outer membrane surface.
 - **Membrane carbohydrates** — may be attached to lipids (forming glycolipids) or proteins.
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -65,3 +72,4 @@ The plasma membrane is a structure composed of lipids and proteins (to which car
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]

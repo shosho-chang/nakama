@@ -472,6 +472,45 @@ def test_c5_no_placeholders_fail(tmp_path: Path) -> None:
     assert any(slug == "stub" for slug, _ in acc.c5_placeholder_hits)
 
 
+def test_c5_passes_with_section_level_todo_marker(tmp_path: Path) -> None:
+    """C5 must NOT fail on the legitimate `_(尚無內容)_` section-level TODO marker.
+
+    Regression: 2026-05-15 ingest run flagged 578 legacy concept pages as
+    placeholder stubs because they had `_(尚無內容)_` in optional sections
+    (Field-level Controversies / Discussion / Related Concepts) even though
+    Definition + Core Principles were fully populated. The gate should only
+    catch whole-page lazy stubs, not honestly-marked TODO subsections.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    populated_with_todo_section = (
+        "# Acetyl-CoA\n\n"
+        "## Definition\n\n"
+        "Acetyl-CoA is the activated 2-carbon unit produced from pyruvate "
+        "(via PDH) and from β-oxidation of fatty acids, feeding the TCA cycle.\n\n"
+        "## Core Principles\n\n"
+        "PDH is regulated by reciprocal action of PDH kinase and PDH phosphatase…\n\n"
+        "## Field-level Controversies\n\n"
+        "_(尚無內容)_\n\n"
+        "## Practical Applications\n\n"
+        "PDH transformation status indexes mitochondrial CHO flux during exercise…\n"
+    )
+    (staging / "acetyl-coa.md").write_text(populated_with_todo_section, encoding="utf-8")
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c5_no_placeholders_ok is True, (
+        f"C5 should pass for populated page with section-level TODO marker, "
+        f"got hits={acc.c5_placeholder_hits}"
+    )
+
+
 def test_c5_fails_missing_definition_section(tmp_path: Path) -> None:
     """C5 fails structurally unusable concept pages, not just literal placeholders."""
     staging = tmp_path / "staging"
