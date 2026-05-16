@@ -1,0 +1,153 @@
+# BSE textbook v3 ingest eval topics — verify Agent 是否找得到 BSE 內容
+#
+# Used by:
+#   python -m scripts.eval_bse_kb_search        # Layer 1 only (filesystem)
+#   python -m scripts.eval_bse_kb_search --with-hybrid  # Layer 1 + 2
+#
+# Each topic represents a Real Question 修修可能會問 about biochemistry/exercise.
+# expected_concept_slugs / expected_source_pages list the **filesystem** entries
+# that *should* exist in the live vault for the query to be answerable.
+# ground_truth_paths is the same set in vault-relative form, used by the
+# hybrid retrieval recall check (substring match, mirrors bench_kb_search.py
+# convention).
+#
+# Topic selection covers the breadth of BSE 11 chapters:
+#   ch1 energy systems / ch3 biochemical concepts / ch5 carbs / ch6 lipids
+#   ch7 metabolic regulation / ch9 HIE / ch10 endurance / ch11 intermittent
+
+topics:
+  - id: atp_energy_currency
+    query: ATP 是肌肉收縮的能量來源
+    description: zh — ATP role as the energy currency of muscle contraction
+    expected_concept_slugs:
+      - atp
+      - atp-synthase
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch1
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch3
+    ground_truth_paths:
+      - KB/Wiki/Concepts/atp.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch1.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3.md
+
+  - id: lactate_threshold
+    query: lactate threshold and lactate metabolism in exercise
+    description: en — lactate / lactate shuttle / lactic acid metabolism
+    expected_concept_slugs:
+      - lactate
+      - lactate-dehydrogenase
+      - lactate-shuttle
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch5
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch9
+    ground_truth_paths:
+      - KB/Wiki/Concepts/lactate.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch9.md
+
+  - id: glycolysis_pathway
+    query: 糖解作用如何在無氧條件下產生 ATP
+    description: zh — glycolysis pathway under anaerobic conditions
+    expected_concept_slugs:
+      - glycolysis
+      - pyruvate
+      - glucose
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch5
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch9
+    ground_truth_paths:
+      - KB/Wiki/Concepts/glycolysis.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5.md
+
+  - id: electron_transport_chain
+    query: electron transport chain oxidative phosphorylation ATP synthesis
+    description: en — ETC + OxPhos in mitochondria
+    expected_concept_slugs:
+      - electron-transport-chain
+      - oxidative-phosphorylation
+      - mitochondria
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch3
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch5
+    ground_truth_paths:
+      - KB/Wiki/Concepts/electron-transport-chain.md
+      - KB/Wiki/Concepts/oxidative-phosphorylation.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5.md
+
+  - id: glycogen_metabolism
+    query: 肝醣分解 glycogenolysis 與運動表現
+    description: zh+en — glycogenolysis / glycogen depletion / endurance fuel
+    expected_concept_slugs:
+      - glycogen
+      - glycogenolysis
+      - glycogen-depletion
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch5
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch7
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch10
+    ground_truth_paths:
+      - KB/Wiki/Concepts/glycogen.md
+      - KB/Wiki/Concepts/glycogenolysis.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch10.md
+
+  - id: fatty_acid_oxidation
+    query: fatty acid oxidation beta-oxidation in endurance exercise
+    description: en — beta oxidation / lipid utilization in endurance
+    expected_concept_slugs:
+      - fatty-acid
+      - beta-oxidation
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch6
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch10
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch6.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch10.md
+
+  - id: insulin_signaling
+    query: 胰島素如何調節肌肉的葡萄糖攝取
+    description: zh — insulin signaling and glucose uptake in muscle
+    expected_concept_slugs:
+      - insulin
+      - glucose-uptake
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch7
+    ground_truth_paths:
+      - KB/Wiki/Concepts/insulin.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch7.md
+
+  - id: high_intensity_intermittent
+    query: high intensity interval training HIIT skeletal muscle adaptation
+    description: en — HIIT physiology + skeletal muscle adaptation
+    expected_concept_slugs:
+      - high-intensity-exercise
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch9
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch11
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch9.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch11.md
+
+  - id: mitochondrial_biogenesis
+    query: mitochondrial biogenesis from endurance training
+    description: en — endurance-induced mitochondrial adaptation
+    expected_concept_slugs:
+      - mitochondria
+      - mitochondrial-biogenesis
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch10
+    ground_truth_paths:
+      - KB/Wiki/Concepts/mitochondria.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch10.md
+
+  - id: amino_acid_protein
+    query: 蛋白質與胺基酸代謝 protein turnover
+    description: zh+en — protein synthesis / amino acid metabolism
+    expected_concept_slugs:
+      - protein
+      - amino-acid
+    expected_source_pages:
+      - Books/biochemistry-for-sport-and-exercise-maclaren/ch4
+    ground_truth_paths:
+      - KB/Wiki/Concepts/protein.md
+      - KB/Wiki/Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch4.md
