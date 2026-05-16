@@ -1,0 +1,135 @@
+# Sport Nutrition (Jeukendrup 4E) textbook v3 ingest eval topics
+#
+# Used by:
+#   python -m scripts.eval_textbook_kb_search --book sn        # Layer 1
+#   python -m scripts.eval_textbook_kb_search --book sn --with-hybrid  # +Layer 2
+#
+# Each topic = real question 修修 may ask about sport nutrition.
+# Topic selection covers SN 17 chapters:
+#   ch3 fuel sources / ch5 GI absorption / ch6 carbs / ch7 fat / ch8 protein
+#   ch9 fluid/electrolytes / ch10 vitamins/minerals / ch11 supplements
+#   ch12 training adaptations / ch14 body composition / ch15 weight mgmt
+#   ch16 RED-S / ch17 personalized
+
+topics:
+  - id: carbohydrate_loading
+    query: carbohydrate loading before endurance event glycogen stores
+    description: en — CHO loading protocols pre-competition
+    expected_concept_slugs:
+      - carbohydrate
+      - glycogen
+      - glucose
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch6
+      - Books/sport-nutrition-jeukendrup-4e/ch12
+    ground_truth_paths:
+      - KB/Wiki/Concepts/carbohydrate.md
+      - KB/Wiki/Concepts/glycogen.md
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch6.md
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch12.md
+
+  - id: protein_intake_athletes
+    query: 運動員每日蛋白質需求量 protein requirements
+    description: zh+en — protein intake recommendations for athletes
+    expected_concept_slugs:
+      - protein
+      - amino-acid
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch8
+      - Books/sport-nutrition-jeukendrup-4e/ch12
+    ground_truth_paths:
+      - KB/Wiki/Concepts/protein.md
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch8.md
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch12.md
+
+  - id: fluid_electrolyte_balance
+    query: 運動補水 電解質流失 hydration sodium
+    description: zh+en — fluid balance + electrolyte loss during exercise
+    expected_concept_slugs:
+      - hydration
+      - electrolyte
+      - sodium
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch9
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch9.md
+
+  - id: gastric_emptying_cho
+    query: gastric emptying carbohydrate solution during exercise
+    description: en — gastric emptying rate of CHO drinks during exercise
+    expected_concept_slugs:
+      - gastric-emptying
+      - absorption
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch5
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch5.md
+
+  - id: fat_metabolism_endurance
+    query: fat oxidation endurance exercise dietary fat
+    description: en — fat metabolism during prolonged endurance
+    expected_concept_slugs:
+      - fat
+      - fatty-acid
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch3
+      - Books/sport-nutrition-jeukendrup-4e/ch7
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch3.md
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch7.md
+
+  - id: micronutrients_athletes
+    query: 維生素礦物質運動表現 iron calcium vitamin D
+    description: zh+en — micronutrient requirements for athletes
+    expected_concept_slugs:
+      - vitamin
+      - mineral
+      - iron
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch10
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch10.md
+
+  - id: ergogenic_supplements
+    query: creatine caffeine beta-alanine ergogenic aid supplement
+    description: en — evidence-based performance supplements
+    expected_concept_slugs:
+      - creatine
+      - caffeine
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch11
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch11.md
+
+  - id: body_composition_assessment
+    query: body fat measurement DEXA bioelectrical impedance athletes
+    description: en — body composition assessment methods
+    expected_concept_slugs:
+      - body-composition
+      - body-fat
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch14
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch14.md
+
+  - id: weight_management_athletes
+    query: 運動員減脂 能量缺口 weight loss athletes
+    description: zh+en — weight loss strategies for athletes
+    expected_concept_slugs:
+      - weight-loss
+      - energy-balance
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch15
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch15.md
+
+  - id: red_s_low_energy
+    query: Relative Energy Deficiency in Sport RED-S female athlete triad
+    description: en — RED-S syndrome / female athlete triad
+    expected_concept_slugs:
+      - red-s
+      - low-energy-availability
+    expected_source_pages:
+      - Books/sport-nutrition-jeukendrup-4e/ch16
+    ground_truth_paths:
+      - KB/Wiki/Sources/Books/sport-nutrition-jeukendrup-4e/ch16.md
