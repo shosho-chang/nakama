@@ -11,7 +11,7 @@ discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - ATP hydrolysis
 maturity_level: L2
@@ -19,41 +19,46 @@ high_value_signals:
 - freq_multi_section
 ---
 
-The structure of an ATP molecule is shown in Figure 3.9a and essentially comprises an adenosine molecule (adenine and ribose) with three phosphate groups attached. ATP can provide energy, as shown by the equation outlined in Figure 3.9b. Although we use the energy derived from ATP hydrolysis to fuel various cellular activities, a cell's ATP store is small (usually 20–30 mmol/kg dry muscle) and would be completely depleted within seconds of maximal exercise! However, we can regenerate ATP so as to sustain exercise for a longer period of time, so muscle ATP stores are never depleted by more than 20–40% even during exhaustive exercise (Spriet *et al*., 1989).
+The structure of an ATP molecule is shown in Figure 3.9a and essentially comprises an adenosine molecule (adenine and ribose) with three phosphate groups attached. ATP can provide energy, as shown by the equation outlined in Figure 3.9b. Although we use the energy derived from ATP hydrolysis to fuel various cellular activities, a cell’s ATP store is small (usually 20–30 mmol/kg dry muscle) and would be completely depleted within seconds of maximal exercise! However, we can regenerate ATP so as to sustain exercise for a longer period of time, so muscle ATP stores are never depleted by more than 20–40% even during exhaustive exercise (Spriet *et al*., 1989).
 
 ![a. A chemical structure of Adenine, Ribose, and Phosphate groups. The three structures are commonly labeled as Adenosine triphosphate A T P.  b. An equation depicts ATP hydrolysis. c. An equation depicts the resynthesis of ATP.](Attachments/Books/biochemistry-for-sport-and-exercise-maclaren/c03f009.png)
 
 ## Definition
 
-ATP (adenosine triphosphate) is a nucleotide molecule comprising an adenosine moiety (adenine + ribose) bonded to three phosphate groups, serving as the primary energy currency of the cell.
+ATP (adenosine triphosphate) is a molecule consisting of an adenosine moiety (adenine bonded to ribose) with three phosphate groups attached, serving as the immediate energy currency for cellular activities via hydrolysis.
 
 ## Core Principles
 
-- ATP provides energy via hydrolysis of its phosphate bonds (see Figure 3.9b), releasing energy used to fuel cellular activities.
-- ATP can be resynthesised (see Figure 3.9c), allowing exercise to be sustained beyond the brief duration permitted by the small intracellular store.
-- Cellular ATP stores are tightly defended: even during exhaustive exercise, muscle ATP is rarely depleted by more than 20–40% (Spriet *et al.*, 1989).
+- Energy is released when ATP undergoes hydrolysis, cleaving a phosphate group to yield ADP + Pi (Figure 3.9b).
+- The intracellular ATP pool is small (typically 20–30 mmol/kg dry muscle) and would be exhausted within seconds of maximal exercise if not replenished.
+- Continuous ATP resynthesis (Figure 3.9c) sustains exercise, keeping muscle ATP depletion to no more than 20–40% even during exhaustive effort (Spriet *et al.*, 1989).
 
 ## Sub-concepts
 
-- **Structural components**: adenine (nitrogenous base), ribose (pentose sugar), and three phosphate groups — together forming adenosine triphosphate.
-- **ATP hydrolysis**: reaction releasing energy by cleaving a terminal phosphate bond.
-- **ATP resynthesis**: regeneration pathways that replenish ATP from ADP and Pi.
-- **Muscle ATP store size**: typically 20–30 mmol/kg dry muscle, sufficient for only seconds of maximal exercise without resynthesis.
+- Adenosine = adenine + ribose
+- Three phosphate groups (triphosphate tail)
+- ATP hydrolysis (energy-releasing reaction)
+- ATP resynthesis (regeneration pathway)
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
-- During maximal exercise, the limited ATP pool (20–30 mmol/kg dry muscle) would be exhausted within seconds without resynthesis, highlighting the necessity of metabolic pathways (e.g., phosphocreatine, glycolysis, oxidative phosphorylation) to sustain prolonged effort.
-- The observation that muscle ATP rarely drops below ~60–80% of resting levels even at exhaustion indicates that fatigue mechanisms intervene before catastrophic ATP depletion occurs.
+- Because the muscle ATP store alone would be depleted within seconds of maximal exercise, training and nutritional strategies that support ATP resynthesis pathways are essential for sustaining exercise performance.
+- The observation that ATP stores drop by only 20–40% even during exhaustive exercise (Spriet *et al.*, 1989) underpins the rationale for examining auxiliary energy systems (e.g., PCr, glycolysis, oxidative phosphorylation) rather than ATP storage itself as the limiter of performance.
 
 ## Related Concepts
 
 - ATP hydrolysis
 - ATP resynthesis
-- Phosphocreatine system
+- Adenosine / Adenine / Ribose
+- Phosphate groups
 - Muscle energy metabolism
 
 ## Sources

@@ -6,12 +6,13 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - hydrophobic
 - Hydrophobic
@@ -44,7 +45,11 @@ Solutes are classified by their interaction with water based on the nature of th
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -62,6 +67,8 @@ Solutes are classified by their interaction with water based on the nature of th
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]
 
 ## 3.5 Solutions and Concentrations
 
+_(尚無內容)_

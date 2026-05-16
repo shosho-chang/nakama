@@ -6,12 +6,13 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - cristae
 - Cristae
@@ -43,7 +44,11 @@ Mitochondria are double-membraned organelles containing an outer *mitochondrial 
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -57,3 +62,4 @@ Mitochondria are double-membraned organelles containing an outer *mitochondrial 
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]

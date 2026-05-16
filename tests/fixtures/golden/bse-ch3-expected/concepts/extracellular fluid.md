@@ -6,12 +6,13 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - extracellular fluid
 - Extracellular fluid
@@ -24,7 +25,7 @@ high_value_signals:
 | Chemical element (symbol) | Percentage abundance in the human body | Function |
 | --- | --- | --- |
 | Oxygen (O) | 65 | Used to generate energy using aerobic processes and also part of water and energy sources such as carbohydrates, fats and proteins. |
-| Carbon (C) | 18.5 | Important component of organic (i.e. carboncontaining) molecules such as carbohydrates, fats, proteins and deoxyribonucleic acids (DNA – a cell’s genetic material). |
+| Carbon (C) | 18.5 | Important component of organic (i.e. carboncontaining) molecules such as carbohydrates, fats, proteins and deoxyribonucleic acids (DNA – a cell's genetic material). |
 | Hydrogen (H) | 9.5 | Component of water and most organic molecules. |
 | Nitrogen (N) | 3.2 | Component of all proteins and DNA. |
 | Calcium (Ca) | 1.5 | Important component for maintenance of bones and teeth; also involved in regulatory processes such as hormone release, muscle contraction and enzyme activation. |
@@ -36,25 +37,37 @@ high_value_signals:
 | Magnesium (Mg) | 0.1 | Important component of many specialized proteins known as enzymes. |
 | Iron (Fe) | 0.005 | Important component of red blood cells and many enzymes. |
 
-![A diagram depicts an atom as the basic unit of matter, and it consists of three main subatomic particles. The atom’s nucleus contains six protons and six neutrons, and there are also six electrons in the orbit. The nucleus represents the central core of the atom, and contains protons and neutrons. The outer circle represents the second electron cell and the second inner cell represents the first electron cell.](Attachments/Books/biochemistry-for-sport-and-exercise-maclaren/c03f001.png)
+![A diagram depicts an atom as the basic unit of matter, and it consists of three main subatomic particles. The atom's nucleus contains six protons and six neutrons, and there are also six electrons in the orbit. The nucleus represents the central core of the atom, and contains protons and neutrons. The outer circle represents the second electron cell and the second inner cell represents the first electron cell.](Attachments/Books/biochemistry-for-sport-and-exercise-maclaren/c03f001.png)
 
 ## Definition
 
-
-extracellular fluid is a staged golden-fixture concept for BSE chapter 3. It is retained as a non-placeholder concept page so the acceptance gate can verify schema quality.
+_(尚無內容)_
 
 ## Core Principles
 
+_(尚無內容)_
+
 ## Sub-concepts
+
+_(尚無內容)_
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
+_(尚無內容)_
+
 ## Related Concepts
+
+_(尚無內容)_
 
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]

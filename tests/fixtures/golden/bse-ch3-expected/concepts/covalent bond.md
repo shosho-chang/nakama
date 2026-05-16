@@ -6,35 +6,21 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - covalent bond
 - Covalent bond
+- covalent bonds
 maturity_level: L2
 high_value_signals:
 - section_heading
 - freq_multi_section
----
-
-* identify the main chemical elements in the human body;
-* describe and draw basic atomic structure;
-* identify the differences between atoms, ions, molecules and compounds;
-* distinguish the difference between ionic and covalent bonds;
-* define a chemical reaction and identify the difference between an endergonic and exergonic reaction;
-* define energy and the units of energy;
-* describe the role of ATP within the cell;
-* describe the common forms of chemical reactions including synthesis, decomposition, reversible, exchange, phosphorylation/dephosphorylation and oxidation/reduction reactions;
-* outline the functions of water and the chemical property underpinning water’s ability to act as a solvent;
-* define the terms mole, molar and molarity;
-* define the terms acid, base and salt;
-* draw and define the pH scale and describe what is meant by the terms acidic and alkaline;
-* describe basic cell structure with particular emphasis to the plasma membrane, nucleus, cytoplasm and mitochondria.
-
 ---
 
 ## Definition
@@ -61,7 +47,11 @@ A chemical reaction is a process in which atoms or molecules interact to form ne
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -73,6 +63,9 @@ A chemical reaction is a process in which atoms or molecules interact to form ne
 
 ## Related Concepts
 
+_(尚無內容)_
+
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]

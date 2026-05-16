@@ -6,12 +6,13 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - Reactants
 - reactants
@@ -21,7 +22,7 @@ high_value_signals:
 - freq_multi_section
 ---
 
-Within our bodies, there are thousands of *chemical reactions* occurring which underpin all of the body’s essential processes. A chemical reaction occurs when the bonds between atoms are broken or when new bonds are formed between atoms. it is the interactions of electrons in the valence shell of atoms which form the basis of all chemical reactions. In simple terms, a chemical reaction consists of a substance or substances known as the *reactants*, which subsequently react to form the product or *products*. This is shown in Figure 3.7, which also uses the example of the reaction between hydrogen and oxygen molecules to produce water. The arrow in the equation represents the direction of the reaction, although, as will be explained later, some reactions are reversible – they can occur in both directions.
+Within our bodies, there are thousands of *chemical reactions* occurring which underpin all of the body's essential processes. A chemical reaction occurs when the bonds between atoms are broken or when new bonds are formed between atoms. it is the interactions of electrons in the valence shell of atoms which form the basis of all chemical reactions. In simple terms, a chemical reaction consists of a substance or substances known as the *reactants*, which subsequently react to form the product or *products*. This is shown in Figure 3.7, which also uses the example of the reaction between hydrogen and oxygen molecules to produce water. The arrow in the equation represents the direction of the reaction, although, as will be explained later, some reactions are reversible – they can occur in both directions.
 
 ![A diagram of a chemical bond between two chlorine atoms forming a chlorine molecule. It illustrates the chemical reaction where hydrogen gas H subscript 2 reacts with oxygen gas O subscript 2 to form water H subscript 2 O. This process is an example of a chemical reaction involving energy transformation.](Attachments/Books/biochemistry-for-sport-and-exercise-maclaren/c03f007.png)
 
@@ -48,7 +49,11 @@ A chemical reaction is a process that occurs when the bonds between atoms are br
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -56,6 +61,9 @@ A chemical reaction is a process that occurs when the bonds between atoms are br
 
 ## Related Concepts
 
+_(尚無內容)_
+
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]

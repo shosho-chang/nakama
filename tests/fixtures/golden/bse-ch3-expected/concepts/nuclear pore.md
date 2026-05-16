@@ -6,12 +6,13 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - Nuclear pores
 - nuclear pores
@@ -34,10 +35,15 @@ Similar to the plasma membrane, a lipid bilayer membrane known as the *nuclear e
 - **Nuclear pores**: embedded in the nuclear envelope; mediate selective transport between nucleus and cytoplasm.
 - **Nucleolus**: intranuclear structure responsible for ribosome biogenesis.
 - **Ribosomes**: organelles that function in synthesizing new proteins.
+- **Multinucleated cells**: cells containing many nuclei, such as skeletal muscle cells.
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -47,6 +53,9 @@ It is important to note that, while most cell types contain a single nucleus, so
 
 ## Related Concepts
 
+_(尚無內容)_
+
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]

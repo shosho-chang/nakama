@@ -6,12 +6,16 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch6]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch12]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch4]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-16
 en_source_terms:
 - dephosphorylation
 - Dephosphorylation
@@ -20,22 +24,6 @@ high_value_signals:
 - section_heading
 - bolded_define
 - freq_multi_section
----
-
-* identify the main chemical elements in the human body;
-* describe and draw basic atomic structure;
-* identify the differences between atoms, ions, molecules and compounds;
-* distinguish the difference between ionic and covalent bonds;
-* define a chemical reaction and identify the difference between an endergonic and exergonic reaction;
-* define energy and the units of energy;
-* describe the role of ATP within the cell;
-* describe the common forms of chemical reactions including synthesis, decomposition, reversible, exchange, phosphorylation/dephosphorylation and oxidation/reduction reactions;
-* outline the functions of water and the chemical property underpinning water’s ability to act as a solvent;
-* define the terms mole, molar and molarity;
-* define the terms acid, base and salt;
-* draw and define the pH scale and describe what is meant by the terms acidic and alkaline;
-* describe basic cell structure with particular emphasis to the plasma membrane, nucleus, cytoplasm and mitochondria.
-
 ---
 
 ## Definition
@@ -51,6 +39,8 @@ A foundational chapter introducing the chemistry underpinning sport and exercise
 - Energy is the capacity to do work, expressed in defined units (e.g. joules, calories).
 - ATP serves as the cell's principal energy currency, coupling exergonic reactions to endergonic processes.
 - Common reaction types in the body include synthesis, decomposition, reversible, exchange, phosphorylation/dephosphorylation, and oxidation/reduction reactions.
+- Phosphorylation/dephosphorylation reactions act as a key regulatory mechanism for enzyme activity: a protein kinase enzyme transfers a phosphate group from ATP (yielding ADP) onto a target enzyme, switching its activity state, with dephosphorylation reversing this modification.
+- Protein synthesis, by which cells create proteins from instructions encoded in DNA, proceeds through two main stages: transcription and translation; the resulting enzymes can be subsequently regulated post-translationally via phosphorylation/dephosphorylation.
 - Water functions as the body's primary solvent due to its polarity, supporting transport, reaction medium, thermoregulation, and lubrication roles.
 - Quantitative chemistry is described using the mole, molar, and molarity.
 - Acids, bases, and salts are defined by their behaviour in solution; the pH scale quantifies acidity and alkalinity.
@@ -65,6 +55,9 @@ A foundational chapter introducing the chemistry underpinning sport and exercise
 - Energy and units of energy
 - ATP and its role in the cell
 - Reaction types: synthesis, decomposition, reversible, exchange, phosphorylation/dephosphorylation, oxidation/reduction
+- Protein kinases and the ATP→ADP-coupled phosphorylation of target enzymes
+- Regulation of enzyme activity via reversible phosphorylation/dephosphorylation
+- Protein synthesis: transcription and translation as the two main stages of producing proteins from DNA
 - Water as a solvent and its functions
 - Mole, molar, molarity
 - Acids, bases, salts
@@ -73,7 +66,11 @@ A foundational chapter introducing the chemistry underpinning sport and exercise
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -81,9 +78,16 @@ A foundational chapter introducing the chemistry underpinning sport and exercise
 - Supports interpretation of ATP-driven processes underpinning muscle contraction and exercise metabolism.
 - Underpins understanding of acid–base balance and pH regulation relevant to exercise physiology.
 - Informs understanding of fluid balance and the solvent properties of water in physiological systems.
+- Explains how reversible phosphorylation by protein kinases (with concomitant ATP→ADP conversion) provides rapid on/off control of enzymes governing exercise metabolism.
+- Links gene expression (transcription/translation) to enzyme abundance, complementing the rapid post-translational control of enzyme activity by phosphorylation in adaptive responses to training.
 
 ## Related Concepts
+
+_(尚無內容)_
 
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch6]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch4]]

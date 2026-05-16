@@ -6,12 +6,13 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - Isotopes
 - isotopes
@@ -35,6 +36,7 @@ The mass number of an atom is the sum of its protons and neutrons. Isotopes are 
 - Variation in neutron number among atoms of the same element produces different mass numbers, giving rise to isotopes.
 - Most naturally occurring isotopes of common biological elements (e.g. carbon, nitrogen, oxygen) are *stable isotopes*, meaning their nuclear structure does not change over time.
 - Despite differing neutron counts, isotopes of an element exhibit identical chemical properties because chemical behaviour is determined by the number of electrons, which is equal across isotopes of the same element.
+- Atomic structure of specific atoms differs primarily on the basis of the number of protons they contain (cf. Figure 3.2), which establishes elemental identity prior to any neutron-driven isotopic variation.
 
 ## Sub-concepts
 
@@ -45,7 +47,11 @@ The mass number of an atom is the sum of its protons and neutrons. Isotopes are 
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -61,3 +67,4 @@ The mass number of an atom is the sum of its protons and neutrons. Isotopes are 
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]

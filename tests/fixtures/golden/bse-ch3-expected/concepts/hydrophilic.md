@@ -6,12 +6,13 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - hydrophilic
 - Hydrophilic
@@ -39,7 +40,11 @@ Solubility describes the capacity of a solute to dissolve in a solvent (commonly
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -48,9 +53,13 @@ Solubility describes the capacity of a solute to dissolve in a solvent (commonly
 
 ## Related Concepts
 
+_(尚無內容)_
+
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]
 
 ## 3.5 Solutions and Concentrations
 
+_(尚無內容)_

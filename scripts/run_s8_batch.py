@@ -52,12 +52,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-# Force Max Plan billing — even if a parent shell exported ANTHROPIC_API_KEY,
-# `shared.anthropic_client.get_client()` will refuse the API key and require
-# an OAuth token. Textbook ingest must never charge the API budget; see ADR-020
-# and shared/anthropic_client.py:get_client docstring.
-os.environ["NAKAMA_REQUIRE_MAX_PLAN"] = "1"
-
 # Reuse all the heavy lifting from the preflight runner — frozen API.
 from scripts.run_s8_preflight import (  # noqa: E402
     PREFLIGHT_MODEL,
@@ -1008,6 +1002,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # Force Max Plan billing — even if a parent shell exported ANTHROPIC_API_KEY,
+    # `shared.anthropic_client.get_client()` will refuse the API key and require
+    # an OAuth token. Textbook ingest must never charge the API budget; see ADR-020
+    # and shared/anthropic_client.py:get_client docstring.
+    # Set inside main (not module top-level) so importing this module from tests
+    # does not pollute the global env and reroute unrelated SDK calls to CLI.
+    os.environ["NAKAMA_REQUIRE_MAX_PLAN"] = "1"
+
     args = parse_args()
     log.info("=== S8 batch starting ===")
     log.info(

@@ -6,12 +6,13 @@ domain: biochemistry
 aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - kilocalorie
 - Kilocalorie
@@ -42,13 +43,17 @@ The **calorie** is a unit of energy defined as the amount of heat required to ra
 ## Sub-concepts
 
 - **Calorie (small c)** vs **Calorie (big C)**: 1 Cal = 1 kcal = 1000 cal.
-- **Joule (J)** and **kilojoule (kJ)**: SI units of energy; 1 kJ = 1000 J.
+- **Joule (J)** and **kilojoule (kJ)**: SI units of energy; 1 kJ = 1000 J. The joule and kilojoule are the standard international (SI) units for measuring energy, used alongside the kilocalorie.
 - **Megajoule (MJ)**: 1 MJ = 1000 kJ; used to avoid handling large numerical values when reporting daily energy intake or expenditure.
 - **Bomb calorimeter**: laboratory device used to determine the gross energy content of foodstuffs.
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -67,3 +72,4 @@ The **calorie** is a unit of energy defined as the amount of heat required to ra
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]

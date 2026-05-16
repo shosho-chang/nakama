@@ -7,12 +7,14 @@ aliases: []
 mentioned_in:
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]'
 - '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch6]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]'
+- '[[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch8]]'
 source_refs: []
 discussion_topics: []
 confidence: null
 tags: []
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-15
 en_source_terms:
 - plasma membrane
 - Plasma membrane
@@ -25,7 +27,7 @@ high_value_signals:
 
 ## Definition
 
-This concept area covers the foundational chemistry and biochemistry relevant to human physiology, sport and exercise, encompassing atomic and molecular structure, chemical reactions, cellular structure, and the structure and metabolism of lipids.
+This concept area covers the foundational chemistry and biochemistry relevant to human physiology, sport and exercise, encompassing atomic and molecular structure, chemical reactions, cellular structure, and the structure, function and metabolism of lipids.
 
 ## Core Principles
 
@@ -51,6 +53,8 @@ This concept area covers the foundational chemistry and biochemistry relevant to
 * describe basic cell structure with particular emphasis to the plasma membrane, nucleus, cytoplasm and mitochondria.
 
 **Lipid structure and metabolism:**
+* list the variety of functions which lipids carry out within the human body;
+* elucidate the role of lipids in sport and exercise;
 * draw the general structure of a triacylglycerol molecule;
 * draw the structure of a saturated and an unsaturated fatty acid molecule;
 * outline differences in the types of lipoproteins;
@@ -71,6 +75,8 @@ This concept area covers the foundational chemistry and biochemistry relevant to
 * Water as solvent; mole, molar, molarity
 * Acids, bases, salts; pH scale
 * Cell organelles: plasma membrane, nucleus, cytoplasm, mitochondria
+* Functions of lipids in the human body
+* Role of lipids in sport and exercise
 * Triacylglycerols; saturated and unsaturated fatty acids
 * Lipoproteins; cholesterol and steroid hormone analogues
 * Lipolysis, β-oxidation, lipogenesis and their regulatory enzymes
@@ -81,7 +87,11 @@ This concept area covers the foundational chemistry and biochemistry relevant to
 
 ## Field-level Controversies
 
+_(尚無內容)_
+
 ## 文獻分歧 / Discussion
+
+_(尚無內容)_
 
 ## Practical Applications
 
@@ -90,7 +100,11 @@ This concept area covers the foundational chemistry and biochemistry relevant to
 
 ## Related Concepts
 
+_(尚無內容)_
+
 ## Sources
 
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch6]]
 - [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch3]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch5]]
+- [[Sources/Books/biochemistry-for-sport-and-exercise-maclaren/ch8]]
