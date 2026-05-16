@@ -27,6 +27,9 @@ def record_call(
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
     latency_ms: int = 0,
+    auth_requested: str | None = None,
+    auth_actual: str | None = None,
+    fallback_reason: str | None = None,
 ) -> None:
     """記錄一次 LLM call 的 usage。
 
@@ -42,6 +45,16 @@ def record_call(
         cache_write_tokens: 寫入 prompt cache 的 token（部分 provider 沒有
             這個概念，傳 0）
         latency_ms: end-to-end 含 retry 的延遲
+        auth_requested: ADR-026 router 解析出的 policy（``api`` /
+            ``subscription_preferred`` / ``subscription_required``）。``None``
+            代表 caller 尚未升級到 auth-aware dispatch。
+        auth_actual: 實際走的 dispatch path（``api`` / ``subscription``）。
+            soft-downgrade 後與 requested 不一致時，搭配 ``fallback_reason``
+            觀察。
+        fallback_reason: 降級原因 enum（``NO_OAUTH_TOKEN`` /
+            ``PROVIDER_NOT_SUPPORTED`` / ``CLI_BINARY_NOT_FOUND`` /
+            ``CLI_SUBPROCESS_ERROR`` / ``CLI_AUTH_EXPIRED`` /
+            ``TOOL_USE_NOT_SUPPORTED_VIA_CLI``）。沒降級時 ``None``。
 
     Side effects:
         - 若 thread-local ``usage_buffer`` 已啟用（opt-in tracking），append
@@ -76,6 +89,9 @@ def record_call(
             cache_read_tokens=cache_read_tokens,
             cache_write_tokens=cache_write_tokens,
             latency_ms=latency_ms,
+            auth_requested=auth_requested,
+            auth_actual=auth_actual,
+            fallback_reason=fallback_reason,
         )
     except Exception as e:
         logger.debug("cost tracking 失敗（忽略）：%s", e)
