@@ -805,9 +805,7 @@ def run_batch(args) -> int:
 
     if args.start_chapter and args.start_chapter > 1:
         before = len(iteration)
-        iteration = [
-            entry for entry in iteration if entry[3] >= args.start_chapter
-        ]
+        iteration = [entry for entry in iteration if entry[3] >= args.start_chapter]
         log.info(
             "--start-chapter %d: skipping first %d (was %d, now %d)",
             args.start_chapter,

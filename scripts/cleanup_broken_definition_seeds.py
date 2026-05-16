@@ -69,12 +69,7 @@ def _process(page_path: Path) -> tuple[bool, str]:
     title = title_match.group(1).strip() if title_match else page_path.stem
 
     cleaned = _clean_definition(raw_def, title)
-    new_body = (
-        body[: def_match.start("body")]
-        + cleaned
-        + "\n\n"
-        + body[def_match.end("body") :]
-    )
+    new_body = body[: def_match.start("body")] + cleaned + "\n\n" + body[def_match.end("body") :]
     page_path.write_text(text[:body_start] + new_body, encoding="utf-8")
     return True, "cleaned"
 

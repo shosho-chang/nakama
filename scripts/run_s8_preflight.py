@@ -541,6 +541,7 @@ def _parse_phase1_json(raw: str, payload, prompt: str) -> dict:
         # actually returned (refusal, free-text, truncation, etc.) instead of
         # only seeing "JSONDecodeError line 1 col 1" with no body.
         from datetime import datetime as _dt
+
         debug_dir = Path(os.environ.get("NAKAMA_PHASE1_DEBUG_DIR", ".nakama/phase1_debug"))
         debug_dir.mkdir(parents=True, exist_ok=True)
         ts = _dt.now().strftime("%Y%m%dT%H%M%S")
@@ -549,7 +550,10 @@ def _parse_phase1_json(raw: str, payload, prompt: str) -> dict:
         (debug_dir / f"{slug}.prompt.txt").write_text(prompt, encoding="utf-8")
         log.warning(
             "Phase 1 parse failure debug: prompt=%d chars, response=%d chars, error=%s; dumped to %s",
-            len(prompt), len(text or ""), exc, debug_dir / f"{slug}.response.txt",
+            len(prompt),
+            len(text or ""),
+            exc,
+            debug_dir / f"{slug}.response.txt",
         )
 
     try:
@@ -669,9 +673,7 @@ def run_figure_triage(payload) -> tuple[dict[str, int], int, int]:
 
     described = 0
     for fig in payload.figures:
-        cls, conf = classify_figure(
-            caption=fig.alt_text, alt_text=fig.alt_text, _ask_llm=_no_llm
-        )
+        cls, conf = classify_figure(caption=fig.alt_text, alt_text=fig.alt_text, _ask_llm=_no_llm)
         counts[cls] = counts.get(cls, 0) + 1
         if cls != "Decorative":
             described += 1
@@ -787,7 +789,8 @@ def run_phase2_dispatch(
     if dropped_dups:
         log.info(
             "Phase 2: deduped %d concept(s) by canonical slug: %s",
-            len(dropped_dups), dropped_dups[:5],
+            len(dropped_dups),
+            dropped_dups[:5],
         )
     log.info("Phase 2: %d concepts identified for dispatch", len(concepts))
 

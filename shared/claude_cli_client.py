@@ -199,8 +199,7 @@ def _invoke(
         payload = json.loads(proc.stdout)
     except json.JSONDecodeError as e:
         raise ClaudeCliError(
-            f"claude -p stdout was not valid JSON: {e}\n"
-            f"first 500 chars: {proc.stdout[:500]}"
+            f"claude -p stdout was not valid JSON: {e}\nfirst 500 chars: {proc.stdout[:500]}"
         ) from e
 
     if payload.get("is_error"):
