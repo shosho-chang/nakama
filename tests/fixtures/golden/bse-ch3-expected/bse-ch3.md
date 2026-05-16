@@ -184,7 +184,7 @@ figures:
     color-coded such as acidic levels are in dark shades, and alkaline levels are
     in light shades.
   vault_path: Attachments/Books/biochemistry-for-sport-and-exercise-maclaren/c03f010.png
-  vision_class: data-graph
+  vision_class: schematic
   vision_status: caption_only
 - alt_text: normal upper H Superscript plus Baseline plus upper H upper C upper O
     3 Superscript minus Baseline right-arrow normal upper H 2 upper C upper O 3 right-arrow
@@ -213,7 +213,7 @@ figures:
   vault_path: Attachments/Books/biochemistry-for-sport-and-exercise-maclaren/c03f012.png
   vision_class: schematic
   vision_status: caption_only
-ingest_date: '2026-05-08'
+ingest_date: '2026-05-15'
 section_anchors:
 - Learning Outcomes
 - 3.1 Organization of Matter
@@ -229,17 +229,15 @@ section_anchors:
 - 3.8 Key Points
 - References
 tables_overview:
-- caption: Table 3.1 – An overview of the body's main chemical elements and some of
-    their known functions.
+- caption: ''
   row_count: 14
-- caption: Table 3.2 – Common functional groups found within biological compounds.
+- caption: ''
   row_count: 8
-title: Chapter 3 — 3 Biochemical Concepts
+title: Chapter 3 — Biochemical Concepts
 vision_status: caption_only
 wikilinks_introduced:
 - matter
 - element
-- trace element
 - atom
 - proton
 - neutron
@@ -249,32 +247,30 @@ wikilinks_introduced:
 - atomic number
 - mass number
 - isotope
-- stable isotope
 - atomic mass
 - dalton
-- atomic mass unit
 - ionization
 - ion
 - anion
 - cation
 - molecule
 - compound
+- macronutrient
+- trace element
 - inorganic compound
 - organic compound
-- macronutrient
 - chemical bonding
-- valence shell
 - ionic bond
 - covalent bond
+- valence shell
 - polar covalent bond
+- non-polar covalent bond
 - electronegativity
 - molecular formula
 - molecular weight
 - constitutional formula
-- isomer
 - functional group
-- hydroxyl
-- phosphate group
+- isomer
 - chemical reaction
 - reactant
 - product
@@ -284,15 +280,16 @@ wikilinks_introduced:
 - chemical energy
 - potential energy
 - kinetic energy
-- law of conservation of energy
-- law of conservation of mass
 - exergonic reaction
 - endergonic reaction
+- law of conservation of mass
+- law of conservation of energy
+- atp
 - atp hydrolysis
-- calorie
 - kilocalorie
-- joule
 - kilojoule
+- calorie
+- megajoule
 - synthesis reaction
 - decomposition reaction
 - hydrolysis
@@ -302,11 +299,10 @@ wikilinks_introduced:
 - exchange reaction
 - oxidation
 - reduction
-- dehydrogenation
-- reducing equivalent
 - oxidative phosphorylation
 - substrate phosphorylation
-- electron acceptor
+- dehydrogenation
+- reducing equivalent
 - water
 - intracellular fluid
 - extracellular fluid
@@ -315,17 +311,17 @@ wikilinks_introduced:
 - solvent
 - solute
 - solution
+- dehydration
 - mole
 - molarity
 - acid
 - base
 - salt
-- proton acceptor
-- lactate
 - ph scale
 - buffer
+- lactate
+- carbonic acid
 - haemoglobin
-- cell
 - plasma membrane
 - lipid bilayer
 - phospholipid
@@ -337,8 +333,9 @@ wikilinks_introduced:
 - ion channel
 - transporter protein
 - receptor protein
-- chromosome
 - dna
+- gene
+- chromosome
 - histone
 - nuclear envelope
 - nuclear pore
@@ -352,7 +349,6 @@ wikilinks_introduced:
 - smooth endoplasmic reticulum
 - sarcoplasmic reticulum
 - golgi apparatus
-- golgi cisternae
 - mitochondria
 - cristae
 - mitochondrial matrix
@@ -360,6 +356,8 @@ wikilinks_introduced:
 - microfilament
 - intermediate filament
 - microtubule
+- glucose
+- carbohydrate
 ---
 
 # 3 Biochemical Concepts
@@ -940,213 +938,213 @@ The largest cytoskeletal proteins are known as microtubules and are mainly compo
 
 ```mermaid
 flowchart LR
-  A[Chapter 3 Learning Outcomes] --> B[Atomic structure]
-  A --> C[Chemical bonding]
-  A --> D[Chemical reactions & ATP]
-  A --> E[Water & solutions]
-  A --> F[Acid–base balance]
-  A --> G[Cell structure]
+  BiochemicalConcepts[Biochemical Concepts] --> MatterElements[Matter & Elements]
+  BiochemicalConcepts --> ChemicalBonds[Chemical Bonds]
+  BiochemicalConcepts --> ChemicalReactions[Chemical Reactions]
+  BiochemicalConcepts --> ATPEnergy[ATP & Energy]
+  BiochemicalConcepts --> Water
+  BiochemicalConcepts --> Solutions[Solutions & Concentrations]
+  BiochemicalConcepts --> AcidBase[Acid-Base Balance]
+  BiochemicalConcepts --> CellStructure[Cell Structure]
 ```
 
 ### 3.1 Organization of Matter
 
 ```mermaid
 flowchart LR
-  A[matter] --> B[elements]
-  B --> C[atoms]
-  C --> D[protons]
-  C --> E[neutrons]
-  C --> F[electrons]
-  C --> G[electron shells]
-  C --> H[isotopes]
-  C --> I[ions]
-  I --> J[anion]
-  I --> K[cation]
-  B --> L[molecules]
-  L --> M[compounds]
-  M --> N[macronutrients]
+  Matter --> Elements
+  Elements --> Atoms
+  Atoms --> Protons
+  Atoms --> Neutrons
+  Atoms --> Electrons
+  Electrons --> ElectronShells[Electron Shells]
+  Atoms --> Isotopes
+  Atoms --> Ionization
+  Ionization --> Anion
+  Ionization --> Cation
+  Atoms --> Molecules
+  Molecules --> Compounds
+  Compounds --> Macronutrients
 ```
 
 ### 3.2 Chemical Bonding
 
 ```mermaid
 flowchart LR
-  A[chemical bonding] --> B[ionic bond]
-  A --> C[covalent bond]
-  B --> D[electron donation]
-  B --> E[sodium chloride]
-  C --> F[non-polar covalent bond]
-  C --> G[polar covalent bond]
-  G --> H[electronegativity]
-  G --> I[water molecule]
-  C --> J[single bond]
-  C --> K[double bond]
-  A --> L[valence shell]
-  C --> M[functional groups]
-  M --> N[isomers]
+  ValenceShell[Valence Shell] --> IonicBonds[Ionic Bonds]
+  ValenceShell --> CovalentBonds[Covalent Bonds]
+  IonicBonds --> NaCl[Sodium Chloride]
+  CovalentBonds --> Single[Single Bond]
+  CovalentBonds --> Double[Double Bond]
+  CovalentBonds --> Triple[Triple Bond]
+  CovalentBonds --> NonPolar[Non-polar Covalent]
+  CovalentBonds --> Polar[Polar Covalent]
+  Polar --> Electronegativity
+  MolecularFormula[Molecular Formula] --> MolecularWeight[Molecular Weight]
+  MolecularFormula --> ConstitutionalFormula[Constitutional Formula]
+  Compounds --> FunctionalGroups[Functional Groups]
+  Compounds --> Isomers
 ```
 
 ### 3.3 Chemical Reactions, ATP and Energy
 
 ```mermaid
 flowchart LR
-  A[chemical reactions] --> B[exergonic reactions]
-  A --> C[endergonic reactions]
-  B --> D[ATP synthesis]
-  C --> E[muscle contraction]
-  D --> F[adenosine triphosphate]
-  F --> G[ATP hydrolysis]
-  G --> H[ATPase]
-  F --> I[ATP synthase]
-  A --> J[redox reactions]
-  J --> K[oxidative phosphorylation]
-  A --> L[phosphorylation]
-  A --> M[synthesis reactions]
-  A --> N[decomposition reactions]
+  ChemicalReactions[Chemical Reactions] --> Exergonic[Exergonic Reactions]
+  ChemicalReactions --> Endergonic[Endergonic Reactions]
+  Exergonic --> ATP
+  ATP --> Endergonic
+  ATP --> ATPHydrolysis[ATP Hydrolysis]
+  ATPHydrolysis --> ATPase
+  ChemicalReactions --> Synthesis[Synthesis / Anabolic]
+  ChemicalReactions --> Decomposition[Decomposition / Catabolic]
+  ChemicalReactions --> Phosphorylation
+  ChemicalReactions --> Redox[Redox Reactions]
+  Redox --> OxidativePhosphorylation[Oxidative Phosphorylation]
+  Energy --> Kilocalorie
+  Energy --> Kilojoule
 ```
 
 ### Misconception
 
 ```mermaid
 flowchart LR
-  A[oxidation reactions] --> B[loss of electrons]
-  A --> C[loss of hydrogen atoms]
-  B --> D[does NOT require oxygen]
-  C --> D
-  D --> E[common misconception corrected]
+  Misconception[Common Misconception] --> OxygenRequired[Oxidation always needs oxygen]
+  OxygenRequired -.->|incorrect| ActualOxidation[Oxidation = electron loss]
+  ActualOxidation --> HydrogenLoss[Hydrogen atom loss]
+  ActualOxidation --> DirectElectronLoss[Direct electron loss]
+  Redox[Redox Reactions] --> ActualOxidation
+  Redox --> Reduction[Reduction = electron gain]
 ```
 
 ### 3.4 Water
 
 ```mermaid
 flowchart LR
-  A[water] --> B[polar covalent bond]
-  B --> C[solvent properties]
-  C --> D[hydrophilic solutes]
-  C --> E[hydrophobic solutes]
-  A --> F[transportation]
-  A --> G[temperature regulation]
-  A --> H[chemical reactions medium]
-  A --> I[intracellular fluid]
-  A --> J[extracellular fluid]
-  A --> K[dehydration risk]
+  Water --> Transportation
+  Water --> Protection
+  Water --> Thermoregulation
+  Water --> Solvent
+  PolarCovalentBond[Polar Covalent Bond] --> Solvent
+  Solvent --> Hydrophilic
+  Solvent --> Hydrophobic
+  Water --> IntracellularFluid[Intracellular Fluid]
+  Water --> ExtracellularFluid[Extracellular Fluid]
+  Water --> MetabolicReactions[Metabolic Reactions]
+  Dehydration --> ExercisePerformance[Impaired Exercise Performance]
 ```
 
 ### 3.5 Solutions and Concentrations
 
 ```mermaid
 flowchart LR
-  A[solution] --> B[solute]
-  A --> C[solvent]
-  A --> D[concentration]
-  D --> E[mole]
-  E --> F[Avogadro's number]
-  D --> G[molarity]
-  G --> H[molar solution]
-  D --> I[percentage concentration]
-  E --> J[atomic mass]
-  J --> K[molecular weight]
+  Solution --> Solute
+  Solution --> Solvent
+  Concentration --> Molarity
+  Molarity --> MolesPerLitre[Moles per Litre]
+  Mole --> AtomicMass[Atomic Mass]
+  Mole --> AvogadrosNumber[Avogadro's Number]
+  Molarity --> OneMolar[1 Molar Solution]
+  PercentageConcentration[Percentage Concentration] --> MassPerVolume[Mass per Volume]
 ```
 
 ### Laboratory Focus – Making Concentrated Solutions
 
 ```mermaid
 flowchart LR
-  A[target concentration] --> B[molecular weight of glucose]
-  B --> C[1 M = 180 g/L]
-  C --> D[convert to mM and mg]
-  D --> E[scale to required volume]
-  E --> F[mass of solute to weigh]
-  F --> G[dissolve in solvent]
-  G --> H[final solution]
+  Glucose --> MolecularWeight[Molecular Weight = 180 g/mol]
+  MolecularWeight --> OneMolar[1 M = 180 g/L]
+  OneMolar --> UnitConversion[Convert to mM and mg]
+  UnitConversion --> ScaleConcentration[Scale for Required Concentration]
+  ScaleConcentration --> ScaleVolume[Scale for Required Volume]
+  ScaleVolume --> RequiredMass[Required Mass in mg]
+  Formula[MW x Volume x Concentration] --> RequiredMass
 ```
 
 ### 3.6 Acid–Base Balance
 
 ```mermaid
 flowchart LR
-  A[acid] --> B[proton donor]
-  A --> C[lactic acid]
-  D[base] --> E[proton acceptor]
-  D --> F[bicarbonate ion]
-  A --> G[salt formation]
-  D --> G
-  H[pH scale] --> I[acidic below 7]
-  H --> J[neutral at 7]
-  H --> K[alkaline above 7]
-  L[buffers] --> M[carbonic acid-bicarbonate system]
-  L --> N[carnosine]
-  L --> O[phosphocreatine]
-  L --> P[haemoglobin]
+  Acid[Acid / Proton Donor] --> Salt
+  Base[Base / Proton Acceptor] --> Salt
+  HydrogenIons[H+ Ions] --> pHScale[pH Scale]
+  pHScale --> AcidicpH[Acidic pH < 7]
+  pHScale --> NeutralpH[Neutral pH = 7]
+  pHScale --> AlkalinepH[Alkaline pH > 7]
+  Buffers --> CarbonicBicarbonate[Carbonic Acid-Bicarbonate]
+  Buffers --> Carnosine
+  Buffers --> Phosphocreatine
+  Buffers --> Haemoglobin
+  LacticAcid[Lactic Acid] --> HydrogenIons
 ```
 
 ### Misconception: Lactic Acid and Lactate Are Not the Same Thing!
 
 ```mermaid
 flowchart LR
-  A[lactic acid] --> B[ionization]
-  B --> C[lactate]
-  B --> D[hydrogen ion released]
-  C --> E[carbon skeleton]
-  E --> F[energy substrate in other tissues]
-  A -.->|often confused with| C
+  LacticAcid[Lactic Acid] --> Ionization
+  Ionization --> Lactate
+  Ionization --> HydrogenIon[H+ Ion]
+  Lactate --> CarbonSkeleton[Carbon Skeleton]
+  CarbonSkeleton --> TissueShuttling[Energy Source via Tissue Shuttling]
+  LacticAcid -.->|commonly confused with| Lactate
 ```
 
 ### 3.7 Cell Structure
 
 ```mermaid
 flowchart LR
-  A[cell] --> B[plasma membrane]
-  B --> C[lipid bilayer]
-  B --> D[integral proteins]
-  B --> E[peripheral proteins]
-  A --> F[nucleus]
-  F --> G[DNA]
-  F --> H[chromosomes]
-  F --> I[nucleolus]
-  A --> J[cytoplasm]
-  J --> K[cytosol]
-  J --> L[organelles]
-  L --> M[mitochondria]
-  L --> N[endoplasmic reticulum]
-  L --> O[golgi apparatus]
-  L --> P[cytoskeleton]
+  Cell --> PlasmaMembrane[Plasma Membrane]
+  Cell --> Nucleus
+  Cell --> Cytoplasm
+  PlasmaMembrane --> LipidBilayer[Lipid Bilayer]
+  PlasmaMembrane --> IntegralProteins[Integral Proteins]
+  PlasmaMembrane --> PeripheralProteins[Peripheral Proteins]
+  Nucleus --> DNA
+  Nucleus --> Chromosomes
+  Nucleus --> Nucleolus
+  Cytoplasm --> Cytosol
+  Cytoplasm --> Organelles
+  Organelles --> Mitochondria
+  Organelles --> EndoplasmicReticulum[Endoplasmic Reticulum]
+  Organelles --> GolgiApparatus[Golgi Apparatus]
+  Organelles --> Cytoskeleton
 ```
 
 ### 3.8 Key Points
 
 ```mermaid
 flowchart LR
-  A[Key Points] --> B[matter & elements]
-  A --> C[atomic structure]
-  A --> D[chemical bonding]
-  A --> E[chemical reactions & ATP]
-  A --> F[acid-base balance & pH]
-  A --> G[cell structure]
-  E --> H[exergonic / endergonic]
-  D --> I[ionic / covalent bonds]
-  F --> J[buffers]
-  G --> K[plasma membrane / nucleus / cytoplasm]
+  Matter --> Elements --> Atoms --> Molecules --> Compounds
+  Compounds --> Macronutrients
+  ChemicalBonds[Chemical Bonds] --> IonicBonds[Ionic]
+  ChemicalBonds --> CovalentBonds[Covalent]
+  ChemicalReactions[Chemical Reactions] --> ATP
+  ATP --> CellularActivities[Cellular Activities]
+  AcidBase[Acid-Base] --> pHScale[pH Scale]
+  pHScale --> Buffers
+  Cell --> PlasmaMembrane[Plasma Membrane]
+  Cell --> Nucleus
+  Cell --> Cytoplasm
 ```
 
 ### References
 
 ```mermaid
 flowchart LR
-  A[References] --> B[Armstrong et al. 1985]
-  A --> C[Bogdanis et al. 1995]
-  A --> D[Holloszy & Coyle 1984]
-  A --> E[Karlsson & Saltin 1970]
-  A --> F[Saris et al. 1989]
-  A --> G[Spriet et al. 1989]
-  A --> H[Tortora & Derrickson 2009]
+  References --> Armstrong1985[Armstrong et al. 1985]
+  References --> Bogdanis1995[Bogdanis et al. 1995]
+  References --> Holloszy1984[Holloszy & Coyle 1984]
+  References --> Karlsson1970[Karlsson & Saltin 1970]
+  References --> Saris1989[Saris et al. 1989]
+  References --> Spriet1989[Spriet et al. 1989]
+  References --> Tortora2009[Tortora & Derrickson 2009]
 ```
 
 ## Wikilinks Introduced
 
 - [[matter]]
 - [[element]]
-- [[trace element]]
 - [[atom]]
 - [[proton]]
 - [[neutron]]
@@ -1156,32 +1154,30 @@ flowchart LR
 - [[atomic number]]
 - [[mass number]]
 - [[isotope]]
-- [[stable isotope]]
 - [[atomic mass]]
 - [[dalton]]
-- [[atomic mass unit]]
 - [[ionization]]
 - [[ion]]
 - [[anion]]
 - [[cation]]
 - [[molecule]]
 - [[compound]]
+- [[macronutrient]]
+- [[trace element]]
 - [[inorganic compound]]
 - [[organic compound]]
-- [[macronutrient]]
 - [[chemical bonding]]
-- [[valence shell]]
 - [[ionic bond]]
 - [[covalent bond]]
+- [[valence shell]]
 - [[polar covalent bond]]
+- [[non-polar covalent bond]]
 - [[electronegativity]]
 - [[molecular formula]]
 - [[molecular weight]]
 - [[constitutional formula]]
-- [[isomer]]
 - [[functional group]]
-- [[hydroxyl]]
-- [[phosphate group]]
+- [[isomer]]
 - [[chemical reaction]]
 - [[reactant]]
 - [[product]]
@@ -1191,15 +1187,16 @@ flowchart LR
 - [[chemical energy]]
 - [[potential energy]]
 - [[kinetic energy]]
-- [[law of conservation of energy]]
-- [[law of conservation of mass]]
 - [[exergonic reaction]]
 - [[endergonic reaction]]
+- [[law of conservation of mass]]
+- [[law of conservation of energy]]
+- [[atp]]
 - [[atp hydrolysis]]
-- [[calorie]]
 - [[kilocalorie]]
-- [[joule]]
 - [[kilojoule]]
+- [[calorie]]
+- [[megajoule]]
 - [[synthesis reaction]]
 - [[decomposition reaction]]
 - [[hydrolysis]]
@@ -1209,11 +1206,10 @@ flowchart LR
 - [[exchange reaction]]
 - [[oxidation]]
 - [[reduction]]
-- [[dehydrogenation]]
-- [[reducing equivalent]]
 - [[oxidative phosphorylation]]
 - [[substrate phosphorylation]]
-- [[electron acceptor]]
+- [[dehydrogenation]]
+- [[reducing equivalent]]
 - [[water]]
 - [[intracellular fluid]]
 - [[extracellular fluid]]
@@ -1222,17 +1218,17 @@ flowchart LR
 - [[solvent]]
 - [[solute]]
 - [[solution]]
+- [[dehydration]]
 - [[mole]]
 - [[molarity]]
 - [[acid]]
 - [[base]]
 - [[salt]]
-- [[proton acceptor]]
-- [[lactate]]
 - [[ph scale]]
 - [[buffer]]
+- [[lactate]]
+- [[carbonic acid]]
 - [[haemoglobin]]
-- [[cell]]
 - [[plasma membrane]]
 - [[lipid bilayer]]
 - [[phospholipid]]
@@ -1244,8 +1240,9 @@ flowchart LR
 - [[ion channel]]
 - [[transporter protein]]
 - [[receptor protein]]
-- [[chromosome]]
 - [[dna]]
+- [[gene]]
+- [[chromosome]]
 - [[histone]]
 - [[nuclear envelope]]
 - [[nuclear pore]]
@@ -1259,7 +1256,6 @@ flowchart LR
 - [[smooth endoplasmic reticulum]]
 - [[sarcoplasmic reticulum]]
 - [[golgi apparatus]]
-- [[golgi cisternae]]
 - [[mitochondria]]
 - [[cristae]]
 - [[mitochondrial matrix]]
@@ -1267,28 +1263,26 @@ flowchart LR
 - [[microfilament]]
 - [[intermediate filament]]
 - [[microtubule]]
+- [[glucose]]
+- [[carbohydrate]]
 
 
 ## Aliases Recorded
 
-- non-polar covalent bond
-- carboxyl
-- amino group
-- adenosine triphosphate
+- ADP
 - ATPase
 - ATP synthase
 - anabolic reactions
 - condensation reactions
 - catabolic reactions
 - redox reactions
-- adenosine diphosphate
 - Avogadro's number
-- proton donor
+- bicarbonate ions
 - carbonic acid-bicarbonate buffer system
 - carnosine
 - phosphocreatine
-- nucleus (cell)
 - actin
 - myosin
-- desmin
 - tubulin
+- desmin
+- sodium chloride

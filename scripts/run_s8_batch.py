@@ -803,6 +803,19 @@ def run_batch(args) -> int:
         write_blockers(blockers, _REPO_ROOT / DEFAULT_BLOCKERS_PATH)
         return 2
 
+    if args.start_chapter and args.start_chapter > 1:
+        before = len(iteration)
+        iteration = [
+            entry for entry in iteration if entry[3] >= args.start_chapter
+        ]
+        log.info(
+            "--start-chapter %d: skipping first %d (was %d, now %d)",
+            args.start_chapter,
+            before - len(iteration),
+            before,
+            len(iteration),
+        )
+
     if args.max_chapters:
         iteration = iteration[: args.max_chapters]
         log.info("--max-chapters: limiting to first %d", args.max_chapters)
@@ -966,6 +979,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--report-path",
         default=str(_REPO_ROOT / DEFAULT_REPORT_PATH),
+    )
+    p.add_argument(
+        "--start-chapter",
+        type=int,
+        default=0,
+        help="skip chapters with real-index < this value; useful to resume mid-batch (default: 0 = no skip)",
     )
     p.add_argument(
         "--max-chapters",

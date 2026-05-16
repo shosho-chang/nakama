@@ -536,11 +536,33 @@ def _parse_phase1_json(raw: str, payload, prompt: str) -> dict:
     def _parse(text: str) -> dict:
         return json.loads(_strip_outer_fence(text))
 
+    def _dump_debug(label: str, text: str, exc: Exception) -> None:
+        # Always dump on parse failure so the operator can see what the LLM
+        # actually returned (refusal, free-text, truncation, etc.) instead of
+        # only seeing "JSONDecodeError line 1 col 1" with no body.
+        from datetime import datetime as _dt
+        debug_dir = Path(os.environ.get("NAKAMA_PHASE1_DEBUG_DIR", ".nakama/phase1_debug"))
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        ts = _dt.now().strftime("%Y%m%dT%H%M%S")
+        slug = f"{payload.book_id}-ch{payload.chapter_index}-{ts}-{label}"
+        (debug_dir / f"{slug}.response.txt").write_text(text or "<EMPTY>", encoding="utf-8")
+        (debug_dir / f"{slug}.prompt.txt").write_text(prompt, encoding="utf-8")
+        log.warning(
+            "Phase 1 parse failure debug: prompt=%d chars, response=%d chars, error=%s; dumped to %s",
+            len(prompt), len(text or ""), exc, debug_dir / f"{slug}.response.txt",
+        )
+
     try:
         parsed = _parse(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        _dump_debug("attempt1", raw, e)
         log.warning("Phase 1: LLM returned non-JSON, retrying once…")
-        parsed = _parse(_ask_llm(prompt, max_tokens=16000))
+        raw2 = _ask_llm(prompt, max_tokens=16000)
+        try:
+            parsed = _parse(raw2)
+        except json.JSONDecodeError as e2:
+            _dump_debug("attempt2", raw2, e2)
+            raise
 
     if not isinstance(parsed.get("frontmatter"), dict):
         raise ValueError(f"LLM 'frontmatter' not a dict: keys={list(parsed.keys())}")
@@ -711,6 +733,38 @@ def _slug_from_term(term: str) -> str:
     return s.strip("- ").strip()
 
 
+def _dedup_concepts_by_canonical(concepts: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+    """Collapse concept surface forms that share a canonical slug.
+
+    Phase 1's LLM alias extraction often emits both singular/plural pairs
+    ("transcription factor" + "transcription factors") and literal duplicates
+    ("electron transfer chain" twice from two different sections). Both
+    cases produce identical canonical slugs via ``canonicalize`` — and
+    without this dedup they each enter the dispatch loop. The first creates
+    a page; the second hits FileExistsError and still gets logged. The C6
+    acceptance gate then flags the pair as an unintended canonical-slug
+    collision, even though they were destined for the same page on disk.
+
+    Returns ``(deduped_list, dropped_pairs)`` where ``dropped_pairs`` is a
+    list of ``(kept_term, dropped_term)`` for log visibility. First
+    occurrence wins; LLM output order tends to surface the more canonical
+    form first (it appears earlier in the chapter text).
+    """
+    from shared.concept_canonicalize import canonicalize
+
+    seen: dict[str, str] = {}
+    out: list[str] = []
+    dropped: list[tuple[str, str]] = []
+    for term in concepts:
+        c = canonicalize(term)
+        if c in seen:
+            dropped.append((seen[c], term))
+            continue
+        seen[c] = term
+        out.append(term)
+    return out, dropped
+
+
 def run_phase2_dispatch(
     *,
     payload,
@@ -729,6 +783,12 @@ def run_phase2_dispatch(
 
     source_md = source_page_path.read_text(encoding="utf-8")
     concepts = _extract_concepts_from_source_page(source_md)
+    concepts, dropped_dups = _dedup_concepts_by_canonical(concepts)
+    if dropped_dups:
+        log.info(
+            "Phase 2: deduped %d concept(s) by canonical slug: %s",
+            len(dropped_dups), dropped_dups[:5],
+        )
     log.info("Phase 2: %d concepts identified for dispatch", len(concepts))
 
     book_id = payload.book_id
