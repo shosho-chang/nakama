@@ -221,7 +221,15 @@ def _invoke(
     return payload
 
 
-def _record_cli_usage(payload: dict, model: str, latency_ms: int) -> None:
+def _record_cli_usage(
+    payload: dict,
+    model: str,
+    latency_ms: int,
+    *,
+    auth_requested: str | None = None,
+    auth_actual: str | None = None,
+    fallback_reason: str | None = None,
+) -> None:
     """Extract usage from CLI JSON payload and forward to observability.
 
     The CLI's ``total_cost_usd`` is the API-equivalent price; under Max
@@ -239,6 +247,9 @@ def _record_cli_usage(payload: dict, model: str, latency_ms: int) -> None:
             cache_read_tokens=usage.get("cache_read_input_tokens", 0) or 0,
             cache_write_tokens=usage.get("cache_creation_input_tokens", 0) or 0,
             latency_ms=latency_ms,
+            auth_requested=auth_requested,
+            auth_actual=auth_actual,
+            fallback_reason=fallback_reason,
         )
     except Exception as e:  # pragma: no cover — defensive
         logger.debug("CLI cost tracking failed (ignored): %s", e)
@@ -249,6 +260,9 @@ def ask_via_cli(
     *,
     system: str = "",
     model: str,
+    auth_requested: str | None = None,
+    auth_actual: str | None = "subscription",
+    fallback_reason: str | None = None,
 ) -> str:
     """Single-turn Claude call via ``claude -p`` subprocess.
 
@@ -266,7 +280,14 @@ def ask_via_cli(
     payload = with_retry(_call, max_attempts=3, backoff_base=2.0)
     latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_cli_usage(payload, model, latency_ms)
+    _record_cli_usage(
+        payload,
+        model,
+        latency_ms,
+        auth_requested=auth_requested,
+        auth_actual=auth_actual,
+        fallback_reason=fallback_reason,
+    )
 
     result = payload.get("result")
     if not isinstance(result, str):
@@ -281,6 +302,9 @@ def ask_multi_via_cli(
     *,
     system: str = "",
     model: str,
+    auth_requested: str | None = None,
+    auth_actual: str | None = "subscription",
+    fallback_reason: str | None = None,
 ) -> str:
     """Multi-turn Claude call via CLI — flattens messages into a single prompt.
 
@@ -291,4 +315,11 @@ def ask_multi_via_cli(
     suitable for long agent loops with many turns.
     """
     prompt = _flatten_messages(messages)
-    return ask_via_cli(prompt, system=system, model=model)
+    return ask_via_cli(
+        prompt,
+        system=system,
+        model=model,
+        auth_requested=auth_requested,
+        auth_actual=auth_actual,
+        fallback_reason=fallback_reason,
+    )

@@ -106,12 +106,18 @@ def test_get_provider_unknown_raises() -> None:
 
 def test_auth_default_when_no_env() -> None:
     assert get_auth_policy() == DEFAULT_AUTH["default"]
-    assert get_auth_policy() == "subscription_preferred"
+    assert get_auth_policy() == "api"
 
 
 def test_auth_tool_use_default_is_api() -> None:
     """tool_use 強制 api：CLI subprocess path 拿不到 raw tool-use JSON。"""
     assert get_auth_policy(task="tool_use") == "api"
+
+
+def test_auth_default_when_agent_set_but_no_env() -> None:
+    """Agent context without explicit AUTH_<AGENT> falls through to api too."""
+    assert get_auth_policy(agent="brook") == "api"
+    assert get_auth_policy(agent="robin", task="translate") == "api"
 
 
 def test_auth_agent_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -140,9 +146,9 @@ def test_auth_hard_lock_overrides_everything(monkeypatch: pytest.MonkeyPatch) ->
 def test_auth_hard_lock_only_when_exactly_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """避免 NAKAMA_REQUIRE_MAX_PLAN=0 / 空字串被誤判成 truthy。"""
     monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "0")
-    assert get_auth_policy() == "subscription_preferred"
+    assert get_auth_policy() == "api"
     monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "")
-    assert get_auth_policy() == "subscription_preferred"
+    assert get_auth_policy() == "api"
 
 
 def test_auth_invalid_value_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -152,8 +158,8 @@ def test_auth_invalid_value_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_auth_other_agent_env_does_not_leak(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AUTH_ROBIN", "api")
-    assert get_auth_policy(agent="brook") == "subscription_preferred"
+    monkeypatch.setenv("AUTH_ROBIN", "subscription_required")
+    assert get_auth_policy(agent="brook") == "api"
 
 
 def test_auth_unknown_task_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -79,3 +79,72 @@ def test_patch_alias_map_redirects_to_staging_not_live(tmp_path):
     finally:
         cc.append_alias_entry = original_fn
         cc._s8_staging_patched = original_patched
+
+
+# -----------------------------------------------------------------------------
+# Phase 1 JSON extractor — tolerates LLM prose preambles around the JSON body
+# (regression: MEP ch8/9/10 ERROR'd because Sonnet prepended
+# "Outputting the complete JSON to avoid truncation.\n\n{...}").
+# -----------------------------------------------------------------------------
+
+
+def test_extract_json_object_strips_prose_preamble():
+    from scripts.run_s8_preflight import _extract_json_object
+
+    blob = 'Outputting the complete JSON to avoid truncation.\n\n{"a": 1, "b": [2, 3]}\n'
+    assert _extract_json_object(blob) == '{"a": 1, "b": [2, 3]}'
+
+
+def test_extract_json_object_handles_nested_braces_in_strings():
+    from scripts.run_s8_preflight import _extract_json_object
+
+    blob = 'prose\n{"k": "value with } inside", "n": {"inner": true}}\ntail'
+    # raw_decode walks balanced braces correctly — must include the inner object.
+    extracted = _extract_json_object(blob)
+    import json as _json
+
+    parsed = _json.loads(extracted)
+    assert parsed == {"k": "value with } inside", "n": {"inner": True}}
+
+
+def test_extract_json_object_returns_text_when_no_brace():
+    from scripts.run_s8_preflight import _extract_json_object
+
+    blob = "just prose, no JSON here"
+    assert _extract_json_object(blob) == blob
+
+
+def test_extract_json_object_picks_schema_match_over_first_object():
+    """LLM sometimes emits a figure / example object before the real payload.
+
+    Regression: MEP ch8/ch10 re-run, where the first ``{...}`` was a figure dict
+    with keys [vault_path, alt_text, vision_class, vision_status] and the real
+    ``{frontmatter, sections}`` came later in the response.
+    """
+    import json as _json
+
+    from scripts.run_s8_preflight import _extract_json_object
+
+    figure_obj = (
+        '{"vault_path": "Attachments/f1.png", "alt_text": "x", '
+        '"vision_class": "diagram", "vision_status": "caption_only"}'
+    )
+    blob = (
+        "Here is an example figure:\n"
+        + figure_obj
+        + "\n\nAnd the full output:\n"
+        + '{"frontmatter": {"title": "Ch 8"}, "sections": [{"anchor": "8.1"}]}\n'
+    )
+    extracted = _extract_json_object(blob, required_keys=("frontmatter", "sections"))
+    parsed = _json.loads(extracted)
+    assert parsed == {"frontmatter": {"title": "Ch 8"}, "sections": [{"anchor": "8.1"}]}
+
+
+def test_extract_json_object_falls_back_to_largest_when_no_match():
+    """Without required_keys (or when none match), pick the largest parseable block."""
+    from scripts.run_s8_preflight import _extract_json_object
+
+    blob = 'prose\n{"a":1}\nmore\n{"b":2, "c":3, "d": [4,5,6]}\n'
+    # Both parse; the second is larger and should win.
+    extracted = _extract_json_object(blob)
+    assert extracted == '{"b":2, "c":3, "d": [4,5,6]}'

@@ -30,6 +30,7 @@ from shared.annotation_store import (
 )
 from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
+from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.reading_source_registry import InboxKey, ReadingSourceRegistry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
@@ -496,7 +497,14 @@ def _translate_in_background(
     translator failure we do NOT write a partial bilingual file — the
     user can read the original under the same inbox row, so silently
     falling back like the PubMed path would just hide the failure.
+
+    Thread-local agent attribution: FastAPI BackgroundTasks run in a
+    threadpool that does NOT inherit the request handler's
+    :mod:`shared.llm_context` ``_local``. Setting agent here (rather than
+    in :func:`translate`) is what makes cost rows + ``api_calls.agent``
+    say ``"robin"`` instead of ``"unknown"`` for translator LLM calls.
     """
+    set_current_agent("robin")
     try:
         content = read_text(source_path)
     except OSError:
