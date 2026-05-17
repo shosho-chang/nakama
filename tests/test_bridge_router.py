@@ -81,7 +81,8 @@ def test_bridge_index_renders_html(client):
     assert "NAKAMA / BRIDGE" in body
     assert 'href="/bridge/memory"' in body
     assert 'href="/bridge/cost"' in body
-    assert "'/brook/chat'" in body
+    # ADR-027 PR-3: dashboard agent tile points at /brook/bridge (was /brook/chat).
+    assert "'/brook/bridge'" in body
 
 
 def test_bridge_index_hides_robin_when_disabled(client):

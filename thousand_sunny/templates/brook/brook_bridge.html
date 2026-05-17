@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brook · Context Bridge</title>
+<style>
+  :root {
+    --bg: #fafaf8;
+    --bg-card: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #6a6a64;
+    --border: #dcd9d2;
+    --accent: #ff5a1f;
+    --accent-hover: #e64500;
+    --code-bg: #f4f2ec;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  h2 { font-size: 16px; margin: 24px 0 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.12em; }
+  .hint { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+  form {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 16px;
+    margin-bottom: 24px;
+    border-radius: 4px;
+  }
+  label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+  input[type=text] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-family: inherit;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  button, .btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-decoration: none;
+    display: inline-block;
+  }
+  button:hover, .btn:hover { background: var(--accent-hover); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .summary {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 16px;
+    margin-bottom: 16px;
+    border-radius: 4px;
+  }
+  .summary-row { display: flex; gap: 12px; padding: 4px 0; font-size: 14px; }
+  .summary-row .key { width: 200px; color: var(--text-muted); }
+  .summary-row .val { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .prompt-box {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 16px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    max-height: 480px;
+    overflow-y: auto;
+    border-radius: 4px;
+  }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .copy-toast {
+    display: none;
+    background: #3f7a5a;
+    color: white;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 2px;
+    align-self: center;
+  }
+  .copy-toast.shown { display: inline-block; }
+  .crumb {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .crumb a { color: var(--text-muted); text-decoration: none; }
+  .crumb a:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="crumb"><a href="/bridge">← Bridge</a> · Brook · Context Bridge</div>
+<h1>Brook · Context Bridge</h1>
+<p class="hint">
+  Claude.ai 沒有本地 KB / Project / style profile / 合規詞庫。
+  此頁打包一段 prompt — 點「複製」貼到 Claude.ai 後再開始寫作協助。
+  Brook 在此**不**寫稿、不存 SQLite 對話、不匯出 draft（ADR-027 §Decision 8）。
+</p>
+
+<form method="get" action="/brook/bridge">
+  <label for="topic">主題（必填）</label>
+  <input type="text" id="topic" name="topic" required value="{{ topic or '' }}"
+         placeholder="例：肌酸對中年女性的睡眠影響">
+
+  <label for="project_slug">Project slug（選填 — 讀 <code>Projects/&lt;slug&gt;.md</code>）</label>
+  <input type="text" id="project_slug" name="project_slug" value="{{ project_slug or '' }}"
+         placeholder="例：肌酸的妙用">
+
+  <label for="source_slug">Source slug（選填 — 包 RCP 摘錄）</label>
+  <input type="text" id="source_slug" name="source_slug" value="{{ source_slug or '' }}"
+         placeholder="例：book-creatine-review-2024">
+
+  <label for="kb_query">KB 查詢覆寫（選填 — 預設為主題）</label>
+  <input type="text" id="kb_query" name="kb_query" value="{{ kb_query or '' }}"
+         placeholder="留空 → 用主題">
+
+  <label for="category">Style profile category（選填 — auto-detect 預設）</label>
+  <input type="text" id="category" name="category" value="{{ category or '' }}"
+         placeholder="book-review / people / science">
+
+  <button type="submit">打包 context →</button>
+</form>
+
+{% if packaged %}
+<h2>已打包內容</h2>
+<div class="summary">
+  <div class="summary-row"><span class="key">主題</span><span class="val">{{ packaged.summary.topic }}</span></div>
+  <div class="summary-row"><span class="key">Project</span><span class="val">{% if packaged.summary.project_loaded %}{{ packaged.summary.project_slug }} ✓{% elif packaged.summary.project_slug %}{{ packaged.summary.project_slug }} （讀取失敗）{% else %}—{% endif %}</span></div>
+  <div class="summary-row"><span class="key">KB chunks</span><span class="val">{{ packaged.summary.kb_chunk_count }}</span></div>
+  <div class="summary-row"><span class="key">Style profile</span><span class="val">{{ packaged.summary.style_profile_id or '—' }}</span></div>
+  <div class="summary-row"><span class="key">RCP</span><span class="val">{% if packaged.summary.rcp_loaded %}{{ packaged.summary.rcp_source_slug }} ✓{% elif packaged.summary.rcp_source_slug %}{{ packaged.summary.rcp_source_slug }} （無 annotations）{% else %}—{% endif %}</span></div>
+  <div class="summary-row"><span class="key">Compliance vocab</span><span class="val">{{ packaged.summary.compliance_vocab_term_count }} 條（reminder only）</span></div>
+</div>
+
+<h2>Packaged prompt</h2>
+<div class="prompt-box" id="prompt-box">{{ packaged.prompt }}</div>
+<div class="actions">
+  <button type="button" id="copy-btn">複製到剪貼簿</button>
+  <a href="https://claude.ai/new" target="_blank" rel="noopener" class="btn btn-ghost">開啟 Claude.ai →</a>
+  <span class="copy-toast" id="copy-toast">已複製</span>
+</div>
+
+<script>
+document.getElementById('copy-btn').addEventListener('click', async () => {
+  const text = document.getElementById('prompt-box').innerText;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    // Fallback for older browsers
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  const toast = document.getElementById('copy-toast');
+  toast.classList.add('shown');
+  setTimeout(() => toast.classList.remove('shown'), 1500);
+});
+</script>
+{% endif %}
+
+</body>
+</html>
