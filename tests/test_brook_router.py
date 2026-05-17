@@ -142,9 +142,7 @@ def test_bridge_includes_kb_chunks_when_search_returns_hits(client, monkeypatch)
     assert ">2<" in body or ">2 " in body or ">2</span>" in body
 
 
-def test_bridge_includes_project_excerpt_when_project_slug_passed(
-    client, monkeypatch, tmp_path
-):
+def test_bridge_includes_project_excerpt_when_project_slug_passed(client, monkeypatch, tmp_path):
     """When a Projects/<slug>.md exists, its frontmatter excerpt is in
     the packaged prompt blob."""
     monkeypatch.setattr(
@@ -165,9 +163,7 @@ def test_bridge_includes_project_excerpt_when_project_slug_passed(
     assert "測試專題" in body
 
 
-def test_bridge_includes_rcp_when_annotations_exist(
-    client, monkeypatch, tmp_path
-):
+def test_bridge_includes_rcp_when_annotations_exist(client, monkeypatch, tmp_path):
     """When source_slug points at a Robin source with annotations on disk,
     the RCP excerpt section is in the packaged prompt."""
     monkeypatch.setattr(

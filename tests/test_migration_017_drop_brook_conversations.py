@@ -51,9 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_brook_messages_conv
 
 
 def _existing_tables(conn: sqlite3.Connection) -> set[str]:
-    rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    ).fetchall()
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     return {r[0] for r in rows}
 
 

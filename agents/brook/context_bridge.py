@@ -163,9 +163,7 @@ def _compliance_reminder_block() -> tuple[str, int]:
     Instead we list a handful of representative category names + the absolute
     assertion list, plus the count so the owner knows the scope.
     """
-    term_count = sum(len(v) for v in MEDICAL_CLAIM_TERMS.values()) + len(
-        ABSOLUTE_ASSERTION_TERMS
-    )
+    term_count = sum(len(v) for v in MEDICAL_CLAIM_TERMS.values()) + len(ABSOLUTE_ASSERTION_TERMS)
     cat_names = ", ".join(sorted(MEDICAL_CLAIM_TERMS.keys()))
     sample_absolute = ", ".join(ABSOLUTE_ASSERTION_TERMS[:6])
     body = (
@@ -272,8 +270,7 @@ def package_context(
         if rcp_block is not None:
             summary.rcp_loaded = True
             sections.append(
-                f"## Reading-Context-Package 摘錄（source={source_slug}）\n\n"
-                f"{rcp_block}\n"
+                f"## Reading-Context-Package 摘錄（source={source_slug}）\n\n{rcp_block}\n"
             )
 
     # ── Closing instruction ──────────────────────────────────────────────
