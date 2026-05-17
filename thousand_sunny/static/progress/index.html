@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Nakama 進度 — 路線 × 階段 × Channel</title>
+<link rel="stylesheet" href="/static/progress/progress.css">
+</head>
+<body>
+<main class="page">
+
+  <!-- ── header ─────────────────────────────────────────────────────── -->
+  <header class="page-header">
+    <div class="eyebrow">Nakama · partner progress</div>
+    <h1 class="page-title">路線 × 階段 × Channel 進度追蹤</h1>
+    <p class="page-subtitle">
+      Nakama 是一個以單一內容創作者為中心的多 Agent 系統。內容工作流分七個階段，
+      三條 production line 並行，五個對外 channel 為末端 fan-out。這份頁面是給合作夥伴
+      看的「系統 readiness 一覽」，以三個 lens 同時呈現：line、agent、channel。
+    </p>
+    <div class="meta-row">
+      <span>Last updated <strong>2026-05-18</strong></span>
+      <span>Source <strong>CONTENT-PIPELINE.md · ARCHITECTURE.md</strong></span>
+      <span>Scope <strong>Health &amp; Wellness / Longevity</strong></span>
+    </div>
+
+    <div class="legend" aria-label="圖例">
+      <span class="legend-item"><span class="marker ship">✅</span> ship</span>
+      <span class="legend-item"><span class="marker flight">🚧</span> in flight</span>
+      <span class="legend-item"><span class="marker gap">⬜</span> 缺口</span>
+      <span class="legend-item"><span class="marker none">❌</span> 0 實作</span>
+      <span class="legend-item"><span class="marker na">—</span> n/a 不適用</span>
+    </div>
+  </header>
+
+  <!-- ── §I lines × stages ──────────────────────────────────────────── -->
+  <section aria-labelledby="lines-heading">
+    <h2 class="section-title" id="lines-heading">
+      <span class="section-number">I.</span> Lines × Stages
+    </h2>
+    <p class="section-blurb">
+      三條 production line 真正分歧在 Stage 1–4。Stage 5 之後合流走 4 個 channel，
+      Stage 6 / 7 共用。Line 1 又分一般訪談（1a）與訪問新書作者（1b）兩個子模式。
+    </p>
+
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th class="row-label">Line</th>
+            <th>S1 收集</th>
+            <th>S2 閱讀</th>
+            <th>S3 整合</th>
+            <th>S4 原子文章</th>
+            <th>S5 製作</th>
+            <th>S6 發布</th>
+            <th>S7 監控</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label">Line 1a<span class="sub">Podcast 一般訪談</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker ship">✅</span>transcribe → 字幕檔</td>
+            <td><span class="cell-marker flight">🚧</span>Slice 10 reviewer</td>
+            <td><span class="cell-marker none">❌</span>IG/YT/FB 0 實作</td>
+            <td><span class="cell-marker none">❌</span></td>
+          </tr>
+          <tr>
+            <td class="row-label">Line 1b<span class="sub">訪問新書作者</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker gap">⬜</span>Reading Source</td>
+            <td><span class="cell-marker gap">⬜</span>Source Promotion</td>
+            <td><span class="cell-marker ship">✅</span>transcribe</td>
+            <td><span class="cell-marker flight">🚧</span>同 1a</td>
+            <td><span class="cell-marker none">❌</span></td>
+            <td><span class="cell-marker none">❌</span></td>
+          </tr>
+          <tr>
+            <td class="row-label">Line 2<span class="sub">讀書心得</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker gap">⬜</span>Reader 雙語</td>
+            <td><span class="cell-marker gap">⬜</span>Promotion / sync</td>
+            <td><span class="cell-marker gap">⬜</span>RCP → 修修手寫</td>
+            <td><span class="cell-marker ship">✅</span>Brook 4ch renderer</td>
+            <td><span class="cell-marker ship">✅</span>WP only / ❌ 其他</td>
+            <td><span class="cell-marker none">❌</span></td>
+          </tr>
+          <tr>
+            <td class="row-label">Line 3<span class="sub">文獻科普</span></td>
+            <td><span class="cell-marker gap">⬜</span>Zoro topic discovery</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker gap">⬜</span>主題 retrieval → outline</td>
+            <td><span class="cell-marker gap">⬜</span>outline → 修修加工<span class="cell-note">ADR-027：LLM 不代寫正文</span></td>
+            <td><span class="cell-marker ship">✅</span>Brook 4ch renderer</td>
+            <td><span class="cell-marker ship">✅</span>WP only / ❌ 其他</td>
+            <td><span class="cell-marker ship">✅</span>SEO 中控台</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── §II agents × stages ────────────────────────────────────────── -->
+  <section aria-labelledby="agents-heading">
+    <h2 class="section-title" id="agents-heading">
+      <span class="section-number">II.</span> Agents × Stages
+    </h2>
+    <p class="section-blurb">
+      七個 agent 各自負責不同 stage 的職責切片。Brook 是目前唯一橫跨 S4/S5/S7 三層的 over-loaded agent；
+      Stage 6 只有 Usopp 且只有 WordPress；Sanji 全列空白是規劃中的社群 agent。
+    </p>
+
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th class="row-label">Agent</th>
+            <th>S1 收集</th>
+            <th>S2 閱讀</th>
+            <th>S3 整合</th>
+            <th>S4 輸出</th>
+            <th>S5 製作</th>
+            <th>S6 發布</th>
+            <th>S7 監控</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label">Robin<span class="sub">KB</span></td>
+            <td><span class="cell-marker ship">✅</span>PubMed + OA fulltext</td>
+            <td><span class="cell-marker ship">✅</span>Reader 雙語</td>
+            <td><span class="cell-marker ship">✅</span>ingest + RCP</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+          </tr>
+          <tr>
+            <td class="row-label">Nami<span class="sub">秘書</span></td>
+            <td><span class="cell-marker ship">✅</span>Gmail / Calendar / pubmed tool</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker gap">⬜</span>daily briefing</td>
+          </tr>
+          <tr>
+            <td class="row-label">Zoro<span class="sub">偵察</span></td>
+            <td><span class="cell-marker ship">✅</span>KW + trends + reddit + YT + X</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker gap">⬜</span>SEO 反向 feed</td>
+          </tr>
+          <tr>
+            <td class="row-label">Sanji<span class="sub">社群</span></td>
+            <td><span class="cell-marker gap">⬜</span>FAQ discovery</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker gap">⬜</span>member memory</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker none">❌</span>Fluent Community</td>
+            <td><span class="cell-marker gap">⬜</span>engagement</td>
+          </tr>
+          <tr>
+            <td class="row-label">Brook<span class="sub">Scaffold / Repurpose / SEO</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker ship">✅</span>synthesize<span class="cell-note">outline + evidence pool</span></td>
+            <td><span class="cell-marker ship">✅</span>scaffold only<span class="cell-note">ADR-027 LLM 不代寫</span></td>
+            <td><span class="cell-marker ship">✅</span>FB/IG/Blog + script_video</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker ship">✅</span>SEO audit + enrich</td>
+          </tr>
+          <tr>
+            <td class="row-label">Franky<span class="sub">維運</span></td>
+            <td><span class="cell-marker ship">✅</span>AI news digest</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker ship">✅</span>probe + GSC + cost</td>
+          </tr>
+          <tr>
+            <td class="row-label">Usopp<span class="sub">發布</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker ship">✅</span>WP + HITL<span class="cell-note">YT/IG/FB/Newsletter ❌</span></td>
+            <td><span class="cell-marker na">—</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── §III channels × stages ─────────────────────────────────────── -->
+  <section aria-labelledby="channels-heading">
+    <h2 class="section-title" id="channels-heading">
+      <span class="section-number">III.</span> Channels × Stages
+    </h2>
+    <p class="section-blurb">
+      五個對外 channel 是 Stage 5 之後的 fan-out 末端。Blog 是目前唯一七層全通的 channel；
+      Podcast / YouTube / IG / FB 都卡在 Stage 6（last mile 半自動發布）+ Stage 7（analytics 未回收）。
+    </p>
+
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th class="row-label">Channel</th>
+            <th>S1 收集</th>
+            <th>S2 閱讀</th>
+            <th>S3 整合</th>
+            <th>S4 原子文章</th>
+            <th>S5 製作</th>
+            <th>S6 發布</th>
+            <th>S7 監控</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-label">Podcast<span class="sub">Line 1</span></td>
+            <td>修修 + <strong>Nami</strong>（guest 排程）</td>
+            <td><strong>Robin</strong> Reader<span class="cell-note">僅 1b 讀那本書</span></td>
+            <td><strong>Robin</strong> ingest<span class="cell-note">僅 1b</span></td>
+            <td><span class="cell-marker ship">✅</span>transcribe → .srt</td>
+            <td>修修剪輯 + Auphonic 正規化</td>
+            <td><span class="cell-marker none">❌</span>手動上 Spotify / Apple</td>
+            <td><span class="cell-marker none">❌</span></td>
+          </tr>
+          <tr>
+            <td class="row-label">YouTube<span class="sub">script-driven + theme video</span></td>
+            <td><strong>Zoro</strong> KW + <strong>Brook</strong> striking-distance</td>
+            <td><strong>Robin</strong> Reader</td>
+            <td><strong>Robin</strong> retrieval + outline skeleton</td>
+            <td><span class="cell-marker flight">🚧</span><strong>Brook</strong> script_video<span class="cell-note">Slice 2-5</span></td>
+            <td><strong>Brook</strong> Hyperframes → FCPXML</td>
+            <td><span class="cell-marker none">❌</span>title/desc/chapter 手填</td>
+            <td><span class="cell-marker none">❌</span>YT analytics 未串</td>
+          </tr>
+          <tr>
+            <td class="row-label">Instagram<span class="sub">carousel</span></td>
+            <td>繼承上游 line</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td>繼承上游 atomic</td>
+            <td><span class="cell-marker ship">✅</span><strong>Brook</strong> IG renderer<span class="cell-note">5/7/5/10 卡 episode_type</span></td>
+            <td><span class="cell-marker none">❌</span>PNG 出檔 → 手貼 / Buffer</td>
+            <td><span class="cell-marker none">❌</span></td>
+          </tr>
+          <tr>
+            <td class="row-label">Facebook<span class="sub">post</span></td>
+            <td>繼承上游 line</td>
+            <td><span class="cell-marker na">—</span></td>
+            <td><span class="cell-marker na">—</span></td>
+            <td>繼承上游 atomic</td>
+            <td><span class="cell-marker ship">✅</span><strong>Brook</strong> FB renderer<span class="cell-note">4 tonal variants</span></td>
+            <td><span class="cell-marker none">❌</span>FB Graph API 未串</td>
+            <td><span class="cell-marker none">❌</span></td>
+          </tr>
+          <tr>
+            <td class="row-label">Blog<span class="sub">WordPress</span></td>
+            <td><strong>Zoro</strong> KW + <strong>Brook</strong> SEO enrich</td>
+            <td><strong>Robin</strong> Reader</td>
+            <td><strong>Robin</strong> ingest + RCP</td>
+            <td><strong>Brook</strong> compose (L3) / 修修手寫 (L2)</td>
+            <td><span class="cell-marker ship">✅</span><strong>Brook</strong> Blog renderer</td>
+            <td><span class="cell-marker ship">✅</span><strong>Usopp</strong> WP + HITL</td>
+            <td><span class="cell-marker ship">✅</span><strong>Brook</strong> SEO + <strong>Franky</strong> GSC</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── §IV observations ──────────────────────────────────────────── -->
+  <section aria-labelledby="obs-heading">
+    <h2 class="section-title" id="obs-heading">
+      <span class="section-number">IV.</span> 結構性觀察
+    </h2>
+    <p class="section-blurb">
+      不是 feature backlog，而是「不解這條，後面做的都會撞同樣的牆」的架構性 unblock。
+      依優先序排列。
+    </p>
+
+    <div class="observations">
+      <article class="obs">
+        <span class="obs-num">i.</span>
+        <h3>IG 半自動發布管線</h3>
+        <p>
+          Line 1/2/3 IG carousel 都 render 完，卡在 Stage 6 last mile。先解 carousel PNG batch 出檔 +
+          Buffer / Later 排程匯入，不必硬啃 IG Graph API。最低工自動化、最高摩擦消除。
+        </p>
+      </article>
+
+      <article class="obs">
+        <span class="obs-num">ii.</span>
+        <h3>Annotation → KB 整合 owner</h3>
+        <p>
+          Line 2 讀書心得 critical path。Reader UI 已支援 highlight + annotation，但寫到哪、誰讀、何時用
+          完全未設計。先把 annotation 當 first-class 資料，具體實作待修修手跑 Line 2 一次後再凍結。
+        </p>
+      </article>
+
+      <article class="obs">
+        <span class="obs-num">iii.</span>
+        <h3>SEO 中控台 → Zoro 反向 feed</h3>
+        <p>
+          Discovery → Production → Insight 迴路斷裂。SEO 中控台抓出 striking-distance 關鍵字沒回灌
+          Zoro 變下次主題建議。一條 SQL view + Zoro report 加 section，一週可閉環。
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ── footer ─────────────────────────────────────────────────────── -->
+  <footer class="page-footer">
+    <span>Nakama · multi-agent content system for a single creator</span>
+    <span>
+      <a href="https://github.com/shosho-chang/nakama" rel="noopener">github.com/shosho-chang/nakama</a>
+    </span>
+  </footer>
+
+</main>
+</body>
+</html>
