@@ -23,14 +23,3 @@ ttl: permanent
 - 啟用 Prompt Caching 後可降至 $0.50-0.80
 - 10-20 篇/月：$5-30，與 ChatGPT Plus $20/月 相當或更便宜
 
-## Phase 2 功能（尚未實作）
-
-| 功能 | 說明 |
-|------|------|
-| SSE Streaming | 逐字顯示回應（需新增 `ask_claude_multi_stream()`） |
-| 風格參考庫 | Vault 建 `Content/Published/` 存過去文章，Brook 啟動時載入 2-3 篇（修修目前還沒建立此資料夾） |
-| Prompt Caching | system prompt + 風格範本快取，省 30-40% 成本 |
-| Obsidian 整合按鈕 | Project 頁面加按鈕跳轉 `/brook/chat?topic=...` |
-| 匯出到 Vault | 完成的文章直接寫入 Obsidian vault |
-
-**How to apply:** 開發 Phase 2 時參考此記憶，不需重新評估架構方向。

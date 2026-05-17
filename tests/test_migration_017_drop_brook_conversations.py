@@ -64,8 +64,7 @@ def _existing_indexes(conn: sqlite3.Connection) -> set[str]:
 
 @pytest.fixture
 def db_with_legacy_brook_tables(tmp_path: Path) -> sqlite3.Connection:
-    """Fresh SQLite seeded with the legacy brook_conversations + brook_messages
-    schema (mirrors what compose.py's _init_brook_tables() would create)."""
+    """Fresh SQLite seeded with the legacy brook_conversations + brook_messages schema."""
     db_path = tmp_path / "nakama.sqlite"
     conn = sqlite3.connect(str(db_path))
     conn.executescript(_LEGACY_DDL)
