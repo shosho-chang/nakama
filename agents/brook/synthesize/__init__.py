@@ -71,6 +71,7 @@ def synthesize(
     *,
     db: sqlite3.Connection | None = None,
     ask_fn=None,
+    trending_angles: list[str] | None = None,
 ) -> SynthesizeResult:
     """Run Brook synthesize end-to-end and persist the result.
 
@@ -85,6 +86,14 @@ def synthesize(
         ask_fn: Optional LLM callable override (``(prompt, **kw) -> str``).
             Tests pass a stub; production uses ``shared.llm.ask`` via the
             router.
+        trending_angles: Optional Zoro trending-angle strings (ADR-027
+            §Decision 4). When supplied, the outline drafter is shown the
+            angles and may use ones with strong evidence correspondence as
+            section headings. Angles that no drafted section matches surface
+            on the store as ``unmatched_trending_angles`` (warning channel
+            for 修修; reverse signal for Robin discovery). Backwards
+            compatible: when ``None`` or empty, prompt and behaviour are
+            identical to the pre-ADR-027 baseline.
 
     Raises:
         ValueError: empty topic+keywords.
@@ -126,20 +135,38 @@ def synthesize(
             prior_user_actions = []
     pool = apply_reject_discount(pool, prior_user_actions)
 
-    outline = draft_outline(topic, keywords, pool, ask_fn=ask_fn)
+    outline = draft_outline(topic, keywords, pool, ask_fn=ask_fn, trending_angles=trending_angles)
+
+    # ADR-027 §Decision 4: collect angles the outline drafter actually
+    # matched (across all sections), then set-difference vs the input list.
+    # Only input angles that no section claimed go into the warning bucket.
+    # `trending_match` values that aren't in the input list (LLM noise) are
+    # ignored here — we don't bounce the outline, but we also don't count
+    # them as "matched input angles". See test
+    # ``test_unmatched_ignores_llm_invented_angles``.
+    input_angles = list(trending_angles or [])
+    matched: set[str] = set()
+    for section in outline:
+        for angle in section.trending_match:
+            if angle in input_angles:
+                matched.add(angle)
+    unmatched = [angle for angle in input_angles if angle not in matched]
+
     store = persist(
         slug=slug,
         topic=topic,
         keywords=keywords,
         evidence_pool=pool,
         outline_draft=outline,
+        unmatched_trending_angles=unmatched,
     )
 
     logger.info(
-        "synthesize.done slug=%s pool_sources=%d outline_sections=%d",
+        "synthesize.done slug=%s pool_sources=%d outline_sections=%d unmatched_angles=%d",
         slug,
         len(pool),
         len(outline),
+        len(unmatched),
     )
     return SynthesizeResult(
         slug=slug,

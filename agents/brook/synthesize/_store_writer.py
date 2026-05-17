@@ -32,13 +32,17 @@ def persist(
     keywords: list[str],
     evidence_pool: list[EvidencePoolItem],
     outline_draft: list[OutlineSection],
+    unmatched_trending_angles: list[str] | None = None,
 ) -> BrookSynthesizeStore:
     """Create-or-overwrite the store for ``slug``, preserving review state.
 
     On first run, calls ``store.create``. On re-runs, calls ``store.write``
     after copying ``user_actions`` and ``outline_final`` from the existing
-    store.
+    store. ``unmatched_trending_angles`` is always overwritten (it is a
+    derived warning recomputed from the freshly-drafted outline; preserving
+    a stale value across re-runs would mislead 修修).
     """
+    unmatched = list(unmatched_trending_angles or [])
     if _store.exists(slug):
         existing = _store.read(slug)
         next_store = existing.model_copy(
@@ -47,15 +51,18 @@ def persist(
                 "keywords": list(keywords),
                 "evidence_pool": list(evidence_pool),
                 "outline_draft": list(outline_draft),
+                "unmatched_trending_angles": unmatched,
                 # user_actions + outline_final preserved via model_copy
             }
         )
         result = _store.write(next_store)
         logger.info(
-            "synthesize.persist re-run slug=%s preserved_actions=%d preserved_final=%d",
+            "synthesize.persist re-run slug=%s preserved_actions=%d "
+            "preserved_final=%d unmatched_angles=%d",
             slug,
             len(existing.user_actions),
             len(existing.outline_final),
+            len(unmatched),
         )
         return result
 
@@ -65,9 +72,10 @@ def persist(
         keywords=list(keywords),
         evidence_pool=list(evidence_pool),
         outline_draft=list(outline_draft),
+        unmatched_trending_angles=unmatched,
     )
     result = _store.create(fresh)
-    logger.info("synthesize.persist created slug=%s", slug)
+    logger.info("synthesize.persist created slug=%s unmatched_angles=%d", slug, len(unmatched))
     return result
 
 

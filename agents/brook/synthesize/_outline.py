@@ -64,6 +64,29 @@ def _format_evidence_block(pool: list[EvidencePoolItem]) -> str:
     return "\n".join(lines)
 
 
+def _format_trending_angles_block(trending_angles: list[str] | None) -> str:
+    """Render the optional Zoro trending-angles section (ADR-027 §Decision 4).
+
+    Returns an empty string when no angles are supplied so the rendered prompt
+    is byte-identical to the pre-trending-angles baseline (no orphan header).
+    When supplied, returns a leading-newline block (placed between the
+    evidence pool and the task statement) carrying the rules baked into the
+    ADR: may use as heading only when strong evidence correspondence exists;
+    must NOT fabricate evidence_refs to fit an angle.
+    """
+    if not trending_angles:
+        return ""
+    lines = "\n".join(f"- {angle}" for angle in trending_angles)
+    return (
+        "\nZoro trending angles（可選參考；不可為配 angle 編造 evidence_refs）：\n\n"
+        f"{lines}\n\n"
+        "規則：\n"
+        "- 若某 angle 與上方 evidence pool 有強對應，**可** 用為 section heading "
+        "並在該段 `trending_match` 列出對應的 angle 字串\n"
+        "- 若 angle 與 evidence pool 無對應，**忽略** — 不可為配 angle 編造 evidence_refs\n"
+    )
+
+
 def _strip_code_fence(text: str) -> str:
     """LLMs sometimes ignore the no-fence instruction. Tolerate it.
 
@@ -89,6 +112,7 @@ def draft_outline(
     pool: list[EvidencePoolItem],
     *,
     ask_fn: AskFn | None = None,
+    trending_angles: list[str] | None = None,
 ) -> list[OutlineSection]:
     """Generate the outline draft from the evidence pool.
 
@@ -115,6 +139,7 @@ def draft_outline(
         topic=topic,
         keywords=", ".join(keywords) if keywords else "（無）",
         evidence_block=_format_evidence_block(pool),
+        trending_angles_block=_format_trending_angles_block(trending_angles),
         min_sections=str(OUTLINE_MIN_SECTIONS),
         max_sections=str(OUTLINE_MAX_SECTIONS),
         min_refs=str(OUTLINE_MIN_REFS_PER_SECTION),
