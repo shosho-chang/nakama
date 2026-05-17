@@ -568,11 +568,70 @@ def _strip_outer_fence(text: str) -> str:
     return s
 
 
+def _extract_json_object(text: str, *, required_keys: tuple[str, ...] = ()) -> str:
+    """Pull a top-level ``{...}`` out of ``text``, ignoring surrounding prose / multiple objects.
+
+    Some Sonnet responses ignore the "no preamble" instruction and emit prose like
+    ``"Outputting the complete JSON to avoid truncation.\n\n{...}"``, OR emit a
+    leading example/figure object before the real ``{frontmatter, sections}``
+    payload. Walk every position where ``{`` appears, attempt ``raw_decode`` from
+    there, and return:
+      * the first object containing ALL ``required_keys`` if provided
+      * otherwise the largest parseable object
+
+    Returns the substring containing the JSON, or the original text if nothing parses.
+    """
+    decoder = json.JSONDecoder()
+    candidates: list[tuple[int, int, dict]] = []  # (start, end_abs, parsed)
+    pos = 0
+    while True:
+        start = text.find("{", pos)
+        if start == -1:
+            break
+        try:
+            parsed, end_rel = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            pos = start + 1
+            continue
+        if isinstance(parsed, dict):
+            end_abs = start + end_rel
+            if required_keys and all(k in parsed for k in required_keys):
+                return text[start:end_abs]
+            candidates.append((start, end_abs, parsed))
+        pos = start + end_rel  # skip past this object so we don't re-scan its interior
+    if not candidates:
+        return text
+    if required_keys:
+        # nothing matched all required keys — let outer parser raise on the largest
+        # so the error message is at least about the substantive object.
+        pass
+    largest = max(candidates, key=lambda c: c[1] - c[0])
+    return text[largest[0] : largest[1]]
+
+
 def _parse_phase1_json(raw: str, payload, prompt: str) -> dict:
     """Parse and schema-validate LLM JSON. Retries once on JSONDecodeError; no retry on schema mismatch."""
 
     def _parse(text: str) -> dict:
-        return json.loads(_strip_outer_fence(text))
+        cleaned = _strip_outer_fence(text)
+        # First try a plain parse — fast path when the LLM behaves and emits only
+        # the bare JSON object. If that fails, OR succeeds but yields a dict that
+        # doesn't carry our schema's top-level keys (LLM emitted a figure / example
+        # object first), fall back to scanning for the right one.
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict) and "frontmatter" in parsed and "sections" in parsed:
+                return parsed
+        except json.JSONDecodeError:
+            parsed = None
+        extracted = _extract_json_object(cleaned, required_keys=("frontmatter", "sections"))
+        if extracted is cleaned and parsed is None:
+            # Nothing parseable found anywhere — re-raise the original error by
+            # forcing a parse on the cleaned text.
+            json.loads(cleaned)
+        if extracted is cleaned:
+            return parsed  # type: ignore[return-value]
+        return json.loads(extracted)
 
     def _dump_debug(label: str, text: str, exc: Exception) -> None:
         # Always dump on parse failure so the operator can see what the LLM
@@ -594,26 +653,36 @@ def _parse_phase1_json(raw: str, payload, prompt: str) -> dict:
             debug_dir / f"{slug}.response.txt",
         )
 
+    last_raw = raw
     try:
         parsed = _parse(raw)
     except json.JSONDecodeError as e:
         _dump_debug("attempt1", raw, e)
         log.warning("Phase 1: LLM returned non-JSON, retrying once…")
         raw2 = _ask_llm(prompt, max_tokens=16000)
+        last_raw = raw2
         try:
             parsed = _parse(raw2)
         except json.JSONDecodeError as e2:
             _dump_debug("attempt2", raw2, e2)
             raise
 
-    if not isinstance(parsed.get("frontmatter"), dict):
-        raise ValueError(f"LLM 'frontmatter' not a dict: keys={list(parsed.keys())}")
-    if not isinstance(parsed.get("sections"), list):
-        raise ValueError(f"LLM 'sections' not a list: keys={list(parsed.keys())}")
-    if len(parsed["sections"]) != len(payload.section_anchors):
-        raise ValueError(
-            f"sections count mismatch: LLM={len(parsed['sections'])} walker={len(payload.section_anchors)}"
-        )
+    try:
+        if not isinstance(parsed.get("frontmatter"), dict):
+            raise ValueError(f"LLM 'frontmatter' not a dict: keys={list(parsed.keys())}")
+        if not isinstance(parsed.get("sections"), list):
+            raise ValueError(f"LLM 'sections' not a list: keys={list(parsed.keys())}")
+        if len(parsed["sections"]) != len(payload.section_anchors):
+            raise ValueError(
+                f"sections count mismatch: LLM={len(parsed['sections'])} walker={len(payload.section_anchors)}"
+            )
+    except ValueError as schema_err:
+        # Dump on schema mismatch too — the extractor may have picked the wrong
+        # object (figure / section / example) and we need to see the raw text
+        # to figure out why. Without this dump the operator has nothing to work
+        # from (MEP ch10/ch23 burned 17min wall + LLM quota on guesswork).
+        _dump_debug("schema-mismatch", last_raw, schema_err)
+        raise
     return parsed
 
 
