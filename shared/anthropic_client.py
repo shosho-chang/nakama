@@ -77,9 +77,7 @@ def _classify_cli_error(exc: Exception) -> str:
     return _REASON_CLI_ERROR
 
 
-def _plan_dispatch(
-    policy: str, *, supports_cli: bool
-) -> tuple[str, str | None]:
+def _plan_dispatch(policy: str, *, supports_cli: bool) -> tuple[str, str | None]:
     """Decide actual dispatch path before any provider call.
 
     Returns ``(auth_actual, fallback_reason)``.
@@ -128,6 +126,7 @@ def _plan_dispatch(
         return ("api", _REASON_CLI_NOT_FOUND)
 
     return ("subscription", None)
+
 
 __all__ = [
     "ask_claude",

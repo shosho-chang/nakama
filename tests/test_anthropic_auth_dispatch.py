@@ -169,15 +169,23 @@ def test_ask_claude_subscription_preferred_softlinks_to_api(
     # the recorded usage carries the right auth cols.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-test")  # let get_client succeed
 
-    fake_response = type("Resp", (), {
-        "content": [type("Block", (), {"text": "api-result"})()],
-        "usage": type("U", (), {
-            "input_tokens": 1,
-            "output_tokens": 1,
-            "cache_read_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-        })(),
-    })()
+    fake_response = type(
+        "Resp",
+        (),
+        {
+            "content": [type("Block", (), {"text": "api-result"})()],
+            "usage": type(
+                "U",
+                (),
+                {
+                    "input_tokens": 1,
+                    "output_tokens": 1,
+                    "cache_read_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                },
+            )(),
+        },
+    )()
 
     recorded: dict = {}
 
@@ -201,9 +209,7 @@ def test_ask_claude_subscription_preferred_softlinks_to_api(
 
 def test_ask_claude_required_no_oauth_raises() -> None:
     with pytest.raises(RuntimeError, match="no OAuth token"):
-        ac.ask_claude(
-            "hi", model="claude-sonnet-4-6", auth_policy="subscription_required"
-        )
+        ac.ask_claude("hi", model="claude-sonnet-4-6", auth_policy="subscription_required")
 
 
 def test_call_claude_with_tools_required_raises(
