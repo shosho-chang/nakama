@@ -129,27 +129,35 @@ def test_logout_cookie_has_secure_samesite(client_vps):
 
 
 def test_vps_root_redirects_to_brook(client_vps):
-    """VPS 模式下 / 應重導到 /brook/chat，而非 404。"""
+    """VPS 模式下 / 應重導到 /brook/bridge（ADR-027 PR-3）。"""
     r = client_vps.get("/")
     assert r.status_code == 302
-    assert r.headers["location"] == "/brook/chat"
+    assert r.headers["location"] == "/brook/bridge"
 
 
 def test_vps_brook_unauth_redirects_with_next(client_vps):
-    """VPS 上訪問 Brook 未登入應帶 ?next=/brook/chat redirect 到 /login。"""
-    r = client_vps.get("/brook/chat")
+    """VPS 上訪問 Brook bridge 未登入應帶 ?next=/brook/bridge redirect 到 /login。"""
+    r = client_vps.get("/brook/bridge")
     assert r.status_code == 302
-    assert r.headers["location"] == "/login?next=/brook/chat"
+    assert r.headers["location"] == "/login?next=/brook/bridge"
 
 
 def test_vps_brook_with_auth(client_vps):
-    """登入後應能訪問 Brook chat 頁。"""
+    """登入後應能訪問 Brook bridge 頁。"""
     login = client_vps.post("/login", data={"password": "testpass"})
     cookie = login.cookies.get("nakama_auth")
     assert cookie
 
-    r = client_vps.get("/brook/chat", cookies={"nakama_auth": cookie})
+    r = client_vps.get("/brook/bridge", cookies={"nakama_auth": cookie})
     assert r.status_code == 200
+
+
+def test_vps_legacy_brook_chat_redirects_301(client_vps):
+    """ADR-027 §Decision 8: /brook/chat is preserved as a 301 redirect for
+    one release cycle to avoid bookmark / Obsidian-button link rot."""
+    r = client_vps.get("/brook/chat")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/brook/bridge"
 
 
 def test_local_robin_root_available(client_local):
