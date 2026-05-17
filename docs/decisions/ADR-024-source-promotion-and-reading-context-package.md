@@ -84,4 +84,5 @@ This violates the project constitution that Line 2 book-review atomic content is
 - Robin/shared owns Source Promotion domain logic: source quality analysis, source-local concept extraction, global Concept matching, Promotion Manifest storage, acceptance gates, and KB commit.
 - Thousand Sunny owns presentation and human checkpoint UI for promotion review.
 - Brook must not bypass the Reading Context Package boundary to compose Line 2 atomic content.
+- **2026-05-17 amendment (ADR-027):** Reading Context Package producer ownership is now formally **Brook**, alongside Brook synthesize, under a unified `agents/brook/scaffold/` sub-pipeline. Robin remains the owner of Source Promotion and KB ingest, but does not produce RCP. This consolidates all Stage 3→4 scaffolding under a single agent and aligns with ADR-012's 向外/對內 framing (Robin = 向外吸收, Brook = 對內加工).
 - Future implementation work should first update `CONTENT-PIPELINE.md`, then create a parent PRD issue, then split implementation into vertical slices.
