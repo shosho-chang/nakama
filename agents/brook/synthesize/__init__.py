@@ -135,9 +135,7 @@ def synthesize(
             prior_user_actions = []
     pool = apply_reject_discount(pool, prior_user_actions)
 
-    outline = draft_outline(
-        topic, keywords, pool, ask_fn=ask_fn, trending_angles=trending_angles
-    )
+    outline = draft_outline(topic, keywords, pool, ask_fn=ask_fn, trending_angles=trending_angles)
 
     # ADR-027 §Decision 4: collect angles the outline drafter actually
     # matched (across all sections), then set-difference vs the input list.

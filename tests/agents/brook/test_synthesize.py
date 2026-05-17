@@ -413,9 +413,7 @@ def test_synthesize_propagates_outline_draft_error(isolated_store):
 # ---------------------------------------------------------------------------
 
 
-def _outline_with_trending_match(
-    slugs: list[str], per_section_match: list[list[str]]
-) -> str:
+def _outline_with_trending_match(slugs: list[str], per_section_match: list[list[str]]) -> str:
     """Build an outline JSON where each section carries explicit trending_match.
 
     ``per_section_match[i]`` is the ``trending_match`` value for section i+1.
@@ -458,9 +456,7 @@ def test_synthesize_unmatched_trending_angles(isolated_store):
         per_section_match=[["a"], ["b"], ["c"], [], []],
     )
 
-    with patch(
-        "agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search
-    ):
+    with patch("agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search):
         result = synthesize(
             "trend-proj",
             "topic",
@@ -491,9 +487,7 @@ def test_synthesize_no_trending_angles_is_backwards_compatible(isolated_store):
         return _make_outline_response(slugs, n_sections=5)
 
     # Baseline call (no trending_angles).
-    with patch(
-        "agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search
-    ):
+    with patch("agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search):
         result = synthesize("proj-baseline", "topic", ["kw"], ask_fn=fake_ask)
 
     assert result.store.unmatched_trending_angles == []
@@ -504,9 +498,7 @@ def test_synthesize_no_trending_angles_is_backwards_compatible(isolated_store):
     assert "可選參考；不可為配 angle 編造" not in captured_prompts[0]
 
     # Same call with trending_angles=None must produce the same prompt.
-    with patch(
-        "agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search
-    ):
+    with patch("agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search):
         synthesize(
             "proj-baseline-none",
             "topic",
@@ -540,9 +532,7 @@ def test_synthesize_unmatched_ignores_llm_invented_angles(isolated_store):
         per_section_match=[["nonexistent"]] * 5,
     )
 
-    with patch(
-        "agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search
-    ):
+    with patch("agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search):
         result = synthesize(
             "proj-ghost",
             "topic",

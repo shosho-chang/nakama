@@ -75,9 +75,7 @@ def persist(
         unmatched_trending_angles=unmatched,
     )
     result = _store.create(fresh)
-    logger.info(
-        "synthesize.persist created slug=%s unmatched_angles=%d", slug, len(unmatched)
-    )
+    logger.info("synthesize.persist created slug=%s unmatched_angles=%d", slug, len(unmatched))
     return result
 
 
