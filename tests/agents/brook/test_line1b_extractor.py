@@ -331,8 +331,12 @@ def test_adapter_packs_brief_into_legacy_narrative_fields():
     d = legacy.data
     # All 6 narrative slots carry the brief (Stage-2 LLM splits it)
     for key in (
-        "identity_sketch", "origin", "turning_point",
-        "rebirth", "present_action", "ending_direction",
+        "identity_sketch",
+        "origin",
+        "turning_point",
+        "rebirth",
+        "present_action",
+        "ending_direction",
     ):
         assert d[key] == typed.brief
     # Title candidates passed through

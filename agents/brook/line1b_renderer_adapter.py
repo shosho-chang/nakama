@@ -87,9 +87,7 @@ def to_legacy_stage1(
         "quotes": legacy_quotes,
         "title_candidates": list(typed.titles),
         "meta_description": (
-            typed.brief[:180]
-            if len(typed.brief) >= 80
-            else (typed.brief + " " * 80)[:180]
+            typed.brief[:180] if len(typed.brief) >= 80 else (typed.brief + " " * 80)[:180]
         ),
         "episode_type": episode_type,
         # Full typed payload for future explicit-1b renderer branches.

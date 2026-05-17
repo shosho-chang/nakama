@@ -58,8 +58,7 @@ logger = get_logger("nakama.brook.line1b_extractor")
 
 _MODEL = "claude-sonnet-4-6"
 _PROMPT_PATH = (
-    Path(__file__).resolve().parent.parent.parent
-    / "prompts" / "brook" / "line1b_extract.md"
+    Path(__file__).resolve().parent.parent.parent / "prompts" / "brook" / "line1b_extract.md"
 )
 
 _CITATION_RE = re.compile(r"\[source:\s*[^\]]+\]|\[transcript@[^\]]+\]")
@@ -204,9 +203,7 @@ def _post_process_citations(result: Line1bStage1Result) -> Line1bStage1Result:
         if _CITATION_RE.search(seg.text):
             new_segments.append(seg)
         else:
-            new_segments.append(
-                seg.model_copy(update={"warning": "⚠️ no_citation"})
-            )
+            new_segments.append(seg.model_copy(update={"warning": "⚠️ no_citation"}))
             flagged += 1
     if flagged:
         logger.info(
