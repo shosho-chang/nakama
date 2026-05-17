@@ -78,3 +78,4 @@ memory/**/*.lock
 cookie.txt
 cookies.txt
 *.cookies.txt
+.panel/
