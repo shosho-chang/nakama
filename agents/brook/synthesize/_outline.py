@@ -81,7 +81,8 @@ def _format_trending_angles_block(trending_angles: list[str] | None) -> str:
         "\nZoro trending angles（可選參考；不可為配 angle 編造 evidence_refs）：\n\n"
         f"{lines}\n\n"
         "規則：\n"
-        "- 若某 angle 與上方 evidence pool 有強對應，**可** 用為 section heading 並在該段 `trending_match` 列出對應的 angle 字串\n"
+        "- 若某 angle 與上方 evidence pool 有強對應，**可** 用為 section heading "
+        "並在該段 `trending_match` 列出對應的 angle 字串\n"
         "- 若 angle 與 evidence pool 無對應，**忽略** — 不可為配 angle 編造 evidence_refs\n"
     )
 

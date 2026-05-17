@@ -57,7 +57,8 @@ def persist(
         )
         result = _store.write(next_store)
         logger.info(
-            "synthesize.persist re-run slug=%s preserved_actions=%d preserved_final=%d unmatched_angles=%d",
+            "synthesize.persist re-run slug=%s preserved_actions=%d "
+            "preserved_final=%d unmatched_angles=%d",
             slug,
             len(existing.user_actions),
             len(existing.outline_final),
