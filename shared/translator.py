@@ -21,7 +21,9 @@ logger = get_logger("nakama.shared.translator")
 _GLOSSARY_PATH = (
     Path(__file__).resolve().parent.parent / "prompts" / "robin" / "translation_tw_glossary.yaml"
 )
-_DEFAULT_MODEL = "claude-sonnet-4-6"
+# Model 解析交給 router：caller 走 ask(task="translate") 即可吃到
+# DEFAULT_MODELS["translate"] / MODEL_<AGENT>_TRANSLATE override（ADR-026）。
+_TRANSLATE_TASK = "translate"
 _BATCH_SIZE = 20
 _BATCH_MAX_TOKENS = 16384
 _SEGMENT_MAX_TOKENS = 4096
@@ -92,14 +94,15 @@ def _build_system_prompt(glossary: dict[str, str]) -> str:
 def translate_segments(
     segments: list[str],
     *,
-    model: str = _DEFAULT_MODEL,
+    model: str | None = None,
     glossary: dict[str, str] | None = None,
 ) -> list[str]:
     """批次翻譯段落陣列，回傳等長譯文陣列。
 
     Args:
         segments: 原文段落陣列
-        model:    翻譯模型
+        model:    翻譯模型。``None`` 走 router ``task="translate"`` 解析
+                  （MODEL_<AGENT>_TRANSLATE > MODEL_<AGENT> > DEFAULT_MODELS["translate"]）。
         glossary: 術語表（None 時自動載入）
 
     Returns:
@@ -120,7 +123,13 @@ def translate_segments(
         f"{numbered}"
     )
 
-    response = ask(prompt, system=system, model=model, max_tokens=_BATCH_MAX_TOKENS)
+    response = ask(
+        prompt,
+        system=system,
+        model=model,
+        task=_TRANSLATE_TASK,
+        max_tokens=_BATCH_MAX_TOKENS,
+    )
 
     try:
         json_match = re.search(r"\[[\s\S]*\]", response)
@@ -134,7 +143,7 @@ def translate_segments(
         return _translate_one_by_one(segments, system=system, model=model)
 
 
-def _translate_one_by_one(segments: list[str], *, system: str, model: str) -> list[str]:
+def _translate_one_by_one(segments: list[str], *, system: str, model: str | None) -> list[str]:
     """降級方案：逐段翻譯（批次解析失敗時使用）。"""
     results = []
     for i, seg in enumerate(segments):
@@ -143,6 +152,7 @@ def _translate_one_by_one(segments: list[str], *, system: str, model: str) -> li
                 f"翻譯成台灣繁體中文（只回傳譯文，不要其他說明）：\n\n{seg}",
                 system=system,
                 model=model,
+                task=_TRANSLATE_TASK,
                 max_tokens=_SEGMENT_MAX_TOKENS,
             )
             results.append(t.strip())
@@ -183,7 +193,7 @@ def translate_document(
     text: str,
     *,
     batch_size: int = _BATCH_SIZE,
-    model: str = _DEFAULT_MODEL,
+    model: str | None = None,
 ) -> str:
     """翻譯整份文件，回傳雙語 Markdown。
 

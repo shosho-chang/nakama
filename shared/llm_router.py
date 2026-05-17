@@ -23,6 +23,9 @@ logger = get_logger("nakama.llm_router")
 DEFAULT_MODELS: dict[str, str] = {
     "default": "claude-sonnet-4-20250514",
     "tool_use": "claude-haiku-4-5",
+    # Translation is high-volume plain text — Sonnet 4.6 is the cost/quality
+    # sweet spot. Caller can still override via MODEL_<AGENT>_TRANSLATE.
+    "translate": "claude-sonnet-4-6",
 }
 
 # ADR-026: auth policy 解析。ternary 值 — "api" / "subscription_preferred" /
@@ -34,7 +37,13 @@ _VALID_AUTH_POLICIES: frozenset[str] = frozenset(
 )
 
 DEFAULT_AUTH: dict[str, str] = {
-    "default": "subscription_preferred",
+    # Default api — operators opt in to subscription via `AUTH_<AGENT>` env or
+    # `NAKAMA_REQUIRE_MAX_PLAN=1` (Codex audit §4: "default should not silently
+    # spend money when operator thought they were using Max", and the
+    # contrapositive — default should not silently consume Max Plan quota
+    # when operator didn't opt in).
+    "default": "api",
+    # tool_use forced api: CLI subprocess can't carry raw tool-use JSON.
     "tool_use": "api",
 }
 

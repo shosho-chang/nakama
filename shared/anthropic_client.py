@@ -11,6 +11,7 @@ Thread-local 設置請直接 ``from shared.llm_context import set_current_agent`
 from __future__ import annotations
 
 import os
+import shutil
 import time
 
 import anthropic
@@ -21,6 +22,112 @@ from shared.log import get_logger
 from shared.retry import with_retry
 
 logger = get_logger("nakama.anthropic_client")
+
+# ADR-026 fallback reasons (mirror shared/state.api_calls.fallback_reason enum).
+_REASON_NO_OAUTH = "NO_OAUTH_TOKEN"
+_REASON_CLI_NOT_FOUND = "CLI_BINARY_NOT_FOUND"
+_REASON_CLI_ERROR = "CLI_SUBPROCESS_ERROR"
+_REASON_CLI_AUTH_EXPIRED = "CLI_AUTH_EXPIRED"
+_REASON_TOOL_USE_VIA_CLI = "TOOL_USE_NOT_SUPPORTED_VIA_CLI"
+
+
+def _resolve_effective_policy(auth_policy: str | None) -> str:
+    """Combine caller-provided policy with the process-wide hard-lock env.
+
+    `NAKAMA_REQUIRE_MAX_PLAN=1` outranks an explicit `auth_policy="api"` — the
+    hard-lock is the operator's "this whole process must bill Max Plan" override
+    (textbook ingest, sandcastle). `None` defaults to `"api"` so direct callers
+    keep the SDK path unless they opt in.
+    """
+    if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
+        return "subscription_required"
+    return auth_policy or "api"
+
+
+def _oauth_token_available() -> bool:
+    return bool(
+        os.environ.get("ANTHROPIC_AUTH_TOKEN")
+        or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        or _credentials_json_exists()
+    )
+
+
+def _credentials_json_exists() -> bool:
+    """Claude CLI's ~/.claude/.credentials.json holds the refresh token chain."""
+    home = os.path.expanduser("~")
+    return os.path.exists(os.path.join(home, ".claude", ".credentials.json"))
+
+
+def _cli_binary_available() -> bool:
+    if os.environ.get("NAKAMA_CLAUDE_CLI"):
+        return True
+    return shutil.which("claude") is not None
+
+
+def _classify_cli_error(exc: Exception) -> str:
+    """Map a CLI subprocess failure to a fallback_reason enum value.
+
+    `401 invalid authentication credentials` style errors are the OAuth-expired
+    pattern from the SN textbook ingest incident 2026-05-16. Everything else is
+    grouped as a generic subprocess error pending more granular signals.
+    """
+    msg = str(exc).lower()
+    if "401" in msg or "invalid authentication" in msg or "auth" in msg and "expired" in msg:
+        return _REASON_CLI_AUTH_EXPIRED
+    return _REASON_CLI_ERROR
+
+
+def _plan_dispatch(
+    policy: str, *, supports_cli: bool
+) -> tuple[str, str | None]:
+    """Decide actual dispatch path before any provider call.
+
+    Returns ``(auth_actual, fallback_reason)``.
+
+    - ``api`` → always (``"api"``, None)
+    - ``subscription_required`` → raises if subscription path unavailable
+    - ``subscription_preferred`` → soft-downgrade to api with a reason
+    """
+    if policy == "api":
+        return ("api", None)
+
+    if not supports_cli:
+        if policy == "subscription_required":
+            raise NotImplementedError(
+                "tool-use under subscription_required is not supported. "
+                "The Claude Code CLI does not expose raw tool-use JSON; "
+                "tool execution happens inside the CLI process. Either "
+                "lower the policy to api / subscription_preferred, or "
+                "rewrite the call as plain text generation."
+            )
+        return ("api", _REASON_TOOL_USE_VIA_CLI)
+
+    if not _oauth_token_available():
+        if policy == "subscription_required":
+            raise RuntimeError(
+                "subscription_required but no OAuth token / credentials.json "
+                "found. Set ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_OAUTH_TOKEN or "
+                "run `claude login` so ~/.claude/.credentials.json exists."
+            )
+        logger.warning(
+            "Anthropic auth=subscription_preferred → falling back to api: %s",
+            _REASON_NO_OAUTH,
+        )
+        return ("api", _REASON_NO_OAUTH)
+
+    if not _cli_binary_available():
+        if policy == "subscription_required":
+            raise RuntimeError(
+                "subscription_required but 'claude' CLI not on PATH. "
+                "Install Claude Code or set NAKAMA_CLAUDE_CLI."
+            )
+        logger.warning(
+            "Anthropic auth=subscription_preferred → falling back to api: %s",
+            _REASON_CLI_NOT_FOUND,
+        )
+        return ("api", _REASON_CLI_NOT_FOUND)
+
+    return ("subscription", None)
 
 __all__ = [
     "ask_claude",
@@ -86,7 +193,13 @@ def get_client() -> anthropic.Anthropic:
 
 
 def _record_anthropic_usage(
-    response: anthropic.types.Message, model: str, *, latency_ms: int = 0
+    response: anthropic.types.Message,
+    model: str,
+    *,
+    latency_ms: int = 0,
+    auth_requested: str | None = None,
+    auth_actual: str | None = None,
+    fallback_reason: str | None = None,
 ) -> None:
     """把 Anthropic-shape usage 抽成共通欄位後 delegate 給 observability.record_call。
 
@@ -105,6 +218,9 @@ def _record_anthropic_usage(
             cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
             cache_write_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
             latency_ms=latency_ms,
+            auth_requested=auth_requested,
+            auth_actual=auth_actual,
+            fallback_reason=fallback_reason,
         )
     except Exception as e:
         logger.debug("cost tracking 失敗（忽略）：%s", e)
@@ -117,6 +233,7 @@ def ask_claude(
     model: str | None = None,
     max_tokens: int = 4096,
     temperature: float | None = None,
+    auth_policy: str | None = None,
 ) -> str:
     """送出一次 Claude API 請求，回傳純文字回應。
 
@@ -140,10 +257,31 @@ def ask_claude(
         model = get_model(agent=getattr(_local, "agent", None), task="default")
     _require_claude_model(model)
 
-    if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
+    requested = _resolve_effective_policy(auth_policy)
+    actual, reason = _plan_dispatch(requested, supports_cli=True)
+
+    if actual == "subscription":
         from shared.claude_cli_client import ask_via_cli
 
-        return ask_via_cli(prompt, system=system, model=model)
+        try:
+            return ask_via_cli(
+                prompt,
+                system=system,
+                model=model,
+                auth_requested=requested,
+                auth_actual="subscription",
+                fallback_reason=None,
+            )
+        except Exception as e:
+            if requested == "subscription_required":
+                raise
+            reason = _classify_cli_error(e)
+            logger.warning(
+                "Anthropic CLI dispatch failed (%s) → falling back to api: %s",
+                reason,
+                e,
+            )
+            actual = "api"
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -162,7 +300,14 @@ def ask_claude(
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
     latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_anthropic_usage(response, model, latency_ms=latency_ms)
+    _record_anthropic_usage(
+        response,
+        model,
+        latency_ms=latency_ms,
+        auth_requested=requested,
+        auth_actual=actual,
+        fallback_reason=reason,
+    )
 
     return response.content[0].text
 
@@ -175,6 +320,7 @@ def call_claude_with_tools(
     model: str | None = None,
     max_tokens: int = 2048,
     tool_choice: dict | None = None,
+    auth_policy: str | None = None,
 ) -> anthropic.types.Message:
     """呼叫 Claude 的 tool-use API，回傳完整 Message 物件（含 stop_reason、content blocks）。
 
@@ -205,13 +351,9 @@ def call_claude_with_tools(
         model = get_model(agent=getattr(_local, "agent", None), task="tool_use")
     _require_claude_model(model)
 
-    if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
-        raise NotImplementedError(
-            "call_claude_with_tools is not supported under NAKAMA_REQUIRE_MAX_PLAN=1. "
-            "The Claude Code CLI (`claude -p`) does not expose raw tool-use JSON; tool "
-            "execution happens inside the CLI process. Use SDK with API key for tool-use "
-            "flows, or rework to plain text generation."
-        )
+    requested = _resolve_effective_policy(auth_policy)
+    # supports_cli=False — CLI subprocess can't carry raw tool-use JSON.
+    actual, reason = _plan_dispatch(requested, supports_cli=False)
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -233,7 +375,14 @@ def call_claude_with_tools(
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
     latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_anthropic_usage(response, model, latency_ms=latency_ms)
+    _record_anthropic_usage(
+        response,
+        model,
+        latency_ms=latency_ms,
+        auth_requested=requested,
+        auth_actual=actual,
+        fallback_reason=reason,
+    )
 
     return response
 
@@ -245,6 +394,7 @@ def ask_claude_multi(
     model: str | None = None,
     max_tokens: int = 4096,
     temperature: float | None = None,
+    auth_policy: str | None = None,
 ) -> str:
     """送出多回合 Claude API 請求，回傳純文字回應。
 
@@ -269,10 +419,31 @@ def ask_claude_multi(
         model = get_model(agent=getattr(_local, "agent", None), task="default")
     _require_claude_model(model)
 
-    if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
+    requested = _resolve_effective_policy(auth_policy)
+    actual, reason = _plan_dispatch(requested, supports_cli=True)
+
+    if actual == "subscription":
         from shared.claude_cli_client import ask_multi_via_cli
 
-        return ask_multi_via_cli(messages, system=system, model=model)
+        try:
+            return ask_multi_via_cli(
+                messages,
+                system=system,
+                model=model,
+                auth_requested=requested,
+                auth_actual="subscription",
+                fallback_reason=None,
+            )
+        except Exception as e:
+            if requested == "subscription_required":
+                raise
+            reason = _classify_cli_error(e)
+            logger.warning(
+                "Anthropic CLI dispatch failed (%s) → falling back to api: %s",
+                reason,
+                e,
+            )
+            actual = "api"
 
     def _call() -> anthropic.types.Message:
         client = get_client()
@@ -291,7 +462,14 @@ def ask_claude_multi(
     response = with_retry(_call, max_attempts=3, backoff_base=2.0)
     latency_ms = int((time.perf_counter() - start) * 1000)
 
-    _record_anthropic_usage(response, model, latency_ms=latency_ms)
+    _record_anthropic_usage(
+        response,
+        model,
+        latency_ms=latency_ms,
+        auth_requested=requested,
+        auth_actual=actual,
+        fallback_reason=reason,
+    )
 
     return response.content[0].text
 
