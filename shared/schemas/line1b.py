@@ -57,7 +57,10 @@ class BookContextItem(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    slug: str = Field(min_length=1, description="KB path of the source, e.g. 'KB/Wiki/Sources/book-x'")
+    slug: str = Field(
+        min_length=1,
+        description="KB path of the source, e.g. 'KB/Wiki/Sources/book-x'",
+    )
     title: str = Field(min_length=1)
     author: str = ""
     note: str = ""

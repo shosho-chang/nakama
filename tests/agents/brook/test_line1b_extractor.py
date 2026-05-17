@@ -31,7 +31,6 @@ from agents.brook.line1b_renderer_adapter import to_legacy_stage1
 from agents.brook.repurpose_engine import EpisodeMetadata, Stage1Extractor, Stage1Result
 from shared.schemas.line1b import Line1bStage1Result, NarrativeSegment, Quote
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -52,7 +51,8 @@ _FIXTURE_SRT = """\
 
 4
 00:00:20,100 --> 00:00:35,000
-[SPEAKER_01] In our 2022 study, deep sleep below four percent of total sleep predicted poor recovery.
+[SPEAKER_01] In our 2022 study, deep sleep below four percent of total
+sleep predicted poor recovery.
 """
 
 _PACK_EN = [
@@ -123,7 +123,8 @@ def _make_valid_typed_payload() -> dict:
         "brief": (
             "本集訪談 Dr Smith，圍繞《Why We Sleep》第 5 章 deep sleep 與 recovery 的核心論點。"
             "Dr Smith 用一句「sleep is the bedrock of all recovery」開場，並引用 2022 年研究："
-            "深度睡眠低於總睡眠 4% 時，恢復力下降 60%。修修在訪談中追問實作層面，把抽象科學接上聽眾日常。"
+            "深度睡眠低於總睡眠 4% 時，恢復力下降 60%。"
+            "修修在訪談中追問實作層面，把抽象科學接上聽眾日常。"
             "[source: KB/Wiki/Sources/why-we-sleep][transcript@00:20]"
         ),
     }
@@ -229,7 +230,10 @@ def test_post_process_citations_unit():
         narrative_segments=[
             NarrativeSegment(text="有 citation [source: a]", citations=["a"]),
             NarrativeSegment(text="沒 citation", citations=[]),
-            NarrativeSegment(text="transcript citation [transcript@00:01]", citations=["transcript@00:01"]),
+            NarrativeSegment(
+                text="transcript citation [transcript@00:01]",
+                citations=["transcript@00:01"],
+            ),
         ],
         quotes=[Quote(text="x", timestamp="00:00:00", speaker="g")],
         titles=["a", "b", "c"],
@@ -326,7 +330,10 @@ def test_adapter_packs_brief_into_legacy_narrative_fields():
     assert isinstance(legacy, Stage1Result)
     d = legacy.data
     # All 6 narrative slots carry the brief (Stage-2 LLM splits it)
-    for key in ("identity_sketch", "origin", "turning_point", "rebirth", "present_action", "ending_direction"):
+    for key in (
+        "identity_sketch", "origin", "turning_point",
+        "rebirth", "present_action", "ending_direction",
+    ):
         assert d[key] == typed.brief
     # Title candidates passed through
     assert d["title_candidates"] == list(typed.titles)

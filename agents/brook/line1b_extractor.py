@@ -57,7 +57,10 @@ from shared.schemas.line1b import Line1bStage1Result, NarrativeSegment
 logger = get_logger("nakama.brook.line1b_extractor")
 
 _MODEL = "claude-sonnet-4-6"
-_PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "brook" / "line1b_extract.md"
+_PROMPT_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "prompts" / "brook" / "line1b_extract.md"
+)
 
 _CITATION_RE = re.compile(r"\[source:\s*[^\]]+\]|\[transcript@[^\]]+\]")
 
@@ -255,7 +258,9 @@ class Line1bExtractor:
         self._pack = list(research_pack)
         self._style_profile_body = style_profile_body
         self._transcript_slug = transcript_slug
-        self._prompt_template = prompt_template if prompt_template is not None else _load_prompt_template()
+        self._prompt_template = (
+            prompt_template if prompt_template is not None else _load_prompt_template()
+        )
         self._model = model or _MODEL
 
     def extract(self, source_input: str, metadata: EpisodeMetadata) -> Stage1Result:
@@ -296,7 +301,8 @@ class Line1bExtractor:
         for attempt in range(2):
             if attempt > 0 and last_error is not None:
                 logger.warning(
-                    "Line 1b Stage 1 validation failed (attempt %d/2); retrying with corrective note",
+                    "Line 1b Stage 1 validation failed (attempt %d/2); "
+                    "retrying with corrective note",
                     attempt + 1,
                 )
                 corrective = (
@@ -305,7 +311,8 @@ class Line1bExtractor:
                     "請只輸出純 JSON（不加 markdown fence、不加說明），"
                     "嚴格遵守 Line1bStage1Result schema，包含 narrative_segments / quotes / "
                     "titles / book_context / cross_refs / brief 六個 top-level keys，"
-                    "且 narrative_segments 每段尾部附 [source: ...] 或 [transcript@...] citation marker。"
+                    "且 narrative_segments 每段尾部附 [source: ...] 或 "
+                    "[transcript@...] citation marker。"
                 )
                 attempt_messages = [*messages, {"role": "user", "content": corrective}]
 

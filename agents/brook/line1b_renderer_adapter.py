@@ -36,7 +36,11 @@ from agents.brook.repurpose_engine import Stage1Result
 from shared.schemas.line1b import Line1bStage1Result
 
 
-def to_legacy_stage1(typed: Line1bStage1Result, *, episode_type: str = "narrative_journey") -> Stage1Result:
+def to_legacy_stage1(
+    typed: Line1bStage1Result,
+    *,
+    episode_type: str = "narrative_journey",
+) -> Stage1Result:
     """Pack a typed Line1bStage1Result into a Line-1-shape Stage1Result.
 
     Args:
@@ -82,7 +86,11 @@ def to_legacy_stage1(typed: Line1bStage1Result, *, episode_type: str = "narrativ
         "ending_direction": typed.brief,
         "quotes": legacy_quotes,
         "title_candidates": list(typed.titles),
-        "meta_description": typed.brief[:180] if len(typed.brief) >= 80 else (typed.brief + " " * 80)[:180],
+        "meta_description": (
+            typed.brief[:180]
+            if len(typed.brief) >= 80
+            else (typed.brief + " " * 80)[:180]
+        ),
         "episode_type": episode_type,
         # Full typed payload for future explicit-1b renderer branches.
         "line1b": typed.model_dump(),
