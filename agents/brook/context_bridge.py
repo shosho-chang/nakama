@@ -29,12 +29,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agents.robin.kb_search import search_kb
 from agents.brook.style_profile_loader import (
     available_categories,
     detect_category,
     load_style_profile,
 )
+from agents.robin.kb_search import search_kb
 from shared.compliance.medical_claim_vocab import (
     ABSOLUTE_ASSERTION_TERMS,
     MEDICAL_CLAIM_TERMS,
