@@ -184,18 +184,28 @@ def test_resolve_binary_missing_raises(monkeypatch):
 
 
 def test_anthropic_client_routes_to_cli_under_max_plan(monkeypatch):
-    """ask_claude with NAKAMA_REQUIRE_MAX_PLAN=1 must delegate to CLI, not SDK."""
+    """ask_claude with NAKAMA_REQUIRE_MAX_PLAN=1 must delegate to CLI, not SDK.
+
+    ADR-026 Slice 2 added pre-dispatch OAuth + CLI binary availability checks
+    so `subscription_required` fails fast when the deployment is mis-configured.
+    Test must satisfy those checks for routing assertion to be exercised.
+    """
     monkeypatch.setenv("NAKAMA_REQUIRE_MAX_PLAN", "1")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-test")
 
     called: dict = {}
 
-    def fake_ask_via_cli(prompt, *, system, model):
+    def fake_ask_via_cli(prompt, *, system, model, **kw):
         called["prompt"] = prompt
         called["system"] = system
         called["model"] = model
         return "ROUTED-OK"
 
     monkeypatch.setattr("shared.claude_cli_client.ask_via_cli", fake_ask_via_cli)
+    # Pretend the `claude` binary is on PATH (CI runners don't install it).
+    import shared.anthropic_client as ac
+
+    monkeypatch.setattr(ac, "_cli_binary_available", lambda: True)
 
     from shared.anthropic_client import ask_claude
 
