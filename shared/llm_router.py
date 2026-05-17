@@ -23,6 +23,28 @@ logger = get_logger("nakama.llm_router")
 DEFAULT_MODELS: dict[str, str] = {
     "default": "claude-sonnet-4-20250514",
     "tool_use": "claude-haiku-4-5",
+    # Translation is high-volume plain text — Sonnet 4.6 is the cost/quality
+    # sweet spot. Caller can still override via MODEL_<AGENT>_TRANSLATE.
+    "translate": "claude-sonnet-4-6",
+}
+
+# ADR-026: auth policy 解析。ternary 值 — "api" / "subscription_preferred" /
+# "subscription_required"。預設 subscription_preferred（修修長期 Max Plan
+# 訂閱者），缺 OAuth token 時軟降 API 並寫 fallback_reason 觀察。
+# tool_use 強制 api：CLI subprocess path 拿不到 raw tool-use JSON。
+_VALID_AUTH_POLICIES: frozenset[str] = frozenset(
+    {"api", "subscription_preferred", "subscription_required"}
+)
+
+DEFAULT_AUTH: dict[str, str] = {
+    # Default api — operators opt in to subscription via `AUTH_<AGENT>` env or
+    # `NAKAMA_REQUIRE_MAX_PLAN=1` (Codex audit §4: "default should not silently
+    # spend money when operator thought they were using Max", and the
+    # contrapositive — default should not silently consume Max Plan quota
+    # when operator didn't opt in).
+    "default": "api",
+    # tool_use forced api: CLI subprocess can't carry raw tool-use JSON.
+    "tool_use": "api",
 }
 
 # Prefix → provider。擴 provider 時在這裡加一行，`get_provider` 與
@@ -68,6 +90,56 @@ def get_model(agent: str | None = None, task: str = "default") -> str:
             task,
         )
     return DEFAULT_MODELS.get(task, DEFAULT_MODELS["default"])
+
+
+def get_auth_policy(agent: str | None = None, task: str = "default") -> str:
+    """解析 (agent, task) 對應的 auth policy（ADR-026）。
+
+    Resolution 優先序（高到低）：
+    1. `NAKAMA_REQUIRE_MAX_PLAN=1` → 強制 `subscription_required`
+       （process-wide hard-lock override，保留給 textbook ingest / sandcastle
+       這種 100% 必須走 Max Plan 的場景）
+    2. Env var `AUTH_<AGENT>_<TASK>`
+    3. Env var `AUTH_<AGENT>`
+    4. `DEFAULT_AUTH[task]`（預設 ``subscription_preferred``）
+
+    Args:
+        agent: Agent 名稱（大小寫不敏感）。``None`` 跳過 agent 層覆寫。
+        task: 任務類型（"default" / "tool_use" / "translate" 等）。
+
+    Returns:
+        ``"api"`` / ``"subscription_preferred"`` / ``"subscription_required"`` 之一。
+
+    Raises:
+        ValueError: env 設了未知值（拼錯保護，避免 silent 走預設）。
+    """
+    if os.environ.get("NAKAMA_REQUIRE_MAX_PLAN") == "1":
+        return "subscription_required"
+
+    if agent:
+        agent_upper = agent.upper()
+        task_upper = task.upper()
+        specific = os.environ.get(f"AUTH_{agent_upper}_{task_upper}")
+        if specific:
+            return _validate_auth_policy(specific, f"AUTH_{agent_upper}_{task_upper}")
+        agent_default = os.environ.get(f"AUTH_{agent_upper}")
+        if agent_default:
+            return _validate_auth_policy(agent_default, f"AUTH_{agent_upper}")
+    else:
+        logger.debug(
+            "get_auth_policy called without agent context; falling back to DEFAULT_AUTH[%s]",
+            task,
+        )
+    return DEFAULT_AUTH.get(task, DEFAULT_AUTH["default"])
+
+
+def _validate_auth_policy(value: str, source: str) -> str:
+    if value not in _VALID_AUTH_POLICIES:
+        raise ValueError(
+            f"Invalid auth policy '{value}' from {source}; "
+            f"must be one of {sorted(_VALID_AUTH_POLICIES)}"
+        )
+    return value
 
 
 def get_provider(model: str) -> str:

@@ -60,6 +60,15 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
             cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
             latency_ms          INTEGER NOT NULL DEFAULT 0,
+            -- ADR-026 三 col：requested 是 router 解析出的 policy，actual 是
+            -- 實際 dispatch 的 path（softlink/hard-lock fallback 後可能不同），
+            -- fallback_reason 是 enum string（NO_OAUTH_TOKEN / PROVIDER_NOT_SUPPORTED
+            -- / CLI_BINARY_NOT_FOUND / CLI_SUBPROCESS_ERROR / CLI_AUTH_EXPIRED
+            -- / TOOL_USE_NOT_SUPPORTED_VIA_CLI）。三欄都 nullable 支援 migration 期間
+            -- 既有 caller 沒寫。
+            auth_requested      TEXT,
+            auth_actual         TEXT,
+            fallback_reason     TEXT,
             called_at           TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_api_calls_agent_time
@@ -495,6 +504,11 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         "ALTER TABLE api_calls ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE api_calls ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE api_calls ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0",
+        # ADR-026 / migration 008: auth dimension. Nullable — 既有 row + 還沒升級
+        # 的 caller 維持 NULL，dashboard 顯示「unknown」即可。
+        "ALTER TABLE api_calls ADD COLUMN auth_requested TEXT",
+        "ALTER TABLE api_calls ADD COLUMN auth_actual TEXT",
+        "ALTER TABLE api_calls ADD COLUMN fallback_reason TEXT",
         "ALTER TABLE r2_backup_checks ADD COLUMN prefix TEXT NOT NULL DEFAULT ''",
     ):
         try:
@@ -657,6 +671,9 @@ def record_api_call(
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
     latency_ms: int = 0,
+    auth_requested: Optional[str] = None,
+    auth_actual: Optional[str] = None,
+    fallback_reason: Optional[str] = None,
 ) -> None:
     """記錄一次 LLM API 呼叫的 token 用量 + 延遲。
 
@@ -671,8 +688,9 @@ def record_api_call(
     conn.execute(
         """INSERT INTO api_calls
               (agent, run_id, model, input_tokens, output_tokens,
-               cache_read_tokens, cache_write_tokens, latency_ms, called_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               cache_read_tokens, cache_write_tokens, latency_ms,
+               auth_requested, auth_actual, fallback_reason, called_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             agent,
             run_id,
@@ -682,6 +700,9 @@ def record_api_call(
             cache_read_tokens,
             cache_write_tokens,
             latency_ms,
+            auth_requested,
+            auth_actual,
+            fallback_reason,
             now,
         ),
     )

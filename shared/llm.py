@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from shared.anthropic_client import ask_claude, ask_claude_multi, call_claude_with_tools
 from shared.llm_context import _local
-from shared.llm_router import get_model, get_provider
+from shared.llm_router import get_auth_policy, get_model, get_provider
 
 if TYPE_CHECKING:
     import anthropic
@@ -34,6 +34,7 @@ def ask(
     *,
     system: str = "",
     model: str | None = None,
+    task: str = "default",
     max_tokens: int = 4096,
     temperature: float | None = None,
     thinking_budget: int | None = None,
@@ -51,8 +52,9 @@ def ask(
     ``thinking_budget`` 僅對 Gemini 生效（其他 provider 忽略）。傳 ``None`` 時讓
     Gemini wrapper 套自家預設 512；傳 ``0`` 明確關閉 thinking；正整數為上限。
     """
+    agent = getattr(_local, "agent", None)
     if model is None:
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=agent, task=task)
 
     provider = get_provider(model)
 
@@ -63,6 +65,7 @@ def ask(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            auth_policy=get_auth_policy(agent=agent, task=task),
         )
     if provider == "xai":
         from shared.xai_client import ask_grok
@@ -99,6 +102,7 @@ def ask_multi(
     *,
     system: str = "",
     model: str | None = None,
+    task: str = "default",
     max_tokens: int = 4096,
     temperature: float | None = None,
     thinking_budget: int | None = None,
@@ -111,8 +115,9 @@ def ask_multi(
 
     ``thinking_budget`` 僅對 Gemini 生效（其他 provider 忽略）。
     """
+    agent = getattr(_local, "agent", None)
     if model is None:
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=agent, task=task)
 
     provider = get_provider(model)
 
@@ -123,6 +128,7 @@ def ask_multi(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            auth_policy=get_auth_policy(agent=agent, task=task),
         )
     if provider == "xai":
         from shared.xai_client import ask_grok_multi
@@ -157,6 +163,7 @@ def ask_with_tools(
     *,
     system: str = "",
     model: str | None = None,
+    task: str = "tool_use",
     max_tokens: int = 2048,
     tool_choice: dict | None = None,
 ) -> "anthropic.types.Message":
@@ -171,8 +178,9 @@ def ask_with_tools(
     各有 tool-use 但 schema / 回傳語意不同，這層 facade 暫不混淆 — 改
     其他 provider 時請補 dispatch 並對齊 stop_reason / content block 形狀。
     """
+    agent = getattr(_local, "agent", None)
     if model is None:
-        model = get_model(agent=getattr(_local, "agent", None), task="tool_use")
+        model = get_model(agent=agent, task=task)
 
     provider = get_provider(model)
 
@@ -184,6 +192,7 @@ def ask_with_tools(
             model=model,
             max_tokens=max_tokens,
             tool_choice=tool_choice,
+            auth_policy=get_auth_policy(agent=agent, task=task),
         )
     raise NotImplementedError(
         f"ask_with_tools 目前只支援 anthropic（收到 provider='{provider}', "
