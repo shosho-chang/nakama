@@ -34,6 +34,7 @@ def ask(
     *,
     system: str = "",
     model: str | None = None,
+    task: str = "default",
     max_tokens: int = 4096,
     temperature: float | None = None,
     thinking_budget: int | None = None,
@@ -52,7 +53,7 @@ def ask(
     Gemini wrapper 套自家預設 512；傳 ``0`` 明確關閉 thinking；正整數為上限。
     """
     if model is None:
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=getattr(_local, "agent", None), task=task)
 
     provider = get_provider(model)
 
@@ -99,6 +100,7 @@ def ask_multi(
     *,
     system: str = "",
     model: str | None = None,
+    task: str = "default",
     max_tokens: int = 4096,
     temperature: float | None = None,
     thinking_budget: int | None = None,
@@ -112,7 +114,7 @@ def ask_multi(
     ``thinking_budget`` 僅對 Gemini 生效（其他 provider 忽略）。
     """
     if model is None:
-        model = get_model(agent=getattr(_local, "agent", None), task="default")
+        model = get_model(agent=getattr(_local, "agent", None), task=task)
 
     provider = get_provider(model)
 
@@ -157,6 +159,7 @@ def ask_with_tools(
     *,
     system: str = "",
     model: str | None = None,
+    task: str = "tool_use",
     max_tokens: int = 2048,
     tool_choice: dict | None = None,
 ) -> "anthropic.types.Message":
@@ -172,7 +175,7 @@ def ask_with_tools(
     其他 provider 時請補 dispatch 並對齊 stop_reason / content block 形狀。
     """
     if model is None:
-        model = get_model(agent=getattr(_local, "agent", None), task="tool_use")
+        model = get_model(agent=getattr(_local, "agent", None), task=task)
 
     provider = get_provider(model)
 
