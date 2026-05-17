@@ -125,11 +125,11 @@ Line 2 不再只視為「書」；ebook、inbox document、web document 都是 R
 
 | Agent | 1 收集 | 2 閱讀 | 3 整合 | 4 輸出 | 5 製作 | 6 發布 | 7 監控 |
 |---|---|---|---|---|---|---|---|
-| **Robin** (KB) | ✅ PubMed digest cron + OA fulltext | ✅ Reader 雙語 (UI by Thousand Sunny) | ✅ ingest + kb_writer + textbook v2 + kb_search | ⬜ kb-synthesize-article skill | n/a | n/a | n/a |
+| **Robin** (KB) | ✅ PubMed digest cron + OA fulltext | ✅ Reader 雙語 (UI by Thousand Sunny) | ✅ ingest + kb_writer + textbook v2 + kb_search + RCP（ADR-024，已實作） | n/a | n/a | n/a | n/a |
 | **Nami** (Secretary) | ✅ pubmed_lookup tool (Robin pass-through) + Gmail / Calendar / Vault notes | n/a | n/a | n/a | n/a | n/a | ⬜ daily briefing 接 SEO/cost data |
 | **Zoro** (Scout) | ✅ keyword research + autocomplete + trends + reddit + youtube + twitter | n/a | n/a | n/a | n/a | n/a | ⬜ topic discovery 接 SEO 反向 feed |
 | **Sanji** (Community) | ⬜ community FAQ discovery (從會員問題抽主題) | n/a | ⬜ member memory ingest | n/a | n/a | ❌ Fluent Community publisher | ⬜ engagement insight |
-| **Brook** (Scaffold + Repurpose, ADR-027) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）/ ⬜ RCP（ADR-024+ADR-027） | ⬜ scaffold only — outline / evidence / annotation digest 給修修自寫，**LLM 不代寫正文** | ✅ FB/IG/Blog renderer + repurpose engine + **script_video pipeline**；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
+| **Brook** (Scaffold + Repurpose + SEO Audit, ADR-027) | n/a | n/a | ✅ synthesize（outline + evidence pool, ADR-021）；RCP 由 Robin own | scaffold only — outline / evidence 給修修自寫，**LLM 不代寫正文**（ADR-027 reminders not enforcement） | ✅ FB/IG/Blog renderer + repurpose engine + **script_video pipeline**；🚧 Line 1b 訪談+research_pack 2b mode（ADR-027） | n/a | ✅ SEO audit + enrich (對既有文章) |
 | **Franky** (Maintenance) | ✅ AI news digest cron | n/a | n/a | n/a | n/a | n/a | ✅ probe panel + R2 backup verify + GSC daily + cost tracking |
 | **Usopp** (Publisher) | n/a | n/a | n/a | n/a | n/a | ✅ WP publisher + approval queue HITL；❌ YT/IG/FB/Newsletter | n/a |
 

@@ -7,7 +7,7 @@
 
 ---
 
-> **2026-05-17 amendment (ADR-027):** Compose pipeline 已 retire — `compose.py` 整檔砍除，不再有 LLM 從零生稿路徑。本 ADR 定義的 schema（`DraftV1` / `GutenbergHTMLV1` / `BlockNodeV1`）與工具層（`gutenberg_builder.py` / `gutenberg_validator.py`）**保留**，供 Slice 10 repurpose blog → Usopp handoff 復用。Schema 是 agent-agnostic 的 Brook ↔ Usopp 合約，與「誰產生 draft」decoupled。
+> **2026-05-17 amendment (ADR-027):** Compose pipeline 已 retire — `compose.py` 整檔砍除，不再有 LLM 從零生稿路徑。本 ADR 定義的 schema（`DraftV1` / `GutenbergHTMLV1` / `BlockNodeV1`）與工具層（`gutenberg_builder.py` / `gutenberg_validator.py`）**保留**，供 Slice 10 repurpose blog → Usopp handoff 復用。注意 `DraftV1.agent: Literal["brook"]` 維持原值，因 repurpose 仍由 Brook enqueue；schema 不需改為 agent-agnostic。
 
 ## Context
 
