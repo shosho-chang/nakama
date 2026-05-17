@@ -30,6 +30,11 @@ _RE_H2 = re.compile(r"^## (.+)$")
 # where Preface + book-title H1 were counted as ordinals 1-2, offsetting every
 # real chapter_index by +2.
 _RE_CHAPTER_PREFIX = re.compile(r"^(\d+)\s+(.+)$")
+# Elsevier/Saunders-style EPUBs (e.g. Muscle and Exercise Physiology, Zoladz)
+# render chapter numbers as a standalone caption line just above the H1
+# title — `Chapter 1\n\n# Human Body Composition`. Detect it so the walker
+# can synthesize the numeric prefix the prefix-mode detector needs.
+_RE_CHAPTER_LABEL = re.compile(r"^Chapter\s+(\d+)\s*$", re.IGNORECASE)
 _RE_FIGURE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _RE_TABLE_ROW = re.compile(r"^\|")
 _RE_BOLD_CAPTION = re.compile(r"^\*\*(.+)\*\*$")
@@ -222,15 +227,26 @@ def _strip_epub_internal_links(text: str) -> str:
 
 
 def _split_into_chapters(body: str) -> list[tuple[str, str]]:
-    """Split body text into (title, verbatim_body) pairs at each H1 boundary."""
+    """Split body text into (title, verbatim_body) pairs at each H1 boundary.
+
+    If an H1 is preceded (within 5 lines, allowing blanks) by a standalone
+    ``Chapter N`` caption, prepend ``"N "`` to the title so the downstream
+    prefix-mode detector treats it as a real chapter. ``verbatim_body`` is
+    not altered — only the title field is enriched.
+    """
     lines = body.splitlines(keepends=True)
     chapter_starts: list[tuple[int, str]] = []
 
     for i, line in enumerate(lines):
         stripped = line.rstrip("\r\n")
         m = _RE_H1.match(stripped)
-        if m:
-            chapter_starts.append((i, m.group(1).strip()))
+        if not m:
+            continue
+        title = m.group(1).strip()
+        prefix = _find_chapter_label(lines, i)
+        if prefix and not _RE_CHAPTER_PREFIX.match(title):
+            title = f"{prefix} {title}"
+        chapter_starts.append((i, title))
 
     if not chapter_starts:
         return []
@@ -242,6 +258,28 @@ def _split_into_chapters(body: str) -> list[tuple[str, str]]:
         result.append((title, chapter_body))
 
     return result
+
+
+def _find_chapter_label(lines: list[str], h1_line_idx: int) -> str | None:
+    """Look back up to 5 non-blank lines for a ``Chapter N`` standalone label.
+
+    Returns the number string (e.g. ``"1"``) or ``None`` if no label found.
+    """
+    j = h1_line_idx - 1
+    seen_nonblank = 0
+    while j >= 0 and h1_line_idx - j <= 10:
+        prev = lines[j].rstrip("\r\n")
+        if not prev:
+            j -= 1
+            continue
+        seen_nonblank += 1
+        if seen_nonblank > 5:
+            return None
+        m = _RE_CHAPTER_LABEL.match(prev)
+        if m:
+            return m.group(1)
+        j -= 1
+    return None
 
 
 def _build_payload(
@@ -275,9 +313,24 @@ def _extract_section_anchors(lines: list[str]) -> list[str]:
 
 
 def _extract_figures(body: str) -> list[FigureRef]:
-    return [
-        FigureRef(vault_path=m.group(2), alt_text=m.group(1)) for m in _RE_FIGURE.finditer(body)
-    ]
+    """Extract figure refs from markdown image syntax, deduped by vault_path.
+
+    Some EPUBs (e.g. Zoladz MEP ch10: 428 figure refs / 34 unique paths) re-use
+    the same image as an inline glyph for hundreds of equation symbols. Without
+    dedup the downstream LLM prompt blows past the output budget while still
+    enumerating frontmatter.figures, then crashes parsing as it emits
+    "PIECE 1 — figures[44–428]" continuation markers. First occurrence wins
+    (preserves earliest alt_text).
+    """
+    seen: set[str] = set()
+    out: list[FigureRef] = []
+    for m in _RE_FIGURE.finditer(body):
+        vault_path = m.group(2)
+        if vault_path in seen:
+            continue
+        seen.add(vault_path)
+        out.append(FigureRef(vault_path=vault_path, alt_text=m.group(1)))
+    return out
 
 
 def _extract_tables(lines: list[str]) -> list[InlineTable]:

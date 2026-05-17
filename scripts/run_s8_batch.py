@@ -71,8 +71,11 @@ DEFAULT_VAULT_ROOT = r"E:\Shosho LifeOS"
 DEFAULT_REPORT_PATH = "docs/runs/2026-05-06-s8-final-report.md"
 DEFAULT_BLOCKERS_PATH = "docs/runs/2026-05-06-s8-blockers.md"
 
-# Hard cost cap — abort batch if exceeded.
-COST_CAP_USD = 50.0
+# Hard cost cap — abort batch if exceeded. Note: under Max Plan the cost is
+# informational (subscription is flat-rate), so the cap is a runaway-loop guard
+# rather than an actual billing protection. Bumped to 100 for MEP which has 13
+# chapters >100K chars (ACSM 12ch totalled $15; MEP ~25ch could project $40-60).
+COST_CAP_USD = 100.0
 
 # Sonnet 4.5/4.6 pricing (USD per 1M tokens) — used to estimate cost from the
 # llm_context usage_buffer.
@@ -86,6 +89,7 @@ EXPECTED_REAL_CHAPTERS = {
     "biochemistry-for-sport-and-exercise-maclaren": 11,
     "sport-nutrition-jeukendrup-4e": 17,
     "acsm-guidelines-exercise-testing-prescription": 12,
+    "muscle-and-exercise-physiology-zoladz": 25,
 }
 
 # Book registry.
@@ -104,6 +108,11 @@ BOOKS = {
         "book_id": "acsm-guidelines-exercise-testing-prescription",
         "book_title": "ACSM's Guidelines for Exercise Testing and Prescription (12e)",
         "raw_rel": "KB/Raw/Books/acsm-guidelines-exercise-testing-prescription.md",
+    },
+    "mep": {
+        "book_id": "muscle-and-exercise-physiology-zoladz",
+        "book_title": "Muscle and Exercise Physiology (Zoladz)",
+        "raw_rel": "KB/Raw/Books/muscle-and-exercise-physiology-zoladz.md",
     },
 }
 
@@ -823,6 +832,17 @@ def run_batch(args) -> int:
             len(iteration),
         )
 
+    if args.only_chapters:
+        wanted = {int(x.strip()) for x in args.only_chapters.split(",") if x.strip()}
+        before = len(iteration)
+        iteration = [entry for entry in iteration if entry[3] in wanted]
+        log.info(
+            "--only-chapters %s: filtered %d -> %d entries",
+            sorted(wanted),
+            before,
+            len(iteration),
+        )
+
     if args.max_chapters:
         iteration = iteration[: args.max_chapters]
         log.info("--max-chapters: limiting to first %d", args.max_chapters)
@@ -993,6 +1013,16 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="skip chapters with real-index < this value; useful to resume mid-batch (default: 0 = no skip)",
+    )
+    p.add_argument(
+        "--only-chapters",
+        type=str,
+        default="",
+        help=(
+            "comma-separated real-indexes to keep (e.g. '8,10,20,21,22'); other chapters "
+            "are filtered out. Combines with --start-chapter (applied after). Useful for "
+            "retrying a non-contiguous set of failed chapters without re-billing successful ones."
+        ),
     )
     p.add_argument(
         "--max-chapters",
