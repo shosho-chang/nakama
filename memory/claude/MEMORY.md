@@ -224,7 +224,9 @@
 - [feedback_vps_dep_install_invisible.md](feedback_vps_dep_install_invisible.md) — VPS system python 不裝 venv，requirements.txt 加 dep 不自動 sync；新 path 第一次跑才暴露
 - [feedback_stacked_pr_squash_conflict.md](feedback_stacked_pr_squash_conflict.md) — 堆疊 PR + squash merge：子 PR 變 unmergeable；沒 force-push 權限走 merge-main + --ours 退路
 - [feedback_ruff_order_by_type.md](feedback_ruff_order_by_type.md) — ruff isort 預設 order-by-type：ALL_CAPS 常數先於 PascalCase 類，不是純 ASCII 序
-- [project_brook_compose_merged.md](project_brook_compose_merged.md) — PR #78 Brook compose_and_enqueue merged；production 路徑就位，seed compliance vocab 等 Slice B 替換
+- [project_brook_compose_merged.md](project_brook_compose_merged.md) — PR #78 Brook compose_and_enqueue merged；**SUPERSEDED by ADR-027 (2026-05-17)** — compose pipeline 已決定 retire，Brook 收斂為 Scaffold + Repurpose + SEO Audit
+- [feedback_redline_self_discipline_not_enforcement.md](feedback_redline_self_discipline_not_enforcement.md) — **設計原則**：紅線靠修修自律，系統角色是 reminder + path-of-least-resistance，不是物理 enforcement；不為不可 enforce 的 self-discipline 過度設計架構（ADR-027 panel 凍結）
+- [feedback_codebase_minimalism_first_principle.md](feedback_codebase_minimalism_first_principle.md) — **最高指導原則**：程式庫精簡優先；舊架構不符合現況直接砍，不為向後相容保留 dead code（ADR-027 grill 凍結）
 - [feedback_parse_error_wrap_all_modes.md](feedback_parse_error_wrap_all_modes.md) — 宣稱 ParseError 契約要同時包 ValidationError / KeyError / TypeError，只包 JSONDecodeError 會漏
 - [feedback_yaml_unquoted_numbers.md](feedback_yaml_unquoted_numbers.md) — yaml `- 168` 解析成 int；loader 凡 list 都要 coerce `str(k)` 再吞
 - [feedback_yaml_scalar_safety.md](feedback_yaml_scalar_safety.md) — 寫 frontmatter 時動態 scalar 必 quote + escape `"` `\\` + collapse `\n` `\r`；測試用 yaml.safe_load 真實 round-trip 而非子串斷言
