@@ -406,3 +406,179 @@ def test_synthesize_propagates_outline_draft_error(isolated_store):
             )
 
     assert not store_mod.exists("proj-fail")
+
+
+# ---------------------------------------------------------------------------
+# ADR-027 §Decision 4 — trending_angles + unmatched warning
+# ---------------------------------------------------------------------------
+
+
+def _outline_with_trending_match(
+    slugs: list[str], per_section_match: list[list[str]]
+) -> str:
+    """Build an outline JSON where each section carries explicit trending_match.
+
+    ``per_section_match[i]`` is the ``trending_match`` value for section i+1.
+    Section count = len(per_section_match), must be within the 5–7 contract.
+    Each section cites two pool slugs (rotating).
+    """
+    sections = []
+    for i, match in enumerate(per_section_match):
+        a = slugs[i % len(slugs)]
+        b = slugs[(i + 1) % len(slugs)]
+        sections.append(
+            {
+                "section": i + 1,
+                "heading": f"第 {i + 1} 段",
+                "evidence_refs": [a, b],
+                "trending_match": list(match),
+            }
+        )
+    return json.dumps({"sections": sections}, ensure_ascii=False)
+
+
+def test_synthesize_unmatched_trending_angles(isolated_store):
+    """5 angles in, 3 matched by outline → 2 land in unmatched warning."""
+    slugs = [
+        "KB/Wiki/Sources/paper-a",
+        "KB/Wiki/Sources/paper-b",
+        "KB/Wiki/Sources/paper-c",
+    ]
+
+    def fake_search(q, top_k, lanes, db=None):
+        return [
+            _hit(1, slugs[0], 0.9),
+            _hit(2, slugs[1], 0.8),
+            _hit(3, slugs[2], 0.7),
+        ]
+
+    # 5 sections, sections 1/2/3 each match one of a/b/c; sections 4/5 match nothing.
+    response = _outline_with_trending_match(
+        slugs,
+        per_section_match=[["a"], ["b"], ["c"], [], []],
+    )
+
+    with patch(
+        "agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search
+    ):
+        result = synthesize(
+            "trend-proj",
+            "topic",
+            ["kw"],
+            ask_fn=lambda *_a, **_kw: response,
+            trending_angles=["a", "b", "c", "d", "e"],
+        )
+
+    assert sorted(result.store.unmatched_trending_angles) == ["d", "e"]
+    persisted = store_mod.read("trend-proj")
+    assert sorted(persisted.unmatched_trending_angles) == ["d", "e"]
+    # Per-section trending_match round-tripped through schema + store.
+    assert persisted.outline_draft[0].trending_match == ["a"]
+    assert persisted.outline_draft[3].trending_match == []
+
+
+def test_synthesize_no_trending_angles_is_backwards_compatible(isolated_store):
+    """Omitting trending_angles: empty unmatched, prompt identical to baseline."""
+    slugs = ["KB/Wiki/Sources/a", "KB/Wiki/Sources/b"]
+
+    def fake_search(q, top_k, lanes, db=None):
+        return [_hit(1, slugs[0], 0.9), _hit(2, slugs[1], 0.8)]
+
+    captured_prompts: list[str] = []
+
+    def fake_ask(prompt, **_kw):
+        captured_prompts.append(prompt)
+        return _make_outline_response(slugs, n_sections=5)
+
+    # Baseline call (no trending_angles).
+    with patch(
+        "agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search
+    ):
+        result = synthesize("proj-baseline", "topic", ["kw"], ask_fn=fake_ask)
+
+    assert result.store.unmatched_trending_angles == []
+    # No rendered angles block: the header line (which only appears when
+    # angles are supplied) must not be present. The bare phrase "trending"
+    # may appear in the static prompt body (e.g. `trending_match` field
+    # description), so we anchor on the exact rendered block header.
+    assert "可選參考；不可為配 angle 編造" not in captured_prompts[0]
+
+    # Same call with trending_angles=None must produce the same prompt.
+    with patch(
+        "agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search
+    ):
+        synthesize(
+            "proj-baseline-none",
+            "topic",
+            ["kw"],
+            ask_fn=fake_ask,
+            trending_angles=None,
+        )
+
+    assert captured_prompts[0] == captured_prompts[1]
+
+
+def test_synthesize_unmatched_ignores_llm_invented_angles(isolated_store):
+    """LLM emits trending_match values not in the input list — ignored in unmatched calc.
+
+    Decision (documented in ``synthesize.__init__``): we do NOT bounce the
+    outline when the LLM hallucinates an angle name (it's a soft warning
+    field, not a hard contract like ``evidence_refs``). The
+    ``unmatched_trending_angles`` calculation counts only input angles that
+    no section matched, so an invented "nonexistent" claim cannot make a
+    real input angle appear "matched".
+    """
+    slugs = ["KB/Wiki/Sources/a", "KB/Wiki/Sources/b"]
+
+    def fake_search(q, top_k, lanes, db=None):
+        return [_hit(1, slugs[0], 0.9), _hit(2, slugs[1], 0.8)]
+
+    # Sections 1..5 all claim trending_match=["nonexistent"]; the user supplied
+    # ["real-1", "real-2"] — neither was matched by any section.
+    response = _outline_with_trending_match(
+        slugs,
+        per_section_match=[["nonexistent"]] * 5,
+    )
+
+    with patch(
+        "agents.brook.synthesize._search.kb_hybrid_search.search", side_effect=fake_search
+    ):
+        result = synthesize(
+            "proj-ghost",
+            "topic",
+            ["kw"],
+            ask_fn=lambda *_a, **_kw: response,
+            trending_angles=["real-1", "real-2"],
+        )
+
+    # Outline still persists with the LLM's invented trending_match — we
+    # don't fail the run, just don't count it as a match.
+    assert result.store.outline_draft[0].trending_match == ["nonexistent"]
+    # All input angles unmatched.
+    assert sorted(result.store.unmatched_trending_angles) == ["real-1", "real-2"]
+
+
+def test_store_loads_legacy_json_without_unmatched_field(isolated_store):
+    """Persisted stores written before ADR-027 still load — field is optional."""
+    from shared.schemas.brook_synthesize import BrookSynthesizeStore
+
+    legacy_path = isolated_store / "legacy-proj.json"
+    legacy_path.write_text(
+        json.dumps(
+            {
+                "project_slug": "legacy-proj",
+                "topic": "old",
+                "keywords": [],
+                "evidence_pool": [],
+                "outline_draft": [],
+                "user_actions": [],
+                "outline_final": [],
+                "schema_version": 1,
+                "updated_at": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = BrookSynthesizeStore.model_validate_json(legacy_path.read_text(encoding="utf-8"))
+    assert loaded.unmatched_trending_angles == []

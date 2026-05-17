@@ -61,6 +61,11 @@ class OutlineSection(BaseModel):
     section: int
     heading: str
     evidence_refs: list[str] = Field(default_factory=list)
+    # ADR-027 §Decision 4: optional Zoro trending-angle correspondence.
+    # Lists which input ``trending_angles`` (passed to ``synthesize``) this
+    # section actually addresses. Empty when no angles supplied OR when the
+    # LLM did not match any to this section. Backwards-compatible default.
+    trending_match: list[str] = Field(default_factory=list)
 
 
 class UserAction(BaseModel):
@@ -96,6 +101,11 @@ class BrookSynthesizeStore(BaseModel):
     outline_draft: list[OutlineSection] = Field(default_factory=list)
     user_actions: list[UserAction] = Field(default_factory=list)
     outline_final: list[OutlineSection] = Field(default_factory=list)
+    # ADR-027 §Decision 4: Zoro trending angles handed to ``synthesize`` that
+    # did NOT find a strong correspondence in any drafted section. Surfaced
+    # to 修修 as a warning (and as reverse signal for Robin discovery). Always
+    # present; empty list when no angles were supplied or all matched.
+    unmatched_trending_angles: list[str] = Field(default_factory=list)
     schema_version: Literal[1] = 1
     updated_at: str = ""
 
