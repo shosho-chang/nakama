@@ -1,7 +1,8 @@
-# ADR-026: LLM Router 加 Auth 維度（subscription_preferred / subscription_required / api）
+# ADR-026: LLM Router 加 Auth 維度（api / subscription_preferred / subscription_required）
 
-**Status:** Proposed (v2 post panel review)
-**Date:** 2026-05-16
+**Status:** Accepted (v3 post-implementation, one deviation documented in §Implementation deviation)
+**Date:** 2026-05-16 (drafted) / 2026-05-17 (accepted)
+**Implementation:** #580 (Slice 1 — pure-additive infra) + #581 (Slice 2 — per-call dispatch + translator de-hardcoding)
 **Deciders:** shosho-chang, Claude Opus 4.7, Codex GPT-5, Gemini 2.5 Pro
 **Related:** ADR-001, `memory/claude/project_multi_model_architecture.md`, `memory/claude/project_llm_facade_phase1.md`, `memory/claude/feedback_llm_model_choice.md`, `memory/claude/feedback_cost_management.md`, `memory/claude/feedback_oauth_env_pinning_long_batch.md`, `docs/plans/2026-05-16-llm-router-auth-dimension-grill-prep.md`
 **Panel audits:** `docs/research/2026-05-16-codex-adr026-audit.md`, `docs/research/2026-05-16-gemini-adr026-audit.md`
@@ -57,12 +58,15 @@ NAKAMA_REQUIRE_MAX_PLAN=1                          (process-wide hard-lock)
 ```
 
 ```python
+# v3 post-implementation — 從 "subscription_preferred" 翻為 "api"，
+# 詳見 §Implementation deviation。
 DEFAULT_AUTH = {
-    "default": "subscription_preferred",
+    "default": "api",
+    "tool_use": "api",  # CLI 不暴露 tool-use JSON，固定 api
 }
 ```
 
-**Subscription-preferred 哲學**：沒明示就軟訂閱（環境齊備吃配額、不齊備落到 API + warn）。`subscription_required` 是 caller 顯式宣告「我不可降」，給 textbook ingest 這種有硬性 budget 約束的工作流用。
+**保守 default 哲學**：沒明示就走 API（顯式計費路徑）；要走訂閱 quota 必須 operator 明確 opt-in。`subscription_preferred` 是 per-agent / per-task 的選擇（`AUTH_<AGENT>=subscription_preferred` 在 `.env`）；`subscription_required` 是 caller 顯式宣告「我不可降」，給 textbook ingest 這種有硬性 budget 約束的工作流用。`NAKAMA_REQUIRE_MAX_PLAN=1` 是 process-wide hard-lock，映射為 `subscription_required`。
 
 ### Dispatch 行為
 
@@ -141,6 +145,36 @@ def _translate_in_background(*, source_path, bilingual_path):
 - **Subscription quota starvation 預防**（task class quota bucket，例如 Robin translate 一桶、Brook compose 另一桶）— Codex Section 5、Gemini Section 1 都提到。Phase 1 透過 `subscription_required` 給高價值任務優先權，Phase 2 加 budget bucket
 - **Multimodal**：CLI 對 binary data (圖片) break（Gemini Section 3）。Phase 1 系統純文字，Phase 2 加圖片時要重設 dispatch 路徑
 - **YAML policy file**：Codex Section 4 提到 `MODEL_*` + `AUTH_*` env 在 35+ files / 56+ call lines 後不 scale。Phase 1 env 三元語意還在可控範圍，Phase 2 視 env 暴增切 YAML
+
+## Implementation deviation
+
+ADR v2 specified `DEFAULT_AUTH["default"] = "subscription_preferred"` (subscription-preferred 哲學)。Slice 2 (#581) 改成 `"api"`，原因 + 取捨：
+
+**觀察到的問題**：實作完 anthropic_client 的 per-call dispatch 後，跑 `tests/shared/seo_audit/test_llm_review.py` 失敗。trace：
+
+1. Test 用 `monkeypatch.setattr("shared.anthropic_client.get_client", lambda: mock_client)` mock SDK 層
+2. 但新 dispatch 邏輯先檢查 `_oauth_token_available()`（讀 `ANTHROPIC_AUTH_TOKEN` / `CLAUDE_CODE_OAUTH_TOKEN` / `~/.claude/.credentials.json`）+ `_cli_binary_available()`（`shutil.which("claude")`）
+3. Dev 機器 (Windows) 兩個條件都成立 → 不去 SDK 層 → 直接 `ask_via_cli` 跑真實 `claude -p` subprocess → 1 分鐘多 retry 後失敗
+4. Test 期望 status=`"pass"`、實際拿到 fallback error
+
+**選項**：
+- (a) 在 conftest autouse fixture mock 掉 `_oauth_token_available` / `_cli_binary_available`（侵入大量測試）
+- (b) `_oauth_token_available` 不再檢查 `credentials.json`，只看 env vars（operator 必須顯式 export token 才算 opt-in；但這跟 `feedback_oauth_env_pinning_long_batch.md` 規範的「長 batch 不要 pin env」矛盾）
+- (c) **翻 `DEFAULT_AUTH["default"]` 為 `"api"`**，operator 在 `.env` 顯式設 `AUTH_<AGENT>=subscription_preferred` 才走訂閱（採用）
+
+**為什麼 (c)**：
+- 跟 Codex audit §4「default should not silently spend money when operator thought they were using Max」對稱 — default 也不該 silently 消耗 Max quota when operator didn't opt in
+- Operator 明確 opt-in 比 silent default 更可審計
+- 不需要在測試層 mock pollution
+- `NAKAMA_REQUIRE_MAX_PLAN=1` hard-lock 仍然 work（textbook ingest / sandcastle 不受影響）
+- Per-agent opt-in 顆粒度照 ADR vocabulary 已經支援
+
+**未動**：
+- `subscription_preferred` / `subscription_required` 三元 vocabulary 本身保留
+- Soft-downgrade / hard-raise 語意保留
+- Hard-lock 映射保留
+
+如果 Phase 2 證明大部分 agent 都該走訂閱，可以再翻回 `subscription_preferred` 並加 conftest mock。但 Phase 1 採保守 default。
 
 ## Considered Options
 
