@@ -16,9 +16,7 @@ from fastapi.responses import FileResponse
 
 router = APIRouter()
 
-_PAGE_PATH = (
-    Path(__file__).resolve().parent.parent / "static" / "progress" / "index.html"
-)
+_PAGE_PATH = Path(__file__).resolve().parent.parent / "static" / "progress" / "index.html"
 
 
 @router.get("/progress", include_in_schema=False)
