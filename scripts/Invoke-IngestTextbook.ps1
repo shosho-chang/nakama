@@ -18,7 +18,8 @@
       - bse   -- Biochemistry for Sport and Exercise (MacLaren), 11 chapters
       - sn    -- Sport Nutrition (Jeukendrup) 4E, 17 chapters
       - acsm  -- ACSM's Guidelines for Exercise Testing and Prescription (12e), 12 chapters
-      - all   -- bse,sn,acsm (default)
+      - mep   -- Muscle and Exercise Physiology (Zoladz), 25 chapters
+      - all   -- bse,sn,acsm,mep (default)
 
 .PARAMETER DryRun
     Run walker + classifier only, no LLM calls, no vault writes.
@@ -54,12 +55,21 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('bse', 'sn', 'acsm', 'all')]
+    [ValidateSet('bse', 'sn', 'acsm', 'mep', 'all')]
     [string]$Book = 'all',
 
     [switch]$DryRun,
 
     [int]$MaxChapters = 0,
+
+    # Skip chapters with real-index < this. Use with -MaxChapters to re-run a
+    # contiguous slice (e.g. -StartChapter 8 -MaxChapters 3 reruns ch8-10 only).
+    [int]$StartChapter = 0,
+
+    # Comma-separated real-indexes to keep; other chapters skipped. Useful for
+    # re-running a non-contiguous set of failed chapters without re-billing the
+    # successful ones (e.g. -OnlyChapters '8,10,20,21,22,23,24,25').
+    [string]$OnlyChapters = '',
 
     [string]$VaultPath = 'E:\Shosho LifeOS'
 )
@@ -83,16 +93,20 @@ if (-not $OAuth) {
 
 $ExpiresAt = $Creds.claudeAiOauth.expiresAt
 if ($ExpiresAt) {
-    # JS epoch in ms.
-    $ExpiryDate = (Get-Date '1970-01-01').AddMilliseconds([double]$ExpiresAt)
-    $HoursLeft = ($ExpiryDate - (Get-Date)).TotalHours
+    # JS epoch in ms. expiresAt is UTC; previous version mixed
+    # (Get-Date '1970-01-01') [Kind=Unspecified] with (Get-Date) [Kind=Local]
+    # so on non-UTC machines (e.g. Taipei UTC+8) HoursLeft was off by the
+    # local offset and tokens with 1h real life were reported as expired 7h ago.
+    # Compare in UTC on both sides.
+    $ExpiryUtc = [DateTimeOffset]::FromUnixTimeMilliseconds([long]$ExpiresAt).UtcDateTime
+    $HoursLeft = ($ExpiryUtc - [DateTime]::UtcNow).TotalHours
     if ($HoursLeft -lt 0) {
-        throw "OAuth token already expired (at $($ExpiryDate.ToString('u'))). Refresh with 'claude /login' before running."
+        throw "OAuth token already expired (at $($ExpiryUtc.ToString('u'))). Refresh with 'claude /login' before running."
     }
     if ($HoursLeft -lt 1) {
         Write-Host ("WARNING: OAuth token expires in {0:N1} hour(s) -- refresh soon with 'claude /login'." -f $HoursLeft) -ForegroundColor Yellow
     }
-    Write-Host ("OAuth token: ...{0} (expires {1:yyyy-MM-dd HH:mm}, {2:N1} hours left)" -f $OAuth.Substring($OAuth.Length - 8), $ExpiryDate, $HoursLeft) -ForegroundColor DarkGray
+    Write-Host ("OAuth token: ...{0} (expires {1:yyyy-MM-dd HH:mmZ}, {2:N1} hours left)" -f $OAuth.Substring($OAuth.Length - 8), $ExpiryUtc, $HoursLeft) -ForegroundColor DarkGray
 }
 
 $SubType = $Creds.claudeAiOauth.subscriptionType
@@ -131,13 +145,15 @@ if (-not (Test-Path $VenvPython)) {
 
 # --- 5. Build python args --------------------------------------------------
 $BooksArg = switch ($Book) {
-    'all' { 'bse,sn,acsm' }
+    'all' { 'bse,sn,acsm,mep' }
     default { $Book }
 }
 
 $pyArgs = @('-m', 'scripts.run_s8_batch', '--books', $BooksArg)
-if ($DryRun)            { $pyArgs += '--dry-run' }
-if ($MaxChapters -gt 0) { $pyArgs += @('--max-chapters', $MaxChapters) }
+if ($DryRun)             { $pyArgs += '--dry-run' }
+if ($StartChapter -gt 0) { $pyArgs += @('--start-chapter', $StartChapter) }
+if ($OnlyChapters)       { $pyArgs += @('--only-chapters', $OnlyChapters) }
+if ($MaxChapters -gt 0)  { $pyArgs += @('--max-chapters', $MaxChapters) }
 
 Write-Host ""
 Write-Host "Launching: python $($pyArgs -join ' ')" -ForegroundColor Cyan

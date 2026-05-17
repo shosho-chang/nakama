@@ -357,6 +357,32 @@ def test_no_figures_when_none_present(tmp_path):
     assert payloads[0].figures == []
 
 
+def test_duplicate_figure_refs_collapsed_by_vault_path(tmp_path):
+    """EPUBs that reuse the same inline glyph 100+ times must dedupe — otherwise
+    the LLM prompt enumerates all 428 refs and overruns the output budget.
+    Regression: MEP ch10 was 428 refs / 34 unique paths.
+    """
+    raw = (
+        _FRONTMATTER
+        + """
+# Chapter 1 — Equation Garden
+
+![glyph](Attachments/Books/bk/si1.png) integrated over ![glyph](Attachments/Books/bk/si1.png)
+equals ![glyph](Attachments/Books/bk/si2.png) times ![glyph](Attachments/Books/bk/si1.png).
+
+![photo](Attachments/Books/bk/fig1.png)
+"""
+    )
+    p = _write_raw(raw, tmp_path)
+    figs = walk_book_to_chapters(p)[0].figures
+    assert len(figs) == 3  # si1, si2, fig1 — not 5
+    assert [f.vault_path for f in figs] == [
+        "Attachments/Books/bk/si1.png",
+        "Attachments/Books/bk/si2.png",
+        "Attachments/Books/bk/fig1.png",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Table detection
 # ---------------------------------------------------------------------------
@@ -400,6 +426,75 @@ def test_no_chapters_returns_empty_list(tmp_path):
     p = _write_raw(_RAW_NO_CHAPTERS, tmp_path)
     result = walk_book_to_chapters(p)
     assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Detached "Chapter N" caption preceding bare H1 (Elsevier/Saunders style —
+# Muscle and Exercise Physiology, Zoladz, 2018)
+# ---------------------------------------------------------------------------
+
+
+_RAW_DETACHED_LABEL = (
+    _FRONTMATTER
+    + """
+# Preface
+
+Some prose.
+
+Chapter 1
+
+# Human Body Composition and Muscle Mass
+
+## 1.1 Introduction
+
+Body composition matters for performance.
+
+Chapter 2
+
+# Functional Morphology of Striated Muscle
+
+## 2.1 Overview
+
+Myofibrils contain sarcomeres.
+"""
+)
+
+
+def test_detached_chapter_label_synthesizes_numeric_prefix(tmp_path):
+    """`Chapter N` line above a bare H1 should make prefix-mode catch the chapter."""
+    p = _write_raw(_RAW_DETACHED_LABEL, tmp_path)
+    payloads = walk_book_to_chapters(p)
+    # Preface has no preceding `Chapter N`, so prefix-mode drops it.
+    assert [pl.chapter_index for pl in payloads] == [1, 2]
+    assert payloads[0].chapter_title == "1 Human Body Composition and Muscle Mass"
+    assert payloads[1].chapter_title == "2 Functional Morphology of Striated Muscle"
+
+
+def test_detached_label_does_not_alter_verbatim_body(tmp_path):
+    """Synthesized title prefix must not leak into the verbatim_body slice."""
+    p = _write_raw(_RAW_DETACHED_LABEL, tmp_path)
+    payloads = walk_book_to_chapters(p)
+    # The body still starts with the original bare H1 — no synthetic prefix.
+    assert payloads[0].verbatim_body.startswith("# Human Body Composition and Muscle Mass")
+    assert "# 1 Human Body Composition" not in payloads[0].verbatim_body
+
+
+def test_existing_numeric_prefix_not_doubled(tmp_path):
+    """If H1 already starts with `<digit> Title`, the label lookback should be a no-op."""
+    raw = (
+        _FRONTMATTER
+        + """
+Chapter 1
+
+# 1 Energy Sources
+
+Body text.
+"""
+    )
+    p = _write_raw(raw, tmp_path)
+    payloads = walk_book_to_chapters(p)
+    assert len(payloads) == 1
+    assert payloads[0].chapter_title == "1 Energy Sources"  # not "1 1 Energy Sources"
 
 
 # ---------------------------------------------------------------------------
