@@ -61,33 +61,72 @@ body.sho { min-height: 100vh; }
   color: var(--sho-muted);
 }
 
-/* ── theme toggle (mono pill, system → light → dark cycle) ──────────── */
+/* ── theme switch — binary slider (light ⇄ dark, thumb glides) ──────── */
 
-.theme-toggle {
+.theme-switch {
+  --switch-w: 56px;
+  --switch-h: 22px;
+  --switch-pad: 2px;
+  --thumb-d: calc(var(--switch-h) - var(--switch-pad) * 2);
+
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  font-family: var(--sho-font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--sho-muted);
+  width: var(--switch-w);
+  height: var(--switch-h);
+  padding: 0;
   background: transparent;
+  border: 0;
+  cursor: pointer;
+  border-radius: var(--sho-r-pill);
+}
+.theme-switch:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+.theme-switch-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--sho-bg-3);
   border: 1px solid var(--sho-line-2);
   border-radius: var(--sho-r-pill);
-  cursor: pointer;
-  transition: color var(--sho-t-fast) var(--sho-ease),
+  transition: background var(--sho-t-fast) var(--sho-ease),
               border-color var(--sho-t-fast) var(--sho-ease);
 }
-.theme-toggle:hover { color: var(--sho-accent); border-color: var(--sho-accent-line); }
-.theme-toggle:focus-visible { outline: none; box-shadow: var(--sho-focus); }
-.theme-toggle-sep { opacity: 0.5; }
+.theme-switch:hover .theme-switch-track { border-color: var(--sho-accent-line); }
 
-.theme-toggle[data-mode="light"] .theme-toggle-light,
-.theme-toggle[data-mode="dark"]  .theme-toggle-dark {
-  color: var(--sho-text);
+.theme-switch-label {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--sho-muted);
+  pointer-events: none;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+.theme-switch-label-light { left: 7px; }
+.theme-switch-label-dark  { right: 7px; }
+
+.theme-switch[data-mode="light"] .theme-switch-label-light,
+.theme-switch[data-mode="dark"]  .theme-switch-label-dark {
+  color: var(--sho-bg);
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: var(--switch-pad);
+  left: var(--switch-pad);
+  width: var(--thumb-d);
+  height: var(--thumb-d);
+  background: var(--sho-accent);
+  border-radius: 50%;
+  transition: transform var(--sho-t-base) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+.theme-switch[data-mode="dark"] .theme-switch-thumb {
+  transform: translateX(calc(var(--switch-w) - var(--thumb-d) - var(--switch-pad) * 2));
 }
 
 .header-body {
@@ -334,10 +373,13 @@ table.matrix td .cell-note {
 }
 
 .page-footer .footer-bolt {
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  transform: rotate(-12deg);
+  /* 99/1 stamp: bigger + angled enough to read at a glance.
+     Claude Design strategy.jsx watermark default = -12deg @ 48px;
+     at this footer scale (~18px) we need a steeper tilt to remain legible. */
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  transform: rotate(-25deg);
   transform-origin: center;
 }
 

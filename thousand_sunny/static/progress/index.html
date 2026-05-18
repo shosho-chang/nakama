@@ -32,11 +32,13 @@
       <div class="header-meta">
         <span class="sho-mono sho-mono-up">v · partner readiness</span>
         <span class="sho-mono">2026-05-18</span>
-        <button type="button" id="theme-toggle" class="theme-toggle sho-mono sho-mono-up"
-                aria-label="切換明暗主題" aria-pressed="false">
-          <span class="theme-toggle-light">light</span>
-          <span class="theme-toggle-sep">·</span>
-          <span class="theme-toggle-dark">dark</span>
+        <button type="button" id="theme-toggle" class="theme-switch"
+                role="switch" aria-label="切換明暗主題" aria-checked="false">
+          <span class="theme-switch-track" aria-hidden="true">
+            <span class="theme-switch-label theme-switch-label-light">L</span>
+            <span class="theme-switch-label theme-switch-label-dark">D</span>
+            <span class="theme-switch-thumb"></span>
+          </span>
         </button>
       </div>
     </div>
@@ -384,30 +386,38 @@
 </main>
 
 <script>
-  // Theme toggle — three states: system (default) / light / dark.
-  // Click cycles: system → light → dark → system. Persist in localStorage.
+  // Theme switch — binary light/dark with a sliding thumb.
+  // First load: inherit prefers-color-scheme (system) until user interacts.
+  // After click: locked to chosen mode, persisted in localStorage.
   (function () {
     const KEY = 'sho-theme';
     const btn = document.getElementById('theme-toggle');
     const body = document.body;
+    if (!btn || !body) return;
 
-    function apply(mode) {
-      if (mode === 'light' || mode === 'dark') {
-        body.dataset.theme = mode;
-      } else {
-        delete body.dataset.theme;
-      }
-      btn.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
-      btn.dataset.mode = mode || 'system';
+    function read() {
+      try { return localStorage.getItem(KEY); } catch (_) { return null; }
+    }
+    function write(v) {
+      try { localStorage.setItem(KEY, v); } catch (_) { /* private mode — accept loss */ }
+    }
+    function systemDark() {
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
 
-    const saved = localStorage.getItem(KEY) || 'system';
-    apply(saved);
+    function apply(mode) {
+      body.dataset.theme = mode;
+      const isDark = mode === 'dark';
+      btn.setAttribute('aria-checked', isDark ? 'true' : 'false');
+      btn.dataset.mode = mode;
+    }
+
+    const saved = read();
+    apply(saved === 'dark' || saved === 'light' ? saved : (systemDark() ? 'dark' : 'light'));
 
     btn.addEventListener('click', () => {
-      const cur = localStorage.getItem(KEY) || 'system';
-      const next = cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system';
-      localStorage.setItem(KEY, next);
+      const next = btn.dataset.mode === 'dark' ? 'light' : 'dark';
+      write(next);
       apply(next);
     });
   })();
