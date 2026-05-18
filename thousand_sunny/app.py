@@ -28,6 +28,7 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge_zoro,
     brook,
     franky,
+    progress,
     projects,
     promotion_review,
     repurpose,
@@ -80,6 +81,11 @@ app.include_router(repurpose.page_router)
 # DISABLE_ROBIN or any other feature flag (ADR-007 §2).
 app.include_router(franky.router)
 app.include_router(franky.page_router)
+
+# Partner-facing /progress is public (no auth) — readiness summary for
+# external partners. Mirrors the /healthz precedent of breaking the
+# all-authenticated pattern for a deliberately public surface.
+app.include_router(progress.router)
 
 # /static must mount unconditionally — /projects/{slug} (issue #458) ships with
 # Robin disabled (VPS) too, and pulls /static/projects/{tokens,review}.css/js.
