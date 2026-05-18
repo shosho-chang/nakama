@@ -22,19 +22,22 @@
 
   <header class="page-header">
     <div class="header-top">
-      <a href="#" class="sho-logo-mark logo">
+      <a href="https://shosho.tw" class="sho-logo-mark logo" rel="noopener">
         <img src="/static/shosho/brand/logo_1.png" alt="" aria-hidden="true">
         <span class="logo-text">
           <span class="logo-zh">張修修</span>
           <span class="sho-mono sho-mono-up">shosho.tw</span>
         </span>
-        <span class="sho-bolt logo-bolt" aria-hidden="true">
-          <svg><use href="#sho-bolt-shape"/></svg>
-        </span>
       </a>
       <div class="header-meta">
         <span class="sho-mono sho-mono-up">v · partner readiness</span>
         <span class="sho-mono">2026-05-18</span>
+        <button type="button" id="theme-toggle" class="theme-toggle sho-mono sho-mono-up"
+                aria-label="切換明暗主題" aria-pressed="false">
+          <span class="theme-toggle-light">light</span>
+          <span class="theme-toggle-sep">·</span>
+          <span class="theme-toggle-dark">dark</span>
+        </button>
       </div>
     </div>
 
@@ -366,7 +369,7 @@
 
   <footer class="page-footer">
     <span class="sho-mono">
-      <span class="sho-bolt" aria-hidden="true">
+      <span class="sho-bolt footer-bolt" aria-hidden="true">
         <svg><use href="#sho-bolt-shape"/></svg>
       </span>
       研究編號 N°0598 · nakama · multi-agent OS for a single creator
@@ -379,5 +382,36 @@
   </footer>
 
 </main>
+
+<script>
+  // Theme toggle — three states: system (default) / light / dark.
+  // Click cycles: system → light → dark → system. Persist in localStorage.
+  (function () {
+    const KEY = 'sho-theme';
+    const btn = document.getElementById('theme-toggle');
+    const body = document.body;
+
+    function apply(mode) {
+      if (mode === 'light' || mode === 'dark') {
+        body.dataset.theme = mode;
+      } else {
+        delete body.dataset.theme;
+      }
+      btn.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
+      btn.dataset.mode = mode || 'system';
+    }
+
+    const saved = localStorage.getItem(KEY) || 'system';
+    apply(saved);
+
+    btn.addEventListener('click', () => {
+      const cur = localStorage.getItem(KEY) || 'system';
+      const next = cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system';
+      localStorage.setItem(KEY, next);
+      apply(next);
+    });
+  })();
+</script>
+
 </body>
 </html>
