@@ -32,9 +32,12 @@ _RE_H2 = re.compile(r"^## (.+)$")
 _RE_CHAPTER_PREFIX = re.compile(r"^(\d+)\s+(.+)$")
 # Elsevier/Saunders-style EPUBs (e.g. Muscle and Exercise Physiology, Zoladz)
 # render chapter numbers as a standalone caption line just above the H1
-# title — `Chapter 1\n\n# Human Body Composition`. Detect it so the walker
-# can synthesize the numeric prefix the prefix-mode detector needs.
-_RE_CHAPTER_LABEL = re.compile(r"^Chapter\s+(\d+)\s*$", re.IGNORECASE)
+# title — `Chapter 1\n\n# Human Body Composition`. Some ACSM titles (e.g.
+# Benardot's Nutrition for Exercise Science) instead split each chapter into
+# two adjacent H1s — `# CHAPTER 1\n\n# The Bottom Line — Guiding…`. Match
+# either shape so the walker can synthesize the numeric prefix the prefix-mode
+# detector needs. ``#?\s*`` makes the leading ``#`` optional.
+_RE_CHAPTER_LABEL = re.compile(r"^#?\s*Chapter\s+(\d+)\s*$", re.IGNORECASE)
 _RE_FIGURE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _RE_TABLE_ROW = re.compile(r"^\|")
 _RE_BOLD_CAPTION = re.compile(r"^\*\*(.+)\*\*$")
@@ -263,6 +266,11 @@ def _split_into_chapters(body: str) -> list[tuple[str, str]]:
 def _find_chapter_label(lines: list[str], h1_line_idx: int) -> str | None:
     """Look back up to 5 non-blank lines for a ``Chapter N`` standalone label.
 
+    Stops as soon as it crosses any other H1 — the label must belong to the
+    current H1, not the previous chapter's. Without this guard the lookback
+    walks past the previous title H1 and synthesizes that chapter's
+    ``CHAPTER N`` label onto the current H1 (Benardot ch2+ regression).
+
     Returns the number string (e.g. ``"1"``) or ``None`` if no label found.
     """
     j = h1_line_idx - 1
@@ -278,6 +286,11 @@ def _find_chapter_label(lines: list[str], h1_line_idx: int) -> str | None:
         m = _RE_CHAPTER_LABEL.match(prev)
         if m:
             return m.group(1)
+        # If we hit a different H1 (not a ``# Chapter N`` label) before finding
+        # the label, this H1 has no label — anything further back belongs to a
+        # different chapter.
+        if _RE_H1.match(prev):
+            return None
         j -= 1
     return None
 

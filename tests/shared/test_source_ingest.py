@@ -497,6 +497,46 @@ Body text.
     assert payloads[0].chapter_title == "1 Energy Sources"  # not "1 1 Energy Sources"
 
 
+def test_h1_form_chapter_label_recognized(tmp_path):
+    """ACSM Nutrition for Exercise Science (Benardot) renders chapter labels as
+    their own H1 — `# CHAPTER 1\\n\\n# The Bottom Line — …`. The walker must
+    treat the orphan `# CHAPTER N` H1 as a label for the next H1, synthesize
+    the numeric prefix on the real title, and drop the orphan in prefix-mode.
+    """
+    raw = (
+        _FRONTMATTER
+        + """
+# Preface
+
+Some prose.
+
+# CHAPTER 1
+
+# The Bottom Line — Guiding Nutrition Principles for the Athlete
+
+## 1.1 Introduction
+
+Body text.
+
+# CHAPTER 2
+
+# Carbohydrates
+
+## 2.1 Overview
+
+More body text.
+"""
+    )
+    p = _write_raw(raw, tmp_path)
+    payloads = walk_book_to_chapters(p)
+    # Preface and both orphan `CHAPTER N` H1s are dropped by prefix-mode.
+    assert [pl.chapter_index for pl in payloads] == [1, 2]
+    assert payloads[0].chapter_title == (
+        "1 The Bottom Line — Guiding Nutrition Principles for the Athlete"
+    )
+    assert payloads[1].chapter_title == "2 Carbohydrates"
+
+
 # ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------
