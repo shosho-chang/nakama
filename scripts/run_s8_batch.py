@@ -90,6 +90,7 @@ EXPECTED_REAL_CHAPTERS = {
     "sport-nutrition-jeukendrup-4e": 17,
     "acsm-guidelines-exercise-testing-prescription": 12,
     "muscle-and-exercise-physiology-zoladz": 25,
+    "acsm-nutrition-for-exercise-science-benardot": 15,
 }
 
 # Book registry.
@@ -113,6 +114,11 @@ BOOKS = {
         "book_id": "muscle-and-exercise-physiology-zoladz",
         "book_title": "Muscle and Exercise Physiology (Zoladz)",
         "raw_rel": "KB/Raw/Books/muscle-and-exercise-physiology-zoladz.md",
+    },
+    "benardot": {
+        "book_id": "acsm-nutrition-for-exercise-science-benardot",
+        "book_title": "ACSM's Nutrition for Exercise Science (Benardot, 2e)",
+        "raw_rel": "KB/Raw/Books/acsm-nutrition-for-exercise-science-benardot.md",
     },
 }
 
