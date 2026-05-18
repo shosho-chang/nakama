@@ -4,6 +4,8 @@ description: 2026-04-23 Phase 1 Wave 2 Brook Mac lane 主線 merged；topic → 
 type: project
 tags: [brook, phase-1, wave-2, adr-005a, adr-006, pr-78]
 originSessionId: 23d6fe90-ddb9-4038-946e-a916801421f8
+status: superseded
+superseded_by: ADR-027 (2026-05-17) — compose pipeline retired; compose.py deleted in PR #586
 ---
 ## PR #78 合併紀錄
 
