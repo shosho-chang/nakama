@@ -19,6 +19,9 @@ router = APIRouter()
 _PAGE_PATH = Path(__file__).resolve().parent.parent / "static" / "progress" / "index.html"
 
 
-@router.get("/progress", include_in_schema=False)
+@router.api_route("/progress", methods=["GET", "HEAD"], include_in_schema=False)
 async def progress_page() -> FileResponse:
+    # HEAD requests still hit this handler — FastAPI/Starlette drop the body
+    # automatically. Cloudflare uptime probes and partner monitoring tools
+    # commonly use HEAD, so 405 from a GET-only route would generate noise.
     return FileResponse(str(_PAGE_PATH), media_type="text/html; charset=utf-8")
