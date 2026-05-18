@@ -1342,9 +1342,18 @@ def compute_acceptance_7(
             reasons.append(f"C4: {len(c4_live)} live slug(s) modified by this batch: {c4_live[:5]}")
 
     # --- C5 — zero placeholder stubs in concept pages ------------------------
+    # Scoped to slugs in *this* chapter's dispatch_log. Without the filter, a
+    # batch run accumulates earlier chapters' stubs in the staging directory
+    # and falsely fails every subsequent chapter — order-dependent (later
+    # chapters fail not for what they produced but for what the directory
+    # carries). The gate is an authoring check; each chapter owns the stubs
+    # it produced, not the ones inherited from siblings.
     c5_hits: list[tuple[str, str]] = []
-    if staging_concepts_dir.exists():
+    dispatched_slugs = {e.get("slug") for e in dispatch_log if e.get("slug")}
+    if staging_concepts_dir.exists() and dispatched_slugs:
         for page in staging_concepts_dir.glob("*.md"):
+            if page.stem not in dispatched_slugs:
+                continue
             text = page.read_text(encoding="utf-8", errors="replace")
             for pat in _PLACEHOLDER_PATTERNS_GATE:
                 if pat in text:
