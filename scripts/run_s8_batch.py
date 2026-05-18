@@ -47,6 +47,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+# Force UTF-8 stdout/stderr so Chinese log lines / argparse help don't crash on
+# Windows cp1252. See memory/claude/feedback_windows_stdout_utf8.md — relying on
+# PYTHONIOENCODING env var fails when the wrapper is invoked from a non-PowerShell
+# shell (e.g. bash interprets `$env:PYTHONIOENCODING=utf-8` as a command, not assignment).
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 # Path bootstrap so `python scripts/run_s8_batch.py` works without -m
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -91,6 +99,7 @@ EXPECTED_REAL_CHAPTERS = {
     "acsm-guidelines-exercise-testing-prescription": 12,
     "muscle-and-exercise-physiology-zoladz": 25,
     "acsm-nutrition-for-exercise-science-benardot": 15,
+    "acsm-clinical-exercise-physiology-thompson": 34,
 }
 
 # Book registry.
@@ -119,6 +128,11 @@ BOOKS = {
         "book_id": "acsm-nutrition-for-exercise-science-benardot",
         "book_title": "ACSM's Nutrition for Exercise Science (Benardot, 2e)",
         "raw_rel": "KB/Raw/Books/acsm-nutrition-for-exercise-science-benardot.md",
+    },
+    "thompson": {
+        "book_id": "acsm-clinical-exercise-physiology-thompson",
+        "book_title": "ACSM's Clinical Exercise Physiology (Thompson)",
+        "raw_rel": "KB/Raw/Books/acsm-clinical-exercise-physiology-thompson.md",
     },
 }
 
