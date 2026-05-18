@@ -464,7 +464,7 @@ def test_c5_no_placeholders_fail(tmp_path: Path) -> None:
     page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
     acc = compute_acceptance_7(
         source_page_path=page,
-        dispatch_log=[],
+        dispatch_log=[{"slug": "stub", "term": "Stub", "level": "L2", "action": "create"}],
         staging_concepts_dir=staging,
         live_concepts_dir=live,
     )
@@ -521,12 +521,48 @@ def test_c5_fails_missing_definition_section(tmp_path: Path) -> None:
     page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
     acc = compute_acceptance_7(
         source_page_path=page,
-        dispatch_log=[],
+        dispatch_log=[{"slug": "stub", "term": "Stub", "level": "L2", "action": "create"}],
         staging_concepts_dir=staging,
         live_concepts_dir=live,
     )
     assert acc.c5_no_placeholders_ok is False
     assert ("stub", "missing ## Definition") in acc.c5_placeholder_hits
+
+
+def test_c5_ignores_stubs_dispatched_by_earlier_chapters(tmp_path: Path) -> None:
+    """C5 must only flag stubs dispatched by *this* chapter, not the whole staging dir.
+
+    Regression: 2026-05-17 Benardot batch — ch2/3/4 passed (their dispatched
+    pages were clean), then ch5 produced 2 stubs (cobalamin / pernicious
+    anemia). C5 globbed the entire staging directory, so every subsequent
+    chapter (ch6 .. ch15) failed for stubs inherited from earlier chapters —
+    e.g. ch15 produced 1 own-stub but was failed for 12 hits (11 carried
+    forward). Order-dependent, false-attribution. Filter by dispatch_log so
+    each chapter owns only the stubs it dispatched.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    # Earlier chapter's stub — lingers in staging across the batch.
+    (staging / "cobalamin.md").write_text(
+        "# Cobalamin\n\nWill be enriched in phase-b-reconciliation.", encoding="utf-8"
+    )
+    # This chapter's clean dispatch.
+    (staging / "atp.md").write_text(_valid_concept_page(), encoding="utf-8")
+    live = tmp_path / "live"
+    live.mkdir()
+    page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
+    # This chapter dispatched only "atp"; "cobalamin" belongs to an earlier chapter.
+    acc = compute_acceptance_7(
+        source_page_path=page,
+        dispatch_log=[{"slug": "atp", "term": "ATP", "level": "L2", "action": "create"}],
+        staging_concepts_dir=staging,
+        live_concepts_dir=live,
+    )
+    assert acc.c5_no_placeholders_ok is True, (
+        f"C5 should ignore cobalamin (dispatched by earlier chapter), "
+        f"got hits={acc.c5_placeholder_hits}"
+    )
+    assert acc.c5_placeholder_hits == []
 
 
 def test_c5_fails_definition_with_embedded_markdown_headings(tmp_path: Path) -> None:
@@ -543,7 +579,7 @@ def test_c5_fails_definition_with_embedded_markdown_headings(tmp_path: Path) -> 
     page = _make_source_page(tmp_path, fm_wikilinks=[], body_wikilinks=[])
     acc = compute_acceptance_7(
         source_page_path=page,
-        dispatch_log=[],
+        dispatch_log=[{"slug": "bad-definition", "term": "Bad", "level": "L2", "action": "create"}],
         staging_concepts_dir=staging,
         live_concepts_dir=live,
     )
