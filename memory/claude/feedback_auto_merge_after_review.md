@@ -18,6 +18,8 @@ User 明確 standing authorization 2026-05-10：
 **How to apply**:
 
 - 任何 PR 我或 sandcastle 寫的 → 跑 `code-review` skill（或同等深度 review）→ 過 ≥80 score 的 issue 全修 → 再 review 確認 → CI 全綠 → **直接 `gh pr merge --squash --delete-branch`**，inline 報告即可，不要問
+- **DoD（Definition of Done）= PR merged，不是 PR opened**。寫完 code、開了 PR、貼了 P7-COMPLETION 都**不算完工**。回給 user「做好了」「完工」「PR 已開」之前必須先跑 review→修→merge 流程。違反這條的最近一次是 2026-05-18 PR #595（progress page），user 第三次明確要求才執行
+- 沒有「請 user review」這個選項。修修不做 review，這是 standing rule，不是 case-by-case 詢問
 - 例外（仍要問）：
   - PR 觸碰 production data / shared infra / 外部使用者可見功能 / 跨 agent 資料 schema 破壞性變更
   - Review 發現 ≥80 score 的 issue **無法自動修**（需人類判斷或設計討論）
