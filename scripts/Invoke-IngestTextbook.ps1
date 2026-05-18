@@ -15,11 +15,12 @@
 
 .PARAMETER Book
     Which book to ingest:
-      - bse   -- Biochemistry for Sport and Exercise (MacLaren), 11 chapters
-      - sn    -- Sport Nutrition (Jeukendrup) 4E, 17 chapters
-      - acsm  -- ACSM's Guidelines for Exercise Testing and Prescription (12e), 12 chapters
-      - mep   -- Muscle and Exercise Physiology (Zoladz), 25 chapters
-      - all   -- bse,sn,acsm,mep (default)
+      - bse      -- Biochemistry for Sport and Exercise (MacLaren), 11 chapters
+      - sn       -- Sport Nutrition (Jeukendrup) 4E, 17 chapters
+      - acsm     -- ACSM's Guidelines for Exercise Testing and Prescription (12e), 12 chapters
+      - mep      -- Muscle and Exercise Physiology (Zoladz), 25 chapters
+      - benardot -- ACSM's Nutrition for Exercise Science (Benardot, 2e), 15 chapters
+      - all      -- bse,sn,acsm,mep,benardot (default)
 
 .PARAMETER DryRun
     Run walker + classifier only, no LLM calls, no vault writes.
@@ -55,7 +56,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('bse', 'sn', 'acsm', 'mep', 'all')]
+    [ValidateSet('bse', 'sn', 'acsm', 'mep', 'benardot', 'all')]
     [string]$Book = 'all',
 
     [switch]$DryRun,
@@ -145,7 +146,7 @@ if (-not (Test-Path $VenvPython)) {
 
 # --- 5. Build python args --------------------------------------------------
 $BooksArg = switch ($Book) {
-    'all' { 'bse,sn,acsm,mep' }
+    'all' { 'bse,sn,acsm,mep,benardot' }
     default { $Book }
 }
 
