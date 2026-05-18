@@ -54,17 +54,40 @@ body.sho { min-height: 100vh; }
   color: var(--sho-text);
 }
 
-.logo-bolt {
-  width: 18px;
-  height: 18px;
-  margin-left: 2px;
-}
-
 .header-meta {
   display: inline-flex;
   gap: var(--sho-s-5);
   align-items: center;
   color: var(--sho-muted);
+}
+
+/* ── theme toggle (mono pill, system → light → dark cycle) ──────────── */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-pill);
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+.theme-toggle:hover { color: var(--sho-accent); border-color: var(--sho-accent-line); }
+.theme-toggle:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.theme-toggle-sep { opacity: 0.5; }
+
+.theme-toggle[data-mode="light"] .theme-toggle-light,
+.theme-toggle[data-mode="dark"]  .theme-toggle-dark {
+  color: var(--sho-text);
+  font-weight: 600;
 }
 
 .header-body {
@@ -310,9 +333,12 @@ table.matrix td .cell-note {
   text-transform: uppercase;
 }
 
-.page-footer .sho-bolt {
+.page-footer .footer-bolt {
   width: 14px;
   height: 14px;
+  display: inline-flex;
+  transform: rotate(-12deg);
+  transform-origin: center;
 }
 
 /* ── responsive ─────────────────────────────────────────────────────── */
