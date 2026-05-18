@@ -1,0 +1,217 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Shosho CI · Web tokens (室內音量版)
+   Source of truth: Claude Design handoff bundle "shosho-website-new-design",
+   tokens.jsx → vanilla CSS translation (no React/Babel runtime).
+
+   Design DNA:
+   - 5 strategies: orange = line/dot/char (not block), bolt = stamp (not
+     wallpaper), decorative wordmark = signage only, engineer density not
+     YouTuber whitespace, motion ≤200ms.
+   - Single accent: PANTONE 165 PC orange #e98965 (~oklch(0.71 0.135 41)).
+   - Type: Geist + Noto Sans TC + Geist Mono. (CSP-safe loaded via Google.)
+   - 任何畫面橘色像素 ≤ 4%.
+
+   Token namespace: `--sho-*`. Coexists with legacy `--brk-*` (Brook
+   review-mode) — surfaces opt-in by adding the `.sho` root class.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+
+.sho {
+  /* ── Neutral scale — warm-toned (oklch 80° hue) ─────────────────────── */
+  --sho-bg:      oklch(0.988 0.003 80);
+  --sho-bg-2:    oklch(0.967 0.003 80);
+  --sho-bg-3:    oklch(0.925 0.003 80);   /* Cool Gray 1 PC — brand neutral */
+  --sho-line:    oklch(0.875 0.003 80);
+  --sho-line-2:  oklch(0.820 0.003 80);
+  --sho-muted:   oklch(0.550 0.005 80);
+  --sho-text-2:  oklch(0.360 0.005 80);
+  --sho-text:    oklch(0.200 0.005 80);
+  --sho-ink:     oklch(0.100 0.005 80);
+
+  /* ── Brand orange — PANTONE 165 PC #e98965 ──────────────────────────── */
+  --sho-accent:       oklch(0.71 0.135 41);
+  --sho-accent-2:     oklch(0.66 0.155 38);
+  --sho-accent-soft:  oklch(0.71 0.135 41 / 0.10);
+  --sho-accent-line:  oklch(0.71 0.135 41 / 0.45);
+
+  /* ── Semantic ───────────────────────────────────────────────────────── */
+  --sho-success: oklch(0.58 0.115 150);
+  --sho-warning: oklch(0.72 0.140 75);
+  --sho-error:   oklch(0.58 0.180 28);
+  --sho-info:    oklch(0.62 0.090 235);
+
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  --sho-font-sans: "Geist", "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;
+  --sho-font-zh:   "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;
+  --sho-font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  --sho-ease:   cubic-bezier(0.22, 1, 0.36, 1);
+  --sho-t-fast: 120ms;
+  --sho-t-base: 180ms;
+  --sho-t-slow: 280ms;
+
+  /* ── Spacing (4px grid) + radius ────────────────────────────────────── */
+  --sho-s-1:  4px;  --sho-s-2:  8px;  --sho-s-3: 12px;
+  --sho-s-4: 16px;  --sho-s-5: 24px;  --sho-s-6: 32px;
+  --sho-s-7: 48px;  --sho-s-8: 64px;  --sho-s-9: 96px;
+  --sho-s-10: 128px;
+  --sho-r-1: 4px;  --sho-r-2: 8px;  --sho-r-3: 12px;  --sho-r-pill: 999px;
+
+  /* ── Focus ring — two-step orange on bg ─────────────────────────────── */
+  --sho-focus: 0 0 0 2px var(--sho-bg), 0 0 0 4px var(--sho-accent);
+
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  font-family: var(--sho-font-sans);
+  font-feature-settings: "ss01", "ss02", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── Dark mode — auto via prefers-color-scheme; explicit override via
+      .sho[data-theme="dark"] (for future toggle UI) ───────────────────── */
+@media (prefers-color-scheme: dark) {
+  .sho:not([data-theme="light"]) {
+    --sho-bg:     oklch(0.145 0.005 80);
+    --sho-bg-2:   oklch(0.185 0.005 80);
+    --sho-bg-3:   oklch(0.235 0.005 80);
+    --sho-line:   oklch(0.285 0.005 80);
+    --sho-line-2: oklch(0.355 0.005 80);
+    --sho-muted:  oklch(0.60  0.005 80);
+    --sho-text-2: oklch(0.75  0.005 80);
+    --sho-text:   oklch(0.93  0.005 80);
+    --sho-ink:    oklch(0.985 0.005 80);
+    --sho-accent:      oklch(0.78 0.130 48);
+    --sho-accent-2:    oklch(0.83 0.135 52);
+    --sho-accent-soft: oklch(0.78 0.130 48 / 0.14);
+    --sho-accent-line: oklch(0.78 0.130 48 / 0.50);
+    --sho-logo-filter: invert(1) brightness(1.1);
+    color-scheme: dark;
+  }
+}
+.sho[data-theme="dark"] {
+  --sho-bg:     oklch(0.145 0.005 80);
+  --sho-bg-2:   oklch(0.185 0.005 80);
+  --sho-bg-3:   oklch(0.235 0.005 80);
+  --sho-line:   oklch(0.285 0.005 80);
+  --sho-line-2: oklch(0.355 0.005 80);
+  --sho-muted:  oklch(0.60  0.005 80);
+  --sho-text-2: oklch(0.75  0.005 80);
+  --sho-text:   oklch(0.93  0.005 80);
+  --sho-ink:    oklch(0.985 0.005 80);
+  --sho-accent:      oklch(0.78 0.130 48);
+  --sho-accent-2:    oklch(0.83 0.135 52);
+  --sho-accent-soft: oklch(0.78 0.130 48 / 0.14);
+  --sho-accent-line: oklch(0.78 0.130 48 / 0.50);
+  --sho-logo-filter: invert(1) brightness(1.1);
+  color-scheme: dark;
+}
+
+/* ── Reset (scoped) ─────────────────────────────────────────────────── */
+.sho *, .sho *::before, .sho *::after { box-sizing: border-box; }
+.sho h1, .sho h2, .sho h3, .sho h4, .sho p,
+.sho ul, .sho ol, .sho figure, .sho blockquote { margin: 0; }
+.sho ul, .sho ol { padding: 0; list-style: none; }
+.sho a { color: inherit; text-decoration: none; }
+.sho img { display: block; max-width: 100%; }
+.sho button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+.sho ::selection { background: var(--sho-accent); color: var(--sho-bg); }
+
+/* ── Inline link — body-text default. Black underline → orange on hover. */
+.sho .sho-lk {
+  color: inherit;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 1px;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              background-image var(--sho-t-fast) var(--sho-ease);
+  padding-bottom: 1px;
+}
+.sho .sho-lk:hover {
+  color: var(--sho-accent);
+  background-image: linear-gradient(var(--sho-accent), var(--sho-accent));
+}
+.sho .sho-lk:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: 2px; }
+
+/* ── Mono meta — "indoor voice" carrier ─────────────────────────────── */
+.sho .sho-mono {
+  font-family: var(--sho-font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+  color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+}
+.sho .sho-mono-up {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+/* ── Hairline rule ──────────────────────────────────────────────────── */
+.sho .sho-rule { height: 1px; background: var(--sho-line); border: 0; margin: 0; }
+
+/* ── Bolt mark — 99/1 accent. SVG zigzag, low-key. ──────────────────── */
+.sho .sho-bolt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sho-accent);
+}
+.sho .sho-bolt svg { width: 1em; height: 1em; display: block; }
+
+/* Animated bolt on logo hover */
+@keyframes sho-bolt-jiggle {
+  0%   { transform: translateY(0)    rotate(0); }
+  25%  { transform: translateY(-1px) rotate(-3deg); }
+  55%  { transform: translateY(0)    rotate(3deg); }
+  100% { transform: translateY(0)    rotate(0); }
+}
+.sho .sho-logo-mark:hover .sho-bolt { animation: sho-bolt-jiggle 320ms var(--sho-ease); }
+
+/* ── Kicker — "[ 001 ] section name" mono tag ───────────────────────── */
+.sho .sho-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--sho-muted);
+}
+.sho .sho-kicker-n {
+  padding: 2px 6px;
+  border: 1px solid var(--sho-line-2);
+  border-radius: 4px;
+  color: var(--sho-text-2);
+  font-size: 10.5px;
+  line-height: 1.1;
+}
+
+/* ── Tag — bordered pill, neutral + accent variants ─────────────────── */
+.sho .sho-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--sho-text-2);
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: 4px;
+}
+.sho .sho-tag--accent { color: var(--sho-accent); border-color: var(--sho-accent-line); }
+
+/* ── Reduced motion ─────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .sho { --sho-t-fast: 0ms; --sho-t-base: 0ms; --sho-t-slow: 0ms; }
+  .sho .sho-bolt, .sho .sho-logo-mark:hover .sho-bolt { animation: none; }
+}
