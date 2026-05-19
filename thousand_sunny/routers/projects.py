@@ -1,5 +1,5 @@
 """Projects routes — Brook synthesize server-side store API (ADR-021 §4) +
-the /projects/{slug} review-mode page (issue #458).
+the /brook/projects/{slug} review-mode page (issue #458).
 
 Exposes:
 
@@ -15,8 +15,10 @@ Exposes:
   user_actions without re-running KB retrieval. 404 when the slug has not
   been materialised yet — the API never bootstraps an empty store
   (ADR-021 §4).
-- ``GET /projects/{slug}`` → renders the review-mode page (issue #458).
+- ``GET /brook/projects/{slug}`` → renders the review-mode page (issue #458).
   HMAC cookie auth, 404 when no store, 302 to /login when unauthenticated.
+  Legacy ``/projects/{slug}`` 301 → ``/brook/projects/{slug}`` per
+  /architecture v2 R3 + ADR-021 amendment 2026-05-19.
 """
 
 from __future__ import annotations
@@ -237,20 +239,26 @@ def _evidence_view_model(store: BrookSynthesizeStore) -> list[dict[str, Any]]:
     return cards
 
 
-@page_router.get("/projects/{slug}", response_class=HTMLResponse)
+@page_router.get("/projects/{slug}")
+async def legacy_project_redirect(slug: str):
+    """Legacy URL — 301 → /brook/projects/{slug} per /architecture v2 R3."""
+    return RedirectResponse(f"/brook/projects/{slug}", status_code=301)
+
+
+@page_router.get("/brook/projects/{slug}", response_class=HTMLResponse)
 async def project_review_page(
     request: Request,
     slug: str,
     nakama_auth: str | None = Cookie(None),
 ):
-    """Render the /projects/{slug} review-mode page.
+    """Render the /brook/projects/{slug} review-mode page.
 
     Redirects to /login when the HMAC cookie is missing or invalid (mirrors
     /books/{book_id}). 404 when the BrookSynthesizeStore has not been
     materialised yet — only Brook synthesize #459 creates it.
     """
     if not check_auth(nakama_auth):
-        return RedirectResponse(f"/login?next=/projects/{slug}", status_code=302)
+        return RedirectResponse(f"/login?next=/brook/projects/{slug}", status_code=302)
     _validate_slug(slug)
     if not brook_synthesize_store.exists(slug):
         raise HTTPException(
