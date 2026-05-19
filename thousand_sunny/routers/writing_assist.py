@@ -7,9 +7,10 @@ pointers + question prompts so 修修 can hand-write Stage 4 atomic content.
 
 Routes:
 
-| Method | Path                                  |
-|--------|---------------------------------------|
-| GET    | ``/writing-assist/{source_id_b64}``   |
+| Method | Path                                         |
+|--------|----------------------------------------------|
+| GET    | ``/robin/writing-assist/{source_id_b64}``    |
+| GET    | ``/writing-assist/{source_id_b64}`` (301)    |
 
 ``source_id`` is base64url-encoded (no padding) per the #516 pattern; the
 handler decodes but does NOT parse the ``ebook:`` / ``inbox:`` namespace
@@ -50,7 +51,15 @@ from shared.writing_assist_surface import WritingAssistSurface
 from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.writing_assist")
-router = APIRouter(prefix="/writing-assist")
+router = APIRouter(prefix="/robin/writing-assist")
+legacy_router = APIRouter(prefix="/writing-assist")
+
+
+@legacy_router.get("/{source_id_b64}")
+async def legacy_writing_assist_redirect(source_id_b64: str):
+    """Legacy URL — 301 → /robin/writing-assist/{source_id_b64} per /architecture v2 R2."""
+    return RedirectResponse(f"/robin/writing-assist/{source_id_b64}", status_code=301)
+
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "writing_assist"
 _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
@@ -180,7 +189,9 @@ async def render_scaffold(
     errors surface as 500.
     """
     if not check_auth(nakama_auth):
-        return RedirectResponse(f"/login?next=/writing-assist/{source_id_b64}", status_code=302)
+        return RedirectResponse(
+            f"/login?next=/robin/writing-assist/{source_id_b64}", status_code=302
+        )
     service = get_service()
     source_id = _decode_source_id(source_id_b64)
     try:

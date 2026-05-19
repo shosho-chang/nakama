@@ -143,3 +143,4 @@ app.include_router(promotion_review.router)
 # route NEVER composes prose — only renders scaffold structure; the surface
 # enforces W1-W7 no-ghostwriting invariants.
 app.include_router(writing_assist.router)
+app.include_router(writing_assist.legacy_router)

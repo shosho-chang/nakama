@@ -6,7 +6,7 @@ Brief §5 wiring tests:
 - WT1  Lifespan wires ``promotion_review`` service.
 - WT2  Lifespan wires ``writing_assist`` service.
 - WT3  ``GET /promotion-review/`` returns 200 (not 503) after wiring.
-- WT4  ``GET /writing-assist/{id_b64}`` for missing package → 404 (not 503).
+- WT4  ``GET /robin/writing-assist/{id_b64}`` for missing package → 404 (not 503).
 - WT5  ``DISABLE_ROBIN=1`` skips wiring.
 - WT6  Missing ``VAULT_PATH`` → startup raises.
 - WT7  ``NAKAMA_PROMOTION_MODE=llm`` → startup raises ``RuntimeError``
@@ -139,7 +139,7 @@ def test_wt3_app_get_promotion_review_returns_200_dry_run(
     assert "503" not in r.text
 
 
-# ── WT4 — GET /writing-assist/{id_b64} missing package → 404 (not 503) ──────
+# ── WT4 — GET /robin/writing-assist/{id_b64} missing package → 404 (not 503) ──────
 
 
 def test_wt4_app_get_writing_assist_missing_package_returns_404_not_503(
@@ -150,7 +150,7 @@ def test_wt4_app_get_writing_assist_missing_package_returns_404_not_503(
         # No package persisted at this id; default disk-backed service
         # raises ``KeyError`` which the route maps to 404 via
         # ``_HTTP_BOUNDARY_FAILURES``.
-        r = client.get(f"/writing-assist/{_b64('ebook:does-not-exist')}")
+        r = client.get(f"/robin/writing-assist/{_b64('ebook:does-not-exist')}")
     assert r.status_code == 404, r.text
 
 

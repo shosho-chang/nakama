@@ -3,7 +3,8 @@
 3 tests covering Brief §5 RT1-RT3 + a couple of negative-path sanity
 checks:
 
-- RT1  GET /writing-assist/{id} → 200 with section blocks rendered.
+- RT1  GET /robin/writing-assist/{id} → 200 with section blocks rendered.
+- LR1  GET /writing-assist/{id} → 301 → /robin/writing-assist/{id}.
 - RT2  Response HTML must NOT contain first-person tokens outside excerpt
        blockquotes (W3 enforcement).
 - RT3  Template uses var(--brk-*) tokens; no hardcoded color hex / fontnames.
@@ -126,7 +127,7 @@ def test_rt1_route_renders_scaffold_for_known_source(
     package = _basic_package()
     fake_service.packages[package.source_id] = package
 
-    r = app_client.get(f"/writing-assist/{_b64(package.source_id)}")
+    r = app_client.get(f"/robin/writing-assist/{_b64(package.source_id)}")
     assert r.status_code == 200
     body = r.text
     # Section block heading rendered as <h2>.
@@ -157,7 +158,7 @@ def test_rt2_route_does_not_render_completed_prose(
     package = _basic_package()
     fake_service.packages[package.source_id] = package
 
-    r = app_client.get(f"/writing-assist/{_b64(package.source_id)}")
+    r = app_client.get(f"/robin/writing-assist/{_b64(package.source_id)}")
     assert r.status_code == 200
     body = r.text
 
@@ -256,7 +257,7 @@ def test_rt3_route_uses_design_tokens():
 
 def test_invalid_source_id_b64_returns_400(app_client: TestClient):
     """Sanity: a source_id_b64 that is not valid base64url returns 400."""
-    r = app_client.get("/writing-assist/!!!not-base64!!!")
+    r = app_client.get("/robin/writing-assist/!!!not-base64!!!")
     assert r.status_code == 400
 
 
@@ -267,8 +268,19 @@ def test_unknown_source_returns_404(
     app_client: TestClient, fake_service: _FakeWritingAssistService
 ):
     """A source_id the service doesn't know about → 404 (KeyError mapped)."""
-    r = app_client.get(f"/writing-assist/{_b64('ebook:nonexistent')}")
+    r = app_client.get(f"/robin/writing-assist/{_b64('ebook:nonexistent')}")
     assert r.status_code == 404
+
+
+# ── Legacy redirect — /writing-assist/{id} → 301 → /robin/writing-assist/{id} ──
+
+
+def test_legacy_writing_assist_url_redirects_301_to_robin_prefix(app_client: TestClient):
+    """Renamed `/writing-assist/{id_b64}` 301 → `/robin/writing-assist/{id_b64}` per R2."""
+    encoded = _b64("ebook:any")
+    r = app_client.get(f"/writing-assist/{encoded}")
+    assert r.status_code == 301
+    assert r.headers["location"] == f"/robin/writing-assist/{encoded}"
 
 
 # ── Error envelope renders without crashing ─────────────────────────────────
@@ -286,7 +298,7 @@ def test_route_renders_error_envelope_without_calling_surface(
     )
     fake_service.packages[error_pkg.source_id] = error_pkg
 
-    r = app_client.get(f"/writing-assist/{_b64(error_pkg.source_id)}")
+    r = app_client.get(f"/robin/writing-assist/{_b64(error_pkg.source_id)}")
     assert r.status_code == 200
     body = r.text
     assert "digest path missing" in body
