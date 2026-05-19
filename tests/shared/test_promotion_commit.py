@@ -690,6 +690,74 @@ def test_filesystem_adapter_refuses_path_escape(tmp_path: Path):
         adapter.hash_file("../evil.md")
 
 
+# ── ADR-028 §7 — attachment migration on source page write ────────────────
+
+
+def test_commit_migrates_inbox_attachments_for_source_page(tmp_path: Path):
+    """ADR-028 §7: after writing KB/Wiki/Sources/{slug}/...md, companion
+    images at {inbox}/attachments/{slug}/ move to KB/Attachments/{slug}/."""
+    slug = "my-article"
+    inbox = tmp_path / "Inbox" / "kb"
+    inbox.mkdir(parents=True)
+    inbox_md = inbox / f"{slug}.md"
+    inbox_md.write_text("# raw", encoding="utf-8")
+    att_src = inbox / "attachments" / slug
+    att_src.mkdir(parents=True)
+    (att_src / "img-1.png").write_bytes(b"PNG-bytes")
+
+    # Source item with Inbox-anchored frontmatter_field evidence so the
+    # commit service can resolve inbox_dir.
+    item = SourcePageReviewItem(
+        item_id="src_001",
+        recommendation="include",
+        action="create",
+        reason="r",
+        evidence=[
+            EvidenceAnchor(
+                kind="frontmatter_field",
+                source_path=f"Inbox/kb/{slug}.md",
+                locator="original_url",
+                excerpt="https://example.com",
+                confidence=0.9,
+            )
+        ],
+        risk=[],
+        confidence=0.9,
+        source_importance=0.9,
+        reader_salience=0.9,
+        target_kb_path=f"KB/Wiki/Sources/{slug}/ch1.md",
+        chapter_ref="ch-1",
+        human_decision=_approved_decision(),
+    )
+    manifest = _build_manifest(items=[item])
+
+    service = PromotionCommitService()
+    outcome = service.commit(manifest, "batch_001", ["src_001"], tmp_path)
+    assert outcome.error is None
+    assert outcome.batch.approved_item_ids == ["src_001"]
+
+    # Attachment migrated to KB/Attachments/{slug}/
+    assert (tmp_path / "KB" / "Attachments" / slug / "img-1.png").read_bytes() == b"PNG-bytes"
+    # Source folder cleaned up
+    assert not att_src.exists()
+
+
+def test_commit_handles_source_page_without_inbox_evidence(tmp_path: Path):
+    """Non-Inbox sources (ebook, external_ref) must commit cleanly with
+    no attachment migration attempted."""
+    item = _src_item(
+        item_id="src_001",
+        target_kb_path="KB/Wiki/Sources/ebook-slug/ch1.md",
+    )
+    manifest = _build_manifest(items=[item])
+    service = PromotionCommitService()
+    outcome = service.commit(manifest, "batch_001", ["src_001"], tmp_path)
+    assert outcome.error is None
+    assert outcome.batch.approved_item_ids == ["src_001"]
+    # KB/Attachments/ should not have been created (no migration needed)
+    assert not (tmp_path / "KB" / "Attachments").exists()
+
+
 # ── No real-vault writes — assertion that tests use tempfile only ──────────
 
 
