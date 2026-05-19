@@ -64,10 +64,16 @@ body.sho { min-height: 100vh; }
 /* ── theme switch — binary slider (light ⇄ dark, thumb glides) ──────── */
 
 .theme-switch {
-  --switch-w: 56px;
+  /* Track has a 1px border (border-box). Thumb is vertically centered via
+     translateY(-50%) so the border doesn't bias the gap top/bottom. */
+  --switch-w: 44px;
   --switch-h: 22px;
-  --switch-pad: 2px;
+  --switch-pad: 3px;
   --thumb-d: calc(var(--switch-h) - var(--switch-pad) * 2);
+  /* Track has 1px border on each side (border-box). Containing block for the
+     thumb is the padding-box, so subtract 2px from the outer width before
+     computing the slide distance. */
+  --thumb-travel: calc(var(--switch-w) - var(--thumb-d) - var(--switch-pad) * 2 - 2px);
 
   display: inline-flex;
   align-items: center;
@@ -106,8 +112,8 @@ body.sho { min-height: 100vh; }
   pointer-events: none;
   transition: color var(--sho-t-fast) var(--sho-ease);
 }
-.theme-switch-label-light { left: 7px; }
-.theme-switch-label-dark  { right: 7px; }
+.theme-switch-label-light { left: 5px; }
+.theme-switch-label-dark  { right: 5px; }
 
 .theme-switch[data-mode="light"] .theme-switch-label-light,
 .theme-switch[data-mode="dark"]  .theme-switch-label-dark {
@@ -116,17 +122,18 @@ body.sho { min-height: 100vh; }
 
 .theme-switch-thumb {
   position: absolute;
-  top: var(--switch-pad);
+  top: 50%;
   left: var(--switch-pad);
   width: var(--thumb-d);
   height: var(--thumb-d);
   background: var(--sho-accent);
   border-radius: 50%;
+  transform: translate(0, -50%);
   transition: transform var(--sho-t-base) var(--sho-ease),
               background var(--sho-t-fast) var(--sho-ease);
 }
 .theme-switch[data-mode="dark"] .theme-switch-thumb {
-  transform: translateX(calc(var(--switch-w) - var(--thumb-d) - var(--switch-pad) * 2));
+  transform: translate(var(--thumb-travel), -50%);
 }
 
 .header-body {
@@ -373,23 +380,24 @@ table.matrix td .cell-note {
 }
 
 .page-footer .footer-bolt {
-  /* 99/1 stamp: bigger + angled enough to read at a glance.
-     Claude Design strategy.jsx watermark default = -12deg @ 48px;
-     at this footer scale (~18px) we need a steeper tilt to remain legible. */
-  width: 20px;
-  height: 12px;
+  /* 99/1 stamp scaled so the rotated bounding box matches the mono line
+     height (~13–14px at 11.5px font). Box aspect ≈ viewBox 24:14 so the SVG
+     fills the box without gaps; rotation expands the bounding box from
+     14×8 to ~16×13, which sits inside the line without dominating it. */
+  width: 14px;
+  height: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transform: rotate(-25deg) translateY(1px);
+  transform: rotate(-25deg);
   transform-origin: center;
   vertical-align: middle;
 }
 
 .page-footer .footer-bolt svg {
-  /* Override the global 1em sizing so the bolt actually fills the stamp box;
-     otherwise SVG draws at footer's 11.5px font-size inside a wider span and
-     looks like it floats above the text baseline. */
+  /* Override the global 1em sizing (.sho-bolt svg) so the SVG fills the
+     stamp box; the inherited 1em = 11.5px is smaller than the box and
+     leaves the bolt drifting in the upper half. */
   width: 100%;
   height: 100%;
 }
