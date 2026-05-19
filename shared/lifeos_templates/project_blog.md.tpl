@@ -213,6 +213,82 @@ btn.onclick = async () => {
 %%KW-START%%
 %%KW-END%%
 
+## 🪄 Brook: Scaffold
+
+```dataviewjs
+// ADR-027 PR-6: Brook scaffold trigger.
+// Reads the Project page's nested frontmatter (`line`, `zoro_inputs`) per
+// docs/schemas/project-frontmatter-nested.md and POSTs to
+// /api/projects/{slug}/synthesize/run. Only Line 3 (topic-driven) calls
+// Brook synthesize from this button. Line 2 = Robin RCP (different surface);
+// Line 1b = Stage 5 extractor (different flow).
+const cfg = dv.page("Scripts/nakama-config");
+const ROBIN_URL = cfg?.robin_url ?? "";
+const ROBIN_KEY = cfg?.robin_key ?? "";
+
+const fm = dv.current();
+const slug = fm.file.name;
+const line = String(fm.line ?? "3");
+const topic = fm.topic ?? fm.file.name;
+const zoro = fm.zoro_inputs ?? {};
+const keywords = Array.from(zoro.keywords ?? []);
+const trending = Array.from(zoro.trending_angles ?? []);
+
+const container = this.container;
+const status = container.createEl("div", { attr: { style: "font-size:0.9em;color:var(--text-muted);margin-bottom:6px;" } });
+status.setText(`line=${line}・keywords=${keywords.length}・trending_angles=${trending.length}`);
+
+const btn = container.createEl("button", {
+  text: "🪄 Brook: Scaffold",
+  attr: { style: "padding:6px 14px;cursor:pointer;border-radius:4px;" }
+});
+
+btn.onclick = async () => {
+  if (line === "2") {
+    new Notice("Line 2 scaffold = Robin RCP. 開啟 /writing-assist/{source_id} 而非 Brook synthesize。");
+    return;
+  }
+  if (line === "1b") {
+    new Notice("Line 1b 是 Stage 5 (post-atomic)，不走 Brook scaffold。請先完成 transcript ingest。");
+    return;
+  }
+  if (!ROBIN_URL || ROBIN_URL.includes("YOUR_VPS")) {
+    new Notice("⚠️ 請先設定 Scripts/nakama-config.md 的 robin_url");
+    return;
+  }
+  if (keywords.length === 0) {
+    new Notice("⚠️ zoro_inputs.keywords 為空 — 先按 🗝️ 跑 Zoro 關鍵字研究");
+    return;
+  }
+  btn.disabled = true; btn.textContent = "⏳ Brook synthesize 中...";
+  try {
+    const { requestUrl } = require("obsidian");
+    const resp = await requestUrl({
+      url: ROBIN_URL + "/api/projects/" + encodeURIComponent(slug) + "/synthesize/run",
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Robin-Key": ROBIN_KEY },
+      body: JSON.stringify({ topic, keywords, trending_angles: trending }),
+    });
+    const data = typeof resp.json === "string" ? JSON.parse(resp.json) : resp.json;
+    const nSections = (data.outline_draft ?? []).length;
+    const nPool = (data.evidence_pool ?? []).length;
+    const reviewUrl = ROBIN_URL + "/projects/" + encodeURIComponent(slug);
+    const old = container.querySelector(".brook-scaffold-result");
+    if (old) old.remove();
+    const wrap = container.createEl("div", { cls: "brook-scaffold-result", attr: { style: "margin-top:8px;" } });
+    wrap.createEl("div", { text: `✅ Outline ${nSections} 段，evidence pool ${nPool} 個 source` });
+    const a = wrap.createEl("a", { text: "→ 開啟 /projects/" + slug + " review 頁面", attr: { href: reviewUrl, target: "_blank" } });
+    a.style.display = "inline-block";
+    a.style.marginTop = "4px";
+    new Notice("✅ Brook scaffold 完成");
+  } catch (e) {
+    new Notice("❌ Brook 連線失敗：" + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "🪄 Brook: Scaffold";
+  }
+};
+```
+
 ## Draft Outline
 
 

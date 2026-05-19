@@ -305,3 +305,103 @@ def test_slug_with_dotdot_rejected(app_client: TestClient):
     # Either 400 from our guard or 404 from FastAPI's path normalisation —
     # both are acceptable refusals (no traversal occurred).
     assert r.status_code in (400, 404, 405)
+
+
+# ── POST /synthesize/run (ADR-027 PR-6) ──────────────────────────────────────
+
+
+def test_run_synthesize_creates_store(app_client: TestClient, monkeypatch):
+    """Happy path: POST /synthesize/run triggers the synthesize pipeline
+    and persists a fresh store. This is the one HTTP endpoint that creates
+    a store (the mutation endpoint never does).
+    """
+    from agents.brook.synthesize import SynthesizeResult
+    import thousand_sunny.routers.projects as projects_module
+
+    captured: dict = {}
+
+    def fake_synthesize(slug, topic, keywords, *, trending_angles=None, **_kw):
+        captured["slug"] = slug
+        captured["topic"] = topic
+        captured["keywords"] = list(keywords)
+        captured["trending_angles"] = trending_angles
+        seeded = BrookSynthesizeStore(
+            project_slug=slug,
+            topic=topic,
+            keywords=list(keywords),
+            evidence_pool=[
+                EvidencePoolItem(slug="ref-1", chunks=[], hit_reason="rrf"),
+            ],
+            outline_draft=[
+                OutlineSection(section=1, heading="Intro", evidence_refs=["ref-1"]),
+            ],
+        )
+        return SynthesizeResult(
+            slug=slug,
+            evidence_pool=seeded.evidence_pool,
+            outline_draft=seeded.outline_draft,
+            store=store.create(seeded),
+        )
+
+    # Patch on the late-imported module so the route's `from agents.brook.synthesize
+    # import synthesize` resolves to our fake.
+    import agents.brook.synthesize as syn_mod
+
+    monkeypatch.setattr(syn_mod, "synthesize", fake_synthesize)
+
+    r = app_client.post(
+        "/api/projects/creatine-cognitive/synthesize/run",
+        json={
+            "topic": "creatine and cognition",
+            "keywords": ["creatine", "cognition"],
+            "trending_angles": ["dose-response"],
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["project_slug"] == "creatine-cognitive"
+    assert body["topic"] == "creatine and cognition"
+    assert captured == {
+        "slug": "creatine-cognitive",
+        "topic": "creatine and cognition",
+        "keywords": ["creatine", "cognition"],
+        "trending_angles": ["dose-response"],
+    }
+    # Store materialised on disk.
+    assert store.exists("creatine-cognitive")
+
+
+def test_run_synthesize_blank_topic_rejected_422(app_client: TestClient):
+    r = app_client.post(
+        "/api/projects/whatever/synthesize/run",
+        json={"topic": "   ", "keywords": []},
+    )
+    assert r.status_code == 422
+
+
+def test_run_synthesize_invalid_slug_rejected_400(app_client: TestClient):
+    r = app_client.post(
+        "/api/projects/with%2Fslash/synthesize/run",
+        json={"topic": "t", "keywords": []},
+    )
+    # URL-decoded slug contains "/" → our _validate_slug raises 400.
+    assert r.status_code in (400, 404)
+
+
+def test_run_synthesize_outline_drafter_error_returns_422(
+    app_client: TestClient, monkeypatch
+):
+    from agents.brook.synthesize import OutlineDraftError
+    import agents.brook.synthesize as syn_mod
+
+    def boom(*_a, **_kw):
+        raise OutlineDraftError("LLM gave us malformed JSON")
+
+    monkeypatch.setattr(syn_mod, "synthesize", boom)
+
+    r = app_client.post(
+        "/api/projects/some-slug/synthesize/run",
+        json={"topic": "t", "keywords": ["k"]},
+    )
+    assert r.status_code == 422
+    assert "outline drafter rejected" in r.json()["detail"]

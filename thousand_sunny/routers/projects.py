@@ -15,19 +15,27 @@ Exposes:
   user_actions without re-running KB retrieval. 404 when the slug has not
   been materialised yet — the API never bootstraps an empty store
   (ADR-021 §4).
+- ``POST /api/projects/{slug}/synthesize/run`` → triggers a Brook
+  synthesize run (ADR-027 PR-6). Body: ``{topic, keywords,
+  trending_angles?}``. This is the one endpoint that DOES create the
+  store — it is the HTTP-side equivalent of running
+  ``python -m agents.brook.synthesize``. Used by the Obsidian
+  ``Brook: Scaffold`` button which reads the nested ``zoro_inputs`` block
+  from the Project page frontmatter (ADR-027 §7) and POSTs here.
 - ``GET /projects/{slug}`` → renders the review-mode page (issue #458).
   HMAC cookie auth, 404 when no store, 302 to /login when unauthenticated.
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, Literal, Union
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shared import brook_synthesize_store
 from shared.brook_synthesize_store import StoreNotFoundError
@@ -172,6 +180,72 @@ async def post_synthesize(
             status_code=404,
             detail=f"brook_synthesize store disappeared for slug={slug!r}",
         )
+
+
+# ── Run synthesize (ADR-027 PR-6) ────────────────────────────────────────────
+
+
+class RunSynthesizeBody(BaseModel):
+    """Trigger body for ``POST /api/projects/{slug}/synthesize/run``.
+
+    ADR-027 PR-6: Obsidian ``Brook: Scaffold`` button reads the Project page's
+    nested frontmatter (``zoro_inputs.keywords`` / ``zoro_inputs.trending_angles``
+    per ADR-027 §7) and POSTs them here. The endpoint runs the existing
+    ``agents.brook.synthesize.synthesize`` pipeline — which may overwrite a
+    prior store per the documented re-run policy (ADR-021 §3).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic: str
+    keywords: list[str] = Field(default_factory=list)
+    trending_angles: list[str] | None = None
+
+    @field_validator("topic")
+    @classmethod
+    def _topic_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("topic must not be blank")
+        return v
+
+
+@router.post("/{slug}/synthesize/run", response_model=BrookSynthesizeStore)
+async def run_synthesize(
+    slug: str,
+    body: RunSynthesizeBody,
+    _auth=Depends(require_auth_or_key),
+) -> BrookSynthesizeStore:
+    """Run Brook synthesize for ``slug``. Creates or overwrites the store.
+
+    Unlike :func:`post_synthesize` (mutation-only), this endpoint is the one
+    HTTP path that *creates* a fresh store — it is the HTTP-side equivalent
+    of ``python -m agents.brook.synthesize``. The Obsidian ``Brook: Scaffold``
+    button is its primary client (ADR-027 PR-6).
+
+    Synthesize is sync + LLM-bound; we ``asyncio.to_thread`` it so the event
+    loop stays free while the outline drafter call is in flight.
+    """
+    _validate_slug(slug)
+
+    # Late import: pulls the LLM router; matches the pattern used by
+    # FinalizeOutlineBody above so the Sunny test fixtures that disable LLM
+    # wiring don't trip on import.
+    from agents.brook.synthesize import OutlineDraftError, synthesize
+
+    try:
+        result = await asyncio.to_thread(
+            synthesize,
+            slug,
+            body.topic,
+            body.keywords,
+            trending_angles=body.trending_angles,
+        )
+    except OutlineDraftError as exc:
+        raise HTTPException(status_code=422, detail=f"outline drafter rejected: {exc!s}")
+    except ValueError as exc:
+        # Empty topic+keywords or invalid slug at the store layer.
+        raise HTTPException(status_code=422, detail=str(exc))
+    return result.store
 
 
 # ── Page route (issue #458) ──────────────────────────────────────────────────
