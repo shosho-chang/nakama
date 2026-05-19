@@ -266,7 +266,7 @@ td.function .owner {
   text-transform: uppercase;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--sho-r-pill);
   border: 1px solid var(--sho-line-2);
   color: var(--sho-muted);
   white-space: nowrap;
@@ -316,7 +316,7 @@ td.function .owner {
   font-size: 12.5px;
   background: var(--sho-bg-3);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--sho-r-1);
 }
 
 /* ── footer ─────────────────────────────────────────────────────────── */
