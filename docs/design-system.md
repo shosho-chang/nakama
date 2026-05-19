@@ -31,6 +31,8 @@
 
 ---
 
+> **The sections from here through "Revision Log v1" describe Brook (`--brk-*`) tokens.** Any rule below that reads "system-wide" (e.g. "圓角不超過 4px", "唯一 chromatic accent") applies to Brook surfaces only; Shosho has its own AI Slop list and constraints in the Shosho chapter further down.
+
 ## Aesthetic Direction
 
 Two-pane editorial review surface — paper-and-ink restraint, type-driven density.
@@ -297,7 +299,7 @@ focus ring 走 `var(--brk-focus)`。
 
 > **Sections above describe Brook (`--brk-*`) — editorial review surface tokens. Sections below describe Shosho (`--sho-*`) — web identity tokens for outward-facing surfaces. Two parallel systems; surfaces opt in via root class.**
 >
-> Shosho CI 對外 surface — `/progress`、未來 `nakama.shosho.tw` root marketing landing、Bridge 中控台、任何 partner-facing 頁。來自 Claude Design handoff bundle `shosho-website-new-design`（2026-05-19）。
+> Shosho CI 對外 surface — `/progress`、未來 `nakama.shosho.tw` root marketing landing、任何 partner-facing 頁。來自 Claude Design handoff bundle `shosho-website-new-design`（2026-05-19）。Bridge 中控台**不**在 Shosho 範圍內，走自己的 `--nk-*` namespace。
 
 ---
 
@@ -528,7 +530,7 @@ Two-step ring — 內 2px page-bg、外 2px accent orange，沿用 Brook 結構�
 
 ## AI Slop 禁用清單 — Shosho 補充
 
-除了 Brook 章節列的通用禁用，Shosho 特有禁用：
+Shosho 不繼承 Brook AI Slop 規則 — 圓角 ≥ 8px、`grid-cols-3/4`、置中 1200px column 那些是 Brook editorial 特定，Shosho 容許 8/12px radius、grid layouts、marketing-style centered column。下列是 Shosho 特有禁用 + 通用 AI default 防護：
 
 | Pattern | 為什麼禁 |
 |---------|----------|
