@@ -417,6 +417,8 @@ def test_read_source_passes_existing_annotations(client, vault, monkeypatch):
     # Reload router so it picks up the patched vault path
     app2 = __import__("fastapi", fromlist=["FastAPI"]).FastAPI()
     app2.include_router(robin_mod.router)
+    app2.include_router(robin_mod.robin_router)
+    app2.include_router(robin_mod.legacy_router)
     from fastapi.testclient import TestClient as TC2
 
     tc2 = TC2(app2, follow_redirects=False)
