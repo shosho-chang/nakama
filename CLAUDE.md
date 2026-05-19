@@ -99,6 +99,15 @@ Health & Wellness / Longevity 內容創作者的 AI Agent 系統。部署於 VPS
 
 ## Vault 寫入規則
 
+**Vault 結構 canonical 文件：[`docs/VAULT-LAYOUT.md`](docs/VAULT-LAYOUT.md)（ADR-028）**。任何 PR 若：
+
+- 新增 / 改名 / 刪除 vault 資料夾
+- 改 agent 在 code 內寫入 vault 的路徑
+- 新增 agent 寫入 vault
+- 改 collab 頁面 marker convention
+
+**必須在同一個 PR 內同步更新 `docs/VAULT-LAYOUT.md`**。Reviewer 抓。
+
 所有 agent 寫入 Obsidian vault 時，必須遵守 LifeOS 的 CLAUDE.md 規則：
 
 - `Journals/` — 完全禁止寫入
