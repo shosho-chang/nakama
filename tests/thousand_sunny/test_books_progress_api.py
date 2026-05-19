@@ -1,4 +1,4 @@
-"""Slice 3B — GET/PUT ``/api/books/{id}/progress`` API contract.
+"""Slice 3B — GET/PUT ``/robin/api/books/{id}/progress`` API contract.
 
 Behavior pinned:
 
@@ -57,7 +57,7 @@ def app_client(books_dir, monkeypatch):
 def _upload(tc: TestClient, book_id: str = "alpha") -> None:
     files = {"bilingual": ("c.epub", epub_clean(), "application/epub+zip")}
     data = {"book_id": book_id, "title": "T", "lang_pair": "en-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303, f"upload failed: {r.status_code} {r.text}"
 
 
@@ -85,7 +85,7 @@ def _payload(book_id: str = "alpha", **overrides) -> dict:
 
 def test_get_progress_empty_state_for_unwritten_book(app_client):
     _upload(app_client, "alpha")
-    r = app_client.get("/api/books/alpha/progress")
+    r = app_client.get("/robin/api/books/alpha/progress")
     assert r.status_code == 200
     body = r.json()
     assert body["book_id"] == "alpha"
@@ -97,16 +97,16 @@ def test_get_progress_empty_state_for_unwritten_book(app_client):
 
 
 def test_get_progress_404_when_book_missing(app_client):
-    r = app_client.get("/api/books/nonexistent/progress")
+    r = app_client.get("/robin/api/books/nonexistent/progress")
     assert r.status_code == 404
 
 
 def test_get_progress_returns_persisted_row(app_client):
     _upload(app_client, "alpha")
-    put = app_client.put("/api/books/alpha/progress", json=_payload("alpha"))
+    put = app_client.put("/robin/api/books/alpha/progress", json=_payload("alpha"))
     assert put.status_code == 200, put.text
 
-    got = app_client.get("/api/books/alpha/progress").json()
+    got = app_client.get("/robin/api/books/alpha/progress").json()
     assert got["book_id"] == "alpha"
     assert got["last_cfi"] == "epubcfi(/6/4!/4/2:0)"
     assert got["last_chapter_ref"] == "ch01.xhtml"
@@ -122,21 +122,21 @@ def test_get_progress_returns_persisted_row(app_client):
 
 def test_put_progress_upserts_first_time(app_client):
     _upload(app_client, "alpha")
-    r = app_client.put("/api/books/alpha/progress", json=_payload("alpha"))
+    r = app_client.put("/robin/api/books/alpha/progress", json=_payload("alpha"))
     assert r.status_code == 200
 
 
 def test_put_progress_overwrites_existing(app_client):
     _upload(app_client, "alpha")
-    app_client.put("/api/books/alpha/progress", json=_payload("alpha", last_spread_idx=1))
-    app_client.put("/api/books/alpha/progress", json=_payload("alpha", last_spread_idx=42))
-    got = app_client.get("/api/books/alpha/progress").json()
+    app_client.put("/robin/api/books/alpha/progress", json=_payload("alpha", last_spread_idx=1))
+    app_client.put("/robin/api/books/alpha/progress", json=_payload("alpha", last_spread_idx=42))
+    got = app_client.get("/robin/api/books/alpha/progress").json()
     assert got["last_spread_idx"] == 42
 
 
 def test_put_progress_404_when_book_missing(app_client):
     r = app_client.put(
-        "/api/books/nonexistent/progress",
+        "/robin/api/books/nonexistent/progress",
         json=_payload("nonexistent"),
     )
     assert r.status_code == 404
@@ -144,7 +144,7 @@ def test_put_progress_404_when_book_missing(app_client):
 
 def test_put_progress_rejects_book_id_mismatch(app_client):
     _upload(app_client, "alpha")
-    r = app_client.put("/api/books/alpha/progress", json=_payload("beta"))
+    r = app_client.put("/robin/api/books/alpha/progress", json=_payload("beta"))
     assert r.status_code in (400, 422)
 
 
@@ -153,7 +153,7 @@ def test_put_progress_rejects_extra_field(app_client):
     _upload(app_client, "alpha")
     bad = _payload("alpha")
     bad["mystery"] = "field"
-    r = app_client.put("/api/books/alpha/progress", json=bad)
+    r = app_client.put("/robin/api/books/alpha/progress", json=bad)
     assert r.status_code in (400, 422)
 
 
@@ -170,7 +170,7 @@ def test_put_progress_concurrent_no_crash(app_client):
     def worker(idx: int) -> None:
         try:
             r = app_client.put(
-                "/api/books/race/progress",
+                "/robin/api/books/race/progress",
                 json=_payload("race", last_spread_idx=idx),
             )
             assert r.status_code == 200, r.text
@@ -184,7 +184,7 @@ def test_put_progress_concurrent_no_crash(app_client):
         t.join()
 
     assert not errors, f"concurrent PUT raised: {errors}"
-    final = app_client.get("/api/books/race/progress").json()
+    final = app_client.get("/robin/api/books/race/progress").json()
     assert final["book_id"] == "race"
     assert 0 <= final["last_spread_idx"] < 8
 
@@ -196,7 +196,7 @@ def test_put_progress_concurrent_no_crash(app_client):
 
 def test_csp_header_present_on_progress_api(app_client):
     _upload(app_client, "csp-test")
-    r = app_client.get("/api/books/csp-test/progress")
+    r = app_client.get("/robin/api/books/csp-test/progress")
     csp = r.headers.get("content-security-policy", "")
     assert "script-src" in csp
     assert "'self'" in csp

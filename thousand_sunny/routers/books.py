@@ -1,8 +1,14 @@
 """Books routes — bilingual EPUB library + foliate-js reader.
 
-Slice 1D tracer bullet (issue #379): upload bilingual EPUB → list on /books →
-read on /books/{id} via foliate-js. Read-only; annotation / progress / ingest
-land in later slices.
+Slice 1D tracer bullet (issue #379): upload bilingual EPUB → list on
+``/robin/books`` → read on ``/robin/books/{id}`` via foliate-js.
+Read-only; annotation / progress / ingest land in later slices.
+
+Per /architecture v2 R5 (issue #619), the canonical URLs live under
+``/robin/books/*`` and ``/robin/api/books/*``. Legacy ``/books/*`` and
+``/api/books/*`` paths are preserved as redirects via ``legacy_router``:
+GETs return 301 and POST/PUT/DELETEs return 308 (method+body preserving)
+so in-flight bookmarks + cached form actions don't break.
 """
 
 from __future__ import annotations
@@ -129,7 +135,88 @@ def _extract_cover_bytes(epub_bytes: bytes, cover_path: str | None) -> tuple[byt
 
 
 logger = get_logger("nakama.web.books")
-router = APIRouter()
+router = APIRouter(prefix="/robin")
+legacy_router = APIRouter()
+
+
+# ── Legacy redirects (R5) ────────────────────────────────────────────────────
+# GETs → 301, POST/PUT/DELETE → 308 (method+body preserving). One handler
+# per legacy path. Kept until Phase 2 alias drop.
+
+
+@legacy_router.get("/books")
+async def _legacy_books_library_redirect():
+    return RedirectResponse("/robin/books", status_code=301)
+
+
+@legacy_router.get("/books/upload")
+async def _legacy_books_upload_form_redirect():
+    return RedirectResponse("/robin/books/upload", status_code=301)
+
+
+@legacy_router.post("/books/upload")
+async def _legacy_books_upload_post_redirect():
+    return RedirectResponse("/robin/books/upload", status_code=308)
+
+
+@legacy_router.get("/books/{book_id}")
+async def _legacy_book_reader_redirect(book_id: str):
+    return RedirectResponse(f"/robin/books/{book_id}", status_code=301)
+
+
+@legacy_router.get("/api/books/{book_id}")
+async def _legacy_book_metadata_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}", status_code=301)
+
+
+@legacy_router.post("/api/books/{book_id}/ingest-request")
+async def _legacy_ingest_request_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}/ingest-request", status_code=308)
+
+
+@legacy_router.delete("/api/books/{book_id}/ingest-request")
+async def _legacy_delete_ingest_request_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}/ingest-request", status_code=308)
+
+
+@legacy_router.get("/api/books/{book_id}/cover")
+async def _legacy_book_cover_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}/cover", status_code=301)
+
+
+@legacy_router.delete("/api/books/{book_id}")
+async def _legacy_delete_book_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}", status_code=308)
+
+
+@legacy_router.get("/api/books/{book_id}/file")
+async def _legacy_book_file_redirect(book_id: str, request: Request):
+    target = f"/robin/api/books/{book_id}/file"
+    qs = request.url.query
+    if qs:
+        target = f"{target}?{qs}"
+    return RedirectResponse(target, status_code=301)
+
+
+@legacy_router.get("/api/books/{book_id}/annotations")
+async def _legacy_get_annotations_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}/annotations", status_code=301)
+
+
+@legacy_router.post("/api/books/{book_id}/annotations")
+async def _legacy_post_annotations_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}/annotations", status_code=308)
+
+
+@legacy_router.get("/api/books/{book_id}/progress")
+async def _legacy_get_progress_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}/progress", status_code=301)
+
+
+@legacy_router.put("/api/books/{book_id}/progress")
+async def _legacy_put_progress_redirect(book_id: str):
+    return RedirectResponse(f"/robin/api/books/{book_id}/progress", status_code=308)
+
 
 # Serialize writes to the shared SQLite connection. Python's sqlite3 wrapper
 # isn't fully thread-safe at the connection-state level (commit/rollback
@@ -143,7 +230,7 @@ templates = Jinja2Templates(
 @router.get("/books", response_class=HTMLResponse)
 async def books_library(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/books", status_code=302)
+        return RedirectResponse("/login?next=/robin/books", status_code=302)
     books = list_books()
     enriched = [{**b.model_dump(), "ingest_status": _ingest_status(b.book_id)} for b in books]
     return templates.TemplateResponse(request, "books_library.html", {"books": enriched})
@@ -152,7 +239,7 @@ async def books_library(request: Request, nakama_auth: str | None = Cookie(None)
 @router.get("/books/upload", response_class=HTMLResponse)
 async def books_upload_form(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/books/upload", status_code=302)
+        return RedirectResponse("/login?next=/robin/books/upload", status_code=302)
     return templates.TemplateResponse(request, "book_upload.html", {})
 
 
@@ -285,7 +372,7 @@ async def books_upload(
         has_original,
     )
 
-    response = RedirectResponse(f"/books/{book_id}", status_code=303)
+    response = RedirectResponse(f"/robin/books/{book_id}", status_code=303)
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
@@ -298,7 +385,7 @@ async def book_reader(
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
-        return RedirectResponse(f"/login?next=/books/{book_id}", status_code=302)
+        return RedirectResponse(f"/login?next=/robin/books/{book_id}", status_code=302)
     try:
         book = get_book(book_id)
     except BookStorageError as exc:

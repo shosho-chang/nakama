@@ -66,19 +66,19 @@
   <h1><span>📚</span>Robin · 書架</h1>
   <nav class="nav">
     <a href="/">📥 Inbox</a>
-    <a href="/books" class="active">📚 書架</a>
+    <a href="/robin/books" class="active">📚 書架</a>
   </nav>
 </div>
 <div class="container">
   <div class="toolbar">
-    <a href="/books/upload" class="btn-upload">📤 上傳新書</a>
+    <a href="/robin/books/upload" class="btn-upload">📤 上傳新書</a>
   </div>
   {% if books %}
     <div class="grid">
       {% for book in books %}
-      <a class="book-card" href="/books/{{ book.book_id }}">
+      <a class="book-card" href="/robin/books/{{ book.book_id }}">
         <div class="cover" aria-hidden="true">
-          <img src="/api/books/{{ book.book_id }}/cover" alt="" loading="lazy">
+          <img src="/robin/api/books/{{ book.book_id }}/cover" alt="" loading="lazy">
           <div class="cover-placeholder">{{ book.title[:1]|upper }}</div>
         </div>
         <div class="book-title">{{ book.title }}</div>
@@ -117,7 +117,7 @@
     <div class="empty">
       <div class="icon">📭</div>
       <strong>書架是空的</strong>
-      <p><a href="/books/upload">上傳第一本書</a></p>
+      <p><a href="/robin/books/upload">上傳第一本書</a></p>
     </div>
   {% endif %}
 </div>
