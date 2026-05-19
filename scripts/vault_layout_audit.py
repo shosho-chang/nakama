@@ -178,7 +178,12 @@ def main(argv: list[str] | None = None) -> int:
 
         payload = {
             "findings": [
-                {"dimension": f.dimension, "severity": f.severity, "path": f.path, "detail": f.detail}
+                {
+                    "dimension": f.dimension,
+                    "severity": f.severity,
+                    "path": f.path,
+                    "detail": f.detail,
+                }
                 for f in report.findings
             ]
         }
