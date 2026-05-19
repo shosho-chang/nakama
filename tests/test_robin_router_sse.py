@@ -47,6 +47,8 @@ def client(vault, monkeypatch):
 
     app = FastAPI()
     app.include_router(robin_module.router)
+    app.include_router(robin_module.robin_router)
+    app.include_router(robin_module.legacy_router)
 
     @app.get("/login")
     def login(next: str = ""):
@@ -68,6 +70,8 @@ def auth_client(vault, monkeypatch):
 
     app = FastAPI()
     app.include_router(robin_module.router)
+    app.include_router(robin_module.robin_router)
+    app.include_router(robin_module.legacy_router)
 
     @app.get("/login")
     def login(next: str = ""):
@@ -110,13 +114,13 @@ def _parse_sse(text: str) -> list[dict]:
 def test_events_unauth_returns_403(auth_client):
     tc, mod, _ = auth_client
     sid = mod._new_session(step="cancelled")
-    r = tc.get(f"/events/{sid}")  # 沒帶 cookie
+    r = tc.get(f"/robin/events/{sid}")  # 沒帶 cookie
     assert r.status_code == 403
 
 
 def test_events_unknown_session_returns_404(client):
     tc, _ = client
-    r = tc.get("/events/nonexistent-sid")
+    r = tc.get("/robin/events/nonexistent-sid")
     assert r.status_code == 404
 
 
@@ -128,7 +132,7 @@ def test_events_unknown_session_returns_404(client):
 def test_events_step_cancelled_redirects_home(client):
     tc, mod = client
     sid = mod._new_session(step="cancelled")
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     assert events == [{"event": "done", "data": {"redirect": "/"}}]
@@ -169,7 +173,7 @@ def test_events_step_summarizing_md_happy_path(client, vault, monkeypatch):
     )
     _mock_summarizing_io(monkeypatch, mod)
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     # 應有 status events + 最後 done redirect 到 review-summary
@@ -195,7 +199,7 @@ def test_events_step_summarizing_md_with_frontmatter(client, vault, monkeypatch)
     )
     _mock_summarizing_io(monkeypatch, mod)
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     sess = mod.sessions[sid]
     assert sess["_title"] == "Custom Title"
@@ -224,7 +228,7 @@ def test_events_step_summarizing_raw_path_outside_vault_fallback(
 
     monkeypatch.setattr(ow, "write_page", write_page_mock)
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     # write_page 第三個位置參數是 frontmatter dict，含 source_refs；
     # 應為 absolute str（fallback）而不是 relative
@@ -251,7 +255,7 @@ def test_events_step_summarizing_pdf_path(client, vault, monkeypatch):
     monkeypatch.setattr(pdf_parser, "parse_pdf", MagicMock(return_value="parsed pdf body"))
     _mock_summarizing_io(monkeypatch, mod)
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     # 應該有「正在解析 PDF...」這個 status
@@ -285,7 +289,7 @@ def test_events_step_summarizing_large_doc_announces_chunking(client, vault, mon
         MagicMock(return_value=["c1", "c2", "c3"]),
     )
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     status_msgs = [e["data"].get("msg", "") for e in events if e["event"] == "status"]
@@ -318,7 +322,7 @@ def test_events_step_planning_redirects_to_review_plan(client, monkeypatch):
         ),
     )
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     assert events[-1] == {"event": "done", "data": {"redirect": "/review-plan"}}
@@ -341,7 +345,7 @@ def test_events_step_planning_none_plan_falls_back_to_empty(client, monkeypatch)
     )
     monkeypatch.setattr(mod.pipeline, "_get_concept_plan", MagicMock(return_value=None))
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     sess = mod.sessions[sid]
     assert sess["plan"] == {"concepts": [], "entities": []}
@@ -382,7 +386,7 @@ def test_events_step_executing_redirects_to_done(client, vault, monkeypatch):
     monkeypatch.setattr(mod, "mark_file_processed", mark_processed)
     monkeypatch.setattr(mod, "_send_to_recycle_bin", recycle)
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     assert events[-1] == {"event": "done", "data": {"redirect": "/done"}}
@@ -430,7 +434,7 @@ def test_events_step_executing_falls_back_to_raw_stem_when_title_missing(
     monkeypatch.setattr(mod, "mark_file_processed", MagicMock())
     monkeypatch.setattr(mod, "_send_to_recycle_bin", MagicMock())
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     # _update_index 第一個位置參數是 title
     title_arg = update_index.call_args[0][0]
@@ -453,7 +457,7 @@ def test_events_step_executing_falls_back_to_raw_stem_when_title_missing(
 def test_events_step_redirects_match_map(client, step, expected_redirect):
     tc, mod = client
     sid = mod._new_session(step=step)
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     assert events == [{"event": "done", "data": {"redirect": expected_redirect}}]
@@ -467,7 +471,7 @@ def test_events_step_redirects_match_map(client, step, expected_redirect):
 def test_events_unknown_step_yields_error_event(client):
     tc, mod = client
     sid = mod._new_session(step="bogus_step")
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     assert len(events) == 1
@@ -496,7 +500,7 @@ def test_events_exception_during_processing_yields_error_and_marks_session(
 
     monkeypatch.setattr(mod.pipeline, "_generate_summary", raises)
 
-    r = tc.get(f"/events/{sid}")
+    r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
     error_events = [e for e in events if e["event"] == "error"]

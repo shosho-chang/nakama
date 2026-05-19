@@ -104,6 +104,8 @@ if not os.getenv("DISABLE_ROBIN"):
     from thousand_sunny.routers import books, robin
 
     app.include_router(robin.router)
+    app.include_router(robin.robin_router)
+    app.include_router(robin.legacy_router)
     app.include_router(books.router)
 
     # foliate-js must be served from the same origin as /books/* so CSP

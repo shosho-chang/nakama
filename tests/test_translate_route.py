@@ -94,7 +94,7 @@ def _seed_ready_file(inbox: Path, *, name: str = "example.md") -> Path:
 
 def test_translate_requires_auth(client):
     tc, _inbox = client
-    resp = tc.post("/translate", params={"file": "example.md"})
+    resp = tc.post("/robin/translate", params={"file": "example.md"})
     assert resp.status_code == 302
     assert "/login" in resp.headers["location"]
 
@@ -123,7 +123,7 @@ def test_translate_writes_bilingual_and_redirects(client):
         return_value=fake_bilingual,
     ) as mock_translate:
         resp = tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "example.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
@@ -151,7 +151,7 @@ def test_translate_updates_original_frontmatter_to_translated(client):
         return_value="# Title\n\n> 標題\n\nbody\n\n> 內文。\n",
     ):
         tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "paper.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
@@ -182,14 +182,14 @@ def test_translate_short_circuits_when_bilingual_exists(client):
 
     with patch("thousand_sunny.routers.robin.translate_document") as mock_translate:
         resp = tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "example.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/read?file=example-bilingual.md"
+    assert resp.headers["location"] == "/robin/read?file=example-bilingual.md"
     # Short-circuit invariant: translator NEVER called.
     mock_translate.assert_not_called()
     # File untouched (mtime unchanged → no rewrite happened).
@@ -213,7 +213,7 @@ def test_translate_short_circuit_does_not_schedule_bg_task(client):
 
     with patch("thousand_sunny.routers.robin.BackgroundTasks.add_task") as mock_add_task:
         resp = tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "example.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
@@ -232,7 +232,7 @@ def test_translate_404_when_source_missing(client):
     auth = _auth_cookie(tc)
 
     resp = tc.post(
-        "/translate",
+        "/robin/translate",
         params={"file": "ghost.md"},
         cookies={"nakama_auth": auth},
         follow_redirects=False,
@@ -247,7 +247,7 @@ def test_translate_rejects_non_markdown(client):
     (inbox / "raw.pdf").write_bytes(b"%PDF-1.4")
 
     resp = tc.post(
-        "/translate",
+        "/robin/translate",
         params={"file": "raw.pdf"},
         cookies={"nakama_auth": auth},
         follow_redirects=False,
@@ -261,7 +261,7 @@ def test_translate_rejects_path_traversal(client):
     auth = _auth_cookie(tc)
 
     resp = tc.post(
-        "/translate",
+        "/robin/translate",
         params={"file": "../../etc/passwd"},
         cookies={"nakama_auth": auth},
         follow_redirects=False,
@@ -291,7 +291,7 @@ def test_translate_bg_failure_leaves_original_status_translating(client):
         side_effect=RuntimeError("LLM down"),
     ):
         resp = tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "example.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
@@ -319,7 +319,7 @@ def test_reader_shows_translate_button_on_non_bilingual_file(client):
     auth = _auth_cookie(tc)
     _seed_ready_file(inbox, name="example.md")
 
-    resp = tc.get("/read?file=example.md", cookies={"nakama_auth": auth})
+    resp = tc.get("/robin/read?file=example.md", cookies={"nakama_auth": auth})
     assert resp.status_code == 200
     assert 'id="translateBtn"' in resp.text
     assert "翻譯成中文" in resp.text
@@ -344,7 +344,7 @@ def test_reader_hides_translate_button_on_bilingual(client):
         encoding="utf-8",
     )
 
-    resp = tc.get("/read?file=example-bilingual.md", cookies={"nakama_auth": auth})
+    resp = tc.get("/robin/read?file=example-bilingual.md", cookies={"nakama_auth": auth})
     assert resp.status_code == 200
     assert 'id="translateBtn"' not in resp.text
 
@@ -395,14 +395,14 @@ def test_translate_does_not_double_translate_bilingual_filename(client):
 
     with patch("thousand_sunny.routers.robin.translate_document") as mock_translate:
         resp = tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "example-bilingual.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/read?file=example-bilingual.md"
+    assert resp.headers["location"] == "/robin/read?file=example-bilingual.md"
     mock_translate.assert_not_called()
 
 
@@ -435,7 +435,7 @@ def test_translate_redirects_to_inbox_not_bilingual_reader(client):
         # version of /translate would still 303 to /read?file=example-bilingual.md
         # under this exact setup, which is what users hit live.
         resp = tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "example.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
@@ -473,7 +473,7 @@ def test_translate_flips_source_to_translating_before_redirect(client):
 
     with patch("thousand_sunny.routers.robin.BackgroundTasks.add_task"):
         resp = tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "example.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
@@ -507,7 +507,7 @@ def test_translate_full_lifecycle_translating_then_translated(client):
         return_value="# Test article\n\n> 測試文章\n\nFirst paragraph.\n\n> 第一段。\n",
     ):
         resp = tc.post(
-            "/translate",
+            "/robin/translate",
             params={"file": "example.md"},
             cookies={"nakama_auth": auth},
             follow_redirects=False,
