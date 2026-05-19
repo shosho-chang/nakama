@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Brook · Context Bridge</title>
+<title>Brook · Context Handoff</title>
 <style>
   :root {
     --bg: #fafaf8;
@@ -106,15 +106,15 @@
 </head>
 <body>
 
-<div class="crumb"><a href="/bridge">← Bridge</a> · Brook · Context Bridge</div>
-<h1>Brook · Context Bridge</h1>
+<div class="crumb"><a href="/bridge">← Bridge</a> · Brook · Context Handoff</div>
+<h1>Brook · Context Handoff</h1>
 <p class="hint">
   Claude.ai 沒有本地 KB / Project / style profile / 合規詞庫。
   此頁打包一段 prompt — 點「複製」貼到 Claude.ai 後再開始寫作協助。
   Brook 在此**不**寫稿、不存 SQLite 對話、不匯出 draft（ADR-027 §Decision 8）。
 </p>
 
-<form method="get" action="/brook/bridge">
+<form method="get" action="/brook/handoff">
   <label for="topic">主題（必填）</label>
   <input type="text" id="topic" name="topic" required value="{{ topic or '' }}"
          placeholder="例：肌酸對中年女性的睡眠影響">

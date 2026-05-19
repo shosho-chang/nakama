@@ -1,4 +1,4 @@
-"""Brook routes — context bridge to Claude.ai (ADR-027 §Decision 8).
+"""Brook routes — context handoff to Claude.ai (ADR-027 §Decision 8).
 
 Per ADR-027, the original `/brook/chat` conversational composer was removed:
 - No local LLM chat reply loop.
@@ -7,9 +7,12 @@ Per ADR-027, the original `/brook/chat` conversational composer was removed:
 - No sliding-window context management.
 
 What remains is the **context packaging** logic — assembled into
-``agents/brook/context_bridge.py`` and surfaced at ``GET /brook/bridge``
-(with a 301 redirect from the old ``/brook/chat`` URL for one release
-cycle). The page renders a packaged prompt the owner copies into Claude.ai.
+``agents/brook/context_bridge.py`` and surfaced at ``GET /brook/handoff``.
+The page renders a packaged prompt the owner copies into Claude.ai.
+
+Legacy URLs ``/brook/chat`` and ``/brook/bridge`` 301 to ``/brook/handoff``
+(link-rot mitigation; kept indefinitely for non-conflicting bookmarks per
+Codex audit §4).
 """
 
 from __future__ import annotations
@@ -35,16 +38,18 @@ templates = Jinja2Templates(
 
 @router.get("/chat")
 async def brook_chat_redirect():
-    """Legacy URL — 301 redirect to /brook/bridge for one release cycle.
-
-    Drop in the next major after ADR-027 lands. Keeping this avoids link rot
-    in bookmarks / Obsidian buttons that were pointing at the old route.
-    """
-    return RedirectResponse("/brook/bridge", status_code=301)
+    """Legacy URL — 301 to /brook/handoff (collapsed chain per Codex §1)."""
+    return RedirectResponse("/brook/handoff", status_code=301)
 
 
-@router.get("/bridge", response_class=HTMLResponse)
-async def brook_bridge_page(
+@router.get("/bridge")
+async def brook_bridge_redirect():
+    """Legacy URL — 301 to /brook/handoff (URL renamed per /architecture v2)."""
+    return RedirectResponse("/brook/handoff", status_code=301)
+
+
+@router.get("/handoff", response_class=HTMLResponse)
+async def brook_handoff_page(
     request: Request,
     topic: str | None = None,
     project_slug: str | None = None,
@@ -53,13 +58,13 @@ async def brook_bridge_page(
     category: str | None = None,
     nakama_auth: str | None = Cookie(None),
 ):
-    """Render the context bridge page.
+    """Render the context handoff page.
 
     Without query params: shows the input form only.
     With ``topic``: packages context + renders the prompt block for copying.
     """
     if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/brook/bridge", status_code=302)
+        return RedirectResponse("/login?next=/brook/handoff", status_code=302)
 
     ctx: dict = {
         "topic": topic,
@@ -84,10 +89,7 @@ async def brook_bridge_page(
             )
             ctx["packaged"] = packaged
         except Exception as exc:
-            logger.error("brook bridge package error: %s", exc, exc_info=True)
-            # Render the form with an error hint rather than 500 — bridge
-            # is the owner's hand-off path; a hard failure pushes them off
-            # the rail. The summary section will just be missing.
+            logger.error("brook handoff package error: %s", exc, exc_info=True)
             ctx["packaged"] = None
 
-    return templates.TemplateResponse(request, "brook_bridge.html", ctx)
+    return templates.TemplateResponse(request, "brook_handoff.html", ctx)

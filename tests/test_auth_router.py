@@ -129,35 +129,41 @@ def test_logout_cookie_has_secure_samesite(client_vps):
 
 
 def test_vps_root_redirects_to_brook(client_vps):
-    """VPS 模式下 / 應重導到 /brook/bridge（ADR-027 PR-3）。"""
+    """VPS 模式下 / 應重導到 /brook/handoff（/architecture v2 R4）。"""
     r = client_vps.get("/")
     assert r.status_code == 302
-    assert r.headers["location"] == "/brook/bridge"
+    assert r.headers["location"] == "/brook/handoff"
 
 
 def test_vps_brook_unauth_redirects_with_next(client_vps):
-    """VPS 上訪問 Brook bridge 未登入應帶 ?next=/brook/bridge redirect 到 /login。"""
-    r = client_vps.get("/brook/bridge")
+    """VPS 上訪問 Brook handoff 未登入應帶 ?next=/brook/handoff redirect 到 /login。"""
+    r = client_vps.get("/brook/handoff")
     assert r.status_code == 302
-    assert r.headers["location"] == "/login?next=/brook/bridge"
+    assert r.headers["location"] == "/login?next=/brook/handoff"
 
 
 def test_vps_brook_with_auth(client_vps):
-    """登入後應能訪問 Brook bridge 頁。"""
+    """登入後應能訪問 Brook handoff 頁。"""
     login = client_vps.post("/login", data={"password": "testpass"})
     cookie = login.cookies.get("nakama_auth")
     assert cookie
 
-    r = client_vps.get("/brook/bridge", cookies={"nakama_auth": cookie})
+    r = client_vps.get("/brook/handoff", cookies={"nakama_auth": cookie})
     assert r.status_code == 200
 
 
 def test_vps_legacy_brook_chat_redirects_301(client_vps):
-    """ADR-027 §Decision 8: /brook/chat is preserved as a 301 redirect for
-    one release cycle to avoid bookmark / Obsidian-button link rot."""
+    """Legacy /brook/chat 301 → /brook/handoff (collapsed chain per Codex §1)."""
     r = client_vps.get("/brook/chat")
     assert r.status_code == 301
-    assert r.headers["location"] == "/brook/bridge"
+    assert r.headers["location"] == "/brook/handoff"
+
+
+def test_vps_legacy_brook_bridge_redirects_301(client_vps):
+    """Renamed /brook/bridge 301 → /brook/handoff (/architecture v2 R4)."""
+    r = client_vps.get("/brook/bridge")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/brook/handoff"
 
 
 def test_local_robin_root_available(client_local):
