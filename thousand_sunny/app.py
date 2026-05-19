@@ -23,6 +23,7 @@ from thousand_sunny.promotion_wiring import (  # noqa: E402
     wire_promotion_surfaces,
 )
 from thousand_sunny.routers import (  # noqa: E402
+    architecture,
     auth,
     bridge,
     bridge_zoro,
@@ -86,6 +87,7 @@ app.include_router(franky.page_router)
 # external partners. Mirrors the /healthz precedent of breaking the
 # all-authenticated pattern for a deliberately public surface.
 app.include_router(progress.router)
+app.include_router(architecture.router)
 
 # /static must mount unconditionally — /projects/{slug} (issue #458) ships with
 # Robin disabled (VPS) too, and pulls /static/projects/{tokens,review}.css/js.

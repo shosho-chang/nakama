@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Nakama URL 架構 · Shosho</title>
+<link rel="icon" type="image/png" href="/static/shosho/brand/logo_1.png?v=__ASSET_VERSION__">
+<link rel="apple-touch-icon" href="/static/shosho/brand/logo_1.png?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/shosho/tokens.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/architecture/architecture.css?v=__ASSET_VERSION__">
+</head>
+<body class="sho">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="sho-bolt-shape" viewBox="0 0 24 14">
+    <polyline points="2,10 6,4 9,10 13,4 16,10 20,4 22,10"
+              fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+</svg>
+
+<main class="page">
+
+  <header class="page-header">
+    <div class="header-top">
+      <a href="https://shosho.tw" class="sho-logo-mark logo" rel="noopener">
+        <img src="/static/shosho/brand/logo_1.png" alt="" aria-hidden="true">
+        <span class="logo-text">
+          <span class="logo-zh">張修修</span>
+          <span class="sho-mono sho-mono-up">shosho.tw</span>
+        </span>
+      </a>
+      <div class="header-meta">
+        <span class="sho-mono sho-mono-up">v · proposal</span>
+        <span class="sho-mono">2026-05-19</span>
+        <button type="button" id="theme-toggle" class="theme-switch"
+                role="switch" aria-label="切換明暗主題" aria-checked="false">
+          <span class="theme-switch-track" aria-hidden="true">
+            <span class="theme-switch-label theme-switch-label-light">L</span>
+            <span class="theme-switch-label theme-switch-label-dark">D</span>
+            <span class="theme-switch-thumb"></span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div class="header-body">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">000</span>
+        <span>nakama · web ui url architecture</span>
+      </div>
+      <h1 class="page-title">
+        Nakama Web UI 路徑架構<br>
+        <span class="page-title-2">公開 / 內部 / 編輯 / 知識 四層分明</span>
+      </h1>
+      <p class="page-subtitle">
+        現有 39 個 surface + 7 planned + 3 speculative。原本散落在 root / bridge / brook / promotion-review / writing-assist / books / read / processing 等不同 prefix。提案：依「對誰看」分四層，每層綁定一個 design system token namespace，命名碰撞清掉。
+      </p>
+    </div>
+  </header>
+
+  <!-- ── Layer 1: Public (sho) ─────────────────────────────────────── -->
+  <section aria-labelledby="public-heading">
+    <div class="section-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">01</span>
+        <span>layer · public</span>
+      </div>
+      <h2 id="public-heading">對外公開層</h2>
+      <p>無 auth、partner / search engine 可訪問、走 <code>--sho-*</code> Shosho CI（PANTONE 165 PC orange、Geist、oklch）。</p>
+    </div>
+
+    <div class="ns-group">
+      <div class="ns-head">
+        <h3>Public surfaces</h3>
+        <span class="ns-token">--sho-*</span>
+        <span class="ns-tag ns-tag--public">no auth</span>
+      </div>
+      <table class="routes">
+        <thead>
+          <tr>
+            <th class="col-path">Path</th>
+            <th class="col-status">Status</th>
+            <th class="col-function">功能</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path"><span class="path-new">/</span><span class="path-old">/  302 → /brook/bridge</span></td>
+            <td><span class="pill pill--planned">planned</span></td>
+            <td class="function">Shosho marketing landing — Nakama 是什麼、為什麼存在、link 到 /progress + GitHub + shosho.tw。<span class="owner">owner · Nami</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/progress</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">Partner 系統 readiness（Lines × Stages、Agents × Stages、Channels × Stages 三個 lens）。<span class="owner">owner · Nami</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/architecture</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">這頁 — URL 架構規劃文件（修修 internal review 用，noindex）。<span class="owner">owner · Nami</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/healthz</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">UptimeRobot JSON 探針（無 UI）。<span class="owner">owner · Franky</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Layer 2: Bridge ops (nk) ─────────────────────────────────── -->
+  <section aria-labelledby="bridge-heading">
+    <div class="section-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">02</span>
+        <span>layer · internal ops</span>
+      </div>
+      <h2 id="bridge-heading">Bridge 內部 ops 層</h2>
+      <p>HMAC cookie auth、修修 + agents 自用、走 <code>--nk-*</code> Workshop bench × dark chassis CI（signal orange #ff5a1f、Space Grotesk）。所有 ops console、agent dashboard、approval queue 統一收在 <code>/bridge/*</code>。</p>
+    </div>
+
+    <div class="ns-group">
+      <div class="ns-head">
+        <h3>Bridge core dashboards</h3>
+        <span class="ns-token">--nk-*</span>
+        <span class="ns-tag ns-tag--auth">auth required</span>
+      </div>
+      <table class="routes">
+        <thead>
+          <tr>
+            <th class="col-path">Path</th>
+            <th class="col-status">Status</th>
+            <th class="col-function">功能</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path"><span class="path-new">/bridge</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">Hub — agent status roster、最近活動。<span class="owner">owner · Nami</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/memory</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">User memory CRUD（Stage 2-3 agent runs 產生）。<span class="owner">owner · Nami</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/cost</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">LLM 成本 by agent × model × time。<span class="owner">owner · Franky</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/franky</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">5-card 系統健康度（gateway / VPS / WP / R2 / backups）。<span class="owner">owner · Franky</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/health</span></td>
+            <td><span class="pill pill--planned">deprecated</span></td>
+            <td class="function">舊版健康頁 — 已被 <code>/bridge/franky</code> 取代，下次清理時移除。</td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/logs</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">Agent event stream + audit trail。<span class="owner">owner · Franky</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/docs</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">On-site documentation index。<span class="owner">owner · Nami</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ns-group">
+      <div class="ns-head">
+        <h3>Bridge — content pipeline ops</h3>
+        <span class="ns-token">--nk-*</span>
+        <span class="ns-tag ns-tag--auth">auth required</span>
+      </div>
+      <table class="routes">
+        <thead>
+          <tr><th class="col-path">Path</th><th class="col-status">Status</th><th class="col-function">功能</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/drafts</span><br><span class="path-new">/bridge/draft/{id}</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">HITL approval queue — blog / newsletter / social 發布前審核（ADR-006）。<span class="owner">owner · Usopp</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/seo</span><br><span class="path-new">/bridge/seo/audit/{id}</span><br><span class="path-new">/bridge/seo/history</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">SEO control center — GSC rankings、audit grades、enrich recommendations（ADR-008/009）。<span class="owner">owner · Brook + Franky</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/zoro/keyword-research</span><br><span class="path-new">/bridge/zoro/keyword-research/history</span><br><span class="path-new">/bridge/zoro/keyword-research/history/{id}</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">Zoro 雙語關鍵字研究表單、歷史、re-render（ADR-012）。<span class="owner">owner · Zoro</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/repurpose</span><br><span class="path-new">/bridge/repurpose/{run_id}</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">Stage 5 多 channel render（Blog + FB + IG 三 panel preview）。<span class="owner">owner · Brook</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/script_video/{run_id}</span></td>
+            <td><span class="pill pill--in-dev">in dev</span></td>
+            <td class="function">FCPXML project preview、DaVinci 匯入前 timeline review（ADR-015 / ADR-027）。<span class="owner">owner · Brook</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ns-group">
+      <div class="ns-head">
+        <h3>Bridge — Stage 6 publishers (planned)</h3>
+        <span class="ns-token">--nk-*</span>
+        <span class="ns-tag ns-tag--auth">auth required</span>
+      </div>
+      <table class="routes">
+        <thead>
+          <tr><th class="col-path">Path</th><th class="col-status">Status</th><th class="col-function">功能</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/ig</span></td>
+            <td><span class="pill pill--planned">planned</span></td>
+            <td class="function">Instagram carousel auto-publish（CONTENT-PIPELINE obs #4、issue #255）。<span class="owner">owner · Usopp + Brook</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/youtube</span></td>
+            <td><span class="pill pill--planned">planned</span></td>
+            <td class="function">YouTube metadata + description auto-publish（ADR-001 reserved）。<span class="owner">owner · Usopp + Brook</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/newsletter</span></td>
+            <td><span class="pill pill--planned">planned</span></td>
+            <td class="function">Fluent CRM 電子報 staging（ADR-001 Stage 6）。<span class="owner">owner · Usopp + Brook</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/community</span></td>
+            <td><span class="pill pill--planned">planned</span></td>
+            <td class="function">Fluent Community member engagement、FAQ discovery、回覆草稿。<span class="owner">owner · Sanji</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/annotations</span></td>
+            <td><span class="pill pill--planned">planned</span></td>
+            <td class="function">Reading Overlay 聚合、retrieval entry point（ADR-024 §3）。<span class="owner">owner · Robin</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/bridge/zoro/discovery</span></td>
+            <td><span class="pill pill--specul">specul.</span></td>
+            <td class="function">自動 topic 候選 + opportunity ranking（ADR-001 future）。<span class="owner">owner · Zoro</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Layer 3: Brook editorial (brk) ───────────────────────────── -->
+  <section aria-labelledby="brook-heading">
+    <div class="section-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">03</span>
+        <span>layer · editorial</span>
+      </div>
+      <h2 id="brook-heading">Brook 編輯創作層</h2>
+      <p>HMAC cookie auth、修修 hand-write 場景、走 <code>--brk-*</code> 編輯室 paper-and-ink CI（terracotta accent #9d4a2c、Source Serif Pro、≤4px radius）。建議全部收進 <code>/brook/*</code> prefix，解決 <code>/brook/bridge</code> 名稱碰撞 + 散落在 <code>/projects/*</code> / <code>/promotion-review/*</code> / <code>/writing-assist/*</code> 的問題。</p>
+    </div>
+
+    <div class="ns-group">
+      <div class="ns-head">
+        <h3>Brook editorial surfaces</h3>
+        <span class="ns-token">--brk-*</span>
+        <span class="ns-tag ns-tag--auth">auth required</span>
+      </div>
+      <table class="routes">
+        <thead>
+          <tr><th class="col-path">Path</th><th class="col-status">Status</th><th class="col-function">功能</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path"><span class="path-new">/brook/projects/{slug}</span><span class="path-old">/projects/{slug}</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">Synthesize outline review + evidence board（issue #458、ADR-021）。改進 <code>/brook/</code> prefix 與其他 brook 編輯 surface 同一層。<span class="owner">owner · Brook</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/brook/context</span><span class="path-old">/brook/bridge</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">Prompt context packaging（ADR-027 §Decision 8）。從 <code>/brook/bridge</code> 改成 <code>/brook/context</code> 解決跟 <code>/bridge</code> 命名碰撞。<span class="owner">owner · Brook</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/brook/promotion</span><br><span class="path-new">/brook/promotion/source/{id}</span><span class="path-old">/promotion-review/*</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">來源促升審核 — include / reject / defer，manifest-based commit 到 KB（ADR-024 Stage 3）。<span class="owner">owner · Robin + Owner</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/brook/writing/{source_id}</span><span class="path-old">/writing-assist/{source_id}</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">Line 2 atomic 原子內容 Reading Context Package（ADR-024、無 LLM 生成）。<span class="owner">owner · Robin + Owner</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Layer 4: Robin knowledge (brk) ───────────────────────────── -->
+  <section aria-labelledby="robin-heading">
+    <div class="section-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">04</span>
+        <span>layer · knowledge</span>
+      </div>
+      <h2 id="robin-heading">Robin 知識庫層</h2>
+      <p>本機開發環境（VPS 設 <code>DISABLE_ROBIN=1</code> 略過）、走 <code>--brk-*</code>（reading 場景同樣 paper-and-ink）。建議收進 <code>/robin/*</code> 解決現在 ingest / book / concept 散落在 root + <code>/read</code> + <code>/processing</code> + <code>/books</code> + <code>/review-summary</code> 等位置的混亂。</p>
+    </div>
+
+    <div class="ns-group">
+      <div class="ns-head">
+        <h3>Robin KB ingest + reader</h3>
+        <span class="ns-token">--brk-*</span>
+        <span class="ns-tag ns-tag--auth">auth required (local only)</span>
+      </div>
+      <table class="routes">
+        <thead>
+          <tr><th class="col-path">Path</th><th class="col-status">Status</th><th class="col-function">功能</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path"><span class="path-new">/robin</span><span class="path-old">/  (Robin enabled)</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">Robin hub — 檔案上傳入口、ingest 狀態總覽。Root <code>/</code> 留給 Shosho marketing landing。<span class="owner">owner · Robin</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/robin/read/{doc_id}</span><span class="path-old">/read</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">文件閱讀 + highlight / annotation。<span class="owner">owner · Robin</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/robin/processing</span><span class="path-old">/processing</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">Ingest 進度追蹤。<span class="owner">owner · Robin</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/robin/concept/summary</span><br><span class="path-new">/robin/concept/plan</span><span class="path-old">/review-summary、/review-plan</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">Concept validation 兩段式（summary review → execution plan）。<span class="owner">owner · Robin</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/robin/done</span><span class="path-old">/done</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">Ingest 完成 handoff。<span class="owner">owner · Robin</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/robin/books</span><br><span class="path-new">/robin/books/upload</span><br><span class="path-new">/robin/books/{id}</span><span class="path-old">/books/*</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">雙語 EPUB library、上傳表單、foliate-js reader。<span class="owner">owner · Robin</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Cross-cutting ────────────────────────────────────────────── -->
+  <section aria-labelledby="cross-heading">
+    <div class="section-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">05</span>
+        <span>cross · auth + api</span>
+      </div>
+      <h2 id="cross-heading">跨層</h2>
+      <p>Auth entry + backend APIs，不歸任何視覺 layer。</p>
+    </div>
+
+    <div class="ns-group">
+      <table class="routes">
+        <thead>
+          <tr><th class="col-path">Path</th><th class="col-status">Status</th><th class="col-function">功能</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path"><span class="path-new">/login</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">HMAC cookie + API key auth entry。<span class="owner">owner · Nami</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/api/*</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">Backend JSON endpoints — KB research、projects synthesize、其他 internal RPC。不算 web UI。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Migration plan ───────────────────────────────────────────── -->
+  <section aria-labelledby="migration-heading">
+    <div class="section-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">06</span>
+        <span>migration · phased</span>
+      </div>
+      <h2 id="migration-heading">遷移步驟</h2>
+      <p>不一次全做。每個 Phase 小範圍、可獨立驗證、舊路徑保留 301 redirect 一段時間以免 bookmark 失效。</p>
+    </div>
+
+    <div class="phases">
+      <div class="phase">
+        <div class="phase-head">
+          <span class="phase-n">phase 1</span>
+          <span class="phase-title">Shosho marketing landing（沒有破壞性變更）</span>
+        </div>
+        <div class="phase-body">
+          建 <code>/</code> 的 Shosho marketing landing（取代目前 302 → /brook/bridge）。修修 bookmark 改用 <code>/brook/context</code>（即將是新名稱）或 <code>/bridge</code>（Bridge ops）。同時加 301 redirect：<code>/brook/bridge → /brook/context</code>，這樣 muscle memory 不會立刻斷。
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <span class="phase-n">phase 2</span>
+          <span class="phase-title">Brook prefix 統一（4 個 rename）</span>
+        </div>
+        <div class="phase-body">
+          <code>/projects/{slug}</code> → <code>/brook/projects/{slug}</code>、<code>/brook/bridge</code> → <code>/brook/context</code>、<code>/promotion-review/*</code> → <code>/brook/promotion/*</code>、<code>/writing-assist/{id}</code> → <code>/brook/writing/{id}</code>。每個改名加 301 redirect 從舊路徑，保留 30-60 天再刪。
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <span class="phase-n">phase 3</span>
+          <span class="phase-title">Robin prefix 統一（6 個 rename，僅 local 影響）</span>
+        </div>
+        <div class="phase-body">
+          <code>/</code>（Robin enabled）+ <code>/read</code> + <code>/processing</code> + <code>/done</code> + <code>/review-*</code> + <code>/books/*</code> → <code>/robin/*</code>。本機環境，沒有 partner / SEO 影響，可以無痛換。
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <span class="phase-n">phase 4</span>
+          <span class="phase-title">技術債清理（無使用者影響）</span>
+        </div>
+        <div class="phase-body">
+          抽 <code>--nk-*</code> Bridge tokens 從 20+ template 的 inline <code>&lt;style&gt;</code> 到 <code>thousand_sunny/static/bridge/tokens.css</code>。刪除 deprecated <code>/bridge/health</code>。刪舊 301 redirects 在 Phase 2/3 通過後。
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span class="sho-mono">
+      <span class="sho-bolt footer-bolt" aria-hidden="true">
+        <svg><use href="#sho-bolt-shape"/></svg>
+      </span>
+      研究編號 N°0610 · nakama · url architecture proposal
+    </span>
+    <span>
+      <a class="sho-lk sho-mono" href="https://github.com/shosho-chang/nakama" rel="noopener">
+        github.com/shosho-chang/nakama
+      </a>
+    </span>
+  </footer>
+
+</main>
+
+<script>
+  // Theme switch — binary light/dark with a sliding thumb.
+  (function () {
+    const KEY = 'sho-theme';
+    const btn = document.getElementById('theme-toggle');
+    const body = document.body;
+    if (!btn || !body) return;
+    function read() { try { return localStorage.getItem(KEY); } catch (_) { return null; } }
+    function write(v) { try { localStorage.setItem(KEY, v); } catch (_) {} }
+    function systemDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    function apply(mode) {
+      body.dataset.theme = mode;
+      btn.setAttribute('aria-checked', mode === 'dark' ? 'true' : 'false');
+      btn.dataset.mode = mode;
+    }
+    const saved = read();
+    apply(saved === 'dark' || saved === 'light' ? saved : (systemDark() ? 'dark' : 'light'));
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.mode === 'dark' ? 'light' : 'dark';
+      write(next);
+      apply(next);
+    });
+  })();
+</script>
+
+</body>
+</html>
