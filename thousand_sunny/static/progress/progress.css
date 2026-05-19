@@ -376,11 +376,22 @@ table.matrix td .cell-note {
   /* 99/1 stamp: bigger + angled enough to read at a glance.
      Claude Design strategy.jsx watermark default = -12deg @ 48px;
      at this footer scale (~18px) we need a steeper tilt to remain legible. */
-  width: 18px;
-  height: 18px;
-  display: inline-block;
-  transform: rotate(-25deg);
+  width: 20px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-25deg) translateY(1px);
   transform-origin: center;
+  vertical-align: middle;
+}
+
+.page-footer .footer-bolt svg {
+  /* Override the global 1em sizing so the bolt actually fills the stamp box;
+     otherwise SVG draws at footer's 11.5px font-size inside a wider span and
+     looks like it floats above the text baseline. */
+  width: 100%;
+  height: 100%;
 }
 
 /* ── responsive ─────────────────────────────────────────────────────── */
