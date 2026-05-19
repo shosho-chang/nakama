@@ -15,7 +15,7 @@ agents:
   nami:
     description: "Secretary — Morning Brief、頻道數據追蹤、邀約報價回覆"
     schedule: "0 7 * * *"
-    brief_path: AgentBriefs
+    brief_path: AgentOutputs/nami/briefs
     metrics_schedule: "0 9 * * 1"  # 每週一早上彙整數據
     pricing_config: config/nami-pricing.yaml
 

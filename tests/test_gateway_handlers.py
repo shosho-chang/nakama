@@ -1372,7 +1372,7 @@ def test_write_vault_note_happy_path():
                 _tool_use_block(
                     "write_vault_note",
                     {
-                        "relative_path": "Nami/Notes/sales-kit-2026-04.md",
+                        "relative_path": "AgentOutputs/nami/notes/sales-kit-2026-04.md",
                         "title": "2026 Q2 報價記錄",
                         "body": "## 報價一覽\n- YouTube 影片：NT$50,000",
                         "tags": ["sales-kit", "quotes"],
@@ -1397,7 +1397,7 @@ def test_write_vault_note_happy_path():
     assert result.text
     mock_write.assert_called_once()
     call_args = mock_write.call_args
-    assert call_args[0][0] == "Nami/Notes/sales-kit-2026-04.md"
+    assert call_args[0][0] == "AgentOutputs/nami/notes/sales-kit-2026-04.md"
     fm = call_args[0][1]
     assert fm["title"] == "2026 Q2 報價記錄"
     assert fm["tags"] == ["sales-kit", "quotes"]
@@ -1463,7 +1463,7 @@ def test_write_vault_note_rejects_path_traversal():
                 _tool_use_block(
                     "write_vault_note",
                     {
-                        "relative_path": "Nami/Notes/../KB/Raw/steal.md",
+                        "relative_path": "AgentOutputs/nami/notes/../KB/Raw/steal.md",
                         "title": "偷跑",
                         "body": "test",
                     },
@@ -1511,7 +1511,7 @@ def test_write_vault_note_no_overwrite_by_default():
                 _tool_use_block(
                     "write_vault_note",
                     {
-                        "relative_path": "Nami/Notes/existing.md",
+                        "relative_path": "AgentOutputs/nami/notes/existing.md",
                         "title": "已存在",
                         "body": "new content",
                     },
@@ -1560,7 +1560,7 @@ def test_read_vault_note_returns_content():
             [
                 _tool_use_block(
                     "read_vault_note",
-                    {"relative_path": "Nami/Notes/sales-kit-2026-04.md"},
+                    {"relative_path": "AgentOutputs/nami/notes/sales-kit-2026-04.md"},
                     id_="toolu_rvn1",
                 )
             ],
@@ -1577,7 +1577,7 @@ def test_read_vault_note_returns_content():
         result = NamiHandler().handle("general", "翻舊 sales kit", "U1")
 
     assert result.text
-    mock_read.assert_called_once_with("Nami/Notes/sales-kit-2026-04.md")
+    mock_read.assert_called_once_with("AgentOutputs/nami/notes/sales-kit-2026-04.md")
 
 
 def test_read_vault_note_rejects_kb_path():
@@ -1625,10 +1625,10 @@ def test_read_vault_note_rejects_kb_path():
 
 
 def test_list_vault_notes_returns_files():
-    """list_vault_notes 列出 Nami/Notes/ 下的檔案清單。"""
+    """list_vault_notes 列出 AgentOutputs/nami/notes/ 下的檔案清單。"""
     from pathlib import Path
 
-    fake_files = [Path("Nami/Notes/a.md"), Path("Nami/Notes/b.md")]
+    fake_files = [Path("AgentOutputs/nami/notes/a.md"), Path("AgentOutputs/nami/notes/b.md")]
 
     iter_responses = [
         _fake_response(
@@ -1636,7 +1636,7 @@ def test_list_vault_notes_returns_files():
             [
                 _tool_use_block(
                     "list_vault_notes",
-                    {"relative_dir": "Nami/Notes/"},
+                    {"relative_dir": "AgentOutputs/nami/notes/"},
                     id_="toolu_lvn1",
                 )
             ],
@@ -1668,7 +1668,7 @@ def test_list_vault_notes_returns_files():
         patch("gateway.handlers.nami.list_files", return_value=fake_files),
         patch("gateway.handlers.nami.kb_log"),
     ):
-        NamiHandler().handle("general", "Nami/Notes 有什麼", "U1")
+        NamiHandler().handle("general", "AgentOutputs/nami/notes 有什麼", "U1")
 
     assert any("a.md" in r.get("content", "") for r in captured_results)
     assert any("b.md" in r.get("content", "") for r in captured_results)
@@ -1780,7 +1780,7 @@ def test_deep_research_flow():
                 _tool_use_block(
                     "write_vault_note",
                     {
-                        "relative_path": "Nami/Notes/Research/2026-04-21-melatonin.md",
+                        "relative_path": "AgentOutputs/nami/notes/Research/2026-04-21-melatonin.md",
                         "title": "褪黑激素與睡眠研究",
                         "body": "## 研究結論\n...",
                         "tags": ["research"],
@@ -1812,7 +1812,7 @@ def test_deep_research_flow():
     assert result.text
     mock_write.assert_called_once()
     written_path = mock_write.call_args[0][0]
-    assert "Nami/Notes/Research/" in written_path
+    assert "AgentOutputs/nami/notes/Research/" in written_path
 
 
 # ── pubmed_lookup tool ──────────────────────────────────────────────

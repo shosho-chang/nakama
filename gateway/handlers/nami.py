@@ -455,7 +455,8 @@ NAMI_TOOLS: list[dict] = [
     {
         "name": "write_vault_note",
         "description": (
-            "把自由格式的 markdown 筆記寫入 vault（Nami 專屬筆記區 Nami/Notes/）。"
+            "把自由格式的 markdown 筆記寫入 vault"
+            "（Nami 專屬筆記區 AgentOutputs/nami/notes/，ADR-028）。"
             "用途：整理交付物（sales kit、會議摘要、研究整理），"
             "或你覺得值得留底給使用者的資料。"
             "寫入前若路徑可能已存在，先用 read_vault_note 確認，避免意外覆寫。"
@@ -467,8 +468,8 @@ NAMI_TOOLS: list[dict] = [
                 "relative_path": {
                     "type": "string",
                     "description": (
-                        "vault-relative 路徑，必須在 Nami/Notes/ 底下，"
-                        "例：'Nami/Notes/sales-kit-2026-04.md'"
+                        "vault-relative 路徑，必須在 AgentOutputs/nami/notes/ 底下，"
+                        "例：'AgentOutputs/nami/notes/sales-kit-2026-04.md'"
                     ),
                 },
                 "title": {
@@ -497,14 +498,17 @@ NAMI_TOOLS: list[dict] = [
         "description": (
             "讀取 vault 內已存在的筆記。"
             "用途：寫入前確認是否已有同路徑檔案、或翻舊筆記查閱內容。"
-            "可讀取 Nami/Notes/、Projects/、TaskNotes/Tasks/ 底下的檔案。"
+            "可讀取 AgentOutputs/nami/notes/、Projects/、TaskNotes/Tasks/ 底下的檔案。"
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "relative_path": {
                     "type": "string",
-                    "description": "vault-relative 路徑，例：'Nami/Notes/sales-kit-2026-04.md'",
+                    "description": (
+                        "vault-relative 路徑，例："
+                        "'AgentOutputs/nami/notes/sales-kit-2026-04.md'"
+                    ),
                 },
             },
             "required": ["relative_path"],
@@ -515,14 +519,14 @@ NAMI_TOOLS: list[dict] = [
         "description": (
             "列出 vault 內某資料夾下的筆記清單。"
             "用途：查看已有哪些 note、避免重複寫入。"
-            "預設列 Nami/Notes/，也可指定 Projects/ 或 TaskNotes/Tasks/。"
+            "預設列 AgentOutputs/nami/notes/，也可指定 Projects/ 或 TaskNotes/Tasks/。"
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "relative_dir": {
                     "type": "string",
-                    "description": "vault-relative 資料夾路徑，預設 'Nami/Notes/'",
+                    "description": "vault-relative 資料夾路徑，預設 'AgentOutputs/nami/notes/'",
                 },
             },
             "required": [],
@@ -1770,7 +1774,8 @@ class NamiHandler(BaseHandler):
         return _ToolOutcome(content=content)
 
     def _tool_list_vault_notes(self, input_: dict) -> _ToolOutcome:
-        relative_dir = str(input_.get("relative_dir", "Nami/Notes/")).strip() or "Nami/Notes/"
+        _default_dir = "AgentOutputs/nami/notes/"
+        relative_dir = str(input_.get("relative_dir", _default_dir)).strip() or _default_dir
 
         assert_nami_can_read(relative_dir if relative_dir.endswith("/") else relative_dir + "/")
 
