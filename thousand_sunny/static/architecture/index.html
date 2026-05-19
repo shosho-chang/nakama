@@ -362,7 +362,7 @@
           <tr>
             <td class="path"><span class="path-new">/robin/writing-assist/{source_id}</span><span class="path-old">/writing-assist/{source_id}</span></td>
             <td><span class="pill pill--rename">rename</span></td>
-            <td class="function">Line 2 atomic 原子內容 Reading Context Package — Stage 3→4 producer（ADR-024、無 LLM 生成、W1-W7 no-ghostwriting invariants）。<strong>panel 修正</strong>：原本錯放 Brook 層，ADR-027:69-83 明確 reject 把 RCP 移到 Brook、255-257 確認 Robin remains producer。<span class="owner">owner · Robin + Owner</span></td>
+            <td class="function">Line 2 atomic 原子內容 Reading Context Package — Stage 3→4 producer（ADR-024、無 LLM 生成、W1-W7 no-ghostwriting invariants）。<strong>panel 修正</strong>：原本錯放 Brook 層，ADR-027:69 明確「RCP 留在 Robin，Brook 在 Stage 4 scaffold 流程中可 consume Robin 的 RCP 輸出，但不產生」；ADR-024:60 標 Stage 3→4 handoff 為 Robin。<span class="owner">owner · Robin + Owner</span></td>
           </tr>
         </tbody>
       </table>
