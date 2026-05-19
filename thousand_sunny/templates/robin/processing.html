@@ -31,7 +31,7 @@
 </div>
 <script>
 const sessionId = "{{ session_id }}";
-const evtSource = new EventSource("/events/" + sessionId);
+const evtSource = new EventSource("/robin/events/" + sessionId);
 
 evtSource.addEventListener("status", function(e) {
   const data = JSON.parse(e.data);

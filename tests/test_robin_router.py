@@ -49,6 +49,8 @@ def client(vault, monkeypatch):
 
     app = FastAPI()
     app.include_router(robin_module.router)
+    app.include_router(robin_module.robin_router)
+    app.include_router(robin_module.legacy_router)
 
     from fastapi.responses import PlainTextResponse
 
@@ -73,6 +75,8 @@ def auth_client(client, monkeypatch):
 
     app = FastAPI()
     app.include_router(robin_module.router)
+    app.include_router(robin_module.robin_router)
+    app.include_router(robin_module.legacy_router)
 
     from fastapi.responses import PlainTextResponse
 
@@ -344,14 +348,14 @@ def test_index_redirects_when_auth_required_no_cookie(auth_client):
 
 def test_read_source_unauth_redirect(auth_client):
     tc, _, _ = auth_client
-    r = tc.get("/read", params={"file": "foo.md"})
+    r = tc.get("/robin/read", params={"file": "foo.md"})
     assert r.status_code == 302
 
 
 def test_read_source_missing_file_404(client, vault):
     tc, _ = client
     (vault / "Inbox" / "kb").mkdir(parents=True)
-    r = tc.get("/read", params={"file": "nonexistent.md"})
+    r = tc.get("/robin/read", params={"file": "nonexistent.md"})
     assert r.status_code == 404
 
 
@@ -363,7 +367,7 @@ def test_read_source_unsupported_extension_400(client, vault, monkeypatch):
     inbox.mkdir(parents=True)
     (inbox / "foo.pdf").write_bytes(b"fake pdf")
 
-    r = tc.get("/read", params={"file": "foo.pdf"})
+    r = tc.get("/robin/read", params={"file": "foo.pdf"})
     assert r.status_code == 400
 
 
@@ -374,7 +378,7 @@ def test_read_source_happy_path_md(client, vault, monkeypatch):
     inbox.mkdir(parents=True)
     (inbox / "foo.md").write_text("---\ntitle: Foo\n---\nbody content", encoding="utf-8")
 
-    r = tc.get("/read", params={"file": "foo.md"})
+    r = tc.get("/robin/read", params={"file": "foo.md"})
     assert r.status_code == 200
     # Slug and empty annotations injected into page
     assert "foo" in r.text  # slug derived from filename
@@ -413,11 +417,13 @@ def test_read_source_passes_existing_annotations(client, vault, monkeypatch):
     # Reload router so it picks up the patched vault path
     app2 = __import__("fastapi", fromlist=["FastAPI"]).FastAPI()
     app2.include_router(robin_mod.router)
+    app2.include_router(robin_mod.robin_router)
+    app2.include_router(robin_mod.legacy_router)
     from fastapi.testclient import TestClient as TC2
 
     tc2 = TC2(app2, follow_redirects=False)
 
-    r = tc2.get("/read", params={"file": "bar.md"})
+    r = tc2.get("/robin/read", params={"file": "bar.md"})
     assert r.status_code == 200
     assert "Hello world" in r.text
 
@@ -430,7 +436,7 @@ def test_read_source_without_frontmatter(client, vault, monkeypatch):
     inbox.mkdir(parents=True)
     (inbox / "plain.md").write_text("just plain text, no fm", encoding="utf-8")
 
-    r = tc.get("/read", params={"file": "plain.md"})
+    r = tc.get("/robin/read", params={"file": "plain.md"})
     assert r.status_code == 200
 
 
@@ -441,7 +447,7 @@ def test_read_source_without_frontmatter(client, vault, monkeypatch):
 
 def test_serve_vault_file_auth_required_returns_403(auth_client):
     tc, _, _ = auth_client
-    r = tc.get("/files/foo.png")
+    r = tc.get("/robin/files/foo.png")
     assert r.status_code == 403
 
 
@@ -451,7 +457,7 @@ def test_serve_vault_file_serves_from_files_dir(client, vault):
     files_dir.mkdir()
     (files_dir / "img.png").write_bytes(b"\x89PNG")
 
-    r = tc.get("/files/img.png")
+    r = tc.get("/robin/files/img.png")
     assert r.status_code == 200
 
 
@@ -460,7 +466,7 @@ def test_serve_vault_file_fallback_to_vault_root(client, vault):
     tc, _ = client
     (vault / "root.png").write_bytes(b"\x89PNG")
 
-    r = tc.get("/files/root.png")
+    r = tc.get("/robin/files/root.png")
     assert r.status_code == 200
 
 
@@ -468,7 +474,7 @@ def test_serve_vault_file_not_found_404(client, vault):
     tc, _ = client
     (vault / "Files").mkdir()
 
-    r = tc.get("/files/missing.png")
+    r = tc.get("/robin/files/missing.png")
     assert r.status_code == 404
 
 
@@ -487,14 +493,14 @@ _ANN_PAYLOAD = {
 
 def test_save_annotations_auth_required(auth_client):
     tc, _, _ = auth_client
-    r = tc.post("/save-annotations", json=_ANN_PAYLOAD)
+    r = tc.post("/robin/save-annotations", json=_ANN_PAYLOAD)
     assert r.status_code == 403
 
 
 def test_save_annotations_unknown_base_400(client, vault):
     tc, _ = client
     payload = {**_ANN_PAYLOAD, "base": "unknown-base"}
-    r = tc.post("/save-annotations", json=payload)
+    r = tc.post("/robin/save-annotations", json=payload)
     assert r.status_code == 400
 
 
@@ -511,7 +517,7 @@ def test_save_annotations_writes_to_kb_annotations(client, vault, monkeypatch):
 
     tc, _ = client
 
-    r = tc.post("/save-annotations", json=_ANN_PAYLOAD)
+    r = tc.post("/robin/save-annotations", json=_ANN_PAYLOAD)
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "ok"
@@ -542,7 +548,7 @@ def test_save_annotations_does_not_mutate_source(client, vault, monkeypatch):
     (inbox / "doc.md").write_text(source_text, encoding="utf-8")
 
     tc, _ = client
-    tc.post("/save-annotations", json=_ANN_PAYLOAD)
+    tc.post("/robin/save-annotations", json=_ANN_PAYLOAD)
 
     assert (inbox / "doc.md").read_text("utf-8") == source_text
 
@@ -562,7 +568,7 @@ def test_save_annotations_sources_base(client, vault, monkeypatch):
     payload = {**_ANN_PAYLOAD, "base": "sources", "slug": "src-doc"}
 
     tc, _ = client
-    r = tc.post("/save-annotations", json=payload)
+    r = tc.post("/robin/save-annotations", json=payload)
     assert r.status_code == 200
     assert (vault / "KB" / "Annotations" / "src-doc.md").exists()
 
@@ -574,14 +580,14 @@ def test_save_annotations_sources_base(client, vault, monkeypatch):
 
 def test_mark_read_auth_required(auth_client):
     tc, _, _ = auth_client
-    r = tc.post("/mark-read", data={"filename": "x.md"})
+    r = tc.post("/robin/mark-read", data={"filename": "x.md"})
     assert r.status_code == 403
 
 
 def test_mark_read_missing_file_404(client, vault):
     tc, _ = client
     (vault / "Inbox" / "kb").mkdir(parents=True)
-    r = tc.post("/mark-read", data={"filename": "missing.md"})
+    r = tc.post("/robin/mark-read", data={"filename": "missing.md"})
     assert r.status_code == 404
 
 
@@ -593,7 +599,7 @@ def test_mark_read_happy_path(client, vault, monkeypatch):
     inbox.mkdir(parents=True)
     (inbox / "foo.md").write_text("x", encoding="utf-8")
 
-    r = tc.post("/mark-read", data={"filename": "foo.md"})
+    r = tc.post("/robin/mark-read", data={"filename": "foo.md"})
     assert r.status_code == 200
     assert captured["path"].name == "foo.md"
 
@@ -605,20 +611,20 @@ def test_mark_read_happy_path(client, vault, monkeypatch):
 
 def test_pubmed_to_reader_invalid_pmid_returns_400(client):
     tc, _ = client
-    r = tc.get("/pubmed-to-reader", params={"pmid": "not-a-number"})
+    r = tc.get("/robin/pubmed-to-reader", params={"pmid": "not-a-number"})
     assert r.status_code == 400
 
 
 def test_pubmed_to_reader_unauth_redirect(auth_client):
     tc, _, _ = auth_client
-    r = tc.get("/pubmed-to-reader", params={"pmid": "12345"})
+    r = tc.get("/robin/pubmed-to-reader", params={"pmid": "12345"})
     assert r.status_code == 302
 
 
 def test_pubmed_to_reader_no_source_returns_404(client, vault):
     tc, _ = client
     # Neither PDF nor md exists
-    r = tc.get("/pubmed-to-reader", params={"pmid": "99999"})
+    r = tc.get("/robin/pubmed-to-reader", params={"pmid": "99999"})
     assert r.status_code == 404
 
 
@@ -931,3 +937,86 @@ def test_kb_research_returns_results(client, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["results"][0]["title"] == "hit"
+
+
+# ---------------------------------------------------------------------------
+# Legacy redirects (R6) — root-prefix → /robin/* (GET 301 / POST 308)
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_read_redirects_301_preserving_query_string(client):
+    """GET /read?file=foo.md → 301 → /robin/read?file=foo.md.
+
+    Codex §1 caveat: query-string shape preserved — no path-segment migration.
+    """
+    tc, _ = client
+    r = tc.get("/read?file=foo.md&base=inbox")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/read?file=foo.md&base=inbox"
+
+
+def test_legacy_files_redirects_301(client):
+    tc, _ = client
+    r = tc.get("/files/img.png")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/files/img.png"
+
+
+def test_legacy_events_redirects_301(client):
+    """SSE: EventSource follows 301 on initial connection so the legacy
+    URL still resolves to the live stream after the rename."""
+    tc, _ = client
+    r = tc.get("/events/some-sid")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/events/some-sid"
+
+
+def test_legacy_save_annotations_returns_308_preserving_method(client):
+    """POST legacy URL must 308 (method+body preserving) so the JSON
+    fetch replays at the new URL instead of downgrading to GET."""
+    tc, _ = client
+    r = tc.post("/save-annotations", json=_ANN_PAYLOAD)
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/save-annotations"
+
+
+def test_legacy_sync_annotations_returns_308(client):
+    tc, _ = client
+    r = tc.post("/sync-annotations/my-slug")
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/sync-annotations/my-slug"
+
+
+def test_legacy_mark_read_returns_308(client):
+    tc, _ = client
+    r = tc.post("/mark-read", data={"filename": "x.md"})
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/mark-read"
+
+
+def test_legacy_discard_info_returns_301_with_query_string(client):
+    tc, _ = client
+    r = tc.get("/discard-info?file=x.md&base=inbox")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/discard-info?file=x.md&base=inbox"
+
+
+def test_legacy_discard_returns_308_with_query_string(client):
+    tc, _ = client
+    r = tc.post("/discard?file=x.md&base=inbox")
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/discard?file=x.md&base=inbox"
+
+
+def test_legacy_translate_returns_308_with_query_string(client):
+    tc, _ = client
+    r = tc.post("/translate?file=x.md")
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/translate?file=x.md"
+
+
+def test_legacy_pubmed_to_reader_returns_301(client):
+    tc, _ = client
+    r = tc.get("/pubmed-to-reader?pmid=12345")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/pubmed-to-reader?pmid=12345"

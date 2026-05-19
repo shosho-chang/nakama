@@ -47,6 +47,8 @@ def client(vault, monkeypatch):
 
     app = FastAPI()
     app.include_router(robin_module.router)
+    app.include_router(robin_module.robin_router)
+    app.include_router(robin_module.legacy_router)
 
     from fastapi.responses import PlainTextResponse
 
@@ -71,6 +73,8 @@ def auth_client(vault, monkeypatch):
 
     app = FastAPI()
     app.include_router(robin_module.router)
+    app.include_router(robin_module.robin_router)
+    app.include_router(robin_module.legacy_router)
 
     tc = TestClient(app, follow_redirects=False)
     from thousand_sunny.auth import make_token
@@ -86,7 +90,7 @@ def auth_client(vault, monkeypatch):
 
 def test_sync_annotations_requires_auth(auth_client):
     tc, robin_module, _ = auth_client
-    res = tc.post("/sync-annotations/some-slug")
+    res = tc.post("/robin/sync-annotations/some-slug")
     assert res.status_code == 403
 
 
@@ -115,7 +119,7 @@ def test_sync_annotations_store_not_found(client, monkeypatch):
         lambda self, slug: fake_report,
     )
 
-    res = tc.post("/sync-annotations/ghost-slug")
+    res = tc.post("/robin/sync-annotations/ghost-slug")
     assert res.status_code == 200
     data = res.json()
     assert data["annotations_merged"] == 0
@@ -143,7 +147,7 @@ def test_sync_annotations_empty_returns_zero_count(client, monkeypatch):
         lambda self, slug: fake_report,
     )
 
-    res = tc.post("/sync-annotations/empty-src")
+    res = tc.post("/robin/sync-annotations/empty-src")
     assert res.status_code == 200
     data = res.json()
     assert data["annotations_merged"] == 0
@@ -171,7 +175,7 @@ def test_sync_annotations_success(client, monkeypatch):
         lambda self, slug: fake_report,
     )
 
-    res = tc.post("/sync-annotations/book-ch3")
+    res = tc.post("/robin/sync-annotations/book-ch3")
     assert res.status_code == 200
     data = res.json()
     assert data["annotations_merged"] == 3

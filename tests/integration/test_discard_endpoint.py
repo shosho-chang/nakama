@@ -83,13 +83,13 @@ def _write_source(path: Path, *, title: str = "Test Article") -> None:
 
 def test_discard_info_requires_auth(client):
     tc, _ = client
-    resp = tc.get("/discard-info?file=foo.md")
+    resp = tc.get("/robin/discard-info?file=foo.md")
     assert resp.status_code == 403
 
 
 def test_discard_post_requires_auth(client):
     tc, _ = client
-    resp = tc.post("/discard?file=foo.md")
+    resp = tc.post("/robin/discard?file=foo.md")
     # Endpoint redirects to /login (matches /scrape-translate auth gate behaviour)
     assert resp.status_code == 302
     assert "/login" in resp.headers["location"]
@@ -105,7 +105,7 @@ def test_discard_info_no_annotation_returns_zero(client):
     src = vault / "Inbox" / "kb" / "fresh.md"
     _write_source(src, title="Fresh Article")
 
-    resp = tc.get("/discard-info?file=fresh.md", cookies={"nakama_auth": auth})
+    resp = tc.get("/robin/discard-info?file=fresh.md", cookies={"nakama_auth": auth})
     assert resp.status_code == 200
     data = resp.json()
     assert data["annotation_count"] == 0
@@ -137,7 +137,7 @@ def test_discard_info_counts_existing_annotations(client):
         )
     )
 
-    resp = tc.get("/discard-info?file=studied.md", cookies={"nakama_auth": auth})
+    resp = tc.get("/robin/discard-info?file=studied.md", cookies={"nakama_auth": auth})
     assert resp.status_code == 200
     assert resp.json()["annotation_count"] == 2
 
@@ -145,7 +145,7 @@ def test_discard_info_counts_existing_annotations(client):
 def test_discard_info_404_on_missing_file(client):
     tc, _ = client
     auth = _auth_cookie(tc)
-    resp = tc.get("/discard-info?file=nope.md", cookies={"nakama_auth": auth})
+    resp = tc.get("/robin/discard-info?file=nope.md", cookies={"nakama_auth": auth})
     assert resp.status_code == 404
 
 
@@ -162,7 +162,7 @@ def test_discard_redirects_to_inbox(client, monkeypatch):
     # Run on Linux branch (real unlink) so we don't shell out.
     monkeypatch.setattr(platform, "system", lambda: "Linux")
 
-    resp = tc.post("/discard?file=to-trash.md", cookies={"nakama_auth": auth})
+    resp = tc.post("/robin/discard?file=to-trash.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "/"
@@ -179,7 +179,7 @@ def test_discard_recycles_source_on_linux(client, monkeypatch):
 
     monkeypatch.setattr(platform, "system", lambda: "Linux")
 
-    resp = tc.post("/discard?file=linux-discard.md", cookies={"nakama_auth": auth})
+    resp = tc.post("/robin/discard?file=linux-discard.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
     assert not src.exists()
@@ -209,7 +209,7 @@ def test_discard_recycles_source_on_windows_via_powershell(client, monkeypatch):
 
     monkeypatch.setattr(disc_mod.subprocess, "run", fake_run)
 
-    resp = tc.post("/discard?file=win-discard.md", cookies={"nakama_auth": auth})
+    resp = tc.post("/robin/discard?file=win-discard.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
     assert "calls" in captured
@@ -252,7 +252,7 @@ def test_discard_recycles_annotation_companion(client, monkeypatch):
 
     monkeypatch.setattr(platform, "system", lambda: "Linux")
 
-    resp = tc.post("/discard?file=with-notes.md", cookies={"nakama_auth": auth})
+    resp = tc.post("/robin/discard?file=with-notes.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
     assert not src.exists()
@@ -274,7 +274,7 @@ def test_discard_skips_annotation_when_not_present(client, monkeypatch):
         "thousand_sunny.routers.robin.DiscardService",
         wraps=__import__("shared.discard_service", fromlist=["DiscardService"]).DiscardService,
     ) as MockService:
-        resp = tc.post("/discard?file=alone.md", cookies={"nakama_auth": auth})
+        resp = tc.post("/robin/discard?file=alone.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
     assert not src.exists()
@@ -293,7 +293,7 @@ def test_discard_missing_file_still_redirects(client, monkeypatch):
     monkeypatch.setattr(platform, "system", lambda: "Linux")
 
     # File never written.
-    resp = tc.post("/discard?file=ghost.md", cookies={"nakama_auth": auth})
+    resp = tc.post("/robin/discard?file=ghost.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "/"
@@ -304,7 +304,7 @@ def test_discard_path_traversal_rejected(client):
     tc, _ = client
     auth = _auth_cookie(tc)
 
-    resp = tc.post("/discard?file=../../../etc/passwd", cookies={"nakama_auth": auth})
+    resp = tc.post("/robin/discard?file=../../../etc/passwd", cookies={"nakama_auth": auth})
     assert resp.status_code == 403
 
 
@@ -313,7 +313,7 @@ def test_discard_unknown_base_rejected(client):
     tc, _ = client
     auth = _auth_cookie(tc)
 
-    resp = tc.post("/discard?file=foo.md&base=etc", cookies={"nakama_auth": auth})
+    resp = tc.post("/robin/discard?file=foo.md&base=etc", cookies={"nakama_auth": auth})
     assert resp.status_code == 400
 
 
@@ -343,7 +343,7 @@ def test_discard_uses_discard_service_caller_binding(client, monkeypatch):
             deleted_file=True,
             annotation_deleted=False,
         )
-        resp = tc.post("/discard?file=intercepted.md", cookies={"nakama_auth": auth})
+        resp = tc.post("/robin/discard?file=intercepted.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
     MockService.assert_called_once_with()

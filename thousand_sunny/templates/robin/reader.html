@@ -437,17 +437,17 @@
 
       // Convert Obsidian image wikilinks → standard markdown (for local images fetched by Robin)
       md = md.replace(/!\[\[([^\]]+\.(?:png|jpe?g|gif|webp|svg|avif|bmp))\]\]/gi, function(_, filename) {
-        return `![${filename}](/files/${encodeURIComponent(filename)})`;
+        return `![${filename}](/robin/files/${encodeURIComponent(filename)})`;
       });
 
-      // Convert vault-root-relative image paths → /files/-prefixed URLs
+      // Convert vault-root-relative image paths → /robin/files/-prefixed URLs
       // Matches standard markdown ![alt](KB/Attachments/.../img.png) where the
-      // path is neither an absolute URL nor already under /files/.
+      // path is neither an absolute URL nor already under /robin/files/.
       md = md.replace(
-        /!\[([^\]]*)\]\(((?!https?:|\/files\/|\/|#|data:)[^)\s]+\.(?:png|jpe?g|gif|webp|svg|avif|bmp))\)/gi,
+        /!\[([^\]]*)\]\(((?!https?:|\/robin\/files\/|\/files\/|\/|#|data:)[^)\s]+\.(?:png|jpe?g|gif|webp|svg|avif|bmp))\)/gi,
         function(_, alt, relpath) {
           var encoded = relpath.split('/').map(encodeURIComponent).join('/');
-          return `![${alt}](/files/${encoded})`;
+          return `![${alt}](/robin/files/${encoded})`;
         }
       );
 
@@ -598,7 +598,7 @@
         updated_at: new Date().toISOString(),
       };
       try {
-        const res = await fetch('/save-annotations', {
+        const res = await fetch('/robin/save-annotations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -698,7 +698,7 @@
       syncIndicator.style.opacity = '1';
       syncIndicator.style.color = 'var(--text-muted)';
       try {
-        const res = await fetch('/sync-annotations/' + encodeURIComponent(SLUG), { method: 'POST' });
+        const res = await fetch('/robin/sync-annotations/' + encodeURIComponent(SLUG), { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
           const updated = (data.concepts_updated || []).length;
@@ -737,7 +737,7 @@
       btn.textContent = '🔄 翻譯中…';
       try {
         const params = new URLSearchParams({ file: FILENAME });
-        const res = await fetch('/translate?' + params.toString(), {
+        const res = await fetch('/robin/translate?' + params.toString(), {
           method: 'POST',
           // 接受 303 redirect → 直接讓瀏覽器跳到 bilingual reader
           redirect: 'follow',
@@ -766,7 +766,7 @@
       form.append('filename', FILENAME);
       form.append('base', BASE);
       try {
-        const res = await fetch('/mark-read', { method: 'POST', body: form });
+        const res = await fetch('/robin/mark-read', { method: 'POST', body: form });
         if (res.ok) {
           finishBtn.textContent = '已完成閱讀 ✓';
           finishBtn.classList.add('done');
@@ -813,7 +813,7 @@
       buildDiscardBody(0);
       try {
         const params = new URLSearchParams({ file: FILENAME, base: BASE });
-        const res = await fetch('/discard-info?' + params.toString());
+        const res = await fetch('/robin/discard-info?' + params.toString());
         if (res.ok) {
           const data = await res.json();
           buildDiscardBody(data.annotation_count || 0);
@@ -823,7 +823,7 @@
         console.warn('discard-info fetch failed:', e);
       }
       const params = new URLSearchParams({ file: FILENAME, base: BASE });
-      discardForm.action = '/discard?' + params.toString();
+      discardForm.action = '/robin/discard?' + params.toString();
       if (typeof discardDialog.showModal === 'function') {
         discardDialog.showModal();
       }

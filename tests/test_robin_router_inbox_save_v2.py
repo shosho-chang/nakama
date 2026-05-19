@@ -55,6 +55,8 @@ def client(vault, monkeypatch):
 
     app = FastAPI()
     app.include_router(robin_module.router)
+    app.include_router(robin_module.robin_router)
+    app.include_router(robin_module.legacy_router)
 
     from fastapi.responses import PlainTextResponse
 
@@ -101,7 +103,7 @@ def test_n7_inbox_reader_uses_registry_slug(client, vault, monkeypatch):
 
     monkeypatch.setattr(mod, "ReadingSourceRegistry", SpyRegistry)
 
-    r = tc.get("/read", params={"file": "foo.md"})
+    r = tc.get("/robin/read", params={"file": "foo.md"})
     assert r.status_code == 200
     assert captured["key_type"] == "InboxKey"
     assert captured["relative_path"] == "Inbox/kb/foo.md"
@@ -135,7 +137,7 @@ def test_n8_inbox_reader_404_when_registry_returns_none(client, vault, monkeypat
 
     monkeypatch.setattr(mod, "ReadingSourceRegistry", lambda: _NoneRegistry())
 
-    r = tc.get("/read", params={"file": "exists-but-fails.md"})
+    r = tc.get("/robin/read", params={"file": "exists-but-fails.md"})
     assert r.status_code == 404
 
 
@@ -144,7 +146,7 @@ def test_n8_inbox_reader_404_when_file_missing(client, vault):
     upstream of registry resolve."""
     tc, _ = client
     (vault / "Inbox" / "kb").mkdir(parents=True)
-    r = tc.get("/read", params={"file": "nonexistent.md"})
+    r = tc.get("/robin/read", params={"file": "nonexistent.md"})
     assert r.status_code == 404
 
 
@@ -178,7 +180,7 @@ def test_n9_bilingual_sibling_url_convergence(client, vault, monkeypatch):
     )
 
     # Hit the original-only URL (still reachable per investigation §4.3).
-    r = tc.get("/read", params={"file": "foo.md"})
+    r = tc.get("/robin/read", params={"file": "foo.md"})
     assert r.status_code == 200
     # Post-migration: slug derives from BILINGUAL sibling frontmatter title.
     assert "bilingual-reading-title" in r.text
@@ -203,7 +205,7 @@ def test_n9_inbox_reader_sources_base_keeps_legacy_derivation(client, vault, mon
     )
 
     r = tc.get(
-        "/read",
+        "/robin/read",
         params={"file": "pubmed-12345-bilingual.md", "base": "sources"},
     )
     assert r.status_code == 200

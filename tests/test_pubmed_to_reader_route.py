@@ -41,7 +41,7 @@ def _auth_cookie(client):
 
 
 def test_pubmed_to_reader_requires_auth(client):
-    resp = client.get("/pubmed-to-reader?pmid=12345")
+    resp = client.get("/robin/pubmed-to-reader?pmid=12345")
     assert resp.status_code == 302
     assert "/login" in resp.headers["location"]
 
@@ -49,7 +49,7 @@ def test_pubmed_to_reader_requires_auth(client):
 def test_pubmed_to_reader_rejects_non_numeric_pmid(client):
     auth = _auth_cookie(client)
     resp = client.get(
-        "/pubmed-to-reader?pmid=abc",
+        "/robin/pubmed-to-reader?pmid=abc",
         cookies={"nakama_auth": auth},
     )
     assert resp.status_code == 400
@@ -59,7 +59,7 @@ def test_pubmed_to_reader_404_when_pdf_missing(client):
     auth = _auth_cookie(client)
     # PDF 不存在
     resp = client.get(
-        "/pubmed-to-reader?pmid=99999999",
+        "/robin/pubmed-to-reader?pmid=99999999",
         cookies={"nakama_auth": auth},
     )
     assert resp.status_code == 404
@@ -82,13 +82,13 @@ def test_pubmed_to_reader_translates_and_redirects(client, tmp_path):
         ),
     ):
         resp = client.get(
-            "/pubmed-to-reader?pmid=12345",
+            "/robin/pubmed-to-reader?pmid=12345",
             cookies={"nakama_auth": auth},
             follow_redirects=False,
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == ("/read?file=pubmed-12345-bilingual.md&base=sources")
+    assert resp.headers["location"] == ("/robin/read?file=pubmed-12345-bilingual.md&base=sources")
     # 檢查 bilingual md 真的寫進 sources
     bilingual = tmp_path / "KB" / "Wiki" / "Sources" / "pubmed-12345-bilingual.md"
     assert bilingual.exists()
@@ -111,7 +111,7 @@ def test_pubmed_to_reader_short_circuit_when_bilingual_exists(client, tmp_path):
         patch("shared.translator.translate_document") as mock_translate,
     ):
         resp = client.get(
-            "/pubmed-to-reader?pmid=12345",
+            "/robin/pubmed-to-reader?pmid=12345",
             cookies={"nakama_auth": auth},
             follow_redirects=False,
         )
@@ -138,13 +138,15 @@ def test_pubmed_to_reader_html_path_translates(client, tmp_path):
         ) as mock_translate,
     ):
         resp = client.get(
-            "/pubmed-to-reader?pmid=42020128",
+            "/robin/pubmed-to-reader?pmid=42020128",
             cookies={"nakama_auth": auth},
             follow_redirects=False,
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == ("/read?file=pubmed-42020128-bilingual.md&base=sources")
+    assert resp.headers["location"] == (
+        "/robin/read?file=pubmed-42020128-bilingual.md&base=sources"
+    )
     mock_parse.assert_not_called()  # PDF 路徑不該被碰
     mock_translate.assert_called_once()
     bilingual = tmp_path / "KB" / "Wiki" / "Sources" / "pubmed-42020128-bilingual.md"
@@ -170,7 +172,7 @@ def test_pubmed_to_reader_prefers_pdf_over_html(client, tmp_path):
         ) as mock_translate,
     ):
         resp = client.get(
-            "/pubmed-to-reader?pmid=42020128",
+            "/robin/pubmed-to-reader?pmid=42020128",
             cookies={"nakama_auth": auth},
             follow_redirects=False,
         )
@@ -195,7 +197,7 @@ def test_pubmed_to_reader_falls_back_to_raw_when_translate_fails(client, tmp_pat
         patch("shared.translator.translate_document", side_effect=RuntimeError("LLM down")),
     ):
         resp = client.get(
-            "/pubmed-to-reader?pmid=12345",
+            "/robin/pubmed-to-reader?pmid=12345",
             cookies={"nakama_auth": auth},
             follow_redirects=False,
         )
@@ -219,7 +221,7 @@ def test_read_base_sources(client, tmp_path):
     )
 
     resp = client.get(
-        "/read?file=pubmed-12345-bilingual.md&base=sources",
+        "/robin/read?file=pubmed-12345-bilingual.md&base=sources",
         cookies={"nakama_auth": auth},
     )
     assert resp.status_code == 200
@@ -229,7 +231,7 @@ def test_read_base_sources(client, tmp_path):
 def test_read_base_rejects_unknown(client):
     auth = _auth_cookie(client)
     resp = client.get(
-        "/read?file=anything.md&base=evil",
+        "/robin/read?file=anything.md&base=evil",
         cookies={"nakama_auth": auth},
     )
     assert resp.status_code == 400
@@ -241,7 +243,7 @@ def test_read_base_defaults_to_inbox(client, tmp_path):
     inbox = tmp_path / "Inbox" / "kb"
     (inbox / "hello.md").write_text("# Hello\n\nWorld.", encoding="utf-8")
 
-    resp = client.get("/read?file=hello.md", cookies={"nakama_auth": auth})
+    resp = client.get("/robin/read?file=hello.md", cookies={"nakama_auth": auth})
     assert resp.status_code == 200
     assert "Hello" in resp.text
 
@@ -255,7 +257,7 @@ def test_files_serves_from_vault_files_dir(client, tmp_path):
     (tmp_path / "Files").mkdir(exist_ok=True)
     (tmp_path / "Files" / "figure-abc123.png").write_bytes(b"\x89PNG\r\n")
 
-    resp = client.get("/files/figure-abc123.png", cookies={"nakama_auth": auth})
+    resp = client.get("/robin/files/figure-abc123.png", cookies={"nakama_auth": auth})
     assert resp.status_code == 200
     assert resp.content == b"\x89PNG\r\n"
 
@@ -268,7 +270,7 @@ def test_files_serves_vault_root_relative_path(client, tmp_path):
     (pmid_dir / "img-1.png").write_bytes(b"PNGBYTES")
 
     resp = client.get(
-        "/files/KB/Attachments/pubmed/42020128/img-1.png",
+        "/robin/files/KB/Attachments/pubmed/42020128/img-1.png",
         cookies={"nakama_auth": auth},
     )
     assert resp.status_code == 200
@@ -279,7 +281,7 @@ def test_files_rejects_path_traversal(client, tmp_path):
     """/files/ 不可透過 .. 跑出 vault（safe_resolve 防護）"""
     auth = _auth_cookie(client)
     resp = client.get(
-        "/files/../../../etc/passwd",
+        "/robin/files/../../../etc/passwd",
         cookies={"nakama_auth": auth},
     )
     # safe_resolve 會 raise HTTPException；具體 status 可能 400 或 404

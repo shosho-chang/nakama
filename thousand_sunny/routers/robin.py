@@ -40,7 +40,19 @@ from thousand_sunny.auth import check_auth, require_auth_or_key
 from thousand_sunny.helpers import safe_resolve, sse
 
 logger = get_logger("nakama.web.robin")
+# ``router`` keeps the root-prefix routes (ingest flow: ``/``, ``/start``,
+# ``/processing``, etc.) that were not part of the R6 rename group.
 router = APIRouter()
+# ``robin_router`` hosts the R6 canonical reader endpoints under ``/robin/*``
+# (10 endpoints: ``/robin/read``, ``/robin/files/*``, ``/robin/events/*``,
+# ``/robin/save-annotations``, ``/robin/sync-annotations/*``,
+# ``/robin/mark-read``, ``/robin/discard-info``, ``/robin/discard``,
+# ``/robin/translate``, ``/robin/pubmed-to-reader``). Codex audit §1: keep
+# query-string shape — path-segment slug migration is a separate ADR.
+robin_router = APIRouter(prefix="/robin")
+# ``legacy_router`` preserves the legacy root-prefix paths as 301 (GET) /
+# 308 (POST) redirects to the new ``/robin/*`` URLs.
+legacy_router = APIRouter()
 templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "robin")
 )
@@ -204,7 +216,7 @@ async def index(request: Request, nakama_auth: str | None = Cookie(None)):
     return templates.TemplateResponse(request, "index.html", {"files": files})
 
 
-@router.get("/read", response_class=HTMLResponse)
+@robin_router.get("/read", response_class=HTMLResponse)
 async def read_source(
     request: Request,
     file: str,
@@ -265,7 +277,7 @@ async def read_source(
     )
 
 
-@router.get("/files/{path:path}")
+@robin_router.get("/files/{path:path}")
 async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
     """提供 vault 中的圖片給 reader 顯示。"""
     if not check_auth(nakama_auth):
@@ -281,7 +293,7 @@ async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
     raise HTTPException(404)
 
 
-@router.post("/save-annotations")
+@robin_router.post("/save-annotations")
 async def save_annotations(
     ann_set: AnnotationSet,
     nakama_auth: str | None = Cookie(None),
@@ -302,7 +314,7 @@ async def save_annotations(
     return {"status": "ok", "unsynced_count": store.unsynced_count(ann_set.slug)}
 
 
-@router.post("/sync-annotations/{slug}")
+@robin_router.post("/sync-annotations/{slug}")
 async def sync_annotations(
     slug: str,
     nakama_auth: str | None = Cookie(None),
@@ -324,7 +336,7 @@ async def sync_annotations(
     return report
 
 
-@router.post("/mark-read")
+@robin_router.post("/mark-read")
 async def mark_read(
     filename: str = Form(...),
     base: str = Form("inbox"),
@@ -340,7 +352,7 @@ async def mark_read(
     return {"status": "ok"}
 
 
-@router.get("/discard-info")
+@robin_router.get("/discard-info")
 async def discard_info(
     file: str,
     base: str = "inbox",
@@ -365,7 +377,7 @@ async def discard_info(
     return {"slug": slug, "annotation_count": count}
 
 
-@router.post("/discard")
+@robin_router.post("/discard")
 async def discard(
     file: str,
     base: str = "inbox",
@@ -540,7 +552,7 @@ def _translate_in_background(
     logger.info("translate BG complete: %s", bilingual_path.name)
 
 
-@router.post("/translate")
+@robin_router.post("/translate")
 async def translate(
     background_tasks: BackgroundTasks,
     file: str,
@@ -588,7 +600,7 @@ async def translate(
     bilingual_path = _bilingual_path_for(source_path)
     if bilingual_path.exists():
         logger.info("translate short-circuit (bilingual exists): %s", bilingual_path.name)
-        response = RedirectResponse(f"/read?file={bilingual_path.name}", status_code=303)
+        response = RedirectResponse(f"/robin/read?file={bilingual_path.name}", status_code=303)
         if nakama_auth:
             response.set_cookie("nakama_auth", nakama_auth, httponly=True)
         return response
@@ -615,7 +627,7 @@ _PUBMED_FT_DIR = "KB/Attachments/pubmed"
 _PMID_RE = re.compile(r"^\d+$")
 
 
-@router.get("/pubmed-to-reader")
+@robin_router.get("/pubmed-to-reader")
 async def pubmed_to_reader(
     pmid: str,
     nakama_auth: str | None = Cookie(None),
@@ -643,7 +655,9 @@ async def pubmed_to_reader(
 
     # 已翻譯過就直接開 reader，不重翻
     if bilingual_path.exists():
-        response = RedirectResponse(f"/read?file={bilingual_name}&base=sources", status_code=303)
+        response = RedirectResponse(
+            f"/robin/read?file={bilingual_name}&base=sources", status_code=303
+        )
         if nakama_auth:
             response.set_cookie("nakama_auth", nakama_auth, httponly=True)
         return response
@@ -710,7 +724,7 @@ async def pubmed_to_reader(
     bilingual_path.write_text(frontmatter + bilingual_md, encoding="utf-8")
     logger.info(f"pubmed-to-reader 完成：{bilingual_name} (source={source_kind})")
 
-    response = RedirectResponse(f"/read?file={bilingual_name}&base=sources", status_code=303)
+    response = RedirectResponse(f"/robin/read?file={bilingual_name}&base=sources", status_code=303)
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
@@ -803,7 +817,7 @@ async def processing(
     )
 
 
-@router.get("/events/{session_id}")
+@robin_router.get("/events/{session_id}")
 async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         raise HTTPException(403)
@@ -1114,3 +1128,79 @@ async def kb_research(
     """Search KB/Wiki for pages relevant to query."""
     results = await asyncio.to_thread(search_kb, query, get_vault_path())
     return {"results": results}
+
+
+# ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────
+# Per /architecture v2 R6: the 10 reader endpoints below were moved under the
+# ``/robin/*`` prefix to teach correct Robin Knowledge-tier ownership. Legacy
+# paths are preserved as 301 (GET, browser-cacheable) / 308 (POST, method+body
+# preserving) redirects so in-flight bookmarks, fetch() calls, and form
+# replays land at the new URL without downgrading to GET. Codex audit §1
+# caveat: query-string shape is preserved (no path-segment slug migration).
+
+
+@legacy_router.get("/read")
+async def _legacy_read_redirect(request: Request):
+    # 301 + preserve full query string (``file=...&base=...``). Codex §1: do
+    # NOT rewrite into a path segment — that is a separate data-model ADR.
+    qs = request.url.query
+    target = "/robin/read" + (f"?{qs}" if qs else "")
+    return RedirectResponse(target, status_code=301)
+
+
+@legacy_router.get("/files/{path:path}")
+async def _legacy_files_redirect(path: str):
+    return RedirectResponse(f"/robin/files/{path}", status_code=301)
+
+
+@legacy_router.get("/events/{session_id}")
+async def _legacy_events_redirect(session_id: str):
+    # SSE: EventSource follows 301 on the initial connection, so a legacy
+    # ``/events/{sid}`` URL still resolves to the live stream at
+    # ``/robin/events/{sid}``. Once the redirect is consumed the stream is
+    # served by the canonical handler with no buffering wrapper.
+    return RedirectResponse(f"/robin/events/{session_id}", status_code=301)
+
+
+@legacy_router.post("/save-annotations")
+async def _legacy_save_annotations_redirect():
+    # 308 preserves method+body so the JSON POST replays at the new URL.
+    return RedirectResponse("/robin/save-annotations", status_code=308)
+
+
+@legacy_router.post("/sync-annotations/{slug}")
+async def _legacy_sync_annotations_redirect(slug: str):
+    return RedirectResponse(f"/robin/sync-annotations/{slug}", status_code=308)
+
+
+@legacy_router.post("/mark-read")
+async def _legacy_mark_read_redirect():
+    return RedirectResponse("/robin/mark-read", status_code=308)
+
+
+@legacy_router.get("/discard-info")
+async def _legacy_discard_info_redirect(request: Request):
+    qs = request.url.query
+    target = "/robin/discard-info" + (f"?{qs}" if qs else "")
+    return RedirectResponse(target, status_code=301)
+
+
+@legacy_router.post("/discard")
+async def _legacy_discard_redirect(request: Request):
+    qs = request.url.query
+    target = "/robin/discard" + (f"?{qs}" if qs else "")
+    return RedirectResponse(target, status_code=308)
+
+
+@legacy_router.post("/translate")
+async def _legacy_translate_redirect(request: Request):
+    qs = request.url.query
+    target = "/robin/translate" + (f"?{qs}" if qs else "")
+    return RedirectResponse(target, status_code=308)
+
+
+@legacy_router.get("/pubmed-to-reader")
+async def _legacy_pubmed_to_reader_redirect(request: Request):
+    qs = request.url.query
+    target = "/robin/pubmed-to-reader" + (f"?{qs}" if qs else "")
+    return RedirectResponse(target, status_code=301)

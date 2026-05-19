@@ -173,7 +173,7 @@
       </div>
       <div class="file-actions">
         {% if file.annotatable %}
-          <a href="/read?file={{ file.name | urlencode }}" class="btn-read">閱讀</a>
+          <a href="/robin/read?file={{ file.name | urlencode }}" class="btn-read">閱讀</a>
         {% endif %}
         <form method="post" action="/start" style="margin:0;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
           <input type="hidden" name="filename" value="{{ file.name }}">
@@ -251,7 +251,7 @@
     _renderDiscardBody(filename, 0);
     try {
       const params = new URLSearchParams({ file: filename, base: 'inbox' });
-      const res = await fetch('/discard-info?' + params.toString());
+      const res = await fetch('/robin/discard-info?' + params.toString());
       if (res.ok) {
         const data = await res.json();
         _renderDiscardBody(filename, data.annotation_count || 0);
@@ -260,7 +260,7 @@
       console.warn('discard-info fetch failed:', e);
     }
     const params = new URLSearchParams({ file: filename, base: 'inbox' });
-    _discardForm.action = '/discard?' + params.toString();
+    _discardForm.action = '/robin/discard?' + params.toString();
     if (typeof _discardDialog.showModal === 'function') {
       _discardDialog.showModal();
     }
