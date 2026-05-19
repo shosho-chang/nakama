@@ -506,8 +506,7 @@ NAMI_TOOLS: list[dict] = [
                 "relative_path": {
                     "type": "string",
                     "description": (
-                        "vault-relative 路徑，例："
-                        "'AgentOutputs/nami/notes/sales-kit-2026-04.md'"
+                        "vault-relative 路徑，例：'AgentOutputs/nami/notes/sales-kit-2026-04.md'"
                     ),
                 },
             },
