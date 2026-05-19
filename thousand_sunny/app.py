@@ -122,7 +122,7 @@ else:
 
     @app.get("/")
     async def root_redirect():
-        return RedirectResponse("/brook/bridge", status_code=302)
+        return RedirectResponse("/brook/handoff", status_code=302)
 
 
 app.include_router(zoro.router)
