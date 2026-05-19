@@ -183,7 +183,7 @@ Brook synthesize 的 evidence pool + draft outline 存 **Thousand Sunny server-s
 
 - Project 頁面在 Obsidian 內保持瘦：frontmatter（topic + Zoro keywords）+ 修修手寫 outline 改寫
 - Brook 不寫 evidence section / outline section / `brook_reject` frontmatter 進 Project 頁面
-- Web UI route `GET /projects/{slug}` 從 server-side store 拉 evidence + outline 渲染；review/finalize 透過 POST 改 store
+- Web UI route `GET /brook/projects/{slug}` 從 server-side store 拉 evidence + outline 渲染；review/finalize 透過 POST 改 store。Legacy `/projects/{slug}` 301 → 新 URL（per /architecture v2 R3，amendment 2026-05-19；ownership Brook editorial layer）
 
 **為什麼 server-side > vault sidecar > Project page body**：
 

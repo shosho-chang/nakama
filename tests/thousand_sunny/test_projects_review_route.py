@@ -1,4 +1,4 @@
-"""Behaviour tests for the /projects/{slug} review-mode page (issue #458).
+"""Behaviour tests for the /brook/projects/{slug} review-mode page (issue #458).
 
 Covers:
 - 404 when the store has not been materialised yet
@@ -139,13 +139,13 @@ def _seed_realistic(slug: str = "sleep-architecture-choline") -> BrookSynthesize
 
 
 def test_review_returns_404_when_store_missing(app_client: TestClient):
-    r = app_client.get("/projects/no-such-project")
+    r = app_client.get("/brook/projects/no-such-project")
     assert r.status_code == 404
 
 
 def test_review_renders_html_when_store_exists(app_client: TestClient):
     _seed_realistic()
-    r = app_client.get("/projects/sleep-architecture-choline")
+    r = app_client.get("/brook/projects/sleep-architecture-choline")
     assert r.status_code == 200, r.text
     assert "text/html" in r.headers.get("content-type", "")
     body = r.text
@@ -173,7 +173,7 @@ def test_review_handles_empty_outline_and_pool(app_client: TestClient):
         keywords=[],
     )
     store.create(s)
-    r = app_client.get("/projects/empty-proj")
+    r = app_client.get("/brook/projects/empty-proj")
     assert r.status_code == 200
     assert "outline_draft 為空" in r.text or "0 sections" in r.text
 
@@ -182,7 +182,7 @@ def test_review_real_chunks_omit_missing_fields_gracefully(app_client: TestClien
     """Authors/journal/year absent in real chunks must not crash and must not
     be faked into the output."""
     _seed_realistic()
-    r = app_client.get("/projects/sleep-architecture-choline")
+    r = app_client.get("/brook/projects/sleep-architecture-choline")
     assert r.status_code == 200
     body = r.text
     # No "—" placeholder for journal/year; the design's authors line is just absent.
@@ -197,11 +197,11 @@ def test_review_real_chunks_omit_missing_fields_gracefully(app_client: TestClien
 def test_review_redirects_unauthenticated(auth_app_client: TestClient):
     """When WEB_PASSWORD is set and the cookie is missing, 302 → /login."""
     _seed_realistic()
-    r = auth_app_client.get("/projects/sleep-architecture-choline")
+    r = auth_app_client.get("/brook/projects/sleep-architecture-choline")
     assert r.status_code == 302
     loc = r.headers["location"]
     assert loc.startswith("/login")
-    assert "next=/projects/sleep-architecture-choline" in loc
+    assert "next=/brook/projects/sleep-architecture-choline" in loc
 
 
 # ── a11y smoke ───────────────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ def test_review_redirects_unauthenticated(auth_app_client: TestClient):
 
 def test_review_has_aria_landmarks_and_labels(app_client: TestClient):
     _seed_realistic()
-    r = app_client.get("/projects/sleep-architecture-choline")
+    r = app_client.get("/brook/projects/sleep-architecture-choline")
     assert r.status_code == 200
     body = r.text
     assert 'aria-label="大綱 · outline"' in body
@@ -225,7 +225,7 @@ def test_review_has_aria_landmarks_and_labels(app_client: TestClient):
 
 def test_review_renders_review_mode_when_no_outline_final(app_client: TestClient):
     _seed_realistic()
-    r = app_client.get("/projects/sleep-architecture-choline")
+    r = app_client.get("/brook/projects/sleep-architecture-choline")
     assert r.status_code == 200
     body = r.text
     assert 'data-mode="review"' in body
@@ -262,7 +262,7 @@ def test_review_renders_writing_mode_when_outline_final_set(app_client: TestClie
             ),
         ],
     )
-    r = app_client.get("/projects/sleep-architecture-choline")
+    r = app_client.get("/brook/projects/sleep-architecture-choline")
     assert r.status_code == 200
     body = r.text
     assert 'data-mode="writing"' in body
@@ -284,8 +284,18 @@ def test_review_renders_writing_mode_when_outline_final_set(app_client: TestClie
 def test_review_rejects_path_traversal_slug(app_client: TestClient):
     # FastAPI normalises ".." in the URL path; either 400 from our guard or
     # 404 from the routing layer is acceptable (no traversal occurred).
-    r = app_client.get("/projects/..")
-    # ASGI normalisation can collapse "/projects/.." → "/" and 302 to /login,
+    r = app_client.get("/brook/projects/..")
+    # ASGI normalisation can collapse "/brook/projects/.." → "/" and 302 to /login,
     # or surface as 400/404/405. All are acceptable refusals (no traversal
     # occurred — our guard would also catch ".." if routed).
     assert r.status_code in (302, 400, 404, 405)
+
+
+# ── Legacy redirect — /projects/{slug} → 301 → /brook/projects/{slug} (R3) ─────
+
+
+def test_legacy_projects_url_redirects_301_to_brook_prefix(app_client: TestClient):
+    """Renamed `/projects/{slug}` 301 → `/brook/projects/{slug}` per R3."""
+    r = app_client.get("/projects/sleep-architecture-choline")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/brook/projects/sleep-architecture-choline"
