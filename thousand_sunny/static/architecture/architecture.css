@@ -1,0 +1,370 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Internal architecture planning page — URL map for 修修 to make routing
+   decisions in one view. Consumes Shosho CI tokens (--sho-*).
+
+   Shares the visual language with /progress (header, theme switch, footer
+   bolt stamp). Layout primitives copied verbatim rather than abstracted —
+   no third Shosho surface yet, so refactor when one appears.
+   ───────────────────────────────────────────────────────────────────────── */
+
+html, body { margin: 0; padding: 0; }
+body.sho { min-height: 100vh; }
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--sho-s-9) var(--sho-s-7) var(--sho-s-10);
+}
+
+/* ── header ─────────────────────────────────────────────────────────── */
+
+.page-header { margin-bottom: var(--sho-s-9); }
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sho-s-8);
+}
+
+.logo { display: inline-flex; align-items: center; gap: var(--sho-s-3); }
+.logo img { height: 36px; width: auto; filter: var(--sho-logo-filter, none); }
+.logo-text { display: inline-flex; flex-direction: column; line-height: 1.15; gap: 2px; }
+.logo-zh {
+  font-family: var(--sho-font-zh);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  color: var(--sho-text);
+}
+
+.header-meta {
+  display: inline-flex;
+  gap: var(--sho-s-5);
+  align-items: center;
+  color: var(--sho-muted);
+}
+
+/* ── theme switch (copied from progress.css) ────────────────────────── */
+
+.theme-switch {
+  --switch-w: 44px;
+  --switch-h: 22px;
+  --switch-pad: 3px;
+  --thumb-d: calc(var(--switch-h) - var(--switch-pad) * 2);
+  --thumb-travel: calc(var(--switch-w) - var(--thumb-d) - var(--switch-pad) * 2 - 2px);
+  display: inline-flex;
+  align-items: center;
+  width: var(--switch-w);
+  height: var(--switch-h);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  border-radius: var(--sho-r-pill);
+}
+.theme-switch:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.theme-switch-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-pill);
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+.theme-switch:hover .theme-switch-track { border-color: var(--sho-accent-line); }
+.theme-switch-label {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--sho-muted);
+  pointer-events: none;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+.theme-switch-label-light { left: 5px; }
+.theme-switch-label-dark  { right: 5px; }
+.theme-switch[data-mode="light"] .theme-switch-label-light,
+.theme-switch[data-mode="dark"]  .theme-switch-label-dark {
+  color: var(--sho-bg);
+}
+.theme-switch-thumb {
+  position: absolute;
+  top: 50%;
+  left: var(--switch-pad);
+  width: var(--thumb-d);
+  height: var(--thumb-d);
+  background: var(--sho-accent);
+  border-radius: 50%;
+  transform: translate(0, -50%);
+  transition: transform var(--sho-t-base) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+.theme-switch[data-mode="dark"] .theme-switch-thumb {
+  transform: translate(var(--thumb-travel), -50%);
+}
+
+/* ── header body ────────────────────────────────────────────────────── */
+
+.header-body { max-width: 760px; display: grid; gap: var(--sho-s-4); }
+.page-title {
+  font-family: var(--sho-font-sans);
+  font-size: 40px;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  color: var(--sho-text);
+}
+.page-title-2 {
+  color: var(--sho-muted);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+.page-subtitle {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--sho-text-2);
+  max-width: 64ch;
+}
+
+/* ── sections ───────────────────────────────────────────────────────── */
+
+section { margin-top: var(--sho-s-9); }
+.section-head { display: grid; gap: var(--sho-s-3); margin-bottom: var(--sho-s-5); }
+.section-head h2 {
+  font-family: var(--sho-font-sans);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--sho-text);
+}
+.section-head p {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--sho-text-2);
+  max-width: 64ch;
+}
+
+/* ── namespace group card ───────────────────────────────────────────── */
+
+.ns-group { margin-bottom: var(--sho-s-6); }
+.ns-group + .ns-group { padding-top: var(--sho-s-6); border-top: 1px solid var(--sho-line); }
+
+.ns-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sho-s-3);
+  margin-bottom: var(--sho-s-4);
+  flex-wrap: wrap;
+}
+.ns-head h3 {
+  font-family: var(--sho-font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--sho-text);
+  margin: 0;
+}
+.ns-head .ns-token {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-muted);
+  padding: 2px 6px;
+  border: 1px solid var(--sho-line-2);
+  border-radius: 4px;
+}
+.ns-head .ns-tag {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+}
+.ns-head .ns-tag--auth::before { content: "🔒 "; }
+.ns-head .ns-tag--public::before { content: "🌐 "; }
+.ns-blurb {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--sho-text-2);
+  margin-bottom: var(--sho-s-4);
+  max-width: 64ch;
+}
+
+/* ── route table ────────────────────────────────────────────────────── */
+
+table.routes {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  table-layout: fixed;
+}
+table.routes thead th {
+  text-align: left;
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+  font-weight: 500;
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--sho-line-2);
+}
+table.routes thead th.col-path     { width: 32%; }
+table.routes thead th.col-status   { width: 12%; }
+table.routes thead th.col-function { width: 56%; }
+
+table.routes tbody td {
+  vertical-align: top;
+  padding: 12px 12px 12px 0;
+  border-bottom: 1px solid var(--sho-line);
+}
+table.routes tbody tr:last-child td { border-bottom: 0; }
+table.routes tbody tr:hover td { background: var(--sho-bg-2); }
+
+td.path {
+  font-family: var(--sho-font-mono);
+  font-size: 13.5px;
+  color: var(--sho-text);
+  word-break: break-all;
+}
+td.path .path-new {
+  color: var(--sho-accent);
+  font-weight: 500;
+}
+td.path .path-old {
+  color: var(--sho-muted);
+  text-decoration: line-through;
+  font-size: 12px;
+  display: block;
+  margin-top: 2px;
+}
+
+td.function {
+  color: var(--sho-text-2);
+  line-height: 1.55;
+}
+td.function .owner {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+  margin-left: 6px;
+}
+
+/* ── status pill ────────────────────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--sho-line-2);
+  color: var(--sho-muted);
+  white-space: nowrap;
+}
+.pill--shipped  { color: var(--sho-success); border-color: var(--sho-success); }
+.pill--in-dev   { color: var(--sho-warning); border-color: var(--sho-warning); }
+.pill--planned  { color: var(--sho-text-2); border-color: var(--sho-line-2); }
+.pill--specul   { color: var(--sho-muted);  border-color: var(--sho-line-2); border-style: dashed; }
+.pill--rename   { color: var(--sho-accent); border-color: var(--sho-accent-line); }
+
+/* ── phase callout ──────────────────────────────────────────────────── */
+
+.phases { display: grid; gap: var(--sho-s-4); margin-top: var(--sho-s-5); }
+.phase {
+  border: 1px solid var(--sho-line);
+  border-left: 3px solid var(--sho-accent);
+  border-radius: var(--sho-r-2);
+  padding: var(--sho-s-4) var(--sho-s-5);
+  background: var(--sho-bg-2);
+}
+.phase-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sho-s-3);
+  margin-bottom: var(--sho-s-2);
+}
+.phase-n {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sho-accent);
+  font-weight: 500;
+}
+.phase-title {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--sho-text);
+}
+.phase-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--sho-text-2);
+}
+.phase-body code {
+  font-family: var(--sho-font-mono);
+  font-size: 12.5px;
+  background: var(--sho-bg-3);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+/* ── footer ─────────────────────────────────────────────────────────── */
+
+.page-footer {
+  margin-top: var(--sho-s-10);
+  padding-top: var(--sho-s-5);
+  border-top: 1px solid var(--sho-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sho-s-3);
+  color: var(--sho-muted);
+}
+.page-footer .sho-mono {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.06em;
+  font-size: 11.5px;
+  text-transform: uppercase;
+}
+.page-footer .footer-bolt {
+  /* See progress.css for derivation: 14×8 box → rotated bounding ~16×13
+     matches mono line height; flex-centering keeps it on baseline without
+     a translateY hack. */
+  width: 14px;
+  height: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-25deg);
+  transform-origin: center;
+  vertical-align: middle;
+}
+.page-footer .footer-bolt svg { width: 100%; height: 100%; }
+
+/* ── responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .page { padding: var(--sho-s-6) var(--sho-s-4) var(--sho-s-8); }
+  .header-top { flex-direction: column; align-items: flex-start; gap: var(--sho-s-3); }
+  .header-meta { flex-wrap: wrap; gap: var(--sho-s-3); }
+  .page-title { font-size: 28px; }
+  table.routes { font-size: 13px; }
+  table.routes thead th.col-path     { width: 40%; }
+  table.routes thead th.col-status   { width: 18%; }
+  table.routes thead th.col-function { width: 42%; }
+  td.path { font-size: 12px; }
+}
