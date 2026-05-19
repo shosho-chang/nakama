@@ -39,9 +39,7 @@ def _rendered_html() -> str:
     for f in _VERSIONED_ASSETS:
         h.update(f.read_bytes())
     version = h.hexdigest()[:8]
-    return _PAGE_PATH.read_text(encoding="utf-8").replace(
-        "__ASSET_VERSION__", version
-    )
+    return _PAGE_PATH.read_text(encoding="utf-8").replace("__ASSET_VERSION__", version)
 
 
 @router.api_route("/progress", methods=["GET", "HEAD"], include_in_schema=False)
