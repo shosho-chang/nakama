@@ -5,7 +5,7 @@ Brief §5 PT1-PT4:
 - PT1 Open ``/promotion-review/`` → list view renders, no console errors.
 - PT2 Click into a fixture source → claim review interface renders.
 - PT3 Start review → dry-run claims surface with ``[DRY-RUN]`` badge / prefix.
-- PT4 Navigate to ``/writing-assist/{id_b64}`` → renders without 503.
+- PT4 Navigate to ``/robin/writing-assist/{id_b64}`` → renders without 503.
 
 Status: **DEFERRED to follow-up**. The Nakama test suite does not currently
 have a Playwright harness wired (no ``playwright`` in ``requirements.txt``,
@@ -101,7 +101,7 @@ def test_pt3_start_review_surfaces_dry_run_claims():
 
 
 def test_pt4_writing_assist_surface_renders_without_503():
-    """PT4: navigate to ``/writing-assist/{id_b64}`` → renders without 503.
+    """PT4: navigate to ``/robin/writing-assist/{id_b64}`` → renders without 503.
 
     Implementation outline:
 
