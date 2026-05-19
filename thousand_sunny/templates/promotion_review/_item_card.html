@@ -122,11 +122,11 @@
 
   <footer class="prom-card__footer">
     <form class="prom-decide-form"
-          hx-post="/promotion-review/source/{{ encoded_id }}/decide/{{ item.item_id }}"
+          hx-post="/robin/promotion/source/{{ encoded_id }}/decide/{{ item.item_id }}"
           hx-target="#prom-card-{{ item.item_id }}"
           hx-swap="outerHTML"
           method="post"
-          action="/promotion-review/source/{{ encoded_id }}/decide/{{ item.item_id }}">
+          action="/robin/promotion/source/{{ encoded_id }}/decide/{{ item.item_id }}">
       <label class="prom-note-label">
         <span class="brk-caps">note (optional)</span>
         <input class="prom-note-input"

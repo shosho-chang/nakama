@@ -2,7 +2,7 @@
 
 Brief §5 PT1-PT4:
 
-- PT1 Open ``/promotion-review/`` → list view renders, no console errors.
+- PT1 Open ``/robin/promotion/`` → list view renders, no console errors.
 - PT2 Click into a fixture source → claim review interface renders.
 - PT3 Start review → dry-run claims surface with ``[DRY-RUN]`` badge / prefix.
 - PT4 Navigate to ``/robin/writing-assist/{id_b64}`` → renders without 503.
@@ -46,12 +46,12 @@ pytest.skip(
 
 
 def test_pt1_list_page_renders_with_no_console_errors():
-    """PT1: open ``/promotion-review/`` → list view renders;
+    """PT1: open ``/robin/promotion/`` → list view renders;
     ``page.console`` collected zero error-level messages.
 
     Implementation outline (when harness exists):
 
-    1. ``await page.goto(f"{base_url}/promotion-review/")``
+    1. ``await page.goto(f"{base_url}/robin/promotion/")``
     2. ``await page.wait_for_selector('main')``
     3. Assert no console messages with type='error'.
     """
@@ -63,13 +63,13 @@ def test_pt1_list_page_renders_with_no_console_errors():
 
 def test_pt2_click_candidate_renders_claim_review():
     """PT2: click a candidate row in the list → land on
-    ``/promotion-review/source/{id_b64}`` → review surface renders.
+    ``/robin/promotion/source/{id_b64}`` → review surface renders.
 
     Implementation outline:
 
     1. Pre-seed a fixture book (mirror RT1's ``_store_test_book``).
     2. ``await page.goto(...)`` → ``await page.click('a[data-source-id]')``
-    3. Assert URL pattern ``/promotion-review/source/{id_b64}``.
+    3. Assert URL pattern ``/robin/promotion/source/{id_b64}``.
     4. Assert review surface chrome present (review.html template anchor).
     """
     raise NotImplementedError("see module docstring — Playwright harness deferred")

@@ -137,6 +137,7 @@ app.include_router(projects.page_router)
 # fall through to their 503 default (which the VPS deployment expects).
 # Tests reload the module to inject a fake service.
 app.include_router(promotion_review.router)
+app.include_router(promotion_review.legacy_router)
 
 # Writing Assist scaffold (ADR-024 Slice 9 / issue #517). Same dependency-
 # injection pattern as #516 — service wired by ``_lifespan`` above. The

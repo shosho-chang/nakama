@@ -1,10 +1,10 @@
-"""End-to-end route tests for ``/promotion-review/*`` after N518b dry-run wiring.
+"""End-to-end route tests for ``/robin/promotion/*`` after N518b dry-run wiring.
 
 Brief §5 RT1-RT3 (N518b):
 
-- RT1 ``GET /promotion-review/`` lists candidate sources via the wired
+- RT1 ``GET /robin/promotion/`` lists candidate sources via the wired
        service (real fixture book → registry → lister → list view).
-- RT2 ``POST /promotion-review/source/{id_b64}/start`` returns 303 with a
+- RT2 ``POST /robin/promotion/source/{id_b64}/start`` returns 303 with a
        persisted manifest containing dry-run claims (no longer 500 from
        the N518a stub).
 - RT3 Full flow including ``state_for`` returns valid manifest after start.
@@ -189,10 +189,10 @@ def _store_test_book(book_id: str = "alpha-book", language: str = "en") -> str:
 
 
 def test_rt1_list_pending_returns_200(configured_app):
-    """``GET /promotion-review/`` returns 200 (not 503) and renders the
+    """``GET /robin/promotion/`` returns 200 (not 503) and renders the
     list view. Empty list is acceptable — the bare assertion is "wired"."""
     with TestClient(configured_app.app, follow_redirects=False) as client:
-        r = client.get("/promotion-review/")
+        r = client.get("/robin/promotion/")
 
     assert r.status_code == 200, r.text
     assert "503" not in r.text
@@ -221,18 +221,18 @@ def test_rt1_list_pending_includes_real_book(configured_app):
 
 
 def test_rt2_start_creates_manifest_with_dry_run_claims(configured_app, vault: Path):
-    """``POST /promotion-review/source/{id_b64}/start`` succeeds (no longer
+    """``POST /robin/promotion/source/{id_b64}/start`` succeeds (no longer
     500s) — the dry-run extractor body produces 1-3 claims per chapter and
     the service persists a manifest. The route returns a 303 redirect
     back to the per-source review surface."""
     source_id = _store_test_book("alpha-book")
 
     with TestClient(configured_app.app, follow_redirects=False) as client:
-        r = client.post(f"/promotion-review/source/{_b64(source_id)}/start")
+        r = client.post(f"/robin/promotion/source/{_b64(source_id)}/start")
 
     # Successful start route is a 303 redirect to the review surface.
     assert r.status_code == 303, r.text
-    assert r.headers["location"].startswith("/promotion-review/source/")
+    assert r.headers["location"].startswith("/robin/promotion/source/")
 
     # Manifest persisted to disk.
     manifest_dir = vault / ".promotion-manifests"
@@ -255,7 +255,7 @@ def test_rt2_start_unresolved_source_returns_4xx(configured_app):
     """Unresolvable source_id surfaces as 400 (or 404) — the wiring
     succeeds, the service raises ValueError, the route maps to 4xx."""
     with TestClient(configured_app.app, follow_redirects=False) as client:
-        r = client.post(f"/promotion-review/source/{_b64('ebook:does-not-exist')}/start")
+        r = client.post(f"/robin/promotion/source/{_b64('ebook:does-not-exist')}/start")
 
     assert r.status_code in {400, 404}, r.text
     assert r.status_code != 503
@@ -265,18 +265,18 @@ def test_rt2_start_unresolved_source_returns_4xx(configured_app):
 
 
 def test_rt3_review_surface_loads_after_start(configured_app, vault: Path):
-    """After start, ``GET /promotion-review/source/{id_b64}`` returns 200
+    """After start, ``GET /robin/promotion/source/{id_b64}`` returns 200
     and renders the review surface. ``service.state_for`` produces a valid
     PromotionReviewState referencing the persisted manifest."""
     source_id = _store_test_book("alpha-book")
 
     with TestClient(configured_app.app, follow_redirects=False) as client:
         # Start review first.
-        r1 = client.post(f"/promotion-review/source/{_b64(source_id)}/start")
+        r1 = client.post(f"/robin/promotion/source/{_b64(source_id)}/start")
         assert r1.status_code == 303, r1.text
 
         # Now GET the per-source review surface.
-        r2 = client.get(f"/promotion-review/source/{_b64(source_id)}")
+        r2 = client.get(f"/robin/promotion/source/{_b64(source_id)}")
         assert r2.status_code == 200, r2.text
 
     # Verify state_for returns a PromotionReviewState with manifest info.
@@ -292,8 +292,8 @@ def test_rt3_review_surface_loads_after_start(configured_app, vault: Path):
 
 
 def test_rt3_review_surface_for_unknown_source_renders_empty(configured_app):
-    """``GET /promotion-review/source/{id_b64}`` with no manifest yet
+    """``GET /robin/promotion/source/{id_b64}`` with no manifest yet
     renders the empty / start-affordance state (200, not 503 or 500)."""
     with TestClient(configured_app.app, follow_redirects=False) as client:
-        r = client.get(f"/promotion-review/source/{_b64('ebook:not-yet-reviewed')}")
+        r = client.get(f"/robin/promotion/source/{_b64('ebook:not-yet-reviewed')}")
     assert r.status_code == 200, r.text

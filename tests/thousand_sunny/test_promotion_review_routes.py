@@ -219,7 +219,7 @@ def test_rt1_list_pending_renders_preflighted_sources(
             manifest_status="needs_review",
         ),
     ]
-    r = app_client.get("/promotion-review/")
+    r = app_client.get("/robin/promotion/")
     assert r.status_code == 200
     body = r.text
     assert "ebook:alpha-book" in body
@@ -249,7 +249,7 @@ def test_rt2_review_surface_renders_items(
             manifest_status="needs_review",
         )
     ]
-    r = app_client.get(f"/promotion-review/source/{_b64(manifest.source_id)}")
+    r = app_client.get(f"/robin/promotion/source/{_b64(manifest.source_id)}")
     assert r.status_code == 200
     body = r.text
     # Each item card: recommendation, reason, evidence excerpt, risk badge,
@@ -284,12 +284,12 @@ def test_rt3_4_5_decision_persists(
     fake_service.manifests[manifest.source_id] = manifest
     encoded = _b64(manifest.source_id)
     r = app_client.post(
-        f"/promotion-review/source/{encoded}/decide/src_whole_001",
+        f"/robin/promotion/source/{encoded}/decide/src_whole_001",
         data={"decision": decision, "note": ""},
     )
     # Plain form post (no HTMX header) → 303 redirect to review surface.
     assert r.status_code == 303
-    assert r.headers["location"] == f"/promotion-review/source/{encoded}"
+    assert r.headers["location"] == f"/robin/promotion/source/{encoded}"
     persisted = fake_service.manifests[manifest.source_id]
     target = next(it for it in persisted.items if it.item_id == "src_whole_001")
     assert target.human_decision is not None
@@ -306,7 +306,7 @@ def test_rt6_commit_invokes_commit_service(
     fake_service.manifests[manifest.source_id] = manifest
     encoded = _b64(manifest.source_id)
     r = app_client.post(
-        f"/promotion-review/source/{encoded}/commit",
+        f"/robin/promotion/source/{encoded}/commit",
         data={"batch_id": "batch_test_001"},
     )
     assert r.status_code == 200
@@ -330,7 +330,7 @@ def test_rt7_commit_disabled_when_no_approvals(
     manifest = _load_no_decisions_manifest()
     fake_service.manifests[manifest.source_id] = manifest
     encoded = _b64(manifest.source_id)
-    r = app_client.get(f"/promotion-review/source/{encoded}")
+    r = app_client.get(f"/robin/promotion/source/{encoded}")
     assert r.status_code == 200
     body = r.text
     # The commit button must carry the disabled HTML attribute when zero
@@ -347,9 +347,9 @@ def test_rt8_start_review_runs_builder_and_engine(
     app_client: TestClient, fake_service: FakePromotionReviewService
 ):
     encoded = _b64("inbox:Inbox/kb/gamma.md")
-    r = app_client.post(f"/promotion-review/source/{encoded}/start")
+    r = app_client.post(f"/robin/promotion/source/{encoded}/start")
     assert r.status_code == 303
-    assert r.headers["location"] == f"/promotion-review/source/{encoded}"
+    assert r.headers["location"] == f"/robin/promotion/source/{encoded}"
     assert fake_service.start_calls == ["inbox:Inbox/kb/gamma.md"]
     # Manifest now exists in the fake store.
     assert "inbox:Inbox/kb/gamma.md" in fake_service.manifests
@@ -423,7 +423,7 @@ def test_rt10_source_id_b64_encoding_round_trips(
     # No '/' or ':' should appear in the encoded URL segment.
     assert "/" not in encoded
     assert ":" not in encoded
-    r = app_client.get(f"/promotion-review/source/{encoded}")
+    r = app_client.get(f"/robin/promotion/source/{encoded}")
     assert r.status_code == 200
     # The original (decoded) source_id surfaces in the rendered surface — the
     # handler decoded it from the URL without parsing the namespace prefix.
@@ -435,5 +435,42 @@ def test_rt10_source_id_b64_encoding_round_trips(
 
 def test_invalid_source_id_b64_returns_400(app_client: TestClient):
     """U4 sanity: a source_id_b64 that is not valid base64url returns 400."""
-    r = app_client.get("/promotion-review/source/!!!not-base64!!!")
+    r = app_client.get("/robin/promotion/source/!!!not-base64!!!")
     assert r.status_code == 400
+
+
+# ── Legacy redirects — /promotion-review/* → /robin/promotion/* (R1) ────────
+
+
+def test_legacy_list_url_redirects_301_to_robin(app_client: TestClient):
+    """Renamed `/promotion-review/` 301 → `/robin/promotion/` per R1."""
+    r = app_client.get("/promotion-review/")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/promotion/"
+
+
+def test_legacy_source_url_redirects_301_to_robin(app_client: TestClient):
+    """Renamed `/promotion-review/source/{id}` 301 → `/robin/promotion/source/{id}`."""
+    encoded = _b64("ebook:any")
+    r = app_client.get(f"/promotion-review/source/{encoded}")
+    assert r.status_code == 301
+    assert r.headers["location"] == f"/robin/promotion/source/{encoded}"
+
+
+def test_legacy_post_decide_returns_308_preserving_method(app_client: TestClient):
+    """POST legacy URLs must 308 (method+body preserving) so form replays
+    at the new URL instead of being downgraded to GET."""
+    encoded = _b64("ebook:any")
+    r = app_client.post(
+        f"/promotion-review/source/{encoded}/decide/it-1",
+        data={"decision": "approve"},
+    )
+    assert r.status_code == 308
+    assert r.headers["location"] == f"/robin/promotion/source/{encoded}/decide/it-1"
+
+
+def test_legacy_post_start_returns_308(app_client: TestClient):
+    encoded = _b64("ebook:any")
+    r = app_client.post(f"/promotion-review/source/{encoded}/start")
+    assert r.status_code == 308
+    assert r.headers["location"] == f"/robin/promotion/source/{encoded}/start"

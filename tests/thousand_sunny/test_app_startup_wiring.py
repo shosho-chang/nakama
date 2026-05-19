@@ -5,7 +5,7 @@ Brief §5 wiring tests:
 
 - WT1  Lifespan wires ``promotion_review`` service.
 - WT2  Lifespan wires ``writing_assist`` service.
-- WT3  ``GET /promotion-review/`` returns 200 (not 503) after wiring.
+- WT3  ``GET /robin/promotion/`` returns 200 (not 503) after wiring.
 - WT4  ``GET /robin/writing-assist/{id_b64}`` for missing package → 404 (not 503).
 - WT5  ``DISABLE_ROBIN=1`` skips wiring.
 - WT6  Missing ``VAULT_PATH`` → startup raises.
@@ -20,7 +20,7 @@ After N518b the dry-run extractor / matcher stubs were replaced with
 deterministic bodies (see ``tests/shared/test_dry_run_extractor.py`` and
 ``test_dry_run_matcher.py``). The test
 ``test_post_start_surfaces_dry_run_response`` below confirms that
-``POST /promotion-review/.../start`` no longer 500s with
+``POST /robin/promotion/.../start`` no longer 500s with
 ``NotImplementedError`` — it now returns the route's normal 4xx for an
 unresolvable source_id, proving the wiring + dry-run path works
 end-to-end.
@@ -125,7 +125,7 @@ def test_wt2_app_lifespan_wires_writing_assist_service(vault_with_robin: Path):
         assert wa_module._service is not None
 
 
-# ── WT3 — GET /promotion-review/ returns 200 ────────────────────────────────
+# ── WT3 — GET /robin/promotion/ returns 200 ────────────────────────────────
 
 
 def test_wt3_app_get_promotion_review_returns_200_dry_run(
@@ -133,7 +133,7 @@ def test_wt3_app_get_promotion_review_returns_200_dry_run(
 ):
     app_module = _reload_app_modules()
     with TestClient(app_module.app, follow_redirects=False) as client:
-        r = client.get("/promotion-review/")
+        r = client.get("/robin/promotion/")
     # Empty list view is acceptable; what matters is NOT 503.
     assert r.status_code == 200, r.text
     assert "503" not in r.text
@@ -347,7 +347,7 @@ def test_wt10_no_anthropic_import_in_n518a_modules(module_name: str):
 
 
 def test_post_start_surfaces_dry_run_response(vault_with_robin: Path):
-    """``POST /promotion-review/source/{id_b64}/start`` no longer raises
+    """``POST /robin/promotion/source/{id_b64}/start`` no longer raises
     ``NotImplementedError`` after N518b — the dry-run extractor + matcher
     are now real deterministic bodies.
 
@@ -359,7 +359,7 @@ def test_post_start_surfaces_dry_run_response(vault_with_robin: Path):
     """
     app_module = _reload_app_modules()
     with TestClient(app_module.app, follow_redirects=False) as client:
-        r = client.post(f"/promotion-review/source/{_b64('ebook:nope')}/start")
+        r = client.post(f"/robin/promotion/source/{_b64('ebook:nope')}/start")
 
     # Must NOT be 503 (service wired).
     assert r.status_code != 503, r.text
