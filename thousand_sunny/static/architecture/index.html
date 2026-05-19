@@ -32,7 +32,7 @@
         </span>
       </a>
       <div class="header-meta">
-        <span class="sho-mono sho-mono-up">v · proposal</span>
+        <span class="sho-mono sho-mono-up">v2 · panel-reviewed</span>
         <span class="sho-mono">2026-05-19</span>
         <button type="button" id="theme-toggle" class="theme-switch"
                 role="switch" aria-label="切換明暗主題" aria-checked="false">
@@ -55,7 +55,10 @@
         <span class="page-title-2">公開 / 內部 / 編輯 / 知識 四層分明</span>
       </h1>
       <p class="page-subtitle">
-        現有 39 個 surface + 7 planned + 3 speculative。原本散落在 root / bridge / brook / promotion-review / writing-assist / books / read / processing 等不同 prefix。提案：依「對誰看」分四層，每層綁定一個 design system token namespace，命名碰撞清掉。
+        現有 web UI surfaces 散落在 root / bridge / brook / promotion-review / writing-assist / books / read / processing 等不同 prefix。提案：依「誰擁有 + 對誰看」分四層 + 一個 API 層，每層綁一個 design system token namespace，命名碰撞清掉。
+      </p>
+      <p class="page-subtitle" style="border-left: 3px solid var(--sho-accent); padding-left: 14px; margin-top: 12px; font-size: 14px;">
+        <strong>v2 變更</strong>：經 multi-agent panel review（Codex GPT-5 + Gemini 2.5-pro，2026-05-19）。Codex 抓出 6 處事實錯誤、ADR-024/027 ownership 衝突、redirect chain bug；Gemini 提供 UX cascade、Open Graph、API as Layer 5、i18n 預留四項補強。完整 audit 在 <code>docs/research/2026-05-19-{codex,gemini}-architecture-audit.md</code> 與 <code>integration-matrix.md</code>。決策：Fork A（保留 agent-centric 修正 ownership + 套 Gemini UX patches）。
       </p>
     </div>
   </header>
@@ -188,14 +191,14 @@
         </thead>
         <tbody>
           <tr>
-            <td class="path"><span class="path-new">/bridge/drafts</span><br><span class="path-new">/bridge/draft/{id}</span></td>
+            <td class="path"><span class="path-new">/bridge/drafts</span><br><span class="path-new">/bridge/drafts/{draft_id}</span><br><span class="path-new">/bridge/drafts/{id}/{approve|reject|edit|requeue}</span></td>
             <td><span class="pill pill--shipped">shipped</span></td>
-            <td class="function">HITL approval queue — blog / newsletter / social 發布前審核（ADR-006）。<span class="owner">owner · Usopp</span></td>
+            <td class="function">HITL approval queue — blog / newsletter / social 發布前審核 + 4 個 mutation endpoints（ADR-006）。<span class="owner">owner · Usopp</span></td>
           </tr>
           <tr>
-            <td class="path"><span class="path-new">/bridge/seo</span><br><span class="path-new">/bridge/seo/audit/{id}</span><br><span class="path-new">/bridge/seo/history</span></td>
+            <td class="path"><span class="path-new">/bridge/seo</span><br><span class="path-new">/bridge/seo/audits</span> (POST kickoff)<br><span class="path-new">/bridge/seo/audits/{job_id}</span> (progress)<br><span class="path-new">/bridge/seo/audits/{job_id}/{status,result}</span><br><span class="path-new">/bridge/seo/audits/by-id/{audit_id}</span><br><span class="path-new">/bridge/seo/posts/{wp_post_id}/audits</span><br><span class="path-new">/bridge/seo/audits/{audit_id}/review</span></td>
             <td><span class="pill pill--shipped">shipped</span></td>
-            <td class="function">SEO control center — GSC rankings、audit grades、enrich recommendations（ADR-008/009）。<span class="owner">owner · Brook + Franky</span></td>
+            <td class="function">SEO control center — GSC rankings、audit grades、enrich recommendations、suggestion approve/reject/edit/export（ADR-008/009/012）。<span class="owner">owner · Brook + Franky</span></td>
           </tr>
           <tr>
             <td class="path"><span class="path-new">/bridge/zoro/keyword-research</span><br><span class="path-new">/bridge/zoro/keyword-research/history</span><br><span class="path-new">/bridge/zoro/keyword-research/history/{id}</span></td>
@@ -270,7 +273,7 @@
         <span>layer · editorial</span>
       </div>
       <h2 id="brook-heading">Brook 編輯創作層</h2>
-      <p>HMAC cookie auth、修修 hand-write 場景、走 <code>--brk-*</code> 編輯室 paper-and-ink CI（terracotta accent #9d4a2c、Source Serif Pro、≤4px radius）。建議全部收進 <code>/brook/*</code> prefix，解決 <code>/brook/bridge</code> 名稱碰撞 + 散落在 <code>/projects/*</code> / <code>/promotion-review/*</code> / <code>/writing-assist/*</code> 的問題。</p>
+      <p>HMAC cookie auth、修修 hand-write 場景、走 <code>--brk-*</code> 編輯室 paper-and-ink CI（terracotta accent #9d4a2c、Source Serif Pro、≤4px radius）。收進 <code>/brook/*</code> prefix 解決 <code>/brook/bridge</code> ↔ <code>/bridge</code> 視覺碰撞。<strong>panel 修正</strong>：原本誤把 Promotion / Writing-Assist 放這層，Codex 抓出 ADR-024:82-85 + ADR-027:69-83 明確說它們是 <strong>Robin 所有</strong>（Stage 3→4 handoff producer），已遷至 Layer 4。</p>
     </div>
 
     <div class="ns-group">
@@ -287,22 +290,12 @@
           <tr>
             <td class="path"><span class="path-new">/brook/projects/{slug}</span><span class="path-old">/projects/{slug}</span></td>
             <td><span class="pill pill--rename">rename</span></td>
-            <td class="function">Synthesize outline review + evidence board（issue #458、ADR-021）。改進 <code>/brook/</code> prefix 與其他 brook 編輯 surface 同一層。<span class="owner">owner · Brook</span></td>
+            <td class="function">Synthesize outline review + evidence board（issue #458、ADR-021）。改進 <code>/brook/</code> prefix 與其他 brook 編輯 surface 同一層。注意：ADR-021:184-186 明確命名 <code>/projects/{slug}</code>，rename 需同步 amend ADR + tests，不只加 redirect。<span class="owner">owner · Brook</span></td>
           </tr>
           <tr>
-            <td class="path"><span class="path-new">/brook/context</span><span class="path-old">/brook/bridge</span></td>
+            <td class="path"><span class="path-new">/brook/handoff</span><span class="path-old">/brook/bridge<br>/brook/chat（既有 301）</span></td>
             <td><span class="pill pill--rename">rename</span></td>
-            <td class="function">Prompt context packaging（ADR-027 §Decision 8）。從 <code>/brook/bridge</code> 改成 <code>/brook/context</code> 解決跟 <code>/bridge</code> 命名碰撞。<span class="owner">owner · Brook</span></td>
-          </tr>
-          <tr>
-            <td class="path"><span class="path-new">/brook/promotion</span><br><span class="path-new">/brook/promotion/source/{id}</span><span class="path-old">/promotion-review/*</span></td>
-            <td><span class="pill pill--rename">rename</span></td>
-            <td class="function">來源促升審核 — include / reject / defer，manifest-based commit 到 KB（ADR-024 Stage 3）。<span class="owner">owner · Robin + Owner</span></td>
-          </tr>
-          <tr>
-            <td class="path"><span class="path-new">/brook/writing/{source_id}</span><span class="path-old">/writing-assist/{source_id}</span></td>
-            <td><span class="pill pill--rename">rename</span></td>
-            <td class="function">Line 2 atomic 原子內容 Reading Context Package（ADR-024、無 LLM 生成）。<span class="owner">owner · Robin + Owner</span></td>
+            <td class="function">Prompt context packaging（ADR-027 §Decision 8）— 把 reading + research 包成 Claude.ai handoff package。<strong>panel 修正</strong>：原 <code>/brook/context</code> 被 Codex 否決（「context」太 generic）採用 <code>/brook/handoff</code>（名動詞、語意明確）。<code>/brook/chat → /brook/bridge → /brook/handoff</code> 的 redirect chain 須在 brook.py:36-43 一併處理為直接 chain。<span class="owner">owner · Brook</span></td>
           </tr>
         </tbody>
       </table>
@@ -317,7 +310,7 @@
         <span>layer · knowledge</span>
       </div>
       <h2 id="robin-heading">Robin 知識庫層</h2>
-      <p>本機開發環境（VPS 設 <code>DISABLE_ROBIN=1</code> 略過）、走 <code>--brk-*</code>（reading 場景同樣 paper-and-ink）。建議收進 <code>/robin/*</code> 解決現在 ingest / book / concept 散落在 root + <code>/read</code> + <code>/processing</code> + <code>/books</code> + <code>/review-summary</code> 等位置的混亂。</p>
+      <p>本機開發環境（VPS 設 <code>DISABLE_ROBIN=1</code> 略過、現存 503 是 deliberate "local-only" signal）、走 <code>--brk-*</code>（reading 場景 paper-and-ink）。收進 <code>/robin/*</code> 解決 ingest / book / concept 散落 root 的混亂。<strong>panel 補位</strong>：原本誤分到 Brook 的 Promotion + Writing-Assist 已移到此 layer — 兩者 producer 都是 Robin（ADR-024:82-85 + ADR-027:69-83）。</p>
     </div>
 
     <div class="ns-group">
@@ -337,9 +330,9 @@
             <td class="function">Robin hub — 檔案上傳入口、ingest 狀態總覽。Root <code>/</code> 留給 Shosho marketing landing。<span class="owner">owner · Robin</span></td>
           </tr>
           <tr>
-            <td class="path"><span class="path-new">/robin/read/{doc_id}</span><span class="path-old">/read</span></td>
+            <td class="path"><span class="path-new">/robin/read?file=&base=</span><span class="path-old">/read?file=&base=</span></td>
             <td><span class="pill pill--rename">rename</span></td>
-            <td class="function">文件閱讀 + highlight / annotation。<span class="owner">owner · Robin</span></td>
+            <td class="function">文件閱讀 + highlight / annotation。<strong>panel 修正</strong>：原計畫改 <code>/robin/read/{doc_id}</code> path-based 是 data-model migration（query-string `?file=&base=` per robin.py:207-213），不是純 URL alias — 暫保留 query-string 形式直到 doc_id schema 落地。需順帶處理周邊 API：<code>/files/{path}</code>、<code>/events/{session_id}</code>、<code>/save-annotations</code>、<code>/sync-annotations/{slug}</code>、<code>/mark-read</code>、<code>/discard</code>、<code>/translate</code>、<code>/pubmed-to-reader</code>。<span class="owner">owner · Robin</span></td>
           </tr>
           <tr>
             <td class="path"><span class="path-new">/robin/processing</span><span class="path-old">/processing</span></td>
@@ -359,7 +352,59 @@
           <tr>
             <td class="path"><span class="path-new">/robin/books</span><br><span class="path-new">/robin/books/upload</span><br><span class="path-new">/robin/books/{id}</span><span class="path-old">/books/*</span></td>
             <td><span class="pill pill--rename">rename</span></td>
-            <td class="function">雙語 EPUB library、上傳表單、foliate-js reader。<span class="owner">owner · Robin</span></td>
+            <td class="function">雙語 EPUB library、上傳表單、foliate-js reader。**注意**：CSP 在 middleware/csp.py:31 寫死 <code>/books</code> + <code>/api/books</code>；JS fetch 在 static/book_reader.js 也有硬寫 — rename 必須同步更新 CSP allowlist 與 JS fetch。<span class="owner">owner · Robin</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/robin/promotion</span><br><span class="path-new">/robin/promotion/source/{id}</span><span class="path-old">/promotion-review/*</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">來源促升審核 — include / reject / defer，manifest-based commit 到 KB（ADR-024 Stage 3）。<strong>panel 修正</strong>：原本錯放 Brook 層，ADR-024:82-85 + agents/robin/CONTEXT.md:21-41 明確說 Source Promotion 是 Robin 詞彙 + Robin/shared 所有。VPS DISABLE_ROBIN=1 時 service 不 wire 但 router 仍 mount（app.py:135-138 註解確認 503 是 deliberate）— 可考慮改成 "local-only" placeholder page 而非 raw 503。<span class="owner">owner · Robin + Owner</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/robin/writing-assist/{source_id}</span><span class="path-old">/writing-assist/{source_id}</span></td>
+            <td><span class="pill pill--rename">rename</span></td>
+            <td class="function">Line 2 atomic 原子內容 Reading Context Package — Stage 3→4 producer（ADR-024、無 LLM 生成、W1-W7 no-ghostwriting invariants）。<strong>panel 修正</strong>：原本錯放 Brook 層，ADR-027:69-83 明確 reject 把 RCP 移到 Brook、255-257 確認 Robin remains producer。<span class="owner">owner · Robin + Owner</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Layer 5: API (new in v2 per Gemini panel) ────────────────── -->
+  <section aria-labelledby="api-heading">
+    <div class="section-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">05</span>
+        <span>layer · api</span>
+      </div>
+      <h2 id="api-heading">API 層</h2>
+      <p>內部 RPC、JSON endpoints、後端服務。<strong>panel 新增</strong>：v1 把 <code>/api/*</code> 放「跨層」，Gemini 指出這是 understatement — API 有自己的 routing、auth、versioning，應 formal recognize 為 Layer 5 避免變成 dumping ground。</p>
+    </div>
+
+    <div class="ns-group">
+      <div class="ns-head">
+        <h3>API surfaces</h3>
+        <span class="ns-token">no UI tokens</span>
+        <span class="ns-tag ns-tag--auth">auth required</span>
+      </div>
+      <table class="routes">
+        <thead>
+          <tr><th class="col-path">Path</th><th class="col-status">Status</th><th class="col-function">功能</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="path"><span class="path-new">/api/projects/{slug}/synthesize</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">Brook synthesize store — outline mutation、user actions、evidence caching（issue #458）。<span class="owner">owner · Brook</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">POST /kb/research</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">KB 搜尋 endpoint（無 UI），供其他 agent dispatch。<span class="owner">owner · Robin</span></td>
+          </tr>
+          <tr>
+            <td class="path"><span class="path-new">/api/books/*</span></td>
+            <td><span class="pill pill--shipped">shipped</span></td>
+            <td class="function">EPUB metadata + 內文 fetch、annotation persistence。CSP 寫死路徑。<span class="owner">owner · Robin</span></td>
           </tr>
         </tbody>
       </table>
@@ -370,11 +415,11 @@
   <section aria-labelledby="cross-heading">
     <div class="section-head">
       <div class="sho-kicker">
-        <span class="sho-kicker-n">05</span>
-        <span>cross · auth + api</span>
+        <span class="sho-kicker-n">06</span>
+        <span>cross · auth</span>
       </div>
       <h2 id="cross-heading">跨層</h2>
-      <p>Auth entry + backend APIs，不歸任何視覺 layer。</p>
+      <p>Auth entry，不歸任何視覺 layer。</p>
     </div>
 
     <div class="ns-group">
@@ -388,13 +433,62 @@
             <td><span class="pill pill--shipped">shipped</span></td>
             <td class="function">HMAC cookie + API key auth entry。<span class="owner">owner · Nami</span></td>
           </tr>
-          <tr>
-            <td class="path"><span class="path-new">/api/*</span></td>
-            <td><span class="pill pill--shipped">shipped</span></td>
-            <td class="function">Backend JSON endpoints — KB research、projects synthesize、其他 internal RPC。不算 web UI。</td>
-          </tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- ── UX cascade (Gemini panel patches) ────────────────────────── -->
+  <section aria-labelledby="ux-heading">
+    <div class="section-head">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">07</span>
+        <span>ux · cascade</span>
+      </div>
+      <h2 id="ux-heading">UX cascade — 每個 rename 帶動的非 URL 變更</h2>
+      <p>Gemini panel 指出「URL is not an island」。每個 route rename 必須同步處理 cascading UI elements，不能只動 router。</p>
+    </div>
+
+    <div class="phases">
+      <div class="phase">
+        <div class="phase-head">
+          <span class="phase-n">cascade · title</span>
+          <span class="phase-title">Page title + breadcrumb + nav active state</span>
+        </div>
+        <div class="phase-body">
+          每個 rename 同 PR 內必須更新：<code>&lt;title&gt;</code>、breadcrumb 文字（如 <code>Home › Brook › Handoff</code>）、Bridge hub 內的 nav 連結 label（<code>templates/bridge/index.html:597-600</code> 已 hard-link <code>/brook/bridge</code>）、sidebar active-state matcher。漏 update title cascade 就是 URL ≠ UI 不一致的 recipe for confusion。
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <span class="phase-n">cascade · sharing</span>
+          <span class="phase-title">Open Graph 標籤給 /progress + /architecture</span>
+        </div>
+        <div class="phase-body">
+          /progress 是 partner-shared 連結，主要透過 Slack / email unfurl。目前無 og:tags → unfurl preview generic。新增：<code>og:title</code>（具體標題不是「Nakama Progress」）、<code>og:description</code>、<code>og:image</code>（用 shosho logo）、<code>og:locale="zh_TW"</code> + <code>og:locale:alternate="en_US"</code>。
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <span class="phase-n">cascade · i18n hedge</span>
+          <span class="phase-title">/zh/ /en/ path segment 預留</span>
+        </div>
+        <div class="phase-body">
+          目前所有 URL 英文 only。Gemini 指出：未來 shosho.tw 若擴英文版內容，現在 hedge 成本零、未來避免大遷移。決策：**接受 hedge** — 不立刻加 /zh/ /en/，但 router 設計時保留這個 path-segment 的可能性（不要 URL pattern 設成貪婪match，不要硬編語言到 controller name）。
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-head">
+          <span class="phase-n">cascade · permission</span>
+          <span class="phase-title">未來 granular sharing 的路徑可行性</span>
+        </div>
+        <div class="phase-body">
+          Gemini 警告：agent-centric path 在「分享單一 surface 給 guest collaborator」場景不自然。例如想分享一個 <code>/brook/projects/{slug}</code> 給合作者，permission 規則寫成「only sub-path /brook/projects/{slug}」比寫「only /writing/drafts/{slug}」更難讀。**接受為已知 constraint**：Fork A 選了 agent-centric，需 accept 此 trade-off — 未來如真需要 granular sharing，再考慮加 task-based alias。
+        </div>
+      </div>
     </div>
   </section>
 
@@ -402,51 +496,57 @@
   <section aria-labelledby="migration-heading">
     <div class="section-head">
       <div class="sho-kicker">
-        <span class="sho-kicker-n">06</span>
+        <span class="sho-kicker-n">08</span>
         <span>migration · phased</span>
       </div>
-      <h2 id="migration-heading">遷移步驟</h2>
+      <h2 id="migration-heading">遷移步驟（panel-revised）</h2>
       <p>不一次全做。每個 Phase 小範圍、可獨立驗證、舊路徑保留 301 redirect 一段時間以免 bookmark 失效。</p>
     </div>
 
     <div class="phases">
       <div class="phase">
         <div class="phase-head">
-          <span class="phase-n">phase 1</span>
-          <span class="phase-title">Shosho marketing landing（沒有破壞性變更）</span>
+          <span class="phase-n">phase 0</span>
+          <span class="phase-title">Prereqs（panel 新增）— 不可省的功課</span>
         </div>
         <div class="phase-body">
-          建 <code>/</code> 的 Shosho marketing landing（取代目前 302 → /brook/bridge）。修修 bookmark 改用 <code>/brook/context</code>（即將是新名稱）或 <code>/bridge</code>（Bridge ops）。同時加 301 redirect：<code>/brook/bridge → /brook/context</code>，這樣 muscle memory 不會立刻斷。
+          Codex 強烈要求：marketing landing 前必須先做 prereqs，否則 Phase 1 ship 完會發現一堆 broken link。內容：(1) 寫 redirect alias 測試 fixture；(2) 掃 Bridge templates 對 <code>/brook/bridge</code> / <code>/projects</code> / <code>/promotion-review</code> / <code>/writing-assist</code> / <code>/books</code> 的硬寫連結（已知 <code>templates/bridge/index.html:597-600</code> 至少一處）；(3) 掃 JS fetch 對舊路徑的硬寫（<code>static/book_reader.js</code> 等）；(4) CSP allowlist update（<code>middleware/csp.py:31</code> 寫死 <code>/books</code> + <code>/api/books</code>）；(5) login next= URL 處理新舊路徑都接受。完成 prereqs 才能進 Phase 1。
         </div>
       </div>
 
       <div class="phase">
         <div class="phase-head">
-          <span class="phase-n">phase 2</span>
-          <span class="phase-title">Brook prefix 統一（4 個 rename）</span>
+          <span class="phase-n">phase 1+2</span>
+          <span class="phase-title">原子合併：marketing landing + Brook/Robin 重整（panel 合併）</span>
         </div>
         <div class="phase-body">
-          <code>/projects/{slug}</code> → <code>/brook/projects/{slug}</code>、<code>/brook/bridge</code> → <code>/brook/context</code>、<code>/promotion-review/*</code> → <code>/brook/promotion/*</code>、<code>/writing-assist/{id}</code> → <code>/brook/writing/{id}</code>。每個改名加 301 redirect 從舊路徑，保留 30-60 天再刪。
+          Gemini 警告分階段做會產生「Phase 1 完但 Phase 2 還沒做」的 max inconsistency state — 編輯 surface 一半在舊路徑一半在新。合併成單一 atomic phase：<br>
+          (a) 建 <code>/</code> Shosho marketing landing（取代 <code>/ → /brook/bridge</code> redirect）<br>
+          (b) Brook rename：<code>/projects/{slug}</code> → <code>/brook/projects/{slug}</code>、<code>/brook/bridge</code> → <code>/brook/handoff</code>（不是 /brook/context — Codex 否決 too generic）<br>
+          (c) Robin rename（從 Brook 移過來）：<code>/promotion-review/*</code> → <code>/robin/promotion/*</code>、<code>/writing-assist/{id}</code> → <code>/robin/writing-assist/{id}</code>（per ADR-024/027 ownership）<br>
+          (d) 處理 <code>/brook/chat → /brook/bridge → /brook/handoff</code> 三跳 redirect chain（collapse 成 <code>/brook/chat</code> 直接 → <code>/brook/handoff</code>）<br>
+          (e) 同 PR 更新 title / breadcrumb / nav label / og:tags<br>
+          Redirect 策略改：先 302/307 trial 一週看 logs → 確定無問題切 301 → **不自動刪**，單一 operator 場景永久保留代價極低（Codex 質疑 30-60 天刪除是 arbitrary）。
         </div>
       </div>
 
       <div class="phase">
         <div class="phase-head">
           <span class="phase-n">phase 3</span>
-          <span class="phase-title">Robin prefix 統一（6 個 rename，僅 local 影響）</span>
+          <span class="phase-title">Robin prefix 統一（local-only，無 partner / SEO 影響）</span>
         </div>
         <div class="phase-body">
-          <code>/</code>（Robin enabled）+ <code>/read</code> + <code>/processing</code> + <code>/done</code> + <code>/review-*</code> + <code>/books/*</code> → <code>/robin/*</code>。本機環境，沒有 partner / SEO 影響，可以無痛換。
+          <code>/</code>（Robin enabled）+ <code>/processing</code> + <code>/done</code> + <code>/review-summary,plan</code> + <code>/books/*</code> → <code>/robin/*</code>。<code>/read</code> 保留 query-string 形式 — path-based migration 屬另一階段。順帶處理 robin 周邊 API endpoints。
         </div>
       </div>
 
       <div class="phase">
         <div class="phase-head">
           <span class="phase-n">phase 4</span>
-          <span class="phase-title">技術債清理（無使用者影響）</span>
+          <span class="phase-title">技術債清理 — Bridge tokens 抽出後再決定 namespace 命運</span>
         </div>
         <div class="phase-body">
-          抽 <code>--nk-*</code> Bridge tokens 從 20+ template 的 inline <code>&lt;style&gt;</code> 到 <code>thousand_sunny/static/bridge/tokens.css</code>。刪除 deprecated <code>/bridge/health</code>。刪舊 301 redirects 在 Phase 2/3 通過後。
+          抽 <code>--nk-*</code> Bridge tokens 從 19 個 template 的 inline <code>&lt;style&gt;</code> 到 <code>thousand_sunny/static/bridge/tokens.css</code>。**Codex 提醒**：抽完 tokens 後才可評估 <code>--nk-*</code> 是「永久第三 namespace」還是「Shosho 的一個 mode」— 不要在抽 token 前就 lock 答案。刪除 deprecated <code>/bridge/health</code>。VPS 的 Robin family 503 改成 deliberate "local-only" placeholder page（per Codex Sec 5）。
         </div>
       </div>
     </div>
@@ -457,7 +557,7 @@
       <span class="sho-bolt footer-bolt" aria-hidden="true">
         <svg><use href="#sho-bolt-shape"/></svg>
       </span>
-      研究編號 N°0610 · nakama · url architecture proposal
+      研究編號 N°0611 · nakama · url architecture v2 (panel-reviewed)
     </span>
     <span>
       <a class="sho-lk sho-mono" href="https://github.com/shosho-chang/nakama" rel="noopener">
