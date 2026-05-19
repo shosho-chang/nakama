@@ -1,7 +1,16 @@
 """Vault layout audit — verify vault state matches `docs/VAULT-LAYOUT.md` claims.
 
-Skeleton stub per ADR-028 §11. Full implementation lands in Phase 3 PR-10
-(PR-Audit-Script-Full). This stub establishes:
+⚠️  STUB IMPLEMENTATION — DOES NOT YET AUDIT  ⚠️
+
+Every audit_* function below returns ``[]`` unconditionally, so this script
+currently reports "No drift detected" **by construction** regardless of
+actual vault state. Tracked as drift D-audit-stub in `docs/VAULT-LAYOUT.md`
+§7 until Phase 3 PR-C1 (post-ADR-028) lands the full implementation.
+
+DO NOT wire this into Franky cron or trust its output until that PR lands.
+
+Skeleton stub per ADR-028 §11. Full implementation lands in Phase 3 PR-C1
+(Activation & Cleanup). This stub establishes:
 
 - the entry point + CLI surface
 - the expected output format (markdown append to franky weekly digest)
@@ -68,7 +77,7 @@ class AuditReport:
 def audit_folder_diff(vault_root: Path, layout_doc: Path) -> list[AuditFinding]:
     """Compare actual vault folder tree against §2 of VAULT-LAYOUT.md.
 
-    TODO (Phase 3 PR-10):
+    TODO (Phase 3 PR-C1):
     - Parse §2 fenced code block from VAULT-LAYOUT.md into a declared-tree set
     - Walk vault_root one level deep (top-level folders only for now)
     - Report orphans (in vault but not declared) and missing (declared but not in vault)
@@ -79,7 +88,7 @@ def audit_folder_diff(vault_root: Path, layout_doc: Path) -> list[AuditFinding]:
 def audit_code_path_diff(repo_root: Path, layout_doc: Path) -> list[AuditFinding]:
     """Grep code-asserted vault paths against §3 producer/consumer matrix.
 
-    TODO (Phase 3 PR-10):
+    TODO (Phase 3 PR-C1):
     - Grep ``agents/``, ``shared/``, ``gateway/``, ``thousand_sunny/`` for
       string literals matching ``Path("KB/...")``, ``"Inbox/..."``, etc.
     - Cross-reference with §3 table entries.
@@ -92,7 +101,7 @@ def audit_code_path_diff(repo_root: Path, layout_doc: Path) -> list[AuditFinding
 def audit_marker_violations(vault_root: Path, layout_doc: Path) -> list[AuditFinding]:
     """Audit collab-page marker convention (§4).
 
-    TODO (Phase 3 PR-10):
+    TODO (Phase 3 PR-C1):
     - Grep ``Projects/`` for ``%%agent-(\\w+)-([\\w-]+)-start%%`` patterns
     - Assert each (agent, section) pair appears in §4 Pattern A registered list
     - Assert -start has matching -end
@@ -104,7 +113,7 @@ def audit_marker_violations(vault_root: Path, layout_doc: Path) -> list[AuditFin
 def audit_drift_status(layout_doc: Path) -> list[AuditFinding]:
     """Verify each §7 drift entry's status is still accurate.
 
-    TODO (Phase 3 PR-10):
+    TODO (Phase 3 PR-C1):
     - Parse §7 entries (status [待修] / [已接受] / [已修])
     - For each entry, evaluate its specific check:
       D1: ``shared/kb_writer.upsert_concept_page`` called from textbook-ingest Phase B?
