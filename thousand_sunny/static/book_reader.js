@@ -1,6 +1,6 @@
 // Reader bootstrap — runs under CSP `script-src 'self'`, so this lives in a
 // served-from-origin file rather than inline. book_id comes from the URL path
-// (/books/{book_id}) so the template needs no per-page injection.
+// (/robin/books/{book_id}) so the template needs no per-page injection.
 
 import { View } from '/vendor/foliate-js/view.js';
 import { Overlayer } from '/vendor/foliate-js/overlayer.js';
@@ -222,7 +222,7 @@ function emptyAnnotationSet() {
 
 async function fetchBookMetadata() {
   try {
-    const r = await fetch(`/api/books/${encodeURIComponent(BOOK_ID)}`);
+    const r = await fetch(`/robin/api/books/${encodeURIComponent(BOOK_ID)}`);
     if (!r.ok) return;
     const meta = await r.json();
     if (meta.book_version_hash) bookVersionHash = meta.book_version_hash;
@@ -237,7 +237,7 @@ async function fetchBookMetadata() {
 
 async function fetchAnnotations() {
   try {
-    const r = await fetch(`/api/books/${encodeURIComponent(BOOK_ID)}/annotations`);
+    const r = await fetch(`/robin/api/books/${encodeURIComponent(BOOK_ID)}/annotations`);
     if (!r.ok) {
       currentSet = emptyAnnotationSet();
       return;
@@ -258,7 +258,7 @@ async function persistSet(nextSet) {
   currentSet = nextSet;
   try {
     const r = await fetch(
-      `/api/books/${encodeURIComponent(BOOK_ID)}/annotations`,
+      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/annotations`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -853,7 +853,7 @@ async function requestIngest() {
   ingestBtn.textContent = '📥 送出中⋯';
   try {
     const r = await fetch(
-      `/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
+      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' } },
     );
     if (!r.ok) {
@@ -880,7 +880,7 @@ async function cancelIngest() {
   ingestBtn.textContent = '📥 取消中⋯';
   try {
     const r = await fetch(
-      `/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
+      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
       { method: 'DELETE' },
     );
     if (!r.ok) {
@@ -918,9 +918,9 @@ if (deleteBookBtn) {
     deleteBookBtn.disabled = true;
     deleteBookBtn.textContent = '刪除中⋯';
     try {
-      const r = await fetch(`/api/books/${encodeURIComponent(BOOK_ID)}`, { method: 'DELETE' });
+      const r = await fetch(`/robin/api/books/${encodeURIComponent(BOOK_ID)}`, { method: 'DELETE' });
       if (!r.ok) throw new Error(await r.text());
-      window.location.href = '/books';
+      window.location.href = '/robin/books';
     } catch (err) {
       alert('刪除失敗：' + err.message);
       deleteBookBtn.disabled = false;
@@ -931,7 +931,7 @@ if (deleteBookBtn) {
 
 // ── Progress state (Slice 3C) ────────────────────────────────────────────────
 //
-// Mirrors GET/PUT /api/books/{id}/progress with three reliability layers:
+// Mirrors GET/PUT /robin/api/books/{id}/progress with three reliability layers:
 //
 // 1. 5-second debounce on `relocate` for normal page-flips — coalesces rapid
 //    bursts (the user paging through 10 spreads in 5s = 1 PUT, not 10).
@@ -1015,7 +1015,7 @@ async function putProgress(payload) {
   // Returns true on 2xx, false otherwise. Caller decides retry policy.
   try {
     const r = await fetch(
-      `/api/books/${encodeURIComponent(BOOK_ID)}/progress`,
+      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/progress`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1077,7 +1077,7 @@ function flushProgressSync() {
     return;
   }
 
-  const url = `/api/books/${encodeURIComponent(BOOK_ID)}/progress`;
+  const url = `/robin/api/books/${encodeURIComponent(BOOK_ID)}/progress`;
   const body = JSON.stringify(payload);
   let queued = false;
   try {
@@ -1116,7 +1116,7 @@ function scheduleProgressWrite(payload) {
 async function fetchProgress() {
   // Returns BookProgress on success, or the localStorage cache on failure, or null.
   try {
-    const r = await fetch(`/api/books/${encodeURIComponent(BOOK_ID)}/progress`);
+    const r = await fetch(`/robin/api/books/${encodeURIComponent(BOOK_ID)}/progress`);
     if (!r.ok) {
       console.warn('progress GET failed', r.status);
       return readProgressCache();
@@ -1367,7 +1367,7 @@ view.addEventListener('draw-annotation', e => {
 
 (async () => {
   try {
-    const res = await fetch(`/api/books/${encodeURIComponent(BOOK_ID)}/file?lang=bilingual`);
+    const res = await fetch(`/robin/api/books/${encodeURIComponent(BOOK_ID)}/file?lang=bilingual`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
     const file = new File([blob], `${BOOK_ID}.epub`, { type: 'application/epub+zip' });

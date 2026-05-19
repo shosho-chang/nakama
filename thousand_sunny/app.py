@@ -107,12 +107,14 @@ if not os.getenv("DISABLE_ROBIN"):
     app.include_router(robin.robin_router)
     app.include_router(robin.legacy_router)
     app.include_router(books.router)
+    app.include_router(books.legacy_router)
 
-    # foliate-js must be served from the same origin as /books/* so CSP
-    # ``script-src 'self'`` allows it. Mount the vendored submodule under
-    # /vendor/foliate-js/ as static files. Missing dir (fresh checkout
-    # forgot ``git submodule update --init``) → skip the mount and log;
-    # the reader page will fail to load JS but /books library still works.
+    # foliate-js must be served from the same origin as /robin/books/* so
+    # CSP ``script-src 'self'`` allows it. Mount the vendored submodule
+    # under /vendor/foliate-js/ as static files. Missing dir (fresh
+    # checkout forgot ``git submodule update --init``) → skip the mount
+    # and log; the reader page will fail to load JS but /robin/books
+    # library still works.
     _foliate_dir = Path(__file__).resolve().parent.parent / "vendor" / "foliate-js"
     if _foliate_dir.is_dir():
         app.mount(

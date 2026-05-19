@@ -43,13 +43,13 @@ def _epub_upload(file_bytes: bytes, name: str = "book.epub"):
 
 
 # ---------------------------------------------------------------------------
-# GET /books
+# GET /robin/books
 # ---------------------------------------------------------------------------
 
 
 def test_books_library_empty(app_client):
     tc, _ = app_client
-    r = tc.get("/books")
+    r = tc.get("/robin/books")
     assert r.status_code == 200
     assert "text/html" in r.headers.get("content-type", "")
     assert "書架是空的" in r.text
@@ -60,10 +60,10 @@ def test_books_library_lists_inserted_book(app_client, books_dir):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "alpha", "title": "Alpha Book", "lang_pair": "en-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
 
-    r2 = tc.get("/books")
+    r2 = tc.get("/robin/books")
     assert r2.status_code == 200
     assert "Alpha Book" in r2.text
     # bilingual-en-zh mode renders as the human-readable 「EN→中」 badge
@@ -73,13 +73,13 @@ def test_books_library_lists_inserted_book(app_client, books_dir):
 
 
 # ---------------------------------------------------------------------------
-# GET /books/upload
+# GET /robin/books/upload
 # ---------------------------------------------------------------------------
 
 
 def test_books_upload_form_renders(app_client):
     tc, _ = app_client
-    r = tc.get("/books/upload")
+    r = tc.get("/robin/books/upload")
     assert r.status_code == 200
     assert "上傳新書" in r.text
     assert 'name="bilingual"' in r.text
@@ -94,7 +94,7 @@ def test_books_upload_form_renders(app_client):
 
 
 # ---------------------------------------------------------------------------
-# POST /books/upload
+# POST /robin/books/upload
 # ---------------------------------------------------------------------------
 
 
@@ -103,9 +103,9 @@ def test_books_upload_happy_path(app_client, books_dir):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "happy-id", "title": "Happy Book", "lang_pair": "en-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
-    assert r.headers["location"] == "/books/happy-id"
+    assert r.headers["location"] == "/robin/books/happy-id"
 
     stored = books_dir / "happy-id" / "bilingual.epub"
     assert stored.exists()
@@ -126,7 +126,7 @@ def test_books_upload_rejects_path_traversal_id(app_client):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "../etc", "title": "T", "lang_pair": "en-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 400
 
 
@@ -134,7 +134,7 @@ def test_books_upload_rejects_empty_bilingual(app_client):
     tc, _ = app_client
     files = {"bilingual": ("empty.epub", b"", "application/epub+zip")}
     data = {"book_id": "empty-x", "title": "T", "lang_pair": "en-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 400
 
 
@@ -150,7 +150,7 @@ def test_books_upload_sanitizes_script_tags(app_client, books_dir):
 
     files = {"bilingual": ("dirty.epub", blob, "application/epub+zip")}
     data = {"book_id": "dirty-id", "title": "Dirty", "lang_pair": "en-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
 
     stored = books_dir / "dirty-id" / "bilingual.epub"
@@ -172,9 +172,9 @@ def test_books_upload_derives_book_id_from_epub_title_when_form_omits_it(app_cli
     tc, _ = app_client
     files = {"bilingual": ("c.epub", epub_clean(), "application/epub+zip")}
 
-    r = tc.post("/books/upload", files=files)
+    r = tc.post("/robin/books/upload", files=files)
     assert r.status_code == 303
-    assert r.headers["location"] == "/books/The-Tracer"
+    assert r.headers["location"] == "/robin/books/The-Tracer"
 
     from shared.book_storage import get_book
 
@@ -193,11 +193,11 @@ def test_books_upload_falls_back_to_hash_id_when_title_missing(app_client, books
     tc, _ = app_client
     files = {"bilingual": ("c.epub", epub_minimal_metadata(), "application/epub+zip")}
 
-    r = tc.post("/books/upload", files=files)
+    r = tc.post("/robin/books/upload", files=files)
     assert r.status_code == 303
     location = r.headers["location"]
-    assert location.startswith("/books/")
-    book_id = location[len("/books/") :]
+    assert location.startswith("/robin/books/")
+    book_id = location[len("/robin/books/") :]
     # "Untitled" slugifies to "Untitled"; only when slugify returns empty (e.g. title
     # is whitespace or all-stripped chars) does the hash-prefixed id kick in. Both
     # shapes are valid, so accept either.
@@ -213,7 +213,7 @@ def test_books_upload_with_original(app_client, books_dir):
         "original": ("o.epub", en, "application/epub+zip"),
     }
     data = {"book_id": "with-orig", "title": "With Original", "lang_pair": "en-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
     assert (books_dir / "with-orig" / "original.epub").exists()
 
@@ -239,7 +239,7 @@ def test_upload_zh_epub_auto_detects_monolingual_zh(app_client, books_dir):
     blob = epub_monolingual_zh()
     files = {"bilingual": ("zh.epub", blob, "application/epub+zip")}
     data = {"book_id": "zh-pilot-auto"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
 
     from shared.book_storage import get_book
@@ -260,7 +260,7 @@ def test_upload_zh_epub_without_metadata_lang_falls_back_to_body_sample(app_clie
     blob = epub_monolingual_zh(declare_lang=False)
     files = {"bilingual": ("zh-no-lang.epub", blob, "application/epub+zip")}
     data = {"book_id": "zh-body-fallback"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
 
     from shared.book_storage import get_book
@@ -277,7 +277,7 @@ def test_upload_en_epub_resolves_to_bilingual_en_zh(app_client, books_dir):
     blob = epub_clean()  # EPUBSpec default language="en"
     files = {"bilingual": ("en.epub", blob, "application/epub+zip")}
     data = {"book_id": "en-default"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
 
     from shared.book_storage import get_book
@@ -294,7 +294,7 @@ def test_upload_explicit_mode_overrides_detection(app_client, books_dir):
     blob = epub_clean()  # English
     files = {"bilingual": ("forced.epub", blob, "application/epub+zip")}
     data = {"book_id": "forced-zh", "mode": "monolingual-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
 
     from shared.book_storage import get_book
@@ -309,7 +309,7 @@ def test_upload_invalid_mode_value_returns_400(app_client):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "bad-mode", "mode": "klingon"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 400
     assert "invalid mode" in r.text
 
@@ -322,7 +322,7 @@ def test_upload_with_only_original_field_succeeds(app_client, books_dir):
     blob = epub_clean()
     files = {"original": ("only-orig.epub", blob, "application/epub+zip")}
     data = {"book_id": "orig-only"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303
 
     # bilingual.epub slot should still exist (promoted from the original
@@ -339,18 +339,18 @@ def test_upload_with_only_original_field_succeeds(app_client, books_dir):
 
 def test_upload_with_neither_field_returns_400(app_client):
     tc, _ = app_client
-    r = tc.post("/books/upload", data={"book_id": "ghost"})
+    r = tc.post("/robin/books/upload", data={"book_id": "ghost"})
     assert r.status_code == 400
 
 
 # ---------------------------------------------------------------------------
-# GET /books/{book_id}
+# GET /robin/books/{book_id}
 # ---------------------------------------------------------------------------
 
 
 def test_book_reader_404_when_missing(app_client):
     tc, _ = app_client
-    r = tc.get("/books/no-such-book")
+    r = tc.get("/robin/books/no-such-book")
     assert r.status_code == 404
 
 
@@ -359,9 +359,9 @@ def test_book_reader_200_when_exists(app_client):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "render-me", "title": "Render", "lang_pair": "en-zh"}
-    tc.post("/books/upload", data=data, files=files)
+    tc.post("/robin/books/upload", data=data, files=files)
 
-    r = tc.get("/books/render-me")
+    r = tc.get("/robin/books/render-me")
     assert r.status_code == 200
     assert "Render" in r.text
     assert "foliate-view" in r.text
@@ -372,7 +372,7 @@ def test_book_reader_200_when_exists(app_client):
 
 
 # ---------------------------------------------------------------------------
-# GET /api/books/{id}/file
+# GET /robin/api/books/{id}/file
 # ---------------------------------------------------------------------------
 
 
@@ -381,9 +381,9 @@ def test_api_book_file_returns_bilingual_bytes(app_client):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "fetch-me", "title": "Fetch", "lang_pair": "en-zh"}
-    tc.post("/books/upload", data=data, files=files)
+    tc.post("/robin/books/upload", data=data, files=files)
 
-    r = tc.get("/api/books/fetch-me/file?lang=bilingual")
+    r = tc.get("/robin/api/books/fetch-me/file?lang=bilingual")
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/epub+zip"
     # Sanitized blob is rebuilt so byte-equal to original is not guaranteed,
@@ -400,9 +400,9 @@ def test_api_book_file_en_404_when_no_original(app_client):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "no-orig", "title": "T", "lang_pair": "en-zh"}
-    tc.post("/books/upload", data=data, files=files)
+    tc.post("/robin/books/upload", data=data, files=files)
 
-    r = tc.get("/api/books/no-orig/file?lang=en")
+    r = tc.get("/robin/api/books/no-orig/file?lang=en")
     assert r.status_code == 404
 
 
@@ -413,9 +413,9 @@ def test_api_book_file_en_404_when_no_original(app_client):
 
 def test_csp_header_present_on_books_routes(app_client):
     tc, _ = app_client
-    r = tc.get("/books")
+    r = tc.get("/robin/books")
     csp = r.headers.get("content-security-policy", "")
-    assert csp, "CSP header missing on /books"
+    assert csp, "CSP header missing on /robin/books"
     assert "script-src 'self'" in csp
 
 
@@ -424,9 +424,9 @@ def test_csp_header_present_on_api_books_routes(app_client):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "csp-id", "title": "T", "lang_pair": "en-zh"}
-    tc.post("/books/upload", data=data, files=files)
+    tc.post("/robin/books/upload", data=data, files=files)
 
-    r = tc.get("/api/books/csp-id/file?lang=bilingual")
+    r = tc.get("/robin/api/books/csp-id/file?lang=bilingual")
     assert r.status_code == 200
     csp = r.headers.get("content-security-policy", "")
     assert "script-src 'self'" in csp
@@ -441,7 +441,7 @@ def test_csp_header_absent_on_root(app_client):
 
 
 # ---------------------------------------------------------------------------
-# GET /api/books/{book_id} — book metadata (book_version_hash for Reader JS)
+# GET /robin/api/books/{book_id} — book metadata (book_version_hash for Reader JS)
 # ---------------------------------------------------------------------------
 
 
@@ -450,9 +450,9 @@ def test_api_book_metadata_returns_book_row(app_client):
     blob = epub_clean()
     files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
     data = {"book_id": "meta-id", "title": "Meta", "lang_pair": "en-zh"}
-    tc.post("/books/upload", data=data, files=files)
+    tc.post("/robin/books/upload", data=data, files=files)
 
-    r = tc.get("/api/books/meta-id")
+    r = tc.get("/robin/api/books/meta-id")
     assert r.status_code == 200
     body = r.json()
     assert body["book_id"] == "meta-id"
@@ -466,5 +466,132 @@ def test_api_book_metadata_returns_book_row(app_client):
 
 def test_api_book_metadata_404(app_client):
     tc, _ = app_client
-    r = tc.get("/api/books/no-such-book")
+    r = tc.get("/robin/api/books/no-such-book")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Legacy redirects — /books/* + /api/books/* → /robin/* (R5)
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_books_library_redirects_301(app_client):
+    tc, _ = app_client
+    r = tc.get("/books")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/books"
+
+
+def test_legacy_books_upload_get_redirects_301(app_client):
+    tc, _ = app_client
+    r = tc.get("/books/upload")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/books/upload"
+
+
+def test_legacy_books_upload_post_redirects_308(app_client):
+    """POST /books/upload must 308 (method+body preserving) so a form
+    replay lands at the new URL as a POST, not a downgraded GET."""
+    tc, _ = app_client
+    blob = epub_clean()
+    files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
+    data = {"book_id": "legacy-308", "title": "Legacy", "lang_pair": "en-zh"}
+    r = tc.post("/books/upload", data=data, files=files)
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/books/upload"
+
+
+def test_legacy_book_reader_redirects_301(app_client):
+    tc, _ = app_client
+    r = tc.get("/books/any-id")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/books/any-id"
+
+
+def test_legacy_api_book_metadata_redirects_301(app_client):
+    tc, _ = app_client
+    r = tc.get("/api/books/any-id")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/api/books/any-id"
+
+
+def test_legacy_api_book_file_redirects_301_preserves_query(app_client):
+    tc, _ = app_client
+    r = tc.get("/api/books/any-id/file?lang=bilingual")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/api/books/any-id/file?lang=bilingual"
+
+
+def test_legacy_api_book_cover_redirects_301(app_client):
+    tc, _ = app_client
+    r = tc.get("/api/books/any-id/cover")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/api/books/any-id/cover"
+
+
+def test_legacy_api_annotations_get_redirects_301(app_client):
+    tc, _ = app_client
+    r = tc.get("/api/books/any-id/annotations")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/api/books/any-id/annotations"
+
+
+def test_legacy_api_annotations_post_redirects_308(app_client):
+    tc, _ = app_client
+    r = tc.post("/api/books/any-id/annotations", json={"items": []})
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/api/books/any-id/annotations"
+
+
+def test_legacy_api_progress_get_redirects_301(app_client):
+    tc, _ = app_client
+    r = tc.get("/api/books/any-id/progress")
+    assert r.status_code == 301
+    assert r.headers["location"] == "/robin/api/books/any-id/progress"
+
+
+def test_legacy_api_progress_put_redirects_308(app_client):
+    tc, _ = app_client
+    r = tc.put("/api/books/any-id/progress", json={"book_id": "any-id"})
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/api/books/any-id/progress"
+
+
+def test_legacy_api_ingest_request_post_redirects_308(app_client):
+    tc, _ = app_client
+    r = tc.post("/api/books/any-id/ingest-request")
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/api/books/any-id/ingest-request"
+
+
+def test_legacy_api_ingest_request_delete_redirects_308(app_client):
+    tc, _ = app_client
+    r = tc.delete("/api/books/any-id/ingest-request")
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/api/books/any-id/ingest-request"
+
+
+def test_legacy_api_delete_book_redirects_308(app_client):
+    tc, _ = app_client
+    r = tc.delete("/api/books/any-id")
+    assert r.status_code == 308
+    assert r.headers["location"] == "/robin/api/books/any-id"
+
+
+def test_legacy_post_replays_at_new_url_preserves_body(app_client):
+    """Method-preservation smoke test: POST to legacy URL, then follow the
+    308 manually and assert the body lands at the new URL as a POST (not
+    downgraded to GET). This is what saves in-flight form replays."""
+    tc, _ = app_client
+    blob = epub_clean()
+    # Follow-redirects=True replays through the 308.
+    tc_follow = TestClient(tc.app, follow_redirects=True)
+    files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
+    data = {"book_id": "replay-id", "title": "Replay", "lang_pair": "en-zh"}
+    r = tc_follow.post("/books/upload", data=data, files=files)
+    # Final response should be the upload's 303 redirect to /robin/books/{id}
+    # (since the upload handler responds with 303 on success). With
+    # follow_redirects=True the test client chases until a non-3xx; here it
+    # follows 308 → 303 → 200, so we end up on the reader page.
+    assert r.status_code == 200
+    assert "replay-id" in r.url.path or "Replay" in r.text

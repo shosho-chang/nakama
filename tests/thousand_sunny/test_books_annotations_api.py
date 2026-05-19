@@ -2,12 +2,12 @@
 
 Two endpoints:
 
-- ``GET /api/books/{book_id}/annotations`` returns the current
+- ``GET /robin/api/books/{book_id}/annotations`` returns the current
   ``AnnotationSetV2`` JSON, or 404 when the book is not registered. An
   unwritten book returns an empty set (200 with ``items: []``), not 404 — only
   the book row's existence gates the route.
 
-- ``POST /api/books/{book_id}/annotations`` does a full-replace write of an
+- ``POST /robin/api/books/{book_id}/annotations`` does a full-replace write of an
   ``AnnotationSetV2`` JSON body. Per-slug ``threading.Lock`` in
   ``AnnotationStore`` prevents lost updates under concurrent POST.
 
@@ -67,7 +67,7 @@ def _upload(tc: TestClient, book_id: str = "test-book") -> None:
     """Register a book by uploading a clean fixture EPUB."""
     files = {"bilingual": ("c.epub", epub_clean(), "application/epub+zip")}
     data = {"book_id": book_id, "title": "T", "lang_pair": "en-zh"}
-    r = tc.post("/books/upload", data=data, files=files)
+    r = tc.post("/robin/books/upload", data=data, files=files)
     assert r.status_code == 303, f"upload failed: {r.status_code} {r.text}"
 
 
@@ -89,13 +89,13 @@ def _v2_payload(book_id: str, items: list[dict] | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# GET /api/books/{book_id}/annotations
+# GET /robin/api/books/{book_id}/annotations
 # ---------------------------------------------------------------------------
 
 
 def test_get_annotations_empty_set_for_unwritten_book(app_client):
     _upload(app_client, "empty-book")
-    r = app_client.get("/api/books/empty-book/annotations")
+    r = app_client.get("/robin/api/books/empty-book/annotations")
     assert r.status_code == 200
     body = r.json()
     assert body["schema_version"] == 2
@@ -104,7 +104,7 @@ def test_get_annotations_empty_set_for_unwritten_book(app_client):
 
 
 def test_get_annotations_404_when_book_missing(app_client):
-    r = app_client.get("/api/books/nonexistent/annotations")
+    r = app_client.get("/robin/api/books/nonexistent/annotations")
     assert r.status_code == 404
 
 
@@ -123,10 +123,10 @@ def test_get_annotations_returns_persisted_items(app_client):
             }
         ],
     )
-    post = app_client.post("/api/books/alpha/annotations", json=payload)
+    post = app_client.post("/robin/api/books/alpha/annotations", json=payload)
     assert post.status_code == 200, post.text
 
-    got = app_client.get("/api/books/alpha/annotations")
+    got = app_client.get("/robin/api/books/alpha/annotations")
     assert got.status_code == 200
     body = got.json()
     assert body["book_id"] == "alpha"
@@ -136,7 +136,7 @@ def test_get_annotations_returns_persisted_items(app_client):
 
 
 # ---------------------------------------------------------------------------
-# POST /api/books/{book_id}/annotations
+# POST /robin/api/books/{book_id}/annotations
 # ---------------------------------------------------------------------------
 
 
@@ -155,7 +155,7 @@ def test_post_annotations_full_replace_overwrites(app_client):
             }
         ],
     )
-    app_client.post("/api/books/alpha/annotations", json=first)
+    app_client.post("/robin/api/books/alpha/annotations", json=first)
 
     second = _v2_payload(
         "alpha",
@@ -180,10 +180,10 @@ def test_post_annotations_full_replace_overwrites(app_client):
             },
         ],
     )
-    r = app_client.post("/api/books/alpha/annotations", json=second)
+    r = app_client.post("/robin/api/books/alpha/annotations", json=second)
     assert r.status_code == 200
 
-    got = app_client.get("/api/books/alpha/annotations").json()
+    got = app_client.get("/robin/api/books/alpha/annotations").json()
     assert len(got["items"]) == 2
     # ADR-021 §1: book POST upgrades v2 ``comment`` → v3 ``reflection`` on save;
     # GET round-trip surfaces the v3 type alongside the unchanged ``annotation``.
@@ -192,7 +192,7 @@ def test_post_annotations_full_replace_overwrites(app_client):
 
 def test_post_annotations_404_when_book_missing(app_client):
     r = app_client.post(
-        "/api/books/nonexistent/annotations",
+        "/robin/api/books/nonexistent/annotations",
         json=_v2_payload("nonexistent"),
     )
     assert r.status_code == 404
@@ -209,7 +209,7 @@ def test_post_annotations_rejects_v1_payload(app_client):
         "items": [{"type": "highlight", "text": "x", "created_at": _TS, "modified_at": _TS}],
         "updated_at": _TS,
     }
-    r = app_client.post("/api/books/alpha/annotations", json=bad_payload)
+    r = app_client.post("/robin/api/books/alpha/annotations", json=bad_payload)
     assert r.status_code in (400, 422)
 
 
@@ -217,7 +217,7 @@ def test_post_annotations_rejects_book_id_mismatch(app_client):
     """URL book_id must match payload book_id; otherwise reject."""
     _upload(app_client, "alpha")
     payload = _v2_payload("beta")  # mismatch
-    r = app_client.post("/api/books/alpha/annotations", json=payload)
+    r = app_client.post("/robin/api/books/alpha/annotations", json=payload)
     assert r.status_code in (400, 422)
 
 
@@ -243,7 +243,7 @@ def test_post_annotations_concurrent_no_lost_update(app_client):
                     }
                 ],
             )
-            r = app_client.post("/api/books/race/annotations", json=payload)
+            r = app_client.post("/robin/api/books/race/annotations", json=payload)
             assert r.status_code == 200
         except Exception as exc:
             errors.append(exc)
@@ -255,7 +255,7 @@ def test_post_annotations_concurrent_no_lost_update(app_client):
         t.join()
 
     assert not errors, f"concurrent POST raised: {errors}"
-    final = app_client.get("/api/books/race/annotations").json()
+    final = app_client.get("/robin/api/books/race/annotations").json()
     assert final["book_id"] == "race"
     assert len(final["items"]) == 1
 
@@ -267,7 +267,7 @@ def test_post_annotations_concurrent_no_lost_update(app_client):
 
 def test_csp_header_present_on_annotations_api(app_client):
     _upload(app_client, "csp-test")
-    r = app_client.get("/api/books/csp-test/annotations")
+    r = app_client.get("/robin/api/books/csp-test/annotations")
     csp = r.headers.get("content-security-policy", "")
     assert "script-src" in csp
     assert "'self'" in csp
@@ -292,7 +292,7 @@ def test_post_annotations_dispatches_digest_background_task(app_client, monkeypa
 
     _upload(app_client, "digest-book")
     payload = _v2_payload("digest-book")
-    r = app_client.post("/api/books/digest-book/annotations", json=payload)
+    r = app_client.post("/robin/api/books/digest-book/annotations", json=payload)
 
     assert r.status_code == 200, r.text
     body = r.json()
@@ -308,6 +308,8 @@ def test_post_annotations_digest_status_queued_in_response(app_client, monkeypat
         lambda book_id: None,
     )
     _upload(app_client, "status-check")
-    r = app_client.post("/api/books/status-check/annotations", json=_v2_payload("status-check"))
+    r = app_client.post(
+        "/robin/api/books/status-check/annotations", json=_v2_payload("status-check")
+    )
     assert r.status_code == 200
     assert r.json()["digest_status"] == "queued"
