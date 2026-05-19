@@ -7,10 +7,10 @@ from shared.vault_rules import VaultRuleViolation, assert_nami_can_read, assert_
 
 class TestAssertNamiCanWrite:
     def test_allows_nami_notes(self):
-        assert_nami_can_write("Nami/Notes/sales-kit.md")  # no exception
+        assert_nami_can_write("AgentOutputs/nami/notes/sales-kit.md")  # no exception
 
     def test_allows_nested_nami_notes(self):
-        assert_nami_can_write("Nami/Notes/subfolder/report.md")
+        assert_nami_can_write("AgentOutputs/nami/notes/subfolder/report.md")
 
     def test_rejects_journals(self):
         with pytest.raises(VaultRuleViolation, match="不可寫入"):
@@ -34,7 +34,7 @@ class TestAssertNamiCanWrite:
 
     def test_rejects_path_traversal(self):
         with pytest.raises(VaultRuleViolation, match="traversal"):
-            assert_nami_can_write("Nami/Notes/../KB/Raw/steal.md")
+            assert_nami_can_write("AgentOutputs/nami/notes/../KB/Raw/steal.md")
 
     def test_rejects_absolute_path(self):
         with pytest.raises(VaultRuleViolation, match="vault-relative"):
@@ -51,7 +51,7 @@ class TestAssertNamiCanWrite:
 
 class TestAssertNamiCanRead:
     def test_allows_nami_notes(self):
-        assert_nami_can_read("Nami/Notes/old-kit.md")
+        assert_nami_can_read("AgentOutputs/nami/notes/old-kit.md")
 
     def test_allows_projects(self):
         assert_nami_can_read("Projects/my-project.md")
@@ -73,7 +73,7 @@ class TestAssertNamiCanRead:
 
     def test_rejects_path_traversal(self):
         with pytest.raises(VaultRuleViolation, match="traversal"):
-            assert_nami_can_read("Nami/Notes/../Journals/diary.md")
+            assert_nami_can_read("AgentOutputs/nami/notes/../Journals/diary.md")
 
     def test_rejects_absolute_path(self):
         with pytest.raises(VaultRuleViolation, match="vault-relative"):

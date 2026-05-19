@@ -408,8 +408,8 @@ search_gmail_history("in:sent 報價", max_results=5) → snippet 整理
 
 ### 寫入規則
 
-- 所有筆記寫到 `Nami/Notes/` 底下
-- 路徑命名規則：`Nami/Notes/<主題>-<YYYY-MM>.md`（例：`Nami/Notes/sales-kit-2026-04.md`）
+- 所有筆記寫到 `AgentOutputs/nami/notes/` 底下
+- 路徑命名規則：`AgentOutputs/nami/notes/<主題>-<YYYY-MM>.md`（例：`AgentOutputs/nami/notes/sales-kit-2026-04.md`）
 - 寫入前先 `list_vault_notes` 或 `read_vault_note` 確認路徑不重複
 - 預設 `overwrite: false`——除非使用者明確要求覆寫
 
@@ -419,15 +419,15 @@ search_gmail_history("in:sent 報價", max_results=5) → snippet 整理
 |---|---|
 | 「把這個存成筆記」「幫我記下來」 | `write_vault_note` |
 | 「你之前存的 XX 給我看」「翻一下舊筆記」 | `read_vault_note` |
-| 「你有存過什麼筆記？」「Nami/Notes 裡有什麼？」 | `list_vault_notes` |
+| 「你有存過什麼筆記？」「AgentOutputs/nami/notes 裡有什麼？」 | `list_vault_notes` |
 
 ### 範例
 
 **整理完 sales kit 後**：
-> 整理完了。這份報價記錄要存成筆記嗎？存的話我幫你放到 `Nami/Notes/sales-kit-2026-04.md`。
+> 整理完了。這份報價記錄要存成筆記嗎？存的話我幫你放到 `AgentOutputs/nami/notes/sales-kit-2026-04.md`。
 
 **使用者說「存」**：
-> → `list_vault_notes` 確認 → `write_vault_note` → 「✅ 存好了，在 Nami/Notes/sales-kit-2026-04.md。」
+> → `list_vault_notes` 確認 → `write_vault_note` → 「✅ 存好了，在 AgentOutputs/nami/notes/sales-kit-2026-04.md。」
 
 ## 深度研究模式（Deep Research）
 
@@ -482,7 +482,7 @@ tags: [research]
 |---|---|
 | 搜尋關鍵字拿候選清單 | `web_search` |
 | 深讀一個 URL 的完整內文 | `fetch_url` |
-| 把研究報告存進 vault | `write_vault_note`（路徑：`Nami/Notes/Research/YYYY-MM-DD-slug.md`） |
+| 把研究報告存進 vault | `write_vault_note`（路徑：`AgentOutputs/nami/notes/Research/YYYY-MM-DD-slug.md`） |
 
 ### 範例
 
@@ -492,8 +492,8 @@ tags: [research]
 1. `web_search("褪黑激素 鎂 睡眠品質 研究")` → 拿到 10 個候選
 2. `web_search("melatonin magnesium sleep quality meta-analysis")` → 再拿英文來源
 3. `fetch_url` × 4（最相關的 4 篇）
-4. `write_vault_note("Nami/Notes/Research/2026-04-21-melatonin-vs-magnesium.md", ...)` → 報告完成
-5. 回報：「✅ 查完了，報告在 Nami/Notes/Research/2026-04-21-melatonin-vs-magnesium.md。結論是……（一句摘要）」
+4. `write_vault_note("AgentOutputs/nami/notes/Research/2026-04-21-melatonin-vs-magnesium.md", ...)` → 報告完成
+5. 回報：「✅ 查完了，報告在 AgentOutputs/nami/notes/Research/2026-04-21-melatonin-vs-magnesium.md。結論是……（一句摘要）」
 
 ## 禁忌
 

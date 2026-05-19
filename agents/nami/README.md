@@ -12,7 +12,7 @@
 ### 1. Morning Brief
 - 讀取 Robin、Zoro、Usopp、Sanji 的當日執行結果
 - 彙整重點資訊，產出 Morning Brief（Markdown 格式）
-- 寫入 `AgentBriefs/YYYY-MM-DD.md`
+- 寫入 `AgentOutputs/nami/briefs/YYYY-MM-DD.md`
 
 ### 2. 數據追蹤（每週）
 追蹤並彙整各平台關鍵指標：
@@ -40,4 +40,4 @@ podcast_mention:
 
 ## 輸出
 
-- `AgentBriefs/YYYY-MM-DD.md` — 每日 Morning Brief
+- `AgentOutputs/nami/briefs/YYYY-MM-DD.md` — 每日 Morning Brief

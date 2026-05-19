@@ -10,12 +10,12 @@ class VaultRuleViolation(Exception):
 # Reader 可寫入的路徑前綴（annotation persistence — ADR-017）
 READER_WRITE_WHITELIST = ("KB/Annotations/", "KB/Wiki/Sources/Books/")
 
-# Nami 可寫入的路徑前綴
-_NAMI_WRITE_WHITELIST = ("Nami/Notes/",)
+# Nami 可寫入的路徑前綴（ADR-028 §4: Nami stays in vault under AgentOutputs/nami/）
+_NAMI_WRITE_WHITELIST = ("AgentOutputs/nami/notes/",)
 
 # Nami 可讀取的路徑前綴
 _NAMI_READ_WHITELIST = (
-    "Nami/Notes/",
+    "AgentOutputs/nami/notes/",
     "Projects/",
     "TaskNotes/Tasks/",
 )

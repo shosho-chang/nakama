@@ -31,7 +31,7 @@
 
 ## 輸出
 
-- 每週系統健康報告 → 寫入 `AgentBriefs/` 供 Nami 彙整
+- 每週系統健康報告 → 寫入 repo `data/agent_reports/franky/weekly/` (ADR-028 §4)
 - 緊急安全問題 → 直接發 email
 
 ## 執行

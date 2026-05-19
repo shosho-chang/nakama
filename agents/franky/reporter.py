@@ -3,7 +3,13 @@
 包含：
 - SystemHealthChecker：讀取 VPS 磁碟/記憶體狀態
 - _parse_backlog：解析 dev-backlog.md 的 checkbox 統計
-- ReportGenerator：呼叫 Claude 產出週報，並寫入 vault
+- ReportGenerator：呼叫 Claude 產出週報，寫入 repo
+  (``data/agent_reports/franky/weekly/{period}.md``)
+
+ADR-028 §4 / Phase A PR-A2: outputs migrated from vault
+``AgentReports/franky/`` to repo ``data/agent_reports/franky/``
+per E1 escalation decision (Franky reports fail the "vault is
+修修's brain" test — they're dev artifacts).
 """
 
 import re
@@ -15,8 +21,8 @@ import yaml
 
 from shared.llm import ask
 from shared.log import get_logger
-from shared.obsidian_writer import write_page
 from shared.prompt_loader import load_prompt
+from shared.repo_writer import write_repo_page
 
 logger = get_logger("nakama.franky")
 
@@ -273,8 +279,8 @@ class ReportGenerator:
         )
 
     def write(self, report: WeeklyReport) -> str:
-        """將週報寫入 AgentReports/franky/{period}.md，回傳相對路徑。"""
-        relative_path = f"AgentReports/franky/{report.period}.md"
+        """將週報寫入 ``data/agent_reports/franky/weekly/{period}.md``（repo），回傳相對路徑。"""
+        relative_path = f"data/agent_reports/franky/weekly/{report.period}.md"
 
         frontmatter: dict = {
             "type": "franky-report",
@@ -293,7 +299,7 @@ class ReportGenerator:
             "top_blockers": report.top_blockers,
         }
 
-        write_page(relative_path, frontmatter, report.body_markdown)
+        write_repo_page(relative_path, frontmatter, report.body_markdown)
         logger.info(f"週報已寫入：{relative_path}")
         return relative_path
 
