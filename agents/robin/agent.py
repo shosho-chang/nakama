@@ -15,6 +15,7 @@ from pathlib import Path
 from agents.base import BaseAgent
 from agents.robin.categories import CONTENT_NATURES, DEFAULT_CONTENT_NATURE
 from agents.robin.ingest import IngestPipeline
+from shared.attachment_migration import migrate_slug_attachments
 from shared.config import get_agent_config, get_vault_path
 from shared.log import kb_log
 from shared.state import is_file_processed, mark_file_processed
@@ -107,6 +108,24 @@ class RobinAgent(BaseAgent):
         raw_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(file_path, raw_dest)
         self.logger.info(f"已複製到 KB/Raw/{raw_dir}/{file_path.name}")
+
+        # 2b. ADR-028 §7 — migrate companion attachments (News Coo image
+        # fetcher writes to ``{inbox}/attachments/{slug}/``). Move to
+        # ``KB/Attachments/{slug}/`` and rewrite refs in raw_dest before the
+        # pipeline reads it.
+        attachment_result = migrate_slug_attachments(
+            slug=file_path.stem,
+            inbox_dir=file_path.parent,
+            vault_root=self.vault,
+            rewrite_in_files=[raw_dest],
+        )
+        if attachment_result.moved_files or attachment_result.rewritten_markdown:
+            self.logger.info(
+                "Attachments: moved=%d rewritten=%d slug=%s",
+                len(attachment_result.moved_files),
+                len(attachment_result.rewritten_markdown),
+                file_path.stem,
+            )
 
         # 3. 取得使用者引導和內容性質（互動式模式）
         user_guidance = ""

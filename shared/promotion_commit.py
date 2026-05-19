@@ -51,6 +51,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
+from shared.attachment_migration import migrate_slug_attachments
 from shared.log import get_logger
 from shared.promotion_acceptance_gate import AcceptanceGate
 from shared.promotion_renderer import render_concept_page, render_source_page
@@ -450,6 +451,13 @@ class PromotionCommitService:
                 )
             )
 
+            # Step 8b — ADR-028 §7: migrate companion attachments from Inbox
+            # to KB/Attachments/{slug}/, rewrite image refs in the just-written
+            # source page. Idempotent: no-op if attachments are already at
+            # destination or never existed.
+            if isinstance(item, SourcePageReviewItem):
+                _migrate_source_attachments(item, target, vault_root)
+
             # Step 9 — append to approved.
             approved_ids.append(item_id)
 
@@ -510,6 +518,86 @@ def _resolve_target_path(
     # ConceptReviewItem
     if item.canonical_match is not None and item.canonical_match.matched_concept_path:
         return item.canonical_match.matched_concept_path
+    return None
+
+
+def _migrate_source_attachments(
+    item: SourcePageReviewItem,
+    target: str,
+    vault_root: Path,
+) -> None:
+    """Migrate Inbox attachments to KB/Attachments and rewrite refs.
+
+    ADR-028 §7 contract: when a source page is written to
+    ``KB/Wiki/Sources/{slug}/...``, companion images written by News Coo
+    at ``{inbox}/attachments/{slug}/`` must move to
+    ``KB/Attachments/{slug}/`` and image refs in the just-written page
+    must be rewritten. Idempotent.
+
+    Slug derivation: second segment after ``KB/Wiki/Sources/`` in
+    ``target`` (or after ``KB/Raw/Articles/`` for raw-path callers).
+
+    Inbox dir derivation: parent of the first evidence anchor whose
+    ``source_path`` starts with ``Inbox/`` (resolved under vault_root).
+    Falls back silently if no Inbox-anchored evidence — concept items and
+    pure-frontmatter pages have no attachments to migrate.
+    """
+    slug = _slug_from_target_path(target)
+    if slug is None:
+        return
+    inbox_dir = _inbox_dir_from_evidence(item, vault_root)
+    if inbox_dir is None:
+        return
+    target_full = vault_root / target
+    try:
+        migrate_slug_attachments(
+            slug=slug,
+            inbox_dir=inbox_dir,
+            vault_root=vault_root,
+            rewrite_in_files=[target_full],
+        )
+    except OSError as exc:
+        # Don't fail the commit if attachment migration hits a transient IO
+        # error — the source page itself is already written. Caller can
+        # re-run the migration utility manually.
+        _logger.warning(
+            "attachment migration failed for slug=%r target=%r: %s",
+            slug,
+            target,
+            exc,
+        )
+
+
+def _slug_from_target_path(target: str) -> str | None:
+    """Extract slug from a KB target path.
+
+    Recognized shapes:
+    - ``KB/Wiki/Sources/{slug}/...`` → slug
+    - ``KB/Raw/Articles/{slug}.md`` → slug
+    Returns ``None`` for any other shape (e.g. concept pages under
+    ``KB/Wiki/Concepts/``)."""
+    parts = Path(target).parts
+    if len(parts) >= 4 and parts[:3] == ("KB", "Wiki", "Sources"):
+        return parts[3]
+    if len(parts) >= 4 and parts[:3] == ("KB", "Raw", "Articles"):
+        return Path(parts[3]).stem
+    return None
+
+
+def _inbox_dir_from_evidence(
+    item: SourcePageReviewItem,
+    vault_root: Path,
+) -> Path | None:
+    """Find the Inbox directory backing this item, if any.
+
+    Returns ``vault_root / parent(source_path)`` for the first evidence
+    anchor whose ``source_path`` starts with ``Inbox/``. Returns ``None``
+    if no Inbox-anchored evidence — concept items, ebook-sourced pages,
+    and external-ref-only items legitimately have no inbox attachments."""
+    for anchor in item.evidence:
+        sp = anchor.source_path or ""
+        if sp.startswith("Inbox/"):
+            return vault_root / Path(sp).parent
     return None
 
 
