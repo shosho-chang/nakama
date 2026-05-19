@@ -19,7 +19,7 @@
 
   <header class="prom-topbar">
     <div class="prom-topbar__brand">
-      <a class="prom-topbar__back" href="/promotion-review/" aria-label="Back to pending list">
+      <a class="prom-topbar__back" href="/robin/promotion/" aria-label="Back to pending list">
         ← back to list
       </a>
       <span class="prom-topbar__rule" aria-hidden="true"></span>
@@ -47,7 +47,7 @@
         concept promotion engine，產出 review items 給你檢閱。每個 item 含 recommendation、
         reason、evidence、risk、confidence、source_importance、reader_salience。
       </p>
-      <form method="post" action="/promotion-review/source/{{ encoded_id }}/start">
+      <form method="post" action="/robin/promotion/source/{{ encoded_id }}/start">
         <button type="submit"
                 class="prom-btn prom-btn--primary prom-btn--lg"
                 aria-label="Start promotion review for this source">
@@ -78,7 +78,7 @@
             last batch · {{ last_commit_outcome.batch.batch_id }} · {{ last_commit_outcome.batch.promotion_status }}
           </div>
         {% endif %}
-        <form method="post" action="/promotion-review/source/{{ encoded_id }}/commit">
+        <form method="post" action="/robin/promotion/source/{{ encoded_id }}/commit">
           <input type="hidden" name="batch_id"
                  value="batch_{{ manifest.manifest_id }}_{{ manifest.commit_batches | length + 1 }}" />
           <button type="submit"

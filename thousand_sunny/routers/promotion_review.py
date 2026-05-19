@@ -10,11 +10,16 @@ Routes:
 
 | Method | Path                                                  |
 |--------|-------------------------------------------------------|
-| GET    | ``/promotion-review/``                                |
-| GET    | ``/promotion-review/source/{source_id_b64}``          |
-| POST   | ``/promotion-review/source/{source_id_b64}/decide/{item_id}`` |
-| POST   | ``/promotion-review/source/{source_id_b64}/commit``   |
-| POST   | ``/promotion-review/source/{source_id_b64}/start``    |
+| GET    | ``/robin/promotion/``                                 |
+| GET    | ``/robin/promotion/source/{source_id_b64}``           |
+| POST   | ``/robin/promotion/source/{source_id_b64}/decide/{item_id}`` |
+| POST   | ``/robin/promotion/source/{source_id_b64}/commit``    |
+| POST   | ``/robin/promotion/source/{source_id_b64}/start``     |
+
+Legacy paths under ``/promotion-review/*`` are preserved as redirects:
+GETs return 301 and POSTs return 308 (method+body preserving), both
+pointing at the equivalent ``/robin/promotion/*`` URL. Per /architecture
+v2 R1 + ADR-024:82-85 (ownership is Robin, not Brook).
 
 ``source_id`` is base64url-encoded (no padding) per Brief §3 — handlers
 decode but do NOT parse the ``ebook:`` / ``inbox:`` namespace prefix
@@ -42,7 +47,37 @@ from shared.schemas.promotion_manifest import HumanDecisionKind
 from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.promotion_review")
-router = APIRouter(prefix="/promotion-review")
+router = APIRouter(prefix="/robin/promotion")
+legacy_router = APIRouter(prefix="/promotion-review")
+
+
+@legacy_router.get("/")
+async def _legacy_list_redirect():
+    return RedirectResponse("/robin/promotion/", status_code=301)
+
+
+@legacy_router.get("/source/{source_id_b64}")
+async def _legacy_review_redirect(source_id_b64: str):
+    return RedirectResponse(f"/robin/promotion/source/{source_id_b64}", status_code=301)
+
+
+@legacy_router.post("/source/{source_id_b64}/decide/{item_id}")
+async def _legacy_decide_redirect(source_id_b64: str, item_id: str):
+    # 308 preserves method+body so the form POST replays at the new URL.
+    return RedirectResponse(
+        f"/robin/promotion/source/{source_id_b64}/decide/{item_id}", status_code=308
+    )
+
+
+@legacy_router.post("/source/{source_id_b64}/commit")
+async def _legacy_commit_redirect(source_id_b64: str):
+    return RedirectResponse(f"/robin/promotion/source/{source_id_b64}/commit", status_code=308)
+
+
+@legacy_router.post("/source/{source_id_b64}/start")
+async def _legacy_start_redirect(source_id_b64: str):
+    return RedirectResponse(f"/robin/promotion/source/{source_id_b64}/start", status_code=308)
+
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "promotion_review"
 _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
@@ -143,7 +178,7 @@ async def list_pending(
 ):
     """List preflighted Reading Sources awaiting promotion review."""
     if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/promotion-review/", status_code=302)
+        return RedirectResponse("/login?next=/robin/promotion/", status_code=302)
     service = get_service()
     states = service.list_pending()
     rows = [
@@ -169,7 +204,7 @@ async def review_source(
     """Render the per-source review surface."""
     if not check_auth(nakama_auth):
         return RedirectResponse(
-            f"/login?next=/promotion-review/source/{source_id_b64}", status_code=302
+            f"/login?next=/robin/promotion/source/{source_id_b64}", status_code=302
         )
     service = get_service()
     source_id = _decode_source_id(source_id_b64)
@@ -256,7 +291,7 @@ async def decide_item(
     # Plain form post — redirect back to the review surface (303 so the
     # browser GETs and the back button doesn't replay the POST).
     return RedirectResponse(
-        f"/promotion-review/source/{source_id_b64}",
+        f"/robin/promotion/source/{source_id_b64}",
         status_code=303,
     )
 
@@ -316,7 +351,7 @@ async def start_review(
     """
     if not check_auth(nakama_auth):
         return RedirectResponse(
-            f"/login?next=/promotion-review/source/{source_id_b64}", status_code=302
+            f"/login?next=/robin/promotion/source/{source_id_b64}", status_code=302
         )
     service = get_service()
     source_id = _decode_source_id(source_id_b64)
@@ -325,7 +360,7 @@ async def start_review(
     except _HTTP_BOUNDARY_FAILURES as exc:
         raise HTTPException(status_code=_http_status_for(exc, lookup_status=400), detail=str(exc))
 
-    return RedirectResponse(f"/promotion-review/source/{source_id_b64}", status_code=303)
+    return RedirectResponse(f"/robin/promotion/source/{source_id_b64}", status_code=303)
 
 
 # ── Internal type narrowing ──────────────────────────────────────────────────
