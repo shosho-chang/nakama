@@ -36,6 +36,27 @@ templates = Jinja2Templates(
 )
 
 
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Shosho design-system CSS files.
+
+    Used to bust Cloudflare's /static/* edge cache when tokens.css or
+    brook-handoff.css change. Matches the asset-versioning pattern in
+    ``robin.py`` / ``progress.py`` / ``architecture.py``.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "brook-handoff.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
+
 @router.get("/chat")
 async def brook_chat_redirect():
     """Legacy URL — 301 to /brook/handoff (collapsed chain per Codex §1)."""
@@ -73,6 +94,7 @@ async def brook_handoff_page(
         "kb_query": kb_query,
         "category": category,
         "packaged": None,
+        "asset_version": _SHOSHO_ASSET_VERSION,
     }
 
     if topic and topic.strip():
