@@ -1,21 +1,55 @@
 /* ─────────────────────────────────────────────────────────────────────────
-   Shosho CI · Web tokens (室內音量版)
-   Source of truth: Claude Design handoff bundle "shosho-website-new-design",
-   tokens.jsx → vanilla CSS translation (no React/Babel runtime).
+   Shosho CI · Web tokens (Design System v0.1)
+   Source: Claude Design handoff "shosho-website-new-design" tokens.jsx →
+   vanilla CSS translation (no React/Babel runtime).
 
    Design DNA:
    - 5 strategies: orange = line/dot/char (not block), bolt = stamp (not
      wallpaper), decorative wordmark = signage only, engineer density not
      YouTuber whitespace, motion ≤200ms.
    - Single accent: PANTONE 165 PC orange #e98965 (~oklch(0.71 0.135 41)).
-   - Type: Geist + Noto Sans TC + Geist Mono. (CSP-safe loaded via Google.)
+   - Single typeface: LINE Seed TW (sans + zh + mono unified — weight ranges
+     bind 100-300→Th, 400-500→Rg, 600-700→Bd, 800-900→Eb so 500/600
+     map to real cuts without faux-bold).
    - 任何畫面橘色像素 ≤ 4%.
 
-   Token namespace: `--sho-*`. Coexists with legacy `--brk-*` (Brook
-   review-mode) — surfaces opt-in by adding the `.sho` root class.
+   Token namespace: `--sho-*`. Surfaces opt-in by adding the `.sho` root
+   class (body or wrapper).
    ───────────────────────────────────────────────────────────────────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+/* LINE Seed TW — four cuts declared as weight ranges. */
+@font-face {
+  font-family: 'LINE Seed TW';
+  src: url('/static/shosho/fonts/LINESeedTW_Th.woff2') format('woff2'),
+       url('/static/shosho/fonts/LINESeedTW_Th.woff')  format('woff');
+  font-weight: 100 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed TW';
+  src: url('/static/shosho/fonts/LINESeedTW_Rg.woff2') format('woff2'),
+       url('/static/shosho/fonts/LINESeedTW_Rg.woff')  format('woff');
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed TW';
+  src: url('/static/shosho/fonts/LINESeedTW_Bd.woff2') format('woff2'),
+       url('/static/shosho/fonts/LINESeedTW_Bd.woff')  format('woff');
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed TW';
+  src: url('/static/shosho/fonts/LINESeedTW_Eb.woff2') format('woff2'),
+       url('/static/shosho/fonts/LINESeedTW_Eb.woff')  format('woff');
+  font-weight: 800 900;
+  font-style: normal;
+  font-display: swap;
+}
 
 .sho {
   /* ── Neutral scale — warm-toned (oklch 80° hue) ─────────────────────── */
@@ -41,10 +75,10 @@
   --sho-error:   oklch(0.58 0.180 28);
   --sho-info:    oklch(0.62 0.090 235);
 
-  /* ── Type ───────────────────────────────────────────────────────────── */
-  --sho-font-sans: "Geist", "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;
-  --sho-font-zh:   "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;
-  --sho-font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  /* ── Type — single family, mono role kept via uppercase + tracking ──── */
+  --sho-font-sans: "LINE Seed TW", "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;
+  --sho-font-zh:   "LINE Seed TW", "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;
+  --sho-font-mono: "LINE Seed TW", "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;
 
   /* ── Motion ─────────────────────────────────────────────────────────── */
   --sho-ease:   cubic-bezier(0.22, 1, 0.36, 1);
@@ -137,7 +171,9 @@
 }
 .sho .sho-lk:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: 2px; }
 
-/* ── Mono meta — "indoor voice" carrier ─────────────────────────────── */
+/* ── Mono meta — "indoor voice" carrier. Single-typeface design:
+      mono role rendered via uppercase + tracking + tabular-nums,
+      not a different font family. ──────────────────────────────────── */
 .sho .sho-mono {
   font-family: var(--sho-font-mono);
   font-size: 12.5px;
