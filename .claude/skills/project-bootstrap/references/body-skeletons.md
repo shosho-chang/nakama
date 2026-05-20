@@ -19,8 +19,8 @@ The sections after `---` differ per type.
   one-sentence as query, renders clickable results table, caches in localStorage
 - `## 🗝️ Keyword Research & Title Ideas` — button: POSTs `/zoro/keyword-research`
   with `search_topic` frontmatter field + `content_type=youtube`, replaces
-  `%%KW-START%% / %%KW-END%%` block with returned markdown
-- `%%KW-START%% / %%KW-END%%` — empty anchor block on first write; keyword
+  `%%agent-zoro-keywords-start%% / %%agent-zoro-keywords-end%%` block with returned markdown
+- `%%agent-zoro-keywords-start%% / %%agent-zoro-keywords-end%%` — empty anchor block on first write; keyword
   research fills it later
 - `## Script / Outline` — where the actual video script goes
 - `## 專案筆記` — free-form notes
@@ -33,7 +33,7 @@ The sections after `---` differ per type.
   of `👄 One Sentence`
 - `## 🗝️ Keyword Research & SEO` — same pattern but `content_type=blog` (changes
   title prompt at Zoro side; emits blog_titles instead of youtube_titles)
-- `%%KW-START%% / %%KW-END%%` — keyword research anchor
+- `%%agent-zoro-keywords-start%% / %%agent-zoro-keywords-end%%` — keyword research anchor
 - `## Draft Outline` — draft placement
 - `## 專案筆記`
 

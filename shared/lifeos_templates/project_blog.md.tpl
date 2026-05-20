@@ -64,9 +64,11 @@ dv.table(
 
 ---
 
+<!-- vault:human-only-section -->
 ## 專案描述
 
 
+<!-- vault:human-only-section -->
 ## 預期成果
 
 
@@ -192,8 +194,8 @@ btn.onclick = async () => {
     const resp = await requestUrl({ url: ROBIN_URL + "/zoro/keyword-research", method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Robin-Key": ROBIN_KEY }, body: "topic=" + encodeURIComponent(topic) + "&content_type=" + encodeURIComponent(CONTENT_TYPE) });
     const data = typeof resp.json === "string" ? JSON.parse(resp.json) : resp.json;
     const md = toMarkdown(data);
-    const START = "%" + "%KW-START%" + "%";
-    const END = "%" + "%KW-END%" + "%";
+    const START = "%" + "%agent-zoro-keywords-start%" + "%";
+    const END = "%" + "%agent-zoro-keywords-end%" + "%";
     let updated = await app.vault.read(file);
     if (updated.includes(START) && updated.includes(END)) {
       const re = new RegExp(START + "[\\s\\S]*?" + END);
@@ -210,8 +212,8 @@ btn.onclick = async () => {
 };
 ```
 
-%%KW-START%%
-%%KW-END%%
+%%agent-zoro-keywords-start%%
+%%agent-zoro-keywords-end%%
 
 ## Draft Outline
 

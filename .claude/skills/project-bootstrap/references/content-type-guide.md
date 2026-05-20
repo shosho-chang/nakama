@@ -6,7 +6,7 @@ How to choose between the 4 content types when the user hasn't explicitly said.
 
 **Produces**: Video script + metadata workflow
 **Body includes**: KB Research button, Keyword Research button with title suggestions,
-  `%%KW-START/END%%` anchor block (consumed by keyword-research skill), `One Sentence`
+  `%%agent-zoro-keywords-start/end%%` anchor block (consumed by keyword-research skill), `One Sentence`
   section (KB query source), `Script / Outline` section
 **3 tasks**: Pre-production / Filming / Post-production
 **Signals**: "影片 / YouTube / 拍 / 短片 / shorts / vlog / 錄影"
