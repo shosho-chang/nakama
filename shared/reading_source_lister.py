@@ -3,7 +3,7 @@ N518a).
 
 Production implementation of the ``ReadingSourceLister`` Protocol declared
 in ``shared.promotion_review_service`` (#516). Walks the ``books`` table
-plus the vault's ``Inbox/kb/`` directory and resolves each candidate via
+plus the vault's ``Inbox/web/`` directory and resolves each candidate via
 the injected ``ReadingSourceRegistry`` (#509). Inbox originals and their
 ``-bilingual`` siblings collapse to a single ``ReadingSource`` per the
 ``InboxKey`` invariants.
@@ -56,7 +56,7 @@ inbox path-traversal guard for malformed keys). Skipped + logged."""
 # don't reach into the registry's private namespace from this adapter. The
 # value is a stable contract per the #509 schema.
 _BILINGUAL_SUFFIX = "-bilingual.md"
-_INBOX_SUBDIR = ("Inbox", "kb")
+_INBOX_SUBDIR = ("Inbox", "web")  # ADR-028 §3 Phase B Inbox restructure
 
 
 class RegistryReadingSourceLister:
@@ -65,7 +65,7 @@ class RegistryReadingSourceLister:
     Constructed with:
 
     - ``registry``: a ``ReadingSourceRegistry`` to resolve each candidate.
-    - ``inbox_root``: absolute path to ``{vault}/Inbox/kb`` — the directory
+    - ``inbox_root``: absolute path to ``{vault}/Inbox/web`` — the directory
       to walk for ``InboxKey`` candidates.
     - ``books_root``: absolute path to the on-disk books root. **Lives
       outside the Obsidian vault** — production wiring sources this from
@@ -261,7 +261,7 @@ def _is_safe_inbox_md(path: Path) -> bool:
 def _vault_relative_inbox_path(path: Path) -> str:
     """Compose the vault-relative POSIX path the registry expects.
 
-    The registry's ``InboxKey.relative_path`` lives at ``Inbox/kb/{name}``
+    The registry's ``InboxKey.relative_path`` lives at ``Inbox/web/{name}``
     — we re-assemble that prefix from constants here rather than computing
     a difference against the vault root, which keeps the adapter agnostic
     to the absolute vault path provided at construction.
