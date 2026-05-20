@@ -1,0 +1,791 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Robin reading-flow pages · shared styles (Design System v0.1 / --sho-*)
+
+   Composes on top of `static/shosho/tokens.css`. Covers the five
+   reading-flow surfaces that funnel into Robin Reader (reader.css):
+
+     · index.html          Robin home / inbox file list
+     · processing.html     SSE-driven progress card
+     · done.html           ingest result summary card
+     · review_summary.html source summary + guidance form
+     · review_plan.html    concept / entity action review
+
+   Each template carries `class="sho"` on <body> so tokens cascade. No
+   hardcoded hex/rgb — every colour resolves through a `--sho-*` token.
+   1px hairline borders, 4px base radius, motion ≤200ms. The single
+   PANTONE 165 PC orange accent replaces the old #6c63ff purple slop.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Page shells ────────────────────────────────────────────────────────── */
+
+/* List/scroll pages — index, review_summary, review_plan. */
+body.sho.robin-page {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+  padding: 32px;
+}
+
+/* Centered single-card pages — processing, done. */
+body.sho.robin-center {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+/* ── Shared layout primitives ───────────────────────────────────────────── */
+body.sho .container {
+  max-width: 760px;
+  margin: 0 auto;
+}
+body.sho .container.is-narrow {
+  max-width: 680px;
+}
+
+/* Page header (inbox + review pages) */
+body.sho .header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+body.sho .header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sho-text);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+body.sho .header h1 span {
+  font-size: 20px;
+}
+body.sho .header p {
+  color: var(--sho-text-2);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* Header nav + logout */
+body.sho .header-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+body.sho .header-nav nav {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+}
+body.sho .header-nav nav a {
+  color: var(--sho-accent);
+  text-decoration: none;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .header-nav nav a:hover {
+  color: var(--sho-accent-2);
+}
+body.sho .logout-btn {
+  background: transparent;
+  color: var(--sho-muted);
+  padding: 0;
+  font-size: 13px;
+  font-family: var(--sho-font-mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .logout-btn:hover {
+  color: var(--sho-text);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+body.sho .btn-primary {
+  padding: 9px 22px;
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border: 1px solid var(--sho-accent);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .btn-primary:hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+}
+body.sho .btn-primary:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+body.sho .btn-skip {
+  padding: 9px 18px;
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .btn-skip:hover {
+  border-color: var(--sho-line-2);
+  color: var(--sho-text);
+}
+body.sho .btn-skip:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* "Read" link button — outlined accent, fills on hover. */
+body.sho .btn-read {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  background: var(--sho-bg);
+  color: var(--sho-accent);
+  border: 1px solid var(--sho-accent-line);
+  border-radius: var(--sho-r-1);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .btn-read:hover {
+  background: var(--sho-accent);
+  border-color: var(--sho-accent);
+  color: var(--sho-bg);
+}
+body.sho .btn-read:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* Default form submit ("開始 Ingest"). */
+body.sho .robin-page button[type="submit"]:not(.btn-primary):not(.btn-skip):not(.dc-cancel):not(.dc-confirm):not(.logout-btn) {
+  padding: 9px 18px;
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border: 1px solid var(--sho-accent);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .robin-page button[type="submit"]:not(.btn-primary):not(.btn-skip):not(.dc-cancel):not(.dc-confirm):not(.logout-btn):hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+}
+
+/* "← 返回 Inbox" home link. */
+body.sho .btn-home {
+  display: inline-block;
+  margin-top: 32px;
+  padding: 11px 32px;
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border-radius: var(--sho-r-1);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .btn-home:hover {
+  background: var(--sho-accent-2);
+}
+
+/* ── Card surface ───────────────────────────────────────────────────────── */
+body.sho .card {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: 48px 40px;
+  width: 100%;
+  max-width: 440px;
+  text-align: center;
+}
+body.sho .card.is-wide {
+  max-width: 480px;
+  padding: 40px;
+}
+
+/* ── Badges ─────────────────────────────────────────────────────────────── */
+body.sho .badge-read {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  font-weight: 500;
+  flex-shrink: 0;
+  color: var(--sho-success);
+  border: 1px solid color-mix(in oklch, var(--sho-success) 35%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+
+/* ── index.html — inbox file list ───────────────────────────────────────── */
+body.sho .empty {
+  text-align: center;
+  color: var(--sho-muted);
+  padding: 48px;
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+}
+body.sho .empty strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--sho-text);
+  font-size: 15px;
+}
+body.sho .empty p {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+body.sho .file-card {
+  position: relative;
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .file-card:hover {
+  border-color: var(--sho-line-2);
+}
+body.sho .file-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+body.sho .file-info {
+  flex: 1;
+  min-width: 0;
+}
+body.sho .file-name {
+  font-weight: 600;
+  color: var(--sho-text);
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+body.sho .file-meta {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-muted);
+  margin-top: 4px;
+  letter-spacing: 0.02em;
+}
+body.sho .file-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+body.sho .type-select {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: var(--sho-r-1);
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg-2);
+  color: var(--sho-text-2);
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .type-select:focus {
+  outline: none;
+  border-color: var(--sho-accent);
+}
+
+/* Status icons — semantic colour via tokens. */
+body.sho .status-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+body.sho .status-icon[data-status="processing"],
+body.sho .status-icon[data-status="translating"] {
+  color: var(--sho-accent);
+}
+body.sho .status-icon[data-status="ready"],
+body.sho .status-icon[data-status="translated"] {
+  color: var(--sho-success);
+}
+body.sho .status-icon[data-status="failed"] {
+  color: var(--sho-error);
+}
+body.sho .status-source {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+  margin-left: 6px;
+  letter-spacing: 0.02em;
+}
+
+/* Discard hover action (Slice 5, #356) — opacity-hidden, stays focusable. */
+body.sho .btn-discard {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  background: transparent;
+  color: var(--sho-muted);
+  border: 1px solid transparent;
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .file-card:hover .btn-discard,
+body.sho .btn-discard:focus-visible {
+  opacity: 1;
+}
+body.sho .btn-discard:hover,
+body.sho .btn-discard:focus-visible {
+  color: var(--sho-error);
+  border-color: var(--sho-error);
+  background: color-mix(in oklch, var(--sho-error) 8%, transparent);
+}
+body.sho .btn-discard:disabled {
+  opacity: 0.5 !important;
+  cursor: progress;
+  color: var(--sho-muted);
+  border-color: transparent;
+}
+@media (hover: none) {
+  body.sho .btn-discard {
+    opacity: 1;
+  }
+}
+
+/* ── processing.html — SSE progress card ────────────────────────────────── */
+body.sho .spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--sho-line);
+  border-top-color: var(--sho-accent);
+  border-radius: 50%;
+  animation: sho-spin 0.8s linear infinite;
+  margin: 0 auto 24px;
+}
+@keyframes sho-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+body.sho .card h2 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--sho-text);
+  margin-bottom: 12px;
+}
+body.sho #status {
+  color: var(--sho-text-2);
+  font-size: 14px;
+  min-height: 1.2em;
+}
+body.sho .error-msg {
+  color: var(--sho-error);
+  font-size: 14px;
+  margin-top: 16px;
+}
+body.sho .back-link {
+  display: inline-block;
+  margin-top: 24px;
+  color: var(--sho-accent);
+  font-size: 13px;
+  text-decoration: none;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .back-link:hover {
+  color: var(--sho-accent-2);
+}
+body.sho .cancel-btn {
+  display: inline-block;
+  margin-top: 24px;
+  padding: 6px 16px;
+  background: transparent;
+  color: var(--sho-muted);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .cancel-btn:hover {
+  color: var(--sho-error);
+  border-color: var(--sho-error);
+}
+
+/* ── done.html — ingest result summary ──────────────────────────────────── */
+body.sho .icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+body.sho .card h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sho-text);
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+body.sho .subtitle {
+  color: var(--sho-text-2);
+  font-size: 13px;
+  margin-bottom: 32px;
+  word-break: break-all;
+}
+body.sho .result-group {
+  text-align: left;
+  margin-bottom: 20px;
+}
+body.sho .result-label {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sho-muted);
+  margin-bottom: 8px;
+}
+body.sho .result-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--sho-line);
+  font-size: 14px;
+  color: var(--sho-text-2);
+}
+body.sho .result-item:last-child {
+  border-bottom: none;
+}
+body.sho .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+body.sho .dot-created {
+  background: var(--sho-success);
+}
+body.sho .dot-updated {
+  background: var(--sho-warning);
+}
+body.sho .dot-referenced {
+  background: var(--sho-muted);
+}
+body.sho .empty-result {
+  font-size: 13px;
+  color: var(--sho-muted);
+  padding: 8px 0;
+}
+
+/* ── review_summary.html — source summary + guidance form ───────────────── */
+body.sho .summary-box {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: 28px;
+  margin-bottom: 24px;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--sho-text-2);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+body.sho .guidance-section {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: 28px;
+}
+body.sho .guidance-section h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-text);
+  margin-bottom: 8px;
+}
+body.sho .guidance-section p {
+  font-size: 13px;
+  color: var(--sho-text-2);
+  margin-bottom: 16px;
+}
+body.sho textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  resize: vertical;
+  min-height: 90px;
+  outline: none;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho textarea:focus {
+  border-color: var(--sho-accent);
+}
+body.sho .actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* ── review_plan.html — concept / entity action review ──────────────────── */
+body.sho .section {
+  margin-bottom: 24px;
+}
+body.sho .section-title {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sho-muted);
+  margin-bottom: 12px;
+}
+body.sho .item-card {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .item-card:hover {
+  border-color: var(--sho-line-2);
+}
+body.sho .item-card.selected {
+  border-color: var(--sho-accent);
+  box-shadow: inset 0 0 0 1px var(--sho-accent);
+}
+body.sho input[type="checkbox"] {
+  margin-top: 3px;
+  accent-color: var(--sho-accent);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+body.sho .item-body {
+  flex: 1;
+  min-width: 0;
+}
+body.sho .item-title {
+  font-weight: 600;
+  color: var(--sho-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+body.sho .badge {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+body.sho .badge-create {
+  color: var(--sho-success);
+  border-color: color-mix(in oklch, var(--sho-success) 35%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+body.sho .badge-merge {
+  color: var(--sho-info);
+  border-color: color-mix(in oklch, var(--sho-info) 38%, transparent);
+  background: color-mix(in oklch, var(--sho-info) 8%, transparent);
+}
+body.sho .badge-conflict {
+  color: var(--sho-warning);
+  border-color: color-mix(in oklch, var(--sho-warning) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+}
+body.sho .badge-noop {
+  color: var(--sho-muted);
+  border-color: var(--sho-line-2);
+  background: var(--sho-bg-2);
+}
+body.sho .badge-entity {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+  background: var(--sho-accent-soft);
+}
+body.sho .item-reason {
+  font-size: 13px;
+  color: var(--sho-text-2);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+body.sho .item-notes {
+  font-size: 13px;
+  color: var(--sho-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+body.sho .item-conflict {
+  font-size: 13px;
+  color: var(--sho-warning);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--sho-warning) 30%, transparent);
+  padding: 8px 12px;
+  border-radius: var(--sho-r-1);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+body.sho .toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+body.sho .toolbar button {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 5px 12px;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  background: var(--sho-bg);
+  cursor: pointer;
+  color: var(--sho-text-2);
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .toolbar button:hover {
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+}
+body.sho .empty-section {
+  color: var(--sho-muted);
+  font-size: 13px;
+  padding: 16px 0;
+}
+
+/* ── Native <dialog> discard confirm (Slice 5, #356) ────────────────────── */
+body.sho dialog.discard-confirm {
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  padding: 0;
+  border-radius: var(--sho-r-2);
+  width: 90%;
+  max-width: 480px;
+}
+body.sho dialog.discard-confirm::backdrop {
+  background: color-mix(in oklch, var(--sho-ink) 45%, transparent);
+}
+body.sho dialog.discard-confirm .dc-head {
+  padding: 16px 20px 6px;
+  font-size: 15px;
+  color: var(--sho-text);
+  font-weight: 600;
+}
+body.sho dialog.discard-confirm .dc-body {
+  padding: 4px 20px 16px;
+  font-size: 14px;
+  color: var(--sho-text-2);
+  line-height: 1.7;
+}
+body.sho dialog.discard-confirm .dc-body strong {
+  color: var(--sho-error);
+}
+body.sho dialog.discard-confirm .dc-hint {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-muted);
+  margin-top: 6px;
+  letter-spacing: 0.02em;
+}
+body.sho dialog.discard-confirm .dc-actions {
+  padding: 12px 20px 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+body.sho dialog.discard-confirm .dc-actions button {
+  padding: 6px 14px;
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--sho-line);
+}
+body.sho dialog.discard-confirm .dc-cancel {
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+}
+body.sho dialog.discard-confirm .dc-cancel:hover,
+body.sho dialog.discard-confirm .dc-cancel:focus-visible {
+  border-color: var(--sho-line-2);
+  color: var(--sho-text);
+}
+body.sho dialog.discard-confirm .dc-confirm {
+  background: var(--sho-error);
+  color: var(--sho-bg);
+  border-color: var(--sho-error);
+}
+body.sho dialog.discard-confirm .dc-confirm:hover,
+body.sho dialog.discard-confirm .dc-confirm:focus-visible {
+  background: color-mix(in oklch, var(--sho-error) 88%, black);
+  border-color: color-mix(in oklch, var(--sho-error) 88%, black);
+}
+body.sho dialog.discard-confirm .dc-confirm:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  body.sho .spinner {
+    animation-duration: 1.6s;
+  }
+}

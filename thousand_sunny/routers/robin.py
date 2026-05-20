@@ -62,15 +62,15 @@ pipeline = IngestPipeline()
 def _shosho_asset_version() -> str:
     """Return an 8-char hash of the Shosho design-system CSS files.
 
-    Used to bust Cloudflare's /static/* edge cache when tokens.css or
-    reader.css change. Matches the asset-versioning pattern in
-    ``progress.py`` and ``architecture.py``.
+    Used to bust Cloudflare's /static/* edge cache when tokens.css,
+    reader.css or robin.css change. Matches the asset-versioning pattern
+    in ``progress.py`` and ``architecture.py``.
     """
     import hashlib
 
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "reader.css"):
+    for css in ("tokens.css", "reader.css", "robin.css"):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())
@@ -234,7 +234,11 @@ async def index(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/", status_code=302)
     files = _get_inbox_files()
-    return templates.TemplateResponse(request, "index.html", {"files": files})
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {"files": files, "asset_version": _SHOSHO_ASSET_VERSION},
+    )
 
 
 @robin_router.get("/read", response_class=HTMLResponse)
@@ -835,7 +839,13 @@ async def processing(
     }
     label = step_labels.get(sess["step"], "處理中...")
     return templates.TemplateResponse(
-        request, "processing.html", {"session_id": robin_session, "label": label}
+        request,
+        "processing.html",
+        {
+            "session_id": robin_session,
+            "label": label,
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
     )
 
 
@@ -1034,7 +1044,11 @@ async def review_summary(
     return templates.TemplateResponse(
         request,
         "review_summary.html",
-        {"file_name": sess["file_name"], "summary": sess["summary_body"]},
+        {
+            "file_name": sess["file_name"],
+            "summary": sess["summary_body"],
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
     )
 
 
@@ -1078,6 +1092,7 @@ async def review_plan(
             "entities": list(enumerate(plan.get("entities", []))),
             "concepts_list": plan.get("concepts", []),
             "entities_list": plan.get("entities", []),
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -1138,6 +1153,7 @@ async def done(
             "created": sess["result"].get("created", []),
             "updated": sess["result"].get("updated", []),
             "referenced": sess["result"].get("referenced", []),
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
