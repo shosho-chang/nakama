@@ -76,8 +76,8 @@ class TestRenderProject:
             "## 👄 One Sentence",
             "## 📚 KB Research",
             "## 🗝️ Keyword Research",
-            "%%KW-START%%",
-            "%%KW-END%%",
+            "%%agent-zoro-keywords-start%%",
+            "%%agent-zoro-keywords-end%%",
             "## Script / Outline",
             "## 專案筆記",
         ]:
@@ -111,6 +111,36 @@ class TestRenderProject:
         fm, body = render_project("Test Title", ct)
         assert fm["content_type"] == ct
         assert body.startswith("# Test Title")
+
+    def test_blog_has_human_only_section_markers_before_human_sections(self):
+        """ADR-028 §11: human-only sections preceded by HTML-comment marker."""
+        _, body = render_project("X", "blog")
+        marker = "<!-- vault:human-only-section -->"
+        assert marker in body
+        # Marker must immediately precede the relevant heading
+        assert f"{marker}\n## 專案描述" in body, "blog: 專案描述 missing human-only marker"
+        assert f"{marker}\n## 預期成果" in body, "blog: 預期成果 missing human-only marker"
+
+    def test_youtube_has_human_only_section_marker(self):
+        _, body = render_project("X", "youtube")
+        marker = "<!-- vault:human-only-section -->"
+        assert marker in body
+        assert f"{marker}\n## 👄 One Sentence" in body, (
+            "youtube: One Sentence section missing human-only marker"
+        )
+
+    def test_canonical_zoro_keywords_marker_present(self):
+        """ADR-028 §11: legacy %%KW-*%% replaced by %%agent-zoro-keywords-*%%."""
+        for ct in ("blog", "youtube"):
+            _, body = render_project("X", ct)
+            assert "%%agent-zoro-keywords-start%%" in body, (
+                f"{ct}: canonical zoro marker -start missing"
+            )
+            assert "%%agent-zoro-keywords-end%%" in body, (
+                f"{ct}: canonical zoro marker -end missing"
+            )
+            assert "%%KW-START%%" not in body, f"{ct}: legacy KW-START still present"
+            assert "%%KW-END%%" not in body, f"{ct}: legacy KW-END still present"
 
 
 class TestRenderTask:
