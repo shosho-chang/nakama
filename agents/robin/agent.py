@@ -1,6 +1,6 @@
 """Robin — Knowledge Base Agent（考古學家）。
 
-掃描 Inbox/kb/ 中的新檔案，執行 Ingest pipeline：
+掃描 Inbox/web/ 中的新檔案，執行 Ingest pipeline（ADR-028 §3 Phase B Inbox restructure）：
 1. 分類來源類型
 2. 搬移到 KB/Raw/ 對應子資料夾
 3. 產出 Source Summary → KB/Wiki/Sources/
@@ -55,7 +55,7 @@ class RobinAgent(BaseAgent):
         super().__init__()
         self.config = get_agent_config("robin")
         self.vault = get_vault_path()
-        self.inbox = self.vault / self.config.get("inbox_path", "Inbox/kb")
+        self.inbox = self.vault / self.config.get("inbox_path", "Inbox/web")
         self.pipeline = IngestPipeline()
         self.interactive = interactive
 
