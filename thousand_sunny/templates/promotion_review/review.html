@@ -4,14 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Promotion Review · {{ state.source_id if state else encoded_id }}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,500;1,400;1,500&family=Noto+Serif+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="/static/projects/tokens.css" />
-  <link rel="stylesheet" href="/static/promotion_review.css" />
+  <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}" />
+  <link rel="stylesheet" href="/static/shosho/promotion-review.css?v={{ asset_version }}" />
 </head>
-<body class="brk-root brk-light">
+<body class="sho">
 <main class="prom-shell"
       data-mode="review"
       data-encoded-id="{{ encoded_id }}"
@@ -23,17 +19,17 @@
         ← back to list
       </a>
       <span class="prom-topbar__rule" aria-hidden="true"></span>
-      <span class="brk-caps">promotion · review · per-source</span>
+      <span class="prom-caps">promotion · review · per-source</span>
     </div>
     <h1 class="prom-topbar__title">
       {% if state %}{{ state.source_id }}{% else %}{{ encoded_id }}{% endif %}
     </h1>
     <div class="prom-topbar__meta">
       {% if state %}
-        <span class="brk-caps">lang · {{ state.primary_lang }}</span>
-        <span class="brk-caps">preflight · {{ state.preflight_action }}</span>
+        <span class="prom-caps">lang · {{ state.primary_lang }}</span>
+        <span class="prom-caps">preflight · {{ state.preflight_action }}</span>
         {% if manifest %}
-          <span class="brk-caps">status · {{ manifest.status }}</span>
+          <span class="prom-caps">status · {{ manifest.status }}</span>
         {% endif %}
       {% endif %}
     </div>
@@ -61,11 +57,11 @@
     <section class="prom-progress" aria-label="Review progress">
       <div class="prom-progress__counts">
         <div class="prom-progress__count">
-          <span class="brk-mono prom-progress__num">{{ approved_count }}</span>
-          <span class="brk-caps">/{{ manifest.items | length }} approved</span>
+          <span class="prom-mono prom-progress__num">{{ approved_count }}</span>
+          <span class="prom-caps">/{{ manifest.items | length }} approved</span>
         </div>
         <div class="prom-progress__breakdown">
-          <span class="brk-caps">decisions</span>
+          <span class="prom-caps">decisions</span>
           <span class="prom-pill prom-pill--decision-approve">{{ decision_counts.approve }} approve</span>
           <span class="prom-pill prom-pill--decision-reject">{{ decision_counts.reject }} reject</span>
           <span class="prom-pill prom-pill--decision-defer">{{ decision_counts.defer }} defer</span>
@@ -74,7 +70,7 @@
       </div>
       <div class="prom-progress__commit">
         {% if last_commit_outcome %}
-          <div class="brk-caps prom-progress__last">
+          <div class="prom-caps prom-progress__last">
             last batch · {{ last_commit_outcome.batch.batch_id }} · {{ last_commit_outcome.batch.promotion_status }}
           </div>
         {% endif %}
@@ -98,18 +94,18 @@
     {# ── Recent commit batches summary ─────────────────────────────────── #}
     {% if manifest.commit_batches %}
       <section class="prom-batches" aria-label="Commit history">
-        <div class="brk-caps prom-batches__caps">commit batches · {{ manifest.commit_batches | length }}</div>
+        <div class="prom-caps prom-batches__caps">commit batches · {{ manifest.commit_batches | length }}</div>
         <ul class="prom-batches__list" role="list">
           {% for batch in manifest.commit_batches %}
             <li class="prom-batch prom-batch--{{ batch.promotion_status }}">
-              <span class="brk-mono prom-batch__id">{{ batch.batch_id }}</span>
-              <span class="brk-caps">{{ batch.promotion_status }}</span>
-              <span class="brk-mono">approved {{ batch.approved_item_ids | length }}</span>
-              <span class="brk-mono">deferred {{ batch.deferred_item_ids | length }}</span>
-              <span class="brk-mono">rejected {{ batch.rejected_item_ids | length }}</span>
-              <span class="brk-mono">touched {{ batch.touched_files | length }}</span>
+              <span class="prom-mono prom-batch__id">{{ batch.batch_id }}</span>
+              <span class="prom-caps">{{ batch.promotion_status }}</span>
+              <span class="prom-mono">approved {{ batch.approved_item_ids | length }}</span>
+              <span class="prom-mono">deferred {{ batch.deferred_item_ids | length }}</span>
+              <span class="prom-mono">rejected {{ batch.rejected_item_ids | length }}</span>
+              <span class="prom-mono">touched {{ batch.touched_files | length }}</span>
               {% if batch.errors %}
-                <span class="prom-batch__errors brk-caps">{{ batch.errors | length }} error(s)</span>
+                <span class="prom-batch__errors prom-caps">{{ batch.errors | length }} error(s)</span>
               {% endif %}
             </li>
           {% endfor %}
@@ -119,7 +115,7 @@
 
     {# ── Item list ─────────────────────────────────────────────────────── #}
     <section class="prom-items" aria-label="Review items">
-      <div class="brk-caps prom-items__caps">items · {{ manifest.items | length }}</div>
+      <div class="prom-caps prom-items__caps">items · {{ manifest.items | length }}</div>
       {% for item in manifest.items %}
         {% include "_item_card.html" %}
       {% endfor %}

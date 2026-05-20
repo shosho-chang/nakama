@@ -82,6 +82,27 @@ async def _legacy_start_redirect(source_id_b64: str):
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "promotion_review"
 _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
+
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Shosho design-system CSS files.
+
+    Used to bust Cloudflare's /static/* edge cache when tokens.css or
+    promotion-review.css change. Matches the asset-versioning pattern in
+    ``robin.py`` / ``progress.py`` / ``architecture.py``.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "promotion-review.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
 # Documented HTTP-boundary failures for service calls. Narrow tuple per
 # #511 F5 lesson — programmer errors propagate. The catch sites separate
 # OSError (server-side IO failure → 5xx) from ValueError / KeyError
@@ -191,7 +212,7 @@ async def list_pending(
     return _templates.TemplateResponse(
         request,
         "list.html",
-        {"rows": rows},
+        {"rows": rows, "asset_version": _SHOSHO_ASSET_VERSION},
     )
 
 
@@ -223,6 +244,7 @@ async def review_source(
                 "encoded_id": source_id_b64,
                 "approved_count": 0,
                 "decision_counts": {"approve": 0, "reject": 0, "defer": 0, "undecided": 0},
+                "asset_version": _SHOSHO_ASSET_VERSION,
             },
         )
 
@@ -236,6 +258,7 @@ async def review_source(
             "encoded_id": source_id_b64,
             "approved_count": _approved_count(manifest),
             "decision_counts": _decision_counts(manifest),
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -333,6 +356,7 @@ async def commit_source(
                 else {"approve": 0, "reject": 0, "defer": 0, "undecided": 0}
             ),
             "last_commit_outcome": outcome,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
