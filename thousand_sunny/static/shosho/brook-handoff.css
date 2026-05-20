@@ -1,0 +1,203 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Brook · Context Handoff — surface stylesheet (Design System v0.1)
+
+   Re-skin of /brook/handoff. Pairs with tokens.css (provides the `.sho`
+   root + `--sho-*` vocabulary). The page packages a prompt block the owner
+   copies into Claude.ai — copy button + form affordances are preserved.
+
+   Migrated from a local `--bg/--accent/--code-bg` palette: the orange
+   AI-slop accent (#ff5a1f) → `--sho-accent`; greens/grays → semantic +
+   neutral tokens. Zero hardcoded hex/rgb here by design.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.sho {
+  line-height: 1.6;
+  padding: var(--sho-s-5);
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.sho h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--sho-s-2);
+}
+
+.sho h2 {
+  font-size: 13px;
+  margin: var(--sho-s-5) 0 var(--sho-s-2);
+  color: var(--sho-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 500;
+}
+
+.sho .hint {
+  color: var(--sho-text-2);
+  font-size: 14px;
+  margin-bottom: var(--sho-s-5);
+}
+
+/* ── Context-packaging form ──────────────────────────────────────────── */
+.sho form {
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  padding: var(--sho-s-4);
+  margin-bottom: var(--sho-s-5);
+  border-radius: var(--sho-r-1);
+}
+
+.sho label {
+  display: block;
+  font-size: 13px;
+  color: var(--sho-text-2);
+  margin-bottom: var(--sho-s-1);
+}
+
+.sho label code {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+}
+
+.sho input[type="text"] {
+  width: 100%;
+  padding: var(--sho-s-2) var(--sho-s-3);
+  border: 1px solid var(--sho-line-2);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  font-family: inherit;
+  font-size: 14px;
+  margin-bottom: var(--sho-s-3);
+  border-radius: var(--sho-r-1);
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              box-shadow var(--sho-t-fast) var(--sho-ease);
+}
+
+.sho input[type="text"]:focus-visible {
+  outline: none;
+  border-color: var(--sho-accent-line);
+  box-shadow: var(--sho-focus);
+}
+
+.sho input[type="text"]::placeholder {
+  color: var(--sho-muted);
+}
+
+/* ── Buttons — primary (orange) + ghost ──────────────────────────────── */
+.sho button,
+.sho .btn {
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border: 1px solid var(--sho-accent);
+  padding: var(--sho-s-2) var(--sho-s-4);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--sho-r-1);
+  text-decoration: none;
+  display: inline-block;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+
+.sho button:hover,
+.sho .btn:hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+}
+
+.sho button:focus-visible,
+.sho .btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+.sho .btn-ghost {
+  background: transparent;
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+}
+
+.sho .btn-ghost:hover {
+  background: var(--sho-bg-3);
+  border-color: var(--sho-line-2);
+}
+
+/* ── Packaged-context summary panel ──────────────────────────────────── */
+.sho .summary {
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  padding: var(--sho-s-4);
+  margin-bottom: var(--sho-s-4);
+  border-radius: var(--sho-r-1);
+}
+
+.sho .summary-row {
+  display: flex;
+  gap: var(--sho-s-3);
+  padding: var(--sho-s-1) 0;
+  font-size: 14px;
+}
+
+.sho .summary-row .key {
+  width: 200px;
+  color: var(--sho-muted);
+}
+
+.sho .summary-row .val {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Prompt block — the copy-to-clipboard payload ────────────────────── */
+.sho .prompt-box {
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line);
+  padding: var(--sho-s-4);
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  max-height: 480px;
+  overflow-y: auto;
+  border-radius: var(--sho-r-1);
+}
+
+.sho .actions {
+  display: flex;
+  gap: var(--sho-s-2);
+  margin-top: var(--sho-s-3);
+}
+
+/* ── Copy-confirmation toast ─────────────────────────────────────────── */
+.sho .copy-toast {
+  display: none;
+  background: var(--sho-success);
+  color: var(--sho-bg);
+  padding: var(--sho-s-1) var(--sho-s-3);
+  font-size: 12px;
+  border-radius: var(--sho-r-1);
+  align-self: center;
+}
+
+.sho .copy-toast.shown {
+  display: inline-block;
+}
+
+/* ── Breadcrumb ──────────────────────────────────────────────────────── */
+.sho .crumb {
+  font-size: 12px;
+  color: var(--sho-muted);
+  margin-bottom: var(--sho-s-2);
+}
+
+.sho .crumb a {
+  color: var(--sho-muted);
+  text-decoration: none;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+
+.sho .crumb a:hover {
+  color: var(--sho-accent);
+}
