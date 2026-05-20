@@ -14,7 +14,7 @@
 
   <header class="prom-card__header">
     <div class="prom-card__title-row">
-      <span class="brk-mono prom-card__id">{{ item.item_id }}</span>
+      <span class="prom-mono prom-card__id">{{ item.item_id }}</span>
       <span class="prom-action prom-action--{{ item.action }}" aria-label="action {{ item.action }}">
         {{ item.action }}
       </span>
@@ -45,22 +45,22 @@
 
     {% if item.evidence %}
       <section class="prom-evidence" aria-label="Evidence excerpts">
-        <div class="brk-caps prom-evidence__caps">evidence · {{ item.evidence | length }}</div>
+        <div class="prom-caps prom-evidence__caps">evidence · {{ item.evidence | length }}</div>
         <ul class="prom-evidence__list" role="list">
           {% for ev in item.evidence[:2] %}
             <li class="prom-evidence__row">
-              <span class="brk-mono prom-evidence__locator">{{ ev.locator }}</span>
+              <span class="prom-mono prom-evidence__locator">{{ ev.locator }}</span>
               <blockquote class="prom-evidence__excerpt">{{ ev.excerpt }}</blockquote>
             </li>
           {% endfor %}
         </ul>
         {% if item.evidence | length > 2 %}
           <details class="prom-evidence__more">
-            <summary class="brk-caps">show {{ item.evidence | length - 2 }} more</summary>
+            <summary class="prom-caps">show {{ item.evidence | length - 2 }} more</summary>
             <ul class="prom-evidence__list" role="list">
               {% for ev in item.evidence[2:] %}
                 <li class="prom-evidence__row">
-                  <span class="brk-mono prom-evidence__locator">{{ ev.locator }}</span>
+                  <span class="prom-mono prom-evidence__locator">{{ ev.locator }}</span>
                   <blockquote class="prom-evidence__excerpt">{{ ev.excerpt }}</blockquote>
                 </li>
               {% endfor %}
@@ -72,13 +72,13 @@
 
     {% if item.risk %}
       <section class="prom-risks" aria-label="Risk flags">
-        <div class="brk-caps prom-risks__caps">risks</div>
+        <div class="prom-caps prom-risks__caps">risks</div>
         <ul class="prom-risks__list" role="list">
           {% for r in item.risk %}
             <li class="prom-risk prom-risk--{{ r.severity }}"
                 aria-label="risk {{ r.code }} severity {{ r.severity }}">
               <span class="prom-risk__code">{{ r.code }}</span>
-              <span class="brk-caps prom-risk__severity">{{ r.severity }}</span>
+              <span class="prom-caps prom-risk__severity">{{ r.severity }}</span>
               <span class="prom-risk__desc">{{ r.description }}</span>
             </li>
           {% endfor %}
@@ -88,33 +88,33 @@
 
     <section class="prom-metrics" aria-label="Confidence and salience">
       <div class="prom-metric">
-        <div class="brk-caps prom-metric__caps">confidence</div>
+        <div class="prom-caps prom-metric__caps">confidence</div>
         <div class="prom-metric__row">
-          <span class="brk-mono prom-metric__num">{{ "%.2f" | format(item.confidence) }}</span>
+          <span class="prom-mono prom-metric__num">{{ "%.2f" | format(item.confidence) }}</span>
           <span class="prom-bar" aria-hidden="true">
             <span class="prom-bar__fill" style="--prom-bar-fill: {{ (item.confidence * 100) | round(0, 'floor') | int }}%"></span>
           </span>
         </div>
       </div>
       <div class="prom-metric prom-metric--small">
-        <div class="brk-caps prom-metric__caps">source_importance</div>
-        <div class="brk-mono prom-metric__num">{{ "%.2f" | format(item.source_importance) }}</div>
+        <div class="prom-caps prom-metric__caps">source_importance</div>
+        <div class="prom-mono prom-metric__num">{{ "%.2f" | format(item.source_importance) }}</div>
       </div>
       <div class="prom-metric prom-metric--small">
-        <div class="brk-caps prom-metric__caps">reader_salience</div>
-        <div class="brk-mono prom-metric__num">{{ "%.2f" | format(item.reader_salience) }}</div>
+        <div class="prom-caps prom-metric__caps">reader_salience</div>
+        <div class="prom-mono prom-metric__num">{{ "%.2f" | format(item.reader_salience) }}</div>
       </div>
       {% if item.item_kind == "concept" and item.canonical_match %}
         <div class="prom-metric prom-metric--small">
-          <div class="brk-caps prom-metric__caps">match · {{ item.canonical_match.match_basis }}</div>
-          <div class="brk-mono prom-metric__num">{{ "%.2f" | format(item.canonical_match.confidence) }}</div>
+          <div class="prom-caps prom-metric__caps">match · {{ item.canonical_match.match_basis }}</div>
+          <div class="prom-mono prom-metric__num">{{ "%.2f" | format(item.canonical_match.confidence) }}</div>
         </div>
       {% endif %}
     </section>
 
     {% if item.human_decision and item.human_decision.note %}
       <p class="prom-card__note">
-        <span class="brk-caps prom-card__note-caps">note</span>
+        <span class="prom-caps prom-card__note-caps">note</span>
         {{ item.human_decision.note }}
       </p>
     {% endif %}
@@ -128,7 +128,7 @@
           method="post"
           action="/robin/promotion/source/{{ encoded_id }}/decide/{{ item.item_id }}">
       <label class="prom-note-label">
-        <span class="brk-caps">note (optional)</span>
+        <span class="prom-caps">note (optional)</span>
         <input class="prom-note-input"
                type="text"
                name="note"

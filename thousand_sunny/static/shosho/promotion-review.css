@@ -1,0 +1,833 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Robin Promotion Review · page styles (Design System v0.1 / --sho-* tokens)
+
+   Composes on top of `static/shosho/tokens.css`. The promotion-review
+   templates (list.html / review.html / _item_card.html) carry `class="sho"`
+   on <body> so design tokens cascade. `_item_card.html` is an HTMX swap
+   partial — it swaps into a `.sho` parent so the cascade still holds.
+
+   Migrated from the retired `--brk-*` editorial aesthetic (PR #635). Dense
+   operational tool — table-style list + card-stack review surface.
+   Editorial restraint: 1px hairline rules, 4px base radius, single
+   PANTONE 165 PC orange accent for primary action + focus ring.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho {
+  margin: 0;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+}
+
+/* ── Shell ───────────────────────────────────────────────────────────── */
+
+body.sho .prom-shell {
+  font-family: var(--sho-font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: var(--sho-s-5) var(--sho-s-7);
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+
+body.sho .prom-topbar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sho-s-2);
+  padding-bottom: var(--sho-s-5);
+  border-bottom: 1px solid var(--sho-line);
+  margin-bottom: var(--sho-s-6);
+}
+
+body.sho .prom-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-3);
+  color: var(--sho-muted);
+}
+
+body.sho .prom-topbar__name {
+  font-family: var(--sho-font-sans);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--sho-text-2);
+}
+
+body.sho .prom-topbar__rule {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: var(--sho-line-2);
+}
+
+body.sho .prom-topbar__back {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-accent);
+  text-decoration: none;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: var(--sho-s-1) var(--sho-s-2);
+  border-radius: var(--sho-r-1);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+
+body.sho .prom-topbar__back:hover {
+  color: var(--sho-accent-2);
+  background: var(--sho-accent-soft);
+}
+
+body.sho .prom-topbar__back:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+body.sho .prom-topbar__title {
+  font-family: var(--sho-font-sans);
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  color: var(--sho-text);
+  margin: 0;
+}
+
+body.sho .prom-topbar__caption,
+body.sho .prom-topbar__meta {
+  display: flex;
+  gap: var(--sho-s-4);
+  flex-wrap: wrap;
+  color: var(--sho-muted);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────── */
+
+body.sho .prom-empty {
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: var(--sho-s-7);
+  display: grid;
+  gap: var(--sho-s-3);
+}
+
+body.sho .prom-empty__title {
+  font-family: var(--sho-font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--sho-text);
+  margin: 0;
+}
+
+body.sho .prom-empty__body {
+  font-family: var(--sho-font-zh);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--sho-text-2);
+  margin: 0;
+}
+
+/* ── List view (table) ───────────────────────────────────────────────── */
+
+body.sho .prom-list {
+  display: block;
+}
+
+body.sho .prom-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  overflow: hidden;
+}
+
+body.sho .prom-table thead th {
+  text-align: left;
+  padding: var(--sho-s-3) var(--sho-s-4);
+  background: var(--sho-bg-2);
+  border-bottom: 1px solid var(--sho-line);
+  color: var(--sho-muted);
+  font-weight: 500;
+}
+
+body.sho .prom-row td {
+  padding: var(--sho-s-4);
+  border-bottom: 1px solid var(--sho-line);
+  vertical-align: top;
+}
+
+body.sho .prom-row:last-child td {
+  border-bottom: none;
+}
+
+body.sho .prom-row__id {
+  display: grid;
+  gap: var(--sho-s-1);
+  max-width: 480px;
+}
+
+body.sho .prom-row__summary {
+  font-family: var(--sho-font-sans);
+  font-size: 12px;
+  color: var(--sho-muted);
+  line-height: 1.5;
+}
+
+body.sho .prom-row__lang {
+  font-size: 14px;
+  color: var(--sho-text-2);
+}
+
+body.sho .prom-row__manifest-empty {
+  color: var(--sho-muted);
+}
+
+/* ── Pills (preflight + manifest status + decision) ──────────────────── */
+
+body.sho .prom-pill {
+  display: inline-block;
+  padding: var(--sho-s-1) var(--sho-s-3);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--sho-line-2);
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+  white-space: nowrap;
+}
+
+/* preflight action variants */
+body.sho .prom-pill--proceed_full_promotion {
+  border-color: color-mix(in oklch, var(--sho-success) 40%, transparent);
+  color: var(--sho-success);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+
+body.sho .prom-pill--proceed_with_warnings {
+  border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent);
+  color: var(--sho-warning);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+}
+
+body.sho .prom-pill--annotation_only_sync,
+body.sho .prom-pill--skip {
+  border-color: var(--sho-line-2);
+  color: var(--sho-muted);
+}
+
+/* recommendation variants */
+body.sho .prom-pill--include {
+  border-color: color-mix(in oklch, var(--sho-success) 40%, transparent);
+  color: var(--sho-success);
+}
+
+body.sho .prom-pill--exclude {
+  border-color: color-mix(in oklch, var(--sho-error) 42%, transparent);
+  color: var(--sho-error);
+}
+
+body.sho .prom-pill--defer {
+  border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent);
+  color: var(--sho-warning);
+}
+
+/* manifest status variants */
+body.sho .prom-pill--status-needs_review {
+  border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent);
+  color: var(--sho-warning);
+}
+
+body.sho .prom-pill--status-partial {
+  border-color: var(--sho-accent-line);
+  color: var(--sho-accent);
+}
+
+body.sho .prom-pill--status-complete {
+  border-color: color-mix(in oklch, var(--sho-success) 40%, transparent);
+  color: var(--sho-success);
+}
+
+body.sho .prom-pill--status-failed {
+  border-color: color-mix(in oklch, var(--sho-error) 42%, transparent);
+  color: var(--sho-error);
+}
+
+/* human decision variants */
+body.sho .prom-pill--decision-approve {
+  border-color: color-mix(in oklch, var(--sho-success) 40%, transparent);
+  color: var(--sho-success);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+
+body.sho .prom-pill--decision-reject {
+  border-color: color-mix(in oklch, var(--sho-error) 42%, transparent);
+  color: var(--sho-error);
+  background: color-mix(in oklch, var(--sho-error) 8%, transparent);
+}
+
+body.sho .prom-pill--decision-defer {
+  border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent);
+  color: var(--sho-warning);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+}
+
+body.sho .prom-pill--decision-undecided {
+  border-color: var(--sho-line-2);
+  color: var(--sho-muted);
+}
+
+/* ── Action badge (top-right of card) ────────────────────────────────── */
+
+body.sho .prom-action {
+  display: inline-block;
+  padding: var(--sho-s-1) var(--sho-s-2);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--sho-bg-2);
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2);
+  white-space: nowrap;
+}
+
+body.sho .prom-action--create,
+body.sho .prom-action--create_global_concept {
+  border-color: color-mix(in oklch, var(--sho-success) 40%, transparent);
+  color: var(--sho-success);
+}
+
+body.sho .prom-action--update_merge,
+body.sho .prom-action--update_merge_global {
+  border-color: var(--sho-accent-line);
+  color: var(--sho-accent);
+}
+
+body.sho .prom-action--update_conflict,
+body.sho .prom-action--update_conflict_global {
+  border-color: color-mix(in oklch, var(--sho-error) 42%, transparent);
+  color: var(--sho-error);
+}
+
+body.sho .prom-action--keep_source_local,
+body.sho .prom-action--noop,
+body.sho .prom-action--exclude {
+  border-color: var(--sho-line-2);
+  color: var(--sho-muted);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+body.sho .prom-btn {
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  padding: var(--sho-s-2) var(--sho-s-4);
+  border-radius: var(--sho-r-1);
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+}
+
+body.sho .prom-btn:hover {
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+}
+
+body.sho .prom-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+body.sho .prom-btn:active {
+  background: var(--sho-accent-soft);
+}
+
+body.sho .prom-btn[disabled],
+body.sho .prom-btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+body.sho .prom-btn--primary {
+  background: var(--sho-accent);
+  border-color: var(--sho-accent);
+  color: var(--sho-bg);
+}
+
+body.sho .prom-btn--primary:hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+  color: var(--sho-bg);
+}
+
+body.sho .prom-btn--lg {
+  font-size: 15px;
+  padding: var(--sho-s-3) var(--sho-s-5);
+}
+
+body.sho .prom-btn--approve.is-active {
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+  border-color: var(--sho-success);
+  color: var(--sho-success);
+}
+
+body.sho .prom-btn--reject.is-active {
+  background: color-mix(in oklch, var(--sho-error) 8%, transparent);
+  border-color: var(--sho-error);
+  color: var(--sho-error);
+}
+
+body.sho .prom-btn--defer.is-active {
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+  border-color: var(--sho-warning);
+  color: var(--sho-warning);
+}
+
+/* ── Progress bar (review.html) ──────────────────────────────────────── */
+
+body.sho .prom-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--sho-s-5);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: var(--sho-s-4) var(--sho-s-5);
+  margin-bottom: var(--sho-s-5);
+  align-items: center;
+}
+
+body.sho .prom-progress__counts {
+  display: flex;
+  gap: var(--sho-s-6);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+body.sho .prom-progress__count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sho-s-2);
+}
+
+body.sho .prom-progress__num {
+  font-family: var(--sho-font-mono);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--sho-text);
+  font-variant-numeric: tabular-nums;
+}
+
+body.sho .prom-progress__breakdown {
+  display: flex;
+  gap: var(--sho-s-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+body.sho .prom-progress__commit {
+  display: grid;
+  gap: var(--sho-s-2);
+  justify-items: end;
+}
+
+body.sho .prom-progress__last {
+  color: var(--sho-muted);
+}
+
+/* ── Commit batch list ───────────────────────────────────────────────── */
+
+body.sho .prom-batches {
+  margin-bottom: var(--sho-s-5);
+  padding: var(--sho-s-3) var(--sho-s-5);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+}
+
+body.sho .prom-batches__caps {
+  margin-bottom: var(--sho-s-2);
+}
+
+body.sho .prom-batches__list {
+  display: grid;
+  gap: var(--sho-s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+body.sho .prom-batch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-3);
+  padding: var(--sho-s-2) 0;
+  border-top: 1px dotted var(--sho-line);
+  align-items: baseline;
+  font-size: 12px;
+}
+
+body.sho .prom-batch:first-child {
+  border-top: none;
+}
+
+body.sho .prom-batch--failed {
+  color: var(--sho-error);
+}
+
+body.sho .prom-batch--complete {
+  color: var(--sho-success);
+}
+
+body.sho .prom-batch__id {
+  color: var(--sho-text-2);
+}
+
+body.sho .prom-batch__errors {
+  color: var(--sho-error);
+}
+
+/* ── Item card ───────────────────────────────────────────────────────── */
+
+body.sho .prom-items {
+  display: grid;
+  gap: var(--sho-s-4);
+}
+
+body.sho .prom-items__caps {
+  margin-bottom: var(--sho-s-2);
+}
+
+body.sho .prom-card {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: var(--sho-s-5);
+  display: grid;
+  gap: var(--sho-s-3);
+  transition: background var(--sho-t-base) var(--sho-ease),
+              border-color var(--sho-t-base) var(--sho-ease);
+}
+
+body.sho .prom-card:hover {
+  background: var(--sho-bg-2);
+}
+
+body.sho .prom-card[data-decision="approve"] {
+  border-left: 3px solid var(--sho-success);
+}
+
+body.sho .prom-card[data-decision="reject"] {
+  border-left: 3px solid var(--sho-error);
+}
+
+body.sho .prom-card[data-decision="defer"] {
+  border-left: 3px solid var(--sho-warning);
+}
+
+body.sho .prom-card__header {
+  display: grid;
+  gap: var(--sho-s-2);
+}
+
+body.sho .prom-card__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-2);
+  align-items: center;
+}
+
+body.sho .prom-card__id {
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+
+body.sho .prom-card__heading {
+  font-family: var(--sho-font-zh);
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--sho-text);
+  margin: 0;
+}
+
+body.sho .prom-card__body {
+  display: grid;
+  gap: var(--sho-s-3);
+}
+
+body.sho .prom-card__reason {
+  font-family: var(--sho-font-zh);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--sho-text-2);
+  margin: 0;
+}
+
+body.sho .prom-card__note {
+  font-family: var(--sho-font-zh);
+  font-size: 12px;
+  color: var(--sho-muted);
+  margin: 0;
+  display: flex;
+  gap: var(--sho-s-2);
+  align-items: baseline;
+}
+
+body.sho .prom-card__note-caps {
+  flex-shrink: 0;
+}
+
+/* ── Evidence section ────────────────────────────────────────────────── */
+
+body.sho .prom-evidence {
+  background: var(--sho-bg-2);
+  border-radius: var(--sho-r-1);
+  padding: var(--sho-s-3) var(--sho-s-4);
+  display: grid;
+  gap: var(--sho-s-2);
+}
+
+body.sho .prom-evidence__caps {
+  color: var(--sho-muted);
+}
+
+body.sho .prom-evidence__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sho-s-2);
+}
+
+body.sho .prom-evidence__row {
+  display: grid;
+  gap: var(--sho-s-1);
+  padding: var(--sho-s-2);
+  background: var(--sho-bg);
+  border-left: 2px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+
+body.sho .prom-evidence__locator {
+  font-size: 11px;
+  color: var(--sho-muted);
+}
+
+body.sho .prom-evidence__excerpt {
+  font-family: var(--sho-font-zh);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--sho-text);
+  margin: 0;
+  padding: 0;
+}
+
+body.sho .prom-evidence__more summary {
+  cursor: pointer;
+  color: var(--sho-accent);
+  padding: var(--sho-s-1) 0;
+}
+
+body.sho .prom-evidence__more summary:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+  border-radius: var(--sho-r-1);
+}
+
+/* ── Risks section ───────────────────────────────────────────────────── */
+
+body.sho .prom-risks {
+  display: grid;
+  gap: var(--sho-s-2);
+}
+
+body.sho .prom-risks__caps {
+  color: var(--sho-muted);
+}
+
+body.sho .prom-risks__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sho-s-1);
+}
+
+body.sho .prom-risk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-2);
+  align-items: baseline;
+  padding: var(--sho-s-2) var(--sho-s-3);
+  background: var(--sho-bg-2);
+  border-left: 3px solid var(--sho-warning);
+  border-radius: var(--sho-r-1);
+  font-size: 12px;
+}
+
+body.sho .prom-risk--low {
+  border-left-color: var(--sho-line-2);
+}
+
+body.sho .prom-risk--medium {
+  border-left-color: var(--sho-warning);
+}
+
+body.sho .prom-risk--high {
+  border-left-color: var(--sho-error);
+}
+
+body.sho .prom-risk__code {
+  font-family: var(--sho-font-mono);
+  color: var(--sho-text);
+}
+
+body.sho .prom-risk__severity {
+  color: var(--sho-muted);
+}
+
+body.sho .prom-risk__desc {
+  color: var(--sho-text-2);
+  flex: 1;
+  min-width: 240px;
+}
+
+/* ── Metrics row ─────────────────────────────────────────────────────── */
+
+body.sho .prom-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-5);
+  align-items: flex-end;
+  padding-top: var(--sho-s-2);
+  border-top: 1px dotted var(--sho-line);
+}
+
+body.sho .prom-metric {
+  display: grid;
+  gap: var(--sho-s-1);
+}
+
+body.sho .prom-metric__caps {
+  color: var(--sho-muted);
+}
+
+body.sho .prom-metric__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-2);
+}
+
+body.sho .prom-metric__num {
+  font-size: 18px;
+  color: var(--sho-text);
+}
+
+body.sho .prom-metric--small .prom-metric__num {
+  font-size: 14px;
+}
+
+body.sho .prom-bar {
+  display: inline-block;
+  width: 120px;
+  height: 6px;
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  overflow: hidden;
+  position: relative;
+}
+
+body.sho .prom-bar__fill {
+  display: block;
+  height: 100%;
+  width: var(--prom-bar-fill, 0%);
+  background: var(--sho-accent);
+  transition: width var(--sho-t-base) var(--sho-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.sho .prom-bar__fill {
+    transition: none;
+  }
+  body.sho .prom-card,
+  body.sho .prom-btn {
+    transition: none;
+  }
+}
+
+/* ── Decision form ───────────────────────────────────────────────────── */
+
+body.sho .prom-card__footer {
+  border-top: 1px dotted var(--sho-line);
+  padding-top: var(--sho-s-3);
+}
+
+body.sho .prom-decide-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-3);
+  align-items: flex-end;
+}
+
+body.sho .prom-note-label {
+  display: grid;
+  gap: var(--sho-s-1);
+  flex: 1;
+  min-width: 240px;
+}
+
+body.sho .prom-note-input {
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  padding: var(--sho-s-2) var(--sho-s-3);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  color: var(--sho-text);
+}
+
+body.sho .prom-note-input:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+  border-color: var(--sho-accent);
+}
+
+body.sho .prom-decide-buttons {
+  display: flex;
+  gap: var(--sho-s-2);
+}
+
+/* ── Mono caps utility (replaces retired .brk-caps / .brk-mono) ──────── */
+
+body.sho .prom-caps {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+  font-weight: 500;
+}
+
+body.sho .prom-mono {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+}
