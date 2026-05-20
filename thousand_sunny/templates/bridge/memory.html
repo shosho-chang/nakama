@@ -4,444 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bridge · Memory</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-/* ── Direction B tokens ── */
-:root {
-  --nk-bench:        #e8e6e1;
-  --nk-bench-2:      #dfddd6;
-  --nk-panel:        #ffffff;
-  --nk-panel-2:      #f4f2ec;
-  --nk-chassis:      #1a1a1a;
-  --nk-chassis-2:    #2a2a2a;
-  --nk-chassis-fg:   #e8e6e1;
-  --nk-chassis-fg-2: #98958e;
-  --nk-ink:          #0d0d0d;
-  --nk-ink-2:        #4a4a46;
-  --nk-ink-3:        #6a6a64;
-  --nk-muted:        #98958e;
-  --nk-rule:         #c8c5be;
-  --nk-hairline:     #dcd9d2;
-  --nk-signal:       #ff5a1f;
-  --nk-amber:        #c8a656;
-  --nk-jade:         #3f7a5a;
-  --nk-crimson:      #a8231a;
-  --nk-indigo:       #2a3a5c;
-  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
-  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
-  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
-  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
-  --nk-t-micro: 10px; --nk-t-xs: 11px; --nk-t-sm: 12px;
-  --nk-t-base: 14px;  --nk-t-md: 16px; --nk-t-lg: 19px;
-  --nk-r-2: 2px;
-  --nk-border:      1px solid var(--nk-rule);
-  --nk-border-hair: 1px solid var(--nk-hairline);
-  --nk-shadow-popover: 0 4px 16px rgba(13,13,13,.10), 0 1px 3px rgba(13,13,13,.08);
-  --nk-dur-fast: 80ms;
-  --nk-dur-base: 140ms;
-  --nk-dur-slow: 240ms;
-  --nk-ease-out: cubic-bezier(0.2,0.7,0.2,1);
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: 0.001ms !important; }
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body {
-  font-family: var(--nk-font-sans);
-  font-size: var(--nk-t-base);
-  background: var(--nk-bench);
-  color: var(--nk-ink);
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* ── Chassis ── */
-.chassis {
-  background: var(--nk-chassis);
-  color: var(--nk-chassis-fg);
-  padding: 0 40px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  flex-shrink: 0;
-  border-bottom: 1px solid #000;
-}
-.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
-.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
-.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
-.chassis-version  { font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-chassis-fg-2); letter-spacing: 0.08em; }
-.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
-.chassis-nav a {
-  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
-  text-decoration: none; color: var(--nk-chassis-fg-2);
-  border-bottom: 2px solid transparent; padding-bottom: 2px;
-  display: flex; align-items: center; gap: 6px;
-  transition: color var(--nk-dur-fast);
-}
-.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
-.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
-.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
-.chassis-meta { display: flex; gap: 20px; font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-chassis-fg-2); }
-.chassis-meta .val { color: #fff; }
-
-/* ── Page header ── */
-.page-header {
-  background: var(--nk-panel);
-  border-bottom: var(--nk-border);
-  padding: 18px 40px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  flex-shrink: 0;
-}
-.page-title-group {}
-.nk-caps {
-  font-family: var(--nk-font-mono);
-  font-size: var(--nk-t-micro);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--nk-ink-2);
-  margin-bottom: 4px;
-}
-.page-title {
-  font-family: var(--nk-font-display);
-  font-size: 26px;
-  font-weight: 500;
-  letter-spacing: -0.5px;
-  line-height: 1.2;
-}
-.page-title .zh {
-  color: var(--nk-muted);
-  font-family: var(--nk-font-zh);
-  font-size: 16px;
-  letter-spacing: 0.04em;
-}
-.page-header-actions { display: flex; gap: 8px; align-items: center; }
-.nk-input {
-  background: var(--nk-panel-2);
-  border: var(--nk-border);
-  padding: 8px 12px;
-  font-size: 12px;
-  font-family: var(--nk-font-mono);
-  color: var(--nk-ink);
-  border-radius: var(--nk-r-2);
-  outline: none;
-  width: 220px;
-}
-.nk-input:focus { border-color: var(--nk-ink-2); }
-.nk-input::placeholder { color: var(--nk-muted); }
-.nk-btn-ghost {
-  background: transparent; color: var(--nk-ink-2); border: var(--nk-border);
-  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-  padding: 8px 13px; cursor: pointer; border-radius: var(--nk-r-2); white-space: nowrap;
-}
-.nk-btn-ghost:hover { border-color: var(--nk-ink-2); color: var(--nk-ink); }
-.nk-btn-primary {
-  background: var(--nk-ink); color: #fff; border: none;
-  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-  padding: 9px 14px; cursor: pointer; border-radius: var(--nk-r-2); white-space: nowrap;
-}
-.nk-btn-primary:hover { background: var(--nk-chassis-2); }
-
-/* ── Body layout ── */
-.body-layout {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  min-height: 0;
-}
-
-/* ── Agent rail ── */
-.agent-rail {
-  background: var(--nk-panel);
-  border-right: var(--nk-border);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
-.rail-section-label {
-  padding: 14px 20px 8px;
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--nk-ink-2);
-  flex-shrink: 0;
-}
-.rail-item {
-  padding: 10px 20px;
-  cursor: pointer;
-  border-left: 3px solid transparent;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: background var(--nk-dur-fast);
-}
-.rail-item:hover { background: var(--nk-panel-2); }
-.rail-item.active {
-  border-left-color: var(--nk-signal);
-  background: var(--nk-panel-2);
-}
-.rail-agent-code {
-  font-family: var(--nk-font-mono);
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  color: var(--nk-ink-3);
-  margin-bottom: 1px;
-}
-.rail-agent-role {
-  font-size: 14px;
-  color: var(--nk-ink-2);
-}
-.rail-item.active .rail-agent-role { font-weight: 500; color: var(--nk-ink); }
-.rail-count {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-muted);
-  font-variant-numeric: tabular-nums;
-}
-.rail-item.active .rail-count { color: var(--nk-ink); }
-
-/* ── Main pane ── */
-.main-pane {
-  padding: 20px 40px 40px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-/* ── Type tabs ── */
-.type-tabs {
-  display: flex;
-  border-bottom: var(--nk-border);
-  margin-bottom: 20px;
-  flex-shrink: 0;
-}
-.type-tab {
-  padding: 10px 18px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  color: var(--nk-ink-2);
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
-  transition: color var(--nk-dur-fast);
-}
-.type-tab:hover { color: var(--nk-ink); }
-.type-tab.active { border-bottom-color: var(--nk-ink); color: var(--nk-ink); font-weight: 500; }
-.tab-count {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-muted);
-  padding: 1px 6px;
-  font-variant-numeric: tabular-nums;
-}
-.type-tab.active .tab-count { background: var(--nk-panel-2); }
-
-/* ── Memory table ── */
-.mem-table-head {
-  display: grid;
-  grid-template-columns: 100px 130px 1fr 120px 90px;
-  padding: 8px 0;
-  border-bottom: var(--nk-border);
-  font-family: var(--nk-font-mono);
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  color: var(--nk-ink-2);
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-.mem-row {
-  display: grid;
-  grid-template-columns: 100px 130px 1fr 120px 90px;
-  padding: 14px 0;
-  border-bottom: var(--nk-border-hair);
-  cursor: pointer;
-  align-items: flex-start;
-  gap: 8px;
-  transition: background var(--nk-dur-fast);
-}
-.mem-row:hover { background: var(--nk-panel-2); margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
-
-.nk-kind-chip {
-  display: inline-block;
-  padding: 2px 6px;
-  font-family: var(--nk-font-mono);
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  border-radius: 0;
-}
-.kind-preference { border: 1px solid var(--nk-indigo); color: var(--nk-indigo); }
-.kind-fact       { border: 1px solid var(--nk-ink-2);  color: var(--nk-ink-2); }
-.kind-decision   { border: 1px solid var(--nk-signal);  color: var(--nk-signal); }
-.kind-project    { border: 1px solid var(--nk-jade);    color: var(--nk-jade); }
-
-.mem-id {
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  color: var(--nk-ink-3);
-  font-variant-numeric: tabular-nums;
-  word-break: break-all;
-}
-.mem-subject {
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 3px;
-  color: var(--nk-ink);
-}
-.mem-content { font-size: 12px; color: var(--nk-ink-2); line-height: 1.5; }
-.mem-updated { font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-2); }
-.mem-conf-bar {
-  position: relative;
-  height: 2px;
-  background: var(--nk-hairline);
-  width: 60px;
-}
-.mem-conf-fill {
-  position: absolute; inset: 0;
-  background: var(--nk-ink);
-}
-.mem-conf-pct {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-ink-3);
-  margin-top: 3px;
-  font-variant-numeric: tabular-nums;
-}
-.mem-count-label {
-  margin-top: 14px;
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-muted);
-}
-.empty-state {
-  padding: 32px 0;
-  text-align: center;
-  color: var(--nk-muted);
-  font-family: var(--nk-font-mono);
-  font-size: 12px;
-}
-
-/* ── Edit modal ── */
-.modal-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(13,13,13,0.45);
-  z-index: 100;
-  align-items: center;
-  justify-content: center;
-}
-.modal-overlay.open { display: flex; }
-.modal {
-  width: 620px;
-  background: var(--nk-panel);
-  box-shadow: var(--nk-shadow-popover);
-  border: var(--nk-border);
-}
-.modal-header {
-  padding: 14px 24px;
-  border-bottom: var(--nk-border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--nk-chassis);
-  color: #fff;
-}
-.modal-header-left { display: flex; gap: 12px; align-items: center; }
-.modal-header-id { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.14em; }
-.modal-body { padding: 24px 28px; }
-.modal-field-label {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--nk-ink-2);
-  margin-bottom: 6px;
-}
-.modal-input {
-  width: 100%;
-  background: var(--nk-panel-2);
-  border: var(--nk-border);
-  padding: 10px 12px;
-  font-family: var(--nk-font-sans);
-  font-size: 14px;
-  color: var(--nk-ink);
-  border-radius: var(--nk-r-2);
-  outline: none;
-  margin-bottom: 16px;
-}
-.modal-input:focus { border-color: var(--nk-ink-2); }
-.modal-textarea {
-  width: 100%;
-  background: var(--nk-panel-2);
-  border: var(--nk-border);
-  padding: 10px 12px;
-  font-family: var(--nk-font-sans);
-  font-size: 13px;
-  color: var(--nk-ink);
-  border-radius: var(--nk-r-2);
-  outline: none;
-  min-height: 130px;
-  resize: vertical;
-  line-height: 1.5;
-  margin-bottom: 16px;
-}
-.modal-textarea:focus { border-color: var(--nk-ink-2); }
-.modal-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 4px; }
-.conf-row { display: flex; align-items: center; gap: 10px; }
-.conf-gauge {
-  position: relative; height: 3px; flex: 1;
-  background: var(--nk-hairline);
-}
-.conf-gauge-fill { position: absolute; inset: 0; background: var(--nk-ink); }
-.conf-val { font-family: var(--nk-font-mono); font-size: 13px; font-variant-numeric: tabular-nums; min-width: 36px; }
-.modal-footer {
-  padding: 14px 24px;
-  border-top: var(--nk-border);
-  background: var(--nk-panel-2);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.modal-footer-right { display: flex; gap: 8px; }
-.btn-archive {
-  background: transparent;
-  color: var(--nk-crimson);
-  border: 1px solid var(--nk-crimson);
-  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-  padding: 8px 13px; cursor: pointer; border-radius: var(--nk-r-2);
-}
-.btn-archive:hover { background: var(--nk-crimson); color: #fff; }
-
-/* Delete confirm modal */
-.confirm-modal {
-  width: 400px;
-  background: var(--nk-panel);
-  box-shadow: var(--nk-shadow-popover);
-  border: var(--nk-border);
-  padding: 28px 32px;
-}
-.confirm-title { font-size: 18px; font-weight: 500; margin-bottom: 10px; }
-.confirm-body  { font-size: 13px; color: var(--nk-ink-2); line-height: 1.6; margin-bottom: 20px; }
-.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
-
-:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
-</style>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
 </head>
-<body>
+<body class="sho bridge-page">
 
 <!-- Chassis -->
 {% from "_chassis_nav.html" import chassis_nav %}
@@ -450,14 +17,15 @@ body {
 {% endcall %}
 
 <!-- Page header -->
-<div class="page-header">
-  <div class="page-title-group">
+<div class="page-header page-header--split">
+  <div>
     <div class="nk-caps">/bridge/memory · 記憶庫</div>
     <div class="page-title">Agent Memory <span class="zh">· 艦員記憶條目</span></div>
   </div>
-  <div class="page-header-actions">
-    <input type="search" class="nk-input" id="searchInput" placeholder="search entries…" oninput="onSearch()">
-    <button class="nk-btn-ghost" onclick="openNewEntry()">+ NEW</button>
+  <div style="display:flex;gap:8px;align-items:center">
+    <input type="search" class="sho-input" id="searchInput" placeholder="search entries…"
+           style="width:220px" oninput="onSearch()">
+    <button class="sho-btn--ghost" onclick="openNewEntry()">+ NEW</button>
   </div>
 </div>
 
@@ -471,7 +39,7 @@ body {
   </div>
 
   <!-- Main pane -->
-  <div class="main-pane">
+  <div class="main-pane main-pane--column">
     <!-- Type tabs -->
     <div class="type-tabs" id="typeTabs">
       <!-- populated by JS -->
@@ -500,7 +68,7 @@ body {
         <div id="modal-kind-chip"></div>
         <div class="modal-header-id" id="modal-id-label">EDIT</div>
       </div>
-      <button class="nk-btn-ghost" style="background:transparent;color:#fff;border-color:#555;padding:3px 8px;font-size:10px"
+      <button class="sho-btn--ghost" style="padding:3px 8px;font-size:10px"
               onclick="closeModal()">ESC</button>
     </div>
     <div class="modal-body">
@@ -520,7 +88,7 @@ body {
             <div class="conf-val" id="modal-conf-val">—</div>
           </div>
           <input type="range" min="0" max="100" step="1" id="modal-conf-slider"
-                 style="width:100%;margin-top:8px;accent-color:var(--nk-ink)"
+                 class="conf-slider"
                  oninput="onConfSlider(this.value)">
         </div>
         <div>
@@ -537,8 +105,8 @@ body {
     <div class="modal-footer">
       <button class="btn-archive" id="btn-archive" onclick="confirmArchive()">ARCHIVE · 封存</button>
       <div class="modal-footer-right">
-        <button class="nk-btn-ghost" onclick="closeModal()">cancel</button>
-        <button class="nk-btn-primary" onclick="saveMemory()">SAVE</button>
+        <button class="sho-btn--ghost" onclick="closeModal()">cancel</button>
+        <button class="sho-btn" onclick="saveMemory()">SAVE</button>
       </div>
     </div>
   </div>
@@ -550,7 +118,7 @@ body {
     <div class="confirm-title">封存這筆記憶？</div>
     <div class="confirm-body" id="confirm-body-text">此動作無法復原，記憶將永久刪除。</div>
     <div class="confirm-actions">
-      <button class="nk-btn-ghost" onclick="closeConfirm()">取消</button>
+      <button class="sho-btn--ghost" onclick="closeConfirm()">取消</button>
       <button class="btn-archive" onclick="deleteMemory()">確認封存</button>
     </div>
   </div>
@@ -568,7 +136,7 @@ const DEFAULT_USER = 'shosho';
 
 // ── Kind chip HTML ──
 function kindChipHTML(type) {
-  return `<span class="nk-kind-chip kind-${type}">${type}</span>`;
+  return `<span class="kind-chip kind-${type}">${type}</span>`;
 }
 
 // ── Load agent rail ──
@@ -578,7 +146,7 @@ async function loadAgents() {
   const rail = document.getElementById('agentRail');
 
   if (!agents.length) {
-    rail.innerHTML = `<div style="padding:16px 20px;color:var(--nk-muted);font-size:12px">no agents with memory</div>`;
+    rail.innerHTML = `<div style="padding:16px 20px;color:var(--sho-muted);font-size:12px">no agents with memory</div>`;
     return;
   }
 
@@ -659,7 +227,7 @@ function renderRows() {
 
   if (!rows.length) {
     document.getElementById('memRows').innerHTML =
-      `<div class="empty-state">no entries${activeKind !== 'all' ? ' for ' + activeKind : ''}</div>`;
+      `<div class="empty">no entries${activeKind !== 'all' ? ' for ' + activeKind : ''}</div>`;
     document.getElementById('countLabel').textContent = '';
     return;
   }

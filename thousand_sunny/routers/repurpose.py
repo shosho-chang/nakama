@@ -36,6 +36,26 @@ _templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge")
 )
 
+
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Bridge Shosho design-system CSS files.
+
+    Used to bust Cloudflare's /static/* edge cache when the design-system
+    stylesheets change. Mirrors ``_shosho_asset_version()`` in ``bridge.py``.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "bridge.css", "bridge-pages.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
 # run_id format: YYYY-MM-DD-<slug> where slug is engine-sanitized to [A-Za-z0-9_-]{1,60}.
 # Strict regex prevents path traversal (e.g. "..%2F..%2Fetc" would not match).
 _RUN_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[A-Za-z0-9_-]{1,60}$")
@@ -136,7 +156,7 @@ async def repurpose_list(
     return _templates.TemplateResponse(
         request,
         "repurpose_list.html",
-        {"runs": runs},
+        {"runs": runs, "asset_version": _SHOSHO_ASSET_VERSION},
     )
 
 
@@ -162,5 +182,5 @@ async def repurpose_detail(
     return _templates.TemplateResponse(
         request,
         "repurpose_detail.html",
-        {"run": run, "fb_tonals": FB_TONALS},
+        {"run": run, "fb_tonals": FB_TONALS, "asset_version": _SHOSHO_ASSET_VERSION},
     )
