@@ -43,9 +43,11 @@ class BookKey:
 
 @dataclass(frozen=True)
 class InboxKey:
-    """Vault-relative path under ``Inbox/kb/`` (e.g. ``Inbox/kb/foo.md`` or
-    ``Inbox/kb/foo-bilingual.md``). Both siblings resolve to the same
-    logical Reading Source.
+    """Vault-relative path under the inbox (ADR-028: ``Inbox/web/``; e.g.
+    ``Inbox/web/foo.md`` or ``Inbox/web/foo-bilingual.md``). Both siblings
+    resolve to the same logical Reading Source. The prefix is not validated
+    here — resolution is path-agnostic; only the ``-bilingual.md`` suffix
+    is special-cased.
     """
 
     relative_path: str

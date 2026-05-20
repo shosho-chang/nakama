@@ -33,9 +33,9 @@ from shared.state import _get_conn
 
 @pytest.fixture
 def robin_e2e_env(tmp_path, monkeypatch):
-    """Mount tmp_path as the vault and prep a fresh Inbox/kb folder."""
+    """Mount tmp_path as the vault and prep a fresh Inbox/web folder."""
     vault = tmp_path / "vault"
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
 
     # Make a fake .md file in Inbox; supported extensions in
@@ -97,7 +97,7 @@ def test_robin_run_happy_path_orchestration(robin_e2e_env, monkeypatch):
 
 
 def test_robin_run_inbox_empty_returns_no_files(robin_e2e_env, monkeypatch):
-    """Inbox/kb exists but contains no files → returns the no-files summary."""
+    """Inbox/web exists but contains no files → returns the no-files summary."""
     # Remove the seeded file
     robin_e2e_env["src_file"].unlink()
 
@@ -115,10 +115,10 @@ def test_robin_run_inbox_empty_returns_no_files(robin_e2e_env, monkeypatch):
 
 
 def test_robin_run_inbox_missing_returns_skip(tmp_path, monkeypatch):
-    """No Inbox/kb dir → returns the skip summary; no pipeline call."""
+    """No Inbox/web dir → returns the skip summary; no pipeline call."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    # Note: we do NOT create Inbox/kb
+    # Note: we do NOT create Inbox/web
 
     monkeypatch.setattr("shared.config.get_vault_path", lambda: vault)
     monkeypatch.setattr("agents.robin.agent.get_vault_path", lambda: vault)

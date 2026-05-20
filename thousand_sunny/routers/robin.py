@@ -122,9 +122,14 @@ def _cleanup_sessions():
 # ── Vault helpers ─────────────────────────────────────────────────────────────
 
 
-def _get_inbox() -> Path:
+def _inbox_rel() -> str:
+    """Vault-relative inbox path from config (ADR-028: ``Inbox/web``)."""
     cfg = get_agent_config("robin")
-    return get_vault_path() / cfg.get("inbox_path", "Inbox/kb")
+    return cfg.get("inbox_path", "Inbox/web")
+
+
+def _get_inbox() -> Path:
+    return get_vault_path() / _inbox_rel()
 
 
 def _get_sources() -> Path:
@@ -200,7 +205,7 @@ def _get_inbox_files() -> list[dict]:
                     source_label = str(fm.get("fulltext_source", "") or "")
                     title = str(fm.get("title", "") or "").strip()
                     # Obsidian Web Clipper files (Chrome plugin) drop into
-                    # Inbox/kb/ with their own frontmatter shape (no
+                    # Inbox/web/ with their own frontmatter shape (no
                     # fulltext_status / fulltext_source — just title / source /
                     # author / tags=[clippings]). Synthesise a display row so
                     # the inbox lists them as "ready" with a "Web Clipper"
@@ -273,7 +278,7 @@ async def read_source(
     # sources-side base (KB/Wiki/Sources/...) keeps the legacy ad-hoc derivation
     # since the registry only models BookKey + InboxKey today.
     if base == "inbox":
-        rs = ReadingSourceRegistry().resolve(InboxKey(f"Inbox/kb/{file}"))
+        rs = ReadingSourceRegistry().resolve(InboxKey(f"{_inbox_rel()}/{file}"))
         if rs is None:
             raise HTTPException(404, detail=f"找不到檔案：{file}")
         slug = rs.annotation_key
@@ -456,7 +461,7 @@ _BILINGUAL_FRONTMATTER = (
     "fulltext_layer: {layer}\n"
     'fulltext_source: "{fulltext_source}"\n'
     "bilingual: true\n"
-    'derived_from: "Inbox/kb/{stem}.md"\n'
+    'derived_from: "{inbox_rel}/{stem}.md"\n'
     "---\n\n"
 )
 
@@ -530,7 +535,7 @@ def _translate_in_background(
     """BackgroundTask body: run translate_document → write bilingual.md → flip status.
 
     Mirrors the ``/pubmed-to-reader`` translate flow but with two
-    differences: (a) the source is the URL-ingested ``Inbox/kb/{slug}.md``
+    differences: (a) the source is the URL-ingested ``Inbox/web/{slug}.md``
     rather than ``KB/Attachments/pubmed/{pmid}.{pdf,md}``, and (b) on
     translator failure we do NOT write a partial bilingual file — the
     user can read the original under the same inbox row, so silently
@@ -572,6 +577,7 @@ def _translate_in_background(
         layer=layer,
         fulltext_source=fulltext_source.replace('"', '\\"'),
         stem=source_path.stem,
+        inbox_rel=_inbox_rel(),
     )
     bilingual_path.write_text(frontmatter + bilingual_md, encoding="utf-8")
     _flip_status_to_translated(source_path)
@@ -607,7 +613,7 @@ async def translate(
     file actually exists. Costs one extra click but trades a 100%
     failure mode for a 0% one.
 
-    The BG task writes ``Inbox/kb/{stem}-bilingual.md`` and mutates the
+    The BG task writes ``Inbox/web/{stem}-bilingual.md`` and mutates the
     source frontmatter to ``fulltext_status: translated``. On translator
     crash the bilingual file is never written; the source row is left in
     ``translating`` so the failure is visible (mirror of the

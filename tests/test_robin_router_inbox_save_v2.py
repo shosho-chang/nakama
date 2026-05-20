@@ -6,7 +6,7 @@ whatever ``file`` URL the user landed on — even when ``foo-bilingual.md`` was
 the user-facing sibling that ``_get_inbox_files`` would normally expose.
 
 Post-#510: slug is derived via
-``ReadingSourceRegistry.resolve(InboxKey(f"Inbox/kb/{file}")).annotation_key``,
+``ReadingSourceRegistry.resolve(InboxKey(f"Inbox/web/{file}")).annotation_key``,
 which collapses to the bilingual sibling per the registry's
 ``_resolve_inbox`` rule (mirrors ``_get_inbox_files``).
 
@@ -83,7 +83,7 @@ def test_n7_inbox_reader_uses_registry_slug(client, vault, monkeypatch):
     tc, mod = client
     monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
 
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     src = inbox / "foo.md"
     src.write_text(
@@ -106,7 +106,7 @@ def test_n7_inbox_reader_uses_registry_slug(client, vault, monkeypatch):
     r = tc.get("/robin/read", params={"file": "foo.md"})
     assert r.status_code == 200
     assert captured["key_type"] == "InboxKey"
-    assert captured["relative_path"] == "Inbox/kb/foo.md"
+    assert captured["relative_path"] == "Inbox/web/foo.md"
 
     # Slug derived from frontmatter title via annotation_slug, post-registry.
     assert "original-only-title" in r.text
@@ -125,7 +125,7 @@ def test_n8_inbox_reader_404_when_registry_returns_none(client, vault, monkeypat
     tc, mod = client
     monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
 
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     # File exists on disk but registry returns None — simulate by patching
     # ReadingSourceRegistry.resolve to return None.
@@ -145,7 +145,7 @@ def test_n8_inbox_reader_404_when_file_missing(client, vault):
     """The pre-existing 404 branch (file path doesn't resolve) still fires —
     upstream of registry resolve."""
     tc, _ = client
-    (vault / "Inbox" / "kb").mkdir(parents=True)
+    (vault / "Inbox" / "web").mkdir(parents=True)
     r = tc.get("/robin/read", params={"file": "nonexistent.md"})
     assert r.status_code == 404
 
@@ -166,7 +166,7 @@ def test_n9_bilingual_sibling_url_convergence(client, vault, monkeypatch):
     tc, mod = client
     monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
 
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     # Two siblings with DIFFERENT titles — proves which one drove the slug.
     (inbox / "foo.md").write_text(
@@ -175,7 +175,7 @@ def test_n9_bilingual_sibling_url_convergence(client, vault, monkeypatch):
     )
     (inbox / "foo-bilingual.md").write_text(
         '---\ntitle: "Bilingual Reading Title"\nbilingual: true\n'
-        'derived_from: "Inbox/kb/foo.md"\n---\n\nbilingual body',
+        'derived_from: "Inbox/web/foo.md"\n---\n\nbilingual body',
         encoding="utf-8",
     )
 
