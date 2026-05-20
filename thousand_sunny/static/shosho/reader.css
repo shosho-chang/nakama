@@ -1,0 +1,591 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Robin Reader · page styles (Design System v0.1 / --sho-* tokens)
+
+   Composes on top of `static/shosho/tokens.css`. The reader template
+   carries `class="sho"` on <body> so design tokens cascade. Dark mode
+   toggles via `data-theme="dark"` attribute on <body>.
+
+   Layout: 100vh flex column — header / scrolling content / footer.
+   Reader column max-width 1100px; right sidenote gutter 250px on ≥1000px;
+   inline-fallback on narrow screens. 1px hairline borders, 4px base radius.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+body.sho .header {
+  background: var(--sho-bg);
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--sho-line);
+  flex-shrink: 0;
+}
+body.sho .header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+body.sho .header-left h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+}
+body.sho .header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+body.sho .badge-read,
+body.sho .badge-sync {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  font-weight: 500;
+  border: 1px solid var(--sho-line-2);
+  color: var(--sho-text-2);
+}
+body.sho .badge-read {
+  color: var(--sho-success);
+  border-color: color-mix(in oklch, var(--sho-success) 35%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+body.sho .badge-sync[hidden] { display: none; }
+body.sho .badge-sync.warn {
+  color: var(--sho-warning);
+  border-color: color-mix(in oklch, var(--sho-warning) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+}
+body.sho .badge-sync.ok {
+  color: var(--sho-success);
+  border-color: color-mix(in oklch, var(--sho-success) 35%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+body.sho .save-indicator {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--sho-success);
+  opacity: 0;
+  transition: opacity var(--sho-t-base) var(--sho-ease);
+}
+body.sho .save-indicator.show { opacity: 1; }
+
+body.sho .header-btn {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  background: var(--sho-bg);
+  cursor: pointer;
+  color: var(--sho-text-2);
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .header-btn:hover {
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+}
+body.sho .header-btn.active {
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+  background: var(--sho-accent-soft);
+}
+body.sho .header-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .shortcuts-hint {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--sho-muted);
+}
+
+/* Discard button — danger only on hover (Slice 5 / #356). */
+body.sho .header-btn.is-discard:hover,
+body.sho .header-btn.is-discard:focus-visible {
+  border-color: var(--sho-error);
+  color: var(--sho-error);
+}
+body.sho .header-btn.is-discard:disabled {
+  opacity: 0.5;
+  cursor: progress;
+  border-color: var(--sho-line);
+  color: var(--sho-muted);
+}
+
+/* ── Reader column ──────────────────────────────────────────────────── */
+body.sho .reader-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+body.sho .reader-content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 300px 64px 6%;
+  position: relative;
+}
+@media (max-width: 1000px) {
+  body.sho .reader-content { padding: 24px 24px 64px; }
+}
+
+/* ── Meta card ──────────────────────────────────────────────────────── */
+body.sho .meta-card {
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: 20px 24px;
+  margin-bottom: 32px;
+  background: var(--sho-bg);
+}
+body.sho .meta-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+body.sho .meta-pill {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  background: transparent;
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2);
+  font-weight: 500;
+}
+body.sho .meta-pill.lang {
+  background: var(--sho-bg-2);
+  color: var(--sho-muted);
+  border-color: transparent;
+}
+body.sho .meta-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--sho-text);
+  line-height: 1.3;
+  margin-bottom: 8px;
+  letter-spacing: -0.008em;
+}
+body.sho .meta-desc {
+  font-size: 14px;
+  color: var(--sho-text-2);
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+body.sho .meta-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-text-2);
+  margin-bottom: 10px;
+}
+body.sho .meta-fields a {
+  color: var(--sho-accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+body.sho .meta-fields a:hover { text-decoration: underline; }
+body.sho .meta-label {
+  color: var(--sho-muted);
+  margin-right: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10.5px;
+}
+body.sho .meta-authors {
+  font-size: 14px;
+  color: var(--sho-text);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+body.sho .meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+body.sho .meta-tag {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  background: var(--sho-bg-2);
+  color: var(--sho-text-2);
+  border: 1px solid transparent;
+}
+
+/* ── Body typography ────────────────────────────────────────────────── */
+body.sho .reader-content h1,
+body.sho .reader-content h2,
+body.sho .reader-content h3 {
+  color: var(--sho-text);
+  letter-spacing: -0.008em;
+}
+body.sho .reader-content h1 { font-size: 26px; margin: 28px 0 12px; line-height: 1.25; font-weight: 700; }
+body.sho .reader-content h2 { font-size: 21px; margin: 24px 0 10px; line-height: 1.3;  font-weight: 700; }
+body.sho .reader-content h3 { font-size: 17px; margin: 20px 0 8px;  line-height: 1.35; font-weight: 600; }
+body.sho .reader-content p {
+  margin-bottom: 14px;
+  line-height: 1.9;
+  font-size: 16px;
+  color: var(--sho-text-2);
+}
+body.sho .reader-content ul,
+body.sho .reader-content ol {
+  margin: 8px 0 14px 24px;
+  line-height: 1.8;
+  padding-left: 0;
+  list-style: disc outside;
+}
+body.sho .reader-content ol { list-style: decimal outside; }
+body.sho .reader-content li { margin-bottom: 5px; color: var(--sho-text-2); }
+body.sho .reader-content a {
+  color: var(--sho-accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--sho-accent-line);
+  padding-bottom: 1px;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .reader-content a:hover {
+  color: var(--sho-accent-2);
+  border-color: var(--sho-accent);
+}
+
+/* 一般引言 */
+body.sho .reader-content blockquote {
+  border-left: 2px solid var(--sho-accent);
+  padding-left: 16px;
+  color: var(--sho-text-2);
+  margin: 12px 0;
+  font-style: normal;
+}
+
+/* 雙語譯文 blockquote — 緊接段落、字級小、低調 */
+body.sho .reader-content.bilingual blockquote {
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--sho-muted);
+  background: var(--sho-bg-2);
+  border-left: 2px solid var(--sho-line-2);
+  padding: 6px 12px;
+  margin: -8px 0 14px 0;
+  border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
+  font-style: normal;
+}
+body.sho .reader-content.bilingual-hidden blockquote { display: none; }
+
+body.sho .reader-content code {
+  font-family: var(--sho-font-mono);
+  background: var(--sho-bg-2);
+  padding: 2px 6px;
+  border-radius: var(--sho-r-1);
+  font-size: 0.88em;
+  color: var(--sho-text);
+  letter-spacing: 0.005em;
+}
+body.sho .reader-content pre {
+  background: var(--sho-bg-2);
+  padding: 14px 16px;
+  border-radius: var(--sho-r-2);
+  border: 1px solid var(--sho-line);
+  overflow-x: auto;
+  margin: 12px 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+body.sho .reader-content pre code { background: none; padding: 0; }
+body.sho .reader-content img {
+  max-width: 100%;
+  border-radius: var(--sho-r-1);
+  margin: 12px 0;
+}
+body.sho .reader-content hr {
+  border: none;
+  border-top: 1px solid var(--sho-line);
+  margin: 24px 0;
+}
+
+/* ── Highlights / annotations ───────────────────────────────────────── */
+
+/* Yellow highlight — Ctrl+B */
+body.sho .reader-content mark.hl {
+  background: color-mix(in oklch, var(--sho-warning) 25%, transparent);
+  padding: 1px 2px;
+  border-radius: 2px;
+  color: inherit;
+}
+/* Green annotated — Ctrl+Shift+C */
+body.sho .reader-content mark.ann {
+  background: color-mix(in oklch, var(--sho-success) 22%, transparent);
+  padding: 1px 2px;
+  border-radius: 2px;
+  color: inherit;
+}
+
+/* ── Sidenote ────────────────────────────────────────────────────────── */
+body.sho .sidenote {
+  float: right;
+  clear: right;
+  width: 250px;
+  margin-right: -280px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--sho-text-2);
+  background: var(--sho-accent-soft);
+  border-left: 2px solid var(--sho-accent);
+  border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
+  padding: 8px 12px;
+}
+body.sho .sidenote .sn-ref {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--sho-muted);
+  font-style: normal;
+  margin-bottom: 4px;
+}
+body.sho .sidenote .sn-body { color: var(--sho-text-2); }
+
+@media (max-width: 1000px) {
+  body.sho .sidenote {
+    float: none;
+    width: auto;
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+  }
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────── */
+body.sho .footer {
+  background: var(--sho-bg);
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--sho-line);
+  flex-shrink: 0;
+}
+body.sho .footer a {
+  font-family: var(--sho-font-mono);
+  color: var(--sho-muted);
+  text-decoration: none;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .footer a:hover { color: var(--sho-accent); }
+
+body.sho .btn {
+  padding: 7px 16px;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .btn:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .btn-finish {
+  border-color: var(--sho-accent);
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+}
+body.sho .btn-finish:hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+  color: var(--sho-bg);
+}
+body.sho .btn-finish.done {
+  background: transparent;
+  border-color: color-mix(in oklch, var(--sho-success) 40%, transparent);
+  color: var(--sho-success);
+}
+body.sho .btn-finish.done:hover {
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+  color: var(--sho-success);
+  border-color: var(--sho-success);
+}
+
+/* ── Modal (annotation) ─────────────────────────────────────────────── */
+body.sho .modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--sho-ink) 40%, transparent);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+body.sho .modal-overlay.show { display: flex; }
+body.sho .modal {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: 20px 24px;
+  width: 90%;
+  max-width: 520px;
+}
+body.sho .modal h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-text);
+  margin-bottom: 12px;
+}
+body.sho .modal-context {
+  font-size: 13.5px;
+  color: var(--sho-text-2);
+  background: color-mix(in oklch, var(--sho-success) 12%, transparent);
+  padding: 8px 12px;
+  border-radius: var(--sho-r-1);
+  margin-bottom: 12px;
+  max-height: 100px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+body.sho .modal textarea {
+  width: 100%;
+  height: 100px;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: 10px 12px;
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+}
+body.sho .modal textarea:focus { border-color: var(--sho-accent); }
+body.sho .modal-hint {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  color: var(--sho-muted);
+  margin-top: 6px;
+  letter-spacing: 0.04em;
+}
+body.sho .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+body.sho .modal-actions button {
+  padding: 6px 14px;
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+}
+body.sho .modal-cancel:hover { border-color: var(--sho-line-2); color: var(--sho-text-2); }
+body.sho .modal-confirm {
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border-color: var(--sho-accent);
+}
+body.sho .modal-confirm:hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+}
+
+/* ── Native <dialog> discard confirm ────────────────────────────────── */
+body.sho dialog.discard-confirm {
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  padding: 0;
+  border-radius: var(--sho-r-2);
+  width: 90%;
+  max-width: 480px;
+}
+body.sho dialog.discard-confirm::backdrop {
+  background: color-mix(in oklch, var(--sho-ink) 45%, transparent);
+}
+body.sho dialog.discard-confirm .dc-head {
+  padding: 16px 20px 6px;
+  font-size: 15px;
+  color: var(--sho-text);
+  font-weight: 600;
+}
+body.sho dialog.discard-confirm .dc-body {
+  padding: 4px 20px 16px;
+  font-size: 14px;
+  color: var(--sho-text-2);
+  line-height: 1.7;
+}
+body.sho dialog.discard-confirm .dc-body strong { color: var(--sho-error); }
+body.sho dialog.discard-confirm .dc-hint {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-muted);
+  margin-top: 6px;
+  letter-spacing: 0.02em;
+}
+body.sho dialog.discard-confirm .dc-actions {
+  padding: 12px 20px 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+body.sho dialog.discard-confirm .dc-actions button {
+  padding: 6px 14px;
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--sho-line);
+}
+body.sho dialog.discard-confirm .dc-cancel {
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+}
+body.sho dialog.discard-confirm .dc-cancel:hover {
+  border-color: var(--sho-line-2);
+  color: var(--sho-text);
+}
+body.sho dialog.discard-confirm .dc-confirm {
+  background: var(--sho-error);
+  color: var(--sho-bg);
+  border-color: var(--sho-error);
+}
+body.sho dialog.discard-confirm .dc-confirm:hover,
+body.sho dialog.discard-confirm .dc-confirm:focus-visible {
+  background: color-mix(in oklch, var(--sho-error) 88%, black);
+  border-color: color-mix(in oklch, var(--sho-error) 88%, black);
+}
+body.sho dialog.discard-confirm .dc-confirm:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

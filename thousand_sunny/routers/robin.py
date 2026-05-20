@@ -59,6 +59,27 @@ templates = Jinja2Templates(
 pipeline = IngestPipeline()
 
 
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Shosho design-system CSS files.
+
+    Used to bust Cloudflare's /static/* edge cache when tokens.css or
+    reader.css change. Matches the asset-versioning pattern in
+    ``progress.py`` and ``architecture.py``.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "reader.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
+
 def _send_to_recycle_bin(path: Path) -> None:
     """刪除檔案至回收桶（Windows）或直接刪除（Linux）。遵守 CLAUDE.md 刪除規則。"""
     if platform.system() == "Windows":
@@ -273,6 +294,7 @@ async def read_source(
             "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
             "is_read": is_file_read(file_path),
             "is_bilingual": bool(frontmatter.get("bilingual")),
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
