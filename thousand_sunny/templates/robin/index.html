@@ -4,144 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Robin · Inbox</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 2rem; }
-  .header { max-width: 680px; margin: 0 auto 2rem; display: flex; align-items: center; justify-content: space-between; }
-  .header h1 { font-size: 1.5rem; color: #1a1a1a; }
-  .header span { font-size: 1.5rem; margin-right: 0.5rem; }
-  .logout { font-size: 0.875rem; color: #888; text-decoration: none; }
-  .logout:hover { color: #333; }
-  .container { max-width: 680px; margin: 0 auto; }
-  .empty { text-align: center; color: #888; padding: 3rem; background: white; border-radius: 12px; }
-  .empty p { margin-top: 0.5rem; font-size: 0.9rem; }
-  .file-card { background: white; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
-  .file-top { display: flex; align-items: center; justify-content: space-between; }
-  .file-info { flex: 1; }
-  .file-name { font-weight: 600; color: #1a1a1a; word-break: break-all; display: flex; align-items: center; gap: 0.5rem; }
-  .file-meta { font-size: 0.8rem; color: #888; margin-top: 0.2rem; }
-  .badge-read { font-size: 0.65rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: #e8f5e9; color: #2e7d32; font-weight: 600; flex-shrink: 0; }
-  .file-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; justify-content: flex-end; }
-  .type-select { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 6px; border: 1px solid #ddd; background: #fafafa; color: #444; cursor: pointer; }
-  .type-select:focus { outline: none; border-color: #6c63ff; }
-  .btn-read { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.9rem; background: white; color: #6c63ff; border: 1px solid #6c63ff; border-radius: 8px; font-size: 0.85rem; text-decoration: none; white-space: nowrap; transition: all .2s; }
-  .btn-read:hover { background: #6c63ff; color: white; }
-  button { padding: 0.55rem 1.2rem; background: #6c63ff; color: white; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; white-space: nowrap; transition: background .2s; }
-  button:hover { background: #574fd6; }
-  .status-icon { font-size: 1rem; flex-shrink: 0; }
-  .status-icon[data-status="processing"] { color: #6c63ff; }
-  .status-icon[data-status="ready"] { color: #2e7d32; }
-  .status-icon[data-status="translating"] { color: #6c63ff; }
-  .status-icon[data-status="translated"] { color: #2e7d32; }
-  .status-icon[data-status="failed"] { color: #c62828; }
-  .status-source { font-size: 0.7rem; color: #888; margin-left: 0.4rem; }
-
-  /* ── Discard hover action (Slice 5, #356) ────────────────────────────────
-     The delete button is a hover-revealed action so it doesn't compete with
-     the primary "Read" + "Start Ingest" CTAs at rest. Stays focusable for
-     keyboard navigation (always in the DOM, only opacity hides it). On
-     touch / narrow viewports we surface it permanently because there's no
-     hover. */
-  .file-card { position: relative; transition: box-shadow 0.15s; }
-  .file-card:hover { box-shadow: 0 1px 8px rgba(0,0,0,.10); }
-  .btn-discard {
-    position: absolute;
-    top: 0.65rem;
-    right: 0.85rem;
-    background: transparent;
-    color: #888;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    padding: 0.2rem 0.55rem;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
-  }
-  .file-card:hover .btn-discard,
-  .btn-discard:focus-visible { opacity: 1; }
-  .btn-discard:hover,
-  .btn-discard:focus-visible { color: #c62828; border-color: #c62828; background: #fff5f5; }
-  .btn-discard:disabled { opacity: 0.5 !important; cursor: progress; color: #aaa; border-color: transparent; }
-  @media (hover: none) {
-    .btn-discard { opacity: 1; }
-  }
-
-  /* Native <dialog> confirm — same shape as reader.html, single source of
-     wording (PRD §U24) so the inline-confirm matches the reader experience.
-     dc-* classes scoped to this dialog element only. */
-  dialog.discard-confirm {
-    border: 1px solid #e5e5e5;
-    background: #fff;
-    color: #333;
-    padding: 0;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 480px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-  }
-  dialog.discard-confirm::backdrop { background: rgba(0,0,0,0.45); }
-  dialog.discard-confirm .dc-head {
-    padding: 1rem 1.25rem 0.5rem;
-    font-size: 1rem;
-    color: #1a1a1a;
-    font-weight: 600;
-  }
-  dialog.discard-confirm .dc-body {
-    padding: 0.25rem 1.25rem 1rem;
-    font-size: 0.9rem;
-    color: #333;
-    line-height: 1.7;
-  }
-  dialog.discard-confirm .dc-body strong { color: #c62828; }
-  dialog.discard-confirm .dc-hint {
-    font-size: 0.75rem;
-    color: #888;
-    margin-top: 0.5rem;
-  }
-  dialog.discard-confirm .dc-actions {
-    padding: 0.75rem 1.25rem 1.1rem;
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-  }
-  dialog.discard-confirm .dc-actions button {
-    padding: 0.45rem 1rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-  dialog.discard-confirm .dc-cancel {
-    background: #f0f0f0;
-    color: #666;
-    border-color: #f0f0f0;
-  }
-  dialog.discard-confirm .dc-cancel:hover,
-  dialog.discard-confirm .dc-cancel:focus-visible { opacity: 0.8; }
-  dialog.discard-confirm .dc-confirm {
-    background: #c62828;
-    color: #fff;
-    border-color: #c62828;
-  }
-  dialog.discard-confirm .dc-confirm:hover,
-  dialog.discard-confirm .dc-confirm:focus-visible { background: #ad1f1f; border-color: #ad1f1f; }
-  dialog.discard-confirm .dc-confirm:disabled { opacity: 0.6; cursor: progress; }
-</style>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/robin.css?v={{ asset_version }}">
 </head>
-<body>
+<body class="sho robin-page">
+<div class="container is-narrow">
 <div class="header">
   <h1><span>🏴‍☠️</span>Robin · Inbox</h1>
-  <div style="display:flex;align-items:center;gap:1rem">
-    <nav style="display:flex;gap:0.75rem;font-size:0.875rem">
-      <a href="/robin/books" style="color:#6c63ff;text-decoration:none">📚 書架</a>
+  <div class="header-nav">
+    <nav>
+      <a href="/robin/books">📚 書架</a>
     </nav>
     <form method="post" action="/logout" style="margin:0">
-      <button type="submit" style="background:transparent;color:#888;padding:0;font-size:0.875rem">登出</button>
+      <button type="submit" class="logout-btn">登出</button>
     </form>
   </div>
 </div>
-<div class="container">
   {% if files %}
     {% for file in files %}
     <div class="file-card" data-filename="{{ file.name }}">
