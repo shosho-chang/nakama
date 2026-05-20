@@ -4,196 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bridge · Logs</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-:root {
-  --nk-bench:        #e8e6e1;
-  --nk-panel:        #ffffff;
-  --nk-panel-2:      #f4f2ec;
-  --nk-chassis:      #1a1a1a;
-  --nk-chassis-fg:   #e8e6e1;
-  --nk-chassis-fg-2: #98958e;
-  --nk-ink:          #0d0d0d;
-  --nk-ink-2:        #4a4a46;
-  --nk-ink-3:        #6a6a64;
-  --nk-muted:        #98958e;
-  --nk-rule:         #c8c5be;
-  --nk-hairline:     #dcd9d2;
-  --nk-signal:       #ff5a1f;
-  --nk-jade:         #3f7a5a;
-  --nk-warning:      #d4751c;
-  --nk-error:        #c04848;
-  --nk-debug:        #98958e;
-  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
-  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
-  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
-  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: 0.001ms !important; }
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body {
-  font-family: var(--nk-font-sans);
-  font-size: 14px;
-  background: var(--nk-bench);
-  color: var(--nk-ink);
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.chassis {
-  background: var(--nk-chassis);
-  color: var(--nk-chassis-fg);
-  padding: 0 40px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  flex-shrink: 0;
-}
-.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
-.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
-.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
-.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
-.chassis-nav a {
-  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
-  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
-  border-bottom: 2px solid transparent; padding-bottom: 2px;
-  display: flex; align-items: center; gap: 6px;
-}
-.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
-.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
-.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
-
-.page-header {
-  background: var(--nk-panel);
-  border-bottom: 1px solid var(--nk-rule);
-  padding: 18px 40px;
-  flex-shrink: 0;
-}
-.nk-caps {
-  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
-  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
-}
-.page-title { font-family: var(--nk-font-display); font-size: 26px; font-weight: 500; letter-spacing: -0.5px; }
-.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
-
-.search-form { margin-top: 18px; display: grid; gap: 8px; grid-template-columns: 1fr auto auto auto auto auto; align-items: stretch; }
-.search-input, .search-select, .search-time {
-  padding: 10px 12px;
-  font-family: var(--nk-font-sans); font-size: 14px;
-  background: var(--nk-panel-2); color: var(--nk-ink);
-  border: 1px solid var(--nk-rule);
-  outline: none;
-}
-.search-select, .search-time { font-family: var(--nk-font-mono); font-size: 11px; }
-.search-time { width: 130px; }
-.search-input:focus, .search-select:focus, .search-time:focus { border-color: var(--nk-signal); }
-.search-btn {
-  padding: 10px 18px;
-  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-  background: var(--nk-chassis); color: var(--nk-chassis-fg);
-  border: none; cursor: pointer;
-}
-.search-btn:hover { background: var(--nk-signal); }
-
-@media (max-width: 980px) {
-  .search-form { grid-template-columns: 1fr 1fr; }
-  .search-time { width: 100%; }
-}
-
-.stats {
-  margin-top: 10px;
-  font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3);
-  display: flex; gap: 16px; flex-wrap: wrap;
-}
-
-.main { flex: 1; overflow: auto; padding: 24px 40px 40px; }
-
-.results { display: flex; flex-direction: column; gap: 8px; }
-.row {
-  background: var(--nk-panel);
-  border: 1px solid var(--nk-rule);
-  padding: 10px 14px;
-  display: grid;
-  grid-template-columns: 140px 80px 200px 1fr;
-  gap: 12px;
-  align-items: start;
-  font-size: 13px;
-}
-.row-ts {
-  font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-3);
-  white-space: nowrap;
-}
-.level-chip {
-  display: inline-block;
-  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-  padding: 2px 8px;
-  border: 1px solid currentColor;
-  border-radius: 2px;
-  width: fit-content;
-}
-.level-INFO     { color: var(--nk-ink-3); }
-.level-WARNING  { color: var(--nk-warning); }
-.level-ERROR    { color: var(--nk-error); }
-.level-CRITICAL { color: var(--nk-error); background: rgba(192,72,72,0.1); }
-.level-DEBUG    { color: var(--nk-debug); }
-.row-logger {
-  font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-2);
-  word-break: break-all;
-}
-.row-msg {
-  font-family: var(--nk-font-mono); font-size: 12px; color: var(--nk-ink);
-  line-height: 1.5;
-  word-break: break-word;
-}
-.row-msg mark {
-  background: rgba(255, 90, 31, 0.18); color: var(--nk-signal); padding: 0 2px;
-}
-.row-extra {
-  margin-top: 4px;
-  font-family: var(--nk-font-mono); font-size: 11px; color: var(--nk-ink-3);
-}
-.row-extra summary { cursor: pointer; color: var(--nk-ink-2); }
-.row-extra summary:hover { color: var(--nk-signal); }
-.row-extra pre { margin-top: 4px; padding: 6px 8px; background: var(--nk-panel-2); white-space: pre-wrap; word-break: break-all; }
-
-@media (max-width: 980px) {
-  .row { grid-template-columns: 1fr; gap: 4px; }
-}
-
-.empty, .help {
-  padding: 40px 0; text-align: center;
-  color: var(--nk-ink-3);
-  font-family: var(--nk-font-mono); font-size: 12px; letter-spacing: 0.08em;
-}
-.help { color: var(--nk-ink-2); }
-.help p { font-family: var(--nk-font-sans); letter-spacing: normal; margin-top: 8px; font-size: 13px; }
-.help code {
-  font-family: var(--nk-font-mono);
-  background: var(--nk-panel-2);
-  padding: 1px 5px;
-}
-
-.pagination {
-  margin-top: 20px; display: flex; gap: 12px; justify-content: center;
-  font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
-}
-.pagination a {
-  padding: 8px 16px;
-  border: 1px solid var(--nk-rule);
-  color: var(--nk-ink-2); text-decoration: none;
-}
-.pagination a:hover { border-color: var(--nk-signal); color: var(--nk-signal); }
-</style>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
 </head>
-<body>
+<body class="sho bridge-page bridge-page--scroll">
 {% from "_chassis_nav.html" import chassis_nav %}
 {{ chassis_nav(nav_active='logs') }}
 
@@ -202,16 +17,16 @@ body {
     <div class="nk-caps">/logs · structured log search</div>
     <h1 class="page-title">Log Search <span class="zh">日誌搜尋</span></h1>
   </div>
-  <form method="get" action="/bridge/logs" class="search-form">
+  <form method="get" action="/bridge/logs" class="search-form search-form--grid">
     <input
-      class="search-input"
+      class="sho-input"
       type="text"
       name="q"
       value="{{ q }}"
       placeholder="搜尋 msg / extra…  例如：UnsupportedProtocol, backup, run_id"
       autofocus
     />
-    <select class="search-select" name="level" title="Level">
+    <select class="sho-select" name="level" title="Level">
       <option value="">All levels</option>
       <option value="INFO" {% if level == "INFO" %}selected{% endif %}>INFO</option>
       <option value="WARNING" {% if level == "WARNING" %}selected{% endif %}>WARNING</option>
@@ -219,7 +34,7 @@ body {
       <option value="CRITICAL" {% if level == "CRITICAL" %}selected{% endif %}>CRITICAL</option>
     </select>
     <input
-      class="search-time"
+      class="sho-input search-time"
       type="text"
       name="logger"
       value="{{ logger }}"
@@ -227,7 +42,7 @@ body {
       title="例如：nakama.franky"
     />
     <input
-      class="search-time"
+      class="sho-input search-time"
       type="text"
       name="since"
       value="{{ since }}"
@@ -235,14 +50,14 @@ body {
       title="ISO8601 / date / 24h ago"
     />
     <input
-      class="search-time"
+      class="sho-input search-time"
       type="text"
       name="until"
       value="{{ until }}"
       placeholder="until"
       title="ISO8601 / date / 1h ago"
     />
-    <button class="search-btn" type="submit">Search</button>
+    <button class="sho-btn" type="submit">Search</button>
   </form>
   <div class="stats">
     <span>Total: {{ stats.total }}</span>
@@ -258,7 +73,7 @@ body {
   </div>
 </section>
 
-<main class="main">
+<main class="page-main">
 {% if not q and not level and not logger and not since and not until and not hits %}
   <div class="help">
     Empty filters — search runs against the most recent logs in time order.
@@ -270,9 +85,9 @@ body {
     No log records match the current filters.
   </div>
 {% else %}
-  <div class="results">
+  <div class="log-rows">
     {% for hit in hits %}
-      <div class="row">
+      <div class="log-row">
         <div class="row-ts">{{ hit.ts }}</div>
         <div><span class="level-chip level-{{ hit.level }}">{{ hit.level }}</span></div>
         <div class="row-logger">{{ hit.logger }}</div>

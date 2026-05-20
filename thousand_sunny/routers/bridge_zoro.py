@@ -49,6 +49,26 @@ _templates = Jinja2Templates(
 )
 
 
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Bridge Shosho design-system CSS files.
+
+    Used to bust Cloudflare's /static/* edge cache when the design-system
+    stylesheets change. Mirrors ``_shosho_asset_version()`` in ``bridge.py``.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "bridge.css", "bridge-pages.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
+
 def _slugify_topic(topic: str) -> str:
     """ASCII-safe slug for the download filename.
 
@@ -100,6 +120,7 @@ async def keyword_research_page(
             "report_md": None,
             "download_filename": None,
             "error": None,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -160,6 +181,7 @@ async def keyword_research_run(
                 "report_md": None,
                 "download_filename": None,
                 "error": str(e),
+                "asset_version": _SHOSHO_ASSET_VERSION,
             },
         )
     except Exception as e:
@@ -179,6 +201,7 @@ async def keyword_research_run(
                 "report_md": None,
                 "download_filename": None,
                 "error": f"研究流程失敗：{type(e).__name__}: {e}",
+                "asset_version": _SHOSHO_ASSET_VERSION,
             },
         )
 
@@ -216,6 +239,7 @@ async def keyword_research_run(
             "report_md": report_md,
             "download_filename": filename,
             "error": None,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -277,6 +301,7 @@ async def keyword_research_history_list(
             "has_next": has_next,
             "prev_offset": prev_offset,
             "next_offset": next_offset,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -317,6 +342,7 @@ async def keyword_research_history_detail(
             "row": row,
             "created_at_taipei": kr_history.to_taipei_display(row["created_at"]),
             "download_filename": display_filename,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 

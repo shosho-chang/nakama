@@ -152,7 +152,13 @@ def _shosho_asset_version() -> str:
 
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "bridge.css", "bridge-dashboard.css", "bridge-seo.css"):
+    for css in (
+        "tokens.css",
+        "bridge.css",
+        "bridge-dashboard.css",
+        "bridge-seo.css",
+        "bridge-pages.css",
+    ):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())
@@ -183,14 +189,18 @@ async def bridge_index(request: Request, nakama_auth: str | None = Cookie(None))
 async def memory_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/memory", status_code=302)
-    return _templates.TemplateResponse(request, "memory.html", {})
+    return _templates.TemplateResponse(
+        request, "memory.html", {"asset_version": _SHOSHO_ASSET_VERSION}
+    )
 
 
 @page_router.get("/cost", response_class=HTMLResponse)
 async def cost_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/cost", status_code=302)
-    return _templates.TemplateResponse(request, "cost.html", {})
+    return _templates.TemplateResponse(
+        request, "cost.html", {"asset_version": _SHOSHO_ASSET_VERSION}
+    )
 
 
 # SEO control center — list both target sites combined.  Order kept stable so
@@ -1224,6 +1234,7 @@ async def health_page(request: Request, nakama_auth: str | None = Cookie(None)):
                 "yellow_min": HEALTH_YELLOW_MIN,
                 "orange_min": HEALTH_ORANGE_MIN,
             },
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -1275,6 +1286,7 @@ async def docs_page(
             "hits": hits,
             "stats": stats,
             "categories": sorted(stats.keys()),
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -1401,6 +1413,7 @@ async def logs_page(
             "stats": stats,
             "prev_url": prev_url,
             "next_url": next_url,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -1471,6 +1484,7 @@ async def drafts_page(request: Request, nakama_auth: str | None = Cookie(None)):
             "list_limit": list_limit,
             "truncated": truncated,
             "shown_count": len(drafts),
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -1526,6 +1540,7 @@ async def draft_detail_page(
             "raw_payload_text": raw,
             "error_log": row.get("error_log"),
             "retry_count": row.get("retry_count") or 0,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
