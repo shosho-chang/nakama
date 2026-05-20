@@ -34,8 +34,8 @@ from tests.shared._epub_fixtures import EPUBSpec, make_epub_blob
 
 @pytest.fixture
 def vault(tmp_path: Path) -> Path:
-    """Tmp vault root with ``Inbox/kb/`` pre-created."""
-    inbox = tmp_path / "Inbox" / "kb"
+    """Tmp vault root with ``Inbox/web/`` pre-created."""
+    inbox = tmp_path / "Inbox" / "web"
     inbox.mkdir(parents=True)
     return tmp_path
 
@@ -190,9 +190,9 @@ _FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "reading_source" 
 
 
 def _copy_fixture(src_name: str, vault: Path, dest_name: str | None = None) -> Path:
-    """Copy a static inbox fixture into the tmp vault's ``Inbox/kb/``."""
+    """Copy a static inbox fixture into the tmp vault's ``Inbox/web/``."""
     src = _FIXTURES / src_name
-    dest = vault / "Inbox" / "kb" / (dest_name or src_name)
+    dest = vault / "Inbox" / "web" / (dest_name or src_name)
     dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
     return dest
 
@@ -200,17 +200,17 @@ def _copy_fixture(src_name: str, vault: Path, dest_name: str | None = None) -> P
 def test_resolve_inbox_plain_only(registry: ReadingSourceRegistry, vault: Path):
     _copy_fixture("foo-en-only.md", vault, dest_name="foo.md")
 
-    rs = registry.resolve(InboxKey("Inbox/kb/foo.md"))
+    rs = registry.resolve(InboxKey("Inbox/web/foo.md"))
 
     assert rs is not None
     assert rs.kind == "inbox_document"
-    assert rs.source_id == "inbox:Inbox/kb/foo.md"
+    assert rs.source_id == "inbox:Inbox/web/foo.md"
     assert rs.has_evidence_track is True
     assert rs.evidence_reason is None
     assert rs.primary_lang == "en"
     assert len(rs.variants) == 1
     assert rs.variants[0].role == "original"
-    assert rs.variants[0].path == "Inbox/kb/foo.md"
+    assert rs.variants[0].path == "Inbox/web/foo.md"
     # annotation_key uses annotation_slug(filename, fm)
     from shared.annotation_store import annotation_slug
 
@@ -220,32 +220,32 @@ def test_resolve_inbox_plain_only(registry: ReadingSourceRegistry, vault: Path):
 def test_resolve_inbox_bilingual_only(registry: ReadingSourceRegistry, vault: Path):
     _copy_fixture("qux-bilingual.md", vault)
 
-    rs = registry.resolve(InboxKey("Inbox/kb/qux-bilingual.md"))
+    rs = registry.resolve(InboxKey("Inbox/web/qux-bilingual.md"))
 
     assert rs is not None
     # source_id points at logical original, even though that file does not
     # exist on disk (N3 design callout — logical identity, NOT filesystem
     # lookup key).
-    assert rs.source_id == "inbox:Inbox/kb/qux.md"
-    logical_original = vault / "Inbox" / "kb" / "qux.md"
+    assert rs.source_id == "inbox:Inbox/web/qux.md"
+    logical_original = vault / "Inbox" / "web" / "qux.md"
     assert not logical_original.exists()
     assert rs.has_evidence_track is False
     assert rs.evidence_reason == "bilingual_only_inbox"
     assert len(rs.variants) == 1
     assert rs.variants[0].role == "display"
     assert rs.variants[0].lang == "bilingual"
-    assert rs.variants[0].path == "Inbox/kb/qux-bilingual.md"
+    assert rs.variants[0].path == "Inbox/web/qux-bilingual.md"
 
 
 def test_resolve_inbox_both_siblings_canonicalize(registry: ReadingSourceRegistry, vault: Path):
     _copy_fixture("baz.md", vault)
     _copy_fixture("baz-bilingual.md", vault)
 
-    rs_plain = registry.resolve(InboxKey("Inbox/kb/baz.md"))
-    rs_bilingual = registry.resolve(InboxKey("Inbox/kb/baz-bilingual.md"))
+    rs_plain = registry.resolve(InboxKey("Inbox/web/baz.md"))
+    rs_bilingual = registry.resolve(InboxKey("Inbox/web/baz-bilingual.md"))
 
     assert rs_plain is not None and rs_bilingual is not None
-    assert rs_plain.source_id == rs_bilingual.source_id == "inbox:Inbox/kb/baz.md"
+    assert rs_plain.source_id == rs_bilingual.source_id == "inbox:Inbox/web/baz.md"
     # Both should expose 2 variants.
     for rs in (rs_plain, rs_bilingual):
         assert len(rs.variants) == 2
@@ -271,13 +271,13 @@ def test_resolve_inbox_bilingual_only_no_title_falls_back_to_logical_stem(
     user-facing bilingual stem (``foo-bilingual``). The ``-bilingual`` suffix
     must not leak into ``ReadingSource.title``.
     """
-    bilingual = vault / "Inbox" / "kb" / "foo-bilingual.md"
+    bilingual = vault / "Inbox" / "web" / "foo-bilingual.md"
     bilingual.write_text(
         "---\nlang: en\nderived_from: foo.md\n---\n\nbody only.\n",
         encoding="utf-8",
     )
 
-    rs = registry.resolve(InboxKey("Inbox/kb/foo-bilingual.md"))
+    rs = registry.resolve(InboxKey("Inbox/web/foo-bilingual.md"))
 
     assert rs is not None
     assert rs.title == "foo"
@@ -292,7 +292,7 @@ def test_resolve_inbox_bilingual_only_with_title_keeps_user_facing_title(
     """
     _copy_fixture("qux-bilingual.md", vault)
 
-    rs = registry.resolve(InboxKey("Inbox/kb/qux-bilingual.md"))
+    rs = registry.resolve(InboxKey("Inbox/web/qux-bilingual.md"))
 
     assert rs is not None
     assert rs.title == "Qux"
@@ -301,14 +301,14 @@ def test_resolve_inbox_bilingual_only_with_title_keeps_user_facing_title(
 def test_resolve_inbox_missing_lang_frontmatter(registry: ReadingSourceRegistry, vault: Path):
     _copy_fixture("no-lang.md", vault)
 
-    rs = registry.resolve(InboxKey("Inbox/kb/no-lang.md"))
+    rs = registry.resolve(InboxKey("Inbox/web/no-lang.md"))
 
     assert rs is not None
     assert rs.primary_lang == "unknown"
 
 
 def test_resolve_inbox_missing_path(registry: ReadingSourceRegistry, vault: Path):
-    assert registry.resolve(InboxKey("Inbox/kb/does-not-exist.md")) is None
+    assert registry.resolve(InboxKey("Inbox/web/does-not-exist.md")) is None
 
 
 def test_resolve_inbox_path_outside_vault(registry: ReadingSourceRegistry, vault: Path):
@@ -327,7 +327,7 @@ def test_resolve_inbox_empty_annotation_slug(
     monkeypatch.setattr(rsr_module, "annotation_slug", lambda *args, **kwargs: "")
 
     with pytest.raises(ValueError, match="annotation_slug returned empty"):
-        registry.resolve(InboxKey("Inbox/kb/foo.md"))
+        registry.resolve(InboxKey("Inbox/web/foo.md"))
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +438,7 @@ def test_resolve_inbox_malformed_frontmatter(registry: ReadingSourceRegistry, va
     """NB1: malformed YAML in frontmatter → returns ``None`` + WARNING;
     does not raise.
     """
-    bad = vault / "Inbox" / "kb" / "broken.md"
+    bad = vault / "Inbox" / "web" / "broken.md"
     # Unclosed quote in YAML → yaml.YAMLError on parse.
     bad.write_text(
         '---\ntitle: "unterminated\nlang: en\n---\n\nbody\n',
@@ -446,7 +446,7 @@ def test_resolve_inbox_malformed_frontmatter(registry: ReadingSourceRegistry, va
     )
 
     caplog.set_level("WARNING", logger="nakama.shared.reading_source_registry")
-    rs = registry.resolve(InboxKey("Inbox/kb/broken.md"))
+    rs = registry.resolve(InboxKey("Inbox/web/broken.md"))
 
     assert rs is None
     assert any(

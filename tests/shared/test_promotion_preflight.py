@@ -93,7 +93,7 @@ def _ebook_source(
 
 def _inbox_source(
     *,
-    relative_path: str = "Inbox/kb/foo.md",
+    relative_path: str = "Inbox/web/foo.md",
     has_evidence_track: bool = True,
     primary_lang: str = "en",
     evidence_reason: str | None = None,
@@ -216,11 +216,11 @@ def test_preflight_high_quality_inbox():
     """T2: inbox doc with has_evidence_track=True, ~5k words across 3
     sections, full frontmatter. Expect proceed_full_promotion."""
     rs = _inbox_source(
-        relative_path="Inbox/kb/foo.md",
+        relative_path="Inbox/web/foo.md",
         has_evidence_track=True,
         primary_lang="en",
     )
-    loader = _dict_loader({"Inbox/kb/foo.md": _long_inbox_md(5000)})
+    loader = _dict_loader({"Inbox/web/foo.md": _long_inbox_md(5000)})
 
     pf = PromotionPreflight(blob_loader=loader)
     report = pf.run(rs)
@@ -239,12 +239,12 @@ def test_preflight_bilingual_only_inbox_defaults_to_defer():
     reasons containing 'missing_evidence_track' AND 'low_confidence_lang';
     primary_lang_confidence='low'."""
     rs = _inbox_source(
-        relative_path="Inbox/kb/qux.md",
+        relative_path="Inbox/web/qux.md",
         has_evidence_track=False,
         primary_lang="en",
         evidence_reason="bilingual_only_inbox",
     )
-    loader = _dict_loader({"Inbox/kb/qux-bilingual.md": _long_inbox_md(5000)})
+    loader = _dict_loader({"Inbox/web/qux-bilingual.md": _long_inbox_md(5000)})
 
     pf = PromotionPreflight(blob_loader=loader)
     report = pf.run(rs)
@@ -304,12 +304,12 @@ def test_preflight_short_no_evidence_routes_to_annotation_only_sync():
     is 200..1000). Expect annotation_only_sync + reasons containing
     missing_evidence_track AND very_short."""
     rs = _inbox_source(
-        relative_path="Inbox/kb/short.md",
+        relative_path="Inbox/web/short.md",
         has_evidence_track=False,
         primary_lang="en",
         evidence_reason="bilingual_only_inbox",
     )
-    loader = _dict_loader({"Inbox/kb/short-bilingual.md": _long_inbox_md(600)})
+    loader = _dict_loader({"Inbox/web/short-bilingual.md": _long_inbox_md(600)})
 
     pf = PromotionPreflight(blob_loader=loader)
     report = pf.run(rs)
@@ -325,8 +325,8 @@ def test_preflight_short_no_evidence_routes_to_annotation_only_sync():
 def test_preflight_short_content_skips():
     """T6: inbox source ~150 words. Expect skip + reasons=['very_short']
     (skip dominates regardless of evidence)."""
-    rs = _inbox_source(relative_path="Inbox/kb/tiny.md", has_evidence_track=True)
-    loader = _dict_loader({"Inbox/kb/tiny.md": _long_inbox_md(150)})
+    rs = _inbox_source(relative_path="Inbox/web/tiny.md", has_evidence_track=True)
+    loader = _dict_loader({"Inbox/web/tiny.md": _long_inbox_md(150)})
 
     pf = PromotionPreflight(blob_loader=loader)
     report = pf.run(rs)
@@ -370,12 +370,12 @@ def test_preflight_lang_normalization_high_confidence(primary_lang):
     """T8: primary_lang variations with evidence_reason=None all yield
     primary_lang_confidence='high'."""
     rs = _inbox_source(
-        relative_path="Inbox/kb/lang.md",
+        relative_path="Inbox/web/lang.md",
         has_evidence_track=True,
         primary_lang=primary_lang,
         evidence_reason=None,
     )
-    loader = _dict_loader({"Inbox/kb/lang.md": _long_inbox_md(5000, lang=primary_lang)})
+    loader = _dict_loader({"Inbox/web/lang.md": _long_inbox_md(5000, lang=primary_lang)})
 
     pf = PromotionPreflight(blob_loader=loader)
     report = pf.run(rs)
@@ -418,13 +418,13 @@ def test_preflight_no_kb_write(tmp_path: Path):
     'vault' produces zero filesystem changes."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
 
     before = sorted(p.relative_to(vault) for p in vault.rglob("*"))
 
-    rs = _inbox_source(relative_path="Inbox/kb/foo.md", has_evidence_track=True)
-    loader = _dict_loader({"Inbox/kb/foo.md": _long_inbox_md(5000)})
+    rs = _inbox_source(relative_path="Inbox/web/foo.md", has_evidence_track=True)
+    loader = _dict_loader({"Inbox/web/foo.md": _long_inbox_md(5000)})
 
     pf = PromotionPreflight(blob_loader=loader)
     pf.run(rs)
@@ -656,7 +656,7 @@ def test_preflight_malformed_frontmatter_routes_to_defer():
     shared.utils.extract_frontmatter swallows YAMLError silently — preflight's
     strict variant must NOT, otherwise a malformed inbox could pass as a
     falsely-clean preflight."""
-    rs = _inbox_source(relative_path="Inbox/kb/bad.md", has_evidence_track=True)
+    rs = _inbox_source(relative_path="Inbox/web/bad.md", has_evidence_track=True)
     # Malformed YAML: unclosed bracket. yaml.safe_load raises YAMLError.
     bad_content = b"---\ntitle: [unclosed\nlang: en\n---\n# Section\nbody text " * 100
 

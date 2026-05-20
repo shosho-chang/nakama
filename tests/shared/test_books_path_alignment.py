@@ -46,7 +46,7 @@ def two_root_layout(tmp_path: Path, monkeypatch) -> tuple[Path, Path, str]:
     ``get_book`` lookup works without a real app boot.
     """
     vault = tmp_path / "Shosho LifeOS"
-    (vault / "Inbox" / "kb").mkdir(parents=True)
+    (vault / "Inbox" / "web").mkdir(parents=True)
     (vault / "KB" / "Wiki" / "Concepts").mkdir(parents=True)
 
     # Books deliberately live OUTSIDE the vault — exactly the
@@ -105,7 +105,7 @@ def test_lister_surfaces_book_when_books_root_is_outside_vault(
     registry = ReadingSourceRegistry(vault_root=vault)
     lister = RegistryReadingSourceLister(
         registry=registry,
-        inbox_root=vault / "Inbox" / "kb",
+        inbox_root=vault / "Inbox" / "web",
         books_root=book_storage.books_root(),  # ← THE F06 fix
     )
 

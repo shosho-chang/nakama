@@ -181,7 +181,7 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
     source_resolver = RegistrySourceResolver(registry=registry)
     source_lister = RegistryReadingSourceLister(
         registry=registry,
-        inbox_root=config.vault_root / "Inbox" / "kb",
+        inbox_root=config.vault_root / "Inbox" / "web",
         books_root=books_root_path,
     )
     kb_index = VaultKBConceptIndex(

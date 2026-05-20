@@ -210,7 +210,7 @@ def test_st2_service_start_review_chains_preflight_builder_engine():
     then concept engine (matcher), and persists the resulting manifest.
     """
     rs = ReadingSource(
-        source_id="inbox:Inbox/kb/sample.md",
+        source_id="inbox:Inbox/web/sample.md",
         annotation_key="sample",
         kind="inbox_document",
         title="Sample",
@@ -222,7 +222,7 @@ def test_st2_service_start_review_chains_preflight_builder_engine():
                 role="original",
                 format="markdown",
                 lang="en",
-                path="Inbox/kb/sample.md",
+                path="Inbox/web/sample.md",
             )
         ],
     )
@@ -230,8 +230,8 @@ def test_st2_service_start_review_chains_preflight_builder_engine():
     store = _DictManifestStore()
     service = _build_service(manifest_store=store, sources=[rs], call_log=call_log)
 
-    manifest = service.start_review("inbox:Inbox/kb/sample.md")
-    assert manifest.source_id == "inbox:Inbox/kb/sample.md"
+    manifest = service.start_review("inbox:Inbox/web/sample.md")
+    assert manifest.source_id == "inbox:Inbox/web/sample.md"
     assert manifest.status == "needs_review"
 
     # Builder extractor was called BEFORE the engine matcher.
@@ -240,7 +240,7 @@ def test_st2_service_start_review_chains_preflight_builder_engine():
     assert call_log.index("extractor") < call_log.index("matcher")
 
     # Manifest persisted via the store.
-    reloaded = store.load("inbox:Inbox/kb/sample.md")
+    reloaded = store.load("inbox:Inbox/web/sample.md")
     assert reloaded is not None
     assert reloaded.manifest_id == manifest.manifest_id
 
@@ -272,7 +272,7 @@ def test_st2b_service_start_review_refuses_overwrite_when_decisions_exist():
                 role="original",
                 format="markdown",
                 lang="en",
-                path="Inbox/kb/sample.md",
+                path="Inbox/web/sample.md",
             )
         ],
     )

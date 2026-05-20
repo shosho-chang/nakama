@@ -4,7 +4,7 @@ Slice 10 / N518a).
 Brief §5 AT4-AT7:
 
 - AT4 ``resolve("ebook:abc123")`` delegates to registry, returns its result.
-- AT5 ``resolve("inbox:Inbox/kb/foo.md")`` works without parsing the path.
+- AT5 ``resolve("inbox:Inbox/web/foo.md")`` works without parsing the path.
 - AT6 Registry says missing → resolver returns ``None`` (NOT raises).
 - AT7 Mock registry; assert ``resolver.resolve(id)`` calls
   ``registry.resolve`` exactly once with a key derived from the raw id.
@@ -42,7 +42,7 @@ def _ebook_source(book_id: str = "abc123") -> ReadingSource:
     )
 
 
-def _inbox_source(rel_path: str = "Inbox/kb/foo.md") -> ReadingSource:
+def _inbox_source(rel_path: str = "Inbox/web/foo.md") -> ReadingSource:
     return ReadingSource(
         source_id=f"inbox:{rel_path}",
         annotation_key="foo",
@@ -86,12 +86,12 @@ def test_at4_registry_source_resolver_resolves_ebook_namespace():
 
 
 def test_at5_registry_source_resolver_resolves_inbox_namespace():
-    expected = _inbox_source("Inbox/kb/foo.md")
+    expected = _inbox_source("Inbox/web/foo.md")
     fake_registry = MagicMock()
     fake_registry.resolve.return_value = expected
 
     resolver = RegistrySourceResolver(registry=fake_registry)
-    out = resolver.resolve("inbox:Inbox/kb/foo.md")
+    out = resolver.resolve("inbox:Inbox/web/foo.md")
 
     assert out is expected
     fake_registry.resolve.assert_called_once()
@@ -99,7 +99,7 @@ def test_at5_registry_source_resolver_resolves_inbox_namespace():
     assert isinstance(key, InboxKey)
     # Key's relative_path is the raw post-namespace string — NOT parsed
     # as a filesystem path.
-    assert key.relative_path == "Inbox/kb/foo.md"
+    assert key.relative_path == "Inbox/web/foo.md"
 
 
 # ── AT6 — unknown returns None ───────────────────────────────────────────────
@@ -111,7 +111,7 @@ def test_at6_registry_source_resolver_unknown_returns_none():
 
     resolver = RegistrySourceResolver(registry=fake_registry)
     assert resolver.resolve("ebook:does-not-exist") is None
-    assert resolver.resolve("inbox:Inbox/kb/missing.md") is None
+    assert resolver.resolve("inbox:Inbox/web/missing.md") is None
 
 
 def test_resolver_unknown_namespace_returns_none_without_registry_call():
@@ -152,7 +152,7 @@ def test_at7_registry_source_resolver_never_parses_path():
     resolver = RegistrySourceResolver(registry=fake_registry)
     # Use a path-shaped id that would tempt a naive impl to walk
     # filesystem segments. Resolver should pass it whole.
-    raw_id = "inbox:Inbox/kb/some-deep/path.md"
+    raw_id = "inbox:Inbox/web/some-deep/path.md"
     resolver.resolve(raw_id)
 
     fake_registry.resolve.assert_called_once()
@@ -160,7 +160,7 @@ def test_at7_registry_source_resolver_never_parses_path():
     assert isinstance(key, InboxKey)
     # Whole post-namespace string preserved verbatim — adapter did NOT
     # split / collapse / canonicalize.
-    assert key.relative_path == "Inbox/kb/some-deep/path.md"
+    assert key.relative_path == "Inbox/web/some-deep/path.md"
 
 
 def test_resolver_does_not_import_book_storage_or_fastapi():

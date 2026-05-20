@@ -27,7 +27,7 @@ from shared.schemas.books import Book
 
 @pytest.fixture
 def vault(tmp_path: Path) -> Path:
-    inbox = tmp_path / "Inbox" / "kb"
+    inbox = tmp_path / "Inbox" / "web"
     inbox.mkdir(parents=True)
     books = tmp_path / "data" / "books"
     books.mkdir(parents=True)
@@ -52,7 +52,7 @@ def registry(vault: Path, books_dir: Path) -> ReadingSourceRegistry:
 def lister(registry: ReadingSourceRegistry, vault: Path) -> RegistryReadingSourceLister:
     return RegistryReadingSourceLister(
         registry=registry,
-        inbox_root=vault / "Inbox" / "kb",
+        inbox_root=vault / "Inbox" / "web",
         books_root=vault / "data" / "books",
     )
 
@@ -90,7 +90,7 @@ def _store_book(book_id: str, *, has_original: bool = True, language: str = "en"
 def _write_inbox(vault: Path, name: str, *, body: str = "body", lang: str = "en") -> Path:
     """Write a minimal inbox markdown file with frontmatter + body."""
     fm = f"---\ntitle: {name}\nlang: {lang}\n---\n{body}\n"
-    path = vault / "Inbox" / "kb" / name
+    path = vault / "Inbox" / "web" / name
     path.write_text(fm, encoding="utf-8")
     return path
 
@@ -127,7 +127,7 @@ def test_at9_lister_inbox_original_only(lister: RegistryReadingSourceLister, vau
 
     assert len(inbox_sources) == 1
     rs = inbox_sources[0]
-    assert rs.source_id == "inbox:Inbox/kb/foo.md"
+    assert rs.source_id == "inbox:Inbox/web/foo.md"
     assert rs.has_evidence_track is True
     assert rs.evidence_reason is None
 
@@ -150,7 +150,7 @@ def test_at10_lister_inbox_original_plus_bilingual_collapsed(
     # ``-bilingual.md`` suffix, so both file walks resolve to the same id.
     assert len(inbox_sources) == 1
     rs = inbox_sources[0]
-    assert rs.source_id == "inbox:Inbox/kb/foo.md"
+    assert rs.source_id == "inbox:Inbox/web/foo.md"
     assert rs.has_evidence_track is True
     # Two variants: the original (markdown) + the bilingual display sibling.
     roles = {v.role for v in rs.variants}
@@ -176,7 +176,7 @@ def test_at11_lister_inbox_bilingual_only_missing_evidence(
     # Source id projects to the logical original even though only the
     # bilingual exists on disk (#509 NB3 — source_id is logical identity,
     # not a filesystem lookup key).
-    assert rs.source_id == "inbox:Inbox/kb/foo.md"
+    assert rs.source_id == "inbox:Inbox/web/foo.md"
     assert rs.has_evidence_track is False
     assert rs.evidence_reason == "bilingual_only_inbox"
 
@@ -189,18 +189,18 @@ def test_at12_lister_skips_unsafe_paths_dotfiles_and_non_md(
 ):
     """Dotfiles and non-``.md`` files are silently ignored."""
     # Dotfile (``.DS_Store``-style) should be skipped.
-    (vault / "Inbox" / "kb" / ".hidden.md").write_text("---\n---\n", encoding="utf-8")
+    (vault / "Inbox" / "web" / ".hidden.md").write_text("---\n---\n", encoding="utf-8")
     # Non-md extension.
-    (vault / "Inbox" / "kb" / "notes.txt").write_text("plain text", encoding="utf-8")
+    (vault / "Inbox" / "web" / "notes.txt").write_text("plain text", encoding="utf-8")
     # Subdirectory shouldn't surface as a candidate either.
-    (vault / "Inbox" / "kb" / "subdir").mkdir()
+    (vault / "Inbox" / "web" / "subdir").mkdir()
     # One real file so we can assert the lister still works.
     _write_inbox(vault, "real.md", lang="en")
 
     sources = lister.list_sources()
     inbox_sources = [rs for rs in sources if rs.kind == "inbox_document"]
     assert len(inbox_sources) == 1
-    assert inbox_sources[0].source_id == "inbox:Inbox/kb/real.md"
+    assert inbox_sources[0].source_id == "inbox:Inbox/web/real.md"
 
 
 @pytest.mark.skipif(
@@ -213,7 +213,7 @@ def test_lister_skips_symlinks(lister: RegistryReadingSourceLister, vault: Path,
     target = tmp_path / "outside.md"
     target.write_text("---\n---\nbody", encoding="utf-8")
     # Symlink in the inbox.
-    link = vault / "Inbox" / "kb" / "linked.md"
+    link = vault / "Inbox" / "web" / "linked.md"
     os.symlink(target, link)
     # Plus one real file.
     _write_inbox(vault, "real.md", lang="en")
@@ -221,7 +221,7 @@ def test_lister_skips_symlinks(lister: RegistryReadingSourceLister, vault: Path,
     sources = lister.list_sources()
     inbox_sources = [rs for rs in sources if rs.kind == "inbox_document"]
     assert len(inbox_sources) == 1
-    assert inbox_sources[0].source_id == "inbox:Inbox/kb/real.md"
+    assert inbox_sources[0].source_id == "inbox:Inbox/web/real.md"
 
 
 # ── Empty roots ─────────────────────────────────────────────────────────────

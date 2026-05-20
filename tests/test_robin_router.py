@@ -170,7 +170,7 @@ def test_get_inbox_files_lists_supported_extensions(client, vault):
     _, mod = client
     from agents.robin.agent import EXTENSION_TO_RAW_DIR
 
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     # Pick any supported extension
     ext = next(iter(EXTENSION_TO_RAW_DIR.keys()))
@@ -194,7 +194,7 @@ def test_get_inbox_files_extracts_title_from_frontmatter(client, vault):
     這個 test 守住 _get_inbox_files 必須暴露 frontmatter.title 給 template 用。
     """
     _, mod = client
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     pretty = inbox / "uglyslug.md"
     pretty.write_text(
@@ -216,7 +216,7 @@ def test_get_inbox_files_synthesizes_status_for_web_clipper(client, vault):
     the inbox list shows them with the ✅ icon and a meaningful source label.
     """
     _, mod = client
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     clipped = inbox / "clipped-paper.md"
     clipped.write_text(
@@ -269,7 +269,7 @@ def test_get_inbox_files_does_not_overwrite_explicit_status(client, vault):
     """File with explicit fulltext_status is not touched by the Web Clipper
     synthesiser (status stays whatever the user / pipeline wrote)."""
     _, mod = client
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     f = inbox / "explicit.md"
     f.write_text(
@@ -291,7 +291,7 @@ def test_get_inbox_files_small_file_shows_bytes(client, vault):
     _, mod = client
     from agents.robin.agent import EXTENSION_TO_RAW_DIR
 
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     ext = next(iter(EXTENSION_TO_RAW_DIR.keys()))
     small = inbox / f"small{ext}"
@@ -304,7 +304,7 @@ def test_get_inbox_files_small_file_shows_bytes(client, vault):
 def test_resolve_reader_base_inbox(client):
     _, mod = client
     p = mod._resolve_reader_base("inbox")
-    assert p.name == "kb"
+    assert p.name == "web"
 
 
 def test_resolve_reader_base_sources(client):
@@ -354,7 +354,7 @@ def test_read_source_unauth_redirect(auth_client):
 
 def test_read_source_missing_file_404(client, vault):
     tc, _ = client
-    (vault / "Inbox" / "kb").mkdir(parents=True)
+    (vault / "Inbox" / "web").mkdir(parents=True)
     r = tc.get("/robin/read", params={"file": "nonexistent.md"})
     assert r.status_code == 404
 
@@ -363,7 +363,7 @@ def test_read_source_unsupported_extension_400(client, vault, monkeypatch):
     tc, mod = client
     # Stub fetch_images to avoid network
     monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     (inbox / "foo.pdf").write_bytes(b"fake pdf")
 
@@ -374,7 +374,7 @@ def test_read_source_unsupported_extension_400(client, vault, monkeypatch):
 def test_read_source_happy_path_md(client, vault, monkeypatch):
     tc, mod = client
     monkeypatch.setattr(mod, "fetch_images", lambda p: 2)  # 觸發 logger.info 分支
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     (inbox / "foo.md").write_text("---\ntitle: Foo\n---\nbody content", encoding="utf-8")
 
@@ -398,7 +398,7 @@ def test_read_source_passes_existing_annotations(client, vault, monkeypatch):
 
     monkeypatch.setattr(robin_mod, "fetch_images", lambda p: 0)
 
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     (inbox / "bar.md").write_text("# Bar\n\nHello world", encoding="utf-8")
 
@@ -432,7 +432,7 @@ def test_read_source_without_frontmatter(client, vault, monkeypatch):
     """frontmatter 為空 dict → frontmatter_raw 為空字串分支。"""
     tc, mod = client
     monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     (inbox / "plain.md").write_text("just plain text, no fm", encoding="utf-8")
 
@@ -542,7 +542,7 @@ def test_save_annotations_does_not_mutate_source(client, vault, monkeypatch):
     importlib.reload(ann_mod)
     importlib.reload(robin_mod)
 
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     source_text = "# Pure Source\n\nSome content here."
     (inbox / "doc.md").write_text(source_text, encoding="utf-8")
@@ -586,7 +586,7 @@ def test_mark_read_auth_required(auth_client):
 
 def test_mark_read_missing_file_404(client, vault):
     tc, _ = client
-    (vault / "Inbox" / "kb").mkdir(parents=True)
+    (vault / "Inbox" / "web").mkdir(parents=True)
     r = tc.post("/robin/mark-read", data={"filename": "missing.md"})
     assert r.status_code == 404
 
@@ -595,7 +595,7 @@ def test_mark_read_happy_path(client, vault, monkeypatch):
     tc, mod = client
     captured = {}
     monkeypatch.setattr(mod, "mark_file_read", lambda p: captured.setdefault("path", p))
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     (inbox / "foo.md").write_text("x", encoding="utf-8")
 
@@ -641,14 +641,14 @@ def test_start_unauth_redirect(auth_client):
 
 def test_start_missing_file_404(client, vault):
     tc, _ = client
-    (vault / "Inbox" / "kb").mkdir(parents=True)
+    (vault / "Inbox" / "web").mkdir(parents=True)
     r = tc.post("/start", data={"filename": "missing.md"})
     assert r.status_code == 404
 
 
 def test_start_happy_path_creates_session(client, vault):
     tc, mod = client
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     (inbox / "foo.md").write_text("content", encoding="utf-8")
 

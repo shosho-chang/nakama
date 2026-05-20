@@ -50,7 +50,7 @@ def _make_minimal_vault(root: Path) -> Path:
 
     Returns the vault root (for use as ``VAULT_PATH``).
     """
-    (root / "Inbox" / "kb").mkdir(parents=True)
+    (root / "Inbox" / "web").mkdir(parents=True)
     (root / "data" / "books").mkdir(parents=True)
     (root / "KB" / "Wiki" / "Concepts").mkdir(parents=True)
     return root

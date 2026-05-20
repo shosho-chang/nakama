@@ -211,7 +211,7 @@ def test_rt1_list_pending_renders_preflighted_sources(
             manifest_status=None,
         ),
         PromotionReviewState(
-            source_id="inbox:Inbox/kb/beta-article.md",
+            source_id="inbox:Inbox/web/beta-article.md",
             primary_lang="en",
             preflight_action="proceed_with_warnings",
             preflight_summary="proceed_with_warnings · 1ch · 1500w · risks: weak_toc",
@@ -223,12 +223,12 @@ def test_rt1_list_pending_renders_preflighted_sources(
     assert r.status_code == 200
     body = r.text
     assert "ebook:alpha-book" in body
-    assert "inbox:Inbox/kb/beta-article.md" in body
+    assert "inbox:Inbox/web/beta-article.md" in body
     assert "proceed_full_promotion" in body
     assert "proceed_with_warnings" in body
     # The list view links to encoded URLs.
     assert _b64("ebook:alpha-book") in body
-    assert _b64("inbox:Inbox/kb/beta-article.md") in body
+    assert _b64("inbox:Inbox/web/beta-article.md") in body
 
 
 # ── RT2 — review surface renders items ──────────────────────────────────────
@@ -346,13 +346,13 @@ def test_rt7_commit_disabled_when_no_approvals(
 def test_rt8_start_review_runs_builder_and_engine(
     app_client: TestClient, fake_service: FakePromotionReviewService
 ):
-    encoded = _b64("inbox:Inbox/kb/gamma.md")
+    encoded = _b64("inbox:Inbox/web/gamma.md")
     r = app_client.post(f"/robin/promotion/source/{encoded}/start")
     assert r.status_code == 303
     assert r.headers["location"] == f"/robin/promotion/source/{encoded}"
-    assert fake_service.start_calls == ["inbox:Inbox/kb/gamma.md"]
+    assert fake_service.start_calls == ["inbox:Inbox/web/gamma.md"]
     # Manifest now exists in the fake store.
-    assert "inbox:Inbox/kb/gamma.md" in fake_service.manifests
+    assert "inbox:Inbox/web/gamma.md" in fake_service.manifests
 
 
 # ── RT9 — static import-set check (U1 invariant) ────────────────────────────
@@ -403,7 +403,7 @@ def test_rt10_source_id_b64_encoding_round_trips(
     """U4: handler decodes base64url source_id back to the original opaque
     string and does NOT parse the inner namespace prefix. Test with a
     source_id containing both ``:`` and ``/`` characters."""
-    weird_source_id = "inbox:Inbox/kb/foo bar/baz.md"
+    weird_source_id = "inbox:Inbox/web/foo bar/baz.md"
     manifest = _load_no_decisions_manifest()
     # Reuse the no-decisions manifest but override the source_id to exercise
     # the decode round-trip with funky characters.
