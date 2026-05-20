@@ -14,8 +14,8 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("WEB_SECRET", "testsecret")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-    # vault 結構：Inbox/kb + KB/Wiki/Sources + KB/Attachments/pubmed
-    (tmp_path / "Inbox" / "kb").mkdir(parents=True)
+    # vault 結構：Inbox/web + KB/Wiki/Sources + KB/Attachments/pubmed
+    (tmp_path / "Inbox" / "web").mkdir(parents=True)
     (tmp_path / "KB" / "Wiki" / "Sources").mkdir(parents=True)
     (tmp_path / "KB" / "Attachments" / "pubmed").mkdir(parents=True)
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
@@ -240,7 +240,7 @@ def test_read_base_rejects_unknown(client):
 def test_read_base_defaults_to_inbox(client, tmp_path):
     """不帶 base 時 default inbox，維持向後相容。"""
     auth = _auth_cookie(client)
-    inbox = tmp_path / "Inbox" / "kb"
+    inbox = tmp_path / "Inbox" / "web"
     (inbox / "hello.md").write_text("# Hello\n\nWorld.", encoding="utf-8")
 
     resp = client.get("/robin/read?file=hello.md", cookies={"nakama_auth": auth})

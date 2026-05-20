@@ -43,7 +43,7 @@ def client(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("WEB_SECRET", "testsecret")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-    inbox = tmp_path / "Inbox" / "kb"
+    inbox = tmp_path / "Inbox" / "web"
     inbox.mkdir(parents=True)
     (tmp_path / "KB" / "Annotations").mkdir(parents=True)
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
@@ -102,7 +102,7 @@ def test_discard_info_no_annotation_returns_zero(client):
     """Fresh inbox file with no annotation companion → count == 0."""
     tc, vault = client
     auth = _auth_cookie(tc)
-    src = vault / "Inbox" / "kb" / "fresh.md"
+    src = vault / "Inbox" / "web" / "fresh.md"
     _write_source(src, title="Fresh Article")
 
     resp = tc.get("/robin/discard-info?file=fresh.md", cookies={"nakama_auth": auth})
@@ -117,7 +117,7 @@ def test_discard_info_counts_existing_annotations(client):
     tc, vault = client
     auth = _auth_cookie(tc)
 
-    src = vault / "Inbox" / "kb" / "studied.md"
+    src = vault / "Inbox" / "web" / "studied.md"
     _write_source(src, title="Studied Paper")
 
     # Pre-populate annotation file (the AnnotationStore reads VAULT_PATH from
@@ -156,7 +156,7 @@ def test_discard_redirects_to_inbox(client, monkeypatch):
     """Successful discard returns 303 → ``/`` (so 修修 lands on refreshed inbox)."""
     tc, vault = client
     auth = _auth_cookie(tc)
-    src = vault / "Inbox" / "kb" / "to-trash.md"
+    src = vault / "Inbox" / "web" / "to-trash.md"
     _write_source(src, title="To Trash")
 
     # Run on Linux branch (real unlink) so we don't shell out.
@@ -174,7 +174,7 @@ def test_discard_recycles_source_on_linux(client, monkeypatch):
     """Linux branch: unlink the file directly (no subprocess shellout)."""
     tc, vault = client
     auth = _auth_cookie(tc)
-    src = vault / "Inbox" / "kb" / "linux-discard.md"
+    src = vault / "Inbox" / "web" / "linux-discard.md"
     _write_source(src)
 
     monkeypatch.setattr(platform, "system", lambda: "Linux")
@@ -196,7 +196,7 @@ def test_discard_recycles_source_on_windows_via_powershell(client, monkeypatch):
 
     tc, vault = client
     auth = _auth_cookie(tc)
-    src = vault / "Inbox" / "kb" / "win-discard.md"
+    src = vault / "Inbox" / "web" / "win-discard.md"
     _write_source(src)
 
     monkeypatch.setattr(platform, "system", lambda: "Windows")
@@ -233,7 +233,7 @@ def test_discard_recycles_annotation_companion(client, monkeypatch):
     tc, vault = client
     auth = _auth_cookie(tc)
 
-    src = vault / "Inbox" / "kb" / "with-notes.md"
+    src = vault / "Inbox" / "web" / "with-notes.md"
     _write_source(src, title="With Notes")
 
     from shared.annotation_store import AnnotationSet, AnnotationStore, Highlight
@@ -264,7 +264,7 @@ def test_discard_skips_annotation_when_not_present(client, monkeypatch):
     tc, vault = client
     auth = _auth_cookie(tc)
 
-    src = vault / "Inbox" / "kb" / "alone.md"
+    src = vault / "Inbox" / "web" / "alone.md"
     _write_source(src, title="Alone")
 
     monkeypatch.setattr(platform, "system", lambda: "Linux")
@@ -329,7 +329,7 @@ def test_discard_uses_discard_service_caller_binding(client, monkeypatch):
     """
     tc, vault = client
     auth = _auth_cookie(tc)
-    src = vault / "Inbox" / "kb" / "intercepted.md"
+    src = vault / "Inbox" / "web" / "intercepted.md"
     _write_source(src, title="Intercepted")
 
     monkeypatch.setattr(platform, "system", lambda: "Linux")

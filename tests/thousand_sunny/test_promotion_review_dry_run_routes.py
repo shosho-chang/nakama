@@ -69,7 +69,7 @@ def _reload_app_modules() -> object:
 
 def _make_minimal_vault(root: Path) -> Path:
     """Create the directory tree the lifespan expects."""
-    (root / "Inbox" / "kb").mkdir(parents=True)
+    (root / "Inbox" / "web").mkdir(parents=True)
     (root / "data" / "books").mkdir(parents=True)
     (root / "KB" / "Wiki" / "Concepts").mkdir(parents=True)
     return root

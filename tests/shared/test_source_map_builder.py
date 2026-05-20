@@ -120,7 +120,7 @@ def _ebook_source_no_evidence(
 
 def _inbox_source(
     *,
-    relative_path: str = "Inbox/kb/foo.md",
+    relative_path: str = "Inbox/web/foo.md",
     primary_lang: str = "en",
 ) -> ReadingSource:
     return ReadingSource(
@@ -334,9 +334,9 @@ def test_build_long_source_emits_per_chapter_items():
 def test_build_short_source_emits_single_item():
     """T2: short markdown (no headings, well below long threshold) → exactly
     one item with ``chapter_ref='whole'``."""
-    rs = _inbox_source(relative_path="Inbox/kb/short_no_headings.md")
+    rs = _inbox_source(relative_path="Inbox/web/short_no_headings.md")
     body = (FIXTURES_DIR / "short_no_headings.md").read_bytes()
-    loader = _dict_loader({"Inbox/kb/short_no_headings.md": body})
+    loader = _dict_loader({"Inbox/web/short_no_headings.md": body})
 
     builder = SourceMapBuilder(blob_loader=loader)
     result = builder.build(rs, _CannedExtractor(_full_extraction()))
@@ -773,8 +773,8 @@ def test_build_inbox_section_split_on_headings():
         f"# Section Three\n\n{long_section_body}\n"
     )
 
-    rs = _inbox_source(relative_path="Inbox/kb/long_three.md")
-    loader = _dict_loader({"Inbox/kb/long_three.md": md.encode("utf-8")})
+    rs = _inbox_source(relative_path="Inbox/web/long_three.md")
+    loader = _dict_loader({"Inbox/web/long_three.md": md.encode("utf-8")})
 
     extractor = _PerChapterExtractor(
         {
@@ -799,9 +799,9 @@ def test_build_inbox_short_three_sections_collapses_to_whole():
     chars). Builder still splits on headings at inspection time, then the
     layout decision routes to the short-source path → single ``whole``
     consolidated item. Confirms file fixture is wired in correctly."""
-    rs = _inbox_source(relative_path="Inbox/kb/three_sections.md")
+    rs = _inbox_source(relative_path="Inbox/web/three_sections.md")
     body = (FIXTURES_DIR / "three_sections.md").read_bytes()
-    loader = _dict_loader({"Inbox/kb/three_sections.md": body})
+    loader = _dict_loader({"Inbox/web/three_sections.md": body})
 
     extractor = _PerChapterExtractor(
         {

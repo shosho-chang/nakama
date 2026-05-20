@@ -44,9 +44,9 @@ from shared.discard_service import DiscardReport, DiscardService, _send_to_recyc
 
 @pytest.fixture
 def vault(tmp_path: Path, monkeypatch) -> Path:
-    """Vault dir + KB/Annotations + Inbox/kb subdirs ready."""
+    """Vault dir + KB/Annotations + Inbox/web subdirs ready."""
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
-    (tmp_path / "Inbox" / "kb").mkdir(parents=True)
+    (tmp_path / "Inbox" / "web").mkdir(parents=True)
     (tmp_path / "KB" / "Annotations").mkdir(parents=True)
     return tmp_path
 
@@ -58,7 +58,7 @@ def annotations_dir(vault: Path) -> Path:
 
 @pytest.fixture
 def inbox(vault: Path) -> Path:
-    return vault / "Inbox" / "kb"
+    return vault / "Inbox" / "web"
 
 
 def _write_source(path: Path, *, title: str = "Test Article") -> None:

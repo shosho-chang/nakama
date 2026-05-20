@@ -161,7 +161,7 @@ def _mock_summarizing_io(monkeypatch, mod, *, summary_text: str = "fake summary"
 
 def test_events_step_summarizing_md_happy_path(client, vault, monkeypatch):
     tc, mod = client
-    raw = vault / "Inbox" / "kb" / "fake.md"
+    raw = vault / "Inbox" / "web" / "fake.md"
     raw.parent.mkdir(parents=True)
     raw.write_text("# Title\n\nbody content")
     sid = mod._new_session(
@@ -188,7 +188,7 @@ def test_events_step_summarizing_md_happy_path(client, vault, monkeypatch):
 def test_events_step_summarizing_md_with_frontmatter(client, vault, monkeypatch):
     """有 frontmatter 的 md 檔，title/author 從 fm 取。"""
     tc, mod = client
-    raw = vault / "Inbox" / "kb" / "with-fm.md"
+    raw = vault / "Inbox" / "web" / "with-fm.md"
     raw.parent.mkdir(parents=True)
     raw.write_text("---\ntitle: Custom Title\nauthor: Jane Doe\n---\nbody")
     sid = mod._new_session(
@@ -240,7 +240,7 @@ def test_events_step_summarizing_raw_path_outside_vault_fallback(
 def test_events_step_summarizing_pdf_path(client, vault, monkeypatch):
     """PDF 走 parse_pdf 路徑，需 mock 該 import。"""
     tc, mod = client
-    raw = vault / "Inbox" / "kb" / "fake.pdf"
+    raw = vault / "Inbox" / "web" / "fake.pdf"
     raw.parent.mkdir(parents=True)
     raw.write_bytes(b"%PDF-1.4\nfake")
     sid = mod._new_session(
@@ -268,7 +268,7 @@ def test_events_step_summarizing_large_doc_announces_chunking(client, vault, mon
     """超過 LARGE_DOC_THRESHOLD → 應提示 Map-Reduce 分段。"""
     tc, mod = client
     big_text = "x" * (mod.pipeline.LARGE_DOC_THRESHOLD + 100)
-    raw = vault / "Inbox" / "kb" / "big.md"
+    raw = vault / "Inbox" / "web" / "big.md"
     raw.parent.mkdir(parents=True)
     raw.write_text(big_text)
     sid = mod._new_session(
@@ -358,7 +358,7 @@ def test_events_step_planning_none_plan_falls_back_to_empty(client, monkeypatch)
 
 def test_events_step_executing_redirects_to_done(client, vault, monkeypatch):
     tc, mod = client
-    raw = vault / "Inbox" / "kb" / "exec.md"
+    raw = vault / "Inbox" / "web" / "exec.md"
     raw.parent.mkdir(parents=True)
     raw.write_text("hi")
     sid = mod._new_session(
@@ -416,7 +416,7 @@ def test_events_step_executing_falls_back_to_raw_stem_when_title_missing(
 ):
     """sess["_title"] 不存在 → 使用 raw_path stem 當 title。"""
     tc, mod = client
-    raw = vault / "Inbox" / "kb" / "stem-title.md"
+    raw = vault / "Inbox" / "web" / "stem-title.md"
     raw.parent.mkdir(parents=True)
     raw.write_text("hi")
     sid = mod._new_session(
@@ -485,7 +485,7 @@ def test_events_exception_during_processing_yields_error_and_marks_session(
 ):
     """summarizing 時 _generate_summary 拋例外 → SSE yield error event + sess.step="error"。"""
     tc, mod = client
-    raw = vault / "Inbox" / "kb" / "boom.md"
+    raw = vault / "Inbox" / "web" / "boom.md"
     raw.parent.mkdir(parents=True)
     raw.write_text("body")
     sid = mod._new_session(

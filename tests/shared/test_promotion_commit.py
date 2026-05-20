@@ -697,7 +697,7 @@ def test_commit_migrates_inbox_attachments_for_source_page(tmp_path: Path):
     """ADR-028 §7: after writing KB/Wiki/Sources/{slug}/...md, companion
     images at {inbox}/attachments/{slug}/ move to KB/Attachments/{slug}/."""
     slug = "my-article"
-    inbox = tmp_path / "Inbox" / "kb"
+    inbox = tmp_path / "Inbox" / "web"
     inbox.mkdir(parents=True)
     inbox_md = inbox / f"{slug}.md"
     inbox_md.write_text("# raw", encoding="utf-8")
@@ -715,7 +715,7 @@ def test_commit_migrates_inbox_attachments_for_source_page(tmp_path: Path):
         evidence=[
             EvidenceAnchor(
                 kind="frontmatter_field",
-                source_path=f"Inbox/kb/{slug}.md",
+                source_path=f"Inbox/web/{slug}.md",
                 locator="original_url",
                 excerpt="https://example.com",
                 confidence=0.9,

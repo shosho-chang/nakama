@@ -17,7 +17,7 @@ reader header after eyeballing the original-language fulltext:
   re-running ``translate_document`` (mirrors ``/pubmed-to-reader`` line
   499 short-circuit pattern). The short-circuit redirect IS direct to
   the bilingual reader because the file is already there — no race.
-- Before scheduling the BG task, the original ``Inbox/kb/{slug}.md``
+- Before scheduling the BG task, the original ``Inbox/web/{slug}.md``
   frontmatter is flipped to ``fulltext_status: translating``. After BG
   completes it's flipped to ``translated`` (acceptance #4).
 - Translator failure leaves the source frontmatter on ``translating``
@@ -49,7 +49,7 @@ def client(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("WEB_SECRET", "testsecret")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-    inbox = tmp_path / "Inbox" / "kb"
+    inbox = tmp_path / "Inbox" / "web"
     inbox.mkdir(parents=True)
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
 

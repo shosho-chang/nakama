@@ -183,8 +183,8 @@ def vault_and_books(tmp_path: Path) -> tuple[Path, Path]:
     books root has ``{book_id}/original.epub``.
     """
     vault = tmp_path / "vault"
-    (vault / "Inbox" / "kb").mkdir(parents=True)
-    (vault / "Inbox" / "kb" / "doc.md").write_bytes(b"vault inbox doc")
+    (vault / "Inbox" / "web").mkdir(parents=True)
+    (vault / "Inbox" / "web" / "doc.md").write_bytes(b"vault inbox doc")
 
     books = tmp_path / "books_outside_vault"
     (books / "abc").mkdir(parents=True)
@@ -203,7 +203,7 @@ def test_non_books_path_still_routes_to_vault(vault_and_books: tuple[Path, Path]
     """Vault paths keep going to vault even when books_root is configured."""
     vault, books = vault_and_books
     loader = VaultBlobLoader(vault_root=vault, books_root=books)
-    assert loader("Inbox/kb/doc.md") == b"vault inbox doc"
+    assert loader("Inbox/web/doc.md") == b"vault inbox doc"
 
 
 def test_books_root_strips_data_books_prefix(vault_and_books: tuple[Path, Path]):

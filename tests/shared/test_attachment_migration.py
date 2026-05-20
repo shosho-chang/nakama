@@ -16,7 +16,7 @@ def _seed_inbox(inbox: Path, slug: str, files: dict[str, bytes]) -> None:
 
 def test_happy_path_moves_files_and_rewrites_refs(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     slug = "my-article"
     _seed_inbox(inbox, slug, {"img-1.png": b"PNG", "img-2.webp": b"WEBP"})
@@ -50,7 +50,7 @@ def test_happy_path_moves_files_and_rewrites_refs(tmp_path: Path) -> None:
 
 def test_source_missing_is_noop_but_still_rewrites_refs(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     slug = "ghost"
     raw = vault / "KB" / "Raw" / "Articles" / f"{slug}.md"
@@ -69,7 +69,7 @@ def test_source_missing_is_noop_but_still_rewrites_refs(tmp_path: Path) -> None:
 
 def test_idempotent_rerun_is_safe(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     slug = "twice"
     _seed_inbox(inbox, slug, {"img-1.png": b"AAA"})
@@ -91,7 +91,7 @@ def test_idempotent_rerun_is_safe(tmp_path: Path) -> None:
 
 def test_dst_collision_with_different_content_is_skipped(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     slug = "collide"
     _seed_inbox(inbox, slug, {"img-1.png": b"NEW"})
@@ -109,7 +109,7 @@ def test_dst_collision_with_different_content_is_skipped(tmp_path: Path) -> None
 
 def test_no_rewrite_files_argument(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     slug = "a"
     _seed_inbox(inbox, slug, {"x.png": b"X"})
@@ -121,7 +121,7 @@ def test_no_rewrite_files_argument(tmp_path: Path) -> None:
 
 def test_rewrite_target_missing_is_skipped(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
-    inbox = vault / "Inbox" / "kb"
+    inbox = vault / "Inbox" / "web"
     inbox.mkdir(parents=True)
     slug = "s"
     _seed_inbox(inbox, slug, {"a.png": b"A"})
