@@ -13,7 +13,10 @@ const DARK_KEY = 'bookReaderDark';
 const darkToggle = document.getElementById('darkToggle');
 
 function applyDark(on) {
-  document.body.classList.toggle('dark', on);
+  // Shosho Design System v0.1: dark mode is driven by the `data-theme`
+  // attribute on `body.sho` (tokens.css keys off `.sho[data-theme="dark"]`),
+  // replacing the legacy `body.dark` class toggle.
+  document.body.dataset.theme = on ? 'dark' : 'light';
   darkToggle.setAttribute('aria-pressed', on ? 'true' : 'false');
   darkToggle.textContent = on ? '☀️ 日間' : '🌙 夜間';
   pushReaderStyles();
@@ -21,7 +24,7 @@ function applyDark(on) {
 
 function pushReaderStyles() {
   if (!view.renderer || typeof view.renderer.setStyles !== 'function') return;
-  const dark = document.body.classList.contains('dark');
+  const dark = document.body.dataset.theme === 'dark';
   const css = dark
     ? `html, body { background: #1a1a1a !important; color: #e0e0e0 !important; }
        a, a:visited { color: #9d97ff; }`
@@ -1435,7 +1438,7 @@ const initialDark = localStorage.getItem(DARK_KEY) === '1';
 applyDark(initialDark);
 
 darkToggle.addEventListener('click', () => {
-  const next = !document.body.classList.contains('dark');
+  const next = document.body.dataset.theme !== 'dark';
   localStorage.setItem(DARK_KEY, next ? '1' : '0');
   applyDark(next);
 });

@@ -1,0 +1,123 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Nakama Auth · login page styles (Design System v0.1 / --sho-* tokens)
+
+   Composes on top of `static/shosho/tokens.css`. The login template carries
+   `class="sho"` on <body> so design tokens cascade. Dark mode follows the
+   token sheet (auto via prefers-color-scheme) — no page-level toggle.
+
+   Entry gate to every authenticated surface: a single centred card on a
+   neutral field. 1px hairline borders, 4px base radius, no heavy shadow.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sho-s-5);
+  background: var(--sho-bg-2);
+  color: var(--sho-text-2);
+}
+
+/* ── Card ───────────────────────────────────────────────────────────── */
+body.sho .card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-3);
+  padding: var(--sho-s-7) var(--sho-s-6);
+}
+
+/* ── Brand mark ─────────────────────────────────────────────────────── */
+body.sho .logo {
+  font-size: 30px;
+  line-height: 1;
+  text-align: center;
+  margin-bottom: var(--sho-s-3);
+}
+body.sho h1 {
+  text-align: center;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sho-text);
+  margin-bottom: var(--sho-s-2);
+}
+body.sho .subtitle {
+  text-align: center;
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--sho-muted);
+  margin-bottom: var(--sho-s-7);
+}
+
+/* ── Form ───────────────────────────────────────────────────────────── */
+body.sho label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sho-text-2);
+  margin-bottom: var(--sho-s-2);
+}
+body.sho input[type="password"] {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--sho-font-sans);
+  font-size: 15px;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-2);
+  outline: none;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              box-shadow var(--sho-t-fast) var(--sho-ease);
+}
+body.sho input[type="password"]::placeholder {
+  color: var(--sho-muted);
+}
+body.sho input[type="password"]:focus-visible {
+  border-color: var(--sho-accent);
+  box-shadow: var(--sho-focus);
+}
+
+/* ── Submit ─────────────────────────────────────────────────────────── */
+body.sho button[type="submit"] {
+  width: 100%;
+  margin-top: var(--sho-s-5);
+  padding: 11px 16px;
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sho-bg);
+  background: var(--sho-accent);
+  border: 1px solid var(--sho-accent);
+  border-radius: var(--sho-r-2);
+  cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho button[type="submit"]:hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+}
+body.sho button[type="submit"]:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* ── Error ──────────────────────────────────────────────────────────── */
+body.sho .error {
+  margin-top: var(--sho-s-3);
+  padding: var(--sho-s-2) var(--sho-s-3);
+  text-align: center;
+  font-size: 13px;
+  color: var(--sho-error);
+  background: color-mix(in oklch, var(--sho-error) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--sho-error) 35%, transparent);
+  border-radius: var(--sho-r-1);
+}

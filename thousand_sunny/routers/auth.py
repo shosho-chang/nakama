@@ -15,6 +15,27 @@ templates = Jinja2Templates(
 )
 
 
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Shosho design-system CSS files.
+
+    Used to bust Cloudflare's /static/* edge cache when tokens.css or
+    login.css change. Matches the asset-versioning pattern in
+    ``routers/robin.py``.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "login.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
+
 def _safe_next(next_url: str | None, fallback: str = "/") -> str:
     """只允許相對路徑，避免 open redirect。"""
     if not next_url:
@@ -32,7 +53,11 @@ async def login_page(request: Request, next: str | None = None):
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"error": None, "next": _safe_next(next)},
+        {
+            "error": None,
+            "next": _safe_next(next),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
     )
 
 
@@ -55,7 +80,11 @@ async def login(
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"error": "密碼錯誤", "next": _safe_next(next)},
+        {
+            "error": "密碼錯誤",
+            "next": _safe_next(next),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
         status_code=401,
     )
 
