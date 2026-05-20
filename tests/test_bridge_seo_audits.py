@@ -245,8 +245,18 @@ class TestProgressPage:
 
         # The element exists with the hidden attribute (JS reveals on error).
         assert '<div class="error-box" id="error-box" hidden>' in body
-        # And the CSS keeps it hidden until JS toggles `hidden=false`.
-        assert ".error-box[hidden] { display: none; }" in body
+        # And the CSS keeps it hidden until JS toggles `hidden=false`. The
+        # rule moved to the shared bridge-seo.css stylesheet (DS v0.1) — pin
+        # its presence there.
+        from pathlib import Path as _Path
+
+        seo_css = (
+            _Path(bridge_module.__file__).resolve().parent.parent
+            / "static"
+            / "shosho"
+            / "bridge-seo.css"
+        ).read_text(encoding="utf-8")
+        assert ".error-box[hidden]" in seo_css and "display: none;" in seo_css
 
     def test_unknown_job_returns_404(self, authed_client):
         r = authed_client.get("/bridge/seo/audits/deadbeef")
@@ -493,7 +503,7 @@ class TestSection1Join:
         # No chip span rendered in the table body. We split on the table
         # marker so the CSS rule definition higher in the file doesn't
         # confuse the assertion.
-        table_section = body.split('<table class="articles-table"', 1)[-1]
+        table_section = body.split('<table class="data-table"', 1)[-1]
         assert 'class="grade-chip' not in table_section
         # The `[跑 audit]` form-post button is wired.
         assert 'action="/bridge/seo/audits"' in body
@@ -555,7 +565,7 @@ class TestSection1Join:
             r = authed_client.get("/bridge/seo")
 
         body = r.text
-        table_section = body.split('<table class="articles-table"', 1)[-1]
+        table_section = body.split('<table class="data-table"', 1)[-1]
         # The latest grade is "A"; the older "C" must not appear in the chip.
         assert "grade-chip grade-a" in table_section
         assert "grade-chip grade-c" not in table_section

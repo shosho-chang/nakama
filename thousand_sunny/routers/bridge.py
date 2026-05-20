@@ -145,14 +145,14 @@ def _shosho_asset_version() -> str:
     """Return an 8-char hash of the Bridge Shosho design-system CSS files.
 
     Used to bust Cloudflare's /static/* edge cache when tokens.css,
-    bridge.css or bridge-dashboard.css change. Matches the asset-versioning
-    pattern in ``robin.py``.
+    bridge.css, bridge-dashboard.css or bridge-seo.css change. Matches the
+    asset-versioning pattern in ``robin.py``.
     """
     import hashlib
 
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "bridge.css", "bridge-dashboard.css"):
+    for css in ("tokens.css", "bridge.css", "bridge-dashboard.css", "bridge-seo.css"):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())
@@ -362,6 +362,7 @@ async def seo_page(request: Request, nakama_auth: str | None = Cookie(None)):
             "articles": rows,
             "target_sites": list(_SEO_TARGET_SITES),
             "target_keywords": keyword_rows,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -544,6 +545,7 @@ async def seo_audit_progress(
         {
             "job_id": job_id,
             "job": job,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -605,6 +607,7 @@ async def seo_audit_result(
             "job_id": job_id,
             "audit": audit,
             "review_url": f"/bridge/seo/audits/{audit_id}/review",
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -632,6 +635,7 @@ async def seo_audit_view_by_id(
             "job_id": None,
             "audit": audit,
             "review_url": f"/bridge/seo/audits/{audit_id}/review",
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -726,6 +730,7 @@ async def seo_post_audits_history(
             "first_url": first_url,
             "first_focus_keyword": first_focus_keyword,
             "first_target_site": first_target_site,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
@@ -839,6 +844,7 @@ async def seo_audit_review_page(
             "review_status": audit.get("review_status"),
             "approval_queue_id": audit.get("approval_queue_id"),
             "edit_max_length": _REVIEW_EDIT_MAX,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
