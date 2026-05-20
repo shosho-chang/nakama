@@ -227,20 +227,48 @@ templates = Jinja2Templates(
 )
 
 
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Shosho design-system CSS files this
+    surface links.
+
+    Used to bust Cloudflare's /static/* edge cache when tokens.css,
+    books.css or book_reader.css change. Mirrors the asset-versioning
+    pattern in ``routers/robin.py``.
+    """
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "books.css", "book_reader.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
+
 @router.get("/books", response_class=HTMLResponse)
 async def books_library(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/robin/books", status_code=302)
     books = list_books()
     enriched = [{**b.model_dump(), "ingest_status": _ingest_status(b.book_id)} for b in books]
-    return templates.TemplateResponse(request, "books_library.html", {"books": enriched})
+    return templates.TemplateResponse(
+        request,
+        "books_library.html",
+        {"books": enriched, "asset_version": _SHOSHO_ASSET_VERSION},
+    )
 
 
 @router.get("/books/upload", response_class=HTMLResponse)
 async def books_upload_form(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/robin/books/upload", status_code=302)
-    return templates.TemplateResponse(request, "book_upload.html", {})
+    return templates.TemplateResponse(
+        request,
+        "book_upload.html",
+        {"asset_version": _SHOSHO_ASSET_VERSION},
+    )
 
 
 @router.post("/books/upload")
@@ -392,7 +420,11 @@ async def book_reader(
         raise HTTPException(400, detail=str(exc)) from exc
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
-    return templates.TemplateResponse(request, "book_reader.html", {"book": book})
+    return templates.TemplateResponse(
+        request,
+        "book_reader.html",
+        {"book": book, "asset_version": _SHOSHO_ASSET_VERSION},
+    )
 
 
 def _ingest_status(book_id: str) -> str:

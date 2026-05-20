@@ -1,0 +1,692 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Robin Book Reader · page styles (Design System v0.1 / --sho-* tokens)
+
+   Drives the foliate-js epub reader. Composes on top of
+   `static/shosho/tokens.css`; the template carries `class="sho"` on <body>
+   so design tokens cascade. Dark mode toggles via `data-theme="dark"`
+   attribute on <body> (was `body.dark`).
+
+   ⚠ CSP: book_reader is served under /robin/books — script-src 'self'.
+   All styling lives here (external = style-src 'self', allowed). No inline
+   <style>/<script>. 1px hairline borders, 4px base radius, motion ≤200ms.
+   ───────────────────────────────────────────────────────────────────────── */
+
+html,
+body.sho { height: 100%; }
+body.sho {
+  margin: 0;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  transition: background var(--sho-t-base) var(--sho-ease),
+              color var(--sho-t-base) var(--sho-ease);
+}
+
+/* ── Reader bar ─────────────────────────────────────────────────────── */
+body.sho .reader-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sho-s-4);
+  padding: var(--sho-s-2) var(--sho-s-5);
+  background: var(--sho-bg);
+  border-bottom: 1px solid var(--sho-line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+body.sho .reader-bar .left {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-3);
+  min-width: 0;
+}
+body.sho .reader-bar .back {
+  font-family: var(--sho-font-mono);
+  color: var(--sho-text-2);
+  text-decoration: none;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border-bottom: 1px solid transparent;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .reader-bar .back:hover,
+body.sho .reader-bar .back:focus-visible {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent);
+  outline: none;
+}
+body.sho .reader-bar .title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sho-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+}
+body.sho .reader-bar .meta {
+  font-size: 12.5px;
+  color: var(--sho-muted);
+}
+body.sho .reader-bar .right {
+  display: flex;
+  gap: var(--sho-s-2);
+  align-items: center;
+}
+
+/* ── Mode badge ─────────────────────────────────────────────────────── */
+body.sho .mode-badge {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  border: 1px solid var(--sho-line-2);
+  color: var(--sho-text-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+body.sho .mode-badge-zh {
+  background: var(--sho-accent-soft);
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+}
+body.sho .mode-badge-bi { background: transparent; }
+
+/* ── Progress rail (top hairline bar) ───────────────────────────────── */
+body.sho .reader-progress {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: transparent;
+  z-index: 11;
+  pointer-events: none;
+}
+body.sho .reader-progress > .bar {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--sho-accent);
+  transition: width var(--sho-t-base) var(--sho-ease);
+  opacity: 0.85;
+}
+body.sho .reader-progress[data-state="empty"] > .bar { opacity: 0.3; }
+
+/* ── Icon buttons ───────────────────────────────────────────────────── */
+body.sho .icon-btn {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  color: var(--sho-text);
+  border-radius: var(--sho-r-1);
+  padding: 5px 10px;
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .icon-btn:hover,
+body.sho .icon-btn:focus-visible {
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+  outline: none;
+}
+body.sho .icon-btn:focus-visible { box-shadow: var(--sho-focus); }
+body.sho .icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+body.sho .icon-btn:disabled:hover {
+  border-color: var(--sho-line);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+}
+body.sho .icon-btn.is-queued {
+  background: var(--sho-accent);
+  border-color: var(--sho-accent);
+  color: var(--sho-bg);
+}
+body.sho .icon-btn.is-queued:hover,
+body.sho .icon-btn.is-queued:focus-visible {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+  color: var(--sho-bg);
+}
+/* Inbox link rendered as an <a> with .icon-btn — kill the anchor underline. */
+body.sho a.icon-btn { text-decoration: none; }
+
+/* ── Ingest wrap tooltip ────────────────────────────────────────────── */
+body.sho .ingest-wrap {
+  position: relative;
+  display: inline-flex;
+}
+body.sho .ingest-wrap[data-disabled-reason]:hover::after,
+body.sho .ingest-wrap[data-disabled-reason]:focus-within::after {
+  content: attr(data-disabled-reason);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: 6px 9px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px color-mix(in oklch, var(--sho-ink) 12%, transparent);
+  z-index: 12;
+}
+
+/* ── Reader shell + foliate view ────────────────────────────────────── */
+body.sho .reader-shell {
+  height: calc(100vh - 56px);
+  width: 100%;
+  padding-bottom: 2.2rem;
+}
+body.sho foliate-view {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--sho-bg);
+}
+body.sho .loading,
+body.sho .error-banner {
+  padding: var(--sho-s-6);
+  text-align: center;
+  color: var(--sho-muted);
+}
+body.sho .error-banner { color: var(--sho-error); }
+
+/* ── Annotation detail bubble ───────────────────────────────────────── */
+body.sho .ann-bubble {
+  position: fixed;
+  left: 50%;
+  bottom: 3rem;
+  transform: translateX(-50%);
+  z-index: 80;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: var(--sho-s-3) var(--sho-s-4);
+  box-shadow: 0 8px 24px color-mix(in oklch, var(--sho-ink) 18%, transparent);
+  width: min(640px, calc(100vw - 2rem));
+  max-height: 50vh;
+  overflow-y: auto;
+}
+body.sho .ann-bubble[hidden] { display: none; }
+body.sho .ann-bubble-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sho-s-2);
+}
+body.sho .ann-bubble-kind {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  border: 1px solid var(--sho-line-2);
+  color: var(--sho-text-2);
+}
+body.sho .ann-bubble-kind[data-kind="highlight"] {
+  color: var(--sho-warning);
+  border-color: color-mix(in oklch, var(--sho-warning) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 12%, transparent);
+}
+body.sho .ann-bubble-kind[data-kind="annotation"] {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+  background: var(--sho-accent-soft);
+}
+body.sho .ann-bubble-kind[data-kind="reflection"] {
+  color: var(--sho-info);
+  border-color: color-mix(in oklch, var(--sho-info) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-info) 12%, transparent);
+}
+body.sho .ann-bubble-close {
+  background: transparent;
+  border: none;
+  color: var(--sho-muted);
+  font-size: 19px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  border-radius: var(--sho-r-1);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-bubble-close:hover,
+body.sho .ann-bubble-close:focus-visible {
+  background: var(--sho-bg-2);
+  color: var(--sho-text);
+  outline: none;
+}
+body.sho .ann-bubble-excerpt {
+  font-size: 14px;
+  line-height: 1.55;
+  padding: 6px 10px;
+  border-left: 2px solid var(--sho-accent);
+  background: var(--sho-bg-2);
+  border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
+  margin-bottom: var(--sho-s-2);
+  white-space: pre-wrap;
+}
+body.sho .ann-bubble-note {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--sho-text);
+  white-space: pre-wrap;
+  padding-top: 6px;
+  border-top: 1px dashed var(--sho-line);
+}
+body.sho .ann-bubble-note[hidden] { display: none; }
+body.sho .ann-bubble-meta {
+  margin-top: var(--sho-s-2);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+}
+
+/* ── Reading progress footer ────────────────────────────────────────── */
+body.sho .reader-progress-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sho-s-2);
+  padding: 6px var(--sho-s-4);
+  background: var(--sho-bg);
+  border-top: 1px solid var(--sho-line);
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+body.sho .reader-progress-footer .rpf-chapter {
+  color: var(--sho-text-2);
+  font-weight: 500;
+  max-width: 50vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.sho .reader-progress-footer .rpf-sep { opacity: 0.5; }
+body.sho .reader-progress-footer .rpf-percent { font-variant-numeric: tabular-nums; }
+
+/* ── Selection popup (H / A / C) ────────────────────────────────────── */
+body.sho .ann-popup {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  gap: var(--sho-s-1);
+  padding: var(--sho-s-1);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  box-shadow: 0 6px 18px color-mix(in oklch, var(--sho-ink) 15%, transparent);
+}
+body.sho .ann-popup[hidden] { display: none; }
+body.sho .ann-popup button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--sho-text);
+  border-radius: var(--sho-r-1);
+  padding: 5px 9px;
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-popup button:hover,
+body.sho .ann-popup button:focus-visible {
+  background: var(--sho-bg-2);
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+  outline: none;
+}
+
+/* ── Native <dialog> — annotation / comment / reflection ────────────── */
+body.sho dialog.ann-dialog {
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: var(--sho-s-5);
+  max-width: 560px;
+  width: 92%;
+  box-shadow: 0 12px 36px color-mix(in oklch, var(--sho-ink) 25%, transparent);
+}
+body.sho dialog.ann-dialog::backdrop {
+  background: color-mix(in oklch, var(--sho-ink) 45%, transparent);
+}
+body.sho dialog.ann-dialog h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: var(--sho-s-2);
+  color: var(--sho-text);
+  letter-spacing: -0.005em;
+}
+body.sho dialog.ann-dialog .excerpt {
+  font-size: 12.5px;
+  color: var(--sho-text-2);
+  background: var(--sho-bg-2);
+  border-left: 2px solid var(--sho-accent);
+  padding: 8px 10px;
+  margin-bottom: var(--sho-s-3);
+  max-height: 4.5rem;
+  overflow: auto;
+  line-height: 1.5;
+  border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
+}
+body.sho dialog.ann-dialog .row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-1);
+  margin-bottom: var(--sho-s-3);
+}
+body.sho dialog.ann-dialog label {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--sho-muted);
+}
+body.sho dialog.ann-dialog select,
+body.sho dialog.ann-dialog textarea {
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: 8px 10px;
+  font-family: var(--sho-font-sans);
+  font-size: 14px;
+  width: 100%;
+  resize: vertical;
+}
+body.sho dialog.ann-dialog select:focus,
+body.sho dialog.ann-dialog textarea:focus {
+  outline: none;
+  border-color: var(--sho-accent);
+}
+body.sho dialog.ann-dialog textarea { min-height: 4.5rem; }
+body.sho dialog#ann-comment-modal textarea { min-height: 11rem; }
+body.sho dialog.ann-dialog .checkbox-row {
+  display: flex;
+  gap: var(--sho-s-2);
+  align-items: center;
+  flex-direction: row;
+}
+body.sho dialog.ann-dialog .checkbox-row input[type="checkbox"] {
+  accent-color: var(--sho-accent);
+}
+body.sho dialog.ann-dialog .actions {
+  display: flex;
+  gap: var(--sho-s-2);
+  justify-content: flex-end;
+  margin-top: var(--sho-s-2);
+}
+body.sho dialog.ann-dialog .actions button {
+  font-family: var(--sho-font-sans);
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: var(--sho-r-1);
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho dialog.ann-dialog .actions button.primary {
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border-color: var(--sho-accent);
+}
+body.sho dialog.ann-dialog .actions button.primary:hover,
+body.sho dialog.ann-dialog .actions button.primary:focus-visible {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+}
+body.sho dialog.ann-dialog .actions button:hover,
+body.sho dialog.ann-dialog .actions button:focus-visible {
+  outline: none;
+  border-color: var(--sho-accent);
+}
+
+/* Full-text reflection viewer — wider than the standard ann-dialog. */
+body.sho dialog.reflection-dialog {
+  max-width: 720px;
+  width: 92%;
+}
+body.sho .reflection-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sho-s-2);
+}
+body.sho .reflection-modal-head h2 { margin: 0; }
+body.sho .reflection-modal-meta {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-muted);
+  margin-bottom: var(--sho-s-3);
+}
+body.sho .reflection-modal-meta .rm-chapter {
+  color: var(--sho-text-2);
+  font-weight: 500;
+}
+body.sho .reflection-modal-meta .rm-sep {
+  opacity: 0.5;
+  margin: 0 var(--sho-s-1);
+}
+body.sho .reflection-modal-body {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--sho-text);
+  white-space: pre-wrap;
+  max-height: 65vh;
+  overflow-y: auto;
+  padding: var(--sho-s-2) 2px;
+}
+
+/* ── TOC sidebar (slides in from left) ──────────────────────────────── */
+body.sho #toc-sidebar {
+  position: fixed;
+  top: 56px;
+  left: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 85vw;
+  background: var(--sho-bg);
+  border-right: 1px solid var(--sho-line);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform var(--sho-t-base) var(--sho-ease);
+  z-index: 20;
+}
+body.sho #toc-sidebar:not([hidden]) { transform: translateX(0); }
+body.sho #toc-sidebar header {
+  padding: var(--sho-s-2) var(--sho-s-4);
+  border-bottom: 1px solid var(--sho-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sho-s-2);
+}
+body.sho #toc-sidebar header h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sho-text);
+}
+body.sho #toc-sidebar .body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--sho-s-2) var(--sho-s-2) var(--sho-s-4);
+}
+body.sho #toc-sidebar .empty {
+  padding: var(--sho-s-5) var(--sho-s-4);
+  text-align: center;
+  font-size: 13px;
+  color: var(--sho-muted);
+}
+body.sho .toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--sho-r-1);
+  background: transparent;
+  color: var(--sho-text);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .toc-item:hover,
+body.sho .toc-item:focus-visible {
+  background: var(--sho-bg-2);
+  border-color: var(--sho-line);
+  outline: none;
+}
+body.sho .toc-item .toc-num {
+  font-family: var(--sho-font-mono);
+  color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: var(--sho-s-2);
+  font-size: 11.5px;
+}
+body.sho .toc-item.is-current {
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border-color: var(--sho-accent);
+  font-weight: 600;
+}
+body.sho .toc-item.is-current .toc-num {
+  color: color-mix(in oklch, var(--sho-bg) 85%, transparent);
+}
+
+/* ── Comments sidebar (slides in from right) ────────────────────────── */
+body.sho #comments-sidebar {
+  position: fixed;
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: 90vw;
+  background: var(--sho-bg);
+  border-left: 1px solid var(--sho-line);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform var(--sho-t-base) var(--sho-ease);
+  z-index: 20;
+}
+body.sho #comments-sidebar:not([hidden]) { transform: translateX(0); }
+body.sho #comments-sidebar header {
+  padding: var(--sho-s-2) var(--sho-s-4);
+  border-bottom: 1px solid var(--sho-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+body.sho #comments-sidebar header h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sho-text);
+}
+body.sho #comments-sidebar .body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--sho-s-2) var(--sho-s-3);
+}
+body.sho #comments-sidebar .empty {
+  padding: var(--sho-s-5) var(--sho-s-4);
+  text-align: center;
+  font-size: 13px;
+  color: var(--sho-muted);
+}
+body.sho .comment-card {
+  padding: 8px 10px;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  margin-bottom: var(--sho-s-2);
+  cursor: pointer;
+  background: var(--sho-bg-2);
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .comment-card:hover,
+body.sho .comment-card:focus-visible {
+  border-color: var(--sho-info);
+  outline: none;
+}
+body.sho .comment-card .chap {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  color: var(--sho-info);
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+body.sho .comment-card .preview {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--sho-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+body.sho .comment-card.expanded .preview { max-height: none; }
+
+/* ── Toast — surfaces POST failures ─────────────────────────────────── */
+body.sho #ann-toast {
+  position: fixed;
+  right: var(--sho-s-4);
+  bottom: var(--sho-s-4);
+  max-width: 360px;
+  background: var(--sho-error);
+  color: var(--sho-bg);
+  padding: 9px 13px;
+  border-radius: var(--sho-r-1);
+  box-shadow: 0 6px 18px color-mix(in oklch, var(--sho-ink) 25%, transparent);
+  font-size: 13px;
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--sho-t-base) var(--sho-ease),
+              transform var(--sho-t-base) var(--sho-ease);
+  pointer-events: none;
+}
+body.sho #ann-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  body.sho,
+  body.sho foliate-view,
+  body.sho .icon-btn,
+  body.sho #toc-sidebar,
+  body.sho #comments-sidebar,
+  body.sho #ann-toast,
+  body.sho .reader-progress > .bar { transition: none; }
+}

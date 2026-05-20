@@ -1,0 +1,396 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Robin Books · shared page styles (Design System v0.1 / --sho-* tokens)
+
+   Shared by books_library.html + book_upload.html. Composes on top of
+   `static/shosho/tokens.css`; both templates carry `class="sho"` on <body>
+   so design tokens cascade. 1px hairline borders, 4px base radius,
+   single PANTONE 165 PC orange accent, motion ≤200ms.
+
+   The foliate-js epub reader (book_reader.html) has its own surface CSS
+   (book_reader.css) because it is a full-viewport reader, not a card page.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho {
+  margin: 0;
+  padding: var(--sho-s-6);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+}
+
+/* ── Header + nav ───────────────────────────────────────────────────── */
+body.sho .header {
+  max-width: 960px;
+  margin: 0 auto var(--sho-s-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sho-s-4);
+  flex-wrap: wrap;
+}
+body.sho .header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sho-text);
+  letter-spacing: -0.008em;
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-2);
+}
+body.sho .header h1 span { font-size: 20px; }
+
+body.sho .nav {
+  display: flex;
+  gap: var(--sho-s-3);
+  align-items: center;
+  font-family: var(--sho-font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+body.sho .nav a {
+  color: var(--sho-text-2);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .nav a:hover,
+body.sho .nav a:focus-visible {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent);
+  outline: none;
+}
+body.sho .nav a.active {
+  color: var(--sho-text);
+  font-weight: 600;
+  border-bottom-color: transparent;
+}
+
+/* ── Container ──────────────────────────────────────────────────────── */
+body.sho .container {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* ── Primary / secondary buttons ────────────────────────────────────── */
+body.sho .btn-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sho-s-1);
+  padding: 8px 18px;
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border: 1px solid var(--sho-accent);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .btn-upload:hover,
+body.sho .btn-upload:focus-visible {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+  outline: none;
+}
+body.sho .btn-upload:focus-visible { box-shadow: var(--sho-focus); }
+
+/* ── Toolbar ────────────────────────────────────────────────────────── */
+body.sho .toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--sho-s-5);
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Library grid + book cards
+   ───────────────────────────────────────────────────────────────────── */
+body.sho .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sho-s-4);
+}
+body.sho .book-card {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: var(--sho-s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-3);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              transform var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .book-card:hover,
+body.sho .book-card:focus-visible {
+  border-color: var(--sho-accent);
+  transform: translateY(-2px);
+  outline: none;
+}
+body.sho .book-card:focus-visible { box-shadow: var(--sho-focus); }
+
+body.sho .cover {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--sho-r-1);
+  overflow: hidden;
+  background: var(--sho-bg-2);
+}
+body.sho .cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+body.sho .cover img.broken { display: none; }
+body.sho .cover-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--sho-bg-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sho-accent);
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+
+body.sho .book-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-text);
+  line-height: 1.4;
+  word-break: break-word;
+}
+body.sho .book-author {
+  font-size: 12.5px;
+  color: var(--sho-muted);
+}
+body.sho .book-meta {
+  display: flex;
+  gap: var(--sho-s-1);
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+/* ── Badges ─────────────────────────────────────────────────────────── */
+body.sho .badge {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  font-weight: 500;
+  background: transparent;
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2);
+}
+body.sho .badge.original {
+  color: var(--sho-success);
+  border-color: color-mix(in oklch, var(--sho-success) 35%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+
+body.sho .badge-ingest {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--sho-r-1);
+  font-weight: 500;
+  border: 1px solid var(--sho-line-2);
+  background: transparent;
+  color: var(--sho-text-2);
+}
+body.sho .badge-ingest[data-status="no-original"] {
+  color: var(--sho-muted);
+  border-color: var(--sho-line-2);
+}
+body.sho .badge-ingest[data-status="queued"],
+body.sho .badge-ingest[data-status="ingesting"] {
+  color: var(--sho-warning);
+  border-color: color-mix(in oklch, var(--sho-warning) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+}
+body.sho .badge-ingest[data-status="ingested"] {
+  color: var(--sho-success);
+  border-color: color-mix(in oklch, var(--sho-success) 35%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+body.sho .badge-ingest[data-status="partial"] {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+  background: var(--sho-accent-soft);
+}
+body.sho .badge-ingest[data-status="failed"] {
+  color: var(--sho-error);
+  border-color: color-mix(in oklch, var(--sho-error) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-error) 8%, transparent);
+}
+body.sho .badge-ingest[data-status="never"] {
+  background: transparent;
+  color: var(--sho-muted);
+  border-color: var(--sho-line);
+}
+
+/* ── Empty state ────────────────────────────────────────────────────── */
+body.sho .empty {
+  text-align: center;
+  color: var(--sho-muted);
+  padding: var(--sho-s-7);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+}
+body.sho .empty .icon { font-size: 40px; }
+body.sho .empty strong {
+  display: block;
+  margin-top: var(--sho-s-2);
+  color: var(--sho-text);
+  font-size: 15px;
+}
+body.sho .empty p {
+  margin-top: var(--sho-s-2);
+  font-size: 13px;
+}
+body.sho .empty a {
+  color: var(--sho-accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+body.sho .empty a:hover,
+body.sho .empty a:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Upload form
+   ───────────────────────────────────────────────────────────────────── */
+body.sho .container.upload { max-width: 680px; }
+body.sho .header.upload { max-width: 680px; }
+
+body.sho .card {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  padding: var(--sho-s-5);
+}
+body.sho .lead {
+  font-size: 13px;
+  color: var(--sho-muted);
+  line-height: 1.7;
+  margin-bottom: var(--sho-s-4);
+}
+
+body.sho .dropzone-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-3);
+}
+body.sho .dropzone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sho-s-1);
+  padding: var(--sho-s-6) var(--sho-s-4);
+  border: 1.5px dashed var(--sho-line-2);
+  border-radius: var(--sho-r-2);
+  background: var(--sho-bg-2);
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .dropzone:hover,
+body.sho .dropzone.is-hover {
+  border-color: var(--sho-accent);
+  background: var(--sho-accent-soft);
+}
+body.sho .dropzone.is-required[data-empty="true"] { border-style: dashed; }
+body.sho .dropzone.is-filled {
+  border-style: solid;
+  border-color: var(--sho-accent);
+  background: var(--sho-accent-soft);
+}
+body.sho .dropzone .icon { font-size: 32px; line-height: 1; }
+body.sho .dropzone .label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sho-text);
+}
+body.sho .dropzone .hint {
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+body.sho .dropzone .filename {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--sho-accent);
+  word-break: break-all;
+}
+body.sho .dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+body.sho .actions {
+  display: flex;
+  gap: var(--sho-s-2);
+  justify-content: flex-end;
+  margin-top: var(--sho-s-5);
+}
+body.sho .btn-cancel {
+  padding: 8px 18px;
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .btn-cancel:hover,
+body.sho .btn-cancel:focus-visible {
+  border-color: var(--sho-line-2);
+  color: var(--sho-text);
+  outline: none;
+}
+body.sho .btn-submit {
+  padding: 8px 18px;
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+  border: 1px solid var(--sho-accent);
+  border-radius: var(--sho-r-1);
+  font-family: var(--sho-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .btn-submit:hover,
+body.sho .btn-submit:focus-visible {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+  outline: none;
+}
+body.sho .btn-submit:focus-visible { box-shadow: var(--sho-focus); }
+body.sho .btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
