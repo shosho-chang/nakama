@@ -4,19 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ store.topic or store.project_slug }} · Brook synthesize · review</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,500;1,400;1,500&family=Noto+Serif+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="/static/projects/tokens.css" />
-  <link rel="stylesheet" href="/static/projects/review.css" />
+  <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}" />
+  <link rel="stylesheet" href="/static/shosho/projects-review.css?v={{ asset_version }}" />
 </head>
-<body>
+<body class="sho">
 {# All template state is server-rendered. JS handles selection / reject / theme.
    Mirrors the React component tree in
    N458-brook-review-mode/project/brook/screen.jsx — top bar, two-pane grid,
-   <dialog> reject confirm. #}
-<div class="review-shell brk-root brk-light"
+   <dialog> reject confirm. Re-skinned to Shosho Design System v0.1 (issue
+   #634): --sho-* tokens, LINE Seed TW, single orange accent. #}
+<div class="review-shell"
      id="review-shell"
      data-state="default"
      data-mode="{% if store.outline_final %}writing{% else %}review{% endif %}"
@@ -28,7 +25,7 @@
     <div class="review-brand">
       <div class="review-brand__name">Brook</div>
       <div class="review-brand__rule" aria-hidden="true"></div>
-      <div class="brk-caps" id="review-mode-caps">
+      <div class="review-caps" id="review-mode-caps">
         {% if store.outline_final %}
           synthesize · writing · 寫稿模式
         {% else %}
@@ -38,12 +35,12 @@
     </div>
 
     <div class="review-meta">
-      <div class="brk-caps review-meta__caps">
+      <div class="review-caps review-meta__caps">
         /brook/projects/{{ store.project_slug }}
         {% if store.updated_at %}&nbsp;·&nbsp; updated {{ store.updated_at }}{% endif %}
         &nbsp;·&nbsp; pool {{ store.evidence_pool | length }} sources
       </div>
-      <h1 class="brk-zh review-meta__topic">{{ store.topic or store.project_slug }}</h1>
+      <h1 class="review-meta__topic">{{ store.topic or store.project_slug }}</h1>
       {# topicEn is in the Claude Design mock but not in real schema. Hide gracefully. #}
       <div class="review-meta__keywords" aria-label="關鍵字">
         {% for k, is_zh in keyword_pairs %}
@@ -67,7 +64,7 @@
           {% if store.outline_final %}已定稿 · finalized{% else %}定稿這份綜合 · finalize{% endif %}
         </button>
       </div>
-      <div class="brk-caps review-actions__caption">
+      <div class="review-caps review-actions__caption">
         {{ store.outline_draft | length }} sections · {{ store.user_actions | length }} actions
       </div>
     </div>
@@ -78,7 +75,7 @@
     {# ── outline panel (left) ────────────────────────────────────────── #}
     <nav class="review-outline" aria-label="大綱 · outline">
       <div class="review-outline__header">
-        <div class="brk-caps">
+        <div class="review-caps">
           {% if is_writing_mode %}定稿大綱 · finalized outline{% else %}大綱 · outline{% endif %}
           · {{ outline_for_render | length }} sections
         </div>
@@ -95,7 +92,7 @@
                     aria-pressed="{% if loop.first %}true{% else %}false{% endif %}">
               <span class="review-outline-item__row">
                 <span class="review-outline-item__numeral">{{ numeral }}.</span>
-                <span class="review-outline-item__heading brk-zh">{{ section.heading }}</span>
+                <span class="review-outline-item__heading">{{ section.heading }}</span>
               </span>
               <span class="review-outline-item__footer">
                 <span>{{ section.evidence_refs | length }} cite{% if section.evidence_refs | length != 1 %}s{% endif %}</span>
@@ -104,7 +101,7 @@
             </button>
           </li>
         {% else %}
-          <li class="review-outline__empty brk-caps" style="padding: 18px 32px;">
+          <li class="review-outline__empty review-caps" style="padding: 18px 32px;">
             outline 為空 — 請先執行 Brook synthesize
           </li>
         {% endfor %}
@@ -114,12 +111,12 @@
     {# ── evidence panel (right) ──────────────────────────────────────── #}
     <section class="review-evidence" aria-label="證據池 · evidence">
       <div class="review-evidence__header" id="evidence-header">
-        <div class="brk-caps review-evidence__caps">
+        <div class="review-caps review-evidence__caps">
           §<span id="evidence-section-num">{{ outline_for_render[0].section if outline_for_render else '—' }}</span>
           · evidence pool · <span id="evidence-count">{{ store.evidence_pool | length }}</span> sources
           · sorted by relevance ↓
         </div>
-        <h2 class="brk-zh review-evidence__heading" id="evidence-heading">
+        <h2 class="review-evidence__heading" id="evidence-heading">
           {{ outline_for_render[0].heading if outline_for_render else '—' }}
         </h2>
       </div>
@@ -145,7 +142,7 @@
                      data-section-refs="{{ card.sections_referenced }}">
               <header class="review-evidence-card__header">
                 <div class="review-evidence-card__meta">
-                  <div class="brk-caps review-evidence-card__caps">
+                  <div class="review-caps review-evidence-card__caps">
                     <span>{{ card.slug }}</span>
                     {% if card.heading_in_paper %}
                       <span class="sep">·</span>
@@ -156,7 +153,7 @@
                   {# authors / journal / year are not in real chunks → omit. #}
                 </div>
                 <div class="review-evidence-card__relevance">
-                  <div class="brk-caps review-evidence-card__relevance-label">relevance</div>
+                  <div class="review-caps review-evidence-card__relevance-label">relevance</div>
                   <div class="review-evidence-card__relevance-value">
                     {% if card.relevance_pct is not none %}{{ card.relevance_pct }}<span class="review-evidence-card__relevance-unit">%</span>{% else %}—{% endif %}
                   </div>
@@ -164,7 +161,7 @@
               </header>
 
               {% if card.heading_in_paper %}
-              <div class="review-evidence-card__heading brk-zh">{{ card.heading_in_paper }}</div>
+              <div class="review-evidence-card__heading">{{ card.heading_in_paper }}</div>
               {% endif %}
 
               <blockquote class="review-evidence-card__excerpt"
@@ -200,7 +197,7 @@
   <dialog class="review-confirm" id="reject-dialog" aria-labelledby="reject-dialog-title">
     <form method="dialog" id="reject-form">
       <div class="review-confirm__head">
-        <div class="brk-caps review-confirm__caps" id="reject-dialog-kind">
+        <div class="review-caps review-confirm__caps" id="reject-dialog-kind">
           整條不要 · global down-rank
         </div>
         <h2 class="review-confirm__title" id="reject-dialog-title">
@@ -210,7 +207,7 @@
       <div class="review-confirm__body">
         <div class="review-confirm__evidence-meta" id="reject-dialog-meta">—</div>
         <div class="review-confirm__effects">
-          <div class="brk-caps review-confirm__effects-caps">會發生什麼事</div>
+          <div class="review-caps review-confirm__effects-caps">會發生什麼事</div>
           <ul id="reject-dialog-effects">
             <li>本條證據將從專案的可選池移除（依 grain 影響整段或整個專案）。</li>
             <li>未來的 retrieval pass 會將該段落降權，paper 仍可被其他段落引用。</li>
