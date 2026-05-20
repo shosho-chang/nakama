@@ -13,10 +13,10 @@
    - NO first-person voice in any non-excerpt copy
    - NO LLM-rendered "summary" or "intro" paragraph
 
-   Tokens-only design — every color / font / spacing is a `var(--brk-*)`
-   reference into the canonical `tokens.css` (loaded alongside
-   `writing_assist.css`). No hardcoded hex / rgb / fontnames. Brief §5 RT3
-   asserts the no-hardcoded-tokens rule.
+   Tokens-only design — every color / font / spacing is a `var(--sho-*)`
+   reference into the Shosho Design System v0.1 `tokens.css` (loaded
+   alongside `writing-assist.css`). No hardcoded hex / rgb / fontnames.
+   Brief §5 RT3 asserts the no-hardcoded-tokens rule.
    ─────────────────────────────────────────────────────────────────────────#}
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -24,14 +24,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Writing Assist · {{ package.source_id if package else encoded_id }}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,500;1,400;1,500&family=Noto+Serif+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="/static/projects/tokens.css" />
-  <link rel="stylesheet" href="/static/writing_assist.css" />
+  <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}" />
+  <link rel="stylesheet" href="/static/shosho/writing-assist.css?v={{ asset_version }}" />
 </head>
-<body class="brk-root brk-light">
+<body class="sho">
 <main class="wa-shell"
       data-mode="scaffold"
       data-encoded-id="{{ encoded_id }}"
