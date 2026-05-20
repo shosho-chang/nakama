@@ -1,0 +1,319 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Bridge dashboard (`/bridge`) · page-specific styles
+   (Design System v0.1 / --sho-* tokens)
+
+   Composes on top of `tokens.css` + `bridge.css`. Only the `/bridge`
+   dashboard shell (index.html) links this file — it carries layout that is
+   NOT reused by other Bridge surfaces:
+
+     · `.readout-strip`  — top metrics strip grid
+     · `.fleet-count`    — fleet on-watch hero count
+     · `.grid-subheader` — agent-grid section header + state legend
+     · `.agent-grid` / `.agent-card` — the 9-crew tile grid
+     · `.drawer*`        — agent detail slide-over drawer
+
+   Shared ops primitives (chassis, buttons, chips, readout, gauge, panel)
+   live in `bridge.css`. No hardcoded hex/rgb — every colour resolves
+   through a `--sho-*` token.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Readout strip ──────────────────────────────────────────────────────── */
+body.sho .readout-strip {
+  background: var(--sho-bg);
+  border-bottom: 1px solid var(--sho-line);
+  padding: 18px 40px;
+  display: grid;
+  grid-template-columns: 1.4fr repeat(5, 1fr) auto;
+  gap: 32px;
+  align-items: center;
+  flex-shrink: 0;
+}
+body.sho .drafts-cell {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  border-left: 1px solid var(--sho-line);
+  padding-left: 24px;
+  margin-left: -24px;
+  transition: background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .drafts-cell:hover {
+  background: var(--sho-bg-2);
+}
+body.sho .drafts-cell .drafts-attention {
+  color: var(--sho-accent);
+}
+body.sho .drafts-cell-tag {
+  margin-top: 6px;
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  color: var(--sho-muted);
+  letter-spacing: 0.06em;
+}
+body.sho .drafts-cell:hover .drafts-cell-tag {
+  color: var(--sho-text-2);
+}
+body.sho .nk-caps {
+  margin-bottom: 6px;
+}
+body.sho .fleet-count {
+  font-family: var(--sho-font-sans);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  line-height: 1;
+}
+body.sho .fleet-count .on {
+  color: var(--sho-accent);
+}
+body.sho .fleet-count .total {
+  color: var(--sho-muted);
+}
+body.sho .fleet-count .label {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--sho-text-2);
+  margin-left: 8px;
+  letter-spacing: 0;
+}
+body.sho .sho-gauge-wrap {
+  margin-top: 8px;
+}
+body.sho .strip-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Grid subheader + state legend ──────────────────────────────────────── */
+body.sho .grid-subheader {
+  padding: 14px 40px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+body.sho .state-legend {
+  display: flex;
+  gap: 14px;
+}
+body.sho .state-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  color: var(--sho-muted);
+}
+body.sho .state-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+body.sho .state-dot--active {
+  background: var(--sho-accent);
+}
+body.sho .state-dot--online {
+  background: var(--sho-text);
+}
+body.sho .state-dot--hold {
+  background: var(--sho-warning);
+}
+body.sho .state-dot--offline {
+  border: 1px solid var(--sho-line-2);
+}
+
+/* ── Agent grid ─────────────────────────────────────────────────────────── */
+body.sho .grid-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 40px 28px;
+}
+body.sho .agent-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--sho-line);
+  background: var(--sho-line);
+  gap: 1px;
+}
+body.sho .agent-card {
+  background: var(--sho-bg);
+  padding: 18px;
+  position: relative;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background var(--sho-t-fast) var(--sho-ease);
+  min-height: 148px;
+}
+body.sho .agent-card:hover {
+  background: var(--sho-bg-2);
+}
+body.sho .agent-card.selected {
+  background: var(--sho-bg-2);
+}
+body.sho .agent-card.is-active {
+  border-left-color: var(--sho-accent);
+}
+body.sho .agent-card.is-lead {
+  padding: 20px 24px;
+}
+body.sho .agent-card.span-2 {
+  grid-column: span 2;
+}
+body.sho .card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+body.sho .card-id {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--sho-text-2);
+  margin-bottom: 2px;
+}
+body.sho .card-role {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--sho-text);
+  line-height: 1.2;
+}
+body.sho .agent-card.is-lead .card-role {
+  font-size: 24px;
+}
+body.sho .card-signal-label {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--sho-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--sho-text-2);
+  margin-bottom: 4px;
+}
+body.sho .card-signal-label .sig-val {
+  color: var(--sho-text);
+}
+body.sho .card-signal-label .sig-pct-unit {
+  color: var(--sho-muted);
+}
+body.sho .card-note {
+  font-size: 13px;
+  color: var(--sho-text-2);
+  line-height: 1.5;
+  margin-bottom: 10px;
+  min-height: 34px;
+}
+body.sho .agent-card.is-lead .card-note {
+  min-height: 40px;
+}
+body.sho .card-footer {
+  display: flex;
+  gap: 14px;
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sho-line);
+  font-variant-numeric: tabular-nums;
+}
+body.sho .card-footer .lbl {
+  color: var(--sho-muted);
+  margin-right: 3px;
+}
+body.sho .card-footer .num {
+  color: var(--sho-text);
+  font-weight: 500;
+}
+body.sho .card-open-draft {
+  margin-left: auto;
+  color: var(--sho-accent);
+  font-weight: 500;
+}
+body.sho .agent-grid-error {
+  padding: 24px;
+  color: var(--sho-muted);
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  grid-column: span 4;
+}
+
+/* ── Detail drawer ──────────────────────────────────────────────────────── */
+body.sho .drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--sho-ink) 35%, transparent);
+  z-index: 100;
+  display: none;
+}
+body.sho .drawer-overlay.open {
+  display: flex;
+  justify-content: flex-end;
+}
+body.sho .drawer {
+  width: 420px;
+  background: var(--sho-bg);
+  height: 100%;
+  border-left: 1px solid var(--sho-line);
+  padding: 28px 32px;
+  overflow-y: auto;
+  animation: bridge-drawer-in var(--sho-t-slow) var(--sho-ease);
+}
+@keyframes bridge-drawer-in {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+body.sho .drawer-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+body.sho .drawer-role {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+  line-height: 1.15;
+  color: var(--sho-text);
+}
+body.sho .drawer-section {
+  border-top: 1px solid var(--sho-line);
+  padding-top: 14px;
+  margin-bottom: 18px;
+}
+body.sho .drawer-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px dotted var(--sho-line);
+  font-size: 12px;
+}
+body.sho .drawer-row .dk {
+  color: var(--sho-text-2);
+}
+body.sho .drawer-row .dv {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--sho-text);
+}
+body.sho .drawer-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+body.sho .drawer-actions .sho-btn {
+  flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.sho .drawer {
+    animation: none;
+  }
+}
