@@ -36,6 +36,25 @@ _templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge")
 )
 
+
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Shosho design-system CSS that
+    ``franky.html`` links. Busts Cloudflare's /static/* edge cache when
+    those files change. Matches the pattern in ``bridge.py`` / ``robin.py``.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "bridge.css", "bridge-pages.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
 # Process start time（module import 時 freeze），uptime 計算用
 _PROCESS_START_MONOTONIC: float = time.monotonic()
 
@@ -239,4 +258,5 @@ def bridge_franky_page(request: Request, nakama_auth: str | None = Cookie(None))
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/franky", status_code=302)
     ctx = _gather_dashboard_context()
+    ctx["asset_version"] = _SHOSHO_ASSET_VERSION
     return _templates.TemplateResponse(request, "franky.html", ctx)

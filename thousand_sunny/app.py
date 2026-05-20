@@ -89,8 +89,9 @@ app.include_router(franky.page_router)
 app.include_router(progress.router)
 app.include_router(architecture.router)
 
-# /static must mount unconditionally — /projects/{slug} (issue #458) ships with
-# Robin disabled (VPS) too, and pulls /static/projects/{tokens,review}.css/js.
+# /static must mount unconditionally — public surfaces (/progress,
+# /architecture) and every authenticated page pull /static/shosho/*.css +
+# the bundled LINE Seed TW fonts, regardless of DISABLE_ROBIN.
 _static_dir = Path(__file__).resolve().parent / "static"
 if _static_dir.is_dir():
     app.mount(
