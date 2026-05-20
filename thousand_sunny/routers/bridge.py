@@ -141,6 +141,27 @@ _templates = Jinja2Templates(
 )
 
 
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Bridge Shosho design-system CSS files.
+
+    Used to bust Cloudflare's /static/* edge cache when tokens.css,
+    bridge.css or bridge-dashboard.css change. Matches the asset-versioning
+    pattern in ``robin.py``.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "bridge.css", "bridge-dashboard.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
+
 @page_router.get("", response_class=HTMLResponse)
 @page_router.get("/", response_class=HTMLResponse)
 async def bridge_index(request: Request, nakama_auth: str | None = Cookie(None)):
@@ -153,6 +174,7 @@ async def bridge_index(request: Request, nakama_auth: str | None = Cookie(None))
         {
             "robin_enabled": not os.getenv("DISABLE_ROBIN"),
             "drafts_pending_count": approval_queue.count_by_status("pending"),
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 

@@ -4,464 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bridge · Nakama</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-/* ── Direction B tokens ── */
-:root {
-  --nk-bench:        #e8e6e1;
-  --nk-bench-2:      #dfddd6;
-  --nk-panel:        #ffffff;
-  --nk-panel-2:      #f4f2ec;
-  --nk-chassis:      #1a1a1a;
-  --nk-chassis-2:    #2a2a2a;
-  --nk-chassis-fg:   #e8e6e1;
-  --nk-chassis-fg-2: #98958e;
-  --nk-ink:          #0d0d0d;
-  --nk-ink-2:        #4a4a46;
-  --nk-ink-3:        #6a6a64;
-  --nk-muted:        #98958e;
-  --nk-rule:         #c8c5be;
-  --nk-hairline:     #dcd9d2;
-  --nk-signal:       #ff5a1f;
-  --nk-signal-mute:  rgba(255,90,31,0.08);
-  --nk-amber:        #c8a656;
-  --nk-jade:         #3f7a5a;
-  --nk-crimson:      #a8231a;
-  --nk-indigo:       #2a3a5c;
-  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
-  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
-  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
-  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
-  --nk-t-micro: 10px; --nk-t-xs: 11px; --nk-t-sm: 12px;
-  --nk-t-base: 14px;  --nk-t-md: 16px; --nk-t-lg: 19px;
-  --nk-t-xl: 24px;    --nk-t-2xl: 32px;
-  --nk-r-2: 2px;
-  --nk-border:      1px solid var(--nk-rule);
-  --nk-border-hair: 1px solid var(--nk-hairline);
-  --nk-shadow-popover: 0 4px 16px rgba(13,13,13,.10), 0 1px 3px rgba(13,13,13,.08);
-  --nk-dur-fast: 80ms;
-  --nk-dur-base: 140ms;
-  --nk-dur-slow: 240ms;
-  --nk-ease-out: cubic-bezier(0.2,0.7,0.2,1);
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body {
-  font-family: var(--nk-font-sans);
-  font-size: var(--nk-t-base);
-  background: var(--nk-bench);
-  color: var(--nk-ink);
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* ── Chassis header ── */
-.chassis {
-  background: var(--nk-chassis);
-  color: var(--nk-chassis-fg);
-  padding: 0 40px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  flex-shrink: 0;
-  border-bottom: 1px solid #000;
-}
-.chassis-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-.chassis-dot {
-  width: 14px; height: 14px;
-  border: 2px solid var(--nk-chassis-fg);
-  border-radius: 50%;
-  position: relative;
-}
-.chassis-dot::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  background: var(--nk-signal);
-  border-radius: 50%;
-}
-.chassis-wordmark {
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.22em;
-  white-space: nowrap;
-}
-.chassis-version {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-chassis-fg-2);
-  letter-spacing: 0.08em;
-}
-.chassis-nav {
-  flex: 1;
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  row-gap: 6px;
-}
-.chassis-nav a {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  text-decoration: none;
-  color: var(--nk-chassis-fg-2);
-  border-bottom: 2px solid transparent;
-  padding-bottom: 2px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: color var(--nk-dur-fast);
-}
-.chassis-nav a .zh {
-  font-family: var(--nk-font-zh);
-  letter-spacing: 0.12em;
-  opacity: 0.7;
-}
-.chassis-nav a.active,
-.chassis-nav a:hover { color: #fff; }
-.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
-.chassis-meta {
-  display: flex;
-  gap: 20px;
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-chassis-fg-2);
-  white-space: nowrap;
-}
-.chassis-meta .val { color: #fff; }
-
-/* ── Readout strip ── */
-.readout-strip {
-  background: var(--nk-panel);
-  border-bottom: var(--nk-border);
-  padding: 18px 40px;
-  display: grid;
-  grid-template-columns: 1.4fr repeat(5, 1fr) auto;
-  gap: 32px;
-  align-items: center;
-  flex-shrink: 0;
-}
-.readout-cell {}
-.drafts-cell {
-  text-decoration: none;
-  color: inherit;
-  display: block;
-  border-left: var(--nk-border);
-  padding-left: 24px;
-  margin-left: -24px;
-  transition: background var(--nk-dur-fast);
-}
-.drafts-cell:hover { background: var(--nk-panel-2); }
-.drafts-cell .drafts-attention { color: var(--nk-signal); }
-.drafts-cell-tag {
-  margin-top: 6px;
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-muted);
-  letter-spacing: 0.06em;
-}
-.drafts-cell:hover .drafts-cell-tag { color: var(--nk-ink-2); }
-.nk-caps {
-  font-family: var(--nk-font-mono);
-  font-size: var(--nk-t-micro);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--nk-ink-2);
-  margin-bottom: 6px;
-}
-.fleet-count {
-  font-family: var(--nk-font-display);
-  font-size: 30px;
-  font-weight: 500;
-  letter-spacing: -0.6px;
-  line-height: 1;
-}
-.fleet-count .on { color: var(--nk-signal); }
-.fleet-count .total { color: var(--nk-muted); }
-.fleet-count .label {
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--nk-ink-2);
-  margin-left: 8px;
-  letter-spacing: 0;
-}
-.nk-readout {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-}
-.nk-readout .val {
-  font-family: var(--nk-font-mono);
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.3px;
-  font-variant-numeric: tabular-nums;
-  color: var(--nk-ink);
-}
-.nk-readout .unit {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-muted);
-}
-.nk-gauge-wrap { margin-top: 8px; }
-.nk-gauge {
-  position: relative;
-  height: 3px;
-  background: var(--nk-hairline);
-  width: 120px;
-}
-.nk-gauge-fill {
-  position: absolute;
-  inset: 0;
-  background: var(--nk-ink);
-  transition: width var(--nk-dur-slow) var(--nk-ease-out);
-}
-.nk-gauge-tick {
-  position: absolute;
-  top: -2px;
-  width: 1px;
-  height: 7px;
-  background: var(--nk-rule);
-}
-.strip-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.nk-btn-primary {
-  background: var(--nk-ink);
-  color: #fff;
-  border: none;
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 9px 14px;
-  cursor: pointer;
-  border-radius: var(--nk-r-2);
-  transition: background var(--nk-dur-base) var(--nk-ease-out);
-  white-space: nowrap;
-}
-.nk-btn-primary:hover { background: var(--nk-chassis-2); }
-.nk-btn-ghost {
-  background: transparent;
-  color: var(--nk-ink-2);
-  border: var(--nk-border);
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 8px 13px;
-  cursor: pointer;
-  border-radius: var(--nk-r-2);
-  white-space: nowrap;
-}
-.nk-btn-ghost:hover { border-color: var(--nk-ink-2); color: var(--nk-ink); }
-
-/* ── Grid subheader ── */
-.grid-subheader {
-  padding: 14px 40px 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-}
-.state-legend {
-  display: flex;
-  gap: 14px;
-}
-.state-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  color: var(--nk-muted);
-}
-.state-dot {
-  width: 8px;
-  height: 8px;
-  flex-shrink: 0;
-}
-
-/* ── Agent grid ── */
-.grid-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 40px 28px;
-}
-.agent-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  border: var(--nk-border);
-  background: var(--nk-rule);
-  gap: 1px;
-}
-.agent-card {
-  background: var(--nk-panel);
-  padding: 18px;
-  position: relative;
-  cursor: pointer;
-  border-left: 3px solid transparent;
-  transition: background var(--nk-dur-fast) var(--nk-ease-out);
-  min-height: 148px;
-}
-.agent-card:hover { background: #fafaf7; }
-.agent-card.selected { background: var(--nk-panel-2); }
-.agent-card.is-active { border-left-color: var(--nk-signal); }
-.agent-card.is-lead { padding: 20px 24px; }
-.agent-card.span-2 { grid-column: span 2; }
-
-.card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-}
-.card-id {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  color: var(--nk-ink-2);
-  margin-bottom: 2px;
-}
-.card-role {
-  font-size: 19px;
-  font-weight: 500;
-  letter-spacing: -0.3px;
-  color: var(--nk-ink);
-  line-height: 1.2;
-}
-.agent-card.is-lead .card-role { font-size: 24px; }
-
-.nk-state-chip {
-  display: inline-block;
-  font-family: var(--nk-font-mono);
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  padding: 3px 6px;
-  flex-shrink: 0;
-}
-.chip-active   { background: var(--nk-signal);  color: #fff; }
-.chip-online   { background: var(--nk-ink);     color: #fff; }
-.chip-idle     { background: var(--nk-ink);     color: #fff; }
-.chip-hold     { background: var(--nk-amber);   color: #fff; }
-.chip-offline  { background: transparent; color: var(--nk-muted); border: var(--nk-border); }
-
-.card-signal-label {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--nk-font-mono);
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  color: var(--nk-ink-2);
-  margin-bottom: 4px;
-}
-.card-signal-label .sig-val { color: var(--nk-ink); }
-.card-note {
-  font-size: 13px;
-  color: var(--nk-ink-2);
-  line-height: 1.5;
-  margin-bottom: 10px;
-  min-height: 34px;
-}
-.agent-card.is-lead .card-note { min-height: 40px; }
-
-.card-footer {
-  display: flex;
-  gap: 14px;
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--nk-hairline);
-  font-variant-numeric: tabular-nums;
-}
-.card-footer .lbl { color: var(--nk-muted); margin-right: 3px; }
-.card-footer .num { color: var(--nk-ink); font-weight: 500; }
-.card-open-draft {
-  margin-left: auto;
-  color: var(--nk-signal);
-  font-weight: 500;
-}
-
-/* ── Detail drawer ── */
-.drawer-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(13,13,13,0.35);
-  z-index: 100;
-  display: none;
-}
-.drawer-overlay.open { display: flex; justify-content: flex-end; }
-.drawer {
-  width: 420px;
-  background: var(--nk-panel);
-  height: 100%;
-  border-left: var(--nk-border);
-  padding: 28px 32px;
-  overflow-y: auto;
-  animation: drawer-in var(--nk-dur-slow) var(--nk-ease-out);
-}
-@keyframes drawer-in {
-  from { transform: translateX(20px); opacity: 0; }
-  to   { transform: translateX(0);    opacity: 1; }
-}
-.drawer-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-}
-.drawer-role {
-  font-size: 30px;
-  font-weight: 500;
-  letter-spacing: -0.5px;
-  margin-bottom: 6px;
-  line-height: 1.15;
-}
-.drawer-section {
-  border-top: var(--nk-border);
-  padding-top: 14px;
-  margin-bottom: 18px;
-}
-.drawer-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px dotted var(--nk-hairline);
-  font-size: 12px;
-}
-.drawer-row .dk { color: var(--nk-ink-2); }
-.drawer-row .dv {
-  font-family: var(--nk-font-mono);
-  font-variant-numeric: tabular-nums;
-}
-.drawer-actions { display: flex; gap: 8px; margin-top: 8px; }
-.drawer-actions .nk-btn-primary { flex: 1; }
-
-/* focus rings */
-:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal);
-}
-</style>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-dashboard.css?v={{ asset_version }}">
 </head>
-<body>
+<body class="sho bridge-page">
 
 <!-- Chassis header -->
 {% from "_chassis_nav.html" import chassis_nav %}
@@ -481,43 +28,43 @@ body {
   </div>
   <div class="readout-cell">
     <div class="nk-caps">TOKENS · 24H</div>
-    <div class="nk-readout"><span class="val" id="tok-24h">—</span><span class="unit">tok</span></div>
-    <div class="nk-gauge-wrap">
-      <div class="nk-gauge" style="width:120px">
-        <div class="nk-gauge-fill" id="tok-gauge" style="width:0%"></div>
-        <div class="nk-gauge-tick" style="left:25%"></div>
-        <div class="nk-gauge-tick" style="left:50%"></div>
-        <div class="nk-gauge-tick" style="left:75%"></div>
+    <div class="sho-readout"><span class="val" id="tok-24h">—</span><span class="unit">tok</span></div>
+    <div class="sho-gauge-wrap">
+      <div class="sho-gauge" style="width:120px">
+        <div class="sho-gauge-fill" id="tok-gauge" style="width:0%"></div>
+        <div class="sho-gauge-tick" style="left:25%"></div>
+        <div class="sho-gauge-tick" style="left:50%"></div>
+        <div class="sho-gauge-tick" style="left:75%"></div>
       </div>
     </div>
   </div>
   <div class="readout-cell">
     <div class="nk-caps">COST · MTD</div>
-    <div class="nk-readout"><span class="val" id="cost-mtd">—</span><span class="unit">USD</span></div>
-    <div class="nk-gauge-wrap">
-      <div class="nk-gauge" style="width:120px">
-        <div class="nk-gauge-fill" id="cost-gauge" style="width:0%"></div>
-        <div class="nk-gauge-tick" style="left:25%"></div>
-        <div class="nk-gauge-tick" style="left:50%"></div>
-        <div class="nk-gauge-tick" style="left:75%"></div>
+    <div class="sho-readout"><span class="val" id="cost-mtd">—</span><span class="unit">USD</span></div>
+    <div class="sho-gauge-wrap">
+      <div class="sho-gauge" style="width:120px">
+        <div class="sho-gauge-fill" id="cost-gauge" style="width:0%"></div>
+        <div class="sho-gauge-tick" style="left:25%"></div>
+        <div class="sho-gauge-tick" style="left:50%"></div>
+        <div class="sho-gauge-tick" style="left:75%"></div>
       </div>
     </div>
   </div>
   <div class="readout-cell">
     <div class="nk-caps">RUNS · 24H</div>
-    <div class="nk-readout"><span class="val" id="runs-24h">—</span><span class="unit">exec</span></div>
-    <div class="nk-gauge-wrap">
-      <div class="nk-gauge" style="width:120px">
-        <div class="nk-gauge-fill" id="runs-gauge" style="width:0%"></div>
-        <div class="nk-gauge-tick" style="left:25%"></div>
-        <div class="nk-gauge-tick" style="left:50%"></div>
-        <div class="nk-gauge-tick" style="left:75%"></div>
+    <div class="sho-readout"><span class="val" id="runs-24h">—</span><span class="unit">exec</span></div>
+    <div class="sho-gauge-wrap">
+      <div class="sho-gauge" style="width:120px">
+        <div class="sho-gauge-fill" id="runs-gauge" style="width:0%"></div>
+        <div class="sho-gauge-tick" style="left:25%"></div>
+        <div class="sho-gauge-tick" style="left:50%"></div>
+        <div class="sho-gauge-tick" style="left:75%"></div>
       </div>
     </div>
   </div>
   <a href="/bridge/drafts" class="readout-cell drafts-cell">
     <div class="nk-caps">DRAFTS · PENDING</div>
-    <div class="nk-readout">
+    <div class="sho-readout">
       <span class="val{% if drafts_pending_count %} drafts-attention{% endif %}">{{ drafts_pending_count }}</span>
       <span class="unit">queued</span>
     </div>
@@ -527,11 +74,11 @@ body {
   </a>
   <div class="readout-cell" id="latency-cell" style="display:none">
     <div class="nk-caps">LATENCY</div>
-    <div class="nk-readout"><span class="val">—</span><span class="unit">s avg</span></div>
+    <div class="sho-readout"><span class="val">—</span><span class="unit">s avg</span></div>
   </div>
   <div class="strip-actions">
-    <a href="/bridge/memory" class="nk-btn-primary" style="text-decoration:none;text-align:center">記憶庫 →</a>
-    <a href="/bridge/cost" class="nk-btn-ghost" style="text-decoration:none;text-align:center">成本報告</a>
+    <a href="/bridge/memory" class="sho-btn" style="text-decoration:none;text-align:center">記憶庫 →</a>
+    <a href="/bridge/cost" class="sho-btn--ghost" style="text-decoration:none;text-align:center">成本報告</a>
   </div>
 </div>
 
@@ -540,16 +87,16 @@ body {
   <div class="nk-caps">AGENTS · 九位艦員 — ordered by signal ↓</div>
   <div class="state-legend">
     <div class="state-legend-item">
-      <div class="state-dot" style="background:var(--nk-signal)"></div>ACTIVE
+      <div class="state-dot state-dot--active"></div>ACTIVE
     </div>
     <div class="state-legend-item">
-      <div class="state-dot" style="background:var(--nk-ink)"></div>ONLINE
+      <div class="state-dot state-dot--online"></div>ONLINE
     </div>
     <div class="state-legend-item">
-      <div class="state-dot" style="background:var(--nk-amber)"></div>HOLD
+      <div class="state-dot state-dot--hold"></div>HOLD
     </div>
     <div class="state-legend-item">
-      <div class="state-dot" style="border:1px solid var(--nk-rule)"></div>OFFLINE
+      <div class="state-dot state-dot--offline"></div>OFFLINE
     </div>
   </div>
 </div>
@@ -570,7 +117,7 @@ body {
         <div class="drawer-role" id="drawer-role"></div>
         <div id="drawer-chip"></div>
       </div>
-      <button class="nk-btn-ghost" onclick="closeDrawer()" style="padding:4px 8px;font-size:10px">ESC</button>
+      <button class="sho-btn--ghost" onclick="closeDrawer()" style="padding:4px 8px;font-size:10px">ESC</button>
     </div>
     <div class="nk-caps" style="margin-bottom:8px" id="drawer-note"></div>
     <div class="drawer-section">
@@ -578,8 +125,8 @@ body {
       <div id="drawer-rows"></div>
     </div>
     <div class="drawer-actions">
-      <button class="nk-btn-primary" id="drawer-open-btn" onclick="openAgentInterface()">OPEN INTERFACE</button>
-      <button class="nk-btn-ghost" onclick="closeDrawer()">CLOSE</button>
+      <button class="sho-btn" id="drawer-open-btn" onclick="openAgentInterface()">OPEN INTERFACE</button>
+      <button class="sho-btn--ghost" onclick="closeDrawer()">CLOSE</button>
     </div>
   </div>
 </div>
@@ -604,18 +151,18 @@ const AGENT_URLS = {
 const STATE_LABEL = { active: 'ACTIVE', online: 'ONLINE', idle: 'IDLE', hold: 'HOLD', offline: 'OFFLINE' };
 
 function stateChipHTML(st) {
-  return `<span class="nk-state-chip chip-${st}">${STATE_LABEL[st] || st.toUpperCase()}</span>`;
+  return `<span class="sho-chip sho-chip--${st}">${STATE_LABEL[st] || st.toUpperCase()}</span>`;
 }
 
 function gaugeHTML(value, color, width) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
-  const c = color || 'var(--nk-ink)';
+  const c = color || 'var(--sho-text)';
   return `
-    <div class="nk-gauge" style="width:${width || '100%'}">
-      <div class="nk-gauge-fill" style="width:${pct.toFixed(1)}%;background:${c}"></div>
-      <div class="nk-gauge-tick" style="left:25%"></div>
-      <div class="nk-gauge-tick" style="left:50%"></div>
-      <div class="nk-gauge-tick" style="left:75%"></div>
+    <div class="sho-gauge" style="width:${width || '100%'}">
+      <div class="sho-gauge-fill" style="width:${pct.toFixed(1)}%;background:${c}"></div>
+      <div class="sho-gauge-tick" style="left:25%"></div>
+      <div class="sho-gauge-tick" style="left:50%"></div>
+      <div class="sho-gauge-tick" style="left:75%"></div>
     </div>`;
 }
 
@@ -632,10 +179,10 @@ function fmtNum(n) { return (n || 0).toLocaleString('en-US'); }
 let maxTok = 1;
 function sigScore(a) { return Math.min(1, (a.tok_today || 0) / Math.max(maxTok, 1)); }
 function sigColor(a) {
-  if (a.state === 'active')  return 'var(--nk-signal)';
-  if (a.state === 'hold')    return 'var(--nk-amber)';
-  if (a.state === 'offline') return 'var(--nk-muted)';
-  return 'var(--nk-ink)';
+  if (a.state === 'active')  return 'var(--sho-accent)';
+  if (a.state === 'hold')    return 'var(--sho-warning)';
+  if (a.state === 'offline') return 'var(--sho-muted)';
+  return 'var(--sho-text)';
 }
 
 // ── Render agent card ──
@@ -665,7 +212,7 @@ function renderCard(a) {
       </div>
       <div class="card-signal-label">
         <span>SIGNAL</span>
-        <span class="sig-val">${sigPct}<span style="color:var(--nk-muted)">%</span></span>
+        <span class="sig-val">${sigPct}<span class="sig-pct-unit">%</span></span>
       </div>
       ${gaugeHTML(sig, sigColor(a), '100%')}
       <div class="card-note" style="margin-top:10px">${a.note || '—'}</div>
@@ -760,9 +307,7 @@ async function loadAgents() {
   } catch (err) {
     console.error('Failed to load agents:', err);
     document.getElementById('agentGrid').innerHTML =
-      `<div style="padding:24px;color:var(--nk-muted);font-family:var(--nk-font-mono);font-size:12px;grid-column:span 4">
-        failed to load agents — check console
-      </div>`;
+      `<div class="agent-grid-error">failed to load agents — check console</div>`;
   }
 }
 

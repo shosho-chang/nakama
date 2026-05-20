@@ -1,0 +1,318 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Bridge ops surfaces · shared styles (Design System v0.1 / --sho-* tokens)
+
+   Composes on top of `static/shosho/tokens.css`. Bridge templates carry
+   `class="sho"` on <body> so tokens cascade. Dark mode via the
+   `data-theme="dark"` attribute on <body>.
+
+   This file is the SHARED Bridge foundation — it is `<link>`-ed by the
+   Bridge dashboard shell (index.html) and is intended to be reused by the
+   SEO control-center (#639) and the remaining Bridge sub-pages (#640).
+
+   What lives here (reusable):
+     · `.chassis` + `.chassis-nav`   — the dark ops header band + lane nav
+     · `.nk-breadcrumb*`             — user-journey trail (shared partial)
+     · `.nk-caps`                    — small-caps mono section label
+     · `.sho-btn` / `.sho-btn--ghost`— ops buttons
+     · `.sho-readout*`               — labelled metric readout + hairline gauge
+     · `.sho-chip*`                  — status pill vocabulary (5 states)
+     · `.sho-panel`                  — hairline-bordered surface card
+     · `.sho-grid-strip`             — dense table / cell-grid scaffolding
+
+   Page-specific dashboard layout (readout strip grid, agent grid, detail
+   drawer) lives in `bridge-dashboard.css`.
+
+   Dense ops dashboard: engineer density over whitespace, 1px hairline
+   borders, 4px base radius, motion ≤200ms, single PANTONE 165 PC orange
+   accent (≤4% orange pixels). No hardcoded hex/rgb — every colour resolves
+   through a `--sho-*` token. The retired `--nk-*` "workshop floor"
+   namespace is fully replaced.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Page shell ─────────────────────────────────────────────────────────── */
+body.sho.bridge-page {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--sho-bg-2);
+  color: var(--sho-text);
+  font-size: 14px;
+}
+
+/* ── Chassis header — dark ops band ─────────────────────────────────────── */
+/* A deliberate dark band (not AI-slop): hairline-separated, mono nav lanes,
+   single orange under-rule on the active lane. */
+body.sho .chassis {
+  background: var(--sho-ink);
+  color: var(--sho-bg);
+  padding: 0 40px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--sho-ink);
+}
+body.sho .chassis-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+body.sho .chassis-dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--sho-bg-3);
+  border-radius: var(--sho-r-pill);
+  position: relative;
+}
+body.sho .chassis-dot::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--sho-accent);
+  border-radius: var(--sho-r-pill);
+}
+body.sho .chassis-wordmark {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  white-space: nowrap;
+}
+body.sho .chassis-version {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  color: var(--sho-muted);
+  letter-spacing: 0.08em;
+}
+body.sho .chassis-nav {
+  flex: 1;
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+body.sho .chassis-nav a {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--sho-muted);
+  border-bottom: 2px solid transparent;
+  padding-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .chassis-nav a .zh {
+  font-family: var(--sho-font-zh);
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+body.sho .chassis-nav a.active,
+body.sho .chassis-nav a:hover {
+  color: var(--sho-bg);
+}
+body.sho .chassis-nav a.active {
+  border-bottom-color: var(--sho-accent);
+}
+body.sho .chassis-nav a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--sho-ink), 0 0 0 4px var(--sho-accent);
+  border-radius: 2px;
+}
+body.sho .chassis-meta {
+  display: flex;
+  gap: 20px;
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  color: var(--sho-muted);
+  white-space: nowrap;
+}
+body.sho .chassis-meta .val {
+  color: var(--sho-bg);
+}
+
+/* ── Breadcrumb trail (shared `_breadcrumb.html` partial) ───────────────── */
+body.sho .nk-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 40px 0;
+}
+body.sho .nk-breadcrumb-sep {
+  color: var(--sho-line-2);
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+}
+body.sho .nk-breadcrumb-link {
+  color: var(--sho-muted);
+  text-decoration: none;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .nk-breadcrumb-link:hover {
+  color: var(--sho-accent);
+}
+body.sho .nk-breadcrumb-current {
+  color: var(--sho-text-2);
+}
+
+/* ── Small-caps mono label ──────────────────────────────────────────────── */
+body.sho .nk-caps {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sho-text-2);
+}
+
+/* ── Ops buttons ────────────────────────────────────────────────────────── */
+body.sho .sho-btn {
+  background: var(--sho-text);
+  color: var(--sho-bg);
+  border: 1px solid var(--sho-text);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  cursor: pointer;
+  border-radius: var(--sho-r-1);
+  white-space: nowrap;
+  transition:
+    background var(--sho-t-base) var(--sho-ease),
+    border-color var(--sho-t-base) var(--sho-ease);
+}
+body.sho .sho-btn:hover {
+  background: var(--sho-accent);
+  border-color: var(--sho-accent);
+}
+body.sho .sho-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .sho-btn--ghost {
+  background: transparent;
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line);
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 13px;
+  cursor: pointer;
+  border-radius: var(--sho-r-1);
+  white-space: nowrap;
+  transition:
+    border-color var(--sho-t-fast) var(--sho-ease),
+    color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .sho-btn--ghost:hover {
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+}
+body.sho .sho-btn--ghost:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* ── Hairline-bordered surface panel ────────────────────────────────────── */
+body.sho .sho-panel {
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+}
+
+/* ── Labelled metric readout + hairline gauge ───────────────────────────── */
+body.sho .sho-readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+body.sho .sho-readout .val {
+  font-family: var(--sho-font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sho-text);
+}
+body.sho .sho-readout .unit {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  color: var(--sho-muted);
+}
+body.sho .sho-gauge {
+  position: relative;
+  height: 3px;
+  background: var(--sho-line);
+  width: 120px;
+}
+body.sho .sho-gauge-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--sho-text);
+  transition: width var(--sho-t-slow) var(--sho-ease);
+}
+body.sho .sho-gauge-tick {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 7px;
+  background: var(--sho-line-2);
+}
+
+/* ── Status chip vocabulary — 5 ops states ──────────────────────────────── */
+/* Single-accent rule: only `active` carries orange; everything else is
+   neutral ink / hairline. Soft semantic fills via color-mix. */
+body.sho .sho-chip {
+  display: inline-block;
+  font-family: var(--sho-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  padding: 3px 6px;
+  border-radius: var(--sho-r-1);
+  flex-shrink: 0;
+}
+body.sho .sho-chip--active {
+  background: var(--sho-accent);
+  color: var(--sho-bg);
+}
+body.sho .sho-chip--online,
+body.sho .sho-chip--idle {
+  background: var(--sho-text);
+  color: var(--sho-bg);
+}
+body.sho .sho-chip--hold {
+  background: color-mix(in oklch, var(--sho-warning) 18%, transparent);
+  color: var(--sho-warning);
+  border: 1px solid color-mix(in oklch, var(--sho-warning) 40%, transparent);
+}
+body.sho .sho-chip--offline {
+  background: transparent;
+  color: var(--sho-muted);
+  border: 1px solid var(--sho-line);
+}
+
+/* ── Dense cell-grid scaffolding (compact tables / tile grids) ──────────── */
+/* 1px hairline gutters drawn by the container background; cells sit on bg. */
+body.sho .sho-grid-strip {
+  display: grid;
+  border: 1px solid var(--sho-line);
+  background: var(--sho-line);
+  gap: 1px;
+}
+body.sho .sho-grid-cell {
+  background: var(--sho-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.sho .sho-gauge-fill {
+    transition: none;
+  }
+}
