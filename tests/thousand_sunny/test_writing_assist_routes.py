@@ -7,7 +7,7 @@ checks:
 - LR1  GET /writing-assist/{id} → 301 → /robin/writing-assist/{id}.
 - RT2  Response HTML must NOT contain first-person tokens outside excerpt
        blockquotes (W3 enforcement).
-- RT3  Template uses var(--brk-*) tokens; no hardcoded color hex / fontnames.
+- RT3  Template uses var(--sho-*) tokens; no hardcoded color hex / fontnames.
 
 Tests inject a fake WritingAssistService via set_service. No real LLM, no
 vault writes. Mirrors #516 fake-injection pattern.
@@ -202,11 +202,12 @@ def test_rt2_route_does_not_render_completed_prose(
 
 
 def test_rt3_route_uses_design_tokens():
-    """The CSS file uses var(--brk-*) tokens for every visual property; the
+    """The CSS file uses var(--sho-*) tokens for every visual property; the
     template + CSS must NOT hardcode color hex codes or font names. Brief §5
-    self-imposed gate — Aesthetic direction is tokens-only.
+    self-imposed gate — Aesthetic direction is tokens-only. The surface was
+    migrated to Shosho Design System v0.1 in #636.
     """
-    css_path = REPO_ROOT / "thousand_sunny" / "static" / "writing_assist.css"
+    css_path = REPO_ROOT / "thousand_sunny" / "static" / "shosho" / "writing-assist.css"
     template_path = REPO_ROOT / "thousand_sunny" / "templates" / "writing_assist" / "scaffold.html"
     assert css_path.exists(), css_path
     assert template_path.exists(), template_path
@@ -221,35 +222,35 @@ def test_rt3_route_uses_design_tokens():
     hex_matches = [m.group() for m in hex_pattern.finditer(css_no_comments)]
     # Also accept urlhash anchors in url() — but our CSS has none.
     assert hex_matches == [], (
-        f"writing_assist.css must not hardcode hex color codes; violators: {hex_matches}"
+        f"writing-assist.css must not hardcode hex color codes; violators: {hex_matches}"
     )
 
     # No rgb()/rgba() literals in CSS proper.
     rgb_pattern = re.compile(r"\brgba?\(", re.IGNORECASE)
     assert rgb_pattern.search(css_no_comments) is None, (
-        "writing_assist.css must not hardcode rgb() / rgba() literals"
+        "writing-assist.css must not hardcode rgb() / rgba() literals"
     )
 
-    # The template MUST reference /static/projects/tokens.css and
-    # /static/writing_assist.css (tokens layered first; surface stylesheet
-    # second).
-    assert "/static/projects/tokens.css" in template_text, (
-        "scaffold.html must include /static/projects/tokens.css for design tokens"
+    # The template MUST reference /static/shosho/tokens.css and
+    # /static/shosho/writing-assist.css (tokens layered first; surface
+    # stylesheet second). Shosho Design System v0.1 — #636.
+    assert "/static/shosho/tokens.css" in template_text, (
+        "scaffold.html must include /static/shosho/tokens.css for design tokens"
     )
-    assert "/static/writing_assist.css" in template_text, (
-        "scaffold.html must include /static/writing_assist.css"
+    assert "/static/shosho/writing-assist.css" in template_text, (
+        "scaffold.html must include /static/shosho/writing-assist.css"
     )
 
-    # The CSS itself must contain at least one var(--brk-*) reference per
+    # The CSS itself must contain at least one var(--sho-*) reference per
     # visual category — this is a smell test for "did we keep tokens-only?".
     for token in (
-        "var(--brk-bg",
-        "var(--brk-ink",
-        "var(--brk-rule",
-        "var(--brk-font-",
-        "var(--brk-s-",
+        "var(--sho-bg",
+        "var(--sho-text",
+        "var(--sho-line",
+        "var(--sho-font-",
+        "var(--sho-s-",
     ):
-        assert token in css_text, f"writing_assist.css missing token category {token!r}"
+        assert token in css_text, f"writing-assist.css missing token category {token!r}"
 
 
 # ── Negative — invalid base64 returns 400 ───────────────────────────────────

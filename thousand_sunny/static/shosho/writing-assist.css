@@ -1,0 +1,316 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Robin Writing Assist · scaffold styles (Design System v0.1 / --sho-* tokens)
+
+   Composes on top of `static/shosho/tokens.css`. The scaffold template
+   carries `class="sho"` on <body> so design tokens cascade. Migrated from
+   the Brook `--brk-*` review-mode tokens (issue #636) to Shosho Design
+   System v0.1 — PANTONE 165 PC orange accent + LINE Seed TW single family.
+
+   Architectural marker: this stylesheet styles SCAFFOLD chrome only —
+   headings, lists, blockquotes for excerpts. There is no "intro paragraph"
+   or "conclusion" style class; rendering 修修's voice as prose is forbidden
+   at the surface layer (W1-W7). The blockquote class IS the only place
+   prose-shaped content is rendered (because it is quoted source content).
+
+   Tokens-only — every color is a `var(--sho-*)` reference. No hardcoded
+   hex / rgb here. The single-typeface design carries the mono role via
+   uppercase + tracking, not a separate font family.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.wa-shell {
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  font-family: var(--sho-font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: var(--sho-s-5) var(--sho-s-7);
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+/* ── Caps / mono meta — single-typeface mono role via uppercase + tracking ── */
+
+.brk-caps,
+.brk-mono {
+  font-family: var(--sho-font-mono);
+}
+
+.brk-caps {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+}
+
+.brk-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+
+.wa-topbar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sho-s-2);
+  padding-bottom: var(--sho-s-5);
+  border-bottom: 1px solid var(--sho-line);
+  margin-bottom: var(--sho-s-6);
+}
+
+.wa-topbar__brand {
+  color: var(--sho-muted);
+  letter-spacing: 0.06em;
+}
+
+.wa-topbar__title {
+  font-family: var(--sho-font-sans);
+  font-size: 28px;
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  color: var(--sho-text);
+  margin: 0;
+}
+
+.wa-topbar__caption {
+  color: var(--sho-muted);
+  margin: 0;
+}
+
+/* ── Error / empty states ────────────────────────────────────────────── */
+
+.wa-error,
+.wa-empty {
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: var(--sho-s-7);
+  display: grid;
+  gap: var(--sho-s-3);
+}
+
+.wa-error {
+  border-color: color-mix(in oklch, var(--sho-error) 45%, transparent);
+}
+
+.wa-error__title,
+.wa-empty__title {
+  font-family: var(--sho-font-sans);
+  font-size: 20px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--sho-text);
+  margin: 0;
+}
+
+.wa-error__body {
+  color: var(--sho-error);
+  margin: 0;
+  word-break: break-word;
+}
+
+.wa-error__hint,
+.wa-empty__body {
+  color: var(--sho-muted);
+  margin: 0;
+}
+
+/* ── Outline overview ────────────────────────────────────────────────── */
+
+.wa-overview {
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: var(--sho-s-5) var(--sho-s-6);
+  margin-bottom: var(--sho-s-6);
+  display: grid;
+  gap: var(--sho-s-3);
+}
+
+.wa-overview__caps {
+  color: var(--sho-muted);
+  margin: 0;
+}
+
+.wa-overview__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--sho-s-2);
+}
+
+.wa-overview__item {
+  margin: 0;
+}
+
+.wa-overview__link {
+  color: var(--sho-accent);
+  text-decoration: none;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  padding: var(--sho-s-1) var(--sho-s-2);
+  border-radius: var(--sho-r-1);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+
+.wa-overview__link:hover {
+  color: var(--sho-accent-2);
+  background: var(--sho-accent-soft);
+}
+
+.wa-overview__link:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* ── Section blocks ──────────────────────────────────────────────────── */
+
+.wa-blocks {
+  display: grid;
+  gap: var(--sho-s-7);
+}
+
+.wa-block {
+  display: grid;
+  gap: var(--sho-s-4);
+  padding: var(--sho-s-5) 0;
+  border-top: 1px solid var(--sho-line);
+}
+
+.wa-block:first-child {
+  border-top: none;
+}
+
+.wa-block__heading {
+  font-family: var(--sho-font-sans);
+  font-size: 22px;
+  line-height: 1.35;
+  letter-spacing: -0.012em;
+  color: var(--sho-text);
+  font-weight: 700;
+  margin: 0;
+}
+
+.wa-block__group {
+  display: grid;
+  gap: var(--sho-s-2);
+}
+
+.wa-block__caps {
+  color: var(--sho-muted);
+  margin: 0;
+  letter-spacing: 0.06em;
+}
+
+.wa-block__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--sho-s-3);
+}
+
+.wa-block__item {
+  display: grid;
+  gap: var(--sho-s-1);
+  padding: var(--sho-s-3) var(--sho-s-4);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  background: var(--sho-bg-2);
+  color: var(--sho-text);
+}
+
+.wa-block__item--question {
+  border-left: 2px solid var(--sho-accent);
+  font-family: var(--sho-font-zh);
+}
+
+.wa-block__item--missing {
+  border-left: 2px solid var(--sho-warning);
+  font-family: var(--sho-font-zh);
+}
+
+.wa-block__item--evidence {
+  background: var(--sho-bg-3);
+}
+
+.wa-block__pointer-meta {
+  display: flex;
+  gap: var(--sho-s-2);
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--sho-muted);
+}
+
+.wa-block__locator,
+.wa-block__pointer-id {
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+
+.wa-block__excerpt {
+  font-family: var(--sho-font-sans);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--sho-text);
+  border-left: 3px solid var(--sho-accent);
+  padding: var(--sho-s-2) var(--sho-s-4);
+  margin: 0;
+  background: var(--sho-bg-3);
+}
+
+.wa-block__source {
+  color: var(--sho-muted);
+  margin: 0;
+}
+
+/* ── Pills (evidence kind) ───────────────────────────────────────────── */
+
+.wa-pill {
+  display: inline-block;
+  padding: var(--sho-s-1) var(--sho-s-2);
+  border-radius: var(--sho-r-1);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg-2);
+  color: var(--sho-text-2);
+  white-space: nowrap;
+}
+
+.wa-pill--annotation {
+  border-color: var(--sho-accent-line);
+  color: var(--sho-accent);
+}
+
+.wa-pill--source_quote {
+  border-color: color-mix(in oklch, var(--sho-success) 45%, transparent);
+  color: var(--sho-success);
+}
+
+.wa-pill--concept_link {
+  border-color: color-mix(in oklch, var(--sho-warning) 50%, transparent);
+  color: var(--sho-warning);
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────── */
+
+.wa-footer {
+  margin-top: var(--sho-s-7);
+  padding-top: var(--sho-s-5);
+  border-top: 1px solid var(--sho-line);
+  color: var(--sho-muted);
+  text-align: center;
+}
+
+/* ── Reduced-motion accommodations ───────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-overview__link {
+    transition: none;
+  }
+}
