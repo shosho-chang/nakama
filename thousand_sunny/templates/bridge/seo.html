@@ -4,626 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bridge · SEO</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-:root {
-  --nk-bench:        #e8e6e1;
-  --nk-panel:        #ffffff;
-  --nk-panel-2:      #f4f2ec;
-  --nk-chassis:      #1a1a1a;
-  --nk-chassis-fg:   #e8e6e1;
-  --nk-chassis-fg-2: #98958e;
-  --nk-ink:          #0d0d0d;
-  --nk-ink-2:        #4a4a46;
-  --nk-ink-3:        #6a6a64;
-  --nk-muted:        #98958e;
-  --nk-rule:         #c8c5be;
-  --nk-hairline:     #dcd9d2;
-  --nk-signal:       #ff5a1f;
-  --nk-amber:        #c8a656;
-  --nk-jade:         #3f7a5a;
-  --nk-crimson:      #a8231a;
-  --nk-indigo:       #2a3a5c;
-  --nk-font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
-  --nk-font-sans:    "Noto Sans TC", "Helvetica Neue", sans-serif;
-  --nk-font-mono:    "JetBrains Mono", ui-monospace, monospace;
-  --nk-font-zh:      "Noto Sans TC", "PingFang TC", sans-serif;
-  --nk-dur-fast:     80ms;
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: 0.001ms !important; }
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body {
-  font-family: var(--nk-font-sans);
-  font-size: 14px;
-  background: var(--nk-bench);
-  color: var(--nk-ink);
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-/* ── Chassis ── */
-.chassis {
-  background: var(--nk-chassis);
-  color: var(--nk-chassis-fg);
-  padding: 0 40px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  flex-shrink: 0;
-  border-bottom: 1px solid #000;
-}
-.chassis-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.chassis-dot { width: 14px; height: 14px; border: 2px solid var(--nk-chassis-fg); border-radius: 50%; position: relative; }
-.chassis-dot::after { content: ''; position: absolute; inset: 3px; background: var(--nk-signal); border-radius: 50%; }
-.chassis-wordmark { font-family: var(--nk-font-mono); font-size: 11px; letter-spacing: 0.22em; }
-.chassis-nav { flex: 1; display: flex; gap: 24px; flex-wrap: wrap; row-gap: 6px; }
-.chassis-nav a {
-  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
-  text-transform: uppercase; text-decoration: none; color: var(--nk-chassis-fg-2);
-  border-bottom: 2px solid transparent; padding-bottom: 2px;
-  display: flex; align-items: center; gap: 6px;
-  transition: color var(--nk-dur-fast);
-}
-.chassis-nav a .zh { font-family: var(--nk-font-zh); letter-spacing: 0.12em; opacity: 0.7; }
-.chassis-nav a.active, .chassis-nav a:hover { color: #fff; }
-.chassis-nav a.active { border-bottom-color: var(--nk-signal); }
-
-/* ── Page header ── */
-.page-header {
-  background: var(--nk-panel);
-  border-bottom: 1px solid var(--nk-rule);
-  padding: 18px 40px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  flex-shrink: 0;
-}
-.nk-caps {
-  font-family: var(--nk-font-mono); font-size: 10px; letter-spacing: 0.18em;
-  text-transform: uppercase; color: var(--nk-ink-2); margin-bottom: 4px;
-}
-.page-title {
-  font-family: var(--nk-font-display); font-size: 26px; font-weight: 500;
-  letter-spacing: -0.5px;
-}
-.page-title .zh { color: var(--nk-muted); font-family: var(--nk-font-zh); font-size: 16px; }
-.header-meta {
-  font-family: var(--nk-font-mono); font-size: 10px; color: var(--nk-ink-3);
-  letter-spacing: 0.12em; text-transform: uppercase;
-}
-
-/* ── Main area ── */
-.main {
-  flex: 1;
-  overflow: auto;
-  padding: 24px 40px 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-/* ── Section card ── */
-.section {
-  background: var(--nk-panel);
-  border: 1px solid var(--nk-rule);
-}
-.section-head {
-  padding: 16px 20px 14px;
-  border-bottom: 1px solid var(--nk-hairline);
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 16px;
-}
-.section-marker {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  color: var(--nk-ink-3);
-  margin-bottom: 4px;
-}
-.section-title {
-  font-family: var(--nk-font-display);
-  font-size: 19px;
-  font-weight: 500;
-  letter-spacing: -0.2px;
-  color: var(--nk-ink);
-}
-.section-title .zh {
-  color: var(--nk-muted);
-  font-family: var(--nk-font-zh);
-  font-size: 13px;
-  margin-left: 6px;
-}
-.section-status {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  padding: 3px 8px;
-  border: 1px solid currentColor;
-}
-.section-status.pending { color: var(--nk-amber); }
-.section-status.deferred { color: var(--nk-indigo); }
-.section-body {
-  padding: 22px 20px 26px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.section-body .lead {
-  font-size: 14px;
-  color: var(--nk-ink-2);
-  line-height: 1.6;
-}
-.section-body .meta {
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  color: var(--nk-ink-3);
-  letter-spacing: 0.06em;
-  line-height: 1.6;
-}
-.section-body .meta code {
-  background: var(--nk-panel-2);
-  border: 1px solid var(--nk-hairline);
-  padding: 1px 6px;
-  font-size: 10.5px;
-}
-.section-body .deferred-note {
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--nk-indigo);
-  background: var(--nk-panel-2);
-  border-left: 2px solid var(--nk-indigo);
-  padding: 10px 14px;
-  line-height: 1.55;
-}
-
-/* ── Article list section ── */
-.section.section-articles .section-body {
-  /* Tables use the full panel width with their own gutters. */
-  padding: 0;
-  gap: 0;
-}
-.articles-toolbar {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--nk-hairline);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  color: var(--nk-ink-3);
-  letter-spacing: 0.04em;
-}
-.articles-toolbar .count { color: var(--nk-ink); }
-.articles-toolbar .source {
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.articles-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.articles-table thead th {
-  text-align: left;
-  background: var(--nk-panel-2);
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--nk-ink-3);
-  font-weight: 500;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--nk-rule);
-  border-top: 1px solid var(--nk-hairline);
-  white-space: nowrap;
-}
-.articles-table tbody td {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--nk-hairline);
-  vertical-align: top;
-  line-height: 1.45;
-}
-.articles-table tbody tr:last-child td { border-bottom: none; }
-.articles-table tbody tr:hover { background: var(--nk-panel-2); }
-.articles-table .col-title { min-width: 280px; max-width: 460px; }
-.articles-table .col-keyword { white-space: nowrap; }
-.articles-table .col-modified { white-space: nowrap; }
-.articles-table .col-grade,
-.articles-table .col-audited,
-.articles-table .col-action { white-space: nowrap; }
-
-.article-title-link {
-  font-weight: 500;
-  color: var(--nk-ink);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-}
-.article-title-link:hover {
-  border-bottom-color: var(--nk-signal);
-  color: var(--nk-signal);
-}
-.article-site-tag {
-  display: inline-block;
-  margin-left: 8px;
-  font-family: var(--nk-font-mono);
-  font-size: 9px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  padding: 1px 6px;
-  border: 1px solid var(--nk-hairline);
-  color: var(--nk-ink-3);
-  background: var(--nk-panel);
-  vertical-align: 2px;
-}
-.article-keyword {
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  color: var(--nk-ink-2);
-  letter-spacing: 0.04em;
-}
-.article-keyword.is-empty { color: var(--nk-muted); }
-.article-modified {
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  color: var(--nk-ink-2);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-}
-.article-placeholder {
-  color: var(--nk-muted);
-  font-family: var(--nk-font-mono);
-  font-size: 12px;
-}
-.article-action-btn {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 5px 10px;
-  background: transparent;
-  border: 1px solid var(--nk-rule);
-  color: var(--nk-ink-2);
-  cursor: pointer;
-  transition: border-color var(--nk-dur-fast), color var(--nk-dur-fast);
-}
-.article-action-btn:hover {
-  border-color: var(--nk-signal);
-  color: var(--nk-signal);
-}
-.article-action-btn:focus-visible {
-  border-color: var(--nk-signal);
-  color: var(--nk-signal);
-}
-.article-action-btn[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.article-action-form {
-  display: inline-block;
-  margin: 0;
-}
-.article-action-form + .article-action-link {
-  margin-left: 6px;
-}
-.article-action-link {
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-decoration: none;
-  color: var(--nk-ink-3);
-  border-bottom: 1px dotted var(--nk-muted);
-  padding-bottom: 1px;
-}
-.article-action-link:hover {
-  color: var(--nk-signal);
-  border-bottom-color: var(--nk-signal);
-}
-
-/* Grade chips — colour-coded by performance band. */
-.grade-chip {
-  display: inline-block;
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  padding: 2px 8px;
-  border: 1px solid currentColor;
-  background: var(--nk-panel);
-  font-variant-numeric: tabular-nums;
-}
-.grade-chip.grade-a    { color: var(--nk-jade); }
-.grade-chip.grade-bp,
-.grade-chip.grade-b    { color: var(--nk-indigo); }
-.grade-chip.grade-cp,
-.grade-chip.grade-c    { color: var(--nk-amber); }
-.grade-chip.grade-d,
-.grade-chip.grade-f    { color: var(--nk-crimson); }
-
-.articles-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--nk-ink-3);
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-.articles-empty .head {
-  font-family: var(--nk-font-display);
-  font-size: 16px;
-  letter-spacing: -0.2px;
-  color: var(--nk-ink-2);
-  margin-bottom: 8px;
-}
-.articles-empty .body { line-height: 1.55; }
-
-/* ── Target keywords section ── */
-.section.section-keywords .section-body {
-  /* Same full-bleed table convention as section 1. */
-  padding: 0;
-  gap: 0;
-}
-.keywords-toolbar {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--nk-hairline);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  color: var(--nk-ink-3);
-  letter-spacing: 0.04em;
-}
-.keywords-toolbar .count { color: var(--nk-ink); }
-.keywords-toolbar .source {
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.keywords-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.keywords-table thead th {
-  text-align: left;
-  background: var(--nk-panel-2);
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--nk-ink-3);
-  font-weight: 500;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--nk-rule);
-  border-top: 1px solid var(--nk-hairline);
-  white-space: nowrap;
-}
-.keywords-table tbody td {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--nk-hairline);
-  vertical-align: top;
-  line-height: 1.45;
-}
-.keywords-table tbody tr:last-child td { border-bottom: none; }
-.keywords-table tbody tr:hover { background: var(--nk-panel-2); }
-.keywords-table .col-keyword { min-width: 180px; }
-.keywords-table .col-url { min-width: 240px; }
-.keywords-table .col-goal,
-.keywords-table .col-rank,
-.keywords-table .col-impr { white-space: nowrap; font-variant-numeric: tabular-nums; }
-
-.kw-keyword {
-  font-weight: 500;
-  color: var(--nk-ink);
-  font-family: var(--nk-font-zh);
-}
-.kw-keyword-en {
-  display: block;
-  margin-top: 2px;
-  font-family: var(--nk-font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  color: var(--nk-ink-3);
-}
-.kw-url {
-  font-family: var(--nk-font-mono);
-  font-size: 11.5px;
-  color: var(--nk-ink-2);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-  word-break: break-all;
-}
-.kw-url:hover { border-bottom-color: var(--nk-signal); color: var(--nk-signal); }
-.kw-rank {
-  font-family: var(--nk-font-mono);
-  font-size: 12px;
-  color: var(--nk-ink-2);
-}
-.kw-rank.is-empty { color: var(--nk-muted); }
-.kw-placeholder {
-  color: var(--nk-muted);
-  font-family: var(--nk-font-mono);
-  font-size: 12px;
-}
-
-/* ── Section 3 · rank change ── */
-.section.section-rank .section-body {
-  /* Same full-bleed table convention as sections 1 + 2. */
-  padding: 0;
-  gap: 0;
-}
-.rank-toolbar {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--nk-hairline);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  color: var(--nk-ink-3);
-  letter-spacing: 0.04em;
-}
-.rank-toolbar .count { color: var(--nk-ink); }
-.rank-toolbar .source {
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.rank-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.rank-table thead th {
-  text-align: left;
-  background: var(--nk-panel-2);
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--nk-ink-3);
-  font-weight: 500;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--nk-rule);
-  border-top: 1px solid var(--nk-hairline);
-  white-space: nowrap;
-}
-.rank-table tbody td {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--nk-hairline);
-  vertical-align: top;
-  line-height: 1.45;
-}
-.rank-table tbody tr:last-child td { border-bottom: none; }
-.rank-table tbody tr:hover { background: var(--nk-panel-2); }
-.rank-table .col-keyword { min-width: 180px; }
-.rank-table .col-url { min-width: 240px; }
-.rank-table .col-pos,
-.rank-table .col-delta,
-.rank-table .col-impr { white-space: nowrap; font-variant-numeric: tabular-nums; }
-
-.rank-pos {
-  font-family: var(--nk-font-mono);
-  font-size: 12px;
-  color: var(--nk-ink-2);
-}
-.rank-pos.is-empty { color: var(--nk-muted); }
-
-/* Delta cell tokens — colour comes from CSS custom properties so an a11y
- * audit can override per palette without touching every selector below. */
-.delta {
-  font-family: var(--nk-font-mono);
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-variant-numeric: tabular-nums;
-}
-.delta-arrow {
-  font-size: 11px;
-  line-height: 1;
-  /* Up/down chevrons rendered from the underlying Unicode glyph; CSS keeps
-   * them aligned with the digits next to them. */
-}
-.delta.delta-improved { color: var(--nk-jade); }
-.delta.delta-declined { color: var(--nk-crimson); }
-.delta.delta-flat     { color: var(--nk-muted); }
-.delta.delta-empty    { color: var(--nk-muted); }
-
-.rank-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--nk-ink-3);
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-.rank-empty .head {
-  font-family: var(--nk-font-display);
-  font-size: 16px;
-  letter-spacing: -0.2px;
-  color: var(--nk-ink-2);
-  margin-bottom: 8px;
-}
-.rank-empty .body { line-height: 1.55; }
-
-.keywords-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--nk-ink-3);
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-.keywords-empty .head {
-  font-family: var(--nk-font-display);
-  font-size: 16px;
-  letter-spacing: -0.2px;
-  color: var(--nk-ink-2);
-  margin-bottom: 8px;
-}
-.keywords-empty .body { line-height: 1.55; }
-
-/* Ghost-style button (mirrors zoro_keyword_research.html .nk-btn-ghost). */
-.section-head .section-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.nk-btn-ghost {
-  background: transparent;
-  color: var(--nk-ink-2);
-  border: 1px solid var(--nk-rule);
-  font-family: var(--nk-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 7px 12px;
-  cursor: pointer;
-  border-radius: 2px;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color var(--nk-dur-fast), border-color var(--nk-dur-fast);
-}
-.nk-btn-ghost:hover { color: var(--nk-ink); border-color: var(--nk-ink-2); }
-.nk-btn-ghost:focus-visible { color: var(--nk-ink); border-color: var(--nk-ink-2); }
-
-/* ── Footer hint ── */
-.foot-hint {
-  margin-top: 4px;
-  font-family: var(--nk-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  color: var(--nk-muted);
-}
-.foot-hint a { color: var(--nk-ink-2); text-decoration: none; border-bottom: 1px dotted var(--nk-muted); }
-.foot-hint a:hover { color: var(--nk-signal); border-bottom-color: var(--nk-signal); }
-
-:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--nk-bench), 0 0 0 4px var(--nk-signal); }
-</style>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-seo.css?v={{ asset_version }}">
 </head>
-<body>
+<body class="sho seo-page">
 {% from "_chassis_nav.html" import chassis_nav %}
 {{ chassis_nav(nav_active='seo') }}
 
@@ -645,12 +30,12 @@ body {
       </div>
     </header>
     <div class="section-body">
-      <div class="articles-toolbar">
+      <div class="table-toolbar">
         <span>共 <span class="count">{{ articles|length }}</span> 篇 · 排序 last_modified ↓</span>
         <span class="source">SOURCE · WP REST /wp/v2/posts · 1H CACHE</span>
       </div>
       {% if articles %}
-      <table class="articles-table" aria-describedby="sec-articles">
+      <table class="data-table" aria-describedby="sec-articles">
         <thead>
           <tr>
             <th class="col-title">TITLE</th>
@@ -720,7 +105,7 @@ body {
         </tbody>
       </table>
       {% else %}
-      <div class="articles-empty">
+      <div class="table-empty">
         <div class="head">沒有抓到文章</div>
         <div class="body">
           可能是 WP REST 暫時無法連線、或環境變數未設定。<br>
@@ -740,19 +125,19 @@ body {
         <h2 class="section-title" id="sec-keywords">攻擊關鍵字 <span class="zh">target keywords on the offensive</span></h2>
       </div>
       <div class="section-head-actions">
-        <a class="nk-btn-ghost"
+        <a class="sho-btn--ghost"
            href="/bridge/zoro/keyword-research"
            id="kw-research-cta"
            aria-label="跳到 Zoro 關鍵字研究頁">+ 找新關鍵字</a>
       </div>
     </header>
     <div class="section-body">
-      <div class="keywords-toolbar">
+      <div class="table-toolbar">
         <span>共 <span class="count">{{ target_keywords|length }}</span> 個目標關鍵字 · 來源 <code>config/target-keywords.yaml</code></span>
         <span class="source">RANK COLUMNS · GSC ROLLING 28D</span>
       </div>
       {% if target_keywords %}
-      <table class="keywords-table" aria-describedby="sec-keywords">
+      <table class="data-table" aria-describedby="sec-keywords">
         <thead>
           <tr>
             <th class="col-keyword">KEYWORD</th>
@@ -800,7 +185,7 @@ body {
         </tbody>
       </table>
       {% else %}
-      <div class="keywords-empty">
+      <div class="table-empty">
         <div class="head">尚無攻擊關鍵字</div>
         <div class="body">
           透過 Zoro 的關鍵字研究找新題目，或用 CLI 直接編輯
@@ -821,12 +206,12 @@ body {
       </div>
     </header>
     <div class="section-body">
-      <div class="rank-toolbar">
+      <div class="table-toolbar">
         <span>共 <span class="count">{{ target_keywords|length }}</span> 個目標關鍵字 · 視窗 28 天 vs 前 28 天</span>
         <span class="source">SOURCE · gsc_rows · DAILY CRON 03:00</span>
       </div>
       {% if target_keywords %}
-      <table class="rank-table" aria-describedby="sec-rank">
+      <table class="data-table" aria-describedby="sec-rank">
         <thead>
           <tr>
             <th class="col-keyword">KEYWORD</th>
@@ -884,7 +269,7 @@ body {
         </tbody>
       </table>
       {% else %}
-      <div class="rank-empty">
+      <div class="table-empty">
         <div class="head">尚無排名資料</div>
         <div class="body">
           先在 <code>config/target-keywords.yaml</code> push 攻擊關鍵字，

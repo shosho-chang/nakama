@@ -298,9 +298,9 @@ def test_seo_page_grade_and_audit_columns_show_placeholder(authed_client):
         r = authed_client.get("/bridge/seo")
 
     body = r.text
-    # `[跑 audit]` button is rendered in disabled state (slice #232 enables).
+    # `[跑 audit]` button is rendered as a live audit-kick-off form post.
     assert "跑 audit" in body
-    assert "disabled" in body
+    assert 'action="/bridge/seo/audits"' in body
     # Placeholder dash appears in the rendered table cells.
     assert "article-placeholder" in body
 
@@ -431,8 +431,8 @@ def test_seo_page_target_keywords_button_links_to_zoro_research(authed_client, t
     body = r.text
     assert "+ 找新關鍵字" in body
     assert 'href="/bridge/zoro/keyword-research"' in body
-    # Ghost-style class (matches zoro_keyword_research.html pattern).
-    assert "nk-btn-ghost" in body
+    # Ghost-style class (shared Shosho ops button).
+    assert "sho-btn--ghost" in body
 
 
 def test_seo_page_target_keywords_empty_state(authed_client, tmp_path):
@@ -458,7 +458,8 @@ def test_seo_page_target_keywords_empty_state(authed_client, tmp_path):
     assert "Zoro" in body
     assert "CLI" in body
     # The keywords table itself does NOT render when empty.
-    assert '<table class="keywords-table"' not in body
+    keywords_section = body.split("section-keywords", 1)[-1].split("</article>", 1)[0]
+    assert "<table" not in keywords_section
 
 
 def test_seo_page_target_keywords_missing_yaml_does_not_crash(authed_client, tmp_path):
