@@ -13,15 +13,12 @@
   const themeKey = "proj_theme";
 
   // ── Theme ────────────────────────────────────────────────────────────────
+  // Shosho Design System v0.1 (issue #634): dark mode toggles via the
+  // `data-theme` attribute on <body class="sho">. The native <dialog>
+  // renders in the top layer but is still a DOM descendant of <body>, so
+  // the --sho-* var overrides on body.sho reach the dialog too.
   function applyTheme(theme) {
-    // Native <dialog> renders in the top layer and does not inherit CSS
-    // variables from the .review-shell ancestor; apply on documentElement so
-    // the brk-* var overrides reach top-layer descendants too.
-    const root = document.documentElement;
-    root.classList.toggle("brk-dark", theme === "dark");
-    root.classList.toggle("brk-light", theme !== "dark");
-    shell.classList.toggle("brk-dark", theme === "dark");
-    shell.classList.toggle("brk-light", theme !== "dark");
+    document.body.dataset.theme = theme === "dark" ? "dark" : "light";
   }
   function initialTheme() {
     const stored = localStorage.getItem(themeKey);

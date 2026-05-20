@@ -52,6 +52,27 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "projects
 _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Shosho design-system CSS this page uses.
+
+    Busts Cloudflare's /static/* edge cache when tokens.css or
+    projects-review.css change. Matches the asset-versioning pattern in
+    ``routers/robin.py`` (_shosho_asset_version).
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "projects-review.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
+
 # ── Request bodies ───────────────────────────────────────────────────────────
 
 
@@ -282,5 +303,6 @@ async def project_review_page(
             "evidence_cards": evidence_cards,
             "is_writing_mode": is_writing_mode,
             "outline_for_render": outline_for_render,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
