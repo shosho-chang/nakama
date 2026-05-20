@@ -64,6 +64,27 @@ async def legacy_writing_assist_redirect(source_id_b64: str):
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "writing_assist"
 _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
+
+def _shosho_asset_version() -> str:
+    """Return an 8-char hash of the Shosho design-system CSS this surface uses.
+
+    Used to bust Cloudflare's /static/* edge cache when ``tokens.css`` or
+    ``writing-assist.css`` change. Matches the asset-versioning pattern in
+    ``routers/robin.py`` (Robin Reader) — DS migration #636.
+    """
+    import hashlib
+
+    static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
+    h = hashlib.sha1()
+    for css in ("tokens.css", "writing-assist.css"):
+        path = static_dir / css
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
+
+
+_SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
 # Documented HTTP-boundary failures for service calls. Narrow tuple per
 # #511 F5 lesson — programmer errors propagate. The catch sites separate
 # OSError (server-side IO failure → 5xx) from ValueError / KeyError
@@ -210,6 +231,7 @@ async def render_scaffold(
                 "output": None,
                 "encoded_id": source_id_b64,
                 "error_message": package.error,
+                "asset_version": _SHOSHO_ASSET_VERSION,
             },
         )
 
@@ -240,6 +262,7 @@ async def render_scaffold(
             "output": output,
             "encoded_id": source_id_b64,
             "error_message": None,
+            "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
 
