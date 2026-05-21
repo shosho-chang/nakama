@@ -1,0 +1,93 @@
+{
+  "adr": "ADR-028",
+  "phase": "B (safe moves)",
+  "executed_at": "2026-05-21T03:22:40Z",
+  "vault": "E:\\Shosho LifeOS",
+  "repo": "E:\\nakama",
+  "excluded": [
+    "KB/Attachments/{inbox,pubmed} flatten — needs paired code-change PR",
+    "Files/ Category A+B migration — needs ref rewrites + Journals exception"
+  ],
+  "ops": [
+    {
+      "op": "ALREADY-AT-DEST",
+      "kind": "brook-seo-audit",
+      "src": "E:\\Shosho LifeOS\\KB\\Wiki\\Outputs\\2026-04-27-seo-acceptance",
+      "dst": "E:\\Shosho LifeOS\\AgentOutputs\\brook\\seo-audit\\2026-04-27",
+      "file_count": 8
+    },
+    {
+      "op": "ALREADY-AT-DEST",
+      "kind": "franky-weekly",
+      "src": "E:\\Shosho LifeOS\\AgentReports\\franky\\2026-W15.md",
+      "dst": "E:\\nakama\\data\\agent_reports\\franky\\weekly\\2026-W15.md",
+      "sha256": "1ed198739b63421ed35638b8a39e0bd5bbcb00ab36ad69d34b03d3e92055c15a"
+    },
+    {
+      "op": "ALREADY-AT-DEST",
+      "kind": "franky-dev-backlog",
+      "src": "E:\\Shosho LifeOS\\AgentReports\\dev-backlog.md",
+      "dst": "E:\\nakama\\data\\agent_reports\\franky\\dev-backlog.md",
+      "sha256": "5ddd27ac550af1bb5700dd7f495ef05676277e04691d5a2c4a86c8b46a478c18"
+    },
+    {
+      "op": "ALREADY-AT-DEST",
+      "kind": "prd",
+      "src": "E:\\Shosho LifeOS\\KB\\Wiki\\Outputs\\style-extractor-prd-draft.md",
+      "dst": "E:\\nakama-phaseb\\docs\\prds\\style-extractor-prd-draft.md",
+      "sha256": "0efa76a013dc4503877d3dfb526cd925945c4d4980984de0106eef3a01b9607b"
+    },
+    {
+      "op": "MOVE",
+      "kind": "incident",
+      "src": "E:\\Shosho LifeOS\\Incidents\\2026\\04\\drill-2026-04-26-state-restore.md",
+      "dst": "E:\\nakama-phaseb\\docs\\incidents\\2026\\04\\drill-2026-04-26-state-restore.md",
+      "sha256": "8b99bacc4ad798f434c92364f638b489efc1880747f611be8620674d721c09f7",
+      "verified": true
+    },
+    {
+      "op": "COPY-into-PR",
+      "src": "E:\\nakama\\docs\\qa\\2026-05-04-line2-bugs.md",
+      "dst": "E:\\nakama-phaseb\\docs\\qa\\2026-05-04-line2-bugs.md"
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\Nami"
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\AgentReports"
+    },
+    {
+      "op": "RECYCLE-ABORT-nonempty",
+      "path": "E:\\Shosho LifeOS\\AgentBriefs",
+      "leftover": [
+        ".gitkeep"
+      ]
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\KB\\Wiki\\Outputs"
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\KB\\Wiki\\Syntheses"
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\KB\\Wiki\\Comparisons"
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\Case Studies"
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\Incidents"
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\Schemas"
+    }
+  ]
+}
