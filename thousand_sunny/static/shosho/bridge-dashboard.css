@@ -238,6 +238,49 @@ body.sho .agent-grid-error {
   grid-column: span 4;
 }
 
+/* ── Disabled agent card (unbuilt agents — ADR-029 §2) ──────────────────── */
+/* Grayed, no hover, no cursor — honest about which agents can be driven. */
+body.sho .agent-card.is-disabled {
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
+}
+body.sho .agent-card.is-disabled:hover {
+  background: var(--sho-bg);
+}
+
+/* ── Stats drawer affordance button (built agents only) ─────────────────── */
+body.sho .card-stats-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  color: var(--sho-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 5px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .agent-card:hover .card-stats-btn {
+  opacity: 1;
+}
+body.sho .card-stats-btn:hover {
+  color: var(--sho-text-2);
+  border-color: var(--sho-text-2);
+}
+body.sho .card-stats-btn:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: var(--sho-focus);
+}
+
 /* ── Detail drawer ──────────────────────────────────────────────────────── */
 body.sho .drawer-overlay {
   position: fixed;

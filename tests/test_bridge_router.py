@@ -85,10 +85,15 @@ def test_bridge_index_renders_html(client):
     assert "'/brook/handoff'" in body
 
 
-def test_bridge_index_hides_robin_when_disabled(client):
-    # Fixture sets DISABLE_ROBIN=1 → Robin tile shows as disabled with a note.
+def test_bridge_index_renders_agent_urls(client):
+    # ADR-029: AGENT_URLS hardcoded to verified routes (no DISABLE_ROBIN toggle).
     r = client.get("/bridge")
-    assert "DISABLE_ROBIN" in r.text
+    assert r.status_code == 200
+    body = r.text
+    # Robin → '/' (verified route; /robin/kb does not exist — Codex ADR-029 audit)
+    assert "robin:  '/'" in body
+    # Franky console added (ADR-029 §2)
+    assert "'/bridge/franky'" in body
 
 
 def test_memory_page_renders_html(client):
@@ -193,40 +198,66 @@ def test_logs_page_bad_fts5_syntax_soft_fails(client):
     assert "No log records" in r.text or "Empty filters" in r.text
 
 
-# ── chassis-nav unification regression ──────────────────────────────────────
-# Three taxonomies emerged across PR #136 / #152 / #157 because each new page
-# copy-pasted the chassis nav and diverged. PR A (2026-04-26) unified them to
-# the canonical form (8 → 9 items after Phase 5C added LOGS, 10 after SEO 中控台
-# slice 1 added SEO between DRAFTS and MEMORY).
+# ── chassis-nav v2 regression (ADR-029) ─────────────────────────────────────
+# Validates the dual-axis nav: wordmark + Fleet▾ + DRAFTS + SEO + Ops▾.
+# Replaces the old flat-12-item canonical check (pre-ADR-029).
 def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> None:
-    """Verify all entries present, no legacy taxonomy, active link has both
-    `class="active"` and `aria-current="page"` regardless of attribute order."""
-    for label, zh in [
-        ("BRIDGE", "船橋"),
-        ("DRAFTS", "待審"),
-        ("SEO", "優化"),
-        ("MEMORY", "記憶"),
-        ("COST", "成本"),
-        ("FRANKY", "船匠"),
-        ("HEALTH", "巡檢"),
-        ("DOCS", "文件"),
-        ("LOGS", "日誌"),
-        ("VAULT", "秘庫"),
-    ]:
-        assert f'{label} <span class="zh">{zh}' in body, f"{path} missing {label}"
-    assert "is-current" not in body, f"{path} still uses is-current taxonomy"
-
+    """Verify v2 nav entries present and active item highlighted correctly."""
     import re
 
-    # Extract the <a> tag that contains the active label; verify both attrs.
-    pattern = rf'(<a [^>]*>){active_label} <span class="zh">'
-    match = re.search(pattern, body)
-    assert match, f"{path} no link matches {active_label}"
-    active_tag = match.group(1)
-    assert 'class="active"' in active_tag, f"{path} active link missing class=active: {active_tag}"
-    assert 'aria-current="page"' in active_tag, (
-        f"{path} active link missing aria-current=page: {active_tag}"
+    # Top-level direct links must be present
+    for label, zh in [
+        ("DRAFTS", "待審"),
+        ("SEO", "優化"),
+    ]:
+        assert f'{label} <span class="zh">{zh}' in body, f"{path} missing top-level {label}"
+
+    # Fleet dropdown agents (8, no Sunny — ADR-029 §2)
+    for label, zh in [
+        ("ROBIN", "知識"),
+        ("NAMI", "秘書"),
+        ("ZORO", "偵察"),
+        ("BROOK", "撰寫"),
+        ("SANJI", "社群"),
+        ("FRANKY", "系統"),
+        ("USOPP", "發布"),
+        ("CHOPPER", "顧問"),
+    ]:
+        assert f'{label} <span class="zh">{zh}' in body, f"{path} Fleet dropdown missing {label}"
+
+    # Ops dropdown (4 items)
+    for label, zh in [
+        ("COST", "成本"),
+        ("LOGS", "日誌"),
+        ("MEMORY", "記憶"),
+        ("DOCS", "文件搜尋"),
+    ]:
+        assert f'{label} <span class="zh">{zh}' in body, f"{path} Ops dropdown missing {label}"
+
+    # Legacy items removed from nav
+    assert "VAULT" not in re.findall(r">([A-Z]+)<", body), (
+        f"{path} VAULT should not appear as a nav item"
     )
+    assert "is-current" not in body, f"{path} still uses is-current taxonomy"
+
+    # Active-state check
+    if active_label == "BRIDGE":
+        # Wordmark link is active — not a <label zh> pattern
+        assert "chassis-wordmark" in body and 'aria-current="page"' in body, (
+            f"{path} wordmark not active"
+        )
+    else:
+        # Active item: <a ...>LABEL <span class="zh">
+        pattern = rf'(<a [^>]*>){active_label} <span class="zh">'
+        match = re.search(pattern, body)
+        assert match, f"{path} no link matches {active_label}"
+        active_tag = match.group(1)
+        assert 'class="active"' in active_tag, (
+            f"{path} active link missing class=active: {active_tag}"
+        )
+        assert 'aria-current="page"' in active_tag, (
+            f"{path} active link missing aria-current=page: {active_tag}"
+        )
 
 
 @pytest.mark.parametrize(
@@ -238,12 +269,12 @@ def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> No
         ("/bridge/memory", "MEMORY"),
         ("/bridge/cost", "COST"),
         ("/bridge/franky", "FRANKY"),
-        ("/bridge/health", "HEALTH"),
+        ("/bridge/health", "FRANKY"),  # nav_active='health' normalizes → 'franky' (ADR-029 §6)
         ("/bridge/docs", "DOCS"),
         ("/bridge/logs", "LOGS"),
     ],
 )
-def test_chassis_nav_canonical_9_items(client, path, active_label):
+def test_chassis_nav_v2_dual_axis(client, path, active_label):
     r = client.get(path)
     assert r.status_code == 200
     _assert_canonical_chassis_nav(r.text, path, active_label)
@@ -903,9 +934,8 @@ def test_api_agents_returns_full_roster_with_state_derivation(client, monkeypatc
     # usopp: default_state="hold" → 永遠 hold（即使無 usage）
     assert agents["usopp"]["state"] == "hold"
 
-    # chopper / sunny: default_state="offline" → 永遠 offline
+    # chopper: default_state="offline" → 永遠 offline
     assert agents["chopper"]["state"] == "offline"
-    assert agents["sunny"]["state"] == "offline"
 
     # 結構完整：每個 agent 必含 9 欄
     for a in payload["agents"]:

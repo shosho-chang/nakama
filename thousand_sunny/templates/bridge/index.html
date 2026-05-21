@@ -23,7 +23,7 @@
   <div class="readout-cell">
     <div class="nk-caps">FLEET · 艦隊狀態</div>
     <div class="fleet-count">
-      <span class="on" id="fleet-on">—</span><span class="total">/9</span>
+      <span class="on" id="fleet-on">—</span><span class="total">/8</span>
       <span class="label">on watch</span>
     </div>
   </div>
@@ -85,7 +85,7 @@
 
 <!-- Grid subheader -->
 <div class="grid-subheader">
-  <div class="nk-caps">AGENTS · 九位艦員 — ordered by signal ↓</div>
+  <div class="nk-caps">AGENTS · 八位艦員 — ordered by signal ↓</div>
   <div class="state-legend">
     <div class="state-legend-item">
       <div class="state-dot state-dot--active"></div>ACTIVE
@@ -142,10 +142,12 @@ function updateClock() {
 updateClock();
 setInterval(updateClock, 1000);
 
-// ── Agent interface URLs ── DISABLE_ROBIN={{ "0" if robin_enabled else "1" }}
+// ── Agent console URLs (ADR-029 §2 — verified routes only) ──────────────
 const AGENT_URLS = {
-  robin: '{{ "/robin/kb" if robin_enabled else "/" }}',
-  brook: '/brook/handoff',
+  robin:  '/',
+  zoro:   '/bridge/zoro/keyword-research',
+  brook:  '/brook/handoff',
+  franky: '/bridge/franky',
 };
 
 // ── State helpers ──
@@ -192,6 +194,8 @@ function renderCard(a) {
   const isActive = a.state === 'active';
   const sig = sigScore(a);
   const sigPct = (sig * 100).toFixed(0).padStart(2, '0');
+  const url = AGENT_URLS[a.key];
+  const isBuilt = !!url;
 
   let footer = `
     <span><span class="lbl">TOK</span><span class="num">${fmtTok(a.tok_today)}</span></span>
@@ -201,9 +205,18 @@ function renderCard(a) {
     footer += `<span class="card-open-draft">▸ OPEN DRAFT</span>`;
   }
 
+  const clickAttr = isBuilt
+    ? ` onclick="navigateToConsole('${a.key}')" style="cursor:pointer"`
+    : ` aria-disabled="true" title="此 agent 介面尚在規劃 / Under Construction"`;
+  const statsBtn = isBuilt
+    ? `<button class="card-stats-btn" onclick="event.stopPropagation(); openDrawer('${a.key}')"
+         title="查看今日統計" aria-label="查看 ${a.en} 今日統計">⊙</button>`
+    : '';
+
   return `
-    <div class="agent-card${isLead ? ' is-lead span-2' : ''}${isActive ? ' is-active' : ''}"
-         data-key="${a.key}" onclick="openDrawer('${a.key}')">
+    <div class="agent-card${isLead ? ' is-lead span-2' : ''}${isActive ? ' is-active' : ''}${isBuilt ? '' : ' is-disabled'}"
+         data-key="${a.key}"${clickAttr}>
+      ${statsBtn}
       <div class="card-top">
         <div>
           <div class="card-id">${a.code} · ${a.en.toUpperCase()}</div>
@@ -219,6 +232,12 @@ function renderCard(a) {
       <div class="card-note" style="margin-top:10px">${a.note || '—'}</div>
       <div class="card-footer">${footer}</div>
     </div>`;
+}
+
+// ── Navigate to agent console (direct nav — no drawer) ──
+function navigateToConsole(key) {
+  const url = AGENT_URLS[key];
+  if (url) window.location.href = url;
 }
 
 // ── Selected agent for drawer ──

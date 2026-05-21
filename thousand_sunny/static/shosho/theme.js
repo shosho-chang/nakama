@@ -72,7 +72,16 @@
     });
 
     sync();
-    document.body.appendChild(btn);
+
+    /* Mount-point API: if the page provides [data-theme-toggle-slot] (e.g.
+       chassis-nav), inject there so the toggle appears in the header instead
+       of the fixed bottom-right pill. Falls back to body.appendChild. */
+    var slot = document.querySelector('[data-theme-toggle-slot]');
+    if (slot) {
+      slot.appendChild(btn);
+    } else {
+      document.body.appendChild(btn);
+    }
   }
 
   if (document.readyState === 'loading') {

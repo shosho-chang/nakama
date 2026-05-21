@@ -5,15 +5,15 @@
   `chassis_nav` macro from any bridge surface.
 
   ┌────────────────────────────────────────────────────────────────────┐
-  │ Usage A — surfaces with no chassis-meta block (8 surfaces today):  │
+  │ Usage A — surfaces with no chassis-meta block:                     │
   │                                                                    │
   │   {% from "_chassis_nav.html" import chassis_nav %}                │
   │   {{ chassis_nav(nav_active='seo') }}                              │
   └────────────────────────────────────────────────────────────────────┘
   ┌────────────────────────────────────────────────────────────────────┐
   │ Usage B — surfaces that show page-specific meta on the right       │
-  │ (5 surfaces today: bridge index, drafts, draft_detail, cost,       │
-  │ memory) — pass meta content via {% call %} block:                  │
+  │ (bridge index, drafts, draft_detail, cost, memory) — pass meta     │
+  │ content via {% call %} block:                                      │
   │                                                                    │
   │   {% from "_chassis_nav.html" import chassis_nav %}                │
   │   {% call chassis_nav(nav_active='drafts', show_version=true) %}   │
@@ -21,40 +21,127 @@
   │   {% endcall %}                                                    │
   └────────────────────────────────────────────────────────────────────┘
 
-  `nav_active` slugs: bridge / drafts / seo / zoro / repurpose / memory /
-  cost / franky / health / docs / logs / vault. Unknown / missing →
-  no entry marked.
+  `nav_active` slugs (v2, ADR-029):
+    direct:  bridge / drafts / seo
+    fleet:   robin / nami / zoro / brook / sanji / franky / usopp / chopper
+    ops:     cost / logs / memory / docs
+  Backward compat (deprecated, auto-normalized):
+    health → franky · repurpose → brook · vault → (silent, no highlight)
 
-  See CONTEXT-MAP "chassis-nav" for design principles (agent-rooted vs
-  topic-rooted lane; aria-current strictly URL-keyed).
+  See CONTEXT-MAP "chassis-nav" for design principles (dual-axis nav;
+  frequency × semantic similarity; task-first for cross-agent workflows).
 #}
 {% macro chassis_nav(nav_active='', show_version=false) -%}
+{#-- normalize legacy slugs --#}
+{% if nav_active == 'health' %}{% set nav_active = 'franky' %}{% endif %}
+{% if nav_active == 'repurpose' %}{% set nav_active = 'brook' %}{% endif %}
+{% if nav_active == 'vault' %}{% set nav_active = '' %}{% endif %}
+{#-- active-group helpers --#}
+{% set _fleet = ['robin','nami','zoro','brook','sanji','franky','usopp','chopper'] %}
+{% set _ops   = ['cost','logs','memory','docs'] %}
+{% set _in_fleet = nav_active in _fleet %}
+{% set _in_ops   = nav_active in _ops %}
 <header class="chassis" role="banner">
   <div class="chassis-brand">
     <div class="chassis-dot" aria-hidden="true"></div>
-    <div class="chassis-wordmark">NAKAMA / BRIDGE</div>
+    <a href="/bridge" class="chassis-wordmark{% if nav_active == 'bridge' %} active{% endif %}"{% if nav_active == 'bridge' %} aria-current="page"{% endif %}>NAKAMA / BRIDGE</a>
     {%- if show_version %}
     <div class="chassis-version">v0.4</div>
     {%- endif %}
   </div>
   <nav class="chassis-nav" aria-label="Bridge sections">
-    <a href="/bridge"{% if nav_active == 'bridge' %} class="active" aria-current="page"{% endif %}>BRIDGE <span class="zh">船橋</span></a>
+
+    {#-- Fleet dropdown --#}
+    <div class="chassis-dropdown{% if _in_fleet %} is-active{% endif %}">
+      <button class="chassis-nav-trigger{% if _in_fleet %} active{% endif %}"
+              type="button" aria-haspopup="true" aria-expanded="false">
+        Fleet <span class="chassis-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="chassis-dropdown-menu" role="menu">
+        <a href="/" role="menuitem"{% if nav_active == 'robin' %} class="active" aria-current="page"{% endif %}>ROBIN <span class="zh">知識</span></a>
+        <span class="chassis-dropdown-item is-disabled" role="menuitem" aria-disabled="true"
+              title="此 agent 介面尚在規劃 / Under Construction">NAMI <span class="zh">秘書</span></span>
+        <a href="/bridge/zoro/keyword-research" role="menuitem"{% if nav_active == 'zoro' %} class="active" aria-current="page"{% endif %}>ZORO <span class="zh">偵察</span></a>
+        <a href="/brook/handoff" role="menuitem"{% if nav_active == 'brook' %} class="active" aria-current="page"{% endif %}>BROOK <span class="zh">撰寫</span></a>
+        <span class="chassis-dropdown-item is-disabled" role="menuitem" aria-disabled="true"
+              title="此 agent 介面尚在規劃 / Under Construction">SANJI <span class="zh">社群</span></span>
+        <a href="/bridge/franky" role="menuitem"{% if nav_active == 'franky' %} class="active" aria-current="page"{% endif %}>FRANKY <span class="zh">系統</span></a>
+        <span class="chassis-dropdown-item is-disabled" role="menuitem" aria-disabled="true"
+              title="此 agent 介面尚在規劃 / Under Construction">USOPP <span class="zh">發布</span></span>
+        <span class="chassis-dropdown-item is-disabled" role="menuitem" aria-disabled="true"
+              title="此 agent 介面尚在規劃 / Under Construction">CHOPPER <span class="zh">顧問</span></span>
+      </div>
+    </div>
+
     <a href="/bridge/drafts"{% if nav_active == 'drafts' %} class="active" aria-current="page"{% endif %}>DRAFTS <span class="zh">待審</span></a>
     <a href="/bridge/seo"{% if nav_active == 'seo' %} class="active" aria-current="page"{% endif %}>SEO <span class="zh">優化</span></a>
-    <a href="/bridge/zoro/keyword-research"{% if nav_active == 'zoro' %} class="active" aria-current="page"{% endif %}>ZORO <span class="zh">偵察</span></a>
-    <a href="/bridge/repurpose"{% if nav_active == 'repurpose' %} class="active" aria-current="page"{% endif %}>REPURPOSE <span class="zh">重製</span></a>
-    <a href="/bridge/memory"{% if nav_active == 'memory' %} class="active" aria-current="page"{% endif %}>MEMORY <span class="zh">記憶</span></a>
-    <a href="/bridge/cost"{% if nav_active == 'cost' %} class="active" aria-current="page"{% endif %}>COST <span class="zh">成本</span></a>
-    <a href="/bridge/franky"{% if nav_active == 'franky' %} class="active" aria-current="page"{% endif %}>FRANKY <span class="zh">船匠</span></a>
-    <a href="/bridge/health"{% if nav_active == 'health' %} class="active" aria-current="page"{% endif %}>HEALTH <span class="zh">巡檢</span></a>
-    <a href="/bridge/docs"{% if nav_active == 'docs' %} class="active" aria-current="page"{% endif %}>DOCS <span class="zh">文件</span></a>
-    <a href="/bridge/logs"{% if nav_active == 'logs' %} class="active" aria-current="page"{% endif %}>LOGS <span class="zh">日誌</span></a>
-    <a href="/"{% if nav_active == 'vault' %} class="active" aria-current="page"{% endif %}>VAULT <span class="zh">秘庫</span></a>
+
+    {#-- Ops dropdown --#}
+    <div class="chassis-dropdown{% if _in_ops %} is-active{% endif %}">
+      <button class="chassis-nav-trigger{% if _in_ops %} active{% endif %}"
+              type="button" aria-haspopup="true" aria-expanded="false">
+        Ops <span class="chassis-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="chassis-dropdown-menu" role="menu">
+        <a href="/bridge/cost" role="menuitem"{% if nav_active == 'cost' %} class="active" aria-current="page"{% endif %}>COST <span class="zh">成本</span></a>
+        <a href="/bridge/logs" role="menuitem"{% if nav_active == 'logs' %} class="active" aria-current="page"{% endif %}>LOGS <span class="zh">日誌</span></a>
+        <a href="/bridge/memory" role="menuitem"{% if nav_active == 'memory' %} class="active" aria-current="page"{% endif %}>MEMORY <span class="zh">記憶</span></a>
+        <a href="/bridge/docs" role="menuitem"{% if nav_active == 'docs' %} class="active" aria-current="page"{% endif %}>DOCS <span class="zh">文件搜尋</span></a>
+      </div>
+    </div>
+
   </nav>
-  {%- if caller is defined %}
-  <div class="chassis-meta">
-    {{ caller() }}
+  <div class="chassis-right">
+    <div data-theme-toggle-slot></div>
+    {%- if caller is defined %}
+    <div class="chassis-meta">
+      {{ caller() }}
+    </div>
+    {%- endif %}
   </div>
-  {%- endif %}
 </header>
+<script>
+(function () {
+  /* Dropdown toggle: toggle aria-expanded + CSS class on click, close on outside click. */
+  var dropdowns = document.querySelectorAll('.chassis-dropdown');
+  dropdowns.forEach(function (dd) {
+    var trigger = dd.querySelector('.chassis-nav-trigger');
+    var menu = dd.querySelector('.chassis-dropdown-menu');
+    if (!trigger || !menu) return;
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = trigger.getAttribute('aria-expanded') === 'true';
+      /* Close all other dropdowns first */
+      dropdowns.forEach(function (other) {
+        var t = other.querySelector('.chassis-nav-trigger');
+        var m = other.querySelector('.chassis-dropdown-menu');
+        if (t) t.setAttribute('aria-expanded', 'false');
+        if (m) m.classList.remove('open');
+      });
+      if (!open) {
+        trigger.setAttribute('aria-expanded', 'true');
+        menu.classList.add('open');
+      }
+    });
+  });
+  document.addEventListener('click', function () {
+    dropdowns.forEach(function (dd) {
+      var t = dd.querySelector('.chassis-nav-trigger');
+      var m = dd.querySelector('.chassis-dropdown-menu');
+      if (t) t.setAttribute('aria-expanded', 'false');
+      if (m) m.classList.remove('open');
+    });
+  });
+  /* Close on Escape */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    dropdowns.forEach(function (dd) {
+      var t = dd.querySelector('.chassis-nav-trigger');
+      var m = dd.querySelector('.chassis-dropdown-menu');
+      if (t) t.setAttribute('aria-expanded', 'false');
+      if (m) m.classList.remove('open');
+    });
+  });
+})();
+</script>
 {%- endmacro %}
