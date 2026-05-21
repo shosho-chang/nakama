@@ -68,7 +68,7 @@ def fetch_publisher_html(
     Args:
         pmid: PubMed ID
         doi: 已知的 DOI（上游傳入，此函式不重覆查 efetch）
-        attachments_abs_dir: `KB/Attachments/pubmed/` 絕對路徑
+        attachments_abs_dir: `KB/Attachments/` 絕對路徑（ADR-028 §6：flat）
         vault_relative_prefix: 對應的 vault 相對路徑前綴
         email: 聯絡 email（elink + scrape user-agent 用）
         ncbi_api_key: 可選 NCBI API key

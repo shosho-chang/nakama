@@ -536,7 +536,7 @@ def _translate_in_background(
 
     Mirrors the ``/pubmed-to-reader`` translate flow but with two
     differences: (a) the source is the URL-ingested ``Inbox/web/{slug}.md``
-    rather than ``KB/Attachments/pubmed/{pmid}.{pdf,md}``, and (b) on
+    rather than ``KB/Attachments/{pmid}.{pdf,md}``, and (b) on
     translator failure we do NOT write a partial bilingual file — the
     user can read the original under the same inbox row, so silently
     falling back like the PubMed path would just hide the failure.
@@ -655,7 +655,8 @@ async def translate(
     return response
 
 
-_PUBMED_FT_DIR = "KB/Attachments/pubmed"
+# ADR-028 §6: KB/Attachments is flat — PubMed assets at KB/Attachments/{pmid}.*
+_PUBMED_FT_DIR = "KB/Attachments"
 _PMID_RE = re.compile(r"^\d+$")
 
 
@@ -667,8 +668,8 @@ async def pubmed_to_reader(
     """將 PubMed 下載的 OA 全文轉為雙語 Markdown，並跳轉到 reader。
 
     Source 優先順序：
-    1. ``KB/Attachments/pubmed/{pmid}.pdf`` → parse_pdf → translate
-    2. ``KB/Attachments/pubmed/{pmid}.md`` → 直接 translate（oa_html case，
+    1. ``KB/Attachments/{pmid}.pdf`` → parse_pdf → translate
+    2. ``KB/Attachments/{pmid}.md`` → 直接 translate（oa_html case，
        publisher HTML 已被 `pubmed_html.fetch_publisher_html()` 轉成 markdown）
 
     - 輸出：``KB/Wiki/Sources/pubmed-{pmid}-bilingual.md``（與原 source 並列）

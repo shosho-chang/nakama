@@ -14,10 +14,10 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("WEB_SECRET", "testsecret")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-    # vault 結構：Inbox/web + KB/Wiki/Sources + KB/Attachments/pubmed
+    # vault 結構：Inbox/web + KB/Wiki/Sources + KB/Attachments
     (tmp_path / "Inbox" / "web").mkdir(parents=True)
     (tmp_path / "KB" / "Wiki" / "Sources").mkdir(parents=True)
-    (tmp_path / "KB" / "Attachments" / "pubmed").mkdir(parents=True)
+    (tmp_path / "KB" / "Attachments").mkdir(parents=True)
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
 
     import thousand_sunny.app as app_module
@@ -68,7 +68,7 @@ def test_pubmed_to_reader_404_when_pdf_missing(client):
 def test_pubmed_to_reader_translates_and_redirects(client, tmp_path):
     """PDF 存在但 bilingual 還沒做 → 走 parse_pdf + translate → 寫 bilingual → redirect"""
     auth = _auth_cookie(client)
-    pdf_path = tmp_path / "KB" / "Attachments" / "pubmed" / "12345.pdf"
+    pdf_path = tmp_path / "KB" / "Attachments" / "12345.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake content")
 
     with (
@@ -101,7 +101,7 @@ def test_pubmed_to_reader_translates_and_redirects(client, tmp_path):
 def test_pubmed_to_reader_short_circuit_when_bilingual_exists(client, tmp_path):
     """已翻譯過就不重翻，直接 redirect。"""
     auth = _auth_cookie(client)
-    pdf_path = tmp_path / "KB" / "Attachments" / "pubmed" / "12345.pdf"
+    pdf_path = tmp_path / "KB" / "Attachments" / "12345.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake")
     bilingual = tmp_path / "KB" / "Wiki" / "Sources" / "pubmed-12345-bilingual.md"
     bilingual.write_text("already-exists", encoding="utf-8")
@@ -126,7 +126,7 @@ def test_pubmed_to_reader_short_circuit_when_bilingual_exists(client, tmp_path):
 def test_pubmed_to_reader_html_path_translates(client, tmp_path):
     """只有 {pmid}.md 沒 {pmid}.pdf（oa_html case）→ 讀 md + translate → bilingual"""
     auth = _auth_cookie(client)
-    html_md = tmp_path / "KB" / "Attachments" / "pubmed" / "42020128.md"
+    html_md = tmp_path / "KB" / "Attachments" / "42020128.md"
     raw_md = "# Lean Mass Preservation\n\nThe publisher HTML was scraped and localized. " * 20
     html_md.write_text(raw_md, encoding="utf-8")
 
@@ -160,7 +160,7 @@ def test_pubmed_to_reader_html_path_translates(client, tmp_path):
 def test_pubmed_to_reader_prefers_pdf_over_html(client, tmp_path):
     """PDF 跟 HTML md 都存在時優先用 PDF（資料完整度高）。"""
     auth = _auth_cookie(client)
-    pubmed_dir = tmp_path / "KB" / "Attachments" / "pubmed"
+    pubmed_dir = tmp_path / "KB" / "Attachments"
     (pubmed_dir / "42020128.pdf").write_bytes(b"%PDF-1.4 fake")
     (pubmed_dir / "42020128.md").write_text("# HTML version", encoding="utf-8")
 
@@ -189,7 +189,7 @@ def test_pubmed_to_reader_prefers_pdf_over_html(client, tmp_path):
 def test_pubmed_to_reader_falls_back_to_raw_when_translate_fails(client, tmp_path):
     """翻譯失敗仍要把 raw markdown 存下來，讓使用者至少能讀 + annotate。"""
     auth = _auth_cookie(client)
-    pdf_path = tmp_path / "KB" / "Attachments" / "pubmed" / "12345.pdf"
+    pdf_path = tmp_path / "KB" / "Attachments" / "12345.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake")
 
     with (
@@ -263,14 +263,14 @@ def test_files_serves_from_vault_files_dir(client, tmp_path):
 
 
 def test_files_serves_vault_root_relative_path(client, tmp_path):
-    """新路徑 /files/KB/Attachments/pubmed/{pmid}/img-N.png → vault 根下同路徑"""
+    """新路徑 /files/KB/Attachments/{pmid}/img-N.png → vault 根下同路徑"""
     auth = _auth_cookie(client)
-    pmid_dir = tmp_path / "KB" / "Attachments" / "pubmed" / "42020128"
+    pmid_dir = tmp_path / "KB" / "Attachments" / "42020128"
     pmid_dir.mkdir(parents=True)
     (pmid_dir / "img-1.png").write_bytes(b"PNGBYTES")
 
     resp = client.get(
-        "/robin/files/KB/Attachments/pubmed/42020128/img-1.png",
+        "/robin/files/KB/Attachments/42020128/img-1.png",
         cookies={"nakama_auth": auth},
     )
     assert resp.status_code == 200

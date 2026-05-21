@@ -197,7 +197,7 @@ class TestSourcePageSchema:
             "fulltext": {
                 "status": "oa_downloaded",
                 "source": "pmc",
-                "pdf_relpath": "KB/Attachments/pubmed/99999001.pdf",
+                "pdf_relpath": "KB/Attachments/99999001.pdf",
                 "html_relpath": None,
                 "publisher_url": None,
                 "doi": "10.0001/test.99999001",
