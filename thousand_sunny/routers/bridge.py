@@ -122,14 +122,6 @@ AGENT_ROSTER = [
         "model": "—",
         "default_state": "offline",
     },  # noqa: E501
-    {
-        "code": "D-09",
-        "key": "sunny",
-        "role": "整合甲板",
-        "en": "Deck",
-        "model": "—",
-        "default_state": "offline",
-    },  # noqa: E501
 ]
 
 router = APIRouter(prefix="/bridge", dependencies=[Depends(require_auth_or_key)])
