@@ -3,7 +3,7 @@
 
    Composes on top of `static/shosho/tokens.css`. The login template carries
    `class="sho"` on <body> so design tokens cascade. Dark mode follows the
-   token sheet (auto via prefers-color-scheme) — no page-level toggle.
+   token sheet (auto via prefers-color-scheme) — overridable via the shared theme toggle.
 
    Entry gate to every authenticated surface: a single centred card on a
    neutral field. 1px hairline borders, 4px base radius, no heavy shadow.

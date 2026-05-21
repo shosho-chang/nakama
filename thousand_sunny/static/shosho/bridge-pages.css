@@ -3,7 +3,7 @@
 
    Composes on top of `tokens.css` + `bridge.css`. Bridge sub-page templates
    carry `class="sho"` on <body> so tokens cascade; dark mode auto via
-   `prefers-color-scheme` (no per-page toggle on these surfaces).
+   `prefers-color-scheme` (overridable via the shared theme toggle).
 
    `bridge.css` already supplies the SHARED ops vocabulary — `.chassis*`,
    `.nk-breadcrumb*`, `.nk-caps`, `.sho-btn*`, `.sho-readout*`, `.sho-chip*`,

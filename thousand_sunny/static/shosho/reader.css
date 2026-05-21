@@ -3,7 +3,7 @@
 
    Composes on top of `static/shosho/tokens.css`. The reader template
    carries `class="sho"` on <body> so design tokens cascade. Dark mode
-   toggles via `data-theme="dark"` attribute on <body>.
+   toggles via `data-theme="dark"` attribute on <html> (shared theme toggle).
 
    Layout: 100vh flex column — header / scrolling content / footer.
    Reader column max-width 1100px; right sidenote gutter 250px on ≥1000px;
@@ -382,6 +382,10 @@ body.sho .sidenote .sn-body { color: var(--sho-text-2); }
 }
 
 /* ── Footer ─────────────────────────────────────────────────────────── */
+/* Lift the shared theme toggle (static/shosho/theme.js) clear of this
+   bottom footer bar so it does not cover the 完成閱讀 button. */
+body.sho { --sho-toggle-bottom: 72px; }
+
 body.sho .footer {
   background: var(--sho-bg);
   padding: 10px 24px;

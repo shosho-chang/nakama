@@ -10,34 +10,6 @@
   if (!shell) return;
 
   const slug = shell.dataset.projectSlug;
-  const themeKey = "proj_theme";
-
-  // ── Theme ────────────────────────────────────────────────────────────────
-  // Shosho Design System v0.1 (issue #634): dark mode toggles via the
-  // `data-theme` attribute on <body class="sho">. The native <dialog>
-  // renders in the top layer but is still a DOM descendant of <body>, so
-  // the --sho-* var overrides on body.sho reach the dialog too.
-  function applyTheme(theme) {
-    document.body.dataset.theme = theme === "dark" ? "dark" : "light";
-  }
-  function initialTheme() {
-    const stored = localStorage.getItem(themeKey);
-    if (stored === "light" || stored === "dark") return stored;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  }
-  let theme = initialTheme();
-  applyTheme(theme);
-
-  const themeBtn = document.getElementById("review-theme-toggle");
-  if (themeBtn) {
-    themeBtn.addEventListener("click", () => {
-      theme = theme === "dark" ? "light" : "dark";
-      localStorage.setItem(themeKey, theme);
-      applyTheme(theme);
-    });
-  }
 
   // ── Highlight excerpts ───────────────────────────────────────────────────
   // Mirrors BrkHighlightedExcerpt regex pattern from the design but with

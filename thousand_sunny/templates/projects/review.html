@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ store.topic or store.project_slug }} · Brook synthesize · review</title>
+  <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
   <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}" />
   <link rel="stylesheet" href="/static/shosho/projects-review.css?v={{ asset_version }}" />
 </head>
@@ -51,10 +52,6 @@
 
     <div class="review-actions">
       <div class="review-actions__row">
-        <button type="button"
-                class="review-theme-toggle"
-                id="review-theme-toggle"
-                aria-label="切換深淺主題">theme</button>
         <button type="button" class="btn btn-ghost" id="btn-save-draft">暫存草稿</button>
         <button type="button"
                 class="btn btn-primary"

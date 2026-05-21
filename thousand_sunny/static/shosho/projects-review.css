@@ -4,7 +4,7 @@
 
    Composes on top of `static/shosho/tokens.css`. The review template
    carries `class="sho"` on <body> so design tokens cascade. Dark mode
-   toggles via the `data-theme="dark"` attribute on <body>.
+   toggles via the `data-theme="dark"` attribute on <html> (shared theme toggle).
 
    This is a re-skin of the retired `--brk-*` editorial-paper surface
    (issue #634): the evidence-board + outline layout is preserved verbatim;

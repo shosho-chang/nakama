@@ -104,10 +104,11 @@
   text-rendering: optimizeLegibility;
 }
 
-/* ── Dark mode — auto via prefers-color-scheme; explicit override via
-      .sho[data-theme="dark"] (for future toggle UI) ───────────────────── */
+/* ── Dark mode — `data-theme` on <html> (set by theme.js before <body>
+      paints): absent → auto (follows OS) · ="light" → forced light ·
+      ="dark" → forced dark. Toggle UI: theme.js + .sho-theme-toggle below. */
 @media (prefers-color-scheme: dark) {
-  .sho:not([data-theme="light"]) {
+  html:not([data-theme="light"]) .sho {
     --sho-bg:     oklch(0.145 0.005 80);
     --sho-bg-2:   oklch(0.185 0.005 80);
     --sho-bg-3:   oklch(0.235 0.005 80);
@@ -125,7 +126,7 @@
     color-scheme: dark;
   }
 }
-.sho[data-theme="dark"] {
+html[data-theme="dark"] .sho {
   --sho-bg:     oklch(0.145 0.005 80);
   --sho-bg-2:   oklch(0.185 0.005 80);
   --sho-bg-3:   oklch(0.235 0.005 80);
@@ -250,4 +251,56 @@
 @media (prefers-reduced-motion: reduce) {
   .sho { --sho-t-fast: 0ms; --sho-t-base: 0ms; --sho-t-slow: 0ms; }
   .sho .sho-bolt, .sho .sho-logo-mark:hover .sho-bolt { animation: none; }
+}
+
+/* ── Theme toggle — fixed control injected by theme.js on every surface.
+      Three states cycle auto → light → dark; the dot reads the state
+      (outline = light, filled = dark, half = auto). ────────────────────── */
+.sho .sho-theme-toggle {
+  position: fixed;
+  right: var(--sho-toggle-right, 16px);
+  bottom: var(--sho-toggle-bottom, 16px);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-pill);
+  color: var(--sho-text-2);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.06);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+.sho .sho-theme-toggle:hover {
+  color: var(--sho-text);
+  border-color: var(--sho-text-2);
+}
+.sho .sho-theme-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+.sho .sho-theme-toggle__label {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sho .sho-theme-toggle__dot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+.sho .sho-theme-toggle[data-mode="dark"] .sho-theme-toggle__dot {
+  background: currentColor;
+}
+.sho .sho-theme-toggle[data-mode="auto"] .sho-theme-toggle__dot {
+  background: linear-gradient(90deg, currentColor 0 50%, transparent 50% 100%);
+}
+@media print {
+  .sho .sho-theme-toggle { display: none; }
 }

@@ -579,7 +579,7 @@
     function write(v) { try { localStorage.setItem(KEY, v); } catch (_) {} }
     function systemDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
     function apply(mode) {
-      body.dataset.theme = mode;
+      document.documentElement.dataset.theme = mode;
       btn.setAttribute('aria-checked', mode === 'dark' ? 'true' : 'false');
       btn.dataset.mode = mode;
     }
