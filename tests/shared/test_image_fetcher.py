@@ -91,15 +91,15 @@ def test_happy_path_two_images(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     rewritten, saved = image_fetcher.download_markdown_images(
         md,
         dest_dir=tmp_path / "42020128",
-        vault_relative_prefix="KB/Attachments/pubmed/42020128",
+        vault_relative_prefix="KB/Attachments/42020128",
     )
 
     assert saved == [
-        "KB/Attachments/pubmed/42020128/img-1.jpg",
-        "KB/Attachments/pubmed/42020128/img-2.png",
+        "KB/Attachments/42020128/img-1.jpg",
+        "KB/Attachments/42020128/img-2.png",
     ]
-    assert "![Fig 1](KB/Attachments/pubmed/42020128/img-1.jpg)" in rewritten
-    assert "![Fig 2](KB/Attachments/pubmed/42020128/img-2.png)" in rewritten
+    assert "![Fig 1](KB/Attachments/42020128/img-1.jpg)" in rewritten
+    assert "![Fig 2](KB/Attachments/42020128/img-2.png)" in rewritten
     assert (tmp_path / "42020128" / "img-1.jpg").read_bytes() == b"jpegbytes"
     assert (tmp_path / "42020128" / "img-2.png").read_bytes() == b"pngbytes"
     assert fake.requested == [
@@ -152,14 +152,14 @@ def test_dedupe_same_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     rewritten, saved = image_fetcher.download_markdown_images(
         md,
         dest_dir=tmp_path / "pmid",
-        vault_relative_prefix="KB/Attachments/pubmed/pmid",
+        vault_relative_prefix="KB/Attachments/pmid",
     )
 
-    assert saved == ["KB/Attachments/pubmed/pmid/img-1.png"]  # 只一條
+    assert saved == ["KB/Attachments/pmid/img-1.png"]  # 只一條
     assert fake.requested.count("https://cdn.example.com/x.png") == 1
     # 兩處 match 都 rewrite 成同一 rel path
-    assert rewritten.count("![a](KB/Attachments/pubmed/pmid/img-1.png)") == 1
-    assert rewritten.count("![b](KB/Attachments/pubmed/pmid/img-1.png)") == 1
+    assert rewritten.count("![a](KB/Attachments/pmid/img-1.png)") == 1
+    assert rewritten.count("![b](KB/Attachments/pmid/img-1.png)") == 1
 
 
 def test_relative_url_with_base(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

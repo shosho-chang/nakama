@@ -207,8 +207,11 @@ class PubMedDigestPipeline(BaseAgent):
             return
 
         ncbi_key = os.environ.get("PUBMED_API_KEY") or None
-        attachments_abs_dir = get_vault_path() / "KB" / "Attachments" / "pubmed"
-        vault_relative_prefix = "KB/Attachments/pubmed"
+        # ADR-028 §6: KB/Attachments is flat — no per-source bucket. PubMed
+        # assets land directly as KB/Attachments/{pmid}.{pdf,md} + figures
+        # under KB/Attachments/{pmid}/.
+        attachments_abs_dir = get_vault_path() / "KB" / "Attachments"
+        vault_relative_prefix = "KB/Attachments"
 
         # NCBI rate limit: 3 req/s 無 key、10 req/s 有 key。保守 sleep。
         sleep_between = 0.35 if not ncbi_key else 0.12

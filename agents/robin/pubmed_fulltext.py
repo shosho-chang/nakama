@@ -6,7 +6,7 @@
 3. 否則若有 DOI：查 Unpaywall OA 版本
 4. 都拿不到：needs_manual（有 DOI，可手動取得）或 not_found
 
-所有下載存到 vault 的 KB/Attachments/pubmed/{pmid}.pdf。
+所有下載存到 vault 的 KB/Attachments/{pmid}.pdf（ADR-028 §6：flat，無 bucket）。
 不處理付費或非法（sci-hub 等）來源。
 """
 

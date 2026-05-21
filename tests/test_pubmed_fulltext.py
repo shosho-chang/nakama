@@ -140,13 +140,13 @@ class TestFetchFulltext:
             result = fetch_fulltext(
                 "12345",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
 
         assert result["status"] == "oa_downloaded"
         assert result["source"] == "pmc"
-        assert result["pdf_relpath"] == "KB/Attachments/pubmed/12345.pdf"
+        assert result["pdf_relpath"] == "KB/Attachments/12345.pdf"
         assert result["doi"] == "10.1/abc"
 
     def test_pmc_ncbi_fails_europe_pmc_succeeds(self, tmp_path: Path):
@@ -179,7 +179,7 @@ class TestFetchFulltext:
             result = fetch_fulltext(
                 "12345",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
 
@@ -224,7 +224,7 @@ class TestFetchFulltext:
             result = fetch_fulltext(
                 "12345",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
 
@@ -251,7 +251,7 @@ class TestFetchFulltext:
             result = fetch_fulltext(
                 "12345",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
 
@@ -270,7 +270,7 @@ class TestFetchFulltext:
             result = fetch_fulltext(
                 "12345",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
 
@@ -296,7 +296,7 @@ class TestFetchFulltext:
             result = fetch_fulltext(
                 "12345",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
 

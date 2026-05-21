@@ -6,8 +6,8 @@
 
     rewritten_md, saved = download_markdown_images(
         md_text,
-        dest_dir=Path("/vault/KB/Attachments/pubmed/42020128"),
-        vault_relative_prefix="KB/Attachments/pubmed/42020128",
+        dest_dir=Path("/vault/KB/Attachments/42020128"),
+        vault_relative_prefix="KB/Attachments/42020128",
         base_url="https://bmjopen.bmj.com/content/16/4/e116911",
     )
 
@@ -61,7 +61,7 @@ def download_markdown_images(
         md_text: 原始 Markdown 文字
         dest_dir: 圖片實際寫入的絕對路徑（會自動 mkdir）
         vault_relative_prefix: rewrite 後 md 裡使用的前綴，例如
-            ``"KB/Attachments/pubmed/42020128"``
+            ``"KB/Attachments/42020128"``
         base_url: 若 md 裡出現相對 URL，用此 base 做 urljoin
         timeout: 單張圖下載 timeout（秒）
         user_agent: HTTP User-Agent

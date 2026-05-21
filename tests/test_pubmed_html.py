@@ -172,34 +172,34 @@ class TestFetchPublisherHtml:
                 return_value=(
                     PUBLISHER_MD_OK.replace(
                         "https://cdn.bmj.com/fig1.png",
-                        "KB/Attachments/pubmed/42020128/img-1.png",
+                        "KB/Attachments/42020128/img-1.png",
                     ),
-                    ["KB/Attachments/pubmed/42020128/img-1.png"],
+                    ["KB/Attachments/42020128/img-1.png"],
                 ),
             ),
             patch.object(
-                pubmed_html, "_stream_pdf", return_value="KB/Attachments/pubmed/42020128.pdf"
+                pubmed_html, "_stream_pdf", return_value="KB/Attachments/42020128.pdf"
             ),
         ):
             result = fetch_publisher_html(
                 "42020128",
                 doi="10.1136/bmjopen-2026-116911",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
 
         assert result is not None
         assert result["source"] == "publisher"
-        assert result["html_relpath"] == "KB/Attachments/pubmed/42020128.md"
-        assert result["pdf_relpath"] == "KB/Attachments/pubmed/42020128.pdf"
+        assert result["html_relpath"] == "KB/Attachments/42020128.md"
+        assert result["pdf_relpath"] == "KB/Attachments/42020128.pdf"
         assert result["publisher_url"] == "https://bmjopen.bmj.com/content/16/4/e116911"
         assert result["image_count"] == 1
         assert "bmjopen.bmj.com" in result["note"]
 
         md_file = tmp_path / "42020128.md"
         assert md_file.exists()
-        assert "KB/Attachments/pubmed/42020128/img-1.png" in md_file.read_text(encoding="utf-8")
+        assert "KB/Attachments/42020128/img-1.png" in md_file.read_text(encoding="utf-8")
 
     def test_returns_none_when_no_free_link(self, tmp_path: Path):
         with patch.object(pubmed_html, "_query_elink_free_url", return_value=None):
@@ -207,7 +207,7 @@ class TestFetchPublisherHtml:
                 "11111",
                 doi="10.1/x",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
         assert result is None
@@ -221,7 +221,7 @@ class TestFetchPublisherHtml:
                 "42020128",
                 doi="10.1/x",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
         assert result is None
@@ -235,7 +235,7 @@ class TestFetchPublisherHtml:
                 "42020128",
                 doi="10.1/x",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
         assert result is None
@@ -249,7 +249,7 @@ class TestFetchPublisherHtml:
                 "42020128",
                 doi="10.1/x",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
         assert result is None
@@ -266,7 +266,7 @@ class TestFetchPublisherHtml:
                 "42020128",
                 doi="10.1/x",
                 attachments_abs_dir=tmp_path,
-                vault_relative_prefix="KB/Attachments/pubmed",
+                vault_relative_prefix="KB/Attachments",
                 email="a@b.com",
             )
         assert result is not None
