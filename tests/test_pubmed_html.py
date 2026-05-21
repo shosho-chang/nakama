@@ -177,9 +177,7 @@ class TestFetchPublisherHtml:
                     ["KB/Attachments/42020128/img-1.png"],
                 ),
             ),
-            patch.object(
-                pubmed_html, "_stream_pdf", return_value="KB/Attachments/42020128.pdf"
-            ),
+            patch.object(pubmed_html, "_stream_pdf", return_value="KB/Attachments/42020128.pdf"),
         ):
             result = fetch_publisher_html(
                 "42020128",
