@@ -70,13 +70,21 @@ def test_list_renders_seeded_run(client, seed_run):
 
 
 def test_list_chassis_nav_active_repurpose(client):
-    """Nav highlights REPURPOSE entry, not BRIDGE."""
+    """Nav highlights BROOK (Fleet dropdown) — REPURPOSE absorbed per ADR-029.
+
+    ADR-029 v2 collapsed REPURPOSE into Brook console; `nav_active='repurpose'`
+    normalizes to 'brook' in `_chassis_nav.html`, so the Fleet dropdown trigger
+    carries `is-active` and the BROOK menu item has `class="active"`.
+    """
     resp = client.get("/bridge/repurpose")
     assert resp.status_code == 200
-    # The REPURPOSE entry should carry the active class
-    assert 'href="/bridge/repurpose"' in resp.text
-    # Active class only present once for this slug
-    assert resp.text.count("REPURPOSE") >= 1
+    # BROOK menu item is marked active (normalized from repurpose).
+    assert (
+        '<a href="/brook/handoff" role="menuitem" class="active" aria-current="page">BROOK'
+        in resp.text
+    )
+    # Fleet dropdown trigger carries is-active class on this surface.
+    assert 'class="chassis-dropdown is-active"' in resp.text
 
 
 # ---------------------------------------------------------------------------

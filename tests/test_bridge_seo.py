@@ -899,12 +899,12 @@ def test_chassis_nav_seo_active_zoro_inactive(authed_client):
     assert r.status_code == 200
     html = r.text
 
-    # SEO entry is active on its own surface.
+    # SEO entry is active on its own surface (top-level link, not in dropdown).
     assert '<a href="/bridge/seo" class="active" aria-current="page">SEO' in html
-    # ZORO entry exists (added by Slice 1) but is plain (no active/aria-current).
-    assert '<a href="/bridge/zoro/keyword-research">ZORO' in html
+    # ZORO entry exists (in Fleet dropdown post-ADR-029) but is plain (no active/aria-current).
+    assert '<a href="/bridge/zoro/keyword-research" role="menuitem">ZORO' in html
     assert (
-        '<a href="/bridge/zoro/keyword-research" class="active" aria-current="page">ZORO'
+        '<a href="/bridge/zoro/keyword-research" role="menuitem" class="active" aria-current="page">ZORO'
         not in html
     )
 
