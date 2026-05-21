@@ -443,8 +443,8 @@ def test_chassis_nav_zoro_active(authed_client):
 
     # ZORO entry exists and is active.
     assert (
-        '<a href="/bridge/zoro/keyword-research" role="menuitem" class="active" aria-current="page">ZORO'
-        in html
+        '<a href="/bridge/zoro/keyword-research" role="menuitem"'
+        ' class="active" aria-current="page">ZORO' in html
     )
     # SEO entry exists (top-level link) but is NOT marked active on this Zoro surface.
     assert '<a href="/bridge/seo"' in html
@@ -488,8 +488,8 @@ def test_history_list_empty_state(authed_client):
     assert "尚無歷史研究紀錄" in body
     # ZORO chassis-nav active on history surfaces too.
     assert (
-        '<a href="/bridge/zoro/keyword-research" role="menuitem" class="active" aria-current="page">ZORO'
-        in body
+        '<a href="/bridge/zoro/keyword-research" role="menuitem"'
+        ' class="active" aria-current="page">ZORO' in body
     )
 
 
@@ -601,6 +601,6 @@ def test_history_detail_renders_full_markdown(authed_client):
     assert 'action="/bridge/zoro/keyword-research/download"' in body
     # ZORO chassis-nav remains active on detail surfaces.
     assert (
-        '<a href="/bridge/zoro/keyword-research" role="menuitem" class="active" aria-current="page">ZORO'
-        in body
+        '<a href="/bridge/zoro/keyword-research" role="menuitem"'
+        ' class="active" aria-current="page">ZORO' in body
     )

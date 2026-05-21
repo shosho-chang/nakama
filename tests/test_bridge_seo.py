@@ -904,9 +904,9 @@ def test_chassis_nav_seo_active_zoro_inactive(authed_client):
     # ZORO entry exists (in Fleet dropdown post-ADR-029) but is plain (no active/aria-current).
     assert '<a href="/bridge/zoro/keyword-research" role="menuitem">ZORO' in html
     assert (
-        '<a href="/bridge/zoro/keyword-research" role="menuitem" class="active" aria-current="page">ZORO'
-        not in html
-    )
+        '<a href="/bridge/zoro/keyword-research" role="menuitem"'
+        ' class="active" aria-current="page">ZORO'
+    ) not in html
 
 
 def test_article_row_has_history_button(authed_client):
