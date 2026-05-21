@@ -235,7 +235,7 @@ def _assert_canonical_chassis_nav(body: str, path: str, active_label: str) -> No
         assert f'{label} <span class="zh">{zh}' in body, f"{path} Ops dropdown missing {label}"
 
     # Legacy items removed from nav
-    assert "VAULT" not in body or "VAULT" not in re.findall(r'>([A-Z]+)<', body), (
+    assert "VAULT" not in re.findall(r">([A-Z]+)<", body), (
         f"{path} VAULT should not appear as a nav item"
     )
     assert "is-current" not in body, f"{path} still uses is-current taxonomy"

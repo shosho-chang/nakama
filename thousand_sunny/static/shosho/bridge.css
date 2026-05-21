@@ -182,8 +182,8 @@ body.sho .chassis-dropdown-menu {
   position: absolute;
   top: calc(100% + 10px);
   left: 0;
-  background: oklch(0.12 0.005 80);
-  border: 1px solid oklch(0.22 0.005 80);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line-2);
   min-width: 160px;
   z-index: 50;
   border-radius: var(--sho-r-1);
@@ -211,12 +211,12 @@ body.sho .chassis-dropdown-item {
   white-space: nowrap;
 }
 body.sho .chassis-dropdown-menu a:hover {
-  background: oklch(0.18 0.005 80);
-  color: var(--sho-bg);
+  background: var(--sho-bg-3);
+  color: var(--sho-text);
 }
 body.sho .chassis-dropdown-menu a.active {
-  color: var(--sho-bg);
-  background: oklch(0.18 0.005 80);
+  color: var(--sho-text);
+  background: var(--sho-bg-3);
 }
 body.sho .chassis-dropdown-item.is-disabled {
   opacity: 0.30;
@@ -250,14 +250,14 @@ body.sho .chassis-meta .val {
 body.sho [data-theme-toggle-slot] .sho-theme-toggle {
   position: static;
   background: transparent;
-  border-color: oklch(0.25 0.005 80);
+  border-color: var(--sho-line);
   box-shadow: none;
   color: var(--sho-muted);
   padding: 4px 9px;
 }
 body.sho [data-theme-toggle-slot] .sho-theme-toggle:hover {
-  color: var(--sho-bg);
-  border-color: oklch(0.45 0.005 80);
+  color: var(--sho-text);
+  border-color: var(--sho-muted);
   background: transparent;
 }
 
