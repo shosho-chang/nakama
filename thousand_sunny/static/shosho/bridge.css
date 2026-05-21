@@ -3,7 +3,7 @@
 
    Composes on top of `static/shosho/tokens.css`. Bridge templates carry
    `class="sho"` on <body> so tokens cascade. Dark mode via the
-   `data-theme="dark"` attribute on <body>.
+   `data-theme="dark"` attribute on <html> (shared theme toggle).
 
    This file is the SHARED Bridge foundation — it is `<link>`-ed by the
    Bridge dashboard shell (index.html) and is intended to be reused by the

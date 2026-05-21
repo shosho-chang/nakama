@@ -94,7 +94,7 @@ def _shosho_asset_version() -> str:
 
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "promotion-review.css"):
+    for css in ("tokens.css", "promotion-review.css", "theme.js"):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())

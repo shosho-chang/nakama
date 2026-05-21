@@ -4,7 +4,7 @@
    Drives the foliate-js epub reader. Composes on top of
    `static/shosho/tokens.css`; the template carries `class="sho"` on <body>
    so design tokens cascade. Dark mode toggles via `data-theme="dark"`
-   attribute on <body> (was `body.dark`).
+   attribute on <html>, set by the shared theme toggle.
 
    ⚠ CSP: book_reader is served under /robin/books — script-src 'self'.
    All styling lives here (external = style-src 'self', allowed). No inline

@@ -9,22 +9,19 @@ const pathParts = location.pathname.split('/').filter(Boolean);
 const BOOK_ID = decodeURIComponent(pathParts[pathParts.length - 1]);
 const view = document.getElementById('view');
 
-const DARK_KEY = 'bookReaderDark';
-const darkToggle = document.getElementById('darkToggle');
-
-function applyDark(on) {
-  // Shosho Design System v0.1: dark mode is driven by the `data-theme`
-  // attribute on `body.sho` (tokens.css keys off `.sho[data-theme="dark"]`),
-  // replacing the legacy `body.dark` class toggle.
-  document.body.dataset.theme = on ? 'dark' : 'light';
-  darkToggle.setAttribute('aria-pressed', on ? 'true' : 'false');
-  darkToggle.textContent = on ? '☀️ 日間' : '🌙 夜間';
-  pushReaderStyles();
+// Dark mode is owned by the shared theme toggle (static/shosho/theme.js),
+// which sets data-theme on <html>. The foliate iframe has its own document
+// and cannot inherit page CSS, so mirror the resolved light/dark into it.
+function isDarkTheme() {
+  const t = document.documentElement.getAttribute('data-theme');
+  if (t === 'dark') return true;
+  if (t === 'light') return false;
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 function pushReaderStyles() {
   if (!view.renderer || typeof view.renderer.setStyles !== 'function') return;
-  const dark = document.body.dataset.theme === 'dark';
+  const dark = isDarkTheme();
   const css = dark
     ? `html, body { background: #1a1a1a !important; color: #e0e0e0 !important; }
        a, a:visited { color: #9d97ff; }`
@@ -1434,11 +1431,14 @@ view.addEventListener('draw-annotation', e => {
   }
 })();
 
-const initialDark = localStorage.getItem(DARK_KEY) === '1';
-applyDark(initialDark);
-
-darkToggle.addEventListener('click', () => {
-  const next = document.body.dataset.theme !== 'dark';
-  localStorage.setItem(DARK_KEY, next ? '1' : '0');
-  applyDark(next);
+// Re-theme the foliate iframe when the shared toggle flips, or when the OS
+// theme changes while the toggle is in 'auto' mode. Initial theming happens
+// in the book-load path above (pushReaderStyles after the renderer mounts).
+new MutationObserver(pushReaderStyles).observe(document.documentElement, {
+  attributes: true,
+  attributeFilter: ['data-theme'],
 });
+if (window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: dark)')
+    .addEventListener('change', pushReaderStyles);
+}

@@ -158,6 +158,7 @@ def _shosho_asset_version() -> str:
         "bridge-dashboard.css",
         "bridge-seo.css",
         "bridge-pages.css",
+        "theme.js",
     ):
         path = static_dir / css
         if path.exists():

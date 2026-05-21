@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ book.title }} · Robin Reader</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/book_reader.css?v={{ asset_version }}">
 </head>
@@ -28,7 +29,6 @@
     {% endif %}
     <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 目錄</button>
     <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 反思</button>
-    <button type="button" class="icon-btn" id="darkToggle" aria-label="切換深色模式" aria-pressed="false">🌙 夜間</button>
     <button type="button" class="icon-btn" id="deleteBookBtn" aria-label="刪除整本書" title="刪除整本書">🗑️</button>
   </nav>
 </div>

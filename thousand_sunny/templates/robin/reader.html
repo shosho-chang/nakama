@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Robin · 閱讀</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/reader.css?v={{ asset_version }}">
 </head>
@@ -27,7 +28,6 @@
       <button class="header-btn" id="syncBtn" onclick="syncToKB()">同步到 KB</button>
       <button class="header-btn" id="bilingualToggle" onclick="cycleBilingual()" title="T">雙語</button>
       <button class="header-btn is-discard" id="discardBtn" type="button" onclick="openDiscardDialog()">丟掉這篇</button>
-      <button class="header-btn" id="darkToggle" onclick="toggleDark()">Dark</button>
     </div>
   </div>
 
@@ -124,7 +124,6 @@
     let pendingSelectedText = '';
 
     const readerContent = document.getElementById('readerContent');
-    const darkToggle = document.getElementById('darkToggle');
     const bilingualToggle = document.getElementById('bilingualToggle');
     const saveIndicator = document.getElementById('saveIndicator');
     const syncBadge = document.getElementById('syncBadge');
@@ -265,20 +264,6 @@
     }
 
     applyBilingual();
-
-    // ── Dark mode ──
-
-    function toggleDark() {
-      const isDark = document.body.dataset.theme !== 'dark';
-      document.body.dataset.theme = isDark ? 'dark' : 'light';
-      darkToggle.textContent = isDark ? 'Light' : 'Dark';
-      localStorage.setItem('robin-dark', isDark ? '1' : '0');
-    }
-
-    if (localStorage.getItem('robin-dark') === '1') {
-      document.body.dataset.theme = 'dark';
-      darkToggle.textContent = 'Light';
-    }
 
     // ── Text selection → markdown source ──
 

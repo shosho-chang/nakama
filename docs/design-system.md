@@ -24,8 +24,8 @@ namespace 已**全面退役** — 它們是 AI-slop default，不是刻意設計
 現已統一到 `--sho-*`（PR #631、#642–#651）。
 
 **Opt-in 機制**：surface 的 root element（通常 `<body>`）加 `class="sho"`，`--sho-*`
-token 即 cascade。Dark mode 走 `data-theme="dark"` attribute（或 `prefers-color-scheme`
-auto）。
+token 即 cascade。Dark mode 走 `<html>` 上的 `data-theme` attribute（或
+`prefers-color-scheme` auto）— 見 [Theme switching](#theme-switching)。
 
 ---
 
@@ -130,20 +130,29 @@ Shosho 用 typography scale 但**不**把每個 size 包成 `--sho-t-*` token。
 軟填色（soft fill）統一用 `color-mix(in oklch, var(--sho-<sem>) <pct>%, transparent)`，
 不另開 token。
 
-### Dark（auto via `prefers-color-scheme` OR explicit `.sho[data-theme="dark"]`）
+### Dark（auto via `prefers-color-scheme` OR explicit `html[data-theme="dark"]`）
 
 Brightness flip + accent shift toward `oklch(0.78 0.130 48)`（從 41° hue 推到 48° 補
 warm dark mode 偏冷的視感）。完整 dark block 見 tokens.css。
 
 ### Theme switching
 
-Surface 可選三模式：
-- **預設**：跟系統（`prefers-color-scheme`）
-- **顯式 light**：`<body class="sho" data-theme="light">`
-- **顯式 dark**：`<body class="sho" data-theme="dark">`
+三模式，state 寫在 `<html>` 的 `data-theme` attribute 上：
+- **auto**（預設）：無 attribute，跟系統 `prefers-color-scheme`
+- **顯式 light**：`<html data-theme="light">`
+- **顯式 dark**：`<html data-theme="dark">`
 
-帶 toggle UI 的 surface（如 `/progress`、Robin reader）用 localStorage 持久化使用者選擇，
-並在 render 前用 inline `<script>` set `body.dataset.theme` 避免 flash of wrong theme。
+token override 選擇器是 `html[data-theme="dark"] .sho`（dark）與 media query
+`html:not([data-theme="light"]) .sho`（auto）。attribute 放 `<html>` 而非 `<body>`，
+因為它由 `<head>` 內的 script set，那時 `<body>` 還不存在。
+
+**統一 toggle**：`static/shosho/theme.js` 是所有 app surface 的單一 toggle 來源。
+它以 render-blocking `<script>` 載入 `<head>`（不可加 `defer`/`async`，否則 paint
+前主題還沒套好會 flash），在 `<body>` paint 前套好主題，並於 `DOMContentLoaded`
+注入右下角固定 toggle（`.sho-theme-toggle`，auto → light → dark 循環）。偏好持久化
+在 `localStorage['sho-theme']`。`/architecture`、`/progress` 兩個對外靜態頁保留各自
+的 binary theme-switch slider（見下方 Theme switch 節），但同樣寫 `html[data-theme]`
++ 共用 `sho-theme` key，state 跨 surface 一致。
 
 ### Contrast 要求
 
@@ -219,7 +228,8 @@ focus-visible 時統一套：
 - Geometry：track 44×22px、thumb 16px、padding 3px
 - Vertical centering：thumb 用 `top: 50%; transform: translate(0, -50%)`
 - 持久化：`localStorage` + matchMedia fallback；try/catch 包 storage 存取以防 Safari private mode
-- 初始 paint：HTML inline `<script>` 在 render 前 set `body.dataset.theme`
+- 持久化 + 初始套用：inline `<script>` set `document.documentElement` 的
+  `data-theme`（與共用 `theme.js` 同一個 `sho-theme` localStorage key）
 
 ### Bridge ops chassis（dense dashboard surfaces）
 
@@ -327,3 +337,4 @@ Brook（handoff、projects review）、login、未來的 marketing landing。
 | 2026-05-07 | v1 | 從 `/projects/{slug}` review-mode 落地批量填入 `--brk-*` Brook editorial tokens。 | Claude Design handoff `N458-brook-review-mode` → issue #458 |
 | 2026-05-19 | v2 | 加入 `--sho-*` Shosho CI namespace（三 namespace 並存章節）。 | Claude Design handoff `shosho-website-new-design` → PR #595–#608 |
 | 2026-05-21 | v3 | **單一 design system 重構**：`--brk-*`（Brook editorial）與 `--nk-*`（Bridge workshop）兩個 namespace 全面退役，整個 Nakama web UI 統一到 `--sho-*`。字族換成單一 LINE Seed TW（取代 Geist + Noto Sans TC + Geist Mono）。13 個 surface migration 完成（PR #631、#642–#651）。文件刪除 obsolete 的 `--brk-*` 章節。 | Claude Design handoff `shosho-website-new-design` Design System v0.1 |
+| 2026-05-21 | v3.1 | **統一 theme toggle**：新增 `static/shosho/theme.js` — 單一 light/dark/auto toggle 鋪到全部 36 個 web surface（34 個 app template 注入右下角浮動 pill；`/architecture`、`/progress` 保留 bespoke slider）。`data-theme` 從 `<body>` 遷到 `<html>`，token 選擇器改 `html[data-theme]`。退役 reader / book_reader / projects 三套 ad-hoc per-page toggle。 | 對話 UI 稽核 — 全站 L/D toggle 缺口 |

@@ -408,7 +408,7 @@
     }
 
     function apply(mode) {
-      body.dataset.theme = mode;
+      document.documentElement.dataset.theme = mode;
       const isDark = mode === 'dark';
       btn.setAttribute('aria-checked', isDark ? 'true' : 'false');
       btn.dataset.mode = mode;
