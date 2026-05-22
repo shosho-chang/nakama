@@ -26,6 +26,17 @@ body.sho.robin-page {
   color: var(--sho-text-2);
   padding: 32px;
 }
+/* When chassis-nav is mounted on the inbox, body padding would inset the
+   chassis bar from the viewport edge. Zero the body padding and move the
+   equivalent inset onto the centered content container instead. */
+body.sho.robin-page:has(> .chassis) {
+  padding: 0;
+}
+body.sho.robin-page:has(> .chassis) > .container {
+  padding: 32px 24px 64px;
+  box-sizing: border-box;
+  max-width: calc(680px + 48px);
+}
 
 /* Centered single-card pages — processing, done. */
 body.sho.robin-center {

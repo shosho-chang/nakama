@@ -16,6 +16,19 @@ body.sho {
   background: var(--sho-bg);
   color: var(--sho-text);
 }
+/* When chassis-nav is mounted at the top of the body, zero out the body
+   padding so the chassis spans the viewport edge-to-edge. Re-introduce
+   the equivalent horizontal/vertical inset on the centered content blocks. */
+body.sho:has(> .chassis) {
+  padding: 0;
+}
+body.sho:has(> .chassis) > .header {
+  padding: var(--sho-s-6) var(--sho-s-6) 0;
+}
+body.sho:has(> .chassis) > .container {
+  padding: 0 var(--sho-s-6) var(--sho-s-6);
+  box-sizing: border-box;
+}
 
 /* ── Header + nav ───────────────────────────────────────────────────── */
 body.sho .header {
