@@ -6,9 +6,13 @@
 <title>Robin · 書架</title>
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/books.css?v={{ asset_version }}">
 </head>
 <body class="sho">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='robin') }}
 <div class="header">
   <h1><span>📚</span>Robin · 書架</h1>
   <nav class="nav">

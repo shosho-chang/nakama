@@ -53,8 +53,9 @@ robin_router = APIRouter(prefix="/robin")
 # ``legacy_router`` preserves the legacy root-prefix paths as 301 (GET) /
 # 308 (POST) redirects to the new ``/robin/*`` URLs.
 legacy_router = APIRouter()
+_TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent.parent / "templates" / "robin")
+    directory=[str(_TEMPLATE_ROOT / "robin"), str(_TEMPLATE_ROOT / "bridge")]
 )
 pipeline = IngestPipeline()
 
@@ -63,14 +64,22 @@ def _shosho_asset_version() -> str:
     """Return an 8-char hash of the Shosho design-system CSS files.
 
     Used to bust Cloudflare's /static/* edge cache when tokens.css,
-    reader.css or robin.css change. Matches the asset-versioning pattern
-    in ``progress.py`` and ``architecture.py``.
+    bridge.css, bridge-pages.css, reader.css or robin.css change.
+    Bridge CSS is included because ``robin/index.html`` now carries
+    chassis-nav (ADR-029 / #665).
     """
     import hashlib
 
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "reader.css", "robin.css", "theme.js"):
+    for css in (
+        "tokens.css",
+        "bridge.css",
+        "bridge-pages.css",
+        "reader.css",
+        "robin.css",
+        "theme.js",
+    ):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())
