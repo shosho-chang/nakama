@@ -87,7 +87,7 @@ Restructure Bridge IA from **flat 12-item nav** to **dual-axis model** (agent gr
 ### 1. Navigation structure — agent + workflow dual axis
 
 ```
-[● NAKAMA / BRIDGE]  Fleet ▾   DRAFTS   SEO   Ops ▾                [☀ toggle]
+[● NAKAMA]  Fleet ▾   DRAFTS   SEO   Ops ▾                [☀ toggle]
                      │                         │
                      │                         ├ COST      成本
                      │                         ├ LOGS      日誌
@@ -106,7 +106,7 @@ Restructure Bridge IA from **flat 12-item nav** to **dual-axis model** (agent gr
 
 This is **neither pure agent-first nor pure task-first** (panel push-back). Agents own single-agent functions; workflows that span agents get standalone surfaces. Both axes coexist, with the cleavage line being: "does this work require coordination across agents, or is it one agent's domain?"
 
-**Wordmark `NAKAMA / BRIDGE` becomes clickable → `/bridge` home**. Implementation note: current `<div class="chassis-wordmark">` (`_chassis_nav.html:35`) must change to `<a>` with `cursor: pointer` + hover state. Removes the dedicated `BRIDGE` nav item.
+**Wordmark `NAKAMA` becomes clickable → `/bridge` home**. Implementation note: current `<div class="chassis-wordmark">` (`_chassis_nav.html:35`) must change to `<a>` with `cursor: pointer` + hover state. The `/ BRIDGE` suffix is dropped because `BRIDGE` is no longer a distinct nav concept — the wordmark *is* the home link, and a redundant suffix adds noise without semantic value (amended 2026-05-22 after post-merge QA flagged the suffix as visually stale across all surfaces).
 
 **Theme toggle migrates** to a chassis-nav right slot. This requires a code change to `static/shosho/theme.js`: the script currently auto-injects a fixed bottom-right pill into every `<body>` (theme.js:41-75, tokens.css:259-263). After this ADR, `theme.js` exposes a mount-point API — if a `[data-theme-toggle-slot]` element exists in the page (chassis-nav provides one), inject there; else fall back to the floating pill. Bridge pages (which use chassis-nav) get the top-right slot; pages without chassis-nav keep the pill. **No duplicate controls.**
 
