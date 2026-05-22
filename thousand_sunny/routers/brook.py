@@ -31,23 +31,25 @@ from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.brook")
 router = APIRouter(prefix="/brook")
+_TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent.parent / "templates" / "brook")
+    directory=[str(_TEMPLATE_ROOT / "brook"), str(_TEMPLATE_ROOT / "bridge")]
 )
 
 
 def _shosho_asset_version() -> str:
     """Return an 8-char hash of the Shosho design-system CSS files.
 
-    Used to bust Cloudflare's /static/* edge cache when tokens.css or
-    brook-handoff.css change. Matches the asset-versioning pattern in
-    ``robin.py`` / ``progress.py`` / ``architecture.py``.
+    Used to bust Cloudflare's /static/* edge cache when tokens.css,
+    bridge.css, bridge-pages.css or brook-handoff.css change. Bridge CSS
+    is included because ``brook_handoff.html`` now carries chassis-nav
+    (ADR-029 / #665).
     """
     import hashlib
 
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "brook-handoff.css", "theme.js"):
+    for css in ("tokens.css", "bridge.css", "bridge-pages.css", "brook-handoff.css", "theme.js"):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())

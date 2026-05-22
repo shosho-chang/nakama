@@ -74,23 +74,19 @@ body.sho .header p {
   margin-top: 4px;
 }
 
-/* Header nav + logout */
+/* Header nav (logout moved into chassis-meta slot; see #665) */
 body.sho .header-nav {
   display: flex;
   align-items: center;
-  gap: 16px;
-}
-body.sho .header-nav nav {
-  display: flex;
   gap: 12px;
   font-size: 13px;
 }
-body.sho .header-nav nav a {
+body.sho .header-nav a {
   color: var(--sho-accent);
   text-decoration: none;
   transition: color var(--sho-t-fast) var(--sho-ease);
 }
-body.sho .header-nav nav a:hover {
+body.sho .header-nav a:hover {
   color: var(--sho-accent-2);
 }
 body.sho .logout-btn {

@@ -6,11 +6,14 @@
 <title>Brook · Context Handoff</title>
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/brook-handoff.css?v={{ asset_version }}">
 </head>
 <body class="sho">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='brook') }}
 
-<div class="crumb"><a href="/bridge">← Bridge</a> · Brook · Context Handoff</div>
 <h1>Brook · Context Handoff</h1>
 <p class="hint">
   Claude.ai 沒有本地 KB / Project / style profile / 合規詞庫。

@@ -222,8 +222,9 @@ async def _legacy_put_progress_redirect(book_id: str):
 # isn't fully thread-safe at the connection-state level (commit/rollback
 # interleave under concurrent threads); see memory/claude/reference_sqlite_python_pitfalls.md.
 _progress_write_lock = threading.Lock()
+_TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parent.parent / "templates" / "robin")
+    directory=[str(_TEMPLATE_ROOT / "robin"), str(_TEMPLATE_ROOT / "bridge")]
 )
 
 
@@ -232,12 +233,20 @@ def _shosho_asset_version() -> str:
     surface links.
 
     Used to bust Cloudflare's /static/* edge cache when tokens.css,
-    books.css or book_reader.css change. Mirrors the asset-versioning
-    pattern in ``routers/robin.py``.
+    bridge.css, bridge-pages.css, books.css or book_reader.css change.
+    Bridge CSS is included because ``books_library.html`` /
+    ``book_upload.html`` now carry chassis-nav (ADR-029 / #665).
     """
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "books.css", "book_reader.css", "theme.js"):
+    for css in (
+        "tokens.css",
+        "bridge.css",
+        "bridge-pages.css",
+        "books.css",
+        "book_reader.css",
+        "theme.js",
+    ):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())

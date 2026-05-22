@@ -6,20 +6,23 @@
 <title>Robin · Inbox</title>
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/robin.css?v={{ asset_version }}">
 </head>
 <body class="sho robin-page">
+{% from "_chassis_nav.html" import chassis_nav %}
+{% call chassis_nav(nav_active='robin') %}
+  <form method="post" action="/logout" style="margin:0">
+    <button type="submit" class="logout-btn">登出</button>
+  </form>
+{% endcall %}
 <div class="container is-narrow">
 <div class="header">
   <h1><span>🏴‍☠️</span>Robin · Inbox</h1>
-  <div class="header-nav">
-    <nav>
-      <a href="/robin/books">📚 書架</a>
-    </nav>
-    <form method="post" action="/logout" style="margin:0">
-      <button type="submit" class="logout-btn">登出</button>
-    </form>
-  </div>
+  <nav class="header-nav">
+    <a href="/robin/books">📚 書架</a>
+  </nav>
 </div>
   {% if files %}
     {% for file in files %}
