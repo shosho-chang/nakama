@@ -78,7 +78,7 @@ def test_bridge_index_renders_html(client):
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     body = r.text
-    assert "NAKAMA / BRIDGE" in body
+    assert ">NAKAMA</a>" in body
     assert 'href="/bridge/memory"' in body
     assert 'href="/bridge/cost"' in body
     # /architecture v2 R4: dashboard agent tile points at /brook/handoff.
