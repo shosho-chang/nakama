@@ -114,22 +114,29 @@ def test_cost_page_renders_html(client):
     assert "/bridge/api/cost" in body
 
 
-def test_health_page_empty_state_when_no_heartbeats(client):
-    r = client.get("/bridge/health")
+def test_health_page_redirects_to_franky(client):
+    # /bridge/health 301-redirects to /bridge/franky#health (ADR-029 §3 PR-3)
+    r = client.get("/bridge/health", follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers["location"] == "/bridge/franky#health"
+
+
+def test_health_section_empty_state_on_franky(client):
+    # Franky page shows HEALTH section with empty-state when no heartbeats recorded
+    r = client.get("/bridge/franky")
     assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
     body = r.text
-    assert "Bridge · Health" in body
     assert "NO HEARTBEATS RECORDED YET" in body
+    assert 'id="health"' in body
 
 
-def test_health_page_renders_recorded_heartbeats(client):
+def test_health_section_renders_recorded_heartbeats_on_franky(client):
     from shared import heartbeat
 
     heartbeat.record_success("nakama-backup")
     heartbeat.record_failure("flaky-cron", "ConnectionError: timed out")
 
-    r = client.get("/bridge/health")
+    r = client.get("/bridge/franky")
     assert r.status_code == 200
     body = r.text
     assert "nakama-backup" in body

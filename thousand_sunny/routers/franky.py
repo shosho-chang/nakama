@@ -25,6 +25,7 @@ from fastapi import APIRouter, Cookie, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from shared import heartbeat
 from shared.schemas.franky import HealthzCheckEntry, HealthzResponseV1
 from thousand_sunny.auth import check_auth
 
@@ -54,6 +55,23 @@ def _shosho_asset_version() -> str:
 
 
 _SHOSHO_ASSET_VERSION = _shosho_asset_version()
+
+HEALTH_GREEN_MIN = 60
+HEALTH_YELLOW_MIN = 6 * 60
+HEALTH_ORANGE_MIN = 24 * 60
+
+
+def _health_chip(stale_minutes: int | None) -> str:
+    if stale_minutes is None:
+        return "never"
+    if stale_minutes <= HEALTH_GREEN_MIN:
+        return "green"
+    if stale_minutes <= HEALTH_YELLOW_MIN:
+        return "yellow"
+    if stale_minutes <= HEALTH_ORANGE_MIN:
+        return "orange"
+    return "red"
+
 
 # Process start time（module import 時 freeze），uptime 計算用
 _PROCESS_START_MONOTONIC: float = time.monotonic()
@@ -259,4 +277,23 @@ def bridge_franky_page(request: Request, nakama_auth: str | None = Cookie(None))
         return RedirectResponse("/login?next=/bridge/franky", status_code=302)
     ctx = _gather_dashboard_context()
     ctx["asset_version"] = _SHOSHO_ASSET_VERSION
+    health_rows = [
+        {
+            "job_name": hb.job_name,
+            "last_status": hb.last_status,
+            "stale_minutes": hb.stale_minutes,
+            "success_age_minutes": hb.success_age_minutes,
+            "consecutive_failures": hb.consecutive_failures,
+            "last_error": hb.last_error,
+            "last_run_at": hb.last_run_at.isoformat() if hb.last_run_at else None,
+            "chip": _health_chip(hb.stale_minutes),
+        }
+        for hb in heartbeat.list_all()
+    ]
+    ctx["health_rows"] = health_rows
+    ctx["health_thresholds"] = {
+        "green_min": HEALTH_GREEN_MIN,
+        "yellow_min": HEALTH_YELLOW_MIN,
+        "orange_min": HEALTH_ORANGE_MIN,
+    }
     return _templates.TemplateResponse(request, "franky.html", ctx)

@@ -175,5 +175,61 @@
     </div>
   {% endif %}
 
+  {# ── HEALTH: per-job heartbeats ── #}
+  <section id="health" aria-label="System Health">
+    <section class="page-header page-header--split">
+      <div>
+        <div class="nk-caps">/health · per-job heartbeats</div>
+        <h2 class="sec-title">System Health <span class="zh">系統健康</span></h2>
+      </div>
+      <div class="legend-row" aria-label="staleness thresholds">
+        <span class="legend-item"><span class="legend-dot" style="background:var(--sho-success)"></span>≤ {{ health_thresholds.green_min }} min</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--sho-warning)"></span>≤ {{ health_thresholds.yellow_min }} min</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--sho-accent)"></span>≤ {{ health_thresholds.orange_min }} min</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--sho-error)"></span>&gt; {{ health_thresholds.orange_min }} min</span>
+      </div>
+    </section>
+
+    {% if health_rows %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th class="col-mono">Job</th>
+          <th>Status</th>
+          <th>Last run</th>
+          <th>Stale (min)</th>
+          <th>Last success age</th>
+          <th>Consecutive failures</th>
+          <th>Last error</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in health_rows %}
+        <tr>
+          <td class="col-mono">{{ r.job_name }}</td>
+          <td><span class="health-chip {{ r.chip }}"><span class="chip-dot"></span>{{ r.last_status }}</span></td>
+          <td class="col-muted">{{ r.last_run_at or "—" }}</td>
+          <td class="col-muted">{{ r.stale_minutes if r.stale_minutes is not none else "—" }}</td>
+          <td class="col-muted">{{ r.success_age_minutes if r.success_age_minutes is not none else "—" }}</td>
+          <td class="col-muted col-failures{% if r.consecutive_failures > 0 %} high{% endif %}">
+            {{ r.consecutive_failures }}
+          </td>
+          <td class="col-error">{{ r.last_error or "" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      <div>NO HEARTBEATS RECORDED YET</div>
+      <div class="help">
+        <p>Cron jobs and daemons populate this table by calling
+        <code>shared.heartbeat.record_success(...)</code> or
+        <code>record_failure(...)</code> at the end of each tick.</p>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
 </body>
 </html>
