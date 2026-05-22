@@ -201,3 +201,10 @@
 .sho .crumb a:hover {
   color: var(--sho-accent);
 }
+
+/* ── REPURPOSE entry-point section ───────────────────────────────────── */
+.sho .repurpose-entry {
+  border-top: 1px solid var(--sho-line);
+  margin-top: var(--sho-s-6);
+  padding-top: var(--sho-s-5);
+}
