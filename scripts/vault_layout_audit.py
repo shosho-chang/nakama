@@ -301,9 +301,7 @@ def _path_covered_by_matrix(literal_path: str, matrix_paths: set[str]) -> bool:
     - ``*`` (literal glob in matrix rows like ``Inbox/web/*.md``) → ``[^/]*``
     """
     for entry in matrix_paths:
-        pattern = (
-            re.escape(entry).replace(r"\{\}", r"[^/]+").replace(r"\*", r"[^/]*")
-        )
+        pattern = re.escape(entry).replace(r"\{\}", r"[^/]+").replace(r"\*", r"[^/]*")
         if re.match(pattern + r"(/|$)", literal_path):
             return True
     return False
