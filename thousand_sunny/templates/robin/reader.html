@@ -75,10 +75,18 @@
 
   <!-- Footer -->
   <div class="footer">
-    <a href="/">← 返回 Inbox</a>
+    <a href="/robin">← 返回 Inbox</a>
     <button class="btn btn-finish {% if is_read %}done{% endif %}" id="finishBtn" onclick="finishReading()">
       {% if is_read %}已完成閱讀 ✓{% else %}完成閱讀{% endif %}
     </button>
+    {% if base == "inbox" %}
+    <form method="post" action="/start" class="ingest-form">
+      <input type="hidden" name="filename" value="{{ filename }}">
+      <input type="hidden" name="source_type" value="{{ source_type }}">
+      <input type="hidden" name="content_nature" value="{{ content_nature }}">
+      <button type="submit" class="btn btn-ingest">開始 Ingest</button>
+    </form>
+    {% endif %}
   </div>
 
   <!-- Annotation Modal -->

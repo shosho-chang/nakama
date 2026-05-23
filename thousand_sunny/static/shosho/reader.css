@@ -440,6 +440,18 @@ body.sho .btn-finish.done:hover {
   border-color: var(--sho-success);
 }
 
+body.sho .ingest-form { margin: 0; }
+body.sho .btn-ingest {
+  border-color: var(--sho-accent-line);
+  background: var(--sho-bg);
+  color: var(--sho-accent);
+}
+body.sho .btn-ingest:hover {
+  background: var(--sho-accent);
+  border-color: var(--sho-accent);
+  color: var(--sho-bg);
+}
+
 /* ── Modal (annotation) ─────────────────────────────────────────────── */
 body.sho .modal-overlay {
   display: none;
