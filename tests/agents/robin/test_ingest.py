@@ -1028,50 +1028,6 @@ def test_ingest_plan_is_none_short_circuits(pipeline, stub_vault, monkeypatch):
     assert remember_called["yes"] is False
 
 
-def test_ingest_pdf_research_nature_enables_table_extraction(pipeline, stub_vault, monkeypatch):
-    """PDF + content_nature=research → parse_pdf(with_tables=True)。"""
-    raw = stub_vault / "paper.pdf"
-    raw.write_bytes(b"%PDF fake")
-
-    captured = {}
-
-    def fake_parse_pdf(path, with_tables=False):
-        captured["with_tables"] = with_tables
-        return "parsed pdf content"
-
-    fake_mod = types.ModuleType("shared.pdf_parser")
-    fake_mod.parse_pdf = fake_parse_pdf
-    monkeypatch.setitem(sys.modules, "shared.pdf_parser", fake_mod)
-
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
-    monkeypatch.setattr(mod, "list_files", lambda p: [])
-
-    pipeline.ingest(raw, source_type="paper", content_nature="research")
-    assert captured["with_tables"] is True
-
-
-def test_ingest_pdf_popular_science_disables_table_extraction(pipeline, stub_vault, monkeypatch):
-    """PDF + content_nature=popular_science → parse_pdf(with_tables=False)。"""
-    raw = stub_vault / "pop.pdf"
-    raw.write_bytes(b"%PDF fake")
-
-    captured = {}
-
-    def fake_parse_pdf(path, with_tables=False):
-        captured["with_tables"] = with_tables
-        return "content"
-
-    fake_mod = types.ModuleType("shared.pdf_parser")
-    fake_mod.parse_pdf = fake_parse_pdf
-    monkeypatch.setitem(sys.modules, "shared.pdf_parser", fake_mod)
-
-    monkeypatch.setattr(mod, "ask", lambda **k: '{"concepts":[],"entities":[]}')
-    monkeypatch.setattr(mod, "list_files", lambda p: [])
-
-    pipeline.ingest(raw, source_type="book", content_nature="popular_science")
-    assert captured["with_tables"] is False
-
-
 def test_ingest_interactive_mode_consults_user_twice(pipeline, stub_vault, monkeypatch):
     """interactive=True → _prompt_user_guidance + _review_plan_interactive 都被呼叫。"""
     raw = stub_vault / "i.md"

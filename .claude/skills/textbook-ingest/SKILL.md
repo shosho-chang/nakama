@@ -1,7 +1,7 @@
 ---
 name: textbook-ingest
 description: >
-  Ingest a whole textbook (PDF / EPUB) into the Robin KB by chapter,
+  Ingest a whole textbook (EPUB only) into the Robin KB by chapter,
   producing a per-chapter Source Summary (section-by-section structure)
   + Book Entity index page + cross-book Concept/Entity wiki pages with
   ``mentioned_in:`` backlinks (Karpathy-style cross-source wiki).
@@ -16,7 +16,7 @@ description: >
 # Textbook Ingest — Whole-book → KB Wiki Pipeline
 
 You are the interactive driver for ingesting a whole textbook into the
-Robin knowledge base. Your job: take a PDF / EPUB path, parse chapter
+Robin knowledge base. Your job: take an EPUB path, parse chapter
 boundaries, and for each chapter produce a Source Summary + extracted
 Concept/Entity wiki pages, all written directly to the Obsidian vault
 (`shared.obsidian_writer.write_page`). Final step: a Book Entity index
@@ -32,7 +32,7 @@ Reference design: [docs/decisions/ADR-010-textbook-ingest.md](../../../docs/deci
 
 Trigger on intent like:
 
-- "ingest 這本教科書 /Users/shosho/Books/harrison-21e.pdf"
+- "ingest 這本教科書 /Users/shosho/Books/harrison-21e.epub"
 - "把這本書加進 KB"
 - "textbook ingest <path>"
 - "教科書 ingest <path>"
@@ -66,7 +66,6 @@ Do NOT trigger for:
 
 **Codebase / vault requirements**
 
-- ``shared/pdf_parser.py`` available (pymupdf4llm extracts page-level text)
 - ``shared/obsidian_writer.write_page`` available (writes vault MD files)
 - ``shared/config.get_vault_path()`` resolves to the vault root with `KB/`
 - The vault has the directory structure expected by ADR-010 §D3:
@@ -93,8 +92,7 @@ Step 6. Smoke-check + sync hint                   [Tell user to wait Obsidian Sy
 
 Extract:
 
-- ``book_path`` (required) — absolute path to the book file (.epub
-  preferred / .pdf fallback)
+- ``book_path`` (required) — absolute path to the `.epub` file
 - ``book_id`` (optional) — slug; if omitted, derive from filename
 - ``book_subtype`` (optional) — one of:
   ``textbook_exam`` / ``textbook_pro`` / ``popular_health`` /
@@ -102,26 +100,17 @@ Extract:
 - ``language`` (optional) — ``en`` / ``zh-TW`` / ``zh-CN``. Default: ``en``
 
 If ``book_path`` is missing or unclear, ask the user. Do NOT guess.
-**Prefer EPUB over PDF when both editions are available** — EPUB has
+**Only EPUB is supported** (PDF support removed 2026-05-23). EPUB has
 authoritative chapter structure (OPF spine + nav) so chapter boundaries
-are 100% accurate; PDF requires outline / regex / Opus self-detection
-fallback chains and may mis-segment.
+are 100% accurate.
 
 ### Step 2 — Extract outline + chapter boundaries (with figures / tables)
 
 Run from any cwd (script has sys.path shim, do NOT use ``python -m``):
 
 ```bash
-# EPUB (preferred — authoritative chapter structure from OPF/nav)
 python .claude/skills/textbook-ingest/scripts/parse_book.py \
     --path "/Users/shosho/Books/harrison-21e.epub" \
-    --out /tmp/textbook-outline.json \
-    --export-chapters-dir /tmp/textbook-chapters/ \
-    --attachments-base-dir "/Users/shosho/Documents/Shosho LifeOS/Attachments/Books/harrison-21e"
-
-# PDF (fallback — when no EPUB edition exists)
-python .claude/skills/textbook-ingest/scripts/parse_book.py \
-    --path "/Users/shosho/Books/harrison-21e.pdf" \
     --out /tmp/textbook-outline.json \
     --export-chapters-dir /tmp/textbook-chapters/ \
     --attachments-base-dir "/Users/shosho/Documents/Shosho LifeOS/Attachments/Books/harrison-21e"
@@ -140,23 +129,8 @@ python .claude/skills/textbook-ingest/scripts/parse_book.py \
 5. Page numbers are **estimated from word count** (250 words/page,
    EPUB is reflowable); citation will say "estimated p.X" not exact
 
-**PDF path** (`strategy: pdf_outline | regex_fallback | manual_toc`,
-ADR-011 §3.4.2):
-
-1. PDF outline / bookmarks (most textbooks have them)
-2. heading regex (`^(Chapter|第)\s*\d+`) + font-size heuristic
-3. ``--toc-yaml`` manual override
-4. Chapter text rendered via ``pymupdf4llm.to_markdown(with_tables=True)``
-   so tables survive; per-chapter images extracted via
-   ``page.get_images()`` + ``doc.extract_image(xref)`` and appended as
-   `## Figures (extracted, awaiting Vision describe)` placeholder
-   block (PDF lacks reliable inline position attribution)
-
-If the script reports `status: needs_manual`:
-
-- (PDF only) Run with ``--toc-yaml /path/to/manual-toc.yaml`` to override
-- (EPUB) ``--toc-yaml`` is rejected — nav is authoritative. If nav is
-  empty, the EPUB is degenerate; ask user to inspect or convert
+If the script reports `status: needs_manual`, the EPUB nav is degenerate;
+ask the user to inspect or convert.
 
 **Outline JSON figures / tables shape** (per chapter entry):
 
@@ -519,10 +493,9 @@ This skill targets the Nakama repo but is extractable. Design constraints:
 1. **No hardcoded vault path** — uses ``shared.config.get_vault_path()``;
    a fork wires up its own vault root via env / config.
 2. **No hardcoded book metadata** — book_id / book_subtype / language are
-   user-provided or derived from PDF outline; fork uses its own conventions.
-3. **PDF parser is swappable** — ``parse_book.py`` calls
-   ``shared.pdf_parser.parse_pdf``; fork can replace with Docling / EPUB
-   / Word parser as needed.
+   user-provided or derived from EPUB nav metadata; fork uses its own conventions.
+3. **Parser is swappable** — ``parse_book.py`` uses ebooklib;
+   fork can replace with Docling / Word parser as needed.
 4. **Concept-extract prompt is reusable** — adapted from Robin's
    ``agents/robin/prompts/extract_concepts.md``; fork can plug their own.
 5. **Frozen output schema** — ``schema_version: 1`` lets downstream code
@@ -665,7 +638,6 @@ retry signal.
 | Parallel execution architecture (Phase A/B + staged-write) | `docs/decisions/ADR-016-parallel-textbook-ingest.md` |
 | Design process | `docs/plans/2026-04-25-textbook-ingest-design.md` |
 | KB Wiki philosophy | [Karpathy gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) |
-| PDF parser | `shared/pdf_parser.py` |
 | Vault writer | `shared/obsidian_writer.py` |
 | Robin existing prompts | `agents/robin/prompts/` (extract_concepts, summarize, write_concept, write_entity) |
 | Compute tier | `memory/claude/feedback_compute_tier_split.md` |

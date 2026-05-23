@@ -135,7 +135,7 @@ def test_events_step_cancelled_redirects_home(client):
     r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
-    assert events == [{"event": "done", "data": {"redirect": "/"}}]
+    assert events == [{"event": "done", "data": {"redirect": "/robin"}}]
 
 
 # ---------------------------------------------------------------------------
@@ -235,33 +235,6 @@ def test_events_step_summarizing_raw_path_outside_vault_fallback(
     fm = write_page_mock.call_args[0][1]
     source_refs = fm["source_refs"]
     assert source_refs == [str(outside)]
-
-
-def test_events_step_summarizing_pdf_path(client, vault, monkeypatch):
-    """PDF 走 parse_pdf 路徑，需 mock 該 import。"""
-    tc, mod = client
-    raw = vault / "Inbox" / "web" / "fake.pdf"
-    raw.parent.mkdir(parents=True)
-    raw.write_bytes(b"%PDF-1.4\nfake")
-    sid = mod._new_session(
-        step="summarizing",
-        raw_path=str(raw),
-        file_path=str(raw),
-        source_type="paper",
-    )
-
-    import shared.pdf_parser as pdf_parser
-
-    monkeypatch.setattr(pdf_parser, "parse_pdf", MagicMock(return_value="parsed pdf body"))
-    _mock_summarizing_io(monkeypatch, mod)
-
-    r = tc.get(f"/robin/events/{sid}")
-    assert r.status_code == 200
-    events = _parse_sse(r.text)
-    # 應該有「正在解析 PDF...」這個 status
-    status_msgs = [e["data"].get("msg", "") for e in events if e["event"] == "status"]
-    assert any("解析 PDF" in m for m in status_msgs)
-    assert events[-1] == {"event": "done", "data": {"redirect": "/review-summary"}}
 
 
 def test_events_step_summarizing_large_doc_announces_chunking(client, vault, monkeypatch):

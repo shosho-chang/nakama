@@ -165,7 +165,7 @@ def test_discard_redirects_to_inbox(client, monkeypatch):
     resp = tc.post("/robin/discard?file=to-trash.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/"
+    assert resp.headers["location"] == "/robin"
     # File actually gone.
     assert not src.exists()
 
@@ -296,7 +296,7 @@ def test_discard_missing_file_still_redirects(client, monkeypatch):
     resp = tc.post("/robin/discard?file=ghost.md", cookies={"nakama_auth": auth})
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/"
+    assert resp.headers["location"] == "/robin"
 
 
 def test_discard_path_traversal_rejected(client):

@@ -605,30 +605,6 @@ def test_mark_read_happy_path(client, vault, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# GET /pubmed-to-reader — smoke only (深路徑已被 tests/test_pubmed_to_reader_route.py 涵蓋)
-# ---------------------------------------------------------------------------
-
-
-def test_pubmed_to_reader_invalid_pmid_returns_400(client):
-    tc, _ = client
-    r = tc.get("/robin/pubmed-to-reader", params={"pmid": "not-a-number"})
-    assert r.status_code == 400
-
-
-def test_pubmed_to_reader_unauth_redirect(auth_client):
-    tc, _, _ = auth_client
-    r = tc.get("/robin/pubmed-to-reader", params={"pmid": "12345"})
-    assert r.status_code == 302
-
-
-def test_pubmed_to_reader_no_source_returns_404(client, vault):
-    tc, _ = client
-    # Neither PDF nor md exists
-    r = tc.get("/robin/pubmed-to-reader", params={"pmid": "99999"})
-    assert r.status_code == 404
-
-
-# ---------------------------------------------------------------------------
 # POST /start
 # ---------------------------------------------------------------------------
 
@@ -678,7 +654,7 @@ def test_cancel_no_session_returns_home(client):
     tc, _ = client
     r = tc.post("/cancel")
     assert r.status_code == 302
-    assert r.headers["location"] == "/"
+    assert r.headers["location"] == "/robin"
 
 
 def test_cancel_marks_session_cancelled_and_cleans_raw(client, vault, monkeypatch):
@@ -725,7 +701,7 @@ def test_processing_no_session_redirects_home(client):
     tc, _ = client
     r = tc.get("/processing")
     assert r.status_code == 302
-    assert r.headers["location"] == "/"
+    assert r.headers["location"] == "/robin"
 
 
 def test_processing_renders_label_for_known_step(client):
@@ -763,7 +739,7 @@ def test_review_summary_wrong_step_redirects_home(client):
     tc.cookies.set("robin_session", sid)
     r = tc.get("/review-summary")
     assert r.status_code == 302
-    assert r.headers["location"] == "/"
+    assert r.headers["location"] == "/robin"
 
 
 def test_review_summary_happy_path(client):
@@ -792,7 +768,7 @@ def test_submit_guidance_no_session_redirects_home(client):
     tc, _ = client
     r = tc.post("/submit-guidance", data={"guidance": "focus"})
     assert r.status_code == 302
-    assert r.headers["location"] == "/"
+    assert r.headers["location"] == "/robin"
 
 
 def test_submit_guidance_transitions_to_planning(client):
@@ -853,7 +829,7 @@ def test_execute_no_session_redirects_home(client):
     tc, _ = client
     r = tc.post("/execute", data={})
     assert r.status_code == 302
-    assert r.headers["location"] == "/"
+    assert r.headers["location"] == "/robin"
 
 
 def test_execute_filters_selected_items(client):
@@ -1013,10 +989,3 @@ def test_legacy_translate_returns_308_with_query_string(client):
     r = tc.post("/translate?file=x.md")
     assert r.status_code == 308
     assert r.headers["location"] == "/robin/translate?file=x.md"
-
-
-def test_legacy_pubmed_to_reader_returns_301(client):
-    tc, _ = client
-    r = tc.get("/pubmed-to-reader?pmid=12345")
-    assert r.status_code == 301
-    assert r.headers["location"] == "/robin/pubmed-to-reader?pmid=12345"

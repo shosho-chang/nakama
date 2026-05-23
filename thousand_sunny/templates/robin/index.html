@@ -33,17 +33,6 @@
       <div class="file-top">
         <div class="file-info">
           <div class="file-name">
-            {% if file.fulltext_status == "processing" %}
-              <span class="status-icon" data-status="processing" title="處理中">🔄</span>
-            {% elif file.fulltext_status == "ready" %}
-              <span class="status-icon" data-status="ready" title="可讀">✅</span>
-            {% elif file.fulltext_status == "translating" %}
-              <span class="status-icon" data-status="translating" title="翻譯中…">🔄</span>
-            {% elif file.fulltext_status == "translated" %}
-              <span class="status-icon" data-status="translated" title="已翻譯（可讀雙語版）">📖</span>
-            {% elif file.fulltext_status == "failed" %}
-              <span class="status-icon" data-status="failed" title="失敗">❌</span>
-            {% endif %}
             <span title="{{ file.name }}">{{ file.title or file.name }}</span>
             {% if file.is_read %}<span class="badge-read">已閱讀</span>{% endif %}
           </div>
@@ -57,23 +46,10 @@
         {% if file.annotatable %}
           <a href="/robin/read?file={{ file.name | urlencode }}" class="btn-read">閱讀</a>
         {% endif %}
-        <form method="post" action="/start" style="margin:0;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+        <form method="post" action="/start" style="margin:0">
           <input type="hidden" name="filename" value="{{ file.name }}">
-          <select name="source_type" class="type-select" title="媒體格式">
-            <option value="article"{% if file.type == "article" %} selected{% endif %}>Article</option>
-            <option value="paper"{% if file.type == "paper" %} selected{% endif %}>Paper</option>
-            <option value="book"{% if file.type == "book" %} selected{% endif %}>Book</option>
-            <option value="video"{% if file.type == "video" %} selected{% endif %}>Video</option>
-            <option value="podcast"{% if file.type == "podcast" %} selected{% endif %}>Podcast</option>
-          </select>
-          <select name="content_nature" class="type-select" title="內容性質">
-            <option value="popular_science">科普讀物</option>
-            <option value="research"{% if file.type == "paper" %} selected{% endif %}>研究文獻</option>
-            <option value="textbook">教科書</option>
-            <option value="clinical_protocol">臨床指引</option>
-            <option value="narrative">敘事經驗</option>
-            <option value="commentary">評論觀點</option>
-          </select>
+          <input type="hidden" name="source_type" value="{{ file.type }}">
+          <input type="hidden" name="content_nature" value="{{ file.content_nature }}">
           <button type="submit">開始 Ingest</button>
         </form>
       </div>

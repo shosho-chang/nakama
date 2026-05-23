@@ -332,7 +332,7 @@
           <tr>
             <td class="path"><span class="path-new">/robin/read?file=&base=</span><span class="path-old">/read?file=&base=</span></td>
             <td><span class="pill pill--rename">rename</span></td>
-            <td class="function">文件閱讀 + highlight / annotation。<strong>panel 修正</strong>：原計畫改 <code>/robin/read/{doc_id}</code> path-based 是 data-model migration（query-string `?file=&base=` per robin.py:207-213），不是純 URL alias — 暫保留 query-string 形式直到 doc_id schema 落地。需順帶處理周邊 API：<code>/files/{path}</code>、<code>/events/{session_id}</code>、<code>/save-annotations</code>、<code>/sync-annotations/{slug}</code>、<code>/mark-read</code>、<code>/discard</code>、<code>/translate</code>、<code>/pubmed-to-reader</code>。<span class="owner">owner · Robin</span></td>
+            <td class="function">文件閱讀 + highlight / annotation。<strong>panel 修正</strong>：原計畫改 <code>/robin/read/{doc_id}</code> path-based 是 data-model migration（query-string `?file=&base=` per robin.py:207-213），不是純 URL alias — 暫保留 query-string 形式直到 doc_id schema 落地。需順帶處理周邊 API：<code>/files/{path}</code>、<code>/events/{session_id}</code>、<code>/save-annotations</code>、<code>/sync-annotations/{slug}</code>、<code>/mark-read</code>、<code>/discard</code>、<code>/translate</code>。<span class="owner">owner · Robin</span></td>
           </tr>
           <tr>
             <td class="path"><span class="path-new">/robin/processing</span><span class="path-old">/processing</span></td>
