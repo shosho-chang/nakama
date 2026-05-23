@@ -39,7 +39,7 @@ def robin_e2e_env(tmp_path, monkeypatch):
     inbox.mkdir(parents=True)
 
     # Make a fake .md file in Inbox; supported extensions in
-    # ``EXTENSION_TO_RAW_DIR`` cover .md / .pdf / .html.
+    # ``EXTENSION_TO_RAW_DIR`` cover .md / .html / .epub.
     src_file = inbox / "fake-source.md"
     src_file.write_text(
         "---\ntitle: Fake source\nauthor: Property Test\n---\n\nBody content.",
@@ -142,7 +142,6 @@ def test_robin_run_inbox_missing_returns_skip(tmp_path, monkeypatch):
     "filename,expected_raw_dir,expected_source_type",
     [
         pytest.param("doc.md", "Articles", "article", id="md→article"),
-        pytest.param("paper.pdf", "Papers", "paper", id="pdf→paper"),
         pytest.param("page.html", "Articles", "article", id="html→article"),
         pytest.param("notes.txt", "Articles", "article", id="txt→article"),
         pytest.param("book.epub", "Books", "book", id="epub→book"),
