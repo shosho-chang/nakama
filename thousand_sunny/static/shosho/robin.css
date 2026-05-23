@@ -294,6 +294,7 @@ body.sho .file-top {
 body.sho .file-info {
   flex: 1;
   min-width: 0;
+  padding-right: 70px;
 }
 body.sho .file-name {
   font-weight: 600;
