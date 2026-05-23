@@ -1,6 +1,7 @@
 """Robin routes — KB ingest UI, reader, and search."""
 
 import asyncio
+import os
 import platform
 import re
 import shutil
@@ -245,6 +246,12 @@ def _get_inbox_files() -> list[dict]:
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, nakama_auth: str | None = Cookie(None)):
+    # Per-machine landing override: ROBIN_INDEX_REDIRECT=/bridge makes / land
+    # on Bridge dashboard instead of Robin Inbox (local dev where Bridge is
+    # the canonical control plane). Default unset preserves Robin-as-home.
+    override = os.environ.get("ROBIN_INDEX_REDIRECT")
+    if override:
+        return RedirectResponse(override, status_code=302)
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/", status_code=302)
     files = _get_inbox_files()
