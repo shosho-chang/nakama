@@ -77,9 +77,9 @@ class ReadingSource(BaseModel):
     - ``inbox_document`` → ``inbox:{logical_original_path}`` where
                            ``logical_original_path`` strips the
                            ``-bilingual.md`` suffix if present, otherwise
-                           the path as-is. ``InboxKey('Inbox/kb/foo.md')``
-                           and ``InboxKey('Inbox/kb/foo-bilingual.md')``
-                           BOTH resolve to ``inbox:Inbox/kb/foo.md``.
+                           the path as-is. ``InboxKey('Inbox/web/foo.md')``
+                           and ``InboxKey('Inbox/web/foo-bilingual.md')``
+                           BOTH resolve to ``inbox:Inbox/web/foo.md``.
 
     NB3 (v3): in case (b) bilingual-only, ``logical_original_path`` does
     NOT exist on disk. ``source_id`` is a **logical identity, not a

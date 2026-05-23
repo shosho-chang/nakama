@@ -7,7 +7,7 @@ Robin 吸收 source（article / paper / book / podcast）→ 抽 concept / entit
 ### Reader-side bilingual (PR #354)
 
 **Bilingual sibling**:
-Reader「翻譯」按鈕產出 `Inbox/kb/{slug}-bilingual.md`，含中英對照段（英文段落後接 `>` blockquote 中文譯文）。**原 `{slug}.md` 不變**，bilingual 是 sidecar，frontmatter 帶 `derived_from`。修修 annotate 落 bilingual 上。翻譯走自家 translator（`shared/translator.py` Claude Sonnet + 台灣繁中 glossary）。
+Reader「翻譯」按鈕產出 `Inbox/web/{slug}-bilingual.md`（ADR-028 §5；舊路徑 `Inbox/kb/` 已退場），含中英對照段（英文段落後接 `>` blockquote 中文譯文）。**原 `{slug}.md` 不變**，bilingual 是 sidecar，frontmatter 帶 `derived_from`。修修 annotate 落 bilingual 上。翻譯走自家 translator（`shared/translator.py` Claude Sonnet + 台灣繁中 glossary）。
 _Avoid_: 翻譯檔, translated md（用 bilingual sibling）
 
 **Bilingual reader**:

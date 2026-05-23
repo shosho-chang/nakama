@@ -9,7 +9,7 @@ production class.
 Hard invariants (per N518 brief §4 + W7/W8):
 
 - The loader receives ``SourceVariant.path`` strings — POSIX paths like
-  ``"data/books/{id}/original.epub"`` or ``"Inbox/kb/foo.md"``. These are
+  ``"data/books/{id}/original.epub"`` or ``"Inbox/web/foo.md"``. These are
   NOT ``source_id`` values; the caller (preflight/builder) has already
   resolved a ReadingSource and is passing one of its variant paths.
 - Two roots, two destinations (F06 fix, 2026-05-10):
@@ -17,7 +17,7 @@ Hard invariants (per N518 brief §4 + W7/W8):
       (``shared.book_storage.books_root()`` — cwd-relative or
       ``NAKAMA_BOOKS_DIR``). EPUB binaries live outside the vault so
       they don't participate in Obsidian sync.
-    - All other paths (``Inbox/kb/...``, ``KB/Wiki/...``, etc.) resolve
+    - All other paths (``Inbox/web/...``, ``KB/Wiki/...``, etc.) resolve
       against ``vault_root``.
   ``books_root`` is optional — if omitted, ``data/books/...`` falls back
   to ``vault_root`` (preserves pre-F06 behavior for tests that don't
