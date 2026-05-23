@@ -106,6 +106,10 @@ markers = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+# Archived migration scripts under data/migrations/ are historical audit trail —
+# verbatim copies of one-shot scripts that ran 2026-05-20 onwards. Linting them
+# would force changes that distort the audit record.
+extend-exclude = ["data/migrations/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]

@@ -40,6 +40,9 @@ logs/
 data/*
 # Reference data that *should* be committed (gitignore exception)
 !data/scimago_journals.csv
+# Migration audit trail (ADR-028 §3 Phase B mandates committed manifests)
+!data/migrations/
+!data/migrations/**
 
 # Build artifacts
 *.egg-info/

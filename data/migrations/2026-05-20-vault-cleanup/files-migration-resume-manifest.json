@@ -1,0 +1,243 @@
+{
+  "adr": "ADR-028",
+  "phase": "B sub-op 10+11 — Files/ migration (resume)",
+  "executed_at": "2026-05-21T13:27:55Z",
+  "vault": "E:\\Shosho LifeOS",
+  "ops": [
+    {
+      "op": "CLEAN-TMP",
+      "path": "Journals/Daily/2024-03-09.md.tmp"
+    },
+    {
+      "op": "FIX-MISSED-REWRITE",
+      "file": "Journals/Daily/2024-03-09.md",
+      "basename": "Pasted image 20240310160615.png",
+      "refs_rewritten": 1
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240329193747.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240329193747.png",
+      "sha256": "fe5f31137e6d0d0c076023a7e517113870fbae0d5ecff2d5088c09716cd71744",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240329193810.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240329193810.png",
+      "sha256": "56f5d6c833bc214224bd195989bc136055a305ef404fe2156672d7b463a2a274",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240329193832.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240329193832.png",
+      "sha256": "887f31bb853006bcb52a6fce1ad9431e86256625bf19f594c4cdc7bb3ce7c862",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331174505.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331174505.png",
+      "sha256": "b6672fc3a0f923b6e799637e56cdf2071d326af0d54ebebbf9e57d047080081d",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331174943.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331174943.png",
+      "sha256": "a82d6d7c6715038f17e51be8e9edf6276c302c9542498fa152db8dfd244642be",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331174959.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331174959.png",
+      "sha256": "85cec5b77253f111a3c8b8220f3b23022f3955cb8fb3ad9e917ca283cde27140",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331175114.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331175114.png",
+      "sha256": "49eb78035f9391185b159e3c64b15860c3ba993b192c694bed73884c86133dac",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331175150.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331175150.png",
+      "sha256": "774349fa63559dd304831960b9c9a86e7c5e50c411d17532a89821fc9f756e7e",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331180326.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331180326.png",
+      "sha256": "c9dcb348881ee11b4d0350696d44063ecf21c0590e74a04c7c61545b35dec009",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250114094954.png",
+      "dst": "Attachments/journal-pasted/2025-01/Pasted image 20250114094954.png",
+      "sha256": "d6276a0a40bf3bd6a62dc13499835745fde87a4f4c818d457d537314b5e2745f",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-01-14.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250324112029.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250324112029.png",
+      "sha256": "a2d997524ea17dc360834c55d3965e8be348abd200471ca3301e1c605b287b2f",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-03-24.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250324112037.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250324112037.png",
+      "sha256": "280d255947c814f11d0d1e233dd772ca295a5c449867aec30a5c6855bf0e5192",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-03-24.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250324114456.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250324114456.png",
+      "sha256": "024d7a14c753ce071b817f1522cb7c7e07aafdeee4a8ce47e3f363afbb611191",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-03-24.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250324122540.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250324122540.png",
+      "sha256": "bf9fb6e1648a2c4f3816eb01c0a4fd2cf1c3f7c2d5d9e901fb83f0c2954011f9",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-03-24.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250407173659.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250407173659.png",
+      "sha256": "21eddf7a67ddb100233dd16742860e6e73b3fd9b1de37f59c547a8b6f9d38892",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528160537.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528160537.png",
+      "sha256": "2e9c6e6b31d740536ef595eeb9d752fe29c27f342ba1a43e951614a52dc1d0b3",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528160916.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528160916.png",
+      "sha256": "2287981760a35105e9c0aef3ec7f9e4e551a9a5639a8f43b0c2a602f34a2eccc",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528191429.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528191429.png",
+      "sha256": "ecc3e9f68ab3fb241886bf977c46b4afdc0f1804c3181ffcc7525e6da176aae1",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528192015.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528192015.png",
+      "sha256": "776fcd02bf9c2d1d15911e3ecd09b0d106103a4d7cf792e5e56c40dd79f501ea",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528200352.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528200352.png",
+      "sha256": "973dc7d95f1487c2b99207a99ae3e422634cd5551e2d0672fd7c5b22f0097fe4",
+      "verified": true,
+      "refs_rewritten": 1,
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\Files"
+    }
+  ],
+  "locked_files": []
+}

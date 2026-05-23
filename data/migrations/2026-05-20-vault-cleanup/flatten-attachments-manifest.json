@@ -1,0 +1,1250 @@
+{
+  "adr": "ADR-028",
+  "phase": "B sub-op 9 — flatten KB/Attachments (vault half)",
+  "code_pr": 656,
+  "executed_at": "2026-05-21T12:44:26Z",
+  "vault": "E:\\Shosho LifeOS",
+  "ops": [
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/39143318.pdf",
+      "dst": "KB/Attachments/39143318.pdf",
+      "sha256": "6e387a1603e97113f9414b1b048b514bcfefef2a531f6ef6a0d591aa7b41bd42",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/41850726",
+      "dst": "KB/Attachments/41850726",
+      "file_count": 1,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/41850726.md",
+      "dst": "KB/Attachments/41850726.md",
+      "sha256": "3f1531d16fada6c6a7a7c53bcc0c1a49f4e865cff5bed084eba5b357dc346eeb",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/41876208",
+      "dst": "KB/Attachments/41876208",
+      "file_count": 1,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/41876208.md",
+      "dst": "KB/Attachments/41876208.md",
+      "sha256": "e10f1cc44579feb035c30b033ae8a789a4b7d95feb705062bb0bed13f06967ef",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/41980785.pdf",
+      "dst": "KB/Attachments/41980785.pdf",
+      "sha256": "2f10ac6a3f41c85ee064d329e0d90911cc06e58021c135159da601d7740e9db1",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42016464.pdf",
+      "dst": "KB/Attachments/42016464.pdf",
+      "sha256": "65fa26c912d9410e9c07c4f27bdc1f2038f9fdab3648e00e9fbd505ac25c9223",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42022829.pdf",
+      "dst": "KB/Attachments/42022829.pdf",
+      "sha256": "26f7a1ce315b608a80eff6ee024cddda46916d8523ef1502659e36874ccbcb54",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42023229.pdf",
+      "dst": "KB/Attachments/42023229.pdf",
+      "sha256": "429f04d231d2af63b4e08756c8462433b82386524ffd266bd8281a8bd04f068d",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42027916.pdf",
+      "dst": "KB/Attachments/42027916.pdf",
+      "sha256": "c4d6a20177d385f243665015de7b3ff119125c358065f3334fe203ea2a4dba06",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42027920.pdf",
+      "dst": "KB/Attachments/42027920.pdf",
+      "sha256": "b6572581f1cea07e801e4903f413493dfa9bf2ae4b5c1ca487955265ea809d74",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42027922.pdf",
+      "dst": "KB/Attachments/42027922.pdf",
+      "sha256": "f230c92600709de92a649f5c5a742843613fbda7d52ac3c14d0613adc5f804b2",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42038464.pdf",
+      "dst": "KB/Attachments/42038464.pdf",
+      "sha256": "cbbccb4bfd908a3b533be6c011e8bdcc1425600fd5adefcf261c17d5e488f4f4",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42040120.pdf",
+      "dst": "KB/Attachments/42040120.pdf",
+      "sha256": "437b67b8c0c04530ece238890804404dd159ba83078c7a3050441af59369bd90",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42043665.pdf",
+      "dst": "KB/Attachments/42043665.pdf",
+      "sha256": "7ab2b57e681e3016b43447b3257a3dcab7e42e7923d765e9f883c9533a6b2a16",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42044114.md",
+      "dst": "KB/Attachments/42044114.md",
+      "sha256": "ce2bc02d76df50da0fd9e6a426db793ea0fdd52404b8266445666c4cf88a3d35",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42044118.md",
+      "dst": "KB/Attachments/42044118.md",
+      "sha256": "343302f1f6f24f098c0b36a56247baf18f5731762c1dd4ca14fd53dcd8c2f35c",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42044129.md",
+      "dst": "KB/Attachments/42044129.md",
+      "sha256": "bbdbaff0f2c2010f6bb59039973e2fa05a0be0b243c46eaa9767f3826b0e1927",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42044258.md",
+      "dst": "KB/Attachments/42044258.md",
+      "sha256": "acd1bd6c439d353c4432677e02517566cae01c531a03a96d2ec261707e7508aa",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42045634.pdf",
+      "dst": "KB/Attachments/42045634.pdf",
+      "sha256": "7040498020709b44fa24b02f7f9d2e003e7ed9eb510164c0adbf2cd270478d21",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42045728.pdf",
+      "dst": "KB/Attachments/42045728.pdf",
+      "sha256": "f1918f1a6609b6eeb6927af14d9e422a34dcc402308d67a5b3df9441212b1ad2",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42046517.pdf",
+      "dst": "KB/Attachments/42046517.pdf",
+      "sha256": "af229870d083bcede028c56c307c985cd8df741246605212cac4ffeb3804d115",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42048524.md",
+      "dst": "KB/Attachments/42048524.md",
+      "sha256": "66c41a20072a544f4eb5f33b4a0576dbe612fed2909447e47138ddfad9c2327b",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42049694.md",
+      "dst": "KB/Attachments/42049694.md",
+      "sha256": "38ce989438994238baa9422b11e0a6b9f4c65ceeb2c002e4b0cd54a54f51cc92",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42051455.pdf",
+      "dst": "KB/Attachments/42051455.pdf",
+      "sha256": "7228e115e1a127499d97fd5c96d9297d26164f1f2806db1f66fb26e84cd02c81",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42051517.pdf",
+      "dst": "KB/Attachments/42051517.pdf",
+      "sha256": "70622f526847e048688f9185f2c7379e9ee8382d03fb53ff5dc2d149907bb6d9",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42052038.pdf",
+      "dst": "KB/Attachments/42052038.pdf",
+      "sha256": "8edcf55a53dd63ee3487157bd43dfaded0235eecc92b4c0660d76f4a35483bcd",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42054400.md",
+      "dst": "KB/Attachments/42054400.md",
+      "sha256": "89cd9b559b2667fd3c567933266cd060dcd4aea52baf10999ba2a45fbc6b1b73",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42058068.pdf",
+      "dst": "KB/Attachments/42058068.pdf",
+      "sha256": "887bb84d415169123ba2b2584fe8310f6f439fa22f34bff3ec9261f362af46ca",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42060134.pdf",
+      "dst": "KB/Attachments/42060134.pdf",
+      "sha256": "bac60f997a1907c16fab75179b2ad3861099f2d960aaa7cd50dc57f917e694f5",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42060241.pdf",
+      "dst": "KB/Attachments/42060241.pdf",
+      "sha256": "63807219b32960c3c13f94af2313d50c7338994c8b4a30120ac5ae3b5ee6720d",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42060908.md",
+      "dst": "KB/Attachments/42060908.md",
+      "sha256": "34b79c84c80985bf1c58488f1e0108c4a060285f110bb422918055ce77ad902b",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42061844.md",
+      "dst": "KB/Attachments/42061844.md",
+      "sha256": "59f2702127498ddd8caa2b60f8768da05e6e2c21fbf52117a0045a818333c1c3",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42061848.md",
+      "dst": "KB/Attachments/42061848.md",
+      "sha256": "e12bb3246147b5c28588146175d6b694abceeae525f20cffeb21c378b6e027b3",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42061859.md",
+      "dst": "KB/Attachments/42061859.md",
+      "sha256": "6f006ea9b7422c798ee4b222ccedeb9d86e60b70e3aea7240e847ac505afe6f9",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42062245.pdf",
+      "dst": "KB/Attachments/42062245.pdf",
+      "sha256": "6a7f5ab66b303718d7d9cb61a3786ef61a1ed209f767c02d77db6530898ee821",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42064899.pdf",
+      "dst": "KB/Attachments/42064899.pdf",
+      "sha256": "58885d355f0126ab8b547686e45ef41c9e40fe6f7771cabdc005bf8fc54c9dda",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42068400.pdf",
+      "dst": "KB/Attachments/42068400.pdf",
+      "sha256": "84b515f8c0f6baf684bfbf55ef18afcb290604121d500d73a98c1b07d762f0f1",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42068409.pdf",
+      "dst": "KB/Attachments/42068409.pdf",
+      "sha256": "8079dfbc31ad6d5125c2883b24f461a621f6012fd4c71533e771076ec7aa1e44",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42068433.pdf",
+      "dst": "KB/Attachments/42068433.pdf",
+      "sha256": "d68f6a4da82e34a1d3041fe7e6229207a7e7a33cc1e1c77369a410bd8a333e6e",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42069826.pdf",
+      "dst": "KB/Attachments/42069826.pdf",
+      "sha256": "3c4d4d9fd0b69573cd731eefbd94195b9a0286c6dd0be44c3bbeef6e5a970ed6",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42069941.pdf",
+      "dst": "KB/Attachments/42069941.pdf",
+      "sha256": "ec6088d17a8fcacb5f1f69e765c87cad2b86b8c6765e79227f1ee138e7fab962",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42070004.pdf",
+      "dst": "KB/Attachments/42070004.pdf",
+      "sha256": "3bde4e2e137c9aa788dc5e6aa71ff55916aadf6895be86b01f7ab2c619c04f0d",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42071093.pdf",
+      "dst": "KB/Attachments/42071093.pdf",
+      "sha256": "c00367541d9cc83e926ba64903aa5f524aa0628b57a40b4be12e485b5237ea1c",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42077961.pdf",
+      "dst": "KB/Attachments/42077961.pdf",
+      "sha256": "a6466ffa5e01c85be4a3bba12eb72789e1c079b5dd15078d9cbeca6c3472a091",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42086300",
+      "dst": "KB/Attachments/42086300",
+      "file_count": 0,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42086300.md",
+      "dst": "KB/Attachments/42086300.md",
+      "sha256": "53e95aaec9400c239da4f530cec1d8e07cdcb1482b8a489086165b3cd4ceb2d9",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42086570.md",
+      "dst": "KB/Attachments/42086570.md",
+      "sha256": "cd43eb867e56496cec9459e44f8464010ddfa7fc0f7249ef1d65248cce5372a3",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42086588.pdf",
+      "dst": "KB/Attachments/42086588.pdf",
+      "sha256": "f2c9e2a36a0bece6cd920c0655ce892f2ae8127fa0f226a470e5fbc817925872",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42090020.pdf",
+      "dst": "KB/Attachments/42090020.pdf",
+      "sha256": "19b81ef2d83ba4e68197ab14ff9f4fc8c6635ad81f1564bc8c5464a38fb5ce52",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42090386.md",
+      "dst": "KB/Attachments/42090386.md",
+      "sha256": "a33ce004943102c49f8fe0ce9c877a3a42e5eb6aa1e0ea0c414d50f7334ae960",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42090476.md",
+      "dst": "KB/Attachments/42090476.md",
+      "sha256": "225749c8854f54582cd947a13a387c749d89594210fb24e8e160f860f5d55579",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42090672",
+      "dst": "KB/Attachments/42090672",
+      "file_count": 9,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42090672.md",
+      "dst": "KB/Attachments/42090672.md",
+      "sha256": "b18d6994709db99abb60f15828f418ddea113ebae7d6e1ac0d57a4b02ed7076f",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42090672.pdf",
+      "dst": "KB/Attachments/42090672.pdf",
+      "sha256": "5c9417539d32022116629d7f91750c33312d3d8f52f746c4efdfa5a2e40cddde",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42091863.md",
+      "dst": "KB/Attachments/42091863.md",
+      "sha256": "4f590fe1f4320c2d411375db195f5c9ab90247a15f580e1e5c55ef1339c35107",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42091891.md",
+      "dst": "KB/Attachments/42091891.md",
+      "sha256": "897d66e280273a5cf986640fdb6de7c76b2177e422fe97ca1acc644acfb78dbf",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42092139.pdf",
+      "dst": "KB/Attachments/42092139.pdf",
+      "sha256": "c905dbf1b1837eaef6ccaa6e837b9b8f2399cb73e2d7b78816b017e4266194ab",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42092154.pdf",
+      "dst": "KB/Attachments/42092154.pdf",
+      "sha256": "5f9cb16a4967b9a9fe6c7b177f04bca75a99535d445de20db642e9b5066dcb77",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42092850.pdf",
+      "dst": "KB/Attachments/42092850.pdf",
+      "sha256": "69e4cc86f8353eb7fcd887b3f085649d619a9fa4511223e498766f39d3412c5d",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42096416.md",
+      "dst": "KB/Attachments/42096416.md",
+      "sha256": "c85bb253b06f877ea0824a5d7e46b39f250dbbcd8929c135656c70a47c721c76",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42097659",
+      "dst": "KB/Attachments/42097659",
+      "file_count": 1,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42097659.md",
+      "dst": "KB/Attachments/42097659.md",
+      "sha256": "20cfd2d24c713ec4fd71975465ea479ae2cbef6596b03468b5184979a06af172",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42098101.md",
+      "dst": "KB/Attachments/42098101.md",
+      "sha256": "87c28366b2e4100d39fd548bcb471a344f08a391355585c3f7bb501c894ef5e2",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42100193.pdf",
+      "dst": "KB/Attachments/42100193.pdf",
+      "sha256": "6244062d0b232c3b59d7fd4b0adc9fdc3e64965d6655e364c7ed55e1c502c11d",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42103725.pdf",
+      "dst": "KB/Attachments/42103725.pdf",
+      "sha256": "357245c533d38b338862db320c9cac2c58f80935f13db0b68d65573e8bf616e4",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42105036.pdf",
+      "dst": "KB/Attachments/42105036.pdf",
+      "sha256": "722b19d4f2449aac8266ed6c31d17f962a6e7fd435185d99f5a0d1c85b0dc7f0",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42106944.pdf",
+      "dst": "KB/Attachments/42106944.pdf",
+      "sha256": "5b9870aad34edeca0586259439df901360a92ed32ddca130023d5d03de599eda",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42108270.pdf",
+      "dst": "KB/Attachments/42108270.pdf",
+      "sha256": "27a4fa14bda05692a870b4ed94e0b96f67c48d9e2b973e696c20a133dba992e5",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42108373.pdf",
+      "dst": "KB/Attachments/42108373.pdf",
+      "sha256": "29ec58bb55eab6403803d248bb40135431193931f6c5f8bfee47fc7dde79436f",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42109721.pdf",
+      "dst": "KB/Attachments/42109721.pdf",
+      "sha256": "fbcfbe5b160934fee2531e58e3015fde34cac762d3b3465ea16594587eef58c6",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42112337.pdf",
+      "dst": "KB/Attachments/42112337.pdf",
+      "sha256": "1a4d64e7fa40bbc2aa1fcaf890a0b6f4a146299bd0291940512fbaf23014b530",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42115175.pdf",
+      "dst": "KB/Attachments/42115175.pdf",
+      "sha256": "58d78b12a5c914f1a907774ce4e46e2b7c46e73a52c04e7bc815c5fc398231b7",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42117057.pdf",
+      "dst": "KB/Attachments/42117057.pdf",
+      "sha256": "560605d1ca001d7917f08ea6e291404dbeef7a568f088e99e3f53aa0056fbae1",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42118429.pdf",
+      "dst": "KB/Attachments/42118429.pdf",
+      "sha256": "6e247f596d156821e01f434916537b09106ba3a0c1e0229f1f3fa2e8a2fa9d19",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42120611.pdf",
+      "dst": "KB/Attachments/42120611.pdf",
+      "sha256": "bcdb728005cb1fe684247d3bb4e54955347e1d913a1359cd49976b557d1553a0",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42120723.pdf",
+      "dst": "KB/Attachments/42120723.pdf",
+      "sha256": "e97f1d3df3ad65df4ad403698c84e1603d4d40fb4cc8995f4c187c858cce95d6",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42120725.pdf",
+      "dst": "KB/Attachments/42120725.pdf",
+      "sha256": "62a143167b4257f5ad0e76029f6f0b7854e5922270d55e2b114c611df5e4a363",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42125237.pdf",
+      "dst": "KB/Attachments/42125237.pdf",
+      "sha256": "c578fbb3f5e80a38e45ac45356170329c80ee6a937b4b8991965bce2ac354f82",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42128400.md",
+      "dst": "KB/Attachments/42128400.md",
+      "sha256": "ba47990a167cad93be1320b6ed9f85b99f75012eff6c408a2ccef9b86e6e4fbc",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42128481",
+      "dst": "KB/Attachments/42128481",
+      "file_count": 0,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42128481.md",
+      "dst": "KB/Attachments/42128481.md",
+      "sha256": "c11d4418f6d5a7448ccaa2267a212625376d898b9f94c254dad3ca9ae703c49f",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42129178.pdf",
+      "dst": "KB/Attachments/42129178.pdf",
+      "sha256": "fa04a2e4fa14956b3a61a0804d24583804b1482087b41c28972abdaa729c3a26",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42129189.pdf",
+      "dst": "KB/Attachments/42129189.pdf",
+      "sha256": "3dce395b8a634e4dc34825fea9e297091ebd5ae1ce70422569eb1595d44f17de",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42129421.md",
+      "dst": "KB/Attachments/42129421.md",
+      "sha256": "e09a380d1d309c9676c59c243faf07c60f70719088cc28bed6a2464fc19a8976",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42129562.pdf",
+      "dst": "KB/Attachments/42129562.pdf",
+      "sha256": "3e62babde2e7682bd935e71cc8937717e68f945a9557d64269d879d5dcf91d1f",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42129770.pdf",
+      "dst": "KB/Attachments/42129770.pdf",
+      "sha256": "17891c46b238762fd3557b17c20852bc5d870912f598d7cd98ff643bbcf94f10",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42133131.pdf",
+      "dst": "KB/Attachments/42133131.pdf",
+      "sha256": "9976c98516125f5d5be4b724117665c1f4c4a5ba1542cbac0f601fa02a73c39a",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42133198.pdf",
+      "dst": "KB/Attachments/42133198.pdf",
+      "sha256": "c8774d46bb64d797ab66bc2c2fdc908a1565c4777c4951100c18dbd0ec806703",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42133556.md",
+      "dst": "KB/Attachments/42133556.md",
+      "sha256": "b801ab98969e00e3e91d9e13177e1d7caa63459bc944479dcf8c715f2b125c61",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42135312.md",
+      "dst": "KB/Attachments/42135312.md",
+      "sha256": "222f27ea7ec6bf9b31b964ccd3883029e4ed685d98c527df67d5daf7d1acfc50",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42145278.pdf",
+      "dst": "KB/Attachments/42145278.pdf",
+      "sha256": "03a4a42d8af2e90b871784235626cb9fe963a1a83d57011e11eabb266bb87b27",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42149831.md",
+      "dst": "KB/Attachments/42149831.md",
+      "sha256": "8ba88773b8287c1fcba4ad01469b407f3bb52816e0f023e563f5e3acf934f961",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42150167.md",
+      "dst": "KB/Attachments/42150167.md",
+      "sha256": "9409048ca140f87db04a230bda3314984c5edbede43d25efc07b5ff5ebafa1a5",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42151128.md",
+      "dst": "KB/Attachments/42151128.md",
+      "sha256": "0a4338c5172cd46168ed9555ac42bf792ea8bc745286c1dba2383a4aed575cd8",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42151147.md",
+      "dst": "KB/Attachments/42151147.md",
+      "sha256": "05fa56e9d1aabd8f12b75fce56a95c9d5fa30131dbd40a8de092efafb9a67fcb",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42154466",
+      "dst": "KB/Attachments/42154466",
+      "file_count": 10,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42154466.md",
+      "dst": "KB/Attachments/42154466.md",
+      "sha256": "8d5b7a66239ff0fb16d8bb796585ec5529e93eddf52c5cd6d73fb4a86d717b82",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42154466.pdf",
+      "dst": "KB/Attachments/42154466.pdf",
+      "sha256": "99a58adb6152bd92ca9c21c7e5a0a2ec1cadff550392622133c927d90a15a348",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42155766",
+      "dst": "KB/Attachments/42155766",
+      "file_count": 3,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42155766.md",
+      "dst": "KB/Attachments/42155766.md",
+      "sha256": "25b88992aeaa1dd8f92b38f898aaa16bb540a14003f7d70e7bef10b7ec46fb60",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42156772.md",
+      "dst": "KB/Attachments/42156772.md",
+      "sha256": "2d1dd72a0555b5e549c2436c6a1581ed166bbf37061def268ac234417e07ca7d",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42156804.md",
+      "dst": "KB/Attachments/42156804.md",
+      "sha256": "ca31be8d6db2171527cad421ea3fd46db32c678bfb7a314dbb1a992031b1b680",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42158814.pdf",
+      "dst": "KB/Attachments/42158814.pdf",
+      "sha256": "d235d430ced04a7c758d519c83d13e3db24cd1b5665fc1269c15a7da14c52a92",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/inbox/bmjmedicinebmjcomcontent51e001513",
+      "dst": "KB/Attachments/bmjmedicinebmjcomcontent51e001513",
+      "file_count": 16,
+      "verified": true
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "Inbox/web/bmjmedicinebmjcomcontent51e001513.md",
+      "pubmed_refs": 0,
+      "inbox_refs": 61
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Attachments/41850726.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Attachments/41876208.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Attachments/42090672.md",
+      "pubmed_refs": 9,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Attachments/42097659.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Attachments/42154466.md",
+      "pubmed_refs": 10,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Attachments/42155766.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-04-23.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-04-24.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-04-25.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-04-28.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-04-29.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-04-30.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-01.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-02.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-04.md",
+      "pubmed_refs": 6,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-05.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-06.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-07.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-08.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-09.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-10.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-11.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-12.md",
+      "pubmed_refs": 4,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-13.md",
+      "pubmed_refs": 3,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-14.md",
+      "pubmed_refs": 4,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-15.md",
+      "pubmed_refs": 6,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-19.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-21.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-41850726.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-41876208.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-41980785.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42086300.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42086570.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42086588.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42090020.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42090386.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42090476.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42090672.md",
+      "pubmed_refs": 4,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42091863.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42091891.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42092139.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42092154.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42092850.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42096416.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42097659.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42098101.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42100193.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42103725.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42105036.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42106944.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42108270.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42108373.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42109721.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42112337.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42115175.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42117057.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42118429.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42120611.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42120723.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42120725.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42125237.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42128400.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42128481.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42129178.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42129189.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42129421.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42129562.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42129770.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42133131.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42133198.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42133556.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42135312.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42145278.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42149831.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42150167.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42151128.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42151147.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42154466.md",
+      "pubmed_refs": 4,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42155766.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42156772.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42156804.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42158814.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\KB\\Attachments\\pubmed"
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\KB\\Attachments\\inbox"
+    }
+  ]
+}
