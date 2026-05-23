@@ -130,7 +130,7 @@ def test_translate_writes_bilingual_and_redirects(client):
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/"
+    assert resp.headers["location"] == "/robin"
     mock_translate.assert_called_once()
 
     bilingual = inbox / "example-bilingual.md"
@@ -349,37 +349,6 @@ def test_reader_hides_translate_button_on_bilingual(client):
     assert 'id="translateBtn"' not in resp.text
 
 
-def test_inbox_view_renders_translated_status_icon(client):
-    """Acceptance #5: after translation, inbox row reflects ``translated`` status.
-
-    Indirect end-to-end check (not strictly part of /translate scope but the
-    user-visible delivery): write a Slice-3-shaped frontmatter with
-    ``fulltext_status: translated`` and confirm the ``index`` template
-    renders the bilingual emoji rather than the generic ✅.
-    """
-    tc, inbox = client
-    auth = _auth_cookie(tc)
-    (inbox / "translated.md").write_text(
-        "---\n"
-        'title: "x"\n'
-        'source: "https://example.com/x"\n'
-        'original_url: "https://example.com/x"\n'
-        "source_type: article\n"
-        "content_nature: popular_science\n"
-        "fulltext_status: translated\n"
-        "fulltext_layer: readability\n"
-        'fulltext_source: "Readability"\n'
-        "---\n\nbody\n",
-        encoding="utf-8",
-    )
-
-    resp = tc.get("/", cookies={"nakama_auth": auth})
-    assert resp.status_code == 200
-    # The bilingual emoji 📖 is the visual delta from ``ready`` → ``translated``.
-    assert "📖" in resp.text
-    assert 'data-status="translated"' in resp.text
-
-
 def test_translate_does_not_double_translate_bilingual_filename(client):
     """Calling /translate on a ``-bilingual.md`` file is idempotent (returns the same name).
 
@@ -442,8 +411,8 @@ def test_translate_redirects_to_inbox_not_bilingual_reader(client):
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/", (
-        "Translate route must redirect to inbox '/' so the user doesn't "
+    assert resp.headers["location"] == "/robin", (
+        "Translate route must redirect to inbox '/robin' so the user doesn't "
         "race the BG-written bilingual file. Redirecting to "
         "'/read?file=...-bilingual.md' caused 404s on long articles."
     )
@@ -514,7 +483,7 @@ def test_translate_full_lifecycle_translating_then_translated(client):
         )
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/"
+    assert resp.headers["location"] == "/robin"
     text = original.read_text(encoding="utf-8")
     # Final state after BG ran: must be ``translated``, NOT stuck on
     # ``translating`` (regression for the regex matching the new state).
@@ -523,36 +492,6 @@ def test_translate_full_lifecycle_translating_then_translated(client):
     assert "fulltext_status: ready" not in text
     # Bilingual file actually written by the BG body.
     assert (inbox / "example-bilingual.md").exists()
-
-
-def test_inbox_view_renders_translating_status_icon(client):
-    """Inbox row 🔄 + ``data-status="translating"`` for in-flight rows.
-
-    Mirrors ``test_inbox_view_renders_translated_status_icon`` for the
-    new intermediate state. Without this template branch the row would
-    fall through and render no icon at all while the BG task is in
-    flight, hiding the "translating" surface from the user.
-    """
-    tc, inbox = client
-    auth = _auth_cookie(tc)
-    (inbox / "in-flight.md").write_text(
-        "---\n"
-        'title: "x"\n'
-        'source: "https://example.com/x"\n'
-        'original_url: "https://example.com/x"\n'
-        "source_type: article\n"
-        "content_nature: popular_science\n"
-        "fulltext_status: translating\n"
-        "fulltext_layer: readability\n"
-        'fulltext_source: "Readability"\n'
-        "---\n\nbody\n",
-        encoding="utf-8",
-    )
-
-    resp = tc.get("/", cookies={"nakama_auth": auth})
-    assert resp.status_code == 200
-    assert 'data-status="translating"' in resp.text
-    assert "翻譯中" in resp.text  # title attribute on the icon span
 
 
 # ── _flip_status_to_translating direct unit coverage ─────────────────────────

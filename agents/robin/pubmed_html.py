@@ -1,8 +1,7 @@
-"""PubMed 全文 — publisher HTML fallback（第 5 層）。
+"""PubMed 全文 — publisher HTML fallback。
 
-當 PMC + Europe PMC + Unpaywall PDF 都拿不到時，透過 NCBI `elink cmd=prlinks`
-查 publisher 網站的 Free 標記 URL，用 `shared.web_scraper.scrape_url()`
-抓 HTML 轉 markdown，圖片本地化，並順手下載 publisher 頁面裡的 PDF link。
+透過 NCBI `elink cmd=prlinks` 查 publisher 網站的 Free 標記 URL，用
+`shared.web_scraper.scrape_url()` 抓 HTML 轉 markdown，圖片本地化。
 
 保守策略：
 - 只跟 elink `Attribute` 含 "Free" 的連結
@@ -12,12 +11,10 @@
 輸出：
 - `{attachments_abs_dir}/{pmid}.md` — raw markdown（圖片 URL 已 rewrite）
 - `{attachments_abs_dir}/{pmid}/img-N.{ext}` — publisher 圖片
-- `{attachments_abs_dir}/{pmid}.pdf` — 若 publisher 頁有 PDF link（optional）
 """
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -44,9 +41,6 @@ _PAYWALL_KEYWORDS = (
     "please sign in",
     "institutional login",
 )
-
-# Match markdown PDF links: [label](https://...pdf[?query])
-_PDF_LINK_RE = re.compile(r"\[([^\]]*)\]\((https?://[^\s)]+?\.pdf\b[^\s)]*)\)", re.IGNORECASE)
 
 
 class PublisherResult(dict):
@@ -76,10 +70,8 @@ def fetch_publisher_html(
 
     Returns:
         成功時回 dict，含：
-            source="publisher", html_relpath, pdf_relpath, publisher_url,
-            image_count, note
-        失敗（無 Free URL、scrape 失敗、長度不足、paywall）則回 None，
-        讓上游繼續下一層 fallback。
+            source="publisher", html_relpath, publisher_url, image_count, note
+        失敗（無 Free URL、scrape 失敗、長度不足、paywall）則回 None。
     """
     publisher_url = _query_elink_free_url(
         pmid,
@@ -120,17 +112,6 @@ def fetch_publisher_html(
         base_url=publisher_url,
     )
 
-    # 掃 PDF link（用 rewrite 前的 raw_md 比較穩，避免 scrape_url 已過濾 <a>）
-    pdf_relpath = _try_download_publisher_pdf(
-        raw_md,
-        base_url=publisher_url,
-        pmid=pmid,
-        attachments_abs_dir=attachments_abs_dir,
-        vault_relative_prefix=vault_relative_prefix,
-        email=email,
-        timeout=timeout,
-    )
-
     # 寫 raw markdown（rewrite 後）到 attachments
     attachments_abs_dir.mkdir(parents=True, exist_ok=True)
     md_dest = attachments_abs_dir / f"{pmid}.md"
@@ -139,21 +120,17 @@ def fetch_publisher_html(
 
     publisher_domain = urlparse(publisher_url).netloc or "publisher"
     note = f"Publisher HTML from {publisher_domain}"
-    if pdf_relpath:
-        note += "（含 PDF）"
     if saved_images:
         note += f"；{len(saved_images)} 張圖"
 
     _logger.info(
         f"[html] PMID {pmid} via publisher {publisher_domain} "
-        f"(md {len(rewritten_md)} chars, {len(saved_images)} imgs, "
-        f"pdf={'y' if pdf_relpath else 'n'})"
+        f"(md {len(rewritten_md)} chars, {len(saved_images)} imgs)"
     )
 
     return {
         "source": "publisher",
         "html_relpath": html_relpath,
-        "pdf_relpath": pdf_relpath,
         "publisher_url": publisher_url,
         "image_count": len(saved_images),
         "note": note,
@@ -225,77 +202,3 @@ def _extract_url(objurl: dict) -> Optional[str]:
     return None
 
 
-def _try_download_publisher_pdf(
-    md_text: str,
-    *,
-    base_url: str,
-    pmid: str,
-    attachments_abs_dir: Path,
-    vault_relative_prefix: str,
-    email: str,
-    timeout: float,
-) -> Optional[str]:
-    """掃 md_text 找 PDF link，嘗試下載第一個 content-type=pdf 的連結。"""
-    for match in _PDF_LINK_RE.finditer(md_text):
-        pdf_url = match.group(2)
-        if not pdf_url.startswith(("http://", "https://")):
-            continue
-        relpath = _stream_pdf(
-            pdf_url,
-            pmid=pmid,
-            attachments_abs_dir=attachments_abs_dir,
-            vault_relative_prefix=vault_relative_prefix,
-            email=email,
-            timeout=timeout,
-        )
-        if relpath:
-            _logger.info(f"[html] PMID {pmid} publisher PDF 下載成功：{pdf_url}")
-            return relpath
-    return None
-
-
-def _stream_pdf(
-    url: str,
-    *,
-    pmid: str,
-    attachments_abs_dir: Path,
-    vault_relative_prefix: str,
-    email: str,
-    timeout: float,
-) -> Optional[str]:
-    """下載單個 PDF 到 {pmid}.pdf，驗 content-type=application/pdf。"""
-    attachments_abs_dir.mkdir(parents=True, exist_ok=True)
-    dest = attachments_abs_dir / f"{pmid}.pdf"
-    relpath = f"{vault_relative_prefix.rstrip('/')}/{pmid}.pdf"
-
-    if dest.exists() and dest.stat().st_size > 1024:
-        return relpath
-
-    try:
-        with httpx.stream(
-            "GET",
-            url,
-            headers={"User-Agent": f"Nakama-Robin/1.0 (+{email})"},
-            timeout=timeout,
-            follow_redirects=True,
-        ) as r:
-            if r.status_code != 200:
-                _logger.debug(f"[html] publisher PDF {url} → HTTP {r.status_code}")
-                return None
-            ctype = r.headers.get("content-type", "").lower()
-            if "pdf" not in ctype:
-                _logger.debug(f"[html] publisher PDF {url} 回傳 {ctype}，不是 PDF")
-                return None
-            with open(dest, "wb") as f:
-                for chunk in r.iter_bytes():
-                    f.write(chunk)
-    except httpx.HTTPError as e:
-        _logger.debug(f"[html] publisher PDF {url} 失敗：{e}")
-        if dest.exists():
-            dest.unlink()
-        return None
-
-    if dest.stat().st_size < 1024:
-        dest.unlink()
-        return None
-    return relpath

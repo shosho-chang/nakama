@@ -45,11 +45,11 @@ logger = get_logger("nakama.web.robin")
 # ``/processing``, etc.) that were not part of the R6 rename group.
 router = APIRouter()
 # ``robin_router`` hosts the R6 canonical reader endpoints under ``/robin/*``
-# (10 endpoints: ``/robin/read``, ``/robin/files/*``, ``/robin/events/*``,
+# (9 endpoints: ``/robin/read``, ``/robin/files/*``, ``/robin/events/*``,
 # ``/robin/save-annotations``, ``/robin/sync-annotations/*``,
 # ``/robin/mark-read``, ``/robin/discard-info``, ``/robin/discard``,
-# ``/robin/translate``, ``/robin/pubmed-to-reader``). Codex audit §1: keep
-# query-string shape — path-segment slug migration is a separate ADR.
+# ``/robin/translate``). Codex audit §1: keep query-string shape —
+# path-segment slug migration is a separate ADR.
 robin_router = APIRouter(prefix="/robin")
 # ``legacy_router`` preserves the legacy root-prefix paths as 301 (GET) /
 # 308 (POST) redirects to the new ``/robin/*`` URLs.
@@ -208,12 +208,16 @@ def _get_inbox_files() -> list[dict]:
             status = ""
             source_label = ""
             title = ""
+            fm_source_type = ""
+            fm_content_nature = ""
             if f.suffix.lower() == ".md":
                 try:
                     fm, _ = extract_frontmatter(read_text(f))
                     status = str(fm.get("fulltext_status", "") or "")
                     source_label = str(fm.get("fulltext_source", "") or "")
                     title = str(fm.get("title", "") or "").strip()
+                    fm_source_type = str(fm.get("source_type", "") or "").strip()
+                    fm_content_nature = str(fm.get("content_nature", "") or "").strip()
                     # Obsidian Web Clipper files (Chrome plugin) drop into
                     # Inbox/web/ with their own frontmatter shape (no
                     # fulltext_status / fulltext_source — just title / source /
@@ -231,7 +235,9 @@ def _get_inbox_files() -> list[dict]:
                     "name": f.name,
                     "title": title,
                     "size": f"{size_kb} KB" if size_kb >= 1 else f"{f.stat().st_size} B",
-                    "type": EXTENSION_TO_SOURCE_TYPE.get(f.suffix.lower(), "article"),
+                    "type": fm_source_type
+                    or EXTENSION_TO_SOURCE_TYPE.get(f.suffix.lower(), "article"),
+                    "content_nature": fm_content_nature or "popular_science",
                     "annotatable": f.suffix.lower() in (".md", ".txt"),
                     "is_read": is_file_read(f),
                     "fulltext_status": status,
@@ -244,6 +250,15 @@ def _get_inbox_files() -> list[dict]:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
+def _render_inbox(request: Request) -> HTMLResponse:
+    files = _get_inbox_files()
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {"files": files, "asset_version": _SHOSHO_ASSET_VERSION},
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, nakama_auth: str | None = Cookie(None)):
     # Per-machine landing override: ROBIN_INDEX_REDIRECT=/bridge makes / land
@@ -254,12 +269,16 @@ async def index(request: Request, nakama_auth: str | None = Cookie(None)):
         return RedirectResponse(override, status_code=302)
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/", status_code=302)
-    files = _get_inbox_files()
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {"files": files, "asset_version": _SHOSHO_ASSET_VERSION},
-    )
+    return _render_inbox(request)
+
+
+@robin_router.get("", response_class=HTMLResponse)
+async def robin_home(request: Request, nakama_auth: str | None = Cookie(None)):
+    # Stable Robin Inbox landing at /robin, used by chassis-nav so the ROBIN
+    # link still works when ROBIN_INDEX_REDIRECT is set on / above.
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/robin", status_code=302)
+    return _render_inbox(request)
 
 
 @robin_router.get("/read", response_class=HTMLResponse)
@@ -458,7 +477,7 @@ async def discard(
         report.annotation_count,
     )
 
-    response = RedirectResponse("/", status_code=303)
+    response = RedirectResponse("/robin", status_code=303)
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
@@ -550,12 +569,8 @@ def _translate_in_background(
 ) -> None:
     """BackgroundTask body: run translate_document → write bilingual.md → flip status.
 
-    Mirrors the ``/pubmed-to-reader`` translate flow but with two
-    differences: (a) the source is the URL-ingested ``Inbox/web/{slug}.md``
-    rather than ``KB/Attachments/{pmid}.{pdf,md}``, and (b) on
-    translator failure we do NOT write a partial bilingual file — the
-    user can read the original under the same inbox row, so silently
-    falling back like the PubMed path would just hide the failure.
+    On translator failure we do NOT write a partial bilingual file — the
+    user can still read the original under the same inbox row.
 
     Thread-local agent attribution: FastAPI BackgroundTasks run in a
     threadpool that does NOT inherit the request handler's
@@ -613,9 +628,8 @@ async def translate(
     1. Auth gate.
     2. Validate ``file`` (markdown only, no path traversal).
     3. Short-circuit: if ``{stem}-bilingual.md`` already exists, redirect
-       straight to the reader without scheduling a BG task — mirrors
-       ``/pubmed-to-reader`` line 499 and the PRD §Pipeline / API
-       "短路條件" / acceptance #6.
+       straight to the reader without scheduling a BG task — PRD
+       §Pipeline / API "短路條件" / acceptance #6.
     4. Else flip the source row to ``fulltext_status: translating``,
        schedule ``_translate_in_background``, and redirect back to the
        inbox view (``/``) — NOT ``/read?file={stem}-bilingual.md``.
@@ -665,115 +679,7 @@ async def translate(
         source_path=source_path,
         bilingual_path=bilingual_path,
     )
-    response = RedirectResponse("/", status_code=303)
-    if nakama_auth:
-        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
-    return response
-
-
-# ADR-028 §6: KB/Attachments is flat — PubMed assets at KB/Attachments/{pmid}.*
-_PUBMED_FT_DIR = "KB/Attachments"
-_PMID_RE = re.compile(r"^\d+$")
-
-
-@robin_router.get("/pubmed-to-reader")
-async def pubmed_to_reader(
-    pmid: str,
-    nakama_auth: str | None = Cookie(None),
-):
-    """將 PubMed 下載的 OA 全文轉為雙語 Markdown，並跳轉到 reader。
-
-    Source 優先順序：
-    1. ``KB/Attachments/{pmid}.pdf`` → parse_pdf → translate
-    2. ``KB/Attachments/{pmid}.md`` → 直接 translate（oa_html case，
-       publisher HTML 已被 `pubmed_html.fetch_publisher_html()` 轉成 markdown）
-
-    - 輸出：``KB/Wiki/Sources/pubmed-{pmid}-bilingual.md``（與原 source 並列）
-    - 第二次點同一篇會 short-circuit：發現雙語檔已存在就直接跳 reader，不重翻
-    - 翻譯成本：Claude Sonnet，每篇約 5–15 萬字（看來源長度），成本 $0.3–1
-    """
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login", status_code=302)
-
-    if not _PMID_RE.match(pmid):
-        raise HTTPException(400, detail="pmid 必須是純數字")
-
-    sources_dir = _get_sources()
-    bilingual_name = f"pubmed-{pmid}-bilingual.md"
-    bilingual_path = sources_dir / bilingual_name
-
-    # 已翻譯過就直接開 reader，不重翻
-    if bilingual_path.exists():
-        response = RedirectResponse(
-            f"/robin/read?file={bilingual_name}&base=sources", status_code=303
-        )
-        if nakama_auth:
-            response.set_cookie("nakama_auth", nakama_auth, httponly=True)
-        return response
-
-    attachments_dir = get_vault_path() / _PUBMED_FT_DIR
-    pdf_path = attachments_dir / f"{pmid}.pdf"
-    html_md_path = attachments_dir / f"{pmid}.md"
-
-    # Lazy rebind so test suites patching ``shared.translator.translate_document``
-    # (e.g. tests/test_pubmed_to_reader_route.py) still hit this branch — without
-    # the lazy import this function would close over the module-level binding
-    # imported at the top of the file, bypassing the patch.
-    from shared.pdf_parser import parse_pdf
-    from shared.translator import translate_document  # noqa: F811
-
-    raw_md: str
-    source_kind: str
-    derived_from: str
-    if pdf_path.exists():
-        try:
-            raw_md = await asyncio.to_thread(parse_pdf, pdf_path, with_tables=True)
-        except Exception as e:
-            logger.error(f"PDF 解析失敗（PMID {pmid}）：{e}", exc_info=True)
-            raise HTTPException(500, detail=f"PDF 解析失敗：{e}") from e
-        source_kind = "pdf"
-        derived_from = f"{_PUBMED_FT_DIR}/{pmid}.pdf"
-    elif html_md_path.exists():
-        try:
-            raw_md = await asyncio.to_thread(html_md_path.read_text, encoding="utf-8")
-        except Exception as e:
-            logger.error(f"讀取 publisher HTML markdown 失敗（PMID {pmid}）：{e}", exc_info=True)
-            raise HTTPException(500, detail=f"讀 HTML md 失敗：{e}") from e
-        source_kind = "html"
-        derived_from = f"{_PUBMED_FT_DIR}/{pmid}.md"
-    else:
-        raise HTTPException(
-            404,
-            detail=(
-                f"找不到 {_PUBMED_FT_DIR}/{pmid}.pdf 或 {_PUBMED_FT_DIR}/{pmid}.md — "
-                "可能是 non-OA 論文，Robin digest 未下載"
-            ),
-        )
-
-    try:
-        bilingual_md = await asyncio.to_thread(translate_document, raw_md)
-    except Exception as e:
-        logger.error(f"翻譯失敗（PMID {pmid}）：{e}", exc_info=True)
-        bilingual_md = raw_md  # fallback：留純原文，使用者仍能閱讀 + annotate
-
-    safe_pmid = pmid  # 已通過 _PMID_RE 驗證
-    frontmatter = (
-        "---\n"
-        f'title: "PubMed {safe_pmid} — 雙語閱讀版"\n'
-        f"pmid: {safe_pmid}\n"
-        f'source: "https://pubmed.ncbi.nlm.nih.gov/{safe_pmid}/"\n'
-        "source_type: paper\n"
-        "content_nature: research\n"
-        "bilingual: true\n"
-        f"source_kind: {source_kind}\n"
-        f'derived_from: "{derived_from}"\n'
-        "---\n\n"
-    )
-    sources_dir.mkdir(parents=True, exist_ok=True)
-    bilingual_path.write_text(frontmatter + bilingual_md, encoding="utf-8")
-    logger.info(f"pubmed-to-reader 完成：{bilingual_name} (source={source_kind})")
-
-    response = RedirectResponse(f"/robin/read?file={bilingual_name}&base=sources", status_code=303)
+    response = RedirectResponse("/robin", status_code=303)
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
@@ -838,7 +744,7 @@ async def cancel(
             _send_to_recycle_bin(raw_path)
             logger.info(f"Cancel: 已清理 {raw_path}")
 
-    response = RedirectResponse("/", status_code=302)
+    response = RedirectResponse("/robin", status_code=302)
     response.delete_cookie("robin_session")
     return response
 
@@ -853,7 +759,7 @@ async def processing(
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/robin", status_code=302)
 
     step_labels = {
         "summarizing": "Robin 正在閱讀文件並產出摘要...",
@@ -893,13 +799,7 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                 yield sse("status", {"msg": "Robin 正在閱讀文件..."})
 
                 raw = Path(sess["raw_path"])
-                if raw.suffix.lower() == ".pdf":
-                    from shared.pdf_parser import parse_pdf
-
-                    yield sse("status", {"msg": "正在解析 PDF..."})
-                    content = await asyncio.to_thread(parse_pdf, raw)
-                else:
-                    content = read_text(raw)
+                content = read_text(raw)
                 title = raw.stem
                 author = ""
                 if Path(sess["raw_path"]).suffix == ".md":
@@ -1063,7 +963,7 @@ async def review_summary(
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_guidance":
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/robin", status_code=302)
     return templates.TemplateResponse(
         request,
         "review_summary.html",
@@ -1085,7 +985,7 @@ async def submit_guidance(
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/robin", status_code=302)
     sess["user_guidance"] = guidance.strip()
     sess["step"] = "planning"
     response = RedirectResponse("/processing", status_code=302)
@@ -1104,7 +1004,7 @@ async def review_plan(
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "awaiting_approval":
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/robin", status_code=302)
     plan = sess.get("plan", {"concepts": [], "entities": []})
     return templates.TemplateResponse(
         request,
@@ -1130,7 +1030,7 @@ async def execute(
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess:
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/robin", status_code=302)
 
     form = await request.form()
     plan = sess.get("plan", {"concepts": [], "entities": []})
@@ -1167,7 +1067,7 @@ async def done(
         return RedirectResponse("/login", status_code=302)
     sess = _get_session(robin_session)
     if not sess or sess["step"] != "done":
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/robin", status_code=302)
     return templates.TemplateResponse(
         request,
         "done.html",
@@ -1260,8 +1160,3 @@ async def _legacy_translate_redirect(request: Request):
     return RedirectResponse(target, status_code=308)
 
 
-@legacy_router.get("/pubmed-to-reader")
-async def _legacy_pubmed_to_reader_redirect(request: Request):
-    qs = request.url.query
-    target = "/robin/pubmed-to-reader" + (f"?{qs}" if qs else "")
-    return RedirectResponse(target, status_code=301)

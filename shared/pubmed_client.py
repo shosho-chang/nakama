@@ -4,8 +4,8 @@ Used by Nami `pubmed_lookup` tool to bypass the slow / expensive Deep Research
 path when the user just wants to verify a claim or surface top recent papers.
 
 Coverage: esearch（PMIDs by query）+ esummary（title/authors/journal/year/doi/
-pmcid，無 abstract）。Abstract 不抓 — PubMed 頁面與 Robin pubmed-to-reader
-pipeline 已能補位。
+pmcid，無 abstract）。Abstract 不抓 — PubMed 頁面與 Robin publisher HTML
+fetch pipeline 已能補位。
 
 Rate limit (per NCBI policy):
 - 無 API key: 3 req/s

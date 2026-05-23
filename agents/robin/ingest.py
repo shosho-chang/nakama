@@ -94,16 +94,7 @@ class IngestPipeline:
         content_nature: str = "",
     ) -> None:
         """執行完整 ingest pipeline。"""
-        # 讀取來源內容
-        if raw_path.suffix.lower() == ".pdf":
-            from shared.pdf_parser import parse_pdf
-
-            # 研究型文件（論文/教科書/臨床指引）含大量表格，啟用 pdfplumber 精確表格提取
-            _TABLE_NATURES = {"research", "textbook", "clinical_protocol"}
-            with_tables = content_nature in _TABLE_NATURES
-            content = parse_pdf(raw_path, with_tables=with_tables)
-        else:
-            content = read_text(raw_path)
+        content = read_text(raw_path)
         title = raw_path.stem
         author = ""
 

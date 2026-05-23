@@ -174,17 +174,6 @@ def test_epub_export_chapters_dir_writes_files(tmp_path: Path):
     assert "Lorem ipsum" in ch1_text  # body content survived html → text
 
 
-def test_epub_toc_yaml_rejected(tmp_path: Path):
-    """--toc-yaml is PDF-only; EPUB has authoritative nav."""
-    pytest.importorskip("ebooklib")
-    epub_path = _build_synthetic_epub(tmp_path)
-    toc_yaml = tmp_path / "toc.yaml"
-    toc_yaml.write_text("chapters: []", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="EPUB has authoritative nav"):
-        parse_book_mod.parse_book(epub_path, toc_yaml=toc_yaml)
-
-
 # ---------------------------------------------------------------------------
 # Dispatch tests
 # ---------------------------------------------------------------------------

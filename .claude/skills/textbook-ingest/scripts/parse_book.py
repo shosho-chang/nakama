@@ -1,43 +1,27 @@
 #!/usr/bin/env python3
 """Book outline extractor for the ``textbook-ingest`` skill.
 
-Extracts chapter boundaries from EPUB or PDF and emits a JSON outline
+Extracts chapter boundaries from EPUB and emits a JSON outline
 that the LLM-driven skill uses to drive per-chapter ingestion.
 
-EPUB is the **primary path** (modern textbooks ship with ebook editions;
-EPUB has authoritative chapter structure via the OPF spine + nav TOC).
-PDF is the fallback for textbooks that ship print-only.
+EPUB is the only supported format (PDF support removed 2026-05-23; modern
+textbooks ship with ebook editions, EPUB has authoritative chapter structure
+via the OPF spine + nav TOC).
 
-Strategies by format:
-
-EPUB (preferred):
+Strategy:
 1. OPF metadata (title / author / publisher / language / pub_year / ISBN)
 2. Nav TOC top-level entries → chapters (in spine reading order)
 3. Sub-level TOC entries → ``section_anchors``
 4. Per-chapter HTML → plain text via BeautifulSoup
 
-PDF (fallback):
-1. PDF outline / bookmarks (``doc.get_toc()``)
-2. Manual override via ``--toc-yaml`` (caller-supplied YAML)
-3. Heading regex fallback — scan first lines of each page for
-   ``^(Chapter|第)\\s*\\d+`` patterns
-
-If none succeed, the script writes ``status: needs_manual`` and exits
+If extraction fails, the script writes ``status: needs_manual`` and exits
 non-zero so the skill can surface the failure to the user.
 
 Usage:
 
-    # EPUB (preferred path)
     python .claude/skills/textbook-ingest/scripts/parse_book.py \\
         --path /path/to/textbook.epub \\
         --out /tmp/textbook-outline.json \\
-        [--export-chapters-dir /tmp/textbook-chapters/]
-
-    # PDF (fallback)
-    python .claude/skills/textbook-ingest/scripts/parse_book.py \\
-        --path /path/to/textbook.pdf \\
-        --out /tmp/textbook-outline.json \\
-        [--toc-yaml /path/to/manual-toc.yaml] \\
         [--export-chapters-dir /tmp/textbook-chapters/]
 
 When ``--export-chapters-dir`` is set, per-chapter text is written as
@@ -121,281 +105,10 @@ class BookMetadata:
 @dataclass
 class Outline:
     status: str  # "ok" | "needs_manual"
-    strategy: str  # "pdf_outline" | "manual_toc" | "regex_fallback"
+    strategy: str  # "epub_nav" | "none"
     book_metadata: BookMetadata
     chapters: list[Chapter]
     warnings: list[str]
-
-
-def _extract_book_metadata(doc) -> BookMetadata:
-    """Pull book metadata from PDF document properties."""
-    md = doc.metadata or {}
-    title = md.get("title") or ""
-    author_field = md.get("author") or ""
-    authors = [a.strip() for a in re.split(r"[,;]", author_field) if a.strip()]
-
-    pub_year = None
-    pub_date = md.get("creationDate") or ""
-    year_match = re.search(r"(\d{4})", pub_date)
-    if year_match:
-        pub_year = int(year_match.group(1))
-
-    return BookMetadata(
-        title=title,
-        authors=authors,
-        pub_year=pub_year,
-        publisher=md.get("creator") or None,
-        language="en",  # caller can override; auto-detect deferred to Phase 2
-        page_count=doc.page_count,
-    )
-
-
-def _chapters_from_toc(doc, *, max_chapters: int = 200) -> list[Chapter]:
-    """Build chapter list from PDF outline (toc).
-
-    Top-level outline entries (level 1) become chapters. Level 2+ entries
-    under a chapter become section_anchors. Sub-sub entries are dropped.
-    """
-    toc = doc.get_toc()  # list of [level, title, page] (1-based pages)
-    if not toc:
-        return []
-
-    chapters: list[Chapter] = []
-    current: Chapter | None = None
-    for level, title, page in toc:
-        title = (title or "").strip()
-        if not title:
-            continue
-        if level == 1:
-            if current is not None:
-                # finalize previous chapter (page_end set when next ch1 starts)
-                current.page_end = max(current.page_end, page - 1)
-                chapters.append(current)
-            current = Chapter(
-                index=len(chapters) + 1,
-                title=title,
-                page_start=page,
-                page_end=page,  # tentative, fixed at next iteration
-                section_anchors=[],
-            )
-            if len(chapters) >= max_chapters:
-                break
-        elif level == 2 and current is not None:
-            current.section_anchors.append(title)
-
-    if current is not None:
-        current.page_end = max(current.page_end, doc.page_count)
-        chapters.append(current)
-
-    # Tidy: ensure page_end of each chapter matches start of next - 1
-    for i, ch in enumerate(chapters):
-        if i + 1 < len(chapters):
-            ch.page_end = max(ch.page_start, chapters[i + 1].page_start - 1)
-        else:
-            ch.page_end = doc.page_count
-
-    return chapters
-
-
-def _chapters_from_yaml(toc_yaml_path: Path) -> list[Chapter]:
-    """Load manual chapter boundaries from a YAML file.
-
-    Expected schema::
-
-        chapters:
-          - index: 1
-            title: "Introduction"
-            page_start: 1
-            page_end: 25
-            section_anchors: ["1.1 Foo", "1.2 Bar"]
-          - ...
-    """
-    import yaml
-
-    raw = yaml.safe_load(toc_yaml_path.read_text(encoding="utf-8")) or {}
-    chapters_raw = raw.get("chapters") or []
-    chapters: list[Chapter] = []
-    for entry in chapters_raw:
-        chapters.append(
-            Chapter(
-                index=int(entry["index"]),
-                title=str(entry["title"]),
-                page_start=int(entry["page_start"]),
-                page_end=int(entry["page_end"]),
-                section_anchors=list(entry.get("section_anchors") or []),
-            )
-        )
-    return chapters
-
-
-_CHAPTER_HEADING_RE = re.compile(r"^\s*(?:Chapter|第)\s*(\d+)\b", re.IGNORECASE)
-
-
-def _chapters_from_regex(doc) -> list[Chapter]:
-    """Last-resort chapter detection by scanning page text for headings."""
-    candidates: list[tuple[int, int, str]] = []  # (chapter_num, page, line)
-    for page_idx in range(doc.page_count):
-        page = doc.load_page(page_idx)
-        text = page.get_text("text") or ""
-        # only consider top-of-page lines (within first 5 non-empty)
-        lines: list[str] = []
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped:
-                lines.append(stripped)
-            if len(lines) >= 5:
-                break
-        for line in lines:
-            m = _CHAPTER_HEADING_RE.match(line)
-            if m:
-                candidates.append((int(m.group(1)), page_idx + 1, line))
-                break
-
-    # Deduplicate by chapter number, keep earliest page hit
-    by_num: dict[int, tuple[int, str]] = {}
-    for chnum, page, line in candidates:
-        if chnum not in by_num:
-            by_num[chnum] = (page, line)
-
-    sorted_nums = sorted(by_num)
-    chapters: list[Chapter] = []
-    for i, chnum in enumerate(sorted_nums):
-        page_start, line = by_num[chnum]
-        page_end = by_num[sorted_nums[i + 1]][0] - 1 if i + 1 < len(sorted_nums) else doc.page_count
-        chapters.append(
-            Chapter(
-                index=chnum,
-                title=line,
-                page_start=page_start,
-                page_end=page_end,
-                section_anchors=[],
-            )
-        )
-    return chapters
-
-
-def _pdf_chapter_markdown(doc, page_indices: list[int]) -> str:
-    """Render a PDF page range as markdown via ``pymupdf4llm`` (preserves
-    tables; ADR-011 §3.4.2 / A-9). Falls back to raw ``page.get_text()`` if
-    pymupdf4llm raises on an exotic layout."""
-    if not page_indices:
-        return ""
-    try:
-        import pymupdf4llm  # type: ignore[import-not-found]
-    except ImportError:  # pragma: no cover — declared dep, but stay defensive
-        return _pdf_chapter_plain_text(doc, page_indices)
-
-    try:
-        return pymupdf4llm.to_markdown(
-            doc,
-            pages=page_indices,
-            write_images=False,
-            show_progress=False,
-        ).strip()
-    except TypeError:
-        # Older pymupdf4llm signatures (no write_images / show_progress kwargs)
-        try:
-            return pymupdf4llm.to_markdown(doc, pages=page_indices).strip()
-        except Exception:
-            return _pdf_chapter_plain_text(doc, page_indices)
-    except Exception:
-        return _pdf_chapter_plain_text(doc, page_indices)
-
-
-def _pdf_chapter_plain_text(doc, page_indices: list[int]) -> str:
-    """Fallback PDF text extraction — used only when pymupdf4llm is unavailable
-    or fails (table information is not preserved here)."""
-    page_texts: list[str] = []
-    for page_idx in page_indices:
-        if 0 <= page_idx < doc.page_count:
-            page_texts.append(doc.load_page(page_idx).get_text("text") or "")
-    return "\n\n".join(page_texts).strip()
-
-
-def _pdf_chapter_figures(doc, chapter_index: int, page_indices: list[int]) -> list[ChapterFigure]:
-    """Extract images embedded in the given PDF page range as ``ChapterFigure``s.
-
-    PDF lacks a reliable association between an image's position in markdown
-    and its position in the page layout, so callers should append placeholders
-    at chapter end (``## Figures (extracted, awaiting Vision describe)``)
-    rather than try to inline-splice. Each xref is exported once even when it
-    appears on multiple pages.
-    """
-    figures: list[ChapterFigure] = []
-    seen_xrefs: set[int] = set()
-    for page_idx in page_indices:
-        if not (0 <= page_idx < doc.page_count):
-            continue
-        page = doc.load_page(page_idx)
-        try:
-            images = page.get_images(full=True)
-        except Exception:
-            continue
-        for img_info in images:
-            xref = img_info[0] if img_info else 0
-            if not xref or xref in seen_xrefs:
-                continue
-            seen_xrefs.add(xref)
-            try:
-                extracted = doc.extract_image(xref)
-            except Exception:
-                continue
-            if not extracted:
-                continue
-            img_bytes = extracted.get("image")
-            ext_name = extracted.get("ext") or "png"
-            if not img_bytes:
-                continue
-            ref = f"fig-{chapter_index}-{len(figures) + 1}"
-            figures.append(
-                ChapterFigure(
-                    ref=ref,
-                    binary=img_bytes,
-                    extension=f".{ext_name.lstrip('.')}",
-                    alt="",
-                    caption="",
-                    tied_to_section="",  # PDF: no easy section attribution
-                    placeholder=_FIG_PLACEHOLDER.format(ref=ref),
-                )
-            )
-    return figures
-
-
-def _export_chapter_texts(
-    doc,
-    chapters: list[Chapter],
-    out_dir: Path,
-    *,
-    attachments_base_dir: Path | None = None,
-) -> None:
-    """Write each chapter as ``ch{n}.md`` under ``out_dir`` and (optionally)
-    figures under ``{attachments_base_dir}/ch{n}/``.
-
-    PDF chapter markdown is rendered via :func:`_pdf_chapter_markdown` so
-    tables survive (ADR-011 P3); raw images get appended as placeholder lines
-    for the downstream Vision describe pass to splice descriptions back in.
-    """
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for ch in chapters:
-        page_indices = list(range(ch.page_start - 1, ch.page_end))
-        body = _pdf_chapter_markdown(doc, page_indices)
-        figures = _pdf_chapter_figures(doc, ch.index, page_indices)
-        ch.figures = figures  # mutate so caller sees the same artefacts
-
-        if figures:
-            body += "\n\n## Figures (extracted, awaiting Vision describe)\n\n"
-            body += "\n\n".join(f.placeholder for f in figures)
-
-        target = out_dir / f"ch{ch.index}.md"
-        target.write_text(
-            f"# Chapter {ch.index} — {ch.title}\n\n"
-            f"<!-- page_range: {ch.page_start}-{ch.page_end} -->\n\n"
-            f"{body}\n",
-            encoding="utf-8",
-        )
-
-        if attachments_base_dir is not None:
-            _export_chapter_attachments(ch, attachments_base_dir / f"ch{ch.index}")
 
 
 # ----------------------------------------------------------------------
@@ -1145,128 +858,27 @@ def _parse_epub(
 
 
 # ----------------------------------------------------------------------
-# PDF path (fallback) + dispatcher
+# Dispatcher
 # ----------------------------------------------------------------------
-
-
-def _parse_pdf(
-    pdf_path: Path,
-    *,
-    toc_yaml: Path | None = None,
-    export_chapters_dir: Path | None = None,
-    attachments_base_dir: Path | None = None,
-    max_chapters: int = 200,
-) -> Outline:
-    """Build an outline for the given PDF, exporting per-chapter texts if asked."""
-    try:
-        import pymupdf  # noqa: F401  # provides fitz alias historically
-        import pymupdf as fitz
-    except ImportError:
-        try:
-            import fitz  # legacy entry point
-        except ImportError as e:
-            raise RuntimeError("pymupdf 未安裝。請執行：pip install pymupdf") from e
-
-    if not pdf_path.exists():
-        raise FileNotFoundError(f"PDF 檔案不存在：{pdf_path}")
-
-    doc = fitz.open(str(pdf_path))
-    warnings: list[str] = []
-    book_metadata = _extract_book_metadata(doc)
-
-    chapters: list[Chapter] = []
-    strategy = ""
-
-    if toc_yaml is not None:
-        chapters = _chapters_from_yaml(toc_yaml)
-        strategy = "manual_toc"
-    else:
-        chapters = _chapters_from_toc(doc, max_chapters=max_chapters)
-        if chapters:
-            strategy = "pdf_outline"
-        else:
-            chapters = _chapters_from_regex(doc)
-            if chapters:
-                strategy = "regex_fallback"
-                warnings.append("PDF outline 不存在，退回 regex 偵測；建議用 --toc-yaml 手動覆寫")
-
-    if not chapters:
-        return Outline(
-            status="needs_manual",
-            strategy="none",
-            book_metadata=book_metadata,
-            chapters=[],
-            warnings=warnings
-            + [
-                "無法偵測章節邊界。請建立 manual TOC YAML：",
-                "chapters:",
-                "  - index: 1",
-                '    title: "Introduction"',
-                "    page_start: 1",
-                "    page_end: 25",
-                "    section_anchors: []",
-            ],
-        )
-
-    # Warn on oversize chapters (> 200 pages → likely too big for one Opus turn)
-    for ch in chapters:
-        size = ch.page_end - ch.page_start + 1
-        if size > 200:
-            warnings.append(f"ch{ch.index} ({ch.title!r}) 共 {size} 頁，建議手動切細")
-
-    if export_chapters_dir is not None:
-        _export_chapter_texts(
-            doc,
-            chapters,
-            export_chapters_dir,
-            attachments_base_dir=attachments_base_dir,
-        )
-    elif attachments_base_dir is not None:
-        # Attachments-only path: extract figures without writing chapter md
-        for ch in chapters:
-            page_indices = list(range(ch.page_start - 1, ch.page_end))
-            ch.figures = _pdf_chapter_figures(doc, ch.index, page_indices)
-            _export_chapter_attachments(ch, attachments_base_dir / f"ch{ch.index}")
-
-    doc.close()
-
-    return Outline(
-        status="ok",
-        strategy=strategy,
-        book_metadata=book_metadata,
-        chapters=chapters,
-        warnings=warnings,
-    )
 
 
 def parse_book(
     book_path: Path,
     *,
-    toc_yaml: Path | None = None,
     export_chapters_dir: Path | None = None,
     attachments_base_dir: Path | None = None,
     max_chapters: int = 200,
 ) -> Outline:
-    """Dispatch on file extension; EPUB primary, PDF fallback."""
+    """Dispatch on file extension; EPUB only (PDF was removed 2026-05-23)."""
     suffix = book_path.suffix.lower()
-    if suffix == ".epub":
-        if toc_yaml is not None:
-            raise ValueError("--toc-yaml only supported for PDF; EPUB has authoritative nav")
-        return _parse_epub(
-            book_path,
-            export_chapters_dir=export_chapters_dir,
-            attachments_base_dir=attachments_base_dir,
-            max_chapters=max_chapters,
-        )
-    if suffix == ".pdf":
-        return _parse_pdf(
-            book_path,
-            toc_yaml=toc_yaml,
-            export_chapters_dir=export_chapters_dir,
-            attachments_base_dir=attachments_base_dir,
-            max_chapters=max_chapters,
-        )
-    raise ValueError(f"unsupported file extension: {suffix} (expected .epub or .pdf)")
+    if suffix != ".epub":
+        raise ValueError(f"unsupported file extension: {suffix} (only .epub is supported)")
+    return _parse_epub(
+        book_path,
+        export_chapters_dir=export_chapters_dir,
+        attachments_base_dir=attachments_base_dir,
+        max_chapters=max_chapters,
+    )
 
 
 def _figure_to_dict(fig: ChapterFigure) -> dict:
@@ -1317,15 +929,10 @@ def _outline_to_dict(outline: Outline) -> dict:
 
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="Extract textbook chapter outline from EPUB (preferred) or PDF"
+        description="Extract textbook chapter outline from EPUB"
     )
-    p.add_argument("--path", required=True, help="path to .epub (preferred) or .pdf file")
+    p.add_argument("--path", required=True, help="path to .epub file")
     p.add_argument("--out", required=True, help="output JSON path")
-    p.add_argument(
-        "--toc-yaml",
-        default=None,
-        help="manual chapter boundaries (bypasses detection)",
-    )
     p.add_argument(
         "--export-chapters-dir",
         default=None,
@@ -1349,7 +956,6 @@ def main() -> int:
 
     outline = parse_book(
         Path(args.path),
-        toc_yaml=Path(args.toc_yaml) if args.toc_yaml else None,
         export_chapters_dir=(Path(args.export_chapters_dir) if args.export_chapters_dir else None),
         attachments_base_dir=(
             Path(args.attachments_base_dir) if args.attachments_base_dir else None

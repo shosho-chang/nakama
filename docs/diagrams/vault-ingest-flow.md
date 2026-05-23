@@ -20,13 +20,11 @@ flowchart TD
     subgraph VPS[VPS 2vCPU 4GB · Asia/Taipei]
         DIGEST_CRON[Robin daily digest<br/>cron 05:30]
         SCRAPE[POST /scrape-translate<br/>Trafilatura + Sonnet]
-        PUBMED_READER[GET /pubmed-to-reader<br/>parse_pdf + Sonnet]
         ROBIN_START[POST /robin/start<br/>ingest pipeline]
         AGENT_LOOP[Slack agent loop<br/>Nami / Brook / etc.]
     end
 
     subgraph DESKTOP[桌機 RTX 5070 Ti · 64GB RAM]
-        DOCLING[(Docling parser<br/>❌ 未開發)]
         EPUB[(EPUB / Word parser<br/>❌ 未開發)]
         TEXTBOOK[(整本書 ingest<br/>❌ 未開發)]
     end
@@ -38,23 +36,19 @@ flowchart TD
     RAW_PAPER[KB/Raw/Papers/]
     SRC[KB/Wiki/Sources/]
     SRC_PUBMED[KB/Wiki/Sources/<br/>pubmed-{pmid}.md<br/>schema: paper_digest]
-    SRC_BILING[KB/Wiki/Sources/<br/>pubmed-{pmid}-bilingual.md]
     DIGESTS[KB/Wiki/Digests/<br/>PubMed/YYYY-MM-DD.md]
     CONCEPTS[KB/Wiki/Concepts/]
     ENTITIES[KB/Wiki/Entities/]
-    ATT_PUBMED[KB/Attachments/<br/>pubmed/{pmid}.pdf or .md]
+    ATT_PUBMED[KB/Attachments/<br/>pubmed/{pmid}.md]
 
     %% Flows
     PUBMED --> DIGEST_CRON
     DIGEST_CRON -->|abstract only| SRC_PUBMED
     DIGEST_CRON -->|index| DIGESTS
-    DIGEST_CRON -->|OA PDF/HTML| ATT_PUBMED
+    DIGEST_CRON -->|publisher HTML md| ATT_PUBMED
 
     WEB --> SCRAPE
     SCRAPE -->|bilingual md| INBOX
-
-    ATT_PUBMED -->|user click| PUBMED_READER
-    PUBMED_READER -->|bilingual md| SRC_BILING
 
     CLIPPER -->|drop md| INBOX
     INBOX -->|user pick| ROBIN_START
@@ -65,10 +59,8 @@ flowchart TD
     ROBIN_START -->|extract| CONCEPTS
     ROBIN_START -->|extract| ENTITIES
 
-    PAPER_PDF -.-> DOCLING
     PAPER_PDF -.-> EPUB
     PAPER_PDF -.-> TEXTBOOK
-    DOCLING -.-> SRC
     EPUB -.-> SRC
     TEXTBOOK -.-> SRC
 
@@ -83,9 +75,9 @@ flowchart TD
     classDef deskNode fill:#fff2e6,stroke:#a73
     classDef vault fill:#f0f0f0,stroke:#888
 
-    class DOCLING,EPUB,TEXTBOOK gap
-    class DIGEST_CRON,SCRAPE,PUBMED_READER,ROBIN_START,AGENT_LOOP vpsNode
-    class INBOX,RAW_ART,RAW_BOOK,RAW_PAPER,SRC,SRC_PUBMED,SRC_BILING,DIGESTS,CONCEPTS,ENTITIES,ATT_PUBMED vault
+    class EPUB,TEXTBOOK gap
+    class DIGEST_CRON,SCRAPE,ROBIN_START,AGENT_LOOP vpsNode
+    class INBOX,RAW_ART,RAW_BOOK,RAW_PAPER,SRC,SRC_PUBMED,DIGESTS,CONCEPTS,ENTITIES,ATT_PUBMED vault
 ```
 
 ---
@@ -94,11 +86,10 @@ flowchart TD
 
 | # | 流程 | 觸發 | 寫入 | 翻譯？ | 對齊度 | 主要 gap |
 |---|------|------|------|-------|--------|---------|
-| 1 | Robin Daily Digest | cron 05:30 | `KB/Wiki/Sources/pubmed-{pmid}.md` + `KB/Wiki/Digests/PubMed/{date}.md` + OA 全文到 `KB/Attachments/pubmed/` | ❌ 只 metadata | 80% | 非 OA paper 沒全文路徑（付費期刊抓不到） |
-| 2 | Reader 翻譯 | user 點 daily digest 連結 → `/pubmed-to-reader` | `KB/Wiki/Sources/pubmed-{pmid}-bilingual.md` | ✅ Sonnet on-demand | 40% | 修修以為 Reader 內有「按下去翻譯」按鈕；實作是 ingest 時預翻譯 + Reader toggle |
-| 3 | scrape-translate | user POST URL | `Inbox/kb/{slug}.md`（雙語 frontmatter） | ✅ Sonnet | 70% | 缺 Chrome plugin 一鍵剪 |
-| 4 | Robin /start ingest | user POST filename | `KB/Wiki/Sources/{slug}.md` + `Concepts/` + `Entities/` + `KB/Raw/<type>/` | ❌ 不翻譯 | 90% | Inbox/kb 不會自動進來，要 user 手動觸發 |
-| 5 | EPUB / 整本書 ingest | — | — | — | 0% | **完全沒實作**（[project_textbook_ingest_design_gap.md](../../memory/claude/project_textbook_ingest_design_gap.md)） |
+| 1 | Robin Daily Digest | cron 05:30 | `KB/Wiki/Sources/pubmed-{pmid}.md` + `KB/Wiki/Digests/PubMed/{date}.md` + publisher HTML 到 `KB/Attachments/pubmed-*.md` | ❌ 只 metadata | 80% | 非 OA paper 沒全文路徑 |
+| 2 | scrape-translate | user POST URL | `Inbox/kb/{slug}.md`（雙語 frontmatter） | ✅ Sonnet | 70% | 缺 Chrome plugin 一鍵剪 |
+| 3 | Robin /start ingest | user POST filename | `KB/Wiki/Sources/{slug}.md` + `Concepts/` + `Entities/` + `KB/Raw/<type>/` | ❌ 不翻譯 | 90% | Inbox/kb 不會自動進來，要 user 手動觸發 |
+| 4 | EPUB / 整本書 ingest | — | — | — | 0% | **完全沒實作**（[project_textbook_ingest_design_gap.md](../../memory/claude/project_textbook_ingest_design_gap.md)） |
 
 ---
 
@@ -118,22 +109,16 @@ flowchart LR
         B2["frontmatter 形狀（PR #148 後）:<br/>pmid / doi / journal / quartile / sjr / scores /<br/>source_type=paper / content_nature=research /<br/>lang=en / type=paper_digest"]
     end
 
-    subgraph C[Drift C: KB/Wiki/Sources/*-bilingual.md]
-        C1[pubmed-to-reader 寫]
-        C2["frontmatter 形狀:<br/>title / pmid / source / source_type=paper /<br/>content_nature=research / bilingual=true /<br/>source_kind / derived_from"]
-    end
-
     LIFEOS["LifeOS CLAUDE.md §4<br/>『Source Summary』schema<br/>(canonical)"]
 
     A -.x.- LIFEOS
     B -.x.- LIFEOS
-    C -.x.- LIFEOS
 
     classDef drift fill:#fff2e6,stroke:#a73
-    class A,B,C drift
+    class A,B drift
 ```
 
-**對齊狀態**：A / B / C 三種 schema 跟 LifeOS canonical schema 都對不齊；要做就是三條 ingest 共用一份 frontmatter 標準（待設計）。
+**對齊狀態**：A / B 兩種 schema 跟 LifeOS canonical schema 都對不齊；要做就是兩條 ingest 共用一份 frontmatter 標準（待設計）。
 
 ---
 
@@ -143,11 +128,9 @@ flowchart LR
 |------|------|-----|
 | Robin daily digest（cron） | VPS | abstract-only，輕量 LLM call，要 24/7 always-on |
 | scrape-translate | VPS | Trafilatura 輕量、Sonnet via API，無本地 GPU 需求 |
-| pubmed-to-reader | VPS | parse_pdf 輕量、Sonnet via API |
-| Robin /start ingest（OA paper / 短文章） | VPS | 單檔 chunking 對 4GB RAM OK |
+| Robin /start ingest（短文章） | VPS | 單檔 chunking 對 4GB RAM OK |
 | EPUB / Word parser | 桌機 | 中文書帶圖、整檔長 |
 | 整本教科書 ingest | 桌機 | 1500 頁 × chunking + embedding 桌機 RAM 才裝得下 |
-| Docling 高保真 PDF | 桌機 | torch + transformers > 4GB RAM |
 | 本地 LLM batch（Qwen 3.6 etc.）| 桌機 | GPU 對 batch 比 API 省 |
 | Bridge UI / Slack agent loop | VPS | 純 API，永遠在線 |
 

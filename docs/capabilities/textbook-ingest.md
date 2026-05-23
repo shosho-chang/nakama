@@ -14,7 +14,7 @@ embedding pipeline.
 
 ## Capability
 
-Given a book file path (`.epub` preferred / `.pdf` fallback) and optional
+Given a book file path (`.epub` only — PDF removed 2026-05-23) and optional
 metadata overrides, the skill:
 
 1. Calls `parse_book.py` to extract chapter outline. **EPUB is the
@@ -47,7 +47,7 @@ LLM-based ranking + symbolic backlink expansion, not vector similarity).
 **Input** — interactive Claude Code prompt:
 
 ```
-ingest 這本教科書 /Users/shosho/Books/harrison-21e.pdf
+ingest 這本教科書 /Users/shosho/Books/harrison-21e.epub
 （or "textbook ingest <path>"）
 
 Optional overrides via natural language:
@@ -132,12 +132,7 @@ Phase 1; downstream consumers (Chopper kb-search, future
   - Python 3.10+
   - `ebooklib >= 0.18` — EPUB structural reader (spine + TOC + metadata)
   - `beautifulsoup4 >= 4.12` — EPUB HTML → plain text + heading extraction
-  - `pymupdf >= 1.23` (PDF fallback path, `fitz` API for outline extraction)
-  - `pymupdf4llm >= 0.0.10` (markdown text extraction, used indirectly
-    via existing `shared/pdf_parser.py`)
-  - `pyyaml` (PDF manual TOC override path)
 - **Internal**
-  - `shared/pdf_parser.py` — `parse_pdf()` markdown text helper
   - `shared/obsidian_writer.py` — `write_page()` vault writer
   - `shared/config.py` — `get_vault_path()` resolves the vault root
   - `agents/robin/prompts/extract_concepts.md` — concept-extract prompt
@@ -159,7 +154,7 @@ absorbed by the Claude Code subscription.
   ~$3-5 per book (rejected in ADR-010 §Alternatives Considered).
 - **Wall clock**: 30-90 minutes per textbook, dominated by per-chapter
   Opus turns.
-- **Network**: zero external — only local PDF read + vault writes.
+- **Network**: zero external — only local EPUB read + vault writes.
 - **Effective per-run cost**: subscription quota only; one book ≈
   one session worth of Opus turns.
 
@@ -171,16 +166,12 @@ Parameterized extension points so the skill can be lifted out of Nakama:
    fork wires up its own vault root via env / config without touching
    the skill code.
 2. **Format dispatch by file extension** — `parse_book.py` dispatches on
-   `.epub` → `_parse_epub` / `.pdf` → `_parse_pdf`; a fork adding `.docx`
-   / `.azw3` / etc. inserts a new branch + matching `_parse_<fmt>` function,
-   the JSON outline contract stays.
+   `.epub` → `_parse_epub`; a fork adding `.docx` / `.azw3` / etc. inserts
+   a new branch + matching `_parse_<fmt>` function, the JSON outline
+   contract stays.
 3. **EPUB parser uses standard `ebooklib` + BeautifulSoup** — drop-in
    replacement of the metadata extraction or HTML→text logic does not
    touch the dispatcher or downstream prompt templates.
-4. **PDF parser is swappable** — `parse_book.py` calls `pymupdf` for
-   outline extraction; a fork adopting Docling replaces only `_parse_pdf`.
-3. **Manual TOC override path** — `--toc-yaml /path/to/toc.yaml` lets a
-   fork bypass detection entirely with hand-written chapter boundaries.
 4. **Prompt templates are isolated** — `prompts/chapter-summary.md` /
    `prompts/concept-extract.md` / `prompts/book-entity.md` are
    self-contained; a fork using domain-specific prompts (legal /

@@ -38,10 +38,6 @@ langdetect>=1.0.9                   # monolingual-zh pilot: lang ID for upload m
 #   pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu128
 #   diarization 需 HUGGINGFACE_TOKEN env + pyannote/speaker-diarization-3.1 EULA accept
 
-# PDF parsing
-pymupdf4llm>=1.27
-pdfplumber>=0.11          # 精確表格提取（研究論文/教科書 with_tables=True）
-
 # EPUB parsing (textbook-ingest skill — ebook-format primary path per ADR-010; raw_ingest per ADR-020)
 ebooklib>=0.18            # EPUB structural reader (spine + TOC + metadata)
 beautifulsoup4>=4.12      # EPUB HTML → plain text + heading extraction

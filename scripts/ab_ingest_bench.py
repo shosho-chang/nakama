@@ -61,13 +61,8 @@ def _run_dir(doc_path: Path) -> Path:
 
 
 def _load_doc(doc_path: Path) -> tuple[str, str]:
-    """讀文件，回傳 (title, content)。支援 .md / .txt / .pdf。"""
-    if doc_path.suffix.lower() == ".pdf":
-        from shared.pdf_parser import parse_pdf
-
-        content = parse_pdf(doc_path, with_tables=False)
-    else:
-        content = read_text(doc_path)
+    """讀文件，回傳 (title, content)。支援 .md / .txt。"""
+    content = read_text(doc_path)
     return doc_path.stem, content
 
 
