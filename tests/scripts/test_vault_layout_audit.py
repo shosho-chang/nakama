@@ -248,6 +248,31 @@ def test_path_covered_by_matrix_glob_star():
     assert not _path_covered_by_matrix("KB/Raw/foo.md", matrix)
 
 
+def test_path_covered_by_matrix_concrete_prefix():
+    """Bare-prefix literals (``"KB/Wiki/Concepts"``) are covered when a
+    matrix row has them as its concrete prefix before any placeholder."""
+    matrix = {"KB/Wiki/Concepts/{}.md", "KB/Annotations/{}.md"}
+    assert _path_covered_by_matrix("KB/Wiki/Concepts", matrix)
+    assert _path_covered_by_matrix("KB/Annotations", matrix)
+    # Trailing slash on the literal is ignored.
+    assert _path_covered_by_matrix("KB/Wiki/Concepts/", matrix)
+    assert _path_covered_by_matrix("KB/Annotations/", matrix)
+    # Deeper-than-prefix without explicit row → still uncovered, audit
+    # remains useful for catching undocumented writers.
+    assert not _path_covered_by_matrix("KB/Wiki/Concepts/foo/bar.md", matrix)
+
+
+def test_path_covered_by_matrix_normalizes_literal_placeholders():
+    """Python f-string placeholders in literals (``"KB/Wiki/Sources/{slug}/whole.md"``)
+    are normalized the same way matrix rows are, so writer-template literals
+    can match the matrix row that documents them."""
+    matrix = {"KB/Wiki/Sources/{}/whole.md"}
+    assert _path_covered_by_matrix("KB/Wiki/Sources/{slug}/whole.md", matrix)
+    assert _path_covered_by_matrix("KB/Wiki/Sources/{book_id}/whole.md", matrix)
+    # Different filename → not covered (need a different row)
+    assert not _path_covered_by_matrix("KB/Wiki/Sources/{slug}/index.md", matrix)
+
+
 def test_code_path_diff_flags_notable_absences(tmp_path: Path, layout_doc: Path):
     repo = tmp_path / "repo"
     (repo / "agents").mkdir(parents=True)

@@ -174,6 +174,11 @@ data/agent_reports/franky/
 | `KB/Wiki/Sources/{slug}.md` | 🤖 | Robin promotion `shared/promotion_commit.py` + textbook-ingest | Brook synthesize, RCP, `/writing-assist/` | ADR-024 + `shared/promotion_renderer.py` |
 | `KB/Wiki/Sources/pubmed-{pmid}.md` | 🤖 | `agents/robin/pubmed_digest.py:476-477` (NOT KB/Raw/Papers as previously documented) | Brook synthesize, KB consumers | PubMed Source schema |
 | `KB/Wiki/Sources/Books/{book-id}/ch{n}.md` | 🤖 | textbook-ingest Phase 1 via `shared/kb_writer.write_source_page` | Brook context_bridge, Reader | ADR-020 §Phase 1 |
+| `KB/Wiki/Sources/Books/{book-id}/digest.md` | 🤖 | `agents/robin/book_digest_writer.py:211` | Brook synthesize, Reader | ADR-020 §Phase 2 digest |
+| `KB/Wiki/Sources/Books/{book-id}/notes.md` | 🤖 | `agents/robin/book_notes_writer.py:26` | 修修 reader, kb_search | ADR-020 §Phase 2 notes |
+| `KB/Wiki/Sources/{slug}/whole.md` | 🤖 | `shared/source_map_builder.py:557` (single-block whole source map) | Reader, Brook synthesize | source-map schema |
+| `KB/Wiki/Sources/{slug}/index.md` | 🤖 | `shared/source_map_builder.py:598` (multi-block index) | source-map navigation | source-map schema |
+| `KB/Wiki/Sources/{slug}/{chapter_ref}.md` | 🤖 | `shared/source_map_builder.py:628` (per-chapter block) | Reader, Brook synthesize | source-map schema |
 | `KB/Wiki/Concepts/{slug}.md` | 🤖 | `shared/kb_writer.upsert_concept_page` (4-action dispatcher, ADR-011 §3.3 — but textbook-ingest Phase B bypasses, drift D1) + `agents/robin/annotation_merger.py` | kb_search, Brook synthesize, RCP | ADR-011 §3.3 v2 schema |
 | `KB/Wiki/Entities/{slug}.md` | 🤖 | textbook-ingest book entity writer (v1 schema, drift D2) | kb_search | ADR-011 §3.1 v1 (frozen) |
 | `KB/Wiki/Entities/Books/{book-id}.md` | 🤖 | textbook-ingest book entity index | 修修, kb_search | ADR-020 §Phase 2 |

@@ -293,16 +293,53 @@ def _read_matrix_paths(layout_doc: Path) -> set[str]:
     return paths
 
 
+def _normalize_literal_placeholders(literal_path: str) -> str:
+    """Collapse Python f-string placeholders (e.g. ``{slug}``) to ``{}`` so a
+    literal like ``"KB/Wiki/Sources/{slug}/whole.md"`` extracted from source
+    code can be compared against a §3 matrix row written as
+    ``KB/Wiki/Sources/{slug}.md`` (also normalized to ``{}``).
+
+    Caveat: doesn't handle nested braces or format-spec syntax — those
+    rarely appear in vault path strings and the conservative fall-through
+    (literal stays unchanged) just means an extra warn rather than a miss.
+    """
+    return re.sub(r"\{[^}]+\}", "{}", literal_path)
+
+
 def _path_covered_by_matrix(literal_path: str, matrix_paths: set[str]) -> bool:
     """Whether a literal path matches any matrix entry.
 
-    Placeholders are treated as one-segment wildcards:
-    - ``{}`` (normalized from ``{slug}`` / ``{book-id}`` / etc.) → ``[^/]+``
-    - ``*`` (literal glob in matrix rows like ``Inbox/web/*.md``) → ``[^/]*``
+    Three normalizations applied:
+    - Literal placeholders ``{xxx}`` (Python f-string interpolation) → ``{}``
+    - Matrix placeholder ``{}`` (already normalized from ``{slug}`` etc.) → ``[^/]+``
+    - Matrix literal glob ``*`` (rows like ``Inbox/web/*.md``) → ``[^/]*``
+
+    Bare-prefix coverage: a literal that exactly equals the concrete prefix
+    of any matrix entry (the chain of segments before the first placeholder)
+    counts as covered. Example: ``"KB/Wiki/Concepts"`` matches matrix
+    ``KB/Wiki/Concepts/{slug}.md`` because code uses the bare prefix as a
+    base for runtime path construction. Deeper descendants under the
+    concrete prefix are NOT auto-covered — they need their own matrix row.
     """
+    normalized_literal = _normalize_literal_placeholders(literal_path)
+    # Bare-prefix literals are sometimes written with a trailing slash
+    # (``"KB/Annotations/"``) — treat as the same prefix for coverage check.
+    literal_stripped = normalized_literal.rstrip("/")
     for entry in matrix_paths:
         pattern = re.escape(entry).replace(r"\{\}", r"[^/]+").replace(r"\*", r"[^/]*")
-        if re.match(pattern + r"(/|$)", literal_path):
+        if re.match(pattern + r"(/|$)", normalized_literal):
+            return True
+        # Concrete-prefix exact match — covers bare-prefix literals.
+        entry_stripped = entry.rstrip("/")
+        concrete_segments: list[str] = []
+        for seg in entry_stripped.split("/"):
+            if "{}" in seg or "*" in seg:
+                break
+            concrete_segments.append(seg)
+        if not concrete_segments:
+            continue
+        concrete_prefix = "/".join(concrete_segments)
+        if literal_stripped == concrete_prefix:
             return True
     return False
 
