@@ -207,6 +207,7 @@ def _get_inbox_files() -> list[dict]:
             # an empty status string so the template suppresses the icon.
             status = ""
             source_label = ""
+            display_source = ""
             title = ""
             fm_source_type = ""
             fm_content_nature = ""
@@ -228,6 +229,21 @@ def _get_inbox_files() -> list[dict]:
                         status = "ready"
                         if not source_label:
                             source_label = "Web Clipper"
+                    # Inbox-row source label: prefer Defuddle's site_name (news-coo
+                    # writes it via getSiteName), fall back to the source URL host.
+                    # `site_name` that's a bare hostname (e.g. "sciencedirect.com")
+                    # is no better than the URL fallback, so skip it and let the
+                    # hostname extraction run.
+                    site_name = str(fm.get("site_name") or "").strip()
+                    if site_name and "." in site_name and " " not in site_name:
+                        site_name = ""
+                    if site_name:
+                        display_source = site_name
+                    else:
+                        url = str(fm.get("source") or fm.get("original_url") or "")
+                        host_match = re.match(r"https?://([^/]+)", url)
+                        if host_match:
+                            display_source = host_match.group(1).removeprefix("www.")
                 except OSError:
                     pass
             files.append(
@@ -242,6 +258,7 @@ def _get_inbox_files() -> list[dict]:
                     "is_read": is_file_read(f),
                     "fulltext_status": status,
                     "fulltext_source": source_label,
+                    "display_source": display_source,
                 }
             )
     return files

@@ -40,9 +40,9 @@
             {% endif %}
             {% if file.is_read %}<span class="badge-read">已閱讀</span>{% endif %}
           </div>
-          {% if file.fulltext_source %}
+          {% if file.display_source %}
           <div class="file-meta">
-            <span class="status-source">{{ file.fulltext_source }}</span>
+            <span class="status-source">{{ file.display_source }}</span>
           </div>
           {% endif %}
         </div>
