@@ -41,6 +41,10 @@ def test_run_vault_audit_appends_markdown(agent, monkeypatch):
 def test_run_vault_audit_logs_warning_on_errors(agent, monkeypatch, caplog):
     canned = AuditReport(findings=[AuditFinding("folder_diff", "error", "Files", "regression")])
     monkeypatch.setattr("scripts.vault_layout_audit.run_audit", lambda *_a, **_kw: canned)
+    # kb_log resolves the real vault path via shared.config — in CI that path
+    # does not exist, the call raises, and the broad except in
+    # _run_vault_audit would mask the real assertion target. Mock it out.
+    monkeypatch.setattr("agents.franky.agent.kb_log", lambda *_a, **_kw: None)
 
     with caplog.at_level("WARNING"):
         md = agent._run_vault_audit()

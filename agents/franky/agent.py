@@ -163,11 +163,14 @@ class FrankyAgent(BaseAgent):
                     "vault audit 偵測到 %d 個 error-severity finding",
                     report.error_count,
                 )
-                kb_log(
-                    self.name,
-                    "warn",
-                    f"vault audit: {report.error_count} error, {report.warn_count} warn",
-                )
+                try:
+                    kb_log(
+                        self.name,
+                        "warn",
+                        f"vault audit: {report.error_count} error, {report.warn_count} warn",
+                    )
+                except Exception as e:  # noqa: BLE001 — kb_log failure must not eat audit output
+                    self.logger.warning(f"kb_log failed (audit markdown still returned): {e}")
             return report.to_markdown()
         except Exception as e:  # noqa: BLE001 — audit must never block weekly digest
             self.logger.warning(f"vault audit 失敗，跳過：{e}", exc_info=True)
