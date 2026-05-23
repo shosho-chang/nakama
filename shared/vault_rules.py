@@ -43,9 +43,9 @@ def _normalize(relative_path: str) -> str:
 def _is_under_prefix(normalized: str, prefix: str) -> bool:
     """檢查 normalized 是否在 prefix 底下（含 prefix 本身）。
     prefix 固定含結尾 /，normalized 可能沒有（PurePosixPath 會 strip）。
-    例：normalized="Nami/Notes", prefix="Nami/Notes/" → True
-        normalized="Nami/Notes/a.md", prefix="Nami/Notes/" → True
-        normalized="Nami/NotesExtra/a.md", prefix="Nami/Notes/" → False
+    例：normalized="AgentOutputs/nami/notes", prefix="AgentOutputs/nami/notes/" → True
+        normalized="AgentOutputs/nami/notes/a.md", prefix="AgentOutputs/nami/notes/" → True
+        normalized="AgentOutputs/nami/notesExtra/a.md", prefix="AgentOutputs/nami/notes/" → False
     """
     prefix_stripped = prefix.rstrip("/")
     return normalized == prefix_stripped or normalized.startswith(prefix_stripped + "/")

@@ -335,25 +335,25 @@ The separate `data/agent_reports/franky/vault-audit/{period}.md` path declared i
 
 Drift entries record where this doc and code/vault disagree. Each has a status: `[待修]` (open), `[已接受]` (won't fix), `[已修]` (resolved; entry kept for history). Phase 3 migration moves several `[待修]` items to `[已修]`.
 
-### Pre-Phase 3 migration drift (will resolve during Phase B)
+### Pre-Phase 3 migration drift (resolved during Phase B/C)
 
-#### D-files-pending — `Files/` not yet migrated `[待修]`
+#### D-files-pending — `Files/` migrated `[已修]`
 
 **Claim:** §2 lists `Files/` as absent.
-**Reality:** As of ADR-028 v2 commit, `Files/` still contains 69 images.
-**Resolution:** Phase 3 PR-B1 migrates Categories A (35 fig refs in 9 sources) + B (34 fig refs in 7 Journal files) per ADR-028 §8.
+**Reality at flip:** `Files/` deleted (recycle-bin) post-Phase B; Category A 35 figs moved to `KB/Attachments/{slug}/` + Category B 34 figs moved to `Attachments/journal-pasted/{YYYY-MM}/`; refs rewritten in 9 source markdowns + 7 Journal markdowns.
+**Resolution:** Phase B sub-ops #10/#11/#12 — see `data/migrations/2026-05-20-vault-cleanup/manifest.json` (PR #673, ADR-028 §8).
 
-#### D-agentoutputs-pending — `AgentOutputs/` consolidation not yet executed `[待修]`
+#### D-agentoutputs-pending — `AgentOutputs/` consolidation done `[已修]`
 
 **Claim:** §2 + §3 list `AgentOutputs/{nami,brook}/` (vault) + `data/agent_reports/franky/` (repo).
-**Reality:** Vault still has `Nami/`, `AgentBriefs/`, `AgentReports/franky/`; repo has no `data/agent_reports/`.
-**Resolution:** Phase 3 PR-A2 (code paths) + PR-B1 (vault moves).
+**Reality at flip:** Vault has `AgentOutputs/nami/{briefs,notes,research}/` + `AgentOutputs/brook/seo-audit/`. Repo has `data/agent_reports/franky/{weekly/,dev-backlog.md}`. Legacy `Nami/` / `AgentBriefs/` / `AgentReports/` deleted (recycle-bin).
+**Resolution:** PR #621 (PR-A2 codebase paths) + PR #654 (PR-B1 safe moves) + Phase B sub-ops #1-3.
 
-#### D-inbox-pending — Inbox not yet restructured `[待修]`
+#### D-inbox-pending — Inbox restructured `[已修]`
 
 **Claim:** §2 lists `Inbox/{web,books,papers,snapshots}/`.
-**Reality:** Vault still has `Inbox/kb/` and mixed top-level. News Coo FSA still pointed at old path.
-**Resolution:** Phase 3 PR-B1 (vault moves) + 修修 manual FSA re-pick post-PR-B1.
+**Reality at flip:** All four subfolders exist; legacy `Inbox/kb/` deleted; News Coo FSA re-picked to `Inbox/web`; `config.yaml.agents.robin.inbox_path = Inbox/web` (per PR #630).
+**Resolution:** PR #629 (PR-A3 markers) + PR #630 (config flip) + Phase B sub-op #8 (vault moves).
 
 ### Persistent drift (not Phase 3 scope)
 
@@ -375,15 +375,11 @@ Drift entries record where this doc and code/vault disagree. Each has a status: 
 **Reality:** `agents/robin/ingest.py:583,600` appends entries after concept writes but no coverage check. textbook-ingest Phase B doesn't touch index.
 **Owner:** Future ingest pipeline refactor OR audit script `--index-coverage` extension.
 
-#### D-promotion-attachments — Inbox→KB attachment migration broken `[待修]` → `[已修]` post-PR-A1
+#### D-promotion-attachments — Inbox→KB attachment migration fixed `[已修]`
 
 **Claim:** When `Inbox/web/{slug}.md` is promoted to `KB/Raw/Articles/{slug}.md`, attachments are moved + image refs rewritten.
-**Reality:**
-- `shared/promotion_commit.py` — zero refs to `attach*` / `image` / `shutil` / `copyfile`
-- `agents/robin/agent.py:105-129` — legacy path with `shutil.copy2` of .md + `unlink`, never touches sibling `attachments/{slug}/`
-- Bug latent: 修修 has never cleaned Inbox.
-
-**Both production paths must be patched.** Resolution: Phase 3 PR-A1 (re-sequenced first per Codex audit §4).
+**Reality at flip:** `shared/promotion_commit.py` now performs attachment migration (move `Inbox/web/attachments/{slug}/*` → `KB/Attachments/{slug}/` + rewrite image refs); `agents/robin/agent.py` legacy ingest path patched in tandem.
+**Resolution:** PR #616 (PR-A1, re-sequenced first per Codex audit §4).
 
 #### D-unicode-norm — Cross-platform Unicode normalization risk `[已接受]`
 

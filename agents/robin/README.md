@@ -12,7 +12,7 @@
 
 ## 功能
 
-1. 掃描 `Inbox/kb/` 中的新檔案
+1. 掃描 `Inbox/web/` 中的新檔案（路徑由 `config.yaml.agents.robin.inbox_path` 控制，ADR-028 §5）
 2. 依副檔名分類並搬移至 `KB/Raw/`
 3. 呼叫 Claude API 產出 Source Summary
 4. 識別文件中的概念（Concept）與實體（Entity），建立或更新對應 Wiki 頁面
@@ -47,7 +47,7 @@ KB/
 
 ## 使用方式
 
-把檔案放入 Obsidian vault 的 `Inbox/kb/`，Robin 會在排程時間自動處理。
+把檔案放入 Obsidian vault 的 `Inbox/web/`（News Coo extension 的 FSA root，ADR-028 §5），Robin 會在排程時間自動處理。
 
 手動執行：
 

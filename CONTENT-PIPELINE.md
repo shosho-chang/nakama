@@ -113,8 +113,8 @@ Line 2 不再只視為「書」；ebook、inbox document、web document 都是 R
 |---|---|---|---|
 | 中文 ebook | 匯入 EPUB/PDF 後轉 markdown / Reader 可讀格式 | Robin Reader 直接讀 + annotation | 依 source quality 選擇 Source Promotion 或 annotation-only sync |
 | 英文 ebook | 匯入原文；可產生 bilingual display track | Robin Reader 雙語閱讀 + annotation | 原文 track 作 factual evidence；雙語 display 不當 factual evidence |
-| Inbox document | 由 Obsidian / vault dropbox 進入 Inbox/kb | Robin Reader 直接讀 + annotation | 同 ebook，短文可 single Source page，長文可 section/chapter source map |
-| Web document | Toast + Clipper/Defuddle-style main-content extraction 匯入 Inbox/kb | Robin Reader 直接讀或雙語讀 + annotation | 同 Inbox document；必須排除側欄、廣告、導覽等頁面雜訊 |
+| Inbox document | 由 Obsidian / vault dropbox 進入 Inbox/web | Robin Reader 直接讀 + annotation | 同 ebook，短文可 single Source page，長文可 section/chapter source map |
+| Web document | News Coo (Toast + Defuddle main-content extraction) 寫入 Inbox/web | Robin Reader 直接讀或雙語讀 + annotation | 同 Inbox document；必須排除側欄、廣告、導覽等頁面雜訊 |
 | Textbook-grade source | 匯入後轉 Raw markdown | 可不經個人 annotation | 直接走 Source Promotion / textbook-grade ingest |
 
 雙語閱讀已在 PR #71 實作，但 P2A BabelDOC（學術 PDF）+ P2B Docling（掃描書）還是缺口。ADR-024 補上 Annotation / Reader source / KB integration 的 owner 語言：Robin/shared owns Source Promotion domain logic，Thousand Sunny owns review UI，Brook 只在 Stage 4/5 邊界內使用 Reading Context Package。

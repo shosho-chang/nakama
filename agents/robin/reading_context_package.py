@@ -373,7 +373,7 @@ def _read_source_quotes(source_map_dir: Path, reading_source: ReadingSource) -> 
     ``EvidenceItem(item_kind="source_quote", ...)`` per quote bullet line.
 
     Source slug derivation: the last segment of ``source_id`` after ``:`` (so
-    ``ebook:alpha-book`` → ``alpha-book``, ``inbox:Inbox/kb/foo.md`` →
+    ``ebook:alpha-book`` → ``alpha-book``, ``inbox:Inbox/web/foo.md`` →
     ``foo.md``). The builder NEVER parses ``source_id`` beyond this slug
     extraction; per-source layout details live in #513 / #515 contracts.
     """
@@ -425,7 +425,7 @@ def _extract_source_slug(source_id: str) -> str:
 
     Examples:
     - ``ebook:alpha-book`` → ``alpha-book``
-    - ``inbox:Inbox/kb/foo.md`` → ``foo.md``
+    - ``inbox:Inbox/web/foo.md`` → ``foo.md``
     - ``inbox:foo`` → ``foo``
     - ``foo`` → ``foo`` (degenerate; no namespace)
     """

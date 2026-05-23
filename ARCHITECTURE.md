@@ -86,7 +86,7 @@ Obsidian vault 的讀寫介面：
 ### 工作流程
 
 ```
-Inbox/kb/ 檔案
+Inbox/web/ 檔案
     │
     ▼
 [Web UI] 使用者選擇檔案 + 類型
@@ -132,8 +132,8 @@ Obsidian Vault（本機 Windows）
     ↕ Syncthing 雙向同步
 VPS /home/nakama/LifeOS/
     ↑ Robin 寫入 KB/
-    ↑ Nami 寫入 AgentBriefs/
-    ↓ Robin 讀取 Inbox/kb/
+    ↑ Nami 寫入 AgentOutputs/nami/briefs/
+    ↓ Robin 讀取 Inbox/web/
 
 VPS /home/nakama/data/state.db
     ← 所有 Agent 讀寫（執行狀態、計費、事件）
