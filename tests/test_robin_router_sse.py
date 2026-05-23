@@ -135,7 +135,7 @@ def test_events_step_cancelled_redirects_home(client):
     r = tc.get(f"/robin/events/{sid}")
     assert r.status_code == 200
     events = _parse_sse(r.text)
-    assert events == [{"event": "done", "data": {"redirect": "/"}}]
+    assert events == [{"event": "done", "data": {"redirect": "/robin"}}]
 
 
 # ---------------------------------------------------------------------------

@@ -632,15 +632,14 @@ async def translate(
        §Pipeline / API "短路條件" / acceptance #6.
     4. Else flip the source row to ``fulltext_status: translating``,
        schedule ``_translate_in_background``, and redirect back to the
-       inbox view (``/``) — NOT ``/read?file={stem}-bilingual.md``.
+       Inbox (``/robin``) — NOT ``/read?file={stem}-bilingual.md``.
 
-    Why the redirect target is ``/`` and not the bilingual reader:
+    Why the redirect target is the Inbox and not the bilingual reader:
     translation takes ~3min on a long article; redirecting straight to
     ``/read?file={stem}-bilingual.md`` raced the BG write and 404'd
     every long article (BMJ Medicine reproduction 2026-05-04). Sending
-    the user back to the inbox lets them watch the 🔄 (translating)
-    icon flip to 📖 (translated), then click 「閱讀」 to jump in once the
-    file actually exists. Costs one extra click but trades a 100%
+    the user back to the Inbox lets them refresh and click 「閱讀」 once
+    the bilingual file exists. Costs one extra click but trades a 100%
     failure mode for a 0% one.
 
     The BG task writes ``Inbox/web/{stem}-bilingual.md`` and mutates the
@@ -667,11 +666,11 @@ async def translate(
             response.set_cookie("nakama_auth", nakama_auth, httponly=True)
         return response
 
-    # Flip BEFORE scheduling so the inbox row reflects "in flight" the
-    # moment the user is redirected back. Doing it inside the BG body
-    # would leave a window where the row still shows ✅ ready but the
-    # translate button is being processed → looks idle, invites a
-    # second click.
+    # Flip BEFORE scheduling so the source frontmatter reflects "in flight"
+    # the moment the user is redirected back. Doing it inside the BG body
+    # would leave a window where the row still reads ``ready`` while the
+    # translate button is being processed → looks idle, invites a second
+    # click.
     _flip_status_to_translating(source_path)
 
     background_tasks.add_task(
@@ -792,7 +791,7 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
             step = sess["step"]
 
             if step == "cancelled":
-                yield sse("done", {"redirect": "/"})
+                yield sse("done", {"redirect": "/robin"})
                 return
 
             if step == "summarizing":
