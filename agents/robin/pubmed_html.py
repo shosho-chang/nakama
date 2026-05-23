@@ -200,5 +200,3 @@ def _extract_url(objurl: dict) -> Optional[str]:
     if isinstance(url_field, str):
         return url_field
     return None
-
-

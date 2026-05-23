@@ -1157,5 +1157,3 @@ async def _legacy_translate_redirect(request: Request):
     qs = request.url.query
     target = "/robin/translate" + (f"?{qs}" if qs else "")
     return RedirectResponse(target, status_code=308)
-
-

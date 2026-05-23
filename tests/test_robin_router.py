@@ -989,5 +989,3 @@ def test_legacy_translate_returns_308_with_query_string(client):
     r = tc.post("/translate?file=x.md")
     assert r.status_code == 308
     assert r.headers["location"] == "/robin/translate?file=x.md"
-
-

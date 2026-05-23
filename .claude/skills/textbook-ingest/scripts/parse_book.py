@@ -928,9 +928,7 @@ def _outline_to_dict(outline: Outline) -> dict:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(
-        description="Extract textbook chapter outline from EPUB"
-    )
+    p = argparse.ArgumentParser(description="Extract textbook chapter outline from EPUB")
     p.add_argument("--path", required=True, help="path to .epub file")
     p.add_argument("--out", required=True, help="output JSON path")
     p.add_argument(
