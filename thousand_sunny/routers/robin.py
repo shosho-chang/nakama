@@ -335,7 +335,10 @@ async def read_source(
             "frontmatter_raw": frontmatter_raw,
             "annotations": annotations,
             "unsynced_count": ann_store.unsynced_count(slug),
-            "source_type": EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
+            "source_type": str(frontmatter.get("source_type") or "").strip()
+            or EXTENSION_TO_SOURCE_TYPE.get(file_path.suffix.lower(), "article"),
+            "content_nature": str(frontmatter.get("content_nature") or "").strip()
+            or "popular_science",
             "is_read": is_file_read(file_path),
             "is_bilingual": bool(frontmatter.get("bilingual")),
             "asset_version": _SHOSHO_ASSET_VERSION,

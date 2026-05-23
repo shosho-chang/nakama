@@ -33,25 +33,19 @@
       <div class="file-top">
         <div class="file-info">
           <div class="file-name">
-            <span title="{{ file.name }}">{{ file.title or file.name }}</span>
+            {% if file.annotatable %}
+              <a href="/robin/read?file={{ file.name | urlencode }}" class="file-title-link" title="{{ file.name }}">{{ file.title or file.name }}</a>
+            {% else %}
+              <span title="{{ file.name }}">{{ file.title or file.name }}</span>
+            {% endif %}
             {% if file.is_read %}<span class="badge-read">已閱讀</span>{% endif %}
           </div>
+          {% if file.fulltext_source %}
           <div class="file-meta">
-            {{ file.size }}
-            {% if file.fulltext_source %}<span class="status-source">· {{ file.fulltext_source }}</span>{% endif %}
+            <span class="status-source">{{ file.fulltext_source }}</span>
           </div>
+          {% endif %}
         </div>
-      </div>
-      <div class="file-actions">
-        {% if file.annotatable %}
-          <a href="/robin/read?file={{ file.name | urlencode }}" class="btn-read">閱讀</a>
-        {% endif %}
-        <form method="post" action="/start" style="margin:0">
-          <input type="hidden" name="filename" value="{{ file.name }}">
-          <input type="hidden" name="source_type" value="{{ file.type }}">
-          <input type="hidden" name="content_nature" value="{{ file.content_nature }}">
-          <button type="submit">開始 Ingest</button>
-        </form>
       </div>
     </div>
     {% endfor %}
