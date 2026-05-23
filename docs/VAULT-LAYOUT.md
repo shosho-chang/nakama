@@ -325,7 +325,9 @@ MUST update this doc in the same PR. Enforced via line in `E:\nakama\CLAUDE.md` 
 3. **Marker convention** — §4 audit rules
 4. **Drift verification** — for each §7 entry, check whether status is still accurate
 
-Output appended to `data/agent_reports/franky/vault-audit/{period}.md` (repo per §4 split).
+**Wiring (PR-C1):** audit runs inside `FrankyAgent._run_vault_audit()` (`agents/franky/agent.py`) before `reporter.write(report)`; the rendered markdown is appended to `report.body_markdown`, so each weekly digest at `data/agent_reports/franky/weekly/{period}.md` carries a `## Vault Audit` section. Error-severity findings are logged via `kb_log` for monitoring.
+
+The separate `data/agent_reports/franky/vault-audit/{period}.md` path declared in §3 is reserved for ad-hoc audit runs invoked via `python -m scripts.vault_layout_audit --append-to <path>`; the monthly cron wiring uses the weekly digest body instead.
 
 ---
 
@@ -389,10 +391,9 @@ Drift entries record where this doc and code/vault disagree. Each has a status: 
 **Mitigation:** Syncthing handles most cases; scripts that compare paths byte-wise MUST call `unicodedata.normalize('NFC', path)` before comparison. Audit script (Phase 3 PR-C1) enforces this in folder/code-path diff.
 **Accepted:** Operational risk, mitigated at audit layer; full enforcement at write boundary deferred until first observed corruption.
 
-#### D-audit-stub — `vault_layout_audit.py` is a stub `[待修]` → `[已修]` post-PR-C1
+#### D-audit-stub — `vault_layout_audit.py` was a stub `[已修]`
 
-**Reality:** Current `scripts/vault_layout_audit.py` audit functions return `[]` unconditionally — reports "No drift detected" by construction. Misleading until Phase 3 PR-C1 fleshes out the implementation.
-**Mitigation:** Skeleton file header explicitly warns of stub status.
+**Resolution:** PR-C1 (`feat(adr-028): vault_layout_audit.py full implementation`) replaced all four `audit_*` stubs with real implementations + 23 test cases covering each dimension and end-to-end fixture vault. The `STUB IMPLEMENTATION` sentinel is gone; the audit is wired into Franky weekly digest via `FrankyAgent._run_vault_audit()`. See §6 β for the wiring.
 
 ---
 
