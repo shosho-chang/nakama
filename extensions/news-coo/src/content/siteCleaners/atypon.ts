@@ -28,6 +28,8 @@ const ATYPON_HOSTS = [
   "www.thelancet.com",
   "nejm.org",
   "www.nejm.org",
+  "science.org",
+  "www.science.org",
 ];
 
 const REFS_SECTION_SELECTORS = [
@@ -54,6 +56,26 @@ function pickPrimaryLink(item: Element): string | null {
   return any?.getAttribute("href") ?? null;
 }
 
+function pickCitationTitle(item: Element): string | null {
+  // `.citation-content` carries the full citation text (authors, title, journal,
+  // year). Strip nested label / external-links nodes so we don't pull "Crossref"
+  // into the hover tooltip. Collapse whitespace and truncate to keep the title
+  // attribute readable.
+  const cc =
+    item.querySelector<HTMLElement>(".citation-content") ??
+    item.querySelector<HTMLElement>(".citations") ??
+    item;
+  const clone = cc.cloneNode(true) as HTMLElement;
+  for (const drop of Array.from(
+    clone.querySelectorAll(".external-links, .label, .to-citation, .to-citation__wrapper"),
+  )) {
+    drop.remove();
+  }
+  const text = (clone.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.length > 250 ? text.slice(0, 247) + "…" : text;
+}
+
 function findRefsSection(doc: Document): HTMLElement | null {
   for (const sel of REFS_SECTION_SELECTORS) {
     const el = doc.querySelector<HTMLElement>(sel);
@@ -76,9 +98,11 @@ export const atyponCleaner: SiteCleaner = {
       warnings: [],
     };
 
-    // Build position → URL map from the bottom References list before any
-    // mutations so body-marker rewrites in step 2 can attach DOI hrefs.
+    // Build position → URL and position → title maps from the bottom References
+    // list before any mutations so body-marker rewrites in step 2 can attach DOI
+    // hrefs + tooltip titles.
     const numberToUrl = new Map<number, string>();
+    const numberToTitle = new Map<number, string>();
     const refsSection = findRefsSection(doc);
     const items = refsSection
       ? Array.from(refsSection.querySelectorAll<HTMLElement>('[role="listitem"]'))
@@ -86,6 +110,8 @@ export const atyponCleaner: SiteCleaner = {
     items.forEach((item, idx) => {
       const url = pickPrimaryLink(item);
       if (url) numberToUrl.set(idx + 1, url);
+      const title = pickCitationTitle(item);
+      if (title) numberToTitle.set(idx + 1, title);
     });
 
     // 1. Lancet drop-blocks → keep <sup>, drop the holder.
@@ -102,12 +128,15 @@ export const atyponCleaner: SiteCleaner = {
       } else {
         nums.forEach((n, i) => {
           const a = doc.createElement("a");
-          const url = numberToUrl.get(parseInt(n, 10));
+          const num = parseInt(n, 10);
+          const url = numberToUrl.get(num);
+          const title = numberToTitle.get(num);
           a.setAttribute("href", url ?? `#fn:${n}`);
           if (url) {
             a.setAttribute("target", "_blank");
             a.setAttribute("rel", "noopener");
           }
+          if (title) a.setAttribute("title", title);
           a.textContent = n;
           newSup.appendChild(a);
           if (i < nums.length - 1) newSup.appendChild(doc.createTextNode(","));
@@ -117,10 +146,16 @@ export const atyponCleaner: SiteCleaner = {
       report.removedNodeCount++;
     }
 
-    // 2. NEJM-style plain <sup><a data-xml-rid="rN">N</a></sup>: rewrite the
-    //    fragment-only href to the resolved paper URL when we have one.
+    // 2. NEJM-style <sup><a data-xml-rid="rN">N</a></sup> + Science-style bare
+    //    <a data-xml-rid="RN" role="doc-biblioref"><i>N</i></a> (no <sup>
+    //    wrapper). Selector matches both; for Science we also strip
+    //    role="doc-biblioref" + id (Defuddle's
+    //    FOOTNOTE_INLINE_REFERENCES targets a[role="doc-biblioref"] and
+    //    a[id^="ref-link"] and converts them to [^N] footnote markers,
+    //    losing the DOI href + tooltip; removing both attributes keeps the
+    //    anchor as a regular markdown link).
     const xmlRefAnchors = Array.from(
-      doc.querySelectorAll<HTMLAnchorElement>("sup a[data-xml-rid]"),
+      doc.querySelectorAll<HTMLAnchorElement>("a[data-xml-rid]"),
     );
     for (const a of xmlRefAnchors) {
       const text = (a.textContent ?? "").trim();
@@ -131,6 +166,10 @@ export const atyponCleaner: SiteCleaner = {
       a.setAttribute("href", url);
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener");
+      const title = numberToTitle.get(n);
+      if (title) a.setAttribute("title", title);
+      a.removeAttribute("role");
+      a.removeAttribute("id");
     }
 
     // 3. Rewrite bottom References section into semantic <ol>/<li>.
@@ -191,10 +230,73 @@ export const atyponCleaner: SiteCleaner = {
     //     semantic markup, which the helper's default extractor handles.
     wireFigureBlockIds(doc);
 
-    // 4. Inject `<meta name="author">` so Defuddle's metadata extractor picks
+    // 4. Normalize site_name to the journal title (e.g. "Science", not the
+    //    full publisher corp name). Two paths:
+    //
+    //    (a) Belt: inject `<meta property="og:site_name">` from
+    //        citation_journal_title (Highwire-compat, present on every Atypon
+    //        article).
+    //    (b) Suspenders: Defuddle's getSiteName prefers JSON-LD
+    //        schema.publisher.name (candidate #1) over og:site_name
+    //        (candidate #2). On Science.org publisher.name is "American
+    //        Association for the Advancement of Science" (8 words) — Defuddle
+    //        rejects >6-word candidates but firstValid has already
+    //        short-circuited, so site_name returns empty and falls back to
+    //        authorAsSite. Surgically shorten publisher.name in any JSON-LD
+    //        with >6 words to citation_journal_title so candidate #1 yields a
+    //        usable value. Lancet (Elsevier, 1 word) / NEJM (MMS, 3 words)
+    //        unaffected.
+    const head = doc.querySelector("head");
+    const journalTitle = doc
+      .querySelector<HTMLMetaElement>('meta[name="citation_journal_title"]')
+      ?.content?.trim();
+    if (head && journalTitle) {
+      const existing = head.querySelector('meta[property="og:site_name"]');
+      if (existing) existing.remove();
+      const meta = doc.createElement("meta");
+      meta.setAttribute("property", "og:site_name");
+      meta.setAttribute("content", journalTitle);
+      head.appendChild(meta);
+
+      const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+      const walk = (obj: unknown): boolean => {
+        if (!obj || typeof obj !== "object") return false;
+        if (Array.isArray(obj)) return obj.some(walk);
+        let changed = false;
+        const rec = obj as Record<string, unknown>;
+        const pub = rec.publisher;
+        if (pub && typeof pub === "object" && !Array.isArray(pub)) {
+          const pubRec = pub as Record<string, unknown>;
+          if (typeof pubRec.name === "string" && wordCount(pubRec.name) > 6) {
+            pubRec.name = journalTitle;
+            changed = true;
+          }
+        }
+        for (const v of Object.values(rec)) if (walk(v)) changed = true;
+        return changed;
+      };
+
+      const scripts = doc.querySelectorAll<HTMLScriptElement>(
+        'script[type="application/ld+json"]',
+      );
+      for (const script of Array.from(scripts)) {
+        const raw = script.textContent;
+        if (!raw) continue;
+        let data: unknown;
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        if (walk(data)) {
+          script.textContent = JSON.stringify(data);
+        }
+      }
+    }
+
+    // 5. Inject `<meta name="author">` so Defuddle's metadata extractor picks
     //    up the right author. NEJM exposes authors via `meta[name="dc.Creator"]`
     //    (one per author); fall back to the .contributors author block.
-    const head = doc.querySelector("head");
     if (head && !head.querySelector('meta[name="author"]')?.getAttribute("content")) {
       const dcCreators = Array.from(
         doc.querySelectorAll<HTMLMetaElement>(

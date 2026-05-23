@@ -147,6 +147,13 @@ export const sciencedirectCleaner: SiteCleaner = {
       newAnchor.setAttribute("href", url);
       newAnchor.setAttribute("target", "_blank");
       newAnchor.setAttribute("rel", "noopener");
+      const text = idToText.get(frag);
+      if (text) {
+        newAnchor.setAttribute(
+          "title",
+          text.length > 250 ? text.slice(0, 247) + "…" : text,
+        );
+      }
       newAnchor.textContent = numberText;
       newSup.appendChild(newAnchor);
       a.replaceWith(newSup);
