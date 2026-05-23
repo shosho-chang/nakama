@@ -1,0 +1,566 @@
+{
+  "adr": "ADR-028",
+  "phase": "B sub-op 10+11 — Files/ migration",
+  "mode": "DRY-RUN",
+  "executed_at": "2026-05-21T12:47:42Z",
+  "vault": "E:\\Shosho LifeOS",
+  "counts": {
+    "cat_a": 35,
+    "cat_b": 34,
+    "orphan": 0
+  },
+  "ops": [
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S0140673621007339-gr1-622b03e9.jpg",
+      "dst": "KB/Attachments/low-back-pain/1-s2.0-S0140673621007339-gr1-622b03e9.jpg",
+      "referrers": [
+        "Inbox/web/Low back pain.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S0140673621007339-gr2-f90a14a1.jpg",
+      "dst": "KB/Attachments/low-back-pain/1-s2.0-S0140673621007339-gr2-f90a14a1.jpg",
+      "referrers": [
+        "Inbox/web/Low back pain.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S014067362501565X-gr1-13c07a29.jpg",
+      "dst": "KB/Attachments/ultra-processed-foods-and-human-health-the-main-thes-48d8b6e/1-s2.0-S014067362501565X-gr1-13c07a29.jpg",
+      "referrers": [
+        "KB/Raw/Papers/Ultra-processed foods and human health the main thesis and the evidence.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S014067362501565X-gr2-06d45997.jpg",
+      "dst": "KB/Attachments/ultra-processed-foods-and-human-health-the-main-thes-48d8b6e/1-s2.0-S014067362501565X-gr2-06d45997.jpg",
+      "referrers": [
+        "KB/Raw/Papers/Ultra-processed foods and human health the main thesis and the evidence.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S014067362501565X-gr3-963dffd6.jpg",
+      "dst": "KB/Attachments/ultra-processed-foods-and-human-health-the-main-thes-48d8b6e/1-s2.0-S014067362501565X-gr3-963dffd6.jpg",
+      "referrers": [
+        "KB/Raw/Papers/Ultra-processed foods and human health the main thesis and the evidence.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S014067362501565X-gr4-b0d1534a.jpg",
+      "dst": "KB/Attachments/ultra-processed-foods-and-human-health-the-main-thes-48d8b6e/1-s2.0-S014067362501565X-gr4-b0d1534a.jpg",
+      "referrers": [
+        "KB/Raw/Papers/Ultra-processed foods and human health the main thesis and the evidence.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S014067362501565X-gr5-242d0108.jpg",
+      "dst": "KB/Attachments/ultra-processed-foods-and-human-health-the-main-thes-48d8b6e/1-s2.0-S014067362501565X-gr5-242d0108.jpg",
+      "referrers": [
+        "KB/Raw/Papers/Ultra-processed foods and human health the main thesis and the evidence.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S0924977X24007405-fx1-90ef9584.jpg",
+      "dst": "KB/Attachments/efficacy-and-safety-profile-of-oral-creatine-monohyd-845b53b/1-s2.0-S0924977X24007405-fx1-90ef9584.jpg",
+      "referrers": [
+        "KB/Raw/Papers/Efficacy and safety profile of oral creatine monohydrate in add-on to cognitive-behavioural therapy in depression An 8-week pilot, double-blind, randomised, placebo-controlled feasibility and exploratory trial in an under-resourced area.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/1-s2.0-S0924977X24007405-gr1-75f158ca.jpg",
+      "dst": "KB/Attachments/efficacy-and-safety-profile-of-oral-creatine-monohyd-845b53b/1-s2.0-S0924977X24007405-gr1-75f158ca.jpg",
+      "referrers": [
+        "KB/Raw/Papers/Efficacy and safety profile of oral creatine monohydrate in add-on to cognitive-behavioural therapy in depression An 8-week pilot, double-blind, randomised, placebo-controlled feasibility and exploratory trial in an under-resourced area.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/11556_2025_392_Fig1_HTML-37d9dfbf.png",
+      "dst": "KB/Attachments/the-impact-of-creatine-supplementation-associated-wi-809bd24/11556_2025_392_Fig1_HTML-37d9dfbf.png",
+      "referrers": [
+        "Inbox/web/The impact of creatine supplementation associated with resistance training on muscular strength and lean tissue mass in the aged a systematic review and meta-analysis - European Review of Aging and Physical Activity.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/11556_2025_392_Fig2_HTML-afec6083.png",
+      "dst": "KB/Attachments/the-impact-of-creatine-supplementation-associated-wi-809bd24/11556_2025_392_Fig2_HTML-afec6083.png",
+      "referrers": [
+        "Inbox/web/The impact of creatine supplementation associated with resistance training on muscular strength and lean tissue mass in the aged a systematic review and meta-analysis - European Review of Aging and Physical Activity.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/11556_2025_392_Fig3_HTML-4aee4daf.png",
+      "dst": "KB/Attachments/the-impact-of-creatine-supplementation-associated-wi-809bd24/11556_2025_392_Fig3_HTML-4aee4daf.png",
+      "referrers": [
+        "Inbox/web/The impact of creatine supplementation associated with resistance training on muscular strength and lean tissue mass in the aged a systematic review and meta-analysis - European Review of Aging and Physical Activity.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/11556_2025_392_Fig4_HTML-5d28348e.png",
+      "dst": "KB/Attachments/the-impact-of-creatine-supplementation-associated-wi-809bd24/11556_2025_392_Fig4_HTML-5d28348e.png",
+      "referrers": [
+        "Inbox/web/The impact of creatine supplementation associated with resistance training on muscular strength and lean tissue mass in the aged a systematic review and meta-analysis - European Review of Aging and Physical Activity.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/11556_2025_392_Fig5_HTML-dc3cc7f0.png",
+      "dst": "KB/Attachments/the-impact-of-creatine-supplementation-associated-wi-809bd24/11556_2025_392_Fig5_HTML-dc3cc7f0.png",
+      "referrers": [
+        "Inbox/web/The impact of creatine supplementation associated with resistance training on muscular strength and lean tissue mass in the aged a systematic review and meta-analysis - European Review of Aging and Physical Activity.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Fig1_HTML-8d12d344.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Fig1_HTML-8d12d344.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Fig2_HTML-f095ea3a.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Fig2_HTML-f095ea3a.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Fig3_HTML-eb79d582.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Fig3_HTML-eb79d582.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Fig4_HTML-105b4bbe.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Fig4_HTML-105b4bbe.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Fig5_HTML-5805f455.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Fig5_HTML-5805f455.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Fig6_HTML-220c1f9e.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Fig6_HTML-220c1f9e.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Fig7_HTML-df18495b.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Fig7_HTML-df18495b.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Fig8_HTML-51f3630f.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Fig8_HTML-51f3630f.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12882_2025_4558_Figa_HTML-c0a17155.png",
+      "dst": "KB/Attachments/effect-of-creatine-supplementation-on-kidney-functio-84fbe7d/12882_2025_4558_Figa_HTML-c0a17155.png",
+      "referrers": [
+        "KB/Raw/Papers/Effect of creatine supplementation on kidney function a systematic review and meta-analysis.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12970_2017_173_Fig1_HTML-53d4769e.gif",
+      "dst": "KB/Attachments/international-society-of-sports-nutrition-position-s-dbc4339/12970_2017_173_Fig1_HTML-53d4769e.gif",
+      "referrers": [
+        "KB/Raw/Papers/International Society of Sports Nutrition position stand safety and efficacy of creatine supplementation in exercise, sport, and medicine - Journal of the International Society of Sports Nutrition.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12970_2017_173_Fig2_HTML-79dea3ab.gif",
+      "dst": "KB/Attachments/international-society-of-sports-nutrition-position-s-dbc4339/12970_2017_173_Fig2_HTML-79dea3ab.gif",
+      "referrers": [
+        "KB/Raw/Papers/International Society of Sports Nutrition position stand safety and efficacy of creatine supplementation in exercise, sport, and medicine - Journal of the International Society of Sports Nutrition.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12970_2017_173_Fig3_HTML-3e311b3f.gif",
+      "dst": "KB/Attachments/international-society-of-sports-nutrition-position-s-dbc4339/12970_2017_173_Fig3_HTML-3e311b3f.gif",
+      "referrers": [
+        "KB/Raw/Papers/International Society of Sports Nutrition position stand safety and efficacy of creatine supplementation in exercise, sport, and medicine - Journal of the International Society of Sports Nutrition.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/12970_2017_173_Fig4_HTML-733701b0.gif",
+      "dst": "KB/Attachments/international-society-of-sports-nutrition-position-s-dbc4339/12970_2017_173_Fig4_HTML-733701b0.gif",
+      "referrers": [
+        "KB/Raw/Papers/International Society of Sports Nutrition position stand safety and efficacy of creatine supplementation in exercise, sport, and medicine - Journal of the International Society of Sports Nutrition.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/F1.medium-5e1c8da6.gif",
+      "dst": "KB/Attachments/cardiorespiratory-fitness-is-associated-with-cogniti-7d0facb/F1.medium-5e1c8da6.gif",
+      "referrers": [
+        "Inbox/web/Cardiorespiratory fitness is associated with cognitive function in late adulthood baseline findings from the IGNITE study.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/F2.medium-4b9aa3f0.gif",
+      "dst": "KB/Attachments/cardiorespiratory-fitness-is-associated-with-cogniti-7d0facb/F2.medium-4b9aa3f0.gif",
+      "referrers": [
+        "Inbox/web/Cardiorespiratory fitness is associated with cognitive function in late adulthood baseline findings from the IGNITE study.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/F3.medium-f8722a78.gif",
+      "dst": "KB/Attachments/cardiorespiratory-fitness-is-associated-with-cogniti-7d0facb/F3.medium-f8722a78.gif",
+      "referrers": [
+        "Inbox/web/Cardiorespiratory fitness is associated with cognitive function in late adulthood baseline findings from the IGNITE study.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/image-8617dd05.jpg",
+      "dst": "KB/Attachments/cardiorespiratory-fitness-is-associated-with-cogniti-7d0facb/image-8617dd05.jpg",
+      "referrers": [
+        "Inbox/web/Cardiorespiratory fitness is associated with cognitive function in late adulthood baseline findings from the IGNITE study.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/m_nuac064f1-787564a2.jpeg",
+      "dst": "KB/Attachments/effects-of-creatine-supplementation-on-memory-in-hea-a057102/m_nuac064f1-787564a2.jpeg",
+      "referrers": [
+        "KB/Raw/Papers/Effects of creatine supplementation on memory in healthy individuals a systematic review and meta-analysis of randomized controlled trials.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/m_nuac064f2-0c057c6f.jpeg",
+      "dst": "KB/Attachments/effects-of-creatine-supplementation-on-memory-in-hea-a057102/m_nuac064f2-0c057c6f.jpeg",
+      "referrers": [
+        "KB/Raw/Papers/Effects of creatine supplementation on memory in healthy individuals a systematic review and meta-analysis of randomized controlled trials.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/m_nuac064f3a-d366ad03.jpeg",
+      "dst": "KB/Attachments/effects-of-creatine-supplementation-on-memory-in-hea-a057102/m_nuac064f3a-d366ad03.jpeg",
+      "referrers": [
+        "KB/Raw/Papers/Effects of creatine supplementation on memory in healthy individuals a systematic review and meta-analysis of randomized controlled trials.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-A",
+      "src": "Files/m_nuaf135f1-35e25593.jpeg",
+      "dst": "KB/Attachments/creatine-and-cognition-in-aging-a-systematic-review-9aa816b/m_nuaf135f1-35e25593.jpeg",
+      "referrers": [
+        "KB/Raw/Papers/Creatine and Cognition in Aging A Systematic Review of Evidence in Older Adults.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/febcdd94-616e-4fb1-af33-a50b07fd29ac_498x230.webp",
+      "dst": "Attachments/journal-pasted/2024-10/febcdd94-616e-4fb1-af33-a50b07fd29ac_498x230.webp",
+      "referrers": [
+        "Journals/Daily/2024-10-20.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240309132120.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240309132120.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240309132824.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240309132824.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240309135633.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240309135633.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240309143947.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240309143947.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310144229.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310144229.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310152245.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310152245.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310152929.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310152929.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310153346.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310153346.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310153615.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310153615.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310154121.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310154121.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310160344.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310160344.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310160615.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310160615.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240310161726.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240310161726.png",
+      "referrers": [
+        "Journals/Daily/2024-03-09.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240329193747.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240329193747.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240329193810.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240329193810.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240329193832.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240329193832.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331174505.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331174505.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331174943.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331174943.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331174959.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331174959.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331175114.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331175114.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331175150.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331175150.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20240331180326.png",
+      "dst": "Attachments/journal-pasted/2024-03/Pasted image 20240331180326.png",
+      "referrers": [
+        "Journals/Daily/2024-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250114094954.png",
+      "dst": "Attachments/journal-pasted/2025-01/Pasted image 20250114094954.png",
+      "referrers": [
+        "Journals/Daily/2025-01-14.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250324112029.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250324112029.png",
+      "referrers": [
+        "Journals/Daily/2025-03-24.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250324112037.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250324112037.png",
+      "referrers": [
+        "Journals/Daily/2025-03-24.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250324114456.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250324114456.png",
+      "referrers": [
+        "Journals/Daily/2025-03-24.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250324122540.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250324122540.png",
+      "referrers": [
+        "Journals/Daily/2025-03-24.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250407173659.png",
+      "dst": "Attachments/journal-pasted/2025-03/Pasted image 20250407173659.png",
+      "referrers": [
+        "Journals/Daily/2025-03-31.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528160537.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528160537.png",
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528160916.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528160916.png",
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528191429.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528191429.png",
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528192015.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528192015.png",
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    },
+    {
+      "op": "MIGRATE-B",
+      "src": "Files/Pasted image 20250528200352.png",
+      "dst": "Attachments/journal-pasted/2025-05/Pasted image 20250528200352.png",
+      "referrers": [
+        "Journals/Daily/2025-05-27.md"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "executed_at": "2026-05-20T00:59:48Z",
+  "vault": "E:\\Shosho LifeOS",
+  "ops": [
+    {
+      "op": "MKDIR",
+      "src": "-",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books"
+    },
+    {
+      "op": "MKDIR",
+      "src": "-",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web"
+    },
+    {
+      "op": "MKDIR",
+      "src": "-",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\papers"
+    },
+    {
+      "op": "MKDIR",
+      "src": "-",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\snapshots"
+    },
+    {
+      "op": "MIGRATE-ATTACHMENTS",
+      "src": "Inbox/attachments/nonlinear-dynamics-of-multi-omics-profiles-during-human-aging/",
+      "dst": "KB/Attachments/nonlinear-dynamics-of-multi-omics-profiles-during-human-aging/",
+      "moved": 5,
+      "skipped": 0,
+      "rewritten_md": [
+        "Inbox/nonlinear-dynamics-of-multi-omics-profiles-during-human-aging.md"
+      ]
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\qa-line2-bugs-2026-05-04.md",
+      "dst": "E:\\nakama\\docs\\qa\\2026-05-04-line2-bugs.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\ACSM's Clinical Exercise Physio - Walter R. Thompson.epub",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books\\ACSM's Clinical Exercise Physio - Walter R. Thompson.epub"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\ACSM's Guidelines for Exercise - Amanda R. Bonikowske.epub",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books\\ACSM's Guidelines for Exercise - Amanda R. Bonikowske.epub"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\ACSM's Introduction to Exercise - Jeffrey A. Potteiger.epub",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books\\ACSM's Introduction to Exercise - Jeffrey A. Potteiger.epub"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\ACSM's Nutrition for Exercise S - Dan Benardot, PhD, DHC, RDN, FA.epub",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books\\ACSM's Nutrition for Exercise S - Dan Benardot, PhD, DHC, RDN, FA.epub"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\Biochemistry for Sport and Exer - Don MacLaren.epub",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books\\Biochemistry for Sport and Exer - Don MacLaren.epub"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\effect-of-exercise-on-depression-and-anxiety-symptoms-systematic-umbrella-review.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\effect-of-exercise-on-depression-and-anxiety-symptoms-systematic-umbrella-review.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\Exercise Technique Manual for R - NSCA.epub",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books\\Exercise Technique Manual for R - NSCA.epub"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\Hantavirus in humans_ a review of clinical aspects and management - The Lancet Infectious Diseases.mhtml",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\snapshots\\Hantavirus in humans_ a review of clinical aspects and management - The Lancet Infectious Diseases.mhtml"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\hantavirus-in-humans-a-review-of-clinical-aspects-and-management.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\hantavirus-in-humans-a-review-of-clinical-aspects-and-management.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\multimodal-clocks-of-human-aging.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\multimodal-clocks-of-human-aging.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\Muscle and Exercise Physiology - Prof.Jerzy A. Zoladz, Ph.D., D.epub",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books\\Muscle and Exercise Physiology - Prof.Jerzy A. Zoladz, Ph.D., D.epub"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\nonlinear-dynamics-of-multi-omics-profiles-during-human-aging.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\nonlinear-dynamics-of-multi-omics-profiles-during-human-aging.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\personality-and-mental-health-as-mediators-linking-childhood-maltreatment-to-int.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\personality-and-mental-health-as-mediators-linking-childhood-maltreatment-to-int.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\Physiology of Sport and Exercis - W. Larry Kenney, PhD, Jack H. W.epub",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\books\\Physiology of Sport and Exercis - W. Larry Kenney, PhD, Jack H. W.epub"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\Structured Exercise after Adjuvant Chemotherapy for Colon Cancer _ New England Journal of Medicine.mhtml",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\snapshots\\Structured Exercise after Adjuvant Chemotherapy for Colon Cancer _ New England Journal of Medicine.mhtml"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\structured-exercise-after-adjuvant-chemotherapy-for-colon-cancer.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\structured-exercise-after-adjuvant-chemotherapy-for-colon-cancer.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\American College of Sports Medicine Position Stand....  Medicine & Science in Sports & Exercise.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\American College of Sports Medicine Position Stand....  Medicine & Science in Sports & Exercise.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\bmjmedicinebmjcomcontent51e001513.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\bmjmedicinebmjcomcontent51e001513.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Cardiorespiratory fitness is associated with cognitive function in late adulthood baseline findings from the IGNITE study.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Cardiorespiratory fitness is associated with cognitive function in late adulthood baseline findings from the IGNITE study.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Ch1 AI and the New Rules of Corporate Competition.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Ch1 AI and the New Rules of Corporate Competition.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Ch2 The New Moats and the Enterprise Organization of the Future.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Ch2 The New Moats and the Enterprise Organization of the Future.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Ch3 2026 HBS Insights- Emerging Trends in Entrepreneurship.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Ch3 2026 HBS Insights- Emerging Trends in Entrepreneurship.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Ch4 AI-First Entrepreneurship- Prototyping and Validation.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Ch4 AI-First Entrepreneurship- Prototyping and Validation.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Ch5 AI-Powered Workflows and Emerging Business Models.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Ch5 AI-Powered Workflows and Emerging Business Models.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Ch6 Your Personal Career Strategy and Anti-fragility.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Ch6 Your Personal Career Strategy and Anti-fragility.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Hantavirus in humans a review of clinical aspects and management.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Hantavirus in humans a review of clinical aspects and management.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Low back pain.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Low back pain.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\Nonlinear dynamics of multi-omics profiles during human aging.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\Nonlinear dynamics of multi-omics profiles during human aging.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\The Effect of Dietary Supplements on Endurance Exercise Performance and Core Temperature in Hot Environments A Meta-analysis and Meta-regression.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\The Effect of Dietary Supplements on Endurance Exercise Performance and Core Temperature in Hot Environments A Meta-analysis and Meta-regression.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\The impact of creatine supplementation associated with resistance training on muscular strength and lean tissue mass in the aged a systematic review and meta-analysis - European Review of Aging and Physical Activity.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\The impact of creatine supplementation associated with resistance training on muscular strength and lean tissue mass in the aged a systematic review and meta-analysis - European Review of Aging and Physical Activity.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\wwwnaturecomarticless43587-024-00692-2.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\wwwnaturecomarticless43587-024-00692-2.md"
+    },
+    {
+      "op": "MOVE",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb\\wwwthelancetcomjournalseclinmarticlePIIS2589-53702500676-5fu.md",
+      "dst": "E:\\Shosho LifeOS\\Inbox\\web\\wwwthelancetcomjournalseclinmarticlePIIS2589-53702500676-5fu.md"
+    },
+    {
+      "op": "KEEP-non-empty",
+      "src": "E:\\Shosho LifeOS\\Inbox\\kb",
+      "dst": "-",
+      "remaining": [
+        ".gitkeep"
+      ]
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "src": "E:\\Shosho LifeOS\\Inbox\\attachments",
+      "dst": "recycle-bin"
+    }
+  ]
+}
