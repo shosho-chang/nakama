@@ -52,8 +52,12 @@ export const bmjCleaner: SiteCleaner = {
       report.removedNodeCount++;
     }
 
-    // Map the ref-N anchor id → DOI from the bottom <ol class="cit-list">.
+    // Map ref-N → DOI + citation text from <ol class="cit-list">. Citation
+    // text comes from `div.cit-metadata` (author / title / journal / year);
+    // we strip nested anchors so "PubMed"/"Google Scholar" external-link
+    // text doesn't pollute the hover tooltip.
     const idToUrl = new Map<string, string>();
+    const idToText = new Map<string, string>();
     const items = Array.from(doc.querySelectorAll<HTMLElement>("ol.cit-list > li"));
     for (const li of items) {
       const idAnchor = li.querySelector<HTMLAnchorElement>('a[id^="ref-"]');
@@ -62,13 +66,20 @@ export const bmjCleaner: SiteCleaner = {
       const cit = li.querySelector<HTMLElement>("div.cit[data-doi]");
       const doi = cit?.getAttribute("data-doi");
       if (doi) idToUrl.set(id, `https://doi.org/${doi}`);
+      const meta = li.querySelector<HTMLElement>("div.cit-metadata") ?? cit;
+      if (meta) {
+        const clone = meta.cloneNode(true) as HTMLElement;
+        for (const a of Array.from(clone.querySelectorAll("a, button"))) a.remove();
+        const text = (clone.textContent ?? "").replace(/\s+/g, " ").trim();
+        if (text) idToText.set(id, text);
+      }
     }
 
     if (items.length === 0) {
       report.warnings.push("no ol.cit-list > li items found");
     }
 
-    // Rewrite body xref-bibr anchors into the paper URL.
+    // Rewrite body xref-bibr anchors into the paper URL + hover-title.
     const refAnchors = Array.from(
       doc.querySelectorAll<HTMLAnchorElement>("a.xref-bibr"),
     );
@@ -80,6 +91,13 @@ export const bmjCleaner: SiteCleaner = {
       a.setAttribute("href", url);
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener");
+      const text = idToText.get(frag);
+      if (text) {
+        a.setAttribute(
+          "title",
+          text.length > 250 ? text.slice(0, 247) + "…" : text,
+        );
+      }
       report.removedNodeCount++;
     }
 

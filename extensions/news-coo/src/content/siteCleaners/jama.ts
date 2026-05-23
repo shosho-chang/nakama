@@ -61,8 +61,11 @@ export const jamaCleaner: SiteCleaner = {
       warnings: [],
     };
 
-    // Map ref id → paper URL from the bottom list.
+    // Map ref id → paper URL + citation text from the bottom list. Strip
+    // nested anchors (DOI link, Article link) so they don't pollute the
+    // hover tooltip.
     const idToUrl = new Map<string, string>();
+    const idToText = new Map<string, string>();
     const refs = Array.from(
       doc.querySelectorAll<HTMLElement>("div.references > div.reference"),
     );
@@ -73,6 +76,10 @@ export const jamaCleaner: SiteCleaner = {
       if (!id || !content) continue;
       const url = extractDoi(content);
       if (url) idToUrl.set(id, url);
+      const clone = content.cloneNode(true) as HTMLElement;
+      for (const a of Array.from(clone.querySelectorAll("a, br"))) a.remove();
+      const text = (clone.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (text) idToText.set(id, text);
     }
 
     if (refs.length === 0) {
@@ -96,6 +103,13 @@ export const jamaCleaner: SiteCleaner = {
       a.setAttribute("href", url);
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener");
+      const text = idToText.get(frag);
+      if (text) {
+        a.setAttribute(
+          "title",
+          text.length > 250 ? text.slice(0, 247) + "…" : text,
+        );
+      }
       report.removedNodeCount++;
     }
 
