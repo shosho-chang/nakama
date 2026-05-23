@@ -28,7 +28,9 @@ CLI::
 
 Exit codes::
 
-    0 — audit ran (any severity findings); 1 — could not run; 2 — error-severity findings present
+    0 — audit ran (regardless of findings, unless --exit-on-error is set)
+    1 — audit could not run (vault unreachable / layout doc missing)
+    2 — only with --exit-on-error: at least one error-severity finding
 
 Per ADR-028 §11 β, this runs monthly via Franky weekly digest; output appended to
 ``data/agent_reports/franky/weekly/{period}.md`` under ``## Vault Audit``.
@@ -292,9 +294,16 @@ def _read_matrix_paths(layout_doc: Path) -> set[str]:
 
 
 def _path_covered_by_matrix(literal_path: str, matrix_paths: set[str]) -> bool:
-    """Whether a literal path matches any matrix entry (``{}`` = one segment)."""
+    """Whether a literal path matches any matrix entry.
+
+    Placeholders are treated as one-segment wildcards:
+    - ``{}`` (normalized from ``{slug}`` / ``{book-id}`` / etc.) → ``[^/]+``
+    - ``*`` (literal glob in matrix rows like ``Inbox/web/*.md``) → ``[^/]*``
+    """
     for entry in matrix_paths:
-        pattern = re.escape(entry).replace(r"\{\}", r"[^/]+")
+        pattern = (
+            re.escape(entry).replace(r"\{\}", r"[^/]+").replace(r"\*", r"[^/]*")
+        )
         if re.match(pattern + r"(/|$)", literal_path):
             return True
     return False

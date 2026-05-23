@@ -125,6 +125,8 @@ def test_to_markdown_empty():
     report = AuditReport()
     md = report.to_markdown()
     assert "Vault Audit" in md
+    # Italic-wrapped per the markdown render contract; substring match avoids
+    # coupling to the underscore wrapper.
     assert "No drift detected" in md
 
 
@@ -232,6 +234,18 @@ def test_path_covered_by_matrix():
     # because "foo/bar" has a slash. (Behavior: prefix-with-trailing-slash is
     # OK; deeper paths under matrix entry are considered covered.)
     assert _path_covered_by_matrix("Inbox/web/foo/bar", matrix)
+
+
+def test_path_covered_by_matrix_glob_star():
+    """Literal ``*`` in matrix entries (e.g. ``Inbox/web/*.md``) acts as a
+    one-segment wildcard, not a regex-escaped literal. Real §3 uses this
+    form for News Coo Inbox writes."""
+    matrix = {"Inbox/web/*.md"}
+    assert _path_covered_by_matrix("Inbox/web/foo.md", matrix)
+    assert _path_covered_by_matrix("Inbox/web/slug-123.md", matrix)
+    # Wrong extension or wrong path → not covered
+    assert not _path_covered_by_matrix("Inbox/web/foo.txt", matrix)
+    assert not _path_covered_by_matrix("KB/Raw/foo.md", matrix)
 
 
 def test_code_path_diff_flags_notable_absences(tmp_path: Path, layout_doc: Path):
