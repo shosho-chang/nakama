@@ -1,0 +1,305 @@
+{
+  "adr": "ADR-028",
+  "phase": "B sub-op 9 — flatten KB/Attachments (vault half)",
+  "code_pr": 656,
+  "executed_at": "2026-05-23T23:16:03Z",
+  "vault": "E:\\Shosho LifeOS",
+  "ops": [
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42160056",
+      "dst": "KB/Attachments/42160056",
+      "file_count": 8,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42160056.md",
+      "dst": "KB/Attachments/42160056.md",
+      "sha256": "6ea012e6955a4497351fedf74a49108f8345432c28331dd42718b6903d72de79",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42160056.pdf",
+      "dst": "KB/Attachments/42160056.pdf",
+      "sha256": "ff6fcdef4424345e2042d7441f53fdcf040a6c02893afbbd3a8c894142ecc20f",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42160300.md",
+      "dst": "KB/Attachments/42160300.md",
+      "sha256": "e915c8b7686f0bbf1c8210bc5ad351c858bf8fcd864de1c564aec2a22d6bad1c",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42161908.pdf",
+      "dst": "KB/Attachments/42161908.pdf",
+      "sha256": "8b45920415591249d323d46eb7876a3e34da506138416be3d0fa360bd7d9cd9c",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42161961.pdf",
+      "dst": "KB/Attachments/42161961.pdf",
+      "sha256": "b5f213bf2853afd6b15a0ffe059a2bb6e99eacd8445bb1ae3b47eae8ca248872",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42162419.pdf",
+      "dst": "KB/Attachments/42162419.pdf",
+      "sha256": "5bb852d63cd031329a57a2083648040eeb914ef145376fcf406db13383ab4f52",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42162464.pdf",
+      "dst": "KB/Attachments/42162464.pdf",
+      "sha256": "8c2de1e29bea2aa0b1527bd02d6541bc7a55ada76d5fb0545fc96360c8e0066c",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42164496.pdf",
+      "dst": "KB/Attachments/42164496.pdf",
+      "sha256": "aa007f102d82b10398e9800c5b2338b4c30c407f2ea2de41786ab795f54d31d3",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42164500.pdf",
+      "dst": "KB/Attachments/42164500.pdf",
+      "sha256": "ecb2ee77b560a910bd31c2272b528d5879d88bd8403f126414f2689a0d03a303",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42165942.pdf",
+      "dst": "KB/Attachments/42165942.pdf",
+      "sha256": "d40bb7bb0d9d56c4fa94bd4f204899fef8b5db388f8083255c55d00c6d8576f8",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42166459.md",
+      "dst": "KB/Attachments/42166459.md",
+      "sha256": "30baf66fac12d718c8feaae62ca294bf1aa2ad58ffaae2a9a27848dd7b5e2e22",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42166768.md",
+      "dst": "KB/Attachments/42166768.md",
+      "sha256": "d9ddee68f7392b3898c6470059d72ba84476196e6ab4c4c424c729401089dea5",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42167796",
+      "dst": "KB/Attachments/42167796",
+      "file_count": 0,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42167796.md",
+      "dst": "KB/Attachments/42167796.md",
+      "sha256": "8b7320887a74bc3716361d338c029274790e3ccfe2448b15e053620f9827f395",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42168172.md",
+      "dst": "KB/Attachments/42168172.md",
+      "sha256": "692e181dee41111b749407a11986b9f582f7af7bf410c4318ecd422ba1f95051",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42168216.pdf",
+      "dst": "KB/Attachments/42168216.pdf",
+      "sha256": "cfde7dba4a3265dbc1afcf7c53ede0e3daf69910be6022ad7d5fdda83163e369",
+      "verified": true
+    },
+    {
+      "op": "MOVE-DIR",
+      "src": "KB/Attachments/pubmed/42168782",
+      "dst": "KB/Attachments/42168782",
+      "file_count": 1,
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42168782.md",
+      "dst": "KB/Attachments/42168782.md",
+      "sha256": "938f15686d6d0e90a9a1182f628a87170d51ebda5a02cb9782c9ef86e0e32990",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42171971.pdf",
+      "dst": "KB/Attachments/42171971.pdf",
+      "sha256": "30487aa8a6702fca902064455e1b6dac63b94602c2000116f53fce5f9ca48821",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42174008.pdf",
+      "dst": "KB/Attachments/42174008.pdf",
+      "sha256": "467b04754efc89ab39ca9927a2da5b7ef532d4f58121bee0bbf3307368d63b1e",
+      "verified": true
+    },
+    {
+      "op": "MOVE-FILE",
+      "src": "KB/Attachments/pubmed/42174272.pdf",
+      "dst": "KB/Attachments/42174272.pdf",
+      "sha256": "43c280576dd568bb328ddec81488a207280048d47ebec62270392ea93adc8d8f",
+      "verified": true
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Attachments/42160056.md",
+      "pubmed_refs": 8,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Attachments/42168782.md",
+      "pubmed_refs": 1,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42160056.md",
+      "pubmed_refs": 4,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42160300.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42161908.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42161961.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42162419.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42162464.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42164496.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42164500.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42165942.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42166459.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42166768.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42167796.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42168172.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42168216.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42168782.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42171971.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42174008.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Sources/pubmed-42174272.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-22.md",
+      "pubmed_refs": 7,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-23.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "REWRITE-REFS",
+      "file": "KB/Wiki/Digests/PubMed/2026-05-24.md",
+      "pubmed_refs": 2,
+      "inbox_refs": 0
+    },
+    {
+      "op": "RECYCLE-DIR",
+      "path": "E:\\Shosho LifeOS\\KB\\Attachments\\pubmed"
+    }
+  ]
+}
