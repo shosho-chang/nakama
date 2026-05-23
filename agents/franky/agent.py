@@ -5,14 +5,17 @@
 2. 取得上週報告（供對比）
 3. 系統健康檢查
 4. 呼叫 Claude 產出週報
-5. 寫入 data/agent_reports/franky/weekly/YYYY-WW.md（repo）
-6. 記錄到 KB/log.md
-7. emit 事件給 Nami
+5. 跑 vault layout audit（ADR-028 §11 β），結果 append 到週報 body
+6. 寫入 data/agent_reports/franky/weekly/YYYY-WW.md（repo）
+7. 記錄到 KB/log.md
+8. emit 事件給 Nami
 
 ADR-028 §4 / Phase A PR-A2: outputs migrated from vault
 ``AgentReports/franky/`` + ``AgentReports/dev-backlog.md`` to repo
 ``data/agent_reports/franky/`` per E1 escalation decision.
 """
+
+from pathlib import Path
 
 from agents.base import BaseAgent
 from agents.franky.reporter import ReportGenerator, SystemHealthChecker
@@ -49,9 +52,16 @@ class FrankyAgent(BaseAgent):
         if health.status != "ok":
             self.logger.warning(f"系統健康狀態：{health.status} — {health.notes}")
 
-        # 4 & 5. 產出並寫入週報
+        # 4. 產出週報
         memory_ctx = self.get_memory_context()
         report = self.reporter.generate(backlog_raw, health, last_report, memory_context=memory_ctx)
+
+        # 5. Vault layout audit (ADR-028 §11 β) — append findings to body before write.
+        audit_md = self._run_vault_audit()
+        if audit_md:
+            report.body_markdown = report.body_markdown.rstrip() + "\n\n" + audit_md
+
+        # 6. 寫入週報
         report_path = self.reporter.write(report)
 
         # 6. KB log
@@ -130,3 +140,35 @@ class FrankyAgent(BaseAgent):
             return None
         last_path = reports[-1]
         return last_path.read_text(encoding="utf-8")
+
+    def _run_vault_audit(self) -> str | None:
+        """Run ``scripts.vault_layout_audit`` and return its markdown report.
+
+        Returns ``None`` on any failure (e.g. layout doc missing in CI sandbox);
+        weekly digest must not crash on audit issues. Errors-severity findings
+        are logged as warnings so they surface in monitoring without blocking
+        the report write.
+        """
+        try:
+            from scripts.vault_layout_audit import run_audit
+
+            repo_root = Path(__file__).resolve().parent.parent.parent
+            layout_doc = repo_root / "docs" / "VAULT-LAYOUT.md"
+            if not layout_doc.exists() or not self.vault.exists():
+                self.logger.info("vault audit 跳過（layout doc 或 vault root 不存在）")
+                return None
+            report = run_audit(self.vault, repo_root, layout_doc)
+            if report.has_errors:
+                self.logger.warning(
+                    "vault audit 偵測到 %d 個 error-severity finding",
+                    report.error_count,
+                )
+                kb_log(
+                    self.name,
+                    "warn",
+                    f"vault audit: {report.error_count} error, {report.warn_count} warn",
+                )
+            return report.to_markdown()
+        except Exception as e:  # noqa: BLE001 — audit must never block weekly digest
+            self.logger.warning(f"vault audit 失敗，跳過：{e}", exc_info=True)
+            return None
