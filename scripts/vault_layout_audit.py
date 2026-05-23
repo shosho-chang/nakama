@@ -533,7 +533,12 @@ def _check_promotion_attachments_fixed(repo_root: Path) -> bool | None:
 
 
 def _check_audit_stub(repo_root: Path) -> bool | None:
-    """D-audit-stub: is this script still a stub?"""
+    """D-audit-stub: is this script still a stub?
+
+    Sentinel is built at runtime to avoid the audit's own source containing
+    the literal we search for (self-reference loop). The stub's docstring
+    banner had a specific phrase that the real implementation does not.
+    """
     p = repo_root / "scripts" / "vault_layout_audit.py"
     if not p.exists():
         return None
@@ -541,7 +546,8 @@ def _check_audit_stub(repo_root: Path) -> bool | None:
         text = p.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
-    return "STUB IMPLEMENTATION" not in text
+    sentinel = chr(0x26A0) + chr(0xFE0F) + "  " + "STUB" + " IMPLEMENTATION"
+    return sentinel not in text
 
 
 def _check_files_pending(vault_root: Path) -> bool | None:
