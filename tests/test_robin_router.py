@@ -428,6 +428,88 @@ def test_read_source_passes_existing_annotations(client, vault, monkeypatch):
     assert "Hello world" in r.text
 
 
+def test_read_source_author_string_renders_intact(client, vault, monkeypatch):
+    """Bug fix: author as a single YAML string was iterated char-by-char and
+    joined with ``、``. Template now type-checks and renders strings intact."""
+    tc, mod = client
+    monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
+    inbox = vault / "Inbox" / "web"
+    inbox.mkdir(parents=True)
+    (inbox / "single-author.md").write_text(
+        '---\ntitle: "T"\nauthor: "Maiken Nedergaard"\n---\nbody',
+        encoding="utf-8",
+    )
+    r = tc.get("/robin/read", params={"file": "single-author.md"})
+    assert r.status_code == 200
+    assert "Maiken Nedergaard" in r.text
+    # Char-by-char rendering would emit "M、a、i、k、e、n" — must not occur
+    assert "M、a" not in r.text
+
+
+def test_read_source_author_list_still_joined(client, vault, monkeypatch):
+    """Multi-author YAML list keeps the original ``、`` join behaviour."""
+    tc, mod = client
+    monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
+    inbox = vault / "Inbox" / "web"
+    inbox.mkdir(parents=True)
+    (inbox / "multi-author.md").write_text(
+        '---\ntitle: "T"\nauthor:\n  - "Alice"\n  - "Bob"\n---\nbody',
+        encoding="utf-8",
+    )
+    r = tc.get("/robin/read", params={"file": "multi-author.md"})
+    assert r.status_code == 200
+    assert "Alice、Bob" in r.text
+
+
+def test_read_source_h1_uses_frontmatter_title(client, vault, monkeypatch):
+    """Bug fix: H1 header used raw ``{{ filename }}`` (including ``.md`` and
+    slug form). Now falls back to frontmatter.title when present."""
+    tc, mod = client
+    monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
+    inbox = vault / "Inbox" / "web"
+    inbox.mkdir(parents=True)
+    (inbox / "the-slug.md").write_text(
+        '---\ntitle: "Real Article Title"\n---\nbody',
+        encoding="utf-8",
+    )
+    r = tc.get("/robin/read", params={"file": "the-slug.md"})
+    assert r.status_code == 200
+    # H1 should contain the human title, not the slug filename
+    assert "<h1>Real Article Title</h1>" in r.text
+
+
+def test_read_source_h1_falls_back_to_filename_without_md(client, vault, monkeypatch):
+    """No frontmatter title → H1 uses filename with ``.md`` stripped."""
+    tc, mod = client
+    monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
+    inbox = vault / "Inbox" / "web"
+    inbox.mkdir(parents=True)
+    (inbox / "no-title.md").write_text("plain body, no frontmatter", encoding="utf-8")
+    r = tc.get("/robin/read", params={"file": "no-title.md"})
+    assert r.status_code == 200
+    assert "<h1>no-title</h1>" in r.text
+    assert "<h1>no-title.md</h1>" not in r.text
+
+
+def test_read_source_passes_article_dir_for_image_rewrite(client, vault, monkeypatch):
+    """Bug fix: relative image paths in markdown were treated as vault-root
+    relative, causing 404 on attachments living in article subdirs. Template
+    now receives ``article_dir`` so JS can prepend it to relative img src."""
+    tc, mod = client
+    monkeypatch.setattr(mod, "fetch_images", lambda p: 0)
+    inbox = vault / "Inbox" / "web"
+    inbox.mkdir(parents=True)
+    (inbox / "with-img.md").write_text(
+        "---\ntitle: T\n---\n![](attachments/foo/img-1.jpg)",
+        encoding="utf-8",
+    )
+    r = tc.get("/robin/read", params={"file": "with-img.md"})
+    assert r.status_code == 200
+    # JS constant must carry the vault-relative dir so the rewrite resolves
+    # ``attachments/foo/img-1.jpg`` → ``/robin/files/Inbox/web/attachments/foo/img-1.jpg``
+    assert "ARTICLE_DIR = 'Inbox/web'" in r.text
+
+
 def test_read_source_without_frontmatter(client, vault, monkeypatch):
     """frontmatter 為空 dict → frontmatter_raw 為空字串分支。"""
     tc, mod = client

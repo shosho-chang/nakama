@@ -14,7 +14,7 @@
   <!-- Header -->
   <div class="header">
     <div class="header-left">
-      <h1>{{ filename }}</h1>
+      <h1>{{ frontmatter.title if frontmatter and frontmatter.title else (filename | replace('.md','')) }}</h1>
       <span class="badge-read" id="readBadge" {% if not is_read %}style="display:none"{% endif %}>已閱讀</span>
       <span id="syncBadge" class="badge-sync"></span>
     </div>
@@ -48,9 +48,13 @@
         {% if frontmatter.description %}<div class="meta-desc">{{ frontmatter.description }}</div>{% endif %}
         {% if frontmatter.author %}
         <div class="meta-authors">
-          {%- for a in frontmatter.author -%}
-            {{ a | replace('[[','') | replace(']]','') }}{% if not loop.last %}、{% endif %}
-          {%- endfor -%}
+          {%- if frontmatter.author is string -%}
+            {{ frontmatter.author | replace('[[','') | replace(']]','') }}
+          {%- else -%}
+            {%- for a in frontmatter.author -%}
+              {{ a | replace('[[','') | replace(']]','') }}{% if not loop.last %}、{% endif %}
+            {%- endfor -%}
+          {%- endif -%}
         </div>
         {% endif %}
         <div class="meta-fields">
@@ -121,6 +125,10 @@
     // ── State ──
     const FILENAME = '{{ filename }}';
     const BASE = '{{ base | default("inbox") }}';
+    // Vault-relative dir holding this article (e.g. "Inbox/web"). JS prepends
+    // this to markdown image paths that are article-dir-relative so the
+    // /robin/files/ route resolves them against the right subdir.
+    const ARTICLE_DIR = '{{ article_dir | default("") }}';
     const SLUG = {{ slug | tojson }};
     const FRONTMATTER_RAW = {{ frontmatter_raw | tojson }};
     const IS_BILINGUAL = {{ is_bilingual | tojson }};
@@ -197,13 +205,22 @@
         return `![${filename}](/robin/files/${encodeURIComponent(filename)})`;
       });
 
-      // Convert vault-root-relative image paths → /robin/files/-prefixed URLs
-      // Matches standard markdown ![alt](KB/Attachments/.../img.png) where the
-      // path is neither an absolute URL nor already under /robin/files/.
+      // Convert relative image paths → /robin/files/-prefixed URLs.
+      // Matches standard markdown ![alt](path/to/img.png) where the path is
+      // neither an absolute URL nor already under /robin/files/. Relative
+      // paths (e.g. ``attachments/X/img.jpg``) are article-dir-relative in
+      // markdown, so prepend ARTICLE_DIR. Paths starting with a known
+      // vault-root segment (``KB/`` / ``Inbox/``) are treated as already
+      // vault-root-relative.
       md = md.replace(
         /!\[([^\]]*)\]\(((?!https?:|\/robin\/files\/|\/files\/|\/|#|data:)[^)\s]+\.(?:png|jpe?g|gif|webp|svg|avif|bmp))\)/gi,
         function(_, alt, relpath) {
-          var encoded = relpath.split('/').map(encodeURIComponent).join('/');
+          var fullPath = relpath;
+          var isVaultRoot = /^(KB|Inbox|Files|Journals|Attachments)\//.test(relpath);
+          if (!isVaultRoot && ARTICLE_DIR) {
+            fullPath = ARTICLE_DIR + '/' + relpath;
+          }
+          var encoded = fullPath.split('/').map(encodeURIComponent).join('/');
           return `![${alt}](/robin/files/${encoded})`;
         }
       );
