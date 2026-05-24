@@ -340,12 +340,22 @@ async def read_source(
     ann_set = ann_store.load(slug)
     annotations = [item.model_dump() for item in ann_set.items] if ann_set else []
 
+    # Article dir relative to vault root, posix form. Reader JS prepends this
+    # to relative image paths so ``![](attachments/X/img.jpg)`` — which is
+    # article-dir-relative in markdown — resolves to the right vault path at
+    # ``/robin/files/<article_dir>/attachments/X/img.jpg``.
+    try:
+        article_dir = file_path.parent.relative_to(get_vault_path()).as_posix()
+    except ValueError:
+        article_dir = ""
+
     return templates.TemplateResponse(
         request,
         "reader.html",
         {
             "filename": file,
             "base": base,
+            "article_dir": article_dir,
             "slug": slug,
             "content": body,
             "frontmatter": frontmatter,
