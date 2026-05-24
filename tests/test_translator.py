@@ -347,6 +347,39 @@ def test_split_off_reference_section_non_reference_heading_ignored():
     assert ref == ""
 
 
+def test_split_off_reference_section_compound_headings():
+    """``References and Notes`` (Science default) and similar compound forms
+    must match — every token is either a reference word or a connective."""
+    for heading in (
+        "References and Notes",
+        "Notes and References",
+        "Bibliography and Further Reading",
+        "Works Cited and Notes",
+        "References & Notes",
+        "References, Notes",
+        "Sources and Citations",
+    ):
+        text = f"Body.\n\n## {heading}\n\n1. cite"
+        body, ref = split_off_reference_section(text)
+        assert body == "Body.", f"Failed on compound heading: {heading}"
+        assert ref.startswith(f"## {heading}")
+
+
+def test_split_off_reference_section_partial_reference_word_no_match():
+    """Headings with a reference word + a non-reference, non-connective word
+    must NOT match (avoids false positives like ``Notes on Methodology``)."""
+    for heading in (
+        "Notes on Methodology",
+        "References to Future Work",
+        "Sources of Data",
+        "Reading List of Articles",
+    ):
+        text = f"Body.\n\n## {heading}\n\n* item"
+        body, ref = split_off_reference_section(text)
+        assert body == text, f"False positive on heading: {heading}"
+        assert ref == ""
+
+
 def test_translate_document_skips_reference_section(tmp_path):
     """References heading and everything after must pass through verbatim
     without LLM call; body before it is translated as normal."""

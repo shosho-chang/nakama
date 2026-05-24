@@ -77,33 +77,81 @@ def split_paragraphs(text: str) -> list[str]:
     return [p.strip() for p in paragraphs if p.strip()]
 
 
-# Reference-list heading whitelist — case-insensitive match against H2/H3 text
-# after stripping markdown ``#``, leading numbering (``1. ``, ``§``), and
-# trailing punctuation. Reference lists drop out of the translation input
-# because LLM-translating citation strings has no semantic value and burns
-# tokens (修修 2026-05-24).
-_REFERENCE_HEADINGS: frozenset[str] = frozenset(
-    h.casefold()
-    for h in (
+# Reference-list heading detection. A heading matches when, after stripping
+# markdown ``#`` / leading numbering / trailing punctuation, every token is
+# either in the reference whitelist below or a connective (``and``/``&``/``,``/
+# ``or``/``、``). This catches compound forms like ``References and Notes``
+# (Science journal default) or ``Bibliography & Further Reading`` without
+# enumerating every permutation.
+# 修修 2026-05-24: any article with a reference list, don't translate refs.
+_REFERENCE_TOKENS: frozenset[str] = frozenset(
+    t.casefold()
+    for t in (
         "references",
         "reference",
         "bibliography",
-        "works cited",
-        "literature cited",
+        "works",
+        "cited",
+        "literature",
         "sources",
+        "source",
         "citations",
+        "citation",
         "notes",
-        "further reading",
+        "note",
+        "further",
+        "reading",
+        # CJK reference-list heading words (no whitespace tokenization, matched
+        # against the heading as a whole via _CJK_REFERENCE_HEADINGS below).
+    )
+)
+_CJK_REFERENCE_HEADINGS: frozenset[str] = frozenset(
+    (
         "參考文獻",
         "文獻",
         "註釋",
         "注釋",
+        "參考",
+        "引用",
     )
 )
+_CONNECTIVE_TOKENS: frozenset[str] = frozenset(("and", "or", "&", ",", "、"))
 _REF_HEADING_RE = re.compile(
     r"^(?P<hashes>#{2,3})\s+(?:\d+[.)]\s+|§\s*)?(?P<text>[^\n#]+?)\s*[:：.。]?\s*$",
     re.MULTILINE,
 )
+
+
+def _normalise_heading(heading: str) -> str:
+    """Strip trailing punctuation / whitespace from a heading."""
+    return heading.strip().rstrip(":：.。 ").casefold()
+
+
+def _is_reference_heading(heading: str) -> bool:
+    """Return True if ``heading`` (already markdown-stripped) names a reference
+    list. A heading matches when every token is a reference word or a
+    connective. Single-word CJK headings match by exact lookup.
+    """
+    norm = _normalise_heading(heading)
+    if not norm:
+        return False
+    if norm in _CJK_REFERENCE_HEADINGS:
+        return True
+    # ``References and Notes`` → ["references", "and", "notes"]. Split on
+    # whitespace and ASCII punctuation that acts as a connective.
+    tokens = re.split(r"[\s,/&]+", norm)
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return False
+    has_ref_word = False
+    for tok in tokens:
+        if tok in _REFERENCE_TOKENS:
+            has_ref_word = True
+        elif tok in _CONNECTIVE_TOKENS:
+            continue
+        else:
+            return False
+    return has_ref_word
 
 
 def split_off_reference_section(text: str) -> tuple[str, str]:
@@ -114,11 +162,10 @@ def split_off_reference_section(text: str) -> tuple[str, str]:
     content before that heading. Returns ``(text, "")`` if no reference
     heading is detected.
 
-    See ``_REFERENCE_HEADINGS`` for the recognised whitelist.
+    See ``_is_reference_heading`` for the detection rule.
     """
     for match in _REF_HEADING_RE.finditer(text):
-        heading_text = match.group("text").strip().casefold()
-        if heading_text in _REFERENCE_HEADINGS:
+        if _is_reference_heading(match.group("text")):
             return text[: match.start()].rstrip(), text[match.start() :]
     return text, ""
 
