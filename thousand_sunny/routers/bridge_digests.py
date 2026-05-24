@@ -100,6 +100,7 @@ async def digests_landing(request: Request, nakama_auth: str | None = Cookie(Non
     idx = _indexer()
     latest = idx.latest_per_type()
     timeline = idx.last_n_days(n=7)
+    conflicts = idx.list_conflict_files()
 
     hero_cards = [
         {
@@ -116,6 +117,7 @@ async def digests_landing(request: Request, nakama_auth: str | None = Cookie(Non
         {
             "hero_cards": hero_cards,
             "timeline": timeline,
+            "conflicts": conflicts,
             "today": today_taipei().isoformat(),
             "type_label": _TYPE_LABEL,
             "asset_version": _SHOSHO_ASSET_VERSION,

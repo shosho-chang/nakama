@@ -304,3 +304,35 @@ class TestAsk:
     def test_landing_has_ask_cta(self, client):
         r = client.get("/bridge/digests")
         assert "/bridge/digests/ask" in r.text
+
+
+class TestConflictBanner:
+    def test_no_banner_when_no_conflicts(self, client):
+        r = client.get("/bridge/digests")
+        assert r.status_code == 200
+        assert "Syncthing 衝突檔" not in r.text
+        assert 'role="alert"' not in r.text
+
+    def test_banner_appears_with_count_and_path(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("WEB_PASSWORD", raising=False)
+        monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+        monkeypatch.setenv("DISABLE_ROBIN", "1")
+        monkeypatch.setenv("NAKAMA_DOC_INDEX_DB_PATH", str(tmp_path / "x.db"))
+
+        pm = tmp_path / "KB" / "Wiki" / "Digests" / "PubMed"
+        pm.mkdir(parents=True)
+        (pm / "2026-05-24.md").write_text(PUBMED_SAMPLE, encoding="utf-8")
+        (pm / "2026-05-24.sync-conflict-20260524-101530-WIN.md").write_text("x", encoding="utf-8")
+
+        import thousand_sunny.app as app_module
+        import thousand_sunny.routers.bridge_digests as bd_module
+
+        importlib.reload(bd_module)
+        importlib.reload(app_module)
+        c = TestClient(app_module.app)
+        r = c.get("/bridge/digests")
+        assert r.status_code == 200
+        assert "digest-conflict-banner" in r.text
+        assert "Syncthing 衝突檔 · 1" in r.text
+        assert "2026-05-24.sync-conflict-20260524-101530-WIN.md" in r.text
+        assert "WIN" in r.text

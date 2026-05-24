@@ -118,6 +118,32 @@
     border: 1px solid var(--sho-accent, #ff7a18);
   }
   .digest-ask-cta:hover { background: var(--sho-accent, #ff7a18); color: #000; }
+  .digest-conflict-banner {
+    margin: var(--sho-space-4, 16px) 0;
+    padding: var(--sho-space-3, 12px) var(--sho-space-4, 16px);
+    border: 1px solid #d04040;
+    border-left-width: 3px;
+    background: rgba(208, 64, 64, 0.06);
+    color: #e8a0a0;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .digest-conflict-banner-title {
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    color: #ffb0b0;
+  }
+  .digest-conflict-banner ul { margin: 6px 0 0 0; padding-left: 20px; }
+  .digest-conflict-banner li { margin-bottom: 2px; font-family: var(--sho-mono, ui-monospace, monospace); font-size: 12px; }
+  .digest-conflict-banner .device { color: var(--sho-muted, #888); }
+  .digest-conflict-banner .hint {
+    margin-top: 8px;
+    color: var(--sho-muted, #888);
+    font-size: 12px;
+  }
 </style>
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -129,6 +155,22 @@
     <span class="pg-stamp">TAIPEI · {{ today }}</span>
     <a class="digest-ask-cta" href="/bridge/digests/ask">Ask →</a>
   </section>
+
+  {% if conflicts %}
+    <section class="digest-conflict-banner" role="alert">
+      <div class="digest-conflict-banner-title">⚠ Syncthing 衝突檔 · {{ conflicts | length }}</div>
+      <div>偵測到 vault 內有兩裝置同時編輯產生的 conflict file。請進 vault 手動 review 後刪除：</div>
+      <ul>
+        {% for c in conflicts[:5] %}
+          <li>{{ c.relative_path }} <span class="device">· {{ c.device }} · {{ c.conflict_timestamp }}</span></li>
+        {% endfor %}
+        {% if conflicts | length > 5 %}
+          <li>… 還有 {{ conflicts | length - 5 }} 個</li>
+        {% endif %}
+      </ul>
+      <div class="hint">詳細處理流程見 <code>docs/runbooks/syncthing-folder-types.md</code>。</div>
+    </section>
+  {% endif %}
 
   <section class="digest-hero-zone">
     {% for card in hero_cards %}

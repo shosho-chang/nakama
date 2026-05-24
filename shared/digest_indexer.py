@@ -32,8 +32,31 @@ _DIR_FOR: dict[str, str] = {
 }
 
 _DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
+# Syncthing conflict file pattern: `<basename>.sync-conflict-YYYYMMDD-HHMMSS-DEVICE.<ext>`
+# Reference: https://docs.syncthing.net/users/syncing.html#conflicting-changes
+_SYNC_CONFLICT_RE = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2})\.sync-conflict-"
+    r"(?P<ts>\d{8}-\d{6})-(?P<device>[^.]+)\.md$"
+)
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
 _BLOCKQUOTE_RE = re.compile(r"^> (.+?)$", re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class ConflictFile:
+    """A Syncthing-generated `*.sync-conflict-*.md` file within a digest dir.
+
+    Surfaces D2 silent-data-loss risk (ADR-030 Gemini audit / Issue #696):
+    when two devices edit the same digest while offline, Syncthing keeps the
+    later write as a conflict file instead of merging. The Bridge landing
+    banner uses this to flag conflicts so the owner doesn't lose notes.
+    """
+
+    type: str  # "pubmed" | "ai" — same canonical slug as DigestEntry
+    original_date: str  # YYYY-MM-DD of the conflicted-with digest
+    relative_path: str  # POSIX, vault-relative
+    conflict_timestamp: str  # raw YYYYMMDD-HHMMSS from filename
+    device: str  # short device name Syncthing tagged the conflict with
 
 
 @dataclass(frozen=True)
@@ -96,6 +119,33 @@ class DigestIndexer:
         if not self._file_for(type_, date_).exists():
             raise DigestNotFoundError(f"digest not found: {type_}/{date_}")
         return self._entry(type_, date_)
+
+    def list_conflict_files(self) -> list[ConflictFile]:
+        """Return all `*.sync-conflict-*.md` files under the digest directories.
+
+        Issue #696. Empty list when none — the common case. Newest conflict
+        first (by timestamp encoded in the filename).
+        """
+        out: list[ConflictFile] = []
+        for t in DIGEST_TYPES:
+            d = self._dir_for(t)
+            if not d.exists():
+                continue
+            for p in d.iterdir():
+                m = _SYNC_CONFLICT_RE.match(p.name)
+                if not m:
+                    continue
+                out.append(
+                    ConflictFile(
+                        type=t,
+                        original_date=m.group("date"),
+                        relative_path=f"{_DIR_FOR[t]}/{p.name}",
+                        conflict_timestamp=m.group("ts"),
+                        device=m.group("device"),
+                    )
+                )
+        out.sort(key=lambda c: c.conflict_timestamp, reverse=True)
+        return out
 
     def load_text(self, type_: str, date_: str) -> str:
         """Return the digest's full markdown body (no frontmatter)."""
