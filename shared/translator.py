@@ -282,6 +282,18 @@ def format_bilingual_markdown(originals: list[str], translations: list[str]) -> 
     return "\n\n".join(pairs)
 
 
+# Pure-image paragraphs (one or more ``![alt](src)`` with only whitespace
+# between) carry no translatable text — sending them to LLM wastes tokens and
+# the echo gets wrapped in a blockquote, rendering the image twice in the
+# reader. Detect and passthrough.
+_IMAGE_ONLY_RE = re.compile(r"^\s*(?:!\[[^\]]*\]\([^)\s]+\)\s*)+$")
+
+
+def _is_image_only_segment(segment: str) -> bool:
+    """True if the segment is one or more markdown images and nothing else."""
+    return bool(_IMAGE_ONLY_RE.match(segment))
+
+
 def translate_document(
     text: str,
     *,
@@ -304,22 +316,40 @@ def translate_document(
         # Pure-reference doc or empty body — return as-is (no LLM call).
         return text
 
-    if ref_section:
-        logger.info(
-            f"開始翻譯：{len(segments)} 段落，batch_size={batch_size}，"
-            f"reference 區塊 {len(ref_section)} 字元已跳過"
-        )
-    else:
-        logger.info(f"開始翻譯：{len(segments)} 段落，batch_size={batch_size}")
-    glossary = load_glossary()
+    # Partition: image-only segments pass through verbatim; text segments go
+    # to the LLM. ``image_passthrough`` keeps the original index so the final
+    # output preserves segment ordering.
+    text_segments: list[str] = []
+    text_indices: list[int] = []
+    image_passthrough: dict[int, str] = {}
+    for i, seg in enumerate(segments):
+        if _is_image_only_segment(seg):
+            image_passthrough[i] = ""  # marker — formatter renders no blockquote
+        else:
+            text_segments.append(seg)
+            text_indices.append(i)
 
-    all_translations: list[str] = []
-    for batch_start in range(0, len(segments), batch_size):
-        batch = segments[batch_start : batch_start + batch_size]
+    skip_msg = ""
+    if image_passthrough:
+        skip_msg += f"，image-only 段 {len(image_passthrough)} 段已跳過"
+    if ref_section:
+        skip_msg += f"，reference 區塊 {len(ref_section)} 字元已跳過"
+    logger.info(f"開始翻譯：{len(text_segments)} 段落，batch_size={batch_size}{skip_msg}")
+
+    glossary = load_glossary()
+    text_translations: list[str] = []
+    for batch_start in range(0, len(text_segments), batch_size):
+        batch = text_segments[batch_start : batch_start + batch_size]
         translations = translate_segments(batch, model=model, glossary=glossary)
-        all_translations.extend(translations)
-        done = min(batch_start + batch_size, len(segments))
-        logger.info(f"  翻譯進度：{done}/{len(segments)} 段")
+        text_translations.extend(translations)
+        done = min(batch_start + batch_size, len(text_segments))
+        logger.info(f"  翻譯進度：{done}/{len(text_segments)} 段")
+
+    # Reassemble translations in original segment order.
+    all_translations: list[str] = [""] * len(segments)
+    for slot, idx in enumerate(text_indices):
+        all_translations[idx] = text_translations[slot]
+    # image_passthrough already maps idx → "" (no-blockquote marker).
 
     bilingual = format_bilingual_markdown(segments, all_translations)
     if ref_section:
