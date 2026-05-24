@@ -1,13 +1,23 @@
 # ADR-031: Project Workspace Migration to Bridge — Tier C of Vault-as-Substrate
 
-**Date:** 2026-05-24 (v1)
-**Status:** Proposed (awaiting panel triangulation)
+**Date:** 2026-05-24 (v1) · 2026-05-24 (v2 post-panel)
+**Status:** Accepted
 **Deciders:** shosho-chang, Claude Opus 4.7
 **Related:** [ADR-017](ADR-017-annotation-kb-integration.md) (Annotation store), [ADR-021](ADR-021-annotation-substance-store-and-brook-synthesize.md) (Brook synthesize HITL), [ADR-027](ADR-027-brook-scope-reduction-to-scaffold-and-repurpose.md) (Brook scope; referenced nested schema but never delivered), [ADR-028](ADR-028-vault-layout-consolidation.md) (vault layout), [ADR-029](ADR-029-bridge-ia-restructure.md) (Bridge IA dual-axis), [ADR-030](ADR-030-vault-as-substrate-read-strategy.md) (D2/D3/D4 substrate routing), [`VAULT-LAYOUT.md`](../VAULT-LAYOUT.md), [`CONTENT-PIPELINE.md`](../../CONTENT-PIPELINE.md)
 
 **Tier B (deferred):** LifeOS Dashboard mirror (daily-note task aggregation / weekly plan / OKR rollup) — uses the same D2 FS-direct + frontmatter-filter pattern; separate ADR when scope opens.
 
-> **v1 grill freeze:** 2026-05-24 session with 修修 walked Q1–Q9 with rejected alternatives captured in §Open questions. **Panel review (Codex GPT-5 + Gemini 2.5 Pro) is pending; v2 trail will land at top of this doc post-integration.**
+> **v2 audit trail (2026-05-24):** Multi-agent panel review (Claude + Codex GPT-5 + Gemini 2.5 Pro) ran on v1. Owner was asleep; panel results auto-integrated per [`feedback_panel_triangulated_judgment`](../../memory/claude/feedback_panel_triangulated_judgment.md).
+>
+> - **Codex** caught 5 factual errors in v1: (a) `蛋白質攝取量.md` is `content_type: research`, not youtube — D9.c slim would silently break it; (b) `Brook 風格訓練.md` is `type: agent-workspace` (filtered by type, not name heuristic); (c) hook math wrong (75-200 字/min × 30-60s = 37.5-200 字, not 500); (d) live `肌酸的妙用.md` uses legacy `%%KW-START%%` markers (migration must cover both families); (e) `~600 tasks vault-wide` claim is false (actual: 11 task files).
+> - **Gemini** added 4 high-merit pushbacks: (a) Mandarin speaking rate is 200-300 字/min not 75-200 → 30-60s ≈ 100-250 字, soft cap ≤300 字; (b) Simplified-Chinese leakage hazard in Sonnet 4.6 — persona prompts must include Traditional Chinese instruction; (c) overwriting reviews on re-run destroys prompt-iteration data → reviews should be list-of-versioned-objects; (d) zero-shot persona prompts will produce shallow output — PR2 must ship with scoring rubric + few-shot example.
+> - **Two architectural pushes adopted** with code changes: D9.c reverted to keep all 4 content_types; hook cap tightened to ≤300 字; migration script handles both marker families.
+> - **Three pushes deferred to PR2**: persona prompt fortification (rubric + few-shot + zh-Hant guard), publish-anyway persisted decision, reviews list-of-versioned-objects schema (PR1 indexer is dual-shape tolerant to enable seamless PR2 flip).
+> - **Two pushes rejected** with rationale: hybrid Obsidian markdown buttons (would re-introduce Syncthing reparse footprint Tier C is solving), Electron-bundled offline mode (out of scope; Obsidian read remains the offline escape hatch).
+>
+> Owner adjudicated 20 distinct push-back items: 11 adopted in v2 (8 with PR1 code changes, 3 with PR2 commitment), 3 deferred with documented follow-up, 2 rejected with rationale, 4 subsumed.
+>
+> Audits preserved at [`docs/research/2026-05-24-codex-adr031-audit.md`](../research/2026-05-24-codex-adr031-audit.md) and [`docs/research/2026-05-24-gemini-adr031-audit.md`](../research/2026-05-24-gemini-adr031-audit.md). Integration matrix at [`docs/research/2026-05-24-adr031-panel-integration-matrix.md`](../research/2026-05-24-adr031-panel-integration-matrix.md).
 
 ---
 
@@ -195,10 +205,10 @@ Tabs (in order): **Brief · Research · Title & Thumbnail · Hook · Script · R
 
 **γ added**:
 - `one_sentence` — lifted from legacy `## 👄 One Sentence About This Video` H2 prose (D9.d)
-- `hook_text` — 30-60s spoken hook (≤500 字 soft cap, Q8 hook duration freeze)
+- `hook_text` — 30-60s spoken hook (**≤300 字 soft cap, v2 panel-tuned**; spoken Mandarin at 200-300 字/min → 30-60s ≈ 100-250 字, ≤300 字 leaves buffer without becoming a 2-minute monologue)
 - `title_candidates: list[str]` + `thumbnail_concept: str` — CTR pair, merged tab (D4 Tab 3)
-- `reviews: {storyteller: {...}, coach: {...}}` — advisory persona reviews (D8)
-- `pomodoro: {est_total, actual_total}` — denormalized cache for `/bridge/projects` index list
+- `reviews: {storyteller: {...}, coach: {...}}` — advisory persona reviews (D8) **— v1 dict-per-persona shape; v2 panel push for list-of-versioned-objects deferred to PR2. PR1 indexer is dual-shape tolerant.**
+- `pomodoro: {est_total, actual_total}` — denormalized cache for `/bridge/projects` index list. **Recomputed on Pomodoro completion or manual +1🍅 only — never per-second tick (v2 schema doc clarification per Codex push).**
 
 Full schema in [`docs/schemas/project-frontmatter-nested.md`](../schemas/project-frontmatter-nested.md). State-separation rationale (ADR-030 D4) in §3 of that doc.
 
@@ -240,13 +250,17 @@ Dock sits at the bottom of every tab on `/bridge/projects/{slug}`:
 
 **Personas (Q3 pivot from style-mimic to expert-advisor):**
 
+> **v2 PR2 hardening requirements (panel push-back from Gemini):** Persona prompts MUST ship in PR2 with (a) a 1-5 scoring rubric (each score level defined by anchor examples), (b) at least one few-shot example showing the ideal review format, and (c) an explicit Traditional Chinese / Taiwan-locale instruction to prevent Sonnet 4.6 Simplified-Chinese leakage. **The v1 prompts below are the prose specification, NOT the ship-ready prompt.** PR2 acceptance gate enforces all three.
+
 #### Master Storyteller
 
 > 你是世界級的故事教練。你的工作是判斷一篇文章 / 影片腳本 / Podcast 開場 / 書評 /
 > 個人散文，是否能在 30 秒內勾住讀者，並讓他們**自願**讀完全部。
 >
+> **語言要求：請務必使用台灣慣用的正體中文回覆，避免使用簡體字或中國大陸用語。** (v2)
+>
 > 你關心的是：
-> - **Hook 強度**：開場 30–60 秒（口語約 75–200 字）有沒有立刻製造「我必須知道結局」的張力？
+> - **Hook 強度**：開場 30–60 秒（口語約 100–250 字，台灣慣用語速 200–300 字/分）有沒有立刻製造「我必須知道結局」的張力？(v2 corrected from 75–200)
 > - **敘事弧線**：是否有清晰的 setup → confrontation → resolution 結構，即使在短內容裡？
 > - **情緒節奏**：每 2–3 段是否有情緒峰谷變化，避免單調？
 > - **讀者拉力**：每段結尾是否埋下「下一段一定要看」的鉤子？
@@ -257,10 +271,14 @@ Dock sits at the bottom of every tab on `/bridge/projects/{slug}`:
 > - 文法是否完美（那是 Writing Coach 的工作）
 >
 > 給 1–5 分，附一段判斷摘要，列出 3–7 條具體可執行的建議（不要寫 "make it more engaging" 這種空話，要寫 "把第 2 段第 1 句的『非常重要』改成『關乎你下一個十年的健康』"）。
+>
+> _(PR2 ships with: rubric defining 1/2/3/4/5 score anchors + 1 few-shot review example)_
 
 #### Writing Coach
 
 > 你是世界級的寫作教練。你的工作是判斷一篇文章 / 腳本 / Podcast 開場的**句子層次品質**。
+>
+> **語言要求：請務必使用台灣慣用的正體中文回覆，避免使用簡體字或中國大陸用語。** (v2)
 >
 > 你關心的是：
 > - **句長變化**：長短句交錯，避免每句都是 25 字。
@@ -275,6 +293,8 @@ Dock sits at the bottom of every tab on `/bridge/projects/{slug}`:
 > - 是否符合作者過去風格
 >
 > 給 1–5 分，附一段判斷摘要，列出 3–7 條具體可執行的建議。
+>
+> _(PR2 ships with: rubric + few-shot example, same as Master Storyteller)_
 
 **Architecture:**
 
@@ -302,14 +322,15 @@ Dock sits at the bottom of every tab on `/bridge/projects/{slug}`:
 
 ### D9: Migration script `scripts/migrate_projects_to_tier_c.py` (PR1 bundle, with 6 sub-decisions)
 
-Sub-decisions per Q9:
+Sub-decisions per Q9 (with v2 panel corrections in **bold**):
 
 - **a. NFC-normalized title as slug** — cross-platform safety; macOS uses NFD for CJK filenames, Win/Linux/VPS use NFC. Migration script calls `unicodedata.normalize('NFC', stem)` before all comparisons (aligns with `scripts/vault_layout_audit.py` per VAULT-LAYOUT D-unicode-norm).
 - **b. `Projects/{title}.md` filename unchanged** — no rename; reuse Obsidian existing wikilinks; reuse TaskNotes `projects: [[link]]` references.
-- **c. `content_type` slim to `Literal["youtube", "podcast"]`** — drop `blog` and `research`. Existing vault has zero such projects (verified ls 2026-05-24); the templates `project_blog.md.tpl` and `project_research.md.tpl` are removed from `shared/lifeos_templates/` in PR1.
-- **d. `one_sentence` lifted from H2 prose to frontmatter** — migration script regex-matches `^##\s+👄[^\n]*\n+([\s\S]*?)(?=\n##|\n```|\Z)` and writes the captured prose to `one_sentence:` frontmatter (multiline YAML block scalar). H2 heading removed from body to avoid duplicate display.
-- **e. Migration script bundled with PR1** — keeps the ADR/schema/code/migration coherent in one reviewable unit.
+- **c. `content_type` retained as `Literal["youtube", "blog", "research", "podcast"]` (v2 REVERSED from v1).** Codex panel audit verified `蛋白質攝取量.md` has `content_type: research` in live vault + `tests/test_lifeos_writer.py:285-287` asserts blog/research/podcast defaults + `tests/test_gateway_handlers.py:180/227` exercises Nami creating a research project. Slimming would silently break 2 of 3 live projects + 4 callers. Tier C does **not** modify the type system; legacy `research` projects retain their type. Future cleanup ADR can revisit when use case actually opens.
+- **d. `one_sentence` lifted from H2 prose to frontmatter** — migration script regex-matches `^##\s+👄[^\n]*\n+([\s\S]*?)(?=\n##|\Z)` (both Video and Episode Sentence variants) and writes the captured prose to `one_sentence:` frontmatter (multiline YAML block scalar). H2 heading removed from body to avoid duplicate display.
+- **e. Migration script bundled with PR1** — keeps the ADR/schema/code/migration coherent in one reviewable unit. **Migration filters on `type: project` (not name heuristic, per v2 panel push) — `Brook 風格訓練.md` is `type: agent-workspace` and is filtered by type-check alone; no `--skip-meta` name-heuristic flag needed.**
 - **f. Schema doc bundled with PR1** — closes the 404 reference in VAULT-LAYOUT line 162.
+- **g. Migration handles BOTH marker families (v2 added per Codex panel finding)** — `%%KW-START%%`/`%%KW-END%%` (legacy emitted by `肌酸的妙用.md` line 296+375) AND `%%agent-zoro-keywords-start%%`/`%%agent-zoro-keywords-end%%` (canonical per VAULT-LAYOUT §4 PR-A3). Both regex patterns in `_LEGACY_MARKER_BLOCKS`.
 
 **Script invocation:**
 
@@ -320,11 +341,14 @@ python -m scripts.migrate_projects_to_tier_c --dry-run
 # Apply to specific project
 python -m scripts.migrate_projects_to_tier_c --write --target 肌酸的妙用
 
-# Apply to all (skips already-migrated, warns on meta projects like Brook 風格訓練)
-python -m scripts.migrate_projects_to_tier_c --write --skip-meta
+# Apply to all (type-filter excludes agent-workspace files automatically)
+python -m scripts.migrate_projects_to_tier_c --write
+
+# Custom vault root (e.g., from another OS or test fixture)
+python -m scripts.migrate_projects_to_tier_c --write --vault "E:/Shosho LifeOS"
 ```
 
-Idempotent: detects "already migrated" by checking `one_sentence` key presence in frontmatter.
+Idempotent: detects "already migrated" by checking `one_sentence` key presence in frontmatter. Files with `type != project` skipped by type filter alone.
 
 ### D10: Brief flow via Nami Slack (existing) — Web bidirectional edit
 
@@ -346,15 +370,17 @@ Nami flow (existing, no change):
 
 **No Nami code change in PR1** — the existing bootstrap path produces α-only frontmatter, which Web reads tolerantly (γ fields optional). PR1 migration script back-fills γ for the 2 existing projects.
 
-### D11: Backwards compatibility + meta-project handling
+### D11: Backwards compatibility + meta-project handling (v2 revised)
 
 | Existing file | Action |
 |---|---|
-| `Projects/肌酸的妙用.md` | Migrate (PR1 smoke seed; gold standard) |
-| `Projects/蛋白質攝取量.md` | Migrate (PR1 batch) |
-| `Projects/Brook 風格訓練.md` | **Skip** — meta-project (Brook's training corpus, not a real content piece). `--skip-meta` flag flags any project whose name starts with "Brook " or has frontmatter `area: meta` (not currently present; safety fallback for future meta projects). |
+| `Projects/肌酸的妙用.md` | Migrate (PR1 smoke seed; `content_type: youtube`, lifts existing `## 👄 One Sentence`) |
+| `Projects/蛋白質攝取量.md` | Migrate (PR1 batch; **retains `content_type: research`** + `target_date:` field; no `## 👄` section so `one_sentence` initialized empty) |
+| `Projects/Brook 風格訓練.md` | **Skip** — `type: agent-workspace`, not a project. Migration script's `type` filter handles this; no name heuristic. |
 
-**No old content_type breaks** — vault scan confirmed zero `blog`/`research` projects. The Python writer drops support; if a hypothetical future file with these content_types appears, `render_project` raises `ValueError`. Migration script warns + skips.
+**No `content_type` breaks** — D9.c v2 revert ensures all four legacy types (`youtube`/`blog`/`research`/`podcast`) keep working. Existing tests in `tests/test_lifeos_writer.py` + `tests/test_gateway_handlers.py` continue to pass unchanged.
+
+**Migration backup**: every `--write` invocation copies originals to `.tmp/project-migration-backup-{YYYY-MM-DD-HHMMSS}/` before write. Reversible if migration produces wrong output.
 
 ---
 
@@ -376,9 +402,11 @@ Nami flow (existing, no change):
 
 - **Loss of Obsidian-side interactive buttons** — 修修 previously could trigger KB Research from inside the Obsidian Project page. Post-Tier C, that interaction lives on Web only. Acceptable trade per 修修's framing (WebUI 提取出來便於互動), but worth noting.
 - **D2 path drift risk** — if `shared.lifeos_writer.PROJECTS_DIR` is renamed without updating `project_indexer.py`, Bridge silently 404s on every project. Mitigation: both modules import from a shared constant (added in PR1).
-- **Schema migration is destructive on `target_date`** — irreversible deletion of the field. Mitigation: zero existing files have it (verified); migration script preserves backup at `.tmp/project-migration-backup-{timestamp}/` on every write.
+- **Schema migration preserves `target_date`** (v2 revised) — for legacy `research` projects (`蛋白質攝取量.md`) the field is left intact; new writes don't add it but reads tolerate it. Backup at `.tmp/project-migration-backup-{timestamp}/` on every `--write`.
 - **Web Pomodoro state non-persistent across reload** — known v1 limitation; revisit if friction reported.
-- **Two writers to TaskNotes Tasks `timeEntries[]`** (Web + Obsidian plugin) — collision probability low (modeled as 0 for now); if observed, escalate to write-locking pattern.
+- **Two writers to TaskNotes Tasks `timeEntries[]`** (Web + Obsidian plugin) — collision probability low (modeled as 0 for single-user system per [`user_vault_edit_pattern_no_concurrent`](../../memory/claude/user_vault_edit_pattern_no_concurrent.md)); **v2 panel pushed for mtime/hash guard** — deferred to PR2 follow-up issue.
+- **Bridge availability becomes SPOF for interactive flows (v2 added per Gemini)** — when VPS Bridge is down: vault md remains canonical, Obsidian still works for prose edit + frontmatter edit. Only Web-driven interactions (timer auto-tick, LLM review, in-Web frontmatter quick-edit) are blocked. The offline escape hatch is "open the md in Obsidian and edit frontmatter directly." Acknowledged trade — not addressed by an Electron bundle in PR1.
+- **TaskNotes plugin schema is implicit contract (v2 added per Gemini)** — if the plugin updates its frontmatter shape, `project_writer.append_timeentry` would silently write wrong shape. Mitigation deferred: known follow-up to formalize task frontmatter schema. PR1 ships informal-contract shape that matches today's plugin (`timeEntries: [{startTime, endTime}]`).
 - **Persona prompts hand-crafted, not iterated** — first-pass quality may surface in feedback. PR2 will include a prompt iteration log; mitigation is the "重跑" button + per-call audit log for prompt-tuning data.
 - **No version history of reviews in frontmatter** — overwrite-on-rerun. If 修修 wants prompt comparison, must consult `state.db api_calls`.
 - **Bases plugin templates referenced** in current `project_youtube.md.tpl` — even after strip, any lingering `base` block in older un-migrated files (none in vault today) would still fail render. Migration script's idempotency check covers this only if migrated; manual cleanup needed for future stragglers.
@@ -457,16 +485,18 @@ Title&Thumbnail merged into one tab (修修 push-back): "我想把 title 跟 thu
 - **5 tabs** (Brief / Research / Hook+Title / Script / Publish) — too coarse; Review folded into Script loses re-run granularity; CTR pair gets squashed.
 - **9 tabs** (split Title / Thumbnail / Description / Tags / Distribution) — over-granularized; Distribution / Tags belong inside Publish tab.
 
-### Q8 — Persona prompt design
-**Domain-agnostic chosen.** Hook duration **30–60 seconds** (修補's habit), hook_text **≤500 字** soft cap (75–200 字 spoken at 75–200 字/min + buffer). Two personas only.
+### Q8 — Persona prompt design (v2 hook-math corrected)
+**Domain-agnostic chosen.** Hook duration **30–60 seconds** (修修's habit). **Hook_text soft cap ≤300 字 (v2 panel-tuned, Gemini-grounded)**: Taiwanese Mandarin spoken at 200-300 字/min → 30-60s ≈ **100-250 字**; ≤300 字 cap leaves buffer without becoming a 2-minute monologue. Two personas only.
 
 **Rejected:**
 - **Health-Wellness-specific personas** — 修修 push-back: "不一定只專精在 Health and Wellness YouTube，我也寫過很多 book review 以及個人的成長故事."
 - **15-second hook** (from 2026 generic best-practice web search) — 修修 push-back: "Hook 15 秒太少，大概 30~60 秒，這是我的習慣." Generic best-practice doesn't override author's stated habit.
+- **≤500 字 hook cap** (v1) — Codex+Gemini panel both pushed back. At ≤500 字 the hook becomes a 2-minute spoken monologue, far past the 30-60s habit. Adopted ≤300 字 in v2.
+- **75-200 字/min speaking rate** (v1) — Codex+Gemini both corrected. Taiwanese Mandarin is 200-300 字/min (TED Taipei / popular health YT channel reference samples).
 - **3+ personas** (SEO / Hook-only / Audience / Fact-check) — covered elsewhere or deferred; see D8 rationale.
 
 ### Q9 — Migration sub-decisions
-All 6 accepted: a (NFC slug), b (filename unchanged), c (content_type slim), d (one_sentence lift), e (script with PR1), f (schema doc with PR1). Migration script details in D9.
+**v2 revised**: a (NFC slug ✓), b (filename unchanged ✓), **c (content_type slim REVERTED — keep all 4)**, d (one_sentence lift ✓), **e (script with PR1; `--skip-meta` flag REMOVED — type filter handles it)**, f (schema doc with PR1 ✓), **g new (handle BOTH marker families)**. Migration script details in D9.
 
 ---
 

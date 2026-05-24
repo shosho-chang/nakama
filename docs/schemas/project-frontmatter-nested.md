@@ -1,9 +1,9 @@
 # Project Frontmatter — Nested Schema (γ)
 
-**Status:** Active (Tier C bootstrap, 2026-05-24)
+**Status:** Active (PR1 bundle, pending merge — modules land with ADR-031 PR1)
 **Authority:** [`ADR-031-project-workspace-migration.md`](../decisions/ADR-031-project-workspace-migration.md)
-**Authoring code:** [`shared/lifeos_writer.py:render_project`](../../shared/lifeos_writer.py) (Python bootstrap) · `thousand_sunny/routers/bridge_projects.py` (Web mutations, PR1)
-**Consumer:** Bridge Web UI `/bridge/projects` + `/bridge/projects/{slug}` · Obsidian frontmatter editor (read-write) · `shared/project_indexer.py` (FS-direct read, D2 per ADR-030)
+**Authoring code:** [`shared/lifeos_writer.py:render_project`](../../shared/lifeos_writer.py) (Python bootstrap; PR1 retains all 4 content_types per v2 panel) · `thousand_sunny/routers/bridge_projects.py` (Web mutations, lands in PR1) · `scripts/migrate_projects_to_tier_c.py` (one-shot lift, PR1)
+**Consumer:** Bridge Web UI `/bridge/projects` + `/bridge/projects/{slug}` · Obsidian frontmatter editor (read-write) · `shared/project_indexer.py` (FS-direct read, D2 per ADR-030; lands in PR1 — dual-shape tolerant for forward-compatible reviews schema)
 
 > **History:** `ADR-027 PR-6` referenced this schema doc but never delivered it. `docs/VAULT-LAYOUT.md` line 162 has been pointing at a 404 since 2026-05-12. ADR-031 closes that gap and extends the schema with Tier C fields (`one_sentence`, `hook_text`, title/thumbnail, `reviews`, `pomodoro`).
 
@@ -85,6 +85,8 @@ tags:
 
 ### 2.1 α fields (existing — retained verbatim)
 
+> **v2 panel-revised**: `content_type` slim to `{youtube, podcast}` was reverted. All 4 legacy types (`youtube`/`blog`/`research`/`podcast`) remain valid. See [ADR-031 D9.c v2](../decisions/ADR-031-project-workspace-migration.md#d9-migration-script-scriptsmigrate_projects_to_tier_cpy-pr1-bundle-with-6-sub-decisions) for rationale.
+
 | Field | Type | Required | Validation | Source of truth | Notes |
 |---|---|---|---|---|---|
 | `type` | `string` | yes | `== "project"` | Bootstrap (one-shot) | Obsidian query marker |
@@ -108,17 +110,37 @@ tags:
 | Field | Type | Required | Validation | Writer | Frequency |
 |---|---|---|---|---|---|
 | `one_sentence` | `str` (multiline) | no | ≤300 字 soft cap | Web Brief tab; migration script lifts from legacy `## 👄 One Sentence About This Video` H2 prose | Mid (per session) |
-| `hook_text` | `str` (multiline) | no | ≤500 字 soft cap | Web Hook tab | Mid |
+| `hook_text` | `str` (multiline) | no | **≤300 字 soft cap (v2 panel-tuned)** | Web Hook tab | Mid |
 | `title_candidates` | `list[str]` | no | 1–10 items typical; each ≤80 字 | Web Title&Thumbnail tab | Mid |
 | `thumbnail_concept` | `str` (multiline) | no | ≤300 字 soft cap | Web Title&Thumbnail tab | Mid |
-| `reviews` | `dict` | no | keys ∈ `{storyteller, coach}` | Web Review tab (LLM dispatch) | Per re-run |
+| `reviews` | `dict` (v1) → `list` (v2 future) | no | keys ∈ `{storyteller, coach}` | Web Review tab (LLM dispatch) | Per re-run |
 | `reviews.{persona}.run_at` | ISO 8601 with TZ | yes (if persona present) | `+08:00` recommended (Asia/Taipei) | LLM handler | Per re-run |
 | `reviews.{persona}.score` | `int` | yes | 1–5 | LLM handler | Per re-run |
 | `reviews.{persona}.summary` | `str` (multiline) | yes | non-empty | LLM handler | Per re-run |
 | `reviews.{persona}.suggestions` | `list[str]` | yes | 0–10 items | LLM handler | Per re-run |
-| `pomodoro` | `dict` | no | — | Pomodoro dock; recomputed on save | High (during work) |
-| `pomodoro.est_total` | `int` | yes (if `pomodoro` present) | ≥0 | Derived: `sum(task.預估🍅 for task in TaskNotes scan)` | High |
-| `pomodoro.actual_total` | `int` | yes (if `pomodoro` present) | ≥0 | Derived: `floor(sum(timeEntries duration in min) / 25)` | High |
+| `pomodoro` | `dict` | no | — | Pomodoro dock; recomputed on **completion / manual +1🍅 / explicit save** (NOT per-second tick, per v2 panel) | Mid (~1/25min during work) |
+| `pomodoro.est_total` | `int` | yes (if `pomodoro` present) | ≥0 | Derived: `sum(task.預估🍅 for task in TaskNotes scan)` | Mid |
+| `pomodoro.actual_total` | `int` | yes (if `pomodoro` present) | ≥0 | Derived: `floor(sum(timeEntries duration in min) / 25)` | Mid |
+
+### v2 panel evolution note (reviews shape)
+
+The v1 `reviews.{persona}` schema is a **single dict per persona** (latest overwrites). v2 panel (Gemini) pushed for **list-of-versioned-objects** to preserve prompt-iteration data:
+
+```yaml
+reviews:
+  storyteller:
+    - run_at: 2026-05-24T22:15:00+08:00
+      prompt_version: 1
+      score: 4
+      summary: ...
+      suggestions: [...]
+    - run_at: 2026-05-25T11:00:00+08:00
+      prompt_version: 2
+      score: 5
+      ...
+```
+
+**PR1 indexer (`shared/project_indexer.py`) implements dual-shape tolerance** — reads dict-per-persona OR list-of-dicts (taking latest). PR2 flips the schema to list-only; v1 dict-shape stays readable. UI shows latest by default with a "歷史" toggle (PR3+).
 
 **Soft caps** are enforced as warnings (yellow toast in Web UI; non-blocking). 修修 can override. The cap exists to keep the field readable in the Obsidian frontmatter editor, not as a hard constraint.
 
