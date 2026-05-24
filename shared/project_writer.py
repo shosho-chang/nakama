@@ -228,6 +228,78 @@ def append_timeentry(
     _write_split(path, fm, body)
 
 
+def create_task(
+    *,
+    vault_root: Path,
+    project_slug: str,
+    task_name: str,
+    estimated_pomodoros: int = 4,
+    priority: str = "normal",
+    scheduled: str | None = None,
+) -> Path:
+    """Create a new TaskNotes-plugin-compatible task .md for a project.
+
+    File path: ``TaskNotes/Tasks/{project_slug} - {task_name}.md``. Builds
+    the same frontmatter shape as :func:`shared.lifeos_writer.render_task`
+    so the TaskNotes plugin's auto-index picks it up identically to
+    bootstrap-time tasks.
+
+    Raises :class:`ProjectWriteError` if a task with the same basename
+    already exists — callers decide whether to surface as 409 Conflict
+    or auto-rename.
+    """
+    from shared.lifeos_writer import render_task
+
+    project_slug = unicodedata.normalize("NFC", project_slug)
+    task_name = unicodedata.normalize("NFC", task_name).strip()
+    if not task_name:
+        raise ProjectWriteError("task_name cannot be empty")
+
+    # TaskNotes plugin builds the dashboard label from the filename, so
+    # forbid path separators that would break out of TaskNotes/Tasks/.
+    if "/" in task_name or "\\" in task_name:
+        raise ProjectWriteError(f"task_name must not contain path separators: {task_name!r}")
+
+    task_path = vault_root / TASKS_DIR / f"{project_slug} - {task_name}.md"
+    if task_path.exists():
+        raise ProjectWriteError(f"Task already exists: {task_path.name}")
+
+    fm, body = render_task(
+        project_slug,
+        task_name,
+        estimated_pomodoros=estimated_pomodoros,
+        priority=priority,
+    )
+    if scheduled:
+        fm["scheduled"] = scheduled
+
+    # Atomic tmp + rename (matches the other writer fns in this module).
+    task_path.parent.mkdir(parents=True, exist_ok=True)
+    fm_str = yaml.dump(
+        fm,
+        Dumper=_BlankNoneDumper,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+        indent=2,
+        width=10**9,
+    ).rstrip()
+    content = f"---\n{fm_str}\n---\n" if not body else f"---\n{fm_str}\n---\n\n{body.lstrip()}\n"
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        delete=False,
+        dir=str(task_path.parent),
+        suffix=".tmp",
+    ) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    os.replace(tmp_path, task_path)
+
+    return task_path
+
+
 def now_iso_taipei() -> str:
     """Return Asia/Taipei ISO 8601 with explicit +08:00 offset.
 

@@ -577,3 +577,64 @@
   font-weight: 500;
 }
 .pj-dock-task-row--done td { opacity: 0.5; }
+
+.pj-dock-tasks-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--sho-s-2, 8px);
+}
+.pj-btn--add-task {
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+/* ── Add-task modal (HTML5 <dialog>) ──────────────────────────────────── */
+
+.pj-dialog {
+  border: 1px solid var(--sho-line);
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  padding: 0;
+  min-width: 380px;
+  max-width: 560px;
+  border-radius: var(--sho-r-2, 8px);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.25);
+}
+.pj-dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+.pj-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-3, 12px);
+  padding: var(--sho-s-5, 24px);
+}
+.pj-dialog-title {
+  margin: 0 0 var(--sho-s-3, 12px) 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.pj-dialog-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sho-s-3, 12px);
+}
+.pj-dialog-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--sho-muted);
+  line-height: 1.55;
+}
+.pj-dialog-hint code {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  color: var(--sho-text-2);
+}
+.pj-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sho-s-3, 12px);
+  margin-top: var(--sho-s-3, 12px);
+}
+.pj-label-required { color: var(--sho-error); }

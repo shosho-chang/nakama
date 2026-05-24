@@ -8,7 +8,9 @@ import pytest
 import yaml
 
 from shared.project_writer import (
+    ProjectWriteError,
     append_timeentry,
+    create_task,
     now_iso_taipei,
     update_body_section,
     update_frontmatter,
@@ -186,6 +188,66 @@ class TestAppendTimeentry:
         )
         fm = yaml.safe_load(task_path.read_text(encoding="utf-8").split("---")[1])
         assert len(fm["timeEntries"]) == 2
+
+
+class TestCreateTask:
+    def test_writes_plugin_compatible_frontmatter(self, vault: Path):
+        path = create_task(
+            vault_root=vault,
+            project_slug="t",
+            task_name="Filming",
+            estimated_pomodoros=6,
+            priority="high",
+        )
+        assert path.exists()
+        assert path.name == "t - Filming.md"
+
+        fm = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+        assert fm["title"] == "t - Filming"
+        assert fm["status"] == "to-do"
+        assert fm["priority"] == "high"
+        assert fm["projects"] == ["[[t]]"]
+        assert fm["tags"] == ["task"]
+        assert fm["預估🍅"] == 6
+        assert fm["✅"] is False
+        assert "dateCreated" in fm
+        assert "dateModified" in fm
+
+    def test_default_priority_and_pomodoros(self, vault: Path):
+        path = create_task(vault_root=vault, project_slug="t", task_name="後製校色")
+        fm = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+        assert fm["priority"] == "normal"
+        assert fm["預估🍅"] == 4
+
+    def test_scheduled_optional(self, vault: Path):
+        path = create_task(
+            vault_root=vault,
+            project_slug="t",
+            task_name="第二輪剪輯",
+            scheduled="2026-06-01T10:00:00",
+        )
+        fm = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+        assert fm["scheduled"] == "2026-06-01T10:00:00"
+
+    def test_rejects_duplicate(self, vault: Path):
+        create_task(vault_root=vault, project_slug="t", task_name="dup")
+        with pytest.raises(ProjectWriteError, match="already exists"):
+            create_task(vault_root=vault, project_slug="t", task_name="dup")
+
+    def test_rejects_empty_name(self, vault: Path):
+        with pytest.raises(ProjectWriteError, match="empty"):
+            create_task(vault_root=vault, project_slug="t", task_name="  ")
+
+    def test_rejects_path_separator(self, vault: Path):
+        with pytest.raises(ProjectWriteError, match="path separators"):
+            create_task(vault_root=vault, project_slug="t", task_name="bad/name")
+        with pytest.raises(ProjectWriteError, match="path separators"):
+            create_task(vault_root=vault, project_slug="t", task_name="bad\\name")
+
+    def test_cjk_task_name(self, vault: Path):
+        path = create_task(vault_root=vault, project_slug="t", task_name="腳本初稿")
+        assert path.exists()
+        assert path.name == "t - 腳本初稿.md"
 
 
 def test_now_iso_taipei_has_offset():

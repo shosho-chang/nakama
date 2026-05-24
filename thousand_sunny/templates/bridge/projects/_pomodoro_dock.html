@@ -31,6 +31,10 @@
     <details class="pj-dock-tasks-expand">
       <summary>Tasks ▾</summary>
       <div class="pj-dock-tasks-panel">
+        <div class="pj-dock-tasks-toolbar">
+          <button type="button" class="pj-btn-secondary pj-btn--add-task"
+                  data-dialog-target="pj-add-task-dialog">+ 新任務</button>
+        </div>
         {% if tasks %}
           <table class="pj-dock-tasks-table">
             <thead>
@@ -66,3 +70,47 @@
     </details>
   </div>
 </div>
+
+<dialog id="pj-add-task-dialog" class="pj-dialog">
+  <form class="pj-dialog-form" method="post"
+        action="/bridge/projects/{{ entry.slug }}/tasks/new">
+    <h3 class="pj-dialog-title">新增任務 · {{ entry.title }}</h3>
+
+    <label class="pj-label">
+      任務名稱 <span class="pj-label-required">*</span>
+      <input type="text" name="name" required maxlength="80"
+             placeholder="例：Pre-production、第二輪剪輯">
+    </label>
+
+    <div class="pj-dialog-row">
+      <label class="pj-label">
+        預估🍅
+        <input type="number" name="estimated_pomodoros" value="4" min="1" max="20">
+      </label>
+
+      <label class="pj-label">
+        Priority
+        <select name="priority">
+          <option value="normal" selected>normal</option>
+          <option value="high">high</option>
+          <option value="low">low</option>
+        </select>
+      </label>
+    </div>
+
+    <label class="pj-label">
+      Scheduled（可選）
+      <input type="datetime-local" name="scheduled">
+    </label>
+
+    <p class="pj-dialog-hint">
+      會寫入 <code>TaskNotes/Tasks/{{ entry.title }} - {名稱}.md</code>，
+      TaskNotes plugin 自動 index。
+    </p>
+
+    <div class="pj-dialog-actions">
+      <button type="button" class="pj-btn-secondary" data-dialog-close>取消</button>
+      <button type="submit" class="pj-btn-primary">建立</button>
+    </div>
+  </form>
+</dialog>

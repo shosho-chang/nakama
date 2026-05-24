@@ -285,6 +285,71 @@ class TestPomodoroTimer:
         assert len(fm["timeEntries"]) == 1
 
 
+class TestCreateTaskEndpoint:
+    def test_creates_task_with_form_post(self, client, tmp_path):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/new",
+            data={"name": "Filming v2", "estimated_pomodoros": "3", "priority": "high"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        task_md = (
+            tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Filming v2.md"
+        ).read_text(encoding="utf-8")
+        fm = yaml.safe_load(task_md.split("---")[1])
+        assert fm["title"] == "肌酸的妙用 - Filming v2"
+        assert fm["預估🍅"] == 3
+        assert fm["priority"] == "high"
+
+    def test_creates_task_with_cjk_name(self, client, tmp_path):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/new",
+            data={"name": "第二輪剪輯"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert (
+            tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - 第二輪剪輯.md"
+        ).exists()
+
+    def test_rejects_empty_name_400(self, client):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/new",
+            data={"name": "  "},
+        )
+        assert r.status_code == 400
+        assert "required" in r.text
+
+    def test_rejects_invalid_priority_400(self, client):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/new",
+            data={"name": "x", "priority": "ultra-urgent"},
+        )
+        assert r.status_code == 400
+
+    def test_rejects_out_of_range_pomodoros_400(self, client):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/new",
+            data={"name": "x", "estimated_pomodoros": "0"},
+        )
+        assert r.status_code == 400
+
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/new",
+            data={"name": "y", "estimated_pomodoros": "50"},
+        )
+        assert r.status_code == 400
+
+    def test_duplicate_returns_409(self, client):
+        # Pre-production task already seeded in the fixture
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/new",
+            data={"name": "Pre-production"},
+        )
+        assert r.status_code == 409
+        assert "exists" in r.text.lower()
+
+
 class TestReviewStub:
     def test_pr1_review_returns_501(self, client):
         r = client.post("/bridge/projects/肌酸的妙用/review/storyteller")

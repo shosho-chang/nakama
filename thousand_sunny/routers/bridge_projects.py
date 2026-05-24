@@ -42,7 +42,9 @@ from shared.lifeos_writer import (
 from shared.log import get_logger
 from shared.project_indexer import ProjectIndexer, ProjectNotFoundError, normalize_slug
 from shared.project_writer import (
+    ProjectWriteError,
     append_timeentry,
+    create_task,
     update_body_section,
     update_frontmatter,
 )
@@ -420,6 +422,56 @@ async def projects_timer(
             task_name=task_name.strip(),
             now_minus_minutes=POMODORO_MINUTES,
         )
+
+    return _redirect_back(slug, "brief")
+
+
+@page_router.post("/projects/{slug}/tasks/new")
+async def projects_tasks_new(
+    request: Request,
+    slug: str,
+    nakama_auth: str | None = Cookie(None),
+    name: str = Form(""),
+    estimated_pomodoros: int = Form(4),
+    priority: str = Form("normal"),
+    scheduled: str = Form(""),
+):
+    """Create a new TaskNotes-compatible task for this project.
+
+    Frontmatter shape matches :func:`shared.lifeos_writer.render_task`
+    so the TaskNotes plugin indexes the file the same way as
+    bootstrap-time tasks.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    slug = normalize_slug(slug)
+    name = name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="task name is required")
+
+    if priority not in ("low", "normal", "high"):
+        raise HTTPException(status_code=400, detail=f"unknown priority: {priority!r}")
+
+    if not (1 <= estimated_pomodoros <= 20):
+        raise HTTPException(
+            status_code=400, detail="estimated_pomodoros must be between 1 and 20"
+        )
+
+    try:
+        create_task(
+            vault_root=get_vault_path(),
+            project_slug=slug,
+            task_name=name,
+            estimated_pomodoros=estimated_pomodoros,
+            priority=priority,
+            scheduled=scheduled.strip() or None,
+        )
+    except ProjectWriteError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("create_task failed: slug=%s name=%s", slug, name)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return _redirect_back(slug, "brief")
 

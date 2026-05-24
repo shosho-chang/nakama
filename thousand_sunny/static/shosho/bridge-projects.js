@@ -214,6 +214,21 @@
     });
   }
 
+  // ── HTML5 <dialog> open/close ──────────────────────────────────────────
+
+  function bindDialogs() {
+    document.querySelectorAll('[data-dialog-target]').forEach(function (btn) {
+      var target = document.getElementById(btn.getAttribute('data-dialog-target'));
+      if (!target || typeof target.showModal !== 'function') return;
+      btn.addEventListener('click', function () { target.showModal(); });
+    });
+    document.querySelectorAll('[data-dialog-close]').forEach(function (closeBtn) {
+      var dlg = closeBtn.closest('dialog');
+      if (!dlg) return;
+      closeBtn.addEventListener('click', function () { dlg.close(); });
+    });
+  }
+
   // ── KB Research stub ────────────────────────────────────────────────────
 
   function bindKbResearch() {
@@ -233,17 +248,17 @@
 
   // ── Bootstrap ──────────────────────────────────────────────────────────
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
-      bindTabs();
-      bindPomodoroDock();
-      bindCounters();
-      bindKbResearch();
-    });
-  } else {
+  function bootAll() {
     bindTabs();
     bindPomodoroDock();
     bindCounters();
     bindKbResearch();
+    bindDialogs();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootAll);
+  } else {
+    bootAll();
   }
 })();
