@@ -487,6 +487,57 @@ def test_run_engine_uses_filename_stem_when_slug_omitted(tmp_path):
     assert metadata.slug == "my-episode-99"  # = srt.stem
 
 
+def test_run_engine_force_clears_approved_sentinels(tmp_path, monkeypatch, capsys):
+    """--force clears .approved.<channel> sentinels before engine runs (#682)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    # Engine writes under DATA_ROOT/<date>-<slug>/; redirect DATA_ROOT to tmp_path
+    # so the sentinel cleared maps to the same directory ``--force`` resolves.
+    import agents.brook.repurpose_engine as engine_module
+
+    monkeypatch.setattr(engine_module, "_DATA_ROOT", tmp_path)
+
+    today = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    run_dir = tmp_path / f"{today}-force-ep"
+    run_dir.mkdir(parents=True)
+    (run_dir / ".approved.blog").touch()
+    (run_dir / ".approved.ig").touch()
+
+    srt = tmp_path / "ep.srt"
+    srt.write_text("dummy", encoding="utf-8")
+
+    fake_engine = MagicMock()
+    fake_engine.run.return_value = _stub_artifacts_result(run_dir)
+
+    from argparse import Namespace
+
+    args = Namespace(
+        srt_path=srt,
+        host="張修修",
+        guest=None,
+        slug="force-ep",
+        podcast_url="",
+        skip_channel=[],
+        dry_run=False,
+        force=True,
+    )
+
+    with (
+        patch("scripts.run_repurpose.RepurposeEngine", return_value=fake_engine),
+        patch("scripts.run_repurpose.Line1Extractor"),
+        patch("scripts.run_repurpose.start_usage_tracking"),
+        patch("scripts.run_repurpose.stop_usage_tracking", return_value=[]),
+    ):
+        run_repurpose._run_engine(args, {"blog": MagicMock()})
+
+    # Sentinels were cleared before engine.run was invoked
+    assert not (run_dir / ".approved.blog").exists()
+    assert not (run_dir / ".approved.ig").exists()
+    out = capsys.readouterr().out
+    assert "--force: cleared" in out
+
+
 # ---------------------------------------------------------------------------
 # Cost summary
 # ---------------------------------------------------------------------------

@@ -66,6 +66,7 @@ from agents.brook.repurpose_engine import (  # noqa: E402
     _resolve_run_dir,
     fb_filename,
 )
+from agents.brook.repurpose_sentinels import clear_approval_sentinels  # noqa: E402
 from shared.llm_context import start_usage_tracking, stop_usage_tracking  # noqa: E402
 
 # Channel names accepted by --skip-channel (matches engine renderers dict keys).
@@ -131,6 +132,14 @@ def _parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="印出 plan 不跑 LLM call",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "在跑 engine 之前先清掉現有 .approved.<channel> sentinel；"
+            "不加這個 flag 時，engine 會跳過已核准的 channel 以保護 reviewed 內容（#682）"
+        ),
     )
     return parser.parse_args()
 
@@ -255,6 +264,24 @@ def _run_engine(args: argparse.Namespace, renderers: dict[str, object]) -> int:
         extractor=Line1Extractor(),
         renderers=renderers,
     )
+
+    # --force: 先把這個 (slug, date) 對應的 run_dir 裡的 .approved.<channel>
+    # 清掉，讓 engine 不會把已核准 channel 視為要 skip。published.* 不動。
+    # getattr fallback 讓既有手寫 Namespace 的測試不需同步更新。
+    if getattr(args, "force", False):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        run_date = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+        force_run_dir = _resolve_run_dir(slug, run_date)
+        if force_run_dir.is_dir():
+            cleared = clear_approval_sentinels(force_run_dir)
+            if cleared:
+                print(
+                    f"--force: cleared approved sentinels for {len(cleared)} channel(s): {cleared}"
+                )
+            else:
+                print("--force: no approved sentinels to clear")
 
     print("=" * 60)
     print(f"Repurpose run: {slug}")

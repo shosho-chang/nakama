@@ -28,6 +28,7 @@ from fastapi import APIRouter, Body, Cookie, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from agents.brook import repurpose_sentinels as _sentinels
 from agents.brook.repurpose_engine import (
     BLOG_FILENAME,
     DATA_ROOT,
@@ -38,6 +39,15 @@ from agents.brook.repurpose_engine import (
 )
 from shared.log import get_logger
 from thousand_sunny.auth import check_auth
+
+# Re-export sentinel helpers under local underscore aliases so existing
+# `_channel_approved` / `_sentinel_path` call sites in this module stay
+# untouched.  Source of truth lives in ``repurpose_sentinels`` (#682).
+_CHANNELS = _sentinels.CHANNELS
+_CHANNEL_SET = _sentinels.CHANNEL_SET
+_channel_approved = _sentinels.channel_approved
+_channel_artifact_path = _sentinels.channel_artifact_path
+_sentinel_path = _sentinels.sentinel_path
 
 logger = get_logger("nakama.web.repurpose")
 
@@ -70,44 +80,8 @@ _SHOSHO_ASSET_VERSION = _shosho_asset_version()
 # Strict regex prevents path traversal (e.g. "..%2F..%2Fetc" would not match).
 _RUN_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[A-Za-z0-9_-]{1,60}$")
 
-# Channels that participate in per-channel approve.  Channel name == sentinel
-# suffix: ``.approved.<channel>`` lives in the run dir.
-_CHANNELS: tuple[str, ...] = ("blog", *(f"fb.{t}" for t in FB_TONALS), "ig")
-_CHANNEL_SET = frozenset(_CHANNELS)
-
-
-def _channel_artifact_path(run_dir: Path, channel: str) -> Path:
-    """Map a channel name to the artifact file the channel approves."""
-    if channel == "blog":
-        return run_dir / BLOG_FILENAME
-    if channel == "ig":
-        return run_dir / IG_FILENAME
-    if channel.startswith("fb."):
-        return run_dir / fb_filename(channel.removeprefix("fb."))
-    raise ValueError(f"unknown channel {channel!r}")
-
-
-# ---------------------------------------------------------------------------
-# Per-channel status sentinels
-# ---------------------------------------------------------------------------
-
-
-def _sentinel_path(run_dir: Path, kind: str, channel: str) -> Path:
-    """Return the sentinel file path for ``.<kind>.<channel>`` (e.g. .approved.blog).
-
-    Caller MUST have already validated ``channel`` against ``_CHANNEL_SET``;
-    we re-check here as a defence-in-depth assert because ``channel`` ends up
-    in a filesystem path.
-    """
-    if channel not in _CHANNEL_SET:
-        raise ValueError(f"unknown channel {channel!r}")
-    if kind not in ("approved", "published"):
-        raise ValueError(f"unknown sentinel kind {kind!r}")
-    return run_dir / f".{kind}.{channel}"
-
-
-def _channel_approved(run_dir: Path, channel: str) -> bool:
-    return _sentinel_path(run_dir, "approved", channel).exists()
+# Channel catalog + sentinel helpers live in ``agents.brook.repurpose_sentinels``
+# so the engine (#682) and CLI ``--force`` flag share one source of truth.
 
 
 def _run_status(run_dir: Path) -> str:

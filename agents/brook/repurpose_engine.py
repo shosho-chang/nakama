@@ -282,7 +282,7 @@ class RepurposeEngine:
         self._renderers = dict(renderers)
         self._max_workers = max_workers
 
-    def run(self, source_input: str, metadata: EpisodeMetadata) -> ChannelArtifacts:
+    def run(self, source_input: str, metadata: EpisodeMetadata) -> ChannelArtifacts:  # noqa: C901
         """Execute the full repurpose pipeline.
 
         Steps:
@@ -316,6 +316,25 @@ class RepurposeEngine:
         )
         logger.info(f"stage1 written → {stage1_path}")
 
+        # Lazy import to avoid the import cycle: sentinels module imports the
+        # filename constants from this module, so we cannot import it at the
+        # top level. Engine ↔ sentinels is one-directional at module load time.
+        from agents.brook.repurpose_sentinels import (
+            ApprovalSkipException as _ApprovalSkipException,
+        )
+        from agents.brook.repurpose_sentinels import (
+            channel_approved as _channel_approved,
+        )
+        from agents.brook.repurpose_sentinels import (
+            channel_for_filename as _channel_for_filename,
+        )
+        from agents.brook.repurpose_sentinels import (
+            sentinel_path as _sentinel_path,
+        )
+
+        def _approved_sentinel_path(rd: Path, ch: str) -> Path:
+            return _sentinel_path(rd, "approved", ch)
+
         # ── Stage 2 fan-out ───────────────────────────────────────────────────
         # Per-renderer error isolation covers BOTH renderer execution AND
         # artifact disk write — a OSError on one channel must not abort peers.
@@ -337,6 +356,21 @@ class RepurposeEngine:
                     continue
                 for artifact in artifacts:
                     path = run_dir / artifact.filename
+                    # ── #682 guard ────────────────────────────────────────
+                    # If this artifact's channel is approved, refuse the
+                    # overwrite. We record an ApprovalSkipException under the
+                    # artifact's channel id (not the renderer key — one
+                    # renderer like FBRenderer fans out 4 channels) so the
+                    # caller can distinguish per-tonal skips.
+                    skip_channel = _channel_for_filename(artifact.filename)
+                    if skip_channel is not None and _channel_approved(run_dir, skip_channel):
+                        sentinel = _approved_sentinel_path(run_dir, skip_channel)
+                        logger.info(
+                            f"skip {path.name}: channel {skip_channel!r} already approved "
+                            f"(sentinel {sentinel.name}); pass --force to override"
+                        )
+                        result.errors[skip_channel] = _ApprovalSkipException(skip_channel, sentinel)
+                        continue
                     try:
                         path.write_text(artifact.content, encoding="utf-8")
                     except OSError as exc:
