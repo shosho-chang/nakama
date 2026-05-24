@@ -141,6 +141,39 @@
   .ask-truncated {
     color: var(--sho-accent, #ff7a18);
   }
+  .ask-scope-audit {
+    margin-top: var(--sho-space-4, 16px);
+    padding-top: var(--sho-space-3, 12px);
+    border-top: 1px dashed var(--sho-border, #2a2a2a);
+    font-size: 12px;
+    color: var(--sho-muted-strong, #b0b0b0);
+  }
+  .ask-scope-audit > summary {
+    cursor: pointer;
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sho-muted, #888);
+    list-style: none;
+  }
+  .ask-scope-audit > summary::-webkit-details-marker { display: none; }
+  .ask-scope-audit > summary::before { content: "▸ "; }
+  .ask-scope-audit[open] > summary::before { content: "▾ "; }
+  .ask-scope-audit-list {
+    margin: var(--sho-space-3, 12px) 0 0;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px var(--sho-space-3, 12px);
+  }
+  .ask-scope-audit-list dt {
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--sho-muted, #888);
+  }
+  .ask-scope-audit-list dd { margin: 0; }
+  .ask-scope-audit-list ul { margin: 0; padding-left: 16px; }
+  .ask-scope-audit-list code { font-size: 11px; }
 </style>
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -199,6 +232,34 @@
           範圍 · {{ result.days }} 天 · {{ result.types | join(' + ') }} · context {{ result.context_chars }} chars
           {% if result.truncated %}<span class="ask-truncated">· 範圍 · {{ result.oldest_included_date }} 至 newest · 已捨棄 {{ result.dropped_count }} 篇較舊 digest</span>{% endif %}
         </div>
+
+        <details class="ask-scope-audit">
+          <summary>查詢範圍（audit）</summary>
+          <dl class="ask-scope-audit-list">
+            <dt>問題</dt><dd>{{ result.question }}</dd>
+            <dt>範圍</dt><dd>{{ result.days }} 天 · {{ result.types | join(', ') }}</dd>
+            <dt>引用 sources</dt>
+            <dd>
+              {% if result.sources %}
+                <ul>
+                {% for s in result.sources %}
+                  <li><code>[{{ s.type }}/{{ s.date }}]</code></li>
+                {% endfor %}
+                </ul>
+              {% else %}
+                <em>無</em>
+              {% endif %}
+            </dd>
+            {% if result.dropped_count %}
+              <dt>因 cap 截掉</dt><dd>{{ result.dropped_count }} 篇</dd>
+            {% endif %}
+            {% if result.oldest_included_date %}
+              <dt>最舊保留日期</dt><dd>{{ result.oldest_included_date }}</dd>
+            {% endif %}
+            <dt>context chars 餵進 LLM</dt><dd>{{ result.context_chars }}</dd>
+            <dt>已寫入 audit log</dt><dd><code>state.api_calls.scope_json</code></dd>
+          </dl>
+        </details>
       </section>
     {% endif %}
   </div>

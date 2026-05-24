@@ -198,6 +198,72 @@ class TestAsk:
         assert result.oldest_included_date == _today(0)
 
 
+class TestScopeAuditLog:
+    """ADR-030 follow-up #700: per-call scope persisted via threadlocal."""
+
+    def test_scope_json_set_during_llm_call(self, tmp_path):
+        import json
+
+        _seed(tmp_path, "KB/Wiki/Digests/PubMed", _today(0), "hi")
+        _seed(tmp_path, "KB/Wiki/Digests/AI", _today(1), "yo")
+        idx = DigestIndexer(tmp_path)
+        captured: dict = {}
+
+        def fake_llm(prompt, **kw):
+            from shared.llm_context import _local
+
+            captured["scope"] = getattr(_local, "scope_json", None)
+            return "ok"
+
+        req = AskRequest(question="X 是什麼？", days=7, types=("pubmed", "ai"))
+        ask(req, idx, llm=fake_llm)
+
+        assert captured["scope"] is not None
+        parsed = json.loads(captured["scope"])
+        assert parsed["surface"] == "digest_ask"
+        assert parsed["question"] == "X 是什麼？"
+        assert parsed["days"] == 7
+        assert parsed["types"] == ["pubmed", "ai"]
+        assert {"type": "pubmed", "date": _today(0)} in parsed["sources"]
+        assert {"type": "ai", "date": _today(1)} in parsed["sources"]
+        assert parsed["model"] == "claude-sonnet-4-6"
+        assert parsed["truncated"] is False
+
+    def test_scope_json_cleared_after_call(self, tmp_path):
+        from shared.llm_context import _local
+
+        _seed(tmp_path, "KB/Wiki/Digests/PubMed", _today(0), "hi")
+        idx = DigestIndexer(tmp_path)
+
+        # Prior threadlocal value preserved across call
+        _local.scope_json = "before"
+        try:
+            ask(
+                AskRequest(question="q", days=7, types=("pubmed",)),
+                idx,
+                llm=lambda *a, **kw: "ok",
+            )
+            assert getattr(_local, "scope_json", None) == "before"
+        finally:
+            _local.scope_json = None
+
+    def test_empty_scope_does_not_set_scope_json(self, tmp_path):
+        from shared.llm_context import _local
+
+        idx = DigestIndexer(tmp_path)
+        _local.scope_json = None
+
+        called = []
+        ask(
+            AskRequest(question="q", days=7, types=("pubmed",)),
+            idx,
+            llm=lambda *a, **kw: called.append(1) or "x",
+        )
+        # No LLM call → scope_json never touched
+        assert called == []
+        assert getattr(_local, "scope_json", None) is None
+
+
 class TestConstants:
     def test_context_cap_is_reasonable(self):
         # Guardrail: catch accidental cap bump that would explode cost.

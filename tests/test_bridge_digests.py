@@ -305,6 +305,22 @@ class TestAsk:
         r = client.get("/bridge/digests")
         assert "/bridge/digests/ask" in r.text
 
+    def test_post_renders_scope_audit_details(self, client, monkeypatch):
+        import shared.anthropic_client as anth
+
+        monkeypatch.setattr(anth, "ask_claude", lambda *a, **kw: "answer text")
+
+        r = client.post(
+            "/bridge/digests/ask",
+            data={"question": "audit test", "days": "7", "types": "pubmed"},
+        )
+        assert r.status_code == 200
+        assert "<details" in r.text
+        assert "ask-scope-audit" in r.text
+        assert "查詢範圍（audit）" in r.text
+        assert "state.api_calls.scope_json" in r.text
+        assert "audit test" in r.text  # question echoed in details block
+
 
 class TestConflictBanner:
     def test_no_banner_when_no_conflicts(self, client):
