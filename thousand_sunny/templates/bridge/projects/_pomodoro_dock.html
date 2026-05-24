@@ -1,0 +1,68 @@
+<div class="pj-dock" id="pj-pomodoro-dock"
+     data-project-slug="{{ entry.slug }}"
+     data-pomodoro-minutes="{{ pomodoro_minutes }}">
+  <div class="pj-dock-row">
+    <a class="pj-dock-project" href="/bridge/projects/{{ entry.slug }}#brief">
+      🎬 {{ entry.title }}
+    </a>
+
+    <label class="pj-dock-task-select">
+      <span class="pj-dock-task-label">●▼</span>
+      <select id="pj-dock-task" data-task-select>
+        <option value="">尚未選擇</option>
+        {% for t in tasks %}
+          <option value="{{ t.name }}">{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="pj-dock-timer" data-timer>
+      <button type="button" class="pj-timer-btn" data-timer-btn>
+        <span class="pj-timer-icon" data-timer-icon>▶</span>
+        <span class="pj-timer-display" data-timer-display>{{ pomodoro_minutes }}:00</span>
+      </button>
+    </div>
+
+    <div class="pj-dock-rollup">
+      🍅 <span class="val" data-actual-total>{{ entry.pomodoro_actual_total }}</span> /
+      <span class="muted" data-est-total>{{ entry.pomodoro_est_total }}</span>
+    </div>
+
+    <details class="pj-dock-tasks-expand">
+      <summary>Tasks ▾</summary>
+      <div class="pj-dock-tasks-panel">
+        {% if tasks %}
+          <table class="pj-dock-tasks-table">
+            <thead>
+              <tr>
+                <th>名稱</th>
+                <th>Status</th>
+                <th>預估</th>
+                <th>實際</th>
+                <th>+1🍅</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in tasks %}
+                <tr class="pj-dock-task-row pj-dock-task-row--{{ t.status | replace(' ', '-') }}">
+                  <td>{{ t.name }}</td>
+                  <td>{{ t.status }}</td>
+                  <td>{{ t.est_pomodoros }}</td>
+                  <td>{{ t.actual_pomodoros }}</td>
+                  <td>
+                    <form method="post"
+                          action="/bridge/projects/{{ entry.slug }}/tasks/{{ t.name | urlencode }}/manual-pomodoro">
+                      <button type="submit" class="pj-btn-tiny" title="手動 +1🍅（給實體番茄鐘）">+1</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="pj-empty-hint">此 project 尚無 TaskNotes 任務。</p>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+</div>

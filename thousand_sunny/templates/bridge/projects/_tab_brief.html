@@ -1,0 +1,82 @@
+<div class="pj-tab-panel" id="brief" data-tab="brief" {% if tab != 'brief' %}hidden{% endif %}>
+  <header class="pj-section-header">
+    <h2 class="pj-section-title">📝 Brief</h2>
+    <p class="pj-section-hint">Stage 3：synthesise raw inputs into project-shaped intent. CONTENT-PIPELINE Stage 3。</p>
+  </header>
+
+  <form class="pj-inline-form" method="post"
+        action="/bridge/projects/{{ entry.slug }}/frontmatter">
+    <input type="hidden" name="field" value="one_sentence">
+    <input type="hidden" name="tab" value="brief">
+    <label class="pj-label">One sentence about this {{ entry.content_type }}</label>
+    <textarea name="value" rows="3" maxlength="600"
+              placeholder="一句話描述這個 project 的核心命題（≤300 字 soft cap）">{{ entry.one_sentence }}</textarea>
+    <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存</button>
+  </form>
+
+  <div class="pj-meta-grid">
+    <form class="pj-inline-form" method="post" action="/bridge/projects/{{ entry.slug }}/frontmatter">
+      <input type="hidden" name="field" value="search_topic">
+      <input type="hidden" name="tab" value="brief">
+      <label class="pj-label">Search topic（Zoro / KB 抓取用）</label>
+      <input type="text" name="value" value="{{ entry.search_topic }}" maxlength="120">
+      <button type="submit" class="pj-btn-secondary pj-btn--save">儲存</button>
+    </form>
+
+    <form class="pj-inline-form" method="post" action="/bridge/projects/{{ entry.slug }}/frontmatter">
+      <input type="hidden" name="field" value="status">
+      <input type="hidden" name="tab" value="brief">
+      <label class="pj-label">Status</label>
+      <select name="value">
+        {% for s in ['active', 'paused', 'published', 'archived'] %}
+          <option value="{{ s }}" {% if s == entry.status %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="pj-btn-secondary pj-btn--save">儲存</button>
+    </form>
+
+    <form class="pj-inline-form" method="post" action="/bridge/projects/{{ entry.slug }}/frontmatter">
+      <input type="hidden" name="field" value="priority">
+      <input type="hidden" name="tab" value="brief">
+      <label class="pj-label">Priority</label>
+      <select name="value">
+        {% for p in ['first', 'high', 'medium', 'low'] %}
+          <option value="{{ p }}" {% if p == entry.priority %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="pj-btn-secondary pj-btn--save">儲存</button>
+    </form>
+
+    <form class="pj-inline-form" method="post" action="/bridge/projects/{{ entry.slug }}/frontmatter">
+      <input type="hidden" name="field" value="area">
+      <input type="hidden" name="tab" value="brief">
+      <label class="pj-label">Area</label>
+      <select name="value">
+        {% for a in ['work', 'play', 'love', 'health'] %}
+          <option value="{{ a }}" {% if a == entry.area %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="pj-btn-secondary pj-btn--save">儲存</button>
+    </form>
+  </div>
+
+  <details class="pj-okr-binding">
+    <summary>OKR binding</summary>
+    <div class="pj-meta-grid">
+      <form class="pj-inline-form" method="post" action="/bridge/projects/{{ entry.slug }}/frontmatter">
+        <input type="hidden" name="field" value="quarter">
+        <input type="hidden" name="tab" value="brief">
+        <label class="pj-label">Quarter</label>
+        <input type="text" name="value" value="{{ entry.quarter or '' }}" placeholder="例：2026-Q2">
+        <button type="submit" class="pj-btn-secondary pj-btn--save">儲存</button>
+      </form>
+      <form class="pj-inline-form" method="post" action="/bridge/projects/{{ entry.slug }}/frontmatter">
+        <input type="hidden" name="field" value="parent_kr">
+        <input type="hidden" name="tab" value="brief">
+        <label class="pj-label">Parent KR</label>
+        <input type="text" name="value" value="{{ entry.parent_kr or '' }}" placeholder="例：KR-2.1">
+        <button type="submit" class="pj-btn-secondary pj-btn--save">儲存</button>
+      </form>
+    </div>
+  </details>
+</div>

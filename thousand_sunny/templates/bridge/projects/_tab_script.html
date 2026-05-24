@@ -1,0 +1,31 @@
+<div class="pj-tab-panel" id="script" data-tab="script" {% if tab != 'script' %}hidden{% endif %}>
+  <header class="pj-section-header">
+    <h2 class="pj-section-title">📜 Script / Outline</h2>
+    <p class="pj-section-hint">
+      正式文字內容寫在這個 H2 section（同步寫入 vault md body）。`## 專案描述` / `## 預期成果`
+      / `## Draft Outline` / `## 專案筆記` 屬於 human-only sections，請直接在 Obsidian 編輯。
+    </p>
+  </header>
+
+  <form class="pj-inline-form" method="post"
+        action="/bridge/projects/{{ entry.slug }}/section/script">
+    <input type="hidden" name="tab" value="script">
+    <textarea name="content" rows="20" data-section="Script / Outline" data-body-md="{{ body_md }}"
+              placeholder="正式 script / outline...">{{ body_md | safe }}</textarea>
+    <span class="pj-hint">
+      ⚠ Web 寫入這個 textarea 內容會替換 md body 中 <code>## Script / Outline</code> 之後的內容。
+      未來 PR3+ 會切成只擷取該 section 的編輯器。
+    </span>
+    <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存到 md</button>
+  </form>
+
+  <details class="pj-research-tip">
+    <summary>💡 Script 寫作（Writing Coach 會看的）</summary>
+    <ul>
+      <li><strong>句長變化</strong>：避免每句都 25 字。加入單字句斷句。</li>
+      <li><strong>專有名詞白話化</strong>：「統計顯著」改「不是運氣造成的」。</li>
+      <li><strong>節奏呼吸</strong>：每 2-3 段落間加一句短句做對比。</li>
+      <li>Review tab 會以 Writing Coach persona 給 1-5 分判斷。</li>
+    </ul>
+  </details>
+</div>
