@@ -19,7 +19,7 @@ presentation layer（Web UI）。
 
 ### Cross-cutting contexts
 - **Shared kernel** (`shared/`、`agents/base.py`) — Agent / Run / Memory / Event / API call / Token cost；任何 agent 必經介面
-- **Thousand Sunny** (`thousand_sunny/`) — Web presentation 平台 / chassis：所有 web UI、Bridge dashboard、各 agent router；HMAC cookie + API key auth；**Sunny 是船本身（platform），不是 agent crew member**（ADR-029 §2 凍結）；參見 [reference_bridge_ui_mutation_pattern](memory/claude/reference_bridge_ui_mutation_pattern.md)
+- **Thousand Sunny** (`thousand_sunny/`) — Web presentation 平台 / chassis：所有 web UI、Bridge dashboard、各 agent router；HMAC cookie + API key auth；**Sunny 是船本身（platform），不是 agent crew member**（ADR-029 §2 凍結）；glossary [thousand_sunny/CONTEXT.md](thousand_sunny/CONTEXT.md)；參見 [reference_bridge_ui_mutation_pattern](memory/claude/reference_bridge_ui_mutation_pattern.md)
 - **video** (`video/`) — Script-Driven Video Production 的 Node.js + Hyperframes + TypeScript subproject；6 Hyperframes HTML compositions + DSL parser + B-roll segment renderer；process boundary 跟 Python 主 repo 切開；Brook orchestrator (`agents/brook/script_video/`) 透過 Node.js CLI 呼叫；參見 ADR-015
 
 ## Relationships
