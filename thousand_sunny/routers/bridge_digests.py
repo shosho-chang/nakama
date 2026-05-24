@@ -132,6 +132,7 @@ def _ask_form_context(**overrides) -> dict:
         "type_label": _TYPE_LABEL,
         "max_days": MAX_DAYS,
         "result": None,
+        "answer_html": None,
         "error": None,
         "asset_version": _SHOSHO_ASSET_VERSION,
     }
@@ -180,11 +181,13 @@ async def digest_ask_post(
         )
         return _templates.TemplateResponse(request, "digest_ask.html", ctx)
 
+    answer_html = render_markdown(result.answer, wikilink_resolver=_RESOLVER)
     ctx = _ask_form_context(
         question=req.question,
         days=req.days,
         selected_types=list(req.types),
         result=result,
+        answer_html=answer_html,
     )
     return _templates.TemplateResponse(request, "digest_ask.html", ctx)
 

@@ -250,6 +250,22 @@ class TestAsk:
         assert called == []
         assert "無 digest 可查" in r.text
 
+    def test_post_answer_rendered_as_markdown(self, client, monkeypatch):
+        import shared.anthropic_client as anth
+
+        def fake_llm(prompt, *, system, model, max_tokens):
+            return "**bold** text\n\n- list item"
+
+        monkeypatch.setattr(anth, "ask_claude", fake_llm)
+
+        r = client.post(
+            "/bridge/digests/ask",
+            data={"question": "test markdown rendering", "days": "7", "types": "pubmed"},
+        )
+        assert r.status_code == 200
+        assert "<strong>bold</strong>" in r.text
+        assert "<li>list item</li>" in r.text
+
     def test_landing_has_ask_cta(self, client):
         r = client.get("/bridge/digests")
         assert "/bridge/digests/ask" in r.text

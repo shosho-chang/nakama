@@ -114,7 +114,6 @@
   .ask-result-answer {
     font-size: 15px;
     line-height: 1.7;
-    white-space: pre-wrap;
   }
   .ask-result-sources {
     margin-top: var(--sho-space-5, 20px);
@@ -183,7 +182,7 @@
       <section class="ask-result">
         <div class="ask-result-kicker">Answer</div>
         <div class="ask-result-question">{{ result.question }}</div>
-        <div class="ask-result-answer">{{ result.answer }}</div>
+        <div class="ask-result-answer">{{ answer_html | safe }}</div>
 
         {% if result.sources %}
           <div class="ask-result-sources">
