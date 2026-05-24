@@ -74,6 +74,7 @@
   --sho-warning: oklch(0.72 0.140 75);
   --sho-error:   oklch(0.58 0.180 28);
   --sho-info:    oklch(0.62 0.090 235);
+  --sho-violet:  oklch(0.55 0.155 290);   /* priority=first (Tier C cards) */
 
   /* ── Type — single family, mono role kept via uppercase + tracking ──── */
   --sho-font-sans: "LINE Seed TW", "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;

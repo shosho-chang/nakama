@@ -37,6 +37,8 @@
   gap: var(--sho-s-3, 12px);
   padding: var(--sho-s-4, 16px);
   border: 1px solid var(--sho-line, #2a2a2a);
+  border-left-width: 3px;
+  border-left-color: var(--sho-line);
   background: var(--sho-bg-2, transparent);
   text-decoration: none;
   color: inherit;
@@ -45,7 +47,12 @@
 .pj-card:hover { border-color: var(--sho-accent); }
 .pj-card--paused { opacity: 0.7; }
 .pj-card--archived { opacity: 0.45; }
-.pj-card--first { border-left-width: 3px; border-left-color: var(--sho-accent); }
+
+/* Priority left-rule — one per priority level (per user 2026-05-25 design call) */
+.pj-card--first  { border-left-color: var(--sho-violet); }
+.pj-card--high   { border-left-color: var(--sho-error); }
+.pj-card--medium { border-left-color: var(--sho-accent); }
+.pj-card--low    { border-left-color: var(--sho-warning); }
 
 .pj-card-meta {
   display: flex;
@@ -68,6 +75,19 @@
 .pj-tag--priority { color: var(--sho-muted, #888); }
 .pj-tag--youtube,
 .pj-tag--podcast { color: var(--sho-accent); border-color: var(--sho-accent-line, var(--sho-accent)); }
+
+/* Per-status tag color (active/paused/published/archived). Outline-only
+   chip — border + text in the semantic colour, no fill. */
+.pj-tag--status-active    { color: var(--sho-success); border-color: var(--sho-success); }
+.pj-tag--status-paused    { color: var(--sho-warning); border-color: var(--sho-warning); }
+.pj-tag--status-published { color: var(--sho-info);    border-color: var(--sho-info);    }
+.pj-tag--status-archived  { color: var(--sho-muted);   border-color: var(--sho-muted);   }
+
+/* Per-priority tag chip — matches the card left-rule colour. */
+.pj-tag--priority-first   { color: var(--sho-violet);  border-color: var(--sho-violet);  }
+.pj-tag--priority-high    { color: var(--sho-error);   border-color: var(--sho-error);   }
+.pj-tag--priority-medium  { color: var(--sho-accent);  border-color: var(--sho-accent);  }
+.pj-tag--priority-low     { color: var(--sho-warning); border-color: var(--sho-warning); }
 
 .pj-card-title {
   margin: 0;

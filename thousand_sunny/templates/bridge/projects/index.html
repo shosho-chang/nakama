@@ -16,7 +16,7 @@
 
   <section class="pg-subheader">
     <h1 class="pg-title">Projects</h1>
-    <span class="pg-stamp">N° {{ entries | length }} active</span>
+    <span class="pg-stamp">{{ entries | length }} active</span>
     <a class="pj-new-cta" href="/bridge/projects/new">+ NEW</a>
   </section>
 
@@ -27,8 +27,8 @@
            href="{{ e.detail_url }}">
           <div class="pj-card-meta">
             <span class="pj-tag pj-tag--{{ e.content_type }}">{{ e.content_type | upper }}</span>
-            <span class="pj-tag pj-tag--status">{{ e.status }}</span>
-            <span class="pj-tag pj-tag--priority">{{ e.priority }}</span>
+            <span class="pj-tag pj-tag--status pj-tag--status-{{ e.status }}">{{ e.status }}</span>
+            <span class="pj-tag pj-tag--priority pj-tag--priority-{{ e.priority }}">{{ e.priority }}</span>
           </div>
           <h2 class="pj-card-title">{{ e.title }}</h2>
           {% if e.one_sentence %}
