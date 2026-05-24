@@ -106,6 +106,18 @@
     font-size: 13px;
     text-align: center;
   }
+  .digest-ask-cta {
+    margin-left: auto;
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sho-accent, #ff7a18);
+    text-decoration: none;
+    padding: 6px 12px;
+    border: 1px solid var(--sho-accent, #ff7a18);
+  }
+  .digest-ask-cta:hover { background: var(--sho-accent, #ff7a18); color: #000; }
 </style>
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -115,6 +127,7 @@
   <section class="pg-subheader">
     <h1 class="pg-title">Digests</h1>
     <span class="pg-stamp">TAIPEI · {{ today }}</span>
+    <a class="digest-ask-cta" href="/bridge/digests/ask">Ask →</a>
   </section>
 
   <section class="digest-hero-zone">
