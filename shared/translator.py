@@ -77,6 +77,52 @@ def split_paragraphs(text: str) -> list[str]:
     return [p.strip() for p in paragraphs if p.strip()]
 
 
+# Reference-list heading whitelist — case-insensitive match against H2/H3 text
+# after stripping markdown ``#``, leading numbering (``1. ``, ``§``), and
+# trailing punctuation. Reference lists drop out of the translation input
+# because LLM-translating citation strings has no semantic value and burns
+# tokens (修修 2026-05-24).
+_REFERENCE_HEADINGS: frozenset[str] = frozenset(
+    h.casefold()
+    for h in (
+        "references",
+        "reference",
+        "bibliography",
+        "works cited",
+        "literature cited",
+        "sources",
+        "citations",
+        "notes",
+        "further reading",
+        "參考文獻",
+        "文獻",
+        "註釋",
+        "注釋",
+    )
+)
+_REF_HEADING_RE = re.compile(
+    r"^(?P<hashes>#{2,3})\s+(?:\d+[.)]\s+|§\s*)?(?P<text>[^\n#]+?)\s*[:：.。]?\s*$",
+    re.MULTILINE,
+)
+
+
+def split_off_reference_section(text: str) -> tuple[str, str]:
+    """Split ``text`` at the first reference-list heading.
+
+    Returns ``(body, ref_section)`` where ``ref_section`` is the heading and
+    everything after it (passed through untranslated), and ``body`` is the
+    content before that heading. Returns ``(text, "")`` if no reference
+    heading is detected.
+
+    See ``_REFERENCE_HEADINGS`` for the recognised whitelist.
+    """
+    for match in _REF_HEADING_RE.finditer(text):
+        heading_text = match.group("text").strip().casefold()
+        if heading_text in _REFERENCE_HEADINGS:
+            return text[: match.start()].rstrip(), text[match.start() :]
+    return text, ""
+
+
 def _build_system_prompt(glossary: dict[str, str]) -> str:
     """建立翻譯 system prompt，注入台灣術語表。"""
     base = (
@@ -205,11 +251,19 @@ def translate_document(
     Returns:
         雙語 Markdown：每段原文後緊接 blockquote 譯文
     """
-    segments = split_paragraphs(text)
+    body, ref_section = split_off_reference_section(text)
+    segments = split_paragraphs(body)
     if not segments:
+        # Pure-reference doc or empty body — return as-is (no LLM call).
         return text
 
-    logger.info(f"開始翻譯：{len(segments)} 段落，batch_size={batch_size}")
+    if ref_section:
+        logger.info(
+            f"開始翻譯：{len(segments)} 段落，batch_size={batch_size}，"
+            f"reference 區塊 {len(ref_section)} 字元已跳過"
+        )
+    else:
+        logger.info(f"開始翻譯：{len(segments)} 段落，batch_size={batch_size}")
     glossary = load_glossary()
 
     all_translations: list[str] = []
@@ -220,4 +274,8 @@ def translate_document(
         done = min(batch_start + batch_size, len(segments))
         logger.info(f"  翻譯進度：{done}/{len(segments)} 段")
 
-    return format_bilingual_markdown(segments, all_translations)
+    bilingual = format_bilingual_markdown(segments, all_translations)
+    if ref_section:
+        # Pass through reference list verbatim — no translation, no blockquote.
+        bilingual = f"{bilingual}\n\n{ref_section}"
+    return bilingual
