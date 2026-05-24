@@ -10,6 +10,7 @@ import pytest
 
 from shared.digest_indexer import (
     DIGEST_TYPES,
+    ConflictFile,
     DigestIndexer,
     DigestNotFoundError,
 )
@@ -145,3 +146,52 @@ class TestGetAndLoad:
 class TestDigestTypes:
     def test_canonical_types(self):
         assert DIGEST_TYPES == ("pubmed", "ai")
+
+
+class TestConflictFiles:
+    def test_empty_when_no_conflicts(self, tmp_path):
+        _write(tmp_path, "KB/Wiki/Digests/PubMed", "2026-05-24", PUBMED_SAMPLE)
+        idx = DigestIndexer(tmp_path)
+        assert idx.list_conflict_files() == []
+
+    def test_detects_syncthing_conflict_file(self, tmp_path):
+        d = tmp_path / "KB" / "Wiki" / "Digests" / "PubMed"
+        d.mkdir(parents=True)
+        (d / "2026-05-24.md").write_text(PUBMED_SAMPLE, encoding="utf-8")
+        (d / "2026-05-24.sync-conflict-20260524-101530-WIN.md").write_text(
+            "conflict body", encoding="utf-8"
+        )
+        idx = DigestIndexer(tmp_path)
+        conflicts = idx.list_conflict_files()
+        assert len(conflicts) == 1
+        c = conflicts[0]
+        assert isinstance(c, ConflictFile)
+        assert c.type == "pubmed"
+        assert c.original_date == "2026-05-24"
+        assert c.relative_path == (
+            "KB/Wiki/Digests/PubMed/2026-05-24.sync-conflict-20260524-101530-WIN.md"
+        )
+        assert c.conflict_timestamp == "20260524-101530"
+        assert c.device == "WIN"
+
+    def test_newest_conflict_first(self, tmp_path):
+        d = tmp_path / "KB" / "Wiki" / "Digests" / "AI"
+        d.mkdir(parents=True)
+        (d / "2026-05-20.sync-conflict-20260520-093000-MAC.md").write_text("a", encoding="utf-8")
+        (d / "2026-05-24.sync-conflict-20260524-101530-WIN.md").write_text("b", encoding="utf-8")
+        idx = DigestIndexer(tmp_path)
+        ts = [c.conflict_timestamp for c in idx.list_conflict_files()]
+        assert ts == ["20260524-101530", "20260520-093000"]
+
+    def test_regular_digest_not_classified_as_conflict(self, tmp_path):
+        _write(tmp_path, "KB/Wiki/Digests/PubMed", "2026-05-24", PUBMED_SAMPLE)
+        idx = DigestIndexer(tmp_path)
+        assert idx.list_conflict_files() == []
+
+    def test_unrelated_file_ignored(self, tmp_path):
+        d = tmp_path / "KB" / "Wiki" / "Digests" / "PubMed"
+        d.mkdir(parents=True)
+        (d / "README.md").write_text("x", encoding="utf-8")
+        (d / "2026-05-24-draft.md").write_text("x", encoding="utf-8")
+        idx = DigestIndexer(tmp_path)
+        assert idx.list_conflict_files() == []
