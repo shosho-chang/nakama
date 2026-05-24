@@ -1,4 +1,4 @@
-"""Bridge digest viewer — Tier A first slice (vault-as-substrate read).
+"""Bridge digest viewer — Tier A (vault-as-substrate read + ask).
 
 Surfaces:
 
@@ -9,9 +9,12 @@ Surfaces:
   that maps ``pubmed-{id}`` → external PubMed URL; other wikilinks render
   as ``.wikilink-broken`` (no Bridge source page yet — Issue #231 keeps
   Bridge read-only against vault).
+- ``GET/POST /bridge/digests/ask`` — LLM-over-vault Q&A: concat in-scope
+  digests, dispatch to Claude (Sonnet 4.6), render the answer with source
+  citations back to detail pages. Cost is bounded by ``MAX_DAYS`` and
+  ``MAX_CONTEXT_CHARS`` in ``shared.digest_ask``.
 
-Auth: HMAC cookie (mirrors bridge.page_router / projects). Read-only —
-no form POSTs in this PR (the ``/ask`` Q&A endpoint is Tier A PR3).
+Auth: HMAC cookie (mirrors bridge.page_router / projects).
 """
 
 from __future__ import annotations
@@ -19,11 +22,18 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from fastapi import APIRouter, Cookie, HTTPException, Request
+from fastapi import APIRouter, Cookie, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from shared.config import get_vault_path
+from shared.digest_ask import (
+    DEFAULT_DAYS,
+    MAX_DAYS,
+    AskValidationError,
+    ask,
+    parse_request,
+)
 from shared.digest_indexer import (
     DIGEST_TYPES,
     DigestIndexer,
@@ -111,6 +121,72 @@ async def digests_landing(request: Request, nakama_auth: str | None = Cookie(Non
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
+
+
+def _ask_form_context(**overrides) -> dict:
+    base = {
+        "question": "",
+        "days": DEFAULT_DAYS,
+        "selected_types": list(DIGEST_TYPES),
+        "all_types": list(DIGEST_TYPES),
+        "type_label": _TYPE_LABEL,
+        "max_days": MAX_DAYS,
+        "result": None,
+        "error": None,
+        "asset_version": _SHOSHO_ASSET_VERSION,
+    }
+    base.update(overrides)
+    return base
+
+
+@page_router.get("/digests/ask", response_class=HTMLResponse)
+async def digest_ask_get(request: Request, nakama_auth: str | None = Cookie(None)):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/digests/ask", status_code=302)
+    return _templates.TemplateResponse(request, "digest_ask.html", _ask_form_context())
+
+
+@page_router.post("/digests/ask", response_class=HTMLResponse)
+async def digest_ask_post(
+    request: Request,
+    nakama_auth: str | None = Cookie(None),
+    question: str = Form(""),
+    days: str = Form(""),
+    types: list[str] | None = Form(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/digests/ask", status_code=302)
+
+    try:
+        req = parse_request(question=question, days=days or None, types=types or None)
+    except AskValidationError as exc:
+        ctx = _ask_form_context(
+            question=question,
+            days=days or DEFAULT_DAYS,
+            selected_types=types or list(DIGEST_TYPES),
+            error=str(exc),
+        )
+        return _templates.TemplateResponse(request, "digest_ask.html", ctx)
+
+    try:
+        result = ask(req, _indexer())
+    except Exception as exc:  # noqa: BLE001 — surface any LLM/IO failure inline
+        logger.exception("digest_ask LLM dispatch failed")
+        ctx = _ask_form_context(
+            question=req.question,
+            days=req.days,
+            selected_types=list(req.types),
+            error=f"查詢失敗：{exc.__class__.__name__}",
+        )
+        return _templates.TemplateResponse(request, "digest_ask.html", ctx)
+
+    ctx = _ask_form_context(
+        question=req.question,
+        days=req.days,
+        selected_types=list(req.types),
+        result=result,
+    )
+    return _templates.TemplateResponse(request, "digest_ask.html", ctx)
 
 
 @page_router.get("/digests/{type_}/{date_}", response_class=HTMLResponse)

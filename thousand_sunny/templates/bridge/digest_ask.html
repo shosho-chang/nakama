@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Ask Digests</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<style>
+  .ask-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--sho-space-6, 28px) var(--sho-space-5, 20px);
+  }
+  .ask-meta {
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sho-muted, #888);
+    margin-bottom: var(--sho-space-4, 16px);
+  }
+  .ask-meta a { color: inherit; text-decoration: underline; }
+  .ask-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sho-space-3, 12px);
+    border: 1px solid var(--sho-border, #2a2a2a);
+    padding: var(--sho-space-5, 20px);
+  }
+  .ask-form label {
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sho-muted, #888);
+  }
+  .ask-form textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: var(--sho-space-3, 12px);
+    font: inherit;
+    background: var(--sho-surface-sunken, transparent);
+    color: inherit;
+    border: 1px solid var(--sho-border, #2a2a2a);
+    resize: vertical;
+  }
+  .ask-form textarea:focus { outline: 1px solid var(--sho-accent, #ff7a18); }
+  .ask-form-row {
+    display: flex;
+    gap: var(--sho-space-5, 20px);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .ask-form input[type="number"] {
+    width: 80px;
+    padding: 6px 10px;
+    font: inherit;
+    background: var(--sho-surface-sunken, transparent);
+    color: inherit;
+    border: 1px solid var(--sho-border, #2a2a2a);
+  }
+  .ask-form-types { display: flex; gap: var(--sho-space-3, 12px); }
+  .ask-form-types label {
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: inherit;
+    font-size: 13px;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ask-submit {
+    align-self: flex-start;
+    padding: 10px 20px;
+    font: inherit;
+    font-weight: 600;
+    background: var(--sho-accent, #ff7a18);
+    color: #000;
+    border: none;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+  }
+  .ask-submit:hover { filter: brightness(1.1); }
+  .ask-error {
+    margin-top: var(--sho-space-3, 12px);
+    padding: var(--sho-space-3, 12px);
+    border-left: 3px solid #d04040;
+    background: rgba(208, 64, 64, 0.08);
+    color: #e8a0a0;
+    font-size: 13px;
+  }
+  .ask-result {
+    margin-top: var(--sho-space-6, 28px);
+    border: 1px solid var(--sho-border, #2a2a2a);
+    padding: var(--sho-space-5, 20px);
+  }
+  .ask-result-kicker {
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sho-muted, #888);
+    margin-bottom: var(--sho-space-3, 12px);
+  }
+  .ask-result-question {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: var(--sho-space-4, 16px);
+  }
+  .ask-result-answer {
+    font-size: 15px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+  .ask-result-sources {
+    margin-top: var(--sho-space-5, 20px);
+    padding-top: var(--sho-space-4, 16px);
+    border-top: 1px solid var(--sho-border, #2a2a2a);
+    font-size: 13px;
+  }
+  .ask-result-sources-kicker {
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sho-muted, #888);
+    margin-bottom: 8px;
+  }
+  .ask-result-sources ul { list-style: none; padding: 0; margin: 0; }
+  .ask-result-sources li { margin-bottom: 4px; }
+  .ask-result-sources a { color: var(--sho-link, #6aa6ff); }
+  .ask-result-meta {
+    margin-top: var(--sho-space-4, 16px);
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--sho-muted, #888);
+  }
+  .ask-truncated {
+    color: var(--sho-accent, #ff7a18);
+  }
+</style>
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='digests') }}
+
+  <div class="ask-wrap">
+    <div class="ask-meta">
+      <a href="/bridge/digests">← Digests</a> · Ask
+    </div>
+
+    <form class="ask-form" method="post" action="/bridge/digests/ask">
+      <label for="question">問題（繁體中文，最多 500 字）</label>
+      <textarea id="question" name="question" maxlength="500" placeholder="例：過去兩週有沒有運動 × 老化相關的 RCT？">{{ question }}</textarea>
+
+      <div class="ask-form-row">
+        <label for="days">天數
+          <input id="days" name="days" type="number" min="1" max="{{ max_days }}" value="{{ days }}">
+        </label>
+        <div class="ask-form-types">
+          {% for t in all_types %}
+            <label>
+              <input type="checkbox" name="types" value="{{ t }}"
+                {% if t in selected_types %}checked{% endif %}>
+              {{ type_label[t] }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <button class="ask-submit" type="submit">查詢</button>
+
+      {% if error %}
+        <div class="ask-error">{{ error }}</div>
+      {% endif %}
+    </form>
+
+    {% if result %}
+      <section class="ask-result">
+        <div class="ask-result-kicker">Answer</div>
+        <div class="ask-result-question">{{ result.question }}</div>
+        <div class="ask-result-answer">{{ result.answer }}</div>
+
+        {% if result.sources %}
+          <div class="ask-result-sources">
+            <div class="ask-result-sources-kicker">引用來源 ({{ result.sources | length }})</div>
+            <ul>
+              {% for s in result.sources %}
+                <li><a href="{{ s.detail_url }}">[{{ s.type }}/{{ s.date }}]</a></li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        <div class="ask-result-meta">
+          範圍 · {{ result.days }} 天 · {{ result.types | join(' + ') }} · context {{ result.context_chars }} chars
+          {% if result.truncated %}<span class="ask-truncated">· 已截斷</span>{% endif %}
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</body>
+</html>

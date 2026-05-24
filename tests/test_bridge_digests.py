@@ -146,3 +146,110 @@ class TestAuth:
         r = c.get("/bridge/digests", follow_redirects=False)
         assert r.status_code == 302
         assert r.headers["location"] == "/login?next=/bridge/digests"
+
+    def test_ask_redirects_to_login(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("WEB_PASSWORD", "secret")
+        monkeypatch.setenv("WEB_SECRET", "shh")
+        monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+        monkeypatch.setenv("DISABLE_ROBIN", "1")
+        monkeypatch.setenv("NAKAMA_DOC_INDEX_DB_PATH", str(tmp_path / "x.db"))
+        import thousand_sunny.app as app_module
+        import thousand_sunny.auth as auth_module
+        import thousand_sunny.routers.bridge_digests as bd_module
+
+        importlib.reload(auth_module)
+        importlib.reload(bd_module)
+        importlib.reload(app_module)
+        c = TestClient(app_module.app)
+        r = c.get("/bridge/digests/ask", follow_redirects=False)
+        assert r.status_code == 302
+
+
+class TestAsk:
+    def test_get_renders_empty_form(self, client):
+        r = client.get("/bridge/digests/ask")
+        assert r.status_code == 200
+        assert "查詢" in r.text
+        assert 'name="question"' in r.text
+        assert 'name="days"' in r.text
+        assert "PubMed" in r.text
+        assert "AI News" in r.text
+
+    def test_post_invalid_question_shows_error(self, client):
+        r = client.post(
+            "/bridge/digests/ask",
+            data={"question": "", "days": "7"},
+        )
+        assert r.status_code == 200
+        assert "請輸入問題" in r.text
+
+    def test_post_invalid_days_shows_error(self, client):
+        r = client.post(
+            "/bridge/digests/ask",
+            data={"question": "test", "days": "9999"},
+        )
+        assert r.status_code == 200
+        assert "天數" in r.text
+
+    def test_post_dispatches_to_llm_and_renders(self, client, monkeypatch):
+        import shared.digest_ask as ask_module
+
+        def fake_llm(prompt, *, system, model, max_tokens):
+            assert "Nature 研究" in prompt  # PubMed digest body in context
+            assert model == "claude-sonnet-4-6"
+            return "LLM 模擬回答：找到 1 篇相關研究"
+
+        monkeypatch.setattr(ask_module, "ask_claude", fake_llm, raising=False)
+        # ask() imports ask_claude lazily — patch via monkeypatching the module
+        # function path that ask() resolves to.
+        import shared.anthropic_client as anth
+
+        monkeypatch.setattr(anth, "ask_claude", fake_llm)
+
+        r = client.post(
+            "/bridge/digests/ask",
+            data={"question": "今天 PubMed 有什麼？", "days": "7", "types": "pubmed"},
+        )
+        assert r.status_code == 200
+        assert "LLM 模擬回答" in r.text
+        assert "今天 PubMed 有什麼" in r.text
+        assert "引用來源" in r.text
+
+    def test_post_llm_failure_renders_error(self, client, monkeypatch):
+        import shared.anthropic_client as anth
+
+        def boom(*a, **kw):
+            raise RuntimeError("simulated outage")
+
+        monkeypatch.setattr(anth, "ask_claude", boom)
+
+        r = client.post(
+            "/bridge/digests/ask",
+            data={"question": "q", "days": "7"},
+        )
+        assert r.status_code == 200
+        assert "查詢失敗" in r.text
+
+    def test_post_empty_scope_no_llm_call(self, client, monkeypatch, tmp_path):
+        # Re-build empty vault client
+        monkeypatch.setenv("VAULT_PATH", str(tmp_path / "empty"))
+        (tmp_path / "empty").mkdir()
+        import shared.anthropic_client as anth
+        import thousand_sunny.app as app_module
+        import thousand_sunny.routers.bridge_digests as bd_module
+
+        importlib.reload(bd_module)
+        importlib.reload(app_module)
+        c = TestClient(app_module.app)
+
+        called = []
+        monkeypatch.setattr(anth, "ask_claude", lambda *a, **kw: called.append(1) or "x")
+
+        r = c.post("/bridge/digests/ask", data={"question": "q", "days": "7"})
+        assert r.status_code == 200
+        assert called == []
+        assert "無 digest 可查" in r.text
+
+    def test_landing_has_ask_cta(self, client):
+        r = client.get("/bridge/digests")
+        assert "/bridge/digests/ask" in r.text
