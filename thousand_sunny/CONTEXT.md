@@ -27,7 +27,7 @@ _Avoid_: vault scrape, vault crawl
 Obsidian 官方 first-party CLI；`obsidian eval` 可呼叫所有 plugin runtime API（Dataview / Tasks / Templater）。**硬約束**：Obsidian app 須在跑（Headless Sync 例外）— **VPS 不可用**，桌機可用。是 Tier B (LifeOS Dashboard mirror) / Tier C (project workspace) 的 future lever，不是 Tier A scope。詳見 [reference_obsidian_cli](../memory/claude/reference_obsidian_cli.md)。
 
 **Digest**:
-Robin / Franky 每日產出的 vault markdown 檔，per day per type。Tier A 第一刀 scope = `KB/Wiki/Digests/PubMed/{YYYYMMDD}.md`（Robin）+ `KB/Wiki/Digests/AI/{YYYY-MM-DD}.md`（Franky）兩 type；未來可加 podcast / weekly 等 type。
+Robin / Franky 每日產出的 vault markdown 檔，per day per type。Tier A 第一刀 scope = `KB/Wiki/Digests/PubMed/{YYYY-MM-DD}.md`（Robin）+ `KB/Wiki/Digests/AI/{YYYY-MM-DD}.md`（Franky）兩 type；未來可加 podcast / weekly 等 type。
 _Avoid_: Daily Brief（Nami `AgentBriefs/`，是不同 pipeline）, Book digest（不同形狀，跟 Reader 整合）
 
 **Digest viewer**:
