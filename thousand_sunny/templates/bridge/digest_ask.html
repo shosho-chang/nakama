@@ -197,7 +197,7 @@
 
         <div class="ask-result-meta">
           範圍 · {{ result.days }} 天 · {{ result.types | join(' + ') }} · context {{ result.context_chars }} chars
-          {% if result.truncated %}<span class="ask-truncated">· 已截斷</span>{% endif %}
+          {% if result.truncated %}<span class="ask-truncated">· 範圍 · {{ result.oldest_included_date }} 至 newest · 已捨棄 {{ result.dropped_count }} 篇較舊 digest</span>{% endif %}
         </div>
       </section>
     {% endif %}
