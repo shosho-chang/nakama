@@ -1,5 +1,6 @@
 # Memory Index
 
+- [user_vault_edit_pattern_no_concurrent.md](user_vault_edit_pattern_no_concurrent.md) — **修修不在多裝置同時編同檔**：Digest 從 Bridge 看、Annotation agent 寫、Project/Daily 單裝置編；Syncthing send-only / receive-only prevention 是 over-engineering，detection banner（PR #705）足夠；未來討論 vault concurrency anchor 回他實際模式不要假設 worst-case
 - [reference_obsidian_cli.md](reference_obsidian_cli.md) — **Obsidian 官方 first-party CLI**：`eval`（killer，可呼叫所有 plugin API：Dataview/Tasks/Templater）、`search`、`create`（Issue #231 繞道候選）、`tags counts`、`unresolved`、Headless Sync；**硬約束：Obsidian app 須在跑（Headless Sync 例外）= 桌機才有完整能力，VPS 只能用 Headless Sync**
 - [feedback_delete_branch_on_merge_default.md](feedback_delete_branch_on_merge_default.md) — **新 repo bootstrap 必開 deleteBranchOnMerge**：default `false` 會讓每次 PR merge 後 head branch 殘留 origin；`gh repo edit --delete-branch-on-merge` 一次解（2026-05-12 nakama 教訓）
 - [feedback_auto_merge_after_review.md](feedback_auto_merge_after_review.md) — **PR review pass 後 auto-merge 不要再問**（user explicit 2026-05-10）：跑 review skill → 修 ≥80 score bug → CI 綠 → 直接 squash-merge + inline 報告，不再徵求授權
