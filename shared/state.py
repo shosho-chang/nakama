@@ -509,6 +509,10 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         "ALTER TABLE api_calls ADD COLUMN auth_requested TEXT",
         "ALTER TABLE api_calls ADD COLUMN auth_actual TEXT",
         "ALTER TABLE api_calls ADD COLUMN fallback_reason TEXT",
+        # ADR-030 follow-up #700: per-call scope for LLM-over-vault calls.
+        # NULL for non-scoped calls (most callers); JSON object for digest_ask
+        # and any future surface that wants per-call audit transparency.
+        "ALTER TABLE api_calls ADD COLUMN scope_json TEXT",
         "ALTER TABLE r2_backup_checks ADD COLUMN prefix TEXT NOT NULL DEFAULT ''",
     ):
         try:
@@ -674,6 +678,7 @@ def record_api_call(
     auth_requested: Optional[str] = None,
     auth_actual: Optional[str] = None,
     fallback_reason: Optional[str] = None,
+    scope_json: Optional[str] = None,
 ) -> None:
     """記錄一次 LLM API 呼叫的 token 用量 + 延遲。
 
@@ -689,8 +694,8 @@ def record_api_call(
         """INSERT INTO api_calls
               (agent, run_id, model, input_tokens, output_tokens,
                cache_read_tokens, cache_write_tokens, latency_ms,
-               auth_requested, auth_actual, fallback_reason, called_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               auth_requested, auth_actual, fallback_reason, scope_json, called_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             agent,
             run_id,
@@ -703,6 +708,7 @@ def record_api_call(
             auth_requested,
             auth_actual,
             fallback_reason,
+            scope_json,
             now,
         ),
     )

@@ -80,6 +80,10 @@ def record_call(
 
         agent = getattr(_local, "agent", "unknown")
         run_id = getattr(_local, "run_id", None)
+        # ADR-030 follow-up #700: surface per-call audit scope when caller
+        # has populated it via threadlocal context. Mirrors agent/run_id
+        # pattern. None for the typical non-scoped LLM call.
+        scope_json = getattr(_local, "scope_json", None)
         record_api_call(
             agent=agent,
             model=model,
@@ -92,6 +96,7 @@ def record_call(
             auth_requested=auth_requested,
             auth_actual=auth_actual,
             fallback_reason=fallback_reason,
+            scope_json=scope_json,
         )
     except Exception as e:
         logger.debug("cost tracking 失敗（忽略）：%s", e)

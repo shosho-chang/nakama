@@ -18,10 +18,12 @@ philosophy is documented in ``thousand_sunny/CONTEXT.md`` (LLM-over-vault).
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
 from shared.digest_indexer import DIGEST_TYPES, DigestEntry, DigestIndexer
+from shared.llm_context import _local
 
 MAX_DAYS: int = 30
 DEFAULT_DAYS: int = 14
@@ -143,12 +145,35 @@ def ask(
 
         llm = ask_claude
 
-    answer = llm(
-        prompt,
-        system=_SYSTEM_PROMPT,
-        model=model,
-        max_tokens=MAX_OUTPUT_TOKENS,
+    # ADR-030 follow-up #700: surface the per-call audit scope to api_calls
+    # via threadlocal context. The observability writer reads `_local.scope_json`
+    # and persists it alongside token/cost. Owner can audit "what did the LLM
+    # see when it answered this question."
+    scope_json = json.dumps(
+        {
+            "surface": "digest_ask",
+            "question": req.question,
+            "days": req.days,
+            "types": list(req.types),
+            "sources": [{"type": e.type, "date": e.date} for e in used],
+            "dropped_count": len(in_scope) - len(used),
+            "context_chars": total,
+            "truncated": truncated,
+            "model": model,
+        },
+        ensure_ascii=False,
     )
+    prior_scope = getattr(_local, "scope_json", None)
+    _local.scope_json = scope_json
+    try:
+        answer = llm(
+            prompt,
+            system=_SYSTEM_PROMPT,
+            model=model,
+            max_tokens=MAX_OUTPUT_TOKENS,
+        )
+    finally:
+        _local.scope_json = prior_scope
     return AskResult(
         question=req.question,
         answer=answer.strip(),
