@@ -436,3 +436,184 @@ def test_episode_metadata_extra_is_isolated():
     m2 = EpisodeMetadata(slug="b")
     m1.extra["x"] = 1
     assert "x" not in m2.extra
+
+
+# ---------------------------------------------------------------------------
+# #682 — .approved.<channel> sentinels block overwrite
+# ---------------------------------------------------------------------------
+
+
+def _seed_run_dir_with_approved(tmp_path, date: str, slug: str, channel: str):
+    """Helper: create run_dir with an existing artifact + .approved.<channel> sentinel."""
+    run_dir = tmp_path / f"{date}-{slug}"
+    run_dir.mkdir(parents=True)
+    # seed approved content so we can assert "unchanged"
+    if channel == "blog":
+        (run_dir / "blog.md").write_text("APPROVED-BLOG", encoding="utf-8")
+    elif channel == "ig":
+        (run_dir / "ig-cards.json").write_text("APPROVED-IG", encoding="utf-8")
+    else:
+        tonal = channel.removeprefix("fb.")
+        (run_dir / f"fb-{tonal}.md").write_text(f"APPROVED-FB-{tonal}", encoding="utf-8")
+    (run_dir / f".approved.{channel}").touch()
+    return run_dir
+
+
+def test_run_skips_approved_blog_and_records_skip_exception(tmp_path, monkeypatch, caplog):
+    """Engine must not overwrite blog.md when .approved.blog is present (#682)."""
+    import logging
+
+    from agents.brook.repurpose_sentinels import ApprovalSkipException
+
+    monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
+
+    run_dir = _seed_run_dir_with_approved(tmp_path, "2026-05-01", "approved-run", "blog")
+
+    engine = RepurposeEngine(
+        extractor=_FakeExtractor(),
+        renderers={"blog": _FakeRenderer("blog.md", "blog")},
+    )
+    meta = EpisodeMetadata(slug="approved-run", date="2026-05-01")
+    with caplog.at_level(logging.INFO, logger="nakama.brook.repurpose_engine"):
+        result = engine.run("src", meta)
+
+    # Approved blog content untouched
+    assert (run_dir / "blog.md").read_text() == "APPROVED-BLOG"
+    # Skip recorded under the channel id (not the renderer key)
+    assert "blog" in result.errors
+    assert isinstance(result.errors["blog"], ApprovalSkipException)
+    assert result.errors["blog"].channel == "blog"
+    # Successful-write list does NOT include the skipped artifact
+    assert all(a.filename != "blog.md" for a in result.artifacts)
+    # INFO log mentions the skip
+    assert any("already approved" in r.getMessage() for r in caplog.records)
+
+
+def test_run_skips_approved_fb_tonal_only(tmp_path, monkeypatch):
+    """Only the specific approved fb tonal is preserved; other tonals overwrite."""
+    from agents.brook.repurpose_engine import ChannelArtifact
+    from agents.brook.repurpose_sentinels import ApprovalSkipException
+
+    monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
+
+    run_dir = tmp_path / "2026-05-01-fb-mix"
+    run_dir.mkdir(parents=True)
+    (run_dir / "fb-light.md").write_text("APPROVED-LIGHT", encoding="utf-8")
+    (run_dir / ".approved.fb.light").touch()
+
+    class _MultiFB:
+        def render(self, stage1, metadata):
+            return [
+                ChannelArtifact(filename=f"fb-{t}.md", content=f"NEW-{t}", channel=f"fb-{t}")
+                for t in ("light", "emotional", "serious", "neutral")
+            ]
+
+    engine = RepurposeEngine(extractor=_FakeExtractor(), renderers={"fb": _MultiFB()})
+    meta = EpisodeMetadata(slug="fb-mix", date="2026-05-01")
+    result = engine.run("src", meta)
+
+    # Approved tonal preserved
+    assert (run_dir / "fb-light.md").read_text() == "APPROVED-LIGHT"
+    # Other tonals overwritten with new content
+    assert (run_dir / "fb-emotional.md").read_text() == "NEW-emotional"
+    assert (run_dir / "fb-serious.md").read_text() == "NEW-serious"
+    assert (run_dir / "fb-neutral.md").read_text() == "NEW-neutral"
+    # Skip recorded under fb.light only
+    assert "fb.light" in result.errors
+    assert isinstance(result.errors["fb.light"], ApprovalSkipException)
+    assert "fb.emotional" not in result.errors
+
+
+def test_run_force_path_via_clear_sentinels_overwrites(tmp_path, monkeypatch):
+    """After clear_approval_sentinels (CLI --force surface), engine overwrites."""
+    from agents.brook.repurpose_sentinels import clear_approval_sentinels
+
+    monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
+
+    run_dir = _seed_run_dir_with_approved(tmp_path, "2026-05-01", "force-run", "blog")
+
+    # Simulate `--force` precondition: clear sentinels before engine runs
+    cleared = clear_approval_sentinels(run_dir)
+    assert cleared == ["blog"]
+    assert not (run_dir / ".approved.blog").exists()
+
+    engine = RepurposeEngine(
+        extractor=_FakeExtractor(),
+        renderers={"blog": _FakeRenderer("blog.md", "blog")},
+    )
+    meta = EpisodeMetadata(slug="force-run", date="2026-05-01")
+    result = engine.run("src", meta)
+
+    # Overwritten with the fake renderer's new content
+    assert (run_dir / "blog.md").read_text() == "content-blog"
+    assert "blog" not in result.errors
+    assert len(result.artifacts) == 1
+
+
+def test_run_preserves_stage1_and_unrelated_files_on_approved_rerun(tmp_path, monkeypatch):
+    """Integration-ish: a full re-run on an approved run_dir does not lose the
+    Annotations / approved artifacts, only refreshes stage1.json + un-approved
+    channels.
+    """
+    from agents.brook.repurpose_engine import ChannelArtifact
+
+    monkeypatch.setattr("agents.brook.repurpose_engine._DATA_ROOT", tmp_path)
+
+    run_dir = tmp_path / "2026-05-01-integration"
+    run_dir.mkdir(parents=True)
+    (run_dir / "blog.md").write_text("APPROVED-BLOG", encoding="utf-8")
+    (run_dir / "ig-cards.json").write_text("OLD-IG", encoding="utf-8")
+    (run_dir / ".approved.blog").touch()
+    # Simulate Annotations / sidecar file unrelated to engine channels
+    (run_dir / "annotations.json").write_text('{"note": "keep me"}', encoding="utf-8")
+
+    class _BlogRenderer:
+        def render(self, stage1, metadata):
+            return [ChannelArtifact(filename="blog.md", content="NEW-BLOG", channel="blog")]
+
+    class _IGRenderer:
+        def render(self, stage1, metadata):
+            return [ChannelArtifact(filename="ig-cards.json", content="NEW-IG", channel="ig")]
+
+    engine = RepurposeEngine(
+        extractor=_FakeExtractor(),
+        renderers={"blog": _BlogRenderer(), "ig": _IGRenderer()},
+    )
+    meta = EpisodeMetadata(slug="integration", date="2026-05-01")
+    result = engine.run("src", meta)
+
+    # Approved blog preserved; un-approved ig overwritten; unrelated file untouched
+    assert (run_dir / "blog.md").read_text() == "APPROVED-BLOG"
+    assert (run_dir / "ig-cards.json").read_text() == "NEW-IG"
+    assert (run_dir / "annotations.json").read_text() == '{"note": "keep me"}'
+    # stage1.json refreshed (regenerated by extractor)
+    assert (run_dir / "stage1.json").exists()
+    # blog skip + ig success
+    assert "blog" in result.errors
+    assert any(a.channel == "ig" for a in result.artifacts)
+
+
+# ---------------------------------------------------------------------------
+# Filename ↔ channel mapping
+# ---------------------------------------------------------------------------
+
+
+def test_channel_for_filename_known_mappings():
+    from agents.brook.repurpose_sentinels import channel_for_filename
+
+    assert channel_for_filename("blog.md") == "blog"
+    assert channel_for_filename("ig-cards.json") == "ig"
+    assert channel_for_filename("fb-light.md") == "fb.light"
+    assert channel_for_filename("fb-emotional.md") == "fb.emotional"
+    assert channel_for_filename("fb-serious.md") == "fb.serious"
+    assert channel_for_filename("fb-neutral.md") == "fb.neutral"
+
+
+def test_channel_for_filename_returns_none_for_unknown():
+    from agents.brook.repurpose_sentinels import channel_for_filename
+
+    # Defensive: stage1.json, sentinel files, sidecars all return None
+    assert channel_for_filename("stage1.json") is None
+    assert channel_for_filename(".approved.blog") is None
+    assert channel_for_filename("annotations.json") is None
+    assert channel_for_filename("fb-unknown.md") is None
