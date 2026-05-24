@@ -133,14 +133,17 @@ class TestUpdateBodySection:
         assert "影片描述" in body
 
 
-class TestWriteReview:
-    def test_writes_persona_block(self, vault: Path):
-        write_review(
+class TestAppendReview:
+    def test_writes_persona_list_first_run(self, vault: Path):
+        from shared.project_writer import append_review
+
+        append_review(
             vault_root=vault,
             slug="t",
             persona="storyteller",
             review={
                 "run_at": "2026-05-24T22:00:00+08:00",
+                "prompt_version": "v1.0",
                 "score": 4,
                 "summary": "Hook is decent",
                 "suggestions": ["改第 2 段"],
@@ -148,12 +151,74 @@ class TestWriteReview:
         )
         content = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
         fm = yaml.safe_load(content.split("---")[1])
-        assert fm["reviews"]["storyteller"]["score"] == 4
-        assert fm["reviews"]["storyteller"]["suggestions"] == ["改第 2 段"]
+        assert isinstance(fm["reviews"]["storyteller"], list)
+        assert len(fm["reviews"]["storyteller"]) == 1
+        assert fm["reviews"]["storyteller"][0]["score"] == 4
+        assert fm["reviews"]["storyteller"][0]["prompt_version"] == "v1.0"
+
+    def test_appends_second_run_preserves_first(self, vault: Path):
+        from shared.project_writer import append_review
+
+        append_review(
+            vault_root=vault,
+            slug="t",
+            persona="coach",
+            review={"run_at": "t1", "prompt_version": "v1", "score": 2, "summary": "draft 1"},
+        )
+        append_review(
+            vault_root=vault,
+            slug="t",
+            persona="coach",
+            review={"run_at": "t2", "prompt_version": "v1", "score": 4, "summary": "draft 2"},
+        )
+        content = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(content.split("---")[1])
+        assert len(fm["reviews"]["coach"]) == 2
+        assert fm["reviews"]["coach"][0]["score"] == 2
+        assert fm["reviews"]["coach"][1]["score"] == 4
+
+    def test_migrates_legacy_dict_shape_on_append(self, vault: Path):
+        """v1 dict-shape gets wrapped to list when a new entry appended."""
+        from shared.project_writer import append_review, update_frontmatter
+
+        # Seed v1 dict-shape directly
+        update_frontmatter(
+            vault_root=vault,
+            slug="t",
+            patch={"reviews": {"storyteller": {"run_at": "old", "score": 3, "summary": "old"}}},
+        )
+        append_review(
+            vault_root=vault,
+            slug="t",
+            persona="storyteller",
+            review={"run_at": "new", "prompt_version": "v1", "score": 5, "summary": "new"},
+        )
+        content = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(content.split("---")[1])
+        assert isinstance(fm["reviews"]["storyteller"], list)
+        assert len(fm["reviews"]["storyteller"]) == 2
+        assert fm["reviews"]["storyteller"][0]["score"] == 3  # legacy
+        assert fm["reviews"]["storyteller"][1]["score"] == 5  # new
 
     def test_unknown_persona_raises(self, vault: Path):
+        from shared.project_writer import append_review
+
         with pytest.raises(ValueError):
-            write_review(vault_root=vault, slug="t", persona="seo", review={})
+            append_review(vault_root=vault, slug="t", persona="seo", review={})
+
+    def test_write_review_alias_still_works(self, vault: Path):
+        """Soft shim — old name delegates to append_review (PR1→PR2 window)."""
+        write_review(
+            vault_root=vault,
+            slug="t",
+            persona="storyteller",
+            review={"run_at": "t1", "score": 4, "summary": "ok"},
+        )
+        content = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(content.split("---")[1])
+        # alias path = list-shape too (no longer dict)
+        assert isinstance(fm["reviews"]["storyteller"], list)
+        assert fm["reviews"]["storyteller"][0]["score"] == 4
 
 
 class TestAppendTimeentry:

@@ -172,6 +172,54 @@ def update_body_section(
     _write_split(path, fm, new_body)
 
 
+def append_review(
+    *,
+    vault_root: Path,
+    slug: str,
+    persona: str,
+    review: dict[str, Any],
+) -> None:
+    """Append a review entry to ``reviews.{persona}`` list (v2 schema).
+
+    Reviews are stored as a list-of-versioned-objects per persona
+    (ADR-031 v2 panel push) so prompt iteration history is preserved
+    in-frontmatter. UI shows latest by default with a "歷史" toggle.
+
+    Tolerates the v1 dict-shape on read for forward compatibility: if
+    the existing value is a dict, it is wrapped to ``[dict, new_review]``
+    before append. After this call the field is always a list.
+    """
+    if persona not in ("storyteller", "coach"):
+        raise ValueError(f"unknown persona: {persona!r}")
+
+    path = vault_root / PROJECTS_DIR / f"{slug}.md"
+    fm, body = _read_split(path)
+
+    reviews = fm.get("reviews")
+    if not isinstance(reviews, dict):
+        reviews = {}
+
+    existing = reviews.get(persona)
+    if existing is None:
+        history: list[Any] = []
+    elif isinstance(existing, list):
+        history = list(existing)
+    elif isinstance(existing, dict):
+        # v1 dict-shape — migrate inline by wrapping the previous entry.
+        history = [existing]
+    else:
+        raise ProjectWriteError(
+            f"reviews.{persona} has unexpected shape: {type(existing).__name__}"
+        )
+
+    history.append(review)
+    reviews[persona] = history
+    fm["reviews"] = reviews
+    _write_split(path, fm, body)
+
+
+# Backwards-compatible alias for any in-flight PR1 callers (none in current
+# codebase — kept as a soft shim during the PR1→PR2 transition window).
 def write_review(
     *,
     vault_root: Path,
@@ -179,20 +227,8 @@ def write_review(
     persona: str,
     review: dict[str, Any],
 ) -> None:
-    """Write a single persona review to ``reviews.{persona}``.
-
-    Overwrites any previous review for that persona (per ADR-031 D8 — no
-    version history in frontmatter; audit trail in state.db api_calls).
-
-    ``review`` should contain: run_at, score, summary, suggestions.
-    """
-    if persona not in ("storyteller", "coach"):
-        raise ValueError(f"unknown persona: {persona!r}")
-    update_frontmatter(
-        vault_root=vault_root,
-        slug=slug,
-        patch={"reviews": {persona: review}},
-    )
+    """Deprecated v1 overwrite-shape — delegates to :func:`append_review`."""
+    append_review(vault_root=vault_root, slug=slug, persona=persona, review=review)
 
 
 def append_timeentry(

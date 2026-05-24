@@ -195,6 +195,9 @@ def _entry_from_fm(*, slug: str, fm: dict, relative_path: str) -> ProjectEntry:
     if isinstance(reviews_fm, dict):
         for persona in ("storyteller", "coach"):
             r = reviews_fm.get(persona)
+            # v2 list-shape (PR2): latest = last entry
+            if isinstance(r, list) and r:
+                r = r[-1]
             if isinstance(r, dict):
                 reviews.append(
                     ReviewSummary(
