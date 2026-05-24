@@ -428,3 +428,85 @@ def test_translate_document_pure_reference_returns_text(tmp_path):
         result = translate_document(text)
 
     assert result == text
+
+
+def test_translate_document_skips_image_only_segments(tmp_path):
+    """Pure-image paragraphs must NOT be sent to LLM and must NOT get a
+    blockquote translation (otherwise the image renders twice in the reader,
+    bug observed in bilingual.md 2026-05-24)."""
+    glossary_file = tmp_path / "g.yaml"
+    glossary_file.write_text("terms: {}\n", encoding="utf-8")
+
+    translated_inputs = []
+
+    def mock_translate(segments, **kwargs):
+        translated_inputs.extend(segments)
+        return [f"譯：{s}" for s in segments]
+
+    text = (
+        "Text paragraph one.\n\n"
+        "![](attachments/foo/img-1.jpg)\n\n"
+        "Fig. 1. Caption text here.\n\n"
+        "![alt](attachments/foo/img-2.jpg)\n\n"
+        "Final paragraph."
+    )
+    with (
+        patch("shared.translator.translate_segments", side_effect=mock_translate),
+        patch("shared.translator._GLOSSARY_PATH", glossary_file),
+    ):
+        result = translate_document(text)
+
+    # Only TEXT paragraphs sent to translator — images skipped
+    assert translated_inputs == [
+        "Text paragraph one.",
+        "Fig. 1. Caption text here.",
+        "Final paragraph.",
+    ]
+    # Image markdown appears EXACTLY ONCE in output (no echo blockquote)
+    assert result.count("![](attachments/foo/img-1.jpg)") == 1
+    assert result.count("![alt](attachments/foo/img-2.jpg)") == 1
+    # No blockquoted image markdown
+    assert "> ![" not in result
+    # Text translations still present
+    assert "> 譯：Text paragraph one." in result
+    assert "> 譯：Fig. 1. Caption text here." in result
+
+
+def test_translate_document_pure_image_doc_no_llm_call(tmp_path):
+    """Doc consisting only of image markdown paragraphs makes zero LLM calls
+    and returns the images verbatim."""
+    glossary_file = tmp_path / "g.yaml"
+    glossary_file.write_text("terms: {}\n", encoding="utf-8")
+
+    def mock_translate(segments, **kwargs):
+        raise AssertionError("translate_segments should NOT be called for pure-image doc")
+
+    text = "![](attachments/a.jpg)\n\n![](attachments/b.jpg)\n\n![](attachments/c.jpg)"
+    with (
+        patch("shared.translator.translate_segments", side_effect=mock_translate),
+        patch("shared.translator._GLOSSARY_PATH", glossary_file),
+    ):
+        result = translate_document(text)
+
+    # No blockquotes, images preserved in order
+    assert "> ![" not in result
+    assert result.count("![](attachments/a.jpg)") == 1
+    assert result.count("![](attachments/b.jpg)") == 1
+    assert result.count("![](attachments/c.jpg)") == 1
+
+
+def test_is_image_only_segment_recognises_variants():
+    """``_is_image_only_segment`` accepts single + multi-image segments,
+    rejects mixed text+image segments."""
+    from shared.translator import _is_image_only_segment
+
+    # Image-only (true)
+    assert _is_image_only_segment("![](attachments/img-1.jpg)")
+    assert _is_image_only_segment("![alt text](attachments/img-1.png)")
+    assert _is_image_only_segment("  ![](img.jpg)  ")
+    assert _is_image_only_segment("![](a.jpg)\n![](b.jpg)")
+    # Text + image (false)
+    assert not _is_image_only_segment("Fig. 1. Caption.\n\n![](img.jpg)")
+    assert not _is_image_only_segment("Text before ![](img.jpg) text after")
+    assert not _is_image_only_segment("Plain text paragraph.")
+    assert not _is_image_only_segment("")
