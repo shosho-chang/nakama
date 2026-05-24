@@ -250,6 +250,57 @@ class TestAsk:
         assert called == []
         assert "無 digest 可查" in r.text
 
+    def test_post_shows_truncation_date_range_and_drop_count(self, client, monkeypatch):
+        import thousand_sunny.routers.bridge_digests as bd_module
+        from shared.digest_ask import AskResult
+        from shared.digest_indexer import DigestEntry
+
+        fake_entry = DigestEntry(
+            type="pubmed",
+            date="2026-05-24",
+            relative_path="KB/Wiki/Digests/PubMed/2026-05-24.md",
+            selected_count=5,
+            editor_pick_count=3,
+            summary="test",
+        )
+        fake_result = AskResult(
+            question="test truncation",
+            answer="some answer",
+            sources=(fake_entry,),
+            days=30,
+            types=("pubmed",),
+            context_chars=100,
+            truncated=True,
+            dropped_count=9,
+            oldest_included_date="2026-05-04",
+        )
+        monkeypatch.setattr(bd_module, "ask", lambda req, idx: fake_result)
+
+        r = client.post(
+            "/bridge/digests/ask",
+            data={"question": "test truncation", "days": "30", "types": "pubmed"},
+        )
+        assert r.status_code == 200
+        assert "2026-05-04" in r.text
+        assert "9" in r.text
+        assert "已捨棄" in r.text
+
+    def test_post_answer_rendered_as_markdown(self, client, monkeypatch):
+        import shared.anthropic_client as anth
+
+        def fake_llm(prompt, *, system, model, max_tokens):
+            return "**bold** text\n\n- list item"
+
+        monkeypatch.setattr(anth, "ask_claude", fake_llm)
+
+        r = client.post(
+            "/bridge/digests/ask",
+            data={"question": "test markdown rendering", "days": "7", "types": "pubmed"},
+        )
+        assert r.status_code == 200
+        assert "<strong>bold</strong>" in r.text
+        assert "<li>list item</li>" in r.text
+
     def test_landing_has_ask_cta(self, client):
         r = client.get("/bridge/digests")
         assert "/bridge/digests/ask" in r.text

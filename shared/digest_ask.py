@@ -61,6 +61,8 @@ class AskResult:
     types: tuple[str, ...]
     context_chars: int
     truncated: bool  # True iff one or more entries were dropped due to char cap
+    dropped_count: int  # number of in-scope entries excluded by the char cap
+    oldest_included_date: str | None  # YYYY-MM-DD of oldest kept entry, or None
 
 
 def parse_request(
@@ -129,6 +131,8 @@ def ask(
             types=req.types,
             context_chars=0,
             truncated=False,
+            dropped_count=0,
+            oldest_included_date=None,
         )
 
     context = "".join(context_parts)
@@ -153,4 +157,6 @@ def ask(
         types=req.types,
         context_chars=total,
         truncated=truncated,
+        dropped_count=len(in_scope) - len(used),
+        oldest_included_date=used[-1].date if used else None,
     )

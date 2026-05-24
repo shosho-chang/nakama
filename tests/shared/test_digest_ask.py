@@ -170,6 +170,33 @@ class TestAsk:
         assert captured["model"] == "claude-sonnet-4-6"
         assert captured["max_tokens"] == 2048
 
+    def test_truncation_exposes_dropped_count_and_oldest_date(self, tmp_path, monkeypatch):
+        big = "X" * 80_000
+        for offset in range(3):
+            _seed(tmp_path, "KB/Wiki/Digests/PubMed", _today(offset), big)
+        idx = DigestIndexer(tmp_path)
+        monkeypatch.setattr("shared.digest_ask.MAX_CONTEXT_CHARS", 150_000)
+
+        req = AskRequest(question="q", days=7, types=("pubmed",))
+        result = ask(req, idx, llm=lambda *a, **kw: "answer")
+
+        assert result.truncated is True
+        assert result.dropped_count > 0
+        assert result.dropped_count == 3 - len(result.sources)
+        assert result.oldest_included_date is not None
+        assert result.oldest_included_date == result.sources[-1].date
+
+    def test_no_truncation_dropped_count_zero(self, tmp_path):
+        _seed(tmp_path, "KB/Wiki/Digests/PubMed", _today(0), "small")
+        idx = DigestIndexer(tmp_path)
+
+        req = AskRequest(question="q", days=7, types=("pubmed",))
+        result = ask(req, idx, llm=lambda *a, **kw: "answer")
+
+        assert result.truncated is False
+        assert result.dropped_count == 0
+        assert result.oldest_included_date == _today(0)
+
 
 class TestConstants:
     def test_context_cap_is_reasonable(self):
