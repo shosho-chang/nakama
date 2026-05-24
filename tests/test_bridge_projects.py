@@ -230,6 +230,23 @@ class TestSectionUpdate:
         body = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
         assert "新描述" in body
 
+    def test_rejects_empty_content(self, client, tmp_path):
+        before = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/section/script",
+            data={"content": "", "tab": "script"},
+        )
+        assert r.status_code == 400
+        after = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        assert before == after, "empty POST must not mutate the file"
+
+    def test_rejects_whitespace_only_content(self, client, tmp_path):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/section/script",
+            data={"content": "   \n  \n", "tab": "script"},
+        )
+        assert r.status_code == 400
+
 
 class TestPomodoroTimer:
     def test_complete_writes_timeentry(self, client, tmp_path):

@@ -367,6 +367,12 @@ async def projects_update_section(
     if section_slug not in EDITABLE_SECTIONS:
         raise HTTPException(status_code=400, detail=f"section not editable: {section_slug!r}")
 
+    if not content.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="empty content; submit non-empty body or use Obsidian to delete the section",
+        )
+
     heading_text, parent_tab = EDITABLE_SECTIONS[section_slug]
 
     try:
