@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 # Windows uvicorn inherits cp1252 stdout/stderr → any 中文 log message would
@@ -105,6 +105,16 @@ if _static_dir.is_dir():
         StaticFiles(directory=str(_static_dir)),
         name="static",
     )
+
+# Favicon — browsers auto-request /favicon.ico from the root path. Serve the
+# SVG file (modern browsers accept SVG content at the .ico URL, and the
+# explicit <link rel="icon" type="image/svg+xml"> in page <head> takes
+# precedence anyway). Orange lightning bolt matches --sho-accent.
+_favicon_path = _static_dir / "favicon.svg"
+if _favicon_path.is_file():
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def _favicon() -> FileResponse:
+        return FileResponse(_favicon_path, media_type="image/svg+xml")
 
 # Robin（KB ingest + reader）僅本機執行，VPS 設 DISABLE_ROBIN=1 跳過
 if not os.getenv("DISABLE_ROBIN"):

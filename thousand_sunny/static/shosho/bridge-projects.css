@@ -28,6 +28,7 @@
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--sho-s-3, 12px);
   margin-block: var(--sho-s-5, 24px);
+  padding-inline: var(--sho-gutter, 40px);
 }
 
 .pj-card {
@@ -108,6 +109,7 @@
 
 .pj-archive-toggle {
   margin-top: var(--sho-s-5, 24px);
+  padding-inline: var(--sho-gutter, 40px);
   font-family: var(--sho-font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--sho-muted, #888);
@@ -119,6 +121,7 @@
 .pj-form {
   max-width: 640px;
   margin-block: var(--sho-s-5, 24px);
+  margin-inline: var(--sho-gutter, 40px);
   display: flex;
   flex-direction: column;
   gap: var(--sho-s-4, 16px);
@@ -211,6 +214,7 @@
   gap: 0;
   border-bottom: 1px solid var(--sho-line, #2a2a2a);
   margin-block: var(--sho-s-4, 16px) 0;
+  padding-inline: var(--sho-gutter, 40px);
   flex-wrap: wrap;
 }
 .pj-tab {
@@ -253,7 +257,10 @@
   letter-spacing: 0.04em;
 }
 
-.pj-tab-panels { padding-block: var(--sho-s-4, 16px); }
+.pj-tab-panels {
+  padding-block: var(--sho-s-4, 16px);
+  padding-inline: var(--sho-gutter, 40px);
+}
 
 .pj-tab-panel {
   display: block;

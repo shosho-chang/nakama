@@ -93,6 +93,10 @@
   --sho-s-10: 128px;
   --sho-r-1: 4px;  --sho-r-2: 8px;  --sho-r-3: 12px;  --sho-r-pill: 999px;
 
+  /* ── Page gutter — matches .chassis (0 40px) + .pg-subheader (20 40 14)
+       so body content sits on the same vertical rule as the header. ──── */
+  --sho-gutter: 40px;
+
   /* ── Focus ring — two-step orange on bg ─────────────────────────────── */
   --sho-focus: 0 0 0 2px var(--sho-bg), 0 0 0 4px var(--sho-accent);
 
