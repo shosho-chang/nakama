@@ -11,9 +11,44 @@
 </head>
 <body class="sho bridge-page">
 
+{# ---------------------------------------------------------------------------
+   Slice 10 mutation surface — three editable panels (Blog / FB×4 / IG) + per-channel
+   approve buttons + Blog → WP draft hand-off.
+
+   Implementation notes:
+   • Every form posts JSON via fetch() to a sibling mutation route (see
+     thousand_sunny/routers/repurpose.py).  No full-page POST/redirect because
+     we keep the 3-panel scroll state intact across saves.
+   • Save buttons are disabled until the textarea is modified, then re-enable;
+     while in-flight they enter `is-loading` (button text → "儲存中…").
+   • Per-channel approve chips live in the panel header and reflect server
+     state from `run.approved.<channel>`; clicking POSTs and updates the chip
+     without reload.
+   • Blog "送 WP 草稿" is enabled only after the blog is approved; on Slice 10
+     it surfaces the 501 carry-over response inline (red status pill) so 修修
+     can see the gap without ambiguity.
+
+   All colour / type / spacing routes through `--sho-*` tokens — no hex/rgb
+   inline.  Mutation status messages reuse `.section-status` semantic colour
+   classes (ready / fail) instead of inventing new vocabulary.
+---------------------------------------------------------------------------- #}
+
 <!-- Chassis -->
 {% from "_chassis_nav.html" import chassis_nav %}
 {{ chassis_nav(nav_active='repurpose') }}
+
+{% set _status_chip = {
+  'pending': 'sho-chip--offline',
+  'partially-approved': 'sho-chip--hold',
+  'approved': 'sho-chip--active',
+  'published': 'sho-chip--online'
+} %}
+{% set _status_label = {
+  'pending': '待審',
+  'partially-approved': '部分核准',
+  'approved': '已核准',
+  'published': '已送 WP'
+} %}
 
 <!-- Page header -->
 <div class="page-header page-header--center">
@@ -27,78 +62,144 @@
       {% endif %}
     </div>
   </div>
-  <div class="pending-notice">SLICE 10 → mutation 尚未實作</div>
+  <div class="header-meta" aria-live="polite">
+    <span id="runStatusChip" class="sho-chip {{ _status_chip[run.status] }}" data-status="{{ run.status }}">
+      {{ _status_label[run.status] }}
+    </span>
+  </div>
 </div>
 
 <!-- 3-panel surface -->
 <div class="panels-wrap">
 
-  <!-- ── Panel 1: Blog ── -->
-  <div class="panel">
+  {# ── Panel 1: Blog ─────────────────────────────────────────────────── #}
+  <div class="panel" data-channel="blog">
     <div class="panel-header">
       <span class="panel-label">P1 <span class="panel-channel">BLOG</span></span>
-      <span class="panel-status-placeholder">APPROVE (Slice 10)</span>
+      <span class="rp-channel-actions">
+        <span class="rp-approve-chip{% if run.approved.blog %} is-approved{% endif %}"
+              data-approve-chip="blog"
+              aria-live="polite">
+          {% if run.approved.blog %}已核准{% else %}未核准{% endif %}
+        </span>
+      </span>
     </div>
-    <div class="panel-body">
-      {% if run.blog %}
-      <div class="artifact-content">{{ run.blog }}</div>
-      {% else %}
-      <div class="empty-panel">
-        <div class="empty-icon">[ ]</div>
-        <div class="empty-hint">blog.md not yet generated</div>
+    <form class="rp-edit-form panel-body"
+          data-save-url="/bridge/repurpose/{{ run.run_id }}/blog"
+          data-approve-url="/bridge/repurpose/{{ run.run_id }}/approve/blog"
+          data-publish-url="/bridge/repurpose/{{ run.run_id }}/publish/blog"
+          data-channel="blog"
+          onsubmit="return false">
+      <label class="sr-only" for="rp-edit-blog">Blog markdown</label>
+      <textarea id="rp-edit-blog"
+                class="rp-edit-textarea"
+                spellcheck="false"
+                aria-label="Blog markdown">{{ run.blog or '' }}</textarea>
+      <div class="rp-edit-toolbar">
+        <button type="button" class="sho-btn--ghost rp-save-btn" disabled>儲存草稿</button>
+        <button type="button" class="sho-btn--ghost rp-approve-btn"
+                {% if run.approved.blog %}disabled aria-pressed="true"{% endif %}>
+          {% if run.approved.blog %}已核准 ✓{% else %}核准 Blog{% endif %}
+        </button>
+        <button type="button" class="sho-btn rp-publish-btn"
+                {% if not run.approved.blog %}disabled{% endif %}
+                aria-describedby="rp-publish-hint-blog">
+          送 WP 草稿
+        </button>
+        <span class="rp-edit-status" role="status" aria-live="polite"></span>
       </div>
-      {% endif %}
-    </div>
+      <p id="rp-publish-hint-blog" class="field-help" style="margin-top:6px">
+        WP 草稿不直接發布；經 Usopp 進 WordPress 後仍為 <code>status=draft</code>，由您在 WP admin 最後核准。
+      </p>
+    </form>
   </div>
 
-  <!-- ── Panel 2: FB (4 tonal tabs) ── -->
-  <div class="panel">
+  {# ── Panel 2: FB (4 tonal tabs, each with own save/approve) ────────── #}
+  <div class="panel" data-channel="fb">
     <div class="panel-header">
       <span class="panel-label">P2 <span class="panel-channel">FACEBOOK</span></span>
-      <span class="panel-status-placeholder">APPROVE (Slice 10)</span>
+      <span class="rp-channel-actions" id="fbActiveApproveSlot">
+        {# Active-tab approve chip is moved into here by JS on tab switch. #}
+      </span>
     </div>
-    <div class="fb-tabs" id="fbTabs">
+    <div class="fb-tabs" id="fbTabs" role="tablist">
       {% for tonal in fb_tonals %}
       <button class="fb-tab{% if loop.first %} active{% endif %}"
               onclick="switchFBTab('{{ tonal }}')"
               data-tonal="{{ tonal }}"
-              id="fb-tab-{{ tonal }}">
+              id="fb-tab-{{ tonal }}"
+              role="tab"
+              aria-selected="{{ 'true' if loop.first else 'false' }}"
+              aria-controls="fb-pane-{{ tonal }}">
         {{ tonal }}
+        <span class="rp-fb-dot{% if run.approved['fb.' + tonal] %} is-approved{% endif %}"
+              aria-hidden="true"
+              data-fb-dot="{{ tonal }}"></span>
       </button>
       {% endfor %}
     </div>
     <div class="panel-body">
       {% for tonal in fb_tonals %}
-      <div class="fb-pane{% if loop.first %} active{% endif %}" id="fb-pane-{{ tonal }}">
-        {% if run.fb[tonal] %}
-        <div class="artifact-content">{{ run.fb[tonal] }}</div>
-        {% else %}
-        <div class="empty-panel" style="min-height:160px">
-          <div class="empty-icon">[ ]</div>
-          <div class="empty-hint">fb-{{ tonal }}.md not yet generated</div>
-        </div>
-        {% endif %}
+      <div class="fb-pane{% if loop.first %} active{% endif %}"
+           id="fb-pane-{{ tonal }}"
+           role="tabpanel"
+           aria-labelledby="fb-tab-{{ tonal }}">
+        <form class="rp-edit-form"
+              data-save-url="/bridge/repurpose/{{ run.run_id }}/fb/{{ tonal }}"
+              data-approve-url="/bridge/repurpose/{{ run.run_id }}/approve/fb.{{ tonal }}"
+              data-channel="fb.{{ tonal }}"
+              data-fb-tonal="{{ tonal }}"
+              onsubmit="return false">
+          <label class="sr-only" for="rp-edit-fb-{{ tonal }}">FB {{ tonal }} markdown</label>
+          <textarea id="rp-edit-fb-{{ tonal }}"
+                    class="rp-edit-textarea rp-edit-textarea--fb"
+                    spellcheck="false"
+                    aria-label="FB {{ tonal }} markdown">{{ run.fb[tonal] or '' }}</textarea>
+          <div class="rp-edit-toolbar">
+            <button type="button" class="sho-btn--ghost rp-save-btn" disabled>儲存草稿</button>
+            <button type="button" class="sho-btn--ghost rp-approve-btn"
+                    {% if run.approved['fb.' + tonal] %}disabled aria-pressed="true"{% endif %}>
+              {% if run.approved['fb.' + tonal] %}已核准 ✓{% else %}核准本語氣{% endif %}
+            </button>
+            <span class="rp-edit-status" role="status" aria-live="polite"></span>
+          </div>
+        </form>
       </div>
       {% endfor %}
     </div>
   </div>
 
-  <!-- ── Panel 3: IG ── -->
-  <div class="panel">
+  {# ── Panel 3: IG ───────────────────────────────────────────────────── #}
+  <div class="panel" data-channel="ig">
     <div class="panel-header">
       <span class="panel-label">P3 <span class="panel-channel">INSTAGRAM</span></span>
-      <span class="panel-status-placeholder">APPROVE (Slice 10)</span>
+      <span class="rp-channel-actions">
+        <span class="rp-approve-chip{% if run.approved.ig %} is-approved{% endif %}"
+              data-approve-chip="ig"
+              aria-live="polite">
+          {% if run.approved.ig %}已核准{% else %}未核准{% endif %}
+        </span>
+      </span>
     </div>
-    <div class="panel-body">
-      {% if run.ig %}
-      <div class="artifact-content mono">{{ run.ig }}</div>
-      {% else %}
-      <div class="empty-panel">
-        <div class="empty-icon">[ ]</div>
-        <div class="empty-hint">ig-cards.json not yet generated</div>
+    <form class="rp-edit-form panel-body"
+          data-save-url="/bridge/repurpose/{{ run.run_id }}/ig"
+          data-approve-url="/bridge/repurpose/{{ run.run_id }}/approve/ig"
+          data-channel="ig"
+          onsubmit="return false">
+      <label class="sr-only" for="rp-edit-ig">IG cards JSON</label>
+      <textarea id="rp-edit-ig"
+                class="rp-edit-textarea rp-edit-textarea--mono"
+                spellcheck="false"
+                aria-label="IG cards JSON">{{ run.ig or '' }}</textarea>
+      <div class="rp-edit-toolbar">
+        <button type="button" class="sho-btn--ghost rp-save-btn" disabled>儲存草稿</button>
+        <button type="button" class="sho-btn--ghost rp-approve-btn"
+                {% if run.approved.ig %}disabled aria-pressed="true"{% endif %}>
+          {% if run.approved.ig %}已核准 ✓{% else %}核准 IG{% endif %}
+        </button>
+        <span class="rp-edit-status" role="status" aria-live="polite"></span>
       </div>
-      {% endif %}
-    </div>
+    </form>
   </div>
 
 </div>
@@ -115,15 +216,262 @@
 </div>
 {% endif %}
 
+{# Inline Slice-10 styles — kept here (not in bridge-pages.css) until the
+   mutation pattern stabilises across other surfaces.  All values resolve
+   through `--sho-*` tokens; honours `prefers-reduced-motion`. #}
+<style>
+  body.sho .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0;
+    margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
+    white-space: nowrap; border: 0;
+  }
+  body.sho .rp-edit-form { display: flex; flex-direction: column; gap: 10px; }
+  body.sho .rp-edit-textarea {
+    flex: 1;
+    min-height: 280px;
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--sho-bg-2);
+    border: 1px solid var(--sho-line);
+    color: var(--sho-text);
+    font-family: var(--sho-font-zh);
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 12px;
+    resize: vertical;
+    border-radius: var(--sho-r-1);
+    outline: none;
+    transition: border-color var(--sho-t-fast) var(--sho-ease);
+  }
+  body.sho .rp-edit-textarea:focus { border-color: var(--sho-accent); }
+  body.sho .rp-edit-textarea:focus-visible { box-shadow: var(--sho-focus); }
+  body.sho .rp-edit-textarea--mono {
+    font-family: var(--sho-font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  body.sho .rp-edit-textarea--fb { min-height: 220px; }
+  body.sho .rp-edit-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  body.sho .rp-edit-status {
+    font-family: var(--sho-font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--sho-muted);
+    margin-left: 4px;
+  }
+  body.sho .rp-edit-status.is-ok { color: var(--sho-success); }
+  body.sho .rp-edit-status.is-err { color: var(--sho-error); }
+  body.sho .sho-btn[disabled],
+  body.sho .sho-btn--ghost[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  body.sho .sho-btn.is-loading,
+  body.sho .sho-btn--ghost.is-loading { opacity: 0.7; cursor: progress; }
+  body.sho .rp-channel-actions {
+    display: inline-flex; gap: 8px; align-items: center;
+  }
+  body.sho .rp-approve-chip {
+    display: inline-block;
+    font-family: var(--sho-font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    padding: 3px 7px;
+    border-radius: var(--sho-r-1);
+    background: transparent;
+    color: var(--sho-muted);
+    border: 1px solid var(--sho-line);
+  }
+  body.sho .rp-approve-chip.is-approved {
+    background: var(--sho-accent);
+    color: var(--sho-bg);
+    border-color: var(--sho-accent);
+  }
+  body.sho .rp-fb-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: var(--sho-line);
+    vertical-align: middle;
+  }
+  body.sho .rp-fb-dot.is-approved { background: var(--sho-accent); }
+  @media (prefers-reduced-motion: reduce) {
+    body.sho .rp-edit-textarea,
+    body.sho .sho-btn,
+    body.sho .sho-btn--ghost { transition: none; }
+  }
+</style>
+
 <script>
-function switchFBTab(tonal) {
-  document.querySelectorAll('.fb-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.fb-pane').forEach(p => p.classList.remove('active'));
-  const tab = document.getElementById('fb-tab-' + tonal);
-  const pane = document.getElementById('fb-pane-' + tonal);
-  if (tab) tab.classList.add('active');
-  if (pane) pane.classList.add('active');
-}
+(function () {
+  // ── FB tab switching (existing behaviour, extended to a11y attrs) ──────
+  window.switchFBTab = function (tonal) {
+    document.querySelectorAll('.fb-tab').forEach(function (t) {
+      var on = t.dataset.tonal === tonal;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.querySelectorAll('.fb-pane').forEach(function (p) {
+      p.classList.toggle('active', p.id === 'fb-pane-' + tonal);
+    });
+  };
+
+  // ── Status chip refresh ────────────────────────────────────────────────
+  var STATUS_CLASS = {
+    'pending': 'sho-chip--offline',
+    'partially-approved': 'sho-chip--hold',
+    'approved': 'sho-chip--active',
+    'published': 'sho-chip--online'
+  };
+  var STATUS_LABEL = {
+    'pending': '待審',
+    'partially-approved': '部分核准',
+    'approved': '已核准',
+    'published': '已送 WP'
+  };
+  function refreshRunStatus(next) {
+    if (!next) return;
+    var chip = document.getElementById('runStatusChip');
+    if (!chip) return;
+    Object.values(STATUS_CLASS).forEach(function (cls) { chip.classList.remove(cls); });
+    chip.classList.add(STATUS_CLASS[next] || 'sho-chip--offline');
+    chip.textContent = STATUS_LABEL[next] || next;
+    chip.dataset.status = next;
+  }
+
+  // ── Per-form wiring: save, approve, publish ────────────────────────────
+  document.querySelectorAll('.rp-edit-form').forEach(function (form) {
+    var textarea = form.querySelector('.rp-edit-textarea');
+    var saveBtn = form.querySelector('.rp-save-btn');
+    var approveBtn = form.querySelector('.rp-approve-btn');
+    var publishBtn = form.querySelector('.rp-publish-btn');
+    var status = form.querySelector('.rp-edit-status');
+    var channel = form.dataset.channel;
+    var fbTonal = form.dataset.fbTonal;
+    var pristine = textarea.value;
+
+    function setStatus(msg, kind) {
+      status.textContent = msg || '';
+      status.classList.remove('is-ok', 'is-err');
+      if (kind === 'ok') status.classList.add('is-ok');
+      if (kind === 'err') status.classList.add('is-err');
+    }
+
+    function setDirty() {
+      var dirty = textarea.value !== pristine;
+      saveBtn.disabled = !dirty;
+    }
+    textarea.addEventListener('input', setDirty);
+
+    // Save
+    saveBtn.addEventListener('click', function () {
+      if (saveBtn.disabled) return;
+      saveBtn.classList.add('is-loading');
+      saveBtn.disabled = true;
+      setStatus('儲存中…', null);
+      fetch(form.dataset.saveUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ content: textarea.value })
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function () {
+        pristine = textarea.value;
+        setStatus('已儲存', 'ok');
+      }).catch(function (e) {
+        setStatus('儲存失敗：' + e.message, 'err');
+        saveBtn.disabled = false;
+      }).finally(function () {
+        saveBtn.classList.remove('is-loading');
+      });
+    });
+
+    // Approve is one-way in the UI: server has no DELETE/un-approve endpoint,
+    // so we never re-enable the button after success.  On error the button
+    // re-enables so user can retry.  To revert an accidental approval, shell
+    // into the run dir and `rm .approved.<channel>` (documented limitation).
+    approveBtn.addEventListener('click', function () {
+      approveBtn.classList.add('is-loading');
+      approveBtn.disabled = true;
+      setStatus('送出核准…', null);
+      fetch(form.dataset.approveUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: '{}'
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (data) {
+        setStatus('已核准', 'ok');
+        // Lock the approve button into approved state — no cancellation.
+        approveBtn.classList.remove('is-loading');
+        approveBtn.textContent = '已核准 ✓';
+        approveBtn.setAttribute('aria-pressed', 'true');
+        // Update local chip/dot.
+        var chip = document.querySelector('[data-approve-chip="' + channel + '"]');
+        if (chip) {
+          chip.classList.add('is-approved');
+          chip.textContent = '已核准';
+        }
+        if (fbTonal) {
+          var dot = document.querySelector('[data-fb-dot="' + fbTonal + '"]');
+          if (dot) dot.classList.add('is-approved');
+        }
+        // Re-enable blog publish if applicable.
+        if (channel === 'blog' && publishBtn) publishBtn.disabled = false;
+        refreshRunStatus(data.status);
+      }).catch(function (e) {
+        setStatus('核准失敗：' + e.message, 'err');
+        approveBtn.classList.remove('is-loading');
+        approveBtn.disabled = false;
+      });
+    });
+
+    // Publish (blog only)
+    if (publishBtn) {
+      publishBtn.addEventListener('click', function () {
+        publishBtn.classList.add('is-loading');
+        publishBtn.disabled = true;
+        setStatus('送 WP 草稿中…', null);
+        fetch(form.dataset.publishUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: '{}'
+        }).then(function (r) {
+          return r.json().then(function (data) {
+            return { ok: r.ok, status: r.status, data: data };
+          });
+        }).then(function (res) {
+          if (res.ok) {
+            setStatus('已送 WP 草稿', 'ok');
+            refreshRunStatus('published');
+          } else if (res.status === 501) {
+            setStatus('WP 介接尚未實作：' + (res.data.hint || res.data.detail || ''), 'err');
+            publishBtn.disabled = false;
+          } else {
+            setStatus('送出失敗：' + (res.data.detail || ('HTTP ' + res.status)), 'err');
+            publishBtn.disabled = false;
+          }
+        }).catch(function (e) {
+          setStatus('送出失敗：' + e.message, 'err');
+          publishBtn.disabled = false;
+        }).finally(function () {
+          publishBtn.classList.remove('is-loading');
+        });
+      });
+    }
+  });
+})();
 </script>
 
 </body>

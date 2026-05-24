@@ -165,3 +165,330 @@ def test_list_handles_non_string_episode_type_gracefully(client, tmp_path):
     assert resp.status_code == 200
     # No crash; the dict literal should NOT appear as an episode_type chip
     assert "{'unexpected':" not in resp.text
+
+
+# ===========================================================================
+# Slice 10 — mutation routes
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Save endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_save_blog_writes_file(client, seed_run, tmp_path):
+    resp = client.post(
+        f"/bridge/repurpose/{seed_run}/blog",
+        json={"content": "# new blog body"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert (tmp_path / seed_run / "blog.md").read_text(encoding="utf-8") == "# new blog body"
+
+
+def test_save_fb_tonal_independent(client, seed_run, tmp_path):
+    """Saving fb.light must not touch fb.neutral / fb.serious / fb.emotional."""
+    # Seed all four FB tonals so we can verify isolation.
+    for tonal in ("light", "emotional", "serious", "neutral"):
+        (tmp_path / seed_run / f"fb-{tonal}.md").write_text(f"orig {tonal}", encoding="utf-8")
+
+    resp = client.post(
+        f"/bridge/repurpose/{seed_run}/fb/light",
+        json={"content": "new light"},
+    )
+    assert resp.status_code == 200
+    assert (tmp_path / seed_run / "fb-light.md").read_text(encoding="utf-8") == "new light"
+    # Others untouched.
+    for tonal in ("emotional", "serious", "neutral"):
+        assert (tmp_path / seed_run / f"fb-{tonal}.md").read_text(
+            encoding="utf-8"
+        ) == f"orig {tonal}"
+
+
+def test_save_fb_unknown_tonal_404(client, seed_run):
+    resp = client.post(
+        f"/bridge/repurpose/{seed_run}/fb/spicy",
+        json={"content": "x"},
+    )
+    assert resp.status_code == 404
+
+
+def test_save_ig_writes_file(client, seed_run, tmp_path):
+    resp = client.post(
+        f"/bridge/repurpose/{seed_run}/ig",
+        json={"content": '[{"card": 1}]'},
+    )
+    assert resp.status_code == 200
+    assert (tmp_path / seed_run / "ig-cards.json").read_text(encoding="utf-8") == '[{"card": 1}]'
+
+
+def test_save_rejects_non_string_content(client, seed_run):
+    resp = client.post(f"/bridge/repurpose/{seed_run}/blog", json={"content": 123})
+    assert resp.status_code == 400
+
+
+def test_save_rejects_oversized_content(client, seed_run):
+    huge = "x" * 200_001
+    resp = client.post(f"/bridge/repurpose/{seed_run}/blog", json={"content": huge})
+    assert resp.status_code == 413
+
+
+def test_save_rejects_path_traversal(client):
+    resp = client.post("/bridge/repurpose/..%2Fetc/blog", json={"content": "x"})
+    assert resp.status_code == 404
+
+
+def test_save_404_for_missing_run(client):
+    resp = client.post("/bridge/repurpose/2026-05-01-nope/blog", json={"content": "x"})
+    assert resp.status_code == 404
+
+
+def test_save_atomic_no_tmp_leftover(client, seed_run, tmp_path):
+    """After a successful save there must be no stray .tmp file in the run dir."""
+    resp = client.post(f"/bridge/repurpose/{seed_run}/blog", json={"content": "atomic check"})
+    assert resp.status_code == 200
+    leftovers = [p.name for p in (tmp_path / seed_run).iterdir() if p.suffix == ".tmp"]
+    assert leftovers == []
+
+
+# ---------------------------------------------------------------------------
+# Approve endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_approve_blog_writes_sentinel(client, seed_run, tmp_path):
+    resp = client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["channel"] == "blog"
+    assert (tmp_path / seed_run / ".approved.blog").exists()
+
+
+def test_approve_each_fb_tonal_independent(client, seed_run, tmp_path):
+    """Approving fb.light must not flip the approved state of fb.neutral."""
+    resp = client.post(f"/bridge/repurpose/{seed_run}/approve/fb.light")
+    assert resp.status_code == 200
+    assert (tmp_path / seed_run / ".approved.fb.light").exists()
+    assert not (tmp_path / seed_run / ".approved.fb.neutral").exists()
+    assert not (tmp_path / seed_run / ".approved.fb.serious").exists()
+    assert not (tmp_path / seed_run / ".approved.fb.emotional").exists()
+
+
+def test_approve_ig_writes_sentinel(client, seed_run, tmp_path):
+    resp = client.post(f"/bridge/repurpose/{seed_run}/approve/ig")
+    assert resp.status_code == 200
+    assert (tmp_path / seed_run / ".approved.ig").exists()
+
+
+def test_approve_unknown_channel_404(client, seed_run):
+    resp = client.post(f"/bridge/repurpose/{seed_run}/approve/twitter")
+    assert resp.status_code == 404
+
+
+def test_approve_idempotent(client, seed_run, tmp_path):
+    """Re-approving an already-approved channel is a no-op (200)."""
+    assert client.post(f"/bridge/repurpose/{seed_run}/approve/blog").status_code == 200
+    assert client.post(f"/bridge/repurpose/{seed_run}/approve/blog").status_code == 200
+    assert (tmp_path / seed_run / ".approved.blog").exists()
+
+
+def test_approve_rejects_missing_artifact(client, seed_run, tmp_path):
+    """approve_channel 409s when the artifact file was never produced.
+
+    Regression guard: prevents phantom approvals where a renderer failed in
+    Brook's Stage-2 fan-out (artifact never written) but the operator can
+    still mark the channel approved and have list-view show 'approved'.
+    """
+    # fb.emotional has no artifact in seed_run (only fb-light.md exists).
+    resp = client.post(f"/bridge/repurpose/{seed_run}/approve/fb.emotional")
+    assert resp.status_code == 409
+    assert "fb-emotional.md" in resp.json()["detail"]
+    assert not (tmp_path / seed_run / ".approved.fb.emotional").exists()
+
+
+def test_approve_rejects_missing_blog(client, seed_run, tmp_path):
+    """Same artifact-existence guard for the blog channel."""
+    (tmp_path / seed_run / "blog.md").unlink()
+    resp = client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    assert resp.status_code == 409
+    assert not (tmp_path / seed_run / ".approved.blog").exists()
+
+
+def test_detail_approve_button_disabled_when_approved(client, seed_run):
+    """Approved channels render approve button as disabled '已核准 ✓' — no
+    '取消核准' affordance, because no DELETE/un-approve endpoint exists.
+
+    Regression guard for the UI-lie review finding: the old template flipped
+    the button label to '取消核准' but server only does idempotent touch.
+    """
+    client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    resp = client.get(f"/bridge/repurpose/{seed_run}")
+    assert resp.status_code == 200
+    assert "取消核准" not in resp.text
+    assert "已核准 ✓" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# List + detail status badge
+# ---------------------------------------------------------------------------
+
+
+def test_list_status_pending_when_no_approvals(client, seed_run):
+    resp = client.get("/bridge/repurpose")
+    assert resp.status_code == 200
+    assert 'data-status="pending"' in resp.text
+
+
+def test_list_status_partially_approved_after_one_approve(client, seed_run):
+    client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    resp = client.get("/bridge/repurpose")
+    assert resp.status_code == 200
+    assert 'data-status="partially-approved"' in resp.text
+
+
+def test_list_status_approved_when_all_six_channels(client, seed_run, tmp_path):
+    # Seed the 3 missing FB tonals so the artifact-existence guard in
+    # approve_channel passes for every channel.
+    for tonal in ("emotional", "serious", "neutral"):
+        (tmp_path / seed_run / f"fb-{tonal}.md").write_text(f"fb {tonal} content", encoding="utf-8")
+    for ch in ("blog", "fb.light", "fb.emotional", "fb.serious", "fb.neutral", "ig"):
+        assert client.post(f"/bridge/repurpose/{seed_run}/approve/{ch}").status_code == 200
+    resp = client.get("/bridge/repurpose")
+    assert resp.status_code == 200
+    assert 'data-status="approved"' in resp.text
+
+
+def test_list_status_published_after_publish_sentinel(client, seed_run, tmp_path):
+    # Approve blog then drop the published sentinel directly (simulating a
+    # successful publish run — the publish route itself is exercised below).
+    client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    (tmp_path / seed_run / ".published.blog").touch()
+    resp = client.get("/bridge/repurpose")
+    assert resp.status_code == 200
+    assert 'data-status="published"' in resp.text
+
+
+def test_detail_exposes_editable_textareas(client, seed_run):
+    """Slice 10 detail view must surface textarea controls for each channel."""
+    resp = client.get(f"/bridge/repurpose/{seed_run}")
+    assert resp.status_code == 200
+    assert 'id="rp-edit-blog"' in resp.text
+    assert 'id="rp-edit-fb-light"' in resp.text
+    assert 'id="rp-edit-fb-neutral"' in resp.text
+    assert 'id="rp-edit-ig"' in resp.text
+    # Approve buttons present
+    assert "rp-approve-btn" in resp.text
+    # Publish button present (blog only)
+    assert "rp-publish-btn" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Publish endpoint (Usopp WP draft) — adapter mocked
+# ---------------------------------------------------------------------------
+
+
+def test_publish_blog_requires_approval_first(client, seed_run):
+    resp = client.post(f"/bridge/repurpose/{seed_run}/publish/blog")
+    assert resp.status_code == 409  # blog not yet approved
+
+
+def test_publish_blog_501_when_adapter_missing(client, seed_run):
+    """Until the blog.md → DraftV1 adapter ships, the route surfaces 501."""
+    client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    resp = client.post(f"/bridge/repurpose/{seed_run}/publish/blog")
+    assert resp.status_code == 501
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["error"] == "adapter_missing"
+
+
+def test_publish_blog_success_when_adapter_mocked(monkeypatch, client, seed_run, tmp_path):
+    """Mock the adapter to assert the happy path: sentinel + status flip."""
+    import thousand_sunny.routers.repurpose as repurpose_module
+
+    monkeypatch.setattr(
+        repurpose_module,
+        "_enqueue_blog_to_usopp",
+        lambda run_dir: {"draft_id": "draft_abc123", "approval_queue_id": 42},
+    )
+    client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    resp = client.post(f"/bridge/repurpose/{seed_run}/publish/blog")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["status"] == "published"
+    assert body["draft_id"] == "draft_abc123"
+    # Sentinel written.
+    assert (tmp_path / seed_run / ".published.blog").exists()
+    # Status flips.
+    list_resp = client.get("/bridge/repurpose")
+    assert 'data-status="published"' in list_resp.text
+
+
+def test_publish_blog_does_not_hit_live_wp(monkeypatch, client, seed_run):
+    """Defence-in-depth: confirm Publisher / WordPressClient never imported during a publish call.
+
+    We monkeypatch the adapter to raise if anyone tries to reach WP.
+    """
+    import thousand_sunny.routers.repurpose as repurpose_module
+
+    called = {"hit": False}
+
+    def fake_adapter(run_dir):
+        called["hit"] = True
+        return {"draft_id": "mocked", "approval_queue_id": 1}
+
+    monkeypatch.setattr(repurpose_module, "_enqueue_blog_to_usopp", fake_adapter)
+    client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    resp = client.post(f"/bridge/repurpose/{seed_run}/publish/blog")
+    assert resp.status_code == 200
+    assert called["hit"] is True
+
+
+def test_publish_blog_404_when_blog_md_missing(monkeypatch, client, seed_run, tmp_path):
+    """If blog.md was deleted between approve and publish, surface 404 not 5xx."""
+    client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    (tmp_path / seed_run / "blog.md").unlink()
+    resp = client.post(f"/bridge/repurpose/{seed_run}/publish/blog")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Auth enforcement on mutations
+# ---------------------------------------------------------------------------
+
+
+def test_mutation_requires_auth_when_password_set(monkeypatch, tmp_path):
+    """When WEB_PASSWORD is set, mutation endpoints return 401 (not 302)."""
+    monkeypatch.setenv("WEB_PASSWORD", "topsecret")
+    monkeypatch.setenv("WEB_SECRET", "saltysalt")
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+
+    import importlib
+
+    import agents.brook.repurpose_engine as engine_module
+
+    monkeypatch.setattr(engine_module, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(engine_module, "_DATA_ROOT", tmp_path)
+
+    import thousand_sunny.app as app_module
+    import thousand_sunny.auth as auth_module
+    import thousand_sunny.routers.repurpose as repurpose_module
+
+    importlib.reload(auth_module)
+    importlib.reload(repurpose_module)
+    importlib.reload(app_module)
+    monkeypatch.setattr(repurpose_module, "DATA_ROOT", tmp_path)
+
+    run_dir = tmp_path / "2026-05-01-locked"
+    run_dir.mkdir(parents=True)
+    (run_dir / "blog.md").write_text("x", encoding="utf-8")
+
+    auth_client = TestClient(app_module.app)
+    resp = auth_client.post("/bridge/repurpose/2026-05-01-locked/blog", json={"content": "hack"})
+    assert resp.status_code == 401
+    # File must remain unchanged.
+    assert (run_dir / "blog.md").read_text(encoding="utf-8") == "x"
