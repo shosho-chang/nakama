@@ -36,9 +36,9 @@
       {% endif %}
 
       <form method="post" action="/bridge/projects/{{ entry.slug }}/review/storyteller">
-        <button type="submit" class="pj-btn-secondary pj-btn--disabled" disabled
-                title="LLM dispatch lands in PR2 (ADR-031 PR2 scope)">
-          {% if sr and sr.summary %}重跑{% else %}執行審查{% endif %} · PR2 unlocks
+        <button type="submit" class="pj-btn-secondary"
+                {% if not entry.hook_text %}disabled title="先在 Hook tab 填入內容才能審查"{% endif %}>
+          {% if sr and sr.summary %}🔁 重跑審查{% else %}▶ 執行審查{% endif %}
         </button>
       </form>
     </article>
@@ -71,16 +71,16 @@
       {% endif %}
 
       <form method="post" action="/bridge/projects/{{ entry.slug }}/review/coach">
-        <button type="submit" class="pj-btn-secondary pj-btn--disabled" disabled
-                title="LLM dispatch lands in PR2 (ADR-031 PR2 scope)">
-          {% if cr and cr.summary %}重跑{% else %}執行審查{% endif %} · PR2 unlocks
+        <button type="submit" class="pj-btn-secondary">
+          {% if cr and cr.summary %}🔁 重跑審查{% else %}▶ 執行審查{% endif %}
         </button>
       </form>
     </article>
   </div>
 
   <p class="pj-review-note">
-    Reviews 寫入 vault frontmatter 的 <code>reviews.{persona}</code>。重跑會覆蓋；
-    audit log 在 <code>state.db api_calls.scope_json</code>（PR2 落地，ADR-030 follow-up）。
+    Reviews 寫入 vault frontmatter 的 <code>reviews.{persona}</code> list（v2 list-shape，保留歷史）。
+    UI 顯示最新一筆；歷史審查可在 Obsidian 直接看 frontmatter。
+    Audit log 在 <code>state.db api_calls.scope_json</code>（ADR-030 follow-up，PR3+ 落地）。
   </p>
 </div>

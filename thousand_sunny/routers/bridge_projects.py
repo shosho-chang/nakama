@@ -41,9 +41,15 @@ from shared.lifeos_writer import (
 )
 from shared.log import get_logger
 from shared.project_indexer import ProjectIndexer, ProjectNotFoundError, normalize_slug
+from shared.project_reviews import (
+    ProjectReviewError,
+    review_hook,
+    review_script,
+)
 from shared.project_writer import (
     VALID_TASK_STATUSES,
     ProjectWriteError,
+    append_review,
     append_timeentry,
     create_task,
     delete_task,
@@ -656,9 +662,11 @@ async def projects_review_run(
     persona: str,
     nakama_auth: str | None = Cookie(None),
 ):
-    """Stub: PR1 returns 501 with a `Tier C reviews land in PR2` message.
+    """Run a persona review on the project's current hook (storyteller) or
+    script body (coach). Appends the result to ``reviews.{persona}`` list
+    (v2 list-shape per ADR-031 v2 panel push).
 
-    Real LLM dispatch + frontmatter write lands in PR2.
+    Reviews are **advisory, not a publishing gate** (ADR-031 D8).
     """
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
@@ -666,7 +674,34 @@ async def projects_review_run(
     if persona not in ("storyteller", "coach"):
         raise HTTPException(status_code=400, detail=f"unknown persona: {persona!r}")
 
-    raise HTTPException(status_code=501, detail="reviews land in PR2 (ADR-031 PR2 scope)")
+    slug = normalize_slug(slug)
+
+    try:
+        entry = _indexer().get(slug)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        if persona == "storyteller":
+            result = review_hook(entry.hook_text)
+        else:  # coach
+            body_md = _indexer().load_body(slug)
+            result = review_script(body_md)
+    except ProjectReviewError as exc:
+        logger.warning("review dispatch failed: slug=%s persona=%s err=%s", slug, persona, exc)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — surface unexpected LLM/network failures
+        logger.exception("review dispatch crashed: slug=%s persona=%s", slug, persona)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    append_review(
+        vault_root=get_vault_path(),
+        slug=slug,
+        persona=persona,
+        review=result.as_dict(),
+    )
+
+    return _redirect_back(slug, "review")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
