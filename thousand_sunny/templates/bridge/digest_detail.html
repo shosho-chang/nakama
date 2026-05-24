@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · {{ type_label }} · {{ entry.date }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<style>
+  .digest-detail-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: var(--sho-space-6, 28px) var(--sho-space-5, 20px);
+  }
+  .digest-detail-meta {
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sho-muted, #888);
+    display: flex;
+    gap: var(--sho-space-4, 16px);
+    margin-bottom: var(--sho-space-4, 16px);
+  }
+  .digest-detail-meta a { color: inherit; text-decoration: underline; }
+  .digest-detail-body {
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .digest-detail-body h1 {
+    font-size: 28px;
+    margin: var(--sho-space-5, 20px) 0 var(--sho-space-4, 16px);
+  }
+  .digest-detail-body h2 {
+    font-size: 20px;
+    margin: var(--sho-space-6, 28px) 0 var(--sho-space-3, 12px);
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--sho-border, #2a2a2a);
+  }
+  .digest-detail-body h3 {
+    font-size: 16px;
+    margin: var(--sho-space-5, 20px) 0 var(--sho-space-2, 8px);
+  }
+  .digest-detail-body blockquote {
+    margin: var(--sho-space-4, 16px) 0;
+    padding: var(--sho-space-3, 12px) var(--sho-space-4, 16px);
+    border-left: 3px solid var(--sho-accent, #ff7a18);
+    background: var(--sho-surface-sunken, transparent);
+    color: var(--sho-muted-strong, #b0b0b0);
+    font-style: italic;
+  }
+  .digest-detail-body ul, .digest-detail-body ol {
+    padding-left: var(--sho-space-5, 20px);
+  }
+  .digest-detail-body li { margin-bottom: 4px; }
+  .digest-detail-body code {
+    font-family: var(--sho-mono, ui-monospace, monospace);
+    font-size: 0.9em;
+    padding: 1px 5px;
+    background: var(--sho-surface-sunken, rgba(255,255,255,0.05));
+    border-radius: 3px;
+  }
+  .digest-detail-body pre {
+    padding: var(--sho-space-3, 12px);
+    background: var(--sho-surface-sunken, rgba(255,255,255,0.04));
+    overflow-x: auto;
+  }
+  .digest-detail-body a { color: var(--sho-link, #6aa6ff); }
+  .digest-detail-body a.wikilink {
+    color: var(--sho-accent, #ff7a18);
+    text-decoration-style: dotted;
+  }
+  .digest-detail-body .wikilink-broken {
+    color: var(--sho-muted, #888);
+    border-bottom: 1px dashed var(--sho-muted, #888);
+    cursor: help;
+  }
+</style>
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='digests') }}
+
+  <div class="digest-detail-wrap">
+    <div class="digest-detail-meta">
+      <a href="/bridge/digests">← Digests</a>
+      <span>{{ type_label }}</span>
+      <span>{{ entry.date }}</span>
+      {% if entry.selected_count is not none %}<span>selected · {{ entry.selected_count }}</span>{% endif %}
+      {% if entry.editor_pick_count is not none %}<span>editor picks · {{ entry.editor_pick_count }}</span>{% endif %}
+    </div>
+    <article class="digest-detail-body">
+      {{ body_html | safe }}
+    </article>
+  </div>
+</body>
+</html>

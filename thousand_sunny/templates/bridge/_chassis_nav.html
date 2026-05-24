@@ -22,7 +22,7 @@
   └────────────────────────────────────────────────────────────────────┘
 
   `nav_active` slugs (v2, ADR-029):
-    direct:  bridge / drafts / seo
+    direct:  bridge / drafts / digests / seo
     fleet:   robin / nami / zoro / brook / sanji / franky / usopp / chopper
     ops:     cost / logs / memory / docs
   Backward compat (deprecated, auto-normalized):
@@ -74,6 +74,7 @@
     </div>
 
     <a href="/bridge/drafts"{% if nav_active == 'drafts' %} class="active" aria-current="page"{% endif %}>DRAFTS <span class="zh">待審</span></a>
+    <a href="/bridge/digests"{% if nav_active == 'digests' %} class="active" aria-current="page"{% endif %}>DIGESTS <span class="zh">情報</span></a>
     <a href="/bridge/seo"{% if nav_active == 'seo' %} class="active" aria-current="page"{% endif %}>SEO <span class="zh">優化</span></a>
 
     {#-- Ops dropdown --#}
