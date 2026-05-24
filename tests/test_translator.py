@@ -10,6 +10,7 @@ from shared.translator import (
     add_glossary_term,
     format_bilingual_markdown,
     load_glossary,
+    split_off_reference_section,
     split_paragraphs,
     translate_document,
     translate_segments,
@@ -255,3 +256,175 @@ def test_translate_document_integrates(tmp_path):
     assert "> 譯：Paragraph one." in result
     assert "Paragraph two." in result
     assert "> 譯：Paragraph two." in result
+
+
+# ── split_off_reference_section ──
+
+
+def test_split_off_reference_section_basic():
+    """## References heading splits body from refs."""
+    text = "Body paragraph.\n\n## References\n\n1. Foo\n2. Bar"
+    body, ref = split_off_reference_section(text)
+    assert body == "Body paragraph."
+    assert ref.startswith("## References")
+    assert "1. Foo" in ref
+
+
+def test_split_off_reference_section_no_heading():
+    """Doc without reference heading returns empty ref section."""
+    text = "Body paragraph one.\n\nBody paragraph two."
+    body, ref = split_off_reference_section(text)
+    assert body == text
+    assert ref == ""
+
+
+def test_split_off_reference_section_case_insensitive():
+    """REFERENCES / references both match."""
+    for variant in ("REFERENCES", "References", "references", "ReFeReNcEs"):
+        text = f"Body.\n\n## {variant}\n\n[1] cite"
+        body, ref = split_off_reference_section(text)
+        assert body == "Body."
+        assert ref.startswith(f"## {variant}")
+
+
+def test_split_off_reference_section_h3_heading():
+    """### Bibliography also matches (not just H2)."""
+    text = "Body.\n\n### Bibliography\n\n* cite"
+    body, ref = split_off_reference_section(text)
+    assert body == "Body."
+    assert ref.startswith("### Bibliography")
+
+
+def test_split_off_reference_section_chinese_heading():
+    """Traditional Chinese reference heading variants."""
+    for variant in ("參考文獻", "文獻", "註釋", "注釋"):
+        text = f"內文段落。\n\n## {variant}\n\n1. 引用"
+        body, ref = split_off_reference_section(text)
+        assert body == "內文段落。"
+        assert ref.startswith(f"## {variant}")
+
+
+def test_split_off_reference_section_whitelist_variants():
+    """All mid-broad whitelist variants are recognised."""
+    for variant in (
+        "Bibliography",
+        "Works Cited",
+        "Literature Cited",
+        "Sources",
+        "Citations",
+        "Notes",
+        "Further Reading",
+    ):
+        text = f"Body.\n\n## {variant}\n\nentry"
+        body, ref = split_off_reference_section(text)
+        assert body == "Body.", f"Failed on heading: {variant}"
+        assert ref.startswith(f"## {variant}")
+
+
+def test_split_off_reference_section_trailing_punct_tolerated():
+    """## References: / ## References. both match."""
+    for trailing in (":", "：", ".", "。"):
+        text = f"Body.\n\n## References{trailing}\n\n1. cite"
+        body, ref = split_off_reference_section(text)
+        assert body == "Body."
+        assert ref.startswith("## References")
+
+
+def test_split_off_reference_section_first_match_wins():
+    """If multiple ref headings somehow exist, the first one wins."""
+    text = "Body.\n\n## References\n\nA\n\n## Bibliography\n\nB"
+    body, ref = split_off_reference_section(text)
+    assert body == "Body."
+    assert ref.startswith("## References")
+    assert "## Bibliography" in ref
+
+
+def test_split_off_reference_section_non_reference_heading_ignored():
+    """## Results / ## Methods etc must NOT trigger the split."""
+    text = "Intro.\n\n## Methods\n\nMethod body.\n\n## Results\n\nFindings."
+    body, ref = split_off_reference_section(text)
+    assert body == text
+    assert ref == ""
+
+
+def test_split_off_reference_section_compound_headings():
+    """``References and Notes`` (Science default) and similar compound forms
+    must match — every token is either a reference word or a connective."""
+    for heading in (
+        "References and Notes",
+        "Notes and References",
+        "Bibliography and Further Reading",
+        "Works Cited and Notes",
+        "References & Notes",
+        "References, Notes",
+        "Sources and Citations",
+    ):
+        text = f"Body.\n\n## {heading}\n\n1. cite"
+        body, ref = split_off_reference_section(text)
+        assert body == "Body.", f"Failed on compound heading: {heading}"
+        assert ref.startswith(f"## {heading}")
+
+
+def test_split_off_reference_section_partial_reference_word_no_match():
+    """Headings with a reference word + a non-reference, non-connective word
+    must NOT match (avoids false positives like ``Notes on Methodology``)."""
+    for heading in (
+        "Notes on Methodology",
+        "References to Future Work",
+        "Sources of Data",
+        "Reading List of Articles",
+    ):
+        text = f"Body.\n\n## {heading}\n\n* item"
+        body, ref = split_off_reference_section(text)
+        assert body == text, f"False positive on heading: {heading}"
+        assert ref == ""
+
+
+def test_translate_document_skips_reference_section(tmp_path):
+    """References heading and everything after must pass through verbatim
+    without LLM call; body before it is translated as normal."""
+    glossary_file = tmp_path / "g.yaml"
+    glossary_file.write_text("terms: {}\n", encoding="utf-8")
+
+    translated_inputs = []
+
+    def mock_translate(segments, **kwargs):
+        translated_inputs.extend(segments)
+        return [f"譯：{s}" for s in segments]
+
+    text = (
+        "Intro paragraph.\n\n"
+        "Body paragraph.\n\n"
+        "## References\n\n"
+        "1. Smith et al. 2024. Nature.\n"
+        "2. Doe et al. 2025. Science."
+    )
+    with (
+        patch("shared.translator.translate_segments", side_effect=mock_translate),
+        patch("shared.translator._GLOSSARY_PATH", glossary_file),
+    ):
+        result = translate_document(text)
+
+    assert translated_inputs == ["Intro paragraph.", "Body paragraph."]
+    assert "## References" in result
+    assert "1. Smith et al. 2024. Nature." in result
+    assert "> 譯：1. Smith" not in result
+    assert "> 譯：Intro paragraph." in result
+
+
+def test_translate_document_pure_reference_returns_text(tmp_path):
+    """A doc that is ONLY a reference list (no body) returns as-is, no LLM."""
+    glossary_file = tmp_path / "g.yaml"
+    glossary_file.write_text("terms: {}\n", encoding="utf-8")
+
+    def mock_translate(segments, **kwargs):
+        raise AssertionError("translate_segments should NOT be called")
+
+    text = "## References\n\n1. Foo\n2. Bar"
+    with (
+        patch("shared.translator.translate_segments", side_effect=mock_translate),
+        patch("shared.translator._GLOSSARY_PATH", glossary_file),
+    ):
+        result = translate_document(text)
+
+    assert result == text

@@ -77,6 +77,99 @@ def split_paragraphs(text: str) -> list[str]:
     return [p.strip() for p in paragraphs if p.strip()]
 
 
+# Reference-list heading detection. A heading matches when, after stripping
+# markdown ``#`` / leading numbering / trailing punctuation, every token is
+# either in the reference whitelist below or a connective (``and``/``&``/``,``/
+# ``or``/``、``). This catches compound forms like ``References and Notes``
+# (Science journal default) or ``Bibliography & Further Reading`` without
+# enumerating every permutation.
+# 修修 2026-05-24: any article with a reference list, don't translate refs.
+_REFERENCE_TOKENS: frozenset[str] = frozenset(
+    t.casefold()
+    for t in (
+        "references",
+        "reference",
+        "bibliography",
+        "works",
+        "cited",
+        "literature",
+        "sources",
+        "source",
+        "citations",
+        "citation",
+        "notes",
+        "note",
+        "further",
+        "reading",
+        # CJK reference-list heading words (no whitespace tokenization, matched
+        # against the heading as a whole via _CJK_REFERENCE_HEADINGS below).
+    )
+)
+_CJK_REFERENCE_HEADINGS: frozenset[str] = frozenset(
+    (
+        "參考文獻",
+        "文獻",
+        "註釋",
+        "注釋",
+        "參考",
+        "引用",
+    )
+)
+_CONNECTIVE_TOKENS: frozenset[str] = frozenset(("and", "or", "&", ",", "、"))
+_REF_HEADING_RE = re.compile(
+    r"^(?P<hashes>#{2,3})\s+(?:\d+[.)]\s+|§\s*)?(?P<text>[^\n#]+?)\s*[:：.。]?\s*$",
+    re.MULTILINE,
+)
+
+
+def _normalise_heading(heading: str) -> str:
+    """Strip trailing punctuation / whitespace from a heading."""
+    return heading.strip().rstrip(":：.。 ").casefold()
+
+
+def _is_reference_heading(heading: str) -> bool:
+    """Return True if ``heading`` (already markdown-stripped) names a reference
+    list. A heading matches when every token is a reference word or a
+    connective. Single-word CJK headings match by exact lookup.
+    """
+    norm = _normalise_heading(heading)
+    if not norm:
+        return False
+    if norm in _CJK_REFERENCE_HEADINGS:
+        return True
+    # ``References and Notes`` → ["references", "and", "notes"]. Split on
+    # whitespace and ASCII punctuation that acts as a connective.
+    tokens = re.split(r"[\s,/&]+", norm)
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return False
+    has_ref_word = False
+    for tok in tokens:
+        if tok in _REFERENCE_TOKENS:
+            has_ref_word = True
+        elif tok in _CONNECTIVE_TOKENS:
+            continue
+        else:
+            return False
+    return has_ref_word
+
+
+def split_off_reference_section(text: str) -> tuple[str, str]:
+    """Split ``text`` at the first reference-list heading.
+
+    Returns ``(body, ref_section)`` where ``ref_section`` is the heading and
+    everything after it (passed through untranslated), and ``body`` is the
+    content before that heading. Returns ``(text, "")`` if no reference
+    heading is detected.
+
+    See ``_is_reference_heading`` for the detection rule.
+    """
+    for match in _REF_HEADING_RE.finditer(text):
+        if _is_reference_heading(match.group("text")):
+            return text[: match.start()].rstrip(), text[match.start() :]
+    return text, ""
+
+
 def _build_system_prompt(glossary: dict[str, str]) -> str:
     """建立翻譯 system prompt，注入台灣術語表。"""
     base = (
@@ -205,11 +298,19 @@ def translate_document(
     Returns:
         雙語 Markdown：每段原文後緊接 blockquote 譯文
     """
-    segments = split_paragraphs(text)
+    body, ref_section = split_off_reference_section(text)
+    segments = split_paragraphs(body)
     if not segments:
+        # Pure-reference doc or empty body — return as-is (no LLM call).
         return text
 
-    logger.info(f"開始翻譯：{len(segments)} 段落，batch_size={batch_size}")
+    if ref_section:
+        logger.info(
+            f"開始翻譯：{len(segments)} 段落，batch_size={batch_size}，"
+            f"reference 區塊 {len(ref_section)} 字元已跳過"
+        )
+    else:
+        logger.info(f"開始翻譯：{len(segments)} 段落，batch_size={batch_size}")
     glossary = load_glossary()
 
     all_translations: list[str] = []
@@ -220,4 +321,8 @@ def translate_document(
         done = min(batch_start + batch_size, len(segments))
         logger.info(f"  翻譯進度：{done}/{len(segments)} 段")
 
-    return format_bilingual_markdown(segments, all_translations)
+    bilingual = format_bilingual_markdown(segments, all_translations)
+    if ref_section:
+        # Pass through reference list verbatim — no translation, no blockquote.
+        bilingual = f"{bilingual}\n\n{ref_section}"
+    return bilingual
