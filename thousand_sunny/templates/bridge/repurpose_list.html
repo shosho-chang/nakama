@@ -34,6 +34,7 @@
         <th>RUN ID</th>
         <th>EPISODE TYPE</th>
         <th>ARTIFACTS</th>
+        <th>STATUS</th>
         <th></th>
       </tr>
     </thead>
@@ -51,6 +52,26 @@
         <td>
           <span class="artifact-count">
             <span class="num">{{ run.artifact_count }}</span> file{% if run.artifact_count != 1 %}s{% endif %}
+          </span>
+        </td>
+        <td>
+          {# Map approval state to existing 5-state ops chip vocabulary.
+             pending → offline (hairline, neutral); partially → hold (amber);
+             approved → active (orange accent); published → online (ink fill). #}
+          {% set _status_chip = {
+            'pending': 'sho-chip--offline',
+            'partially-approved': 'sho-chip--hold',
+            'approved': 'sho-chip--active',
+            'published': 'sho-chip--online'
+          } %}
+          {% set _status_label = {
+            'pending': '待審',
+            'partially-approved': '部分核准',
+            'approved': '已核准',
+            'published': '已送 WP'
+          } %}
+          <span class="sho-chip {{ _status_chip[run.status] }}" data-status="{{ run.status }}">
+            {{ _status_label[run.status] }}
           </span>
         </td>
         <td style="text-align:right">
