@@ -76,6 +76,17 @@ _CHANNELS: tuple[str, ...] = ("blog", *(f"fb.{t}" for t in FB_TONALS), "ig")
 _CHANNEL_SET = frozenset(_CHANNELS)
 
 
+def _channel_artifact_path(run_dir: Path, channel: str) -> Path:
+    """Map a channel name to the artifact file the channel approves."""
+    if channel == "blog":
+        return run_dir / BLOG_FILENAME
+    if channel == "ig":
+        return run_dir / IG_FILENAME
+    if channel.startswith("fb."):
+        return run_dir / fb_filename(channel.removeprefix("fb."))
+    raise ValueError(f"unknown channel {channel!r}")
+
+
 # ---------------------------------------------------------------------------
 # Per-channel status sentinels
 # ---------------------------------------------------------------------------
@@ -383,13 +394,21 @@ async def approve_channel(
     """Write the ``.approved.<channel>`` sentinel for this run.
 
     ``channel`` must be one of: ``blog``, ``fb.light``, ``fb.emotional``,
-    ``fb.serious``, ``fb.neutral``, ``ig``.  Idempotent — re-approving a
-    channel is a no-op (the sentinel touch just refreshes mtime).
+    ``fb.serious``, ``fb.neutral``, ``ig``.  The underlying artifact file
+    (``blog.md`` / ``fb-<tonal>.md`` / ``ig-cards.json``) must exist — 409
+    if Brook never produced it (no phantom approvals).  Idempotent: re-
+    approving an already-approved channel is a no-op.
     """
     _require_mutation_auth(nakama_auth)
     run_dir = _validate_run_id(run_id)
     if channel not in _CHANNEL_SET:
         raise HTTPException(status_code=404, detail=f"unknown channel {channel!r}")
+    artifact = _channel_artifact_path(run_dir, channel)
+    if not artifact.exists():
+        raise HTTPException(
+            status_code=409,
+            detail=f"cannot approve {channel}: artifact {artifact.name} not yet produced",
+        )
     sentinel = _sentinel_path(run_dir, "approved", channel)
     sentinel.touch()
     logger.info(f"approved {channel} for run_id={run_id}")

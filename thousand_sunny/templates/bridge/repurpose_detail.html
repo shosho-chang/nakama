@@ -98,8 +98,8 @@
       <div class="rp-edit-toolbar">
         <button type="button" class="sho-btn--ghost rp-save-btn" disabled>儲存草稿</button>
         <button type="button" class="sho-btn--ghost rp-approve-btn"
-                {% if run.approved.blog %}data-already-approved{% endif %}>
-          {% if run.approved.blog %}取消核准{% else %}核准 Blog{% endif %}
+                {% if run.approved.blog %}disabled aria-pressed="true"{% endif %}>
+          {% if run.approved.blog %}已核准 ✓{% else %}核准 Blog{% endif %}
         </button>
         <button type="button" class="sho-btn rp-publish-btn"
                 {% if not run.approved.blog %}disabled{% endif %}
@@ -158,8 +158,8 @@
           <div class="rp-edit-toolbar">
             <button type="button" class="sho-btn--ghost rp-save-btn" disabled>儲存草稿</button>
             <button type="button" class="sho-btn--ghost rp-approve-btn"
-                    {% if run.approved['fb.' + tonal] %}data-already-approved{% endif %}>
-              {% if run.approved['fb.' + tonal] %}取消核准{% else %}核准本語氣{% endif %}
+                    {% if run.approved['fb.' + tonal] %}disabled aria-pressed="true"{% endif %}>
+              {% if run.approved['fb.' + tonal] %}已核准 ✓{% else %}核准本語氣{% endif %}
             </button>
             <span class="rp-edit-status" role="status" aria-live="polite"></span>
           </div>
@@ -194,8 +194,8 @@
       <div class="rp-edit-toolbar">
         <button type="button" class="sho-btn--ghost rp-save-btn" disabled>儲存草稿</button>
         <button type="button" class="sho-btn--ghost rp-approve-btn"
-                {% if run.approved.ig %}data-already-approved{% endif %}>
-          {% if run.approved.ig %}取消核准{% else %}核准 IG{% endif %}
+                {% if run.approved.ig %}disabled aria-pressed="true"{% endif %}>
+          {% if run.approved.ig %}已核准 ✓{% else %}核准 IG{% endif %}
         </button>
         <span class="rp-edit-status" role="status" aria-live="polite"></span>
       </div>
@@ -394,8 +394,10 @@
       });
     });
 
-    // Approve (toggle: re-clicking when already approved is currently a
-    // server-side no-op idempotent touch; UI still flips for clarity).
+    // Approve is one-way in the UI: server has no DELETE/un-approve endpoint,
+    // so we never re-enable the button after success.  On error the button
+    // re-enables so user can retry.  To revert an accidental approval, shell
+    // into the run dir and `rm .approved.<channel>` (documented limitation).
     approveBtn.addEventListener('click', function () {
       approveBtn.classList.add('is-loading');
       approveBtn.disabled = true;
@@ -410,6 +412,10 @@
         return r.json();
       }).then(function (data) {
         setStatus('已核准', 'ok');
+        // Lock the approve button into approved state — no cancellation.
+        approveBtn.classList.remove('is-loading');
+        approveBtn.textContent = '已核准 ✓';
+        approveBtn.setAttribute('aria-pressed', 'true');
         // Update local chip/dot.
         var chip = document.querySelector('[data-approve-chip="' + channel + '"]');
         if (chip) {
@@ -425,7 +431,6 @@
         refreshRunStatus(data.status);
       }).catch(function (e) {
         setStatus('核准失敗：' + e.message, 'err');
-      }).finally(function () {
         approveBtn.classList.remove('is-loading');
         approveBtn.disabled = false;
       });

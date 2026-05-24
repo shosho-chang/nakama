@@ -295,6 +295,42 @@ def test_approve_idempotent(client, seed_run, tmp_path):
     assert (tmp_path / seed_run / ".approved.blog").exists()
 
 
+def test_approve_rejects_missing_artifact(client, seed_run, tmp_path):
+    """approve_channel 409s when the artifact file was never produced.
+
+    Regression guard: prevents phantom approvals where a renderer failed in
+    Brook's Stage-2 fan-out (artifact never written) but the operator can
+    still mark the channel approved and have list-view show 'approved'.
+    """
+    # fb.emotional has no artifact in seed_run (only fb-light.md exists).
+    resp = client.post(f"/bridge/repurpose/{seed_run}/approve/fb.emotional")
+    assert resp.status_code == 409
+    assert "fb-emotional.md" in resp.json()["detail"]
+    assert not (tmp_path / seed_run / ".approved.fb.emotional").exists()
+
+
+def test_approve_rejects_missing_blog(client, seed_run, tmp_path):
+    """Same artifact-existence guard for the blog channel."""
+    (tmp_path / seed_run / "blog.md").unlink()
+    resp = client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    assert resp.status_code == 409
+    assert not (tmp_path / seed_run / ".approved.blog").exists()
+
+
+def test_detail_approve_button_disabled_when_approved(client, seed_run):
+    """Approved channels render approve button as disabled '已核准 ✓' — no
+    '取消核准' affordance, because no DELETE/un-approve endpoint exists.
+
+    Regression guard for the UI-lie review finding: the old template flipped
+    the button label to '取消核准' but server only does idempotent touch.
+    """
+    client.post(f"/bridge/repurpose/{seed_run}/approve/blog")
+    resp = client.get(f"/bridge/repurpose/{seed_run}")
+    assert resp.status_code == 200
+    assert "取消核准" not in resp.text
+    assert "已核准 ✓" in resp.text
+
+
 # ---------------------------------------------------------------------------
 # List + detail status badge
 # ---------------------------------------------------------------------------
@@ -313,9 +349,13 @@ def test_list_status_partially_approved_after_one_approve(client, seed_run):
     assert 'data-status="partially-approved"' in resp.text
 
 
-def test_list_status_approved_when_all_six_channels(client, seed_run):
+def test_list_status_approved_when_all_six_channels(client, seed_run, tmp_path):
+    # Seed the 3 missing FB tonals so the artifact-existence guard in
+    # approve_channel passes for every channel.
+    for tonal in ("emotional", "serious", "neutral"):
+        (tmp_path / seed_run / f"fb-{tonal}.md").write_text(f"fb {tonal} content", encoding="utf-8")
     for ch in ("blog", "fb.light", "fb.emotional", "fb.serious", "fb.neutral", "ig"):
-        client.post(f"/bridge/repurpose/{seed_run}/approve/{ch}")
+        assert client.post(f"/bridge/repurpose/{seed_run}/approve/{ch}").status_code == 200
     resp = client.get("/bridge/repurpose")
     assert resp.status_code == 200
     assert 'data-status="approved"' in resp.text
