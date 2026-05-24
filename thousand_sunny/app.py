@@ -26,6 +26,7 @@ from thousand_sunny.routers import (  # noqa: E402
     architecture,
     auth,
     bridge,
+    bridge_digests,
     bridge_zoro,
     brook,
     franky,
@@ -76,6 +77,7 @@ add_csp_middleware(app)
 app.include_router(auth.router)
 app.include_router(bridge.router)
 app.include_router(bridge.page_router)
+app.include_router(bridge_digests.page_router)
 app.include_router(bridge_zoro.page_router)
 app.include_router(repurpose.page_router)
 # Franky /healthz must be mounted unconditionally — UptimeRobot probes this regardless of
