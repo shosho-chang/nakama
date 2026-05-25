@@ -313,3 +313,94 @@ def test_post_annotations_digest_status_queued_in_response(app_client, monkeypat
     )
     assert r.status_code == 200
     assert r.json()["digest_status"] == "queued"
+
+
+# ---------------------------------------------------------------------------
+# Regression: fresh-book first-highlight save must succeed
+#
+# Bug scenario before fix: book_reader.js emptyAnnotationSet() emitted
+# schema_version=2, but actionHighlight built items with the v3 shape (with a
+# ``text`` field). HighlightV2 has extra="forbid" → first highlight on a
+# freshly imported book always 422'd. Books with prior annotation files were
+# unaffected because the GET round-trip returned a v3 set, so currentSet was
+# v3 by the time the user clicked highlight.
+#
+# Fix: emptyAnnotationSet() now emits schema_version=3, matching the v3-shaped
+# items the handlers build. These tests pin the payload shape the client
+# actually sends.
+# ---------------------------------------------------------------------------
+
+
+def _v3_empty_set(book_id: str) -> dict:
+    """Mirror book_reader.js emptyAnnotationSet() after the fix."""
+    return {
+        "schema_version": 3,
+        "slug": book_id,
+        "book_id": book_id,
+        "book_version_hash": _HASH,
+        "items": [],
+        "updated_at": _TS,
+        "last_synced_at": None,
+    }
+
+
+def _v3_highlight_item(text: str = "selected passage") -> dict:
+    """Mirror book_reader.js actionHighlight() item shape — note ``text`` field."""
+    return {
+        "type": "highlight",
+        "cfi": "epubcfi(/6/4!/4/2:0)",
+        "text_excerpt": text,
+        "book_version_hash": _HASH,
+        "text": text,
+        "created_at": _TS,
+        "modified_at": _TS,
+    }
+
+
+def test_post_v3_empty_set_succeeds(app_client):
+    """A fresh book's first save (still no items) must succeed under v3."""
+    _upload(app_client, "fresh-book")
+    r = app_client.post(
+        "/robin/api/books/fresh-book/annotations",
+        json=_v3_empty_set("fresh-book"),
+    )
+    assert r.status_code == 200, r.text
+
+
+def test_post_v3_first_highlight_on_fresh_book_succeeds(app_client):
+    """The exact payload book_reader.js sends for the first highlight on a
+    book that had no annotations file: v3 empty set with one v3-shaped highlight
+    item appended. Pre-fix this 422'd because the client emitted v2 schema_version
+    with a v3-shaped item containing the forbidden ``text`` field."""
+    _upload(app_client, "fresh-book")
+    payload = _v3_empty_set("fresh-book")
+    payload["items"] = [_v3_highlight_item("first highlight on fresh book")]
+    r = app_client.post(
+        "/robin/api/books/fresh-book/annotations",
+        json=payload,
+    )
+    assert r.status_code == 200, r.text
+
+    # And round-trip: GET should return v3 with the item present.
+    got = app_client.get("/robin/api/books/fresh-book/annotations")
+    assert got.status_code == 200
+    body = got.json()
+    assert body["schema_version"] == 3
+    assert len(body["items"]) == 1
+    assert body["items"][0]["type"] == "highlight"
+    assert body["items"][0]["text"] == "first highlight on fresh book"
+
+
+def test_post_v2_set_with_v3_shaped_item_still_422s(app_client):
+    """Defensive: if some future client mistakenly mixes a v2 set with a v3
+    item (the exact bug we just fixed), the server must still 422 — extra
+    ``text`` field is forbidden in HighlightV2. Locks in the schema contract."""
+    _upload(app_client, "mixed")
+    bad = _v2_payload("mixed", items=[_v3_highlight_item("oops")])
+    r = app_client.post("/robin/api/books/mixed/annotations", json=bad)
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    # Pydantic surfaces extra_forbidden for the ``text`` field
+    assert any(
+        err.get("type") == "extra_forbidden" and err.get("loc", [])[-1] == "text" for err in detail
+    ), detail
