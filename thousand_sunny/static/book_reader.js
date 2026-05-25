@@ -208,12 +208,16 @@ function showToast(message, ms = 3500) {
 }
 
 function emptyAnnotationSet() {
+  // ADR-021 §1 v3 shape. Action handlers (actionHighlight / submitNote / etc.) build
+  // items with the v3 field set — notably `text` on highlights — which V2 schemas
+  // reject as extra_forbidden. For books that already had annotations on disk this
+  // didn't surface because the server returns v3 on GET; but for a freshly imported
+  // book the 404 path runs here, and the first save would 422. Stay v3 throughout.
   return {
-    schema_version: 2,
+    schema_version: 3,
     slug: BOOK_ID,
     book_id: BOOK_ID,
     book_version_hash: bookVersionHash,
-    base: 'books',
     items: [],
     updated_at: nowIso(),
     last_synced_at: null,
