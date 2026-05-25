@@ -218,6 +218,11 @@
 .pj-btn--save { align-self: flex-start; }
 .pj-btn--disabled { opacity: 0.5; cursor: not-allowed; }
 .pj-btn-tiny { padding: 2px 8px; font-size: 11px; }
+.pj-btn-tiny--undo { color: var(--sho-muted); }
+.pj-btn-tiny--undo:hover:not(:disabled) { color: var(--sho-warning); border-color: var(--sho-warning); }
+.pj-btn-tiny:disabled { opacity: 0.35; cursor: not-allowed; }
+.pj-dock-task-actions { display: flex; gap: 6px; align-items: center; }
+.pj-dock-task-actions form { display: inline; }
 
 /* ── Detail page ──────────────────────────────────────────────────────── */
 

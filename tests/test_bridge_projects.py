@@ -284,6 +284,48 @@ class TestPomodoroTimer:
         fm = yaml.safe_load(task_md.split("---")[1])
         assert len(fm["timeEntries"]) == 1
 
+    def test_manual_pomodoro_undo_pops_entry(self, client, tmp_path):
+        # Seed an entry first via +1
+        client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/manual-pomodoro",
+            follow_redirects=False,
+        )
+        # Now undo
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/manual-pomodoro/undo",
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        task_md = (tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Pre-production.md").read_text(
+            encoding="utf-8"
+        )
+        fm = yaml.safe_load(task_md.split("---")[1])
+        assert fm["timeEntries"] == []
+
+    def test_manual_pomodoro_undo_returns_409_when_empty(self, client):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/manual-pomodoro/undo",
+        )
+        assert r.status_code == 409
+        assert "undo" in r.text.lower()
+
+    def test_manual_pomodoro_undo_returns_json_when_ajax(self, client, tmp_path):
+        # Seed first
+        client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/manual-pomodoro",
+            follow_redirects=False,
+        )
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/manual-pomodoro/undo",
+            headers={"Accept": "application/json"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["task_name"] == "Pre-production"
+        assert data["task_actual"] == 0
+        assert data["project_actual_total"] == 0
+
     def test_manual_pomodoro_returns_json_when_ajax(self, client, tmp_path):
         """Accept: application/json → JSON body, no 303 (preserves tab + dock state)."""
         r = client.post(

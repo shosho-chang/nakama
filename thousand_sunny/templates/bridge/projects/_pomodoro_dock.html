@@ -43,7 +43,7 @@
                 <th>Status</th>
                 <th>預估</th>
                 <th>實際</th>
-                <th>+1🍅</th>
+                <th>🍅</th>
               </tr>
             </thead>
             <tbody>
@@ -52,10 +52,18 @@
                   <td>{{ t.name }}</td>
                   <td>{{ t.status }}</td>
                   <td>{{ t.est_pomodoros }}</td>
-                  <td>{{ t.actual_pomodoros }}</td>
-                  <td>
+                  <td data-task-actual>{{ t.actual_pomodoros }}</td>
+                  <td class="pj-dock-task-actions">
                     <form method="post"
-                          action="/bridge/projects/{{ entry.slug }}/tasks/{{ t.name | urlencode }}/manual-pomodoro">
+                          action="/bridge/projects/{{ entry.slug }}/tasks/{{ t.name | urlencode }}/manual-pomodoro/undo"
+                          data-pomodoro-op="undo">
+                      <button type="submit" class="pj-btn-tiny pj-btn-tiny--undo"
+                              title="手動 -1🍅（撤銷上一次）"
+                              {% if t.actual_pomodoros == 0 %}disabled{% endif %}>−1</button>
+                    </form>
+                    <form method="post"
+                          action="/bridge/projects/{{ entry.slug }}/tasks/{{ t.name | urlencode }}/manual-pomodoro"
+                          data-pomodoro-op="add">
                       <button type="submit" class="pj-btn-tiny" title="手動 +1🍅（給實體番茄鐘）">+1</button>
                     </form>
                   </td>

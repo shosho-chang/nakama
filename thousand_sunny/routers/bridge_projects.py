@@ -45,6 +45,7 @@ from shared.project_writer import (
     ProjectWriteError,
     append_timeentry,
     create_task,
+    pop_last_timeentry,
     update_body_section,
     update_frontmatter,
 )
@@ -508,6 +509,57 @@ async def projects_manual_pomodoro(
             "task_actual": task_actual,
             "project_actual_total": sum(t["actual_pomodoros"] for t in tasks),
             "project_est_total": sum(t["est_pomodoros"] for t in tasks),
+        }
+    return _redirect_back(slug, "brief")
+
+
+@page_router.post("/projects/{slug}/tasks/{task_name}/manual-pomodoro/undo")
+async def projects_manual_pomodoro_undo(
+    request: Request,
+    slug: str,
+    task_name: str,
+    nakama_auth: str | None = Cookie(None),
+    accept: str = Header(""),
+):
+    """Undo: pop the last ``timeEntries`` entry from this task.
+
+    Use case: accidental click on +1🍅, or just rolling back a session
+    that didn't actually happen. Same content-negotiation as the +1
+    endpoint — Accept: application/json → JSON payload, otherwise 303.
+
+    Returns 409 if the task has no entries to remove.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    slug = normalize_slug(slug)
+    popped = pop_last_timeentry(
+        vault_root=get_vault_path(),
+        project_slug=slug,
+        task_name=task_name,
+    )
+    if not popped:
+        raise HTTPException(status_code=409, detail="No timeEntries to undo")
+
+    # Recompute project rollup so the dock 🍅 stays in sync.
+    tasks = _scan_tasks(slug)
+    est_total = sum(t["est_pomodoros"] for t in tasks)
+    actual_total = sum(t["actual_pomodoros"] for t in tasks)
+    update_frontmatter(
+        vault_root=get_vault_path(),
+        slug=slug,
+        patch={"pomodoro": {"est_total": est_total, "actual_total": actual_total}},
+    )
+
+    if "application/json" in accept:
+        task_actual = next(
+            (t["actual_pomodoros"] for t in tasks if t["name"] == task_name), 0
+        )
+        return {
+            "task_name": task_name,
+            "task_actual": task_actual,
+            "project_actual_total": actual_total,
+            "project_est_total": est_total,
         }
     return _redirect_back(slug, "brief")
 

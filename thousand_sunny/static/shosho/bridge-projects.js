@@ -222,19 +222,31 @@
   // no full page reload, so current tab + Tasks ▾ open state survive.
 
   function bindManualPomodoro() {
-    document.querySelectorAll('.pj-dock-task-row form[action*="/manual-pomodoro"]').forEach(function (form) {
+    document.querySelectorAll('.pj-dock-task-row form[data-pomodoro-op]').forEach(function (form) {
       form.addEventListener('submit', function (e) {
         e.preventDefault();
+        var op = form.getAttribute('data-pomodoro-op'); // 'add' | 'undo'
+        var delta = op === 'undo' ? -1 : 1;
         var row = form.closest('.pj-dock-task-row');
-        var actualCell = row ? row.querySelectorAll('td')[3] : null;
+        var actualCell = row ? row.querySelector('[data-task-actual]') : null;
         var dockActual = document.querySelector('[data-actual-total]');
         if (!actualCell || !dockActual) return;
 
-        // Optimistic UI — increment immediately; revert on server error.
         var oldRowVal = parseInt(actualCell.textContent, 10) || 0;
         var oldDockVal = parseInt(dockActual.textContent, 10) || 0;
-        actualCell.textContent = String(oldRowVal + 1);
-        dockActual.textContent = String(oldDockVal + 1);
+
+        // Client guard — server returns 409 for undo-when-zero, but we
+        // also avoid the round-trip + revert flash.
+        if (op === 'undo' && oldRowVal <= 0) {
+          showToast('此 task 沒有可撤銷的 🍅');
+          return;
+        }
+
+        // Optimistic UI — apply delta immediately; revert on server error.
+        actualCell.textContent = String(oldRowVal + delta);
+        dockActual.textContent = String(oldDockVal + delta);
+        var undoBtn = row.querySelector('form[data-pomodoro-op="undo"] button');
+        if (undoBtn) undoBtn.disabled = (oldRowVal + delta) <= 0;
 
         fetch(form.action, {
           method: 'POST',
@@ -244,9 +256,9 @@
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.json();
         }).then(function (data) {
-          // Reconcile with server truth (handles race conditions / concurrent edits).
           if (typeof data.task_actual === 'number') {
             actualCell.textContent = String(data.task_actual);
+            if (undoBtn) undoBtn.disabled = data.task_actual <= 0;
           }
           if (typeof data.project_actual_total === 'number') {
             dockActual.textContent = String(data.project_actual_total);
@@ -254,7 +266,9 @@
         }).catch(function () {
           actualCell.textContent = String(oldRowVal);
           dockActual.textContent = String(oldDockVal);
-          showToast('⚠ +1🍅 寫入失敗，已還原。請重試。');
+          if (undoBtn) undoBtn.disabled = oldRowVal <= 0;
+          var symbol = op === 'undo' ? '−1🍅' : '+1🍅';
+          showToast('⚠ ' + symbol + ' 寫入失敗，已還原。請重試。');
         });
       });
     });
@@ -272,6 +286,14 @@
       var dlg = closeBtn.closest('dialog');
       if (!dlg) return;
       closeBtn.addEventListener('click', function () { dlg.close(); });
+    });
+    // Click on ::backdrop closes — event.target is the <dialog> element
+    // itself when the click lands on the backdrop region, not on the
+    // inner form box.
+    document.querySelectorAll('dialog.pj-dialog').forEach(function (dlg) {
+      dlg.addEventListener('click', function (e) {
+        if (e.target === dlg) dlg.close();
+      });
     });
   }
 

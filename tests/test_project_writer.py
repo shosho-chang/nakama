@@ -12,6 +12,7 @@ from shared.project_writer import (
     append_timeentry,
     create_task,
     now_iso_taipei,
+    pop_last_timeentry,
     update_body_section,
     update_frontmatter,
     write_review,
@@ -248,6 +249,60 @@ class TestCreateTask:
         path = create_task(vault_root=vault, project_slug="t", task_name="腳本初稿")
         assert path.exists()
         assert path.name == "t - 腳本初稿.md"
+
+
+class TestPopLastTimeentry:
+    def test_pops_last_entry_returns_true(self, vault: Path):
+        append_timeentry(
+            vault_root=vault,
+            project_slug="t",
+            task_name="Pre-production",
+            start_iso="2026-05-25T10:00:00+08:00",
+            end_iso="2026-05-25T10:25:00+08:00",
+        )
+        append_timeentry(
+            vault_root=vault,
+            project_slug="t",
+            task_name="Pre-production",
+            start_iso="2026-05-25T11:00:00+08:00",
+            end_iso="2026-05-25T11:25:00+08:00",
+        )
+
+        popped = pop_last_timeentry(
+            vault_root=vault, project_slug="t", task_name="Pre-production"
+        )
+        assert popped is True
+
+        path = vault / "TaskNotes" / "Tasks" / "t - Pre-production.md"
+        fm = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])
+        assert len(fm["timeEntries"]) == 1
+        # Last entry removed — only the first remains
+        assert fm["timeEntries"][0]["startTime"] == "2026-05-25T10:00:00+08:00"
+
+    def test_returns_false_when_empty(self, vault: Path):
+        # Fixture seeds timeEntries: [] for the task
+        popped = pop_last_timeentry(
+            vault_root=vault, project_slug="t", task_name="Pre-production"
+        )
+        assert popped is False
+
+    def test_updates_dateModified(self, vault: Path):
+        append_timeentry(
+            vault_root=vault,
+            project_slug="t",
+            task_name="Pre-production",
+            start_iso="2026-05-25T10:00:00+08:00",
+            end_iso="2026-05-25T10:25:00+08:00",
+        )
+        path = vault / "TaskNotes" / "Tasks" / "t - Pre-production.md"
+        before_modified = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])[
+            "dateModified"
+        ]
+        pop_last_timeentry(vault_root=vault, project_slug="t", task_name="Pre-production")
+        after_modified = yaml.safe_load(path.read_text(encoding="utf-8").split("---")[1])[
+            "dateModified"
+        ]
+        assert after_modified >= before_modified
 
 
 def test_now_iso_taipei_has_offset():

@@ -228,6 +228,32 @@ def append_timeentry(
     _write_split(path, fm, body)
 
 
+def pop_last_timeentry(
+    *,
+    vault_root: Path,
+    project_slug: str,
+    task_name: str,
+) -> bool:
+    """Remove the last ``timeEntries`` entry from a TaskNotes Task md.
+
+    Returns True if an entry was popped, False if the list was already empty
+    (caller decides whether to surface as 409 Conflict). Atomic via the
+    underlying ``_write_split`` tmp+rename path.
+    """
+    project_slug = unicodedata.normalize("NFC", project_slug)
+    task_basename = f"{project_slug} - {task_name}"
+    path = vault_root / TASKS_DIR / f"{task_basename}.md"
+    fm, body = _read_split(path)
+    entries = fm.get("timeEntries")
+    if not isinstance(entries, list) or not entries:
+        return False
+    entries.pop()
+    fm["timeEntries"] = entries
+    fm["dateModified"] = _now_iso_z()
+    _write_split(path, fm, body)
+    return True
+
+
 def create_task(
     *,
     vault_root: Path,
