@@ -1,40 +1,82 @@
 ---
-name: Sandcastle GH_TOKEN 過期的徵兆 + 快速 rotate（host gh auth token → .sandcastle/.env）
-description: 2026-05-25 overnight dispatch 時 .sandcastle/.env 的 GH_TOKEN 失效（3 週沒用），PromptPreprocessor `gh issue list` 401 unauthorized → sandcastle 直接 abort 0 iteration。fix = `gh auth token` 取 host 現用 token 覆寫
+name: Sandcastle 401 Bad credentials = 99% 漏 --env-file flag, 不是 token 過期
+description: 2026-05-25→26 反覆踩坑 — Sandcastle 401 看起來像 token 過期，實際是 `npx tsx .sandcastle/main.mts` 漏掉 `--env-file=.sandcastle/.env`，process.env.GH_TOKEN 變成 undefined 字串傳進 docker -e GH_TOKEN=undefined。先驗 flag 再考慮 rotate
 type: reference
 ---
 
-`E:/sandcastle-test/` 的 `.sandcastle/.env` 內 `GH_TOKEN` 跟 host machine 的 `gh auth status` 是兩套 credential。host 的 keyring auth 隨時用 OK，但 `.env` 內的 PAT 三週就過期（GitHub PAT default 90d expiry 算短的；fine-grained token 也常 30/60d）。
-
-**徵兆**：
+## 徵兆
 
 ```
 PromptError: Command `gh issue list --label sandcastle ...` exited with code 1:
 non-200 OK status code: 401 Unauthorized
-body: {"message": "Bad credentials", "documentation_url": "https://docs.github.com/rest", "status": "401"}
+body: {"message": "Bad credentials", "status": "401"}
 ```
 
-PromptPreprocessor 在 host 端執行 prompt 內的 `!gh ...` shell embed，吃 `.env` 內 GH_TOKEN → 401 → sandcastle 直接 abort，**0 iteration 跑**。
+PromptPreprocessor 在 docker 容器內呼叫 `gh issue list`，gh 拿不到有效 token → 401 → sandcastle abort，**0 iteration 跑**。
 
-**Fix（5 分鐘）**：
+## 真正 root cause（2026-05-26 確認）
+
+`E:/sandcastle-test/.sandcastle/main.mts` 第 7 行註解明寫：
+
+```
+npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts
+```
+
+但 `session_handoff` / playbook / Claude 預設指令常常**漏掉 `--env-file=.sandcastle/.env`**：
 
 ```powershell
-# 1. 從 host gh keyring 撈當前 valid token
-gh auth token > E:/tmp/_token.txt
-# 內容類似 ghp_xxxxxxxx... 或 gho_xxxxxxxx...
-
-# 2. 編輯 .sandcastle/.env，替換 GH_TOKEN=<old> 那行為新值
-# （手動 notepad，或寫 PowerShell 一行）
-
-# 3. 重跑 Sandcastle
-cd E:/sandcastle-test
-$env:MSYS_NO_PATHCONV='1'; npx tsx .sandcastle/main.mts
+npx tsx .sandcastle/main.mts   # ❌ process.env.GH_TOKEN = undefined
 ```
 
-**注意**：
+`main.mts` 用 `GH_TOKEN: process.env.GH_TOKEN!` 把 env pass 進 docker container。TS 的 `!` non-null assertion 只是編譯時 type；runtime undefined 會變成字串 `"undefined"` 進 `docker run -e GH_TOKEN=undefined`。容器內 gh 把 "undefined" 當 token 丟給 GitHub → 401 Bad credentials。
 
-- `.sandcastle/.env` 不該 git commit（已在 .gitignore），所以 rotate 後不會污染 repo
-- 容器內也用同個 GH_TOKEN（main.mts `env: passthrough`），所以 rotate 一次同時修 host preprocessor + container agent 兩處
-- Claude 自動跑 sandcastle 時若遇此 401 應**不要嘗試自動寫 .env**，credential rotation 是 user-only action
-- 一般 90 天 review 一次（calendar reminder）or 用 fine-grained token + 設 expiry 提醒避免凌晨踩到
-- 跟 [feedback_sandcastle_default] + [reference_sandcastle] cross-ref；本檔專責 token 一個 failure mode
+**Host gh auth token 跟 .env 裡 GH_TOKEN 即使完全相同也不會 fix 這個** — 因為根本沒被 load 進 process.env。
+
+## Diagnose order（5 分鐘）
+
+別預設 token 過期，先按順序驗：
+
+1. **檢查命令是否含 `--env-file=.sandcastle/.env`** → 99% 答案在這
+2. Host `gh auth token` 是否還 valid：`curl -H "Authorization: token $(gh auth token)" https://api.github.com/user` 看 200 還是 401
+3. `.env` 內 token 跟 host 是否一致：`grep ^GH_TOKEN= E:/sandcastle-test/.sandcastle/.env` vs `gh auth token`
+4. **容器內** gh 是否能用該 token（最深層）：
+   ```
+   TOKEN=$(grep ^GH_TOKEN= .env | cut -d= -f2-)
+   docker run --rm --entrypoint bash -e GH_TOKEN="$TOKEN" sandcastle:nakama -c 'gh api user'
+   ```
+
+如果 1 是真，2/3/4 完全沒必要查。
+
+## 正確 dispatch 命令
+
+```powershell
+cd E:/sandcastle-test
+$env:MSYS_NO_PATHCONV='1'
+npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts
+```
+
+PowerShell 也可：
+
+```powershell
+$env:MSYS_NO_PATHCONV='1'; cd E:/sandcastle-test; npx tsx --env-file=.sandcastle/.env .sandcastle/main.mts
+```
+
+## Token 真的過期的情況（罕見）
+
+GitHub PAT default 90d；fine-grained token 30/60d。host gh OAuth `gho_*` 由 gh CLI 維護自動續期，幾乎不會過期。
+
+若步驟 2 host curl 也回 401 → token 真的過期：
+
+```powershell
+gh auth refresh   # 或 gh auth login 重新走 OAuth
+# 然後 sync .env:
+$tok = gh auth token
+(Get-Content .sandcastle/.env) -replace '^GH_TOKEN=.*', "GH_TOKEN=$tok" | Set-Content .sandcastle/.env
+```
+
+## 注意
+
+- `.sandcastle/.env` 不該 git commit（在 .gitignore）
+- 容器內跟 host preprocessor 都用同個 GH_TOKEN（main.mts `env: passthrough`）
+- Claude 自動跑 sandcastle 時遇 401 應**不要嘗試自動寫 .env**，credential rotation 是 user-only action；但**可以**自動 retry with `--env-file` flag（這只是 invocation 修正）
+- 跟 [[feedback_sandcastle_default]] + [[reference_sandcastle]] cross-ref；本檔專責 401 一個 failure mode
