@@ -52,6 +52,13 @@ _CN_DECIMAL_UNIT_RE = re.compile(
 )
 _UNIT_VALUE: dict[str, int] = {"萬": 10_000, "億": 100_000_000}
 
+# Conservative Chinese numeral pattern: only match sequences that contain at least one
+# magnitude character (十百千萬億) to avoid converting measure-word 一 in phrases like
+# 一個/一些/一起 which are NOT numeric claims (Gemini panel §1 pitfall).
+_CN_NUMERAL_MAGNITUDE_RE = re.compile(
+    r"[零一二三四五六七八九]*[十百千萬億][零一二三四五六七八九十百千萬億]*"
+)
+
 
 def normalize_punctuation(text: str) -> str:
     """Unify full-width punctuation; promote half-width clones to full-width."""
@@ -68,17 +75,25 @@ def _cn_decimal_unit(m: re.Match) -> str:
     return str(int(round((int_part + dec_frac) * unit)))
 
 
+def _cn_numeral_to_arabic(m: re.Match) -> str:
+    try:
+        return str(int(cn2an.cn2an(m.group(), "normal")))
+    except Exception:
+        return m.group()
+
+
 def normalize_numbers(text: str) -> str:
     """Normalize numeric formats to canonical Arabic integers embedded in text.
 
     Processing order:
     1. Strip thousands-separator commas (11,000 → 11000)
     2. Resolve Chinese decimal-unit patterns (一·一萬 → 11000)
-    3. Convert remaining Chinese numerals via cn2an (一萬一千 → 11000)
+    3. Convert Chinese numeral sequences that contain at least one magnitude
+       character (十百千萬億) — avoids converting bare 一/二 used as measure words.
     """
     text = _COMMA_THOUSANDS_RE.sub(r"\1\2", text)
     text = _CN_DECIMAL_UNIT_RE.sub(_cn_decimal_unit, text)
-    text = cn2an.transform(text, "cn2an")
+    text = _CN_NUMERAL_MAGNITUDE_RE.sub(_cn_numeral_to_arabic, text)
     return text
 
 
