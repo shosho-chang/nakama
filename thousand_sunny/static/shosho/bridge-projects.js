@@ -287,18 +287,28 @@
       if (!dlg) return;
       closeBtn.addEventListener('click', function () { dlg.close(); });
     });
-    // Click outside the dialog content closes it. We use a bounding-rect
-    // check (more reliable than `event.target === dlg`, which can miss
-    // when the dialog has zero padding and inner elements catch the
-    // click first).
+    // Click outside the dialog content closes it. Belt-and-suspenders —
+    // bind on BOTH the dialog (for backdrop clicks per HTML5 spec) AND
+    // the document (fallback for any browser quirk where the dialog
+    // mousedown doesn't fire). Bounding-rect check is the source of truth.
+    function closeIfOutside(dlg, x, y) {
+      var rect = dlg.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return; // not visible
+      var inside = x >= rect.left && x <= rect.right
+                && y >= rect.top  && y <= rect.bottom;
+      if (!inside) dlg.close();
+    }
     document.querySelectorAll('dialog.pj-dialog').forEach(function (dlg) {
       dlg.addEventListener('mousedown', function (e) {
-        var rect = dlg.getBoundingClientRect();
-        var inside = e.clientX >= rect.left && e.clientX <= rect.right
-                  && e.clientY >= rect.top  && e.clientY <= rect.bottom;
-        if (!inside) {
-          dlg.close();
-        }
+        closeIfOutside(dlg, e.clientX, e.clientY);
+      });
+    });
+    // Fallback: listen at document level for any mousedown while any
+    // dialog is open. Useful if the spec'd backdrop-click dispatch
+    // doesn't fire for some reason (browser bug, extension interference).
+    document.addEventListener('mousedown', function (e) {
+      document.querySelectorAll('dialog.pj-dialog[open]').forEach(function (dlg) {
+        closeIfOutside(dlg, e.clientX, e.clientY);
       });
     });
   }
@@ -322,6 +332,22 @@
 
   // ── Bootstrap ──────────────────────────────────────────────────────────
 
+  // ── Dock Tasks ▾ panel — close on outside mousedown ────────────────────
+  //
+  // Native <details> stays open until you click <summary> again. The dock
+  // task panel pops up over content; clicking elsewhere should dismiss it
+  // (matches the Add-Task <dialog> backdrop-close pattern).
+
+  function bindDockTasksClickOutside() {
+    document.addEventListener('mousedown', function (e) {
+      document.querySelectorAll('.pj-dock-tasks-expand[open]').forEach(function (details) {
+        if (!details.contains(e.target)) {
+          details.open = false;
+        }
+      });
+    });
+  }
+
   function bootAll() {
     bindTabs();
     bindPomodoroDock();
@@ -329,6 +355,7 @@
     bindKbResearch();
     bindDialogs();
     bindManualPomodoro();
+    bindDockTasksClickOutside();
   }
 
   if (document.readyState === 'loading') {
