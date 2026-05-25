@@ -263,6 +263,14 @@
           if (typeof data.project_actual_total === 'number') {
             dockActual.textContent = String(data.project_actual_total);
           }
+          // Auto-flip to-do → doing reflects back in the status dropdown
+          if (data.task_status) {
+            var statusSel = row.querySelector('.pj-task-status-select');
+            if (statusSel && statusSel.value !== data.task_status) {
+              statusSel.value = data.task_status;
+              applyStatusColour(statusSel);
+            }
+          }
         }).catch(function () {
           actualCell.textContent = String(oldRowVal);
           dockActual.textContent = String(oldDockVal);
@@ -332,6 +340,94 @@
 
   // ── Bootstrap ──────────────────────────────────────────────────────────
 
+  // ── Task status dropdown — AJAX + colour reflect ───────────────────────
+
+  function applyStatusColour(sel) {
+    // Swap the colour class so the chip recolours immediately on change.
+    var classes = ['pj-status-to-do', 'pj-status-doing', 'pj-status-done', 'pj-status-paused'];
+    classes.forEach(function (c) { sel.classList.remove(c); });
+    sel.classList.add('pj-status-' + sel.value);
+  }
+
+  function bindStatusDropdown() {
+    document.querySelectorAll('.pj-task-status-select').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var url = sel.getAttribute('data-status-url');
+        var newValue = sel.value;
+        var oldValue = sel.dataset.lastValue || '';
+        // Optimistic — apply colour immediately
+        applyStatusColour(sel);
+
+        var body = 'value=' + encodeURIComponent(newValue);
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+          },
+          body: body,
+          credentials: 'same-origin',
+        }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          sel.dataset.lastValue = newValue;
+        }).catch(function () {
+          // Revert on failure
+          if (oldValue) {
+            sel.value = oldValue;
+            applyStatusColour(sel);
+          }
+          showToast('⚠ 狀態更新失敗，已還原');
+        });
+      });
+      // Cache initial value for revert path
+      sel.dataset.lastValue = sel.value;
+    });
+  }
+
+  // ── Delete task — confirm + AJAX + remove row ──────────────────────────
+
+  function bindDeleteTask() {
+    document.querySelectorAll('form[data-task-delete]').forEach(function (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var btn = form.querySelector('button');
+        var taskName = btn ? btn.getAttribute('data-task-name') : '';
+        if (!confirm('刪除任務「' + taskName + '」？\n會送回收桶，可從 Windows / macOS 還原。')) {
+          return;
+        }
+        var row = form.closest('.pj-dock-task-row');
+        var dockActual = document.querySelector('[data-actual-total]');
+        var dockEst = document.querySelector('[data-est-total]');
+
+        fetch(form.action, {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' },
+          credentials: 'same-origin',
+        }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        }).then(function (data) {
+          if (row) row.remove();
+          if (dockActual && typeof data.project_actual_total === 'number') {
+            dockActual.textContent = String(data.project_actual_total);
+          }
+          if (dockEst && typeof data.project_est_total === 'number') {
+            dockEst.textContent = String(data.project_est_total);
+          }
+          // Also drop from the dock's top-row task selector
+          var topSelect = document.querySelector('[data-task-select]');
+          if (topSelect) {
+            var opt = topSelect.querySelector('option[value="' + taskName + '"]');
+            if (opt) opt.remove();
+          }
+          showToast('✓ 「' + taskName + '」已刪除（在 Windows 回收桶可還原）');
+        }).catch(function (err) {
+          showToast('⚠ 刪除失敗：' + err.message);
+        });
+      });
+    });
+  }
+
   // ── Dock Tasks ▾ panel — close on outside mousedown ────────────────────
   //
   // Native <details> stays open until you click <summary> again. The dock
@@ -355,6 +451,8 @@
     bindKbResearch();
     bindDialogs();
     bindManualPomodoro();
+    bindStatusDropdown();
+    bindDeleteTask();
     bindDockTasksClickOutside();
   }
 

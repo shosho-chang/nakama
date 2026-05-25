@@ -42,12 +42,16 @@ from shared.lifeos_writer import (
 from shared.log import get_logger
 from shared.project_indexer import ProjectIndexer, ProjectNotFoundError, normalize_slug
 from shared.project_writer import (
+    VALID_TASK_STATUSES,
     ProjectWriteError,
     append_timeentry,
     create_task,
+    delete_task,
     pop_last_timeentry,
+    read_task_status,
     update_body_section,
     update_frontmatter,
+    update_task_status,
 )
 from thousand_sunny.auth import check_auth
 
@@ -477,6 +481,90 @@ async def projects_tasks_new(
     return _redirect_back(slug, "brief")
 
 
+@page_router.post("/projects/{slug}/tasks/{task_name}/status")
+async def projects_task_status(
+    request: Request,
+    slug: str,
+    task_name: str,
+    nakama_auth: str | None = Cookie(None),
+    value: str = Form(...),
+    accept: str = Header(""),
+):
+    """Update a TaskNote's ``status`` field (ADR-031 §F1 4-state workflow).
+
+    Content-negotiates JSON same as +1🍅 / undo.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    slug = normalize_slug(slug)
+    if value not in VALID_TASK_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown task status {value!r}; valid: {VALID_TASK_STATUSES}",
+        )
+
+    try:
+        update_task_status(
+            vault_root=get_vault_path(),
+            project_slug=slug,
+            task_name=task_name,
+            status=value,
+        )
+    except ProjectWriteError as exc:
+        # File not found → 404
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if "application/json" in accept:
+        return {"task_name": task_name, "task_status": value}
+    return _redirect_back(slug, "brief")
+
+
+@page_router.post("/projects/{slug}/tasks/{task_name}/delete")
+async def projects_task_delete(
+    request: Request,
+    slug: str,
+    task_name: str,
+    nakama_auth: str | None = Cookie(None),
+    accept: str = Header(""),
+):
+    """Send a TaskNote .md to recycle bin and recompute project rollup.
+
+    Recycle-bin (not hard delete) so user can recover from misclicks via
+    Windows / macOS trash. Project ``pomodoro.{est,actual}_total`` is
+    recomputed from the surviving tasks.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    slug = normalize_slug(slug)
+    deleted = delete_task(
+        vault_root=get_vault_path(),
+        project_slug=slug,
+        task_name=task_name,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Task not found: {task_name}")
+
+    tasks = _scan_tasks(slug)
+    est_total = sum(t["est_pomodoros"] for t in tasks)
+    actual_total = sum(t["actual_pomodoros"] for t in tasks)
+    update_frontmatter(
+        vault_root=get_vault_path(),
+        slug=slug,
+        patch={"pomodoro": {"est_total": est_total, "actual_total": actual_total}},
+    )
+
+    if "application/json" in accept:
+        return {
+            "task_name": task_name,
+            "deleted": True,
+            "project_actual_total": actual_total,
+            "project_est_total": est_total,
+        }
+    return _redirect_back(slug, "brief")
+
+
 @page_router.post("/projects/{slug}/tasks/{task_name}/manual-pomodoro")
 async def projects_manual_pomodoro(
     request: Request,
@@ -497,7 +585,9 @@ async def projects_manual_pomodoro(
         return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
 
     slug = normalize_slug(slug)
-    _write_pomodoro_entry(slug=slug, task_name=task_name, now_minus_minutes=POMODORO_MINUTES)
+    new_status = _write_pomodoro_entry(
+        slug=slug, task_name=task_name, now_minus_minutes=POMODORO_MINUTES
+    )
 
     if "application/json" in accept:
         tasks = _scan_tasks(slug)
@@ -507,6 +597,7 @@ async def projects_manual_pomodoro(
         return {
             "task_name": task_name,
             "task_actual": task_actual,
+            "task_status": new_status,
             "project_actual_total": sum(t["actual_pomodoros"] for t in tasks),
             "project_est_total": sum(t["est_pomodoros"] for t in tasks),
         }
@@ -587,15 +678,25 @@ async def projects_review_run(
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
-def _write_pomodoro_entry(*, slug: str, task_name: str, now_minus_minutes: int) -> None:
-    """Append a synthetic timeEntry + recompute project pomodoro rollup."""
+def _write_pomodoro_entry(*, slug: str, task_name: str, now_minus_minutes: int) -> str | None:
+    """Append a synthetic timeEntry + recompute project pomodoro rollup.
+
+    Returns the task's status after the call (may be auto-flipped from
+    ``to-do`` to ``doing`` per ADR-031 §F1 plan B — first 🍅 triggers
+    "work started" transition; never auto-flips to ``done``).
+    """
+    vault_root = get_vault_path()
+    # Snapshot status BEFORE writing the entry — used by the auto-flip below.
+    pre_status = read_task_status(
+        vault_root=vault_root, project_slug=slug, task_name=task_name
+    )
+
     now = datetime.now(ZoneInfo("Asia/Taipei"))
     start = now.timestamp() - now_minus_minutes * 60
     start_dt = datetime.fromtimestamp(start, tz=ZoneInfo("Asia/Taipei"))
     start_iso = start_dt.isoformat(timespec="seconds")
     end_iso = now.isoformat(timespec="seconds")
 
-    vault_root = get_vault_path()
     append_timeentry(
         vault_root=vault_root,
         project_slug=slug,
@@ -603,6 +704,19 @@ def _write_pomodoro_entry(*, slug: str, task_name: str, now_minus_minutes: int) 
         start_iso=start_iso,
         end_iso=end_iso,
     )
+
+    # Auto-flip to-do → doing (ADR-031 §F1 plan B). Only flip on the
+    # first +1🍅 (when prior status was exactly "to-do"); never overwrite
+    # a manual `doing`/`done`/`paused`.
+    new_status = pre_status
+    if pre_status == "to-do":
+        update_task_status(
+            vault_root=vault_root,
+            project_slug=slug,
+            task_name=task_name,
+            status="doing",
+        )
+        new_status = "doing"
 
     # Recompute pomodoro rollup from TaskNotes scan, write back to project frontmatter.
     tasks = _scan_tasks(slug)
@@ -613,6 +727,7 @@ def _write_pomodoro_entry(*, slug: str, task_name: str, now_minus_minutes: int) 
         slug=slug,
         patch={"pomodoro": {"est_total": est_total, "actual_total": actual_total}},
     )
+    return new_status
 
 
 def _scan_tasks(slug: str) -> list[dict[str, Any]]:

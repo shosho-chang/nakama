@@ -228,6 +228,87 @@ def append_timeentry(
     _write_split(path, fm, body)
 
 
+VALID_TASK_STATUSES: tuple[str, ...] = ("to-do", "doing", "done", "paused")
+
+
+def read_task_status(
+    *,
+    vault_root: Path,
+    project_slug: str,
+    task_name: str,
+) -> str | None:
+    """Return the current ``status`` field of a TaskNote, or None if missing."""
+    project_slug = unicodedata.normalize("NFC", project_slug)
+    task_name = unicodedata.normalize("NFC", task_name)
+    path = vault_root / TASKS_DIR / f"{project_slug} - {task_name}.md"
+    if not path.exists():
+        return None
+    fm, _ = _read_split(path)
+    val = fm.get("status")
+    return str(val) if val is not None else None
+
+
+def update_task_status(
+    *,
+    vault_root: Path,
+    project_slug: str,
+    task_name: str,
+    status: str,
+) -> None:
+    """Set the ``status`` field of a TaskNote.
+
+    ADR-031 §F1: 4-state workflow (`to-do` / `doing` / `done` / `paused`).
+    Caller validates the value — this fn raises ``ProjectWriteError`` on
+    unknown values so callers don't accidentally write garbage.
+    """
+    if status not in VALID_TASK_STATUSES:
+        raise ProjectWriteError(
+            f"unknown task status {status!r}; valid: {VALID_TASK_STATUSES}"
+        )
+
+    project_slug = unicodedata.normalize("NFC", project_slug)
+    task_name = unicodedata.normalize("NFC", task_name)
+    path = vault_root / TASKS_DIR / f"{project_slug} - {task_name}.md"
+    if not path.exists():
+        raise ProjectWriteError(f"Task not found: {path.name}")
+
+    fm, body = _read_split(path)
+    fm["status"] = status
+    fm["dateModified"] = _now_iso_z()
+    _write_split(path, fm, body)
+
+
+def delete_task(
+    *,
+    vault_root: Path,
+    project_slug: str,
+    task_name: str,
+    recycle_bin_fn=None,
+) -> bool:
+    """Send a TaskNote .md to recycle bin (Windows) or unlink (POSIX).
+
+    Returns True if the file existed and was removed; False if it
+    didn't exist (caller decides 404 vs 204).
+
+    ``recycle_bin_fn`` is dependency-injected so tests can substitute a
+    plain ``Path.unlink`` without spawning PowerShell. Default at runtime
+    uses ``shared.discard_service._send_to_recycle_bin`` (the canonical
+    PowerShell recycle-bin prefix matched by ``.claude/settings.json``).
+    """
+    if recycle_bin_fn is None:
+        from shared.discard_service import _send_to_recycle_bin
+
+        recycle_bin_fn = _send_to_recycle_bin
+
+    project_slug = unicodedata.normalize("NFC", project_slug)
+    task_name = unicodedata.normalize("NFC", task_name)
+    path = vault_root / TASKS_DIR / f"{project_slug} - {task_name}.md"
+    if not path.exists():
+        return False
+    recycle_bin_fn(path)
+    return True
+
+
 def pop_last_timeentry(
     *,
     vault_root: Path,

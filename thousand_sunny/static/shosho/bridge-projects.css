@@ -220,9 +220,27 @@
 .pj-btn-tiny { padding: 2px 8px; font-size: 11px; }
 .pj-btn-tiny--undo { color: var(--sho-muted); }
 .pj-btn-tiny--undo:hover:not(:disabled) { color: var(--sho-warning); border-color: var(--sho-warning); }
+.pj-btn-tiny--delete { color: var(--sho-muted); border: 1px solid transparent; padding: 2px 6px; }
+.pj-btn-tiny--delete:hover:not(:disabled) { color: var(--sho-error); border-color: var(--sho-error); }
 .pj-btn-tiny:disabled { opacity: 0.35; cursor: not-allowed; }
 .pj-dock-task-actions { display: flex; gap: 6px; align-items: center; }
 .pj-dock-task-actions form { display: inline; }
+
+/* Task status dropdown — colour mirrors the project priority/status
+   palette so the workflow state reads at a glance. */
+.pj-task-status-select {
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  padding: 2px 4px;
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1, 4px);
+  cursor: pointer;
+}
+.pj-task-status-select.pj-status-to-do   { color: var(--sho-muted);   border-color: var(--sho-line); }
+.pj-task-status-select.pj-status-doing   { color: var(--sho-accent);  border-color: var(--sho-accent); }
+.pj-task-status-select.pj-status-done    { color: var(--sho-success); border-color: var(--sho-success); }
+.pj-task-status-select.pj-status-paused  { color: var(--sho-warning); border-color: var(--sho-warning); }
 
 /* ── Detail page ──────────────────────────────────────────────────────── */
 

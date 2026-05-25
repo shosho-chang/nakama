@@ -343,6 +343,115 @@ class TestPomodoroTimer:
         assert data["project_est_total"] >= 4
 
 
+class TestTaskStatusEndpoint:
+    def test_status_update_writes_field(self, client, tmp_path):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/status",
+            data={"value": "doing"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        task_md = (tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Pre-production.md").read_text(
+            encoding="utf-8"
+        )
+        fm = yaml.safe_load(task_md.split("---")[1])
+        assert fm["status"] == "doing"
+
+    def test_status_update_json(self, client):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/status",
+            data={"value": "done"},
+            headers={"Accept": "application/json"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 200
+        assert r.json() == {"task_name": "Pre-production", "task_status": "done"}
+
+    def test_status_rejects_unknown_value(self, client):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/status",
+            data={"value": "finished"},
+        )
+        assert r.status_code == 400
+
+    def test_status_404_when_task_missing(self, client):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/ghost/status",
+            data={"value": "doing"},
+        )
+        assert r.status_code == 404
+
+    def test_first_pomodoro_auto_flips_to_doing(self, client, tmp_path):
+        # Pre-production starts as `to-do` in the fixture
+        task_path = tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Pre-production.md"
+        before = yaml.safe_load(task_path.read_text(encoding="utf-8").split("---")[1])
+        assert before["status"] == "to-do"
+
+        # +1🍅
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/manual-pomodoro",
+            headers={"Accept": "application/json"},
+        )
+        assert r.status_code == 200
+        assert r.json()["task_status"] == "doing"
+
+        after = yaml.safe_load(task_path.read_text(encoding="utf-8").split("---")[1])
+        assert after["status"] == "doing"
+
+    def test_second_pomodoro_does_not_overwrite_status(self, client, tmp_path):
+        # Set status to "done" first, then +1🍅 should NOT flip it back
+        client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/status",
+            data={"value": "done"},
+        )
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/manual-pomodoro",
+            headers={"Accept": "application/json"},
+        )
+        assert r.json()["task_status"] == "done"
+
+        task_path = tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Pre-production.md"
+        fm = yaml.safe_load(task_path.read_text(encoding="utf-8").split("---")[1])
+        assert fm["status"] == "done"
+
+
+class TestTaskDeleteEndpoint:
+    def test_delete_removes_file_and_recomputes_rollup(self, client, tmp_path, monkeypatch):
+        # Patch recycle-bin send to a plain unlink for the test
+        from shared import project_writer
+
+        def _fake_delete(*, vault_root, project_slug, task_name, recycle_bin_fn=None):
+            path = vault_root / "TaskNotes" / "Tasks" / f"{project_slug} - {task_name}.md"
+            if path.exists():
+                path.unlink()
+                return True
+            return False
+
+        # Patch both the writer module and the imported alias in the router.
+        monkeypatch.setattr(project_writer, "delete_task", _fake_delete)
+        import thousand_sunny.routers.bridge_projects as bp_module
+        monkeypatch.setattr(bp_module, "delete_task", _fake_delete)
+
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/delete",
+            headers={"Accept": "application/json"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["deleted"] is True
+        assert body["project_est_total"] == 0  # only task was 預估:4, now gone
+
+        task_path = tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Pre-production.md"
+        assert not task_path.exists()
+
+    def test_delete_missing_returns_404(self, client, monkeypatch):
+        # No monkeypatch — real delete_task returns False for missing files
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/does-not-exist/delete",
+        )
+        assert r.status_code == 404
+
+
 class TestCreateTaskEndpoint:
     def test_creates_task_with_form_post(self, client, tmp_path):
         r = client.post(

@@ -40,17 +40,27 @@
             <thead>
               <tr>
                 <th>名稱</th>
-                <th>Status</th>
+                <th>狀態</th>
                 <th>預估</th>
                 <th>實際</th>
                 <th>🍅</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {% for t in tasks %}
-                <tr class="pj-dock-task-row pj-dock-task-row--{{ t.status | replace(' ', '-') }}">
+                <tr class="pj-dock-task-row pj-dock-task-row--{{ t.status | replace(' ', '-') }}"
+                    data-task-row="{{ t.name }}">
                   <td>{{ t.name }}</td>
-                  <td>{{ t.status }}</td>
+                  <td>
+                    <select class="pj-task-status-select pj-status-{{ t.status }}"
+                            data-task-name="{{ t.name }}"
+                            data-status-url="/bridge/projects/{{ entry.slug }}/tasks/{{ t.name | urlencode }}/status">
+                      {% for s, label in [('to-do', '待辦'), ('doing', '進行中'), ('done', '已完成'), ('paused', '暫停')] %}
+                        <option value="{{ s }}" {% if s == t.status %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
                   <td>{{ t.est_pomodoros }}</td>
                   <td data-task-actual>{{ t.actual_pomodoros }}</td>
                   <td class="pj-dock-task-actions">
@@ -65,6 +75,15 @@
                           action="/bridge/projects/{{ entry.slug }}/tasks/{{ t.name | urlencode }}/manual-pomodoro"
                           data-pomodoro-op="add">
                       <button type="submit" class="pj-btn-tiny" title="手動 +1🍅（給實體番茄鐘）">+1</button>
+                    </form>
+                  </td>
+                  <td>
+                    <form method="post"
+                          action="/bridge/projects/{{ entry.slug }}/tasks/{{ t.name | urlencode }}/delete"
+                          data-task-delete>
+                      <button type="submit" class="pj-btn-tiny pj-btn-tiny--delete"
+                              title="刪除任務（送回收桶）"
+                              data-task-name="{{ t.name }}">🗑</button>
                     </form>
                   </td>
                 </tr>

@@ -8,13 +8,17 @@ import pytest
 import yaml
 
 from shared.project_writer import (
+    VALID_TASK_STATUSES,
     ProjectWriteError,
     append_timeentry,
     create_task,
+    delete_task,
     now_iso_taipei,
     pop_last_timeentry,
+    read_task_status,
     update_body_section,
     update_frontmatter,
+    update_task_status,
     write_review,
 )
 
@@ -303,6 +307,69 @@ class TestPopLastTimeentry:
             "dateModified"
         ]
         assert after_modified >= before_modified
+
+
+class TestTaskStatus:
+    def test_valid_statuses_constant(self):
+        assert VALID_TASK_STATUSES == ("to-do", "doing", "done", "paused")
+
+    def test_read_task_status_returns_value(self, vault: Path):
+        assert (
+            read_task_status(vault_root=vault, project_slug="t", task_name="Pre-production")
+            == "to-do"
+        )
+
+    def test_read_task_status_returns_none_when_missing(self, vault: Path):
+        assert (
+            read_task_status(vault_root=vault, project_slug="t", task_name="nonexistent")
+            is None
+        )
+
+    def test_update_task_status_writes_value(self, vault: Path):
+        update_task_status(
+            vault_root=vault, project_slug="t", task_name="Pre-production", status="doing"
+        )
+        assert (
+            read_task_status(vault_root=vault, project_slug="t", task_name="Pre-production")
+            == "doing"
+        )
+
+    def test_update_task_status_rejects_unknown(self, vault: Path):
+        with pytest.raises(ProjectWriteError, match="unknown task status"):
+            update_task_status(
+                vault_root=vault, project_slug="t", task_name="Pre-production", status="finished"
+            )
+
+    def test_update_task_status_404_when_missing(self, vault: Path):
+        with pytest.raises(ProjectWriteError, match="not found"):
+            update_task_status(
+                vault_root=vault, project_slug="t", task_name="ghost", status="done"
+            )
+
+
+class TestDeleteTask:
+    def test_delete_existing_task_returns_true(self, vault: Path):
+        path = vault / "TaskNotes" / "Tasks" / "t - Pre-production.md"
+        assert path.exists()
+        called = []
+        result = delete_task(
+            vault_root=vault,
+            project_slug="t",
+            task_name="Pre-production",
+            recycle_bin_fn=lambda p: (called.append(p), p.unlink())[-1],
+        )
+        assert result is True
+        assert not path.exists()
+        assert called == [path]
+
+    def test_delete_missing_task_returns_false(self, vault: Path):
+        result = delete_task(
+            vault_root=vault,
+            project_slug="t",
+            task_name="ghost",
+            recycle_bin_fn=lambda p: None,
+        )
+        assert result is False
 
 
 def test_now_iso_taipei_has_offset():
