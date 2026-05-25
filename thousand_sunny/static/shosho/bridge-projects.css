@@ -223,24 +223,41 @@
 .pj-btn-tiny--delete { color: var(--sho-muted); border: 1px solid transparent; padding: 2px 6px; }
 .pj-btn-tiny--delete:hover:not(:disabled) { color: var(--sho-error); border-color: var(--sho-error); }
 .pj-btn-tiny:disabled { opacity: 0.35; cursor: not-allowed; }
-.pj-dock-task-actions { display: flex; gap: 6px; align-items: center; }
-.pj-dock-task-actions form { display: inline; }
+/* Two-form cell: keep ±1 buttons inline so the cell stays the same height
+   as the plain-number cells in the row. `display: flex` on a <td> shifts
+   the cell bottom by ~2px in Chrome — see 2026-05-25 alignment bug. */
+.pj-dock-task-actions { white-space: nowrap; }
+.pj-dock-task-actions form { display: inline-block; vertical-align: middle; }
+.pj-dock-task-actions form + form { margin-left: 6px; }
 
-/* Task status dropdown — colour mirrors the project priority/status
-   palette so the workflow state reads at a glance. */
+/* Task status dropdown — chip-style colour reflects current state, but
+   the expanded option list must NOT inherit the chip colour (otherwise
+   every option in the popup shows the same hue and reads as broken).
+   We pin option foreground/background to the neutral text colour. */
 .pj-task-status-select {
   font-family: var(--sho-font-mono, ui-monospace, monospace);
   font-size: 11px;
-  padding: 2px 4px;
+  line-height: 1.4;
+  height: 22px;                  /* match plain-text cell line-box height */
+  padding: 1px 4px;
   background: var(--sho-bg);
   border: 1px solid var(--sho-line);
   border-radius: var(--sho-r-1, 4px);
   cursor: pointer;
+  vertical-align: middle;
 }
 .pj-task-status-select.pj-status-to-do   { color: var(--sho-muted);   border-color: var(--sho-line); }
 .pj-task-status-select.pj-status-doing   { color: var(--sho-accent);  border-color: var(--sho-accent); }
 .pj-task-status-select.pj-status-done    { color: var(--sho-success); border-color: var(--sho-success); }
 .pj-task-status-select.pj-status-paused  { color: var(--sho-warning); border-color: var(--sho-warning); }
+.pj-task-status-select option {
+  color: var(--sho-text);
+  background: var(--sho-bg);
+}
+
+/* Keep every dock-task cell vertically centred so the select chip
+   doesn't pull text in adjacent cells up to its baseline. */
+.pj-dock-tasks-table td { vertical-align: middle; }
 
 /* ── Detail page ──────────────────────────────────────────────────────── */
 
