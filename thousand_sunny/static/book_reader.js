@@ -1168,29 +1168,154 @@ window.addEventListener('pagehide', () => {
   flushProgressSync();
 });
 
-// ── Page navigation (keyboard) ───────────────────────────────────────────────
+// ── Reader keyboard shortcuts ────────────────────────────────────────────────
 //
 // <foliate-view> doesn't bind nav keys; the upstream demo
 // (vendor/foliate-js/reader.js:138,191-192) wires its own keydown handler on
-// both the host document and each iframe doc as it loads. Without this the
-// first page renders but ←/→ does nothing on desktop. Skip when a modal is
-// open or when typing in a form field, and stay out of the way of selection
-// extension (Shift+Arrow) and browser shortcuts (Ctrl/Cmd/Alt combos).
-function handleNavKey(e) {
-  if (document.querySelector('dialog[open]')) return;
+// both the host document and each iframe doc as it loads. We extend that with
+// the full Reader keymap (page nav + annotation actions + UI toggles + help).
+//
+// Guards:
+//   - any <dialog open> swallows everything (Esc closes via dialog default)
+//   - input / textarea / select / contentEditable focused → don't intercept typing
+//   - Shift+Arrow stays out of our way so EPUB selection extension still works
+//
+// Combos use Ctrl on Windows/Linux, Cmd on macOS (metaKey). All other actions
+// are bare keys (no modifier). The keymap dialog (? key) lists everything for
+// the user.
+const kbdHelpDialog = document.getElementById('kbdHelpDialog');
+const kbdHelpBtn = document.getElementById('kbdHelpBtn');
+
+function _shouldSkipKey(e) {
+  // any modal open
+  const openDialogs = document.querySelectorAll('dialog[open]');
+  if (openDialogs.length > 0) return true;
   const ae = document.activeElement;
-  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return;
-  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return true;
+  return false;
+}
+
+function _cycleTheme() {
+  // Delegate to shosho/theme.js by simulating a click on its toggle. That keeps
+  // the canonical state (localStorage + iframe re-theming) flowing through the
+  // one source of truth instead of re-implementing the cycle here.
+  const toggle = document.querySelector('.sho-theme-toggle');
+  if (toggle) toggle.click();
+}
+
+function _openKbdHelp() {
+  if (kbdHelpDialog && typeof kbdHelpDialog.showModal === 'function' && !kbdHelpDialog.open) {
+    kbdHelpDialog.showModal();
+  }
+}
+
+function handleReaderKey(e) {
+  if (_shouldSkipKey(e)) return;
   const k = e.key;
+  const mod = e.ctrlKey || e.metaKey;
+  const alt = e.altKey;
+  const shift = e.shiftKey;
+
+  // ── Selection actions (Ctrl/Cmd + B / I / M) ─────────────────────────────
+  if (mod && !alt) {
+    const lower = k.toLowerCase();
+    if (lower === 'b') {
+      e.preventDefault();
+      actionHighlight();
+      return;
+    }
+    if (lower === 'i') {
+      e.preventDefault();
+      openNoteModal();
+      return;
+    }
+    if (lower === 'm') {
+      e.preventDefault();
+      openCommentModal();
+      return;
+    }
+    // Other Ctrl/Cmd combos: let the browser handle them (copy / find / etc.)
+    return;
+  }
+
+  // ── Help dialog ──────────────────────────────────────────────────────────
+  // `?` is Shift+/ on US layout; key === '?' covers most layouts where the
+  // browser surfaces the produced character. Keep it tolerant of variants.
+  if (k === '?' || (shift && k === '/')) {
+    e.preventDefault();
+    _openKbdHelp();
+    return;
+  }
+
+  // Below here we only handle bare keys (no modifiers). Shift alone is
+  // tolerated for Shift+Space → prev page (Space alone = next page).
+  if (alt) return;
+  if (mod) return;  // already handled above; defensive
+
+  // ── Page navigation ──────────────────────────────────────────────────────
   if (k === 'ArrowLeft' || k === 'PageUp') {
     e.preventDefault();
     view.goLeft();
-  } else if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') {
+    return;
+  }
+  if (k === 'ArrowRight' || k === 'PageDown') {
     e.preventDefault();
     view.goRight();
+    return;
+  }
+  if (k === ' ') {
+    // Space = next page; Shift+Space = prev page (mirrors browser convention)
+    e.preventDefault();
+    if (shift) view.goLeft();
+    else view.goRight();
+    return;
+  }
+  // J/K vim-style — only without Shift (Shift+J/K is reserved for future)
+  if (!shift && (k === 'j' || k === 'J')) {
+    e.preventDefault();
+    view.goRight();
+    return;
+  }
+  if (!shift && (k === 'k' || k === 'K')) {
+    e.preventDefault();
+    view.goLeft();
+    return;
+  }
+
+  // Remaining shortcuts: bare keys, no shift.
+  if (shift) return;
+
+  // ── UI toggles ───────────────────────────────────────────────────────────
+  if (k === 't' || k === 'T') {
+    e.preventDefault();
+    if (tocToggle) tocToggle.click();
+    return;
+  }
+  if (k === 'r' || k === 'R') {
+    e.preventDefault();
+    if (commentsToggle) commentsToggle.click();
+    return;
+  }
+  if (k === 'd' || k === 'D') {
+    e.preventDefault();
+    _cycleTheme();
+    return;
   }
 }
-document.addEventListener('keydown', handleNavKey);
+
+document.addEventListener('keydown', handleReaderKey);
+
+// Legacy alias retained for the view.load handler below that mirrors keydown
+// into each iframe doc. Same function, just the historical name.
+const handleNavKey = handleReaderKey;
+
+if (kbdHelpBtn) {
+  kbdHelpBtn.addEventListener('click', _openKbdHelp);
+}
+if (kbdHelpDialog) {
+  const closeBtn = kbdHelpDialog.querySelector('[data-cancel]');
+  if (closeBtn) closeBtn.addEventListener('click', () => kbdHelpDialog.close('cancel'));
+}
 
 // ── view event wiring ────────────────────────────────────────────────────────
 

@@ -371,6 +371,28 @@ def test_book_reader_200_when_exists(app_client):
     assert "/static/book_reader.js" in r.text
 
 
+def test_book_reader_renders_keyboard_shortcuts_help(app_client):
+    """The keyboard shortcut affordances (button in nav, help dialog) must
+    survive future template refactors — the JS handler reaches into the DOM by
+    id, so dropping these silently breaks Ctrl+B / ? / etc."""
+    tc, _ = app_client
+    blob = epub_clean()
+    files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
+    data = {"book_id": "kbd-book", "title": "K", "lang_pair": "en-zh"}
+    tc.post("/robin/books/upload", data=data, files=files)
+
+    r = tc.get("/robin/books/kbd-book")
+    assert r.status_code == 200
+    # Nav button that opens the help dialog
+    assert 'id="kbdHelpBtn"' in r.text
+    # Help dialog itself
+    assert 'id="kbdHelpDialog"' in r.text
+    # Sentinel keymap entries — if any go missing the dialog has been gutted
+    assert "Ctrl</kbd>+<kbd>B" in r.text  # highlight
+    assert "Ctrl</kbd>+<kbd>I" in r.text  # annotation
+    assert "Ctrl</kbd>+<kbd>M" in r.text  # reflection
+
+
 # ---------------------------------------------------------------------------
 # GET /robin/api/books/{id}/file
 # ---------------------------------------------------------------------------
