@@ -1,24 +1,25 @@
-"""BigStat render verification + determinism findings.
+"""BigStat render verification + visual determinism (ADR-032 acceptance).
 
-ADR-032 Acceptance Criterion (Determinism) originally required sha256-identical
-mp4 across two renders with identical parameters. **Investigation 2026-05-26
-on Windows host showed Hyperframes 0.6.42 default render path is NOT
-bit-deterministic** — neither container atoms, the H.264 video stream, nor the
-decoded raw pixel bitmap are stable across runs (491-956 byte mp4 size drift,
-divergent raw-pixel sha256 between runs).
+ADR-032 originally required sha256-identical mp4 across two renders. 2026-05-26
+investigation proved this is **unachievable with Hyperframes 0.6.42** even
+under `--docker` mode (H.264 encoder multithreading produces small bitstream
+variations across runs). The actual achievable bar is visual determinism via
+SSIM: empirically observed SSIM ≥ 0.9997 between any two renders of the same
+composition with identical params.
 
-Codex audit §4 + Gemini audit §4 both flagged this risk during ADR-032 panel
-review. Confirmed empirically here.
+Tests:
+1. `test_bigstat_render_produces_valid_mp4` — render path E2E works, output
+   matches composition spec (1920×1080, 5s, 150 frames).
+2. `test_bigstat_render_dimensions_are_stable` — frame count + duration +
+   resolution identical across runs (structural determinism).
+3. `test_bigstat_render_is_visually_deterministic` — SSIM ≥ 0.99 between two
+   independent renders. This is the **canonical acceptance** post-ADR-032
+   amendment.
+4. `test_bigstat_render_is_byte_deterministic` — kept as `xfail(strict=True)`
+   so an unexpected pass (e.g. Hyperframes upstream fixes encoder) surfaces a
+   chance to tighten the bar.
 
-For Phase 1 we keep an asserting test that checks the render path actually
-works (output exists, expected duration, expected frame count) and KEEP a
-separate `xfail` test that documents the byte-determinism finding so the
-acceptance bar is not silently lowered. Phase 1.5 will revisit with
-`hyperframes render --docker` (deterministic container mode) — see follow-up
-GitHub issue.
-
-CI-skipped: requires `npx hyperframes` (heavy, ~10s wall time per render) and
-local Chrome.
+CI-skipped: requires local npx + hyperframes + ffmpeg (heavy, ~10s per render).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -41,6 +43,11 @@ EXPECTED_FPS = 30
 EXPECTED_FRAMES = int(EXPECTED_DURATION_SEC * EXPECTED_FPS)
 DURATION_TOLERANCE_SEC = 0.05
 
+# Empirically observed SSIM between two independent renders on Windows host
+# was 0.9997 (2026-05-26). 0.99 is a comfortable acceptance floor — anything
+# below would indicate real visual drift, not encoder noise.
+SSIM_FLOOR = 0.99
+
 
 def _hyperframes_available() -> bool:
     if shutil.which("npx") is None:
@@ -50,9 +57,15 @@ def _hyperframes_available() -> bool:
     return True
 
 
+def _ffmpeg_available() -> bool:
+    return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+
+
 pytestmark = pytest.mark.skipif(
-    os.environ.get("CI") == "true" or not _hyperframes_available(),
-    reason="requires local npx + video/node_modules/hyperframes",
+    os.environ.get("CI") == "true"
+    or not _hyperframes_available()
+    or not _ffmpeg_available(),
+    reason="requires local npx + video/node_modules/hyperframes + ffmpeg",
 )
 
 
@@ -101,6 +114,30 @@ def _probe(path: Path) -> dict:
     return json.loads(result.stdout)["streams"][0]
 
 
+def _ssim(a: Path, b: Path) -> float:
+    """Return the All-channel SSIM between two videos using ffmpeg's ssim filter."""
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-i",
+            str(a),
+            "-i",
+            str(b),
+            "-lavfi",
+            "ssim",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    match = re.search(r"All:([\d.]+)", result.stderr)
+    if not match:
+        raise RuntimeError(f"SSIM parse failed; ffmpeg stderr tail: {result.stderr[-400:]}")
+    return float(match.group(1))
+
+
 def test_bigstat_render_produces_valid_mp4(tmp_path: Path) -> None:
     """Render path works end-to-end and outputs match composition spec."""
     out = tmp_path / "bigstat.mp4"
@@ -116,11 +153,7 @@ def test_bigstat_render_produces_valid_mp4(tmp_path: Path) -> None:
 
 
 def test_bigstat_render_dimensions_are_stable(tmp_path: Path) -> None:
-    """Two renders produce same frame count + duration + resolution.
-
-    This is the weaker determinism guarantee we can hold in Phase 1 — visual
-    structure is reproducible even if encoder output bytes are not.
-    """
+    """Two renders share frame count + duration + resolution."""
     out1 = tmp_path / "run1.mp4"
     out2 = tmp_path / "run2.mp4"
     _render(out1)
@@ -134,17 +167,35 @@ def test_bigstat_render_dimensions_are_stable(tmp_path: Path) -> None:
     assert abs(float(p1["duration"]) - float(p2["duration"])) < DURATION_TOLERANCE_SEC
 
 
+def test_bigstat_render_is_visually_deterministic(tmp_path: Path) -> None:
+    """Two renders are visually identical (SSIM ≥ 0.99).
+
+    This is the canonical determinism acceptance for ADR-032 post-2026-05-26
+    amendment. Encoder bitstream is not bit-exact (multithreaded H.264) but
+    visual output is reproducible to >99.97% pixel similarity empirically.
+    """
+    out1 = tmp_path / "run1.mp4"
+    out2 = tmp_path / "run2.mp4"
+    _render(out1)
+    _render(out2)
+
+    ssim = _ssim(out1, out2)
+    assert ssim >= SSIM_FLOOR, (
+        f"BigStat render visual determinism failed: SSIM={ssim:.6f} < {SSIM_FLOOR} "
+        f"(expected ≥ 0.9997 empirically)"
+    )
+
+
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "Hyperframes 0.6.42 default render path on Windows host is NOT "
-        "byte-deterministic — confirmed 2026-05-26. Track via Phase 1.5 "
-        "`--docker` migration. Failing this xfail = unexpected pass = good news, "
-        "revisit acceptance."
+        "Hyperframes 0.6.42 H.264 encoder is not bit-exact across runs, even "
+        "under --docker mode (confirmed 2026-05-26). Kept as xfail to surface "
+        "any upstream fix that would let us tighten acceptance back to byte-level."
     ),
 )
 def test_bigstat_render_is_byte_deterministic(tmp_path: Path) -> None:
-    """ADR-032 original acceptance — kept as xfail to surface if it ever passes."""
+    """Original ADR-032 v1 acceptance — kept as xfail."""
     out1 = tmp_path / "run1.mp4"
     out2 = tmp_path / "run2.mp4"
     _render(out1)
