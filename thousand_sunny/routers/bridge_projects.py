@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Cookie, Form, HTTPException, Request
+from fastapi import APIRouter, Cookie, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -482,13 +482,33 @@ async def projects_manual_pomodoro(
     slug: str,
     task_name: str,
     nakama_auth: str | None = Cookie(None),
+    accept: str = Header(""),
 ):
-    """Synthesize a single completed pomodoro for offline / physical-timer use."""
+    """Synthesize a single completed pomodoro for offline / physical-timer use.
+
+    Content negotiation:
+    - ``Accept: application/json`` → returns ``{task_actual, project_actual_total,
+      project_est_total}`` for AJAX callers (dock +1🍅 button). No page reload,
+      preserves current tab + dock state.
+    - default → 303 redirect to brief tab (no-JS fallback / direct form-post).
+    """
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
 
     slug = normalize_slug(slug)
     _write_pomodoro_entry(slug=slug, task_name=task_name, now_minus_minutes=POMODORO_MINUTES)
+
+    if "application/json" in accept:
+        tasks = _scan_tasks(slug)
+        task_actual = next(
+            (t["actual_pomodoros"] for t in tasks if t["name"] == task_name), 0
+        )
+        return {
+            "task_name": task_name,
+            "task_actual": task_actual,
+            "project_actual_total": sum(t["actual_pomodoros"] for t in tasks),
+            "project_est_total": sum(t["est_pomodoros"] for t in tasks),
+        }
     return _redirect_back(slug, "brief")
 
 

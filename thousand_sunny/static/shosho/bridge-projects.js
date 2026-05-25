@@ -214,6 +214,52 @@
     });
   }
 
+  // ── Manual +1🍅 — AJAX in-place update ─────────────────────────────────
+  //
+  // The +1 button posts to /tasks/{name}/manual-pomodoro. Server now content-
+  // negotiates JSON when Accept: application/json. We intercept the form
+  // submit, POST via fetch, and update the row cell + dock rollup in place —
+  // no full page reload, so current tab + Tasks ▾ open state survive.
+
+  function bindManualPomodoro() {
+    document.querySelectorAll('.pj-dock-task-row form[action*="/manual-pomodoro"]').forEach(function (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var row = form.closest('.pj-dock-task-row');
+        var actualCell = row ? row.querySelectorAll('td')[3] : null;
+        var dockActual = document.querySelector('[data-actual-total]');
+        if (!actualCell || !dockActual) return;
+
+        // Optimistic UI — increment immediately; revert on server error.
+        var oldRowVal = parseInt(actualCell.textContent, 10) || 0;
+        var oldDockVal = parseInt(dockActual.textContent, 10) || 0;
+        actualCell.textContent = String(oldRowVal + 1);
+        dockActual.textContent = String(oldDockVal + 1);
+
+        fetch(form.action, {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' },
+          credentials: 'same-origin',
+        }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        }).then(function (data) {
+          // Reconcile with server truth (handles race conditions / concurrent edits).
+          if (typeof data.task_actual === 'number') {
+            actualCell.textContent = String(data.task_actual);
+          }
+          if (typeof data.project_actual_total === 'number') {
+            dockActual.textContent = String(data.project_actual_total);
+          }
+        }).catch(function () {
+          actualCell.textContent = String(oldRowVal);
+          dockActual.textContent = String(oldDockVal);
+          showToast('⚠ +1🍅 寫入失敗，已還原。請重試。');
+        });
+      });
+    });
+  }
+
   // ── HTML5 <dialog> open/close ──────────────────────────────────────────
 
   function bindDialogs() {
@@ -254,6 +300,7 @@
     bindCounters();
     bindKbResearch();
     bindDialogs();
+    bindManualPomodoro();
   }
 
   if (document.readyState === 'loading') {

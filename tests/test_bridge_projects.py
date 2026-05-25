@@ -284,6 +284,22 @@ class TestPomodoroTimer:
         fm = yaml.safe_load(task_md.split("---")[1])
         assert len(fm["timeEntries"]) == 1
 
+    def test_manual_pomodoro_returns_json_when_ajax(self, client, tmp_path):
+        """Accept: application/json → JSON body, no 303 (preserves tab + dock state)."""
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/Pre-production/manual-pomodoro",
+            headers={"Accept": "application/json"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["task_name"] == "Pre-production"
+        assert data["task_actual"] == 1  # one new entry just written
+        assert data["project_actual_total"] >= 1
+        # est_total is the sum of 預估🍅 across all tasks — fixture sets 4 for
+        # Pre-production; smoke seed only has that one task in fixture.
+        assert data["project_est_total"] >= 4
+
 
 class TestCreateTaskEndpoint:
     def test_creates_task_with_form_post(self, client, tmp_path):
