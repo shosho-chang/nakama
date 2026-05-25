@@ -1,5 +1,7 @@
 # Memory Index
 
+- [project_broll_dual_path_architecture.md](project_broll_dual_path_architecture.md) — **B-roll 兩條 sibling path 2026-05-25**：書/網頁 quote 走 Reader+Playwright+CSS（`web_highlight_record.py`，user-supply-text，**不再 picker**）、非書頁類（BigStat/Transition/圖表/caption）走 Hyperframes；ADR-015 原 PyMuPDF+Hyperframes DocumentQuote 路線換掉；動畫定型參數（橘色 0.24/0.34、scale 1.35、ease-out-expo、pre-warm 250ms）凍結
+- [feedback_cdp_screencast_over_recordvideo.md](feedback_cdp_screencast_over_recordvideo.md) — **要真 1080p 不要 Playwright recordVideo**：VP8 預設 ~2 Mbps 太糊；改 CDP `Page.startScreencast` JPEG q92 → ffmpeg libx264 CRF 14 → ~30 Mbps，bitrate 提升 15×（2026-05-25 reader-record spike v5 教訓）
 - [user_vault_edit_pattern_no_concurrent.md](user_vault_edit_pattern_no_concurrent.md) — **修修不在多裝置同時編同檔**：Digest 從 Bridge 看、Annotation agent 寫、Project/Daily 單裝置編；Syncthing send-only / receive-only prevention 是 over-engineering，detection banner（PR #705）足夠；未來討論 vault concurrency anchor 回他實際模式不要假設 worst-case
 - [reference_obsidian_cli.md](reference_obsidian_cli.md) — **Obsidian 官方 first-party CLI**：`eval`（killer，可呼叫所有 plugin API：Dataview/Tasks/Templater）、`search`、`create`（Issue #231 繞道候選）、`tags counts`、`unresolved`、Headless Sync；**硬約束：Obsidian app 須在跑（Headless Sync 例外）= 桌機才有完整能力，VPS 只能用 Headless Sync**
 - [feedback_delete_branch_on_merge_default.md](feedback_delete_branch_on_merge_default.md) — **新 repo bootstrap 必開 deleteBranchOnMerge**：default `false` 會讓每次 PR merge 後 head branch 殘留 origin；`gh repo edit --delete-branch-on-merge` 一次解（2026-05-12 nakama 教訓）
