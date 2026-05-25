@@ -1,0 +1,8 @@
+# Few-shot example index — tag → file mapping.
+#
+# Phase 1 corpus is COLD START (empty). planner.py gates loading on
+# `len(examples) >= 5` — until then prompt does NOT include any examples.
+# This file exists for code-path readiness; entries get added via the
+# Bridge UI "Promote to example" one-click action (ADR-032 §9).
+
+examples: []

@@ -1,8 +1,8 @@
 {
   "name": "nakama-video",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Hyperframes video subproject for Script-Driven Video Production (ADR-015)",
+  "description": "Hyperframes video subproject for Script-to-B-roll Pipeline (ADR-032)",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "tsc --outDir dist"
+  },
+  "dependencies": {
+    "hyperframes": "0.6.42"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

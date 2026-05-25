@@ -1,0 +1,6 @@
+name: full_aroll
+description: Talking head 全螢幕（多數段落 default — 無 B-roll，純 talking head）
+slots:
+  - id: aroll
+    source: talking_head
+    fcpxml_transform: null  # 全螢幕原檔，無 transform

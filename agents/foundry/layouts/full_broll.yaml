@@ -1,0 +1,10 @@
+name: full_broll
+description: B-roll 全螢幕（talking head 在 V1 仍存在但被 V2 全幅 B-roll 蓋住）
+slots:
+  - id: aroll
+    source: talking_head
+    fcpxml_transform: null
+  - id: broll
+    source: broll_render
+    fcpxml_transform: null  # 全螢幕原 1920x1080，無 transform
+    broll_canvas: { x: 0, y: 0, w: 1920, h: 1080 }

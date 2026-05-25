@@ -1,0 +1,14 @@
+name: pip_corner_br
+description: |
+  Talking head 縮右下角小窗 (~25% size)，B-roll 全螢幕主畫面。
+  對應 ADR-015 原 <ARollPip>。Phase 1.5 ship。
+
+  ADR-032 §3b：transform 單位待 DaVinci import fixture 驗證。
+slots:
+  - id: aroll
+    source: talking_head
+    fcpxml_transform: <PENDING DAVINCI IMPORT FIXTURE>  # ~25% scale, bottom-right corner
+  - id: broll
+    source: broll_render
+    fcpxml_transform: null  # 全螢幕
+    broll_canvas: { x: 0, y: 0, w: 1920, h: 1080 }

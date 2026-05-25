@@ -67,6 +67,10 @@ dependencies = [
 
     # Script-Driven Video (ADR-015): clap-marker detection audio processing
     "scipy>=1.11",
+
+    # foundry — Script-to-B-roll Pipeline (ADR-032)
+    "rapidfuzz>=3.6",      # diagnostic-only fuzzy match (ADR-032 §6); primary path is str.find()
+    "cn2an>=0.5.22",       # Chinese numeral normalization for SRT pre-processing
 ]
 
 [project.optional-dependencies]
@@ -115,6 +119,12 @@ extend-exclude = ["data/migrations/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# web_highlight_record.py embeds JS strings (Playwright page.evaluate). Breaking
+# long lines would break JS syntax; the alternative is extracting to .js files.
+# ADR-032 Phase 1.5 may refactor; for now allow E501 on this single file.
+"agents/foundry/lib/web_highlight_record.py" = ["E501"]
 
 # Coverage 設定（Phase 6 Slice 1）
 # 預設不在 pytest 加 --cov（避免本地 dev 變慢 ~30%）；CI 額外開

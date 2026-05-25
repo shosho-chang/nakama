@@ -1,0 +1,286 @@
+<!-- nakama:component bigstat (fork of hyperframes apple-money-count) -->
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --sho-bg: oklch(0.988 0.003 80);
+        --sho-fg: oklch(0.145 0.005 80);
+        --sho-accent: oklch(0.71 0.135 41);
+        --sho-accent-2: oklch(0.66 0.155 38);
+        --sho-accent-soft: oklch(0.71 0.135 41 / 0.18);
+        --sho-mute: oklch(0.55 0.01 80);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--sho-bg);
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--sho-bg);
+        color: var(--sho-fg);
+        font-family:
+          "LINE Seed TW", "LINE Seed JP", "Noto Sans TC", "PingFang TC", ui-sans-serif,
+          system-ui, sans-serif;
+      }
+
+      .accent-flash {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background: var(--sho-accent);
+        opacity: 0;
+      }
+
+      .stage {
+        position: relative;
+        z-index: 5;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        padding: 120px 160px;
+      }
+
+      .label {
+        font-size: 56px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--sho-mute);
+        text-transform: uppercase;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+
+      .amount-wrap {
+        position: relative;
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        min-width: 1080px;
+        min-height: 260px;
+        gap: 24px;
+      }
+
+      .amount {
+        position: relative;
+        color: var(--sho-fg);
+        font-size: 280px;
+        font-weight: 900;
+        line-height: 0.9;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        white-space: nowrap;
+        will-change: transform, color, opacity;
+      }
+
+      .suffix {
+        font-size: 96px;
+        font-weight: 700;
+        color: var(--sho-mute);
+        opacity: 0;
+        will-change: opacity, transform;
+      }
+
+      .burst {
+        position: absolute;
+        inset: 0;
+        z-index: 8;
+        pointer-events: none;
+      }
+
+      .spark {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--sho-accent);
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+
+      .spark.large {
+        width: 28px;
+        height: 28px;
+        background: var(--sho-accent-2);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="bigstat"
+      data-root="true"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="accentFlash" class="accent-flash"></div>
+      <div class="stage">
+        <div id="label" class="label">每日步行</div>
+        <div class="amount-wrap">
+          <div id="amount" class="amount">0</div>
+          <div id="suffix" class="suffix">步</div>
+        </div>
+      </div>
+      <div id="burst" class="burst" data-layout-allow-overflow></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const amount = document.querySelector("#amount");
+      const burst = document.querySelector("#burst");
+      const TARGET = 10000;
+      const countState = { value: 0 };
+
+      function formatNumber(value) {
+        const bounded = Math.max(0, Math.min(TARGET, value));
+        return Math.round(bounded).toLocaleString("en-US");
+      }
+
+      function renderAmount(value) {
+        amount.textContent = formatNumber(value);
+      }
+
+      const sparks = [];
+      const specs = [];
+      const TOTAL_SPARKS = 48;
+
+      for (let i = 0; i < TOTAL_SPARKS; i += 1) {
+        const s = document.createElement("div");
+        const isLarge = i % 4 === 0;
+        s.className = "spark" + (isLarge ? " large" : "");
+        burst.appendChild(s);
+        sparks.push(s);
+
+        const angle = i * 2.399963229728653;
+        const ring = i % 5;
+        const radiusX = 280 + ring * 150 + (i % 7) * 14;
+        const radiusY = 170 + ring * 84 + (i % 6) * 14;
+        const x = Math.max(-880, Math.min(880, Math.cos(angle) * radiusX));
+        const y = Math.max(-470, Math.min(470, Math.sin(angle * 1.13) * radiusY));
+
+        specs.push({
+          x,
+          y,
+          delay: (i % 8) * 0.025,
+          duration: 0.74 + (i % 5) * 0.045,
+          fadeDelay: (i % 5) * 0.05,
+          scale: isLarge ? 1.0 + (i % 3) * 0.15 : 0.55 + (i % 4) * 0.1,
+        });
+      }
+
+      renderAmount(0);
+
+      const tl = gsap.timeline({
+        paused: true,
+        defaults: { ease: "power3.out", overwrite: "auto" },
+      });
+
+      gsap.set(sparks, {
+        x: 0,
+        y: 0,
+        xPercent: -50,
+        yPercent: -50,
+        opacity: 0,
+        scale: 0.18,
+        transformOrigin: "50% 50%",
+      });
+
+      tl.from("#label", { y: -24, opacity: 0, duration: 0.5, ease: "power2.out" }, 0);
+      tl.to("#label", { opacity: 1, duration: 0.01 }, 0.5);
+
+      tl.from(
+        "#amount",
+        { y: 26, opacity: 0, scale: 0.985, duration: 0.45, ease: "power2.out" },
+        0.15,
+      );
+
+      tl.to(
+        countState,
+        {
+          value: TARGET,
+          duration: 3.0,
+          ease: "none",
+          onUpdate: () => renderAmount(countState.value),
+          onComplete: () => renderAmount(TARGET),
+        },
+        0.2,
+      );
+
+      tl.to("#suffix", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 0.4);
+
+      const PEAK = 3.2;
+
+      tl.to(
+        "#amount",
+        {
+          color: "oklch(0.71 0.135 41)",
+          duration: 0.18,
+        },
+        PEAK,
+      );
+      tl.to("#amount", { scale: 1.06, duration: 0.16, ease: "back.out(2.2)" }, PEAK);
+      tl.to("#amount", { scale: 1, duration: 0.28, ease: "power2.out" }, PEAK + 0.18);
+      tl.to("#amount", { color: "oklch(0.145 0.005 80)", duration: 0.5, ease: "power2.out" }, PEAK + 0.3);
+
+      tl.to("#accentFlash", { opacity: 0.28, duration: 0.08, ease: "none" }, PEAK);
+      tl.to("#accentFlash", { opacity: 0.16, duration: 0.6, ease: "none" }, PEAK + 0.08);
+      tl.to("#accentFlash", { opacity: 0, duration: 0.22, ease: "power2.out" }, PEAK + 0.78);
+
+      sparks.forEach((s, i) => {
+        const sp = specs[i];
+        tl.to(
+          s,
+          {
+            x: sp.x,
+            y: sp.y,
+            scale: sp.scale,
+            opacity: 1,
+            duration: sp.duration,
+            ease: "power4.out",
+          },
+          PEAK + 0.08 + sp.delay,
+        );
+        tl.to(
+          s,
+          {
+            y: sp.y + (sp.y < 0 ? -50 : 50),
+            scale: sp.scale * 0.5,
+            opacity: 0,
+            duration: 0.42,
+            ease: "power2.in",
+          },
+          PEAK + 1.0 + sp.fadeDelay,
+        );
+      });
+
+      window.__timelines["bigstat"] = tl;
+    </script>
+  </body>
+</html>
