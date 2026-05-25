@@ -1,9 +1,26 @@
 # ADR-032: Hyperframes-based Script-to-B-roll Pipeline
 
 **Date:** 2026-05-25
-**Status:** Draft（pending multi-agent-panel review）
+**Status:** Draft v2（post multi-agent-panel review 2026-05-25；待修修最終 sign-off）
 **Supersedes:** [ADR-015](ADR-015-script-driven-video-production.md)
-**Related:** ADR-001（agent role）/ ADR-014（RepurposeEngine — orthogonal）/ ADR-028（VAULT-LAYOUT）
+**Related:** ADR-001（agent role）→ ADR-027（Brook narrow）/ ADR-014（RepurposeEngine — orthogonal）/ ADR-028（VAULT-LAYOUT）
+
+> **v1 → v2 change log**：v1 由 13-Q grill 凍結後跑 3-way panel (Codex GPT-5 + Gemini 2.5 Pro)。Panel verbatim audits 存在：
+> - [`docs/research/2026-05-25-codex-adr032-audit.md`](../research/2026-05-25-codex-adr032-audit.md)
+> - [`docs/research/2026-05-25-gemini-adr032-audit.md`](../research/2026-05-25-gemini-adr032-audit.md)
+>
+> v2 採納 11 項 panel push-back（見文末 §Panel Integration）。最大變動：
+> 1. **新 agent `agents/foundry/`** 取代寄居 Brook（Gemini push-back，尊重 ADR-027 narrow Brook）
+> 2. **Phase 1 UI 砍回 Tier 2**（無 inline player + polling，3 天估值守住；Tier 3 升級當 Phase 1.5）
+> 3. **Mandarin normalization + LINE Seed TW @font-face 進 Phase 1**（不是 backlog）
+> 4. **Anchor 改為 exact-copy mandatory + validator hard fail**（rapidfuzz 降級到 diagnostic）
+> 5. **新 acceptance gate**：BigStat MP4 hash snapshot + DaVinci FCPXML import fixture
+> 6. **Phase 1 dispatcher 只實作 Hyperframes**，reader/web-playwright workers schema-reserve 但 raise NotImplementedError（promote 進 main 才接通）
+> 7. **Brand statement 重新 frame**：「talking head sacred」改為「保留原檔給 grade 用」
+> 8. **單一 learning store**：edit_log 為主、examples 由 UI 一鍵 promote
+> 9. **PR 估時上修**：9.5 天 → 13-17 天
+> 10. **PR-1 範圍擴大**：promote BigStat 從 worktree 進 main + promote `web_highlight_record.py` 從 spike 進 main
+> 11. **ADR-001 drift 修正**：本 ADR 不再說「Brook still Composer」；引用 ADR-027 narrow 後的 agent map，並 introduce 新 agent
 
 ---
 
@@ -13,19 +30,24 @@
 
 ADR-015（2026-05-02）凍結了 Remotion + PyMuPDF + markdown DSL 的架構。三件事在這之後改變：
 
-1. **Hyperframes 上線（HeyGen open-source, v0.6.42）** — HTML/CSS/GSAP 寫合成、Chrome headless 用 `renderSeek` 確定性 capture、FFmpeg 編碼。比 Remotion 多了現成 catalog（apple-money-count / data-chart / 14 caption styles / 14 shader transitions / 13 transition showcases…）+ 內建 lint/inspect/snapshot pipeline。今天 2026-05-25 session 用它把 BigStat 從 zero 到 1080p mp4 ~30 分鐘走通。
-2. **Reader+Playwright path 已驗證**（本 session 2026-05-25 內 ship）— `web_highlight_record.py` 通用工具：URL + 引用文字 → CDP screencast → 1080p mp4。對「書內引用」「網頁引用」這兩類 B-roll，比 PyMuPDF + bbox + DocumentQuote component **正確得多**（保留你 Robin Reader 原始閱讀體驗 + 真實 EPUB layout）。
+1. **Hyperframes 上線（HeyGen open-source, v0.6.42）** — HTML/CSS/GSAP 寫合成、Chrome headless 用 `renderSeek` 確定性 capture、FFmpeg 編碼。比 Remotion 多了現成 catalog（apple-money-count / data-chart / 14 caption styles / 14 shader transitions / 13 transition showcases…）+ 內建 lint/inspect/snapshot pipeline。2026-05-25 session **在 sibling worktree spike** 用它把 BigStat 從 zero 到 1080p mp4 ~30 分鐘走通（spike 路徑 `E:\nakama-hyperframes-bigstat\video\compositions\bigstat\`，**未 merge 進 main**）。
+2. **Reader+Playwright path 已 spike 驗證**（2026-05-25 session 內 spike，**未 merge 進 main**）— `web_highlight_record.py` 通用工具：URL + 引用文字 → CDP screencast → 1080p mp4。spike 路徑 `E:\nakama-reader-record-spike\scripts\web_highlight_record.py`。對「書內引用」「網頁引用」這兩類 B-roll，比 PyMuPDF + bbox + DocumentQuote component 在概念上更乾淨（保留 Robin Reader 原始閱讀體驗 + 真實 EPUB layout），但 **promotion 進 main + Robin URL scheme 定義 + iframe recursion 都尚未完成**。PR #710（merged）寫的是 decision memory，不是 implementation。
 3. **工作流順序重新釐清** — ADR-015 假設 record-first（先錄再 plan），但實際 workflow 是 **SRT-first**（已有 `/transcribe` skill 把 audio → 乾淨 SRT，這支 SRT 才是 broll pipeline 真正吃的 input）。Mistake removal 也獨立到 broll pipeline 之外。
 
-### 本 ADR 的 grill 出處
+### Agent map 現況（ADR-001 → ADR-027 後）
 
-本 ADR 從 2026-05-25 grill-with-docs session 凍結。13 個 Q 結論摘要見 §Decision。修修在 grill 內明確 delegate 多項決定，本 ADR 記錄 reasoning + alternatives 給未來 reader 看（避免「修修同意過」變成 unaccountable 決定）。
+ADR-001 把 agent role 凍結，但 ADR-027（2026-05）把 Brook 從「Composer（all-in-one 內容組裝）」narrow 到 **「Scaffold + Repurpose + SEO Audit」三件事**。本 ADR 因此 **不寄居 Brook**，改 introduce 新 agent。詳見 §0.1。
+
+### 本 ADR 的 grill + panel 出處
+
+- **Grill**：2026-05-25 grill-with-docs session 13 個 Q 凍結（[memory/claude/MEMORY.md](../../memory/claude/MEMORY.md) 之外）
+- **Panel**：2026-05-25 multi-agent-panel skill 跑 3-way audit（Claude draft → Codex 6-section audit → Gemini 6-section audit → Claude integrate）。整合矩陣見 §Panel Integration
 
 ### 沿用的 ADR-015 invariants
 
-- **Brook 仍是 Composer**（ADR-001）— pipeline orchestrator 寄居 `agents/brook/script_video/`
-- **Talking head sacred** — DaVinci V1 軌道吃修修原檔，**永不 re-render**（color grade / 重剪不靠 broll pipeline）
-- **Output = FCPXML 1.10**（DaVinci / Premiere / Final Cut 三家原生）— Phase 1 不直出 mp4
+- **Composer 角色仍是 nakama agent map 一部分**（ADR-001 + ADR-027）— pipeline 不寄居 Brook，但仍尊重「nakama agent 各司其職」原則
+- **保留原檔給 grade 用** — DaVinci V1 軌道吃修修原檔，broll pipeline **永不主動 re-encode talking head**。注意：DaVinci 在最終 export 階段套 LUT / grade 時會 re-encode；本 ADR 的 invariant 是「pipeline 不破壞 grade latitude」，**不是「talking head 永不被 encode」**（v1 措辭錯，v2 修正）
+- **Output = FCPXML 1.10**（DaVinci / Premiere / Final Cut 三家原生）— Phase 1 不直出 mp4；版本選定見 §Risk「FCPXML 版本」
 - **transcribe skill 重用** — 不改 transcribe，broll pipeline 接它 output
 - **per-episode 自包含 `data/script_video/<episode-id>/`** — archive / 備份易
 
@@ -33,175 +55,128 @@ ADR-015（2026-05-02）凍結了 Remotion + PyMuPDF + markdown DSL 的架構。�
 
 ## Decision
 
-### 0. 整體架構圖
+### 0.1 新 agent `agents/foundry/`（取代寄居 Brook）
+
+ADR-027 narrow Brook 後，本 pipeline 的特性 — multi-worker render queue、realtime UI（Bridge route）、依賴 Hyperframes + Playwright 兩個重 stack、跨 episode learning corpus — 已**遠超 Brook 的 Scaffold/Repurpose/SEO Audit 範疇**。Gemini panel 直接點出：「forcing it into agents/brook/ risks bloating Brook into a monolith」。
+
+**Decision**：introduce 新 agent **`foundry`**（取「鑄造廠」意，video production line）。
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                       UPSTREAM (out of scope)                       │
-│                                                                     │
-│  raw video  →  mistake-cleanup  →  /transcribe  →  clean SRT        │
-│  (修修錄)     (獨立工具，         (既有 nakama        (broll input)  │
-│                Phase 2 評估)       skill)                            │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│             broll-pipeline (agents/brook/script_video/)             │
-│                                                                     │
-│  ┌────────────┐    ┌─────────────┐    ┌──────────────────────────┐  │
-│  │  SRT 攤平  │ →  │   Planner   │ →  │     Beat aligner         │  │
-│  │ (Python)   │    │   (LLM)     │    │   (Python, anchor→time)  │  │
-│  │ flatten +  │    │ text_span + │    │  rapidfuzz substring     │  │
-│  │ char↔time  │    │ creative    │    │  → timing + srt_line_ids │  │
-│  └────────────┘    └─────────────┘    └──────────────────────────┘  │
-│                                                  │                  │
-│                                                  ▼                  │
-│                                         storyboard.yaml             │
-│                                                  │                  │
-│              ┌───────────────────────────────────┴──────────────┐   │
-│              ▼                                                  ▼   │
-│   ┌────────────────────┐                       ┌──────────────────┐ │
-│   │  Bridge UI Tier 3  │ ◀──────SSE────────────│  Render queue    │ │
-│   │ Thousand Sunny     │                       │ (asyncio,        │ │
-│   │  /script-video/    │                       │  concurrency=2)  │ │
-│   │   <episode>        │                       │                  │ │
-│   │  ─ table           │                       │  3-path dispatch │ │
-│   │  ─ 3 actions/row   │                       │  ┌────────────┐  │ │
-│   │  ─ inline player   │ ──approve──auto─────▶ │  │hyperframes │  │ │
-│   │  ─ 2-layer status  │                       │  │            │  │ │
-│   └────────────────────┘                       │  │reader-play │  │ │
-│                                                │  │            │  │ │
-│                                                │  │web-play    │  │ │
-│                                                │  └────────────┘  │ │
-│                                                └──────────────────┘ │
-│                                                          │          │
-│                                                          ▼          │
-│                                              ┌─────────────────────┐│
-│                                              │ FCPXML emitter      ││
-│                                              │ V1: talking head    ││
-│                                              │ V2: B-roll mp4 refs ││
-│                                              └─────────────────────┘│
-└─────────────────────────────────────────────────────────────────────┘
-                                                          │
-                                                          ▼
-                                                 episode.fcpxml
-                                                 + b_roll_NN.mp4 × N
-                                                          │
-                                                          ▼
-                                                   DaVinci Resolve
-                                                  （修修最終剪輯）
-```
-
-### 1. Render path = 3-way dispatcher（Q1）
-
-不是 Hyperframes-only。每個 cutaway beat 帶一個 `render_target` 欄，dispatcher 依此分派：
-
-| render_target | 何時用 | 實作 |
-|---|---|---|
-| `hyperframes` | 程式繪製的 component（BigStat、DataChart、Map、TransitionTitle、Caption…） | `video/compositions/` 下 fork from catalog block，sandbox per-episode |
-| `reader-playwright` | 書內引用（用修修 Robin Reader 顯示原書，highlight 動畫畫線） | 沿用 `web_highlight_record.py` + 加 iframe recursion（Reader 用 foliate iframe）|
-| `web-playwright` | 外部網頁引用（Wikipedia / 論文 abstract / 部落格段落 highlight） | 沿用同一支 `web_highlight_record.py` |
-
-**none** 不是 path — 是 `broll_decision: none` 表「這 beat 不放 B-roll」。
-
-**為什麼三條 sibling 不是統一 Hyperframes**：書/網頁引用本質是「保留原媒介 + 加 highlight 動畫」，Hyperframes 重畫 layout 會破壞「這引用真的來自 Robin 內這本書」的視覺契約。詳細決定見 `memory/claude/project_broll_dual_path_architecture.md`（PR #710 已 merge）。
-
-### 2. 寄宿 = Brook Python canonical + thin skill escape hatch（Q2）
-
-```
-agents/brook/script_video/         # CANONICAL — pipeline 邏輯只在這
-├── pipeline.py                    # 主 entry, asyncio orchestration
-├── srt_flattener.py               # SRT → flat text + char↔time index
-├── planner.py                     # LLM call (Anthropic SDK) → beats
-├── beat_aligner.py                # rapidfuzz: text_span → timing + srt_line_ids
-├── render_dispatcher.py           # 3-path 分派
+agents/foundry/                       # NEW — Video B-roll pipeline 專屬 agent
+├── __init__.py
+├── pipeline.py                       # 主 entry, asyncio orchestration
+├── srt_flattener.py                  # SRT → flat text + char↔time index
+├── chinese_normalizer.py             # NEW — Mandarin pre-processing layer（Phase 1）
+├── planner.py                        # LLM call (Anthropic SDK) → beats
+├── beat_aligner.py                   # exact substring match primary, rapidfuzz diagnostic only
+├── render_dispatcher.py              # 3-path dispatch（Phase 1 只接通 hyperframes）
 ├── render_workers/
-│   ├── hyperframes_worker.py      # shell out `hyperframes render`
-│   ├── reader_playwright_worker.py
-│   └── web_playwright_worker.py
-├── fcpxml_emitter.py              # FCPXML 1.10
-├── layouts/                       # 命名 layout YAML（見 §3）
+│   ├── hyperframes_worker.py         # ★ Phase 1
+│   ├── reader_playwright_worker.py   # Phase 1.5 — raise NotImplementedError
+│   └── web_playwright_worker.py      # Phase 1.5 — raise NotImplementedError
+├── fcpxml_emitter.py                 # FCPXML 1.10（待 DaVinci 實測驗證版本）
+├── layouts/                          # 命名 layout YAML
+│   ├── full_aroll.yaml
+│   ├── full_broll.yaml
+│   ├── side_overlay_left.yaml        # Phase 1.5 才接
+│   ├── side_overlay_right.yaml       # Phase 1.5
+│   └── pip_corner_br.yaml            # Phase 1.5
 ├── prompts/
-│   └── broll_planner.md           # canonical prompt template（skill 也 load 同份）
-├── STYLE.md                       # editorial rubric（grows over time）
-├── guardrails.yaml                # allow/deny lists, machine-readable
-├── examples/                      # few-shot library
-│   ├── _index.yaml                # tag → file mapping
-│   └── *.yaml                     # 個別 example
-└── edit_log/
-    └── <episode-id>.jsonl         # auto-capture re-plan feedback
+│   └── broll_planner.md              # canonical prompt template
+├── STYLE.md                          # editorial rubric
+├── guardrails.yaml                   # allow/deny lists
+├── examples/                         # few-shot library（Phase 1 不載入，corpus ≥ 5 才啟用）
+│   └── _index.yaml
+└── edit_log/                         # ★ single learning store — UI 一鍵 promote 進 examples/
+    └── <episode-id>.jsonl
 
-.claude/skills/broll-planner/
-└── SKILL.md                       # thin wrapper — load prompts/broll_planner.md
-                                   # 對話內 patch 單一 beat 用，非 canonical
+.claude/skills/foundry-replan/
+└── SKILL.md                          # thin wrapper — 對話內 patch 單一 beat 用
 ```
 
-skill 是 ergonomic surface，**邏輯 source of truth 永遠在 Python module**。
+Brook 仍可在某 stage 呼叫 foundry（例如 ADR-014 RepurposeEngine 產 long-form script 後遞給 foundry 做 B-roll）— **invoke pattern，非 host pattern**。
 
-### 3. Talking head layout = FCPXML composite（Q3 + Q4）
+**ADR-001 amendment 同步出**：agent map 增 `foundry` 條目，scope 限定「script + SRT → DaVinci-importable broll timeline」。
+
+### 1. Render path = 3-way dispatcher schema, Phase 1 only Hyperframes 接通
+
+每個 cutaway beat 帶 `render_target` 欄。Phase 1 schema-reserve 三個值，**實作只接 hyperframes**：
+
+| render_target | 何時用 | Phase 1 實作 |
+|---|---|---|
+| `hyperframes` | 程式繪製的 component | ✅ 接通（BigStat from `video/compositions/bigstat/`） |
+| `reader-playwright` | 書內引用 | ❌ Worker raise NotImplementedError；Phase 1.5 promote `web_highlight_record.py` + 定義 Robin URL scheme 後接通 |
+| `web-playwright` | 外部網頁引用 | ❌ 同上 |
+
+`broll_decision: none` 表「這 beat 不放 B-roll」，不是 path 之一。
+
+**為什麼三條 sibling 不是統一 Hyperframes**：書/網頁引用本質是「保留原媒介 + 加 highlight 動畫」，Hyperframes 重畫 layout 會破壞「這引用真的來自 Robin 內這本書」的視覺契約。**詳細決定見 `memory/claude/project_broll_dual_path_architecture.md`（PR #710 已 merge 為 decision memory，不是 implementation）。**
+
+### 2. 寄宿 — 已移至 §0.1
+
+### 3. Talking head layout = FCPXML composite（沿用 invariant 但措辭修正）
 
 #### 3a. Composite 在 DaVinci，不在 Hyperframes
 
 `<ARollPip>` 之類「talking head 縮放 + B-roll 旁邊」layout，**用 FCPXML `adjust-transform` 在 DaVinci composite**，不進 Hyperframes：
 
 ```
-V1: talking head 原檔（adjust-transform: scale 0.55, position -480 0 → 推左半）
-V2: Hyperframes 渲染的 overlay mp4（1920×1080，右半畫東西、左半透明）
+V1: talking head 原檔（FCPXML adjust-transform 套縮放/位置 → DaVinci 看到 split layout）
+V2: Hyperframes 渲染的 overlay mp4（1920×1080，broll_canvas 限制只在右半畫）
 ```
 
-DaVinci 直接看到 split layout，**talking head 完全沒被 re-encode**，未來 color grade / 重剪不受影響。
+**「保留原檔給 grade 用」**（v2 修正）— DaVinci 在 final export 套 LUT / grade 時當然 re-encode；本架構 invariant 是 broll pipeline 不主動破壞 grade latitude，**不是「永不 encode」**。
 
-#### 3b. Layout = 命名 YAML recipe（slot-decoupled from content）
+#### 3b. ⚠️ FCPXML adjust-transform 單位 — 待 DaVinci 實測驗證
 
-`agents/brook/script_video/layouts/<name>.yaml`：
+> Panel 強烈警告：Apple FCPXML `adjust-transform position` 不是 pixels，是相對 frame-height units（例如 `position="10 0"` ≠ 10px）。v1 寫的 `position_x: -480` 大概率錯。**Phase 1 acceptance gate：必先實測通過 DaVinci import fixture 才能 ship 任何 side layout。**
+
+#### 3c. Layout = 命名 YAML recipe（slot-decoupled from content）
+
+`agents/foundry/layouts/<name>.yaml`：
 
 ```yaml
-# side_overlay_left.yaml
+# side_overlay_left.yaml (Phase 1.5 才實作 — Phase 1 只 seed YAML)
 name: side_overlay_left
 description: Talking head 縮左半，B-roll 落右半
 slots:
   - id: aroll
     source: talking_head
-    fcpxml_transform: { scale: 0.55, position_x: -480, position_y: 0 }
+    fcpxml_transform: <PENDING DAVINCI IMPORT FIXTURE>  # 不寫具體值待實測
   - id: broll
     source: broll_render
-    fcpxml_transform: { scale: 1.0, position_x: 0, position_y: 0 }
+    fcpxml_transform: <PENDING>
     broll_canvas: { x: 960, y: 0, w: 960, h: 1080 }   # 給 Hyperframes 知道右半才畫
 ```
 
-Storyboard beat 只寫 `layout: side_overlay_left` + 各 slot 填什麼。**新 layout = 加 YAML file，emitter / planner / Hyperframes 都不動 code**。
+新 layout = 加 YAML file，emitter / planner / Hyperframes 都不動 code。
 
-**Phase 1 ship 5 個 seed layout**：
+**Phase 1 ship 5 個 seed layout YAML，但只實作 `full_aroll` + `full_broll`**（無 transform 需求 → 不卡 DaVinci 實測）。side overlay / PiP Phase 1.5 補 + 同 PR 補 DaVinci import fixture。
 
-| Layout | 描述 |
-|---|---|
-| `full_aroll` | Talking head 全螢幕 |
-| `full_broll` | B-roll 全螢幕（talking head 蓋掉） |
-| `side_overlay_left` | Talking head 左 + B-roll 右 |
-| `side_overlay_right` | 反向 |
-| `pip_corner_br` | Talking head 縮右下角小窗（ADR-015 原 ARollPip） |
-
-**但 Phase 1 實作只接通 `full_aroll` + `full_broll`** —— side overlay / PiP 在 Phase 1.5 補。
-
-### 4. Feedback = 3-action hybrid + auto edit-log（Q5）
+### 4. Feedback = 3-action hybrid + auto edit-log + batch actions（v2 新增）
 
 每個 beat 在 Bridge UI 上有三個 action：
 
-| Action | UI | Brook 反應 | 寫 edit-log |
+| Action | UI | foundry 反應 | 寫 edit-log |
 |---|---|---|---|
 | **Approve** | 一鍵 | 標 `text_approved=true` → auto enqueue render | 否 |
-| **Edit fields** | 展開 inline form（layout dropdown / component dropdown / params JSON） | 直接覆寫 storyboard.yaml，auto-approved | 否 |
-| **Re-plan with note** | 展開 textarea | LLM 用 note + 該 beat context 重 plan，回新 proposal | **是** |
+| **Edit fields** | 展開 inline form | 直接覆寫 storyboard.yaml，auto-approved | 否 |
+| **Re-plan with note** | 展開 textarea | LLM 用 note + 該 beat context 重 plan | **是** |
+
+**v2 新增 batch actions**（panel 點出 solo user 不該 N 個 beat 各按一次）：
+
+- `Approve All Text Drafts` — 批次標 `text_approved=true`，逐筆 enqueue render
+- `Render All Approved` — 一鍵啟動所有 text_approved 但未 render 的 beat
+- `Finalize All Passing Renders` — 看完所有 render，未明確拒絕的都 `visual_approved=true`
 
 **第二層 visual approve** 走相同 3-action（render 完之後）：
 
-- Approve → `visual_approved=true` → beat `finalized`
-- Edit fields → 改 params → 只 re-render 該 beat（不重 plan）
-- Re-plan with note → 重 plan + re-render，**寫 edit-log（高品質信號）**
+- Approve / Edit fields / Re-plan with note 跟第一層同樣語意
+- Re-plan with note **第二層**特別寫 edit-log（高品質信號，看到實際畫面才改）
 
-**為什麼 Edit fields 不寫 edit-log**：純 mechanical 改 param 不是 taste 信號（target=11000 改 10000 沒泛化價值）。Re-plan with note 的自然語言才是 taste 信號。
+**為什麼 Edit fields 不寫 edit-log**：純 mechanical 改 param 不是 taste 信號。
 
-### 5. Input contract = SRT-first（Q7）
+### 5. Input contract = SRT-first（含 Mandarin 正規化 — v2 提到 Phase 1）
 
 ```
 data/script_video/<episode-id>/
@@ -212,141 +187,187 @@ data/script_video/<episode-id>/
 └── storyboard.yaml              # planner 輸出 + UI 編輯
 ```
 
-**SRT 已乾淨**（NG take 上游已砍）— broll pipeline 假設 input SRT 是真實時間軸 source of truth。Mistake removal（拍掌 marker / razor+ripple）是獨立工具，**out of scope**（Q8）。
+**SRT 已乾淨**（NG take 上游已砍）— foundry 假設 input SRT 是真實時間軸 source of truth。Mistake removal **out of scope**（獨立工具，Q8 凍結）。
 
-`refs.yaml` 例：
+### 5b. Mandarin 文字正規化 layer（v2 新增 — Phase 1 必做）
+
+> Panel（Gemini）強指出：anchor 對齊跟 LLM 抽取在中文有獨特挑戰，v1 完全沒寫。
+
+`agents/foundry/chinese_normalizer.py` Phase 1 必含：
+
+1. **標點正規化** — 全形 `，。？！「」` → 統一 canonical form；半形混合處理
+2. **數字正規化** — `一萬一千` / `11000` / `11,000` / `一·一萬` → 統一 canonical（建議用 `cn2an` 或等價）。**這層處理過後 LLM 跟 aligner 看到的是統一格式**
+3. **SRT cue 跨句合併** — 不是 naive `join(" ")`，要看句末標點 `。？！` 才斷句，否則 cue 之間以 `　`（全形空白）連接保留 prosody hint
+4. **Quote bracket 強制** — Planner prompt 顯式要求台灣標準 `「」`；refs.yaml lookup 只認 `「」`，validator reject `"` / `"` / `''`
+
+**這支 module 是 `srt_flattener` 跟 `planner` 之間的 hard boundary**。Phase 1 PR-2 必含。
+
+### 5c. refs.yaml schema
 
 ```yaml
 quotes:
-  - text_anchor: "習慣是身分認同的形成"
+  - text_anchor: "習慣是身分認同的形成"     # 正規化後字串
     book: "原子習慣"
     page: 87
-    book_slug_robin: "atomic-habits"   # 對應 Robin Reader EPUB
+    book_slug_robin: "atomic-habits"     # Phase 1.5 才用（Robin URL scheme 定義後）
 ```
 
-Brook 看到 storyboard beat 文本內有 `「習慣是身分認同的形成」`，先查 `refs.yaml`，找不到 fallback Robin KB（ADR-015 Q4-2 邏輯沿用 → 不靠 fuzzy match 隨機猜書）。
+Phase 1 dispatcher 不接 reader-playwright → `book_slug_robin` 純 metadata，**不真執行 lookup**。
 
-### 6. Beat 顆粒度 = LLM 分群 + Python 對齊（Q9）
+### 6. Beat alignment = LLM exact-copy + Python validator hard fail（v2 大改）
 
-**LLM 跟 SRT timing 完全解耦**。Planner LLM 看到的是攤平 prose（不知道 SRT 結構），輸出 anchor-based beat：
+> Panel（Codex + Gemini 一致 push-back）：v1 的 `rapidfuzz partial_ratio >= 0.85` 是錯誤的 primary 路徑。LLM 改字會穿過 fuzzy match。
 
-```yaml
-- start_quote: "研究追蹤了 11,000"        # 8-12 字首
-  end_quote: "...10 年下來發現的趨勢"      # 8-12 字尾
-  layout: side_overlay_left
-  broll: { render_target: hyperframes, component: bigstat,
-           params: { target: 11000, label: "受試者", suffix: "人" } }
-  ...
+**v2 重新設計**：
+
+1. **Planner prompt 改 contract**：「你必須從附帶的 normalized transcript 中**完全複製貼上**作為 anchor，**禁止改字、改標點、改格式**」
+2. **Planner LLM 輸出**：每 beat 帶 `start_quote` / `end_quote`，**仍是 8-12 字 anchor**（節省 token）
+3. **`beat_aligner.py` 主路徑**：deterministic substring search（`str.find()`）；**找不到 → hard fail，回 LLM 重試該 beat（最多 3 次）**，仍對不到就 escalate human
+4. **rapidfuzz 降級**：只在 **`--diagnostic-fuzzy` flag** 下啟用，列「相似但對不到的候選」供 debug 使用，**永不當 production fallback**
+
+正規化過後的文本是 stable canonical form，LLM 拒絕 exact-copy 是 prompt bug 或 model 行為錯，**應該 fail loud 而非 silently fuzzy 通過**。
+
+```python
+# beat_aligner.py 核心
+def align_beat(beat, flat_text, char_to_time):
+    start_idx = flat_text.find(beat['start_quote'])
+    end_idx = flat_text.find(beat['end_quote'], start_idx)
+    if start_idx == -1 or end_idx == -1:
+        raise AnchorNotFoundError(beat, flat_text)  # hard fail
+    timing = {
+        'start': char_to_time[start_idx],
+        'duration': char_to_time[end_idx + len(beat['end_quote'])] - char_to_time[start_idx],
+    }
+    return timing
 ```
 
-`beat_aligner.py` 用 rapidfuzz partial-ratio ≥ 0.85 把 anchor 對回攤平文本 → 算 timing + srt_line_ids。**對不到就 flag warning**（不 silent fail）。
+### 7. UI = Thousand Sunny Bridge **Tier 2**（v2 改）
 
-**Beat 數量目標**：10 分鐘影片 ~15-25 個 beat（一個 idea unit = 一個 beat，不是一句一個）。Phase 1 不做拆/合 beat UI（Phase 1.5 補）。
+> Panel 一致：Tier 3 三天估時是 fantasy。Tier 2 是 Phase 1 sweet spot。
 
-### 7. UI = Thousand Sunny Bridge Tier 3（Q10）
+`/foundry/<episode-id>` route（Brook 改名 → foundry）。
 
-`/script-video/<episode-id>` route。HTML 表格 + per-row 3 action + inline `<video>` player + SSE live progress。
-
-**Phase 1 必做**：
+**Phase 1 Tier 2 必做**：
 - 表格 render storyboard.yaml
-- 三個 action 按鈕 + endpoint
-- Inline `<video>` 播 render 完的 mp4（file:// 或 streaming endpoint）
-- SSE 推 render 狀態（draft / rendering / done / failed）
+- 三個 action 按鈕 + batch actions（Approve All Text / Render All Approved / Finalize All Passing）
+- Render 狀態用 **polling**（每 2-3 秒 GET status endpoint），不上 SSE
 - 兩層 status chip：`📝 text_approved` `🎬 render_status` `✅ visual_approved`
+- **沒有 inline `<video>` player** — render 完的 mp4 用 file:// 連結（修修自己用系統 player 開）
 
-**Phase 1 不做**：
-- 拆/合 beat 按鈕（→ Phase 1.5）
-- 多集 episode listing / history view（→ Phase 2）
+**Phase 1.5 升 Tier 3**：
+- SSE 換掉 polling
+- Inline `<video>` 嵌入每 row（含 streaming endpoint + CORS）
+- 拆/合 beat 按鈕
 
-### 8. Render trigger = approve auto-enqueue（Q11）
+**Phase 2 評估 Hyperframes Studio iframe** — 如果 Studio 已能 preview composition + 接 props，可能直接 embed iframe 取代部分 inline player 工。Phase 1 不評估。
+
+### 8. Render trigger = approve auto-enqueue + batch actions（v2 合併）
 
 ```
 text_approved=true → 自動 enqueue render task
-                  → render done → render_status=done → UI 跳出 inline player
+                  → render done → render_status=done → polling 更新 UI
                   → 看完 → visual_approved=true → beat finalized
+
+batch action「Approve All Text」 → bulk set text_approved + bulk enqueue
+batch action「Render All Approved」 → re-trigger 已 approved 但 render_status=pending 的
+batch action「Finalize All Passing」 → bulk visual_approved（修修可逐筆 override 個別）
 
 任何時候 re-plan with note：
   → cancel in-flight render (kill subprocess)
   → 回 status=draft
   → LLM 重 plan
-  → 拿新 proposal 再 approve → re-enqueue render
 ```
 
-**Render concurrency = 2**（Hyperframes 一支 render ~50% CPU + GPU；Reader/Web Playwright 也吃 GPU 因為 CDP screencast）。Phase 1 用 asyncio.Queue，不用 Redis / Celery。
+**Render concurrency = 1 (Phase 1)**（v2 改保守 — panel 指出 Hyperframes worker 內含多 Chrome process + FFmpeg + 可能 Playwright，concurrency=2 是樂觀估計。先 = 1，measure 後再 raise）。**Phase 1 ≤ 25 個 beat × 10s/beat ≈ 4-5 分鐘串行**，可接受。
 
-### 9. Style / brand 文件結構（Q12）
+**GPU semaphore** — 未來 hyperframes / playwright 混合 dispatch 時需要 cross-worker semaphore，**留 Phase 1.5 上來**。
+
+### 9. Style / brand 文件結構 — single-store learning（v2 簡化）
 
 | 文件 | 位置 | 用途 |
 |---|---|---|
-| Brand tokens | `docs/design-system.md`（既有） | `--sho-*` tokens、LINE Seed TW、PANTONE 165 PC。**Planner load 這個，不複製** |
-| Editorial rubric | `agents/brook/script_video/STYLE.md` | broll 編輯 rubric（do/don't）。**不放 `/memory/`**（pipeline asset ≠ agent identity） |
-| Guardrails | `agents/brook/script_video/guardrails.yaml` | allow/deny machine-readable |
-| Few-shot | `agents/brook/script_video/examples/` | tag-indexed retrieval（Phase 1 用 `_index.yaml` tag filter；embedding Phase 2 看是否需要） |
-| Edit log | `agents/brook/script_video/edit_log/<episode>.jsonl` | auto-capture re-plan note + before/after diff |
+| Brand tokens | `docs/design-system.md`（既有） | `--sho-*` tokens、LINE Seed TW、PANTONE 165 PC。Planner load 這個，**不複製** |
+| Editorial rubric | `agents/foundry/STYLE.md` | broll 編輯 rubric（do/don't） |
+| Guardrails | `agents/foundry/guardrails.yaml` | allow/deny machine-readable |
+| Few-shot | `agents/foundry/examples/` | **Phase 1 不載入** — corpus ≥ 5 才啟用 retrieval |
+| Edit log | `agents/foundry/edit_log/<episode>.jsonl` | **★ single source of truth for learning** — UI 提供「promote to example」一鍵操作 |
 
-**`STYLE.md` vs `memory/claude/feedback_*.md` 邊界**：
-- 進 STYLE：「BigStat 別用在 < 100 的數字（沒視覺衝擊）」← broll 特定
-- 進 memory feedback：「Claude commit message 不要 emoji」← 跨任務行為
+> Panel（Gemini）正確指出：solo user 不會維護三個 store。v2 改為「edit_log 是主，example 由 UI 一鍵升級」。STYLE.md 仍存在但變成「定期人類手動 review edit_log 後提煉的固化規則」，不是並行 store。
 
-### 10. 學習 loop = 解釋實情（非 fine-tuning）
+### 9b. LINE Seed TW 字型 — Phase 1 必處理
 
-模型本身不學習。**所謂 learning = 累積 explicit, version-controlled corpus 餵 prompt 用**。具體：
+> Panel（Gemini）指出：Hyperframes headless Chrome 預設無 LINE Seed TW → fallback Noto Sans TC（不同字寬 / kerning，破壞 brand）。
 
-- `edit_log/*.jsonl` — auto-capture re-plan 的 before/after + user_note
-- `examples/` — 從 edit_log 提煉的 worked examples（含 negative）
-- `STYLE.md` — 從 edit_log 提煉的 do/don't 規則
-
-每次 planner 跑：
-1. 載入 `docs/design-system.md` brand context
-2. 載入 `STYLE.md`（整份）
-3. 載入 `guardrails.yaml`（整份）
-4. 載入 `examples/_index.yaml` → 依當前 beat tag 抓 top-3 examples 塞 prompt
-
-Phase 1 corpus 空，planner cold-start 跑 built-in rubric。修修每集跑完，edit_log 累 5-20 條，第二集開始 examples 有東西。
+**Phase 1 PR-4 必含**：
+1. 下載 LINE Seed TW woff2 進 `video/assets/fonts/`
+2. 每個 Hyperframes composition `<head>` 加 `@font-face` 指向 local woff2
+3. Hyperframes `lint` 通過（不再 warn `font_family_without_font_face`）
 
 ---
 
-## Acceptance Criteria（Phase 1）
+## Acceptance Criteria（Phase 1，v2 強化）
 
-- [ ] 跑 `python -m agents.brook.script_video --episode test-fixture-001` 從 SRT + raw_recording 開到 storyboard.yaml，全程無錯
-- [ ] Bridge UI `/script-video/test-fixture-001` 渲染表格，三個 action 按鈕都能觸發對應 endpoint
-- [ ] Approve 一個 BigStat beat → SSE 推進度 → 完成後 inline `<video>` 可播 mp4
+### Functional
+
+- [ ] 跑 `python -m agents.foundry --episode test-fixture-001` 從 SRT + raw_recording 開到 storyboard.yaml，全程無錯
+- [ ] Bridge UI `/foundry/test-fixture-001` 渲染表格，三個 action + 三個 batch action 都能觸發對應 endpoint
+- [ ] Approve 一個 BigStat beat → polling 顯示 rendering → done 後 file:// 連結可開 mp4
 - [ ] Re-plan with note 觸發 LLM 重 plan，storyboard.yaml 換 proposal，edit_log 多一條
-- [ ] FCPXML 1.10 emit 後，DaVinci Resolve 開檔正確：V1 talking head 整段 + V2 B-roll mp4 在對應時間段 + transform 數值套對
 - [ ] 修修真實一集（10-15min 含 3-5 個 BigStat beat）走通 end-to-end，產出 .fcpxml + 個別 .mp4
 
+### Determinism / Visual
+
+- [ ] **BigStat hash snapshot test** — 同 input 兩次 render，MP4 byte hash 一致（pinned Hyperframes 0.6.42 + pinned Chrome + pinned fonts）
+- [ ] **Mandarin normalization regression** — 9 個 test fixture（全形/半形標點、4 種數字格式、`「」`、SRT cue 跨句）pytest 全綠
+
+### FCPXML / DaVinci 兼容
+
+- [ ] **DaVinci import fixture** — 寫一支極簡 FCPXML（含 V1 talking head + V2 BigStat mp4 + 1 個 adjust-transform），手動 import DaVinci Resolve 修修現用版本，確認：
+  - clip 出現在正確 timeline 位置
+  - transform 視覺效果符合預期
+  - 無 schema error 警告
+- [ ] **FCPXML version 確認** — Phase 1 試 1.10 → 失敗則 fallback 1.11 或 1.9。emitter 加 `--fcpxml-version` flag
+
+### Mandarin / Font
+
+- [ ] LINE Seed TW @font-face 加入 BigStat composition；Hyperframes `lint` 無 font warning
+- [ ] BigStat render 視覺檢查：中文字使用 LINE Seed TW，不 fallback
+
 ---
 
-## Phase 1 PR slicing
+## Phase 1 PR slicing（v2 上修）
 
-| PR | 範圍 | 估時 | 依賴 |
-|---|---|---|---|
-| **PR-1** | ADR-032 + `agents/brook/script_video/` scaffold（pipeline.py 殼 + STYLE.md seed + guardrails.yaml seed + 5 個 layout YAML + episode dir layout convention） | 1 天 | — |
-| **PR-2** | SRT flattener + char↔time index + beat_aligner + rapidfuzz + unit test | 1.5 天 | PR-1 |
-| **PR-3** | planner.py（LLM call + prompt template `prompts/broll_planner.md`）+ storyboard.yaml schema + integration test on fixture | 2 天 | PR-2 |
-| **PR-4** | render_dispatcher + hyperframes_worker（接 BigStat from `video/compositions/bigstat/`）+ FCPXML 1.10 emitter + dry-run（無 UI） | 2 天 | PR-3 |
-| **PR-5** | Thousand Sunny Bridge UI Tier 3（table + 3 actions + SSE + inline player + 2-layer status）+ endpoint wiring + edit_log writer | 3 天 | PR-4 |
+| PR | 範圍 | v1 估時 | **v2 估時** | 依賴 |
+|---|---|---|---|---|
+| **PR-1** | ADR-032 + `agents/foundry/` scaffold + 5 layout YAML + STYLE.md/guardrails.yaml seed + episode dir convention + **promote BigStat from spike worktree** + **promote `web_highlight_record.py` from spike** + ADR-001 amendment (add foundry) | 1d | **2d** | — |
+| **PR-2** | SRT flattener + **chinese_normalizer.py + 9 test fixtures** + char↔time index + beat_aligner (exact-copy primary) + AnchorNotFoundError + unit test | 1.5d | **2.5d** | PR-1 |
+| **PR-3** | planner.py + prompt template + storyboard.yaml schema + integration test on fixture | 2d | **2d** | PR-2 |
+| **PR-4** | render_dispatcher（hyperframes only）+ hyperframes_worker（接 BigStat）+ **LINE Seed TW @font-face** + **BigStat hash snapshot test** + FCPXML 1.10 emitter + **DaVinci import fixture (blocking)** + reader/web-playwright workers stub raise NotImplementedError | 2d | **4d** | PR-3 |
+| **PR-5** | Thousand Sunny Bridge UI Tier 2（table + 3 actions + 3 batch actions + polling status + 2-layer status chip）+ endpoint wiring + edit_log writer + edit_log → example promote UI | 3d | **3d** | PR-4 |
 
-合計 ~9.5 天 agent 工時。
+**v1 合計**：9.5 天 → **v2 合計：13.5 天**
+
+> Codex 認為 PR-4 可能 4-6 天、PR-5 5-7 天。v2 取保守中位。Tier 2 守住 PR-5 3 天的關鍵是「無 SSE / 無 inline player / 無拆合 beat」— 三個都砍了。
 
 ---
 
 ## Phase 1.5 / Phase 2 backlog
 
 **Phase 1.5（~1 週）**：
-- Reader + Web Playwright workers 接 dispatcher（用 `web_highlight_record.py`）
-- 加 `side_overlay_left/right` + `pip_corner_br` layout 實作
+- **Reader + Web Playwright workers 真接通**（Robin URL scheme 定義 + iframe recursion）
+- 加 `side_overlay_left/right` + `pip_corner_br` layout 實作（同 PR 補 DaVinci transform fixture）
 - 加 TransitionTitle component（Hyperframes `caption-kinetic-slam` + `transitions-cover`）
-- 拆/合 beat UI
-- Edit-log examples retrieval（tag filter）真用上
+- UI 升 Tier 3：SSE + inline `<video>` + 拆/合 beat
+- Edit_log examples 累 ≥ 5 → 啟用 tag-filter retrieval
+- GPU semaphore（cross-worker resource cap）
 
 **Phase 2（無時程）**：
 - DataChart / Map / Caption / Transition components
-- LINE Seed TW @font-face capture
 - Embedding-based examples retrieval（如 corpus > 100）
 - Multi-episode listing + history view
-- Mistake-cleanup 獨立 skill（如真要自動化）
-- Phase 2 升級條件 — 修修發現「進 DaVinci 從沒真的改什麼」→ 加 `--direct-mp4` flag 跳 FCPXML
+- Mistake-cleanup 獨立 skill（如真要自動化拍掌 marker）
+- Hyperframes Studio iframe embedding 評估
+- `--direct-mp4` flag 跳 FCPXML（修修發現「進 DaVinci 從沒真的改什麼」時啟用）
 
 ---
 
@@ -354,42 +375,51 @@ Phase 1 corpus 空，planner cold-start 跑 built-in rubric。修修每集跑完
 
 ### 立即影響
 
-1. **新模組 `agents/brook/script_video/`** — Python orchestrator + LLM planner + render workers
-2. **新依賴** — `rapidfuzz`（beat alignment）+ `PyYAML`（storyboard schema）+ `anthropic` SDK 升級到支援 streaming（既有）
-3. **既有 `video/compositions/bigstat/` 被 dispatcher 接管**（之前是 ad-hoc 試水，Phase 1 變成 first-class component）
-4. **新 Thousand Sunny route `/script-video/<episode-id>`** + endpoint set
-5. **新 `data/script_video/` 樹結構** — per-episode + edit_log + examples
-6. **新 CLI** — `python -m agents.brook.script_video --episode <id>`
-7. **新 skill `.claude/skills/broll-planner/SKILL.md`** — thin wrapper 對話內 patch beat 用
-8. **PR #710 memory（B-roll dual-path）成為 ADR-032 的 prior decision** — 已 merge，本 ADR formalize
+1. **新 agent `agents/foundry/`** — 新 Python 模組樹（規模 ~10 個 file）
+2. **新依賴** — `rapidfuzz` (diagnostic only) + `PyYAML` + `cn2an`（中文數字正規化）+ `anthropic` SDK（既有）
+3. **既有 `video/compositions/bigstat/`** — Phase 1 PR-1 從 worktree promote 進 main，**成為 first-class component**
+4. **`web_highlight_record.py`** — Phase 1 PR-1 從 spike sibling 目錄 promote 進 main（`agents/foundry/lib/web_highlight_record.py` 或 `shared/web_highlight_record.py`，PR-1 內決定）
+5. **新 Thousand Sunny route `/foundry/<episode-id>`**
+6. **新 `data/script_video/` 樹結構** — per-episode + edit_log
+7. **新 CLI** — `python -m agents.foundry --episode <id>`
+8. **新 skill `.claude/skills/foundry-replan/SKILL.md`** — 對話內 patch 用
+9. **ADR-001 amendment** — 加 foundry 條目
+10. **PR #710 memory** 是 decision precedent，但 implementation 沒進 main —— v2 不再聲稱「shipped」
 
 ### 對既有 ADR 的影響
 
 | ADR | 影響 |
 |---|---|
-| **ADR-015** | **Superseded**。Remotion 不裝，PyMuPDF DocumentQuote 不做，markdown DSL 不做 |
-| ADR-001（agent role） | 無。Brook 仍 Composer |
-| ADR-013（transcribe）| 無。SRT 上游，本 ADR 接 output |
-| ADR-014（RepurposeEngine）| 無。orthogonal |
-| ADR-028（VAULT-LAYOUT）| 無，但 `data/script_video/` 為新增 sibling 樹，不在 vault scope |
+| **ADR-015** | **Superseded** |
+| **ADR-001** | **Amend** — agent map 加 foundry 條目 |
+| ADR-027（Brook narrow） | 無變動。本 ADR 尊重 ADR-027 的 narrow，新建 foundry |
+| ADR-013（transcribe）| 無 |
+| ADR-014（RepurposeEngine）| 無。可能未來在 Brook fan-out script 後 invoke foundry，但 contract 由 Brook 拉動，foundry 不知道誰呼叫 |
+| ADR-028（VAULT-LAYOUT）| 無 |
 
-### 風險
+### 風險（v2 增補）
 
 | 風險 | 機率 | mitigation |
 |---|---|---|
-| Hyperframes catalog block 跟 nakama design tokens 衝突大 → BigStat 級客製需逐個 fork | 中 | 已驗證 BigStat fork from `apple-money-count` 走得通；token 集中在 `docs/design-system.md` 唯一源 |
-| LLM 自然分群 beat 太細 / 太粗，user 常需手動拆合 | 中 | Phase 1.5 拆合 UI；Phase 1 用 1-2 集找出 prompt 該怎麼 tune |
-| `beat_aligner` rapidfuzz 對不到 LLM anchor（LLM 改字／加標點） | 中 | partial-ratio 0.85 + normalize 數字/標點/空白；對不到 flag warning 不靜默 |
-| Tier 3 UI 工程量超預算（~3 天估值樂觀） | 中 | UI 不靠原生 framework，純 HTMX + SSE，跟既有 thousand_sunny 工具鏈一致；超時 fallback Tier 2 |
-| Render concurrency=2 在 Phase 1 不夠（多 beat 等 queue） | 低 | Phase 1 BigStat 9s/支，~25 個 beat 串行 ~4 分鐘可接受 |
-| Hyperframes Studio preview / hyperframes lint warning 在 CI 跑不過 | 低 | Phase 1 不上 CI 跑 hyperframes；只跑 pytest unit test |
-| Reader iframe recursion 在 foliate-js 上 `web_highlight_record.py` 失效 | 中 | Phase 1.5 才做 Reader path；先驗證再 schedule |
+| Hyperframes catalog block 跟 nakama design tokens 衝突大 → BigStat 級客製需逐個 fork | 中 | 已 spike 驗證 BigStat fork OK；token 集中 `docs/design-system.md` |
+| LLM 自然分群 beat 太細 / 太粗 | 中 | Phase 1.5 拆合 UI；Phase 1 用 1-2 集找出 prompt 該怎麼 tune |
+| **LLM 拒絕 exact-copy anchor**（改字、加標點） | 中 | exact-copy 必須 + AnchorNotFoundError hard fail + LLM 最多 3 次 retry → escalate human |
+| **Mandarin 正規化未覆蓋 corner case**（粵語拼音、注音、罕用全形數字） | 中 | 9 test fixture 起手，發現缺再補；fail loud（normalizer 不認的 raise） |
+| **FCPXML 1.10 在 DaVinci Resolve 修修版本 import 失敗**（Apple 規範 vs DaVinci 實作有偏） | 中 | Phase 1 PR-4 必過 DaVinci import fixture；不通則 emitter 加 `--fcpxml-version` flag 試 1.11 / 1.9 |
+| **FCPXML adjust-transform 單位錯**（v1 寫的 pixel 大概率非 frame-height units） | 高 | Phase 1 不 emit transform；Phase 1.5 補 side overlay 時用 fixture 確定單位才 ship |
+| **Hyperframes determinism 跨 Chrome 版本** | 中 | BigStat hash snapshot test + pin Chrome 版本（hyperframes browser 自管） |
+| **Hyperframes v0.6.42 → v0.7+ breaking changes** | 低-中 | `video/package.json` 強 pin `"hyperframes": "0.6.42"`；CI 加 install audit |
+| **LINE Seed TW @font-face capture 失敗** | 低 | spike 已知 Noto Sans TC fallback 視覺接近；fail loud + dev 手動 verify |
+| **Robin Reader URL scheme 未定義導致 Phase 1.5 卡住** | 中 | Phase 1.5 第一 PR 必先定義 scheme + write fixture |
+| **修修錄影沒做 mistake-cleanup → SRT timing vs raw mp4 duration 不一致** | 中 | foundry pipeline 開頭加 sanity check：SRT 最後 timestamp vs mp4 duration 差 ≥ 1s → warn |
+| **Render concurrency=1 太慢** | 低 | Phase 1 BigStat ~10s/支，25 beat 串行 ~4 分鐘可接受；measure 後 Phase 1.5 raise + GPU semaphore |
+| **Tier 2 UI（無 inline player）讓 visual review 麻煩** | 中 | 是預期 trade-off。Phase 1.5 升 Tier 3 補 |
 
 ### 不變項
 
 - `transcribe` skill SKILL.md / 觸發詞 / pipeline 完全不動
-- Robin KB 結構不動（只 read metadata 對應 book slug）
-- ADR-001（agent role） / ADR-014（RepurposeEngine）全套 unchanged
+- Robin KB 結構不動（Phase 1 只 read metadata；Phase 1.5 才用 URL scheme 真載書）
+- ADR-014（RepurposeEngine）不動
 - 修修既有 DaVinci project template / preset / 字型 / 配色全照舊（FCPXML 只標 clips + transform，不強加 styles）
 - `docs/design-system.md` 唯一 brand source of truth
 
@@ -399,33 +429,77 @@ Phase 1 corpus 空，planner cold-start 跑 built-in rubric。修修每集跑完
 
 | Alternative | 為何沒選 |
 |---|---|
-| **Remotion**（ADR-015 原選） | TypeScript 框架成熟但 catalog 空（要從零寫 BigStat 跟 14 個 caption），不如 Hyperframes 起手快 |
-| **PyMuPDF + bbox DocumentQuote**（ADR-015 原選） | 失去 Robin Reader 視覺契約；Phase 1 已驗證 Reader+Playwright 更乾淨 |
-| **Markdown DSL input**（ADR-015 原 Q1） | 要修修學新 syntax；本 session Q6 凍結 SRT-first + Brook 自判，markers 只在 quote disambiguation 用 |
-| **Record-first（先錄再 plan）** | 創意 review 卡在錄影；本 session Q7 凍結 SRT-first → plan 跟錄影解耦 |
-| **Hyperframes-baked layout（talking head 進 Hyperframes 一起合成）** | 破 ADR-015 invariant「talking head sacred」。本 session Q3 凍結 FCPXML composite |
-| **Batch render（all-approve-then-render）** | Tier 3 inline player 派不上用場；本 session Q11 凍結 approve auto-enqueue |
-| **Single approve（不分文字 / 影片兩層）** | 失去「文字 review 早攔截」 + 「視覺 review 後再修」兩個價值。本 session Q11 凍結 2-layer |
-| **DESIGN.md 獨立 brand 文件** | 跟 `docs/design-system.md` drift。本 session Q12 凍結唯一源 |
-| **STYLE.md / edit_log 進 `/memory/`** | 混淆 agent identity feedback vs pipeline asset。本 session Q12 凍結 module-local |
+| **Remotion**（ADR-015 原選） | catalog 空（要從零寫），不如 Hyperframes 起手快 |
+| **PyMuPDF + bbox DocumentQuote**（ADR-015 原選） | 失去 Robin Reader 視覺契約；Reader+Playwright 更乾淨 |
+| **Markdown DSL input**（ADR-015 原 Q1） | 要修修學新 syntax；SRT-first + Brook 自判 |
+| **Record-first** | 創意 review 卡在錄影；SRT-first 解耦 |
+| **Hyperframes-baked layout** | 破 invariant「保留原檔給 grade 用」 |
+| **Batch render（all-approve-then-render only）** | Phase 1 Tier 2 已加 batch action，per-beat auto-render 仍是 default |
+| **Single approve（不分文字/影片兩層）** | 失去早攔截 + 視覺修正兩個價值 |
+| **DESIGN.md 獨立 brand 文件** | 跟 `docs/design-system.md` drift |
+| **STYLE.md / edit_log 進 `/memory/`** | 混淆 agent identity feedback vs pipeline asset |
+| **寄居 Brook（v1 選）** | ADR-027 narrow 後 Brook 不該再擴張；v2 改 foundry |
+| **rapidfuzz primary（v1 選）** | LLM 改字穿過 fuzzy；v2 改 exact-copy + hard fail |
+| **Tier 3 UI Phase 1（v1 選）** | 3 天估時 fantasy；v2 砍 Tier 2 + Phase 1.5 升 |
+| **WebVTT 取代 SRT input** | `/transcribe` 出 SRT 是既定 contract；雙格式 maintain 成本不值 |
+| **整合 Edit fields + Re-plan into single "modify"** | 兩 action 的 taste signal 性質不同，混合損失 learning |
+| **Hyperframes Studio iframe Phase 1** | 待 auth/file access 評估；Phase 2 |
+| **LLM-generated DSL as internal IR** | YAML cleaner long-term；多一層 translation 無必要 |
+| **examples cold-start retrieval Phase 1** | corpus 空 = 純浪費 prompt token |
 
 ---
 
 ## Open Questions（不阻擋落地）
 
-1. **broll-planner skill SKILL.md 觸發詞** — 是 `/broll-planner` 還是 `/broll-replan`？Phase 1 後決定
-2. **edit_log retention policy** — 永久保留 or per-episode 砍舊？Phase 2 看修修一年累積量再決定
-3. **Examples retrieval embedding switch** — 何時從 tag filter 升 embedding？預設 corpus > 100 + 修修報告「tag retrieval 抓錯太多」才升
-4. **Streaming render（hyperframes streaming-encode）** — Phase 1 用 batch encode，Phase 2 評估 streaming
-5. **Caption sync 用 SRT 還是 word-level JSON** — Phase 2 做 caption 動畫時再決定（SRT sentence-level 對 BigStat / DocumentQuote 足夠）
+1. **foundry-replan skill 觸發詞** — Phase 1 後決定（`/foundry-replan` vs `/foundry-fix-beat`）
+2. **edit_log retention policy** — Phase 2 看修修一年累積量再決定
+3. **Examples retrieval embedding switch** — corpus > 100 + tag retrieval 出問題才升
+4. **Streaming render**（hyperframes streaming-encode）— Phase 2 評估
+5. **Caption sync 用 SRT 還是 word-level JSON** — Phase 2 caption 動畫時決定
+6. **FCPXML 1.10 vs 1.11 vs 1.9** — Phase 1 PR-4 DaVinci fixture 結果決定 default
+
+---
+
+## Panel Integration（v2 新增 — 3-way audit 採納記錄）
+
+3-way panel：Claude draft → Codex (GPT-5) audit → Gemini 2.5 Pro audit → Claude integrate。整合矩陣：
+
+| Topic | Claude v1 | Codex | Gemini | Pattern | v2 Resolution |
+|---|---|---|---|---|---|
+| Code grounding（BigStat / web_highlight_record.py 在 main） | shipped | False，in spike | （無 disagreement） | 2-of-3 against v1 | **採納** — v2 改字眼「spike validated」+ PR-1 promote 進 main |
+| ADR-001 drift（Brook 仍 Composer） | Yes | False，已 ADR-027 narrow | （未提） | Codex 獨家 | **採納** — v2 改寄居為 new `agents/foundry/` |
+| Pipeline 寄居 Brook vs 新 agent | Brook | Brook OK | **新 agent foundry** | 1-of-3 dissent | **採納 Gemini** — 尊重 ADR-027 spirit |
+| rapidfuzz 0.85 primary | Yes | False，exact-copy primary | 同 + Chinese 更難 | Universal against v1 | **採納** — exact-copy + hard fail，fuzzy 降 diagnostic |
+| UI Tier 3 Phase 1 3 天 | Yes | False，5-7d 或砍 Tier 2 | 同 + 加 batch | Universal against v1 | **採納** — 砍 Tier 2，加 batch actions |
+| Mandarin 正規化 | 未提 | 未提 | 必做 Phase 1 | Gemini 獨家 | **採納** — chinese_normalizer.py 進 PR-2 |
+| LINE Seed TW @font-face | Phase 2 | 未提 | 必做 Phase 1 | Gemini 獨家 | **採納** — 進 PR-4 |
+| FCPXML transform 單位 | pixel-like | Apple 規範非 pixel | 同 | Universal | **採納** — v2 加 DaVinci import fixture acceptance gate |
+| Cold-start examples retrieval | Yes | No | No | Universal against v1 | **採納** — Phase 1 不載入，corpus ≥ 5 才啟 |
+| 2-layer approve UX | per-beat only | 加 batch | 加 batch + 簡化 | Universal | **採納 batch actions** |
+| 3-store learning corpus | Yes | 未強烈反對 | Will atrophy → single store | Gemini 獨家 | **採納** — edit_log 主，example UI promote |
+| Talking head 永不 re-render | Yes | 未質疑 | DaVinci 出片仍 encode → misframe | Gemini 獨家 | **採納** — v2 改「保留原檔給 grade 用」 |
+| FCPXML 1.10 預設安全 | 預設 | 未質疑 | DaVinci 兼容性歷史不穩 | Gemini 獨家 | **採納** — emitter 加 version flag，PR-4 fixture 驗 |
+| Render concurrency=2 | Yes | 太樂觀 | 同 + GPU semaphore needed | Universal against v1 | **採納** — Phase 1 改 = 1，semaphore Phase 1.5 |
+| Robin URL scheme | 未提 | 未提 | Phase 1 feasibility 問題 | Gemini 獨家 | **採納** — Phase 1.5 第一 PR 先定義 |
+| Hyperframes 版本 pin | 未提 | 未提 | 必 pin + 視覺 regression test | Gemini 獨家 | **採納** — package.json 強 pin + hash snapshot |
+| Mistake-cleanup 假設 | upstream done | 同 | brittle, need duration sanity | Gemini 獨家 | **採納** — pipeline 開頭加 SRT vs mp4 duration check |
+| WebVTT 替代 SRT | 未評估 | 應評估 | 未提 | Codex 獨家 | **Reject** — `/transcribe` contract 既定 |
+| Edit fields + Re-plan 合併 | 分離 | 合併 | 未提 | Codex 獨家 | **Reject** — taste signal 性質不同 |
+| Hyperframes Studio iframe | 未評估 | 應評估 | 未提 | Codex 獨家 | **Defer Phase 2** |
+| Pre-segment in transcribe | 未評估 | 應評估 | 未提 | Codex 獨家 | **Defer** — `/transcribe` skill 自有 contract，本 ADR 不擴 |
+| LLM-generated DSL IR | 未評估 | 應評估 | 未提 | Codex 獨家 | **Reject** — YAML cleaner |
+
+**統計**：採納 17 項；reject 4 項；defer 2 項。
 
 ---
 
 ## References
 
-- [`memory/claude/project_broll_dual_path_architecture.md`](../../memory/claude/project_broll_dual_path_architecture.md) — PR #710，3-path 決定
-- [`memory/claude/feedback_cdp_screencast_over_recordvideo.md`](../../memory/claude/feedback_cdp_screencast_over_recordvideo.md) — PR #710，CDP screencast 選擇
+- [`docs/research/2026-05-25-codex-adr032-audit.md`](../research/2026-05-25-codex-adr032-audit.md) — Codex GPT-5 6-section audit verbatim
+- [`docs/research/2026-05-25-gemini-adr032-audit.md`](../research/2026-05-25-gemini-adr032-audit.md) — Gemini 2.5 Pro 6-section audit verbatim
+- [`memory/claude/project_broll_dual_path_architecture.md`](../../memory/claude/project_broll_dual_path_architecture.md) — PR #710，3-path decision memory
+- [`memory/claude/feedback_cdp_screencast_over_recordvideo.md`](../../memory/claude/feedback_cdp_screencast_over_recordvideo.md) — CDP screencast 選擇
 - [Hyperframes v0.6.42 docs](https://hyperframes.mintlify.app/llms.txt)
-- [`video/compositions/bigstat/`](../../video/compositions/bigstat/) — Phase 1 第一個 component 試水（已 ship 9s 1080p mp4）
-- ADR-015 supersedes 標記後仍 readable，記錄為何選 Remotion → 為何改 Hyperframes 的脈絡
-- 2026-05-25 grill-with-docs session 13 個 Q：Q1 dispatch / Q2 寄宿 / Q3 composite / Q4 layout YAML / Q5 feedback / Q6 input model / Q7 SRT-first / Q8 mistake removal scope / Q9 LLM/Python 分工 / Q10 UI Tier / Q11 render trigger / Q12 style 文件結構 / Q13 phasing
+- ADR-015 (Superseded) — 保留 Remotion → Hyperframes 改變脈絡
+- ADR-027 (Brook narrow) — foundry decision 的前置
+- 2026-05-25 grill-with-docs session 13 Qs + multi-agent-panel skill 3-way audit
