@@ -29,6 +29,7 @@
     {% endif %}
     <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 目錄</button>
     <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 反思</button>
+    <button type="button" class="icon-btn" id="kbdHelpBtn" aria-label="鍵盤快捷鍵" title="鍵盤快捷鍵（按 ?）">⌨️</button>
     <button type="button" class="icon-btn" id="deleteBookBtn" aria-label="刪除整本書" title="刪除整本書">🗑️</button>
   </nav>
 </div>
@@ -141,6 +142,49 @@
       <span class="rm-time" id="reflectionModalTime">—</span>
     </div>
     <div class="reflection-modal-body" id="reflectionModalBody"></div>
+  </form>
+</dialog>
+
+<!-- Keyboard shortcuts help — open via ? key or ⌨️ button. -->
+<dialog id="kbdHelpDialog" class="ann-dialog kbd-help-dialog" aria-labelledby="kbdHelpTitle">
+  <form method="dialog">
+    <div class="kbd-help-head">
+      <h2 id="kbdHelpTitle">⌨️ 鍵盤快捷鍵</h2>
+      <button type="button" value="cancel" data-cancel class="icon-btn" aria-label="關閉">×</button>
+    </div>
+    <div class="kbd-help-body">
+      <section>
+        <h3>翻頁</h3>
+        <dl>
+          <dt><kbd>→</kbd> <kbd>PageDown</kbd> <kbd>Space</kbd> <kbd>J</kbd></dt><dd>下一頁</dd>
+          <dt><kbd>←</kbd> <kbd>PageUp</kbd> <kbd>Shift</kbd>+<kbd>Space</kbd> <kbd>K</kbd></dt><dd>上一頁</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>選取文字後</h3>
+        <dl>
+          <dt><kbd>Ctrl</kbd>+<kbd>B</kbd></dt><dd>劃線 (Highlight)</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>I</kbd></dt><dd>加註解 (短註，1–3 句)</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>M</kbd></dt><dd>加反思 (章節層級長段)</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>面板 / 主題</h3>
+        <dl>
+          <dt><kbd>T</kbd></dt><dd>切換目錄側欄</dd>
+          <dt><kbd>R</kbd></dt><dd>切換反思側欄</dd>
+          <dt><kbd>D</kbd></dt><dd>切換主題（自動 / 淺 / 深）</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>其他</h3>
+        <dl>
+          <dt><kbd>?</kbd></dt><dd>打開這個說明</dd>
+          <dt><kbd>Esc</kbd></dt><dd>關閉說明 / 註解泡泡 / Modal</dd>
+        </dl>
+      </section>
+      <p class="kbd-help-foot">在 macOS 上 <kbd>Ctrl</kbd> 用 <kbd>⌘</kbd> 也通。輸入框內、選擇器內、modal 開啟時不觸發。</p>
+    </div>
   </form>
 </dialog>
 
