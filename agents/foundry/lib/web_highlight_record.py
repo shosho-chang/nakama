@@ -282,6 +282,7 @@ def record(
         if cookies:
             # cookies 需要 domain/url 才能 add — 從 url 推
             from urllib.parse import urlparse
+
             host = urlparse(url).hostname
             for c in cookies:
                 c.setdefault("domain", host)
@@ -297,7 +298,7 @@ def record(
             print(f"ERROR: {pick['error']}", file=sys.stderr)
             if "sample" in pick:
                 print(f"  page sample: {pick['sample']!r}", file=sys.stderr)
-                print(f"  searched   : {pick.get('searched','')!r}", file=sys.stderr)
+                print(f"  searched   : {pick.get('searched', '')!r}", file=sys.stderr)
             return 2
         # scroll 後可能要再量一次 — but evaluate already returns post-scroll rects
         page.wait_for_timeout(300)
@@ -305,7 +306,7 @@ def record(
         print(f"matched text: {pick['text'][:120]!r}")
         print(f"  lines: {len(pick['rects'])}")
         for i, r in enumerate(pick["rects"]):
-            print(f"    line {i+1}: x={r['x']:.0f} y={r['y']:.0f} w={r['w']:.0f} h={r['h']:.0f}")
+            print(f"    line {i + 1}: x={r['x']:.0f} y={r['y']:.0f} w={r['w']:.0f} h={r['h']:.0f}")
         print(f"  bbox: {pick['bbox']}")
         print(f"  page title: {pick['pageTitle']!r}")
 
@@ -316,8 +317,7 @@ def record(
         cy = bbox["y"] + bbox["h"] / 2
 
         css = (
-            INJECTED_CSS_TMPL
-            .replace("__SHELL_SELECTOR__", shell_selector)
+            INJECTED_CSS_TMPL.replace("__SHELL_SELECTOR__", shell_selector)
             .replace("__CX__", f"{cx:.1f}")
             .replace("__CY__", f"{cy:.1f}")
             .replace("__DURms__", str(duration_ms))
@@ -381,11 +381,16 @@ def record(
             {"css": css, "rects": pick["rects"], "caption": cap_text},
         )
 
-        client.send("Page.startScreencast", {
-            "format": "jpeg", "quality": 92,
-            "maxWidth": vw, "maxHeight": vh,
-            "everyNthFrame": 1,
-        })
+        client.send(
+            "Page.startScreencast",
+            {
+                "format": "jpeg",
+                "quality": 92,
+                "maxWidth": vw,
+                "maxHeight": vh,
+                "everyNthFrame": 1,
+            },
+        )
         page.wait_for_timeout(duration_ms + 300)
         client.send("Page.stopScreencast")
         page.wait_for_timeout(200)
@@ -409,12 +414,24 @@ def record(
     print(f"capture fps: {fps:.1f}")
 
     cmd = [
-        FFMPEG, "-y",
-        "-framerate", f"{fps:.2f}",
-        "-i", str(frames_dir / "f_%05d.jpg"),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-r", "30", "-crf", "14", "-preset", "slow",
-        "-movflags", "+faststart",
+        FFMPEG,
+        "-y",
+        "-framerate",
+        f"{fps:.2f}",
+        "-i",
+        str(frames_dir / "f_%05d.jpg"),
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-r",
+        "30",
+        "-crf",
+        "14",
+        "-preset",
+        "slow",
+        "-movflags",
+        "+faststart",
         str(out_mp4),
     ]
     print("ffmpeg:", " ".join(cmd))
@@ -431,13 +448,15 @@ def main() -> int:
     ap.add_argument("--text", required=True, help="要 highlight 的文字段落（程式會在 DOM 全文搜）")
     ap.add_argument("--caption", default=None, help="底部 caption；預設用 page title")
     ap.add_argument("--out", default="out/highlight.mp4")
-    ap.add_argument("--cookie", action="append", default=[],
-                    help="name=value，可多次")
+    ap.add_argument("--cookie", action="append", default=[], help="name=value，可多次")
     ap.add_argument("--duration", type=int, default=6900)
     ap.add_argument("--zoom", type=float, default=1.35)
     ap.add_argument("--viewport", default="1920x1080")
-    ap.add_argument("--shell-selector", default="body",
-                    help="哪個 element 套 zoom（預設 body；Reader 用 .reader-shell）")
+    ap.add_argument(
+        "--shell-selector",
+        default="body",
+        help="哪個 element 套 zoom（預設 body；Reader 用 .reader-shell）",
+    )
     args = ap.parse_args()
 
     out = Path(args.out).resolve()
