@@ -1,0 +1,13 @@
+name: side_overlay_right
+description: |
+  Talking head 縮右半，B-roll 落左半 (Phase 1.5 — 同 side_overlay_left 的鏡像)。
+
+  ADR-032 §3b：transform 單位待 DaVinci import fixture 驗證。
+slots:
+  - id: aroll
+    source: talking_head
+    fcpxml_transform: <PENDING DAVINCI IMPORT FIXTURE>
+  - id: broll
+    source: broll_render
+    fcpxml_transform: <PENDING DAVINCI IMPORT FIXTURE>
+    broll_canvas: { x: 0, y: 0, w: 960, h: 1080 }

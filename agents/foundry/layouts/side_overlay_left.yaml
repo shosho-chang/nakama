@@ -1,0 +1,15 @@
+name: side_overlay_left
+description: |
+  Talking head 縮左半，B-roll 落右半 (Phase 1.5 — 待 DaVinci import fixture 驗證 transform 單位)。
+
+  ADR-032 §3b warning: Apple FCPXML adjust-transform position 不是 pixels，
+  是相對 frame-height units (e.g. position="10 0" ≠ 10px)。Phase 1 不 emit；
+  Phase 1.5 第一個 PR 必含 DaVinci import fixture 驗單位後才 ship 具體值。
+slots:
+  - id: aroll
+    source: talking_head
+    fcpxml_transform: <PENDING DAVINCI IMPORT FIXTURE>
+  - id: broll
+    source: broll_render
+    fcpxml_transform: <PENDING DAVINCI IMPORT FIXTURE>
+    broll_canvas: { x: 960, y: 0, w: 960, h: 1080 }  # 給 Hyperframes 知道右半才畫
