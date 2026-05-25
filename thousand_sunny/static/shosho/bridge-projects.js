@@ -287,12 +287,18 @@
       if (!dlg) return;
       closeBtn.addEventListener('click', function () { dlg.close(); });
     });
-    // Click on ::backdrop closes — event.target is the <dialog> element
-    // itself when the click lands on the backdrop region, not on the
-    // inner form box.
+    // Click outside the dialog content closes it. We use a bounding-rect
+    // check (more reliable than `event.target === dlg`, which can miss
+    // when the dialog has zero padding and inner elements catch the
+    // click first).
     document.querySelectorAll('dialog.pj-dialog').forEach(function (dlg) {
-      dlg.addEventListener('click', function (e) {
-        if (e.target === dlg) dlg.close();
+      dlg.addEventListener('mousedown', function (e) {
+        var rect = dlg.getBoundingClientRect();
+        var inside = e.clientX >= rect.left && e.clientX <= rect.right
+                  && e.clientY >= rect.top  && e.clientY <= rect.bottom;
+        if (!inside) {
+          dlg.close();
+        }
       });
     });
   }
