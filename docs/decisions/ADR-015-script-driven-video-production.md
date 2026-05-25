@@ -1,7 +1,7 @@
 # ADR-015: Script-Driven Video Production Architecture
 
 **Date:** 2026-05-02
-**Status:** Accepted（PRD #310 approved 2026-05-02）
+**Status:** Superseded by [ADR-032](ADR-032-hyperframes-broll-pipeline.md)（2026-05-25 — Hyperframes 取代 Remotion、Reader+Playwright 取代 PyMuPDF DocumentQuote、SRT-first input、Tier 3 Bridge UI、3-path dispatcher、layout YAML、2-layer feedback。本 ADR 仍記錄為什麼選 Remotion 的脈絡，但實作不再依本 ADR）
 
 ---
 
