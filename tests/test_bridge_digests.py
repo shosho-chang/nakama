@@ -25,8 +25,12 @@ type: digest
 
 ### 1. Semaglutide trial
 
-- **→** [[pubmed-42174253]]
-- **→** [[ghost-reference]]
+- **Journal**: NEJM (Q1 · SJR 18.500)
+- **Domain**: `metabolic`
+- **Score**: 3.6  (R4/I4/C3/A2/F4/N4)
+- **Verdict**: Semaglutide 對代謝症候群有效。
+- **Why**: 規模大、follow-up 長。
+- **→** [[pubmed-42174253]] · [PubMed](https://pubmed.ncbi.nlm.nih.gov/42174253/)
 """
 
 AI_SAMPLE = """---
@@ -102,18 +106,38 @@ class TestDetail:
         r = client.get("/bridge/digests/pubmed/2026-05-24")
         assert r.status_code == 200
         body = r.text
+        # Intro (before first H2) renders via markdown
         assert "<h1>PubMed 每日精選 — 2026-05-24</h1>" in body
         assert "blockquote" in body
         assert "Nature 研究" in body
+        # Per-entry sections render as cards (new design — no full body dump)
+        assert "Semaglutide trial" in body
+        assert 'class="digest-card' in body
 
-    def test_pubmed_wikilink_resolves_to_external(self, client):
+    def test_pubmed_card_external_link(self, client):
+        """The new card layout exposes the PubMed URL via the card footer's
+        external_url anchor, not via inline wikilink rendering."""
         r = client.get("/bridge/digests/pubmed/2026-05-24")
         assert 'href="https://pubmed.ncbi.nlm.nih.gov/42174253/"' in r.text
+        # Sanity: rendered as `PubMed →` footer link, not wikilink
+        assert "PubMed →" in r.text
 
-    def test_unknown_wikilink_renders_broken(self, client):
+    def test_pubmed_card_journal_meta(self, client):
+        """Card meta row shows journal + quartile + domain."""
         r = client.get("/bridge/digests/pubmed/2026-05-24")
-        assert "wikilink-broken" in r.text
-        assert "ghost-reference" in r.text
+        body = r.text
+        assert "NEJM" in body
+        assert "Q1" in body
+        assert "metabolic" in body
+
+    def test_pubmed_card_verdict_and_why(self, client):
+        """Verdict + Why blocks render with their kicker labels."""
+        r = client.get("/bridge/digests/pubmed/2026-05-24")
+        body = r.text
+        assert "Verdict" in body
+        assert "Semaglutide 對代謝症候群有效" in body
+        assert "Why this matters" in body
+        assert "規模大、follow-up 長" in body
 
     def test_missing_digest_404(self, client):
         r = client.get("/bridge/digests/pubmed/2026-01-01")

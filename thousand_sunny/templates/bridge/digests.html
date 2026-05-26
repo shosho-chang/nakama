@@ -8,143 +8,7 @@
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
-<style>
-  .digest-hero-zone {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--sho-space-4, 16px);
-    margin-block: var(--sho-space-5, 20px);
-  }
-  .digest-hero {
-    padding: var(--sho-space-5, 20px);
-    border: 1px solid var(--sho-border, #2a2a2a);
-    background: var(--sho-surface, transparent);
-    display: flex;
-    flex-direction: column;
-    gap: var(--sho-space-3, 12px);
-    text-decoration: none;
-    color: inherit;
-  }
-  .digest-hero:hover { border-color: var(--sho-accent, #ff7a18); }
-  .digest-hero.is-empty { opacity: 0.5; cursor: default; }
-  .digest-hero-label {
-    font-family: var(--sho-mono, ui-monospace, monospace);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--sho-muted, #888);
-  }
-  .digest-hero-date {
-    font-family: var(--sho-mono, ui-monospace, monospace);
-    font-size: 20px;
-    font-weight: 600;
-  }
-  .digest-hero-summary {
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--sho-muted-strong, #b0b0b0);
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .digest-hero-counts {
-    font-family: var(--sho-mono, ui-monospace, monospace);
-    font-size: 11px;
-    color: var(--sho-muted, #888);
-  }
-  .digest-hero-counts .val { color: var(--sho-fg, inherit); }
-  .digest-hero-counts .accent { color: var(--sho-accent, #ff7a18); }
-
-  .digest-timeline { margin-top: var(--sho-space-6, 28px); }
-  .digest-timeline-kicker {
-    font-family: var(--sho-mono, ui-monospace, monospace);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--sho-muted, #888);
-    margin-bottom: var(--sho-space-3, 12px);
-  }
-  .digest-timeline-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--sho-space-3, 12px);
-  }
-  .digest-timeline-row {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: var(--sho-space-3, 12px) var(--sho-space-4, 16px);
-    border: 1px solid var(--sho-border, #2a2a2a);
-    text-decoration: none;
-    color: inherit;
-  }
-  .digest-timeline-row:hover { border-color: var(--sho-accent, #ff7a18); }
-  .digest-timeline-meta {
-    font-family: var(--sho-mono, ui-monospace, monospace);
-    font-size: 11px;
-    color: var(--sho-muted, #888);
-    display: flex;
-    justify-content: space-between;
-  }
-  .digest-timeline-meta .type {
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-  .digest-timeline-summary {
-    font-size: 13px;
-    line-height: 1.5;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .digest-empty {
-    padding: var(--sho-space-5, 20px);
-    border: 1px dashed var(--sho-border, #2a2a2a);
-    color: var(--sho-muted, #888);
-    font-size: 13px;
-    text-align: center;
-  }
-  .digest-ask-cta {
-    margin-left: auto;
-    font-family: var(--sho-mono, ui-monospace, monospace);
-    font-size: 12px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--sho-accent, #ff7a18);
-    text-decoration: none;
-    padding: 6px 12px;
-    border: 1px solid var(--sho-accent, #ff7a18);
-  }
-  .digest-ask-cta:hover { background: var(--sho-accent, #ff7a18); color: #000; }
-  .digest-conflict-banner {
-    margin: var(--sho-space-4, 16px) 0;
-    padding: var(--sho-space-3, 12px) var(--sho-space-4, 16px);
-    border: 1px solid #d04040;
-    border-left-width: 3px;
-    background: rgba(208, 64, 64, 0.06);
-    color: #e8a0a0;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-  .digest-conflict-banner-title {
-    font-family: var(--sho-mono, ui-monospace, monospace);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-    color: #ffb0b0;
-  }
-  .digest-conflict-banner ul { margin: 6px 0 0 0; padding-left: 20px; }
-  .digest-conflict-banner li { margin-bottom: 2px; font-family: var(--sho-mono, ui-monospace, monospace); font-size: 12px; }
-  .digest-conflict-banner .device { color: var(--sho-muted, #888); }
-  .digest-conflict-banner .hint {
-    margin-top: 8px;
-    color: var(--sho-muted, #888);
-    font-size: 12px;
-  }
-</style>
+<link rel="stylesheet" href="/static/shosho/bridge-digests.css?v={{ asset_version | default('') }}">
 </head>
 <body class="sho bridge-page bridge-page--scroll">
   {% from "_chassis_nav.html" import chassis_nav %}
@@ -152,23 +16,23 @@
 
   <section class="pg-subheader">
     <h1 class="pg-title">Digests</h1>
-    <span class="pg-stamp">TAIPEI · {{ today }}</span>
     <a class="digest-ask-cta" href="/bridge/digests/ask">Ask →</a>
   </section>
 
+  <main class="digest-page">
   {% if conflicts %}
     <section class="digest-conflict-banner" role="alert">
       <div class="digest-conflict-banner-title">⚠ Syncthing 衝突檔 · {{ conflicts | length }}</div>
       <div>偵測到 vault 內有兩裝置同時編輯產生的 conflict file。請進 vault 手動 review 後刪除：</div>
       <ul>
         {% for c in conflicts[:5] %}
-          <li>{{ c.relative_path }} <span class="device">· {{ c.device }} · {{ c.conflict_timestamp }}</span></li>
+          <li>{{ c.relative_path }} <span class="digest-conflict-banner-device">· {{ c.device }} · {{ c.conflict_timestamp }}</span></li>
         {% endfor %}
         {% if conflicts | length > 5 %}
           <li>… 還有 {{ conflicts | length - 5 }} 個</li>
         {% endif %}
       </ul>
-      <div class="hint">詳細處理流程見 <code>docs/runbooks/syncthing-folder-types.md</code>。</div>
+      <div class="digest-conflict-banner-hint">詳細處理流程見 <code>docs/runbooks/syncthing-folder-types.md</code>。</div>
     </section>
   {% endif %}
 
@@ -176,22 +40,51 @@
     {% for card in hero_cards %}
       {% if card.entry %}
         <a class="digest-hero" href="{{ card.entry.detail_url }}">
-          <span class="digest-hero-label">{{ card.label }} · LATEST</span>
-          <span class="digest-hero-date">{{ card.entry.date }}</span>
+          <header class="digest-hero-head">
+            <span class="digest-hero-label">{{ card.label }} · LATEST</span>
+            <span class="digest-hero-date">{{ card.entry.date }}</span>
+          </header>
           <p class="digest-hero-summary">{{ card.entry.summary or '無摘要' }}</p>
-          <span class="digest-hero-counts">
+          <div class="digest-hero-counts">
             {% if card.entry.selected_count is not none %}
-              selected <span class="val">{{ card.entry.selected_count }}</span>
+              <span>selected <span class="digest-hero-counts-val">{{ card.entry.selected_count }}</span></span>
             {% endif %}
             {% if card.entry.editor_pick_count is not none %}
-              · editor picks <span class="accent">{{ card.entry.editor_pick_count }}</span>
+              <span>· ⭐ picks <span class="digest-hero-counts-accent">{{ card.entry.editor_pick_count }}</span></span>
             {% endif %}
-          </span>
+          </div>
+          {% if card.preview %}
+            <ul class="digest-hero-preview">
+              {% for s in card.preview %}
+                <li class="digest-hero-preview-row">
+                  <div class="digest-hero-preview-meta">
+                    {% set tier = 'high' if (s.score or 0) >= 3.5 else ('mid' if (s.score or 0) >= 3.0 else 'low') %}
+                    <span class="digest-score-chip digest-score-chip--{{ tier }}"
+                          title="{% if s.score_dims %}{% for d, v in s.score_dims %}{{ d }}{{ v }} {% endfor %}{% endif %}">
+                      {% if s.is_editor_pick %}⭐{% endif %}{{ '%.1f'|format(s.score) if s.score else '—' }}
+                    </span>
+                    {% set tag = s.domain or s.category %}
+                    {% if tag %}<span class="digest-tag">{{ tag }}</span>{% endif %}
+                    {% set source = s.journal_name or s.publisher %}
+                    {% if source %}
+                      <span class="digest-hero-preview-source">
+                        {% if s.journal_name %}📖{% else %}📡{% endif %} {{ source }}
+                        {% if s.journal_quartile %} · <span class="digest-hero-preview-quartile">{{ s.journal_quartile }}</span>{% endif %}
+                      </span>
+                    {% endif %}
+                  </div>
+                  <span class="digest-hero-preview-title">{{ s.title }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
         </a>
       {% else %}
-        <div class="digest-hero is-empty">
-          <span class="digest-hero-label">{{ card.label }}</span>
-          <span class="digest-hero-date">—</span>
+        <div class="digest-hero is-empty" aria-disabled="true">
+          <header class="digest-hero-head">
+            <span class="digest-hero-label">{{ card.label }}</span>
+            <span class="digest-hero-date">—</span>
+          </header>
           <p class="digest-hero-summary">尚無 digest</p>
         </div>
       {% endif %}
@@ -199,22 +92,40 @@
   </section>
 
   <section class="digest-timeline">
-    <div class="digest-timeline-kicker">過去 7 天</div>
-    {% if timeline %}
-      <div class="digest-timeline-list">
-        {% for e in timeline %}
-          <a class="digest-timeline-row" href="{{ e.detail_url }}">
-            <div class="digest-timeline-meta">
-              <span class="type">{{ type_label[e.type] }}</span>
-              <span>{{ e.date }}</span>
-            </div>
-            <div class="digest-timeline-summary">{{ e.summary or '無摘要' }}</div>
-          </a>
-        {% endfor %}
+    <header class="digest-timeline-head">
+      <div class="digest-timeline-kicker">過去 7 天</div>
+      <div class="digest-timeline-legend">
+        <span class="digest-timeline-legend-item">📚 PubMed</span>
+        <span class="digest-timeline-legend-item">🤖 AI News</span>
       </div>
+    </header>
+    {% set ns = namespace(has_any=false) %}
+    {% for d, slots in timeline_by_date %}
+      {% if slots.pubmed or slots.ai %}{% set ns.has_any = true %}{% endif %}
+    {% endfor %}
+    {% if ns.has_any %}
+      <ol class="digest-timeline-grid">
+        {% for d, slots in timeline_by_date %}
+          <li class="digest-timeline-row">
+            <span class="digest-timeline-date">{{ d }}</span>
+            {% for t_slug in ['pubmed', 'ai'] %}
+              {% set e = slots[t_slug] %}
+              {% if e %}
+                <a class="digest-timeline-cell" href="{{ e.detail_url }}">
+                  <span class="digest-timeline-cell-icon">{% if t_slug == 'pubmed' %}📚{% else %}🤖{% endif %}</span>
+                  <span class="digest-timeline-cell-summary">{{ e.summary or '無摘要' }}</span>
+                </a>
+              {% else %}
+                <span class="digest-timeline-cell digest-timeline-cell--empty" aria-hidden="true">—</span>
+              {% endif %}
+            {% endfor %}
+          </li>
+        {% endfor %}
+      </ol>
     {% else %}
       <div class="digest-empty">過去 7 天無 digest（Robin / Franky cron 是否正常？）</div>
     {% endif %}
   </section>
+  </main>
 </body>
 </html>
