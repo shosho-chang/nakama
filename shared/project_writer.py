@@ -262,9 +262,7 @@ def update_task_status(
     unknown values so callers don't accidentally write garbage.
     """
     if status not in VALID_TASK_STATUSES:
-        raise ProjectWriteError(
-            f"unknown task status {status!r}; valid: {VALID_TASK_STATUSES}"
-        )
+        raise ProjectWriteError(f"unknown task status {status!r}; valid: {VALID_TASK_STATUSES}")
 
     project_slug = unicodedata.normalize("NFC", project_slug)
     task_name = unicodedata.normalize("NFC", task_name)

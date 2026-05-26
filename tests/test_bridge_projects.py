@@ -430,6 +430,7 @@ class TestTaskDeleteEndpoint:
         # Patch both the writer module and the imported alias in the router.
         monkeypatch.setattr(project_writer, "delete_task", _fake_delete)
         import thousand_sunny.routers.bridge_projects as bp_module
+
         monkeypatch.setattr(bp_module, "delete_task", _fake_delete)
 
         r = client.post(
@@ -460,9 +461,9 @@ class TestCreateTaskEndpoint:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        task_md = (
-            tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Filming v2.md"
-        ).read_text(encoding="utf-8")
+        task_md = (tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Filming v2.md").read_text(
+            encoding="utf-8"
+        )
         fm = yaml.safe_load(task_md.split("---")[1])
         assert fm["title"] == "肌酸的妙用 - Filming v2"
         assert fm["預估🍅"] == 3
@@ -475,9 +476,7 @@ class TestCreateTaskEndpoint:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert (
-            tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - 第二輪剪輯.md"
-        ).exists()
+        assert (tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - 第二輪剪輯.md").exists()
 
     def test_rejects_empty_name_400(self, client):
         r = client.post(

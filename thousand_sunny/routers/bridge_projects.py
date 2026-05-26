@@ -459,9 +459,7 @@ async def projects_tasks_new(
         raise HTTPException(status_code=400, detail=f"unknown priority: {priority!r}")
 
     if not (1 <= estimated_pomodoros <= 20):
-        raise HTTPException(
-            status_code=400, detail="estimated_pomodoros must be between 1 and 20"
-        )
+        raise HTTPException(status_code=400, detail="estimated_pomodoros must be between 1 and 20")
 
     try:
         create_task(
@@ -591,9 +589,7 @@ async def projects_manual_pomodoro(
 
     if "application/json" in accept:
         tasks = _scan_tasks(slug)
-        task_actual = next(
-            (t["actual_pomodoros"] for t in tasks if t["name"] == task_name), 0
-        )
+        task_actual = next((t["actual_pomodoros"] for t in tasks if t["name"] == task_name), 0)
         return {
             "task_name": task_name,
             "task_actual": task_actual,
@@ -643,9 +639,7 @@ async def projects_manual_pomodoro_undo(
     )
 
     if "application/json" in accept:
-        task_actual = next(
-            (t["actual_pomodoros"] for t in tasks if t["name"] == task_name), 0
-        )
+        task_actual = next((t["actual_pomodoros"] for t in tasks if t["name"] == task_name), 0)
         return {
             "task_name": task_name,
             "task_actual": task_actual,
@@ -687,9 +681,7 @@ def _write_pomodoro_entry(*, slug: str, task_name: str, now_minus_minutes: int) 
     """
     vault_root = get_vault_path()
     # Snapshot status BEFORE writing the entry — used by the auto-flip below.
-    pre_status = read_task_status(
-        vault_root=vault_root, project_slug=slug, task_name=task_name
-    )
+    pre_status = read_task_status(vault_root=vault_root, project_slug=slug, task_name=task_name)
 
     now = datetime.now(ZoneInfo("Asia/Taipei"))
     start = now.timestamp() - now_minus_minutes * 60

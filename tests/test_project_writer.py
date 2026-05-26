@@ -272,9 +272,7 @@ class TestPopLastTimeentry:
             end_iso="2026-05-25T11:25:00+08:00",
         )
 
-        popped = pop_last_timeentry(
-            vault_root=vault, project_slug="t", task_name="Pre-production"
-        )
+        popped = pop_last_timeentry(vault_root=vault, project_slug="t", task_name="Pre-production")
         assert popped is True
 
         path = vault / "TaskNotes" / "Tasks" / "t - Pre-production.md"
@@ -285,9 +283,7 @@ class TestPopLastTimeentry:
 
     def test_returns_false_when_empty(self, vault: Path):
         # Fixture seeds timeEntries: [] for the task
-        popped = pop_last_timeentry(
-            vault_root=vault, project_slug="t", task_name="Pre-production"
-        )
+        popped = pop_last_timeentry(vault_root=vault, project_slug="t", task_name="Pre-production")
         assert popped is False
 
     def test_updates_dateModified(self, vault: Path):
@@ -320,10 +316,7 @@ class TestTaskStatus:
         )
 
     def test_read_task_status_returns_none_when_missing(self, vault: Path):
-        assert (
-            read_task_status(vault_root=vault, project_slug="t", task_name="nonexistent")
-            is None
-        )
+        assert read_task_status(vault_root=vault, project_slug="t", task_name="nonexistent") is None
 
     def test_update_task_status_writes_value(self, vault: Path):
         update_task_status(
@@ -342,9 +335,7 @@ class TestTaskStatus:
 
     def test_update_task_status_404_when_missing(self, vault: Path):
         with pytest.raises(ProjectWriteError, match="not found"):
-            update_task_status(
-                vault_root=vault, project_slug="t", task_name="ghost", status="done"
-            )
+            update_task_status(vault_root=vault, project_slug="t", task_name="ghost", status="done")
 
 
 class TestDeleteTask:

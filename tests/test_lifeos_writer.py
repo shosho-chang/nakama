@@ -144,9 +144,7 @@ class TestRenderProject:
         marker = "<!-- vault:human-only-section -->"
         assert marker in body
         for heading in ("## 專案描述", "## 預期成果", "## Draft Outline", "## 專案筆記"):
-            assert f"{marker}\n{heading}" in body, (
-                f"youtube: {heading} missing human-only marker"
-            )
+            assert f"{marker}\n{heading}" in body, f"youtube: {heading} missing human-only marker"
 
     def test_canonical_zoro_keywords_marker_present_in_blog(self):
         """ADR-028 §11: canonical %%agent-zoro-keywords-*%% retained in blog/research
