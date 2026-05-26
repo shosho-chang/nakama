@@ -54,7 +54,8 @@ from typing import Protocol
 from shared.attachment_migration import migrate_slug_attachments
 from shared.log import get_logger
 from shared.promotion_acceptance_gate import AcceptanceGate
-from shared.promotion_renderer import render_concept_page, render_source_page
+from shared.promotion_renderer import render_review_item
+from shared.promotion_targets import resolve_target_path
 from shared.schemas.promotion_commit import (
     AcceptanceFinding,
     AcceptanceResult,
@@ -374,7 +375,7 @@ class PromotionCommitService:
             # human_decision.decision == "approve" — fall through to write.
 
             # Step 3 — pre-write read-back.
-            target = _resolve_target_path(item)
+            target = resolve_target_path(item)
             if target is None:
                 # Defensive: gate should have emitted target_kb_path_missing.
                 deferred_ids.append(item_id)
@@ -402,7 +403,7 @@ class PromotionCommitService:
 
             # Step 5 — render.
             try:
-                content_str = _render_for_item(item, manifest)
+                content_str = render_review_item(item, manifest)
             except (KeyError, ValueError, TypeError) as exc:
                 # KeyError / ValueError surface caller-data issues; TypeError
                 # narrowly here is intentional for renderer-input shape bugs
@@ -454,9 +455,17 @@ class PromotionCommitService:
             # Step 8b — ADR-028 §7: migrate companion attachments from Inbox
             # to KB/Attachments/{slug}/, rewrite image refs in the just-written
             # source page. Idempotent: no-op if attachments are already at
-            # destination or never existed.
-            if isinstance(item, SourcePageReviewItem):
-                _migrate_source_attachments(item, target, vault_root)
+            # destination or never existed. ADR-034 v2 §D3 dispatch via match.
+            match item:
+                case SourcePageReviewItem():
+                    _migrate_source_attachments(item, target, vault_root)
+                case ConceptReviewItem():
+                    pass  # concept items have no Inbox companion attachments
+                case _:
+                    raise NotImplementedError(
+                        f"attachment-migration step: no arm for ReviewItem subtype "
+                        f"{type(item).__name__!r}. Add a `case` per ADR-034 v2 §D3."
+                    )
 
             # Step 9 — append to approved.
             approved_ids.append(item_id)
@@ -496,29 +505,6 @@ class PromotionCommitService:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _resolve_target_path(
-    item: SourcePageReviewItem | ConceptReviewItem,
-) -> str | None:
-    """Resolve the vault-relative target path for an item.
-
-    For ``SourcePageReviewItem``: ``item.target_kb_path`` directly.
-
-    For ``ConceptReviewItem``: when ``canonical_match.matched_concept_path``
-    is set (update path) use it; otherwise return ``None`` (gate should
-    have emitted ``target_kb_path_missing``).
-
-    Returns ``None`` when the item has no resolvable target — caller skips.
-    """
-    if isinstance(item, SourcePageReviewItem):
-        if item.target_kb_path and item.target_kb_path.strip():
-            return item.target_kb_path
-        return None
-    # ConceptReviewItem
-    if item.canonical_match is not None and item.canonical_match.matched_concept_path:
-        return item.canonical_match.matched_concept_path
-    return None
 
 
 def _migrate_source_attachments(
@@ -599,16 +585,6 @@ def _inbox_dir_from_evidence(
         if sp.startswith("Inbox/"):
             return vault_root / Path(sp).parent
     return None
-
-
-def _render_for_item(
-    item: SourcePageReviewItem | ConceptReviewItem,
-    manifest: PromotionManifest,
-) -> str:
-    """Dispatch render call to the right helper."""
-    if isinstance(item, SourcePageReviewItem):
-        return render_source_page(item, manifest)
-    return render_concept_page(item, manifest)
 
 
 def _compute_promotion_status(
