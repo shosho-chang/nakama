@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Nakama favicon — orange diagonal lightning bolt (PANTONE 165 PC = --sho-accent).
+       Top tip at (20, 2) leans upper-right; bottom tip at (12, 30) lower-left.
+       Pure path, no stroke — crisp at 16x16 and Retina-scaled. -->
+  <path fill="#ff7a18" d="M20 2 L6 18 L13 18 L12 30 L26 14 L19 14 Z"/>
+</svg>

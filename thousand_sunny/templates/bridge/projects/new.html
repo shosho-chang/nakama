@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · New Project</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-projects.css?v={{ asset_version | default('') }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='projects') }}
+
+  <section class="pg-subheader">
+    <h1 class="pg-title">New Project</h1>
+    <span class="pg-stamp">non-Slack fallback</span>
+  </section>
+
+  <form class="pj-form" method="post" action="/bridge/projects">
+    <label class="pj-field">
+      <span class="pj-label">標題（檔名）<span class="pj-req">*</span></span>
+      <input type="text" name="title" required maxlength="120" placeholder="例如：肌酸的妙用">
+      <span class="pj-hint">直接成為 vault 內的 <code>Projects/{title}.md</code> 檔名</span>
+    </label>
+
+    <label class="pj-field">
+      <span class="pj-label">內容類型 <span class="pj-req">*</span></span>
+      <select name="content_type" required>
+        {% for ct in content_types %}
+          <option value="{{ ct }}" {% if ct == 'youtube' %}selected{% endif %}>{{ ct }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="pj-field">
+      <span class="pj-label">搜尋主題（Zoro / KB 抓取用）</span>
+      <input type="text" name="search_topic" maxlength="120" placeholder="預設與標題相同">
+    </label>
+
+    <fieldset class="pj-field pj-field--inline">
+      <legend class="pj-label">優先級</legend>
+      <label><input type="radio" name="priority" value="first"> first</label>
+      <label><input type="radio" name="priority" value="high"> high</label>
+      <label><input type="radio" name="priority" value="medium" checked> medium</label>
+      <label><input type="radio" name="priority" value="low"> low</label>
+    </fieldset>
+
+    <fieldset class="pj-field pj-field--inline">
+      <legend class="pj-label">DYL 領域</legend>
+      <label><input type="radio" name="area" value="work" checked> work</label>
+      <label><input type="radio" name="area" value="play"> play</label>
+      <label><input type="radio" name="area" value="love"> love</label>
+      <label><input type="radio" name="area" value="health"> health</label>
+    </fieldset>
+
+    <div class="pj-form-actions">
+      <a class="pj-btn-secondary" href="/bridge/projects">取消</a>
+      <button type="submit" class="pj-btn-primary">建立 →</button>
+    </div>
+  </form>
+</body>
+</html>

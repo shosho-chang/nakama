@@ -1,0 +1,32 @@
+<div class="pj-tab-panel" id="research" data-tab="research" {% if tab != 'research' %}hidden{% endif %}>
+  <header class="pj-section-header">
+    <h2 class="pj-section-title">🔍 Research</h2>
+    <p class="pj-section-hint">
+      KB Research + Zoro 關鍵字研究。Web-driven — 結果不寫回 md body（避免 Obsidian dataviewjs 崩潰）。
+    </p>
+  </header>
+
+  <div class="pj-research-actions">
+    <button class="pj-btn-primary" type="button" data-action="kb-research"
+            data-search-topic="{{ entry.search_topic }}">
+      🔍 從 KB 抓取相關素材
+    </button>
+    <a class="pj-btn-secondary" href="/bridge/zoro/keyword-research?topic={{ entry.search_topic | urlencode }}&content_type={{ entry.content_type }}" target="_blank">
+      🗝 Zoro 關鍵字研究 →
+    </a>
+  </div>
+
+  <div class="pj-research-results" id="kb-research-results" hidden>
+    <h3 class="pj-section-subtitle">KB 命中</h3>
+    <p class="pj-empty-hint">點上方按鈕觸發查詢。</p>
+  </div>
+
+  <details class="pj-research-tip">
+    <summary>💡 Research 工作流提示</summary>
+    <ul>
+      <li><strong>先填 Brief 的 one sentence</strong>，KB 抓取會以它為 query 種子。</li>
+      <li>Zoro 關鍵字研究結果留在獨立頁，<strong>不寫回此 md</strong>（Tier C 設計）— 需要時複製貼上到 Hook 或 Script。</li>
+      <li>如要將某條素材轉成正式 Source，到 Reader 走 promotion 流程。</li>
+    </ul>
+  </details>
+</div>

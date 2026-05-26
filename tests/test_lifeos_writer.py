@@ -62,14 +62,30 @@ class TestRenderProject:
         assert fm["content_type"] == "blog"
         assert fm["search_topic"] == "morning routine"
 
-    def test_body_substitutes_title_in_bases_filter(self):
+    def test_title_substituted_in_body(self):
+        """Tier C: template still substitutes __TITLE__ into H1, but no more
+        base-filter link()-injection (Bases/dataviewjs stripped per ADR-031 D3)."""
         _, body = render_project("超加工食品", "youtube")
-        assert 'link("超加工食品")' in body
+        assert "# 超加工食品" in body
         assert "__TITLE__" not in body
 
     def test_youtube_body_has_required_sections(self):
+        """Tier C youtube template: minimal scaffold only — no Bases/dataviewjs
+        blocks (those land in Bridge Web UI per ADR-031 D3)."""
         _, body = render_project("X", "youtube")
         for section in [
+            "## 專案描述",
+            "## 預期成果",
+            "## Draft Outline",
+            "## Script / Outline",
+            "## 專案筆記",
+        ]:
+            assert section in body, f"youtube body missing section: {section}"
+
+    def test_youtube_body_strips_legacy_artifacts(self):
+        """Tier C strips all Bases / dataviewjs / Zoro marker blobs per ADR-031 D3."""
+        _, body = render_project("X", "youtube")
+        for legacy in [
             "## 🎯 對應 OKR",
             "## ✅ Tasks",
             "## 📊 番茄統計",
@@ -77,11 +93,11 @@ class TestRenderProject:
             "## 📚 KB Research",
             "## 🗝️ Keyword Research",
             "%%agent-zoro-keywords-start%%",
-            "%%agent-zoro-keywords-end%%",
-            "## Script / Outline",
-            "## 專案筆記",
+            "%%KW-START%%",
+            "```base",
+            "```dataviewjs",
         ]:
-            assert section in body, f"youtube body missing section: {section}"
+            assert legacy not in body, f"youtube body still has Tier C-stripped artifact: {legacy}"
 
     def test_research_body_has_required_sections(self):
         _, body = render_project("X", "research")
@@ -121,17 +137,19 @@ class TestRenderProject:
         assert f"{marker}\n## 專案描述" in body, "blog: 專案描述 missing human-only marker"
         assert f"{marker}\n## 預期成果" in body, "blog: 預期成果 missing human-only marker"
 
-    def test_youtube_has_human_only_section_marker(self):
+    def test_youtube_has_human_only_section_markers(self):
+        """Tier C: human-only sections (專案描述 / 預期成果 / Draft Outline / 專案筆記)
+        carry `<!-- vault:human-only-section -->` markers."""
         _, body = render_project("X", "youtube")
         marker = "<!-- vault:human-only-section -->"
         assert marker in body
-        assert f"{marker}\n## 👄 One Sentence" in body, (
-            "youtube: One Sentence section missing human-only marker"
-        )
+        for heading in ("## 專案描述", "## 預期成果", "## Draft Outline", "## 專案筆記"):
+            assert f"{marker}\n{heading}" in body, f"youtube: {heading} missing human-only marker"
 
-    def test_canonical_zoro_keywords_marker_present(self):
-        """ADR-028 §11: legacy %%KW-*%% replaced by %%agent-zoro-keywords-*%%."""
-        for ct in ("blog", "youtube"):
+    def test_canonical_zoro_keywords_marker_present_in_blog(self):
+        """ADR-028 §11: canonical %%agent-zoro-keywords-*%% retained in blog/research
+        templates (Tier C strips them from youtube/podcast only — ADR-031 D3)."""
+        for ct in ("blog",):
             _, body = render_project("X", ct)
             assert "%%agent-zoro-keywords-start%%" in body, (
                 f"{ct}: canonical zoro marker -start missing"
@@ -139,8 +157,15 @@ class TestRenderProject:
             assert "%%agent-zoro-keywords-end%%" in body, (
                 f"{ct}: canonical zoro marker -end missing"
             )
-            assert "%%KW-START%%" not in body, f"{ct}: legacy KW-START still present"
-            assert "%%KW-END%%" not in body, f"{ct}: legacy KW-END still present"
+
+    def test_youtube_no_keyword_markers(self):
+        """ADR-031 D3: Tier C strips Zoro keyword markers from youtube/podcast templates."""
+        for ct in ("youtube", "podcast"):
+            _, body = render_project("X", ct)
+            assert "%%agent-zoro-keywords-start%%" not in body, (
+                f"{ct}: Tier C should not emit zoro marker"
+            )
+            assert "%%KW-START%%" not in body, f"{ct}: legacy KW-START should be stripped"
 
 
 class TestRenderTask:
@@ -192,7 +217,8 @@ class TestCreateProjectWithTasks:
         assert fm["content_type"] == "youtube"
         assert fm["priority"] == "first"
         assert fm["tags"] == ["project", "youtube"]
-        assert 'link("肌酸的妙用")' in body
+        # Title appears in H1 (Tier C: no base-filter link() injection)
+        assert "# 肌酸的妙用" in body
 
     def test_task_files_have_wikilink_to_project(self, tmp_path):
         result = create_project_with_tasks(

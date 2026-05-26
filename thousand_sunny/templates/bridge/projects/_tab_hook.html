@@ -1,0 +1,33 @@
+<div class="pj-tab-panel" id="hook" data-tab="hook" {% if tab != 'hook' %}hidden{% endif %}>
+  <header class="pj-section-header">
+    <h2 class="pj-section-title">🪝 Hook</h2>
+    <p class="pj-section-hint">
+      30–60 秒口語開場，台灣慣用節奏約 200–300 字/分鐘。soft cap ≤ 300 字（panel-tuned）。
+    </p>
+  </header>
+
+  <form class="pj-inline-form" method="post"
+        action="/bridge/projects/{{ entry.slug }}/frontmatter">
+    <input type="hidden" name="field" value="hook_text">
+    <input type="hidden" name="tab" value="hook">
+    <label class="pj-label">
+      Hook text
+      <span class="pj-counter" data-counter-source="hook-text">
+        <span class="pj-count-now">{{ entry.hook_text | length }}</span> / 300 字
+      </span>
+    </label>
+    <textarea id="hook-text" name="value" rows="10" maxlength="800" data-counter-target
+              placeholder="你以為肌酸只是健身房裡那罐白白的粉？最新的隨機對照試驗顯示，它對 65 歲以上族群的記憶力，有 12% 統計顯著的改善——而且 5g/天的劑量、沒有任何副作用報告。今天我們不講運動表現……">{{ entry.hook_text }}</textarea>
+    <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存</button>
+  </form>
+
+  <details class="pj-research-tip">
+    <summary>💡 Hook 寫作原則（Master Storyteller persona reference）</summary>
+    <ul>
+      <li><strong>30 秒內製造認知落差</strong>：「你以為 X？其實 Y」是經典結構。</li>
+      <li><strong>具體數字勝過抽象描述</strong>：「12% 統計顯著」比「有效果」強。</li>
+      <li><strong>每段結尾埋下一個鉤子</strong>：「今天我們不講運動表現」就是要讓觀眾停留問「那要講什麼？」。</li>
+      <li>Review tab 會以 Master Storyteller persona 給 1-5 分判斷。</li>
+    </ul>
+  </details>
+</div>

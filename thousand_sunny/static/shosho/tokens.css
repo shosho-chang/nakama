@@ -74,6 +74,7 @@
   --sho-warning: oklch(0.72 0.140 75);
   --sho-error:   oklch(0.58 0.180 28);
   --sho-info:    oklch(0.62 0.090 235);
+  --sho-violet:  oklch(0.55 0.155 290);   /* priority=first (Tier C cards) */
 
   /* ── Type — single family, mono role kept via uppercase + tracking ──── */
   --sho-font-sans: "LINE Seed TW", "Noto Sans TC", "PingFang TC", ui-sans-serif, system-ui, sans-serif;
@@ -92,6 +93,10 @@
   --sho-s-7: 48px;  --sho-s-8: 64px;  --sho-s-9: 96px;
   --sho-s-10: 128px;
   --sho-r-1: 4px;  --sho-r-2: 8px;  --sho-r-3: 12px;  --sho-r-pill: 999px;
+
+  /* ── Page gutter — matches .chassis (0 40px) + .pg-subheader (20 40 14)
+       so body content sits on the same vertical rule as the header. ──── */
+  --sho-gutter: 40px;
 
   /* ── Focus ring — two-step orange on bg ─────────────────────────────── */
   --sho-focus: 0 0 0 2px var(--sho-bg), 0 0 0 4px var(--sho-accent);

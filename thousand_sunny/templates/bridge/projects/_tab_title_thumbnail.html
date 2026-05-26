@@ -1,0 +1,42 @@
+<div class="pj-tab-panel" id="title-thumbnail" data-tab="title-thumbnail" {% if tab != 'title-thumbnail' %}hidden{% endif %}>
+  <header class="pj-section-header">
+    <h2 class="pj-section-title">🎯 Title & Thumbnail</h2>
+    <p class="pj-section-hint">
+      Stage 4：CTR pair。Title + Thumbnail 重要性甚至比 Hook 還高 — 它們在 youtube feed
+      / podcast 列表是讀者第一個看到的東西。
+    </p>
+  </header>
+
+  <form class="pj-inline-form" method="post"
+        action="/bridge/projects/{{ entry.slug }}/frontmatter">
+    <input type="hidden" name="field" value="title_candidates">
+    <input type="hidden" name="tab" value="title-thumbnail">
+    <label class="pj-label">標題候選（每行一個，1-10 條）</label>
+    <textarea name="value" rows="6" placeholder="例：
+肌酸不只練肌肉：3 個你沒聽過的妙用
+65 歲開始吃肌酸？最新研究說：來得及
+每天 5g，改變你大腦的化學反應"
+>{% for t in entry.title_candidates %}{{ t }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+    <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存候選</button>
+  </form>
+
+  <form class="pj-inline-form" method="post"
+        action="/bridge/projects/{{ entry.slug }}/frontmatter">
+    <input type="hidden" name="field" value="thumbnail_concept">
+    <input type="hidden" name="tab" value="title-thumbnail">
+    <label class="pj-label">Thumbnail concept（描述視覺概念，後續圖像生成在 PR3+）</label>
+    <textarea name="value" rows="5" placeholder="例：左側健身房肌酸罐（褪色處理 = 過時印象），右側大腦 MRI 剖面（高飽和橙色 = 新發現），中間黃色閃電符號連接"
+>{{ entry.thumbnail_concept }}</textarea>
+    <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存概念</button>
+  </form>
+
+  <details class="pj-research-tip">
+    <summary>💡 CTR pair 設計原則</summary>
+    <ul>
+      <li><strong>Title 與 Thumbnail 互為背景，不重複資訊。</strong> Title 講「what」/ Thumbnail 講「why curious」。</li>
+      <li>標題候選做 A/B 對照，<strong>留 3-5 條到發布前再決定</strong>。</li>
+      <li>Thumbnail 高飽和度 + 強對比；老花眼也要 3 公尺外可辨識。</li>
+    </ul>
+  </details>
+</div>

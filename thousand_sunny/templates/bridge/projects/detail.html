@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ entry.title }} · Bridge</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-projects.css?v={{ asset_version | default('') }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll bridge-page--with-dock"
+      data-project-slug="{{ entry.slug }}"
+      data-pomodoro-minutes="{{ pomodoro_minutes }}">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='projects') }}
+
+  <section class="pg-subheader">
+    <a class="pj-back" href="/bridge/projects">← all projects</a>
+    <h1 class="pg-title">{{ entry.title }}</h1>
+    <span class="pg-stamp">{{ entry.content_type | upper }} · {{ entry.status }}</span>
+  </section>
+
+  {# Tab bar — soft gate visualization #}
+  <nav class="pj-tabbar" aria-label="Project stage gate">
+    {% for slug, label_en, label_zh in tabs %}
+      <a class="pj-tab {% if slug == tab %}is-active{% endif %} pj-tab--{{ tab_status[slug] }}"
+         href="#{{ slug }}"
+         data-tab-slug="{{ slug }}"
+         aria-current="{{ 'page' if slug == tab else 'false' }}">
+        <span class="pj-tab-icon">{{ tab_status[slug] }}</span>
+        <span class="pj-tab-label-en">{{ label_en }}</span>
+        <span class="pj-tab-label-zh">{{ label_zh }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+
+  <section class="pj-tab-panels">
+    {% include "projects/_tab_brief.html" %}
+    {% include "projects/_tab_research.html" %}
+    {% include "projects/_tab_title_thumbnail.html" %}
+    {% include "projects/_tab_hook.html" %}
+    {% include "projects/_tab_script.html" %}
+    {% include "projects/_tab_review.html" %}
+    {% include "projects/_tab_publish.html" %}
+  </section>
+
+  {% include "projects/_pomodoro_dock.html" %}
+
+  <script src="/static/shosho/bridge-projects.js?v={{ asset_version | default('') }}"></script>
+</body>
+</html>

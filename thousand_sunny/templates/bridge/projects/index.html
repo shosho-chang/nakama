@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Projects</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-projects.css?v={{ asset_version | default('') }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='projects') }}
+
+  <section class="pg-subheader">
+    <h1 class="pg-title">Projects</h1>
+    <span class="pg-stamp">{{ entries | length }} active</span>
+    <a class="pj-new-cta" href="/bridge/projects/new">+ NEW</a>
+  </section>
+
+  {% if entries %}
+    <section class="pj-grid">
+      {% for e in entries %}
+        <a class="pj-card pj-card--{{ e.status }} pj-card--{{ e.priority }}"
+           href="{{ e.detail_url }}">
+          <div class="pj-card-meta">
+            <span class="pj-tag pj-tag--{{ e.content_type }}">{{ e.content_type | upper }}</span>
+            <span class="pj-tag pj-tag--status pj-tag--status-{{ e.status }}">{{ e.status }}</span>
+            <span class="pj-tag pj-tag--priority pj-tag--priority-{{ e.priority }}">{{ e.priority }}</span>
+          </div>
+          <h2 class="pj-card-title">{{ e.title }}</h2>
+          {% if e.one_sentence %}
+            <p class="pj-card-sentence">{{ e.one_sentence | truncate(120) }}</p>
+          {% else %}
+            <p class="pj-card-sentence pj-card-sentence--empty">尚未填入 one sentence</p>
+          {% endif %}
+          <div class="pj-card-rollup">
+            <span class="pj-rollup-tomato">🍅 <span class="val">{{ e.pomodoro_actual_total }}</span> / <span class="muted">{{ e.pomodoro_est_total }}</span></span>
+            {% if e.created %}
+              <span class="pj-rollup-date">{{ e.created }}</span>
+            {% endif %}
+          </div>
+        </a>
+      {% endfor %}
+    </section>
+  {% else %}
+    <section class="pj-empty">
+      <p>尚無 projects。</p>
+      <a class="pj-new-cta" href="/bridge/projects/new">建立第一個 →</a>
+      <p class="pj-empty-hint">或在 Slack 對 Nami 說：「新專案：[標題] / [youtube|podcast] / 主題：[關鍵字]」</p>
+    </section>
+  {% endif %}
+
+  {% if not include_archived %}
+    <p class="pj-archive-toggle"><a href="?include_archived=1">+ 顯示已歸檔</a></p>
+  {% else %}
+    <p class="pj-archive-toggle"><a href="?">隱藏已歸檔</a></p>
+  {% endif %}
+</body>
+</html>

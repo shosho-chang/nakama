@@ -159,7 +159,7 @@ data/agent_reports/franky/
 | `Journals/Daily/` | 🔒 | 修修 via Templater `tpl-daily-journal.md` | 修修 reads; agents may read | tpl-daily-journal |
 | `Journals/{Weekly,Quarterly,Yearly}/` | 🔒 | 修修 via Templater | 修修 | tpl-weekly-journal, etc |
 | `OKRs/` | 🔒 | 修修 via tpl-okr-{annual,quarterly} | 修修 | tpl-okr-* |
-| `Projects/{title}.md` | 🟡 | Bootstrap `scripts/run_project_bootstrap.py` + `shared/lifeos_writer.py:render_project`; agent buttons §4 marker convention | Brook synthesize, Zoro keyword button, KB Research button | `shared/lifeos_writer.py` + `docs/schemas/project-frontmatter-nested.md` (ADR-027) |
+| `Projects/{title}.md` | 🟡 | Bootstrap `scripts/run_project_bootstrap.py` + `shared/lifeos_writer.py:render_project` (Tier C strip, ADR-031); Bridge Web mutations `thousand_sunny/routers/bridge_projects.py` | Brook synthesize, Bridge Web `/bridge/projects/{slug}`, Obsidian render (prose-only post-Tier C) | `shared/lifeos_writer.py` + `docs/schemas/project-frontmatter-nested.md` (ADR-031 γ schema) |
 | `TaskNotes/Tasks/` | 🟡 | Bootstrap + `gateway/handlers/nami.py:1002` (`write_page` to TaskNotes) + TaskNotes plugin | TaskNotes plugin queries | `shared/lifeos_writer.py:render_task` |
 | `TaskNotes/{Archive,Views}/` | 🤖 | TaskNotes plugin | TaskNotes plugin | Plugin config |
 | `Dashboards/` | 🔒 | 修修 (dataviewjs queries) | Obsidian render | — |
@@ -226,9 +226,11 @@ Agent writes into .md body wrapped in canonical positional markers:
 
 **Currently registered Pattern A sections in `Projects/{title}.md`:**
 
+> **Tier C scope note (ADR-031 PR1):** youtube / podcast templates strip these markers per D3; blog template retains them (D3 D9.c v2 only mandates youtube + podcast strip). Bridge Web `/bridge/projects/{slug}#title-thumbnail` is the canonical interactive surface; legacy md-body marker path retained only for blog projects that would still benefit from in-md persistence.
+
 | Section heading | Marker pair | Producer | Lives in template |
 |---|---|---|---|
-| `## 🗝️ Keyword Research & SEO` | `%%agent-zoro-keywords-start%% / -end%%` | Zoro `/zoro/keyword-research` endpoint | `shared/lifeos_templates/project_blog.md.tpl:195-196` (currently `%%KW-START / %%KW-END`; renamed in Phase 3 PR-A3) |
+| `## 🗝️ Keyword Research & SEO` | `%%agent-zoro-keywords-start%% / -end%%` | Zoro `/zoro/keyword-research` endpoint (md-body write path) | `shared/lifeos_templates/project_blog.md.tpl` (blog only post-ADR-031; youtube/podcast stripped per D3) |
 
 ### Pattern B — DOM-only render (exception)
 
