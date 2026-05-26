@@ -11,8 +11,8 @@
   <form class="pj-inline-form" method="post"
         action="/bridge/projects/{{ entry.slug }}/section/script">
     <input type="hidden" name="tab" value="script">
-    <textarea name="content" rows="20" data-section="Script / Outline" data-body-md="{{ body_md }}"
-              placeholder="正式 script / outline...">{{ body_md | safe }}</textarea>
+    <textarea name="content" rows="20" data-section="Script / Outline"
+              placeholder="正式 script / outline...">{{ body_md }}</textarea>
     <span class="pj-hint">
       ⚠ Web 寫入這個 textarea 內容會替換 md body 中 <code>## Script / Outline</code> 之後的內容。
       未來 PR3+ 會切成只擷取該 section 的編輯器。
