@@ -111,6 +111,30 @@ class DigestIndexer:
                     entries.append(self._entry(t, d))
         return entries
 
+    def last_n_days_by_date(
+        self, n: int = 7, *, skip_today: bool = False
+    ) -> list[tuple[str, dict[str, Optional[DigestEntry]]]]:
+        """Returns ``[(date_iso, {type_slug: entry_or_None})]`` newest first.
+
+        Unlike :meth:`last_n_days`, this includes every date in the window —
+        even when both types are missing — so the landing's "past 7 days"
+        timeline shows a continuous date column instead of skipping days.
+
+        ``skip_today=True`` starts the window at yesterday — useful when the
+        caller already surfaces today's digests separately (hero cards) and
+        doesn't want the timeline to repeat them.
+        """
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        start = 1 if skip_today else 0
+        out: list[tuple[str, dict[str, Optional[DigestEntry]]]] = []
+        for delta in range(start, start + n):
+            d = (today - timedelta(days=delta)).isoformat()
+            slots: dict[str, Optional[DigestEntry]] = {}
+            for t in DIGEST_TYPES:
+                slots[t] = self._entry(t, d) if self._file_for(t, d).exists() else None
+            out.append((d, slots))
+        return out
+
     def get(self, type_: str, date_: str) -> DigestEntry:
         if type_ not in DIGEST_TYPES:
             raise DigestNotFoundError(f"unknown digest type: {type_!r}")
@@ -153,6 +177,26 @@ class DigestIndexer:
         raw = self._file_for(entry.type, entry.date).read_text(encoding="utf-8")
         m = _FRONTMATTER_RE.match(raw)
         return m.group(2) if m else raw
+
+    def load_studies(self, type_: str, date_: str) -> list:
+        """Parse the digest body into structured ``DigestStudy`` entries.
+
+        Returns ``[]`` if the file is missing or the parser finds no entries
+        (e.g. body is corrupted / schema drift). Callers decide whether to
+        fall back to raw markdown rendering or show an empty state. Lazy
+        import keeps the parser optional for indexer-only callers.
+        """
+        from shared.digest_parser import parse_ai_digest, parse_pubmed_digest
+
+        try:
+            body = self.load_text(type_, date_)
+        except DigestNotFoundError:
+            return []
+        if type_ == "pubmed":
+            return parse_pubmed_digest(body)
+        if type_ == "ai":
+            return parse_ai_digest(body)
+        return []
 
     # ── helpers ────────────────────────────────────────────────────────────
 

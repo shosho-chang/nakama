@@ -1,0 +1,98 @@
+{# One study/news entry card — used by digest_detail.html for both PubMed + AI.
+
+   Required context: `s` (DigestStudy), `type_` ("pubmed" | "ai")
+
+   PubMed-only fields: journal_name / journal_quartile / journal_sjr / domain /
+   full_text_label / full_text_url / kb_wikilink / external_url (PubMed URL).
+   AI-only fields: publisher / category / published_at / published_age /
+   key_point / noise_note / external_url (blog URL).
+#}
+{% set tier = 'high' if (s.score or 0) >= 3.5 else ('mid' if (s.score or 0) >= 3.0 else 'low') %}
+<article class="digest-card digest-card--{{ tier }}" data-study-idx="{{ s.idx }}">
+  <header class="digest-card-head">
+    <div class="digest-card-rank">
+      {% if s.is_editor_pick %}<span class="digest-card-pick" title="Editor's Pick">⭐</span>{% endif %}
+      <span class="digest-card-idx">#{{ s.idx }}</span>
+    </div>
+    {% if s.score is not none %}
+      {% set dim_tooltip %}
+        {%- for d, v in s.score_dims -%}
+          {{ d }}{{ v }}{%- if not loop.last %} · {% endif -%}
+        {%- endfor -%}
+      {% endset %}
+      <div class="digest-card-score-wrap" title="{{ dim_tooltip | trim }}">
+        <span class="digest-score-chip digest-score-chip--{{ tier }}">{{ '%.1f'|format(s.score) }}</span>
+        {% if s.score_breakdown %}
+          <span class="digest-card-score-bd">{{ s.score_breakdown | replace('/', '·') }}</span>
+        {% endif %}
+        {% if s.score_secondary is not none %}
+          <span class="digest-card-score-2nd">/ {{ '%.1f'|format(s.score_secondary) }}（4-dim）</span>
+        {% endif %}
+      </div>
+    {% endif %}
+  </header>
+
+  <h3 class="digest-card-title">{{ s.title }}</h3>
+
+  <div class="digest-card-meta">
+    {% if type_ == 'pubmed' %}
+      {% if s.journal_name %}
+        <span class="digest-card-meta-journal">
+          📖 {{ s.journal_name }}
+          {% if s.journal_quartile %}<span class="digest-tag digest-tag--quartile">{{ s.journal_quartile }}</span>{% endif %}
+          {% if s.journal_sjr is not none %}<span class="digest-card-meta-mono">SJR {{ s.journal_sjr }}</span>{% endif %}
+        </span>
+      {% endif %}
+      {% if s.domain %}<span class="digest-tag">{{ s.domain }}</span>{% endif %}
+    {% else %}
+      {% if s.publisher %}<span class="digest-card-meta-journal">📡 {{ s.publisher }}</span>{% endif %}
+      {% if s.category %}<span class="digest-tag">{{ s.category }}</span>{% endif %}
+      {% if s.published_age %}<span class="digest-card-meta-mono">{{ s.published_age }}</span>{% endif %}
+    {% endif %}
+  </div>
+
+  {% if s.verdict %}
+    <div class="digest-card-block digest-card-block--verdict">
+      <div class="digest-card-block-kicker">Verdict</div>
+      <p>{{ s.verdict }}</p>
+    </div>
+  {% endif %}
+
+  {% if s.why %}
+    <div class="digest-card-block">
+      <div class="digest-card-block-kicker">Why this matters</div>
+      <p>{{ s.why }}</p>
+    </div>
+  {% endif %}
+
+  {% if s.key_point %}
+    <div class="digest-card-block">
+      <div class="digest-card-block-kicker">Key</div>
+      <p>{{ s.key_point }}</p>
+    </div>
+  {% endif %}
+
+  {% if s.noise_note %}
+    <div class="digest-card-block digest-card-block--noise">
+      <div class="digest-card-block-kicker">Noise note</div>
+      <p>{{ s.noise_note }}</p>
+    </div>
+  {% endif %}
+
+  <footer class="digest-card-foot">
+    {% if s.full_text_label %}
+      <span class="digest-card-access">{{ s.full_text_label }}</span>
+    {% endif %}
+    {% if s.full_text_url %}
+      <a class="sho-lk" href="{{ s.full_text_url }}" target="_blank" rel="noopener">全文 →</a>
+    {% endif %}
+    {% if s.external_url %}
+      <a class="sho-lk" href="{{ s.external_url }}" target="_blank" rel="noopener">
+        {% if type_ == 'pubmed' %}PubMed{% else %}原文{% endif %} →
+      </a>
+    {% endif %}
+    {% if s.kb_wikilink %}
+      <span class="digest-card-foot-kb sho-mono">📄 [[{{ s.kb_wikilink }}]]</span>
+    {% endif %}
+  </footer>
+</article>

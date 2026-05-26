@@ -20,6 +20,7 @@ Auth: HMAC cookie (mirrors bridge.page_router / projects).
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Form, HTTPException, Request
@@ -60,7 +61,7 @@ def _shosho_asset_version() -> str:
     """8-char hash of the design-system CSS this page links. Busts CF cache."""
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "bridge.css", "bridge-pages.css", "theme.js"):
+    for css in ("tokens.css", "bridge.css", "bridge-pages.css", "bridge-digests.css", "theme.js"):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())
@@ -99,24 +100,37 @@ async def digests_landing(request: Request, nakama_auth: str | None = Cookie(Non
 
     idx = _indexer()
     latest = idx.latest_per_type()
-    timeline = idx.last_n_days(n=7)
+    # Hero already surfaces today's digests; skip today in the timeline so
+    # the past-7-day list doesn't repeat the same content.
+    timeline_by_date = idx.last_n_days_by_date(n=7, skip_today=True)
     conflicts = idx.list_conflict_files()
 
-    hero_cards = [
-        {
-            "type": t,
-            "label": _TYPE_LABEL[t],
-            "entry": latest[t],
-        }
-        for t in DIGEST_TYPES
-    ]
+    hero_cards = []
+    for t in DIGEST_TYPES:
+        entry = latest[t]
+        preview: list = []
+        if entry is not None:
+            try:
+                # Show all entries — user wants the full topic list on the
+                # hero card, not just a top-3 preview.
+                preview = idx.load_studies(t, entry.date)
+            except Exception:  # noqa: BLE001 — parser issue shouldn't break landing
+                logger.exception("load_studies failed: type=%s date=%s", t, entry.date)
+        hero_cards.append(
+            {
+                "type": t,
+                "label": _TYPE_LABEL[t],
+                "entry": entry,
+                "preview": preview,
+            }
+        )
 
     return _templates.TemplateResponse(
         request,
         "digests.html",
         {
             "hero_cards": hero_cards,
-            "timeline": timeline,
+            "timeline_by_date": timeline_by_date,
             "conflicts": conflicts,
             "today": today_taipei().isoformat(),
             "type_label": _TYPE_LABEL,
@@ -211,14 +225,33 @@ async def digest_detail(
     except DigestNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    body_html = render_markdown(body_md, wikilink_resolver=_RESOLVER)
+    # Parse structured studies for card rendering. Editor's note + section
+    # framing come from the markdown intro (before first ## section); render
+    # that block to HTML so we can keep its wikilinks + emphasis without
+    # dumping the per-entry markdown (the card layout supersedes that).
+    try:
+        studies = idx.load_studies(type_, date_)
+    except Exception:  # noqa: BLE001 — parser issue → empty card list
+        logger.exception("load_studies failed: type=%s date=%s", type_, date_)
+        studies = []
+
+    # Extract the intro (everything before the first H2) so we can render
+    # the editor's blockquote / counts line as proper markdown rather than
+    # losing it. If parser found no studies, fall back to full body.
+    if studies:
+        intro_md = re.split(r"^##\s", body_md, maxsplit=1, flags=re.MULTILINE)[0]
+    else:
+        intro_md = body_md
+    intro_html = render_markdown(intro_md, wikilink_resolver=_RESOLVER)
 
     return _templates.TemplateResponse(
         request,
         "digest_detail.html",
         {
             "entry": entry,
-            "body_html": body_html,
+            "type_": type_,
+            "intro_html": intro_html,
+            "studies": studies,
             "type_label": _TYPE_LABEL[type_],
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
