@@ -2,95 +2,213 @@
   <header class="pj-section-header">
     <h2 class="pj-section-title">🎯 Title &amp; Thumbnail</h2>
     <p class="pj-section-hint">
-      Stage 4：CTR pair。Title + Thumbnail 重要性甚至比 Hook 還高 — 它們在 youtube feed
-      / podcast 列表是讀者第一個看到的東西。先讓 Zoro 抓關鍵字 / 趨勢影片 / 標題建議，
-      再從這裡挑/改成最終候選。
+      Stage 4：CTR pair。Title + Thumbnail 重要性甚至比 Hook 還高 — 在 youtube feed
+      / podcast 列表是讀者第一個看到的東西。Zoro 抓關鍵字、LLM brainstorm 候選、
+      渲縮圖、commit 為最終 — 一條龍在這個 tab 做完。
     </p>
   </header>
 
+  {# ── Zoro keyword research (PR3, unchanged) ───────────────────────────── #}
   {% set raw_topic = (entry.raw_frontmatter.get('search_topic') or '') | trim %}
   {% set raw_keywords = entry.raw_frontmatter.get('keywords') or [] %}
-  <div class="pj-research-actions" data-project-slug="{{ entry.slug }}" data-actions-scope="title-thumbnail">
-    <button class="pj-btn-primary" type="button"
-            data-research-action="keyword"
-            {% if not raw_topic %}disabled title="先到 Brief 填 search_topic"{% endif %}>
-      🗝 Zoro 關鍵字研究
-      <span class="pj-research-hint">topic：<code>{{ raw_topic or '（未填）' }}</code></span>
-    </button>
-  </div>
-
-  {% if entry.raw_frontmatter.keyword_research_at %}
-  <div class="pj-research-prior">
-    <span class="pj-research-meta">
-      上次 Zoro 研究：{{ entry.raw_frontmatter.keyword_research_at }}
-      {% if raw_keywords %}
-        · {{ raw_keywords | length }} 個 keywords
-        ({%- for k in raw_keywords[:5] -%}
-          {%- if k is mapping -%}{{ k.keyword or k.keyword_en or '' }}{%- else -%}{{ k }}{%- endif -%}
-          {%- if not loop.last %}、{% endif -%}
-        {%- endfor -%}
-        {%- if raw_keywords | length > 5 %}…{% endif -%})
-      {% endif %}
-    </span>
-    <span class="pj-research-meta-note">點按鈕重跑會覆寫 marker section。</span>
-  </div>
-  {% endif %}
-
-  <div class="pj-research-status" data-research-status hidden>
-    <div class="pj-spinner" aria-hidden="true"></div>
-    <span class="pj-research-status-label">研究中…</span>
-    <span class="pj-research-status-timer" data-timer>0s</span>
-  </div>
-
-  <div class="pj-research-results" id="research-zoro-result" data-research-slot="zoro"
-       {% if not cached_zoro %}hidden{% endif %}>
-    {% if cached_zoro %}
-      {% with result=cached_zoro.result, timestamp=cached_zoro.timestamp, topic=cached_zoro.topic, content_type=cached_zoro.content_type %}
-        {% include "projects/_research_zoro_result.html" %}
-      {% endwith %}
-    {% endif %}
-  </div>
-
-  <section class="pj-tt-finalize">
+  <section class="pj-tt-research">
     <header class="pj-section-header">
-      <h3 class="pj-section-subtitle">📌 最終候選</h3>
+      <h3 class="pj-section-subtitle">🗝 Zoro 關鍵字 / 趨勢影片</h3>
+    </header>
+
+    <div class="pj-research-actions" data-project-slug="{{ entry.slug }}" data-actions-scope="title-thumbnail">
+      <button class="pj-btn-primary" type="button"
+              data-research-action="keyword"
+              {% if not raw_topic %}disabled title="先到 Brief 填 search_topic"{% endif %}>
+        🗝 Zoro 關鍵字研究
+        <span class="pj-research-hint">topic：<code>{{ raw_topic or '（未填）' }}</code></span>
+      </button>
+    </div>
+
+    {% if entry.raw_frontmatter.keyword_research_at %}
+    <div class="pj-research-prior">
+      <span class="pj-research-meta">
+        上次 Zoro 研究：{{ entry.raw_frontmatter.keyword_research_at }}
+        {% if raw_keywords %}
+          · {{ raw_keywords | length }} 個 keywords
+          ({%- for k in raw_keywords[:5] -%}
+            {%- if k is mapping -%}{{ k.keyword or k.keyword_en or '' }}{%- else -%}{{ k }}{%- endif -%}
+            {%- if not loop.last %}、{% endif -%}
+          {%- endfor -%}
+          {%- if raw_keywords | length > 5 %}…{% endif -%})
+        {% endif %}
+      </span>
+      <span class="pj-research-meta-note">點按鈕重跑會覆寫 marker section。</span>
+    </div>
+    {% endif %}
+
+    <div class="pj-research-status" data-research-status hidden>
+      <div class="pj-spinner" aria-hidden="true"></div>
+      <span class="pj-research-status-label">研究中…</span>
+      <span class="pj-research-status-timer" data-timer>0s</span>
+    </div>
+
+    <div class="pj-research-results" id="research-zoro-result" data-research-slot="zoro"
+         {% if not cached_zoro %}hidden{% endif %}>
+      {% if cached_zoro %}
+        {% with result=cached_zoro.result, timestamp=cached_zoro.timestamp, topic=cached_zoro.topic, content_type=cached_zoro.content_type %}
+          {% include "projects/_research_zoro_result.html" %}
+        {% endwith %}
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Title brainstorm (ADR-033 D6 half-symmetric — textarea + LLM button) ─── #}
+  <section class="pj-tt-titles">
+    <header class="pj-section-header">
+      <h3 class="pj-section-subtitle">📝 標題候選</h3>
       <p class="pj-section-hint">
-        從 Zoro 給的 10 條中挑/改，留 3-5 條 A/B 對照到發布前再決定。
+        每行一個 A/B test 變體，1-3 條。發布時 Usopp 可把這幾條丟給 YT 的
+        Test &amp; Compare 同時測（D2 panel-fixed — YT 從 2023 起支援 3-way 標題 A/B）。
       </p>
     </header>
+
+    <form id="title-brainstorm-form" class="pj-inline-form"
+          hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/brainstorm-titles"
+          hx-target="#title-candidates-textarea-wrap"
+          hx-swap="innerHTML"
+          hx-indicator="#title-brainstorm-spinner">
+      <button type="submit" class="pj-btn-primary">
+        🪄 LLM 給我 3 個 A/B 候選
+      </button>
+      <span class="pj-spinner" id="title-brainstorm-spinner" aria-hidden="true" hidden></span>
+    </form>
 
     <form class="pj-inline-form" method="post"
           action="/bridge/projects/{{ entry.slug }}/frontmatter">
       <input type="hidden" name="field" value="title_candidates">
       <input type="hidden" name="tab" value="title-thumbnail">
-      <label class="pj-label">標題候選（每行一個，1-10 條）</label>
-      <textarea name="value" rows="6" placeholder="例：
+      <label class="pj-label">標題候選（每行一個，1-3 條）</label>
+      <div id="title-candidates-textarea-wrap">
+        <textarea name="value" rows="6" placeholder="例：
 肌酸不只練肌肉：3 個你沒聽過的妙用
 65 歲開始吃肌酸？最新研究說：來得及
 每天 5g，改變你大腦的化學反應"
 >{% for t in entry.title_candidates %}{{ t }}{% if not loop.last %}
 {% endif %}{% endfor %}</textarea>
-      <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存候選</button>
-    </form>
-
-    <form class="pj-inline-form" method="post"
-          action="/bridge/projects/{{ entry.slug }}/frontmatter">
-      <input type="hidden" name="field" value="thumbnail_concept">
-      <input type="hidden" name="tab" value="title-thumbnail">
-      <label class="pj-label">Thumbnail concept（描述視覺概念，後續圖像生成在 PR3+）</label>
-      <textarea name="value" rows="5" placeholder="例：左側健身房肌酸罐（褪色處理 = 過時印象），右側大腦 MRI 剖面（高飽和橙色 = 新發現），中間黃色閃電符號連接"
->{{ entry.thumbnail_concept }}</textarea>
-      <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存概念</button>
+      </div>
+      <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存標題</button>
     </form>
   </section>
 
+  {# ── Thumbnail brainstorm + render (ADR-033 D6 — 3 idea cards) ───────────── #}
+  <section class="pj-tt-thumbnails">
+    <header class="pj-section-header">
+      <h3 class="pj-section-subtitle">🖼 縮圖 idea 與渲圖</h3>
+      <p class="pj-section-hint">
+        LLM 出 3 個 idea 文字描述（5-line format：大字 / 我的表情 / 視覺 / 數字圖示 / 背景），
+        每個 idea 旁有獨立的 [🎨 渲此縮圖] 按鈕。渲完挑一張 commit 為最終 thumbnail
+        → 寫入 vault，Syncthing 同步到手機。
+      </p>
+    </header>
+
+    {% if entry.content_type != 'youtube' %}
+    <p class="pj-callout pj-callout--info">
+      ⚠ Thumbnail brainstorm 目前只支援 <code>content_type=youtube</code>；本 project
+      是 <code>{{ entry.content_type }}</code>。Podcast 路線（含來賓選幀漏斗）將在
+      PR4-B 落地。
+    </p>
+    {% else %}
+    <form id="thumb-brainstorm-form" class="pj-inline-form"
+          hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/brainstorm"
+          hx-target="#thumb-ideas-container"
+          hx-swap="innerHTML"
+          hx-indicator="#thumb-brainstorm-spinner">
+      <button type="submit" class="pj-btn-primary"
+              {% if not entry.title_candidates %}
+                disabled title="先填至少一個 title candidate 再 brainstorm — LLM 需要主題上下文"
+              {% endif %}>
+        🪄 LLM 給我 3 個 idea
+      </button>
+      <span class="pj-spinner" id="thumb-brainstorm-spinner" aria-hidden="true" hidden></span>
+      <span class="pj-research-hint">
+        會附上 <code>Attachments/cutouts/reference/youtube/</code> 的參考圖讓 LLM 對齊品味。
+      </span>
+    </form>
+
+    {# Existing ideas (server-rendered on initial page load if frontmatter has them) #}
+    <div id="thumb-ideas-container">
+      {% set existing_ideas = entry.raw_frontmatter.get('thumbnail_ideas') or [] %}
+      {% if existing_ideas %}
+        <div class="pj-thumb-idea-grid" data-project-slug="{{ entry.slug }}">
+          {% for raw in existing_ideas %}
+            <div class="pj-thumb-idea-card" data-idea-index="{{ loop.index0 }}">
+              <header class="pj-thumb-idea-header">
+                <h4>Idea {{ loop.index }}</h4>
+              </header>
+              <textarea
+                class="pj-thumb-idea-textarea"
+                rows="6"
+                name="thumbnail_ideas[{{ loop.index0 }}]"
+                readonly>{{ raw }}</textarea>
+              <form
+                class="pj-thumb-idea-render-form"
+                method="post"
+                action="/bridge/projects/{{ entry.slug }}/thumbnail/render"
+                hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/render"
+                hx-target="#thumb-render-{{ loop.index0 }}"
+                hx-swap="innerHTML">
+                <input type="hidden" name="idea_index" value="{{ loop.index0 }}">
+                <label class="pj-label pj-label--small">
+                  🪶 Director's Notes（可選 — 渲完不滿意時加幾句調整指示）
+                  <textarea name="director_notes" rows="2"
+                            placeholder="例：背景再暗一點 / 字體再粗一點"></textarea>
+                </label>
+                <button type="submit" class="pj-btn-primary">🎨 渲此縮圖</button>
+              </form>
+              <div id="thumb-render-{{ loop.index0 }}" class="pj-thumb-render-slot">
+                {% if entry.raw_frontmatter.thumbnail and entry.raw_frontmatter.thumbnail_run and ('v' + (loop.index0|string)) in entry.raw_frontmatter.thumbnail_run %}
+                  <p class="pj-thumb-already-committed">
+                    ✅ 此 idea 已 commit 為最終 thumbnail
+                    （<code>{{ entry.raw_frontmatter.thumbnail }}</code>）。
+                  </p>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="pj-empty-state">尚未 brainstorm — 點上面的按鈕讓 LLM 出 3 個 idea。</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  {# ── Current chosen thumbnail (if committed) ──────────────────────────────── #}
+  {% if entry.raw_frontmatter.thumbnail %}
+  <section class="pj-tt-current">
+    <header class="pj-section-header">
+      <h3 class="pj-section-subtitle">✅ 目前最終 thumbnail</h3>
+    </header>
+    <figure class="pj-thumb-current">
+      <img src="/static/vault/{{ entry.raw_frontmatter.thumbnail }}"
+           alt="current chosen thumbnail"
+           class="pj-thumb-current-img"
+           onerror="this.style.display='none';"
+           width="320" height="180">
+      <figcaption>
+        <code>{{ entry.raw_frontmatter.thumbnail }}</code>
+        {% if entry.raw_frontmatter.thumbnail_chosen_at %}
+          · 選定於 <time>{{ entry.raw_frontmatter.thumbnail_chosen_at }}</time>
+        {% endif %}
+      </figcaption>
+    </figure>
+  </section>
+  {% endif %}
+
+  {# ── Design tips (kept from PR1, lightly trimmed) ─────────────────────────── #}
   <details class="pj-research-tip">
     <summary>💡 CTR pair 設計原則</summary>
     <ul>
       <li><strong>Title 與 Thumbnail 互為背景，不重複資訊。</strong> Title 講「what」/ Thumbnail 講「why curious」。</li>
-      <li>標題候選做 A/B 對照，<strong>留 3-5 條到發布前再決定</strong>。</li>
+      <li>Title A/B 跟 Thumbnail A/B 是<strong>獨立兩個維度</strong>，YT Test &amp; Compare 各自測。</li>
       <li>Thumbnail 高飽和度 + 強對比；老花眼也要 3 公尺外可辨識。</li>
-      <li>Zoro 給的 10 條別照搬 — 挑 2-3 條當骨架，剩下自己改詞 / 加 hook。</li>
+      <li>Zoro 給的 10 條別照搬 — 挑 2-3 條當骨架，自己改詞 / 加 hook 後讓 LLM brainstorm 縮圖。</li>
     </ul>
   </details>
 </div>

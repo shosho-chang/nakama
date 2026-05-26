@@ -90,8 +90,9 @@ _MAX_REFERENCE_IMAGES = 30
 _MAX_REFERENCE_PIXEL = 512  # placeholder; resize is left as a follow-up — PR4-A
 # currently sends the original file. See open question §OQ1 in ADR-033.
 
-# Prompt path — versioned filename so we can iterate without breaking history.
+# Prompt paths — versioned filename so we can iterate without breaking history.
 _BRAINSTORM_PROMPT_PATH = _REPO_ROOT / "prompts" / "thumbnail" / "brainstorm_youtube_v1.md"
+_TITLES_PROMPT_PATH = _REPO_ROOT / "prompts" / "thumbnail" / "brainstorm_titles_v1.md"
 
 
 _indexer_singleton: ProjectIndexer | None = None
@@ -151,6 +152,10 @@ def _ref_image_to_block(path: Path) -> dict:
 
 def _load_brainstorm_prompt() -> str:
     return _BRAINSTORM_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _load_titles_prompt() -> str:
+    return _TITLES_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 def _brainstorm_user_message(
@@ -584,6 +589,125 @@ async def thumbnail_commit(
             "chosen_at": _now_iso(),
         },
     )
+
+
+@page_router.post("/projects/{slug}/thumbnail/brainstorm-titles")
+async def thumbnail_brainstorm_titles(
+    request: Request,
+    slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Brainstorm 3 A/B title candidates via Sonnet 4.6 (text only).
+
+    Reads frontmatter brief context (search_topic, one_sentence, hook_text),
+    calls the LLM, splits the response by newlines, and writes the first 3
+    non-empty lines to ``title_candidates`` (replacing existing). Returns an
+    HTMX partial with the populated textarea.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    slug = normalize_slug(slug)
+    try:
+        entry = _indexer().get(slug)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+    brief_text = (
+        f"## Project brief\n\n"
+        f"- search_topic: {str(raw_fm.get('search_topic') or '（未填）')}\n"
+        f"- one_sentence: {str(raw_fm.get('one_sentence') or '（未填）')}\n"
+        f"- hook_text: {str(raw_fm.get('hook_text') or '（未填）')}\n\n"
+        "Produce exactly 3 title candidates, one per line, no preamble."
+    )
+
+    system_prompt = _load_titles_prompt()
+    messages = [{"role": "user", "content": brief_text}]
+    model = get_model(agent="bridge", task="thumbnail_brainstorm")
+
+    try:
+        response_text = await asyncio.to_thread(
+            ask_claude_multi,
+            messages,
+            system=system_prompt,
+            model=model,
+            max_tokens=512,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("title brainstorm LLM call failed: slug=%s", slug)
+        raise HTTPException(status_code=500, detail=f"Title brainstorm 失敗：{exc}") from exc
+
+    titles = _extract_title_lines(response_text)
+    if not titles:
+        raise HTTPException(
+            status_code=502,
+            detail="LLM 沒有輸出任何標題候選，請重試。",
+        )
+
+    try:
+        update_frontmatter(
+            vault_root=get_vault_path(),
+            slug=slug,
+            patch={"title_candidates": titles},
+        )
+    except ProjectWriteError as exc:
+        logger.exception("title brainstorm write-back failed: slug=%s", slug)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    try:
+        record_api_call(
+            agent="bridge",
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            scope_json=json.dumps(
+                {
+                    "scope": "title_brainstorm",
+                    "project": slug,
+                    "n_titles": len(titles),
+                },
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("audit record failed (non-fatal)")
+
+    return _templates.TemplateResponse(
+        request,
+        "projects/_thumbnail_title_candidates_textarea.html",
+        {"title_candidates": titles},
+    )
+
+
+def _extract_title_lines(response_text: str) -> list[str]:
+    """Pull up to 3 non-empty, non-numbered lines from the LLM response.
+
+    Strips common LLM artefacts (bullet markers, numbering, leading
+    whitespace). Caps at 3 titles per ADR-033 D2 (YT Test & Compare slot).
+    """
+    cleaned: list[str] = []
+    for raw in response_text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        # Drop bullet / list markers
+        line = line.lstrip("-•·*").lstrip()
+        # Drop leading "1." / "1)" / "(1)" patterns
+        import re as _re
+
+        line = _re.sub(r"^\(?\d+[.)]\s*", "", line)
+        # Drop trailing punctuation common in LLM enumeration
+        line = line.rstrip("。.")
+        if not line:
+            continue
+        # Drop obvious preamble lines
+        if any(line.startswith(p) for p in ("Here", "以下", "三個", "三條", "標題候選", "Title")):
+            continue
+        cleaned.append(line)
+        if len(cleaned) == 3:
+            break
+    return cleaned
 
 
 __all__ = [

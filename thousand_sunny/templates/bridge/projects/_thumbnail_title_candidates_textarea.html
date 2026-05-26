@@ -1,0 +1,5 @@
+{# ADR-033 PR4-A — HTMX swap target after Title brainstorm.
+   The wrapper at #title-candidates-textarea-wrap gets its innerHTML replaced
+   so the textarea picks up the new lines without a full page reload. #}
+<textarea name="value" rows="6">{% for t in title_candidates %}{{ t }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>

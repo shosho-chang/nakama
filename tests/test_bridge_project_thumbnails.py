@@ -175,6 +175,99 @@ class TestBrainstorm:
         assert r.status_code == 502
 
 
+class TestTitleBrainstorm:
+    def test_titles_persists_three_candidates(self, client, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: (
+                "肌酸不只練肌肉：3 個你沒聽過的妙用\n"
+                "65 歲開始吃肌酸？最新研究說：來得及\n"
+                "每天 5g，改變你大腦的化學反應\n"
+            ),
+        )
+
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
+        assert r.status_code == 200, r.text
+        # Returned partial is the textarea with 3 lines
+        assert "肌酸不只練肌肉" in r.text
+        assert "65 歲開始吃肌酸" in r.text
+        assert "每天 5g" in r.text
+
+        fm = yaml.safe_load(
+            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        assert len(fm["title_candidates"]) == 3
+        assert fm["title_candidates"][0] == "肌酸不只練肌肉：3 個你沒聽過的妙用"
+
+    def test_titles_strips_numbered_prefix(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: (
+                "1. 肌酸的真相\n"
+                "2) 你不知道的事\n"
+                "(3) 65 歲的選擇\n"
+            ),
+        )
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
+        assert r.status_code == 200, r.text
+        assert "1. 肌酸" not in r.text
+        assert "肌酸的真相" in r.text
+        assert "你不知道的事" in r.text
+        assert "65 歲的選擇" in r.text
+
+    def test_titles_strips_bullet_markers(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: "- A 候選\n• B 候選\n* C 候選\n",
+        )
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
+        assert r.status_code == 200, r.text
+        assert "- A 候選" not in r.text
+        assert "A 候選" in r.text
+
+    def test_titles_caps_at_3(self, client, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: "title 1\ntitle 2\ntitle 3\ntitle 4\ntitle 5\n",
+        )
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
+        assert r.status_code == 200, r.text
+        fm = yaml.safe_load(
+            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        assert len(fm["title_candidates"]) == 3
+        assert fm["title_candidates"] == ["title 1", "title 2", "title 3"]
+
+    def test_titles_skips_preamble_lines(self, client, tmp_path, monkeypatch):
+        """Lines starting with 'Here', '以下', 'Title' etc are LLM preamble — never stored."""
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: (
+                "Here are 3 title candidates:\n"
+                "以下三個候選：\n"
+                "肌酸的真相\n"
+                "65 歲還來得及嗎\n"
+                "每天 5g 的改變\n"
+            ),
+        )
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
+        assert r.status_code == 200, r.text
+        fm = yaml.safe_load(
+            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        assert fm["title_candidates"] == ["肌酸的真相", "65 歲還來得及嗎", "每天 5g 的改變"]
+        assert all("Here are" not in t for t in fm["title_candidates"])
+        assert all("以下" not in t for t in fm["title_candidates"])
+
+    def test_titles_502_on_empty_response(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: "",
+        )
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
+        assert r.status_code == 502
+
+
 class TestRender:
     @pytest.fixture
     def with_ideas(self, client, tmp_path, monkeypatch):
