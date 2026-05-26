@@ -42,6 +42,9 @@ presentation layer（Web UI）。
 
 - **「SEO solution」** = 三個用途集合：keyword research（**Zoro**，向外探索新主題）+ audit（**Brook**，對既有文章打分 + 改稿建議）+ enrich（**Brook**，為寫稿備 SEO context）。哲學分界「向外 = Zoro / 對內 = Brook」於 2026-04-29 grilling 凍結（落實 ADR-001 line 38 預留的 Brook 擴展選項）；參見 ADR-008 + ADR-009；不是新 agent
 - **「approval queue」** = ADR-006 定義的 Usopp publish 前 HITL 站；不是 to-issues 的 `HITL` label
+- **「EntityReviewItem」** = ADR-024 promotion gate 的第三種 ReviewItem subtype（前兩種：`SourcePageReviewItem` / `ConceptReviewItem`），由 ADR-034 凍結。**單一 class + `entity_type` enum** 覆蓋 Person / Organization / Book / Place — 不拆 sub-class（呼應 `ConceptReviewItem` 不拆 sub-domain 的既有 pattern）。entity-specific 欄位走 `entity_metadata: dict[str, Any]` 不污染 schema 階層
+- **「Hybrid Entity gate」** = ADR-034 凍結的 Entity promotion 分流：Book Entity 走 `kb_writer.write_book_entity()` auto-create（修修主動 ingest = approved by definition），Person / Org Entity 走 promotion gate + confidence fast-track。雙路徑並存有意設計，不是 transitional state
+- **「confidence fast-track」** = ADR-034 凍結的 ReviewItem 自動審批機制：`canonical_match.confidence > 0.9` auto-approve（不進 UI review queue 但仍記入 manifest），`0.5-0.9` 進 queue，`< 0.5` 進 queue 預設 defer。LLM 變強時調高 threshold 即可吸收，不需 redesign gate
 - **「surface」** = Thousand Sunny 的個別 web 頁面 / 路由（如 `/bridge/franky`、`/zoro/keyword-research`）；不是 GTM / 行銷 surface
 - **「SEO 中控台」** = `/bridge/seo` surface 的別名，SEO solution 操作 hub。**跨三 agent**：Zoro（keyword research）+ Brook（audit / enrich）+ Franky（ranking telemetry，ADR-008）。v1 三 section：(1) WP 文章列表 + lazy audit 分數、(2) 攻擊中目標關鍵字（讀 `config/target-keywords.yaml`）、(3) 排名變化（v1.1 等 ADR-008 Phase 2a-min 落地接 `gsc_rows` db）；2026-04-29 grilling 凍結，ADR-029 v2 補正 Franky owner
 - **「audit review session」** = SEO 中控台底下「點進文章 → 跑新 audit → Y+ 左右對照」的單次審稿動作；以 `audit_results.suggestions_json` 落 db 持久化（resumable，無另開 session 表）；review 完成後一鍵 export 進 ADR-006 `approval_queue` 走既有 publish HITL — **不直接寫 WP**
