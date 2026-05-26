@@ -1,0 +1,222 @@
+{# Zoro keyword research result fragment — returned by POST /research/keyword. #}
+{% macro kw_label(kw) -%}
+  {%- if kw is mapping -%}{{ kw.keyword or kw.keyword_en or '' }}{%- else -%}{{ kw }}{%- endif -%}
+{%- endmacro %}
+{% macro chip_score(v) -%}
+  {%- if v == 'high' -%}<span class="pj-score pj-score--high">high</span>
+  {%- elif v == 'medium' -%}<span class="pj-score pj-score--medium">medium</span>
+  {%- elif v == 'low' -%}<span class="pj-score pj-score--low">low</span>
+  {%- else -%}{{ v or '—' }}{%- endif -%}
+{%- endmacro %}
+{% macro chip_source(v) -%}
+  {%- if v == 'zh' -%}<span class="pj-chip pj-chip--lang pj-chip--lang-zh">中</span>
+  {%- elif v == 'en' -%}<span class="pj-chip pj-chip--lang pj-chip--lang-en">EN</span>
+  {%- elif v == 'both' -%}<span class="pj-chip pj-chip--lang pj-chip--lang-both">中+EN</span>
+  {%- else -%}{{ v or '—' }}{%- endif -%}
+{%- endmacro %}
+
+<div class="pj-research-result pj-research-result--zoro" data-research-kind="zoro">
+  <header class="pj-research-result-head">
+    <h3 class="pj-section-subtitle">🗝 Zoro 關鍵字研究結果</h3>
+    <span class="pj-research-meta">{{ timestamp }} · topic: <code>{{ topic }}</code> · {{ content_type }}</span>
+  </header>
+
+  {% set keywords = result.keywords or [] %}
+  {% if keywords %}
+  <section class="pj-research-block">
+    <h4 class="pj-research-block-title">Core keywords <span class="pj-count">({{ keywords | length }})</span></h4>
+    <div class="pj-table-wrap">
+      <table class="pj-kw-table">
+        <thead>
+          <tr>
+            <th>中文關鍵字</th>
+            <th>EN</th>
+            <th>搜尋量</th>
+            <th>競爭</th>
+            <th>機會</th>
+            <th>來源</th>
+            <th>理由</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for kw in keywords %}
+          <tr>
+            {% if kw is mapping %}
+            <td class="pj-kw-zh">{{ kw.keyword or '—' }}</td>
+            <td class="pj-kw-en"><code>{{ kw.keyword_en or '—' }}</code></td>
+            <td>{{ chip_score(kw.search_volume) }}</td>
+            <td>{{ chip_score(kw.competition) }}</td>
+            <td>{{ chip_score(kw.opportunity) }}</td>
+            <td>{{ chip_source(kw.source) }}</td>
+            <td class="pj-kw-reason">{{ kw.reason or '' }}</td>
+            {% else %}
+            <td colspan="7">{{ kw }}</td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% set trend_gaps = result.trend_gaps or [] %}
+  {% if trend_gaps %}
+  <section class="pj-research-block">
+    <h4 class="pj-research-block-title">Trend gaps <span class="pj-count">({{ trend_gaps | length }})</span></h4>
+    <div class="pj-table-wrap">
+      <table class="pj-kw-table pj-gap-table">
+        <thead>
+          <tr>
+            <th>主題</th>
+            <th>英文訊號</th>
+            <th>中文現況</th>
+            <th>機會</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for gap in trend_gaps %}
+          <tr>
+            {% if gap is mapping %}
+            <td class="pj-gap-topic">{{ gap.topic or '—' }}</td>
+            <td>{{ gap.en_signal or '' }}</td>
+            <td>{{ gap.zh_status or '' }}</td>
+            <td>{{ gap.opportunity or '' }}</td>
+            {% else %}
+            <td colspan="4">{{ gap }}</td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% set yt_titles = result.youtube_titles or [] %}
+  {% if yt_titles %}
+  <section class="pj-research-block">
+    <h4 class="pj-research-block-title">YouTube 標題建議 <span class="pj-count">({{ yt_titles | length }})</span></h4>
+    <div class="pj-table-wrap">
+      <table class="pj-kw-table pj-title-table">
+        <thead><tr><th class="pj-title-num">#</th><th>標題</th><th class="pj-title-len">字數</th></tr></thead>
+        <tbody>
+          {% for t in yt_titles %}
+          <tr>
+            <td class="pj-title-num">{{ loop.index }}</td>
+            <td class="pj-title-cell">{{ t }}</td>
+            <td class="pj-title-len {% if t | length > 60 %}pj-title-len--over{% endif %}">{{ t | length }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% set blog_titles = result.blog_titles or [] %}
+  {% if blog_titles %}
+  <section class="pj-research-block">
+    <h4 class="pj-research-block-title">Blog 標題建議 <span class="pj-count">({{ blog_titles | length }})</span></h4>
+    <div class="pj-table-wrap">
+      <table class="pj-kw-table pj-title-table">
+        <thead><tr><th class="pj-title-num">#</th><th>標題</th><th class="pj-title-len">字數</th></tr></thead>
+        <tbody>
+          {% for t in blog_titles %}
+          <tr>
+            <td class="pj-title-num">{{ loop.index }}</td>
+            <td class="pj-title-cell">{{ t }}</td>
+            <td class="pj-title-len {% if t | length > 70 %}pj-title-len--over{% endif %}">{{ t | length }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% set summary = result.analysis_summary or '' %}
+  {% if summary %}
+  <section class="pj-research-block">
+    <h4 class="pj-research-block-title">Analysis</h4>
+    <p class="pj-research-summary">{{ summary }}</p>
+  </section>
+  {% endif %}
+
+  {% set long_videos = result.long_videos or [] %}
+  {% set short_videos = result.short_videos or [] %}
+
+  {% macro video_card(v, is_short=False) -%}
+    <div class="pj-video-card{% if is_short %} pj-video-card--short{% endif %}">
+      {% if v.embed_id %}
+      <div class="pj-video-iframe-wrap">
+        <iframe src="https://www.youtube-nocookie.com/embed/{{ v.embed_id }}"
+                loading="lazy"
+                title="{{ v.title }}"
+                frameborder="0"
+                allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
+                allowfullscreen></iframe>
+      </div>
+      {% else %}
+      <div class="pj-video-iframe-wrap pj-video-iframe-wrap--noembed">
+        <a href="{{ v.url }}" target="_blank" rel="noopener">▶ 開啟原連結</a>
+      </div>
+      {% endif %}
+      <div class="pj-video-meta">
+        <a class="pj-video-title" href="{{ v.url }}" target="_blank" rel="noopener">{{ v.title }}</a>
+        <span class="pj-video-channel">{{ v.channel }}</span>
+        <span class="pj-video-views">{{ '{:,}'.format(v.views or 0) }} views</span>
+      </div>
+    </div>
+  {%- endmacro %}
+
+  {% if long_videos %}
+  <section class="pj-research-block">
+    <h4 class="pj-research-block-title">📺 Long-form videos <span class="pj-count">({{ long_videos | length }})</span></h4>
+    <div class="pj-video-grid pj-video-grid--long">
+      {% for v in long_videos[:12] %}{{ video_card(v) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if short_videos %}
+  <section class="pj-research-block">
+    <h4 class="pj-research-block-title">📱 Shorts <span class="pj-count">({{ short_videos | length }})</span></h4>
+    <div class="pj-video-grid pj-video-grid--shorts">
+      {% for v in short_videos[:12] %}{{ video_card(v, is_short=True) }}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% set social = result.social_posts or [] %}
+  {% if social %}
+  <section class="pj-research-block">
+    <h4 class="pj-research-block-title">Social posts <span class="pj-count">(top {{ social[:12] | length }})</span></h4>
+    <ul class="pj-research-list pj-research-list--linky pj-social-list">
+      {% for p in social[:12] %}
+      <li class="pj-social-item">
+        <span class="pj-chip pj-chip--platform pj-chip--platform-{{ p.platform }}">{{ p.platform }}</span>
+        <span class="pj-social-handle">{{ p.username and ('@' ~ p.username) or (p.subreddit and ('r/' ~ p.subreddit)) or '' }}</span>
+        {% if p.url %}
+        <a href="{{ p.url }}" target="_blank" rel="noopener" class="pj-social-text">{{ (p.text or p.title or '')[:160] }}</a>
+        {% else %}
+        <span class="pj-social-text">{{ (p.text or p.title or '')[:160] }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% set used = result.sources_used or [] %}
+  {% set failed = result.sources_failed or [] %}
+  <footer class="pj-research-footer">
+    <span class="pj-research-meta">資料來源 {{ used | length }} 成功 / {{ failed | length }} 失敗</span>
+    {% if failed %}
+    <details class="pj-research-failed">
+      <summary>失敗來源（{{ failed | length }}）</summary>
+      <code>{{ failed | join(', ') }}</code>
+    </details>
+    {% endif %}
+  </footer>
+</div>

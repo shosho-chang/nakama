@@ -19,6 +19,7 @@ from shared.project_writer import (
     read_task_status,
     update_body_section,
     update_frontmatter,
+    update_marked_section,
     update_task_status,
     write_review,
 )
@@ -475,6 +476,91 @@ class TestDeleteTask:
             recycle_bin_fn=lambda p: None,
         )
         assert result is False
+
+
+class TestUpdateMarkedSection:
+    """ADR-031 PR3 — marker-pair body section (research write-back)."""
+
+    def test_appends_block_when_marker_absent(self, vault: Path):
+        update_marked_section(
+            vault_root=vault,
+            slug="t",
+            marker="nakama:research:zoro",
+            content="## 🗝 Zoro 2026-05-25\n\n- keyword 1",
+        )
+        body = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        assert "<!-- nakama:research:zoro:start -->" in body
+        assert "<!-- nakama:research:zoro:end -->" in body
+        assert "## 🗝 Zoro 2026-05-25" in body
+        # Pre-existing body preserved
+        assert "原始描述" in body
+        assert "原始正文" in body
+
+    def test_replaces_block_idempotently(self, vault: Path):
+        update_marked_section(
+            vault_root=vault,
+            slug="t",
+            marker="nakama:research:zoro",
+            content="## old\n\n- a",
+        )
+        update_marked_section(
+            vault_root=vault,
+            slug="t",
+            marker="nakama:research:zoro",
+            content="## new\n\n- b",
+        )
+        body = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        assert "## old" not in body
+        assert "- a" not in body
+        assert "## new" in body
+        assert "- b" in body
+        # Exactly one start/end pair survives
+        assert body.count("<!-- nakama:research:zoro:start -->") == 1
+        assert body.count("<!-- nakama:research:zoro:end -->") == 1
+
+    def test_two_markers_coexist(self, vault: Path):
+        update_marked_section(
+            vault_root=vault,
+            slug="t",
+            marker="nakama:research:zoro",
+            content="Zoro block",
+        )
+        update_marked_section(
+            vault_root=vault,
+            slug="t",
+            marker="nakama:research:kb",
+            content="KB block",
+        )
+        body = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        assert "Zoro block" in body
+        assert "KB block" in body
+        # Re-running Zoro doesn't touch KB block
+        update_marked_section(
+            vault_root=vault,
+            slug="t",
+            marker="nakama:research:zoro",
+            content="Zoro v2",
+        )
+        body = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        assert "Zoro v2" in body
+        assert "Zoro block" not in body
+        assert "KB block" in body
+
+    def test_invalid_marker_raises(self, vault: Path):
+        with pytest.raises(ProjectWriteError, match="invalid marker"):
+            update_marked_section(
+                vault_root=vault,
+                slug="t",
+                marker="nakama research zoro",  # spaces forbidden
+                content="x",
+            )
+        with pytest.raises(ProjectWriteError, match="invalid marker"):
+            update_marked_section(
+                vault_root=vault,
+                slug="t",
+                marker="bad<marker>",
+                content="x",
+            )
 
 
 def test_now_iso_taipei_has_offset():

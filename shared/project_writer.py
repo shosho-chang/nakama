@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
+import time
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +75,12 @@ def _atomic_write(path: Path, content: str) -> None:
     """Write content to path atomically via tmp + rename.
 
     Tmp file sits in the same directory so the rename is intra-FS (atomic).
+
+    Windows retry: ``os.replace`` fails with WinError 5 when another process
+    (Obsidian / Dropbox / antivirus) briefly holds a read handle on the
+    destination. Three attempts with linear backoff cover the typical
+    50-300ms contention window. Final failure raises ``ProjectWriteError``
+    with a 繁中 message naming the suspect culprits.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path_str = tempfile.mkstemp(
@@ -84,7 +91,18 @@ def _atomic_write(path: Path, content: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(content)
-        os.replace(tmp_path_str, path)
+        for attempt in range(3):
+            try:
+                os.replace(tmp_path_str, path)
+                return
+            except PermissionError as e:
+                if attempt == 2:
+                    raise ProjectWriteError(
+                        f"無法寫入 {path.name}：被其他程式鎖定"
+                        f"（可能是 Obsidian / Dropbox / 防毒在 sync）。"
+                        f"關掉該檔或暫停 sync 再重試。Original: {e}"
+                    ) from e
+                time.sleep(0.15 * (attempt + 1))
     except Exception:
         try:
             os.unlink(tmp_path_str)
@@ -227,6 +245,93 @@ def append_review(
     reviews[persona] = history
     fm["reviews"] = reviews
     _write_split(path, fm, body)
+
+
+def update_marked_section(
+    *,
+    vault_root: Path,
+    slug: str,
+    marker: str,
+    content: str,
+) -> None:
+    """Replace body content between ``<!-- {marker}:start -->`` / ``:end --> ``.
+
+    Idempotent: re-running with the same marker replaces the block in place.
+    If markers don't exist, appends a fresh block (with both markers + the
+    rendered content) to the end of body, separated by a blank line.
+
+    Why a marker pair instead of H2 heading lock (:func:`update_body_section`):
+    research blocks render a user-facing heading like
+    ``## 🗝 Zoro 關鍵字研究（2026-05-25 22:30）`` whose text changes every
+    run. The marker pair gives a stable machine-readable anchor while the
+    displayed heading is free to include timestamps / agent metadata.
+
+    ``marker`` must match ``[a-zA-Z0-9:_-]+`` — no spaces, no angle brackets.
+    """
+    if not re.fullmatch(r"[a-zA-Z0-9:_-]+", marker):
+        raise ProjectWriteError(f"invalid marker {marker!r}; use [a-zA-Z0-9:_-]+")
+
+    slug = unicodedata.normalize("NFC", slug)
+    path = vault_root / PROJECTS_DIR / f"{slug}.md"
+    fm, body = _read_split(path)
+
+    start_tag = f"<!-- {marker}:start -->"
+    end_tag = f"<!-- {marker}:end -->"
+    rendered = f"{start_tag}\n{content.rstrip()}\n{end_tag}"
+
+    pat = re.compile(
+        re.escape(start_tag) + r"[\s\S]*?" + re.escape(end_tag),
+        re.MULTILINE,
+    )
+    if pat.search(body):
+        new_body = pat.sub(rendered, body, count=1)
+    else:
+        sep = "" if body.endswith("\n\n") else ("\n" if body.endswith("\n") else "\n\n")
+        new_body = body + sep + rendered + "\n"
+
+    _write_split(path, fm, new_body)
+
+
+def update_research_block(
+    *,
+    vault_root: Path,
+    slug: str,
+    frontmatter_patch: dict[str, Any],
+    marker: str,
+    content: str,
+) -> None:
+    """Coalesced research write: one read, one write, one atomic rename.
+
+    ``update_frontmatter`` + ``update_marked_section`` called back-to-back
+    on Windows hits a race where Obsidian re-grabs the file between the two
+    ``os.replace`` calls and the second one fails with WinError 5. This helper
+    does both mutations in a single tmp+rename so the window is closed.
+
+    See :func:`update_marked_section` for marker semantics.
+    """
+    if not re.fullmatch(r"[a-zA-Z0-9:_-]+", marker):
+        raise ProjectWriteError(f"invalid marker {marker!r}; use [a-zA-Z0-9:_-]+")
+
+    slug = unicodedata.normalize("NFC", slug)
+    path = vault_root / PROJECTS_DIR / f"{slug}.md"
+    fm, body = _read_split(path)
+    _deep_merge(fm, frontmatter_patch)
+
+    start_tag = f"<!-- {marker}:start -->"
+    end_tag = f"<!-- {marker}:end -->"
+    rendered = f"{start_tag}\n{content.rstrip()}\n{end_tag}"
+
+    pat = re.compile(
+        re.escape(start_tag) + r"[\s\S]*?" + re.escape(end_tag),
+        re.MULTILINE,
+    )
+    if pat.search(body):
+        new_body = pat.sub(rendered, body, count=1)
+    else:
+        sep = "" if body.endswith("\n\n") else ("\n" if body.endswith("\n") else "\n\n")
+        new_body = body + sep + rendered + "\n"
+
+    _write_split(path, fm, new_body)
 
 
 # Backwards-compatible alias for any in-flight PR1 callers (none in current
