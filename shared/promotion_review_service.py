@@ -34,6 +34,7 @@ from typing import Protocol
 from shared.concept_promotion_engine import ConceptMatcher, ConceptPromotionEngine, KBConceptIndex
 from shared.log import get_logger
 from shared.promotion_commit import PromotionCommitService
+from shared.promotion_fast_track import apply_entity_fast_track
 from shared.promotion_preflight import PromotionPreflight
 from shared.schemas.preflight_report import PreflightReport
 from shared.schemas.promotion_commit import CommitOutcome
@@ -340,6 +341,12 @@ class PromotionReviewService:
             source_page_items=list(build_result.items),
             concept_items=list(promotion_result.items),
         )
+        # ADR-034 v2 PR2c — confidence fast-track for Entity items.
+        # No-op when manifest has no EntityReviewItem entries (current path
+        # since start_review only runs ConceptPromotionEngine). Wiring is
+        # placed here so any future entity_promotion_engine integration
+        # inherits fast-track automatically.
+        apply_entity_fast_track(manifest)
         self._manifest_store.save(manifest)
         return manifest
 
