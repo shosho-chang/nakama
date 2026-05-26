@@ -56,6 +56,7 @@ def test_companion_mp4s_are_committed_and_nonempty(mp4: Path) -> None:
 )
 def test_companion_mp4s_match_fcpxml_timing() -> None:
     """Probe mp4 durations and check they line up with the fcpxml asset durations."""
+
     def duration(mp4: Path) -> float:
         out = subprocess.check_output(
             [

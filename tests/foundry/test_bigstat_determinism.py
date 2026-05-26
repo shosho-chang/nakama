@@ -62,9 +62,7 @@ def _ffmpeg_available() -> bool:
 
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("CI") == "true"
-    or not _hyperframes_available()
-    or not _ffmpeg_available(),
+    os.environ.get("CI") == "true" or not _hyperframes_available() or not _ffmpeg_available(),
     reason="requires local npx + video/node_modules/hyperframes + ffmpeg",
 )
 
