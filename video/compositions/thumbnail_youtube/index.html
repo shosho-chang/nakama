@@ -1,0 +1,181 @@
+<!doctype html>
+<!--
+  ADR-033 PR4-A — YouTube thumbnail composition (Ali Abdaal / Jeff Su style).
+
+  Resolution: 1280×720 (YouTube thumbnail spec).
+  Variables (read via window.__hyperframes.getVariables()):
+    title_hook        — 3-5 字 punchy hook (large foreground text)
+    cutout_data_url   — host cutout (transparent PNG) as data URL or file URL
+    bg_data_url       — background image as data URL or file URL (will be
+                        darkened by overlay; pass raw, not pre-darkened)
+    accent_decoration — optional small text/number ("3", "65歲", "⚡")
+    palette           — { bg, fg, accent, accent_2 } CSS color strings
+                        (defaults applied by the JS if missing keys)
+
+  Static composition: minimal GSAP timeline (paused), data-duration short enough
+  that frame-0 capture lands on the fully-rendered initial state.
+-->
+<html lang="zh-Hant" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #000;
+        font-family:
+          "LINE Seed TW",
+          -apple-system,
+          "Helvetica Neue",
+          "PingFang TC",
+          "Microsoft JhengHei",
+          sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        background: var(--bg, #0E1116);
+        overflow: hidden;
+      }
+
+      /* Background image: full-bleed, will be darkened by overlay */
+      #bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 1;
+      }
+
+      /* Dark overlay — adjustable opacity via --bg-darken */
+      #overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(0, 0, 0, var(--bg-darken, 0.60)) 0%,
+          rgba(0, 0, 0, calc(var(--bg-darken, 0.60) + 0.10)) 100%
+        );
+        z-index: 2;
+      }
+
+      /* Cutout image: right-half foreground; preserves transparent PNG */
+      #cutout {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        height: 100%;
+        z-index: 4;
+        object-fit: contain;
+        object-position: bottom right;
+      }
+
+      /* Title hook: left side, large bold accent */
+      #title-hook {
+        position: absolute;
+        left: 60px;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 5;
+        max-width: 720px;
+        color: var(--fg, #FFFFFF);
+        font-size: 132px;
+        font-weight: 900;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        text-shadow:
+          0 4px 24px rgba(0, 0, 0, 0.6),
+          0 2px 8px rgba(0, 0, 0, 0.8);
+      }
+
+      /* Accent decoration: small bottom-left badge (number / icon / ⚡) */
+      #accent {
+        position: absolute;
+        left: 60px;
+        bottom: 48px;
+        z-index: 6;
+        color: var(--accent, #FFD400);
+        font-size: 64px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+      }
+
+      /* Hidden when empty (avoid empty pseudo-rendering) */
+      #accent:empty { display: none; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="thumbnail-youtube"
+      data-start="0"
+      data-duration="0.5"
+      data-width="1280"
+      data-height="720"
+      data-composition-variables='{
+        "title_hook":        { "type": "string", "default": "未填字卡" },
+        "cutout_data_url":   { "type": "string", "default": "" },
+        "bg_data_url":       { "type": "string", "default": "" },
+        "accent_decoration": { "type": "string", "default": "" },
+        "palette":           { "type": "object", "default": {} }
+      }'
+    >
+      <img id="bg" alt="" />
+      <div id="overlay"></div>
+      <img id="cutout" alt="" />
+      <h1 id="title-hook"></h1>
+      <div id="accent"></div>
+    </div>
+
+    <script>
+      // Read variables injected via `npx hyperframes render --variables ...`
+      // Hyperframes runtime exposes `window.__hyperframes.getVariables()`.
+      const vars =
+        (window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {}) || {};
+
+      const root = document.getElementById("root");
+      const palette = vars.palette || {};
+      // CSS custom properties — fall back to defaults in CSS if unset.
+      if (palette.bg)        root.style.setProperty("--bg", palette.bg);
+      if (palette.fg)        root.style.setProperty("--fg", palette.fg);
+      if (palette.accent)    root.style.setProperty("--accent", palette.accent);
+      if (palette.bg_darken !== undefined) {
+        root.style.setProperty("--bg-darken", String(palette.bg_darken));
+      }
+
+      const bgEl = document.getElementById("bg");
+      if (vars.bg_data_url) {
+        bgEl.src = vars.bg_data_url;
+      } else {
+        bgEl.style.display = "none";
+      }
+
+      const cutoutEl = document.getElementById("cutout");
+      if (vars.cutout_data_url) {
+        cutoutEl.src = vars.cutout_data_url;
+      } else {
+        cutoutEl.style.display = "none";
+      }
+
+      document.getElementById("title-hook").textContent =
+        vars.title_hook || "未填字卡";
+      document.getElementById("accent").textContent =
+        vars.accent_decoration || "";
+
+      // No animation — static thumbnail. Empty timeline keeps Hyperframes happy.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["thumbnail-youtube"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
