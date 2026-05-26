@@ -95,7 +95,7 @@ async def render_youtube_still(
     *,
     title_hook: str,
     cutout_path: Path,
-    bg_path: Path,
+    bg_path: Path | None = None,
     out_png: Path,
     accent_decoration: str = "",
     palette: dict | None = None,
@@ -107,8 +107,9 @@ async def render_youtube_still(
         title_hook: 3-5 字 punchy hook for the large foreground text.
         cutout_path: transparent-PNG host cutout from
             ``shared.cutout_library.pick_youtube_host`` (lives in vault).
-        bg_path: background image (will be darkened by the composition's
-            overlay; pass raw photo, not pre-darkened).
+        bg_path: optional background image. When ``None``, the composition's
+            CSS gradient fallback (palette.bg) is used. PR4-A ships without
+            background images; PR5 wires Unsplash + AI generation.
         out_png: final PNG destination (under
             ``data/thumbnails/{slug}/runs/{ts}/v{n}.png``).
         accent_decoration: optional small text/number/icon ("3", "65歲", "⚡").
@@ -120,20 +121,20 @@ async def render_youtube_still(
         ``out_png`` (resolved Path) on success.
 
     Raises:
-        FileNotFoundError: cutout_path or bg_path missing.
+        FileNotFoundError: cutout_path missing (bg_path None is fine).
         ThumbnailRenderError: hyperframes returned non-zero or produced no PNGs.
     """
     video_dir = video_dir or DEFAULT_VIDEO_DIR
 
     if not cutout_path.is_file():
         raise FileNotFoundError(f"cutout missing: {cutout_path}")
-    if not bg_path.is_file():
+    if bg_path is not None and not bg_path.is_file():
         raise FileNotFoundError(f"background missing: {bg_path}")
 
     variables = {
         "title_hook": title_hook,
         "cutout_data_url": _to_data_url(cutout_path),
-        "bg_data_url": _to_data_url(bg_path),
+        "bg_data_url": _to_data_url(bg_path) if bg_path is not None else "",
         "accent_decoration": accent_decoration,
         "palette": palette or {},
     }
