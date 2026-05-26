@@ -1,0 +1,9 @@
+{# ADR-033 PR4-A — commit-success acknowledgement (HTMX swap target after commit). #}
+<aside class="pj-thumb-commit-ack" role="status">
+  <p>
+    ✅ 已 commit 為最終 thumbnail
+    （<code>{{ thumbnail_path }}</code>，<time datetime="{{ chosen_at }}">{{ chosen_at }}</time>）。
+    開 Obsidian 看 <code>Projects/{{ slug }}.md</code> preview pane 確認；Syncthing
+    會在 ~30s 內同步到手機。
+  </p>
+</aside>
