@@ -1,9 +1,26 @@
 # ADR-033: Thumbnail Generation Pipeline (Brainstorm-driven, Dual-route)
 
 **Date:** 2026-05-26
-**Status:** Draft v1 (post grill 2026-05-26; pending multi-agent-panel review)
+**Status:** Draft v2 (post multi-agent-panel review 2026-05-26; pending 修修 sign-off)
 **Owner:** 修修
 **Related:** [ADR-030](ADR-030-vault-as-substrate-read-strategy.md) (vault-substrate) · [ADR-031](ADR-031-project-workspace-migration.md) (Tier C project workspace) · [ADR-032](ADR-032-hyperframes-broll-pipeline.md) (Hyperframes B-roll)
+
+> **v1 → v2 change log** — v1 went through a 3-way panel (Codex GPT-5 + Gemini 2.5 Pro). Panel verbatim audits at:
+> - [`docs/research/2026-05-26-codex-adr033-audit.md`](../research/2026-05-26-codex-adr033-audit.md)
+> - [`docs/research/2026-05-26-gemini-adr033-audit.md`](../research/2026-05-26-gemini-adr033-audit.md)
+>
+> Integration matrix in §Panel Integration at the end. Top v2 deltas:
+>
+> 1. **D2 factual correction** — YouTube DOES support 3-way thumbnail A/B testing (Test & Compare feature, since late 2023). The "platform constraint" framing in v1 was incorrect; independence is now justified by orthogonal-optimization-axis argument only.
+> 2. **D3 hardened** — closed-enum emotion tags promoted from inline Python constants to a single-source `prompts/thumbnail/emotions.yml` with bidirectional `en ↔ zh-Hant ↔ aliases` mapping. UI gets a live parse preview alongside each textarea.
+> 3. **D4 hardened** — pre-PR4 smoke eval gate (test reference library on one known project, inspect taste match); image preprocessing pipeline (resize 512px, JPEG-recompress, max-count cap, log token count); post-commit lightweight tagging to start collecting revealed-preference dataset (prevent "taste debt").
+> 4. **D6 / PR4 split** — thumbnail endpoints land in **sibling router** `thousand_sunny/routers/bridge_project_thumbnails.py`, not bloating the already-1952-line `bridge_projects.py`.
+> 5. **D8 hardened** — fixed `σ = 100` Laplacian threshold removed; replaced with per-video top-N variance ranking, deterministic stratified sampling (seeded), audio-energy-burst hybrid for emotion peak capture, downscale before vision LLM call, log all funnel stats. **Expression-sample (30-sec deliberate-takes per episode) added as primary fallback path** when motion-blur u2net failure occurs.
+> 6. **D10 amended** — `npx hyperframes` reuse retained for PR4 (correct trade-off vs vanilla Puppeteer for thumbnail stills), but PR4 acceptance gate requires a benchmark of CLI+ffmpeg vs Puppeteer-direct render time. Worker uses `create_subprocess_exec(argv...)` (not `_shell` with single-quoted JSON — Windows `cmd.exe` doesn't honour single quotes; hyperframes_worker.py current shell pattern is a latent bug).
+> 7. **New D11** — Director's Notes textarea per idea card, threaded into render prompt; provides iterative refinement escape hatch ("make background darker", "move face 10% left") without rewriting the 5-line idea.
+> 8. **LLM router update** — `shared/llm_router.py` needs explicit routes for `thumbnail_brainstorm` + `thumbnail_funnel` (PR4 includes this).
+> 9. **PR4 estimate revised** — 6-7 days → **8-12 days** dual-route, or **4-5 days** YouTube-only-first split (recommended). YouTube ships shippable; Podcast funnel ships best-effort with expression-sample fallback.
+> 10. **Frontmatter schema drift fix** — `content_type` validation says `youtube | podcast` but doc-prose says all 4 retained. This predates ADR-033 (ADR-031 PR1 inconsistency) but D9's podcast-only fields surface it. Quick clean-up in PR4 (separate commit).
 
 ---
 
@@ -62,7 +79,7 @@ The 10 numbered decisions below are commit-grade. Each follows the pattern:
 
 **Decision** — Title brainstorm candidates and Thumbnail brainstorm candidates are managed as **two independent lists**. There is no `[title, thumbnail]` pairing.
 
-**Rationale** — YouTube platform supports either Title A/B testing OR Thumbnail A/B testing, not both simultaneously. Independent management aligns with platform mechanics and with the Ali Abdaal design principle that "title and thumbnail are complementary, not redundant" — they vary along orthogonal axes.
+**Rationale** — **(v2 panel fact-check, Gemini)** YouTube actually supports 3-way Thumbnail A/B (Test & Compare feature, since late 2023). The v1 rationale "platform supports only one at a time" was wrong. v2 rationale is **orthogonal-optimization-axis**: Title and Thumbnail are CTR variables on different dimensions (text vs visual), and Ali Abdaal-style design principle is "title and thumbnail are complementary, not redundant" — they vary independently to test independent levers. Future PR may allow paired commit when 修修 wants to commit a `(title, thumbnail)` combination for joint A/B; PR4 keeps them independent.
 
 **Alternatives considered**:
 - (rejected) Paired `(title, thumbnail)` rows — initially proposed by Claude in grill Q4; 修修 over-ruled citing YT platform constraint.
@@ -75,22 +92,48 @@ The 10 numbered decisions below are commit-grade. Each follows the pattern:
 
 ```
 大字：{3-5 字 punchy hook}
-我的表情：{closed-enum emotion tag, e.g. "surprised"}
+我的表情：{emotion tag — accepts English enum, zh-Hant display name, or alias (see emotions.yml)}
 視覺：{free-form description}
 數字/圖示：{free-form description, may be "無"}
 背景：{free-form description, used as Unsplash query}
 ```
 
-The closed-enum emotion tag (line 2) is the **only** strict field. Other lines are descriptive.
+The emotion line (line 2) is matched against a single-source manifest at `prompts/thumbnail/emotions.yml` with shape:
 
-**Rationale** — Free prose feels natural for brainstorm UX; 5-line format gives just enough structure for the downstream pipeline to extract composition variables via simple regex + closed-enum lookup. No second LLM call is needed at render time to parse.
+```yaml
+- key: surprised        # English enum (used internally + filesystem)
+  zh_tw: 驚訝            # Default display label in brainstorm prompt + UI
+  aliases: [驚喜, 大吃一驚]  # Other Chinese expressions 修修 might type
+  description: 眼睛大、口型 "哇"     # For brainstorm LLM context
+- key: thoughtful
+  zh_tw: 思考
+  aliases: [沈思]
+  ...
+```
+
+UI displays the Chinese label by default; backend resolves any of `{key, zh_tw, aliases}` to the canonical `key` for filesystem lookup. **(v2 panel-revised, Codex + Gemini)** This eliminates the v1 risk that 修修 edits `驚訝` and the regex fails.
+
+**Rationale** — Free prose feels natural for brainstorm UX; 5-line format gives just enough structure for the downstream pipeline to extract composition variables. Single-source `emotions.yml` prevents Python-constant drift across `prompts/`, `shared/cutout_library.py`, and the brainstorm prompt template.
 
 **Alternatives considered**:
 - (a) Full free prose — would require a second LLM parse step at render time, adding latency + cost.
 - (b) Fully structured form (5 separate input fields) — feels rigid for brainstorm; doesn't match human "stream of thought" pattern.
-- **(c) Hybrid (chosen)** — free textarea with convention, regex-extract at render.
+- **(c) Hybrid (chosen)** — free textarea with convention, regex + alias-lookup at render.
 
-**Implication** — Brainstorm LLM prompt must instruct the model to follow the 5-line format strictly, with `我的表情:` line constrained to the closed enum (see D5). Pipeline render step uses regex to extract; if regex fails, fallback is to inline-edit the idea in the UI.
+**Implication** — Brainstorm LLM prompt instructs the model to write `我的表情:` using the `zh_tw` display name from `emotions.yml`. Pipeline render step:
+
+1. Regex-extract each of the 5 lines.
+2. For `我的表情:` line, lookup against `emotions.yml` (try `key`, then `zh_tw`, then `aliases`).
+3. **UI provides a live parse preview** (HTMX-poll on textarea blur) showing what the pipeline sees: `hook=..., emotion=surprised, visual=..., decoration=..., bg=...`. If parse fails, the preview shows which line failed and suggests fixes. This is cheaper than 400-error after submit because 修修 sees the problem before clicking render.
+4. If lookup still fails (typo or new word not in aliases), render endpoint returns 400 with the canonical list of accepted `zh_tw` names.
+
+### D3a. Director's Notes (refinement layer)
+
+**Decision** *(new in v2, per Gemini panel)* — Each idea card has a **second textarea** labeled "🪶 Director's Notes" (optional). After viewing a rendered thumbnail, 修修 can type free-form refinements ("make background darker", "use heavier font on hook", "shift my face 10% left") and click [↻ 重渲]. The notes are appended to the render prompt **on top of** the 5-line idea (not replacing it); composition variables are re-extracted with the notes as additional context.
+
+**Rationale** — Creative iteration is iterative. Forcing all refinements through edits of the 5-line abstract description is unnatural — by the time 修修 sees a render, the changes 修修 wants are visual, not conceptual. The Notes textarea is the escape hatch for visual fine-tuning without rewriting the original brief.
+
+**Implication** — Render endpoint accepts an optional `director_notes` field per idea. Notes persist to `data/thumbnails/{slug}/runs/{ts}/v{N}.notes.txt` for audit. Frontmatter does not store notes (transient).
 
 ### D4. Reference library — raw image dump (mine + peers)
 
@@ -103,15 +146,36 @@ Attachments/cutouts/reference/podcast/mine/*.png       (5-10)
 Attachments/cutouts/reference/podcast/peers/*.png      (10-20 Stephen Bartlett / Lex / Attia podcast etc.)
 ```
 
-No annotations, no tags, no metadata file. **Sonnet 4.6 with vision** extracts style patterns when given the reference batch as few-shot.
+No 修修-authored annotations, no manual tags. **Sonnet 4.6 with vision** extracts style patterns when given the reference batch as few-shot.
 
-**Rationale** — 修修's taste is implicit knowledge; forcing 修修 to write "why I like this" annotations would be slow and inaccurate. Vision LLMs are strong enough to extract pattern from N similar images in one inference. mine + peers are treated as a unified "approved style" set at LLM time — the directory split exists only for 修修's filesystem navigation.
+**(v2 panel-hardened, Codex + Gemini)** — The "no annotation, vision LLM does it" stance carries two real risks:
+
+- **Mode-collapse / cargo-culting**: vision LLM may converge on surface features ("Ali Abdaal uses yellow circles") rather than design principles ("high-contrast attention focal"). Gemini calls this "convergence on the salient mean".
+- **Taste debt**: 修修's taste evolves; an unstructured reference pile grows over years with no mechanism to deprecate old styles.
+
+v2 introduces two **lightweight** safeguards (neither requires per-image annotation):
+
+**4.a. PR4 smoke eval gate** — Before PR4 merges, run a one-off eval: pick one known past project (修修-published thumbnail exists), run brainstorm against current reference library, inspect whether the 3 generated ideas read as plausible variants of 修修's style. If smoke fails, the fallback is a single hand-written `prompts/thumbnail/style_rubric.md` (one page, generated from the reference set with vision LLM + 修修-review pass) used **alongside** the reference images. This is built into PR4 verification §item-9 (new).
+
+**4.b. Post-commit lightweight tagging** *(new in v2)* — When 修修 commits a chosen thumbnail, the commit endpoint additionally writes optional free-text tags to `Attachments/projects/{slug}/thumbnail_tags.txt` (one line: e.g. `high-contrast / data-viz / number-callout`). UI offers the textarea but does not enforce. Over time this builds a revealed-preference dataset with zero upfront work. PR-N (post-PR4) may surface this dataset as a "style cluster" view.
+
+**4.c. Image preprocessing pipeline** *(new in v2)* — Before attaching reference images to the brainstorm LLM call:
+
+- Cap image count (default 30, configurable)
+- Resize to 512px longest edge (matches Sonnet vision tile size)
+- Recompress JPEG q=85
+- Log final token count to `state.db api_calls.scope_json`
+- Randomize batch order on each call (mitigate position bias per Gemini Section 1)
+
+Reference images on disk stay at original resolution; preprocessing produces a transient `.tmp/reference_processed/{call_id}/` batch.
+
+**Rationale** — 修修's taste is implicit; forcing 修修 to write commentary upfront is slow and inaccurate (修修 confirmed unwilling during grill). But the v1 "zero structure forever" stance over-rotates. v2 stance: zero **upfront** annotation; gradual **revealed-preference** capture from commit actions; **smoke-test gate** before relying on the inference.
 
 **Alternatives considered**:
-- (b) Image + 修修-written commentary — too slow to bootstrap; 修修 confirmed unwilling to write commentary.
-- (c) No reference library, prompt-only style description — would produce generic YT thumbnail style, not 修修-specific voice.
+- (b) Image + 修修-written commentary — too slow to bootstrap; rejected.
+- (c) No reference library, prompt-only — produces generic style; rejected.
 
-**Implication** — Brainstorm LLM call must attach reference images. Token cost per brainstorm ≈ 20-40K input tokens. PR4 ships per-call attachment (no embedding cache). If cost grows, PR5+ may add an embedding cache. See open question §OQ1.
+**Implication** — Brainstorm LLM call: preprocessed reference batch + 5-line idea prompt + (if smoke-eval failed) `style_rubric.md`. Cost per brainstorm now ~10-20K input tokens (resized images smaller). Commit endpoint extended with optional tag field. See revised §OQ1.
 
 ### D5. Host emotion library (B1) — closed-enum tag set of 7
 
@@ -192,25 +256,66 @@ Frontmatter `thumbnail: "Attachments/projects/{slug}/thumbnail.png"` references 
 
 **Implication** — A new commit endpoint `POST /bridge/projects/{slug}/thumbnail/commit` does the file copy + frontmatter update + archive rotation. The endpoint must be atomic — if commit fails mid-way, vault stays in known-good state (existing thumbnail.png unaffected). A new candidate-serving endpoint `GET /bridge/projects/{slug}/thumbnail/candidate/{ts}/{filename}` streams PNGs from `data/`.
 
-### D8. Podcast guest funnel — simplified 3-stage (random + Laplacian + vision LLM)
+### D8. Podcast guest funnel — hardened (per-video ranking + stratified + vision LLM)
 
-**Decision** — Podcast cutout extraction follows a simplified funnel:
+**Decision** *(v2 panel-revised, Codex + Gemini)* — Podcast cutout extraction:
 
 ```
 For each video in [host_video_path, guest_video_path]:
-  Stage 1 — random frame sample (FFmpeg)
-    Draw ~50 frames at uniformly random timestamps across the video duration.
-  Stage 2 — Laplacian blur filter (OpenCV)
-    Compute Laplacian variance per frame; drop frames below threshold (default σ = 100,
-    tunable per video). Keep ~20 sharpest frames.
+
+  Stage 1 — stratified frame sample (FFmpeg)
+    Baseline: 1 frame per 10 seconds across video duration (deterministic, seeded).
+    Audio-energy hybrid: additionally sample 3 dense frames around each detected
+    energy peak (laughter, emphasis, gestural moments) — uses FFmpeg `astats`
+    or `silencedetect` filter.
+    Cap total at ~80 frames per video.
+
+  Stage 2 — per-video sharpness ranking (OpenCV)
+    Compute Laplacian variance (NOT 'σ' — that v1 phrasing was wrong) per frame.
+    Keep top-N by variance percentile (default top 25%, i.e. ~20 sharpest).
+    Log full variance distribution to state.db for tuning.
+
   Stage 3 — Sonnet 4.6 vision LLM evaluator
-    Attach the ~20 frames + the reference library (D4) batch + brainstorm idea texts
-    (D3) as context. Prompt: "From these {N} candidate frames, pick the top 5 that
-    best match 修修's taste (per references) and could carry the emotion implied by
-    the brainstorm ideas. Return JSON with frame_index + reason per pick."
+    Preprocess: downscale frames to 512px, JPEG q=85.
+    Attach: preprocessed top-N + reference library batch (D4) + brainstorm idea
+    texts (D3) + the closed emotion enum.
+    Prompt: "Pick top 5 frames matching the emotion intent of the brainstorm idea
+    AND 修修's taste (per references). Return JSON: [{frame_index, emotion_match,
+    taste_match_score, reason}]."
+    Known failure modes documented to 修修 (per Gemini panel):
+    - LLM picks 'good portrait' (sharp, frontal) over 'good story' (mid-gesture,
+      authentic emotion). 修修 review-step is the safety net.
+    - Emotion labels for non-Western faces can be miscalibrated. 修修 ignores
+      LLM emotion label if it disagrees with visual evidence.
+
+  Stage 4 — 修修 manual pick (D9 quota: 2-3 host + 2-3 guest)
+  Stage 5 — u2net on confirmed picks only
+    Success rate on motion-blurred frames is low (Gemini panel: realistic ~60-70%
+    not 100%). If u2net produces ragged cutout, 修修 can:
+    (a) re-pick a different frame from top-5
+    (b) use the expression-sample fallback (see below)
 ```
 
-Then 修修 manually picks 2-3 frames from each video's top-5 (D9). u2net runs on confirmed picks only. **The funnel is manually triggered** (a button in the Podcast tab), one-shot per episode.
+**8.a. Expression-sample fallback (primary recommended path per Gemini)** *(new in v2)* — Instead of (or alongside) mining the conversation recording, 修修 records a **30-second deliberate "expression sample" video** at the start or end of each episode:
+
+```
+"I'm going to do 7 expressions. Excited. Pause. Thoughtful. Pause. ..."
+```
+
+Each expression held for 2-3 seconds. Same lighting / framing as the conversation. The funnel can run against this short clip — 99% of frames are usable, no motion blur, no audio-energy detection needed.
+
+修修 chooses per episode: expression-sample (recommended for reliability) vs full-recording mining (best for "in-conversation authenticity").
+
+**Rationale** — v1's fixed `σ = 100` Laplacian threshold cannot generalize across host/guest video angles (different lighting, distance, lens). Per-video ranking is robust. Audio-energy hybrid captures emotional peaks that random sampling misses. Expression-sample side-steps motion-blur u2net failure entirely. Both Codex and Gemini converged on these revisions independently — strong signal.
+
+**Implication** — `shared/thumbnail_funnel.py` ships:
+
+- `stratified_sample(video, seed, periodic_interval=10, audio_burst=True)` → frame list
+- `rank_by_sharpness(frames, top_pct=0.25)` → sorted top-N
+- `vision_eval(frames, ideas, references, emotions_yml)` → top 5 with JSON reasons
+- `run(video, *, mode="conversation"|"expression_sample")` → entry point
+
+Funnel stats logged per call: `total_sampled / passed_sharpness / vision_picked / 修修_confirmed`. After 5-10 episodes the team reviews stats and tunes percentile / sample interval. Per-run parameter tuning UI deferred to PR-N.
 
 **Rationale** — The handoff doc proposed an L1-L4 funnel with WhisperX time-window narrowing as Stage 1. This is unnecessary in 修修's setup because:
 - Dual-camera recording (D9) already separates host and guest into different files; no per-frame speaker identification needed.
@@ -281,7 +386,12 @@ Paths reference filesystem locations; no upload UI (file sizes are GB-scale, uns
 - (C) Independent Python rendering (Pillow / Playwright) — abandons Hyperframes catalog (字卡, icon blocks, shader transitions); loses brand-token consistency with B-roll.
 - (D) SVG-only rendering (cairosvg) — abandons HTML composition entirely; out of scope.
 
-**Implication** — A new render worker `agents/foundry/render_workers/thumbnail_worker.py` (~200 LOC) mirrors `hyperframes_worker.py`. Two new compositions `video/compositions/thumbnail/youtube.html` + `podcast.html` (Hyperframes HTML format). ADR-032 receives a small cross-ref note ("render layer extended to thumbnail stills per ADR-033 D10").
+**Implication** — A new render worker `agents/foundry/render_workers/thumbnail_worker.py` (~200 LOC) mirrors `hyperframes_worker.py` **structurally** but with two PR4-mandatory deviations (v2 panel, Codex):
+
+1. **Use `asyncio.create_subprocess_exec(argv...)`, not `_shell` with single-quoted JSON** — `hyperframes_worker.py:79,86` currently uses `create_subprocess_shell` with a JSON variables string single-quoted. On Windows `cmd.exe`, single quotes are not shell quoting; this is a latent bug that thumbnail_worker.py must not inherit. (A follow-up PR can also fix hyperframes_worker.py — out of ADR-033 scope.)
+2. **PR4 benchmark gate** — Before merging PR4, run a measured comparison: (A) `npx hyperframes render --duration 1 + ffmpeg extract` per still vs (B) vanilla Puppeteer `page.goto(file://) + screenshot()` on the same composition. Document timing in a one-off `tests/benchmarks/thumbnail_render_bench.md`. If (B) is materially faster AND (B) produces visually-identical output (no missed GSAP entrance animation), the choice between A/B may be revisited in PR5. v1 dismissed (B) on theoretical grounds; v2 requires empirical evidence.
+
+Two new compositions `video/compositions/thumbnail/youtube.html` + `podcast.html` (Hyperframes HTML format). ADR-032 receives a cross-ref note ("render layer extended to thumbnail stills per ADR-033 D10").
 
 ---
 
@@ -420,34 +530,56 @@ Bridge router POST /bridge/projects/{slug}/thumbnail/funnel/confirm
 
 ## PR4 implementation outline
 
-| Module | Path | LOC est | Owner |
-|---|---|---|---|
-| YouTube composition HTML | `video/compositions/thumbnail/youtube.html` | ~150 | foundry agent (ADR-032 namespace) |
-| Podcast composition HTML | `video/compositions/thumbnail/podcast.html` | ~100 | foundry agent |
-| Composition shared tokens | `video/compositions/thumbnail/_tokens.css` | ~50 | foundry agent |
-| Render worker | `agents/foundry/render_workers/thumbnail_worker.py` | ~200 | foundry agent |
-| Funnel module | `shared/thumbnail_funnel.py` | ~250 | shared (no agent home) |
-| Cutout library | `shared/cutout_library.py` | ~150 | shared |
-| Brainstorm + render endpoints | `thousand_sunny/routers/bridge_projects.py` (extension) | +250 | Bridge |
-| Tab UI update | `thousand_sunny/templates/bridge/projects/_tab_title_thumbnail.html` | +250 | Bridge |
-| Tab UI partials | `thousand_sunny/templates/bridge/projects/_thumbnail_*.html` (idea card, funnel pool, etc.) | ~150 | Bridge |
-| Frontmatter schema doc update | `docs/schemas/project-frontmatter-nested.md` | +40 | docs |
-| Vault layout doc update | `docs/VAULT-LAYOUT.md` | +20 | docs |
-| One-off cutout import script | `scripts/import_shosho_cutouts.py` | ~80 | scripts |
-| Brainstorm LLM prompts | `prompts/thumbnail/brainstorm_youtube_v1.md`, `..._podcast_v1.md` | ~60 each | prompts |
-| Funnel vision LLM prompt | `prompts/thumbnail/funnel_v1.md` | ~80 | prompts |
-| Tests — funnel | `tests/test_thumbnail_funnel.py` | ~150 | tests |
-| Tests — cutout library | `tests/test_cutout_library.py` | ~80 | tests |
-| Tests — render worker | `tests/test_thumbnail_worker.py` | ~120 | tests |
-| Tests — Bridge endpoints | `tests/test_bridge_projects.py` (extension) | +200 | tests |
+*(v2 panel-revised: split into PR4-A YouTube-first + PR4-B Podcast funnel + sibling router pattern, per Codex Section 6 #1 + Gemini Section 6 #1)*
 
-**Estimated PR4: 6-7 day-equivalent of focused work.**
+### Default sequencing — PR4-A then PR4-B
 
-The PR can be split if needed:
-- **Split A**: PR4-1 = composition HTMLs + render worker + cutout library + YouTube route end-to-end; PR4-2 = funnel + Podcast route. Cost: extra PR overhead, ~0.5 day. Benefit: each PR ships independently usable.
-- **Split B**: PR4-1 = brainstorm UI + render YouTube only (no funnel, no Podcast). PR4-2 = funnel + Podcast composition. Cost: similar.
+**PR4-A — YouTube route end-to-end (4-5 days)**:
 
-Default: **single PR4** (修修 prefers simple sequencing per grill 2026-05-26).
+| Module | Path | LOC est |
+|---|---|---|
+| YouTube composition HTML | `video/compositions/thumbnail/youtube.html` | ~150 |
+| Composition shared tokens | `video/compositions/thumbnail/_tokens.css` | ~50 |
+| Render worker | `agents/foundry/render_workers/thumbnail_worker.py` | ~200 |
+| **Sibling Bridge router** | **`thousand_sunny/routers/bridge_project_thumbnails.py`** *(new file, panel-required)* | ~300 |
+| Bridge router include hook | `thousand_sunny/app.py` (or equivalent FastAPI mount) | +5 |
+| Cutout library | `shared/cutout_library.py` | ~150 |
+| Tab UI update | `thousand_sunny/templates/bridge/projects/_tab_title_thumbnail.html` | +250 |
+| Tab UI partials (idea card, render result) | `thousand_sunny/templates/bridge/projects/_thumbnail_*.html` | ~150 |
+| Frontmatter schema doc | `docs/schemas/project-frontmatter-nested.md` | +40 |
+| Vault layout doc | `docs/VAULT-LAYOUT.md` | +20 |
+| One-off cutout import script | `scripts/import_shosho_cutouts.py` | ~80 |
+| **Emotions YAML** | **`prompts/thumbnail/emotions.yml`** *(new, panel-required)* | ~50 |
+| Brainstorm LLM prompt | `prompts/thumbnail/brainstorm_youtube_v1.md` | ~80 |
+| LLM router routes | `shared/llm_router.py` (extension) | +20 |
+| Smoke eval script | `scripts/eval_thumbnail_reference_taste.py` *(new, panel-required)* | ~120 |
+| Benchmark | `tests/benchmarks/thumbnail_render_bench.md` *(one-off doc)* | ~30 |
+| Tests — cutout library | `tests/test_cutout_library.py` | ~80 |
+| Tests — render worker | `tests/test_thumbnail_worker.py` | ~120 |
+| Tests — sibling router | `tests/test_bridge_project_thumbnails.py` *(new file)* | ~200 |
+| Tests — emotions parser | `tests/test_emotions_yml.py` *(new, small)* | ~40 |
+
+**PR4-B — Podcast funnel + composition (3-5 days)**:
+
+| Module | Path | LOC est |
+|---|---|---|
+| Podcast composition HTML | `video/compositions/thumbnail/podcast.html` | ~100 |
+| Funnel module | `shared/thumbnail_funnel.py` (stratified sample + audio-energy + sharpness rank + vision eval) | ~350 |
+| Funnel router extensions | `thousand_sunny/routers/bridge_project_thumbnails.py` | +150 |
+| Tab UI funnel pool partials | `thousand_sunny/templates/bridge/projects/_thumbnail_funnel_*.html` | ~200 |
+| Funnel vision LLM prompt | `prompts/thumbnail/funnel_v1.md` | ~120 |
+| Expression-sample workflow doc | `docs/podcast-expression-sample-howto.md` *(new, panel-required)* | ~40 |
+| Tests — funnel | `tests/test_thumbnail_funnel.py` | ~200 |
+| Tests — Podcast endpoints | `tests/test_bridge_project_thumbnails.py` (extension) | +150 |
+
+**Total revised estimate**: 8-12 days dual-route; PR4-A alone 4-5 days (ships shippable YouTube workflow without waiting for Podcast).
+
+### Cross-cutting changes (in both PR4-A and PR4-B)
+
+- **`bridge_projects.py` NOT extended** — Codex panel finding: file is 1952 LOC already; thumbnail endpoints land in sibling router.
+- **`shared/llm_router.py` extended** with `thumbnail_brainstorm` + `thumbnail_funnel` route entries → `claude-sonnet-4-6` (vision-capable).
+- **`thumbnail_concept` frontmatter deprecated** with lazy fallback (`thumbnail_concept` → `thumbnail_ideas[0]` on next edit). Migration script not required — lazy lift on first Title&Thumbnail tab visit.
+- **Subprocess pattern**: `asyncio.create_subprocess_exec(argv...)` everywhere new (no shell-string with single quotes; Windows quoting bug). `hyperframes_worker.py` cleanup deferred to follow-up.
 
 ---
 
@@ -468,49 +600,49 @@ The following are explicitly deferred and tracked in this section for future ADR
 
 ## Verification (PR4 completion criteria)
 
-1. `pytest tests/test_thumbnail_*.py tests/test_cutout_library.py tests/test_bridge_projects.py -x` green.
+1. `pytest tests/test_thumbnail_*.py tests/test_cutout_library.py tests/test_bridge_project_thumbnails.py tests/test_emotions_yml.py -x` green.
 2. `ruff check shared/ thousand_sunny/ agents/foundry/ scripts/` clean.
 3. `ruff format --check ...` clean.
 4. Browser smoke test (Playwright headless or 修修 manual):
-   - **YouTube project**: brainstorm title × 3 + idea × 3 → render 3 thumbnails → commit 1 → vault attachment exists + frontmatter `thumbnail` matches.
-   - **Podcast project**: funnel runs, top-5 grids render, 修修 confirms 2 host + 2 guest, u2net writes, brainstorm runs, render uses correct cutouts.
-5. Obsidian-side: open `Projects/{slug}.md` → preview pane shows the chosen thumbnail (Obsidian wikilink resolution).
+   - **YouTube project**: brainstorm title × 3 + idea × 3 → live parse preview reflects 5-line parse + emotion alias resolution → render 3 thumbnails → commit 1 → vault attachment exists + frontmatter `thumbnail` matches + optional tag captured.
+   - **Podcast project**: funnel runs (both conversation-mining mode AND expression-sample mode), top-5 grids render with reason captions, 修修 confirms 2 host + 2 guest, u2net writes (verify cutout quality manually if motion-blur), brainstorm runs, render uses correct cutouts.
+5. Obsidian-side: open `Projects/{slug}.md` → preview pane shows the chosen thumbnail.
 6. Syncthing-side: chosen thumbnail visible on 修修's phone within Syncthing latency (~30s typical).
-7. Cost audit: one brainstorm + 3 renders for a YouTube project < $0.50 total; one full Podcast workflow (funnel + brainstorm + 3 renders) < $2.00 total. Logged to `state.db api_calls.scope_json`.
+7. Cost audit: one YouTube brainstorm + 3 renders < $0.50 total; one full Podcast workflow (funnel + brainstorm + 3 renders) < $2.00 total. Logged to `state.db api_calls.scope_json`.
 8. Failure mode: render failure (Hyperframes error, ffmpeg error, Unsplash 503) renders an inline error toast in the idea card without corrupting frontmatter. Test case: deliberately bad composition variable JSON.
+9. **(v2 panel gate)** Reference library smoke eval: run `scripts/eval_thumbnail_reference_taste.py` against one known past project; manually inspect that the 3 generated ideas are plausible 修修-style variants. If fail, generate fallback `prompts/thumbnail/style_rubric.md` before PR merges.
+10. **(v2 panel gate)** Render benchmark documented: `tests/benchmarks/thumbnail_render_bench.md` records (A) `npx hyperframes + ffmpeg` vs (B) Puppeteer-direct timings on one composition. Decision recorded for PR5 to revisit.
+11. **(v2 panel gate)** Emotion alias resolution test: feed 修修's likely Chinese typings (`驚訝`, `驚喜`, `surprised`, mixed case) into the parser and verify all resolve to `key=surprised`. Covered by `tests/test_emotions_yml.py`.
+12. **(v2 panel gate)** Image preprocessing logged: brainstorm call writes processed image batch token count + preprocessing config to `state.db api_calls.scope_json`. Test case: deliberately oversized 4K reference → verify resize to 512px happens.
 
 ---
 
 ## Open technical questions (non-blocking)
 
-### §OQ1. Reference library caching strategy
+### §OQ1. Reference library scaling
 
-Per-brainstorm attachment of 20-40 reference images is the simple path (~20-40K input tokens per call). At 修修's expected brainstorm cadence (~2-5 per week), this is ~$5/month — acceptable. If cadence grows or 修修 expands reference library to 50+ images, embedding cache is the natural escalation:
+*(v2 panel-revised)* Pre-PR4 smoke eval is now D4.a (mandatory). Per-call attachment with preprocessing (cap 30 / 512px / JPEG q=85) ≈ 10-20K input tokens at 修修's brainstorm cadence (2-5/week) ≈ ~$3-5/month. Acceptable.
 
-- Pre-compute Sonnet vision embedding of each reference image once
-- Store embedding in `data/thumbnail_reference_embeddings/{hash}.json`
-- Brainstorm call references embeddings (smaller payload) instead of raw images
+Escalation triggers:
+- Monthly cost > $20 → consider Sonnet vision embedding cache
+- Reference library > 60 images → cap at 30 most-recent or implement curation flow
+- Smoke eval persistently fails → make `style_rubric.md` the primary path, references secondary
 
-PR4 ships the simple per-call attachment. Cost is monitored via `state.db api_calls` audit; revisit if monthly cost exceeds $20.
+### §OQ2. Emotion alias edge cases
 
-### §OQ2. Emotion match — regex vs LLM secondary call
+*(v2 panel-resolved by D3 `emotions.yml`)* Bidirectional alias map handles `驚訝 / 驚喜 / surprised / Surprised` etc. Edge case still open: 修修 types something not in aliases (e.g. `「哇」表情`). Strategy: render endpoint returns 400 with the canonical Chinese list; 修修 adjusts. Long-term: collect 修修's deviations and add to aliases (no breaking change).
 
-D3 + D5 specify regex extraction of the emotion tag from `我的表情:` line, relying on the brainstorm LLM to write a valid closed-enum tag.
+### §OQ3. Funnel parameter tuning policy
 
-Edge cases:
-- 修修 edits the idea and replaces "surprised" with "驚訝" → regex fails to match enum → render fallback?
+*(v2 panel-revised by D8)* No fixed threshold — per-video top-N percentile (default 25%) plus stratified periodic sampling + audio-energy bursts. Tuning policy:
 
-PR4 strategy:
-- Regex first; if extraction yields a non-enum token, the render endpoint returns a 400 with "請在『我的表情』那行使用合法 tag：{enum list}".
-- Future PR5+ may add an automatic Chinese → enum mapping (LLM call or hardcoded translation table).
-
-### §OQ3. Funnel parameter tuning
-
-Default Laplacian threshold (σ = 100), sample count (50 frames), Stage-3 LLM top-K (5) are starting values. PR4 ships these as constants; tuning policy:
-
-- Log per-funnel-run stats: `total_sampled / passed_blur_filter / vision_picked / 修修_confirmed`
-- After 5-10 episodes, review stats and adjust constants in a small follow-up PR
+- Log per-funnel-run stats: `total_sampled / passed_sharpness / vision_picked / 修修_confirmed` to `state.db api_calls.scope_json`
+- After 5-10 episodes, review stats; adjust percentile / sample interval / audio-energy sensitivity in a small follow-up PR
 - Per-video tuning UI deferred to PR-N
+
+### §OQ4. Render mode A vs B (npx CLI vs Puppeteer)
+
+*(v2 panel-elevated)* PR4 gate: `tests/benchmarks/thumbnail_render_bench.md` documents timing + visual-identity comparison. If (B) Puppeteer wins materially, PR5 may swap. v1's "Hyperframes runtime hooks critical" claim was unverified rhetoric; v2 requires empirical evidence.
 
 ### §OQ4. Re-render behavior — overwrite vs version history
 
@@ -534,4 +666,46 @@ For peers references (Ali Abdaal, Stephen Bartlett etc.), the cutout/reference/p
 - [ADR-032](ADR-032-hyperframes-broll-pipeline.md) — Hyperframes B-roll pipeline; ADR-033 extends Hyperframes render layer to thumbnail stills (D10). ADR-032 receives a cross-ref note.
 - [`docs/schemas/project-frontmatter-nested.md`](../schemas/project-frontmatter-nested.md) — γ schema extended with thumbnail fields
 - [`docs/VAULT-LAYOUT.md`](../VAULT-LAYOUT.md) — §2 + §3 extended with cutout/projects/reference paths
-- Handoff document (修修 + Claude conversation, attached to grill session 2026-05-26) — original brainstorm-time freeform notes; ADR-033 supersedes by formalizing 10 decisions.
+- Handoff document (修修 + Claude conversation, attached to grill session 2026-05-26) — original brainstorm-time freeform notes; ADR-033 supersedes by formalizing 11 decisions.
+
+---
+
+## Panel Integration (v1 → v2)
+
+Multi-agent panel ran 2026-05-26. Verbatim audits:
+- [Codex](../research/2026-05-26-codex-adr033-audit.md) (GPT-5 via Codex CLI 0.128.0)
+- [Gemini](../research/2026-05-26-gemini-adr033-audit.md) (Gemini 2.5 Pro)
+
+### Integration matrix
+
+| # | Topic | Claude v1 | Codex audit | Gemini audit | Pattern | Resolution |
+|---|---|---|---|---|---|---|
+| P1 | D4 reference library risk | "Sonnet vision extracts pattern, no annotation" | Hopeful, needs smoke eval | Convergence on salient mean + cargo-culting; taste debt | **2-of-2** | **Adopt both** — D4.a smoke eval gate + D4.b post-commit tagging |
+| P2 | D8 funnel σ threshold | Fixed `σ = 100` Laplacian | Per-video top-N ranking, deterministic stratified, downscale | Audio-energy hybrid, expression-sample fallback as primary | **2-of-2 + complementary** | **Adopt all** — D8 rewritten with per-video ranking + stratified + audio-burst + expression-sample fallback |
+| P3 | D3 regex + emotion enum | English enum, regex extract | 400-error too late, alias map, live parse preview | emotions.yml single source, zh-Hant aliases day 1, bidirectional | **2-of-2 + complementary** | **Adopt all** — D3 rewritten around `emotions.yml`, UI gets live parse preview |
+| P4 | bridge_projects.py 1952 LOC | "+250 LOC extension" | Sibling router required | (didn't address) | **Codex unique** | **Adopt** — new `bridge_project_thumbnails.py` sibling router |
+| P5 | PR4 estimate | 6-7 days | 8-12 days dual-route; 4-5 days YouTube-only | (didn't address) | **Codex unique** | **Adopt** — split PR4-A (YouTube, 4-5d) + PR4-B (Podcast, 3-5d) |
+| P6 | Subprocess shell quoting | Mirror hyperframes_worker.py | Windows single-quote bug; use `create_subprocess_exec` | (didn't address) | **Codex unique** | **Adopt** — `exec(argv)` in thumbnail_worker.py; hyperframes_worker.py cleanup deferred |
+| P7 | D2 YouTube A/B platform fact | "Either Title OR Thumbnail, not both" | (didn't address) | YT supports 3-way Thumb A/B since late 2023 (Test & Compare) | **Gemini unique factual fix** | **Adopt** — D2 rationale rewritten to orthogonal-axis argument |
+| P8 | Creative iteration loop | (absent in v1) | (didn't address) | Director's Notes textarea per card | **Gemini unique** | **Adopt** — new D3a Director's Notes |
+| P9 | LLM router routes | Default Sonnet 4.6 implicit | Explicit `thumbnail_brainstorm` route needed | (didn't address) | **Codex unique** | **Adopt** — `shared/llm_router.py` extension in PR4-A |
+| P10 | Image preprocessing | "20-40K tokens, simple" | Add resize/recompress/cap rules + token logging | Attention dilution at high image counts, batch ordering bias | **2-of-2** | **Adopt all** — D4.c preprocessing pipeline; randomize batch order |
+| P11 | u2net failure rate | Implicit success | (didn't address) | Motion-blur frames fail u2net, ~60-70% realistic | **Gemini unique** | **Adopt** — D8 expression-sample fallback covers this; manual re-pick option in UI |
+| P12 | Single-user lock-in (creator_id) | All paths hardcode `shosho` | (didn't address) | Future-creator migration painful | **Gemini unique** | **Defer** — adding `creator_id` later is mechanical refactor; near-zero current value; YAGNI |
+| P13 | Niche-specific creator conventions | Treated peers as monolithic | (didn't address) | Health/longevity (Huberman/Attia) has specific data-viz conventions | **Gemini unique** | **No ADR change** — 修修 curates the reference library per his niche; the architecture is niche-agnostic |
+| P14 | Frontmatter content_type drift | Inherited from ADR-031 PR1 | Validation says `{youtube, podcast}` but doc-prose says 4 retained | (didn't address) | **Codex unique** | **Note in v2 change log** — fix in separate small commit during PR4-A |
+| P15 | NPX CLI vs Puppeteer | Asserted hooks critical | "Stop claiming hooks are critical until thumbnail uses them; benchmark" | (didn't address) | **Codex unique** | **Adopt** — D10 amended; PR4 acceptance gate requires benchmark doc |
+| P16 | Vision LLM "good portrait vs good story" | Implicit trust | (didn't address) | LLM picks technically clean over emotionally rich | **Gemini unique** | **Adopt as documented risk** — D8 surfaces this as known limitation; 修修 review step is safety net |
+| P17 | Bilingual prompt contamination | English-emotion + Chinese-prompt mix | (didn't address) | English reference text leaking into Chinese ideas | **Gemini unique** | **Mitigated by P3** — `emotions.yml` zh-Hant display + brainstorm prompt explicitly demands Traditional Chinese output |
+
+### Confidence summary
+
+- **High confidence** (2-of-2 panel agreement): P1, P2, P3, P10 — adopted with full v2 rewrite of D3, D4, D8.
+- **Medium-high confidence** (single panel + verifiable in code): P4, P5, P6, P9, P14, P15 — adopted; concrete code findings.
+- **Medium confidence** (single panel + reasoning-based): P7, P8, P11, P16, P17 — adopted; align with 修修's stated values (simplicity + creative agency).
+- **Low confidence / deferred**: P12, P13 — explicit YAGNI / 修修-curation deferrals.
+
+### Items NOT adopted
+
+- **P12 creator_id paths** — overengineering for current single-user reality. Adding `creator_id/` in 5 years (if ever needed) is a mechanical migration script. Cost-of-adoption-now > cost-of-migration-later.
+- **P13 niche-specific reference curation in code** — the architecture is niche-agnostic; 修修 supplies the reference set. No code change.
