@@ -6,8 +6,10 @@ once Robin Reader URL scheme is defined (Phase 1.5).
 
 from __future__ import annotations
 
+from pathlib import Path
 
-async def render(beat):
+
+async def render(beat: dict, out_dir: Path) -> Path:
     raise NotImplementedError(
         "Phase 1.5 — promote web_highlight_record + define Robin URL scheme first"
     )

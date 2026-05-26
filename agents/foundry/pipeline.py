@@ -127,15 +127,56 @@ def _cmd_plan(args: argparse.Namespace) -> int:
 
 
 def _cmd_render(args: argparse.Namespace) -> int:
-    raise NotImplementedError("PR-4 — render_dispatcher + hyperframes_worker")
+    """storyboard.yaml → individual b_roll_<beat_id>.mp4 in out/."""
+    import asyncio
+
+    from agents.foundry.render_dispatcher import run_queue
+
+    ep_dir = _episode_dir(args.episode)
+    storyboard_path = ep_dir / "storyboard.yaml"
+    out_dir = ep_dir / "out"
+
+    storyboard = yaml.safe_load(storyboard_path.read_text(encoding="utf-8"))
+    if not isinstance(storyboard, list):
+        raise ValueError(f"{storyboard_path}: expected list of beats, got {type(storyboard)}")
+
+    cutaways = [b for b in storyboard if b.get("broll_decision") == "cutaway"]
+    logger.info("rendering %d cutaway beats (concurrency=1)", len(cutaways))
+
+    paths = asyncio.run(run_queue(cutaways, out_dir, concurrency=args.concurrency))
+
+    # Update storyboard with render_status=done for rendered beats
+    rendered_ids = {b["beat_id"] for b in cutaways}
+    for beat in storyboard:
+        if beat["beat_id"] in rendered_ids:
+            beat.setdefault("status", {})["render_status"] = "done"
+    storyboard_path.write_text(
+        yaml.dump(storyboard, allow_unicode=True, default_flow_style=False, sort_keys=False),
+        encoding="utf-8",
+    )
+    logger.info("rendered %d mp4s; storyboard.yaml updated", len(paths))
+    return 0
 
 
 def _cmd_emit(args: argparse.Namespace) -> int:
-    raise NotImplementedError("PR-4 — fcpxml_emitter")
+    """storyboard.yaml + rendered mp4s → out/episode.fcpxml."""
+    from agents.foundry.fcpxml_emitter import emit
+
+    ep_dir = _episode_dir(args.episode)
+    storyboard = yaml.safe_load((ep_dir / "storyboard.yaml").read_text(encoding="utf-8"))
+    fcpxml_path = emit(storyboard, ep_dir, fcpxml_version=args.fcpxml_version)
+    logger.info("FCPXML emitted: %s", fcpxml_path)
+    return 0
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
-    raise NotImplementedError("PR-3/PR-4 — end-to-end orchestration")
+    rc = _cmd_plan(args)
+    if rc != 0:
+        return rc
+    rc = _cmd_render(args)
+    if rc != 0:
+        return rc
+    return _cmd_emit(args)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -143,9 +184,16 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--episode", required=True, help="episode id under data/script_video/")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("plan").set_defaults(fn=_cmd_plan)
-    sub.add_parser("render").set_defaults(fn=_cmd_render)
-    sub.add_parser("emit").set_defaults(fn=_cmd_emit)
-    sub.add_parser("run").set_defaults(fn=_cmd_run)
+    render_sub = sub.add_parser("render")
+    render_sub.add_argument("--concurrency", type=int, default=1)
+    render_sub.set_defaults(fn=_cmd_render)
+    emit_sub = sub.add_parser("emit")
+    emit_sub.add_argument("--fcpxml-version", default="1.10", choices=["1.10", "1.11", "1.9"])
+    emit_sub.set_defaults(fn=_cmd_emit)
+    run_sub = sub.add_parser("run")
+    run_sub.add_argument("--concurrency", type=int, default=1)
+    run_sub.add_argument("--fcpxml-version", default="1.10", choices=["1.10", "1.11", "1.9"])
+    run_sub.set_defaults(fn=_cmd_run)
     return p
 
 
