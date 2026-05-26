@@ -1,0 +1,94 @@
+{
+  "schema_version": 2,
+  "manifest_id": "mfst_podcast_ep_123",
+  "source_id": "inbox:Inbox/transcripts/hubermanlab-ep-123.md",
+  "created_at": "2026-05-27T00:00:00Z",
+  "status": "needs_review",
+  "replaces_manifest_id": null,
+  "recommender": {
+    "model_name": "claude-opus-4-7",
+    "model_version": "2026-04",
+    "run_params": {},
+    "recommended_at": "2026-05-27T00:00:00Z"
+  },
+  "items": [
+    {
+      "item_kind": "entity",
+      "item_id": "ent_person_huberman",
+      "recommendation": "include",
+      "action": "update_merge_entity",
+      "reason": "recurring authority on neuroscience podcasts; exact alias against existing entity page.",
+      "evidence": [
+        {
+          "kind": "external_ref",
+          "source_path": "https://youtu.be/abc123",
+          "locator": "00:12:34",
+          "excerpt": "Huberman discussing dopamine baselines and behavioural reinforcement.",
+          "confidence": 0.92
+        }
+      ],
+      "risk": [],
+      "confidence": 0.95,
+      "source_importance": 0.9,
+      "reader_salience": 0.85,
+      "entity_label": "Andrew Huberman",
+      "aliases": ["Dr. Huberman", "Andrew D. Huberman"],
+      "evidence_language": "en",
+      "metadata": {
+        "entity_type": "person",
+        "affiliation": "Stanford University",
+        "role": "Neuroscience Professor",
+        "birth_year": 1975,
+        "death_year": null,
+        "credentials": ["PhD"]
+      },
+      "canonical_match": {
+        "match_basis": "exact_alias",
+        "confidence": 0.97,
+        "matched_entity_path": "KB/Wiki/Entities/People/Andrew Huberman.md"
+      },
+      "prior_decision": null,
+      "human_decision": {
+        "decision": "approve",
+        "decided_at": "2026-05-27T00:00:01Z",
+        "decided_by": "auto-fast-track",
+        "note": "auto-approved by fast-track: canonical_match.confidence=0.97 > 0.9"
+      }
+    },
+    {
+      "item_kind": "entity",
+      "item_id": "ent_org_stanford",
+      "recommendation": "include",
+      "action": "create_entity",
+      "reason": "recurring institution referenced across multiple episodes; no existing KB entity match.",
+      "evidence": [
+        {
+          "kind": "external_ref",
+          "source_path": "https://youtu.be/abc123",
+          "locator": "00:20:00",
+          "excerpt": "affiliated with Stanford University Neuroscience Institute.",
+          "confidence": 0.9
+        }
+      ],
+      "risk": [],
+      "confidence": 0.85,
+      "source_importance": 0.8,
+      "reader_salience": 0.6,
+      "entity_label": "Stanford University",
+      "aliases": [],
+      "evidence_language": "en",
+      "metadata": {
+        "entity_type": "organization",
+        "org_type": "academic",
+        "jurisdiction": "US",
+        "website": "https://www.stanford.edu",
+        "parent_org": null
+      },
+      "canonical_match": null,
+      "prior_decision": null,
+      "human_decision": null
+    }
+  ],
+  "commit_batches": [],
+  "metadata": {}
+}
