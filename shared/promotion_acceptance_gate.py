@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Protocol
 
 from shared.log import get_logger
+from shared.promotion_targets import resolve_target_path
 from shared.schemas.promotion_commit import (
     AcceptanceFinding,
     AcceptanceFindingCode,
@@ -112,20 +113,10 @@ class AcceptanceGate:
         findings: list[AcceptanceFinding] = []
 
         # G2 / G1 — target_kb_path presence and vault containment.
-        target = item.target_kb_path if isinstance(item, SourcePageReviewItem) else None
-        if isinstance(item, ConceptReviewItem):
-            # v=1 concept-path resolution: only items whose
-            # ``canonical_match.matched_concept_path`` is set are commitable.
-            # Items with ``canonical_match=None`` or ``match_basis="none"``
-            # surface ``target_kb_path_missing`` and the service skips them.
-            # Synthesizing a slug for keep-source-local concepts is
-            # explicitly out of scope for v=1 (PR #528 deviation #3) and
-            # tracked for a future slice.
-            cm = item.canonical_match
-            if cm is not None and cm.matched_concept_path:
-                target = cm.matched_concept_path
-            else:
-                target = None
+        # ADR-034 v2 §D3 — single source for ReviewItem → target_kb_path policy.
+        # Pre-PR1 this logic was inlined here and duplicated in
+        # promotion_commit._resolve_target_path; both now call this helper.
+        target = resolve_target_path(item)
 
         if not target or not target.strip():
             findings.append(
@@ -215,11 +206,36 @@ class AcceptanceGate:
                 )
             )
 
-        # G6 — Concept canonical match defense in depth (#512 V10).
-        if isinstance(item, ConceptReviewItem) and item.canonical_match is not None:
-            cm = item.canonical_match
+        # G6 — type-specific invariants (Concept defense-in-depth #512 V10;
+        # future subtypes register their own arm).
+        # ADR-034 v2 §D3 — dispatch via match, no inline isinstance.
+        findings.extend(_validate_type_specific_invariants(item))
+
+        passed = not any(f.severity == "error" for f in findings)
+        return AcceptanceResult(item_id=item.item_id, passed=passed, findings=findings)
+
+
+def _validate_type_specific_invariants(
+    item: SourcePageReviewItem | ConceptReviewItem,
+) -> list[AcceptanceFinding]:
+    """Subtype-specific invariants. Dispatch via ``match`` (ADR-034 v2 §D3).
+
+    - ``SourcePageReviewItem`` — no extra invariants beyond the shared ones
+      enforced in :meth:`AcceptanceGate.validate`.
+    - ``ConceptReviewItem`` — G6 (#512 V10 defense-in-depth):
+      ``canonical_match.match_basis != "none"`` requires
+      ``matched_concept_path``.
+
+    Raises:
+        NotImplementedError: ``item`` is not a registered ``ReviewItem``
+            subtype. Defensive — see ADR-034 v2 §D3.
+    """
+    match item:
+        case SourcePageReviewItem():
+            return []
+        case ConceptReviewItem(canonical_match=cm) if cm is not None:
             if cm.match_basis != "none" and not cm.matched_concept_path:
-                findings.append(
+                return [
                     _finding(
                         "concept_canonical_match_path_invalid",
                         "error",
@@ -227,10 +243,15 @@ class AcceptanceGate:
                         f"{cm.match_basis!r} requires matched_concept_path "
                         "(defense in depth for #512 V10)",
                     )
-                )
-
-        passed = not any(f.severity == "error" for f in findings)
-        return AcceptanceResult(item_id=item.item_id, passed=passed, findings=findings)
+                ]
+            return []
+        case ConceptReviewItem():
+            return []
+        case _:
+            raise NotImplementedError(
+                f"_validate_type_specific_invariants: no arm for ReviewItem "
+                f"subtype {type(item).__name__!r}. Add a `case` per ADR-034 v2 §D3."
+            )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

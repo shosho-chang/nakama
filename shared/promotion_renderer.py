@@ -67,6 +67,37 @@ _CONCEPT_PAGE_FRONTMATTER_KEYS: tuple[str, ...] = (
 )
 
 
+def render_review_item(
+    item: SourcePageReviewItem | ConceptReviewItem,
+    manifest: PromotionManifest,
+) -> str:
+    """Unified entry point for rendering any ``ReviewItem`` to markdown.
+
+    Dispatch via ``match`` (ADR-034 v2 §D3). Each arm delegates to the
+    per-subtype render helper, preserving the byte-identical determinism
+    contract documented in :func:`render_source_page` /
+    :func:`render_concept_page`.
+
+    Caller-facing API: this is the canonical entry. The per-subtype
+    helpers (``render_source_page`` / ``render_concept_page``) remain
+    public for backward compatibility but new callers should use this.
+
+    Raises:
+        NotImplementedError: ``item`` is not a registered ``ReviewItem``
+            subtype. Defensive — see ADR-034 v2 §D3.
+    """
+    match item:
+        case SourcePageReviewItem():
+            return render_source_page(item, manifest)
+        case ConceptReviewItem():
+            return render_concept_page(item, manifest)
+        case _:
+            raise NotImplementedError(
+                f"render_review_item: no arm for ReviewItem subtype "
+                f"{type(item).__name__!r}. Add a `case` per ADR-034 v2 §D3."
+            )
+
+
 def render_source_page(item: SourcePageReviewItem, manifest: PromotionManifest) -> str:
     """Render a ``SourcePageReviewItem`` to markdown.
 
