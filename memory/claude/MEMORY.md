@@ -20,6 +20,7 @@
 
 - [feedback_local_shell_ops_just_do_it.md](feedback_local_shell_ops_just_do_it.md) — **本機 shell ops auto mode 下直接做**：pip / python -m / 本機 CLI 在修修本機 dev 環境且 auto mode 開著時 Claude 直接執行，不要丟給修修
 - [feedback_use_mcp_browser_for_ui_verify.md](feedback_use_mcp_browser_for_ui_verify.md) — **UI verify 走 Playwright MCP**：機械步驟（navigate / select / click / 看 network）走 `mcp__plugin_playwright_playwright__*`，只把視覺判讀留給修修
+- [feedback_ui_preflight_visual_checklist.md](feedback_ui_preflight_visual_checklist.md) — **UI 完工前 self-check 8 項**（gutter / 水平溢出 / hover / empty state / theme / long-text overflow / 無 markdown dump / sho tokens 走得對）— 不要把 trivial 視覺 bug 丟給修修挑（2026-05-26 digest edge-to-edge 教訓）
 - [feedback_wakeup_completion_not_session_end.md](feedback_wakeup_completion_not_session_end.md) — **wakeup task done ≠ session end**：ScheduleWakeup 回來時若 task 已在中間 interactive 輪做完，auto mode 下要主動 surface 下一步，不要當無事可做停掉
 - [feedback_worktree_submodule_not_auto_init.md](feedback_worktree_submodule_not_auto_init.md) — **`git worktree add` 不會自動 init submodule** — foliate-js 在新 worktree 是空目錄，reader 頁 vendor/*.js 全 404、`thousand_sunny.app` boot 時跳過 mount；開 book-related worktree 必先 `git submodule update --init`，且若已 boot uvicorn 要重啟（2026-05-10 mono-zh pilot acceptance 教訓）
 - [feedback_agent_isolation_worktree_nesting.md](feedback_agent_isolation_worktree_nesting.md) — **Agent tool `isolation: worktree` nests under `.claude/worktrees/` (= 主 repo 內)** — `find_dotenv()` 走上撈主 `.env` 污染；dispatch 時 pre-create sibling `E:/nakama-<topic>` 並**不加** `isolation`（2026-05-10 N518a 教訓）
