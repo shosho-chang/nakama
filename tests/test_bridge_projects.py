@@ -68,6 +68,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("DISABLE_ROBIN", "1")
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
     monkeypatch.setenv("NAKAMA_DOC_INDEX_DB_PATH", str(tmp_path / "doc_index.db"))
+    monkeypatch.setenv("NAKAMA_RESEARCH_CACHE_DIR", str(tmp_path / "research_cache"))
 
     proj_dir = tmp_path / "Projects"
     proj_dir.mkdir(parents=True)
@@ -667,3 +668,511 @@ class TestReviewDispatch:
         r = client.post("/bridge/projects/肌酸的妙用/review/storyteller")
         assert r.status_code == 422
         assert "empty" in r.text.lower()
+
+
+class TestResearchKeywordEndpoint:
+    """ADR-031 PR3 — Zoro keyword research dispatch."""
+
+    def _stub_zoro_result(self):
+        return {
+            "keywords": ["肌酸", "creatine", "肌酸補充"],
+            "trend_gaps": ["長者族群應用尚未普及"],
+            "youtube_titles": ["65 歲後吃肌酸"],
+            "blog_titles": ["肌酸不只練肌肉"],
+            "analysis_summary": "summary text",
+            "trending_videos": [
+                {"title": "Creatine 101", "channel": "YT-A", "views": 1000, "url": "https://yt/x"}
+            ],
+            "social_posts": [],
+            "sources_used": ["youtube_zh", "trends_zh"],
+            "sources_failed": [],
+            "en_topic": "creatine",
+            "usage": [],
+        }
+
+    def test_keyword_runs_and_writes_frontmatter(self, client, monkeypatch, tmp_path):
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        stub = self._stub_zoro_result()
+        monkeypatch.setattr(bp_module, "research_keywords", lambda *a, **kw: stub)
+
+        r = client.post("/bridge/projects/肌酸的妙用/research/keyword")
+        assert r.status_code == 200
+        assert "Zoro 關鍵字研究結果" in r.text
+        assert "肌酸" in r.text
+
+        proj = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(proj.split("---")[1])
+        assert fm["keywords"] == ["肌酸", "creatine", "肌酸補充"]
+        assert "keyword_research_at" in fm
+
+        # Body marker section written
+        assert "<!-- nakama:research:zoro:start -->" in proj
+        assert "<!-- nakama:research:zoro:end -->" in proj
+        assert "## 🗝 Zoro 關鍵字研究" in proj
+        # Pre-existing body preserved
+        assert "## 專案描述" in proj
+        assert "## Script / Outline" in proj
+
+    def test_keyword_idempotent_replace(self, client, monkeypatch, tmp_path):
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        stub = self._stub_zoro_result()
+        monkeypatch.setattr(bp_module, "research_keywords", lambda *a, **kw: stub)
+        client.post("/bridge/projects/肌酸的妙用/research/keyword")
+
+        # Second run with different keywords
+        monkeypatch.setattr(
+            bp_module,
+            "research_keywords",
+            lambda *a, **kw: {**self._stub_zoro_result(), "keywords": ["new-kw"]},
+        )
+        client.post("/bridge/projects/肌酸的妙用/research/keyword")
+
+        proj = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        # Only one marker pair survives
+        assert proj.count("<!-- nakama:research:zoro:start -->") == 1
+        fm = yaml.safe_load(proj.split("---")[1])
+        assert fm["keywords"] == ["new-kw"]
+
+    def test_keyword_400_when_search_topic_empty(self, client, monkeypatch, tmp_path):
+        # Strip search_topic from the seed project
+        proj_path = tmp_path / "Projects" / "肌酸的妙用.md"
+        text = proj_path.read_text(encoding="utf-8")
+        text = text.replace("search_topic: 肌酸", "search_topic: ''")
+        proj_path.write_text(text, encoding="utf-8")
+
+        r = client.post("/bridge/projects/肌酸的妙用/research/keyword")
+        assert r.status_code == 400
+        assert "search_topic" in r.text
+
+    def test_keyword_404_when_project_missing(self, client):
+        r = client.post("/bridge/projects/no-such/research/keyword")
+        assert r.status_code == 404
+
+    def test_keyword_500_on_zoro_failure(self, client, monkeypatch):
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        def _boom(*a, **kw):
+            raise RuntimeError("data source dead")
+
+        monkeypatch.setattr(bp_module, "research_keywords", _boom)
+        r = client.post("/bridge/projects/肌酸的妙用/research/keyword")
+        assert r.status_code == 500
+        assert "Zoro 失敗" in r.text
+
+    def test_keyword_dict_shape_persisted_structurally(self, client, monkeypatch, tmp_path):
+        """Zoro returns list[dict]; frontmatter must keep the full structure
+        (not stringify it via ``str(dict)``). ADR-031 PR3 regression guard."""
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        dict_kw_result = {
+            "keywords": [
+                {
+                    "keyword": "肌酸 睡眠",
+                    "keyword_en": "creatine sleep",
+                    "search_volume": "medium",
+                    "competition": "low",
+                    "opportunity": "high",
+                    "reason": "ZH 端內容空白",
+                    "source": "en",
+                },
+                {
+                    "keyword": "肌酸怎麼吃",
+                    "keyword_en": "how to take creatine",
+                    "search_volume": "high",
+                    "competition": "medium",
+                    "opportunity": "medium",
+                    "reason": "搜尋建議第二名",
+                    "source": "both",
+                },
+            ],
+            "trend_gaps": [],
+            "youtube_titles": ["title1"],
+            "blog_titles": [],
+            "analysis_summary": "",
+            "trending_videos": [
+                {
+                    "title": "T",
+                    "channel": "C",
+                    "views": 100,
+                    "url": "https://youtube.com/watch?v=ABCDEFGHIJK",
+                }
+            ],
+            "social_posts": [],
+            "sources_used": ["youtube_zh"],
+            "sources_failed": [],
+        }
+        monkeypatch.setattr(bp_module, "research_keywords", lambda *a, **kw: dict_kw_result)
+
+        r = client.post("/bridge/projects/肌酸的妙用/research/keyword")
+        assert r.status_code == 200
+        # HTML must render the structured table, not stringified dicts
+        assert '<table class="pj-kw-table">' in r.text
+        assert "肌酸 睡眠" in r.text
+        assert "creatine sleep" in r.text
+        # Iframe embed extracted from URL
+        assert "youtube-nocookie.com/embed/ABCDEFGHIJK" in r.text
+
+        # Frontmatter persists list-of-dicts, NOT list-of-stringified-dicts
+        proj = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(proj.split("---")[1])
+        assert isinstance(fm["keywords"], list)
+        assert isinstance(fm["keywords"][0], dict)
+        assert fm["keywords"][0]["keyword"] == "肌酸 睡眠"
+        assert fm["keywords"][0]["search_volume"] == "medium"
+        # Markdown table syntax landed in body
+        assert "| 中文關鍵字 | EN | 搜尋量" in proj
+
+
+class TestResearchKbEndpoint:
+    """ADR-031 PR3 — Robin KB hits dispatch."""
+
+    def _stub_hits(self):
+        return [
+            {
+                "type": "source",
+                "title": "肌酸效益",
+                "path": "KB/Wiki/Sources/creatine-overview",
+                "preview": "Creatine basics",
+                "relevance_reason": "直接對應主題",
+            },
+            {
+                "type": "concept",
+                "title": "creatine monohydrate",
+                "path": "KB/Wiki/Concepts/creatine-monohydrate",
+                "preview": "化學結構與吸收",
+                "relevance_reason": "補充形式",
+            },
+        ]
+
+    def test_kb_uses_search_topic_when_no_keywords(self, client, monkeypatch, tmp_path):
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        captured = {}
+
+        def _fake(query, vault, *, purpose, engine, top_k=8):
+            captured["query"] = query
+            captured["purpose"] = purpose
+            return self._stub_hits()
+
+        monkeypatch.setattr(bp_module, "search_kb", _fake)
+
+        r = client.post("/bridge/projects/肌酸的妙用/research/kb")
+        assert r.status_code == 200
+        assert captured["query"] == "肌酸"  # search_topic value
+        assert captured["purpose"] == "youtube"
+        assert "Robin KB 命中" in r.text
+        assert "肌酸效益" in r.text
+
+        proj = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        assert "<!-- nakama:research:kb:start -->" in proj
+
+    def test_kb_uses_keywords_when_populated(self, client, monkeypatch, tmp_path):
+        # Inject keywords frontmatter
+        proj_path = tmp_path / "Projects" / "肌酸的妙用.md"
+        text = proj_path.read_text(encoding="utf-8")
+        text = text.replace(
+            "tags:\n  - project\n  - youtube",
+            "keywords:\n  - 肌酸\n  - creatine\ntags:\n  - project\n  - youtube",
+        )
+        proj_path.write_text(text, encoding="utf-8")
+
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        captured = {}
+
+        def _fake(query, vault, *, purpose, engine, top_k=8):
+            captured["query"] = query
+            return self._stub_hits()
+
+        monkeypatch.setattr(bp_module, "search_kb", _fake)
+        r = client.post("/bridge/projects/肌酸的妙用/research/kb")
+        assert r.status_code == 200
+        assert "肌酸" in captured["query"]
+        assert "creatine" in captured["query"]
+
+    def test_kb_400_when_no_query_source(self, client, monkeypatch, tmp_path):
+        # Strip search_topic AND ensure no keywords frontmatter
+        proj_path = tmp_path / "Projects" / "肌酸的妙用.md"
+        text = proj_path.read_text(encoding="utf-8")
+        text = text.replace("search_topic: 肌酸", "search_topic: ''")
+        proj_path.write_text(text, encoding="utf-8")
+
+        r = client.post("/bridge/projects/肌酸的妙用/research/kb")
+        assert r.status_code == 400
+        assert "keywords" in r.text or "search_topic" in r.text
+
+    def test_kb_404_when_project_missing(self, client):
+        r = client.post("/bridge/projects/no-such/research/kb")
+        assert r.status_code == 404
+
+    def test_kb_500_on_robin_failure(self, client, monkeypatch):
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        def _boom(*a, **kw):
+            raise RuntimeError("KB index missing")
+
+        monkeypatch.setattr(bp_module, "search_kb", _boom)
+        r = client.post("/bridge/projects/肌酸的妙用/research/kb")
+        assert r.status_code == 500
+        assert "Robin 失敗" in r.text
+
+
+class TestResearchSynthesisEndpoint:
+    """ADR-031 PR3 Phase 1 — Robin KB synthesis dispatch."""
+
+    def _seed_kb_cache(self, tmp_path):
+        import json
+
+        cache_dir = tmp_path / "research_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "肌酸的妙用.kb.json").write_text(
+            json.dumps(
+                {
+                    "hits": [
+                        {
+                            "type": "concept",
+                            "title": "Creatine Supplementation",
+                            "path": "KB/Wiki/Concepts/creatine supplementation",
+                            "heading": "Core Principles",
+                            "chunk_text": "20g/5 days loading...",
+                            "relevance_tier": "strong",
+                        },
+                        {
+                            "type": "source",
+                            "title": "Sport Nutrition ch11",
+                            "path": "KB/Wiki/Sources/sport-nutrition/ch11",
+                            "chunk_text": "review questions...",
+                            "relevance_tier": "weak",
+                        },
+                    ],
+                    "timestamp": "2026-05-25T20:00:00+08:00",
+                    "query_label": "肌酸",
+                    "used_keywords": False,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+    def test_synthesis_happy_path(self, client, monkeypatch, tmp_path):
+        self._seed_kb_cache(tmp_path)
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        captured = {}
+
+        def _fake_synth(hits, brief, zoro_keywords):
+            captured["hit_count"] = len(hits)
+            captured["search_topic"] = brief.get("search_topic")
+            return (
+                "## 機制\n肌酸提升 PCr。\n\n## 證據\n20g/5 天 [[creatine supplementation]]。\n\n"
+                "## 爭議\nKB 中目前缺長期 endpoint。\n\n## 角度\n- 負荷期 vs 慢速法\n"
+            )
+
+        monkeypatch.setattr(bp_module, "_synthesize_kb_hits", _fake_synth)
+
+        r = client.post("/bridge/projects/肌酸的妙用/research/synthesis")
+        assert r.status_code == 200, r.text
+        assert captured["hit_count"] == 2
+        assert captured["search_topic"] == "肌酸"
+        assert "Robin 摘要" in r.text
+        # Markdown should be rendered to HTML
+        assert "<h2>" in r.text and "機制" in r.text
+        # Vault write-back
+        proj = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        assert "<!-- nakama:research:kb-synthesis:start -->" in proj
+        assert "肌酸提升 PCr" in proj
+        # Sidecar cache
+        synth_cache = tmp_path / "research_cache" / "肌酸的妙用.synthesis.json"
+        assert synth_cache.exists()
+
+    def test_synthesis_400_when_no_kb_cache(self, client, tmp_path):
+        # No KB cache seeded
+        r = client.post("/bridge/projects/肌酸的妙用/research/synthesis")
+        assert r.status_code == 400
+        assert "KB" in r.text
+
+    def test_synthesis_404_when_project_missing(self, client, tmp_path):
+        r = client.post("/bridge/projects/no-such/research/synthesis")
+        assert r.status_code == 404
+
+    def test_synthesis_500_on_llm_failure(self, client, monkeypatch, tmp_path):
+        self._seed_kb_cache(tmp_path)
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        def _boom(*a, **kw):
+            raise RuntimeError("LLM provider down")
+
+        monkeypatch.setattr(bp_module, "_synthesize_kb_hits", _boom)
+        r = client.post("/bridge/projects/肌酸的妙用/research/synthesis")
+        assert r.status_code == 500
+        assert "Robin 摘要失敗" in r.text
+
+    def test_synthesis_500_on_empty_llm_output(self, client, monkeypatch, tmp_path):
+        self._seed_kb_cache(tmp_path)
+        import thousand_sunny.routers.bridge_projects as bp_module
+
+        monkeypatch.setattr(bp_module, "_synthesize_kb_hits", lambda *a, **kw: "   ")
+        r = client.post("/bridge/projects/肌酸的妙用/research/synthesis")
+        assert r.status_code == 500
+
+
+class TestResearchDrPromptEndpoint:
+    """ADR-031 PR3 Phase 2 — Deep Research prompt builder."""
+
+    def test_dr_prompt_minimal_returns_json(self, client):
+        r = client.post("/bridge/projects/肌酸的妙用/research/dr-prompt")
+        assert r.status_code == 200
+        data = r.json()
+        assert "prompt" in data
+        prompt = data["prompt"]
+        assert "肌酸" in prompt
+        assert "報告需求" in prompt
+        assert "繁體中文" in prompt
+
+    def test_dr_prompt_includes_zoro_keywords_when_cached(self, client, tmp_path):
+        import json
+
+        cache_dir = tmp_path / "research_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "肌酸的妙用.zoro.json").write_text(
+            json.dumps(
+                {
+                    "result": {
+                        "keywords": [
+                            {"keyword": "肌酸副作用", "keyword_en": "creatine side effects"},
+                            {"keyword": "肌酸負荷期"},
+                        ],
+                        "trend_gaps": [
+                            {"topic": "認知功能", "en_signal": "rising", "zh_status": "稀少"}
+                        ],
+                    }
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        r = client.post("/bridge/projects/肌酸的妙用/research/dr-prompt")
+        assert r.status_code == 200
+        prompt = r.json()["prompt"]
+        assert "肌酸副作用" in prompt
+        assert "creatine side effects" in prompt
+        assert "認知功能" in prompt
+        assert "趨勢落差" in prompt
+
+    def test_dr_prompt_includes_synthesis_when_cached(self, client, tmp_path):
+        import json
+
+        cache_dir = tmp_path / "research_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "肌酸的妙用.synthesis.json").write_text(
+            json.dumps(
+                {"synthesis_md": "## 機制\n肌酸提升 PCr", "timestamp": "x", "hits_used": 1},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        r = client.post("/bridge/projects/肌酸的妙用/research/dr-prompt")
+        prompt = r.json()["prompt"]
+        assert "肌酸提升 PCr" in prompt
+        assert "我自己 KB 已經整理出的摘要" in prompt
+
+    def test_dr_prompt_404_when_project_missing(self, client):
+        r = client.post("/bridge/projects/no-such/research/dr-prompt")
+        assert r.status_code == 404
+
+
+class TestResearchDrReportEndpoint:
+    """ADR-031 PR3 Phase 2 — Deep Research paste-back."""
+
+    def test_dr_report_writes_marker_and_cache(self, client, tmp_path):
+        report = "## 摘要\n肌酸對認知有正面效果\n\n## 證據\nRCT n=200..."
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/research/dr-report",
+            data={"report": report, "source": "chatgpt-deepresearch"},
+        )
+        assert r.status_code == 200, r.text
+        assert "Deep Research 報告" in r.text
+        assert "<h2>" in r.text and "摘要" in r.text
+
+        proj = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        assert "<!-- nakama:research:dr:start -->" in proj
+        assert "肌酸對認知有正面效果" in proj
+        assert "chatgpt-deepresearch" in proj
+
+        dr_cache = tmp_path / "research_cache" / "肌酸的妙用.dr.json"
+        assert dr_cache.exists()
+
+    def test_dr_report_400_when_empty(self, client):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/research/dr-report",
+            data={"report": "   ", "source": "manual"},
+        )
+        assert r.status_code == 400
+
+    def test_dr_report_sanitizes_source_label(self, client, tmp_path):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/research/dr-report",
+            data={"report": "body", "source": "weird/path<script>;tag"},
+        )
+        assert r.status_code == 200
+        proj = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        # < / > / ; / / should all be normalized to -
+        assert "<script>" not in proj
+        assert "weird-path-script-tag" in proj
+
+    def test_dr_report_404_when_project_missing(self, client):
+        r = client.post(
+            "/bridge/projects/no-such/research/dr-report",
+            data={"report": "body", "source": "manual"},
+        )
+        assert r.status_code == 404
+
+
+class TestProjectsDetailHydratesNewCaches:
+    """GET /bridge/projects/{slug} should hydrate synthesis + DR caches into the page."""
+
+    def test_detail_hydrates_synthesis_html(self, client, tmp_path):
+        import json
+
+        cache_dir = tmp_path / "research_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "肌酸的妙用.synthesis.json").write_text(
+            json.dumps(
+                {
+                    "synthesis_md": "## 機制\n說明",
+                    "timestamp": "2026-05-25T20:00:00+08:00",
+                    "hits_used": 5,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        r = client.get("/bridge/projects/肌酸的妙用?tab=research")
+        assert r.status_code == 200
+        assert "Robin 摘要" in r.text
+        assert "<h2>" in r.text and "機制" in r.text
+
+    def test_detail_hydrates_dr_html(self, client, tmp_path):
+        import json
+
+        cache_dir = tmp_path / "research_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "肌酸的妙用.dr.json").write_text(
+            json.dumps(
+                {
+                    "report_md": "## 結論\n肌酸效果顯著",
+                    "timestamp": "2026-05-25T20:00:00+08:00",
+                    "source": "chatgpt-deepresearch",
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        r = client.get("/bridge/projects/肌酸的妙用?tab=research")
+        assert r.status_code == 200
+        assert "Deep Research 報告" in r.text
+        assert "肌酸效果顯著" in r.text

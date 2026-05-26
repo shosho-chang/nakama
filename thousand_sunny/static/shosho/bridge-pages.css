@@ -26,6 +26,14 @@
    `.bridge-page--scroll`. */
 body.sho.bridge-page--scroll {
   margin: 0;
+  /* Override `.bridge-page`'s fixed-viewport lock (height:100vh + overflow:hidden)
+     so document-level scrolling works when content exceeds viewport. The
+     `.bridge-page` parent class is a kiosk-mode design (no scroll, content
+     must fit); `--scroll` is the modifier that opts back into natural flow.
+     ADR-031 PR3: research tab is the first sub-page to genuinely exceed
+     viewport, which surfaced the missing overrides here. */
+  height: auto;
+  overflow: visible;
   min-height: 100vh;
   display: flex;
   flex-direction: column;

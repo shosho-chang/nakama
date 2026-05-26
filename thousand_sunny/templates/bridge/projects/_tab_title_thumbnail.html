@@ -1,35 +1,88 @@
 <div class="pj-tab-panel" id="title-thumbnail" data-tab="title-thumbnail" {% if tab != 'title-thumbnail' %}hidden{% endif %}>
   <header class="pj-section-header">
-    <h2 class="pj-section-title">🎯 Title & Thumbnail</h2>
+    <h2 class="pj-section-title">🎯 Title &amp; Thumbnail</h2>
     <p class="pj-section-hint">
       Stage 4：CTR pair。Title + Thumbnail 重要性甚至比 Hook 還高 — 它們在 youtube feed
-      / podcast 列表是讀者第一個看到的東西。
+      / podcast 列表是讀者第一個看到的東西。先讓 Zoro 抓關鍵字 / 趨勢影片 / 標題建議，
+      再從這裡挑/改成最終候選。
     </p>
   </header>
 
-  <form class="pj-inline-form" method="post"
-        action="/bridge/projects/{{ entry.slug }}/frontmatter">
-    <input type="hidden" name="field" value="title_candidates">
-    <input type="hidden" name="tab" value="title-thumbnail">
-    <label class="pj-label">標題候選（每行一個，1-10 條）</label>
-    <textarea name="value" rows="6" placeholder="例：
+  {% set raw_topic = (entry.raw_frontmatter.get('search_topic') or '') | trim %}
+  {% set raw_keywords = entry.raw_frontmatter.get('keywords') or [] %}
+  <div class="pj-research-actions" data-project-slug="{{ entry.slug }}" data-actions-scope="title-thumbnail">
+    <button class="pj-btn-primary" type="button"
+            data-research-action="keyword"
+            {% if not raw_topic %}disabled title="先到 Brief 填 search_topic"{% endif %}>
+      🗝 Zoro 關鍵字研究
+      <span class="pj-research-hint">topic：<code>{{ raw_topic or '（未填）' }}</code></span>
+    </button>
+  </div>
+
+  {% if entry.raw_frontmatter.keyword_research_at %}
+  <div class="pj-research-prior">
+    <span class="pj-research-meta">
+      上次 Zoro 研究：{{ entry.raw_frontmatter.keyword_research_at }}
+      {% if raw_keywords %}
+        · {{ raw_keywords | length }} 個 keywords
+        ({%- for k in raw_keywords[:5] -%}
+          {%- if k is mapping -%}{{ k.keyword or k.keyword_en or '' }}{%- else -%}{{ k }}{%- endif -%}
+          {%- if not loop.last %}、{% endif -%}
+        {%- endfor -%}
+        {%- if raw_keywords | length > 5 %}…{% endif -%})
+      {% endif %}
+    </span>
+    <span class="pj-research-meta-note">點按鈕重跑會覆寫 marker section。</span>
+  </div>
+  {% endif %}
+
+  <div class="pj-research-status" data-research-status hidden>
+    <div class="pj-spinner" aria-hidden="true"></div>
+    <span class="pj-research-status-label">研究中…</span>
+    <span class="pj-research-status-timer" data-timer>0s</span>
+  </div>
+
+  <div class="pj-research-results" id="research-zoro-result" data-research-slot="zoro"
+       {% if not cached_zoro %}hidden{% endif %}>
+    {% if cached_zoro %}
+      {% with result=cached_zoro.result, timestamp=cached_zoro.timestamp, topic=cached_zoro.topic, content_type=cached_zoro.content_type %}
+        {% include "projects/_research_zoro_result.html" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  <section class="pj-tt-finalize">
+    <header class="pj-section-header">
+      <h3 class="pj-section-subtitle">📌 最終候選</h3>
+      <p class="pj-section-hint">
+        從 Zoro 給的 10 條中挑/改，留 3-5 條 A/B 對照到發布前再決定。
+      </p>
+    </header>
+
+    <form class="pj-inline-form" method="post"
+          action="/bridge/projects/{{ entry.slug }}/frontmatter">
+      <input type="hidden" name="field" value="title_candidates">
+      <input type="hidden" name="tab" value="title-thumbnail">
+      <label class="pj-label">標題候選（每行一個，1-10 條）</label>
+      <textarea name="value" rows="6" placeholder="例：
 肌酸不只練肌肉：3 個你沒聽過的妙用
 65 歲開始吃肌酸？最新研究說：來得及
 每天 5g，改變你大腦的化學反應"
 >{% for t in entry.title_candidates %}{{ t }}{% if not loop.last %}
 {% endif %}{% endfor %}</textarea>
-    <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存候選</button>
-  </form>
+      <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存候選</button>
+    </form>
 
-  <form class="pj-inline-form" method="post"
-        action="/bridge/projects/{{ entry.slug }}/frontmatter">
-    <input type="hidden" name="field" value="thumbnail_concept">
-    <input type="hidden" name="tab" value="title-thumbnail">
-    <label class="pj-label">Thumbnail concept（描述視覺概念，後續圖像生成在 PR3+）</label>
-    <textarea name="value" rows="5" placeholder="例：左側健身房肌酸罐（褪色處理 = 過時印象），右側大腦 MRI 剖面（高飽和橙色 = 新發現），中間黃色閃電符號連接"
+    <form class="pj-inline-form" method="post"
+          action="/bridge/projects/{{ entry.slug }}/frontmatter">
+      <input type="hidden" name="field" value="thumbnail_concept">
+      <input type="hidden" name="tab" value="title-thumbnail">
+      <label class="pj-label">Thumbnail concept（描述視覺概念，後續圖像生成在 PR3+）</label>
+      <textarea name="value" rows="5" placeholder="例：左側健身房肌酸罐（褪色處理 = 過時印象），右側大腦 MRI 剖面（高飽和橙色 = 新發現），中間黃色閃電符號連接"
 >{{ entry.thumbnail_concept }}</textarea>
-    <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存概念</button>
-  </form>
+      <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存概念</button>
+    </form>
+  </section>
 
   <details class="pj-research-tip">
     <summary>💡 CTR pair 設計原則</summary>
@@ -37,6 +90,7 @@
       <li><strong>Title 與 Thumbnail 互為背景，不重複資訊。</strong> Title 講「what」/ Thumbnail 講「why curious」。</li>
       <li>標題候選做 A/B 對照，<strong>留 3-5 條到發布前再決定</strong>。</li>
       <li>Thumbnail 高飽和度 + 強對比；老花眼也要 3 公尺外可辨識。</li>
+      <li>Zoro 給的 10 條別照搬 — 挑 2-3 條當骨架，剩下自己改詞 / 加 hook。</li>
     </ul>
   </details>
 </div>

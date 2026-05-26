@@ -321,20 +321,233 @@
     });
   }
 
-  // ── KB Research stub ────────────────────────────────────────────────────
+  // ── Research dispatch (Zoro keyword + Robin KB + synthesis + DR) — PR3 ──
+  //
+  // Each action either POSTs and innerHTMLs a partial into its slot, OR (DR
+  // prompt) POSTs and gets JSON back, then copies to clipboard + opens an
+  // external tab. Spinner shows elapsed seconds for the longer ones.
 
-  function bindKbResearch() {
-    var btn = document.querySelector('[data-action="kb-research"]');
-    if (!btn) return;
-    btn.addEventListener('click', function () {
-      // PR1 stub — actual KB endpoint dispatch lands in PR3+
-      var results = document.getElementById('kb-research-results');
-      if (results) {
-        results.removeAttribute('hidden');
-        results.innerHTML = '<h3 class="pj-section-subtitle">KB 命中</h3>' +
-          '<p class="pj-empty-hint">PR1 stub — KB endpoint dispatch lands in PR3. ' +
-          'Robin <code>/kb/research</code> endpoint 已上線，UI 整合待補。</p>';
+  function bindResearchActions() {
+    var allActions = Array.from(document.querySelectorAll('.pj-research-actions'));
+    if (!allActions.length) return;
+
+    var SLOT_IDS = {
+      keyword: 'research-zoro-result',
+      kb: 'research-kb-result',
+      synthesis: 'research-synthesis-result',
+    };
+    var LABEL_MAP = {
+      keyword: 'Zoro 跑關鍵字研究中（10 個資料來源 + Claude）…',
+      kb: 'Robin 搜尋 KB 中…',
+      synthesis: 'Robin 摘要中（Claude Opus 編譯）…',
+      'dr-prompt': '組合 DR prompt…',
+    };
+    var TOAST_DONE = {
+      keyword: '🗝 Zoro 研究完成，已寫回 project.md',
+      kb: '📚 Robin KB 命中已寫回 project.md',
+      synthesis: '📝 Robin 摘要已寫回 project.md',
+    };
+
+    // Status spinners + buttons are per-tab; lookups scope to the panel
+    // owning the clicked button.
+    function panelOf(el) { return el.closest('.pj-tab-panel'); }
+    function statusOf(panel) { return panel ? panel.querySelector('[data-research-status]') : null; }
+
+    var timerInterval = null;
+    var activeStatus = null;
+    function startTimer(statusEl, label) {
+      if (!statusEl) return;
+      activeStatus = statusEl;
+      var startedAt = Date.now();
+      var timerEl = statusEl.querySelector('[data-timer]');
+      var statusLabel = statusEl.querySelector('.pj-research-status-label');
+      statusEl.removeAttribute('hidden');
+      if (statusLabel) statusLabel.textContent = label;
+      if (timerEl) timerEl.textContent = '0s';
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(function () {
+        if (timerEl) {
+          timerEl.textContent = Math.floor((Date.now() - startedAt) / 1000) + 's';
+        }
+      }, 250);
+    }
+    function stopTimer() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      if (activeStatus) activeStatus.setAttribute('hidden', '');
+      activeStatus = null;
+    }
+
+    // Lock / restore every research button across all tabs — an in-flight
+    // LLM call shouldn't race against another one.
+    function lockAll() {
+      allActions.forEach(function (a) {
+        a.querySelectorAll('button[data-research-action]').forEach(function (b) {
+          b.disabled = true;
+        });
+      });
+    }
+    function restoreAll() {
+      allActions.forEach(function (a) {
+        a.querySelectorAll('button[data-research-action]').forEach(function (b) {
+          b.disabled = b.hasAttribute('data-original-disabled');
+        });
+      });
+    }
+
+    function handlePartialFetch(kind, btn) {
+      var slot = document.getElementById(SLOT_IDS[kind]);
+      if (!slot) return;
+      var slug = btn.closest('.pj-research-actions').getAttribute('data-project-slug') || '';
+      lockAll();
+      slot.removeAttribute('hidden');
+      slot.innerHTML = '';
+      startTimer(statusOf(panelOf(btn)), LABEL_MAP[kind] || '研究中…');
+
+      var endpoint = '/bridge/projects/' + encodeURIComponent(slug) + '/research/' + kind;
+      fetch(endpoint, {
+        method: 'POST',
+        credentials: 'same-origin',
+      }).then(function (r) {
+        if (!r.ok) {
+          return r.text().then(function (text) {
+            throw new Error('HTTP ' + r.status + ' — ' + text.slice(0, 500));
+          });
+        }
+        return r.text();
+      }).then(function (html) {
+        slot.innerHTML = html;
+        showToast(TOAST_DONE[kind] || '✓ 完成');
+      }).catch(function (err) {
+        slot.innerHTML = '<div class="pj-research-error">⚠ ' + (err.message || err) + '</div>';
+      }).finally(function () {
+        stopTimer();
+        restoreAll();
+      });
+    }
+
+    function openDrTab(target) {
+      var urls = {
+        chatgpt: 'https://chatgpt.com/',
+        claude: 'https://claude.ai/new',
+      };
+      var url = urls[target] || urls.chatgpt;
+      window.open(url, '_blank', 'noopener');
+    }
+
+    function handleDrPrompt(btn) {
+      var target = btn.getAttribute('data-dr-target') || 'chatgpt';
+      var slug = btn.closest('.pj-research-actions').getAttribute('data-project-slug') || '';
+      lockAll();
+      startTimer(statusOf(panelOf(btn)), LABEL_MAP['dr-prompt']);
+      var endpoint = '/bridge/projects/' + encodeURIComponent(slug) + '/research/dr-prompt';
+      fetch(endpoint, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
+      }).then(function (r) {
+        if (!r.ok) {
+          return r.text().then(function (text) {
+            throw new Error('HTTP ' + r.status + ' — ' + text.slice(0, 500));
+          });
+        }
+        return r.json();
+      }).then(function (data) {
+        var prompt = data.prompt || '';
+        if (!prompt) throw new Error('伺服器回空字串');
+        var copyPromise;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          copyPromise = navigator.clipboard.writeText(prompt);
+        } else {
+          copyPromise = Promise.reject(new Error('clipboard API unavailable'));
+        }
+        copyPromise.then(function () {
+          showToast('📋 Prompt 已複製到剪貼簿。新分頁開啟後，貼上 + 切 Deep Research + 送出。');
+          openDrTab(target);
+        }).catch(function () {
+          var ok = window.prompt('剪貼簿不可用 — 請手動複製這段 prompt：', prompt);
+          if (ok !== null) openDrTab(target);
+        });
+      }).catch(function (err) {
+        showToast('⚠ DR prompt 失敗：' + (err.message || err));
+      }).finally(function () {
+        stopTimer();
+        restoreAll();
+      });
+    }
+
+    allActions.forEach(function (actions) {
+      actions.querySelectorAll('button[data-research-action]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (btn.disabled) return;
+          var kind = btn.getAttribute('data-research-action');
+          if (kind === 'dr-prompt') {
+            handleDrPrompt(btn);
+          } else {
+            handlePartialFetch(kind, btn);
+          }
+        });
+        // Snapshot initial disabled state so finally{} restores correctly.
+        if (btn.disabled) btn.setAttribute('data-original-disabled', '');
+      });
+    });
+  }
+
+  // ── DR paste-back form ──────────────────────────────────────────────────
+  //
+  // User runs DR externally (ChatGPT / Claude.ai), pastes the markdown back
+  // into the textarea, and submits. We POST as form-encoded and innerHTML
+  // the rendered partial into the DR result slot.
+
+  function bindDrPasteForm() {
+    var form = document.querySelector('[data-dr-paste-form]');
+    if (!form) return;
+    var slug = form.getAttribute('data-project-slug') || '';
+    if (!slug) return;
+    var slotDr = document.getElementById('research-dr-result');
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var textarea = form.querySelector('textarea[name="report"]');
+      var sourceSel = form.querySelector('select[name="source"]');
+      var submitBtn = form.querySelector('button[type="submit"]');
+      var body = textarea ? textarea.value.trim() : '';
+      if (!body) {
+        showToast('⚠ textarea 是空的');
+        return;
       }
+      var source = sourceSel ? sourceSel.value : 'manual';
+      if (submitBtn) submitBtn.disabled = true;
+
+      var fd = new FormData();
+      fd.append('report', body);
+      fd.append('source', source);
+
+      fetch('/bridge/projects/' + encodeURIComponent(slug) + '/research/dr-report', {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+      }).then(function (r) {
+        if (!r.ok) {
+          return r.text().then(function (text) {
+            throw new Error('HTTP ' + r.status + ' — ' + text.slice(0, 500));
+          });
+        }
+        return r.text();
+      }).then(function (html) {
+        if (slotDr) {
+          slotDr.removeAttribute('hidden');
+          slotDr.innerHTML = html;
+        }
+        if (textarea) textarea.value = '';
+        // Close the <details> wrapper so it doesn't keep taking up space
+        var details = form.closest('details');
+        if (details) details.open = false;
+        showToast('🌐 DR 報告已寫回 project.md');
+      }).catch(function (err) {
+        showToast('⚠ DR 報告儲存失敗：' + (err.message || err));
+      }).finally(function () {
+        if (submitBtn) submitBtn.disabled = false;
+      });
     });
   }
 
@@ -448,7 +661,8 @@
     bindTabs();
     bindPomodoroDock();
     bindCounters();
-    bindKbResearch();
+    bindResearchActions();
+    bindDrPasteForm();
     bindDialogs();
     bindManualPomodoro();
     bindStatusDropdown();
