@@ -121,7 +121,18 @@ E:\Shosho LifeOS\
 │
 ├── Attachments/          🔄 mixed
 │   ├── Books/{book-id}/ch{n}/    textbook-ingest Phase 0 figure binaries
-│   └── journal-pasted/{YYYY-MM}/  Obsidian default attachment path
+│   ├── journal-pasted/{YYYY-MM}/  Obsidian default attachment path
+│   ├── projects/{slug}/          🤖 Bridge thumbnail commit (ADR-033 PR4)
+│   │   ├── thumbnail.png           chosen final (Obsidian wikilink target)
+│   │   └── _archive/{old_ts}.png   replaced versions on re-commit
+│   └── cutouts/                  🤖 thumbnail pipeline assets (ADR-033)
+│       ├── shosho/{emotion}/{n}.png            修修 selfie library (B1, YouTube host) — emotion ∈ closed enum
+│       ├── podcast/{ep_slug}/                  per-episode funnel output (D8/D9)
+│       │   ├── host_v{n}.png
+│       │   └── guest_v{n}.png
+│       └── reference/                          修修 manual dump for LLM few-shot
+│           ├── youtube/{mine,peers}/*.png
+│           └── podcast/{mine,peers}/*.png
 │
 ├── AgentOutputs/         🤖 Agent task outputs (vault — durability passes heuristic §0)
 │   ├── nami/
@@ -191,6 +202,11 @@ data/agent_reports/franky/
 | `KB/log.md` | 🤖 | `agents/robin/ingest.py` + `pubmed_digest.py:527` (append-only) | 修修 manual reads | append-only |
 | `Attachments/Books/{book-id}/ch{n}/` | 🤖 | textbook-ingest Phase 0 figure extractor | book chapter source pages | ADR-020 §Phase 0 |
 | `Attachments/journal-pasted/{YYYY-MM}/` | 👤+plugin | Obsidian paste (config `app.json attachmentFolderPath`) | Daily Journal markdown refs | binary |
+| `Attachments/projects/{slug}/thumbnail.png` | 🤖 | `thousand_sunny/routers/bridge_project_thumbnails.py` thumbnail commit endpoint (ADR-033 PR4, sibling router per Panel P4) | Obsidian preview, frontmatter wikilink (`thumbnail` field) | binary |
+| `Attachments/projects/{slug}/_archive/{ts}.png` | 🤖 | Same endpoint, rotation on re-commit | audit only | binary |
+| `Attachments/cutouts/shosho/{emotion}/{n}.png` | 🤖 | `scripts/import_shosho_cutouts.py` (PR4 one-off) + u2net via hyperframes-media | `shared/cutout_library.pick_youtube_host` | binary |
+| `Attachments/cutouts/podcast/{ep_slug}/{host,guest}_v{n}.png` | 🤖 | `shared/thumbnail_funnel.py` confirm step + u2net | `shared/cutout_library.pick_podcast_{host,guest}` | binary |
+| `Attachments/cutouts/reference/{youtube,podcast}/{mine,peers}/` | 👤 | 修修 manual dump | Brainstorm LLM few-shot (Sonnet 4.6 vision) | binary |
 | `AgentOutputs/nami/briefs/` | 🤖 | Nami Morning Brief handler (post-ADR-028) | 修修 | `agents/nami/...` |
 | `AgentOutputs/nami/notes/` | 🤖 | `gateway/handlers/nami.py:458-525,:1773` (Nami write_vault_note); whitelisted by `shared/vault_rules.py:14-20` | Nami handler reads for context | — |
 | `AgentOutputs/nami/research/` | 🤖 | Nami research handler | 修修 | — |

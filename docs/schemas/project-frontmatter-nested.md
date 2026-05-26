@@ -112,7 +112,14 @@ tags:
 | `one_sentence` | `str` (multiline) | no | ≤300 字 soft cap | Web Brief tab; migration script lifts from legacy `## 👄 One Sentence About This Video` H2 prose | Mid (per session) |
 | `hook_text` | `str` (multiline) | no | **≤300 字 soft cap (v2 panel-tuned)** | Web Hook tab | Mid |
 | `title_candidates` | `list[str]` | no | 1–10 items typical; each ≤80 字 | Web Title&Thumbnail tab | Mid |
-| `thumbnail_concept` | `str` (multiline) | no | ≤300 字 soft cap | Web Title&Thumbnail tab | Mid |
+| `thumbnail_concept` | `str` (multiline) | no | ≤300 字 soft cap | Web Title&Thumbnail tab | Mid · **deprecated by ADR-033** in favour of `thumbnail_ideas`; read-fallback only |
+| `thumbnail_ideas` | `list[str]` (each multiline) | no | 1–3 items typical; each ≤500 字 soft cap; each follows 5-line format (ADR-033 D3) | Web Title&Thumbnail tab | Mid · ADR-033 PR4 |
+| `thumbnail` | `str` (vault-relative path) | no | `Attachments/projects/{slug}/thumbnail.png` shape | Web commit endpoint (ADR-033 D7) | Per commit (rare) |
+| `thumbnail_chosen_at` | ISO 8601 with TZ | no | `+08:00` recommended | Web commit endpoint | Per commit |
+| `thumbnail_run` | `str` | no | shape `{ts}/v{n}` referencing `data/thumbnails/{slug}/runs/` audit trail | Web commit endpoint | Per commit |
+| `host_video_path` | `str` (repo-relative) | podcast only | e.g. `data/podcasts/{ep_slug}/host_angle.mp4` | 修修 manual entry | Once per episode |
+| `guest_video_path` | `str` (repo-relative) | podcast only | same shape as host | 修修 manual entry | Once per episode |
+| `thumbnail_active_cutouts` | `dict` | podcast only | shape `{host: list[path], guest: list[path]}`; 2–3 entries each per ADR-033 D9 | Web funnel-confirm endpoint | Once per episode |
 | `reviews` | `dict` (v1) → `list` (v2 future) | no | keys ∈ `{storyteller, coach}` | Web Review tab (LLM dispatch) | Per re-run |
 | `reviews.{persona}.run_at` | ISO 8601 with TZ | yes (if persona present) | `+08:00` recommended (Asia/Taipei) | LLM handler | Per re-run |
 | `reviews.{persona}.score` | `int` | yes | 1–5 | LLM handler | Per re-run |
