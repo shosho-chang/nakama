@@ -19,10 +19,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agents.foundry.render_workers.thumbnail_worker import (
+    PODCAST_COMPOSITION,
     YOUTUBE_COMPOSITION,
     ThumbnailRenderError,
     _build_argv,
     _to_data_url,
+    render_podcast_still,
     render_youtube_still,
 )
 
@@ -257,3 +259,161 @@ def test_render_wipes_previous_frames_dir(assets: dict[str, Path]):
         )
 
     assert assets["out_png"].read_bytes() == b"\x89PNG\r\n\x1a\nfresh"
+
+
+# render_podcast_still — DOAC style, two cutouts
+
+
+@pytest.fixture
+def podcast_assets(tmp_path: Path) -> dict[str, Path]:
+    host = tmp_path / "host.png"
+    host.write_bytes(b"\x89PNG\r\n\x1a\nfake-host-bytes")
+    guest = tmp_path / "guest.png"
+    guest.write_bytes(b"\x89PNG\r\n\x1a\nfake-guest-bytes")
+    bg = tmp_path / "bg.jpg"
+    bg.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg-bytes")
+    out_png = tmp_path / "out" / "ep01.png"
+    return {
+        "host": host,
+        "guest": guest,
+        "bg": bg,
+        "out_png": out_png,
+        "video_dir": tmp_path / "video",
+    }
+
+
+def test_render_podcast_missing_host_raises(podcast_assets: dict[str, Path]):
+    podcast_assets["host"].unlink()
+    with pytest.raises(FileNotFoundError, match="host cutout missing"):
+        asyncio.run(
+            render_podcast_still(
+                title_hook="關鍵對話",
+                host_cutout_path=podcast_assets["host"],
+                guest_cutout_path=podcast_assets["guest"],
+                bg_path=podcast_assets["bg"],
+                out_png=podcast_assets["out_png"],
+                video_dir=podcast_assets["video_dir"],
+            )
+        )
+
+
+def test_render_podcast_missing_guest_raises(podcast_assets: dict[str, Path]):
+    podcast_assets["guest"].unlink()
+    with pytest.raises(FileNotFoundError, match="guest cutout missing"):
+        asyncio.run(
+            render_podcast_still(
+                title_hook="關鍵對話",
+                host_cutout_path=podcast_assets["host"],
+                guest_cutout_path=podcast_assets["guest"],
+                bg_path=podcast_assets["bg"],
+                out_png=podcast_assets["out_png"],
+                video_dir=podcast_assets["video_dir"],
+            )
+        )
+
+
+def test_render_podcast_uses_podcast_composition(podcast_assets: dict[str, Path]):
+    """Podcast render must dispatch to compositions/thumbnail_podcast."""
+    captured_argv: list[list[str]] = []
+
+    async def fake_create(*argv, cwd=None, stdout=None, stderr=None):
+        captured_argv.append(list(argv))
+        frames_dir = Path(argv[argv.index("-o") + 1])
+        (frames_dir / "frame-0001.png").write_bytes(b"\x89PNG\r\n\x1a\npodcast-rendered")
+        return _mock_subprocess(returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_create):
+        asyncio.run(
+            render_podcast_still(
+                title_hook="關鍵對話",
+                host_cutout_path=podcast_assets["host"],
+                guest_cutout_path=podcast_assets["guest"],
+                out_png=podcast_assets["out_png"],
+                video_dir=podcast_assets["video_dir"],
+            )
+        )
+
+    assert PODCAST_COMPOSITION in captured_argv[0]
+    assert YOUTUBE_COMPOSITION not in captured_argv[0]
+
+
+def test_render_podcast_variables_json_has_both_cutouts(podcast_assets: dict[str, Path]):
+    captured_variables: dict = {}
+
+    async def fake_create(*argv, cwd=None, stdout=None, stderr=None):
+        vf_idx = argv.index("--variables-file") + 1
+        captured_variables.update(json.loads(Path(argv[vf_idx]).read_text(encoding="utf-8")))
+        frames_dir = Path(argv[argv.index("-o") + 1])
+        (frames_dir / "frame-0001.png").write_bytes(b"PNG")
+        return _mock_subprocess(returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_create):
+        asyncio.run(
+            render_podcast_still(
+                title_hook="關鍵對話",
+                host_cutout_path=podcast_assets["host"],
+                guest_cutout_path=podcast_assets["guest"],
+                bg_path=podcast_assets["bg"],
+                out_png=podcast_assets["out_png"],
+                accent_decoration="EP. 12",
+                palette={"bg": "#000000", "accent": "#FFD400"},
+                video_dir=podcast_assets["video_dir"],
+            )
+        )
+
+    assert captured_variables["title_hook"] == "關鍵對話"
+    assert captured_variables["accent_decoration"] == "EP. 12"
+    assert captured_variables["palette"] == {"bg": "#000000", "accent": "#FFD400"}
+    assert captured_variables["host_cutout_data_url"].startswith("data:image/png;base64,")
+    assert captured_variables["guest_cutout_data_url"].startswith("data:image/png;base64,")
+    assert captured_variables["bg_data_url"].startswith("data:image/jpeg;base64,")
+    # No legacy YouTube `cutout_data_url` key — podcast schema is distinct
+    assert "cutout_data_url" not in captured_variables
+
+
+def test_render_podcast_no_bg_emits_empty_string(podcast_assets: dict[str, Path]):
+    captured_variables: dict = {}
+
+    async def fake_create(*argv, cwd=None, stdout=None, stderr=None):
+        vf_idx = argv.index("--variables-file") + 1
+        captured_variables.update(json.loads(Path(argv[vf_idx]).read_text(encoding="utf-8")))
+        frames_dir = Path(argv[argv.index("-o") + 1])
+        (frames_dir / "frame-0001.png").write_bytes(b"PNG")
+        return _mock_subprocess(returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_create):
+        asyncio.run(
+            render_podcast_still(
+                title_hook="關鍵對話",
+                host_cutout_path=podcast_assets["host"],
+                guest_cutout_path=podcast_assets["guest"],
+                bg_path=None,
+                out_png=podcast_assets["out_png"],
+                video_dir=podcast_assets["video_dir"],
+            )
+        )
+
+    assert captured_variables["bg_data_url"] == ""
+
+
+def test_render_podcast_subprocess_failure_keeps_debug_artifacts(
+    podcast_assets: dict[str, Path],
+):
+    async def fake_create(*argv, cwd=None, stdout=None, stderr=None):
+        return _mock_subprocess(returncode=2, stderr=b"hyperframes podcast comp failed")
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_create):
+        with pytest.raises(ThumbnailRenderError, match="podcast comp failed"):
+            asyncio.run(
+                render_podcast_still(
+                    title_hook="x",
+                    host_cutout_path=podcast_assets["host"],
+                    guest_cutout_path=podcast_assets["guest"],
+                    out_png=podcast_assets["out_png"],
+                    video_dir=podcast_assets["video_dir"],
+                )
+            )
+
+    # Same debug-artifact convention as YouTube path
+    assert (podcast_assets["out_png"].parent / "_frames_ep01").exists()
+    assert (podcast_assets["out_png"].parent / "ep01.variables.json").exists()
