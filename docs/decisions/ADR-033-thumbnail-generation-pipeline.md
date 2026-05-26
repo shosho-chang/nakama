@@ -17,7 +17,7 @@
 > 4. **D6 / PR4 split** — thumbnail endpoints land in **sibling router** `thousand_sunny/routers/bridge_project_thumbnails.py`, not bloating the already-1952-line `bridge_projects.py`.
 > 5. **D8 hardened** — fixed `σ = 100` Laplacian threshold removed; replaced with per-video top-N variance ranking, deterministic stratified sampling (seeded), audio-energy-burst hybrid for emotion peak capture, downscale before vision LLM call, log all funnel stats. **Expression-sample (30-sec deliberate-takes per episode) added as primary fallback path** when motion-blur u2net failure occurs.
 > 6. **D10 amended** — `npx hyperframes` reuse retained for PR4 (correct trade-off vs vanilla Puppeteer for thumbnail stills), but PR4 acceptance gate requires a benchmark of CLI+ffmpeg vs Puppeteer-direct render time. Worker uses `create_subprocess_exec(argv...)` (not `_shell` with single-quoted JSON — Windows `cmd.exe` doesn't honour single quotes; hyperframes_worker.py current shell pattern is a latent bug).
-> 7. **New D11** — Director's Notes textarea per idea card, threaded into render prompt; provides iterative refinement escape hatch ("make background darker", "move face 10% left") without rewriting the 5-line idea.
+> 7. **New D3a** — Director's Notes textarea per idea card, threaded into render prompt; provides iterative refinement escape hatch ("make background darker", "move face 10% left") without rewriting the 5-line idea. (Number chosen because it's an extension of D3's idea-shape decision, not a new top-level decision.)
 > 8. **LLM router update** — `shared/llm_router.py` needs explicit routes for `thumbnail_brainstorm` + `thumbnail_funnel` (PR4 includes this).
 > 9. **PR4 estimate revised** — 6-7 days → **8-12 days** dual-route, or **4-5 days** YouTube-only-first split (recommended). YouTube ships shippable; Podcast funnel ships best-effort with expression-sample fallback.
 > 10. **Frontmatter schema drift fix** — `content_type` validation says `youtube | podcast` but doc-prose says all 4 retained. This predates ADR-033 (ADR-031 PR1 inconsistency) but D9's podcast-only fields surface it. Quick clean-up in PR4 (separate commit).
@@ -59,7 +59,7 @@ A 2026-05-26 grill-with-docs session re-framed the problem from "image generatio
 
 ## Decision
 
-The 10 numbered decisions below are commit-grade. Each follows the pattern:
+The 11 numbered decisions below (D1-D10 + D3a Director's Notes, added in v2) are commit-grade. Each follows the pattern:
 
 > **Decision** → **Rationale** → **Alternatives considered** → **Implication**.
 
@@ -308,30 +308,19 @@ Each expression held for 2-3 seconds. Same lighting / framing as the conversatio
 
 **Rationale** — v1's fixed `σ = 100` Laplacian threshold cannot generalize across host/guest video angles (different lighting, distance, lens). Per-video ranking is robust. Audio-energy hybrid captures emotional peaks that random sampling misses. Expression-sample side-steps motion-blur u2net failure entirely. Both Codex and Gemini converged on these revisions independently — strong signal.
 
-**Implication** — `shared/thumbnail_funnel.py` ships:
+**Alternatives considered**:
+- Full L1-L4 funnel from handoff (WhisperX time-window as Stage 1) — unnecessary given dual-camera (D9) already separates host/guest files; cadence is low; complexity not justified.
+- Pure vision LLM with no sharpness pre-filter — attaches all ~80 frames to Sonnet, payload blows up cost + token budget; sharpness filter is a cheap pre-step.
+- Fixed Laplacian threshold (v1) — fails across host/guest video angle differences; replaced with per-video ranking per panel.
+
+**Implication** — `shared/thumbnail_funnel.py` (~350 LOC) ships four pure functions:
 
 - `stratified_sample(video, seed, periodic_interval=10, audio_burst=True)` → frame list
 - `rank_by_sharpness(frames, top_pct=0.25)` → sorted top-N
 - `vision_eval(frames, ideas, references, emotions_yml)` → top 5 with JSON reasons
 - `run(video, *, mode="conversation"|"expression_sample")` → entry point
 
-Funnel stats logged per call: `total_sampled / passed_sharpness / vision_picked / 修修_confirmed`. After 5-10 episodes the team reviews stats and tunes percentile / sample interval. Per-run parameter tuning UI deferred to PR-N.
-
-**Rationale** — The handoff doc proposed an L1-L4 funnel with WhisperX time-window narrowing as Stage 1. This is unnecessary in 修修's setup because:
-- Dual-camera recording (D9) already separates host and guest into different files; no per-frame speaker identification needed.
-- Podcast cadence is 1 episode/week; the funnel does not need to be CPU-optimal.
-- Random sample + blur filter + vision LLM is a 3-call total per video, ~$0.50-$1.00 per episode, ~2-3 minutes wall time including transfers.
-
-Vision LLM does the heavy lifting at Stage 3 because:
-- It can simultaneously check sharpness, expression, framing, eye openness, mouth shape, and 修修-taste alignment in one inference.
-- Traditional CV (MediaPipe face + EAR + emotion classifier) requires hyperparameter tuning per camera angle/lighting; vision LLM degrades gracefully.
-
-**Alternatives considered**:
-- Full L1-L4 funnel from handoff — unnecessary given dual-camera + low cadence.
-- WhisperX time-window first — adds dependency on transcribe pipeline output; doesn't help when whole video has only one speaker.
-- Pure vision LLM (no Laplacian pre-filter) — would attach 50 frames to Sonnet (~50 × 1MB PNGs → context bloat + cost); Laplacian is a cheap pre-filter.
-
-**Implication** — `shared/thumbnail_funnel.py` is a new module (~250 LOC) with three pure functions. Tests use video fixtures from `data/test_fixtures/podcasts/` (one short MP4 + one expected top-5 manifest). Vision LLM prompt is versioned (`prompts/funnel_v1.txt`). Funnel cost goes to `state.db api_calls.scope_json="thumbnail_funnel"` for audit. See open question §OQ3 for parameter tuning policy.
+Tests use video fixtures from `data/test_fixtures/podcasts/` (one short MP4 + one expected top-5 manifest). Vision LLM prompt versioned at `prompts/thumbnail/funnel_v1.md`. Funnel cost + per-run stats (`total_sampled / passed_sharpness / vision_picked / 修修_confirmed`) logged to `state.db api_calls.scope_json="thumbnail_funnel"`. After 5-10 episodes the team reviews stats and tunes percentile / sample interval. Per-run parameter tuning UI deferred to PR-N. See §OQ3.
 
 ### D9. Per-episode cutout (Podcast) + reusable library (YouTube)
 
@@ -442,7 +431,7 @@ Producer/consumer matrix additions (VAULT-LAYOUT §3):
 
 | Path | Tier | Producer | Consumer | Schema |
 |---|---|---|---|---|
-| `Attachments/projects/{slug}/thumbnail.png` | 🤖 | `thousand_sunny/routers/bridge_projects.py` commit endpoint | Obsidian preview, frontmatter wikilink | binary |
+| `Attachments/projects/{slug}/thumbnail.png` | 🤖 | `thousand_sunny/routers/bridge_project_thumbnails.py` commit endpoint (ADR-033 D7 + Panel P4 sibling router) | Obsidian preview, frontmatter wikilink | binary |
 | `Attachments/projects/{slug}/_archive/{ts}.png` | 🤖 | Same endpoint, rotation on re-commit | (audit only) | binary |
 | `Attachments/cutouts/shosho/{emotion}/{n}.png` | 🤖 | One-off import script `scripts/import_shosho_cutouts.py` (PR4) | `shared/cutout_library.pick_youtube_host` | binary |
 | `Attachments/cutouts/podcast/{ep_slug}/{host,guest}_v{n}.png` | 🤖 | `shared/thumbnail_funnel.py` confirmation step + u2net wrapper | `shared/cutout_library.pick_podcast_{host,guest}` | binary |
@@ -644,7 +633,7 @@ Escalation triggers:
 
 *(v2 panel-elevated)* PR4 gate: `tests/benchmarks/thumbnail_render_bench.md` documents timing + visual-identity comparison. If (B) Puppeteer wins materially, PR5 may swap. v1's "Hyperframes runtime hooks critical" claim was unverified rhetoric; v2 requires empirical evidence.
 
-### §OQ4. Re-render behavior — overwrite vs version history
+### §OQ5. Re-render behavior — overwrite vs version history
 
 When 修修 edits an idea text and clicks [↻ 重渲], the new render:
 
@@ -653,7 +642,7 @@ When 修修 edits an idea text and clicks [↻ 重渲], the new render:
 
 If 修修 ever needs to "go back" to a previous render, the chosen + archived thumbnails in vault (`_archive/`) provide rollback at the committed level. Working-state rollback is not provided.
 
-### §OQ5. Reference image attribution
+### §OQ6. Reference image attribution
 
 For peers references (Ali Abdaal, Stephen Bartlett etc.), the cutout/reference/peers/ folder will hold downloaded thumbnails. Since these are only LLM input (not republished), copyright concerns are minimal — but the folder is **vault-local only**, never committed to git, never published. ADR-033 records this constraint; no further enforcement needed.
 

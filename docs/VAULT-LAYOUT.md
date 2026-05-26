@@ -202,7 +202,7 @@ data/agent_reports/franky/
 | `KB/log.md` | 🤖 | `agents/robin/ingest.py` + `pubmed_digest.py:527` (append-only) | 修修 manual reads | append-only |
 | `Attachments/Books/{book-id}/ch{n}/` | 🤖 | textbook-ingest Phase 0 figure extractor | book chapter source pages | ADR-020 §Phase 0 |
 | `Attachments/journal-pasted/{YYYY-MM}/` | 👤+plugin | Obsidian paste (config `app.json attachmentFolderPath`) | Daily Journal markdown refs | binary |
-| `Attachments/projects/{slug}/thumbnail.png` | 🤖 | `thousand_sunny/routers/bridge_projects.py` thumbnail commit endpoint (ADR-033 PR4) | Obsidian preview, frontmatter wikilink (`thumbnail` field) | binary |
+| `Attachments/projects/{slug}/thumbnail.png` | 🤖 | `thousand_sunny/routers/bridge_project_thumbnails.py` thumbnail commit endpoint (ADR-033 PR4, sibling router per Panel P4) | Obsidian preview, frontmatter wikilink (`thumbnail` field) | binary |
 | `Attachments/projects/{slug}/_archive/{ts}.png` | 🤖 | Same endpoint, rotation on re-commit | audit only | binary |
 | `Attachments/cutouts/shosho/{emotion}/{n}.png` | 🤖 | `scripts/import_shosho_cutouts.py` (PR4 one-off) + u2net via hyperframes-media | `shared/cutout_library.pick_youtube_host` | binary |
 | `Attachments/cutouts/podcast/{ep_slug}/{host,guest}_v{n}.png` | 🤖 | `shared/thumbnail_funnel.py` confirm step + u2net | `shared/cutout_library.pick_podcast_{host,guest}` | binary |
