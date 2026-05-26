@@ -67,6 +67,10 @@ filelock>=3.13.0                   # Token file rotate 時的併發保護
 # Script-Driven Video (ADR-015): clap-marker detection audio processing
 scipy>=1.11
 
+# Podcast thumbnail funnel (ADR-033 D8): PIL.Image used by shared/thumbnail_funnel.py
+# for Laplacian-variance sharpness reads (grayscale convert + numpy bridge)
+Pillow>=10.0
+
 # foundry — Script-to-B-roll Pipeline (ADR-032)
 rapidfuzz>=3.6           # beat_aligner diagnostic-only fuzzy match (NOT primary path; see ADR-032 §6)
 cn2an>=0.5.22            # Chinese numeral normalization (一萬一千 / 11000 / 一·一萬 → canonical)

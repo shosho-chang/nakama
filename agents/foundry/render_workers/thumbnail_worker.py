@@ -40,6 +40,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_VIDEO_DIR = _REPO_ROOT / "video"
 
 YOUTUBE_COMPOSITION = "compositions/thumbnail_youtube"
+PODCAST_COMPOSITION = "compositions/thumbnail_podcast"
 
 
 class ThumbnailRenderError(Exception):
@@ -91,6 +92,70 @@ def _build_argv(
     ]
 
 
+async def _render_still(
+    composition: str,
+    variables: dict,
+    out_png: Path,
+    video_dir: Path,
+) -> Path:
+    """Common Hyperframes execution path — used by both YouTube + Podcast renders.
+
+    Writes ``variables`` as JSON into ``out_png.parent``, runs ``npx hyperframes
+    render`` against ``composition``, copies the first emitted PNG to ``out_png``.
+
+    Pure mechanism — caller validates input files + builds the variables dict.
+    """
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    variables_file = out_png.parent / f"{out_png.stem}.variables.json"
+    frames_dir = out_png.parent / f"_frames_{out_png.stem}"
+
+    # Clean any leftovers from a previous attempt on this slot.
+    if frames_dir.exists():
+        shutil.rmtree(frames_dir, ignore_errors=True)
+    frames_dir.mkdir(parents=True)
+
+    variables_file.write_text(
+        json.dumps(variables, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    argv = _build_argv(composition, variables_file, frames_dir)
+    logger.info(
+        "thumbnail render start: out=%s composition=%s",
+        out_png.name,
+        composition,
+    )
+
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        cwd=str(video_dir),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr_bytes = await proc.communicate()
+
+    if proc.returncode != 0:
+        tail = stderr_bytes.decode(errors="replace")[-500:]
+        # Leave frames_dir + variables_file for debugging on failure.
+        raise ThumbnailRenderError(out_png, tail)
+
+    pngs = sorted(p for p in frames_dir.iterdir() if p.suffix.lower() == ".png")
+    if not pngs:
+        raise ThumbnailRenderError(
+            out_png,
+            f"hyperframes produced no PNGs in {frames_dir}",
+        )
+
+    shutil.copy2(pngs[0], out_png)
+
+    # Cleanup intermediates only on success.
+    shutil.rmtree(frames_dir, ignore_errors=True)
+    variables_file.unlink(missing_ok=True)
+
+    logger.info("thumbnail render done: %s", out_png)
+    return out_png
+
+
 async def render_youtube_still(
     *,
     title_hook: str,
@@ -139,52 +204,58 @@ async def render_youtube_still(
         "palette": palette or {},
     }
 
-    out_png.parent.mkdir(parents=True, exist_ok=True)
-    variables_file = out_png.parent / f"{out_png.stem}.variables.json"
-    frames_dir = out_png.parent / f"_frames_{out_png.stem}"
+    return await _render_still(YOUTUBE_COMPOSITION, variables, out_png, video_dir)
 
-    # Clean any leftovers from a previous attempt on this slot.
-    if frames_dir.exists():
-        shutil.rmtree(frames_dir, ignore_errors=True)
-    frames_dir.mkdir(parents=True)
 
-    variables_file.write_text(
-        json.dumps(variables, ensure_ascii=False),
-        encoding="utf-8",
-    )
+async def render_podcast_still(
+    *,
+    title_hook: str,
+    host_cutout_path: Path,
+    guest_cutout_path: Path,
+    bg_path: Path | None = None,
+    out_png: Path,
+    accent_decoration: str = "",
+    palette: dict | None = None,
+    video_dir: Path | None = None,
+) -> Path:
+    """Render one Podcast thumbnail to ``out_png`` (1280×720 PNG, DOAC style).
 
-    argv = _build_argv(YOUTUBE_COMPOSITION, variables_file, frames_dir)
-    logger.info(
-        "thumbnail render start: out=%s composition=%s",
-        out_png.name,
-        YOUTUBE_COMPOSITION,
-    )
+    Args:
+        title_hook: 3-7 字 hook for the centred large text.
+        host_cutout_path: 修修's transparent-PNG cutout for this episode (lives
+            under ``Attachments/cutouts/podcast/{ep_slug}/host_v{n}.png`` —
+            chosen via :func:`shared.cutout_library.pick_podcast_host`).
+        guest_cutout_path: guest's transparent-PNG cutout for this episode.
+        bg_path: optional background image. ``None`` falls back to the
+            composition's CSS gradient (palette.bg).
+        out_png: final PNG destination.
+        accent_decoration: optional small text ("EP. 12", "Part 2", "⚡").
+        palette: optional ``{bg, fg, accent, bg_darken}`` overrides.
+        video_dir: override for the Hyperframes project root.
 
-    proc = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(video_dir),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr_bytes = await proc.communicate()
+    Returns:
+        ``out_png`` (resolved Path) on success.
 
-    if proc.returncode != 0:
-        tail = stderr_bytes.decode(errors="replace")[-500:]
-        # Leave frames_dir + variables_file for debugging on failure.
-        raise ThumbnailRenderError(out_png, tail)
+    Raises:
+        FileNotFoundError: host_cutout_path or guest_cutout_path missing.
+        ThumbnailRenderError: hyperframes returned non-zero or produced no PNGs.
+    """
+    video_dir = video_dir or DEFAULT_VIDEO_DIR
 
-    pngs = sorted(p for p in frames_dir.iterdir() if p.suffix.lower() == ".png")
-    if not pngs:
-        raise ThumbnailRenderError(
-            out_png,
-            f"hyperframes produced no PNGs in {frames_dir}",
-        )
+    if not host_cutout_path.is_file():
+        raise FileNotFoundError(f"host cutout missing: {host_cutout_path}")
+    if not guest_cutout_path.is_file():
+        raise FileNotFoundError(f"guest cutout missing: {guest_cutout_path}")
+    if bg_path is not None and not bg_path.is_file():
+        raise FileNotFoundError(f"background missing: {bg_path}")
 
-    shutil.copy2(pngs[0], out_png)
+    variables = {
+        "title_hook": title_hook,
+        "host_cutout_data_url": _to_data_url(host_cutout_path),
+        "guest_cutout_data_url": _to_data_url(guest_cutout_path),
+        "bg_data_url": _to_data_url(bg_path) if bg_path is not None else "",
+        "accent_decoration": accent_decoration,
+        "palette": palette or {},
+    }
 
-    # Cleanup intermediates only on success.
-    shutil.rmtree(frames_dir, ignore_errors=True)
-    variables_file.unlink(missing_ok=True)
-
-    logger.info("thumbnail render done: %s", out_png)
-    return out_png
+    return await _render_still(PODCAST_COMPOSITION, variables, out_png, video_dir)

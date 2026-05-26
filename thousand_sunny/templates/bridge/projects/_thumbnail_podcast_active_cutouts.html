@@ -1,0 +1,11 @@
+{# ADR-033 PR4-B — Podcast active-cutouts confirmation (HTMX swap after u2net). #}
+<div class="pj-thumb-podcast-active-confirmation">
+  <p class="pj-status pj-status--success">
+    ✓ {{ role }} 的 active cutouts 已更新（{{ paths|length }} 張）。下次渲 podcast 縮圖時會從中挑。
+  </p>
+  <ul class="pj-thumb-podcast-active-list">
+    {% for p in paths %}
+      <li><code>{{ p }}</code></li>
+    {% endfor %}
+  </ul>
+</div>

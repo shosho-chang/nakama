@@ -205,7 +205,7 @@ data/agent_reports/franky/
 | `Attachments/projects/{slug}/thumbnail.png` | 🤖 | `thousand_sunny/routers/bridge_project_thumbnails.py` thumbnail commit endpoint (ADR-033 PR4, sibling router per Panel P4) | Obsidian preview, frontmatter wikilink (`thumbnail` field) | binary |
 | `Attachments/projects/{slug}/_archive/{ts}.png` | 🤖 | Same endpoint, rotation on re-commit | audit only | binary |
 | `Attachments/cutouts/shosho/{emotion}/{n}.png` | 🤖 | `scripts/import_shosho_cutouts.py` (PR4 one-off) + u2net via hyperframes-media | `shared/cutout_library.pick_youtube_host` | binary |
-| `Attachments/cutouts/podcast/{ep_slug}/{host,guest}_v{n}.png` | 🤖 | `shared/thumbnail_funnel.py` confirm step + u2net | `shared/cutout_library.pick_podcast_{host,guest}` | binary |
+| `Attachments/cutouts/podcast/{ep_slug}/{host,guest}_v{n}.png` | 🤖 | `thousand_sunny/routers/bridge_project_thumbnails.py` thumbnail_podcast_active_cutouts endpoint (ADR-033 PR4-B, calls u2net via `npx hyperframes remove-background`) | `shared/cutout_library.pick_podcast_{host,guest}` | binary |
 | `Attachments/cutouts/reference/{youtube,podcast}/{mine,peers}/` | 👤 | 修修 manual dump | Brainstorm LLM few-shot (Sonnet 4.6 vision) | binary |
 | `AgentOutputs/nami/briefs/` | 🤖 | Nami Morning Brief handler (post-ADR-028) | 修修 | `agents/nami/...` |
 | `AgentOutputs/nami/notes/` | 🤖 | `gateway/handlers/nami.py:458-525,:1773` (Nami write_vault_note); whitelisted by `shared/vault_rules.py:14-20` | Nami handler reads for context | — |

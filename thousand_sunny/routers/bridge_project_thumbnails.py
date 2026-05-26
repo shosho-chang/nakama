@@ -45,16 +45,27 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from agents.foundry.render_workers.thumbnail_worker import (
+    DEFAULT_VIDEO_DIR as _HYPERFRAMES_VIDEO_DIR,
+)
+from agents.foundry.render_workers.thumbnail_worker import (
     ThumbnailRenderError,
+    render_podcast_still,
     render_youtube_still,
 )
+from shared import thumbnail_funnel
 from shared.anthropic_client import ask_claude_multi
 from shared.config import get_vault_path
-from shared.cutout_library import EmotionLookupError, pick_youtube_host
+from shared.cutout_library import (
+    EmotionLookupError,
+    pick_podcast_guest,
+    pick_podcast_host,
+    pick_youtube_host,
+)
 from shared.llm_router import get_model
 from shared.project_indexer import ProjectIndexer, ProjectNotFoundError, normalize_slug
 from shared.project_writer import ProjectWriteError, update_frontmatter
 from shared.state import record_api_call
+from shared.thumbnail_funnel import FunnelError
 from shared.thumbnail_idea import (
     IdeaParseError,
     ParsedIdea,
@@ -93,7 +104,40 @@ _MAX_REFERENCE_PIXEL = 512  # placeholder; resize is left as a follow-up — PR4
 
 # Prompt paths — versioned filename so we can iterate without breaking history.
 _BRAINSTORM_PROMPT_PATH = _REPO_ROOT / "prompts" / "thumbnail" / "brainstorm_youtube_v1.md"
+_PODCAST_BRAINSTORM_PROMPT_PATH = _REPO_ROOT / "prompts" / "thumbnail" / "brainstorm_podcast_v1.md"
 _TITLES_PROMPT_PATH = _REPO_ROOT / "prompts" / "thumbnail" / "brainstorm_titles_v1.md"
+
+
+class U2NetError(RuntimeError):
+    """Raised when ``npx hyperframes remove-background`` fails for one image."""
+
+
+async def _u2net_cutout(src: Path, dst: Path) -> None:
+    """Run u2net background removal via Hyperframes CLI for one image.
+
+    Output is a transparent PNG at ``dst``. Mirrors the subprocess pattern in
+    ``scripts/import_shosho_cutouts.py`` (the YouTube selfie import). Used by
+    the Podcast active-cutouts confirm step (D8 Stage 5).
+    """
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    argv = [
+        "npx",
+        "hyperframes",
+        "remove-background",
+        str(src),
+        "-o",
+        str(dst),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        cwd=str(_HYPERFRAMES_VIDEO_DIR),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr_bytes = await proc.communicate()
+    if proc.returncode != 0:
+        tail = stderr_bytes.decode(errors="replace")[-500:]
+        raise U2NetError(f"remove-background failed for {src.name}: {tail!r}")
 
 
 _indexer_singleton: ProjectIndexer | None = None
@@ -151,7 +195,15 @@ def _ref_image_to_block(path: Path) -> dict:
     }
 
 
-def _load_brainstorm_prompt() -> str:
+def _load_brainstorm_prompt(content_type: str = "youtube") -> str:
+    """Route to YouTube or Podcast brainstorm system prompt by ``content_type``.
+
+    The two prompts share the 5-line idea schema (D3) so the same parser works
+    on either response; what differs is style guidance (DOAC layout, two-person
+    framing, longer hook text for podcasts).
+    """
+    if content_type == "podcast":
+        return _PODCAST_BRAINSTORM_PROMPT_PATH.read_text(encoding="utf-8")
     return _BRAINSTORM_PROMPT_PATH.read_text(encoding="utf-8")
 
 
@@ -208,17 +260,17 @@ async def thumbnail_brainstorm(
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    if entry.content_type != "youtube":
+    if entry.content_type not in ("youtube", "podcast"):
         raise HTTPException(
             status_code=400,
             detail=(
-                f"thumbnail brainstorm currently supports content_type=youtube; "
-                f"got {entry.content_type!r}. Podcast support lands in PR4-B."
+                f"thumbnail brainstorm supports content_type=youtube|podcast; "
+                f"got {entry.content_type!r}."
             ),
         )
 
     raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
-    references = _reference_images_for("youtube")
+    references = _reference_images_for(entry.content_type)
 
     user_parts = _brainstorm_user_message(
         title_candidates=list(entry.title_candidates),
@@ -227,7 +279,7 @@ async def thumbnail_brainstorm(
         reference_images=references,
     )
 
-    system_prompt = _load_brainstorm_prompt()
+    system_prompt = _load_brainstorm_prompt(entry.content_type)
     messages = [{"role": "user", "content": user_parts}]
     model = get_model(agent="bridge", task="thumbnail_brainstorm")
 
@@ -283,6 +335,7 @@ async def thumbnail_brainstorm(
                 {
                     "scope": "thumbnail_brainstorm",
                     "project": slug,
+                    "content_type": entry.content_type,
                     "n_ideas": len(ideas),
                     "n_references": len(references),
                 },
@@ -373,31 +426,50 @@ async def thumbnail_render(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     vault = get_vault_path()
-    try:
-        cutout_path = pick_youtube_host(parsed.emotion_key, vault)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=412, detail=str(exc)) from exc
-
-    # PR4-A bg strategy: solid/gradient via composition CSS — no bg image until
-    # PR5 Unsplash integration. The composition handles bg_data_url="" by hiding
-    # the <img> and falling back to the palette gradient.
-    bg_path = None  # PR5: replace with Unsplash query / AI gen driven by parsed.bg
 
     ts = _run_ts()
     run_dir = _thumbnails_dir() / slug / "runs" / ts
     run_dir.mkdir(parents=True, exist_ok=True)
     out_png = run_dir / f"v{idea_index}.png"
 
+    # PR4 bg strategy: solid/gradient via composition CSS — no bg image until
+    # PR5 Unsplash integration. The composition handles bg_data_url="" by hiding
+    # the <img> and falling back to the palette gradient.
+    bg_path = None  # PR5: replace with Unsplash query / AI gen driven by parsed.bg
+
     try:
-        await render_youtube_still(
-            title_hook=parsed.hook,
-            cutout_path=cutout_path,
-            bg_path=bg_path,
-            out_png=out_png,
-            accent_decoration=parsed.decoration,
-            palette={"bg_darken": 0.0},  # no overlay needed when bg is solid gradient
-        )
-    except (FileNotFoundError, ThumbnailRenderError) as exc:
+        if entry.content_type == "podcast":
+            try:
+                host_cutout_path = pick_podcast_host(slug, parsed.emotion_key, vault, raw_fm)
+                # Guest emotion isn't picked by the brainstorm prompt — fall through
+                # the resolver with host emotion; pick_podcast_guest falls back to
+                # any active cutout when no filename match.
+                guest_cutout_path = pick_podcast_guest(slug, parsed.emotion_key, vault, raw_fm)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=412, detail=str(exc)) from exc
+            await render_podcast_still(
+                title_hook=parsed.hook,
+                host_cutout_path=host_cutout_path,
+                guest_cutout_path=guest_cutout_path,
+                bg_path=bg_path,
+                out_png=out_png,
+                accent_decoration=parsed.decoration,
+                palette={"bg_darken": 0.55},
+            )
+        else:
+            try:
+                cutout_path = pick_youtube_host(parsed.emotion_key, vault)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=412, detail=str(exc)) from exc
+            await render_youtube_still(
+                title_hook=parsed.hook,
+                cutout_path=cutout_path,
+                bg_path=bg_path,
+                out_png=out_png,
+                accent_decoration=parsed.decoration,
+                palette={"bg_darken": 0.0},
+            )
+    except ThumbnailRenderError as exc:
         logger.exception("thumbnail render failed: slug=%s idea=%d", slug, idea_index)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -425,6 +497,7 @@ async def thumbnail_render(
                 {
                     "scope": "thumbnail_render",
                     "project": slug,
+                    "content_type": entry.content_type,
                     "idea_index": idea_index,
                     "run_ts": ts,
                     "emotion": parsed.emotion_key,
@@ -709,6 +782,298 @@ def _extract_title_lines(response_text: str) -> list[str]:
         if len(cleaned) == 3:
             break
     return cleaned
+
+
+# Podcast funnel endpoints (ADR-033 D8 — host/guest cutout extraction)
+
+
+def _funnel_dir(slug: str, role: str, ts: str) -> Path:
+    """Where ffmpeg-extracted frame candidates land before u2net."""
+    return _thumbnails_dir() / slug / "funnel" / role / ts
+
+
+def _resolve_video_path(raw_value: str) -> Path:
+    """Frontmatter ``host_video_path`` / ``guest_video_path`` → absolute Path.
+
+    Relative paths resolve against the repo root (so frontmatter can be portable
+    across machines if 修修 commits the video into ``data/podcasts/``).
+
+    Defense-in-depth: even though frontmatter is single-user-controlled today,
+    refuse to resolve outside the repo root. Future imports / sharing flows
+    could feed less-trusted frontmatter; this prevents the funnel from reading
+    arbitrary ffmpeg-readable files on the host.
+    """
+    p = Path(raw_value)
+    if not p.is_absolute():
+        p = _REPO_ROOT / p
+    resolved = p.resolve()
+    repo_root = _REPO_ROOT.resolve()
+    try:
+        resolved.relative_to(repo_root)
+    except ValueError as exc:
+        raise ValueError(f"video path escapes repo root: {raw_value!r} → {resolved}") from exc
+    return resolved
+
+
+@page_router.post("/projects/{slug}/thumbnail/podcast/funnel/{role}")
+async def thumbnail_podcast_funnel(
+    request: Request,
+    slug: str,
+    role: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Run D8 Stages 1+2 against host or guest source video.
+
+    Reads ``{role}_video_path`` from frontmatter, extracts candidate frames via
+    :func:`shared.thumbnail_funnel.run`, returns an HTMX partial with the
+    candidate grid. 修修 picks 1-3 via the active-cutouts endpoint.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    if role not in {"host", "guest"}:
+        raise HTTPException(status_code=400, detail=f"role must be 'host' or 'guest'; got {role!r}")
+
+    slug = normalize_slug(slug)
+    try:
+        entry = _indexer().get(slug)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if entry.content_type != "podcast":
+        raise HTTPException(
+            status_code=400,
+            detail=(f"podcast funnel applies to content_type=podcast; got {entry.content_type!r}."),
+        )
+
+    raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+    field = f"{role}_video_path"
+    raw_value = str(raw_fm.get(field) or "").strip()
+    if not raw_value:
+        raise HTTPException(
+            status_code=412,
+            detail=(
+                f"frontmatter missing '{field}'. Fill it in with the path to the "
+                f"{role}'s source video before running the funnel."
+            ),
+        )
+
+    try:
+        video_path = _resolve_video_path(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not video_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"video file does not exist: {video_path}",
+        )
+
+    ts = _run_ts()
+    out_dir = _funnel_dir(slug, role, ts)
+
+    try:
+        # top_pct 0.5 instead of ADR-033 D8 default 0.25 — Stage 3 vision LLM
+        # ranker is deferred per §OQ3, so 修修 needs more candidates visible in
+        # the UI to manually pick from. Revisit when Stage 3 lands.
+        candidates = await thumbnail_funnel.run(
+            video_path, out_dir, mode="conversation", top_pct=0.5
+        )
+    except FunnelError as exc:
+        logger.exception("podcast funnel failed: slug=%s role=%s", slug, role)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    try:
+        record_api_call(
+            agent="bridge",
+            model="(thumbnail-funnel)",
+            input_tokens=0,
+            output_tokens=0,
+            scope_json=json.dumps(
+                {
+                    "scope": "thumbnail_funnel",
+                    "project": slug,
+                    "role": role,
+                    "run_ts": ts,
+                    "n_candidates": len(candidates),
+                },
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("audit record failed (non-fatal)")
+
+    return _templates.TemplateResponse(
+        request,
+        "projects/_thumbnail_podcast_funnel_grid.html",
+        {
+            "slug": slug,
+            "role": role,
+            "run_ts": ts,
+            "candidates": [
+                {
+                    "filename": c.path.name,
+                    "timestamp_sec": c.timestamp_sec,
+                    "sample_kind": c.sample_kind,
+                    "sharpness": c.sharpness,
+                }
+                for c in candidates
+            ],
+        },
+    )
+
+
+@page_router.get("/projects/{slug}/thumbnail/podcast/funnel/{role}/{run_ts}/{filename}")
+async def thumbnail_podcast_funnel_candidate(
+    slug: str,
+    role: str,
+    run_ts: str,
+    filename: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Serve a single funnel-extracted PNG from data/thumbnails/{slug}/funnel/..."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+    if role not in {"host", "guest"}:
+        raise HTTPException(status_code=400, detail=f"role must be 'host' or 'guest'; got {role!r}")
+    slug = normalize_slug(slug)
+    safe = _safe_filename(filename)
+    safe_ts = _safe_ts(run_ts)
+    if safe is None or safe_ts is None:
+        raise HTTPException(status_code=400, detail="invalid run_ts or filename")
+    path = _funnel_dir(slug, role, safe_ts) / safe
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"candidate missing: {filename}")
+    return FileResponse(path, media_type="image/png")
+
+
+@page_router.post("/projects/{slug}/thumbnail/podcast/active-cutouts")
+async def thumbnail_podcast_active_cutouts(
+    request: Request,
+    slug: str,
+    role: str = Form(...),
+    run_ts: str = Form(...),
+    selected: list[str] = Form(...),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Confirm 1-3 funnel candidates → u2net → write to vault + frontmatter.
+
+    Body fields:
+        role: ``host`` or ``guest``.
+        run_ts: identifies the funnel run dir under data/thumbnails/.
+        selected: 1-3 candidate filenames (e.g. ``["frame_007.png",
+            "frame_018.png"]``).
+
+    Side effects (D8 Stage 5):
+        1. ``npx hyperframes remove-background`` each selected candidate.
+        2. Wipe existing ``Attachments/cutouts/podcast/{slug}/{role}_v*.png``.
+        3. Write transparent PNGs to ``{role}_v1.png``, ``{role}_v2.png`` ...
+        4. Update frontmatter ``thumbnail_active_cutouts.{role}`` with the new
+           vault-relative paths (the other role's active list is preserved).
+
+    Returns an HTMX partial confirming the active set.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+    if role not in {"host", "guest"}:
+        raise HTTPException(status_code=400, detail=f"role must be 'host' or 'guest'; got {role!r}")
+    safe_ts = _safe_ts(run_ts)
+    if safe_ts is None:
+        raise HTTPException(status_code=400, detail="invalid run_ts")
+    if not selected or len(selected) > 3:
+        raise HTTPException(
+            status_code=400,
+            detail=f"select 1-3 candidates per role; got {len(selected)}",
+        )
+
+    slug = normalize_slug(slug)
+    try:
+        entry = _indexer().get(slug)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if entry.content_type != "podcast":
+        raise HTTPException(
+            status_code=400,
+            detail=(f"active-cutouts applies to content_type=podcast; got {entry.content_type!r}."),
+        )
+
+    funnel_dir = _funnel_dir(slug, role, safe_ts)
+    if not funnel_dir.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"funnel run missing: {funnel_dir}. Run the funnel first.",
+        )
+
+    safe_sources: list[Path] = []
+    for raw_name in selected:
+        safe = _safe_filename(raw_name)
+        if safe is None:
+            raise HTTPException(status_code=400, detail=f"invalid candidate filename: {raw_name}")
+        src = funnel_dir / safe
+        if not src.is_file():
+            raise HTTPException(status_code=404, detail=f"candidate missing: {src}")
+        safe_sources.append(src)
+
+    vault = get_vault_path()
+    cutout_dir = vault / "Attachments" / "cutouts" / "podcast" / slug
+    cutout_dir.mkdir(parents=True, exist_ok=True)
+
+    # Wipe existing for this role only — preserve guest cutouts when role=host.
+    for old in cutout_dir.glob(f"{role}_v*.png"):
+        old.unlink(missing_ok=True)
+
+    new_paths: list[str] = []
+    for i, src in enumerate(safe_sources, start=1):
+        dst = cutout_dir / f"{role}_v{i}.png"
+        try:
+            await _u2net_cutout(src, dst)
+        except U2NetError as exc:
+            logger.exception("u2net failed: slug=%s role=%s src=%s", slug, role, src.name)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        new_paths.append(f"Attachments/cutouts/podcast/{slug}/{dst.name}")
+
+    raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+    active = dict(raw_fm.get("thumbnail_active_cutouts") or {})
+    active[role] = new_paths
+    try:
+        update_frontmatter(
+            vault_root=vault,
+            slug=slug,
+            patch={"thumbnail_active_cutouts": active},
+        )
+    except ProjectWriteError as exc:
+        logger.exception("active-cutouts write-back failed: slug=%s role=%s", slug, role)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    try:
+        record_api_call(
+            agent="bridge",
+            model="(thumbnail-u2net)",
+            input_tokens=0,
+            output_tokens=0,
+            scope_json=json.dumps(
+                {
+                    "scope": "thumbnail_active_cutouts",
+                    "project": slug,
+                    "role": role,
+                    "n_active": len(new_paths),
+                    "from_run_ts": safe_ts,
+                },
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("audit record failed (non-fatal)")
+
+    return _templates.TemplateResponse(
+        request,
+        "projects/_thumbnail_podcast_active_cutouts.html",
+        {
+            "slug": slug,
+            "role": role,
+            "paths": new_paths,
+        },
+    )
 
 
 __all__ = [
