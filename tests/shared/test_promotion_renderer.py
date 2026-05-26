@@ -125,25 +125,33 @@ def test_render_review_item_dispatches_concept_byte_identical() -> None:
     assert via_dispatch == via_direct
 
 
-def test_render_review_item_entity_raises_pending_pr2b() -> None:
-    """PR2a schema landing — Entity rendering raises until PR2b implements."""
+def test_render_review_item_dispatches_entity_byte_identical() -> None:
+    """PR2b — render_review_item dispatches Entity to render_entity_page
+    byte-identically (parallels source / concept dispatch contract)."""
+    from shared.promotion_renderer import render_entity_page
     from shared.schemas.promotion_manifest import EntityReviewItem, PersonMetadata
 
     item = EntityReviewItem(
         item_id="ent-1",
         recommendation="include",
         action="create_entity",
-        reason="r",
+        reason="recurring authority",
         evidence=_evidence(),
         risk=[],
         confidence=0.9,
         source_importance=0.9,
         reader_salience=0.5,
-        entity_label="X",
-        metadata=PersonMetadata(),
+        entity_label="Andrew Huberman",
+        metadata=PersonMetadata(affiliation="Stanford", role="Professor"),
     )
-    with pytest.raises(NotImplementedError, match="PR2b"):
-        render_review_item(item, _make_manifest())
+    manifest = _make_manifest()
+    via_dispatch = render_review_item(item, manifest)
+    via_direct = render_entity_page(item, manifest)
+    assert via_dispatch == via_direct
+    assert (
+        hashlib.sha256(via_dispatch.encode("utf-8")).hexdigest()
+        == hashlib.sha256(via_direct.encode("utf-8")).hexdigest()
+    )
 
 
 def test_render_review_item_default_arm_raises() -> None:

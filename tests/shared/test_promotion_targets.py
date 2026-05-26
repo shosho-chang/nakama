@@ -99,8 +99,8 @@ def test_concept_without_canonical_match_returns_none() -> None:
     assert resolve_target_path(item) is None
 
 
-def test_entity_review_item_raises_pending_pr2b() -> None:
-    """PR2a schema landing — Entity target path raises until PR2b implements."""
+def test_entity_person_create_derives_path_from_label() -> None:
+    """PR2b — create_entity (no canonical_match) derives from label + variant."""
     from shared.schemas.promotion_manifest import (
         EntityReviewItem,
         PersonMetadata,
@@ -116,11 +116,63 @@ def test_entity_review_item_raises_pending_pr2b() -> None:
         confidence=0.9,
         source_importance=0.9,
         reader_salience=0.5,
-        entity_label="X",
+        entity_label="Andrew Huberman",
         metadata=PersonMetadata(),
     )
-    with pytest.raises(NotImplementedError, match="PR2b"):
-        resolve_target_path(item)
+    assert resolve_target_path(item) == "KB/Wiki/Entities/People/Andrew Huberman.md"
+
+
+def test_entity_organization_create_derives_path_from_label() -> None:
+    """Organization variant routes to Organizations dir."""
+    from shared.schemas.promotion_manifest import (
+        EntityReviewItem,
+        OrganizationMetadata,
+    )
+
+    item = EntityReviewItem(
+        item_id="ent-2",
+        recommendation="include",
+        action="create_entity",
+        reason="r",
+        evidence=_evidence(),
+        risk=[],
+        confidence=0.9,
+        source_importance=0.9,
+        reader_salience=0.5,
+        entity_label="Stanford University",
+        metadata=OrganizationMetadata(org_type="academic"),
+    )
+    assert resolve_target_path(item) == "KB/Wiki/Entities/Organizations/Stanford University.md"
+
+
+def test_entity_canonical_match_overrides_derived_path() -> None:
+    """update_merge_entity flow — canonical_match.matched_entity_path wins
+    over label-derived path (incoming surface form may be an alias)."""
+    from shared.schemas.promotion_manifest import (
+        EntityCanonicalMatch,
+        EntityReviewItem,
+        PersonMetadata,
+    )
+
+    item = EntityReviewItem(
+        item_id="ent-3",
+        recommendation="include",
+        action="update_merge_entity",
+        reason="r",
+        evidence=_evidence(),
+        risk=[],
+        confidence=0.95,
+        source_importance=0.9,
+        reader_salience=0.5,
+        entity_label="Andy Huberman",
+        metadata=PersonMetadata(),
+        canonical_match=EntityCanonicalMatch(
+            match_basis="exact_alias",
+            matched_entity_path="KB/Wiki/Entities/People/Andrew Huberman.md",
+            confidence=0.97,
+        ),
+    )
+    assert resolve_target_path(item) == "KB/Wiki/Entities/People/Andrew Huberman.md"
 
 
 def test_default_arm_raises_for_unknown_subtype() -> None:
