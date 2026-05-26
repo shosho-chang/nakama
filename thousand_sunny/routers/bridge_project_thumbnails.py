@@ -797,11 +797,22 @@ def _resolve_video_path(raw_value: str) -> Path:
 
     Relative paths resolve against the repo root (so frontmatter can be portable
     across machines if 修修 commits the video into ``data/podcasts/``).
+
+    Defense-in-depth: even though frontmatter is single-user-controlled today,
+    refuse to resolve outside the repo root. Future imports / sharing flows
+    could feed less-trusted frontmatter; this prevents the funnel from reading
+    arbitrary ffmpeg-readable files on the host.
     """
     p = Path(raw_value)
     if not p.is_absolute():
         p = _REPO_ROOT / p
-    return p
+    resolved = p.resolve()
+    repo_root = _REPO_ROOT.resolve()
+    try:
+        resolved.relative_to(repo_root)
+    except ValueError as exc:
+        raise ValueError(f"video path escapes repo root: {raw_value!r} → {resolved}") from exc
+    return resolved
 
 
 @page_router.post("/projects/{slug}/thumbnail/podcast/funnel/{role}")
@@ -847,7 +858,10 @@ async def thumbnail_podcast_funnel(
             ),
         )
 
-    video_path = _resolve_video_path(raw_value)
+    try:
+        video_path = _resolve_video_path(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not video_path.is_file():
         raise HTTPException(
             status_code=404,
@@ -858,6 +872,9 @@ async def thumbnail_podcast_funnel(
     out_dir = _funnel_dir(slug, role, ts)
 
     try:
+        # top_pct 0.5 instead of ADR-033 D8 default 0.25 — Stage 3 vision LLM
+        # ranker is deferred per §OQ3, so 修修 needs more candidates visible in
+        # the UI to manually pick from. Revisit when Stage 3 lands.
         candidates = await thumbnail_funnel.run(
             video_path, out_dir, mode="conversation", top_pct=0.5
         )

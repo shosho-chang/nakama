@@ -56,11 +56,11 @@ def test_build_argv_uses_variables_file_not_inline_variables():
     assert "--no-browser-gpu" in argv
 
 
-def test_to_data_url_png():
-    p = Path(__file__)  # any existing readable file
+def test_to_data_url_unknown_suffix_falls_back_to_octet_stream():
+    # Feed a non-image file (.py) — mime map only knows png/jpg/jpeg.
+    p = Path(__file__)
     url = _to_data_url(p)
     assert url.startswith("data:")
-    # Suffix `.py` → application/octet-stream (mime map only knows png/jpg/jpeg)
     assert "application/octet-stream" in url
     assert ";base64," in url
 

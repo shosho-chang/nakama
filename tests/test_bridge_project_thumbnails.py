@@ -583,6 +583,25 @@ class TestPodcastFunnel:
         r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
         assert r.status_code == 404
 
+    def test_funnel_400_when_video_path_escapes_repo_root(self, podcast_client, tmp_path):
+        """Defense-in-depth: frontmatter host_video_path that resolves outside
+        repo root must be rejected (post-review hardening 2026-05-26)."""
+        path = tmp_path / "Projects" / "王醫師專訪.md"
+        text = path.read_text(encoding="utf-8")
+        # Replace with traversal attempt
+        text = text.replace(
+            "host_video_path: data/podcasts/wang/host_angle.mp4",
+            "host_video_path: ../../../../../etc/passwd",
+        )
+        path.write_text(text, encoding="utf-8")
+        import thousand_sunny.routers.bridge_project_thumbnails as bpt_mod
+
+        bpt_mod._indexer_singleton = None  # noqa: SLF001
+
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
+        assert r.status_code == 400
+        assert "escapes" in r.text.lower() or "repo root" in r.text.lower()
+
     def test_funnel_happy_path(self, podcast_client, monkeypatch, tmp_path):
         # 1. Create a fake video at the resolved path
         video_dir = tmp_path / "data" / "podcasts" / "wang"
