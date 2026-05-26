@@ -1,8 +1,9 @@
-"""Promotion renderer (ADR-024 Slice 7 / issue #515).
+"""Promotion renderer (ADR-024 Slice 7 / issue #515; Entity arm ADR-034 v2 PR2b).
 
-Deterministic markdown renderers for ``SourcePageReviewItem`` and
-``ConceptReviewItem``. Used by ``shared.promotion_commit`` to materialize
-KB pages from approved review items.
+Deterministic markdown renderers for ``SourcePageReviewItem``,
+``ConceptReviewItem`` and ``EntityReviewItem``. Used by
+``shared.promotion_commit`` to materialize KB pages from approved review
+items.
 
 Determinism contract: identical inputs MUST yield byte-identical outputs.
 Frontmatter key order is fixed (explicit list, NOT ``dict`` iteration);
@@ -24,8 +25,11 @@ import yaml
 
 from shared.schemas.promotion_manifest import (
     ConceptReviewItem,
+    EntityMetadata,
     EntityReviewItem,
     EvidenceAnchor,
+    OrganizationMetadata,
+    PersonMetadata,
     PromotionManifest,
     SourcePageReviewItem,
 )
@@ -67,6 +71,46 @@ _CONCEPT_PAGE_FRONTMATTER_KEYS: tuple[str, ...] = (
     "promoted_from_manifest",
 )
 
+# Entity frontmatter shared across Person / Organization variants. Variant-
+# specific keys (PersonMetadata fields / OrganizationMetadata fields) are
+# appended deterministically by _entity_metadata_fields() — keeps the YAML
+# block byte-stable regardless of variant order.
+_ENTITY_PAGE_FRONTMATTER_KEYS: tuple[str, ...] = (
+    "type",
+    "item_id",
+    "source_id",
+    "entity_kind",
+    "entity_label",
+    "aliases",
+    "evidence_language",
+    "recommendation",
+    "action",
+    "confidence",
+    "source_importance",
+    "reader_salience",
+    "match_basis",
+    "matched_entity_path",
+    "promoted_at",
+    "promoted_from_manifest",
+)
+
+# Variant-specific frontmatter key orders (appended after the shared keys
+# above). Explicit tuples — NOT dict iteration — for byte-identical output.
+_PERSON_METADATA_KEYS: tuple[str, ...] = (
+    "affiliation",
+    "role",
+    "birth_year",
+    "death_year",
+    "credentials",
+)
+
+_ORGANIZATION_METADATA_KEYS: tuple[str, ...] = (
+    "org_type",
+    "jurisdiction",
+    "website",
+    "parent_org",
+)
+
 
 def render_review_item(
     item: SourcePageReviewItem | ConceptReviewItem | EntityReviewItem,
@@ -93,14 +137,7 @@ def render_review_item(
         case ConceptReviewItem():
             return render_concept_page(item, manifest)
         case EntityReviewItem():
-            # PR2a schema landing — entity page markdown layout (Person /
-            # Organization sections, frontmatter key order, evidence
-            # rendering) is PR2b scope per ADR-034 v2 §Sequencing.
-            raise NotImplementedError(
-                "render_review_item: EntityReviewItem rendering lands in PR2b "
-                "(ADR-034 v2). Schema-only PR2a does not implement entity "
-                "page markdown rendering."
-            )
+            return render_entity_page(item, manifest)
         case _:
             raise NotImplementedError(
                 f"render_review_item: no arm for ReviewItem subtype "
@@ -198,7 +235,141 @@ def render_concept_page(item: ConceptReviewItem, manifest: PromotionManifest) ->
     return f"{fm_block}\n{body}"
 
 
+def render_entity_page(item: EntityReviewItem, manifest: PromotionManifest) -> str:
+    """Render an ``EntityReviewItem`` to markdown.
+
+    Output: frontmatter (fixed key order shared + variant-specific keys) +
+    body sections. Body order is fixed: Aliases (if any) → Reason →
+    Evidence → Cross-source match (if any) → Metadata details → Risks.
+    Two runs with identical input yield byte-identical output.
+
+    ``entity_kind`` is sourced from ``metadata.entity_type`` (the
+    discriminator) so frontmatter and on-disk path remain consistent.
+    """
+    cm = item.canonical_match
+    fm: dict[str, object] = {
+        "type": "entity",
+        "item_id": item.item_id,
+        "source_id": manifest.source_id,
+        "entity_kind": item.metadata.entity_type,
+        "entity_label": item.entity_label,
+        "aliases": list(item.aliases),
+        "evidence_language": item.evidence_language,
+        "recommendation": item.recommendation,
+        "action": item.action,
+        "confidence": item.confidence,
+        "source_importance": item.source_importance,
+        "reader_salience": item.reader_salience,
+        "match_basis": cm.match_basis if cm is not None else None,
+        "matched_entity_path": cm.matched_entity_path if cm is not None else None,
+        "promoted_at": _decided_at_or_none(item),
+        "promoted_from_manifest": manifest.manifest_id,
+    }
+    # Append variant-specific keys deterministically.
+    fm.update(_entity_metadata_fields(item.metadata))
+    fm_block = _render_frontmatter(
+        fm,
+        _ENTITY_PAGE_FRONTMATTER_KEYS + _entity_metadata_key_order(item.metadata),
+    )
+
+    sections: list[str] = []
+    sections.append(f"# {item.entity_label}\n")
+
+    if item.aliases:
+        bullets = "\n".join(f"- {alias}" for alias in item.aliases)
+        sections.append(f"## Aliases\n\n{bullets}\n")
+
+    sections.append(f"## Reason\n\n{item.reason.strip()}\n")
+
+    if item.evidence:
+        sections.append("## Evidence\n")
+        sections.append(_render_evidence_list(item.evidence))
+
+    if cm is not None and cm.match_basis != "none" and cm.matched_entity_path:
+        sections.append(
+            "## Cross-source match\n\n"
+            f"- match_basis: {cm.match_basis}\n"
+            f"- confidence: {cm.confidence}\n"
+            f"- matched_entity_path: {cm.matched_entity_path}\n"
+        )
+
+    metadata_block = _render_entity_metadata_section(item.metadata)
+    if metadata_block:
+        sections.append(metadata_block)
+
+    if item.risk:
+        sections.append("## Risks\n")
+        sections.append(_render_risk_list(item.risk))
+
+    body = "\n".join(sections)
+    return f"{fm_block}\n{body}"
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
+
+def _entity_metadata_key_order(metadata: EntityMetadata) -> tuple[str, ...]:
+    """Variant-specific frontmatter key order (inner ``match`` on metadata
+    discriminator). Adding a new entity_type = add a Metadata class + add
+    a `case` arm here + add the variant's key-order tuple at the top of
+    this module."""
+    match metadata:
+        case PersonMetadata():
+            return _PERSON_METADATA_KEYS
+        case OrganizationMetadata():
+            return _ORGANIZATION_METADATA_KEYS
+        case _:
+            raise NotImplementedError(
+                f"_entity_metadata_key_order: no arm for EntityMetadata "
+                f"variant {type(metadata).__name__!r}. Add a `case` per "
+                "ADR-034 v2 §D3."
+            )
+
+
+def _entity_metadata_fields(metadata: EntityMetadata) -> dict[str, object]:
+    """Variant-specific frontmatter values. Returned dict's iteration order
+    is irrelevant — ``_render_frontmatter`` orders by ``key_order`` tuple."""
+    match metadata:
+        case PersonMetadata():
+            return {
+                "affiliation": metadata.affiliation,
+                "role": metadata.role,
+                "birth_year": metadata.birth_year,
+                "death_year": metadata.death_year,
+                "credentials": list(metadata.credentials),
+            }
+        case OrganizationMetadata():
+            return {
+                "org_type": metadata.org_type,
+                "jurisdiction": metadata.jurisdiction,
+                "website": metadata.website,
+                "parent_org": metadata.parent_org,
+            }
+        case _:
+            raise NotImplementedError(
+                f"_entity_metadata_fields: no arm for EntityMetadata variant "
+                f"{type(metadata).__name__!r}. Add a `case` per ADR-034 v2 §D3."
+            )
+
+
+def _render_entity_metadata_section(metadata: EntityMetadata) -> str | None:
+    """Render a human-readable Metadata section. Returns ``None`` when the
+    variant has no populated fields (avoids empty section in output)."""
+    fields = _entity_metadata_fields(metadata)
+    lines: list[str] = []
+    for key in _entity_metadata_key_order(metadata):
+        value = fields.get(key)
+        if value is None:
+            continue
+        if isinstance(value, list) and not value:
+            continue
+        if isinstance(value, list):
+            lines.append(f"- {key}: {', '.join(value)}")
+        else:
+            lines.append(f"- {key}: {value}")
+    if not lines:
+        return None
+    return "## Metadata\n\n" + "\n".join(lines) + "\n"
 
 
 def _render_frontmatter(values: dict[str, object], key_order: tuple[str, ...]) -> str:
@@ -241,7 +412,7 @@ def _render_risk_list(risks) -> str:
 
 
 def _decided_at_or_none(
-    item: SourcePageReviewItem | ConceptReviewItem,
+    item: SourcePageReviewItem | ConceptReviewItem | EntityReviewItem,
 ) -> str | None:
     """Return ``human_decision.decided_at`` if present, else None."""
     if item.human_decision is None:

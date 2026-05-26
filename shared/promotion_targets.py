@@ -20,9 +20,15 @@ from __future__ import annotations
 
 from shared.schemas.promotion_manifest import (
     ConceptReviewItem,
+    EntityMetadata,
     EntityReviewItem,
+    OrganizationMetadata,
+    PersonMetadata,
     SourcePageReviewItem,
 )
+
+_ENTITIES_PEOPLE_DIR = "KB/Wiki/Entities/People"
+_ENTITIES_ORGANIZATIONS_DIR = "KB/Wiki/Entities/Organizations"
 
 
 def resolve_target_path(
@@ -36,13 +42,20 @@ def resolve_target_path(
     - ``ConceptReviewItem``: ``canonical_match.matched_concept_path`` when
       present; ``None`` when ``canonical_match=None`` or
       ``matched_concept_path`` unset.
+    - ``EntityReviewItem``: ``canonical_match.matched_entity_path`` when
+      present (update_merge_entity / update_conflict_entity path); else
+      derived from ``entity_label`` + ``metadata.entity_type``
+      (``KB/Wiki/Entities/People/{label}.md`` or
+      ``KB/Wiki/Entities/Organizations/{label}.md``). Obsidian wikilink
+      convention — label is used verbatim (spaces allowed).
 
     ``None`` is the "no eligible target" signal. Gate emits
     ``target_kb_path_missing`` finding; commit skips with reason.
 
     Raises:
         NotImplementedError: when ``item`` is not a registered
-            ``ReviewItem`` subtype. Defensive — `case _: raise` enforces
+            ``ReviewItem`` subtype, or when ``EntityMetadata`` variant has
+            no registered arm. Defensive — `case _: raise` enforces
             register hygiene (ADR-034 v2 §D3).
     """
     match item:
@@ -54,18 +67,35 @@ def resolve_target_path(
             return cm.matched_concept_path
         case ConceptReviewItem():
             return None
-        case EntityReviewItem():
-            # PR2a schema landing — Entity target path resolution is PR2b
-            # scope (per ADR-034 v2 §Sequencing). Loud raise so any
-            # premature integration surfaces immediately rather than
-            # silently emitting target_kb_path_missing at the gate.
-            raise NotImplementedError(
-                "resolve_target_path: EntityReviewItem support lands in PR2b "
-                "(ADR-034 v2). Schema-only PR2a does not implement entity "
-                "target path resolution."
-            )
+        case EntityReviewItem(canonical_match=cm) if cm and cm.matched_entity_path:
+            return cm.matched_entity_path
+        case EntityReviewItem(entity_label=label, metadata=meta):
+            return _entity_target_path(label, meta)
         case _:
             raise NotImplementedError(
                 f"resolve_target_path: no arm for ReviewItem subtype "
                 f"{type(item).__name__!r}. Add a `case` per ADR-034 v2 §D3."
+            )
+
+
+def _entity_target_path(label: str, metadata: EntityMetadata) -> str:
+    """Derive vault-relative entity page path from label + metadata variant.
+
+    Inner ``match`` dispatch on the ``EntityMetadata`` discriminator
+    (ADR-034 v2 §D3 — outer dispatch on ``ReviewItem``, inner on
+    ``EntityMetadata``). Adding a new entity_type = add a Metadata class
+    + add a `case` arm here.
+
+    Raises:
+        NotImplementedError: ``metadata`` is not a registered variant.
+    """
+    match metadata:
+        case PersonMetadata():
+            return f"{_ENTITIES_PEOPLE_DIR}/{label}.md"
+        case OrganizationMetadata():
+            return f"{_ENTITIES_ORGANIZATIONS_DIR}/{label}.md"
+        case _:
+            raise NotImplementedError(
+                f"_entity_target_path: no arm for EntityMetadata variant "
+                f"{type(metadata).__name__!r}. Add a `case` per ADR-034 v2 §D3."
             )
