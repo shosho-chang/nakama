@@ -1,0 +1,40 @@
+{# ADR-033 PR4-A — 3 thumbnail idea cards (HTMX swap target after brainstorm). #}
+<div class="pj-thumb-idea-grid" data-project-slug="{{ slug }}">
+  {% for idea in ideas %}
+    <div class="pj-thumb-idea-card" data-idea-index="{{ idea.index }}">
+      <header class="pj-thumb-idea-header">
+        <h4>Idea {{ idea.index + 1 }}</h4>
+      </header>
+      <textarea
+        class="pj-thumb-idea-textarea"
+        rows="6"
+        name="thumbnail_ideas[{{ idea.index }}]"
+        data-original="{{ idea.raw | e }}"
+        readonly>{{ idea.raw }}</textarea>
+      <dl class="pj-thumb-idea-parse">
+        <div><dt>大字</dt><dd>{{ idea.parsed.hook }}</dd></div>
+        <div><dt>表情</dt><dd><code>{{ idea.parsed.emotion_key }}</code></dd></div>
+        <div><dt>視覺</dt><dd>{{ idea.parsed.visual }}</dd></div>
+        {% if idea.parsed.decoration %}
+        <div><dt>數字/圖示</dt><dd>{{ idea.parsed.decoration }}</dd></div>
+        {% endif %}
+        <div><dt>背景</dt><dd>{{ idea.parsed.bg }}</dd></div>
+      </dl>
+      <form
+        class="pj-thumb-idea-render-form"
+        method="post"
+        action="/bridge/projects/{{ slug }}/thumbnail/render"
+        hx-post="/bridge/projects/{{ slug }}/thumbnail/render"
+        hx-target="#thumb-render-{{ idea.index }}"
+        hx-swap="innerHTML">
+        <input type="hidden" name="idea_index" value="{{ idea.index }}">
+        <label class="pj-label pj-label--small">
+          🪶 Director's Notes（可選 — 渲完不滿意時加幾句調整指示）
+          <textarea name="director_notes" rows="2" placeholder="例：背景再暗一點 / 字體再粗一點"></textarea>
+        </label>
+        <button type="submit" class="pj-btn-primary">🎨 渲此縮圖</button>
+      </form>
+      <div id="thumb-render-{{ idea.index }}" class="pj-thumb-render-slot"></div>
+    </div>
+  {% endfor %}
+</div>

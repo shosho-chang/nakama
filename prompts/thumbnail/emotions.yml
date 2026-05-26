@@ -1,0 +1,51 @@
+# Thumbnail emotion enum — single source of truth (ADR-033 D3 + D5).
+#
+# Used by:
+#   - shared/cutout_library.py (resolve_emotion + pick_*_host)
+#   - prompts/thumbnail/brainstorm_*.md templates (instruct LLM to use zh_tw value)
+#   - thousand_sunny/templates/bridge/projects/_tab_title_thumbnail.html (display labels)
+#
+# Schema:
+#   key:         canonical English enum (filesystem folder + Python constant)
+#   zh_tw:       Traditional Chinese display label (default in brainstorm output + UI)
+#   aliases:     other zh-Hant terms 修修 might type — accepted by resolve_emotion
+#   description: action hint for brainstorm LLM context
+#
+# Adding a new emotion: add an entry + create Attachments/cutouts/shosho/{key}/
+# folder + drop selfies. No code change needed.
+
+emotions:
+  - key: excited
+    zh_tw: 興奮
+    aliases: [激動, 振奮]
+    description: 眼睛睜大、嘴微張、稍前傾 — 重大發現 / 驚喜結論
+
+  - key: thoughtful
+    zh_tw: 思考
+    aliases: [沈思, 深思, 思索]
+    description: 手摸下巴 / 側頭、眉微皺 — 沉思 / 解釋複雜概念
+
+  - key: surprised
+    zh_tw: 驚訝
+    aliases: [驚喜, 大吃一驚, 吃驚]
+    description: 眼睛大、口型 "哇" — "你不知道的事" / hook 開場
+
+  - key: explaining
+    zh_tw: 解釋
+    aliases: [說明, 講解]
+    description: 手勢指向 / 數 1-2-3 — 教學 / 條列
+
+  - key: serious
+    zh_tw: 認真
+    aliases: [嚴肅, 正色]
+    description: 嘴抿、眼直視鏡頭 — 警告 / 風險議題
+
+  - key: laughing
+    zh_tw: 大笑
+    aliases: [開懷大笑, 爆笑]
+    description: 大笑、頭微仰 — 輕鬆段落 / 反差
+
+  - key: pointing
+    zh_tw: 指引
+    aliases: [指向, 手指]
+    description: 手指鏡頭 / 指側邊 — 指引 / 結論轉場

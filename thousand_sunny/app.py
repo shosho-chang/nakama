@@ -27,6 +27,7 @@ from thousand_sunny.routers import (  # noqa: E402
     auth,
     bridge,
     bridge_digests,
+    bridge_project_thumbnails,
     bridge_projects,
     bridge_zoro,
     brook,
@@ -81,6 +82,7 @@ app.include_router(bridge.router)
 app.include_router(bridge.page_router)
 app.include_router(bridge_digests.page_router)
 app.include_router(bridge_projects.page_router)
+app.include_router(bridge_project_thumbnails.page_router)
 app.include_router(bridge_zoro.page_router)
 app.include_router(foundry.page_router)
 app.include_router(repurpose.page_router)
