@@ -15,7 +15,7 @@
 ---
 # ── α (existing fields, retained) ─────────────────────────────────────────────
 type: project
-content_type: youtube           # Literal["youtube", "podcast"] — slimmed by ADR-031
+content_type: youtube           # Literal["youtube", "blog", "research", "podcast"] — all 4 retained per v2 panel
 created: 2026-04-10
 status: active                  # active|paused|published|archived
 priority: first                 # first|high|medium|low
