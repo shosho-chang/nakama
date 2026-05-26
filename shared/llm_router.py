@@ -26,6 +26,10 @@ DEFAULT_MODELS: dict[str, str] = {
     # Translation is high-volume plain text — Sonnet 4.6 is the cost/quality
     # sweet spot. Caller can still override via MODEL_<AGENT>_TRANSLATE.
     "translate": "claude-sonnet-4-6",
+    # ADR-033 D4 + D8: thumbnail pipeline uses Sonnet 4.6 with vision for
+    # reference-library style transfer (brainstorm) and frame selection (funnel).
+    "thumbnail_brainstorm": "claude-sonnet-4-6",
+    "thumbnail_funnel": "claude-sonnet-4-6",
 }
 
 # ADR-026: auth policy 解析。ternary 值 — "api" / "subscription_preferred" /
