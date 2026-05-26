@@ -1,0 +1,49 @@
+{# ADR-033 PR4-B — Podcast funnel candidate grid (HTMX swap target after funnel run). #}
+<form
+  class="pj-thumb-funnel-form"
+  method="post"
+  action="/bridge/projects/{{ slug }}/thumbnail/podcast/active-cutouts"
+  hx-post="/bridge/projects/{{ slug }}/thumbnail/podcast/active-cutouts"
+  hx-target="#thumb-podcast-active-{{ role }}"
+  hx-swap="innerHTML"
+  hx-confirm="確定 confirm {{ role }} 的 cutouts？這會跑 u2net 並覆蓋此 episode 的舊 active set。">
+  <input type="hidden" name="role" value="{{ role }}">
+  <input type="hidden" name="run_ts" value="{{ run_ts }}">
+
+  <div class="pj-thumb-funnel-header">
+    <h4>挑選 {{ role }} 候選（勾選 1-3 張）</h4>
+    <p class="pj-help">
+      run_ts: <code>{{ run_ts }}</code> · 共 {{ candidates|length }} 張 ·
+      按 audio_peak / periodic 標記 + Laplacian 銳利度排序。
+    </p>
+  </div>
+
+  <div class="pj-thumb-funnel-grid">
+    {% for c in candidates %}
+      <label class="pj-thumb-funnel-cell" title="t={{ '%.2f' % c.timestamp_sec }}s &middot; {{ c.sample_kind }} &middot; sharp={{ '%.0f' % c.sharpness }}">
+        <input
+          type="checkbox"
+          name="selected"
+          value="{{ c.filename }}"
+          class="pj-thumb-funnel-cb">
+        <img
+          src="/bridge/projects/{{ slug }}/thumbnail/podcast/funnel/{{ role }}/{{ run_ts }}/{{ c.filename }}"
+          alt="{{ role }} candidate at {{ '%.2f' % c.timestamp_sec }}s"
+          class="pj-thumb-funnel-img"
+          loading="lazy">
+        <span class="pj-thumb-funnel-meta">
+          <span class="pj-thumb-funnel-ts">{{ '%.1f' % c.timestamp_sec }}s</span>
+          {% if c.sample_kind == "audio_peak" %}
+            <span class="pj-tag pj-tag--peak">峰</span>
+          {% endif %}
+          <span class="pj-thumb-funnel-sharp">⟨{{ '%.0f' % c.sharpness }}⟩</span>
+        </span>
+      </label>
+    {% endfor %}
+  </div>
+
+  <button type="submit" class="pj-btn-primary">
+    ✓ confirm 為 {{ role }} 的 active cutouts（跑 u2net）
+  </button>
+</form>
+<div id="thumb-podcast-active-{{ role }}" class="pj-thumb-podcast-active-slot"></div>

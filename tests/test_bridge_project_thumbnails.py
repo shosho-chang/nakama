@@ -149,21 +149,19 @@ class TestBrainstorm:
             for c in captured
         )
 
-    def test_brainstorm_rejects_non_youtube(self, client, tmp_path, monkeypatch):
-        # Flip the fixture project to podcast
+    def test_brainstorm_rejects_unknown_content_type(self, client, tmp_path, monkeypatch):
+        """ADR-033 PR4-B opened podcast; other types still 400."""
         path = tmp_path / "Projects" / "肌酸的妙用.md"
         text = path.read_text(encoding="utf-8")
-        text = text.replace("content_type: youtube", "content_type: podcast")
+        text = text.replace("content_type: youtube", "content_type: article")
         path.write_text(text, encoding="utf-8")
-        # Re-init indexer (singleton clears across requests within reload — but
-        # safe to monkeypatch a new singleton)
         import thousand_sunny.routers.bridge_project_thumbnails as bpt_mod
 
         bpt_mod._indexer_singleton = None  # noqa: SLF001
 
         r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
         assert r.status_code == 400
-        assert "youtube" in r.text.lower() or "podcast" in r.text.lower()
+        assert "youtube|podcast" in r.text or "youtube" in r.text.lower()
 
     def test_brainstorm_502_on_unparseable_llm_response(self, client, monkeypatch):
         monkeypatch.setattr(
@@ -450,3 +448,404 @@ class TestCommit:
         assert r.status_code == 200, r.text
         scopes = [json.loads(c.get("scope_json", "{}")).get("scope") for c in captured]
         assert "thumbnail_commit" in scopes
+
+
+# Podcast endpoints — ADR-033 PR4-B
+
+
+SAMPLE_PODCAST_PROJECT = """\
+---
+type: project
+content_type: podcast
+created: 2026-04-10
+status: active
+priority: high
+area: work
+search_topic: 長壽訪談
+one_sentence: 訪問 Dr. 王 — 老年肌力訓練
+title_candidates:
+  - 70 歲還能練？醫師告訴你
+host_video_path: data/podcasts/wang/host_angle.mp4
+guest_video_path: data/podcasts/wang/guest_angle.mp4
+tags:
+  - project
+  - podcast
+---
+
+## 專案描述
+
+訪談 ep
+"""
+
+
+@pytest.fixture
+def podcast_client(monkeypatch, tmp_path):
+    """Fresh TestClient with a podcast-flavored project fixture."""
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("WEB_SECRET", raising=False)
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    monkeypatch.setenv("NAKAMA_THUMBNAILS_DATA_DIR", str(tmp_path / "data_thumbs"))
+
+    proj_dir = tmp_path / "Projects"
+    proj_dir.mkdir(parents=True)
+    (proj_dir / "王醫師專訪.md").write_text(SAMPLE_PODCAST_PROJECT, encoding="utf-8")
+
+    # Reference library for podcast
+    ref_dir = tmp_path / "Attachments" / "cutouts" / "reference" / "podcast" / "mine"
+    ref_dir.mkdir(parents=True)
+    (ref_dir / "ref1.png").write_bytes(b"\x89PNG\r\n\x1a\nfake-ref")
+
+    # Funnel uses repo_root for video resolution; tests that need a real video
+    # file override _resolve_video_path via monkeypatch (see _resolve_to_tmp).
+    import thousand_sunny.app as app_module
+    import thousand_sunny.auth as auth_module
+    import thousand_sunny.routers.bridge_project_thumbnails as bpt_module
+
+    importlib.reload(auth_module)
+    importlib.reload(bpt_module)
+    importlib.reload(app_module)
+    return TestClient(app_module.app)
+
+
+def _mock_funnel_run(monkeypatch, *, candidates: list[dict]):
+    """Patch ``thumbnail_funnel.run`` to return synthesised candidates."""
+    from shared.thumbnail_funnel import FrameCandidate
+
+    async def fake_run(video_path, out_dir, *, mode="conversation", top_pct=0.5, seed=42):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        result = []
+        for c in candidates:
+            p = out_dir / c["filename"]
+            p.write_bytes(b"\x89PNG\r\n\x1a\nfake-frame")
+            result.append(
+                FrameCandidate(
+                    path=p,
+                    timestamp_sec=c["timestamp_sec"],
+                    sample_kind=c["sample_kind"],
+                    sharpness=c["sharpness"],
+                )
+            )
+        return result
+
+    monkeypatch.setattr(
+        "thousand_sunny.routers.bridge_project_thumbnails.thumbnail_funnel.run",
+        fake_run,
+    )
+
+
+def _resolve_to_tmp(tmp_path):
+    """Override _resolve_video_path so frontmatter-relative paths land inside tmp_path."""
+    import thousand_sunny.routers.bridge_project_thumbnails as bpt_module
+
+    original = bpt_module._resolve_video_path
+
+    def fake_resolve(raw):
+        return tmp_path / raw
+
+    return original, fake_resolve
+
+
+class TestPodcastFunnel:
+    def test_funnel_rejects_invalid_role(self, podcast_client):
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/bystander")
+        assert r.status_code == 400
+        assert "role" in r.text.lower()
+
+    def test_funnel_rejects_non_podcast_project(self, client):
+        # YouTube fixture (content_type=youtube) — funnel must reject.
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/podcast/funnel/host")
+        assert r.status_code == 400
+
+    def test_funnel_412_when_video_path_missing_from_frontmatter(self, podcast_client, tmp_path):
+        # Strip host_video_path from frontmatter
+        path = tmp_path / "Projects" / "王醫師專訪.md"
+        text = path.read_text(encoding="utf-8")
+        text = text.replace("host_video_path: data/podcasts/wang/host_angle.mp4\n", "")
+        path.write_text(text, encoding="utf-8")
+        import thousand_sunny.routers.bridge_project_thumbnails as bpt_mod
+
+        bpt_mod._indexer_singleton = None  # noqa: SLF001
+
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
+        assert r.status_code == 412
+        assert "host_video_path" in r.text
+
+    def test_funnel_404_when_video_file_missing_on_disk(
+        self, podcast_client, monkeypatch, tmp_path
+    ):
+        # Frontmatter has the path but no file exists at the resolved location.
+        _, fake = _resolve_to_tmp(tmp_path)
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails._resolve_video_path",
+            fake,
+        )
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
+        assert r.status_code == 404
+
+    def test_funnel_400_when_video_path_escapes_repo_root(self, podcast_client, tmp_path):
+        """Defense-in-depth: frontmatter host_video_path that resolves outside
+        repo root must be rejected (post-review hardening 2026-05-26)."""
+        path = tmp_path / "Projects" / "王醫師專訪.md"
+        text = path.read_text(encoding="utf-8")
+        # Replace with traversal attempt
+        text = text.replace(
+            "host_video_path: data/podcasts/wang/host_angle.mp4",
+            "host_video_path: ../../../../../etc/passwd",
+        )
+        path.write_text(text, encoding="utf-8")
+        import thousand_sunny.routers.bridge_project_thumbnails as bpt_mod
+
+        bpt_mod._indexer_singleton = None  # noqa: SLF001
+
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
+        assert r.status_code == 400
+        assert "escapes" in r.text.lower() or "repo root" in r.text.lower()
+
+    def test_funnel_happy_path(self, podcast_client, monkeypatch, tmp_path):
+        # 1. Create a fake video at the resolved path
+        video_dir = tmp_path / "data" / "podcasts" / "wang"
+        video_dir.mkdir(parents=True)
+        (video_dir / "host_angle.mp4").write_bytes(b"fake mp4 bytes")
+        _, fake = _resolve_to_tmp(tmp_path)
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails._resolve_video_path",
+            fake,
+        )
+        # 2. Mock the funnel
+        _mock_funnel_run(
+            monkeypatch,
+            candidates=[
+                {
+                    "filename": "frame_000.png",
+                    "timestamp_sec": 12.5,
+                    "sample_kind": "periodic",
+                    "sharpness": 850.0,
+                },
+                {
+                    "filename": "frame_001.png",
+                    "timestamp_sec": 33.0,
+                    "sample_kind": "audio_peak",
+                    "sharpness": 1200.0,
+                },
+            ],
+        )
+
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
+        assert r.status_code == 200, r.text
+        # Partial includes both candidate cells + the role marker
+        assert "frame_000.png" in r.text
+        assert "frame_001.png" in r.text
+        assert "host" in r.text.lower()
+
+    def test_funnel_writes_audit_scope(self, podcast_client, monkeypatch, tmp_path):
+        video_dir = tmp_path / "data" / "podcasts" / "wang"
+        video_dir.mkdir(parents=True)
+        (video_dir / "host_angle.mp4").write_bytes(b"fake")
+        _, fake = _resolve_to_tmp(tmp_path)
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails._resolve_video_path",
+            fake,
+        )
+        _mock_funnel_run(
+            monkeypatch,
+            candidates=[
+                {
+                    "filename": "frame_000.png",
+                    "timestamp_sec": 12.5,
+                    "sample_kind": "periodic",
+                    "sharpness": 850.0,
+                }
+            ],
+        )
+        captured: list[dict] = []
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.record_api_call",
+            lambda **kw: captured.append(kw),
+        )
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host")
+        assert r.status_code == 200
+        scopes = [json.loads(c.get("scope_json", "{}")).get("scope") for c in captured]
+        assert "thumbnail_funnel" in scopes
+
+
+class TestPodcastFunnelCandidate:
+    def _seed_funnel_candidate(self, tmp_path, role: str = "host"):
+        """Write a fake candidate under data_thumbs/{slug}/funnel/{role}/{ts}/."""
+        d = tmp_path / "data_thumbs" / "王醫師專訪" / "funnel" / role / "20260526T140000"
+        d.mkdir(parents=True)
+        (d / "frame_000.png").write_bytes(b"\x89PNG\r\n\x1a\ncandidate")
+        return d
+
+    def test_candidate_serves_png(self, podcast_client, tmp_path):
+        self._seed_funnel_candidate(tmp_path, role="host")
+        r = podcast_client.get(
+            "/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host/20260526T140000/frame_000.png"
+        )
+        assert r.status_code == 200
+        assert r.content == b"\x89PNG\r\n\x1a\ncandidate"
+
+    def test_candidate_rejects_path_traversal(self, podcast_client, tmp_path):
+        self._seed_funnel_candidate(tmp_path, role="host")
+        r = podcast_client.get(
+            "/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/host/"
+            "20260526T140000/..%2Fpasswd.png"
+        )
+        # Not found → 404 because path normalisation happens or invalid filename
+        assert r.status_code in (400, 404)
+
+    def test_candidate_rejects_bad_role(self, podcast_client, tmp_path):
+        self._seed_funnel_candidate(tmp_path, role="host")
+        r = podcast_client.get(
+            "/bridge/projects/王醫師專訪/thumbnail/podcast/funnel/intruder/"
+            "20260526T140000/frame_000.png"
+        )
+        assert r.status_code == 400
+
+
+class TestPodcastActiveCutouts:
+    def _seed_funnel(self, tmp_path, role: str = "host"):
+        d = tmp_path / "data_thumbs" / "王醫師專訪" / "funnel" / role / "20260526T140000"
+        d.mkdir(parents=True)
+        for i in range(3):
+            (d / f"frame_{i:03d}.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        return d
+
+    def _patch_u2net(self, monkeypatch, *, fail: bool = False):
+        async def fake_u2net(src: Path, dst: Path):
+            if fail:
+                from thousand_sunny.routers.bridge_project_thumbnails import U2NetError
+
+                raise U2NetError(f"simulated u2net failure for {src.name}")
+            dst.write_bytes(b"\x89PNG\r\n\x1a\ntransparent")
+
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails._u2net_cutout",
+            fake_u2net,
+        )
+
+    def test_active_cutouts_happy_path(self, podcast_client, monkeypatch, tmp_path):
+        self._seed_funnel(tmp_path, role="host")
+        self._patch_u2net(monkeypatch)
+        r = podcast_client.post(
+            "/bridge/projects/王醫師專訪/thumbnail/podcast/active-cutouts",
+            data={
+                "role": "host",
+                "run_ts": "20260526T140000",
+                "selected": ["frame_000.png", "frame_001.png"],
+            },
+        )
+        assert r.status_code == 200, r.text
+        # Vault cutouts created
+        vault_dir = tmp_path / "Attachments" / "cutouts" / "podcast" / "王醫師專訪"
+        assert (vault_dir / "host_v1.png").is_file()
+        assert (vault_dir / "host_v2.png").is_file()
+        # Frontmatter updated
+        fm = yaml.safe_load(
+            (tmp_path / "Projects" / "王醫師專訪.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        active = fm["thumbnail_active_cutouts"]
+        assert active["host"] == [
+            "Attachments/cutouts/podcast/王醫師專訪/host_v1.png",
+            "Attachments/cutouts/podcast/王醫師專訪/host_v2.png",
+        ]
+
+    def test_active_cutouts_replaces_only_one_role(self, podcast_client, monkeypatch, tmp_path):
+        """Confirming host must not wipe existing guest entries."""
+        # Pre-seed frontmatter with existing guest list
+        proj = tmp_path / "Projects" / "王醫師專訪.md"
+        text = proj.read_text(encoding="utf-8")
+        text = text.replace(
+            "tags:\n",
+            "thumbnail_active_cutouts:\n"
+            "  guest:\n"
+            "    - Attachments/cutouts/podcast/王醫師專訪/guest_v1.png\n"
+            "tags:\n",
+        )
+        proj.write_text(text, encoding="utf-8")
+        # Refresh indexer
+        import thousand_sunny.routers.bridge_project_thumbnails as bpt_mod
+
+        bpt_mod._indexer_singleton = None  # noqa: SLF001
+
+        self._seed_funnel(tmp_path, role="host")
+        self._patch_u2net(monkeypatch)
+        r = podcast_client.post(
+            "/bridge/projects/王醫師專訪/thumbnail/podcast/active-cutouts",
+            data={
+                "role": "host",
+                "run_ts": "20260526T140000",
+                "selected": ["frame_000.png"],
+            },
+        )
+        assert r.status_code == 200, r.text
+        fm = yaml.safe_load(proj.read_text(encoding="utf-8").split("---")[1])
+        active = fm["thumbnail_active_cutouts"]
+        # Guest preserved
+        assert active["guest"] == ["Attachments/cutouts/podcast/王醫師專訪/guest_v1.png"]
+        # Host populated
+        assert len(active["host"]) == 1
+
+    def test_active_cutouts_rejects_too_many_selected(self, podcast_client, monkeypatch, tmp_path):
+        self._seed_funnel(tmp_path, role="host")
+        self._patch_u2net(monkeypatch)
+        r = podcast_client.post(
+            "/bridge/projects/王醫師專訪/thumbnail/podcast/active-cutouts",
+            data={
+                "role": "host",
+                "run_ts": "20260526T140000",
+                "selected": [
+                    "frame_000.png",
+                    "frame_001.png",
+                    "frame_002.png",
+                    "frame_003.png",  # 4th — over limit
+                ],
+            },
+        )
+        assert r.status_code == 400
+        assert "1-3" in r.text or "3" in r.text
+
+    def test_active_cutouts_400_on_invalid_filename(self, podcast_client, monkeypatch, tmp_path):
+        self._seed_funnel(tmp_path, role="host")
+        self._patch_u2net(monkeypatch)
+        r = podcast_client.post(
+            "/bridge/projects/王醫師專訪/thumbnail/podcast/active-cutouts",
+            data={
+                "role": "host",
+                "run_ts": "20260526T140000",
+                "selected": ["../etc/passwd"],
+            },
+        )
+        assert r.status_code == 400
+
+    def test_active_cutouts_500_on_u2net_failure(self, podcast_client, monkeypatch, tmp_path):
+        self._seed_funnel(tmp_path, role="host")
+        self._patch_u2net(monkeypatch, fail=True)
+        r = podcast_client.post(
+            "/bridge/projects/王醫師專訪/thumbnail/podcast/active-cutouts",
+            data={
+                "role": "host",
+                "run_ts": "20260526T140000",
+                "selected": ["frame_000.png"],
+            },
+        )
+        assert r.status_code == 500
+        assert "u2net" in r.text.lower() or "remove-background" in r.text.lower()
+
+
+class TestPodcastBrainstormHappyPath:
+    def test_podcast_brainstorm_uses_podcast_prompt(self, podcast_client, monkeypatch):
+        prompts_seen: list[str] = []
+
+        def fake_llm(messages, *, system=None, model=None, max_tokens=2048):
+            prompts_seen.append(system or "")
+            return SAMPLE_BRAINSTORM_LLM_RESPONSE
+
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            fake_llm,
+        )
+        r = podcast_client.post("/bridge/projects/王醫師專訪/thumbnail/brainstorm")
+        assert r.status_code == 200, r.text
+        # Podcast prompt has the DOAC / two-person framing — verify it was loaded.
+        assert "DOAC" in prompts_seen[0] or "兩人" in prompts_seen[0] or "host" in prompts_seen[0]

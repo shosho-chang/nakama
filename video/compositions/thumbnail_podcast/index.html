@@ -1,0 +1,219 @@
+<!doctype html>
+<!--
+  ADR-033 PR4-B — Podcast thumbnail composition (Stephen Bartlett DOAC style).
+
+  Resolution: 1280×720 (YouTube thumbnail spec — the podcast still lives on
+  YouTube as the channel video upload).
+
+  Layout: two-person split, host bottom-left + guest bottom-right, large title
+  hook in the middle. Background is darkened to keep cutouts and title legible.
+
+  Variables (read via window.__hyperframes.getVariables()):
+    title_hook              — 3-7 字 punchy hook for the centred large text
+    host_cutout_data_url    — host cutout (transparent PNG) as data URL
+    guest_cutout_data_url   — guest cutout (transparent PNG) as data URL
+    bg_data_url             — optional background image; CSS gradient fallback
+    accent_decoration       — optional small text/number ("EP. 12", "65歲", "⚡")
+    palette                 — { bg, fg, accent, bg_darken } CSS color strings
+
+  Static composition: empty GSAP timeline (paused), data-duration short enough
+  that frame-0 capture lands on the fully-rendered initial state.
+-->
+<html lang="zh-Hant" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #000;
+        font-family:
+          "LINE Seed TW",
+          -apple-system,
+          "Helvetica Neue",
+          "PingFang TC",
+          "Microsoft JhengHei",
+          sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        background: var(--bg, #0E1116);
+        overflow: hidden;
+      }
+
+      /* Background image: full-bleed, will be darkened by overlay */
+      #bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 1;
+      }
+
+      /* Dark overlay — DOAC convention is heavier than YT to push faces forward */
+      #overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          180deg,
+          rgba(0, 0, 0, var(--bg-darken, 0.55)) 0%,
+          rgba(0, 0, 0, calc(var(--bg-darken, 0.55) + 0.20)) 100%
+        );
+        z-index: 2;
+      }
+
+      /* Host cutout: bottom-left, ~50% width, anchored from bottom edge */
+      #host {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 96%;
+        z-index: 4;
+        object-fit: contain;
+        object-position: bottom left;
+      }
+
+      /* Guest cutout: bottom-right, ~50% width, anchored from bottom edge */
+      #guest {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        height: 96%;
+        z-index: 4;
+        object-fit: contain;
+        object-position: bottom right;
+      }
+
+      /* Title hook: centred horizontally, upper third — gets read first */
+      #title-hook {
+        position: absolute;
+        left: 50%;
+        top: 22%;
+        transform: translate(-50%, -50%);
+        z-index: 5;
+        max-width: 1100px;
+        text-align: center;
+        color: var(--fg, #FFFFFF);
+        font-size: 108px;
+        font-weight: 900;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        text-shadow:
+          0 4px 32px rgba(0, 0, 0, 0.85),
+          0 2px 10px rgba(0, 0, 0, 0.9);
+      }
+
+      /* Accent decoration — DOAC convention puts the episode badge top-left */
+      #accent {
+        position: absolute;
+        left: 48px;
+        top: 36px;
+        z-index: 6;
+        color: var(--accent, #FFD400);
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+      }
+
+      #accent:empty { display: none; }
+
+      /* Centre divider — subtle vertical line between host/guest, behind faces */
+      #divider {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 2px;
+        height: 60%;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.0) 0%,
+          rgba(255, 255, 255, 0.18) 50%,
+          rgba(255, 255, 255, 0.0) 100%
+        );
+        z-index: 3;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="thumbnail-podcast"
+      data-start="0"
+      data-duration="0.5"
+      data-width="1280"
+      data-height="720"
+      data-composition-variables='{
+        "title_hook":             { "type": "string", "default": "未填字卡" },
+        "host_cutout_data_url":   { "type": "string", "default": "" },
+        "guest_cutout_data_url":  { "type": "string", "default": "" },
+        "bg_data_url":            { "type": "string", "default": "" },
+        "accent_decoration":      { "type": "string", "default": "" },
+        "palette":                { "type": "object", "default": {} }
+      }'
+    >
+      <img id="bg" alt="" />
+      <div id="overlay"></div>
+      <div id="divider"></div>
+      <img id="host" alt="" />
+      <img id="guest" alt="" />
+      <h1 id="title-hook"></h1>
+      <div id="accent"></div>
+    </div>
+
+    <script>
+      const vars =
+        (window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+          ? window.__hyperframes.getVariables()
+          : {}) || {};
+
+      const root = document.getElementById("root");
+      const palette = vars.palette || {};
+      if (palette.bg)        root.style.setProperty("--bg", palette.bg);
+      if (palette.fg)        root.style.setProperty("--fg", palette.fg);
+      if (palette.accent)    root.style.setProperty("--accent", palette.accent);
+      if (palette.bg_darken !== undefined) {
+        root.style.setProperty("--bg-darken", String(palette.bg_darken));
+      }
+
+      const bgEl = document.getElementById("bg");
+      if (vars.bg_data_url) {
+        bgEl.src = vars.bg_data_url;
+      } else {
+        bgEl.style.display = "none";
+      }
+
+      const hostEl = document.getElementById("host");
+      if (vars.host_cutout_data_url) {
+        hostEl.src = vars.host_cutout_data_url;
+      } else {
+        hostEl.style.display = "none";
+      }
+
+      const guestEl = document.getElementById("guest");
+      if (vars.guest_cutout_data_url) {
+        guestEl.src = vars.guest_cutout_data_url;
+      } else {
+        guestEl.style.display = "none";
+      }
+
+      document.getElementById("title-hook").textContent =
+        vars.title_hook || "未填字卡";
+      document.getElementById("accent").textContent =
+        vars.accent_decoration || "";
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["thumbnail-podcast"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

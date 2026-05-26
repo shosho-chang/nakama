@@ -107,13 +107,75 @@
       </p>
     </header>
 
-    {% if entry.content_type != 'youtube' %}
+    {% if entry.content_type not in ('youtube', 'podcast') %}
     <p class="pj-callout pj-callout--info">
-      ⚠ Thumbnail brainstorm 目前只支援 <code>content_type=youtube</code>；本 project
-      是 <code>{{ entry.content_type }}</code>。Podcast 路線（含來賓選幀漏斗）將在
-      PR4-B 落地。
+      ⚠ Thumbnail brainstorm 只支援 <code>content_type=youtube</code> 或
+      <code>podcast</code>；本 project 是 <code>{{ entry.content_type }}</code>。
     </p>
     {% else %}
+    {% if entry.content_type == 'podcast' %}
+    {# ── Podcast funnel (ADR-033 D8 — pre-brainstorm cutout extraction) ─── #}
+    <section class="pj-tt-podcast-funnel">
+      <header class="pj-section-header">
+        <h4 class="pj-section-subtitle">🎯 漏斗：抽 host / guest 表情幀</h4>
+        <p class="pj-section-hint">
+          DOAC 兩人構圖需要 per-episode cutout。從 <code>host_video_path</code> +
+          <code>guest_video_path</code> 抽幀，挑 1-3 張，跑 u2net → 寫入
+          <code>Attachments/cutouts/podcast/{{ entry.slug }}/</code>。
+        </p>
+      </header>
+
+      {% set host_video = entry.raw_frontmatter.get('host_video_path') or '' %}
+      {% set guest_video = entry.raw_frontmatter.get('guest_video_path') or '' %}
+      {% set active_cutouts = entry.raw_frontmatter.get('thumbnail_active_cutouts') or {} %}
+
+      <div class="pj-podcast-funnel-roles">
+        {% for role in ['host', 'guest'] %}
+          {% set video_path = host_video if role == 'host' else guest_video %}
+          {% set active_list = active_cutouts.get(role) or [] %}
+          <div class="pj-podcast-funnel-role" data-role="{{ role }}">
+            <header>
+              <h5>{{ role|capitalize }}</h5>
+              <span class="pj-research-hint">
+                video：<code>{{ video_path or '（frontmatter 未填）' }}</code>
+              </span>
+            </header>
+            <form class="pj-inline-form"
+                  hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/podcast/funnel/{{ role }}"
+                  hx-target="#funnel-results-{{ role }}"
+                  hx-swap="innerHTML"
+                  hx-indicator="#funnel-spinner-{{ role }}">
+              <button type="submit" class="pj-btn-primary"
+                      {% if not video_path %}
+                        disabled title="先到 Brief 填 {{ role }}_video_path"
+                      {% endif %}>
+                🎬 抽 {{ role }} 候選幀
+              </button>
+              <span class="pj-spinner" id="funnel-spinner-{{ role }}" aria-hidden="true" hidden></span>
+            </form>
+            <div id="funnel-results-{{ role }}" class="pj-podcast-funnel-slot"></div>
+            <div id="thumb-podcast-active-{{ role }}" class="pj-thumb-podcast-active-slot">
+              {% if active_list %}
+                <p class="pj-status pj-status--success">
+                  ✓ {{ role }} 目前 active：{{ active_list|length }} 張
+                </p>
+                <ul class="pj-thumb-podcast-active-list">
+                  {% for p in active_list %}
+                    <li><code>{{ p }}</code></li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="pj-empty-state pj-empty-state--small">
+                  尚未 confirm active cutouts — 跑漏斗、勾 1-3 張、按 confirm。
+                </p>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
     <form id="thumb-brainstorm-form" class="pj-inline-form"
           hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/brainstorm"
           hx-target="#thumb-ideas-container"
@@ -127,7 +189,7 @@
       </button>
       <span class="pj-spinner" id="thumb-brainstorm-spinner" aria-hidden="true" hidden></span>
       <span class="pj-research-hint">
-        會附上 <code>Attachments/cutouts/reference/youtube/</code> 的參考圖讓 LLM 對齊品味。
+        會附上 <code>Attachments/cutouts/reference/{{ entry.content_type }}/</code> 的參考圖讓 LLM 對齊品味。
       </span>
     </form>
 
