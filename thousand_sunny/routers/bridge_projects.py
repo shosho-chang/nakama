@@ -23,6 +23,7 @@ write via ``shared.project_writer``. Vault is canonical SoT.
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -340,6 +341,13 @@ async def projects_update_frontmatter(
     except Exception as exc:  # noqa: BLE001 — surface any IO failure
         logger.exception("frontmatter update failed: slug=%s field=%s", slug, field)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    # Panel #10 (ADR-031 v2): if the owner just flipped status→published while
+    # other tabs are still incomplete, write an audit entry so the soft gate
+    # has a paper trail (not just a dismissible toast). Bridge ops surface
+    # can summarize weekly publish-with-incomplete counts off this.
+    if field == "status" and value == "published":
+        _audit_publish_decision(slug)
 
     return _redirect_back(slug, tab if tab in TAB_SLUGS else "brief")
 
@@ -755,6 +763,50 @@ def _write_pomodoro_entry(*, slug: str, task_name: str, now_minus_minutes: int) 
         patch={"pomodoro": {"est_total": est_total, "actual_total": actual_total}},
     )
     return new_status
+
+
+def _audit_publish_decision(slug: str) -> None:
+    """Log a publish-decision entry to ``state.db api_calls.scope_json``.
+
+    ADR-031 v2 panel #10 adopt-with-modification: turn the soft gate from
+    a dismissible toast into a persisted decision. Schema:
+
+        {"decision": "published_with_incomplete" | "published",
+         "project": slug,
+         "incomplete_tabs": [<tab_slug>, ...]}
+
+    Indexer failures and DB failures both swallow + log — the publish itself
+    has already succeeded and must not be rolled back by an audit-log hiccup.
+    """
+    try:
+        idx = _indexer()
+        entry = idx.get(slug)
+        body_md = idx.load_body(slug)
+        tab_status_map = _tab_status(entry, body_md)
+    except Exception:  # noqa: BLE001
+        logger.exception("audit_publish_decision: indexer failure slug=%s", slug)
+        tab_status_map = {}
+
+    incomplete = sorted(s for s, st in tab_status_map.items() if st != "✓" and s != "publish")
+
+    scope = {
+        "decision": "published_with_incomplete" if incomplete else "published",
+        "project": slug,
+        "incomplete_tabs": incomplete,
+    }
+
+    try:
+        from shared.state import record_api_call
+
+        record_api_call(
+            agent="bridge",
+            model="(audit-publish-decision)",
+            input_tokens=0,
+            output_tokens=0,
+            scope_json=json.dumps(scope, ensure_ascii=False),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("audit_publish_decision: record_api_call failed slug=%s", slug)
 
 
 def _scan_tasks(slug: str) -> list[dict[str, Any]]:

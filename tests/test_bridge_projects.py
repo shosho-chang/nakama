@@ -186,6 +186,47 @@ class TestFrontmatterUpdate:
         assert fm["status"] == "published"
         assert fm["publish_date"] is not None
 
+    def test_publish_with_incomplete_writes_audit_scope_json(self, client, tmp_path, monkeypatch):
+        """Panel #10: status → published while tabs are incomplete writes
+        an audit entry to state.db api_calls.scope_json. The fixture project
+        has hook_text empty / title_candidates empty / no review → multiple
+        incomplete tabs, so the decision should land as
+        ``published_with_incomplete``."""
+        import json as _json
+
+        captured = {}
+
+        def fake_record_api_call(**kwargs):
+            captured.update(kwargs)
+
+        monkeypatch.setattr("shared.state.record_api_call", fake_record_api_call)
+
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/frontmatter",
+            data={"field": "status", "value": "published", "tab": "publish"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert captured.get("agent") == "bridge"
+        assert captured.get("model") == "(audit-publish-decision)"
+        scope = _json.loads(captured["scope_json"])
+        assert scope["decision"] == "published_with_incomplete"
+        assert scope["project"] == "肌酸的妙用"
+        # Sanity: at least one incomplete tab; should NOT include "publish" itself.
+        assert len(scope["incomplete_tabs"]) >= 1
+        assert "publish" not in scope["incomplete_tabs"]
+
+    def test_publish_audit_skipped_for_non_publish_field(self, client, tmp_path, monkeypatch):
+        """Other frontmatter updates must NOT trigger the audit log."""
+        called = []
+        monkeypatch.setattr("shared.state.record_api_call", lambda **kw: called.append(kw))
+        client.post(
+            "/bridge/projects/肌酸的妙用/frontmatter",
+            data={"field": "one_sentence", "value": "新", "tab": "brief"},
+            follow_redirects=False,
+        )
+        assert called == []
+
     def test_title_candidates_multiline(self, client, tmp_path):
         client.post(
             "/bridge/projects/肌酸的妙用/frontmatter",

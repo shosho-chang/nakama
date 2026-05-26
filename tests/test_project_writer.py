@@ -9,6 +9,7 @@ import yaml
 
 from shared.project_writer import (
     VALID_TASK_STATUSES,
+    ProjectConcurrentEditError,
     ProjectWriteError,
     append_timeentry,
     create_task,
@@ -258,6 +259,54 @@ class TestAppendTimeentry:
         )
         fm = yaml.safe_load(task_path.read_text(encoding="utf-8").split("---")[1])
         assert len(fm["timeEntries"]) == 2
+
+    def test_mtime_guard_detects_concurrent_edit(
+        self, vault: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Simulate Obsidian/Syncthing touching the file between read + write
+        by monkey-patching :func:`_read_split` to mutate the file after
+        recording mtime. The guard must raise ProjectConcurrentEditError."""
+        from shared import project_writer
+
+        original_read_split = project_writer._read_split
+
+        def racing_read_split(path):
+            result = original_read_split(path)
+            # Simulate an external write: touch the file with new mtime
+            # by re-writing existing content.
+            current = path.read_text(encoding="utf-8")
+            # Sleep enough to bump mtime granularity on slow filesystems (FAT32 = 2s);
+            # then re-write with trailing newline to actually change mtime on all FS.
+            import time
+
+            time.sleep(0.05)
+            path.write_text(current + "\n", encoding="utf-8")
+            return result
+
+        monkeypatch.setattr(project_writer, "_read_split", racing_read_split)
+
+        with pytest.raises(ProjectConcurrentEditError, match="其他來源修改"):
+            append_timeentry(
+                vault_root=vault,
+                project_slug="t",
+                task_name="Pre-production",
+                start_iso="2026-05-24T20:00:00+08:00",
+                end_iso="2026-05-24T20:25:00+08:00",
+            )
+
+    def test_quiet_path_no_guard_trip(self, vault: Path):
+        """Sanity: normal back-to-back calls don't trip the mtime guard."""
+        for hour in (20, 21, 22):
+            append_timeentry(
+                vault_root=vault,
+                project_slug="t",
+                task_name="Pre-production",
+                start_iso=f"2026-05-24T{hour:02d}:00:00+08:00",
+                end_iso=f"2026-05-24T{hour:02d}:25:00+08:00",
+            )
+        task_path = vault / "TaskNotes" / "Tasks" / "t - Pre-production.md"
+        fm = yaml.safe_load(task_path.read_text(encoding="utf-8").split("---")[1])
+        assert len(fm["timeEntries"]) == 3
 
 
 class TestCreateTask:

@@ -134,9 +134,7 @@ def _parse_response(raw: str, *, persona: str) -> dict[str, Any]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ProjectReviewError(
-            f"persona={persona} returned non-JSON: {raw[:300]!r}"
-        ) from exc
+        raise ProjectReviewError(f"persona={persona} returned non-JSON: {raw[:300]!r}") from exc
 
     if not isinstance(data, dict):
         raise ProjectReviewError(f"persona={persona} returned non-object: {type(data).__name__}")
@@ -199,7 +197,8 @@ _LANG_GUARD = """\
 """
 
 
-_PROMPT_STORYTELLER = """\
+_PROMPT_STORYTELLER = (
+    """\
 你是 Master Storyteller persona — 針對短影音 hook、podcast intro、文章開場進行
 narrative arc 與認知鉤子的判讀。你的任務是用普遍適用的故事工藝原則評分，
 **不要模仿作者過往風格**（作者明確希望從專家視角獲得回饋，而非延續既有平均）。
@@ -238,10 +237,13 @@ few-shot 對齊範例（generic — 與作者過往文章無關）：
 待評輸入：
 
 {content}
-""" + _LANG_GUARD
+"""
+    + _LANG_GUARD
+)
 
 
-_PROMPT_COACH = """\
+_PROMPT_COACH = (
+    """\
 你是 Writing Coach persona — 針對 script / outline / 撰文進行可讀性、句長變化、
 專有名詞白話度、呼吸節奏的判讀。同樣 **不要模仿作者過往風格**，從普遍寫作工藝
 原則出發。
@@ -280,4 +282,6 @@ few-shot 對齊範例（generic）：
 待評輸入：
 
 {content}
-""" + _LANG_GUARD
+"""
+    + _LANG_GUARD
+)
