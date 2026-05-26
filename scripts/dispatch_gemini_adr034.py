@@ -8,7 +8,6 @@ Reads ADR-034 + Codex audit, dispatches focused Gemini lens audit on:
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
