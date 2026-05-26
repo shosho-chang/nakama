@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.10">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p30" frameDuration="1/30s" width="1920" height="1080" colorSpace="1-1-1 (Rec. 709)"/>
+    <asset id="r2" name="black10s" uid="ASSET-BLACK10S" start="0s" duration="300/30s" hasVideo="1" hasAudio="1" videoSources="1" audioSources="1" audioChannels="2" audioRate="48000" format="r1">
+      <media-rep kind="original-media" src="black10s.mp4"/>
+    </asset>
+    <asset id="r3" name="bigstat3s" uid="ASSET-BIGSTAT3S" start="0s" duration="90/30s" hasVideo="1" videoSources="1" format="r1">
+      <media-rep kind="original-media" src="bigstat3s.mp4"/>
+    </asset>
+  </resources>
+  <library>
+    <event name="nakama-foundry-smoke">
+      <project name="minimal-smoke">
+        <sequence format="r1" duration="300/30s" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
+          <spine>
+            <asset-clip name="black10s" ref="r2" offset="0s" start="0s" duration="300/30s">
+              <asset-clip name="bigstat3s" ref="r3" lane="1" offset="120/30s" start="0s" duration="90/30s"/>
+            </asset-clip>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>

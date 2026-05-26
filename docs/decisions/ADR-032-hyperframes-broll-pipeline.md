@@ -14,7 +14,7 @@
 > 2. **Phase 1 UI 砍回 Tier 2**（無 inline player + polling，3 天估值守住；Tier 3 升級當 Phase 1.5）
 > 3. **Mandarin normalization + LINE Seed TW @font-face 進 Phase 1**（不是 backlog）
 > 4. **Anchor 改為 exact-copy mandatory + validator hard fail**（rapidfuzz 降級到 diagnostic）
-> 5. **新 acceptance gate**：BigStat MP4 hash snapshot + DaVinci FCPXML import fixture
+> 5. **新 acceptance gate**：BigStat ~~MP4 hash snapshot~~ → **SSIM 視覺決定性測試**（2026-05-26 amend：byte hash 不可達成）+ DaVinci FCPXML import fixture
 > 6. **Phase 1 dispatcher 只實作 Hyperframes**，reader/web-playwright workers schema-reserve 但 raise NotImplementedError（promote 進 main 才接通）
 > 7. **Brand statement 重新 frame**：「talking head sacred」改為「保留原檔給 grade 用」
 > 8. **單一 learning store**：edit_log 為主、examples 由 UI 一鍵 promote
@@ -317,7 +317,10 @@ batch action「Finalize All Passing」 → bulk visual_approved（修修可逐�
 
 ### Determinism / Visual
 
-- [ ] **BigStat hash snapshot test** — 同 input 兩次 render，MP4 byte hash 一致（pinned Hyperframes 0.6.42 + pinned Chrome + pinned fonts）
+> **Amended 2026-05-26**: 原訂「MP4 byte hash 一致」實測**不可達成** — Hyperframes 0.6.42 H.264 encoder 多執行緒非決定性，default mode 與 `--docker` mode 都產生不同 byte/stream/pixel hash。但兩次 render 之間 **SSIM ≥ 0.9997**（empirical, 2026-05-26 Windows host）。Acceptance 改為**視覺決定性 SSIM ≥ 0.99**，並保留 byte 等級為 `xfail` 試金石以追蹤 upstream 修補。
+
+- [x] **BigStat visual determinism test** — 同 input 兩次 render，FFmpeg SSIM ≥ 0.99（floor）／實測 ≥ 0.9997
+- [x] **BigStat structural determinism** — 同 input 兩次 render，frame count + duration + 解析度完全一致
 - [ ] **Mandarin normalization regression** — 9 個 test fixture（全形/半形標點、4 種數字格式、`「」`、SRT cue 跨句）pytest 全綠
 
 ### FCPXML / DaVinci 兼容
@@ -407,7 +410,7 @@ batch action「Finalize All Passing」 → bulk visual_approved（修修可逐�
 | **Mandarin 正規化未覆蓋 corner case**（粵語拼音、注音、罕用全形數字） | 中 | 9 test fixture 起手，發現缺再補；fail loud（normalizer 不認的 raise） |
 | **FCPXML 1.10 在 DaVinci Resolve 修修版本 import 失敗**（Apple 規範 vs DaVinci 實作有偏） | 中 | Phase 1 PR-4 必過 DaVinci import fixture；不通則 emitter 加 `--fcpxml-version` flag 試 1.11 / 1.9 |
 | **FCPXML adjust-transform 單位錯**（v1 寫的 pixel 大概率非 frame-height units） | 高 | Phase 1 不 emit transform；Phase 1.5 補 side overlay 時用 fixture 確定單位才 ship |
-| **Hyperframes determinism 跨 Chrome 版本** | 中 | BigStat hash snapshot test + pin Chrome 版本（hyperframes browser 自管） |
+| **Hyperframes determinism 跨 Chrome 版本** | 中 | ~~BigStat hash snapshot test~~ → SSIM 視覺決定性測試（byte 等級不可達成，2026-05-26 amend）+ pin Chrome 版本（hyperframes browser 自管） |
 | **Hyperframes v0.6.42 → v0.7+ breaking changes** | 低-中 | `video/package.json` 強 pin `"hyperframes": "0.6.42"`；CI 加 install audit |
 | **LINE Seed TW @font-face capture 失敗** | 低 | spike 已知 Noto Sans TC fallback 視覺接近；fail loud + dev 手動 verify |
 | **Robin Reader URL scheme 未定義導致 Phase 1.5 卡住** | 中 | Phase 1.5 第一 PR 必先定義 scheme + write fixture |

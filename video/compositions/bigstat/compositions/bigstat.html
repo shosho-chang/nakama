@@ -6,6 +6,35 @@
     <meta name="viewport" content="width=1920, height=1080" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 300;
+        font-style: normal;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Th.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Rg.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 700;
+        font-style: normal;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Bd.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "LINE Seed TW";
+        font-weight: 900;
+        font-style: normal;
+        font-display: block;
+        src: url("../assets/fonts/line-seed-tw/LINESeedTW_OTF_Eb.woff2") format("woff2");
+      }
+
       :root {
         --sho-bg: oklch(0.988 0.003 80);
         --sho-fg: oklch(0.145 0.005 80);
@@ -36,9 +65,7 @@
         overflow: hidden;
         background: var(--sho-bg);
         color: var(--sho-fg);
-        font-family:
-          "LINE Seed TW", "LINE Seed JP", "Noto Sans TC", "PingFang TC", ui-sans-serif,
-          system-ui, sans-serif;
+        font-family: "LINE Seed TW", sans-serif;
       }
 
       .accent-flash {
