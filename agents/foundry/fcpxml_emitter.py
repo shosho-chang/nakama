@@ -147,7 +147,9 @@ def emit(
     ET.SubElement(
         aroll_asset,
         "media-rep",
-        {"kind": "original-media", "src": f"../{raw_mp4.name}"},
+        # DaVinci Resolve requires absolute file:// URIs in media-rep src;
+        # relative paths are silently rejected at import time.
+        {"kind": "original-media", "src": raw_mp4.resolve().as_uri()},
     )
 
     for idx, (beat, mp4, dur) in enumerate(cutaways, start=3):
@@ -168,7 +170,7 @@ def emit(
         ET.SubElement(
             asset,
             "media-rep",
-            {"kind": "original-media", "src": mp4.name},
+            {"kind": "original-media", "src": mp4.resolve().as_uri()},
         )
 
     library = ET.SubElement(fcpxml, "library")

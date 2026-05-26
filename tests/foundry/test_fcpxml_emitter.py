@@ -85,6 +85,18 @@ def test_emit_matches_minimal_fixture_structure(tmp_path):
 
 
 @pytest.mark.skipif(not shutil.which("ffprobe"), reason="ffprobe required")
+def test_emit_writes_absolute_file_uri_in_media_rep(tmp_path):
+    """DaVinci rejects relative media-rep src — must be absolute file:// URI."""
+    ep = _build_episode(tmp_path)
+    out_path = emit(_storyboard_one_cutaway(), ep)
+    root = ET.parse(out_path).getroot()
+    srcs = [mr.get("src") for mr in root.findall(".//resources/asset/media-rep")]
+    assert len(srcs) == 2
+    for src in srcs:
+        assert src.startswith("file:///"), f"media-rep src not absolute file:// URI: {src}"
+
+
+@pytest.mark.skipif(not shutil.which("ffprobe"), reason="ffprobe required")
 def test_emit_skips_beats_without_render_status_done(tmp_path):
     ep = _build_episode(tmp_path)
     storyboard = _storyboard_one_cutaway()

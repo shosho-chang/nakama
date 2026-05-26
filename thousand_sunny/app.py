@@ -29,6 +29,7 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge_digests,
     bridge_zoro,
     brook,
+    foundry,
     franky,
     progress,
     projects,
@@ -79,6 +80,7 @@ app.include_router(bridge.router)
 app.include_router(bridge.page_router)
 app.include_router(bridge_digests.page_router)
 app.include_router(bridge_zoro.page_router)
+app.include_router(foundry.page_router)
 app.include_router(repurpose.page_router)
 # Franky /healthz must be mounted unconditionally — UptimeRobot probes this regardless of
 # DISABLE_ROBIN or any other feature flag (ADR-007 §2).
