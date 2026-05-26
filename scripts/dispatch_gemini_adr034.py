@@ -143,8 +143,7 @@ def main() -> int:
 
     if not CODEX_AUDIT_PATH.exists():
         print(
-            f"ERROR: Codex audit not yet at {CODEX_AUDIT_PATH}. "
-            "Run codex dispatch first.",
+            f"ERROR: Codex audit not yet at {CODEX_AUDIT_PATH}. Run codex dispatch first.",
             file=sys.stderr,
         )
         return 1
