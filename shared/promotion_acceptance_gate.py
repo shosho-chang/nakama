@@ -49,6 +49,7 @@ from shared.schemas.promotion_commit import (
 from shared.schemas.promotion_manifest import (
     CommitBatch,
     ConceptReviewItem,
+    EntityReviewItem,
     PromotionManifest,
     SourcePageReviewItem,
 )
@@ -96,7 +97,7 @@ class AcceptanceGate:
 
     def validate(
         self,
-        item: SourcePageReviewItem | ConceptReviewItem,
+        item: SourcePageReviewItem | ConceptReviewItem | EntityReviewItem,
         vault_root: Path,
         manifest: PromotionManifest,
         write_adapter: _GateAdapter,
@@ -216,7 +217,7 @@ class AcceptanceGate:
 
 
 def _validate_type_specific_invariants(
-    item: SourcePageReviewItem | ConceptReviewItem,
+    item: SourcePageReviewItem | ConceptReviewItem | EntityReviewItem,
 ) -> list[AcceptanceFinding]:
     """Subtype-specific invariants. Dispatch via ``match`` (ADR-034 v2 §D3).
 
@@ -246,6 +247,12 @@ def _validate_type_specific_invariants(
                 ]
             return []
         case ConceptReviewItem():
+            return []
+        case EntityReviewItem():
+            # PR2a — no Entity-specific gate invariants yet. EntityCanonicalMatch
+            # V10 mirror is enforced at the EntityCanonicalMatch model layer
+            # (matched_entity_path discriminator). Shared G1/G2/G3/G4/G5/G7
+            # invariants still apply via the surrounding gate flow.
             return []
         case _:
             raise NotImplementedError(

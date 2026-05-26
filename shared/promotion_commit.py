@@ -64,6 +64,7 @@ from shared.schemas.promotion_commit import (
 from shared.schemas.promotion_manifest import (
     CommitBatch,
     ConceptReviewItem,
+    EntityReviewItem,
     PromotionManifest,
     SourcePageReviewItem,
     TouchedFile,
@@ -308,7 +309,7 @@ class PromotionCommitService:
 
         # Index manifest items by id for O(1) lookup; preserve original order
         # for caller-supplied item_ids.
-        items_by_id: dict[str, SourcePageReviewItem | ConceptReviewItem] = {
+        items_by_id: dict[str, SourcePageReviewItem | ConceptReviewItem | EntityReviewItem] = {
             item.item_id: item for item in manifest.items
         }
 
@@ -461,6 +462,12 @@ class PromotionCommitService:
                     _migrate_source_attachments(item, target, vault_root)
                 case ConceptReviewItem():
                     pass  # concept items have no Inbox companion attachments
+                case EntityReviewItem():
+                    # PR2a — Entity items have no Inbox companion attachments
+                    # by design (Person / Organization metadata is structured,
+                    # not file-backed). PR2b may revisit if Entity introduces
+                    # file-backed assets (e.g. portrait images).
+                    pass
                 case _:
                     raise NotImplementedError(
                         f"attachment-migration step: no arm for ReviewItem subtype "
