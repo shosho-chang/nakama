@@ -3,7 +3,7 @@
 **Date:** 2026-05-25
 **Status:** Draft v2（post multi-agent-panel review 2026-05-25；待修修最終 sign-off）
 **Supersedes:** [ADR-015](ADR-015-script-driven-video-production.md)
-**Related:** ADR-001（agent role）→ ADR-027（Brook narrow）/ ADR-014（RepurposeEngine — orthogonal）/ ADR-028（VAULT-LAYOUT）
+**Related:** ADR-001（agent role）→ ADR-027（Brook narrow）/ ADR-014（RepurposeEngine — orthogonal）/ ADR-028（VAULT-LAYOUT）/ [ADR-033](ADR-033-thumbnail-generation-pipeline.md)（extends Hyperframes render layer to thumbnail stills, PR4 onward — see D10）
 
 > **v1 → v2 change log**：v1 由 13-Q grill 凍結後跑 3-way panel (Codex GPT-5 + Gemini 2.5 Pro)。Panel verbatim audits 存在：
 > - [`docs/research/2026-05-25-codex-adr032-audit.md`](../research/2026-05-25-codex-adr032-audit.md)
