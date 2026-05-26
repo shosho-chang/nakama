@@ -24,6 +24,7 @@ import yaml
 
 from shared.schemas.promotion_manifest import (
     ConceptReviewItem,
+    EntityReviewItem,
     EvidenceAnchor,
     PromotionManifest,
     SourcePageReviewItem,
@@ -68,7 +69,7 @@ _CONCEPT_PAGE_FRONTMATTER_KEYS: tuple[str, ...] = (
 
 
 def render_review_item(
-    item: SourcePageReviewItem | ConceptReviewItem,
+    item: SourcePageReviewItem | ConceptReviewItem | EntityReviewItem,
     manifest: PromotionManifest,
 ) -> str:
     """Unified entry point for rendering any ``ReviewItem`` to markdown.
@@ -91,6 +92,15 @@ def render_review_item(
             return render_source_page(item, manifest)
         case ConceptReviewItem():
             return render_concept_page(item, manifest)
+        case EntityReviewItem():
+            # PR2a schema landing — entity page markdown layout (Person /
+            # Organization sections, frontmatter key order, evidence
+            # rendering) is PR2b scope per ADR-034 v2 §Sequencing.
+            raise NotImplementedError(
+                "render_review_item: EntityReviewItem rendering lands in PR2b "
+                "(ADR-034 v2). Schema-only PR2a does not implement entity "
+                "page markdown rendering."
+            )
         case _:
             raise NotImplementedError(
                 f"render_review_item: no arm for ReviewItem subtype "

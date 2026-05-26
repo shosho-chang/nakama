@@ -55,7 +55,16 @@ def _validate_iso_utc(value: str) -> str:
 
 # ── Closed-set Literal enums ──────────────────────────────────────────────
 
-SchemaVersion = Literal[1]
+SchemaVersion = Literal[1, 2]
+"""Closed for v=2 (ADR-034 v2 PR2a — entity ReviewItem added).
+
+- v=1: source_page + concept items only
+- v=2: source_page + concept + entity items (Person / Organization variants)
+
+Backward compatible: v=1 manifests still load. New manifests defaulting
+to ``schema_version=1`` cannot carry ``entity`` items (PromotionManifest
+model_validator enforces).
+"""
 
 ManifestStatus = Literal["needs_review", "partial", "complete", "failed"]
 """Closed for schema_version=1.
@@ -87,6 +96,27 @@ ConceptAction = Literal[
     "exclude",
 ]
 """Closed for schema_version=1. CONTEXT.md (Promotion concept levels §)."""
+
+EntityAction = Literal[
+    "create_entity",
+    "update_merge_entity",
+    "update_conflict_entity",
+    "exclude",
+]
+"""Closed for schema_version=2 (ADR-034 v2 §D2). Entity-level actions for
+Hybrid Entity gate (Person / Organization). Book auto-create bypasses gate
+and so has no action in this enum."""
+
+EntityType = Literal["person", "organization"]
+"""Closed for schema_version=2 (ADR-034 v2 §D2 Hybrid Entity gate scope).
+
+- ``person``       : Individual entity (researcher, podcast guest, author)
+- ``organization`` : Org entity (university, lab, company, NGO)
+
+Book intentionally excluded — auto-create via ``kb_writer.write_book_entity()``
+bypasses gate per ADR-034 v2 §D1. Place / Product deferred to future
+schema bump if real use case emerges.
+"""
 
 HumanDecisionKind = Literal["approve", "reject", "defer"]
 """Closed for schema_version=1. 修修-side decision shape; matches Recommendation
@@ -124,11 +154,15 @@ Non-none match basis requires ``matched_concept_path``.
 TouchedFileOperation = Literal["create", "update", "delete", "skip"]
 """Closed for schema_version=1. ``skip`` covers idempotent no-op rewrites."""
 
-ItemKind = Literal["source_page", "concept"]
-"""Closed for schema_version=1.
+ItemKind = Literal["source_page", "concept", "entity"]
+"""Closed for schema_version=2 (ADR-034 v2 PR2a).
 
-Future slices may extend with ``entity`` and ``conflict`` per CONTEXT.md.
-Extension requires schema_version bump (mirrors #509 N6 protocol).
+- v=1 members: ``source_page``, ``concept``
+- v=2 added:   ``entity`` (Person / Organization variants via discriminated
+               metadata union; Book auto-creates outside gate per ADR-034 v2 §D1)
+
+``conflict`` remains a future possibility but not yet added. Adding requires
+another schema_version bump.
 """
 
 
@@ -316,8 +350,156 @@ class ConceptReviewItem(BaseModel):
         return self
 
 
+# ── Entity value-objects (ADR-034 v2 PR2a) ─────────────────────────────────
+
+
+class PersonMetadata(BaseModel):
+    """Type-safe Person entity metadata (ADR-034 v2 §D2).
+
+    Pydantic v2 discriminated union member — ``entity_type`` is the
+    discriminator at the metadata layer (distinct from ``item_kind``
+    which discriminates at the ReviewItem layer).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    entity_type: Literal["person"] = "person"
+    affiliation: str | None = None
+    """Primary institutional affiliation (e.g. ``"Stanford University"``)."""
+
+    role: str | None = None
+    """Free-form professional role (e.g. ``"Neuroscience Professor"``,
+    ``"Podcast Host"``)."""
+
+    birth_year: int | None = None
+    death_year: int | None = None
+
+    credentials: list[str] = Field(default_factory=list)
+    """e.g. ``["PhD", "MD"]``. Order preserved by caller, not normalized."""
+
+
+class OrganizationMetadata(BaseModel):
+    """Type-safe Organization entity metadata (ADR-034 v2 §D2).
+
+    Pydantic v2 discriminated union member.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    entity_type: Literal["organization"] = "organization"
+    org_type: Literal["academic", "company", "government", "ngo"] | None = None
+    jurisdiction: str | None = None
+    """Country / region (e.g. ``"US"``, ``"TW"``). Free-form string, no
+    closed enum — kb_writer / KB indexer canonicalize downstream."""
+
+    website: str | None = None
+    parent_org: str | None = None
+    """Free-form name reference (e.g. Stanford lab → ``parent_org="Stanford
+    University"``). NOT a wikilink path; future slice may add structured
+    cross-entity reference."""
+
+
+EntityMetadata = Annotated[
+    Union[PersonMetadata, OrganizationMetadata],
+    Field(discriminator="entity_type"),
+]
+"""Discriminated metadata union for ``EntityReviewItem`` (ADR-034 v2 §D2).
+
+Adding a new entity_type (Place / Product / etc) = add a new
+``*Metadata`` class + extend this union + extend
+:data:`EntityType` Literal + bump schema_version.
+"""
+
+
+class EntityCanonicalMatch(BaseModel):
+    """Cross-source entity canonical match (ADR-034 v2 §D2).
+
+    Analogous to :class:`CanonicalMatch` but for entities — the matched
+    path lives under ``KB/Wiki/Entities/{People|Organizations}/``.
+
+    Confidence drives fast-track in :mod:`shared.promotion_review_service`
+    (PR2c future slice): ``> 0.9`` auto-approve, ``0.5-0.9`` queue,
+    ``< 0.5`` defer.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    match_basis: MatchBasis
+    confidence: float = Field(ge=0.0, le=1.0)
+    matched_entity_path: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_match_basis_path(self) -> "EntityCanonicalMatch":
+        # Mirror CanonicalMatch V10 invariant.
+        if self.match_basis == "none":
+            if self.matched_entity_path is not None:
+                raise ValueError("match_basis='none' requires matched_entity_path=None")
+        else:
+            if self.matched_entity_path is None:
+                raise ValueError(f"match_basis={self.match_basis!r} requires matched_entity_path")
+        return self
+
+
+class EntityReviewItem(BaseModel):
+    """Per-entity promotion review item (ADR-034 v2 §D2).
+
+    Mutability: NOT frozen — ``human_decision`` is filled in post-review.
+
+    Discriminator: ``item_kind="entity"`` (top-level ReviewItem union).
+    ``metadata`` is itself a discriminated union over Person /
+    Organization variants — see :data:`EntityMetadata`.
+
+    Requires ``schema_version >= 2`` on the parent PromotionManifest
+    (enforced by :class:`PromotionManifest` model_validator).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_kind: Literal["entity"] = "entity"
+    item_id: str
+    recommendation: Recommendation
+    action: EntityAction
+    reason: str
+    evidence: list[EvidenceAnchor] = Field(default_factory=list)
+    risk: list[RiskFlag] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    source_importance: float = Field(ge=0.0, le=1.0)
+    reader_salience: float = Field(ge=0.0, le=1.0)
+    entity_label: str
+    """Canonical display label (e.g. ``"Andrew Huberman"``,
+    ``"Stanford University"``). Distinct from ``aliases`` which holds
+    alternate surface forms encountered in source material."""
+
+    aliases: list[str] = Field(default_factory=list)
+    """Alternate surface forms (``["Dr. Huberman", "Andrew D. Huberman"]``).
+    Ordering preserved; downstream KB indexer may dedupe."""
+
+    evidence_language: str | None = None
+    """BCP-47 short tag (en / zh-Hant / unknown). Useful when same person
+    is referenced in multiple languages (Andrew Huberman / 安德魯·胡伯曼)."""
+
+    metadata: EntityMetadata
+    """Typed metadata variant (Person / Organization). The
+    ``metadata.entity_type`` discriminator is the source of truth for
+    rendering / target path resolution."""
+
+    canonical_match: EntityCanonicalMatch | None = None
+    prior_decision: HumanDecisionKind | None = None
+    human_decision: HumanDecision | None = None
+
+    @model_validator(mode="after")
+    def _validate_include_has_evidence(self) -> "EntityReviewItem":
+        # Mirror V1 invariant from SourcePage/Concept review items.
+        if self.recommendation == "include" and len(self.evidence) == 0:
+            raise ValueError(
+                f"recommendation='include' requires non-empty evidence "
+                f"(item_id={self.item_id!r}, entity={self.entity_label!r})"
+            )
+        return self
+
+
 ReviewItem = Annotated[
-    Union[SourcePageReviewItem, ConceptReviewItem],
+    Union[SourcePageReviewItem, ConceptReviewItem, EntityReviewItem],
     Field(discriminator="item_kind"),
 ]
 
@@ -493,5 +675,16 @@ class PromotionManifest(BaseModel):
         any_failed = any(batch.promotion_status == "failed" for batch in self.commit_batches)
         if any_failed and self.status == "complete":
             raise ValueError("manifest cannot be 'complete' when any commit batch is 'failed'")
+
+        # V12 (ADR-034 v2 PR2a) — entity items require schema_version >= 2
+        # Enforces the closed-set extension protocol documented in
+        # :data:`ItemKind` and :data:`SchemaVersion`. v=1 manifests cannot
+        # silently gain entity capability.
+        has_entity = any(item.item_kind == "entity" for item in self.items)
+        if has_entity and self.schema_version < 2:
+            raise ValueError(
+                f"items with item_kind='entity' require schema_version >= 2; "
+                f"got schema_version={self.schema_version}"
+            )
 
         return self

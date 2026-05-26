@@ -125,6 +125,27 @@ def test_render_review_item_dispatches_concept_byte_identical() -> None:
     assert via_dispatch == via_direct
 
 
+def test_render_review_item_entity_raises_pending_pr2b() -> None:
+    """PR2a schema landing — Entity rendering raises until PR2b implements."""
+    from shared.schemas.promotion_manifest import EntityReviewItem, PersonMetadata
+
+    item = EntityReviewItem(
+        item_id="ent-1",
+        recommendation="include",
+        action="create_entity",
+        reason="r",
+        evidence=_evidence(),
+        risk=[],
+        confidence=0.9,
+        source_importance=0.9,
+        reader_salience=0.5,
+        entity_label="X",
+        metadata=PersonMetadata(),
+    )
+    with pytest.raises(NotImplementedError, match="PR2b"):
+        render_review_item(item, _make_manifest())
+
+
 def test_render_review_item_default_arm_raises() -> None:
     """ADR-034 v2 §D3 — `case _: raise` enforces register hygiene."""
     manifest = _make_manifest()

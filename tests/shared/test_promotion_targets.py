@@ -99,6 +99,30 @@ def test_concept_without_canonical_match_returns_none() -> None:
     assert resolve_target_path(item) is None
 
 
+def test_entity_review_item_raises_pending_pr2b() -> None:
+    """PR2a schema landing — Entity target path raises until PR2b implements."""
+    from shared.schemas.promotion_manifest import (
+        EntityReviewItem,
+        PersonMetadata,
+    )
+
+    item = EntityReviewItem(
+        item_id="ent-1",
+        recommendation="include",
+        action="create_entity",
+        reason="r",
+        evidence=_evidence(),
+        risk=[],
+        confidence=0.9,
+        source_importance=0.9,
+        reader_salience=0.5,
+        entity_label="X",
+        metadata=PersonMetadata(),
+    )
+    with pytest.raises(NotImplementedError, match="PR2b"):
+        resolve_target_path(item)
+
+
 def test_default_arm_raises_for_unknown_subtype() -> None:
     """ADR-034 v2 §D3 — `case _: raise` enforces register hygiene."""
 

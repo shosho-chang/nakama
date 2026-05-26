@@ -20,12 +20,13 @@ from __future__ import annotations
 
 from shared.schemas.promotion_manifest import (
     ConceptReviewItem,
+    EntityReviewItem,
     SourcePageReviewItem,
 )
 
 
 def resolve_target_path(
-    item: SourcePageReviewItem | ConceptReviewItem,
+    item: SourcePageReviewItem | ConceptReviewItem | EntityReviewItem,
 ) -> str | None:
     """Return the vault-relative target path for ``item``, or ``None``.
 
@@ -53,6 +54,16 @@ def resolve_target_path(
             return cm.matched_concept_path
         case ConceptReviewItem():
             return None
+        case EntityReviewItem():
+            # PR2a schema landing — Entity target path resolution is PR2b
+            # scope (per ADR-034 v2 §Sequencing). Loud raise so any
+            # premature integration surfaces immediately rather than
+            # silently emitting target_kb_path_missing at the gate.
+            raise NotImplementedError(
+                "resolve_target_path: EntityReviewItem support lands in PR2b "
+                "(ADR-034 v2). Schema-only PR2a does not implement entity "
+                "target path resolution."
+            )
         case _:
             raise NotImplementedError(
                 f"resolve_target_path: no arm for ReviewItem subtype "
