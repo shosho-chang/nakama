@@ -202,11 +202,7 @@ class TestTitleBrainstorm:
     def test_titles_strips_numbered_prefix(self, client, monkeypatch):
         monkeypatch.setattr(
             "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
-            lambda *a, **kw: (
-                "1. 肌酸的真相\n"
-                "2) 你不知道的事\n"
-                "(3) 65 歲的選擇\n"
-            ),
+            lambda *a, **kw: "1. 肌酸的真相\n2) 你不知道的事\n(3) 65 歲的選擇\n",
         )
         r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles")
         assert r.status_code == 200, r.text
@@ -300,9 +296,7 @@ class TestRender:
         assert "/thumbnail/candidate/" in r.text
         assert "v0.png" in r.text or "v0" in r.text
 
-    def test_render_writes_manifest_with_director_notes(
-        self, with_ideas, tmp_path, monkeypatch
-    ):
+    def test_render_writes_manifest_with_director_notes(self, with_ideas, tmp_path, monkeypatch):
         async def fake_render(*, out_png, **_kw):
             out_png.parent.mkdir(parents=True, exist_ok=True)
             out_png.write_bytes(b"\x89PNG\r\n\x1a\nx")
@@ -350,9 +344,7 @@ class TestCandidateServing:
         run_dir.mkdir(parents=True)
         (run_dir / "v0.png").write_bytes(b"\x89PNG\r\n\x1a\nserved")
 
-        r = client.get(
-            "/bridge/projects/肌酸的妙用/thumbnail/candidate/20260526T140000/v0.png"
-        )
+        r = client.get("/bridge/projects/肌酸的妙用/thumbnail/candidate/20260526T140000/v0.png")
         assert r.status_code == 200
         assert r.content == b"\x89PNG\r\n\x1a\nserved"
 
@@ -364,9 +356,7 @@ class TestCandidateServing:
         assert r.status_code in (400, 404)
 
     def test_candidate_rejects_bad_ts_shape(self, client):
-        r = client.get(
-            "/bridge/projects/肌酸的妙用/thumbnail/candidate/not-a-ts/v0.png"
-        )
+        r = client.get("/bridge/projects/肌酸的妙用/thumbnail/candidate/not-a-ts/v0.png")
         assert r.status_code == 400
 
     def test_candidate_404_when_missing(self, client):
@@ -397,9 +387,7 @@ class TestCommit:
         )
         assert r.status_code == 200, r.text
 
-        vault_thumb = (
-            tmp_path / "Attachments" / "projects" / "肌酸的妙用" / "thumbnail.png"
-        )
+        vault_thumb = tmp_path / "Attachments" / "projects" / "肌酸的妙用" / "thumbnail.png"
         assert vault_thumb.exists()
         assert vault_thumb.read_bytes() == b"\x89PNG\r\n\x1a\nchosen-bytes"
 

@@ -80,6 +80,7 @@ def _thumbnails_dir() -> Path:
     override = os.environ.get("NAKAMA_THUMBNAILS_DATA_DIR")
     return Path(override) if override else _DEFAULT_THUMBNAILS_DIR
 
+
 # Vault paths derived inside endpoints via get_vault_path() so tests can monkeypatch.
 
 # Reference library cap for vision LLM attachment (panel P10).
