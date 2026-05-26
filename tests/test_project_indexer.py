@@ -163,6 +163,42 @@ class TestGet:
         assert r.score == 4
         assert "Hook" in r.summary
 
+    def test_reviews_list_shape_returns_latest(self, vault: Path):
+        """v2 list-shape reviews — indexer surfaces the last entry as latest."""
+        project_path = vault / "Projects" / "list-shape.md"
+        project_path.write_text(
+            """---
+type: project
+content_type: blog
+created: 2026-05-20
+status: active
+priority: medium
+area: work
+search_topic: 測試
+reviews:
+  storyteller:
+    - run_at: 2026-05-20T10:00:00+08:00
+      score: 3
+      summary: 初版 hook 一般
+      suggestions: ["加數字"]
+    - run_at: 2026-05-24T10:00:00+08:00
+      score: 5
+      summary: 改寫後 hook 強烈
+      suggestions: ["保持"]
+tags:
+  - project
+---
+# x
+""",
+            encoding="utf-8",
+        )
+        idx = ProjectIndexer(vault)
+        e = idx.get("list-shape")
+        assert len(e.reviews) == 1
+        # Indexer surfaces the LATEST = last entry
+        assert e.reviews[0].score == 5
+        assert "改寫後" in e.reviews[0].summary
+
     def test_unknown_slug_raises(self, vault: Path):
         idx = ProjectIndexer(vault)
         with pytest.raises(ProjectNotFoundError):

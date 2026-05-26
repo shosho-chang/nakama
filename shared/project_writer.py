@@ -36,6 +36,17 @@ class ProjectWriteError(RuntimeError):
     pass
 
 
+class ProjectConcurrentEditError(ProjectWriteError):
+    """File was modified between this writer's read and its write.
+
+    ADR-031 v2 panel #13 guard. Single-user vault has near-zero contention
+    probability (per `user_vault_edit_pattern_no_concurrent`), but Syncthing
+    + Obsidian-side edits create a non-zero window. Self-contained mtime
+    check inside the writer narrows the race to the writer's own read→write
+    span (~milliseconds).
+    """
+
+
 class _BlankNoneDumper(yaml.SafeDumper):
     """YAML dumper that renders None as blank, matching LifeOS handwritten files."""
 
@@ -172,6 +183,54 @@ def update_body_section(
     _write_split(path, fm, new_body)
 
 
+def append_review(
+    *,
+    vault_root: Path,
+    slug: str,
+    persona: str,
+    review: dict[str, Any],
+) -> None:
+    """Append a review entry to ``reviews.{persona}`` list (v2 schema).
+
+    Reviews are stored as a list-of-versioned-objects per persona
+    (ADR-031 v2 panel push) so prompt iteration history is preserved
+    in-frontmatter. UI shows latest by default with a "歷史" toggle.
+
+    Tolerates the v1 dict-shape on read for forward compatibility: if
+    the existing value is a dict, it is wrapped to ``[dict, new_review]``
+    before append. After this call the field is always a list.
+    """
+    if persona not in ("storyteller", "coach"):
+        raise ValueError(f"unknown persona: {persona!r}")
+
+    path = vault_root / PROJECTS_DIR / f"{slug}.md"
+    fm, body = _read_split(path)
+
+    reviews = fm.get("reviews")
+    if not isinstance(reviews, dict):
+        reviews = {}
+
+    existing = reviews.get(persona)
+    if existing is None:
+        history: list[Any] = []
+    elif isinstance(existing, list):
+        history = list(existing)
+    elif isinstance(existing, dict):
+        # v1 dict-shape — migrate inline by wrapping the previous entry.
+        history = [existing]
+    else:
+        raise ProjectWriteError(
+            f"reviews.{persona} has unexpected shape: {type(existing).__name__}"
+        )
+
+    history.append(review)
+    reviews[persona] = history
+    fm["reviews"] = reviews
+    _write_split(path, fm, body)
+
+
+# Backwards-compatible alias for any in-flight PR1 callers (none in current
+# codebase — kept as a soft shim during the PR1→PR2 transition window).
 def write_review(
     *,
     vault_root: Path,
@@ -179,20 +238,8 @@ def write_review(
     persona: str,
     review: dict[str, Any],
 ) -> None:
-    """Write a single persona review to ``reviews.{persona}``.
-
-    Overwrites any previous review for that persona (per ADR-031 D8 — no
-    version history in frontmatter; audit trail in state.db api_calls).
-
-    ``review`` should contain: run_at, score, summary, suggestions.
-    """
-    if persona not in ("storyteller", "coach"):
-        raise ValueError(f"unknown persona: {persona!r}")
-    update_frontmatter(
-        vault_root=vault_root,
-        slug=slug,
-        patch={"reviews": {persona: review}},
-    )
+    """Deprecated v1 overwrite-shape — delegates to :func:`append_review`."""
+    append_review(vault_root=vault_root, slug=slug, persona=persona, review=review)
 
 
 def append_timeentry(
@@ -214,10 +261,17 @@ def append_timeentry(
 
     Plugin's ``formula.實際🍅`` reads ``timeEntries[].endTime - startTime``,
     sums in minutes, divides by 25, floors.
+
+    Concurrent-edit guard (ADR-031 v2 panel #13): records mtime before
+    reading; re-checks before writing. Raises
+    :class:`ProjectConcurrentEditError` if Obsidian / Syncthing / another
+    writer touched the file in between. Caller decides whether to retry
+    or surface to the user as 409.
     """
     project_slug = unicodedata.normalize("NFC", project_slug)
     task_basename = f"{project_slug} - {task_name}"
     path = vault_root / TASKS_DIR / f"{task_basename}.md"
+    mtime_before = path.stat().st_mtime if path.exists() else None
     fm, body = _read_split(path)
     entries = fm.get("timeEntries")
     if not isinstance(entries, list):
@@ -225,6 +279,7 @@ def append_timeentry(
     entries.append({"startTime": start_iso, "endTime": end_iso})
     fm["timeEntries"] = entries
     fm["dateModified"] = _now_iso_z()
+    _check_unchanged(path, mtime_before)
     _write_split(path, fm, body)
 
 
@@ -318,10 +373,15 @@ def pop_last_timeentry(
     Returns True if an entry was popped, False if the list was already empty
     (caller decides whether to surface as 409 Conflict). Atomic via the
     underlying ``_write_split`` tmp+rename path.
+
+    Same mtime guard as :func:`append_timeentry` — raises
+    :class:`ProjectConcurrentEditError` if the file changed between read
+    and write.
     """
     project_slug = unicodedata.normalize("NFC", project_slug)
     task_basename = f"{project_slug} - {task_name}"
     path = vault_root / TASKS_DIR / f"{task_basename}.md"
+    mtime_before = path.stat().st_mtime if path.exists() else None
     fm, body = _read_split(path)
     entries = fm.get("timeEntries")
     if not isinstance(entries, list) or not entries:
@@ -329,6 +389,7 @@ def pop_last_timeentry(
     entries.pop()
     fm["timeEntries"] = entries
     fm["dateModified"] = _now_iso_z()
+    _check_unchanged(path, mtime_before)
     _write_split(path, fm, body)
     return True
 
@@ -419,6 +480,32 @@ def _now_iso_z() -> str:
     Matches the TaskNotes plugin convention written by ``shared.lifeos_writer``.
     """
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _check_unchanged(path: Path, expected_mtime: float | None) -> None:
+    """Raise :class:`ProjectConcurrentEditError` if the file's mtime has
+    drifted since ``expected_mtime`` was recorded.
+
+    ``expected_mtime is None`` is the "file didn't exist when we started"
+    case — skip the check (no race surface to defend against).
+
+    Filesystem mtime granularity varies (FAT32 = 2s, NTFS = 100ns, ext4 = 1ns).
+    Bridge runs on Win + Mac + Linux; in all three the granularity is fine
+    enough that a write within a writer's read→write span (~ms) reliably
+    bumps the mtime. False negatives (mtime didn't bump despite a write)
+    are vanishingly rare at this granularity.
+    """
+    if expected_mtime is None:
+        return
+    if not path.exists():
+        # File was deleted between our read and our write — definitely changed.
+        raise ProjectConcurrentEditError(f"file vanished mid-write: {path.name}")
+    if path.stat().st_mtime != expected_mtime:
+        raise ProjectConcurrentEditError(
+            f"檔案 {path.name} 在 Bridge 讀寫之間被其他來源修改"
+            "（Obsidian / Syncthing / 其他 process）。"
+            "請重新整理頁面再試。"
+        )
 
 
 def _deep_merge(dst: dict[str, Any], patch: dict[str, Any]) -> None:

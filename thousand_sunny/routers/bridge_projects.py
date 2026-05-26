@@ -23,6 +23,7 @@ write via ``shared.project_writer``. Vault is canonical SoT.
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -41,9 +42,15 @@ from shared.lifeos_writer import (
 )
 from shared.log import get_logger
 from shared.project_indexer import ProjectIndexer, ProjectNotFoundError, normalize_slug
+from shared.project_reviews import (
+    ProjectReviewError,
+    review_hook,
+    review_script,
+)
 from shared.project_writer import (
     VALID_TASK_STATUSES,
     ProjectWriteError,
+    append_review,
     append_timeentry,
     create_task,
     delete_task,
@@ -334,6 +341,13 @@ async def projects_update_frontmatter(
     except Exception as exc:  # noqa: BLE001 — surface any IO failure
         logger.exception("frontmatter update failed: slug=%s field=%s", slug, field)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    # Panel #10 (ADR-031 v2): if the owner just flipped status→published while
+    # other tabs are still incomplete, write an audit entry so the soft gate
+    # has a paper trail (not just a dismissible toast). Bridge ops surface
+    # can summarize weekly publish-with-incomplete counts off this.
+    if field == "status" and value == "published":
+        _audit_publish_decision(slug)
 
     return _redirect_back(slug, tab if tab in TAB_SLUGS else "brief")
 
@@ -656,9 +670,11 @@ async def projects_review_run(
     persona: str,
     nakama_auth: str | None = Cookie(None),
 ):
-    """Stub: PR1 returns 501 with a `Tier C reviews land in PR2` message.
+    """Run a persona review on the project's current hook (storyteller) or
+    script body (coach). Appends the result to ``reviews.{persona}`` list
+    (v2 list-shape per ADR-031 v2 panel push).
 
-    Real LLM dispatch + frontmatter write lands in PR2.
+    Reviews are **advisory, not a publishing gate** (ADR-031 D8).
     """
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
@@ -666,7 +682,34 @@ async def projects_review_run(
     if persona not in ("storyteller", "coach"):
         raise HTTPException(status_code=400, detail=f"unknown persona: {persona!r}")
 
-    raise HTTPException(status_code=501, detail="reviews land in PR2 (ADR-031 PR2 scope)")
+    slug = normalize_slug(slug)
+
+    try:
+        entry = _indexer().get(slug)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        if persona == "storyteller":
+            result = review_hook(entry.hook_text)
+        else:  # coach
+            body_md = _indexer().load_body(slug)
+            result = review_script(body_md)
+    except ProjectReviewError as exc:
+        logger.warning("review dispatch failed: slug=%s persona=%s err=%s", slug, persona, exc)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — surface unexpected LLM/network failures
+        logger.exception("review dispatch crashed: slug=%s persona=%s", slug, persona)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    append_review(
+        vault_root=get_vault_path(),
+        slug=slug,
+        persona=persona,
+        review=result.as_dict(),
+    )
+
+    return _redirect_back(slug, "review")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -720,6 +763,50 @@ def _write_pomodoro_entry(*, slug: str, task_name: str, now_minus_minutes: int) 
         patch={"pomodoro": {"est_total": est_total, "actual_total": actual_total}},
     )
     return new_status
+
+
+def _audit_publish_decision(slug: str) -> None:
+    """Log a publish-decision entry to ``state.db api_calls.scope_json``.
+
+    ADR-031 v2 panel #10 adopt-with-modification: turn the soft gate from
+    a dismissible toast into a persisted decision. Schema:
+
+        {"decision": "published_with_incomplete" | "published",
+         "project": slug,
+         "incomplete_tabs": [<tab_slug>, ...]}
+
+    Indexer failures and DB failures both swallow + log — the publish itself
+    has already succeeded and must not be rolled back by an audit-log hiccup.
+    """
+    try:
+        idx = _indexer()
+        entry = idx.get(slug)
+        body_md = idx.load_body(slug)
+        tab_status_map = _tab_status(entry, body_md)
+    except Exception:  # noqa: BLE001
+        logger.exception("audit_publish_decision: indexer failure slug=%s", slug)
+        tab_status_map = {}
+
+    incomplete = sorted(s for s, st in tab_status_map.items() if st != "✓" and s != "publish")
+
+    scope = {
+        "decision": "published_with_incomplete" if incomplete else "published",
+        "project": slug,
+        "incomplete_tabs": incomplete,
+    }
+
+    try:
+        from shared.state import record_api_call
+
+        record_api_call(
+            agent="bridge",
+            model="(audit-publish-decision)",
+            input_tokens=0,
+            output_tokens=0,
+            scope_json=json.dumps(scope, ensure_ascii=False),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("audit_publish_decision: record_api_call failed slug=%s", slug)
 
 
 def _scan_tasks(slug: str) -> list[dict[str, Any]]:

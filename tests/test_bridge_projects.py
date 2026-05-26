@@ -186,6 +186,47 @@ class TestFrontmatterUpdate:
         assert fm["status"] == "published"
         assert fm["publish_date"] is not None
 
+    def test_publish_with_incomplete_writes_audit_scope_json(self, client, tmp_path, monkeypatch):
+        """Panel #10: status → published while tabs are incomplete writes
+        an audit entry to state.db api_calls.scope_json. The fixture project
+        has hook_text empty / title_candidates empty / no review → multiple
+        incomplete tabs, so the decision should land as
+        ``published_with_incomplete``."""
+        import json as _json
+
+        captured = {}
+
+        def fake_record_api_call(**kwargs):
+            captured.update(kwargs)
+
+        monkeypatch.setattr("shared.state.record_api_call", fake_record_api_call)
+
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/frontmatter",
+            data={"field": "status", "value": "published", "tab": "publish"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert captured.get("agent") == "bridge"
+        assert captured.get("model") == "(audit-publish-decision)"
+        scope = _json.loads(captured["scope_json"])
+        assert scope["decision"] == "published_with_incomplete"
+        assert scope["project"] == "肌酸的妙用"
+        # Sanity: at least one incomplete tab; should NOT include "publish" itself.
+        assert len(scope["incomplete_tabs"]) >= 1
+        assert "publish" not in scope["incomplete_tabs"]
+
+    def test_publish_audit_skipped_for_non_publish_field(self, client, tmp_path, monkeypatch):
+        """Other frontmatter updates must NOT trigger the audit log."""
+        called = []
+        monkeypatch.setattr("shared.state.record_api_call", lambda **kw: called.append(kw))
+        client.post(
+            "/bridge/projects/肌酸的妙用/frontmatter",
+            data={"field": "one_sentence", "value": "新", "tab": "brief"},
+            follow_redirects=False,
+        )
+        assert called == []
+
     def test_title_candidates_multiline(self, client, tmp_path):
         client.post(
             "/bridge/projects/肌酸的妙用/frontmatter",
@@ -516,12 +557,113 @@ class TestCreateTaskEndpoint:
         assert "exists" in r.text.lower()
 
 
-class TestReviewStub:
-    def test_pr1_review_returns_501(self, client):
-        r = client.post("/bridge/projects/肌酸的妙用/review/storyteller")
-        assert r.status_code == 501
-        assert "PR2" in r.text
+class TestReviewDispatch:
+    def test_storyteller_dispatch_appends_to_list(self, client, tmp_path, monkeypatch):
+        import json
 
-    def test_review_invalid_persona_400(self, client):
+        from shared import project_reviews
+
+        canned = json.dumps(
+            {
+                "score": 4,
+                "summary": "Hook 抓得不錯，數字具體。",
+                "suggestions": ["第二段加情境"],
+            },
+            ensure_ascii=False,
+        )
+        monkeypatch.setattr(project_reviews, "ask_claude", lambda *a, **kw: canned)
+
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/review/storyteller",
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        project_md = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(project_md.split("---")[1])
+        # v2 list-shape
+        assert isinstance(fm["reviews"]["storyteller"], list)
+        assert len(fm["reviews"]["storyteller"]) == 1
+        assert fm["reviews"]["storyteller"][0]["score"] == 4
+        assert "Hook" in fm["reviews"]["storyteller"][0]["summary"]
+        assert "prompt_version" in fm["reviews"]["storyteller"][0]
+
+    def test_second_run_appends_preserving_first(self, client, tmp_path, monkeypatch):
+        import json
+
+        from shared import project_reviews
+
+        responses = iter(
+            [
+                json.dumps(
+                    {"score": 2, "summary": "first", "suggestions": []},
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {"score": 4, "summary": "second", "suggestions": []},
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        monkeypatch.setattr(project_reviews, "ask_claude", lambda *a, **kw: next(responses))
+
+        client.post("/bridge/projects/肌酸的妙用/review/storyteller", follow_redirects=False)
+        client.post("/bridge/projects/肌酸的妙用/review/storyteller", follow_redirects=False)
+
+        project_md = (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(project_md.split("---")[1])
+        assert len(fm["reviews"]["storyteller"]) == 2
+        assert fm["reviews"]["storyteller"][0]["score"] == 2
+        assert fm["reviews"]["storyteller"][1]["score"] == 4
+
+    def test_coach_dispatch_reads_body(self, client, tmp_path, monkeypatch):
+        import json
+
+        from shared import project_reviews
+
+        captured: dict = {}
+
+        def _fake_ask(prompt, **kw):
+            captured["prompt"] = prompt
+            return json.dumps(
+                {"score": 3, "summary": "script ok", "suggestions": []},
+                ensure_ascii=False,
+            )
+
+        monkeypatch.setattr(project_reviews, "ask_claude", _fake_ask)
+
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/review/coach",
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        # Coach prompt should contain the project body (script body line from SAMPLE_PROJECT)
+        assert "script body" in captured["prompt"]
+
+    def test_invalid_persona_returns_400(self, client):
         r = client.post("/bridge/projects/肌酸的妙用/review/seo")
         assert r.status_code == 400
+
+    def test_unknown_project_returns_404(self, client, monkeypatch):
+        # Stub ask_claude so the dispatch doesn't try to call a real LLM
+        # before the indexer lookup fails.
+        from shared import project_reviews
+
+        monkeypatch.setattr(project_reviews, "ask_claude", lambda *a, **kw: "{}")
+        r = client.post("/bridge/projects/does-not-exist/review/storyteller")
+        assert r.status_code == 404
+
+    def test_storyteller_empty_hook_returns_422(self, client, tmp_path, monkeypatch):
+        """Storyteller review on a project with empty hook_text is rejected at 422."""
+        # Clear hook_text via frontmatter update
+        client.post(
+            "/bridge/projects/肌酸的妙用/frontmatter",
+            data={"field": "hook_text", "value": "", "tab": "hook"},
+            follow_redirects=False,
+        )
+
+        from shared import project_reviews
+
+        monkeypatch.setattr(project_reviews, "ask_claude", lambda *a, **kw: "{}")
+        r = client.post("/bridge/projects/肌酸的妙用/review/storyteller")
+        assert r.status_code == 422
+        assert "empty" in r.text.lower()

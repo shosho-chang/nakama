@@ -9,6 +9,7 @@ import yaml
 
 from shared.project_writer import (
     VALID_TASK_STATUSES,
+    ProjectConcurrentEditError,
     ProjectWriteError,
     append_timeentry,
     create_task,
@@ -133,14 +134,17 @@ class TestUpdateBodySection:
         assert "影片描述" in body
 
 
-class TestWriteReview:
-    def test_writes_persona_block(self, vault: Path):
-        write_review(
+class TestAppendReview:
+    def test_writes_persona_list_first_run(self, vault: Path):
+        from shared.project_writer import append_review
+
+        append_review(
             vault_root=vault,
             slug="t",
             persona="storyteller",
             review={
                 "run_at": "2026-05-24T22:00:00+08:00",
+                "prompt_version": "v1.0",
                 "score": 4,
                 "summary": "Hook is decent",
                 "suggestions": ["改第 2 段"],
@@ -148,12 +152,74 @@ class TestWriteReview:
         )
         content = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
         fm = yaml.safe_load(content.split("---")[1])
-        assert fm["reviews"]["storyteller"]["score"] == 4
-        assert fm["reviews"]["storyteller"]["suggestions"] == ["改第 2 段"]
+        assert isinstance(fm["reviews"]["storyteller"], list)
+        assert len(fm["reviews"]["storyteller"]) == 1
+        assert fm["reviews"]["storyteller"][0]["score"] == 4
+        assert fm["reviews"]["storyteller"][0]["prompt_version"] == "v1.0"
+
+    def test_appends_second_run_preserves_first(self, vault: Path):
+        from shared.project_writer import append_review
+
+        append_review(
+            vault_root=vault,
+            slug="t",
+            persona="coach",
+            review={"run_at": "t1", "prompt_version": "v1", "score": 2, "summary": "draft 1"},
+        )
+        append_review(
+            vault_root=vault,
+            slug="t",
+            persona="coach",
+            review={"run_at": "t2", "prompt_version": "v1", "score": 4, "summary": "draft 2"},
+        )
+        content = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(content.split("---")[1])
+        assert len(fm["reviews"]["coach"]) == 2
+        assert fm["reviews"]["coach"][0]["score"] == 2
+        assert fm["reviews"]["coach"][1]["score"] == 4
+
+    def test_migrates_legacy_dict_shape_on_append(self, vault: Path):
+        """v1 dict-shape gets wrapped to list when a new entry appended."""
+        from shared.project_writer import append_review, update_frontmatter
+
+        # Seed v1 dict-shape directly
+        update_frontmatter(
+            vault_root=vault,
+            slug="t",
+            patch={"reviews": {"storyteller": {"run_at": "old", "score": 3, "summary": "old"}}},
+        )
+        append_review(
+            vault_root=vault,
+            slug="t",
+            persona="storyteller",
+            review={"run_at": "new", "prompt_version": "v1", "score": 5, "summary": "new"},
+        )
+        content = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(content.split("---")[1])
+        assert isinstance(fm["reviews"]["storyteller"], list)
+        assert len(fm["reviews"]["storyteller"]) == 2
+        assert fm["reviews"]["storyteller"][0]["score"] == 3  # legacy
+        assert fm["reviews"]["storyteller"][1]["score"] == 5  # new
 
     def test_unknown_persona_raises(self, vault: Path):
+        from shared.project_writer import append_review
+
         with pytest.raises(ValueError):
-            write_review(vault_root=vault, slug="t", persona="seo", review={})
+            append_review(vault_root=vault, slug="t", persona="seo", review={})
+
+    def test_write_review_alias_still_works(self, vault: Path):
+        """Soft shim — old name delegates to append_review (PR1→PR2 window)."""
+        write_review(
+            vault_root=vault,
+            slug="t",
+            persona="storyteller",
+            review={"run_at": "t1", "score": 4, "summary": "ok"},
+        )
+        content = (vault / "Projects" / "t.md").read_text(encoding="utf-8")
+        fm = yaml.safe_load(content.split("---")[1])
+        # alias path = list-shape too (no longer dict)
+        assert isinstance(fm["reviews"]["storyteller"], list)
+        assert fm["reviews"]["storyteller"][0]["score"] == 4
 
 
 class TestAppendTimeentry:
@@ -193,6 +259,54 @@ class TestAppendTimeentry:
         )
         fm = yaml.safe_load(task_path.read_text(encoding="utf-8").split("---")[1])
         assert len(fm["timeEntries"]) == 2
+
+    def test_mtime_guard_detects_concurrent_edit(
+        self, vault: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Simulate Obsidian/Syncthing touching the file between read + write
+        by monkey-patching :func:`_read_split` to mutate the file after
+        recording mtime. The guard must raise ProjectConcurrentEditError."""
+        from shared import project_writer
+
+        original_read_split = project_writer._read_split
+
+        def racing_read_split(path):
+            result = original_read_split(path)
+            # Simulate an external write: touch the file with new mtime
+            # by re-writing existing content.
+            current = path.read_text(encoding="utf-8")
+            # Sleep enough to bump mtime granularity on slow filesystems (FAT32 = 2s);
+            # then re-write with trailing newline to actually change mtime on all FS.
+            import time
+
+            time.sleep(0.05)
+            path.write_text(current + "\n", encoding="utf-8")
+            return result
+
+        monkeypatch.setattr(project_writer, "_read_split", racing_read_split)
+
+        with pytest.raises(ProjectConcurrentEditError, match="其他來源修改"):
+            append_timeentry(
+                vault_root=vault,
+                project_slug="t",
+                task_name="Pre-production",
+                start_iso="2026-05-24T20:00:00+08:00",
+                end_iso="2026-05-24T20:25:00+08:00",
+            )
+
+    def test_quiet_path_no_guard_trip(self, vault: Path):
+        """Sanity: normal back-to-back calls don't trip the mtime guard."""
+        for hour in (20, 21, 22):
+            append_timeentry(
+                vault_root=vault,
+                project_slug="t",
+                task_name="Pre-production",
+                start_iso=f"2026-05-24T{hour:02d}:00:00+08:00",
+                end_iso=f"2026-05-24T{hour:02d}:25:00+08:00",
+            )
+        task_path = vault / "TaskNotes" / "Tasks" / "t - Pre-production.md"
+        fm = yaml.safe_load(task_path.read_text(encoding="utf-8").split("---")[1])
+        assert len(fm["timeEntries"]) == 3
 
 
 class TestCreateTask:
