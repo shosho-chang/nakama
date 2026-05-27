@@ -50,7 +50,9 @@ def _split_body_sections(body: str) -> dict[str, str]:
     return sections
 
 
-def _replace_section(scaffold: str, section_marker: str, new_content: str, next_marker: str) -> tuple[str, bool]:
+def _replace_section(
+    scaffold: str, section_marker: str, new_content: str, next_marker: str
+) -> tuple[str, bool]:
     """Replace scaffold region from section_marker to next_marker with new_content.
 
     section_marker: e.g. "## 2. Title Archetypes"
@@ -68,7 +70,9 @@ def _replace_section(scaffold: str, section_marker: str, new_content: str, next_
         return scaffold, False
     region = scaffold[start:nxt]
     if "*To be populated" not in region:
-        logger.info("region %r appears already spliced (no placeholder sentinel) — skipping", section_marker)
+        logger.info(
+            "region %r appears already spliced (no placeholder sentinel) — skipping", section_marker
+        )
         return scaffold, False
     # Preserve trailing newline patterns of original region
     return scaffold[:start] + new_content.rstrip() + "\n\n" + scaffold[nxt:], True
@@ -100,7 +104,9 @@ def _splice_section_5_2(scaffold: str, new_5_2: str) -> tuple[str, bool]:
         logger.info("§5.2 already spliced — skipping")
         return scaffold, False
     # new_5_2 from body uses `## 5.2 ...` h2; convert to `### 5.2 ...` h3 to fit §5
-    new_body = new_5_2.replace("## 5.2 Archetype × Brand-Fit Matrix", "### 5.2 Archetype × Brand-Fit Matrix", 1)
+    new_body = new_5_2.replace(
+        "## 5.2 Archetype × Brand-Fit Matrix", "### 5.2 Archetype × Brand-Fit Matrix", 1
+    )
     return scaffold[:start] + new_body.rstrip() + "\n\n" + scaffold[nxt:], True
 
 
@@ -111,7 +117,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s"
+    )
 
     scaffold = args.scaffold.read_text(encoding="utf-8")
     body = args.body.read_text(encoding="utf-8")

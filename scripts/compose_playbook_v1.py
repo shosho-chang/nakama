@@ -197,14 +197,16 @@ def _build_user_message(catalog: dict, sample_extracted_rows: list[dict]) -> str
     sampled = []
     for row in sample_extracted_rows:
         bf = row.get("shosho_brand_fit", {})
-        sampled.append({
-            "id": row["id"],
-            "creator": row["creator"],
-            "title": row["title"],
-            "grade": bf.get("grade"),
-            "chinese_adaptation_example": bf.get("chinese_adaptation_example"),
-            "structure_primary": row.get("title_analysis", {}).get("structure_primary"),
-        })
+        sampled.append(
+            {
+                "id": row["id"],
+                "creator": row["creator"],
+                "title": row["title"],
+                "grade": bf.get("grade"),
+                "chinese_adaptation_example": bf.get("chinese_adaptation_example"),
+                "structure_primary": row.get("title_analysis", {}).get("structure_primary"),
+            }
+        )
     return (
         "## Catalog (cluster output)\n\n"
         f"```json\n{json.dumps(catalog, ensure_ascii=False, indent=2)}\n```\n\n"
@@ -233,11 +235,13 @@ def main(argv: list[str] | None = None) -> int:
     extraction = json.loads(args.extraction.read_text(encoding="utf-8"))
     rows = extraction.get("rows", [])
 
-    logger.info("composing playbook body from %d archetypes (%d title + %d thumb), %d rows",
-                len(catalog.get("title_archetypes", [])) + len(catalog.get("thumbnail_archetypes", [])),
-                len(catalog.get("title_archetypes", [])),
-                len(catalog.get("thumbnail_archetypes", [])),
-                len(rows))
+    logger.info(
+        "composing playbook body from %d archetypes (%d title + %d thumb), %d rows",
+        len(catalog.get("title_archetypes", [])) + len(catalog.get("thumbnail_archetypes", [])),
+        len(catalog.get("title_archetypes", [])),
+        len(catalog.get("thumbnail_archetypes", [])),
+        len(rows),
+    )
 
     user = _build_user_message(catalog, rows)
     raw = _ask_streaming(system=_COMPOSE_SYSTEM, user=user)

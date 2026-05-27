@@ -115,11 +115,11 @@ def main() -> int:
         print(f"ERROR: artifact not found: {ARTIFACT_PATH}", file=sys.stderr)
         return 2
 
-    print(f"=== Codex panel audit dispatch ===", file=sys.stderr)
+    print("=== Codex panel audit dispatch ===", file=sys.stderr)
     print(f"Topic: {TOPIC}", file=sys.stderr)
     print(f"Artifact: {ARTIFACT_PATH} ({ARTIFACT_PATH.stat().st_size} bytes)", file=sys.stderr)
     print(f"Output: {OUTPUT_PATH}", file=sys.stderr)
-    print(f"---", file=sys.stderr)
+    print("---", file=sys.stderr)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -131,8 +131,10 @@ def main() -> int:
         + artifact_text
     )
 
-    print(f"Prompt size: {len(full_prompt)} chars (~{len(full_prompt)//4} tokens)", file=sys.stderr)
-    print(f"Dispatching codex exec...", file=sys.stderr)
+    print(
+        f"Prompt size: {len(full_prompt)} chars (~{len(full_prompt) // 4} tokens)", file=sys.stderr
+    )
+    print("Dispatching codex exec...", file=sys.stderr)
 
     # Find codex executable (Windows: need .cmd; *nix: bare name)
     codex_cmd = "codex"

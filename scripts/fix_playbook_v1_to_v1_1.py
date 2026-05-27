@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import logging
 import re
-import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -117,7 +116,9 @@ _I4_NOTE = """
 # I-5: MC-3 conflation expansion
 _I5_OLD = "**Implication for 修修**: 在使用 T-A4 時，修修 應分別測試「回顧告白版」（「9 件我希望 30 歲前就知道的事」）和「假設藍圖版」（「如果我想逆轉生理年齡，我會這樣做」）兩種子型態——它們啟動的心理機制不同，對不同觀眾狀態（已有行動意願 vs. 尚在探索）的效力也可能大相徑庭，切勿混為一談。"
 
-_I5_NEW = _I5_OLD + """
+_I5_NEW = (
+    _I5_OLD
+    + """
 
 **v1.1 panel update** (Codex audit §2): MC-3 undercounted the conflation problem. Additional archetypes flagged for v2 split:
 - **T-A2 How-To** conflates: (a) procedural how-to (steps), (b) personal workflow story ("How I Manage My Time"), (c) explainer ("AI Agents, Clearly Explained") — these create different click expectations.
@@ -125,6 +126,7 @@ _I5_NEW = _I5_OLD + """
 - **T-A5 Exclusive Secret** overlaps T-A3 — "The Real Reason…" (deep explanation, trust-building) vs "what they don't tell you" (suspicion/conspiracy-adjacent, trust-risky) need separation in health context.
 - **T-A8 Authority-Research** is too broad — named-expert-guest / named-institution / quantified-credential / "I-read-N-books" are different trust mechanisms (external vs self-authority).
 - **T-V1 / T-V4** are production orientations of the same dual-zone face+payload layout — v2 should merge unless CTR data proves left/right matters."""
+)
 
 
 # I-13: T-V5 mechanism rewrite (Proof of Work / Complexity Signaling)
@@ -140,7 +142,9 @@ _I13_NEW_MECH = (
 
 
 # I-14: JP-8 recipe replace (cautionary case + non-confrontational reframe)
-_I14_OLD_HEADER = "### JP-8. Exclusive Secret Title + 'YOU'RE BEING LIED TO' Confrontational Overlay Thumbnail"
+_I14_OLD_HEADER = (
+    "### JP-8. Exclusive Secret Title + 'YOU'RE BEING LIED TO' Confrontational Overlay Thumbnail"
+)
 _I14_NEW_HEADER = "### JP-8. Exclusive Secret Title + Confrontational Overlay Thumbnail (v1.1: cautionary use only)"
 
 _I14_PANEL_NOTE = """
@@ -151,7 +155,9 @@ _I14_PANEL_NOTE = """
 
 
 # I-9: §5.4 expansion — 5 new rows
-_I9_INSERT_AFTER = "| Numbers | 100K subs, $100M | 阿拉伯數字 + 中文單位「10 萬訂閱」「破億營收」(避免直接美元) |"
+_I9_INSERT_AFTER = (
+    "| Numbers | 100K subs, $100M | 阿拉伯數字 + 中文單位「10 萬訂閱」「破億營收」(避免直接美元) |"
+)
 _I9_NEW_ROWS = """
 | Modal particles | (absent in English titles) | 「喔 / 啊 / 啦 / 耶 / 嘛」 可大幅軟化命令式語氣 — 例：「5 個睡眠殺手」→「原來這 5 件事才是睡眠殺手喔！」(Gemini panel §1b) |
 | Lenticular brackets | (n/a) | 【】(全形 lenticular brackets) 是 Taiwan YT 主流 framing convention — 「【完整版】/【新手必看】/【醫師審訂】」放在標題尾或中段標記 promise (Gemini panel §1b) |
@@ -245,11 +251,7 @@ def main() -> int:
     # I-13 T-V5 mechanism rewrite
     m = _I13_OLD_MECH_PATTERN.search(text)
     if m:
-        text = (
-            text[: m.start(2)]
-            + _I13_NEW_MECH
-            + text[m.end(2):]
-        )
+        text = text[: m.start(2)] + _I13_NEW_MECH + text[m.end(2) :]
         logger.info("I-13: T-V5 mechanism replaced (Proof of Work / Complexity Signaling)")
 
     # I-14 JP-8 reframe header + panel note
@@ -297,7 +299,13 @@ def main() -> int:
     logger.info("§8 versioning updated with v1.1 + v2-backlog entries")
 
     _PLAYBOOK.write_text(text, encoding="utf-8")
-    logger.info("wrote %s (%d → %d chars, %+d)", _PLAYBOOK, original_len, len(text), len(text) - original_len)
+    logger.info(
+        "wrote %s (%d → %d chars, %+d)",
+        _PLAYBOOK,
+        original_len,
+        len(text),
+        len(text) - original_len,
+    )
     return 0
 
 

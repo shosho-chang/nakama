@@ -62,7 +62,11 @@ _MAX_TOKENS = 4096
 # ---------------------------------------------------------------------------
 
 
-_SCHEMA_INLINE = json.loads((_REPO_ROOT / "data" / "thumbnail_reference_extraction_schema_v1.json").read_text(encoding="utf-8"))
+_SCHEMA_INLINE = json.loads(
+    (_REPO_ROOT / "data" / "thumbnail_reference_extraction_schema_v1.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 _FEW_SHOT_EXAMPLE = {
@@ -77,16 +81,29 @@ _FEW_SHOT_EXAMPLE = {
         "word_count": 9,
         "char_count": 43,
         "structure_primary": "numbered-listicle",
-        "structure_secondary_tags": ["effort-reduction-promise", "identity-aspiration", "self-improvement-domain"],
+        "structure_secondary_tags": [
+            "effort-reduction-promise",
+            "identity-aspiration",
+            "self-improvement-domain",
+        ],
         "implied_promise": "5 low-effort techniques that transform you into a more disciplined person.",
         "promise_concreteness_1to5": 3,
         "specificity_markers": ["5"],
         "click_drivers": [
-            {"framework": "Loewenstein information gap", "mechanism": "Number 5 sets a finite list — viewer can't predict the 5 items so curiosity-gap opens."},
-            {"framework": "Cognitive ease", "mechanism": "'Easy' explicitly lowers perceived investment cost — friction-reduction heuristic."},
-            {"framework": "Identity-based hook", "mechanism": "'Become More Self-Disciplined' targets aspirational identity rather than transactional outcome."}
+            {
+                "framework": "Loewenstein information gap",
+                "mechanism": "Number 5 sets a finite list — viewer can't predict the 5 items so curiosity-gap opens.",
+            },
+            {
+                "framework": "Cognitive ease",
+                "mechanism": "'Easy' explicitly lowers perceived investment cost — friction-reduction heuristic.",
+            },
+            {
+                "framework": "Identity-based hook",
+                "mechanism": "'Become More Self-Disciplined' targets aspirational identity rather than transactional outcome.",
+            },
         ],
-        "hook_emotion": "aspirational-anticipation"
+        "hook_emotion": "aspirational-anticipation",
     },
     "thumbnail_analysis": {
         "composition": {
@@ -95,7 +112,7 @@ _FEW_SHOT_EXAMPLE = {
             "face_crop": "medium",
             "facial_expression_inferred": "serious",
             "facial_expression_confidence": "medium",
-            "props": ["headphones", "notebook", "tablet", "desk"]
+            "props": ["headphones", "notebook", "tablet", "desk"],
         },
         "typography": {
             "text_overlay_present": True,
@@ -103,28 +120,39 @@ _FEW_SHOT_EXAMPLE = {
             "text_word_count": 1,
             "text_relative_size": "medium",
             "font_style": "rounded sans-serif medium-weight",
-            "highlight_pattern": "white-pill-with-green-toggle"
+            "highlight_pattern": "white-pill-with-green-toggle",
         },
         "color": {
             "dominant": "#FFFFFF",
             "secondary": "#34C759",
             "background_strategy": "studio-clean-productivity-scene",
             "contrast_pattern": "high-luminance",
-            "pattern_interrupt_potential": "high"
+            "pattern_interrupt_potential": "high",
         },
-        "visual_hierarchy": ["green toggle widget", "Discipline pill text", "subject face + headphones", "desk objects"],
+        "visual_hierarchy": [
+            "green toggle widget",
+            "Discipline pill text",
+            "subject face + headphones",
+            "desk objects",
+        ],
         "negative_space_ratio_1to5": 3,
         "second_look_reward": "The toggle is in the ON position — turning the abstract concept into a switchable state.",
         "click_drivers": [
-            {"framework": "Pattern interrupt", "mechanism": "iOS UI widget overlaid on real-world scene is visually incongruous — brain flags inconsistency for second look."},
-            {"framework": "Cognitive ease", "mechanism": "Toggle metaphor compresses 'become disciplined' into one-tap action — radical friction-reduction."}
-        ]
+            {
+                "framework": "Pattern interrupt",
+                "mechanism": "iOS UI widget overlaid on real-world scene is visually incongruous — brain flags inconsistency for second look.",
+            },
+            {
+                "framework": "Cognitive ease",
+                "mechanism": "Toggle metaphor compresses 'become disciplined' into one-tap action — radical friction-reduction.",
+            },
+        ],
     },
     "joint_analysis": {
         "title_thumb_relationship": "redundant-reinforcing",
         "click_driver_synthesis": "Effort-reduction × concrete-listicle × identity-aspiration unified through toggle metaphor — title promises easy ways, thumbnail visualises 'easy' as a flippable switch.",
         "implied_outcome_clarity_1to5": 4,
-        "novelty_vs_familiarity_balance": "novel-frame-familiar-topic"
+        "novelty_vs_familiarity_balance": "novel-frame-familiar-topic",
     },
     "shosho_brand_fit": {
         "grade": "A",
@@ -133,22 +161,22 @@ _FEW_SHOT_EXAMPLE = {
         "adaptation_notes": [
             "中文 listicle 開頭加「個 / 種」量詞會更自然",
             "「Easy」對應「簡單 / 輕鬆 / 微」皆可，但健康主題避免「無痛」過度承諾",
-            "可以替換 toggle 為心率圖 / 血糖儀指示燈等健康相關 UI 元件"
+            "可以替換 toggle 為心率圖 / 血糖儀指示燈等健康相關 UI 元件",
         ],
         "antipattern_warnings": [
             "別直譯「Become More Self-Disciplined」為「變得更自律」— 中文語境下顯得說教；改成「養成 / 開啟 / 進入 X 狀態」更柔"
-        ]
+        ],
     },
     "self_critique": {
         "potential_overfit_risks": [
             "Toggle metaphor is heavily Ali Abdaal-coded; may read as creator quirk rather than transferable archetype.",
-            "'Easy' framing in health content carries trust risk — evidence-based 修修 audience may distrust oversimplification."
+            "'Easy' framing in health content carries trust risk — evidence-based 修修 audience may distrust oversimplification.",
         ],
         "uncertain_categorizations": [
             "Facial expression between 'serious' and 'thoughtful' — picked serious because eyes are direct rather than reflective."
         ],
-        "needs_review": False
-    }
+        "needs_review": False,
+    },
 }
 
 
@@ -204,7 +232,9 @@ Output ONLY the JSON object. No preamble, no markdown fence, no commentary. The 
 def _build_user_message(image_path: Path, title: str, row_id: str, creator: str) -> list[dict]:
     """Build the user message: image + title metadata + JSON schema reminder."""
     suffix = image_path.suffix.lower().lstrip(".")
-    media_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(suffix, "image/jpeg")
+    media_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(
+        suffix, "image/jpeg"
+    )
     payload = base64.standard_b64encode(image_path.read_bytes()).decode("ascii")
     return [
         {
@@ -324,30 +354,80 @@ def _parse_llm_json(text: str) -> dict:
 # one-off analysis script. Only checks the enum constraints + top-level required
 # fields that LLM most plausibly drifts on.
 _REQUIRED_TOP = {
-    "schema_version", "id", "creator", "route", "image_path", "title",
-    "title_analysis", "thumbnail_analysis", "joint_analysis", "shosho_brand_fit", "self_critique",
+    "schema_version",
+    "id",
+    "creator",
+    "route",
+    "image_path",
+    "title",
+    "title_analysis",
+    "thumbnail_analysis",
+    "joint_analysis",
+    "shosho_brand_fit",
+    "self_critique",
 }
-_EMOTION_ENUM = {"excited", "thoughtful", "surprised", "explaining", "serious", "laughing", "pointing", "n/a"}
+_EMOTION_ENUM = {
+    "excited",
+    "thoughtful",
+    "surprised",
+    "explaining",
+    "serious",
+    "laughing",
+    "pointing",
+    "n/a",
+}
 _GRADE_ENUM = {"S", "A", "B", "C", "F"}
 _CONTRAST_ENUM = {
-    "high-saturation", "high-luminance", "monochrome-mute", "duotone", "split-warm-cool", "low-contrast-cinematic",
+    "high-saturation",
+    "high-luminance",
+    "monochrome-mute",
+    "duotone",
+    "split-warm-cool",
+    "low-contrast-cinematic",
 }
 _RELATIONSHIP_ENUM = {
-    "redundant-reinforcing", "complementary-gap", "thumb-amplifies-title",
-    "title-grounds-visual-mystery", "contradictory-tension", "minimal-decoupled",
+    "redundant-reinforcing",
+    "complementary-gap",
+    "thumb-amplifies-title",
+    "title-grounds-visual-mystery",
+    "contradictory-tension",
+    "minimal-decoupled",
 }
 _STRUCTURE_ENUM = {
-    "numbered-listicle", "how-to", "question-curiosity-gap", "contrarian-reversal",
-    "authority-research", "cost-risk-reframe", "time-age-constraint", "counter-intuitive-specific",
-    "story-confession", "comparison-vs", "exclusive-secret", "year-anchor", "duration-promise",
+    "numbered-listicle",
+    "how-to",
+    "question-curiosity-gap",
+    "contrarian-reversal",
+    "authority-research",
+    "cost-risk-reframe",
+    "time-age-constraint",
+    "counter-intuitive-specific",
+    "story-confession",
+    "comparison-vs",
+    "exclusive-secret",
+    "year-anchor",
+    "duration-promise",
 }
 _FRAMEWORK_ENUM = {
-    "Loewenstein information gap", "MrBeast PVP",
-    "Cialdini authority", "Cialdini social-proof", "Cialdini scarcity",
-    "Cialdini commitment-consistency", "Cialdini reciprocity", "Cialdini liking",
-    "Identity-based hook", "Loss aversion", "Specificity bias", "Pattern interrupt",
-    "Face emotion contagion", "Numerical anchor", "Familiarity scaffolding",
-    "Mere-exposure", "Cognitive ease", "Status signaling", "Insider knowledge frame",
+    "Loewenstein information gap",
+    "MrBeast PVP",
+    "Cialdini authority",
+    "Cialdini social-proof",
+    "Cialdini scarcity",
+    "Cialdini commitment-consistency",
+    "Cialdini reciprocity",
+    "Cialdini liking",
+    "Identity-based hook",
+    "Loss aversion",
+    "Specificity bias",
+    "Pattern interrupt",
+    "Face emotion contagion",
+    "Numerical anchor",
+    "Familiarity scaffolding",
+    "Mere-exposure",
+    "Cognitive ease",
+    "Status signaling",
+    "Insider knowledge frame",
 }
 
 
@@ -369,7 +449,9 @@ def _validate_row(row: dict) -> list[str]:
     relationship = row.get("joint_analysis", {}).get("title_thumb_relationship")
     if relationship not in _RELATIONSHIP_ENUM:
         errs.append(f"invalid title_thumb_relationship: {relationship!r}")
-    expression = row.get("thumbnail_analysis", {}).get("composition", {}).get("facial_expression_inferred")
+    expression = (
+        row.get("thumbnail_analysis", {}).get("composition", {}).get("facial_expression_inferred")
+    )
     if expression not in _EMOTION_ENUM:
         errs.append(f"invalid facial_expression_inferred: {expression!r}")
     for path, drivers in (
@@ -443,7 +525,12 @@ def _run(
         done += 1
         logger.info("OK   %s (%d/%d this run)", job.row_id, done, len(jobs))
 
-    logger.info("=== done: %d extracted, %d failed, %d skipped existing ===", done, failed, len(jobs) - done - failed)
+    logger.info(
+        "=== done: %d extracted, %d failed, %d skipped existing ===",
+        done,
+        failed,
+        len(jobs) - done - failed,
+    )
     return 0 if failed == 0 else 1
 
 
@@ -451,7 +538,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--corpus-root", type=Path, default=_DEFAULT_CORPUS_ROOT)
     parser.add_argument("--output", type=Path, default=_DEFAULT_OUTPUT_PATH)
-    parser.add_argument("--creator", type=str, default=None, help="Filter to one creator (folder name).")
+    parser.add_argument(
+        "--creator", type=str, default=None, help="Filter to one creator (folder name)."
+    )
     parser.add_argument("--limit", type=int, default=None, help="Max jobs this run.")
     parser.add_argument("--dry-run", action="store_true", help="Build prompts, skip LLM calls.")
     parser.add_argument("--verbose", "-v", action="store_true")

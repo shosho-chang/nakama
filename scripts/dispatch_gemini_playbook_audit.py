@@ -28,6 +28,7 @@ sys.path.insert(0, str(REPO_ROOT))
 def _load_env() -> None:
     try:
         from dotenv import load_dotenv
+
         for env_candidate in (REPO_ROOT / ".env", Path("E:/nakama/.env")):
             if env_candidate.exists():
                 load_dotenv(env_candidate)
@@ -38,6 +39,7 @@ def _load_env() -> None:
 
 def ask_gemini(prompt: str, system: str) -> str:
     from shared.gemini_client import ask_gemini as _ask
+
     return _ask(
         prompt,
         system=system,
@@ -149,11 +151,11 @@ def main() -> int:
     codex_audit = CODEX_AUDIT_PATH.read_text(encoding="utf-8")
     prompt = build_prompt(artifact, codex_audit)
 
-    print(f"=== Gemini panel audit dispatch ===", file=sys.stderr)
+    print("=== Gemini panel audit dispatch ===", file=sys.stderr)
     print(f"Topic: {TOPIC}", file=sys.stderr)
-    print(f"Prompt size: {len(prompt)} chars (~{len(prompt)//4} tokens)", file=sys.stderr)
+    print(f"Prompt size: {len(prompt)} chars (~{len(prompt) // 4} tokens)", file=sys.stderr)
     print(f"Output: {OUTPUT_PATH}", file=sys.stderr)
-    print(f"---", file=sys.stderr)
+    print("---", file=sys.stderr)
 
     response = ask_gemini(prompt, system=SYSTEM)
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

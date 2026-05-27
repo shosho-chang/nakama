@@ -27,7 +27,6 @@ import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
@@ -39,7 +38,6 @@ for _env_candidate in (_REPO_ROOT / ".env", Path("E:/nakama/.env")):
         load_dotenv(_env_candidate)
         break
 
-from shared.anthropic_client import ask_claude_multi  # noqa: E402
 from shared.anthropic_client import get_client  # noqa: E402
 
 
@@ -61,6 +59,7 @@ def _ask_claude_streaming(messages, system, model, max_tokens):
         for chunk in stream.text_stream:
             text_parts.append(chunk)
     return "".join(text_parts)
+
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +85,7 @@ def _compress_row(row: dict) -> dict:
     return {
         "id": row["id"],
         "creator": row["creator"],
-        "title": row["title"],
+        "title_text": row["title"],
         "title": {
             "structure_primary": ta.get("structure_primary"),
             "structure_secondary_tags": ta.get("structure_secondary_tags", []),
@@ -329,7 +328,11 @@ def _run(extraction_path: Path, output_path: Path, run_self_critique: bool) -> i
         return 1
 
     stats = _pre_cluster_stats(rows)
-    logger.info("pre-cluster stats: %d rows across %d creators", stats["total_rows"], len(stats["per_creator_count"]))
+    logger.info(
+        "pre-cluster stats: %d rows across %d creators",
+        stats["total_rows"],
+        len(stats["per_creator_count"]),
+    )
     logger.info("structure_primary distribution: %s", stats["structure_primary_distribution"])
 
     user_message = _build_cluster_user_message(rows, stats)
@@ -387,7 +390,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--extraction", type=Path, default=_EXTRACTION_PATH)
     parser.add_argument("--output", type=Path, default=_OUTPUT_PATH)
-    parser.add_argument("--no-self-critique", action="store_true", help="Skip second LLM critique pass.")
+    parser.add_argument(
+        "--no-self-critique", action="store_true", help="Skip second LLM critique pass."
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args(argv)
 
