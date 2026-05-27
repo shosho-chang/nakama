@@ -127,8 +127,16 @@ EvidenceAnchorKind = Literal[
     "section_quote",
     "frontmatter_field",
     "external_ref",
+    "timestamp_range",
 ]
-"""Closed for schema_version=1. Anchor types supported by #515 commit."""
+"""Closed for schema_version=2 (ADR-035 §D5).
+
+- v=1 members: ``chapter_quote``, ``section_quote``, ``frontmatter_field``,
+  ``external_ref`` (anchor types supported by #515 commit).
+- v=2 added:   ``timestamp_range`` — for video / podcast cue ranges. Locator
+  format ``t=<start_s>-<end_s>`` (seconds float, optional end → single point
+  ``t=<start_s>``). See V13 invariant + ADR-035.
+"""
 
 RiskCode = Literal[
     "weak_toc",
@@ -183,12 +191,16 @@ class EvidenceAnchor(BaseModel):
     - frontmatter_field                    → ``Inbox/kb/foo.md`` (with locator
                                              pointing at the field name)
     - external_ref                         → free-form URL or DOI
+    - timestamp_range                      → ``Watchlist/youtube/{video_id}/transcript.vtt``
+                                             (per ADR-035 §D5)
     """
 
     locator: str
     """Format depends on kind. EPUB CFI for ebook quotes; line range
     ``L42-L58`` for markdown quotes; field name (e.g. ``original_url``) for
-    frontmatter; URL/DOI for external_ref. Schema treats locator as opaque.
+    frontmatter; URL/DOI for external_ref; ``t=<start_s>-<end_s>`` seconds
+    float (optional end → ``t=<start_s>`` single point) for timestamp_range
+    per ADR-035 §D5. Schema treats locator as opaque.
     """
 
     excerpt: str
@@ -685,6 +697,19 @@ class PromotionManifest(BaseModel):
             raise ValueError(
                 f"items with item_kind='entity' require schema_version >= 2; "
                 f"got schema_version={self.schema_version}"
+            )
+
+        # V13 (ADR-035 §D5) — any timestamp_range anchor requires schema_version >= 2
+        # Mirrors V12: v=1 manifests cannot silently gain video/podcast anchors.
+        has_timestamp = any(
+            anchor.kind == "timestamp_range"
+            for item in self.items
+            for anchor in item.evidence
+        )
+        if has_timestamp and self.schema_version < 2:
+            raise ValueError(
+                f"EvidenceAnchor with kind='timestamp_range' requires "
+                f"schema_version >= 2; got schema_version={self.schema_version}"
             )
 
         return self
