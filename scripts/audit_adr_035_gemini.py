@@ -1,7 +1,8 @@
 """Dispatch Gemini audit on ADR-035 video reader vertical.
 
 Run from worktree root:
-    python scripts/audit_adr_035_gemini.py > docs/research/2026-05-27-gemini-video-reader-adr-035-audit.md
+    python scripts/audit_adr_035_gemini.py \\
+        > docs/research/2026-05-27-gemini-video-reader-adr-035-audit.md
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(Path("E:/nakama/.env"))
 
