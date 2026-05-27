@@ -1,0 +1,156 @@
+---
+title: Title × Thumbnail Playbook 設計研究
+date: 2026-05-26
+status: in-progress (Phase 0 scaffold)
+owner: shosho
+related:
+  - docs/decisions/ADR-033-thumbnail-generation-pipeline.md (D4 reference library)
+  - prompts/thumbnail/brainstorm_youtube_v1.md
+  - prompts/thumbnail/brainstorm_titles_v1.md
+  - prompts/thumbnail/emotions.yml
+---
+
+# Title × Thumbnail Playbook — 設計決策研究
+
+## 0. 為什麼這個 Playbook
+
+修修 2026-05-26 表態：**Title + Thumbnail 佔一支影片成敗 33-50%+**。
+ADR-033 D4 原訂以「vision LLM 從 reference library few-shot 抽風格」為實作路徑，但 panel P1 + Gemini audit 已點出風險：
+
+> 「convergence on the salient mean / cargo-culting」— LLM 容易抄表面特徵（黃圈、紅字），不抽設計原則
+
+D4.a smoke eval gate 是事後驗證，太晚。**正確做法是事前**就把「設計原則」結構化成可被 LLM 引用的 archetype catalog（即本 playbook），讓 brainstorm prompt 從 catalog 中**選 ID** 而非「自由抽風格」。
+
+修修同時提供了 4 位 YouTube 創作者各 35 張（共 140 張）高 CTR 縮圖作為 corpus：
+
+| Creator | 領域 | 對 修修 品牌契合度（先驗） |
+|---|---|---|
+| Ali Abdaal | 生產力 / 健康 / 財富 | ★★★★★（最重疊） |
+| Cleo Abram | 科學科普 + 名人來賓 | ★★★★☆（健康領域 explainer 風格） |
+| Jeff Su | 生產力 / AI 工具 | ★★★☆☆（風格參考，領域差較大；含中文 case） |
+| Alex Hormozi | 商業 / 財富 | ★★☆☆☆（風格參考，調性偏激） |
+
+## 1. 方法論決策
+
+### 1.1 兩階段抽取（per-image extraction → cross-row clustering）
+
+**選**：兩階段。
+**對比**：monolithic 一次 prompt 全 140 圖。
+**理由**：
+- LLM 在大量圖片下注意力會 dilute（Gemini audit P10）
+- 兩階段把「per-image 細顆粒抽取」跟「整體模式聚類」解耦，clustering 可重跑而不需重新 vision call
+- 加新創作者時只跑 incremental extraction，clustering 自動 re-run
+
+### 1.2 認知框架錨點（避免 ad-hoc click-driver 標籤）
+
+每個 archetype 的 click-driver 必須對應到下列**現成框架**之一以上：
+
+| 框架 | 來源 | 應用場景 |
+|---|---|---|
+| Information Gap Theory | Loewenstein 1994 | curiosity gap、question hook、incomplete-list |
+| MrBeast PVP | MrBeast 公開教學 | 整體 Promise / Visual / Payoff 三層拆解 |
+| Cialdini's 6 Principles | Cialdini 1984 | 權威 / 社證 / 稀缺 / 一致性 / 互惠 / 喜好 |
+| Identity-Based Hook | Berger Contagious | 觀眾的自我形象投射（status, in-group） |
+| Loss Aversion | Kahneman-Tversky | 「你忽略的代價」「再不做就」 |
+| Specificity Bias | 直接性 vs 模糊性 | 「5g / 12% / 65 歲」具體數字 > 「一些 / 大量」 |
+| Pattern Interrupt | Cialdini + 廣告心理 | 縮圖視覺：與 feed 中其他縮圖反差色 |
+| Face Emotion Contagion | 鏡像神經元理論 | 縮圖人臉表情→觀眾鏡射情緒 |
+| Numerical Anchor | Tversky-Kahneman 1974 | 大數字 visual anchor、listicle |
+| Familiarity Scaffolding | Mere-exposure + cognitive ease | 品牌 logo、熟悉場景降低 click 阻力 |
+
+ad-hoc 命名（「sub-class A」「pattern type 3」）一律拒收。
+
+### 1.3 頻率門檻
+
+宣告為「pattern」的最低條件：**≥3 例 + ≥2 創作者**。
+（單一創作者 ×5 例 → creator quirk，不算 generalisable pattern；列入 per-creator signature。）
+
+### 1.4 Self-critique pass
+
+LLM 寫完 clustering 後**自己反問**：
+1. 哪些 archetype 可能 over-fit？（只有 1 個 strong example + 2 個 weak example）
+2. 哪些命名可能受英文 YouTube convention 污染、不適合中文受眾？
+3. 哪些 click-driver 的歸因可能是 post-hoc rationalization 而非真實機制？
+
+這些 self-critique 條目保留在 playbook 的 §Methodology Caveats 章節，**不刪不藏**。
+
+### 1.5 修修-adaptation 為一級章節
+
+每 archetype 都要回答：
+- S/A/B/C/F 品牌契合度（S=主力 / F=反例）
+- 中文化範例（不是直譯，是 brand-voice 等效）
+- 軟化/強化方向（Hormozi 的「BRUTAL TRUTHS」對 修修 太衝→軟化版本）
+- Antipattern callout（哪些雖然有效但跟 修修 健康品牌相剋）
+
+### 1.6 Extensibility
+
+整套工作流是**可重跑的 pipeline**：
+- 新加創作者 → 丟新資料夾 → 跑 extraction script → JSON 自動 append
+- Cluster script 重跑 → 新 archetype 自動冒出來 / 舊 archetype 自動 reweighted
+- Playbook 主檔 manually 維護（人讀部分），但 archetype data JSON 由 cluster script 重生
+
+## 2. Schema 設計
+
+每張縮圖一個 JSON object，schema 詳見 `data/thumbnail_reference_extraction_schema_v1.json`。
+關鍵欄位群：
+
+- `title_analysis`：language、structure、implied_promise、specificity、click_drivers[framework, mechanism]、hook_emotion
+- `thumbnail_analysis`：composition、typography、color、visual_hierarchy、negative_space、click_drivers
+- `joint_analysis`：title↔thumb 關係、unified click-driver、novelty/familiarity balance
+- `shosho_brand_fit`：grade、rationale、chinese_adaptation_example、antipattern_warnings
+- `self_critique`：potential_overfit_risks、uncertain_categorizations、needs_review
+
+emotion 推論欄位 (`facial_expression_inferred`) 必須使用 `prompts/thumbnail/emotions.yml` 的 7 enum key 之一（excited/thoughtful/surprised/explaining/serious/laughing/pointing）以便與 brainstorm 對接。
+
+## 3. Token / Cost 預算
+
+| 階段 | 操作 | 估算 |
+|---|---|---|
+| Phase 2 extraction | 140 張 × Sonnet 4.6 vision (~3K input + 1.5K output / call) | ~\$3-5 |
+| Phase 3 clustering | 1-2 個 純文字 call 餵 140 rows | ~\$0.5 |
+| Phase 4 adaptation | 數個 iterative call | ~\$1-2 |
+| Phase 5 composition | LLM 協助 + 人工編輯 | ~\$1 |
+| Phase 6 Gemini panel (可選) | 1 個 Gemini 2.5 Pro audit | ~\$0.5 |
+| **Total** | | **~\$6-10** |
+
+## 4. 輸出檔案地圖
+
+| 檔 | 角色 | 維護模式 |
+|---|---|---|
+| `data/thumbnail_reference_extraction_schema_v1.json` | Data contract / JSONSchema | manual edit (rare) |
+| `data/thumbnail_reference_extraction_v1.json` | 140+ rows raw data | append-only via script |
+| `scripts/extract_thumbnail_features.py` | per-image vision call | reusable |
+| `scripts/cluster_thumbnail_patterns.py` | rows → archetype catalog | reusable |
+| `prompts/thumbnail/playbook_v1.md` | 主 playbook（人讀 + LLM 引用） | hand-edited |
+| `prompts/thumbnail/playbook_data_v1.json` | archetype index (machine) | regenerated by cluster script |
+
+## 5. 整合進 brainstorm prompt
+
+Brainstorm prompt（`brainstorm_youtube_v1.md` / `brainstorm_titles_v1.md`）不全文塞 playbook（會貴）。
+改用 **two-stage lookup**：
+
+1. Brainstorm prompt **附加 archetype index 摘要**（~1K tokens）：每 archetype ID + 一行摘要 + 適用情境
+2. LLM 看完 brief（one_sentence + keywords）後，先在 idea 區段標 `[archetype: A3-numbered-listicle, B7-face-with-number]`，再根據該 ID 的詳細區段 lazy-load 細節
+3. 第二輪 LLM call（或同一 call 的後段）才產出 5-line idea
+
+實際整合機制延到 Phase 5。Phase 0-4 把 playbook 內容生出來再說。
+
+## 6. Open Questions
+
+留待 Phase 4-5 解：
+
+- **OQ1**: 中文 title 的長度 / 標點 convention 跟英文差距大，要不要做獨立 sub-playbook？
+  - 暫定：作為 Section E「中文化調整」獨立章節，不全 fork
+- **OQ2**: 是否要把「修修自己過去 published 過的 thumbnail」加進 corpus 當 ground truth？
+  - 暫定：B2 reference library work 之後再加，避免污染外部 reference 的 pattern extraction
+- **OQ3**: Playbook 演進到 v2 / v3 時，如何 versionning + diff 舊版？
+  - 暫定：v1 凍結後保留檔；v2 是新檔，brainstorm prompt 引用最新版
+
+## 7. 完成定義（v1 ship gate）
+
+1. 140 rows extraction JSON 產出且 schema validated
+2. ≥8 個 title archetype + ≥8 個 thumbnail archetype（命名穩定 + 例子充足）
+3. 每 archetype 都有 framework anchor、example list、修修-adaptation
+4. self-critique 章節列出 ≥3 個風險
+5. brainstorm prompt 整合 spec 寫出（即使 code-side 整合延後）
+6. （可選但建議）Gemini panel audit pass

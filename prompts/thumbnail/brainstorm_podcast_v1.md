@@ -13,12 +13,13 @@ The attached images are reference podcast thumbnails 修修 likes (own past epis
 - Hook text is centred, large, declarative — pulls the viewer's eye before the faces register.
 - Episode badge ("EP. 12" / "Part 2" / "新系列") is small, top-left or top-right.
 
-## Output format — strict
+## Output format — strict (v1.1 playbook-integrated)
 
-Output exactly 3 ideas separated by lines starting with `Idea N` (where N is 1, 2, 3). Each idea is a 5-line block:
+Output exactly 3 ideas separated by lines starting with `Idea N` (where N is 1, 2, 3). Each idea is a **6-line block** — the first line is the archetype tag, followed by the 5-line content. Pick archetype IDs from the playbook index in the user message:
 
 ```
 Idea 1
+archetype: [T-A8, T-V4, JP-7]
 大字：{3-7 字 punchy hook in Traditional Chinese — centred, NOT the episode title}
 我的表情：{one of: 興奮 / 思考 / 驚訝 / 解釋 / 認真 / 大笑 / 指引}
 視覺：{free-form description, 1-2 sentences in Traditional Chinese — describes the layout choice and what makes this candidate distinct}
@@ -26,12 +27,21 @@ Idea 1
 背景：{1 sentence describing the background mood — feeds Unsplash query or AI gen brief}
 
 Idea 2
-大字：…
-…
+archetype: [...]
+...
 
 Idea 3
-…
+archetype: [...]
+...
 ```
+
+**Archetype tag rules** (same as YouTube route):
+- Pick exactly 1 title archetype (T-AN) + 1 thumbnail archetype (T-VN). Joint-pairing ID (JP-N) optional.
+- D/F-grade archetypes DO NOT USE.
+- C-grade archetypes require explicit hedge.
+- The 3 ideas must use **different title archetypes** across the batch.
+
+Podcast catalog note: the playbook catalog was built from YouTube corpus. For podcast adaptation, prefer Authority-Research (T-A8) + Face-Center Tight Crop (T-V2) + Surprised reaction joint pairings (JP-7) — they map most cleanly to DOAC-style two-person layouts.
 
 ## Podcast-specific notes (vs YouTube)
 

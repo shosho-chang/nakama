@@ -79,7 +79,7 @@
       <span class="pj-spinner" id="title-brainstorm-spinner" aria-hidden="true" hidden></span>
     </form>
 
-    <form class="pj-inline-form" method="post"
+    <form class="pj-inline-form" id="title-candidates-form" method="post"
           action="/bridge/projects/{{ entry.slug }}/frontmatter">
       <input type="hidden" name="field" value="title_candidates">
       <input type="hidden" name="tab" value="title-thumbnail">
@@ -92,8 +92,30 @@
 >{% for t in entry.title_candidates %}{{ t }}{% if not loop.last %}
 {% endif %}{% endfor %}</textarea>
       </div>
-      <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存標題</button>
+      <div class="pj-inline-form-actions">
+        <button type="submit" class="pj-btn-primary pj-btn--save">💾 儲存標題</button>
+      </div>
     </form>
+
+    {# Individual title re-roll buttons (B-min.3). Each posts current textarea
+       value + idx to the re-roll endpoint; response swaps the textarea-wrap. #}
+    {% if entry.title_candidates %}
+    <div class="pj-title-reroll-row">
+      <span class="pj-research-hint">只重抽某一行（保留其他不變）：</span>
+      {% for t in entry.title_candidates %}
+        {% if loop.index <= 3 %}
+        <button type="button" class="pj-btn-secondary pj-btn--small"
+                hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/brainstorm-titles/idea/{{ loop.index0 }}"
+                hx-include="#title-candidates-form textarea"
+                hx-target="#title-candidates-textarea-wrap"
+                hx-swap="innerHTML"
+                hx-confirm="只重抽第 {{ loop.index }} 行，其他保留不變。確定？">
+          🔁 重抽第 {{ loop.index }} 行
+        </button>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
   </section>
 
   {# ── Thumbnail brainstorm + render (ADR-033 D6 — 3 idea cards) ───────────── #}
@@ -193,45 +215,16 @@
       </span>
     </form>
 
-    {# Existing ideas (server-rendered on initial page load if frontmatter has them) #}
+    {# Existing ideas (server-rendered on initial page load if frontmatter has them).
+       Uses the shared editable-card partial — same HTML HTMX swaps replace on
+       brainstorm / save-edit / re-roll. v1.1: cards are editable + have save +
+       individual re-roll buttons + archetype-tag preview. #}
     <div id="thumb-ideas-container">
-      {% set existing_ideas = entry.raw_frontmatter.get('thumbnail_ideas') or [] %}
-      {% if existing_ideas %}
+      {% set slug = entry.slug %}
+      {% if existing_thumb_ideas %}
         <div class="pj-thumb-idea-grid" data-project-slug="{{ entry.slug }}">
-          {% for raw in existing_ideas %}
-            <div class="pj-thumb-idea-card" data-idea-index="{{ loop.index0 }}">
-              <header class="pj-thumb-idea-header">
-                <h4>Idea {{ loop.index }}</h4>
-              </header>
-              <textarea
-                class="pj-thumb-idea-textarea"
-                rows="6"
-                name="thumbnail_ideas[{{ loop.index0 }}]"
-                readonly>{{ raw }}</textarea>
-              <form
-                class="pj-thumb-idea-render-form"
-                method="post"
-                action="/bridge/projects/{{ entry.slug }}/thumbnail/render"
-                hx-post="/bridge/projects/{{ entry.slug }}/thumbnail/render"
-                hx-target="#thumb-render-{{ loop.index0 }}"
-                hx-swap="innerHTML">
-                <input type="hidden" name="idea_index" value="{{ loop.index0 }}">
-                <label class="pj-label pj-label--small">
-                  🪶 Director's Notes（可選 — 渲完不滿意時加幾句調整指示）
-                  <textarea name="director_notes" rows="2"
-                            placeholder="例：背景再暗一點 / 字體再粗一點"></textarea>
-                </label>
-                <button type="submit" class="pj-btn-primary">🎨 渲此縮圖</button>
-              </form>
-              <div id="thumb-render-{{ loop.index0 }}" class="pj-thumb-render-slot">
-                {% if entry.raw_frontmatter.thumbnail and entry.raw_frontmatter.thumbnail_run and ('v' + (loop.index0|string)) in entry.raw_frontmatter.thumbnail_run %}
-                  <p class="pj-thumb-already-committed">
-                    ✅ 此 idea 已 commit 為最終 thumbnail
-                    （<code>{{ entry.raw_frontmatter.thumbnail }}</code>）。
-                  </p>
-                {% endif %}
-              </div>
-            </div>
+          {% for idea in existing_thumb_ideas %}
+            {% include "projects/_thumbnail_idea_card_single.html" with context %}
           {% endfor %}
         </div>
       {% else %}
