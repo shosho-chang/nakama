@@ -32,8 +32,11 @@ from pathlib import Path
 from typing import Protocol
 
 from shared.concept_promotion_engine import ConceptMatcher, ConceptPromotionEngine, KBConceptIndex
+from shared.entity_extractor import EntityExtractor
+from shared.entity_promotion_engine import EntityMatcher, EntityPromotionEngine, KBEntityIndex
 from shared.log import get_logger
 from shared.promotion_commit import PromotionCommitService
+from shared.promotion_fast_track import apply_entity_fast_track
 from shared.promotion_preflight import PromotionPreflight
 from shared.schemas.preflight_report import PreflightReport
 from shared.schemas.promotion_commit import CommitOutcome
@@ -212,6 +215,14 @@ class PromotionReviewService:
         recommender_model_version: str = "2026-04",
         source_lister: ReadingSourceLister | None = None,
         source_resolver: "SourceResolver | None" = None,
+        # ADR-034 v2 PR4 — entity pipeline (optional for backward compat).
+        # All four must be supplied together, or none. When wired, start_review
+        # appends EntityReviewItem entries to the manifest in addition to
+        # source page + concept items.
+        entity_engine: EntityPromotionEngine | None = None,
+        entity_extractor: EntityExtractor | None = None,
+        entity_matcher: EntityMatcher | None = None,
+        kb_entity_index: KBEntityIndex | None = None,
     ) -> None:
         self._manifest_store = manifest_store
         self._preflight = preflight
@@ -225,6 +236,21 @@ class PromotionReviewService:
         self._recommender_model_version = recommender_model_version
         self._source_lister = source_lister
         self._source_resolver = source_resolver
+        # Validate entity pipeline is fully wired or fully absent — partial
+        # wiring would silently drop entity items or crash mid-flow.
+        entity_components = (entity_engine, entity_extractor, entity_matcher, kb_entity_index)
+        if any(c is not None for c in entity_components) and not all(
+            c is not None for c in entity_components
+        ):
+            raise ValueError(
+                "PromotionReviewService entity pipeline requires all of "
+                "entity_engine / entity_extractor / entity_matcher / "
+                "kb_entity_index together, or none of them"
+            )
+        self._entity_engine = entity_engine
+        self._entity_extractor = entity_extractor
+        self._entity_matcher = entity_matcher
+        self._kb_entity_index = kb_entity_index
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -335,11 +361,34 @@ class PromotionReviewService:
         if promotion_result.error is not None:
             raise ValueError(f"concept promotion failed: {promotion_result.error}")
 
+        # ADR-034 v2 PR4 — Entity flow runs alongside concept flow when wired.
+        # When entity pipeline is absent (PR4 dry-run default returns []
+        # anyway), this stays a no-op.
+        entity_items: list = []
+        if self._entity_engine is not None:
+            assert self._entity_extractor is not None  # noqa: S101 — invariant
+            assert self._entity_matcher is not None  # noqa: S101 — invariant
+            assert self._kb_entity_index is not None  # noqa: S101 — invariant
+            candidates = self._entity_extractor.extract(rs, build_result)
+            entity_result = self._entity_engine.propose(
+                rs, candidates, self._kb_entity_index, self._entity_matcher
+            )
+            if entity_result.error is not None:
+                raise ValueError(f"entity promotion failed: {entity_result.error}")
+            entity_items = list(entity_result.items)
+
         manifest = self._compose_manifest(
             source_id=source_id,
             source_page_items=list(build_result.items),
             concept_items=list(promotion_result.items),
+            entity_items=entity_items,
         )
+        # ADR-034 v2 PR2c — confidence fast-track for Entity items.
+        # No-op when manifest has no EntityReviewItem entries (current path
+        # since start_review only runs ConceptPromotionEngine). Wiring is
+        # placed here so any future entity_promotion_engine integration
+        # inherits fast-track automatically.
+        apply_entity_fast_track(manifest)
         self._manifest_store.save(manifest)
         return manifest
 
@@ -493,6 +542,7 @@ class PromotionReviewService:
         source_id: str,
         source_page_items,
         concept_items,
+        entity_items=None,
     ) -> PromotionManifest:
         manifest_id = f"mfst_{source_id}_{now_iso_utc()}"
         recommender = RecommenderMetadata(
@@ -501,15 +551,20 @@ class PromotionReviewService:
             run_params={},
             recommended_at=now_iso_utc(),
         )
+        entity_items = list(entity_items or [])
+        # PromotionManifest V12 (ADR-034 v2 PR2a): entity items require
+        # schema_version >= 2. Concept/source-only manifests keep v=1 for
+        # backward compat with existing on-disk manifests.
+        schema_version = 2 if entity_items else 1
         return PromotionManifest(
-            schema_version=1,
+            schema_version=schema_version,
             manifest_id=manifest_id,
             source_id=source_id,
             created_at=now_iso_utc(),
             status="needs_review",
             replaces_manifest_id=None,
             recommender=recommender,
-            items=[*source_page_items, *concept_items],
+            items=[*source_page_items, *concept_items, *entity_items],
             commit_batches=[],
             metadata={},
         )

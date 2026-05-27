@@ -831,3 +831,67 @@ body.sho .prom-mono {
   font-family: var(--sho-font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Entity card (ADR-034 v2 PR2d) ──────────────────────────────────── */
+
+body.sho .prom-card__entity-kind {
+  margin-left: var(--sho-s-2);
+  font-size: 10px;
+  color: var(--sho-muted);
+}
+
+body.sho .prom-card__autotag {
+  margin-top: var(--sho-s-1);
+  color: var(--sho-accent);
+  font-size: 10px;
+}
+
+body.sho .prom-aliases {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sho-s-2);
+  margin: var(--sho-s-2) 0;
+}
+
+body.sho .prom-aliases__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-2);
+}
+
+body.sho .prom-aliases__item {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  padding: var(--sho-s-1) var(--sho-s-2);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  color: var(--sho-text);
+}
+
+body.sho .prom-entity-meta {
+  margin-top: var(--sho-s-3);
+  padding-top: var(--sho-s-2);
+  border-top: 1px dashed var(--sho-line);
+}
+
+body.sho .prom-entity-meta__caps {
+  margin-bottom: var(--sho-s-2);
+}
+
+body.sho .prom-entity-meta__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--sho-s-1);
+  font-size: 13px;
+}
+
+body.sho .prom-entity-meta__list li .prom-caps {
+  margin-right: var(--sho-s-2);
+}

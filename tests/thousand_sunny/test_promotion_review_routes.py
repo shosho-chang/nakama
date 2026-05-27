@@ -57,6 +57,11 @@ def _load_no_decisions_manifest() -> PromotionManifest:
     return PromotionManifest.model_validate(json.loads(raw))
 
 
+def _load_entity_manifest() -> PromotionManifest:
+    raw = (FIXTURE_DIR / "manifest_with_entity.json").read_text(encoding="utf-8")
+    return PromotionManifest.model_validate(json.loads(raw))
+
+
 # ── Fake service ─────────────────────────────────────────────────────────────
 
 
@@ -267,6 +272,58 @@ def test_rt2_review_surface_renders_items(
     assert "duplicate_concept" in body
     # Confidence numbers render — fixture has 0.91, 0.87, 0.6, 0.74, 0.91.
     assert "0.91" in body
+
+
+# ── PR2d — Entity item card renders ─────────────────────────────────────────
+
+
+def test_pr2d_entity_item_card_renders_label_aliases_metadata_match(
+    app_client: TestClient, fake_service: FakePromotionReviewService
+):
+    """ADR-034 v2 PR2d — EntityReviewItem renders entity_label heading,
+    aliases section, metadata block (Person + Organization variants),
+    canonical_match metric, and auto-fast-track indicator."""
+    manifest = _load_entity_manifest()
+    fake_service.manifests[manifest.source_id] = manifest
+    fake_service.states = [
+        PromotionReviewState(
+            source_id=manifest.source_id,
+            primary_lang="en",
+            preflight_action="proceed_full_promotion",
+            preflight_summary="proceed_full_promotion · podcast",
+            has_existing_manifest=True,
+            manifest_status="needs_review",
+        )
+    ]
+    r = app_client.get(f"/robin/promotion/source/{_b64(manifest.source_id)}")
+    assert r.status_code == 200
+    body = r.text
+
+    # Person entity heading + entity_kind chip
+    assert "Andrew Huberman" in body
+    assert "· person" in body
+
+    # Aliases section renders
+    assert "Dr. Huberman" in body
+    assert "Andrew D. Huberman" in body
+
+    # Person metadata fields render
+    assert "Stanford University" in body
+    assert "Neuroscience Professor" in body
+    assert "1975" in body
+
+    # Organization entity heading + variant chip
+    assert "Stanford University" in body
+    assert "· organization" in body
+    # Org metadata
+    assert "academic" in body  # org_type
+    assert "https://www.stanford.edu" in body
+
+    # canonical_match metric for the merge-eligible Person item
+    assert "match · exact_alias" in body
+
+    # auto-fast-track indicator surfaces on the auto-approved item
+    assert "auto-fast-track" in body
 
 
 # ── RT3 / RT4 / RT5 — decision persistence ──────────────────────────────────
