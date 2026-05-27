@@ -1,7 +1,7 @@
 # ADR-035: Video Reader vertical + AV reader architecture
 
 **Date:** 2026-05-27
-**Status:** Proposed
+**Status:** Accepted (v2, post 2-way panel review 2026-05-27)
 
 ---
 
@@ -45,7 +45,7 @@ CONTEXT-MAP.md 已將 podcast 列在 Robin 職責（"article / paper / book / po
 - Watchlist 匯入時宣告 cast list（host + guests，1-4 個 free-text name）
 - Reader 內 annotation modal 上 speaker = **chip selector**（一 tap）
 - 沒選 = `unspecified`（searchable filter）
-- Cast 可在 source metadata page 改正
+- Cast 編輯入口：source metadata page (`/robin/watchlist/{source_id}/edit`)，typo / 漏列 / 後補 guest 都從這裡改
 - 修修標的 speaker name 餵 Entity Extractor → Person EntityReviewItem → fast-track（confidence 高，自動 promote）
 - Search 走 Person Entity backlinks，不靠 transcript 內 inline speaker tag
 
@@ -120,9 +120,10 @@ EvidenceAnchor(
 
 1. 影片播放 → cue 隨 `<video>.currentTime` highlight active
 2. Space 暫停 → click cue / shift-click range
-3. Bottom slide-up annotation modal：speaker chip + note + [Highlight only / Save]
-4. Save → POST → 寫 ADR-017 annotation store
-5. Space 繼續播放
+3. Bottom slide-up annotation modal：speaker chip + note + [**Capture frame**] + [Highlight only / Save]
+4. Capture frame（optional, panel review 補強）：`<canvas>.drawImage(video)` 截 video 當前 frame，存 `Watchlist/youtube/{video_id}/frames/{annotation_id}.png`，annotation frontmatter `frame: frames/{annotation_id}.png`。Health/Wellness 內容常含 slide / diagram / demo 動作，純文字 anchor 接不住視覺資訊
+5. Save → POST → 寫 ADR-017 annotation store
+6. Space 繼續播放
 
 **Keyboard parity（跟 reader.html）**：
 - `Space` = play/pause
@@ -195,9 +196,11 @@ Route 命名不滲入 kind：`/robin/watchlist/{source_id}`，不是 `/robin/vid
 
 對 single-user 系統來說 long-term cost 比一次性 GPU 投資高；修修 self-host VPS + 本機都有 GPU，infra 已備。除非未來 latency 成 bottleneck，否則沒理由付雲端 mark-up。
 
-### Rejected: Auto diarization (pyannote)
+### Rejected (v1): Auto diarization (pyannote)
 
-中文 podcast 質量不穩；GPU job 工程量大；而修修自己在 annotation 上標的 speaker name 就是 canonical label，比 ML 抽到 "speaker_1" 再人工 reconcile 準。Manual override 在這個用例 strictly dominates ML。Escape hatch 留著：未來真的 highlight 量大到 manual 不及，再補 pyannote pre-fill chip default（manual override win）。
+v1 不做 — GPU job 工程量大；manual cast list + chip selector 對 single-user / podcast interview small-N cast 已堪用。
+
+**未來重評為 suggestion layer**（panel review 2026-05-27 反方）：pyannote 不必當 "source of truth" 跟 manual override 二選一 — 可以當「pre-populate Speaker 1/2 chip」的 suggestion engine，user 一次性 map 到真名（Speaker 1 → "Andrew Huberman"），把 per-annotation 摩擦降到零。若 Phase 1 用一陣子發現 manual chip tapping 真的累，這條 path 是 candidate PR。不視為 ML 跟 manual 的競爭，是兩者協作。
 
 ### Rejected: Horizontal two-pane layout（player 左 / transcript 右）
 
@@ -242,8 +245,8 @@ WebVTT-native 但跨 caption variant（re-transcribe）就 break — 不耐久�
 ### Negative / 風險
 
 - **Schema bump (`schema_version=2`)** — manifest format 對 video evidence 不向下相容；既有 schema_version=1 manifest 仍 valid（只是不能含 timestamp_range anchor）。需要 migration 邏輯如未來想合併。
-- **YouTube ToS / yt-dlp 風險** — yt-dlp 抓 caption 是 grey area，YouTube API 改動可能 break。Fallback：UI 顯示 caption fetch 失敗 → 接 Local Whisper（Phase 2 dep）。
-- **Auto-caption quality 變異** — 中文 auto-caption 標點稀疏 / 偶有錯字；修修主要 use case 是英文 talk/podcast，quality 普遍 OK，但中文 source 體驗會差。Escape hatch：UI re-transcribe with Whisper 按鈕。
+- **YouTube ToS / yt-dlp 風險** — yt-dlp 抓 caption 是 grey area（YouTube ToS §III.J 禁止 download content without permission），YouTube API 改動可能 break。Phase 2 Local Whisper 路徑需要 yt-dlp 拿 audio stream，灰色程度更高。**Single-user / personal 使用脈絡可接受，不可商業化 / 不可 distribute**。Fallback：UI 顯示 caption fetch 失敗 → 接 Local Whisper（Phase 2 dep）。
+- **Auto-caption quality 變異** — 中文 auto-caption 標點稀疏 / 偶有錯字。修修自評：值得記下來的內容 **~98% 是英文**，中文 source 體驗差不在 v1 critical path。若未來中文需求變高再補 hybrid auto-detect ASR（panel review 2026-05-27 G1 deferred）。Escape hatch：UI re-transcribe with Whisper 按鈕（Phase 2 ship 時上）。
 - **Cast list manual maintenance** — 修修每部 video 要填 cast；對 podcast interview 大宗 use case 是 small N（host + 1-2 guest）可接受，但若大量短 video 會累。觀察 Phase 1 實際使用再決定要不要加 cast inference seed。
 - **Annotation key for video（ADR-017）** — 現有 annotation_key 規則對 video 的具體 mapping 待 PR1 定（候選：`youtube_{video_id}_t{start_ms}_{end_ms}`）。
 
@@ -295,14 +298,14 @@ WebVTT-native 但跨 caption variant（re-transcribe）就 break — 不耐久�
 - Player band 跟 transcript 視覺重心配比（Claude Design 視覺探索階段）— PR1 出視覺前 finalize
 - "Highlight only" vs "Save with note" 兩按鈕 vs 一按鈕 + 空 note 等價 — PR2 grill
 - YouTube embed iframe 還是 `<video>` + 抽 stream URL（後者違反 ToS）— PR1 確認；preferred 是 iframe + YouTube IFrame Player API（合規）
-- Cue 沒有句子等級切分時的 readability 處理（YT auto-caption 是 2-3 字一段，閱讀不流暢） — PR1 後觀察
+- Cue 沒有句子等級切分時的 readability 處理（YT auto-caption 是 2-3 字一段，閱讀不流暢）— PR1 後觀察；panel review G8 提示這是 selection unit 跟 user mental model 不對齊的風險點，但 cue-snap 仍是最簡解，先 ship 觀察
+- Capture frame 的儲存 / 顯示細節 — frame PNG 跟 annotation 一對一還是可選；annotation modal 開啟時是否預設 capture（user 不主動點也存）— PR2 grill
 
 ---
 
 ## Status / next steps
 
-- Status: **Proposed**
-- Next: `multi-agent-panel` review (Codex + Gemini audit) before PR1 ships
-- Trigger justification: architectural lock-in（schema bump、reader UI architecture、Watchlist ingestion seam）+ numerical claims（Whisper 0.1× realtime、playback rate 1.5× default）+ strong rejection of multiple valid alternatives（horizontal layout / cloud ASR / char-select / pyannote）
-
-After panel review + integration → flip to **Accepted** → PR1 implementation begins.
+- Status: **Accepted (v2)**
+- Panel review: 2-way (Claude + Gemini) ran 2026-05-27. Codex 第三方 audit dispatch 卡在 stdin EOF（CLI deprecated flag 觸發 stdin fallback），改走 2-way。Audit verbatim 落於 `docs/research/2026-05-27-gemini-video-reader-adr-035-audit.md`
+- Integration: Capture Frame button (G2 adopt) / Diarization rejection 改 suggestion-layer-future-consideration (G3 adopt) / Cast edit UI (G6 adopt) / ToS strengthened acknowledgement (G9 adopt) / Hybrid ASR (G1) 跟 Whisper-button-Phase-1 (G4) 因修修自評 ~98% 內容為英文而 drop / Horizontal responsive layout (G7) reject for PWA path / Cue-vs-sentence (G8) defer to PR1 observation
+- Next: PR1 (schema bump + watchlist ingestion + av_reader skeleton) implementation begins
