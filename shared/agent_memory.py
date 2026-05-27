@@ -23,7 +23,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal, get_args
 
+from shared.log import get_logger
 from shared.state import _get_conn
+
+logger = get_logger("nakama.agent_memory")
 
 # 合法 memory type — 對齊 extractor 的抽取分類與 Bridge UI。
 # 升版（新增 / 刪除 / 重命名）時需同步 shared.memory_extractor.VALID_TYPES
@@ -366,15 +369,33 @@ def format_as_context(agent: str, user_id: str, *, limit: int = 20) -> str:
 
     搜尋時會更新 ``last_accessed_at``，記憶越常被注入代表越活躍。
     沒有記憶時回傳空字串（呼叫端應略過注入）。
+
+    Observability：每次注入都 log 一行，含 agent / user / count / chars /
+    subjects — 用於未來判斷 retrieval 漏抽或漂移時的 forensic data。
     """
     memories = search(agent=agent, user_id=user_id, limit=limit)
     if not memories:
+        logger.info(
+            "agent_memory.inject_empty agent=%s user=%s",
+            agent,
+            user_id,
+        )
         return ""
 
     lines = ["## 你記得關於使用者的事"]
     for m in memories:
         lines.append(f"- [{m.type}] {m.subject}：{m.content}")
-    return "\n".join(lines)
+    block = "\n".join(lines)
+
+    logger.info(
+        "agent_memory.inject agent=%s user=%s count=%d chars=%d subjects=%s",
+        agent,
+        user_id,
+        len(memories),
+        len(block),
+        ",".join(m.subject for m in memories),
+    )
+    return block
 
 
 def prune(*, confidence_threshold: float = 0.1) -> int:
