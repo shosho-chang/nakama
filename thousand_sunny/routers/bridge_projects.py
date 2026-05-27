@@ -69,6 +69,9 @@ from shared.project_writer import (
     update_task_status,
 )
 from thousand_sunny.auth import check_auth
+from thousand_sunny.routers.bridge_project_thumbnails import (
+    prepare_existing_ideas_for_template,
+)
 
 logger = get_logger("nakama.web.bridge_projects")
 
@@ -316,6 +319,13 @@ async def projects_detail(
     if cached_dr and cached_dr.get("report_md"):
         cached_dr["report_html"] = render_markdown(cached_dr["report_md"], wikilink_resolver=None)
 
+    # Pre-parse existing thumbnail ideas so the tab template can use the same
+    # editable-card partial that HTMX swaps target. Each entry has shape
+    # {index, raw, parsed: dict|None, parse_error: str|None}.
+    existing_thumb_ideas = prepare_existing_ideas_for_template(
+        entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+    )
+
     return _templates.TemplateResponse(
         request,
         "projects/detail.html",
@@ -331,6 +341,7 @@ async def projects_detail(
             "cached_kb": cached_kb,
             "cached_synth": cached_synth,
             "cached_dr": cached_dr,
+            "existing_thumb_ideas": existing_thumb_ideas,
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )

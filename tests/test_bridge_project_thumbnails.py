@@ -849,3 +849,246 @@ class TestPodcastBrainstormHappyPath:
         assert r.status_code == 200, r.text
         # Podcast prompt has the DOAC / two-person framing — verify it was loaded.
         assert "DOAC" in prompts_seen[0] or "兩人" in prompts_seen[0] or "host" in prompts_seen[0]
+
+
+# ── v1.1 playbook integration + B-min refinement endpoints ───────────────────
+
+
+SAMPLE_BRAINSTORM_WITH_ARCHETYPE_TAGS = """\
+Idea 1
+archetype: [T-A1, T-V10, JP-4]
+大字：8 個習慣
+我的表情：驚訝
+視覺：圖示列表
+數字/圖示：8
+背景：白色
+
+Idea 2
+archetype: [T-A8, T-V3]
+大字：12 週實證
+我的表情：思考
+視覺：左右對照
+數字/圖示：12
+背景：醫院走廊
+
+Idea 3
+archetype: [T-A6, T-V4]
+大字：真的嗎
+我的表情：解釋
+視覺：問句覆字
+數字/圖示：?
+背景：深藍科學感
+"""
+
+
+class TestPlaybookIntegration:
+    """v1.1: playbook archetype index injected, vision images removed."""
+
+    def test_brainstorm_user_message_includes_playbook_index_no_images(self):
+        from thousand_sunny.routers.bridge_project_thumbnails import (
+            _brainstorm_user_message,
+        )
+
+        parts = _brainstorm_user_message(
+            title_candidates=["Test title"],
+            one_sentence="test sentence",
+            search_topic="test",
+        )
+        # All parts are text now — no image attachments
+        assert all(p.get("type") == "text" for p in parts)
+        # Playbook index present
+        combined = "\n".join(p["text"] for p in parts)
+        assert "Playbook archetype index" in combined
+        assert "T-A1" in combined and "T-V6" in combined
+        # Brief preserved
+        assert "Test title" in combined and "test sentence" in combined
+
+    def test_brainstorm_persists_archetype_tags(self, client, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: SAMPLE_BRAINSTORM_WITH_ARCHETYPE_TAGS,
+        )
+
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
+        assert r.status_code == 200, r.text
+
+        # Meta JSON written with archetype tags per idea
+        meta_path = tmp_path / "data_thumbs" / "肌酸的妙用" / "brainstorm_meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert meta["schema_version"] == "v1"
+        runs = meta["runs"]
+        assert len(runs) == 1
+        idea_tags = [i["archetype_tags"] for i in runs[0]["ideas"]]
+        assert ["T-A1", "T-V10", "JP-4"] in idea_tags
+        assert ["T-A8", "T-V3"] in idea_tags
+        assert ["T-A6", "T-V4"] in idea_tags
+
+    def test_brainstorm_emits_archetype_tags_in_audit(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: SAMPLE_BRAINSTORM_WITH_ARCHETYPE_TAGS,
+        )
+        captured: list[dict] = []
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.record_api_call",
+            lambda **kw: captured.append(kw),
+        )
+
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
+        assert r.status_code == 200, r.text
+
+        brainstorm_audit = next(
+            c
+            for c in captured
+            if json.loads(c.get("scope_json", "{}")).get("scope") == "thumbnail_brainstorm"
+        )
+        scope = json.loads(brainstorm_audit["scope_json"])
+        assert scope["n_references"] == 0  # v1.1: no image few-shot
+        assert "archetype_tags" in scope
+        assert ["T-A1", "T-V10", "JP-4"] in scope["archetype_tags"]
+
+
+class TestIdeaSaveEdit:
+    """B-min.1: editable idea card + save endpoint."""
+
+    def _seed_three_ideas(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: SAMPLE_BRAINSTORM_LLM_RESPONSE,
+        )
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
+        assert r.status_code == 200, r.text
+
+    def test_save_edit_updates_frontmatter_at_index(self, client, tmp_path, monkeypatch):
+        self._seed_three_ideas(client, monkeypatch)
+
+        new_value = (
+            "archetype: [T-A2, T-V4]\n"
+            "大字：手動編輯版\n"
+            "我的表情：解釋\n"
+            "視覺：edited visual\n"
+            "數字/圖示：5\n"
+            "背景：edited bg"
+        )
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/thumbnail/idea/1",
+            data={"value": new_value},
+        )
+        assert r.status_code == 200, r.text
+        assert "手動編輯版" in r.text
+
+        fm = yaml.safe_load(
+            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        # idx=1 replaced, idx=0 and idx=2 unchanged
+        assert "手動編輯版" in fm["thumbnail_ideas"][1]
+        assert "妙用解密" in fm["thumbnail_ideas"][0]
+        assert "每天 5g" in fm["thumbnail_ideas"][2]
+
+    def test_save_edit_out_of_range_400(self, client, monkeypatch):
+        self._seed_three_ideas(client, monkeypatch)
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/thumbnail/idea/99",
+            data={"value": "anything"},
+        )
+        assert r.status_code == 400
+        assert "out of range" in r.text.lower()
+
+    def test_save_edit_empty_value_400(self, client, monkeypatch):
+        self._seed_three_ideas(client, monkeypatch)
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/thumbnail/idea/0",
+            data={"value": "   "},
+        )
+        assert r.status_code == 400
+
+    def test_save_edit_invalid_idea_surfaces_parse_error_inline(self, client, monkeypatch):
+        self._seed_three_ideas(client, monkeypatch)
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/thumbnail/idea/0",
+            data={"value": "broken — missing required lines"},
+        )
+        # Save succeeds (200) but partial surfaces parse error inline
+        assert r.status_code == 200
+        assert "解析失敗" in r.text or "parse" in r.text.lower()
+
+
+class TestIdeaIndividualReroll:
+    """B-min.2: re-roll a single idea slot, keep others verbatim."""
+
+    def test_idea_reroll_swaps_only_target_idx(self, client, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: SAMPLE_BRAINSTORM_LLM_RESPONSE,
+        )
+        # Seed
+        client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm")
+
+        # Stub a fresh LLM that produces a single fresh idea different from kept
+        fresh = (
+            "Idea 1\n"
+            "archetype: [T-A3, T-V8]\n"
+            "大字：新版 hook\n"
+            "我的表情：認真\n"
+            "視覺：新視覺\n"
+            "數字/圖示：新\n"
+            "背景：新背景\n"
+        )
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: fresh,
+        )
+
+        r = client.post("/bridge/projects/肌酸的妙用/thumbnail/brainstorm/idea/0")
+        assert r.status_code == 200, r.text
+        # Response is the full 3-card grid swap
+        assert "新版 hook" in r.text
+        assert "每天 5g" in r.text  # idx=2 preserved
+
+        fm = yaml.safe_load(
+            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        assert "新版 hook" in fm["thumbnail_ideas"][0]
+        assert "65 歲來得及" in fm["thumbnail_ideas"][1]
+        assert "每天 5g" in fm["thumbnail_ideas"][2]
+
+
+class TestTitleIndividualReroll:
+    """B-min.3: re-roll a single title row, keep others verbatim."""
+
+    def test_title_reroll_with_textarea_value(self, client, tmp_path, monkeypatch):
+        # Provide current textarea content; LLM returns one new title
+        new_title = "5g 肌酸是大腦的祕密武器（哈佛研究）"
+        monkeypatch.setattr(
+            "thousand_sunny.routers.bridge_project_thumbnails.ask_claude_multi",
+            lambda *a, **kw: new_title + "\n",
+        )
+
+        current = (
+            "肌酸不只練肌肉：3 個你沒聽過的妙用\n"
+            "65 歲開始吃肌酸？最新研究說：來得及\n"
+            "每天 5g，改變你大腦的化學反應\n"
+        )
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles/idea/1",
+            data={"value": current},
+        )
+        assert r.status_code == 200, r.text
+        # New title shows up; original titles 0 + 2 still there
+        assert new_title in r.text
+        assert "肌酸不只練肌肉" in r.text
+        assert "每天 5g，改變你大腦" in r.text
+
+        fm = yaml.safe_load(
+            (tmp_path / "Projects" / "肌酸的妙用.md").read_text(encoding="utf-8").split("---")[1]
+        )
+        assert fm["title_candidates"][0] == "肌酸不只練肌肉：3 個你沒聽過的妙用"
+        assert fm["title_candidates"][1] == new_title
+        assert fm["title_candidates"][2] == "每天 5g，改變你大腦的化學反應"
+
+    def test_title_reroll_out_of_range_400(self, client, monkeypatch):
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/thumbnail/brainstorm-titles/idea/99",
+            data={"value": "a\nb\nc"},
+        )
+        assert r.status_code == 400

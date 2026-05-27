@@ -1,0 +1,1776 @@
+{
+  "schema_version": "v1",
+  "source_extraction": "data\\thumbnail_reference_extraction_v1.json",
+  "row_count": 140,
+  "creator_count": 4,
+  "stats": {
+    "total_rows": 140,
+    "per_creator_count": {
+      "Alex Hormozi": 35,
+      "Ali Abdaal": 35,
+      "Cleo Abram": 35,
+      "Jeff Su": 35
+    },
+    "structure_primary_distribution": {
+      "how-to": 33,
+      "contrarian-reversal": 22,
+      "story-confession": 18,
+      "exclusive-secret": 13,
+      "question-curiosity-gap": 13,
+      "duration-promise": 12,
+      "numbered-listicle": 11,
+      "authority-research": 9,
+      "year-anchor": 6,
+      "cost-risk-reframe": 2,
+      "time-age-constraint": 1
+    },
+    "layout_archetype_distribution": {
+      "face-center-tight-crop": 20,
+      "face-right-text-left": 19,
+      "face-left-text-right": 16,
+      "split-screen-comparison": 12,
+      "face-right-object-left": 5,
+      "face-left-whiteboard-right": 4,
+      "object-hero-no-face": 4,
+      "face-center-split-screen-comparison": 2,
+      "face-right-icons-left": 2,
+      "face-center-presenter-with-text-overlay": 1,
+      "face-center-with-floating-icon-cluster": 1,
+      "face-right-pointing-at-diagram-left": 1,
+      "face-center-text-bottom": 1,
+      "face-center-text-above": 1,
+      "face-center-flanked-by-objects": 1,
+      "subject-left-widget-overlay-top-center": 1,
+      "face-center-icons-surrounding": 1,
+      "face-center-text-flanking": 1,
+      "face-center-floating-ui-cards": 1,
+      "face-center-icons-arc-above": 1,
+      "face-right-text-left-ambient-scene": 1,
+      "flat-lay-object-hero-no-face": 1,
+      "face-center-text-overlay-foreground": 1,
+      "subject-center-ambient-scene": 1,
+      "face-center-explaining-with-text-overlay": 1,
+      "face-center-with-split-platform-cards": 1,
+      "face-center-text-overlay-flanking": 1,
+      "face-center-props-flanking": 1,
+      "face-center-object-hero": 1,
+      "face-right-whiteboard-left": 1,
+      "face-right-logo-left": 1,
+      "face-center-surrounded-by-app-icons": 1,
+      "face-center-flanked-by-text": 1,
+      "face-right-text-overlay-left": 1,
+      "face-right-prop-left": 1,
+      "face-center-whiteboard-backdrop": 1,
+      "split-screen-two-guests-with-central-prop": 1,
+      "split-screen-two-faces-with-object-hero": 1,
+      "split-screen-two-subjects-text-center": 1,
+      "split-screen-interview-two-faces": 1,
+      "face-left-object-right": 1,
+      "face-left-object-right-confrontation": 1,
+      "face-right-scene-left": 1,
+      "face-left-object-hero-right": 1,
+      "face-left-explainer-graphic-right": 1,
+      "face-center-flanked-by-opposing-characters": 1,
+      "face-right-scene-left-split": 1,
+      "face-right-b-roll-left": 1,
+      "face-right-object-hero-left": 1,
+      "face-left-object-right-with-arrow": 1,
+      "face-right-screen-left": 1,
+      "face-center-with-icon-arc-overhead": 1,
+      "multi-face-triptych-with-text-bottom": 1,
+      "face-right-UI-left": 1,
+      "face-left-UI-overlay-right": 1,
+      "face-right-product-ui-left": 1,
+      "face-right-text-left-with-tool-icons": 1,
+      "face-center-text-above-and-below": 1,
+      "face-right-ui-element-left": 1,
+      "face-right-diagram-left": 1,
+      "face-center-icon-cluster-flanking": 1,
+      "face-center-flanked-by-two-icon-cards": 1,
+      "face-center-flanked-by-industry-figures": 1,
+      "face-right-ui-mockup-left": 1,
+      "face-right-document-left": 1
+    },
+    "facial_expression_distribution": {
+      "excited": 34,
+      "serious": 33,
+      "explaining": 22,
+      "surprised": 15,
+      "thoughtful": 12,
+      "laughing": 11,
+      "pointing": 7,
+      "n/a": 6
+    },
+    "title_framework_distribution": {
+      "Loewenstein information gap": 133,
+      "Identity-based hook": 77,
+      "Loss aversion": 58,
+      "Pattern interrupt": 51,
+      "Cialdini authority": 47,
+      "Familiarity scaffolding": 46,
+      "Specificity bias": 41,
+      "Insider knowledge frame": 37,
+      "Cognitive ease": 34,
+      "Numerical anchor": 32,
+      "Cialdini social-proof": 9,
+      "Cialdini commitment-consistency": 7,
+      "Status signaling": 6,
+      "Cialdini liking": 3,
+      "Cialdini reciprocity": 1,
+      "MrBeast PVP": 1,
+      "Cialdini scarcity": 1
+    },
+    "thumbnail_framework_distribution": {
+      "Pattern interrupt": 126,
+      "Face emotion contagion": 121,
+      "Loewenstein information gap": 64,
+      "Familiarity scaffolding": 57,
+      "Cognitive ease": 56,
+      "Numerical anchor": 39,
+      "Cialdini authority": 36,
+      "Insider knowledge frame": 24,
+      "Status signaling": 23,
+      "Loss aversion": 15,
+      "Specificity bias": 13,
+      "MrBeast PVP": 9,
+      "Identity-based hook": 5,
+      "Cialdini social-proof": 3,
+      "Cialdini liking": 1
+    },
+    "title_thumb_relationship_distribution": {
+      "complementary-gap": 108,
+      "redundant-reinforcing": 20,
+      "thumb-amplifies-title": 8,
+      "title-grounds-visual-mystery": 3,
+      "contradictory-tension": 1
+    },
+    "creator_x_structure": {
+      "Alex Hormozi": {
+        "authority-research": 2,
+        "duration-promise": 3,
+        "story-confession": 8,
+        "exclusive-secret": 2,
+        "how-to": 9,
+        "question-curiosity-gap": 1,
+        "year-anchor": 3,
+        "cost-risk-reframe": 2,
+        "time-age-constraint": 1,
+        "contrarian-reversal": 4
+      },
+      "Ali Abdaal": {
+        "numbered-listicle": 6,
+        "story-confession": 6,
+        "year-anchor": 1,
+        "how-to": 17,
+        "authority-research": 2,
+        "contrarian-reversal": 2,
+        "question-curiosity-gap": 1
+      },
+      "Cleo Abram": {
+        "authority-research": 4,
+        "contrarian-reversal": 8,
+        "how-to": 2,
+        "question-curiosity-gap": 10,
+        "exclusive-secret": 8,
+        "story-confession": 3
+      },
+      "Jeff Su": {
+        "numbered-listicle": 5,
+        "contrarian-reversal": 8,
+        "exclusive-secret": 3,
+        "how-to": 5,
+        "duration-promise": 9,
+        "story-confession": 1,
+        "year-anchor": 2,
+        "authority-research": 1,
+        "question-curiosity-gap": 1
+      }
+    }
+  },
+  "catalog": {
+    "title_archetypes": [
+      {
+        "id": "T-A1",
+        "name": "Numbered Listicle Promise",
+        "one_line_summary": "Title leads with a finite small number (3–11) of items, methods, habits, or tips.",
+        "click_drivers_primary": [
+          "Loewenstein information gap",
+          "Numerical anchor"
+        ],
+        "click_drivers_secondary": [
+          "Cognitive ease",
+          "Identity-based hook"
+        ],
+        "frameworks": [
+          "Loewenstein",
+          "Cialdini-commitment-consistency"
+        ],
+        "when_to_use": "Method-style content where outcomes can be enumerated; viewer wants a completeness signal and low cognitive entry cost.",
+        "when_to_avoid": "Single-thesis or narrative-driven content; deep research dives where a number feels artificially imposed.",
+        "examples": [
+          {
+            "id": "ali_abdaal_001",
+            "creator": "Ali Abdaal",
+            "title": "5 Easy Ways to Become More Self-Disciplined"
+          },
+          {
+            "id": "ali_abdaal_005",
+            "creator": "Ali Abdaal",
+            "title": "8 Lazy Habits That Save Me 20+ Hours a Week"
+          },
+          {
+            "id": "jeff_su_001",
+            "creator": "Jeff Su",
+            "title": "10 INCREDIBLE things Google Sheets can do Right Now!"
+          },
+          {
+            "id": "jeff_su_002",
+            "creator": "Jeff Su",
+            "title": "8 Secret ChatGPT Tips That Will Change the Way You Work!"
+          },
+          {
+            "id": "jeff_su_028",
+            "creator": "Jeff Su",
+            "title": "5 ChatGPT Prompts Every Professional Needs to Know!"
+          },
+          {
+            "id": "ali_abdaal_006",
+            "creator": "Ali Abdaal",
+            "title": "8 Simple Habits to Actually Improve Your Health"
+          }
+        ],
+        "creator_distribution": {
+          "Ali Abdaal": 6,
+          "Jeff Su": 5,
+          "Alex Hormozi": 0,
+          "Cleo Abram": 0
+        },
+        "frequency_total": 11,
+        "frequency_pct": 7.9,
+        "confidence": "high",
+        "canonical_example_id": "ali_abdaal_001",
+        "mechanism_writeup": "The finite number pre-closes the Loewenstein information gap by implying the viewer will possess a complete set of answers after watching — triggering the 'almost there' commitment effect. Odd or non-round numbers (5, 8, 11) signal that the creator counted honestly rather than padded, boosting perceived specificity. The number also acts as a cognitive scaffold, reducing the mental cost of starting because the viewer knows exactly what they are signing up for."
+      },
+      {
+        "id": "T-A2",
+        "name": "How-To with Specificity Anchor",
+        "one_line_summary": "Title opens with 'How to…' or an imperative verb and pairs it with a concrete specificity marker (number, tool name, time, or named outcome).",
+        "click_drivers_primary": [
+          "Loewenstein information gap",
+          "Identity-based hook"
+        ],
+        "click_drivers_secondary": [
+          "Specificity bias",
+          "Cognitive ease",
+          "Loss aversion"
+        ],
+        "frameworks": [
+          "Loewenstein",
+          "Cialdini-commitment-consistency",
+          "Specificity bias"
+        ],
+        "when_to_use": "Tutorial, system-reveal, or transformation content where the viewer has a defined problem and wants actionable steps.",
+        "when_to_avoid": "Opinion or contrarian content where the 'how-to' frame creates an overly prescriptive tone that undermines the surprise.",
+        "examples": [
+          {
+            "id": "ali_abdaal_014",
+            "creator": "Ali Abdaal",
+            "title": "How to Do More in 12 Weeks Than Most People Do in 12 Months"
+          },
+          {
+            "id": "ali_abdaal_022",
+            "creator": "Ali Abdaal",
+            "title": "How to Start Your First Business in 48 Hours"
+          },
+          {
+            "id": "ali_abdaal_013",
+            "creator": "Ali Abdaal",
+            "title": "How to Control Your Dopamine (Before It's Too Late)"
+          },
+          {
+            "id": "alex_hormozi_015",
+            "creator": "Alex Hormozi",
+            "title": "How to Be Better at Sales Than 99% of People (4 HOUR ULTIMATE GUIDE)"
+          },
+          {
+            "id": "jeff_su_006",
+            "creator": "Jeff Su",
+            "title": "AI Agents Simply Explained"
+          },
+          {
+            "id": "alex_hormozi_009",
+            "creator": "Alex Hormozi",
+            "title": "How to Get Rich in Your 20s (No Fluff)"
+          },
+          {
+            "id": "ali_abdaal_011",
+            "creator": "Ali Abdaal",
+            "title": "How to Transform Your Life (My Deep Work System)"
+          },
+          {
+            "id": "jeff_su_009",
+            "creator": "Jeff Su",
+            "title": "How to Actually Manage Your Time — 8 Tips That Changed My Life"
+          }
+        ],
+        "creator_distribution": {
+          "Ali Abdaal": 17,
+          "Alex Hormozi": 9,
+          "Jeff Su": 5,
+          "Cleo Abram": 2
+        },
+        "frequency_total": 33,
+        "frequency_pct": 23.6,
+        "confidence": "high",
+        "canonical_example_id": "ali_abdaal_014",
+        "mechanism_writeup": "The 'How to…' prefix instantly signals a solution frame, collapsing viewer anxiety about whether they will get value. When a specificity anchor (time duration, percentile, named tool) is added, it triggers Specificity bias — the brain interprets a precise promise as more credible than a vague one, because fabrication requires effort. The combination creates a two-step click: first the identity match ('this problem is mine'), then the specificity signal that the creator actually has a concrete answer."
+      },
+      {
+        "id": "T-A3",
+        "name": "Contrarian Reversal",
+        "one_line_summary": "Title challenges conventional wisdom or uses a 'you've been doing it wrong' frame to create cognitive dissonance and compel resolution.",
+        "click_drivers_primary": [
+          "Pattern interrupt",
+          "Loewenstein information gap"
+        ],
+        "click_drivers_secondary": [
+          "Loss aversion",
+          "Identity-based hook"
+        ],
+        "frameworks": [
+          "Loewenstein",
+          "Pattern interrupt",
+          "Cialdini-commitment-consistency"
+        ],
+        "when_to_use": "Topics where the mainstream belief is genuinely wrong or nuanced; works especially well when paired with authority credibility.",
+        "when_to_avoid": "When the contrarian claim is too thin to deliver on; can feel manipulative if the 'reversal' is trivial.",
+        "examples": [
+          {
+            "id": "jeff_su_003",
+            "creator": "Jeff Su",
+            "title": "95% of People Use ChatGPT-5 Wrong (Do This Instead)"
+          },
+          {
+            "id": "jeff_su_025",
+            "creator": "Jeff Su",
+            "title": "You're Using Google Gemini WRONG (Here's What to Do Instead)"
+          },
+          {
+            "id": "alex_hormozi_027",
+            "creator": "Alex Hormozi",
+            "title": "Beating 99% of People Is Actually Easier Than You Think"
+          },
+          {
+            "id": "ali_abdaal_033",
+            "creator": "Ali Abdaal",
+            "title": "Stop Setting Goals. Do This Instead."
+          },
+          {
+            "id": "cleo_abram_031",
+            "creator": "Cleo Abram",
+            "title": "Gravity is FAKE* (Explained in Zero G)"
+          },
+          {
+            "id": "cleo_abram_002",
+            "creator": "Cleo Abram",
+            "title": "Dinosaurs Looked Nothing Like You Think"
+          },
+          {
+            "id": "jeff_su_033",
+            "creator": "Jeff Su",
+            "title": "You're Using ChatGPT Wrong"
+          },
+          {
+            "id": "alex_hormozi_028",
+            "creator": "Alex Hormozi",
+            "title": "No BS: What the 1% Actually Do to Get Rich"
+          }
+        ],
+        "creator_distribution": {
+          "Jeff Su": 8,
+          "Alex Hormozi": 4,
+          "Cleo Abram": 8,
+          "Ali Abdaal": 2
+        },
+        "frequency_total": 22,
+        "frequency_pct": 15.7,
+        "confidence": "high",
+        "canonical_example_id": "jeff_su_003",
+        "mechanism_writeup": "Contrarian titles fire the Loewenstein gap by implying the viewer holds a false belief and will leave uninformed without watching. They simultaneously trigger loss aversion — the prospective cost of continuing a wrong behaviour activates more urgently than the gain of a new behaviour. The statistical social-proof variant ('95% of people…') adds a comparison anchor that makes the viewer suddenly uncertain whether they are in the failed majority, creating an identity-threat that demands resolution."
+      },
+      {
+        "id": "T-A4",
+        "name": "Story-Confession / Personal Blueprint",
+        "one_line_summary": "First-person hypothetical or retrospective frame: 'If I were starting over…', 'What I wish I knew…', or 'I did X and here's what happened.'",
+        "click_drivers_primary": [
+          "Loewenstein information gap",
+          "Cialdini authority"
+        ],
+        "click_drivers_secondary": [
+          "Identity-based hook",
+          "Insider knowledge frame",
+          "Familiarity scaffolding"
+        ],
+        "frameworks": [
+          "Loewenstein",
+          "Cialdini-authority",
+          "Parasocial-liking"
+        ],
+        "when_to_use": "Experience-backed insight content; the creator's personal journey is the primary credibility vehicle.",
+        "when_to_avoid": "Topics where the creator lacks lived authority; audiences may discount purely hypothetical advice without credentials.",
+        "examples": [
+          {
+            "id": "alex_hormozi_019",
+            "creator": "Alex Hormozi",
+            "title": "If I Started Over in 2024, I'd Do This (Full Blueprint)"
+          },
+          {
+            "id": "alex_hormozi_021",
+            "creator": "Alex Hormozi",
+            "title": "If I Wanted to Make My First $100K in 2026, I'd Do This"
+          },
+          {
+            "id": "ali_abdaal_029",
+            "creator": "Ali Abdaal",
+            "title": "If I Wanted to Become a Millionaire Before 30, I'd Do This"
+          },
+          {
+            "id": "ali_abdaal_030",
+            "creator": "Ali Abdaal",
+            "title": "If I Were a Student, Here's How I'd Make $10,000"
+          },
+          {
+            "id": "alex_hormozi_005",
+            "creator": "Alex Hormozi",
+            "title": "What I Would Tell My Broke, Younger Self"
+          },
+          {
+            "id": "ali_abdaal_007",
+            "creator": "Ali Abdaal",
+            "title": "9 Things I Wish I Knew Before Starting YouTube"
+          },
+          {
+            "id": "ali_abdaal_027",
+            "creator": "Ali Abdaal",
+            "title": "I Read 107 Productivity Books — Here's What Actually Works"
+          },
+          {
+            "id": "cleo_abram_008",
+            "creator": "Cleo Abram",
+            "title": "I Fought Boston Dynamics' Atlas (Feat. Boston Dynamics)"
+          }
+        ],
+        "creator_distribution": {
+          "Alex Hormozi": 8,
+          "Ali Abdaal": 6,
+          "Cleo Abram": 3,
+          "Jeff Su": 1
+        },
+        "frequency_total": 18,
+        "frequency_pct": 12.9,
+        "confidence": "high",
+        "canonical_example_id": "alex_hormozi_019",
+        "mechanism_writeup": "The first-person hypothetical fires Loewenstein's 'information gap from a known expert' variant: the viewer knows the creator succeeded and now wants the exact mental model they would apply. The confession/regret sub-variant additionally activates loss aversion by implying that the viewer can skip the painful lesson the creator had to learn the hard way. Parasocial intimacy (we know this person) converts authority into trust faster than third-party citations would."
+      },
+      {
+        "id": "T-A5",
+        "name": "Exclusive Secret / Hidden Truth",
+        "one_line_summary": "Title implies the viewer is about to receive insider knowledge that is rare, suppressed, or typically withheld from the public.",
+        "click_drivers_primary": [
+          "Insider knowledge frame",
+          "Loewenstein information gap"
+        ],
+        "click_drivers_secondary": [
+          "Pattern interrupt",
+          "Identity-based hook",
+          "Loss aversion"
+        ],
+        "frameworks": [
+          "Loewenstein",
+          "Cialdini-authority",
+          "Insider knowledge frame"
+        ],
+        "when_to_use": "When the content genuinely reveals non-obvious mechanisms or expert-level nuance; pairs well with authority credibility.",
+        "when_to_avoid": "Overused 'secret' language can backfire as clickbait if the content does not deliver genuinely novel information.",
+        "examples": [
+          {
+            "id": "alex_hormozi_008",
+            "creator": "Alex Hormozi",
+            "title": "The Unfair Truths No One Tells You About Success"
+          },
+          {
+            "id": "cleo_abram_015",
+            "creator": "Cleo Abram",
+            "title": "Mark Zuckerberg's Secret Plan…"
+          },
+          {
+            "id": "cleo_abram_019",
+            "creator": "Cleo Abram",
+            "title": "The Real Reason Apple Vision Pro Matters"
+          },
+          {
+            "id": "cleo_abram_020",
+            "creator": "Cleo Abram",
+            "title": "The Real Reason De-Extinction Matters"
+          },
+          {
+            "id": "jeff_su_005",
+            "creator": "Jeff Su",
+            "title": "The Best Way to Use ChatGPT for Presentations!"
+          },
+          {
+            "id": "jeff_su_026",
+            "creator": "Jeff Su",
+            "title": "The Only AI Tools You Actually Need (12-Minute Guide)"
+          },
+          {
+            "id": "cleo_abram_022",
+            "creator": "Cleo Abram",
+            "title": "Everything They Don't Tell You About Egg Freezing"
+          }
+        ],
+        "creator_distribution": {
+          "Cleo Abram": 8,
+          "Alex Hormozi": 2,
+          "Jeff Su": 3,
+          "Ali Abdaal": 0
+        },
+        "frequency_total": 13,
+        "frequency_pct": 9.3,
+        "confidence": "high",
+        "canonical_example_id": "cleo_abram_019",
+        "mechanism_writeup": "The 'real reason' / 'what they don't tell you' frame exploits a specific Loewenstein mechanism: the viewer already believes they know the topic, so revealing a hidden layer creates a second-order curiosity gap ('I know the surface story but not the true explanation'). This is more potent than simple 'did you know?' curiosity because it simultaneously implies prior deception or incompleteness, activating mild epistemic anxiety that the click resolves."
+      },
+      {
+        "id": "T-A6",
+        "name": "Question Curiosity Gap",
+        "one_line_summary": "Title poses a direct question — often personal-stakes or wonder-framed — that the video answers.",
+        "click_drivers_primary": [
+          "Loewenstein information gap",
+          "Pattern interrupt"
+        ],
+        "click_drivers_secondary": [
+          "Identity-based hook",
+          "Familiarity scaffolding"
+        ],
+        "frameworks": [
+          "Loewenstein",
+          "Pattern interrupt"
+        ],
+        "when_to_use": "Explainer and wonder content; works especially well when the question is personally relatable or culturally salient.",
+        "when_to_avoid": "When the question is too abstract to feel personal; or when the answer is strongly implied by the question itself (killing curiosity).",
+        "examples": [
+          {
+            "id": "cleo_abram_024",
+            "creator": "Cleo Abram",
+            "title": "What Keeps Physicists Up at Night About Black Holes? (Feat. Brian Cox)"
+          },
+          {
+            "id": "cleo_abram_025",
+            "creator": "Cleo Abram",
+            "title": "What Would Happen to Me If I Fell Into a Black Hole?"
+          },
+          {
+            "id": "cleo_abram_026",
+            "creator": "Cleo Abram",
+            "title": "What If You Dug Straight Down?"
+          },
+          {
+            "id": "ali_abdaal_035",
+            "creator": "Ali Abdaal",
+            "title": "Why Are You Always Distracted? (5 Mistakes You're Making)"
+          },
+          {
+            "id": "jeff_su_031",
+            "creator": "Jeff Su",
+            "title": "Why Is Your Cover Letter Getting Rejected? (5 Mistakes to Avoid)"
+          },
+          {
+            "id": "cleo_abram_030",
+            "creator": "Cleo Abram",
+            "title": "Why Can't We Vote Online?"
+          }
+        ],
+        "creator_distribution": {
+          "Cleo Abram": 10,
+          "Ali Abdaal": 1,
+          "Jeff Su": 1,
+          "Alex Hormozi": 1
+        },
+        "frequency_total": 13,
+        "frequency_pct": 9.3,
+        "confidence": "high",
+        "canonical_example_id": "cleo_abram_024",
+        "mechanism_writeup": "Direct questions exploit Loewenstein's 'knowledge of ignorance' mechanism: once the viewer reads the question, they become aware of not knowing the answer, and the discomfort of the open information gap is only resolvable by clicking. The 'What would happen to me…' first-person variant adds an identity stake that makes the gap feel personally consequential rather than academically abstract, increasing click urgency."
+      },
+      {
+        "id": "T-A7",
+        "name": "Duration / Time-Compression Promise",
+        "one_line_summary": "Title promises that a large body of knowledge or skill can be acquired in a precisely specified short time (8 min, 13 min, 80% in 20 min).",
+        "click_drivers_primary": [
+          "Specificity bias",
+          "Cognitive ease"
+        ],
+        "click_drivers_secondary": [
+          "Loss aversion",
+          "Cialdini authority",
+          "Numerical anchor"
+        ],
+        "frameworks": [
+          "Specificity bias",
+          "Cialdini-commitment-consistency",
+          "Loewenstein"
+        ],
+        "when_to_use": "Tutorial or masterclass content; especially effective when the topic is perceived as complex and the time promise is credibly short.",
+        "when_to_avoid": "Narrative or story-first content where time compression undermines the perceived depth; do not overuse — loses novelty quickly.",
+        "examples": [
+          {
+            "id": "jeff_su_015",
+            "creator": "Jeff Su",
+            "title": "Master 80% of NotebookLM in 13 Minutes"
+          },
+          {
+            "id": "jeff_su_016",
+            "creator": "Jeff Su",
+            "title": "Master 80% of Perplexity AI in Under 10 Minutes"
+          },
+          {
+            "id": "jeff_su_017",
+            "creator": "Jeff Su",
+            "title": "Master 85% of Google Gemini in 12 Minutes"
+          },
+          {
+            "id": "alex_hormozi_002",
+            "creator": "Alex Hormozi",
+            "title": "13 Years of Business Knowledge in 90 Mins (Brutally Honest)"
+          },
+          {
+            "id": "alex_hormozi_004",
+            "creator": "Alex Hormozi",
+            "title": "13 Years of Advice in 79 Minutes (No Fluff)"
+          },
+          {
+            "id": "jeff_su_014",
+            "creator": "Jeff Su",
+            "title": "Learn 80% of Claude Cowork in 20 Minutes"
+          },
+          {
+            "id": "jeff_su_034",
+            "creator": "Jeff Su",
+            "title": "Perfect ChatGPT Prompts in 8分鐘"
+          }
+        ],
+        "creator_distribution": {
+          "Jeff Su": 9,
+          "Alex Hormozi": 3,
+          "Ali Abdaal": 0,
+          "Cleo Abram": 0
+        },
+        "frequency_total": 12,
+        "frequency_pct": 8.6,
+        "confidence": "high",
+        "canonical_example_id": "jeff_su_015",
+        "mechanism_writeup": "The precise time anchor activates Specificity bias: '13 minutes' feels more credible than 'quickly' because it implies the creator measured it. The Pareto sub-variant ('80% in N minutes') additionally lowers the commitment threshold by explicitly telling the viewer they do not need the remaining 20%, triggering cognitive ease and reducing the 'is this worth my time?' friction that blocks clicks on long-form tutorials."
+      },
+      {
+        "id": "T-A8",
+        "name": "Authority-Research Credibility Lead",
+        "one_line_summary": "Title leads with a named authority figure, institution, hyper-specific data point, or personal consumption of a large body of research to validate the content.",
+        "click_drivers_primary": [
+          "Cialdini authority",
+          "Specificity bias"
+        ],
+        "click_drivers_secondary": [
+          "Loewenstein information gap",
+          "Loss aversion",
+          "Insider knowledge frame"
+        ],
+        "frameworks": [
+          "Cialdini-authority",
+          "Specificity bias",
+          "Loewenstein"
+        ],
+        "when_to_use": "Evidence-backed, expert-interview, or large-scale research synthesis content; especially strong in health, science, and productivity domains.",
+        "when_to_avoid": "When authority is implied rather than specific; vague 'studies show' framing does not trigger the same credibility response.",
+        "examples": [
+          {
+            "id": "alex_hormozi_001",
+            "creator": "Alex Hormozi",
+            "title": "$100M CEO Explains: Brand > Everything (2024)"
+          },
+          {
+            "id": "ali_abdaal_027",
+            "creator": "Ali Abdaal",
+            "title": "I Read 107 Productivity Books. Here's What Actually Works."
+          },
+          {
+            "id": "ali_abdaal_028",
+            "creator": "Ali Abdaal",
+            "title": "I Tested 137 Productivity Tools. These Are the Best."
+          },
+          {
+            "id": "cleo_abram_003",
+            "creator": "Cleo Abram",
+            "title": "How CRISPR Could Edit Your DNA (With Nobel Prize Winner Dr. Jennifer Doudna)"
+          },
+          {
+            "id": "cleo_abram_011",
+            "creator": "Cleo Abram",
+            "title": "NVIDIA CEO Jensen Huang on the Future of AI"
+          },
+          {
+            "id": "jeff_su_027",
+            "creator": "Jeff Su",
+            "title": "The Productivity System I Taught 6,642 Googlers"
+          },
+          {
+            "id": "jeff_su_029",
+            "creator": "Jeff Su",
+            "title": "6 AI Predictions for 2026 (backed by data)"
+          }
+        ],
+        "creator_distribution": {
+          "Ali Abdaal": 2,
+          "Alex Hormozi": 2,
+          "Cleo Abram": 4,
+          "Jeff Su": 1
+        },
+        "frequency_total": 9,
+        "frequency_pct": 6.4,
+        "confidence": "high",
+        "canonical_example_id": "ali_abdaal_027",
+        "mechanism_writeup": "Hyper-specific numbers (107 books, 6,642 Googlers) exploit the Specificity bias mechanism: the brain interprets precision as evidence of actual measurement, converting a self-reported claim into what feels like audited data. Named authority figures layer Cialdini's authority principle, and the combination makes the Loewenstein gap more potent — the viewer wants the distilled output of an effort they know they would never personally undertake."
+      },
+      {
+        "id": "T-A9",
+        "name": "Year-Anchor Currency Signal",
+        "one_line_summary": "Title includes a specific year (2024, 2026) as a freshness and relevance marker, implying that older advice is now outdated.",
+        "click_drivers_primary": [
+          "Loss aversion",
+          "Loewenstein information gap"
+        ],
+        "click_drivers_secondary": [
+          "Specificity bias",
+          "Familiarity scaffolding"
+        ],
+        "frameworks": [
+          "Loewenstein",
+          "Loss aversion",
+          "Specificity bias"
+        ],
+        "when_to_use": "Trend, tool-tutorial, or annual strategy content in fast-moving domains where recency is genuinely valuable.",
+        "when_to_avoid": "Evergreen content where the year anchor will date the video and reduce long-tail searchability.",
+        "examples": [
+          {
+            "id": "jeff_su_024",
+            "creator": "Jeff Su",
+            "title": "The CORRECT Way to Use ChatGPT in 2026"
+          },
+          {
+            "id": "jeff_su_021",
+            "creator": "Jeff Su",
+            "title": "NotebookLM Has Completely Changed (2026)"
+          },
+          {
+            "id": "ali_abdaal_003",
+            "creator": "Ali Abdaal",
+            "title": "6 Habits to Adopt Before 2026 to Make It Your Best Year"
+          },
+          {
+            "id": "alex_hormozi_018",
+            "creator": "Alex Hormozi",
+            "title": "If I Were Starting a Business in 2026, I'd Only Do This"
+          },
+          {
+            "id": "alex_hormozi_024",
+            "creator": "Alex Hormozi",
+            "title": "If You Watch One Video Before 2026, Watch This…"
+          },
+          {
+            "id": "jeff_su_019",
+            "creator": "Jeff Su",
+            "title": "Master Gemini 3.1 for Work in 12 Minutes (2026)"
+          }
+        ],
+        "creator_distribution": {
+          "Jeff Su": 2,
+          "Alex Hormozi": 3,
+          "Ali Abdaal": 1,
+          "Cleo Abram": 0
+        },
+        "frequency_total": 6,
+        "frequency_pct": 4.3,
+        "confidence": "medium",
+        "canonical_example_id": "jeff_su_024",
+        "mechanism_writeup": "Year anchors trigger a mild loss-aversion mechanism: the viewer implicitly worries their current knowledge or strategy is already obsolete, creating urgency to update. The year also serves as a cognitive shortcut for 'this was recently verified', reducing the viewer's need to evaluate the content's credibility independently. In fast-moving domains (AI tools, business strategy), the year signal can be the single deciding factor between clicking a refreshed tutorial versus an older one."
+      },
+      {
+        "id": "T-A10",
+        "name": "Cost-Risk-Reframe / Loss Aversion Lead",
+        "one_line_summary": "Title foregrounds what the viewer is currently losing, wasting, or getting wrong — flipping from gain to loss framing — often with a specific number.",
+        "click_drivers_primary": [
+          "Loss aversion",
+          "Identity-based hook"
+        ],
+        "click_drivers_secondary": [
+          "Specificity bias",
+          "Loewenstein information gap",
+          "Pattern interrupt"
+        ],
+        "frameworks": [
+          "Loss aversion",
+          "Loewenstein",
+          "Specificity bias"
+        ],
+        "when_to_use": "Behaviour-change content where the viewer is already engaging in the problematic behaviour; most effective with a quantified cost.",
+        "when_to_avoid": "When the audience is already aware of the risk — the loss frame loses potency and can feel preachy.",
+        "examples": [
+          {
+            "id": "alex_hormozi_035",
+            "creator": "Alex Hormozi",
+            "title": "You're Wasting 80% of Your Time (Here's the Fix)"
+          },
+          {
+            "id": "jeff_su_030",
+            "creator": "Jeff Su",
+            "title": "Why 90% of People Are Getting AI Presentations Wrong (Fix This)"
+          },
+          {
+            "id": "jeff_su_031",
+            "creator": "Jeff Su",
+            "title": "Why Is Your Cover Letter Getting Rejected? (5 Mistakes to Avoid)"
+          },
+          {
+            "id": "ali_abdaal_023",
+            "creator": "Ali Abdaal",
+            "title": "How to Stop Wasting Your Life (5 Things to Quit)"
+          },
+          {
+            "id": "ali_abdaal_013",
+            "creator": "Ali Abdaal",
+            "title": "How to Control Your Dopamine (Before It's Too Late)"
+          }
+        ],
+        "creator_distribution": {
+          "Alex Hormozi": 2,
+          "Jeff Su": 2,
+          "Ali Abdaal": 2,
+          "Cleo Abram": 0
+        },
+        "frequency_total": 6,
+        "frequency_pct": 4.3,
+        "confidence": "medium",
+        "canonical_example_id": "alex_hormozi_035",
+        "mechanism_writeup": "Prospect theory predicts losses loom roughly twice as large as equivalent gains in decision-making. By foregrounding a specific cost ('80% of your time', '90% of people wrong'), these titles convert a neutral curiosity into an active threat perception. The parenthetical fix-promise ('Here's the Fix') then provides the resolution pathway, creating a push-pull structure where the loss frame drives the click and the fix promise justifies watching the full video."
+      }
+    ],
+    "thumbnail_archetypes": [
+      {
+        "id": "T-V1",
+        "name": "Face-Right Text-Left Dual-Zone",
+        "one_line_summary": "Creator face occupies the right 40-50% of frame; high-contrast, large-type text or a key phrase dominates the left zone.",
+        "click_drivers_primary": [
+          "Face emotion contagion",
+          "Pattern interrupt"
+        ],
+        "click_drivers_secondary": [
+          "Cognitive ease",
+          "Loewenstein information gap",
+          "Cialdini authority"
+        ],
+        "layout_signature": "Bilateral split with strong left-text right-face organisation; negative space 2-3/5; bold sans-serif overlay; often 3-5 words maximum.",
+        "colour_signature": "Dark studio background (#1A1A1A, #2B2B2B) with high-luminance white text or single saturated accent (#D0021B, #F5C518).",
+        "expression_signature": "Serious or explaining — emotional weight must match the directness of the text.",
+        "frameworks": [
+          "Face emotion contagion",
+          "Pattern interrupt",
+          "Cognitive ease"
+        ],
+        "when_to_use": "Authoritative statement content, contrarian or command-style titles, confession arcs where emotional gravity matters.",
+        "when_to_avoid": "Wonder or playful content where a stern face conflicts with the tone; text-heavy topics where left zone gets too cluttered.",
+        "examples": [
+          {
+            "id": "alex_hormozi_004",
+            "creator": "Alex Hormozi",
+            "overlay_text": "SELL EXPENSIVE SH*T"
+          },
+          {
+            "id": "alex_hormozi_028",
+            "creator": "Alex Hormozi",
+            "overlay_text": "PUT YOUR DAMN PHONE AWAY"
+          },
+          {
+            "id": "ali_abdaal_007",
+            "creator": "Ali Abdaal",
+            "overlay_text": "no one cares"
+          },
+          {
+            "id": "jeff_su_016",
+            "creator": "Jeff Su",
+            "overlay_text": "perplexity"
+          },
+          {
+            "id": "jeff_su_033",
+            "creator": "Jeff Su",
+            "overlay_text": "teach me… automate task"
+          },
+          {
+            "id": "alex_hormozi_002",
+            "creator": "Alex Hormozi",
+            "overlay_text": "Sell to the rich"
+          }
+        ],
+        "creator_distribution": {
+          "Alex Hormozi": 9,
+          "Ali Abdaal": 2,
+          "Jeff Su": 8,
+          "Cleo Abram": 3
+        },
+        "frequency_total": 19,
+        "frequency_pct": 13.6,
+        "confidence": "high",
+        "mechanism_writeup": "The brain's left-to-right reading bias means Western-trained viewers read the text first and then their gaze naturally travels to the face. The face then serves as an emotional validator of the claim — a serious face amplifies an alarming text; an excited face amplifies a gain claim. This bidirectional reinforcement makes the thumbnail narrative complete without requiring the viewer to read the title at all."
+      },
+      {
+        "id": "T-V2",
+        "name": "Face-Center Tight Crop with Text Overlay",
+        "one_line_summary": "Creator face fills the center frame with a tight crop (chin to forehead), with a short text overlay anchored at bottom or floating over chest.",
+        "click_drivers_primary": [
+          "Face emotion contagion",
+          "Pattern interrupt"
+        ],
+        "click_drivers_secondary": [
+          "Loewenstein information gap",
+          "Cialdini authority"
+        ],
+        "layout_signature": "Center-dominant, minimal negative space (1-2/5); face occupies 60-80% of frame area; text is secondary but legible.",
+        "colour_signature": "Dark or abstract backgrounds (#1A1A1A, AI-generated dark gradients, deep purple/red) with high-luminance text.",
+        "expression_signature": "Serious or surprised — tight crops amplify micro-expressions, so neutral faces underperform.",
+        "frameworks": [
+          "Face emotion contagion",
+          "Loewenstein information gap"
+        ],
+        "when_to_use": "High-emotion confessional content, authority-statement pieces, existential or high-stakes topics where the creator's face IS the message.",
+        "when_to_avoid": "Content requiring context (tools, products, comparisons) where a face-only crop provides zero informational framing.",
+        "examples": [
+          {
+            "id": "alex_hormozi_012",
+            "creator": "Alex Hormozi",
+            "overlay_text": "(none — face + dark abstract)"
+          },
+          {
+            "id": "alex_hormozi_013",
+            "creator": "Alex Hormozi",
+            "overlay_text": "'IT ONLY TAKES 7 DAYS'"
+          },
+          {
+            "id": "ali_abdaal_027",
+            "creator": "Ali Abdaal",
+            "overlay_text": "(none — surprised face)"
+          },
+          {
+            "id": "cleo_abram_001",
+            "creator": "Cleo Abram",
+            "overlay_text": "FAKE / FAKE"
+          },
+          {
+            "id": "cleo_abram_014",
+            "creator": "Cleo Abram",
+            "overlay_text": "DID WE DO IT?"
+          },
+          {
+            "id": "jeff_su_006",
+            "creator": "Jeff Su",
+            "overlay_text": "AI AGENTS"
+          }
+        ],
+        "creator_distribution": {
+          "Alex Hormozi": 6,
+          "Ali Abdaal": 3,
+          "Cleo Abram": 5,
+          "Jeff Su": 1
+        },
+        "frequency_total": 20,
+        "frequency_pct": 14.3,
+        "confidence": "high",
+        "mechanism_writeup": "Tight facial crops maximise face emotion contagion because the viewer's mirror-neuron system responds more strongly to faces that fill the visual field. The absence of competing visual elements forces the viewer to seek meaning in the expression itself, creating an automatic Loewenstein gap: 'Why does this person look like that?' The dark background strategy reduces competing stimuli in a busy feed, making the face pop as a pattern interrupt."
+      },
+      {
+        "id": "T-V3",
+        "name": "Split-Screen Comparison",
+        "one_line_summary": "Thumbnail is divided into two equal zones — before/after, option A/option B, person A vs. person B — creating a visible contrast tension.",
+        "click_drivers_primary": [
+          "Pattern interrupt",
+          "Loewenstein information gap"
+        ],
+        "click_drivers_secondary": [
+          "Familiarity scaffolding",
+          "Loss aversion"
+        ],
+        "layout_signature": "Hard vertical or diagonal split; two visually distinct colour temperatures or scenes; often with a text label on each side ('before'/'after', 'COLLEGE'/'NO COLLEGE').",
+        "colour_signature": "High contrast between halves — warm vs. cool, saturated vs. desaturated, or dark vs. light.",
+        "expression_signature": "Varies — can include faces (serious/excited) or be face-free (object comparison).",
+        "frameworks": [
+          "Pattern interrupt",
+          "Loewenstein information gap",
+          "Familiarity scaffolding"
+        ],
+        "when_to_use": "Comparison, decision, or transformation content; especially effective when the gap between the two states is stark and relatable.",
+        "when_to_avoid": "Content without a genuine binary choice — forced split-screens can feel artificial and undermine trust.",
+        "examples": [
+          {
+            "id": "alex_hormozi_029",
+            "creator": "Alex Hormozi",
+            "overlay_text": "COLLEGE / NO COLLEGE"
+          },
+          {
+            "id": "ali_abdaal_020",
+            "creator": "Ali Abdaal",
+            "overlay_text": "before / after"
+          },
+          {
+            "id": "ali_abdaal_023",
+            "creator": "Ali Abdaal",
+            "overlay_text": "before / after"
+          },
+          {
+            "id": "cleo_abram_006",
+            "creator": "Cleo Abram",
+            "overlay_text": "FAKE / FAKE"
+          },
+          {
+            "id": "cleo_abram_015",
+            "creator": "Cleo Abram",
+            "overlay_text": "IMAGINE IN THE FUTURE…"
+          },
+          {
+            "id": "ali_abdaal_035",
+            "creator": "Ali Abdaal",
+            "overlay_text": "before / after"
+          }
+        ],
+        "creator_distribution": {
+          "Ali Abdaal": 4,
+          "Alex Hormozi": 1,
+          "Cleo Abram": 5,
+          "Jeff Su": 1
+        },
+        "frequency_total": 12,
+        "frequency_pct": 8.6,
+        "confidence": "high",
+        "mechanism_writeup": "Split-screen thumbnails exploit the brain's comparative evaluation system: two juxtaposed states instantly communicate that a choice or transformation is at stake. The familiarity scaffolding mechanism fires because 'before/after' is a culturally universal narrative structure that requires zero explanation. The Loewenstein gap is then generated by the missing middle — what causes the transition from left to right, which the title implies the video will explain."
+      },
+      {
+        "id": "T-V4",
+        "name": "Face-Left Text-Right Exposition Layout",
+        "one_line_summary": "Creator face is anchored left (often pointing toward text); the right zone contains either text overlay, a visual prop, icon cluster, or diagram.",
+        "click_drivers_primary": [
+          "Face emotion contagion",
+          "Loewenstein information gap"
+        ],
+        "click_drivers_secondary": [
+          "Insider knowledge frame",
+          "Cognitive ease"
+        ],
+        "layout_signature": "Left-face right-content split; face often angled or pointing inward to direct gaze; right zone carries the information payload; negative space 2-3/5.",
+        "colour_signature": "Mix of dark and clean backgrounds; right zone often lighter or more complex than face zone.",
+        "expression_signature": "Excited, pointing, or surprised — the face must actively direct attention to the right-zone content.",
+        "frameworks": [
+          "Face emotion contagion",
+          "Pattern interrupt",
+          "Cognitive ease"
+        ],
+        "when_to_use": "Tutorial, formula-reveal, or comparison content where the right-zone information needs to be legible alongside the creator's reaction.",
+        "when_to_avoid": "Content where the diagram or text in the right zone becomes too dense to read at thumbnail size.",
+        "examples": [
+          {
+            "id": "cleo_abram_002",
+            "creator": "Cleo Abram",
+            "overlay_text": "NO"
+          },
+          {
+            "id": "cleo_abram_005",
+            "creator": "Cleo Abram",
+            "overlay_text": "(excited face, lightsaber prop)"
+          },
+          {
+            "id": "jeff_su_034",
+            "creator": "Jeff Su",
+            "overlay_text": "Perfect Prompt = [task][context][format][tone]"
+          },
+          {
+            "id": "cleo_abram_031",
+            "creator": "Cleo Abram",
+            "overlay_text": "GRAVITY IS FAKE*"
+          },
+          {
+            "id": "ali_abdaal_031",
+            "creator": "Ali Abdaal",
+            "overlay_text": "(serious face, text overlay left)"
+          },
+          {
+            "id": "jeff_su_001",
+            "creator": "Jeff Su",
+            "overlay_text": "= autoformat ✦"
+          }
+        ],
+        "creator_distribution": {
+          "Cleo Abram": 5,
+          "Jeff Su": 4,
+          "Ali Abdaal": 3,
+          "Alex Hormozi": 4
+        },
+        "frequency_total": 16,
+        "frequency_pct": 11.4,
+        "confidence": "high",
+        "mechanism_writeup": "The pointing or angled face acts as a visual arrow, leveraging the social referencing instinct — humans automatically look where others are looking. This directs viewer attention from the emotional anchor (face) to the information payload (right zone), effectively creating a two-beat thumbnail narrative: 'someone is excited' → 'about this specific thing'. The dual-zone structure also allows the thumbnail to communicate at two different reading distances (small on mobile: face; zoomed: text)."
+      },
+      {
+        "id": "T-V5",
+        "name": "Whiteboard / Diagram Reveal with Creator",
+        "one_line_summary": "Creator stands beside or points at a whiteboard, roadmap diagram, or dense annotated list, signalling comprehensive insider content.",
+        "click_drivers_primary": [
+          "Insider knowledge frame",
+          "Loewenstein information gap"
+        ],
+        "click_drivers_secondary": [
+          "Numerical anchor",
+          "Cialdini authority",
+          "Cognitive ease"
+        ],
+        "layout_signature": "Face takes 30-40% of frame; diagram or whiteboard takes 50-60%; text in diagram is deliberately too small to fully read at thumbnail size, creating a gap.",
+        "colour_signature": "Green (#1A8C3E) or blue (#3A6FBF, #2B6CB0) whiteboard backgrounds; often high saturation to contrast with face.",
+        "expression_signature": "Pointing or explaining — the gesture physically links face credibility to the content.",
+        "frameworks": [
+          "Insider knowledge frame",
+          "Loewenstein information gap",
+          "Cognitive ease"
+        ],
+        "when_to_use": "Blueprint, masterclass, or complete-guide content where the visual density signals comprehensiveness and effort.",
+        "when_to_avoid": "Content that is actually simple — a dense diagram on a simple topic creates a mismatch that can feel deceptive.",
+        "examples": [
+          {
+            "id": "alex_hormozi_019",
+            "creator": "Alex Hormozi",
+            "overlay_text": "FULL GUIDE / LONG GAME / DON'T DIVERSIFY…"
+          },
+          {
+            "id": "alex_hormozi_020",
+            "creator": "Alex Hormozi",
+            "overlay_text": "START FROM ZERO / WHO YOU ARE…"
+          },
+          {
+            "id": "alex_hormozi_031",
+            "creator": "Alex Hormozi",
+            "overlay_text": "FREE SALES COURSE / 1–6 modules"
+          },
+          {
+            "id": "alex_hormozi_021",
+            "creator": "Alex Hormozi",
+            "overlay_text": "$100,000"
+          },
+          {
+            "id": "ali_abdaal_033",
+            "creator": "Ali Abdaal",
+            "overlay_text": "GOALS → SYSTEMS"
+          }
+        ],
+        "creator_distribution": {
+          "Alex Hormozi": 4,
+          "Ali Abdaal": 1,
+          "Jeff Su": 0,
+          "Cleo Abram": 0
+        },
+        "frequency_total": 5,
+        "frequency_pct": 3.6,
+        "confidence": "medium",
+        "canonical_example_id": "alex_hormozi_019",
+        "mechanism_writeup": "The deliberately unreadable-at-thumbnail-scale diagram creates a powerful Loewenstein gap variant: the viewer can see that a complex map exists but cannot extract its content. This 'tantalising incompleteness' is more motivating than a readable diagram because the brain is activated by partial information. The creator pointing at the diagram adds Cialdini authority: this person not only knows the system, they can teach it."
+      },
+      {
+        "id": "T-V6",
+        "name": "Surprised / Excited Face with Question-Mark Overlay",
+        "one_line_summary": "Creator displays exaggerated surprise or excitement; short overlay text ends in a question ('THEY SOLVED IT?', 'DID WE DO IT?', 'TOO GOOD?') leaving the answer open.",
+        "click_drivers_primary": [
+          "Face emotion contagion",
+          "Loewenstein information gap"
+        ],
+        "click_drivers_secondary": [
+          "Pattern interrupt",
+          "MrBeast PVP"
+        ],
+        "layout_signature": "Face is primary visual (center or left-of-center); question-text is short (2-5 words) in bold sans-serif; often placed at top or overlaid on face zone.",
+        "colour_signature": "High-saturation backgrounds (#4CAF50, #E87B3B, #3AC93A, #F5C400) that match the emotional energy of the expression.",
+        "expression_signature": "Exclusively surprised or excited; mouth open, wide eyes — micro-expression intensity is the primary click lever.",
+        "frameworks": [
+          "Face emotion contagion",
+          "Loewenstein information gap",
+          "MrBeast PVP"
+        ],
+        "when_to_use": "Discovery, breakthrough, or reveal content where the outcome is genuinely uncertain or surprising; science and technology topics.",
+        "when_to_avoid": "Content with a settled answer — a question-mark frame on a topic with an obvious answer feels like clickbait.",
+        "examples": [
+          {
+            "id": "cleo_abram_010",
+            "creator": "Cleo Abram",
+            "overlay_text": "THEY SOLVED IT?"
+          },
+          {
+            "id": "cleo_abram_013",
+            "creator": "Cleo Abram",
+            "overlay_text": "THEY SOLVED IT?"
+          },
+          {
+            "id": "cleo_abram_017",
+            "creator": "Cleo Abram",
+            "overlay_text": "THEY FOUND IT?"
+          },
+          {
+            "id": "cleo_abram_028",
+            "creator": "Cleo Abram",
+            "overlay_text": "THEY FOUND IT?"
+          },
+          {
+            "id": "cleo_abram_021",
+            "creator": "Cleo Abram",
+            "overlay_text": "TOO GOOD?"
+          },
+          {
+            "id": "cleo_abram_014",
+            "creator": "Cleo Abram",
+            "overlay_text": "DID WE DO IT?"
+          }
+        ],
+        "creator_distribution": {
+          "Cleo Abram": 7,
+          "Alex Hormozi": 1,
+          "Ali Abdaal": 0,
+          "Jeff Su": 0
+        },
+        "frequency_total": 8,
+        "frequency_pct": 5.7,
+        "confidence": "medium",
+        "canonical_example_id": "cleo_abram_010",
+        "mechanism_writeup": "The open question combined with an excited or surprised face creates an 'emotional cliff-hanger': the face signals that something significant has happened, but the question refuses to confirm it. This fires the Loewenstein gap at a primal level because emotion without context is deeply uncomfortable for the human brain, which is wired to resolve ambiguous social signals. The MrBeast-PVP mechanism also activates because 'they found it' implies ongoing action the viewer risks missing."
+      },
+      {
+        "id": "T-V7",
+        "name": "Object / Tool Hero with Creator Reaction",
+        "one_line_summary": "A product, tool interface, diagram, or physical object is the visual hero; creator face is secondary, often reacting to or holding the object.",
+        "click_drivers_primary": [
+          "Familiarity scaffolding",
+          "Pattern interrupt"
+        ],
+        "click_drivers_secondary": [
+          "Loewenstein information gap",
+          "Specificity bias"
+        ],
+        "layout_signature": "Object takes 40-60% of frame; face is smaller and positioned to react toward the object; text overlay minimal or absent.",
+        "colour_signature": "Varies by object brand colours; background is clean or studio-dark to isolate the object.",
+        "expression_signature": "Excited, laughing, or surprised — the face reacts to the object to create a relational dynamic.",
+        "frameworks": [
+          "Familiarity scaffolding",
+          "Pattern interrupt",
+          "Loewenstein information gap"
+        ],
+        "when_to_use": "Tool review, product demonstration, or physical experiment content where the object IS the story.",
+        "when_to_avoid": "Abstract concept content where forcing an object as hero creates a confusing visual mismatch.",
+        "examples": [
+          {
+            "id": "cleo_abram_008",
+            "creator": "Cleo Abram",
+            "overlay_text": "I SHOVED ATLAS (robot)"
+          },
+          {
+            "id": "cleo_abram_009",
+            "creator": "Cleo Abram",
+            "overlay_text": "(robot dog, laughing face)"
+          },
+          {
+            "id": "jeff_su_007",
+            "creator": "Jeff Su",
+            "overlay_text": "LEVEL 1 / LEVEL 999 (ChatGPT box)"
+          },
+          {
+            "id": "ali_abdaal_015",
+            "creator": "Ali Abdaal",
+            "overlay_text": "my system (planner/book prop)"
+          },
+          {
+            "id": "jeff_su_013",
+            "creator": "Jeff Su",
+            "overlay_text": "(Claude/ChatGPT logo icons, thoughtful face)"
+          },
+          {
+            "id": "alex_hormozi_030",
+            "creator": "Alex Hormozi",
+            "overlay_text": "207g protein / 86g protein (flanked by food)"
+          }
+        ],
+        "creator_distribution": {
+          "Cleo Abram": 4,
+          "Jeff Su": 4,
+          "Ali Abdaal": 2,
+          "Alex Hormozi": 1
+        },
+        "frequency_total": 11,
+        "frequency_pct": 7.9,
+        "confidence": "high",
+        "mechanism_writeup": "Familiar objects (branded apps, robots, physical tools) trigger the familiarity scaffolding mechanism: the viewer instantly knows the domain context without reading the title, reducing cognitive load at the moment of scroll-stopping. The creator's reactive face then adds social proof — 'someone I know finds this noteworthy' — which elevates the object from neutral to interesting through emotional contagion."
+      },
+      {
+        "id": "T-V8",
+        "name": "High-Saturation Colour Pop with Bold Command Text",
+        "one_line_summary": "Thumbnail uses a single highly saturated background or colour block (#D0021B, #F5C518, #4CAF50) with 2-4 words of bold, all-caps command or statement text.",
+        "click_drivers_primary": [
+          "Pattern interrupt",
+          "Cognitive ease"
+        ],
+        "click_drivers_secondary": [
+          "Cialdini authority",
+          "Loss aversion"
+        ],
+        "layout_signature": "Solid or gradient single-colour background; text is dominant (40-60% of visual weight); face is present but secondary; negative space is intentionally minimal (1-2/5).",
+        "colour_signature": "Single saturated hue (#D0021B red, #F5C518 yellow, #4CAF50 green, #F97316 orange) contrasting with white text.",
+        "expression_signature": "Serious or explaining — the colour does the emotional work so the face can be controlled.",
+        "frameworks": [
+          "Pattern interrupt",
+          "Cognitive ease",
+          "Cialdini authority"
+        ],
+        "when_to_use": "Authoritative command content, strong contrarian statements, or provocative short-form opinion pieces.",
+        "when_to_avoid": "Warm or nuanced content where a single aggressive colour creates an emotional mismatch with the topic.",
+        "examples": [
+          {
+            "id": "alex_hormozi_004",
+            "creator": "Alex Hormozi",
+            "overlay_text": "SELL EXPENSIVE SH*T (#F5C518 yellow)"
+          },
+          {
+            "id": "alex_hormozi_008",
+            "creator": "Alex Hormozi",
+            "overlay_text": "THE 1 YEAR RULE (#C0140A red)"
+          },
+          {
+            "id": "alex_hormozi_028",
+            "creator": "Alex Hormozi",
+            "overlay_text": "PUT YOUR DAMN PHONE AWAY (#D0021B red)"
+          },
+          {
+            "id": "cleo_abram_032",
+            "creator": "Cleo Abram",
+            "overlay_text": "IN OR OUT? (#4CAF50 green)"
+          },
+          {
+            "id": "ali_abdaal_004",
+            "creator": "Ali Abdaal",
+            "overlay_text": "$947 / $329 payments (#F97316 orange)"
+          },
+          {
+            "id": "jeff_su_002",
+            "creator": "Jeff Su",
+            "overlay_text": "5 HOURS → 5 MIN (#1A1A2E dark)"
+          }
+        ],
+        "creator_distribution": {
+          "Alex Hormozi": 5,
+          "Ali Abdaal": 2,
+          "Cleo Abram": 3,
+          "Jeff Su": 3
+        },
+        "frequency_total": 13,
+        "frequency_pct": 9.3,
+        "confidence": "high",
+        "canonical_example_id": "alex_hormozi_004",
+        "mechanism_writeup": "Single saturated colour backgrounds function as pattern interrupts in a feed dominated by photographic thumbnails — the flat colour reads as 'designed' rather than 'captured', which the brain flags as novel. The bold command text then benefits from cognitive ease: 3-4 all-caps words can be processed in under 200ms, removing the cognitive cost of reading. This combination creates a two-millisecond impression before the viewer has consciously decided to engage."
+      },
+      {
+        "id": "T-V9",
+        "name": "App Icon / Tool Logo Cluster with Creator Face",
+        "one_line_summary": "Multiple recognisable app logos, platform icons, or UI screenshots surround or flank the creator's face, signalling multi-tool expertise.",
+        "click_drivers_primary": [
+          "Familiarity scaffolding",
+          "Numerical anchor"
+        ],
+        "click_drivers_secondary": [
+          "Pattern interrupt",
+          "Insider knowledge frame"
+        ],
+        "layout_signature": "Face at center or right; 4-10 icons arranged in arc, grid, or flanking pattern; logos must be recognisable at thumbnail size.",
+        "colour_signature": "Varies — icons carry their brand colours; background is usually dark or white to prevent visual competition.",
+        "expression_signature": "Excited or explaining — signals enthusiasm about the tools being shown.",
+        "frameworks": [
+          "Familiarity scaffolding",
+          "Numerical anchor",
+          "Insider knowledge frame"
+        ],
+        "when_to_use": "Multi-tool comparison, best-of curation, or ecosystem overview content where the breadth of coverage is itself a value signal.",
+        "when_to_avoid": "Single-tool deep-dives where the icon cluster creates false expectations of breadth.",
+        "examples": [
+          {
+            "id": "ali_abdaal_028",
+            "creator": "Ali Abdaal",
+            "overlay_text": "(app icons surrounding face)"
+          },
+          {
+            "id": "ali_abdaal_002",
+            "creator": "Ali Abdaal",
+            "overlay_text": "$3,000/month (icons surrounding face)"
+          },
+          {
+            "id": "jeff_su_013",
+            "creator": "Jeff Su",
+            "overlay_text": "(Claude/ChatGPT logos flanking)"
+          },
+          {
+            "id": "jeff_su_026",
+            "creator": "Jeff Su",
+            "overlay_text": "Life / Work (icon cluster flanking)"
+          },
+          {
+            "id": "alex_hormozi_003",
+            "creator": "Alex Hormozi",
+            "overlay_text": "Use these cheat codes (floating icon cluster)"
+          }
+        ],
+        "creator_distribution": {
+          "Ali Abdaal": 3,
+          "Jeff Su": 3,
+          "Alex Hormozi": 1,
+          "Cleo Abram": 0
+        },
+        "frequency_total": 7,
+        "frequency_pct": 5.0,
+        "confidence": "medium",
+        "canonical_example_id": "ali_abdaal_028",
+        "mechanism_writeup": "Recognised app icons activate the familiarity scaffolding mechanism in under 100ms — the viewer already has an emotional relationship with these brands and that trust transfers to the creator adjacent to them. Multiple icons simultaneously trigger a numerical anchor: 'there are many things here, more than I could discover alone', which makes the curation value proposition immediately legible without reading the title."
+      },
+      {
+        "id": "T-V10",
+        "name": "Numerical Metric Hero with Reaction Face",
+        "one_line_summary": "A specific, large, or surprising number (dollar amount, time saving, count) is the dominant text element, with creator face reacting to it.",
+        "click_drivers_primary": [
+          "Numerical anchor",
+          "Specificity bias"
+        ],
+        "click_drivers_secondary": [
+          "Pattern interrupt",
+          "Loss aversion",
+          "Status signaling"
+        ],
+        "layout_signature": "Number is rendered in very large type (often largest element in frame); face is positioned to 'react' to the number; negative space is low to medium.",
+        "colour_signature": "High contrast between number colour and background; often green (#4CAF50) for money/positive or red (#D9231D) for warning.",
+        "expression_signature": "Surprised or excited — the face must confirm that the number is significant enough to warrant a reaction.",
+        "frameworks": [
+          "Numerical anchor",
+          "Specificity bias",
+          "Pattern interrupt"
+        ],
+        "when_to_use": "Income, time-saving, or quantified-outcome content where the specific number is itself the hook.",
+        "when_to_avoid": "Content where the number requires context to be meaningful — decontextualised numbers are confusing rather than compelling.",
+        "examples": [
+          {
+            "id": "ali_abdaal_029",
+            "creator": "Ali Abdaal",
+            "overlay_text": "$0 / $1M (flanking face)"
+          },
+          {
+            "id": "alex_hormozi_021",
+            "creator": "Alex Hormozi",
+            "overlay_text": "$100,000 (whiteboard)"
+          },
+          {
+            "id": "ali_abdaal_024",
+            "creator": "Ali Abdaal",
+            "overlay_text": "9 HOURS / 2 HOURS / A+ (whiteboard)"
+          },
+          {
+            "id": "jeff_su_002",
+            "creator": "Jeff Su",
+            "overlay_text": "5 HOURS → 5 MIN"
+          },
+          {
+            "id": "cleo_abram_035",
+            "creator": "Cleo Abram",
+            "overlay_text": "5,000 PER MINUTE"
+          },
+          {
+            "id": "alex_hormozi_030",
+            "creator": "Alex Hormozi",
+            "overlay_text": "207g protein / 86g protein"
+          }
+        ],
+        "creator_distribution": {
+          "Ali Abdaal": 3,
+          "Alex Hormozi": 3,
+          "Jeff Su": 2,
+          "Cleo Abram": 2
+        },
+        "frequency_total": 10,
+        "frequency_pct": 7.1,
+        "confidence": "high",
+        "canonical_example_id": "ali_abdaal_029",
+        "mechanism_writeup": "Specific numbers short-circuit the viewer's credibility evaluation: the brain treats precision as a proxy for verification ('someone counted this'), making the claim feel more trustworthy than a qualitative description. Before/after number pairs ($0 → $1M; 9 hours → 2 hours) are especially effective because they compress an entire transformation narrative into two data points, firing both the Loewenstein gap ('how?') and the loss aversion mechanism ('I could be on the wrong side of this gap')."
+      }
+    ],
+    "joint_pairings": [
+      {
+        "id": "JP-1",
+        "name": "Contrarian Title + High-Saturation Command Text Thumbnail",
+        "title_archetype_id": "T-A3",
+        "thumb_archetype_id": "T-V8",
+        "frequency": 9,
+        "creator_distribution": {
+          "Alex Hormozi": 5,
+          "Jeff Su": 2,
+          "Cleo Abram": 2,
+          "Ali Abdaal": 0
+        },
+        "why_they_pair": "The contrarian title creates a cognitive dissonance ('you're doing it wrong') that the thumbnail must immediately visualise. A bold command text on a saturated background confirms the confrontational tone — the creator is willing to say something uncomfortable directly. Together they create a unified 'blunt authority' persona signal that is unambiguous at scroll speed."
+      },
+      {
+        "id": "JP-2",
+        "name": "Story-Confession Blueprint Title + Whiteboard Diagram Thumbnail",
+        "title_archetype_id": "T-A4",
+        "thumb_archetype_id": "T-V5",
+        "frequency": 5,
+        "creator_distribution": {
+          "Alex Hormozi": 4,
+          "Ali Abdaal": 1,
+          "Jeff Su": 0,
+          "Cleo Abram": 0
+        },
+        "why_they_pair": "The first-person blueprint title ('If I were starting over, I'd do this') promises a complete, personal system. The whiteboard diagram thumbnail provides visual proof that a system exists — the density of the diagram serves as a comprehensiveness signal. The pairing resolves the viewer's implicit scepticism ('does he actually have a plan?') before they even click, making it redundant-reinforcing in the most effective sense."
+      },
+      {
+        "id": "JP-3",
+        "name": "Duration Promise Title + Face-Right Clean-Background Tutorial Thumbnail",
+        "title_archetype_id": "T-A7",
+        "thumb_archetype_id": "T-V4",
+        "frequency": 10,
+        "creator_distribution": {
+          "Jeff Su": 9,
+          "Alex Hormozi": 1,
+          "Ali Abdaal": 0,
+          "Cleo Abram": 0
+        },
+        "why_they_pair": "The duration promise title ('Master 80% in 13 minutes') signals brevity and structure. The clean white-background face-left + UI/tool-right thumbnail confirms both the tool topic (tool logo visible) and the accessible tone (light colours, approachable expression). The pairing removes two barriers simultaneously: 'Is this worth my time?' (title) and 'Is this too technical?' (thumbnail). This is Jeff Su's dominant signature pairing."
+      },
+      {
+        "id": "JP-4",
+        "name": "Numbered Listicle Title + Excited Face with Icon Cluster Thumbnail",
+        "title_archetype_id": "T-A1",
+        "thumb_archetype_id": "T-V9",
+        "frequency": 6,
+        "creator_distribution": {
+          "Ali Abdaal": 4,
+          "Jeff Su": 2,
+          "Alex Hormozi": 0,
+          "Cleo Abram": 0
+        },
+        "why_they_pair": "The numbered title creates a completeness expectation ('I will get all N items'). The icon cluster thumbnail visually represents that plurality — multiple logos or icons mirror the multiple items promised. The excited face validates that the items are genuinely worth collecting. The pairing is complementary-gap: the title gives the count, the thumbnail teases the content without full disclosure."
+      },
+      {
+        "id": "JP-5",
+        "name": "Question Curiosity Gap Title + Surprised Face Question Overlay Thumbnail",
+        "title_archetype_id": "T-A6",
+        "thumb_archetype_id": "T-V6",
+        "frequency": 8,
+        "creator_distribution": {
+          "Cleo Abram": 7,
+          "Alex Hormozi": 1,
+          "Ali Abdaal": 0,
+          "Jeff Su": 0
+        },
+        "why_they_pair": "The open-ended question title ('What Keeps Physicists Up at Night?') creates an information gap. The surprised-face + short question overlay thumbnail ('DID WE DO IT?', 'THEY FOUND IT?') does not answer the question but confirms that the creator themselves was surprised by the answer, elevating the stakes. The double-question structure (title question + thumbnail question) is Cleo's dominant signature and works because two unresolved questions reinforce rather than cancel each other."
+      },
+      {
+        "id": "JP-6",
+        "name": "How-To Specificity Title + Split-Screen Before/After Thumbnail",
+        "title_archetype_id": "T-A2",
+        "thumb_archetype_id": "T-V3",
+        "frequency": 6,
+        "creator_distribution": {
+          "Ali Abdaal": 4,
+          "Alex Hormozi": 1,
+          "Jeff Su": 1,
+          "Cleo Abram": 0
+        },
+        "why_they_pair": "The how-to title promises transformation. The before/after split-screen thumbnail visually proves the transformation is achievable by showing the two states. The pairing creates a 'thumb-amplifies-title' relationship: the title tells you what you will learn, the thumbnail shows you what success looks like, creating a complete before-click value proposition."
+      },
+      {
+        "id": "JP-7",
+        "name": "Authority Research Title + Tight Face Crop (Surprised) Thumbnail",
+        "title_archetype_id": "T-A8",
+        "thumb_archetype_id": "T-V2",
+        "frequency": 5,
+        "creator_distribution": {
+          "Ali Abdaal": 3,
+          "Alex Hormozi": 1,
+          "Cleo Abram": 1,
+          "Jeff Su": 0
+        },
+        "why_they_pair": "The authority research title ('I Read 107 Books') signals effortful synthesis. The surprised tight-crop face thumbnail communicates that even the expert who did the research was astonished by what they found — validating that the content is genuinely revelatory rather than predictable. The surprise face adds the emotional hook that pure authority claims lack."
+      },
+      {
+        "id": "JP-8",
+        "name": "Exclusive Secret Title + 'YOU'RE BEING LIED TO' Confrontational Overlay Thumbnail",
+        "title_archetype_id": "T-A5",
+        "thumb_archetype_id": "T-V8",
+        "frequency": 4,
+        "creator_distribution": {
+          "Cleo Abram": 3,
+          "Alex Hormozi": 1,
+          "Ali Abdaal": 0,
+          "Jeff Su": 0
+        },
+        "why_they_pair": "The exclusive secret title implies the mainstream narrative is incomplete. The confrontational overlay thumbnail ('YOU'RE BEING LIED TO', 'NO REALLY!', 'FAKE FAKE') escalates the claim from 'incomplete' to 'actively deceptive'. Together they create maximum epistemic threat — triggering both the information gap (what's the real truth?) and loss aversion (I may have been acting on false beliefs). High-risk pairing but high-click when the content delivers."
+      }
+    ],
+    "per_creator_signatures": [
+      {
+        "creator": "Alex Hormozi",
+        "dominant_archetypes": [
+          "T-A4",
+          "T-A2",
+          "T-A3",
+          "T-V2",
+          "T-V5",
+          "T-V8"
+        ],
+        "signature_quirks_not_in_general_catalog": [
+          "Profanity-amplified command text on thumbnails: 'SELL EXPENSIVE SH*T', 'WAKE THE F*CK UP', 'Just work f**king harder', 'PUT YOUR DAMN PHONE AWAY' — functions as a pattern interrupt and authenticity signal simultaneously; not used by any other creator in the dataset.",
+          "Gratitude-loop overlay: 'Thank me in 3 years', 'Thank me next year', 'Thank Me Later' — implies the creator's advice is so good the viewer will only appreciate it retrospectively; unique parasocial authority device.",
+          "Dollar-figure credential as title opener: '$100M CEO…', 'If I Wanted to Make My First $100K…' — income figures as authority shorthand rather than educational specificity.",
+          "Dark studio + single-colour abstract background (deep purple, dark navy): used specifically for serious confession or 'hard truth' content; creates a visual signature distinct from other creators' on-location or white-clean aesthetics.",
+          "Handle watermark on thumbnail: '@AlexHormozi' in small text on thumbnail — functions as a brand-recall device even if the video is shared without context."
+        ],
+        "shosho_relevance": "Medium. The blueprint/confession archetype (T-A4) and specificity-anchor how-to (T-A2) are highly portable to Traditional Chinese health content ('If I wanted to reverse my biological age, I'd do this'). The profanity and aggressive confrontational frame are culturally incompatible with 修修's evidence-based, nurturing health voice and should be avoided. The 'Thank me later' delay-reward framing could be adapted softly ('你的身體一年後會感謝你')."
+      },
+      {
+        "creator": "Ali Abdaal",
+        "dominant_archetypes": [
+          "T-A2",
+          "T-A1",
+          "T-A4",
+          "T-V3",
+          "T-V4"
+        ],
+        "signature_quirks_not_in_general_catalog": [
+          "Adverb-intensifier 'Actually': 'How to Actually Journal', 'How to Actually Manage Your Time' — signals that prior attempts have failed and this version is the corrective; gentle contrarian without the aggression of Hormozi's frame.",
+          "Medical-authority neuroscience hook: 'Dopamine', 'Evidence-Based' — Ali's physician background allows credibility in science-adjacent claims that other productivity creators cannot match; not a general archetype because it is credential-dependent.",
+          "Warm, pastel, on-location thumbnail aesthetic: beige, sand, cream backgrounds (#D4C8B8, #C8B89A) contrasting with all other creators who favour dark studios or white-clean; creates a distinctively approachable, aspirational-life brand.",
+          "Object-only thumbnail (no face): used selectively for book reviews or journalling content (ali_abdaal_008, ali_abdaal_009, ali_abdaal_019) — signals the content is about the thing, not the creator; unusual in a face-dominant genre.",
+          "Parenthetical credibility subtag: '(Evidence-Based)', '(My System)', '(Masterclass)' — parenthetical qualifiers used more frequently than any other creator to signal category and depth."
+        ],
+        "shosho_relevance": "High. The warm on-location aesthetic, physician-authority credibility frame, numbered listicle with health domain, and 'actually works' softly contrarian tone are all directly portable to 修修's voice. The dopamine/neuroscience content angle is particularly strong for Traditional Chinese health audiences interested in science-backed longevity. Object-only thumbnails could work for herb/supplement content."
+      },
+      {
+        "creator": "Cleo Abram",
+        "dominant_archetypes": [
+          "T-A6",
+          "T-A3",
+          "T-A5",
+          "T-V6",
+          "T-V3"
+        ],
+        "signature_quirks_not_in_general_catalog": [
+          "Double-question thumbnail pattern: title poses one question, thumbnail poses a different but related short question ('THEY SOLVED IT?', 'DID WE DO IT?', 'THEY FOUND IT?') — the second question amplifies rather than repeats the first, creating compounded curiosity; unique to Cleo in this dataset.",
+          "AI-generated abstract background: used frequently for space, science, and technology topics (#1A1A2E dark cosmos, #E05A00 abstract orange) — signals that the topic itself is beyond conventional photography; not used by other creators.",
+          "Named-authority-guest as primary title hook: 'With Nobel Prize Winner Dr. Jennifer Doudna', 'NVIDIA CEO Jensen Huang', 'former Google CEO' — external authority is the primary click driver rather than Cleo's own persona; most authority-guest-led titles of any creator.",
+          "High-saturation nature/science colour palette: #3AC93A (green for biology), #00BFDE (ocean blue), #7BC8A4 (teal for medical) — colour used thematically to match topic domain rather than as a brand constant.",
+          "Collective-identity wonder frame: 'We Built the Biggest Experiment Ever', 'What If You Dug Straight Down?' — uses 'we' or universal 'you' to make the viewer feel part of humanity's exploration; no other creator in the dataset uses this collective framing."
+        ],
+        "shosho_relevance": "Medium-High. The wonder-curiosity question gap (T-A6) maps well to Traditional Chinese audiences' appetite for science-explained health content ('What Would Happen to Your Body If You Lived to 150?'). The named-authority-guest pattern is excellent for longevity expert interview content. The AI-generated abstract background is transferable for topics like genetics, cellular ageing, or microbiome research. The double-question thumbnail pattern is worth testing. The space/tech focus is not directly relevant but the structural pattern is."
+      },
+      {
+        "creator": "Jeff Su",
+        "dominant_archetypes": [
+          "T-A7",
+          "T-A3",
+          "T-A1",
+          "T-V1",
+          "T-V4"
+        ],
+        "signature_quirks_not_in_general_catalog": [
+          "Pareto-fraction formula in title: '80% of [tool] in N minutes' — the most systematised and repeated formula in the dataset (used 5+ times); converts complex tools into accessible commitment structures; directly invented and owned by Jeff Su in this sample.",
+          "White-clean, minimal-brand-logo thumbnail style: clean white backgrounds (#FFFFFF) with tool logos as the primary colour source; lower production complexity than Hormozi's dark studio but higher information density than Cleo's scene-based shots; creates a 'trusted reviewer' aesthetic.",
+          "Laughing/smiling expression dominance: Jeff Su uses laughing/excited expressions more consistently than serious expressions, unlike Hormozi (primarily serious) — signals approachability and non-threatening expertise for tool-anxiety audiences.",
+          "Version-specificity anchor: 'ChatGPT-5', 'Gemini 3.1', '2026 Correct Way' — tool version numbers used as authority markers implying up-to-date knowledge; more version-specific than any other creator.",
+          "Bilingual title construction: some titles are natively in Traditional/Simplified Chinese characters mixed with English tool names — unique to Jeff Su in this dataset and suggests direct zh-hant audience targeting."
+        ],
+        "shosho_relevance": "Medium. The Pareto-fraction formula ('Master 80% of [health topic] in N minutes') is directly portable: '13 分鐘學會 80% 的長壽飲食法則' is a proven format for 修修. The white-clean tool-tutorial aesthetic could adapt for supplement reviews or wearable health tech. The laughing/approachable expression style matches 修修's nurturing brand voice well. The AI-tool domain specificity is irrelevant but the tutorial structure is universal."
+      }
+    ],
+    "universal_patterns": [
+      {
+        "id": "UP-1",
+        "name": "Loewenstein Information Gap as Near-Universal Title Driver",
+        "description": "All four creators use the information gap mechanism in nearly every title (133/140 titles, 95%). This is not an archetype-level finding but a baseline: any title that does not contain an unresolved question, implied secret, or partial reveal is an outlier. For 修修, this means every title should withhold at least one element that the thumbnail alone cannot resolve.",
+        "creator_evidence": "Alex Hormozi: 35/35 titles coded with Loewenstein gap. Ali Abdaal: 35/35. Cleo Abram: 35/35. Jeff Su: 35/35."
+      },
+      {
+        "id": "UP-2",
+        "name": "Face Present + Emotional Expression in ~96% of Thumbnails",
+        "description": "Only 6 of 140 thumbnails are face-absent (n/a expression), and those are concentrated in Ali Abdaal's object-hero thumbnails. All other thumbnails feature a recognisable creator face with a legible emotional expression. This is a platform convention, not a differentiator — absence of face is the differentiator and must be used purposefully.",
+        "creator_evidence": "Alex Hormozi: 35/35 face-present. Ali Abdaal: 31/35. Cleo Abram: 35/35. Jeff Su: 34/35."
+      },
+      {
+        "id": "UP-3",
+        "name": "Pattern Interrupt + Face Emotion Contagion as Universal Thumbnail Framework Pair",
+        "description": "Pattern interrupt and Face emotion contagion co-occur in 121+ thumbnails across all four creators (both frameworks appear in every creator's top-3 thumbnail drivers). This confirms that the scroll-stopping function and the emotional-transfer function are both non-negotiable in thumbnail design — neither alone is sufficient.",
+        "creator_evidence": "Both frameworks appear in the thumbnail_framework_distribution top-2 for all 4 creators."
+      },
+      {
+        "id": "UP-4",
+        "name": "Complementary-Gap as Dominant Title-Thumbnail Relationship",
+        "description": "108 of 140 (77%) title-thumbnail pairs use the complementary-gap relationship: the thumbnail withholds information that the title implies, and the title implies information the thumbnail does not show. This means the two elements deliberately do not tell the same story — the viewer must click to resolve the gap between them. Redundant-reinforcing (20/140) and thumb-amplifies-title (8/140) are secondary strategies used for high-certainty content.",
+        "creator_evidence": "complementary-gap is the #1 relationship for all 4 creators in the raw data."
+      },
+      {
+        "id": "UP-5",
+        "name": "Identity-Based Hook as Secondary Universal Title Driver",
+        "description": "Identity-based hook appears in 77/140 titles (55%) across all four creators. Successful titles do not speak to everyone — they activate a specific self-concept (student, broke person, ambitious 20-something, AI beginner) that makes the viewer feel the content is specifically for them. For 修修, this translates to health-identity anchors: '上班族', '40歲後', '想活過90歲的人'.",
+        "creator_evidence": "Identity-based hook is in the top-3 click_drivers for all 4 creators across multiple archetypes."
+      },
+      {
+        "id": "UP-6",
+        "name": "Specificity Signals Credibility Across All Creators",
+        "description": "All four creators use at least one concrete specificity marker (a number, named person, tool name, percentage, or time duration) in their highest-performing title archetypes. Vague aspirational titles exist but are always paired with high-specificity thumbnails or belong to story-confession arcs where the creator's personal authority substitutes for data specificity.",
+        "creator_evidence": "Specificity bias appears in the title_framework_distribution with 41 occurrences; numerical anchor in 32. Both span all 4 creators."
+      }
+    ],
+    "methodology_caveats": [
+      {
+        "id": "MC-1",
+        "concern": "English-language YouTube conventions may not translate to zh-Hant audiences",
+        "detail": "The entire sample of 140 thumbnails is from English-language creators optimising for Western YouTube audiences. Conventions like profanity-as-authenticity (Hormozi), celebrity name-drops as authority (Cleo Abram × Sam Altman), and the 'broke to rich' identity arc are culturally embedded in North American aspiration narratives. Traditional Chinese health audiences on YouTube.com/tw or YouTube.com/hk may respond differently to: aggressive command text (could read as impolite rather than direct), first-person confession framings (may be perceived as boastful rather than intimate), and statistical social-proof anchors ('99% of people') that assume a competitive individualist worldview. All archetypes should be pilot-tested with zh-Hant thumbnails before treating them as validated patterns."
+      },
+      {
+        "id": "MC-2",
+        "concern": "Click-driver framework attributions are post-hoc rationalisations, not causal validations",
+        "detail": "The click_drivers assigned to each archetype (e.g., 'Loewenstein information gap fires because…') are derived from pattern-matching the title/thumbnail structure to established psychological frameworks, not from click-through rate data, eye-tracking studies, or A/B tests. We do not have actual CTR data for any of the 140 videos. A thumbnail coded as 'Pattern interrupt' might be high-CTR because of creator fame, algorithm promotion, topic virality, or posting time — none of which are captured in structural analysis. All mechanism_writeup explanations should be treated as falsifiable hypotheses, not confirmed causal mechanisms."
+      },
+      {
+        "id": "MC-3",
+        "concern": "Several archetypes likely conflate two distinct patterns and should be split in v2",
+        "detail": "T-A4 (Story-Confession / Personal Blueprint) conflates at least two different structures: (a) retrospective regret frames ('What I wish I knew', 'Things I'd tell my younger self') and (b) prospective hypothetical frames ('If I were starting today, I'd do this'). These may perform differently because retrospective frames activate empathy while prospective frames activate modelling/envy. Similarly, T-V1 (Face-Right Text-Left) includes both short command text (2-3 words, Hormozi style) and longer conversational text (Jeff Su's 'Copy these settings', 'teach me…'). These may function as different archetypes at the psychological level despite sharing a layout structure. A v2 analysis with CTR data should attempt to split both."
+      },
+      {
+        "id": "MC-4",
+        "concern": "Cleo Abram's double-question thumbnail pattern may be over-attributed as a transferable archetype",
+        "detail": "The 'Surprised Face + Short Question Overlay' thumbnail pattern (T-V6) is almost exclusively a Cleo Abram pattern (7 of 8 examples). It is included in the thumbnail_archetypes because the mechanism is theoretically sound and appears in multiple creators' outputs, but the frequency threshold is marginal (8 examples, ≥2 creators). This pattern is also deeply tied to Cleo's science-explainer brand identity — it works because her audience expects wonder-curiosity content and trusts her to resolve the question. For 修修, a health channel, the 'THEY SOLVED IT?' overlay may carry connotations of medical breakthrough hype that could undermine evidence-based credibility if not carefully grounded."
+      },
+      {
+        "id": "MC-5",
+        "concern": "Duration/Time-compression promise archetype (T-A7) is 75% Jeff Su and may reflect his specific audience, not a universal pattern",
+        "detail": "9 of 12 duration-promise examples are from Jeff Su, whose audience consists primarily of productivity-focused professionals seeking efficient AI-tool onboarding. The '80% in N minutes' formula is specifically optimised for an audience with high tool-anxiety and time scarcity around learning new software. It is classified as a universal archetype (≥2 creators, ≥10 examples) because Alex Hormozi uses a compressed-wisdom variant ('13 years in 90 minutes'), but the mechanisms differ significantly: Jeff Su's version targets learning efficiency while Hormozi's targets authority compression. For 修修, the health adaptation ('Master 80% of [longevity diet] in 13 minutes') may feel reductive for complex health topics and should be used selectively for genuinely learnable, actionable content rather than nuanced medical discussions."
+      },
+      {
+        "id": "MC-6",
+        "concern": "Sample selection bias — all four creators are already high-CTR outliers, creating a survivorship problem",
+        "detail": "All 140 thumbnails were selected from high-performing creators, meaning the dataset contains only observed successes. We cannot observe which title/thumbnail structures these creators tried and abandoned, which formats their audiences rejected, or whether the same structures would perform equivalently on a smaller channel without an established subscriber base. Brand recognition (Alex Hormozi's face alone drives clicks from existing fans) inflates the apparent effectiveness of creator-authority archetypes. For 修修 as a growing channel, archetypes that rely on pre-established parasocial trust (Story-Confession, personal blueprint) may underperform until the creator's face is recognisable. Archetypes that are topic-first (Numbered Listicle, Question Curiosity Gap, Duration Promise) may be more effective in the early growth phase."
+      }
+    ]
+  }
+}
