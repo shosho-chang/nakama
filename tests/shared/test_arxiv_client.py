@@ -32,7 +32,7 @@ _ARXIV_XML_2_ENTRIES = """<?xml version="1.0" encoding="UTF-8"?>
     <author><name>Peiyi Wang</name></author>
     <author><name>Qihao Zhu</name></author>
     <link href="http://arxiv.org/abs/2402.03300v2" rel="alternate" type="text/html"/>
-    <link title="pdf" href="http://arxiv.org/pdf/2402.03300v2" rel="related" type="application/pdf"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2402.03300v2" rel="related"/>
     <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
     <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
     <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>

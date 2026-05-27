@@ -2040,7 +2040,10 @@ class NamiHandler(BaseHandler):
         sort_by = str(input_.get("sort_by") or "relevance").strip()
         if sort_by not in ("relevance", "submittedDate", "lastUpdatedDate"):
             return _ToolOutcome(
-                content=f"sort_by 必須是 relevance / submittedDate / lastUpdatedDate，收到：{sort_by!r}",
+                content=(
+                    "sort_by 必須是 relevance / submittedDate / lastUpdatedDate，"
+                    f"收到：{sort_by!r}"
+                ),
                 is_error=True,
             )
 

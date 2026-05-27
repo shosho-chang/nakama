@@ -148,7 +148,9 @@ def get_citations(
     capped = max(1, min(limit, 20))
     # S2 不接受 vN 後綴。只剝尾端版本號，避免吃掉舊式 ID 中段的 'v'
     # （例：``cs.cv/0701001`` 不可被 split('v')[0] 截成 ``cs.c``）。
-    s2_id = f"arXiv:{re.sub(r'v\d+$', '', aid)}"
+    # Backslash in f-string is Python 3.12+; pull the regex out for 3.11 compat.
+    normalized_id = re.sub(r"v\d+$", "", aid)
+    s2_id = f"arXiv:{normalized_id}"
     paper_url = f"{_S2_BASE}/paper/{s2_id}"
     paper_fields = (
         "title,authors,year,citationCount,referenceCount,"
