@@ -72,6 +72,10 @@ from shared.thumbnail_idea import (
     parse_idea,
     parse_ideas_batch,
 )
+from shared.thumbnail_playbook import (
+    format_playbook_index_for_prompt,
+    load_playbook_index,
+)
 from thousand_sunny.auth import check_auth
 
 logger = logging.getLogger("nakama.web.bridge_project_thumbnails")
@@ -216,12 +220,33 @@ def _brainstorm_user_message(
     title_candidates: list[str],
     one_sentence: str,
     search_topic: str,
-    reference_images: list[Path],
+    reference_images: list[Path] | None = None,
+    keep_idea_indices: list[int] | None = None,
+    kept_ideas_raw: list[str] | None = None,
 ) -> list[dict]:
-    """Build the multi-part user content for the brainstorm LLM call."""
+    """Build the multi-part user content for the brainstorm LLM call.
+
+    v1.1 playbook-integrated: distilled archetype catalog (text) replaces
+    vision few-shot reference-image attachment (per ADR-033 D4 redesign).
+    ``reference_images`` arg retained for backward compat but defaults to no
+    image attachment.
+
+    ``keep_idea_indices`` / ``kept_ideas_raw`` — set when re-rolling a subset
+    of ideas (B-min.2). LLM is instructed to KEEP the listed indices verbatim
+    and only generate new variants for the remaining slots.
+    """
     parts: list[dict] = []
-    for img in reference_images:
-        parts.append(_ref_image_to_block(img))
+    # Legacy reference-image attachment (optional, off by default in v1.1)
+    if reference_images:
+        for img in reference_images:
+            parts.append(_ref_image_to_block(img))
+
+    # Playbook archetype index injection (~1.5K tokens, distilled from 140-row corpus)
+    try:
+        playbook_text = format_playbook_index_for_prompt(load_playbook_index())
+    except Exception as exc:  # noqa: BLE001 — fail soft if playbook files missing
+        logger.warning("playbook index unavailable, falling back to no archetype tags: %s", exc)
+        playbook_text = ""
 
     brief_text = (
         f"## Project brief\n\n"
@@ -231,10 +256,28 @@ def _brainstorm_user_message(
     )
     for t in title_candidates or ["（未填）"]:
         brief_text += f"  - {t}\n"
+
+    # Selective re-roll mode: instruct LLM to keep some ideas verbatim
+    if keep_idea_indices and kept_ideas_raw:
+        brief_text += "\n## Selective re-roll mode\n\n"
+        brief_text += (
+            "The user wants to KEEP the following idea(s) and only generate fresh variants "
+            "for the remaining slot(s). When you output 3 ideas, the kept ideas MUST appear "
+            "VERBATIM at their original indices; the new ideas must be materially different "
+            "from the kept ones along ≥2 of the diversity axes.\n\n"
+        )
+        for idx, raw in zip(keep_idea_indices, kept_ideas_raw):
+            brief_text += f"### Keep at index {idx + 1} (verbatim)\n\n```\n{raw}\n```\n\n"
+
     brief_text += (
-        "\nProduce 3 distinct thumbnail idea blocks per the 5-line format. "
-        "Diversity requirement: at least 2 differing axes across the 3 ideas."
+        "\nProduce 3 distinct thumbnail idea blocks per the 6-line format "
+        "(archetype tag line + 5 content lines). "
+        "Diversity requirement: at least 2 differing axes "
+        "(title archetype, hook, emotion, bg, decoration)."
     )
+
+    if playbook_text:
+        parts.append({"type": "text", "text": playbook_text})
     parts.append({"type": "text", "text": brief_text})
     return parts
 
@@ -270,13 +313,14 @@ async def thumbnail_brainstorm(
         )
 
     raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
-    references = _reference_images_for(entry.content_type)
 
+    # v1.1: vision few-shot images replaced by distilled playbook text injection
+    # (ADR-033 D4 redesign). Reference image lookup retained for backward compat
+    # but not invoked by the main brainstorm path. See shared/thumbnail_playbook.py.
     user_parts = _brainstorm_user_message(
         title_candidates=list(entry.title_candidates),
         one_sentence=str(raw_fm.get("one_sentence") or ""),
         search_topic=str(raw_fm.get("search_topic") or ""),
-        reference_images=references,
     )
 
     system_prompt = _load_brainstorm_prompt(entry.content_type)
@@ -324,6 +368,15 @@ async def thumbnail_brainstorm(
         logger.exception("thumbnail brainstorm write-back failed: slug=%s", slug)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    # Brainstorm meta persistence (A.4 — revealed-preference tracking for v2 grade refinement).
+    _persist_brainstorm_meta(
+        slug=slug,
+        content_type=entry.content_type,
+        ideas=ideas,
+        raw_response=response_text,
+        model=model,
+    )
+
     # Audit log (cost / parse stats observability).
     try:
         record_api_call(
@@ -337,7 +390,8 @@ async def thumbnail_brainstorm(
                     "project": slug,
                     "content_type": entry.content_type,
                     "n_ideas": len(ideas),
-                    "n_references": len(references),
+                    "n_references": 0,  # v1.1: playbook text replaces image few-shot
+                    "archetype_tags": [list(i.archetype_tags) for i in ideas],
                 },
                 ensure_ascii=False,
             ),
@@ -377,6 +431,321 @@ def _split_response_into_blocks(response_text: str, expected: int) -> list[str]:
         while len(blocks) < expected:
             blocks.append(blocks[-1] if blocks else "")
     return blocks[:expected]
+
+
+def _brainstorm_meta_path(slug: str) -> Path:
+    """Repo-local JSON path for revealed-preference / archetype tag history.
+
+    Co-located with thumbnail run artifacts: ``{thumbnails_dir}/{slug}/brainstorm_meta.json``.
+    Env override ``NAKAMA_THUMBNAILS_DATA_DIR`` (used by tests) automatically
+    redirects this path too so tests don't write into the real repo.
+    """
+    return _thumbnails_dir() / slug / "brainstorm_meta.json"
+
+
+def _persist_brainstorm_meta(
+    *,
+    slug: str,
+    content_type: str,
+    ideas: list[ParsedIdea],
+    raw_response: str,
+    model: str,
+) -> None:
+    """Append a brainstorm run record to project's thumbnail_brainstorm_meta.json.
+
+    Captures: archetype tags chosen by LLM, emotion picks, raw LLM output,
+    timestamp + model. Used downstream for revealed-preference analysis when
+    修修 picks one of the 3 → which archetype was over-/under-represented.
+
+    Failures are logged + swallowed — must never block the brainstorm success path.
+    """
+    try:
+        meta_path = _brainstorm_meta_path(slug)
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+
+        run_record = {
+            "ts": datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds"),
+            "content_type": content_type,
+            "model": model,
+            "ideas": [
+                {
+                    "index": i,
+                    "archetype_tags": list(idea.archetype_tags),
+                    "emotion_key": idea.emotion_key,
+                    "hook": idea.hook,
+                }
+                for i, idea in enumerate(ideas)
+            ],
+            "raw_response_first_chars": raw_response[:1200],  # keep for debug, cap to avoid bloat
+        }
+
+        if meta_path.exists():
+            try:
+                existing = json.loads(meta_path.read_text(encoding="utf-8"))
+                runs = existing.get("runs", [])
+            except json.JSONDecodeError:
+                logger.warning("brainstorm_meta.json corrupt — overwriting (slug=%s)", slug)
+                runs = []
+        else:
+            runs = []
+
+        runs.append(run_record)
+        # Cap history at 50 most recent runs to avoid unbounded growth
+        if len(runs) > 50:
+            runs = runs[-50:]
+
+        meta_path.write_text(
+            json.dumps(
+                {"schema_version": "v1", "slug": slug, "runs": runs},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:  # noqa: BLE001 — never block success path
+        logger.exception("brainstorm meta persistence failed (non-fatal, slug=%s)", slug)
+
+
+def prepare_existing_ideas_for_template(raw_frontmatter: dict | None) -> list[dict]:
+    """Pre-parse ``thumbnail_ideas`` from frontmatter into the shape the partial expects.
+
+    Called by ``bridge_projects.projects_detail`` on initial page load so the
+    template can render the same editable-card partial used by HTMX swaps.
+    Each entry: ``{"index": int, "raw": str, "parsed": ParsedIdea.__dict__ | None,
+    "parse_error": str | None}``.
+    """
+    fm = raw_frontmatter if isinstance(raw_frontmatter, dict) else {}
+    raw_list = fm.get("thumbnail_ideas") or []
+    out: list[dict] = []
+    for i, raw in enumerate(raw_list):
+        raw_str = str(raw)
+        try:
+            parsed = parse_idea(raw_str)
+            out.append(
+                {
+                    "index": i,
+                    "raw": raw_str,
+                    "parsed": parsed.__dict__,
+                    "parse_error": None,
+                }
+            )
+        except (IdeaParseError, EmotionLookupError) as exc:
+            out.append(
+                {
+                    "index": i,
+                    "raw": raw_str,
+                    "parsed": None,
+                    "parse_error": str(exc),
+                }
+            )
+    return out
+
+
+def _render_single_idea_card(request: Request, slug: str, idx: int, raw: str) -> str:
+    """Render the single-idea-card partial (used by save-edit + render swap targets).
+
+    Parses ``raw`` and surfaces the structured preview alongside the editable
+    textarea. If parsing fails, surfaces the parse error inline so 修修 can
+    fix the textarea without leaving the card.
+    """
+    parsed_dict: dict | None = None
+    parse_error: str | None = None
+    try:
+        parsed = parse_idea(raw)
+        parsed_dict = parsed.__dict__
+    except (IdeaParseError, EmotionLookupError) as exc:
+        parse_error = str(exc)
+
+    return _templates.TemplateResponse(
+        request,
+        "projects/_thumbnail_idea_card_single.html",
+        {
+            "slug": slug,
+            "idea": {
+                "index": idx,
+                "raw": raw,
+                "parsed": parsed_dict,
+                "parse_error": parse_error,
+            },
+        },
+    )
+
+
+@page_router.post("/projects/{slug}/thumbnail/idea/{idx}")
+async def thumbnail_idea_save_edit(
+    request: Request,
+    slug: str,
+    idx: int,
+    value: str = Form(...),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Save 修修's edited idea at index ``idx`` (B-min.1).
+
+    Re-parses the new text + writes ``thumbnail_ideas[idx]`` back to frontmatter.
+    Returns the single-card partial with refreshed parse preview (or inline
+    parse error if the edit broke the 5-line format).
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    slug = normalize_slug(slug)
+    try:
+        entry = _indexer().get(slug)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+    ideas_raw: list[str] = list(raw_fm.get("thumbnail_ideas") or [])
+    if idx < 0 or idx >= len(ideas_raw):
+        raise HTTPException(
+            status_code=400,
+            detail=f"idea index {idx} out of range (have {len(ideas_raw)} ideas)",
+        )
+
+    new_value = value.strip()
+    if not new_value:
+        raise HTTPException(status_code=400, detail="idea text cannot be empty")
+
+    ideas_raw[idx] = new_value
+    try:
+        update_frontmatter(
+            vault_root=get_vault_path(),
+            slug=slug,
+            patch={"thumbnail_ideas": ideas_raw},
+        )
+    except ProjectWriteError as exc:
+        logger.exception("idea save-edit write-back failed: slug=%s idx=%d", slug, idx)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return _render_single_idea_card(request, slug, idx, new_value)
+
+
+@page_router.post("/projects/{slug}/thumbnail/brainstorm/idea/{idx}")
+async def thumbnail_idea_reroll(
+    request: Request,
+    slug: str,
+    idx: int,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Re-roll a single idea slot (B-min.2), keeping the other 2 verbatim.
+
+    Calls the brainstorm LLM with selective re-roll mode: instructs the model
+    to keep the kept indices unchanged + produce a fresh variant at ``idx``
+    that differs along ≥2 diversity axes from the kept ones. Persists the
+    full updated list (kept + new) to frontmatter and returns the full 3-card
+    grid for HTMX swap.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    slug = normalize_slug(slug)
+    try:
+        entry = _indexer().get(slug)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if entry.content_type not in ("youtube", "podcast"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"thumbnail brainstorm supports content_type=youtube|podcast; "
+                f"got {entry.content_type!r}."
+            ),
+        )
+
+    raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+    ideas_raw: list[str] = list(raw_fm.get("thumbnail_ideas") or [])
+    if idx < 0 or idx >= len(ideas_raw):
+        raise HTTPException(
+            status_code=400,
+            detail=f"idea index {idx} out of range (have {len(ideas_raw)} ideas)",
+        )
+
+    keep_indices = [i for i in range(len(ideas_raw)) if i != idx]
+    kept_raw = [ideas_raw[i] for i in keep_indices]
+
+    user_parts = _brainstorm_user_message(
+        title_candidates=list(entry.title_candidates),
+        one_sentence=str(raw_fm.get("one_sentence") or ""),
+        search_topic=str(raw_fm.get("search_topic") or ""),
+        keep_idea_indices=keep_indices,
+        kept_ideas_raw=kept_raw,
+    )
+
+    system_prompt = _load_brainstorm_prompt(entry.content_type)
+    messages = [{"role": "user", "content": user_parts}]
+    model = get_model(agent="bridge", task="thumbnail_brainstorm")
+
+    try:
+        response_text = await asyncio.to_thread(
+            ask_claude_multi,
+            messages,
+            system=system_prompt,
+            model=model,
+            max_tokens=2048,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("idea re-roll LLM call failed: slug=%s idx=%d", slug, idx)
+        raise HTTPException(status_code=500, detail=f"重抽失敗：{exc}") from exc
+
+    try:
+        new_ideas = parse_ideas_batch(response_text)
+    except (IdeaParseError, EmotionLookupError) as exc:
+        logger.warning(
+            "idea re-roll parse failed: slug=%s idx=%d err=%s body=%s",
+            slug,
+            idx,
+            exc,
+            response_text[:500],
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(f"LLM 回應無法解析 6-line idea format: {exc}. 請重試或回報。"),
+        ) from exc
+
+    new_blocks = _split_response_into_blocks(response_text, len(new_ideas))
+    if not new_blocks:
+        raise HTTPException(status_code=502, detail="LLM 沒有產出任何 idea — 請重試。")
+
+    # Pick the new idea at the same target index if LLM honoured the slot;
+    # otherwise fall back to the first new block.
+    if idx < len(new_blocks) and "大字" in new_blocks[idx]:
+        ideas_raw[idx] = new_blocks[idx]
+    else:
+        ideas_raw[idx] = new_blocks[0]
+
+    try:
+        update_frontmatter(
+            vault_root=get_vault_path(),
+            slug=slug,
+            patch={"thumbnail_ideas": ideas_raw},
+        )
+    except ProjectWriteError as exc:
+        logger.exception("idea re-roll write-back failed: slug=%s idx=%d", slug, idx)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    _persist_brainstorm_meta(
+        slug=slug,
+        content_type=entry.content_type,
+        ideas=new_ideas,
+        raw_response=response_text,
+        model=model,
+    )
+
+    # Parse full updated list for grid display
+    parsed_all = []
+    for i, raw in enumerate(ideas_raw):
+        try:
+            p = parse_idea(raw)
+            parsed_all.append({"index": i, "raw": raw, "parsed": p.__dict__, "parse_error": None})
+        except (IdeaParseError, EmotionLookupError) as exc:
+            parsed_all.append({"index": i, "raw": raw, "parsed": None, "parse_error": str(exc)})
+
+    return _templates.TemplateResponse(
+        request,
+        "projects/_thumbnail_idea_cards.html",
+        {"slug": slug, "ideas": parsed_all},
+    )
 
 
 @page_router.post("/projects/{slug}/thumbnail/render")
@@ -751,6 +1120,141 @@ async def thumbnail_brainstorm_titles(
         request,
         "projects/_thumbnail_title_candidates_textarea.html",
         {"title_candidates": titles},
+    )
+
+
+@page_router.post("/projects/{slug}/thumbnail/brainstorm-titles/idea/{idx}")
+async def thumbnail_brainstorm_title_reroll(
+    request: Request,
+    slug: str,
+    idx: int,
+    value: str = Form(""),  # current textarea content (may have unsaved edits)
+    nakama_auth: str | None = Cookie(None),
+):
+    """Re-roll a single title at index ``idx`` (B-min.3).
+
+    Reads the current textarea value (3 newline-separated titles) so we honour
+    any unsaved 修修 edits. Calls LLM with "keep titles at other indices verbatim,
+    generate one fresh variant for idx". Writes back the merged list (kept + new)
+    to frontmatter and returns the textarea partial.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
+
+    slug = normalize_slug(slug)
+    try:
+        entry = _indexer().get(slug)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # Parse current titles from POSTed textarea (preserves unsaved edits).
+    # Fall back to frontmatter if textarea was empty.
+    current_titles = [ln.strip() for ln in value.splitlines() if ln.strip()]
+    if not current_titles:
+        raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+        current_titles = [
+            str(t).strip() for t in (raw_fm.get("title_candidates") or []) if str(t).strip()
+        ]
+
+    if not current_titles:
+        raise HTTPException(
+            status_code=400,
+            detail="先 brainstorm 或填至少一條標題再 re-roll。",
+        )
+    if idx < 0 or idx >= len(current_titles):
+        raise HTTPException(
+            status_code=400,
+            detail=f"title index {idx} out of range (have {len(current_titles)} titles)",
+        )
+
+    raw_fm = entry.raw_frontmatter if isinstance(entry.raw_frontmatter, dict) else {}
+    kept = [t for i, t in enumerate(current_titles) if i != idx]
+
+    brief_text = (
+        f"## Project brief\n\n"
+        f"- search_topic: {str(raw_fm.get('search_topic') or '（未填）')}\n"
+        f"- one_sentence: {str(raw_fm.get('one_sentence') or '（未填）')}\n"
+        f"- hook_text: {str(raw_fm.get('hook_text') or '（未填）')}\n\n"
+        f"## Selective re-roll mode\n\n"
+        f"The user wants to KEEP these {len(kept)} title(s) verbatim and only generate "
+        f"ONE fresh new variant that differs from them along ≥1 of the angles"
+        f" listed in the system prompt. "
+        f"Output ONLY the single new title — no numbering, no preamble, no quotes,"
+        f" just the title text on its own line.\n\n"
+        f"### Keep verbatim (do NOT re-output these)\n\n"
+    )
+    for t in kept:
+        brief_text += f"- {t}\n"
+    brief_text += (
+        "\n### Your task\n"
+        "Produce exactly ONE new title (繁體中文, ≤80 chars) that:\n"
+        "1. Attacks a different angle from the kept titles above"
+        " (numbered list / question / contrarian / authority / cost-risk"
+        " / time-age / counter-intuitive specific).\n"
+        "2. Is materially different in tone or structure from the kept ones.\n"
+        "Output: just the single title string on one line."
+    )
+
+    system_prompt = _load_titles_prompt()
+    messages = [{"role": "user", "content": brief_text}]
+    model = get_model(agent="bridge", task="thumbnail_brainstorm")
+
+    try:
+        response_text = await asyncio.to_thread(
+            ask_claude_multi,
+            messages,
+            system=system_prompt,
+            model=model,
+            max_tokens=256,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("title re-roll LLM call failed: slug=%s idx=%d", slug, idx)
+        raise HTTPException(status_code=500, detail=f"重抽失敗：{exc}") from exc
+
+    new_titles = _extract_title_lines(response_text)
+    if not new_titles:
+        raise HTTPException(
+            status_code=502,
+            detail="LLM 沒輸出新標題，請重試。",
+        )
+
+    # Merge: kept (at original indices) + new at idx
+    merged = list(current_titles)
+    merged[idx] = new_titles[0]
+
+    try:
+        update_frontmatter(
+            vault_root=get_vault_path(),
+            slug=slug,
+            patch={"title_candidates": merged},
+        )
+    except ProjectWriteError as exc:
+        logger.exception("title re-roll write-back failed: slug=%s idx=%d", slug, idx)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    try:
+        record_api_call(
+            agent="bridge",
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            scope_json=json.dumps(
+                {
+                    "scope": "title_brainstorm_reroll",
+                    "project": slug,
+                    "idx": idx,
+                    "n_kept": len(kept),
+                },
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("audit record failed (non-fatal)")
+
+    return _templates.TemplateResponse(
+        request,
+        "projects/_thumbnail_title_candidates_textarea.html",
+        {"title_candidates": merged},
     )
 
 

@@ -47,6 +47,18 @@ _LABEL_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
 }
 
+# Optional archetype-tags line (ADR-033 D4 playbook integration, v1.1+).
+# Examples accepted:
+#   archetype: [T-A2, T-V4, JP-3]
+#   archetype: T-A2, T-V4
+#   archetypes: [T-A1]
+#   架構: T-A2 / T-V4 / JP-3
+_ARCHETYPE_LINE_PATTERN = re.compile(
+    r"^[ \t]*(?:archetype|archetypes|架構|archetype_tags|tags)\s*[：:]\s*\[?([^\]\n]+?)\]?\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+_ARCHETYPE_ID_PATTERN = re.compile(r"\b(T-[AV]\d+|JP-\d+|M-\d+)\b", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class ParsedIdea:
@@ -58,6 +70,7 @@ class ParsedIdea:
     visual: str
     decoration: str  # may be "" or "無"
     bg: str
+    archetype_tags: tuple[str, ...] = ()  # ADR-033 D4 playbook IDs; empty = legacy/no-tag
 
 
 class IdeaParseError(ValueError):
@@ -104,6 +117,9 @@ def parse_idea(text: str) -> ParsedIdea:
     # canonical zh_tw options, which is exactly what the UI wants to show.
     emotion_key = resolve_emotion(emotion_input)
 
+    # Optional archetype-tags line (post-v1.1 playbook integration).
+    archetype_tags = _extract_archetype_tags(text)
+
     return ParsedIdea(
         hook=captured["hook"],
         emotion_key=emotion_key,
@@ -111,7 +127,30 @@ def parse_idea(text: str) -> ParsedIdea:
         visual=captured["visual"],
         decoration=decoration,
         bg=captured["bg"],
+        archetype_tags=archetype_tags,
     )
+
+
+def _extract_archetype_tags(text: str) -> tuple[str, ...]:
+    """Pull `archetype: [T-A1, T-V3, JP-2]` line if present.
+
+    Tolerant of brackets, separators, and missing colons. Returns empty tuple
+    when no archetype line found (backward-compatible with legacy ideas).
+    """
+    m = _ARCHETYPE_LINE_PATTERN.search(text)
+    if not m:
+        return ()
+    raw = m.group(1)
+    found = [tag.upper().replace("M-", "M-") for tag in _ARCHETYPE_ID_PATTERN.findall(raw)]
+    # Dedup while preserving order
+    seen: set[str] = set()
+    out: list[str] = []
+    for tag in found:
+        norm = tag.upper()
+        if norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+    return tuple(out)
 
 
 def parse_ideas_batch(text: str) -> list[ParsedIdea]:

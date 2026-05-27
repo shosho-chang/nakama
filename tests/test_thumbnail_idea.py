@@ -224,3 +224,60 @@ def test_parse_batch_single_block_no_separator():
     """A single idea with no separators returns 1 parsed item."""
     parsed = parse_ideas_batch(SAMPLE_FULL)
     assert len(parsed) == 1
+
+
+# ── ADR-033 v1.1 archetype-tags line (playbook integration) ──────────────────
+
+
+def test_parse_extracts_archetype_tags_bracketed():
+    """Bracketed list with comma separator → tuple of canonical IDs."""
+    sample = """archetype: [T-A2, T-V4, JP-3]
+大字：5g 肌酸
+我的表情：解釋
+視覺：手持補充罐
+數字/圖示：5g
+背景：實驗室桌面"""
+    parsed = parse_idea(sample)
+    assert parsed.archetype_tags == ("T-A2", "T-V4", "JP-3")
+
+
+def test_parse_extracts_archetype_tags_zh_label():
+    """zh-Hant label `架構:` with slash separator + no brackets."""
+    sample = """架構: T-A8 / T-V10
+大字：50 篇論文
+我的表情：surprised
+視覺：書桌堆滿論文
+數字/圖示：50
+背景：深藍夜深感"""
+    parsed = parse_idea(sample)
+    assert parsed.archetype_tags == ("T-A8", "T-V10")
+
+
+def test_parse_legacy_no_archetype_line_yields_empty_tuple():
+    """Backward compat: ideas without archetype line still parse, tags = ()."""
+    parsed = parse_idea(SAMPLE_FULL)
+    assert parsed.archetype_tags == ()
+
+
+def test_parse_archetype_tags_dedupe_preserves_order():
+    """Duplicate IDs in source are deduped while preserving first-seen order."""
+    sample = """archetype: [T-A1, T-V3, T-A1, JP-2, T-V3]
+大字：8 個習慣
+我的表情：興奮
+視覺：圖示列表
+數字/圖示：8
+背景：白色"""
+    parsed = parse_idea(sample)
+    assert parsed.archetype_tags == ("T-A1", "T-V3", "JP-2")
+
+
+def test_parse_archetype_tags_case_normalised():
+    """Lowercase IDs in source come back uppercased."""
+    sample = """archetype: t-a2, t-v4
+大字：5g 肌酸
+我的表情：解釋
+視覺：手持補充罐
+數字/圖示：5g
+背景：實驗室桌面"""
+    parsed = parse_idea(sample)
+    assert parsed.archetype_tags == ("T-A2", "T-V4")

@@ -138,9 +138,13 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
     from shared.blob_loader import VaultBlobLoader
     from shared.book_storage import books_root as _books_root
     from shared.concept_promotion_engine import ConceptPromotionEngine
+    from shared.dry_run_entity_matcher import DryRunEntityMatcher
     from shared.dry_run_extractor import DryRunClaimExtractor
     from shared.dry_run_matcher import DryRunConceptMatcher
+    from shared.entity_extractor import DryRunEntityExtractor
+    from shared.entity_promotion_engine import EntityPromotionEngine
     from shared.kb_concept_index_default import VaultKBConceptIndex
+    from shared.kb_entity_index_default import VaultKBEntityIndex
     from shared.promotion_commit import PromotionCommitService
     from shared.promotion_preflight import PromotionPreflight
     from shared.promotion_review_service import (
@@ -155,6 +159,12 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
     if config.promotion_mode == "dry_run":
         extractor = DryRunClaimExtractor()
         matcher = DryRunConceptMatcher()
+        # ADR-034 v2 PR4 — entity pipeline always uses dry-run placeholders
+        # in this branch. When LLM-backed entity matcher / NER extractor
+        # lands, the "llm" branch below can swap these out independently of
+        # the concept side.
+        entity_extractor = DryRunEntityExtractor()
+        entity_matcher = DryRunEntityMatcher()
     elif config.promotion_mode == "llm":
         # Boundary: explicit failure rather than silent fallback. N519
         # implements the LLM-backed adapter behind this same gate.
@@ -187,10 +197,14 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
     kb_index = VaultKBConceptIndex(
         concepts_root=config.vault_root / "KB" / "Wiki" / "Concepts",
     )
+    kb_entity_index = VaultKBEntityIndex(
+        entities_root=config.vault_root / "KB" / "Wiki" / "Entities",
+    )
 
     preflight = PromotionPreflight(blob_loader=blob_loader)
     builder = SourceMapBuilder(blob_loader=blob_loader)
     concept_engine = ConceptPromotionEngine()
+    entity_engine = EntityPromotionEngine()
     commit_service = PromotionCommitService()
     manifest_store = FilesystemManifestStore(config.manifest_root)
 
@@ -205,6 +219,10 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
         kb_index=kb_index,
         source_lister=source_lister,
         source_resolver=source_resolver,
+        entity_engine=entity_engine,
+        entity_extractor=entity_extractor,
+        entity_matcher=entity_matcher,
+        kb_entity_index=kb_entity_index,
     )
     promotion_review.set_service(review_service)
 
