@@ -261,7 +261,7 @@ def test_get_citations_happy_path(monkeypatch):
     assert len(result["references"]) == 1
     assert result["references"][0]["title"] == "An earlier reference"
     # version suffix v2 should be stripped before going to S2
-    assert "arXiv:2402.03300/citations" in call_log[1]
+    assert any("arXiv:2402.03300/citations" in u for u in call_log)
 
 
 def test_get_citations_404_returns_empty_paper(monkeypatch):
@@ -301,3 +301,34 @@ def test_get_citations_http_error_wraps(monkeypatch):
 def test_get_citations_empty_id_raises():
     with pytest.raises(ArxivClientError, match="不能為空"):
         get_citations("")
+
+
+@pytest.mark.parametrize(
+    "input_id,expected_s2_id",
+    [
+        ("2402.03300", "arXiv:2402.03300"),
+        ("2402.03300v1", "arXiv:2402.03300"),
+        ("2402.03300v12", "arXiv:2402.03300"),
+        # Regression: old-style ID containing 'v' inside category must not be truncated.
+        # ``'cs.cv/0701001'.split('v')[0]`` → ``'cs.c'`` (bug). Fix: strip only trailing vN.
+        ("cs.cv/0701001", "arXiv:cs.cv/0701001"),
+        ("cs.cv/0701001v3", "arXiv:cs.cv/0701001"),
+        ("hep-th/9901001", "arXiv:hep-th/9901001"),
+    ],
+)
+def test_get_citations_strips_only_trailing_version(monkeypatch, input_id, expected_s2_id):
+    captured = []
+
+    def fake_get(url, params=None, timeout=None):
+        captured.append(url)
+        if url.endswith("/citations") or url.endswith("/references"):
+            return _fake_json_response({"data": []})
+        return _fake_json_response({"title": "t"})
+
+    monkeypatch.setattr(arxiv_client.httpx, "get", fake_get)
+    get_citations(input_id)
+
+    # First call is the paper detail at /paper/{s2_id}
+    assert captured[0].endswith(f"/paper/{expected_s2_id}"), (
+        f"Wrong S2 id for input {input_id!r}: got URL {captured[0]}"
+    )

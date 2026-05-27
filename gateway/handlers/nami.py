@@ -697,6 +697,7 @@ NAMI_TOOLS: list[dict] = [
                         "要做 chapters / quote pickup 時設 true；"
                         "純摘要設 false。預設 false。"
                     ),
+                    "default": False,
                 },
             },
             "required": ["url_or_id"],

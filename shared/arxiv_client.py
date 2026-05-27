@@ -17,6 +17,7 @@ Two data sources:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from xml.etree import ElementTree as ET
 
@@ -67,7 +68,7 @@ def search(
         "search_query": query.strip(),
         "max_results": str(capped),
         "sortBy": sort_by,
-        "sortOrder": "descending" if sort_by != "relevance" else "descending",
+        "sortOrder": "descending",
     }
 
     try:
@@ -145,7 +146,9 @@ def get_citations(
         raise ArxivClientError("arxiv_id 不能為空")
 
     capped = max(1, min(limit, 20))
-    s2_id = f"arXiv:{aid.split('v')[0]}"  # S2 不接受 vN 後綴
+    # S2 不接受 vN 後綴。只剝尾端版本號，避免吃掉舊式 ID 中段的 'v'
+    # （例：``cs.cv/0701001`` 不可被 split('v')[0] 截成 ``cs.c``）。
+    s2_id = f"arXiv:{re.sub(r'v\d+$', '', aid)}"
     paper_url = f"{_S2_BASE}/paper/{s2_id}"
     paper_fields = (
         "title,authors,year,citationCount,referenceCount,"

@@ -21,10 +21,12 @@ from shared.log import get_logger
 logger = get_logger("nakama.shared.youtube_transcript")
 
 _VIDEO_ID_RE = re.compile(r"[a-zA-Z0-9_-]{11}")
+# Anchor host with (?:^|//) so substring matches in unrelated URLs / open-redirect
+# parameters don't false-positive.
 _URL_VIDEO_ID_PATTERNS = (
-    re.compile(r"(?:youtube\.com/watch\?(?:.*&)?v=)([a-zA-Z0-9_-]{11})"),
-    re.compile(r"(?:youtu\.be/)([a-zA-Z0-9_-]{11})"),
-    re.compile(r"(?:youtube\.com/(?:shorts|live|embed)/)([a-zA-Z0-9_-]{11})"),
+    re.compile(r"(?:^|//)(?:www\.|m\.)?youtube\.com/watch\?(?:.*&)?v=([a-zA-Z0-9_-]{11})"),
+    re.compile(r"(?:^|//)youtu\.be/([a-zA-Z0-9_-]{11})"),
+    re.compile(r"(?:^|//)(?:www\.|m\.)?youtube\.com/(?:shorts|live|embed)/([a-zA-Z0-9_-]{11})"),
 )
 
 
