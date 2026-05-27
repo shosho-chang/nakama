@@ -18,6 +18,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from shared.concept_promotion_engine import ConceptPromotionEngine
 from shared.promotion_commit import PromotionCommitService
 from shared.promotion_preflight import PromotionPreflight
@@ -243,6 +245,138 @@ def test_st2_service_start_review_chains_preflight_builder_engine():
     reloaded = store.load("inbox:Inbox/web/sample.md")
     assert reloaded is not None
     assert reloaded.manifest_id == manifest.manifest_id
+
+
+# ── ST2c — Entity pipeline wiring (ADR-034 v2 PR4) ─────────────────────────
+
+
+def test_st2c_entity_pipeline_optional_default_off_keeps_v1_manifest():
+    """When entity components are NOT injected, start_review behaves
+    identically to pre-PR4 — manifest stays schema_version=1, no entity
+    items appended."""
+    rs = ReadingSource(
+        source_id="inbox:Inbox/web/sample-c1.md",
+        annotation_key="sample-c1",
+        kind="inbox_document",
+        title="Sample C1",
+        primary_lang="en",
+        has_evidence_track=True,
+        evidence_reason=None,
+        variants=[
+            SourceVariant(
+                role="original", format="markdown", lang="en", path="Inbox/web/sample-c1.md"
+            )
+        ],
+    )
+    service = _build_service(sources=[rs])
+    manifest = service.start_review("inbox:Inbox/web/sample-c1.md")
+    assert manifest.schema_version == 1
+    assert not any(it.item_kind == "entity" for it in manifest.items)
+
+
+def test_st2c_entity_pipeline_partial_wiring_raises():
+    """Constructor refuses partial wiring — three of four components
+    is silently dropped entity items or crashes mid-flow."""
+    from shared.dry_run_entity_matcher import DryRunEntityMatcher
+    from shared.entity_extractor import DryRunEntityExtractor
+    from shared.entity_promotion_engine import EntityPromotionEngine
+
+    with pytest.raises(ValueError, match="entity pipeline requires all of"):
+        PromotionReviewService(
+            manifest_store=_DictManifestStore(),
+            preflight=PromotionPreflight(blob_loader=lambda p: b""),
+            builder=SourceMapBuilder(blob_loader=lambda p: b""),
+            concept_engine=ConceptPromotionEngine(),
+            commit_service=PromotionCommitService(),
+            extractor=_CountingExtractor([]),
+            matcher=_NoneMatcher(None),
+            kb_index=_EmptyKBIndex(),
+            entity_engine=EntityPromotionEngine(),
+            entity_extractor=DryRunEntityExtractor(),
+            entity_matcher=DryRunEntityMatcher(),
+            # kb_entity_index missing → partial wiring → ValueError
+        )
+
+
+def test_st2c_entity_pipeline_wired_appends_entity_items_and_bumps_schema_version():
+    """When all four entity components are wired AND extractor returns
+    candidates, start_review appends EntityReviewItem entries and bumps
+    schema_version to 2 (V12 invariant)."""
+    from shared.dry_run_entity_matcher import DryRunEntityMatcher
+    from shared.entity_promotion_engine import EntityPromotionEngine
+    from shared.schemas.entity_promotion import EntityCandidate
+    from shared.schemas.promotion_manifest import PersonMetadata
+
+    class _FixedEntityExtractor:
+        """Returns one fixed Person candidate — exercises the wiring."""
+
+        def extract(self, reading_source, source_map):  # noqa: ARG002, ANN001
+            return [
+                EntityCandidate(
+                    candidate_id="cand_huberman",
+                    entity_type="person",
+                    label="Andrew Huberman",
+                    evidence_language="en",
+                    source_refs=["ch-1"],
+                    raw_quotes=["Huberman discussed dopamine."],
+                    metadata=PersonMetadata(affiliation="Stanford"),
+                )
+            ]
+
+    class _EmptyKBEntityIndex:
+        def lookup(self, alias):  # noqa: ARG002, ANN001
+            return None
+
+        def aliases_starting_with(self, prefix):  # noqa: ARG002, ANN001
+            return []
+
+    rs = ReadingSource(
+        source_id="inbox:Inbox/web/sample-c2.md",
+        annotation_key="sample-c2",
+        kind="inbox_document",
+        title="Sample C2",
+        primary_lang="en",
+        has_evidence_track=True,
+        evidence_reason=None,
+        variants=[
+            SourceVariant(
+                role="original", format="markdown", lang="en", path="Inbox/web/sample-c2.md"
+            )
+        ],
+    )
+
+    md_blob = (
+        "---\nlang: en\ntitle: Sample\n---\n\n# Heading\n\nThis is a sample article body. " * 50
+    ).encode("utf-8")
+
+    def blob_loader(path: str) -> bytes:
+        return md_blob
+
+    store = _DictManifestStore()
+    service = PromotionReviewService(
+        manifest_store=store,
+        preflight=PromotionPreflight(blob_loader=blob_loader),
+        builder=SourceMapBuilder(blob_loader=blob_loader),
+        concept_engine=ConceptPromotionEngine(),
+        commit_service=PromotionCommitService(),
+        extractor=_CountingExtractor([]),
+        matcher=_NoneMatcher([]),
+        kb_index=_EmptyKBIndex(),
+        source_resolver=_DictResolver([rs]),
+        entity_engine=EntityPromotionEngine(),
+        entity_extractor=_FixedEntityExtractor(),
+        entity_matcher=DryRunEntityMatcher(),
+        kb_entity_index=_EmptyKBEntityIndex(),
+    )
+
+    manifest = service.start_review("inbox:Inbox/web/sample-c2.md")
+    assert manifest.schema_version == 2
+    entity_items = [it for it in manifest.items if it.item_kind == "entity"]
+    assert len(entity_items) == 1
+    entity_item = entity_items[0]
+    assert entity_item.entity_label == "Andrew Huberman"
+    # DryRunEntityMatcher returns match_basis="none" → row 7 → create_entity.
+    assert entity_item.action == "create_entity"
 
 
 # ── ST2b — start_review refuses to overwrite a manifest with persisted state ──
