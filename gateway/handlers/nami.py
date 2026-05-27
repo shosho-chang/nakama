@@ -2041,8 +2041,7 @@ class NamiHandler(BaseHandler):
         if sort_by not in ("relevance", "submittedDate", "lastUpdatedDate"):
             return _ToolOutcome(
                 content=(
-                    "sort_by 必須是 relevance / submittedDate / lastUpdatedDate，"
-                    f"收到：{sort_by!r}"
+                    f"sort_by 必須是 relevance / submittedDate / lastUpdatedDate，收到：{sort_by!r}"
                 ),
                 is_error=True,
             )
@@ -2111,9 +2110,7 @@ class NamiHandler(BaseHandler):
         paper = data.get("paper")
         if not paper:
             return _ToolOutcome(
-                content=(
-                    f"Semantic Scholar 沒索引 arXiv:{arxiv_id}（可能太新或不在 S2 範圍內）。"
-                ),
+                content=(f"Semantic Scholar 沒索引 arXiv:{arxiv_id}（可能太新或不在 S2 範圍內）。"),
                 is_error=False,
             )
 

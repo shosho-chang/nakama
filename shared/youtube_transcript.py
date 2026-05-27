@@ -103,9 +103,7 @@ def fetch_transcript(
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
             transcript = next(iter(transcript_list))
             raw = transcript.fetch()
-            logger.info(
-                "fell back to %s for video %s", transcript.language_code, video_id
-            )
+            logger.info("fell back to %s for video %s", transcript.language_code, video_id)
         except Exception as e2:  # noqa: BLE001
             raise YouTubeTranscriptError(
                 f"無法取得 video {video_id} 的字幕（可能字幕被停用 / 影片不存在 / 被限制）：{e2}"

@@ -159,9 +159,7 @@ def get_citations(
     list_fields = "title,authors,year,citationCount,externalIds"
 
     try:
-        paper_resp = httpx.get(
-            paper_url, params={"fields": paper_fields}, timeout=timeout
-        )
+        paper_resp = httpx.get(paper_url, params={"fields": paper_fields}, timeout=timeout)
         if paper_resp.status_code == 404:
             return {"paper": None, "citing": [], "references": []}
         paper_resp.raise_for_status()

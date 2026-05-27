@@ -155,9 +155,7 @@ def test_fetch_transcript_falls_back_when_preferred_lang_fails(monkeypatch):
 
     fallback_transcript = MagicMock()
     fallback_transcript.language_code = "ja"
-    fallback_transcript.fetch.return_value = [
-        {"text": "こんにちは", "start": 0.0, "duration": 1.0}
-    ]
+    fallback_transcript.fetch.return_value = [{"text": "こんにちは", "start": 0.0, "duration": 1.0}]
 
     class _FakeApi:
         @staticmethod
