@@ -607,6 +607,102 @@ NAMI_TOOLS: list[dict] = [
         },
     },
     # ── / Web research tools ──────────────────────────────────────
+    # ── Academic / Media research tools ──────────────────────────
+    {
+        "name": "arxiv_lookup",
+        "description": (
+            "查 arXiv 學術論文資料庫，回傳前 N 篇文獻的標題 + 作者 + 摘要 + "
+            "分類 + abs URL + PDF URL。比 web_search 快又準，"
+            "適合長壽 / 營養 / 睡眠 / AI 等學術主題的 evidence lookup："
+            "「最近 cs.AI / q-bio 有沒有 X 的 paper」「Y 跟 Z 的 arXiv 文獻有哪些」。"
+            "查英文（arXiv 索引語言）。需要引用關係（誰引用了它、它引用了誰、"
+            "influential citation count）時改用 arxiv_citations。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "arXiv 查詢字串（英文）。可用 ``ti:`` / ``au:`` / ``cat:`` prefix "
+                        '與 boolean operators，例：``"intermittent fasting" AND cat:q-bio``。'
+                    ),
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "回傳筆數，預設 5，上限 20。",
+                    "default": 5,
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["relevance", "submittedDate", "lastUpdatedDate"],
+                    "description": "排序方式。預設 relevance；要找最新發表用 submittedDate。",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "arxiv_citations",
+        "description": (
+            "查一篇 arXiv paper 的引用關係（Semantic Scholar API）。"
+            "回傳 paper 本身的 citation count / influential citation count / "
+            "open access 狀態 + 引用此 paper 的文獻清單（citing）+ 此 paper 引用的"
+            "文獻清單（references）。適合評估某篇 paper 的影響力、或找延伸閱讀。"
+            "**只在船長要 evaluate 某篇特定 arXiv paper 的影響力 / 找相關文獻時用**，"
+            "不是每次 arxiv_lookup 都要跟著呼叫。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "arxiv_id": {
+                    "type": "string",
+                    "description": (
+                        "arXiv ID，例：``2402.03300`` 或 ``2402.03300v1``。"
+                        "從 arxiv_lookup 的結果取得，或船長直接給。"
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "citing / references 各回傳幾筆，預設 10，上限 20。",
+                    "default": 10,
+                },
+            },
+            "required": ["arxiv_id"],
+        },
+    },
+    {
+        "name": "youtube_transcript",
+        "description": (
+            "抓 YouTube 影片字幕，回傳 plain text 或帶時間戳的版本。"
+            "適合：船長丟一個 YouTube URL 想要摘要 / 整理 chapters / 找 quote。"
+            "**不要自動把整個 transcript 直接貼給船長**——拿到後做摘要、提取章節、"
+            "或挑 quote 再回報。預設繁中字幕優先，無繁中時 fallback 英文，"
+            "都沒有再退到任何可用語言。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url_or_id": {
+                    "type": "string",
+                    "description": (
+                        "YouTube URL（watch / youtu.be / shorts / live / embed 任一種）"
+                        "或 11 碼 video id。"
+                    ),
+                },
+                "with_timestamps": {
+                    "type": "boolean",
+                    "description": (
+                        "是否回傳帶時間戳格式（``[mm:ss] text``）。"
+                        "要做 chapters / quote pickup 時設 true；"
+                        "純摘要設 false。預設 false。"
+                    ),
+                },
+            },
+            "required": ["url_or_id"],
+        },
+    },
+    # ── / Academic / Media research tools ─────────────────────────
     {
         "name": "ask_zoro",
         "description": (
@@ -909,6 +1005,12 @@ class NamiHandler(BaseHandler):
                 return self._tool_fetch_url(tool_input)
             if name == "pubmed_lookup":
                 return self._tool_pubmed_lookup(tool_input)
+            if name == "arxiv_lookup":
+                return self._tool_arxiv_lookup(tool_input)
+            if name == "arxiv_citations":
+                return self._tool_arxiv_citations(tool_input)
+            if name == "youtube_transcript":
+                return self._tool_youtube_transcript(tool_input)
             if name == "ask_zoro":
                 return self._tool_ask_zoro(tool_input)
             return _ToolOutcome(content=f"Unknown tool: {name}", is_error=True)
@@ -1918,6 +2020,205 @@ class NamiHandler(BaseHandler):
                     "since_year": since_year,
                 },
                 "log": f"pubmed: {query!r} ({len(results)} hits)",
+            },
+        )
+
+    # ── arXiv + YouTube tool executors ──────────────────────────
+
+    def _tool_arxiv_lookup(self, input_: dict) -> _ToolOutcome:
+        query = str(input_.get("query", "")).strip()
+        if not query:
+            return _ToolOutcome(content="query 不能為空", is_error=True)
+
+        try:
+            max_results = int(input_.get("max_results") or 5)
+        except (TypeError, ValueError):
+            return _ToolOutcome(content="max_results 必須是整數", is_error=True)
+        max_results = max(1, min(max_results, 20))
+
+        sort_by = str(input_.get("sort_by") or "relevance").strip()
+        if sort_by not in ("relevance", "submittedDate", "lastUpdatedDate"):
+            return _ToolOutcome(
+                content=f"sort_by 必須是 relevance / submittedDate / lastUpdatedDate，收到：{sort_by!r}",
+                is_error=True,
+            )
+
+        from shared.arxiv_client import ArxivClientError, search
+
+        try:
+            results = search(query, max_results=max_results, sort_by=sort_by)
+        except ArxivClientError as e:
+            return _ToolOutcome(content=f"arXiv 查詢失敗：{e}", is_error=True)
+
+        if not results:
+            return _ToolOutcome(
+                content=(
+                    f"arXiv 沒找到 {query!r} 相關文獻。"
+                    f"換個關鍵字（記得用英文）、改用 cat: prefix、或改 PubMed / web_search。"
+                )
+            )
+
+        lines: list[str] = []
+        for r in results:
+            authors = r["authors"]
+            if len(authors) <= 3:
+                author_label = ", ".join(authors)
+            else:
+                author_label = f"{authors[0]} et al."
+
+            head = f"- **{r['title']}**  \n  arXiv:{r['arxiv_id']}"
+            meta_bits = [b for b in (author_label, r["published"], r["primary_category"]) if b]
+            if meta_bits:
+                head += f"  \n  {' · '.join(meta_bits)}"
+            head += f"  \n  [abs]({r['abs_url']}) · [pdf]({r['pdf_url']})"
+            lines.append(head)
+
+        header = f"### arXiv top {len(results)} for {query!r}"
+        if sort_by != "relevance":
+            header += f"（sorted by {sort_by}）"
+
+        return _ToolOutcome(
+            content=f"{header}\n\n" + "\n\n".join(lines),
+            event={
+                "name": "arxiv_lookup",
+                "payload": {"query": query, "hits": len(results), "sort_by": sort_by},
+                "log": f"arxiv: {query!r} ({len(results)} hits)",
+            },
+        )
+
+    def _tool_arxiv_citations(self, input_: dict) -> _ToolOutcome:
+        arxiv_id = str(input_.get("arxiv_id", "")).strip()
+        if not arxiv_id:
+            return _ToolOutcome(content="arxiv_id 不能為空", is_error=True)
+
+        try:
+            limit = int(input_.get("limit") or 10)
+        except (TypeError, ValueError):
+            return _ToolOutcome(content="limit 必須是整數", is_error=True)
+        limit = max(1, min(limit, 20))
+
+        from shared.arxiv_client import ArxivClientError, get_citations
+
+        try:
+            data = get_citations(arxiv_id, limit=limit)
+        except ArxivClientError as e:
+            return _ToolOutcome(content=f"Semantic Scholar 查詢失敗：{e}", is_error=True)
+
+        paper = data.get("paper")
+        if not paper:
+            return _ToolOutcome(
+                content=(
+                    f"Semantic Scholar 沒索引 arXiv:{arxiv_id}（可能太新或不在 S2 範圍內）。"
+                ),
+                is_error=False,
+            )
+
+        lines: list[str] = [
+            f"### {paper.get('title', arxiv_id)}",
+            "",
+            f"- Authors: {', '.join(paper.get('authors', []))}",
+            f"- Year: {paper.get('year') or '?'}",
+            f"- Citation count: {paper.get('citation_count') or 0}"
+            f"（influential: {paper.get('influential_citation_count') or 0}）",
+            f"- References: {paper.get('reference_count') or 0}",
+        ]
+        if paper.get("is_open_access"):
+            lines.append("- Open access ✓")
+
+        citing = data.get("citing") or []
+        if citing:
+            lines.append("")
+            lines.append(f"#### 引用此 paper 的文獻 (top {len(citing)})")
+            for c in citing:
+                if not c:
+                    continue
+                bits = [c.get("title") or "(no title)"]
+                if c.get("year"):
+                    bits.append(str(c["year"]))
+                if c.get("citation_count") is not None:
+                    bits.append(f"{c['citation_count']} cites")
+                lines.append(f"- {' · '.join(bits)}")
+
+        refs = data.get("references") or []
+        if refs:
+            lines.append("")
+            lines.append(f"#### 此 paper 引用的文獻 (top {len(refs)})")
+            for r in refs:
+                if not r:
+                    continue
+                bits = [r.get("title") or "(no title)"]
+                if r.get("year"):
+                    bits.append(str(r["year"]))
+                if r.get("citation_count") is not None:
+                    bits.append(f"{r['citation_count']} cites")
+                lines.append(f"- {' · '.join(bits)}")
+
+        return _ToolOutcome(
+            content="\n".join(lines),
+            event={
+                "name": "arxiv_citations",
+                "payload": {
+                    "arxiv_id": arxiv_id,
+                    "citation_count": paper.get("citation_count"),
+                    "citing_returned": len(citing),
+                    "references_returned": len(refs),
+                },
+                "log": f"arxiv_citations: {arxiv_id}",
+            },
+        )
+
+    def _tool_youtube_transcript(self, input_: dict) -> _ToolOutcome:
+        url_or_id = str(input_.get("url_or_id", "")).strip()
+        if not url_or_id:
+            return _ToolOutcome(content="url_or_id 不能為空", is_error=True)
+
+        with_timestamps = bool(input_.get("with_timestamps", False))
+
+        from shared.youtube_transcript import (
+            YouTubeTranscriptError,
+            fetch_transcript,
+            to_plain_text,
+            to_timestamped_text,
+            total_duration,
+        )
+
+        try:
+            segments = fetch_transcript(url_or_id)
+        except YouTubeTranscriptError as e:
+            return _ToolOutcome(content=f"YouTube transcript 失敗：{e}", is_error=True)
+
+        if not segments:
+            return _ToolOutcome(
+                content="抓到 transcript 但內容為空（可能影片只有音樂沒口白）。",
+            )
+
+        text = to_timestamped_text(segments) if with_timestamps else to_plain_text(segments)
+        duration_sec = int(total_duration(segments))
+        m, s = divmod(duration_sec, 60)
+        h, m = divmod(m, 60)
+        duration_label = f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:d}:{s:02d}"
+
+        _MAX_CHARS = 12000  # 給 LLM 摘要保留充足上下文
+        truncated = len(text) > _MAX_CHARS
+        if truncated:
+            text = text[:_MAX_CHARS] + f"\n\n[...已截斷，原文共 {len(text)} 字元]"
+
+        header = (
+            f"### YouTube transcript（{len(segments)} 段，總長 {duration_label}）"
+            f"{'（含時間戳）' if with_timestamps else ''}"
+        )
+        return _ToolOutcome(
+            content=f"{header}\n\n{text}",
+            event={
+                "name": "youtube_transcript",
+                "payload": {
+                    "url_or_id": url_or_id,
+                    "segments": len(segments),
+                    "duration_sec": duration_sec,
+                    "with_timestamps": with_timestamps,
+                    "truncated": truncated,
+                },
+                "log": f"yt: {url_or_id} ({len(segments)} segs, {duration_label})",
             },
         )
 
