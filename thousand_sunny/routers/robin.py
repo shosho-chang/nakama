@@ -1350,6 +1350,51 @@ def _watchlist_youtube_root() -> Path:
     return get_vault_path() / "Watchlist" / "youtube"
 
 
+def _watchlist_staging_root() -> Path:
+    """Staging root for in-flight yt-dlp ingests. Lives OUTSIDE
+    ``Watchlist/youtube/`` (PR #771 code-review finding #1) so the
+    lister scan doesn't trip on a dot-prefixed dir as a malformed
+    ``video_id`` and emit a spurious WARNING every pass.
+    """
+    return get_vault_path() / "Watchlist" / ".youtube_staging"
+
+
+# Sweep staged-but-abandoned ingests older than this (seconds). Picked to
+# match ``SESSION_TTL`` — once the session is gone the user can't confirm
+# the staged content anyway, so the on-disk dir is dead weight (PR #771
+# review finding #2).
+_STAGING_ORPHAN_TTL = SESSION_TTL
+
+
+def _sweep_orphan_staging() -> None:
+    """Best-effort cleanup of ``.youtube_staging/{video_id}/`` dirs older
+    than :data:`_STAGING_ORPHAN_TTL`. Called opportunistically from the
+    ``/watchlist/add`` entry point so abandoned ingests don't accumulate
+    forever. Silent on all ``OSError`` — this is housekeeping, not a
+    hard invariant.
+    """
+    root = _watchlist_staging_root()
+    if not root.is_dir():
+        return
+    cutoff = time.time() - _STAGING_ORPHAN_TTL
+    try:
+        children = list(root.iterdir())
+    except OSError:  # pragma: no cover — defensive: race with concurrent cleanup
+        return
+    for child in children:
+        try:
+            if not child.is_dir() or child.stat().st_mtime > cutoff:
+                continue
+            for leftover in child.iterdir():
+                try:
+                    leftover.unlink()
+                except OSError:  # pragma: no cover — defensive: locked / removed mid-loop
+                    pass
+            child.rmdir()
+        except OSError:  # pragma: no cover — defensive: dir locked / removed mid-loop
+            continue
+
+
 @robin_router.get("/watchlist/add", response_class=HTMLResponse)
 async def watchlist_add_form(request: Request, nakama_auth: str | None = Cookie(None)):
     """Render the URL-paste form (step 1)."""
@@ -1402,7 +1447,11 @@ async def watchlist_add(
     # Staging dir: per-video so concurrent adds of different videos don't
     # collide. Reuse on retry (same video_id) is safe — fetch_caption
     # creates the dir if needed and overwrites existing vtt.
-    staging_root = _watchlist_youtube_root() / ".staging" / meta.video_id
+    # Opportunistic orphan sweep — keeps the staging tree bounded without
+    # adding a separate cron / startup hook (PR #771 review finding #2).
+    _sweep_orphan_staging()
+
+    staging_root = _watchlist_staging_root() / meta.video_id
     try:
         vtt_path, lang = await asyncio.to_thread(fetch_caption, meta.video_id, staging_root)
     except NoCaptionAvailable:
@@ -1517,12 +1566,12 @@ async def watchlist_add_confirm(
 
     # Best-effort staging cleanup — remove the per-video staging dir if
     # empty (yt-dlp may have left other artefacts; ignore failures).
-    staging_dir = _watchlist_youtube_root() / ".staging" / video_id
+    staging_dir = _watchlist_staging_root() / video_id
     try:
         for leftover in staging_dir.iterdir():
             try:
                 leftover.unlink()
-            except OSError:
+            except OSError:  # pragma: no cover — defensive: file locked
                 pass
         staging_dir.rmdir()
     except OSError:
