@@ -1584,16 +1584,7 @@ async def watch_video(
         if transcript_path.is_file():
             cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
 
-    # Cast smuggled through metadata as a JSON string by the pre-F7 resolver
-    # (#765 follow-up lifts it to a top-level ReadingSource field; switch to
-    # ``rs.cast`` once that lands and a rebase brings the field in). The
-    # resolver always writes a well-formed list literal so no defensive parse.
-    cast: list[str] = []
-    cast_raw = rs.metadata.get("cast", "")
-    if cast_raw:
-        parsed = json.loads(cast_raw)
-        if isinstance(parsed, list):
-            cast = [str(x) for x in parsed]
+    cast: list[str] = list(rs.cast) if rs.cast else []
 
     return templates.TemplateResponse(
         request,
