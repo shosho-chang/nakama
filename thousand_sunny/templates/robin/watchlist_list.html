@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+{# ADR-035 §F4 (issue #763) — YouTube watchlist list view.
+
+Independent surface from PromotionReviewService.list_pending: enumerates
+``Watchlist/youtube/*`` directly so the operator can see every video even
+when the promotion preflight filter would defer them. Linked detail page
+(/robin/watchlist/{video_id}) lands in #762 — links here are allowed to
+404 until that ships.
+
+Visual chassis: shares ``_chassis_nav`` + Robin header pattern with
+``index.html`` and ``books_library.html``. Reuses ``.file-card`` /
+``.file-name`` / ``.file-meta`` / ``.empty`` from ``robin.css`` so no new
+CSS is introduced — all tokens still resolve to ``--sho-*``. #}
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · Watchlist</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/robin.css?v={{ asset_version }}">
+</head>
+<body class="sho robin-page">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='robin') }}
+<div class="container is-narrow">
+<div class="header">
+  <h1><span>🎬</span>Robin · Watchlist</h1>
+  <nav class="header-nav">
+    <a href="/robin">📥 Inbox</a>
+    <a href="/robin/books">📚 書架</a>
+    <a href="/robin/watchlist" class="active">🎬 Watchlist</a>
+  </nav>
+</div>
+{% if rows %}
+  {% for row in rows %}
+  <article class="file-card" data-video-id="{{ row.video_id }}">
+    <div class="file-top">
+      <div class="file-info">
+        <div class="file-name">
+          <a href="/robin/watchlist/{{ row.video_id }}"
+             class="file-title-link"
+             title="{{ row.title }}">{{ row.title }}</a>
+        </div>
+        <div class="file-meta">
+          {% if row.channel %}<span class="status-source">{{ row.channel }}</span>{% endif %}
+          {% if row.duration %}<span class="sho-mono" aria-label="duration">{{ row.duration }}</span>{% endif %}
+          {% if row.primary_lang and row.primary_lang != 'unknown' %}
+            <span class="sho-tag">{{ row.primary_lang }}</span>
+          {% endif %}
+          {% if row.cast_preview %}
+            <span class="sho-mono" aria-label="cast">{{ row.cast_preview }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+{% else %}
+  <div class="empty">
+    <div style="font-size:2.5rem">🎬</div>
+    <strong>Watchlist 是空的</strong>
+    <p>把 YouTube 影片加進 <code>Watchlist/youtube/</code> 後重新整理</p>
+  </div>
+{% endif %}
+</div>
+</body>
+</html>
