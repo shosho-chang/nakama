@@ -82,7 +82,11 @@ fi
 
 # --- decide which services need restart ---
 declare -A NEED=( [thousand-sunny]=0 [nakama-gateway]=0 [nakama-usopp]=0 )
-PIP_INSTALL=0
+# Always run pip install — pip is a fast no-op when everything is already
+# installed (~2s), and this catches the case where a past commit added a
+# dep that the VPS never picked up (2026-05-28 incident: bleach was added
+# earlier, VPS never ran pip install, next restart crashed with ModuleNotFoundError).
+PIP_INSTALL=1
 
 if [ "$FORCE_ALL" -eq 1 ]; then
   echo "==> --force-all: restarting all services"
@@ -110,7 +114,7 @@ else
         NEED[thousand-sunny]=1
         NEED[nakama-gateway]=1 ;;
       requirements.txt|requirements*.txt|pyproject.toml)
-        PIP_INSTALL=1
+        # PIP_INSTALL is already 1 unconditionally; deps change → restart everything
         NEED[thousand-sunny]=1
         NEED[nakama-gateway]=1
         NEED[nakama-usopp]=1 ;;
