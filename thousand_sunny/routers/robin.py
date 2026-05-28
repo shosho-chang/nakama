@@ -36,7 +36,7 @@ from shared.discard_service import DiscardService
 from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.reading_source_lister import RegistryReadingSourceLister
-from shared.reading_source_registry import InboxKey, ReadingSourceRegistry
+from shared.reading_source_registry import InboxKey, ReadingSourceRegistry, YouTubeKey
 from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
@@ -90,6 +90,7 @@ def _shosho_asset_version() -> str:
         "bridge-pages.css",
         "reader.css",
         "robin.css",
+        "av-reader.css",
         "theme.js",
     ):
         path = static_dir / css
@@ -495,6 +496,156 @@ async def read_source(
             or "popular_science",
             "is_read": is_file_read(file_path),
             "is_bilingual": bool(frontmatter.get("bilingual")),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
+    )
+
+
+# ── WebVTT parser (ADR-035 §D6) ──────────────────────────────────────────────
+# Minimal parser sized for yt-dlp ``--write-auto-sub`` output. Lives here
+# because the av_reader route is the only consumer; promote to ``shared/``
+# if a second caller appears.
+
+_VTT_TIME_RE = re.compile(
+    r"^(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})"
+)
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _vtt_time_to_seconds(h: str, m: str, s: str, ms: str) -> float:
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+
+def _format_cue_label(t: float) -> str:
+    h = int(t // 3600)
+    m = int((t % 3600) // 60)
+    s = int(t % 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def _parse_webvtt(text: str) -> list[dict]:
+    """Parse a WebVTT document into a sorted, deduplicated list of cues.
+
+    yt-dlp auto-captions emit overlapping "rolling" cues where the same
+    line appears in N consecutive cues with shifting end-times. We collapse
+    adjacent identical text into a single longer cue so the cue list reads
+    like prose rather than karaoke.
+    """
+    cues: list[dict] = []
+    cur_start: float | None = None
+    cur_end: float | None = None
+    cur_lines: list[str] = []
+
+    def flush() -> None:
+        nonlocal cur_start, cur_end, cur_lines
+        if cur_start is not None and cur_lines:
+            cleaned = _VTT_TAG_RE.sub("", " ".join(cur_lines)).strip()
+            if cleaned:
+                cues.append(
+                    {
+                        "start": cur_start,
+                        "end": cur_end,
+                        "label": _format_cue_label(cur_start),
+                        "text": cleaned,
+                    }
+                )
+        cur_start = None
+        cur_end = None
+        cur_lines = []
+
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        m = _VTT_TIME_RE.match(line)
+        if m:
+            flush()
+            cur_start = _vtt_time_to_seconds(m.group(1), m.group(2), m.group(3), m.group(4))
+            cur_end = _vtt_time_to_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
+            continue
+        if cur_start is None:
+            continue
+        if line.strip() == "":
+            flush()
+            continue
+        if line.startswith("WEBVTT") or line.startswith("NOTE") or "-->" in line:
+            continue
+        cur_lines.append(line)
+    flush()
+
+    deduped: list[dict] = []
+    for c in cues:
+        if deduped and deduped[-1]["text"] == c["text"]:
+            deduped[-1]["end"] = c["end"]
+            continue
+        deduped.append(c)
+    return deduped
+
+
+# ── AV reader (ADR-035 PR1c-ii) ──────────────────────────────────────────────
+
+
+@robin_router.get("/watchlist/{video_id}", response_class=HTMLResponse)
+async def watch_video(
+    request: Request,
+    video_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Render the YouTube video reader for a watchlist entry.
+
+    Read-only viewing — annotation save lands in PR2. The player is the
+    YouTube IFrame API (ToS-compliant) per ADR-035 §Open question.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        # Path-traversal alphabet or symlink-escape — treat as not-found
+        # so the response shape stays uniform and the regex isn't leaked.
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    cues: list[dict] = []
+    if rs.variants:
+        transcript_rel = rs.variants[0].path
+        transcript_path = get_vault_path() / transcript_rel
+        if transcript_path.is_file():
+            try:
+                cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
+            except OSError as exc:
+                logger.warning(
+                    "av_reader transcript read failed",
+                    extra={"video_id": video_id, "err": str(exc)},
+                )
+
+    # Cast extraction tolerates both the pre-F7 metadata['cast'] JSON-string
+    # smuggle and the post-F7 top-level rs.cast list. Drop the metadata arm
+    # once F7 (#765) lands and resolver no longer writes the smuggle.
+    cast: list[str] = []
+    if getattr(rs, "cast", None):
+        cast = list(rs.cast)
+    elif "cast" in rs.metadata:
+        try:
+            parsed = json.loads(rs.metadata["cast"])
+            if isinstance(parsed, list):
+                cast = [str(x) for x in parsed]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            cast = []
+
+    return templates.TemplateResponse(
+        request,
+        "av_reader.html",
+        {
+            "source": rs,
+            "video_id": video_id,
+            "channel": rs.metadata.get("channel", ""),
+            "cast": cast,
+            "cues": cues,
+            "cues_json": json.dumps(cues, ensure_ascii=False),
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )

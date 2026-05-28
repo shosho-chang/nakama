@@ -1,0 +1,265 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Robin AV Reader · page styles (Design System v0.1 / --sho-* tokens)
+
+   Layout: 100vh flex column — header / sticky player band / cue list scroll
+   / footer. Reuses ``reader.css`` header + footer chassis vocabulary so the
+   YouTube viewer shares the same chrome as the markdown reader.
+
+   ADR-035 §D6 frozen layout — top-bottom stacked, PWA portrait-friendly.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+}
+
+/* ── Header (mirrors reader.html chassis) ───────────────────────────── */
+body.sho .header {
+  background: var(--sho-bg);
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--sho-line);
+  flex-shrink: 0;
+}
+body.sho .header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+body.sho .header-left h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+body.sho .header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+body.sho .header-btn {
+  background: transparent;
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2);
+  padding: 5px 12px;
+  border-radius: var(--sho-r-1);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+  font-family: var(--sho-font-sans);
+}
+body.sho .header-btn:hover {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+}
+body.sho .header-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* ── Speed dropdown ─────────────────────────────────────────────────── */
+body.sho .speed-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+body.sho .speed-control label {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+}
+body.sho .speed-select {
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  padding: 4px 8px;
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+body.sho .speed-select:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* ── Sticky player band ─────────────────────────────────────────────── */
+body.sho .player-band {
+  position: sticky;
+  top: 0;
+  background: var(--sho-bg);
+  border-bottom: 1px solid var(--sho-line);
+  flex-shrink: 0;
+  z-index: 5;
+}
+body.sho .player-frame-wrap {
+  position: relative;
+  width: 100%;
+  /* 16:9 with a max height so the band doesn't dominate on tall screens.
+     ADR-035 §D6 ~40vh target on desktop. */
+  aspect-ratio: 16 / 9;
+  max-height: 45vh;
+  background: var(--sho-bg-3);
+  overflow: hidden;
+}
+body.sho .player-frame-wrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* ── Meta strip below player ────────────────────────────────────────── */
+body.sho .player-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+  border-top: 1px solid var(--sho-line);
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-muted);
+}
+body.sho .player-meta .kicker {
+  color: var(--sho-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+body.sho .player-meta .cast-list {
+  color: var(--sho-text-2);
+  font-family: var(--sho-font-sans);
+  letter-spacing: normal;
+  text-transform: none;
+  font-size: 12px;
+}
+body.sho .player-meta .cast-sep {
+  color: var(--sho-line-2);
+  margin: 0 4px;
+}
+
+/* ── Cue list ───────────────────────────────────────────────────────── */
+body.sho .cue-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 0;
+  background: var(--sho-bg);
+}
+body.sho .cue-list {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+body.sho .cue-item {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 16px;
+  padding: 6px 10px 6px 14px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .cue-item:hover {
+  background: var(--sho-bg-2);
+}
+body.sho .cue-item.is-active {
+  background: var(--sho-accent-soft);
+  border-left-color: var(--sho-accent);
+}
+body.sho .cue-item.is-active .cue-text {
+  color: var(--sho-ink);
+}
+body.sho .cue-time {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  padding-top: 3px;
+}
+body.sho .cue-item.is-active .cue-time {
+  color: var(--sho-accent);
+}
+body.sho .cue-text {
+  color: var(--sho-text);
+  font-size: 14px;
+  line-height: 1.65;
+}
+body.sho .cue-item:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* ── Footer (mirrors reader.html chassis) ───────────────────────────── */
+body.sho .footer {
+  background: var(--sho-bg);
+  padding: 8px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--sho-line);
+  flex-shrink: 0;
+}
+body.sho .footer a {
+  color: var(--sho-text-2);
+  text-decoration: none;
+  font-size: 12px;
+}
+body.sho .footer a:hover {
+  color: var(--sho-accent);
+}
+body.sho .shortcuts-hint {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  color: var(--sho-muted);
+  letter-spacing: 0.04em;
+}
+
+/* ── Empty state ────────────────────────────────────────────────────── */
+body.sho .cue-empty {
+  text-align: center;
+  color: var(--sho-muted);
+  font-size: 13px;
+  padding: 48px 24px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  body.sho .header,
+  body.sho .footer,
+  body.sho .player-meta,
+  body.sho .cue-list {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  body.sho .player-frame-wrap {
+    max-height: 38vh;
+  }
+  body.sho .shortcuts-hint {
+    display: none;
+  }
+  body.sho .cue-item {
+    grid-template-columns: 52px 1fr;
+    gap: 12px;
+  }
+}
