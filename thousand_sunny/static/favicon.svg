@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <!-- Nakama brand bolt — orange zigzag lightning streak (PANTONE 165 PC = --sho-accent).
-       Same shape as the #sho-bolt-shape symbol used in the Progress page footer.
-       Stroke-only, not filled. Centered vertically in a 24x24 canvas
-       (original symbol viewBox 0 0 24 14, shifted +5 to center). -->
-  <polyline points="2,15 6,9 9,15 13,9 16,15 20,9 22,15"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 20">
+  <!-- Nakama brand bolt — orange zigzag lightning climbing from lower-left to
+       upper-right (PANTONE 165 PC = --sho-accent). Three teeth with each
+       peak/valley pair shifted up by 2 units, producing an overall upward
+       slope while preserving the zigzag streak rhythm. Stroke-only. -->
+  <polyline points="2,16 6,10 9,14 13,8 16,12 20,6 24,10"
             fill="none" stroke="#ff7a18"
             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
