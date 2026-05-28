@@ -121,8 +121,10 @@ async def _default_render_beat(episode_id: str, beat_id: int) -> None:
     storyboard = _load_storyboard(episode_id)
     beat = _find_beat(storyboard, beat_id)
     try:
-        await dispatch_beat(beat, ep_dir / "out")
-        beat.setdefault("status", {})["render_status"] = "done"
+        _mp4, cached_hash, _was_hit = await dispatch_beat(beat, ep_dir / "out")
+        status = beat.setdefault("status", {})
+        status["render_status"] = "done"
+        status["cached_hash"] = cached_hash
     except Exception as exc:  # noqa: BLE001 — surface any worker failure
         logger.exception("render dispatch failed for beat %d: %s", beat_id, exc)
         beat.setdefault("status", {})["render_status"] = "failed"
@@ -172,8 +174,10 @@ async def storyboard_page(
     for beat in storyboard:
         status = beat.get("status") or {}
         bid = beat["beat_id"]
-        mp4_path = out_dir / f"b_roll_{bid}.mp4"
-        mp4_uri = mp4_path.resolve().as_uri() if mp4_path.exists() else None
+        # ADR-038 §D2: rendered mp4 is content-addressed via status.cached_hash.
+        cached_hash = status.get("cached_hash")
+        mp4_path = out_dir / f"b_roll_{cached_hash}.mp4" if cached_hash else None
+        mp4_uri = mp4_path.resolve().as_uri() if mp4_path and mp4_path.exists() else None
         broll = beat.get("broll") or {}
         rows.append(
             {
@@ -221,14 +225,16 @@ async def storyboard_status(
     for beat in storyboard:
         bid = beat["beat_id"]
         status = beat.get("status") or {}
-        mp4_path = out_dir / f"b_roll_{bid}.mp4"
+        cached_hash = status.get("cached_hash")
+        mp4_path = out_dir / f"b_roll_{cached_hash}.mp4" if cached_hash else None
+        mp4_uri = mp4_path.resolve().as_uri() if mp4_path and mp4_path.exists() else None
         payload.append(
             {
                 "beat_id": bid,
                 "text_approved": bool(status.get("text_approved")),
                 "render_status": status.get("render_status") or "pending",
                 "visual_approved": bool(status.get("visual_approved")),
-                "mp4_uri": mp4_path.resolve().as_uri() if mp4_path.exists() else None,
+                "mp4_uri": mp4_uri,
             }
         )
     return JSONResponse({"beats": payload})
