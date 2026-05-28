@@ -1379,7 +1379,7 @@ def _sweep_orphan_staging() -> None:
     cutoff = time.time() - _STAGING_ORPHAN_TTL
     try:
         children = list(root.iterdir())
-    except OSError:
+    except OSError:  # pragma: no cover — defensive: race with concurrent cleanup
         return
     for child in children:
         try:
@@ -1388,10 +1388,10 @@ def _sweep_orphan_staging() -> None:
             for leftover in child.iterdir():
                 try:
                     leftover.unlink()
-                except OSError:
+                except OSError:  # pragma: no cover — defensive: locked / removed mid-loop
                     pass
             child.rmdir()
-        except OSError:
+        except OSError:  # pragma: no cover — defensive: dir locked / removed mid-loop
             continue
 
 
@@ -1571,7 +1571,7 @@ async def watchlist_add_confirm(
         for leftover in staging_dir.iterdir():
             try:
                 leftover.unlink()
-            except OSError:
+            except OSError:  # pragma: no cover — defensive: file locked
                 pass
         staging_dir.rmdir()
     except OSError:
