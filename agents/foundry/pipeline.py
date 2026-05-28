@@ -1,7 +1,10 @@
 """foundry pipeline entry — orchestrates planning / dispatching / FCPXML emit.
 
-Subcommands (Phase 1 surface):
-- plan: SRT → storyboard.yaml (PR-3)
+Subcommands:
+- plan: SRT → storyboard.yaml (PR-3); ``--use-hints`` consumes
+  ``storyboard_hints.yaml`` if present (ADR-038 §D5)
+- hint-beats: raw_recording.mp4 → storyboard_hints.yaml via silencedetect
+  (ADR-038 §D5 / PR-C)
 - render: storyboard.yaml → b_roll_*.mp4 (PR-4)
 - emit: storyboard.yaml + rendered mp4s → episode.fcpxml (PR-4)
 - run: plan → render → emit end-to-end
@@ -84,6 +87,7 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     srt_path = ep_dir / "transcript.srt"
     episode_yaml_path = ep_dir / "episode.yaml"
     mp4_path = ep_dir / "raw_recording.mp4"
+    hints_path = ep_dir / "storyboard_hints.yaml"
     out_path = ep_dir / "storyboard.yaml"
 
     cues = parse_srt(srt_path.read_text(encoding="utf-8"))
@@ -99,7 +103,20 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     if episode_yaml_path.exists():
         episode_meta = yaml.safe_load(episode_yaml_path.read_text(encoding="utf-8")) or {}
 
-    beats = plan_episode(normalized, episode_meta)
+    # ADR-038 §D5: opt-in silence hints. Default behavior unchanged when the
+    # flag is absent or the file does not exist.
+    hints: dict | None = None
+    if getattr(args, "use_hints", False):
+        if hints_path.exists():
+            hints = yaml.safe_load(hints_path.read_text(encoding="utf-8")) or None
+            logger.info("planner consuming silence hints from %s", hints_path)
+        else:
+            logger.warning(
+                "--use-hints set but %s not found; planner will run without hints",
+                hints_path,
+            )
+
+    beats = plan_episode(normalized, episode_meta, hints=hints)
 
     # Align each beat; log failures but continue (operator reviews storyboard)
     for beat in beats:
@@ -123,6 +140,57 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
     logger.info("storyboard written to %s (%d beats)", out_path, len(beats))
+    return 0
+
+
+def _cmd_hint_beats(args: argparse.Namespace) -> int:
+    """raw_recording.mp4 → storyboard_hints.yaml via ffmpeg silencedetect.
+
+    ADR-038 §D5 / PR-C. Output payload:
+
+        speaking_spans:
+          - [start_s, end_s]
+          - ...
+        params:
+          noise_db: -30.0
+          min_silence_s: 0.7
+
+    Consumed by `plan --use-hints` as an advisory prior on beat boundaries.
+    """
+    from agents.foundry.silence_detection import find_speaking_spans
+
+    ep_dir = _episode_dir(args.episode)
+    mp4_path = ep_dir / "raw_recording.mp4"
+    out_path = ep_dir / "storyboard_hints.yaml"
+
+    if not mp4_path.exists():
+        logger.error("hint-beats: raw_recording.mp4 not found at %s", mp4_path)
+        return 1
+
+    spans = find_speaking_spans(
+        mp4_path,
+        noise_db=args.noise_db,
+        min_silence_s=args.min_silence_s,
+    )
+
+    payload = {
+        "speaking_spans": [[round(s, 3), round(e, 3)] for s, e in spans],
+        "params": {
+            "noise_db": args.noise_db,
+            "min_silence_s": args.min_silence_s,
+        },
+    }
+    out_path.write_text(
+        yaml.dump(payload, allow_unicode=True, default_flow_style=False, sort_keys=False),
+        encoding="utf-8",
+    )
+    logger.info(
+        "hint-beats wrote %d speaking spans to %s (noise=%sdB, d=%ss)",
+        len(spans),
+        out_path,
+        args.noise_db,
+        args.min_silence_s,
+    )
     return 0
 
 
@@ -183,7 +251,24 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="agents.foundry", description=__doc__.splitlines()[0])
     p.add_argument("--episode", required=True, help="episode id under data/script_video/")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("plan").set_defaults(fn=_cmd_plan)
+    plan_sub = sub.add_parser("plan")
+    plan_sub.add_argument(
+        "--use-hints",
+        action="store_true",
+        help=(
+            "Consume storyboard_hints.yaml (from `hint-beats`) as an advisory "
+            "prior on beat boundaries. Default opt-out — when flag absent or "
+            "file missing, planner behavior is unchanged."
+        ),
+    )
+    plan_sub.set_defaults(fn=_cmd_plan)
+    hint_sub = sub.add_parser(
+        "hint-beats",
+        help="Detect speaking spans via silencedetect → storyboard_hints.yaml",
+    )
+    hint_sub.add_argument("--noise-db", type=float, default=-30.0, dest="noise_db")
+    hint_sub.add_argument("--min-silence-s", type=float, default=0.7, dest="min_silence_s")
+    hint_sub.set_defaults(fn=_cmd_hint_beats)
     render_sub = sub.add_parser("render")
     render_sub.add_argument("--concurrency", type=int, default=1)
     render_sub.set_defaults(fn=_cmd_render)
