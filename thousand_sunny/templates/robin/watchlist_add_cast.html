@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 確認 Cast</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/robin.css?v={{ asset_version }}">
+<style>
+  .cast-form { max-width: 720px; margin: 2rem auto; padding: 0 1.25rem; }
+  .cast-form h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .cast-form .lead { color: var(--sho-fg-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+  .meta-card {
+    border: 1px solid var(--sho-border);
+    border-radius: 4px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    background: var(--sho-bg-subtle, transparent);
+  }
+  .meta-row { display: flex; gap: 0.5rem; align-items: baseline; margin-bottom: 0.4rem; font-size: 0.85rem; }
+  .meta-row:last-child { margin-bottom: 0; }
+  .meta-row .k {
+    flex: 0 0 6rem;
+    color: var(--sho-fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.7rem;
+    font-weight: 500;
+  }
+  .meta-row .v { flex: 1; word-break: break-all; }
+  .meta-row .v.title { font-weight: 600; font-size: 0.95rem; }
+
+  .cast-section h2 { font-size: 1rem; margin-bottom: 0.5rem; }
+  .cast-section .hint { font-size: 0.75rem; color: var(--sho-fg-muted); margin-bottom: 0.75rem; }
+  #cast-rows { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .cast-row { display: flex; gap: 0.5rem; align-items: center; }
+  .cast-row input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--sho-border);
+    border-radius: 4px;
+    background: var(--sho-bg);
+    color: var(--sho-fg);
+    font: inherit;
+    font-size: 0.85rem;
+  }
+  .cast-row input:focus {
+    outline: none;
+    border-color: var(--sho-accent);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--sho-accent) 30%, transparent);
+  }
+  .cast-row .remove {
+    flex: 0 0 auto;
+    padding: 0.4rem 0.65rem;
+    background: transparent;
+    color: var(--sho-fg-muted);
+    border: 1px solid var(--sho-border);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .cast-row .remove:hover { color: var(--sho-accent); border-color: var(--sho-accent); }
+  #add-cast {
+    background: transparent;
+    color: var(--sho-fg);
+    border: 1px dashed var(--sho-border);
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  #add-cast:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+
+  .actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+  .actions button.primary {
+    padding: 0.55rem 1.25rem;
+    background: var(--sho-accent);
+    color: var(--sho-on-accent, #fff);
+    border: 1px solid var(--sho-accent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .actions a.cancel {
+    padding: 0.55rem 1rem;
+    color: var(--sho-fg-muted);
+    border: 1px solid var(--sho-border);
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+  }
+</style>
+</head>
+<body class="sho robin-page">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='robin') }}
+<main class="cast-form">
+  <h1>確認 Cast</h1>
+  <p class="lead">Metadata + auto-caption 已抓到。下面確認 cast list（host + guests）後就寫入 vault。空白也可以，稍後可以在 entry 編輯。</p>
+
+  <section class="meta-card">
+    <div class="meta-row"><span class="k">Title</span><span class="v title">{{ title }}</span></div>
+    <div class="meta-row"><span class="k">Channel</span><span class="v">{{ channel or '(unknown)' }}</span></div>
+    <div class="meta-row"><span class="k">Duration</span><span class="v">{{ '%d:%02d:%02d' % (duration_s // 3600, (duration_s % 3600) // 60, duration_s % 60) }}</span></div>
+    <div class="meta-row"><span class="k">Caption</span><span class="v">{{ primary_lang }} (auto)</span></div>
+    <div class="meta-row"><span class="k">URL</span><span class="v sho-mono"><a class="sho-lk" href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></span></div>
+    <div class="meta-row"><span class="k">Video ID</span><span class="v sho-mono">{{ video_id }}</span></div>
+  </section>
+
+  <form method="post" action="/robin/watchlist/add/confirm" id="confirm-form">
+    <section class="cast-section">
+      <h2>Cast list</h2>
+      <p class="hint">每欄填一位（host / guest）。Enter 鍵新增一列；空欄會被忽略。</p>
+      <div id="cast-rows">
+        <div class="cast-row">
+          <input type="text" name="cast" placeholder="例如：Andrew Huberman" autocomplete="off">
+          <button type="button" class="remove" aria-label="移除這列">×</button>
+        </div>
+      </div>
+      <button type="button" id="add-cast">+ 新增一列</button>
+    </section>
+    <div class="actions">
+      <button type="submit" class="primary">寫入 Watchlist</button>
+      <a href="/robin/watchlist/add" class="cancel">取消</a>
+    </div>
+  </form>
+</main>
+<script>
+  const rows = document.getElementById('cast-rows');
+  const addBtn = document.getElementById('add-cast');
+
+  function makeRow() {
+    const row = document.createElement('div');
+    row.className = 'cast-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'cast';
+    input.placeholder = '例如：guest';
+    input.autocomplete = 'off';
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'remove';
+    rm.setAttribute('aria-label', '移除這列');
+    rm.textContent = '×';
+    row.appendChild(input);
+    row.appendChild(rm);
+    return row;
+  }
+
+  function bindRow(row) {
+    const rm = row.querySelector('.remove');
+    rm.addEventListener('click', () => {
+      // Keep at least one row (so empty submit still POSTs the cast field).
+      if (rows.querySelectorAll('.cast-row').length > 1) {
+        row.remove();
+      } else {
+        row.querySelector('input').value = '';
+      }
+    });
+    row.querySelector('input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const next = makeRow();
+        rows.appendChild(next);
+        bindRow(next);
+        next.querySelector('input').focus();
+      }
+    });
+  }
+
+  rows.querySelectorAll('.cast-row').forEach(bindRow);
+  addBtn.addEventListener('click', () => {
+    const next = makeRow();
+    rows.appendChild(next);
+    bindRow(next);
+    next.querySelector('input').focus();
+  });
+</script>
+</body>
+</html>
