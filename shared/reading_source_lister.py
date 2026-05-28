@@ -39,6 +39,7 @@ from shared.reading_source_registry import (
     BookKey,
     InboxKey,
     ReadingSourceRegistry,
+    YouTubeKey,
 )
 from shared.schemas.reading_source import ReadingSource
 
@@ -78,6 +79,11 @@ class RegistryReadingSourceLister:
       through the registry, which DOES consult the DB if available — book
       directories without a matching DB row will simply resolve to
       ``None`` and be skipped.
+    - ``watchlist_youtube_root`` (optional, ADR-035 §D1/D4): absolute path
+      to ``{vault}/Watchlist/youtube`` — directory to walk for
+      ``YouTubeKey`` candidates. Default ``None`` means the lister skips
+      the YouTube arm entirely (preserves backward compat for callers
+      wired before ADR-035 ship).
     """
 
     def __init__(
@@ -86,10 +92,14 @@ class RegistryReadingSourceLister:
         registry: ReadingSourceRegistry,
         inbox_root: Path,
         books_root: Path,
+        watchlist_youtube_root: Path | None = None,
     ) -> None:
         self._registry = registry
         self._inbox_root = Path(inbox_root)
         self._books_root = Path(books_root)
+        self._watchlist_youtube_root = (
+            Path(watchlist_youtube_root) if watchlist_youtube_root else None
+        )
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -97,12 +107,14 @@ class RegistryReadingSourceLister:
         """Return all candidate Reading Sources for review listing.
 
         Order: books first (sorted by ``book_id``), then inbox documents
-        (sorted by ``logical_original_path``). Within each kind the order
-        is deterministic so list-view rendering is stable.
+        (sorted by ``logical_original_path``), then YouTube watchlist
+        entries (sorted by ``video_id``). Within each kind the order is
+        deterministic so list-view rendering is stable.
         """
         sources: list[ReadingSource] = []
         sources.extend(self._list_books())
         sources.extend(self._list_inbox())
+        sources.extend(self._list_youtube())
         return sources
 
     # ── Books enumeration ─────────────────────────────────────────────────
@@ -215,6 +227,55 @@ class RegistryReadingSourceLister:
                 extra={
                     "category": "reading_source_lister_inbox_resolve_failed",
                     "relative_path": relative_path,
+                    "error": str(exc),
+                },
+            )
+            return None
+
+    # ── YouTube watchlist enumeration (ADR-035 §D1/D4) ────────────────────
+
+    def _list_youtube(self) -> list[ReadingSource]:
+        root = self._watchlist_youtube_root
+        if root is None or not root.is_dir():
+            return []
+        try:
+            entries = sorted(root.iterdir(), key=lambda p: p.name)
+        except _LISTER_FAILURES as exc:
+            _logger.warning(
+                "youtube watchlist root iterdir failed",
+                extra={
+                    "category": "reading_source_lister_youtube_iter_failed",
+                    "watchlist_youtube_root": str(root),
+                    "error": str(exc),
+                },
+            )
+            return []
+        out: list[ReadingSource] = []
+        for entry in entries:
+            if not _is_safe_dir(entry):
+                _logger.warning(
+                    "skipped unsafe youtube watchlist directory",
+                    extra={
+                        "category": "reading_source_lister_youtube_unsafe",
+                        "path": str(entry),
+                    },
+                )
+                continue
+            video_id = entry.name
+            rs = self._safe_resolve_youtube(video_id)
+            if rs is not None:
+                out.append(rs)
+        return out
+
+    def _safe_resolve_youtube(self, video_id: str) -> ReadingSource | None:
+        try:
+            return self._registry.resolve(YouTubeKey(video_id=video_id))
+        except _LISTER_FAILURES as exc:
+            _logger.warning(
+                "youtube resolve failed",
+                extra={
+                    "category": "reading_source_lister_youtube_resolve_failed",
+                    "video_id": video_id,
                     "error": str(exc),
                 },
             )
