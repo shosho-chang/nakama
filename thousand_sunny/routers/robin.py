@@ -582,65 +582,6 @@ def _parse_webvtt(text: str) -> list[dict]:
     return deduped
 
 
-# ── AV reader (ADR-035 PR1c-ii) ──────────────────────────────────────────────
-
-
-@robin_router.get("/watchlist/{video_id}", response_class=HTMLResponse)
-async def watch_video(
-    request: Request,
-    video_id: str,
-    nakama_auth: str | None = Cookie(None),
-):
-    """Render the YouTube video reader for a watchlist entry.
-
-    Read-only viewing — annotation save lands in PR2. The player is the
-    YouTube IFrame API (ToS-compliant) per ADR-035 §Open question.
-    """
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login", status_code=302)
-
-    try:
-        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
-    except ValueError:
-        # Path-traversal alphabet or symlink-escape — treat as not-found
-        # so the response shape stays uniform and the regex isn't leaked.
-        raise HTTPException(404, detail=f"找不到影片：{video_id}")
-
-    if rs is None or rs.kind != "youtube_video":
-        raise HTTPException(404, detail=f"找不到影片：{video_id}")
-
-    cues: list[dict] = []
-    if rs.variants:
-        transcript_path = get_vault_path() / rs.variants[0].path
-        if transcript_path.is_file():
-            cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
-
-    # Cast smuggled through metadata as a JSON string by the pre-F7 resolver
-    # (#765 follow-up lifts it to a top-level ReadingSource field; switch to
-    # ``rs.cast`` once that lands and a rebase brings the field in). The
-    # resolver always writes a well-formed list literal so no defensive parse.
-    cast: list[str] = []
-    cast_raw = rs.metadata.get("cast", "")
-    if cast_raw:
-        parsed = json.loads(cast_raw)
-        if isinstance(parsed, list):
-            cast = [str(x) for x in parsed]
-
-    return templates.TemplateResponse(
-        request,
-        "av_reader.html",
-        {
-            "source": rs,
-            "video_id": video_id,
-            "channel": rs.metadata.get("channel", ""),
-            "cast": cast,
-            "cues": cues,
-            "cues_json": json.dumps(cues, ensure_ascii=False),
-            "asset_version": _SHOSHO_ASSET_VERSION,
-        },
-    )
-
-
 @robin_router.get("/files/{path:path}")
 async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
     """提供 vault 中的圖片給 reader 顯示。"""
@@ -1606,6 +1547,67 @@ async def watchlist_add_confirm(
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
+
+
+# ── AV reader (ADR-035 PR1c-ii) ──────────────────────────────────────────────
+# Registered AFTER the literal ``/watchlist/add`` + ``/watchlist/add/confirm``
+# routes so FastAPI doesn't eat ``/watchlist/add`` with this parametric route.
+
+
+@robin_router.get("/watchlist/{video_id}", response_class=HTMLResponse)
+async def watch_video(
+    request: Request,
+    video_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Render the YouTube video reader for a watchlist entry.
+
+    Read-only viewing — annotation save lands in PR2. The player is the
+    YouTube IFrame API (ToS-compliant) per ADR-035 §Open question.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        # Path-traversal alphabet or symlink-escape — treat as not-found
+        # so the response shape stays uniform and the regex isn't leaked.
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    cues: list[dict] = []
+    if rs.variants:
+        transcript_path = get_vault_path() / rs.variants[0].path
+        if transcript_path.is_file():
+            cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
+
+    # Cast smuggled through metadata as a JSON string by the pre-F7 resolver
+    # (#765 follow-up lifts it to a top-level ReadingSource field; switch to
+    # ``rs.cast`` once that lands and a rebase brings the field in). The
+    # resolver always writes a well-formed list literal so no defensive parse.
+    cast: list[str] = []
+    cast_raw = rs.metadata.get("cast", "")
+    if cast_raw:
+        parsed = json.loads(cast_raw)
+        if isinstance(parsed, list):
+            cast = [str(x) for x in parsed]
+
+    return templates.TemplateResponse(
+        request,
+        "av_reader.html",
+        {
+            "source": rs,
+            "video_id": video_id,
+            "channel": rs.metadata.get("channel", ""),
+            "cast": cast,
+            "cues": cues,
+            "cues_json": json.dumps(cues, ensure_ascii=False),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
+    )
 
 
 # ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────
