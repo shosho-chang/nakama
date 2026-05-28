@@ -202,6 +202,24 @@ def test_fetch_caption_subprocess_failure(monkeypatch, tmp_path: Path):
         youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path)
 
 
+def test_fetch_caption_subprocess_failure_but_vtt_landed(monkeypatch, tmp_path: Path):
+    """yt-dlp can exit non-zero (e.g. 429 on zh-Hant) AND still write an EN
+    VTT thanks to --ignore-errors. We must keep the file we got."""
+    video_id = "dQw4w9WgXcQ"
+
+    def fake_run(*a, **k):
+        (tmp_path / f"{video_id}.en.vtt").write_text("WEBVTT\n\n", encoding="utf-8")
+        return _make_completed(
+            1,
+            stderr="ERROR: Unable to download video subtitles for 'zh-Hant': HTTP Error 429",
+        )
+
+    monkeypatch.setattr(youtube_ingest, "_run_yt_dlp", fake_run)
+    path, lang = youtube_ingest.fetch_caption(video_id, tmp_path)
+    assert lang == "en"
+    assert path.name == f"{video_id}.en.vtt"
+
+
 def test_fetch_caption_rejects_unsafe_video_id(tmp_path: Path):
     with pytest.raises(youtube_ingest.InvalidYouTubeURL):
         youtube_ingest.fetch_caption("../etc/passwd", tmp_path)

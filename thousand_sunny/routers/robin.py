@@ -510,6 +510,16 @@ _VTT_TIME_RE = re.compile(
     r"^(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})"
 )
 _VTT_TAG_RE = re.compile(r"<[^>]+>")
+_SENTENCE_END_RE = re.compile(r'[.!?][")\]]*\s*$')
+_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+(?=[A-Z"\'(\[])')
+"""Split text on punctuation followed by whitespace + capital letter or
+quote. Avoids splitting on common false positives like ``Dr.`` ``Mr.``
+``e.g.`` because they're followed by a lowercase word."""
+_SENTENCE_MAX_SECONDS = 30.0
+"""Safety cap on coalesced-cue duration. Auto-caption punctuation can
+miss sentence boundaries when the speaker doesn't pause; flush anyway
+once a buffered cue group exceeds this many seconds so the cue list
+never grows a single multi-minute brick."""
 
 
 def _vtt_time_to_seconds(h: str, m: str, s: str, ms: str) -> float:
@@ -526,12 +536,17 @@ def _format_cue_label(t: float) -> str:
 
 
 def _parse_webvtt(text: str) -> list[dict]:
-    """Parse a WebVTT document into a sorted, deduplicated list of cues.
+    """Parse a WebVTT document into a clean cue stream.
 
-    yt-dlp auto-captions emit overlapping "rolling" cues where the same
-    line appears in N consecutive cues with shifting end-times. We collapse
-    adjacent identical text into a single longer cue so the cue list reads
-    like prose rather than karaoke.
+    YouTube auto-captions emit a two-cue-per-spoken-line rhythm:
+    a 10ms "ghost" cue showing only the carry-over text from the previous
+    spoken line, followed by a "real" cue whose body has the carry-over on
+    earlier lines and the newly-spoken words (with word-level ``<HH:MM:SS.ms><c>``
+    timing tags) on the LAST line.
+
+    To keep the cue list reading like a transcript stream rather than a
+    karaoke loop, we take only the last non-empty line of each cue body
+    and drop adjacent duplicates.
     """
     cues: list[dict] = []
     cur_start: float | None = None
@@ -541,14 +556,19 @@ def _parse_webvtt(text: str) -> list[dict]:
     def flush() -> None:
         nonlocal cur_start, cur_end, cur_lines
         if cur_start is not None and cur_lines:
-            cleaned = _VTT_TAG_RE.sub("", " ".join(cur_lines)).strip()
-            if cleaned:
+            last_clean = ""
+            for line in reversed(cur_lines):
+                stripped = _VTT_TAG_RE.sub("", line).strip()
+                if stripped:
+                    last_clean = stripped
+                    break
+            if last_clean:
                 cues.append(
                     {
                         "start": cur_start,
                         "end": cur_end,
                         "label": _format_cue_label(cur_start),
-                        "text": cleaned,
+                        "text": last_clean,
                     }
                 )
         cur_start = None
@@ -579,7 +599,72 @@ def _parse_webvtt(text: str) -> list[dict]:
             deduped[-1]["end"] = c["end"]
             continue
         deduped.append(c)
-    return deduped
+    return _coalesce_to_sentences(deduped)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Break a paragraph into sentence-sized chunks."""
+    parts = _SENTENCE_SPLIT_RE.split(text)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _coalesce_to_sentences(cues: list[dict]) -> list[dict]:
+    """Merge consecutive cues until each ends on a sentence-final mark.
+
+    YouTube auto-caption breaks speech every ~2-3s on audio chunks, not
+    on sentence boundaries. Coalescing by punctuation gives the cue list
+    one entry per complete sentence — easier to read, easier to anchor
+    annotations against. Falls back to flushing on ``_SENTENCE_MAX_SECONDS``
+    when punctuation never arrives (rambling speech, missing periods).
+    """
+    if not cues:
+        return []
+    merged: list[dict] = []
+    buf_start: float | None = None
+    buf_end: float | None = None
+    buf_parts: list[str] = []
+
+    def flush() -> None:
+        nonlocal buf_start, buf_end, buf_parts
+        if buf_parts and buf_start is not None and buf_end is not None:
+            text = " ".join(buf_parts).strip()
+            # Split the buffered text into sentences and proportionally
+            # distribute the [buf_start, buf_end] window by character
+            # count. yt-dlp's word-level ``<HH:MM:SS.ms>`` tags would give
+            # exact per-word timing — punt on that until annotation needs
+            # it (PR2 #766); linear interpolation is good enough for
+            # cue-click seeking.
+            sentences = _split_sentences(text)
+            total_chars = sum(len(s) for s in sentences) or 1
+            window = buf_end - buf_start
+            cursor = buf_start
+            for i, sentence in enumerate(sentences):
+                portion = len(sentence) / total_chars
+                end = buf_end if i == len(sentences) - 1 else cursor + window * portion
+                merged.append(
+                    {
+                        "start": cursor,
+                        "end": end,
+                        "label": _format_cue_label(cursor),
+                        "text": sentence,
+                    }
+                )
+                cursor = end
+        buf_start = None
+        buf_end = None
+        buf_parts = []
+
+    for c in cues:
+        if buf_start is None:
+            buf_start = c["start"]
+        buf_end = c["end"]
+        buf_parts.append(c["text"])
+        joined = " ".join(buf_parts).strip()
+        duration = (buf_end or 0.0) - (buf_start or 0.0)
+        if _SENTENCE_END_RE.search(joined) or duration >= _SENTENCE_MAX_SECONDS:
+            flush()
+    flush()
+    return merged
 
 
 @robin_router.get("/files/{path:path}")
