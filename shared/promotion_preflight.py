@@ -152,8 +152,28 @@ class PromotionPreflight:
             )
         elif reading_source.kind == "ebook":
             inspection = self._inspect_ebook(variant)
-        else:
+        elif reading_source.kind == "inbox_document":
             inspection = self._inspect_markdown(variant)
+        elif reading_source.kind == "youtube_video":
+            # ADR-035 §D7 Phase 1 / PR1c will land a dedicated video preflight
+            # path. Until then refuse explicitly — feeding a WebVTT into
+            # ``_inspect_markdown`` would mis-classify a video as a long
+            # markdown document with silent junk counts (PR1a review #4).
+            inspection = _empty_inspection(
+                error=(
+                    f"youtube_video preflight not yet supported "
+                    f"(source_id={reading_source.source_id!r}); ADR-035 PR1c "
+                    f"will land the video inspector"
+                )
+            )
+        else:
+            inspection = _empty_inspection(
+                error=(
+                    f"unsupported reading source kind "
+                    f"(source_id={reading_source.source_id!r}, "
+                    f"kind={reading_source.kind!r})"
+                )
+            )
 
         action, reasons = self._apply_action_policy(reading_source, inspection)
 

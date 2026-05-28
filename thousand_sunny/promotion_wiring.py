@@ -193,6 +193,7 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
         registry=registry,
         inbox_root=config.vault_root / "Inbox" / "web",
         books_root=books_root_path,
+        watchlist_youtube_root=config.vault_root / "Watchlist" / "youtube",
     )
     kb_index = VaultKBConceptIndex(
         concepts_root=config.vault_root / "KB" / "Wiki" / "Concepts",

@@ -311,7 +311,18 @@ class SourceMapBuilder:
         """
         if reading_source.kind == "ebook":
             return self._inspect_ebook(variant)
-        return self._inspect_inbox(variant)
+        if reading_source.kind == "inbox_document":
+            return self._inspect_inbox(variant)
+        if reading_source.kind == "youtube_video":
+            # ADR-035 §D7 Phase 1 / PR1c will land a dedicated video
+            # inspector. Until then refuse explicitly — falling through to
+            # ``_inspect_inbox`` would feed a WebVTT file into the markdown
+            # line-chunker and produce silent garbage (PR1a review #3).
+            raise _BuildError(
+                "youtube_video source maps are not yet supported; "
+                "ADR-035 PR1c will land the video inspector"
+            )
+        raise _BuildError(f"unsupported reading source kind: {reading_source.kind!r}")
 
     def _inspect_ebook(
         self, variant: SourceVariant
