@@ -105,11 +105,23 @@ def emit(
         timing = beat.get("timing")
         if not timing:
             raise ValueError(f"cutaway beat {beat.get('beat_id')} missing timing")
-        broll_mp4 = out_dir / f"b_roll_{beat['beat_id']}.mp4"
+        # ADR-038 §D2: rendered mp4 is content-addressed by cached_hash.
+        # Dispatcher writes cached_hash to status before/after render; if it
+        # is missing (legacy storyboard or out-of-band edit), recompute it
+        # so emit() stays self-contained.
+        status = beat.get("status") or {}
+        cached_hash = status.get("cached_hash")
+        if not cached_hash:
+            from agents.foundry.export_hash import compute_beat_hash
+
+            cached_hash = compute_beat_hash(beat)
+        broll_mp4 = out_dir / f"b_roll_{cached_hash}.mp4"
         if not broll_mp4.exists():
-            raise ValueError(f"cutaway beat {beat['beat_id']} mp4 not found at {broll_mp4}")
+            raise ValueError(
+                f"cutaway beat {beat['beat_id']} mp4 not found at {broll_mp4} (hash={cached_hash})"
+            )
         broll_duration = _mp4_duration(broll_mp4)
-        cutaways.append((beat, broll_mp4, broll_duration))
+        cutaways.append((beat, broll_mp4, broll_duration, cached_hash))
 
     fcpxml = ET.Element("fcpxml", {"version": fcpxml_version})
     resources = ET.SubElement(fcpxml, "resources")
@@ -152,7 +164,7 @@ def emit(
         {"kind": "original-media", "src": raw_mp4.resolve().as_uri()},
     )
 
-    for idx, (beat, mp4, dur) in enumerate(cutaways, start=3):
+    for idx, (beat, mp4, dur, _hash) in enumerate(cutaways, start=3):
         asset = ET.SubElement(
             resources,
             "asset",
@@ -201,12 +213,12 @@ def emit(
         },
     )
 
-    for idx, (beat, _mp4, dur) in enumerate(cutaways, start=3):
+    for idx, (beat, _mp4, dur, cached_hash) in enumerate(cutaways, start=3):
         ET.SubElement(
             aroll_clip,
             "asset-clip",
             {
-                "name": f"b_roll_{beat['beat_id']}",
+                "name": f"b_roll_{cached_hash}",
                 "ref": f"r{idx}",
                 "lane": "1",
                 "offset": _frames(beat["timing"]["start"]),
