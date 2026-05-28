@@ -39,6 +39,11 @@ class BeatStatus(BaseModel):
     text_approved: bool = False
     render_status: Literal["pending", "rendering", "done", "failed"] = "pending"
     visual_approved: bool = False
+    # ADR-038 §D2: 16-char sha256 prefix used in `out/b_roll_<cached_hash>.mp4`
+    # filename. Filled by render_dispatcher when the beat is queued (or cache-
+    # hit) and read by fcpxml_emitter to resolve the rendered mp4. None until
+    # the beat has been considered for rendering at least once.
+    cached_hash: str | None = None
 
 
 class UserNote(BaseModel):
