@@ -1825,13 +1825,18 @@ def _video_annotation_row(item) -> dict:
 def _nearest_cue_index(cue_starts: list[float], t: float, tol: float = 0.05) -> int | None:
     """Find the cue index whose start matches ``t`` within ``tol`` seconds.
 
-    Cue boundaries are the natural anchor unit in ADR-035; we don't fuzz
-    beyond a 50ms tolerance to avoid lighting up the wrong cue when two
-    cues abut at the same timestamp.
+    Cue boundaries are the natural anchor unit in ADR-035 §D5 (annotations
+    are cue-boundary snapped at save time), so the 50ms tolerance only
+    absorbs float drift from VTT re-parses. We deliberately return
+    ``None`` when no cue is within tolerance — silently anchoring to a
+    floor cue would mis-mark an unrelated row in the transcript when an
+    annotation's locator is stale (e.g. transcript re-fetched after the
+    annotation was written).
     """
     if not cue_starts:
         return None
-    # Binary search for the predecessor, then check both neighbours.
+    # Binary search for the predecessor (largest start ≤ t), then check
+    # both that and the successor for a within-tolerance match.
     lo, hi = 0, len(cue_starts) - 1
     best = 0
     while lo <= hi:
@@ -1847,8 +1852,7 @@ def _nearest_cue_index(cue_starts: list[float], t: float, tol: float = 0.05) -> 
     for idx in candidates:
         if abs(cue_starts[idx] - t) <= tol:
             return idx
-    # Otherwise anchor to the predecessor (start-time floor of the t value).
-    return best
+    return None
 
 
 # ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────

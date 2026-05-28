@@ -375,11 +375,20 @@ def test_nearest_cue_index_within_tolerance():
     assert _nearest_cue_index([0.0, 3.0, 7.0], 3.02) == 1
 
 
-def test_nearest_cue_index_falls_back_to_predecessor():
+def test_nearest_cue_index_returns_none_when_no_match_within_tolerance():
     from thousand_sunny.routers.robin import _nearest_cue_index
 
-    # 5.0 is past tolerance for both neighbours → predecessor (cue start 3.0)
-    assert _nearest_cue_index([0.0, 3.0, 7.0], 5.0) == 1
+    # 5.0 is past tolerance for both neighbours → no floor fallback (would
+    # misattribute the annotation to an unrelated cue).
+    assert _nearest_cue_index([0.0, 3.0, 7.0], 5.0) is None
+
+
+def test_nearest_cue_index_returns_none_when_far_past_last_cue():
+    from thousand_sunny.routers.robin import _nearest_cue_index
+
+    # Annotation locator far past every cue (e.g. transcript was re-fetched
+    # after the annotation was saved) — must not mark the last cue.
+    assert _nearest_cue_index([0.0, 3.0, 7.0], 100.0) is None
 
 
 def test_nearest_cue_index_empty_returns_none():
