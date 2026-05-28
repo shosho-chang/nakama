@@ -187,7 +187,10 @@ fi
 if [ "${NEED[thousand-sunny]}" -eq 1 ]; then
   echo
   echo "==> healthz check"
-  if uptime=$(curl -fsS --max-time 10 https://nakama.shosho.tw/healthz | python3 -c 'import sys,json; print(json.load(sys.stdin)["uptime_seconds"])' 2>/dev/null); then
+  # Hit the origin directly — going through nakama.shosho.tw from the VPS itself
+  # triggers Cloudflare's bot challenge (VPS egress IP is flagged) and the
+  # JS-challenge HTML comes back instead of the healthz JSON.
+  if uptime=$(curl -fsS --max-time 10 http://127.0.0.1:8000/healthz | python3 -c 'import sys,json; print(json.load(sys.stdin)["uptime_seconds"])' 2>/dev/null); then
     echo "    uptime_seconds=$uptime (should be small)"
     if [ "$uptime" -gt 120 ]; then
       echo "    WARN: uptime > 120s — restart may not have taken effect" >&2
