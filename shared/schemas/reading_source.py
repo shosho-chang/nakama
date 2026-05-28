@@ -208,8 +208,21 @@ class ReadingSource(BaseModel):
       (per ``IngestResult`` frontmatter contract).
     - ``youtube_video`` (ADR-035 §D4) → ``video_id``, ``channel``,
       ``duration_s`` (string-encoded int), ``url`` (canonical
-      ``https://youtube.com/watch?v={video_id}``), ``cast`` (JSON-encoded
-      ``list[str]`` host + guests per ADR-035 §D3).
+      ``https://youtube.com/watch?v={video_id}``).
+      ``cast`` is NOT a metadata key — see the top-level ``cast`` field.
+    """
+
+    cast: list[str] = Field(default_factory=list)
+    """Host + guest list for ``youtube_video`` sources (ADR-035 §D3 / F7).
+
+    Closed enum of source kinds that may set a non-empty ``cast``:
+
+    - ``youtube_video`` — host first, then guests in appearance order.
+    - all other kinds   — MUST be ``[]`` (empty list, the default).
+
+    Lifted from ``metadata['cast']`` JSON-string smuggle to a top-level
+    typed field in schema v=2 (PR1b review F7). Non-empty ``cast``
+    requires ``schema_version >= 2`` (V15 invariant).
     """
 
     @model_validator(mode="after")
@@ -221,5 +234,18 @@ class ReadingSource(BaseModel):
             raise ValueError(
                 f"kind='youtube_video' requires schema_version >= 2; "
                 f"got schema_version={self.schema_version}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_cast_requires_v2(self) -> "ReadingSource":
+        # V15 (PR1b review F7) — non-empty ``cast`` is a v=2 capability.
+        # Mirrors V14: a v=1 record cannot silently carry the new
+        # top-level ``cast`` field. Empty ``cast=[]`` is the unspecified
+        # default and remains valid in v=1 records.
+        if self.cast and self.schema_version < 2:
+            raise ValueError(
+                f"non-empty cast requires schema_version >= 2; "
+                f"got schema_version={self.schema_version} with cast={self.cast!r}"
             )
         return self

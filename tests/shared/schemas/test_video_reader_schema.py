@@ -163,8 +163,8 @@ def _yt_source_kwargs() -> dict:
             "channel": "Huberman Lab",
             "duration_s": "5400",
             "url": "https://youtube.com/watch?v=dQw4w9WgXcQ",
-            "cast": '["host", "Andrew Huberman"]',
         },
+        cast=["host", "Andrew Huberman"],
     )
 
 
@@ -233,6 +233,59 @@ def test_v14_inbox_document_still_v1() -> None:
     )
     assert src.schema_version == 1
     assert src.kind == "inbox_document"
+
+
+# ── ReadingSource / V15 (cast field, PR1b review F7) ──────────────────────
+
+
+def test_v15_non_empty_cast_rejected_in_schema_v1() -> None:
+    """V15: non-empty cast on a v=1 ReadingSource must raise."""
+    with pytest.raises(ValidationError, match="cast requires schema_version >= 2"):
+        ReadingSource(
+            source_id="ebook:abc123",
+            annotation_key="abc123",
+            kind="ebook",
+            title="Why We Sleep",
+            primary_lang="en",
+            has_evidence_track=True,
+            variants=[
+                SourceVariant(
+                    role="original",
+                    format="epub",
+                    lang="en",
+                    path="data/books/abc123/original.epub",
+                )
+            ],
+            cast=["host", "guest"],
+        )
+
+
+def test_v15_empty_cast_ok_in_schema_v1() -> None:
+    """V15: cast=[] (default) does not trip the v=1 invariant."""
+    src = ReadingSource(
+        source_id="ebook:abc123",
+        annotation_key="abc123",
+        kind="ebook",
+        title="Why We Sleep",
+        primary_lang="en",
+        has_evidence_track=True,
+        variants=[
+            SourceVariant(
+                role="original",
+                format="epub",
+                lang="en",
+                path="data/books/abc123/original.epub",
+            )
+        ],
+    )
+    assert src.schema_version == 1
+    assert src.cast == []
+
+
+def test_v15_non_empty_cast_ok_in_schema_v2() -> None:
+    """V15: non-empty cast on a v=2 youtube_video ReadingSource is accepted."""
+    src = ReadingSource(schema_version=2, **_yt_source_kwargs())
+    assert src.cast == ["host", "Andrew Huberman"]
 
 
 # ── SourceMapBuildResult B7 (ADR-035 §D5) ─────────────────────────────────
