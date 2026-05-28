@@ -65,8 +65,9 @@ body.sho .chassis-bolt {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 32px;
+  height: 18px;
+  color: var(--sho-accent);
   text-decoration: none;
   transition: opacity var(--sho-t-fast) var(--sho-ease);
 }
@@ -76,7 +77,6 @@ body.sho .chassis-bolt svg {
   height: 100%;
   display: block;
 }
-body.sho .chassis-bolt svg path { fill: var(--sho-accent); }
 body.sho .chassis-wordmark {
   font-family: var(--sho-font-mono);
   font-size: 11px;

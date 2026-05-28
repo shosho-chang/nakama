@@ -44,8 +44,10 @@
 <header class="chassis" role="banner">
   <div class="chassis-brand">
     <a href="/bridge" class="chassis-bolt" aria-label="Nakama Bridge home"{% if nav_active == 'bridge' %} aria-current="page"{% endif %}>
-      <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-        <path d="M20 2 L6 18 L13 18 L12 30 L26 14 L19 14 Z"/>
+      <svg viewBox="0 0 24 14" aria-hidden="true" focusable="false">
+        <polyline points="2,10 6,4 9,10 13,4 16,10 20,4 22,10"
+                  fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </a>
     <a href="/bridge" class="chassis-wordmark{% if nav_active == 'bridge' %} active{% endif %}"{% if nav_active == 'bridge' %} aria-current="page"{% endif %}>NAKAMA</a>

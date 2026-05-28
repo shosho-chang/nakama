@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- Nakama favicon — orange diagonal lightning bolt (PANTONE 165 PC = --sho-accent).
-       Top tip at (20, 2) leans upper-right; bottom tip at (12, 30) lower-left.
-       Pure path, no stroke — crisp at 16x16 and Retina-scaled. -->
-  <path fill="#ff7a18" d="M20 2 L6 18 L13 18 L12 30 L26 14 L19 14 Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Nakama brand bolt — orange zigzag lightning streak (PANTONE 165 PC = --sho-accent).
+       Same shape as the #sho-bolt-shape symbol used in the Progress page footer.
+       Stroke-only, not filled. Centered vertically in a 24x24 canvas
+       (original symbol viewBox 0 0 24 14, shifted +5 to center). -->
+  <polyline points="2,15 6,9 9,15 13,9 16,15 20,9 22,15"
+            fill="none" stroke="#ff7a18"
+            stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
