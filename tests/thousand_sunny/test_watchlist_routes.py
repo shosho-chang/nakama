@@ -282,6 +282,194 @@ def test_post_watchlist_confirm_rejects_bad_video_id(app_client, vault, monkeypa
 # ---------------------------------------------------------------------------
 
 
+def test_post_watchlist_add_ytdlp_caption_error(app_client, monkeypatch):
+    tc, robin_module = app_client
+    monkeypatch.setattr(robin_module, "fetch_metadata", lambda url: _fake_metadata())
+
+    def fake_fetch_caption(video_id, output_dir):
+        from shared.youtube_ingest import YtDlpError
+
+        raise YtDlpError("net failure", stderr="ERROR: HTTP 429")
+
+    monkeypatch.setattr(robin_module, "fetch_caption", fake_fetch_caption)
+
+    r = tc.post(
+        "/robin/watchlist/add",
+        data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+    )
+    assert r.status_code == 400
+
+
+def test_post_watchlist_confirm_500_when_staged_vtt_missing(app_client, vault, monkeypatch):
+    tc, robin_module = app_client
+
+    # Build a session pointing at a vtt that doesn't exist on disk (simulates
+    # a crashed/cleaned tmp state between add and confirm).
+    sid = robin_module._new_session(
+        step="watchlist_cast",
+        video_id="dQw4w9WgXcQ",
+        title="x",
+        channel="y",
+        duration_s=1,
+        url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+        primary_lang="en",
+        staging_vtt=str(vault / "does-not-exist.vtt"),
+    )
+    r = tc.post(
+        "/robin/watchlist/add/confirm",
+        cookies={"robin_watchlist_session": sid},
+        data={"cast": "X"},
+    )
+    assert r.status_code == 500
+    assert "staged transcript missing" in r.text
+
+
+def test_post_watchlist_confirm_validation_error_returns_400(app_client, vault, monkeypatch):
+    tc, robin_module = app_client
+
+    # Negative duration_s violates ``ge=0`` constraint in the schema.
+    sid = robin_module._new_session(
+        step="watchlist_cast",
+        video_id="dQw4w9WgXcQ",
+        title="x",
+        channel="y",
+        duration_s=-5,
+        url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+        primary_lang="en",
+        staging_vtt=str(vault / "ignore.vtt"),
+    )
+    r = tc.post(
+        "/robin/watchlist/add/confirm",
+        cookies={"robin_watchlist_session": sid},
+        data={"cast": "X"},
+    )
+    assert r.status_code == 400
+    assert "watchlist entry" in r.text or "驗證" in r.text
+
+
+def test_post_watchlist_confirm_cleans_staging_leftovers(app_client, vault, monkeypatch):
+    """Confirm path cleans up staging leftovers (yt-dlp may leave .json /
+    .info files next to the vtt). Covers the inner unlink loop branch."""
+    tc, robin_module = app_client
+
+    def fake_fetch_metadata(url):
+        return _fake_metadata()
+
+    def fake_fetch_caption(video_id, output_dir: Path):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        vtt = output_dir / "transcript.vtt"
+        vtt.write_text("WEBVTT\n", encoding="utf-8")
+        # Simulate yt-dlp leftover info-json artefact.
+        (output_dir / "info.json").write_text("{}", encoding="utf-8")
+        return vtt, "en"
+
+    monkeypatch.setattr(robin_module, "fetch_metadata", fake_fetch_metadata)
+    monkeypatch.setattr(robin_module, "fetch_caption", fake_fetch_caption)
+
+    r = tc.post(
+        "/robin/watchlist/add",
+        data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+    )
+    sid = r.cookies["robin_watchlist_session"]
+
+    r2 = tc.post(
+        "/robin/watchlist/add/confirm",
+        cookies={"robin_watchlist_session": sid},
+        data={"cast": "X"},
+    )
+    assert r2.status_code == 303
+    # Staging dir should be gone (cleanup succeeded incl. leftover unlink).
+    staging_dir = vault / "Watchlist" / "youtube" / ".staging" / "dQw4w9WgXcQ"
+    assert not staging_dir.exists()
+
+
+def test_post_watchlist_confirm_cleanup_tolerates_missing_staging(app_client, vault, monkeypatch):
+    """If the staging dir is already gone (e.g. another process cleaned it),
+    the cleanup branch should ``except OSError: pass`` without crashing."""
+    tc, robin_module = app_client
+
+    # Hand-build a session with a staging_vtt that exists but no staging dir
+    # (we'll create the vtt in a different location).
+    vtt = vault / "isolated_vtt" / "transcript.vtt"
+    vtt.parent.mkdir(parents=True, exist_ok=True)
+    vtt.write_text("WEBVTT\n", encoding="utf-8")
+
+    sid = robin_module._new_session(
+        step="watchlist_cast",
+        video_id="dQw4w9WgXcQ",
+        title="t",
+        channel="c",
+        duration_s=10,
+        url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+        primary_lang="en",
+        staging_vtt=str(vtt),
+    )
+    r = tc.post(
+        "/robin/watchlist/add/confirm",
+        cookies={"robin_watchlist_session": sid},
+        data={"cast": "X"},
+    )
+    assert r.status_code == 303
+    # Entry written despite no staging dir to clean.
+    assert (vault / "Watchlist" / "youtube" / "dQw4w9WgXcQ" / "manifest.json").exists()
+
+
+def test_post_watchlist_confirm_sets_auth_cookie(app_client, vault, monkeypatch):
+    """Confirm response should re-attach the ``nakama_auth`` cookie so the
+    follow-up GET to the reader detail page (#762) stays authenticated."""
+    tc, robin_module = app_client
+
+    vtt = vault / "tmp" / "x.vtt"
+    vtt.parent.mkdir(parents=True, exist_ok=True)
+    vtt.write_text("WEBVTT\n", encoding="utf-8")
+
+    sid = robin_module._new_session(
+        step="watchlist_cast",
+        video_id="dQw4w9WgXcQ",
+        title="t",
+        channel="c",
+        duration_s=10,
+        url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+        primary_lang="en",
+        staging_vtt=str(vtt),
+    )
+    r = tc.post(
+        "/robin/watchlist/add/confirm",
+        cookies={"robin_watchlist_session": sid, "nakama_auth": "preserved-token"},
+        data={"cast": "X"},
+    )
+    assert r.status_code == 303
+    # The nakama_auth cookie is re-set on the redirect response.
+    set_cookie = r.headers.get("set-cookie", "")
+    assert "nakama_auth=preserved-token" in set_cookie
+
+
+def test_auth_redirects_when_unauthenticated(app_client, monkeypatch):
+    tc, robin_module = app_client
+    # Force auth gate active.
+    monkeypatch.setenv("WEB_PASSWORD", "secret")
+    monkeypatch.setenv("WEB_SECRET", "shh")
+    import thousand_sunny.auth as auth_module
+
+    importlib.reload(auth_module)
+    importlib.reload(robin_module)
+
+    # GET form → 302 to login.
+    r = tc.get("/robin/watchlist/add")
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+
+    # POST add → 302 to login.
+    r2 = tc.post("/robin/watchlist/add", data={"url": "https://youtu.be/dQw4w9WgXcQ"})
+    assert r2.status_code == 302
+    assert "/login" in r2.headers["location"]
+
+    # POST confirm → 302 to login.
+    r3 = tc.post("/robin/watchlist/add/confirm", data={"cast": "X"})
+    assert r3.status_code == 302
+    assert "/login" in r3.headers["location"]
+
+
 def test_youtube_watchlist_entry_rejects_invalid_video_id():
     from pydantic import ValidationError
 

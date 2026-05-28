@@ -14,7 +14,7 @@
   .watchlist-add { max-width: 640px; margin: 2rem auto; padding: 0 1.25rem; }
   .watchlist-add h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
   .watchlist-add .lead {
-    color: var(--sho-fg-muted);
+    color: var(--sho-muted);
     font-size: 0.9rem;
     margin-bottom: 1.5rem;
   }
@@ -23,10 +23,10 @@
   .watchlist-add input[type=url] {
     width: 100%;
     padding: 0.6rem 0.75rem;
-    border: 1px solid var(--sho-border);
+    border: 1px solid var(--sho-line);
     border-radius: 4px;
     background: var(--sho-bg);
-    color: var(--sho-fg);
+    color: var(--sho-ink);
     font: inherit;
     font-family: var(--sho-font-mono, monospace);
     font-size: 0.85rem;
@@ -37,14 +37,14 @@
     box-shadow: 0 0 0 2px color-mix(in oklch, var(--sho-accent) 30%, transparent);
   }
   .watchlist-add .hint {
-    color: var(--sho-fg-muted);
+    color: var(--sho-muted);
     font-size: 0.75rem;
     margin-top: 0.25rem;
   }
   .watchlist-add .err {
     border: 1px solid var(--sho-accent, #c44);
     background: color-mix(in oklch, var(--sho-accent, #c44) 8%, transparent);
-    color: var(--sho-fg);
+    color: var(--sho-ink);
     padding: 0.75rem 1rem;
     border-radius: 4px;
     font-size: 0.85rem;
@@ -55,7 +55,7 @@
     padding: 0.55rem 1.25rem;
     border: 1px solid var(--sho-accent);
     background: var(--sho-accent);
-    color: var(--sho-on-accent, #fff);
+    color: var(--sho-bg);
     border-radius: 4px;
     font: inherit;
     font-size: 0.85rem;
@@ -66,8 +66,8 @@
   .watchlist-add button:disabled { opacity: 0.5; cursor: wait; }
   .watchlist-add .cancel {
     background: transparent;
-    color: var(--sho-fg-muted);
-    border-color: var(--sho-border);
+    color: var(--sho-muted);
+    border-color: var(--sho-line);
   }
 </style>
 </head>
@@ -98,7 +98,7 @@
     <p class="hint">支援 watch?v= / youtu.be/ / shorts/ / embed/ / 純 11-char id。抓字幕優先序：en → zh-Hant → zh-CN。</p>
     <div class="actions">
       <button type="submit" id="submit-btn">下一步</button>
-      <a href="/robin" class="cancel" style="display:inline-flex;align-items:center;padding:0.55rem 1rem;border:1px solid var(--sho-border);border-radius:4px;text-decoration:none;color:var(--sho-fg-muted);">取消</a>
+      <a href="/robin" class="cancel" style="display:inline-flex;align-items:center;padding:0.55rem 1rem;border:1px solid var(--sho-line);border-radius:4px;text-decoration:none;color:var(--sho-muted);">取消</a>
     </div>
   </form>
 </main>

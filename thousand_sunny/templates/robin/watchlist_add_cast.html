@@ -12,19 +12,19 @@
 <style>
   .cast-form { max-width: 720px; margin: 2rem auto; padding: 0 1.25rem; }
   .cast-form h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
-  .cast-form .lead { color: var(--sho-fg-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+  .cast-form .lead { color: var(--sho-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
   .meta-card {
-    border: 1px solid var(--sho-border);
+    border: 1px solid var(--sho-line);
     border-radius: 4px;
     padding: 1rem 1.25rem;
     margin-bottom: 1.5rem;
-    background: var(--sho-bg-subtle, transparent);
+    background: var(--sho-bg-2);
   }
   .meta-row { display: flex; gap: 0.5rem; align-items: baseline; margin-bottom: 0.4rem; font-size: 0.85rem; }
   .meta-row:last-child { margin-bottom: 0; }
   .meta-row .k {
     flex: 0 0 6rem;
-    color: var(--sho-fg-muted);
+    color: var(--sho-muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     font-size: 0.7rem;
@@ -34,16 +34,16 @@
   .meta-row .v.title { font-weight: 600; font-size: 0.95rem; }
 
   .cast-section h2 { font-size: 1rem; margin-bottom: 0.5rem; }
-  .cast-section .hint { font-size: 0.75rem; color: var(--sho-fg-muted); margin-bottom: 0.75rem; }
+  .cast-section .hint { font-size: 0.75rem; color: var(--sho-muted); margin-bottom: 0.75rem; }
   #cast-rows { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; }
   .cast-row { display: flex; gap: 0.5rem; align-items: center; }
   .cast-row input {
     flex: 1;
     padding: 0.5rem 0.75rem;
-    border: 1px solid var(--sho-border);
+    border: 1px solid var(--sho-line);
     border-radius: 4px;
     background: var(--sho-bg);
-    color: var(--sho-fg);
+    color: var(--sho-ink);
     font: inherit;
     font-size: 0.85rem;
   }
@@ -56,8 +56,8 @@
     flex: 0 0 auto;
     padding: 0.4rem 0.65rem;
     background: transparent;
-    color: var(--sho-fg-muted);
-    border: 1px solid var(--sho-border);
+    color: var(--sho-muted);
+    border: 1px solid var(--sho-line);
     border-radius: 4px;
     font: inherit;
     font-size: 0.8rem;
@@ -66,8 +66,8 @@
   .cast-row .remove:hover { color: var(--sho-accent); border-color: var(--sho-accent); }
   #add-cast {
     background: transparent;
-    color: var(--sho-fg);
-    border: 1px dashed var(--sho-border);
+    color: var(--sho-ink);
+    border: 1px dashed var(--sho-line);
     border-radius: 4px;
     padding: 0.4rem 0.75rem;
     font: inherit;
@@ -80,7 +80,7 @@
   .actions button.primary {
     padding: 0.55rem 1.25rem;
     background: var(--sho-accent);
-    color: var(--sho-on-accent, #fff);
+    color: var(--sho-bg);
     border: 1px solid var(--sho-accent);
     border-radius: 4px;
     font: inherit;
@@ -89,8 +89,8 @@
   }
   .actions a.cancel {
     padding: 0.55rem 1rem;
-    color: var(--sho-fg-muted);
-    border: 1px solid var(--sho-border);
+    color: var(--sho-muted);
+    border: 1px solid var(--sho-line);
     border-radius: 4px;
     text-decoration: none;
     font-size: 0.85rem;
