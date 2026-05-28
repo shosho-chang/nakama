@@ -182,22 +182,21 @@ def test_parse_webvtt_drops_youtube_carryover_lines():
     interval rather than repeating each line twice."""
     from thousand_sunny.routers.robin import _parse_webvtt
 
-    vtt = """WEBVTT
-Kind: captions
-Language: en
-
-00:00:00.000 --> 00:00:01.870 align:start position:0%
-
-A<00:00:00.200><c> lot</c><00:00:00.520><c> of</c><00:00:00.800><c> people</c><00:00:01.040><c> think</c>
-
-00:00:01.870 --> 00:00:01.880 align:start position:0%
-A lot of people think
-
-
-00:00:01.880 --> 00:00:04.150 align:start position:0%
-A lot of people think
-is<00:00:02.440><c> getting</c><00:00:02.840><c> rid</c><00:00:03.000><c> of</c><00:00:03.160><c> it</c>
-"""
+    # Lines simplified vs real YT output but preserve the structure:
+    # ghost cue is a 10ms cue with the prior carry-over as its only
+    # body line; real cue body is [carry-over, new-content-with-tags].
+    vtt = (
+        "WEBVTT\nKind: captions\nLanguage: en\n\n"
+        "00:00:00.000 --> 00:00:01.870 align:start position:0%\n\n"
+        "A<00:00:00.200><c> lot</c><00:00:00.520><c> of</c>"
+        "<00:00:00.800><c> people</c><00:00:01.040><c> think</c>\n\n"
+        "00:00:01.870 --> 00:00:01.880 align:start position:0%\n"
+        "A lot of people think\n\n\n"
+        "00:00:01.880 --> 00:00:04.150 align:start position:0%\n"
+        "A lot of people think\n"
+        "is<00:00:02.440><c> getting</c><00:00:02.840><c> rid</c>"
+        "<00:00:03.000><c> of</c><00:00:03.160><c> it</c>\n"
+    )
     cues = _parse_webvtt(vtt)
     texts = [c["text"] for c in cues]
     # Three VTT cues → final stream after carry-over drop + sentence
