@@ -153,6 +153,27 @@ def test_parse_webvtt_empty_or_malformed_returns_empty():
     assert _parse_webvtt("WEBVTT\n\nnot a cue\n") == []
 
 
+def test_parse_webvtt_skips_inline_note_and_header_lines():
+    from thousand_sunny.routers.robin import _parse_webvtt
+
+    # NOTE blocks and stray WEBVTT-style lines inside a cue body should be
+    # filtered out; only real text survives.
+    vtt = """WEBVTT
+Kind: captions
+Language: en
+
+NOTE this is a comment
+
+00:00:00.000 --> 00:00:02.000
+real text
+NOTE inline ignored
+WEBVTT bogus continuation
+"""
+    cues = _parse_webvtt(vtt)
+    assert len(cues) == 1
+    assert cues[0]["text"] == "real text"
+
+
 # ── Route behaviour ────────────────────────────────────────────────────
 
 

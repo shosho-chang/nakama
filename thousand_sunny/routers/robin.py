@@ -611,30 +611,20 @@ async def watch_video(
 
     cues: list[dict] = []
     if rs.variants:
-        transcript_rel = rs.variants[0].path
-        transcript_path = get_vault_path() / transcript_rel
+        transcript_path = get_vault_path() / rs.variants[0].path
         if transcript_path.is_file():
-            try:
-                cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
-            except OSError as exc:
-                logger.warning(
-                    "av_reader transcript read failed",
-                    extra={"video_id": video_id, "err": str(exc)},
-                )
+            cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
 
-    # Cast extraction tolerates both the pre-F7 metadata['cast'] JSON-string
-    # smuggle and the post-F7 top-level rs.cast list. Drop the metadata arm
-    # once F7 (#765) lands and resolver no longer writes the smuggle.
+    # Cast smuggled through metadata as a JSON string by the pre-F7 resolver
+    # (#765 follow-up lifts it to a top-level ReadingSource field; switch to
+    # ``rs.cast`` once that lands and a rebase brings the field in). The
+    # resolver always writes a well-formed list literal so no defensive parse.
     cast: list[str] = []
-    if getattr(rs, "cast", None):
-        cast = list(rs.cast)
-    elif "cast" in rs.metadata:
-        try:
-            parsed = json.loads(rs.metadata["cast"])
-            if isinstance(parsed, list):
-                cast = [str(x) for x in parsed]
-        except (json.JSONDecodeError, TypeError, ValueError):
-            cast = []
+    cast_raw = rs.metadata.get("cast", "")
+    if cast_raw:
+        parsed = json.loads(cast_raw)
+        if isinstance(parsed, list):
+            cast = [str(x) for x in parsed]
 
     return templates.TemplateResponse(
         request,
