@@ -175,6 +175,41 @@
     }
   });
 
+  // ADR-035 PR2a: annotation list row click → seek + pause. Read-only —
+  // the write flow (★ / N key / save) lands in PR2b. Rows without a
+  // parseable ``t=`` locator (orphan rows) are inert.
+  const annListEl = document.getElementById('annList');
+  if (annListEl) {
+    const annRows = Array.from(annListEl.querySelectorAll('.ann-row'));
+    annRows.forEach((row) => {
+      const startAttr = row.getAttribute('data-start');
+      if (startAttr === null) return; // orphan — no seek target
+      const start = parseFloat(startAttr);
+      if (!Number.isFinite(start)) return;
+      const handler = () => {
+        if (!player || typeof player.seekTo !== 'function') return;
+        player.seekTo(start, true);
+        // Per acceptance criterion: row click seeks **and pauses** (the
+        // reader is jumping back to revisit a captured moment, not
+        // resuming playback).
+        if (typeof player.pauseVideo === 'function') {
+          try {
+            player.pauseVideo();
+          } catch (e) {
+            // Ignore — the seekTo above is the primary effect.
+          }
+        }
+      };
+      row.addEventListener('click', handler);
+      row.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          handler();
+        }
+      });
+    });
+  }
+
   // "同步到 KB" button — stubbed for PR3.
   const syncBtn = document.getElementById('syncBtn');
   if (syncBtn) {

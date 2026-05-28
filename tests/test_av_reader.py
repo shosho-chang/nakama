@@ -1,4 +1,4 @@
-"""Tests for the YouTube av_reader route + WebVTT parser (ADR-035 PR1c-ii)."""
+"""Tests for the YouTube av_reader route + WebVTT parser (ADR-035 PR1c-ii, PR2a)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,29 @@ import pytest
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
+
+
+def _write_annotation_set(vault_path: Path, video_id: str, items: list[dict]) -> Path:
+    """Hand-craft a v3 KB/Annotations/youtube_{video_id}.md fixture file.
+
+    Bypasses ``AnnotationStore.save`` so we can pin the exact on-disk shape
+    used by the PR2a route loader (slug ``youtube_{video_id}``, v3 schema,
+    ``cfi`` carries the ADR-035 §D5 ``t=`` locator).
+    """
+    ann_dir = vault_path / "KB" / "Annotations"
+    ann_dir.mkdir(parents=True, exist_ok=True)
+    path = ann_dir / f"youtube_{video_id}.md"
+    items_json = json.dumps(items, ensure_ascii=False, indent=2)
+    frontmatter = (
+        "---\n"
+        f"slug: youtube_{video_id}\n"
+        "schema_version: 3\n"
+        "base: youtube\n"
+        f'updated_at: "{datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}"\n'
+        "---\n"
+    )
+    path.write_text(frontmatter + "\n```json\n" + items_json + "\n```\n", encoding="utf-8")
+    return path
 
 
 @pytest.fixture
@@ -313,3 +336,182 @@ def test_watch_video_login_redirect_when_unauthenticated(vault, monkeypatch):
     resp = test_client.get("/robin/watchlist/abcDEF12345")
     assert resp.status_code == 302
     assert resp.headers["location"] == "/login"
+
+
+# ── PR2a: locator parser + row shaping unit tests ──────────────────────
+
+
+def test_parse_t_locator_single_point():
+    from thousand_sunny.routers.robin import _parse_t_locator
+
+    assert _parse_t_locator("t=123.4") == pytest.approx(123.4)
+
+
+def test_parse_t_locator_range():
+    from thousand_sunny.routers.robin import _parse_t_locator
+
+    assert _parse_t_locator("t=123.4-145.7") == pytest.approx(123.4)
+
+
+def test_parse_t_locator_none_or_malformed_returns_none():
+    from thousand_sunny.routers.robin import _parse_t_locator
+
+    assert _parse_t_locator(None) is None
+    assert _parse_t_locator("") is None
+    assert _parse_t_locator("cfi=/6/8") is None
+    assert _parse_t_locator("t=abc") is None
+
+
+def test_nearest_cue_index_exact_match():
+    from thousand_sunny.routers.robin import _nearest_cue_index
+
+    assert _nearest_cue_index([0.0, 3.0, 7.0], 3.0) == 1
+
+
+def test_nearest_cue_index_within_tolerance():
+    from thousand_sunny.routers.robin import _nearest_cue_index
+
+    # 3.02 vs cue start 3.0 → within 50ms tol → snap to cue 1
+    assert _nearest_cue_index([0.0, 3.0, 7.0], 3.02) == 1
+
+
+def test_nearest_cue_index_returns_none_when_no_match_within_tolerance():
+    from thousand_sunny.routers.robin import _nearest_cue_index
+
+    # 5.0 is past tolerance for both neighbours → no floor fallback (would
+    # misattribute the annotation to an unrelated cue).
+    assert _nearest_cue_index([0.0, 3.0, 7.0], 5.0) is None
+
+
+def test_nearest_cue_index_returns_none_when_far_past_last_cue():
+    from thousand_sunny.routers.robin import _nearest_cue_index
+
+    # Annotation locator far past every cue (e.g. transcript was re-fetched
+    # after the annotation was saved) — must not mark the last cue.
+    assert _nearest_cue_index([0.0, 3.0, 7.0], 100.0) is None
+
+
+def test_nearest_cue_index_empty_returns_none():
+    from thousand_sunny.routers.robin import _nearest_cue_index
+
+    assert _nearest_cue_index([], 3.0) is None
+
+
+# ── PR2a: annotation list rendering ────────────────────────────────────
+
+
+def test_watch_video_renders_3quadrant_layout_classes(client, vault):
+    test_client, _ = client
+    _write_watchlist_entry(vault, "abcDEF12345", transcript=None)
+    resp = test_client.get("/robin/watchlist/abcDEF12345")
+    assert resp.status_code == 200
+    body = resp.text
+    # 3-quadrant grid uses these CSS hooks (the regression we care about
+    # is that the structural classes the CSS targets are emitted).
+    assert "av-grid" in body
+    assert "pane-player" in body
+    assert "pane-cues" in body
+    assert "pane-annotations" in body
+
+
+def test_watch_video_renders_empty_annotation_state(client, vault):
+    test_client, _ = client
+    _write_watchlist_entry(vault, "abcDEF12345", transcript=None)
+    resp = test_client.get("/robin/watchlist/abcDEF12345")
+    assert resp.status_code == 200
+    body = resp.text
+    # Empty state copy from #787 acceptance criteria.
+    assert "暫停影片開始寫筆記" in body
+    # No annotation list container when empty.
+    assert 'id="annList"' not in body
+
+
+def test_watch_video_renders_annotation_rows_from_store(client, vault):
+    test_client, _ = client
+    vtt = """WEBVTT
+
+00:00:00.000 --> 00:00:03.000
+Welcome to the show.
+
+00:00:03.000 --> 00:00:07.000
+We talk longevity.
+
+00:00:07.000 --> 00:00:12.000
+And sleep.
+"""
+    video_id = "abcDEF12345"
+    _write_watchlist_entry(vault, video_id, transcript=vtt)
+    _write_annotation_set(
+        vault,
+        video_id,
+        [
+            {
+                "type": "annotation",
+                "schema_version": 3,
+                "cfi": "t=3.0-7.0",
+                "text_excerpt": "We talk longevity.",
+                "note": "core thesis of the episode",
+                "created_at": "2026-05-28T09:00:00Z",
+                "modified_at": "2026-05-28T09:00:00Z",
+            },
+            {
+                "type": "highlight",
+                "schema_version": 3,
+                "cfi": "t=7.0-12.0",
+                "text_excerpt": "And sleep.",
+                "text": "And sleep.",
+                "created_at": "2026-05-28T09:01:00Z",
+                "modified_at": "2026-05-28T09:01:00Z",
+            },
+        ],
+    )
+    resp = test_client.get(f"/robin/watchlist/{video_id}")
+    assert resp.status_code == 200
+    body = resp.text
+    # Annotation rows rendered.
+    assert 'id="annList"' in body
+    assert "ann-row" in body
+    assert "core thesis of the episode" in body
+    assert "We talk longevity." in body
+    # Highlight-only row carries the "(no note)" placeholder.
+    assert "(no note)" in body
+    # Row click target — data-start = locator start seconds.
+    assert 'data-start="3.0"' in body
+    assert 'data-start="7.0"' in body
+    # Cues with matching annotation get the visual marker hook.
+    assert "has-annotation" in body
+    # Empty state should NOT render when annotations exist.
+    assert "暫停影片開始寫筆記" not in body
+
+
+def test_watch_video_orphan_annotation_renders_without_data_start(client, vault):
+    """Annotation whose ``cfi`` is missing / unparseable should still render
+    (read-only display) but without a seek target."""
+    test_client, _ = client
+    video_id = "abcDEF12345"
+    _write_watchlist_entry(vault, video_id, transcript=None)
+    _write_annotation_set(
+        vault,
+        video_id,
+        [
+            {
+                "type": "annotation",
+                "schema_version": 3,
+                "cfi": None,
+                "text_excerpt": "free-floating thought",
+                "note": "no anchor yet",
+                "created_at": "2026-05-28T09:00:00Z",
+                "modified_at": "2026-05-28T09:00:00Z",
+            },
+        ],
+    )
+    resp = test_client.get(f"/robin/watchlist/{video_id}")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "ann-row--orphan" in body
+    assert "free-floating thought" in body
+    assert "no anchor yet" in body
+    # Orphan row has no data-start attribute.
+    assert "data-start=" not in body
+    # Time label falls back to placeholder.
+    assert "--:--" in body

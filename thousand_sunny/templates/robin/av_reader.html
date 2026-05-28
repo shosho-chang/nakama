@@ -31,41 +31,92 @@
     </div>
   </div>
 
-  <!-- Sticky player band -->
-  <div class="player-band" id="avReader" data-video-id="{{ video_id }}" data-default-speed="1.5">
-    <div class="player-frame-wrap">
-      <div id="ytPlayer"></div>
-    </div>
-    {% if cast or channel %}
-    <div class="player-meta">
-      {% if channel %}<span class="kicker">CHANNEL</span><span>{{ channel }}</span>{% endif %}
-      {% if cast %}
-      <span class="cast-sep">·</span>
-      <span class="kicker">CAST</span>
-      <span class="cast-list">
-        {%- for name in cast -%}
-          {{ name }}{% if not loop.last %} · {% endif %}
-        {%- endfor -%}
-      </span>
-      {% endif %}
-    </div>
-    {% endif %}
-  </div>
+  <!-- 3-quadrant grid (ADR-035 PR2a) -->
+  <div class="av-grid" id="avReader" data-video-id="{{ video_id }}" data-default-speed="1.5">
 
-  <!-- Cue list -->
-  <div class="cue-scroll">
-    <div class="cue-list" id="cueList">
-      {% if cues %}
-        {% for cue in cues %}
-        <div class="cue-item" tabindex="0" role="button" aria-label="跳到 {{ cue.label }}">
-          <div class="cue-time">{{ cue.label }}</div>
-          <div class="cue-text">{{ cue.text }}</div>
-        </div>
-        {% endfor %}
-      {% else %}
-        <div class="cue-empty">這支影片沒有可用的字幕。</div>
+    <!-- Top-left: player + meta -->
+    <section class="pane pane-player" aria-label="影片播放器">
+      <div class="player-frame-wrap">
+        <div id="ytPlayer"></div>
+      </div>
+      {% if cast or channel %}
+      <div class="player-meta">
+        {% if channel %}<span class="kicker">CHANNEL</span><span>{{ channel }}</span>{% endif %}
+        {% if cast %}
+        <span class="cast-sep">·</span>
+        <span class="kicker">CAST</span>
+        <span class="cast-list">
+          {%- for name in cast -%}
+            {{ name }}{% if not loop.last %} · {% endif %}
+          {%- endfor -%}
+        </span>
+        {% endif %}
+      </div>
       {% endif %}
-    </div>
+    </section>
+
+    <!-- Right: cue list (full height) -->
+    <aside class="pane pane-cues" aria-label="字幕清單">
+      <header class="pane-head">
+        <span class="kicker">TRANSCRIPT</span>
+        {% if cues %}<span class="pane-head-meta">{{ cues|length }} cues</span>{% endif %}
+      </header>
+      <div class="cue-scroll">
+        <div class="cue-list" id="cueList" data-marker-indices="{{ cue_marker_indices|tojson }}">
+          {% if cues %}
+            {% for cue in cues %}
+            <div class="cue-item{% if loop.index0 in cue_marker_indices %} has-annotation{% endif %}"
+                 data-cue-index="{{ loop.index0 }}"
+                 tabindex="0" role="button" aria-label="跳到 {{ cue.label }}">
+              <div class="cue-time">{{ cue.label }}</div>
+              <div class="cue-text">{{ cue.text }}</div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="cue-empty">這支影片沒有可用的字幕。</div>
+          {% endif %}
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom-left: annotation list (read-only, ADR-035 PR2a) -->
+    <section class="pane pane-annotations" aria-label="註解清單">
+      <header class="pane-head">
+        <span class="kicker">ANNOTATIONS</span>
+        {% if annotations %}<span class="pane-head-meta">{{ annotations|length }} 則</span>{% endif %}
+      </header>
+      <div class="ann-scroll">
+        {% if annotations %}
+        <div class="ann-list" id="annList">
+          {% for ann in annotations %}
+          <div class="ann-row{% if ann.start is none %} ann-row--orphan{% endif %}"
+               data-ann-index="{{ loop.index0 }}"
+               {% if ann.start is not none %}data-start="{{ ann.start }}"{% endif %}
+               tabindex="0" role="button"
+               aria-label="跳到 {{ ann.label }}">
+            <div class="ann-time">{{ ann.label }}</div>
+            <div class="ann-body">
+              {% if ann.speaker %}<span class="ann-speaker">{{ ann.speaker }}</span>{% endif %}
+              {% if ann.excerpt %}<span class="ann-excerpt">{{ ann.excerpt }}</span>{% endif %}
+              {% if ann.note %}
+                <span class="ann-sep">—</span>
+                <span class="ann-note">{{ ann.note }}</span>
+              {% elif ann.type == 'highlight' and not ann.note %}
+                <span class="ann-sep">·</span>
+                <span class="ann-note ann-note--muted">(no note)</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="ann-empty">
+          <div class="ann-empty-title">暫停影片開始寫筆記</div>
+          <div class="ann-empty-hint">點下方 cue 即可定位 — 寫入流程將在下個版本開放</div>
+        </div>
+        {% endif %}
+      </div>
+    </section>
   </div>
 
   <!-- Footer -->
@@ -74,8 +125,9 @@
     <span class="shortcuts-hint">SPACE 播放/暫停 · J / L ±10s · 點 cue 跳轉</span>
   </div>
 
-  <!-- Cues payload for JS -->
+  <!-- Cues + annotations payload for JS -->
   <script type="application/json" id="cuesJson">{{ cues_json | safe }}</script>
+  <script type="application/json" id="annotationsJson">{{ annotations_json | safe }}</script>
   <script src="/static/shosho/av-reader.js?v={{ asset_version }}"></script>
 </body>
 </html>
