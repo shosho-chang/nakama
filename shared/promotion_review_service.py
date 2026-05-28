@@ -552,10 +552,18 @@ class PromotionReviewService:
             recommended_at=now_iso_utc(),
         )
         entity_items = list(entity_items or [])
-        # PromotionManifest V12 (ADR-034 v2 PR2a): entity items require
-        # schema_version >= 2. Concept/source-only manifests keep v=1 for
-        # backward compat with existing on-disk manifests.
-        schema_version = 2 if entity_items else 1
+        all_items = [*source_page_items, *concept_items, *entity_items]
+        # PromotionManifest schema_version derivation:
+        # - V12 (ADR-034 v2 PR2a): entity items require schema_version >= 2.
+        # - V13 (ADR-035 §D5): timestamp_range evidence anchors require
+        #   schema_version >= 2. Future video manifests built without entity
+        #   items still need v=2 because their evidence carries cue ranges.
+        has_timestamp_anchor = any(
+            anchor.kind == "timestamp_range"
+            for item in all_items
+            for anchor in item.evidence
+        )
+        schema_version = 2 if (entity_items or has_timestamp_anchor) else 1
         return PromotionManifest(
             schema_version=schema_version,
             manifest_id=manifest_id,
@@ -564,7 +572,7 @@ class PromotionReviewService:
             status="needs_review",
             replaces_manifest_id=None,
             recommender=recommender,
-            items=[*source_page_items, *concept_items, *entity_items],
+            items=all_items,
             commit_batches=[],
             metadata={},
         )

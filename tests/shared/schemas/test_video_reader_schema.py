@@ -233,3 +233,133 @@ def test_v14_inbox_document_still_v1() -> None:
     )
     assert src.schema_version == 1
     assert src.kind == "inbox_document"
+
+
+# ── SourceMapBuildResult B7 (ADR-035 §D5) ─────────────────────────────────
+
+
+def test_source_map_build_result_b7_rejects_timestamp_in_v1() -> None:
+    """SourceMapBuildResult B7 — timestamp_range anchor on item requires v >= 2."""
+    from shared.schemas.source_map import SourceMapBuildResult
+
+    item = _src_item_with_timestamp_anchor()
+    with pytest.raises(ValidationError, match="schema_version >= 2"):
+        SourceMapBuildResult(
+            schema_version=1,
+            source_id="youtube:dQw4w9WgXcQ",
+            primary_lang="en",
+            has_evidence_track=True,
+            chapters_inspected=1,
+            items=[item],
+        )
+
+
+def test_source_map_build_result_b7_accepts_timestamp_in_v2() -> None:
+    from shared.schemas.source_map import SourceMapBuildResult
+
+    result = SourceMapBuildResult(
+        schema_version=2,
+        source_id="youtube:dQw4w9WgXcQ",
+        primary_lang="en",
+        has_evidence_track=True,
+        chapters_inspected=1,
+        items=[_src_item_with_timestamp_anchor()],
+    )
+    assert result.schema_version == 2
+
+
+def test_source_map_build_result_existing_v1_unchanged() -> None:
+    """Backward compat — existing chapter_quote-only builders still v=1."""
+    from shared.schemas.source_map import SourceMapBuildResult
+
+    chapter_item = SourcePageReviewItem(
+        item_id="src-1",
+        recommendation="include",
+        action="create",
+        reason="r",
+        evidence=[
+            EvidenceAnchor(
+                kind="chapter_quote",
+                source_path="data/books/x/original.epub",
+                locator="epubcfi(/6/4!/4/2)",
+                excerpt="q",
+                confidence=0.8,
+            )
+        ],
+        risk=[],
+        confidence=0.8,
+        source_importance=0.8,
+        reader_salience=0.5,
+    )
+    result = SourceMapBuildResult(
+        source_id="ebook:abc",
+        primary_lang="en",
+        has_evidence_track=True,
+        chapters_inspected=1,
+        items=[chapter_item],
+    )
+    assert result.schema_version == 1
+
+
+# ── PromotionReviewService schema_version derivation (#1 fix) ──────────────
+
+
+def test_compose_manifest_derives_v2_for_timestamp_only_items() -> None:
+    """Regression — schema_version factory must consider timestamp_range
+    anchors, not just entity items, or V13 will reject every video manifest.
+    """
+    from shared.promotion_review_service import PromotionReviewService
+
+    # Construct a minimal service for the private helper; deps unused by _compose_manifest.
+    svc = PromotionReviewService.__new__(PromotionReviewService)
+    svc._recommender_model_name = "claude-opus-4-7"
+    svc._recommender_model_version = "2026-04"
+
+    manifest = svc._compose_manifest(
+        source_id="youtube:dQw4w9WgXcQ",
+        source_page_items=[_src_item_with_timestamp_anchor()],
+        concept_items=[],
+        entity_items=[],
+    )
+    assert manifest.schema_version == 2, (
+        "manifest with timestamp_range anchor must auto-bump to v=2 "
+        "(otherwise V13 raises ValidationError)"
+    )
+
+
+def test_compose_manifest_stays_v1_for_legacy_chapter_items() -> None:
+    """Backward compat — concept/source-only manifests with chapter_quote
+    anchors still ship as v=1.
+    """
+    from shared.promotion_review_service import PromotionReviewService
+
+    svc = PromotionReviewService.__new__(PromotionReviewService)
+    svc._recommender_model_name = "claude-opus-4-7"
+    svc._recommender_model_version = "2026-04"
+
+    chapter_item = SourcePageReviewItem(
+        item_id="src-1",
+        recommendation="include",
+        action="create",
+        reason="r",
+        evidence=[
+            EvidenceAnchor(
+                kind="chapter_quote",
+                source_path="data/books/x/original.epub",
+                locator="epubcfi(/6/4!/4/2)",
+                excerpt="q",
+                confidence=0.8,
+            )
+        ],
+        risk=[],
+        confidence=0.8,
+        source_importance=0.8,
+        reader_salience=0.5,
+    )
+    manifest = svc._compose_manifest(
+        source_id="ebook:abc",
+        source_page_items=[chapter_item],
+        concept_items=[],
+        entity_items=[],
+    )
+    assert manifest.schema_version == 1
