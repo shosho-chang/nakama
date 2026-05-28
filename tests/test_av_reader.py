@@ -101,24 +101,25 @@ Today we talk about longevity.
 def test_parse_webvtt_dedups_rolling_repeats():
     from thousand_sunny.routers.robin import _parse_webvtt
 
-    # yt-dlp auto-sub style: same text appears in two consecutive cues
-    # with shifted timing — we collapse them into one cue with extended end.
+    # yt-dlp auto-sub style: same sentence appears in two consecutive
+    # cues with shifted timing. Dedup collapses them; sentence-coalesce
+    # then emits one cue per terminator.
     vtt = """WEBVTT
 
 00:00:00.000 --> 00:00:02.000
-identical line
+Identical sentence here.
 
 00:00:02.000 --> 00:00:04.500
-identical line
+Identical sentence here.
 
 00:00:04.500 --> 00:00:07.000
-next thought.
+Next thought after that.
 """
     cues = _parse_webvtt(vtt)
     assert len(cues) == 2
-    assert cues[0]["text"] == "identical line"
+    assert cues[0]["text"] == "Identical sentence here."
     assert cues[0]["end"] == 4.5  # extended past the dedup
-    assert cues[1]["text"] == "next thought."
+    assert cues[1]["text"] == "Next thought after that."
 
 
 def test_parse_webvtt_strips_cue_tags():
@@ -172,6 +173,67 @@ WEBVTT bogus continuation
     cues = _parse_webvtt(vtt)
     assert len(cues) == 1
     assert cues[0]["text"] == "real text"
+
+
+def test_parse_webvtt_drops_youtube_carryover_lines():
+    """yt-dlp YouTube auto-sub format: ghost cue (10ms) holds carry-over
+    text, real cue body is [carry-over line, new-content line]. Keep ONLY
+    the new-content line so the cue stream reads as one chunk per spoken
+    interval rather than repeating each line twice."""
+    from thousand_sunny.routers.robin import _parse_webvtt
+
+    # Lines simplified vs real YT output but preserve the structure:
+    # ghost cue is a 10ms cue with the prior carry-over as its only
+    # body line; real cue body is [carry-over, new-content-with-tags].
+    vtt = (
+        "WEBVTT\nKind: captions\nLanguage: en\n\n"
+        "00:00:00.000 --> 00:00:01.870 align:start position:0%\n\n"
+        "A<00:00:00.200><c> lot</c><00:00:00.520><c> of</c>"
+        "<00:00:00.800><c> people</c><00:00:01.040><c> think</c>\n\n"
+        "00:00:01.870 --> 00:00:01.880 align:start position:0%\n"
+        "A lot of people think\n\n\n"
+        "00:00:01.880 --> 00:00:04.150 align:start position:0%\n"
+        "A lot of people think\n"
+        "is<00:00:02.440><c> getting</c><00:00:02.840><c> rid</c>"
+        "<00:00:03.000><c> of</c><00:00:03.160><c> it</c>\n"
+    )
+    cues = _parse_webvtt(vtt)
+    texts = [c["text"] for c in cues]
+    # Three VTT cues → final stream after carry-over drop + sentence
+    # coalesce: a single sentence ("A lot of people think is getting
+    # rid of it") because neither raw cue ended in a terminator and
+    # the trailing flush emits whatever accumulated.
+    assert texts == ["A lot of people think is getting rid of it"]
+
+
+def test_parse_webvtt_coalesces_into_sentences():
+    """Each output cue ends on a sentence terminator (.!?) when one
+    is present in the buffered text. Long groups get split into one
+    output cue per sentence with timing distributed by character count."""
+    from thousand_sunny.routers.robin import _parse_webvtt
+
+    vtt = """WEBVTT
+
+00:00:00.000 --> 00:00:03.000
+A lot of people think emotion regulation is
+
+00:00:03.000 --> 00:00:06.000
+getting rid of a feeling. It's not what
+
+00:00:06.000 --> 00:00:09.000
+it is. It's just having another relationship.
+"""
+    cues = _parse_webvtt(vtt)
+    texts = [c["text"] for c in cues]
+    assert texts == [
+        "A lot of people think emotion regulation is getting rid of a feeling.",
+        "It's not what it is.",
+        "It's just having another relationship.",
+    ]
+    # Timing distributed proportionally by character count across the 9s window.
+    assert cues[0]["start"] == 0.0
+    assert cues[-1]["end"] == 9.0
+    assert cues[0]["end"] < cues[1]["start"] + 0.01  # adjacency
 
 
 # ── Route behaviour ────────────────────────────────────────────────────

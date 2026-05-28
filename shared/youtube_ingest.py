@@ -227,6 +227,13 @@ def fetch_caption(video_id: str, output_dir: Path) -> tuple[Path, str]:
 
     # ``-o`` template: ``<video_id>`` so yt-dlp writes ``<video_id>.<lang>.vtt``
     # next to our chosen dir. ``--no-warnings`` keeps stderr signal/noise high.
+    # ``--ignore-errors``: when ``--sub-lang en,zh-Hant,zh-CN`` requests
+    # multiple tracks and YouTube rate-limits one of them with HTTP 429,
+    # we still want the tracks that did download to land on disk. Without
+    # this flag a single 429 on (e.g.) ``zh-Hant`` taints the whole
+    # subprocess and we'd discard a perfectly good ``en`` VTT.
+    # ``--retry-sleep extractor:5``: back off 5s on extractor errors
+    # (covers the 429 case yt-dlp surfaces from the subtitle endpoint).
     result = _run_yt_dlp(
         [
             "--write-auto-sub",
@@ -236,12 +243,18 @@ def fetch_caption(video_id: str, output_dir: Path) -> tuple[Path, str]:
             "vtt",
             "--skip-download",
             "--no-warnings",
+            "--ignore-errors",
+            "--retry-sleep",
+            "extractor:5",
             "-o",
             str(output_dir / f"{video_id}.%(ext)s"),
             canonical_url,
         ]
     )
-    if result.returncode != 0:
+    # With ``--ignore-errors`` yt-dlp may exit non-zero even when at least
+    # one track wrote. The dir scan below is now the source of truth —
+    # only fall back to YtDlpError when the dir is empty AND subprocess failed.
+    if result.returncode != 0 and not any(output_dir.glob(f"{video_id}.*.vtt")):
         raise YtDlpError(
             f"yt-dlp caption fetch failed for {video_id!r}",
             stderr=result.stderr.strip(),
