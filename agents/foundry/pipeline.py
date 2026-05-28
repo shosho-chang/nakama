@@ -8,6 +8,7 @@ Subcommands:
 - render: storyboard.yaml → b_roll_*.mp4 (PR-4)
 - emit: storyboard.yaml + rendered mp4s → episode.fcpxml (PR-4)
 - run: plan → render → emit end-to-end
+- diff: storyboard A vs storyboard B → Myers-style LCS +/-/= rows (ADR-038 §D7)
 """
 
 from __future__ import annotations
@@ -258,6 +259,21 @@ def _cmd_emit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_diff(args: argparse.Namespace) -> int:
+    """Storyboard A vs Storyboard B → Myers-style LCS diff to stdout (ADR-038 §D7)."""
+    from agents.foundry.storyboard_diff import diff_storyboards, format_diff
+
+    a_path = Path(args.a)
+    b_path = Path(args.b)
+    before = yaml.safe_load(a_path.read_text(encoding="utf-8")) or []
+    after = yaml.safe_load(b_path.read_text(encoding="utf-8")) or []
+    if not isinstance(before, list) or not isinstance(after, list):
+        raise ValueError("diff inputs must be storyboard lists (got non-list YAML)")
+    rows = diff_storyboards(before, after)
+    print(format_diff(rows))
+    return 0
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     rc = _cmd_plan(args)
     if rc != 0:
@@ -310,6 +326,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Force re-render even if content-addressed mp4 already exists (ADR-038 §D2)",
     )
     run_sub.set_defaults(fn=_cmd_run)
+    diff_sub = sub.add_parser(
+        "diff", help="LCS diff between two storyboard.yaml files (ADR-038 §D7)"
+    )
+    diff_sub.add_argument("a", help="storyboard A (before) yaml path")
+    diff_sub.add_argument("b", help="storyboard B (after) yaml path")
+    diff_sub.set_defaults(fn=_cmd_diff)
     return p
 
 
