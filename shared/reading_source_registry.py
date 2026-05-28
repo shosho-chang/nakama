@@ -1,8 +1,8 @@
 """Reading Source Registry (ADR-024 Slice 1 / issue #509).
 
-Resolves a ``BookKey`` or ``InboxKey`` to a normalized ``ReadingSource`` value
-object. Resolver only — no enumeration, no promotion, no LLM, no UI, no vault
-or DB writes.
+Resolves a ``BookKey``, ``InboxKey``, or ``YouTubeKey`` (ADR-035 §D1) to a
+normalized ``ReadingSource`` value object. Resolver only — no enumeration,
+no promotion, no LLM, no UI, no vault or DB writes.
 
 NB1 contract (v3): every blob-read / metadata-extract / frontmatter-parse
 failure returns ``None`` and logs a ``WARNING`` via
@@ -12,11 +12,14 @@ registry never propagates uncontrolled exceptions to callers.
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
 
 import yaml
+from pydantic import ValidationError
 
 from shared import book_storage
 from shared.annotation_store import annotation_slug
@@ -24,9 +27,18 @@ from shared.config import get_vault_path
 from shared.epub_metadata import extract_metadata
 from shared.log import get_logger
 from shared.schemas.reading_source import ReadingSource, SourceVariant
+from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
 from shared.utils import read_text
 
 _logger = get_logger("nakama.shared.reading_source_registry")
+
+_VALID_YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]+")
+"""YouTube video ID alphabet per YouTube's published URL spec. Used as a
+path-traversal guard before joining ``video_id`` to the vault root. We
+deliberately don't pin the length at 11 — YouTube has historically issued
+shorter test ids and the registry shouldn't reject those wholesale; the
+``Watchlist/youtube/{video_id}/manifest.json`` lookup will surface a
+``None`` for non-existent entries anyway."""
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +65,21 @@ class InboxKey:
     relative_path: str
 
 
-SourceKey = Union[BookKey, InboxKey]
+@dataclass(frozen=True)
+class YouTubeKey:
+    """Identifies a YouTube video watchlist entry (ADR-035 §D1).
+
+    Resolution reads ``Watchlist/youtube/{video_id}/manifest.json``
+    (validated by :class:`YouTubeWatchlistEntry`) and emits a
+    ``ReadingSource(kind='youtube_video', schema_version=2)``. The variant
+    points at ``Watchlist/youtube/{video_id}/{transcript_path}`` (default
+    ``transcript.vtt``) as the original-track evidence.
+    """
+
+    video_id: str
+
+
+SourceKey = Union[BookKey, InboxKey, YouTubeKey]
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +164,8 @@ class ReadingSourceRegistry:
             return self._resolve_book(key.book_id)
         if isinstance(key, InboxKey):
             return self._resolve_inbox(key.relative_path)
+        if isinstance(key, YouTubeKey):
+            return self._resolve_youtube(key.video_id)
         raise TypeError(f"Unknown SourceKey: {type(key).__name__}")
 
     # ------------------------------------------------------------------
@@ -367,4 +395,90 @@ class ReadingSourceRegistry:
             evidence_reason=evidence_reason,
             variants=variants,
             metadata=meta_dict,
+        )
+
+    # ------------------------------------------------------------------
+    # YouTube resolution (ADR-035 §D1)
+    # ------------------------------------------------------------------
+
+    def _resolve_youtube(self, video_id: str) -> ReadingSource | None:
+        """Read ``Watchlist/youtube/{video_id}/manifest.json`` and build a
+        ``ReadingSource(kind='youtube_video', schema_version=2)``.
+
+        Per NB1: missing entry / parse failure / schema mismatch → ``None``
+        + WARNING log; never propagates exceptions.
+
+        Path traversal: video_id is restricted to YouTube's documented
+        id alphabet (``[A-Za-z0-9_-]``). Any ``/`` / ``\\`` / ``.`` /
+        whitespace etc. raises ``ValueError`` before touching the
+        filesystem. Mirrors the ``InboxKey`` path-escape guard but
+        cheaper (id is small and well-defined).
+        """
+        if not _VALID_YOUTUBE_ID.fullmatch(video_id):
+            raise ValueError(
+                f"YouTubeKey path escapes vault: video_id={video_id!r} "
+                f"(must match {_VALID_YOUTUBE_ID.pattern})"
+            )
+
+        entry_rel = f"Watchlist/youtube/{video_id}"
+        entry_dir = self._vault / entry_rel
+
+        manifest_path = entry_dir / "manifest.json"
+        if not manifest_path.is_file():
+            return None
+
+        try:
+            entry = YouTubeWatchlistEntry.model_validate_json(manifest_path.read_bytes())
+        except (OSError, ValidationError, json.JSONDecodeError):
+            _logger.warning(
+                "youtube watchlist manifest parse failed",
+                extra={
+                    "category": "youtube_watchlist_parse_failed",
+                    "video_id": video_id,
+                },
+            )
+            return None
+
+        if entry.video_id != video_id:
+            # Cheap consistency check — directory name must match the
+            # canonical id inside the manifest. Catches user-edited dirs
+            # that drift from their content.
+            _logger.warning(
+                "youtube watchlist video_id mismatch",
+                extra={
+                    "category": "youtube_watchlist_video_id_mismatch",
+                    "dir_video_id": video_id,
+                    "manifest_video_id": entry.video_id,
+                },
+            )
+            return None
+
+        transcript_rel = f"{entry_rel}/{entry.transcript_path}"
+        variant = SourceVariant(
+            role="original",
+            format="vtt",
+            lang=entry.primary_lang,
+            path=transcript_rel,
+        )
+
+        metadata: dict[str, str] = {
+            "video_id": entry.video_id,
+            "channel": entry.channel,
+            "duration_s": str(entry.duration_s),
+            "url": entry.url,
+            "cast": json.dumps(entry.cast, ensure_ascii=False),
+        }
+
+        return ReadingSource(
+            schema_version=2,
+            source_id=f"youtube:{video_id}",
+            annotation_key=f"youtube_{video_id}",
+            kind="youtube_video",
+            title=entry.title,
+            author=entry.channel,
+            primary_lang=entry.primary_lang,
+            has_evidence_track=True,
+            evidence_reason=None,
+            variants=[variant],
+            metadata=metadata,
         )
