@@ -61,20 +61,22 @@ body.sho .chassis-brand {
   gap: 10px;
   flex-shrink: 0;
 }
-body.sho .chassis-dot {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--sho-bg-3);
-  border-radius: var(--sho-r-pill);
-  position: relative;
+body.sho .chassis-bolt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  text-decoration: none;
+  transition: opacity var(--sho-t-fast) var(--sho-ease);
 }
-body.sho .chassis-dot::after {
-  content: "";
-  position: absolute;
-  inset: 3px;
-  background: var(--sho-accent);
-  border-radius: var(--sho-r-pill);
+body.sho .chassis-bolt:hover { opacity: 0.75; }
+body.sho .chassis-bolt svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
+body.sho .chassis-bolt svg path { fill: var(--sho-accent); }
 body.sho .chassis-wordmark {
   font-family: var(--sho-font-mono);
   font-size: 11px;
