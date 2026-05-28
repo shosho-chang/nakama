@@ -13,6 +13,17 @@ logger = get_logger("nakama.web.auth")
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 WEB_SECRET = os.environ.get("WEB_SECRET", "")
 _DEV_MODE = not WEB_SECRET
+_DEV_AUTH_BYPASS = os.environ.get("NAKAMA_DEV_AUTH_BYPASS", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
+if _DEV_AUTH_BYPASS:
+    logger.warning(
+        "NAKAMA_DEV_AUTH_BYPASS=1 — all web auth checks short-circuited. "
+        "This MUST NOT be set on VPS / production."
+    )
 
 
 def make_token(password: str) -> str:
@@ -20,6 +31,8 @@ def make_token(password: str) -> str:
 
 
 def check_auth(auth_cookie: str | None) -> bool:
+    if _DEV_AUTH_BYPASS:
+        return True
     if not WEB_PASSWORD:
         return True
     if not auth_cookie:
@@ -29,6 +42,8 @@ def check_auth(auth_cookie: str | None) -> bool:
 
 def check_key(key: str | None) -> bool:
     """Accept X-Robin-Key header as alternative to cookie auth."""
+    if _DEV_AUTH_BYPASS:
+        return True
     if _DEV_MODE:
         logger.warning("WEB_SECRET not set — API key auth disabled (dev mode)")
         return True
