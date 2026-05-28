@@ -702,9 +702,7 @@ class PromotionManifest(BaseModel):
         # V13 (ADR-035 §D5) — any timestamp_range anchor requires schema_version >= 2
         # Mirrors V12: v=1 manifests cannot silently gain video/podcast anchors.
         has_timestamp = any(
-            anchor.kind == "timestamp_range"
-            for item in self.items
-            for anchor in item.evidence
+            anchor.kind == "timestamp_range" for item in self.items for anchor in item.evidence
         )
         if has_timestamp and self.schema_version < 2:
             raise ValueError(

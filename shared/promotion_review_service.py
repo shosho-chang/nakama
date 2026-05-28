@@ -559,9 +559,7 @@ class PromotionReviewService:
         #   schema_version >= 2. Future video manifests built without entity
         #   items still need v=2 because their evidence carries cue ranges.
         has_timestamp_anchor = any(
-            anchor.kind == "timestamp_range"
-            for item in all_items
-            for anchor in item.evidence
+            anchor.kind == "timestamp_range" for item in all_items for anchor in item.evidence
         )
         schema_version = 2 if (entity_items or has_timestamp_anchor) else 1
         return PromotionManifest(
