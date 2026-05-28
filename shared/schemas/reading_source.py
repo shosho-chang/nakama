@@ -15,16 +15,32 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SourceKind = Literal["ebook", "inbox_document"]
-"""Two kinds only.
+SchemaVersion = Literal[1, 2]
+"""ReadingSource wire-format version.
 
-``ebook``          — record in the ``books`` table; epub blob in
-                     ``data/books/{book_id}/``.
-``inbox_document`` — markdown file in ``Inbox/kb/{slug}.md``. Web documents
-                     arrive via Toast / Obsidian Clipper into the same
-                     directory; origin is metadata, not a separate kind.
+- v=1: ``ebook`` / ``inbox_document`` SourceKind only (#509).
+- v=2: adds ``youtube_video`` SourceKind + ``vtt`` VariantFormat (ADR-035 §D5/D8).
+       Existing v=1 records remain readable; new ``youtube_video`` rows MUST
+       set ``schema_version=2`` (enforced by V14).
+"""
+
+SourceKind = Literal["ebook", "inbox_document", "youtube_video"]
+"""Closed enum.
+
+- v=1 members:
+  - ``ebook``          — record in the ``books`` table; epub blob in
+                         ``data/books/{book_id}/``.
+  - ``inbox_document`` — markdown file in ``Inbox/kb/{slug}.md``. Web documents
+                         arrive via Toast / Obsidian Clipper into the same
+                         directory; origin is metadata, not a separate kind.
+- v=2 added (ADR-035 §D1/D8):
+  - ``youtube_video``  — video file backed by YouTube. Self-contained
+                         directory ``Watchlist/youtube/{video_id}/`` holds
+                         manifest + transcript.vtt + per-annotation frame
+                         snapshots. Audio-only ``podcast`` SourceKind
+                         deferred per ADR-035 §D8 ("audio-only on demand only").
 """
 
 TrackRole = Literal["original", "display"]
@@ -37,7 +53,14 @@ sibling). May coincide with the original when no separate display track
 exists.
 """
 
-VariantFormat = Literal["epub", "markdown"]
+VariantFormat = Literal["epub", "markdown", "vtt"]
+"""Closed enum.
+
+- v=1 members: ``epub`` (ebook) / ``markdown`` (inbox_document).
+- v=2 added:   ``vtt`` — WebVTT transcript file for ``youtube_video`` source
+               (ADR-035 §D5). Path convention:
+               ``Watchlist/youtube/{video_id}/transcript.vtt``.
+"""
 
 
 class SourceVariant(BaseModel):
@@ -67,7 +90,7 @@ class ReadingSource(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1] = 1
+    schema_version: SchemaVersion = 1
 
     source_id: str
     """Stable namespace-qualified identity. NEVER mutates with frontmatter
@@ -80,6 +103,9 @@ class ReadingSource(BaseModel):
                            the path as-is. ``InboxKey('Inbox/web/foo.md')``
                            and ``InboxKey('Inbox/web/foo-bilingual.md')``
                            BOTH resolve to ``inbox:Inbox/web/foo.md``.
+    - ``youtube_video``  → ``youtube:{video_id}`` (canonical YouTube video
+                           id, the 11-char URL slug — ``dQw4w9WgXcQ`` etc.).
+                           Stable across re-ingestion / re-transcription.
 
     NB3 (v3): in case (b) bilingual-only, ``logical_original_path`` does
     NOT exist on disk. ``source_id`` is a **logical identity, not a
@@ -97,6 +123,10 @@ class ReadingSource(BaseModel):
                            where ``user_facing`` follows the
                            ``_get_inbox_files`` collapse rule — bilingual
                            sibling if it exists, plain otherwise.
+    - ``youtube_video``  → ``youtube_{video_id}`` (matches the
+                           ``Watchlist/youtube/{video_id}/`` dir prefix;
+                           kept distinct from ebook's bare ``book_id`` to
+                           avoid namespace collision).
     """
 
     kind: SourceKind
@@ -111,6 +141,10 @@ class ReadingSource(BaseModel):
                            ``extract_metadata(blob_bytes)``.
     - ``inbox_document`` → frontmatter ``lang`` field; ``"unknown"`` if
                            absent.
+    - ``youtube_video``  → preferred auto-caption track language reported
+                           by yt-dlp ``automatic_captions`` (ADR-035 §D2
+                           Phase 1: ``en`` > ``zh-Hant`` > ``zh-CN``);
+                           ``"unknown"`` when no caption available.
 
     Normalization (see ``_normalize_primary_lang``):
 
@@ -172,4 +206,20 @@ class ReadingSource(BaseModel):
       (raw ``BookMetadata.lang`` before ``_normalize_primary_lang``).
     - ``inbox`` → ``original_url``, ``fulltext_layer``, ``fulltext_source``
       (per ``IngestResult`` frontmatter contract).
+    - ``youtube_video`` (ADR-035 §D4) → ``video_id``, ``channel``,
+      ``duration_s`` (string-encoded int), ``url`` (canonical
+      ``https://youtube.com/watch?v={video_id}``), ``cast`` (JSON-encoded
+      ``list[str]`` host + guests per ADR-035 §D3).
     """
+
+    @model_validator(mode="after")
+    def _validate_schema_version_kind_coupling(self) -> "ReadingSource":
+        # V14 (ADR-035 §D8) — ``youtube_video`` kind requires schema_version >= 2.
+        # Mirrors PromotionManifest's V12/V13: v=1 records cannot silently
+        # gain new SourceKind capability.
+        if self.kind == "youtube_video" and self.schema_version < 2:
+            raise ValueError(
+                f"kind='youtube_video' requires schema_version >= 2; "
+                f"got schema_version={self.schema_version}"
+            )
+        return self

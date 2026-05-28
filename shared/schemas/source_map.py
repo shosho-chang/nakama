@@ -36,12 +36,11 @@ Hard invariant enforced on this schema (Pydantic ``model_validator``):
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shared.schemas.promotion_manifest import (
     RiskFlag,
+    SchemaVersion,
     SourcePageReviewItem,
 )
 
@@ -140,10 +139,17 @@ class SourceMapBuildResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1] = 1
+    schema_version: SchemaVersion = 1
     """First field on the result — closed-set extension protocol marker.
     Adding any new Literal member or invariant requires bumping this and
-    updating downstream consumers (#514 / #515 / #516)."""
+    updating downstream consumers (#514 / #515 / #516).
+
+    - v=1: chapter_quote / section_quote / frontmatter_field / external_ref
+           EvidenceAnchorKind only (ebook / inbox builder output).
+    - v=2 (ADR-035 §D5): timestamp_range EvidenceAnchorKind permitted on
+           embedded ``SourcePageReviewItem.evidence``. Mirrors
+           ``PromotionManifest.SchemaVersion`` and V13 invariant.
+    """
 
     source_id: str
     """Mirrors ``ReadingSource.source_id``. Transport string only — the
@@ -191,5 +197,21 @@ class SourceMapBuildResult(BaseModel):
                 f"surface as empty items + error per Brief §6 / B6; downstream "
                 f"slices (#514-#517) MUST NOT consume an error+non-empty-items "
                 f"combination. Mirrors #511 F1 inspector_error/defer pattern."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _hard_invariant_timestamp_anchor_requires_v2(self) -> SourceMapBuildResult:
+        # B7 (ADR-035 §D5) — timestamp_range anchor requires schema_version >= 2.
+        # Mirrors PromotionManifest V13 so persisted source maps cannot silently
+        # claim v=1 while embedding v=2-shaped evidence anchors.
+        has_timestamp = any(
+            anchor.kind == "timestamp_range" for item in self.items for anchor in item.evidence
+        )
+        if has_timestamp and self.schema_version < 2:
+            raise ValueError(
+                f"EvidenceAnchor with kind='timestamp_range' on a "
+                f"SourceMapBuildResult.item requires schema_version >= 2; "
+                f"got schema_version={self.schema_version}"
             )
         return self
