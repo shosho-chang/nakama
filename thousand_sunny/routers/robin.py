@@ -1,6 +1,7 @@
 """Robin routes — KB ingest UI, reader, and search."""
 
 import asyncio
+import datetime
 import json
 import os
 import platform
@@ -36,9 +37,17 @@ from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.reading_source_lister import RegistryReadingSourceLister
 from shared.reading_source_registry import InboxKey, ReadingSourceRegistry
+from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
 from shared.utils import extract_frontmatter, read_text, slugify
+from shared.youtube_ingest import (
+    InvalidYouTubeURL,
+    NoCaptionAvailable,
+    YtDlpError,
+    fetch_caption,
+    fetch_metadata,
+)
 from thousand_sunny.auth import check_auth, require_auth_or_key
 from thousand_sunny.helpers import safe_resolve, sse
 
@@ -1236,6 +1245,226 @@ async def kb_research(
     """Search KB/Wiki for pages relevant to query."""
     results = await asyncio.to_thread(search_kb, query, get_vault_path())
     return {"results": results}
+
+
+# ── ADR-035 PR1c-i — Watchlist ingestion (yt-dlp + cast form) ────────────────
+#
+# Two-step flow:
+#   1. GET  /robin/watchlist/add          → URL-paste form
+#   2. POST /robin/watchlist/add          → fetch metadata + caption (yt-dlp)
+#                                           into tmp dir, render cast form
+#   3. POST /robin/watchlist/add/confirm  → write manifest+vtt to vault,
+#                                           redirect to reader (#762) or
+#                                           list (#763); both 404 until
+#                                           those PRs land — acceptable
+#                                           since the lister already
+#                                           surfaces the new entry.
+#
+# Auth: same Bridge HMAC cookie + login redirect pattern as the rest of
+# this module (see ``read_source`` / ``translate``).
+
+
+def _watchlist_youtube_root() -> Path:
+    return get_vault_path() / "Watchlist" / "youtube"
+
+
+@robin_router.get("/watchlist/add", response_class=HTMLResponse)
+async def watchlist_add_form(request: Request, nakama_auth: str | None = Cookie(None)):
+    """Render the URL-paste form (step 1)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/robin/watchlist/add", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "watchlist_add.html",
+        {"asset_version": _SHOSHO_ASSET_VERSION, "error": None, "url": ""},
+    )
+
+
+@robin_router.post("/watchlist/add", response_class=HTMLResponse)
+async def watchlist_add(
+    request: Request,
+    url: str = Form(...),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Fetch YT metadata + auto-caption, stash in session, render cast form.
+
+    The caption VTT is downloaded into a per-session tmp dir under the
+    vault root (``Watchlist/youtube/.staging/<sid>/``) so the confirm step
+    can move it into the canonical entry directory atomically without
+    re-hitting yt-dlp.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    def _err(msg: str) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "watchlist_add.html",
+            {"asset_version": _SHOSHO_ASSET_VERSION, "error": msg, "url": url},
+            status_code=400,
+        )
+
+    try:
+        meta = await asyncio.to_thread(fetch_metadata, url)
+    except InvalidYouTubeURL as exc:
+        return _err(f"無法從這個 URL 解析出 YouTube video id：{exc}")
+    except YtDlpError as exc:
+        logger.warning(
+            "watchlist add: yt-dlp metadata failed",
+            extra={"category": "watchlist_add_metadata_failed", "stderr": exc.stderr},
+        )
+        return _err(
+            f"yt-dlp 無法取得影片資訊（可能私人 / 地區封鎖 / 年齡限制）：{exc.stderr[:200]}"
+        )
+
+    # Staging dir: per-video so concurrent adds of different videos don't
+    # collide. Reuse on retry (same video_id) is safe — fetch_caption
+    # creates the dir if needed and overwrites existing vtt.
+    staging_root = _watchlist_youtube_root() / ".staging" / meta.video_id
+    try:
+        vtt_path, lang = await asyncio.to_thread(fetch_caption, meta.video_id, staging_root)
+    except NoCaptionAvailable:
+        return _err(
+            "這部影片沒有可用的 auto-caption（en / zh-Hant / zh-CN）。"
+            "Phase 2 Local Whisper 上線後可手動補字幕。"
+        )
+    except YtDlpError as exc:
+        logger.warning(
+            "watchlist add: yt-dlp caption failed",
+            extra={"category": "watchlist_add_caption_failed", "stderr": exc.stderr},
+        )
+        return _err(f"yt-dlp 抓字幕失敗：{exc.stderr[:200]}")
+
+    # Stash the staging path + metadata in a session so the confirm step
+    # doesn't have to re-fetch.
+    sid = _new_session(
+        step="watchlist_cast",
+        video_id=meta.video_id,
+        title=meta.title,
+        channel=meta.channel,
+        duration_s=meta.duration_s,
+        url=meta.url,
+        primary_lang=lang,
+        staging_vtt=str(vtt_path),
+    )
+
+    response = templates.TemplateResponse(
+        request,
+        "watchlist_add_cast.html",
+        {
+            "asset_version": _SHOSHO_ASSET_VERSION,
+            "video_id": meta.video_id,
+            "title": meta.title,
+            "channel": meta.channel,
+            "duration_s": meta.duration_s,
+            "url": meta.url,
+            "primary_lang": lang,
+        },
+    )
+    response.set_cookie("robin_watchlist_session", sid, httponly=True)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
+@robin_router.post("/watchlist/add/confirm")
+async def watchlist_add_confirm(
+    request: Request,
+    robin_watchlist_session: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Persist the staged ingest to ``Watchlist/youtube/{video_id}/``.
+
+    Writes ``manifest.json`` (validated by :class:`YouTubeWatchlistEntry`)
+    and moves the staged ``transcript.vtt`` into place. Then redirects to
+    the reader detail page (PR #762; 404 until that lands — acceptable per
+    issue #764 acceptance).
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    sess = _get_session(robin_watchlist_session)
+    if not sess or sess.get("step") != "watchlist_cast":
+        return RedirectResponse("/robin/watchlist/add", status_code=303)
+
+    form = await request.form()
+    cast_raw = [str(v).strip() for v in form.getlist("cast")]
+    cast = [name for name in cast_raw if name]  # drop blanks; empty list allowed
+
+    video_id = str(sess["video_id"])
+    # Defence-in-depth: video_id was validated at extraction time but the
+    # session value is user-influenced via the cookie, so re-validate
+    # before constructing any vault path. Mirrors the resolver's
+    # ``_VALID_YOUTUBE_ID`` regex.
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", video_id):
+        raise HTTPException(400, detail=f"不合法的 video_id：{video_id!r}")
+
+    try:
+        entry = YouTubeWatchlistEntry(
+            video_id=video_id,
+            title=str(sess["title"]),
+            channel=str(sess["channel"]),
+            url=str(sess["url"]),
+            duration_s=int(sess["duration_s"]),
+            primary_lang=str(sess["primary_lang"]),
+            cast=cast,
+            transcript_path="transcript.vtt",
+            added_at=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+        )
+    except Exception as exc:  # noqa: BLE001 — surface pydantic ValidationError as 400
+        logger.warning(
+            "watchlist confirm: entry validation failed",
+            extra={"category": "watchlist_confirm_validation_failed", "err": str(exc)},
+        )
+        raise HTTPException(400, detail=f"watchlist entry 驗證失敗：{exc}") from exc
+
+    entry_dir = _watchlist_youtube_root() / video_id
+    entry_dir.mkdir(parents=True, exist_ok=True)
+
+    # Move staged vtt → canonical transcript.vtt. ``shutil.move`` falls
+    # back to copy+remove across filesystems (e.g. tmp on a different
+    # device from vault).
+    staged_vtt = Path(str(sess["staging_vtt"]))
+    target_vtt = entry_dir / "transcript.vtt"
+    if not staged_vtt.exists():
+        raise HTTPException(500, detail="staged transcript missing — please re-add the URL")
+    shutil.move(str(staged_vtt), str(target_vtt))
+
+    manifest_path = entry_dir / "manifest.json"
+    manifest_path.write_text(entry.model_dump_json(indent=2), encoding="utf-8")
+
+    # Best-effort staging cleanup — remove the per-video staging dir if
+    # empty (yt-dlp may have left other artefacts; ignore failures).
+    staging_dir = _watchlist_youtube_root() / ".staging" / video_id
+    try:
+        for leftover in staging_dir.iterdir():
+            try:
+                leftover.unlink()
+            except OSError:
+                pass
+        staging_dir.rmdir()
+    except OSError:
+        pass
+
+    logger.info(
+        "watchlist entry written",
+        extra={
+            "category": "watchlist_add_confirm",
+            "video_id": video_id,
+            "cast_count": len(cast),
+            "primary_lang": entry.primary_lang,
+        },
+    )
+
+    # Drop the session cookie + redirect to the reader detail page (or the
+    # list view if/when reader lands). PR #762 / #763 will resolve these
+    # 404s into real pages; until then the user lands on a 404 with a
+    # known-good vault entry, which the lister surfaces.
+    response = RedirectResponse(f"/robin/watchlist/{video_id}", status_code=303)
+    response.delete_cookie("robin_watchlist_session")
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
 
 
 # ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────

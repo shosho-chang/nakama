@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 加入 Watchlist</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/robin.css?v={{ asset_version }}">
+<style>
+  /* Local-only — no design tokens hardcoded; layout-only refinements for this form. */
+  .watchlist-add { max-width: 640px; margin: 2rem auto; padding: 0 1.25rem; }
+  .watchlist-add h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .watchlist-add .lead {
+    color: var(--sho-muted);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+  }
+  .watchlist-add form { display: flex; flex-direction: column; gap: 0.75rem; }
+  .watchlist-add label { font-size: 0.85rem; font-weight: 500; }
+  .watchlist-add input[type=url] {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--sho-line);
+    border-radius: 4px;
+    background: var(--sho-bg);
+    color: var(--sho-ink);
+    font: inherit;
+    font-family: var(--sho-font-mono, monospace);
+    font-size: 0.85rem;
+  }
+  .watchlist-add input[type=url]:focus {
+    outline: none;
+    border-color: var(--sho-accent);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--sho-accent) 30%, transparent);
+  }
+  .watchlist-add .hint {
+    color: var(--sho-muted);
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+  }
+  .watchlist-add .err {
+    border: 1px solid var(--sho-accent, #c44);
+    background: color-mix(in oklch, var(--sho-accent, #c44) 8%, transparent);
+    color: var(--sho-ink);
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  .watchlist-add .actions { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
+  .watchlist-add button {
+    padding: 0.55rem 1.25rem;
+    border: 1px solid var(--sho-accent);
+    background: var(--sho-accent);
+    color: var(--sho-bg);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: opacity 120ms;
+  }
+  .watchlist-add button:hover { opacity: 0.85; }
+  .watchlist-add button:disabled { opacity: 0.5; cursor: wait; }
+  .watchlist-add .cancel {
+    background: transparent;
+    color: var(--sho-muted);
+    border-color: var(--sho-line);
+  }
+</style>
+</head>
+<body class="sho robin-page">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='robin') }}
+<main class="watchlist-add">
+  <h1>加入 Watchlist</h1>
+  <p class="lead">貼上 YouTube 影片 URL，Robin 會抓 metadata + auto-caption，下一步填 cast list 即可寫入 vault。</p>
+
+  {% if error %}
+  <div class="err" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/robin/watchlist/add" id="add-form">
+    <label for="url">YouTube URL</label>
+    <input
+      type="url"
+      id="url"
+      name="url"
+      required
+      autofocus
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="https://www.youtube.com/watch?v=…"
+      value="{{ url or '' }}"
+    >
+    <p class="hint">支援 watch?v= / youtu.be/ / shorts/ / embed/ / 純 11-char id。抓字幕優先序：en → zh-Hant → zh-CN。</p>
+    <div class="actions">
+      <button type="submit" id="submit-btn">下一步</button>
+      <a href="/robin" class="cancel" style="display:inline-flex;align-items:center;padding:0.55rem 1rem;border:1px solid var(--sho-line);border-radius:4px;text-decoration:none;color:var(--sho-muted);">取消</a>
+    </div>
+  </form>
+</main>
+<script>
+  // Lock submit on click — yt-dlp call is sync ~5-15s; prevent double POST.
+  document.getElementById('add-form').addEventListener('submit', () => {
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = '抓取中…';
+  });
+</script>
+</body>
+</html>
