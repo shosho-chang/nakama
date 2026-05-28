@@ -1720,6 +1720,32 @@ async def watch_video(
 
     cast: list[str] = list(rs.cast) if rs.cast else []
 
+    # ADR-035 PR2a: load existing annotations from ADR-017 store for the
+    # bottom-left read-only list. The slug convention is
+    # ``youtube_{video_id}`` (mirrors ``YouTubeKey.annotation_key``).
+    # Items are shaped into a JS-friendly payload — only the fields needed
+    # for the row markup + row-click seek are extracted; the on-disk v3
+    # schema is the source of truth and is not leaked to the template.
+    ann_store: AnnotationStore = get_annotation_store()
+    ann_set = ann_store.load(rs.annotation_key)
+    annotations: list[dict] = []
+    if ann_set is not None:
+        for item in ann_set.items:
+            annotations.append(_video_annotation_row(item))
+    # Cue index → annotation count, so the cue list can render a marker
+    # (border-left orange) on cues that have annotations. Mapping is by
+    # cue start-time match — for a range locator we anchor to the start.
+    cue_marker_indices: set[int] = set()
+    if annotations and cues:
+        cue_starts = [c["start"] for c in cues]
+        for ann in annotations:
+            t = ann.get("start")
+            if t is None:
+                continue
+            idx = _nearest_cue_index(cue_starts, t)
+            if idx is not None:
+                cue_marker_indices.add(idx)
+
     return templates.TemplateResponse(
         request,
         "av_reader.html",
@@ -1730,9 +1756,99 @@ async def watch_video(
             "cast": cast,
             "cues": cues,
             "cues_json": json.dumps(cues, ensure_ascii=False),
+            "annotations": annotations,
+            "annotations_json": json.dumps(annotations, ensure_ascii=False),
+            "cue_marker_indices": sorted(cue_marker_indices),
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
+
+
+# ── Video annotation row shaping (ADR-035 PR2a) ──────────────────────────────
+# v3 annotation items don't yet carry a ``speaker`` field — that arrives with
+# the cast chip selector in PR2b. For read-only display we extract:
+#   - start (float seconds)        → derived from ``cfi`` locator ``t=<start>[-<end>]``
+#   - label (mm:ss)                → ``_format_cue_label``
+#   - excerpt (cue text snippet)
+#   - note (annotation note / highlight body, or empty for highlight-only)
+#   - speaker (placeholder until PR2b — empty string)
+
+
+_T_LOCATOR_RE = re.compile(r"t=([0-9]+(?:\.[0-9]+)?)(?:-([0-9]+(?:\.[0-9]+)?))?")
+
+
+def _parse_t_locator(cfi: str | None) -> float | None:
+    """Extract ``start`` seconds from an ADR-035 §D5 ``t=`` locator.
+
+    Returns ``None`` if ``cfi`` is missing or not in the timestamp-range
+    shape — callers fall back to rendering the row without a seek target.
+    """
+    if not cfi:
+        return None
+    m = _T_LOCATOR_RE.search(cfi)
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _video_annotation_row(item) -> dict:
+    """Shape a v3 annotation item for the read-only video annotation list."""
+    cfi = getattr(item, "cfi", None)
+    start = _parse_t_locator(cfi)
+    excerpt = (getattr(item, "text_excerpt", "") or "").strip()
+    if item.type == "highlight":
+        # HighlightV3.text is the body — for a highlight-only the body
+        # mirrors the excerpt, so we suppress the note field to avoid the
+        # row reading "excerpt — excerpt".
+        text = (getattr(item, "text", "") or "").strip()
+        note = "" if text == excerpt else text
+    elif item.type == "annotation":
+        note = (getattr(item, "note", "") or "").strip()
+    else:
+        # ReflectionV3 — chapter-level; we still render it best-effort.
+        note = (getattr(item, "body", "") or "").strip()
+    label = _format_cue_label(start) if start is not None else "--:--"
+    return {
+        "start": start,
+        "label": label,
+        "speaker": "",  # PR2b cast chip
+        "excerpt": excerpt,
+        "note": note,
+        "type": item.type,
+        "created_at": getattr(item, "created_at", ""),
+    }
+
+
+def _nearest_cue_index(cue_starts: list[float], t: float, tol: float = 0.05) -> int | None:
+    """Find the cue index whose start matches ``t`` within ``tol`` seconds.
+
+    Cue boundaries are the natural anchor unit in ADR-035; we don't fuzz
+    beyond a 50ms tolerance to avoid lighting up the wrong cue when two
+    cues abut at the same timestamp.
+    """
+    if not cue_starts:
+        return None
+    # Binary search for the predecessor, then check both neighbours.
+    lo, hi = 0, len(cue_starts) - 1
+    best = 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if cue_starts[mid] <= t:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    candidates = [best]
+    if best + 1 < len(cue_starts):
+        candidates.append(best + 1)
+    for idx in candidates:
+        if abs(cue_starts[idx] - t) <= tol:
+            return idx
+    # Otherwise anchor to the predecessor (start-time floor of the t value).
+    return best
 
 
 # ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────
