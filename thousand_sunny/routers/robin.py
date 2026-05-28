@@ -1,6 +1,7 @@
 """Robin routes — KB ingest UI, reader, and search."""
 
 import asyncio
+import json
 import os
 import platform
 import re
@@ -332,34 +333,29 @@ def _watchlist_row(rs) -> dict:  # rs: shared.schemas.reading_source.ReadingSour
 
     Defensive on metadata: PR1b stores ``cast`` as a JSON-encoded string in
     ``metadata['cast']`` (F7 #765 fixes the schema upstream). We tolerate
-    both shapes (string-JSON or already-list) and a missing key. Same for
+    a missing key, malformed JSON, and non-list payloads. Same for
     ``duration_s``.
     """
-    import json
-
     meta = rs.metadata or {}
 
-    raw_cast = meta.get("cast")
-    cast: list[str]
-    if isinstance(raw_cast, list):
-        cast = [str(x) for x in raw_cast]
-    elif isinstance(raw_cast, str) and raw_cast:
-        try:
-            decoded = json.loads(raw_cast)
-            cast = [str(x) for x in decoded] if isinstance(decoded, list) else []
-        except (json.JSONDecodeError, ValueError):
-            cast = []
-    else:
-        cast = []
+    # ``metadata['cast']`` is JSON-encoded ``list[str]`` per the registry
+    # contract (ADR-035 §D3, ``_resolve_youtube``). F7 #765 may flip it to a
+    # real list later; until then we only need to parse the string form.
+    # Defensive on shape: missing key / malformed JSON / non-list payload
+    # all degrade to an empty cast preview rather than crashing.
+    raw_cast = meta.get("cast") or ""
+    try:
+        decoded = json.loads(raw_cast) if raw_cast else []
+    except (json.JSONDecodeError, ValueError):
+        decoded = []
+    cast: list[str] = [str(x) for x in decoded] if isinstance(decoded, list) else []
 
-    duration_s: int | None
-    raw_duration = meta.get("duration_s")
-    if isinstance(raw_duration, int):
-        duration_s = raw_duration
-    elif isinstance(raw_duration, str) and raw_duration.isdigit():
-        duration_s = int(raw_duration)
-    else:
-        duration_s = None
+    # ``metadata`` is typed ``dict[str, str]`` (ReadingSource schema) — the
+    # registry stores ``duration_s`` as the str form of an int. We accept
+    # ``str`` of digits and treat anything else (empty / non-digit / missing)
+    # as unknown rather than crashing.
+    raw_duration = meta.get("duration_s") or ""
+    duration_s = int(raw_duration) if raw_duration.isdigit() else None
 
     video_id = str(meta.get("video_id") or "")
     primary_lang = rs.primary_lang or "unknown"
@@ -399,26 +395,12 @@ def _list_watchlist_rows() -> list[dict]:
         books_root=vault / "_unused_for_watchlist_view",
         watchlist_youtube_root=vault / "Watchlist" / "youtube",
     )
-    sources = lister.list_sources()
-    rows: list[dict] = []
-    for rs in sources:
-        if rs.kind != "youtube_video":
-            continue
-        try:
-            rows.append(_watchlist_row(rs))
-        except (AttributeError, TypeError, ValueError):
-            # Defensive: a malformed metadata payload should not poison the
-            # whole list. The resolver already logged via
-            # ``youtube_watchlist_parse_failed``; we just skip the row.
-            logger.warning(
-                "watchlist row projection failed",
-                extra={
-                    "category": "robin_watchlist_row_skip",
-                    "source_id": getattr(rs, "source_id", "?"),
-                },
-            )
-            continue
-    return rows
+    # ``_watchlist_row`` is defensive on every metadata key (string-JSON /
+    # list / int / str-digit / missing), so we don't wrap the projection in
+    # another try/except — the registry already drops malformed manifests
+    # upstream (``youtube_watchlist_parse_failed``) and a downstream surprise
+    # here would be a real bug we want to surface, not silently swallow.
+    return [_watchlist_row(rs) for rs in lister.list_sources() if rs.kind == "youtube_video"]
 
 
 @robin_router.get("/watchlist", response_class=HTMLResponse)

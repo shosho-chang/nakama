@@ -181,6 +181,105 @@ def test_watchlist_skips_broken_entries(app_client, vault):
 # ── Auth gate ──────────────────────────────────────────────────────────────
 
 
+# ── Unit tests for projection helpers ──────────────────────────────────────
+
+
+def test_format_duration_branches():
+    """Cover the three branches: empty / short / long."""
+    from thousand_sunny.routers.robin import _format_duration
+
+    assert _format_duration(None) == ""
+    assert _format_duration(-1) == ""
+    assert _format_duration(45) == "0:45"
+    assert _format_duration(125) == "2:05"
+    assert _format_duration(3600) == "1:00:00"
+    assert _format_duration(5400) == "1:30:00"
+
+
+def test_watchlist_row_coerces_cast_and_duration_variants():
+    """Defensive coercion: cast may be list, JSON-string, malformed, or missing.
+
+    Same defensiveness for duration_s (int / str-digit / missing / garbage).
+    Today the registry emits ``metadata['cast']`` as a JSON string + duration
+    as a str-int; F7 #765 will flip cast to a real list. Both shapes must
+    project to the same row dict so the surface keeps working across the
+    schema migration.
+    """
+    from shared.schemas.reading_source import ReadingSource, SourceVariant
+    from thousand_sunny.routers.robin import _watchlist_row
+
+    def _rs(metadata: dict[str, str]) -> ReadingSource:
+        return ReadingSource(
+            schema_version=2,
+            source_id="youtube:vid1234567",
+            annotation_key="youtube_vid1234567",
+            kind="youtube_video",
+            title="t",
+            author="ch",
+            primary_lang="en",
+            has_evidence_track=True,
+            evidence_reason=None,
+            variants=[
+                SourceVariant(
+                    role="original",
+                    format="vtt",
+                    lang="en",
+                    path="Watchlist/youtube/vid1234567/transcript.vtt",
+                )
+            ],
+            metadata=metadata,
+        )
+
+    # cast as JSON string (production shape today)
+    row = _watchlist_row(
+        _rs(
+            {
+                "video_id": "vid1234567",
+                "channel": "ch",
+                "duration_s": "120",
+                "url": "https://youtube.com/watch?v=vid1234567",
+                "cast": json.dumps(["a", "b", "c", "d"]),
+            }
+        )
+    )
+    # only first 3 cast names surface in preview
+    assert row["cast_preview"] == "a, b, c"
+    assert row["duration"] == "2:00"
+
+    # cast as malformed JSON → empty preview
+    row = _watchlist_row(
+        _rs(
+            {
+                "video_id": "vid1234567",
+                "duration_s": "not-a-number",
+                "cast": "{not json",
+            }
+        )
+    )
+    assert row["cast_preview"] == ""
+    assert row["duration"] == ""
+
+    # cast as JSON object (not list) → empty preview
+    row = _watchlist_row(
+        _rs(
+            {
+                "video_id": "vid1234567",
+                "duration_s": "0",
+                "cast": json.dumps({"unexpected": "shape"}),
+            }
+        )
+    )
+    assert row["cast_preview"] == ""
+
+    # missing metadata keys entirely → graceful defaults
+    row = _watchlist_row(_rs({}))
+    assert row["video_id"] == ""
+    assert row["duration"] == ""
+    assert row["cast_preview"] == ""
+    # falls back to rs.title when video_id is empty
+    assert row["title"] == "t"
+
+
 def test_watchlist_redirects_to_login_without_auth(app_client, vault, monkeypatch):
     """When auth is enabled, the route must redirect to /login."""
     # Re-enable auth by setting WEB_PASSWORD + reloading auth + app
