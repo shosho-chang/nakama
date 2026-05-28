@@ -1,7 +1,7 @@
 # ADR-038: Foundry Phase 2 — Resolve Python Driver + Borrowings from `course-video-manager`
 
 **Date:** 2026-05-28
-**Status:** Draft v2 (post 3-way panel review 2026-05-28; pending 修修 sign-off)
+**Status:** Accepted v2 (post 3-way panel review 2026-05-28; 修修 sign-off 2026-05-28)
 **Owner:** 修修
 **Related:** [ADR-032](ADR-032-hyperframes-broll-pipeline.md) (Phase 1 base, partially superseded) · [ADR-014](ADR-014-repurpose-engine-plugin-interface.md) · [ADR-027](ADR-027-brook-scope-reduction-to-scaffold-and-repurpose.md)
 
@@ -307,8 +307,8 @@ GPU/CPU semaphore (Phase 1.5), `evalite` (Phase 2.5), SSE polling replacement (T
 ### Panel-required (v2 new)
 
 - [ ] No Lua scripts in repo (clean-room only)
-- [ ] §OQ1 attribution resolved (Matt courtesy notification done OR explicitly skipped)
-- [ ] Borrowings research artifact committed at `docs/research/2026-05-28-course-video-manager-borrowings.md`
+- [x] §OQ1 attribution resolved (skipped per 修修, 2026-05-28)
+- [x] Borrowings research artifact committed at `docs/research/2026-05-28-course-video-manager-borrowings.md`
 - [ ] D4 spike result committed before PR-F design freeze
 
 ---
@@ -322,11 +322,11 @@ GPU/CPU semaphore (Phase 1.5), `evalite` (Phase 2.5), SSE polling replacement (T
 
 ## Open Questions
 
-### §OQ1. Attribution to `course-video-manager` (v2 reframed)
+### §OQ1. Attribution to `course-video-manager` (v2 reframed; resolved)
 
 **No code lifted from Matt's repo.** Implementation is clean-room from Blackmagic docs. License question per se is moot.
 
-Open: send Matt a courtesy GitHub issue thanking him for the inspiration (hash invalidation, silence detection, tool-call edit engine, LCS diff patterns)? Pure attribution gesture, not permission-seeking. **Decision deferred to 修修.**
+**Courtesy GitHub issue to Matt: skipped** (修修 decision, 2026-05-28). No notification will be sent; the inspiration is cited in this ADR and in `docs/research/2026-05-28-course-video-manager-borrowings.md` as the project-internal record.
 
 ### §OQ2. `DaVinciResolveScript` discovery on Windows
 
