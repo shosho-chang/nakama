@@ -142,20 +142,41 @@ def _cmd_render(args: argparse.Namespace) -> int:
         raise ValueError(f"{storyboard_path}: expected list of beats, got {type(storyboard)}")
 
     cutaways = [b for b in storyboard if b.get("broll_decision") == "cutaway"]
-    logger.info("rendering %d cutaway beats (concurrency=1)", len(cutaways))
+    use_cache = not getattr(args, "no_cache", False)
+    logger.info(
+        "rendering %d cutaway beats (concurrency=%d, cache=%s)",
+        len(cutaways),
+        args.concurrency,
+        "on" if use_cache else "off",
+    )
 
-    paths = asyncio.run(run_queue(cutaways, out_dir, concurrency=args.concurrency))
+    results = asyncio.run(
+        run_queue(cutaways, out_dir, concurrency=args.concurrency, use_cache=use_cache)
+    )
 
-    # Update storyboard with render_status=done for rendered beats
-    rendered_ids = {b["beat_id"] for b in cutaways}
+    # Map beat_id → (hash, was_cache_hit) so we update storyboard in place
+    by_beat_id: dict[int, tuple[str, bool]] = {}
+    cache_hits = 0
+    for beat, (_mp4, cached_hash, was_hit) in zip(cutaways, results, strict=True):
+        by_beat_id[beat["beat_id"]] = (cached_hash, was_hit)
+        if was_hit:
+            cache_hits += 1
+
     for beat in storyboard:
-        if beat["beat_id"] in rendered_ids:
-            beat.setdefault("status", {})["render_status"] = "done"
+        if beat["beat_id"] in by_beat_id:
+            cached_hash, _was_hit = by_beat_id[beat["beat_id"]]
+            status = beat.setdefault("status", {})
+            status["render_status"] = "done"
+            status["cached_hash"] = cached_hash
     storyboard_path.write_text(
         yaml.dump(storyboard, allow_unicode=True, default_flow_style=False, sort_keys=False),
         encoding="utf-8",
     )
-    logger.info("rendered %d mp4s; storyboard.yaml updated", len(paths))
+    logger.info(
+        "rendered %d mp4s (%d cache hits); storyboard.yaml updated",
+        len(results),
+        cache_hits,
+    )
     return 0
 
 
@@ -202,6 +223,11 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("plan").set_defaults(fn=_cmd_plan)
     render_sub = sub.add_parser("render")
     render_sub.add_argument("--concurrency", type=int, default=1)
+    render_sub.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Force re-render even if content-addressed mp4 already exists (ADR-038 §D2)",
+    )
     render_sub.set_defaults(fn=_cmd_render)
     emit_sub = sub.add_parser("emit")
     emit_sub.add_argument("--fcpxml-version", default="1.10", choices=["1.10", "1.11", "1.9"])
@@ -209,6 +235,11 @@ def _build_parser() -> argparse.ArgumentParser:
     run_sub = sub.add_parser("run")
     run_sub.add_argument("--concurrency", type=int, default=1)
     run_sub.add_argument("--fcpxml-version", default="1.10", choices=["1.10", "1.11", "1.9"])
+    run_sub.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Force re-render even if content-addressed mp4 already exists (ADR-038 §D2)",
+    )
     run_sub.set_defaults(fn=_cmd_run)
     diff_sub = sub.add_parser(
         "diff", help="LCS diff between two storyboard.yaml files (ADR-038 §D7)"
