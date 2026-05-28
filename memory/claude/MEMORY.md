@@ -128,7 +128,7 @@
 - [feedback_no_reset_hard_in_worktree_cleanup.md](feedback_no_reset_hard_in_worktree_cleanup.md) — 清 worktree leak 永遠不用 `git reset --hard`（會吃無關 working-tree 改動，reflog 救不回；ch2 cache reindex 教訓）
 - [feedback_pr_review_merge_flow.md](feedback_pr_review_merge_flow.md) — PR review/merge 全自動：自動 review → 自動 squash merge → pull + 刪 branch；只在 reviewer 真抓到 blocker 時停下
 - [feedback_review_skill_default_for_focused_pr.md](feedback_review_skill_default_for_focused_pr.md) — focused PR（<100 LOC、單 domain、tests 綠）我自開的直接 /review，不問 ultrareview
-- [feedback_invoke_review_skill_not_handoff.md](feedback_invoke_review_skill_not_handoff.md) — 修修說 "review" 永遠是「呼叫 /code-review skill」，**不是**「請你（修修）看 diff」；不要 "review-ready for you" 這種 handoff 語氣（2026-05-27 explicit correction）
+- [feedback_invoke_review_skill_not_handoff.md](feedback_invoke_review_skill_not_handoff.md) — 修修說 "review" = invoke `/code-review`，不要 handoff 給修修自己看 diff
 - [reference_git_recovery_after_truncation.md](reference_git_recovery_after_truncation.md) — Windows 多檔同秒截斷（.git/HEAD + index + working tree md）recovery：rewrite HEAD LF + mv index + git reset + git restore
 - [project_disk_layout_e_primary.md](project_disk_layout_e_primary.md) — repo 主要落點 = E:\nakama（企業級 SSD）；F: 兩三次 git 損毀已退場（2026-04-30）
 - [project_transcriber.md](project_transcriber.md) — FunASR+Auphonic+LLM 校正 + 多模態仲裁；2026-04-24 修長音檔 ~10% 線性漂移 bug（char_idx 當 ts 索引）+ regression test
