@@ -65,8 +65,8 @@ body.sho .chassis-bolt {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 18px;
+  width: 26px;
+  height: 20px;
   color: var(--sho-accent);
   text-decoration: none;
   transition: opacity var(--sho-t-fast) var(--sho-ease);
