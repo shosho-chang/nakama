@@ -36,7 +36,7 @@ from shared.discard_service import DiscardService
 from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.reading_source_lister import RegistryReadingSourceLister
-from shared.reading_source_registry import InboxKey, ReadingSourceRegistry
+from shared.reading_source_registry import InboxKey, ReadingSourceRegistry, YouTubeKey
 from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
@@ -90,6 +90,7 @@ def _shosho_asset_version() -> str:
         "bridge-pages.css",
         "reader.css",
         "robin.css",
+        "av-reader.css",
         "theme.js",
     ):
         path = static_dir / css
@@ -498,6 +499,87 @@ async def read_source(
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
+
+
+# ── WebVTT parser (ADR-035 §D6) ──────────────────────────────────────────────
+# Minimal parser sized for yt-dlp ``--write-auto-sub`` output. Lives here
+# because the av_reader route is the only consumer; promote to ``shared/``
+# if a second caller appears.
+
+_VTT_TIME_RE = re.compile(
+    r"^(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})"
+)
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _vtt_time_to_seconds(h: str, m: str, s: str, ms: str) -> float:
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+
+def _format_cue_label(t: float) -> str:
+    h = int(t // 3600)
+    m = int((t % 3600) // 60)
+    s = int(t % 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def _parse_webvtt(text: str) -> list[dict]:
+    """Parse a WebVTT document into a sorted, deduplicated list of cues.
+
+    yt-dlp auto-captions emit overlapping "rolling" cues where the same
+    line appears in N consecutive cues with shifting end-times. We collapse
+    adjacent identical text into a single longer cue so the cue list reads
+    like prose rather than karaoke.
+    """
+    cues: list[dict] = []
+    cur_start: float | None = None
+    cur_end: float | None = None
+    cur_lines: list[str] = []
+
+    def flush() -> None:
+        nonlocal cur_start, cur_end, cur_lines
+        if cur_start is not None and cur_lines:
+            cleaned = _VTT_TAG_RE.sub("", " ".join(cur_lines)).strip()
+            if cleaned:
+                cues.append(
+                    {
+                        "start": cur_start,
+                        "end": cur_end,
+                        "label": _format_cue_label(cur_start),
+                        "text": cleaned,
+                    }
+                )
+        cur_start = None
+        cur_end = None
+        cur_lines = []
+
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        m = _VTT_TIME_RE.match(line)
+        if m:
+            flush()
+            cur_start = _vtt_time_to_seconds(m.group(1), m.group(2), m.group(3), m.group(4))
+            cur_end = _vtt_time_to_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
+            continue
+        if cur_start is None:
+            continue
+        if line.strip() == "":
+            flush()
+            continue
+        if line.startswith("WEBVTT") or line.startswith("NOTE") or "-->" in line:
+            continue
+        cur_lines.append(line)
+    flush()
+
+    deduped: list[dict] = []
+    for c in cues:
+        if deduped and deduped[-1]["text"] == c["text"]:
+            deduped[-1]["end"] = c["end"]
+            continue
+        deduped.append(c)
+    return deduped
 
 
 @robin_router.get("/files/{path:path}")
@@ -1268,6 +1350,51 @@ def _watchlist_youtube_root() -> Path:
     return get_vault_path() / "Watchlist" / "youtube"
 
 
+def _watchlist_staging_root() -> Path:
+    """Staging root for in-flight yt-dlp ingests. Lives OUTSIDE
+    ``Watchlist/youtube/`` (PR #771 code-review finding #1) so the
+    lister scan doesn't trip on a dot-prefixed dir as a malformed
+    ``video_id`` and emit a spurious WARNING every pass.
+    """
+    return get_vault_path() / "Watchlist" / ".youtube_staging"
+
+
+# Sweep staged-but-abandoned ingests older than this (seconds). Picked to
+# match ``SESSION_TTL`` — once the session is gone the user can't confirm
+# the staged content anyway, so the on-disk dir is dead weight (PR #771
+# review finding #2).
+_STAGING_ORPHAN_TTL = SESSION_TTL
+
+
+def _sweep_orphan_staging() -> None:
+    """Best-effort cleanup of ``.youtube_staging/{video_id}/`` dirs older
+    than :data:`_STAGING_ORPHAN_TTL`. Called opportunistically from the
+    ``/watchlist/add`` entry point so abandoned ingests don't accumulate
+    forever. Silent on all ``OSError`` — this is housekeeping, not a
+    hard invariant.
+    """
+    root = _watchlist_staging_root()
+    if not root.is_dir():
+        return
+    cutoff = time.time() - _STAGING_ORPHAN_TTL
+    try:
+        children = list(root.iterdir())
+    except OSError:  # pragma: no cover — defensive: race with concurrent cleanup
+        return
+    for child in children:
+        try:
+            if not child.is_dir() or child.stat().st_mtime > cutoff:
+                continue
+            for leftover in child.iterdir():
+                try:
+                    leftover.unlink()
+                except OSError:  # pragma: no cover — defensive: locked / removed mid-loop
+                    pass
+            child.rmdir()
+        except OSError:  # pragma: no cover — defensive: dir locked / removed mid-loop
+            continue
+
+
 @robin_router.get("/watchlist/add", response_class=HTMLResponse)
 async def watchlist_add_form(request: Request, nakama_auth: str | None = Cookie(None)):
     """Render the URL-paste form (step 1)."""
@@ -1320,7 +1447,11 @@ async def watchlist_add(
     # Staging dir: per-video so concurrent adds of different videos don't
     # collide. Reuse on retry (same video_id) is safe — fetch_caption
     # creates the dir if needed and overwrites existing vtt.
-    staging_root = _watchlist_youtube_root() / ".staging" / meta.video_id
+    # Opportunistic orphan sweep — keeps the staging tree bounded without
+    # adding a separate cron / startup hook (PR #771 review finding #2).
+    _sweep_orphan_staging()
+
+    staging_root = _watchlist_staging_root() / meta.video_id
     try:
         vtt_path, lang = await asyncio.to_thread(fetch_caption, meta.video_id, staging_root)
     except NoCaptionAvailable:
@@ -1435,12 +1566,12 @@ async def watchlist_add_confirm(
 
     # Best-effort staging cleanup — remove the per-video staging dir if
     # empty (yt-dlp may have left other artefacts; ignore failures).
-    staging_dir = _watchlist_youtube_root() / ".staging" / video_id
+    staging_dir = _watchlist_staging_root() / video_id
     try:
         for leftover in staging_dir.iterdir():
             try:
                 leftover.unlink()
-            except OSError:
+            except OSError:  # pragma: no cover — defensive: file locked
                 pass
         staging_dir.rmdir()
     except OSError:
@@ -1465,6 +1596,58 @@ async def watchlist_add_confirm(
     if nakama_auth:
         response.set_cookie("nakama_auth", nakama_auth, httponly=True)
     return response
+
+
+# ── AV reader (ADR-035 PR1c-ii) ──────────────────────────────────────────────
+# Registered AFTER the literal ``/watchlist/add`` + ``/watchlist/add/confirm``
+# routes so FastAPI doesn't eat ``/watchlist/add`` with this parametric route.
+
+
+@robin_router.get("/watchlist/{video_id}", response_class=HTMLResponse)
+async def watch_video(
+    request: Request,
+    video_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Render the YouTube video reader for a watchlist entry.
+
+    Read-only viewing — annotation save lands in PR2. The player is the
+    YouTube IFrame API (ToS-compliant) per ADR-035 §Open question.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        # Path-traversal alphabet or symlink-escape — treat as not-found
+        # so the response shape stays uniform and the regex isn't leaked.
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    cues: list[dict] = []
+    if rs.variants:
+        transcript_path = get_vault_path() / rs.variants[0].path
+        if transcript_path.is_file():
+            cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
+
+    cast: list[str] = list(rs.cast) if rs.cast else []
+
+    return templates.TemplateResponse(
+        request,
+        "av_reader.html",
+        {
+            "source": rs,
+            "video_id": video_id,
+            "channel": rs.metadata.get("channel", ""),
+            "cast": cast,
+            "cues": cues,
+            "cues_json": json.dumps(cues, ensure_ascii=False),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
+    )
 
 
 # ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────

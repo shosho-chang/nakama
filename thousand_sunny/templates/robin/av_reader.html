@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 觀看 · {{ source.title }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/av-reader.css?v={{ asset_version }}">
+</head>
+<body class="sho">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>{{ source.title }}</h1>
+    </div>
+    <div class="header-right">
+      <span class="speed-control">
+        <label for="speedSelect">SPEED</label>
+        <select id="speedSelect" class="speed-select" aria-label="播放速度">
+          <option value="0.75">0.75x</option>
+          <option value="1.0">1.0x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+          <option value="1.75">1.75x</option>
+          <option value="2.0">2.0x</option>
+        </select>
+      </span>
+      <button class="header-btn" id="syncBtn" type="button" title="同步註解到 KB (PR3 開放)">同步到 KB</button>
+    </div>
+  </div>
+
+  <!-- Sticky player band -->
+  <div class="player-band" id="avReader" data-video-id="{{ video_id }}" data-default-speed="1.5">
+    <div class="player-frame-wrap">
+      <div id="ytPlayer"></div>
+    </div>
+    {% if cast or channel %}
+    <div class="player-meta">
+      {% if channel %}<span class="kicker">CHANNEL</span><span>{{ channel }}</span>{% endif %}
+      {% if cast %}
+      <span class="cast-sep">·</span>
+      <span class="kicker">CAST</span>
+      <span class="cast-list">
+        {%- for name in cast -%}
+          {{ name }}{% if not loop.last %} · {% endif %}
+        {%- endfor -%}
+      </span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Cue list -->
+  <div class="cue-scroll">
+    <div class="cue-list" id="cueList">
+      {% if cues %}
+        {% for cue in cues %}
+        <div class="cue-item" tabindex="0" role="button" aria-label="跳到 {{ cue.label }}">
+          <div class="cue-time">{{ cue.label }}</div>
+          <div class="cue-text">{{ cue.text }}</div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="cue-empty">這支影片沒有可用的字幕。</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <a href="/robin/watchlist">← 返回 Watchlist</a>
+    <span class="shortcuts-hint">SPACE 播放/暫停 · J / L ±10s · 點 cue 跳轉</span>
+  </div>
+
+  <!-- Cues payload for JS -->
+  <script type="application/json" id="cuesJson">{{ cues_json | safe }}</script>
+  <script src="/static/shosho/av-reader.js?v={{ asset_version }}"></script>
+</body>
+</html>

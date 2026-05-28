@@ -347,6 +347,59 @@ def test_post_watchlist_confirm_validation_error_returns_400(app_client, vault, 
     assert "watchlist entry" in r.text or "驗證" in r.text
 
 
+def test_staging_root_lives_outside_watchlist_youtube(app_client, vault, monkeypatch):
+    """PR #771 code-review finding #1: staging dir must NOT live inside
+    ``Watchlist/youtube/`` (would trip the reading_source_lister with a
+    dot-prefixed dir + spurious WARNING log every scan)."""
+    tc, robin_module = app_client
+
+    def fake_fetch_metadata(url):
+        return _fake_metadata()
+
+    def fake_fetch_caption(video_id, output_dir: Path):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        vtt = output_dir / "transcript.vtt"
+        vtt.write_text("WEBVTT\n", encoding="utf-8")
+        return vtt, "en"
+
+    monkeypatch.setattr(robin_module, "fetch_metadata", fake_fetch_metadata)
+    monkeypatch.setattr(robin_module, "fetch_caption", fake_fetch_caption)
+
+    tc.post(
+        "/robin/watchlist/add",
+        data={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+    )
+    # No .staging dir under Watchlist/youtube/.
+    assert not (vault / "Watchlist" / "youtube" / ".staging").exists()
+    # Staging dir under the sibling ``.youtube_staging``.
+    assert (vault / "Watchlist" / ".youtube_staging" / "dQw4w9WgXcQ").is_dir()
+
+
+def test_sweep_orphan_staging_removes_old_dirs(app_client, vault):
+    """PR #771 code-review finding #2: orphan staging dirs older than the
+    session TTL get swept by ``_sweep_orphan_staging``."""
+    tc, robin_module = app_client
+
+    import os
+    import time
+
+    # Hand-build an "old" orphan: dir + vtt with mtime far in the past.
+    orphan_dir = vault / "Watchlist" / ".youtube_staging" / "OLDORPHANXX"
+    orphan_dir.mkdir(parents=True)
+    (orphan_dir / "transcript.vtt").write_text("WEBVTT\n", encoding="utf-8")
+    old_ts = time.time() - robin_module._STAGING_ORPHAN_TTL - 60
+    os.utime(orphan_dir, (old_ts, old_ts))
+
+    # Recent dir — must NOT be swept.
+    recent_dir = vault / "Watchlist" / ".youtube_staging" / "RECENT_XXXX"
+    recent_dir.mkdir(parents=True)
+    (recent_dir / "transcript.vtt").write_text("WEBVTT\n", encoding="utf-8")
+
+    robin_module._sweep_orphan_staging()
+    assert not orphan_dir.exists(), "orphan staging dir should have been swept"
+    assert recent_dir.exists(), "recent staging dir must not be swept"
+
+
 def test_post_watchlist_confirm_cleans_staging_leftovers(app_client, vault, monkeypatch):
     """Confirm path cleans up staging leftovers (yt-dlp may leave .json /
     .info files next to the vtt). Covers the inner unlink loop branch."""

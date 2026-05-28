@@ -184,21 +184,23 @@ def fetch_metadata(url: str) -> YouTubeMetadata:
 
 
 def _pick_caption_lang(available: list[str]) -> str | None:
-    """Return the first language from :data:`CAPTION_LANG_PRIORITY` that
-    yt-dlp reports as available, or ``None`` if none match.
+    """Return the actual yt-dlp lang tag matching the first priority family
+    that has an available track, or ``None`` if none match.
 
-    Match is exact on the priority tag, but also accepts the ``-orig``
-    suffix yt-dlp sometimes emits (``en-orig``) and the prefix family
-    match (``zh-Hant-zh-TW`` etc.).
+    Exact priority-tag match wins (``"en"`` if available). Otherwise falls
+    back to the first variant in the priority family (``"en-orig"``,
+    ``"en-US"``, ``"zh-Hant-zh-TW"``). The returned tag is the actual yt-dlp
+    track id, NOT the priority constant — so ``manifest.primary_lang``
+    matches the on-disk VTT track name verbatim (code-review fix on PR
+    #771: was previously returning ``pref``, which mismatched yt-dlp's
+    track id on re-uploads where auto-caption is ``en-orig``).
     """
-    available_set = set(available)
     for pref in CAPTION_LANG_PRIORITY:
-        if pref in available_set:
+        if pref in available:
             return pref
-        # yt-dlp variants: ``en-orig``, ``zh-Hant-zh-TW``
         for cand in available:
-            if cand == pref or cand.startswith(f"{pref}-") or cand.startswith(f"{pref}."):
-                return pref
+            if cand.startswith(f"{pref}-") or cand.startswith(f"{pref}."):
+                return cand
     return None
 
 
@@ -274,19 +276,12 @@ def fetch_caption(video_id: str, output_dir: Path) -> tuple[Path, str]:
             f"auto-caption present for {video_id!r} but not in {CAPTION_LANG_PRIORITY}"
         )
 
-    # Pick the actual file whose tag matches (or starts with) chosen_lang.
-    chosen_path: Path | None = candidates.get(chosen_lang)
-    if chosen_path is None:
-        for tag, path in candidates.items():
-            if (
-                tag == chosen_lang
-                or tag.startswith(f"{chosen_lang}-")
-                or tag.startswith(f"{chosen_lang}.")
-            ):
-                chosen_path = path
-                break
-
-    if chosen_path is None:
+    # ``chosen_lang`` is the actual track id (post-PR #771 review fix), so
+    # the candidates dict — keyed by that same track id from the disk scan
+    # — resolves directly. NoCaptionAvailable here would indicate a logic
+    # bug, not user-facing state.
+    chosen_path = candidates.get(chosen_lang)
+    if chosen_path is None:  # pragma: no cover — would be a logic bug, not env
         raise NoCaptionAvailable(
             f"auto-caption resolution failed for {video_id!r} (chose lang={chosen_lang!r})"
         )

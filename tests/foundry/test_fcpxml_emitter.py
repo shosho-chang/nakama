@@ -17,13 +17,17 @@ BLACK_MP4 = FIXTURE_DIR / "black10s.mp4"
 BIGSTAT_MP4 = FIXTURE_DIR / "bigstat3s.mp4"
 
 
+FAKE_HASH = "deadbeefdeadbeef"
+
+
 def _build_episode(tmp_path: Path) -> Path:
     """Build a minimal episode dir mirroring the DaVinci import fixture."""
     ep = tmp_path / "test-episode-001"
     out = ep / "out"
     out.mkdir(parents=True)
     shutil.copy(BLACK_MP4, ep / "raw_recording.mp4")
-    shutil.copy(BIGSTAT_MP4, out / "b_roll_42.mp4")
+    # ADR-038 §D2: content-addressed b-roll filename
+    shutil.copy(BIGSTAT_MP4, out / f"b_roll_{FAKE_HASH}.mp4")
     return ep
 
 
@@ -46,6 +50,7 @@ def _storyboard_one_cutaway() -> list[dict]:
                 "text_approved": True,
                 "render_status": "done",
                 "visual_approved": False,
+                "cached_hash": FAKE_HASH,
             },
             "user_notes": [],
         }

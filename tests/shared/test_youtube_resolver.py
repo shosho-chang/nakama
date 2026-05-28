@@ -102,7 +102,9 @@ def test_resolve_youtube_happy_path(registry: ReadingSourceRegistry, vault: Path
     assert rs.metadata["channel"] == "Huberman Lab"
     assert rs.metadata["duration_s"] == "5400"
     assert rs.metadata["url"] == "https://youtube.com/watch?v=dQw4w9WgXcQ"
-    assert json.loads(rs.metadata["cast"]) == ["host", "Andrew Huberman"]
+    # cast lifted to top-level field (F7); no longer in metadata dict
+    assert "cast" not in rs.metadata
+    assert rs.cast == ["host", "Andrew Huberman"]
 
 
 def test_resolve_youtube_missing_entry_returns_none(registry: ReadingSourceRegistry):
@@ -169,7 +171,20 @@ def test_resolve_youtube_empty_cast_ok(registry: ReadingSourceRegistry, vault: P
     _make_entry(vault, video_id="nocast_id", cast=[])
     rs = registry.resolve(YouTubeKey(video_id="nocast_id"))
     assert rs is not None
-    assert json.loads(rs.metadata["cast"]) == []
+    assert rs.cast == []
+    assert "cast" not in rs.metadata
+
+
+def test_resolve_youtube_cast_roundtrips_as_list(registry: ReadingSourceRegistry, vault: Path):
+    """F7: cast=["host","guest"] round-trips through the resolver as a
+    typed ``list[str]`` on the top-level ``cast`` field — never as a
+    JSON-encoded string in ``metadata``."""
+    _make_entry(vault, video_id="cast_id", cast=["host", "guest_a", "guest_b"])
+    rs = registry.resolve(YouTubeKey(video_id="cast_id"))
+    assert rs is not None
+    assert rs.cast == ["host", "guest_a", "guest_b"]
+    assert isinstance(rs.cast, list)
+    assert "cast" not in rs.metadata
 
 
 def test_resolve_youtube_custom_transcript_path(registry: ReadingSourceRegistry, vault: Path):

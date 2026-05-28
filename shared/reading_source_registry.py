@@ -12,7 +12,6 @@ registry never propagates uncontrolled exceptions to callers.
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -443,7 +442,7 @@ class ReadingSourceRegistry:
 
         try:
             entry = YouTubeWatchlistEntry.model_validate_json(manifest_path.read_bytes())
-        except (OSError, ValidationError, json.JSONDecodeError):
+        except (OSError, ValidationError):
             _logger.warning(
                 "youtube watchlist manifest parse failed",
                 extra={
@@ -480,7 +479,6 @@ class ReadingSourceRegistry:
             "channel": entry.channel,
             "duration_s": str(entry.duration_s),
             "url": entry.url,
-            "cast": json.dumps(entry.cast, ensure_ascii=False),
         }
 
         return ReadingSource(
@@ -495,4 +493,5 @@ class ReadingSourceRegistry:
             evidence_reason=None,
             variants=[variant],
             metadata=metadata,
+            cast=list(entry.cast),
         )

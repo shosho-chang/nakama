@@ -136,6 +136,24 @@ def test_fetch_caption_picks_en_first(monkeypatch, tmp_path: Path):
     assert path.name == "dQw4w9WgXcQ.en.vtt"
 
 
+def test_fetch_caption_returns_actual_variant_tag(monkeypatch, tmp_path: Path):
+    """PR #771 code-review fix: when yt-dlp emits ``en-orig`` (re-upload
+    auto-caption), the returned lang must be the actual tag, not the
+    priority constant — so manifest.primary_lang matches the on-disk
+    track name verbatim."""
+    out = tmp_path / "stage"
+
+    def fake_run(args, timeout=90):
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "dQw4w9WgXcQ.en-orig.vtt").write_text("WEBVTT\n", encoding="utf-8")
+        return _make_completed(0)
+
+    monkeypatch.setattr(youtube_ingest, "_run_yt_dlp", fake_run)
+    path, lang = youtube_ingest.fetch_caption("dQw4w9WgXcQ", out)
+    assert lang == "en-orig"
+    assert path.name == "dQw4w9WgXcQ.en-orig.vtt"
+
+
 def test_fetch_caption_falls_back_to_zh_hant(monkeypatch, tmp_path: Path):
     out = tmp_path / "stage"
 

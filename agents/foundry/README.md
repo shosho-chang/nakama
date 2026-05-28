@@ -10,7 +10,7 @@ data/script_video/<episode-id>/                ← INPUT + OUTPUT root
 ├── refs.yaml          (optional)              ← quote disambiguation map
 ├── storyboard.yaml    (generated)             ← planner output, UI edits in place
 └── out/                                       ← render artifacts
-    ├── b_roll_<beat_id>.mp4                  ← individual B-roll clips
+    ├── b_roll_<sha256[:16]>.mp4              ← individual B-roll clips, content-addressed (ADR-038 §D2)
     ├── episode.fcpxml                         ← ★ DaVinci import target
     └── episode.srt    (optional)              ← caption track if Phase 2 enabled
 ```
@@ -137,3 +137,37 @@ Document outcome in PR-4 review comment.
 - **`docs/design-system.md` is the only brand source** — planner loads at runtime, never duplicates tokens locally.
 
 See [ADR-032](../../docs/decisions/ADR-032-hyperframes-broll-pipeline.md) for the full architectural rationale + 3-way panel audit.
+
+## Content-addressed render cache (ADR-038 §D2)
+
+Rendered b-roll mp4s live at `out/b_roll_<sha256[:16]>.mp4`. The hash is computed from:
+
+1. `shared.foundry_versions.EXPORT_VERSION` — global cache-flush lever
+2. Minimal beat fields — `broll_decision`, `layout`, `broll.{render_target, component, params}`
+3. SHA-256[:8] of the referenced `agents/foundry/layouts/<layout>.yaml`
+4. SHA-256[:8] of the referenced `video/compositions/<component>/index.html`
+5. SHA-256[:8] of `agents/foundry/guardrails.yaml`
+
+Re-running `render` on an unchanged storyboard is a no-op (every beat is a cache hit). Editing a layout YAML, a composition HTML, a beat's `broll.params`, or bumping `EXPORT_VERSION` invalidates the relevant beats.
+
+### When to bump `EXPORT_VERSION`
+
+Edit `shared/foundry_versions.py` and increment `EXPORT_VERSION` whenever a change to the render pipeline makes previously-cached mp4s **no longer valid output**, e.g.:
+
+- switching hyperframes renderer version / codec settings
+- changing the default font-face shipped with the pipeline
+- fixing a determinism bug in a worker that produced subtly different frames
+
+A bump invalidates **every** cached b-roll mp4 across **every** episode in one go — re-render on next `pipeline render` is unavoidable. Use sparingly; per-beat invalidation already happens automatically via inputs 2-5 above.
+
+### Force a fresh render
+
+```bash
+python -m agents.foundry --episode <id> render --no-cache
+```
+
+Bypasses the cache for one invocation without touching `EXPORT_VERSION`.
+
+### Legacy `b_roll_<beat_id>.mp4` files
+
+Pre-ADR-038 renders used `b_roll_<beat_id>.mp4`. Phase 2 makes no attempt to backfill — those files simply orphan in `out/` and can be deleted by hand. The first `render` after upgrading will produce hash-named mp4s alongside (or in place of, if you clean up) the legacy ones.
