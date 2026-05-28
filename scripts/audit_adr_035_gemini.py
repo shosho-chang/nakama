@@ -15,7 +15,13 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv(Path("E:/nakama/.env"))
+# Search for .env starting from the worktree root, then walking up parents.
+# Avoids a hardcoded absolute path so the script survives running from any
+# nakama worktree (or its CI clone) without env wiring breaking.
+for _candidate in [ROOT / ".env", *[p / ".env" for p in ROOT.parents]]:
+    if _candidate.is_file():
+        load_dotenv(_candidate)
+        break
 
 from shared.gemini_client import ask_gemini  # noqa: E402
 
