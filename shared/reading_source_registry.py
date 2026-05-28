@@ -423,6 +423,20 @@ class ReadingSourceRegistry:
         entry_rel = f"Watchlist/youtube/{video_id}"
         entry_dir = self._vault / entry_rel
 
+        # Symlink-escape guard (PR1b review F3) — mirrors the InboxKey
+        # path-escape check. The alphabet guard above blocks ``..`` in
+        # ``video_id`` but a symlink named with valid characters could
+        # still redirect outside the vault. Only do the resolve dance if
+        # the entry actually exists; missing entries are NB1 None.
+        if entry_dir.is_dir() or entry_dir.is_symlink():
+            vault_resolved = self._vault.resolve()
+            try:
+                entry_dir.resolve().relative_to(vault_resolved)
+            except ValueError as exc:
+                raise ValueError(
+                    f"YouTubeKey path escapes vault via symlink: video_id={video_id!r}"
+                ) from exc
+
         manifest_path = entry_dir / "manifest.json"
         if not manifest_path.is_file():
             return None

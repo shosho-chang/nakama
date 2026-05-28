@@ -20,6 +20,17 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+_VIDEO_ID_PATTERN = r"^[A-Za-z0-9_-]+$"
+"""Mirrors ``ReadingSourceRegistry._VALID_YOUTUBE_ID``. Defence-in-depth so
+that a producer constructing this model directly (e.g., PR1c ingestion
+writer) is rejected at schema validation rather than only at resolver-time
+dir-vs-manifest mismatch."""
+
+_TRANSCRIPT_PATH_PATTERN = r"^[A-Za-z0-9._-]+\.(vtt|webvtt)$"
+"""Single-segment filename ending in a WebVTT extension. Rejects ``..``,
+``/``, ``\\`` and empty strings — closes the path-traversal vector the
+``video_id`` regex doesn't cover (PR1b review F2)."""
+
 
 class YouTubeWatchlistEntry(BaseModel):
     """One entry under ``Watchlist/youtube/{video_id}/manifest.json``.
@@ -33,9 +44,10 @@ class YouTubeWatchlistEntry(BaseModel):
 
     schema_version: Literal[1] = 1
 
-    video_id: str
+    video_id: str = Field(pattern=_VIDEO_ID_PATTERN, min_length=1)
     """Canonical YouTube video id — 11-char URL slug. NEVER includes the
-    ``v=`` prefix or the surrounding URL."""
+    ``v=`` prefix or the surrounding URL. Constrained to the YouTube id
+    alphabet for defence-in-depth (mirrors the resolver's runtime guard)."""
 
     title: str
     channel: str
@@ -57,10 +69,16 @@ class YouTubeWatchlistEntry(BaseModel):
     Empty list = ``unspecified`` speaker for every annotation until the user
     edits the entry."""
 
-    transcript_path: str = "transcript.vtt"
-    """Path RELATIVE to the entry directory (``Watchlist/youtube/{video_id}/``).
-    Default is the WebVTT track yt-dlp produces; overridable for future
-    Phase 2 ``Whisper``-transcribed track variants without re-keying."""
+    transcript_path: str = Field(default="transcript.vtt", pattern=_TRANSCRIPT_PATH_PATTERN)
+    """Single-segment WebVTT filename RELATIVE to the entry directory
+    (``Watchlist/youtube/{video_id}/``). Default is the track yt-dlp
+    produces; overridable for future Phase 2 ``Whisper``-transcribed track
+    variants without re-keying.
+
+    Constrained to ``[A-Za-z0-9._-]+\\.(vtt|webvtt)`` — rejects ``..``,
+    path separators, and empty strings so that a hostile or buggy
+    ``manifest.json`` cannot smuggle a vault-escape into
+    ``ReadingSource.variants[0].path`` (PR1b review F2)."""
 
     added_at: str
     """ISO-8601 UTC timestamp string. Stable; never updated after first

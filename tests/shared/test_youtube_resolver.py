@@ -258,6 +258,75 @@ def test_lister_skips_broken_youtube_entry(
 # ── Schema (YouTubeWatchlistEntry) ─────────────────────────────────────────
 
 
+def test_youtube_watchlist_entry_rejects_traversal_in_transcript_path():
+    """F2 — transcript_path cannot smuggle ``..`` or path separators
+    through the schema."""
+    base_kwargs = dict(
+        video_id="abc123",
+        title="t",
+        channel="c",
+        url="https://youtube.com/watch?v=abc123",
+        duration_s=10,
+        primary_lang="en",
+        added_at="2026-05-28T00:00:00Z",
+    )
+    for bad in ["../escape.vtt", "../../etc/passwd", "sub/transcript.vtt", "", "transcript.txt"]:
+        with pytest.raises(ValidationError):
+            YouTubeWatchlistEntry(**base_kwargs, transcript_path=bad)
+
+
+def test_youtube_watchlist_entry_rejects_bad_video_id():
+    """F5 — schema-side video_id mirrors the registry's alphabet guard."""
+    base_kwargs = dict(
+        title="t",
+        channel="c",
+        url="https://youtube.com/watch?v=x",
+        duration_s=10,
+        primary_lang="en",
+        added_at="2026-05-28T00:00:00Z",
+    )
+    for bad in ["", "../escape", "with space", "with/slash", "with.dot"]:
+        with pytest.raises(ValidationError):
+            YouTubeWatchlistEntry(**base_kwargs, video_id=bad)
+
+
+def test_resolve_youtube_symlink_escape_rejected(
+    registry: ReadingSourceRegistry, vault: Path, tmp_path: Path
+):
+    """F3 — symlink at Watchlist/youtube/{alphabet-valid} pointing outside
+    vault raises ValueError, mirroring the InboxKey guard."""
+    import os
+    import sys
+
+    if sys.platform == "win32" and not _can_symlink():
+        pytest.skip("Windows symlink creation requires admin / dev mode")
+    outside = tmp_path.parent / "outside_vault"
+    outside.mkdir(exist_ok=True)
+    link = vault / "Watchlist" / "youtube" / "evilid"
+    os.symlink(outside, link, target_is_directory=True)
+    with pytest.raises(ValueError, match="escapes vault"):
+        registry.resolve(YouTubeKey(video_id="evilid"))
+
+
+def _can_symlink() -> bool:
+    """Probe Windows for symlink privilege; True elsewhere."""
+    import os
+    import sys
+    import tempfile
+
+    if sys.platform != "win32":
+        return True
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "t"
+        link = Path(tmp) / "l"
+        target.mkdir()
+        try:
+            os.symlink(target, link, target_is_directory=True)
+            return True
+        except (OSError, NotImplementedError):
+            return False
+
+
 def test_youtube_watchlist_entry_rejects_negative_duration():
     with pytest.raises(ValidationError):
         YouTubeWatchlistEntry(
