@@ -4,6 +4,7 @@ Run from worktree root:
     python scripts/audit_adr_035_gemini.py \\
         > docs/research/2026-05-27-gemini-video-reader-adr-035-audit.md
 """
+
 from __future__ import annotations
 
 import sys
