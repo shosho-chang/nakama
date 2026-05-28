@@ -33,6 +33,7 @@ from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
 from shared.llm_context import set_current_agent
 from shared.log import get_logger
+from shared.reading_source_lister import RegistryReadingSourceLister
 from shared.reading_source_registry import InboxKey, ReadingSourceRegistry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
@@ -296,6 +297,141 @@ async def robin_home(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/robin", status_code=302)
     return _render_inbox(request)
+
+
+# ── Watchlist list view (ADR-035 F4 — issue #763) ────────────────────────────
+#
+# ``GET /robin/watchlist`` enumerates ``youtube_video`` Reading Sources directly
+# from ``{vault}/Watchlist/youtube/`` via ``RegistryReadingSourceLister``. It
+# intentionally bypasses ``PromotionReviewService.list_pending`` because that
+# surface filters by ``_PREFLIGHT_PROCEED_ACTIONS`` and currently drops every
+# ``youtube_video`` candidate (preflight defers them). Operators need a
+# dedicated read-only surface so the watchlist is visible regardless of
+# promotion-pipeline state. Per ADR-035 §F4 review decision (PR1b #758) this
+# is an independent surface — it does NOT mutate the promotion-review filter.
+
+
+def _format_duration(seconds: int | None) -> str:
+    """Render duration as ``H:MM:SS`` (long-form) or ``M:SS`` (short).
+
+    Returns ``""`` for ``None`` / negative values so the template suppresses
+    the slot rather than rendering ``0:00``.
+    """
+    if seconds is None or seconds < 0:
+        return ""
+    hours, rem = divmod(int(seconds), 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def _watchlist_row(rs) -> dict:  # rs: shared.schemas.reading_source.ReadingSource
+    """Project a ``ReadingSource(kind='youtube_video')`` into the row dict the
+    ``watchlist_list.html`` template renders.
+
+    Defensive on metadata: PR1b stores ``cast`` as a JSON-encoded string in
+    ``metadata['cast']`` (F7 #765 fixes the schema upstream). We tolerate
+    both shapes (string-JSON or already-list) and a missing key. Same for
+    ``duration_s``.
+    """
+    import json
+
+    meta = rs.metadata or {}
+
+    raw_cast = meta.get("cast")
+    cast: list[str]
+    if isinstance(raw_cast, list):
+        cast = [str(x) for x in raw_cast]
+    elif isinstance(raw_cast, str) and raw_cast:
+        try:
+            decoded = json.loads(raw_cast)
+            cast = [str(x) for x in decoded] if isinstance(decoded, list) else []
+        except (json.JSONDecodeError, ValueError):
+            cast = []
+    else:
+        cast = []
+
+    duration_s: int | None
+    raw_duration = meta.get("duration_s")
+    if isinstance(raw_duration, int):
+        duration_s = raw_duration
+    elif isinstance(raw_duration, str) and raw_duration.isdigit():
+        duration_s = int(raw_duration)
+    else:
+        duration_s = None
+
+    video_id = str(meta.get("video_id") or "")
+    primary_lang = rs.primary_lang or "unknown"
+
+    return {
+        "video_id": video_id,
+        "title": rs.title or video_id or "(untitled)",
+        "channel": str(meta.get("channel") or rs.author or ""),
+        "duration": _format_duration(duration_s),
+        "primary_lang": primary_lang,
+        "cast_preview": ", ".join(cast[:3]),
+        "url": str(meta.get("url") or ""),
+    }
+
+
+def _list_watchlist_rows() -> list[dict]:
+    """Walk ``{vault}/Watchlist/youtube/`` and return one row per ``youtube_video``.
+
+    Independent of the promotion-review wiring (we construct a fresh
+    registry + lister here) so a missing / mis-wired promotion service can
+    never blank this surface. ``RegistryReadingSourceLister`` already skips
+    broken entries (malformed manifest, video_id mismatch, unsafe paths)
+    and logs them — see ``shared.reading_source_lister`` and
+    ``shared.reading_source_registry._resolve_youtube``.
+
+    Each row is a plain dict so the template never touches Pydantic
+    objects directly; defensive shape coercion lives in ``_watchlist_row``.
+    """
+    vault = get_vault_path()
+    registry = ReadingSourceRegistry(vault_root=vault)
+    # We only need the YouTube arm. ``books_root`` / ``inbox_root`` are
+    # required ctor args but we point them at non-existent paths so those
+    # arms return [] cheaply (no DB / filesystem reads beyond ``is_dir()``).
+    lister = RegistryReadingSourceLister(
+        registry=registry,
+        inbox_root=vault / "_unused_for_watchlist_view",
+        books_root=vault / "_unused_for_watchlist_view",
+        watchlist_youtube_root=vault / "Watchlist" / "youtube",
+    )
+    sources = lister.list_sources()
+    rows: list[dict] = []
+    for rs in sources:
+        if rs.kind != "youtube_video":
+            continue
+        try:
+            rows.append(_watchlist_row(rs))
+        except (AttributeError, TypeError, ValueError):
+            # Defensive: a malformed metadata payload should not poison the
+            # whole list. The resolver already logged via
+            # ``youtube_watchlist_parse_failed``; we just skip the row.
+            logger.warning(
+                "watchlist row projection failed",
+                extra={
+                    "category": "robin_watchlist_row_skip",
+                    "source_id": getattr(rs, "source_id", "?"),
+                },
+            )
+            continue
+    return rows
+
+
+@robin_router.get("/watchlist", response_class=HTMLResponse)
+async def watchlist_list(request: Request, nakama_auth: str | None = Cookie(None)):
+    """Render the YouTube watchlist (ADR-035 §F4 — issue #763)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/robin/watchlist", status_code=302)
+    rows = _list_watchlist_rows()
+    return templates.TemplateResponse(
+        request,
+        "watchlist_list.html",
+        {"rows": rows, "asset_version": _SHOSHO_ASSET_VERSION},
+    )
 
 
 @robin_router.get("/read", response_class=HTMLResponse)
