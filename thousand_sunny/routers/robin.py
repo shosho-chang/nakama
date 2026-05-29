@@ -1980,11 +1980,33 @@ async def create_video_annotation(
     store: AnnotationStore = get_annotation_store()
     slug = rs.annotation_key  # ``youtube_{video_id}``
     existing = store.load(slug)
+    replaced = False
     if existing is None:
         ann_set = AnnotationSetV3(slug=slug, base="youtube", items=[item])
     else:
         ann_set = upgrade_to_v3(existing)
-        ann_set.items.append(item)
+        # Upsert: if an item of the same kind already sits on this cue
+        # (within the same 50ms drift tolerance), replace it in place.
+        # This is what makes N-key re-edit feel like editing instead of
+        # silently accumulating duplicate annotations on one cue.
+        # Highlights upsert too — defence in depth for the star toggle
+        # flow, which already deletes before saving but might race.
+        tol = 0.05
+        new_items: list = []
+        for existing_item in ann_set.items:
+            if (
+                not replaced
+                and getattr(existing_item, "type", None) == item.type
+            ):
+                t = _parse_t_locator(getattr(existing_item, "cfi", None))
+                if t is not None and abs(t - body.cue_start) <= tol:
+                    new_items.append(item)
+                    replaced = True
+                    continue
+            new_items.append(existing_item)
+        if not replaced:
+            new_items.append(item)
+        ann_set.items = new_items
         ann_set.updated_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     store.save(ann_set)
 
@@ -1998,7 +2020,7 @@ async def create_video_annotation(
         },
     )
 
-    return {"annotation": _video_annotation_row(item)}
+    return {"annotation": _video_annotation_row(item), "replaced": replaced}
 
 
 @robin_router.delete("/watchlist/{video_id}/annotation")

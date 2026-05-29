@@ -34,6 +34,17 @@
   }
   const cues = readJsonNode('cuesJson', []);
   const cast = readJsonNode('castJson', []);
+  // Annotations rendered server-side at page load — used to prefill the
+  // editor when the user re-opens a previously-noted cue. Map by cue_start
+  // (rounded to 50ms bucket to absorb VTT re-parse drift).
+  const annotationsBoot = readJsonNode('annotationsJson', []);
+  const annByCueStart = new Map();
+  function annBucket(t) { return Math.round(t * 20); }  // 50ms buckets
+  annotationsBoot.forEach((ann) => {
+    if (ann && ann.type === 'annotation' && Number.isFinite(ann.start)) {
+      annByCueStart.set(annBucket(ann.start), ann);
+    }
+  });
 
   const cueListEl = document.getElementById('cueList');
   const cueEls = cueListEl ? Array.from(cueListEl.querySelectorAll('.cue-item')) : [];
@@ -272,11 +283,25 @@
     } else {
       syncEditorTarget(activeIdx);
     }
-    // Restore last-used chip (sticky cross-write).
+    // Prefill from existing annotation on this cue if any — this is what
+    // makes N feel like "edit my previous note" rather than "always start
+    // a new one". Lookup is cue_start indexed at 50ms granularity.
+    const seedCue = cues[activeIdx];
+    const seedAnn = seedCue ? annByCueStart.get(annBucket(seedCue.start)) : null;
+    if (seedAnn && annTextarea) {
+      annTextarea.value = seedAnn.note || '';
+    } else if (annTextarea) {
+      annTextarea.value = '';
+    }
+    // Restore speaker: prefer the saved annotation's speaker, else sticky.
     if (chipEls.length) {
-      const last = readLastSpeaker();
-      const exists = cast.indexOf(last) >= 0;
-      setActiveChip(exists ? last : '');
+      if (seedAnn && seedAnn.speaker && cast.indexOf(seedAnn.speaker) >= 0) {
+        setActiveChip(seedAnn.speaker);
+      } else {
+        const last = readLastSpeaker();
+        const exists = cast.indexOf(last) >= 0;
+        setActiveChip(exists ? last : '');
+      }
     }
     if (!opts.skipFocus && annTextarea) {
       // Focus async so the keystroke that opened the editor doesn't land
@@ -381,7 +406,18 @@
     try {
       const result = await postAnnotation(payload);
       if (result && result.annotation) {
+        // Replace flow: server flagged this as an upsert. Drop the prior
+        // DOM row for this cue + type so the prepend below doesn't create
+        // a duplicate. Mirrors server-side dedup tolerance.
+        if (result.replaced) {
+          removeMatchingAnnotationRows(payload.cue_start, result.annotation.type);
+        }
         prependAnnotationRow(result.annotation);
+        // Update the prefill cache so the next N opens this fresh content.
+        if (result.annotation.type === 'annotation'
+            && Number.isFinite(result.annotation.start)) {
+          annByCueStart.set(annBucket(result.annotation.start), result.annotation);
+        }
         // Reflect on the cue list border-left marker.
         const idx = findCueIndexForStart(payload.cue_start);
         if (idx >= 0 && cueEls[idx]) {
@@ -435,6 +471,29 @@
       alert(err && err.message ? err.message : '刪除失敗');
     } finally {
       saving = false;
+    }
+  }
+
+  function removeMatchingAnnotationRows(cueStart, kind) {
+    // kind: 'highlight' → only rows with no note / muted "(no note)"
+    //       'annotation' → only rows with a real note
+    if (!annList) return;
+    const rows = Array.from(annList.querySelectorAll('.ann-row[data-start]'));
+    let removed = 0;
+    rows.forEach((row) => {
+      const s = parseFloat(row.getAttribute('data-start'));
+      if (!Number.isFinite(s) || Math.abs(s - cueStart) > 0.05) return;
+      const noteEl = row.querySelector('.ann-note');
+      const isHighlight = !noteEl || noteEl.classList.contains('ann-note--muted');
+      const matchesKind = kind === 'highlight' ? isHighlight : !isHighlight;
+      if (matchesKind) {
+        row.remove();
+        removed += 1;
+      }
+    });
+    if (removed > 0 && annCount) {
+      const remaining = annList.querySelectorAll('.ann-row').length;
+      annCount.textContent = remaining === 0 ? '' : `${remaining} 則`;
     }
   }
 
