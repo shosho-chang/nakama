@@ -21,6 +21,8 @@ labeled with H2 headings.
 
 from __future__ import annotations
 
+import re
+
 import yaml
 
 from shared.schemas.promotion_manifest import (
@@ -33,6 +35,18 @@ from shared.schemas.promotion_manifest import (
     PromotionManifest,
     SourcePageReviewItem,
 )
+
+# ADR-035 §D6 / PR3a-iii — video-source sniffing. Source ids matching this
+# prefix get the video body template (## Annotations with mm:ss labels +
+# Watch-on-YouTube links) instead of the generic Reason/Evidence/Risks
+# layout. The prefix is the same opaque transport string defined by #509
+# (``youtube:{video_id}``); we never parse it for identity, only sniff.
+_YOUTUBE_SOURCE_ID_PREFIX = "youtube:"
+
+# Matches the timestamp-range locator format defined in ADR-035 §D5
+# (``t=<start>[-<end>]``). Kept in sync with the parser in
+# ``shared.video_source_map_builder`` and ``thousand_sunny.routers.robin``.
+_T_LOCATOR_RE = re.compile(r"t=([0-9]+(?:\.[0-9]+)?)(?:-([0-9]+(?:\.[0-9]+)?))?")
 
 # ── Frontmatter key order ──────────────────────────────────────────────────────
 # Explicit lists (NOT dict iteration) so two runs produce byte-identical YAML.
@@ -173,9 +187,25 @@ def render_source_page(item: SourcePageReviewItem, manifest: PromotionManifest) 
     sections.append(f"# {item.chapter_ref or item.item_id}\n")
     sections.append(f"## Reason\n\n{item.reason.strip()}\n")
 
-    if item.evidence:
-        sections.append("## Evidence\n")
-        sections.append(_render_evidence_list(item.evidence))
+    if _is_youtube_source(manifest):
+        # ADR-035 §D6 / PR3a-iii — video sources get a dedicated Annotations
+        # section with mm:ss labels and per-anchor Watch-on-YouTube deep
+        # links. Non-timestamp anchors (defensive — should not appear on
+        # video items today) fall back into a generic Evidence section so
+        # the page never silently drops evidence.
+        timestamp_anchors = [a for a in item.evidence if a.kind == "timestamp_range"]
+        other_anchors = [a for a in item.evidence if a.kind != "timestamp_range"]
+        video_id = _youtube_video_id_from_source_id(manifest.source_id)
+        if timestamp_anchors:
+            sections.append("## Annotations\n")
+            sections.append(_render_video_annotation_list(timestamp_anchors, video_id))
+        if other_anchors:
+            sections.append("## Evidence\n")
+            sections.append(_render_evidence_list(other_anchors))
+    else:
+        if item.evidence:
+            sections.append("## Evidence\n")
+            sections.append(_render_evidence_list(item.evidence))
 
     if item.risk:
         sections.append("## Risks\n")
@@ -418,3 +448,88 @@ def _decided_at_or_none(
     if item.human_decision is None:
         return None
     return item.human_decision.decided_at
+
+
+# ── Video source helpers (ADR-035 §D6 / PR3a-iii) ─────────────────────────────
+
+
+def _is_youtube_source(manifest: PromotionManifest) -> bool:
+    return manifest.source_id.startswith(_YOUTUBE_SOURCE_ID_PREFIX)
+
+
+def _youtube_video_id_from_source_id(source_id: str) -> str:
+    """Strip the ``youtube:`` prefix to get the canonical 11-char video id.
+
+    Caller must have verified the source via ``_is_youtube_source``;
+    returns the raw remainder otherwise (no validation — the prefix
+    contract belongs to #509, not the renderer).
+    """
+    if source_id.startswith(_YOUTUBE_SOURCE_ID_PREFIX):
+        return source_id[len(_YOUTUBE_SOURCE_ID_PREFIX) :]
+    return source_id
+
+
+def _parse_timestamp_locator(locator: str) -> float | None:
+    """Extract ``start`` seconds from an ADR-035 §D5 ``t=`` locator.
+
+    Returns ``None`` if the locator is not in the timestamp_range shape;
+    caller falls back to rendering the row without a seek anchor.
+    """
+    m = _T_LOCATOR_RE.search(locator)
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_cue_label(seconds: float) -> str:
+    """Format ``seconds`` as ``mm:ss`` (or ``hh:mm:ss`` past one hour).
+
+    Mirrors ``thousand_sunny.routers.robin._format_cue_label`` shape. The
+    floor is intentional — seek anchors are integer-second; sub-second
+    precision survives in the locator string but not in the human label.
+    """
+    total = int(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def _format_watch_url(video_id: str, start_seconds: float) -> str:
+    """YouTube deep-link to a specific timestamp.
+
+    ``youtu.be`` short host is preferred over ``youtube.com/watch?v=`` —
+    same behavior, half the URL length. Start seconds are floored to int
+    because YouTube's ``?t=`` parameter only honors integer seconds.
+    """
+    start = max(0, int(start_seconds))
+    return f"https://youtu.be/{video_id}?t={start}"
+
+
+def _render_video_annotation_list(anchors: list[EvidenceAnchor], video_id: str) -> str:
+    """Render timestamp-range anchors as the video body's ## Annotations
+    section. Output order matches caller-supplied list (no implicit sort —
+    the builder already orders by cue start).
+    """
+    parts: list[str] = []
+    for anchor in anchors:
+        start = _parse_timestamp_locator(anchor.locator)
+        excerpt = anchor.excerpt.strip()
+        if start is None:
+            # Defensive — should not occur once the locator survives the
+            # schema's V13 ``timestamp_range`` invariant. Render the
+            # anchor without a seek link rather than skip silently.
+            parts.append(f"- **[--:--]** `{anchor.locator}`\n  > {excerpt}\n")
+            continue
+        label = _format_cue_label(start)
+        watch_url = _format_watch_url(video_id, start)
+        parts.append(
+            f"- **[{label}]** `{anchor.locator}`\n"
+            f"  > {excerpt}\n"
+            f"  [Watch on YouTube]({watch_url})\n"
+        )
+    return "\n".join(parts) + "\n"
