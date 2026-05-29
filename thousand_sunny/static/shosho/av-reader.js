@@ -199,7 +199,11 @@
     });
   }
 
-  // ── Annotation row click (PR2a) — seek + pause ────────────────────
+  // ── Annotation row click — seek + resume + sync right pane ────────
+  // Mirrors cue click: seek and let playback continue so the single
+  // .is-active highlight on the right pane follows. Earlier version
+  // called pauseVideo right after seekTo which produced a black YT
+  // iframe under some timing windows.
   function bindAnnRow(row) {
     const startAttr = row.getAttribute('data-start');
     if (startAttr === null) return;
@@ -207,10 +211,9 @@
     if (!Number.isFinite(start)) return;
     const handler = () => {
       if (!player || typeof player.seekTo !== 'function') return;
-      player.seekTo(start, true);
-      if (typeof player.pauseVideo === 'function') {
-        try { player.pauseVideo(); } catch (e) { /* primary effect is seek */ }
-      }
+      seekTo(start, /*play=*/true);
+      const idx = findCueIndexForStart(start);
+      if (idx >= 0) setActive(idx);
     };
     row.addEventListener('click', handler);
     row.addEventListener('keydown', (ev) => {
