@@ -135,17 +135,18 @@
     activeIdx = idx;
     if (idx >= 0 && cueEls[idx]) {
       cueEls[idx].classList.add('is-active');
-      // Scroll only when not editor-locked — editor users are aiming at a
-      // specific cue, the playhead drifting shouldn't yank their viewport.
-      if (getMode() === 'player') {
-        const el = cueEls[idx];
-        const scroll = el.closest('.cue-scroll');
-        if (scroll) {
-          const elRect = el.getBoundingClientRect();
-          const scRect = scroll.getBoundingClientRect();
-          if (elRect.top < scRect.top + 40 || elRect.bottom > scRect.bottom - 40) {
-            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          }
+      // Editor anchor == playhead. Keep the editor target label and
+      // .is-target marker in sync so there's only ever one highlight.
+      if (getMode() === 'editor') {
+        syncEditorTarget(idx);
+      }
+      const el = cueEls[idx];
+      const scroll = el.closest('.cue-scroll');
+      if (scroll) {
+        const elRect = el.getBoundingClientRect();
+        const scRect = scroll.getBoundingClientRect();
+        if (elRect.top < scRect.top + 40 || elRect.bottom > scRect.bottom - 40) {
+          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         }
       }
     }
@@ -249,20 +250,21 @@
   });
 
   // ── Editor: open / close / retarget ───────────────────────────────
+  // Editor anchor == current playhead (activeIdx). There is no independent
+  // target state — the highlight follows playback. Clicking a cue in editor
+  // mode seeks the player to that cue; if playback continues, the anchor
+  // moves with it. Save uses whatever cue is active at submit time.
   function openEditor(cueIdx, opts) {
     if (!annEditor) return;
     opts = opts || {};
-    // Pause the player — editor opens are deliberate focus moments.
-    if (player && typeof player.pauseVideo === 'function') {
-      try { player.pauseVideo(); } catch (e) { /* ignore */ }
-    }
     setMode('editor');
-    if (cueIdx >= 0 && cueIdx < cues.length) {
-      setTarget(cueIdx);
-    } else if (activeIdx >= 0) {
-      setTarget(activeIdx);
+    // Seek to the requested cue if it differs from current playhead — the
+    // active follow will then carry the editor anchor.
+    if (cueIdx >= 0 && cueIdx < cues.length && cueIdx !== activeIdx) {
+      seekTo(cues[cueIdx].start, /*play=*/false);
+      setActive(cueIdx);
     } else {
-      setTarget(-1);
+      syncEditorTarget(activeIdx);
     }
     // Restore last-used chip (sticky cross-write).
     if (chipEls.length) {
@@ -279,9 +281,9 @@
   function closeEditor() {
     setMode('player');
     if (annTextarea) annTextarea.value = '';
-    clearTarget();
+    syncEditorTarget(-1);
   }
-  function setTarget(cueIdx) {
+  function syncEditorTarget(cueIdx) {
     if (targetIdx >= 0 && cueEls[targetIdx]) {
       cueEls[targetIdx].classList.remove('is-target');
     }
@@ -292,35 +294,16 @@
       if (annEditorTarget && cue) {
         annEditorTarget.textContent = `${cue.label}  ·  ${truncate(cue.text, 40)}`;
       }
-      // Pull the targeted cue into view (centre) so the user always sees
-      // what they're anchoring to.
-      const scroll = cueEls[cueIdx].closest('.cue-scroll');
-      if (scroll) {
-        cueEls[cueIdx].scrollIntoView({ block: 'center', behavior: 'smooth' });
-      }
     } else if (annEditorTarget) {
       annEditorTarget.textContent = '--:--';
     }
   }
-  function clearTarget() {
-    if (targetIdx >= 0 && cueEls[targetIdx]) {
-      cueEls[targetIdx].classList.remove('is-target');
-    }
-    targetIdx = -1;
-  }
   function retargetCue(cueIdx) {
-    setTarget(cueIdx);
-    // Seek the playhead to the retargeted cue so .is-active follows .is-target —
-    // unified single highlight. Stay paused: editor mode is a deliberate note
-    // moment, resuming playback would yank focus off the textarea.
+    // Seek + let the playhead drive the highlight. Don't pause — user wants
+    // the highlight to keep following playback after the jump.
     const cue = cues[cueIdx];
-    if (cue && player && typeof player.seekTo === 'function') {
-      try { player.seekTo(cue.start, true); } catch (e) { /* ignore */ }
-      if (typeof player.pauseVideo === 'function') {
-        try { player.pauseVideo(); } catch (e) { /* ignore */ }
-      }
-      // Paused → tick() isn't polling, so .is-active won't catch up on its
-      // own. Push it explicitly so target and active overlap visually.
+    if (cue) {
+      seekTo(cue.start, /*play=*/true);
       setActive(cueIdx);
     }
     // Keep keyboard focus on textarea so Ctrl+Enter still works.
@@ -370,9 +353,10 @@
 
   async function saveFromEditor() {
     if (saving) return;
-    if (targetIdx < 0) return;
+    // Anchor to current playhead — there's no separate target concept.
+    if (activeIdx < 0) return;
     const note = annTextarea ? annTextarea.value : '';
-    const payload = buildPayload(targetIdx, note);
+    const payload = buildPayload(activeIdx, note);
     if (!payload) return;
     await commitSave(payload, /*returnToPlayer=*/true);
   }
