@@ -34,6 +34,7 @@ from shared.reading_source_registry import (
     InboxKey,
     ReadingSourceRegistry,
     SourceKey,
+    YouTubeKey,
 )
 from shared.schemas.reading_source import ReadingSource
 
@@ -41,6 +42,7 @@ _logger = get_logger("nakama.shared.source_resolver")
 
 _EBOOK_NAMESPACE = "ebook:"
 _INBOX_NAMESPACE = "inbox:"
+_YOUTUBE_NAMESPACE = "youtube:"
 
 
 class RegistrySourceResolver:
@@ -123,6 +125,18 @@ def _make_source_key(source_id: str) -> SourceKey | None:
             )
             return None
         return InboxKey(relative_path=relative_path)
+    if source_id.startswith(_YOUTUBE_NAMESPACE):
+        video_id = source_id[len(_YOUTUBE_NAMESPACE) :]
+        if not video_id:
+            _logger.warning(
+                "source_resolver got youtube namespace with empty body",
+                extra={
+                    "category": "source_resolver_unknown_namespace",
+                    "source_id": source_id,
+                },
+            )
+            return None
+        return YouTubeKey(video_id=video_id)
     # No recognized prefix — most likely a malformed / mistyped id from
     # the URL or a stale link. Log so operators see the failed source_id
     # in correlation with the route's 400/404 response.
