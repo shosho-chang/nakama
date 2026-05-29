@@ -170,6 +170,10 @@
       } else {
         seekTo(cues[i].start, /*play=*/true);
       }
+      // Drop focus off the clicked cue — otherwise :focus-visible keeps an
+      // orange ring and :focus-within keeps the ★ visible on that row,
+      // looking like a second persistent highlight after playback moves on.
+      if (typeof el.blur === 'function') el.blur();
     });
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') {
