@@ -835,12 +835,16 @@ def test_delete_video_highlight_removes_matching_item(client, vault):
     # Seed a highlight on cue start=3.0.
     test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 3.0, "cue_end": 7.0, "excerpt": "We talk longevity.",
-              "speaker": "", "note": "", "highlight": True},
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "We talk longevity.",
+            "speaker": "",
+            "note": "",
+            "highlight": True,
+        },
     )
-    resp = test_client.delete(
-        f"/robin/watchlist/{video_id}/annotation?cue_start=3.0"
-    )
+    resp = test_client.delete(f"/robin/watchlist/{video_id}/annotation?cue_start=3.0")
     assert resp.status_code == 200
     body = resp.json()
     assert body["removed"] == 1
@@ -858,12 +862,16 @@ def test_delete_video_highlight_removes_annotation_too(client, vault):
     _write_watchlist_entry(vault, video_id, transcript=None)
     test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 3.0, "cue_end": 7.0, "excerpt": "x",
-              "speaker": "", "note": "with a real note", "highlight": False},
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "x",
+            "speaker": "",
+            "note": "with a real note",
+            "highlight": False,
+        },
     )
-    resp = test_client.delete(
-        f"/robin/watchlist/{video_id}/annotation?cue_start=3.0"
-    )
+    resp = test_client.delete(f"/robin/watchlist/{video_id}/annotation?cue_start=3.0")
     assert resp.status_code == 200
     assert resp.json()["removed"] == 1
 
@@ -873,18 +881,14 @@ def test_delete_video_highlight_no_op_when_nothing_on_cue(client, vault):
     test_client, _ = client
     video_id = "abcDEF12345"
     _write_watchlist_entry(vault, video_id, transcript=None)
-    resp = test_client.delete(
-        f"/robin/watchlist/{video_id}/annotation?cue_start=99.0"
-    )
+    resp = test_client.delete(f"/robin/watchlist/{video_id}/annotation?cue_start=99.0")
     assert resp.status_code == 200
     assert resp.json()["removed"] == 0
 
 
 def test_delete_video_highlight_404_when_video_missing(client, vault):
     test_client, _ = client
-    resp = test_client.delete(
-        "/robin/watchlist/zzzZZZ99999/annotation?cue_start=3.0"
-    )
+    resp = test_client.delete("/robin/watchlist/zzzZZZ99999/annotation?cue_start=3.0")
     assert resp.status_code == 404
 
 
@@ -892,9 +896,7 @@ def test_delete_video_highlight_400_on_negative_cue_start(client, vault):
     test_client, _ = client
     video_id = "abcDEF12345"
     _write_watchlist_entry(vault, video_id, transcript=None)
-    resp = test_client.delete(
-        f"/robin/watchlist/{video_id}/annotation?cue_start=-1.0"
-    )
+    resp = test_client.delete(f"/robin/watchlist/{video_id}/annotation?cue_start=-1.0")
     assert resp.status_code == 400
 
 
@@ -916,9 +918,7 @@ def test_delete_video_highlight_unauthenticated_401(vault, monkeypatch):
         return PlainTextResponse(f"login next={next}")
 
     test_client = TestClient(app, follow_redirects=False)
-    resp = test_client.delete(
-        "/robin/watchlist/abcDEF12345/annotation?cue_start=3.0"
-    )
+    resp = test_client.delete("/robin/watchlist/abcDEF12345/annotation?cue_start=3.0")
     assert resp.status_code == 401
 
 
@@ -930,16 +930,28 @@ def test_create_video_annotation_upsert_replaces_same_cue(client, vault):
     # First save: highlight (no note).
     r1 = test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 3.0, "cue_end": 7.0, "excerpt": "We talk longevity.",
-              "speaker": "", "note": "", "highlight": True},
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "We talk longevity.",
+            "speaker": "",
+            "note": "",
+            "highlight": True,
+        },
     )
     assert r1.status_code == 200
     assert r1.json()["replaced"] is False
     # Second save on SAME cue: annotation with note → should replace, not append.
     r2 = test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 3.0, "cue_end": 7.0, "excerpt": "We talk longevity.",
-              "speaker": "", "note": "upgraded with note", "highlight": False},
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "We talk longevity.",
+            "speaker": "",
+            "note": "upgraded with note",
+            "highlight": False,
+        },
     )
     assert r2.status_code == 200
     assert r2.json()["replaced"] is True
@@ -961,14 +973,26 @@ def test_create_video_annotation_upsert_drift_tolerance(client, vault):
     _write_watchlist_entry(vault, video_id, transcript=None)
     test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 3.0, "cue_end": 7.0, "excerpt": "x",
-              "speaker": "", "note": "first", "highlight": False},
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "x",
+            "speaker": "",
+            "note": "first",
+            "highlight": False,
+        },
     )
     # 30ms drift — within the 50ms tol.
     r2 = test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 3.03, "cue_end": 7.03, "excerpt": "x",
-              "speaker": "", "note": "second", "highlight": False},
+        json={
+            "cue_start": 3.03,
+            "cue_end": 7.03,
+            "excerpt": "x",
+            "speaker": "",
+            "note": "second",
+            "highlight": False,
+        },
     )
     assert r2.json()["replaced"] is True
 
@@ -980,13 +1004,25 @@ def test_create_video_annotation_upsert_outside_tolerance_appends(client, vault)
     _write_watchlist_entry(vault, video_id, transcript=None)
     test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 3.0, "cue_end": 7.0, "excerpt": "x",
-              "speaker": "", "note": "first", "highlight": False},
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "x",
+            "speaker": "",
+            "note": "first",
+            "highlight": False,
+        },
     )
     r2 = test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 5.0, "cue_end": 9.0, "excerpt": "y",
-              "speaker": "", "note": "second", "highlight": False},
+        json={
+            "cue_start": 5.0,
+            "cue_end": 9.0,
+            "excerpt": "y",
+            "speaker": "",
+            "note": "second",
+            "highlight": False,
+        },
     )
     assert r2.json()["replaced"] is False
 
@@ -1009,10 +1045,16 @@ We talk longevity.
     # Save a mark on the second cue (start=3.0).
     test_client.post(
         f"/robin/watchlist/{video_id}/annotation",
-        json={"cue_start": 3.0, "cue_end": 7.0, "excerpt": "We talk longevity.",
-              "speaker": "", "note": "", "highlight": True},
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "We talk longevity.",
+            "speaker": "",
+            "note": "",
+            "highlight": True,
+        },
     )
     page = test_client.get(f"/robin/watchlist/{video_id}")
     body = page.text
     # The marked cue's <div> carries has-annotation.
-    assert 'has-annotation' in body
+    assert "has-annotation" in body
