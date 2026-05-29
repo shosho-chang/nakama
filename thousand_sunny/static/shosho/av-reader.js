@@ -310,6 +310,19 @@
   }
   function retargetCue(cueIdx) {
     setTarget(cueIdx);
+    // Seek the playhead to the retargeted cue so .is-active follows .is-target —
+    // unified single highlight. Stay paused: editor mode is a deliberate note
+    // moment, resuming playback would yank focus off the textarea.
+    const cue = cues[cueIdx];
+    if (cue && player && typeof player.seekTo === 'function') {
+      try { player.seekTo(cue.start, true); } catch (e) { /* ignore */ }
+      if (typeof player.pauseVideo === 'function') {
+        try { player.pauseVideo(); } catch (e) { /* ignore */ }
+      }
+      // Paused → tick() isn't polling, so .is-active won't catch up on its
+      // own. Push it explicitly so target and active overlap visually.
+      setActive(cueIdx);
+    }
     // Keep keyboard focus on textarea so Ctrl+Enter still works.
     if (annTextarea) annTextarea.focus();
   }
