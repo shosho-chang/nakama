@@ -679,3 +679,166 @@ def test_preflight_reason_includes_inspector_error():
     (markdown frontmatter_minimal is no longer a generic placeholder)."""
     args = typing.get_args(PreflightReason)
     assert "inspector_error" in args, f"PreflightReason must include 'inspector_error'; got {args}"
+
+
+# ── ADR-035 PR3a-i: youtube_video preflight ───────────────────────────────────
+
+
+def _video_source(
+    *,
+    video_id: str = "abcDEF12345",
+    primary_lang: str = "en",
+    transcript_path: str = "transcript.vtt",
+) -> ReadingSource:
+    return ReadingSource(
+        schema_version=2,
+        source_id=f"youtube:{video_id}",
+        annotation_key=f"youtube_{video_id}",
+        kind="youtube_video",
+        title="Test Episode",
+        author="Test Channel",
+        primary_lang=primary_lang,
+        has_evidence_track=True,
+        evidence_reason=None,
+        variants=[
+            SourceVariant(
+                role="original",
+                format="vtt",
+                lang=primary_lang,
+                path=f"Watchlist/youtube/{video_id}/{transcript_path}",
+            ),
+        ],
+        metadata={
+            "video_id": video_id,
+            "channel": "Test Channel",
+            "duration_s": "3600",
+            "url": f"https://youtube.com/watch?v={video_id}",
+        },
+        cast=["Host", "Guest"],
+    )
+
+
+def _make_vtt(*, lines: list[tuple[str, str, str]]) -> bytes:
+    """Build a minimal WebVTT body from (start, end, text) tuples."""
+    out = ["WEBVTT", ""]
+    for start, end, text in lines:
+        out.append(f"{start} --> {end}")
+        out.append(text)
+        out.append("")
+    return "\n".join(out).encode("utf-8")
+
+
+def test_preflight_video_proceeds_on_long_well_formed_transcript():
+    """A transcript with enough words + several cues passes through to the
+    standard evidence-clean path → proceed_full_promotion."""
+    rs = _video_source()
+    cues = []
+    for i in range(40):
+        start_s = i * 5
+        end_s = start_s + 5
+        cues.append(
+            (
+                f"00:{start_s // 60:02d}:{start_s % 60:02d}.000",
+                f"00:{end_s // 60:02d}:{end_s % 60:02d}.000",
+                # ~8 words per cue × 40 cues = 320 words, well above the 200
+                # very-short floor so we exit through the clean path.
+                "alpha beta gamma delta epsilon zeta eta theta",
+            )
+        )
+    blob = _make_vtt(lines=cues)
+
+    def loader(path: str) -> bytes:
+        return blob
+
+    pf = PromotionPreflight(blob_loader=loader)
+    report = pf.run(rs)
+
+    assert report.error is None
+    assert report.recommended_action == "proceed_full_promotion"
+    assert report.size.chapter_count == 40
+    assert report.size.word_count_estimate >= 200
+
+
+def test_preflight_video_skips_very_short_transcript():
+    """A transcript with very few words should land on skip via Row 2."""
+    rs = _video_source()
+    blob = _make_vtt(
+        lines=[
+            ("00:00:00.000", "00:00:03.000", "Hello world."),
+            ("00:00:03.000", "00:00:06.000", "Tiny test."),
+        ]
+    )
+
+    def loader(path: str) -> bytes:
+        return blob
+
+    report = PromotionPreflight(blob_loader=loader).run(rs)
+
+    assert report.error is None
+    assert report.recommended_action == "skip"
+    assert report.reasons == ["very_short"]
+
+
+def test_preflight_video_empty_transcript_emits_low_signal_risk_then_skips():
+    """Parseable VTT that yields zero cues → low_signal_count risk + skip
+    (word_count=0 hits Row 2 before risks are evaluated)."""
+    rs = _video_source()
+
+    def loader(path: str) -> bytes:
+        return b"WEBVTT\n\n"  # header only
+
+    report = PromotionPreflight(blob_loader=loader).run(rs)
+
+    assert report.error is None
+    assert report.recommended_action == "skip"
+    assert report.size.chapter_count == 0
+    assert any(r.code == "low_signal_count" and r.severity == "high" for r in report.risks)
+
+
+def test_preflight_video_loader_failure_routes_to_defer():
+    """Loader IO failure → inspector_error + defer (mirrors ebook / markdown)."""
+    rs = _video_source()
+
+    def loader(path: str) -> bytes:
+        raise FileNotFoundError(path)
+
+    report = PromotionPreflight(blob_loader=loader).run(rs)
+
+    assert report.recommended_action == "defer"
+    assert report.reasons == ["inspector_error"]
+    assert report.error is not None
+    assert "blob_load_failed" in report.error
+
+
+def test_preflight_video_decode_failure_routes_to_defer():
+    """Non-UTF-8 transcript bytes → inspector_error + defer."""
+    rs = _video_source()
+
+    def loader(path: str) -> bytes:
+        # Lone byte 0xff is invalid in UTF-8.
+        return b"\xff\xfe not utf-8"
+
+    report = PromotionPreflight(blob_loader=loader).run(rs)
+
+    assert report.recommended_action == "defer"
+    assert "transcript_decode_failed" in (report.error or "")
+
+
+def test_count_vtt_cues_handles_inline_tags_and_NOTE_blocks():
+    """The VTT helper strips inline cue tags and ignores NOTE / header lines."""
+    from shared.promotion_preflight import _count_vtt_cues_and_text
+
+    vtt = (
+        "WEBVTT\nKind: captions\n\n"
+        "NOTE this is a comment\n\n"
+        "00:00:00.000 --> 00:00:03.000\n"
+        "<c.color00FFFF>hello</c> <00:00:01.000><c>world</c>\n\n"
+        "00:00:03.000 --> 00:00:06.000\n"
+        "second cue\n"
+    )
+    n, text = _count_vtt_cues_and_text(vtt)
+    assert n == 2
+    assert "hello" in text and "world" in text
+    assert "second cue" in text
+    # Inline timing tags stripped.
+    assert "<" not in text and ">" not in text
