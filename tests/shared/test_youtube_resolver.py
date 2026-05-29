@@ -405,9 +405,16 @@ def test_source_map_builder_refuses_youtube_video():
     assert result.items == []
 
 
-def test_promotion_preflight_refuses_youtube_video():
-    """Defensive fix — youtube_video flowed through ``_inspect_markdown``
-    pre-PR1b. Should now route to the inspector_error / defer path."""
+def test_promotion_preflight_handles_youtube_video_via_dedicated_inspector():
+    """PR3a-i landed ``_inspect_video``; an empty transcript should now flow
+    through the inspector cleanly (no error) and route to ``skip`` via the
+    word_count<200 row, not to the legacy ``not yet supported`` defer.
+
+    The defensive concern that survived PR1b — youtube_video MUST NOT fall
+    through to ``_inspect_markdown`` — is still tested implicitly: a
+    markdown inspector would raise on the empty body or surface
+    ``frontmatter_minimal``; here the report is clean.
+    """
     rs = ReadingSource(
         schema_version=2,
         source_id="youtube:vid_pre",
@@ -425,9 +432,11 @@ def test_promotion_preflight_refuses_youtube_video():
             )
         ],
     )
-    preflight = PromotionPreflight(blob_loader=lambda _: b"")
+    # Empty VTT body — the dedicated inspector handles this without raising,
+    # surfaces the low_signal_count risk, and the action policy routes to
+    # ``skip`` (word_count=0 < very_short threshold).
+    preflight = PromotionPreflight(blob_loader=lambda _: b"WEBVTT\n\n")
     report = preflight.run(rs)
-    assert report.error is not None
-    assert "youtube_video" in report.error
-    # error implies inspector failure -> action policy routes to defer.
-    assert report.recommended_action == "defer"
+    assert report.error is None
+    assert report.recommended_action == "skip"
+    assert any(r.code == "low_signal_count" for r in report.risks)
