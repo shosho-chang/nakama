@@ -1737,7 +1737,10 @@ async def watch_video(
     ann_set = ann_store.load(rs.annotation_key)
     annotations: list[dict] = []
     if ann_set is not None:
-        for item in ann_set.items:
+        # Newest-first to match optimistic prepend on the client (PR2b
+        # write flow). Store-side items are append-order (chronological);
+        # we reverse here so reload and post-save renders agree.
+        for item in reversed(ann_set.items):
             annotations.append(_video_annotation_row(item))
     # Cue index → annotation count, so the cue list can render a marker
     # (border-left orange) on cues that have annotations. Mapping is by

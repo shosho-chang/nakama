@@ -484,6 +484,51 @@ And sleep.
     assert "暫停影片開始寫筆記" not in body
 
 
+def test_watch_video_annotations_render_newest_first(client, vault):
+    """Store appends chronologically (oldest-first); template must reverse
+    so reloads agree with the optimistic prepend used by PR2b write flow."""
+    test_client, _ = client
+    vtt = """WEBVTT
+
+00:00:00.000 --> 00:00:03.000
+First cue text.
+
+00:00:03.000 --> 00:00:07.000
+Second cue text.
+"""
+    video_id = "sortORDER123"
+    _write_watchlist_entry(vault, video_id, transcript=vtt)
+    _write_annotation_set(
+        vault,
+        video_id,
+        [
+            {
+                "type": "annotation",
+                "schema_version": 3,
+                "cfi": "t=0.0-3.0",
+                "text_excerpt": "First cue text.",
+                "note": "OLDEST",
+                "created_at": "2026-05-28T09:00:00Z",
+                "modified_at": "2026-05-28T09:00:00Z",
+            },
+            {
+                "type": "annotation",
+                "schema_version": 3,
+                "cfi": "t=3.0-7.0",
+                "text_excerpt": "Second cue text.",
+                "note": "NEWEST",
+                "created_at": "2026-05-28T09:05:00Z",
+                "modified_at": "2026-05-28T09:05:00Z",
+            },
+        ],
+    )
+    body = test_client.get(f"/robin/watchlist/{video_id}").text
+    newest_pos = body.find("NEWEST")
+    oldest_pos = body.find("OLDEST")
+    assert newest_pos > 0 and oldest_pos > 0
+    assert newest_pos < oldest_pos, "newest annotation must render before oldest"
+
+
 def test_watch_video_orphan_annotation_renders_without_data_start(client, vault):
     """Annotation whose ``cfi`` is missing / unparseable should still render
     (read-only display) but without a seek target."""

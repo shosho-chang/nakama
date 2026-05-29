@@ -540,7 +540,12 @@
       // window) or Cmd+N. Pure 'n' is the open trigger.
       if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
       ev.preventDefault();
-      openEditor(activeIdx >= 0 ? activeIdx : -1, {});
+      // No active cue → editor would open with target=-1 and Save would
+      // silently no-op. Fall back to the first cue so user can retarget
+      // from the cue list rather than opening an unusable editor.
+      const seed = activeIdx >= 0 ? activeIdx : (cues.length > 0 ? 0 : -1);
+      if (seed < 0) return;  // no cues at all → nothing to anchor to
+      openEditor(seed, {});
       return;
     }
 
