@@ -482,6 +482,12 @@ And sleep.
     assert "has-annotation" in body
     # Empty state should NOT render when annotations exist.
     assert "暫停影片開始寫筆記" not in body
+    # PR2c: each non-orphan row renders edit + delete action buttons.
+    assert "ann-action--edit" in body
+    assert "ann-action--delete" in body
+    # Two non-orphan rows → two of each button.
+    assert body.count("ann-action--edit") == 2
+    assert body.count("ann-action--delete") == 2
 
 
 def test_watch_video_annotations_render_newest_first(client, vault):
@@ -560,6 +566,9 @@ def test_watch_video_orphan_annotation_renders_without_data_start(client, vault)
     assert "data-start=" not in body
     # Time label falls back to placeholder.
     assert "--:--" in body
+    # PR2c: orphan rows skip the edit/delete actions — no cue to anchor.
+    assert "ann-action--edit" not in body
+    assert "ann-action--delete" not in body
 
 
 # ── PR2b: schema bump + write flow ─────────────────────────────────────
