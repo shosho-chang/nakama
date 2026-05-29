@@ -1745,7 +1745,10 @@ async def watch_video(
     # Cue index → annotation count, so the cue list can render a marker
     # (border-left orange) on cues that have annotations. Mapping is by
     # cue start-time match — for a range locator we anchor to the start.
+    # ``cue_highlight_indices`` is the highlight-only subset so the ★
+    # button can render in its "lit" toggle-off state (PR2b star toggle).
     cue_marker_indices: set[int] = set()
+    cue_highlight_indices: set[int] = set()
     if annotations and cues:
         cue_starts = [c["start"] for c in cues]
         for ann in annotations:
@@ -1755,6 +1758,8 @@ async def watch_video(
             idx = _nearest_cue_index(cue_starts, t)
             if idx is not None:
                 cue_marker_indices.add(idx)
+                if ann.get("type") == "highlight":
+                    cue_highlight_indices.add(idx)
 
     return templates.TemplateResponse(
         request,
@@ -1769,6 +1774,7 @@ async def watch_video(
             "annotations": annotations,
             "annotations_json": json.dumps(annotations, ensure_ascii=False),
             "cue_marker_indices": sorted(cue_marker_indices),
+            "cue_highlight_indices": sorted(cue_highlight_indices),
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
@@ -1993,6 +1999,76 @@ async def create_video_annotation(
     )
 
     return {"annotation": _video_annotation_row(item)}
+
+
+@robin_router.delete("/watchlist/{video_id}/annotation")
+async def delete_video_highlight(
+    video_id: str,
+    cue_start: float,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Remove the ★ highlight anchored at ``cue_start`` for this video.
+
+    Scope: highlights only (``item.type == "highlight"``). Annotations
+    that carry a note are removed by the explicit edit/delete flow
+    (PR2c), not the star toggle — losing a written note to an off-by-one
+    cue click would be a much worse mistake than leaving a stray
+    highlight on disk.
+
+    Returns ``{"removed": <int>, "cue_start": <float>}``.
+
+    Errors:
+    - 401 unauthenticated
+    - 404 watchlist entry missing
+    - 400 cue_start negative
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(401, detail="未登入")
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", video_id):
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+    if cue_start < 0:
+        raise HTTPException(400, detail=f"cue_start 不合法：{cue_start}")
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    store: AnnotationStore = get_annotation_store()
+    slug = rs.annotation_key
+    existing = store.load(slug)
+    if existing is None:
+        return {"removed": 0, "cue_start": cue_start}
+
+    ann_set = upgrade_to_v3(existing)
+    kept: list = []
+    removed = 0
+    tol = 0.05  # mirrors _nearest_cue_index drift tolerance
+    for item in ann_set.items:
+        if getattr(item, "type", None) == "highlight":
+            t = _parse_t_locator(getattr(item, "cfi", None))
+            if t is not None and abs(t - cue_start) <= tol:
+                removed += 1
+                continue
+        kept.append(item)
+    if removed > 0:
+        ann_set.items = kept
+        ann_set.updated_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        store.save(ann_set)
+
+    logger.info(
+        "video highlight removed",
+        extra={
+            "category": "video_annotation_delete",
+            "video_id": video_id,
+            "cue_start": cue_start,
+            "removed": removed,
+        },
+    )
+    return {"removed": removed, "cue_start": cue_start}
 
 
 # ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────

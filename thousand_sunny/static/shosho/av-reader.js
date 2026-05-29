@@ -140,14 +140,13 @@
       if (getMode() === 'editor') {
         syncEditorTarget(idx);
       }
+      // Always centre the active cue — user wants the highlighted line
+      // to stay pinned at the middle of the cue pane rather than drifting
+      // toward the top/bottom edge until clipped.
       const el = cueEls[idx];
       const scroll = el.closest('.cue-scroll');
       if (scroll) {
-        const elRect = el.getBoundingClientRect();
-        const scRect = scroll.getBoundingClientRect();
-        if (elRect.top < scRect.top + 40 || elRect.bottom > scRect.bottom - 40) {
-          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        }
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
     }
   }
@@ -384,6 +383,9 @@
         const idx = findCueIndexForStart(payload.cue_start);
         if (idx >= 0 && cueEls[idx]) {
           cueEls[idx].classList.add('has-annotation');
+          if (result.annotation.type === 'highlight') {
+            cueEls[idx].classList.add('has-highlight');
+          }
         }
       }
       if (returnToPlayer) closeEditor();
@@ -394,6 +396,67 @@
     } finally {
       saving = false;
       if (annSaveBtn) annSaveBtn.disabled = false;
+    }
+  }
+
+  async function removeHighlight(cueIdx) {
+    if (saving) return;
+    if (cueIdx < 0 || cueIdx >= cues.length) return;
+    const cue = cues[cueIdx];
+    if (!cue) return;
+    saving = true;
+    try {
+      const resp = await fetch(
+        `/robin/watchlist/${encodeURIComponent(videoId)}/annotation?cue_start=${encodeURIComponent(cue.start)}`,
+        { method: 'DELETE', credentials: 'same-origin' }
+      );
+      if (!resp.ok) {
+        let detail = '';
+        try {
+          const data = await resp.json();
+          detail = data && data.detail ? data.detail : '';
+        } catch (e) { /* non-JSON error body */ }
+        throw new Error(detail || `刪除失敗 (${resp.status})`);
+      }
+      // Strip the lit-star marker. We don't know whether the cue still has a
+      // note-annotation, so leave .has-annotation alone — the next reload
+      // will re-derive it from disk truth.
+      if (cueEls[cueIdx]) {
+        cueEls[cueIdx].classList.remove('has-highlight');
+      }
+      // Remove matching highlight ann-row(s) from the left pane. Matched by
+      // data-start within the same 50ms tolerance the server uses.
+      removeAnnotationRowsForCue(cue.start);
+    } catch (err) {
+      console.error('highlight delete failed', err);
+      alert(err && err.message ? err.message : '刪除失敗');
+    } finally {
+      saving = false;
+    }
+  }
+
+  function removeAnnotationRowsForCue(cueStart) {
+    if (!annList) return;
+    const rows = Array.from(annList.querySelectorAll('.ann-row[data-start]'));
+    let removed = 0;
+    rows.forEach((row) => {
+      const s = parseFloat(row.getAttribute('data-start'));
+      // Only highlight rows: a row whose body has only the muted "(no note)"
+      // placeholder is a highlight. Rows with real notes survive.
+      const noteEl = row.querySelector('.ann-note');
+      const isHighlight = !noteEl || noteEl.classList.contains('ann-note--muted');
+      if (Number.isFinite(s) && Math.abs(s - cueStart) <= 0.05 && isHighlight) {
+        row.remove();
+        removed += 1;
+      }
+    });
+    if (removed > 0 && annCount) {
+      const remaining = annList.querySelectorAll('.ann-row').length;
+      if (remaining === 0) {
+        annCount.textContent = '';
+      } else {
+        annCount.textContent = `${remaining} 則`;
+      }
     }
   }
 
@@ -483,7 +546,9 @@
     if (annCount) annCount.textContent = `${newCount} 則`;
   }
 
-  // ── ★ button: quick highlight on the cue carrying the star ───────
+  // ── ★ button: toggle highlight (add / remove) on the cue ─────────
+  // Lit star (cue has .has-highlight) → DELETE the highlight.
+  // Dim star → quick-highlight save.
   if (cueListEl) {
     cueListEl.addEventListener('click', (ev) => {
       const btn = ev.target.closest('.cue-star');
@@ -492,7 +557,13 @@
       ev.stopPropagation();
       ev.preventDefault();
       const idx = parseInt(btn.dataset.cueIndex || '-1', 10);
-      if (idx >= 0) quickHighlight(idx);
+      if (idx < 0) return;
+      const cueEl = btn.closest('.cue-item');
+      if (cueEl && cueEl.classList.contains('has-highlight')) {
+        removeHighlight(idx);
+      } else {
+        quickHighlight(idx);
+      }
     });
   }
 
@@ -528,10 +599,17 @@
     if (inTextField) return;
     if (!player) return;
 
-    // Ctrl+B = quick highlight on the active cue.
+    // Ctrl+B = toggle highlight on the active cue (mirror ★ click).
     if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'b' || ev.key === 'B')) {
       ev.preventDefault();
-      if (activeIdx >= 0) quickHighlight(activeIdx);
+      if (activeIdx >= 0) {
+        const el = cueEls[activeIdx];
+        if (el && el.classList.contains('has-highlight')) {
+          removeHighlight(activeIdx);
+        } else {
+          quickHighlight(activeIdx);
+        }
+      }
       return;
     }
 

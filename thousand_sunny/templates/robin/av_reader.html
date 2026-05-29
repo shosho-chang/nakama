@@ -68,8 +68,9 @@
         <div class="cue-list" id="cueList" data-marker-indices="{{ cue_marker_indices|tojson }}">
           {% if cues %}
             {% for cue in cues %}
-            <div class="cue-item{% if loop.index0 in cue_marker_indices %} has-annotation{% endif %}"
+            <div class="cue-item{% if loop.index0 in cue_marker_indices %} has-annotation{% endif %}{% if loop.index0 in cue_highlight_indices %} has-highlight{% endif %}"
                  data-cue-index="{{ loop.index0 }}"
+                 data-cue-start="{{ cue.start }}"
                  tabindex="0" role="button" aria-label="跳到 {{ cue.label }}">
               <div class="cue-time">{{ cue.label }}</div>
               <div class="cue-text">{{ cue.text }}</div>
