@@ -15,6 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from agents.robin.agent import (
     EXTENSION_TO_RAW_DIR,
@@ -37,6 +38,11 @@ from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.reading_source_lister import RegistryReadingSourceLister
 from shared.reading_source_registry import InboxKey, ReadingSourceRegistry, YouTubeKey
+from shared.schemas.annotations import (
+    AnnotationSetV3,
+    AnnotationV3,
+    HighlightV3,
+)
 from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
@@ -91,6 +97,7 @@ def _shosho_asset_version() -> str:
         "reader.css",
         "robin.css",
         "av-reader.css",
+        "av-reader.js",
         "theme.js",
     ):
         path = static_dir / css
@@ -1730,11 +1737,14 @@ async def watch_video(
     ann_set = ann_store.load(rs.annotation_key)
     annotations: list[dict] = []
     if ann_set is not None:
-        for item in ann_set.items:
+        # Newest-first to match optimistic prepend on the client (PR2b
+        # write flow). Store-side items are append-order (chronological);
+        # we reverse here so reload and post-save renders agree.
+        for item in reversed(ann_set.items):
             annotations.append(_video_annotation_row(item))
-    # Cue index → annotation count, so the cue list can render a marker
-    # (border-left orange) on cues that have annotations. Mapping is by
-    # cue start-time match — for a range locator we anchor to the start.
+    # Cue index → has-any-mark, so the cue list can render the border-left
+    # marker AND the lit ★. One mark per cue model means these collapse to
+    # a single set.
     cue_marker_indices: set[int] = set()
     if annotations and cues:
         cue_starts = [c["start"] for c in cues]
@@ -1764,14 +1774,14 @@ async def watch_video(
     )
 
 
-# ── Video annotation row shaping (ADR-035 PR2a) ──────────────────────────────
-# v3 annotation items don't yet carry a ``speaker`` field — that arrives with
-# the cast chip selector in PR2b. For read-only display we extract:
+# ── Video annotation row shaping (ADR-035 PR2a + PR2b) ───────────────────────
+# v3 annotation items carry ``speaker`` as of PR2b (cast chip selected at
+# save). For row rendering we extract:
 #   - start (float seconds)        → derived from ``cfi`` locator ``t=<start>[-<end>]``
 #   - label (mm:ss)                → ``_format_cue_label``
 #   - excerpt (cue text snippet)
 #   - note (annotation note / highlight body, or empty for highlight-only)
-#   - speaker (placeholder until PR2b — empty string)
+#   - speaker (cast chip; "" when unspecified)
 
 
 _T_LOCATOR_RE = re.compile(r"t=([0-9]+(?:\.[0-9]+)?)(?:-([0-9]+(?:\.[0-9]+)?))?")
@@ -1811,10 +1821,14 @@ def _video_annotation_row(item) -> dict:
         # ReflectionV3 — chapter-level; we still render it best-effort.
         note = (getattr(item, "body", "") or "").strip()
     label = _format_cue_label(start) if start is not None else "--:--"
+    # ADR-035 PR2b: ``speaker`` is now a first-class field on Highlight /
+    # Annotation v3 items (cast chip selected at save). Existing items
+    # default to ``""`` so the read-only display falls back to the
+    # no-speaker row layout.
     return {
         "start": start,
         "label": label,
-        "speaker": "",  # PR2b cast chip
+        "speaker": (getattr(item, "speaker", "") or "").strip(),
         "excerpt": excerpt,
         "note": note,
         "type": item.type,
@@ -1853,6 +1867,219 @@ def _nearest_cue_index(cue_starts: list[float], t: float, tol: float = 0.05) -> 
         if abs(cue_starts[idx] - t) <= tol:
             return idx
     return None
+
+
+# ── Video annotation write flow (ADR-035 PR2b — issue #788) ──────────────────
+#
+# POST /robin/watchlist/{video_id}/annotation accepts a JSON body shaped by the
+# av-reader editor (★ quick-highlight or N-key editor with note + cast chip)
+# and persists a single v3 highlight or annotation item to the ADR-017 store
+# under slug ``youtube_{video_id}``.
+#
+# The frontend handles UI state (mode machine, retarget, cancel); this route is
+# the durability boundary. It is intentionally narrow: one cue range per call,
+# no batch / replace / delete (PR2c #789).
+
+
+class _VideoAnnotationCreate(BaseModel):
+    """Request body for ``POST /robin/watchlist/{video_id}/annotation``.
+
+    ``highlight`` distinguishes a ★ quick-highlight (``True``, ``note`` empty)
+    from an N-key editor save (``False``, ``note`` non-empty). The server
+    re-derives the discrimination from the actual ``note`` value so the
+    on-disk shape is correct even if the client sends an inconsistent pair.
+    ``speaker`` is optional and defaults to ``""`` (unspecified).
+    """
+
+    cue_start: float
+    cue_end: float
+    excerpt: str
+    speaker: str = ""
+    note: str = ""
+    highlight: bool = True
+
+
+def _format_t_locator(start: float, end: float) -> str:
+    """Render the ADR-035 §D5 locator. Trailing ``.0`` is kept so a downstream
+    regex (``_T_LOCATOR_RE``) parses both ``t=3-7`` and ``t=3.0-7.0`` symmetrically."""
+    return f"t={start}-{end}"
+
+
+@robin_router.post("/watchlist/{video_id}/annotation")
+async def create_video_annotation(
+    video_id: str,
+    body: _VideoAnnotationCreate,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Append a single annotation to ``KB/Annotations/youtube_{video_id}.md``.
+
+    Returns ``{"annotation": <row dict>}`` shaped by ``_video_annotation_row``
+    so the frontend can prepend the new row optimistically without a re-fetch.
+
+    Errors:
+    - 401 unauthenticated
+    - 404 watchlist entry missing (resolver miss / invalid id)
+    - 400 cue range invalid (end ≤ start, negative start) or excerpt blank
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(401, detail="未登入")
+
+    # Defence-in-depth: ``video_id`` came in via the URL path — re-validate
+    # against the resolver alphabet before touching the vault.
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", video_id):
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    # Range validation. Cue boundaries arrive from the JS layer and are
+    # user-influenced via retarget; reject the obviously-wrong shapes
+    # rather than silently writing bogus locators.
+    if body.cue_start < 0 or body.cue_end <= body.cue_start:
+        raise HTTPException(
+            400, detail=f"cue range 不合法：start={body.cue_start} end={body.cue_end}"
+        )
+    excerpt = (body.excerpt or "").strip()
+    if not excerpt:
+        raise HTTPException(400, detail="excerpt 不可為空")
+
+    note = (body.note or "").strip()
+    speaker = (body.speaker or "").strip()
+    # Server-side discrimination: a non-empty note flips the kind to
+    # ``annotation`` regardless of the client's ``highlight`` flag — the
+    # body fields differ between the two types so we don't want a malformed
+    # ``HighlightV3`` (text empty) or ``AnnotationV3`` (note empty).
+    is_annotation = bool(note)
+    locator = _format_t_locator(body.cue_start, body.cue_end)
+
+    if is_annotation:
+        item = AnnotationV3(
+            cfi=locator,
+            text_excerpt=excerpt,
+            note=note,
+            speaker=speaker,
+        )
+    else:
+        item = HighlightV3(
+            cfi=locator,
+            text_excerpt=excerpt,
+            text=excerpt,  # highlight body mirrors the excerpt (PR2a convention)
+            speaker=speaker,
+        )
+
+    store: AnnotationStore = get_annotation_store()
+    slug = rs.annotation_key  # ``youtube_{video_id}``
+    existing = store.load(slug)
+    replaced = False
+    if existing is None:
+        ann_set = AnnotationSetV3(slug=slug, base="youtube", items=[item])
+    else:
+        ann_set = upgrade_to_v3(existing)
+        # Upsert: one mark per cue, regardless of kind. If any item
+        # already sits on this cue (within 50ms drift tolerance) — even
+        # a different type — replace it in place. This is the "★ then
+        # later add a note" merge model: starring then noting on the
+        # same cue should produce a single annotation with the note,
+        # not a highlight + annotation coexisting.
+        tol = 0.05
+        new_items: list = []
+        for existing_item in ann_set.items:
+            if not replaced:
+                t = _parse_t_locator(getattr(existing_item, "cfi", None))
+                if t is not None and abs(t - body.cue_start) <= tol:
+                    new_items.append(item)
+                    replaced = True
+                    continue
+            new_items.append(existing_item)
+        if not replaced:
+            new_items.append(item)
+        ann_set.items = new_items
+        ann_set.updated_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    store.save(ann_set)
+
+    logger.info(
+        "video annotation written",
+        extra={
+            "category": "video_annotation_create",
+            "video_id": video_id,
+            "type": item.type,
+            "has_speaker": bool(speaker),
+        },
+    )
+
+    return {"annotation": _video_annotation_row(item), "replaced": replaced}
+
+
+@robin_router.delete("/watchlist/{video_id}/annotation")
+async def delete_video_highlight(
+    video_id: str,
+    cue_start: float,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Remove the mark anchored at ``cue_start`` for this video.
+
+    One mark per cue (highlight or annotation). The star toggle treats
+    them uniformly — clicking a lit star clears whatever is on that
+    cue. Users who want to keep a note across a star-off should edit
+    the note text instead (PR2c edit flow).
+
+    Returns ``{"removed": <int>, "cue_start": <float>}``.
+
+    Errors:
+    - 401 unauthenticated
+    - 404 watchlist entry missing
+    - 400 cue_start negative
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(401, detail="未登入")
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", video_id):
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+    if cue_start < 0:
+        raise HTTPException(400, detail=f"cue_start 不合法：{cue_start}")
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    store: AnnotationStore = get_annotation_store()
+    slug = rs.annotation_key
+    existing = store.load(slug)
+    if existing is None:
+        return {"removed": 0, "cue_start": cue_start}
+
+    ann_set = upgrade_to_v3(existing)
+    kept: list = []
+    removed = 0
+    tol = 0.05  # mirrors _nearest_cue_index drift tolerance
+    for item in ann_set.items:
+        t = _parse_t_locator(getattr(item, "cfi", None))
+        if t is not None and abs(t - cue_start) <= tol:
+            removed += 1
+            continue
+        kept.append(item)
+    if removed > 0:
+        ann_set.items = kept
+        ann_set.updated_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        store.save(ann_set)
+
+    logger.info(
+        "video highlight removed",
+        extra={
+            "category": "video_annotation_delete",
+            "video_id": video_id,
+            "cue_start": cue_start,
+            "removed": removed,
+        },
+    )
+    return {"removed": removed, "cue_start": cue_start}
 
 
 # ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────

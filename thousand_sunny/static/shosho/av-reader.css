@@ -222,17 +222,72 @@ body.sho .cue-list {
 }
 body.sho .cue-item {
   display: grid;
-  grid-template-columns: 56px 1fr;
+  /* 56px time · 1fr text · 22px star (revealed on hover / active) */
+  grid-template-columns: 56px 1fr 22px;
   gap: 12px;
   padding: 6px 10px 6px 12px;
   border-left: 2px solid transparent;
   cursor: pointer;
   border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
+  position: relative;
   transition: background var(--sho-t-fast) var(--sho-ease),
               border-color var(--sho-t-fast) var(--sho-ease);
 }
 body.sho .cue-item:hover {
   background: var(--sho-bg-2);
+}
+/* ── ★ quick-highlight button (PR2b) ────────────────────────────────
+   The star is revealed on hover or when the cue is active so it's a
+   stable affordance without permanently competing with the cue text.
+   Editor mode keeps it suppressed — the star is a player-mode shortcut
+   and the cue-list-during-editor surface is the retarget channel. */
+body.sho .cue-star {
+  background: transparent;
+  border: 0;
+  color: var(--sho-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  align-self: start;
+  margin-top: 3px;
+  transition: opacity var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .cue-item:hover .cue-star,
+body.sho .cue-item.is-active .cue-star,
+body.sho .cue-item:focus-within .cue-star {
+  opacity: 1;
+}
+/* Cue already has a mark (★ or note) → star is always visible and
+   coloured to read as "lit / toggle-off available". Clicking it deletes
+   the mark (see av-reader.js). */
+body.sho .cue-item.has-annotation .cue-star {
+  opacity: 1;
+  color: var(--sho-accent);
+}
+body.sho .cue-star:hover {
+  color: var(--sho-accent);
+}
+body.sho .cue-star:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: var(--sho-focus);
+  border-radius: var(--sho-r-1);
+}
+/* Suppress the star during editor mode — retarget UX needs the cue
+   list to read as a target picker, not a quick-highlight surface. */
+body.sho .av-grid[data-mode="editor"] .cue-star {
+  visibility: hidden;
+}
+/* Retarget visual: while the editor is open the currently-targeted cue
+   gets a thick accent border so the user always sees where the
+   annotation will land. Distinct from `.is-active` (the playhead). */
+body.sho .cue-item.is-target {
+  background: var(--sho-accent-soft);
+  border-left-color: var(--sho-accent);
+  border-left-width: 3px;
 }
 body.sho .cue-item.is-active {
   background: var(--sho-accent-soft);
@@ -440,17 +495,162 @@ body.sho .shortcuts-hint {
   body.sho .shortcuts-hint {
     display: none;
   }
-  body.sho .cue-item,
   body.sho .ann-row {
     grid-template-columns: 48px 1fr;
     gap: 10px;
   }
+  body.sho .cue-item {
+    grid-template-columns: 48px 1fr 20px;
+    gap: 10px;
+  }
+}
+
+/* ── Editor form (PR2b) ──────────────────────────────────────────────
+   Hidden in player mode, shown when the grid carries data-mode="editor".
+   Sits flush at the bottom of the bottom-left pane so the annotation list
+   above keeps its scroll surface intact. */
+body.sho .ann-editor {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--sho-line);
+  background: var(--sho-bg-2);
+  flex-shrink: 0;
+}
+body.sho .av-grid[data-mode="editor"] .ann-editor {
+  display: flex;
+}
+body.sho .ann-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+body.sho .ann-editor-head .kicker {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sho-accent);
+  font-weight: 500;
+}
+body.sho .ann-editor-target {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+body.sho .ann-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+body.sho .ann-chip {
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-pill);
+  padding: 3px 10px;
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--sho-text-2);
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-chip:hover {
+  border-color: var(--sho-accent-line);
+  color: var(--sho-accent);
+}
+body.sho .ann-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .ann-chip[aria-checked="true"] {
+  background: var(--sho-accent-soft);
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+}
+body.sho .ann-textarea {
+  resize: vertical;
+  min-height: 64px;
+  max-height: 200px;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  padding: 8px 10px;
+  font-family: var(--sho-font-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+body.sho .ann-textarea:focus-visible {
+  outline: none;
+  border-color: var(--sho-accent-line);
+  box-shadow: var(--sho-focus);
+}
+body.sho .ann-textarea::placeholder {
+  color: var(--sho-muted);
+}
+body.sho .ann-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+body.sho .ann-btn {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  padding: 5px 14px;
+  border-radius: var(--sho-r-1);
+  cursor: pointer;
+  border: 1px solid var(--sho-line-2);
+  background: transparent;
+  color: var(--sho-text-2);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-btn:hover {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+}
+body.sho .ann-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .ann-btn--primary {
+  color: var(--sho-bg);
+  background: var(--sho-accent);
+  border-color: var(--sho-accent);
+}
+body.sho .ann-btn--primary:hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+  color: var(--sho-bg);
+}
+body.sho .ann-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Editor-mode visual cue on the annotations pane head so the kicker is
+   not visually identical to player mode. */
+body.sho .av-grid[data-mode="editor"] .pane-annotations > .pane-head .kicker {
+  color: var(--sho-accent);
 }
 
 /* prefers-reduced-motion: drop the smooth scroll-into-view + hover fades. */
 @media (prefers-reduced-motion: reduce) {
   body.sho .cue-item,
   body.sho .ann-row,
+  body.sho .ann-chip,
+  body.sho .ann-btn,
+  body.sho .cue-star,
   body.sho .header-btn {
     transition: none;
   }
