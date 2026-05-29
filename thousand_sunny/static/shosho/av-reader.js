@@ -1,11 +1,17 @@
-// Robin AV Reader · YouTube IFrame Player API integration + cue follow
+// Robin AV Reader · YouTube IFrame Player API + cue follow + annotation write
 //
-// ADR-035 §D6 — read-only viewing surface. No annotation save (PR2). The
-// player is YouTube's iframe embed for ToS compliance; we never extract
-// stream URLs.
+// ADR-035 §D6 — player mode is read-only viewing; editor mode (PR2b) adds
+// inline annotation write via ★ button / N-key / Ctrl+B with cast chip +
+// note textarea. The player is YouTube's iframe embed for ToS compliance;
+// we never extract stream URLs.
 //
-// State machine: load YT API → instantiate Player → poll currentTime →
-// highlight matching cue. Click cue → seek. Space/J/L keyboard shortcuts.
+// Mode state machine (grid data-mode):
+//   • "player"  — Space play/pause, J/L ±10s, cue click = seek+play,
+//                 N enters editor, ★ + Ctrl+B = quick highlight (stays in
+//                 player mode after save).
+//   • "editor"  — Esc/Cancel exits to player, Ctrl+Enter or Save POSTs,
+//                 cue click = retarget (no seek), arrow keys live in
+//                 textarea normally.
 
 (function () {
   'use strict';
@@ -16,24 +22,42 @@
   const videoId = root.dataset.videoId;
   const defaultSpeed = parseFloat(root.dataset.defaultSpeed || '1.5');
 
-  const cuesNode = document.getElementById('cuesJson');
-  let cues = [];
-  try {
-    cues = JSON.parse(cuesNode.textContent || '[]');
-  } catch (e) {
-    cues = [];
+  // ── Static payloads (cues / cast) ─────────────────────────────────
+  function readJsonNode(id, fallback) {
+    const node = document.getElementById(id);
+    if (!node) return fallback;
+    try {
+      return JSON.parse(node.textContent || JSON.stringify(fallback));
+    } catch (e) {
+      return fallback;
+    }
   }
+  const cues = readJsonNode('cuesJson', []);
+  const cast = readJsonNode('castJson', []);
 
   const cueListEl = document.getElementById('cueList');
   const cueEls = cueListEl ? Array.from(cueListEl.querySelectorAll('.cue-item')) : [];
   const speedSelect = document.getElementById('speedSelect');
+  const annScroll = document.getElementById('annScroll');
+  let annList = document.getElementById('annList');
+  let annEmpty = document.getElementById('annEmpty');
+  const annCount = document.getElementById('annCount');
+  const annEditor = document.getElementById('annEditor');
+  const annTextarea = document.getElementById('annTextarea');
+  const annSaveBtn = document.getElementById('annSaveBtn');
+  const annCancelBtn = document.getElementById('annCancelBtn');
+  const annEditorTarget = document.getElementById('annEditorTarget');
+  const chipEls = annEditor
+    ? Array.from(annEditor.querySelectorAll('.ann-chip'))
+    : [];
 
   let player = null;
-  let activeIdx = -1;
+  let activeIdx = -1;     // cue index under playhead
+  let targetIdx = -1;     // cue index the editor is anchored to
   let pollTimer = null;
+  let saving = false;     // guards concurrent POSTs
 
-  // Load YouTube IFrame API. The API calls onYouTubeIframeAPIReady when
-  // loaded; we attach our handler globally.
+  // ── YouTube IFrame API bootstrap ──────────────────────────────────
   window.onYouTubeIframeAPIReady = function () {
     player = new YT.Player('ytPlayer', {
       videoId: videoId,
@@ -60,7 +84,6 @@
     });
   };
 
-  // Inject API script if not present.
   if (!document.querySelector('script[data-yt-api]')) {
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
@@ -86,7 +109,6 @@
   }
 
   function findActiveCue(t) {
-    // Binary search — cues are sorted by start time.
     let lo = 0;
     let hi = cues.length - 1;
     let candidate = -1;
@@ -100,11 +122,7 @@
       }
     }
     if (candidate < 0) return -1;
-    // Only "active" while currentTime is inside [start, end).
     if (cues[candidate].end !== null && t >= cues[candidate].end) {
-      // Between cues — keep the last one dimmed-active so the reader's
-      // eye doesn't jump back to zero. Return -1 instead if you prefer
-      // strict in-range only.
       return candidate;
     }
     return candidate;
@@ -117,25 +135,39 @@
     activeIdx = idx;
     if (idx >= 0 && cueEls[idx]) {
       cueEls[idx].classList.add('is-active');
-      // Scroll into view only if outside the visible band.
-      const el = cueEls[idx];
-      const scroll = el.closest('.cue-scroll');
-      if (scroll) {
-        const elRect = el.getBoundingClientRect();
-        const scRect = scroll.getBoundingClientRect();
-        if (elRect.top < scRect.top + 40 || elRect.bottom > scRect.bottom - 40) {
-          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      // Scroll only when not editor-locked — editor users are aiming at a
+      // specific cue, the playhead drifting shouldn't yank their viewport.
+      if (getMode() === 'player') {
+        const el = cueEls[idx];
+        const scroll = el.closest('.cue-scroll');
+        if (scroll) {
+          const elRect = el.getBoundingClientRect();
+          const scRect = scroll.getBoundingClientRect();
+          if (elRect.top < scRect.top + 40 || elRect.bottom > scRect.bottom - 40) {
+            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }
         }
       }
     }
   }
 
-  // Cue click → seek.
+  // ── Mode state machine ────────────────────────────────────────────
+  function getMode() {
+    return root.dataset.mode || 'player';
+  }
+  function setMode(mode) {
+    root.dataset.mode = mode;
+  }
+
+  // ── Cue interactions (click = seek in player; retarget in editor) ─
   cueEls.forEach((el, i) => {
-    el.addEventListener('click', () => {
-      if (player && typeof player.seekTo === 'function') {
-        player.seekTo(cues[i].start, true);
-        player.playVideo();
+    el.addEventListener('click', (ev) => {
+      // Star button has its own handler — don't double-fire.
+      if (ev.target && ev.target.classList.contains('cue-star')) return;
+      if (getMode() === 'editor') {
+        retargetCue(i);
+      } else {
+        seekTo(cues[i].start, /*play=*/true);
       }
     });
     el.addEventListener('keydown', (ev) => {
@@ -146,7 +178,13 @@
     });
   });
 
-  // Speed dropdown → player.setPlaybackRate
+  function seekTo(start, play) {
+    if (!player || typeof player.seekTo !== 'function') return;
+    player.seekTo(start, true);
+    if (play && typeof player.playVideo === 'function') player.playVideo();
+  }
+
+  // ── Speed dropdown ────────────────────────────────────────────────
   if (speedSelect) {
     speedSelect.value = String(defaultSpeed);
     speedSelect.addEventListener('change', () => {
@@ -157,10 +195,355 @@
     });
   }
 
-  // Keyboard shortcuts: Space play/pause, J/L ±10s.
+  // ── Annotation row click (PR2a) — seek + pause ────────────────────
+  function bindAnnRow(row) {
+    const startAttr = row.getAttribute('data-start');
+    if (startAttr === null) return;
+    const start = parseFloat(startAttr);
+    if (!Number.isFinite(start)) return;
+    const handler = () => {
+      if (!player || typeof player.seekTo !== 'function') return;
+      player.seekTo(start, true);
+      if (typeof player.pauseVideo === 'function') {
+        try { player.pauseVideo(); } catch (e) { /* primary effect is seek */ }
+      }
+    };
+    row.addEventListener('click', handler);
+    row.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        handler();
+      }
+    });
+  }
+  if (annList) {
+    Array.from(annList.querySelectorAll('.ann-row')).forEach(bindAnnRow);
+  }
+
+  // ── Editor: cast chips with sticky default ────────────────────────
+  const LAST_SPEAKER_KEY = 'av_reader_last_speaker';
+  function readLastSpeaker() {
+    try { return window.localStorage.getItem(LAST_SPEAKER_KEY) || ''; }
+    catch (e) { return ''; }
+  }
+  function writeLastSpeaker(name) {
+    try { window.localStorage.setItem(LAST_SPEAKER_KEY, name); }
+    catch (e) { /* private mode / disabled storage — silently degrade */ }
+  }
+  function activeChipName() {
+    const sel = chipEls.find((c) => c.getAttribute('aria-checked') === 'true');
+    return sel ? sel.dataset.speaker : '';
+  }
+  function setActiveChip(name) {
+    let matched = false;
+    chipEls.forEach((c) => {
+      const isMatch = !!name && c.dataset.speaker === name;
+      c.setAttribute('aria-checked', isMatch ? 'true' : 'false');
+      c.tabIndex = isMatch ? 0 : -1;
+      if (isMatch) matched = true;
+    });
+    if (matched) writeLastSpeaker(name);
+  }
+  chipEls.forEach((chip) => {
+    chip.addEventListener('click', () => setActiveChip(chip.dataset.speaker));
+  });
+
+  // ── Editor: open / close / retarget ───────────────────────────────
+  function openEditor(cueIdx, opts) {
+    if (!annEditor) return;
+    opts = opts || {};
+    // Pause the player — editor opens are deliberate focus moments.
+    if (player && typeof player.pauseVideo === 'function') {
+      try { player.pauseVideo(); } catch (e) { /* ignore */ }
+    }
+    setMode('editor');
+    if (cueIdx >= 0 && cueIdx < cues.length) {
+      setTarget(cueIdx);
+    } else if (activeIdx >= 0) {
+      setTarget(activeIdx);
+    } else {
+      setTarget(-1);
+    }
+    // Restore last-used chip (sticky cross-write).
+    if (chipEls.length) {
+      const last = readLastSpeaker();
+      const exists = cast.indexOf(last) >= 0;
+      setActiveChip(exists ? last : '');
+    }
+    if (!opts.skipFocus && annTextarea) {
+      // Focus async so the keystroke that opened the editor doesn't land
+      // inside the textarea (N would otherwise type 'n').
+      setTimeout(() => annTextarea.focus(), 0);
+    }
+  }
+  function closeEditor() {
+    setMode('player');
+    if (annTextarea) annTextarea.value = '';
+    clearTarget();
+  }
+  function setTarget(cueIdx) {
+    if (targetIdx >= 0 && cueEls[targetIdx]) {
+      cueEls[targetIdx].classList.remove('is-target');
+    }
+    targetIdx = cueIdx;
+    if (cueIdx >= 0 && cueEls[cueIdx]) {
+      cueEls[cueIdx].classList.add('is-target');
+      const cue = cues[cueIdx];
+      if (annEditorTarget && cue) {
+        annEditorTarget.textContent = `${cue.label}  ·  ${truncate(cue.text, 40)}`;
+      }
+      // Pull the targeted cue into view (centre) so the user always sees
+      // what they're anchoring to.
+      const scroll = cueEls[cueIdx].closest('.cue-scroll');
+      if (scroll) {
+        cueEls[cueIdx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    } else if (annEditorTarget) {
+      annEditorTarget.textContent = '--:--';
+    }
+  }
+  function clearTarget() {
+    if (targetIdx >= 0 && cueEls[targetIdx]) {
+      cueEls[targetIdx].classList.remove('is-target');
+    }
+    targetIdx = -1;
+  }
+  function retargetCue(cueIdx) {
+    setTarget(cueIdx);
+    // Keep keyboard focus on textarea so Ctrl+Enter still works.
+    if (annTextarea) annTextarea.focus();
+  }
+
+  function truncate(text, max) {
+    if (!text) return '';
+    return text.length > max ? text.slice(0, max - 1) + '…' : text;
+  }
+
+  // ── Save (POST → ADR-017 store) ───────────────────────────────────
+  async function postAnnotation(payload) {
+    const resp = await fetch(
+      `/robin/watchlist/${encodeURIComponent(videoId)}/annotation`,
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!resp.ok) {
+      let detail = '';
+      try {
+        const data = await resp.json();
+        detail = data && data.detail ? data.detail : '';
+      } catch (e) { /* non-JSON error body */ }
+      throw new Error(detail || `儲存失敗 (${resp.status})`);
+    }
+    return resp.json();
+  }
+
+  function buildPayload(cueIdx, note) {
+    const cue = cues[cueIdx];
+    if (!cue) return null;
+    const end = cue.end !== null && cue.end !== undefined ? cue.end : cue.start;
+    return {
+      cue_start: cue.start,
+      cue_end: end,
+      excerpt: cue.text || '',
+      speaker: activeChipName(),
+      note: (note || '').trim(),
+      highlight: !((note || '').trim()),
+    };
+  }
+
+  async function saveFromEditor() {
+    if (saving) return;
+    if (targetIdx < 0) return;
+    const note = annTextarea ? annTextarea.value : '';
+    const payload = buildPayload(targetIdx, note);
+    if (!payload) return;
+    await commitSave(payload, /*returnToPlayer=*/true);
+  }
+
+  async function quickHighlight(cueIdx) {
+    if (saving) return;
+    if (cueIdx < 0 || cueIdx >= cues.length) return;
+    const payload = buildPayload(cueIdx, '');
+    if (!payload) return;
+    await commitSave(payload, /*returnToPlayer=*/false);
+  }
+
+  async function commitSave(payload, returnToPlayer) {
+    saving = true;
+    if (annSaveBtn) annSaveBtn.disabled = true;
+    try {
+      const result = await postAnnotation(payload);
+      if (result && result.annotation) {
+        prependAnnotationRow(result.annotation);
+        // Reflect on the cue list border-left marker.
+        const idx = findCueIndexForStart(payload.cue_start);
+        if (idx >= 0 && cueEls[idx]) {
+          cueEls[idx].classList.add('has-annotation');
+        }
+      }
+      if (returnToPlayer) closeEditor();
+    } catch (err) {
+      console.error('annotation save failed', err);
+      // Soft surface — alert is the project's existing fallback (see syncBtn).
+      alert(err && err.message ? err.message : '儲存失敗');
+    } finally {
+      saving = false;
+      if (annSaveBtn) annSaveBtn.disabled = false;
+    }
+  }
+
+  function findCueIndexForStart(start) {
+    // Cues are sorted; tolerance 50ms (mirrors server-side _nearest_cue_index).
+    for (let i = 0; i < cues.length; i += 1) {
+      if (Math.abs(cues[i].start - start) <= 0.05) return i;
+    }
+    return -1;
+  }
+
+  // ── DOM update: insert new annotation row, swap empty state ───────
+  function prependAnnotationRow(ann) {
+    // Lazily create the list container if the page rendered empty (no
+    // annotations yet) — the template suppresses ``#annList`` in that
+    // case so the empty-state copy is the only child.
+    if (!annList) {
+      if (!annScroll) return;
+      if (annEmpty) {
+        annEmpty.remove();
+        annEmpty = null;
+      }
+      annList = document.createElement('div');
+      annList.className = 'ann-list';
+      annList.id = 'annList';
+      annScroll.prepend(annList);
+    } else if (annEmpty) {
+      annEmpty.remove();
+      annEmpty = null;
+    }
+    const row = document.createElement('div');
+    row.className = 'ann-row';
+    if (ann.start === null || ann.start === undefined) {
+      row.classList.add('ann-row--orphan');
+    } else {
+      row.setAttribute('data-start', String(ann.start));
+    }
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `跳到 ${ann.label}`);
+
+    const time = document.createElement('div');
+    time.className = 'ann-time';
+    time.textContent = ann.label || '--:--';
+    row.appendChild(time);
+
+    const body = document.createElement('div');
+    body.className = 'ann-body';
+    if (ann.speaker) {
+      const sp = document.createElement('span');
+      sp.className = 'ann-speaker';
+      sp.textContent = ann.speaker;
+      body.appendChild(sp);
+    }
+    if (ann.excerpt) {
+      const ex = document.createElement('span');
+      ex.className = 'ann-excerpt';
+      ex.textContent = ann.excerpt;
+      body.appendChild(ex);
+    }
+    if (ann.note) {
+      const sep = document.createElement('span');
+      sep.className = 'ann-sep';
+      sep.textContent = '—';
+      body.appendChild(sep);
+      const note = document.createElement('span');
+      note.className = 'ann-note';
+      note.textContent = ann.note;
+      body.appendChild(note);
+    } else if (ann.type === 'highlight') {
+      const sep = document.createElement('span');
+      sep.className = 'ann-sep';
+      sep.textContent = '·';
+      body.appendChild(sep);
+      const note = document.createElement('span');
+      note.className = 'ann-note ann-note--muted';
+      note.textContent = '(no note)';
+      body.appendChild(note);
+    }
+    row.appendChild(body);
+
+    annList.prepend(row);
+    bindAnnRow(row);
+
+    // Update count badge.
+    const newCount = annList.querySelectorAll('.ann-row').length;
+    if (annCount) annCount.textContent = `${newCount} 則`;
+  }
+
+  // ── ★ button: quick highlight on the cue carrying the star ───────
+  if (cueListEl) {
+    cueListEl.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.cue-star');
+      if (!btn) return;
+      // Stop the click bubbling into the cue-item handler (which would seek).
+      ev.stopPropagation();
+      ev.preventDefault();
+      const idx = parseInt(btn.dataset.cueIndex || '-1', 10);
+      if (idx >= 0) quickHighlight(idx);
+    });
+  }
+
+  // ── Save / Cancel buttons ─────────────────────────────────────────
+  if (annSaveBtn) annSaveBtn.addEventListener('click', () => { saveFromEditor(); });
+  if (annCancelBtn) annCancelBtn.addEventListener('click', () => closeEditor());
+
+  // ── Global keyboard handler (mode-aware) ──────────────────────────
   document.addEventListener('keydown', (ev) => {
-    if (ev.target && /input|textarea|select/i.test(ev.target.tagName)) return;
+    const mode = getMode();
+    const inTextField = ev.target && /^(input|textarea|select)$/i.test(ev.target.tagName);
+
+    // Esc — always exits editor, even when focused in textarea.
+    if (ev.key === 'Escape') {
+      if (mode === 'editor') {
+        ev.preventDefault();
+        closeEditor();
+      }
+      return;
+    }
+
+    // Ctrl+Enter saves from editor.
+    if (mode === 'editor' && (ev.key === 'Enter') && (ev.ctrlKey || ev.metaKey)) {
+      ev.preventDefault();
+      saveFromEditor();
+      return;
+    }
+
+    // Editor mode: let the textarea own everything else.
+    if (mode === 'editor') return;
+
+    // ── Player-mode shortcuts ──
+    if (inTextField) return;
     if (!player) return;
+
+    // Ctrl+B = quick highlight on the active cue.
+    if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'b' || ev.key === 'B')) {
+      ev.preventDefault();
+      if (activeIdx >= 0) quickHighlight(activeIdx);
+      return;
+    }
+
+    // N = open editor on active cue.
+    if (ev.key === 'n' || ev.key === 'N') {
+      // Only fire when no modifier so we don't eat Ctrl+N (browser new
+      // window) or Cmd+N. Pure 'n' is the open trigger.
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      ev.preventDefault();
+      openEditor(activeIdx >= 0 ? activeIdx : -1, {});
+      return;
+    }
+
     if (ev.key === ' ') {
       ev.preventDefault();
       const state = player.getPlayerState();
@@ -175,42 +558,7 @@
     }
   });
 
-  // ADR-035 PR2a: annotation list row click → seek + pause. Read-only —
-  // the write flow (★ / N key / save) lands in PR2b. Rows without a
-  // parseable ``t=`` locator (orphan rows) are inert.
-  const annListEl = document.getElementById('annList');
-  if (annListEl) {
-    const annRows = Array.from(annListEl.querySelectorAll('.ann-row'));
-    annRows.forEach((row) => {
-      const startAttr = row.getAttribute('data-start');
-      if (startAttr === null) return; // orphan — no seek target
-      const start = parseFloat(startAttr);
-      if (!Number.isFinite(start)) return;
-      const handler = () => {
-        if (!player || typeof player.seekTo !== 'function') return;
-        player.seekTo(start, true);
-        // Per acceptance criterion: row click seeks **and pauses** (the
-        // reader is jumping back to revisit a captured moment, not
-        // resuming playback).
-        if (typeof player.pauseVideo === 'function') {
-          try {
-            player.pauseVideo();
-          } catch (e) {
-            // Ignore — the seekTo above is the primary effect.
-          }
-        }
-      };
-      row.addEventListener('click', handler);
-      row.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter' || ev.key === ' ') {
-          ev.preventDefault();
-          handler();
-        }
-      });
-    });
-  }
-
-  // "同步到 KB" button — stubbed for PR3.
+  // ── "同步到 KB" button — stubbed for PR3. ─────────────────────────
   const syncBtn = document.getElementById('syncBtn');
   if (syncBtn) {
     syncBtn.addEventListener('click', () => {

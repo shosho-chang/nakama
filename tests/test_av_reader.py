@@ -515,3 +515,265 @@ def test_watch_video_orphan_annotation_renders_without_data_start(client, vault)
     assert "data-start=" not in body
     # Time label falls back to placeholder.
     assert "--:--" in body
+
+
+# ── PR2b: schema bump + write flow ─────────────────────────────────────
+
+
+def test_highlight_v3_speaker_field_defaults_blank():
+    """``speaker`` is a first-class field on HighlightV3 (ADR-035 PR2b).
+
+    Default ``""`` keeps existing paper/book items round-tripping without
+    a forced schema bump."""
+    from shared.schemas.annotations import HighlightV3
+
+    h = HighlightV3(text_excerpt="hello", text="hello")
+    assert h.speaker == ""
+    h2 = HighlightV3(text_excerpt="hello", text="hello", speaker="Peter Attia")
+    assert h2.speaker == "Peter Attia"
+    # Round-trip through model_dump survives the new field.
+    restored = HighlightV3(**h2.model_dump())
+    assert restored.speaker == "Peter Attia"
+
+
+def test_annotation_v3_speaker_field_defaults_blank():
+    from shared.schemas.annotations import AnnotationV3
+
+    a = AnnotationV3(text_excerpt="span", note="thought")
+    assert a.speaker == ""
+    a2 = AnnotationV3(text_excerpt="span", note="thought", speaker="Andrew Huberman")
+    assert a2.speaker == "Andrew Huberman"
+
+
+def test_create_video_annotation_404_when_entry_missing(client):
+    test_client, _ = client
+    resp = test_client.post(
+        "/robin/watchlist/abc123XYZ_-/annotation",
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "We talk longevity.",
+            "speaker": "Peter Attia",
+            "note": "core thesis",
+            "highlight": False,
+        },
+    )
+    assert resp.status_code == 404
+
+
+def test_create_video_annotation_404_on_invalid_video_id_alphabet(client):
+    test_client, _ = client
+    resp = test_client.post(
+        "/robin/watchlist/foo.bar/annotation",
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "x",
+        },
+    )
+    assert resp.status_code == 404
+
+
+def test_create_video_annotation_400_on_bad_range(client, vault):
+    test_client, _ = client
+    _write_watchlist_entry(vault, "abcDEF12345", transcript=None)
+    # end <= start.
+    resp = test_client.post(
+        "/robin/watchlist/abcDEF12345/annotation",
+        json={
+            "cue_start": 7.0,
+            "cue_end": 7.0,
+            "excerpt": "x",
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_create_video_annotation_400_on_blank_excerpt(client, vault):
+    test_client, _ = client
+    _write_watchlist_entry(vault, "abcDEF12345", transcript=None)
+    resp = test_client.post(
+        "/robin/watchlist/abcDEF12345/annotation",
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "   ",
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_create_video_annotation_writes_highlight(client, vault):
+    """★ quick-highlight (note empty, highlight=True) lands as a HighlightV3
+    item with ``cfi=t={start}-{end}`` and the supplied speaker chip."""
+    test_client, _ = client
+    video_id = "abcDEF12345"
+    _write_watchlist_entry(vault, video_id, cast=["Peter Attia"], transcript=None)
+    resp = test_client.post(
+        f"/robin/watchlist/{video_id}/annotation",
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "We talk longevity.",
+            "speaker": "Peter Attia",
+            "note": "",
+            "highlight": True,
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["annotation"]["type"] == "highlight"
+    assert payload["annotation"]["speaker"] == "Peter Attia"
+    assert payload["annotation"]["start"] == 3.0
+    assert payload["annotation"]["excerpt"] == "We talk longevity."
+
+    # Persisted to KB/Annotations/youtube_{video_id}.md.
+    ann_path = vault / "KB" / "Annotations" / f"youtube_{video_id}.md"
+    assert ann_path.exists()
+    raw = ann_path.read_text(encoding="utf-8")
+    assert "schema_version: 3" in raw
+    assert "t=3.0-7.0" in raw
+    assert '"speaker": "Peter Attia"' in raw
+    assert '"type": "highlight"' in raw
+
+
+def test_create_video_annotation_writes_annotation_with_note(client, vault):
+    """N-key editor save (note non-empty) lands as an AnnotationV3 item — even
+    if the client sends ``highlight=True`` the server re-discriminates by
+    note presence so the on-disk shape stays consistent."""
+    test_client, _ = client
+    video_id = "abcDEF12345"
+    _write_watchlist_entry(vault, video_id, cast=["Peter Attia"], transcript=None)
+    resp = test_client.post(
+        f"/robin/watchlist/{video_id}/annotation",
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "We talk longevity.",
+            "speaker": "",
+            "note": "core thesis of the episode",
+            "highlight": True,  # client lied; server re-discriminates by note
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["annotation"]["type"] == "annotation"
+    assert payload["annotation"]["speaker"] == ""
+    assert payload["annotation"]["note"] == "core thesis of the episode"
+
+    ann_path = vault / "KB" / "Annotations" / f"youtube_{video_id}.md"
+    raw = ann_path.read_text(encoding="utf-8")
+    assert '"type": "annotation"' in raw
+    assert "core thesis of the episode" in raw
+
+
+def test_create_video_annotation_appends_to_existing_set(client, vault):
+    """Two saves against the same video accumulate in one annotation file."""
+    test_client, _ = client
+    video_id = "abcDEF12345"
+    _write_watchlist_entry(vault, video_id, transcript=None)
+
+    def _post(start, end, note):
+        return test_client.post(
+            f"/robin/watchlist/{video_id}/annotation",
+            json={
+                "cue_start": start,
+                "cue_end": end,
+                "excerpt": f"text at {start}",
+                "speaker": "",
+                "note": note,
+                "highlight": not note,
+            },
+        )
+
+    assert _post(3.0, 7.0, "first").status_code == 200
+    assert _post(10.0, 14.0, "").status_code == 200
+
+    ann_path = vault / "KB" / "Annotations" / f"youtube_{video_id}.md"
+    raw = ann_path.read_text(encoding="utf-8")
+    assert "t=3.0-7.0" in raw
+    assert "t=10.0-14.0" in raw
+    # First was an annotation (note non-empty), second a highlight.
+    assert '"type": "annotation"' in raw
+    assert '"type": "highlight"' in raw
+
+
+def test_create_video_annotation_template_after_reload(client, vault):
+    """Saved annotations re-render on the watch page (closes the persistence
+    loop end-to-end for browser UAT)."""
+    test_client, _ = client
+    video_id = "abcDEF12345"
+    vtt = """WEBVTT
+
+00:00:00.000 --> 00:00:03.000
+Welcome.
+
+00:00:03.000 --> 00:00:07.000
+We talk longevity.
+"""
+    _write_watchlist_entry(vault, video_id, cast=["Peter Attia"], transcript=vtt)
+    save = test_client.post(
+        f"/robin/watchlist/{video_id}/annotation",
+        json={
+            "cue_start": 3.0,
+            "cue_end": 7.0,
+            "excerpt": "We talk longevity.",
+            "speaker": "Peter Attia",
+            "note": "core thesis",
+            "highlight": False,
+        },
+    )
+    assert save.status_code == 200
+    page = test_client.get(f"/robin/watchlist/{video_id}")
+    assert page.status_code == 200
+    body = page.text
+    assert 'id="annList"' in body
+    assert "core thesis" in body
+    assert "Peter Attia" in body
+    assert 'data-start="3.0"' in body
+    # Editor scaffold lives on the page so PR2b UI is reachable.
+    assert 'id="annEditor"' in body
+    assert 'id="annTextarea"' in body
+    # ★ button is emitted on each cue.
+    assert "cue-star" in body
+
+
+def test_watch_video_template_renders_editor_when_no_cast(client, vault):
+    """Editor still renders without cast chips so N-key open works even on
+    videos with no declared cast (chip strip is suppressed)."""
+    test_client, _ = client
+    _write_watchlist_entry(vault, "abcDEF12345", cast=[], transcript=None)
+    resp = test_client.get("/robin/watchlist/abcDEF12345")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="annEditor"' in body
+    assert 'data-no-cast="true"' in body
+    # No chip strip when cast is empty.
+    assert 'class="ann-chip"' not in body
+
+
+def test_create_video_annotation_unauthenticated_401(vault, monkeypatch):
+    """POST without auth cookie returns 401, not a redirect — the frontend
+    uses fetch and needs a status it can branch on."""
+    monkeypatch.setenv("WEB_PASSWORD", "pw")
+    monkeypatch.setenv("WEB_SECRET", "secret")
+
+    import thousand_sunny.auth as auth_module
+    import thousand_sunny.routers.robin as robin_module
+
+    importlib.reload(auth_module)
+    importlib.reload(robin_module)
+
+    app = FastAPI()
+    app.include_router(robin_module.robin_router)
+
+    @app.get("/login")
+    def login(next: str = ""):
+        return PlainTextResponse(f"login next={next}")
+
+    test_client = TestClient(app, follow_redirects=False)
+    resp = test_client.post(
+        "/robin/watchlist/abcDEF12345/annotation",
+        json={"cue_start": 3.0, "cue_end": 7.0, "excerpt": "x"},
+    )
+    assert resp.status_code == 401

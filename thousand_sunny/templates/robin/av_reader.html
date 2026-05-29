@@ -31,8 +31,11 @@
     </div>
   </div>
 
-  <!-- 3-quadrant grid (ADR-035 PR2a) -->
-  <div class="av-grid" id="avReader" data-video-id="{{ video_id }}" data-default-speed="1.5">
+  <!-- 3-quadrant grid (ADR-035 PR2a; PR2b adds write flow + editor state) -->
+  <div class="av-grid" id="avReader"
+       data-video-id="{{ video_id }}"
+       data-default-speed="1.5"
+       data-mode="player">
 
     <!-- Top-left: player + meta -->
     <section class="pane pane-player" aria-label="影片播放器">
@@ -70,6 +73,10 @@
                  tabindex="0" role="button" aria-label="跳到 {{ cue.label }}">
               <div class="cue-time">{{ cue.label }}</div>
               <div class="cue-text">{{ cue.text }}</div>
+              <button class="cue-star" type="button"
+                      data-cue-index="{{ loop.index0 }}"
+                      tabindex="-1"
+                      aria-label="標記這個 cue (Ctrl+B)">★</button>
             </div>
             {% endfor %}
           {% else %}
@@ -79,13 +86,13 @@
       </div>
     </aside>
 
-    <!-- Bottom-left: annotation list (read-only, ADR-035 PR2a) -->
+    <!-- Bottom-left: annotation list + editor (ADR-035 PR2a read; PR2b write) -->
     <section class="pane pane-annotations" aria-label="註解清單">
       <header class="pane-head">
         <span class="kicker">ANNOTATIONS</span>
-        {% if annotations %}<span class="pane-head-meta">{{ annotations|length }} 則</span>{% endif %}
+        <span class="pane-head-meta" id="annCount">{% if annotations %}{{ annotations|length }} 則{% endif %}</span>
       </header>
-      <div class="ann-scroll">
+      <div class="ann-scroll" id="annScroll">
         {% if annotations %}
         <div class="ann-list" id="annList">
           {% for ann in annotations %}
@@ -110,24 +117,53 @@
           {% endfor %}
         </div>
         {% else %}
-        <div class="ann-empty">
+        <div class="ann-empty" id="annEmpty">
           <div class="ann-empty-title">暫停影片開始寫筆記</div>
-          <div class="ann-empty-hint">點下方 cue 即可定位 — 寫入流程將在下個版本開放</div>
+          <div class="ann-empty-hint">N 開啟編輯器 · ★ 標記 cue · Ctrl+B 快速標記</div>
         </div>
         {% endif %}
       </div>
+
+      <!-- Editor form (PR2b). Shown when grid data-mode="editor". -->
+      <form class="ann-editor" id="annEditor"
+            aria-label="新增註解"
+            {% if not cast %}data-no-cast="true"{% endif %}>
+        <div class="ann-editor-head">
+          <span class="kicker">EDITING</span>
+          <span class="ann-editor-target" id="annEditorTarget" aria-live="polite">--:--</span>
+        </div>
+        {% if cast %}
+        <div class="ann-chips" role="radiogroup" aria-label="講者">
+          {% for name in cast %}
+          <button class="ann-chip" type="button"
+                  data-speaker="{{ name }}"
+                  role="radio" aria-checked="false"
+                  tabindex="-1">{{ name }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <textarea class="ann-textarea" id="annTextarea"
+                  rows="3"
+                  placeholder="寫下你的想法...  (Ctrl+Enter 儲存 · Esc 取消)"
+                  aria-label="註解內容"></textarea>
+        <div class="ann-editor-actions">
+          <button class="ann-btn ann-btn--ghost" type="button" id="annCancelBtn">取消</button>
+          <button class="ann-btn ann-btn--primary" type="button" id="annSaveBtn">儲存</button>
+        </div>
+      </form>
     </section>
   </div>
 
   <!-- Footer -->
   <div class="footer">
     <a href="/robin/watchlist">← 返回 Watchlist</a>
-    <span class="shortcuts-hint">SPACE 播放/暫停 · J / L ±10s · 點 cue 跳轉</span>
+    <span class="shortcuts-hint" id="footerHint">SPACE 播放/暫停 · J/L ±10s · ★/Ctrl+B 標記 · N 寫筆記</span>
   </div>
 
-  <!-- Cues + annotations payload for JS -->
+  <!-- Cues + annotations + cast payload for JS -->
   <script type="application/json" id="cuesJson">{{ cues_json | safe }}</script>
   <script type="application/json" id="annotationsJson">{{ annotations_json | safe }}</script>
+  <script type="application/json" id="castJson">{{ cast|tojson }}</script>
   <script src="/static/shosho/av-reader.js?v={{ asset_version }}"></script>
 </body>
 </html>
