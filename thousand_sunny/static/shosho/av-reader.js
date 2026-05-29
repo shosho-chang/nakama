@@ -410,7 +410,9 @@
         // DOM row for this cue + type so the prepend below doesn't create
         // a duplicate. Mirrors server-side dedup tolerance.
         if (result.replaced) {
-          removeMatchingAnnotationRows(payload.cue_start, result.annotation.type);
+          // One mark per cue: blow away whatever was there (could be a
+          // highlight upgrading to annotation, or an annotation edit).
+          removeAllAnnotationRowsForCue(payload.cue_start);
         }
         prependAnnotationRow(result.annotation);
         // Update the prefill cache so the next N opens this fresh content.
@@ -422,9 +424,6 @@
         const idx = findCueIndexForStart(payload.cue_start);
         if (idx >= 0 && cueEls[idx]) {
           cueEls[idx].classList.add('has-annotation');
-          if (result.annotation.type === 'highlight') {
-            cueEls[idx].classList.add('has-highlight');
-          }
         }
       }
       if (returnToPlayer) closeEditor();
@@ -457,15 +456,15 @@
         } catch (e) { /* non-JSON error body */ }
         throw new Error(detail || `刪除失敗 (${resp.status})`);
       }
-      // Strip the lit-star marker. We don't know whether the cue still has a
-      // note-annotation, so leave .has-annotation alone — the next reload
-      // will re-derive it from disk truth.
+      // One mark per cue: the server removed whatever was on this cue,
+      // so dim the star marker and clear our prefill cache.
       if (cueEls[cueIdx]) {
-        cueEls[cueIdx].classList.remove('has-highlight');
+        cueEls[cueIdx].classList.remove('has-annotation');
       }
-      // Remove matching highlight ann-row(s) from the left pane. Matched by
-      // data-start within the same 50ms tolerance the server uses.
-      removeAnnotationRowsForCue(cue.start);
+      annByCueStart.delete(annBucket(cue.start));
+      // Remove all ann-row(s) for this cue from the left pane (highlight
+      // or annotation — matches the server's blanket delete).
+      removeAllAnnotationRowsForCue(cue.start);
     } catch (err) {
       console.error('highlight delete failed', err);
       alert(err && err.message ? err.message : '刪除失敗');
@@ -474,19 +473,13 @@
     }
   }
 
-  function removeMatchingAnnotationRows(cueStart, kind) {
-    // kind: 'highlight' → only rows with no note / muted "(no note)"
-    //       'annotation' → only rows with a real note
+  function removeAllAnnotationRowsForCue(cueStart) {
     if (!annList) return;
     const rows = Array.from(annList.querySelectorAll('.ann-row[data-start]'));
     let removed = 0;
     rows.forEach((row) => {
       const s = parseFloat(row.getAttribute('data-start'));
-      if (!Number.isFinite(s) || Math.abs(s - cueStart) > 0.05) return;
-      const noteEl = row.querySelector('.ann-note');
-      const isHighlight = !noteEl || noteEl.classList.contains('ann-note--muted');
-      const matchesKind = kind === 'highlight' ? isHighlight : !isHighlight;
-      if (matchesKind) {
+      if (Number.isFinite(s) && Math.abs(s - cueStart) <= 0.05) {
         row.remove();
         removed += 1;
       }
@@ -494,31 +487,6 @@
     if (removed > 0 && annCount) {
       const remaining = annList.querySelectorAll('.ann-row').length;
       annCount.textContent = remaining === 0 ? '' : `${remaining} 則`;
-    }
-  }
-
-  function removeAnnotationRowsForCue(cueStart) {
-    if (!annList) return;
-    const rows = Array.from(annList.querySelectorAll('.ann-row[data-start]'));
-    let removed = 0;
-    rows.forEach((row) => {
-      const s = parseFloat(row.getAttribute('data-start'));
-      // Only highlight rows: a row whose body has only the muted "(no note)"
-      // placeholder is a highlight. Rows with real notes survive.
-      const noteEl = row.querySelector('.ann-note');
-      const isHighlight = !noteEl || noteEl.classList.contains('ann-note--muted');
-      if (Number.isFinite(s) && Math.abs(s - cueStart) <= 0.05 && isHighlight) {
-        row.remove();
-        removed += 1;
-      }
-    });
-    if (removed > 0 && annCount) {
-      const remaining = annList.querySelectorAll('.ann-row').length;
-      if (remaining === 0) {
-        annCount.textContent = '';
-      } else {
-        annCount.textContent = `${remaining} 則`;
-      }
     }
   }
 
@@ -621,7 +589,7 @@
       const idx = parseInt(btn.dataset.cueIndex || '-1', 10);
       if (idx < 0) return;
       const cueEl = btn.closest('.cue-item');
-      if (cueEl && cueEl.classList.contains('has-highlight')) {
+      if (cueEl && cueEl.classList.contains('has-annotation')) {
         removeHighlight(idx);
       } else {
         quickHighlight(idx);
@@ -666,7 +634,7 @@
       ev.preventDefault();
       if (activeIdx >= 0) {
         const el = cueEls[activeIdx];
-        if (el && el.classList.contains('has-highlight')) {
+        if (el && el.classList.contains('has-annotation')) {
           removeHighlight(activeIdx);
         } else {
           quickHighlight(activeIdx);

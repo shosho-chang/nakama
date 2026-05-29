@@ -260,10 +260,10 @@ body.sho .cue-item.is-active .cue-star,
 body.sho .cue-item:focus-within .cue-star {
   opacity: 1;
 }
-/* Cue already has a ★ highlight saved → star is always visible and
+/* Cue already has a mark (★ or note) → star is always visible and
    coloured to read as "lit / toggle-off available". Clicking it deletes
-   the highlight (see av-reader.js). */
-body.sho .cue-item.has-highlight .cue-star {
+   the mark (see av-reader.js). */
+body.sho .cue-item.has-annotation .cue-star {
   opacity: 1;
   color: var(--sho-accent);
 }

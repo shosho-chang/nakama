@@ -1742,13 +1742,10 @@ async def watch_video(
         # we reverse here so reload and post-save renders agree.
         for item in reversed(ann_set.items):
             annotations.append(_video_annotation_row(item))
-    # Cue index → annotation count, so the cue list can render a marker
-    # (border-left orange) on cues that have annotations. Mapping is by
-    # cue start-time match — for a range locator we anchor to the start.
-    # ``cue_highlight_indices`` is the highlight-only subset so the ★
-    # button can render in its "lit" toggle-off state (PR2b star toggle).
+    # Cue index → has-any-mark, so the cue list can render the border-left
+    # marker AND the lit ★. One mark per cue model means these collapse to
+    # a single set.
     cue_marker_indices: set[int] = set()
-    cue_highlight_indices: set[int] = set()
     if annotations and cues:
         cue_starts = [c["start"] for c in cues]
         for ann in annotations:
@@ -1758,8 +1755,6 @@ async def watch_video(
             idx = _nearest_cue_index(cue_starts, t)
             if idx is not None:
                 cue_marker_indices.add(idx)
-                if ann.get("type") == "highlight":
-                    cue_highlight_indices.add(idx)
 
     return templates.TemplateResponse(
         request,
@@ -1774,7 +1769,6 @@ async def watch_video(
             "annotations": annotations,
             "annotations_json": json.dumps(annotations, ensure_ascii=False),
             "cue_marker_indices": sorted(cue_marker_indices),
-            "cue_highlight_indices": sorted(cue_highlight_indices),
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
@@ -1985,19 +1979,16 @@ async def create_video_annotation(
         ann_set = AnnotationSetV3(slug=slug, base="youtube", items=[item])
     else:
         ann_set = upgrade_to_v3(existing)
-        # Upsert: if an item of the same kind already sits on this cue
-        # (within the same 50ms drift tolerance), replace it in place.
-        # This is what makes N-key re-edit feel like editing instead of
-        # silently accumulating duplicate annotations on one cue.
-        # Highlights upsert too — defence in depth for the star toggle
-        # flow, which already deletes before saving but might race.
+        # Upsert: one mark per cue, regardless of kind. If any item
+        # already sits on this cue (within 50ms drift tolerance) — even
+        # a different type — replace it in place. This is the "★ then
+        # later add a note" merge model: starring then noting on the
+        # same cue should produce a single annotation with the note,
+        # not a highlight + annotation coexisting.
         tol = 0.05
         new_items: list = []
         for existing_item in ann_set.items:
-            if (
-                not replaced
-                and getattr(existing_item, "type", None) == item.type
-            ):
+            if not replaced:
                 t = _parse_t_locator(getattr(existing_item, "cfi", None))
                 if t is not None and abs(t - body.cue_start) <= tol:
                     new_items.append(item)
@@ -2029,13 +2020,12 @@ async def delete_video_highlight(
     cue_start: float,
     nakama_auth: str | None = Cookie(None),
 ):
-    """Remove the ★ highlight anchored at ``cue_start`` for this video.
+    """Remove the mark anchored at ``cue_start`` for this video.
 
-    Scope: highlights only (``item.type == "highlight"``). Annotations
-    that carry a note are removed by the explicit edit/delete flow
-    (PR2c), not the star toggle — losing a written note to an off-by-one
-    cue click would be a much worse mistake than leaving a stray
-    highlight on disk.
+    One mark per cue (highlight or annotation). The star toggle treats
+    them uniformly — clicking a lit star clears whatever is on that
+    cue. Users who want to keep a note across a star-off should edit
+    the note text instead (PR2c edit flow).
 
     Returns ``{"removed": <int>, "cue_start": <float>}``.
 
@@ -2070,11 +2060,10 @@ async def delete_video_highlight(
     removed = 0
     tol = 0.05  # mirrors _nearest_cue_index drift tolerance
     for item in ann_set.items:
-        if getattr(item, "type", None) == "highlight":
-            t = _parse_t_locator(getattr(item, "cfi", None))
-            if t is not None and abs(t - cue_start) <= tol:
-                removed += 1
-                continue
+        t = _parse_t_locator(getattr(item, "cfi", None))
+        if t is not None and abs(t - cue_start) <= tol:
+            removed += 1
+            continue
         kept.append(item)
     if removed > 0:
         ann_set.items = kept
