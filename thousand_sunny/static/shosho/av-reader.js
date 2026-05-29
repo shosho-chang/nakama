@@ -220,7 +220,10 @@
     if (startAttr === null) return;
     const start = parseFloat(startAttr);
     if (!Number.isFinite(start)) return;
-    const handler = () => {
+    const handler = (ev) => {
+      // Action buttons (✏️/🗑️) handle their own click — don't double-fire
+      // the row-level seek when the user is targeting an action.
+      if (ev && ev.target && ev.target.closest('.ann-action')) return;
       if (!player || typeof player.seekTo !== 'function') return;
       seekTo(start, /*play=*/true);
       const idx = findCueIndexForStart(start);
@@ -230,9 +233,35 @@
     row.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault();
-        handler();
+        handler(ev);
       }
     });
+    // PR2c: edit (✏️) — retarget + open editor (mirrors N-key on that cue).
+    const editBtn = row.querySelector('.ann-action--edit');
+    if (editBtn) {
+      editBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        const idx = findCueIndexForStart(start);
+        if (idx < 0) return;
+        seekTo(start, /*play=*/false);
+        setActive(idx);
+        openEditor(idx, {});
+      });
+    }
+    // PR2c: delete (🗑️) — confirm then DELETE the mark on this cue.
+    const delBtn = row.querySelector('.ann-action--delete');
+    if (delBtn) {
+      delBtn.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        if (!window.confirm('刪除這筆筆記？')) return;
+        const idx = findCueIndexForStart(start);
+        if (idx >= 0) {
+          await removeHighlight(idx);
+        }
+      });
+    }
   }
   if (annList) {
     Array.from(annList.querySelectorAll('.ann-row')).forEach(bindAnnRow);
@@ -567,6 +596,30 @@
       body.appendChild(note);
     }
     row.appendChild(body);
+
+    // PR2c: row actions (✏️ edit / 🗑️ delete). Only attach when we have a
+    // seekable start — orphan rows have no cue to retarget against and
+    // can't be precisely deleted by the cue_start endpoint.
+    if (ann.start !== null && ann.start !== undefined) {
+      const actions = document.createElement('div');
+      actions.className = 'ann-actions';
+      actions.setAttribute('aria-label', 'row actions');
+      const editBtn = document.createElement('button');
+      editBtn.className = 'ann-action ann-action--edit';
+      editBtn.type = 'button';
+      editBtn.tabIndex = -1;
+      editBtn.setAttribute('aria-label', '編輯這筆筆記');
+      editBtn.textContent = '✏️';
+      const delBtn = document.createElement('button');
+      delBtn.className = 'ann-action ann-action--delete';
+      delBtn.type = 'button';
+      delBtn.tabIndex = -1;
+      delBtn.setAttribute('aria-label', '刪除這筆筆記');
+      delBtn.textContent = '🗑️';
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+      row.appendChild(actions);
+    }
 
     annList.prepend(row);
     bindAnnRow(row);

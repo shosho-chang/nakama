@@ -348,7 +348,7 @@ body.sho .ann-list {
 }
 body.sho .ann-row {
   display: grid;
-  grid-template-columns: 56px 1fr;
+  grid-template-columns: 56px 1fr auto;
   gap: 12px;
   padding: 8px 10px 8px 12px;
   border-left: 2px solid var(--sho-accent-line);
@@ -360,6 +360,40 @@ body.sho .ann-row {
 body.sho .ann-row:hover {
   background: var(--sho-bg-2);
   border-left-color: var(--sho-accent);
+}
+/* Row actions (PR2c): hidden by default, revealed on hover or focus
+   within so the row reads as content first. */
+body.sho .ann-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  opacity: 0;
+  padding-top: 2px;
+  transition: opacity var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-row:hover .ann-actions,
+body.sho .ann-row:focus-within .ann-actions {
+  opacity: 1;
+}
+body.sho .ann-action {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--sho-muted);
+  border-radius: var(--sho-r-1);
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-action:hover {
+  background: var(--sho-bg-1);
+  color: var(--sho-ink);
+}
+body.sho .ann-action:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
 }
 body.sho .ann-row:focus-visible {
   outline: none;

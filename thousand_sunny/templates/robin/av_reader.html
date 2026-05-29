@@ -114,6 +114,14 @@
                 <span class="ann-note ann-note--muted">(no note)</span>
               {% endif %}
             </div>
+            {% if ann.start is not none %}
+            <div class="ann-actions" aria-label="row actions">
+              <button class="ann-action ann-action--edit" type="button" tabindex="-1"
+                      aria-label="編輯這筆筆記">✏️</button>
+              <button class="ann-action ann-action--delete" type="button" tabindex="-1"
+                      aria-label="刪除這筆筆記">🗑️</button>
+            </div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
