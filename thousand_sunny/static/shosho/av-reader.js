@@ -725,11 +725,22 @@
     }
   });
 
-  // ── "同步到 KB" button — stubbed for PR3. ─────────────────────────
+  // ── "同步到 KB" button — open the promotion review surface for this
+  //    video. The review page handles the empty-manifest case by showing
+  //    a "Start review" button, so we just navigate; the user kicks off
+  //    preflight + source_map build via that POST (ADR-035 PR3b-ii).
   const syncBtn = document.getElementById('syncBtn');
   if (syncBtn) {
     syncBtn.addEventListener('click', () => {
-      alert('同步到 KB 將在 PR3 開放');
+      // base64url-encode `youtube:{video_id}` to match the route's
+      // `_decode_source_id` contract (no padding, '-' / '_' replacing
+      // '+' / '/'). Pure browser API — no node `Buffer` dependency.
+      const sourceId = `youtube:${videoId}`;
+      const b64 = btoa(sourceId)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+      window.location.href = `/robin/promotion/source/${b64}`;
     });
   }
 })();
