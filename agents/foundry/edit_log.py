@@ -42,12 +42,18 @@ def append_entry(
     *,
     storyboard_before: list[dict[str, Any]] | None = None,
     storyboard_after: list[dict[str, Any]] | None = None,
+    edit_ops: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Append a replan entry to the episode's edit log. Returns the file path.
 
     When both ``storyboard_before`` and ``storyboard_after`` are provided, the
     persisted entry includes a Myers-style LCS ``diff`` field (ADR-038 §D7).
     Otherwise ``diff`` is ``None`` for backward compat.
+
+    ADR-038 §D3 enrichment: when callers pass ``edit_ops`` (a list of
+    serialised ``BeatEdit`` instances from ``beat_editor``), the entry records
+    the typed op trail alongside the LCS diff. Existing entries written before
+    this enrichment land as ``None`` on read.
 
     Raises ValueError if action is not in the writable set (currently {"replan",
     "replan-visual"} — edit-field actions are intentionally not logged per
@@ -71,6 +77,7 @@ def append_entry(
         "after": after,
         "user_note": user_note,
         "diff": diff,
+        "edit_ops": edit_ops,
     }
     path = _log_path(episode_id)
     with path.open("a", encoding="utf-8") as fh:
@@ -92,4 +99,5 @@ def read_entries(episode_id: str) -> list[dict[str, Any]]:
     ]
     for entry in entries:
         entry.setdefault("diff", None)
+        entry.setdefault("edit_ops", None)
     return entries

@@ -156,6 +156,55 @@ def test_replan_writes_edit_log_and_clears_approval(client, isolated_root):
     assert entries[0]["user_note"] == "too generic"
 
 
+def test_replan_invokes_agent_and_records_edit_ops(client, isolated_root, monkeypatch):
+    """ADR-038 §D3: Bridge endpoint runs replan_agent, applies edits, records ops."""
+    from agents.foundry import replan_agent
+    from agents.foundry.beat_editor import SetLayout
+
+    _seed_storyboard(
+        isolated_root,
+        "ep-replan-agent",
+        [
+            _beat(
+                7,
+                status={
+                    "text_approved": True,
+                    "render_status": "done",
+                    "visual_approved": False,
+                },
+            )
+        ],
+    )
+
+    def fake_run(storyboard, beat_id, note, **kwargs):
+        return replan_agent.ReplanResult(
+            edits=[SetLayout(beat_id=beat_id, layout="side_overlay_l")],
+            iterations=1,
+            tokens_used=150,
+            terminated_reason="end_turn",
+        )
+
+    monkeypatch.setattr(replan_agent, "run", fake_run)
+    res = client.post(
+        "/foundry/ep-replan-agent/beat/7/replan",
+        data={"note": "make it side overlay"},
+        follow_redirects=False,
+    )
+    assert res.status_code == 303
+    # storyboard updated by the edit
+    saved = yaml.safe_load(
+        (isolated_root / "data" / "ep-replan-agent" / "storyboard.yaml").read_text(encoding="utf-8")
+    )
+    assert saved[0]["layout"] == "side_overlay_l"
+    # edit_log entry contains edit_ops AND diff
+    entries = edit_log.read_entries("ep-replan-agent")
+    assert len(entries) == 1
+    assert entries[0]["edit_ops"] is not None
+    assert entries[0]["edit_ops"][0]["op"] == "set_layout"
+    assert entries[0]["edit_ops"][0]["layout"] == "side_overlay_l"
+    assert entries[0]["diff"] is not None
+
+
 def test_batch_approve_all_text_marks_all_pending(client, isolated_root, render_calls):
     sb = _seed_storyboard(
         isolated_root,
