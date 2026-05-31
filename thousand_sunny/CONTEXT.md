@@ -54,9 +54,33 @@ _Avoid_: dashboard（太籠統）, admin page
 - **Knowledge layer** 寫入由 agent 端負責（Robin / Franky / Brook via Usopp），**不**由 Bridge UI 直寫
 - **Obsidian CLI** 是 Tier B/C 的 future lever；桌機 Obsidian 開著時可由 desktop-resident agent 呼叫；**不在** Tier A scope
 
+## Weekly Dashboard (Tier B — ADR-039)
+
+**Weekly Dashboard**:
+`/bridge/weekly` 的 Bridge surface — LifeOS 週層的 interaction skin。讀走 D2 FS-direct、寫走 `project_writer`-style atomic patch。**不是** Obsidian `Dashboards/` 的被動鏡像。
+_Avoid_: LifeOS Dashboard mirror（ADR-031 舊稱，已被 active 週 surface 取代）
+
+**Weekly Journal**:
+`Journals/Weekly/{start-Sunday}.md`（如 `2026-05-31.md`）— 週的 single source of truth：plan 快取 + Weekly Review + 隨手筆記。tier 🟡（ADR-039 首個 🔒→🟡 carve-out）。
+_Avoid_: 用 `W YYYY-Wnn.md` 當檔名（撞 ISO；檔名以起始週日為 key）
+
+**Weekly Review**:
+Weekly Journal 內的 section（6 題：highlight / lowlight / 學到的 / 感恩 / top-3 完成率 / next-3）。`status: reviewed` soft-gate 解鎖「建立下週」；review 的 next-3 自動帶入下週 `top3`（閉環）。
+
+**plan allocation**:
+task frontmatter `plan: [{date, pomodoros, reason?}]` — 多日期排程 primitive（TaskNotes 原生 `scheduled` 只能單一日期）。`scheduled` 自動同步成最早未完成 plan 日；跨週大任務帶著完整跨週排程。
+_Avoid_: 把多日期排程塞單一 `scheduled`；把 plan 放週檔或 state.db
+
+**planned vs actual pomodoro**:
+**planned** = Σ task `plan[].pomodoros`（date ∈ 週）。**actual** = task `timeEntries[]` ∪ daily-note `pomodoros[]`（work session，時間戳 ∈ 週）的**聯集**，on-read 算、不另存。1🍅 = 25 分（TaskNotes config 權威）。
+_Avoid_: 把週實際番茄存成一個欄位；只認單一 timer
+
+**Sunday week / W-number**:
+修修 的週 = 週日→週六、US/epi 編號（week 1 含 1/1）；跟 ISO（週一起算，Franky + daily `week:` backlink 用）刻意分離。dashboard 用 `start_date..end_date` 日期區間聚合，不靠 `week:` wikilink。
+
 ## Flagged ambiguities
 
-- 「**dashboard**」三義：(a) `/bridge` Fleet dashboard（Sunny 內現有 landing）；(b) Obsidian `Dashboards/?? Dashboard.md`（dataviewjs 聚合，Tier B 來源）；(c) Tier B 落地後的 `/bridge/lifeos`（鏡像 b 到 Sunny）— 提到時加 prefix（fleet dashboard / Obsidian dashboard / LifeOS Bridge dashboard）
+- 「**dashboard**」三義：(a) `/bridge` Fleet dashboard（Sunny 內現有 landing）；(b) Obsidian `Dashboards/?? Dashboard.md`（dataviewjs 聚合，Tier B 來源）；(c) **Weekly Dashboard `/bridge/weekly`（ADR-039 Tier B；active read+write 週 surface，非被動鏡像 b；SoT = `Journals/Weekly/{start-Sunday}.md`）** — 提到時加 prefix（fleet dashboard / Obsidian dashboard / Weekly Dashboard）
 - 「**digest**」三義：(a) Robin PubMed digest（Tier A scope）；(b) Franky AI news digest（Tier A scope）；(c) Robin Book digest（不同形狀，**not in Tier A**）— 提到時加 type prefix（PubMed digest / AI digest / Book digest）
 - 「**project**」三義：(a) LifeOS content-creation project（`Projects/<title>.md`，Tier C 主題）；(b) ADR-001 agent context（Robin/Brook…）；(c) GitHub Projects — 提到時加 prefix（LifeOS project / agent context / GH project）
 
@@ -64,6 +88,8 @@ _Avoid_: dashboard（太籠統）, admin page
 
 > **Dev**：「Tier C 要做 task 建立，應該寫 vault 還是 state.db？」
 > **Domain expert**：「task 是高頻 mutation 又有人類可讀需求 — 兩面都有。第一原則看 Knowledge layer vs State layer：number-of-pomodoros-today 這種 aggregate 走 state.db；task 本身的長描述 + wikilink 留 vault。但 Bridge 不直寫 vault — 走 `obsidian create` CLI（桌機 agent 落地後）或 agent→Usopp draft pattern。」
+>
+> _（ADR-031 + ADR-039 更新：Bridge **已可** atomic 寫 vault（🟡 `Projects/` / `TaskNotes/` / `Journals/Weekly/`）；且「番茄 aggregate」改為 **on-read 從 vault session log 算**，不存 state.db——上面 2026-04 的判斷是當時 Tier C 未落地前的暫時看法。）_
 
 > **Dev**：「使用者問『過去一個月有沒有 Nature × 運動的研究』要怎麼答？」
 > **Domain expert**：「LLM-over-vault。`/bridge/digests/ask` 表單收 query，後端 glob `KB/Wiki/Digests/PubMed/2026-04-*.md` 全 concat 進 prompt，Sonnet 回答 + 引用日期。不建 FTS index — 哲學上拒絕；技術上規模也不需要。」
