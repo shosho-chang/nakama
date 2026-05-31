@@ -1,11 +1,13 @@
 # ADR-039: LifeOS Weekly Dashboard — Tier B of Vault-as-Substrate
 
-**Date:** 2026-05-31 (v1, pre-panel)
-**Status:** Proposed
+**Date:** 2026-05-31 (v1) · 2026-05-31 (v2 post-panel)
+**Status:** Proposed (panel-reviewed; awaiting 修修 ship sign-off)
 **Deciders:** shosho-chang, Claude Opus 4.8 (1M)
 **Related:** [ADR-028](ADR-028-vault-layout-consolidation.md) (vault layout + 3-tier ownership), [ADR-029](ADR-029-bridge-ia-restructure.md) (Bridge IA dual-axis), [ADR-030](ADR-030-vault-as-substrate-read-strategy.md) (D1 vault SoT / D2 FS-direct / D4 substrate routing — **Tier B named in limitation #1**), [ADR-031](ADR-031-project-workspace-migration.md) (Tier C project workspace — **Tier B explicitly deferred in §Out of scope**; D6 Web-self Pomodoro timer), [`VAULT-LAYOUT.md`](../VAULT-LAYOUT.md), [`CONTENT-PIPELINE.md`](../../CONTENT-PIPELINE.md), [`thousand_sunny/CONTEXT.md`](../../thousand_sunny/CONTEXT.md), [`docs/runbooks/syncthing-folder-types.md`](../runbooks/syncthing-folder-types.md)
 
-> **Status note:** This is the **v1 draft authored from a `/grill-with-docs` interview** (2026-05-31). It is intended to go through `multi-agent-panel` (Codex/GPT-5 + Gemini) before 修修's sign-off, because it carries architectural lock-in (a vault-tier reclassification + a new cross-surface schema contract) and several alternatives were rejected with confidence. v2 will fold the panel adjudication, mirroring the ADR-030/031 pattern.
+> **v2 audit trail (2026-05-31):** Multi-agent panel (Claude drafter + Codex/GPT-5 + Gemini 2.5 Pro) ran on v1; both auditors returned **approve-with-modifications** (no rejection). Integration matrix at [`docs/research/2026-05-31-adr039-panel-integration-matrix.md`](../research/2026-05-31-adr039-panel-integration-matrix.md); audits at [`codex`](../research/2026-05-31-codex-adr039-audit.md) + [`gemini`](../research/2026-05-31-gemini-adr039-audit.md).
+>
+> 15 push-back items adjudicated; 13 adopted directly + 2 escalated to 修修 (both resolved with the recommended option). Material v2 changes: **D5** principle reframed to a 3-way synthesis (human-typed authz + structure-vs-prose machine restriction + non-generalize clause + allowlisted writer); **D1/D5** dropped the `planned/actual_pomodoros` frontmatter cache (a journal is a primary source, not a cache — compute on read); **D3** replaced the false "never double-count" invariant with explicit dedup/overlap detection + abandoned-session handling + full time semantics (`type==work`, `activePeriods`, `endTime`→Asia/Taipei, Sat→Sun boundary); **D4** stopped auto-rewriting `scheduled` (explicit sync button instead); **D2** softened "fully decouples" → two-week-identity accepted as documented debt (Daily stays 🔒) + week-year boundary math; **D6** fixed the completion field (`status` enum, not `✅`); plus weekly_writer `If-Match`→409 concurrency, Slice-0 conflict-file detection, governance fix (doc edits marked proposed-pending). Codex caught the cache contradiction + lost-update + the `✅` factual error + ADR-028's "does-NOT-generalize" precedent; Gemini caught the structure-vs-prose reframe + the two-week schism + the abandoned-session undercount + 隨手筆記 usability — none surfaced by single-Claude.
 
 ---
 
@@ -95,8 +97,10 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
 
 - The dashboard week runs **Sunday→Saturday**; the displayed number is **修修's US/epi week number** (e.g. "W23 · 5/31–6/6"), computed — always matches what 修修 says.
 - The Weekly Journal file is **keyed by its start-Sunday date** (`2026-05-31.md`), not by `W{n}` — unambiguous, sortable, collision-free with ISO.
-- The dashboard groups daily notes + tasks by **explicit `start_date..end_date` range**, **not** by the daily-note `week:` wikilink. This **fully decouples** from the ISO infra: Franky, `tpl-daily-journal`, and daily `week:` backlinks keep using ISO (Monday-start) and are not touched.
-- **Cost accepted:** the Obsidian graph backlink daily→weekly won't resolve (daily notes carry ISO `[[W 2026-Wnn]]`, weekly file is date-keyed). The dashboard does not need it. An optional `W{n}` alias may be added later if graph links are wanted.
+- The dashboard groups daily notes + tasks by **explicit `start_date..end_date` range**, **not** by the daily-note `week:` wikilink. This runs a **parallel Sunday-week calendar alongside** the vault's ISO infra: Franky, `tpl-daily-journal`, and daily `week:` backlinks keep using ISO (Monday-start) and are not touched.
+- **Two coexisting "week" identities — accepted as documented debt (panel #7).** The vault will hold ISO Monday-start weeks (daily backlinks) AND Sunday-start weeks (the weekly file). Do not describe this as "fully decoupled" — it is a deliberate parallel calendar. Taiwan's locale default is ISO (CNS 7648 adopts ISO 8601), so the Sunday-start week is an explicit personal override, not a competing standard. v1 accepts the dual identity rather than healing it.
+- **Week-year math (panel #7, Codex §3):** `year` / `week_number` derive from the **week-year** (the year owning the Sun–Sat span), NOT `start_date.year`. `weekly_indexer` MUST carry tests for the year-boundary spans `2025-12-28..2026-01-03` and `2026-12-27..2027-01-02`.
+- **Cost accepted:** the Obsidian graph backlink daily→weekly won't resolve (daily notes carry ISO `[[W 2026-Wnn]]`; weekly file is date-keyed); the dashboard does not need it. Gemini (panel #7) proposed healing the schism by writing a `shosho_week: [[2026-05-31]]` backlink into the 7 daily notes — **rejected for v1** because it requires writing `Journals/Daily/` (🔒), a SECOND carve-out that directly contradicts D5's anti-slippery-slope discipline. Deferred as a future option if the dual identity proves painful.
 - Left/right arrows navigate prev/next week by date arithmetic.
 
 **Rejected:** strict ISO Monday-start (overrides 修修's stated habit — same class of error ADR-031 rejected for the 15-second hook); Sunday-start but `W YYYY-Wnn.md` filename (re-introduces the ISO collision the date-key avoids).
@@ -107,36 +111,43 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
   - task `timeEntries[]` (Bridge timer + manual `+1🍅`), and
   - daily-note `pomodoros[]` work sessions (`type: work && completed: true`, Obsidian timer),
   filtered to the week's Sun–Sat date range, attributed to task (via `taskPath` / task file) and to day (via timestamp / daily-note date).
-- The two logs are written by two different timers and **never duplicate a session**, so the union is exact — no dedup.
+- **NOT an invariant — dedup/overlap detection required (panel #4, Codex §3).** "Two stores ⇒ different sessions" is false: the same physical session could be logged by both the Obsidian timer AND a Bridge `+1🍅`; a future TaskNotes setting could mirror into `timeEntries[]`; a manual repair could duplicate intervals. The aggregator normalizes every session to `{source, source_id, task_key, start, end, active_seconds, count_policy}`; exact-duplicate ids drop; intervals overlapping for the **same task within a tolerance** raise a warning rather than silently summing.
+- **Abandoned / in-progress sessions (panel #4, Gemini §3) — the bigger risk is *under*count.** Bridge `timeEntries[]` has no `completed` flag; a started-then-abandoned Bridge timer (tab closed) needs a defined state so it is neither lost nor counted as a full 🍅. v1 rule: only `/timer/complete` emits an entry; in-flight state is ephemeral and never counted.
+- **Time semantics (panel #5):** count daily `pomodoros[]` where `type=="work" && completed==true`; use `activePeriods` for duration (pauses must not inflate); assign a session to a week/day by its **`endTime` converted to Asia/Taipei** (NOT the daily-note filename — sessions can cross midnight or be repaired into the wrong note). A Sat→Sun week-boundary test case is mandatory. Define and document whether "actual 🍅" counts **completed work sessions** (Obsidian) or **minutes/25** (Bridge); the two units must be reconciled, not silently mixed.
 - **The Bridge timer keeps writing `timeEntries[]`** (ADR-031 D6 mechanism unchanged) so Obsidian's `formula.實際🍅` keeps working and **the dashboard never writes `Journals/Daily/`** (which stays 🔒).
-- 1 🍅 = **25 min** (TaskNotes config authority), superseding the daily-template comment "1🍅=30分".
+- **Two-timer UX (panel #12):** because two timer UIs write two invisible stores, the dashboard shows a one-line framing — Obsidian timer = deep-work tied to a day; Bridge dock = ad-hoc task time — so the split reads as meaningful, not arbitrary.
+- 1 🍅 = **25 min** (TaskNotes config authority), superseding the daily-template comment "1🍅=30分". **Coupling note (panel #11):** the Bridge currently hard-codes `POMODORO_MINUTES=25` (`bridge_projects.py:99`); if 25 ever changes, Obsidian and Bridge math silently diverge. v1 keeps 25 but a follow-up should read one shared source.
 - **Refinement of `thousand_sunny/CONTEXT.md` Example dialogue:** the earlier guess "number-of-pomodoros-today aggregate → state.db" is superseded for this case. The aggregate is **derived on read from vault-resident session logs**; nothing is stored in `state.db`. (Ephemeral in-flight timer state may still use the browser / `state.db`; the *counted* number is not stored.)
 
 **Rejected:** "Bridge-timer-only" (drops mobile/Obsidian sessions from weekly totals); "unify everything into daily `pomodoros[]`" (forces Bridge to write 🔒 `Journals/Daily/` and to replicate TaskNotes' full `pomodoros[]` schema — cost not worth it).
 
-### D4: Multi-date scheduling = a `plan[]` array on the task (SoT); `scheduled` auto-synced; views filter `plan[]`
+### D4: Multi-date scheduling = a `plan[]` array on the task (SoT); `scheduled` user-controlled (explicit sync); views filter `plan[]`
 
-- New task frontmatter field: **`plan: [{date: YYYY-MM-DD, pomodoros: int, reason?: str}]`** on `TaskNotes/Tasks/*.md`. This is the SoT for "this task, N pomodoros on date D". A cross-week task carries its full multi-week allocation directly.
-- `scheduled` is **auto-maintained** = the earliest incomplete `plan[]` date, so the TaskNotes plugin calendar UI keeps working.
+- New task frontmatter field: **`plan: [{date: YYYY-MM-DD, pomodoros: int, reason?: str, done?: int}]`** on `TaskNotes/Tasks/*.md`. This is the SoT for "this task, N pomodoros on date D"; `done` tracks 🍅 completed against that day's allocation. A cross-week task carries its full multi-week allocation directly.
+- **`scheduled` is NOT auto-rewritten (panel #3, Codex Alt1 + Gemini §4).** `plan[]` is the SoT; `scheduled` stays a user-controlled TaskNotes convenience field. The Bridge offers an explicit "sync `scheduled` → next planned date" button and surfaces a "scheduled differs from plan" hint, but never silently rewrites it. Rationale: auto-rewriting made a task "vanish from June 2 / reappear on June 9" in the Obsidian calendar (a magical side effect in plugin-owned UI) and started a hidden tug-of-war if Obsidian also edits `scheduled`.
 - Weekly **planned** = Σ `plan[].pomodoros` where `plan[].date ∈ week`. Daily "today" = tasks whose `plan[]` has an entry for today.
 - Three-number glossary: **預估🍅 (estimate, task total budget) ≥ planned (Σ allocations in scope) → actual (sessions done)**. For a single-week task planned == estimate; for a cross-week task planned == this week's slice.
 - `reason` is the weekend-work justification (D9).
 
 **TaskNotes contract risk (acknowledged, mitigated):** `plan[]` is a custom field TaskNotes ignores (it tolerates unknown frontmatter; the vault already carries custom `預估🍅`). The TaskNotes plugin UI won't render the per-date breakdown — 修修 uses the Bridge for that (consistent with ADR-031's "Obsidian = read/prose; Web = interactive control"). The Obsidian daily-note dataview keys on single `scheduled` and will only show a multi-date task on its earliest date; **the Bridge Today view is the canonical "today's tasks" surface.** Like ADR-031's `timeEntries[]` dependency, this is an implicit plugin-schema contract; a future task-frontmatter schema doc should formalize it.
 
-**Rejected:** plan on the weekly file (scatters a cross-week task's allocation across week files; task doesn't know its own full plan; not Obsidian-task-visible); `state.db` table (not Obsidian-visible — violates D4 of ADR-030 + 修修's "see it in the daily view"); no per-date (single `scheduled` only — loses the explicit cross-week-with-counts requirement).
+**Rejected:** plan on the weekly file (scatters a cross-week task's allocation across week files; task doesn't know its own full plan; not Obsidian-task-visible); `state.db` table (not Obsidian-visible — violates ADR-030 D4 + 修修's "see it in the daily view"); no per-date (single `scheduled` only — loses the explicit cross-week-with-counts requirement); **tag-based plan** (`#plan/2026-06-02` + dataview, panel #14, Gemini §5#2) — tags carry no per-date **pomodoro count** (`#plan/date/2` is a hack) and dataview is **desktop-only**, the exact VPS blocker that motivates Tier B.
 
 ### D5: Vault write authority — reclassify `Journals/Weekly/` 🔒→🟡 with a field-level contract
 
 - **Only `Journals/Weekly/`** moves from 🔒 Human-only to **🟡 Collab**. `Journals/{Daily,Quarterly,Yearly}/` stay 🔒 (dashboard reads them, never writes).
-- **Provenance principle (the crux):** 🔒 "Human-only" governs **content provenance** (no AI-authored prose masquerading as 修修's voice), **not editing tool**. When the Bridge persists what 修修 *typed into a web form*, it is acting as a **second human-input surface** alongside the Obsidian editor — not as an autonomous agent. This is categorically different from "Robin auto-writes a digest."
+- **Principle — 3-way synthesis (panel #2; supersedes v1's bare "provenance principle").** Two axes, both required:
+  - **Authorization (who authored the bytes):** human-typed vs machine-generated. The Bridge persisting what 修修 *typed into a web form* is a **second human-input surface** alongside Obsidian — not an autonomous agent. This preserves the core feature (修修 does the review *in the dashboard*).
+  - **Machine restriction (structure vs prose — Gemini §4):** the machine / any LLM may write **only enumerated structured frontmatter**, and may **never author or modify long-form prose**. Stricter than provenance; this is what actually stops the slippery slope.
+- **Non-generalization clause (panel #2, Codex §2 — cites ADR-028's single-use Journals exception `:179-182`):** scoped to `Journals/Weekly/` ONLY; **does NOT generalize** to `Journals/{Daily,Quarterly,Yearly}`, `OKRs/`, `Dashboards/`, `Templates/`, `Scripts/`. Any future 🔒→🟡 carve-out needs its own ADR.
+- **Allowlisted, guarded writer (panel #2/#6).** `weekly_writer` writes ONLY (a) an allowlist of structured frontmatter keys and (b) named, form-backed human-prose sections. It refuses on unknown machine markers, malformed YAML, or changed `mtime`/hash, and **carries an `If-Match` mtime/hash from the rendered page → rejects a stale write with 409** (Codex §4): single-user ≠ no lost-update (Syncthing + an open Obsidian editor make races real); atomic rename prevents torn writes, NOT lost updates.
 - **Field-level contract for the weekly file:**
-  - **Body prose** (Weekly Review answers, 隨手筆記) = human-authored (via Bridge form or Obsidian) — `<!-- vault:human-only-section -->` marked.
-  - **Enumerated frontmatter keys** (`start_date`, `end_date`, `status`, `top3`, `next3`, `planned_pomodoros` cache, `actual_pomodoros` cache) = Bridge machine-maintained.
-  - **No LLM-authored prose** in the weekly file in v1. (A future "review assistant" suggesting reflections would require a separate marked section + human-confirm-before-persist; out of scope here.)
-- **Bridge writes** the weekly file via the `project_writer` atomic-rename pattern.
-- **Mandatory same-PR doc updates** (per VAULT-LAYOUT §6α): `docs/VAULT-LAYOUT.md` §2/§3, `thousand_sunny/CONTEXT.md`, and the vault `CLAUDE.md` cheat-sheet line. **Vault `CLAUDE.md` forbids agent self-edit (§3, line 101)** — its one-line change is provided as a diff for 修修 to apply by hand (§Vault CLAUDE.md amendment below).
-- **Syncthing:** `Journals/Weekly/` is **Send & Receive** on all three devices (bidirectional, like `Daily/` / `Projects/`, per the syncthing-folder-types runbook). Atomic writes + single-user-non-concurrent (`user_vault_edit_pattern_no_concurrent`) keep conflict probability ~0.
+  - **Body prose** (Weekly Review answers, 隨手筆記) = human-authored (Bridge form or Obsidian) — `<!-- vault:human-only-section -->` marked.
+  - **Enumerated frontmatter keys = `start_date`, `end_date`, `status`, `top3`, `next3`** (Bridge machine-maintained). **NO `planned_pomodoros`/`actual_pomodoros` cache (panel #1 — dropped):** a journal is a primary source, not a cache; those are **computed on read** every time (negligible cost, single-user).
+  - **No LLM-authored prose** in the weekly file in v1.
+- **Bridge writes** the weekly file via the `project_writer` atomic-rename pattern (plus the `If-Match` guard above).
+- **Mandatory same-PR doc updates** (VAULT-LAYOUT §6α): `docs/VAULT-LAYOUT.md` §2/§3, `thousand_sunny/CONTEXT.md`, vault `CLAUDE.md` cheat-sheet line. **Vault `CLAUDE.md` forbids agent self-edit (§3 line 101)** — its change is a diff for 修修 to apply by hand (§Vault CLAUDE.md amendment). **These doc edits land only on ADR-039 acceptance and are marked "(Proposed — pending)" until then (panel #8 governance).**
+- **Syncthing:** `Journals/Weekly/` is **Send & Receive** on all three devices. Conflict probability is low (single-user, `user_vault_edit_pattern_no_concurrent`) but **not zero** — the `If-Match`→409 guard + Slice-0 `*.sync-conflict-*` detection (panel #10) are the real mitigations, not an assumed ~0.
 
 **Rejected:** move the weekly file out of `Journals/` into a new Bridge-owned folder (dodges the red line but fragments the weekly journal away from daily/quarterly/yearly and abandons the existing `Journals/Weekly/` + `tpl-weekly-journal` convention); keep `Journals/` fully 🔒 and do reviews only in Obsidian (defeats the core "do the review in the dashboard" requirement).
 
@@ -144,7 +155,7 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
 
 - The dashboard's daily section shows, per weekday, the tasks scheduled that day (from `plan[]`) grouped by **category**, plus a **read-only** display of habits.
 - **Category model:** 工作 = task whose project has `area: work`; 雜事 = task without a project or other area; **運動 / 冥想 are habits, not tasks** — rendered read-only from the daily note's `exercise_type` / `exercise_duration` / `meditation_minutes`. Optional task-level `category` override for precision.
-- **Task completion toggling writes `TaskNotes/Tasks/` (status/`✅`)** — already permitted (ADR-031 envelope). Habit logging, daily reflection, and ad-hoc daily bullets stay in Obsidian → **`Journals/Daily/` stays 🔒**, so the red line opens **only** `Journals/Weekly/`.
+- **Task completion toggling writes `TaskNotes/Tasks/` `status`** — canonical field is **`status ∈ {to-do, doing, done, paused}`** (per `project_writer.py:391`), NOT `✅` (panel #9 — v1 said "status/✅" in error). If the `✅` boolean is retained for the Obsidian dataview, update it **atomically** with `status` to avoid three competing completion meanings. Already permitted (ADR-031 envelope). Habit logging, daily reflection, and ad-hoc daily bullets stay in Obsidian → **`Journals/Daily/` stays 🔒**, so the red line opens **only** `Journals/Weekly/`.
 
 **Rejected:** make the daily section fully editable in the dashboard (forces a second 🔒→🟡 reclassification of `Journals/Daily/` + more sync surface — deferred to backlog); no daily section at all (loses the Today view 修修 wants).
 
@@ -171,7 +182,7 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
 
 ### D9: 隨手筆記 / weekend-work / OKR scope / task views
 
-- **隨手筆記** = a week-scoped `## 隨手筆記` body section in the weekly file (human-authored). Not a global scratchpad, not Inbox capture.
+- **隨手筆記** = a week-scoped `## 隨手筆記` body section in the weekly file (human-authored), for **weekly-scoped reflection while you're in the dashboard** — explicitly **NOT a fleeting-capture inbox** (panel #13, Gemini §3): in-the-moment quick capture stays in Obsidian daily notes / `Inbox/`, which are always at hand. Don't position this section as a replacement for quick capture.
 - **Weekend work** = scheduling a 工作-category `plan[]` entry on Sat/Sun **requires a `reason`** string (stored on that `plan[]` entry); the weekend 工作 row displays it. Soft-required (must type to save), **not** a hard ban.
 - **OKR rollup is deferred** to a later iteration. v1 surfaces no OKR objectives/KR. The `Projects/* → quarter / parent_kr` linkage in data is retained, just not displayed.
 - **Task views:** the dashboard task list offers **three views — Today / 整週 / 按專案 (by-project)**. (修修 confirmed the third, previously-unstated view is by-project grouping.)
@@ -196,7 +207,8 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
 - **Two `scheduled` semantics** — multi-date tasks only show on their earliest date in Obsidian's daily dataview; the Bridge Today view is canonical. Minor Obsidian-side regression, accepted (mirrors ADR-031's accepted Obsidian-interactivity loss).
 - **Bridge is a SPOF for interactive weekly flows** — when VPS Bridge is down, vault md stays canonical and Obsidian still edits prose/frontmatter, but the dashboard's aggregation/timer/quick-edit are blocked (same trade as ADR-031).
 - **Date-keyed weekly file breaks the Obsidian daily→weekly graph backlink** — accepted; optional `W{n}` alias later.
-- **No `*.sync-conflict-*` handling** for the weekly file in v1 — inherits ADR-030's open follow-up (#696); `Journals/Weekly/` being Send&Receive means a conflict is theoretically possible. Detection-only for now.
+- **`*.sync-conflict-*` detection IS in scope (panel #10)** — Slice-0 `weekly_indexer` ports the conflict-file detection `digest_indexer` already has (`:35-40,:147-172`); a conflict surfaces a banner rather than being silently ignored. (Resolution stays manual, per ADR-030 #696.)
+- **Vault becomes more of a Bridge backing store (panel #15, Gemini §5).** `plan[]` is invisible to the TaskNotes plugin UI (unlike `timeEntries[]`, which its `formula.實際🍅` reads), so the Bridge becomes the only surface rendering the per-date plan. This continues ADR-031's "Web = interactive control, Obsidian = read/prose" trade — accepted consciously, softened by D4 dropping the magical `scheduled` rewrites. Reviewers should watch that further Bridge-only schema doesn't keep eroding Obsidian-standalone utility.
 
 ### Neutral
 
@@ -213,7 +225,7 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
 | Artifact/glossary model | D1 — single weekly file = SoT; Dashboard = skin; Review = section |
 | Week boundary + numbering | D2 — Sun→Sat, 修修's W-number, date-keyed file, range aggregation, ISO untouched |
 | Actual-pomodoro source/storage | D3 — union read of `timeEntries[]` ∪ daily `pomodoros[]`; no new store; no `Daily/` write |
-| Multi-date scheduling primitive | D4 — `plan[]` on the task; `scheduled` auto-synced |
+| Multi-date scheduling primitive | D4 — `plan[]` on the task (SoT); `scheduled` user-controlled (explicit sync, panel #3) |
 | Vault write authority | D5 — `Journals/Weekly/` 🔒→🟡; provenance principle; field-level contract |
 | Daily section read/write | D6 — read-only projection; category model; completion via TaskNotes |
 | Weekly ritual gate | D7 — soft gate; planning→active→reviewed; carry-forward via task `plan[]` |
@@ -226,8 +238,8 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
 
 ### Slice 0 — Read-only foundation (zero risk, zero red line)
 
-- `shared/weekly_indexer.py` (new; modeled on `digest_indexer`/`project_indexer`): week-boundary math (Sunday-start, US W-number), `planned` (Σ task `plan[]` in range) + `actual` (union `timeEntries[]` ∪ daily `pomodoros[]` in range) aggregation, incomplete-task scan.
-- `shared/pomodoro_aggregator.py` (new): the union read (task `timeEntries[]` + daily-note `pomodoros[]`).
+- `shared/weekly_indexer.py` (new; modeled on `digest_indexer`/`project_indexer`): week-boundary math (Sunday-start, US W-number, **week-year derivation + year-boundary tests**, panel #7), `planned` (Σ task `plan[]` in range) + `actual` aggregation, incomplete-task scan, **`*.sync-conflict-*` detection** ported from `digest_indexer` (panel #10).
+- `shared/pomodoro_aggregator.py` (new): union read with **dedup/overlap detection** (normalized `{source,source_id,task_key,start,end}`; overlap-within-tolerance → warn) + **time semantics** (`type==work && completed`, `activePeriods` duration, `endTime`→Asia/Taipei week key, Sat→Sun boundary test) + defined abandoned-session handling (panel #4/#5).
 - `thousand_sunny/routers/bridge_weekly.py` (new): `GET /bridge/weekly` (current/`?week=` nav), read-only landing — week header + L/R nav, planned/actual + execution rate, Today/整週/by-project task views (read-only), daily read-only projection, last-week review view (read-only).
 - Templates under `thousand_sunny/templates/bridge/weekly/`; chassis-nav slot; tokens-consistent CSS (`docs/design-system.md`).
 - Tests: `tests/test_weekly_indexer.py`, `tests/test_pomodoro_aggregator.py`, `tests/test_bridge_weekly.py` (fixture vault).
@@ -235,15 +247,15 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
 
 ### Slice 1 — Task scheduling writes (TaskNotes only — ADR-031 envelope, no new red line)
 
-- `shared/project_writer.py` (or sibling `task_writer.py`): write `plan[]` + auto-sync `scheduled`; weekend-work `reason`.
+- `shared/project_writer.py` (or sibling `task_writer.py`): write `plan[] {date,pomodoros,reason?,done?}`; **explicit `scheduled` sync button (NO auto-rewrite, panel #3)** + "scheduled differs from plan" surface; weekend-work `reason` required.
 - Carry-forward UI (assign incomplete tasks' `plan[]` dates into a week); reuse the existing Pomodoro dock for actuals.
-- Tests for `plan[]` write + `scheduled` sync + idempotency.
+- Tests for `plan[]` write + explicit `scheduled` sync (and non-rewrite) + idempotency.
 
 ### Slice 2 — Weekly-file writes (the red-line slice — gated on this ADR's acceptance, ± panel)
 
-- **Docs (same PR):** `VAULT-LAYOUT.md` §2/§3 (`Journals/Weekly/` 🔒→🟡 + producer/consumer rows), `thousand_sunny/CONTEXT.md` glossary, Syncthing folder-type note; vault `CLAUDE.md` diff handed to 修修.
-- Weekly-file create-from-template; write Review answers (6 Qs), `top3`/`next3`, 隨手筆記, `status` transitions (soft gate); closed-loop next3→top3.
-- `shared/weekly_writer.py` (atomic, field-level contract); `tests/test_weekly_writer.py` (human-section vs machine-frontmatter separation, status FSM, atomic rename).
+- **Docs (same PR):** `VAULT-LAYOUT.md` §2/§3 (`Journals/Weekly/` 🔒→🟡 + producer/consumer rows), `thousand_sunny/CONTEXT.md` glossary, Syncthing folder-type note; vault `CLAUDE.md` diff handed to 修修. **On the ADR branch these are marked "(Proposed — pending)" and assert accepted reality only on merge (panel #8).**
+- Weekly-file create-from-template; write Review answers (6 Qs), `top3`/`next3`, 隨手筆記, `status` transitions (soft gate); closed-loop next3→top3. Soft-gate override persists honest state (e.g. `created_before_previous_review: true`, panel #4 Codex §4) — don't render a skipped ritual as complete.
+- `shared/weekly_writer.py` — **allowlisted frontmatter keys + named prose sections only; `If-Match` mtime/hash → 409** (panel #2/#6); NO `planned/actual_pomodoros` cache (computed on read, panel #1). `tests/test_weekly_writer.py` (allowlist enforcement, human-section vs machine-frontmatter, status FSM, atomic rename, stale-write 409).
 
 ### Backlog (post-v1)
 

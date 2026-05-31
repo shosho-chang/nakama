@@ -54,7 +54,7 @@ _Avoid_: dashboard（太籠統）, admin page
 - **Knowledge layer** 寫入由 agent 端負責（Robin / Franky / Brook via Usopp），**不**由 Bridge UI 直寫
 - **Obsidian CLI** 是 Tier B/C 的 future lever；桌機 Obsidian 開著時可由 desktop-resident agent 呼叫；**不在** Tier A scope
 
-## Weekly Dashboard (Tier B — ADR-039)
+## Weekly Dashboard (Tier B — ADR-039, Proposed)
 
 **Weekly Dashboard**:
 `/bridge/weekly` 的 Bridge surface — LifeOS 週層的 interaction skin。讀走 D2 FS-direct、寫走 `project_writer`-style atomic patch。**不是** Obsidian `Dashboards/` 的被動鏡像。
