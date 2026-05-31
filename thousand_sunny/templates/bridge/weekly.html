@@ -1,0 +1,226 @@
+{% macro task_row(t, view) %}
+  <div class="wk-task {{ 'done' if t.done }}">
+    <span class="wk-box {{ 'done' if t.done }}"></span>
+    <span class="wk-tname">{{ t.name }}</span>
+    {% if t.project %}<span class="wk-tproj">{{ t.project }}</span>{% else %}<span class="wk-tproj">— {{ t.category }}</span>{% endif %}
+    <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
+    <span class="sho-chip sho-chip--{{ 'online' if t.status == 'done' else 'offline' }} wk-status">{{ t.status }}</span>
+  </div>
+{% endmacro %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Weekly {{ view.week.label }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='weekly') }}
+
+  <main class="wk-main">
+  {% if view.conflicts %}
+    <section class="wk-conflict" role="alert">
+      <strong>⚠ Syncthing 衝突檔 · {{ view.conflicts | length }}</strong>
+      ——<code>Journals/Weekly</code> 有兩裝置同時編輯的 conflict file，請進 vault 手動 resolve：
+      <ul>
+        {% for c in view.conflicts[:5] %}<li>{{ c.relative_path }} <span class="wk-mut">· {{ c.device }} · {{ c.timestamp }}</span></li>{% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <section class="wk-screen">
+
+    {# ── sticky header: week nav + hero ── #}
+    <div class="wk-head">
+      <div class="wk-weeknav">
+        <a class="wk-arrow" href="/bridge/weekly?week={{ view.prev_key }}" aria-label="上一週">◀</a>
+        <div>
+          <div class="wk-wknum">{{ view.week.label }}{% if view.is_current %} <span class="wk-now">本週</span>{% endif %}</div>
+          <div class="wk-wkrange">{{ view.week.range_label }}</div>
+        </div>
+        <a class="wk-arrow" href="/bridge/weekly?week={{ view.next_key }}" aria-label="下一週">▶</a>
+      </div>
+      <div class="wk-hero">
+        {% if view.mode == 'review' %}
+          <span class="sho-chip sho-chip--hold">⚠ 待回顧</span>
+        {% endif %}
+        <div class="wk-hero-metric">
+          <span class="wk-metalabel">預計</span>
+          <span class="sho-readout"><span class="val">{{ view.planned }}</span><span class="unit">🍅</span></span>
+        </div>
+        <div class="wk-hero-metric">
+          <span class="wk-metalabel">實際</span>
+          <span class="sho-readout"><span class="val">{{ view.actual.total_pomodoros }}</span><span class="unit">🍅</span></span>
+        </div>
+        <div class="wk-hero-metric">
+          <span class="wk-metalabel">執行率</span>
+          <div class="wk-rate-row">
+            <div class="sho-gauge"><div class="sho-gauge-fill wk-gfill" style="width: {{ [view.rate_pct, 100] | min }}%"></div></div>
+            <span class="wk-pct">{{ view.rate_pct }}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if view.actual.overlap_warnings %}
+      <div class="wk-note-inline">⚠ {{ view.actual.overlap_warnings | length }} 筆番茄 session 偵測到重疊（已合併不重複計）</div>
+    {% endif %}
+
+    {# ════════ REVIEW MODE (past week, not yet reviewed) ════════ #}
+    {% if view.mode == 'review' %}
+
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="nk-caps">未完成任務 · 排進下一週</span>
+          <span class="wk-mut">（Slice 1 開放排程；目前唯讀）</span></div>
+        {% for t in view.incomplete %}
+          <div class="wk-cf">
+            <span class="wk-box {{ 'done' if t.done }}"></span>
+            <span class="wk-tname">{{ t.title }}</span>
+            <span class="wk-rem">剩 {{ [t.est_pomodoros - (view.actual.by_task.get(t.slug, 0)), 0] | max }}🍅</span>
+            <button class="sho-btn--ghost" type="button" disabled>排程…</button>
+          </div>
+        {% else %}
+          <p class="wk-empty">上週沒有未完成任務 🎉</p>
+        {% endfor %}
+      </div>
+
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="nk-caps">Weekly Review · 6 題</span>
+          {% if not view.review %}<span class="wk-mut">（回顧表單在 Slice 2 開放；目前為唯讀預覽）</span>{% endif %}</div>
+        {% if view.review %}
+          <div class="wk-rev-grid">
+            {% for label, key in [('✨ Highlight','✨ Highlight'),('😔 Lowlight','😔 Lowlight'),('📚 學到的東西','📚 學到的東西'),('🙏 感恩','🙏 感恩')] %}
+              <div class="wk-field"><label>{{ label }}</label><div class="wk-readonly">{{ view.review.sections.get(key, '—') }}</div></div>
+            {% endfor %}
+          </div>
+          {% if view.review.next3 %}<p class="wk-mut">🎯 下週 top-3：{{ view.review.next3 | join(' · ') }}</p>{% endif %}
+        {% else %}
+          <ul class="wk-q-list">
+            <li>✨ Highlight</li><li>😔 Lowlight</li><li>📚 學到的東西</li>
+            <li>🙏 感恩（人 / 事 / 物）</li><li>✅ 本週 top-3 完成率（自動）</li><li>🎯 下週 top-3</li>
+          </ul>
+        {% endif %}
+      </div>
+
+    {# ════════ ACTIVE MODE (current / future week) ════════ #}
+    {% else %}
+
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="nk-caps">任務</span>
+          <div class="wk-tabs" role="tablist">
+            <button class="wk-tab is-on" data-tab="today" type="button">今日</button>
+            <button class="wk-tab" data-tab="week" type="button">整週</button>
+            <button class="wk-tab" data-tab="project" type="button">按專案</button>
+          </div>
+        </div>
+
+        <div class="wk-tabpane" data-pane="today">
+          {% for t in view.today_tasks %}{{ task_row(t, view) }}{% else %}
+            <p class="wk-empty">今天沒有排定的任務。</p>{% endfor %}
+        </div>
+        <div class="wk-tabpane is-hidden" data-pane="week">
+          {% for t in view.tasks %}{{ task_row(t, view) }}{% else %}
+            <p class="wk-empty">本週尚無排程 — 從上週未完成任務帶過來，或在 Obsidian 指定 scheduled。</p>{% endfor %}
+        </div>
+        <div class="wk-tabpane is-hidden" data-pane="project">
+          {% for proj, tasks in view.by_project.items() %}
+            <div class="wk-projgroup">
+              <div class="wk-projname">{{ proj }}
+                <span class="wk-mut">{{ tasks | sum(attribute='est_pomodoros') }}🍅 估</span></div>
+              {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
+            </div>
+          {% else %}
+            <p class="wk-empty">本週尚無排程。</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# ── daily bullet grid (Sun→Sat) ── #}
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="nk-caps">每日 · Bullet</span></div>
+        <div class="sho-grid-strip wk-daily">
+          <div class="sho-grid-cell gc-rowlabel"></div>
+          {% for h in view.day_headers %}
+            <div class="sho-grid-cell gc-dayhead {{ 'gc-weekend' if h.is_weekend }} {{ 'gc-today' if h.is_today }}">{{ h.zh }}</div>
+          {% endfor %}
+          {% for cat in ['工作','運動','冥想','雜事'] %}
+            <div class="sho-grid-cell gc-rowlabel">{{ cat }}</div>
+            {% for cell in view.grid[cat] %}
+              {% if cat in ['運動','冥想'] %}
+                <div class="sho-grid-cell {{ 'gc-weekend' if cell.is_weekend }} {{ 'gc-dim' if not cell.minutes }}">{{ cell.minutes if cell.minutes else '·' }}</div>
+              {% else %}
+                <div class="sho-grid-cell {{ 'gc-weekend' if cell.is_weekend }} {{ 'gc-dim' if cell.dim }}">
+                  {% if cell.reason %}<span class="wk-warn" title="{{ cell.reason }}">⚠ {{ cell.pomodoros }}</span>
+                  {% elif cell.pomodoros %}<span class="wk-cell-dots">{% for _ in range(cell.pomodoros) %}<i></i>{% endfor %}</span>
+                  {% elif cell.dim %}—{% else %}·{% endif %}
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+
+      {# ── review (pending until week-end) ── #}
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="nk-caps">週回顧</span>
+          <span class="sho-chip sho-chip--offline">{{ '已完成' if view.review and view.review.status == 'reviewed' else '本週末填' }}</span></div>
+        {% if view.review and view.review.sections %}
+          <div class="wk-rev-grid">
+            {% for label in ['✨ Highlight','😔 Lowlight','📚 學到的東西','🙏 感恩'] %}
+              <div class="wk-field"><label>{{ label }}</label><div class="wk-readonly">{{ view.review.sections.get(label, '—') }}</div></div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="wk-mut">週日做完上週回顧、本週執行到週末，再回來填這六題。（填寫在 Slice 2 開放）</p>
+        {% endif %}
+      </div>
+
+      {# ── notes (read-only in Slice 0) ── #}
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="nk-caps">隨手筆記</span></div>
+        {% if view.review and view.review.notes %}
+          <div class="wk-readonly wk-notes">{{ view.review.notes }}</div>
+        {% else %}
+          <p class="wk-mut">本週的想法、觀察、隨手記（週範圍；即時捕捉請用 Obsidian / Inbox）。編輯在 Slice 2 開放。</p>
+        {% endif %}
+      </div>
+
+    {% endif %}
+
+    {# ── pomodoro dock (display-only in Slice 0) ── #}
+    <div class="wk-dock">
+      {% set lead = view.tasks[0] if view.tasks else none %}
+      <span class="dk-proj">🎬 {{ lead.project if lead and lead.project else 'Weekly' }}</span>
+      <select class="dk-sel" aria-label="作用中任務" disabled>
+        {% for t in view.tasks %}<option>{{ t.name }}</option>{% else %}<option>尚未選擇</option>{% endfor %}
+      </select>
+      <span class="dk-timer"><span class="ic">▶</span><span class="dk-time">25:00</span></span>
+      <span class="dk-roll">🍅 <b>{{ view.actual.total_pomodoros }}</b> <span class="mut">/ {{ view.planned }}</span></span>
+    </div>
+
+  </section>
+  </main>
+
+  <script>
+  /* Task-view tab toggle (今日 / 整週 / 按專案). */
+  (function () {
+    var tabs = document.querySelectorAll('.wk-tab');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var pane = tab.getAttribute('data-tab');
+        tabs.forEach(function (t) { t.classList.toggle('is-on', t === tab); });
+        document.querySelectorAll('.wk-tabpane').forEach(function (p) {
+          p.classList.toggle('is-hidden', p.getAttribute('data-pane') !== pane);
+        });
+      });
+    });
+  })();
+  </script>
+</body>
+</html>

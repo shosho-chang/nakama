@@ -1,0 +1,167 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Bridge Weekly Dashboard · Tier B (ADR-039)
+
+   Composes on tokens.css + bridge.css (ops chassis: .chassis, .sho-readout,
+   .sho-gauge, .sho-grid-strip/-cell, .sho-chip, .sho-btn, .nk-caps).
+   Single-page dense surface: sticky week header + sticky pomodoro dock.
+   All colour via --sho-* tokens; single PANTONE 165 PC orange accent (≤4%):
+   active nav underline, gauge fill, dock ▶. Hairline-driven, no shadows.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho .wk-main { padding: 0 28px 40px; }
+.wk-screen { max-width: 1040px; margin: 0 auto; }
+
+/* ── conflict banner ── */
+body.sho .wk-conflict {
+  border: 1px solid color-mix(in oklch, var(--sho-warning) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+  border-radius: var(--sho-r-2);
+  padding: 12px 16px;
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--sho-text-2);
+}
+body.sho .wk-conflict ul { margin: 6px 0 0; padding-left: 18px; }
+body.sho .wk-mut { color: var(--sho-muted); font-size: 12px; }
+body.sho .wk-note-inline {
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-warning);
+  padding: 8px 0 0;
+}
+
+/* ── sticky header: week nav + hero ── */
+body.sho .wk-head {
+  position: sticky; top: 0; z-index: 5; background: var(--sho-bg-2);
+  display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+  padding: 20px 0 16px; border-bottom: 1px solid var(--sho-line);
+}
+body.sho .wk-weeknav { display: flex; align-items: center; gap: 12px; }
+body.sho .wk-arrow {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-1); background: var(--sho-bg);
+  color: var(--sho-text-2); text-decoration: none; font-size: 12px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-arrow:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .wk-arrow:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .wk-wknum {
+  font-family: var(--sho-font-mono); font-size: 30px; font-weight: 600;
+  letter-spacing: -0.5px; color: var(--sho-ink); line-height: 1;
+}
+body.sho .wk-now {
+  font-family: var(--sho-font-mono); font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--sho-bg); background: var(--sho-accent);
+  padding: 2px 5px; border-radius: var(--sho-r-1); vertical-align: middle;
+}
+body.sho .wk-wkrange {
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted);
+  letter-spacing: 0.06em; margin-top: 3px;
+}
+body.sho .wk-hero { display: flex; align-items: center; gap: 24px; margin-left: auto; }
+body.sho .wk-hero-metric { display: flex; flex-direction: column; }
+body.sho .wk-metalabel {
+  font-family: var(--sho-font-mono); font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--sho-muted); margin-bottom: 3px;
+}
+body.sho .wk-rate-row { display: flex; align-items: center; gap: 10px; }
+body.sho .wk-hero .sho-gauge { width: 160px; height: 4px; }
+body.sho .wk-gfill { background: var(--sho-accent); }
+body.sho .wk-pct {
+  font-family: var(--sho-font-mono); font-size: 13px; color: var(--sho-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── zones ── */
+body.sho .wk-zone { padding: 20px 0 4px; border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-zone-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+body.sho .wk-empty { color: var(--sho-muted); font-size: 13px; padding: 6px 0; }
+
+/* ── task views ── */
+body.sho .wk-tabs { display: flex; gap: 4px; margin-left: auto; }
+body.sho .wk-tab {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 5px 11px; border: 1px solid transparent;
+  border-radius: var(--sho-r-pill); color: var(--sho-muted); background: none; cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-tab.is-on { background: var(--sho-bg-3); color: var(--sho-text); }
+body.sho .wk-tab:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .wk-tabpane.is-hidden { display: none; }
+
+body.sho .wk-task { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-task:last-child { border-bottom: 0; }
+body.sho .wk-box { width: 14px; height: 14px; border: 1.5px solid var(--sho-line-2); border-radius: 3px; flex-shrink: 0; }
+body.sho .wk-box.done { background: var(--sho-text); border-color: var(--sho-text); }
+body.sho .wk-task.done .wk-tname { color: var(--sho-muted); text-decoration: line-through; }
+body.sho .wk-tname { color: var(--sho-text); }
+body.sho .wk-tproj { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); letter-spacing: 0.04em; }
+body.sho .wk-tnum {
+  margin-left: auto; font-family: var(--sho-font-mono); font-size: 11px;
+  color: var(--sho-text-2); font-variant-numeric: tabular-nums;
+}
+body.sho .wk-status { text-transform: none; }
+body.sho .wk-projgroup { padding: 4px 0 8px; }
+body.sho .wk-projname {
+  display: flex; gap: 10px; align-items: baseline; padding: 8px 6px 4px;
+  font-size: 13px; color: var(--sho-ink); border-bottom: 1px solid var(--sho-line-2);
+}
+
+/* ── daily grid (8 cols: label + 7 days, Sun→Sat) ── */
+body.sho .wk-daily { grid-template-columns: 52px repeat(7, 1fr); }
+body.sho .wk-daily .sho-grid-cell {
+  padding: 8px 6px; min-height: 30px; font-family: var(--sho-font-mono);
+  font-size: 11px; font-variant-numeric: tabular-nums; color: var(--sho-text-2);
+  display: flex; align-items: center; justify-content: center;
+}
+body.sho .wk-daily .gc-rowlabel { color: var(--sho-muted); font-size: 10px; letter-spacing: 0.1em; justify-content: flex-start; }
+body.sho .wk-daily .gc-dayhead { color: var(--sho-text); font-size: 11px; letter-spacing: 0.08em; }
+body.sho .wk-daily .gc-weekend { background: var(--sho-bg-2); color: var(--sho-muted); }
+body.sho .wk-daily .gc-today { box-shadow: inset 0 -2px 0 var(--sho-accent); color: var(--sho-ink); }
+body.sho .wk-daily .gc-dim { color: var(--sho-line-2); }
+body.sho .wk-cell-dots { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; }
+body.sho .wk-cell-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--sho-text-2); display: inline-block; }
+body.sho .wk-warn { color: var(--sho-warning); font-size: 10px; }
+
+/* ── carry-forward + review ── */
+body.sho .wk-cf { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-cf:last-child { border-bottom: 0; }
+body.sho .wk-rem { margin-left: auto; font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-warning); }
+body.sho .wk-cf .sho-btn--ghost { padding: 5px 11px; font-size: 10px; }
+body.sho .wk-rev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
+body.sho .wk-field { display: flex; flex-direction: column; gap: 5px; }
+body.sho .wk-field label {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--sho-text-2);
+}
+body.sho .wk-readonly {
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 8px 10px; font-size: 13px; color: var(--sho-text); line-height: 1.6; min-height: 20px;
+}
+body.sho .wk-q-list { columns: 2; gap: 24px; margin: 4px 0; padding-left: 18px; color: var(--sho-text-2); font-size: 13px; }
+body.sho .wk-q-list li { margin: 3px 0; }
+body.sho .wk-notes { min-height: 60px; }
+
+/* ── dock (sticky, dark band — mirrors Tier C _pomodoro_dock) ── */
+body.sho .wk-dock {
+  position: sticky; bottom: 0; z-index: 5; margin-top: 14px;
+  background: var(--sho-ink); color: var(--sho-bg);
+  display: flex; align-items: center; gap: 22px; padding: 11px 18px; border-radius: var(--sho-r-2);
+}
+body.sho .wk-dock .dk-proj { font-size: 13px; color: var(--sho-bg); }
+body.sho .wk-dock .dk-sel {
+  background: transparent; color: var(--sho-bg);
+  border: 1px solid color-mix(in oklch, var(--sho-bg) 30%, transparent);
+  border-radius: var(--sho-r-1); padding: 4px 8px; font-family: var(--sho-font-mono); font-size: 11px;
+}
+body.sho .wk-dock .dk-timer {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: color-mix(in oklch, var(--sho-bg) 12%, transparent); padding: 6px 12px; border-radius: var(--sho-r-1);
+}
+body.sho .wk-dock .dk-timer .ic { color: var(--sho-accent); }
+body.sho .wk-dock .dk-time { font-family: var(--sho-font-mono); font-size: 15px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+body.sho .wk-dock .dk-roll { margin-left: auto; font-family: var(--sho-font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+body.sho .wk-dock .dk-roll .mut { color: color-mix(in oklch, var(--sho-bg) 55%, transparent); }
+
+@media (max-width: 720px) {
+  body.sho .wk-hero { margin-left: 0; gap: 16px; }
+  body.sho .wk-rev-grid { grid-template-columns: 1fr; }
+}

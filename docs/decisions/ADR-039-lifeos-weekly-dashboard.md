@@ -1,7 +1,7 @@
 # ADR-039: LifeOS Weekly Dashboard — Tier B of Vault-as-Substrate
 
 **Date:** 2026-05-31 (v1) · 2026-05-31 (v2 post-panel)
-**Status:** Proposed (panel-reviewed; awaiting 修修 ship sign-off)
+**Status:** Accepted — Slice 0 (read-only `/bridge/weekly`) shipped 2026-05-31; Slices 1–2 (task writes / red-line weekly-file writes) pending
 **Deciders:** shosho-chang, Claude Opus 4.8 (1M)
 **Related:** [ADR-028](ADR-028-vault-layout-consolidation.md) (vault layout + 3-tier ownership), [ADR-029](ADR-029-bridge-ia-restructure.md) (Bridge IA dual-axis), [ADR-030](ADR-030-vault-as-substrate-read-strategy.md) (D1 vault SoT / D2 FS-direct / D4 substrate routing — **Tier B named in limitation #1**), [ADR-031](ADR-031-project-workspace-migration.md) (Tier C project workspace — **Tier B explicitly deferred in §Out of scope**; D6 Web-self Pomodoro timer), [`VAULT-LAYOUT.md`](../VAULT-LAYOUT.md), [`CONTENT-PIPELINE.md`](../../CONTENT-PIPELINE.md), [`thousand_sunny/CONTEXT.md`](../../thousand_sunny/CONTEXT.md), [`docs/runbooks/syncthing-folder-types.md`](../runbooks/syncthing-folder-types.md)
 

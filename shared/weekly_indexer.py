@@ -1,0 +1,527 @@
+"""Weekly indexer — assemble the LifeOS Weekly Dashboard view (ADR-039 Tier B).
+
+FS-direct read (ADR-030 D2); vault is SoT; no DB mirror. Models the
+``digest_indexer`` / ``project_indexer`` pattern.
+
+Reads (all read-only for Slice 0):
+  - ``TaskNotes/Tasks/*.md``       — tasks: 預估🍅, scheduled, plan[], timeEntries[], status
+  - ``Journals/Daily/{date}.md``   — habits (exercise / meditation) + pomodoro sessions
+  - ``Journals/Weekly/{sun}.md``   — weekly review (Slice 2 writes it; Slice 0 displays if present)
+
+Week model (ADR-039 D2): **Sunday→Saturday**, US/epi numbering (week 1 contains
+Jan 1). The label number matches 修修's spoken "W23". The file is keyed by the
+start-Sunday date (``2026-05-31.md``), NOT ``W{n}`` — so it never collides with
+the vault's ISO ``week:`` backlinks. ``year``/``week`` derive from the week-year,
+not ``start.year`` (year-boundary safe, panel #7).
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Any, Optional
+from zoneinfo import ZoneInfo
+
+import yaml
+
+from shared.pomodoro_aggregator import WeeklyActual, weekly_actual
+
+TAIPEI = ZoneInfo("Asia/Taipei")
+
+TASKS_DIR = "TaskNotes/Tasks"
+DAILY_DIR = "Journals/Daily"
+WEEKLY_DIR = "Journals/Weekly"
+
+CATEGORIES = ("工作", "運動", "冥想", "雜事")
+_ZH_WEEKDAYS = ("日", "一", "二", "三", "四", "五", "六")  # Sun..Sat
+
+_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
+_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
+_SYNC_CONFLICT_RE = re.compile(
+    r"^(?P<key>\d{4}-\d{2}-\d{2})\.sync-conflict-"
+    r"(?P<ts>\d{8}-\d{6})-(?P<device>[^.]+)\.md$"
+)
+_SKIP_FILENAME_RE = re.compile(r"^(?:\..*|.*\.sync-conflict-.*|.*\.tmp|Untitled.*)$")
+_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+
+
+# ── Week math ────────────────────────────────────────────────────────────────
+
+
+def today_taipei() -> date:
+    return datetime.now(TAIPEI).date()
+
+
+def _week1_sunday(year: int) -> date:
+    """Sunday on/before Jan 1 of ``year`` (start of US week 1)."""
+    jan1 = date(year, 1, 1)
+    return jan1 - timedelta(days=(jan1.weekday() + 1) % 7)
+
+
+@dataclass(frozen=True)
+class WeekRef:
+    year: int  # week-year (the year owning the Sun–Sat span)
+    week: int  # US Sunday-start week number (week 1 contains Jan 1)
+    start: date  # Sunday
+    end: date  # Saturday
+
+    @property
+    def label(self) -> str:
+        return f"W{self.week}"
+
+    @property
+    def file_key(self) -> str:
+        return self.start.isoformat()
+
+    @property
+    def range_label(self) -> str:
+        return f"{self.start.month}/{self.start.day} 日 – {self.end.month}/{self.end.day} 六"
+
+    def shift(self, weeks: int) -> "WeekRef":
+        return week_for_date(self.start + timedelta(weeks=weeks))
+
+    def contains(self, d: date) -> bool:
+        return self.start <= d <= self.end
+
+
+def week_for_date(d: date) -> WeekRef:
+    """Sunday-start, US-numbered week containing ``d`` (ADR-039 D2)."""
+    this_sun = d - timedelta(days=(d.weekday() + 1) % 7)
+    y = this_sun.year
+    if this_sun >= _week1_sunday(y + 1):
+        y += 1
+    elif this_sun < _week1_sunday(y):
+        y -= 1
+    week = (this_sun - _week1_sunday(y)).days // 7 + 1
+    return WeekRef(year=y, week=week, start=this_sun, end=this_sun + timedelta(days=6))
+
+
+def week_from_key(key: str) -> Optional[WeekRef]:
+    """Parse a ``YYYY-MM-DD`` start-Sunday key into a WeekRef (None if invalid)."""
+    try:
+        d = date.fromisoformat(key)
+    except ValueError:
+        return None
+    wr = week_for_date(d)
+    # Only accept keys that are actually a week-start Sunday.
+    return wr if wr.start == d else None
+
+
+# ── Coercion helpers ─────────────────────────────────────────────────────────
+
+
+def _as_int(v: object) -> int:
+    if isinstance(v, bool):
+        return 0
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return int(v)
+    if isinstance(v, str) and v.strip().lstrip("-").isdigit():
+        return int(v.strip())
+    return 0
+
+
+def _as_date(v: object) -> Optional[date]:
+    if isinstance(v, datetime):
+        return v.astimezone(TAIPEI).date() if v.tzinfo else v.date()
+    if isinstance(v, date):
+        return v
+    if isinstance(v, str) and v.strip():
+        s = v.strip()
+        try:
+            return date.fromisoformat(s[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _strip_wikilink(v: object) -> str:
+    if not isinstance(v, str):
+        return ""
+    m = _WIKILINK_RE.search(v)
+    return m.group(1).strip() if m else v.strip()
+
+
+# ── Task model ───────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class TaskAllocation:
+    date: date
+    pomodoros: int
+    reason: str = ""
+    done: int = 0
+
+
+@dataclass(frozen=True)
+class WeeklyTask:
+    slug: str  # file stem
+    title: str
+    name: str  # task portion (after "Project - "), else title
+    project: str  # project name or ""
+    category: str  # 工作 | 雜事
+    est_pomodoros: int
+    status: str  # to-do | doing | done | paused
+    done: bool
+    scheduled: Optional[date]
+    plan: tuple[TaskAllocation, ...]
+    time_entries: list  # raw, for aggregator
+    relative_path: str
+
+    def planned_in(self, wk: WeekRef) -> int:
+        if self.plan:
+            return sum(a.pomodoros for a in self.plan if wk.contains(a.date))
+        # Slice-0 fallback: no plan[] yet → whole estimate lands on `scheduled`.
+        if self.scheduled and wk.contains(self.scheduled):
+            return self.est_pomodoros
+        return 0
+
+    def dates_in(self, wk: WeekRef) -> list[date]:
+        if self.plan:
+            return [a.date for a in self.plan if wk.contains(a.date)]
+        if self.scheduled and wk.contains(self.scheduled):
+            return [self.scheduled]
+        return []
+
+    def pomodoros_on(self, d: date) -> int:
+        if self.plan:
+            return sum(a.pomodoros for a in self.plan if a.date == d)
+        if self.scheduled == d:
+            return self.est_pomodoros
+        return 0
+
+
+@dataclass(frozen=True)
+class DailyHabit:
+    exercise_type: str = ""
+    exercise_minutes: int = 0
+    meditation_minutes: int = 0
+
+
+@dataclass(frozen=True)
+class WeeklyReview:
+    exists: bool
+    status: str  # planning | active | reviewed
+    top3: tuple[str, ...] = ()
+    next3: tuple[str, ...] = ()
+    sections: dict[str, str] = field(default_factory=dict)  # heading -> prose
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class ConflictFile:
+    key: str
+    relative_path: str
+    timestamp: str
+    device: str
+
+
+@dataclass(frozen=True)
+class WeeklyView:
+    week: WeekRef
+    is_current: bool
+    mode: str  # "active" | "review"
+    planned: int
+    actual: WeeklyActual
+    rate_pct: int
+    tasks: tuple[WeeklyTask, ...]  # tasks with allocation/scheduled in week
+    today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
+    incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
+    by_project: dict[str, list[WeeklyTask]]
+    planned_by_task: dict[str, int]  # slug -> planned 🍅 this week
+    grid: dict[str, list[dict]]  # category -> 7 day-cells (Sun..Sat)
+    day_headers: list[dict]  # 7 entries: {zh, date, is_weekend, is_today}
+    review: Optional[WeeklyReview]
+    conflicts: tuple[ConflictFile, ...]
+    prev_key: str
+    next_key: str
+
+
+# ── Indexer ──────────────────────────────────────────────────────────────────
+
+
+class WeeklyIndexer:
+    def __init__(self, vault_root: Path) -> None:
+        self._root = Path(vault_root)
+
+    # -- tasks --
+    def read_tasks(self) -> list[WeeklyTask]:
+        out: list[WeeklyTask] = []
+        d = self._root / TASKS_DIR
+        if not d.exists():
+            return out
+        for p in sorted(d.iterdir()):
+            if not p.is_file() or p.suffix != ".md" or _SKIP_FILENAME_RE.match(p.name):
+                continue
+            t = self._task_from_path(p)
+            if t is not None:
+                out.append(t)
+        return out
+
+    def _task_from_path(self, path: Path) -> Optional[WeeklyTask]:
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        m = _FRONTMATTER_RE.match(raw)
+        if not m:
+            return None
+        try:
+            fm = yaml.safe_load(m.group(1)) or {}
+        except yaml.YAMLError:
+            return None
+        if not isinstance(fm, dict):
+            return None
+
+        slug = unicodedata.normalize("NFC", path.stem)
+        title = str(fm.get("title") or slug)
+
+        projects = fm.get("projects")
+        project = ""
+        if isinstance(projects, list) and projects:
+            project = _strip_wikilink(projects[0])
+        elif isinstance(projects, str):
+            project = _strip_wikilink(projects)
+
+        name = title
+        if project and title.startswith(project):
+            name = title[len(project) :].lstrip(" -—–") or title
+
+        est = _as_int(fm.get("預估🍅")) or _as_int(fm.get("🍅-Estimated"))
+        if not est:
+            te = _as_int(fm.get("timeEstimate"))
+            est = round(te / 25) if te else 0
+
+        status = str(fm.get("status") or "to-do")
+        done = status == "done" or fm.get("✅") is True
+        if done and status != "done":
+            status = "done"
+
+        plan_raw = fm.get("plan")
+        plan: list[TaskAllocation] = []
+        if isinstance(plan_raw, list):
+            for a in plan_raw:
+                if not isinstance(a, dict):
+                    continue
+                ad = _as_date(a.get("date"))
+                if ad is None:
+                    continue
+                plan.append(
+                    TaskAllocation(
+                        date=ad,
+                        pomodoros=_as_int(a.get("pomodoros")),
+                        reason=str(a.get("reason") or ""),
+                        done=_as_int(a.get("done")),
+                    )
+                )
+
+        time_entries = fm.get("timeEntries")
+        if not isinstance(time_entries, list):
+            time_entries = []
+
+        category = "工作" if project else "雜事"
+
+        return WeeklyTask(
+            slug=slug,
+            title=title,
+            name=name,
+            project=project,
+            category=category,
+            est_pomodoros=est,
+            status=status,
+            done=done,
+            scheduled=_as_date(fm.get("scheduled")),
+            plan=tuple(plan),
+            time_entries=time_entries,
+            relative_path=f"{TASKS_DIR}/{path.name}",
+        )
+
+    # -- habits --
+    def read_habits(self, wk: WeekRef) -> dict[date, DailyHabit]:
+        out: dict[date, DailyHabit] = {}
+        d = self._root / DAILY_DIR
+        for i in range(7):
+            day = wk.start + timedelta(days=i)
+            p = d / f"{day.isoformat()}.md"
+            if not p.exists():
+                continue
+            try:
+                raw = p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            m = _FRONTMATTER_RE.match(raw)
+            if not m:
+                continue
+            try:
+                fm = yaml.safe_load(m.group(1)) or {}
+            except yaml.YAMLError:
+                continue
+            if not isinstance(fm, dict):
+                continue
+            out[day] = DailyHabit(
+                exercise_type=str(fm.get("exercise_type") or ""),
+                exercise_minutes=_as_int(fm.get("exercise_duration")),
+                meditation_minutes=_as_int(fm.get("meditation_minutes")),
+            )
+        return out
+
+    # -- weekly review file --
+    def read_review(self, wk: WeekRef) -> Optional[WeeklyReview]:
+        p = self._root / WEEKLY_DIR / f"{wk.file_key}.md"
+        if not p.exists():
+            return None
+        try:
+            raw = p.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        m = _FRONTMATTER_RE.match(raw)
+        fm: dict[str, Any] = {}
+        body = raw
+        if m:
+            try:
+                fm = yaml.safe_load(m.group(1)) or {}
+            except yaml.YAMLError:
+                fm = {}
+            body = m.group(2)
+        if not isinstance(fm, dict):
+            fm = {}
+        sections: dict[str, str] = {}
+        for part in re.split(r"^##\s+", body, flags=re.MULTILINE)[1:]:
+            line, _, rest = part.partition("\n")
+            sections[line.strip()] = rest.strip()
+        top3 = tuple(_strip_wikilink(x) for x in (fm.get("top3") or []) if x)
+        next3 = tuple(_strip_wikilink(x) for x in (fm.get("next3") or []) if x)
+        return WeeklyReview(
+            exists=True,
+            status=str(fm.get("status") or "active"),
+            top3=top3,
+            next3=next3,
+            sections=sections,
+            notes=sections.get("隨手筆記", ""),
+        )
+
+    def list_conflicts(self) -> list[ConflictFile]:
+        out: list[ConflictFile] = []
+        d = self._root / WEEKLY_DIR
+        if not d.exists():
+            return out
+        for p in d.iterdir():
+            m = _SYNC_CONFLICT_RE.match(p.name)
+            if m:
+                out.append(
+                    ConflictFile(
+                        key=m.group("key"),
+                        relative_path=f"{WEEKLY_DIR}/{p.name}",
+                        timestamp=m.group("ts"),
+                        device=m.group("device"),
+                    )
+                )
+        out.sort(key=lambda c: c.timestamp, reverse=True)
+        return out
+
+    # -- assembly --
+    def view(self, wk: Optional[WeekRef] = None) -> WeeklyView:
+        today = today_taipei()
+        current = week_for_date(today)
+        if wk is None:
+            wk = current
+        is_current = wk.start == current.start
+
+        all_tasks = self.read_tasks()
+        in_week = [
+            t
+            for t in all_tasks
+            if t.planned_in(wk) > 0 or (t.scheduled is not None and wk.contains(t.scheduled))
+        ]
+        # incomplete = not done and due on/before this week's end (carry-forward pool)
+        incomplete = [
+            t for t in all_tasks if not t.done and t.scheduled is not None and t.scheduled <= wk.end
+        ]
+
+        planned = sum(t.planned_in(wk) for t in all_tasks)
+        actual = weekly_actual(
+            self._root,
+            wk.start,
+            wk.end,
+            task_time_entries=[(t.slug, t.time_entries) for t in all_tasks],
+        )
+        rate = int(round(100 * actual.total_pomodoros / planned)) if planned else 0
+
+        habits = self.read_habits(wk)
+        review = self.read_review(wk)
+
+        # mode: review when looking at a past week that isn't yet reviewed
+        mode = "active"
+        if wk.start < current.start and (review is None or review.status != "reviewed"):
+            mode = "review"
+
+        by_project: dict[str, list[WeeklyTask]] = {}
+        for t in in_week:
+            by_project.setdefault(t.project or "（無專案）", []).append(t)
+
+        grid, day_headers = self._build_grid(wk, in_week, habits, today)
+        today_tasks = tuple(t for t in in_week if today in t.dates_in(wk))
+
+        return WeeklyView(
+            week=wk,
+            is_current=is_current,
+            mode=mode,
+            planned=planned,
+            actual=actual,
+            rate_pct=rate,
+            tasks=tuple(in_week),
+            today_tasks=today_tasks,
+            incomplete=tuple(incomplete),
+            by_project=by_project,
+            planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
+            grid=grid,
+            day_headers=day_headers,
+            review=review,
+            conflicts=tuple(self.list_conflicts()),
+            prev_key=wk.shift(-1).file_key,
+            next_key=wk.shift(1).file_key,
+        )
+
+    def _build_grid(
+        self, wk: WeekRef, tasks: list[WeeklyTask], habits: dict[date, DailyHabit], today: date
+    ) -> tuple[dict[str, list[dict]], list[dict]]:
+        days = [wk.start + timedelta(days=i) for i in range(7)]
+        day_headers = [
+            {
+                "zh": _ZH_WEEKDAYS[i],
+                "date": d.isoformat(),
+                "is_weekend": i in (0, 6),  # Sun, Sat
+                "is_today": d == today,
+            }
+            for i, d in enumerate(days)
+        ]
+        grid: dict[str, list[dict]] = {c: [] for c in CATEGORIES}
+        for i, d in enumerate(days):
+            is_weekend = i in (0, 6)
+            hab = habits.get(d, DailyHabit())
+            # 工作 / 雜事 — scheduled task pomodoros that day, by category
+            for cat in ("工作", "雜事"):
+                cat_tasks = [t for t in tasks if t.category == cat]
+                pom = sum(t.pomodoros_on(d) for t in cat_tasks)
+                # weekend-work reason marker (ADR-039 D9): any plan entry that day with a reason
+                reason = ""
+                if cat == "工作" and is_weekend:
+                    for t in cat_tasks:
+                        for a in t.plan:
+                            if a.date == d and a.reason:
+                                reason = a.reason
+                grid[cat].append(
+                    {
+                        "pomodoros": pom,
+                        "is_weekend": is_weekend,
+                        "dim": is_weekend and cat == "工作" and not reason and pom == 0,
+                        "reason": reason,
+                    }
+                )
+            grid["運動"].append({"minutes": hab.exercise_minutes, "is_weekend": is_weekend})
+            grid["冥想"].append({"minutes": hab.meditation_minutes, "is_weekend": is_weekend})
+        return grid, day_headers
