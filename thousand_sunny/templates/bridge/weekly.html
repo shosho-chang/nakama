@@ -1,11 +1,58 @@
 {% macro task_row(t, view) %}
-  <div class="wk-task {{ 'done' if t.done }}">
-    <span class="wk-box {{ 'done' if t.done }}"></span>
-    <span class="wk-tname">{{ t.name }}</span>
-    {% if t.project %}<span class="wk-tproj">{{ t.project }}</span>{% else %}<span class="wk-tproj">— {{ t.category }}</span>{% endif %}
-    <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
-    <span class="sho-chip sho-chip--{{ 'online' if t.status == 'done' else 'offline' }} wk-status">{{ t.status }}</span>
-  </div>
+  <details class="wk-task-d">
+    <summary class="wk-task {{ 'done' if t.done }}">
+      <span class="wk-box {{ 'done' if t.done }}"></span>
+      <span class="wk-tname">{{ t.name }}</span>
+      {% if t.project %}<span class="wk-tproj">{{ t.project }}</span>{% else %}<span class="wk-tproj">— {{ t.category }}</span>{% endif %}
+      <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
+      <span class="sho-chip sho-chip--{{ 'online' if t.status == 'done' else 'offline' }} wk-status">{{ t.status }}</span>
+      <span class="wk-edit-hint" aria-hidden="true">排程</span>
+    </summary>
+
+    <div class="wk-plan-edit">
+      {# existing plan entries this week — each removable #}
+      {% set wk_entries = t.plan | selectattr('date', 'ge', view.week.start) | selectattr('date', 'le', view.week.end) | list %}
+      <div class="wk-plan-list">
+        {% for a in wk_entries %}
+          <form class="wk-plan-chip {{ 'has-reason' if a.reason }}" method="post" action="/bridge/weekly/plan/remove">
+            <input type="hidden" name="task_slug" value="{{ t.slug }}">
+            <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
+            <input type="hidden" name="week" value="{{ view.week.file_key }}">
+            <span class="wk-chip-day">{{ a.date.strftime('%m/%d') }}</span>
+            <span class="wk-chip-pom">{{ a.pomodoros }}🍅</span>
+            {% if a.reason %}<span class="wk-chip-reason" title="{{ a.reason }}">⚠</span>{% endif %}
+            <button class="wk-chip-x" type="submit" aria-label="移除 {{ a.date.strftime('%m/%d') }} 的排程">✕</button>
+          </form>
+        {% else %}
+          <span class="wk-plan-none">本週尚未排入。</span>
+        {% endfor %}
+      </div>
+
+      {# add / update an entry (same date → updates) #}
+      <form class="wk-plan-add" method="post" action="/bridge/weekly/plan">
+        <input type="hidden" name="task_slug" value="{{ t.slug }}">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        <select class="wk-day-sel" name="entry_date" aria-label="排程日">
+          {% for h in view.day_headers %}
+            <option value="{{ h.date }}" data-weekend="{{ '1' if h.is_weekend else '' }}" {{ 'selected' if h.is_today }}>{{ h.zh }} {{ h.date[5:7] }}/{{ h.date[8:] }}{{ ' · 週末' if h.is_weekend }}</option>
+          {% endfor %}
+        </select>
+        <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="2" aria-label="番茄數">🍅</label>
+        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+        <button class="sho-btn wk-plan-go" type="submit">排入</button>
+      </form>
+
+      {# explicit scheduled← next-plan sync (D4: never auto-rewritten) #}
+      <form class="wk-sync" method="post" action="/bridge/weekly/sync-scheduled">
+        <input type="hidden" name="task_slug" value="{{ t.slug }}">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        <button class="sho-btn--ghost wk-sync-go" type="submit"
+                title="把 scheduled 設成最近一筆排程日（今天起算）—— Nami 行事曆同步會抓這個欄位">
+          scheduled → 最近排程日{% if t.scheduled %} <span class="wk-mut">(現 {{ t.scheduled.strftime('%m/%d') }})</span>{% endif %}
+        </button>
+      </form>
+    </div>
+  </details>
 {% endmacro %}
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -35,6 +82,10 @@
   {% endif %}
 
   <section class="wk-screen">
+
+    {% if error_msg %}
+      <div class="wk-toast" role="alert">⚠ {{ error_msg }}</div>
+    {% endif %}
 
     {# ── sticky header: week nav + hero ── #}
     <div class="wk-head">
@@ -220,6 +271,31 @@
         });
       });
     });
+  })();
+
+  /* Plan-add forms: reveal + require the reason field only when a weekend day
+     is picked (D9). Server still enforces — this is the client-side gate. */
+  (function () {
+    function sync(form) {
+      var sel = form.querySelector('.wk-day-sel');
+      var reason = form.querySelector('.wk-reason-field');
+      if (!sel || !reason) return;
+      var opt = sel.options[sel.selectedIndex];
+      var weekend = opt && opt.getAttribute('data-weekend');
+      form.classList.toggle('is-weekend', !!weekend);
+      reason.required = !!weekend;
+    }
+    document.querySelectorAll('.wk-plan-add').forEach(function (form) {
+      var sel = form.querySelector('.wk-day-sel');
+      if (sel) sel.addEventListener('change', function () { sync(form); });
+      sync(form);
+    });
+  })();
+
+  /* Dismiss the error toast on click (the ?err= stays in the URL until reload). */
+  (function () {
+    var toast = document.querySelector('.wk-toast');
+    if (toast) toast.addEventListener('click', function () { toast.remove(); });
   })();
   </script>
 </body>
