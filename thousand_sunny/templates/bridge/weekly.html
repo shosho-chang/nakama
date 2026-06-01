@@ -3,7 +3,7 @@
     <summary class="wk-task {{ 'done' if t.done }}">
       <span class="wk-box {{ 'done' if t.done }}"></span>
       <span class="wk-tname">{{ t.name }}</span>
-      {% if t.project %}<span class="wk-tproj">{{ t.project }}</span>{% else %}<span class="wk-tproj">— {{ t.category }}</span>{% endif %}
+      <span class="wk-tproj">{{ t.category_label }}{% if t.project %} · {{ t.project }}{% endif %}</span>
       <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
       <span class="sho-chip sho-chip--{{ 'online' if t.status == 'done' else 'offline' }} wk-status">{{ t.status }}</span>
       <span class="wk-edit-hint" aria-hidden="true">排程</span>
@@ -101,21 +101,12 @@
         {% if view.mode == 'review' %}
           <span class="sho-chip sho-chip--hold">⚠ 待回顧</span>
         {% endif %}
-        <div class="wk-hero-metric">
-          <span class="wk-metalabel">預計</span>
-          <span class="sho-readout"><span class="val">{{ view.planned }}</span><span class="unit">🍅</span></span>
-        </div>
-        <div class="wk-hero-metric">
-          <span class="wk-metalabel">實際</span>
-          <span class="sho-readout"><span class="val">{{ view.actual.total_pomodoros }}</span><span class="unit">🍅</span></span>
-        </div>
-        <div class="wk-hero-metric">
-          <span class="wk-metalabel">執行率</span>
-          <div class="wk-rate-row">
-            <div class="sho-gauge"><div class="sho-gauge-fill wk-gfill" style="width: {{ [view.rate_pct, 100] | min }}%"></div></div>
-            <span class="wk-pct">{{ view.rate_pct }}%</span>
-          </div>
-        </div>
+        <span class="wk-hero-count"
+              aria-label="本週工作 已完成 {{ view.actual.total_pomodoros }} 番茄，預計 {{ view.planned }} 番茄"
+              title="本週工作時數（🍅）— 已完成 / 預計">
+          <span class="wk-tomato" aria-hidden="true">🍅</span>
+          <span class="wk-hc-actual">{{ view.actual.total_pomodoros }}</span><span class="wk-hc-sep">/</span><span class="wk-hc-plan">{{ view.planned }}</span>
+        </span>
       </div>
     </div>
 
@@ -192,29 +183,67 @@
         </div>
       </div>
 
-      {# ── daily bullet grid (Sun→Sat) ── #}
+      {# ── daily cards (Mon→Fri) — today open by default, others toggle ── #}
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">每日 · Bullet</span></div>
-        <div class="sho-grid-strip wk-daily">
-          <div class="sho-grid-cell gc-rowlabel"></div>
-          {% for h in view.day_headers %}
-            <div class="sho-grid-cell gc-dayhead {{ 'gc-weekend' if h.is_weekend }} {{ 'gc-today' if h.is_today }}">{{ h.zh }}</div>
-          {% endfor %}
-          {% for cat in ['工作','運動','冥想','雜事'] %}
-            <div class="sho-grid-cell gc-rowlabel">{{ cat }}</div>
-            {% for cell in view.grid[cat] %}
-              {% if cat in ['運動','冥想'] %}
-                <div class="sho-grid-cell {{ 'gc-weekend' if cell.is_weekend }} {{ 'gc-dim' if not cell.minutes }}">{{ cell.minutes if cell.minutes else '·' }}</div>
-              {% else %}
-                <div class="sho-grid-cell {{ 'gc-weekend' if cell.is_weekend }} {{ 'gc-dim' if cell.dim }}">
-                  {% if cell.reason %}<span class="wk-warn" title="{{ cell.reason }}">⚠ {{ cell.pomodoros }}</span>
-                  {% elif cell.pomodoros %}<span class="wk-cell-dots">{% for _ in range(cell.pomodoros) %}<i></i>{% endfor %}</span>
-                  {% elif cell.dim %}—{% else %}·{% endif %}
-                </div>
-              {% endif %}
-            {% endfor %}
+        <div class="wk-zone-head"><span class="nk-caps">每日 · 週一–五</span></div>
+        <div class="wk-days">
+          {% for day in view.days %}
+            <details class="wk-day {{ 'is-today' if day.is_today }}" {{ 'open' if day.default_open }}>
+              <summary class="wk-day-head">
+                <span class="wk-day-when">
+                  <span class="wk-day-wd">{{ day.weekday_zh }}</span>
+                  <span class="wk-day-md">{{ day.md }}</span>
+                  {% if day.is_today %}<span class="wk-day-now">今天</span>{% endif %}
+                </span>
+                <span class="wk-day-pom">
+                  {% if day.work_pomodoros %}<span class="wk-tomato" aria-hidden="true">🍅</span> {{ day.work_pomodoros }}{% elif day.task_count %}<span class="wk-mut">無工作排程</span>{% else %}<span class="wk-mut">休息</span>{% endif %}
+                </span>
+                <span class="wk-day-caret" aria-hidden="true">▸</span>
+              </summary>
+              <div class="wk-day-body">
+                {% for cat in day.categories %}
+                  <div class="wk-catcol">
+                    <div class="wk-cat-label">{{ cat.label }}</div>
+                    {% if cat['items'] %}
+                      <ul class="wk-cat-items">
+                        {% for it in cat['items'] %}
+                          <li class="wk-cat-item {{ 'done' if it.done }}">
+                            {% if cat.is_work %}
+                              <span class="wk-ci-dots" aria-hidden="true">{% for _ in range(it.pomodoros) %}<i></i>{% endfor %}</span>
+                              <span class="wk-ci-name">{{ it.name }}</span>
+                              <span class="wk-ci-pom">{{ it.pomodoros }}🍅</span>
+                            {% else %}
+                              <span class="wk-ci-box" aria-hidden="true">{{ '☑' if it.done else '☐' }}</span>
+                              <span class="wk-ci-name">{{ it.name }}</span>
+                            {% endif %}
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      <span class="wk-cat-empty">—</span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </details>
           {% endfor %}
         </div>
+      </div>
+
+      {# ── all open tasks (backlog) ── #}
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="nk-caps">未完成任務</span>
+          <span class="wk-mut">{{ view.open_tasks | length }}</span></div>
+        {% for t in view.open_tasks %}
+          <div class="wk-open">
+            <span class="wk-box"></span>
+            <span class="wk-tname">{{ t.name }}</span>
+            <span class="wk-open-cat sho-chip sho-chip--offline">{{ t.category_label }}</span>
+            <span class="wk-open-when">{% if t.scheduled %}{{ t.scheduled.strftime('%m/%d') }}{% else %}未排程{% endif %}</span>
+          </div>
+        {% else %}
+          <p class="wk-empty">沒有未完成任務 🎉</p>
+        {% endfor %}
       </div>
 
       {# ── review (pending until week-end) ── #}
@@ -243,17 +272,6 @@
       </div>
 
     {% endif %}
-
-    {# ── pomodoro dock (display-only in Slice 0) ── #}
-    <div class="wk-dock">
-      {% set lead = view.tasks[0] if view.tasks else none %}
-      <span class="dk-proj">🎬 {{ lead.project if lead and lead.project else 'Weekly' }}</span>
-      <select class="dk-sel" aria-label="作用中任務" disabled>
-        {% for t in view.tasks %}<option>{{ t.name }}</option>{% else %}<option>尚未選擇</option>{% endfor %}
-      </select>
-      <span class="dk-timer"><span class="ic">▶</span><span class="dk-time">25:00</span></span>
-      <span class="dk-roll">🍅 <b>{{ view.actual.total_pomodoros }}</b> <span class="mut">/ {{ view.planned }}</span></span>
-    </div>
 
   </section>
   </main>

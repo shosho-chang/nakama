@@ -71,6 +71,7 @@ def vault(tmp_path):
         {
             "title": "肌酸的妙用 - Pre-production",
             "projects": ["[[肌酸的妙用]]"],
+            "category": "work",
             "預估🍅": 2,
             "scheduled": "2026-06-01T10:00:00",
             "status": "to-do",
@@ -83,6 +84,7 @@ def vault(tmp_path):
         {
             "title": "蛋白質攝取量 - Synthesis",
             "projects": ["[[蛋白質攝取量]]"],
+            "category": "work",
             "預估🍅": 5,
             "scheduled": "2026-04-01T10:00:00",
             "status": "to-do",
@@ -129,32 +131,52 @@ def test_view_assembles_real_counts(vault, monkeypatch):
     assert v.week.label == "W23"
     assert v.is_current is True
     assert v.mode == "active"
-    # planned = 肌酸(2, scheduled in week) + 倒垃圾(1, scheduled in week); 蛋白質(4/01) out of week
-    assert v.planned == 3
+    # planned = work-only: 肌酸(2, scheduled in week). 倒垃圾 is misc (no 🍅);
+    # 蛋白質(4/01) out of week.
+    assert v.planned == 2
     assert v.actual.total_pomodoros == 1  # one 25-min daily work session
-    assert v.rate_pct == 33  # round(100 * 1/3)
+    assert v.rate_pct == 50  # round(100 * 1/2)
     assert {t.slug for t in v.tasks} == {"肌酸的妙用 - Pre-production", "倒垃圾"}
     # incomplete (not done, scheduled <= week end): 肌酸 + 蛋白質 (倒垃圾 is done)
     assert {t.slug for t in v.incomplete} == {
         "肌酸的妙用 - Pre-production",
         "蛋白質攝取量 - Synthesis",
     }
-    # category: 肌酸 has a project → 工作; 倒垃圾 has none → 雜事
+    # category from frontmatter: 肌酸 → work; 倒垃圾 (no category) → misc default
     work = next(t for t in v.tasks if t.slug.startswith("肌酸"))
     misc = next(t for t in v.tasks if t.slug == "倒垃圾")
-    assert (work.category, misc.category) == ("工作", "雜事")
+    assert (work.category, misc.category) == ("work", "misc")
+    assert (work.is_work, misc.is_work) == (True, False)
 
 
-def test_grid_places_pomodoros_and_habits(vault, monkeypatch):
+def test_days_place_tasks_by_category(vault, monkeypatch):
     monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
     v = WeeklyIndexer(vault).view(week_for_date(date(2026, 6, 1)))
-    # day index: 0=Sun(5/31) 1=Mon(6/1) 2=Tue(6/2) ...
-    assert v.grid["工作"][1]["pomodoros"] == 2  # 肌酸 scheduled Mon 6/1
-    assert v.grid["雜事"][2]["pomodoros"] == 1  # 倒垃圾 scheduled Tue 6/2
-    assert v.grid["運動"][1]["minutes"] == 30
-    assert v.grid["冥想"][1]["minutes"] == 10
+    # daily cards = Mon..Fri (5), not the 7-day grid
+    assert len(v.days) == 5
+    mon, tue = v.days[0], v.days[1]
+    assert (mon["date"], tue["date"]) == ("2026-06-01", "2026-06-02")
+    # 肌酸 (work, 2🍅) lands on Mon under the work category
+    assert mon["work_pomodoros"] == 2
+    work_cat = next(c for c in mon["categories"] if c["slug"] == "work")
+    assert any(it["slug"].startswith("肌酸") and it["pomodoros"] == 2 for it in work_cat["items"])
+    # 倒垃圾 (misc) lands on Tue under misc, carries no 🍅
+    misc_cat = next(c for c in tue["categories"] if c["slug"] == "misc")
+    assert any(it["slug"] == "倒垃圾" and it["pomodoros"] == 0 for it in misc_cat["items"])
+    assert tue["work_pomodoros"] == 0
+    # editor day-select still spans all 7 days incl weekends
     assert v.day_headers[0]["is_weekend"] is True  # Sun
     assert v.day_headers[6]["is_weekend"] is True  # Sat
+
+
+def test_open_tasks_lists_all_incomplete(vault, monkeypatch):
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    v = WeeklyIndexer(vault).view(week_for_date(date(2026, 6, 1)))
+    # all not-done tasks regardless of week (倒垃圾 is done → excluded)
+    slugs = {t.slug for t in v.open_tasks}
+    assert "肌酸的妙用 - Pre-production" in slugs
+    assert "蛋白質攝取量 - Synthesis" in slugs  # out-of-week but still open
+    assert "倒垃圾" not in slugs
 
 
 def test_past_week_without_review_is_review_mode(vault, monkeypatch):

@@ -35,7 +35,16 @@ TASKS_DIR = "TaskNotes/Tasks"
 DAILY_DIR = "Journals/Daily"
 WEEKLY_DIR = "Journals/Weekly"
 
-CATEGORIES = ("工作", "運動", "冥想", "雜事")
+# Task category model (ADR-039): a single frontmatter ``category:`` slug per task.
+# Only ``work`` tracks pomodoros (🍅 = work hours, anti-burnout). The set is
+# open-ended — unknown slugs render after the canonical order; a missing/blank
+# ``category`` falls back to ``misc``. Stored value is an English slug; the UI
+# renders the 中文 label from this map (rename display without touching data).
+CATEGORY_LABELS = {"work": "工作", "health": "身心健康", "growth": "自我進修", "misc": "雜事"}
+CATEGORY_ORDER = ("work", "health", "growth", "misc")
+WORK_CATEGORY = "work"
+DEFAULT_CATEGORY = "misc"
+
 _ZH_WEEKDAYS = ("日", "一", "二", "三", "四", "五", "六")  # Sun..Sat
 
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
@@ -194,6 +203,20 @@ class WeeklyTask:
             return self.est_pomodoros
         return 0
 
+    @property
+    def is_work(self) -> bool:
+        return self.category == WORK_CATEGORY
+
+    @property
+    def category_label(self) -> str:
+        return CATEGORY_LABELS.get(self.category, self.category)
+
+    def is_on(self, d: date) -> bool:
+        """True if this task is assigned to day ``d`` (plan entry or scheduled)."""
+        if self.plan:
+            return any(a.date == d for a in self.plan)
+        return self.scheduled == d
+
 
 @dataclass(frozen=True)
 class DailyHabit:
@@ -232,9 +255,10 @@ class WeeklyView:
     today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
     incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
     by_project: dict[str, list[WeeklyTask]]
-    planned_by_task: dict[str, int]  # slug -> planned 🍅 this week
-    grid: dict[str, list[dict]]  # category -> 7 day-cells (Sun..Sat)
-    day_headers: list[dict]  # 7 entries: {zh, date, is_weekend, is_today}
+    planned_by_task: dict[str, int]  # slug -> planned 🍅 this week (work only)
+    days: tuple[dict, ...]  # 5 day-cards Mon..Fri (the bullet section)
+    day_headers: list[dict]  # 7 entries {zh, date, is_weekend, is_today} — editor day-select
+    open_tasks: tuple[WeeklyTask, ...]  # all not-done tasks (backlog view)
     review: Optional[WeeklyReview]
     conflicts: tuple[ConflictFile, ...]
     prev_key: str
@@ -323,7 +347,10 @@ class WeeklyIndexer:
         if not isinstance(time_entries, list):
             time_entries = []
 
-        category = "工作" if project else "雜事"
+        cat_raw = fm.get("category")
+        category = str(cat_raw).strip() if cat_raw is not None else ""
+        if not category:
+            category = DEFAULT_CATEGORY
 
         return WeeklyTask(
             slug=slug,
@@ -442,16 +469,16 @@ class WeeklyIndexer:
             t for t in all_tasks if not t.done and t.scheduled is not None and t.scheduled <= wk.end
         ]
 
-        planned = sum(t.planned_in(wk) for t in all_tasks)
+        # 🍅 = work hours: only `work`-category tasks count toward planned/actual.
+        planned = sum(t.planned_in(wk) for t in all_tasks if t.is_work)
         actual = weekly_actual(
             self._root,
             wk.start,
             wk.end,
-            task_time_entries=[(t.slug, t.time_entries) for t in all_tasks],
+            task_time_entries=[(t.slug, t.time_entries) for t in all_tasks if t.is_work],
         )
         rate = int(round(100 * actual.total_pomodoros / planned)) if planned else 0
 
-        habits = self.read_habits(wk)
         review = self.read_review(wk)
 
         # mode: review when looking at a past week that isn't yet reviewed
@@ -463,8 +490,13 @@ class WeeklyIndexer:
         for t in in_week:
             by_project.setdefault(t.project or "（無專案）", []).append(t)
 
-        grid, day_headers = self._build_grid(wk, in_week, habits, today)
+        day_headers = self._build_day_headers(wk, today)
+        days = self._build_days(wk, in_week, today)
         today_tasks = tuple(t for t in in_week if today in t.dates_in(wk))
+        open_tasks = sorted(
+            (t for t in all_tasks if not t.done),
+            key=lambda t: (t.scheduled is None, t.scheduled or date.max, t.title),
+        )
 
         return WeeklyView(
             week=wk,
@@ -478,50 +510,82 @@ class WeeklyIndexer:
             incomplete=tuple(incomplete),
             by_project=by_project,
             planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
-            grid=grid,
+            days=days,
             day_headers=day_headers,
+            open_tasks=tuple(open_tasks),
             review=review,
             conflicts=tuple(self.list_conflicts()),
             prev_key=wk.shift(-1).file_key,
             next_key=wk.shift(1).file_key,
         )
 
-    def _build_grid(
-        self, wk: WeekRef, tasks: list[WeeklyTask], habits: dict[date, DailyHabit], today: date
-    ) -> tuple[dict[str, list[dict]], list[dict]]:
-        days = [wk.start + timedelta(days=i) for i in range(7)]
-        day_headers = [
+    def _build_day_headers(self, wk: WeekRef, today: date) -> list[dict]:
+        """7 day descriptors (Sun..Sat) — feeds the plan-editor day <select>."""
+        return [
             {
                 "zh": _ZH_WEEKDAYS[i],
-                "date": d.isoformat(),
+                "date": (wk.start + timedelta(days=i)).isoformat(),
                 "is_weekend": i in (0, 6),  # Sun, Sat
-                "is_today": d == today,
+                "is_today": (wk.start + timedelta(days=i)) == today,
             }
-            for i, d in enumerate(days)
+            for i in range(7)
         ]
-        grid: dict[str, list[dict]] = {c: [] for c in CATEGORIES}
-        for i, d in enumerate(days):
-            is_weekend = i in (0, 6)
-            hab = habits.get(d, DailyHabit())
-            # 工作 / 雜事 — scheduled task pomodoros that day, by category
-            for cat in ("工作", "雜事"):
-                cat_tasks = [t for t in tasks if t.category == cat]
-                pom = sum(t.pomodoros_on(d) for t in cat_tasks)
-                # weekend-work reason marker (ADR-039 D9): any plan entry that day with a reason
-                reason = ""
-                if cat == "工作" and is_weekend:
-                    for t in cat_tasks:
-                        for a in t.plan:
-                            if a.date == d and a.reason:
-                                reason = a.reason
-                grid[cat].append(
+
+    def _build_days(self, wk: WeekRef, tasks: list[WeeklyTask], today: date) -> tuple[dict, ...]:
+        """5 day-cards (Mon..Fri). Each card groups that day's assigned tasks by
+        category in canonical order (unknown slugs appended); only ``work`` items
+        carry a 🍅 count. ``default_open`` marks today (or Monday if today ∉ week).
+        """
+        cards: list[dict] = []
+        has_today = False
+        for i in range(1, 6):  # Mon..Fri (0=Sun, 6=Sat in this Sunday-start model)
+            d = wk.start + timedelta(days=i)
+            on = [t for t in tasks if t.is_on(d)]
+            work_pom = sum(t.pomodoros_on(d) for t in on if t.is_work)
+            # weekend never reaches here (Mon-Fri only), so no D9 reason marker needed
+            by_cat: dict[str, list[WeeklyTask]] = {}
+            for t in on:
+                by_cat.setdefault(t.category, []).append(t)
+            ordered = list(CATEGORY_ORDER) + [c for c in by_cat if c not in CATEGORY_ORDER]
+            seen: set[str] = set()
+            categories: list[dict] = []
+            for slug in ordered:
+                if slug in seen:
+                    continue
+                seen.add(slug)
+                is_work = slug == WORK_CATEGORY
+                items = [
                     {
-                        "pomodoros": pom,
-                        "is_weekend": is_weekend,
-                        "dim": is_weekend and cat == "工作" and not reason and pom == 0,
-                        "reason": reason,
+                        "name": t.name,
+                        "slug": t.slug,
+                        "pomodoros": t.pomodoros_on(d) if is_work else 0,
+                        "done": t.done,
+                        "relative_path": t.relative_path,
+                    }
+                    for t in by_cat.get(slug, [])
+                ]
+                categories.append(
+                    {
+                        "slug": slug,
+                        "label": CATEGORY_LABELS.get(slug, slug),
+                        "is_work": is_work,
+                        "items": items,
                     }
                 )
-            grid["運動"].append({"minutes": hab.exercise_minutes, "is_weekend": is_weekend})
-            grid["冥想"].append({"minutes": hab.meditation_minutes, "is_weekend": is_weekend})
-        return grid, day_headers
+            is_today = d == today
+            has_today = has_today or is_today
+            cards.append(
+                {
+                    "weekday_zh": _ZH_WEEKDAYS[i],
+                    "date": d.isoformat(),
+                    "md": f"{d.month}/{d.day}",
+                    "is_today": is_today,
+                    "work_pomodoros": work_pom,
+                    "task_count": len(on),
+                    "categories": categories,
+                }
+            )
+        # default-open: today's card, else Monday (first) when today ∉ Mon–Fri
+        for idx, c in enumerate(cards):
+            c["default_open"] = c["is_today"] if has_today else (idx == 0)
+        return tuple(cards)
