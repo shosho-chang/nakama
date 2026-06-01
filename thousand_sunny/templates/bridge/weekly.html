@@ -153,36 +153,6 @@
     {# ════════ ACTIVE MODE (current / future week) ════════ #}
     {% else %}
 
-      <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">任務</span>
-          <div class="wk-tabs" role="tablist">
-            <button class="wk-tab is-on" data-tab="today" type="button">今日</button>
-            <button class="wk-tab" data-tab="week" type="button">整週</button>
-            <button class="wk-tab" data-tab="project" type="button">按專案</button>
-          </div>
-        </div>
-
-        <div class="wk-tabpane" data-pane="today">
-          {% for t in view.today_tasks %}{{ task_row(t, view) }}{% else %}
-            <p class="wk-empty">今天沒有排定的任務。</p>{% endfor %}
-        </div>
-        <div class="wk-tabpane is-hidden" data-pane="week">
-          {% for t in view.tasks %}{{ task_row(t, view) }}{% else %}
-            <p class="wk-empty">本週尚無排程 — 從上週未完成任務帶過來，或在 Obsidian 指定 scheduled。</p>{% endfor %}
-        </div>
-        <div class="wk-tabpane is-hidden" data-pane="project">
-          {% for proj, tasks in view.by_project.items() %}
-            <div class="wk-projgroup">
-              <div class="wk-projname">{{ proj }}
-                <span class="wk-mut">{{ tasks | sum(attribute='est_pomodoros') }}🍅 估</span></div>
-              {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
-            </div>
-          {% else %}
-            <p class="wk-empty">本週尚無排程。</p>
-          {% endfor %}
-        </div>
-      </div>
-
       {# ── daily cards (Mon→Fri) — today open by default, others toggle ── #}
       <div class="wk-zone">
         <div class="wk-zone-head"><span class="nk-caps">每日 · 週一–五</span></div>
@@ -230,20 +200,35 @@
         </div>
       </div>
 
-      {# ── all open tasks (backlog) ── #}
+      {# ── task list + scheduler (below the daily cards) ── #}
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">未完成任務</span>
-          <span class="wk-mut">{{ view.open_tasks | length }}</span></div>
-        {% for t in view.open_tasks %}
-          <div class="wk-open">
-            <span class="wk-box"></span>
-            <span class="wk-tname">{{ t.name }}</span>
-            <span class="wk-open-cat sho-chip sho-chip--offline">{{ t.category_label }}</span>
-            <span class="wk-open-when">{% if t.scheduled %}{{ t.scheduled.strftime('%m/%d') }}{% else %}未排程{% endif %}</span>
+        <div class="wk-zone-head"><span class="nk-caps">任務</span>
+          <div class="wk-tabs" role="tablist">
+            <button class="wk-tab is-on" data-tab="today" type="button">今日</button>
+            <button class="wk-tab" data-tab="week" type="button">整週</button>
+            <button class="wk-tab" data-tab="project" type="button">按專案</button>
           </div>
-        {% else %}
-          <p class="wk-empty">沒有未完成任務 🎉</p>
-        {% endfor %}
+        </div>
+
+        <div class="wk-tabpane" data-pane="today">
+          {% for t in view.today_tasks %}{{ task_row(t, view) }}{% else %}
+            <p class="wk-empty">今天沒有排定的任務。</p>{% endfor %}
+        </div>
+        <div class="wk-tabpane is-hidden" data-pane="week">
+          {% for t in view.tasks %}{{ task_row(t, view) }}{% else %}
+            <p class="wk-empty">本週尚無排程 — 在卡片排入，或在 Obsidian 指定 scheduled。</p>{% endfor %}
+        </div>
+        <div class="wk-tabpane is-hidden" data-pane="project">
+          {% for proj, tasks in view.by_project.items() %}
+            <div class="wk-projgroup">
+              <div class="wk-projname">{{ proj }}
+                <span class="wk-mut">{{ tasks | sum(attribute='est_pomodoros') }}🍅 估</span></div>
+              {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
+            </div>
+          {% else %}
+            <p class="wk-empty">本週尚無排程。</p>
+          {% endfor %}
+        </div>
       </div>
 
       {# ── review (pending until week-end) ── #}

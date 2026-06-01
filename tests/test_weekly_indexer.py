@@ -169,16 +169,6 @@ def test_days_place_tasks_by_category(vault, monkeypatch):
     assert v.day_headers[6]["is_weekend"] is True  # Sat
 
 
-def test_open_tasks_lists_all_incomplete(vault, monkeypatch):
-    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
-    v = WeeklyIndexer(vault).view(week_for_date(date(2026, 6, 1)))
-    # all not-done tasks regardless of week (倒垃圾 is done → excluded)
-    slugs = {t.slug for t in v.open_tasks}
-    assert "肌酸的妙用 - Pre-production" in slugs
-    assert "蛋白質攝取量 - Synthesis" in slugs  # out-of-week but still open
-    assert "倒垃圾" not in slugs
-
-
 def test_past_week_without_review_is_review_mode(vault, monkeypatch):
     monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 10))  # W24 → W23 is past
     v = WeeklyIndexer(vault).view(week_for_date(date(2026, 6, 1)))

@@ -150,16 +150,6 @@ body.sho .wk-ci-dots i { width: 6px; height: 6px; border-radius: 50%; background
 body.sho .wk-ci-pom { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 body.sho .wk-ci-box { color: var(--sho-text-2); flex-shrink: 0; }
 
-/* ── open tasks (backlog) ── */
-body.sho .wk-open { display: flex; align-items: center; gap: 12px; padding: 8px 6px; border-bottom: 1px solid var(--sho-line); }
-body.sho .wk-open:last-child { border-bottom: 0; }
-body.sho .wk-open .wk-tname { flex: 1 1 auto; min-width: 0; }
-body.sho .wk-open-cat { text-transform: none; flex-shrink: 0; }
-body.sho .wk-open-when {
-  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted);
-  flex-shrink: 0; min-width: 48px; text-align: right;
-}
-
 /* ── carry-forward + review ── */
 body.sho .wk-cf { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-bottom: 1px solid var(--sho-line); }
 body.sho .wk-cf:last-child { border-bottom: 0; }

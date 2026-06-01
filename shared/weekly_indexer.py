@@ -258,7 +258,6 @@ class WeeklyView:
     planned_by_task: dict[str, int]  # slug -> planned 🍅 this week (work only)
     days: tuple[dict, ...]  # 5 day-cards Mon..Fri (the bullet section)
     day_headers: list[dict]  # 7 entries {zh, date, is_weekend, is_today} — editor day-select
-    open_tasks: tuple[WeeklyTask, ...]  # all not-done tasks (backlog view)
     review: Optional[WeeklyReview]
     conflicts: tuple[ConflictFile, ...]
     prev_key: str
@@ -493,10 +492,6 @@ class WeeklyIndexer:
         day_headers = self._build_day_headers(wk, today)
         days = self._build_days(wk, in_week, today)
         today_tasks = tuple(t for t in in_week if today in t.dates_in(wk))
-        open_tasks = sorted(
-            (t for t in all_tasks if not t.done),
-            key=lambda t: (t.scheduled is None, t.scheduled or date.max, t.title),
-        )
 
         return WeeklyView(
             week=wk,
@@ -512,7 +507,6 @@ class WeeklyIndexer:
             planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
             days=days,
             day_headers=day_headers,
-            open_tasks=tuple(open_tasks),
             review=review,
             conflicts=tuple(self.list_conflicts()),
             prev_key=wk.shift(-1).file_key,
