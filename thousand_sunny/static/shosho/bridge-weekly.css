@@ -145,9 +145,6 @@ body.sho .wk-cat-items { list-style: none; margin: 0; padding: 0; display: flex;
 body.sho .wk-cat-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sho-text); min-width: 0; }
 body.sho .wk-cat-item.done .wk-ci-name { color: var(--sho-muted); text-decoration: line-through; }
 body.sho .wk-ci-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-body.sho .wk-ci-dots { display: inline-flex; gap: 2px; flex-shrink: 0; }
-body.sho .wk-ci-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--sho-text-2); display: inline-block; }
-body.sho .wk-ci-pom { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 body.sho .wk-ci-box { color: var(--sho-text-2); flex-shrink: 0; }
 
 /* ── carry-forward + review ── */

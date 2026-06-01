@@ -178,14 +178,8 @@
                       <ul class="wk-cat-items">
                         {% for it in cat['items'] %}
                           <li class="wk-cat-item {{ 'done' if it.done }}">
-                            {% if cat.is_work %}
-                              <span class="wk-ci-dots" aria-hidden="true">{% for _ in range(it.pomodoros) %}<i></i>{% endfor %}</span>
-                              <span class="wk-ci-name">{{ it.name }}</span>
-                              <span class="wk-ci-pom">{{ it.pomodoros }}🍅</span>
-                            {% else %}
-                              <span class="wk-ci-box" aria-hidden="true">{{ '☑' if it.done else '☐' }}</span>
-                              <span class="wk-ci-name">{{ it.name }}</span>
-                            {% endif %}
+                            <span class="wk-ci-box" aria-hidden="true">{{ '☑' if it.done else '☐' }}</span>
+                            <span class="wk-ci-name">{{ it.name }}</span>
                           </li>
                         {% endfor %}
                       </ul>
