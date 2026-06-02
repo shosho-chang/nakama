@@ -9,6 +9,7 @@ Subcommands:
 - emit: storyboard.yaml + rendered mp4s → episode.fcpxml (PR-4)
 - run: plan → render → emit end-to-end
 - diff: storyboard A vs storyboard B → Myers-style LCS +/-/= rows (ADR-038 §D7)
+- replan-beat: single-beat LLM tool-call re-plan (ADR-038 §D3 + §D6)
 """
 
 from __future__ import annotations
@@ -274,6 +275,63 @@ def _cmd_diff(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_replan_beat(args: argparse.Namespace) -> int:
+    """LLM tool-call re-plan of a single beat (ADR-038 §D3 + §D6).
+
+    Loads ``data/script_video/<episode>/storyboard.yaml``, runs the bounded
+    tool-call agent against ``--beat`` with ``--note``, applies the returned
+    BeatEdit list via the pure engine, and writes the result back. Also
+    records the edit in the episode's edit_log (action=``replan``) with both
+    LCS diff (§D7) and typed ``edit_ops`` (§D3).
+    """
+    from agents.foundry import beat_editor, edit_log, replan_agent
+
+    ep_dir = _episode_dir(args.episode)
+    storyboard_path = ep_dir / "storyboard.yaml"
+    storyboard = yaml.safe_load(storyboard_path.read_text(encoding="utf-8")) or []
+    if not isinstance(storyboard, list):
+        raise ValueError(f"{storyboard_path}: expected list of beats")
+
+    before_beat = next((b for b in storyboard if b.get("beat_id") == args.beat), None)
+    if before_beat is None:
+        logger.error("replan-beat: beat %d not found in %s", args.beat, storyboard_path)
+        return 1
+    before_payload = {
+        "layout": before_beat.get("layout"),
+        "broll": before_beat.get("broll"),
+    }
+    storyboard_before = [dict(b) for b in storyboard]
+
+    result = replan_agent.run(storyboard, args.beat, args.note)
+    logger.info(
+        "replan_agent: %d edits, %d iterations, %d tokens, reason=%s",
+        len(result.edits),
+        result.iterations,
+        result.tokens_used,
+        result.terminated_reason,
+    )
+    if result.edits:
+        storyboard = beat_editor.apply_edits(storyboard, result.edits)
+        storyboard_path.write_text(
+            yaml.dump(storyboard, allow_unicode=True, default_flow_style=False, sort_keys=False),
+            encoding="utf-8",
+        )
+
+    after_beat = next((b for b in storyboard if b.get("beat_id") == args.beat), before_beat)
+    edit_log.append_entry(
+        episode_id=args.episode,
+        beat_id=args.beat,
+        action="replan",
+        before=before_payload,
+        after={"layout": after_beat.get("layout"), "broll": after_beat.get("broll")},
+        user_note=args.note or None,
+        storyboard_before=storyboard_before,
+        storyboard_after=[dict(b) for b in storyboard],
+        edit_ops=[e.model_dump() for e in result.edits],
+    )
+    return 0
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     rc = _cmd_plan(args)
     if rc != 0:
@@ -332,6 +390,13 @@ def _build_parser() -> argparse.ArgumentParser:
     diff_sub.add_argument("a", help="storyboard A (before) yaml path")
     diff_sub.add_argument("b", help="storyboard B (after) yaml path")
     diff_sub.set_defaults(fn=_cmd_diff)
+    replan_sub = sub.add_parser(
+        "replan-beat",
+        help="LLM tool-call re-plan of a single beat (ADR-038 §D3 + §D6)",
+    )
+    replan_sub.add_argument("beat", type=int, help="beat_id to re-plan")
+    replan_sub.add_argument("--note", default="", help="user note describing the desired change")
+    replan_sub.set_defaults(fn=_cmd_replan_beat)
     return p
 
 
