@@ -30,15 +30,15 @@ from shared.weekly_indexer import (
     week_from_key,
 )
 from shared.weekly_writer import (
+    TaskNotFoundError,
     WeekendReasonRequired,
     WeeklyConflictError,
     WeeklyWriteError,
     add_plan_entry,
     log_time_entry,
-    read_task_body,
+    read_task_split,
     remove_plan_entry,
     sync_scheduled_to_next_plan,
-    task_file_token,
     weekly_file_token,
     write_task_body,
     write_weekly,
@@ -498,8 +498,14 @@ async def weekly_task_detail(
     actual_pom = actual.total_pomodoros
     accuracy_pct = int(round(100 * actual_pom / task.est_pomodoros)) if task.est_pomodoros else 0
 
-    # A7 (Slice W): the note body is an editable draft surface; carry an If-Match
-    # token so a save can't clobber an Obsidian edit made after the page loaded.
+    # A7 (Slice W): the note body is an editable draft surface. Read body + If-Match
+    # token from ONE snapshot (PR#812 panel) so the page can't pair a stale body with
+    # a fresher token. Body is passed verbatim — the template handles the textarea
+    # leading-newline gotcha; no strip().
+    try:
+        task_body, task_token = read_task_split(vault, task.slug)
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
     return _templates.TemplateResponse(
         request,
         "task.html",
@@ -509,8 +515,8 @@ async def weekly_task_detail(
             "accuracy_pct": accuracy_pct,
             "week_key": wk_key,
             "obsidian_uri": _obsidian_uri(vault, task.relative_path),
-            "task_body": read_task_body(vault, task.slug).strip("\n"),
-            "task_token": task_file_token(vault, task.slug),
+            "task_body": task_body,
+            "task_token": task_token,
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _TASK_ERRORS.get(err) if err else None,
             "saved_msg": _TASK_SAVED.get(saved) if saved else None,
@@ -538,6 +544,9 @@ async def weekly_task_body_save(
         write_task_body(get_vault_path(), slug, clean, expected_token=expected_token)
     except WeeklyConflictError:
         return _task_back(slug, wk_key, err="conflict")
+    except TaskNotFoundError:
+        # renamed/removed in Obsidian — bounce to the dashboard, mirror the GET path
+        return _back(wk_key, "task")
     except WeeklyWriteError as exc:
         logger.warning("weekly_task_body_save: %s", exc)
         return _task_back(slug, wk_key, err="write")

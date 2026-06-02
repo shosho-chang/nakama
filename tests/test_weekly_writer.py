@@ -545,6 +545,53 @@ class TestWriteTaskBody:
         new = write_task_body(vault, "測試任務", "different", expected_token=t0)
         assert new != t0  # content hash advanced
 
+    # ── PR#812 panel regressions — byte-splice frontmatter preservation ──────
+    def test_frontmatter_preserved_byte_for_byte(self, vault):
+        """Codex+Gemini: a body save must keep the frontmatter prefix verbatim —
+        comments, quoting, and key order survive (no PyYAML re-serialisation)."""
+        d = vault / TASKS_DIR
+        d.mkdir(parents=True, exist_ok=True)
+        original = '---\ntitle: 測試任務  # 不要動我\nstatus: "to-do"\n預估🍅: 6\n---\n\n舊內文\n'
+        path = d / "測試任務.md"
+        path.write_text(original, encoding="utf-8")
+        write_task_body(vault, "測試任務", "新內文")
+        raw = path.read_text(encoding="utf-8")
+        assert raw.startswith(
+            '---\ntitle: 測試任務  # 不要動我\nstatus: "to-do"\n預估🍅: 6\n---\n'
+        )  # comment + quotes intact
+        assert "新內文" in raw and "舊內文" not in raw
+
+    def test_crlf_frontmatter_preserved(self, vault):
+        """A CRLF-line-ending task file keeps its CRLF frontmatter — the old
+        LF-only path would have dropped the whole frontmatter (Gemini cascade)."""
+        d = vault / TASKS_DIR
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / "測試任務.md"
+        path.write_bytes("---\r\ntitle: 測試任務\r\n---\r\nold\r\n".encode("utf-8"))
+        write_task_body(vault, "測試任務", "new body")
+        raw = path.read_text(encoding="utf-8")
+        assert "title: 測試任務" in raw  # frontmatter NOT lost
+        assert "new body" in raw
+
+    def test_no_frontmatter_fails_closed(self, vault):
+        """A file with no parseable frontmatter must NOT be reinterpreted as body
+        and clobbered — it raises instead (the catastrophic-loss guard)."""
+        d = vault / TASKS_DIR
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / "測試任務.md"
+        path.write_text("just a plain note, no frontmatter\n", encoding="utf-8")
+        with pytest.raises(WeeklyWriteError):
+            write_task_body(vault, "測試任務", "x")
+        assert "just a plain note" in path.read_text(encoding="utf-8")  # untouched
+
+    def test_body_verbatim_roundtrip(self, vault):
+        """The body is stored verbatim (leading/trailing blank lines preserved),
+        only a single trailing newline is ensured."""
+        _make_task(vault, "測試任務", self._FM, body="x")
+        body = "\n# 標題\n\n段落\n\n- a\n- b\n"
+        write_task_body(vault, "測試任務", body)
+        assert read_task_body(vault, "測試任務") == body
+
     def test_rejects_non_allowlisted_frontmatter(self, vault):
         write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
         with pytest.raises(WeeklyWriteError):

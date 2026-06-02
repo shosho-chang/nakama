@@ -46,6 +46,11 @@ class WeekendReasonRequired(WeeklyWriteError):
     """Raised when a plan entry on Sat/Sun is submitted without a reason (D9)."""
 
 
+class TaskNotFoundError(WeeklyWriteError):
+    """The task file is gone (renamed/removed in Obsidian). Routed to an
+    err=task dashboard bounce rather than a generic write error (PR#812 panel)."""
+
+
 class WeeklyConflictError(WeeklyWriteError):
     """The weekly file changed between the page's read and this write (If-Match
     mtime mismatch). Surfaced to the route as a 409-style "reload and retry" —
@@ -161,11 +166,18 @@ def _plan_list(fm: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 # ── Task note body (ADR-040 A7 — scoped writing surface, Slice W) ───────────────
-# The task page is a scoped draft surface: 修修 writes the note BODY verbatim on
-# the page (his ask: drafting 本週電子報 on the task). TaskNotes is already 🟡 — no
-# red line — and there is NO LLM authorship (A1). Only the body is replaced; the
-# frontmatter is preserved untouched. Long-form prose is nudged into Obsidian via
-# the page's deep-link; this editor is for quick drafts / structured notes.
+# The task page is a scoped draft surface: 修修 writes the note BODY on the page
+# (his ask: drafting 本週電子報 on the task). TaskNotes is already 🟡 — no red line —
+# and there is NO LLM authorship (A1). This is a BODY-ONLY edit, so it must NOT go
+# through ``_write_task`` (which re-serialises frontmatter via PyYAML and would drop
+# the owner's comments / quoting / style — PR#812 panel, Codex+Gemini). Instead it
+# **byte-splices**: the frontmatter prefix (incl. a BOM and CRLF endings) is kept
+# verbatim and only the bytes after the closing ``---`` line are replaced. A file
+# with no parseable frontmatter fails CLOSED (never clobbered).
+
+# Frontmatter prefix = optional BOM + opening ``---`` line … closing ``---`` line,
+# matching both LF and CRLF. Group 1 is preserved byte-for-byte; the rest is body.
+_TASK_FM_PREFIX_RE = re.compile(r"﻿?---\r?\n.*?\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
 
 
 def task_file_token(vault_root: Path, task_slug: str) -> str:
@@ -175,10 +187,35 @@ def task_file_token(vault_root: Path, task_slug: str) -> str:
     return _content_hash(_task_path(vault_root, task_slug))
 
 
+def _split_task_frontmatter(text: str) -> tuple[str, str]:
+    """``(frontmatter_prefix, body)`` for a task file. The prefix is verbatim
+    (BOM / CRLF / comments / quoting all preserved). Raises if there is no
+    parseable frontmatter — a body write must never reinterpret a whole file as
+    body and so delete the frontmatter (PR#812 panel)."""
+    m = _TASK_FM_PREFIX_RE.match(text)
+    if not m:
+        raise WeeklyWriteError(
+            "task file has no parseable YAML frontmatter; refusing to rewrite the body"
+        )
+    return text[: m.end()], text[m.end() :]
+
+
+def read_task_split(vault_root: Path, task_slug: str) -> tuple[str, str]:
+    """One snapshot of a task file → ``(body, token)`` read from the SAME bytes, so
+    the page can't show an old body paired with a fresher token (PR#812 panel).
+    Raises :class:`WeeklyWriteError` (``.code == _TASK_NOT_FOUND``) if missing."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    raw_bytes = path.read_bytes()  # bytes, so the token matches task_file_token and
+    token = hashlib.sha1(raw_bytes).hexdigest()  # no newline translation skews it
+    _, body = _split_task_frontmatter(raw_bytes.decode("utf-8"))
+    return body, token
+
+
 def read_task_body(vault_root: Path, task_slug: str) -> str:
-    """The verbatim note body (everything after the frontmatter) of a task file.
-    Raises :class:`WeeklyWriteError` if the file is missing."""
-    _, body = _read_task(_task_path(vault_root, task_slug))
+    """The verbatim note body (everything after the frontmatter)."""
+    body, _ = read_task_split(vault_root, task_slug)
     return body
 
 
@@ -189,13 +226,27 @@ def write_task_body(
     *,
     expected_token: Optional[str] = None,
 ) -> str:
-    """Replace a task's note **body** verbatim; frontmatter is preserved untouched
-    (A7 — body-only, no key edits). ``expected_token`` is the If-Match guard (see
-    :func:`_check_token`). Returns the new :func:`task_file_token`."""
+    """Replace a task's note **body**, preserving the frontmatter prefix byte-for-byte
+    (A7 — body-only). The only normalisation is a single trailing newline; CRLF→LF on
+    the body is the route's job. ``expected_token`` is the If-Match guard. Returns the
+    new :func:`task_file_token`. Raises (``.code == _TASK_NOT_FOUND``) if the file is
+    gone, :class:`WeeklyConflictError` on a stale token."""
     path = _task_path(vault_root, task_slug)
-    _check_token(path, expected_token)
-    fm, _old_body = _read_task(path)  # raises WeeklyWriteError if the file is gone
-    _write_task(path, fm, body)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    raw_bytes = path.read_bytes()  # bytes → token consistent with task_file_token
+    if expected_token is not None:
+        current = hashlib.sha1(raw_bytes).hexdigest()
+        if current != expected_token:
+            raise WeeklyConflictError(
+                f"任務筆記 {path.name} 在你開啟頁面後被改動"
+                "（Obsidian / Syncthing / 另一個分頁）。請重新整理頁面再存。"
+            )
+    prefix, _old_body = _split_task_frontmatter(raw_bytes.decode("utf-8"))  # validates fm
+    content = prefix + body
+    if not content.endswith("\n"):
+        content += "\n"
+    _atomic_write(path, content)
     return task_file_token(vault_root, task_slug)
 
 

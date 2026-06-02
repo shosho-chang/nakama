@@ -415,7 +415,10 @@ class TestTaskDetail:
             data={"week": WEEK_KEY, "expected_token": "", "body": "x"},
             follow_redirects=False,
         )
-        assert "err=write" in r.headers["location"]
+        # renamed/removed → bounce to the dashboard with err=task (PR#812 panel F4),
+        # not the generic err=write
+        assert "err=task" in r.headers["location"]
+        assert "/bridge/weekly?" in r.headers["location"]
 
 
 class TestWeeklyFileWrites:
