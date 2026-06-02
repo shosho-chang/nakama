@@ -364,6 +364,22 @@ class PromotionReviewService:
                 raise ValueError(f"video source_map build precondition failed: {exc!s}") from exc
             if build_result.error is not None:
                 raise ValueError(f"video source_map build failed: {build_result.error}")
+
+            # ADR-035 PR4 — speaker chips → Person EntityCandidates.
+            # Entity engine still runs for video so cast members surface
+            # in the manifest review queue. Concept engine is skipped
+            # (annotation excerpts are evidence, not claim-density input).
+            if self._entity_engine is not None:
+                assert self._entity_extractor is not None  # noqa: S101 — invariant
+                assert self._entity_matcher is not None  # noqa: S101 — invariant
+                assert self._kb_entity_index is not None  # noqa: S101 — invariant
+                candidates = self._entity_extractor.extract(rs, build_result)
+                entity_result = self._entity_engine.propose(
+                    rs, candidates, self._kb_entity_index, self._entity_matcher
+                )
+                if entity_result.error is not None:
+                    raise ValueError(f"entity promotion failed: {entity_result.error}")
+                entity_items = list(entity_result.items)
         else:
             # SourceMapBuilder is invariant-gated: requires has_evidence_track=True
             # (B1). The proceed_* preflight actions guarantee that, but catch the

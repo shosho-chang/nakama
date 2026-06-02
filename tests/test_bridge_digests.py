@@ -3,9 +3,35 @@
 from __future__ import annotations
 
 import importlib
+from datetime import datetime as _stdlib_datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
+
+# Pin the indexer's clock to the sample-data date so the 7-day window
+# always covers the fixture digests, no matter when the test runs. The
+# indexer reads ``datetime.now(ZoneInfo("Asia/Taipei"))`` in three places
+# (``last_n_days`` / ``last_n_days_by_date`` / ``today_taipei``); we patch
+# the module-level ``datetime`` attribute so all three see the same fixed
+# date.
+_PINNED_TODAY = _stdlib_datetime(2026, 5, 24, 12, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+
+
+class _PinnedDatetime(_stdlib_datetime):
+    """``datetime`` subclass whose ``now()`` returns the pinned instant.
+
+    Subclass (not a plain stub) so any ``datetime.fromisoformat`` /
+    ``datetime.combine`` calls in the indexer keep working — only
+    ``now()`` is overridden.
+    """
+
+    @classmethod
+    def now(cls, tz=None):  # type: ignore[override]
+        if tz is None:
+            return _PINNED_TODAY.replace(tzinfo=None)
+        return _PINNED_TODAY.astimezone(tz)
+
 
 PUBMED_SAMPLE = """---
 date: '2026-05-24'
@@ -62,9 +88,15 @@ def client(monkeypatch, tmp_path):
     (pm / "2026-05-24.md").write_text(PUBMED_SAMPLE, encoding="utf-8")
     (ai / "2026-05-23.md").write_text(AI_SAMPLE, encoding="utf-8")
 
+    import shared.digest_indexer as di_module
     import thousand_sunny.app as app_module
     import thousand_sunny.auth as auth_module
     import thousand_sunny.routers.bridge_digests as bd_module
+
+    # Pin "today" BEFORE reloading bd_module so its module-level
+    # ``today_taipei`` reference (used in template context) sees the
+    # frozen clock.
+    monkeypatch.setattr(di_module, "datetime", _PinnedDatetime)
 
     importlib.reload(auth_module)
     importlib.reload(bd_module)

@@ -189,3 +189,27 @@ def test_get_credentials_missing_token_raises(monkeypatch, tmp_path):
     monkeypatch.setattr(google_calendar, "_TOKEN_PATH", tmp_path / "nonexistent.json")
     with pytest.raises(GoogleCalendarAuthError, match="Token 不存在"):
         google_calendar._get_credentials()
+
+
+def test_create_event_dedupes_on_idempotency_key(monkeypatch):
+    """ADR-041 D7: when an event with the same idempotency key already exists,
+    create_event returns it WITHOUT inserting a duplicate (no service call)."""
+    from shared import google_calendar
+    from shared.google_calendar import CalendarEvent
+
+    existing = CalendarEvent(id="evt_x", title="t", start="s", end="e", html_link="h")
+    monkeypatch.setattr(
+        google_calendar, "find_event_by_idempotency_key", lambda key, **kw: existing
+    )
+
+    def _no_service():
+        raise AssertionError("must not insert when an idempotent event already exists")
+
+    monkeypatch.setattr(google_calendar, "_get_service", _no_service)
+    out = google_calendar.create_event(
+        title="t",
+        start="2026-06-03T09:00:00",
+        end="2026-06-03T11:00:00",
+        idempotency_key="slug@2026-06-03",
+    )
+    assert out is existing
