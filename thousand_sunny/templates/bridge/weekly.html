@@ -125,7 +125,7 @@
           <ol class="wk-top3-list">
             {% for t in view.top3 %}
               <li class="wk-top3-item {{ 'done' if t.done }}">
-                <a href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">{{ t.name }}</a>
+                <a href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">{{ t.title }}</a>
               </li>
             {% endfor %}
           </ol>
