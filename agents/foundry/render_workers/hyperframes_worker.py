@@ -55,21 +55,31 @@ async def render(
     beat: dict,
     out_dir: Path,
     video_dir: Path | None = None,
+    cached_hash: str | None = None,
 ) -> Path:
     """Render a beat's B-roll via npx hyperframes; return the mp4 path.
 
     Raises HyperframesRenderError on non-zero exit. Output filename is
-    `b_roll_<beat_id>.mp4` inside out_dir.
+    ``b_roll_<cached_hash>.mp4`` inside ``out_dir`` (ADR-038 §D2 content-
+    addressed export). ``cached_hash`` is computed by the dispatcher via
+    ``agents.foundry.export_hash.compute_beat_hash``; passing ``None`` is a
+    contract violation and raises ``ValueError`` — workers never compute the
+    hash themselves so the dispatcher's cache-skip stays authoritative.
     """
     video_dir = video_dir or DEFAULT_VIDEO_DIR
     beat_id = beat["beat_id"]
     broll = beat.get("broll")
     if broll is None:
         raise ValueError(f"beat {beat_id} has no broll spec — cannot render")
+    if not cached_hash:
+        raise ValueError(
+            f"beat {beat_id} render called without cached_hash; "
+            f"dispatcher must compute hash before invoking worker (ADR-038 §D2)"
+        )
 
     component = broll["component"]
     params = broll.get("params") or {}
-    out_path = out_dir / f"b_roll_{beat_id}.mp4"
+    out_path = out_dir / f"b_roll_{cached_hash}.mp4"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = _build_command(component, out_path, params)

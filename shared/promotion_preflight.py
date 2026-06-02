@@ -155,17 +155,7 @@ class PromotionPreflight:
         elif reading_source.kind == "inbox_document":
             inspection = self._inspect_markdown(variant)
         elif reading_source.kind == "youtube_video":
-            # ADR-035 §D7 Phase 1 / PR1c will land a dedicated video preflight
-            # path. Until then refuse explicitly — feeding a WebVTT into
-            # ``_inspect_markdown`` would mis-classify a video as a long
-            # markdown document with silent junk counts (PR1a review #4).
-            inspection = _empty_inspection(
-                error=(
-                    f"youtube_video preflight not yet supported "
-                    f"(source_id={reading_source.source_id!r}); ADR-035 PR1c "
-                    f"will land the video inspector"
-                )
-            )
+            inspection = self._inspect_video(variant)
         else:
             inspection = _empty_inspection(
                 error=(
@@ -398,6 +388,69 @@ class PromotionPreflight:
             "error": None,
         }
 
+    def _inspect_video(self, variant: SourceVariant) -> dict:
+        """Inspect a YouTube WebVTT transcript variant. Same failure-mode
+        contract as ebook / markdown: documented failures → ``error`` dict,
+        programmer errors propagate.
+
+        Maps the cue stream into the generic inspection shape so the
+        existing action policy applies uniformly:
+
+        - ``chapter_count`` = number of distinct WebVTT cues (sentence-grain
+          after the §D5 coalesce pass — equivalent to "section count" for
+          markdown).
+        - ``word_count_estimate`` = total words across all cue text bodies.
+        - Risks: ``no_transcript`` (high) when the VTT yields zero cues —
+          a video with no captions can't anchor evidence, so the action
+          policy routes it to defer.
+        """
+        try:
+            blob = self._blob_loader(variant.path)
+        except _LOADER_FAILURES as exc:
+            _logger.warning(
+                "video transcript load failed",
+                extra={"category": "preflight_video_load_failed", "path": variant.path},
+            )
+            return _empty_inspection(error=f"blob_load_failed: {exc!s}")
+
+        try:
+            content = blob.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            _logger.warning(
+                "video transcript decode failed",
+                extra={"category": "preflight_video_decode_failed", "path": variant.path},
+            )
+            return _empty_inspection(error=f"transcript_decode_failed: {exc!s}")
+
+        # Parse VTT directly — re-using ``_parse_webvtt`` from the router
+        # would create an unwanted shared→thousand_sunny coupling, and the
+        # preflight only needs cue count + total text (not per-cue metadata).
+        cue_count, body_text = _count_vtt_cues_and_text(content)
+        word_count = _word_count(body_text)
+        char_count = len(body_text)
+
+        risks: list[PreflightRiskFlag] = []
+        # A parseable VTT that yields zero cues (captions disabled, malformed
+        # cue lines) is signalled as low_signal_count + high; the existing
+        # action policy routes word_count<200 to skip so the user can fix
+        # the transcript upstream before re-running preflight.
+        if cue_count == 0:
+            risks.append(
+                PreflightRiskFlag(
+                    code="low_signal_count",
+                    severity="high",
+                    description="WebVTT parsed but produced no usable cues",
+                )
+            )
+
+        return {
+            "chapter_count": cue_count,
+            "word_count_estimate": word_count,
+            "char_count_estimate": char_count,
+            "risks": risks,
+            "error": None,
+        }
+
     # ── Action policy (Brief §4.2 — top-down, first-match-wins) ─────────────
 
     @staticmethod
@@ -526,6 +579,65 @@ def _strict_extract_frontmatter(content: str) -> tuple[dict, str]:
     if not isinstance(fm, dict):
         fm = {}
     return fm, parts[2].strip()
+
+
+_VTT_TIMECODE_RE = re.compile(r"^\s*(?:\d+:)?\d+:\d+(?:\.\d+)?\s*-->\s*(?:\d+:)?\d+:\d+(?:\.\d+)?")
+_VTT_INLINE_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _count_vtt_cues_and_text(content: str) -> tuple[int, str]:
+    """Count distinct WebVTT cues and accumulate their body text.
+
+    Cheap streaming parse — counts a cue every time a ``-->`` timing line is
+    encountered, accumulates non-metadata lines that follow until the next
+    blank/timing line. Strips inline cue tags (``<c.colorXXXX>...</c>``,
+    ``<00:00:01.000>``) so word-count is on display text only.
+
+    Mirrors ``_parse_webvtt`` semantics from
+    ``thousand_sunny/routers/robin.py`` (last-non-empty line per cue) without
+    creating a cross-package import.
+    """
+    if not content:
+        return 0, ""
+    cue_count = 0
+    cur_lines: list[str] = []
+    accumulated_parts: list[str] = []
+
+    def _flush() -> None:
+        # Keep only the last non-empty body line, mirroring router's
+        # YouTube-carryover dedup.
+        for line in reversed(cur_lines):
+            cleaned = _VTT_INLINE_TAG_RE.sub("", line).strip()
+            if cleaned:
+                accumulated_parts.append(cleaned)
+                return
+
+    in_cue = False
+    for raw_line in content.splitlines():
+        line = raw_line.rstrip("\r")
+        stripped = line.strip()
+        if _VTT_TIMECODE_RE.match(line):
+            if in_cue:
+                _flush()
+                cur_lines = []
+            cue_count += 1
+            in_cue = True
+            continue
+        if not stripped:
+            if in_cue:
+                _flush()
+                cur_lines = []
+                in_cue = False
+            continue
+        if not in_cue:
+            # Header / NOTE block / stray line — ignore.
+            continue
+        if stripped.startswith("NOTE") or stripped.startswith("WEBVTT"):
+            continue
+        cur_lines.append(line)
+    if in_cue:
+        _flush()
+    return cue_count, " ".join(accumulated_parts)
 
 
 def _ocr_noise_ratio(text: str) -> float:

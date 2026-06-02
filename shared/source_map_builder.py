@@ -314,13 +314,16 @@ class SourceMapBuilder:
         if reading_source.kind == "inbox_document":
             return self._inspect_inbox(variant)
         if reading_source.kind == "youtube_video":
-            # ADR-035 §D7 Phase 1 / PR1c will land a dedicated video
-            # inspector. Until then refuse explicitly — falling through to
-            # ``_inspect_inbox`` would feed a WebVTT file into the markdown
-            # line-chunker and produce silent garbage (PR1a review #3).
+            # ADR-035 §D6 / PR3a-ii — video source maps are built by a
+            # dedicated bypass-engine path (``shared.video_source_map_builder
+            # .build_video_source_map``). User annotations are the evidence,
+            # so the ClaimExtractor pipeline does not apply. Callers MUST
+            # dispatch on ``reading_source.kind`` and route youtube_video
+            # to the dedicated builder instead of ``SourceMapBuilder``.
             raise _BuildError(
-                "youtube_video source maps are not yet supported; "
-                "ADR-035 PR1c will land the video inspector"
+                "youtube_video source maps are built by "
+                "shared.video_source_map_builder.build_video_source_map; "
+                "SourceMapBuilder.build is for claim-extraction sources only"
             )
         raise _BuildError(f"unsupported reading source kind: {reading_source.kind!r}")
 

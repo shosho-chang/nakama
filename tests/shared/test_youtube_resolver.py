@@ -102,7 +102,9 @@ def test_resolve_youtube_happy_path(registry: ReadingSourceRegistry, vault: Path
     assert rs.metadata["channel"] == "Huberman Lab"
     assert rs.metadata["duration_s"] == "5400"
     assert rs.metadata["url"] == "https://youtube.com/watch?v=dQw4w9WgXcQ"
-    assert json.loads(rs.metadata["cast"]) == ["host", "Andrew Huberman"]
+    # cast lifted to top-level field (F7); no longer in metadata dict
+    assert "cast" not in rs.metadata
+    assert rs.cast == ["host", "Andrew Huberman"]
 
 
 def test_resolve_youtube_missing_entry_returns_none(registry: ReadingSourceRegistry):
@@ -169,7 +171,20 @@ def test_resolve_youtube_empty_cast_ok(registry: ReadingSourceRegistry, vault: P
     _make_entry(vault, video_id="nocast_id", cast=[])
     rs = registry.resolve(YouTubeKey(video_id="nocast_id"))
     assert rs is not None
-    assert json.loads(rs.metadata["cast"]) == []
+    assert rs.cast == []
+    assert "cast" not in rs.metadata
+
+
+def test_resolve_youtube_cast_roundtrips_as_list(registry: ReadingSourceRegistry, vault: Path):
+    """F7: cast=["host","guest"] round-trips through the resolver as a
+    typed ``list[str]`` on the top-level ``cast`` field — never as a
+    JSON-encoded string in ``metadata``."""
+    _make_entry(vault, video_id="cast_id", cast=["host", "guest_a", "guest_b"])
+    rs = registry.resolve(YouTubeKey(video_id="cast_id"))
+    assert rs is not None
+    assert rs.cast == ["host", "guest_a", "guest_b"]
+    assert isinstance(rs.cast, list)
+    assert "cast" not in rs.metadata
 
 
 def test_resolve_youtube_custom_transcript_path(registry: ReadingSourceRegistry, vault: Path):
@@ -390,9 +405,16 @@ def test_source_map_builder_refuses_youtube_video():
     assert result.items == []
 
 
-def test_promotion_preflight_refuses_youtube_video():
-    """Defensive fix — youtube_video flowed through ``_inspect_markdown``
-    pre-PR1b. Should now route to the inspector_error / defer path."""
+def test_promotion_preflight_handles_youtube_video_via_dedicated_inspector():
+    """PR3a-i landed ``_inspect_video``; an empty transcript should now flow
+    through the inspector cleanly (no error) and route to ``skip`` via the
+    word_count<200 row, not to the legacy ``not yet supported`` defer.
+
+    The defensive concern that survived PR1b — youtube_video MUST NOT fall
+    through to ``_inspect_markdown`` — is still tested implicitly: a
+    markdown inspector would raise on the empty body or surface
+    ``frontmatter_minimal``; here the report is clean.
+    """
     rs = ReadingSource(
         schema_version=2,
         source_id="youtube:vid_pre",
@@ -410,9 +432,11 @@ def test_promotion_preflight_refuses_youtube_video():
             )
         ],
     )
-    preflight = PromotionPreflight(blob_loader=lambda _: b"")
+    # Empty VTT body — the dedicated inspector handles this without raising,
+    # surfaces the low_signal_count risk, and the action policy routes to
+    # ``skip`` (word_count=0 < very_short threshold).
+    preflight = PromotionPreflight(blob_loader=lambda _: b"WEBVTT\n\n")
     report = preflight.run(rs)
-    assert report.error is not None
-    assert "youtube_video" in report.error
-    # error implies inspector failure -> action policy routes to defer.
-    assert report.recommended_action == "defer"
+    assert report.error is None
+    assert report.recommended_action == "skip"
+    assert any(r.code == "low_signal_count" for r in report.risks)

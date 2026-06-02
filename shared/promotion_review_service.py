@@ -51,6 +51,7 @@ from shared.schemas.promotion_manifest import (
 from shared.schemas.promotion_review_state import ManifestUiStatus, PromotionReviewState
 from shared.schemas.reading_source import ReadingSource
 from shared.source_map_builder import ClaimExtractor, SourceMapBuilder
+from shared.video_source_map_builder import build_video_source_map
 
 _logger = get_logger("nakama.shared.promotion_review_service")
 
@@ -345,42 +346,77 @@ class PromotionReviewService:
                 f"{report.recommended_action!r} is not eligible for promotion review"
             )
 
-        # Builder is invariant-gated: requires has_evidence_track=True (B1).
-        # The proceed_* preflight actions guarantee that, but catch the
-        # ValueError defensively so we surface a useful error to the caller.
-        try:
-            build_result = self._builder.build(rs, self._extractor)
-        except ValueError as exc:
-            raise ValueError(f"source_map build precondition failed: {exc!s}") from exc
-        if build_result.error is not None:
-            raise ValueError(f"source_map build failed: {build_result.error}")
-
-        promotion_result = self._concept_engine.propose(
-            rs, build_result, self._kb_index, self._matcher
-        )
-        if promotion_result.error is not None:
-            raise ValueError(f"concept promotion failed: {promotion_result.error}")
-
-        # ADR-034 v2 PR4 — Entity flow runs alongside concept flow when wired.
-        # When entity pipeline is absent (PR4 dry-run default returns []
-        # anyway), this stays a no-op.
+        # Builder dispatch is keyed on ``rs.kind`` (ADR-035 §D6 / PR3b-i):
+        # youtube_video bypasses the LLM ClaimExtractor pipeline — user
+        # annotations ARE the evidence, so the dedicated
+        # ``build_video_source_map`` produces SourcePageReviewItems directly.
+        # Other kinds (ebook, inbox_document) keep the claim-density
+        # SourceMapBuilder path. Concept + entity flows are skipped for
+        # video — neither extractor produces meaningful output without
+        # claim text; concept / entity promotion for video is deferred to
+        # ADR-035 PR4 (speaker → Person Entity).
+        concept_items: list = []
         entity_items: list = []
-        if self._entity_engine is not None:
-            assert self._entity_extractor is not None  # noqa: S101 — invariant
-            assert self._entity_matcher is not None  # noqa: S101 — invariant
-            assert self._kb_entity_index is not None  # noqa: S101 — invariant
-            candidates = self._entity_extractor.extract(rs, build_result)
-            entity_result = self._entity_engine.propose(
-                rs, candidates, self._kb_entity_index, self._entity_matcher
+        if rs.kind == "youtube_video":
+            try:
+                build_result = build_video_source_map(rs)
+            except ValueError as exc:
+                raise ValueError(f"video source_map build precondition failed: {exc!s}") from exc
+            if build_result.error is not None:
+                raise ValueError(f"video source_map build failed: {build_result.error}")
+
+            # ADR-035 PR4 — speaker chips → Person EntityCandidates.
+            # Entity engine still runs for video so cast members surface
+            # in the manifest review queue. Concept engine is skipped
+            # (annotation excerpts are evidence, not claim-density input).
+            if self._entity_engine is not None:
+                assert self._entity_extractor is not None  # noqa: S101 — invariant
+                assert self._entity_matcher is not None  # noqa: S101 — invariant
+                assert self._kb_entity_index is not None  # noqa: S101 — invariant
+                candidates = self._entity_extractor.extract(rs, build_result)
+                entity_result = self._entity_engine.propose(
+                    rs, candidates, self._kb_entity_index, self._entity_matcher
+                )
+                if entity_result.error is not None:
+                    raise ValueError(f"entity promotion failed: {entity_result.error}")
+                entity_items = list(entity_result.items)
+        else:
+            # SourceMapBuilder is invariant-gated: requires has_evidence_track=True
+            # (B1). The proceed_* preflight actions guarantee that, but catch the
+            # ValueError defensively so we surface a useful error to the caller.
+            try:
+                build_result = self._builder.build(rs, self._extractor)
+            except ValueError as exc:
+                raise ValueError(f"source_map build precondition failed: {exc!s}") from exc
+            if build_result.error is not None:
+                raise ValueError(f"source_map build failed: {build_result.error}")
+
+            promotion_result = self._concept_engine.propose(
+                rs, build_result, self._kb_index, self._matcher
             )
-            if entity_result.error is not None:
-                raise ValueError(f"entity promotion failed: {entity_result.error}")
-            entity_items = list(entity_result.items)
+            if promotion_result.error is not None:
+                raise ValueError(f"concept promotion failed: {promotion_result.error}")
+            concept_items = list(promotion_result.items)
+
+            # ADR-034 v2 PR4 — Entity flow runs alongside concept flow when wired.
+            # When entity pipeline is absent (PR4 dry-run default returns []
+            # anyway), this stays a no-op.
+            if self._entity_engine is not None:
+                assert self._entity_extractor is not None  # noqa: S101 — invariant
+                assert self._entity_matcher is not None  # noqa: S101 — invariant
+                assert self._kb_entity_index is not None  # noqa: S101 — invariant
+                candidates = self._entity_extractor.extract(rs, build_result)
+                entity_result = self._entity_engine.propose(
+                    rs, candidates, self._kb_entity_index, self._entity_matcher
+                )
+                if entity_result.error is not None:
+                    raise ValueError(f"entity promotion failed: {entity_result.error}")
+                entity_items = list(entity_result.items)
 
         manifest = self._compose_manifest(
             source_id=source_id,
             source_page_items=list(build_result.items),
-            concept_items=list(promotion_result.items),
+            concept_items=concept_items,
             entity_items=entity_items,
         )
         # ADR-034 v2 PR2c — confidence fast-track for Entity items.

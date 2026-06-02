@@ -1,0 +1,527 @@
+{% macro task_row(t, view) %}
+  <details class="wk-task-d">
+    <summary class="wk-task {{ 'done' if t.done }}">
+      <span class="wk-box {{ 'done' if t.done }}"></span>
+      <span class="wk-tname">{{ t.name }}</span>
+      <span class="wk-tproj">{{ t.category_label }}{% if t.project %} · {{ t.project }}{% endif %}</span>
+      <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
+      <span class="sho-chip sho-chip--{{ 'online' if t.status == 'done' else 'offline' }} wk-status">{{ t.status }}</span>
+      <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
+      <span class="wk-edit-hint" aria-hidden="true">排程</span>
+    </summary>
+
+    <div class="wk-plan-edit">
+      {# existing plan entries this week — each removable #}
+      {% set wk_entries = t.plan | selectattr('date', 'ge', view.week.start) | selectattr('date', 'le', view.week.end) | list %}
+      <div class="wk-plan-list">
+        {% for a in wk_entries %}
+          <form class="wk-plan-chip {{ 'has-reason' if a.reason }}" method="post" action="/bridge/weekly/plan/remove">
+            <input type="hidden" name="task_slug" value="{{ t.slug }}">
+            <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
+            <input type="hidden" name="week" value="{{ view.week.file_key }}">
+            <span class="wk-chip-day">{{ a.date.strftime('%m/%d') }}</span>
+            <span class="wk-chip-pom">{{ a.pomodoros }}🍅</span>
+            {% if a.reason %}<span class="wk-chip-reason" title="{{ a.reason }}">⚠</span>{% endif %}
+            <button class="wk-chip-x" type="submit" aria-label="移除 {{ a.date.strftime('%m/%d') }} 的排程">✕</button>
+          </form>
+        {% else %}
+          <span class="wk-plan-none">本週尚未排入。</span>
+        {% endfor %}
+      </div>
+
+      {# add / update an entry (same date → updates) #}
+      <form class="wk-plan-add" method="post" action="/bridge/weekly/plan">
+        <input type="hidden" name="task_slug" value="{{ t.slug }}">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        <select class="wk-day-sel" name="entry_date" aria-label="排程日">
+          {% for h in view.day_headers %}
+            <option value="{{ h.date }}" data-weekend="{{ '1' if h.is_weekend else '' }}" {{ 'selected' if h.is_today }}>{{ h.zh }} {{ h.date[5:7] }}/{{ h.date[8:] }}{{ ' · 週末' if h.is_weekend }}</option>
+          {% endfor %}
+        </select>
+        <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="2" aria-label="番茄數">🍅</label>
+        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+        <button class="sho-btn wk-plan-go" type="submit">排入</button>
+      </form>
+
+      {# explicit scheduled← next-plan sync (D4: never auto-rewritten) #}
+      <form class="wk-sync" method="post" action="/bridge/weekly/sync-scheduled">
+        <input type="hidden" name="task_slug" value="{{ t.slug }}">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        <button class="sho-btn--ghost wk-sync-go" type="submit"
+                title="把 scheduled 設成最近一筆排程日（今天起算）—— Nami 行事曆同步會抓這個欄位">
+          scheduled → 最近排程日{% if t.scheduled %} <span class="wk-mut">(現 {{ t.scheduled.strftime('%m/%d') }})</span>{% endif %}
+        </button>
+      </form>
+    </div>
+  </details>
+{% endmacro %}
+
+{# ── Backlog calendar scheduler (ADR-041 41c; Journals/Weekly NOT touched) ── #}
+{# Picks a real clock-time block for any open task → calendar_scheduler.schedule_block
+   (vault plan[] authoritative + best-effort Google Calendar event). #}
+{% macro backlog_row(t, view) %}
+  <details class="wk-task-d wk-bl-d">
+    <summary class="wk-task">
+      <span class="wk-box"></span>
+      <span class="wk-tname">{{ t.name }}</span>
+      <span class="wk-tproj">{{ t.category_label }}</span>
+      <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ t.est_pomodoros }}🍅</span>
+      {% if t.calendar_event_id %}<span class="wk-bl-when wk-bl-linked" title="已連動行事曆">📅🔗 {{ t.scheduled.strftime('%m/%d') if t.scheduled }}</span>
+      {% elif t.scheduled %}<span class="wk-bl-when" title="目前 scheduled">📅 {{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
+      <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁">↗</a>
+      <span class="wk-edit-hint" aria-hidden="true">{{ '已排程' if t.calendar_event_id else '排到行事曆' }}</span>
+    </summary>
+
+    {% if t.calendar_event_id %}
+      {# Already projected to the calendar. This is a CREATE-only flow (41c);
+         scheduling it again to a new day would orphan the existing event
+         (Codex audit §2/§3). Reschedule / cancel land in 41d — point there. #}
+      <div class="wk-plan-edit wk-bl-locked">
+        <span class="wk-mut">已排入行事曆{{ '（' ~ t.scheduled.strftime('%m/%d') ~ '）' if t.scheduled }}。改期或取消請到
+          <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">任務頁 ↗</a>（41d）。</span>
+      </div>
+    {% else %}
+      <form class="wk-plan-edit wk-sched-form" method="post" action="/bridge/weekly/schedule">
+        <input type="hidden" name="task_slug" value="{{ t.slug }}">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        <div class="wk-sched-fields">
+          <label class="wk-sched-lbl">日期
+            <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
+          <label class="wk-sched-lbl">時間
+            <input class="wk-sched-time" type="time" name="entry_time" value="09:00" step="900" required></label>
+          <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([t.est_pomodoros, 20] | min) if t.est_pomodoros else 1 }}" aria-label="番茄數">🍅
+            <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
+        </div>
+        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+        <div class="wk-sched-actions">
+          <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
+          <button class="sho-btn wk-sched-go" type="submit">排到行事曆</button>
+        </div>
+      </form>
+    {% endif %}
+  </details>
+{% endmacro %}
+
+{# ── Weekly-file 週交接 forms (ADR-040 A6 composable steps; Journals/Weekly 🟡) ── #}
+{% macro _sec(view, heading) %}{{ view.review.sections.get(heading, '') if view.review else '' }}{% endmacro %}
+
+{% macro review_form(view, weekly_token, with_mark=False) %}
+  {% set st = view.review.status if view.review else 'planning' %}
+  <form class="wk-wf wk-review-form" method="post" action="/bridge/weekly/review">
+    <input type="hidden" name="week" value="{{ view.week.file_key }}">
+    <input type="hidden" name="expected_token" value="{{ weekly_token }}">
+    <div class="wk-rev-grid">
+      <label class="wk-field"><span>✨ Highlight</span>
+        <textarea name="highlight" rows="2" placeholder="本週最好的一刻…">{{ _sec(view,'✨ Highlight') | trim }}</textarea></label>
+      <label class="wk-field"><span>😔 Lowlight</span>
+        <textarea name="lowlight" rows="2" placeholder="卡住或失落的地方…">{{ _sec(view,'😔 Lowlight') | trim }}</textarea></label>
+      <label class="wk-field"><span>📚 學到的東西</span>
+        <textarea name="learned" rows="2">{{ _sec(view,'📚 學到的東西') | trim }}</textarea></label>
+      <label class="wk-field"><span>🙏 感恩（人 / 事 / 物）</span>
+        <textarea name="gratitude" rows="2">{{ _sec(view,'🙏 感恩') | trim }}</textarea></label>
+    </div>
+    <div class="wk-field wk-field--wide"><span>🎯 下週三大要事</span>
+      <div class="wk-top3-picks">
+        {% for i in range(3) %}
+          {% set cur = view.review.next3[i] if (view.review and i < (view.review.next3 | length)) else '' %}
+          <select class="wk-top3-sel" name="next3" aria-label="下週要事 {{ i + 1 }}">
+            <option value="">{{ i + 1 }} · （不指定）</option>
+            <optgroup label="任務">
+              {% for o in view.top3_options if o.group == '任務' %}
+                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="專案">
+              {% for o in view.top3_options if o.group == '專案' %}
+                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+              {% endfor %}
+            </optgroup>
+          </select>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="wk-wf-actions">
+      <button class="sho-btn" type="submit">存週回顧</button>
+      {# only an *active* week can be marked reviewed — guards the FSM order so a
+         planning week can't jump straight to reviewed (PR#811 audit F4). #}
+      {% if with_mark and st == 'active' %}
+        <label class="wk-check"><input type="checkbox" name="mark_reviewed" value="1">
+          標記本週已回顧（status → reviewed）</label>
+      {% endif %}
+    </div>
+  </form>
+{% endmacro %}
+
+{% macro notes_form(view, weekly_token) %}
+  <form class="wk-wf wk-notes-form" method="post" action="/bridge/weekly/notes">
+    <input type="hidden" name="week" value="{{ view.week.file_key }}">
+    <input type="hidden" name="expected_token" value="{{ weekly_token }}">
+    <textarea name="notes" rows="4" placeholder="本週的想法、觀察、隨手記（週範圍；即時捕捉請用 Obsidian / Inbox）">{{ (view.review.notes if view.review else '') | trim }}</textarea>
+    <div class="wk-wf-actions"><button class="sho-btn--ghost" type="submit">存筆記</button></div>
+  </form>
+{% endmacro %}
+
+{% macro plan_panel(view, weekly_token) %}
+  {% set st = view.review.status if view.review else 'planning' %}
+  <details class="wk-zone wk-plan-panel">
+    <summary class="wk-zone-head"><span class="wk-h">✎ 本週計畫</span></summary>
+
+    <form class="wk-wf" method="post" action="/bridge/weekly/plan-save">
+      <input type="hidden" name="week" value="{{ view.week.file_key }}">
+      <input type="hidden" name="expected_token" value="{{ weekly_token }}">
+
+      <div class="wk-top3-picks">
+        {% for i in range(3) %}
+          {% set cur = view.top3_values[i] if i < (view.top3_values | length) else '' %}
+          <select class="wk-top3-sel" name="top3" aria-label="本週要事 {{ i + 1 }}">
+            <option value="">{{ i + 1 }} · （不指定）</option>
+            <optgroup label="任務">
+              {% for o in view.top3_options if o.group == '任務' %}
+                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="專案">
+              {% for o in view.top3_options if o.group == '專案' %}
+                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+              {% endfor %}
+            </optgroup>
+          </select>
+        {% endfor %}
+      </div>
+
+      <div class="wk-plan-row">
+        <label class="wk-num-field"><span aria-hidden="true">🤩</span> 超專注週目標
+          {# bound to the *stored* target, blank when unset — never pre-fill the
+             machine default so a blank save can't persist it as intent (audit B2) #}
+          <input type="number" name="ufo" min="0" max="50"
+                 value="{{ view.ufo_target_raw if view.ufo_target_raw else '' }}"
+                 placeholder="預設 {{ view.ufo_target }}"></label>
+        {% if st == 'planning' %}
+          <label class="wk-check"><input type="checkbox" name="advance" value="1"> 完成規劃，開始本週</label>
+        {% elif st == 'active' %}
+          <span class="wk-mut">本週進行中</span>
+        {% else %}
+          <span class="wk-mut">本週已回顧</span>
+        {% endif %}
+        <button class="sho-btn" type="submit">儲存本週計畫</button>
+      </div>
+    </form>
+  </details>
+{% endmacro %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Weekly {{ view.week.label }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='weekly') }}
+
+  <main class="wk-main">
+  {% if view.conflicts %}
+    <section class="wk-conflict" role="alert">
+      <strong>⚠ Syncthing 衝突檔 · {{ view.conflicts | length }}</strong>
+      ——<code>Journals/Weekly</code> 有兩裝置同時編輯的 conflict file，請進 vault 手動 resolve：
+      <ul>
+        {% for c in view.conflicts[:5] %}<li>{{ c.relative_path }} <span class="wk-mut">· {{ c.device }} · {{ c.timestamp }}</span></li>{% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <section class="wk-screen">
+
+    {% if error_msg %}
+      <div class="wk-toast" role="alert">⚠ {{ error_msg }}</div>
+    {% endif %}
+    {% if saved_msg %}
+      <div class="wk-toast wk-toast--ok" role="status">{{ saved_msg }}</div>
+    {% endif %}
+
+    {# ── sticky header: week nav + hero ── #}
+    <div class="wk-head">
+      <div class="wk-weeknav">
+        <a class="wk-arrow" href="/bridge/weekly?week={{ view.prev_key }}" aria-label="上一週">◀</a>
+        <div>
+          <div class="wk-wknum">{{ view.week.label }}{% if view.is_current %} <span class="wk-now">本週</span>{% endif %}</div>
+          <div class="wk-wkrange">{{ view.week.range_label }}</div>
+        </div>
+        <a class="wk-arrow" href="/bridge/weekly?week={{ view.next_key }}" aria-label="下一週">▶</a>
+      </div>
+      <div class="wk-hero">
+        {% if view.mode == 'review' %}
+          <span class="sho-chip sho-chip--hold">⚠ 待回顧</span>
+        {% endif %}
+        <span class="wk-hero-count"
+              aria-label="本週工作 已完成 {{ view.actual.total_pomodoros }} 番茄，目標 {{ view.pomodoro_goal }} 番茄"
+              title="本週工作時數（🍅）— 已完成 / {{ '目標' if view.pomodoro_target else '排程' }}">
+          <span class="wk-tomato" aria-hidden="true">🍅</span>
+          <span class="wk-hc-actual">{{ view.actual.total_pomodoros }}</span><span class="wk-hc-sep">/</span><span class="wk-hc-plan">{{ view.pomodoro_goal }}</span>
+        </span>
+        <span class="wk-hero-count wk-hero-ufo"
+              aria-label="本週超專注 {{ view.ufo_count }} 次，目標 {{ view.ufo_target }} 次"
+              title="本週超專注（🤩 75 分深度工作）— 已完成 / 目標">
+          <span class="wk-ufo" aria-hidden="true">🤩</span>
+          <span class="wk-hc-actual">{{ view.ufo_count }}</span><span class="wk-hc-sep">/</span><span class="wk-hc-plan">{{ view.ufo_target }}</span>
+        </span>
+      </div>
+    </div>
+
+    {# ── 本週三大要事 (weekly_priority tasks; done → struck through) ── #}
+    {% if view.mode != 'review' %}
+      <div class="wk-top3" aria-label="本週三大要事">
+        <span class="wk-top3-cap wk-h">本週三大要事</span>
+        {% if view.top3 %}
+          <ol class="wk-top3-list">
+            {% for t in view.top3 %}
+              <li class="wk-top3-item {{ 'done' if t.done }} {{ 'unresolved' if t.is_unresolved }}">
+                {% if t.kind == 'task' %}
+                  <a href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">{{ t.title }}</a>
+                {% elif t.kind == 'project' %}
+                  <span class="wk-top3-proj">{{ t.title }}<span class="wk-top3-ratio">{{ t.ratio_label }}</span></span>
+                {% else %}
+                  <span class="wk-top3-unres" title="找不到對應的任務或專案——請檢查 wikilink">⚠ {{ t.title }}</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        {% endif %}
+      </div>
+      {{ plan_panel(view, weekly_token) }}
+    {% endif %}
+
+    {% if view.actual.overlap_warnings %}
+      <div class="wk-note-inline">⚠ {{ view.actual.overlap_warnings | length }} 筆番茄 session 偵測到重疊（已合併不重複計）</div>
+    {% endif %}
+
+    {# ════════ REVIEW MODE (past week, not yet reviewed) ════════ #}
+    {% if view.mode == 'review' %}
+
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="wk-h">未完成任務 · 排進下一週</span>
+          <span class="wk-mut">開任務頁排入下一週的日子</span></div>
+        {% for t in view.incomplete %}
+          <div class="wk-cf">
+            <span class="wk-box {{ 'done' if t.done }}"></span>
+            <span class="wk-tname">{{ t.title }}</span>
+            <span class="wk-rem">剩 {{ [t.est_pomodoros - (view.actual.by_task.get(t.slug, 0)), 0] | max }}🍅</span>
+            <a class="sho-btn--ghost" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.next_key }}">排程 ↗</a>
+          </div>
+        {% else %}
+          <p class="wk-empty">上週沒有未完成任務 🎉</p>
+        {% endfor %}
+      </div>
+
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="wk-h">Weekly Review · 6 題</span>
+          <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'hold' }}">
+            {{ '已回顧' if view.review and view.review.status == 'reviewed' else '待填' }}</span></div>
+        <p class="wk-mut">✅ top-3 完成率自動帶入（見上方三大要事）。逐字寫，機器不代筆。</p>
+        {{ review_form(view, weekly_token, with_mark=True) }}
+      </div>
+
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="wk-h">隨手筆記</span></div>
+        {{ notes_form(view, weekly_token) }}
+      </div>
+
+    {# ════════ ACTIVE MODE (current / future week) ════════ #}
+    {% else %}
+
+      {# ── daily cards (Mon→Fri) — today open by default, others toggle ── #}
+      <div class="wk-zone">
+        <div class="wk-days">
+          {% for day in view.days %}
+            <details class="wk-day {{ 'is-today' if day.is_today }}" {{ 'open' if day.default_open }}>
+              <summary class="wk-day-head">
+                <span class="wk-day-when">
+                  <span class="wk-day-wd">{{ day.weekday_zh }}</span>
+                  <span class="wk-day-md">{{ day.md }}</span>
+                  {% if day.is_today %}<span class="wk-day-now">今天</span>{% endif %}
+                </span>
+                <span class="wk-day-pom">
+                  {% if day.work_pomodoros %}<span class="wk-tomato" aria-hidden="true">🍅</span> {{ day.work_pomodoros }}{% elif day.task_count %}<span class="wk-mut">無工作排程</span>{% else %}<span class="wk-mut">休息</span>{% endif %}
+                </span>
+                <span class="wk-day-caret" aria-hidden="true">▸</span>
+              </summary>
+              <div class="wk-day-body">
+                {% for cat in day.categories %}
+                  <div class="wk-catcol">
+                    <div class="wk-cat-label">{{ cat.label }}</div>
+                    {% if cat['items'] %}
+                      <ul class="wk-cat-items">
+                        {% for it in cat['items'] %}
+                          <li class="wk-cat-item {{ 'done' if it.done }}">
+                            <span class="wk-ci-box" aria-hidden="true">{{ '☑' if it.done else '☐' }}</span>
+                            <a class="wk-ci-name" href="/bridge/weekly/task/{{ it.slug | urlencode }}?week={{ view.week.file_key }}">{{ it.name }}</a>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      <span class="wk-cat-empty">—</span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </details>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# ── task list + scheduler (below the daily cards) ── #}
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="wk-h">任務</span>
+          <div class="wk-tabs" role="tablist">
+            <button class="wk-tab is-on" data-tab="today" type="button">今日</button>
+            <button class="wk-tab" data-tab="week" type="button">整週</button>
+            <button class="wk-tab" data-tab="project" type="button">按專案</button>
+          </div>
+        </div>
+
+        <div class="wk-tabpane" data-pane="today">
+          {% for t in view.today_tasks %}{{ task_row(t, view) }}{% else %}
+            <p class="wk-empty">今天沒有排定的任務。</p>{% endfor %}
+        </div>
+        <div class="wk-tabpane is-hidden" data-pane="week">
+          {% for t in view.tasks %}{{ task_row(t, view) }}{% else %}
+            <p class="wk-empty">本週尚無排程 — 在卡片排入，或在 Obsidian 指定 scheduled。</p>{% endfor %}
+        </div>
+        <div class="wk-tabpane is-hidden" data-pane="project">
+          {% for proj, tasks in view.by_project.items() %}
+            <div class="wk-projgroup">
+              <div class="wk-projname">{{ proj }}
+                <span class="wk-mut">{{ tasks | sum(attribute='est_pomodoros') }}🍅 估</span></div>
+              {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
+            </div>
+          {% else %}
+            <p class="wk-empty">本週尚無排程。</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# ── backlog · 待排程 (all open tasks; calendar scheduler — 41c) ── #}
+      <details class="wk-zone wk-backlog">
+        <summary class="wk-zone-head"><span class="wk-h">📥 待排程 · 所有未完成任務</span>
+          <span class="wk-mut">{{ view.backlog_count }} 項 · 點開選日期/時間排到行事曆</span></summary>
+        {% for proj, tasks in view.backlog_by_project.items() %}
+          <div class="wk-projgroup">
+            <div class="wk-projname">{{ proj }} <span class="wk-mut">{{ tasks | length }} 項</span></div>
+            {% for t in tasks %}{{ backlog_row(t, view) }}{% endfor %}
+          </div>
+        {% else %}
+          <p class="wk-empty">沒有未完成的任務 🎉</p>
+        {% endfor %}
+      </details>
+
+      {# ── review (fill any time; designed for week-end) ── #}
+      <details class="wk-zone wk-review-zone">
+        <summary class="wk-zone-head"><span class="wk-h">週回顧</span>
+          <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'offline' }}">
+            {{ '已完成' if view.review and view.review.status == 'reviewed' else '本週末填' }}</span></summary>
+        {{ review_form(view, weekly_token, with_mark=True) }}
+      </details>
+
+      {# ── notes ── #}
+      <div class="wk-zone">
+        <div class="wk-zone-head"><span class="wk-h">隨手筆記</span></div>
+        {{ notes_form(view, weekly_token) }}
+      </div>
+
+    {% endif %}
+
+  </section>
+  </main>
+
+  <script>
+  /* Task-view tab toggle (今日 / 整週 / 按專案). */
+  (function () {
+    var tabs = document.querySelectorAll('.wk-tab');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var pane = tab.getAttribute('data-tab');
+        tabs.forEach(function (t) { t.classList.toggle('is-on', t === tab); });
+        document.querySelectorAll('.wk-tabpane').forEach(function (p) {
+          p.classList.toggle('is-hidden', p.getAttribute('data-pane') !== pane);
+        });
+      });
+    });
+  })();
+
+  /* Plan-add forms: reveal + require the reason field only when a weekend day
+     is picked (D9). Server still enforces — this is the client-side gate. */
+  (function () {
+    function sync(form) {
+      var sel = form.querySelector('.wk-day-sel');
+      var reason = form.querySelector('.wk-reason-field');
+      if (!sel || !reason) return;
+      var opt = sel.options[sel.selectedIndex];
+      var weekend = opt && opt.getAttribute('data-weekend');
+      form.classList.toggle('is-weekend', !!weekend);
+      reason.required = !!weekend;
+    }
+    document.querySelectorAll('.wk-plan-add').forEach(function (form) {
+      var sel = form.querySelector('.wk-day-sel');
+      if (sel) sel.addEventListener('change', function () { sync(form); });
+      sync(form);
+    });
+  })();
+
+  /* Backlog calendar scheduler (41c): reveal+require the weekend reason when the
+     picked date is Sat/Sun, and show the derived block length (1🍅 = 30 min). */
+  (function () {
+    function isWeekend(v) {
+      if (!v) return false;
+      var d = new Date(v + 'T00:00:00');
+      var day = d.getDay();           // 0 Sun .. 6 Sat
+      return day === 0 || day === 6;
+    }
+    function endLabel(timeStr, pom) {
+      if (!timeStr || !pom) return '';
+      var parts = timeStr.split(':');
+      var raw = (+parts[0]) * 60 + (+parts[1]) + pom * 30;
+      var nextDay = raw >= 1440;                 // block runs past midnight
+      var mins = ((raw % 1440) + 1440) % 1440;
+      var hh = String(Math.floor(mins / 60)).padStart(2, '0');
+      var mm = String(mins % 60).padStart(2, '0');
+      return '→ ' + hh + ':' + mm + (nextDay ? '（+1 天）' : '') + '（' + (pom * 30) + ' 分）';
+    }
+    function sync(form) {
+      var date = form.querySelector('.wk-sched-date');
+      var time = form.querySelector('.wk-sched-time');
+      var pom = form.querySelector('input[name="pomodoros"]');
+      var reason = form.querySelector('.wk-reason-field');
+      var dur = form.querySelector('.wk-sched-dur');
+      if (date && reason) {
+        var weekend = isWeekend(date.value);
+        form.classList.toggle('is-weekend', weekend);
+        reason.required = weekend;
+      }
+      if (dur && time && pom) dur.textContent = endLabel(time.value, parseInt(pom.value, 10));
+    }
+    document.querySelectorAll('.wk-sched-form').forEach(function (form) {
+      form.querySelectorAll('.wk-sched-date, .wk-sched-time, input[name="pomodoros"]')
+        .forEach(function (el) { el.addEventListener('input', function () { sync(form); }); });
+      // Guard against a double-submit racing two POSTs (the calendar idempotency
+      // key dedupes the event, but a disabled button is clearer UX — Gemini §4).
+      form.addEventListener('submit', function () {
+        var btn = form.querySelector('.wk-sched-go');
+        if (btn) { btn.disabled = true; btn.textContent = '排入中…'; }
+      });
+      sync(form);
+    });
+  })();
+
+  /* Dismiss the error toast on click (the ?err= stays in the URL until reload). */
+  (function () {
+    var toast = document.querySelector('.wk-toast');
+    if (toast) toast.addEventListener('click', function () { toast.remove(); });
+  })();
+  </script>
+</body>
+</html>

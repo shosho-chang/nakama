@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 觀看 · {{ source.title }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/av-reader.css?v={{ asset_version }}">
+</head>
+<body class="sho">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>{{ source.title }}</h1>
+    </div>
+    <div class="header-right">
+      <span class="speed-control">
+        <label for="speedSelect">SPEED</label>
+        <select id="speedSelect" class="speed-select" aria-label="播放速度">
+          <option value="0.75">0.75x</option>
+          <option value="1.0">1.0x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+          <option value="1.75">1.75x</option>
+          <option value="2.0">2.0x</option>
+        </select>
+      </span>
+      <button class="header-btn" id="syncBtn" type="button" title="同步註解到 KB Promotion Review">同步到 KB</button>
+    </div>
+  </div>
+
+  <!-- 3-quadrant grid (ADR-035 PR2a; PR2b adds write flow + editor state) -->
+  <div class="av-grid" id="avReader"
+       data-video-id="{{ video_id }}"
+       data-default-speed="1.5"
+       data-mode="player">
+
+    <!-- Top-left: player + meta -->
+    <section class="pane pane-player" aria-label="影片播放器">
+      <div class="player-frame-wrap">
+        <div id="ytPlayer"></div>
+      </div>
+      {% if cast or channel %}
+      <div class="player-meta">
+        {% if channel %}<span class="kicker">CHANNEL</span><span>{{ channel }}</span>{% endif %}
+        {% if cast %}
+        <span class="cast-sep">·</span>
+        <span class="kicker">CAST</span>
+        <span class="cast-list">
+          {%- for name in cast -%}
+            {{ name }}{% if not loop.last %} · {% endif %}
+          {%- endfor -%}
+        </span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- Right: cue list (full height) -->
+    <aside class="pane pane-cues" aria-label="字幕清單">
+      <header class="pane-head">
+        <span class="kicker">TRANSCRIPT</span>
+        {% if cues %}<span class="pane-head-meta">{{ cues|length }} cues</span>{% endif %}
+      </header>
+      <div class="cue-scroll">
+        <div class="cue-list" id="cueList" data-marker-indices="{{ cue_marker_indices|tojson }}">
+          {% if cues %}
+            {% for cue in cues %}
+            <div class="cue-item{% if loop.index0 in cue_marker_indices %} has-annotation{% endif %}"
+                 data-cue-index="{{ loop.index0 }}"
+                 data-cue-start="{{ cue.start }}"
+                 tabindex="0" role="button" aria-label="跳到 {{ cue.label }}">
+              <div class="cue-time">{{ cue.label }}</div>
+              <div class="cue-text">{{ cue.text }}</div>
+              <button class="cue-star" type="button"
+                      data-cue-index="{{ loop.index0 }}"
+                      tabindex="-1"
+                      aria-label="標記這個 cue (Ctrl+B)">★</button>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="cue-empty">這支影片沒有可用的字幕。</div>
+          {% endif %}
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom-left: annotation list + editor (ADR-035 PR2a read; PR2b write) -->
+    <section class="pane pane-annotations" aria-label="註解清單">
+      <header class="pane-head">
+        <span class="kicker">ANNOTATIONS</span>
+        <span class="pane-head-meta" id="annCount">{% if annotations %}{{ annotations|length }} 則{% endif %}</span>
+      </header>
+      <div class="ann-scroll" id="annScroll">
+        {% if annotations %}
+        <div class="ann-list" id="annList">
+          {% for ann in annotations %}
+          <div class="ann-row{% if ann.start is none %} ann-row--orphan{% endif %}"
+               data-ann-index="{{ loop.index0 }}"
+               {% if ann.start is not none %}data-start="{{ ann.start }}"{% endif %}
+               tabindex="0" role="button"
+               aria-label="跳到 {{ ann.label }}">
+            <div class="ann-time">{{ ann.label }}</div>
+            <div class="ann-body">
+              {% if ann.speaker %}<span class="ann-speaker">{{ ann.speaker }}</span>{% endif %}
+              {% if ann.excerpt %}<span class="ann-excerpt">{{ ann.excerpt }}</span>{% endif %}
+              {% if ann.note %}
+                <span class="ann-sep">—</span>
+                <span class="ann-note">{{ ann.note }}</span>
+              {% elif ann.type == 'highlight' and not ann.note %}
+                <span class="ann-sep">·</span>
+                <span class="ann-note ann-note--muted">(no note)</span>
+              {% endif %}
+            </div>
+            {% if ann.start is not none %}
+            <div class="ann-actions" aria-label="row actions">
+              <button class="ann-action ann-action--edit" type="button" tabindex="-1"
+                      aria-label="編輯這筆筆記">✏️</button>
+              <button class="ann-action ann-action--delete" type="button" tabindex="-1"
+                      aria-label="刪除這筆筆記">🗑️</button>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="ann-empty" id="annEmpty">
+          <div class="ann-empty-title">暫停影片開始寫筆記</div>
+          <div class="ann-empty-hint">N 開啟編輯器 · ★ 標記 cue · Ctrl+B 快速標記</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Editor form (PR2b). Shown when grid data-mode="editor". -->
+      <form class="ann-editor" id="annEditor"
+            aria-label="新增註解"
+            {% if not cast %}data-no-cast="true"{% endif %}>
+        <div class="ann-editor-head">
+          <span class="kicker">EDITING</span>
+          <span class="ann-editor-target" id="annEditorTarget" aria-live="polite">--:--</span>
+        </div>
+        {% if cast %}
+        <div class="ann-chips" role="radiogroup" aria-label="講者">
+          {% for name in cast %}
+          <button class="ann-chip" type="button"
+                  data-speaker="{{ name }}"
+                  role="radio" aria-checked="false"
+                  tabindex="-1">{{ name }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <textarea class="ann-textarea" id="annTextarea"
+                  rows="3"
+                  placeholder="寫下你的想法...  (Ctrl+Enter 儲存 · Esc 取消)"
+                  aria-label="註解內容"></textarea>
+        <div class="ann-editor-actions">
+          <button class="ann-btn ann-btn--ghost" type="button" id="annCancelBtn">取消</button>
+          <button class="ann-btn ann-btn--primary" type="button" id="annSaveBtn">儲存</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <a href="/robin/watchlist">← 返回 Watchlist</a>
+    <span class="shortcuts-hint" id="footerHint">SPACE 播放/暫停 · J/L ±10s · ★/Ctrl+B 標記 · N 寫筆記</span>
+  </div>
+
+  <!-- Cues + annotations + cast payload for JS -->
+  <script type="application/json" id="cuesJson">{{ cues_json | safe }}</script>
+  <script type="application/json" id="annotationsJson">{{ annotations_json | safe }}</script>
+  <script type="application/json" id="castJson">{{ cast|tojson }}</script>
+  <script src="/static/shosho/av-reader.js?v={{ asset_version }}"></script>
+</body>
+</html>

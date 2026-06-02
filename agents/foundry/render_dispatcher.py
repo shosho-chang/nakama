@@ -1,8 +1,14 @@
-"""3-path render dispatcher (ADR-032 §1).
+"""3-path render dispatcher (ADR-032 §1, ADR-038 §D2 cache layer).
 
 Phase 1 only `hyperframes` is implemented. The other two workers raise
 NotImplementedError until web_highlight_record.py promotion + Robin URL
 scheme land in Phase 1.5.
+
+ADR-038 §D2 added content-addressed output filenames: each beat's hash is
+computed from `EXPORT_VERSION` + minimal beat fields + layout YAML digest +
+composition HTML digest + guardrails digest. The dispatcher computes the
+hash, performs an early cache-skip when `out/b_roll_<hash>.mp4` already
+exists, and passes the hash down to the worker so the filename matches.
 """
 
 from __future__ import annotations
@@ -11,6 +17,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from agents.foundry.export_hash import HashContext, compute_beat_hash
 from agents.foundry.render_workers import (
     hyperframes_worker,
     reader_playwright_worker,
@@ -20,41 +27,88 @@ from agents.foundry.render_workers import (
 logger = logging.getLogger(__name__)
 
 
-async def dispatch_beat(beat: dict, out_dir: Path) -> Path:
-    """Route a single beat to the worker named by `beat.broll.render_target`.
+def beat_output_path(beat: dict, out_dir: Path, ctx: HashContext | None = None) -> tuple[Path, str]:
+    """Resolve (output mp4 path, hash) for a beat without rendering.
 
-    Returns the rendered mp4 path. Raises NotImplementedError for Phase 1.5
-    targets and ValueError for unknown targets.
+    Useful for cache-check tooling and for fcpxml_emitter lookups when the
+    storyboard's ``status.cached_hash`` was not persisted (e.g. legacy
+    fixtures or external callers). Returns the same hash that
+    ``dispatch_beat`` would use.
+    """
+    cached_hash = compute_beat_hash(beat, ctx)
+    return out_dir / f"b_roll_{cached_hash}.mp4", cached_hash
+
+
+async def dispatch_beat(
+    beat: dict,
+    out_dir: Path,
+    *,
+    use_cache: bool = True,
+    ctx: HashContext | None = None,
+) -> tuple[Path, str, bool]:
+    """Route a single beat to the worker named by ``beat.broll.render_target``.
+
+    Returns ``(rendered_mp4_path, cached_hash, was_cache_hit)``.
+
+    When ``use_cache=True`` (default) and the content-addressed mp4 already
+    exists on disk, returns the existing path without invoking the worker.
+    Pass ``use_cache=False`` to force re-render (mirrors
+    ``pipeline.py render --no-cache``).
+
+    Raises ``NotImplementedError`` for Phase 1.5 targets and ``ValueError``
+    for unknown targets or missing broll specs.
     """
     broll = beat.get("broll")
     if broll is None:
         raise ValueError(f"beat {beat.get('beat_id')} has no broll spec")
+
+    cached_hash = compute_beat_hash(beat, ctx)
+    out_path = out_dir / f"b_roll_{cached_hash}.mp4"
+
+    if use_cache and out_path.exists():
+        logger.info(
+            "beat %s cache hit at %s (hash=%s) — skipping worker",
+            beat.get("beat_id"),
+            out_path,
+            cached_hash,
+        )
+        return out_path, cached_hash, True
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     target = broll["render_target"]
     if target == "hyperframes":
-        return await hyperframes_worker.render(beat, out_dir)
-    if target == "reader-playwright":
-        return await reader_playwright_worker.render(beat, out_dir)
-    if target == "web-playwright":
-        return await web_playwright_worker.render(beat, out_dir)
-    raise ValueError(f"unknown render_target: {target!r}")
+        rendered = await hyperframes_worker.render(beat, out_dir, cached_hash=cached_hash)
+    elif target == "reader-playwright":
+        rendered = await reader_playwright_worker.render(beat, out_dir)
+    elif target == "web-playwright":
+        rendered = await web_playwright_worker.render(beat, out_dir)
+    else:
+        raise ValueError(f"unknown render_target: {target!r}")
+
+    return rendered, cached_hash, False
 
 
 async def run_queue(
     beats: list[dict],
     out_dir: Path,
     concurrency: int = 1,
-) -> list[Path]:
+    *,
+    use_cache: bool = True,
+    ctx: HashContext | None = None,
+) -> list[tuple[Path, str, bool]]:
     """Render a list of beats with a Semaphore-bounded concurrency.
 
-    Phase 1 default concurrency=1 (ADR-032 §8 conservative — measure first
-    then raise in Phase 1.5). Returns rendered paths in input order.
+    Phase 1 default concurrency=1 (ADR-032 §8 conservative). Returns
+    ``[(mp4_path, hash, was_cache_hit), ...]`` in input order so the caller
+    (``pipeline._cmd_render``) can update ``storyboard[beat].status``.
     """
     if concurrency < 1:
         raise ValueError("concurrency must be ≥ 1")
     sem = asyncio.Semaphore(concurrency)
 
-    async def _one(b: dict) -> Path:
+    async def _one(b: dict) -> tuple[Path, str, bool]:
         async with sem:
-            return await dispatch_beat(b, out_dir)
+            return await dispatch_beat(b, out_dir, use_cache=use_cache, ctx=ctx)
 
     return await asyncio.gather(*[_one(b) for b in beats])

@@ -141,7 +141,6 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
     from shared.dry_run_entity_matcher import DryRunEntityMatcher
     from shared.dry_run_extractor import DryRunClaimExtractor
     from shared.dry_run_matcher import DryRunConceptMatcher
-    from shared.entity_extractor import DryRunEntityExtractor
     from shared.entity_promotion_engine import EntityPromotionEngine
     from shared.kb_concept_index_default import VaultKBConceptIndex
     from shared.kb_entity_index_default import VaultKBEntityIndex
@@ -155,6 +154,7 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
     from shared.reading_source_registry import ReadingSourceRegistry
     from shared.source_map_builder import SourceMapBuilder
     from shared.source_resolver import RegistrySourceResolver
+    from shared.video_speaker_entity_extractor import VideoSpeakerEntityExtractor
 
     if config.promotion_mode == "dry_run":
         extractor = DryRunClaimExtractor()
@@ -163,7 +163,13 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
         # in this branch. When LLM-backed entity matcher / NER extractor
         # lands, the "llm" branch below can swap these out independently of
         # the concept side.
-        entity_extractor = DryRunEntityExtractor()
+        # ADR-035 PR4 — VideoSpeakerEntityExtractor surfaces speaker chips
+        # on youtube_video sources as Person EntityCandidates. Returns []
+        # for ebook / inbox_document, so behavior on those kinds is
+        # identical to DryRunEntityExtractor until LLM-backed NER lands.
+        # When that LLM extractor arrives, compose the two (video path +
+        # LLM path) rather than replacing this one.
+        entity_extractor = VideoSpeakerEntityExtractor()
         entity_matcher = DryRunEntityMatcher()
     elif config.promotion_mode == "llm":
         # Boundary: explicit failure rather than silent fallback. N519

@@ -1,0 +1,691 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Robin AV Reader · page styles (Design System v0.1 / --sho-* tokens)
+
+   Layout (ADR-035 PR2a): 3-quadrant CSS grid on desktop.
+
+       ┌──────────────────────┬─────────────────┐
+       │   YouTube IFrame     │                 │
+       │   player             │  Cue list       │
+       │   (top-left)         │  (right, full   │
+       ├──────────────────────┤   height,       │
+       │  Annotation list     │   scrolling)    │
+       │  (bottom-left)       │                 │
+       └──────────────────────┴─────────────────┘
+
+   On portrait phone we collapse to a single column (player → cues →
+   annotations) so PWA path stays viable.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+}
+
+/* ── Header (mirrors reader.html chassis) ───────────────────────────── */
+body.sho .header {
+  background: var(--sho-bg);
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--sho-line);
+  flex-shrink: 0;
+}
+body.sho .header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+body.sho .header-left h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+body.sho .header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+body.sho .header-btn {
+  background: transparent;
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2);
+  padding: 5px 12px;
+  border-radius: var(--sho-r-1);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+  font-family: var(--sho-font-sans);
+}
+body.sho .header-btn:hover {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+}
+body.sho .header-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* ── Speed dropdown ─────────────────────────────────────────────────── */
+body.sho .speed-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+body.sho .speed-control label {
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+}
+body.sho .speed-select {
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  padding: 4px 8px;
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+body.sho .speed-select:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+/* ── 3-quadrant grid ────────────────────────────────────────────────── */
+body.sho .av-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  /* Cue list (right) is a touch wider — it's the scrolling read surface.
+     Video pane sets its own height via aspect-ratio. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "player cues"
+    "anns   cues";
+  background: var(--sho-bg);
+}
+body.sho .pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+body.sho .pane-player {
+  grid-area: player;
+  border-right: 1px solid var(--sho-line);
+  border-bottom: 1px solid var(--sho-line);
+}
+body.sho .pane-cues {
+  grid-area: cues;
+}
+body.sho .pane-annotations {
+  grid-area: anns;
+  border-right: 1px solid var(--sho-line);
+}
+
+/* ── Pane head (kicker label per pane) ──────────────────────────────── */
+body.sho .pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--sho-line);
+  flex-shrink: 0;
+}
+body.sho .pane-head .kicker {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sho-muted);
+  font-weight: 500;
+}
+body.sho .pane-head-meta {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* ── Player pane (top-left) ─────────────────────────────────────────── */
+body.sho .player-frame-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--sho-bg-3);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+body.sho .player-frame-wrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+body.sho .player-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  border-top: 1px solid var(--sho-line);
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-muted);
+  flex-shrink: 0;
+}
+body.sho .player-meta .kicker {
+  color: var(--sho-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+body.sho .player-meta .cast-list {
+  color: var(--sho-text-2);
+  font-family: var(--sho-font-sans);
+  letter-spacing: normal;
+  text-transform: none;
+  font-size: 12px;
+}
+body.sho .player-meta .cast-sep {
+  color: var(--sho-line-2);
+  margin: 0 4px;
+}
+
+/* ── Cue list (right pane) ──────────────────────────────────────────── */
+body.sho .cue-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+body.sho .cue-list {
+  padding: 0 16px;
+}
+body.sho .cue-item {
+  display: grid;
+  /* 56px time · 1fr text · 22px star (revealed on hover / active) */
+  grid-template-columns: 56px 1fr 22px;
+  gap: 12px;
+  padding: 6px 10px 6px 12px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
+  position: relative;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .cue-item:hover {
+  background: var(--sho-bg-2);
+}
+/* ── ★ quick-highlight button (PR2b) ────────────────────────────────
+   The star is revealed on hover or when the cue is active so it's a
+   stable affordance without permanently competing with the cue text.
+   Editor mode keeps it suppressed — the star is a player-mode shortcut
+   and the cue-list-during-editor surface is the retarget channel. */
+body.sho .cue-star {
+  background: transparent;
+  border: 0;
+  color: var(--sho-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  align-self: start;
+  margin-top: 3px;
+  transition: opacity var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .cue-item:hover .cue-star,
+body.sho .cue-item.is-active .cue-star,
+body.sho .cue-item:focus-within .cue-star {
+  opacity: 1;
+}
+/* Cue already has a mark (★ or note) → star is always visible and
+   coloured to read as "lit / toggle-off available". Clicking it deletes
+   the mark (see av-reader.js). */
+body.sho .cue-item.has-annotation .cue-star {
+  opacity: 1;
+  color: var(--sho-accent);
+}
+body.sho .cue-star:hover {
+  color: var(--sho-accent);
+}
+body.sho .cue-star:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: var(--sho-focus);
+  border-radius: var(--sho-r-1);
+}
+/* Suppress the star during editor mode — retarget UX needs the cue
+   list to read as a target picker, not a quick-highlight surface. */
+body.sho .av-grid[data-mode="editor"] .cue-star {
+  visibility: hidden;
+}
+/* Retarget visual: while the editor is open the currently-targeted cue
+   gets a thick accent border so the user always sees where the
+   annotation will land. Distinct from `.is-active` (the playhead). */
+body.sho .cue-item.is-target {
+  background: var(--sho-accent-soft);
+  border-left-color: var(--sho-accent);
+  border-left-width: 3px;
+}
+body.sho .cue-item.is-active {
+  background: var(--sho-accent-soft);
+  border-left-color: var(--sho-accent);
+}
+body.sho .cue-item.is-active .cue-text {
+  color: var(--sho-ink);
+}
+/* Cues that have an annotation get a persistent orange border-left — even
+   when not active — so the eye can scan the transcript and see what's
+   already marked. When the cue is also active the active rule wins on
+   colour but we keep the marker semantic via a thicker left edge. */
+body.sho .cue-item.has-annotation {
+  border-left-color: var(--sho-accent-line);
+}
+body.sho .cue-item.has-annotation.is-active {
+  border-left-color: var(--sho-accent);
+}
+body.sho .cue-time {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  padding-top: 3px;
+}
+body.sho .cue-item.is-active .cue-time {
+  color: var(--sho-accent);
+}
+body.sho .cue-text {
+  color: var(--sho-text);
+  font-size: 14px;
+  line-height: 1.65;
+}
+body.sho .cue-item:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .cue-empty {
+  text-align: center;
+  color: var(--sho-muted);
+  font-size: 13px;
+  padding: 48px 24px;
+}
+
+/* ── Annotation list (bottom-left pane, read-only) ──────────────────── */
+body.sho .ann-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+body.sho .ann-list {
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+body.sho .ann-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 12px;
+  padding: 8px 10px 8px 12px;
+  border-left: 2px solid var(--sho-accent-line);
+  border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
+  cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-row:hover {
+  background: var(--sho-bg-2);
+  border-left-color: var(--sho-accent);
+}
+/* Row actions (PR2c): hidden by default, revealed on hover or focus
+   within so the row reads as content first. */
+body.sho .ann-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  opacity: 0;
+  padding-top: 2px;
+  transition: opacity var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-row:hover .ann-actions,
+body.sho .ann-row:focus-within .ann-actions {
+  opacity: 1;
+}
+body.sho .ann-action {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--sho-muted);
+  border-radius: var(--sho-r-1);
+  transition: background var(--sho-t-fast) var(--sho-ease),
+              color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-action:hover {
+  background: var(--sho-bg-1);
+  color: var(--sho-ink);
+}
+body.sho .ann-action:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .ann-row:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .ann-row--orphan {
+  /* Annotation whose locator we couldn't parse — display only, no seek. */
+  border-left-color: var(--sho-line-2);
+  cursor: default;
+}
+body.sho .ann-row--orphan:hover {
+  background: transparent;
+  border-left-color: var(--sho-line-2);
+}
+body.sho .ann-time {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  color: var(--sho-accent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  padding-top: 3px;
+}
+body.sho .ann-row--orphan .ann-time {
+  color: var(--sho-muted);
+}
+body.sho .ann-body {
+  color: var(--sho-text);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+body.sho .ann-speaker {
+  display: inline-block;
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-pill);
+  padding: 1px 8px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+body.sho .ann-excerpt {
+  color: var(--sho-text);
+}
+body.sho .ann-sep {
+  color: var(--sho-muted);
+  margin: 0 4px;
+}
+body.sho .ann-note {
+  color: var(--sho-text-2);
+}
+body.sho .ann-note--muted {
+  color: var(--sho-muted);
+  font-style: italic;
+}
+
+body.sho .ann-empty {
+  text-align: center;
+  padding: 32px 24px;
+  color: var(--sho-muted);
+}
+body.sho .ann-empty-title {
+  color: var(--sho-text);
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+body.sho .ann-empty-hint {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+  letter-spacing: 0.04em;
+}
+
+/* ── Footer (mirrors reader.html chassis) ───────────────────────────── */
+body.sho .footer {
+  background: var(--sho-bg);
+  padding: 8px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--sho-line);
+  flex-shrink: 0;
+}
+body.sho .footer a {
+  color: var(--sho-text-2);
+  text-decoration: none;
+  font-size: 12px;
+}
+body.sho .footer a:hover {
+  color: var(--sho-accent);
+}
+body.sho .shortcuts-hint {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  color: var(--sho-muted);
+  letter-spacing: 0.04em;
+}
+
+/* ── Responsive: collapse the grid on narrow viewports ───────────────── */
+@media (max-width: 900px) {
+  body.sho .av-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "player"
+      "anns"
+      "cues";
+  }
+  body.sho .pane-player,
+  body.sho .pane-annotations {
+    border-right: none;
+  }
+  body.sho .pane-annotations {
+    max-height: 30vh;
+  }
+}
+@media (max-width: 720px) {
+  body.sho .header,
+  body.sho .footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  body.sho .pane-head,
+  body.sho .ann-list,
+  body.sho .cue-list,
+  body.sho .player-meta {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  body.sho .shortcuts-hint {
+    display: none;
+  }
+  body.sho .ann-row {
+    grid-template-columns: 48px 1fr;
+    gap: 10px;
+  }
+  body.sho .cue-item {
+    grid-template-columns: 48px 1fr 20px;
+    gap: 10px;
+  }
+}
+
+/* ── Editor form (PR2b) ──────────────────────────────────────────────
+   Hidden in player mode, shown when the grid carries data-mode="editor".
+   Sits flush at the bottom of the bottom-left pane so the annotation list
+   above keeps its scroll surface intact. */
+body.sho .ann-editor {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--sho-line);
+  background: var(--sho-bg-2);
+  flex-shrink: 0;
+}
+body.sho .av-grid[data-mode="editor"] .ann-editor {
+  display: flex;
+}
+body.sho .ann-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+body.sho .ann-editor-head .kicker {
+  font-family: var(--sho-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sho-accent);
+  font-weight: 500;
+}
+body.sho .ann-editor-target {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  color: var(--sho-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+body.sho .ann-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+body.sho .ann-chip {
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-pill);
+  padding: 3px 10px;
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--sho-text-2);
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-chip:hover {
+  border-color: var(--sho-accent-line);
+  color: var(--sho-accent);
+}
+body.sho .ann-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .ann-chip[aria-checked="true"] {
+  background: var(--sho-accent-soft);
+  border-color: var(--sho-accent);
+  color: var(--sho-accent);
+}
+body.sho .ann-textarea {
+  resize: vertical;
+  min-height: 64px;
+  max-height: 200px;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  padding: 8px 10px;
+  font-family: var(--sho-font-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+body.sho .ann-textarea:focus-visible {
+  outline: none;
+  border-color: var(--sho-accent-line);
+  box-shadow: var(--sho-focus);
+}
+body.sho .ann-textarea::placeholder {
+  color: var(--sho-muted);
+}
+body.sho .ann-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+body.sho .ann-btn {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  padding: 5px 14px;
+  border-radius: var(--sho-r-1);
+  cursor: pointer;
+  border: 1px solid var(--sho-line-2);
+  background: transparent;
+  color: var(--sho-text-2);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .ann-btn:hover {
+  color: var(--sho-accent);
+  border-color: var(--sho-accent-line);
+}
+body.sho .ann-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .ann-btn--primary {
+  color: var(--sho-bg);
+  background: var(--sho-accent);
+  border-color: var(--sho-accent);
+}
+body.sho .ann-btn--primary:hover {
+  background: var(--sho-accent-2);
+  border-color: var(--sho-accent-2);
+  color: var(--sho-bg);
+}
+body.sho .ann-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Editor-mode visual cue on the annotations pane head so the kicker is
+   not visually identical to player mode. */
+body.sho .av-grid[data-mode="editor"] .pane-annotations > .pane-head .kicker {
+  color: var(--sho-accent);
+}
+
+/* prefers-reduced-motion: drop the smooth scroll-into-view + hover fades. */
+@media (prefers-reduced-motion: reduce) {
+  body.sho .cue-item,
+  body.sho .ann-row,
+  body.sho .ann-chip,
+  body.sho .ann-btn,
+  body.sho .cue-star,
+  body.sho .header-btn {
+    transition: none;
+  }
+}

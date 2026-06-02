@@ -119,7 +119,11 @@ class AnnotationSetV2(BaseModel):
 
 
 class HighlightV3(BaseModel):
-    """Highlight: target = (cfi?, text_excerpt, book_version_hash?); body = text."""
+    """Highlight: target = (cfi?, text_excerpt, book_version_hash?); body = text.
+
+    ADR-035 PR2b adds the optional ``speaker`` field for video annotations
+    (the cast chip selected at save time). Default ``""`` keeps existing
+    paper / book items round-tripping without a forced schema bump."""
 
     model_config = ConfigDict(extra="forbid")
     type: Literal["highlight"] = "highlight"
@@ -130,13 +134,19 @@ class HighlightV3(BaseModel):
     book_version_hash: str | None = None
     # body
     text: str
+    # speaker (video / podcast — ADR-035 PR2b)
+    speaker: str = ""
     # meta
     created_at: str = Field(default_factory=_now_iso)
     modified_at: str = Field(default_factory=_now_iso)
 
 
 class AnnotationV3(BaseModel):
-    """Annotation: short user note tied to a span. ``ref`` retained for paper-v1 callers."""
+    """Annotation: short user note tied to a span. ``ref`` retained for paper-v1 callers.
+
+    ADR-035 PR2b adds the optional ``speaker`` field for video annotations
+    (the cast chip selected at save time). Default ``""`` keeps existing
+    paper / book items round-tripping without a forced schema bump."""
 
     model_config = ConfigDict(extra="forbid")
     type: Literal["annotation"] = "annotation"
@@ -148,6 +158,8 @@ class AnnotationV3(BaseModel):
     book_version_hash: str | None = None
     # body
     note: str
+    # speaker (video / podcast — ADR-035 PR2b)
+    speaker: str = ""
     # meta
     created_at: str = Field(default_factory=_now_iso)
     modified_at: str = Field(default_factory=_now_iso)

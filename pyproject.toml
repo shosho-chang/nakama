@@ -22,6 +22,7 @@ dependencies = [
     "trafilatura>=2.0.0",        # Web scraping：主要內容提取（本地、CJK 友好）
     "readability-lxml>=0.8.4",   # Web scraping：備選去噪方案
     "youtube-transcript-api>=0.6.2,<0.8",  # Nami: YouTube transcript fetch (upper bound: 0.6→0.7 historically breaking)
+    "yt-dlp>=2024.10.0",         # ADR-035: Watchlist ingestion (metadata + auto-caption fetch) for YouTube video reader
     "firecrawl-py>=4.22.0",      # Web scraping：JS 渲染 / SPA fallback（已在 requirements.txt）
 
     # Transcription (post-processing)

@@ -1,0 +1,518 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Bridge Weekly Dashboard · Tier B (ADR-039)
+
+   Composes on tokens.css + bridge.css (ops chassis: .chassis, .sho-readout,
+   .sho-gauge, .sho-grid-strip/-cell, .sho-chip, .sho-btn, .nk-caps).
+   Single-page dense surface: sticky week header + sticky pomodoro dock.
+   All colour via --sho-* tokens; single PANTONE 165 PC orange accent (≤4%):
+   active nav underline, gauge fill, dock ▶. Hairline-driven, no shadows.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho .wk-main { padding: 0 28px 40px; }
+.wk-screen { max-width: 1040px; margin: 0 auto; }
+
+/* ── conflict banner ── */
+body.sho .wk-conflict {
+  border: 1px solid color-mix(in oklch, var(--sho-warning) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 8%, transparent);
+  border-radius: var(--sho-r-2);
+  padding: 12px 16px;
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--sho-text-2);
+}
+body.sho .wk-conflict ul { margin: 6px 0 0; padding-left: 18px; }
+body.sho .wk-mut { color: var(--sho-muted); font-size: 12px; }
+body.sho .wk-note-inline {
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-warning);
+  padding: 8px 0 0;
+}
+
+/* ── sticky header: week nav + hero ── */
+body.sho .wk-head {
+  position: sticky; top: 0; z-index: 5; background: var(--sho-bg-2);
+  display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+  padding: 20px 0 16px; border-bottom: 1px solid var(--sho-line);
+}
+body.sho .wk-weeknav { display: flex; align-items: center; gap: 12px; }
+body.sho .wk-arrow {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-1); background: var(--sho-bg);
+  color: var(--sho-text-2); text-decoration: none; font-size: 12px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-arrow:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .wk-arrow:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .wk-wknum {
+  font-family: var(--sho-font-mono); font-size: 30px; font-weight: 600;
+  letter-spacing: -0.5px; color: var(--sho-ink); line-height: 1;
+}
+body.sho .wk-now {
+  font-family: var(--sho-font-mono); font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--sho-bg); background: var(--sho-accent);
+  padding: 2px 5px; border-radius: var(--sho-r-1); vertical-align: middle;
+}
+body.sho .wk-wkrange {
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted);
+  letter-spacing: 0.06em; margin-top: 3px;
+}
+body.sho .wk-hero { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+body.sho .wk-hero-count {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  font-family: var(--sho-font-mono); font-variant-numeric: tabular-nums;
+}
+/* both hero metrics (🍅 / 🤩) share ONE size pair — actual prominent, goal muted */
+body.sho .wk-hero-count .wk-tomato,
+body.sho .wk-hero-count .wk-ufo { font-size: 20px; line-height: 1; align-self: center; }
+body.sho .wk-hc-actual { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; color: var(--sho-ink); }
+body.sho .wk-hc-sep { font-size: 18px; color: var(--sho-line-2); }
+body.sho .wk-hc-plan { font-size: 18px; color: var(--sho-muted); }
+
+/* ── zones ── */
+body.sho .wk-zone { padding: 20px 0 4px; border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-zone-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+/* CJK section label — the ONE treatment for every zone header (replaces the
+   Latin .nk-caps kicker, whose uppercase + 0.18em tracking sprawls 中文). */
+body.sho .wk-h {
+  font-family: var(--sho-font-zh); font-size: 13px; font-weight: 600;
+  letter-spacing: 0.02em; color: var(--sho-ink);
+}
+body.sho .wk-empty { color: var(--sho-muted); font-size: 13px; padding: 6px 0; }
+
+/* ── task views ── */
+body.sho .wk-tabs { display: flex; gap: 4px; margin-left: auto; }
+body.sho .wk-tab {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 5px 11px; border: 1px solid transparent;
+  border-radius: var(--sho-r-pill); color: var(--sho-muted); background: none; cursor: pointer;
+  transition: background var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-tab.is-on { background: var(--sho-bg-3); color: var(--sho-text); }
+body.sho .wk-tab:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .wk-tabpane.is-hidden { display: none; }
+
+body.sho .wk-task { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-task:last-child { border-bottom: 0; }
+body.sho .wk-box { width: 14px; height: 14px; border: 1.5px solid var(--sho-line-2); border-radius: 3px; flex-shrink: 0; }
+body.sho .wk-box.done { background: var(--sho-text); border-color: var(--sho-text); }
+body.sho .wk-task.done .wk-tname { color: var(--sho-muted); text-decoration: line-through; }
+body.sho .wk-tname { color: var(--sho-text); }
+body.sho .wk-tproj { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); letter-spacing: 0.04em; }
+body.sho .wk-tnum {
+  margin-left: auto; font-family: var(--sho-font-mono); font-size: 11px;
+  color: var(--sho-text-2); font-variant-numeric: tabular-nums;
+}
+body.sho .wk-status { text-transform: none; }
+body.sho .wk-projgroup { padding: 4px 0 8px; }
+body.sho .wk-projname {
+  display: flex; gap: 10px; align-items: baseline; padding: 8px 6px 4px;
+  font-size: 13px; color: var(--sho-ink); border-bottom: 1px solid var(--sho-line-2);
+}
+
+/* ── daily cards (Mon–Fri): today open, others collapse to a thin agenda row ── */
+body.sho .wk-days { display: flex; flex-direction: column; gap: 8px; }
+body.sho .wk-day {
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-2);
+  background: var(--sho-bg); overflow: hidden;
+}
+body.sho .wk-day.is-today { border-color: color-mix(in oklch, var(--sho-accent) 40%, var(--sho-line)); }
+body.sho .wk-day-head {
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+  cursor: pointer; list-style: none; user-select: none;
+}
+body.sho .wk-day-head::-webkit-details-marker { display: none; }
+body.sho .wk-day-head::marker { content: ""; }
+body.sho .wk-day-head:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-2); }
+body.sho .wk-day[open] .wk-day-head { border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-day-when { display: inline-flex; align-items: baseline; gap: 8px; }
+body.sho .wk-day-wd { font-family: var(--sho-font-mono); font-size: 16px; font-weight: 600; color: var(--sho-ink); }
+body.sho .wk-day-md { font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-muted); }
+body.sho .wk-day-now {
+  font-family: var(--sho-font-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--sho-bg); background: var(--sho-accent); padding: 2px 6px; border-radius: var(--sho-r-1);
+}
+body.sho .wk-day-pom {
+  margin-left: auto; font-family: var(--sho-font-mono); font-size: 13px;
+  color: var(--sho-text-2); font-variant-numeric: tabular-nums;
+}
+body.sho .wk-day-caret { color: var(--sho-muted); font-size: 11px; transition: transform var(--sho-t-fast) var(--sho-ease); }
+body.sho .wk-day[open] .wk-day-caret { transform: rotate(90deg); }
+/* card body — responsive category columns: side-by-side wide, stacked narrow */
+body.sho .wk-day-body {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px 20px; padding: 14px;
+}
+body.sho .wk-catcol { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+body.sho .wk-cat-label {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--sho-text-2);
+  border-bottom: 1px solid var(--sho-line-2); padding-bottom: 4px;
+}
+body.sho .wk-cat-empty { color: var(--sho-line-2); font-size: 12px; }
+body.sho .wk-cat-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+body.sho .wk-cat-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sho-text); min-width: 0; }
+body.sho .wk-cat-item.done .wk-ci-name { color: var(--sho-muted); text-decoration: line-through; }
+body.sho .wk-ci-name {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: inherit; text-decoration: none;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-ci-name:hover { color: var(--sho-accent); }
+body.sho .wk-ci-name:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-ci-box { color: var(--sho-text-2); flex-shrink: 0; }
+
+/* ── carry-forward + review ── */
+body.sho .wk-cf { display: flex; align-items: center; gap: 12px; padding: 9px 6px; border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-cf:last-child { border-bottom: 0; }
+body.sho .wk-rem { margin-left: auto; font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-warning); }
+body.sho .wk-cf .sho-btn--ghost { padding: 5px 11px; font-size: 10px; }
+body.sho .wk-rev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
+body.sho .wk-field { display: flex; flex-direction: column; gap: 5px; }
+body.sho .wk-field label {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--sho-text-2);
+}
+body.sho .wk-readonly {
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 8px 10px; font-size: 13px; color: var(--sho-text); line-height: 1.6; min-height: 20px;
+}
+body.sho .wk-q-list { columns: 2; gap: 24px; margin: 4px 0; padding-left: 18px; color: var(--sho-text-2); font-size: 13px; }
+body.sho .wk-q-list li { margin: 3px 0; }
+body.sho .wk-notes { min-height: 60px; }
+
+/* ── error toast (plan-write failures redirect back with ?err=) ── */
+body.sho .wk-toast {
+  border: 1px solid color-mix(in oklch, var(--sho-warning) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 10%, transparent);
+  border-radius: var(--sho-r-2);
+  padding: 10px 14px; margin: 16px 0 0;
+  font-size: 13px; color: var(--sho-text); cursor: pointer;
+}
+
+/* ── plan editor (task row → native <details>) ── */
+body.sho .wk-task-d { border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-task-d:last-child { border-bottom: 0; }
+body.sho .wk-task-d > summary.wk-task {
+  border-bottom: 0; cursor: pointer; list-style: none;
+  outline: none; user-select: none;
+}
+body.sho .wk-task-d > summary.wk-task::-webkit-details-marker { display: none; }
+body.sho .wk-task-d > summary.wk-task::marker { content: ""; }
+body.sho .wk-task-d > summary.wk-task:focus-visible { box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-task-d[open] > summary.wk-task { background: var(--sho-bg-2); }
+body.sho .wk-edit-hint {
+  font-family: var(--sho-font-mono); font-size: 9px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--sho-muted); opacity: 0; margin-left: 4px;
+  transition: opacity var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-task-d > summary.wk-task:hover .wk-edit-hint,
+body.sho .wk-task-d[open] .wk-edit-hint { opacity: 1; }
+body.sho .wk-task-d[open] .wk-edit-hint { color: var(--sho-accent); }
+
+body.sho .wk-plan-edit {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 6px 16px 26px; background: var(--sho-bg-2);
+}
+body.sho .wk-plan-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+body.sho .wk-plan-none { font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted); }
+body.sho .wk-plan-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill);
+  padding: 3px 6px 3px 10px; background: var(--sho-bg);
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-text-2);
+}
+body.sho .wk-plan-chip.has-reason { border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent); }
+body.sho .wk-plan-chip .wk-chip-pom { color: var(--sho-text); font-variant-numeric: tabular-nums; }
+body.sho .wk-plan-chip .wk-chip-reason { color: var(--sho-warning); }
+body.sho .wk-plan-chip .wk-chip-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--sho-muted); cursor: pointer; font-size: 11px;
+  transition: background var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-plan-chip .wk-chip-x:hover { background: var(--sho-bg-3); color: var(--sho-warning); }
+body.sho .wk-plan-chip .wk-chip-x:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+body.sho .wk-plan-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+body.sho .wk-day-sel {
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 5px 8px;
+}
+body.sho .wk-pom-field {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted);
+}
+body.sho .wk-pom-field input {
+  width: 50px; font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 5px 6px; font-variant-numeric: tabular-nums;
+}
+body.sho .wk-reason-field {
+  display: none; flex: 1 1 160px; min-width: 120px;
+  font-size: 12px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 5px 9px;
+}
+body.sho .wk-plan-add.is-weekend .wk-reason-field {
+  display: inline-block;
+  border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent);
+}
+body.sho .wk-day-sel:focus-visible,
+body.sho .wk-pom-field input:focus-visible,
+body.sho .wk-reason-field:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .wk-plan-add .wk-plan-go { padding: 6px 14px; font-size: 11px; }
+body.sho .wk-sync .wk-sync-go { padding: 5px 11px; font-size: 10px; }
+body.sho .wk-sync .wk-sync-go .wk-mut { font-size: 10px; }
+
+/* ── 本週三大要事 strip (under the sticky header) ── */
+body.sho .wk-top3 {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 14px;
+  padding: 12px 0 0; margin-top: 4px;
+}
+body.sho .wk-top3-cap { flex-shrink: 0; }  /* inherits the .wk-h label treatment */
+body.sho .wk-top3-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 8px 18px; counter-reset: t3;
+}
+body.sho .wk-top3-item { display: flex; align-items: baseline; gap: 6px; }
+body.sho .wk-top3-item::before {
+  counter-increment: t3; content: counter(t3);
+  font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-accent);
+  font-weight: 600; align-self: center;
+}
+body.sho .wk-top3-item a {
+  color: var(--sho-text); text-decoration: none; font-size: 14px;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-top3-item a:hover { color: var(--sho-accent); }
+body.sho .wk-top3-item a:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-top3-item.done a { color: var(--sho-muted); text-decoration: line-through; }
+
+/* ── open-task affordance in the task-list row ── */
+body.sho .wk-open {
+  color: var(--sho-muted); text-decoration: none; font-size: 13px; padding: 0 4px;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-open:hover { color: var(--sho-accent); }
+body.sho .wk-open:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+
+/* ════════ TASK DETAIL PAGE (ADR-039 E) ════════ */
+body.sho .tk-main { max-width: 760px; }
+body.sho .tk-back {
+  display: inline-block; margin: 16px 0 0;
+  font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text-2);
+  text-decoration: none; transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-back:hover { color: var(--sho-accent); }
+body.sho .tk-back:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+
+body.sho .tk-head { padding: 14px 0 18px; border-bottom: 1px solid var(--sho-line); }
+body.sho .tk-title {
+  font-size: 24px; font-weight: 600; letter-spacing: -0.4px; color: var(--sho-ink);
+  margin: 0 0 10px; line-height: 1.25;
+}
+body.sho .tk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+body.sho .tk-proj { font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted); letter-spacing: 0.04em; }
+body.sho .tk-obsidian {
+  margin-left: auto; font-family: var(--sho-font-mono); font-size: 11px;
+  color: var(--sho-text-2); text-decoration: none;
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-1); padding: 3px 8px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-obsidian:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .tk-obsidian:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+/* estimate vs actual — three stat columns */
+body.sho .tk-stats { display: flex; gap: 28px; padding: 20px 0 4px; }
+body.sho .tk-stat { display: flex; flex-direction: column; gap: 4px; }
+body.sho .tk-stat-num {
+  font-family: var(--sho-font-mono); font-variant-numeric: tabular-nums;
+  font-size: 32px; font-weight: 600; letter-spacing: -0.5px; color: var(--sho-ink); line-height: 1;
+}
+body.sho .tk-stat-num.tk-over { color: var(--sho-warning); }
+body.sho .tk-stat-den { font-size: 18px; color: var(--sho-muted); font-weight: 400; }
+body.sho .tk-stat-lab {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--sho-text-2);
+}
+body.sho .tk-note { font-size: 12px; color: var(--sho-warning); margin: 8px 0 0; }
+
+/* read-only plan chips */
+body.sho .tk-plan { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 16px 0 4px; }
+body.sho .tk-plan-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill);
+  padding: 3px 10px; background: var(--sho-bg);
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-text-2);
+}
+body.sho .tk-plan-chip.done { opacity: 0.55; text-decoration: line-through; }
+body.sho .tk-plan-r { color: var(--sho-warning); }
+
+/* timer box */
+body.sho .tk-timerbox {
+  margin: 24px 0 8px; padding: 24px; border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2); background: var(--sho-bg-2);
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+}
+body.sho .tk-clock { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+body.sho .tk-clock-time {
+  font-family: var(--sho-font-mono); font-variant-numeric: tabular-nums;
+  font-size: 64px; font-weight: 600; letter-spacing: -1px; color: var(--sho-ink); line-height: 1;
+}
+body.sho .tk-clock[data-state="running"] .tk-clock-time { color: var(--sho-accent); }
+body.sho .tk-clock-mode {
+  font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--sho-text-2); min-height: 14px;
+}
+body.sho .tk-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+body.sho .tk-controls.is-hidden { display: none; }
+body.sho .tk-manual {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+  padding-top: 14px; border-top: 1px solid var(--sho-line); width: 100%;
+}
+body.sho .tk-mform { display: inline; }
+body.sho .tk-logform { display: none; }
+body.sho .tk-toast--ok,
+body.sho .wk-toast--ok {
+  border-color: color-mix(in oklch, var(--sho-success, var(--sho-accent)) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-success, var(--sho-accent)) 10%, transparent);
+}
+
+/* ── task note body — scoped draft surface (ADR-040 A7 / Slice W) ── */
+body.sho .tk-notebox {
+  margin: 24px 0 8px; padding: 20px 24px; border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2); background: var(--sho-bg-2);
+}
+body.sho .tk-note-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+body.sho .tk-note-obsidian {
+  font-size: 12px; color: var(--sho-text-2); text-decoration: none;
+  border-bottom: 1px solid var(--sho-line-2);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-note-obsidian:hover { color: var(--sho-accent); border-color: var(--sho-accent); }
+body.sho .tk-note-obsidian:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .tk-note-area {
+  font: inherit; font-size: 14px; line-height: 1.7; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 14px 16px; resize: vertical; width: 100%; box-sizing: border-box; min-height: 220px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-note-area:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+body.sho .tk-note-area::placeholder { color: var(--sho-line-2); }
+
+/* ── top-3 project / unresolved variants (ADR-040 A4) ── */
+body.sho .wk-top3-proj { font-size: 14px; color: var(--sho-text); display: inline-flex; align-items: baseline; gap: 6px; }
+body.sho .wk-top3-ratio { font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted); font-variant-numeric: tabular-nums; }
+body.sho .wk-top3-item.done .wk-top3-proj { color: var(--sho-muted); text-decoration: line-through; }
+body.sho .wk-top3-unres { font-size: 14px; color: var(--sho-warning); }
+body.sho .wk-top3-item.unresolved::before { color: var(--sho-warning); }
+
+/* ── weekly-file 週交接 forms (ADR-040 A6 composable steps) ── */
+body.sho .wk-wf { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 6px; }
+body.sho .wk-wf-label { font-size: 12px; color: var(--sho-text-2); }
+body.sho .wk-top3-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+body.sho .wk-top3-sel {
+  font: inherit; font-size: 13px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 7px 10px; min-width: 200px; flex: 1 1 200px; max-width: 320px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-top3-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+body.sho .wk-plan-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+body.sho .wk-plan-row .sho-btn { margin-left: auto; }
+body.sho .wk-field--wide { grid-column: 1 / -1; }
+body.sho .wk-field textarea,
+body.sho .wk-notes-form textarea {
+  font: inherit; font-size: 13px; line-height: 1.6; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 8px 10px; resize: vertical; width: 100%; box-sizing: border-box;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-field textarea:focus-visible,
+body.sho .wk-notes-form textarea:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+body.sho .wk-field textarea::placeholder { color: var(--sho-line-2); }
+body.sho .wk-wf-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+body.sho .wk-check {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  font-size: 12px; color: var(--sho-text-2); text-transform: none; letter-spacing: 0;
+}
+body.sho .wk-check input { accent-color: var(--sho-accent); }
+
+/* plan panel (collapsible): top-3 + targets + status, each persists alone */
+body.sho .wk-plan-panel > summary.wk-zone-head { cursor: pointer; list-style: none; user-select: none; }
+body.sho .wk-plan-panel > summary::-webkit-details-marker { display: none; }
+body.sho .wk-plan-panel > summary::marker { content: ""; }
+body.sho .wk-plan-panel > summary:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-review-zone > summary.wk-zone-head { cursor: pointer; list-style: none; }
+body.sho .wk-review-zone > summary::-webkit-details-marker { display: none; }
+body.sho .wk-review-zone > summary::marker { content: ""; }
+body.sho .wk-review-zone > summary:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-targets-form, body.sho .wk-status-form {
+  flex-direction: row; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+body.sho .wk-num-field {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--sho-text-2);
+}
+body.sho .wk-num-field input {
+  font: inherit; font-family: var(--sho-font-mono); font-size: 13px; width: 64px;
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 5px 8px; color: var(--sho-text); text-align: right;
+}
+body.sho .wk-num-field input:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+
+/* ── Backlog calendar scheduler (ADR-041 41c) ─────────────────────────────── */
+body.sho .wk-backlog > summary.wk-zone-head { cursor: pointer; list-style: none; user-select: none; }
+body.sho .wk-backlog > summary::-webkit-details-marker { display: none; }
+body.sho .wk-backlog > summary::marker { content: ""; }
+body.sho .wk-backlog > summary:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-bl-when {
+  font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted);
+  white-space: nowrap;
+}
+body.sho .wk-bl-linked { color: color-mix(in oklch, var(--sho-accent) 70%, var(--sho-muted)); }
+body.sho .wk-bl-locked { padding: 12px 6px 16px 26px; background: var(--sho-bg-2); font-size: 12px; }
+body.sho .wk-bl-locked a { color: var(--sho-accent); }
+/* the picker reuses .wk-plan-edit (column flex, inset bg); these add the rows */
+body.sho .wk-sched-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+body.sho .wk-sched-lbl {
+  display: inline-flex; flex-direction: column; gap: 4px;
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--sho-muted);
+}
+body.sho .wk-sched-date, body.sho .wk-sched-time {
+  font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 5px 8px; color-scheme: dark light;
+}
+body.sho .wk-sched-date:focus-visible, body.sho .wk-sched-time:focus-visible {
+  outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus);
+}
+body.sho .wk-sched-dur { font-size: 10px; margin-left: 2px; }
+body.sho .wk-sched-form.is-weekend .wk-reason-field {
+  display: inline-block;
+  border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent);
+}
+body.sho .wk-sched-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+body.sho .wk-force { font-size: 11px; color: var(--sho-text-2); }
+body.sho .wk-sched-go { padding: 6px 16px; font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.sho .wk-edit-hint, body.sho .wk-plan-chip .wk-chip-x, body.sho .wk-day-caret { transition: none; }
+  body.sho .wk-ci-name, body.sho .wk-open, body.sho .wk-top3-item a,
+  body.sho .tk-back, body.sho .tk-obsidian { transition: none; }
+}
+
+@media (max-width: 720px) {
+  body.sho .wk-hero { margin-left: 0; gap: 16px; }
+  body.sho .wk-rev-grid { grid-template-columns: 1fr; }
+  body.sho .wk-plan-edit { padding-left: 12px; }
+  body.sho .tk-stats { gap: 20px; }
+  body.sho .tk-clock-time { font-size: 52px; }
+  body.sho .tk-obsidian { margin-left: 0; }
+}

@@ -121,8 +121,10 @@ async def _default_render_beat(episode_id: str, beat_id: int) -> None:
     storyboard = _load_storyboard(episode_id)
     beat = _find_beat(storyboard, beat_id)
     try:
-        await dispatch_beat(beat, ep_dir / "out")
-        beat.setdefault("status", {})["render_status"] = "done"
+        _mp4, cached_hash, _was_hit = await dispatch_beat(beat, ep_dir / "out")
+        status = beat.setdefault("status", {})
+        status["render_status"] = "done"
+        status["cached_hash"] = cached_hash
     except Exception as exc:  # noqa: BLE001 — surface any worker failure
         logger.exception("render dispatch failed for beat %d: %s", beat_id, exc)
         beat.setdefault("status", {})["render_status"] = "failed"
@@ -172,8 +174,10 @@ async def storyboard_page(
     for beat in storyboard:
         status = beat.get("status") or {}
         bid = beat["beat_id"]
-        mp4_path = out_dir / f"b_roll_{bid}.mp4"
-        mp4_uri = mp4_path.resolve().as_uri() if mp4_path.exists() else None
+        # ADR-038 §D2: rendered mp4 is content-addressed via status.cached_hash.
+        cached_hash = status.get("cached_hash")
+        mp4_path = out_dir / f"b_roll_{cached_hash}.mp4" if cached_hash else None
+        mp4_uri = mp4_path.resolve().as_uri() if mp4_path and mp4_path.exists() else None
         broll = beat.get("broll") or {}
         rows.append(
             {
@@ -221,14 +225,16 @@ async def storyboard_status(
     for beat in storyboard:
         bid = beat["beat_id"]
         status = beat.get("status") or {}
-        mp4_path = out_dir / f"b_roll_{bid}.mp4"
+        cached_hash = status.get("cached_hash")
+        mp4_path = out_dir / f"b_roll_{cached_hash}.mp4" if cached_hash else None
+        mp4_uri = mp4_path.resolve().as_uri() if mp4_path and mp4_path.exists() else None
         payload.append(
             {
                 "beat_id": bid,
                 "text_approved": bool(status.get("text_approved")),
                 "render_status": status.get("render_status") or "pending",
                 "visual_approved": bool(status.get("visual_approved")),
-                "mp4_uri": mp4_path.resolve().as_uri() if mp4_path.exists() else None,
+                "mp4_uri": mp4_uri,
             }
         )
     return JSONResponse({"beats": payload})
@@ -315,10 +321,23 @@ async def beat_replan(
         "layout": beat.get("layout"),
         "broll": beat.get("broll"),
     }
-    # Phase 1: replan = mark for re-plan + cancel render; the actual LLM
-    # re-plan kicks in when the operator re-runs the planner subcommand or
-    # an upcoming Phase 1.5 single-beat replan helper. We DO cancel any
-    # in-flight render so the next render reflects the post-replan spec.
+    storyboard_before = [dict(b) for b in storyboard]
+    # ADR-038 §D3 + §D6: dispatch the LLM tool-call agent and apply the
+    # returned BeatEdit list via the pure-functional engine. The agent is
+    # bounded (max 5 iterations + token budget); if it errors or returns no
+    # edits we still record the user note and reset render_status so the
+    # operator can re-issue.
+    from agents.foundry import beat_editor, replan_agent
+
+    edit_ops_payload: list[dict] = []
+    try:
+        result = replan_agent.run(storyboard, beat_id, note or "")
+        if result.edits:
+            storyboard = beat_editor.apply_edits(storyboard, result.edits)
+            beat = _find_beat(storyboard, beat_id)
+            edit_ops_payload = [e.model_dump() for e in result.edits]
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("replan_agent failed for ep=%s beat=%d: %s", episode_id, beat_id, exc)
     beat.setdefault("status", {})["render_status"] = "pending"
     beat["status"]["text_approved"] = False
     beat.setdefault("user_notes", []).append(
@@ -335,6 +354,9 @@ async def beat_replan(
         before=before,
         after={"layout": beat.get("layout"), "broll": beat.get("broll")},
         user_note=note or None,
+        storyboard_before=storyboard_before,
+        storyboard_after=[dict(b) for b in storyboard],
+        edit_ops=edit_ops_payload,
     )
     return _redirect_back(episode_id)
 
@@ -397,6 +419,20 @@ async def beat_visual_replan(
     storyboard = _load_storyboard(episode_id)
     beat = _find_beat(storyboard, beat_id)
     before = {"layout": beat.get("layout"), "broll": beat.get("broll")}
+    storyboard_before = [dict(b) for b in storyboard]
+    from agents.foundry import beat_editor, replan_agent
+
+    edit_ops_payload: list[dict] = []
+    try:
+        result = replan_agent.run(storyboard, beat_id, note or "")
+        if result.edits:
+            storyboard = beat_editor.apply_edits(storyboard, result.edits)
+            beat = _find_beat(storyboard, beat_id)
+            edit_ops_payload = [e.model_dump() for e in result.edits]
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "replan_agent (visual) failed for ep=%s beat=%d: %s", episode_id, beat_id, exc
+        )
     beat.setdefault("status", {})["render_status"] = "pending"
     beat["status"]["visual_approved"] = False
     beat.setdefault("user_notes", []).append(
@@ -413,6 +449,9 @@ async def beat_visual_replan(
         before=before,
         after={"layout": beat.get("layout"), "broll": beat.get("broll")},
         user_note=note or None,
+        storyboard_before=storyboard_before,
+        storyboard_after=[dict(b) for b in storyboard],
+        edit_ops=edit_ops_payload,
     )
     return _redirect_back(episode_id)
 

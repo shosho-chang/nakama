@@ -1,6 +1,7 @@
 """Robin routes — KB ingest UI, reader, and search."""
 
 import asyncio
+import datetime
 import json
 import os
 import platform
@@ -14,6 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from agents.robin.agent import (
     EXTENSION_TO_RAW_DIR,
@@ -35,10 +37,23 @@ from shared.discard_service import DiscardService
 from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.reading_source_lister import RegistryReadingSourceLister
-from shared.reading_source_registry import InboxKey, ReadingSourceRegistry
+from shared.reading_source_registry import InboxKey, ReadingSourceRegistry, YouTubeKey
+from shared.schemas.annotations import (
+    AnnotationSetV3,
+    AnnotationV3,
+    HighlightV3,
+)
+from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
 from shared.utils import extract_frontmatter, read_text, slugify
+from shared.youtube_ingest import (
+    InvalidYouTubeURL,
+    NoCaptionAvailable,
+    YtDlpError,
+    fetch_caption,
+    fetch_metadata,
+)
 from thousand_sunny.auth import check_auth, require_auth_or_key
 from thousand_sunny.helpers import safe_resolve, sse
 
@@ -81,6 +96,8 @@ def _shosho_asset_version() -> str:
         "bridge-pages.css",
         "reader.css",
         "robin.css",
+        "av-reader.css",
+        "av-reader.js",
         "theme.js",
     ):
         path = static_dir / css
@@ -489,6 +506,172 @@ async def read_source(
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
+
+
+# ── WebVTT parser (ADR-035 §D6) ──────────────────────────────────────────────
+# Minimal parser sized for yt-dlp ``--write-auto-sub`` output. Lives here
+# because the av_reader route is the only consumer; promote to ``shared/``
+# if a second caller appears.
+
+_VTT_TIME_RE = re.compile(
+    r"^(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})"
+)
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+_SENTENCE_END_RE = re.compile(r'[.!?][")\]]*\s*$')
+_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+(?=[A-Z"\'(\[])')
+"""Split text on punctuation followed by whitespace + capital letter or
+quote. Avoids splitting on common false positives like ``Dr.`` ``Mr.``
+``e.g.`` because they're followed by a lowercase word."""
+_SENTENCE_MAX_SECONDS = 30.0
+"""Safety cap on coalesced-cue duration. Auto-caption punctuation can
+miss sentence boundaries when the speaker doesn't pause; flush anyway
+once a buffered cue group exceeds this many seconds so the cue list
+never grows a single multi-minute brick."""
+
+
+def _vtt_time_to_seconds(h: str, m: str, s: str, ms: str) -> float:
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+
+def _format_cue_label(t: float) -> str:
+    h = int(t // 3600)
+    m = int((t % 3600) // 60)
+    s = int(t % 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def _parse_webvtt(text: str) -> list[dict]:
+    """Parse a WebVTT document into a clean cue stream.
+
+    YouTube auto-captions emit a two-cue-per-spoken-line rhythm:
+    a 10ms "ghost" cue showing only the carry-over text from the previous
+    spoken line, followed by a "real" cue whose body has the carry-over on
+    earlier lines and the newly-spoken words (with word-level ``<HH:MM:SS.ms><c>``
+    timing tags) on the LAST line.
+
+    To keep the cue list reading like a transcript stream rather than a
+    karaoke loop, we take only the last non-empty line of each cue body
+    and drop adjacent duplicates.
+    """
+    cues: list[dict] = []
+    cur_start: float | None = None
+    cur_end: float | None = None
+    cur_lines: list[str] = []
+
+    def flush() -> None:
+        nonlocal cur_start, cur_end, cur_lines
+        if cur_start is not None and cur_lines:
+            last_clean = ""
+            for line in reversed(cur_lines):
+                stripped = _VTT_TAG_RE.sub("", line).strip()
+                if stripped:
+                    last_clean = stripped
+                    break
+            if last_clean:
+                cues.append(
+                    {
+                        "start": cur_start,
+                        "end": cur_end,
+                        "label": _format_cue_label(cur_start),
+                        "text": last_clean,
+                    }
+                )
+        cur_start = None
+        cur_end = None
+        cur_lines = []
+
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        m = _VTT_TIME_RE.match(line)
+        if m:
+            flush()
+            cur_start = _vtt_time_to_seconds(m.group(1), m.group(2), m.group(3), m.group(4))
+            cur_end = _vtt_time_to_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
+            continue
+        if cur_start is None:
+            continue
+        if line.strip() == "":
+            flush()
+            continue
+        if line.startswith("WEBVTT") or line.startswith("NOTE") or "-->" in line:
+            continue
+        cur_lines.append(line)
+    flush()
+
+    deduped: list[dict] = []
+    for c in cues:
+        if deduped and deduped[-1]["text"] == c["text"]:
+            deduped[-1]["end"] = c["end"]
+            continue
+        deduped.append(c)
+    return _coalesce_to_sentences(deduped)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Break a paragraph into sentence-sized chunks."""
+    parts = _SENTENCE_SPLIT_RE.split(text)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _coalesce_to_sentences(cues: list[dict]) -> list[dict]:
+    """Merge consecutive cues until each ends on a sentence-final mark.
+
+    YouTube auto-caption breaks speech every ~2-3s on audio chunks, not
+    on sentence boundaries. Coalescing by punctuation gives the cue list
+    one entry per complete sentence — easier to read, easier to anchor
+    annotations against. Falls back to flushing on ``_SENTENCE_MAX_SECONDS``
+    when punctuation never arrives (rambling speech, missing periods).
+    """
+    if not cues:
+        return []
+    merged: list[dict] = []
+    buf_start: float | None = None
+    buf_end: float | None = None
+    buf_parts: list[str] = []
+
+    def flush() -> None:
+        nonlocal buf_start, buf_end, buf_parts
+        if buf_parts and buf_start is not None and buf_end is not None:
+            text = " ".join(buf_parts).strip()
+            # Split the buffered text into sentences and proportionally
+            # distribute the [buf_start, buf_end] window by character
+            # count. yt-dlp's word-level ``<HH:MM:SS.ms>`` tags would give
+            # exact per-word timing — punt on that until annotation needs
+            # it (PR2 #766); linear interpolation is good enough for
+            # cue-click seeking.
+            sentences = _split_sentences(text)
+            total_chars = sum(len(s) for s in sentences) or 1
+            window = buf_end - buf_start
+            cursor = buf_start
+            for i, sentence in enumerate(sentences):
+                portion = len(sentence) / total_chars
+                end = buf_end if i == len(sentences) - 1 else cursor + window * portion
+                merged.append(
+                    {
+                        "start": cursor,
+                        "end": end,
+                        "label": _format_cue_label(cursor),
+                        "text": sentence,
+                    }
+                )
+                cursor = end
+        buf_start = None
+        buf_end = None
+        buf_parts = []
+
+    for c in cues:
+        if buf_start is None:
+            buf_start = c["start"]
+        buf_end = c["end"]
+        buf_parts.append(c["text"])
+        joined = " ".join(buf_parts).strip()
+        duration = (buf_end or 0.0) - (buf_start or 0.0)
+        if _SENTENCE_END_RE.search(joined) or duration >= _SENTENCE_MAX_SECONDS:
+            flush()
+    flush()
+    return merged
 
 
 @robin_router.get("/files/{path:path}")
@@ -1236,6 +1419,667 @@ async def kb_research(
     """Search KB/Wiki for pages relevant to query."""
     results = await asyncio.to_thread(search_kb, query, get_vault_path())
     return {"results": results}
+
+
+# ── ADR-035 PR1c-i — Watchlist ingestion (yt-dlp + cast form) ────────────────
+#
+# Two-step flow:
+#   1. GET  /robin/watchlist/add          → URL-paste form
+#   2. POST /robin/watchlist/add          → fetch metadata + caption (yt-dlp)
+#                                           into tmp dir, render cast form
+#   3. POST /robin/watchlist/add/confirm  → write manifest+vtt to vault,
+#                                           redirect to reader (#762) or
+#                                           list (#763); both 404 until
+#                                           those PRs land — acceptable
+#                                           since the lister already
+#                                           surfaces the new entry.
+#
+# Auth: same Bridge HMAC cookie + login redirect pattern as the rest of
+# this module (see ``read_source`` / ``translate``).
+
+
+def _watchlist_youtube_root() -> Path:
+    return get_vault_path() / "Watchlist" / "youtube"
+
+
+def _watchlist_staging_root() -> Path:
+    """Staging root for in-flight yt-dlp ingests. Lives OUTSIDE
+    ``Watchlist/youtube/`` (PR #771 code-review finding #1) so the
+    lister scan doesn't trip on a dot-prefixed dir as a malformed
+    ``video_id`` and emit a spurious WARNING every pass.
+    """
+    return get_vault_path() / "Watchlist" / ".youtube_staging"
+
+
+# Sweep staged-but-abandoned ingests older than this (seconds). Picked to
+# match ``SESSION_TTL`` — once the session is gone the user can't confirm
+# the staged content anyway, so the on-disk dir is dead weight (PR #771
+# review finding #2).
+_STAGING_ORPHAN_TTL = SESSION_TTL
+
+
+def _sweep_orphan_staging() -> None:
+    """Best-effort cleanup of ``.youtube_staging/{video_id}/`` dirs older
+    than :data:`_STAGING_ORPHAN_TTL`. Called opportunistically from the
+    ``/watchlist/add`` entry point so abandoned ingests don't accumulate
+    forever. Silent on all ``OSError`` — this is housekeeping, not a
+    hard invariant.
+    """
+    root = _watchlist_staging_root()
+    if not root.is_dir():
+        return
+    cutoff = time.time() - _STAGING_ORPHAN_TTL
+    try:
+        children = list(root.iterdir())
+    except OSError:  # pragma: no cover — defensive: race with concurrent cleanup
+        return
+    for child in children:
+        try:
+            if not child.is_dir() or child.stat().st_mtime > cutoff:
+                continue
+            for leftover in child.iterdir():
+                try:
+                    leftover.unlink()
+                except OSError:  # pragma: no cover — defensive: locked / removed mid-loop
+                    pass
+            child.rmdir()
+        except OSError:  # pragma: no cover — defensive: dir locked / removed mid-loop
+            continue
+
+
+@robin_router.get("/watchlist/add", response_class=HTMLResponse)
+async def watchlist_add_form(request: Request, nakama_auth: str | None = Cookie(None)):
+    """Render the URL-paste form (step 1)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/robin/watchlist/add", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "watchlist_add.html",
+        {"asset_version": _SHOSHO_ASSET_VERSION, "error": None, "url": ""},
+    )
+
+
+@robin_router.post("/watchlist/add", response_class=HTMLResponse)
+async def watchlist_add(
+    request: Request,
+    url: str = Form(...),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Fetch YT metadata + auto-caption, stash in session, render cast form.
+
+    The caption VTT is downloaded into a per-session tmp dir under the
+    vault root (``Watchlist/youtube/.staging/<sid>/``) so the confirm step
+    can move it into the canonical entry directory atomically without
+    re-hitting yt-dlp.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    def _err(msg: str) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "watchlist_add.html",
+            {"asset_version": _SHOSHO_ASSET_VERSION, "error": msg, "url": url},
+            status_code=400,
+        )
+
+    try:
+        meta = await asyncio.to_thread(fetch_metadata, url)
+    except InvalidYouTubeURL as exc:
+        return _err(f"無法從這個 URL 解析出 YouTube video id：{exc}")
+    except YtDlpError as exc:
+        logger.warning(
+            "watchlist add: yt-dlp metadata failed",
+            extra={"category": "watchlist_add_metadata_failed", "stderr": exc.stderr},
+        )
+        return _err(
+            f"yt-dlp 無法取得影片資訊（可能私人 / 地區封鎖 / 年齡限制）：{exc.stderr[:200]}"
+        )
+
+    # Staging dir: per-video so concurrent adds of different videos don't
+    # collide. Reuse on retry (same video_id) is safe — fetch_caption
+    # creates the dir if needed and overwrites existing vtt.
+    # Opportunistic orphan sweep — keeps the staging tree bounded without
+    # adding a separate cron / startup hook (PR #771 review finding #2).
+    _sweep_orphan_staging()
+
+    staging_root = _watchlist_staging_root() / meta.video_id
+    try:
+        vtt_path, lang = await asyncio.to_thread(fetch_caption, meta.video_id, staging_root)
+    except NoCaptionAvailable:
+        return _err(
+            "這部影片沒有可用的 auto-caption（en / zh-Hant / zh-CN）。"
+            "Phase 2 Local Whisper 上線後可手動補字幕。"
+        )
+    except YtDlpError as exc:
+        logger.warning(
+            "watchlist add: yt-dlp caption failed",
+            extra={"category": "watchlist_add_caption_failed", "stderr": exc.stderr},
+        )
+        return _err(f"yt-dlp 抓字幕失敗：{exc.stderr[:200]}")
+
+    # Stash the staging path + metadata in a session so the confirm step
+    # doesn't have to re-fetch.
+    sid = _new_session(
+        step="watchlist_cast",
+        video_id=meta.video_id,
+        title=meta.title,
+        channel=meta.channel,
+        duration_s=meta.duration_s,
+        url=meta.url,
+        primary_lang=lang,
+        staging_vtt=str(vtt_path),
+    )
+
+    response = templates.TemplateResponse(
+        request,
+        "watchlist_add_cast.html",
+        {
+            "asset_version": _SHOSHO_ASSET_VERSION,
+            "video_id": meta.video_id,
+            "title": meta.title,
+            "channel": meta.channel,
+            "duration_s": meta.duration_s,
+            "url": meta.url,
+            "primary_lang": lang,
+        },
+    )
+    response.set_cookie("robin_watchlist_session", sid, httponly=True)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
+@robin_router.post("/watchlist/add/confirm")
+async def watchlist_add_confirm(
+    request: Request,
+    robin_watchlist_session: str | None = Cookie(None),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Persist the staged ingest to ``Watchlist/youtube/{video_id}/``.
+
+    Writes ``manifest.json`` (validated by :class:`YouTubeWatchlistEntry`)
+    and moves the staged ``transcript.vtt`` into place. Then redirects to
+    the reader detail page (PR #762; 404 until that lands — acceptable per
+    issue #764 acceptance).
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    sess = _get_session(robin_watchlist_session)
+    if not sess or sess.get("step") != "watchlist_cast":
+        return RedirectResponse("/robin/watchlist/add", status_code=303)
+
+    form = await request.form()
+    cast_raw = [str(v).strip() for v in form.getlist("cast")]
+    cast = [name for name in cast_raw if name]  # drop blanks; empty list allowed
+
+    video_id = str(sess["video_id"])
+    # Defence-in-depth: video_id was validated at extraction time but the
+    # session value is user-influenced via the cookie, so re-validate
+    # before constructing any vault path. Mirrors the resolver's
+    # ``_VALID_YOUTUBE_ID`` regex.
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", video_id):
+        raise HTTPException(400, detail=f"不合法的 video_id：{video_id!r}")
+
+    try:
+        entry = YouTubeWatchlistEntry(
+            video_id=video_id,
+            title=str(sess["title"]),
+            channel=str(sess["channel"]),
+            url=str(sess["url"]),
+            duration_s=int(sess["duration_s"]),
+            primary_lang=str(sess["primary_lang"]),
+            cast=cast,
+            transcript_path="transcript.vtt",
+            added_at=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+        )
+    except Exception as exc:  # noqa: BLE001 — surface pydantic ValidationError as 400
+        logger.warning(
+            "watchlist confirm: entry validation failed",
+            extra={"category": "watchlist_confirm_validation_failed", "err": str(exc)},
+        )
+        raise HTTPException(400, detail=f"watchlist entry 驗證失敗：{exc}") from exc
+
+    entry_dir = _watchlist_youtube_root() / video_id
+    entry_dir.mkdir(parents=True, exist_ok=True)
+
+    # Move staged vtt → canonical transcript.vtt. ``shutil.move`` falls
+    # back to copy+remove across filesystems (e.g. tmp on a different
+    # device from vault).
+    staged_vtt = Path(str(sess["staging_vtt"]))
+    target_vtt = entry_dir / "transcript.vtt"
+    if not staged_vtt.exists():
+        raise HTTPException(500, detail="staged transcript missing — please re-add the URL")
+    shutil.move(str(staged_vtt), str(target_vtt))
+
+    manifest_path = entry_dir / "manifest.json"
+    manifest_path.write_text(entry.model_dump_json(indent=2), encoding="utf-8")
+
+    # Best-effort staging cleanup — remove the per-video staging dir if
+    # empty (yt-dlp may have left other artefacts; ignore failures).
+    staging_dir = _watchlist_staging_root() / video_id
+    try:
+        for leftover in staging_dir.iterdir():
+            try:
+                leftover.unlink()
+            except OSError:  # pragma: no cover — defensive: file locked
+                pass
+        staging_dir.rmdir()
+    except OSError:
+        pass
+
+    logger.info(
+        "watchlist entry written",
+        extra={
+            "category": "watchlist_add_confirm",
+            "video_id": video_id,
+            "cast_count": len(cast),
+            "primary_lang": entry.primary_lang,
+        },
+    )
+
+    # Drop the session cookie + redirect to the reader detail page (or the
+    # list view if/when reader lands). PR #762 / #763 will resolve these
+    # 404s into real pages; until then the user lands on a 404 with a
+    # known-good vault entry, which the lister surfaces.
+    response = RedirectResponse(f"/robin/watchlist/{video_id}", status_code=303)
+    response.delete_cookie("robin_watchlist_session")
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
+# ── AV reader (ADR-035 PR1c-ii) ──────────────────────────────────────────────
+# Registered AFTER the literal ``/watchlist/add`` + ``/watchlist/add/confirm``
+# routes so FastAPI doesn't eat ``/watchlist/add`` with this parametric route.
+
+
+@robin_router.get("/watchlist/{video_id}", response_class=HTMLResponse)
+async def watch_video(
+    request: Request,
+    video_id: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Render the YouTube video reader for a watchlist entry.
+
+    Read-only viewing — annotation save lands in PR2. The player is the
+    YouTube IFrame API (ToS-compliant) per ADR-035 §Open question.
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        # Path-traversal alphabet or symlink-escape — treat as not-found
+        # so the response shape stays uniform and the regex isn't leaked.
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    cues: list[dict] = []
+    if rs.variants:
+        transcript_path = get_vault_path() / rs.variants[0].path
+        if transcript_path.is_file():
+            cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
+
+    cast: list[str] = list(rs.cast) if rs.cast else []
+
+    # ADR-035 PR2a: load existing annotations from ADR-017 store for the
+    # bottom-left read-only list. The slug convention is
+    # ``youtube_{video_id}`` (mirrors ``YouTubeKey.annotation_key``).
+    # Items are shaped into a JS-friendly payload — only the fields needed
+    # for the row markup + row-click seek are extracted; the on-disk v3
+    # schema is the source of truth and is not leaked to the template.
+    ann_store: AnnotationStore = get_annotation_store()
+    ann_set = ann_store.load(rs.annotation_key)
+    annotations: list[dict] = []
+    if ann_set is not None:
+        # Newest-first to match optimistic prepend on the client (PR2b
+        # write flow). Store-side items are append-order (chronological);
+        # we reverse here so reload and post-save renders agree.
+        for item in reversed(ann_set.items):
+            annotations.append(_video_annotation_row(item))
+    # Cue index → has-any-mark, so the cue list can render the border-left
+    # marker AND the lit ★. One mark per cue model means these collapse to
+    # a single set.
+    cue_marker_indices: set[int] = set()
+    if annotations and cues:
+        cue_starts = [c["start"] for c in cues]
+        for ann in annotations:
+            t = ann.get("start")
+            if t is None:
+                continue
+            idx = _nearest_cue_index(cue_starts, t)
+            if idx is not None:
+                cue_marker_indices.add(idx)
+
+    return templates.TemplateResponse(
+        request,
+        "av_reader.html",
+        {
+            "source": rs,
+            "video_id": video_id,
+            "channel": rs.metadata.get("channel", ""),
+            "cast": cast,
+            "cues": cues,
+            "cues_json": json.dumps(cues, ensure_ascii=False),
+            "annotations": annotations,
+            "annotations_json": json.dumps(annotations, ensure_ascii=False),
+            "cue_marker_indices": sorted(cue_marker_indices),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
+    )
+
+
+# ── Video annotation row shaping (ADR-035 PR2a + PR2b) ───────────────────────
+# v3 annotation items carry ``speaker`` as of PR2b (cast chip selected at
+# save). For row rendering we extract:
+#   - start (float seconds)        → derived from ``cfi`` locator ``t=<start>[-<end>]``
+#   - label (mm:ss)                → ``_format_cue_label``
+#   - excerpt (cue text snippet)
+#   - note (annotation note / highlight body, or empty for highlight-only)
+#   - speaker (cast chip; "" when unspecified)
+
+
+_T_LOCATOR_RE = re.compile(r"t=([0-9]+(?:\.[0-9]+)?)(?:-([0-9]+(?:\.[0-9]+)?))?")
+
+
+def _parse_t_locator(cfi: str | None) -> float | None:
+    """Extract ``start`` seconds from an ADR-035 §D5 ``t=`` locator.
+
+    Returns ``None`` if ``cfi`` is missing or not in the timestamp-range
+    shape — callers fall back to rendering the row without a seek target.
+    """
+    if not cfi:
+        return None
+    m = _T_LOCATOR_RE.search(cfi)
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _video_annotation_row(item) -> dict:
+    """Shape a v3 annotation item for the read-only video annotation list."""
+    cfi = getattr(item, "cfi", None)
+    start = _parse_t_locator(cfi)
+    excerpt = (getattr(item, "text_excerpt", "") or "").strip()
+    if item.type == "highlight":
+        # HighlightV3.text is the body — for a highlight-only the body
+        # mirrors the excerpt, so we suppress the note field to avoid the
+        # row reading "excerpt — excerpt".
+        text = (getattr(item, "text", "") or "").strip()
+        note = "" if text == excerpt else text
+    elif item.type == "annotation":
+        note = (getattr(item, "note", "") or "").strip()
+    else:
+        # ReflectionV3 — chapter-level; we still render it best-effort.
+        note = (getattr(item, "body", "") or "").strip()
+    label = _format_cue_label(start) if start is not None else "--:--"
+    # ADR-035 PR2b: ``speaker`` is now a first-class field on Highlight /
+    # Annotation v3 items (cast chip selected at save). Existing items
+    # default to ``""`` so the read-only display falls back to the
+    # no-speaker row layout.
+    return {
+        "start": start,
+        "label": label,
+        "speaker": (getattr(item, "speaker", "") or "").strip(),
+        "excerpt": excerpt,
+        "note": note,
+        "type": item.type,
+        "created_at": getattr(item, "created_at", ""),
+    }
+
+
+def _nearest_cue_index(cue_starts: list[float], t: float, tol: float = 0.05) -> int | None:
+    """Find the cue index whose start matches ``t`` within ``tol`` seconds.
+
+    Cue boundaries are the natural anchor unit in ADR-035 §D5 (annotations
+    are cue-boundary snapped at save time), so the 50ms tolerance only
+    absorbs float drift from VTT re-parses. We deliberately return
+    ``None`` when no cue is within tolerance — silently anchoring to a
+    floor cue would mis-mark an unrelated row in the transcript when an
+    annotation's locator is stale (e.g. transcript re-fetched after the
+    annotation was written).
+    """
+    if not cue_starts:
+        return None
+    # Binary search for the predecessor (largest start ≤ t), then check
+    # both that and the successor for a within-tolerance match.
+    lo, hi = 0, len(cue_starts) - 1
+    best = 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if cue_starts[mid] <= t:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    candidates = [best]
+    if best + 1 < len(cue_starts):
+        candidates.append(best + 1)
+    for idx in candidates:
+        if abs(cue_starts[idx] - t) <= tol:
+            return idx
+    return None
+
+
+# ── Video annotation write flow (ADR-035 PR2b — issue #788) ──────────────────
+#
+# POST /robin/watchlist/{video_id}/annotation accepts a JSON body shaped by the
+# av-reader editor (★ quick-highlight or N-key editor with note + cast chip)
+# and persists a single v3 highlight or annotation item to the ADR-017 store
+# under slug ``youtube_{video_id}``.
+#
+# The frontend handles UI state (mode machine, retarget, cancel); this route is
+# the durability boundary. It is intentionally narrow: one cue range per call,
+# no batch / replace / delete (PR2c #789).
+
+
+class _VideoAnnotationCreate(BaseModel):
+    """Request body for ``POST /robin/watchlist/{video_id}/annotation``.
+
+    ``highlight`` distinguishes a ★ quick-highlight (``True``, ``note`` empty)
+    from an N-key editor save (``False``, ``note`` non-empty). The server
+    re-derives the discrimination from the actual ``note`` value so the
+    on-disk shape is correct even if the client sends an inconsistent pair.
+    ``speaker`` is optional and defaults to ``""`` (unspecified).
+    """
+
+    cue_start: float
+    cue_end: float
+    excerpt: str
+    speaker: str = ""
+    note: str = ""
+    highlight: bool = True
+
+
+def _format_t_locator(start: float, end: float) -> str:
+    """Render the ADR-035 §D5 locator. Trailing ``.0`` is kept so a downstream
+    regex (``_T_LOCATOR_RE``) parses both ``t=3-7`` and ``t=3.0-7.0`` symmetrically."""
+    return f"t={start}-{end}"
+
+
+@robin_router.post("/watchlist/{video_id}/annotation")
+async def create_video_annotation(
+    video_id: str,
+    body: _VideoAnnotationCreate,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Append a single annotation to ``KB/Annotations/youtube_{video_id}.md``.
+
+    Returns ``{"annotation": <row dict>}`` shaped by ``_video_annotation_row``
+    so the frontend can prepend the new row optimistically without a re-fetch.
+
+    Errors:
+    - 401 unauthenticated
+    - 404 watchlist entry missing (resolver miss / invalid id)
+    - 400 cue range invalid (end ≤ start, negative start) or excerpt blank
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(401, detail="未登入")
+
+    # Defence-in-depth: ``video_id`` came in via the URL path — re-validate
+    # against the resolver alphabet before touching the vault.
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", video_id):
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    # Range validation. Cue boundaries arrive from the JS layer and are
+    # user-influenced via retarget; reject the obviously-wrong shapes
+    # rather than silently writing bogus locators.
+    if body.cue_start < 0 or body.cue_end <= body.cue_start:
+        raise HTTPException(
+            400, detail=f"cue range 不合法：start={body.cue_start} end={body.cue_end}"
+        )
+    excerpt = (body.excerpt or "").strip()
+    if not excerpt:
+        raise HTTPException(400, detail="excerpt 不可為空")
+
+    note = (body.note or "").strip()
+    speaker = (body.speaker or "").strip()
+    # Server-side discrimination: a non-empty note flips the kind to
+    # ``annotation`` regardless of the client's ``highlight`` flag — the
+    # body fields differ between the two types so we don't want a malformed
+    # ``HighlightV3`` (text empty) or ``AnnotationV3`` (note empty).
+    is_annotation = bool(note)
+    locator = _format_t_locator(body.cue_start, body.cue_end)
+
+    if is_annotation:
+        item = AnnotationV3(
+            cfi=locator,
+            text_excerpt=excerpt,
+            note=note,
+            speaker=speaker,
+        )
+    else:
+        item = HighlightV3(
+            cfi=locator,
+            text_excerpt=excerpt,
+            text=excerpt,  # highlight body mirrors the excerpt (PR2a convention)
+            speaker=speaker,
+        )
+
+    store: AnnotationStore = get_annotation_store()
+    slug = rs.annotation_key  # ``youtube_{video_id}``
+    existing = store.load(slug)
+    replaced = False
+    if existing is None:
+        ann_set = AnnotationSetV3(slug=slug, base="youtube", items=[item])
+    else:
+        ann_set = upgrade_to_v3(existing)
+        # Upsert: one mark per cue, regardless of kind. If any item
+        # already sits on this cue (within 50ms drift tolerance) — even
+        # a different type — replace it in place. This is the "★ then
+        # later add a note" merge model: starring then noting on the
+        # same cue should produce a single annotation with the note,
+        # not a highlight + annotation coexisting.
+        tol = 0.05
+        new_items: list = []
+        for existing_item in ann_set.items:
+            if not replaced:
+                t = _parse_t_locator(getattr(existing_item, "cfi", None))
+                if t is not None and abs(t - body.cue_start) <= tol:
+                    new_items.append(item)
+                    replaced = True
+                    continue
+            new_items.append(existing_item)
+        if not replaced:
+            new_items.append(item)
+        ann_set.items = new_items
+        ann_set.updated_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    store.save(ann_set)
+
+    logger.info(
+        "video annotation written",
+        extra={
+            "category": "video_annotation_create",
+            "video_id": video_id,
+            "type": item.type,
+            "has_speaker": bool(speaker),
+        },
+    )
+
+    return {"annotation": _video_annotation_row(item), "replaced": replaced}
+
+
+@robin_router.delete("/watchlist/{video_id}/annotation")
+async def delete_video_highlight(
+    video_id: str,
+    cue_start: float,
+    nakama_auth: str | None = Cookie(None),
+):
+    """Remove the mark anchored at ``cue_start`` for this video.
+
+    One mark per cue (highlight or annotation). The star toggle treats
+    them uniformly — clicking a lit star clears whatever is on that
+    cue. Users who want to keep a note across a star-off should edit
+    the note text instead (PR2c edit flow).
+
+    Returns ``{"removed": <int>, "cue_start": <float>}``.
+
+    Errors:
+    - 401 unauthenticated
+    - 404 watchlist entry missing
+    - 400 cue_start negative
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(401, detail="未登入")
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", video_id):
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+    if cue_start < 0:
+        raise HTTPException(400, detail=f"cue_start 不合法：{cue_start}")
+
+    try:
+        rs = ReadingSourceRegistry().resolve(YouTubeKey(video_id))
+    except ValueError:
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+    if rs is None or rs.kind != "youtube_video":
+        raise HTTPException(404, detail=f"找不到影片：{video_id}")
+
+    store: AnnotationStore = get_annotation_store()
+    slug = rs.annotation_key
+    existing = store.load(slug)
+    if existing is None:
+        return {"removed": 0, "cue_start": cue_start}
+
+    ann_set = upgrade_to_v3(existing)
+    kept: list = []
+    removed = 0
+    tol = 0.05  # mirrors _nearest_cue_index drift tolerance
+    for item in ann_set.items:
+        t = _parse_t_locator(getattr(item, "cfi", None))
+        if t is not None and abs(t - cue_start) <= tol:
+            removed += 1
+            continue
+        kept.append(item)
+    if removed > 0:
+        ann_set.items = kept
+        ann_set.updated_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        store.save(ann_set)
+
+    logger.info(
+        "video highlight removed",
+        extra={
+            "category": "video_annotation_delete",
+            "video_id": video_id,
+            "cue_start": cue_start,
+            "removed": removed,
+        },
+    )
+    return {"removed": removed, "cue_start": cue_start}
 
 
 # ── Legacy redirects — root-prefix → /robin/* (R6) ───────────────────────────

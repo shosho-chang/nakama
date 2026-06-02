@@ -48,7 +48,53 @@ def _load_examples() -> list[dict]:
     return result
 
 
-def _build_prompt(flat_text: str, episode_meta: dict) -> str:
+def _format_silence_hints(hints: dict | None) -> str:
+    """Render storyboard_hints.yaml content into a `<silence_hints>` prompt block.
+
+    Opt-out by design: returns empty string when ``hints`` is falsy or has no
+    usable ``speaking_spans`` key, so the prompt is byte-identical to the
+    pre-PR-C output when no hints file is present.
+    """
+    if not hints:
+        return ""
+    spans = hints.get("speaking_spans") or []
+    if not spans:
+        return ""
+    lines = [
+        "## Silence-detected speaking spans (prior, advisory)",
+        "",
+        "The following `(start_s, end_s)` ranges were detected as speaking spans by",
+        "`ffmpeg silencedetect` on the raw recording. Treat them as a soft prior for",
+        "beat boundaries — prefer ending a beat near a silence boundary when content",
+        "allows. They are advisory; do not violate the transcript anchor contract to",
+        "satisfy them.",
+        "",
+        "```yaml",
+        "speaking_spans:",
+    ]
+    for span in spans:
+        # Accept either [start, end] list or {start, end} dict shapes.
+        if isinstance(span, dict):
+            start = span.get("start")
+            end = span.get("end")
+        else:
+            try:
+                start, end = span
+            except (TypeError, ValueError):
+                continue
+        if start is None or end is None:
+            continue
+        lines.append(f"  - [{float(start):.3f}, {float(end):.3f}]")
+    lines.append("```")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _build_prompt(
+    flat_text: str,
+    episode_meta: dict,
+    hints: dict | None = None,
+) -> str:
     design_system = (
         _DESIGN_SYSTEM.read_text(encoding="utf-8") if _DESIGN_SYSTEM.exists() else "(not found)"
     )
@@ -62,8 +108,10 @@ def _build_prompt(flat_text: str, episode_meta: dict) -> str:
         examples_block += yaml.dump(examples, allow_unicode=True, default_flow_style=False)
         examples_block += "```\n"
 
+    silence_hints_block = _format_silence_hints(hints)
+
     template = _PROMPT_TEMPLATE.read_text(encoding="utf-8")
-    return template.format(
+    rendered = template.format(
         design_system=design_system,
         style=style,
         guardrails=guardrails,
@@ -71,6 +119,11 @@ def _build_prompt(flat_text: str, episode_meta: dict) -> str:
         episode_meta=yaml.dump(episode_meta, allow_unicode=True, default_flow_style=False),
         transcript=flat_text,
     )
+    # Default opt-out: when no hints provided, the prompt is byte-identical to
+    # pre-PR-C output. Hints append after the transcript section.
+    if silence_hints_block:
+        rendered = rendered.rstrip() + "\n\n" + silence_hints_block
+    return rendered
 
 
 def _extract_beats(response_text: str) -> list[dict]:
@@ -83,16 +136,29 @@ def _extract_beats(response_text: str) -> list[dict]:
     return parsed
 
 
-def plan_episode(flat_text: str, episode_meta: dict) -> list[Beat]:
+def plan_episode(
+    flat_text: str,
+    episode_meta: dict,
+    hints: dict | None = None,
+) -> list[Beat]:
     """Call Claude Opus to produce storyboard beats for the episode.
 
-    Returns a list of Beat objects with timing=None (filled later by beat_aligner).
+    Args:
+        flat_text: normalized transcript (output of ``chinese_normalizer``).
+        episode_meta: contents of ``episode.yaml`` (or empty dict).
+        hints: optional ``storyboard_hints.yaml`` payload (ADR-038 §D5). When
+            provided and non-empty, a `<silence_hints>` advisory block is
+            appended to the planner prompt. Absent / falsy → prompt is
+            byte-identical to pre-PR-C output (default opt-out).
+
+    Returns:
+        List of Beat objects with timing=None (filled later by beat_aligner).
 
     Raises:
         ValueError: if LLM response cannot be parsed as a valid beat list after retries.
     """
     client = get_client()
-    prompt = _build_prompt(flat_text, episode_meta)
+    prompt = _build_prompt(flat_text, episode_meta, hints=hints)
 
     last_exc: Exception | None = None
     for attempt in range(3):

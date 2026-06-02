@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from shared.reading_source_registry import BookKey, InboxKey
+from shared.reading_source_registry import BookKey, InboxKey, YouTubeKey
 from shared.schemas.reading_source import ReadingSource, SourceVariant
 from shared.source_resolver import RegistrySourceResolver
 
@@ -137,7 +137,23 @@ def test_resolver_namespace_prefix_only_returns_none():
     resolver = RegistrySourceResolver(registry=fake_registry)
     assert resolver.resolve("ebook:") is None
     assert resolver.resolve("inbox:") is None
-    fake_registry.resolve.assert_not_called()
+    assert resolver.resolve("youtube:") is None
+
+
+def test_resolver_youtube_namespace_dispatches_to_youtube_key():
+    """ADR-035 PR3b-ii: ``youtube:{video_id}`` resolves through ``YouTubeKey``.
+
+    Without this dispatch the promotion review surface would 400 with
+    "did not resolve to a ReadingSource" the moment a user clicks
+    "同步到 KB" on a video — even though the registry supports it.
+    """
+    fake_registry = MagicMock()
+    resolver = RegistrySourceResolver(registry=fake_registry)
+    resolver.resolve("youtube:FBgM7jndkLQ")
+    fake_registry.resolve.assert_called_once()
+    key = fake_registry.resolve.call_args.args[0]
+    assert isinstance(key, YouTubeKey)
+    assert key.video_id == "FBgM7jndkLQ"
 
 
 # ── AT7 — never parses path; calls registry once with raw id ────────────────

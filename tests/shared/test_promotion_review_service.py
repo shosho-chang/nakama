@@ -578,6 +578,376 @@ def test_st5_service_no_llm_client_import():
 # ── Filesystem store smoke ────────────────────────────────────────────────────
 
 
+# ── ADR-035 §D6 / PR3b-i — start_review dispatch by reading_source.kind ──────
+
+
+def _make_vtt(lines: list[tuple[str, str, str]]) -> bytes:
+    out = ["WEBVTT", ""]
+    for start, end, text in lines:
+        out.append(f"{start} --> {end}")
+        out.append(text)
+        out.append("")
+    return "\n".join(out).encode("utf-8")
+
+
+def _build_video_service(
+    *,
+    manifest_store=None,
+    sources=None,
+    vtt_blob: bytes | None = None,
+):
+    """Compose a service whose blob_loader serves VTT bytes for video
+    variants. Concept extractor / matcher are still wired but should NEVER
+    be invoked on a video flow (PR3b-i dispatch contract)."""
+    if manifest_store is None:
+        manifest_store = _DictManifestStore()
+    if vtt_blob is None:
+        vtt_blob = _make_vtt(
+            [
+                ("00:00:00.000", "00:00:04.000", "Welcome to the show. " * 50),
+                ("00:00:04.000", "00:00:08.000", "Today we cover sleep. " * 50),
+                ("00:00:08.000", "00:00:12.000", "And caffeine. " * 50),
+            ]
+        )
+
+    def blob_loader(path: str) -> bytes:
+        if path.endswith(".vtt"):
+            return vtt_blob
+        raise KeyError(path)
+
+    preflight = PromotionPreflight(blob_loader=blob_loader)
+    builder = SourceMapBuilder(blob_loader=blob_loader)
+    concept_engine = ConceptPromotionEngine()
+    commit_service = PromotionCommitService()
+    extractor = _CountingExtractor([])
+    matcher = _NoneMatcher()
+    kb_index = _EmptyKBIndex()
+    resolver = _DictResolver(sources or [])
+
+    return PromotionReviewService(
+        manifest_store=manifest_store,
+        preflight=preflight,
+        builder=builder,
+        concept_engine=concept_engine,
+        commit_service=commit_service,
+        extractor=extractor,
+        matcher=matcher,
+        kb_index=kb_index,
+        source_resolver=resolver,
+    )
+
+
+def _video_reading_source(video_id: str = "abcDEF12345") -> ReadingSource:
+    return ReadingSource(
+        schema_version=2,
+        source_id=f"youtube:{video_id}",
+        annotation_key=f"youtube_{video_id}",
+        kind="youtube_video",
+        title="Test Episode",
+        primary_lang="en",
+        has_evidence_track=True,
+        evidence_reason=None,
+        variants=[
+            SourceVariant(
+                role="original",
+                format="vtt",
+                lang="en",
+                path=f"Watchlist/youtube/{video_id}/transcript.vtt",
+            )
+        ],
+        cast=["Host", "Guest"],
+    )
+
+
+def _stub_video_build_result(rs: ReadingSource):
+    """Return a deterministic SourceMapBuildResult mimicking
+    build_video_source_map output — one include item with two
+    timestamp_range anchors."""
+    from shared.schemas.promotion_manifest import EvidenceAnchor, SourcePageReviewItem
+    from shared.schemas.source_map import SourceMapBuildResult
+
+    item = SourcePageReviewItem(
+        item_id="abcDEF12345::whole",
+        recommendation="include",
+        action="create",
+        reason="Test Episode: 2 annotations",
+        evidence=[
+            EvidenceAnchor(
+                kind="timestamp_range",
+                source_path=rs.variants[0].path,
+                locator="t=4",
+                excerpt="Today we cover sleep.",
+                confidence=1.0,
+            ),
+            EvidenceAnchor(
+                kind="timestamp_range",
+                source_path=rs.variants[0].path,
+                locator="t=8",
+                excerpt="And caffeine.",
+                confidence=1.0,
+            ),
+        ],
+        risk=[],
+        confidence=1.0,
+        source_importance=0.5,
+        reader_salience=0.0,
+        target_kb_path="KB/Wiki/Sources/abcDEF12345/whole.md",
+        chapter_ref="whole",
+    )
+    return SourceMapBuildResult(
+        schema_version=2,
+        source_id=rs.source_id,
+        primary_lang=rs.primary_lang,
+        has_evidence_track=True,
+        chapters_inspected=1,
+        items=[item],
+        risks=[],
+        error=None,
+    )
+
+
+def test_start_review_youtube_video_uses_video_builder_skips_concept_and_extractor(monkeypatch):
+    """ADR-035 PR3b-i: youtube_video sources go through build_video_source_map;
+    the LLM ClaimExtractor and ConceptPromotionEngine are NOT invoked."""
+    rs = _video_reading_source()
+    store = _DictManifestStore()
+    service = _build_video_service(manifest_store=store, sources=[rs])
+
+    calls: list[str] = []
+
+    def _fake_build_video(reading_source):
+        calls.append("video_builder")
+        assert reading_source.source_id == rs.source_id
+        return _stub_video_build_result(reading_source)
+
+    import shared.promotion_review_service as svc_mod
+
+    monkeypatch.setattr(svc_mod, "build_video_source_map", _fake_build_video)
+    monkeypatch.setattr(
+        svc_mod.ConceptPromotionEngine,
+        "propose",
+        lambda *a, **kw: pytest.fail("concept engine must not run for video"),
+    )
+
+    manifest = service.start_review(rs.source_id)
+    assert calls == ["video_builder"]
+    assert manifest.source_id == rs.source_id
+    assert manifest.schema_version == 2  # timestamp anchors require v=2
+    source_page = [it for it in manifest.items if it.item_kind == "source_page"]
+    concepts = [it for it in manifest.items if it.item_kind == "concept"]
+    entities = [it for it in manifest.items if it.item_kind == "entity"]
+    assert len(source_page) == 1
+    assert source_page[0].chapter_ref == "whole"
+    assert concepts == []
+    assert entities == []
+    assert all(a.kind == "timestamp_range" for a in source_page[0].evidence)
+    # Manifest persisted via store.
+    reloaded = store.load(rs.source_id)
+    assert reloaded is not None
+    assert reloaded.manifest_id == manifest.manifest_id
+
+
+def test_start_review_youtube_video_surfaces_builder_error_as_value_error(monkeypatch):
+    rs = _video_reading_source()
+    service = _build_video_service(sources=[rs])
+
+    from shared.schemas.source_map import SourceMapBuildResult
+
+    def _fake_build_video(reading_source):
+        return SourceMapBuildResult(
+            schema_version=2,
+            source_id=reading_source.source_id,
+            primary_lang=reading_source.primary_lang,
+            has_evidence_track=True,
+            chapters_inspected=0,
+            items=[],
+            risks=[],
+            error="annotation_store_load_failed: simulated",
+        )
+
+    import shared.promotion_review_service as svc_mod
+
+    monkeypatch.setattr(svc_mod, "build_video_source_map", _fake_build_video)
+
+    with pytest.raises(ValueError, match="video source_map build failed"):
+        service.start_review(rs.source_id)
+
+
+def test_start_review_non_video_still_uses_legacy_builder_and_concept_engine():
+    """Regression: PR3b-i dispatch must not break the inbox/ebook path —
+    ClaimExtractor + ConceptPromotionEngine continue to run."""
+    rs = ReadingSource(
+        source_id="inbox:Inbox/web/sample.md",
+        annotation_key="sample",
+        kind="inbox_document",
+        title="Sample",
+        primary_lang="en",
+        has_evidence_track=True,
+        evidence_reason=None,
+        variants=[
+            SourceVariant(
+                role="original",
+                format="markdown",
+                lang="en",
+                path="Inbox/web/sample.md",
+            )
+        ],
+    )
+    call_log: list[str] = []
+    service = _build_service(sources=[rs], call_log=call_log)
+
+    manifest = service.start_review(rs.source_id)
+    assert "extractor" in call_log
+    assert "matcher" in call_log
+    assert manifest.source_id == rs.source_id
+
+
+def test_start_review_youtube_video_with_entity_pipeline_emits_speaker_persons(monkeypatch):
+    """ADR-035 PR4: when the entity pipeline is wired and rs is a video,
+    speaker chips on annotations surface as EntityReviewItem entries
+    alongside the SourcePageReviewItem from the video builder."""
+    from shared.dry_run_entity_matcher import DryRunEntityMatcher
+    from shared.entity_promotion_engine import EntityPromotionEngine
+    from shared.schemas.entity_promotion import EntityCandidate
+    from shared.schemas.promotion_manifest import PersonMetadata
+
+    class _SpeakerExtractor:
+        """Stand-in for VideoSpeakerEntityExtractor — returns two Person
+        candidates so this test stays focused on service dispatch."""
+
+        def extract(self, reading_source, source_map):  # noqa: ARG002, ANN001
+            return [
+                EntityCandidate(
+                    candidate_id="speaker-00",
+                    entity_type="person",
+                    label="Host",
+                    evidence_language="en",
+                    source_refs=["t=15", "t=305"],
+                    raw_quotes=["Host cue one."],
+                    metadata=PersonMetadata(),
+                ),
+                EntityCandidate(
+                    candidate_id="speaker-01",
+                    entity_type="person",
+                    label="Guest",
+                    evidence_language="en",
+                    source_refs=["t=120"],
+                    raw_quotes=["Guest cue."],
+                    metadata=PersonMetadata(),
+                ),
+            ]
+
+    class _EmptyKBEntityIndex:
+        def lookup(self, alias):  # noqa: ARG002, ANN001
+            return None
+
+        def aliases_starting_with(self, prefix):  # noqa: ARG002, ANN001
+            return []
+
+    rs = ReadingSource(
+        schema_version=2,
+        source_id="youtube:abcDEF12345",
+        annotation_key="youtube_abcDEF12345",
+        kind="youtube_video",
+        title="Test Episode",
+        primary_lang="en",
+        has_evidence_track=True,
+        evidence_reason=None,
+        variants=[
+            SourceVariant(
+                role="original",
+                format="vtt",
+                lang="en",
+                path="Watchlist/youtube/abcDEF12345/transcript.vtt",
+            )
+        ],
+        cast=["Host", "Guest"],
+    )
+
+    vtt_blob = (
+        b"WEBVTT\n\n"
+        b"00:00:00.000 --> 00:00:04.000\n" + (b"Welcome to the show. " * 50) + b"\n\n"
+        b"00:00:04.000 --> 00:00:08.000\n" + (b"Today we cover sleep. " * 50) + b"\n\n"
+        b"00:00:08.000 --> 00:00:12.000\n" + (b"And caffeine. " * 50) + b"\n\n"
+    )
+
+    def blob_loader(path: str) -> bytes:
+        if path.endswith(".vtt"):
+            return vtt_blob
+        raise KeyError(path)
+
+    # Stub video builder so the test doesn't need annotation_store
+    # round-tripping for the builder side — PR3a-ii covers that.
+    def _fake_build_video(reading_source):
+        from shared.schemas.promotion_manifest import EvidenceAnchor, SourcePageReviewItem
+        from shared.schemas.source_map import SourceMapBuildResult
+
+        item = SourcePageReviewItem(
+            item_id=f"{reading_source.source_id.split(':', 1)[1]}::whole",
+            recommendation="include",
+            action="create",
+            reason="Test Episode: 2 annotations",
+            evidence=[
+                EvidenceAnchor(
+                    kind="timestamp_range",
+                    source_path=reading_source.variants[0].path,
+                    locator="t=15",
+                    excerpt="Host cue one.",
+                    confidence=1.0,
+                ),
+            ],
+            risk=[],
+            confidence=1.0,
+            source_importance=0.5,
+            reader_salience=0.0,
+            target_kb_path="KB/Wiki/Sources/abcDEF12345/whole.md",
+            chapter_ref="whole",
+        )
+        return SourceMapBuildResult(
+            schema_version=2,
+            source_id=reading_source.source_id,
+            primary_lang=reading_source.primary_lang,
+            has_evidence_track=True,
+            chapters_inspected=1,
+            items=[item],
+            risks=[],
+            error=None,
+        )
+
+    import shared.promotion_review_service as svc_mod
+
+    monkeypatch.setattr(svc_mod, "build_video_source_map", _fake_build_video)
+
+    store = _DictManifestStore()
+    service = PromotionReviewService(
+        manifest_store=store,
+        preflight=PromotionPreflight(blob_loader=blob_loader),
+        builder=SourceMapBuilder(blob_loader=blob_loader),
+        concept_engine=ConceptPromotionEngine(),
+        commit_service=PromotionCommitService(),
+        extractor=_CountingExtractor([]),
+        matcher=_NoneMatcher([]),
+        kb_index=_EmptyKBIndex(),
+        source_resolver=_DictResolver([rs]),
+        entity_engine=EntityPromotionEngine(),
+        entity_extractor=_SpeakerExtractor(),
+        entity_matcher=DryRunEntityMatcher(),
+        kb_entity_index=_EmptyKBEntityIndex(),
+    )
+
+    manifest = service.start_review(rs.source_id)
+    assert manifest.schema_version == 2
+
+    source_pages = [it for it in manifest.items if it.item_kind == "source_page"]
+    concepts = [it for it in manifest.items if it.item_kind == "concept"]
+    entities = [it for it in manifest.items if it.item_kind == "entity"]
+
+    assert len(source_pages) == 1
+    assert concepts == []  # concept engine still skipped for video
+    assert [e.entity_label for e in entities] == ["Host", "Guest"]
+    assert all(e.metadata.entity_type == "person" for e in entities)
+
+
 def test_filesystem_store_round_trip(tmp_path: Path):
     """Sanity: the default FilesystemManifestStore round-trips manifests
     keyed by base64url(source_id) — defends Brief §3 source_id encoding
