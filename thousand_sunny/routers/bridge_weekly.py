@@ -20,6 +20,7 @@ from fastapi import Path as PathParam
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from shared import calendar_scheduler
 from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.pomodoro_aggregator import TAIPEI, task_actual
@@ -71,6 +72,16 @@ _PLAN_ERRORS = {
     "pomodoros": "番茄數需介於 1–20。",
     "date": "排程日期格式無效。",
     "task": "找不到該任務檔，可能已在 Obsidian 改名或移除。",
+    "time": "排程時間格式無效。",
+    # calendar scheduling (ADR-041 41c) — plan is authoritative; calendar is best-effort
+    "cal_conflict": (
+        "此時段與 Google 行事曆既有事件衝突——已寫入本週計畫但未建立行事曆事件。"
+        "想忽略衝突，請勾選「強制排入」後重送。"
+    ),
+    "cal_unavailable": (
+        "已寫入本週計畫，但 Google 行事曆暫時無法連動（授權或網路）——稍後可重新排入以補建事件。"
+    ),
+    "cal_failed": "排程寫入後寫回失敗，行事曆事件已回滾——請重試。",
     # weekly-file (Journals/Weekly 🟡) write errors — ADR-040 Slice 2
     "conflict": (
         "週檔在你開啟頁面後被改動（Obsidian / Syncthing / 另一分頁），"
@@ -86,6 +97,7 @@ _SAVED_MSGS = {
     "targets": "✓ 已更新本週目標。",
     "notes": "✓ 已存隨手筆記。",
     "status": "✓ 已更新本週狀態。",
+    "scheduled": "✓ 已排入本週計畫並建立行事曆事件。",
 }
 
 
@@ -95,6 +107,7 @@ async def weekly_landing(
     week: str | None = Query(None),
     err: str | None = Query(None),
     saved: str | None = Query(None),
+    n: int | None = Query(None),  # conflict count, for the cal_conflict banner (41c)
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
@@ -112,6 +125,13 @@ async def weekly_landing(
         logger.exception("weekly view assembly failed for week=%s", wk.file_key)
         raise
 
+    error_msg = _PLAN_ERRORS.get(err) if err else None
+    if err == "cal_conflict" and n and n > 0:
+        error_msg = (
+            f"此時段與 Google 行事曆 {n} 個既有事件衝突——已寫入本週計畫但未建立行事曆事件。"
+            "想忽略衝突，請勾選「強制排入」後重送。"
+        )
+
     return _templates.TemplateResponse(
         request,
         "weekly.html",
@@ -120,7 +140,7 @@ async def weekly_landing(
             # If-Match token for the weekly-file forms (ADR-040 Slice 2)
             "weekly_token": weekly_file_token(vault, wk.file_key),
             "asset_version": _SHOSHO_ASSET_VERSION,
-            "error_msg": _PLAN_ERRORS.get(err) if err else None,
+            "error_msg": error_msg,
             "saved_msg": _SAVED_MSGS.get(saved) if saved else None,
         },
     )
@@ -221,6 +241,85 @@ async def weekly_sync_scheduled(
         logger.warning("weekly_sync_scheduled: %s", exc)
         return _back(wk_key, "task")
     return _back(wk_key)
+
+
+def _parse_entry_time(entry_time: str):
+    """Parse an ``HH:MM`` (browser ``<input type=time>``) into a ``time``; None on junk."""
+    from datetime import time as _time
+
+    try:
+        return _time.fromisoformat(entry_time.strip())
+    except ValueError:
+        return None
+
+
+@page_router.post("/weekly/schedule")
+async def weekly_schedule(
+    task_slug: str = Form(..., min_length=1),
+    title: str = Form(""),  # task title for the calendar event summary
+    entry_date: str = Form(..., min_length=1),
+    entry_time: str = Form(..., min_length=1),
+    pomodoros: int = Form(...),
+    reason: str = Form(""),
+    force: int = Form(0),  # ignore a calendar clash and create anyway (D8)
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Schedule a task as a real clock-time block (ADR-041 41c): authoritatively
+    write plan[] + scheduled/scheduled_end in the vault, then best-effort project
+    it onto Google Calendar. The vault is the source of truth (D1); a calendar
+    failure degrades to a banner, never blocks the plan (D2)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+
+    ed = _parse_entry_date(entry_date)
+    if ed is None:
+        return _back(wk_key, "date")
+    et = _parse_entry_time(entry_time)
+    if et is None:
+        return _back(wk_key, "time")
+    if not 1 <= pomodoros <= 20:
+        return _back(wk_key, "pomodoros")
+
+    start = datetime.combine(ed, et)  # naive Asia/Taipei (D4)
+    try:
+        outcome = calendar_scheduler.schedule_block(
+            get_vault_path(),
+            task_slug,
+            start=start,
+            pomodoros=pomodoros,
+            title=title.strip() or task_slug,
+            reason=reason.strip() or None,
+            force=bool(force),
+        )
+    except WeekendReasonRequired:
+        return _back(wk_key, "weekend")
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_schedule plan write failed: %s", exc)
+        return _back(wk_key, "task")
+
+    status = outcome.calendar_status
+    if status == calendar_scheduler.CREATED:
+        return _sched_back(wk_key, saved="scheduled")
+    if status == calendar_scheduler.CONFLICT:
+        return _sched_back(wk_key, err="cal_conflict", n=len(outcome.conflicts))
+    if status == calendar_scheduler.UNAVAILABLE:
+        return _sched_back(wk_key, err="cal_unavailable")
+    return _sched_back(wk_key, err="cal_failed")  # FAILED — event rolled back
+
+
+def _sched_back(week_key: str, *, err: str | None = None, saved: str | None = None, n: int = 0):
+    url = f"/bridge/weekly?week={week_key}"
+    if err:
+        url += f"&err={err}"
+        if n:
+            url += f"&n={n}"
+    elif saved:
+        url += f"&saved={saved}"
+    return RedirectResponse(url, status_code=303)
 
 
 # ── Weekly-file 週交接 writes (Journals/Weekly 🟡 — ADR-040 A6 composable steps) ─

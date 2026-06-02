@@ -56,6 +56,42 @@
   </details>
 {% endmacro %}
 
+{# ── Backlog calendar scheduler (ADR-041 41c; Journals/Weekly NOT touched) ── #}
+{# Picks a real clock-time block for any open task → calendar_scheduler.schedule_block
+   (vault plan[] authoritative + best-effort Google Calendar event). #}
+{% macro backlog_row(t, view) %}
+  <details class="wk-task-d wk-bl-d">
+    <summary class="wk-task">
+      <span class="wk-box"></span>
+      <span class="wk-tname">{{ t.name }}</span>
+      <span class="wk-tproj">{{ t.category_label }}</span>
+      <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ t.est_pomodoros }}🍅</span>
+      {% if t.scheduled %}<span class="wk-bl-when" title="目前 scheduled">📅 {{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
+      <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁">↗</a>
+      <span class="wk-edit-hint" aria-hidden="true">排到行事曆</span>
+    </summary>
+
+    <form class="wk-plan-edit wk-sched-form" method="post" action="/bridge/weekly/schedule">
+      <input type="hidden" name="task_slug" value="{{ t.slug }}">
+      <input type="hidden" name="title" value="{{ t.title }}">
+      <input type="hidden" name="week" value="{{ view.week.file_key }}">
+      <div class="wk-sched-fields">
+        <label class="wk-sched-lbl">日期
+          <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
+        <label class="wk-sched-lbl">時間
+          <input class="wk-sched-time" type="time" name="entry_time" value="09:00" step="900" required></label>
+        <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ t.est_pomodoros if t.est_pomodoros else 1 }}" aria-label="番茄數">🍅
+          <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
+      </div>
+      <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+      <div class="wk-sched-actions">
+        <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
+        <button class="sho-btn wk-sched-go" type="submit">排到行事曆</button>
+      </div>
+    </form>
+  </details>
+{% endmacro %}
+
 {# ── Weekly-file 週交接 forms (ADR-040 A6 composable steps; Journals/Weekly 🟡) ── #}
 {% macro _sec(view, heading) %}{{ view.review.sections.get(heading, '') if view.review else '' }}{% endmacro %}
 
@@ -359,6 +395,20 @@
         </div>
       </div>
 
+      {# ── backlog · 待排程 (all open tasks; calendar scheduler — 41c) ── #}
+      <details class="wk-zone wk-backlog">
+        <summary class="wk-zone-head"><span class="wk-h">📥 待排程 · 所有未完成任務</span>
+          <span class="wk-mut">{{ view.backlog_count }} 項 · 點開選日期/時間排到行事曆</span></summary>
+        {% for proj, tasks in view.backlog_by_project.items() %}
+          <div class="wk-projgroup">
+            <div class="wk-projname">{{ proj }} <span class="wk-mut">{{ tasks | length }} 項</span></div>
+            {% for t in tasks %}{{ backlog_row(t, view) }}{% endfor %}
+          </div>
+        {% else %}
+          <p class="wk-empty">沒有未完成的任務 🎉</p>
+        {% endfor %}
+      </details>
+
       {# ── review (fill any time; designed for week-end) ── #}
       <details class="wk-zone wk-review-zone">
         <summary class="wk-zone-head"><span class="wk-h">週回顧</span>
@@ -408,6 +458,44 @@
     document.querySelectorAll('.wk-plan-add').forEach(function (form) {
       var sel = form.querySelector('.wk-day-sel');
       if (sel) sel.addEventListener('change', function () { sync(form); });
+      sync(form);
+    });
+  })();
+
+  /* Backlog calendar scheduler (41c): reveal+require the weekend reason when the
+     picked date is Sat/Sun, and show the derived block length (1🍅 = 30 min). */
+  (function () {
+    function isWeekend(v) {
+      if (!v) return false;
+      var d = new Date(v + 'T00:00:00');
+      var day = d.getDay();           // 0 Sun .. 6 Sat
+      return day === 0 || day === 6;
+    }
+    function endLabel(timeStr, pom) {
+      if (!timeStr || !pom) return '';
+      var parts = timeStr.split(':');
+      var mins = (+parts[0]) * 60 + (+parts[1]) + pom * 30;
+      mins = ((mins % 1440) + 1440) % 1440;   // wrap past midnight defensively
+      var hh = String(Math.floor(mins / 60)).padStart(2, '0');
+      var mm = String(mins % 60).padStart(2, '0');
+      return '→ ' + hh + ':' + mm + '（' + (pom * 30) + ' 分）';
+    }
+    function sync(form) {
+      var date = form.querySelector('.wk-sched-date');
+      var time = form.querySelector('.wk-sched-time');
+      var pom = form.querySelector('input[name="pomodoros"]');
+      var reason = form.querySelector('.wk-reason-field');
+      var dur = form.querySelector('.wk-sched-dur');
+      if (date && reason) {
+        var weekend = isWeekend(date.value);
+        form.classList.toggle('is-weekend', weekend);
+        reason.required = weekend;
+      }
+      if (dur && time && pom) dur.textContent = endLabel(time.value, parseInt(pom.value, 10));
+    }
+    document.querySelectorAll('.wk-sched-form').forEach(function (form) {
+      form.querySelectorAll('.wk-sched-date, .wk-sched-time, input[name="pomodoros"]')
+        .forEach(function (el) { el.addEventListener('input', function () { sync(form); }); });
       sync(form);
     });
   })();

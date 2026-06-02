@@ -372,6 +372,8 @@ class WeeklyView:
     tasks: tuple[WeeklyTask, ...]  # tasks with allocation/scheduled in week
     today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
     incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
+    backlog_by_project: dict[str, list[WeeklyTask]]  # ALL not-done tasks (not week-bounded, 41c)
+    backlog_count: int  # total open tasks in the backlog (across all projects)
     by_project: dict[str, list[WeeklyTask]]
     planned_by_task: dict[str, int]  # slug -> planned 🍅 this week (work only)
     days: tuple[dict, ...]  # 5 day-cards Mon..Fri (the bullet section)
@@ -380,6 +382,7 @@ class WeeklyView:
     conflicts: tuple[ConflictFile, ...]
     prev_key: str
     next_key: str
+    today_iso: str  # today (Asia/Taipei) — default for the calendar scheduler picker (41c)
 
 
 # ── Indexer ──────────────────────────────────────────────────────────────────
@@ -683,6 +686,15 @@ class WeeklyIndexer:
         incomplete = [
             t for t in all_tasks if not t.done and t.scheduled is not None and t.scheduled <= wk.end
         ]
+        # backlog (41c) = EVERY not-done task, regardless of scheduling — the full
+        # "待排程" pool the calendar picker schedules from. Grouped by project,
+        # unscheduled tasks first within each group (they need attention most),
+        # then by earliest scheduled date so already-placed tasks sort sensibly.
+        backlog = [t for t in all_tasks if not t.done]
+        backlog.sort(key=lambda t: (t.scheduled is not None, t.scheduled or date.max, t.name))
+        backlog_by_project: dict[str, list[WeeklyTask]] = {}
+        for t in backlog:
+            backlog_by_project.setdefault(t.project or "（無專案）", []).append(t)
 
         # 🍅 = work hours: only `work`-category tasks count toward planned/actual.
         planned = sum(t.planned_in(wk) for t in all_tasks if t.is_work)
@@ -758,6 +770,8 @@ class WeeklyIndexer:
             tasks=tuple(in_week),
             today_tasks=today_tasks,
             incomplete=tuple(incomplete),
+            backlog_by_project=backlog_by_project,
+            backlog_count=len(backlog),
             by_project=by_project,
             planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
             days=days,
@@ -766,6 +780,7 @@ class WeeklyIndexer:
             conflicts=tuple(self.list_conflicts()),
             prev_key=wk.shift(-1).file_key,
             next_key=wk.shift(1).file_key,
+            today_iso=today.isoformat(),
         )
 
     def _build_day_headers(self, wk: WeekRef, today: date) -> list[dict]:
