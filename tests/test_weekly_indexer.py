@@ -361,5 +361,5 @@ def test_bridge_weekly_route_renders(vault, monkeypatch):
     r = client.get("/bridge/weekly?week=2026-05-31")
     assert r.status_code == 200
     assert "W23" in r.text
-    assert "每日" in r.text  # daily grid heading rendered
+    assert "wk-days" in r.text  # daily cards container rendered
     assert "nav_active" not in r.text  # macro expanded, not literal

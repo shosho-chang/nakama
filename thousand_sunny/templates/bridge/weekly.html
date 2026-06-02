@@ -73,9 +73,26 @@
       <label class="wk-field"><span>🙏 感恩（人 / 事 / 物）</span>
         <textarea name="gratitude" rows="2">{{ _sec(view,'🙏 感恩') | trim }}</textarea></label>
     </div>
-    <label class="wk-field wk-field--wide"><span>🎯 下週 top-3（一行一個；任務或專案名，可用 <code>[[wikilink]]</code>）</span>
-      <textarea name="next3" rows="3" placeholder="[[寫當週電子報]]">{% for n in (view.review.next3 if view.review else []) %}{{ n }}
-{% endfor %}</textarea></label>
+    <div class="wk-field wk-field--wide"><span>🎯 下週三大要事</span>
+      <div class="wk-top3-picks">
+        {% for i in range(3) %}
+          {% set cur = view.review.next3[i] if (view.review and i < (view.review.next3 | length)) else '' %}
+          <select class="wk-top3-sel" name="next3" aria-label="下週要事 {{ i + 1 }}">
+            <option value="">{{ i + 1 }} · （不指定）</option>
+            <optgroup label="任務">
+              {% for o in view.top3_options if o.group == '任務' %}
+                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="專案">
+              {% for o in view.top3_options if o.group == '專案' %}
+                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+              {% endfor %}
+            </optgroup>
+          </select>
+        {% endfor %}
+      </div>
+    </div>
     <div class="wk-wf-actions">
       <button class="sho-btn" type="submit">存週回顧</button>
       {% if with_mark %}
@@ -219,8 +236,6 @@
               </li>
             {% endfor %}
           </ol>
-        {% else %}
-          <span class="wk-mut">尚未設定——用下方「✎ 本週計畫」挑 3 件，或在 Obsidian 任務標 <code>weekly_priority: {{ view.week.file_key }}</code>。</span>
         {% endif %}
       </div>
       {{ plan_panel(view, weekly_token) }}
@@ -266,7 +281,6 @@
 
       {# ── daily cards (Mon→Fri) — today open by default, others toggle ── #}
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="wk-h">每日 · 週一–五</span></div>
         <div class="wk-days">
           {% for day in view.days %}
             <details class="wk-day {{ 'is-today' if day.is_today }}" {{ 'open' if day.default_open }}>

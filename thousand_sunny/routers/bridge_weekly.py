@@ -250,19 +250,16 @@ def _weekly_back(week_key: str, *, err: str | None = None, saved: str | None = N
     return RedirectResponse(url, status_code=303)
 
 
-def _parse_links(raw: str) -> list[str]:
-    """Split a textarea of one-per-line (or comma-separated) entries into a list
-    of ``[[wikilink]]`` strings — 修修 may type bare names or full wikilinks."""
-    import re as _re
+def _wrap_link(s: str) -> str:
+    """Normalise one entry (bare name or ``[[wikilink]]``) to a ``[[wikilink]]``."""
+    s = s.strip()
+    inner = s[2:-2].strip() if s.startswith("[[") and s.endswith("]]") else s
+    return f"[[{inner}]]"
 
-    out: list[str] = []
-    for part in _re.split(r"[\n,]", raw or ""):
-        s = part.strip()
-        if not s:
-            continue
-        inner = s[2:-2].strip() if s.startswith("[[") and s.endswith("]]") else s
-        out.append(f"[[{inner}]]")
-    return out
+
+def _links_from_list(values: list[str]) -> list[str]:
+    """Dropdown selections → ordered ``[[wikilink]]`` list; blank slots dropped."""
+    return [_wrap_link(v) for v in values if v.strip()]
 
 
 def _write_weekly_or_back(wk, *, frontmatter=None, sections=None, expected_token, saved):
@@ -294,7 +291,7 @@ async def weekly_review_save(
     learned: str = Form(""),
     gratitude: str = Form(""),
     notes: str = Form(""),
-    next3: str = Form(""),
+    next3: list[str] = Form(default=[]),  # ≤3 dropdown selections for next week
     mark_reviewed: int = Form(0),
     nakama_auth: str | None = Cookie(None),
 ):
@@ -308,7 +305,7 @@ async def weekly_review_save(
         "🙏 感恩": gratitude.strip(),
         "隨手筆記": notes.strip(),
     }
-    fm: dict = {"next3": _parse_links(next3)}
+    fm: dict = {"next3": _links_from_list(next3)}
     if mark_reviewed:  # honest FSM (A6): only flip on explicit completion
         fm["status"] = "reviewed"
     return _write_weekly_or_back(
@@ -341,10 +338,11 @@ async def weekly_top3_save(
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk = _safe_week(week)
-    # dropdowns submit blank for an unfilled slot; keep order, drop blanks, wrap as wikilinks
-    links = [f"[[{v.strip()}]]" for v in top3 if v.strip()]
     return _write_weekly_or_back(
-        wk, frontmatter={"top3": links}, expected_token=expected_token, saved="top3"
+        wk,
+        frontmatter={"top3": _links_from_list(top3)},
+        expected_token=expected_token,
+        saved="top3",
     )
 
 
@@ -383,8 +381,7 @@ async def weekly_plan_save(
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk = _safe_week(week)
-    links = [f"[[{v.strip()}]]" for v in top3 if v.strip()]
-    fm: dict = {"top3": links, "targets": ({"ufo": ufo} if ufo > 0 else {})}
+    fm: dict = {"top3": _links_from_list(top3), "targets": ({"ufo": ufo} if ufo > 0 else {})}
     if advance:
         fm["status"] = "active"
     return _write_weekly_or_back(wk, frontmatter=fm, expected_token=expected_token, saved="plan")
