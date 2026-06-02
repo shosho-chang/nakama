@@ -50,6 +50,32 @@ def _scheduled(tmp_path):
     return fm.get("scheduled")
 
 
+def _time_entries(tmp_path) -> list[dict]:
+    raw = _task_path(tmp_path).read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    return [dict(e) for e in (fm.get("timeEntries") or [])]
+
+
+def _weekly_file(tmp_path):
+    return tmp_path / "Journals" / "Weekly" / f"{WEEK_KEY}.md"
+
+
+def _weekly_fm(tmp_path) -> dict:
+    raw = _weekly_file(tmp_path).read_text(encoding="utf-8")
+    return yaml.safe_load(raw.split("---", 2)[1]) or {}
+
+
+def _weekly_body(tmp_path) -> str:
+    raw = _weekly_file(tmp_path).read_text(encoding="utf-8")
+    return raw.split("---", 2)[2]
+
+
+def _weekly_token(tmp_path) -> str:
+    from shared.weekly_writer import weekly_file_token
+
+    return weekly_file_token(tmp_path, WEEK_KEY)
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
@@ -258,6 +284,264 @@ class TestSyncScheduled:
             follow_redirects=False,
         )
         assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=task"
+
+
+class TestTaskDetail:
+    def test_get_renders_task_page(self, client):
+        r = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}")
+        assert r.status_code == 200
+        body = r.text
+        assert "測試任務" in body
+        assert "tk-timerbox" in body  # the pomodoro timer block
+        assert 'action="/bridge/weekly/task/測試任務/log"' in body or "%E6%B8%AC" in body
+        assert "回週看板" in body
+
+    def test_get_unknown_task_redirects(self, client):
+        r = client.get(f"/bridge/weekly/task/不存在?week={WEEK_KEY}", follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=task"
+
+    def test_log_pomodoro_appends_time_entry(self, client, tmp_path):
+        before = len(_time_entries(tmp_path))
+        r = client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"].endswith("&logged=1") or "logged=1" in r.headers["location"]
+        entries = _time_entries(tmp_path)
+        assert len(entries) == before + 1
+        assert entries[-1]["mode"] == "pomodoro"
+        assert entries[-1]["startTime"] and entries[-1]["endTime"]
+
+    def test_log_deep_marks_mode(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "deep", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        entries = _time_entries(tmp_path)
+        assert entries[-1]["mode"] == "deep"
+
+    def test_log_actual_elapsed_from_timer(self, client, tmp_path):
+        """ADR-040 A2: the live timer reports elapsed_seconds → the logged span is
+        the real elapsed time (提早完成), not a fixed nominal block."""
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "elapsed_seconds": "600", "week": WEEK_KEY},  # 10 min
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert e["actual_minutes"] == 10
+        assert e["planned_minutes"] == 25
+        assert e["completed"] is True
+        assert "manual" not in e
+
+    def test_log_manual_flags_claim_full_block(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "deep", "manual": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert e["actual_minutes"] == 75  # full nominal block
+        assert e["manual"] is True
+
+    def test_log_unknown_mode_rejected(self, client, tmp_path):
+        before = len(_time_entries(tmp_path))
+        r = client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "bogus", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "err=mode" in r.headers["location"]
+        assert len(_time_entries(tmp_path)) == before
+
+    def test_log_unknown_task_redirects_with_err(self, client):
+        r = client.post(
+            "/bridge/weekly/task/不存在/log",
+            data={"mode": "pomodoro", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "err=log" in r.headers["location"]
+
+
+class TestWeeklyFileWrites:
+    """ADR-040 Slice 2 — the Journals/Weekly 🟡 composable write routes."""
+
+    def test_top3_creates_file_and_persists(self, client, tmp_path):
+        # dropdowns submit repeated `top3` fields (a blank slot is skipped)
+        r = client.post(
+            "/bridge/weekly/top3",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": ["測試任務", "", "肌酸的妙用"]},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&saved=top3"
+        fm = _weekly_fm(tmp_path)
+        assert fm["top3"] == ["[[測試任務]]", "[[肌酸的妙用]]"]  # blank slot dropped, order kept
+        assert fm["status"] == "planning"  # created from template
+
+    def test_targets_persist_only_positive(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/targets",
+            data={"week": WEEK_KEY, "expected_token": "", "pomodoro": "35", "ufo": "0"},
+            follow_redirects=False,
+        )
+        assert _weekly_fm(tmp_path)["targets"] == {"pomodoro": 35}
+
+    def test_review_writes_prose_and_next3(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/review",
+            data={
+                "week": WEEK_KEY,
+                "expected_token": "",
+                "highlight": "出片了 🎉",
+                "next3": "[[下週要事]]",
+                "mark_reviewed": "1",
+            },
+            follow_redirects=False,
+        )
+        fm = _weekly_fm(tmp_path)
+        assert fm["status"] == "reviewed"
+        assert fm["next3"] == ["[[下週要事]]"]
+        assert "出片了 🎉" in _weekly_body(tmp_path)
+
+    def test_notes_persist(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/notes",
+            data={"week": WEEK_KEY, "expected_token": "", "notes": "下週試 75 分 block"},
+            follow_redirects=False,
+        )
+        assert "下週試 75 分 block" in _weekly_body(tmp_path)
+
+    def test_status_advances(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/status",
+            data={"week": WEEK_KEY, "expected_token": "", "status": "active"},
+            follow_redirects=False,
+        )
+        assert _weekly_fm(tmp_path)["status"] == "active"
+
+    def test_stale_token_is_conflict(self, client, tmp_path):
+        # create the file, then post with the now-stale empty token → conflict
+        client.post(
+            "/bridge/weekly/top3",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": "A"},
+            follow_redirects=False,
+        )
+        r = client.post(
+            "/bridge/weekly/top3",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": "B"},
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=conflict"
+        assert _weekly_fm(tmp_path)["top3"] == ["[[A]]"]  # B rejected
+
+    def test_active_week_renders_plan_and_review_forms(self, client, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        # the 本週計畫 panel is one consolidated form (top3 + ufo + advance)
+        assert 'action="/bridge/weekly/plan-save"' in body
+        assert 'action="/bridge/weekly/review"' in body
+        assert 'action="/bridge/weekly/notes"' in body
+        assert 'name="expected_token"' in body
+        # top3 is a dropdown picker (not free text); the seed task is an option
+        assert "wk-top3-sel" in body
+        assert "<optgroup" in body
+        assert "測試任務" in body
+
+    def test_plan_save_writes_top3_ufo_and_status(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/plan-save",
+            data={
+                "week": WEEK_KEY,
+                "expected_token": "",
+                "top3": ["測試任務", "", ""],
+                "ufo": "4",
+                "advance": "1",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&saved=plan"
+        fm = _weekly_fm(tmp_path)
+        assert fm["top3"] == ["[[測試任務]]"]
+        assert fm["targets"] == {"ufo": 4}
+        assert fm["status"] == "active"  # advance checkbox flipped the FSM
+
+    def test_plan_save_without_advance_keeps_planning(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/plan-save",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": ["測試任務"], "ufo": "0"},
+            follow_redirects=False,
+        )
+        fm = _weekly_fm(tmp_path)
+        assert fm["status"] == "planning"  # created from template, not advanced
+        assert fm["targets"] == {}  # ufo 0 → empty
+
+    # ── PR#811 audit regressions ────────────────────────────────────────────
+    def test_review_save_preserves_existing_notes(self, client, tmp_path):
+        """B1: 隨手筆記 has its own form; a review save must NOT blank it."""
+        client.post(
+            "/bridge/weekly/notes",
+            data={"week": WEEK_KEY, "expected_token": "", "notes": "別把我清掉"},
+            follow_redirects=False,
+        )
+        tok = _weekly_token(tmp_path)
+        client.post(
+            "/bridge/weekly/review",
+            data={"week": WEEK_KEY, "expected_token": tok, "highlight": "好的一刻"},
+            follow_redirects=False,
+        )
+        body = _weekly_body(tmp_path)
+        assert "別把我清掉" in body  # notes survived the review save
+        assert "好的一刻" in body
+
+    def test_plan_save_blank_ufo_does_not_persist_default(self, client, tmp_path):
+        """B2: a blank UFO field must not write the machine default as intent."""
+        client.post(
+            "/bridge/weekly/plan-save",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": ["測試任務"], "ufo": ""},
+            follow_redirects=False,
+        )
+        assert _weekly_fm(tmp_path)["targets"] == {}  # no targets.ufo:5 leaked
+
+    def test_plan_save_ufo_merges_keeps_pomodoro(self, client, tmp_path):
+        """B2: saving the 🤩 goal merges — it must not wipe a stored 🍅 goal."""
+        client.post(
+            "/bridge/weekly/targets",
+            data={"week": WEEK_KEY, "expected_token": "", "pomodoro": "30", "ufo": "0"},
+            follow_redirects=False,
+        )
+        tok = _weekly_token(tmp_path)
+        client.post(
+            "/bridge/weekly/plan-save",
+            data={"week": WEEK_KEY, "expected_token": tok, "top3": ["測試任務"], "ufo": "4"},
+            follow_redirects=False,
+        )
+        assert _weekly_fm(tmp_path)["targets"] == {"pomodoro": 30, "ufo": 4}
+
+    def test_token_is_content_hash_stable_across_reads(self, client, tmp_path):
+        """F3: the If-Match token is a content hash — same bytes → same token
+        (immune to mtime resets), different bytes → different token."""
+        client.post(
+            "/bridge/weekly/top3",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": "A"},
+            follow_redirects=False,
+        )
+        t1 = _weekly_token(tmp_path)
+        assert t1 and t1 == _weekly_token(tmp_path)  # stable, content-derived
+        client.post(
+            "/bridge/weekly/notes",
+            data={"week": WEEK_KEY, "expected_token": t1, "notes": "changed"},
+            follow_redirects=False,
+        )
+        assert _weekly_token(tmp_path) != t1  # content changed → token changed
 
 
 class TestAuthGate:

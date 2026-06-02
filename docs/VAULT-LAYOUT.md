@@ -66,9 +66,9 @@ Work / Play / Love / Health — carried in `area:` frontmatter, **not** folder s
 ```
 E:\Shosho LifeOS\
 ├── CLAUDE.md             — 30-line cheat sheet pointer to this doc
-├── Journals/             🔒 Human only (Weekly/ → 🟡 *proposed* per ADR-039, pending acceptance)
+├── Journals/             🔒 Human only (Weekly/ → 🟡 per ADR-039/ADR-040, non-generalizing carve-out)
 │   ├── Daily/              Obsidian Daily Notes plugin + tpl-daily-journal
-│   ├── Weekly/             🟡 Collab *(proposed, ADR-039 pending)* — Bridge `/bridge/weekly`; {start-Sunday}.md; tpl-weekly-journal
+│   ├── Weekly/             🟡 Collab — Bridge `/bridge/weekly`; {start-Sunday}.md; tpl-weekly-journal
 │   ├── Quarterly/          人寫
 │   └── Yearly/             人寫
 │
@@ -169,10 +169,10 @@ data/agent_reports/franky/
 |---|---|---|---|---|
 | `Journals/Daily/` | 🔒 | 修修 via Templater `tpl-daily-journal.md` | 修修 reads; agents may read | tpl-daily-journal |
 | `Journals/{Quarterly,Yearly}/` | 🔒 | 修修 via Templater | 修修 | 人寫 |
-| `Journals/Weekly/{YYYY-MM-DD}.md` | 🟡 *(proposed)* | 修修 via Bridge Weekly Dashboard `thousand_sunny/routers/bridge_weekly.py` *(not yet built)* (body prose) + Bridge machine (frontmatter `start_date`/`end_date`/`status`/`top3`/`next3` — **no pomodoro cache; computed on read**); or Obsidian `tpl-weekly-journal` | Bridge `/bridge/weekly`, Obsidian render | **ADR-039 (Proposed, pending)** — field-level contract; Sunday-keyed; first 🔒→🟡 carve-out (non-generalizing) |
+| `Journals/Weekly/{YYYY-MM-DD}.md` | 🟡 | 修修 via Bridge Weekly Dashboard `thousand_sunny/routers/bridge_weekly.py` + `shared/weekly_writer.py:write_weekly` — persists 修修's **intent** (frontmatter allowlist `start_date`/`end_date`/`status`/`top3`/`next3`/`targets`) + his **verbatim prose** (named `##` review sections + 隨手筆記); **no pomodoro/UFO cache — computed on read** (ADR-039 D5). Machine never authors content (ADR-040 A1). Or Obsidian `tpl-weekly-journal` | Bridge `/bridge/weekly`, Obsidian render | **ADR-039 + ADR-040** — field-level contract; Sunday-keyed; first 🔒→🟡 carve-out (**non-generalizing** — each future carve-out needs its own ADR) |
 | `OKRs/` | 🔒 | 修修 via tpl-okr-{annual,quarterly} | 修修 | tpl-okr-* |
 | `Projects/{title}.md` | 🟡 | Bootstrap `scripts/run_project_bootstrap.py` + `shared/lifeos_writer.py:render_project` (Tier C strip, ADR-031); Bridge Web mutations `thousand_sunny/routers/bridge_projects.py` | Brook synthesize, Bridge Web `/bridge/projects/{slug}`, Obsidian render (prose-only post-Tier C) | `shared/lifeos_writer.py` + `docs/schemas/project-frontmatter-nested.md` (ADR-031 γ schema) |
-| `TaskNotes/Tasks/` | 🟡 | Bootstrap + `gateway/handlers/nami.py:1002` + TaskNotes plugin + **Bridge** `shared/project_writer.py` (`timeEntries[]` ADR-031 D6; *proposed* `plan[]` + **explicit** `scheduled` sync ADR-039 D4) | TaskNotes plugin queries; Bridge weekly aggregation (`plan[]` planned + `timeEntries[]` actual) | `shared/lifeos_writer.py:render_task` + **ADR-039 D4 (Proposed)** `plan: [{date,pomodoros,reason?,done?}]` |
+| `TaskNotes/Tasks/` | 🟡 | Bootstrap + `gateway/handlers/nami.py:1002` + TaskNotes plugin + **Bridge** `shared/project_writer.py` (`timeEntries[]` ADR-031 D6) + `shared/weekly_writer.py` (`plan[]` + **explicit** `scheduled` sync, ADR-039 D4; `timeEntries[]` evidence schema, ADR-040 A2) | TaskNotes plugin queries; Bridge weekly aggregation (`plan[]` planned + `timeEntries[]`∪daily `pomodoros[]` actual) | `shared/lifeos_writer.py:render_task` + **ADR-039 D4** `plan: [{date,pomodoros,reason?,done?}]` |
 | `TaskNotes/{Archive,Views}/` | 🤖 | TaskNotes plugin | TaskNotes plugin | Plugin config |
 | `Dashboards/` | 🔒 | 修修 (dataviewjs queries) | Obsidian render | — |
 | `Inbox/web/*.md` | 🤖 | News Coo `extensions/news-coo/src/vault/writer.ts` | Robin Reader `/read` (`thousand_sunny/routers/robin.py:135 _get_inbox_files`); Robin ingest | News Coo frontmatter (`news_coo_version: 1`, `source_url`, `captured_at`) |
@@ -430,7 +430,8 @@ Drift entries record where this doc and code/vault disagree. Each has a status: 
 - [ADR-027](decisions/ADR-027-brook-scope-reduction-to-scaffold-and-repurpose.md) — Brook scope (PR-6 added Project nested frontmatter schema)
 - [ADR-030](decisions/ADR-030-vault-as-substrate-read-strategy.md) — vault SoT + FS-direct read strategy (Tier A/B substrate routing)
 - [ADR-031](decisions/ADR-031-project-workspace-migration.md) — Tier C project workspace (Bridge writes 🟡 `Projects/`)
-- [ADR-039](decisions/ADR-039-lifeos-weekly-dashboard.md) — **Tier B Weekly Dashboard** *(Proposed, pending acceptance)*; first 🔒→🟡 carve-out (`Journals/Weekly/`, non-generalizing); task `plan[]` multi-date schema
+- [ADR-039](decisions/ADR-039-lifeos-weekly-dashboard.md) — **Tier B Weekly Dashboard**; first 🔒→🟡 carve-out (`Journals/Weekly/`, non-generalizing); task `plan[]` multi-date schema
+- [ADR-040](decisions/ADR-040-weekly-execution-layer.md) — Weekly **execution layer** (intent-vs-observation red line; `weekly_writer` frontmatter allowlist + named prose sections; evidence-based `timeEntries`/derived UFO; top3 project\|task)
 - [`docs/schemas/project-frontmatter-nested.md`](schemas/project-frontmatter-nested.md) — Project page frontmatter schema (ADR-027 PR-6)
 - [`CONTENT-PIPELINE.md`](../CONTENT-PIPELINE.md) — 7-stage content lifecycle (vault is the substrate)
 - [`CLAUDE.md`](../CLAUDE.md) (repo) — workflow + memory rules

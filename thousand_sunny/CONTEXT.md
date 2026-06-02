@@ -54,18 +54,18 @@ _Avoid_: dashboard（太籠統）, admin page
 - **Knowledge layer** 寫入由 agent 端負責（Robin / Franky / Brook via Usopp），**不**由 Bridge UI 直寫
 - **Obsidian CLI** 是 Tier B/C 的 future lever；桌機 Obsidian 開著時可由 desktop-resident agent 呼叫；**不在** Tier A scope
 
-## Weekly Dashboard (Tier B — ADR-039, Proposed)
+## Weekly Dashboard (Tier B — ADR-039 + ADR-040 執行層)
 
 **Weekly Dashboard**:
-`/bridge/weekly` 的 Bridge surface — LifeOS 週層的 interaction skin。讀走 D2 FS-direct、寫走 `project_writer`-style atomic patch。**不是** Obsidian `Dashboards/` 的被動鏡像。
+`/bridge/weekly` 的 Bridge surface — LifeOS 週層的 interaction skin。讀走 D2 FS-direct、寫走 `weekly_writer` atomic patch（task `plan[]`/`timeEntries[]` + 週檔 `write_weekly`）。**不是** Obsidian `Dashboards/` 的被動鏡像。
 _Avoid_: LifeOS Dashboard mirror（ADR-031 舊稱，已被 active 週 surface 取代）
 
 **Weekly Journal**:
-`Journals/Weekly/{start-Sunday}.md`（如 `2026-05-31.md`）— 週的 single source of truth：plan 快取 + Weekly Review + 隨手筆記。tier 🟡（ADR-039 首個 🔒→🟡 carve-out）。
-_Avoid_: 用 `W YYYY-Wnn.md` 當檔名（撞 ISO；檔名以起始週日為 key）
+`Journals/Weekly/{start-Sunday}.md`（如 `2026-05-31.md`）— 週的 single source of truth：修修 的**意圖**（frontmatter allowlist `start_date`/`end_date`/`status`/`top3`/`next3`/`targets`）+ 他的**逐字散文**（具名 `##` review sections + 隨手筆記）。番茄/UFO **不快取、on-read 算**。機器不代筆（ADR-040 A1）。tier 🟡（ADR-039 首個 🔒→🟡 carve-out，**non-generalizing**）。
+_Avoid_: 用 `W YYYY-Wnn.md` 當檔名（撞 ISO；檔名以起始週日為 key）；把機器算出的值寫進週檔
 
 **Weekly Review**:
-Weekly Journal 內的 section（6 題：highlight / lowlight / 學到的 / 感恩 / top-3 完成率 / next-3）。`status: reviewed` soft-gate 解鎖「建立下週」；review 的 next-3 自動帶入下週 `top3`（閉環）。
+Weekly Journal 內的 section（6 題：highlight / lowlight / 學到的 / 感恩 / top-3 完成率 / next-3）。寫走 `POST /weekly/review`（具名 `##` 散文 + `next3` + `mark_reviewed`）。`status: planning→active→reviewed` 誠實 FSM（A6 — 只在明確完成才前進）；review 的 next-3 帶入下週 `top3`（閉環）。top3 = wikilink → task｜project（project 完成率 = done/total）。
 
 **plan allocation**:
 task frontmatter `plan: [{date, pomodoros, reason?}]` — 多日期排程 primitive（TaskNotes 原生 `scheduled` 只能單一日期）。`scheduled` 自動同步成最早未完成 plan 日；跨週大任務帶著完整跨週排程。
