@@ -135,7 +135,7 @@ Daily habit logging is **out of scope for ADR-040** (Codex §6, Gemini verdict).
 |---|---|---|---|
 | **E** | Task-page 25/75 timer → `timeEntries[]`, UFO, accuracy, `top3` via `weekly_priority` stopgap | none (TaskNotes 🟡) | **Done** — `870136a` (A2/accuracy fixups land in Slice 2) |
 | **2** | `weekly_writer.write_weekly` (allowlist + named prose + If-Match) + 週交接 composable Plan/Review routes/UI + `top3` (project\|task, one scoring rule, CJK resolver) + `targets` in weekly file + `weekly_priority` fallback + A2 evidence schema + derived UFO + aggregator hardening | **`Journals/Weekly/` 🔒→🟡** | **Done** — vault `CLAUDE.md` diff applied; browser-UAT'd |
-| **W** | Task/Project pages → scoped editable body + Obsidian deep-link (A7) | none (TaskNotes/Projects 🟡) | Planned |
+| **W** | **Task page** → scoped editable note body (`write_task_body`, body-only verbatim, If-Match content-hash) + prominent Obsidian deep-link (A7). Project-page authoring stays deferred. | none (TaskNotes 🟡) | **Done** — task-body editor shipped |
 | **D** | Daily habit logging — single-record model (own ADR) | **`Journals/Daily/` 🔒→🟡** (separate decision) | Deferred to own ADR |
 
 ---

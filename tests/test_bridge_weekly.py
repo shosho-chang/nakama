@@ -367,6 +367,59 @@ class TestTaskDetail:
         )
         assert "err=log" in r.headers["location"]
 
+    # ── A7 / Slice W — scoped note-body editor ──────────────────────────────
+    def test_get_renders_note_editor(self, client):
+        body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
+        assert 'action="/bridge/weekly/task/測試任務/body"' in body or "%E6%B8%AC" in body
+        assert 'name="body"' in body and 'name="expected_token"' in body
+        assert "在 Obsidian 繼續編輯" in body  # prominent deep-link (A7)
+        assert "任務內文" in body  # existing body pre-filled into the textarea
+
+    def test_body_save_persists_and_preserves_frontmatter(self, client, tmp_path):
+        from shared.weekly_writer import task_file_token
+
+        tok = task_file_token(tmp_path, "測試任務")
+        r = client.post(
+            "/bridge/weekly/task/測試任務/body",
+            data={"week": WEEK_KEY, "expected_token": tok, "body": "# 本週電子報\r\n\r\n草稿。"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "saved=body" in r.headers["location"]  # slug is URL-encoded in the path
+        raw = _task_path(tmp_path).read_text(encoding="utf-8")
+        assert "# 本週電子報" in raw
+        assert "\r\n" not in raw  # CRLF normalised to LF
+        fm = yaml.safe_load(raw.split("---", 2)[1])
+        assert fm["title"] == "測試任務" and fm["預估🍅"] == 6  # frontmatter untouched
+
+    def test_body_save_stale_token_conflict(self, client, tmp_path):
+        from shared.weekly_writer import task_file_token
+
+        tok = task_file_token(tmp_path, "測試任務")
+        client.post(
+            "/bridge/weekly/task/測試任務/body",
+            data={"week": WEEK_KEY, "expected_token": tok, "body": "first"},
+            follow_redirects=False,
+        )
+        r = client.post(
+            "/bridge/weekly/task/測試任務/body",
+            data={"week": WEEK_KEY, "expected_token": tok, "body": "second"},
+            follow_redirects=False,
+        )
+        assert "err=conflict" in r.headers["location"]
+        assert "second" not in _task_path(tmp_path).read_text(encoding="utf-8")
+
+    def test_body_save_unknown_task_err(self, client):
+        r = client.post(
+            "/bridge/weekly/task/不存在/body",
+            data={"week": WEEK_KEY, "expected_token": "", "body": "x"},
+            follow_redirects=False,
+        )
+        # renamed/removed → bounce to the dashboard with err=task (PR#812 panel F4),
+        # not the generic err=write
+        assert "err=task" in r.headers["location"]
+        assert "/bridge/weekly?" in r.headers["location"]
+
 
 class TestWeeklyFileWrites:
     """ADR-040 Slice 2 — the Journals/Weekly 🟡 composable write routes."""
