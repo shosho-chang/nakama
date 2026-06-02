@@ -324,8 +324,6 @@ def task_actual(vault_root: Path, task_slug: str, time_entries: list) -> WeeklyA
             if ".sync-conflict-" in p.name:
                 continue
             fm = _read_frontmatter(p)
-            intervals.extend(
-                _intervals_from_sessions(fm.get("pomodoros"), None, None, {task_slug})
-            )
+            intervals.extend(_intervals_from_sessions(fm.get("pomodoros"), None, None, {task_slug}))
     intervals += collect_timeentry_intervals([(task_slug, time_entries)], date.min, date.max)
     return summarize(intervals)

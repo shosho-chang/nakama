@@ -473,9 +473,7 @@ async def weekly_task_detail(
     # not timeEntries alone (ADR-040 A2 / Codex §3).
     actual = task_actual(vault, task.slug, task.time_entries)
     actual_pom = actual.total_pomodoros
-    accuracy_pct = (
-        int(round(100 * actual_pom / task.est_pomodoros)) if task.est_pomodoros else 0
-    )
+    accuracy_pct = int(round(100 * actual_pom / task.est_pomodoros)) if task.est_pomodoros else 0
 
     return _templates.TemplateResponse(
         request,
