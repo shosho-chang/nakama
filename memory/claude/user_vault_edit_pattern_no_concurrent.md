@@ -13,6 +13,12 @@ metadata:
 
 **結論**：真要撞 Syncthing conflict file 需要「兩裝置同時對同檔做不同修改」，對他的模式幾乎不可能發生。
 
+**2026-06-02 補充（ADR-041 41c 排程 token 取捨時 explicit 確認）**：
+
+- 修修**不直接在 Obsidian 動 frontmatter**。所有 task/週檔的資料變更都走 **Web UI 或叫 Nami 改**。
+- 心智模型：**Obsidian vault = 純資料層（substrate）**，給 Web UI / Nami / 其他 agent 存取的原始資料；**Web UI 本身可視為 Nami 的延伸 / 對它下指令的介面**。
+- 直接含義：「使用者在 Obsidian 手改 frontmatter，撞上瀏覽器送出的 stale 表單」這種 race 在他的實際用法下幾乎不存在 → **per-task 樂觀鎖（expected_token）在排程寫入路徑優先度低**，41c 故意延到 41d（改期/取消）再跨所有 plan 路徑一次套用（與 main 上現有 tokenless plan 路徑一致）。
+
 **設計含義**：
 
 - Syncthing send-only / receive-only 拆 folder 的 prevention 方案（ADR-030 #696 原設計）對他**過度工程化**。
