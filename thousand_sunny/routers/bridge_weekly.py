@@ -12,6 +12,7 @@ Auth: HMAC cookie (mirrors bridge_digests / bridge_projects).
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -97,7 +98,7 @@ _SAVED_MSGS = {
     "targets": "✓ 已更新本週目標。",
     "notes": "✓ 已存隨手筆記。",
     "status": "✓ 已更新本週狀態。",
-    "scheduled": "✓ 已排入本週計畫並建立行事曆事件。",
+    "scheduled": "✓ 已排入計畫並建立行事曆事件。",
 }
 
 
@@ -243,20 +244,26 @@ async def weekly_sync_scheduled(
     return _back(wk_key)
 
 
+_TIME_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
 def _parse_entry_time(entry_time: str):
-    """Parse an ``HH:MM`` (browser ``<input type=time>``) into a ``time``; None on junk."""
+    """Parse a strict naive ``HH:MM`` (browser ``<input type=time>``) into a
+    ``time``; None on anything else. Strict on purpose: ``time.fromisoformat``
+    would also accept seconds and a ``+TZ`` offset, and ``datetime.combine`` with
+    a tz-aware time yields an aware datetime — which violates the D4 naive
+    Asia/Taipei contract (Codex audit §1)."""
     from datetime import time as _time
 
-    try:
-        return _time.fromisoformat(entry_time.strip())
-    except ValueError:
+    m = _TIME_HHMM_RE.match(entry_time.strip())
+    if not m:
         return None
+    return _time(int(m.group(1)), int(m.group(2)))
 
 
 @page_router.post("/weekly/schedule")
 async def weekly_schedule(
     task_slug: str = Form(..., min_length=1),
-    title: str = Form(""),  # task title for the calendar event summary
     entry_date: str = Form(..., min_length=1),
     entry_time: str = Form(..., min_length=1),
     pomodoros: int = Form(...),
@@ -282,14 +289,21 @@ async def weekly_schedule(
     if not 1 <= pomodoros <= 20:
         return _back(wk_key, "pomodoros")
 
+    vault = get_vault_path()
+    # Derive the calendar event title from the vault (the source of truth, D1) —
+    # never from a client-posted field that could be stale (Codex audit §2). A
+    # missing task → the scheduler raises TaskNotFoundError below.
+    task = WeeklyIndexer(vault).find_task(task_slug)
+    event_title = task.title if task is not None else task_slug
+
     start = datetime.combine(ed, et)  # naive Asia/Taipei (D4)
     try:
         outcome = calendar_scheduler.schedule_block(
-            get_vault_path(),
+            vault,
             task_slug,
             start=start,
             pomodoros=pomodoros,
-            title=title.strip() or task_slug,
+            title=event_title,
             reason=reason.strip() or None,
             force=bool(force),
         )

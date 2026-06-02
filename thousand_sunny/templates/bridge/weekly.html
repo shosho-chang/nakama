@@ -66,29 +66,39 @@
       <span class="wk-tname">{{ t.name }}</span>
       <span class="wk-tproj">{{ t.category_label }}</span>
       <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ t.est_pomodoros }}🍅</span>
-      {% if t.scheduled %}<span class="wk-bl-when" title="目前 scheduled">📅 {{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
+      {% if t.calendar_event_id %}<span class="wk-bl-when wk-bl-linked" title="已連動行事曆">📅🔗 {{ t.scheduled.strftime('%m/%d') if t.scheduled }}</span>
+      {% elif t.scheduled %}<span class="wk-bl-when" title="目前 scheduled">📅 {{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
       <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁">↗</a>
-      <span class="wk-edit-hint" aria-hidden="true">排到行事曆</span>
+      <span class="wk-edit-hint" aria-hidden="true">{{ '已排程' if t.calendar_event_id else '排到行事曆' }}</span>
     </summary>
 
-    <form class="wk-plan-edit wk-sched-form" method="post" action="/bridge/weekly/schedule">
-      <input type="hidden" name="task_slug" value="{{ t.slug }}">
-      <input type="hidden" name="title" value="{{ t.title }}">
-      <input type="hidden" name="week" value="{{ view.week.file_key }}">
-      <div class="wk-sched-fields">
-        <label class="wk-sched-lbl">日期
-          <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
-        <label class="wk-sched-lbl">時間
-          <input class="wk-sched-time" type="time" name="entry_time" value="09:00" step="900" required></label>
-        <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ t.est_pomodoros if t.est_pomodoros else 1 }}" aria-label="番茄數">🍅
-          <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
+    {% if t.calendar_event_id %}
+      {# Already projected to the calendar. This is a CREATE-only flow (41c);
+         scheduling it again to a new day would orphan the existing event
+         (Codex audit §2/§3). Reschedule / cancel land in 41d — point there. #}
+      <div class="wk-plan-edit wk-bl-locked">
+        <span class="wk-mut">已排入行事曆{{ '（' ~ t.scheduled.strftime('%m/%d') ~ '）' if t.scheduled }}。改期或取消請到
+          <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">任務頁 ↗</a>（41d）。</span>
       </div>
-      <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
-      <div class="wk-sched-actions">
-        <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
-        <button class="sho-btn wk-sched-go" type="submit">排到行事曆</button>
-      </div>
-    </form>
+    {% else %}
+      <form class="wk-plan-edit wk-sched-form" method="post" action="/bridge/weekly/schedule">
+        <input type="hidden" name="task_slug" value="{{ t.slug }}">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        <div class="wk-sched-fields">
+          <label class="wk-sched-lbl">日期
+            <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
+          <label class="wk-sched-lbl">時間
+            <input class="wk-sched-time" type="time" name="entry_time" value="09:00" step="900" required></label>
+          <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([t.est_pomodoros, 20] | min) if t.est_pomodoros else 1 }}" aria-label="番茄數">🍅
+            <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
+        </div>
+        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+        <div class="wk-sched-actions">
+          <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
+          <button class="sho-btn wk-sched-go" type="submit">排到行事曆</button>
+        </div>
+      </form>
+    {% endif %}
   </details>
 {% endmacro %}
 
@@ -474,11 +484,12 @@
     function endLabel(timeStr, pom) {
       if (!timeStr || !pom) return '';
       var parts = timeStr.split(':');
-      var mins = (+parts[0]) * 60 + (+parts[1]) + pom * 30;
-      mins = ((mins % 1440) + 1440) % 1440;   // wrap past midnight defensively
+      var raw = (+parts[0]) * 60 + (+parts[1]) + pom * 30;
+      var nextDay = raw >= 1440;                 // block runs past midnight
+      var mins = ((raw % 1440) + 1440) % 1440;
       var hh = String(Math.floor(mins / 60)).padStart(2, '0');
       var mm = String(mins % 60).padStart(2, '0');
-      return '→ ' + hh + ':' + mm + '（' + (pom * 30) + ' 分）';
+      return '→ ' + hh + ':' + mm + (nextDay ? '（+1 天）' : '') + '（' + (pom * 30) + ' 分）';
     }
     function sync(form) {
       var date = form.querySelector('.wk-sched-date');
@@ -496,6 +507,12 @@
     document.querySelectorAll('.wk-sched-form').forEach(function (form) {
       form.querySelectorAll('.wk-sched-date, .wk-sched-time, input[name="pomodoros"]')
         .forEach(function (el) { el.addEventListener('input', function () { sync(form); }); });
+      // Guard against a double-submit racing two POSTs (the calendar idempotency
+      // key dedupes the event, but a disabled button is clearer UX — Gemini §4).
+      form.addEventListener('submit', function () {
+        var btn = form.querySelector('.wk-sched-go');
+        if (btn) { btn.disabled = true; btn.textContent = '排入中…'; }
+      });
       sync(form);
     });
   })();

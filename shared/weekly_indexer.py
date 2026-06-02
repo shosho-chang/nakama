@@ -231,6 +231,7 @@ class WeeklyTask:
     time_entries: list  # raw, for aggregator
     relative_path: str
     weekly_priority: str = ""  # week file_key this task is a top-3 priority for ("" = none)
+    calendar_event_id: str = ""  # set once projected to Google Calendar (41b); "" = not linked
 
     def planned_in(self, wk: WeekRef) -> int:
         if self.plan:
@@ -483,6 +484,8 @@ class WeeklyIndexer:
         wp_raw = fm.get("weekly_priority")
         weekly_priority = _as_date(wp_raw).isoformat() if _as_date(wp_raw) else ""
 
+        cal_event_id = str(fm.get("calendar_event_id") or "").strip()
+
         return WeeklyTask(
             slug=slug,
             title=title,
@@ -497,6 +500,7 @@ class WeeklyIndexer:
             time_entries=time_entries,
             relative_path=f"{TASKS_DIR}/{path.name}",
             weekly_priority=weekly_priority,
+            calendar_event_id=cal_event_id,
         )
 
     # -- habits --

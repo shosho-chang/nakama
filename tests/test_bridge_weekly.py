@@ -631,7 +631,9 @@ class TestCalendarSchedule:
             "/bridge/weekly/schedule",
             data={
                 "task_slug": "測試任務",
-                "title": "測試任務",
+                # a stale/forged client title must be IGNORED — the event title is
+                # derived from the vault (Codex audit §2). Server uses the real title.
+                "title": "STALE-FORGED-TITLE",
                 "entry_date": "2026-06-03",  # Wed
                 "entry_time": "09:00",
                 "pomodoros": "4",
@@ -647,6 +649,7 @@ class TestCalendarSchedule:
         assert str(fm["scheduled_end"]).startswith("2026-06-03T11:00")  # 4🍅 × 30 min
         assert fm["calendar_event_id"] == "evt_42"
         assert seen["idempotency_key"] == "測試任務@2026-06-03"
+        assert seen["title"] == "測試任務"  # vault title, NOT the forged form value
 
     def test_schedule_conflict_writes_plan_no_event(self, client, tmp_path, monkeypatch):
         import shared.google_calendar as gc
@@ -757,6 +760,42 @@ class TestCalendarSchedule:
             follow_redirects=False,
         )
         assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=task"
+
+    @pytest.mark.parametrize("bad_time", ["09:00:00", "09:00:00+08:00", "9:00", "0900", "24:00"])
+    def test_schedule_rejects_non_naive_hhmm(self, client, bad_time):
+        """Codex §1: only a strict naive HH:MM is accepted — seconds or a tz offset
+        would make datetime.combine aware and break the D4 naive contract."""
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-03",
+                "entry_time": bad_time,
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=time"
+
+    def test_calendar_linked_task_shows_locked_note_not_picker(self, client, tmp_path, monkeypatch):
+        """Codex §2/§3: a task already projected to the calendar must NOT get a
+        create picker (rescheduling it would orphan the existing event) — it shows
+        the 41d 'reschedule via task page' note instead."""
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        linked = (
+            "---\ntitle: 已連動任務\nstatus: to-do\n預估🍅: 2\n"
+            "scheduled: 2026-06-03T09:00:00\ncalendar_event_id: evt_live\n"
+            "tags:\n  - task\n---\n\nbody\n"
+        )
+        (tmp_path / "TaskNotes" / "Tasks" / "已連動任務.md").write_text(linked, encoding="utf-8")
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        assert "已連動任務" in body
+        assert "改期或取消請到" in body  # the 41d pointer note
+        # its row must NOT carry a schedule form (only the create-eligible tasks do)
+        assert "已排入行事曆" in body
 
 
 class TestAuthGate:
