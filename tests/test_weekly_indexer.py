@@ -75,6 +75,7 @@ def vault(tmp_path):
             "預估🍅": 2,
             "scheduled": "2026-06-01T10:00:00",
             "status": "to-do",
+            "weekly_priority": "2026-05-31",  # top-3 for W23
             "tags": ["task"],
         },
     )
@@ -147,6 +148,11 @@ def test_view_assembles_real_counts(vault, monkeypatch):
     misc = next(t for t in v.tasks if t.slug == "倒垃圾")
     assert (work.category, misc.category) == ("work", "misc")
     assert (work.is_work, misc.is_work) == (True, False)
+    # ADR-039 E hero extras: no deep sessions in fixture → 0 UFO, target 5;
+    # 肌酸 flagged weekly_priority for W23 → the sole top-3 entry.
+    assert v.ufo_count == 0
+    assert v.ufo_target == 5
+    assert {t.slug for t in v.top3} == {"肌酸的妙用 - Pre-production"}
 
 
 def test_days_place_tasks_by_category(vault, monkeypatch):
@@ -167,6 +173,50 @@ def test_days_place_tasks_by_category(vault, monkeypatch):
     # editor day-select still spans all 7 days incl weekends
     assert v.day_headers[0]["is_weekend"] is True  # Sun
     assert v.day_headers[6]["is_weekend"] is True  # Sat
+
+
+def test_actual_and_ufo_from_time_entries(tmp_path, monkeypatch):
+    """ADR-039 E: per-task actual 🍅 + accuracy come from web-logged timeEntries[];
+    week UFO count = 75-min ``deep`` sessions ending in the week."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    _task(
+        tmp_path,
+        "深度工作.md",
+        {
+            "title": "深度工作",
+            "category": "work",
+            "預估🍅": 6,
+            "scheduled": "2026-06-01T10:00:00",
+            "status": "to-do",
+            "timeEntries": [
+                # 75-min UFO (06-01) + 25-min pomodoro (06-02) = 100min → 4🍅, 1 UFO
+                {
+                    "startTime": "2026-06-01T13:00:00+08:00",
+                    "endTime": "2026-06-01T14:15:00+08:00",
+                    "mode": "deep",
+                },
+                {
+                    "startTime": "2026-06-02T09:00:00+08:00",
+                    "endTime": "2026-06-02T09:25:00+08:00",
+                    "mode": "pomodoro",
+                },
+            ],
+        },
+    )
+    idx = WeeklyIndexer(tmp_path)
+    t = idx.find_task("深度工作")
+    assert t is not None
+    assert t.actual_pomodoros == 4  # 100 min // 25
+    assert t.ufo_total == 1
+    assert t.accuracy_pct == 67  # round(100 * 4/6)
+
+    v = idx.view(week_for_date(date(2026, 6, 1)))
+    assert v.ufo_count == 1  # one deep session this week
+    assert v.actual.total_pomodoros == 4  # aggregator union over timeEntries
+
+
+def test_find_task_missing_returns_none(tmp_path):
+    assert WeeklyIndexer(tmp_path).find_task("nope") is None
 
 
 def test_past_week_without_review_is_review_mode(vault, monkeypatch):

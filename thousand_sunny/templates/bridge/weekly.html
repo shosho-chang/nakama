@@ -6,6 +6,7 @@
       <span class="wk-tproj">{{ t.category_label }}{% if t.project %} · {{ t.project }}{% endif %}</span>
       <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
       <span class="sho-chip sho-chip--{{ 'online' if t.status == 'done' else 'offline' }} wk-status">{{ t.status }}</span>
+      <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
       <span class="wk-edit-hint" aria-hidden="true">排程</span>
     </summary>
 
@@ -107,8 +108,32 @@
           <span class="wk-tomato" aria-hidden="true">🍅</span>
           <span class="wk-hc-actual">{{ view.actual.total_pomodoros }}</span><span class="wk-hc-sep">/</span><span class="wk-hc-plan">{{ view.planned }}</span>
         </span>
+        <span class="wk-hero-count wk-hero-ufo"
+              aria-label="本週超專注 {{ view.ufo_count }} 次，目標 {{ view.ufo_target }} 次"
+              title="本週超專注（🤩 75 分深度工作）— 已完成 / 目標">
+          <span class="wk-ufo" aria-hidden="true">🤩</span>
+          <span class="wk-hc-actual">{{ view.ufo_count }}</span><span class="wk-hc-sep">/</span><span class="wk-hc-plan">{{ view.ufo_target }}</span>
+        </span>
       </div>
     </div>
+
+    {# ── 本週三大要事 (weekly_priority tasks; done → struck through) ── #}
+    {% if view.mode != 'review' %}
+      <div class="wk-top3" aria-label="本週三大要事">
+        <span class="wk-top3-cap nk-caps">本週三大要事</span>
+        {% if view.top3 %}
+          <ol class="wk-top3-list">
+            {% for t in view.top3 %}
+              <li class="wk-top3-item {{ 'done' if t.done }}">
+                <a href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">{{ t.name }}</a>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <span class="wk-mut">在 Obsidian 任務的 frontmatter 標 <code>weekly_priority: {{ view.week.file_key }}</code> 指定本週要事。</span>
+        {% endif %}
+      </div>
+    {% endif %}
 
     {% if view.actual.overlap_warnings %}
       <div class="wk-note-inline">⚠ {{ view.actual.overlap_warnings | length }} 筆番茄 session 偵測到重疊（已合併不重複計）</div>
@@ -179,7 +204,7 @@
                         {% for it in cat['items'] %}
                           <li class="wk-cat-item {{ 'done' if it.done }}">
                             <span class="wk-ci-box" aria-hidden="true">{{ '☑' if it.done else '☐' }}</span>
-                            <span class="wk-ci-name">{{ it.name }}</span>
+                            <a class="wk-ci-name" href="/bridge/weekly/task/{{ it.slug | urlencode }}?week={{ view.week.file_key }}">{{ it.name }}</a>
                           </li>
                         {% endfor %}
                       </ul>

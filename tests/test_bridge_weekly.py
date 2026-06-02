@@ -50,6 +50,12 @@ def _scheduled(tmp_path):
     return fm.get("scheduled")
 
 
+def _time_entries(tmp_path) -> list[dict]:
+    raw = _task_path(tmp_path).read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    return [dict(e) for e in (fm.get("timeEntries") or [])]
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
@@ -258,6 +264,66 @@ class TestSyncScheduled:
             follow_redirects=False,
         )
         assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=task"
+
+
+class TestTaskDetail:
+    def test_get_renders_task_page(self, client):
+        r = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}")
+        assert r.status_code == 200
+        body = r.text
+        assert "測試任務" in body
+        assert "tk-timerbox" in body  # the pomodoro timer block
+        assert 'action="/bridge/weekly/task/測試任務/log"' in body or "%E6%B8%AC" in body
+        assert "回週看板" in body
+
+    def test_get_unknown_task_redirects(self, client):
+        r = client.get(
+            f"/bridge/weekly/task/不存在?week={WEEK_KEY}", follow_redirects=False
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=task"
+
+    def test_log_pomodoro_appends_time_entry(self, client, tmp_path):
+        before = len(_time_entries(tmp_path))
+        r = client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"].endswith("&logged=1") or "logged=1" in r.headers["location"]
+        entries = _time_entries(tmp_path)
+        assert len(entries) == before + 1
+        assert entries[-1]["mode"] == "pomodoro"
+        assert entries[-1]["startTime"] and entries[-1]["endTime"]
+
+    def test_log_deep_marks_mode(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "deep", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        entries = _time_entries(tmp_path)
+        assert entries[-1]["mode"] == "deep"
+
+    def test_log_unknown_mode_rejected(self, client, tmp_path):
+        before = len(_time_entries(tmp_path))
+        r = client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "bogus", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "err=mode" in r.headers["location"]
+        assert len(_time_entries(tmp_path)) == before
+
+    def test_log_unknown_task_redirects_with_err(self, client):
+        r = client.post(
+            "/bridge/weekly/task/不存在/log",
+            data={"mode": "pomodoro", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "err=log" in r.headers["location"]
 
 
 class TestAuthGate:

@@ -12,15 +12,17 @@ Auth: HMAC cookie (mirrors bridge_digests / bridge_projects).
 from __future__ import annotations
 
 import hashlib
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Form, Query, Request
+from fastapi import Path as PathParam
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from shared.config import get_vault_path
 from shared.log import get_logger
+from shared.pomodoro_aggregator import TAIPEI
 from shared.weekly_indexer import (
     WeeklyIndexer,
     today_taipei,
@@ -31,6 +33,7 @@ from shared.weekly_writer import (
     WeekendReasonRequired,
     WeeklyWriteError,
     add_plan_entry,
+    log_time_entry,
     remove_plan_entry,
     sync_scheduled_to_next_plan,
 )
@@ -192,3 +195,101 @@ async def weekly_sync_scheduled(
         logger.warning("weekly_sync_scheduled: %s", exc)
         return _back(wk_key, "task")
     return _back(wk_key)
+
+
+# ── Task detail page + pomodoro timer (ADR-039 E) ────────────────────────────
+# A per-task page; the bottom timer logs a real focus session into the task's
+# timeEntries[] (TaskNotes write surface — NOT the Journals/Weekly red line).
+
+# Fixed session lengths: 25-min pomodoro (+1🍅) / 75-min deep super-focus (+3🍅,
+# 1 UFO). The live timer always runs its full nominal length, so the logged span
+# = mode minutes ending "now" — same path serves the manual "+1🍅" backup button.
+_MODE_MINUTES = {"pomodoro": 25, "deep": 75}
+
+_TASK_ERRORS = {
+    "mode": "未知的計時模式。",
+    "log": "記錄番茄鐘失敗，任務檔可能已在 Obsidian 改名或移除。",
+}
+
+
+def _now_taipei() -> datetime:
+    return datetime.now(TAIPEI)
+
+
+def _obsidian_uri(vault: Path, relative_path: str) -> str:
+    """Best-effort ``obsidian://open`` deeplink. Vault name defaults to the
+    vault folder's basename (Obsidian's default); ``file`` is the vault-relative
+    path. Resolves on 修修's machine where the LifeOS vault is registered."""
+    from urllib.parse import quote
+
+    return f"obsidian://open?vault={quote(vault.name)}&file={quote(relative_path)}"
+
+
+def _task_back(slug: str, week_key: str, *, err: str | None = None, logged: bool = False):
+    from urllib.parse import quote
+
+    url = f"/bridge/weekly/task/{quote(slug)}?week={week_key}"
+    if err:
+        url += f"&err={err}"
+    elif logged:
+        url += "&logged=1"
+    return RedirectResponse(url, status_code=303)
+
+
+@page_router.get("/weekly/task/{slug}", response_class=HTMLResponse)
+async def weekly_task_detail(
+    request: Request,
+    slug: str = PathParam(..., min_length=1),
+    week: str | None = Query(None),
+    err: str | None = Query(None),
+    logged: int | None = Query(None),
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+
+    wk_key = _safe_week_key(week)
+    vault = get_vault_path()
+    idx = WeeklyIndexer(vault)
+    task = idx.find_task(slug)
+    if task is None:
+        # renamed/removed in Obsidian — bounce back to the dashboard with a banner
+        return _back(wk_key, "task")
+
+    return _templates.TemplateResponse(
+        request,
+        "task.html",
+        {
+            "task": task,
+            "week_key": wk_key,
+            "obsidian_uri": _obsidian_uri(vault, task.relative_path),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+            "error_msg": _TASK_ERRORS.get(err) if err else None,
+            "logged": bool(logged),
+        },
+    )
+
+
+@page_router.post("/weekly/task/{slug}/log")
+async def weekly_task_log(
+    slug: str = PathParam(..., min_length=1),
+    mode: str = Form("pomodoro"),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+
+    minutes = _MODE_MINUTES.get(mode)
+    if minutes is None:
+        return _task_back(slug, wk_key, err="mode")
+
+    end = _now_taipei()
+    start = end - timedelta(minutes=minutes)
+    try:
+        log_time_entry(get_vault_path(), slug, start, end, mode=mode)
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_log: %s", exc)
+        return _task_back(slug, wk_key, err="log")
+    return _task_back(slug, wk_key, logged=True)

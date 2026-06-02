@@ -144,7 +144,13 @@ body.sho .wk-cat-empty { color: var(--sho-line-2); font-size: 12px; }
 body.sho .wk-cat-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
 body.sho .wk-cat-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sho-text); min-width: 0; }
 body.sho .wk-cat-item.done .wk-ci-name { color: var(--sho-muted); text-decoration: line-through; }
-body.sho .wk-ci-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.sho .wk-ci-name {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: inherit; text-decoration: none;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-ci-name:hover { color: var(--sho-accent); }
+body.sho .wk-ci-name:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
 body.sho .wk-ci-box { color: var(--sho-text-2); flex-shrink: 0; }
 
 /* ── carry-forward + review ── */
@@ -251,12 +257,136 @@ body.sho .wk-plan-add .wk-plan-go { padding: 6px 14px; font-size: 11px; }
 body.sho .wk-sync .wk-sync-go { padding: 5px 11px; font-size: 10px; }
 body.sho .wk-sync .wk-sync-go .wk-mut { font-size: 10px; }
 
+/* ── hero: UFO (🤩 super-focus) sits beside the 🍅 count, slightly smaller ── */
+body.sho .wk-hero-ufo .wk-hc-actual { font-size: 26px; }
+body.sho .wk-hero-ufo .wk-hc-sep,
+body.sho .wk-hero-ufo .wk-hc-plan { font-size: 18px; }
+body.sho .wk-ufo { font-size: 22px; line-height: 1; align-self: center; }
+
+/* ── 本週三大要事 strip (under the sticky header) ── */
+body.sho .wk-top3 {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 14px;
+  padding: 12px 0 0; margin-top: 4px;
+}
+body.sho .wk-top3-cap { color: var(--sho-text-2); flex-shrink: 0; }
+body.sho .wk-top3-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 8px 18px; counter-reset: t3;
+}
+body.sho .wk-top3-item { display: flex; align-items: baseline; gap: 6px; }
+body.sho .wk-top3-item::before {
+  counter-increment: t3; content: counter(t3);
+  font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-accent);
+  font-weight: 600; align-self: center;
+}
+body.sho .wk-top3-item a {
+  color: var(--sho-text); text-decoration: none; font-size: 14px;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-top3-item a:hover { color: var(--sho-accent); }
+body.sho .wk-top3-item a:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-top3-item.done a { color: var(--sho-muted); text-decoration: line-through; }
+
+/* ── open-task affordance in the task-list row ── */
+body.sho .wk-open {
+  color: var(--sho-muted); text-decoration: none; font-size: 13px; padding: 0 4px;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-open:hover { color: var(--sho-accent); }
+body.sho .wk-open:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+
+/* ════════ TASK DETAIL PAGE (ADR-039 E) ════════ */
+body.sho .tk-main { max-width: 760px; }
+body.sho .tk-back {
+  display: inline-block; margin: 16px 0 0;
+  font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text-2);
+  text-decoration: none; transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-back:hover { color: var(--sho-accent); }
+body.sho .tk-back:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+
+body.sho .tk-head { padding: 14px 0 18px; border-bottom: 1px solid var(--sho-line); }
+body.sho .tk-title {
+  font-size: 24px; font-weight: 600; letter-spacing: -0.4px; color: var(--sho-ink);
+  margin: 0 0 10px; line-height: 1.25;
+}
+body.sho .tk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+body.sho .tk-proj { font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted); letter-spacing: 0.04em; }
+body.sho .tk-obsidian {
+  margin-left: auto; font-family: var(--sho-font-mono); font-size: 11px;
+  color: var(--sho-text-2); text-decoration: none;
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-1); padding: 3px 8px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-obsidian:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .tk-obsidian:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+/* estimate vs actual — three stat columns */
+body.sho .tk-stats { display: flex; gap: 28px; padding: 20px 0 4px; }
+body.sho .tk-stat { display: flex; flex-direction: column; gap: 4px; }
+body.sho .tk-stat-num {
+  font-family: var(--sho-font-mono); font-variant-numeric: tabular-nums;
+  font-size: 32px; font-weight: 600; letter-spacing: -0.5px; color: var(--sho-ink); line-height: 1;
+}
+body.sho .tk-stat-num.tk-over { color: var(--sho-warning); }
+body.sho .tk-stat-den { font-size: 18px; color: var(--sho-muted); font-weight: 400; }
+body.sho .tk-stat-lab {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--sho-text-2);
+}
+body.sho .tk-note { font-size: 12px; color: var(--sho-warning); margin: 8px 0 0; }
+
+/* read-only plan chips */
+body.sho .tk-plan { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 16px 0 4px; }
+body.sho .tk-plan-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill);
+  padding: 3px 10px; background: var(--sho-bg);
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-text-2);
+}
+body.sho .tk-plan-chip.done { opacity: 0.55; text-decoration: line-through; }
+body.sho .tk-plan-r { color: var(--sho-warning); }
+
+/* timer box */
+body.sho .tk-timerbox {
+  margin: 24px 0 8px; padding: 24px; border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2); background: var(--sho-bg-2);
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+}
+body.sho .tk-clock { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+body.sho .tk-clock-time {
+  font-family: var(--sho-font-mono); font-variant-numeric: tabular-nums;
+  font-size: 64px; font-weight: 600; letter-spacing: -1px; color: var(--sho-ink); line-height: 1;
+}
+body.sho .tk-clock[data-state="running"] .tk-clock-time { color: var(--sho-accent); }
+body.sho .tk-clock-mode {
+  font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--sho-text-2); min-height: 14px;
+}
+body.sho .tk-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+body.sho .tk-controls.is-hidden { display: none; }
+body.sho .tk-manual {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+  padding-top: 14px; border-top: 1px solid var(--sho-line); width: 100%;
+}
+body.sho .tk-mform { display: inline; }
+body.sho .tk-logform { display: none; }
+body.sho .tk-toast--ok {
+  border-color: color-mix(in oklch, var(--sho-success, var(--sho-accent)) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-success, var(--sho-accent)) 10%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   body.sho .wk-edit-hint, body.sho .wk-plan-chip .wk-chip-x, body.sho .wk-day-caret { transition: none; }
+  body.sho .wk-ci-name, body.sho .wk-open, body.sho .wk-top3-item a,
+  body.sho .tk-back, body.sho .tk-obsidian { transition: none; }
 }
 
 @media (max-width: 720px) {
   body.sho .wk-hero { margin-left: 0; gap: 16px; }
   body.sho .wk-rev-grid { grid-template-columns: 1fr; }
   body.sho .wk-plan-edit { padding-left: 12px; }
+  body.sho .tk-stats { gap: 20px; }
+  body.sho .tk-clock-time { font-size: 52px; }
+  body.sho .tk-obsidian { margin-left: 0; }
 }

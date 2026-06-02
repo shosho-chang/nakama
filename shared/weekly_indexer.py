@@ -27,7 +27,12 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from shared.pomodoro_aggregator import WeeklyActual, weekly_actual
+from shared.pomodoro_aggregator import (
+    POMODORO_MINUTES,
+    WeeklyActual,
+    parse_dt,
+    weekly_actual,
+)
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
@@ -44,6 +49,8 @@ CATEGORY_LABELS = {"work": "工作", "health": "身心健康", "growth": "自我
 CATEGORY_ORDER = ("work", "health", "growth", "misc")
 WORK_CATEGORY = "work"
 DEFAULT_CATEGORY = "misc"
+
+UFO_WEEKLY_TARGET = 5  # planned super-focus (75-min) sessions per week (ADR-039 E)
 
 _ZH_WEEKDAYS = ("日", "一", "二", "三", "四", "五", "六")  # Sun..Sat
 
@@ -155,6 +162,23 @@ def _strip_wikilink(v: object) -> str:
     return m.group(1).strip() if m else v.strip()
 
 
+def _entry_minutes(entry: dict) -> float:
+    """Active minutes of a task ``timeEntries`` row (endTime − startTime)."""
+    if not isinstance(entry, dict):
+        return 0.0
+    st, en = parse_dt(entry.get("startTime")), parse_dt(entry.get("endTime"))
+    if not st or not en or en <= st:
+        return 0.0
+    return (en - st).total_seconds() / 60.0
+
+
+def _entry_end_date(entry: dict) -> Optional[date]:
+    if not isinstance(entry, dict):
+        return None
+    en = parse_dt(entry.get("endTime"))
+    return en.date() if en else None
+
+
 # ── Task model ───────────────────────────────────────────────────────────────
 
 
@@ -180,6 +204,7 @@ class WeeklyTask:
     plan: tuple[TaskAllocation, ...]
     time_entries: list  # raw, for aggregator
     relative_path: str
+    weekly_priority: str = ""  # week file_key this task is a top-3 priority for ("" = none)
 
     def planned_in(self, wk: WeekRef) -> int:
         if self.plan:
@@ -217,6 +242,44 @@ class WeeklyTask:
             return any(a.date == d for a in self.plan)
         return self.scheduled == d
 
+    def is_priority_for(self, wk: WeekRef) -> bool:
+        return self.weekly_priority == wk.file_key
+
+    # -- actual 🍅 from this task's own web-logged timeEntries[] (ADR-039 E) --
+    @property
+    def actual_minutes(self) -> float:
+        return sum(_entry_minutes(e) for e in self.time_entries)
+
+    @property
+    def actual_pomodoros(self) -> int:
+        return int(self.actual_minutes // POMODORO_MINUTES)
+
+    @property
+    def ufo_total(self) -> int:
+        """All-time UFO (75-min ``deep``) sessions logged on this task."""
+        return sum(
+            1
+            for e in self.time_entries
+            if isinstance(e, dict) and e.get("mode") == "deep" and _entry_minutes(e) > 0
+        )
+
+    @property
+    def accuracy_pct(self) -> int:
+        """實際🍅 / 預估🍅 as a percentage (0 when no estimate)."""
+        if not self.est_pomodoros:
+            return 0
+        return int(round(100 * self.actual_pomodoros / self.est_pomodoros))
+
+    def deep_sessions_in(self, wk: WeekRef) -> int:
+        return sum(
+            1
+            for e in self.time_entries
+            if isinstance(e, dict)
+            and e.get("mode") == "deep"
+            and (d := _entry_end_date(e)) is not None
+            and wk.contains(d)
+        )
+
 
 @dataclass(frozen=True)
 class DailyHabit:
@@ -251,6 +314,9 @@ class WeeklyView:
     planned: int
     actual: WeeklyActual
     rate_pct: int
+    ufo_count: int  # 75-min "deep" sessions logged this week (🤩)
+    ufo_target: int  # weekly UFO goal (constant for now — ADR-039 E)
+    top3: tuple[WeeklyTask, ...]  # this week's ≤3 weekly_priority tasks (hero strip)
     tasks: tuple[WeeklyTask, ...]  # tasks with allocation/scheduled in week
     today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
     incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
@@ -284,6 +350,14 @@ class WeeklyIndexer:
             if t is not None:
                 out.append(t)
         return out
+
+    def find_task(self, slug: str) -> Optional[WeeklyTask]:
+        """Load a single task by slug (file stem) for the task-detail page."""
+        slug = unicodedata.normalize("NFC", slug)
+        p = self._root / TASKS_DIR / f"{slug}.md"
+        if not p.is_file():
+            return None
+        return self._task_from_path(p)
 
     def _task_from_path(self, path: Path) -> Optional[WeeklyTask]:
         try:
@@ -351,6 +425,9 @@ class WeeklyIndexer:
         if not category:
             category = DEFAULT_CATEGORY
 
+        wp_raw = fm.get("weekly_priority")
+        weekly_priority = _as_date(wp_raw).isoformat() if _as_date(wp_raw) else ""
+
         return WeeklyTask(
             slug=slug,
             title=title,
@@ -364,6 +441,7 @@ class WeeklyIndexer:
             plan=tuple(plan),
             time_entries=time_entries,
             relative_path=f"{TASKS_DIR}/{path.name}",
+            weekly_priority=weekly_priority,
         )
 
     # -- habits --
@@ -478,6 +556,11 @@ class WeeklyIndexer:
         )
         rate = int(round(100 * actual.total_pomodoros / planned)) if planned else 0
 
+        # 🤩 UFO = 75-min deep sessions logged this week (work tasks only).
+        ufo_count = sum(t.deep_sessions_in(wk) for t in all_tasks if t.is_work)
+        # 本週三大要事 — tasks flagged weekly_priority for this week (≤3, done→strikethrough)
+        top3 = tuple(t for t in all_tasks if t.is_priority_for(wk))[:3]
+
         review = self.read_review(wk)
 
         # mode: review when looking at a past week that isn't yet reviewed
@@ -500,6 +583,9 @@ class WeeklyIndexer:
             planned=planned,
             actual=actual,
             rate_pct=rate,
+            ufo_count=ufo_count,
+            ufo_target=UFO_WEEKLY_TARGET,
+            top3=top3,
             tasks=tuple(in_week),
             today_tasks=today_tasks,
             incomplete=tuple(incomplete),

@@ -1,8 +1,10 @@
-"""Task plan[] writer — add/remove plan entries on TaskNotes tasks (ADR-039 D4/D9).
+"""Task writer — plan[] add/remove + timeEntries[] logging on TaskNotes tasks
+(ADR-039 D4/D9 + E slice).
 
-Writes only to ``TaskNotes/Tasks/{slug}.md``; touches only ``plan`` and
-``scheduled`` frontmatter keys (allowlist). All other keys + the file body
-are preserved verbatim.
+Writes only to ``TaskNotes/Tasks/{slug}.md``; touches only the ``plan``,
+``scheduled`` and ``timeEntries`` frontmatter keys (allowlist). All other keys
++ the file body are preserved verbatim. None of these is the ``Journals/Weekly``
+red line — they are the already-approved TaskNotes write surface.
 
 All writes are **atomic** via tmp-file + ``os.replace`` (same pattern as
 ``project_writer._atomic_write``).
@@ -14,13 +16,20 @@ import os
 import re
 import tempfile
 import unicodedata
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 
 TASKS_DIR = "TaskNotes/Tasks"
+
+# timeEntries mode (ADR-039 E): a 25-min focus block (``pomodoro`` → +1🍅) or a
+# 75-min super-focus / UFO block (``deep`` → +3🍅 by duration, counted as 1 UFO).
+# 🍅 itself is derived from duration by the aggregator (minutes ÷ 25); ``mode``
+# only distinguishes UFO sessions for the 🤩 weekly count.
+TIME_ENTRY_MODES = ("pomodoro", "deep")
+_MAX_ENTRY_SECONDS = 6 * 60 * 60  # guard against a runaway timer logging garbage
 
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
@@ -232,3 +241,50 @@ def sync_scheduled_to_next_plan(
     fm["scheduled"] = next_date.isoformat()
     _write_task(path, fm, body)
     return next_date
+
+
+def _time_entry_list(fm: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = fm.get("timeEntries")
+    if not isinstance(raw, list):
+        return []
+    return [e for e in raw if isinstance(e, dict)]
+
+
+def log_time_entry(
+    vault_root: Path,
+    task_slug: str,
+    start: datetime,
+    end: datetime,
+    mode: str = "pomodoro",
+) -> None:
+    """Append one focus session ``{startTime, endTime, mode}`` to a task's
+    ``timeEntries[]`` (ADR-039 E — actual 🍅 substrate).
+
+    ``start``/``end`` are stored as ISO-8601 strings (offset preserved when
+    tz-aware); the aggregator turns duration into 🍅 (minutes ÷ 25). ``mode``
+    must be one of :data:`TIME_ENTRY_MODES` — ``deep`` marks a 75-min UFO block.
+
+    Only ``timeEntries`` is mutated; all other keys + the body are preserved.
+    Raises :class:`WeeklyWriteError` on a non-positive or absurdly long span.
+    """
+    if mode not in TIME_ENTRY_MODES:
+        raise WeeklyWriteError(f"unknown timeEntries mode: {mode!r}")
+    span = (end - start).total_seconds()
+    if span <= 0:
+        raise WeeklyWriteError("timeEntries endTime must be after startTime")
+    if span > _MAX_ENTRY_SECONDS:
+        raise WeeklyWriteError(f"timeEntries span too long ({span:.0f}s)")
+
+    path = _task_path(vault_root, task_slug)
+    fm, body = _read_task(path)
+
+    entries = _time_entry_list(fm)
+    entries.append(
+        {
+            "startTime": start.isoformat(),
+            "endTime": end.isoformat(),
+            "mode": mode,
+        }
+    )
+    fm["timeEntries"] = entries
+    _write_task(path, fm, body)
