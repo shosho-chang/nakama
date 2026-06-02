@@ -13,6 +13,7 @@ re-rendered as [x] so the state survives the full-replace.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -23,6 +24,15 @@ from agents.robin.kb_search import search_kb
 from shared.annotation_store import get_annotation_store
 from shared.config import get_vault_path
 from shared.vault_rules import assert_reader_can_write
+
+# Cross-domain KB matching toggle. Default OFF: under engine="hybrid" the
+# ``purpose="book_review"`` prompt is inert and ranking is pure RRF rank-fusion
+# (no absolute semantic-relevance meaning), so a thin / cross-lingual corpus
+# surfaces irrelevant hits (e.g. a finance book matching sport-science pages).
+# A score floor can't separate those out — a flag is the reversible fix until
+# cross-lingual embedding (ADR-022) lands. Set NAKAMA_BOOK_DIGEST_KB_HITS=1 to
+# re-enable.
+_KB_HITS_ENABLED = os.environ.get("NAKAMA_BOOK_DIGEST_KB_HITS", "0") == "1"
 
 # Regex patterns for parsing feedback checkboxes embedded in digest.md.
 _FB_UP_RE = re.compile(r"- \[([ x])\] 👍 相關 <!-- fb: cfi=([^\s>]+) path=([^\s>]+) -->")
@@ -138,16 +148,19 @@ def _render_item_block(
         body_text = item.body
         cfi = item.cfi_anchor or ""
 
-    try:
-        hits = search_kb(
-            query[:500],
-            vault_path,
-            top_k=3,
-            purpose="book_review",
-            engine="hybrid",
-        )
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"search_kb failed ({label}): {exc}")
+    if _KB_HITS_ENABLED:
+        try:
+            hits = search_kb(
+                query[:500],
+                vault_path,
+                top_k=3,
+                purpose="book_review",
+                engine="hybrid",
+            )
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"search_kb failed ({label}): {exc}")
+            hits = []
+    else:
         hits = []
 
     deep_link = f"/books/{book_id}#cfi={cfi}" if cfi else f"/books/{book_id}"
@@ -167,6 +180,8 @@ def _render_item_block(
                 f"  - {down_check} 👎 不相關 <!-- fb: cfi={cfi} path={path} -->"
             )
         hits_lines = "\n".join(hit_parts)
+    elif not _KB_HITS_ENABLED:
+        hits_lines = "  _(暫時關閉跨領域比對)_"
     else:
         hits_lines = "  _(no KB hits)_"
 
