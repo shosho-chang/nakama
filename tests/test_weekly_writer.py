@@ -11,6 +11,8 @@ import pytest
 import yaml
 
 from shared.weekly_writer import (
+    CALENDAR_BLOCK_MINUTES_PER_POMODORO,
+    TaskNotFoundError,
     WeekendReasonRequired,
     WeeklyConflictError,
     WeeklyWriteError,
@@ -18,6 +20,7 @@ from shared.weekly_writer import (
     log_time_entry,
     read_task_body,
     remove_plan_entry,
+    schedule_task_block,
     sync_scheduled_to_next_plan,
     task_file_token,
     weekly_file_token,
@@ -698,3 +701,96 @@ class TestWriteTaskBody:
         write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
         d = vault / WEEKLY_DIR
         assert list(d.glob("*.tmp")) == []
+
+
+class TestScheduleTaskBlock:
+    """ADR-041 41a — authoritative vault write for a scheduled calendar block."""
+
+    _FM = {"title": "測試任務", "status": "to-do", "預估🍅": 6, "tags": ["task"]}
+
+    def test_writes_plan_and_projection_fields(self, vault):
+        _make_task(vault, "測試任務", self._FM)
+        start = datetime(2026, 6, 3, 9, 0, 0)  # Wed (weekday)
+        sched, sched_end, tok = schedule_task_block(vault, "測試任務", start=start, pomodoros=4)
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        # authoritative plan[] (D1)
+        assert fm["plan"][0]["date"] == "2026-06-03"
+        assert fm["plan"][0]["pomodoros"] == 4
+        # projection fields (D2) — end = start + 4 × 30 min = 11:00
+        assert sched == "2026-06-03T09:00:00"
+        assert sched_end == "2026-06-03T11:00:00"
+        assert _date_isoformat(fm["scheduled"]).startswith("2026-06-03T09:00")
+        assert _date_isoformat(fm["scheduled_end"]).startswith("2026-06-03T11:00")
+        assert "calendar_event_id" not in fm  # not provided → not written
+        assert tok == task_file_token(vault, "測試任務")
+
+    def test_block_length_is_30_min_per_pomodoro(self, vault):
+        assert CALENDAR_BLOCK_MINUTES_PER_POMODORO == 30
+        _make_task(vault, "測試任務", self._FM)
+        _, sched_end, _ = schedule_task_block(
+            vault, "測試任務", start=datetime(2026, 6, 3, 14, 0), pomodoros=1
+        )
+        assert sched_end == "2026-06-03T14:30:00"  # 1🍅 = 30 min wall-clock
+
+    def test_calendar_event_id_written_when_given(self, vault):
+        _make_task(vault, "測試任務", self._FM)
+        schedule_task_block(
+            vault,
+            "測試任務",
+            start=datetime(2026, 6, 3, 9, 0),
+            pomodoros=2,
+            calendar_event_id="evt_abc123",
+        )
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert fm["calendar_event_id"] == "evt_abc123"
+
+    def test_preserves_done_on_same_date_upsert(self, vault):
+        existing = [{"date": "2026-06-03", "pomodoros": 2, "done": 1}]
+        _make_task(vault, "測試任務", {**self._FM, "plan": existing})
+        schedule_task_block(vault, "測試任務", start=datetime(2026, 6, 3, 9, 0), pomodoros=4)
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert len(fm["plan"]) == 1
+        assert fm["plan"][0]["pomodoros"] == 4
+        assert fm["plan"][0]["done"] == 1  # preserved
+
+    def test_other_frontmatter_preserved(self, vault):
+        _make_task(vault, "測試任務", {**self._FM, "custom": "keep"})
+        schedule_task_block(vault, "測試任務", start=datetime(2026, 6, 3, 9, 0), pomodoros=2)
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert fm["custom"] == "keep" and fm["title"] == "測試任務" and fm["預估🍅"] == 6
+
+    def test_weekend_without_reason_raises(self, vault):
+        _make_task(vault, "測試任務", self._FM)
+        with pytest.raises(WeekendReasonRequired):
+            # Sat 6/6 — weekend block needs a reason
+            schedule_task_block(vault, "測試任務", start=datetime(2026, 6, 6, 9, 0), pomodoros=2)
+
+    def test_weekend_with_reason_ok(self, vault):
+        _make_task(vault, "測試任務", self._FM)
+        schedule_task_block(
+            vault, "測試任務", start=datetime(2026, 6, 6, 9, 0), pomodoros=2, reason="截稿衝刺"
+        )
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert fm["plan"][0]["reason"] == "截稿衝刺"
+
+    def test_pomodoros_below_one_raises(self, vault):
+        _make_task(vault, "測試任務", self._FM)
+        with pytest.raises(WeeklyWriteError):
+            schedule_task_block(vault, "測試任務", start=datetime(2026, 6, 3, 9, 0), pomodoros=0)
+
+    def test_missing_task_raises(self, vault):
+        with pytest.raises(TaskNotFoundError):
+            schedule_task_block(vault, "不存在", start=datetime(2026, 6, 3, 9, 0), pomodoros=2)
+
+    def test_if_match_conflict(self, vault):
+        _make_task(vault, "測試任務", self._FM)
+        token = task_file_token(vault, "測試任務")
+        schedule_task_block(vault, "測試任務", start=datetime(2026, 6, 3, 9, 0), pomodoros=2)
+        with pytest.raises(WeeklyConflictError):
+            schedule_task_block(
+                vault,
+                "測試任務",
+                start=datetime(2026, 6, 4, 9, 0),
+                pomodoros=2,
+                expected_token=token,
+            )
