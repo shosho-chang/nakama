@@ -19,15 +19,25 @@ from typing import Optional
 from shared import google_calendar
 from shared.google_calendar import CalendarEvent
 from shared.log import get_logger
-from shared.weekly_writer import WeeklyWriteError, schedule_task_block
+from shared.weekly_writer import (
+    WeeklyWriteError,
+    reschedule_task_block,
+    schedule_task_block,
+    unlink_calendar_block,
+    unschedule_task_block,
+)
 
 logger = get_logger("nakama.calendar_scheduler")
 
 # calendar_status values
-CREATED = "created"  # event created (or de-duped) + linked
-CONFLICT = "conflict"  # time clash; event NOT created (plan still written)
-UNAVAILABLE = "unavailable"  # calendar API/auth down; plan written, no event
+CREATED = "created"  # event created/updated (or de-duped) + linked
+CONFLICT = "conflict"  # time clash; event NOT created/moved (plan still written)
+UNAVAILABLE = "unavailable"  # calendar API/auth down; plan written, no event change
 FAILED = "failed"  # event created but link write-back failed → event rolled back
+
+# cancel_status values (the two D9 cancel actions)
+CANCELLED = "cancelled"  # vault cleared cleanly; Google event deleted (or none existed)
+CANCEL_CAL_FAILED = "cancel_cal_failed"  # vault cleared, but the Google delete errored
 
 
 @dataclass
@@ -113,3 +123,124 @@ def schedule_block(
         return ScheduleOutcome(scheduled, scheduled_end, token, FAILED)
 
     return ScheduleOutcome(scheduled, scheduled_end, token, CREATED, event_id=result.id)
+
+
+@dataclass
+class CancelOutcome:
+    """Result of a D9 cancel action (移出行事曆 / 取消排程). The vault write always
+    succeeded if this is returned; the Google delete is best-effort (its outcome is
+    ``calendar_status``, never an exception)."""
+
+    token: str
+    calendar_status: str  # CANCELLED | CANCEL_CAL_FAILED
+    event_id: Optional[str] = None  # the event we tried to delete ("" if none)
+
+
+def reschedule_block(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    start: datetime,
+    pomodoros: int,
+    title: str,
+    reason: Optional[str] = None,
+    expected_token: Optional[str] = None,
+    force: bool = False,
+) -> ScheduleOutcome:
+    """Move an already-projected block to ``start`` (ADR-041 D8).
+
+    Step 1 — authoritative vault relocate (``reschedule_task_block``): the plan[]
+    entry moves and ``scheduled`` / ``scheduled_end`` are rewritten; the existing
+    ``calendar_event_id`` is preserved. Raises propagate (nothing touched Google).
+
+    Step 2 — best-effort PATCH of the **same** Google event (no new event → no
+    orphan). ``update_event`` has no built-in conflict check, so unless ``force``
+    we pre-check overlap, **excluding the event being moved** (else a small shift
+    would clash with its own old slot). A clash returns ``CONFLICT`` with the event
+    left at its old time (the plan is still moved — D2); a Google outage returns
+    ``UNAVAILABLE``. NB: the event's idempotency key still encodes the *original*
+    date — benign in v1 because a linked task never re-enters the create path (the
+    backlog picker is hidden for it); reschedule/rollback locate by event id."""
+    scheduled, scheduled_end, token, event_id = reschedule_task_block(
+        vault_root,
+        task_slug,
+        start=start,
+        pomodoros=pomodoros,
+        reason=reason,
+        expected_token=expected_token,
+    )
+    if not event_id:
+        # Not actually linked (e.g. cleared in Obsidian between page-load and
+        # submit). Degrade to a fresh create+link — the relocate above is an
+        # idempotent upsert, so this is safe.
+        return schedule_block(
+            vault_root,
+            task_slug,
+            start=start,
+            pomodoros=pomodoros,
+            title=title,
+            reason=reason,
+            expected_token=token,
+            force=force,
+        )
+
+    if not force:
+        try:
+            conflicts = [
+                c for c in google_calendar.find_conflicts(scheduled, scheduled_end)
+                if c.id != event_id
+            ]
+        except Exception as exc:  # noqa: BLE001 — outage degrades, never blocks (D2)
+            logger.warning("reschedule conflict pre-check unavailable for %s: %s", task_slug, exc)
+            return ScheduleOutcome(scheduled, scheduled_end, token, UNAVAILABLE, event_id=event_id)
+        if conflicts:
+            return ScheduleOutcome(
+                scheduled, scheduled_end, token, CONFLICT, event_id=event_id,
+                conflicts=tuple(conflicts),
+            )
+
+    try:
+        google_calendar.update_event(event_id, title=title, start=scheduled, end=scheduled_end)
+    except Exception as exc:  # noqa: BLE001 — a Google failure degrades, never blocks the plan
+        logger.warning("calendar reschedule unavailable for %s: %s", task_slug, exc)
+        return ScheduleOutcome(scheduled, scheduled_end, token, UNAVAILABLE, event_id=event_id)
+    return ScheduleOutcome(scheduled, scheduled_end, token, CREATED, event_id=event_id)
+
+
+def _delete_best_effort(task_slug: str, event_id: str, token: str) -> CancelOutcome:
+    """Delete the Google event if there is one; a failure degrades to
+    ``CANCEL_CAL_FAILED`` (the vault is already cleared — D2)."""
+    if not event_id:
+        return CancelOutcome(token, CANCELLED)  # nothing was linked
+    try:
+        google_calendar.delete_event(event_id)
+    except Exception as exc:  # noqa: BLE001 — vault already cleared; surface as status, never raise
+        logger.warning("calendar delete failed for %s (event %s): %s", task_slug, event_id, exc)
+        return CancelOutcome(token, CANCEL_CAL_FAILED, event_id=event_id)
+    return CancelOutcome(token, CANCELLED, event_id=event_id)
+
+
+def unlink_calendar(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    expected_token: Optional[str] = None,
+) -> CancelOutcome:
+    """「移出行事曆」 (D9): clear the projection fields, **keep** plan[], delete the
+    Google event (best-effort). The vault write is authoritative (raises
+    propagate); the Google delete surfaces as ``calendar_status``."""
+    event_id, token = unlink_calendar_block(vault_root, task_slug, expected_token=expected_token)
+    return _delete_best_effort(task_slug, event_id, token)
+
+
+def cancel_schedule(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    expected_token: Optional[str] = None,
+) -> CancelOutcome:
+    """「取消排程」 (D9): drop the scheduled-date plan[] entry (unless it carries
+    done work) **and** clear the projection fields, then delete the Google event
+    (best-effort)."""
+    event_id, token = unschedule_task_block(vault_root, task_slug, expected_token=expected_token)
+    return _delete_best_effort(task_slug, event_id, token)

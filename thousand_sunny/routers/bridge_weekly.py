@@ -38,6 +38,7 @@ from shared.weekly_writer import (
     WeeklyWriteError,
     add_plan_entry,
     log_time_entry,
+    read_task_schedule,
     read_task_split,
     remove_plan_entry,
     sync_scheduled_to_next_plan,
@@ -544,10 +545,28 @@ _TASK_ERRORS = {
         "已擋下這次覆寫——請重新整理頁面再存。"
     ),
     "write": "寫入任務筆記失敗，可能被其他程式鎖定，或已在 Obsidian 改名／移除。",
+    # calendar reschedule / cancel (ADR-041 41d) — vault authoritative, calendar best-effort
+    "sched_date": "排程日期格式無效。",
+    "sched_time": "排程時間格式無效。",
+    "pomodoros": "番茄數需介於 1–20。",
+    "weekend": "週末排程需填寫原因（D9）——已取消這次改期。",
+    "cal_conflict": (
+        "新時段與 Google 行事曆既有事件衝突——已更新本週計畫，但行事曆事件未移動。"
+        "想忽略衝突，請勾選「強制」後重送。"
+    ),
+    "cal_unavailable": (
+        "已更新本週計畫，但 Google 行事曆暫時無法連動（授權或網路）——稍後可在此重試。"
+    ),
+    "cancel_cal_failed": (
+        "已更新本週計畫，但刪除 Google 行事曆事件失敗——請到 Google 行事曆手動移除，或稍後重試。"
+    ),
 }
 
 _TASK_SAVED = {
     "body": "✓ 已儲存筆記。",
+    "rescheduled": "✓ 已改期並更新行事曆事件。",
+    "unlinked": "✓ 已移出行事曆（保留本週計畫）。",
+    "unscheduled": "✓ 已取消排程。",
 }
 
 
@@ -619,6 +638,25 @@ async def weekly_task_detail(
         task_body, task_token = read_task_split(vault, task.slug)
     except TaskNotFoundError:
         return _back(wk_key, "task")
+
+    # Calendar-block reschedule/cancel panel (41d) — only for a task already
+    # projected to Google Calendar. The indexer's task.scheduled is date-only, so
+    # read the raw clock time for the form defaults; the block's 🍅 default is its
+    # plan entry on the scheduled date (else the estimate).
+    sched = read_task_schedule(vault, task.slug) or {}
+    is_linked = bool(sched.get("calendar_event_id"))
+    sched_date, sched_time = "", "09:00"
+    if is_linked:
+        raw = sched.get("scheduled", "")
+        try:
+            dt = datetime.fromisoformat(raw)
+            sched_date, sched_time = dt.date().isoformat(), dt.strftime("%H:%M")
+        except ValueError:
+            sched_date = raw[:10]
+    block_pom = next(
+        (a.pomodoros for a in task.plan if task.scheduled and a.date == task.scheduled),
+        task.est_pomodoros or 1,
+    )
     return _templates.TemplateResponse(
         request,
         "task.html",
@@ -630,6 +668,10 @@ async def weekly_task_detail(
             "obsidian_uri": _obsidian_uri(vault, task.relative_path),
             "task_body": task_body,
             "task_token": task_token,
+            "is_linked": is_linked,
+            "sched_date": sched_date,
+            "sched_time": sched_time,
+            "block_pom": min(block_pom, 20) if block_pom else 1,
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _TASK_ERRORS.get(err) if err else None,
             "saved_msg": _TASK_SAVED.get(saved) if saved else None,
@@ -707,3 +749,127 @@ async def weekly_task_log(
         logger.warning("weekly_task_log: %s", exc)
         return _task_back(slug, wk_key, err="log")
     return _task_back(slug, wk_key, logged=True)
+
+
+# ── Calendar-block reschedule + cancel (ADR-041 41d — D8/D9) ─────────────────
+# These act on a task ALREADY projected to Google Calendar (the 41c backlog row
+# routes such a task here via its locked note). All three carry the page's
+# If-Match ``expected_token`` so a stale action can't clobber an edit made after
+# load; the vault write is authoritative and the Google call is best-effort (D2).
+
+
+@page_router.post("/weekly/task/{slug}/reschedule")
+async def weekly_task_reschedule(
+    slug: str = PathParam(..., min_length=1),
+    entry_date: str = Form(..., min_length=1),
+    entry_time: str = Form(..., min_length=1),
+    pomodoros: int = Form(...),
+    reason: str = Form(""),
+    force: int = Form(0),  # ignore a calendar clash and move anyway (D8)
+    expected_token: str = Form(""),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Move a linked block to a new date/time (ADR-041 D8): relocate plan[] +
+    scheduled in the vault, then PATCH the SAME Google event (no orphan)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+
+    ed = _parse_entry_date(entry_date)
+    if ed is None:
+        return _task_back(slug, wk_key, err="sched_date")
+    et = _parse_entry_time(entry_time)
+    if et is None:
+        return _task_back(slug, wk_key, err="sched_time")
+    if not 1 <= pomodoros <= 20:
+        return _task_back(slug, wk_key, err="pomodoros")
+
+    vault = get_vault_path()
+    task = WeeklyIndexer(vault).find_task(slug)
+    if task is None:
+        return _back(wk_key, "task")
+    start = datetime.combine(ed, et)  # naive Asia/Taipei (D4)
+    try:
+        outcome = calendar_scheduler.reschedule_block(
+            vault,
+            slug,
+            start=start,
+            pomodoros=pomodoros,
+            title=task.title,  # derived from the vault, not a client field (Codex §2)
+            reason=reason.strip() or None,
+            expected_token=expected_token or None,
+            force=bool(force),
+        )
+    except WeekendReasonRequired:
+        return _task_back(slug, wk_key, err="weekend")
+    except WeeklyConflictError:
+        return _task_back(slug, wk_key, err="conflict")
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_reschedule plan write failed: %s", exc)
+        return _task_back(slug, wk_key, err="write")
+
+    status = outcome.calendar_status
+    if status == calendar_scheduler.CREATED:
+        return _task_back(slug, wk_key, saved="rescheduled")
+    if status == calendar_scheduler.CONFLICT:
+        return _task_back(slug, wk_key, err="cal_conflict")
+    return _task_back(slug, wk_key, err="cal_unavailable")  # UNAVAILABLE
+
+
+@page_router.post("/weekly/task/{slug}/unlink")
+async def weekly_task_unlink(
+    slug: str = PathParam(..., min_length=1),
+    expected_token: str = Form(""),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """「移出行事曆」 (D9): clear scheduled/calendar_event_id, KEEP plan[], delete
+    the Google event (best-effort)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+    try:
+        outcome = calendar_scheduler.unlink_calendar(
+            get_vault_path(), slug, expected_token=expected_token or None
+        )
+    except WeeklyConflictError:
+        return _task_back(slug, wk_key, err="conflict")
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_unlink: %s", exc)
+        return _task_back(slug, wk_key, err="write")
+    if outcome.calendar_status == calendar_scheduler.CANCEL_CAL_FAILED:
+        return _task_back(slug, wk_key, err="cancel_cal_failed")
+    return _task_back(slug, wk_key, saved="unlinked")
+
+
+@page_router.post("/weekly/task/{slug}/unschedule")
+async def weekly_task_unschedule(
+    slug: str = PathParam(..., min_length=1),
+    expected_token: str = Form(""),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """「取消排程」 (D9): drop the scheduled-date plan[] entry (unless done) AND
+    clear the projection fields, then delete the Google event (best-effort)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+    try:
+        outcome = calendar_scheduler.cancel_schedule(
+            get_vault_path(), slug, expected_token=expected_token or None
+        )
+    except WeeklyConflictError:
+        return _task_back(slug, wk_key, err="conflict")
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_unschedule: %s", exc)
+        return _task_back(slug, wk_key, err="write")
+    if outcome.calendar_status == calendar_scheduler.CANCEL_CAL_FAILED:
+        return _task_back(slug, wk_key, err="cancel_cal_failed")
+    return _task_back(slug, wk_key, saved="unscheduled")

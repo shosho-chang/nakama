@@ -71,6 +71,52 @@
       </div>
     {% endif %}
 
+    {# ── calendar block: reschedule + cancel (ADR-041 41d, D8/D9) ── #}
+    {% if is_linked %}
+      <section class="tk-cal" aria-label="行事曆排程">
+        <div class="tk-cal-head">
+          <span class="wk-h">📅 行事曆排程</span>
+          <span class="wk-mut">目前：{{ sched_date }} {{ sched_time }}</span>
+        </div>
+
+        {# 改期 — relocate the block; PATCHes the same Google event (no orphan) #}
+        <form class="tk-cal-form wk-sched-form" method="post"
+              action="/bridge/weekly/task/{{ task.slug | urlencode }}/reschedule">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="expected_token" value="{{ task_token }}">
+          <div class="wk-sched-fields">
+            <label class="wk-sched-lbl">日期
+              <input class="wk-sched-date" type="date" name="entry_date" value="{{ sched_date }}" required></label>
+            <label class="wk-sched-lbl">時間
+              <input class="wk-sched-time" type="time" name="entry_time" value="{{ sched_time }}" step="900" required></label>
+            <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ block_pom }}" aria-label="番茄數">🍅
+              <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
+          </div>
+          <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+          <div class="wk-sched-actions">
+            <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制改期</label>
+            <button class="sho-btn wk-sched-go" type="submit">改期</button>
+          </div>
+        </form>
+
+        {# the two D9 cancel actions — distinct outcomes, never auto-drop plan[] #}
+        <div class="tk-cal-cancel">
+          <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/unlink"
+                data-confirm="移出行事曆？會刪除 Google 行事曆事件，但保留本週計畫（你仍打算做，只是不綁定時段）。">
+            <input type="hidden" name="week" value="{{ week_key }}">
+            <input type="hidden" name="expected_token" value="{{ task_token }}">
+            <button class="sho-btn--ghost" type="submit">移出行事曆<span class="wk-mut">（留計畫）</span></button>
+          </form>
+          <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/unschedule"
+                data-confirm="取消排程？會刪除 Google 行事曆事件，並移除本週計畫中這天的安排。">
+            <input type="hidden" name="week" value="{{ week_key }}">
+            <input type="hidden" name="expected_token" value="{{ task_token }}">
+            <button class="sho-btn--ghost tk-cal-danger" type="submit">取消排程<span class="wk-mut">（移除計畫）</span></button>
+          </form>
+        </div>
+      </section>
+    {% endif %}
+
     {# ── pomodoro / super-focus timer ── #}
     <section class="tk-timerbox" aria-label="番茄鐘計時器">
       <div class="tk-clock" data-state="idle">
@@ -206,6 +252,56 @@
       stop(); remaining = 0; modeEl.textContent = ''; timeEl.textContent = '25:00'; show(false);
     });
   })();
+
+  /* Reschedule form (41d): weekend-reason gate + derived block length (1🍅=30min),
+     mirroring the dashboard backlog picker; plus a double-submit guard. */
+  (function () {
+    var form = document.querySelector('.wk-sched-form');
+    if (!form) return;
+    function isWeekend(v) {
+      if (!v) return false;
+      var day = new Date(v + 'T00:00:00').getDay();   // 0 Sun .. 6 Sat
+      return day === 0 || day === 6;
+    }
+    function endLabel(timeStr, pom) {
+      if (!timeStr || !pom) return '';
+      var parts = timeStr.split(':');
+      var raw = (+parts[0]) * 60 + (+parts[1]) + pom * 30;
+      var nextDay = raw >= 1440;
+      var mins = ((raw % 1440) + 1440) % 1440;
+      var hh = String(Math.floor(mins / 60)).padStart(2, '0');
+      var mm = String(mins % 60).padStart(2, '0');
+      return '→ ' + hh + ':' + mm + (nextDay ? '（+1 天）' : '') + '（' + (pom * 30) + ' 分）';
+    }
+    function sync() {
+      var date = form.querySelector('.wk-sched-date');
+      var time = form.querySelector('.wk-sched-time');
+      var pom = form.querySelector('input[name="pomodoros"]');
+      var reason = form.querySelector('.wk-reason-field');
+      var dur = form.querySelector('.wk-sched-dur');
+      if (date && reason) {
+        var weekend = isWeekend(date.value);
+        form.classList.toggle('is-weekend', weekend);
+        reason.required = weekend;
+      }
+      if (dur && time && pom) dur.textContent = endLabel(time.value, parseInt(pom.value, 10));
+    }
+    form.querySelectorAll('.wk-sched-date, .wk-sched-time, input[name="pomodoros"]')
+      .forEach(function (el) { el.addEventListener('input', sync); });
+    form.addEventListener('submit', function () {
+      var btn = form.querySelector('.wk-sched-go');
+      if (btn) { btn.disabled = true; btn.textContent = '改期中…'; }
+    });
+    sync();
+  })();
+
+  /* Cancel actions (41d): confirm before deleting the Google event — these are
+     destructive and one of them drops the plan[] entry too. */
+  document.querySelectorAll('form[data-confirm]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!window.confirm(f.getAttribute('data-confirm'))) e.preventDefault();
+    });
+  });
 
   /* Dismiss toasts on click. */
   document.querySelectorAll('.wk-toast').forEach(function (t) {

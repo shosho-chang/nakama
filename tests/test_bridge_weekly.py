@@ -798,6 +798,190 @@ class TestCalendarSchedule:
         assert "已排入行事曆" in body
 
 
+def _make_linked(tmp_path, slug="已連動任務", eid="evt_live"):
+    """Write a task already projected onto the calendar (scheduled Wed 6/3 09:00)."""
+    linked = (
+        f"---\ntitle: {slug}\nstatus: to-do\n預估🍅: 4\n"
+        f"scheduled: 2026-06-03T09:00:00\nscheduled_end: 2026-06-03T10:00:00\n"
+        f"calendar_event_id: {eid}\nplan:\n  - date: 2026-06-03\n    pomodoros: 2\n"
+        "tags:\n  - task\n---\n\nbody\n"
+    )
+    (tmp_path / "TaskNotes" / "Tasks" / f"{slug}.md").write_text(linked, encoding="utf-8")
+
+
+def _linked_fm(tmp_path, slug="已連動任務"):
+    raw = (tmp_path / "TaskNotes" / "Tasks" / f"{slug}.md").read_text(encoding="utf-8")
+    return yaml.safe_load(raw.split("---", 2)[1])
+
+
+class TestCalendarReschedule:
+    """ADR-041 41d D8 — the task-page reschedule route (Google fully mocked)."""
+
+    def test_reschedule_patches_event_and_moves_plan(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        _make_linked(tmp_path)
+        seen = {}
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [])
+        monkeypatch.setattr(
+            gc, "update_event",
+            lambda eid, **kw: (seen.update({"eid": eid, **kw}), self._ok(eid))[1],
+        )
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/reschedule",
+            data={
+                "entry_date": "2026-06-04",
+                "entry_time": "14:00",
+                "pomodoros": "3",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "saved=rescheduled" in r.headers["location"]
+        assert seen["eid"] == "evt_live"  # same event PATCHed
+        fm = _linked_fm(tmp_path)
+        assert [e["date"] for e in fm["plan"]] == ["2026-06-04"]
+        assert fm["calendar_event_id"] == "evt_live"
+
+    def test_reschedule_conflict_banner(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        _make_linked(tmp_path)
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [self._ok("other")])
+        monkeypatch.setattr(gc, "update_event", lambda eid, **kw: self._ok(eid))
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/reschedule",
+            data={
+                "entry_date": "2026-06-04", "entry_time": "09:00",
+                "pomodoros": "2", "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert "err=cal_conflict" in r.headers["location"]
+
+    def test_reschedule_bad_time_rejected(self, client, tmp_path):
+        _make_linked(tmp_path)
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/reschedule",
+            data={
+                "entry_date": "2026-06-04", "entry_time": "9am",
+                "pomodoros": "2", "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert "err=sched_time" in r.headers["location"]
+
+    def test_reschedule_weekend_requires_reason(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        _make_linked(tmp_path)
+        called = {"n": 0}
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: (called.__setitem__("n", 1), [])[1])
+        monkeypatch.setattr(gc, "update_event", lambda eid, **kw: self._ok(eid))
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/reschedule",
+            data={
+                "entry_date": "2026-06-06", "entry_time": "09:00",
+                "pomodoros": "2", "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert "err=weekend" in r.headers["location"]
+        assert called["n"] == 0  # vault write raised before any calendar call
+
+    def test_reschedule_stale_token_conflict(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        _make_linked(tmp_path)
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [])
+        monkeypatch.setattr(gc, "update_event", lambda eid, **kw: self._ok(eid))
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/reschedule",
+            data={
+                "entry_date": "2026-06-04",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "expected_token": "STALE",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert "err=conflict" in r.headers["location"]
+
+    def _ok(self, eid="evt_live"):
+        from shared.google_calendar import CalendarEvent
+
+        return CalendarEvent(id=eid, title="已連動任務", start="x", end="y", html_link="http://h")
+
+
+class TestCalendarCancel:
+    """ADR-041 41d D9 — 移出行事曆 / 取消排程 task-page routes."""
+
+    def test_unlink_keeps_plan_and_deletes_event(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        _make_linked(tmp_path)
+        deleted = []
+        monkeypatch.setattr(gc, "delete_event", lambda eid: deleted.append(eid))
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/unlink",
+            data={"week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "saved=unlinked" in r.headers["location"]
+        assert deleted == ["evt_live"]
+        fm = _linked_fm(tmp_path)
+        assert "calendar_event_id" not in fm
+        assert len(fm["plan"]) == 1  # plan KEPT (D9 — only the calendar link removed)
+        assert str(fm["plan"][0]["date"]) == "2026-06-03" and fm["plan"][0]["pomodoros"] == 2
+
+    def test_unschedule_drops_plan_and_deletes_event(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        _make_linked(tmp_path)
+        deleted = []
+        monkeypatch.setattr(gc, "delete_event", lambda eid: deleted.append(eid))
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/unschedule",
+            data={"week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "saved=unscheduled" in r.headers["location"]
+        assert deleted == ["evt_live"]
+        fm = _linked_fm(tmp_path)
+        assert not fm.get("plan")  # 6/3 entry dropped
+        assert "calendar_event_id" not in fm
+
+    def test_cancel_delete_failure_degrades(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        _make_linked(tmp_path)
+
+        def boom(eid):
+            raise RuntimeError("API down")
+
+        monkeypatch.setattr(gc, "delete_event", boom)
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/unlink",
+            data={"week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "err=cancel_cal_failed" in r.headers["location"]
+        assert "calendar_event_id" not in _linked_fm(tmp_path)  # vault still cleared
+
+    def test_task_page_shows_reschedule_panel_for_linked(self, client, tmp_path, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        _make_linked(tmp_path)
+        body = client.get(f"/bridge/weekly/task/已連動任務?week={WEEK_KEY}").text
+        assert "行事曆排程" in body
+        assert "/reschedule" in body
+        assert "移出行事曆" in body and "取消排程" in body
+        assert 'value="09:00"' in body  # current clock time pre-filled
+
+
 class TestAuthGate:
     def test_post_requires_auth_when_password_set(self, monkeypatch, tmp_path):
         monkeypatch.setenv("WEB_PASSWORD", "secret")
