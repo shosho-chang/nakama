@@ -556,11 +556,13 @@ class WeeklyIndexer:
 
         # 🍅 = work hours: only `work`-category tasks count toward planned/actual.
         planned = sum(t.planned_in(wk) for t in all_tasks if t.is_work)
+        work_slugs = {t.slug for t in all_tasks if t.is_work}
         actual = weekly_actual(
             self._root,
             wk.start,
             wk.end,
             task_time_entries=[(t.slug, t.time_entries) for t in all_tasks if t.is_work],
+            work_task_keys=work_slugs,
         )
         rate = int(round(100 * actual.total_pomodoros / planned)) if planned else 0
 

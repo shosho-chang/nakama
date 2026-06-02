@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 
 from shared.config import get_vault_path
 from shared.log import get_logger
-from shared.pomodoro_aggregator import TAIPEI
+from shared.pomodoro_aggregator import TAIPEI, task_actual
 from shared.weekly_indexer import (
     WeeklyIndexer,
     today_taipei,
@@ -257,11 +257,21 @@ async def weekly_task_detail(
         # renamed/removed in Obsidian — bounce back to the dashboard with a banner
         return _back(wk_key, "task")
 
+    # 實際🍅 / 準確率 use the D3 union (daily pomodoros[] ∪ this task's timeEntries[]),
+    # not timeEntries alone (ADR-040 A2 / Codex §3).
+    actual = task_actual(vault, task.slug, task.time_entries)
+    actual_pom = actual.total_pomodoros
+    accuracy_pct = (
+        int(round(100 * actual_pom / task.est_pomodoros)) if task.est_pomodoros else 0
+    )
+
     return _templates.TemplateResponse(
         request,
         "task.html",
         {
             "task": task,
+            "actual_pom": actual_pom,
+            "accuracy_pct": accuracy_pct,
             "week_key": wk_key,
             "obsidian_uri": _obsidian_uri(vault, task.relative_path),
             "asset_version": _SHOSHO_ASSET_VERSION,

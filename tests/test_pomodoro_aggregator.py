@@ -12,6 +12,7 @@ from pathlib import Path
 
 from shared.pomodoro_aggregator import (
     parse_dt,
+    task_actual,
     weekly_actual,
 )
 
@@ -177,3 +178,72 @@ def test_same_task_overlap_merged_not_summed(tmp_path):
     )
     assert wa.total_pomodoros == 1  # union 09:00–09:30 = 30min → 1, not 2
     assert wa.overlap_warnings  # flagged
+
+
+def test_work_task_keys_filters_non_work_daily_sessions(tmp_path):
+    """ADR-040 A2 / Codex §3: a TaskNotes pomodoro on a non-work task must not
+    inflate the weekly work🍅 when work_task_keys is given."""
+    _daily(
+        tmp_path,
+        "2026-06-01",
+        [
+            _work(
+                f"2026-06-01T09:00:00{TAIPEI_OFFSET}",
+                f"2026-06-01T09:25:00{TAIPEI_OFFSET}",
+                task="工作A",
+            ),
+            _work(
+                f"2026-06-01T10:00:00{TAIPEI_OFFSET}",
+                f"2026-06-01T10:25:00{TAIPEI_OFFSET}",
+                task="冥想",
+            ),
+        ],
+    )
+    # no filter → both count (legacy behaviour)
+    assert weekly_actual(tmp_path, date(2026, 5, 31), date(2026, 6, 6)).total_pomodoros == 2
+    # filter to the work task only → 冥想 (non-work) dropped
+    wa = weekly_actual(tmp_path, date(2026, 5, 31), date(2026, 6, 6), work_task_keys={"工作A"})
+    assert wa.total_pomodoros == 1
+    assert wa.by_task.get("工作A") == 1
+    assert "冥想" not in wa.by_task
+
+
+def test_task_actual_unions_daily_and_timeentries_all_time(tmp_path):
+    """task_actual = all-time D3 union for one task across both stores."""
+    # daily TaskNotes pomodoro (25 min) on 4/01, plus a 75-min Bridge timeEntry on 6/01
+    _daily(
+        tmp_path,
+        "2026-04-01",
+        [
+            _work(
+                f"2026-04-01T09:00:00{TAIPEI_OFFSET}",
+                f"2026-04-01T09:25:00{TAIPEI_OFFSET}",
+                task="深度",
+            )
+        ],
+    )
+    wa = task_actual(
+        tmp_path,
+        "深度",
+        [
+            {
+                "startTime": f"2026-06-01T13:00:00{TAIPEI_OFFSET}",
+                "endTime": f"2026-06-01T14:15:00{TAIPEI_OFFSET}",
+                "mode": "deep",
+            }
+        ],
+    )
+    assert wa.total_pomodoros == 4  # (25 + 75) min // 25 = 4, across all time
+    # a session on a DIFFERENT task's daily entry must not bleed in
+    _daily(
+        tmp_path,
+        "2026-04-02",
+        [
+            _work(
+                f"2026-04-02T09:00:00{TAIPEI_OFFSET}",
+                f"2026-04-02T09:25:00{TAIPEI_OFFSET}",
+                task="別的",
+            )
+        ],
+    )
+    assert task_actual(tmp_path, "深度", []).total_pomodoros == 1  # only 深度's 4/01 daily

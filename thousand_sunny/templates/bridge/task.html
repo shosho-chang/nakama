@@ -40,11 +40,11 @@
     {# ── estimate vs actual (accuracy — ADR-039 E, read-only) ── #}
     <div class="tk-stats">
       <div class="tk-stat">
-        <span class="tk-stat-num">{{ task.actual_pomodoros }}<span class="tk-stat-den">/{{ task.est_pomodoros or '—' }}</span></span>
+        <span class="tk-stat-num">{{ actual_pom }}<span class="tk-stat-den">/{{ task.est_pomodoros or '—' }}</span></span>
         <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 實際 / 預估</span>
       </div>
       <div class="tk-stat">
-        <span class="tk-stat-num {{ 'tk-over' if task.est_pomodoros and task.accuracy_pct > 100 }}">{{ task.accuracy_pct if task.est_pomodoros else '—' }}{% if task.est_pomodoros %}<span class="tk-stat-den">%</span>{% endif %}</span>
+        <span class="tk-stat-num {{ 'tk-over' if task.est_pomodoros and accuracy_pct > 100 }}">{{ accuracy_pct if task.est_pomodoros else '—' }}{% if task.est_pomodoros %}<span class="tk-stat-den">%</span>{% endif %}</span>
         <span class="tk-stat-lab">準確率</span>
       </div>
       <div class="tk-stat">
@@ -52,8 +52,8 @@
         <span class="tk-stat-lab"><span aria-hidden="true">🤩</span> 超專注</span>
       </div>
     </div>
-    {% if task.est_pomodoros and task.accuracy_pct > 100 %}
-      <p class="tk-note">⚠ 已超出預估 {{ task.accuracy_pct - 100 }}%——留意完美主義／低估造成的過勞。</p>
+    {% if task.est_pomodoros and accuracy_pct > 100 %}
+      <p class="tk-note">⚠ 已超出預估 {{ accuracy_pct - 100 }}%——留意完美主義／低估造成的過勞。</p>
     {% endif %}
 
     {# ── planned allocations (read-only; editing lives on the dashboard) ── #}

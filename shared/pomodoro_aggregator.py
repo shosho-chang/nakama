@@ -141,8 +141,22 @@ def _task_key_from_path(task_path: object) -> str:
     return Path(task_path).stem
 
 
-def collect_daily_intervals(vault_root: Path, start: date, end: date) -> list[Interval]:
-    """Work sessions from ``Journals/Daily/*`` whose endTime falls in [start, end]."""
+def collect_daily_intervals(
+    vault_root: Path,
+    start: date,
+    end: date,
+    *,
+    allowed_task_keys: Optional[set[str]] = None,
+) -> list[Interval]:
+    """Work sessions from ``Journals/Daily/*`` whose endTime falls in [start, end].
+
+    ``allowed_task_keys`` (ADR-040 A2 / Codex §3): when given, keep only sessions
+    whose ``taskPath`` resolves to a slug **in the set** — so a TaskNotes pomodoro
+    attached to a non-``work`` task can't inflate the weekly work🍅. Sessions with
+    a missing/unresolvable ``taskPath`` are dropped under filtering (they can't be
+    confirmed work, and an unattributed ``""`` bucket would also merge unsafely
+    against current-slug timeEntries — Codex §3 renamed/missing-taskPath dupes).
+    """
     out: list[Interval] = []
     daily_dir = Path(vault_root) / _DAILY_DIR
     if not daily_dir.exists():
@@ -152,30 +166,48 @@ def collect_daily_intervals(vault_root: Path, start: date, end: date) -> list[In
     for delta in range((end - start).days + 3):
         d = start - timedelta(days=1) + timedelta(days=delta)
         fm = _read_frontmatter(daily_dir / f"{d.isoformat()}.md")
-        sessions = fm.get("pomodoros")
-        if not isinstance(sessions, list):
+        out.extend(_intervals_from_sessions(fm.get("pomodoros"), start, end, allowed_task_keys))
+    return out
+
+
+def _intervals_from_sessions(
+    sessions: object,
+    start: Optional[date],
+    end: Optional[date],
+    allowed_task_keys: Optional[set[str]],
+) -> list[Interval]:
+    """Normalise a daily-note ``pomodoros`` list into counted work Intervals.
+
+    ``start``/``end`` bound by endTime when both given (None = unbounded, used by
+    the all-time per-task scan). ``allowed_task_keys`` filters by resolved slug.
+    """
+    out: list[Interval] = []
+    if not isinstance(sessions, list):
+        return out
+    for s in sessions:
+        if not isinstance(s, dict):
             continue
-        for s in sessions:
-            if not isinstance(s, dict):
-                continue
-            if s.get("type") != "work" or not s.get("completed"):
-                continue
-            st, en = parse_dt(s.get("startTime")), parse_dt(s.get("endTime"))
-            if not st or not en or en <= st:
-                continue
-            if not (start <= en.date() <= end):
-                continue
-            mins = _session_minutes(s, st, en)
-            # Represent the counted duration as a [start, start+mins] envelope so
-            # overlap-merge stays consistent with timeEntries intervals.
-            out.append(
-                Interval(
-                    task_key=_task_key_from_path(s.get("taskPath")),
-                    start=st,
-                    end=st + timedelta(minutes=mins),
-                    source="daily",
-                )
+        if s.get("type") != "work" or not s.get("completed"):
+            continue
+        task_key = _task_key_from_path(s.get("taskPath"))
+        if allowed_task_keys is not None and task_key not in allowed_task_keys:
+            continue
+        st, en = parse_dt(s.get("startTime")), parse_dt(s.get("endTime"))
+        if not st or not en or en <= st:
+            continue
+        if start is not None and end is not None and not (start <= en.date() <= end):
+            continue
+        mins = _session_minutes(s, st, en)
+        # Represent the counted duration as a [start, start+mins] envelope so
+        # overlap-merge stays consistent with timeEntries intervals.
+        out.append(
+            Interval(
+                task_key=task_key,
+                start=st,
+                end=st + timedelta(minutes=mins),
+                source="daily",
             )
+        )
     return out
 
 
@@ -260,10 +292,40 @@ def weekly_actual(
     end: date,
     *,
     task_time_entries: Iterable[tuple[str, list]] = (),
+    work_task_keys: Optional[set[str]] = None,
 ) -> WeeklyActual:
     """Compute the week's actual 🍅 = union of daily ``pomodoros[]`` and task
     ``timeEntries[]``, filtered to [start, end], merged per task, minutes ÷ 25.
+
+    ``work_task_keys`` scopes the daily side to ``work``-category tasks (ADR-040
+    A2 — keeps a non-work timer out of the work🍅 hero); the timeEntries side is
+    already pre-filtered by the caller passing only work tasks in
+    ``task_time_entries``.
     """
-    intervals = collect_daily_intervals(vault_root, start, end)
+    intervals = collect_daily_intervals(vault_root, start, end, allowed_task_keys=work_task_keys)
     intervals += collect_timeentry_intervals(task_time_entries, start, end)
+    return summarize(intervals)
+
+
+def task_actual(vault_root: Path, task_slug: str, time_entries: list) -> WeeklyActual:
+    """All-time actual 🍅 for ONE task — the D3 **union** of every daily
+    ``pomodoros[]`` session attributed to it (Obsidian TaskNotes timer) and its
+    own ``timeEntries[]`` (Bridge web timer), merged so a session logged to both
+    stores isn't double-counted (ADR-040 A2 / Codex §3 — the task-page accuracy
+    must not be timeEntries-only).
+
+    Cold path (task-detail page only): scans every ``Journals/Daily/*.md`` once,
+    skipping Syncthing conflict copies. No date window — accuracy is all-time.
+    """
+    intervals: list[Interval] = []
+    daily_dir = Path(vault_root) / _DAILY_DIR
+    if daily_dir.exists():
+        for p in sorted(daily_dir.glob("*.md")):
+            if ".sync-conflict-" in p.name:
+                continue
+            fm = _read_frontmatter(p)
+            intervals.extend(
+                _intervals_from_sessions(fm.get("pomodoros"), None, None, {task_slug})
+            )
+    intervals += collect_timeentry_intervals([(task_slug, time_entries)], date.min, date.max)
     return summarize(intervals)
