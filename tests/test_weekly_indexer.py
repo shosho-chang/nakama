@@ -63,6 +63,13 @@ def _daily(vault, day: str, fm: dict) -> None:
     (d / f"{day}.md").write_text(f"---\n{body}---\n\n", encoding="utf-8")
 
 
+def _weekly(vault, file_key: str, fm: dict, body: str = "") -> None:
+    d = vault / "Journals" / "Weekly"
+    d.mkdir(parents=True, exist_ok=True)
+    fms = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False)
+    (d / f"{file_key}.md").write_text(f"---\n{fms}---\n{body}", encoding="utf-8")
+
+
 @pytest.fixture
 def vault(tmp_path):
     _task(
@@ -258,6 +265,73 @@ def test_ufo_derived_requires_min_minutes_and_completed(tmp_path):
 
 def test_find_task_missing_returns_none(tmp_path):
     assert WeeklyIndexer(tmp_path).find_task("nope") is None
+
+
+def test_top3_resolved_from_weekly_file(vault, monkeypatch):
+    """ADR-040 A4: top3 reads from the weekly file as wikilinks → task | project
+    | unresolved. Project done-ratio = done tasks / total."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    _weekly(
+        vault,
+        "2026-05-31",
+        {
+            "status": "active",
+            "top3": [
+                "[[肌酸的妙用 - Pre-production]]",  # → task (not done)
+                "[[肌酸的妙用]]",  # → project (1 task, 0 done)
+                "[[不存在的東西]]",  # → unresolved
+            ],
+        },
+    )
+    v = WeeklyIndexer(vault).view(week_for_date(date(2026, 6, 1)))
+    kinds = [it.kind for it in v.top3]
+    assert kinds == ["task", "project", "unresolved"]
+    task_item, proj_item, unres = v.top3
+    assert task_item.slug == "肌酸的妙用 - Pre-production" and task_item.done is False
+    assert proj_item.ratio_total == 1 and proj_item.ratio_done == 0 and proj_item.done is False
+    assert unres.is_unresolved
+
+
+def test_top3_falls_back_to_weekly_priority_without_file(vault, monkeypatch):
+    """A5: with no weekly file, top3 falls back to weekly_priority task flags."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    v = WeeklyIndexer(vault).view(week_for_date(date(2026, 6, 1)))
+    assert [it.kind for it in v.top3] == ["task"]
+    assert v.top3[0].slug == "肌酸的妙用 - Pre-production"
+
+
+def test_full_width_colon_project_resolves(tmp_path, monkeypatch):
+    """Gemini §1: [[專案：子題]] resolves against a Projects/專案:子題.md file."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    (tmp_path / "Projects").mkdir(parents=True)
+    (tmp_path / "Projects" / "專案:子題.md").write_text("---\n---\n", encoding="utf-8")
+    _weekly(tmp_path, "2026-05-31", {"status": "active", "top3": ["[[專案：子題]]"]})
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    assert v.top3[0].kind == "project"
+
+
+def test_targets_read_from_weekly_file_drive_hero_and_rate(vault, monkeypatch):
+    """A3: targets.{pomodoro,ufo} from the weekly file set the hero goals + rate."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    _weekly(
+        vault,
+        "2026-05-31",
+        {"status": "active", "targets": {"pomodoro": 10, "ufo": 3}},
+    )
+    v = WeeklyIndexer(vault).view(week_for_date(date(2026, 6, 1)))
+    assert v.pomodoro_target == 10
+    assert v.pomodoro_goal == 10  # target overrides planned-sum
+    assert v.ufo_target == 3
+    assert v.rate_pct == 10  # actual 1 / goal 10
+
+
+def test_targets_default_when_absent(vault, monkeypatch):
+    """No targets → ufo_target falls back to the constant, 🍅 goal to planned-sum."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    v = WeeklyIndexer(vault).view(week_for_date(date(2026, 6, 1)))
+    assert v.pomodoro_target == 0
+    assert v.pomodoro_goal == v.planned  # 2 (work scheduled in week)
+    assert v.ufo_target == wi.UFO_WEEKLY_TARGET
 
 
 def test_past_week_without_review_is_review_mode(vault, monkeypatch):

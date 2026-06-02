@@ -103,10 +103,10 @@
           <span class="sho-chip sho-chip--hold">⚠ 待回顧</span>
         {% endif %}
         <span class="wk-hero-count"
-              aria-label="本週工作 已完成 {{ view.actual.total_pomodoros }} 番茄，預計 {{ view.planned }} 番茄"
-              title="本週工作時數（🍅）— 已完成 / 預計">
+              aria-label="本週工作 已完成 {{ view.actual.total_pomodoros }} 番茄，目標 {{ view.pomodoro_goal }} 番茄"
+              title="本週工作時數（🍅）— 已完成 / {{ '目標' if view.pomodoro_target else '排程' }}">
           <span class="wk-tomato" aria-hidden="true">🍅</span>
-          <span class="wk-hc-actual">{{ view.actual.total_pomodoros }}</span><span class="wk-hc-sep">/</span><span class="wk-hc-plan">{{ view.planned }}</span>
+          <span class="wk-hc-actual">{{ view.actual.total_pomodoros }}</span><span class="wk-hc-sep">/</span><span class="wk-hc-plan">{{ view.pomodoro_goal }}</span>
         </span>
         <span class="wk-hero-count wk-hero-ufo"
               aria-label="本週超專注 {{ view.ufo_count }} 次，目標 {{ view.ufo_target }} 次"
@@ -124,13 +124,19 @@
         {% if view.top3 %}
           <ol class="wk-top3-list">
             {% for t in view.top3 %}
-              <li class="wk-top3-item {{ 'done' if t.done }}">
-                <a href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">{{ t.title }}</a>
+              <li class="wk-top3-item {{ 'done' if t.done }} {{ 'unresolved' if t.is_unresolved }}">
+                {% if t.kind == 'task' %}
+                  <a href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">{{ t.title }}</a>
+                {% elif t.kind == 'project' %}
+                  <span class="wk-top3-proj">{{ t.title }}<span class="wk-top3-ratio">{{ t.ratio_label }}</span></span>
+                {% else %}
+                  <span class="wk-top3-unres" title="找不到對應的任務或專案——請檢查 wikilink">⚠ {{ t.title }}</span>
+                {% endif %}
               </li>
             {% endfor %}
           </ol>
         {% else %}
-          <span class="wk-mut">在 Obsidian 任務的 frontmatter 標 <code>weekly_priority: {{ view.week.file_key }}</code> 指定本週要事。</span>
+          <span class="wk-mut">尚未設定——用下方「本週計畫」挑 3 件，或在 Obsidian 任務標 <code>weekly_priority: {{ view.week.file_key }}</code>。</span>
         {% endif %}
       </div>
     {% endif %}

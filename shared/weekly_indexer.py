@@ -39,6 +39,7 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 TASKS_DIR = "TaskNotes/Tasks"
 DAILY_DIR = "Journals/Daily"
 WEEKLY_DIR = "Journals/Weekly"
+PROJECTS_DIR = "Projects"
 
 # Task category model (ADR-039): a single frontmatter ``category:`` slug per task.
 # Only ``work`` tracks pomodoros (🍅 = work hours, anti-burnout). The set is
@@ -161,6 +162,13 @@ def _strip_wikilink(v: object) -> str:
         return ""
     m = _WIKILINK_RE.search(v)
     return m.group(1).strip() if m else v.strip()
+
+
+def _link_key(v: str) -> str:
+    """Normalise a wikilink target / filename for tolerant matching (Gemini §1):
+    NFC, trimmed, full-width colon → ASCII colon. Lets ``[[專案：子題]]`` resolve
+    against a ``專案:子題.md`` file (Obsidian is flexible about both)."""
+    return unicodedata.normalize("NFC", v).strip().replace("：", ":")
 
 
 def _entry_minutes(entry: dict) -> float:
@@ -300,10 +308,35 @@ class DailyHabit:
 class WeeklyReview:
     exists: bool
     status: str  # planning | active | reviewed
-    top3: tuple[str, ...] = ()
+    top3: tuple[str, ...] = ()  # raw wikilink targets (resolved into Top3Item by view)
     next3: tuple[str, ...] = ()
+    targets: dict = field(default_factory=dict)  # {pomodoro, ufo} — 修修-set (A3)
     sections: dict[str, str] = field(default_factory=dict)  # heading -> prose
     notes: str = ""
+
+
+@dataclass(frozen=True)
+class Top3Item:
+    """A resolved 本週三大要事 entry (ADR-040 A4). ``kind`` ∈ task | project |
+    unresolved. A task is done by its own state; a project is done when every
+    task in it is done (ratio = done/total). An unresolved wikilink surfaces
+    visibly (never silently dropped — Gemini §1)."""
+
+    raw: str  # the wikilink target text as 修修 wrote it
+    kind: str
+    title: str
+    slug: str = ""  # task slug → task page link ("" for project/unresolved)
+    done: bool = False
+    ratio_done: int = 0
+    ratio_total: int = 0
+
+    @property
+    def is_unresolved(self) -> bool:
+        return self.kind == "unresolved"
+
+    @property
+    def ratio_label(self) -> str:
+        return f"{self.ratio_done}/{self.ratio_total}" if self.kind == "project" else ""
 
 
 @dataclass(frozen=True)
@@ -323,8 +356,10 @@ class WeeklyView:
     actual: WeeklyActual
     rate_pct: int
     ufo_count: int  # 75-min "deep" sessions logged this week (🤩)
-    ufo_target: int  # weekly UFO goal (constant for now — ADR-039 E)
-    top3: tuple[WeeklyTask, ...]  # this week's ≤3 weekly_priority tasks (hero strip)
+    ufo_target: int  # weekly UFO goal — targets.ufo (A3) or the default constant
+    pomodoro_target: int  # weekly 🍅 goal — targets.pomodoro (A3); 0 = unset
+    pomodoro_goal: int  # the hero denominator: pomodoro_target if set, else planned
+    top3: tuple[Top3Item, ...]  # this week's ≤3 resolved 三大要事 (hero strip)
     tasks: tuple[WeeklyTask, ...]  # tasks with allocation/scheduled in week
     today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
     incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
@@ -507,14 +542,77 @@ class WeeklyIndexer:
             sections[line.strip()] = rest.strip()
         top3 = tuple(_strip_wikilink(x) for x in (fm.get("top3") or []) if x)
         next3 = tuple(_strip_wikilink(x) for x in (fm.get("next3") or []) if x)
+        targets_raw = fm.get("targets")
+        targets: dict = {}
+        if isinstance(targets_raw, dict):
+            if (p := _as_int(targets_raw.get("pomodoro"))) > 0:
+                targets["pomodoro"] = p
+            if (u := _as_int(targets_raw.get("ufo"))) > 0:
+                targets["ufo"] = u
         return WeeklyReview(
             exists=True,
             status=str(fm.get("status") or "active"),
             top3=top3,
             next3=next3,
+            targets=targets,
             sections=sections,
             notes=sections.get("隨手筆記", ""),
         )
+
+    def _resolve_top3(
+        self, raws: tuple[str, ...], all_tasks: list[WeeklyTask]
+    ) -> tuple[Top3Item, ...]:
+        """Resolve ≤3 wikilink targets to tasks or projects (ADR-040 A4).
+
+        - **task** (slug or title match) → done by its own state.
+        - **project** (a ``projects:`` value on some task, or a ``Projects/{name}.md``
+          file) → done ratio = done tasks / total tasks in it; done iff all done.
+        - otherwise **unresolved** — surfaced visibly, never dropped (Gemini §1).
+        Matching is CJK-tolerant via :func:`_link_key`.
+        """
+        by_slug = {_link_key(t.slug): t for t in all_tasks}
+        by_title = {_link_key(t.title): t for t in all_tasks}
+        proj_tasks: dict[str, list[WeeklyTask]] = {}
+        for t in all_tasks:
+            if t.project:
+                proj_tasks.setdefault(_link_key(t.project), []).append(t)
+
+        items: list[Top3Item] = []
+        for raw in raws[:3]:
+            target = _strip_wikilink(raw)
+            key = _link_key(target)
+            task = by_slug.get(key) or by_title.get(key)
+            if task is not None:
+                items.append(
+                    Top3Item(
+                        raw=target, kind="task", title=task.title, slug=task.slug, done=task.done
+                    )
+                )
+                continue
+            ptasks = proj_tasks.get(key)
+            # Obsidian/Windows store a colon as full-width 「：」 (ASCII ':' is illegal
+            # in Win filenames); try both variants so either spelling resolves.
+            candidates = {target, target.replace("：", ":"), target.replace(":", "：")}
+            is_project_file = any(
+                (self._root / PROJECTS_DIR / f"{c}.md").exists() for c in candidates
+            )
+            if ptasks is not None or is_project_file:
+                ptasks = ptasks or []
+                total = len(ptasks)
+                done_n = sum(1 for t in ptasks if t.done)
+                items.append(
+                    Top3Item(
+                        raw=target,
+                        kind="project",
+                        title=target,
+                        done=total > 0 and done_n == total,
+                        ratio_done=done_n,
+                        ratio_total=total,
+                    )
+                )
+                continue
+            items.append(Top3Item(raw=target, kind="unresolved", title=target))
+        return tuple(items)
 
     def list_conflicts(self) -> list[ConflictFile]:
         out: list[ConflictFile] = []
@@ -564,14 +662,30 @@ class WeeklyIndexer:
             task_time_entries=[(t.slug, t.time_entries) for t in all_tasks if t.is_work],
             work_task_keys=work_slugs,
         )
-        rate = int(round(100 * actual.total_pomodoros / planned)) if planned else 0
-
         # 🤩 UFO = 75-min deep sessions logged this week (work tasks only).
         ufo_count = sum(t.deep_sessions_in(wk) for t in all_tasks if t.is_work)
-        # 本週三大要事 — tasks flagged weekly_priority for this week (≤3, done→strikethrough)
-        top3 = tuple(t for t in all_tasks if t.is_priority_for(wk))[:3]
 
         review = self.read_review(wk)
+
+        # 本週三大要事 (A4): canonical source = weekly-file top3 (wikilink → task|
+        # project). Transitional fallback (A5): task-frontmatter weekly_priority
+        # flags, used only while no weekly file / no top3 exists yet.
+        if review is not None and review.top3:
+            top3 = self._resolve_top3(review.top3, all_tasks)
+        else:
+            top3 = tuple(
+                Top3Item(raw=t.title, kind="task", title=t.title, slug=t.slug, done=t.done)
+                for t in all_tasks
+                if t.is_priority_for(wk)
+            )[:3]
+
+        # targets (A3): 修修-set weekly goals from the weekly file; UFO falls back
+        # to the default constant, 🍅 goal falls back to the planned-sum.
+        targets = review.targets if review is not None else {}
+        ufo_target = targets.get("ufo") or UFO_WEEKLY_TARGET
+        pomodoro_target = targets.get("pomodoro") or 0
+        pomodoro_goal = pomodoro_target or planned
+        rate = int(round(100 * actual.total_pomodoros / pomodoro_goal)) if pomodoro_goal else 0
 
         # mode: review when looking at a past week that isn't yet reviewed
         mode = "active"
@@ -594,7 +708,9 @@ class WeeklyIndexer:
             actual=actual,
             rate_pct=rate,
             ufo_count=ufo_count,
-            ufo_target=UFO_WEEKLY_TARGET,
+            ufo_target=ufo_target,
+            pomodoro_target=pomodoro_target,
+            pomodoro_goal=pomodoro_goal,
             top3=top3,
             tasks=tuple(in_week),
             today_tasks=today_tasks,
