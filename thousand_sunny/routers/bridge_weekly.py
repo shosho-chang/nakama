@@ -334,14 +334,16 @@ async def weekly_notes_save(
 async def weekly_top3_save(
     week: str = Form(""),
     expected_token: str = Form(""),
-    top3: str = Form(""),
+    top3: list[str] = Form(default=[]),  # ≤3 dropdown selections (task slug | project name)
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk = _safe_week(week)
+    # dropdowns submit blank for an unfilled slot; keep order, drop blanks, wrap as wikilinks
+    links = [f"[[{v.strip()}]]" for v in top3 if v.strip()]
     return _write_weekly_or_back(
-        wk, frontmatter={"top3": _parse_links(top3)}, expected_token=expected_token, saved="top3"
+        wk, frontmatter={"top3": links}, expected_token=expected_token, saved="top3"
     )
 
 

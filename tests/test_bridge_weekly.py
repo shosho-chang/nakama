@@ -366,15 +366,16 @@ class TestWeeklyFileWrites:
     """ADR-040 Slice 2 — the Journals/Weekly 🟡 composable write routes."""
 
     def test_top3_creates_file_and_persists(self, client, tmp_path):
+        # dropdowns submit repeated `top3` fields (a blank slot is skipped)
         r = client.post(
             "/bridge/weekly/top3",
-            data={"week": WEEK_KEY, "expected_token": "", "top3": "肌酸的妙用\n[[寫電子報]]"},
+            data={"week": WEEK_KEY, "expected_token": "", "top3": ["測試任務", "", "肌酸的妙用"]},
             follow_redirects=False,
         )
         assert r.status_code == 303
         assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&saved=top3"
         fm = _weekly_fm(tmp_path)
-        assert fm["top3"] == ["[[肌酸的妙用]]", "[[寫電子報]]"]  # bare names wrapped
+        assert fm["top3"] == ["[[測試任務]]", "[[肌酸的妙用]]"]  # blank slot dropped, order kept
         assert fm["status"] == "planning"  # created from template
 
     def test_targets_persist_only_positive(self, client, tmp_path):
@@ -444,6 +445,10 @@ class TestWeeklyFileWrites:
         assert 'action="/bridge/weekly/notes"' in body
         assert 'action="/bridge/weekly/status"' in body
         assert 'name="expected_token"' in body
+        # top3 is now a dropdown picker (not free text); the seed task is an option
+        assert "wk-top3-sel" in body
+        assert "<optgroup" in body
+        assert "測試任務" in body
 
 
 class TestAuthGate:

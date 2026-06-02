@@ -61,14 +61,22 @@ body.sho .wk-hero-count {
   display: inline-flex; align-items: baseline; gap: 7px;
   font-family: var(--sho-font-mono); font-variant-numeric: tabular-nums;
 }
-body.sho .wk-hero-count .wk-tomato { font-size: 26px; line-height: 1; align-self: center; }
-body.sho .wk-hc-actual { font-size: 34px; font-weight: 600; letter-spacing: -0.5px; color: var(--sho-ink); }
-body.sho .wk-hc-sep { font-size: 22px; color: var(--sho-line-2); }
-body.sho .wk-hc-plan { font-size: 22px; color: var(--sho-muted); }
+/* both hero metrics (🍅 / 🤩) share ONE size pair — actual prominent, goal muted */
+body.sho .wk-hero-count .wk-tomato,
+body.sho .wk-hero-count .wk-ufo { font-size: 20px; line-height: 1; align-self: center; }
+body.sho .wk-hc-actual { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; color: var(--sho-ink); }
+body.sho .wk-hc-sep { font-size: 18px; color: var(--sho-line-2); }
+body.sho .wk-hc-plan { font-size: 18px; color: var(--sho-muted); }
 
 /* ── zones ── */
 body.sho .wk-zone { padding: 20px 0 4px; border-bottom: 1px solid var(--sho-line); }
 body.sho .wk-zone-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+/* CJK section label — the ONE treatment for every zone header (replaces the
+   Latin .nk-caps kicker, whose uppercase + 0.18em tracking sprawls 中文). */
+body.sho .wk-h {
+  font-family: var(--sho-font-zh); font-size: 13px; font-weight: 600;
+  letter-spacing: 0.02em; color: var(--sho-ink);
+}
 body.sho .wk-empty { color: var(--sho-muted); font-size: 13px; padding: 6px 0; }
 
 /* ── task views ── */
@@ -257,18 +265,12 @@ body.sho .wk-plan-add .wk-plan-go { padding: 6px 14px; font-size: 11px; }
 body.sho .wk-sync .wk-sync-go { padding: 5px 11px; font-size: 10px; }
 body.sho .wk-sync .wk-sync-go .wk-mut { font-size: 10px; }
 
-/* ── hero: UFO (🤩 super-focus) sits beside the 🍅 count, slightly smaller ── */
-body.sho .wk-hero-ufo .wk-hc-actual { font-size: 26px; }
-body.sho .wk-hero-ufo .wk-hc-sep,
-body.sho .wk-hero-ufo .wk-hc-plan { font-size: 18px; }
-body.sho .wk-ufo { font-size: 22px; line-height: 1; align-self: center; }
-
 /* ── 本週三大要事 strip (under the sticky header) ── */
 body.sho .wk-top3 {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 14px;
   padding: 12px 0 0; margin-top: 4px;
 }
-body.sho .wk-top3-cap { color: var(--sho-text-2); flex-shrink: 0; }
+body.sho .wk-top3-cap { flex-shrink: 0; }  /* inherits the .wk-h label treatment */
 body.sho .wk-top3-list {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-wrap: wrap; gap: 8px 18px; counter-reset: t3;
@@ -386,6 +388,15 @@ body.sho .wk-top3-item.unresolved::before { color: var(--sho-warning); }
 
 /* ── weekly-file 週交接 forms (ADR-040 A6 composable steps) ── */
 body.sho .wk-wf { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 6px; }
+body.sho .wk-wf-label { font-size: 12px; color: var(--sho-text-2); }
+body.sho .wk-top3-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+body.sho .wk-top3-sel {
+  font: inherit; font-size: 13px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 7px 10px; min-width: 200px; flex: 1 1 200px; max-width: 320px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-top3-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
 body.sho .wk-field--wide { grid-column: 1 / -1; }
 body.sho .wk-field textarea,
 body.sho .wk-notes-form textarea {

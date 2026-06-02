@@ -360,6 +360,8 @@ class WeeklyView:
     pomodoro_target: int  # weekly 🍅 goal — targets.pomodoro (A3); 0 = unset
     pomodoro_goal: int  # the hero denominator: pomodoro_target if set, else planned
     top3: tuple[Top3Item, ...]  # this week's ≤3 resolved 三大要事 (hero strip)
+    top3_options: tuple[dict, ...]  # {group, value, label} for the top3 dropdowns
+    top3_values: tuple[str, ...]  # current ≤3 selected option values (padded to 3)
     tasks: tuple[WeeklyTask, ...]  # tasks with allocation/scheduled in week
     today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
     incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
@@ -559,6 +561,23 @@ class WeeklyIndexer:
             notes=sections.get("隨手筆記", ""),
         )
 
+    def _top3_options(self, all_tasks: list[WeeklyTask]) -> list[dict]:
+        """Candidate 三大要事 entries for the dropdowns (ADR-040 A4): open tasks +
+        all projects. The ``value`` is what resolves via :meth:`_resolve_top3`
+        (task slug → by_slug; project name → proj_tasks / Projects file)."""
+        opts: list[dict] = [
+            {"group": "任務", "value": t.slug, "label": t.name or t.title}
+            for t in all_tasks
+            if not t.done
+        ]
+        projects: set[str] = {t.project for t in all_tasks if t.project}
+        pdir = self._root / PROJECTS_DIR
+        if pdir.exists():
+            for p in pdir.glob("*.md"):
+                projects.add(unicodedata.normalize("NFC", p.stem))
+        opts += [{"group": "專案", "value": name, "label": name} for name in sorted(projects)]
+        return opts
+
     def _resolve_top3(
         self, raws: tuple[str, ...], all_tasks: list[WeeklyTask]
     ) -> tuple[Top3Item, ...]:
@@ -684,8 +703,14 @@ class WeeklyIndexer:
         targets = review.targets if review is not None else {}
         ufo_target = targets.get("ufo") or UFO_WEEKLY_TARGET
         pomodoro_target = targets.get("pomodoro") or 0
+        # 🍅 weekly goal = Σ this week's scheduled task pomodoros (auto-sum); an
+        # explicit targets.pomodoro still wins if a file carries one (back-compat).
         pomodoro_goal = pomodoro_target or planned
         rate = int(round(100 * actual.total_pomodoros / pomodoro_goal)) if pomodoro_goal else 0
+
+        # dropdown candidates + current selections (task slug | project name)
+        top3_options = self._top3_options(all_tasks)
+        top3_values = tuple((it.slug if it.kind == "task" else it.raw) for it in top3)
 
         # mode: review when looking at a past week that isn't yet reviewed
         mode = "active"
@@ -712,6 +737,8 @@ class WeeklyIndexer:
             pomodoro_target=pomodoro_target,
             pomodoro_goal=pomodoro_goal,
             top3=top3,
+            top3_options=tuple(top3_options),
+            top3_values=top3_values,
             tasks=tuple(in_week),
             today_tasks=today_tasks,
             incomplete=tuple(incomplete),

@@ -59,7 +59,7 @@
     {# ── planned allocations (read-only; editing lives on the dashboard) ── #}
     {% if task.plan %}
       <div class="tk-plan">
-        <span class="nk-caps">排程</span>
+        <span class="wk-h">排程</span>
         {% for a in task.plan %}
           <span class="tk-plan-chip {{ 'done' if a.done }}">
             {{ a.date.strftime('%m/%d') }} · {{ a.pomodoros }}🍅{% if a.reason %} <span class="tk-plan-r" title="{{ a.reason }}">⚠</span>{% endif %}

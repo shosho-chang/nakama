@@ -97,25 +97,40 @@
 
 {% macro plan_panel(view, weekly_token) %}
   <details class="wk-zone wk-plan-panel">
-    <summary class="wk-zone-head"><span class="nk-caps">✎ 本週計畫</span>
+    <summary class="wk-zone-head"><span class="wk-h">✎ 本週計畫</span>
       <span class="wk-mut">三大要事・目標・狀態</span></summary>
 
     <form class="wk-wf" method="post" action="/bridge/weekly/top3">
       <input type="hidden" name="week" value="{{ view.week.file_key }}">
       <input type="hidden" name="expected_token" value="{{ weekly_token }}">
-      <label class="wk-field wk-field--wide"><span>本週三大要事（一行一個；任務或專案，可用 <code>[[wikilink]]</code>）</span>
-        <textarea name="top3" rows="3" placeholder="[[肌酸的妙用 - Pre-production]]&#10;[[寫當週電子報]]">{% for t in view.top3 %}{{ t.raw }}
-{% endfor %}</textarea></label>
+      <span class="wk-wf-label">本週三大要事 —— 從未完成的任務 / 專案挑 3 件</span>
+      <div class="wk-top3-picks">
+        {% for i in range(3) %}
+          {% set cur = view.top3_values[i] if i < (view.top3_values | length) else '' %}
+          <select class="wk-top3-sel" name="top3" aria-label="要事 {{ i + 1 }}">
+            <option value="">{{ i + 1 }} · （不指定）</option>
+            <optgroup label="任務">
+              {% for o in view.top3_options if o.group == '任務' %}
+                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="專案">
+              {% for o in view.top3_options if o.group == '專案' %}
+                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+              {% endfor %}
+            </optgroup>
+          </select>
+        {% endfor %}
+      </div>
       <div class="wk-wf-actions"><button class="sho-btn--ghost" type="submit">存三大要事</button></div>
     </form>
 
     <form class="wk-wf wk-targets-form" method="post" action="/bridge/weekly/targets">
       <input type="hidden" name="week" value="{{ view.week.file_key }}">
       <input type="hidden" name="expected_token" value="{{ weekly_token }}">
-      <label class="wk-num-field"><span class="wk-tomato" aria-hidden="true">🍅</span> 週目標
-        <input type="number" name="pomodoro" min="0" max="200" value="{{ view.pomodoro_target or '' }}" placeholder="—"></label>
-      <label class="wk-num-field"><span aria-hidden="true">🤩</span> 超專注
+      <label class="wk-num-field"><span aria-hidden="true">🤩</span> 超專注週目標
         <input type="number" name="ufo" min="0" max="50" value="{{ view.ufo_target }}"></label>
+      <span class="wk-mut"><span class="wk-tomato" aria-hidden="true">🍅</span> 週目標自動加總本週排程任務（目前 {{ view.pomodoro_goal }}）</span>
       <button class="sho-btn--ghost" type="submit">存目標</button>
     </form>
 
@@ -200,7 +215,7 @@
     {# ── 本週三大要事 (weekly_priority tasks; done → struck through) ── #}
     {% if view.mode != 'review' %}
       <div class="wk-top3" aria-label="本週三大要事">
-        <span class="wk-top3-cap nk-caps">本週三大要事</span>
+        <span class="wk-top3-cap wk-h">本週三大要事</span>
         {% if view.top3 %}
           <ol class="wk-top3-list">
             {% for t in view.top3 %}
@@ -230,7 +245,7 @@
     {% if view.mode == 'review' %}
 
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">未完成任務 · 排進下一週</span>
+        <div class="wk-zone-head"><span class="wk-h">未完成任務 · 排進下一週</span>
           <span class="wk-mut">開任務頁排入下一週的日子</span></div>
         {% for t in view.incomplete %}
           <div class="wk-cf">
@@ -245,7 +260,7 @@
       </div>
 
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">Weekly Review · 6 題</span>
+        <div class="wk-zone-head"><span class="wk-h">Weekly Review · 6 題</span>
           <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'hold' }}">
             {{ '已回顧' if view.review and view.review.status == 'reviewed' else '待填' }}</span></div>
         <p class="wk-mut">✅ top-3 完成率自動帶入（見上方三大要事）。逐字寫，機器不代筆。</p>
@@ -253,7 +268,7 @@
       </div>
 
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">隨手筆記</span></div>
+        <div class="wk-zone-head"><span class="wk-h">隨手筆記</span></div>
         {{ notes_form(view, weekly_token) }}
       </div>
 
@@ -262,7 +277,7 @@
 
       {# ── daily cards (Mon→Fri) — today open by default, others toggle ── #}
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">每日 · 週一–五</span></div>
+        <div class="wk-zone-head"><span class="wk-h">每日 · 週一–五</span></div>
         <div class="wk-days">
           {% for day in view.days %}
             <details class="wk-day {{ 'is-today' if day.is_today }}" {{ 'open' if day.default_open }}>
@@ -303,7 +318,7 @@
 
       {# ── task list + scheduler (below the daily cards) ── #}
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">任務</span>
+        <div class="wk-zone-head"><span class="wk-h">任務</span>
           <div class="wk-tabs" role="tablist">
             <button class="wk-tab is-on" data-tab="today" type="button">今日</button>
             <button class="wk-tab" data-tab="week" type="button">整週</button>
@@ -334,7 +349,7 @@
 
       {# ── review (fill any time; designed for week-end) ── #}
       <details class="wk-zone wk-review-zone">
-        <summary class="wk-zone-head"><span class="nk-caps">週回顧</span>
+        <summary class="wk-zone-head"><span class="wk-h">週回顧</span>
           <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'offline' }}">
             {{ '已完成' if view.review and view.review.status == 'reviewed' else '本週末填' }}</span></summary>
         {{ review_form(view, weekly_token, with_mark=True) }}
@@ -342,7 +357,7 @@
 
       {# ── notes ── #}
       <div class="wk-zone">
-        <div class="wk-zone-head"><span class="nk-caps">隨手筆記</span></div>
+        <div class="wk-zone-head"><span class="wk-h">隨手筆記</span></div>
         {{ notes_form(view, weekly_token) }}
       </div>
 
