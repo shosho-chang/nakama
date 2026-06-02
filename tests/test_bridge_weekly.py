@@ -816,8 +816,11 @@ class TestCalendarSchedule:
         r = client.post(
             "/bridge/weekly/schedule",
             data={
-                "task_slug": "已連動任務", "entry_date": "2026-06-04",
-                "entry_time": "09:00", "pomodoros": "2", "week": WEEK_KEY,
+                "task_slug": "已連動任務",
+                "entry_date": "2026-06-04",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
             },
             follow_redirects=False,
         )
@@ -857,7 +860,8 @@ class TestCalendarReschedule:
         seen = {}
         monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [])
         monkeypatch.setattr(
-            gc, "update_event",
+            gc,
+            "update_event",
             lambda eid, **kw: (seen.update({"eid": eid, **kw}), self._ok(eid))[1],
         )
         r = client.post(
@@ -887,8 +891,11 @@ class TestCalendarReschedule:
         r = client.post(
             "/bridge/weekly/task/已連動任務/reschedule",
             data={
-                "entry_date": "2026-06-04", "entry_time": "09:00", "pomodoros": "2",
-                "expected_token": _task_token(tmp_path), "week": WEEK_KEY,
+                "entry_date": "2026-06-04",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "expected_token": _task_token(tmp_path),
+                "week": WEEK_KEY,
             },
             follow_redirects=False,
         )
@@ -899,8 +906,10 @@ class TestCalendarReschedule:
         r = client.post(
             "/bridge/weekly/task/已連動任務/reschedule",
             data={
-                "entry_date": "2026-06-04", "entry_time": "9am",
-                "pomodoros": "2", "week": WEEK_KEY,
+                "entry_date": "2026-06-04",
+                "entry_time": "9am",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
             },
             follow_redirects=False,
         )
@@ -916,8 +925,10 @@ class TestCalendarReschedule:
         r = client.post(
             "/bridge/weekly/task/已連動任務/reschedule",
             data={
-                "entry_date": "2026-06-06", "entry_time": "09:00",
-                "pomodoros": "2", "week": WEEK_KEY,
+                "entry_date": "2026-06-06",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
             },
             follow_redirects=False,
         )
@@ -957,8 +968,10 @@ class TestCalendarReschedule:
         r = client.post(
             "/bridge/weekly/task/已連動任務/reschedule",
             data={
-                "entry_date": "2026-06-04", "entry_time": "09:00",
-                "pomodoros": "2", "week": WEEK_KEY,
+                "entry_date": "2026-06-04",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
             },
             follow_redirects=False,
         )

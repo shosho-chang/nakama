@@ -217,7 +217,8 @@ def delete_event(event_id: str) -> None:
         if exc.resp is not None and exc.resp.status in (404, 410):
             logger.info(
                 "delete_event(%s): already gone (%s) — treating as deleted",
-                event_id, exc.resp.status,
+                event_id,
+                exc.resp.status,
             )
             return
         raise

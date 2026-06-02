@@ -222,7 +222,8 @@ def reschedule_block(
     if not force:
         try:
             conflicts = [
-                c for c in google_calendar.find_conflicts(scheduled, scheduled_end)
+                c
+                for c in google_calendar.find_conflicts(scheduled, scheduled_end)
                 if c.id != event_id
             ]
         except Exception as exc:  # noqa: BLE001 — outage degrades, never blocks (D2)
@@ -230,7 +231,11 @@ def reschedule_block(
             return ScheduleOutcome(scheduled, scheduled_end, token, UNAVAILABLE, event_id=event_id)
         if conflicts:
             return ScheduleOutcome(
-                scheduled, scheduled_end, token, CONFLICT, event_id=event_id,
+                scheduled,
+                scheduled_end,
+                token,
+                CONFLICT,
+                event_id=event_id,
                 conflicts=tuple(conflicts),
             )
 

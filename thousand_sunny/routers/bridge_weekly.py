@@ -76,8 +76,7 @@ _PLAN_ERRORS = {
     "task": "找不到該任務檔，可能已在 Obsidian 改名或移除。",
     "time": "排程時間格式無效。",
     "already_linked": (
-        "此任務已連動 Google 行事曆——要改期或取消，請到任務頁操作；"
-        "重新排入會產生重複事件，已擋下。"
+        "此任務已連動 Google 行事曆——要改期或取消，請到任務頁操作；重新排入會產生重複事件，已擋下。"
     ),
     # calendar scheduling (ADR-041 41c) — plan is authoritative; calendar is best-effort
     "cal_conflict": (

@@ -167,9 +167,7 @@ def test_reschedule_patches_same_event(vault, monkeypatch):
 
     monkeypatch.setattr(google_calendar, "find_conflicts", lambda s, e: [])
     monkeypatch.setattr(google_calendar, "update_event", fake_update)
-    out = reschedule_block(
-        vault, SLUG, start=datetime(2026, 6, 4, 14, 0), pomodoros=3, title=SLUG
-    )
+    out = reschedule_block(vault, SLUG, start=datetime(2026, 6, 4, 14, 0), pomodoros=3, title=SLUG)
     assert out.calendar_status == CREATED
     assert out.event_id == "evt_live"
     assert seen["event_id"] == "evt_live"  # PATCHed the SAME event (no orphan, D8)
@@ -186,12 +184,11 @@ def test_reschedule_conflict_excludes_own_event(vault, monkeypatch):
     monkeypatch.setattr(google_calendar, "find_conflicts", lambda s, e: [_event("evt_live")])
     updated = {"n": 0}
     monkeypatch.setattr(
-        google_calendar, "update_event",
+        google_calendar,
+        "update_event",
         lambda eid, **kw: (updated.__setitem__("n", 1), _event(eid))[1],
     )
-    out = reschedule_block(
-        vault, SLUG, start=datetime(2026, 6, 3, 9, 15), pomodoros=2, title=SLUG
-    )
+    out = reschedule_block(vault, SLUG, start=datetime(2026, 6, 3, 9, 15), pomodoros=2, title=SLUG)
     assert out.calendar_status == CREATED  # own event filtered → no conflict
     assert updated["n"] == 1
 
@@ -201,12 +198,11 @@ def test_reschedule_real_conflict_blocks_move(vault, monkeypatch):
     monkeypatch.setattr(google_calendar, "find_conflicts", lambda s, e: [_event("someone_else")])
     updated = {"n": 0}
     monkeypatch.setattr(
-        google_calendar, "update_event",
+        google_calendar,
+        "update_event",
         lambda eid, **kw: (updated.__setitem__("n", 1), _event(eid))[1],
     )
-    out = reschedule_block(
-        vault, SLUG, start=datetime(2026, 6, 4, 9, 0), pomodoros=2, title=SLUG
-    )
+    out = reschedule_block(vault, SLUG, start=datetime(2026, 6, 4, 9, 0), pomodoros=2, title=SLUG)
     assert out.calendar_status == CONFLICT
     assert updated["n"] == 0  # event NOT moved
     fm = _fm(vault)
@@ -217,7 +213,8 @@ def test_reschedule_force_skips_conflict_check(vault, monkeypatch):
     _make_linked_task(vault)
     checked = {"n": 0}
     monkeypatch.setattr(
-        google_calendar, "find_conflicts",
+        google_calendar,
+        "find_conflicts",
         lambda s, e: (checked.__setitem__("n", 1), [])[1],
     )
     monkeypatch.setattr(google_calendar, "update_event", lambda eid, **kw: _event(eid))
@@ -236,9 +233,7 @@ def test_reschedule_calendar_outage_degrades(vault, monkeypatch):
         raise RuntimeError("API down")
 
     monkeypatch.setattr(google_calendar, "update_event", boom)
-    out = reschedule_block(
-        vault, SLUG, start=datetime(2026, 6, 4, 9, 0), pomodoros=2, title=SLUG
-    )
+    out = reschedule_block(vault, SLUG, start=datetime(2026, 6, 4, 9, 0), pomodoros=2, title=SLUG)
     assert out.calendar_status == UNAVAILABLE  # never raises (D2)
     fm = _fm(vault)
     assert [e["date"] for e in fm["plan"]] == ["2026-06-04"]  # plan moved regardless
@@ -247,9 +242,7 @@ def test_reschedule_calendar_outage_degrades(vault, monkeypatch):
 def test_reschedule_unlinked_falls_back_to_create(vault, monkeypatch):
     _make_task(vault)  # no calendar_event_id
     monkeypatch.setattr(google_calendar, "create_event", lambda **kw: _event("evt_new"))
-    out = reschedule_block(
-        vault, SLUG, start=datetime(2026, 6, 4, 9, 0), pomodoros=2, title=SLUG
-    )
+    out = reschedule_block(vault, SLUG, start=datetime(2026, 6, 4, 9, 0), pomodoros=2, title=SLUG)
     assert out.calendar_status == CREATED
     assert out.event_id == "evt_new"
     assert _fm(vault)["calendar_event_id"] == "evt_new"
