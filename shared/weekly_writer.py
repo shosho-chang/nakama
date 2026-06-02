@@ -422,7 +422,10 @@ def _replace_section(body: str, heading: str, content: str) -> str:
     """Replace the body of a ``## {heading}`` section with ``content`` (the
     heading line is kept). Appends a new section if the heading is absent.
     Mirrors ``project_writer.update_body_section``."""
-    pat = re.compile(r"(^##\s+" + re.escape(heading) + r"\s*\n)", re.MULTILINE)
+    # NB: match only the heading line + its own trailing newline. ``\s*`` would be
+    # greedy across newlines and swallow the following blank line — landing on the
+    # *next* heading and replacing it. ``[ \t]*`` keeps the match on one line.
+    pat = re.compile(r"(^##[ \t]+" + re.escape(heading) + r"[ \t]*\n)", re.MULTILINE)
     m = pat.search(body)
     block = content.rstrip()
     if not m:

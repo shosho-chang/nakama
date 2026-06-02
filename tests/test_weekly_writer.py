@@ -525,6 +525,32 @@ class TestWriteWeekly:
         assert "改寫過的 highlight" in body2
         assert "出了第一支影片" not in body2
 
+    def test_multi_section_write_preserves_all_headings_in_order(self, vault):
+        """Regression: a greedy ``\\s*\\n`` heading match used to swallow the blank
+        line and replace the NEXT heading — dropping 😔 Lowlight and reordering
+        🙏 感恩. All five sections must survive in template order."""
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        write_weekly(
+            vault,
+            WK,
+            sections={
+                "✨ Highlight": "出片了",
+                "😔 Lowlight": "",  # empty section must not vanish
+                "📚 學到的東西": "",
+                "🙏 感恩": "謝謝團隊",
+                "隨手筆記": "備註",
+            },
+        )
+        body = _read_weekly_body(vault)
+        assert re.findall(r"^## .*$", body, re.MULTILINE) == [
+            "## ✨ Highlight",
+            "## 😔 Lowlight",
+            "## 📚 學到的東西",
+            "## 🙏 感恩",
+            "## 隨手筆記",
+        ]
+        assert "出片了" in body and "謝謝團隊" in body and "備註" in body
+
     def test_inserts_missing_section_heading(self, vault):
         # create a file with no body sections, then write to a brand-new heading
         path = vault / WEEKLY_DIR / f"{WK}.md"

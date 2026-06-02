@@ -31,11 +31,14 @@ from shared.weekly_indexer import (
 )
 from shared.weekly_writer import (
     WeekendReasonRequired,
+    WeeklyConflictError,
     WeeklyWriteError,
     add_plan_entry,
     log_time_entry,
     remove_plan_entry,
     sync_scheduled_to_next_plan,
+    weekly_file_token,
+    write_weekly,
 )
 from thousand_sunny.auth import check_auth
 
@@ -65,6 +68,20 @@ _PLAN_ERRORS = {
     "pomodoros": "番茄數需介於 1–20。",
     "date": "排程日期格式無效。",
     "task": "找不到該任務檔，可能已在 Obsidian 改名或移除。",
+    # weekly-file (Journals/Weekly 🟡) write errors — ADR-040 Slice 2
+    "conflict": (
+        "週檔在你開啟頁面後被改動（Obsidian / Syncthing / 另一分頁），"
+        "已擋下這次覆寫——請重新整理頁面再存。"
+    ),
+    "write": "寫入週檔失敗，可能被其他程式鎖定——請稍後重試。",
+}
+
+_SAVED_MSGS = {
+    "review": "✓ 已存週回顧。",
+    "top3": "✓ 已更新本週三大要事。",
+    "targets": "✓ 已更新本週目標。",
+    "notes": "✓ 已存隨手筆記。",
+    "status": "✓ 已更新本週狀態。",
 }
 
 
@@ -73,6 +90,7 @@ async def weekly_landing(
     request: Request,
     week: str | None = Query(None),
     err: str | None = Query(None),
+    saved: str | None = Query(None),
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
@@ -82,7 +100,8 @@ async def weekly_landing(
     if wk is None:
         wk = week_for_date(today_taipei())
 
-    idx = WeeklyIndexer(get_vault_path())
+    vault = get_vault_path()
+    idx = WeeklyIndexer(vault)
     try:
         view = idx.view(wk)
     except Exception:  # noqa: BLE001 — surface an empty-but-rendered page, never 500 the dashboard
@@ -94,8 +113,11 @@ async def weekly_landing(
         "weekly.html",
         {
             "view": view,
+            # If-Match token for the weekly-file forms (ADR-040 Slice 2)
+            "weekly_token": weekly_file_token(vault, wk.file_key),
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _PLAN_ERRORS.get(err) if err else None,
+            "saved_msg": _SAVED_MSGS.get(saved) if saved else None,
         },
     )
 
@@ -195,6 +217,168 @@ async def weekly_sync_scheduled(
         logger.warning("weekly_sync_scheduled: %s", exc)
         return _back(wk_key, "task")
     return _back(wk_key)
+
+
+# ── Weekly-file 週交接 writes (Journals/Weekly 🟡 — ADR-040 A6 composable steps) ─
+# Each step persists ALONE (review / top3 / targets / notes / status); none blocks
+# another. The Bridge only persists 修修's own intent + verbatim prose (A1). Every
+# write carries an If-Match token; a stale token → conflict banner, never a silent
+# overwrite of an Obsidian/Syncthing edit.
+
+_REVIEW_FIELDS = {
+    "highlight": "✨ Highlight",
+    "lowlight": "😔 Lowlight",
+    "learned": "📚 學到的東西",
+    "gratitude": "🙏 感恩",
+}
+
+
+def _safe_week(week: str | None):
+    wk = week_from_key(week) if week else None
+    if wk is None:
+        wk = week_for_date(today_taipei())
+    return wk
+
+
+def _weekly_back(week_key: str, *, err: str | None = None, saved: str | None = None):
+    url = f"/bridge/weekly?week={week_key}"
+    if err:
+        url += f"&err={err}"
+    elif saved:
+        url += f"&saved={saved}"
+    return RedirectResponse(url, status_code=303)
+
+
+def _parse_links(raw: str) -> list[str]:
+    """Split a textarea of one-per-line (or comma-separated) entries into a list
+    of ``[[wikilink]]`` strings — 修修 may type bare names or full wikilinks."""
+    import re as _re
+
+    out: list[str] = []
+    for part in _re.split(r"[\n,]", raw or ""):
+        s = part.strip()
+        if not s:
+            continue
+        inner = s[2:-2].strip() if s.startswith("[[") and s.endswith("]]") else s
+        out.append(f"[[{inner}]]")
+    return out
+
+
+def _write_weekly_or_back(wk, *, frontmatter=None, sections=None, expected_token, saved):
+    """Run one composable weekly-file write; map writer errors to ?err banners."""
+    try:
+        write_weekly(
+            get_vault_path(),
+            wk.file_key,
+            start_date=wk.start,
+            end_date=wk.end,
+            frontmatter=frontmatter,
+            sections=sections,
+            expected_token=expected_token,
+        )
+    except WeeklyConflictError:
+        return _weekly_back(wk.file_key, err="conflict")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly-file write failed (%s): %s", saved, exc)
+        return _weekly_back(wk.file_key, err="write")
+    return _weekly_back(wk.file_key, saved=saved)
+
+
+@page_router.post("/weekly/review")
+async def weekly_review_save(
+    week: str = Form(""),
+    expected_token: str = Form(""),
+    highlight: str = Form(""),
+    lowlight: str = Form(""),
+    learned: str = Form(""),
+    gratitude: str = Form(""),
+    notes: str = Form(""),
+    next3: str = Form(""),
+    mark_reviewed: int = Form(0),
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk = _safe_week(week)
+    sections = {
+        "✨ Highlight": highlight.strip(),
+        "😔 Lowlight": lowlight.strip(),
+        "📚 學到的東西": learned.strip(),
+        "🙏 感恩": gratitude.strip(),
+        "隨手筆記": notes.strip(),
+    }
+    fm: dict = {"next3": _parse_links(next3)}
+    if mark_reviewed:  # honest FSM (A6): only flip on explicit completion
+        fm["status"] = "reviewed"
+    return _write_weekly_or_back(
+        wk, frontmatter=fm, sections=sections, expected_token=expected_token, saved="review"
+    )
+
+
+@page_router.post("/weekly/notes")
+async def weekly_notes_save(
+    week: str = Form(""),
+    expected_token: str = Form(""),
+    notes: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk = _safe_week(week)
+    return _write_weekly_or_back(
+        wk, sections={"隨手筆記": notes.strip()}, expected_token=expected_token, saved="notes"
+    )
+
+
+@page_router.post("/weekly/top3")
+async def weekly_top3_save(
+    week: str = Form(""),
+    expected_token: str = Form(""),
+    top3: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk = _safe_week(week)
+    return _write_weekly_or_back(
+        wk, frontmatter={"top3": _parse_links(top3)}, expected_token=expected_token, saved="top3"
+    )
+
+
+@page_router.post("/weekly/targets")
+async def weekly_targets_save(
+    week: str = Form(""),
+    expected_token: str = Form(""),
+    pomodoro: int = Form(0),
+    ufo: int = Form(0),
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk = _safe_week(week)
+    targets: dict = {}
+    if pomodoro > 0:
+        targets["pomodoro"] = pomodoro
+    if ufo > 0:
+        targets["ufo"] = ufo
+    return _write_weekly_or_back(
+        wk, frontmatter={"targets": targets}, expected_token=expected_token, saved="targets"
+    )
+
+
+@page_router.post("/weekly/status")
+async def weekly_status_save(
+    week: str = Form(""),
+    expected_token: str = Form(""),
+    status: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk = _safe_week(week)
+    return _write_weekly_or_back(
+        wk, frontmatter={"status": status}, expected_token=expected_token, saved="status"
+    )
 
 
 # ── Task detail page + pomodoro timer (ADR-039 E) ────────────────────────────

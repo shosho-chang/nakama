@@ -56,6 +56,20 @@ def _time_entries(tmp_path) -> list[dict]:
     return [dict(e) for e in (fm.get("timeEntries") or [])]
 
 
+def _weekly_file(tmp_path):
+    return tmp_path / "Journals" / "Weekly" / f"{WEEK_KEY}.md"
+
+
+def _weekly_fm(tmp_path) -> dict:
+    raw = _weekly_file(tmp_path).read_text(encoding="utf-8")
+    return yaml.safe_load(raw.split("---", 2)[1]) or {}
+
+
+def _weekly_body(tmp_path) -> str:
+    raw = _weekly_file(tmp_path).read_text(encoding="utf-8")
+    return raw.split("---", 2)[2]
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
@@ -277,9 +291,7 @@ class TestTaskDetail:
         assert "回週看板" in body
 
     def test_get_unknown_task_redirects(self, client):
-        r = client.get(
-            f"/bridge/weekly/task/不存在?week={WEEK_KEY}", follow_redirects=False
-        )
+        r = client.get(f"/bridge/weekly/task/不存在?week={WEEK_KEY}", follow_redirects=False)
         assert r.status_code == 303
         assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=task"
 
@@ -348,6 +360,90 @@ class TestTaskDetail:
             follow_redirects=False,
         )
         assert "err=log" in r.headers["location"]
+
+
+class TestWeeklyFileWrites:
+    """ADR-040 Slice 2 — the Journals/Weekly 🟡 composable write routes."""
+
+    def test_top3_creates_file_and_persists(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/top3",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": "肌酸的妙用\n[[寫電子報]]"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&saved=top3"
+        fm = _weekly_fm(tmp_path)
+        assert fm["top3"] == ["[[肌酸的妙用]]", "[[寫電子報]]"]  # bare names wrapped
+        assert fm["status"] == "planning"  # created from template
+
+    def test_targets_persist_only_positive(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/targets",
+            data={"week": WEEK_KEY, "expected_token": "", "pomodoro": "35", "ufo": "0"},
+            follow_redirects=False,
+        )
+        assert _weekly_fm(tmp_path)["targets"] == {"pomodoro": 35}
+
+    def test_review_writes_prose_and_next3(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/review",
+            data={
+                "week": WEEK_KEY,
+                "expected_token": "",
+                "highlight": "出片了 🎉",
+                "next3": "[[下週要事]]",
+                "mark_reviewed": "1",
+            },
+            follow_redirects=False,
+        )
+        fm = _weekly_fm(tmp_path)
+        assert fm["status"] == "reviewed"
+        assert fm["next3"] == ["[[下週要事]]"]
+        assert "出片了 🎉" in _weekly_body(tmp_path)
+
+    def test_notes_persist(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/notes",
+            data={"week": WEEK_KEY, "expected_token": "", "notes": "下週試 75 分 block"},
+            follow_redirects=False,
+        )
+        assert "下週試 75 分 block" in _weekly_body(tmp_path)
+
+    def test_status_advances(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/status",
+            data={"week": WEEK_KEY, "expected_token": "", "status": "active"},
+            follow_redirects=False,
+        )
+        assert _weekly_fm(tmp_path)["status"] == "active"
+
+    def test_stale_token_is_conflict(self, client, tmp_path):
+        # create the file, then post with the now-stale empty token → conflict
+        client.post(
+            "/bridge/weekly/top3",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": "A"},
+            follow_redirects=False,
+        )
+        r = client.post(
+            "/bridge/weekly/top3",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": "B"},
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=conflict"
+        assert _weekly_fm(tmp_path)["top3"] == ["[[A]]"]  # B rejected
+
+    def test_active_week_renders_plan_and_review_forms(self, client, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        assert 'action="/bridge/weekly/top3"' in body
+        assert 'action="/bridge/weekly/targets"' in body
+        assert 'action="/bridge/weekly/review"' in body
+        assert 'action="/bridge/weekly/notes"' in body
+        assert 'action="/bridge/weekly/status"' in body
+        assert 'name="expected_token"' in body
 
 
 class TestAuthGate:
