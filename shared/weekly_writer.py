@@ -530,9 +530,7 @@ def unschedule_task_block(
     block_day = _scheduled_date(fm.get("scheduled"))
     if block_day is not None:
         entries = _plan_list(fm)
-        fm["plan"] = [
-            e for e in entries if not (_entry_date(e) == block_day and not e.get("done"))
-        ]
+        fm["plan"] = [e for e in entries if not (_entry_date(e) == block_day and not e.get("done"))]
     for k in ("scheduled", "scheduled_end", "calendar_event_id"):
         fm.pop(k, None)
     _write_task(path, fm, body)
