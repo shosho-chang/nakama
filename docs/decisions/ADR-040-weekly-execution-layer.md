@@ -1,6 +1,6 @@
 # ADR-040: Weekly Dashboard execution layer — timer/UFO, top-3 granularity, task-as-workspace (extends ADR-039)
 
-**Status:** Proposed (v2 — incorporates 3-way panel review, 2026-06-02). Pending 修修 sign-off + one narrow red-line reclassification (`Journals/Weekly/` 🔒→🟡). Slice E (task-page timer) already shipped on branch `feat/adr-039-weekly-redesign` (commit `870136a`); some E-slice semantics are corrected here and land as Slice-2 fixups.
+**Status:** Accepted (v2 — incorporates 3-way panel review, 2026-06-02). 修修 signed the escalations + the narrow red-line reclassification (`Journals/Weekly/` 🔒→🟡, vault `CLAUDE.md` diff applied 2026-06-02). Slice E (task-page timer) shipped (`870136a`); Slice 2 (this ADR's writer + 週交接 + A2/aggregator fixups) shipped on branch `feat/adr-039-weekly-redesign`.
 
 **Extends:** ADR-039 (LifeOS Weekly Dashboard — Tier B). Refines its D5/D6/D7/D8; does not supersede it.
 
@@ -134,7 +134,7 @@ Daily habit logging is **out of scope for ADR-040** (Codex §6, Gemini verdict).
 | Slice | Scope | Red line | Status |
 |---|---|---|---|
 | **E** | Task-page 25/75 timer → `timeEntries[]`, UFO, accuracy, `top3` via `weekly_priority` stopgap | none (TaskNotes 🟡) | **Done** — `870136a` (A2/accuracy fixups land in Slice 2) |
-| **2** | `weekly_writer` + 週交接 composable Plan/Review + `top3` (project\|task, one scoring rule) + `targets` in weekly file + reconcile `weekly_priority` + A2 evidence schema + aggregator hardening | **`Journals/Weekly/` 🔒→🟡** | Pending sign-off + vault `CLAUDE.md` diff |
+| **2** | `weekly_writer.write_weekly` (allowlist + named prose + If-Match) + 週交接 composable Plan/Review routes/UI + `top3` (project\|task, one scoring rule, CJK resolver) + `targets` in weekly file + `weekly_priority` fallback + A2 evidence schema + derived UFO + aggregator hardening | **`Journals/Weekly/` 🔒→🟡** | **Done** — vault `CLAUDE.md` diff applied; browser-UAT'd |
 | **W** | Task/Project pages → scoped editable body + Obsidian deep-link (A7) | none (TaskNotes/Projects 🟡) | Planned |
 | **D** | Daily habit logging — single-record model (own ADR) | **`Journals/Daily/` 🔒→🟡** (separate decision) | Deferred to own ADR |
 
