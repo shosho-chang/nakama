@@ -70,6 +70,12 @@ def _weekly_body(tmp_path) -> str:
     return raw.split("---", 2)[2]
 
 
+def _weekly_token(tmp_path) -> str:
+    from shared.weekly_writer import weekly_file_token
+
+    return weekly_file_token(tmp_path, WEEK_KEY)
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
@@ -477,6 +483,65 @@ class TestWeeklyFileWrites:
         fm = _weekly_fm(tmp_path)
         assert fm["status"] == "planning"  # created from template, not advanced
         assert fm["targets"] == {}  # ufo 0 → empty
+
+    # ── PR#811 audit regressions ────────────────────────────────────────────
+    def test_review_save_preserves_existing_notes(self, client, tmp_path):
+        """B1: 隨手筆記 has its own form; a review save must NOT blank it."""
+        client.post(
+            "/bridge/weekly/notes",
+            data={"week": WEEK_KEY, "expected_token": "", "notes": "別把我清掉"},
+            follow_redirects=False,
+        )
+        tok = _weekly_token(tmp_path)
+        client.post(
+            "/bridge/weekly/review",
+            data={"week": WEEK_KEY, "expected_token": tok, "highlight": "好的一刻"},
+            follow_redirects=False,
+        )
+        body = _weekly_body(tmp_path)
+        assert "別把我清掉" in body  # notes survived the review save
+        assert "好的一刻" in body
+
+    def test_plan_save_blank_ufo_does_not_persist_default(self, client, tmp_path):
+        """B2: a blank UFO field must not write the machine default as intent."""
+        client.post(
+            "/bridge/weekly/plan-save",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": ["測試任務"], "ufo": ""},
+            follow_redirects=False,
+        )
+        assert _weekly_fm(tmp_path)["targets"] == {}  # no targets.ufo:5 leaked
+
+    def test_plan_save_ufo_merges_keeps_pomodoro(self, client, tmp_path):
+        """B2: saving the 🤩 goal merges — it must not wipe a stored 🍅 goal."""
+        client.post(
+            "/bridge/weekly/targets",
+            data={"week": WEEK_KEY, "expected_token": "", "pomodoro": "30", "ufo": "0"},
+            follow_redirects=False,
+        )
+        tok = _weekly_token(tmp_path)
+        client.post(
+            "/bridge/weekly/plan-save",
+            data={"week": WEEK_KEY, "expected_token": tok, "top3": ["測試任務"], "ufo": "4"},
+            follow_redirects=False,
+        )
+        assert _weekly_fm(tmp_path)["targets"] == {"pomodoro": 30, "ufo": 4}
+
+    def test_token_is_content_hash_stable_across_reads(self, client, tmp_path):
+        """F3: the If-Match token is a content hash — same bytes → same token
+        (immune to mtime resets), different bytes → different token."""
+        client.post(
+            "/bridge/weekly/top3",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": "A"},
+            follow_redirects=False,
+        )
+        t1 = _weekly_token(tmp_path)
+        assert t1 and t1 == _weekly_token(tmp_path)  # stable, content-derived
+        client.post(
+            "/bridge/weekly/notes",
+            data={"week": WEEK_KEY, "expected_token": t1, "notes": "changed"},
+            follow_redirects=False,
+        )
+        assert _weekly_token(tmp_path) != t1  # content changed → token changed
 
 
 class TestAuthGate:

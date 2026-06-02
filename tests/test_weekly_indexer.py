@@ -301,13 +301,28 @@ def test_top3_falls_back_to_weekly_priority_without_file(vault, monkeypatch):
 
 
 def test_full_width_colon_project_resolves(tmp_path, monkeypatch):
-    """Gemini §1: [[專案：子題]] resolves against a Projects/專案:子題.md file."""
+    """Audit §4: the file uses the full-width colon (the only form legal in a
+    Windows filename, so the real synced form); BOTH the full-width and the
+    ASCII-colon wikilink spellings resolve to it via _link_key normalisation."""
     monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
     (tmp_path / "Projects").mkdir(parents=True)
-    (tmp_path / "Projects" / "專案:子題.md").write_text("---\n---\n", encoding="utf-8")
-    _weekly(tmp_path, "2026-05-31", {"status": "active", "top3": ["[[專案：子題]]"]})
+    (tmp_path / "Projects" / "專案：子題.md").write_text("---\n---\n", encoding="utf-8")
+    for link in ("[[專案：子題]]", "[[專案:子題]]"):
+        _weekly(tmp_path, "2026-05-31", {"status": "active", "top3": [link]})
+        v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+        assert v.top3[0].kind == "project", f"{link!r} should resolve as a project"
+
+
+def test_path_style_wikilink_resolves(tmp_path, monkeypatch):
+    """Audit F2: [[Projects/專案]] (path-style, common for disambiguation)
+    resolves to the bare 專案 project rather than rendering unresolved."""
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    (tmp_path / "Projects").mkdir(parents=True)
+    (tmp_path / "Projects" / "專案.md").write_text("---\n---\n", encoding="utf-8")
+    _weekly(tmp_path, "2026-05-31", {"status": "active", "top3": ["[[Projects/專案]]"]})
     v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
     assert v.top3[0].kind == "project"
+    assert v.top3[0].title == "專案"
 
 
 def test_targets_read_from_weekly_file_drive_hero_and_rate(vault, monkeypatch):

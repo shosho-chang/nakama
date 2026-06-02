@@ -165,10 +165,15 @@ def _strip_wikilink(v: object) -> str:
 
 
 def _link_key(v: str) -> str:
-    """Normalise a wikilink target / filename for tolerant matching (Gemini §1):
-    NFC, trimmed, full-width colon → ASCII colon. Lets ``[[專案：子題]]`` resolve
-    against a ``專案:子題.md`` file (Obsidian is flexible about both)."""
-    return unicodedata.normalize("NFC", v).strip().replace("：", ":")
+    """Normalise a wikilink target / filename to a canonical match key (PR#811
+    audit §4): drop a ``#heading`` / ``^block`` suffix, take the last path
+    segment (``[[Projects/專案]]`` → ``專案``), then NFC-normalise, trim, and map
+    the full-width colon ``：`` → ASCII ``:`` (Obsidian/Windows store one or the
+    other). NFC on both sides also reconciles macOS-NFD-synced filenames."""
+    v = unicodedata.normalize("NFC", v).strip()
+    v = re.split(r"[#^]", v, maxsplit=1)[0]  # drop heading / block ref
+    v = v.replace("\\", "/").rsplit("/", 1)[-1]  # last path segment
+    return v.strip().replace("：", ":")
 
 
 def _entry_minutes(entry: dict) -> float:
@@ -357,6 +362,8 @@ class WeeklyView:
     rate_pct: int
     ufo_count: int  # 75-min "deep" sessions logged this week (🤩)
     ufo_target: int  # weekly UFO goal — targets.ufo (A3) or the default constant
+    ufo_target_raw: Optional[int]  # the *stored* targets.ufo, or None if unset —
+    # the plan form binds to this so a blank field is never the machine default
     pomodoro_target: int  # weekly 🍅 goal — targets.pomodoro (A3); 0 = unset
     pomodoro_goal: int  # the hero denominator: pomodoro_target if set, else planned
     top3: tuple[Top3Item, ...]  # this week's ≤3 resolved 三大要事 (hero strip)
@@ -578,6 +585,16 @@ class WeeklyIndexer:
         opts += [{"group": "專案", "value": name, "label": name} for name in sorted(projects)]
         return opts
 
+    def _project_keys(self) -> set[str]:
+        """Normalised match keys for every project file under ``Projects/``.
+        Membership replaces the old per-target ``.exists()`` probe, which failed
+        on a macOS-NFD-synced filename vs an NFC path on the Linux server
+        (PR#811 audit §4 — `_link_key` NFC-normalises both sides here)."""
+        pdir = self._root / PROJECTS_DIR
+        if not pdir.exists():
+            return set()
+        return {_link_key(p.stem) for p in pdir.glob("*.md")}
+
     def _resolve_top3(
         self, raws: tuple[str, ...], all_tasks: list[WeeklyTask]
     ) -> tuple[Top3Item, ...]:
@@ -587,7 +604,8 @@ class WeeklyIndexer:
         - **project** (a ``projects:`` value on some task, or a ``Projects/{name}.md``
           file) → done ratio = done tasks / total tasks in it; done iff all done.
         - otherwise **unresolved** — surfaced visibly, never dropped (Gemini §1).
-        Matching is CJK-tolerant via :func:`_link_key`.
+        Matching is CJK-tolerant via :func:`_link_key` (NFC + full-width colon +
+        path-segment + heading-strip).
         """
         by_slug = {_link_key(t.slug): t for t in all_tasks}
         by_title = {_link_key(t.title): t for t in all_tasks}
@@ -595,6 +613,7 @@ class WeeklyIndexer:
         for t in all_tasks:
             if t.project:
                 proj_tasks.setdefault(_link_key(t.project), []).append(t)
+        file_proj_keys = self._project_keys()
 
         items: list[Top3Item] = []
         for raw in raws[:3]:
@@ -609,13 +628,7 @@ class WeeklyIndexer:
                 )
                 continue
             ptasks = proj_tasks.get(key)
-            # Obsidian/Windows store a colon as full-width 「：」 (ASCII ':' is illegal
-            # in Win filenames); try both variants so either spelling resolves.
-            candidates = {target, target.replace("：", ":"), target.replace(":", "：")}
-            is_project_file = any(
-                (self._root / PROJECTS_DIR / f"{c}.md").exists() for c in candidates
-            )
-            if ptasks is not None or is_project_file:
+            if ptasks is not None or key in file_proj_keys:
                 ptasks = ptasks or []
                 total = len(ptasks)
                 done_n = sum(1 for t in ptasks if t.done)
@@ -623,7 +636,7 @@ class WeeklyIndexer:
                     Top3Item(
                         raw=target,
                         kind="project",
-                        title=target,
+                        title=key,
                         done=total > 0 and done_n == total,
                         ratio_done=done_n,
                         ratio_total=total,
@@ -701,7 +714,9 @@ class WeeklyIndexer:
         # targets (A3): 修修-set weekly goals from the weekly file; UFO falls back
         # to the default constant, 🍅 goal falls back to the planned-sum.
         targets = review.targets if review is not None else {}
-        ufo_target = targets.get("ufo") or UFO_WEEKLY_TARGET
+        _ufo_raw = targets.get("ufo")
+        ufo_target_raw = _ufo_raw if isinstance(_ufo_raw, int) and _ufo_raw > 0 else None
+        ufo_target = ufo_target_raw or UFO_WEEKLY_TARGET
         pomodoro_target = targets.get("pomodoro") or 0
         # 🍅 weekly goal = Σ this week's scheduled task pomodoros (auto-sum); an
         # explicit targets.pomodoro still wins if a file carries one (back-compat).
@@ -734,6 +749,7 @@ class WeeklyIndexer:
             rate_pct=rate,
             ufo_count=ufo_count,
             ufo_target=ufo_target,
+            ufo_target_raw=ufo_target_raw,
             pomodoro_target=pomodoro_target,
             pomodoro_goal=pomodoro_goal,
             top3=top3,

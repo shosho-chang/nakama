@@ -290,7 +290,6 @@ async def weekly_review_save(
     lowlight: str = Form(""),
     learned: str = Form(""),
     gratitude: str = Form(""),
-    notes: str = Form(""),
     next3: list[str] = Form(default=[]),  # ≤3 dropdown selections for next week
     mark_reviewed: int = Form(0),
     nakama_auth: str | None = Cookie(None),
@@ -298,12 +297,14 @@ async def weekly_review_save(
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk = _safe_week(week)
+    # NB: 隨手筆記 is owned by its OWN form (/weekly/notes), not this one — the
+    # review form has no notes field. Writing it here would blank existing notes
+    # on every review save (PR#811 audit B1).
     sections = {
         "✨ Highlight": highlight.strip(),
         "😔 Lowlight": lowlight.strip(),
         "📚 學到的東西": learned.strip(),
         "🙏 感恩": gratitude.strip(),
-        "隨手筆記": notes.strip(),
     }
     fm: dict = {"next3": _links_from_list(next3)}
     if mark_reviewed:  # honest FSM (A6): only flip on explicit completion
@@ -372,7 +373,7 @@ async def weekly_plan_save(
     week: str = Form(""),
     expected_token: str = Form(""),
     top3: list[str] = Form(default=[]),  # ≤3 dropdown selections
-    ufo: int = Form(0),  # 🤩 weekly target (🍅 goal is the auto plan-sum)
+    ufo: str = Form(""),  # 🤩 weekly target; blank = leave as-is (🍅 goal auto-sums)
     advance: int = Form(0),  # checkbox: planning → active (honest FSM, A6)
     nakama_auth: str | None = Cookie(None),
 ):
@@ -381,7 +382,13 @@ async def weekly_plan_save(
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk = _safe_week(week)
-    fm: dict = {"top3": _links_from_list(top3), "targets": ({"ufo": ufo} if ufo > 0 else {})}
+    fm: dict = {"top3": _links_from_list(top3)}
+    # Distinguish "field left blank" (don't touch the stored target — never write
+    # the machine-default 5 as if it were 修修's intent) from an explicit number.
+    # write_weekly merges targets, so this never wipes a stored 🍅 goal (audit B2).
+    ufo_n = int(ufo) if ufo.strip().isdigit() else 0
+    if ufo_n > 0:
+        fm["targets"] = {"ufo": ufo_n}
     if advance:
         fm["status"] = "active"
     return _write_weekly_or_back(wk, frontmatter=fm, expected_token=expected_token, saved="plan")

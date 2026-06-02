@@ -60,6 +60,7 @@
 {% macro _sec(view, heading) %}{{ view.review.sections.get(heading, '') if view.review else '' }}{% endmacro %}
 
 {% macro review_form(view, weekly_token, with_mark=False) %}
+  {% set st = view.review.status if view.review else 'planning' %}
   <form class="wk-wf wk-review-form" method="post" action="/bridge/weekly/review">
     <input type="hidden" name="week" value="{{ view.week.file_key }}">
     <input type="hidden" name="expected_token" value="{{ weekly_token }}">
@@ -95,7 +96,9 @@
     </div>
     <div class="wk-wf-actions">
       <button class="sho-btn" type="submit">存週回顧</button>
-      {% if with_mark %}
+      {# only an *active* week can be marked reviewed — guards the FSM order so a
+         planning week can't jump straight to reviewed (PR#811 audit F4). #}
+      {% if with_mark and st == 'active' %}
         <label class="wk-check"><input type="checkbox" name="mark_reviewed" value="1">
           標記本週已回顧（status → reviewed）</label>
       {% endif %}
@@ -142,11 +145,17 @@
 
       <div class="wk-plan-row">
         <label class="wk-num-field"><span aria-hidden="true">🤩</span> 超專注週目標
-          <input type="number" name="ufo" min="0" max="50" value="{{ view.ufo_target }}"></label>
-        {% if st != 'active' %}
+          {# bound to the *stored* target, blank when unset — never pre-fill the
+             machine default so a blank save can't persist it as intent (audit B2) #}
+          <input type="number" name="ufo" min="0" max="50"
+                 value="{{ view.ufo_target_raw if view.ufo_target_raw else '' }}"
+                 placeholder="預設 {{ view.ufo_target }}"></label>
+        {% if st == 'planning' %}
           <label class="wk-check"><input type="checkbox" name="advance" value="1"> 完成規劃，開始本週</label>
-        {% else %}
+        {% elif st == 'active' %}
           <span class="wk-mut">本週進行中</span>
+        {% else %}
+          <span class="wk-mut">本週已回顧</span>
         {% endif %}
         <button class="sho-btn" type="submit">儲存本週計畫</button>
       </div>

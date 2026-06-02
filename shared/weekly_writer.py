@@ -12,6 +12,7 @@ All writes are **atomic** via tmp-file + ``os.replace`` (same pattern as
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import tempfile
@@ -113,7 +114,11 @@ def _atomic_write(path: Path, content: str) -> None:
                         f"（可能是 Obsidian / Syncthing / 防毒在 sync）。"
                         f"關掉該檔或暫停 sync 再重試。Original: {e}"
                     ) from e
-                time.sleep(0.15 * (attempt + 1))
+                # Short backoff (~50/100ms): this is on the synchronous save
+                # request path, so a long hang reads as a broken UI — prefer a
+                # fast failure + retry banner over a multi-hundred-ms freeze
+                # (Gemini PR#811 audit §3).
+                time.sleep(0.05 * (attempt + 1))
     except Exception:
         try:
             os.unlink(tmp_path_str)
@@ -342,8 +347,10 @@ def log_time_entry(
 # ADR-040 A1: the Bridge persists 修修's own INTENT (top3/next3/targets/status) +
 # his verbatim PROSE (review answers, 隨手筆記); it never authors content, and
 # observations (🍅/UFO/rate) are computed-on-read, never written here. Only the
-# allowlisted frontmatter keys + named ## prose sections are touched; anything
-# else 修修 wrote in Obsidian is preserved verbatim.
+# allowlisted frontmatter keys + named ## prose sections are touched; the body
+# prose 修修 wrote is byte-preserved, and non-allowlisted frontmatter keys are
+# preserved semantically (re-serialised by PyYAML — inline comments / quoting in
+# the frontmatter block are not retained).
 
 # The ONLY machine-maintained weekly-file frontmatter keys (ADR-040 A3; updates
 # ADR-039 D5's allowlist).
@@ -360,22 +367,32 @@ def _weekly_path(vault_root: Path, file_key: str) -> Path:
     return Path(vault_root) / WEEKLY_DIR / f"{file_key}.md"
 
 
+def _content_hash(path: Path) -> str:
+    """SHA-1 of the file's bytes, or ``""`` when absent. Used as the If-Match
+    token (Codex+Gemini PR#811 audit): a content hash is immune to mtime resets
+    by git/backup/Syncthing and shrinks the TOCTOU window vs a bare mtime."""
+    if not path.exists():
+        return ""
+    return hashlib.sha1(path.read_bytes()).hexdigest()
+
+
 def weekly_file_token(vault_root: Path, file_key: str) -> str:
-    """An If-Match token for the weekly file: its mtime in ns, or ``""`` when the
-    file does not exist yet (a first Weekly Plan creates it). The page embeds this
-    in its forms; :func:`write_weekly` rejects a stale token."""
-    p = _weekly_path(vault_root, file_key)
-    return f"{p.stat().st_mtime_ns}" if p.exists() else ""
+    """An If-Match token for the weekly file: a SHA-1 of its current bytes, or
+    ``""`` when the file does not exist yet (a first Weekly Plan creates it). The
+    page embeds this in its forms; :func:`write_weekly` rejects a stale token."""
+    return _content_hash(_weekly_path(vault_root, file_key))
 
 
 def _check_token(path: Path, expected_token: Optional[str]) -> None:
-    """Raise :class:`WeeklyConflictError` if the file's mtime drifted since the
+    """Raise :class:`WeeklyConflictError` if the file's content drifted since the
     page read it. ``expected_token is None`` → caller opted out of the check
     (tests / programmatic). ``""`` means "expected absent"; conflict if it now
-    exists."""
+    exists. NB: this is a guard, not a transaction — a write landing between this
+    check and the rename is still possible, but the content hash makes the common
+    Obsidian/Syncthing drift cases reliably detected."""
     if expected_token is None:
         return
-    current = f"{path.stat().st_mtime_ns}" if path.exists() else ""
+    current = _content_hash(path)
     if current != expected_token:
         raise WeeklyConflictError(
             f"週檔 {path.name} 在你開啟頁面後被改動"
@@ -463,8 +480,13 @@ def write_weekly(
     ``project_writer.update_research_block``).
 
     - ``frontmatter`` — allowlisted keys (:data:`WEEKLY_FRONTMATTER_KEYS`) to
-      merge; any other key raises (the machine never touches 修修's hand-written
-      frontmatter). A ``status`` value is checked against :data:`WEEKLY_STATUSES`.
+      set; any other key raises (the machine never *adds* keys outside the
+      allowlist). ``targets`` is **merged** into the existing dict (so saving the
+      🤩 goal never drops a stored 🍅 goal — PR#811 audit); other keys replace.
+      A ``status`` value is checked against :data:`WEEKLY_STATUSES`. NB: keys
+      outside the allowlist that 修修 hand-wrote are preserved *semantically* but
+      re-serialised by PyYAML — inline comments / quoting / flow style in the
+      frontmatter block are not retained (the body prose is byte-preserved).
     - ``sections`` — ``{heading: prose}`` to replace/insert as ``## heading``
       blocks (verbatim human prose — A1).
     - ``start_date``/``end_date`` — required only when the file does **not** exist
@@ -493,7 +515,18 @@ def write_weekly(
 
     if frontmatter:
         for k, v in frontmatter.items():
-            fm[k] = v
+            if k == "targets" and isinstance(v, dict):
+                # Merge, don't replace: a partial targets payload (e.g. just the
+                # 🤩 goal from the plan panel) must not wipe a stored 🍅 goal
+                # (PR#811 audit B2). To *clear* a target, callers omit it from
+                # the payload and edit the file in Obsidian — there is no UI for
+                # clearing, by design (machine never authors intent).
+                cur = fm.get("targets")
+                merged = dict(cur) if isinstance(cur, dict) else {}
+                merged.update(v)
+                fm["targets"] = merged
+            else:
+                fm[k] = v
     if sections:
         for heading, content in sections.items():
             body = _replace_section(body, heading, content)

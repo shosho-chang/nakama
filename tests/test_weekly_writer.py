@@ -498,6 +498,14 @@ class TestWriteWeekly:
         assert fm["top3"] == ["[[肌酸的妙用]]", "[[電子報]]"]
         assert fm["targets"] == {"pomodoro": 35, "ufo": 5}
 
+    def test_targets_merge_not_replace(self, vault):
+        """PR#811 audit B2: a partial targets payload merges into the stored
+        dict — saving only ufo must not drop a stored pomodoro goal."""
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        write_weekly(vault, WK, frontmatter={"targets": {"pomodoro": 30}})
+        write_weekly(vault, WK, frontmatter={"targets": {"ufo": 4}})
+        assert _read_weekly_fm(vault)["targets"] == {"pomodoro": 30, "ufo": 4}
+
     def test_rejects_non_allowlisted_frontmatter(self, vault):
         write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
         with pytest.raises(WeeklyWriteError):
@@ -594,7 +602,7 @@ class TestWriteWeekly:
         write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
         token = weekly_file_token(vault, WK)
         new_token = write_weekly(vault, WK, frontmatter={"status": "active"}, expected_token=token)
-        assert new_token != token  # mtime advanced
+        assert new_token != token  # content changed → hash changed
         assert _read_weekly_fm(vault)["status"] == "active"
 
     def test_token_empty_when_absent(self, vault):
