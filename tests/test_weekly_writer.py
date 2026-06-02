@@ -19,10 +19,14 @@ from shared.weekly_writer import (
     add_plan_entry,
     log_time_entry,
     read_task_body,
+    read_task_schedule,
     remove_plan_entry,
+    reschedule_task_block,
     schedule_task_block,
     sync_scheduled_to_next_plan,
     task_file_token,
+    unlink_calendar_block,
+    unschedule_task_block,
     weekly_file_token,
     write_task_body,
     write_weekly,
@@ -794,3 +798,175 @@ class TestScheduleTaskBlock:
                 pomodoros=2,
                 expected_token=token,
             )
+
+
+class TestRescheduleTaskBlock:
+    """ADR-041 41d D8 — relocate a scheduled block; keep calendar_event_id."""
+
+    _LINKED = {
+        "title": "測試任務",
+        "status": "to-do",
+        "預估🍅": 6,
+        "scheduled": "2026-06-03T09:00:00",
+        "scheduled_end": "2026-06-03T10:00:00",
+        "calendar_event_id": "evt_live",
+        "plan": [{"date": "2026-06-03", "pomodoros": 2}],
+        "tags": ["task"],
+    }
+
+    def test_moves_plan_entry_and_rewrites_projection(self, vault):
+        _make_task(vault, "測試任務", self._LINKED)
+        sched, sched_end, tok, eid = reschedule_task_block(
+            vault, "測試任務", start=datetime(2026, 6, 4, 14, 0), pomodoros=3
+        )
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        # old date's entry dropped, new one added — no orphan (D8)
+        dates = [e["date"] for e in fm["plan"]]
+        assert dates == ["2026-06-04"]
+        assert fm["plan"][0]["pomodoros"] == 3
+        assert sched == "2026-06-04T14:00:00"
+        assert sched_end == "2026-06-04T15:30:00"  # 3🍅 × 30 min
+        assert eid == "evt_live"  # event id preserved (caller PATCHes it)
+        assert fm["calendar_event_id"] == "evt_live"
+        assert tok == task_file_token(vault, "測試任務")
+
+    def test_same_date_time_change_keeps_single_entry(self, vault):
+        _make_task(vault, "測試任務", self._LINKED)
+        reschedule_task_block(vault, "測試任務", start=datetime(2026, 6, 3, 15, 0), pomodoros=2)
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert len(fm["plan"]) == 1 and fm["plan"][0]["date"] == "2026-06-03"
+        assert _date_isoformat(fm["scheduled"]).startswith("2026-06-03T15:00")
+
+    def test_old_entry_with_done_work_is_preserved(self, vault):
+        fm0 = {**self._LINKED, "plan": [{"date": "2026-06-03", "pomodoros": 2, "done": 1}]}
+        _make_task(vault, "測試任務", fm0)
+        reschedule_task_block(vault, "測試任務", start=datetime(2026, 6, 5, 9, 0), pomodoros=2)
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        dates = sorted(e["date"] for e in fm["plan"])
+        assert dates == ["2026-06-03", "2026-06-05"]  # done-work history kept
+
+    def test_unlinked_task_returns_empty_event_id(self, vault):
+        fm0 = {"title": "測試任務", "status": "to-do", "預估🍅": 4, "tags": ["task"]}
+        _make_task(vault, "測試任務", fm0)
+        _, _, _, eid = reschedule_task_block(
+            vault, "測試任務", start=datetime(2026, 6, 4, 9, 0), pomodoros=2
+        )
+        assert eid == ""  # not linked — orchestrator degrades to a fresh create
+
+    def test_weekend_without_reason_raises(self, vault):
+        _make_task(vault, "測試任務", self._LINKED)
+        with pytest.raises(WeekendReasonRequired):
+            reschedule_task_block(vault, "測試任務", start=datetime(2026, 6, 6, 9, 0), pomodoros=2)
+
+    def test_if_match_conflict(self, vault):
+        _make_task(vault, "測試任務", self._LINKED)
+        with pytest.raises(WeeklyConflictError):
+            reschedule_task_block(
+                vault,
+                "測試任務",
+                start=datetime(2026, 6, 4, 9, 0),
+                pomodoros=2,
+                expected_token="stale",
+            )
+
+
+class TestUnlinkCalendarBlock:
+    """ADR-041 41d D9 — 移出行事曆: clear projection, KEEP plan[]."""
+
+    _LINKED = {
+        "title": "測試任務",
+        "status": "to-do",
+        "預估🍅": 6,
+        "scheduled": "2026-06-03T09:00:00",
+        "scheduled_end": "2026-06-03T10:00:00",
+        "calendar_event_id": "evt_live",
+        "plan": [{"date": "2026-06-03", "pomodoros": 2}],
+        "tags": ["task"],
+    }
+
+    def test_clears_projection_keeps_plan(self, vault):
+        _make_task(vault, "測試任務", self._LINKED)
+        old_eid, tok = unlink_calendar_block(vault, "測試任務")
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert old_eid == "evt_live"
+        assert "scheduled" not in fm and "scheduled_end" not in fm
+        assert "calendar_event_id" not in fm
+        assert fm["plan"] == [{"date": "2026-06-03", "pomodoros": 2}]  # KEPT (D9)
+        assert tok == task_file_token(vault, "測試任務")
+
+    def test_missing_task_raises(self, vault):
+        with pytest.raises(TaskNotFoundError):
+            unlink_calendar_block(vault, "不存在")
+
+    def test_if_match_conflict(self, vault):
+        _make_task(vault, "測試任務", self._LINKED)
+        with pytest.raises(WeeklyConflictError):
+            unlink_calendar_block(vault, "測試任務", expected_token="stale")
+
+
+class TestUnscheduleTaskBlock:
+    """ADR-041 41d D9 — 取消排程: drop the scheduled-date plan[] entry + clear."""
+
+    _LINKED = {
+        "title": "測試任務",
+        "status": "to-do",
+        "預估🍅": 6,
+        "scheduled": "2026-06-03T09:00:00",
+        "scheduled_end": "2026-06-03T10:00:00",
+        "calendar_event_id": "evt_live",
+        "plan": [
+            {"date": "2026-06-03", "pomodoros": 2},
+            {"date": "2026-06-05", "pomodoros": 1},
+        ],
+        "tags": ["task"],
+    }
+
+    def test_drops_scheduled_date_entry_and_clears(self, vault):
+        _make_task(vault, "測試任務", self._LINKED)
+        old_eid, _ = unschedule_task_block(vault, "測試任務")
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert old_eid == "evt_live"
+        assert [e["date"] for e in fm["plan"]] == ["2026-06-05"]  # only 6/3 dropped
+        assert "scheduled" not in fm and "calendar_event_id" not in fm
+
+    def test_keeps_done_work_entry(self, vault):
+        fm0 = {
+            **self._LINKED,
+            "plan": [{"date": "2026-06-03", "pomodoros": 2, "done": 1}],
+        }
+        _make_task(vault, "測試任務", fm0)
+        unschedule_task_block(vault, "測試任務")
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert [e["date"] for e in fm["plan"]] == ["2026-06-03"]  # done → preserved
+        assert "scheduled" not in fm  # but the projection is still cleared
+
+    def test_if_match_conflict(self, vault):
+        _make_task(vault, "測試任務", self._LINKED)
+        with pytest.raises(WeeklyConflictError):
+            unschedule_task_block(vault, "測試任務", expected_token="stale")
+
+
+class TestReadTaskSchedule:
+    def test_returns_raw_projection_fields(self, vault):
+        _make_task(
+            vault,
+            "測試任務",
+            {
+                "title": "測試任務",
+                "scheduled": "2026-06-03T09:00:00",
+                "scheduled_end": "2026-06-03T10:00:00",
+                "calendar_event_id": "evt_live",
+                "tags": ["task"],
+            },
+        )
+        sched = read_task_schedule(vault, "測試任務")
+        assert sched["scheduled"].startswith("2026-06-03T09:00")
+        assert sched["calendar_event_id"] == "evt_live"
+
+    def test_missing_task_returns_none(self, vault):
+        assert read_task_schedule(vault, "不存在") is None
+
+    def test_unlinked_task_blank_event_id(self, vault):
+        _make_task(vault, "測試任務", {"title": "測試任務", "tags": ["task"]})
+        sched = read_task_schedule(vault, "測試任務")
+        assert sched["calendar_event_id"] == ""
