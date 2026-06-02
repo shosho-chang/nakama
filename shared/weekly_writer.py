@@ -18,7 +18,7 @@ import re
 import tempfile
 import time
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -307,6 +307,81 @@ def add_plan_entry(
 
     fm["plan"] = entries
     _write_task(path, fm, body)
+
+
+# ── Calendar-block scheduling (ADR-041 — vault is the source of truth) ──────────
+# A scheduled block is, authoritatively, a ``plan[]`` entry (effort intent — D1).
+# The calendar event is a downstream projection; this writer only touches the VAULT:
+# it upserts the plan[] entry AND writes the projection fields (scheduled/scheduled_end
+# + optional calendar_event_id) in one byte-safe write. The Google Calendar event is
+# created by the caller (Slice 41b) — keeping this layer pure-data + testable.
+CALENDAR_BLOCK_MINUTES_PER_POMODORO = 30  # 25-min 🍅 focus + 5-min buffer (D2)
+
+
+def schedule_task_block(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    start: datetime,
+    pomodoros: int,
+    reason: Optional[str] = None,
+    calendar_event_id: Optional[str] = None,
+    expected_token: Optional[str] = None,
+) -> tuple[str, str, str]:
+    """Authoritatively schedule a task block in the vault (ADR-041 D1/D2).
+
+    ``start`` is a **naive local** (Asia/Taipei, D4) datetime. In one coalesced,
+    If-Match-guarded write this upserts the ``plan[]`` entry for ``start``'s date
+    (the authoritative effort intent — preserving an existing ``done``) AND writes
+    the calendar **projection** fields: ``scheduled`` = start, ``scheduled_end`` =
+    start + ``pomodoros`` × 30 min, and ``calendar_event_id`` when the caller (41b)
+    has created the event. No network — the event itself is the caller's job.
+
+    Weekend (Sat/Sun) blocks require ``reason`` (ADR-039 D9). Returns
+    ``(scheduled_iso, scheduled_end_iso, new_token)``. Raises
+    :class:`TaskNotFoundError`, :class:`WeeklyConflictError`, or
+    :class:`WeeklyWriteError` (bad ``pomodoros``)."""
+    if pomodoros < 1:
+        raise WeeklyWriteError("pomodoros must be >= 1")
+    day = start.date()
+    if _is_weekend(day) and not reason:
+        raise WeekendReasonRequired(f"週末 ({day.isoformat()}) 排程需填寫 reason（D9）")
+
+    end = start + timedelta(minutes=pomodoros * CALENDAR_BLOCK_MINUTES_PER_POMODORO)
+    scheduled = start.isoformat(timespec="seconds")
+    scheduled_end = end.isoformat(timespec="seconds")
+
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    _check_token(path, expected_token)
+    fm, body = _read_task(path)
+
+    # authoritative plan[] upsert (D1) — same rules as add_plan_entry
+    entries = _plan_list(fm)
+    new_entry: dict[str, Any] = {"date": day.isoformat(), "pomodoros": pomodoros}
+    if reason:
+        new_entry["reason"] = reason
+    replaced = False
+    for i, e in enumerate(entries):
+        if _entry_date(e) == day:
+            if "done" in e:
+                new_entry["done"] = e["done"]
+            entries[i] = new_entry
+            replaced = True
+            break
+    if not replaced:
+        entries.append(new_entry)
+    fm["plan"] = entries
+
+    # calendar projection fields (D2/D3)
+    fm["scheduled"] = scheduled
+    fm["scheduled_end"] = scheduled_end
+    if calendar_event_id is not None:
+        fm["calendar_event_id"] = calendar_event_id
+
+    _write_task(path, fm, body)
+    return scheduled, scheduled_end, task_file_token(vault_root, task_slug)
 
 
 def remove_plan_entry(
