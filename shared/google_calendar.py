@@ -86,6 +86,35 @@ def _get_service():
 # ── Public API ────────────────────────────────────────────────────
 
 
+# Private extended-property key linking a calendar event back to a LifeOS task
+# block (ADR-041 D7). Value is f"{task_slug}@{YYYY-MM-DD}" — stable per task+day, so
+# a double-submit/retry finds the existing event instead of duplicating it, and
+# rollback/reschedule can locate it without storing the id elsewhere.
+IDEMPOTENCY_PROP = "lifeos_task"
+
+
+def find_event_by_idempotency_key(
+    key: str, *, time_min: datetime, time_max: datetime
+) -> CalendarEvent | None:
+    """The event tagged ``extendedProperties.private.lifeos_task == key`` in the
+    window, or None. Used to dedupe create + locate for reschedule/rollback (D7)."""
+    service = _get_service()
+    result = (
+        service.events()
+        .list(
+            calendarId="primary",
+            timeMin=_dt_to_rfc3339(time_min),
+            timeMax=_dt_to_rfc3339(time_max),
+            privateExtendedProperty=f"{IDEMPOTENCY_PROP}={key}",
+            singleEvents=True,
+            maxResults=1,
+        )
+        .execute()
+    )
+    items = result.get("items", [])
+    return _parse_event(items[0]) if items else None
+
+
 def create_event(
     *,
     title: str,
@@ -93,24 +122,40 @@ def create_event(
     end: str,
     description: str = "",
     check_conflict: bool = True,
+    idempotency_key: str | None = None,
 ) -> CalendarEvent | list[CalendarEvent]:
     """建立事件。
 
     若 ``check_conflict=True`` 且時段有精確重疊的既有事件，**不建立**，改回傳
     衝突事件列表供呼叫端決定（問使用者或 force=True 重試）。
+
+    ``idempotency_key`` (ADR-041 D7)：給定時先查同 key 的既有事件，有就直接回傳該
+    事件（不重複建立 — 防雙送/retry），並把 key 寫進 ``extendedProperties.private``
+    供日後 reschedule/rollback 定位。其值不參與衝突判定（自己不算自己衝突）。
     """
+    if idempotency_key is not None:
+        existing = find_event_by_idempotency_key(
+            idempotency_key,
+            time_min=_parse_iso(_ensure_tz_iso(start)),
+            time_max=_parse_iso(_ensure_tz_iso(end)),
+        )
+        if existing is not None:
+            return existing
+
     if check_conflict:
         conflicts = find_conflicts(start, end)
         if conflicts:
             return conflicts
 
     service = _get_service()
-    body = {
+    body: dict = {
         "summary": title,
         "description": description,
         "start": {"dateTime": _ensure_tz_iso(start), "timeZone": TIMEZONE},
         "end": {"dateTime": _ensure_tz_iso(end), "timeZone": TIMEZONE},
     }
+    if idempotency_key is not None:
+        body["extendedProperties"] = {"private": {IDEMPOTENCY_PROP: idempotency_key}}
     created = service.events().insert(calendarId="primary", body=body).execute()
     return _parse_event(created)
 
