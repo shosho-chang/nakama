@@ -35,9 +35,12 @@ from shared.weekly_writer import (
     WeeklyWriteError,
     add_plan_entry,
     log_time_entry,
+    read_task_body,
     remove_plan_entry,
     sync_scheduled_to_next_plan,
+    task_file_token,
     weekly_file_token,
+    write_task_body,
     write_weekly,
 )
 from thousand_sunny.auth import check_auth
@@ -422,6 +425,16 @@ _MODE_MINUTES = {"pomodoro": 25, "deep": 75}
 _TASK_ERRORS = {
     "mode": "未知的計時模式。",
     "log": "記錄番茄鐘失敗，任務檔可能已在 Obsidian 改名或移除。",
+    # note-body save (A7 / Slice W)
+    "conflict": (
+        "任務筆記在你開啟頁面後被改動（Obsidian / Syncthing / 另一分頁），"
+        "已擋下這次覆寫——請重新整理頁面再存。"
+    ),
+    "write": "寫入任務筆記失敗，可能被其他程式鎖定，或已在 Obsidian 改名／移除。",
+}
+
+_TASK_SAVED = {
+    "body": "✓ 已儲存筆記。",
 }
 
 
@@ -438,12 +451,21 @@ def _obsidian_uri(vault: Path, relative_path: str) -> str:
     return f"obsidian://open?vault={quote(vault.name)}&file={quote(relative_path)}"
 
 
-def _task_back(slug: str, week_key: str, *, err: str | None = None, logged: bool = False):
+def _task_back(
+    slug: str,
+    week_key: str,
+    *,
+    err: str | None = None,
+    logged: bool = False,
+    saved: str | None = None,
+):
     from urllib.parse import quote
 
     url = f"/bridge/weekly/task/{quote(slug)}?week={week_key}"
     if err:
         url += f"&err={err}"
+    elif saved:
+        url += f"&saved={saved}"
     elif logged:
         url += "&logged=1"
     return RedirectResponse(url, status_code=303)
@@ -455,6 +477,7 @@ async def weekly_task_detail(
     slug: str = PathParam(..., min_length=1),
     week: str | None = Query(None),
     err: str | None = Query(None),
+    saved: str | None = Query(None),
     logged: int | None = Query(None),
     nakama_auth: str | None = Cookie(None),
 ):
@@ -475,6 +498,8 @@ async def weekly_task_detail(
     actual_pom = actual.total_pomodoros
     accuracy_pct = int(round(100 * actual_pom / task.est_pomodoros)) if task.est_pomodoros else 0
 
+    # A7 (Slice W): the note body is an editable draft surface; carry an If-Match
+    # token so a save can't clobber an Obsidian edit made after the page loaded.
     return _templates.TemplateResponse(
         request,
         "task.html",
@@ -484,11 +509,39 @@ async def weekly_task_detail(
             "accuracy_pct": accuracy_pct,
             "week_key": wk_key,
             "obsidian_uri": _obsidian_uri(vault, task.relative_path),
+            "task_body": read_task_body(vault, task.slug).strip("\n"),
+            "task_token": task_file_token(vault, task.slug),
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _TASK_ERRORS.get(err) if err else None,
+            "saved_msg": _TASK_SAVED.get(saved) if saved else None,
             "logged": bool(logged),
         },
     )
+
+
+@page_router.post("/weekly/task/{slug}/body")
+async def weekly_task_body_save(
+    slug: str = PathParam(..., min_length=1),
+    body: str = Form(""),
+    expected_token: str = Form(""),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Save the task note body verbatim (A7 / Slice W). Body-only — frontmatter is
+    untouched; no LLM authorship (A1). If-Match guarded → conflict banner."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+    # Normalise the browser's CRLF to the vault's LF so the file stays LF-clean.
+    clean = body.replace("\r\n", "\n").replace("\r", "\n")
+    try:
+        write_task_body(get_vault_path(), slug, clean, expected_token=expected_token)
+    except WeeklyConflictError:
+        return _task_back(slug, wk_key, err="conflict")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_body_save: %s", exc)
+        return _task_back(slug, wk_key, err="write")
+    return _task_back(slug, wk_key, saved="body")
 
 
 @page_router.post("/weekly/task/{slug}/log")

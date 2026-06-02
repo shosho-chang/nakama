@@ -379,6 +379,32 @@ body.sho .wk-toast--ok {
   background: color-mix(in oklch, var(--sho-success, var(--sho-accent)) 10%, transparent);
 }
 
+/* ── task note body — scoped draft surface (ADR-040 A7 / Slice W) ── */
+body.sho .tk-notebox {
+  margin: 24px 0 8px; padding: 20px 24px; border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2); background: var(--sho-bg-2);
+}
+body.sho .tk-note-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+body.sho .tk-note-obsidian {
+  font-size: 12px; color: var(--sho-text-2); text-decoration: none;
+  border-bottom: 1px solid var(--sho-line-2);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-note-obsidian:hover { color: var(--sho-accent); border-color: var(--sho-accent); }
+body.sho .tk-note-obsidian:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .tk-note-area {
+  font: inherit; font-size: 14px; line-height: 1.7; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 14px 16px; resize: vertical; width: 100%; box-sizing: border-box; min-height: 220px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-note-area:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+body.sho .tk-note-area::placeholder { color: var(--sho-line-2); }
+
 /* ── top-3 project / unresolved variants (ADR-040 A4) ── */
 body.sho .wk-top3-proj { font-size: 14px; color: var(--sho-text); display: inline-flex; align-items: baseline; gap: 6px; }
 body.sho .wk-top3-ratio { font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted); font-variant-numeric: tabular-nums; }

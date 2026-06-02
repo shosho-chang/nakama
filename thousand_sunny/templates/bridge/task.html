@@ -23,6 +23,9 @@
     {% if logged %}
       <div class="wk-toast tk-toast--ok" role="status">✓ 已記錄一段專注時間。</div>
     {% endif %}
+    {% if saved_msg %}
+      <div class="wk-toast tk-toast--ok" role="status">{{ saved_msg }}</div>
+    {% endif %}
 
     <a class="tk-back" href="/bridge/weekly?week={{ week_key }}">◀ 回週看板</a>
 
@@ -118,6 +121,23 @@
         <input type="hidden" name="mode" value="deep">
         <input type="hidden" name="elapsed_seconds" value="">
         <input type="hidden" name="week" value="{{ week_key }}">
+      </form>
+    </section>
+
+    {# ── note body — scoped draft surface (ADR-040 A7 / Slice W) ── #}
+    <section class="tk-notebox" aria-label="任務筆記">
+      <div class="tk-note-head">
+        <span class="wk-h">筆記 · 草稿</span>
+        {% if obsidian_uri %}
+          <a class="tk-note-obsidian" href="{{ obsidian_uri }}">✎ 在 Obsidian 繼續編輯（長文建議）↗</a>
+        {% endif %}
+      </div>
+      <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/body" class="wk-wf tk-noteform">
+        <input type="hidden" name="week" value="{{ week_key }}">
+        <input type="hidden" name="expected_token" value="{{ task_token }}">
+        <textarea name="body" rows="14" class="tk-note-area" spellcheck="false"
+                  placeholder="在這頁寫草稿／本週電子報…（Markdown；長文請移到 Obsidian 的寫作聖地）">{{ task_body }}</textarea>
+        <div class="wk-wf-actions"><button class="sho-btn" type="submit">儲存筆記</button></div>
       </form>
     </section>
 

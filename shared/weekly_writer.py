@@ -160,6 +160,45 @@ def _plan_list(fm: dict[str, Any]) -> list[dict[str, Any]]:
     return [e for e in raw if isinstance(e, dict)]
 
 
+# ── Task note body (ADR-040 A7 — scoped writing surface, Slice W) ───────────────
+# The task page is a scoped draft surface: 修修 writes the note BODY verbatim on
+# the page (his ask: drafting 本週電子報 on the task). TaskNotes is already 🟡 — no
+# red line — and there is NO LLM authorship (A1). Only the body is replaced; the
+# frontmatter is preserved untouched. Long-form prose is nudged into Obsidian via
+# the page's deep-link; this editor is for quick drafts / structured notes.
+
+
+def task_file_token(vault_root: Path, task_slug: str) -> str:
+    """An If-Match token (content hash) for a task file — same primitive as
+    :func:`weekly_file_token`, so a body save can't silently clobber an Obsidian
+    edit made after the page loaded."""
+    return _content_hash(_task_path(vault_root, task_slug))
+
+
+def read_task_body(vault_root: Path, task_slug: str) -> str:
+    """The verbatim note body (everything after the frontmatter) of a task file.
+    Raises :class:`WeeklyWriteError` if the file is missing."""
+    _, body = _read_task(_task_path(vault_root, task_slug))
+    return body
+
+
+def write_task_body(
+    vault_root: Path,
+    task_slug: str,
+    body: str,
+    *,
+    expected_token: Optional[str] = None,
+) -> str:
+    """Replace a task's note **body** verbatim; frontmatter is preserved untouched
+    (A7 — body-only, no key edits). ``expected_token`` is the If-Match guard (see
+    :func:`_check_token`). Returns the new :func:`task_file_token`."""
+    path = _task_path(vault_root, task_slug)
+    _check_token(path, expected_token)
+    fm, _old_body = _read_task(path)  # raises WeeklyWriteError if the file is gone
+    _write_task(path, fm, body)
+    return task_file_token(vault_root, task_slug)
+
+
 def _entry_date(entry: dict[str, Any]) -> Optional[date]:
     v = entry.get("date")
     if isinstance(v, date):  # yaml.safe_load parses YYYY-MM-DD as date

@@ -16,9 +16,12 @@ from shared.weekly_writer import (
     WeeklyWriteError,
     add_plan_entry,
     log_time_entry,
+    read_task_body,
     remove_plan_entry,
     sync_scheduled_to_next_plan,
+    task_file_token,
     weekly_file_token,
+    write_task_body,
     write_weekly,
 )
 
@@ -505,6 +508,42 @@ class TestWriteWeekly:
         write_weekly(vault, WK, frontmatter={"targets": {"pomodoro": 30}})
         write_weekly(vault, WK, frontmatter={"targets": {"ufo": 4}})
         assert _read_weekly_fm(vault)["targets"] == {"pomodoro": 30, "ufo": 4}
+
+
+class TestWriteTaskBody:
+    """ADR-040 A7 (Slice W) — the scoped task note-body writing surface."""
+
+    _FM = {"title": "測試任務", "status": "to-do", "預估🍅": 6, "tags": ["task"]}
+
+    def test_replaces_body_preserves_frontmatter(self, vault):
+        _make_task(vault, "測試任務", self._FM, body="舊內文")
+        write_task_body(vault, "測試任務", "# 本週電子報\n\n第一段草稿。")
+        path = vault / TASKS_DIR / "測試任務.md"
+        assert "# 本週電子報" in _read_body(path)
+        assert "舊內文" not in _read_body(path)
+        fm = _read_fm(path)  # frontmatter untouched (body-only — A7)
+        assert fm["title"] == "測試任務" and fm["預估🍅"] == 6 and fm["tags"] == ["task"]
+
+    def test_read_task_body_roundtrips(self, vault):
+        _make_task(vault, "測試任務", self._FM, body="原始草稿內容")
+        assert "原始草稿內容" in read_task_body(vault, "測試任務")
+
+    def test_read_missing_task_raises(self, vault):
+        with pytest.raises(WeeklyWriteError):
+            read_task_body(vault, "不存在")
+
+    def test_body_if_match_conflict(self, vault):
+        _make_task(vault, "測試任務", self._FM, body="a")
+        token = task_file_token(vault, "測試任務")
+        write_task_body(vault, "測試任務", "b")  # someone else writes in between
+        with pytest.raises(WeeklyConflictError):
+            write_task_body(vault, "測試任務", "c", expected_token=token)
+
+    def test_token_changes_with_content(self, vault):
+        _make_task(vault, "測試任務", self._FM, body="a")
+        t0 = task_file_token(vault, "測試任務")
+        new = write_task_body(vault, "測試任務", "different", expected_token=t0)
+        assert new != t0  # content hash advanced
 
     def test_rejects_non_allowlisted_frontmatter(self, vault):
         write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
