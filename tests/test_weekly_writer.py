@@ -12,16 +12,31 @@ import yaml
 
 from shared.weekly_writer import (
     WeekendReasonRequired,
+    WeeklyConflictError,
     WeeklyWriteError,
     add_plan_entry,
     log_time_entry,
     remove_plan_entry,
     sync_scheduled_to_next_plan,
+    weekly_file_token,
+    write_weekly,
 )
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 TASKS_DIR = "TaskNotes/Tasks"
+WEEKLY_DIR = "Journals/Weekly"
+WK = "2026-05-31"  # a real start-Sunday (W23)
+WK_START = date(2026, 5, 31)
+WK_END = date(2026, 6, 6)
+
+
+def _read_weekly_fm(vault: Path, file_key: str = WK) -> dict:
+    return _read_fm(vault / WEEKLY_DIR / f"{file_key}.md")
+
+
+def _read_weekly_body(vault: Path, file_key: str = WK) -> str:
+    return _read_body(vault / WEEKLY_DIR / f"{file_key}.md")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -447,3 +462,119 @@ class TestLogTimeEntry:
         start, end = self._span(25)
         with pytest.raises(WeeklyWriteError):
             log_time_entry(vault, "no-such-task", start, end)
+
+
+# ── write_weekly (ADR-040 Slice 2 — Journals/Weekly 🟡) ────────────────────────
+
+
+class TestWriteWeekly:
+    def test_creates_from_template(self, vault):
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        fm = _read_weekly_fm(vault)
+        assert _date_isoformat(fm["start_date"]) == "2026-05-31"
+        assert _date_isoformat(fm["end_date"]) == "2026-06-06"
+        assert fm["status"] == "planning"
+        assert fm["top3"] == [] and fm["next3"] == []
+        assert fm["targets"] == {}  # A3: not auto-filled
+        body = _read_weekly_body(vault)
+        assert "## ✨ Highlight" in body
+        assert "## 隨手筆記" in body
+
+    def test_create_requires_dates(self, vault):
+        with pytest.raises(WeeklyWriteError):
+            write_weekly(vault, WK, frontmatter={"status": "active"})
+
+    def test_persists_top3_and_targets_intent(self, vault):
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        write_weekly(
+            vault,
+            WK,
+            frontmatter={
+                "top3": ["[[肌酸的妙用]]", "[[電子報]]"],
+                "targets": {"pomodoro": 35, "ufo": 5},
+            },
+        )
+        fm = _read_weekly_fm(vault)
+        assert fm["top3"] == ["[[肌酸的妙用]]", "[[電子報]]"]
+        assert fm["targets"] == {"pomodoro": 35, "ufo": 5}
+
+    def test_rejects_non_allowlisted_frontmatter(self, vault):
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        with pytest.raises(WeeklyWriteError):
+            write_weekly(vault, WK, frontmatter={"pomodoros_cache": 12})
+
+    def test_rejects_unknown_status(self, vault):
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        with pytest.raises(WeeklyWriteError):
+            write_weekly(vault, WK, frontmatter={"status": "bogus"})
+
+    def test_writes_prose_sections_verbatim(self, vault):
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        write_weekly(
+            vault,
+            WK,
+            sections={"✨ Highlight": "出了第一支影片 🎉", "隨手筆記": "下週想試 75 分 block。"},
+        )
+        body = _read_weekly_body(vault)
+        assert "出了第一支影片 🎉" in body
+        assert "下週想試 75 分 block。" in body
+        # idempotent replace — re-writing the same heading doesn't duplicate it
+        write_weekly(vault, WK, sections={"✨ Highlight": "改寫過的 highlight"})
+        body2 = _read_weekly_body(vault)
+        assert body2.count("## ✨ Highlight") == 1
+        assert "改寫過的 highlight" in body2
+        assert "出了第一支影片" not in body2
+
+    def test_inserts_missing_section_heading(self, vault):
+        # create a file with no body sections, then write to a brand-new heading
+        path = vault / WEEKLY_DIR / f"{WK}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("---\nstatus: active\n---\n\nbody\n", encoding="utf-8")
+        write_weekly(vault, WK, sections={"隨手筆記": "新增的筆記"})
+        body = _read_weekly_body(vault)
+        assert "## 隨手筆記" in body and "新增的筆記" in body
+
+    def test_preserves_hand_written_frontmatter_and_body(self, vault):
+        path = vault / WEEKLY_DIR / f"{WK}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "---\nstatus: active\nweek: 2026-W23\nmy_field: keep\n---\n\n"
+            "## ✨ Highlight\n\nold\n\n## 自己加的段落\n\n手寫內容\n",
+            encoding="utf-8",
+        )
+        write_weekly(vault, WK, sections={"✨ Highlight": "new"})
+        fm = _read_weekly_fm(vault)
+        body = _read_weekly_body(vault)
+        assert fm["week"] == "2026-W23"  # non-allowlisted key untouched
+        assert fm["my_field"] == "keep"
+        assert "手寫內容" in body  # 修修's own section survives
+        assert "## 自己加的段落" in body
+
+    def test_if_match_conflict(self, vault):
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        token = weekly_file_token(vault, WK)
+        # someone else writes in between → token goes stale
+        write_weekly(vault, WK, frontmatter={"status": "active"})
+        with pytest.raises(WeeklyConflictError):
+            write_weekly(vault, WK, frontmatter={"status": "reviewed"}, expected_token=token)
+
+    def test_if_match_expected_absent_then_created_conflict(self, vault):
+        # page loaded with no file (token ""), but the file appears before the write
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        with pytest.raises(WeeklyConflictError):
+            write_weekly(vault, WK, start_date=WK_START, end_date=WK_END, expected_token="")
+
+    def test_if_match_matching_token_succeeds(self, vault):
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        token = weekly_file_token(vault, WK)
+        new_token = write_weekly(vault, WK, frontmatter={"status": "active"}, expected_token=token)
+        assert new_token != token  # mtime advanced
+        assert _read_weekly_fm(vault)["status"] == "active"
+
+    def test_token_empty_when_absent(self, vault):
+        assert weekly_file_token(vault, WK) == ""
+
+    def test_atomic_leaves_no_tmp(self, vault):
+        write_weekly(vault, WK, start_date=WK_START, end_date=WK_END)
+        d = vault / WEEKLY_DIR
+        assert list(d.glob("*.tmp")) == []
