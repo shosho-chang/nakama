@@ -77,6 +77,7 @@ _PLAN_ERRORS = {
 }
 
 _SAVED_MSGS = {
+    "plan": "✓ 已儲存本週計畫。",
     "review": "✓ 已存週回顧。",
     "top3": "✓ 已更新本週三大要事。",
     "targets": "✓ 已更新本週目標。",
@@ -366,6 +367,27 @@ async def weekly_targets_save(
     return _write_weekly_or_back(
         wk, frontmatter={"targets": targets}, expected_token=expected_token, saved="targets"
     )
+
+
+@page_router.post("/weekly/plan-save")
+async def weekly_plan_save(
+    week: str = Form(""),
+    expected_token: str = Form(""),
+    top3: list[str] = Form(default=[]),  # ≤3 dropdown selections
+    ufo: int = Form(0),  # 🤩 weekly target (🍅 goal is the auto plan-sum)
+    advance: int = Form(0),  # checkbox: planning → active (honest FSM, A6)
+    nakama_auth: str | None = Cookie(None),
+):
+    """One-button save for the 本週計畫 panel: top3 + UFO target (+ optional
+    status advance) in a single coalesced write."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk = _safe_week(week)
+    links = [f"[[{v.strip()}]]" for v in top3 if v.strip()]
+    fm: dict = {"top3": links, "targets": ({"ufo": ufo} if ufo > 0 else {})}
+    if advance:
+        fm["status"] = "active"
+    return _write_weekly_or_back(wk, frontmatter=fm, expected_token=expected_token, saved="plan")
 
 
 @page_router.post("/weekly/status")

@@ -397,6 +397,8 @@ body.sho .wk-top3-sel {
   transition: border-color var(--sho-t-fast) var(--sho-ease);
 }
 body.sho .wk-top3-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+body.sho .wk-plan-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+body.sho .wk-plan-row .sho-btn { margin-left: auto; }
 body.sho .wk-field--wide { grid-column: 1 / -1; }
 body.sho .wk-field textarea,
 body.sho .wk-notes-form textarea {

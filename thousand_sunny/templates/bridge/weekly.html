@@ -96,18 +96,18 @@
 {% endmacro %}
 
 {% macro plan_panel(view, weekly_token) %}
+  {% set st = view.review.status if view.review else 'planning' %}
   <details class="wk-zone wk-plan-panel">
-    <summary class="wk-zone-head"><span class="wk-h">✎ 本週計畫</span>
-      <span class="wk-mut">三大要事・目標・狀態</span></summary>
+    <summary class="wk-zone-head"><span class="wk-h">✎ 本週計畫</span></summary>
 
-    <form class="wk-wf" method="post" action="/bridge/weekly/top3">
+    <form class="wk-wf" method="post" action="/bridge/weekly/plan-save">
       <input type="hidden" name="week" value="{{ view.week.file_key }}">
       <input type="hidden" name="expected_token" value="{{ weekly_token }}">
-      <span class="wk-wf-label">本週三大要事 —— 從未完成的任務 / 專案挑 3 件</span>
+
       <div class="wk-top3-picks">
         {% for i in range(3) %}
           {% set cur = view.top3_values[i] if i < (view.top3_values | length) else '' %}
-          <select class="wk-top3-sel" name="top3" aria-label="要事 {{ i + 1 }}">
+          <select class="wk-top3-sel" name="top3" aria-label="本週要事 {{ i + 1 }}">
             <option value="">{{ i + 1 }} · （不指定）</option>
             <optgroup label="任務">
               {% for o in view.top3_options if o.group == '任務' %}
@@ -122,28 +122,17 @@
           </select>
         {% endfor %}
       </div>
-      <div class="wk-wf-actions"><button class="sho-btn--ghost" type="submit">存三大要事</button></div>
-    </form>
 
-    <form class="wk-wf wk-targets-form" method="post" action="/bridge/weekly/targets">
-      <input type="hidden" name="week" value="{{ view.week.file_key }}">
-      <input type="hidden" name="expected_token" value="{{ weekly_token }}">
-      <label class="wk-num-field"><span aria-hidden="true">🤩</span> 超專注週目標
-        <input type="number" name="ufo" min="0" max="50" value="{{ view.ufo_target }}"></label>
-      <span class="wk-mut"><span class="wk-tomato" aria-hidden="true">🍅</span> 週目標自動加總本週排程任務（目前 {{ view.pomodoro_goal }}）</span>
-      <button class="sho-btn--ghost" type="submit">存目標</button>
-    </form>
-
-    <form class="wk-wf wk-status-form" method="post" action="/bridge/weekly/status">
-      <input type="hidden" name="week" value="{{ view.week.file_key }}">
-      <input type="hidden" name="expected_token" value="{{ weekly_token }}">
-      <span class="wk-mut">本週狀態：<strong>{{ view.review.status if view.review else '尚未建立' }}</strong></span>
-      {% set st = view.review.status if view.review else 'planning' %}
-      {% if st != 'active' %}
-        <button class="sho-btn--ghost" type="submit" name="status" value="active">確認計畫完成 → 開始本週</button>
-      {% else %}
-        <button class="sho-btn--ghost" type="submit" name="status" value="planning">退回規劃中</button>
-      {% endif %}
+      <div class="wk-plan-row">
+        <label class="wk-num-field"><span aria-hidden="true">🤩</span> 超專注週目標
+          <input type="number" name="ufo" min="0" max="50" value="{{ view.ufo_target }}"></label>
+        {% if st != 'active' %}
+          <label class="wk-check"><input type="checkbox" name="advance" value="1"> 完成規劃，開始本週</label>
+        {% else %}
+          <span class="wk-mut">本週進行中</span>
+        {% endif %}
+        <button class="sho-btn" type="submit">儲存本週計畫</button>
+      </div>
     </form>
   </details>
 {% endmacro %}

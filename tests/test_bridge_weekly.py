@@ -439,16 +439,44 @@ class TestWeeklyFileWrites:
 
         monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
-        assert 'action="/bridge/weekly/top3"' in body
-        assert 'action="/bridge/weekly/targets"' in body
+        # the 本週計畫 panel is one consolidated form (top3 + ufo + advance)
+        assert 'action="/bridge/weekly/plan-save"' in body
         assert 'action="/bridge/weekly/review"' in body
         assert 'action="/bridge/weekly/notes"' in body
-        assert 'action="/bridge/weekly/status"' in body
         assert 'name="expected_token"' in body
-        # top3 is now a dropdown picker (not free text); the seed task is an option
+        # top3 is a dropdown picker (not free text); the seed task is an option
         assert "wk-top3-sel" in body
         assert "<optgroup" in body
         assert "測試任務" in body
+
+    def test_plan_save_writes_top3_ufo_and_status(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/plan-save",
+            data={
+                "week": WEEK_KEY,
+                "expected_token": "",
+                "top3": ["測試任務", "", ""],
+                "ufo": "4",
+                "advance": "1",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&saved=plan"
+        fm = _weekly_fm(tmp_path)
+        assert fm["top3"] == ["[[測試任務]]"]
+        assert fm["targets"] == {"ufo": 4}
+        assert fm["status"] == "active"  # advance checkbox flipped the FSM
+
+    def test_plan_save_without_advance_keeps_planning(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/plan-save",
+            data={"week": WEEK_KEY, "expected_token": "", "top3": ["測試任務"], "ufo": "0"},
+            follow_redirects=False,
+        )
+        fm = _weekly_fm(tmp_path)
+        assert fm["status"] == "planning"  # created from template, not advanced
+        assert fm["targets"] == {}  # ufo 0 → empty
 
 
 class TestAuthGate:
