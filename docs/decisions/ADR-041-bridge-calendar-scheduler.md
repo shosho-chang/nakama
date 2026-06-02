@@ -1,101 +1,101 @@
-# ADR-041 — Bridge time-block scheduler (task → calendar appointment + pomodoro plan)
+# ADR-041 — Bridge time-block scheduler (task → calendar projection of a plan entry)
 
-**Status:** Proposed (drafted 2026-06-02 after a grill-with-docs design session; awaiting 修修 sign-off + cross-model panel).
+**Status:** Proposed **v2** — incorporates the 2026-06-02 cross-model panel (Codex + Gemini both returned *rework*; integrated below). Awaiting 修修's final go before slicing. v1 draft is in git history.
 
-**Context owner:** 修修. **Surface:** Bridge weekly dashboard (`/bridge/weekly`) + `shared/weekly_writer.py` + `shared/google_calendar.py`. **Family:** ADR-039 (weekly dashboard) / ADR-040 (execution layer).
+**Context owner:** 修修. **Surface:** Bridge weekly dashboard + `shared/weekly_writer.py` + `shared/google_calendar.py`. **Family:** ADR-039 / ADR-040. **Depends on:** PR #812 (`task_file_token` / byte-splice task writes).
+
+## Panel audit trail (v1 → v2)
+- **Inverted the source of truth** (Codex §3 + Gemini §2, 修修 confirmed): the **Obsidian vault** — concretely the task's `plan[]` — is the source of truth; the Google Calendar event is a **downstream representation**. v1 had it backwards (calendar-as-truth), which left `plan[]` un-reconciled and could drift.
+- **Corrected v1's code-grounding errors** (Codex §1): `find_conflicts` is an *event-overlap check* (`events.list`), **not** the Google FreeBusy API; `_as_date` **already** parses a datetime `scheduled` (so D5 is a *semantic* concern, not a parsing fix); `_sync_task_from_calendar_update` only runs after Nami's *own* update (there is **no** external-calendar reconciler daemon); `task_file_token` does not exist on `main` — it lands with **#812**.
+- **Timezone** (Gemini §1, 修修 confirmed): use Google's `start.timeZone` field with an IANA id instead of strip-and-hard-`+08:00`. v1 is **Asia/Taipei-only**; multi-tz/DST deferred.
+- **Adopted** the panel's answers to all three v1 open questions (see D2/D7/D9).
 
 ---
 
 ## Context
 
-修修 wants, from the weekly dashboard: (1) a view of **all incomplete tasks** (not just this-week's), and (2) to **schedule one onto a specific day at a specific clock time** ("幾點"), where the scheduled block becomes a **real timed calendar event**. He picks the start time; one 🍅 = **30 minutes flat**, so an N-🍅 task books an N×30-minute block.
+修修 wants, from the weekly dashboard: (1) a view of **all incomplete tasks**, and (2) to schedule one onto a specific day at a specific clock time, where the block becomes a **real timed Google Calendar event**. 1 🍅 = 30 minutes of calendar block.
 
-### What already exists (inventory — the reason this is an ADR, not a quick slice)
+### Inventory (why this is an ADR)
+Six task-creation/scheduling entry points already write `TaskNotes/Tasks/*.md` (Nami `create_task`/`create_calendar_event`/`create_project_with_tasks`, `project_writer.create_task`, Bridge `plan[]`, manual Obsidian). Two scheduling concepts already coexist on a task:
+- **`plan[]`** `{date, pomodoros, reason?, done?}` — weekly pomodoro **effort allocation** (ADR-039, Bridge). Date-only.
+- **`scheduled` + `scheduled_end` + `calendar_event_id`** — a **calendar appointment** (Nami `create_calendar_event` → `_write_calendar_linked_task`, `gateway/handlers/nami.py:1443-1455`). `scheduled`/`scheduled_end` are tz-stripped Asia/Taipei datetimes. `shared/google_calendar.py` provides `create_event`/`update_event`/`delete_event` and `find_conflicts` (an `events.list` overlap check).
 
-Six task-creation / scheduling entry points write to `TaskNotes/Tasks/*.md`:
-
-| # | Entry | Writes | Calendar |
-|---|---|---|---|
-| 1 | Nami `create_task` (`gateway/handlers/nami.py:1087`) | `scheduled` (date) | — |
-| 2 | Nami `create_calendar_event`(also_create_task) (`nami.py:1342`) | `calendar_event_id` + `scheduled` + `scheduled_end` | **creates a timed GCal event** (freebusy conflict check + rollback-on-task-write-failure) |
-| 3 | Nami `create_project_with_tasks` (`shared/lifeos_writer.py:127`) | project + default tasks | — |
-| 4 | `shared/project_writer.create_task` (`project_writer.py:502`) | `scheduled` (date) | — |
-| 5 | Bridge weekly (`bridge_weekly.py`) | `plan[]={date,pomodoros}`, `sync_scheduled_to_next_plan`→`scheduled` | — |
-| 6 | Manual in Obsidian | frontmatter by hand | — |
-
-**Two scheduling concepts already coexist on a task:**
-- **`plan[]`** = `{date, pomodoros, reason?, done?}` — weekly **pomodoro allocation** (ADR-039, Bridge). Date-only, no clock time.
-- **`scheduled` + `scheduled_end` + `calendar_event_id`** — **calendar appointment** (Nami). For calendar-linked tasks, `scheduled`/`scheduled_end` are **tz-stripped datetimes** (e.g. `2026-06-03T09:00:00`); `_sync_task_from_calendar_update` (`nami.py:1583`) pushes calendar edits back to the task — i.e. **the calendar is the source of truth** today.
-
-`shared/google_calendar.py` already provides `create_event(title,start,end,check_conflict)` → timed events with **freebusy `find_conflicts`**, plus `update_event` / `delete_event`. **Only Nami creates events; the Bridge creates none. There is no `scheduled→calendar` batch sync — linkage is per-event via `calendar_event_id`.**
-
-### The trap this avoids
-
-The naïve fix — add `plan[].time` — would create a **third** scheduling representation, fragmenting "when is this task" across `plan[].time` (Bridge) and `scheduled_end`/`calendar_event_id` (Nami). That is the same "one event split across unrelated fields" failure mode Gemini flagged when ADR-040 A8 rejected the dual-track habit model. We reuse the existing convention instead.
+The naïve `plan[].time` would be a **third** representation — rejected (the ADR-040 A8 split-record trap).
 
 ---
 
 ## Decision
 
-### D1 — Reuse the calendar-linked-task convention; bring event *creation* to the Bridge (reverse of Nami's direction)
+### D1 — The vault is the source of truth; the calendar is a downstream representation
 
-Scheduling a task on the Bridge writes the **existing** `scheduled` (start datetime) + `scheduled_end` (end datetime) + `calendar_event_id`, and creates the GCal event via the **existing** `shared/google_calendar.create_event`. No new schema key. Nami (calendar→task) and Bridge (task→calendar) now share one model.
+**The Obsidian vault is the canonical store for all content; the Bridge UI and Google Calendar are views that orbit it** (修修's stated principle; generalises ADR-039 Tier-B "vault-as-substrate" + ADR-040 A1). Concretely: a task's **`plan[]`** is the authoritative record of *intent to spend N 🍅 on day D*. The calendar event is a **projection** of that intent. Consequences cascade through every decision below:
+- A schedule action **always** writes `plan[]` first; the calendar event is best-effort.
+- An external calendar edit is an *incoming change proposal* to be reconciled **back into `plan[]`**, never the master copy.
 
-### D2 — A scheduled block is *both* a calendar appointment *and* a pomodoro plan entry (one action, two writes)
+### D2 — One schedule action = authoritative `plan[]` write, then best-effort calendar projection
 
-One "排到行事曆" action coalesces:
-1. `scheduled` = chosen `date`T`time` (tz-stripped, Obsidian format); `scheduled_end` = start + **pomodoros × 30 min**; `calendar_event_id` = the created event's id.
-2. `plan[]` gains/updates `{date, pomodoros}` for that date — so the weekly dashboard 🍅 goal/actual still counts it.
+Scheduling a backlog task (date + start time + 🍅 count, default `預估🍅`):
+1. **Write `plan[]`** `{date, pomodoros, reason?}` (the existing `add_plan_entry`; weekend still needs a reason — ADR-039 D9). **This must succeed for the action to succeed.**
+2. **Best-effort** create the calendar event and store `scheduled` (start), `scheduled_end` (start + block), `calendar_event_id` on the task.
+3. If the calendar step fails (token expired / API down / conflict-not-forced), the **plan stands**; the page shows a non-fatal "未連動行事曆，可稍後重試" banner. (Open-Q1 → *plan succeeds, calendar best-effort*.)
 
-Pomodoro count defaults to the task's `預估🍅`, editable in the picker. **1 🍅 = 30 min, flat** (no break math) — `scheduled_end = start + pomodoros*30min`.
+**Block length:** `CALENDAR_BLOCK_MINUTES_PER_POMODORO = 30` = a 25-min focus 🍅 + 5-min buffer (Pomodoro-technique convention; 修修's "一顆番茄半小時"). **Counting/aggregation stays 25** (`POMODORO_MINUTES = 25`) — the 30-min block is *calendar wall-clock only*, documented so planned/actual 🍅 units don't appear to diverge.
 
-### D3 — Source-of-truth reconciliation rule (the key cross-system risk)
+### D3 — Reuse the calendar-linked-task fields as the projection's cache
 
-A task carries `calendar_event_id` that *either* side may now touch. Rule: **the calendar remains source of truth for an existing event's time.** The Bridge action is *create* (no `calendar_event_id` yet) or an *explicit* reschedule/cancel the user initiates on the Bridge. The Bridge never silently re-pushes on read; Nami's `_sync_task_from_calendar_update` stays the reconciler for externally-edited events. Concurrent edits are guarded by the same **If-Match content-hash token** Slice 2 added (`task_file_token`) on the task file, surfaced as a conflict banner — never a silent overwrite.
+The projection writes the **existing** `scheduled`/`scheduled_end`/`calendar_event_id` (no new keys; same convention Nami uses). Concurrency on the task file uses **#812's `task_file_token`** (If-Match content hash) — `weekly_file_token` is for weekly files only. Conflict detection on create is `find_conflicts` (event-overlap; **not** FreeBusy); on conflict the UI offers **force** (mirrors Nami's `force=true`).
 
-### D4 — Bridge gains create + reschedule + cancel (full lifecycle, no orphans)
+### D4 — Timezone: Asia/Taipei-only v1, but emitted via Google's `timeZone` field
 
-- **Create:** freebusy-check; on conflict, show the clashing events and offer **force** (mirrors Nami's `force=true`). On task-write failure after event creation, **rollback the event** (mirror `nami.py:1391-1416`).
-- **Reschedule:** `update_event(calendar_event_id, …)` + rewrite `scheduled`/`scheduled_end`/plan entry.
-- **Cancel:** `delete_event` + clear `calendar_event_id`/`scheduled_end` (+ remove the plan entry for that date).
+v1 assumes 修修 schedules in **Asia/Taipei** (single user, no DST). But `create_event` is extended to send `start.timeZone`/`end.timeZone = "Asia/Taipei"` with a **naive local** `dateTime` (Google then renders/DST-handles correctly), instead of the current strip-and-hard-`+08:00`. Multi-user / IANA-per-user / DST zones are **deferred** — the `timeZone` field makes that a later additive change, not a rewrite.
 
-### D5 — `scheduled` is overloaded (date vs datetime) — the indexer must tolerate both
+### D5 — `scheduled` is semantically overloaded; `plan[]` stays the planning authority
 
-The weekly indexer parses `scheduled` via `_as_date()`. Once the Bridge writes a **datetime** `scheduled` (`2026-06-03T09:00:00`), `_as_date()` must parse the **date portion** (not fail / not drop the task). This compatibility shim is in scope; tasks scheduled by Nami today already carry datetime `scheduled`, so this also fixes a latent read bug.
+`scheduled` now means either *due-by* (date, legacy/Nami plain tasks) or *appointed-at* (datetime, a calendar block). `_as_date` already parses both for week-placement, so there is **no parsing bug**; but consumers must not infer *planning* from `scheduled`. Because **`plan[]` is the planning authority (D1)**, the overload is low-risk: the dashboard's 🍅 math reads `plan[]`, not `scheduled`.
 
-### D6 — All-incomplete backlog as a collapsible dashboard zone
+### D6 — One timed calendar block per task (v1)
 
-A `<details>` zone on `/bridge/weekly` — "📥 待排程 · 所有未完成任務" — lists every `status≠done` task (grouped by project), each with an inline **native `<input type=date>` + `<input type=time>`** picker (browser calendar popover; design-system-consistent; mobile-friendly; no custom widget) + editable 🍅 count + 排到行事曆 button. Distinct from ADR-040's week-scoped `incomplete` zone.
+`plan[]` upserts by date and a task holds a single `calendar_event_id`, so v1 links a task to **at most one** timed block. Scheduling a second time **replaces** the block (reschedule). Multiple concurrent blocks per task (e.g. 2🍅 Tue + 3🍅 Wed) are **deferred**.
 
-### D7 — Weekend reason (D9 of ADR-039) still applies
+### D7 — Idempotency + rollback
 
-A weekend block still requires a reason (the `add_plan_entry` weekend guard), for consistency with the existing plan-write rule.
+Stamp the event with an `extendedProperties.private.lifeos_task = "{slug}@{date}"` so a double-submit/retry finds the existing event instead of duplicating, and rollback can locate it reliably. Create order: `plan[]` write → event create → store id. If the id-store write fails after event creation, delete the event (mirror Nami `nami.py:1393-1400`); the `plan[]` entry remains (D1).
+
+### D8 — Reschedule
+
+Edit the `plan[]` entry + `update_event` + rewrite `scheduled`/`scheduled_end`. `update_event` has **no** built-in conflict check, so the route pre-checks overlap (like Nami's wrapper `nami.py:1525-1531`) and offers force.
+
+### D9 — Cancel = two distinct actions (never auto-drop `plan[]`)
+
+- **「移出行事曆」** — `delete_event` + clear `scheduled`/`scheduled_end`/`calendar_event_id`; **keep `plan[]`** (you still plan to do the work, just not as a calendar block).
+- **「取消排程」** — remove the `plan[]` entry (preserving `plan[].done` semantics — only drop if `done == 0`) **and** delete the event.
+
+This **diverges from Nami's `delete_calendar_event`**, which deletes the whole task file (`nami.py:1608-1627`) — documented divergence; the Bridge never deletes a task.
+
+### D10 — Backlog zone + native pickers
+
+A `<details>` "📥 待排程 · 所有未完成任務" zone on `/bridge/weekly` lists every `status≠done` task (grouped by project) with an inline native `<input type=date>` + `<input type=time>` + 🍅 count + 排到行事曆. Native pickers for v1 (design-system-consistent, no widget); **mobile picker usability is a UAT check** (Gemini caution), not assumed.
 
 ---
 
 ## Consequences
+- **Good:** one coherent model — vault/`plan[]` is truth, calendar is a projection; scheduling never hard-blocks on Google; reuses Nami's field convention + transactional create/rollback; the dashboard 🍅 math stays authoritative.
+- **Cost/risk:** Bridge now depends on `shared/google_calendar` (OAuth token on host). The projection can lag the plan if the calendar write fails (banner + retry). External calendar edits via Nami currently update `scheduled` but **not** `plan[]` (see Deferred — reconciliation).
 
-- **Good:** one scheduling/calendar model across Nami + Bridge; reuses a battle-tested transactional create-with-rollback + freebusy path; the weekly 🍅 view stays truthful because scheduling also writes `plan[]`.
-- **Cost / risk:** Bridge now depends on `shared/google_calendar` (OAuth token must be present on the host; a calendar outage must degrade gracefully — schedule the *plan* write even if the event fails? **open question, see below**). The `scheduled` date/datetime overload (D5) touches read paths used everywhere — needs regression tests. The two-way `calendar_event_id` ownership (D3) is the subtle part a panel should stress.
-- **Deferred:** recurring blocks; drag-to-reschedule UI; multi-day blocks; auto-suggesting free slots from freebusy.
+## Deferred (not in v1)
+- **Calendar→`plan[]` reconciliation**: making Nami's `_sync_task_from_calendar_update` also propagate to `plan[]` (today it only writes `scheduled`/`scheduled_end`). Until then, *edit blocks on the Bridge, not in Google Calendar*.
+- Multi-block per task; multi-day / cross-midnight blocks; all-day-event semantics; `plan[].done` vs Google RSVP status; multi-timezone / DST / per-user IANA tz.
 
 ## Alternatives rejected
+- **Calendar as source of truth (v1's D3):** leaves `plan[]` un-reconciled → dashboard/calendar drift; calendar outage blocks planning. Rejected by the panel + 修修.
+- **`plan[].time` (Bridge-local time field):** a third scheduling representation. Rejected (A8 split-record trap).
+- **Custom month-grid widget:** heavier than native inputs for v1. Rejected.
 
-- **`plan[].time` (Bridge-local time field):** fragments scheduling into two sources vs Nami's `scheduled_end`/`calendar_event_id`. Rejected (the A8 split-record trap).
-- **Calendar appointment only, no `plan[]`:** the weekly 🍅 dashboard would not reflect scheduled work. Rejected (D2 keeps them coherent).
-- **Custom month-grid calendar widget:** heavier to build/maintain; native inputs already give a calendar popover. Rejected for v1.
-
-## Open questions for sign-off / panel
-
-1. **Calendar-write failure policy:** if `create_event` fails (token expired / API down), do we still write `plan[]` + `scheduled` (degrade to a date-plan, no event) and tell 修修 "calendar not linked", or fail the whole action? (Leaning: degrade + banner, so scheduling never hard-blocks on Google.)
-2. **D3 ownership:** is "calendar is source of truth, Bridge only creates / explicitly edits" the right rule, or should Bridge edits win?
-3. **Cancel semantics:** does cancel remove the `plan[]` entry too, or keep the pomodoro plan and only drop the calendar event?
-
-## Slice plan (proposed)
-
+## Slice plan
 | Slice | Scope | Notes |
 |---|---|---|
-| **41a** | `_as_date` datetime-tolerance (D5) + tests | unblocks everything; tiny, no UI |
-| **41b** | `schedule_task_block()` writer (scheduled/scheduled_end/calendar_event_id + plan[] + GCal create w/ freebusy + rollback) + tests | no UI yet; the contract |
-| **41c** | Backlog `<details>` zone + native date/time/🍅 picker + 排到行事曆 route (create) | browser-UAT |
-| **41d** | Reschedule + cancel (update/delete event) | browser-UAT |
+| **41a** | `schedule_task_block()` in `weekly_writer` — authoritative `plan[]` write + projection fields (`scheduled`/`scheduled_end`/`calendar_event_id`) under `task_file_token`; pure-data tests (no live GCal) | depends on #812 merged |
+| **41b** | `google_calendar` extension: `timeZone` field + `extendedProperties` idempotency + overlap pre-check for `update_event`; create/reschedule/cancel helpers + tests (mocked) | the integration contract |
+| **41c** | Backlog `<details>` zone + native date/time/🍅 picker + 排到行事曆 route (create, best-effort calendar, banner on failure) | browser-UAT |
+| **41d** | Reschedule + the two cancel actions (移出行事曆 / 取消排程) | browser-UAT |
