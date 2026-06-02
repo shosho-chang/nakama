@@ -81,7 +81,39 @@ def schedule_block(
         reason=reason,
         expected_token=expected_token,
     )
+    return _create_and_link(
+        vault_root,
+        task_slug,
+        start=start,
+        pomodoros=pomodoros,
+        title=title,
+        reason=reason,
+        scheduled=scheduled,
+        scheduled_end=scheduled_end,
+        token=token,
+        force=force,
+    )
 
+
+def _create_and_link(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    start: datetime,
+    pomodoros: int,
+    title: str,
+    reason: Optional[str],
+    scheduled: str,
+    scheduled_end: str,
+    token: str,
+    force: bool,
+) -> ScheduleOutcome:
+    """Best-effort calendar projection for a block whose vault state (plan[] +
+    scheduled/scheduled_end) is **already written**. Creates the event (keyed for
+    idempotency, D7) and links its id back via a single ``calendar_event_id`` write;
+    a write-back failure rolls the event back (D7). Used by both
+    :func:`schedule_block` and the unlinked fallback in :func:`reschedule_block`,
+    so the relocate write is never duplicated (41d panel — Gemini §2)."""
     idem = f"{task_slug}@{start.date().isoformat()}"
     try:
         result = google_calendar.create_event(
@@ -98,7 +130,7 @@ def schedule_block(
     if isinstance(result, list):  # time clash; event not created
         return ScheduleOutcome(scheduled, scheduled_end, token, CONFLICT, conflicts=tuple(result))
 
-    # link the event id back to the task (guarded by the post-step-1 token)
+    # link the event id back to the task (guarded by the post-write token)
     try:
         _, _, token = schedule_task_block(
             vault_root,
@@ -171,16 +203,19 @@ def reschedule_block(
     )
     if not event_id:
         # Not actually linked (e.g. cleared in Obsidian between page-load and
-        # submit). Degrade to a fresh create+link — the relocate above is an
-        # idempotent upsert, so this is safe.
-        return schedule_block(
+        # submit). The relocate above already wrote plan[] + scheduled, so only the
+        # calendar create+link remains — call _create_and_link directly (NOT
+        # schedule_block, which would redo the vault write — 41d panel, Gemini §2).
+        return _create_and_link(
             vault_root,
             task_slug,
             start=start,
             pomodoros=pomodoros,
             title=title,
             reason=reason,
-            expected_token=token,
+            scheduled=scheduled,
+            scheduled_end=scheduled_end,
+            token=token,
             force=force,
         )
 

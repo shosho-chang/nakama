@@ -18,6 +18,7 @@ from filelock import FileLock
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from shared.log import get_logger
 
@@ -207,8 +208,19 @@ def update_event(
 
 
 def delete_event(event_id: str) -> None:
+    """刪除事件。**idempotent**：事件已不存在（404 / 410 已刪除）視為成功 —
+    取消動作重送或事件已在 Google 端被刪不該回報失敗（ADR-041 41d panel）。"""
     service = _get_service()
-    service.events().delete(calendarId="primary", eventId=event_id).execute()
+    try:
+        service.events().delete(calendarId="primary", eventId=event_id).execute()
+    except HttpError as exc:
+        if exc.resp is not None and exc.resp.status in (404, 410):
+            logger.info(
+                "delete_event(%s): already gone (%s) — treating as deleted",
+                event_id, exc.resp.status,
+            )
+            return
+        raise
 
 
 def find_conflicts(start: str, end: str) -> list[CalendarEvent]:

@@ -797,6 +797,33 @@ class TestCalendarSchedule:
         # its row must NOT carry a schedule form (only the create-eligible tasks do)
         assert "已排入行事曆" in body
 
+    def test_schedule_rejects_already_linked_task(self, client, tmp_path, monkeypatch):
+        """Server-side orphan guard (41d panel — Codex §2): a task that already
+        carries calendar_event_id must NOT re-enter the create path (would orphan
+        the first event). create_event must never be called."""
+        import shared.google_calendar as gc
+
+        called = {"n": 0}
+        monkeypatch.setattr(
+            gc, "create_event", lambda **kw: (called.__setitem__("n", 1), self._ev())[1]
+        )
+        linked = (
+            "---\ntitle: 已連動任務\nstatus: to-do\n預估🍅: 2\n"
+            "scheduled: 2026-06-03T09:00:00\ncalendar_event_id: evt_live\n"
+            "tags:\n  - task\n---\n\nbody\n"
+        )
+        (tmp_path / "TaskNotes" / "Tasks" / "已連動任務.md").write_text(linked, encoding="utf-8")
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "已連動任務", "entry_date": "2026-06-04",
+                "entry_time": "09:00", "pomodoros": "2", "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=already_linked"
+        assert called["n"] == 0  # create never reached
+
 
 def _make_linked(tmp_path, slug="已連動任務", eid="evt_live"):
     """Write a task already projected onto the calendar (scheduled Wed 6/3 09:00)."""
@@ -812,6 +839,12 @@ def _make_linked(tmp_path, slug="已連動任務", eid="evt_live"):
 def _linked_fm(tmp_path, slug="已連動任務"):
     raw = (tmp_path / "TaskNotes" / "Tasks" / f"{slug}.md").read_text(encoding="utf-8")
     return yaml.safe_load(raw.split("---", 2)[1])
+
+
+def _task_token(tmp_path, slug="已連動任務") -> str:
+    from shared.weekly_writer import task_file_token
+
+    return task_file_token(tmp_path, slug)
 
 
 class TestCalendarReschedule:
@@ -833,6 +866,7 @@ class TestCalendarReschedule:
                 "entry_date": "2026-06-04",
                 "entry_time": "14:00",
                 "pomodoros": "3",
+                "expected_token": _task_token(tmp_path),
                 "week": WEEK_KEY,
             },
             follow_redirects=False,
@@ -853,8 +887,8 @@ class TestCalendarReschedule:
         r = client.post(
             "/bridge/weekly/task/已連動任務/reschedule",
             data={
-                "entry_date": "2026-06-04", "entry_time": "09:00",
-                "pomodoros": "2", "week": WEEK_KEY,
+                "entry_date": "2026-06-04", "entry_time": "09:00", "pomodoros": "2",
+                "expected_token": _task_token(tmp_path), "week": WEEK_KEY,
             },
             follow_redirects=False,
         )
@@ -909,6 +943,28 @@ class TestCalendarReschedule:
         )
         assert "err=conflict" in r.headers["location"]
 
+    def test_reschedule_missing_token_rejected(self, client, tmp_path, monkeypatch):
+        """An omitted/empty token must NOT silently disable the lock (41d panel —
+        Codex §1/§2): it conflicts against the existing file."""
+        import shared.google_calendar as gc
+
+        _make_linked(tmp_path)
+        moved = {"n": 0}
+        monkeypatch.setattr(gc, "find_conflicts", lambda s, e: [])
+        monkeypatch.setattr(
+            gc, "update_event", lambda eid, **kw: (moved.__setitem__("n", 1), self._ok(eid))[1]
+        )
+        r = client.post(
+            "/bridge/weekly/task/已連動任務/reschedule",
+            data={
+                "entry_date": "2026-06-04", "entry_time": "09:00",
+                "pomodoros": "2", "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert "err=conflict" in r.headers["location"]
+        assert moved["n"] == 0  # never reached the calendar
+
     def _ok(self, eid="evt_live"):
         from shared.google_calendar import CalendarEvent
 
@@ -926,7 +982,7 @@ class TestCalendarCancel:
         monkeypatch.setattr(gc, "delete_event", lambda eid: deleted.append(eid))
         r = client.post(
             "/bridge/weekly/task/已連動任務/unlink",
-            data={"week": WEEK_KEY},
+            data={"expected_token": _task_token(tmp_path), "week": WEEK_KEY},
             follow_redirects=False,
         )
         assert "saved=unlinked" in r.headers["location"]
@@ -944,7 +1000,7 @@ class TestCalendarCancel:
         monkeypatch.setattr(gc, "delete_event", lambda eid: deleted.append(eid))
         r = client.post(
             "/bridge/weekly/task/已連動任務/unschedule",
-            data={"week": WEEK_KEY},
+            data={"expected_token": _task_token(tmp_path), "week": WEEK_KEY},
             follow_redirects=False,
         )
         assert "saved=unscheduled" in r.headers["location"]
@@ -964,7 +1020,7 @@ class TestCalendarCancel:
         monkeypatch.setattr(gc, "delete_event", boom)
         r = client.post(
             "/bridge/weekly/task/已連動任務/unlink",
-            data={"week": WEEK_KEY},
+            data={"expected_token": _task_token(tmp_path), "week": WEEK_KEY},
             follow_redirects=False,
         )
         assert "err=cancel_cal_failed" in r.headers["location"]

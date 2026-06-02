@@ -75,6 +75,10 @@ _PLAN_ERRORS = {
     "date": "排程日期格式無效。",
     "task": "找不到該任務檔，可能已在 Obsidian 改名或移除。",
     "time": "排程時間格式無效。",
+    "already_linked": (
+        "此任務已連動 Google 行事曆——要改期或取消，請到任務頁操作；"
+        "重新排入會產生重複事件，已擋下。"
+    ),
     # calendar scheduling (ADR-041 41c) — plan is authoritative; calendar is best-effort
     "cal_conflict": (
         "此時段與 Google 行事曆既有事件衝突——已寫入本週計畫但未建立行事曆事件。"
@@ -295,6 +299,12 @@ async def weekly_schedule(
     # never from a client-posted field that could be stale (Codex audit §2). A
     # missing task → the scheduler raises TaskNotFoundError below.
     task = WeeklyIndexer(vault).find_task(task_slug)
+    # Server-enforce the 41c orphan guard (not just the hidden-picker UI): a task
+    # already projected to the calendar must NOT re-enter the create path — a stale
+    # dashboard / direct POST would create a SECOND event and orphan the first
+    # (41d panel — Codex §2). Reschedule/cancel live on the task page.
+    if task is not None and task.calendar_event_id:
+        return _sched_back(wk_key, err="already_linked")
     event_title = task.title if task is not None else task_slug
 
     start = datetime.combine(ed, et)  # naive Asia/Taipei (D4)
@@ -560,6 +570,7 @@ _TASK_ERRORS = {
     "cancel_cal_failed": (
         "已更新本週計畫，但刪除 Google 行事曆事件失敗——請到 Google 行事曆手動移除，或稍後重試。"
     ),
+    "cal_failed": "改期寫入後寫回失敗，行事曆事件已回滾——請重試。",
 }
 
 _TASK_SAVED = {
@@ -798,7 +809,7 @@ async def weekly_task_reschedule(
             pomodoros=pomodoros,
             title=task.title,  # derived from the vault, not a client field (Codex §2)
             reason=reason.strip() or None,
-            expected_token=expected_token or None,
+            expected_token=expected_token,
             force=bool(force),
         )
     except WeekendReasonRequired:
@@ -816,6 +827,8 @@ async def weekly_task_reschedule(
         return _task_back(slug, wk_key, saved="rescheduled")
     if status == calendar_scheduler.CONFLICT:
         return _task_back(slug, wk_key, err="cal_conflict")
+    if status == calendar_scheduler.FAILED:  # unlinked-fallback rollback (event deleted)
+        return _task_back(slug, wk_key, err="cal_failed")
     return _task_back(slug, wk_key, err="cal_unavailable")  # UNAVAILABLE
 
 
@@ -833,7 +846,7 @@ async def weekly_task_unlink(
     wk_key = _safe_week_key(week)
     try:
         outcome = calendar_scheduler.unlink_calendar(
-            get_vault_path(), slug, expected_token=expected_token or None
+            get_vault_path(), slug, expected_token=expected_token
         )
     except WeeklyConflictError:
         return _task_back(slug, wk_key, err="conflict")
@@ -861,7 +874,7 @@ async def weekly_task_unschedule(
     wk_key = _safe_week_key(week)
     try:
         outcome = calendar_scheduler.cancel_schedule(
-            get_vault_path(), slug, expected_token=expected_token or None
+            get_vault_path(), slug, expected_token=expected_token
         )
     except WeeklyConflictError:
         return _task_back(slug, wk_key, err="conflict")
