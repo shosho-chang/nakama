@@ -597,6 +597,207 @@ class TestWeeklyFileWrites:
         assert _weekly_token(tmp_path) != t1  # content changed → token changed
 
 
+class TestCalendarSchedule:
+    """ADR-041 41c — the backlog calendar scheduler route. Google Calendar is
+    fully mocked (no live API); the vault write is real (D1 authoritative)."""
+
+    def _ev(self, eid="evt_1"):
+        from shared.google_calendar import CalendarEvent
+
+        return CalendarEvent(id=eid, title="測試任務", start="x", end="y", html_link="http://h")
+
+    def test_backlog_zone_renders_picker(self, client, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        assert "待排程" in body
+        assert 'action="/bridge/weekly/schedule"' in body
+        assert 'type="date"' in body and 'type="time"' in body
+        assert 'name="force"' in body  # the conflict-override affordance
+        assert "測試任務" in body
+
+    def test_schedule_creates_event_and_links(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        seen = {}
+
+        def fake_create(**kw):
+            seen.update(kw)
+            return self._ev("evt_42")
+
+        monkeypatch.setattr(gc, "create_event", fake_create)
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "測試任務",
+                # a stale/forged client title must be IGNORED — the event title is
+                # derived from the vault (Codex audit §2). Server uses the real title.
+                "title": "STALE-FORGED-TITLE",
+                "entry_date": "2026-06-03",  # Wed
+                "entry_time": "09:00",
+                "pomodoros": "4",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&saved=scheduled"
+        raw = _task_path(tmp_path).read_text(encoding="utf-8")
+        fm = yaml.safe_load(raw.split("---", 2)[1])
+        assert str(fm["scheduled"]).startswith("2026-06-03T09:00")
+        assert str(fm["scheduled_end"]).startswith("2026-06-03T11:00")  # 4🍅 × 30 min
+        assert fm["calendar_event_id"] == "evt_42"
+        assert seen["idempotency_key"] == "測試任務@2026-06-03"
+        assert seen["title"] == "測試任務"  # vault title, NOT the forged form value
+
+    def test_schedule_conflict_writes_plan_no_event(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        monkeypatch.setattr(gc, "create_event", lambda **kw: [self._ev("a"), self._ev("b")])
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-03",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=cal_conflict&n=2"
+        fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
+        assert str(fm["scheduled"]).startswith("2026-06-03T09:00")  # plan still written (D2)
+        assert "calendar_event_id" not in fm
+
+    def test_schedule_calendar_outage_degrades(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        def boom(**kw):
+            raise RuntimeError("API down")
+
+        monkeypatch.setattr(gc, "create_event", boom)
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-03",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=cal_unavailable"
+        fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
+        assert str(fm["scheduled"]).startswith("2026-06-03T09:00")  # plan stands
+
+    def test_schedule_force_skips_conflict_check(self, client, monkeypatch):
+        import shared.google_calendar as gc
+
+        seen = {}
+        monkeypatch.setattr(gc, "create_event", lambda **kw: (seen.update(kw), self._ev())[1])
+        client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-03",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "force": "1",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert seen["check_conflict"] is False
+
+    def test_schedule_weekend_requires_reason(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        called = {"n": 0}
+        monkeypatch.setattr(
+            gc, "create_event", lambda **kw: (called.__setitem__("n", 1), self._ev())[1]
+        )
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-06",  # Sat
+                "entry_time": "09:00",
+                "pomodoros": "1",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=weekend"
+        assert called["n"] == 0  # never reached the calendar (vault write raised first)
+
+    def test_schedule_bad_time_rejected(self, client):
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-03",
+                "entry_time": "25:99",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=time"
+
+    def test_schedule_unknown_task_err(self, client):
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "不存在",
+                "entry_date": "2026-06-03",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=task"
+
+    @pytest.mark.parametrize("bad_time", ["09:00:00", "09:00:00+08:00", "9:00", "0900", "24:00"])
+    def test_schedule_rejects_non_naive_hhmm(self, client, bad_time):
+        """Codex §1: only a strict naive HH:MM is accepted — seconds or a tz offset
+        would make datetime.combine aware and break the D4 naive contract."""
+        r = client.post(
+            "/bridge/weekly/schedule",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-03",
+                "entry_time": bad_time,
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=time"
+
+    def test_calendar_linked_task_shows_locked_note_not_picker(self, client, tmp_path, monkeypatch):
+        """Codex §2/§3: a task already projected to the calendar must NOT get a
+        create picker (rescheduling it would orphan the existing event) — it shows
+        the 41d 'reschedule via task page' note instead."""
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        linked = (
+            "---\ntitle: 已連動任務\nstatus: to-do\n預估🍅: 2\n"
+            "scheduled: 2026-06-03T09:00:00\ncalendar_event_id: evt_live\n"
+            "tags:\n  - task\n---\n\nbody\n"
+        )
+        (tmp_path / "TaskNotes" / "Tasks" / "已連動任務.md").write_text(linked, encoding="utf-8")
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        assert "已連動任務" in body
+        assert "改期或取消請到" in body  # the 41d pointer note
+        # its row must NOT carry a schedule form (only the create-eligible tasks do)
+        assert "已排入行事曆" in body
+
+
 class TestAuthGate:
     def test_post_requires_auth_when_password_set(self, monkeypatch, tmp_path):
         monkeypatch.setenv("WEB_PASSWORD", "secret")

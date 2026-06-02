@@ -231,6 +231,7 @@ class WeeklyTask:
     time_entries: list  # raw, for aggregator
     relative_path: str
     weekly_priority: str = ""  # week file_key this task is a top-3 priority for ("" = none)
+    calendar_event_id: str = ""  # set once projected to Google Calendar (41b); "" = not linked
 
     def planned_in(self, wk: WeekRef) -> int:
         if self.plan:
@@ -372,6 +373,8 @@ class WeeklyView:
     tasks: tuple[WeeklyTask, ...]  # tasks with allocation/scheduled in week
     today_tasks: tuple[WeeklyTask, ...]  # subset scheduled today (current week only)
     incomplete: tuple[WeeklyTask, ...]  # not done, due on/before week end
+    backlog_by_project: dict[str, list[WeeklyTask]]  # ALL not-done tasks (not week-bounded, 41c)
+    backlog_count: int  # total open tasks in the backlog (across all projects)
     by_project: dict[str, list[WeeklyTask]]
     planned_by_task: dict[str, int]  # slug -> planned 🍅 this week (work only)
     days: tuple[dict, ...]  # 5 day-cards Mon..Fri (the bullet section)
@@ -380,6 +383,7 @@ class WeeklyView:
     conflicts: tuple[ConflictFile, ...]
     prev_key: str
     next_key: str
+    today_iso: str  # today (Asia/Taipei) — default for the calendar scheduler picker (41c)
 
 
 # ── Indexer ──────────────────────────────────────────────────────────────────
@@ -480,6 +484,8 @@ class WeeklyIndexer:
         wp_raw = fm.get("weekly_priority")
         weekly_priority = _as_date(wp_raw).isoformat() if _as_date(wp_raw) else ""
 
+        cal_event_id = str(fm.get("calendar_event_id") or "").strip()
+
         return WeeklyTask(
             slug=slug,
             title=title,
@@ -494,6 +500,7 @@ class WeeklyIndexer:
             time_entries=time_entries,
             relative_path=f"{TASKS_DIR}/{path.name}",
             weekly_priority=weekly_priority,
+            calendar_event_id=cal_event_id,
         )
 
     # -- habits --
@@ -683,6 +690,15 @@ class WeeklyIndexer:
         incomplete = [
             t for t in all_tasks if not t.done and t.scheduled is not None and t.scheduled <= wk.end
         ]
+        # backlog (41c) = EVERY not-done task, regardless of scheduling — the full
+        # "待排程" pool the calendar picker schedules from. Grouped by project,
+        # unscheduled tasks first within each group (they need attention most),
+        # then by earliest scheduled date so already-placed tasks sort sensibly.
+        backlog = [t for t in all_tasks if not t.done]
+        backlog.sort(key=lambda t: (t.scheduled is not None, t.scheduled or date.max, t.name))
+        backlog_by_project: dict[str, list[WeeklyTask]] = {}
+        for t in backlog:
+            backlog_by_project.setdefault(t.project or "（無專案）", []).append(t)
 
         # 🍅 = work hours: only `work`-category tasks count toward planned/actual.
         planned = sum(t.planned_in(wk) for t in all_tasks if t.is_work)
@@ -758,6 +774,8 @@ class WeeklyIndexer:
             tasks=tuple(in_week),
             today_tasks=today_tasks,
             incomplete=tuple(incomplete),
+            backlog_by_project=backlog_by_project,
+            backlog_count=len(backlog),
             by_project=by_project,
             planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
             days=days,
@@ -766,6 +784,7 @@ class WeeklyIndexer:
             conflicts=tuple(self.list_conflicts()),
             prev_key=wk.shift(-1).file_key,
             next_key=wk.shift(1).file_key,
+            today_iso=today.isoformat(),
         )
 
     def _build_day_headers(self, wk: WeekRef, today: date) -> list[dict]:

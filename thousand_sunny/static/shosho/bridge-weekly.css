@@ -466,6 +466,42 @@ body.sho .wk-num-field input {
 }
 body.sho .wk-num-field input:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
 
+/* ── Backlog calendar scheduler (ADR-041 41c) ─────────────────────────────── */
+body.sho .wk-backlog > summary.wk-zone-head { cursor: pointer; list-style: none; user-select: none; }
+body.sho .wk-backlog > summary::-webkit-details-marker { display: none; }
+body.sho .wk-backlog > summary::marker { content: ""; }
+body.sho .wk-backlog > summary:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-bl-when {
+  font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted);
+  white-space: nowrap;
+}
+body.sho .wk-bl-linked { color: color-mix(in oklch, var(--sho-accent) 70%, var(--sho-muted)); }
+body.sho .wk-bl-locked { padding: 12px 6px 16px 26px; background: var(--sho-bg-2); font-size: 12px; }
+body.sho .wk-bl-locked a { color: var(--sho-accent); }
+/* the picker reuses .wk-plan-edit (column flex, inset bg); these add the rows */
+body.sho .wk-sched-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+body.sho .wk-sched-lbl {
+  display: inline-flex; flex-direction: column; gap: 4px;
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--sho-muted);
+}
+body.sho .wk-sched-date, body.sho .wk-sched-time {
+  font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 5px 8px; color-scheme: dark light;
+}
+body.sho .wk-sched-date:focus-visible, body.sho .wk-sched-time:focus-visible {
+  outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus);
+}
+body.sho .wk-sched-dur { font-size: 10px; margin-left: 2px; }
+body.sho .wk-sched-form.is-weekend .wk-reason-field {
+  display: inline-block;
+  border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent);
+}
+body.sho .wk-sched-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+body.sho .wk-force { font-size: 11px; color: var(--sho-text-2); }
+body.sho .wk-sched-go { padding: 6px 16px; font-size: 12px; }
+
 @media (prefers-reduced-motion: reduce) {
   body.sho .wk-edit-hint, body.sho .wk-plan-chip .wk-chip-x, body.sho .wk-day-caret { transition: none; }
   body.sho .wk-ci-name, body.sho .wk-open, body.sho .wk-top3-item a,
