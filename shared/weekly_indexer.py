@@ -51,6 +51,7 @@ WORK_CATEGORY = "work"
 DEFAULT_CATEGORY = "misc"
 
 UFO_WEEKLY_TARGET = 5  # planned super-focus (75-min) sessions per week (ADR-039 E)
+UFO_MIN_MINUTES = 70  # a `deep` block counts as 1 UFO only if it ran ≥ this (ADR-040 A2)
 
 _ZH_WEEKDAYS = ("日", "一", "二", "三", "四", "五", "六")  # Sun..Sat
 
@@ -179,6 +180,18 @@ def _entry_end_date(entry: dict) -> Optional[date]:
     return en.date() if en else None
 
 
+def _is_ufo(entry: dict) -> bool:
+    """A timeEntries row counts as 1 UFO 🤩 iff it is a ``deep`` block that ran
+    ≥ :data:`UFO_MIN_MINUTES` and was completed (ADR-040 A2 — derived, not a bare
+    tag). ``completed`` absent → treated as completed (legacy / Obsidian-written
+    entries predate the field)."""
+    if not isinstance(entry, dict) or entry.get("mode") != "deep":
+        return False
+    if entry.get("completed") is False:
+        return False
+    return _entry_minutes(entry) >= UFO_MIN_MINUTES
+
+
 # ── Task model ───────────────────────────────────────────────────────────────
 
 
@@ -256,12 +269,9 @@ class WeeklyTask:
 
     @property
     def ufo_total(self) -> int:
-        """All-time UFO (75-min ``deep``) sessions logged on this task."""
-        return sum(
-            1
-            for e in self.time_entries
-            if isinstance(e, dict) and e.get("mode") == "deep" and _entry_minutes(e) > 0
-        )
+        """All-time UFO (75-min ``deep``) sessions logged on this task — derived
+        per :func:`_is_ufo` (≥70 min & completed), not a bare ``mode:deep`` tag."""
+        return sum(1 for e in self.time_entries if _is_ufo(e))
 
     @property
     def accuracy_pct(self) -> int:
@@ -271,13 +281,11 @@ class WeeklyTask:
         return int(round(100 * self.actual_pomodoros / self.est_pomodoros))
 
     def deep_sessions_in(self, wk: WeekRef) -> int:
+        """UFO 🤩 sessions (derived, :func:`_is_ufo`) ending inside ``wk``."""
         return sum(
             1
             for e in self.time_entries
-            if isinstance(e, dict)
-            and e.get("mode") == "deep"
-            and (d := _entry_end_date(e)) is not None
-            and wk.contains(d)
+            if _is_ufo(e) and (d := _entry_end_date(e)) is not None and wk.contains(d)
         )
 
 

@@ -306,6 +306,30 @@ class TestTaskDetail:
         entries = _time_entries(tmp_path)
         assert entries[-1]["mode"] == "deep"
 
+    def test_log_actual_elapsed_from_timer(self, client, tmp_path):
+        """ADR-040 A2: the live timer reports elapsed_seconds → the logged span is
+        the real elapsed time (提早完成), not a fixed nominal block."""
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "elapsed_seconds": "600", "week": WEEK_KEY},  # 10 min
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert e["actual_minutes"] == 10
+        assert e["planned_minutes"] == 25
+        assert e["completed"] is True
+        assert "manual" not in e
+
+    def test_log_manual_flags_claim_full_block(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "deep", "manual": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        e = _time_entries(tmp_path)[-1]
+        assert e["actual_minutes"] == 75  # full nominal block
+        assert e["manual"] is True
+
     def test_log_unknown_mode_rejected(self, client, tmp_path):
         before = len(_time_entries(tmp_path))
         r = client.post(

@@ -215,6 +215,47 @@ def test_actual_and_ufo_from_time_entries(tmp_path, monkeypatch):
     assert v.actual.total_pomodoros == 4  # aggregator union over timeEntries
 
 
+def test_ufo_derived_requires_min_minutes_and_completed(tmp_path):
+    """ADR-040 A2: UFO is derived, not a bare mode:deep tag. A short deep block
+    (<70 min) or one explicitly not completed does NOT count as a UFO."""
+    _task(
+        tmp_path,
+        "深度.md",
+        {
+            "title": "深度",
+            "category": "work",
+            "預估🍅": 6,
+            "timeEntries": [
+                # 50-min deep — too short for UFO, but still 2🍅 by duration
+                {
+                    "startTime": "2026-06-01T13:00:00+08:00",
+                    "endTime": "2026-06-01T13:50:00+08:00",
+                    "mode": "deep",
+                    "completed": True,
+                },
+                # 75-min deep but explicitly not completed → not a UFO
+                {
+                    "startTime": "2026-06-02T13:00:00+08:00",
+                    "endTime": "2026-06-02T14:15:00+08:00",
+                    "mode": "deep",
+                    "completed": False,
+                },
+                # 72-min deep, completed → the one true UFO
+                {
+                    "startTime": "2026-06-03T13:00:00+08:00",
+                    "endTime": "2026-06-03T14:12:00+08:00",
+                    "mode": "deep",
+                    "completed": True,
+                },
+            ],
+        },
+    )
+    t = WeeklyIndexer(tmp_path).find_task("深度")
+    assert t.ufo_total == 1  # only the 72-min completed block
+    # 50 + 0(not-counted? no, completed False still counts 🍅 by duration) ...
+    # 🍅 is duration-based via aggregator, independent of the UFO gate.
+
+
 def test_find_task_missing_returns_none(tmp_path):
     assert WeeklyIndexer(tmp_path).find_task("nope") is None
 

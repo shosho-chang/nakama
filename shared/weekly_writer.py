@@ -29,6 +29,7 @@ TASKS_DIR = "TaskNotes/Tasks"
 # 🍅 itself is derived from duration by the aggregator (minutes ÷ 25); ``mode``
 # only distinguishes UFO sessions for the 🤩 weekly count.
 TIME_ENTRY_MODES = ("pomodoro", "deep")
+_MODE_NOMINAL_MINUTES = {"pomodoro": 25, "deep": 75}  # the block 修修 started
 _MAX_ENTRY_SECONDS = 6 * 60 * 60  # guard against a runaway timer logging garbage
 
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
@@ -256,13 +257,29 @@ def log_time_entry(
     start: datetime,
     end: datetime,
     mode: str = "pomodoro",
+    *,
+    planned_minutes: Optional[int] = None,
+    completed: bool = True,
+    manual: bool = False,
 ) -> None:
-    """Append one focus session ``{startTime, endTime, mode}`` to a task's
-    ``timeEntries[]`` (ADR-039 E — actual 🍅 substrate).
+    """Append one focus session as **evidence** to a task's ``timeEntries[]``
+    (ADR-039 E / ADR-040 A2).
 
-    ``start``/``end`` are stored as ISO-8601 strings (offset preserved when
-    tz-aware); the aggregator turns duration into 🍅 (minutes ÷ 25). ``mode``
-    must be one of :data:`TIME_ENTRY_MODES` — ``deep`` marks a 75-min UFO block.
+    Each entry records what was *intended* and what *actually happened*::
+
+        {startTime, endTime, mode, planned_minutes, actual_minutes, completed}
+
+    - ``start``/``end`` are the real span (the live timer passes its *actual
+      elapsed* time, not a fixed nominal block — fixes the v1 bug where 提早完成
+      logged a full block). Stored ISO-8601 (offset preserved when tz-aware).
+    - ``actual_minutes`` is the rounded span; the aggregator still derives 🍅
+      from the start→end interval (minutes ÷ 25), so this field is audit
+      evidence, not the source of truth.
+    - ``planned_minutes`` defaults to the mode's nominal block (25 / 75).
+    - ``completed`` marks whether 修修 saw the block through; the UFO 🤩 metric
+      is *derived* (``mode==deep`` & actual ≥ 70 min & completed) — never a bare
+      tag. ``manual=True`` flags the ``+1`` backup button's asserted block,
+      distinguishing it from real timer evidence.
 
     Only ``timeEntries`` is mutated; all other keys + the body are preserved.
     Raises :class:`WeeklyWriteError` on a non-positive or absurdly long span.
@@ -278,13 +295,20 @@ def log_time_entry(
     path = _task_path(vault_root, task_slug)
     fm, body = _read_task(path)
 
+    entry: dict[str, Any] = {
+        "startTime": start.isoformat(),
+        "endTime": end.isoformat(),
+        "mode": mode,
+        "planned_minutes": (
+            planned_minutes if planned_minutes is not None else _MODE_NOMINAL_MINUTES[mode]
+        ),
+        "actual_minutes": round(span / 60),
+        "completed": bool(completed),
+    }
+    if manual:
+        entry["manual"] = True
+
     entries = _time_entry_list(fm)
-    entries.append(
-        {
-            "startTime": start.isoformat(),
-            "endTime": end.isoformat(),
-            "mode": mode,
-        }
-    )
+    entries.append(entry)
     fm["timeEntries"] = entries
     _write_task(path, fm, body)

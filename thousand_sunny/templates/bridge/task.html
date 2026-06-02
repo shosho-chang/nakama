@@ -96,23 +96,27 @@
         <span class="wk-mut">離桌做的？手動補記：</span>
         <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
           <input type="hidden" name="mode" value="pomodoro">
+          <input type="hidden" name="manual" value="1">
           <input type="hidden" name="week" value="{{ week_key }}">
           <button class="sho-btn--ghost" type="submit">+1 🍅</button>
         </form>
         <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
           <input type="hidden" name="mode" value="deep">
+          <input type="hidden" name="manual" value="1">
           <input type="hidden" name="week" value="{{ week_key }}">
           <button class="sho-btn--ghost" type="submit">+1 🤩</button>
         </form>
       </div>
 
-      {# hidden forms the live timer submits on completion #}
+      {# hidden forms the live timer submits on completion — JS fills elapsed_seconds #}
       <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="pomodoro">
         <input type="hidden" name="mode" value="pomodoro">
+        <input type="hidden" name="elapsed_seconds" value="">
         <input type="hidden" name="week" value="{{ week_key }}">
       </form>
       <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="deep">
         <input type="hidden" name="mode" value="deep">
+        <input type="hidden" name="elapsed_seconds" value="">
         <input type="hidden" name="week" value="{{ week_key }}">
       </form>
     </section>
@@ -121,9 +125,10 @@
   </main>
 
   <script>
-  /* Live pomodoro timer — purely a focus aid. The server logs a fixed-length
-     session ending "now" on completion, so the countdown carries no state the
-     backend depends on. No pause in v1; 取消 aborts without logging. */
+  /* Live pomodoro timer — a focus aid that logs ACTUAL elapsed time. On 完成 (or
+     natural countdown to 0) it submits the hidden form with elapsed_seconds =
+     nominal − remaining, so 提早完成 logs the real span (ADR-040 A2), ending "now".
+     No pause in v1; 取消 aborts without logging. */
   (function () {
     var box = document.querySelector('.tk-timerbox');
     if (!box) return;
@@ -133,6 +138,7 @@
     var idleCtl = box.querySelector('[data-when="idle"]');
     var runCtl = box.querySelector('[data-when="running"]');
     var MODE_LABEL = { pomodoro: '🍅 番茄', deep: '🤩 超專注' };
+    var MODE_MIN = { pomodoro: 25, deep: 75 };
     var tick = null, remaining = 0, mode = 'pomodoro';
 
     function fmt(s) {
@@ -149,7 +155,12 @@
     function submit() {
       stop();
       var f = box.querySelector('.tk-logform[data-mode="' + mode + '"]');
-      if (f) f.submit();
+      if (!f) return;
+      var nominal = (MODE_MIN[mode] || 25) * 60;
+      var elapsed = nominal - Math.max(0, remaining);  // actual time focused
+      var inp = f.querySelector('input[name="elapsed_seconds"]');
+      if (inp) inp.value = String(elapsed);
+      f.submit();
     }
     function start(m, mins) {
       mode = m; remaining = mins * 60; modeEl.textContent = MODE_LABEL[m] || '';

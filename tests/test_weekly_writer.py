@@ -355,6 +355,35 @@ class TestLogTimeEntry:
         assert "2026-06-01T09:00:00" in e["startTime"]
         assert "2026-06-01T09:25:00" in e["endTime"]
 
+    def test_evidence_fields_recorded(self, vault):
+        """ADR-040 A2: each entry stores planned/actual minutes + completed."""
+        slug = "test-task"
+        p = _make_task(vault, slug, {"title": "Test"})
+        start, end = self._span(18)  # finished a 25-min block early at 18 min
+        log_time_entry(vault, slug, start, end, mode="pomodoro")
+        e = _read_fm(p)["timeEntries"][0]
+        assert e["planned_minutes"] == 25
+        assert e["actual_minutes"] == 18
+        assert e["completed"] is True
+        assert "manual" not in e  # timer evidence, not a manual claim
+
+    def test_planned_minutes_override_and_manual_flag(self, vault):
+        slug = "test-task"
+        p = _make_task(vault, slug, {"title": "Test"})
+        start, end = self._span(75)
+        log_time_entry(vault, slug, start, end, mode="deep", planned_minutes=75, manual=True)
+        e = _read_fm(p)["timeEntries"][0]
+        assert e["planned_minutes"] == 75
+        assert e["actual_minutes"] == 75
+        assert e["manual"] is True
+
+    def test_not_completed_flag(self, vault):
+        slug = "test-task"
+        p = _make_task(vault, slug, {"title": "Test"})
+        start, end = self._span(40)
+        log_time_entry(vault, slug, start, end, mode="deep", completed=False)
+        assert _read_fm(p)["timeEntries"][0]["completed"] is False
+
     def test_appends_to_existing(self, vault):
         slug = "test-task"
         existing = [

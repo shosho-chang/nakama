@@ -201,9 +201,10 @@ async def weekly_sync_scheduled(
 # A per-task page; the bottom timer logs a real focus session into the task's
 # timeEntries[] (TaskNotes write surface — NOT the Journals/Weekly red line).
 
-# Fixed session lengths: 25-min pomodoro (+1🍅) / 75-min deep super-focus (+3🍅,
-# 1 UFO). The live timer always runs its full nominal length, so the logged span
-# = mode minutes ending "now" — same path serves the manual "+1🍅" backup button.
+# Nominal block lengths: 25-min pomodoro (+1🍅) / 75-min deep super-focus (UFO if
+# run ≥70 min). The live timer reports its **actual elapsed** seconds (ADR-040 A2
+# — fixes the v1 bug where 提早完成 logged a full block); the manual "+1" backup
+# omits elapsed and logs a full nominal block flagged ``manual``.
 _MODE_MINUTES = {"pomodoro": 25, "deep": 75}
 
 _TASK_ERRORS = {
@@ -274,6 +275,9 @@ async def weekly_task_detail(
 async def weekly_task_log(
     slug: str = PathParam(..., min_length=1),
     mode: str = Form("pomodoro"),
+    # actual elapsed from the live timer; 0/absent → manual full block
+    elapsed_seconds: int = Form(0),
+    manual: int = Form(0),
     week: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
@@ -281,14 +285,29 @@ async def weekly_task_log(
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk_key = _safe_week_key(week)
 
-    minutes = _MODE_MINUTES.get(mode)
-    if minutes is None:
+    nominal = _MODE_MINUTES.get(mode)
+    if nominal is None:
         return _task_back(slug, wk_key, err="mode")
 
     end = _now_taipei()
-    start = end - timedelta(minutes=minutes)
+    # Live timer → actual elapsed (capped at the nominal block, floored at 1 min so
+    # a stray 0 doesn't make a non-positive span); manual button → full nominal block.
+    if elapsed_seconds and elapsed_seconds > 0:
+        seconds = max(60, min(int(elapsed_seconds), nominal * 60))
+        start = end - timedelta(seconds=seconds)
+    else:
+        start = end - timedelta(minutes=nominal)
     try:
-        log_time_entry(get_vault_path(), slug, start, end, mode=mode)
+        log_time_entry(
+            get_vault_path(),
+            slug,
+            start,
+            end,
+            mode=mode,
+            planned_minutes=nominal,
+            completed=True,
+            manual=bool(manual),
+        )
     except WeeklyWriteError as exc:
         logger.warning("weekly_task_log: %s", exc)
         return _task_back(slug, wk_key, err="log")
