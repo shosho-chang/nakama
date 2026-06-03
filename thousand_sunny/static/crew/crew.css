@@ -267,7 +267,7 @@ section { margin-top: var(--sho-s-10); }
 .crew-card:hover { border-color: var(--sho-accent-line); }
 .crew-card__head {
   display: grid;
-  grid-template-columns: auto auto 1fr auto auto auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto auto;
   align-items: center;
   gap: var(--sho-s-4);
   padding: var(--sho-s-4) var(--sho-s-5);
@@ -294,6 +294,9 @@ section { margin-top: var(--sho-s-10); }
 .crew-card__name { font-family: var(--sho-font-sans); font-size: 16px; font-weight: 600; color: var(--sho-text); }
 .crew-card__job { font-size: 12px; color: var(--sho-muted); }
 .crew-card__tags { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.crew-card__count { display: inline-flex; flex-direction: column; align-items: center; line-height: 1; gap: 2px; min-width: 40px; }
+.crew-card__count-n { font-family: var(--sho-font-sans); font-size: 26px; font-weight: 700; color: var(--sho-text); letter-spacing: -0.02em; }
+.crew-card__count-l { font-size: 9px; color: var(--sho-muted); }
 .crew-card__chev {
   font-family: var(--sho-font-mono);
   font-size: 16px;
@@ -303,29 +306,67 @@ section { margin-top: var(--sho-s-10); }
   text-align: center;
 }
 .crew-card[open] .crew-card__chev { transform: rotate(45deg); }
+/* expanded body — Bill-style 3-column labeled grid */
 .crew-card__body {
-  padding: 0 var(--sho-s-5) var(--sho-s-5);
   border-top: 1px solid var(--sho-line);
   margin-top: 2px;
-  padding-top: var(--sho-s-4);
-}
-.crew-card__body p { font-size: 14px; line-height: 1.6; color: var(--sho-text-2); margin: 0 0 var(--sho-s-3); }
-.crew-card__body ul { margin: 0 0 var(--sho-s-3); padding-left: 1.1em; display: grid; gap: 5px; }
-.crew-card__body li { font-size: 13.5px; line-height: 1.5; color: var(--sho-text-2); }
-.crew-card__body .sho-mono { font-size: 12px; color: var(--sho-text); }
-.crew-card__meta { font-size: 11.5px; color: var(--sho-muted); letter-spacing: 0.02em; }
-
-/* skills + python modules kit (per-card) */
-.crew-card__kit {
-  margin: var(--sho-s-3) 0;
-  padding: var(--sho-s-3) 0;
-  border-top: 1px dashed var(--sho-line-2);
+  padding: var(--sho-s-5);
   display: grid;
-  gap: var(--sho-s-2);
+  grid-template-columns: 1.05fr 0.85fr 1.25fr;
+  gap: var(--sho-s-6);
 }
-.kit-row { display: grid; grid-template-columns: 56px 1fr; gap: var(--sho-s-3); align-items: baseline; }
-.kit-label { font-size: 9.5px; color: var(--sho-muted); padding-top: 3px; }
-.kit-vals { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.crew-col { display: grid; gap: var(--sho-s-3); align-content: start; }
+.crew-col--meta { gap: var(--sho-s-4); }
+.crew-col__label {
+  display: block;
+  font-size: 9.5px;
+  color: var(--sho-muted);
+  border-top: 1px solid var(--sho-line-2);
+  padding-top: 6px;
+}
+
+/* numbered rows with hairline dividers + leading-zero counter */
+.crew-num { margin: 0; padding: 0; list-style: none; counter-reset: cn; }
+.crew-num li {
+  counter-increment: cn;
+  position: relative;
+  padding: 8px 0 8px 30px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sho-text);
+  border-bottom: 1px solid var(--sho-line);
+}
+.crew-num li:last-child { border-bottom: 0; }
+.crew-num li::before {
+  content: counter(cn, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 9px;
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  font-style: italic;
+  color: var(--sho-muted);
+}
+.crew-li-note { display: block; font-size: 11.5px; color: var(--sho-muted); margin-top: 1px; }
+.crew-none { font-size: 13px; color: var(--sho-muted); margin: 0; padding-top: 2px; }
+
+/* meta column fields */
+.crew-field { display: grid; gap: 6px; }
+.crew-dir {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-text);
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-1);
+  padding: 2px 8px;
+  justify-self: start;
+}
+.crew-mods { display: flex; flex-wrap: wrap; gap: 5px; }
+.crew-stage { font-size: 13px; line-height: 1.5; color: var(--sho-text-2); }
+.crew-why { margin: 0; font-size: 13.5px; line-height: 1.65; color: var(--sho-text-2); font-style: italic; }
+
+/* module chip (shared with crew-mods) */
 .kit-mod {
   font-family: var(--sho-font-mono);
   font-size: 11px;
@@ -335,7 +376,6 @@ section { margin-top: var(--sho-s-10); }
   border-radius: var(--sho-r-1);
   padding: 1px 6px;
 }
-.kit-none { font-size: 12px; color: var(--sho-muted); }
 
 /* codex non-crew note */
 .codex-note {
@@ -577,11 +617,15 @@ section { margin-top: var(--sho-s-10); }
 
 /* ── responsive ─────────────────────────────────────────────────────── */
 
-@media (max-width: 880px) {
+@media (max-width: 980px) {
   .machine-grid { grid-template-columns: 1fr; }
   .machine-sync { flex-direction: row; min-height: auto; padding: var(--sho-s-2) 0; }
   .machine-sync__line { width: auto; height: 1px; min-height: 0; min-width: 24px; }
   .source-cols { grid-template-columns: 1fr; }
+  /* expanded card body: 職責 + skill side by side, meta drops below */
+  .crew-card__body { grid-template-columns: 1fr 1fr; }
+  .crew-col--meta { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
+  .crew-col--meta .crew-field:last-child { grid-column: 1 / -1; }
 }
 
 @media (max-width: 760px) {
@@ -590,21 +634,27 @@ section { margin-top: var(--sho-s-10); }
   .header-meta { flex-wrap: wrap; gap: var(--sho-s-3); }
   .page-title { font-size: 28px; }
 
-  /* roster card → stacked, tags + pill wrap under the name */
+  /* roster card → stacked: id row with count, then tags, then pill */
   .crew-card__head {
-    grid-template-columns: auto auto 1fr auto;
+    grid-template-columns: auto auto 1fr auto auto;
     grid-template-areas:
-      "n mono id chev"
-      "tags tags tags tags"
-      "pill pill pill pill";
+      "n mono id count chev"
+      "tags tags tags tags tags"
+      "pill pill pill pill pill";
     gap: var(--sho-s-2) var(--sho-s-3);
+    align-items: center;
   }
   .crew-card__n   { grid-area: n; }
   .crew-card__mono{ grid-area: mono; }
   .crew-card__id  { grid-area: id; }
+  .crew-card__count { grid-area: count; flex-direction: row; gap: 4px; align-items: baseline; }
+  .crew-card__count-n { font-size: 18px; }
   .crew-card__chev{ grid-area: chev; }
   .crew-card__tags{ grid-area: tags; justify-content: flex-start; }
   .crew-card__head > .pill { grid-area: pill; justify-self: start; }
+
+  /* expanded body → single column */
+  .crew-card__body { grid-template-columns: 1fr; gap: var(--sho-s-5); }
 
   .pipe-step { grid-template-columns: auto 1fr; }
   .pipe-step__owner { grid-column: 1 / span 2; grid-row: 3; text-align: left; padding-left: calc(1.4em + var(--sho-s-4)); }
@@ -614,9 +664,6 @@ section { margin-top: var(--sho-s-10); }
   .rhythm .col-who  { width: 26%; }
   .rhythm .col-evt  { width: 38%; }
   .rhythm .col-kind { width: 14%; }
-
-  .kit-row { grid-template-columns: 1fr; gap: 4px; }
-  .kit-label { padding-top: 0; }
 }
 
 /* ── reduced motion ─────────────────────────────────────────────────── */
