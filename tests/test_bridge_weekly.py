@@ -292,7 +292,9 @@ class TestTaskDetail:
         assert r.status_code == 200
         body = r.text
         assert "測試任務" in body
-        assert "tk-timerbox" in body  # the pomodoro timer block
+        # the unified pomodoro footer dock (same form as the Project page) + 25/75 toggle
+        assert "tk-pomodoro-dock" in body and "pj-timer-btn" in body
+        assert 'data-minutes="75"' in body  # 75-min 🤩 super-focus option present
         assert 'action="/bridge/weekly/task/測試任務/log"' in body or "%E6%B8%AC" in body
         assert "回週看板" in body
 

@@ -1011,78 +1011,10 @@ a.pj-social-text:hover { color: var(--sho-accent, currentColor); }
 
 .bridge-page--with-dock { padding-bottom: 100px; }
 
-.pj-dock {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 50;
-  background: var(--sho-bg-2, #1a1a1a);
-  border-top: 1px solid var(--sho-line-2, #555);
-  padding: var(--sho-s-3, 12px) var(--sho-s-5, 24px);
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
-}
-.pj-dock-row {
-  display: flex;
-  align-items: center;
-  gap: var(--sho-s-4, 16px);
-  flex-wrap: wrap;
-}
-.pj-dock-project {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--sho-text, inherit);
-  text-decoration: none;
-}
-.pj-dock-project:hover { color: var(--sho-accent); }
-
-.pj-dock-task-select {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-}
-.pj-dock-task-label {
-  font-family: var(--sho-font-mono, ui-monospace, monospace);
-  color: var(--sho-muted, #888);
-}
-.pj-dock-task-select select {
-  padding: 4px 8px;
-  background: var(--sho-bg, transparent);
-  border: 1px solid var(--sho-line-2, #555);
-  color: var(--sho-text, inherit);
-  border-radius: var(--sho-r-1, 4px);
-  font-size: 12px;
-}
-
-.pj-dock-timer { display: flex; align-items: center; }
-.pj-timer-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  font-family: var(--sho-font-mono, ui-monospace, monospace);
-  font-size: 14px;
-  border: 1px solid var(--sho-accent);
-  background: transparent;
-  color: var(--sho-accent);
-  cursor: pointer;
-  border-radius: var(--sho-r-1, 4px);
-}
-.pj-timer-btn:hover { background: var(--sho-accent); color: var(--sho-bg); }
-.pj-timer-btn[data-running="true"] {
-  background: var(--sho-accent-soft, color-mix(in oklch, var(--sho-accent) 10%, transparent));
-}
-.pj-timer-icon { font-size: 12px; }
-.pj-timer-display { font-variant-numeric: tabular-nums; min-width: 56px; }
-
-.pj-dock-rollup {
-  font-family: var(--sho-font-mono, ui-monospace, monospace);
-  font-size: 13px;
-  margin-left: auto;
-}
-.pj-dock-rollup .val { color: var(--sho-text, inherit); font-weight: 600; }
-.pj-dock-rollup .muted { color: var(--sho-muted, #888); }
+/* The dock shell + timer control (.pj-dock / .pj-timer-* / .pj-dock-rollup +
+ * the 25│75 .pj-timer-mode toggle) moved to the shared pomodoro-dock.css, now
+ * used by BOTH this Project dock and the Task page (unified form). Project-only
+ * chrome (the Tasks ▾ table + add-task dialog) stays below. */
 
 .pj-dock-tasks-expand { font-size: 12px; }
 .pj-dock-tasks-expand > summary {

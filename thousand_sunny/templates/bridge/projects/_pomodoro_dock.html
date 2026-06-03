@@ -16,6 +16,15 @@
       </select>
     </label>
 
+    <div class="pj-timer-mode" role="radiogroup" aria-label="番茄長度">
+      <input type="radio" name="pj-timer-mode" id="pj-mode-pomodoro" value="pomodoro" checked
+             data-timer-mode data-minutes="{{ pomodoro_minutes }}">
+      <label for="pj-mode-pomodoro" title="25 分番茄 🍅">25</label>
+      <input type="radio" name="pj-timer-mode" id="pj-mode-deep" value="deep"
+             data-timer-mode data-minutes="75">
+      <label for="pj-mode-deep" title="75 分超專注 🤩">75</label>
+    </div>
+
     <div class="pj-dock-timer" data-timer>
       <button type="button" class="pj-timer-btn" data-timer-btn>
         <span class="pj-timer-icon" data-timer-icon>▶</span>

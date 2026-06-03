@@ -97,6 +97,7 @@ TAB_SLUGS = tuple(t[0] for t in TABS)
 
 # Pomodoro duration in minutes — fixed in PR1 v1 (configurable later)
 POMODORO_MINUTES = 25
+DEEP_POMODORO_MINUTES = 75  # 🤩 super-focus block (unified dock 25/75 toggle)
 
 
 # ADR-031 PR3: research result cache lives in repo data dir (gitignored). Sidecar
@@ -120,6 +121,7 @@ def _shosho_asset_version() -> str:
         "tokens.css",
         "bridge.css",
         "bridge-pages.css",
+        "pomodoro-dock.css",
         "bridge-projects.css",
         "theme.js",
         "bridge-projects.js",
@@ -486,13 +488,14 @@ async def projects_timer(
     action: str,
     nakama_auth: str | None = Cookie(None),
     task_name: str = Form(""),
+    mode: str = Form("pomodoro"),  # 'pomodoro' (25min 🍅) | 'deep' (75min 🤩) — unified dock
 ):
     """Pomodoro timer state transitions.
 
-    PR1 v1: ``complete`` writes a 25-min timeEntry to the active task and
-    recomputes project pomodoro rollup. ``start`` and ``cancel`` are no-ops
-    (timer state lives in browser sessionStorage). Endpoint signatures
-    reserved for future server-side persistence.
+    ``complete`` writes a timeEntry to the active task and recomputes the project
+    pomodoro rollup; the block length follows ``mode`` (25-min 🍅 pomodoro or
+    75-min 🤩 super-focus — the unified dock's 25/75 toggle). ``start`` and
+    ``cancel`` are no-ops (timer state lives in the browser).
     """
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
@@ -505,10 +508,11 @@ async def projects_timer(
     if action == "complete":
         if not task_name.strip():
             raise HTTPException(status_code=400, detail="task_name required for complete")
+        minutes = DEEP_POMODORO_MINUTES if mode == "deep" else POMODORO_MINUTES
         _write_pomodoro_entry(
             slug=slug,
             task_name=task_name.strip(),
-            now_minus_minutes=POMODORO_MINUTES,
+            now_minus_minutes=minutes,
         )
 
     return _redirect_back(slug, "brief")

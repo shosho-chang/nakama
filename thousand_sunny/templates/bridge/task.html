@@ -8,9 +8,10 @@
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/pomodoro-dock.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
 </head>
-<body class="sho bridge-page bridge-page--scroll">
+<body class="sho bridge-page bridge-page--scroll bridge-page--with-dock">
   {% from "_chassis_nav.html" import chassis_nav %}
   {{ chassis_nav(nav_active='weekly') }}
 
@@ -117,58 +118,61 @@
       </section>
     {% endif %}
 
-    {# ── pomodoro / super-focus timer ── #}
-    <section class="tk-timerbox" aria-label="番茄鐘計時器">
-      <div class="tk-clock" data-state="idle">
-        <span class="tk-clock-time" aria-live="polite">25:00</span>
-        <span class="tk-clock-mode"></span>
-      </div>
+    {# ── pomodoro / super-focus timer — unified footer dock (same form as the
+         Project page, 25/75 toggle on both; ADR-039 E + 修修 unify request) ── #}
+    <div class="pj-dock tk-dock" id="tk-pomodoro-dock"
+         data-log-url="/bridge/weekly/task/{{ task.slug | urlencode }}/log">
+      <div class="pj-dock-row">
+        <span class="pj-dock-project"><span class="wk-tomato" aria-hidden="true">🍅</span> {{ task.name }}</span>
 
-      {# idle: pick a length #}
-      <div class="tk-controls" data-when="idle">
-        <button class="sho-btn tk-start" type="button" data-mode="pomodoro" data-min="25">
-          <span class="wk-tomato" aria-hidden="true">🍅</span> 開始 25 分番茄
-        </button>
-        <button class="sho-btn tk-start tk-start--deep" type="button" data-mode="deep" data-min="75">
-          <span aria-hidden="true">🤩</span> 開始 75 分超專注
-        </button>
-      </div>
+        <div class="pj-timer-mode" role="radiogroup" aria-label="番茄長度">
+          <input type="radio" name="tk-timer-mode" id="tk-mode-pomodoro" value="pomodoro" checked
+                 data-timer-mode data-minutes="25">
+          <label for="tk-mode-pomodoro" title="25 分番茄 🍅">25</label>
+          <input type="radio" name="tk-timer-mode" id="tk-mode-deep" value="deep"
+                 data-timer-mode data-minutes="75">
+          <label for="tk-mode-deep" title="75 分超專注 🤩">75</label>
+        </div>
 
-      {# running: finish-early / abort #}
-      <div class="tk-controls is-hidden" data-when="running">
-        <button class="sho-btn tk-finish" type="button">完成 · 記一段</button>
-        <button class="sho-btn--ghost tk-abort" type="button">取消</button>
-      </div>
+        <div class="pj-dock-timer" data-timer>
+          <button type="button" class="pj-timer-btn" data-timer-btn>
+            <span class="pj-timer-icon" data-timer-icon>▶</span>
+            <span class="pj-timer-display" data-timer-display>25:00</span>
+          </button>
+        </div>
 
-      {# manual backup — log a session done away from the browser #}
-      <div class="tk-manual">
-        <span class="wk-mut">離桌做的？手動補記：</span>
+        {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
+        <button type="button" class="pj-timer-secondary tk-finish is-hidden" data-timer-finish>完成·記一段</button>
+        <button type="button" class="pj-timer-secondary tk-abort is-hidden" data-timer-abort>取消</button>
+
+        {# manual backup — log a full block done away from the browser #}
         <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
-          <input type="hidden" name="mode" value="pomodoro">
-          <input type="hidden" name="manual" value="1">
+          <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="manual" value="1">
           <input type="hidden" name="week" value="{{ week_key }}">
-          <button class="sho-btn--ghost" type="submit">+1 🍅</button>
+          <button class="pj-timer-secondary" type="submit" title="手動補記一顆 25 分番茄">+1🍅</button>
         </form>
         <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
-          <input type="hidden" name="mode" value="deep">
-          <input type="hidden" name="manual" value="1">
+          <input type="hidden" name="mode" value="deep"><input type="hidden" name="manual" value="1">
           <input type="hidden" name="week" value="{{ week_key }}">
-          <button class="sho-btn--ghost" type="submit">+1 🤩</button>
+          <button class="pj-timer-secondary" type="submit" title="手動補記一段 75 分超專注">+1🤩</button>
         </form>
+
+        <div class="pj-dock-rollup">
+          🍅 <span class="val">{{ actual_pom }}</span> /
+          <span class="muted">{{ task.est_pomodoros or '—' }}</span>
+        </div>
       </div>
 
-      {# hidden forms the live timer submits on completion — JS fills elapsed_seconds #}
+      {# hidden log forms the timer submits on completion/finish — JS fills elapsed_seconds #}
       <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="pomodoro">
-        <input type="hidden" name="mode" value="pomodoro">
-        <input type="hidden" name="elapsed_seconds" value="">
+        <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="elapsed_seconds" value="">
         <input type="hidden" name="week" value="{{ week_key }}">
       </form>
       <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="deep">
-        <input type="hidden" name="mode" value="deep">
-        <input type="hidden" name="elapsed_seconds" value="">
+        <input type="hidden" name="mode" value="deep"><input type="hidden" name="elapsed_seconds" value="">
         <input type="hidden" name="week" value="{{ week_key }}">
       </form>
-    </section>
+    </div>
 
     {# ── note body — scoped draft surface (ADR-040 A7 / Slice W) ── #}
     <section class="tk-notebox" aria-label="任務筆記">
@@ -194,63 +198,79 @@
   </main>
 
   <script>
-  /* Live pomodoro timer — a focus aid that logs ACTUAL elapsed time. On 完成 (or
-     natural countdown to 0) it submits the hidden form with elapsed_seconds =
-     nominal − remaining, so 提早完成 logs the real span (ADR-040 A2), ending "now".
-     No pause in v1; 取消 aborts without logging. */
+  /* Live pomodoro / super-focus timer — unified footer dock (same control as the
+     Project page; 25/75 toggle on both). ▶ starts / ⏸ pauses (keeps the clock);
+     完成·記一段 logs ACTUAL elapsed (nominal − remaining, ADR-040 A2); a natural
+     countdown to 0 logs a full block; 取消 aborts without logging. Posts to the
+     task /log route via the hidden tk-logform matching the selected mode. */
   (function () {
-    var box = document.querySelector('.tk-timerbox');
-    if (!box) return;
-    var clock = box.querySelector('.tk-clock');
-    var timeEl = box.querySelector('.tk-clock-time');
-    var modeEl = box.querySelector('.tk-clock-mode');
-    var idleCtl = box.querySelector('[data-when="idle"]');
-    var runCtl = box.querySelector('[data-when="running"]');
-    var MODE_LABEL = { pomodoro: '🍅 番茄', deep: '🤩 超專注' };
-    var MODE_MIN = { pomodoro: 25, deep: 75 };
-    var tick = null, remaining = 0, mode = 'pomodoro';
+    var dock = document.getElementById('tk-pomodoro-dock');
+    if (!dock) return;
+    var btn = dock.querySelector('[data-timer-btn]');
+    var display = dock.querySelector('[data-timer-display]');
+    var icon = dock.querySelector('[data-timer-icon]');
+    var finishBtn = dock.querySelector('[data-timer-finish]');
+    var abortBtn = dock.querySelector('[data-timer-abort]');
+    var modeRadios = dock.querySelectorAll('[data-timer-mode]');
+    if (!btn || !display || !icon) return;
+
+    function modeEl() {
+      for (var i = 0; i < modeRadios.length; i++) if (modeRadios[i].checked) return modeRadios[i];
+      return modeRadios[0];
+    }
+    function curMode() { var e = modeEl(); return e ? e.value : 'pomodoro'; }
+    function curMin() { var e = modeEl(); return (e && parseInt(e.getAttribute('data-minutes'), 10)) || 25; }
+
+    var remaining = curMin() * 60;
+    var ticker = null, running = false, started = false;  // started = a block is underway (run or paused)
 
     function fmt(s) {
       var m = Math.floor(s / 60), ss = s % 60;
       return (m < 10 ? '0' : '') + m + ':' + (ss < 10 ? '0' : '') + ss;
     }
-    function render() { timeEl.textContent = fmt(remaining); }
-    function show(running) {
-      idleCtl.classList.toggle('is-hidden', running);
-      runCtl.classList.toggle('is-hidden', !running);
-      clock.setAttribute('data-state', running ? 'running' : 'idle');
+    function render() {
+      display.textContent = fmt(Math.max(0, remaining));
+      icon.textContent = running ? '⏸' : '▶';
+      btn.setAttribute('data-running', running ? 'true' : 'false');
+      finishBtn.classList.toggle('is-hidden', !started);
+      abortBtn.classList.toggle('is-hidden', !started);
+      // can't switch length mid-block — lock the toggle once a block is underway
+      Array.prototype.forEach.call(modeRadios, function (r) { r.disabled = started; });
     }
-    function stop() { if (tick) { clearInterval(tick); tick = null; } }
-    function submit() {
-      stop();
-      var f = box.querySelector('.tk-logform[data-mode="' + mode + '"]');
+    function stop() { if (ticker) { clearInterval(ticker); ticker = null; } running = false; }
+    function submitLog() {
+      var mode = curMode();
+      stop(); started = false;
+      var f = dock.querySelector('.tk-logform[data-mode="' + mode + '"]');
       if (!f) return;
-      var nominal = (MODE_MIN[mode] || 25) * 60;
-      var elapsed = nominal - Math.max(0, remaining);  // actual time focused
+      var elapsed = curMin() * 60 - Math.max(0, remaining);  // real time focused
       var inp = f.querySelector('input[name="elapsed_seconds"]');
-      if (inp) inp.value = String(elapsed);
+      if (inp) inp.value = String(Math.max(0, elapsed));
       f.submit();
     }
-    function start(m, mins) {
-      mode = m; remaining = mins * 60; modeEl.textContent = MODE_LABEL[m] || '';
-      render(); show(true);
-      tick = setInterval(function () {
-        remaining -= 1; render();
-        if (remaining <= 0) submit();
-      }, 1000);
+    function tick() {
+      remaining -= 1;
+      if (remaining <= 0) { remaining = 0; render(); submitLog(); return; }
+      render();
     }
 
-    box.querySelectorAll('.tk-start').forEach(function (b) {
-      b.addEventListener('click', function () {
-        start(b.getAttribute('data-mode'), parseInt(b.getAttribute('data-min'), 10));
+    btn.addEventListener('click', function () {
+      if (running) { stop(); render(); return; }  // ⏸ pause, keep remaining
+      started = true; running = true;
+      ticker = setInterval(tick, 1000);
+      render();
+    });
+    if (finishBtn) finishBtn.addEventListener('click', submitLog);
+    if (abortBtn) abortBtn.addEventListener('click', function () {
+      stop(); started = false; remaining = curMin() * 60; render();
+    });
+    Array.prototype.forEach.call(modeRadios, function (r) {
+      r.addEventListener('change', function () {
+        if (started) return;
+        remaining = curMin() * 60; render();
       });
     });
-    var finish = box.querySelector('.tk-finish');
-    if (finish) finish.addEventListener('click', submit);
-    var abort = box.querySelector('.tk-abort');
-    if (abort) abort.addEventListener('click', function () {
-      stop(); remaining = 0; modeEl.textContent = ''; timeEl.textContent = '25:00'; show(false);
-    });
+    render();
   })();
 
   /* Reschedule form (41d): weekend-reason gate + derived block length (1🍅=30min),
