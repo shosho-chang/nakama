@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nakama — 八個 AI 船員的內容團隊 · Shosho</title>
+<meta name="description" content="一個創作者、八個 AI 船員、兩台機器、一艘船。Nakama 是張修修的 Health &amp; Longevity 內容生產 AI Agent 團隊 — 從資料收集到發布的七層內容流程、每日排程節奏、操作原則與 runtime policy 全公開。">
+<link rel="canonical" href="https://nakama.shosho.tw/crew">
+
+<!-- Open Graph — partner / social unfurl (Gemini panel cascade · /architecture §07) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Nakama · Shosho">
+<meta property="og:title" content="八個 AI 船員的內容團隊 — Nakama 系統架構">
+<meta property="og:description" content="一個創作者、八個 AI 船員、兩台機器、一艘船。七層內容流程、每日排程、操作原則全公開。">
+<meta property="og:image" content="https://nakama.shosho.tw/static/shosho/brand/logo_1.png">
+<meta property="og:url" content="https://nakama.shosho.tw/crew">
+<meta property="og:locale" content="zh_TW">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=__ASSET_VERSION__">
+<link rel="apple-touch-icon" href="/static/favicon.svg?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/shosho/tokens.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/crew/crew.css?v=__ASSET_VERSION__">
+<script>
+  // Render-blocking theme set — paint before <body> so there's no flash.
+  // Shares the `sho-theme` localStorage key with the site-wide theme.js toggle.
+  (function () {
+    try {
+      var saved = localStorage.getItem('sho-theme');
+      var dark = saved === 'dark' || (saved !== 'light' &&
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    } catch (_) { document.documentElement.dataset.theme = 'light'; }
+  })();
+</script>
+</head>
+<body class="sho">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="sho-bolt-shape" viewBox="0 0 26 20">
+    <polyline points="2,16 6,10 9,14 13,8 16,12 20,6 24,10"
+              fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+</svg>
+
+<main class="page">
+
+  <!-- ── header ───────────────────────────────────────────────────────── -->
+  <header class="page-header">
+    <div class="header-top">
+      <a href="https://shosho.tw" class="sho-logo-mark logo" rel="noopener">
+        <img src="/static/shosho/brand/logo_1.png" alt="" aria-hidden="true">
+        <span class="logo-text">
+          <span class="logo-zh">張修修</span>
+          <span class="sho-mono sho-mono-up">shosho.tw</span>
+        </span>
+      </a>
+      <div class="header-meta">
+        <span class="sho-mono sho-mono-up">system overview v1</span>
+        <span class="sho-mono">2026-06-03</span>
+        <button type="button" id="theme-toggle" class="theme-switch"
+                role="switch" aria-label="切換明暗主題" aria-checked="false">
+          <span class="theme-switch-track" aria-hidden="true">
+            <span class="theme-switch-label theme-switch-label-light">L</span>
+            <span class="theme-switch-label theme-switch-label-dark">D</span>
+            <span class="theme-switch-thumb"></span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div class="header-body">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">00</span>
+        <span>nakama · ai crew setup</span>
+      </div>
+      <h1 class="page-title">
+        八個 AI 船員的內容團隊<br>
+        <span class="page-title-2">一個創作者、八個船員、兩台機器、一艘船</span>
+      </h1>
+      <p class="page-subtitle">
+        Nakama 是張修修的 Health &amp; Longevity 內容生產 AI Agent 系統。船員以《航海王》草帽團命名 — 每位船員的職務對應他的運算角色：考古學家管知識庫、航海士當秘書、劍士做關鍵字偵察、船匠顧系統。部署在一台 VPS 上，產出雙向同步回本機的 Obsidian LifeOS。這頁把整套 setup 攤開：船員分工、七層內容流程、每日排程、操作原則、runtime policy。
+      </p>
+      <p class="page-subtitle subtitle-note">
+        命名梗：船長是修修本人，<strong>Thousand Sunny（千陽號）是承載全員的平台</strong>（web server / 甲板儀表板），不是船員。狀態標誠實標示 — shipped / in-dev / planned 各如其實。
+      </p>
+    </div>
+  </header>
+
+  <!-- ── /01 系統架構 ─────────────────────────────────────────────────── -->
+  <section aria-labelledby="arch-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">01</span><span>system architecture</span></div>
+      <h2 id="arch-heading">系統架構</h2>
+      <p>修修是船長。所有工作收斂在 Thousand Sunny（FastAPI 甲板儀表板），跑在一台 VPS 上；本機是一台 Windows，存放 Obsidian LifeOS vault，兩邊用 Syncthing 雙向同步。船員透過 cron、Slack gateway、或 daemon 自己醒來做事。</p>
+    </div>
+
+    <!-- 控制流 -->
+    <div class="arch-flow">
+      <div class="arch-node arch-node--owner">
+        <span class="arch-node__role sho-mono-up">owner · 船長</span>
+        <span class="arch-node__name">修修</span>
+        <span class="arch-node__note">下指令、審稿、拍板不可逆動作</span>
+      </div>
+      <span class="arch-arrow" aria-hidden="true">↓</span>
+      <div class="arch-node arch-node--platform">
+        <span class="arch-node__role sho-mono-up">platform · 千陽號（非船員）</span>
+        <span class="arch-node__name">Thousand Sunny</span>
+        <span class="arch-node__note">FastAPI + Jinja2 web server · systemd <code>thousand-sunny.service</code> · VPS :8000 · KB ingest / Reader / 關鍵字 / Bridge ops 中控台</span>
+      </div>
+    </div>
+
+    <!-- 兩台機器 -->
+    <div class="ns-head">
+      <h3>兩台機器</h3>
+      <span class="ns-token">syncthing 雙向同步</span>
+    </div>
+    <div class="machine-grid">
+      <div class="machine-panel">
+        <div class="machine-panel__head">
+          <span class="sho-mono-up">local · windows</span>
+          <span class="machine-panel__path sho-mono">E:\…\Shosho LifeOS\</span>
+        </div>
+        <p class="machine-panel__desc">修修本機。Obsidian LifeOS vault 的 source of truth，修修在這裡讀 Reader、手寫讀書心得、跑本機 Claude Code。</p>
+        <ul class="machine-panel__list">
+          <li><span class="sho-mono">Projects/</span> 專案與 Task</li>
+          <li><span class="sho-mono">KB/</span> Wiki · Sources · Concepts · Entities · Annotations</li>
+          <li><span class="sho-mono">Journals/</span>（agent 禁寫）</li>
+          <li><span class="sho-mono">AgentOutputs/</span> agent 產出</li>
+        </ul>
+      </div>
+      <div class="machine-sync" aria-hidden="true">
+        <span class="machine-sync__line"></span>
+        <span class="machine-sync__label sho-mono-up">⇄ syncthing</span>
+        <span class="machine-sync__line"></span>
+      </div>
+      <div class="machine-panel">
+        <div class="machine-panel__head">
+          <span class="sho-mono-up">vps · linux</span>
+          <span class="machine-panel__path sho-mono">/home/nakama/</span>
+        </div>
+        <p class="machine-panel__desc">永遠開機的那台。systemd services + cron 跑全部 agent，SQLite 存狀態，每天備份到 R2。</p>
+        <ul class="machine-panel__list">
+          <li><span class="sho-mono">thousand-sunny.service</span> · web :8000</li>
+          <li><span class="sho-mono">nakama-usopp.service</span> · 發布 daemon</li>
+          <li><span class="sho-mono">nakama-gateway</span> · Slack socket-mode（6 bots）</li>
+          <li><span class="sho-mono">state.db</span> · SQLite 執行狀態 / 計費 / 事件</li>
+          <li><span class="sho-mono">Cloudflare R2</span> · state.db 每日快照備份</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 船員 roster -->
+    <div class="ns-head roster-head">
+      <h3>船員 roster</h3>
+      <span class="ns-token">8 crew · ~/agents/</span>
+      <span class="roster-hint sho-mono">點卡片展開 ↓</span>
+    </div>
+    <div class="crew-roster">
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">01</span>
+          <span class="crew-card__mono" aria-hidden="true">R</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Robin</span>
+            <span class="crew-card__job">考古學家 · Knowledge Base</span>
+          </span>
+          <span class="crew-card__tags">
+            <span class="sho-tag">收集</span><span class="sho-tag">閱讀</span><span class="sho-tag">整合</span>
+          </span>
+          <span class="pill pill--shipped">shipped</span>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <p>系統最核心、唯一完整跑起來的 agent。把外部素材收進知識庫、抽出概念與實體、建 Wiki。</p>
+          <ul>
+            <li>Inbox 來源 ingest：PDF / EPUB / 文章 / 教科書 → 分類進 <span class="sho-mono">KB/Raw/</span></li>
+            <li>Claude 抽 Concept &amp; Entity → 建 / 更新 <span class="sho-mono">KB/Wiki/</span> 頁面</li>
+            <li>雙語 Reader UI：<span class="sho-mono">==highlight==</span> 劃線 + <span class="sho-mono">[!annotation]</span> 筆記</li>
+            <li>Source Promotion + Reading Context Package（ADR-024）</li>
+          </ul>
+          <p class="crew-card__meta sho-mono">router /robin · cron 02:00 ingest · 05:30 PubMed digest</p>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">02</span>
+          <span class="crew-card__mono" aria-hidden="true">N</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Nami</span>
+            <span class="crew-card__job">航海士 · Secretary</span>
+          </span>
+          <span class="crew-card__tags">
+            <span class="sho-tag">收集</span><span class="sho-tag">監控</span>
+          </span>
+          <span class="pill pill--planned">planned</span>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <p>執行秘書 / 每日簡報。骨架已在，core 邏輯走 Slack gateway 即時觸發；定時 morning brief 尚未實作。</p>
+          <ul>
+            <li>行事曆 / Gmail triage、pubmed 快查（Robin pass-through）</li>
+            <li>每日 briefing：整合 Robin KB 更新 + Franky SEO / cost + 系統健康</li>
+            <li>透過 <span class="sho-mono">gateway/handlers/nami.py</span> 由 Slack DM 觸發</li>
+          </ul>
+          <p class="crew-card__meta sho-mono">slack gateway bot · 07:00 morning brief cron DISABLED（2026-05-03，未實作）</p>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">03</span>
+          <span class="crew-card__mono" aria-hidden="true">Z</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Zoro</span>
+            <span class="crew-card__job">劍士 · Scout</span>
+          </span>
+          <span class="crew-card__tags">
+            <span class="sho-tag">收集</span>
+          </span>
+          <span class="pill pill--in-dev">in dev</span>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <p>關鍵字與趨勢偵察兵。每天清晨先掃一輪市場，產出 SEO context 給下游 compose。</p>
+          <ul>
+            <li>雙語關鍵字研究：YouTube / Google Trends / Reddit / Twitter / autocomplete</li>
+            <li>SERP 情報：搜尋量、難度、季節趨勢、跨語言 trend gap</li>
+            <li>輸出 title seeds 給 Brook compose 預先 brief</li>
+          </ul>
+          <p class="crew-card__meta sho-mono">router /bridge/zoro · cron 05:00 Brainstorm Scout · Stage 7→1 反向 feed 規劃中</p>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">04</span>
+          <span class="crew-card__mono" aria-hidden="true">S</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Sanji</span>
+            <span class="crew-card__job">廚師 · Community</span>
+          </span>
+          <span class="crew-card__tags">
+            <span class="sho-tag">收集</span><span class="sho-tag">整合</span><span class="sho-tag">發布</span><span class="sho-tag">監控</span>
+          </span>
+          <span class="pill pill--planned">planned</span>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <p>社群顧客的廚師。Fluent Community 互動規劃中，目前是 README 空殼、0 實作。</p>
+          <ul>
+            <li>社群 moderation、FAQ discovery（抓 &gt;24h 未答問題提醒）</li>
+            <li>會員 memory ingest、engagement insight</li>
+            <li>活動企劃：90 天習慣挑戰、讀書會、學伴配對</li>
+          </ul>
+          <p class="crew-card__meta sho-mono">尚無 router · 規劃 community engagement 必補的 agent</p>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">05</span>
+          <span class="crew-card__mono" aria-hidden="true">F</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Franky</span>
+            <span class="crew-card__job">船匠 · Maintenance</span>
+          </span>
+          <span class="crew-card__tags">
+            <span class="sho-tag">收集</span><span class="sho-tag">監控</span>
+          </span>
+          <span class="pill pill--shipped">shipped</span>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <p>系統船匠 + AI 工具情報官。盯系統健康、做備份、追成本、看 AI 生態演化。</p>
+          <ul>
+            <li>5-card 健康度：gateway / VPS / WP / R2 / backups</li>
+            <li>R2 backup verify、GSC daily（每日 7 天 ranking）、token 成本追蹤</li>
+            <li>AI news digest、anomaly daemon（cost / latency / cron cluster 3σ）</li>
+          </ul>
+          <p class="crew-card__meta sho-mono">router /bridge/franky · cron 每5分 health · 每15分 anomaly · 03:00 GSC · 06:30 news · 週一 digest</p>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">06</span>
+          <span class="crew-card__mono" aria-hidden="true">U</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Usopp</span>
+            <span class="crew-card__job">狙擊手 · Publisher</span>
+          </span>
+          <span class="crew-card__tags">
+            <span class="sho-tag">發布</span>
+          </span>
+          <span class="pill pill--shipped">shipped · WP only</span>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <p>狙擊手。瞄準 WordPress 開槍 — 目前只發 WP，且每篇都過人工 approval gate。</p>
+          <ul>
+            <li>WordPress 發布（REST API v2，shosho.tw / fleet.shosho.tw）</li>
+            <li>HITL approval queue：上線前人工審核</li>
+            <li>藥事法 / 醫療法用詞 compliance scan</li>
+            <li>8-stage crash-safe state machine（重啟可續）+ LiteSpeed cache purge</li>
+          </ul>
+          <p class="crew-card__meta sho-mono">daemon nakama-usopp.service · cron 每小時 community monitor · YT/IG/FB/Newsletter ❌ 範圍外</p>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">07</span>
+          <span class="crew-card__mono" aria-hidden="true">B</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Brook</span>
+            <span class="crew-card__job">音樂家 · Composer / Scaffold</span>
+          </span>
+          <span class="crew-card__tags">
+            <span class="sho-tag">整合</span><span class="sho-tag">輸出</span><span class="sho-tag">製作</span><span class="sho-tag">監控</span>
+          </span>
+          <span class="pill pill--in-dev">in dev</span>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <p>編曲家。把 KB 素材編成 outline 與多 channel 內容 — 但<strong>不代寫第一人稱正文</strong>（ADR-027）。橫跨 4 個 stage，子模組 13+，是最 over-loaded 的 agent。</p>
+          <ul>
+            <li>synthesize outline + evidence pool（ADR-021）；RCP scaffold（不 ghostwrite）</li>
+            <li>repurpose engine：Blog / FB（4 tonal）/ IG carousel（5/7/5/10 卡）renderer</li>
+            <li>script-driven video pipeline、SEO audit + enrich（對既有文章）</li>
+          </ul>
+          <p class="crew-card__meta sho-mono">router /brook · /repurpose · /writing-assist · over-loaded（CONTENT-PIPELINE 觀察 #2）</p>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">08</span>
+          <span class="crew-card__mono" aria-hidden="true">F</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Foundry</span>
+            <span class="crew-card__job">鍛冶屋 · Video Production</span>
+          </span>
+          <span class="crew-card__tags">
+            <span class="sho-tag">輸出</span><span class="sho-tag">製作</span>
+          </span>
+          <span class="pill pill--in-dev">in dev</span>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <p>影片鍛造工坊（ADR-032 新增）。把逐字稿打成可進 DaVinci 的 B-roll 時間軸。</p>
+          <ul>
+            <li>SRT flatten + 中文正規化 + beat 對齊（quote ↔ timestamp）</li>
+            <li>B-roll planner：LLM 場景拆解 → Hyperframes 合成指令</li>
+            <li>Playwright workers 渲染 B-roll mp4 → emit FCPXML 1.10 + SRT</li>
+          </ul>
+          <p class="crew-card__meta sho-mono">router /foundry · Phase 1：PR-1 scaffold ✓，PR-2〜5 in flight</p>
+        </div>
+      </details>
+
+    </div>
+
+    <p class="codex-note">
+      <span class="sho-tag sho-tag--accent">非船員</span>
+      <strong>Codex / GPT-5 · Gemini</strong> — 不是船員，是 multi-model panel review 用的外部 LLM（ADR-026 / ADR-029）。重大決策（ADR 草案、架構提案、大型 refactor）由 Claude 起草 → Codex push-back 稽核 → Gemini 不同推理鏈稽核 → 整合矩陣 → 修修 sign-off。價值在 disagreement，不在 unanimity。
+    </p>
+
+    <!-- data sources -->
+    <div class="ns-head">
+      <h3>資料來源</h3>
+      <span class="ns-token">core + bolt-on</span>
+    </div>
+    <div class="source-cols">
+      <div class="source-group">
+        <div class="source-group__head"><span class="sho-mono-up">core · 核心</span><span class="source-group__sub">少了會散架</span></div>
+        <ul class="source-list">
+          <li><span class="source-chip">Obsidian LifeOS Vault</span><span class="acc acc--rw">可讀寫</span><span class="source-by sho-mono">全員 · KB / Projects / AgentOutputs</span></li>
+          <li><span class="source-chip">WordPress</span><span class="acc acc--w">可寫</span><span class="source-by sho-mono">Usopp · shosho.tw / fleet.shosho.tw</span></li>
+          <li><span class="source-chip">Slack（gateway）</span><span class="acc acc--rw">可讀寫</span><span class="source-by sho-mono">6 bots · socket-mode</span></li>
+          <li><span class="source-chip">state.db（SQLite）</span><span class="acc acc--rw">可讀寫</span><span class="source-by sho-mono">全員 · 狀態 / 計費 / 事件</span></li>
+        </ul>
+      </div>
+      <div class="source-group">
+        <div class="source-group__head"><span class="sho-mono-up">bolt-on · 外掛</span><span class="source-group__sub">加上去能力更強</span></div>
+        <ul class="source-list">
+          <li><span class="source-chip">PubMed E-utilities</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Robin · 22 top journals</span></li>
+          <li><span class="source-chip">YouTube Data API</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Zoro</span></li>
+          <li><span class="source-chip">Google Trends</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Zoro</span></li>
+          <li><span class="source-chip">Reddit / Twitter</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Zoro</span></li>
+          <li><span class="source-chip">Google Search Console</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Franky · 每日 7 天 ranking</span></li>
+          <li><span class="source-chip">Google Calendar / Gmail</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Nami（planned）</span></li>
+          <li><span class="source-chip">Cloudflare R2</span><span class="acc acc--rw">可讀寫</span><span class="source-by sho-mono">Franky · 備份</span></li>
+          <li><span class="source-chip">GitHub trending</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Franky · AI news</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── /02 內容流程七層 ─────────────────────────────────────────────── -->
+  <section aria-labelledby="pipe-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">02</span><span>content pipeline</span></div>
+      <h2 id="pipe-heading">內容流程七層</h2>
+      <p>任何「開發 X」對話都必先 anchor 在某個 stage，不可 spontaneous 開發。原料從外部世界進來，一路走到發布，理想上 Stage 7 的成效要回灌 Stage 1。</p>
+    </div>
+
+    <ol class="pipeline">
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">1</span>
+        <span class="pipe-step__name">收集 Discovery</span>
+        <span class="pipe-step__desc">趨勢 / 文獻 / 新聞 / 社群 → 原料素材</span>
+        <span class="pipe-step__owner sho-mono">Zoro · Franky · Robin</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">2</span>
+        <span class="pipe-step__name">閱讀 + 註記</span>
+        <span class="pipe-step__desc">Reader 雙語閱讀 · 劃線 + 筆記 + reading session</span>
+        <span class="pipe-step__owner sho-mono">Robin</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">3</span>
+        <span class="pipe-step__name">整合 Ingest</span>
+        <span class="pipe-step__desc">原料 + 註記 → KB Wiki（Source / Concept / Entity）</span>
+        <span class="pipe-step__owner sho-mono">Robin · Brook</span>
+      </li>
+      <li class="pipe-step pipe-step--owner-human">
+        <span class="pipe-step__n sho-mono">4</span>
+        <span class="pipe-step__name">原子文章</span>
+        <span class="pipe-step__desc">canonical content：手寫心得 / 字幕檔 / LLM 輔助稿 — <strong>LLM 不代寫正文</strong></span>
+        <span class="pipe-step__owner sho-mono">修修 · transcribe · Brook scaffold</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">5</span>
+        <span class="pipe-step__name">製作 Production</span>
+        <span class="pipe-step__desc">fan out 4 channel：影片 / 部落格 / FB / IG</span>
+        <span class="pipe-step__owner sho-mono">Brook · Foundry</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">6</span>
+        <span class="pipe-step__name">發布 Publishing</span>
+        <span class="pipe-step__desc">上線到各平台 · <strong>目前僅 WP 自動</strong>，YT/IG/FB 缺口</span>
+        <span class="pipe-step__owner sho-mono">Usopp</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">7</span>
+        <span class="pipe-step__name">監控 Optimization</span>
+        <span class="pipe-step__desc">analytics → SEO 分數 / 排名 / 回饋 → 回灌 Stage 1</span>
+        <span class="pipe-step__owner sho-mono">Brook · Franky</span>
+      </li>
+    </ol>
+
+    <div class="phase phase--warn">
+      <div class="phase-head">
+        <span class="phase-n">結構性觀察 #1</span>
+        <span class="phase-title">Stage 7 → Stage 1 閉環目前是斷的</span>
+      </div>
+      <div class="phase-body">
+        Zoro 偵察 → 人肉橋接 → Robin / Brook 寫 → 人肉發布 → SEO 中控台 audit → <strong>回不去 Zoro</strong>。內容效能無法 inform 下次選題，每集從零開始。誠實標示，不假裝閉環已成。
+      </div>
+    </div>
+  </section>
+
+  <!-- ── /03 一日工作節奏 ─────────────────────────────────────────────── -->
+  <section aria-labelledby="rhythm-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">03</span><span>daily rhythm</span></div>
+      <h2 id="rhythm-heading">一日工作節奏</h2>
+      <p>VPS 時區鎖 Asia/Taipei，cron 在修修起床前把當天素材備好。Slack gateway 則是 always-on，隨時接 DM 與 @mention。下表為 <code>cron.conf</code> 實際排程。</p>
+    </div>
+
+    <table class="rhythm">
+      <thead>
+        <tr><th class="col-time">時間 · TPE</th><th class="col-who">執行者</th><th class="col-evt">事件</th><th class="col-kind">類型</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="sho-mono">02:00</td><td>Robin</td><td>Inbox KB ingest — 把昨天進 Inbox 的素材分類進 KB/Raw</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">03:00</td><td>Franky</td><td>GSC daily — 拉前 7 天 Search Console ranking 進 state.db</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">03:30</td><td>Franky</td><td>R2 backup verify — 確認備份完整可還原</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">04:00</td><td>Nakama</td><td>state.db 每日快照 → R2 nakama-backup bucket</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">05:00</td><td>Zoro</td><td>Brainstorm Scout — 關鍵字 + 趨勢偵察</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">05:30</td><td>Robin</td><td>PubMed digest — 22 本頂尖期刊最新論文</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">06:30</td><td>Franky</td><td>AI news digest — anthropic.com / GitHub trending / awesome-diff</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr class="rhythm--disabled"><td class="sho-mono">07:00</td><td>Nami</td><td>Morning Brief — <strong>DISABLED</strong>（未實作；真實邏輯走 Slack gateway 觸發）</td><td><span class="kind kind--off">disabled</span></td></tr>
+        <tr><td class="sho-mono">10:00 週一</td><td>Franky</td><td>週報 digest — 系統週回顧或 retrospective</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">每小時</td><td>Usopp</td><td>Community Monitor — 掃 Fluent Community 動態</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">每 5 分</td><td>Franky</td><td>Health probes — token 用量 / 延遲 / error rate</td><td><span class="kind kind--daemon">daemon</span></td></tr>
+        <tr><td class="sho-mono">每 15 分</td><td>Franky</td><td>Anomaly daemon — cost / latency / cron cluster 3σ 偵測</td><td><span class="kind kind--daemon">daemon</span></td></tr>
+        <tr><td class="sho-mono">隨時</td><td>Nami · Zoro · Robin · Franky · Brook · Sanji</td><td>Slack gateway — socket-mode，接 DM / @mention 即時回應</td><td><span class="kind kind--gw">gateway</span></td></tr>
+        <tr><td class="sho-mono">週一 04:15</td><td>Nakama</td><td>user_memories decay — 30 天沒存取的記憶 confidence ×0.9</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">每月 1 號 04:30</td><td>Nakama</td><td>user_memories prune — 清掉 confidence &lt; 0.1 的記憶</td><td><span class="kind kind--cron">cron</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── /04 操作原則 ─────────────────────────────────────────────────── -->
+  <section aria-labelledby="principle-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">04</span><span>operating principles</span></div>
+      <h2 id="principle-heading">操作原則</h2>
+      <p>讓人放心把工作丟出去的先決條件。少了任何一條，自動化都會在某個地方漏。</p>
+    </div>
+
+    <div class="principle-grid">
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">三條紅線</span>
+        <h3>任何任務共同遵守</h3>
+        <ol class="numbered">
+          <li><strong>閉環意識</strong> — 每個任務有明確 Definition of Done，「差不多了」不算完成</li>
+          <li><strong>事實驅動</strong> — 每個判斷附檔案路徑 + 行號，「我猜」「應該是」是違規</li>
+          <li><strong>窮盡一切</strong> — 清單不跳過，乾淨的項目明確標「已檢查無問題」，不靜默忽略</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">模式切換</span>
+        <h3>依任務規模換檔</h3>
+        <ol class="numbered">
+          <li><strong>P7 執行</strong> — 單一功能：讀現狀 → 方案 → 影響分析 → 實施 → 三問自審</li>
+          <li><strong>P9 規劃</strong> — 3+ 檔：拆六要素 Task Prompt，輸出是 prompt 不是 code</li>
+          <li><strong>P10 戰略</strong> — 跨服務：輸出目標 / 指標 / 風險 / 時程戰略文件</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">工作面紀律</span>
+        <h3>control plane ≠ write surface</h3>
+        <ol class="numbered">
+          <li>主倉庫只允許讀 / fetch / <span class="sho-mono">pull --ff-only</span> / 開 worktree / merge</li>
+          <li>每個 task 開 sibling worktree 改檔，memory 永遠不在主倉庫寫</li>
+          <li>禁 <span class="sho-mono">git add .</span> — 只 stage 明確列出的 path，避免混入無關改動</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">記憶寫入</span>
+        <h3>三層觸發紀律</h3>
+        <ol class="numbered">
+          <li><strong>L1 明確</strong> — 使用者說「記下 / save」→ 立即寫 durable memory</li>
+          <li><strong>L2 強訊號</strong> — 明確 correction / validation / 新穩定事實 → 寫 durable</li>
+          <li><strong>L3 session 邊界</strong> — 「收工 / 對話結束」→ 寫 ephemeral handoff，不污染 git</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">美學 first-class</span>
+        <h3>不是 nice-to-have</h3>
+        <ol class="numbered">
+          <li>所有 UI surface 出手前讀 <span class="sho-mono">design-system.md</span>，走單一 <span class="sho-mono">--sho-*</span> token</li>
+          <li>拒 AI slop：無 Inter/Roboto、無紫漸層、無均勻 card grid 當預設</li>
+          <li>每個 state（hover / focus / empty / error…）都設計過，a11y 不妥協</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">multi-agent</span>
+        <h3>Claude + Codex 協作</h3>
+        <ol class="numbered">
+          <li>記憶按 agent + 語言切：Claude 讀寫 <span class="sho-mono">claude/</span>、Codex 讀寫 <span class="sho-mono">codex/</span></li>
+          <li><span class="sho-mono">shared/</span> 強制 bilingual frontmatter，否則跨語言找不到</li>
+          <li>UPDATE 走 <span class="sho-mono">.lock</span>，衝突絕不 silent last-write-wins，必呼叫使用者</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">Sandcastle default</span>
+        <h3>並行 dispatch 走雲端隔離</h3>
+        <ol class="numbered">
+          <li>Default 用 Sandcastle（cloud isolation）跑並行 / AFK 任務</li>
+          <li>本機 <span class="sho-mono">isolation: worktree</span> 只用於能盯住全程的單一短任務</li>
+          <li>backend → Sandcastle、UI → 主 session（瀏覽器驗證在 scope 內）</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── /05 Runtime Policy ───────────────────────────────────────────── -->
+  <section aria-labelledby="policy-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">05</span><span>runtime policy</span></div>
+      <h2 id="policy-heading">Runtime Policy</h2>
+      <p>Nakama 不用 PreToolUse / PostToolUse hook，而是用 <code>.claude/settings.json</code> 的 allow / deny permission list + worktree 隔離當護欄。三類守則：安全、穩定、方便。</p>
+    </div>
+
+    <div class="policy-grid">
+      <div class="policy-card policy-card--security">
+        <span class="policy-card__cat sho-mono-up">／ 01　Security · 安全</span>
+        <h3>destructive 指令一律 deny</h3>
+        <p>下列 pattern 在 settings.json deny list，連明確口頭授權都擋得住 — 要繞過得改 settings 或自己另開 shell 跑。</p>
+        <ul class="policy-list">
+          <li><span class="sho-mono">rm</span> · <span class="sho-mono">rmdir</span> — 防誤刪（改走回收桶）</li>
+          <li><span class="sho-mono">sudo</span> — 防本機提權</li>
+          <li><span class="sho-mono">git reset --hard</span> · <span class="sho-mono">checkout --</span> · <span class="sho-mono">clean</span> — 防 destructive git 丟失未提交</li>
+          <li><span class="sho-mono">Edit(.env)</span> — 防 API key 進 transcript / git</li>
+          <li><span class="sho-mono">scp</span> · <span class="sho-mono">rsync</span> — 防檔案外流</li>
+        </ul>
+      </div>
+      <div class="policy-card policy-card--reliability">
+        <span class="policy-card__cat sho-mono-up">／ 02　Reliability · 穩定</span>
+        <h3>主倉庫不可被污染</h3>
+        <p>多視窗並行下，最大風險是 unrelated 改動混進 PR、或主倉庫被 destructive 操作弄亂。</p>
+        <ul class="policy-list">
+          <li>主倉庫只 <span class="sho-mono">pull --ff-only</span>，不在上面 checkout 工作 branch</li>
+          <li>每個 task 開 sibling worktree 隔離 write surface</li>
+          <li>memory commit 走 <span class="sho-mono">paths-ignore</span> 直 push main，絕不在 feature branch</li>
+          <li>stash 用 <span class="sho-mono">-m</span> 命名，不用 <span class="sho-mono">pop stash@{0}</span>（index 會漂移）</li>
+        </ul>
+      </div>
+      <div class="policy-card policy-card--convenience">
+        <span class="policy-card__cat sho-mono-up">／ 03　Convenience · 方便</span>
+        <h3>安全的逃生門</h3>
+        <p>擋掉危險指令之後，留幾條被 allow-list 過的安全替代，讓日常不卡關。</p>
+        <ul class="policy-list">
+          <li>刪檔走 PowerShell 回收桶 <span class="sho-mono">DeleteFile(…'SendToRecycleBin')</span></li>
+          <li>VPS 維運：<span class="sho-mono">ssh nakama-vps "journalctl / systemctl …"</span> 已 allow</li>
+          <li>Python / pytest / ruff / git 讀寫全套 allow-listed，不用每次問</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span class="sho-mono">
+      <span class="sho-bolt footer-bolt" aria-hidden="true">
+        <svg><use href="#sho-bolt-shape"/></svg>
+      </span>
+      研究編號 N°0803 · nakama · system overview v1
+    </span>
+    <span>
+      <a class="sho-lk sho-mono" href="https://github.com/shosho-chang/nakama" rel="noopener">
+        github.com/shosho-chang/nakama
+      </a>
+    </span>
+  </footer>
+
+</main>
+
+<script>
+  // Header theme switch — light/dark with a sliding thumb. The render-blocking
+  // <head> script already set the initial theme; this only wires the toggle.
+  (function () {
+    const KEY = 'sho-theme';
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    function read() { try { return localStorage.getItem(KEY); } catch (_) { return null; } }
+    function write(v) { try { localStorage.setItem(KEY, v); } catch (_) {} }
+    function systemDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    function apply(mode) {
+      document.documentElement.dataset.theme = mode;
+      btn.setAttribute('aria-checked', mode === 'dark' ? 'true' : 'false');
+      btn.dataset.mode = mode;
+    }
+    const saved = read();
+    apply(saved === 'dark' || saved === 'light' ? saved : (systemDark() ? 'dark' : 'light'));
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.mode === 'dark' ? 'light' : 'dark';
+      write(next);
+      apply(next);
+    });
+  })();
+</script>
+
+</body>
+</html>
