@@ -182,6 +182,10 @@
             <li>雙語 Reader UI：<span class="sho-mono">==highlight==</span> 劃線 + <span class="sho-mono">[!annotation]</span> 筆記</li>
             <li>Source Promotion + Reading Context Package（ADR-024）</li>
           </ul>
+          <div class="crew-card__kit">
+            <div class="kit-row"><span class="kit-label sho-mono-up">skills</span><span class="kit-vals"><span class="sho-tag">kb-ingest</span><span class="sho-tag">kb-search</span><span class="sho-tag">textbook-ingest</span></span></div>
+            <div class="kit-row"><span class="kit-label sho-mono-up">py 模組</span><span class="kit-vals"><code class="kit-mod">ingest.py</code><code class="kit-mod">annotation_merger.py</code><code class="kit-mod">pubmed_digest.py</code><code class="kit-mod">kb_search.py</code><code class="kit-mod">book_digest_writer.py</code></span></div>
+          </div>
           <p class="crew-card__meta sho-mono">router /robin · cron 02:00 ingest · 05:30 PubMed digest</p>
         </div>
       </details>
@@ -207,6 +211,10 @@
             <li>每日 briefing：整合 Robin KB 更新 + Franky SEO / cost + 系統健康</li>
             <li>透過 <span class="sho-mono">gateway/handlers/nami.py</span> 由 Slack DM 觸發</li>
           </ul>
+          <div class="crew-card__kit">
+            <div class="kit-row"><span class="kit-label sho-mono-up">skills</span><span class="kit-vals"><span class="sho-tag">project-bootstrap</span><span class="kit-none">（其餘規劃中）</span></span></div>
+            <div class="kit-row"><span class="kit-label sho-mono-up">py 模組</span><span class="kit-vals"><code class="kit-mod">__main__.py（stub）</code><code class="kit-mod">gateway/handlers/nami.py</code></span></div>
+          </div>
           <p class="crew-card__meta sho-mono">slack gateway bot · 07:00 morning brief cron DISABLED（2026-05-03，未實作）</p>
         </div>
       </details>
@@ -232,6 +240,10 @@
             <li>SERP 情報：搜尋量、難度、季節趨勢、跨語言 trend gap</li>
             <li>輸出 title seeds 給 Brook compose 預先 brief</li>
           </ul>
+          <div class="crew-card__kit">
+            <div class="kit-row"><span class="kit-label sho-mono-up">skills</span><span class="kit-vals"><span class="sho-tag">keyword-research</span></span></div>
+            <div class="kit-row"><span class="kit-label sho-mono-up">py 模組</span><span class="kit-vals"><code class="kit-mod">keyword_research.py</code><code class="kit-mod">brainstorm_scout.py</code><code class="kit-mod">trends_api.py</code><code class="kit-mod">reddit_api.py</code><code class="kit-mod">youtube_api.py</code><code class="kit-mod">twitter_api.py</code></span></div>
+          </div>
           <p class="crew-card__meta sho-mono">router /bridge/zoro · cron 05:00 Brainstorm Scout · Stage 7→1 反向 feed 規劃中</p>
         </div>
       </details>
@@ -257,6 +269,10 @@
             <li>會員 memory ingest、engagement insight</li>
             <li>活動企劃：90 天習慣挑戰、讀書會、學伴配對</li>
           </ul>
+          <div class="crew-card__kit">
+            <div class="kit-row"><span class="kit-label sho-mono-up">skills</span><span class="kit-vals"><span class="kit-none">無專屬 skill（規劃中）</span></span></div>
+            <div class="kit-row"><span class="kit-label sho-mono-up">py 模組</span><span class="kit-vals"><code class="kit-mod">__main__.py（persona smoke-test）</code></span></div>
+          </div>
           <p class="crew-card__meta sho-mono">尚無 router · 規劃 community engagement 必補的 agent</p>
         </div>
       </details>
@@ -282,6 +298,10 @@
             <li>R2 backup verify、GSC daily（每日 7 天 ranking）、token 成本追蹤</li>
             <li>AI news digest、anomaly daemon（cost / latency / cron cluster 3σ）</li>
           </ul>
+          <div class="crew-card__kit">
+            <div class="kit-row"><span class="kit-label sho-mono-up">skills</span><span class="kit-vals"><span class="kit-none">無專屬 skill（Python daemon only）</span></span></div>
+            <div class="kit-row"><span class="kit-label sho-mono-up">py 模組</span><span class="kit-vals"><code class="kit-mod">reporter.py</code><code class="kit-mod">news_digest.py</code><code class="kit-mod">anomaly_daemon.py</code><code class="kit-mod">health_check.py</code><code class="kit-mod">jobs/gsc_daily.py</code></span></div>
+          </div>
           <p class="crew-card__meta sho-mono">router /bridge/franky · cron 每5分 health · 每15分 anomaly · 03:00 GSC · 06:30 news · 週一 digest</p>
         </div>
       </details>
@@ -308,6 +328,10 @@
             <li>藥事法 / 醫療法用詞 compliance scan</li>
             <li>8-stage crash-safe state machine（重啟可續）+ LiteSpeed cache purge</li>
           </ul>
+          <div class="crew-card__kit">
+            <div class="kit-row"><span class="kit-label sho-mono-up">skills</span><span class="kit-vals"><span class="kit-none">無專屬 skill（Python daemon only）</span></span></div>
+            <div class="kit-row"><span class="kit-label sho-mono-up">py 模組</span><span class="kit-vals"><code class="kit-mod">publisher.py（8-stage state machine）</code><code class="kit-mod">shared/approval_queue.py</code><code class="kit-mod">shared/wordpress_client.py</code></span></div>
+          </div>
           <p class="crew-card__meta sho-mono">daemon nakama-usopp.service · cron 每小時 community monitor · YT/IG/FB/Newsletter ❌ 範圍外</p>
         </div>
       </details>
@@ -333,6 +357,10 @@
             <li>repurpose engine：Blog / FB（4 tonal）/ IG carousel（5/7/5/10 卡）renderer</li>
             <li>script-driven video pipeline、SEO audit + enrich（對既有文章）</li>
           </ul>
+          <div class="crew-card__kit">
+            <div class="kit-row"><span class="kit-label sho-mono-up">skills</span><span class="kit-vals"><span class="sho-tag">article-compose</span><span class="sho-tag">seo-audit-post</span><span class="sho-tag">seo-keyword-enrich</span></span></div>
+            <div class="kit-row"><span class="kit-label sho-mono-up">py 模組</span><span class="kit-vals"><code class="kit-mod">repurpose_engine.py</code><code class="kit-mod">blog_renderer.py</code><code class="kit-mod">fb_renderer.py</code><code class="kit-mod">ig_renderer.py</code><code class="kit-mod">synthesize/</code><code class="kit-mod">script_video/</code></span></div>
+          </div>
           <p class="crew-card__meta sho-mono">router /brook · /repurpose · /writing-assist · over-loaded（CONTENT-PIPELINE 觀察 #2）</p>
         </div>
       </details>
@@ -358,6 +386,10 @@
             <li>B-roll planner：LLM 場景拆解 → Hyperframes 合成指令</li>
             <li>Playwright workers 渲染 B-roll mp4 → emit FCPXML 1.10 + SRT</li>
           </ul>
+          <div class="crew-card__kit">
+            <div class="kit-row"><span class="kit-label sho-mono-up">skills</span><span class="kit-vals"><span class="sho-tag">foundry-replan</span></span></div>
+            <div class="kit-row"><span class="kit-label sho-mono-up">py 模組</span><span class="kit-vals"><code class="kit-mod">pipeline.py</code><code class="kit-mod">planner.py</code><code class="kit-mod">render_dispatcher.py</code><code class="kit-mod">fcpxml_emitter.py</code><code class="kit-mod">render_workers/</code></span></div>
+          </div>
           <p class="crew-card__meta sho-mono">router /foundry · Phase 1：PR-1 scaffold ✓，PR-2〜5 in flight</p>
         </div>
       </details>
