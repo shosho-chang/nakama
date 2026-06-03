@@ -1,11 +1,24 @@
+{# ── Unified task row (#7) ────────────────────────────────────────────────────
+   ONE row component for all three task views (今日 / 整週 / 全部含未安排). Folds
+   together what used to be two divergent UIs — the plan[] multi-day editor AND
+   the 41c calendar scheduler (date+time → Google event). Left box toggles done
+   (#2). The calendar sub-form keeps the 41c orphan guard: once linked it shows a
+   locked notice pointing at the task page for 改期/取消 (41d). #}
 {% macro task_row(t, view) %}
   <details class="wk-task-d">
     <summary class="wk-task {{ 'done' if t.done }}">
-      <span class="wk-box {{ 'done' if t.done }}"></span>
+      <form class="wk-box-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/done">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        <input type="hidden" name="done" value="{{ '0' if t.done else '1' }}">
+        <button type="submit" class="wk-box {{ 'done' if t.done }}"
+                aria-pressed="{{ 'true' if t.done else 'false' }}"
+                aria-label="{{ ('標記未完成：' if t.done else '標記完成：') ~ t.name }}"></button>
+      </form>
       <span class="wk-tname">{{ t.name }}</span>
       <span class="wk-tproj">{{ t.category_label }}{% if t.project %} · {{ t.project }}{% endif %}</span>
       <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
-      <span class="sho-chip sho-chip--{{ 'online' if t.status == 'done' else 'offline' }} wk-status">{{ t.status }}</span>
+      {% if t.calendar_event_id %}<span class="wk-bl-when wk-bl-linked" title="已連動 Google 行事曆">📅🔗 {{ t.scheduled.strftime('%m/%d') if t.scheduled }}</span>
+      {% elif t.scheduled %}<span class="wk-bl-when" title="目前 scheduled">📅 {{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
       <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
       <span class="wk-edit-hint" aria-hidden="true">排程</span>
     </summary>
@@ -52,53 +65,34 @@
           scheduled → 最近排程日{% if t.scheduled %} <span class="wk-mut">(現 {{ t.scheduled.strftime('%m/%d') }})</span>{% endif %}
         </button>
       </form>
+
+      {# ── calendar block: pick a real clock-time slot → Google event (41c) ── #}
+      <div class="wk-cal-divider"><span class="wk-h">📅 排到 Google 行事曆</span></div>
+      {% if t.calendar_event_id %}
+        {# already projected — CREATE-only here; re-scheduling would orphan the
+           existing event (41c orphan guard). 改期 / 取消 live on the task page (41d). #}
+        <p class="wk-bl-locked-note wk-mut">已排入行事曆{{ '（' ~ t.scheduled.strftime('%m/%d') ~ '）' if t.scheduled }}。改期或取消請到
+          <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">任務頁 ↗</a>。</p>
+      {% else %}
+        <form class="wk-sched-form" method="post" action="/bridge/weekly/schedule">
+          <input type="hidden" name="task_slug" value="{{ t.slug }}">
+          <input type="hidden" name="week" value="{{ view.week.file_key }}">
+          <div class="wk-sched-fields">
+            <label class="wk-sched-lbl">日期
+              <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
+            <label class="wk-sched-lbl">時間
+              <input class="wk-sched-time" type="time" name="entry_time" value="09:00" step="900" required></label>
+            <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([t.est_pomodoros, 20] | min) if t.est_pomodoros else 1 }}" aria-label="番茄數">🍅
+              <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
+          </div>
+          <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+          <div class="wk-sched-actions">
+            <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
+            <button class="sho-btn wk-sched-go" type="submit">排到行事曆</button>
+          </div>
+        </form>
+      {% endif %}
     </div>
-  </details>
-{% endmacro %}
-
-{# ── Backlog calendar scheduler (ADR-041 41c; Journals/Weekly NOT touched) ── #}
-{# Picks a real clock-time block for any open task → calendar_scheduler.schedule_block
-   (vault plan[] authoritative + best-effort Google Calendar event). #}
-{% macro backlog_row(t, view) %}
-  <details class="wk-task-d wk-bl-d">
-    <summary class="wk-task">
-      <span class="wk-box"></span>
-      <span class="wk-tname">{{ t.name }}</span>
-      <span class="wk-tproj">{{ t.category_label }}</span>
-      <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ t.est_pomodoros }}🍅</span>
-      {% if t.calendar_event_id %}<span class="wk-bl-when wk-bl-linked" title="已連動行事曆">📅🔗 {{ t.scheduled.strftime('%m/%d') if t.scheduled }}</span>
-      {% elif t.scheduled %}<span class="wk-bl-when" title="目前 scheduled">📅 {{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
-      <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁">↗</a>
-      <span class="wk-edit-hint" aria-hidden="true">{{ '已排程' if t.calendar_event_id else '排到行事曆' }}</span>
-    </summary>
-
-    {% if t.calendar_event_id %}
-      {# Already projected to the calendar. This is a CREATE-only flow (41c);
-         scheduling it again to a new day would orphan the existing event
-         (Codex audit §2/§3). Reschedule / cancel land in 41d — point there. #}
-      <div class="wk-plan-edit wk-bl-locked">
-        <span class="wk-mut">已排入行事曆{{ '（' ~ t.scheduled.strftime('%m/%d') ~ '）' if t.scheduled }}。改期或取消請到
-          <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}">任務頁 ↗</a>（41d）。</span>
-      </div>
-    {% else %}
-      <form class="wk-plan-edit wk-sched-form" method="post" action="/bridge/weekly/schedule">
-        <input type="hidden" name="task_slug" value="{{ t.slug }}">
-        <input type="hidden" name="week" value="{{ view.week.file_key }}">
-        <div class="wk-sched-fields">
-          <label class="wk-sched-lbl">日期
-            <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
-          <label class="wk-sched-lbl">時間
-            <input class="wk-sched-time" type="time" name="entry_time" value="09:00" step="900" required></label>
-          <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([t.est_pomodoros, 20] | min) if t.est_pomodoros else 1 }}" aria-label="番茄數">🍅
-            <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
-        </div>
-        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
-        <div class="wk-sched-actions">
-          <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
-          <button class="sho-btn wk-sched-go" type="submit">排到行事曆</button>
-        </div>
-      </form>
-    {% endif %}
   </details>
 {% endmacro %}
 
@@ -358,8 +352,17 @@
                       <ul class="wk-cat-items">
                         {% for it in cat['items'] %}
                           <li class="wk-cat-item {{ 'done' if it.done }}">
-                            <span class="wk-ci-box" aria-hidden="true">{{ '☑' if it.done else '☐' }}</span>
+                            <form class="wk-box-form" method="post" action="/bridge/weekly/task/{{ it.slug | urlencode }}/done">
+                              <input type="hidden" name="week" value="{{ view.week.file_key }}">
+                              <input type="hidden" name="done" value="{{ '0' if it.done else '1' }}">
+                              <button type="submit" class="wk-ci-box"
+                                      aria-pressed="{{ 'true' if it.done else 'false' }}"
+                                      aria-label="{{ ('標記未完成：' if it.done else '標記完成：') ~ it.name }}">{{ '☑' if it.done else '☐' }}</button>
+                            </form>
                             <a class="wk-ci-name" href="/bridge/weekly/task/{{ it.slug | urlencode }}?week={{ view.week.file_key }}">{{ it.name }}</a>
+                            {% if cat.is_work and (it.pomodoros or it.actual) %}
+                              <span class="wk-ci-pom" title="實際 / 預計 番茄數">{{ it.actual }}/{{ it.pomodoros }}🍅</span>
+                            {% endif %}
                           </li>
                         {% endfor %}
                       </ul>
@@ -374,13 +377,16 @@
         </div>
       </div>
 
-      {# ── task list + scheduler (below the daily cards) ── #}
+      {# ── task list + scheduler (below the daily cards) ──────────────────────
+         Three views over ONE unified row (#7): 今日 / 整週 / 全部（含未安排）.
+         「全部」folds in what used to be the separate 待排程 backlog zone — every
+         open task, grouped by project, schedulable inline. #}
       <div class="wk-zone">
         <div class="wk-zone-head"><span class="wk-h">任務</span>
           <div class="wk-tabs" role="tablist">
             <button class="wk-tab is-on" data-tab="today" type="button">今日</button>
             <button class="wk-tab" data-tab="week" type="button">整週</button>
-            <button class="wk-tab" data-tab="project" type="button">按專案</button>
+            <button class="wk-tab" data-tab="all" type="button">全部</button>
           </div>
         </div>
 
@@ -392,32 +398,18 @@
           {% for t in view.tasks %}{{ task_row(t, view) }}{% else %}
             <p class="wk-empty">本週尚無排程 — 在卡片排入，或在 Obsidian 指定 scheduled。</p>{% endfor %}
         </div>
-        <div class="wk-tabpane is-hidden" data-pane="project">
-          {% for proj, tasks in view.by_project.items() %}
+        <div class="wk-tabpane is-hidden" data-pane="all">
+          <p class="wk-mut wk-all-hint">所有未完成任務（{{ view.backlog_count }} 項）· 點開可排計畫或排到行事曆。</p>
+          {% for proj, tasks in view.backlog_by_project.items() %}
             <div class="wk-projgroup">
-              <div class="wk-projname">{{ proj }}
-                <span class="wk-mut">{{ tasks | sum(attribute='est_pomodoros') }}🍅 估</span></div>
+              <div class="wk-projname">{{ proj }} <span class="wk-mut">{{ tasks | length }} 項</span></div>
               {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
             </div>
           {% else %}
-            <p class="wk-empty">本週尚無排程。</p>
+            <p class="wk-empty">沒有未完成的任務 🎉</p>
           {% endfor %}
         </div>
       </div>
-
-      {# ── backlog · 待排程 (all open tasks; calendar scheduler — 41c) ── #}
-      <details class="wk-zone wk-backlog">
-        <summary class="wk-zone-head"><span class="wk-h">📥 待排程 · 所有未完成任務</span>
-          <span class="wk-mut">{{ view.backlog_count }} 項 · 點開選日期/時間排到行事曆</span></summary>
-        {% for proj, tasks in view.backlog_by_project.items() %}
-          <div class="wk-projgroup">
-            <div class="wk-projname">{{ proj }} <span class="wk-mut">{{ tasks | length }} 項</span></div>
-            {% for t in tasks %}{{ backlog_row(t, view) }}{% endfor %}
-          </div>
-        {% else %}
-          <p class="wk-empty">沒有未完成的任務 🎉</p>
-        {% endfor %}
-      </details>
 
       {# ── review (fill any time; designed for week-end) ── #}
       <details class="wk-zone wk-review-zone">
@@ -439,7 +431,14 @@
   </main>
 
   <script>
-  /* Task-view tab toggle (今日 / 整週 / 按專案). */
+  /* Done-toggle checkbox (#2): the box is a real <form> submit. Stop the click
+     from bubbling so it doesn't also toggle the parent <details> (task row) or
+     follow the day-bullet's task link — the POST→303 reload re-renders state. */
+  document.querySelectorAll('.wk-box-form button').forEach(function (b) {
+    b.addEventListener('click', function (e) { e.stopPropagation(); });
+  });
+
+  /* Task-view tab toggle (今日 / 整週 / 全部). */
   (function () {
     var tabs = document.querySelectorAll('.wk-tab');
     tabs.forEach(function (tab) {

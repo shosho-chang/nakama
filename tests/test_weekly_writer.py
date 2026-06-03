@@ -23,6 +23,7 @@ from shared.weekly_writer import (
     remove_plan_entry,
     reschedule_task_block,
     schedule_task_block,
+    set_task_done,
     sync_scheduled_to_next_plan,
     task_file_token,
     unlink_calendar_block,
@@ -970,3 +971,44 @@ class TestReadTaskSchedule:
         _make_task(vault, "測試任務", {"title": "測試任務", "tags": ["task"]})
         sched = read_task_schedule(vault, "測試任務")
         assert sched["calendar_event_id"] == ""
+
+
+# ── set_task_done (#2 dashboard checkbox) ──────────────────────────────────────
+
+
+class TestSetTaskDone:
+    def test_mark_done_sets_status(self, vault):
+        p = _make_task(vault, "t1", {"title": "T", "status": "to-do"})
+        out = set_task_done(vault, "t1", True)
+        assert out == "done"
+        assert _read_fm(p)["status"] == "done"
+
+    def test_unmark_reopens_to_do(self, vault):
+        p = _make_task(vault, "t1", {"title": "T", "status": "done"})
+        out = set_task_done(vault, "t1", False)
+        assert out == "to-do"
+        assert _read_fm(p)["status"] == "to-do"
+
+    def test_unmark_clears_truthy_checkmark(self, vault):
+        # the indexer treats ✅:true as done too — un-marking must clear it
+        p = _make_task(vault, "t1", {"title": "T", "status": "done", "✅": True})
+        set_task_done(vault, "t1", False)
+        fm = _read_fm(p)
+        assert fm["status"] == "to-do"
+        assert fm["✅"] is False
+
+    def test_mark_done_preserves_plan_and_body(self, vault):
+        p = _make_task(
+            vault,
+            "t1",
+            {"title": "T", "status": "to-do", "plan": [{"date": "2026-06-01", "pomodoros": 2}]},
+            body="draft notes",
+        )
+        set_task_done(vault, "t1", True)
+        fm = _read_fm(p)
+        assert fm["plan"] == [{"date": "2026-06-01", "pomodoros": 2}]
+        assert "draft notes" in _read_body(p)
+
+    def test_missing_task_raises(self, vault):
+        with pytest.raises(TaskNotFoundError):
+            set_task_done(vault, "nope", True)

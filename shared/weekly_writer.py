@@ -309,6 +309,31 @@ def add_plan_entry(
     _write_task(path, fm, body)
 
 
+def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
+    """Toggle a task's completion from the dashboard checkbox (#2).
+
+    Marking done sets ``status: done``; un-marking sets ``status: to-do`` and
+    clears a truthy ``✅`` flag so the indexer (``done = status=='done' or ✅``)
+    agrees. Only ``status`` / ``✅`` are touched — plan[]/timeEntries/scheduled
+    and the body are preserved. Returns the new status. Raises
+    :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    if done:
+        fm["status"] = "done"
+        if fm.get("✅") is not None:
+            fm["✅"] = True
+    else:
+        if str(fm.get("status") or "") == "done":
+            fm["status"] = "to-do"
+        if fm.get("✅") is True:
+            fm["✅"] = False
+    _write_task(path, fm, body)
+    return str(fm.get("status") or "to-do")
+
+
 # ── Calendar-block scheduling (ADR-041 — vault is the source of truth) ──────────
 # A scheduled block is, authoritatively, a ``plan[]`` entry (effort intent — D1).
 # The calendar event is a downstream projection; this writer only touches the VAULT:

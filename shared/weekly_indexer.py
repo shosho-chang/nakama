@@ -255,6 +255,13 @@ class WeeklyTask:
             return self.est_pomodoros
         return 0
 
+    def actual_pomodoros_on(self, d: date) -> int:
+        """Actual 🍅 logged on day ``d`` from this task's own ``timeEntries[]``
+        (entries whose endTime falls on ``d``). Per-day counterpart of
+        :attr:`actual_pomodoros`; feeds the daily bullet's 預計/實際 readout (#4)."""
+        mins = sum(_entry_minutes(e) for e in self.time_entries if _entry_end_date(e) == d)
+        return int(mins // POMODORO_MINUTES)
+
     @property
     def is_work(self) -> bool:
         return self.category == WORK_CATEGORY
@@ -827,6 +834,7 @@ class WeeklyIndexer:
                         "name": t.name,
                         "slug": t.slug,
                         "pomodoros": t.pomodoros_on(d) if is_work else 0,
+                        "actual": t.actual_pomodoros_on(d) if is_work else 0,
                         "done": t.done,
                         "relative_path": t.relative_path,
                     }

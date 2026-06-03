@@ -502,6 +502,53 @@ body.sho .wk-sched-actions { display: flex; flex-wrap: wrap; align-items: center
 body.sho .wk-force { font-size: 11px; color: var(--sho-text-2); }
 body.sho .wk-sched-go { padding: 6px 16px; font-size: 12px; }
 
+/* #1 — make the native date/time picker indicator an obvious affordance. The
+   dark color-scheme renders it near-invisible by default; lift it to a clear
+   accent-tinted glyph so 修修 knows the field opens a picker. */
+body.sho .wk-sched-date::-webkit-calendar-picker-indicator,
+body.sho .wk-sched-time::-webkit-calendar-picker-indicator {
+  opacity: 0.9; cursor: pointer; padding: 2px; border-radius: var(--sho-r-1);
+  filter: invert(48%) sepia(89%) saturate(1200%) hue-rotate(346deg);  /* → PANTONE 165 orange */
+  transition: opacity var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-sched-date:hover::-webkit-calendar-picker-indicator,
+body.sho .wk-sched-time:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+
+/* #7 — unified row: divider + label before the inline calendar scheduler */
+body.sho .wk-cal-divider {
+  margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--sho-line-2);
+}
+body.sho .wk-bl-locked-note { margin: 0; font-size: 12px; }
+body.sho .wk-bl-locked-note a { color: var(--sho-accent); }
+body.sho .wk-all-hint { margin: 4px 6px 10px; }
+
+/* #2 — the completion checkbox is now a real <form> submit button. Reset the
+   native button chrome so .wk-box / .wk-ci-box keep their hairline-box look,
+   and give it a pointer + focus ring (it's interactive now, not decorative). */
+body.sho .wk-box-form { display: inline-flex; margin: 0; padding: 0; flex-shrink: 0; }
+body.sho button.wk-box {
+  padding: 0; background: var(--sho-bg); cursor: pointer; appearance: none;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho button.wk-box:hover { border-color: var(--sho-accent); }
+body.sho button.wk-box.done { background: var(--sho-text); border-color: var(--sho-text); }
+body.sho button.wk-box:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho button.wk-ci-box {
+  appearance: none; border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; line-height: 1; color: var(--sho-text-2); flex-shrink: 0;
+  transition: color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho button.wk-ci-box:hover { color: var(--sho-accent); }
+body.sho button.wk-ci-box:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+body.sho .wk-cat-item.done button.wk-ci-box { color: var(--sho-accent); }
+
+/* #4 — daily bullet 🍅: 實際 / 預計 on that day, mono + tabular */
+body.sho .wk-ci-pom {
+  margin-left: auto; flex-shrink: 0;
+  font-family: var(--sho-font-mono); font-size: 10px;
+  color: var(--sho-text-2); font-variant-numeric: tabular-nums;
+}
+
 /* ── task-page calendar block panel (41d): reschedule + the two cancel actions ── */
 body.sho .tk-cal {
   margin: 20px 0 4px; padding: 16px 18px;
@@ -517,6 +564,7 @@ body.sho .tk-cal-cancel {
 }
 body.sho .tk-cal-cancel form { margin: 0; }
 body.sho .tk-cal-cancel .wk-mut { font-size: 10px; margin-left: 3px; }
+body.sho .tk-cal-hint { margin: 0; font-size: 11px; line-height: 1.6; }
 body.sho .tk-cal-danger {
   color: color-mix(in oklch, var(--sho-danger, #d9534f) 80%, var(--sho-text));
   border-color: color-mix(in oklch, var(--sho-danger, #d9534f) 35%, transparent);
