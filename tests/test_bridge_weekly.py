@@ -613,7 +613,9 @@ class TestCalendarSchedule:
 
         monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
-        assert "待排程" in body
+        # the picker now lives inline in the unified row (#7 — 全部 view folds in
+        # the old 待排程 backlog); the 全部 pane + its open-task count render it
+        assert 'data-pane="all"' in body
         assert 'action="/bridge/weekly/schedule"' in body
         assert 'type="date"' in body and 'type="time"' in body
         assert 'name="force"' in body  # the conflict-override affordance
@@ -1049,7 +1051,9 @@ class TestCalendarCancel:
         body = client.get(f"/bridge/weekly/task/已連動任務?week={WEEK_KEY}").text
         assert "行事曆排程" in body
         assert "/reschedule" in body
-        assert "移出行事曆" in body and "取消排程" in body
+        # the two D9 cancel actions — reworded (#5) so the two layers are explicit
+        assert "只移出行事曆" in body and "取消這天的安排" in body
+        assert "/unlink" in body and "/unschedule" in body
         assert 'value="09:00"' in body  # current clock time pre-filled
 
 
@@ -1086,3 +1090,88 @@ class TestAuthGate:
         assert r.headers["location"].startswith("/login")
         # the write must NOT have happened
         assert not [e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-04"]
+
+
+class TestUnifiedTaskViewsAndDone:
+    """#7 unified row + 3 views (今日/整週/全部) + #2 done checkbox + #4 bullet 🍅."""
+
+    def _pin(self, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+
+    def test_all_view_replaces_backlog_zone(self, client, monkeypatch):
+        self._pin(monkeypatch)
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        # the 3rd task view is now 全部 (folds in the old 待排程 backlog)
+        assert 'data-tab="all"' in body
+        assert 'data-pane="all"' in body
+        assert 'data-tab="project"' not in body  # 按專案 retired
+        # the separate backlog <details> zone is gone
+        assert "wk-backlog" not in body
+
+    def test_done_checkbox_is_a_form_button(self, client, monkeypatch):
+        self._pin(monkeypatch)
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        assert "wk-box-form" in body
+        assert "/done" in body  # the toggle route action
+
+    def test_unified_row_has_inline_calendar_scheduler(self, client, monkeypatch):
+        self._pin(monkeypatch)
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        # the task row now carries BOTH the plan editor AND the calendar picker
+        assert "wk-cal-divider" in body
+        assert 'action="/bridge/weekly/schedule"' in body
+
+    def test_done_route_marks_and_reopens(self, client, tmp_path):
+        # mark done
+        r = client.post(
+            "/bridge/weekly/task/測試任務/done",
+            data={"done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}"
+        fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
+        assert fm["status"] == "done"
+        # re-open
+        client.post(
+            "/bridge/weekly/task/測試任務/done",
+            data={"done": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
+        assert fm["status"] == "to-do"
+
+    def test_done_route_unknown_task(self, client):
+        r = client.post(
+            "/bridge/weekly/task/不存在/done",
+            data={"done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=task"
+
+    def test_daily_bullet_shows_actual_planned_pom_for_work(self, client, tmp_path, monkeypatch):
+        # a work task scheduled Wed 06/03 with a logged session that day → 實際/預計
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        work = (
+            "---\n"
+            "title: 工作任務\n"
+            "status: to-do\n"
+            "category: work\n"
+            "預估🍅: 4\n"
+            "plan:\n"
+            "  - date: 2026-06-03\n"
+            "    pomodoros: 3\n"
+            "timeEntries:\n"
+            "  - startTime: '2026-06-03T09:00:00'\n"
+            "    endTime: '2026-06-03T09:25:00'\n"
+            "    mode: pomodoro\n"
+            "---\n"
+        )
+        (tmp_path / "TaskNotes" / "Tasks" / "工作任務.md").write_text(work, encoding="utf-8")
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        assert "wk-ci-pom" in body
+        assert "1/3🍅" in body  # actual 1 / planned 3

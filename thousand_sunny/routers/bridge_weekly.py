@@ -41,6 +41,7 @@ from shared.weekly_writer import (
     read_task_schedule,
     read_task_split,
     remove_plan_entry,
+    set_task_done,
     sync_scheduled_to_next_plan,
     weekly_file_token,
     write_task_body,
@@ -233,6 +234,29 @@ async def weekly_plan_remove(
         remove_plan_entry(get_vault_path(), task_slug, ed)
     except WeeklyWriteError as exc:
         logger.warning("weekly_plan_remove: %s", exc)
+        return _back(wk_key, "task")
+    return _back(wk_key)
+
+
+@page_router.post("/weekly/task/{slug}/done")
+async def weekly_task_done(
+    slug: str = PathParam(..., min_length=1),
+    done: int = Form(0),  # 1 = mark done, 0 = re-open
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Toggle a task's done state from a dashboard / daily-bullet checkbox (#2).
+    A one-click status flip (no If-Match — mirrors plan add/remove); bounces back
+    to the dashboard so the struck-through row / 🍅 rollups re-render."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+    try:
+        set_task_done(get_vault_path(), slug, bool(done))
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_done: %s", exc)
         return _back(wk_key, "task")
     return _back(wk_key)
 

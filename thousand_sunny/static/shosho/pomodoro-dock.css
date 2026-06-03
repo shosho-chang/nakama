@@ -128,3 +128,22 @@
 .pj-dock .is-hidden { display: none; }
 /* Task-page dock: the manual +1 forms sit inline, no margin from <form> */
 .tk-dock .tk-mform { display: inline-flex; margin: 0; }
+
+/* #3 — Task dock split: scheduled date(s) pinned LEFT, the whole timer cluster
+ * pushed RIGHT, so the timer never gets jostled by the schedule chips. */
+.tk-dock-left {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+}
+.tk-dock-right {
+  display: flex; align-items: center; gap: var(--sho-s-4, 16px);
+  margin-left: auto; flex-wrap: wrap;
+}
+.tk-dock-sched { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tk-dock-sched-label {
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--sho-muted, #888);
+}
+/* inside the dock the rollup follows the timer; don't let its auto-margin
+ * fight the .tk-dock-right group */
+.tk-dock-right .pj-dock-rollup { margin-left: 0; }

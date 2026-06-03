@@ -60,17 +60,8 @@
       <p class="tk-note">⚠ 已超出預估 {{ accuracy_pct - 100 }}%——留意完美主義／低估造成的過勞。</p>
     {% endif %}
 
-    {# ── planned allocations (read-only; editing lives on the dashboard) ── #}
-    {% if task.plan %}
-      <div class="tk-plan">
-        <span class="wk-h">排程</span>
-        {% for a in task.plan %}
-          <span class="tk-plan-chip {{ 'done' if a.done }}">
-            {{ a.date.strftime('%m/%d') }} · {{ a.pomodoros }}🍅{% if a.reason %} <span class="tk-plan-r" title="{{ a.reason }}">⚠</span>{% endif %}
-          </span>
-        {% endfor %}
-      </div>
-    {% endif %}
+    {# planned allocations (排程 chips) now live in the dock's LEFT side (#3) so
+       they sit beside — never on top of — the timer. #}
 
     {# ── calendar block: reschedule + cancel (ADR-041 41d, D8/D9) ── #}
     {% if is_linked %}
@@ -100,19 +91,24 @@
           </div>
         </form>
 
-        {# the two D9 cancel actions — distinct outcomes, never auto-drop plan[] #}
+        {# the two D9 cancel actions — distinct outcomes, never auto-drop plan[].
+           Wording spells out WHAT each one removes so the date-stays behaviour
+           (#6) is obvious before clicking; neither deletes the task itself (#5). #}
+        <p class="tk-cal-hint wk-mut">
+          「行事曆事件」是 Google 上那個時段；「排定日」是你這天打算做（本週計畫裡的一筆）。
+        </p>
         <div class="tk-cal-cancel">
           <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/unlink"
-                data-confirm="移出行事曆？會刪除 Google 行事曆事件，但保留本週計畫（你仍打算做，只是不綁定時段）。">
+                data-confirm="只移出行事曆？會刪掉 Google 行事曆上的時段，但 {{ sched_date }} 仍留在本週計畫（你還是要做，只是不綁時段）。">
             <input type="hidden" name="week" value="{{ week_key }}">
             <input type="hidden" name="expected_token" value="{{ task_token }}">
-            <button class="sho-btn--ghost" type="submit">移出行事曆<span class="wk-mut">（留計畫）</span></button>
+            <button class="sho-btn--ghost" type="submit">只移出行事曆<span class="wk-mut">（{{ sched_date }} 仍留在計畫）</span></button>
           </form>
           <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/unschedule"
-                data-confirm="取消排程？會刪除 Google 行事曆事件，並移除本週計畫中這天的安排。">
+                data-confirm="取消這天的安排？會刪掉 Google 行事曆時段，也會把 {{ sched_date }} 從本週計畫移除（已記錄的番茄數會保留）。">
             <input type="hidden" name="week" value="{{ week_key }}">
             <input type="hidden" name="expected_token" value="{{ task_token }}">
-            <button class="sho-btn--ghost tk-cal-danger" type="submit">取消排程<span class="wk-mut">（移除計畫）</span></button>
+            <button class="sho-btn--ghost tk-cal-danger" type="submit">取消這天的安排<span class="wk-mut">（行事曆＋{{ sched_date }} 一起清）</span></button>
           </form>
         </div>
       </section>
@@ -123,43 +119,57 @@
     <div class="pj-dock tk-dock" id="tk-pomodoro-dock"
          data-log-url="/bridge/weekly/task/{{ task.slug | urlencode }}/log">
       <div class="pj-dock-row">
-        <span class="pj-dock-project"><span class="wk-tomato" aria-hidden="true">🍅</span> {{ task.name }}</span>
-
-        <div class="pj-timer-mode" role="radiogroup" aria-label="番茄長度">
-          <input type="radio" name="tk-timer-mode" id="tk-mode-pomodoro" value="pomodoro" checked
-                 data-timer-mode data-minutes="25">
-          <label for="tk-mode-pomodoro" title="25 分番茄 🍅">25</label>
-          <input type="radio" name="tk-timer-mode" id="tk-mode-deep" value="deep"
-                 data-timer-mode data-minutes="75">
-          <label for="tk-mode-deep" title="75 分超專注 🤩">75</label>
+        {# LEFT — task name + 排定日 chips (#3): kept clear of the timer cluster #}
+        <div class="tk-dock-left">
+          <span class="pj-dock-project"><span class="wk-tomato" aria-hidden="true">🍅</span> {{ task.name }}</span>
+          {% if task.plan %}
+            <span class="tk-dock-sched">
+              <span class="tk-dock-sched-label">排程</span>
+              {% for a in task.plan %}
+                <span class="tk-plan-chip {{ 'done' if a.done }}">{{ a.date.strftime('%m/%d') }} · {{ a.pomodoros }}🍅{% if a.reason %} <span class="tk-plan-r" title="{{ a.reason }}">⚠</span>{% endif %}</span>
+              {% endfor %}
+            </span>
+          {% endif %}
         </div>
 
-        <div class="pj-dock-timer" data-timer>
-          <button type="button" class="pj-timer-btn" data-timer-btn>
-            <span class="pj-timer-icon" data-timer-icon>▶</span>
-            <span class="pj-timer-display" data-timer-display>25:00</span>
-          </button>
-        </div>
+        {# RIGHT — the whole timer cluster (mode / clock / actions / rollup) #}
+        <div class="tk-dock-right">
+          <div class="pj-timer-mode" role="radiogroup" aria-label="番茄長度">
+            <input type="radio" name="tk-timer-mode" id="tk-mode-pomodoro" value="pomodoro" checked
+                   data-timer-mode data-minutes="25">
+            <label for="tk-mode-pomodoro" title="25 分番茄 🍅">25</label>
+            <input type="radio" name="tk-timer-mode" id="tk-mode-deep" value="deep"
+                   data-timer-mode data-minutes="75">
+            <label for="tk-mode-deep" title="75 分超專注 🤩">75</label>
+          </div>
 
-        {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
-        <button type="button" class="pj-timer-secondary tk-finish is-hidden" data-timer-finish>完成·記一段</button>
-        <button type="button" class="pj-timer-secondary tk-abort is-hidden" data-timer-abort>取消</button>
+          <div class="pj-dock-timer" data-timer>
+            <button type="button" class="pj-timer-btn" data-timer-btn>
+              <span class="pj-timer-icon" data-timer-icon>▶</span>
+              <span class="pj-timer-display" data-timer-display>25:00</span>
+            </button>
+          </div>
 
-        {# manual backup — log a full block done away from the browser #}
-        <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
-          <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="manual" value="1">
-          <input type="hidden" name="week" value="{{ week_key }}">
-          <button class="pj-timer-secondary" type="submit" title="手動補記一顆 25 分番茄">+1🍅</button>
-        </form>
-        <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
-          <input type="hidden" name="mode" value="deep"><input type="hidden" name="manual" value="1">
-          <input type="hidden" name="week" value="{{ week_key }}">
-          <button class="pj-timer-secondary" type="submit" title="手動補記一段 75 分超專注">+1🤩</button>
-        </form>
+          {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
+          <button type="button" class="pj-timer-secondary tk-finish is-hidden" data-timer-finish>完成·記一段</button>
+          <button type="button" class="pj-timer-secondary tk-abort is-hidden" data-timer-abort>取消</button>
 
-        <div class="pj-dock-rollup">
-          🍅 <span class="val">{{ actual_pom }}</span> /
-          <span class="muted">{{ task.est_pomodoros or '—' }}</span>
+          {# manual backup — log a full block done away from the browser #}
+          <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
+            <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="manual" value="1">
+            <input type="hidden" name="week" value="{{ week_key }}">
+            <button class="pj-timer-secondary" type="submit" title="手動補記一顆 25 分番茄">+1🍅</button>
+          </form>
+          <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
+            <input type="hidden" name="mode" value="deep"><input type="hidden" name="manual" value="1">
+            <input type="hidden" name="week" value="{{ week_key }}">
+            <button class="pj-timer-secondary" type="submit" title="手動補記一段 75 分超專注">+1🤩</button>
+          </form>
+
+          <div class="pj-dock-rollup">
+            🍅 <span class="val">{{ actual_pom }}</span> /
+            <span class="muted">{{ task.est_pomodoros or '—' }}</span>
+          </div>
         </div>
       </div>
 
