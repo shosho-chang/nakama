@@ -172,11 +172,18 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
         entity_extractor = VideoSpeakerEntityExtractor()
         entity_matcher = DryRunEntityMatcher()
     elif config.promotion_mode == "llm":
-        # Boundary: explicit failure rather than silent fallback. N519
-        # implements the LLM-backed adapter behind this same gate.
-        raise RuntimeError(
-            "LLM mode not yet wired; set NAKAMA_PROMOTION_MODE=dry_run or wait for N519"
-        )
+        # N519 — LLM-backed claim extraction for ebook / inbox_document. The
+        # concept matcher + entity pipeline stay on their dry-run / video bodies
+        # for now (swapped in independently by later slices, per the dry_run
+        # branch comments above). This is safe because Promotion Review is HITL:
+        # real LLM claims are reviewed alongside placeholder concept/entity
+        # candidates, and nothing is written to KB until 修修 approves each item.
+        from agents.robin.source_map_extractor import LlmClaimExtractor  # noqa: PLC0415
+
+        extractor = LlmClaimExtractor()
+        matcher = DryRunConceptMatcher()
+        entity_extractor = VideoSpeakerEntityExtractor()
+        entity_matcher = DryRunEntityMatcher()
     else:
         raise RuntimeError(
             f"Unknown NAKAMA_PROMOTION_MODE={config.promotion_mode!r}; expected 'dry_run' or 'llm'"

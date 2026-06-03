@@ -9,8 +9,8 @@ Brief §5 wiring tests:
 - WT4  ``GET /robin/writing-assist/{id_b64}`` for missing package → 404 (not 503).
 - WT5  ``DISABLE_ROBIN=1`` skips wiring.
 - WT6  Missing ``VAULT_PATH`` → startup raises.
-- WT7  ``NAKAMA_PROMOTION_MODE=llm`` → startup raises ``RuntimeError``
-        mentioning N519.
+- WT7  ``NAKAMA_PROMOTION_MODE=llm`` → startup wires the LLM-backed claim
+        extractor (N519) and the promotion service (no raise).
 - WT8  Adapter modules expose no top-level instances.
 - WT9  Adapter modules don't import ``fastapi`` / ``thousand_sunny.*``.
 - WT10 No module under ``shared.*`` (within N518's surface) imports
@@ -202,24 +202,55 @@ def test_wt6_app_bad_config_raises_when_vault_root_missing(tmp_path: Path, monke
             pass
 
 
-# ── WT7 — NAKAMA_PROMOTION_MODE=llm raises in N518 ─────────────────────────
+# ── WT7 — NAKAMA_PROMOTION_MODE=llm wires the LLM extractor (N519) ──────────
 
 
-def test_wt7_app_llm_mode_raises_in_n518a(tmp_path: Path, monkeypatch):
-    """``NAKAMA_PROMOTION_MODE=llm`` is not yet wired — must raise with a
-    clear message pointing at N519."""
+def test_wt7_app_llm_mode_wires_service(tmp_path: Path, monkeypatch):
+    """``NAKAMA_PROMOTION_MODE=llm`` now wires the LLM-backed claim extractor
+    (N519) and constructs the promotion service — no raise. Constructing the
+    extractor is lazy (no LLM call / API key needed at startup)."""
     vault = _make_minimal_vault(tmp_path / "vault")
     monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(vault / "data" / "books"))
     monkeypatch.setenv("VAULT_PATH", str(vault))
     monkeypatch.delenv("DISABLE_ROBIN", raising=False)
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "llm")
+    monkeypatch.setenv("NAKAMA_PROMOTION_MANIFEST_ROOT", str(vault / ".promotion-manifests"))
+    monkeypatch.setenv(
+        "NAKAMA_READING_CONTEXT_PACKAGE_ROOT", str(vault / ".reading-context-packages")
+    )
     _disable_auth(monkeypatch)
 
     app_module = _reload_app_modules()
+    import thousand_sunny.routers.promotion_review as pr_module
 
-    with pytest.raises(RuntimeError, match="N519"):
-        with TestClient(app_module.app):
-            pass
+    with TestClient(app_module.app) as client:
+        _ = client.get("/healthz")
+        assert pr_module._service is not None
+
+
+def test_wt7b_llm_mode_uses_llm_claim_extractor(tmp_path: Path, monkeypatch):
+    """Confirm the wired service's source-map builder is driven by the
+    LlmClaimExtractor (not the dry-run twin) under llm mode."""
+    from thousand_sunny.promotion_wiring import (
+        PromotionWiringConfig,
+        wire_promotion_surfaces,
+    )
+
+    vault = _make_minimal_vault(tmp_path / "vault")
+    monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(vault / "data" / "books"))
+
+    import thousand_sunny.routers.promotion_review as pr_module
+    from agents.robin.source_map_extractor import LlmClaimExtractor
+
+    wire_promotion_surfaces(
+        PromotionWiringConfig(
+            vault_root=vault,
+            manifest_root=vault / ".promotion-manifests",
+            reading_context_package_root=vault / ".reading-context-packages",
+            promotion_mode="llm",
+        )
+    )
+    assert isinstance(pr_module._service._extractor, LlmClaimExtractor)
 
 
 def test_app_unknown_promotion_mode_raises(tmp_path: Path, monkeypatch):
