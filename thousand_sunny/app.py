@@ -32,6 +32,7 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge_weekly,
     bridge_zoro,
     brook,
+    crew,
     foundry,
     franky,
     progress,
@@ -98,6 +99,8 @@ app.include_router(franky.page_router)
 # all-authenticated pattern for a deliberately public surface.
 app.include_router(progress.router)
 app.include_router(architecture.router)
+# Public, indexable crew/system-architecture showcase (linked from shosho.tw).
+app.include_router(crew.router)
 
 # /static must mount unconditionally — public surfaces (/progress,
 # /architecture) and every authenticated page pull /static/shosho/*.css +
