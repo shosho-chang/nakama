@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from datetime import datetime
 
 import pytest
 import yaml
@@ -306,6 +307,24 @@ class TestPomodoroTimer:
         entry = fm["timeEntries"][0]
         assert "startTime" in entry
         assert "endTime" in entry
+
+    def test_complete_deep_mode_writes_75min_block(self, client, tmp_path):
+        # Unified dock 25/75 toggle: mode=deep → a 75-min span (≈3🍅 by duration).
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/timer/complete",
+            data={"task_name": "Pre-production", "mode": "deep"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        task_md = (tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Pre-production.md").read_text(
+            encoding="utf-8"
+        )
+        fm = yaml.safe_load(task_md.split("---")[1])
+        entry = fm["timeEntries"][0]
+        span_min = (
+            datetime.fromisoformat(entry["endTime"]) - datetime.fromisoformat(entry["startTime"])
+        ).total_seconds() / 60
+        assert round(span_min) == 75  # 75-min super-focus block, not 25
 
     def test_complete_no_task_name_rejected(self, client):
         r = client.post(

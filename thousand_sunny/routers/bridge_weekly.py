@@ -59,7 +59,14 @@ _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 def _shosho_asset_version() -> str:
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for css in ("tokens.css", "bridge.css", "bridge-pages.css", "bridge-weekly.css", "theme.js"):
+    for css in (
+        "tokens.css",
+        "bridge.css",
+        "bridge-pages.css",
+        "pomodoro-dock.css",
+        "bridge-weekly.css",
+        "theme.js",
+    ):
         path = static_dir / css
         if path.exists():
             h.update(path.read_bytes())

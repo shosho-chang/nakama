@@ -98,16 +98,34 @@
   function bindPomodoroDock() {
     var dock = document.getElementById('pj-pomodoro-dock');
     if (!dock) return;
-    var minutes = parseInt(dock.getAttribute('data-pomodoro-minutes'), 10) || 25;
     var slug = dock.getAttribute('data-project-slug') || '';
 
     var btn = dock.querySelector('[data-timer-btn]');
     var display = dock.querySelector('[data-timer-display]');
     var icon = dock.querySelector('[data-timer-icon]');
     var taskSelect = dock.querySelector('[data-task-select]');
+    var modeRadios = dock.querySelectorAll('[data-timer-mode]');
     if (!btn || !display || !icon) return;
 
-    var remainingSec = minutes * 60;
+    // Mode-aware: 25min 🍅 pomodoro / 75min 🤩 super-focus (the radio carries
+    // data-minutes + value). Falls back to the dock's data-pomodoro-minutes.
+    function currentModeEl() {
+      for (var i = 0; i < modeRadios.length; i++) {
+        if (modeRadios[i].checked) return modeRadios[i];
+      }
+      return modeRadios.length ? modeRadios[0] : null;
+    }
+    function currentMinutes() {
+      var el = currentModeEl();
+      var m = el ? parseInt(el.getAttribute('data-minutes'), 10) : NaN;
+      return m || parseInt(dock.getAttribute('data-pomodoro-minutes'), 10) || 25;
+    }
+    function currentMode() {
+      var el = currentModeEl();
+      return el ? el.value : 'pomodoro';
+    }
+
+    var remainingSec = currentMinutes() * 60;
     var intervalId = null;
     var running = false;
 
@@ -132,11 +150,15 @@
       var form = document.createElement('form');
       form.method = 'POST';
       form.action = '/bridge/projects/' + encodeURIComponent(slug) + '/timer/complete';
-      var input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'task_name';
-      input.value = taskName;
-      form.appendChild(input);
+      function hidden(name, value) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      }
+      hidden('task_name', taskName);
+      hidden('mode', currentMode());  // 'pomodoro' (25min) | 'deep' (75min 🤩)
       document.body.appendChild(form);
       form.submit();
     }
@@ -152,7 +174,7 @@
         var taskName = taskSelect ? taskSelect.value : '';
         if (!taskName) {
           showToast('🍅 番茄完成！未選擇 task，未寫入 timeEntry — 請選 task 後手動 +1🍅');
-          remainingSec = minutes * 60;
+          remainingSec = currentMinutes() * 60;
           render();
           return;
         }
@@ -191,6 +213,16 @@
         intervalId = setInterval(tick, 1000);
       }
       render();
+    });
+
+    // Switching 25/75 while idle re-arms the display to the new length; mid-run
+    // it's ignored (don't yank the clock out from under a running focus block).
+    Array.prototype.forEach.call(modeRadios, function (radio) {
+      radio.addEventListener('change', function () {
+        if (running) return;
+        remainingSec = currentMinutes() * 60;
+        render();
+      });
     });
 
     render();
