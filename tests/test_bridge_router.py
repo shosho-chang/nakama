@@ -73,27 +73,12 @@ def seed_memories():
 # ---------------------------------------------------------------------------
 
 
-def test_bridge_index_renders_html(client):
-    r = client.get("/bridge")
-    assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
-    body = r.text
-    assert ">NAKAMA</a>" in body
-    assert 'href="/bridge/memory"' in body
-    assert 'href="/bridge/cost"' in body
-    # /architecture v2 R4: dashboard agent tile points at /brook/handoff.
-    assert "'/brook/handoff'" in body
-
-
-def test_bridge_index_renders_agent_urls(client):
-    # ADR-029: AGENT_URLS hardcoded to verified routes (no DISABLE_ROBIN toggle).
-    r = client.get("/bridge")
-    assert r.status_code == 200
-    body = r.text
-    # Robin → '/' (verified route; /robin/kb does not exist — Codex ADR-029 audit)
-    assert "robin:  '/'" in body
-    # Franky console added (ADR-029 §2)
-    assert "'/bridge/franky'" in body
+def test_bridge_index_redirects_to_weekly(client):
+    # #806: /bridge landing = weekly dashboard. The old hub index is retired —
+    # every link it carried now lives in the chassis nav (Fleet / direct / Ops).
+    r = client.get("/bridge", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "/bridge/weekly"
 
 
 def test_memory_page_renders_html(client):
@@ -636,27 +621,10 @@ def test_drafts_detail_handles_corrupt_payload(client):
 
 
 # ── Hub badge / nav wiring ──────────────────────────────────────────────────
-
-
-def test_hub_index_shows_pending_count(client):
-    _enqueue_draft(slug="hub-1", op_id="op_abc11111")
-    _enqueue_draft(slug="hub-2", op_id="op_abc22222")
-    r = client.get("/bridge")
-    assert r.status_code == 200
-    body = r.text
-    assert "DRAFTS · PENDING" in body
-    assert 'href="/bridge/drafts"' in body
-    # Pending count rendered server-side; 2 drafts should appear in the cell
-    assert ">2<" in body
-
-
-def test_hub_index_pending_count_zero_when_empty(client):
-    r = client.get("/bridge")
-    assert r.status_code == 200
-    body = r.text
-    assert "DRAFTS · PENDING" in body
-    # Zero state copy: queue clear
-    assert "queue clear" in body
+# (The hub index page was retired in #806 — /bridge now redirects to the weekly
+# dashboard; the drafts pending count lives on /bridge/drafts. The former
+# hub-badge tests are dropped with it; the DRAFTS nav link is covered by the
+# chassis nav. See test_bridge_index_redirects_to_weekly above.)
 
 
 def test_drafts_page_shows_truncate_banner_above_list_limit(client):

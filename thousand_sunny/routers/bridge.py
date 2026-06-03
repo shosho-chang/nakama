@@ -163,18 +163,11 @@ _SHOSHO_ASSET_VERSION = _shosho_asset_version()
 @page_router.get("", response_class=HTMLResponse)
 @page_router.get("/", response_class=HTMLResponse)
 async def bridge_index(request: Request, nakama_auth: str | None = Cookie(None)):
-    """Hub 首頁：列出可跳轉的 Bridge 工具 + 其他 Agent UI。"""
+    """Bridge 入口 → 週計畫儀表板（#806）。其餘工具（Projects / Drafts / Digests /
+    SEO / Memory / Cost…）走頂部導覽列，不再需要 hub 中介頁。"""
     if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/bridge", status_code=302)
-    return _templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "robin_enabled": not os.getenv("DISABLE_ROBIN"),
-            "drafts_pending_count": approval_queue.count_by_status("pending"),
-            "asset_version": _SHOSHO_ASSET_VERSION,
-        },
-    )
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    return RedirectResponse("/bridge/weekly", status_code=302)
 
 
 @page_router.get("/memory", response_class=HTMLResponse)
