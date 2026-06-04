@@ -565,7 +565,8 @@ body.sho .wk-ci-pom {
   color: var(--sho-text-2); font-variant-numeric: tabular-nums;
 }
 
-/* ── task-page calendar block panel (41d): reschedule + the two cancel actions ── */
+/* ── task-page calendar card (v3-C): per-entry chips + merged 排入, identical to
+   the dashboard row — the chip/form internals reuse the .wk-plan-* styles above. ── */
 body.sho .tk-cal {
   margin: 20px 0 4px; padding: 16px 18px;
   background: var(--sho-bg-2); border: 1px solid var(--sho-line);
@@ -573,18 +574,6 @@ body.sho .tk-cal {
 }
 body.sho .tk-cal-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 body.sho .tk-cal-head .wk-mut { font-family: var(--sho-font-mono); font-size: 11px; }
-body.sho .tk-cal-form { display: flex; flex-direction: column; gap: 10px; }
-body.sho .tk-cal-cancel {
-  display: flex; flex-wrap: wrap; gap: 12px;
-  padding-top: 12px; border-top: 1px solid var(--sho-line);
-}
-body.sho .tk-cal-cancel form { margin: 0; }
-body.sho .tk-cal-cancel .wk-mut { font-size: 10px; margin-left: 3px; }
-body.sho .tk-cal-hint { margin: 0; font-size: 11px; line-height: 1.6; }
-body.sho .tk-cal-danger {
-  color: color-mix(in oklch, var(--sho-danger, #d9534f) 80%, var(--sho-text));
-  border-color: color-mix(in oklch, var(--sho-danger, #d9534f) 35%, transparent);
-}
 
 @media (prefers-reduced-motion: reduce) {
   body.sho .wk-edit-hint, body.sho .wk-plan-chip .wk-chip-x, body.sho .wk-day-caret { transition: none; }

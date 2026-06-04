@@ -219,7 +219,9 @@ class TestAddPlan:
             },
             follow_redirects=False,
         )
-        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=date"
+        # v3-C: like the pomodoros error, the row anchor rides along (stay-in-place)
+        loc = r.headers["location"]
+        assert loc.startswith(f"/bridge/weekly?week={WEEK_KEY}&err=date#task-")
 
     def test_unknown_task_redirects_with_err(self, client):
         r = client.post(
@@ -1047,18 +1049,26 @@ class TestCalendarCancel:
         assert "err=cancel_cal_failed" in r.headers["location"]
         assert "calendar_event_id" not in _linked_fm(tmp_path)  # vault still cleared
 
-    def test_task_page_shows_reschedule_panel_for_linked(self, client, tmp_path, monkeypatch):
+    def test_task_page_shows_per_entry_scheduling_for_linked(self, client, tmp_path, monkeypatch):
+        """v3-C: the task page schedules per-entry, identical to the dashboard row.
+        The 6/3 linked plan entry renders as a chip with a confirm-gated 🗑
+        (/weekly/plan/cancel); the merged 「排入」 form posts /weekly/plan with
+        from_task so the action lands back on the task page. The old single-event
+        reschedule/unlink/unschedule panel is retired."""
         import shared.weekly_indexer as wi
 
         monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
         _make_linked(tmp_path)
         body = client.get(f"/bridge/weekly/task/已連動任務?week={WEEK_KEY}").text
         assert "行事曆排程" in body
-        assert "/reschedule" in body
-        # the two D9 cancel actions — reworded (#5) so the two layers are explicit
-        assert "只移出行事曆" in body and "取消這天的安排" in body
-        assert "/unlink" in body and "/unschedule" in body
-        assert 'value="09:00"' in body  # current clock time pre-filled
+        assert "wk-plan-merged" in body  # the merged 排入 form (date + optional time + 🍅)
+        assert 'action="/bridge/weekly/plan"' in body
+        assert 'name="from_task"' in body  # lands back on the task page, not the dashboard
+        assert 'action="/bridge/weekly/plan/cancel"' in body  # the linked chip's 🗑
+        assert "is-linked" in body  # the 6/3 entry reads linked (dual-read fold)
+        # the old single-event panel is gone — scheduling is per-entry everywhere now
+        assert "/reschedule" not in body
+        assert "/unlink" not in body and "/unschedule" not in body
 
 
 class TestAuthGate:
@@ -1183,18 +1193,21 @@ class TestUnifiedTaskViewsAndDone:
 
 
 class TestTaskPageCalendarConsistency:
-    """修修: the task-page calendar UI should read the same as the dashboard row.
-    Non-linked → create picker (posts /weekly/schedule); linked → reschedule panel."""
+    """修修: the task-page calendar UI reads IDENTICALLY to the dashboard row — v3-C
+    unifies both on the per-entry merged 「排入」 (posts /weekly/plan)."""
 
-    def test_nonlinked_task_shows_create_picker(self, client, monkeypatch):
+    def test_task_uses_merged_plan_form_not_legacy_schedule(self, client, monkeypatch):
         import shared.weekly_indexer as wi
 
         monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
         # SAMPLE_TASK has no calendar_event_id → not linked
         body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
-        assert 'action="/bridge/weekly/schedule"' in body  # same create route as dashboard
-        assert "排到 Google 行事曆" in body
-        assert "/reschedule" not in body  # reschedule panel only for linked tasks
+        assert 'action="/bridge/weekly/plan"' in body  # same merged route as the dashboard
+        assert "wk-plan-merged" in body
+        assert 'name="from_task"' in body
+        # legacy single-event surfaces are gone from the task page
+        assert 'action="/bridge/weekly/schedule"' not in body
+        assert "/reschedule" not in body
 
     def test_accuracy_stat_has_tomato_icon(self, client):
         body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
@@ -1303,3 +1316,91 @@ class TestMergedScheduleRoute:
         assert r.status_code == 303 and "saved=unscheduled" in r.headers["location"]
         assert deleted == ["evt_c"]
         assert not [e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-03"]
+
+
+class TestPlanRouteFromTask:
+    """v3-C: the SAME /weekly/plan{,/remove,/cancel} routes serve the task page; when
+    posted with from_task=1 they redirect BACK to the task page (stay-in-place), not
+    the dashboard — so the two surfaces never diverge (修修)."""
+
+    def _ev(self, eid="evt_ft"):
+        from shared.google_calendar import CalendarEvent
+
+        return CalendarEvent(id=eid, title="測試任務", start="x", end="y", html_link="http://h")
+
+    def test_plan_only_redirects_to_task_page(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/plan",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-04",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+                "from_task": "1",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        loc = r.headers["location"]
+        assert loc.startswith("/bridge/weekly/task/")  # back on the task page, not dashboard
+        assert "/bridge/weekly?week" not in loc
+
+    def test_timed_redirects_to_task_page(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        monkeypatch.setattr(gc, "create_event", lambda **kw: self._ev())
+        r = client.post(
+            "/bridge/weekly/plan",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-04",
+                "entry_time": "10:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+                "from_task": "1",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        loc = r.headers["location"]
+        assert loc.startswith("/bridge/weekly/task/") and "saved=scheduled" in loc
+
+    def test_remove_redirects_to_task_page(self, client, tmp_path):
+        # seed a plan-only entry, then remove it from the task page
+        client.post(
+            "/bridge/weekly/plan",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-05",
+                "pomodoros": "1",
+                "week": WEEK_KEY,
+                "from_task": "1",
+            },
+            follow_redirects=False,
+        )
+        r = client.post(
+            "/bridge/weekly/plan/remove",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-05",
+                "week": WEEK_KEY,
+                "from_task": "1",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303 and r.headers["location"].startswith("/bridge/weekly/task/")
+
+    def test_no_from_task_still_redirects_to_dashboard(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/plan",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-04",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        loc = r.headers["location"]
+        assert loc.startswith("/bridge/weekly?week") and "#task-" in loc

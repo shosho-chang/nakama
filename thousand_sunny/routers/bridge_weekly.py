@@ -38,7 +38,6 @@ from shared.weekly_writer import (
     WeeklyWriteError,
     log_time_entry,
     migrate_legacy_projection,
-    read_task_schedule,
     read_task_split,
     remove_plan_entry,
     set_task_done,
@@ -219,23 +218,26 @@ async def weekly_plan_add(
     reason: str = Form(""),
     force: int = Form(0),
     week: str = Form(""),
+    from_task: int = Form(0),  # v3-C — fired from the task page → land back there
     nakama_auth: str | None = Cookie(None),
 ):
     """v3 merged 「排入」 (ADR-041 v3 V2): one action writes the ``plan[]`` entry AND,
     when a time is given, projects it to a Google event — for any date. Blank time
     ⇒ plan-only (today's behaviour). A per-task legacy fold runs first (V4 — so a v2
     single-event task migrates before its first multi-block write). Lands back on
-    the row via ``#task-{slug}`` (stay-in-place). Untokened, like the other dashboard
-    plan routes — the per-task optimistic lock is the deferred #819 work."""
+    the row via ``#task-{slug}`` (stay-in-place), or on the task page when fired from
+    there (``from_task`` — v3-C parity). Untokened, like the other dashboard plan
+    routes — the per-task optimistic lock is the deferred #819 work."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk_key = _safe_week_key(week)
+    ft = bool(from_task)
 
     ed = _parse_entry_date(entry_date)
     if ed is None:
-        return _back(wk_key, "date")
+        return _plan_back(ft, task_slug, wk_key, err="date")
     if not 1 <= pomodoros <= 20:
-        return _back(wk_key, "pomodoros", slug=task_slug)
+        return _plan_back(ft, task_slug, wk_key, err="pomodoros")
     rsn = reason.strip() or None
     vault = get_vault_path()
 
@@ -248,19 +250,19 @@ async def weekly_plan_add(
 
     et = _parse_entry_time(entry_time) if entry_time.strip() else None
     if entry_time.strip() and et is None:
-        return _back(wk_key, "time", slug=task_slug)
+        return _plan_back(ft, task_slug, wk_key, err="time")
 
     if et is None:  # ── plan-only (no calendar) ──
         try:
             upsert_plan_entry(vault, task_slug, day=ed, pomodoros=pomodoros, reason=rsn)
         except WeekendReasonRequired:
-            return _back(wk_key, "weekend", slug=task_slug)
+            return _plan_back(ft, task_slug, wk_key, err="weekend")
         except TaskNotFoundError:
             return _back(wk_key, "task")
         except WeeklyWriteError as exc:
             logger.warning("weekly_plan upsert: %s", exc)
             return _back(wk_key, "task")
-        return _back(wk_key, slug=task_slug)
+        return _plan_back(ft, task_slug, wk_key)
 
     # ── timed → vault plan[] + best-effort Google event (one action) ──
     task = WeeklyIndexer(vault).find_task(task_slug)
@@ -277,7 +279,7 @@ async def weekly_plan_add(
             force=bool(force),
         )
     except WeekendReasonRequired:
-        return _back(wk_key, "weekend", slug=task_slug)
+        return _plan_back(ft, task_slug, wk_key, err="weekend")
     except TaskNotFoundError:
         return _back(wk_key, "task")
     except WeeklyWriteError as exc:
@@ -286,12 +288,12 @@ async def weekly_plan_add(
 
     st = outcome.calendar_status
     if st == calendar_scheduler.CREATED:
-        return _back(wk_key, slug=task_slug, saved="scheduled")
+        return _plan_back(ft, task_slug, wk_key, saved="scheduled")
     if st == calendar_scheduler.CONFLICT:
-        return _back(wk_key, "cal_conflict", slug=task_slug, n=len(outcome.conflicts))
+        return _plan_back(ft, task_slug, wk_key, err="cal_conflict", n=len(outcome.conflicts))
     if st == calendar_scheduler.UNAVAILABLE:
-        return _back(wk_key, "cal_unavailable", slug=task_slug)
-    return _back(wk_key, "cal_failed", slug=task_slug)  # FAILED — event rolled back
+        return _plan_back(ft, task_slug, wk_key, err="cal_unavailable")
+    return _plan_back(ft, task_slug, wk_key, err="cal_failed")  # FAILED — event rolled back
 
 
 @page_router.post("/weekly/plan/remove")
@@ -299,6 +301,7 @@ async def weekly_plan_remove(
     task_slug: str = Form(..., min_length=1),
     entry_date: str = Form(..., min_length=1),
     week: str = Form(""),
+    from_task: int = Form(0),  # v3-C — fired from the task page → land back there
     nakama_auth: str | None = Cookie(None),
 ):
     """The plain ✕ on an UNLINKED plan chip — plan-only removal, `done`-safe, never
@@ -306,17 +309,18 @@ async def weekly_plan_remove(
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk_key = _safe_week_key(week)
+    ft = bool(from_task)
 
     ed = _parse_entry_date(entry_date)
     if ed is None:
-        return _back(wk_key, "date")
+        return _plan_back(ft, task_slug, wk_key, err="date")
 
     try:
         remove_plan_entry(get_vault_path(), task_slug, ed)  # done-safe (v3)
     except WeeklyWriteError as exc:
         logger.warning("weekly_plan_remove: %s", exc)
         return _back(wk_key, "task")
-    return _back(wk_key, slug=task_slug)
+    return _plan_back(ft, task_slug, wk_key)
 
 
 @page_router.post("/weekly/plan/cancel")
@@ -324,6 +328,7 @@ async def weekly_plan_cancel(
     task_slug: str = Form(..., min_length=1),
     entry_date: str = Form(..., min_length=1),
     week: str = Form(""),
+    from_task: int = Form(0),  # v3-C — fired from the task page → land back there
     nakama_auth: str | None = Cookie(None),
 ):
     """The 🗑 on a LINKED plan chip (ADR-041 v3 V3d / confirm-gated in the UI): drop
@@ -332,10 +337,11 @@ async def weekly_plan_cancel(
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk_key = _safe_week_key(week)
+    ft = bool(from_task)
 
     ed = _parse_entry_date(entry_date)
     if ed is None:
-        return _back(wk_key, "date")
+        return _plan_back(ft, task_slug, wk_key, err="date")
 
     try:
         outcome = calendar_scheduler.cancel_entry(
@@ -347,8 +353,8 @@ async def weekly_plan_cancel(
         logger.warning("weekly_plan_cancel: %s", exc)
         return _back(wk_key, "task")
     if outcome.calendar_status == calendar_scheduler.CANCEL_CAL_FAILED:
-        return _back(wk_key, "cancel_cal_failed", slug=task_slug)
-    return _back(wk_key, slug=task_slug, saved="unscheduled")
+        return _plan_back(ft, task_slug, wk_key, err="cancel_cal_failed")
+    return _plan_back(ft, task_slug, wk_key, saved="unscheduled")
 
 
 @page_router.post("/weekly/task/{slug}/done")
@@ -701,6 +707,9 @@ _TASK_ERRORS = {
     # calendar reschedule / cancel (ADR-041 41d) — vault authoritative, calendar best-effort
     "sched_date": "排程日期格式無效。",
     "sched_time": "排程時間格式無效。",
+    # merged 排入 (ADR-041 v3-C) — same keys the dashboard /weekly/plan uses
+    "date": "排程日期格式無效。",
+    "time": "排程時間格式無效。",
     "pomodoros": "番茄數需介於 1–20。",
     "weekend": "週末排程需填寫原因（D9）——已取消這次改期。",
     "cal_conflict": (
@@ -713,14 +722,15 @@ _TASK_ERRORS = {
     "cancel_cal_failed": (
         "已更新本週計畫，但刪除 Google 行事曆事件失敗——請到 Google 行事曆手動移除，或稍後重試。"
     ),
-    "cal_failed": "改期寫入後寫回失敗，行事曆事件已回滾——請重試。",
+    "cal_failed": "寫入後寫回失敗，行事曆事件已回滾——請重試。",
 }
 
 _TASK_SAVED = {
     "body": "✓ 已儲存筆記。",
+    "scheduled": "✓ 已排入並建立行事曆事件。",
     "rescheduled": "✓ 已改期並更新行事曆事件。",
     "unlinked": "✓ 已移出行事曆（保留本週計畫）。",
-    "unscheduled": "✓ 已取消排程。",
+    "unscheduled": "✓ 已取消這天的安排。",
 }
 
 
@@ -744,17 +754,37 @@ def _task_back(
     err: str | None = None,
     logged: bool = False,
     saved: str | None = None,
+    n: int = 0,
 ):
     from urllib.parse import quote
 
     url = f"/bridge/weekly/task/{quote(slug)}?week={week_key}"
     if err:
         url += f"&err={err}"
+        if n:
+            url += f"&n={n}"
     elif saved:
         url += f"&saved={saved}"
     elif logged:
         url += "&logged=1"
     return RedirectResponse(url, status_code=303)
+
+
+def _plan_back(
+    from_task: bool,
+    slug: str,
+    week_key: str,
+    *,
+    err: str | None = None,
+    saved: str | None = None,
+    n: int = 0,
+) -> RedirectResponse:
+    """Land a unified /weekly/plan{,/remove,/cancel} action back where it was fired:
+    the task page (``from_task`` — v3-C parity) or the dashboard row (``#task-{slug}``
+    anchor). Same routes serve both surfaces (修修: stop the two surfaces diverging)."""
+    if from_task:
+        return _task_back(slug, week_key, err=err, saved=saved, n=n)
+    return _back(week_key, err, slug=slug, saved=saved, n=n)
 
 
 @page_router.get("/weekly/task/{slug}", response_class=HTMLResponse)
@@ -793,24 +823,11 @@ async def weekly_task_detail(
     except TaskNotFoundError:
         return _back(wk_key, "task")
 
-    # Calendar-block reschedule/cancel panel (41d) — only for a task already
-    # projected to Google Calendar. The indexer's task.scheduled is date-only, so
-    # read the raw clock time for the form defaults; the block's 🍅 default is its
-    # plan entry on the scheduled date (else the estimate).
-    sched = read_task_schedule(vault, task.slug) or {}
-    is_linked = bool(sched.get("calendar_event_id"))
-    sched_date, sched_time = "", "09:00"
-    if is_linked:
-        raw = sched.get("scheduled", "")
-        try:
-            dt = datetime.fromisoformat(raw)
-            sched_date, sched_time = dt.date().isoformat(), dt.strftime("%H:%M")
-        except ValueError:
-            sched_date = raw[:10]
-    block_pom = next(
-        (a.pomodoros for a in task.plan if task.scheduled and a.date == task.scheduled),
-        task.est_pomodoros or 1,
-    )
+    # Calendar scheduling reads/writes per-entry here, identical to the dashboard row
+    # (修修: stop the two surfaces diverging). The template iterates ``task.plan`` —
+    # each entry carries its own ``is_linked`` / ``time_label`` (v3-A) — and posts the
+    # SAME unified /weekly/plan{,/remove,/cancel} routes with ``from_task=1``. No
+    # bespoke single-event panel state to compute.
     return _templates.TemplateResponse(
         request,
         "task.html",
@@ -822,11 +839,7 @@ async def weekly_task_detail(
             "obsidian_uri": _obsidian_uri(vault, task.relative_path),
             "task_body": task_body,
             "task_token": task_token,
-            "is_linked": is_linked,
-            "today_iso": today_taipei().isoformat(),  # default for the create picker (non-linked)
-            "sched_date": sched_date,
-            "sched_time": sched_time,
-            "block_pom": min(block_pom, 20) if block_pom else 1,
+            "today_iso": today_taipei().isoformat(),  # default date for the merged 排入 picker
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _TASK_ERRORS.get(err) if err else None,
             "saved_msg": _TASK_SAVED.get(saved) if saved else None,
