@@ -305,6 +305,13 @@ class SourcePageReviewItem(BaseModel):
     path shape; #515 commit logic owns vault path semantics."""
 
     chapter_ref: str | None = None
+    chapter_title: str | None = None
+    """Human-readable chapter/section name (e.g. ``第4章｜第1階（< 1萬美元）``),
+    sourced from EPUB nav / first heading by the builder. Renderer uses it as
+    the page H1; ``chapter_ref`` stays the machine-stable slug. None on older
+    manifests (pre-dating this field) and on the long-source index overview
+    when no book title is available."""
+
     prior_decision: HumanDecisionKind | None = None
     """Prior manifest's human decision on the same logical item, when
     applicable. Set by #515 diff logic; schema permits None on first review.

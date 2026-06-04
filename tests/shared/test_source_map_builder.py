@@ -367,11 +367,13 @@ def test_build_includes_claims_and_evidence():
     for item in result.items[1:]:
         assert len(item.evidence) >= 1
         assert all(isinstance(ev, EvidenceAnchor) for ev in item.evidence)
-        # Reason should embed the first claim's distinctive text. The reason
-        # is "<title>: <claim>" potentially truncated; the first claim text
-        # contains "hypothesis A" so we check that distinctive substring is
-        # present somewhere in the reason.
+        # Reason now carries the claim ONLY (chapter title moved to its own
+        # ``chapter_title`` field). The first claim text contains
+        # "hypothesis A" so we check that distinctive substring is present.
         assert "hypothesis A" in item.reason
+        # Chapter title is captured separately, no longer prefixed onto reason.
+        assert item.chapter_title is not None
+        assert not item.reason.startswith(f"{item.chapter_title}:")
 
 
 # ───────────────────────────────────────────────────────────────────────────
