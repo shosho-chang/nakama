@@ -303,6 +303,65 @@ def find_conflicts(start: str, end: str) -> list[CalendarEvent]:
     return [e for e in events if _overlaps(e.start, e.end, start_iso, end_iso)]
 
 
+def find_free_slots(
+    day: date,
+    duration_minutes: int,
+    *,
+    near: str | None = None,
+    day_start_hour: int = 8,
+    day_end_hour: int = 22,
+    max_slots: int = 3,
+) -> list[tuple[str, str]]:
+    """Suggest up to ``max_slots`` free ``[start, end]`` windows of ``duration_minutes``
+    within ``day``'s working hours (``day_start_hour``..``day_end_hour`` Asia/Taipei),
+    computed from existing **timed** events (all-day events don't occupy a slot).
+    Ordered by proximity to ``near`` (an ISO datetime; default = chronological).
+    ADR-041 v3-F — the free-slot suggestions Nami offers on a clash."""
+    tz = ZoneInfo(TIMEZONE)
+    win_start = datetime(day.year, day.month, day.day, day_start_hour, 0, tzinfo=tz)
+    win_end = datetime(day.year, day.month, day.day, day_end_hour, 0, tzinfo=tz)
+    dur = timedelta(minutes=duration_minutes)
+
+    busy: list[tuple[datetime, datetime]] = []
+    for e in list_events(time_min=win_start, time_max=win_end, max_results=50):
+        if _is_date_only(e.start):  # all-day → doesn't block a time slot
+            continue
+        try:
+            s = _parse_iso(_ensure_tz_iso(e.start))
+            en = _parse_iso(_ensure_tz_iso(e.end))
+        except ValueError:
+            continue
+        busy.append((max(s, win_start), min(en, win_end)))
+    busy.sort()
+
+    merged: list[tuple[datetime, datetime]] = []
+    for s, en in busy:
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], en))
+        else:
+            merged.append((s, en))
+
+    gaps: list[datetime] = []  # free-window START times big enough for dur
+    cursor = win_start
+    for s, en in merged:
+        if s - cursor >= dur:
+            gaps.append(cursor)
+        cursor = max(cursor, en)
+    if win_end - cursor >= dur:
+        gaps.append(cursor)
+
+    if near:
+        try:
+            target = _parse_iso(_ensure_tz_iso(near))
+            gaps.sort(key=lambda g: abs((g - target).total_seconds()))
+        except ValueError:
+            pass
+    return [
+        (g.isoformat(timespec="seconds"), (g + dur).isoformat(timespec="seconds"))
+        for g in gaps[:max_slots]
+    ]
+
+
 def find_events_by_title(
     query: str,
     *,

@@ -278,3 +278,40 @@ def test_is_date_only():
     assert _is_date_only("2026-06-05T09:00:00") is False
     assert _is_date_only("2026-06-05T09:00:00+08:00") is False
     assert _is_date_only("") is False
+
+
+def test_find_free_slots_gaps_ordered_by_proximity(monkeypatch):
+    """v3-F: free-slot suggestions skip all-day events and order by closeness to the
+    requested time. Busy 09–10 & 14–15 on 6/5 ⇒ gaps starting 08:00 / 10:00 / 15:00;
+    nearest to a 14:00 request is the 15:00 gap."""
+    from datetime import date
+
+    from shared import google_calendar
+    from shared.google_calendar import CalendarEvent
+
+    evs = [
+        CalendarEvent(
+            id="a",
+            title="x",
+            start="2026-06-05T09:00:00+08:00",
+            end="2026-06-05T10:00:00+08:00",
+            html_link="h",
+        ),
+        CalendarEvent(
+            id="b",
+            title="y",
+            start="2026-06-05T14:00:00+08:00",
+            end="2026-06-05T15:00:00+08:00",
+            html_link="h",
+        ),
+        CalendarEvent(
+            id="c", title="整天", start="2026-06-05", end="2026-06-06", html_link="h"
+        ),  # all-day → ignored
+    ]
+    monkeypatch.setattr(google_calendar, "list_events", lambda **kw: evs)
+    slots = google_calendar.find_free_slots(
+        date(2026, 6, 5), 60, near="2026-06-05T14:00:00+08:00", max_slots=3
+    )
+    assert slots[0] == ("2026-06-05T15:00:00+08:00", "2026-06-05T16:00:00+08:00")
+    starts = {s for s, _ in slots}
+    assert "2026-06-05T08:00:00+08:00" in starts and "2026-06-05T10:00:00+08:00" in starts
