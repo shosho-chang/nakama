@@ -176,15 +176,18 @@ def schedule_entry(
     start: datetime,
     pomodoros: int,
     title: str,
+    all_day: bool = False,
     reason: Optional[str] = None,
     expected_token: Optional[str] = None,
     force: bool = False,
 ) -> ScheduleOutcome:
-    """v3 merged 「排入」: write the timed ``plan[]`` entry for ``start``'s date, then
-    project it. If that entry is **already linked**, PATCH the same event in place
-    (preserve identity, re-key for the date — V3a); else find-or-create keyed
-    ``{slug}@{date}`` (per-entry orphan guard via the date-scoped key — V3b). The
-    vault upsert is authoritative; the Google step degrades to a status (D2)."""
+    """v3 merged 「排入」: write the ``plan[]`` entry for ``start``'s date, then project
+    it to Google. ``all_day`` ⇒ an all-day event (date-only, no conflict check —
+    ADR-041 v3-E blank-time mode); else a timed block. If that entry is **already
+    linked**, PATCH the same event in place (preserve identity, re-key for the date —
+    V3a); else find-or-create keyed ``{slug}@{date}`` (per-entry orphan guard via the
+    date-scoped key — V3b). The vault upsert is authoritative; the Google step
+    degrades to a status (D2)."""
     day = start.date()
     existing = read_entry_event_id(vault_root, task_slug, day)  # "" if new/unlinked
     start_iso, end_iso, token = upsert_plan_entry(
@@ -192,14 +195,15 @@ def schedule_entry(
         task_slug,
         day=day,
         pomodoros=pomodoros,
-        start=start,
+        start=None if all_day else start,
+        all_day=all_day,
         reason=reason,
         expected_token=expected_token,
     )
     idem = f"{task_slug}@{day.isoformat()}"
 
     if existing:  # reschedule the SAME event in place (V3a — no delete+recreate)
-        if not force:
+        if not force and not all_day:  # all-day events don't occupy a time slot
             try:
                 clash = [
                     c

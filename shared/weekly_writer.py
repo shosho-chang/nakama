@@ -434,14 +434,17 @@ def upsert_plan_entry(
     day: date,
     pomodoros: int,
     start: Optional[datetime] = None,
+    all_day: bool = False,
     reason: Optional[str] = None,
     calendar_event_id: Optional[str] = None,
     expected_token: Optional[str] = None,
 ) -> tuple[str, str, str]:
     """The v3 merged 「排入」 write: upsert the ``plan[]`` entry for ``day`` with
-    ``pomodoros`` and, when ``start`` is given, a timed projection (``start``/``end``
-    = start + pomodoros×30, ISO with +08:00). No ``start`` ⇒ plan-only. Only the
-    one entry is touched; ``done`` is preserved, and an existing ``start``/``end``/
+    ``pomodoros`` and a projection. With ``start`` ⇒ a timed block (``start``/``end``
+    = start + pomodoros×30, ISO with +08:00). With ``all_day`` ⇒ a date-only span
+    (``start`` = ``day``, ``end`` = next day, exclusive — ADR-041 v3-E, the new
+    blank-time mode). Neither ⇒ plan-only (legacy / internal). Only the one entry is
+    touched; ``done`` is preserved, and an existing ``start``/``end``/
     ``calendar_event_id`` is kept when this call doesn't override it (so a plan-only
     re-pomodoro of a linked entry doesn't silently unlink it). ``calendar_event_id``
     is the scheduler's write-back. Returns ``(start_iso, end_iso, new_token)``
@@ -463,7 +466,11 @@ def upsert_plan_entry(
     if reason:
         new_entry["reason"] = reason
     start_iso = end_iso = ""
-    if start is not None:
+    if all_day:  # date-only span (v3-E blank-time mode); end exclusive next day
+        start_iso = day.isoformat()
+        end_iso = (day + timedelta(days=1)).isoformat()
+        new_entry["start"], new_entry["end"] = start_iso, end_iso
+    elif start is not None:
         start_iso = _iso_with_offset(start)
         end_iso = _iso_with_offset(
             start + timedelta(minutes=pomodoros * CALENDAR_BLOCK_MINUTES_PER_POMODORO)
@@ -477,7 +484,7 @@ def upsert_plan_entry(
         if _entry_date(e) == day:
             if "done" in e:
                 new_entry["done"] = e["done"]
-            if start is None:  # plan-only edit — keep an existing projection
+            if start is None and not all_day:  # plan-only edit — keep an existing projection
                 for k in ("start", "end"):
                     if e.get(k):
                         new_entry[k] = e[k]

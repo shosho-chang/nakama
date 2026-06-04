@@ -60,17 +60,16 @@
       <p class="tk-note">⚠ 已超出預估 {{ accuracy_pct - 100 }}%——留意完美主義／低估造成的過勞。</p>
     {% endif %}
 
-    {# ── calendar scheduling — per-entry, IDENTICAL to the dashboard row (v3-C).
-         Each plan[] entry is its own chip: linked (accent + 🗑 confirm-cancel, which
-         deletes the Google event too) / plan-only (✕). The merged 「排入」 form writes
-         plan[] AND — when a time is given — the Google event in one action, for any
-         week. Same /weekly/plan{,/remove,/cancel} routes the dashboard uses, posted
-         with from_task=1 so each action lands back here (修修: stop the two surfaces
-         diverging). Colour alone marks linked-to-Google vs vault-only. #}
+    {# ── calendar scheduling — per-entry, IDENTICAL to the dashboard row (v3-C/E).
+         Each plan[] entry is its own chip; every 排入 projects a Google event (v3-E):
+         timed → block, blank → all-day. One delete control: ✕, confirm-gated when
+         linked (it deletes the Google event too). Same /weekly/plan{,/remove,/cancel}
+         routes the dashboard uses, posted with from_task=1 so each action lands back
+         here (修修: stop the two surfaces diverging). Colour marks linked-to-Google. #}
     <section class="tk-cal" aria-label="行事曆排程">
       <div class="tk-cal-head">
         <span class="wk-h">📅 行事曆排程</span>
-        <span class="wk-mut">每筆計畫是一天；填時間才會推到 Google 行事曆（日期會變亮）</span>
+        <span class="wk-mut">每筆計畫是一天，都會推到 Google 行事曆；填時間＝定時，留空＝整天</span>
       </div>
 
       <div class="wk-plan-list">
@@ -87,7 +86,7 @@
                 <input type="hidden" name="week" value="{{ week_key }}">
                 <input type="hidden" name="from_task" value="1">
                 <button class="wk-chip-x wk-chip-cancel" type="submit"
-                        aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">🗑</button>
+                        aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">✕</button>
               </form>
             {% else %}
               <form method="post" action="/bridge/weekly/plan/remove" class="wk-chip-form">
@@ -104,8 +103,8 @@
         {% endfor %}
       </div>
 
-      {# merged 「排入」 (v3): date (any week) + optional time + 🍅 → writes plan[]
-         AND, with a time, the Google event in one action. Blank time = plan-only. #}
+      {# merged 「排入」 (v3-E): date (any week) + optional time + 🍅 → writes plan[]
+         AND a Google event in one action. With a time = a timed block; blank = all-day. #}
       <form class="wk-sched-form wk-plan-merged" method="post" action="/bridge/weekly/plan">
         <input type="hidden" name="task_slug" value="{{ task.slug }}">
         <input type="hidden" name="week" value="{{ week_key }}">
@@ -113,7 +112,7 @@
         <div class="wk-sched-fields">
           <label class="wk-sched-lbl">日期
             <input class="wk-sched-date" type="date" name="entry_date" value="{{ today_iso }}" required></label>
-          <label class="wk-sched-lbl">時間 <span class="wk-mut">(留空＝只記計畫)</span>
+          <label class="wk-sched-lbl">時間 <span class="wk-mut">(留空＝整天事件)</span>
             <input class="wk-sched-time" type="time" name="entry_time" step="900"></label>
           <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([task.est_pomodoros, 20] | min) if task.est_pomodoros else 2 }}" aria-label="番茄數">🍅
             <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>

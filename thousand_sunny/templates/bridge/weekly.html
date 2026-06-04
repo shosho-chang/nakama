@@ -34,7 +34,6 @@
       {% elif t.scheduled %}<span class="wk-bl-when" title="已排程（尚未推到 Google 行事曆）">{{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
       <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
       <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
-      <span class="wk-edit-hint" aria-hidden="true">排程</span>
     </summary>
 
     <div class="wk-plan-edit">
@@ -53,7 +52,7 @@
                 <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
                 <input type="hidden" name="week" value="{{ view.week.file_key }}">
                 <button class="wk-chip-x wk-chip-cancel" type="submit"
-                        aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">🗑</button>
+                        aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">✕</button>
               </form>
             {% else %}
               <form method="post" action="/bridge/weekly/plan/remove" class="wk-chip-form">
@@ -77,7 +76,7 @@
         <div class="wk-sched-fields">
           <label class="wk-sched-lbl">日期
             <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
-          <label class="wk-sched-lbl">時間 <span class="wk-mut">(留空＝只記計畫)</span>
+          <label class="wk-sched-lbl">時間 <span class="wk-mut">(留空＝整天事件)</span>
             <input class="wk-sched-time" type="time" name="entry_time" step="900"></label>
           <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([t.est_pomodoros, 20] | min) if t.est_pomodoros else 2 }}" aria-label="番茄數">🍅
             <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>

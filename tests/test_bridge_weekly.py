@@ -189,7 +189,10 @@ class TestAddPlan:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert "err=" not in r.headers["location"]
+        # the weekend gate passed (the point of this test); the calendar step is
+        # best-effort and unmocked here, so a cal_* banner is irrelevant — assert the
+        # vault entry + reason landed (v3-E: blank time = all-day, still vault-first).
+        assert "err=weekend" not in r.headers["location"]
         match = [e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-06"]
         assert len(match) == 1 and match[0]["reason"] == "趕稿截止"
 
@@ -1269,13 +1272,13 @@ class TestMergedScheduleRoute:
         assert entry["calendar_event_id"] == "evt_m"
         assert seen["idempotency_key"] == "測試任務@2026-06-04"
 
-    def test_blank_time_is_plan_only(self, client, tmp_path, monkeypatch):
+    def test_blank_time_creates_all_day_event(self, client, tmp_path, monkeypatch):
+        """v3-E: blank time is no longer plan-only — it projects an ALL-DAY Google
+        event (date-only start/end) and links it, in one action."""
         import shared.google_calendar as gc
 
-        called = {"n": 0}
-        monkeypatch.setattr(
-            gc, "create_event", lambda **kw: called.__setitem__("n", called["n"] + 1)
-        )
+        seen = {}
+        monkeypatch.setattr(gc, "create_event", lambda **kw: (seen.update(kw), self._ev())[1])
         r = client.post(
             "/bridge/weekly/plan",
             data={
@@ -1286,9 +1289,13 @@ class TestMergedScheduleRoute:
             },
             follow_redirects=False,
         )
-        assert r.status_code == 303 and called["n"] == 0  # no calendar touch
+        assert r.status_code == 303 and "saved=scheduled" in r.headers["location"]
+        # create_event was called with a date-only (all-day) start/end
+        assert seen["start"] == "2026-06-04" and seen["end"] == "2026-06-05"
         entry = next(e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-04")
-        assert "start" not in entry and "calendar_event_id" not in entry
+        assert entry["start"] == "2026-06-04"  # date-only ⇒ all-day
+        assert entry["end"] == "2026-06-05"
+        assert entry["calendar_event_id"] == "evt_m"
 
     def test_cancel_drops_entry_and_deletes_event(self, client, tmp_path, monkeypatch):
         import shared.google_calendar as gc

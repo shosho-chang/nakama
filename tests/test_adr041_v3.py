@@ -75,6 +75,13 @@ class TestUpsertPlanEntry:
         entry = _entry(vault, "2026-06-03")
         assert entry["start"] == s and entry["end"] == e
 
+    def test_all_day_writes_date_only_span(self, vault):
+        # v3-E: blank-time 排入 → a date-only span (start = day, end = next day, exclusive)
+        s, e, _ = upsert_plan_entry(vault, SLUG, day=WED.date(), pomodoros=4, all_day=True)
+        assert s == "2026-06-03" and e == "2026-06-04"
+        entry = _entry(vault, "2026-06-03")
+        assert entry["start"] == "2026-06-03" and entry["end"] == "2026-06-04"
+
     def test_preserves_done_on_upsert(self, vault):
         upsert_plan_entry(vault, SLUG, day=WED.date(), pomodoros=2)
         # mark it done in the file, then re-upsert
@@ -233,6 +240,18 @@ class TestScheduleEntry:
         assert calls["update"] == 1 and calls["create"] == 0  # in place, no new event
         assert _entry(vault, "2026-06-03")["start"] == "2026-06-03T14:00:00+08:00"
 
+    def test_all_day_creates_event_passes_date_only(self, vault, monkeypatch):
+        # v3-E: an all-day 排入 projects a date-only event (no time slot, no conflict
+        # pre-check in the create path) and links it.
+        seen = {}
+        monkeypatch.setattr(
+            google_calendar, "create_event", lambda **kw: (seen.update(kw), _ev())[1]
+        )
+        out = schedule_entry(vault, SLUG, start=WED, pomodoros=4, title=SLUG, all_day=True)
+        assert out.calendar_status == CREATED and out.event_id == "evt_1"
+        assert seen["start"] == "2026-06-03" and seen["end"] == "2026-06-04"
+        assert _entry(vault, "2026-06-03")["calendar_event_id"] == "evt_1"
+
     def test_conflict_writes_plan_no_link(self, vault, monkeypatch):
         monkeypatch.setattr(google_calendar, "create_event", lambda **kw: [_ev("a"), _ev("b")])
         out = schedule_entry(vault, SLUG, start=WED, pomodoros=4, title=SLUG)
@@ -304,6 +323,15 @@ class TestIndexerPerEntry:
         a = next(a for a in t.plan if a.date.isoformat() == "2026-06-03")
         assert a.is_linked and a.event_id == "evt_1"
         assert a.time_label == "09:00"
+
+    def test_all_day_entry_reads_整天_label(self, vault, monkeypatch):
+        # v3-E: a date-only (all-day) projection reads "整天" on the chip, and is linked.
+        monkeypatch.setattr(google_calendar, "create_event", lambda **kw: _ev("evt_ad"))
+        schedule_entry(vault, SLUG, start=WED, pomodoros=2, title=SLUG, all_day=True)
+        t = WeeklyIndexer(vault).find_task(SLUG)
+        a = next(a for a in t.plan if a.date.isoformat() == "2026-06-03")
+        assert a.is_linked and a.event_id == "evt_ad"
+        assert a.time_label == "整天"
 
     def test_dual_read_folds_legacy_for_display(self, vault):
         fm = {

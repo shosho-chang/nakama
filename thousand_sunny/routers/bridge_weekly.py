@@ -42,7 +42,6 @@ from shared.weekly_writer import (
     remove_plan_entry,
     set_task_done,
     sync_scheduled_to_next_plan,
-    upsert_plan_entry,
     weekly_file_token,
     write_task_body,
     write_weekly,
@@ -252,22 +251,12 @@ async def weekly_plan_add(
     if entry_time.strip() and et is None:
         return _plan_back(ft, task_slug, wk_key, err="time")
 
-    if et is None:  # ── plan-only (no calendar) ──
-        try:
-            upsert_plan_entry(vault, task_slug, day=ed, pomodoros=pomodoros, reason=rsn)
-        except WeekendReasonRequired:
-            return _plan_back(ft, task_slug, wk_key, err="weekend")
-        except TaskNotFoundError:
-            return _back(wk_key, "task")
-        except WeeklyWriteError as exc:
-            logger.warning("weekly_plan upsert: %s", exc)
-            return _back(wk_key, "task")
-        return _plan_back(ft, task_slug, wk_key)
-
-    # ── timed → vault plan[] + best-effort Google event (one action) ──
+    # v3-E: ONE storage mode — every 排入 projects a Google event. Time given ⇒ a timed
+    # block; blank ⇒ an all-day event (no conflict check). Plan-only is retired.
+    all_day = et is None
     task = WeeklyIndexer(vault).find_task(task_slug)
     title = task.title if task is not None else task_slug
-    start = datetime.combine(ed, et)  # naive Asia/Taipei (D4); stored with +08:00
+    start = datetime.combine(ed, et or datetime.min.time())  # naive Asia/Taipei (D4)
     try:
         outcome = calendar_scheduler.schedule_entry(
             vault,
@@ -275,6 +264,7 @@ async def weekly_plan_add(
             start=start,
             pomodoros=pomodoros,
             title=title,
+            all_day=all_day,
             reason=rsn,
             force=bool(force),
         )
