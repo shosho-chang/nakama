@@ -12,7 +12,7 @@ the task, and if *that* write fails the event is rolled back to avoid an orphan
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -21,10 +21,14 @@ from shared.google_calendar import CalendarEvent
 from shared.log import get_logger
 from shared.weekly_writer import (
     WeeklyWriteError,
+    read_entry_event_id,
+    remove_plan_entry,
     reschedule_task_block,
     schedule_task_block,
+    task_file_token,
     unlink_calendar_block,
     unschedule_task_block,
+    upsert_plan_entry,
 )
 
 logger = get_logger("nakama.calendar_scheduler")
@@ -155,6 +159,147 @@ def _create_and_link(
         return ScheduleOutcome(scheduled, scheduled_end, token, FAILED)
 
     return ScheduleOutcome(scheduled, scheduled_end, token, CREATED, event_id=result.id)
+
+
+# ── v3 per-entry scheduling (ADR-041 v3) ───────────────────────────────────────
+# One Google event per plan[] entry, keyed {slug}@{date}. schedule_entry is the
+# merged 「排入」 path: vault-first upsert, then either reschedule the SAME event
+# in place (preserve identity — V3a) if the entry is already linked, or find-or-
+# create. cancel/unlink act on one entry. Vault writes are authoritative; Google
+# is best-effort (status, never an exception — D2).
+
+
+def schedule_entry(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    start: datetime,
+    pomodoros: int,
+    title: str,
+    reason: Optional[str] = None,
+    expected_token: Optional[str] = None,
+    force: bool = False,
+) -> ScheduleOutcome:
+    """v3 merged 「排入」: write the timed ``plan[]`` entry for ``start``'s date, then
+    project it. If that entry is **already linked**, PATCH the same event in place
+    (preserve identity, re-key for the date — V3a); else find-or-create keyed
+    ``{slug}@{date}`` (per-entry orphan guard via the date-scoped key — V3b). The
+    vault upsert is authoritative; the Google step degrades to a status (D2)."""
+    day = start.date()
+    existing = read_entry_event_id(vault_root, task_slug, day)  # "" if new/unlinked
+    start_iso, end_iso, token = upsert_plan_entry(
+        vault_root,
+        task_slug,
+        day=day,
+        pomodoros=pomodoros,
+        start=start,
+        reason=reason,
+        expected_token=expected_token,
+    )
+    idem = f"{task_slug}@{day.isoformat()}"
+
+    if existing:  # reschedule the SAME event in place (V3a — no delete+recreate)
+        if not force:
+            try:
+                clash = [
+                    c
+                    for c in google_calendar.find_conflicts(start_iso, end_iso)
+                    if c.id != existing
+                ]
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "schedule_entry conflict pre-check unavailable %s: %s", task_slug, exc
+                )
+                return ScheduleOutcome(start_iso, end_iso, token, UNAVAILABLE, event_id=existing)
+            if clash:
+                return ScheduleOutcome(
+                    start_iso, end_iso, token, CONFLICT, event_id=existing, conflicts=tuple(clash)
+                )
+        try:
+            google_calendar.update_event(
+                existing, title=title, start=start_iso, end=end_iso, idempotency_key=idem
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("schedule_entry update unavailable %s: %s", task_slug, exc)
+            return ScheduleOutcome(start_iso, end_iso, token, UNAVAILABLE, event_id=existing)
+        return ScheduleOutcome(start_iso, end_iso, token, CREATED, event_id=existing)
+
+    # new → find-or-create keyed by the day
+    try:
+        result = google_calendar.create_event(
+            title=title,
+            start=start_iso,
+            end=end_iso,
+            check_conflict=not force,
+            idempotency_key=idem,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("schedule_entry create unavailable %s: %s", task_slug, exc)
+        return ScheduleOutcome(start_iso, end_iso, token, UNAVAILABLE)
+    if isinstance(result, list):
+        return ScheduleOutcome(start_iso, end_iso, token, CONFLICT, conflicts=tuple(result))
+    try:  # write-back the event id onto this entry (start=None keeps the time just written)
+        _, _, token = upsert_plan_entry(
+            vault_root,
+            task_slug,
+            day=day,
+            pomodoros=pomodoros,
+            reason=reason,
+            calendar_event_id=result.id,
+            expected_token=token,
+        )
+    except WeeklyWriteError as exc:
+        logger.warning(
+            "schedule_entry write-back failed %s; rolling back %s: %s", task_slug, result.id, exc
+        )
+        try:
+            google_calendar.delete_event(result.id)
+        except Exception:  # noqa: BLE001
+            logger.exception("rollback delete_event(%s) failed — orphan remains", result.id)
+        return ScheduleOutcome(start_iso, end_iso, token, FAILED)
+    return ScheduleOutcome(start_iso, end_iso, token, CREATED, event_id=result.id)
+
+
+def cancel_entry(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    day: date,
+    drop_plan: bool,
+    expected_token: Optional[str] = None,
+) -> CancelOutcome:
+    """Per-entry cancel (V3d). ``drop_plan=False`` = 「移出行事曆」 (clear the entry's
+    start/end/event_id, keep the entry); ``drop_plan=True`` = 「取消這天的安排」 (delete
+    the event AND drop the entry, `done`-safe). Deletes the Google event best-effort."""
+    event_id = read_entry_event_id(vault_root, task_slug, day)
+    if drop_plan:
+        removed = remove_plan_entry(vault_root, task_slug, day)  # done-safe
+        if not removed:  # done-protected → degrade to unlink (keep history, clear projection)
+            token = _clear_entry_projection(
+                vault_root, task_slug, day, expected_token=expected_token
+            )
+        else:
+            token = task_file_token(vault_root, task_slug)
+    else:
+        token = _clear_entry_projection(vault_root, task_slug, day, expected_token=expected_token)
+    return _delete_best_effort(task_slug, event_id, token)
+
+
+def _clear_entry_projection(
+    vault_root: Path, task_slug: str, day: date, *, expected_token: Optional[str]
+) -> str:
+    """Clear start/end/calendar_event_id on the entry for ``day``, keep the entry."""
+    from shared.weekly_writer import _plan_list, _read_task, _task_path, _write_task
+
+    path = _task_path(vault_root, task_slug)
+    fm, body = _read_task(path)
+    for e in _plan_list(fm):
+        if e.get("date") and str(e["date"])[:10] == day.isoformat():
+            for k in ("start", "end", "calendar_event_id"):
+                e.pop(k, None)
+    fm["plan"] = _plan_list(fm)
+    _write_task(path, fm, body)
+    return task_file_token(vault_root, task_slug)
 
 
 @dataclass
