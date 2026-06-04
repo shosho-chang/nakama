@@ -1198,10 +1198,10 @@ class TestTaskPageCalendarConsistency:
 
 
 class TestScheduleBadge:
-    """修修: drop the redundant 📅 (the date already shows); keep 🔗 to mark a
-    task whose day is pushed to a live Google Calendar event."""
+    """修修: no icon at all on the schedule badge — the colour alone marks linked
+    (accent .wk-bl-linked) vs vault-only (muted .wk-bl-when). Bare date."""
 
-    def test_linked_row_shows_chain_not_calendar_emoji(self, client, tmp_path, monkeypatch):
+    def test_linked_row_uses_colour_class_no_icon(self, client, tmp_path, monkeypatch):
         import shared.weekly_indexer as wi
 
         monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
@@ -1212,5 +1212,7 @@ class TestScheduleBadge:
         )
         (tmp_path / "TaskNotes" / "Tasks" / "已連動任務.md").write_text(linked, encoding="utf-8")
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
-        assert 'wk-bl-linked" title="已連動 Google 行事曆事件">🔗' in body
-        assert "📅🔗" not in body  # the old combined badge is gone
+        # linked → accent colour class + bare date, no 🔗 / 📅 glyphs on the badge
+        assert 'wk-bl-linked" title="已連動 Google 行事曆事件">06/03' in body
+        assert "🔗" not in body
+        assert "📅🔗" not in body
