@@ -933,6 +933,28 @@ if (deleteBookBtn) {
   });
 }
 
+// ── "同步到 KB" button — open the ADR-024 promotion review surface for this
+//    book. The review page handles the empty-manifest case by showing a
+//    "Start review" button, so we just navigate; the user kicks off
+//    preflight + source_map build via that POST. Mirrors the video reader
+//    pattern (static/shosho/av-reader.js).
+const syncKbBtn = document.getElementById('syncKbBtn');
+if (syncKbBtn) {
+  syncKbBtn.addEventListener('click', () => {
+    // base64url-encode `ebook:{book_id}` to match the promotion route's
+    // `_decode_source_id` contract (no padding, '-' / '_' replacing
+    // '+' / '/'). Pure browser API — no node `Buffer` dependency.
+    // `unescape(encodeURIComponent(...))` makes btoa safe for the CJK
+    // book_ids we use (btoa alone throws on non-Latin1).
+    const sourceId = `ebook:${BOOK_ID}`;
+    const b64 = btoa(unescape(encodeURIComponent(sourceId)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    window.location.href = `/robin/promotion/source/${b64}`;
+  });
+}
+
 // ── Progress state (Slice 3C) ────────────────────────────────────────────────
 //
 // Mirrors GET/PUT /robin/api/books/{id}/progress with three reliability layers:

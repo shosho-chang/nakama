@@ -131,6 +131,9 @@ def mock_search(monkeypatch) -> list[dict]:
         return fake_hits
 
     monkeypatch.setattr(digest_mod, "search_kb", fake_search_kb)
+    # These tests exercise KB-hit rendering, which is gated OFF by default
+    # (NAKAMA_BOOK_DIGEST_KB_HITS). Force it ON so the rendering path runs.
+    monkeypatch.setattr(digest_mod, "_KB_HITS_ENABLED", True)
     return calls
 
 
@@ -201,6 +204,26 @@ def test_search_called_with_book_review_purpose(vault, saved_annotations, mock_s
     assert all(c["purpose"] == "book_review" for c in mock_search)
     assert all(c["engine"] == "hybrid" for c in mock_search)
     assert all(c["top_k"] == 3 for c in mock_search)
+
+
+def test_kb_hits_disabled_by_default(vault, saved_annotations, monkeypatch):
+    """Default (NAKAMA_BOOK_DIGEST_KB_HITS unset) skips the cross-domain
+    search_kb call and renders an explicit "暫時關閉" note instead of hits."""
+    calls: list = []
+
+    def spy_search_kb(*args, **kwargs):
+        calls.append((args, kwargs))
+        return []
+
+    monkeypatch.setattr(digest_mod, "search_kb", spy_search_kb)
+    # Do NOT enable the flag — assert default behaviour.
+    write_digest("test-book")
+    content = (vault / "KB" / "Wiki" / "Sources" / "Books" / "test-book" / "digest.md").read_text(
+        encoding="utf-8"
+    )
+    assert not calls, "search_kb must not be called when KB hits are disabled"
+    assert "暫時關閉跨領域比對" in content
+    assert "👍 相關" not in content, "no feedback checkboxes when hits disabled"
 
 
 # ---------------------------------------------------------------------------

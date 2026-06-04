@@ -371,6 +371,25 @@ def test_book_reader_200_when_exists(app_client):
     assert "/static/book_reader.js" in r.text
 
 
+def test_book_reader_renders_sync_to_kb_button_for_monolingual(app_client):
+    """The 同步到 KB button (ADR-024 promotion entry) must render even for a
+    monolingual-zh book — unlike 整本書 ingest (gated on an EN original), the
+    annotation-promotion path applies to every book. The JS handler reaches
+    the button by id, so dropping it silently breaks the entry point."""
+    tc, _ = app_client
+    blob = epub_clean()
+    files = {"bilingual": ("c.epub", blob, "application/epub+zip")}
+    data = {"book_id": "zh-book", "title": "中文書", "mode": "monolingual-zh"}
+    tc.post("/robin/books/upload", data=data, files=files)
+
+    r = tc.get("/robin/books/zh-book")
+    assert r.status_code == 200
+    # Promotion entry present regardless of mode...
+    assert 'id="syncKbBtn"' in r.text
+    # ...while the EN-only whole-book ingest button is gated out for zh books.
+    assert 'id="ingestBtn"' not in r.text
+
+
 def test_book_reader_renders_keyboard_shortcuts_help(app_client):
     """The keyboard shortcut affordances (button in nav, help dialog) must
     survive future template refactors — the JS handler reaches into the DOM by
