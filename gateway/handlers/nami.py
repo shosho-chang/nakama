@@ -1131,7 +1131,7 @@ class NamiHandler(BaseHandler):
                 tasks.append(
                     {
                         "title": fm.get("title", f.stem),
-                        "scheduled": fm.get("scheduled", ""),
+                        "scheduled": _plan_scheduled_display(fm),  # v3-D: from plan[]
                         "priority": fm.get("priority", "normal"),
                         "status": fm.get("status", "to-do"),
                     }
@@ -1267,14 +1267,17 @@ class NamiHandler(BaseHandler):
         return None
 
     def _find_task_by_calendar_id(self, event_id: str) -> tuple[str, dict, str] | None:
-        """以 calendar_event_id 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。"""
+        """以 calendar_event_id 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。
+        v3-D：先比對 per-entry ``plan[]`` 的 calendar_event_id，再退回 legacy 的
+        task 層級 calendar_event_id（v3-D 之前 Nami 建的事件仍是後者）。"""
         for f in list_files(TASK_DIR):
             rel = f"{TASK_DIR}/{f.name}"
             content = read_page(rel)
             if not content:
                 continue
             fm = _extract_frontmatter(content)
-            if fm.get("calendar_event_id") == event_id:
+            per_entry = any(e.get("calendar_event_id") == event_id for e in _plan_entries(fm))
+            if per_entry or fm.get("calendar_event_id") == event_id:
                 parts = content.split("---", 2)
                 body = parts[2].strip() if len(parts) >= 3 else ""
                 return rel, fm, body
@@ -1441,7 +1444,9 @@ class NamiHandler(BaseHandler):
         )
 
     def _write_calendar_linked_task(self, rel_path: str, event: CalendarEvent) -> None:
-        """建立 calendar-linked task；scheduled/scheduled_end 剝 tz 對齊 Obsidian 格式。"""
+        """建立 calendar-linked task。v3-D：排程寫進 per-entry ``plan[]``（date /
+        pomodoros / start / end / calendar_event_id），不再寫 task 層級的
+        scheduled 鏡像——與 Bridge 的多事件模型同一個來源（ADR-041 v3）。"""
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         frontmatter = {
             "title": event.title,
@@ -1450,9 +1455,7 @@ class NamiHandler(BaseHandler):
             "tags": ["task"],
             "dateCreated": now_iso,
             "dateModified": now_iso,
-            "scheduled": _strip_tz(event.start),
-            "scheduled_end": _strip_tz(event.end),
-            "calendar_event_id": event.id,
+            "plan": [_event_to_plan_entry(event)],
         }
         write_page(rel_path, frontmatter, "")
 
@@ -1581,14 +1584,31 @@ class NamiHandler(BaseHandler):
         )
 
     def _sync_task_from_calendar_update(self, event: CalendarEvent, *, title_changed: bool) -> str:
-        """更新 calendar 後同步對應 task。回傳要附在 summary 後的備註（可為空字串）。"""
+        """更新 calendar 後同步對應 task。回傳要附在 summary 後的備註（可為空字串）。
+        v3-D：更新 per-entry ``plan[]`` 那一筆的 start/end/date/pomodoros（保留該筆的
+        done/reason），並退役 task 層級 scheduled 鏡像。對 legacy（只有 task 層級
+        calendar_event_id）的 task，這次同步就地遷移成 plan entry。"""
         linked = self._find_task_by_calendar_id(event.id)
         if linked is None:
             return ""
 
         rel_path, fm, body = linked
-        fm["scheduled"] = _strip_tz(event.start)
-        fm["scheduled_end"] = _strip_tz(event.end)
+        new_entry = _event_to_plan_entry(event)
+        plan = _plan_entries(fm)
+        matched = False
+        for i, e in enumerate(plan):
+            if e.get("calendar_event_id") == event.id:
+                preserved = {k: e[k] for k in ("done", "reason") if k in e}
+                plan[i] = {**new_entry, **preserved}
+                matched = True
+                break
+        if not matched:  # legacy task-level link → migrate into plan[] now
+            plan.append(new_entry)
+        fm["plan"] = _stringify_plan(plan)
+        # retire the legacy task-level mirror (v3-D)
+        for k in ("scheduled", "scheduled_end", "calendar_event_id"):
+            fm.pop(k, None)
+
         if title_changed:
             fm["title"] = event.title
             new_rel = f"{TASK_DIR}/{_slugify(event.title)}.md"
@@ -1619,13 +1639,27 @@ class NamiHandler(BaseHandler):
 
         google_calendar.delete_event(found.id)
 
-        # 靜默刪除對應 task（找不到不視為錯誤，PRD 規格）
+        # 靜默處理對應 task（找不到不視為錯誤，PRD 規格）。v3-D：只拔掉這一筆 plan
+        # entry（保住同一個 task 的其他天，多事件不能被一次刪光）；若刪完已無排程且沒有
+        # 筆記內容，視為純行事曆 task → 整檔刪除（沿用舊 UX）。
         task_note = ""
         linked = self._find_task_by_calendar_id(found.id)
         if linked is not None:
-            task_rel, _, _ = linked
-            if delete_page(task_rel):
-                task_note = f"\n   📝 Task 一併刪除：{task_rel}"
+            task_rel, fm, body = linked
+            remaining = [e for e in _plan_entries(fm) if e.get("calendar_event_id") != found.id]
+            legacy_match = fm.get("calendar_event_id") == found.id
+            if not remaining and not body.strip():
+                if delete_page(task_rel):
+                    task_note = f"\n   📝 Task 一併刪除：{task_rel}"
+            else:
+                fm["plan"] = _stringify_plan(remaining)
+                if legacy_match:  # retire the legacy task-level mirror (v3-D)
+                    for k in ("scheduled", "scheduled_end", "calendar_event_id"):
+                        fm.pop(k, None)
+                fm["dateModified"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                fm = _stringify_fm_dates(fm)
+                write_page(task_rel, fm, body)
+                task_note = f"\n   📝 Task 已移除該時段：{task_rel}"
 
         summary = f"🗑️ 已刪除 Calendar 事件：{found.title}{task_note}"
         return _ToolOutcome(
@@ -2437,6 +2471,87 @@ def _strip_tz(iso_str: str) -> str:
         return iso_str
     local = dt.astimezone(ZoneInfo("Asia/Taipei"))
     return local.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+# ── ADR-041 v3-D: Nami writes the per-entry plan[] projection, not the retired
+#    task-level scheduled mirror. These build/read plan entries in the SAME shape
+#    the Bridge writes (shared.weekly_writer): date + pomodoros + start/end with the
+#    Asia/Taipei offset + calendar_event_id. One 🍅 = 30 min. ─────────────────────
+
+_BLOCK_MIN_PER_POM = 30  # matches shared.weekly_writer.CALENDAR_BLOCK_MINUTES_PER_POMODORO
+
+
+def _event_dt_taipei(iso_str: str) -> datetime | None:
+    """Parse a Google RFC3339 datetime into an Asia/Taipei-aware datetime; None for
+    an all-day date string or anything unparseable."""
+    if not iso_str or "T" not in iso_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("Asia/Taipei"))
+    return dt.astimezone(ZoneInfo("Asia/Taipei"))
+
+
+def _event_to_plan_entry(event: CalendarEvent) -> dict:
+    """A v3 plan[] entry from a calendar event (ADR-041 v3-D): date + derived
+    pomodoros (duration ÷ 30, ≥1) + start/end (ISO seconds WITH the Taipei offset,
+    byte-aligned with shared.weekly_writer._iso_with_offset) + calendar_event_id.
+    An all-day / unparseable start degrades to a bare linked entry (no time)."""
+    start_dt = _event_dt_taipei(event.start)
+    if start_dt is None:
+        return {"calendar_event_id": event.id}
+    end_dt = _event_dt_taipei(event.end)
+    if end_dt is not None and end_dt > start_dt:
+        pom = max(1, round((end_dt - start_dt).total_seconds() / 60 / _BLOCK_MIN_PER_POM))
+    else:
+        pom = 1
+        end_dt = start_dt + timedelta(minutes=_BLOCK_MIN_PER_POM)
+    return {
+        "date": start_dt.date().isoformat(),
+        "pomodoros": pom,
+        "start": start_dt.isoformat(timespec="seconds"),
+        "end": end_dt.isoformat(timespec="seconds"),
+        "calendar_event_id": event.id,
+    }
+
+
+def _plan_entries(fm: dict) -> list[dict]:
+    """The task's plan[] as a list of dicts (defensive against None / scalars)."""
+    return [e for e in (fm.get("plan") or []) if isinstance(e, dict)]
+
+
+def _stringify_plan(plan: list[dict]) -> list[dict]:
+    """yaml.safe_load turns ``date: 2026-06-05`` into a date object; normalise each
+    entry's date/start/end back to ISO strings before write-back so the vault file
+    stays string-uniform (matching what the Bridge writer produces)."""
+    import datetime as _dt
+
+    out = []
+    for e in plan:
+        out.append(
+            {
+                k: (v.isoformat() if isinstance(v, (_dt.date, _dt.datetime)) else v)
+                for k, v in e.items()
+            }
+        )
+    return out
+
+
+def _plan_scheduled_display(fm: dict) -> str:
+    """The earliest scheduled moment to show in list_tasks — derived from plan[]
+    (v3) with a fallback to the legacy task-level ``scheduled`` mirror."""
+    moments = []
+    for e in _plan_entries(fm):
+        when = e.get("start") or e.get("date")
+        if when:
+            moments.append(str(when))
+    if moments:
+        earliest = sorted(moments)[0]
+        return _strip_tz(earliest) if "T" in earliest else earliest
+    return str(fm.get("scheduled", ""))
 
 
 # ── Deprecated alias（for backward-compat with old tests/imports） ─────
