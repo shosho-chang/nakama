@@ -17,8 +17,11 @@
       <span class="wk-tname">{{ t.name }}</span>
       <span class="wk-tproj">{{ t.category_label }}{% if t.project %} · {{ t.project }}{% endif %}</span>
       <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
-      {% if t.calendar_event_id %}<span class="wk-bl-when wk-bl-linked" title="已連動 Google 行事曆">📅🔗 {{ t.scheduled.strftime('%m/%d') if t.scheduled }}</span>
-      {% elif t.scheduled %}<span class="wk-bl-when" title="目前 scheduled">📅 {{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
+      {# date already reads as the scheduled day, so no 📅 (修修); the 🔗 stays —
+         it's the ONE bit the bare date can't show: this day is pushed to a live
+         Google Calendar event (vs only planned in the vault). #}
+      {% if t.calendar_event_id %}<span class="wk-bl-when wk-bl-linked" title="已連動 Google 行事曆事件">🔗 {{ t.scheduled.strftime('%m/%d') if t.scheduled }}</span>
+      {% elif t.scheduled %}<span class="wk-bl-when" title="已排程（尚未推到 Google 行事曆）">{{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
       <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
       <span class="wk-edit-hint" aria-hidden="true">排程</span>
     </summary>

@@ -1195,3 +1195,22 @@ class TestTaskPageCalendarConsistency:
         body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
         # 🍅 prepended to the 準確率 label (修修)
         assert "🍅</span> 準確率" in body
+
+
+class TestScheduleBadge:
+    """修修: drop the redundant 📅 (the date already shows); keep 🔗 to mark a
+    task whose day is pushed to a live Google Calendar event."""
+
+    def test_linked_row_shows_chain_not_calendar_emoji(self, client, tmp_path, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        linked = (
+            "---\ntitle: 已連動任務\nstatus: to-do\n預估🍅: 2\n"
+            "scheduled: 2026-06-03T09:00:00\ncalendar_event_id: evt_live\n"
+            "tags:\n  - task\n---\n\nbody\n"
+        )
+        (tmp_path / "TaskNotes" / "Tasks" / "已連動任務.md").write_text(linked, encoding="utf-8")
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        assert 'wk-bl-linked" title="已連動 Google 行事曆事件">🔗' in body
+        assert "📅🔗" not in body  # the old combined badge is gone
