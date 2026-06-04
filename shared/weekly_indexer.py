@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -214,6 +214,28 @@ class TaskAllocation:
     pomodoros: int
     reason: str = ""
     done: int = 0
+    # ADR-041 v3 — per-entry calendar projection (one Google event per plan entry).
+    # ``start``/``end`` are ISO-8601 *with offset* (e.g. 2026-06-03T09:00:00+08:00),
+    # "" when the entry is plan-only (not projected). ``event_id`` links the Google
+    # event ("" when unprojected / projection pending).
+    start: str = ""
+    end: str = ""
+    event_id: str = ""
+
+    @property
+    def is_linked(self) -> bool:
+        """True iff this entry is projected to a live Google Calendar event."""
+        return bool(self.event_id)
+
+    @property
+    def time_label(self) -> str:
+        """``HH:MM`` of ``start`` for the chip, or "" if plan-only / unparseable."""
+        if not self.start:
+            return ""
+        try:
+            return datetime.fromisoformat(self.start).strftime("%H:%M")
+        except ValueError:
+            return ""
 
 
 @dataclass(frozen=True)
@@ -476,6 +498,9 @@ class WeeklyIndexer:
                         pomodoros=_as_int(a.get("pomodoros")),
                         reason=str(a.get("reason") or ""),
                         done=_as_int(a.get("done")),
+                        start=str(a.get("start") or ""),
+                        end=str(a.get("end") or ""),
+                        event_id=str(a.get("calendar_event_id") or a.get("event_id") or "").strip(),
                     )
                 )
 
@@ -492,6 +517,41 @@ class WeeklyIndexer:
         weekly_priority = _as_date(wp_raw).isoformat() if _as_date(wp_raw) else ""
 
         cal_event_id = str(fm.get("calendar_event_id") or "").strip()
+
+        # ADR-041 v3 dual-read (V4): a legacy task-level projection (scheduled +
+        # calendar_event_id — the v2 single-event store) is surfaced onto the
+        # plan[] entry for DISPLAY so old links render under the per-entry model.
+        # The writer migrates it for real on the next v3 write; here it is read-only.
+        if cal_event_id and not any(a.start for a in plan):
+            sched_raw = fm.get("scheduled")
+            sched_d = _as_date(sched_raw)
+            if sched_d is not None:
+                start_iso = (
+                    sched_raw.isoformat()
+                    if isinstance(sched_raw, (date, datetime))
+                    else str(sched_raw)
+                )
+                end_raw = fm.get("scheduled_end")
+                end_iso = (
+                    end_raw.isoformat()
+                    if isinstance(end_raw, (date, datetime))
+                    else str(end_raw or "")
+                )
+                idx = next((i for i, a in enumerate(plan) if a.date == sched_d), None)
+                if idx is not None:
+                    plan[idx] = replace(
+                        plan[idx], start=start_iso, end=end_iso, event_id=cal_event_id
+                    )
+                else:  # legacy calendar task with no plan entry → synthesize one for display
+                    plan.append(
+                        TaskAllocation(
+                            date=sched_d,
+                            pomodoros=est or 1,
+                            start=start_iso,
+                            end=end_iso,
+                            event_id=cal_event_id,
+                        )
+                    )
 
         return WeeklyTask(
             slug=slug,

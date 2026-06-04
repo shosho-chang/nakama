@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -94,11 +94,43 @@ def _get_service():
 IDEMPOTENCY_PROP = "lifeos_task"
 
 
+def _day_window_from_key(key: str) -> tuple[datetime, datetime] | None:
+    """Derive a whole-day [00:00, +1d) search window from a ``{slug}@{YYYY-MM-DD}``
+    idempotency key (ADR-041 v3 V3b — the task-day, not just one block's time span,
+    so the key works as a per-task-day uniqueness lookup). None if the key has no
+    parseable trailing date."""
+    from datetime import time as _time
+    from datetime import timedelta as _td
+
+    _, _, datepart = key.rpartition("@")
+    try:
+        d = date.fromisoformat(datepart.strip()[:10])
+    except ValueError:
+        return None
+    tz = ZoneInfo(TIMEZONE)
+    start = datetime.combine(d, _time(0, 0), tzinfo=tz)
+    return start, start + _td(days=1)
+
+
 def find_event_by_idempotency_key(
-    key: str, *, time_min: datetime, time_max: datetime
+    key: str,
+    *,
+    time_min: datetime | None = None,
+    time_max: datetime | None = None,
 ) -> CalendarEvent | None:
     """The event tagged ``extendedProperties.private.lifeos_task == key`` in the
-    window, or None. Used to dedupe create + locate for reschedule/rollback (D7)."""
+    window, or None. Used to dedupe create + locate for reschedule/rollback (D7).
+
+    ADR-041 v3 (V3b): when ``time_min``/``time_max`` are omitted, the window
+    defaults to the **whole day** encoded in the key (``{slug}@{date}``) so the
+    lookup is a true per-task-day uniqueness check — not just the proposed block's
+    span (which would miss an existing same-day block at a different time)."""
+    if time_min is None or time_max is None:
+        win = _day_window_from_key(key)
+        if win is not None:
+            time_min, time_max = win
+        elif time_min is None or time_max is None:
+            raise ValueError(f"find_event_by_idempotency_key: undatable key {key!r} needs a window")
     service = _get_service()
     result = (
         service.events()
@@ -191,8 +223,15 @@ def update_event(
     start: str | None = None,
     end: str | None = None,
     description: str | None = None,
+    idempotency_key: str | None = None,
 ) -> CalendarEvent:
-    """patch 事件。未給的欄位不變。"""
+    """patch 事件。未給的欄位不變。
+
+    ``idempotency_key`` (ADR-041 v3 V3a): re-stamp ``extendedProperties.private.
+    lifeos_task`` — used when a **date-change reschedule** moves the block to a new
+    day, so the date-scoped key (``{slug}@{date}``) tracks the event's new date
+    instead of going stale. PATCHing the SAME event preserves its identity / Meet
+    link / attendees / RSVPs (vs delete+recreate, which the panel rejected)."""
     service = _get_service()
     body: dict = {}
     if title is not None:
@@ -203,6 +242,8 @@ def update_event(
         body["start"] = {"dateTime": _ensure_tz_iso(start), "timeZone": TIMEZONE}
     if end is not None:
         body["end"] = {"dateTime": _ensure_tz_iso(end), "timeZone": TIMEZONE}
+    if idempotency_key is not None:
+        body["extendedProperties"] = {"private": {IDEMPOTENCY_PROP: idempotency_key}}
     updated = service.events().patch(calendarId="primary", eventId=event_id, body=body).execute()
     return _parse_event(updated)
 
