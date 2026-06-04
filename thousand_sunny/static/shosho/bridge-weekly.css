@@ -235,6 +235,19 @@ body.sho .wk-plan-chip .wk-chip-x {
 }
 body.sho .wk-plan-chip .wk-chip-x:hover { background: var(--sho-bg-3); color: var(--sho-warning); }
 body.sho .wk-plan-chip .wk-chip-x:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+/* v3 multi-block: a linked chip (its own Google event) reads in accent; its 🗑 is
+   the confirm-gated cancel (deletes the event too). The plain ✕ stays plan-only. */
+body.sho .wk-plan-chip .wk-chip-form { display: inline-flex; margin: 0; }
+body.sho .wk-plan-chip.is-linked {
+  border-color: color-mix(in oklch, var(--sho-accent) 45%, var(--sho-line-2));
+}
+body.sho .wk-plan-chip.is-linked .wk-chip-day { color: var(--sho-accent); }
+body.sho .wk-plan-chip .wk-chip-cancel:hover {
+  background: var(--sho-bg-3);
+  color: color-mix(in oklch, var(--sho-danger, #d9534f) 80%, var(--sho-text));
+}
+/* merged 排入 form — stacked (fields row / reason / actions), not the old 1-line add */
+body.sho .wk-plan-merged { display: flex; flex-direction: column; gap: 10px; }
 
 body.sho .wk-plan-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 body.sho .wk-day-sel {

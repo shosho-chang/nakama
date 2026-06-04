@@ -36,13 +36,14 @@ from shared.weekly_writer import (
     WeekendReasonRequired,
     WeeklyConflictError,
     WeeklyWriteError,
-    add_plan_entry,
     log_time_entry,
+    migrate_legacy_projection,
     read_task_schedule,
     read_task_split,
     remove_plan_entry,
     set_task_done,
     sync_scheduled_to_next_plan,
+    upsert_plan_entry,
     weekly_file_token,
     write_task_body,
     write_weekly,
@@ -95,6 +96,9 @@ _PLAN_ERRORS = {
         "已寫入本週計畫，但 Google 行事曆暫時無法連動（授權或網路）——稍後可重新排入以補建事件。"
     ),
     "cal_failed": "排程寫入後寫回失敗，行事曆事件已回滾——請重試。",
+    "cancel_cal_failed": (
+        "已從本週計畫移除，但刪除 Google 行事曆事件失敗——請到 Google 行事曆手動移除，或稍後重試。"
+    ),
     # weekly-file (Journals/Weekly 🟡) write errors — ADR-040 Slice 2
     "conflict": (
         "週檔在你開啟頁面後被改動（Obsidian / Syncthing / 另一分頁），"
@@ -111,6 +115,7 @@ _SAVED_MSGS = {
     "notes": "✓ 已存隨手筆記。",
     "status": "✓ 已更新本週狀態。",
     "scheduled": "✓ 已排入計畫並建立行事曆事件。",
+    "unscheduled": "✓ 已取消這天的安排（含行事曆事件）。",
 }
 
 
@@ -172,10 +177,29 @@ def _safe_week_key(week: str | None) -> str:
     return wk.file_key
 
 
-def _back(week_key: str, err: str | None = None) -> RedirectResponse:
+def _back(
+    week_key: str,
+    err: str | None = None,
+    *,
+    slug: str | None = None,
+    saved: str | None = None,
+    n: int = 0,
+) -> RedirectResponse:
+    """Redirect back to the weekly dashboard. ``slug`` appends a ``#task-<slug>``
+    fragment so the merged 排入 action lands back ON the row it edited (v3-B
+    stay-in-place — JS re-opens + scrolls + restores tab/scroll). Mutually
+    exclusive err / saved; ``n`` is the conflict count for the cal_conflict banner."""
+    from urllib.parse import quote
+
     url = f"/bridge/weekly?week={week_key}"
     if err:
         url += f"&err={err}"
+        if n:
+            url += f"&n={n}"
+    elif saved:
+        url += f"&saved={saved}"
+    if slug:
+        url += f"#task-{quote(slug)}"
     return RedirectResponse(url, status_code=303)
 
 
@@ -190,11 +214,19 @@ def _parse_entry_date(entry_date: str) -> date | None:
 async def weekly_plan_add(
     task_slug: str = Form(..., min_length=1),
     entry_date: str = Form(..., min_length=1),
+    entry_time: str = Form(""),  # v3 — optional; blank ⇒ plan-only (no calendar)
     pomodoros: int = Form(...),
     reason: str = Form(""),
+    force: int = Form(0),
     week: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
+    """v3 merged 「排入」 (ADR-041 v3 V2): one action writes the ``plan[]`` entry AND,
+    when a time is given, projects it to a Google event — for any date. Blank time
+    ⇒ plan-only (today's behaviour). A per-task legacy fold runs first (V4 — so a v2
+    single-event task migrates before its first multi-block write). Lands back on
+    the row via ``#task-{slug}`` (stay-in-place). Untokened, like the other dashboard
+    plan routes — the per-task optimistic lock is the deferred #819 work."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk_key = _safe_week_key(week)
@@ -203,16 +235,63 @@ async def weekly_plan_add(
     if ed is None:
         return _back(wk_key, "date")
     if not 1 <= pomodoros <= 20:
-        return _back(wk_key, "pomodoros")
+        return _back(wk_key, "pomodoros", slug=task_slug)
+    rsn = reason.strip() or None
+    vault = get_vault_path()
 
     try:
-        add_plan_entry(get_vault_path(), task_slug, ed, pomodoros, reason.strip() or None)
-    except WeekendReasonRequired:
-        return _back(wk_key, "weekend")
-    except WeeklyWriteError as exc:
-        logger.warning("weekly_plan_add: %s", exc)
+        migrate_legacy_projection(vault, task_slug)  # fold any v2 task-level link first (V4)
+    except TaskNotFoundError:
         return _back(wk_key, "task")
-    return _back(wk_key)
+    except WeeklyWriteError as exc:  # non-fatal — the write below will surface a real error
+        logger.warning("weekly_plan migrate_legacy_projection: %s", exc)
+
+    et = _parse_entry_time(entry_time) if entry_time.strip() else None
+    if entry_time.strip() and et is None:
+        return _back(wk_key, "time", slug=task_slug)
+
+    if et is None:  # ── plan-only (no calendar) ──
+        try:
+            upsert_plan_entry(vault, task_slug, day=ed, pomodoros=pomodoros, reason=rsn)
+        except WeekendReasonRequired:
+            return _back(wk_key, "weekend", slug=task_slug)
+        except TaskNotFoundError:
+            return _back(wk_key, "task")
+        except WeeklyWriteError as exc:
+            logger.warning("weekly_plan upsert: %s", exc)
+            return _back(wk_key, "task")
+        return _back(wk_key, slug=task_slug)
+
+    # ── timed → vault plan[] + best-effort Google event (one action) ──
+    task = WeeklyIndexer(vault).find_task(task_slug)
+    title = task.title if task is not None else task_slug
+    start = datetime.combine(ed, et)  # naive Asia/Taipei (D4); stored with +08:00
+    try:
+        outcome = calendar_scheduler.schedule_entry(
+            vault,
+            task_slug,
+            start=start,
+            pomodoros=pomodoros,
+            title=title,
+            reason=rsn,
+            force=bool(force),
+        )
+    except WeekendReasonRequired:
+        return _back(wk_key, "weekend", slug=task_slug)
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_plan schedule_entry: %s", exc)
+        return _back(wk_key, "task")
+
+    st = outcome.calendar_status
+    if st == calendar_scheduler.CREATED:
+        return _back(wk_key, slug=task_slug, saved="scheduled")
+    if st == calendar_scheduler.CONFLICT:
+        return _back(wk_key, "cal_conflict", slug=task_slug, n=len(outcome.conflicts))
+    if st == calendar_scheduler.UNAVAILABLE:
+        return _back(wk_key, "cal_unavailable", slug=task_slug)
+    return _back(wk_key, "cal_failed", slug=task_slug)  # FAILED — event rolled back
 
 
 @page_router.post("/weekly/plan/remove")
@@ -222,6 +301,8 @@ async def weekly_plan_remove(
     week: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
+    """The plain ✕ on an UNLINKED plan chip — plan-only removal, `done`-safe, never
+    touches Google (ADR-041 v3 V3d). A linked chip uses /weekly/plan/cancel instead."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk_key = _safe_week_key(week)
@@ -231,11 +312,43 @@ async def weekly_plan_remove(
         return _back(wk_key, "date")
 
     try:
-        remove_plan_entry(get_vault_path(), task_slug, ed)
+        remove_plan_entry(get_vault_path(), task_slug, ed)  # done-safe (v3)
     except WeeklyWriteError as exc:
         logger.warning("weekly_plan_remove: %s", exc)
         return _back(wk_key, "task")
-    return _back(wk_key)
+    return _back(wk_key, slug=task_slug)
+
+
+@page_router.post("/weekly/plan/cancel")
+async def weekly_plan_cancel(
+    task_slug: str = Form(..., min_length=1),
+    entry_date: str = Form(..., min_length=1),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """The 🗑 on a LINKED plan chip (ADR-041 v3 V3d / confirm-gated in the UI): drop
+    the entry (`done`-safe) AND delete its Google event, best-effort. Distinct from
+    the plain ✕ so a calendar deletion is never silent."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+
+    ed = _parse_entry_date(entry_date)
+    if ed is None:
+        return _back(wk_key, "date")
+
+    try:
+        outcome = calendar_scheduler.cancel_entry(
+            get_vault_path(), task_slug, day=ed, drop_plan=True
+        )
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_plan_cancel: %s", exc)
+        return _back(wk_key, "task")
+    if outcome.calendar_status == calendar_scheduler.CANCEL_CAL_FAILED:
+        return _back(wk_key, "cancel_cal_failed", slug=task_slug)
+    return _back(wk_key, slug=task_slug, saved="unscheduled")
 
 
 @page_router.post("/weekly/task/{slug}/done")
