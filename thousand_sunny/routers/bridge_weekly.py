@@ -710,6 +710,7 @@ async def weekly_task_detail(
             "task_body": task_body,
             "task_token": task_token,
             "is_linked": is_linked,
+            "today_iso": today_taipei().isoformat(),  # default for the create picker (non-linked)
             "sched_date": sched_date,
             "sched_time": sched_time,
             "block_pom": min(block_pom, 20) if block_pom else 1,

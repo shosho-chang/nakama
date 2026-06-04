@@ -1175,3 +1175,23 @@ class TestUnifiedTaskViewsAndDone:
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
         assert "wk-ci-pom" in body
         assert "1/3🍅" in body  # actual 1 / planned 3
+
+
+class TestTaskPageCalendarConsistency:
+    """修修: the task-page calendar UI should read the same as the dashboard row.
+    Non-linked → create picker (posts /weekly/schedule); linked → reschedule panel."""
+
+    def test_nonlinked_task_shows_create_picker(self, client, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        # SAMPLE_TASK has no calendar_event_id → not linked
+        body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
+        assert 'action="/bridge/weekly/schedule"' in body  # same create route as dashboard
+        assert "排到 Google 行事曆" in body
+        assert "/reschedule" not in body  # reschedule panel only for linked tasks
+
+    def test_accuracy_stat_has_tomato_icon(self, client):
+        body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
+        # 🍅 prepended to the 準確率 label (修修)
+        assert "🍅</span> 準確率" in body

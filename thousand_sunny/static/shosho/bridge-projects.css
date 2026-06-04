@@ -1282,3 +1282,40 @@ a.pj-social-text:hover { color: var(--sho-accent, currentColor); }
   border: 1px solid var(--sho-line, #2a2a2a);
   border-radius: 3px;
 }
+
+/* ── Brief tab · 關聯任務 roll-up (修修: surface linked tasks on Brief) ──────── */
+.pj-brief-tasks { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--sho-line, #2a2a2a); }
+.pj-brief-tasks-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.pj-subsection-title {
+  font-family: var(--sho-font-zh); font-size: 14px; font-weight: 600; margin: 0;
+  color: var(--sho-ink, var(--sho-text));
+}
+.pj-brief-tasks .pj-muted { font-family: var(--sho-font-mono, ui-monospace, monospace); font-size: 11px; color: var(--sho-muted, #888); }
+.pj-brief-task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pj-brief-task {
+  display: flex; align-items: center; gap: 12px; padding: 9px 4px;
+  border-bottom: 1px solid var(--sho-line, #2a2a2a); font-size: 14px;
+}
+.pj-brief-task:last-child { border-bottom: 0; }
+.pj-bt-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--sho-line-2, #555); }
+.pj-bt-dot.pj-status-doing { background: var(--sho-accent); }
+.pj-bt-dot.pj-status-done { background: var(--sho-success, var(--sho-accent)); }
+.pj-bt-dot.pj-status-paused { background: var(--sho-warning); }
+.pj-bt-name {
+  color: var(--sho-text); text-decoration: none; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color var(--sho-t-fast, .12s) var(--sho-ease, ease);
+}
+.pj-bt-name:hover { color: var(--sho-accent); }
+.pj-bt-name:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1, 3px); }
+.pj-brief-task--done .pj-bt-name { color: var(--sho-muted, #888); text-decoration: line-through; }
+.pj-bt-status {
+  font-family: var(--sho-font-mono, ui-monospace, monospace); font-size: 10px;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--sho-muted, #888);
+  margin-left: auto;
+}
+.pj-bt-pom {
+  font-family: var(--sho-font-mono, ui-monospace, monospace); font-size: 12px;
+  color: var(--sho-text-2, var(--sho-muted)); font-variant-numeric: tabular-nums;
+  min-width: 56px; text-align: right;
+}
