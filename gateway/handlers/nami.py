@@ -295,6 +295,41 @@ NAMI_TOOLS: list[dict] = [
         },
     },
     {
+        "name": "schedule_task_entry",
+        "description": (
+            "把一個『已存在的 Task』排進某天的時段（或整天），寫進該 task 的 plan[] 並推到 "
+            "Google Calendar（ADR-041 多事件模型）。**專用於 Bridge 偵測到時段衝突、在 Slack "
+            "請使用者改時段的情境**：使用者選了新時間就用這個工具排入；使用者說『強制 / 就原時段』"
+            "就 force=true 排回原時段。這是排『既有 task』，不是建新事件——別用 "
+            "create_calendar_event（會撞名 / 產生孤兒）。task_slug 是 task 檔名（不含 .md），"
+            "Bridge 的衝突訊息裡會附上。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_slug": {"type": "string", "description": "task 檔名（不含 .md）"},
+                "date": {"type": "string", "description": "日期 YYYY-MM-DD"},
+                "time": {
+                    "type": "string",
+                    "description": "時間 HH:MM；留空＝整天事件（all-day）",
+                },
+                "pomodoros": {
+                    "type": "integer",
+                    "description": "番茄數（1🍅=30 分）；留空＝沿用 task 的預估🍅",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "週末排程原因（排到週六/日時必填）",
+                },
+                "force": {
+                    "type": "boolean",
+                    "description": "與行事曆衝突時仍強制排入，預設 false",
+                },
+            },
+            "required": ["task_slug", "date"],
+        },
+    },
+    {
         "name": "delete_calendar_event",
         "description": (
             "刪除 Calendar 事件。**呼叫前必須先用 ask_user 列出要刪的事件請使用者確認。**"
@@ -980,6 +1015,8 @@ class NamiHandler(BaseHandler):
                 return self._tool_list_calendar_events(tool_input)
             if name == "update_calendar_event":
                 return self._tool_update_calendar_event(tool_input)
+            if name == "schedule_task_entry":
+                return self._tool_schedule_task_entry(tool_input)
             if name == "delete_calendar_event":
                 return self._tool_delete_calendar_event(tool_input)
             if name == "list_gmail_unread":
@@ -1341,6 +1378,102 @@ class NamiHandler(BaseHandler):
         )
 
     # ── Calendar tool executors ──────────────────────────────────
+
+    def _tool_schedule_task_entry(self, input_: dict) -> _ToolOutcome:
+        """ADR-041 v3-F: schedule an EXISTING task's plan entry (timed block or all-day)
+        via the shared calendar_scheduler — the tool Nami uses to act on 修修's reply
+        when the Bridge escalated a clash to Slack. Distinct from create_calendar_event
+        (which mints a NEW task and is orphan-guarded)."""
+        from datetime import time as _time
+
+        from shared import calendar_scheduler
+        from shared.config import get_vault_path
+        from shared.weekly_indexer import WeeklyIndexer
+        from shared.weekly_writer import (
+            TaskNotFoundError,
+            WeekendReasonRequired,
+            WeeklyWriteError,
+        )
+
+        slug = str(input_.get("task_slug", "")).strip()
+        date_s = str(input_.get("date", "")).strip()
+        time_s = str(input_.get("time", "")).strip()
+        reason = str(input_.get("reason", "")).strip() or None
+        force = bool(input_.get("force", False))
+        if not slug or not date_s:
+            return _ToolOutcome(content="Missing task_slug or date", is_error=True)
+        try:
+            d = datetime.strptime(date_s[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return _ToolOutcome(content=f"日期格式無效（需 YYYY-MM-DD）：{date_s}", is_error=True)
+
+        all_day = not time_s
+        if all_day:
+            start = datetime.combine(d, _time.min)
+        else:
+            m = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", time_s)
+            if not m:
+                return _ToolOutcome(content=f"時間格式無效（需 HH:MM）：{time_s}", is_error=True)
+            start = datetime.combine(d, _time(int(m.group(1)), int(m.group(2))))
+
+        vault = get_vault_path()
+        task = WeeklyIndexer(vault).find_task(slug)
+        if task is None:
+            return _ToolOutcome(content=f"找不到 task：{slug}（task_slug 是檔名）", is_error=True)
+        pom_in = input_.get("pomodoros")
+        pom = int(pom_in) if pom_in else (task.est_pomodoros or 2)
+
+        try:
+            outcome = calendar_scheduler.schedule_entry(
+                vault,
+                slug,
+                start=start,
+                pomodoros=pom,
+                title=task.title,
+                all_day=all_day,
+                reason=reason,
+                force=force,
+            )
+        except WeekendReasonRequired:
+            return _ToolOutcome(
+                content=f"{date_s} 是週末，請補一個排程原因（reason）後再排。", is_error=True
+            )
+        except TaskNotFoundError:
+            return _ToolOutcome(content=f"找不到 task：{slug}", is_error=True)
+        except WeeklyWriteError as exc:
+            return _ToolOutcome(content=f"寫入失敗：{exc}", is_error=True)
+
+        when = "整天" if all_day else start.strftime("%H:%M")
+        st = outcome.calendar_status
+        if st == calendar_scheduler.CREATED:
+            return _ToolOutcome(
+                content=(
+                    f"✅ 已把「{task.title}」排到 {date_s} {when}（{pom}🍅）並推到 Google 行事曆。"
+                ),
+                event={
+                    "name": "calendar_event_created",
+                    "payload": {"task": slug, "date": date_s, "all_day": all_day},
+                    "log": task.title,
+                },
+            )
+        if st == calendar_scheduler.CONFLICT:
+            slots = google_calendar.find_free_slots(d, pom * 30, near=start.isoformat())
+            sug = "、".join(s[11:16] for s, _ in slots) or "（今天找不到空檔）"
+            return _ToolOutcome(
+                content=(
+                    f"{date_s} {when} 仍與既有事件衝突。附近空檔：{sug}。"
+                    "要改到哪個時間，或回『強制』就排原時段？"
+                ),
+                is_error=True,
+            )
+        if st == calendar_scheduler.UNAVAILABLE:
+            return _ToolOutcome(
+                content=(
+                    f"已把「{task.title}」記到 {date_s} 的計畫，"
+                    "但 Google 行事曆暫時無法連動，稍後可重試。"
+                )
+            )
+        return _ToolOutcome(content="排入後寫回失敗，已回滾，請重試。", is_error=True)
 
     def _tool_create_calendar_event(self, input_: dict) -> _ToolOutcome:
         title = str(input_.get("title", "")).strip()

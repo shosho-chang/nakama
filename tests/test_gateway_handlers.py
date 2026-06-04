@@ -2284,3 +2284,95 @@ def test_format_event_message_with_handoff():
     assert len(blocks) >= 2
     handoff_text = blocks[-1]["text"]["text"]
     assert "nami" in handoff_text.lower() or "Nami" in handoff_text
+
+
+# ── schedule_task_entry (ADR-041 v3-F: Nami executes a Bridge-escalated clash) ──
+
+
+def test_schedule_task_entry_schedules_existing_task():
+    """v3-F: Nami's schedule_task_entry schedules an EXISTING task's plan entry via
+    the shared calendar_scheduler (not create_calendar_event), and reports success."""
+    from shared import calendar_scheduler
+
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "schedule_task_entry",
+                    {"task_slug": "寫稿", "date": "2026-06-05", "time": "15:00"},
+                    id_="toolu_ste",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已排好")]),
+    ]
+    fake_task = SimpleNamespace(title="寫稿", est_pomodoros=4)
+    outcome = SimpleNamespace(calendar_status=calendar_scheduler.CREATED, event_id="evt_s")
+    seen = {}
+
+    def fake_schedule_entry(vault, slug, **kw):
+        seen.update({"slug": slug, **kw})
+        return outcome
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.config.get_vault_path", return_value=Path("/tmp/vault")),
+        patch(
+            "shared.weekly_indexer.WeeklyIndexer",
+            return_value=SimpleNamespace(find_task=lambda s: fake_task),
+        ),
+        patch.object(calendar_scheduler, "schedule_entry", side_effect=fake_schedule_entry),
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "改 15:00", "U1")
+
+    assert seen["slug"] == "寫稿"
+    assert seen["all_day"] is False and seen["pomodoros"] == 4
+    assert seen["start"].hour == 15
+    assert seen["title"] == "寫稿"  # derived from the task, not a client field
+    assert mock_emit.call_args[0][1] == "calendar_event_created"
+
+
+def test_schedule_task_entry_blank_time_is_all_day():
+    """v3-F: blank time → all_day=True passed to the scheduler."""
+    from shared import calendar_scheduler
+
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "schedule_task_entry",
+                    {"task_slug": "寫稿", "date": "2026-06-05"},
+                    id_="toolu_ste2",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("整天排好")]),
+    ]
+    fake_task = SimpleNamespace(title="寫稿", est_pomodoros=2)
+    outcome = SimpleNamespace(calendar_status=calendar_scheduler.CREATED, event_id="evt_s2")
+    seen = {}
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.config.get_vault_path", return_value=Path("/tmp/vault")),
+        patch(
+            "shared.weekly_indexer.WeeklyIndexer",
+            return_value=SimpleNamespace(find_task=lambda s: fake_task),
+        ),
+        patch.object(
+            calendar_scheduler,
+            "schedule_entry",
+            side_effect=lambda vault, slug, **kw: (seen.update(kw), outcome)[1],
+        ),
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "排整天", "U1")
+
+    assert seen["all_day"] is True
