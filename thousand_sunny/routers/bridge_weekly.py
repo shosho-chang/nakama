@@ -86,9 +86,13 @@ _PLAN_ERRORS = {
         "此任務已連動 Google 行事曆——要改期或取消，請到任務頁操作；重新排入會產生重複事件，已擋下。"
     ),
     # calendar scheduling (ADR-041 41c) — plan is authoritative; calendar is best-effort
-    "cal_conflict": (
+    "cal_conflict_nami": (
+        "此時段與 Google 行事曆既有事件衝突——已寫入本週計畫，並請 Nami 在 Slack 跟你確認"
+        "要改到哪個時間（或回「強制」排原時段）。"
+    ),
+    "cal_conflict": (  # fallback when the Slack escalation itself fails (v3-F)
         "此時段與 Google 行事曆既有事件衝突——已寫入本週計畫但未建立行事曆事件。"
-        "想忽略衝突，請勾選「強制排入」後重送。"
+        "請到 Slack 跟 Nami 確認時段，或改個時間重送。"
     ),
     "cal_unavailable": (
         "已寫入本週計畫，但 Google 行事曆暫時無法連動（授權或網路）——稍後可重新排入以補建事件。"
@@ -201,6 +205,35 @@ def _back(
     return RedirectResponse(url, status_code=303)
 
 
+def _escalate_conflict_to_nami(task_slug, title, start, pomodoros, conflicts) -> bool:
+    """v3-F: on a timed clash, DM 修修 (Nami-voiced, via the shared Slack bot) with the
+    clash + free-slot suggestions + the pending request, so he resolves it in Slack
+    (Nami's ``schedule_task_entry`` executes his pick). Best-effort — a push failure
+    never blocks the plan write; the caller falls back to the plain banner. Returns
+    True iff the message was posted."""
+    try:
+        from agents.franky.slack_bot import FrankySlackBot
+        from shared import google_calendar
+
+        slots = google_calendar.find_free_slots(
+            start.date(), pomodoros * 30, near=start.isoformat()
+        )
+        slot_txt = "、".join(s[11:16] for s, _ in slots) or "（今天找不到空檔）"
+        clash_txt = "、".join(f"「{c.title}」" for c in conflicts[:3]) or "既有事件"
+        msg = (
+            f"⚠️ 排程衝突：你想把「{title}」排在 {start.strftime('%m/%d %H:%M')}"
+            f"（{pomodoros}🍅），但和 {clash_txt} 衝突。\n"
+            f"附近空檔：{slot_txt}。\n"
+            f"要我排到哪個時間？回個時間就好（或說「強制」排原時段）。\n"
+            f"（task_slug: {task_slug}）"
+        )
+        FrankySlackBot.from_env().post_plain(msg, context="calendar_conflict")
+        return True
+    except Exception as exc:  # noqa: BLE001 — best-effort; fall back to the banner
+        logger.warning("escalate_conflict_to_nami failed for %s: %s", task_slug, exc)
+        return False
+
+
 def _parse_entry_date(entry_date: str) -> date | None:
     try:
         return date.fromisoformat(entry_date.strip())
@@ -280,7 +313,17 @@ async def weekly_plan_add(
     if st == calendar_scheduler.CREATED:
         return _plan_back(ft, task_slug, wk_key, saved="scheduled")
     if st == calendar_scheduler.CONFLICT:
-        return _plan_back(ft, task_slug, wk_key, err="cal_conflict", n=len(outcome.conflicts))
+        # v3-F: don't dead-end — escalate to Nami in Slack with free-slot suggestions
+        # so 修修 resolves it conversationally (Nami's schedule_task_entry acts on the
+        # reply). The plan entry already stands (vault-first). Best-effort push.
+        pushed = _escalate_conflict_to_nami(task_slug, title, start, pomodoros, outcome.conflicts)
+        return _plan_back(
+            ft,
+            task_slug,
+            wk_key,
+            err="cal_conflict_nami" if pushed else "cal_conflict",
+            n=len(outcome.conflicts),
+        )
     if st == calendar_scheduler.UNAVAILABLE:
         return _plan_back(ft, task_slug, wk_key, err="cal_unavailable")
     return _plan_back(ft, task_slug, wk_key, err="cal_failed")  # FAILED — event rolled back
@@ -702,9 +745,13 @@ _TASK_ERRORS = {
     "time": "排程時間格式無效。",
     "pomodoros": "番茄數需介於 1–20。",
     "weekend": "週末排程需填寫原因（D9）——已取消這次改期。",
-    "cal_conflict": (
-        "新時段與 Google 行事曆既有事件衝突——已更新本週計畫，但行事曆事件未移動。"
-        "想忽略衝突，請勾選「強制」後重送。"
+    "cal_conflict_nami": (
+        "此時段與 Google 行事曆既有事件衝突——已寫入本週計畫，並請 Nami 在 Slack 跟你確認"
+        "要改到哪個時間（或回「強制」排原時段）。"
+    ),
+    "cal_conflict": (  # fallback when the Slack escalation itself fails (v3-F)
+        "此時段與 Google 行事曆既有事件衝突——已寫入本週計畫但未建立行事曆事件。"
+        "請到 Slack 跟 Nami 確認時段，或改個時間重送。"
     ),
     "cal_unavailable": (
         "已更新本週計畫，但 Google 行事曆暫時無法連動（授權或網路）——稍後可在此重試。"

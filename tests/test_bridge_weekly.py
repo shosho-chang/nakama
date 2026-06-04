@@ -627,7 +627,8 @@ class TestCalendarSchedule:
         assert 'data-pane="all"' in body
         assert 'action="/bridge/weekly/plan"' in body
         assert 'type="date"' in body and 'type="time"' in body
-        assert 'name="force"' in body  # the conflict-override affordance
+        # v3-F: the 「強制」 checkbox is gone — a clash now escalates to Nami in Slack
+        assert 'name="force"' not in body
         assert "測試任務" in body
 
     def test_schedule_creates_event_and_links(self, client, tmp_path, monkeypatch):
@@ -1323,6 +1324,49 @@ class TestMergedScheduleRoute:
         assert r.status_code == 303 and "saved=unscheduled" in r.headers["location"]
         assert deleted == ["evt_c"]
         assert not [e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-03"]
+
+    def test_timed_conflict_escalates_to_nami(self, client, tmp_path, monkeypatch):
+        """v3-F: a timed clash no longer dead-ends — the plan entry stands, and the
+        Bridge DMs 修修 (via the Slack bot) with the clash + free-slot suggestions +
+        the task_slug, returning the cal_conflict_nami banner."""
+        import shared.google_calendar as gc
+        from agents.franky import slack_bot
+
+        monkeypatch.setattr(gc, "create_event", lambda **kw: [self._ev("c1")])  # → CONFLICT
+        monkeypatch.setattr(
+            gc,
+            "find_free_slots",
+            lambda d, dur, **kw: [("2026-06-04T15:00:00+08:00", "2026-06-04T16:00:00+08:00")],
+        )
+        posted = {}
+
+        class _FakeBot:
+            def post_plain(self, text, *, context="plain"):
+                posted["text"] = text
+                posted["context"] = context
+
+        monkeypatch.setattr(
+            slack_bot.FrankySlackBot, "from_env", classmethod(lambda cls: _FakeBot())
+        )
+        r = client.post(
+            "/bridge/weekly/plan",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-04",
+                "entry_time": "15:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303 and "err=cal_conflict_nami" in r.headers["location"]
+        # the plan entry still stands (vault-first), just not linked
+        entry = next(e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-04")
+        assert "calendar_event_id" not in entry
+        # the Slack DM carries the slug + a suggested slot
+        assert "task_slug: 測試任務" in posted["text"]
+        assert "15:00" in posted["text"]
+        assert posted["context"] == "calendar_conflict"
 
 
 class TestPlanRouteFromTask:

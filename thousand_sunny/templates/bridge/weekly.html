@@ -82,8 +82,9 @@
             <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
         </div>
         <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+        {# v3-F: no 「強制」 checkbox — 排入 auto-detects clashes and Nami asks you in
+           Slack how to resolve (a free slot, or 強制). #}
         <div class="wk-sched-actions">
-          <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
           <button class="sho-btn wk-plan-go" type="submit">排入</button>
         </div>
       </form>
