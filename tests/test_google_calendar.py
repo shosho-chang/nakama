@@ -213,3 +213,68 @@ def test_create_event_dedupes_on_idempotency_key(monkeypatch):
         idempotency_key="slug@2026-06-03",
     )
     assert out is existing
+
+
+class _FakeService:
+    """Minimal Google Calendar service double that records the inserted/patched body."""
+
+    def __init__(self):
+        self.inserted = None
+        self.patched = None
+
+    def events(self):
+        return self
+
+    def insert(self, *, calendarId, body):
+        self.inserted = body
+        return _FakeExec({"id": "evt_new", **body})
+
+    def patch(self, *, calendarId, eventId, body):
+        self.patched = body
+        return _FakeExec({"id": eventId, **body})
+
+
+class _FakeExec:
+    def __init__(self, ret):
+        self._ret = ret
+
+    def execute(self):
+        return self._ret
+
+
+def test_create_event_all_day_uses_date_not_datetime(monkeypatch):
+    """ADR-041 v3-E: a date-only start/end → an all-day Google event (start.date /
+    end.date, no dateTime), and conflict detection is skipped (no time slot)."""
+    from shared import google_calendar
+
+    svc = _FakeService()
+    monkeypatch.setattr(google_calendar, "_get_service", lambda: svc)
+    monkeypatch.setattr(
+        google_calendar,
+        "find_conflicts",
+        lambda s, e: (_ for _ in ()).throw(AssertionError("all-day must not conflict-check")),
+    )
+    google_calendar.create_event(title="整天任務", start="2026-06-05", end="2026-06-06")
+    assert svc.inserted["start"] == {"date": "2026-06-05"}
+    assert svc.inserted["end"] == {"date": "2026-06-06"}
+    assert "dateTime" not in svc.inserted["start"]
+
+
+def test_update_event_all_day_patches_date(monkeypatch):
+    """v3-E: patching with a date-only start/end keeps the event all-day."""
+    from shared import google_calendar
+
+    svc = _FakeService()
+    monkeypatch.setattr(google_calendar, "_get_service", lambda: svc)
+    google_calendar.update_event("evt1", start="2026-06-07", end="2026-06-08")
+    assert svc.patched["start"] == {"date": "2026-06-07"}
+    assert svc.patched["end"] == {"date": "2026-06-08"}
+
+
+def test_is_date_only():
+    from shared.google_calendar import _is_date_only
+
+    assert _is_date_only("2026-06-05") is True
+    assert _is_date_only("2026-06-05T09:00:00") is False
+    assert _is_date_only("2026-06-05T09:00:00+08:00") is False
+    assert _is_date_only("") is False
