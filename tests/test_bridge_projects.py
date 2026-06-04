@@ -145,6 +145,15 @@ class TestDetail:
         assert "pj-pomodoro-dock" in r.text
         assert "Pre-production" in r.text  # task in selector
 
+    def test_brief_lists_linked_tasks(self, client):
+        # 修修: every linked Task surfaced on the Brief tab (not just the dock)
+        body = client.get("/bridge/projects/肌酸的妙用").text
+        assert "pj-brief-tasks" in body
+        assert "關聯任務" in body
+        # each task links to its weekly task page (full file-stem slug)
+        assert "/bridge/weekly/task/" in body
+        assert "Pre-production" in body
+
     def test_404_for_unknown(self, client):
         r = client.get("/bridge/projects/does-not-exist")
         assert r.status_code == 404

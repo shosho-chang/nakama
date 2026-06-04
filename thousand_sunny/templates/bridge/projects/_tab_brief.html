@@ -79,4 +79,27 @@
       </form>
     </div>
   </details>
+
+  {# ── 關聯任務 (修修: surface every Task linked to this project on Brief, not
+       only inside the footer dock's collapsed Tasks ▾) ── #}
+  <section class="pj-brief-tasks">
+    <div class="pj-brief-tasks-head">
+      <h3 class="pj-subsection-title">關聯任務</h3>
+      <span class="pj-muted">{{ tasks | length }} 項 · 🍅 實際 / 預估</span>
+    </div>
+    {% if tasks %}
+      <ul class="pj-brief-task-list">
+        {% for t in tasks %}
+          <li class="pj-brief-task pj-brief-task--{{ t.status | replace(' ', '-') }}">
+            <span class="pj-bt-dot pj-status-{{ t.status }}" aria-hidden="true"></span>
+            <a class="pj-bt-name" href="/bridge/weekly/task/{{ t.slug | urlencode }}">{{ t.name }}</a>
+            <span class="pj-bt-status">{{ t.status }}</span>
+            <span class="pj-bt-pom">{{ t.actual_pomodoros }}/{{ t.est_pomodoros }}🍅</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="pj-empty-hint">此 project 尚無 TaskNotes 任務。用下方 dock 的「Tasks ▾ → + 新任務」建立。</p>
+    {% endif %}
+  </section>
 </div>

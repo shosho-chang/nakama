@@ -49,7 +49,7 @@
       </div>
       <div class="tk-stat">
         <span class="tk-stat-num {{ 'tk-over' if task.est_pomodoros and accuracy_pct > 100 }}">{{ accuracy_pct if task.est_pomodoros else '—' }}{% if task.est_pomodoros %}<span class="tk-stat-den">%</span>{% endif %}</span>
-        <span class="tk-stat-lab">準確率</span>
+        <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 準確率</span>
       </div>
       <div class="tk-stat">
         <span class="tk-stat-num">{{ task.ufo_total }}</span>
@@ -111,6 +111,33 @@
             <button class="sho-btn--ghost tk-cal-danger" type="submit">取消這天的安排<span class="wk-mut">（行事曆＋{{ sched_date }} 一起清）</span></button>
           </form>
         </div>
+      </section>
+    {% else %}
+      {# NOT yet projected — show the SAME create picker the dashboard row uses, so
+         calendar scheduling reads identically on both surfaces (修修: why different?).
+         Posts to /weekly/schedule → the 41c orphan guard still applies server-side. #}
+      <section class="tk-cal" aria-label="行事曆排程">
+        <div class="tk-cal-head">
+          <span class="wk-h">📅 排到 Google 行事曆</span>
+          <span class="wk-mut">選日期/時間，建立一個行事曆時段</span>
+        </div>
+        <form class="tk-cal-form wk-sched-form" method="post" action="/bridge/weekly/schedule">
+          <input type="hidden" name="task_slug" value="{{ task.slug }}">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <div class="wk-sched-fields">
+            <label class="wk-sched-lbl">日期
+              <input class="wk-sched-date" type="date" name="entry_date" value="{{ (task.scheduled.isoformat() if task.scheduled else today_iso) }}" required></label>
+            <label class="wk-sched-lbl">時間
+              <input class="wk-sched-time" type="time" name="entry_time" value="09:00" step="900" required></label>
+            <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ block_pom }}" aria-label="番茄數">🍅
+              <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
+          </div>
+          <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+          <div class="wk-sched-actions">
+            <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
+            <button class="sho-btn wk-sched-go" type="submit">排到行事曆</button>
+          </div>
+        </form>
       </section>
     {% endif %}
 
@@ -320,7 +347,7 @@
       .forEach(function (el) { el.addEventListener('input', sync); });
     form.addEventListener('submit', function () {
       var btn = form.querySelector('.wk-sched-go');
-      if (btn) { btn.disabled = true; btn.textContent = '改期中…'; }
+      if (btn) { btn.disabled = true; btn.textContent = '處理中…'; }  // reschedule OR create
     });
     sync();
   })();

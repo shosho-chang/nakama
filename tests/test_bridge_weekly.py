@@ -1175,3 +1175,44 @@ class TestUnifiedTaskViewsAndDone:
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
         assert "wk-ci-pom" in body
         assert "1/3🍅" in body  # actual 1 / planned 3
+
+
+class TestTaskPageCalendarConsistency:
+    """修修: the task-page calendar UI should read the same as the dashboard row.
+    Non-linked → create picker (posts /weekly/schedule); linked → reschedule panel."""
+
+    def test_nonlinked_task_shows_create_picker(self, client, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        # SAMPLE_TASK has no calendar_event_id → not linked
+        body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
+        assert 'action="/bridge/weekly/schedule"' in body  # same create route as dashboard
+        assert "排到 Google 行事曆" in body
+        assert "/reschedule" not in body  # reschedule panel only for linked tasks
+
+    def test_accuracy_stat_has_tomato_icon(self, client):
+        body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
+        # 🍅 prepended to the 準確率 label (修修)
+        assert "🍅</span> 準確率" in body
+
+
+class TestScheduleBadge:
+    """修修: no icon at all on the schedule badge — the colour alone marks linked
+    (accent .wk-bl-linked) vs vault-only (muted .wk-bl-when). Bare date."""
+
+    def test_linked_row_uses_colour_class_no_icon(self, client, tmp_path, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        linked = (
+            "---\ntitle: 已連動任務\nstatus: to-do\n預估🍅: 2\n"
+            "scheduled: 2026-06-03T09:00:00\ncalendar_event_id: evt_live\n"
+            "tags:\n  - task\n---\n\nbody\n"
+        )
+        (tmp_path / "TaskNotes" / "Tasks" / "已連動任務.md").write_text(linked, encoding="utf-8")
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        # linked → accent colour class + bare date, no 🔗 / 📅 glyphs on the badge
+        assert 'wk-bl-linked" title="已連動 Google 行事曆事件">06/03' in body
+        assert "🔗" not in body
+        assert "📅🔗" not in body

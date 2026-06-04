@@ -943,6 +943,7 @@ def _scan_tasks(slug: str) -> list[dict[str, Any]]:
         out.append(
             {
                 "name": task_name,
+                "slug": name[: -len(".md")],  # full file stem → weekly task-page link
                 "est_pomodoros": est_int,
                 "actual_pomodoros": actual,
                 "status": str(fm.get("status") or "to-do"),
