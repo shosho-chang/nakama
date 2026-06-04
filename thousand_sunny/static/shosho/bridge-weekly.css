@@ -98,8 +98,11 @@ body.sho .wk-box.done { background: var(--sho-text); border-color: var(--sho-tex
 body.sho .wk-task.done .wk-tname { color: var(--sho-muted); text-decoration: line-through; }
 body.sho .wk-tname { color: var(--sho-text); }
 body.sho .wk-tproj { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); letter-spacing: 0.04em; }
+/* spacer carries the auto-margin so the date badge can sit just left of the 🍅
+   count in the right group (修修); the count itself no longer needs the margin */
+body.sho .wk-rowfill { margin-left: auto; }
 body.sho .wk-tnum {
-  margin-left: auto; font-family: var(--sho-font-mono); font-size: 11px;
+  font-family: var(--sho-font-mono); font-size: 11px;
   color: var(--sho-text-2); font-variant-numeric: tabular-nums;
 }
 body.sho .wk-status { text-transform: none; }

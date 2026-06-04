@@ -16,9 +16,10 @@
       </form>
       <span class="wk-tname">{{ t.name }}</span>
       <span class="wk-tproj">{{ t.category_label }}{% if t.project %} · {{ t.project }}{% endif %}</span>
-      {# scheduled day pinned LEFT, next to the name (修修); colour alone marks
-         linked-to-Google (accent) vs vault-only (muted grey) — no icon needed.
-         The 🍅 count (.wk-tnum) keeps margin-left:auto → pushed RIGHT. #}
+      {# spacer pushes the whole metric group RIGHT; the scheduled date sits just
+         LEFT of the 🍅 count (修修), not glued to the title. Colour alone marks
+         linked-to-Google (accent) vs vault-only (muted grey) — no icon. #}
+      <span class="wk-rowfill" aria-hidden="true"></span>
       {% if t.calendar_event_id %}<span class="wk-bl-when wk-bl-linked" title="已連動 Google 行事曆事件">{{ t.scheduled.strftime('%m/%d') if t.scheduled }}</span>
       {% elif t.scheduled %}<span class="wk-bl-when" title="已排程（尚未推到 Google 行事曆）">{{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
       <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
