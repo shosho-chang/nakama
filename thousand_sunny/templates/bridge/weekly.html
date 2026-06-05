@@ -10,87 +10,9 @@
    time + linked state; the plain ✕ removes a plan-only entry, a linked entry's 🗑
    is confirm-gated and also deletes the Google event (V3d). The old separate
    「排到 Google 行事曆」 section + the scheduled→ sync button are gone. #}
-{% macro task_row(t, view) %}
-  {% set wk_entries = t.plan | selectattr('date', 'ge', view.week.start) | selectattr('date', 'le', view.week.end) | list %}
-  {% set timed = t.plan | selectattr('start') | list %}
-  <details class="wk-task-d" data-slug="{{ t.slug }}">
-    <summary class="wk-task {{ 'done' if t.done }}">
-      <form class="wk-box-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/done">
-        <input type="hidden" name="week" value="{{ view.week.file_key }}">
-        <input type="hidden" name="done" value="{{ '0' if t.done else '1' }}">
-        <button type="submit" class="wk-box {{ 'done' if t.done }}"
-                aria-pressed="{{ 'true' if t.done else 'false' }}"
-                aria-label="{{ ('標記未完成：' if t.done else '標記完成：') ~ t.name }}"></button>
-      </form>
-      <span class="wk-tname">{{ t.name }}</span>
-      <span class="wk-tproj">{{ t.category_label }}{% if t.project %} · {{ t.project }}{% endif %}</span>
-      {# spacer pushes the metric group RIGHT; the scheduled day sits just LEFT of
-         the 🍅 count. Colour alone marks linked-to-Google (accent) vs vault-only
-         (muted). With multiple timed blocks, show the earliest + "+N" (v3). #}
-      <span class="wk-rowfill" aria-hidden="true"></span>
-      {% if timed %}
-        {% set first = (timed | sort(attribute='start'))[0] %}
-        <span class="wk-bl-when {{ 'wk-bl-linked' if first.is_linked }}" title="{{ '已連動 Google 行事曆事件' if first.is_linked else '已排程（尚未推到 Google 行事曆）' }}">{{ first.date.strftime('%m/%d') }}{% if first.time_label %} {{ first.time_label }}{% endif %}{% if timed | length > 1 %} +{{ timed | length - 1 }}{% endif %}</span>
-      {% elif t.scheduled %}<span class="wk-bl-when" title="已排程（尚未推到 Google 行事曆）">{{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
-      <span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>
-      <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
-      <span class="wk-edit-hint" aria-hidden="true">排程</span>
-    </summary>
-
-    <div class="wk-plan-edit">
-      {# this week's plan entries — each its own chip; linked ones show their time
-         in accent + a confirm-gated 🗑 (deletes the Google event too, V3d). #}
-      <div class="wk-plan-list">
-        {% for a in wk_entries %}
-          <span class="wk-plan-chip {{ 'has-reason' if a.reason }} {{ 'is-linked' if a.is_linked }}">
-            <span class="wk-chip-day">{{ a.date.strftime('%m/%d') }}{% if a.time_label %} {{ a.time_label }}{% endif %}</span>
-            <span class="wk-chip-pom">{{ a.pomodoros }}🍅</span>
-            {% if a.reason %}<span class="wk-chip-reason" title="{{ a.reason }}">⚠</span>{% endif %}
-            {% if a.is_linked %}
-              <form method="post" action="/bridge/weekly/plan/cancel" class="wk-chip-form"
-                    data-confirm="取消 {{ a.date.strftime('%m/%d') }} 的安排？會刪掉 Google 行事曆事件，並移除這天的計畫。">
-                <input type="hidden" name="task_slug" value="{{ t.slug }}">
-                <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
-                <input type="hidden" name="week" value="{{ view.week.file_key }}">
-                <button class="wk-chip-x wk-chip-cancel" type="submit"
-                        aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">🗑</button>
-              </form>
-            {% else %}
-              <form method="post" action="/bridge/weekly/plan/remove" class="wk-chip-form">
-                <input type="hidden" name="task_slug" value="{{ t.slug }}">
-                <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
-                <input type="hidden" name="week" value="{{ view.week.file_key }}">
-                <button class="wk-chip-x" type="submit" aria-label="移除 {{ a.date.strftime('%m/%d') }} 的計畫">✕</button>
-              </form>
-            {% endif %}
-          </span>
-        {% else %}
-          <span class="wk-plan-none">本週尚未排入。</span>
-        {% endfor %}
-      </div>
-
-      {# merged 「排入」 (v3): date (any week) + optional time + 🍅 → writes plan[]
-         AND, with a time, the Google event in one action. Blank time = plan-only. #}
-      <form class="wk-sched-form wk-plan-merged" method="post" action="/bridge/weekly/plan">
-        <input type="hidden" name="task_slug" value="{{ t.slug }}">
-        <input type="hidden" name="week" value="{{ view.week.file_key }}">
-        <div class="wk-sched-fields">
-          <label class="wk-sched-lbl">日期
-            <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
-          <label class="wk-sched-lbl">時間 <span class="wk-mut">(留空＝只記計畫)</span>
-            <input class="wk-sched-time" type="time" name="entry_time" step="900"></label>
-          <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([t.est_pomodoros, 20] | min) if t.est_pomodoros else 2 }}" aria-label="番茄數">🍅
-            <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
-        </div>
-        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
-        <div class="wk-sched-actions">
-          <label class="wk-check wk-force"><input type="checkbox" name="force" value="1"> 與行事曆衝突時仍強制排入</label>
-          <button class="sho-btn wk-plan-go" type="submit">排入</button>
-        </div>
-      </form>
-    </div>
-  </details>
-{% endmacro %}
+{# v3-H Slice 3: task_row extracted to a shared partial so the Project Brief tab can
+   reuse the exact same row (chips + 排入) as the dashboard. #}
+{% from "_task_row.html" import task_row %}
 
 {# ── Weekly-file 週交接 forms (ADR-040 A6 composable steps; Journals/Weekly 🟡) ── #}
 {% macro _sec(view, heading) %}{{ view.review.sections.get(heading, '') if view.review else '' }}{% endmacro %}
@@ -384,6 +306,28 @@
             <button class="wk-tab" data-tab="week" type="button">整週</button>
             <button class="wk-tab" data-tab="all" type="button">全部</button>
           </div>
+          {# v3-H Slice 2: 新增任務 — optional project (blank = standalone) + category.
+             Bare creation; schedule later via the 排入 chips. Same dual-write path as Nami. #}
+          <details class="wk-newtask">
+            <summary class="wk-newtask-toggle">＋ 新增任務</summary>
+            <form class="wk-newtask-form" method="post" action="/bridge/weekly/task/new">
+              <input type="hidden" name="week" value="{{ view.week.file_key }}">
+              <label class="wk-sched-lbl wk-newtask-title"><span class="wk-sched-cap">標題</span>
+                <input type="text" name="title" maxlength="80" required autocomplete="off"></label>
+              <label class="wk-sched-lbl"><span class="wk-sched-cap">專案</span>
+                <select name="project">
+                  <option value="">（無專案 · 獨立任務）</option>
+                  {% for p in all_projects %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+                </select></label>
+              <label class="wk-sched-lbl"><span class="wk-sched-cap">分類</span>
+                <select name="category">
+                  {% for slug, label in categories %}<option value="{{ slug }}"{{ ' selected' if slug == 'work' }}>{{ label }}</option>{% endfor %}
+                </select></label>
+              <label class="wk-sched-lbl"><span class="wk-sched-cap">🍅 預估</span>
+                <input class="wk-newtask-pom" type="number" name="est_pomodoros" min="1" max="20" value="4"></label>
+              <button class="sho-btn wk-sched-go" type="submit">建立</button>
+            </form>
+          </details>
         </div>
 
         <div class="wk-tabpane" data-pane="today">
@@ -426,13 +370,11 @@
   </section>
   </main>
 
+  <script src="/static/shosho/bridge-weekly.js?v={{ asset_version | default('') }}"></script>
   <script>
-  /* Done-toggle checkbox (#2): the box is a real <form> submit. Stop the click
-     from bubbling so it doesn't also toggle the parent <details> (task row) or
-     follow the day-bullet's task link — the POST→303 reload re-renders state. */
-  document.querySelectorAll('.wk-box-form button').forEach(function (b) {
-    b.addEventListener('click', function (e) { e.stopPropagation(); });
-  });
+  /* Page-agnostic task-row handlers (done-toggle stopPropagation, confirm-gate,
+     排入 weekend/duration/double-submit) live in bridge-weekly.js — shared with the
+     Project Brief tab. Below is the dashboard-only tab toggle + stay-in-place state. */
 
   /* Task-view tab toggle (今日 / 整週 / 全部) + stay-in-place state (v3-B).
      The merged 排入 / chip actions POST→303-reload, so we persist the active tab,
@@ -466,9 +408,12 @@
         .call(document.querySelectorAll('.wk-task-d[open]'), function (d) { return d.getAttribute('data-slug'); })
         .filter(Boolean);
     }
-    // save state on any plan-edit submit (capture so it runs before navigation)
+    // save state on any plan-edit OR inline-rename submit (capture so it runs before
+    // navigation) — the rename form lives in the row <summary>, outside .wk-plan-edit,
+    // so without this a rename would lose the tab/scroll and the view would jump (v3-I.4).
     document.addEventListener('submit', function (e) {
-      if (!e.target.closest || !e.target.closest('.wk-plan-edit')) return;
+      if (!e.target.closest) return;
+      if (!e.target.closest('.wk-plan-edit') && !e.target.closest('.wk-rename-form')) return;
       try {
         sessionStorage.setItem('wk-tab', activeTab() || '');
         sessionStorage.setItem('wk-open', JSON.stringify(openSlugs()));
@@ -502,59 +447,6 @@
       }
       if (scroll) window.scrollTo(0, parseInt(scroll, 10) || 0);
     })();
-  })();
-
-  /* Confirm-gate destructive chip actions (the linked-entry 🗑 deletes a Google
-     event too — V3d). */
-  document.querySelectorAll('form[data-confirm]').forEach(function (f) {
-    f.addEventListener('submit', function (e) {
-      if (!window.confirm(f.getAttribute('data-confirm'))) e.preventDefault();
-    });
-  });
-
-  /* Merged 排入 form: reveal+require the weekend reason when the picked date is
-     Sat/Sun, and show the derived block length (1🍅 = 30 min) when a time is set. */
-  (function () {
-    function isWeekend(v) {
-      if (!v) return false;
-      var d = new Date(v + 'T00:00:00');
-      var day = d.getDay();           // 0 Sun .. 6 Sat
-      return day === 0 || day === 6;
-    }
-    function endLabel(timeStr, pom) {
-      if (!timeStr || !pom) return '';
-      var parts = timeStr.split(':');
-      var raw = (+parts[0]) * 60 + (+parts[1]) + pom * 30;
-      var nextDay = raw >= 1440;                 // block runs past midnight
-      var mins = ((raw % 1440) + 1440) % 1440;
-      var hh = String(Math.floor(mins / 60)).padStart(2, '0');
-      var mm = String(mins % 60).padStart(2, '0');
-      return '→ ' + hh + ':' + mm + (nextDay ? '（+1 天）' : '') + '（' + (pom * 30) + ' 分）';
-    }
-    function sync(form) {
-      var date = form.querySelector('.wk-sched-date');
-      var time = form.querySelector('.wk-sched-time');
-      var pom = form.querySelector('input[name="pomodoros"]');
-      var reason = form.querySelector('.wk-reason-field');
-      var dur = form.querySelector('.wk-sched-dur');
-      if (date && reason) {
-        var weekend = isWeekend(date.value);
-        form.classList.toggle('is-weekend', weekend);
-        reason.required = weekend;
-      }
-      if (dur && time && pom) dur.textContent = endLabel(time.value, parseInt(pom.value, 10));
-    }
-    document.querySelectorAll('.wk-sched-form').forEach(function (form) {
-      form.querySelectorAll('.wk-sched-date, .wk-sched-time, input[name="pomodoros"]')
-        .forEach(function (el) { el.addEventListener('input', function () { sync(form); }); });
-      // Guard against a double-submit racing two POSTs (the calendar idempotency
-      // key dedupes the event, but a disabled button is clearer UX — Gemini §4).
-      form.addEventListener('submit', function () {
-        var btn = form.querySelector('.wk-sched-go, .wk-plan-go');
-        if (btn) { btn.disabled = true; btn.textContent = '排入中…'; }
-      });
-      sync(form);
-    });
   })();
 
   /* Dismiss the error toast on click (the ?err= stays in the URL until reload). */

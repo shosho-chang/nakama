@@ -83,8 +83,21 @@ Wording corrected [panel: Codex §1c]: Nami doesn't read `plan[]` today — it r
 | **v3-B** | Merge the two row forms → one 「排入」 (date any-week + time + 🍅) = vault + best-effort Google; carry+enforce `task_file_token`; remove the separate section + sync button; `#task-{slug}` re-open **preserving tab/open-rows/scroll**; chip shows time + linked colour; ✕ stays plan-only, linked entry gets a `confirm()`-gated 取消; **browser UAT** | HITL |
 | **v3-C** | Task page (41d) reschedule/cancel become per-entry | HITL |
 | **v3-D** | Nami sync iterates timed `plan[]` entries (retire the derived `scheduled` mirror) | AFK |
+| **v3-E** | **Collapse the two storage modes** (修修 UAT 2026-06-05): every 排入 projects a Google event — timed → block, **blank time → all-day event**; plan-only is retired; one delete (✕, `confirm()`-gated); drop the 排程 row hint + the "只記計畫" wording | HITL |
+| **v3-F** | Drop the 「強制」 checkbox; a timed clash → **Nami DMs free-slot suggestions in Slack** + executes 修修's pick (cross-surface conflict resolution) | HITL |
 
 **v3-A must merge before v3-B** (shared writer/scheduler/indexer). Every UI slice's acceptance includes desktop real-vault browser UAT.
+
+### v3-E — one storage mode: every entry is a calendar projection (修修 UAT 2026-06-05)
+修修, on v3-B/C UAT: the **plan-only vs timed** split is two storage mechanisms and too complex (a plan-only day silently re-saved as timed looked like "it overwrote but didn't sync to Google" — actually D2 best-effort degrading when GCal was unauthorised on the dev box). Decision: **collapse to one mode.**
+- **Every 排入 projects a Google event.** Time given → a timed block (`start`..`start + 🍅×30`). **Time blank → an all-day event** (Google `start.date`/`end.date`, no `dateTime`) — this **un-defers the "all-day-event semantics" Non-goal**.
+- **Plan-only is retired** (overturns V1/V2/V3's "no `start` ⇒ plan-only, no calendar"). The merged form hint becomes "(留空＝整天)".
+- **One delete control:** the per-entry **✕**, `confirm()`-gated (it now always deletes a real Google event — silent calendar deletion stays forbidden). This **supersedes D9's ✕-vs-🗑 split** and v3's V3d.
+- **Existing plan-only entries are NOT auto-migrated** to all-day events (would flood the calendar with one event per previously-planned day). They display + ✕-remove as today; an event is only minted when 修修 re-排入 that day. The backfill stays "fold legacy task-level projection", not "create events for bare plan days".
+- Drop the redundant 排程 row hint (`.wk-edit-hint`) — clicking the row already expands it.
+
+### v3-F — timed clash escalates to Nami in Slack
+The 「強制」 checkbox is removed. A timed 排入 always conflict-checks; on a clash the Bridge does **not** dead-end with a banner — it pushes a Slack message (existing Franky bot channel) describing the clash + **free-slot suggestions Nami computed from 修修's calendar**, carrying the pending request (slug / date / 🍅). 修修 picks a slot (or "強制原時段") in Slack; Nami executes via its per-entry calendar tools (v3-D). All-day 排入 skips conflict detection (all-day events don't time-clash).
 
 ---
 

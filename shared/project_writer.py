@@ -25,7 +25,10 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
+from shared.log import get_logger
 from shared.project_indexer import _FRONTMATTER_RE  # canonical regex
+
+logger = get_logger(__name__)
 
 PROJECTS_DIR = "Projects"
 TASKS_DIR = "TaskNotes/Tasks"
@@ -502,26 +505,31 @@ def pop_last_timeentry(
 def create_task(
     *,
     vault_root: Path,
-    project_slug: str,
+    project_slug: str | None,
     task_name: str,
     estimated_pomodoros: int = 4,
     priority: str = "normal",
+    category: str = "work",
     scheduled: str | None = None,
+    notes: str = "",
 ) -> Path:
-    """Create a new TaskNotes-plugin-compatible task .md for a project.
+    """Create a new TaskNotes-plugin-compatible task .md.
 
-    File path: ``TaskNotes/Tasks/{project_slug} - {task_name}.md``. Builds
-    the same frontmatter shape as :func:`shared.lifeos_writer.render_task`
-    so the TaskNotes plugin's auto-index picks it up identically to
-    bootstrap-time tasks.
+    With a ``project_slug``: file ``TaskNotes/Tasks/{project_slug} - {task_name}.md``,
+    title prefixed, ``projects: [[project_slug]]`` — the dual-write convention the
+    Project Brief tab (filename prefix) and Nami (frontmatter) both read.
+    ``project_slug=None``/blank ⇒ a STANDALONE task: file ``TaskNotes/Tasks/{task_name}.md``,
+    bare title, no ``projects`` key.
 
-    Raises :class:`ProjectWriteError` if a task with the same basename
-    already exists — callers decide whether to surface as 409 Conflict
-    or auto-rename.
+    Builds frontmatter via :func:`shared.lifeos_writer.render_task` so the TaskNotes
+    plugin's auto-index picks it up identically to bootstrap-time tasks. Raises
+    :class:`ProjectWriteError` if a task with the same basename already exists —
+    callers decide whether to surface as 409 Conflict or auto-rename.
     """
     from shared.lifeos_writer import render_task
 
-    project_slug = unicodedata.normalize("NFC", project_slug)
+    project_slug = unicodedata.normalize("NFC", project_slug) if project_slug else None
+    project_slug = project_slug or None  # treat "" as standalone
     task_name = unicodedata.normalize("NFC", task_name).strip()
     if not task_name:
         raise ProjectWriteError("task_name cannot be empty")
@@ -531,7 +539,8 @@ def create_task(
     if "/" in task_name or "\\" in task_name:
         raise ProjectWriteError(f"task_name must not contain path separators: {task_name!r}")
 
-    task_path = vault_root / TASKS_DIR / f"{project_slug} - {task_name}.md"
+    basename = f"{project_slug} - {task_name}" if project_slug else task_name
+    task_path = vault_root / TASKS_DIR / f"{basename}.md"
     if task_path.exists():
         raise ProjectWriteError(f"Task already exists: {task_path.name}")
 
@@ -540,9 +549,12 @@ def create_task(
         task_name,
         estimated_pomodoros=estimated_pomodoros,
         priority=priority,
+        category=category,
     )
     if scheduled:
         fm["scheduled"] = scheduled
+    if notes:
+        body = notes
 
     # Atomic tmp + rename (matches the other writer fns in this module).
     task_path.parent.mkdir(parents=True, exist_ok=True)
@@ -569,6 +581,79 @@ def create_task(
     os.replace(tmp_path, task_path)
 
     return task_path
+
+
+def rename_task(*, vault_root: Path, old_slug: str, new_title: str) -> tuple[Path, int]:
+    """Rename a task — update the frontmatter ``title`` AND the filename (the slug),
+    preserving any ``{project} - `` prefix, then re-push each linked Google event's
+    summary and re-stamp its ``{slug}@{date}`` idempotency key.
+
+    The filename IS the slug (plan keys + calendar idempotency derive from it), so a
+    true rename must move the file and re-title the events — not just edit a display
+    field (修修's locked choice). ``new_title`` is the bare display name; the project
+    prefix is re-applied. Returns ``(new_path, calendar_errors)`` — the vault rename
+    is authoritative and always proceeds even if some events fail to re-title (the
+    count lets the caller surface a soft warning). Raises :class:`ProjectWriteError`
+    on an empty/invalid title, a missing source, or a destination-name collision.
+    """
+    from shared import google_calendar
+
+    new_title = unicodedata.normalize("NFC", new_title).strip()
+    if not new_title:
+        raise ProjectWriteError("new title cannot be empty")
+    if "/" in new_title or "\\" in new_title:
+        raise ProjectWriteError(f"title must not contain path separators: {new_title!r}")
+
+    old_slug = unicodedata.normalize("NFC", old_slug)
+    old_path = vault_root / TASKS_DIR / f"{old_slug}.md"
+    fm, body = _read_split(old_path)  # ProjectWriteError if missing
+
+    # Preserve the project prefix: prefer the frontmatter `projects:` link (the
+    # dual-write convention create_task writes), else fall back to a legacy filename
+    # prefix ("{project} - {title}.md" with an empty projects: — pre-v3-H tasks).
+    project = None
+    projects = fm.get("projects")
+    if isinstance(projects, list) and projects:
+        project = str(projects[0]).strip().lstrip("[").rstrip("]").split("|")[0].strip()
+    elif isinstance(projects, str) and projects.strip():
+        project = projects.strip().lstrip("[").rstrip("]").split("|")[0].strip()
+    if not project and " - " in old_slug:
+        project = old_slug.split(" - ", 1)[0]
+
+    new_basename = f"{project} - {new_title}" if project else new_title
+    new_path = vault_root / TASKS_DIR / f"{new_basename}.md"
+    if new_path != old_path and new_path.exists():
+        raise ProjectWriteError(f"Task already exists: {new_path.name}")
+
+    new_slug = unicodedata.normalize("NFC", new_path.stem)
+    fm["title"] = new_basename
+    fm["dateModified"] = _now_iso_z()
+
+    # Re-title each linked Google event (the summary was the prefixed title) and
+    # re-stamp its date-scoped idempotency key so {slug}@{date} tracks the new slug.
+    # Best-effort: a calendar hiccup must never block the local rename.
+    cal_errors = 0
+    plan = fm.get("plan")
+    if isinstance(plan, list):
+        for e in plan:
+            if not isinstance(e, dict):
+                continue
+            event_id = e.get("calendar_event_id")
+            day = e.get("date")
+            if not event_id or not day:
+                continue
+            try:
+                google_calendar.update_event(
+                    str(event_id), title=new_basename, idempotency_key=f"{new_slug}@{day}"
+                )
+            except Exception as exc:  # noqa: BLE001 — vault rename is authoritative
+                cal_errors += 1
+                logger.warning("rename_task event re-title failed (%s): %s", event_id, exc)
+
+    _write_split(new_path, fm, body)
+    if new_path != old_path:
+        old_path.unlink()
+    return new_path, cal_errors
 
 
 def now_iso_taipei() -> str:

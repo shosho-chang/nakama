@@ -11,8 +11,10 @@ Auth: HMAC cookie (mirrors bridge_digests / bridge_projects).
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import re
+import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -25,7 +27,11 @@ from shared import calendar_scheduler
 from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.pomodoro_aggregator import TAIPEI, task_actual
+from shared.project_indexer import ProjectIndexer
+from shared.project_writer import ProjectWriteError, create_task, rename_task
 from shared.weekly_indexer import (
+    CATEGORY_LABELS,
+    CATEGORY_ORDER,
     WeeklyIndexer,
     today_taipei,
     week_for_date,
@@ -38,12 +44,10 @@ from shared.weekly_writer import (
     WeeklyWriteError,
     log_time_entry,
     migrate_legacy_projection,
-    read_task_schedule,
     read_task_split,
     remove_plan_entry,
     set_task_done,
     sync_scheduled_to_next_plan,
-    upsert_plan_entry,
     weekly_file_token,
     write_task_body,
     write_weekly,
@@ -87,10 +91,13 @@ _PLAN_ERRORS = {
     "already_linked": (
         "此任務已連動 Google 行事曆——要改期或取消，請到任務頁操作；重新排入會產生重複事件，已擋下。"
     ),
-    # calendar scheduling (ADR-041 41c) — plan is authoritative; calendar is best-effort
+    "rename_invalid": "新名稱無效（空白或含路徑分隔符號）。",
+    "rename_exists": "已有同名任務，請換一個名稱。",
+    # calendar scheduling (ADR-041 41c) — plan is authoritative; calendar is best-effort.
+    # v3-I.2: web conflicts pop a Web UI modal (強排 / 改時間 / 取消排程); this banner is the
+    # no-JS fallback only and never mentions Slack (Slack is for Nami-initiated scheduling).
     "cal_conflict": (
-        "此時段與 Google 行事曆既有事件衝突——已寫入本週計畫但未建立行事曆事件。"
-        "想忽略衝突，請勾選「強制排入」後重送。"
+        "此時段與 Google 行事曆既有事件衝突——尚未排入（不寫計畫、不建事件）。改個時間重送即可。"
     ),
     "cal_unavailable": (
         "已寫入本週計畫，但 Google 行事曆暫時無法連動（授權或網路）——稍後可重新排入以補建事件。"
@@ -105,9 +112,13 @@ _PLAN_ERRORS = {
         "已擋下這次覆寫——請重新整理頁面再存。"
     ),
     "write": "寫入週檔失敗，可能被其他程式鎖定——請稍後重試。",
+    # 新增任務 (v3-H Slice 2)
+    "title": "任務標題不能空白。",
+    "task_exists": "已有同名任務（同專案）——換個標題，或先到 Obsidian 確認。",
 }
 
 _SAVED_MSGS = {
+    "task_new": "✓ 已新增任務。",
     "plan": "✓ 已儲存本週計畫。",
     "review": "✓ 已存週回顧。",
     "top3": "✓ 已更新本週三大要事。",
@@ -116,6 +127,10 @@ _SAVED_MSGS = {
     "status": "✓ 已更新本週狀態。",
     "scheduled": "✓ 已排入計畫並建立行事曆事件。",
     "unscheduled": "✓ 已取消這天的安排（含行事曆事件）。",
+    "renamed": "✓ 已重新命名任務（已同步行事曆事件標題）。",
+    "renamed_partial": (
+        "✓ 已重新命名任務，但部分行事曆事件標題未能同步——稍後可在 Google 行事曆手動調整。"
+    ),
 }
 
 
@@ -145,9 +160,10 @@ async def weekly_landing(
 
     error_msg = _PLAN_ERRORS.get(err) if err else None
     if err == "cal_conflict" and n and n > 0:
+        # No-JS fallback banner; with JS the bridge-weekly.js modal supersedes it.
         error_msg = (
-            f"此時段與 Google 行事曆 {n} 個既有事件衝突——已寫入本週計畫但未建立行事曆事件。"
-            "想忽略衝突，請勾選「強制排入」後重送。"
+            f"此時段與 Google 行事曆 {n} 個既有事件衝突——"
+            "尚未排入（不寫計畫、不建事件）。改個時間重送即可。"
         )
 
     return _templates.TemplateResponse(
@@ -160,6 +176,9 @@ async def weekly_landing(
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": error_msg,
             "saved_msg": _SAVED_MSGS.get(saved) if saved else None,
+            # 新增任務 form (v3-H Slice 2): project picker + category picker sources
+            "all_projects": [e.slug for e in ProjectIndexer(vault).list_all()],
+            "categories": [(c, CATEGORY_LABELS[c]) for c in CATEGORY_ORDER],
         },
     )
 
@@ -177,6 +196,43 @@ def _safe_week_key(week: str | None) -> str:
     return wk.file_key
 
 
+# v3-H Slice 3: when a plan/done action is fired from a Project Brief tab's task row,
+# the macro posts ``from_project={slug}``. This request-scoped var lets the shared
+# redirect helpers land back on the project page instead of the dashboard, without
+# threading the flag through ~20 call sites. ContextVar is request-task-isolated in
+# async, and only the four macro routes set it — every other caller sees "".
+_FROM_PROJECT: contextvars.ContextVar[str] = contextvars.ContextVar("from_project", default="")
+
+
+def _project_back(
+    slug: str,
+    *,
+    err: str | None = None,
+    saved: str | None = None,
+    n: int = 0,
+    focus: str | None = None,
+    extra: str | None = None,
+) -> RedirectResponse:
+    """Redirect back to a Project detail page's Brief tab (v3-H Slice 3). ``focus``
+    (v3-I) appends ``&focus=<task-slug>`` + a ``#task-<slug>`` fragment so the shared
+    JS opens the just-created related task's row and focuses its 排入 date field.
+    ``extra`` carries the cal-conflict modal params (v3-I.2)."""
+    from urllib.parse import quote
+
+    url = f"/bridge/projects/{quote(slug)}?tab=brief"
+    if err:
+        url += f"&err={err}"
+        if n:
+            url += f"&n={n}"
+    elif saved:
+        url += f"&saved={saved}"
+    if extra:
+        url += f"&{extra}"
+    if focus:
+        url += f"&focus={quote(focus)}#task-{quote(focus)}"
+    return RedirectResponse(url, status_code=303)
+
+
 def _back(
     week_key: str,
     err: str | None = None,
@@ -184,11 +240,26 @@ def _back(
     slug: str | None = None,
     saved: str | None = None,
     n: int = 0,
+    focus: bool = False,
+    extra: str | None = None,
 ) -> RedirectResponse:
     """Redirect back to the weekly dashboard. ``slug`` appends a ``#task-<slug>``
     fragment so the merged 排入 action lands back ON the row it edited (v3-B
-    stay-in-place — JS re-opens + scrolls + restores tab/scroll). Mutually
-    exclusive err / saved; ``n`` is the conflict count for the cal_conflict banner."""
+    stay-in-place — JS re-opens + scrolls + restores tab/scroll). ``focus`` (v3-I)
+    additionally appends ``?focus=<slug>`` so the JS switches to the 全部 pane,
+    opens that row and focuses its 排入 date field — used right after 新增任務 so 修修
+    can add a time chip immediately. Mutually exclusive err / saved; ``n`` is the
+    conflict count for the cal_conflict banner. When fired from a Project Brief tab
+    (``_FROM_PROJECT`` set) lands there instead."""
+    if _FROM_PROJECT.get():
+        return _project_back(
+            _FROM_PROJECT.get(),
+            err=err,
+            saved=saved,
+            n=n,
+            focus=slug if focus else None,
+            extra=extra,
+        )
     from urllib.parse import quote
 
     url = f"/bridge/weekly?week={week_key}"
@@ -198,9 +269,47 @@ def _back(
             url += f"&n={n}"
     elif saved:
         url += f"&saved={saved}"
+    if focus and slug:
+        url += f"&focus={quote(slug)}"
+    if extra:
+        url += f"&{extra}"
     if slug:
         url += f"#task-{quote(slug)}"
     return RedirectResponse(url, status_code=303)
+
+
+def _conflict_modal_params(task_slug, entry_date, entry_time, pomodoros, reason, conflicts) -> str:
+    """v3-I.2: build the query string that drives the Web UI conflict modal
+    (bridge-weekly.js). Carries the attempted slot (so 強排 can re-POST force=1 and 改時間
+    can prefill), the clashing event titles, and best-effort nearby free slots. Replaces
+    the old Slack escalation — web conflicts never touch Slack now (修修)."""
+    from urllib.parse import quote
+
+    slot_txt = ""
+    try:  # best-effort — a Google hiccup just drops the suggestions, never blocks
+        from shared import google_calendar
+
+        near = f"{entry_date}T{entry_time or '09:00'}:00"
+        slots = google_calendar.find_free_slots(
+            date.fromisoformat(entry_date), pomodoros * 30, near=near
+        )
+        slot_txt = "、".join(s[11:16] for s, _ in slots[:4])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("conflict free-slot lookup failed for %s: %s", task_slug, exc)
+
+    clash_txt = "、".join(c.title for c in conflicts[:3]) or "既有事件"
+    parts = [
+        f"cf_slug={quote(task_slug)}",
+        f"cf_date={quote(entry_date)}",
+        f"cf_time={quote(entry_time or '')}",
+        f"cf_pom={pomodoros}",
+        f"cf_with={quote(clash_txt)}",
+    ]
+    if reason:
+        parts.append(f"cf_reason={quote(reason)}")
+    if slot_txt:
+        parts.append(f"cf_slots={quote(slot_txt)}")
+    return "&".join(parts)
 
 
 def _parse_entry_date(entry_date: str) -> date | None:
@@ -208,6 +317,49 @@ def _parse_entry_date(entry_date: str) -> date | None:
         return date.fromisoformat(entry_date.strip())
     except ValueError:
         return None
+
+
+@page_router.post("/weekly/task/new")
+async def weekly_task_new(
+    title: str = Form(...),
+    project: str = Form(""),
+    category: str = Form("work"),
+    priority: str = Form("normal"),
+    est_pomodoros: int = Form(4),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """v3-H Slice 2: create a new task from the dashboard. Project optional (blank =
+    standalone). BARE creation — scheduling stays the per-entry 排入 flow. Shares the
+    dual-write creator (``create_task``) with Nami's Slack ``create_task`` so chat +
+    web emit identical files."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+    name = title.strip()
+    if not name:
+        return _back(wk_key, "title")
+    if not 1 <= est_pomodoros <= 20:
+        return _back(wk_key, "pomodoros")
+    if category not in CATEGORY_LABELS:
+        category = "work"
+    if priority not in {"low", "normal", "high"}:
+        priority = "normal"
+    try:
+        created = create_task(
+            vault_root=get_vault_path(),
+            project_slug=project.strip() or None,
+            task_name=name,
+            estimated_pomodoros=est_pomodoros,
+            priority=priority,
+            category=category,
+        )
+    except ProjectWriteError:
+        return _back(wk_key, "task_exists")
+    # v3-I: land on the new row with its 排入 chip focused so 修修 adds a time
+    # immediately (修修: bare-create is fine, just jump me to the chip).
+    new_slug = unicodedata.normalize("NFC", created.stem)
+    return _back(wk_key, saved="task_new", slug=new_slug, focus=True)
 
 
 @page_router.post("/weekly/plan")
@@ -219,23 +371,33 @@ async def weekly_plan_add(
     reason: str = Form(""),
     force: int = Form(0),
     week: str = Form(""),
+    from_task: int = Form(0),  # v3-C — fired from the task page → land back there
+    from_project: str = Form(""),  # v3-H — fired from a Project Brief tab → land back there
     nakama_auth: str | None = Cookie(None),
 ):
     """v3 merged 「排入」 (ADR-041 v3 V2): one action writes the ``plan[]`` entry AND,
     when a time is given, projects it to a Google event — for any date. Blank time
     ⇒ plan-only (today's behaviour). A per-task legacy fold runs first (V4 — so a v2
     single-event task migrates before its first multi-block write). Lands back on
-    the row via ``#task-{slug}`` (stay-in-place). Untokened, like the other dashboard
-    plan routes — the per-task optimistic lock is the deferred #819 work."""
+    the row via ``#task-{slug}`` (stay-in-place), or on the task page when fired from
+    there (``from_task`` — v3-C parity). Untokened, like the other dashboard plan
+    routes — the per-task optimistic lock is the deferred #819 work."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    _FROM_PROJECT.set(from_project.strip())
     wk_key = _safe_week_key(week)
+    ft = bool(from_task)
 
     ed = _parse_entry_date(entry_date)
     if ed is None:
-        return _back(wk_key, "date")
+        return _plan_back(ft, task_slug, wk_key, err="date")
     if not 1 <= pomodoros <= 20:
-        return _back(wk_key, "pomodoros", slug=task_slug)
+        return _plan_back(ft, task_slug, wk_key, err="pomodoros")
+    # v3-G: the dashboard is week-scoped, so a 排入 onto a date in ANOTHER week left
+    # the new chip invisible on the current week (修修: "entries disappear"). Land the
+    # dashboard on the SCHEDULED date's week instead of the viewed one, so the chip is
+    # right there. (The task page is week-agnostic; this just sets its back-context.)
+    dest_week = week_for_date(ed).file_key
     rsn = reason.strip() or None
     vault = get_vault_path()
 
@@ -248,24 +410,14 @@ async def weekly_plan_add(
 
     et = _parse_entry_time(entry_time) if entry_time.strip() else None
     if entry_time.strip() and et is None:
-        return _back(wk_key, "time", slug=task_slug)
+        return _plan_back(ft, task_slug, wk_key, err="time")
 
-    if et is None:  # ── plan-only (no calendar) ──
-        try:
-            upsert_plan_entry(vault, task_slug, day=ed, pomodoros=pomodoros, reason=rsn)
-        except WeekendReasonRequired:
-            return _back(wk_key, "weekend", slug=task_slug)
-        except TaskNotFoundError:
-            return _back(wk_key, "task")
-        except WeeklyWriteError as exc:
-            logger.warning("weekly_plan upsert: %s", exc)
-            return _back(wk_key, "task")
-        return _back(wk_key, slug=task_slug)
-
-    # ── timed → vault plan[] + best-effort Google event (one action) ──
+    # v3-E: ONE storage mode — every 排入 projects a Google event. Time given ⇒ a timed
+    # block; blank ⇒ an all-day event (no conflict check). Plan-only is retired.
+    all_day = et is None
     task = WeeklyIndexer(vault).find_task(task_slug)
     title = task.title if task is not None else task_slug
-    start = datetime.combine(ed, et)  # naive Asia/Taipei (D4); stored with +08:00
+    start = datetime.combine(ed, et or datetime.min.time())  # naive Asia/Taipei (D4)
     try:
         outcome = calendar_scheduler.schedule_entry(
             vault,
@@ -273,25 +425,39 @@ async def weekly_plan_add(
             start=start,
             pomodoros=pomodoros,
             title=title,
+            all_day=all_day,
             reason=rsn,
             force=bool(force),
         )
     except WeekendReasonRequired:
-        return _back(wk_key, "weekend", slug=task_slug)
+        return _plan_back(ft, task_slug, wk_key, err="weekend")
     except TaskNotFoundError:
         return _back(wk_key, "task")
     except WeeklyWriteError as exc:
         logger.warning("weekly_plan schedule_entry: %s", exc)
         return _back(wk_key, "task")
 
+    # v3-G: from here the plan entry is written (vault-first), so jump to its week
+    # (dest_week) regardless of the calendar status — the chip/banner shows in context.
     st = outcome.calendar_status
     if st == calendar_scheduler.CREATED:
-        return _back(wk_key, slug=task_slug, saved="scheduled")
+        return _plan_back(ft, task_slug, dest_week, saved="scheduled")
     if st == calendar_scheduler.CONFLICT:
-        return _back(wk_key, "cal_conflict", slug=task_slug, n=len(outcome.conflicts))
+        # v3-I.2: web-initiated conflicts resolve in a Web UI modal (NOT Slack — 修修:
+        # only Slack-initiated scheduling via Nami should bounce back through Slack).
+        # The plan entry already stands (vault-first); the modal (bridge-weekly.js, keyed
+        # on ?err=cal_conflict&cf_*) offers 強排 (re-POST force=1) / 改時間 (reopen the
+        # chip) / 取消排程 (keep the plan-only entry, no event). Pass the clash + nearby
+        # free slots so the modal can guide the pick.
+        extra = _conflict_modal_params(
+            task_slug, entry_date, entry_time, pomodoros, rsn, outcome.conflicts
+        )
+        return _plan_back(
+            ft, task_slug, dest_week, err="cal_conflict", n=len(outcome.conflicts), extra=extra
+        )
     if st == calendar_scheduler.UNAVAILABLE:
-        return _back(wk_key, "cal_unavailable", slug=task_slug)
-    return _back(wk_key, "cal_failed", slug=task_slug)  # FAILED — event rolled back
+        return _plan_back(ft, task_slug, dest_week, err="cal_unavailable")
+    return _plan_back(ft, task_slug, dest_week, err="cal_failed")  # FAILED — event rolled back
 
 
 @page_router.post("/weekly/plan/remove")
@@ -299,24 +465,28 @@ async def weekly_plan_remove(
     task_slug: str = Form(..., min_length=1),
     entry_date: str = Form(..., min_length=1),
     week: str = Form(""),
+    from_task: int = Form(0),  # v3-C — fired from the task page → land back there
+    from_project: str = Form(""),  # v3-H — fired from a Project Brief tab
     nakama_auth: str | None = Cookie(None),
 ):
     """The plain ✕ on an UNLINKED plan chip — plan-only removal, `done`-safe, never
     touches Google (ADR-041 v3 V3d). A linked chip uses /weekly/plan/cancel instead."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    _FROM_PROJECT.set(from_project.strip())
     wk_key = _safe_week_key(week)
+    ft = bool(from_task)
 
     ed = _parse_entry_date(entry_date)
     if ed is None:
-        return _back(wk_key, "date")
+        return _plan_back(ft, task_slug, wk_key, err="date")
 
     try:
         remove_plan_entry(get_vault_path(), task_slug, ed)  # done-safe (v3)
     except WeeklyWriteError as exc:
         logger.warning("weekly_plan_remove: %s", exc)
         return _back(wk_key, "task")
-    return _back(wk_key, slug=task_slug)
+    return _plan_back(ft, task_slug, wk_key)
 
 
 @page_router.post("/weekly/plan/cancel")
@@ -324,6 +494,8 @@ async def weekly_plan_cancel(
     task_slug: str = Form(..., min_length=1),
     entry_date: str = Form(..., min_length=1),
     week: str = Form(""),
+    from_task: int = Form(0),  # v3-C — fired from the task page → land back there
+    from_project: str = Form(""),  # v3-H — fired from a Project Brief tab
     nakama_auth: str | None = Cookie(None),
 ):
     """The 🗑 on a LINKED plan chip (ADR-041 v3 V3d / confirm-gated in the UI): drop
@@ -331,11 +503,13 @@ async def weekly_plan_cancel(
     the plain ✕ so a calendar deletion is never silent."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    _FROM_PROJECT.set(from_project.strip())
     wk_key = _safe_week_key(week)
+    ft = bool(from_task)
 
     ed = _parse_entry_date(entry_date)
     if ed is None:
-        return _back(wk_key, "date")
+        return _plan_back(ft, task_slug, wk_key, err="date")
 
     try:
         outcome = calendar_scheduler.cancel_entry(
@@ -347,8 +521,8 @@ async def weekly_plan_cancel(
         logger.warning("weekly_plan_cancel: %s", exc)
         return _back(wk_key, "task")
     if outcome.calendar_status == calendar_scheduler.CANCEL_CAL_FAILED:
-        return _back(wk_key, "cancel_cal_failed", slug=task_slug)
-    return _back(wk_key, slug=task_slug, saved="unscheduled")
+        return _plan_back(ft, task_slug, wk_key, err="cancel_cal_failed")
+    return _plan_back(ft, task_slug, wk_key, saved="unscheduled")
 
 
 @page_router.post("/weekly/task/{slug}/done")
@@ -356,13 +530,16 @@ async def weekly_task_done(
     slug: str = PathParam(..., min_length=1),
     done: int = Form(0),  # 1 = mark done, 0 = re-open
     week: str = Form(""),
+    from_project: str = Form(""),  # v3-H — fired from a Project Brief tab
     nakama_auth: str | None = Cookie(None),
 ):
     """Toggle a task's done state from a dashboard / daily-bullet checkbox (#2).
     A one-click status flip (no If-Match — mirrors plan add/remove); bounces back
-    to the dashboard so the struck-through row / 🍅 rollups re-render."""
+    to the dashboard (or the Project Brief tab via ``from_project``) so the
+    struck-through row / 🍅 rollups re-render."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    _FROM_PROJECT.set(from_project.strip())
     wk_key = _safe_week_key(week)
     try:
         set_task_done(get_vault_path(), slug, bool(done))
@@ -372,6 +549,45 @@ async def weekly_task_done(
         logger.warning("weekly_task_done: %s", exc)
         return _back(wk_key, "task")
     return _back(wk_key)
+
+
+@page_router.post("/weekly/task/{slug}/rename")
+async def weekly_task_rename(
+    slug: str = PathParam(..., min_length=1),
+    new_title: str = Form(...),
+    week: str = Form(""),
+    from_task: int = Form(0),  # v3-C parity — fired from the task page → land back there
+    from_project: str = Form(""),  # v3-H — fired from a Project Brief tab
+    nakama_auth: str | None = Cookie(None),
+):
+    """v3-I.3: rename a task (修修 typo'd a title and couldn't fix it). A true rename —
+    frontmatter title + the filename (slug) + re-titled Google events — via the shared
+    ``rename_task`` writer. The slug changes, so success lands on the NEW row (focused);
+    a name collision / invalid name surfaces as a banner on the OLD row. Shared by the
+    dashboard, the Project Brief tab and the task page (same three surfaces as 排入)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    _FROM_PROJECT.set(from_project.strip())
+    wk_key = _safe_week_key(week)
+    ft = bool(from_task)
+    title = new_title.strip()
+    if not title:
+        return _plan_back(ft, slug, wk_key, err="rename_invalid")
+    try:
+        new_path, cal_errors = rename_task(
+            vault_root=get_vault_path(), old_slug=slug, new_title=title
+        )
+    except ProjectWriteError as exc:
+        err = "rename_exists" if "already exists" in str(exc) else "rename_invalid"
+        return _plan_back(ft, slug, wk_key, err=err)
+    new_slug = unicodedata.normalize("NFC", new_path.stem)
+    saved = "renamed_partial" if cal_errors else "renamed"
+    if ft:  # task page: jump to the renamed task's own page (its slug changed)
+        return _task_back(new_slug, wk_key, saved=saved)
+    # dashboard / Brief: stay in place — land on the renamed row via #task-<new_slug>
+    # (no focus: focus=True is the 新增任務 jump, which switches tab + scrolls; a rename
+    # should keep 修修 exactly where he was — the row just re-renders with the new name).
+    return _back(wk_key, saved=saved, slug=new_slug)
 
 
 @page_router.post("/weekly/sync-scheduled")
@@ -698,14 +914,18 @@ _TASK_ERRORS = {
         "已擋下這次覆寫——請重新整理頁面再存。"
     ),
     "write": "寫入任務筆記失敗，可能被其他程式鎖定，或已在 Obsidian 改名／移除。",
+    "rename_invalid": "新名稱無效（空白或含路徑分隔符號）。",
+    "rename_exists": "已有同名任務，請換一個名稱。",
     # calendar reschedule / cancel (ADR-041 41d) — vault authoritative, calendar best-effort
     "sched_date": "排程日期格式無效。",
     "sched_time": "排程時間格式無效。",
+    # merged 排入 (ADR-041 v3-C) — same keys the dashboard /weekly/plan uses
+    "date": "排程日期格式無效。",
+    "time": "排程時間格式無效。",
     "pomodoros": "番茄數需介於 1–20。",
     "weekend": "週末排程需填寫原因（D9）——已取消這次改期。",
-    "cal_conflict": (
-        "新時段與 Google 行事曆既有事件衝突——已更新本週計畫，但行事曆事件未移動。"
-        "想忽略衝突，請勾選「強制」後重送。"
+    "cal_conflict": (  # v3-I.2/4: web conflicts never go to Slack; pre-checked → nothing written
+        "此時段與 Google 行事曆既有事件衝突——尚未排入（不寫計畫、不建事件）。改個時間重送即可。"
     ),
     "cal_unavailable": (
         "已更新本週計畫，但 Google 行事曆暫時無法連動（授權或網路）——稍後可在此重試。"
@@ -713,14 +933,19 @@ _TASK_ERRORS = {
     "cancel_cal_failed": (
         "已更新本週計畫，但刪除 Google 行事曆事件失敗——請到 Google 行事曆手動移除，或稍後重試。"
     ),
-    "cal_failed": "改期寫入後寫回失敗，行事曆事件已回滾——請重試。",
+    "cal_failed": "寫入後寫回失敗，行事曆事件已回滾——請重試。",
 }
 
 _TASK_SAVED = {
     "body": "✓ 已儲存筆記。",
+    "scheduled": "✓ 已排入並建立行事曆事件。",
     "rescheduled": "✓ 已改期並更新行事曆事件。",
     "unlinked": "✓ 已移出行事曆（保留本週計畫）。",
-    "unscheduled": "✓ 已取消排程。",
+    "unscheduled": "✓ 已取消這天的安排。",
+    "renamed": "✓ 已重新命名任務（已同步行事曆事件標題）。",
+    "renamed_partial": (
+        "✓ 已重新命名任務，但部分行事曆事件標題未能同步——稍後可在 Google 行事曆手動調整。"
+    ),
 }
 
 
@@ -744,17 +969,45 @@ def _task_back(
     err: str | None = None,
     logged: bool = False,
     saved: str | None = None,
+    n: int = 0,
+    extra: str | None = None,
 ):
     from urllib.parse import quote
 
     url = f"/bridge/weekly/task/{quote(slug)}?week={week_key}"
     if err:
         url += f"&err={err}"
+        if n:
+            url += f"&n={n}"
     elif saved:
         url += f"&saved={saved}"
     elif logged:
         url += "&logged=1"
+    if extra:
+        url += f"&{extra}"
     return RedirectResponse(url, status_code=303)
+
+
+def _plan_back(
+    from_task: bool,
+    slug: str,
+    week_key: str,
+    *,
+    err: str | None = None,
+    saved: str | None = None,
+    n: int = 0,
+    extra: str | None = None,
+) -> RedirectResponse:
+    """Land a unified /weekly/plan{,/remove,/cancel} action back where it was fired:
+    the task page (``from_task`` — v3-C parity), the Project Brief tab (``_FROM_PROJECT``
+    — v3-H), or the dashboard row (``#task-{slug}`` anchor). Same routes serve all three
+    surfaces (修修: stop the surfaces diverging). ``extra`` carries the cal-conflict
+    modal params (v3-I.2)."""
+    if _FROM_PROJECT.get():
+        return _project_back(_FROM_PROJECT.get(), err=err, saved=saved, n=n, extra=extra)
+    if from_task:
+        return _task_back(slug, week_key, err=err, saved=saved, n=n, extra=extra)
+    return _back(week_key, err, slug=slug, saved=saved, n=n, extra=extra)
 
 
 @page_router.get("/weekly/task/{slug}", response_class=HTMLResponse)
@@ -793,24 +1046,11 @@ async def weekly_task_detail(
     except TaskNotFoundError:
         return _back(wk_key, "task")
 
-    # Calendar-block reschedule/cancel panel (41d) — only for a task already
-    # projected to Google Calendar. The indexer's task.scheduled is date-only, so
-    # read the raw clock time for the form defaults; the block's 🍅 default is its
-    # plan entry on the scheduled date (else the estimate).
-    sched = read_task_schedule(vault, task.slug) or {}
-    is_linked = bool(sched.get("calendar_event_id"))
-    sched_date, sched_time = "", "09:00"
-    if is_linked:
-        raw = sched.get("scheduled", "")
-        try:
-            dt = datetime.fromisoformat(raw)
-            sched_date, sched_time = dt.date().isoformat(), dt.strftime("%H:%M")
-        except ValueError:
-            sched_date = raw[:10]
-    block_pom = next(
-        (a.pomodoros for a in task.plan if task.scheduled and a.date == task.scheduled),
-        task.est_pomodoros or 1,
-    )
+    # Calendar scheduling reads/writes per-entry here, identical to the dashboard row
+    # (修修: stop the two surfaces diverging). The template iterates ``task.plan`` —
+    # each entry carries its own ``is_linked`` / ``time_label`` (v3-A) — and posts the
+    # SAME unified /weekly/plan{,/remove,/cancel} routes with ``from_task=1``. No
+    # bespoke single-event panel state to compute.
     return _templates.TemplateResponse(
         request,
         "task.html",
@@ -822,11 +1062,7 @@ async def weekly_task_detail(
             "obsidian_uri": _obsidian_uri(vault, task.relative_path),
             "task_body": task_body,
             "task_token": task_token,
-            "is_linked": is_linked,
-            "today_iso": today_taipei().isoformat(),  # default for the create picker (non-linked)
-            "sched_date": sched_date,
-            "sched_time": sched_time,
-            "block_pom": min(block_pom, 20) if block_pom else 1,
+            "today_iso": today_taipei().isoformat(),  # default date for the merged 排入 picker
             "asset_version": _SHOSHO_ASSET_VERSION,
             "error_msg": _TASK_ERRORS.get(err) if err else None,
             "saved_msg": _TASK_SAVED.get(saved) if saved else None,

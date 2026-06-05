@@ -229,9 +229,12 @@ class TaskAllocation:
 
     @property
     def time_label(self) -> str:
-        """``HH:MM`` of ``start`` for the chip, or "" if plan-only / unparseable."""
+        """``HH:MM`` for a timed entry, "整天" for an all-day entry (date-only start —
+        ADR-041 v3-E), or "" when plan-only / unparseable."""
         if not self.start:
             return ""
+        if "T" not in self.start:  # date-only ⇒ all-day event
+            return "整天"
         try:
             return datetime.fromisoformat(self.start).strftime("%H:%M")
         except ValueError:

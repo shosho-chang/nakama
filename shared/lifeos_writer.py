@@ -100,27 +100,41 @@ def render_project(
 
 
 def render_task(
-    project_name: str,
+    project_name: str | None,
     task_name: str,
     *,
     estimated_pomodoros: int = 4,
     priority: str = "normal",
+    category: str = "work",
 ) -> tuple[dict, str]:
-    """Return (frontmatter_dict, body_md) for a LifeOS Task file."""
+    """Return (frontmatter_dict, body_md) for a LifeOS Task file.
+
+    ``project_name=None`` (or blank) ⇒ a standalone task: the title is the bare
+    ``task_name`` and the ``projects`` key is omitted entirely (not ``[]``). With
+    a project, the title is prefixed ``{project} - {task}`` and ``projects`` holds
+    the wikilink — the dual-write convention the Brief tab + Nami both read.
+    ``category`` defaults to ``work`` because only work-category tasks track 🍅
+    (see ``weekly_indexer`` CATEGORY model)."""
     now_iso = _iso_z(datetime.now(timezone.utc))
-    title = f"{project_name} - {task_name}"
+    title = f"{project_name} - {task_name}" if project_name else task_name
 
     fm: dict = {
         "title": title,
         "status": "to-do",
         "priority": priority,
-        "projects": [f"[[{project_name}]]"],
-        "tags": ["task"],
-        "dateCreated": now_iso,
-        "dateModified": now_iso,
-        "預估🍅": estimated_pomodoros,
-        "✅": False,
+        "category": category,
     }
+    if project_name:
+        fm["projects"] = [f"[[{project_name}]]"]
+    fm.update(
+        {
+            "tags": ["task"],
+            "dateCreated": now_iso,
+            "dateModified": now_iso,
+            "預估🍅": estimated_pomodoros,
+            "✅": False,
+        }
+    )
     return fm, ""
 
 
