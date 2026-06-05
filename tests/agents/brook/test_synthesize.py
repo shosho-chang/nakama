@@ -182,7 +182,7 @@ def test_gather_evidence_passes_top_k_through():
         gather_evidence("topic", ["kw"], top_k=BROOK_SYNTHESIZE_TOP_K)
 
     assert captured["top_k"] == 15
-    assert captured["lanes"] == ("bm25", "vec")
+    assert captured["lanes"] == ("bm25",)  # ADR-042: dense-vec lane removed
 
 
 def test_gather_evidence_rejects_unknown_engine():

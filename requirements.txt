@@ -20,9 +20,8 @@ yt-dlp>=2024.10.0      # ADR-035 PR1c-i: Robin Watchlist ingestion — metadata 
 
 # Database
 # sqlite3 is built-in
-sqlite-vec>=0.1.9          # KB hybrid retrieval: vec0 virtual table for dense-vector lane
-model2vec>=0.8.0           # KB hybrid retrieval: potion-base-8M 256-dim static embeddings
-FlagEmbedding>=1.4.0       # KB hybrid retrieval: BGE-M3 1024-dim default backend (ADR-022).
+# ADR-042: dense-vector KB lane removed — sqlite-vec / model2vec / FlagEmbedding
+# dropped (KB retrieval is now FTS5/BM25 only).
                            # Heavy dep — ~2.3GB model weight downloaded on first use.
 
 # Zoro: Keyword Research

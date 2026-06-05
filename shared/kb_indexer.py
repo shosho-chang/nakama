@@ -1,7 +1,11 @@
-"""KB vault 索引器 — vault walker → H2 chunker → FTS5 + vec0 writer.
+"""KB vault 索引器 — vault walker → H2 chunker → FTS5 writer.
+
+ADR-042: dense-vector (vec0 / embeddings) writes removed — FTS5 BM25 is the
+only retrieval lane now. The indexer writes `kb_chunks` (FTS5) + `kb_wikilinks`
++ `kb_index_meta` only.
 
 `index_vault(vault_path, db)` 接受已初始化的 SQLite connection
-（sqlite-vec 已 load，kb_* tables 已存在），
+（kb_* tables 已存在），
 掃 KB/Wiki/{Sources,Concepts,Entities}（recursive，含 nested Books/{book_id}/）
 + KB/Annotations/，按 H2 切 chunk，mtime_ns 增量跳過未改檔案。
 
@@ -27,7 +31,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from shared import kb_embedder
 from shared.annotation_store import upgrade_to_v3
 from shared.schemas.annotations import (
     AnnotationSetV3,
@@ -139,11 +142,11 @@ def _split_h2_chunks(body: str, page_title: str, page_path: str) -> list[dict]:
 
 
 def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
-    """Scan KB/Wiki vault and write chunks + embeddings into `db`.
+    """Scan KB/Wiki vault and write FTS5 chunks into `db` (ADR-042: no embeddings).
 
     Args:
         vault_path: Obsidian vault root (KB/Wiki/{Sources,Concepts,Entities} live here).
-        db:         SQLite connection with sqlite-vec loaded and kb_* tables initialized.
+        db:         SQLite connection with kb_* tables initialized.
                     Obtain via ``shared.kb_hybrid_search.make_conn()`` or
                     ``shared.kb_hybrid_search.get_kb_conn()``.
 
@@ -210,35 +213,23 @@ def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
                 ).fetchall()
             ]
             if old_rowids:
-                placeholders = ",".join("?" * len(old_rowids))
-                db.execute(
-                    f"DELETE FROM kb_vectors WHERE rowid IN ({placeholders})",
-                    old_rowids,
-                )
                 db.execute("DELETE FROM kb_chunks WHERE path = ?", (page_path,))
                 stats.chunks_removed += len(old_rowids)
 
-            # Chunk + embed + insert
+            # Chunk + insert (FTS5 only; ADR-042 removed the dense-vec lane)
             chunks = _split_h2_chunks(body, page_title, page_path)
-            if chunks:
-                embeddings = kb_embedder.embed_batch([c["chunk_text"] for c in chunks])
-                for chunk, emb in zip(chunks, embeddings):
-                    cur = db.execute(
-                        "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
-                        "VALUES (?, ?, ?, ?)",
-                        (
-                            chunk["chunk_text"],
-                            chunk["section"],
-                            chunk["heading_context"],
-                            chunk["path"],
-                        ),
-                    )
-                    rowid: int = cur.lastrowid  # type: ignore[assignment]
-                    db.execute(
-                        "INSERT INTO kb_vectors(rowid, embedding) VALUES (?, ?)",
-                        (rowid, emb.tobytes()),
-                    )
-                    stats.chunks_added += 1
+            for chunk in chunks:
+                db.execute(
+                    "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
+                    "VALUES (?, ?, ?, ?)",
+                    (
+                        chunk["chunk_text"],
+                        chunk["section"],
+                        chunk["heading_context"],
+                        chunk["path"],
+                    ),
+                )
+                stats.chunks_added += 1
 
             # Update incremental-index bookmark
             db.execute(
@@ -363,34 +354,22 @@ def _index_annotations(
             ).fetchall()
         ]
         if old_rowids:
-            placeholders = ",".join("?" * len(old_rowids))
-            db.execute(
-                f"DELETE FROM kb_vectors WHERE rowid IN ({placeholders})",
-                old_rowids,
-            )
             db.execute("DELETE FROM kb_chunks WHERE path = ?", (page_path,))
             stats.chunks_removed += len(old_rowids)
 
         chunks = _annotation_chunks(ann_set, page_path)
-        if chunks:
-            embeddings = kb_embedder.embed_batch([c["chunk_text"] for c in chunks])
-            for chunk, emb in zip(chunks, embeddings):
-                cur = db.execute(
-                    "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
-                    "VALUES (?, ?, ?, ?)",
-                    (
-                        chunk["chunk_text"],
-                        chunk["section"],
-                        chunk["heading_context"],
-                        chunk["path"],
-                    ),
-                )
-                rowid: int = cur.lastrowid  # type: ignore[assignment]
-                db.execute(
-                    "INSERT INTO kb_vectors(rowid, embedding) VALUES (?, ?)",
-                    (rowid, emb.tobytes()),
-                )
-                stats.chunks_added += 1
+        for chunk in chunks:
+            db.execute(
+                "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
+                "VALUES (?, ?, ?, ?)",
+                (
+                    chunk["chunk_text"],
+                    chunk["section"],
+                    chunk["heading_context"],
+                    chunk["path"],
+                ),
+            )
+            stats.chunks_added += 1
 
         db.execute(
             """INSERT OR REPLACE INTO kb_index_meta (path, mtime_ns, file_hash, indexed_at)
@@ -401,26 +380,23 @@ def _index_annotations(
 
 
 # ---------------------------------------------------------------------------
-# Rebuild: drop kb_vectors + kb_chunks + kb_index_meta, recreate at current
-# embedder dim, full re-embed. ADR-022 — needed when embedder dim changes
-# (e.g. potion 256 → bge-m3 1024).
+# Rebuild: wipe kb_chunks + kb_index_meta + kb_wikilinks and re-walk from
+# scratch. ADR-042 — also drops the legacy kb_vectors vtab if a pre-removal
+# DB still carries it (the dense-vec lane is gone; the table is never recreated).
 # ---------------------------------------------------------------------------
 
 
 def rebuild_index(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
-    """Drop & recreate kb_vectors at the current embedder dim, full re-embed.
+    """Wipe FTS5 chunks + bookkeeping and re-walk every page from scratch.
 
-    Wipes kb_chunks / kb_vectors / kb_index_meta / kb_wikilinks rows so the
-    follow-up ``index_vault`` walks every page from scratch. The vec0 vtab
-    is dropped + recreated at ``kb_embedder.current_dim()``.
+    Clears kb_chunks / kb_index_meta / kb_wikilinks so the follow-up
+    ``index_vault`` reindexes everything. Drops the legacy ``kb_vectors`` vtab
+    if present (ADR-042) — it is no longer recreated.
     """
-    # FTS5 + vec0 tables can't be ALTERed — drop + recreate.
-    db.execute("DROP TABLE IF EXISTS kb_vectors")
+    db.execute("DROP TABLE IF EXISTS kb_vectors")  # legacy dense-vec lane (ADR-042)
     db.execute("DELETE FROM kb_chunks")
     db.execute("DELETE FROM kb_index_meta")
     db.execute("DELETE FROM kb_wikilinks")
-    target_dim = kb_embedder.current_dim()
-    db.execute(f"CREATE VIRTUAL TABLE kb_vectors USING vec0(embedding float[{target_dim}])")
     db.commit()
     return index_vault(vault_path, db)
 
@@ -458,8 +434,8 @@ def _main() -> None:
         "--rebuild",
         action="store_true",
         help=(
-            "Drop kb_vectors + clear kb_chunks/kb_index_meta/kb_wikilinks, "
-            "recreate vec0 at the current embedder dim, full re-embed."
+            "Clear kb_chunks/kb_index_meta/kb_wikilinks (and drop any legacy "
+            "kb_vectors vtab), then re-walk every page from scratch."
         ),
     )
     parser.add_argument(
@@ -474,14 +450,9 @@ def _main() -> None:
     if not vault.exists():
         raise SystemExit(f"Vault path does not exist: {vault}")
 
-    # ADR-022: skip dim assertion on --rebuild — that's the path that fixes
-    # the very mismatch the assertion would refuse to open the conn for.
-    conn = get_kb_conn(check_dim=not args.rebuild)
+    conn = get_kb_conn()
     if args.rebuild:
-        print(
-            f"[rebuild] backend={kb_embedder.current_backend()} "
-            f"dim={kb_embedder.current_dim()} vault={vault}"
-        )
+        print(f"[rebuild] FTS5-only (ADR-042) vault={vault}")
         stats = rebuild_index(vault, conn)
     else:
         stats = index_vault(vault, conn)
