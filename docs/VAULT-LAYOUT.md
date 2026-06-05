@@ -1,9 +1,30 @@
 # Vault Layout — Canonical Reference
 
 **Status:** **Target (post-ADR-028 Phase 3)** — current vault has drift relative to this doc; see §7 Known Drift
-**Last updated:** 2026-05-19 (v2 post-panel)
+**Last updated:** 2026-06-05 (ADR-042 textbook-lane dormancy)
 **Authority:** Changes require PR review. Code that affects vault contracts MUST update this doc in the same PR.
 **Audit:** Monthly via `scripts/vault_layout_audit.py` (cron via Franky, Phase 3 PR-C1). Discrepancies append to §7.
+
+---
+
+> ## ⚠️ ADR-042 — textbook-ingest lane DORMANT (2026-06-05)
+>
+> The **textbook-ingest lane** and the **dense-vector KB search lane** were retired
+> ([ADR-042](decisions/ADR-042-retire-textbook-lane-lighten-kb.md)). Until the lane is
+> revived, every row below tagged *textbook-ingest* describes a **dormant contract** —
+> no live code writes it, and the corresponding vault data was cold-backed-up out of the
+> live vault (`E:\LifeOS-archive\textbook-ingest-2026-06-05`).
+>
+> **Dormant paths** (kept here as the restore spec, not as live contracts):
+> - `Inbox/books/`, `KB/Raw/Books/`, `Attachments/Books/{book-id}/` — textbook EPUB + Phase 0 figures
+> - `KB/Wiki/Sources/Books/{book-id}/ch{n}.md` — Phase 1 chapter pages
+> - `KB/Wiki/Concepts/` (textbook concept pages), `KB/Wiki/Entities/Books/` — concept/entity库
+> - `KB/Wiki/_alias_map.md` — L1 alias index (writer `concept_classifier.py` removed)
+>
+> **Still live:** `KB/Wiki/Sources/Books/{book-id}/{digest,notes}.md` (ADR-024 reading
+> overlay), `KB/Wiki/Concepts/{slug}.md` via `kb_writer.upsert_concept_page` (route C
+> article ingest — the dispatcher, not the textbook bypass). **Removed:** the dense-vec
+> lane — KB search is now FTS5/BM25 only (`kb_vectors`/sqlite-vec/embeddings gone).
 
 ---
 
