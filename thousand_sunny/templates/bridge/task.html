@@ -112,7 +112,7 @@
         <div class="wk-sched-fields">
           <label class="wk-sched-lbl">日期
             <input class="wk-sched-date" type="date" name="entry_date" value="{{ today_iso }}" required></label>
-          <label class="wk-sched-lbl">時間 <span class="wk-mut">(留空＝整天事件)</span>
+          <label class="wk-sched-lbl">時間 <span class="wk-mut">(留空＝整天)</span>
             <input class="wk-sched-time" type="time" name="entry_time" step="900"></label>
           <label class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([task.est_pomodoros, 20] | min) if task.est_pomodoros else 2 }}" aria-label="番茄數">🍅
             <span class="wk-sched-dur wk-mut" aria-hidden="true"></span></label>
