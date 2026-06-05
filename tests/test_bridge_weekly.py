@@ -108,10 +108,12 @@ class TestRender:
         r = client.get(f"/bridge/weekly?week={WEEK_KEY}")
         assert r.status_code == 200
         body = r.text
-        assert "wk-plan-add" in body  # add/update form
+        # v3-B merged 「排入」: one form (date + optional time + 🍅) → plan + Google
+        assert "wk-plan-merged" in body
         assert 'action="/bridge/weekly/plan"' in body
         assert 'action="/bridge/weekly/plan/remove"' in body
-        assert 'action="/bridge/weekly/sync-scheduled"' in body
+        assert 'name="entry_time"' in body  # the merged form carries an optional time
+        assert 'action="/bridge/weekly/sync-scheduled"' not in body  # retired in v3-B
         assert "測試任務" in body
 
     def test_no_error_banner_by_default(self, client):
@@ -137,7 +139,9 @@ class TestAddPlan:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}"
+        # v3-B: lands back on the row (#task-<slug> anchor) — stay-in-place
+        assert r.headers["location"].startswith(f"/bridge/weekly?week={WEEK_KEY}")
+        assert "#task-" in r.headers["location"]
         plan = _plan(tmp_path)
         match = [e for e in plan if str(e["date"]) == "2026-06-04"]
         assert len(match) == 1 and match[0]["pomodoros"] == 3
@@ -169,7 +173,7 @@ class TestAddPlan:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=weekend"
+        assert r.headers["location"].startswith(f"/bridge/weekly?week={WEEK_KEY}&err=weekend")
         assert not [e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-06"]
 
     def test_weekend_with_reason_accepted(self, client, tmp_path):
@@ -201,7 +205,7 @@ class TestAddPlan:
             },
             follow_redirects=False,
         )
-        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=pomodoros"
+        assert r.headers["location"].startswith(f"/bridge/weekly?week={WEEK_KEY}&err=pomodoros")
         assert not [e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-04"]
 
     def test_bad_date_rejected(self, client, tmp_path):
@@ -239,7 +243,7 @@ class TestRemovePlan:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}"
+        assert r.headers["location"].startswith(f"/bridge/weekly?week={WEEK_KEY}")
         assert not [e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-03"]
 
     def test_remove_unknown_task_err(self, client):
@@ -613,10 +617,10 @@ class TestCalendarSchedule:
 
         monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
-        # the picker now lives inline in the unified row (#7 — 全部 view folds in
-        # the old 待排程 backlog); the 全部 pane + its open-task count render it
+        # v3-B: the picker is the merged 「排入」 in the unified row (date + optional
+        # time + 🍅 → /weekly/plan); the separate /weekly/schedule row form is gone
         assert 'data-pane="all"' in body
-        assert 'action="/bridge/weekly/schedule"' in body
+        assert 'action="/bridge/weekly/plan"' in body
         assert 'type="date"' in body and 'type="time"' in body
         assert 'name="force"' in body  # the conflict-override affordance
         assert "測試任務" in body
@@ -782,10 +786,10 @@ class TestCalendarSchedule:
         )
         assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}&err=time"
 
-    def test_calendar_linked_task_shows_locked_note_not_picker(self, client, tmp_path, monkeypatch):
-        """Codex §2/§3: a task already projected to the calendar must NOT get a
-        create picker (rescheduling it would orphan the existing event) — it shows
-        the 41d 'reschedule via task page' note instead."""
+    def test_linked_task_renders_editable_chip_not_locked_note(self, client, tmp_path, monkeypatch):
+        """v3-B: a linked task is now editable inline — its plan chip is the link,
+        with a confirm-gated 🗑 (/weekly/plan/cancel). The old 41d 'locked, go to the
+        task page' note is gone; multi-block makes the row the home of scheduling."""
         import shared.weekly_indexer as wi
 
         monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
@@ -797,9 +801,9 @@ class TestCalendarSchedule:
         (tmp_path / "TaskNotes" / "Tasks" / "已連動任務.md").write_text(linked, encoding="utf-8")
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
         assert "已連動任務" in body
-        assert "改期或取消請到" in body  # the 41d pointer note
-        # its row must NOT carry a schedule form (only the create-eligible tasks do)
-        assert "已排入行事曆" in body
+        assert "改期或取消請到" not in body  # the old locked note is retired
+        assert 'action="/bridge/weekly/plan/cancel"' in body  # the confirm-gated 🗑
+        assert "is-linked" in body  # the chip reads as linked (accent)
 
     def test_schedule_rejects_already_linked_task(self, client, tmp_path, monkeypatch):
         """Server-side orphan guard (41d panel — Codex §2): a task that already
@@ -1116,12 +1120,13 @@ class TestUnifiedTaskViewsAndDone:
         assert "wk-box-form" in body
         assert "/done" in body  # the toggle route action
 
-    def test_unified_row_has_inline_calendar_scheduler(self, client, monkeypatch):
+    def test_unified_row_has_merged_plan_form(self, client, monkeypatch):
         self._pin(monkeypatch)
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
-        # the task row now carries BOTH the plan editor AND the calendar picker
-        assert "wk-cal-divider" in body
-        assert 'action="/bridge/weekly/schedule"' in body
+        # v3-B: ONE merged 「排入」 form (date + optional time + 🍅 → /weekly/plan)
+        assert "wk-plan-merged" in body
+        assert 'action="/bridge/weekly/plan"' in body
+        assert 'name="entry_time"' in body
 
     def test_done_route_marks_and_reopens(self, client, tmp_path):
         # mark done
@@ -1216,3 +1221,85 @@ class TestScheduleBadge:
         assert 'wk-bl-linked" title="已連動 Google 行事曆事件">06/03' in body
         assert "🔗" not in body
         assert "📅🔗" not in body
+
+
+class TestMergedScheduleRoute:
+    """v3-B: /weekly/plan is the merged 「排入」 — timed → vault + Google in one;
+    blank time → plan-only; /weekly/plan/cancel drops a linked entry + its event."""
+
+    def _ev(self, eid="evt_m"):
+        from shared.google_calendar import CalendarEvent
+
+        return CalendarEvent(id=eid, title="測試任務", start="x", end="y", html_link="http://h")
+
+    def test_timed_writes_plan_and_links_event(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        seen = {}
+        monkeypatch.setattr(gc, "create_event", lambda **kw: (seen.update(kw), self._ev())[1])
+        r = client.post(
+            "/bridge/weekly/plan",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-04",
+                "entry_time": "10:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert "saved=scheduled" in r.headers["location"] and "#task-" in r.headers["location"]
+        entry = next(e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-04")
+        assert entry["start"] == "2026-06-04T10:00:00+08:00"
+        assert entry["end"] == "2026-06-04T11:00:00+08:00"  # 2×30 = 60 min
+        assert entry["calendar_event_id"] == "evt_m"
+        assert seen["idempotency_key"] == "測試任務@2026-06-04"
+
+    def test_blank_time_is_plan_only(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        called = {"n": 0}
+        monkeypatch.setattr(
+            gc, "create_event", lambda **kw: called.__setitem__("n", called["n"] + 1)
+        )
+        r = client.post(
+            "/bridge/weekly/plan",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-04",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 303 and called["n"] == 0  # no calendar touch
+        entry = next(e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-04")
+        assert "start" not in entry and "calendar_event_id" not in entry
+
+    def test_cancel_drops_entry_and_deletes_event(self, client, tmp_path, monkeypatch):
+        import shared.google_calendar as gc
+
+        # link the 06-03 entry first
+        monkeypatch.setattr(gc, "create_event", lambda **kw: self._ev("evt_c"))
+        client.post(
+            "/bridge/weekly/plan",
+            data={
+                "task_slug": "測試任務",
+                "entry_date": "2026-06-03",
+                "entry_time": "09:00",
+                "pomodoros": "2",
+                "week": WEEK_KEY,
+            },
+            follow_redirects=False,
+        )
+        deleted = []
+        monkeypatch.setattr(gc, "delete_event", lambda eid: deleted.append(eid))
+        r = client.post(
+            "/bridge/weekly/plan/cancel",
+            data={"task_slug": "測試任務", "entry_date": "2026-06-03", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303 and "saved=unscheduled" in r.headers["location"]
+        assert deleted == ["evt_c"]
+        assert not [e for e in _plan(tmp_path) if str(e["date"]) == "2026-06-03"]
