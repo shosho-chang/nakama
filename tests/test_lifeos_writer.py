@@ -106,7 +106,8 @@ class TestRenderProject:
             "## ✅ Tasks",
             "## 專案描述",
             "## 預期成果",
-            "## 📚 KB Research",
+            # ADR-042: the "## 📚 KB Research" block (a Scripts/nakama-config
+            # dataviewjs button) was removed from the project templates.
             "## Literature Notes",
             "## Synthesis",
             "## 專案筆記",
