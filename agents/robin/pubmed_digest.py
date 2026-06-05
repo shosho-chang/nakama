@@ -168,11 +168,11 @@ class PubMedDigestPipeline(BaseAgent):
             for c in fresh_seen_for_mark:
                 mark_seen(_SOURCE_NAME, c["pmid"], c.get("url"))
 
-        html_count = sum(1 for i in scored if i.get("fulltext", {}).get("status") == "oa_html")
+        # ADR-042: OA fulltext is no longer fetched in run() (no per-paper Source
+        # pages), so the old `oa_html` count is dropped from the summary.
         summary = (
             f"fetch={len(all_candidates)} fresh={len(fresh)} "
-            f"selected={len(scored)} oa_html={html_count} "
-            f"(dry_run={self.dry_run})"
+            f"selected={len(scored)} (dry_run={self.dry_run})"
         )
         return summary
 
