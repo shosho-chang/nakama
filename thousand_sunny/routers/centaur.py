@@ -22,9 +22,7 @@ from fastapi.responses import HTMLResponse
 
 router = APIRouter()
 
-_PAGE_PATH = (
-    Path(__file__).resolve().parent.parent / "static" / "centaur" / "index.html"
-)
+_PAGE_PATH = Path(__file__).resolve().parent.parent / "static" / "centaur" / "index.html"
 
 
 @lru_cache(maxsize=1)
