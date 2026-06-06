@@ -112,6 +112,12 @@ _Avoid_: 把「加連結」當單一動作（它是三節點，只有中間是�
 **Connection Discovery（連結探勘）**：
 AI 對（趨近全量的）小型 permanent 語料**直接 LLM 推理**，找出修修一時連不起來的連結、pattern 與跨卡矛盾。corpus selector **只餵 `KB/Permanent/` 正文 + 精簡 metadata**，每次 all-corpus call 前做 **token-budget preflight**。**不靠向量檢索**（ADR-042 已移除 dense lane）——規模小到能塞進 context、LLM 推理即可做概念類比；撞方法論規模煞車（200–500 文件）才升級，**且屆時只對 `KB/Permanent/` 建小向量索引**（非 raw vault）。這是 AI 的核心貢獻之一，與「損耗代工」並列，不是附屬。
 
+**Retrieval Synthesis vs Understanding Synthesis（檢索式合成 vs 理解式合成）**：
+「合成」拆兩種，落在紅線兩邊。**檢索式合成**＝撈相關材料 + 聚攏 + 按關係排 + 標張力缺口（**備料**）：交 AI，且要做得比 Karpathy 更兇。**理解式合成**＝想通、形成觀點、串成只有修修寫得出的論證（**寫作**）：留人（紅線，同 **Writing Assist Surface**「scaffolds not ghostwrite」）。Karpathy 的 LLM wiki 把兩者都給 AI（故快但產出是 AI 的詮釋）；Centaur 只把第二種留人。**Connection Discovery 是這條的對外延伸**，但要分清防守/進攻兩面（見 Draft Map）。
+
+**Draft Map（組稿座艙 / `/draft-map`）**：
+read-only 的進攻面檢索式合成。修修說「我要寫一篇關於 X」→ AI 掃 `KB/Permanent/` 撈相關永久卡、**按修修親手寫的 支持/矛盾/延伸 關係分組**、標出張力與缺口、給一條 `#ai-draft` 候選論證線——**交付的是地圖（給你寫），不是文章（替你寫）**。對比 retrieval-first（ADR-043 decision 4）是**防守面**（讓 Brook/RCP 認得 Permanent、降權候選，不把 AI 草稿當權威引）；Draft Map 是**進攻面**（主動把全庫攤開排好，取代修修「一張一張慢慢看」）。read-only：不寫 permanent、不碰 status / 正文，複用 Connection Discovery 的 corpus selector + token preflight。**這一步是讓「手寫卡」有回報的迴路**，故最小版併入 Slice 1。文章寫完後的**回流（reflux）**——編成新來源、掃出新候選卡——是另一段（記帳型，AI 做），留 Slice 2+。
+
 **MOC（Map of Content）**：
 住在 `KB/Wiki/MOCs/` 的活目錄，**AI 維護骨架、修修定邊界**。永久卡不「擁有」MOC 歸屬；AI 把卡掛進 MOC（提建議、修修確認關係）。不在永久卡的鎖底下。
 
@@ -130,6 +136,7 @@ AI 對（趨近全量的）小型 permanent 語料**直接 LLM 推理**，找出
 - **Permanent Note** 之間由 **Link relationship** 連結；**MOC** 聚合多張 Permanent Note；**Connection Discovery** 跨 Permanent Note 找關聯
 - **Fleeting Note** triage 後可長成 **Permanent Note**、或觸發新的 Source ingest
 - **Permanent Note** 是 Stage 3 產物；**Writing Assist Surface**（Stage 4）讀 Permanent Note + Reading Context Package 輔助修修寫文章（Line 2 atomic content）——兩者同一條「人寫紅線」，但層級不同
+- **Draft Map** 是 Writing Assist Surface 的檢索式合成入口：跨 **Permanent Note** 用人寫的 **Link relationship** 排出論證地圖（`#ai-draft`），餵給寫作這一哩；**理解式合成（寫）仍在紅線人側**
 
 ### Example dialogue
 

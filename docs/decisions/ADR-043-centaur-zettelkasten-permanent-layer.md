@@ -13,6 +13,8 @@
 
 > **Panel audit trail（v1 → v2）**：本 ADR 經 3-way panel（Claude 起草 → Codex/GPT-5 + Gemini 2.5 Pro 審）。逐字 audit 存 `docs/research/2026-06-06-codex-centaur-zettelkasten-audit.md`、`docs/research/2026-06-06-gemini-centaur-zettelkasten-audit.md`。兩者皆 Approve-with-modifications。v2 採納：① 事實校正（Concepts 目錄已空、schema 無 status 欄）② consumer 相容性（retrieval-first）③ 3 個月測試=硬 gate ④ 切片改 Obsidian-first（修修裁決，逆轉 v1 的 Web-UI-first）⑤ 連結探勘加 token preflight + 向量留煞車（修修裁決）⑥ 候選生命週期 ⑦ CJK 錨點健檢 ⑧ 跨語 alias ⑨ 輕量 tripwire（author 欄 + 測試，非 hash）。
 
+> **Amendment v2.1（2026-06-06，merge 後）**：修修分享一段方法論補充對話（檢索 vs 合成的張力——「我守住人寫卡，是不是把檢索合成的威力也放棄了？」），逼出 v2 一個錯位:輸出面只寫了**防守版** retrieval-first（decision 4，不讓 Brook 引 AI 草稿），漏了**進攻版**檢索式合成。新增 **decision 8（`/draft-map` 組稿座艙）**，並把最小 read-only draft-map 從 Slice 2+ **上移到 Slice 1**——否則 pilot 對空井寫卡，gate 準則『被複用數』量不到價值。詞彙同步 `agents/robin/CONTEXT.md`。
+
 ## 脈絡
 
 方法論「AI 增強的卡片盒 / The Compounding Vault」(`/centaur_zettel`) 主張：知識複利的關鍵不是 AI 寫得多，而是守住一條紅線——**改寫與連結（產生理解的摩擦）留給人，記帳與檢索（純損耗摩擦）交給 AI**。套到 nakama 三條 ingest pipeline（B 書 / C 文章 / E YouTube），經 code 核對後：
@@ -41,6 +43,8 @@
 
 7. **採用受 gate 控管：3 個月誠實測試 = 硬 gate；Slice 1 走 Obsidian-first pilot，Web UI 延後。** 不在習慣證明前 front-load 昂貴 Web UI（呼應方法論自身的試水溫）。**Gate pass/fail 準則**：手寫永久卡數、被 Brook/輸出複用數、被 source annotation 連結數、修修是否自願回訪該層。**未過 gate：不擴 B/E 收斂、不建完整 Bridge authoring UI**；過了才投。
 
+8. **輸出面：檢索式合成全給 AI、理解式合成是紅線（`/draft-map` 組稿座艙）。** 把「合成」拆兩種——**檢索式合成**（撈 + 聚攏 + 按關係排 + 標張力缺口 = 備料）交 AI，且要做得比 Karpathy 更兇；**理解式合成**（想通、形成論證、串起卡 = 寫作）留人（紅線，同 decision 2 / Robin `Writing Assist Surface`「scaffolds not ghostwrite」）。decision 4 的 retrieval-first 是**防守面**（不讓 Brook 把候選當權威引）；本決策是**進攻面**：一個 read-only `/draft-map X` — 掃 `KB/Permanent/` 撈相關永久卡、按人寫的 支持/矛盾/延伸 關係分組、標張力與缺口、給一條 `#ai-draft` 候選論證線（**地圖，不是文章**）。**這是讓「手寫卡」有回報的那一步，所以最小版併入 Slice 1、不延到 gate 後**——否則 pilot 等於對空井寫卡，gate 準則「被複用數」量不到價值、偏向失敗。draft-map **read-only**（不寫 permanent、不碰 status / 正文），複用 decision 6 的 corpus selector + token preflight。輸出回流（文章寫完→新來源 + 新候選卡）仍屬 reflux，留 Slice 2+。
+
 ## 決策依據（已驗證 file:line / 事實；panel 校正後）
 
 - **基石缺口**：`grep` 證實 `KB/Permanent/`、`KB/Wiki/MOCs/`、`KB/Fleeting/` 不存在。
@@ -59,8 +63,8 @@
 
 ### 新增
 - 資料夾：`KB/Permanent/`（人寫）、`KB/Wiki/MOCs/`（AI）、`KB/Fleeting/inbox.md`
-- code：`update_permanent_bookkeeping()`（窄記帳寫入口）、`ConceptPageV2.status` 欄 + renderer 更新、`kb_indexer` 索引 Permanent、`kb_search`/Brook/RCP candidate-aware 降權、連結探勘 LLM pass + token preflight、lint 跨卡矛盾 + CJK 錨點健檢、author-provenance 欄 + tripwire 測試
-- 之後（過 gate 才做）：完整 Bridge authoring Web UI、E 畫線叢集→候選、B 接 N519、fleeting triage、reflux
+- code：`update_permanent_bookkeeping()`（窄記帳寫入口）、`ConceptPageV2.status` 欄 + renderer 更新、`kb_indexer` 索引 Permanent、`kb_search`/Brook/RCP candidate-aware 降權、連結探勘 LLM pass + token preflight、`/draft-map`（read-only 組稿座艙，decision 8，Slice 1）、lint 跨卡矛盾 + CJK 錨點健檢、author-provenance 欄 + tripwire 測試
+- 之後（過 gate 才做）：完整 Bridge authoring Web UI、E 畫線叢集→候選、B 接 N519、fleeting triage、reflux（文章寫完回流成新來源 + 新候選卡）
 - doc：VAULT-LAYOUT + LifeOS CLAUDE.md 登記三資料夾 + `KB/Permanent/` 人類擁有例外
 
 ### 降級
@@ -73,7 +77,7 @@
 ## 切片計畫（v2：retrieval-first + Obsidian-first，gate 控管）
 
 - **Slice 0**（最便宜，先做）：建空骨架三資料夾 + 範本；`ConceptPageV2` 加 `status` 欄 + renderer；**consumer awareness**（`kb_indexer` 索引 Permanent、`kb_search`/Brook/RCP candidate-aware 降權）；author 欄 + tripwire 測試；更新 VAULT-LAYOUT + LifeOS CLAUDE.md。零使用者行為改變。
-- **Slice 1**（Obsidian-first pilot，挑 C 餵候選）：route-C ingest 改吐候選（非成品）；一個顯示「候選 + 來源 + 你的 annotation」的 side-pane / CLI context 視圖；修修**在 Obsidian 手寫永久卡**；連結探勘 LLM pass（含 token preflight）即時回饋新連結。**核心是驗證「人寫卡」習慣**。
+- **Slice 1**（Obsidian-first pilot，挑 C 餵候選）：route-C ingest 改吐候選（非成品）；一個顯示「候選 + 來源 + 你的 annotation」的 side-pane / CLI context 視圖；修修**在 Obsidian 手寫永久卡**；連結探勘 LLM pass（含 token preflight）即時回饋新連結；**最小 read-only `/draft-map`（decision 8）— 撈相關永久卡、按人寫關係分組、標張力缺口、給 `#ai-draft` 論證線**。**核心是驗證「人寫卡」習慣 + 卡的回報迴路（寫卡 → 卡幫我寫下一篇）**。
 - **【Gate】3 個月誠實測試** — 依準則判定。未過 → 停在這、重新評估（可能退回純參考索引）。
 - **Slice 2+（過 gate 才做）**：完整 Bridge authoring Web UI → E 影片畫線叢集→候選 → B 接 N519 + 修致謝/版權頁過濾 → 維護複利（MOC 維護、lint 跨卡矛盾→選題 + CJK 錨點健檢、fleeting triage、reflux）。
 
