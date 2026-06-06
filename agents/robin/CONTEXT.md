@@ -83,3 +83,61 @@ Writing-assist output boundary: allowed outputs are structure skeletons, questio
 Stage 4 ownership bridge: Robin may produce a `Reading Context Package` from annotations, notes, digest, promoted source map, Concept links, idea clusters, questions, evidence board, and outline skeletons. This package is a Stage 3 → Stage 4 handoff object for Shosho's hand-writing, not a draft. A Brook-owned or shared `Writing Assist Surface` may present the package, insert links/references/prompts, and help Shosho navigate materials, but must not use it to ghostwrite Line 2 atomic content. After Shosho writes the atomic content, Brook may use that finished human-authored piece for Stage 5 multi-channel production.
 
 Documentation source-of-truth layering: `agents/robin/CONTEXT.md` owns canonical vocabulary and domain rules; an ADR in `docs/decisions/` should own the reasons and trade-offs behind Source Promotion; `CONTENT-PIPELINE.md` should own the day-to-day Stage 2/3/4 workflow; PRDs and GitHub issues should own implementation delivery and must not become the only source of truth for domain decisions.
+
+## Centaur Zettelkasten（ADR-043）
+
+把方法論「AI 增強的卡片盒 / The Compounding Vault」(served at `/centaur_zettel`) 落到 nakama 的詞彙層。核心是把 Robin 既有的「人寫、AI 搭 scaffold」紅線（原本只管 Stage 4 的 **Writing Assist Surface**）往下延伸到 Stage 3 的**永久筆記層**。方法論文件由 Claude chat 在未掌握 codebase 下寫成 → 採其 high-level method，實作以 nakama 為準。
+
+**Friction Selection（摩擦篩選）**：
+本系統第一性原理。判準一句話——「這個動作親手做，會不會產生一個我原本沒有的判斷或理解？」會 → 留給人（生產性摩擦）；不會、只是執行已有的判斷 → 交給 AI（純損耗摩擦）。下面所有人機分界都從這條推導。
+
+**Permanent Note（永久筆記 / 永久卡）**：
+住在 `KB/Permanent/{concept}.md`、由修修**親手用自己的話**寫的原子概念卡，是卡片盒的核心層、Stage 3 的最終產物。依概念命名（不依書名/來源/時間，Matuschak）。AI 對它的**判斷型內容唯讀**。
+_Avoid_: concept page（那是 AI 候選）、atomic content（那是 Stage 4 文章，見 flagged ambiguities）
+
+**Concept Candidate（概念候選）**：
+AI 從 source 抽出、標 `status: candidate` + `#ai-draft` 的概念草稿，住在 `KB/Wiki/Concepts/`。是修修改寫成 Permanent Note 的原料，**不是成品**。取代舊的「LLM 寫成品概念頁 + Opus auto-merge」。**候選須影響檢索**（consumer 降權、opt-in），不只 frontmatter，否則 Brook 會把 AI 草稿當人類知識引用。**生命週期**：永久卡從候選寫成後，候選轉 `status: superseded` + `promoted_to: [[永久卡]]`（留 provenance、從主搜尋濾掉）。
+_Avoid_: finished concept page、canonical concept
+
+**Judgment field / Bookkeeping field（判斷型／記帳型 frontmatter）**：
+永久卡的 frontmatter 拆兩類。**判斷型**（人寫，AI 不得改）：`status`、正文、連結關係描述。**記帳型**（AI 可代寫）：`source_refs`、`created`、`modified`、`aliases`、`mentioned_in`/backlinks 鏡像、`tags`。判準同 Friction Selection：填這欄會不會產生新判斷？
+
+**Maturity（成熟度 / `status`）**：
+永久卡四級：種子 seedling → 發展中 budding → 成熟 evergreen → 已取代 superseded。**每個向上箭頭都是修修動手**；AI 只能經 lint 提示晉級時機，不得自行改 `status`。
+
+**Link relationship（連結關係）**：
+採納一條連結時人寫下的型別化關係：支持 / 矛盾 / 延伸 / 舉例。連結三節點——**AI 提候選連結（可）→ 修修採納並寫關係（僅人，紅線）→ AI 鏡像反向連結（可）**。正向連結與關係寫在永久卡**正文**（故受 by-construction 保護）。
+_Avoid_: 把「加連結」當單一動作（它是三節點，只有中間是紅線）
+
+**Connection Discovery（連結探勘）**：
+AI 對（趨近全量的）小型 permanent 語料**直接 LLM 推理**，找出修修一時連不起來的連結、pattern 與跨卡矛盾。corpus selector **只餵 `KB/Permanent/` 正文 + 精簡 metadata**，每次 all-corpus call 前做 **token-budget preflight**。**不靠向量檢索**（ADR-042 已移除 dense lane）——規模小到能塞進 context、LLM 推理即可做概念類比；撞方法論規模煞車（200–500 文件）才升級，**且屆時只對 `KB/Permanent/` 建小向量索引**（非 raw vault）。這是 AI 的核心貢獻之一，與「損耗代工」並列，不是附屬。
+
+**MOC（Map of Content）**：
+住在 `KB/Wiki/MOCs/` 的活目錄，**AI 維護骨架、修修定邊界**。永久卡不「擁有」MOC 歸屬；AI 把卡掛進 MOC（提建議、修修確認關係）。不在永久卡的鎖底下。
+
+**Fleeting Note（瞬時筆記）**：
+`KB/Fleeting/inbox.md` 的一顆種子，最低摩擦捕捉、修修定期 triage。四個去處：丟棄 / 發展成永久卡（人）/ 觸發 ingest / 連到既有卡。AI 只 surface 關聯與建議處置，**不自動清空、不代寫成卡**。
+
+**Spine（共用脊椎）**：
+三條來源（B 書 / C 文章 / E 影片）證據到手後共用的同一條 Stage 3 路徑：**AI 文獻摘要 → AI 概念候選 →【紅線】→ 修修親手寫永久卡 → AI 維護 MOC + lint + 連結探勘**。三條只在「證據怎麼來」不同（B: N519 LLM 抽 claim / C: LLM 摘要 / E: 修修畫線叢集），到手後不再各搞各的。
+
+**Authorship by provenance（authorship 看來源，不看 transport）**：
+永久卡的「AI 不得寫」鎖是**語意鎖、靠 by-construction + 輕量 tripwire 實現**，不做 hash、不做 runtime 硬擋（這是修修個人筆記系統，概念對齊即可）。修修經 Obsidian 或（未來）Web UI authoring surface 寫檔，即使技術上是「系統寫磁碟」，也算修修的 authorship；AI 路徑的 target resolver 永遠解析不到 `KB/Permanent/`，agent 唯一能碰它的是只改記帳型 key 的 `update_permanent_bookkeeping`。每筆寫入帶 `author: human | agent_*` frontmatter；tripwire = 測試斷言 promotion target 永不回 `KB/Permanent/` + 正文寫入只來自 human 路徑 + dev/CI grep 稽核（比 hash 輕、但可稽核，取代「純慣例=hope」）。
+
+### Relationships（Centaur 層）
+
+- 一個 **Source** 經 Promotion 產生 **Concept Candidate**（多個），修修把候選改寫成 **Permanent Note**（一卡一概念）
+- **Permanent Note** 之間由 **Link relationship** 連結；**MOC** 聚合多張 Permanent Note；**Connection Discovery** 跨 Permanent Note 找關聯
+- **Fleeting Note** triage 後可長成 **Permanent Note**、或觸發新的 Source ingest
+- **Permanent Note** 是 Stage 3 產物；**Writing Assist Surface**（Stage 4）讀 Permanent Note + Reading Context Package 輔助修修寫文章（Line 2 atomic content）——兩者同一條「人寫紅線」，但層級不同
+
+### Example dialogue
+
+> **修修：**「ingest 完這篇文章，AI 是不是就把概念頁寫好了？」
+> **領域規則：**「不。AI 只產**概念候選**（`#ai-draft`），住 `KB/Wiki/Concepts/`。把候選改寫成你自己的話、存進 `KB/Permanent/`，那一筆是你親手寫的——那才是**永久卡**。AI 對永久卡的正文與 status 唯讀，只幫你補 `source_refs`、鏡像反向連結這些記帳。」
+
+### Flagged ambiguities（Centaur 層）
+
+- **「atomic content」（Stage 4）vs「atomic note / 永久卡」（Stage 3）** — 同樣是「修修親手寫的原子單位」，但 atomic content = 要發布的文章正文（Writing Assist Surface 輔助、Brook 後續加工）；永久卡 = 卡片盒的durable 概念卡（Connection Discovery / MOC 的節點）。不可混用。
+- **「Global KB Concept」語意位移** — CONTEXT.md 上文定義它為「值得進 `KB/Wiki/Concepts` 的長期概念」並暗示是成品。ADR-043 後：`KB/Wiki/Concepts/` 內容**降級為概念候選**（`#ai-draft`），不再是 auto-written 成品；「長期概念的權威層」改由人寫的 **Permanent Note** 承接。舊定義的「成品」語意作廢。
+- **方法論「AI 對 permanent/ 絕對唯讀、永不寫入」一句作廢** — 修修補充把 frontmatter 拆判斷型/記帳型後，記帳型 key 由 AI 寫；鎖守的是「判斷」不是「每個字元」。以 ADR-043 的語意鎖為準。
