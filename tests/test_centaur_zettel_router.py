@@ -1,4 +1,4 @@
-"""Smoke tests for the public /centaur methodology page.
+"""Smoke tests for the public /centaur_zettel methodology page.
 
 Mirrors the /crew public-surface precedent: no auth, served even in VPS mode
 (DISABLE_ROBIN=1), and indexable (no robots noindex meta). Unlike /crew there
@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client_vps(monkeypatch):
-    """VPS 模式：DISABLE_ROBIN=1。/centaur 是公開頁，必須仍可訪問。"""
+    """VPS 模式：DISABLE_ROBIN=1。/centaur_zettel 是公開頁，必須仍可訪問。"""
     monkeypatch.setenv("DISABLE_ROBIN", "1")
     monkeypatch.setenv("WEB_PASSWORD", "testpass")
     monkeypatch.setenv("WEB_SECRET", "testsecret")
@@ -24,13 +24,13 @@ def client_vps(monkeypatch):
 
 
 def test_centaur_page_available_without_auth(client_vps):
-    r = client_vps.get("/centaur")
+    r = client_vps.get("/centaur_zettel")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
 
 
 def test_centaur_page_has_core_sections(client_vps):
-    body = client_vps.get("/centaur").text
+    body = client_vps.get("/centaur_zettel").text
     markers = (
         "The Compounding Vault",
         "核心原則：摩擦篩選",
@@ -44,13 +44,13 @@ def test_centaur_page_has_core_sections(client_vps):
 
 
 def test_centaur_page_is_indexable(client_vps):
-    """對比 /architecture 的 noindex：/centaur 是 shareable showcase，不可有 noindex。"""
-    body = client_vps.get("/centaur").text
+    """對比 /architecture 的 noindex：/centaur_zettel 是 shareable showcase，不可有 noindex。"""
+    body = client_vps.get("/centaur_zettel").text
     assert "noindex" not in body
 
 
 def test_centaur_page_is_self_contained(client_vps):
     """自包含：無 __ASSET_VERSION__ placeholder，也不連任何第一方 /static 資產。"""
-    body = client_vps.get("/centaur").text
+    body = client_vps.get("/centaur_zettel").text
     assert "__ASSET_VERSION__" not in body
     assert "/static/" not in body
