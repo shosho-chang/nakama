@@ -101,6 +101,21 @@ def test_get_annotations_empty_set_for_unwritten_book(app_client):
     assert body["schema_version"] == 2
     assert body["book_id"] == "empty-book"
     assert body["items"] == []
+    # ADR-044 §B8: conflicts key is always present, empty in the common case.
+    assert body["conflicts"] == []
+
+
+def test_get_annotations_surfaces_sync_conflicts(app_client, vault_dir: Path):
+    _upload(app_client, "alpha")
+    ann_dir = vault_dir / "KB" / "Annotations"
+    ann_dir.mkdir(parents=True, exist_ok=True)
+    (ann_dir / "alpha.sync-conflict-20260525-143000-ABC123.md").write_text("{}", encoding="utf-8")
+    body = app_client.get("/robin/api/books/alpha/annotations").json()
+    assert len(body["conflicts"]) == 1
+    conflict = body["conflicts"][0]
+    assert conflict["slug"] == "alpha"
+    assert conflict["device"] == "ABC123"
+    assert conflict["conflict_timestamp"] == "20260525-143000"
 
 
 def test_get_annotations_404_when_book_missing(app_client):

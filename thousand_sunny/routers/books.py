@@ -17,6 +17,7 @@ import hashlib
 import io
 import threading
 import zipfile
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -38,6 +39,7 @@ from shared.annotation_store import (
     AnnotationSetV2,
     AnnotationSetV3,
     get_annotation_store,
+    list_annotation_conflicts,
     upgrade_to_v3,
 )
 from shared.book_queue import (
@@ -548,7 +550,10 @@ async def get_annotations(book_id: str, _auth=Depends(require_auth_or_key)):
             book_version_hash=book.book_version_hash,
             items=[],
         )
-    return ann_set.model_dump()
+    # ADR-044 §B8: surface Syncthing conflict copies of this annotation file so
+    # the reader can warn the user to merge them, instead of losing edits silently.
+    conflicts = [asdict(c) for c in list_annotation_conflicts(book_id)]
+    return {**ann_set.model_dump(), "conflicts": conflicts}
 
 
 def _write_digest_in_background(book_id: str) -> None:

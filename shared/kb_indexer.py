@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from shared.annotation_store import upgrade_to_v3
+from shared.log import get_logger
 from shared.schemas.annotations import (
     AnnotationSetV3,
     AnnotationV3,
@@ -39,6 +40,8 @@ from shared.schemas.annotations import (
     ReflectionV3,
 )
 from shared.utils import extract_frontmatter
+
+logger = get_logger("nakama.shared.kb_indexer")
 
 # H2 heading marker (e.g. "## 定義")
 _H2_RE = re.compile(r"^## (.+)$", re.MULTILINE)
@@ -85,6 +88,7 @@ class IndexStats:
     files_skipped: int = 0  # mtime_ns unchanged — fast path
     chunks_added: int = 0
     chunks_removed: int = 0
+    annotation_conflicts: int = 0  # Syncthing *.sync-conflict-* files seen (ADR-044 §B8)
     wikilinks: list[str] = field(default_factory=list)
 
 
@@ -312,13 +316,26 @@ def _index_annotations(
     """
     # Local import to avoid a module-load-time circular: annotation_store imports
     # shared.config (vault path), and we don't want kb_indexer importing config either.
-    from shared.annotation_store import _parse  # noqa: PLC0415
+    from shared.annotation_store import (  # noqa: PLC0415
+        ANNOTATION_SYNC_CONFLICT_RE,
+        _parse,
+    )
 
     annotations_dir = vault_path / "KB" / "Annotations"
     if not annotations_dir.exists():
         return
 
     for md_file in sorted(annotations_dir.glob("*.md")):
+        # Syncthing conflict copies are reported, not indexed as real annotation
+        # files (ADR-044 §B8) — their stem would otherwise become a junk slug.
+        if ANNOTATION_SYNC_CONFLICT_RE.match(md_file.name):
+            stats.annotation_conflicts += 1
+            logger.warning(
+                "annotation sync-conflict file detected — needs manual merge: %s",
+                md_file.name,
+            )
+            continue
+
         slug = md_file.stem
         page_path = f"KB/Annotations/{slug}"
         mtime_ns = md_file.stat().st_mtime_ns
@@ -458,7 +475,8 @@ def _main() -> None:
         stats = index_vault(vault, conn)
     print(
         f"files_indexed={stats.files_indexed} files_skipped={stats.files_skipped} "
-        f"chunks_added={stats.chunks_added} chunks_removed={stats.chunks_removed}"
+        f"chunks_added={stats.chunks_added} chunks_removed={stats.chunks_removed} "
+        f"annotation_conflicts={stats.annotation_conflicts}"
     )
 
 
