@@ -56,6 +56,18 @@ from shared.video_source_map_builder import build_video_source_map
 _logger = get_logger("nakama.shared.promotion_review_service")
 
 
+class CommitDisabledError(RuntimeError):
+    """Raised when ``commit_approved`` is called on a service whose commit
+    path is disabled (``commit_enabled=False``).
+
+    The promotion pipeline only produces deterministic placeholder claims
+    until the LLM-backed extractor (N519) lands, so committing them would
+    pollute the vault. The router guards on ``service.commit_enabled``
+    before reaching this point; this exception is the defense-in-depth
+    backstop for any other caller.
+    """
+
+
 # Documented failure modes for cross-service calls. Narrow tuple so
 # programmer errors (TypeError, AttributeError, KeyboardInterrupt)
 # propagate per #511 F5 lesson.
@@ -209,6 +221,7 @@ class PromotionReviewService:
         builder: SourceMapBuilder,
         concept_engine: ConceptPromotionEngine,
         commit_service: PromotionCommitService,
+        commit_enabled: bool = True,
         extractor: ClaimExtractor,
         matcher: ConceptMatcher,
         kb_index: KBConceptIndex,
@@ -230,6 +243,7 @@ class PromotionReviewService:
         self._builder = builder
         self._concept_engine = concept_engine
         self._commit_service = commit_service
+        self._commit_enabled = commit_enabled
         self._extractor = extractor
         self._matcher = matcher
         self._kb_index = kb_index
@@ -252,6 +266,16 @@ class PromotionReviewService:
         self._entity_extractor = entity_extractor
         self._entity_matcher = entity_matcher
         self._kb_entity_index = kb_entity_index
+
+    @property
+    def commit_enabled(self) -> bool:
+        """Whether ``commit_approved`` will write to the vault.
+
+        False until the LLM-backed extractor (N519) lands — the pipeline
+        only produces deterministic placeholder claims, which must not be
+        committed into ``KB/Wiki``.
+        """
+        return self._commit_enabled
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -497,7 +521,16 @@ class PromotionReviewService:
 
         U6 invariant: errors are RECORDED into ``manifest.commit_batches``
         and surfaced in the returned outcome — NOT swallowed.
+
+        Raises ``CommitDisabledError`` when ``commit_enabled`` is False —
+        no vault write happens, the manifest is left untouched.
         """
+        if not self._commit_enabled:
+            raise CommitDisabledError(
+                f"commit is disabled (placeholder-only pipeline); refusing to "
+                f"write source_id={source_id!r} to the vault until N519 lands"
+            )
+
         manifest = self._manifest_store.load(source_id)
         if manifest is None:
             raise ValueError(f"no manifest stored for source_id={source_id!r}")

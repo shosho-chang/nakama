@@ -221,6 +221,11 @@ def wire_promotion_surfaces(config: PromotionWiringConfig) -> None:
         builder=builder,
         concept_engine=concept_engine,
         commit_service=commit_service,
+        # Placeholder-only pipeline until N519 — committing the dry-run
+        # extractor's claims would pollute the vault, so the commit path is
+        # disabled in every non-LLM mode. (dry_run is the only currently
+        # runnable mode; "llm" raises above until N519 lands.)
+        commit_enabled=(config.promotion_mode == "llm"),
         extractor=extractor,
         matcher=matcher,
         kb_index=kb_index,

@@ -244,6 +244,7 @@ async def review_source(
                 "encoded_id": source_id_b64,
                 "approved_count": 0,
                 "decision_counts": {"approve": 0, "reject": 0, "defer": 0, "undecided": 0},
+                "commit_enabled": service.commit_enabled,
                 "asset_version": _SHOSHO_ASSET_VERSION,
             },
         )
@@ -258,6 +259,7 @@ async def review_source(
             "encoded_id": source_id_b64,
             "approved_count": _approved_count(manifest),
             "decision_counts": _decision_counts(manifest),
+            "commit_enabled": service.commit_enabled,
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
@@ -331,14 +333,22 @@ async def commit_source(
         return Response(status_code=403)
     service = get_service()
     source_id = _decode_source_id(source_id_b64)
-    try:
-        outcome = service.commit_approved(
-            source_id=source_id,
-            batch_id=batch_id,
-            vault_root=get_vault_path(),
-        )
-    except _HTTP_BOUNDARY_FAILURES as exc:
-        raise HTTPException(status_code=_http_status_for(exc, lookup_status=400), detail=str(exc))
+    # Guard before touching the commit service: until N519 the pipeline only
+    # produces placeholder claims, so committing is disabled and must not
+    # write to the vault. The form is also disabled in the template; this is
+    # the server-side backstop for a stale/forged POST.
+    outcome = None
+    if service.commit_enabled:
+        try:
+            outcome = service.commit_approved(
+                source_id=source_id,
+                batch_id=batch_id,
+                vault_root=get_vault_path(),
+            )
+        except _HTTP_BOUNDARY_FAILURES as exc:
+            raise HTTPException(
+                status_code=_http_status_for(exc, lookup_status=400), detail=str(exc)
+            )
 
     manifest = service.load_review_session(source_id)
     state = service.state_for(source_id)
@@ -356,6 +366,7 @@ async def commit_source(
                 else {"approve": 0, "reject": 0, "defer": 0, "undecided": 0}
             ),
             "last_commit_outcome": outcome,
+            "commit_enabled": service.commit_enabled,
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
