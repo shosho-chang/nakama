@@ -1085,7 +1085,7 @@ def test_reading_hub_renders_three_sources(client):
     r = tc.get("/robin/home")
     assert r.status_code == 200
     body = r.text
-    assert "Robin · 閱讀" in body
+    assert "Robin · 首頁" in body
     # three source panels
     assert "文章" in body and "影片" in body and "書" in body
     # actions present (video add button is the gap this slice fixes)
