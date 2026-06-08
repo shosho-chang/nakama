@@ -71,7 +71,7 @@ from shared.schemas.books import Book, BookProgress
 from shared.source_mode import Mode, detect_book_mode
 from shared.state import _get_conn
 from shared.utils import slugify
-from thousand_sunny.auth import check_auth, require_auth_or_key
+from thousand_sunny.auth import check_auth, require_auth_or_key, set_auth_cookie
 
 # Allowed values for the upload form ``mode`` parameter. ``"auto"`` triggers
 # server-side detection from EPUB metadata.lang + body sample.
@@ -414,7 +414,9 @@ async def books_upload(
 
     response = RedirectResponse(f"/robin/books/{book_id}", status_code=303)
     if nakama_auth:
-        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+        # Re-issue with the full persistent flags so the upload redirect does
+        # not silently downgrade the 90-day login cookie back to a session one.
+        set_auth_cookie(response, nakama_auth)
     return response
 
 
