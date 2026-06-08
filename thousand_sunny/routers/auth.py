@@ -7,7 +7,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from thousand_sunny.auth import WEB_PASSWORD, make_token
+from thousand_sunny.auth import WEB_PASSWORD, make_token, set_auth_cookie
 
 router = APIRouter()
 templates = Jinja2Templates(
@@ -69,13 +69,7 @@ async def login(
 ):
     if not WEB_PASSWORD or password == WEB_PASSWORD:
         response = RedirectResponse(_safe_next(next), status_code=302)
-        response.set_cookie(
-            "nakama_auth",
-            make_token(password),
-            httponly=True,
-            secure=True,
-            samesite="lax",
-        )
+        set_auth_cookie(response, make_token(password))
         return response
     return templates.TemplateResponse(
         request,
