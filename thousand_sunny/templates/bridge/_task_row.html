@@ -106,6 +106,25 @@
         </div>
         <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
       </form>
+
+      {# v3-I follow-up (修修): edit 分類 + 優先 inline — the selects auto-submit on change
+         (bridge-weekly.js) and the row stays in place. #}
+      <form class="wk-meta-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/meta">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+        <label class="wk-sched-lbl"><span class="wk-sched-cap">分類</span>
+          <select class="wk-meta-sel" name="category" aria-label="分類">
+            {% for c, lbl in [('work', '工作'), ('health', '身心健康'), ('growth', '自我進修'), ('misc', '雜事')] %}
+              <option value="{{ c }}" {{ 'selected' if c == t.category }}>{{ lbl }}</option>
+            {% endfor %}
+          </select></label>
+        <label class="wk-sched-lbl"><span class="wk-sched-cap">優先</span>
+          <select class="wk-meta-sel" name="priority" aria-label="優先">
+            {% for p, lbl in [('low', 'Low'), ('normal', 'Medium'), ('high', 'High')] %}
+              <option value="{{ p }}" {{ 'selected' if p == t.priority }}>{{ lbl }}</option>
+            {% endfor %}
+          </select></label>
+      </form>
     </div>
   </details>
 {% endmacro %}

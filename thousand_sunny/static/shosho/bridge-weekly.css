@@ -810,3 +810,15 @@ body.sho .wk-pri-first  { background: var(--sho-violet); }         /* 紫 — �
 body.sho .wk-pri-high   { background: oklch(0.57 0.18 25); }       /* 紅 */
 body.sho .wk-pri-normal { background: oklch(0.64 0.16 65); color: #fff; }  /* 橘黃 (Medium) — white text (修修) */
 body.sho .wk-pri-low    { background: var(--sho-info); }           /* 淺藍 */
+
+/* ── v3-I follow-up (修修): inline 分類/優先 editor (task row + task page) ── */
+body.sho .wk-meta-form { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px; }
+body.sho .wk-meta-sel {
+  font: inherit; font-size: 13px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 6px 9px; min-width: 108px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-meta-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+/* task page: sits inline in the meta row, no top margin */
+body.sho .tk-meta .wk-meta-form { margin-top: 0; gap: 8px; }

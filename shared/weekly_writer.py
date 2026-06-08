@@ -337,6 +337,30 @@ def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
     return str(fm.get("status") or "to-do")
 
 
+_TASK_CATEGORIES = ("work", "health", "growth", "misc")
+_TASK_PRIORITIES = ("low", "normal", "high")
+
+
+def set_task_meta(
+    vault_root: Path, task_slug: str, *, category: str | None = None, priority: str | None = None
+) -> str:
+    """Update a task's ``category`` / ``priority`` frontmatter from the dashboard /
+    task-page dropdowns (v3-I follow-up, 修修). Only the given, valid fields are
+    written; plan[]/timeEntries/status/body are preserved. Unknown values are ignored
+    (the dropdowns only emit valid ones). Returns the task slug. Raises
+    :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    if category in _TASK_CATEGORIES:
+        fm["category"] = category
+    if priority in _TASK_PRIORITIES:
+        fm["priority"] = priority
+    _write_task(path, fm, body)
+    return task_slug
+
+
 def set_plan_entry_done(vault_root: Path, task_slug: str, day: date, done: bool) -> str:
     """Toggle the DAY's plan[] entry done flag (v3-I follow-up, 修修).
 

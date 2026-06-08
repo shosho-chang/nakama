@@ -263,4 +263,16 @@
       sync();
     });
   })();
+
+  /* v3-I follow-up (修修): the 分類/優先 dropdowns auto-submit on change (requestSubmit so
+     the stay-in-place save-state fires and the row doesn't jump). */
+  (function () {
+    document.querySelectorAll('.wk-meta-form select').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        if (!sel.form) return;
+        if (sel.form.requestSubmit) sel.form.requestSubmit();
+        else sel.form.submit();
+      });
+    });
+  })();
 })();

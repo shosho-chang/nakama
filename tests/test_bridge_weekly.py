@@ -1684,3 +1684,35 @@ class TestDayDone:
         )
         entry = next(e for e in _fm()["plan"] if str(e["date"])[:10] == "2026-06-03")
         assert not entry.get("done")
+
+
+class TestTaskMeta:
+    """v3-I follow-up (修修): edit category + priority from the row / task-page dropdowns."""
+
+    def _fm(self, tmp_path):
+        raw = _task_path(tmp_path).read_text(encoding="utf-8")
+        return yaml.safe_load(raw.split("---", 2)[1])
+
+    def test_meta_updates_category_and_priority(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"category": "health", "priority": "high", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        fm = self._fm(tmp_path)
+        assert fm["category"] == "health"
+        assert fm["priority"] == "high"
+        # plan + status preserved
+        assert fm["status"] == "to-do" and "plan" in fm
+
+    def test_meta_rejects_bad_values(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"category": "bogus", "priority": "urgent", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        # SAMPLE_TASK had no category (→ misc default at read) / no priority; bad values ignored
+        assert fm.get("category") not in ("bogus",)
+        assert fm.get("priority") not in ("urgent",)

@@ -55,6 +55,7 @@ DEFAULT_CATEGORY = "misc"
 # 4th visual tier "First" (紫) for tasks in the week's 本週重要任務 list (weekly top3),
 # computed at view time — not a stored priority value. (v3-I follow-up, 修修)
 PRIORITY_LABELS = {"low": "Low", "normal": "Medium", "high": "High"}
+PRIORITY_ORDER = ("low", "normal", "high")
 
 UFO_WEEKLY_TARGET = 5  # planned super-focus (75-min) sessions per week (ADR-039 E)
 UFO_MIN_MINUTES = 70  # a `deep` block counts as 1 UFO only if it ran ≥ this (ADR-040 A2)
