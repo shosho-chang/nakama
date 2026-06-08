@@ -187,12 +187,13 @@ body.sho .wk-cat-items { list-style: none; margin: 0; padding: 0; display: flex;
 body.sho .wk-cat-item { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; font-size: 13px; color: var(--sho-text); min-width: 0; }
 /* v3-I follow-up (修修): compact priority chip (right-aligned via rowfill) + muted project
    adjacent to the title on each daily item. */
-body.sho .wk-ci-pri { height: 16px; padding: 0 6px; font-size: 9px; flex: 0 0 auto; }
+body.sho .wk-ci-pri { height: 15px; padding: 0 5px; font-size: 9px; font-weight: 500; flex: 0 0 auto; }
 body.sho .wk-ci-proj {
   flex: 0 1 auto; min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 11px; color: var(--sho-muted);
 }
-body.sho .wk-cat-item.done .wk-ci-name { color: var(--sho-muted); text-decoration: line-through; }
+body.sho .wk-cat-item.done .wk-ci-name,
+body.sho .wk-cat-item.done .wk-ci-proj { color: var(--sho-muted); text-decoration: line-through; }
 body.sho .wk-ci-name {
   /* flex 0 1 — don't grow, so the project sits adjacent to the title; the rowfill
      (margin-left:auto) pushes the priority chip + 🍅 to the right (修修). */
