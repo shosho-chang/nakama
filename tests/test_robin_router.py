@@ -1071,3 +1071,32 @@ def test_legacy_translate_returns_308_with_query_string(client):
     r = tc.post("/translate?file=x.md")
     assert r.status_code == 308
     assert r.headers["location"] == "/robin/translate?file=x.md"
+
+
+# ---------------------------------------------------------------------------
+# Reading hub (/robin/home) — unified 3-source entry
+# ---------------------------------------------------------------------------
+
+
+def test_reading_hub_renders_three_sources(client):
+    """/robin/home renders the unified hub with all three source panels and
+    their add/ingest actions, even when every source is empty."""
+    tc, _ = client
+    r = tc.get("/robin/home")
+    assert r.status_code == 200
+    body = r.text
+    assert "Robin · 首頁" in body
+    # three source panels
+    assert "文章" in body and "影片" in body and "書" in body
+    # actions present (video add button is the gap this slice fixes)
+    assert "/robin/watchlist/add" in body  # ➕ 加影片
+    assert "/robin/books/upload" in body  # 📤 上傳新書
+
+
+def test_reading_hub_requires_auth(auth_client):
+    """When WEB_PASSWORD is set, the hub redirects unauthenticated callers to
+    /login with a next param (same gate as the other Robin surfaces)."""
+    tc, _, _cookies = auth_client
+    r = tc.get("/robin/home")
+    assert r.status_code == 302
+    assert r.headers["location"] == "/login?next=/robin/home"

@@ -15,7 +15,7 @@ CSS is introduced — all tokens still resolve to ``--sho-*``. #}
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Robin · Watchlist</title>
+<title>Robin · 影片</title>
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
@@ -24,15 +24,15 @@ CSS is introduced — all tokens still resolve to ``--sho-*``. #}
 </head>
 <body class="sho robin-page">
 {% from "_chassis_nav.html" import chassis_nav %}
+{% from "_reader_nav.html" import reader_nav %}
 {{ chassis_nav(nav_active='robin') }}
 <div class="container is-narrow">
 <div class="header">
-  <h1><span>🎬</span>Robin · Watchlist</h1>
-  <nav class="header-nav">
-    <a href="/robin">📥 Inbox</a>
-    <a href="/robin/books">📚 書架</a>
-    <a href="/robin/watchlist" class="active">🎬 Watchlist</a>
-  </nav>
+  <h1><span>🎬</span>Robin · 影片</h1>
+</div>
+{{ reader_nav(active='videos') }}
+<div class="toolbar" style="margin-bottom:16px">
+  <a href="/robin/watchlist/add" class="hub-action">➕ 加影片</a>
 </div>
 {% if rows %}
   {% for row in rows %}
@@ -61,8 +61,8 @@ CSS is introduced — all tokens still resolve to ``--sho-*``. #}
 {% else %}
   <div class="empty">
     <div style="font-size:2.5rem">🎬</div>
-    <strong>Watchlist 是空的</strong>
-    <p>把 YouTube 影片加進 <code>Watchlist/youtube/</code> 後重新整理</p>
+    <strong>還沒有影片</strong>
+    <p>點上方「➕ 加影片」貼一支 YouTube 連結開始</p>
   </div>
 {% endif %}
 </div>
