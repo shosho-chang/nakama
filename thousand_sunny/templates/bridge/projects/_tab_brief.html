@@ -1,3 +1,4 @@
+{% from "_task_row.html" import task_row %}
 <div class="pj-tab-panel" id="brief" data-tab="brief" {% if tab != 'brief' %}hidden{% endif %}>
   <header class="pj-section-header">
     <h2 class="pj-section-title">📝 Brief</h2>
@@ -79,4 +80,33 @@
       </form>
     </div>
   </details>
+
+  {# ── 關聯任務 (v3-H Slice 3): same task rows as the Weekly Dashboard (per-entry
+       排入 chips), scoped to THIS project. ``return_to`` makes chip/排入 actions land
+       back here. The wk-* markup needs bridge-weekly.css/js — added in detail.html. ── #}
+  <section class="pj-brief-tasks wk-scope">
+    <div class="pj-brief-tasks-head">
+      <h3 class="pj-subsection-title">關聯任務</h3>
+      <span class="pj-muted">{{ related_tasks | length }} 項 · 🍅 實際 / 預估</span>
+      <details class="wk-newtask">
+        <summary class="wk-newtask-toggle">＋ 新增關聯任務</summary>
+        <form class="wk-newtask-form" method="post" action="/bridge/projects/{{ entry.slug }}/tasks/new">
+          <label class="wk-sched-lbl wk-newtask-title"><span class="wk-sched-cap">標題</span>
+            <input type="text" name="name" maxlength="80" required autocomplete="off"></label>
+          <label class="wk-sched-lbl"><span class="wk-sched-cap">分類</span>
+            <select name="category">
+              {% for slug, label in all_categories %}<option value="{{ slug }}"{{ ' selected' if slug == 'work' }}>{{ label }}</option>{% endfor %}
+            </select></label>
+          <label class="wk-sched-lbl"><span class="wk-sched-cap">🍅 預估</span>
+            <input class="wk-newtask-pom" type="number" name="estimated_pomodoros" min="1" max="20" value="4"></label>
+          <button class="sho-btn wk-sched-go" type="submit">建立</button>
+        </form>
+      </details>
+    </div>
+    <div class="wk-plan-list-host">
+      {% for t in related_tasks %}{{ task_row(t, related_view, return_to=entry.slug) }}{% else %}
+        <p class="pj-empty-hint">此 project 尚無 TaskNotes 任務。用上方「＋ 新增關聯任務」建立。</p>
+      {% endfor %}
+    </div>
+  </section>
 </div>

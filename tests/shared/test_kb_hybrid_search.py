@@ -1,17 +1,17 @@
 """Tests for shared/kb_hybrid_search.py.
 
-Uses in-memory SQLite + pre-inserted chunks/vectors to verify:
+ADR-042: the dense-vector lane was removed — retrieval is BM25 (FTS5) +
+wikilink expansion, fused with RRF k=60. These tests use in-memory SQLite
+with pre-inserted chunks to verify:
   - RRF math (hand-calculated against known rankings)
-  - Lane fusion (both lanes vs single lane)
+  - BM25 ranking
+  - Wikilink lane expansion (outgoing / incoming / rank / score)
   - Token budget truncation
-  - Lane disable toggle
+  - Legacy "vec" lane name is accepted but inert
 """
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
-import numpy as np
 import pytest
 
 from shared.kb_hybrid_search import _RRF_K, make_conn, search
@@ -19,13 +19,6 @@ from shared.kb_hybrid_search import _RRF_K, make_conn, search
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _unit_vec(dim: int, pos: int) -> np.ndarray:
-    """256-dim float32 array with 1.0 at `pos`, 0.0 elsewhere."""
-    v = np.zeros(dim, dtype=np.float32)
-    v[pos] = 1.0
-    return v
 
 
 def _insert_chunk(conn, rowid: int, chunk_text: str, section: str, page_title: str, path: str):
@@ -36,35 +29,33 @@ def _insert_chunk(conn, rowid: int, chunk_text: str, section: str, page_title: s
     )
 
 
-def _insert_vec(conn, rowid: int, emb: np.ndarray):
+def _insert_wikilink(conn, src_path: str, dst_path: str) -> None:
     conn.execute(
-        "INSERT INTO kb_vectors(rowid, embedding) VALUES (?,?)",
-        (rowid, emb.tobytes()),
+        "INSERT INTO kb_wikilinks(src_path, dst_path) VALUES (?,?)",
+        (src_path, dst_path),
     )
 
 
 # ---------------------------------------------------------------------------
 # RRF math verification
 #
-# Setup (3 chunks, both lanes active):
-#   BM25 query "sleep": A=rank1, B=rank2, C=no match
-#   vec query:          B=rank1, C=rank2, A=rank3
+# Setup (3 chunks):
+#   BM25 query "sleep": A=rank1 (3× sleep), B=rank2 (1× sleep), C=no match
+#   wikilink: A links OUT to C → C surfaces at wikilink rank 1
 #
 # Hand-calculated RRF (k=60):
-#   A: 1/61 + 1/63  ≈ 0.032266
-#   B: 1/62 + 1/61  ≈ 0.032522
-#   C: 1/62         ≈ 0.016129
-#
-# Expected order: B > A > C
+#   A: bm25=1            → 1/61          ≈ 0.016393
+#   B: bm25=2            → 1/62          ≈ 0.016129
+#   C: wikilink=1        → 1/61          ≈ 0.016393
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def rrf_db():
-    """In-memory DB with 3 pre-inserted chunks/vectors for RRF math tests."""
-    conn = make_conn(dim=256)
+    """In-memory DB with 3 pre-inserted chunks for RRF math tests."""
+    conn = make_conn()
 
-    # A (rowid=1): matches "sleep sleep" BM25 query; far from query vec
+    # A (rowid=1): strongest BM25 match for "sleep"; links out to C
     _insert_chunk(
         conn,
         1,
@@ -73,9 +64,7 @@ def rrf_db():
         "Sleep",
         "KB/Wiki/Concepts/sleep",
     )
-    _insert_vec(conn, 1, _unit_vec(256, 1))  # at dim 1 (far from query at dim 0)
-
-    # B (rowid=2): matches BM25 query; closest to query vec
+    # B (rowid=2): weaker BM25 match
     _insert_chunk(
         conn,
         2,
@@ -84,9 +73,7 @@ def rrf_db():
         "Sleep",
         "KB/Wiki/Concepts/sleep-research",
     )
-    _insert_vec(conn, 2, _unit_vec(256, 0))  # at dim 0 (closest to query)
-
-    # C (rowid=3): does NOT match BM25; second closest to query vec
+    # C (rowid=3): no BM25 match; reachable from A via wikilink only
     _insert_chunk(
         conn,
         3,
@@ -95,69 +82,45 @@ def rrf_db():
         "Exercise",
         "KB/Wiki/Concepts/exercise",
     )
-    v = np.zeros(256, dtype=np.float32)
-    v[0] = 0.8  # slightly less close to query than B
-    _insert_vec(conn, 3, v)
+    _insert_wikilink(conn, "KB/Wiki/Concepts/sleep", "KB/Wiki/Concepts/exercise")
 
     conn.commit()
     return conn
 
 
-def _query_emb_at_dim0() -> np.ndarray:
-    """Query vector pointing at dim 0 → distances: B(0.0) < C(small) < A(1.0)."""
-    return _unit_vec(256, 0)
-
-
-def test_rrf_both_lanes_order_b_a_c(rrf_db):
-    """Both lanes active → B > A > C (exact RRF math matches hand calc)."""
-    with patch("shared.kb_embedder.embed", return_value=_query_emb_at_dim0()):
-        hits = search("sleep sleep sleep", top_k=10, db=rrf_db)
-
-    assert len(hits) == 3
+def test_bm25_ranks_strongest_match_first(rrf_db):
+    """A (3× 'sleep') outranks B (1× 'sleep') on the BM25 lane."""
+    hits = search("sleep", top_k=10, lanes=("bm25",), db=rrf_db)
     paths = [h.path for h in hits]
-    # B must come first (highest RRF combining both lanes)
-    assert paths[0] == "KB/Wiki/Concepts/sleep-research"
-    # C must come last (only vec lane, rank 2)
-    assert paths[-1] == "KB/Wiki/Concepts/exercise"
+    assert paths == ["KB/Wiki/Concepts/sleep", "KB/Wiki/Concepts/sleep-research"]
 
 
 def test_rrf_scores_match_hand_calculation(rrf_db):
-    """RRF scores for B, A, C match expected values within tolerance."""
-    with patch("shared.kb_embedder.embed", return_value=_query_emb_at_dim0()):
-        hits = search("sleep sleep sleep", top_k=10, db=rrf_db)
-
+    """RRF scores for A, B, C match expected values within tolerance."""
+    hits = search("sleep", top_k=10, lanes=("bm25", "wikilink"), db=rrf_db)
     hit_by_path = {h.path: h for h in hits}
 
-    # B: bm25=2, vec=1 → 1/(60+2) + 1/(60+1)
-    expected_b = 1.0 / (_RRF_K + 2) + 1.0 / (_RRF_K + 1)
-    # A: bm25=1, vec=3 → 1/(60+1) + 1/(60+3)
-    expected_a = 1.0 / (_RRF_K + 1) + 1.0 / (_RRF_K + 3)
-    # C: vec=2 only → 1/(60+2)
-    expected_c = 1.0 / (_RRF_K + 2)
+    expected_a = 1.0 / (_RRF_K + 1)  # bm25 rank 1
+    expected_b = 1.0 / (_RRF_K + 2)  # bm25 rank 2
+    expected_c = 1.0 / (_RRF_K + 1)  # wikilink rank 1
 
-    b = hit_by_path["KB/Wiki/Concepts/sleep-research"]
-    a = hit_by_path["KB/Wiki/Concepts/sleep"]
-    c = hit_by_path["KB/Wiki/Concepts/exercise"]
-
-    assert abs(b.rrf_score - expected_b) < 1e-9
-    assert abs(a.rrf_score - expected_a) < 1e-9
-    assert abs(c.rrf_score - expected_c) < 1e-9
+    assert abs(hit_by_path["KB/Wiki/Concepts/sleep"].rrf_score - expected_a) < 1e-9
+    assert abs(hit_by_path["KB/Wiki/Concepts/sleep-research"].rrf_score - expected_b) < 1e-9
+    assert abs(hit_by_path["KB/Wiki/Concepts/exercise"].rrf_score - expected_c) < 1e-9
 
 
 def test_rrf_lane_ranks_stored_per_hit(rrf_db):
     """Each SearchHit.lane_ranks records which lanes contributed and their rank."""
-    with patch("shared.kb_embedder.embed", return_value=_query_emb_at_dim0()):
-        hits = search("sleep sleep sleep", top_k=10, db=rrf_db)
-
+    hits = search("sleep", top_k=10, lanes=("bm25", "wikilink"), db=rrf_db)
     hit_by_path = {h.path: h for h in hits}
 
-    b = hit_by_path["KB/Wiki/Concepts/sleep-research"]
-    assert "bm25" in b.lane_ranks
-    assert "vec" in b.lane_ranks
+    a = hit_by_path["KB/Wiki/Concepts/sleep"]
+    assert "bm25" in a.lane_ranks
+    assert "wikilink" not in a.lane_ranks
 
     c = hit_by_path["KB/Wiki/Concepts/exercise"]
     assert "bm25" not in c.lane_ranks  # C didn't match BM25
-    assert "vec" in c.lane_ranks
+    assert "wikilink" in c.lane_ranks
 
 
 # ---------------------------------------------------------------------------
@@ -166,9 +129,8 @@ def test_rrf_lane_ranks_stored_per_hit(rrf_db):
 
 
 def test_bm25_only_lane(rrf_db):
-    """lanes=('bm25',) → only A and B returned (C has no BM25 match for 'sleep')."""
-    with patch("shared.kb_embedder.embed", return_value=_query_emb_at_dim0()):
-        hits = search("sleep sleep sleep", top_k=10, lanes=("bm25",), db=rrf_db)
+    """lanes=('bm25',) → only A and B returned (C has no BM25 match)."""
+    hits = search("sleep", top_k=10, lanes=("bm25",), db=rrf_db)
 
     paths = {h.path for h in hits}
     assert "KB/Wiki/Concepts/sleep" in paths
@@ -176,18 +138,20 @@ def test_bm25_only_lane(rrf_db):
     assert "KB/Wiki/Concepts/exercise" not in paths
     for h in hits:
         assert "bm25" in h.lane_ranks
+
+
+def test_legacy_vec_lane_is_inert(rrf_db):
+    """ADR-042: passing the removed 'vec' lane name is accepted but adds nothing.
+
+    Callers (closed_pool / Brook) may still hand us ('bm25','vec'); the result
+    must equal a plain BM25 search and never raise.
+    """
+    with_vec = search("sleep", top_k=10, lanes=("bm25", "vec"), db=rrf_db)
+    bm25_only = search("sleep", top_k=10, lanes=("bm25",), db=rrf_db)
+
+    assert [h.path for h in with_vec] == [h.path for h in bm25_only]
+    for h in with_vec:
         assert "vec" not in h.lane_ranks
-
-
-def test_vec_only_lane(rrf_db):
-    """lanes=('vec',) → all 3 chunks returned, no BM25 rank in lane_ranks."""
-    with patch("shared.kb_embedder.embed", return_value=_query_emb_at_dim0()):
-        hits = search("sleep", top_k=10, lanes=("vec",), db=rrf_db)
-
-    assert len(hits) == 3
-    for h in hits:
-        assert "vec" in h.lane_ranks
-        assert "bm25" not in h.lane_ranks
 
 
 # ---------------------------------------------------------------------------
@@ -196,11 +160,9 @@ def test_vec_only_lane(rrf_db):
 
 
 def test_top_k_limits_results(rrf_db):
-    """top_k=2 → at most 2 results returned."""
-    with patch("shared.kb_embedder.embed", return_value=_query_emb_at_dim0()):
-        hits = search("sleep sleep sleep", top_k=2, db=rrf_db)
-
-    assert len(hits) <= 2
+    """top_k=1 → at most 1 result returned."""
+    hits = search("sleep", top_k=1, lanes=("bm25", "wikilink"), db=rrf_db)
+    assert len(hits) <= 1
 
 
 # ---------------------------------------------------------------------------
@@ -212,14 +174,12 @@ def test_chunk_text_truncated_to_token_budget():
     """chunk_text in SearchHit is capped at _TOKEN_BUDGET_CHARS chars."""
     from shared.kb_hybrid_search import _TOKEN_BUDGET_CHARS
 
-    conn = make_conn(dim=256)
+    conn = make_conn()
     long_text = "word " * 1000  # ~5000 chars
     _insert_chunk(conn, 1, long_text, "Sec", "Title", "KB/Wiki/Concepts/long")
-    _insert_vec(conn, 1, _unit_vec(256, 0))
     conn.commit()
 
-    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 0)):
-        hits = search("word", top_k=1, lanes=("vec",), db=conn)
+    hits = search("word", top_k=1, lanes=("bm25",), db=conn)
 
     assert hits
     assert len(hits[0].chunk_text) <= _TOKEN_BUDGET_CHARS
@@ -232,9 +192,8 @@ def test_chunk_text_truncated_to_token_budget():
 
 def test_search_empty_db_returns_empty():
     """Querying an empty index returns []."""
-    conn = make_conn(dim=256)
-    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 0)):
-        hits = search("anything", db=conn)
+    conn = make_conn()
+    hits = search("anything", db=conn)
     assert hits == []
 
 
@@ -243,9 +202,9 @@ def test_search_empty_db_returns_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_make_conn_creates_all_tables():
-    """make_conn() initializes all 3 required tables."""
-    conn = make_conn(dim=256)
+def test_make_conn_creates_required_tables():
+    """make_conn() initializes the FTS5 + bookkeeping tables, and NOT kb_vectors."""
+    conn = make_conn()
     tables = {
         r[0]
         for r in conn.execute(
@@ -253,9 +212,11 @@ def test_make_conn_creates_all_tables():
         ).fetchall()
     }
     assert "kb_index_meta" in tables
+    assert "kb_wikilinks" in tables
     # FTS5 shadow tables include the _data table
     assert any("kb_chunks" in t for t in tables)
-    assert any("kb_vectors" in t for t in tables)
+    # ADR-042: the dense-vector table must no longer be created
+    assert not any("kb_vectors" in t for t in tables)
 
 
 # ---------------------------------------------------------------------------
@@ -263,29 +224,17 @@ def test_make_conn_creates_all_tables():
 # ---------------------------------------------------------------------------
 
 
-def _insert_wikilink(conn, src_path: str, dst_path: str) -> None:
-    conn.execute(
-        "INSERT INTO kb_wikilinks(src_path, dst_path) VALUES (?,?)",
-        (src_path, dst_path),
-    )
-
-
 @pytest.fixture
 def wikilink_db():
     """In-memory DB for wikilink lane tests.
 
     Structure:
-      concept-a (rowid=1): BM25-matches "concept-a unique alpha"
+      concept-a (rowid=1): BM25-matches "conceptalpha unique distinctive"
       sources-x (rowid=2): concept-a links OUT to sources-x
       sources-y (rowid=3): concept-a links OUT to sources-y
       concept-b (rowid=4): concept-a links OUT to concept-b
-
-    Wikilinks:
-      KB/Wiki/Concepts/concept-a → KB/Wiki/Sources/sources-x
-      KB/Wiki/Concepts/concept-a → KB/Wiki/Sources/sources-y
-      KB/Wiki/Concepts/concept-a → KB/Wiki/Concepts/concept-b
     """
-    conn = make_conn(dim=256)
+    conn = make_conn()
 
     _insert_chunk(
         conn,
@@ -295,8 +244,6 @@ def wikilink_db():
         "Concept A",
         "KB/Wiki/Concepts/concept-a",
     )
-    _insert_vec(conn, 1, _unit_vec(256, 20))
-
     _insert_chunk(
         conn,
         2,
@@ -305,8 +252,6 @@ def wikilink_db():
         "Source X",
         "KB/Wiki/Sources/sources-x",
     )
-    _insert_vec(conn, 2, _unit_vec(256, 21))
-
     _insert_chunk(
         conn,
         3,
@@ -315,8 +260,6 @@ def wikilink_db():
         "Source Y",
         "KB/Wiki/Sources/sources-y",
     )
-    _insert_vec(conn, 3, _unit_vec(256, 22))
-
     _insert_chunk(
         conn,
         4,
@@ -325,7 +268,6 @@ def wikilink_db():
         "Concept B",
         "KB/Wiki/Concepts/concept-b",
     )
-    _insert_vec(conn, 4, _unit_vec(256, 23))
 
     _insert_wikilink(conn, "KB/Wiki/Concepts/concept-a", "KB/Wiki/Sources/sources-x")
     _insert_wikilink(conn, "KB/Wiki/Concepts/concept-a", "KB/Wiki/Sources/sources-y")
@@ -337,7 +279,7 @@ def wikilink_db():
 
 def test_make_conn_creates_wikilinks_table():
     """make_conn() must initialize kb_wikilinks table."""
-    conn = make_conn(dim=256)
+    conn = make_conn()
     tables = {
         r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     }
@@ -346,13 +288,12 @@ def test_make_conn_creates_wikilinks_table():
 
 def test_wikilink_lane_outgoing_links(wikilink_db):
     """BM25 hits concept-a; wikilink lane pulls in its 3 outgoing neighbors."""
-    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 99)):
-        hits = search(
-            "conceptalpha unique distinctive",
-            top_k=10,
-            lanes=("bm25", "wikilink"),
-            db=wikilink_db,
-        )
+    hits = search(
+        "conceptalpha unique distinctive",
+        top_k=10,
+        lanes=("bm25", "wikilink"),
+        db=wikilink_db,
+    )
 
     paths = {h.path for h in hits}
     assert "KB/Wiki/Sources/sources-x" in paths
@@ -362,75 +303,59 @@ def test_wikilink_lane_outgoing_links(wikilink_db):
 
 def test_wikilink_lane_incoming_links(wikilink_db):
     """Query hits sources-x; wikilink lane finds concept-a via incoming edge."""
-    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 99)):
-        hits = search(
-            "sourceresearch material content",
-            top_k=10,
-            lanes=("bm25", "wikilink"),
-            db=wikilink_db,
-        )
+    hits = search(
+        "sourceresearch material content",
+        top_k=10,
+        lanes=("bm25", "wikilink"),
+        db=wikilink_db,
+    )
 
     paths = {h.path for h in hits}
     assert "KB/Wiki/Concepts/concept-a" in paths
 
 
 def test_wikilink_lane_rank_in_lane_ranks(wikilink_db):
-    """Wikilink-only hits must have 'wikilink' key in lane_ranks, no BM25/vec."""
-    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 99)):
-        hits = search(
-            "conceptalpha unique distinctive",
-            top_k=10,
-            lanes=("bm25", "wikilink"),
-            db=wikilink_db,
-        )
+    """Wikilink-only hits must have 'wikilink' key in lane_ranks, no BM25."""
+    hits = search(
+        "conceptalpha unique distinctive",
+        top_k=10,
+        lanes=("bm25", "wikilink"),
+        db=wikilink_db,
+    )
 
     hit_by_path = {h.path: h for h in hits}
     sx = hit_by_path.get("KB/Wiki/Sources/sources-x")
     assert sx is not None, "sources-x must be in results"
     assert "wikilink" in sx.lane_ranks
     assert "bm25" not in sx.lane_ranks
-    assert "vec" not in sx.lane_ranks
 
 
-def test_bm25_vec_lanes_no_wikilink_regression(rrf_db):
-    """lanes=('bm25','vec') without 'wikilink' — exact pre-#433 behavior, no wikilink key."""
-    with patch("shared.kb_embedder.embed", return_value=_query_emb_at_dim0()):
-        hits = search("sleep sleep sleep", top_k=10, lanes=("bm25", "vec"), db=rrf_db)
-
-    assert len(hits) == 3
-    paths = [h.path for h in hits]
-    assert paths[0] == "KB/Wiki/Concepts/sleep-research"
-    assert paths[-1] == "KB/Wiki/Concepts/exercise"
+def test_bm25_only_no_wikilink_key(rrf_db):
+    """lanes=('bm25',) → no 'wikilink' key leaks into lane_ranks."""
+    hits = search("sleep", top_k=10, lanes=("bm25",), db=rrf_db)
     for h in hits:
         assert "wikilink" not in h.lane_ranks
 
 
-def test_rrf_3lane_wikilink_score():
+def test_rrf_wikilink_only_score():
     """Hand-calc: page that appears only in wikilink lane at rank 1 → score = 1/(60+1)."""
-    conn = make_conn(dim=256)
+    conn = make_conn()
 
-    # bm25-hit: matches query text, links to wikilink-target
     _insert_chunk(
         conn, 1, "anchor page text for query match", "", "Anchor", "KB/Wiki/Concepts/anchor"
     )
-    _insert_vec(conn, 1, _unit_vec(256, 0))
-
-    # wikilink-target: does NOT match BM25/vec query
     _insert_chunk(
         conn, 2, "unrelated filler words zzz qqq xxx", "", "Target", "KB/Wiki/Concepts/wl-target"
     )
-    _insert_vec(conn, 2, _unit_vec(256, 1))
-
     _insert_wikilink(conn, "KB/Wiki/Concepts/anchor", "KB/Wiki/Concepts/wl-target")
     conn.commit()
 
-    with patch("shared.kb_embedder.embed", return_value=_unit_vec(256, 99)):
-        hits = search(
-            "anchor page text query match",
-            top_k=10,
-            lanes=("bm25", "wikilink"),
-            db=conn,
-        )
+    hits = search(
+        "anchor page text query match",
+        top_k=10,
+        lanes=("bm25", "wikilink"),
+        db=conn,
+    )
 
     hit_by_path = {h.path: h for h in hits}
     tgt = hit_by_path.get("KB/Wiki/Concepts/wl-target")
@@ -438,37 +363,3 @@ def test_rrf_3lane_wikilink_score():
     assert "wikilink" in tgt.lane_ranks
     expected_score = 1.0 / (_RRF_K + tgt.lane_ranks["wikilink"])
     assert abs(tgt.rrf_score - expected_score) < 1e-9
-
-
-# ---------------------------------------------------------------------------
-# get_kb_conn(check_dim=...) — N452 / ADR-022 follow-up
-# ---------------------------------------------------------------------------
-
-
-def test_get_kb_conn_check_dim_false_skips_assertion(tmp_path, monkeypatch):
-    """`check_dim=False` lets the conn open even when kb_vectors dim
-    disagrees with the active embedder — the rebuild CLI relies on this."""
-    import shared.kb_hybrid_search as khs
-
-    db_path = tmp_path / "kb_index.db"
-    monkeypatch.setenv("NAKAMA_KB_INDEX_DB_PATH", str(db_path))
-    # Pre-create the DB with kb_vectors at a dim that won't match the embedder.
-    seed = khs.make_conn(db_path, dim=256)
-    seed.close()
-
-    # Reset module-level cache
-    monkeypatch.setattr(khs, "_conn", None, raising=False)
-    # Force embedder to report a different dim than the table
-    monkeypatch.setattr(khs.kb_embedder, "current_dim", lambda: 1024)
-    monkeypatch.setattr(khs.kb_embedder, "current_backend", lambda: "bge-m3")
-
-    # check_dim=True → must raise
-    with pytest.raises(RuntimeError, match="Embedding dim mismatch"):
-        khs.get_kb_conn(check_dim=True)
-
-    # Reset cache, then check_dim=False → must NOT raise
-    monkeypatch.setattr(khs, "_conn", None, raising=False)
-    conn = khs.get_kb_conn(check_dim=False)
-    assert conn is not None
-    conn.close()
-    monkeypatch.setattr(khs, "_conn", None, raising=False)

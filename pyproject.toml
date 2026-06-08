@@ -36,10 +36,8 @@ dependencies = [
     "beautifulsoup4>=4.12",      # EPUB HTML → plain text + heading extraction
     "markdownify>=1.2",          # HTML → Markdown (ADR-020 Phase 0 raw converter)
 
-    # KB hybrid retrieval (issue #431)
-    "sqlite-vec>=0.1.9",   # vec0 virtual table for dense-vector lane
-    "model2vec>=0.8.0",    # potion-base-8M 256-dim static embeddings
-    "FlagEmbedding>=1.4.0", # BGE-M3 1024-dim default backend (ADR-022); ~2.3GB model on first use
+    # KB retrieval (issue #431) — ADR-042 removed the dense-vector lane,
+    # so sqlite-vec / model2vec / FlagEmbedding are no longer required.
 
     # Utilities
     "python-dateutil>=2.9",
@@ -112,6 +110,7 @@ pythonpath = ["."]
 markers = [
     "real_extractor: run the real memory_extractor (bypass conftest auto-mock)",
     "real_slack: send real Slack DM via FrankySlackBot.from_env (bypass conftest auto-mock)",
+    "real_calendar: hit the live Google Calendar API (bypass conftest auto-mock)",
     "live_wp: run against local Docker WP staging (requires PYTEST_WP_BASE_URL + WP_SHOSHO_* env vars)",
 ]
 

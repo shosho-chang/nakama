@@ -1,17 +1,24 @@
-# KB Hybrid Search
+# KB Search (FTS5/BM25)
 
-BM25 + dense-vector + wikilink 3-lane retrieval over the Obsidian vault KB/Wiki corpus.
+BM25 + wikilink 2-lane retrieval over the Obsidian vault KB/Wiki corpus.
 Supersedes the filesystem-walk + Claude Haiku ranker path for bulk retrieval use cases.
+
+> **ADR-042 (2026-06-05):** the dense-vector lane (sqlite-vec / model2vec / BGE-M3
+> embeddings) was removed when the textbook corpus left the vault. The small card-box
+> corpus is well served by keyword search, so BM25 is the only ranking lane; the
+> `wikilink` lane still adds structural expansion. The `SearchHit` shape and the
+> `search()`/`search_kb()` signatures are unchanged. A legacy `"vec"` lane name is
+> accepted but inert.
 
 ## Capability
 
 | Property | Value |
 |----------|-------|
-| Module | `shared.kb_hybrid_search`, `shared.kb_indexer`, `shared.kb_embedder` |
+| Module | `shared.kb_hybrid_search`, `shared.kb_indexer` |
 | Invoked by | `agents.robin.kb_search.search_kb(..., engine="hybrid")` |
-| Engine | BM25 (SQLite FTS5) + dense-vec (model2vec potion-base-8M) + wikilink structural expansion |
+| Engine | BM25 (SQLite FTS5) + wikilink structural expansion |
 | Fusion | Reciprocal Rank Fusion k=60, up to 30 candidates per lane |
-| Index DB | `kb_index.db` (separate from state.db; sqlite-vec extension required) |
+| Index DB | `kb_index.db` (separate from state.db; plain SQLite — no extension required) |
 
 ## IO Contract
 
@@ -34,11 +41,11 @@ from shared.kb_hybrid_search import search, SearchHit
 hits: list[SearchHit] = search(
     query,
     top_k=10,
-    lanes=("bm25", "vec"),              # default: semantic+lexical only
-    # lanes=("bm25", "vec", "wikilink") # enable structural expansion
+    lanes=("bm25",),                # default: lexical only
+    # lanes=("bm25", "wikilink")    # enable structural expansion
 )
 # SearchHit fields: chunk_id, path, heading, page_title, chunk_text, rrf_score, lane_ranks
-# lane_ranks example: {"bm25": 2, "vec": 5, "wikilink": 1}
+# lane_ranks example: {"bm25": 2, "wikilink": 1}
 ```
 
 ### Search (via kb_search.search_kb)
@@ -75,12 +82,13 @@ signal that generic RAG tools (BM25-only or vec-only) cannot access.
 - Stale edges for a page are deleted and re-written on every re-index of that page.
 
 **How it works at search time:**
-- After BM25 and vec retrieve their candidate sets, the wikilink lane resolves the
+- After BM25 retrieves its candidate set, the wikilink lane resolves the
   file path of every candidate chunk, then fetches 1-hop neighbors in both directions
   (outgoing `[[X]]` links and incoming `mentioned_in:` back-references).
 - Neighbor chunks not already in the candidate pool are added and ranked by their
   edge-count to existing candidates (most-connected = rank 1).
-- All three lanes fuse via RRF k=60; a chunk can score from 1, 2, or all 3 lanes.
+- Both lanes fuse via RRF k=60; a chunk can score from the BM25 lane, the wikilink
+  lane, or both.
 
 **Why this matters for Nakama:**
 - Concept pages carry `mentioned_in: [[Sources/X]]` backlinks that record which papers
@@ -92,22 +100,20 @@ signal that generic RAG tools (BM25-only or vec-only) cannot access.
 **Toggle for A/B comparison:**
 
 ```python
-# Phase 1a: semantic + lexical only
-hits_baseline = search(q, lanes=("bm25", "vec"))
+# Lexical only
+hits_baseline = search(q, lanes=("bm25",))
 
-# Phase 1b: add structural expansion
-hits_wikilink = search(q, lanes=("bm25", "vec", "wikilink"))
+# Add structural expansion
+hits_wikilink = search(q, lanes=("bm25", "wikilink"))
 ```
 
 ## Measured Cost & Latency
 
 | Metric | Value |
 |--------|-------|
-| Embedding model | model2vec potion-base-8M (≈25 MB download, cached) |
-| Embedding latency | ~1 ms/chunk on CPU (no GPU required) |
-| Index build (845 pages) | ~30–60 s on desktop (CPU only) |
-| Search latency (BM25+vec, 845 pages) | <50 ms |
-| Search latency (BM25+vec+wikilink, 845 pages) | <80 ms (extra graph fan-out) |
+| Index build (no embeddings; ADR-042) | fast — FTS5 insert only, no model load |
+| Search latency (BM25, small card-box corpus) | <50 ms |
+| Search latency (BM25+wikilink) | <80 ms (extra graph fan-out) |
 | LLM cost per search | $0 (no LLM call) |
 
 ## Ground Truth Signal Collection (S4)
@@ -139,8 +145,7 @@ hybrid engine without any extra annotation tooling.
 ## Extension Points
 
 - **Different vault path**: `index_vault(your_vault_path, db)` — no config change needed
-- **Single-lane mode**: `search(q, lanes=("bm25",))` or `search(q, lanes=("vec",))`
-- **Wikilink lane**: `search(q, lanes=("bm25","vec","wikilink"))` — adds structural expansion
+- **Single-lane mode**: `search(q, lanes=("bm25",))` (default)
+- **Wikilink lane**: `search(q, lanes=("bm25","wikilink"))` — adds structural expansion
 - **Top-k tuning**: `search(q, top_k=20)` for broader recall
 - **Custom DB path**: `NAKAMA_KB_INDEX_DB_PATH=/path/to/custom.db` env override
-- **Model swap**: change `_MODEL_NAME` in `shared/kb_embedder.py` (must be 256-dim model2vec)

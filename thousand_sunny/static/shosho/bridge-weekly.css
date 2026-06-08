@@ -81,6 +81,33 @@ body.sho .wk-empty { color: var(--sho-muted); font-size: 13px; padding: 6px 0; }
 
 /* ── task views ── */
 body.sho .wk-tabs { display: flex; gap: 4px; margin-left: auto; }
+/* v3-H: 新增任務 disclosure — a dropdown panel anchored to the head, so opening it
+   doesn't distort the flex row. */
+body.sho .wk-newtask { position: relative; }
+body.sho .wk-newtask-toggle {
+  list-style: none; cursor: pointer; user-select: none; white-space: nowrap;
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-accent);
+  padding: 5px 12px; border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill);
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-newtask-toggle::-webkit-details-marker { display: none; }
+body.sho .wk-newtask-toggle:hover { border-color: var(--sho-accent); }
+body.sho .wk-newtask[open] .wk-newtask-toggle { color: var(--sho-text); border-color: var(--sho-accent); }
+body.sho .wk-newtask-form {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 30;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; width: max-content; max-width: 92vw;
+  padding: 14px; background: var(--sho-bg-2); border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2); box-shadow: var(--sho-shadow-2, 0 8px 24px rgb(0 0 0 / 0.18));
+}
+body.sho .wk-newtask-form select,
+body.sho .wk-newtask-title input,
+body.sho .wk-newtask-pom {
+  font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 5px 8px; height: 34px; box-sizing: border-box; color-scheme: dark light;
+}
+body.sho .wk-newtask-title input { min-width: 200px; }
+body.sho .wk-newtask-pom { width: 64px; }
 body.sho .wk-tab {
   font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.12em;
   text-transform: uppercase; padding: 5px 11px; border: 1px solid transparent;
@@ -98,8 +125,11 @@ body.sho .wk-box.done { background: var(--sho-text); border-color: var(--sho-tex
 body.sho .wk-task.done .wk-tname { color: var(--sho-muted); text-decoration: line-through; }
 body.sho .wk-tname { color: var(--sho-text); }
 body.sho .wk-tproj { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); letter-spacing: 0.04em; }
+/* spacer carries the auto-margin so the date badge can sit just left of the 🍅
+   count in the right group (修修); the count itself no longer needs the margin */
+body.sho .wk-rowfill { margin-left: auto; }
 body.sho .wk-tnum {
-  margin-left: auto; font-family: var(--sho-font-mono); font-size: 11px;
+  font-family: var(--sho-font-mono); font-size: 11px;
   color: var(--sho-text-2); font-variant-numeric: tabular-nums;
 }
 body.sho .wk-status { text-transform: none; }
@@ -223,6 +253,13 @@ body.sho .wk-plan-chip {
 }
 body.sho .wk-plan-chip.has-reason { border-color: color-mix(in oklch, var(--sho-warning) 45%, transparent); }
 body.sho .wk-plan-chip .wk-chip-pom { color: var(--sho-text); font-variant-numeric: tabular-nums; }
+/* v3-G: a raw inline emoji renders on its own low glyph-baseline next to the mono
+   digits, so "2🍅" had the 🍅 sinking below the 2 (修修). inline-block + middle-align
+   + a hair of lift seats it on the digits' optical centre. Reusable for any inline N🍅. */
+body.sho .sho-emoji {
+  display: inline-block; line-height: 1; vertical-align: middle;
+  transform: translateY(-0.12em); font-style: normal;
+}
 body.sho .wk-plan-chip .wk-chip-reason { color: var(--sho-warning); }
 body.sho .wk-plan-chip .wk-chip-x {
   display: inline-flex; align-items: center; justify-content: center;
@@ -232,6 +269,19 @@ body.sho .wk-plan-chip .wk-chip-x {
 }
 body.sho .wk-plan-chip .wk-chip-x:hover { background: var(--sho-bg-3); color: var(--sho-warning); }
 body.sho .wk-plan-chip .wk-chip-x:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+/* v3 multi-block: a linked chip (its own Google event) reads in accent; its 🗑 is
+   the confirm-gated cancel (deletes the event too). The plain ✕ stays plan-only. */
+body.sho .wk-plan-chip .wk-chip-form { display: inline-flex; margin: 0; }
+body.sho .wk-plan-chip.is-linked {
+  border-color: color-mix(in oklch, var(--sho-accent) 45%, var(--sho-line-2));
+}
+body.sho .wk-plan-chip.is-linked .wk-chip-day { color: var(--sho-accent); }
+body.sho .wk-plan-chip .wk-chip-cancel:hover {
+  background: var(--sho-bg-3);
+  color: color-mix(in oklch, var(--sho-danger, #d9534f) 80%, var(--sho-text));
+}
+/* merged 排入 form — stacked (fields row / reason / actions), not the old 1-line add */
+body.sho .wk-plan-merged { display: flex; flex-direction: column; gap: 10px; }
 
 body.sho .wk-plan-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 body.sho .wk-day-sel {
@@ -244,9 +294,11 @@ body.sho .wk-pom-field {
   font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-muted);
 }
 body.sho .wk-pom-field input {
-  width: 50px; font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-text);
+  /* v3-G: match the date/time inputs exactly (was 11px / 5px 6px / 50px) so the three
+     scheduler controls are one uniform set — same font, same box height (修修). */
+  width: 56px; font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text);
   background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
-  padding: 5px 6px; font-variant-numeric: tabular-nums;
+  padding: 5px 8px; font-variant-numeric: tabular-nums;
 }
 body.sho .wk-reason-field {
   display: none; flex: 1 1 160px; min-width: 120px;
@@ -485,11 +537,24 @@ body.sho .wk-sched-lbl {
   font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--sho-muted);
 }
+/* v3-G: the label is a COLUMN flex, so the bare "時間" text run and the hint <span>
+   each became their own flex item → 3 stacked lines (修修: "分成兩列真的很醜"). The
+   caption (word + hint) is wrapped in ONE .wk-sched-cap so it's a single flex item /
+   single line; nowrap guards it in the narrow time-input column. */
+body.sho .wk-sched-cap { white-space: nowrap; }
+/* v3-G: the hint matches the label word's SIZE (was 12px from .wk-mut vs the 10px
+   label → "(留空＝整天)" rendered bigger than "時間"); it stays secondary via colour,
+   not size (修修 caught the mismatch by eye, confirmed 12px vs 10px). */
+body.sho .wk-sched-lbl .wk-mut { font-size: inherit; text-transform: none; letter-spacing: 0.02em; }
 body.sho .wk-sched-date, body.sho .wk-sched-time {
   font-family: var(--sho-font-mono); font-size: 12px; color: var(--sho-text);
   background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
   padding: 5px 8px; color-scheme: dark light;
 }
+/* v3-G: lock all three inputs to ONE height. Chrome gives native date/time pickers a
+   taller intrinsic min-height than <input type=number>, so identical font/padding still
+   left the 番茄 box 2px shorter (measured: 33.2 vs 31.2). Explicit height equalises. */
+body.sho .wk-sched-date, body.sho .wk-sched-time, body.sho .wk-pom-field input { height: 34px; }
 body.sho .wk-sched-date:focus-visible, body.sho .wk-sched-time:focus-visible {
   outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus);
 }
@@ -500,7 +565,7 @@ body.sho .wk-sched-form.is-weekend .wk-reason-field {
 }
 body.sho .wk-sched-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
 body.sho .wk-force { font-size: 11px; color: var(--sho-text-2); }
-body.sho .wk-sched-go { padding: 6px 16px; font-size: 12px; }
+body.sho .wk-sched-go { padding: 0 18px; font-size: 12px; height: 34px; }
 
 /* #1 — make the native date/time picker indicator an obvious affordance. The
    dark color-scheme renders it near-invisible by default; lift it to a clear
@@ -549,7 +614,8 @@ body.sho .wk-ci-pom {
   color: var(--sho-text-2); font-variant-numeric: tabular-nums;
 }
 
-/* ── task-page calendar block panel (41d): reschedule + the two cancel actions ── */
+/* ── task-page calendar card (v3-C): per-entry chips + merged 排入, identical to
+   the dashboard row — the chip/form internals reuse the .wk-plan-* styles above. ── */
 body.sho .tk-cal {
   margin: 20px 0 4px; padding: 16px 18px;
   background: var(--sho-bg-2); border: 1px solid var(--sho-line);
@@ -557,18 +623,6 @@ body.sho .tk-cal {
 }
 body.sho .tk-cal-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 body.sho .tk-cal-head .wk-mut { font-family: var(--sho-font-mono); font-size: 11px; }
-body.sho .tk-cal-form { display: flex; flex-direction: column; gap: 10px; }
-body.sho .tk-cal-cancel {
-  display: flex; flex-wrap: wrap; gap: 12px;
-  padding-top: 12px; border-top: 1px solid var(--sho-line);
-}
-body.sho .tk-cal-cancel form { margin: 0; }
-body.sho .tk-cal-cancel .wk-mut { font-size: 10px; margin-left: 3px; }
-body.sho .tk-cal-hint { margin: 0; font-size: 11px; line-height: 1.6; }
-body.sho .tk-cal-danger {
-  color: color-mix(in oklch, var(--sho-danger, #d9534f) 80%, var(--sho-text));
-  border-color: color-mix(in oklch, var(--sho-danger, #d9534f) 35%, transparent);
-}
 
 @media (prefers-reduced-motion: reduce) {
   body.sho .wk-edit-hint, body.sho .wk-plan-chip .wk-chip-x, body.sho .wk-day-caret { transition: none; }
@@ -584,3 +638,119 @@ body.sho .tk-cal-danger {
   body.sho .tk-clock-time { font-size: 52px; }
   body.sho .tk-obsidian { margin-left: 0; }
 }
+
+/* ── v3-I.2 Web UI calendar-conflict modal ─────────────────────────────────────
+   Replaces the old Slack escalation: a timed clash pops this dialog (強排 / 改時間 /
+   取消排程) instead of DMing 修修. Built client-side by bridge-weekly.js. */
+body.sho .wk-cmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--sho-ink) 64%, transparent);
+}
+body.sho .wk-cmodal-box {
+  width: 100%;
+  max-width: 440px;
+  padding: 22px 24px;
+  background: var(--sho-bg-2);
+  color: var(--sho-text);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-2);
+  box-shadow: var(--sho-shadow-2);
+}
+body.sho .wk-cmodal-h {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--sho-warning);
+  margin-bottom: 10px;
+}
+body.sho .wk-cmodal-msg {
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+body.sho .wk-cmodal-slots {
+  color: var(--sho-text-2);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+body.sho .wk-cmodal-acts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  body.sho .wk-cmodal { animation: wk-cmodal-fade var(--sho-t-fast) var(--sho-ease); }
+  @keyframes wk-cmodal-fade { from { opacity: 0; } to { opacity: 1; } }
+}
+
+/* ── v3-I.4 inline task rename (✎) — swaps the title for an editable field in place */
+body.sho .wk-rename-icon {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--sho-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--sho-r-1);
+  cursor: pointer;
+  opacity: 0;                /* reveal on row hover/focus — stays out of the way */
+  transition: opacity var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-task-d:hover .wk-rename-icon,
+body.sho .wk-task-d:focus-within .wk-rename-icon,
+body.sho .tk-titlewrap:hover .wk-rename-icon,
+body.sho .wk-rename-icon:focus-visible { opacity: 1; }
+body.sho .wk-rename-icon:hover { color: var(--sho-accent); }
+/* :not([hidden]) so the HTML hidden attribute (UA display:none, low specificity)
+   isn't overridden by this class rule — else every row's editor shows at once. */
+body.sho .wk-rename-form:not([hidden]) {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+body.sho .wk-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--sho-text);
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+body.sho .wk-rename-input:focus-visible {
+  outline: 2px solid var(--sho-focus);
+  outline-offset: 1px;
+}
+body.sho .wk-rename-go,
+body.sho .wk-rename-cancel {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--sho-text);
+  background: var(--sho-bg-3);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  cursor: pointer;
+}
+body.sho .wk-rename-go { color: var(--sho-success); }
+body.sho .wk-rename-cancel { color: var(--sho-muted); }
+body.sho .wk-rename-go:hover,
+body.sho .wk-rename-cancel:hover { border-color: var(--sho-accent); }
+/* task page: title + ✎ on one row, the editor expands to fill */
+body.sho .tk-titlewrap { display: flex; align-items: center; gap: 6px; }
+body.sho .tk-rename-icon { opacity: 1; font-size: 14px; }
+body.sho .tk-titlewrap .wk-rename-input { height: 36px; font-size: 18px; }

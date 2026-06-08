@@ -115,6 +115,15 @@ NAMI_TOOLS: list[dict] = [
                     "type": "string",
                     "description": "掛在哪個 project 的名稱（若有）",
                 },
+                "category": {
+                    "type": "string",
+                    "enum": ["work", "health", "growth", "misc"],
+                    "description": "分類，沒講就 work（只有 work 計入 🍅 統計）",
+                },
+                "est_pomodoros": {
+                    "type": "integer",
+                    "description": "預估幾顆番茄（25 分鐘一顆），沒講就 4",
+                },
                 "notes": {"type": "string", "description": "備註"},
             },
             "required": ["title"],
@@ -292,6 +301,41 @@ NAMI_TOOLS: list[dict] = [
                 },
             },
             "required": ["title"],
+        },
+    },
+    {
+        "name": "schedule_task_entry",
+        "description": (
+            "把一個『已存在的 Task』排進某天的時段（或整天），寫進該 task 的 plan[] 並推到 "
+            "Google Calendar（ADR-041 多事件模型）。**專用於 Bridge 偵測到時段衝突、在 Slack "
+            "請使用者改時段的情境**：使用者選了新時間就用這個工具排入；使用者說『強制 / 就原時段』"
+            "就 force=true 排回原時段。這是排『既有 task』，不是建新事件——別用 "
+            "create_calendar_event（會撞名 / 產生孤兒）。task_slug 是 task 檔名（不含 .md），"
+            "Bridge 的衝突訊息裡會附上。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_slug": {"type": "string", "description": "task 檔名（不含 .md）"},
+                "date": {"type": "string", "description": "日期 YYYY-MM-DD"},
+                "time": {
+                    "type": "string",
+                    "description": "時間 HH:MM；留空＝整天事件（all-day）",
+                },
+                "pomodoros": {
+                    "type": "integer",
+                    "description": "番茄數（1🍅=30 分）；留空＝沿用 task 的預估🍅",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "週末排程原因（排到週六/日時必填）",
+                },
+                "force": {
+                    "type": "boolean",
+                    "description": "與行事曆衝突時仍強制排入，預設 false",
+                },
+            },
+            "required": ["task_slug", "date"],
         },
     },
     {
@@ -980,6 +1024,8 @@ class NamiHandler(BaseHandler):
                 return self._tool_list_calendar_events(tool_input)
             if name == "update_calendar_event":
                 return self._tool_update_calendar_event(tool_input)
+            if name == "schedule_task_entry":
+                return self._tool_schedule_task_entry(tool_input)
             if name == "delete_calendar_event":
                 return self._tool_delete_calendar_event(tool_input)
             if name == "list_gmail_unread":
@@ -1084,29 +1130,34 @@ class NamiHandler(BaseHandler):
         if not title:
             return _ToolOutcome(content="Missing task title", is_error=True)
 
-        scheduled = input_.get("scheduled")
+        scheduled = input_.get("scheduled") or None
         priority = input_.get("priority") or "normal"
-        project = input_.get("project")
+        project = (input_.get("project") or "").strip() or None
+        category = input_.get("category") or "work"
+        est = input_.get("est_pomodoros")
         notes = input_.get("notes", "")
 
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        frontmatter: dict = {
-            "title": title,
-            "status": "to-do",
-            "priority": priority,
-            "tags": ["task"],
-            "dateCreated": now_iso,
-            "dateModified": now_iso,
-        }
-        if scheduled:
-            frontmatter["scheduled"] = scheduled
-        if project:
-            frontmatter["projects"] = [f"[[{project}]]"]
+        # Shared dual-write creator — the SAME path the web 新增任務 buttons use, so
+        # chat + web produce identical files (filename prefix + projects: [[…]] when
+        # linked; bare {title}.md when standalone). ADR-041 v3.
+        from shared.config import get_vault_path
+        from shared.project_writer import ProjectWriteError, create_task
 
-        slug = _slugify(title)
-        path = f"{TASK_DIR}/{slug}.md"
-        write_page(path, frontmatter, notes)
+        try:
+            path_obj = create_task(
+                vault_root=get_vault_path(),
+                project_slug=project,
+                task_name=title,
+                estimated_pomodoros=int(est) if est else 4,
+                priority=priority,
+                category=category,
+                scheduled=scheduled,
+                notes=notes,
+            )
+        except ProjectWriteError as exc:
+            return _ToolOutcome(content=f"建立 task 失敗：{exc}", is_error=True)
 
+        path = f"{TASK_DIR}/{path_obj.name}"
         scheduled_info = f"（排程：{scheduled}）" if scheduled else ""
         project_info = f"（掛在 {project}）" if project else ""
         summary = f"✅ 已建立 task：{title}{scheduled_info}{project_info}"
@@ -1131,7 +1182,7 @@ class NamiHandler(BaseHandler):
                 tasks.append(
                     {
                         "title": fm.get("title", f.stem),
-                        "scheduled": fm.get("scheduled", ""),
+                        "scheduled": _plan_scheduled_display(fm),  # v3-D: from plan[]
                         "priority": fm.get("priority", "normal"),
                         "status": fm.get("status", "to-do"),
                     }
@@ -1267,14 +1318,17 @@ class NamiHandler(BaseHandler):
         return None
 
     def _find_task_by_calendar_id(self, event_id: str) -> tuple[str, dict, str] | None:
-        """以 calendar_event_id 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。"""
+        """以 calendar_event_id 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。
+        v3-D：先比對 per-entry ``plan[]`` 的 calendar_event_id，再退回 legacy 的
+        task 層級 calendar_event_id（v3-D 之前 Nami 建的事件仍是後者）。"""
         for f in list_files(TASK_DIR):
             rel = f"{TASK_DIR}/{f.name}"
             content = read_page(rel)
             if not content:
                 continue
             fm = _extract_frontmatter(content)
-            if fm.get("calendar_event_id") == event_id:
+            per_entry = any(e.get("calendar_event_id") == event_id for e in _plan_entries(fm))
+            if per_entry or fm.get("calendar_event_id") == event_id:
                 parts = content.split("---", 2)
                 body = parts[2].strip() if len(parts) >= 3 else ""
                 return rel, fm, body
@@ -1338,6 +1392,102 @@ class NamiHandler(BaseHandler):
         )
 
     # ── Calendar tool executors ──────────────────────────────────
+
+    def _tool_schedule_task_entry(self, input_: dict) -> _ToolOutcome:
+        """ADR-041 v3-F: schedule an EXISTING task's plan entry (timed block or all-day)
+        via the shared calendar_scheduler — the tool Nami uses to act on 修修's reply
+        when the Bridge escalated a clash to Slack. Distinct from create_calendar_event
+        (which mints a NEW task and is orphan-guarded)."""
+        from datetime import time as _time
+
+        from shared import calendar_scheduler
+        from shared.config import get_vault_path
+        from shared.weekly_indexer import WeeklyIndexer
+        from shared.weekly_writer import (
+            TaskNotFoundError,
+            WeekendReasonRequired,
+            WeeklyWriteError,
+        )
+
+        slug = str(input_.get("task_slug", "")).strip()
+        date_s = str(input_.get("date", "")).strip()
+        time_s = str(input_.get("time", "")).strip()
+        reason = str(input_.get("reason", "")).strip() or None
+        force = bool(input_.get("force", False))
+        if not slug or not date_s:
+            return _ToolOutcome(content="Missing task_slug or date", is_error=True)
+        try:
+            d = datetime.strptime(date_s[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return _ToolOutcome(content=f"日期格式無效（需 YYYY-MM-DD）：{date_s}", is_error=True)
+
+        all_day = not time_s
+        if all_day:
+            start = datetime.combine(d, _time.min)
+        else:
+            m = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", time_s)
+            if not m:
+                return _ToolOutcome(content=f"時間格式無效（需 HH:MM）：{time_s}", is_error=True)
+            start = datetime.combine(d, _time(int(m.group(1)), int(m.group(2))))
+
+        vault = get_vault_path()
+        task = WeeklyIndexer(vault).find_task(slug)
+        if task is None:
+            return _ToolOutcome(content=f"找不到 task：{slug}（task_slug 是檔名）", is_error=True)
+        pom_in = input_.get("pomodoros")
+        pom = int(pom_in) if pom_in else (task.est_pomodoros or 2)
+
+        try:
+            outcome = calendar_scheduler.schedule_entry(
+                vault,
+                slug,
+                start=start,
+                pomodoros=pom,
+                title=task.title,
+                all_day=all_day,
+                reason=reason,
+                force=force,
+            )
+        except WeekendReasonRequired:
+            return _ToolOutcome(
+                content=f"{date_s} 是週末，請補一個排程原因（reason）後再排。", is_error=True
+            )
+        except TaskNotFoundError:
+            return _ToolOutcome(content=f"找不到 task：{slug}", is_error=True)
+        except WeeklyWriteError as exc:
+            return _ToolOutcome(content=f"寫入失敗：{exc}", is_error=True)
+
+        when = "整天" if all_day else start.strftime("%H:%M")
+        st = outcome.calendar_status
+        if st == calendar_scheduler.CREATED:
+            return _ToolOutcome(
+                content=(
+                    f"✅ 已把「{task.title}」排到 {date_s} {when}（{pom}🍅）並推到 Google 行事曆。"
+                ),
+                event={
+                    "name": "calendar_event_created",
+                    "payload": {"task": slug, "date": date_s, "all_day": all_day},
+                    "log": task.title,
+                },
+            )
+        if st == calendar_scheduler.CONFLICT:
+            slots = google_calendar.find_free_slots(d, pom * 30, near=start.isoformat())
+            sug = "、".join(s[11:16] for s, _ in slots) or "（今天找不到空檔）"
+            return _ToolOutcome(
+                content=(
+                    f"{date_s} {when} 仍與既有事件衝突。附近空檔：{sug}。"
+                    "要改到哪個時間，或回『強制』就排原時段？"
+                ),
+                is_error=True,
+            )
+        if st == calendar_scheduler.UNAVAILABLE:
+            return _ToolOutcome(
+                content=(
+                    f"已把「{task.title}」記到 {date_s} 的計畫，"
+                    "但 Google 行事曆暫時無法連動，稍後可重試。"
+                )
+            )
+        return _ToolOutcome(content="排入後寫回失敗，已回滾，請重試。", is_error=True)
 
     def _tool_create_calendar_event(self, input_: dict) -> _ToolOutcome:
         title = str(input_.get("title", "")).strip()
@@ -1441,7 +1591,9 @@ class NamiHandler(BaseHandler):
         )
 
     def _write_calendar_linked_task(self, rel_path: str, event: CalendarEvent) -> None:
-        """建立 calendar-linked task；scheduled/scheduled_end 剝 tz 對齊 Obsidian 格式。"""
+        """建立 calendar-linked task。v3-D：排程寫進 per-entry ``plan[]``（date /
+        pomodoros / start / end / calendar_event_id），不再寫 task 層級的
+        scheduled 鏡像——與 Bridge 的多事件模型同一個來源（ADR-041 v3）。"""
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         frontmatter = {
             "title": event.title,
@@ -1450,9 +1602,7 @@ class NamiHandler(BaseHandler):
             "tags": ["task"],
             "dateCreated": now_iso,
             "dateModified": now_iso,
-            "scheduled": _strip_tz(event.start),
-            "scheduled_end": _strip_tz(event.end),
-            "calendar_event_id": event.id,
+            "plan": [_event_to_plan_entry(event)],
         }
         write_page(rel_path, frontmatter, "")
 
@@ -1581,14 +1731,31 @@ class NamiHandler(BaseHandler):
         )
 
     def _sync_task_from_calendar_update(self, event: CalendarEvent, *, title_changed: bool) -> str:
-        """更新 calendar 後同步對應 task。回傳要附在 summary 後的備註（可為空字串）。"""
+        """更新 calendar 後同步對應 task。回傳要附在 summary 後的備註（可為空字串）。
+        v3-D：更新 per-entry ``plan[]`` 那一筆的 start/end/date/pomodoros（保留該筆的
+        done/reason），並退役 task 層級 scheduled 鏡像。對 legacy（只有 task 層級
+        calendar_event_id）的 task，這次同步就地遷移成 plan entry。"""
         linked = self._find_task_by_calendar_id(event.id)
         if linked is None:
             return ""
 
         rel_path, fm, body = linked
-        fm["scheduled"] = _strip_tz(event.start)
-        fm["scheduled_end"] = _strip_tz(event.end)
+        new_entry = _event_to_plan_entry(event)
+        plan = _plan_entries(fm)
+        matched = False
+        for i, e in enumerate(plan):
+            if e.get("calendar_event_id") == event.id:
+                preserved = {k: e[k] for k in ("done", "reason") if k in e}
+                plan[i] = {**new_entry, **preserved}
+                matched = True
+                break
+        if not matched:  # legacy task-level link → migrate into plan[] now
+            plan.append(new_entry)
+        fm["plan"] = _stringify_plan(plan)
+        # retire the legacy task-level mirror (v3-D)
+        for k in ("scheduled", "scheduled_end", "calendar_event_id"):
+            fm.pop(k, None)
+
         if title_changed:
             fm["title"] = event.title
             new_rel = f"{TASK_DIR}/{_slugify(event.title)}.md"
@@ -1619,13 +1786,27 @@ class NamiHandler(BaseHandler):
 
         google_calendar.delete_event(found.id)
 
-        # 靜默刪除對應 task（找不到不視為錯誤，PRD 規格）
+        # 靜默處理對應 task（找不到不視為錯誤，PRD 規格）。v3-D：只拔掉這一筆 plan
+        # entry（保住同一個 task 的其他天，多事件不能被一次刪光）；若刪完已無排程且沒有
+        # 筆記內容，視為純行事曆 task → 整檔刪除（沿用舊 UX）。
         task_note = ""
         linked = self._find_task_by_calendar_id(found.id)
         if linked is not None:
-            task_rel, _, _ = linked
-            if delete_page(task_rel):
-                task_note = f"\n   📝 Task 一併刪除：{task_rel}"
+            task_rel, fm, body = linked
+            remaining = [e for e in _plan_entries(fm) if e.get("calendar_event_id") != found.id]
+            legacy_match = fm.get("calendar_event_id") == found.id
+            if not remaining and not body.strip():
+                if delete_page(task_rel):
+                    task_note = f"\n   📝 Task 一併刪除：{task_rel}"
+            else:
+                fm["plan"] = _stringify_plan(remaining)
+                if legacy_match:  # retire the legacy task-level mirror (v3-D)
+                    for k in ("scheduled", "scheduled_end", "calendar_event_id"):
+                        fm.pop(k, None)
+                fm["dateModified"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                fm = _stringify_fm_dates(fm)
+                write_page(task_rel, fm, body)
+                task_note = f"\n   📝 Task 已移除該時段：{task_rel}"
 
         summary = f"🗑️ 已刪除 Calendar 事件：{found.title}{task_note}"
         return _ToolOutcome(
@@ -2437,6 +2618,87 @@ def _strip_tz(iso_str: str) -> str:
         return iso_str
     local = dt.astimezone(ZoneInfo("Asia/Taipei"))
     return local.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+# ── ADR-041 v3-D: Nami writes the per-entry plan[] projection, not the retired
+#    task-level scheduled mirror. These build/read plan entries in the SAME shape
+#    the Bridge writes (shared.weekly_writer): date + pomodoros + start/end with the
+#    Asia/Taipei offset + calendar_event_id. One 🍅 = 30 min. ─────────────────────
+
+_BLOCK_MIN_PER_POM = 30  # matches shared.weekly_writer.CALENDAR_BLOCK_MINUTES_PER_POMODORO
+
+
+def _event_dt_taipei(iso_str: str) -> datetime | None:
+    """Parse a Google RFC3339 datetime into an Asia/Taipei-aware datetime; None for
+    an all-day date string or anything unparseable."""
+    if not iso_str or "T" not in iso_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("Asia/Taipei"))
+    return dt.astimezone(ZoneInfo("Asia/Taipei"))
+
+
+def _event_to_plan_entry(event: CalendarEvent) -> dict:
+    """A v3 plan[] entry from a calendar event (ADR-041 v3-D): date + derived
+    pomodoros (duration ÷ 30, ≥1) + start/end (ISO seconds WITH the Taipei offset,
+    byte-aligned with shared.weekly_writer._iso_with_offset) + calendar_event_id.
+    An all-day / unparseable start degrades to a bare linked entry (no time)."""
+    start_dt = _event_dt_taipei(event.start)
+    if start_dt is None:
+        return {"calendar_event_id": event.id}
+    end_dt = _event_dt_taipei(event.end)
+    if end_dt is not None and end_dt > start_dt:
+        pom = max(1, round((end_dt - start_dt).total_seconds() / 60 / _BLOCK_MIN_PER_POM))
+    else:
+        pom = 1
+        end_dt = start_dt + timedelta(minutes=_BLOCK_MIN_PER_POM)
+    return {
+        "date": start_dt.date().isoformat(),
+        "pomodoros": pom,
+        "start": start_dt.isoformat(timespec="seconds"),
+        "end": end_dt.isoformat(timespec="seconds"),
+        "calendar_event_id": event.id,
+    }
+
+
+def _plan_entries(fm: dict) -> list[dict]:
+    """The task's plan[] as a list of dicts (defensive against None / scalars)."""
+    return [e for e in (fm.get("plan") or []) if isinstance(e, dict)]
+
+
+def _stringify_plan(plan: list[dict]) -> list[dict]:
+    """yaml.safe_load turns ``date: 2026-06-05`` into a date object; normalise each
+    entry's date/start/end back to ISO strings before write-back so the vault file
+    stays string-uniform (matching what the Bridge writer produces)."""
+    import datetime as _dt
+
+    out = []
+    for e in plan:
+        out.append(
+            {
+                k: (v.isoformat() if isinstance(v, (_dt.date, _dt.datetime)) else v)
+                for k, v in e.items()
+            }
+        )
+    return out
+
+
+def _plan_scheduled_display(fm: dict) -> str:
+    """The earliest scheduled moment to show in list_tasks — derived from plan[]
+    (v3) with a fallback to the legacy task-level ``scheduled`` mirror."""
+    moments = []
+    for e in _plan_entries(fm):
+        when = e.get("start") or e.get("date")
+        if when:
+            moments.append(str(when))
+    if moments:
+        earliest = sorted(moments)[0]
+        return _strip_tz(earliest) if "T" in earliest else earliest
+    return str(fm.get("scheduled", ""))
 
 
 # ── Deprecated alias（for backward-compat with old tests/imports） ─────

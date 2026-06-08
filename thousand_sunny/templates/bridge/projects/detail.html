@@ -10,6 +10,8 @@
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/pomodoro-dock.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-projects.css?v={{ asset_version | default('') }}">
+<!-- v3-H: the Brief tab reuses the dashboard task_row (wk-* markup), so it needs the weekly stylesheet. -->
+<link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
 </head>
 <body class="sho bridge-page bridge-page--scroll bridge-page--with-dock"
       data-project-slug="{{ entry.slug }}"
@@ -50,5 +52,7 @@
   {% include "projects/_pomodoro_dock.html" %}
 
   <script src="/static/shosho/bridge-projects.js?v={{ asset_version | default('') }}"></script>
+  <!-- v3-H: confirm-gate + <details> restore for the reused task_row chips on the Brief tab. -->
+  <script src="/static/shosho/bridge-weekly.js?v={{ asset_version | default('') }}"></script>
 </body>
 </html>

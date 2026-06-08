@@ -1,10 +1,8 @@
 """E2E integration test: 5-page real vault → index → query → assert hits.
 
-Uses real model2vec (potion-base-8M) — first run downloads ~25 MB model;
-subsequent runs use the HuggingFace cache.  The test is tagged `integration`
-but NOT marked as anything that would skip it in standard CI.
-
-No mocks: real FTS5 + real vec0 + real model2vec embeddings.
+ADR-042: retrieval is BM25 (FTS5) only — the dense-vector lane was removed.
+No mocks, no embeddings: real FTS5 index + real BM25 ranking. Queries use
+terms that appear lexically in the page titles / headings / bodies.
 """
 
 from __future__ import annotations
@@ -102,44 +100,35 @@ def vault_5(tmp_path_factory):
 # ---------------------------------------------------------------------------
 
 
-def test_e2e_index_and_query(vault_5, monkeypatch):
+def test_e2e_index_and_query(vault_5):
     """Full pipeline: index 5 pages → query → top-k contains expected slugs."""
-    # Pin to potion (256-d) so this E2E test doesn't pull BGE-M3 (~2.3 GB).
-    monkeypatch.setenv("NAKAMA_EMBED_BACKEND", "potion")
-    import importlib
-
-    from shared import kb_embedder as _kb_embedder
-
-    importlib.reload(_kb_embedder)
-
-    conn = make_conn(dim=256)
+    conn = make_conn()
     stats = index_vault(vault_5, conn)
 
     assert stats.files_indexed == 5
     assert stats.chunks_added > 0
 
-    # Query 1: sleep-related query should surface sleep-quality and why-we-sleep
+    # Query 1: BM25 is lexical — "sleep" appears as an English token in the
+    # "Why We Sleep" title/body, so the sleep source page surfaces.
     from shared.kb_hybrid_search import search
 
-    hits = search("sleep quality improvement", top_k=5, db=conn)
-    assert hits, "Expected at least one hit for 'sleep quality improvement'"
+    hits = search("sleep", top_k=5, db=conn)
+    assert hits, "Expected at least one hit for 'sleep'"
     hit_paths = [h.path for h in hits]
-    # At least one of the sleep-related pages should appear
-    sleep_pages = {"KB/Wiki/Concepts/sleep-quality", "KB/Wiki/Sources/why-we-sleep"}
+    sleep_pages = {
+        "KB/Wiki/Sources/why-we-sleep",
+        "KB/Wiki/Entities/matt-walker",
+    }
     assert any(p in sleep_pages for p in hit_paths), (
         f"Expected a sleep page in results; got {hit_paths}"
     )
 
-    # Query 2: exercise/training query should surface zone2-training or overtraining
-    hits2 = search("aerobic training performance", top_k=5, db=conn)
-    assert hits2, "Expected at least one hit for 'aerobic training'"
+    # Query 2: "training" appears in the "Zone 2 Training Research" title.
+    hits2 = search("training", top_k=5, db=conn)
+    assert hits2, "Expected at least one hit for 'training'"
     hit_paths2 = [h.path for h in hits2]
-    exercise_pages = {
-        "KB/Wiki/Sources/zone2-training",
-        "KB/Wiki/Concepts/overtraining",
-    }
-    assert any(p in exercise_pages for p in hit_paths2), (
-        f"Expected an exercise page in results; got {hit_paths2}"
+    assert "KB/Wiki/Sources/zone2-training" in hit_paths2, (
+        f"Expected zone2-training in results; got {hit_paths2}"
     )
 
     # Verify SearchHit schema completeness

@@ -1,7 +1,7 @@
 # ADR-039: LifeOS Weekly Dashboard — Tier B of Vault-as-Substrate
 
 **Date:** 2026-05-31 (v1) · 2026-05-31 (v2 post-panel)
-**Status:** Accepted — Slice 0 (read-only `/bridge/weekly`) shipped 2026-05-31; Slices 1–2 (task writes / red-line weekly-file writes) pending
+**Status:** Accepted — **fully shipped**. Slice 0 (read-only `/bridge/weekly`) 2026-05-31; Slice 1 (task scheduling writes) shipped as **ADR-041 v3** multi-block scheduling (#828–#838); Slice 2 (red-line `Journals/Weekly/` 🟡 writes) shipped as **ADR-040 Slice 2** (#811). Remaining work is the post-v1 Backlog (below) + deferred items (see ADR-041 *Deferred* + issue #819) — all intentionally out of v1.
 **Deciders:** shosho-chang, Claude Opus 4.8 (1M)
 **Related:** [ADR-028](ADR-028-vault-layout-consolidation.md) (vault layout + 3-tier ownership), [ADR-029](ADR-029-bridge-ia-restructure.md) (Bridge IA dual-axis), [ADR-030](ADR-030-vault-as-substrate-read-strategy.md) (D1 vault SoT / D2 FS-direct / D4 substrate routing — **Tier B named in limitation #1**), [ADR-031](ADR-031-project-workspace-migration.md) (Tier C project workspace — **Tier B explicitly deferred in §Out of scope**; D6 Web-self Pomodoro timer), [`VAULT-LAYOUT.md`](../VAULT-LAYOUT.md), [`CONTENT-PIPELINE.md`](../../CONTENT-PIPELINE.md), [`thousand_sunny/CONTEXT.md`](../../thousand_sunny/CONTEXT.md), [`docs/runbooks/syncthing-folder-types.md`](../runbooks/syncthing-folder-types.md)
 
@@ -245,13 +245,13 @@ Per ADR-030 D1 (vault SoT) + D4 (long-form / human-read-in-Obsidian → vault). 
 - Tests: `tests/test_weekly_indexer.py`, `tests/test_pomodoro_aggregator.py`, `tests/test_bridge_weekly.py` (fixture vault).
 - **No vault writes.** Proves the revived aggregation.
 
-### Slice 1 — Task scheduling writes (TaskNotes only — ADR-031 envelope, no new red line)
+### Slice 1 — Task scheduling writes (TaskNotes only — ADR-031 envelope, no new red line) — ✅ Shipped as ADR-041 v3 (multi-block per-`plan[]`-entry scheduling, #828–#838)
 
 - `shared/project_writer.py` (or sibling `task_writer.py`): write `plan[] {date,pomodoros,reason?,done?}`; **explicit `scheduled` sync button (NO auto-rewrite, panel #3)** + "scheduled differs from plan" surface; weekend-work `reason` required.
 - Carry-forward UI (assign incomplete tasks' `plan[]` dates into a week); reuse the existing Pomodoro dock for actuals.
 - Tests for `plan[]` write + explicit `scheduled` sync (and non-rewrite) + idempotency.
 
-### Slice 2 — Weekly-file writes (the red-line slice — gated on this ADR's acceptance, ± panel)
+### Slice 2 — Weekly-file writes (the red-line slice — gated on this ADR's acceptance, ± panel) — ✅ Shipped as ADR-040 Slice 2 (`Journals/Weekly/` 🔒→🟡 + `weekly_writer.py`, #811)
 
 - **Docs (same PR):** `VAULT-LAYOUT.md` §2/§3 (`Journals/Weekly/` 🔒→🟡 + producer/consumer rows), `thousand_sunny/CONTEXT.md` glossary, Syncthing folder-type note; vault `CLAUDE.md` diff handed to 修修. **On the ADR branch these are marked "(Proposed — pending)" and assert accepted reality only on merge (panel #8).**
 - Weekly-file create-from-template; write Review answers (6 Qs), `top3`/`next3`, 隨手筆記, `status` transitions (soft gate); closed-loop next3→top3. Soft-gate override persists honest state (e.g. `created_before_previous_review: true`, panel #4 Codex §4) — don't render a skipped ritual as complete.
