@@ -158,7 +158,9 @@ else:
 
     @app.get("/")
     async def root_redirect():
-        return RedirectResponse("/brook/handoff", status_code=302)
+        # Home = the weekly dashboard (修修's daily surface). Was /brook/handoff (the
+        # Brook→Claude.ai context handoff), which is a niche tool, not a landing page.
+        return RedirectResponse("/bridge/weekly", status_code=302)
 
 
 app.include_router(zoro.router)

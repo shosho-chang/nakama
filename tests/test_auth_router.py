@@ -128,11 +128,11 @@ def test_logout_cookie_has_secure_samesite(client_vps):
     assert "SameSite=lax" in set_cookie.replace("SameSite=Lax", "SameSite=lax")
 
 
-def test_vps_root_redirects_to_brook(client_vps):
-    """VPS 模式下 / 應重導到 /brook/handoff（/architecture v2 R4）。"""
+def test_vps_root_redirects_to_dashboard(client_vps):
+    """VPS 模式下 / 應重導到週看板（修修：handoff 是工具頁、不是首頁）。"""
     r = client_vps.get("/")
     assert r.status_code == 302
-    assert r.headers["location"] == "/brook/handoff"
+    assert r.headers["location"] == "/bridge/weekly"
 
 
 def test_vps_brook_unauth_redirects_with_next(client_vps):
