@@ -95,6 +95,22 @@ body.sho .mode-badge-zh {
 }
 body.sho .mode-badge-bi { background: transparent; }
 
+/* ── Sync-conflict banner (ADR-044 §B8) ─────────────────────────────── */
+body.sho .reader-conflict-banner {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sho-s-2);
+  padding: var(--sho-s-2) var(--sho-s-5);
+  background: var(--sho-accent-soft);
+  border-bottom: 1px solid var(--sho-accent);
+  font-family: var(--sho-font-zh);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--sho-text-2);
+}
+body.sho .reader-conflict-banner[hidden] { display: none; }
+body.sho .reader-conflict-banner .rcb-icon { color: var(--sho-accent); }
+
 /* ── Progress rail (top hairline bar) ───────────────────────────────── */
 body.sho .reader-progress {
   position: sticky;

@@ -617,3 +617,23 @@ def test_resolve_vault_path_honors_VAULT_PATH_env(tmp_path, monkeypatch):
 
     resolved = _resolve_vault_path()
     assert resolved == tmp_path
+
+
+# ── Sync-conflict files are reported, not indexed (ADR-044 §B8) ───────────────
+
+
+def test_index_vault_skips_and_counts_annotation_conflicts(tmp_path):
+    (tmp_path / "KB" / "Wiki" / "Concepts").mkdir(parents=True)
+    ann = tmp_path / "KB" / "Annotations"
+    ann.mkdir(parents=True)
+    (ann / "財富階梯.sync-conflict-20260525-143000-ABC123.md").write_text(
+        "not a real annotation set", encoding="utf-8"
+    )
+
+    conn = make_conn()
+    stats = index_vault(tmp_path, conn)
+
+    assert stats.annotation_conflicts == 1
+    # The conflict file's bogus stem must never have been indexed as a slug.
+    rows = conn.execute("SELECT path FROM kb_index_meta").fetchall()
+    assert all("sync-conflict" not in r[0] for r in rows)

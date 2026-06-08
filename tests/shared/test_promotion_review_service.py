@@ -24,6 +24,7 @@ from shared.concept_promotion_engine import ConceptPromotionEngine
 from shared.promotion_commit import PromotionCommitService
 from shared.promotion_preflight import PromotionPreflight
 from shared.promotion_review_service import (
+    CommitDisabledError,
     FilesystemManifestStore,
     PromotionReviewService,
 )
@@ -500,6 +501,71 @@ def test_st3_service_commit_approved_filters_to_approve_only(tmp_path: Path):
     # Status reflects partial commit (some items still undecided).
     assert reloaded.status == "partial"
     assert outcome.error is None
+
+
+# ── ST3b — commit disabled refuses to write ──────────────────────────────────
+
+
+def test_st3b_commit_disabled_raises_and_skips_write(tmp_path: Path):
+    """commit_enabled=False (placeholder-only pipeline pre-N519): commit_approved
+    raises CommitDisabledError, never calls the commit service, leaves the
+    manifest untouched."""
+
+    class _RecordingCommit:
+        def __init__(self):
+            self.called = False
+
+        def commit(self, *args, **kwargs):
+            self.called = True
+            raise AssertionError("commit must not be called when disabled")
+
+    store = _DictManifestStore()
+    store.save(_load_mixed_manifest())
+    recording = _RecordingCommit()
+    md_blob = b"---\nlang: en\n---\n\n# H\n\nbody"
+
+    def blob_loader(path: str) -> bytes:
+        return md_blob
+
+    service = PromotionReviewService(
+        manifest_store=store,
+        preflight=PromotionPreflight(blob_loader=blob_loader),
+        builder=SourceMapBuilder(blob_loader=blob_loader),
+        concept_engine=ConceptPromotionEngine(),
+        commit_service=recording,
+        commit_enabled=False,
+        extractor=_CountingExtractor([]),
+        matcher=_NoneMatcher(),
+        kb_index=_EmptyKBIndex(),
+    )
+
+    assert service.commit_enabled is False
+    with pytest.raises(CommitDisabledError):
+        service.commit_approved("ebook:alpha-book", "batch_001", tmp_path)
+    assert recording.called is False
+    reloaded = store.load("ebook:alpha-book")
+    assert reloaded is not None
+    assert reloaded.commit_batches == []
+
+
+def test_commit_enabled_defaults_true():
+    """commit_enabled defaults to True for backward compatibility."""
+    md_blob = b"---\nlang: en\n---\n\n# H\n\nbody"
+
+    def blob_loader(path: str) -> bytes:
+        return md_blob
+
+    service = PromotionReviewService(
+        manifest_store=_DictManifestStore(),
+        preflight=PromotionPreflight(blob_loader=blob_loader),
+        builder=SourceMapBuilder(blob_loader=blob_loader),
+        concept_engine=ConceptPromotionEngine(),
+        commit_service=PromotionCommitService(),
+        extractor=_CountingExtractor([]),
+        matcher=_NoneMatcher(),
+        kb_index=_EmptyKBIndex(),
+    )
+    assert service.commit_enabled is True
 
 
 # ── ST4 — subprocess gate: no shared.book_storage ─────────────────────────────
