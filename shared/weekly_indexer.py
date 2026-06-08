@@ -520,7 +520,9 @@ class WeeklyIndexer:
                         date=ad,
                         pomodoros=_as_int(a.get("pomodoros")),
                         reason=str(a.get("reason") or ""),
-                        done=_as_int(a.get("done")),
+                        # `done` is a YAML bool — _as_int treats bool as 0 (for pomodoros),
+                        # so parse truthiness directly, else the daily cross-out never shows.
+                        done=1 if a.get("done") else 0,
                         start=str(a.get("start") or ""),
                         end=str(a.get("end") or ""),
                         event_id=str(a.get("calendar_event_id") or a.get("event_id") or "").strip(),

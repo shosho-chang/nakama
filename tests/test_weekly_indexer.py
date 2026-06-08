@@ -463,3 +463,29 @@ def test_daily_merges_growth_into_other_and_carries_meta(tmp_path, monkeypatch):
     item = cats["work"]["items"][0]
     assert item["priority"] == "high" and item["priority_label"] == "High"
     assert item["project"] == "專案A"
+
+
+def test_plan_entry_done_drives_daily_crossout(tmp_path, monkeypatch):
+    # Regression (修修): a plan entry's `done: true` must surface as done_on(d) / the
+    # daily item's done — _as_int treats bool as 0, so `done` is parsed truthily instead.
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    _task(
+        tmp_path,
+        "肌酸的妙用 - Film.md",
+        {
+            "title": "肌酸的妙用 - Film",
+            "projects": ["[[肌酸的妙用]]"],
+            "category": "work",
+            "預估🍅": 1,
+            "status": "to-do",
+            "plan": [{"date": "2026-06-01", "pomodoros": 1, "done": True}],
+            "tags": ["task"],
+        },
+    )
+    t = WeeklyIndexer(tmp_path).find_task("肌酸的妙用 - Film")
+    assert t.done_on(date(2026, 6, 1)) is True  # per-day done
+    assert t.done is False  # whole task still open
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    mon = next(d for d in v.days if d["date"] == "2026-06-01")
+    item = next(c for c in mon["categories"] if c["slug"] == "work")["items"][0]
+    assert item["done"] is True  # daily item crosses out

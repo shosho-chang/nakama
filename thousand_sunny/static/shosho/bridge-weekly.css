@@ -123,7 +123,9 @@ body.sho .wk-task:last-child { border-bottom: 0; }
 body.sho .wk-box { width: 14px; height: 14px; border: 1.5px solid var(--sho-line-2); border-radius: 3px; flex-shrink: 0; }
 body.sho .wk-box.done { background: var(--sho-text); border-color: var(--sho-text); }
 body.sho .wk-task.done .wk-tname { color: var(--sho-muted); text-decoration: line-through; }
-body.sho .wk-tname { color: var(--sho-text); }
+/* v3-I follow-up (修修): min-width gives the chips that follow the title a consistent
+   start x across rows — an "invisible table" feel. Long names extend past it. */
+body.sho .wk-tname { color: var(--sho-text); min-width: 12rem; }
 body.sho .wk-tproj { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); letter-spacing: 0.04em; }
 /* spacer carries the auto-margin so the date badge can sit just left of the 🍅
    count in the right group (修修); the count itself no longer needs the margin */
@@ -182,16 +184,19 @@ body.sho .wk-cat-label {
 }
 body.sho .wk-cat-empty { color: var(--sho-line-2); font-size: 12px; }
 body.sho .wk-cat-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-body.sho .wk-cat-item { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--sho-text); min-width: 0; }
-/* v3-I follow-up (修修): compact priority chip + muted project on each daily item */
-body.sho .wk-ci-pri { height: 16px; padding: 0 6px; font-size: 10px; flex: 0 0 auto; }
+body.sho .wk-cat-item { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; font-size: 13px; color: var(--sho-text); min-width: 0; }
+/* v3-I follow-up (修修): compact priority chip (right-aligned via rowfill) + muted project
+   adjacent to the title on each daily item. */
+body.sho .wk-ci-pri { height: 16px; padding: 0 6px; font-size: 9px; flex: 0 0 auto; }
 body.sho .wk-ci-proj {
   flex: 0 1 auto; min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 11px; color: var(--sho-muted);
 }
 body.sho .wk-cat-item.done .wk-ci-name { color: var(--sho-muted); text-decoration: line-through; }
 body.sho .wk-ci-name {
-  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* flex 0 1 — don't grow, so the project sits adjacent to the title; the rowfill
+     (margin-left:auto) pushes the priority chip + 🍅 to the right (修修). */
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: inherit; text-decoration: none;
   transition: color var(--sho-t-fast) var(--sho-ease);
 }
@@ -777,14 +782,16 @@ body.sho .tk-titlewrap .wk-rename-input { height: 36px; font-size: 18px; }
 /* ── v3-I follow-up: task-row chips (修修) — category (outlined) / project (outlined)
    / priority (solid). Aligned right of the name; the chip cluster reads as one unit. */
 body.sho .wk-chips { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+/* v3-I follow-up (修修): chips are smaller + lighter (the solid pills read too heavy). */
 body.sho .wk-chip {
   display: inline-flex;
   align-items: center;
-  height: 20px;
-  padding: 0 9px;
-  font-size: 11px;
-  font-weight: 600;
+  height: 17px;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 500;
   line-height: 1;
+  letter-spacing: 0.02em;
   border-radius: var(--sho-r-pill);
   white-space: nowrap;
 }

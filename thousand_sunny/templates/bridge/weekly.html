@@ -278,11 +278,12 @@
                                       aria-label="{{ ('標記當天未完成：' if it.done else '標記當天完成：') ~ it.name }}">{{ '☑' if it.done else '☐' }}</button>
                             </form>
                             <a class="wk-ci-name" href="/bridge/weekly/task/{{ it.slug | urlencode }}?week={{ view.week.file_key }}">{{ it.name }}</a>
-                            {# v3-I follow-up (修修): daily items also carry priority chip + project
-                               (category is the column itself, so not repeated per-item). #}
+                            {# v3-I follow-up (修修): project follows the title; then a compact
+                               priority chip. (category is the column itself, so not repeated.) #}
+                            {% if it.project %}<span class="wk-ci-proj" title="{{ it.project }}">{{ it.project }}</span>{% endif %}
+                            <span class="wk-rowfill" aria-hidden="true"></span>
                             {% set ipri = 'first' if it.slug in view.important_slugs else it.priority %}
                             <span class="wk-chip wk-pri-chip wk-pri-{{ ipri }} wk-ci-pri">{{ 'First' if ipri == 'first' else it.priority_label }}</span>
-                            {% if it.project %}<span class="wk-ci-proj" title="{{ it.project }}">{{ it.project }}</span>{% endif %}
                             {% if cat.is_work and (it.pomodoros or it.actual) %}
                               <span class="wk-ci-pom" title="實際 / 預計 番茄數">{{ it.actual }}/{{ it.pomodoros }}🍅</span>
                             {% endif %}
