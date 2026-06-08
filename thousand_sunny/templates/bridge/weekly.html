@@ -17,6 +17,25 @@
 {# ── Weekly-file 週交接 forms (ADR-040 A6 composable steps; Journals/Weekly 🟡) ── #}
 {% macro _sec(view, heading) %}{{ view.review.sections.get(heading, '') if view.review else '' }}{% endmacro %}
 
+{# v3-I follow-up (修修): 本週重要任務 is no longer capped at 3. One <select name=…> per
+   existing pick + a spare; the ＋ button (JS) clones another. All carry the same name, so
+   the route's _links_from_list collects every non-blank pick (it already drops blanks). #}
+{% macro _pri_select(field, cur, options) %}
+  <select class="wk-top3-sel" name="{{ field }}" aria-label="重要任務">
+    <option value="">（不指定）</option>
+    <optgroup label="任務">
+      {% for o in options if o.group == '任務' %}
+        <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+      {% endfor %}
+    </optgroup>
+    <optgroup label="專案">
+      {% for o in options if o.group == '專案' %}
+        <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
+      {% endfor %}
+    </optgroup>
+  </select>
+{% endmacro %}
+
 {% macro review_form(view, weekly_token, with_mark=False) %}
   {% set st = view.review.status if view.review else 'planning' %}
   <form class="wk-wf wk-review-form" method="post" action="/bridge/weekly/review">
@@ -32,24 +51,12 @@
       <label class="wk-field"><span>🙏 感恩（人 / 事 / 物）</span>
         <textarea name="gratitude" rows="2">{{ _sec(view,'🙏 感恩') | trim }}</textarea></label>
     </div>
-    <div class="wk-field wk-field--wide"><span>🎯 下週三大要事</span>
-      <div class="wk-top3-picks">
-        {% for i in range(3) %}
-          {% set cur = view.review.next3[i] if (view.review and i < (view.review.next3 | length)) else '' %}
-          <select class="wk-top3-sel" name="next3" aria-label="下週要事 {{ i + 1 }}">
-            <option value="">{{ i + 1 }} · （不指定）</option>
-            <optgroup label="任務">
-              {% for o in view.top3_options if o.group == '任務' %}
-                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="專案">
-              {% for o in view.top3_options if o.group == '專案' %}
-                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
-              {% endfor %}
-            </optgroup>
-          </select>
-        {% endfor %}
+    <div class="wk-field wk-field--wide"><span>🎯 下週重要任務</span>
+      <div class="wk-top3-picks" data-pri-picks>
+        {% set nexts = (view.review.next3 if view.review else []) | select | list %}
+        {% for cur in nexts %}{{ _pri_select('next3', cur, view.top3_options) }}{% endfor %}
+        {{ _pri_select('next3', '', view.top3_options) }}
+        <button type="button" class="wk-pri-add" title="新增下週重要任務" aria-label="新增下週重要任務">＋</button>
       </div>
     </div>
     <div class="wk-wf-actions">
@@ -82,23 +89,11 @@
       <input type="hidden" name="week" value="{{ view.week.file_key }}">
       <input type="hidden" name="expected_token" value="{{ weekly_token }}">
 
-      <div class="wk-top3-picks">
-        {% for i in range(3) %}
-          {% set cur = view.top3_values[i] if i < (view.top3_values | length) else '' %}
-          <select class="wk-top3-sel" name="top3" aria-label="本週要事 {{ i + 1 }}">
-            <option value="">{{ i + 1 }} · （不指定）</option>
-            <optgroup label="任務">
-              {% for o in view.top3_options if o.group == '任務' %}
-                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="專案">
-              {% for o in view.top3_options if o.group == '專案' %}
-                <option value="{{ o.value }}" {{ 'selected' if o.value == cur }}>{{ o.label }}</option>
-              {% endfor %}
-            </optgroup>
-          </select>
-        {% endfor %}
+      <div class="wk-field--wide"><span class="wk-mut">本週重要任務</span></div>
+      <div class="wk-top3-picks" data-pri-picks>
+        {% for cur in view.top3_values %}{{ _pri_select('top3', cur, view.top3_options) }}{% endfor %}
+        {{ _pri_select('top3', '', view.top3_options) }}
+        <button type="button" class="wk-pri-add" title="新增本週重要任務" aria-label="新增本週重要任務">＋</button>
       </div>
 
       <div class="wk-plan-row">
@@ -185,10 +180,10 @@
       </div>
     </div>
 
-    {# ── 本週三大要事 (weekly_priority tasks; done → struck through) ── #}
+    {# ── 本週重要任務 (weekly_priority tasks; done → struck through; uncapped — 修修) ── #}
     {% if view.mode != 'review' %}
-      <div class="wk-top3" aria-label="本週三大要事">
-        <span class="wk-top3-cap wk-h">本週三大要事</span>
+      <div class="wk-top3" aria-label="本週重要任務">
+        <span class="wk-top3-cap wk-h">本週重要任務</span>
         {% if view.top3 %}
           <ol class="wk-top3-list">
             {% for t in view.top3 %}
@@ -234,7 +229,7 @@
         <div class="wk-zone-head"><span class="wk-h">Weekly Review · 6 題</span>
           <span class="sho-chip sho-chip--{{ 'online' if view.review and view.review.status == 'reviewed' else 'hold' }}">
             {{ '已回顧' if view.review and view.review.status == 'reviewed' else '待填' }}</span></div>
-        <p class="wk-mut">✅ top-3 完成率自動帶入（見上方三大要事）。逐字寫，機器不代筆。</p>
+        <p class="wk-mut">✅ 重要任務完成率自動帶入（見上方本週重要任務）。逐字寫，機器不代筆。</p>
         {{ review_form(view, weekly_token, with_mark=True) }}
       </div>
 
@@ -278,6 +273,11 @@
                                       aria-label="{{ ('標記未完成：' if it.done else '標記完成：') ~ it.name }}">{{ '☑' if it.done else '☐' }}</button>
                             </form>
                             <a class="wk-ci-name" href="/bridge/weekly/task/{{ it.slug | urlencode }}?week={{ view.week.file_key }}">{{ it.name }}</a>
+                            {# v3-I follow-up (修修): daily items also carry priority chip + project
+                               (category is the column itself, so not repeated per-item). #}
+                            {% set ipri = 'first' if it.slug in view.important_slugs else it.priority %}
+                            <span class="wk-chip wk-pri-chip wk-pri-{{ ipri }} wk-ci-pri">{{ 'First' if ipri == 'first' else it.priority_label }}</span>
+                            {% if it.project %}<span class="wk-ci-proj" title="{{ it.project }}">{{ it.project }}</span>{% endif %}
                             {% if cat.is_work and (it.pomodoros or it.actual) %}
                               <span class="wk-ci-pom" title="實際 / 預計 番茄數">{{ it.actual }}/{{ it.pomodoros }}🍅</span>
                             {% endif %}
@@ -413,7 +413,10 @@
     // so without this a rename would lose the tab/scroll and the view would jump (v3-I.4).
     document.addEventListener('submit', function (e) {
       if (!e.target.closest) return;
-      if (!e.target.closest('.wk-plan-edit') && !e.target.closest('.wk-rename-form')) return;
+      // .wk-box-form = the done-toggle checkbox (in the row summary AND the daily card),
+      // which lives outside .wk-plan-edit — without it, checking a task jumped the view (修修).
+      if (!e.target.closest('.wk-plan-edit') && !e.target.closest('.wk-rename-form')
+          && !e.target.closest('.wk-box-form')) return;
       try {
         sessionStorage.setItem('wk-tab', activeTab() || '');
         sessionStorage.setItem('wk-open', JSON.stringify(openSlugs()));
@@ -453,6 +456,23 @@
   (function () {
     var toast = document.querySelector('.wk-toast');
     if (toast) toast.addEventListener('click', function () { toast.remove(); });
+  })();
+
+  /* v3-I follow-up (修修): 本週/下週重要任務 — ＋ clones another picker so >3 important
+     tasks can be assigned. All selects share the name; blank ones are dropped server-side. */
+  (function () {
+    document.querySelectorAll('.wk-pri-add').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var box = btn.closest('[data-pri-picks]');
+        if (!box) return;
+        var sels = box.querySelectorAll('select.wk-top3-sel');
+        if (!sels.length) return;
+        var clone = sels[sels.length - 1].cloneNode(true);
+        clone.value = '';
+        box.insertBefore(clone, btn);
+        clone.focus();
+      });
+    });
   })();
   </script>
 </body>

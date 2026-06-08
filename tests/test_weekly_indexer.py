@@ -378,3 +378,84 @@ def test_bridge_weekly_route_renders(vault, monkeypatch):
     assert "W23" in r.text
     assert "wk-days" in r.text  # daily cards container rendered
     assert "nav_active" not in r.text  # macro expanded, not literal
+
+
+def test_priority_surfaced_with_label(tmp_path, monkeypatch):
+    # v3-I follow-up (修修): WeeklyTask now reads `priority`; label maps low/normal/high.
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    for fn, pri in (("高.md", "high"), ("低.md", "low"), ("未.md", None)):
+        fm = {
+            "title": fn[:-3],
+            "category": "work",
+            "預估🍅": 1,
+            "scheduled": "2026-06-01",
+            "status": "to-do",
+            "tags": ["task"],
+        }
+        if pri:
+            fm["priority"] = pri
+        _task(tmp_path, fn, fm)
+    by = {t.name: t for t in WeeklyIndexer(tmp_path).read_tasks()}
+    assert by["高"].priority == "high" and by["高"].priority_label == "High"
+    assert by["低"].priority == "low" and by["低"].priority_label == "Low"
+    assert by["未"].priority == "normal" and by["未"].priority_label == "Medium"  # default
+
+
+def test_important_tasks_uncapped(tmp_path, monkeypatch):
+    # 修修: 本週重要任務 no longer capped at 3 — 4 weekly_priority tasks all surface.
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    for i in range(4):
+        _task(
+            tmp_path,
+            f"要事{i}.md",
+            {
+                "title": f"要事{i}",
+                "category": "work",
+                "預估🍅": 1,
+                "scheduled": "2026-06-01",
+                "weekly_priority": "2026-05-31",
+                "status": "to-do",
+                "tags": ["task"],
+            },
+        )
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    assert len(v.top3) == 4
+    assert len(v.important_slugs) == 4
+
+
+def test_daily_drops_growth_and_carries_meta(tmp_path, monkeypatch):
+    # 修修: daily card removes 自我進修 column; items carry priority + project.
+    monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
+    _task(
+        tmp_path,
+        "讀書.md",
+        {
+            "title": "讀書",
+            "category": "growth",
+            "預估🍅": 1,
+            "scheduled": "2026-06-01",
+            "status": "to-do",
+            "tags": ["task"],
+        },
+    )
+    _task(
+        tmp_path,
+        "專案A - 寫稿.md",
+        {
+            "title": "專案A - 寫稿",
+            "projects": ["[[專案A]]"],
+            "category": "work",
+            "預估🍅": 2,
+            "scheduled": "2026-06-01",
+            "priority": "high",
+            "status": "to-do",
+            "tags": ["task"],
+        },
+    )
+    v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
+    mon = next(d for d in v.days if d["date"] == "2026-06-01")
+    cat_slugs = [c["slug"] for c in mon["categories"]]
+    assert "growth" not in cat_slugs and "work" in cat_slugs
+    item = next(c for c in mon["categories"] if c["slug"] == "work")["items"][0]
+    assert item["priority"] == "high" and item["priority_label"] == "High"
+    assert item["project"] == "專案A"

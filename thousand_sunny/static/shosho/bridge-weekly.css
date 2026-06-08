@@ -169,7 +169,9 @@ body.sho .wk-day-caret { color: var(--sho-muted); font-size: 11px; transition: t
 body.sho .wk-day[open] .wk-day-caret { transform: rotate(90deg); }
 /* card body — responsive category columns: side-by-side wide, stacked narrow */
 body.sho .wk-day-body {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* v3-I follow-up (修修): 工作 takes 1/2; 身心健康 + 雜事 share the other 1/2 (自我進修
+     column removed in the indexer). Columns are emitted work / health / misc in order. */
+  display: grid; grid-template-columns: 2fr 1fr 1fr;
   gap: 14px 20px; padding: 14px;
 }
 body.sho .wk-catcol { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -180,7 +182,13 @@ body.sho .wk-cat-label {
 }
 body.sho .wk-cat-empty { color: var(--sho-line-2); font-size: 12px; }
 body.sho .wk-cat-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-body.sho .wk-cat-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sho-text); min-width: 0; }
+body.sho .wk-cat-item { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--sho-text); min-width: 0; }
+/* v3-I follow-up (修修): compact priority chip + muted project on each daily item */
+body.sho .wk-ci-pri { height: 16px; padding: 0 6px; font-size: 10px; flex: 0 0 auto; }
+body.sho .wk-ci-proj {
+  flex: 0 1 auto; min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; color: var(--sho-muted);
+}
 body.sho .wk-cat-item.done .wk-ci-name { color: var(--sho-muted); text-decoration: line-through; }
 body.sho .wk-ci-name {
   flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -475,6 +483,17 @@ body.sho .wk-top3-sel {
   transition: border-color var(--sho-t-fast) var(--sho-ease);
 }
 body.sho .wk-top3-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+/* v3-I follow-up (修修): ＋ add another 重要任務 picker */
+body.sho .wk-pri-add {
+  flex: 0 0 auto; align-self: stretch;
+  min-width: 40px; padding: 7px 12px;
+  font-size: 16px; line-height: 1; color: var(--sho-text-2);
+  background: var(--sho-bg); border: 1px dashed var(--sho-line-2); border-radius: var(--sho-r-1);
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-pri-add:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .wk-pri-add:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 body.sho .wk-plan-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 body.sho .wk-plan-row .sho-btn { margin-left: auto; }
 body.sho .wk-field--wide { grid-column: 1 / -1; }
@@ -754,3 +773,32 @@ body.sho .wk-rename-cancel:hover { border-color: var(--sho-accent); }
 body.sho .tk-titlewrap { display: flex; align-items: center; gap: 6px; }
 body.sho .tk-rename-icon { opacity: 1; font-size: 14px; }
 body.sho .tk-titlewrap .wk-rename-input { height: 36px; font-size: 18px; }
+
+/* ── v3-I follow-up: task-row chips (修修) — category (outlined) / project (outlined)
+   / priority (solid). Aligned right of the name; the chip cluster reads as one unit. */
+body.sho .wk-chips { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+body.sho .wk-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: var(--sho-r-pill);
+  white-space: nowrap;
+}
+/* category — outlined, per-category hued border, always-readable text */
+body.sho .wk-cat-chip { border: 1px solid var(--cat-line, var(--sho-line-2)); color: var(--sho-text-2); background: transparent; }
+body.sho .wk-cat-work   { --cat-line: oklch(0.62 0.10 250); }   /* blue   */
+body.sho .wk-cat-health { --cat-line: oklch(0.62 0.10 150); }   /* green  */
+body.sho .wk-cat-growth { --cat-line: oklch(0.62 0.10 300); }   /* purple */
+body.sho .wk-cat-misc   { --cat-line: var(--sho-muted); }       /* neutral */
+/* project — neutral outline */
+body.sho .wk-proj-chip { border: 1px solid var(--sho-line-2); color: var(--sho-text-2); background: transparent; max-width: 160px; overflow: hidden; }
+/* priority — solid fill (white text except amber, which needs dark for contrast) */
+body.sho .wk-pri-chip   { color: #fff; }
+body.sho .wk-pri-first  { background: var(--sho-violet); }         /* 紫 — 本週重要任務 */
+body.sho .wk-pri-high   { background: oklch(0.57 0.18 25); }       /* 紅 */
+body.sho .wk-pri-normal { background: var(--sho-warning); color: var(--sho-ink); }  /* 橘黃 (Medium) */
+body.sho .wk-pri-low    { background: var(--sho-info); }           /* 淺藍 */

@@ -1274,7 +1274,10 @@ class TestUnifiedTaskViewsAndDone:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}"
+        # v3-I follow-up: done redirect now anchors on the row so the dashboard stays in place.
+        loc = r.headers["location"]
+        assert loc.startswith(f"/bridge/weekly?week={WEEK_KEY}")
+        assert loc.endswith("#task-%E6%B8%AC%E8%A9%A6%E4%BB%BB%E5%8B%99")
         fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
         assert fm["status"] == "done"
         # re-open
@@ -1637,3 +1640,17 @@ class TestRenameRoute:
         loc = r.headers["location"]
         assert loc.startswith("/bridge/weekly/task/") and "saved=renamed" in loc
         assert "任務頁改名.md" in self._files(tmp_path)
+
+
+class TestRowChips:
+    """v3-I follow-up (修修): task rows carry category (outlined) + priority (solid) chips."""
+
+    def test_dashboard_renders_category_and_priority_chips(self, client, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        # SAMPLE_TASK has no category/priority → misc + normal(Medium)
+        assert "wk-cat-misc" in body
+        assert "wk-pri-normal" in body and "Medium" in body
+        assert "wk-chips" in body

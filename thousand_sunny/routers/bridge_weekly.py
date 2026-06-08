@@ -121,7 +121,7 @@ _SAVED_MSGS = {
     "task_new": "✓ 已新增任務。",
     "plan": "✓ 已儲存本週計畫。",
     "review": "✓ 已存週回顧。",
-    "top3": "✓ 已更新本週三大要事。",
+    "top3": "✓ 已更新本週重要任務。",
     "targets": "✓ 已更新本週目標。",
     "notes": "✓ 已存隨手筆記。",
     "status": "✓ 已更新本週狀態。",
@@ -548,7 +548,9 @@ async def weekly_task_done(
     except WeeklyWriteError as exc:
         logger.warning("weekly_task_done: %s", exc)
         return _back(wk_key, "task")
-    return _back(wk_key)
+    # v3-I follow-up (修修): anchor on the toggled row so the dashboard lands back in
+    # place (the JS save-state restores tab/scroll; the #task- anchor re-opens the row).
+    return _back(wk_key, slug=slug)
 
 
 @page_router.post("/weekly/task/{slug}/rename")
