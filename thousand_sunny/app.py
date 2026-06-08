@@ -18,6 +18,7 @@ from shared.log import force_utf8_console, get_logger
 force_utf8_console()
 
 from thousand_sunny.middleware.csp import add_csp_middleware  # noqa: E402
+from thousand_sunny.preflight import run_preflight  # noqa: E402
 from thousand_sunny.promotion_wiring import (  # noqa: E402
     load_promotion_wiring_config,
     wire_promotion_surfaces,
@@ -65,9 +66,11 @@ async def _lifespan(app_: FastAPI):
     elsewhere still works.
 
     Startup failures (missing ``VAULT_PATH``, unknown promotion
-    mode) propagate as ``RuntimeError`` so uvicorn / systemd surface the
-    crash to the operator (W4) — silent fallback would mask the misconfig.
+    mode, empty ``WEB_PASSWORD`` in production) propagate as ``RuntimeError``
+    so uvicorn / systemd surface the crash to the operator (W4) — silent
+    fallback would mask the misconfig.
     """
+    run_preflight()
     if not os.getenv("DISABLE_ROBIN"):
         config = load_promotion_wiring_config()
         wire_promotion_surfaces(config)
