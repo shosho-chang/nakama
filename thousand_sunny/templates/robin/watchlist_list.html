@@ -29,10 +29,14 @@ CSS is introduced — all tokens still resolve to ``--sho-*``. #}
 <div class="header">
   <h1><span>🎬</span>Robin · Watchlist</h1>
   <nav class="header-nav">
+    <a href="/robin/home">🏠 閱讀</a>
     <a href="/robin">📥 Inbox</a>
     <a href="/robin/books">📚 書架</a>
     <a href="/robin/watchlist" class="active">🎬 Watchlist</a>
   </nav>
+</div>
+<div class="toolbar" style="margin-bottom:16px">
+  <a href="/robin/watchlist/add" class="hub-action">➕ 加影片</a>
 </div>
 {% if rows %}
   {% for row in rows %}

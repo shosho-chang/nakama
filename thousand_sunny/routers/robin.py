@@ -32,6 +32,7 @@ from shared.annotation_store import (
     get_annotation_store,
     upgrade_to_v3,
 )
+from shared.book_storage import list_books
 from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
 from shared.llm_context import set_current_agent
@@ -315,6 +316,34 @@ async def robin_home(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/robin", status_code=302)
     return _render_inbox(request)
+
+
+@robin_router.get("/home", response_class=HTMLResponse)
+async def reading_hub(request: Request, nakama_auth: str | None = Cookie(None)):
+    """Unified reading hub — one entry to all three reading sources
+    (articles / videos / books). Each source shows a count, the most-recent
+    few items, an add/ingest action, and a link to its full list surface.
+    The chassis ROBIN link points here so Robin opens on the hub, not a
+    single source. The full per-source surfaces stay at /robin, /robin/watchlist
+    and /robin/books."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/robin/home", status_code=302)
+    articles = _get_inbox_files()
+    videos = _list_watchlist_rows()
+    books = list_books()
+    return templates.TemplateResponse(
+        request,
+        "reading_hub.html",
+        {
+            "articles": articles[:5],
+            "articles_count": len(articles),
+            "videos": videos[:5],
+            "videos_count": len(videos),
+            "books": books[:6],
+            "books_count": len(books),
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
+    )
 
 
 # ── Watchlist list view (ADR-035 F4 — issue #763) ────────────────────────────

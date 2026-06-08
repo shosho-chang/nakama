@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+{# Robin reading hub — unified entry to the three reading sources
+   (articles / videos / books). Reuses _chassis_nav + --sho tokens; the
+   .hub-* classes live in robin.css. Each source panel shows a count, the
+   most-recent few items, a primary "add/ingest" action, and a link to the
+   full list surface. Empty states are per-source. #}
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robin · 閱讀</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/robin.css?v={{ asset_version }}">
+</head>
+<body class="sho robin-page">
+{% from "_chassis_nav.html" import chassis_nav %}
+{% call chassis_nav(nav_active='robin') %}
+  <form method="post" action="/logout" style="margin:0">
+    <button type="submit" class="logout-btn">登出</button>
+  </form>
+{% endcall %}
+<div class="container hub-wide">
+  <div class="header">
+    <h1><span>🏴‍☠️</span>Robin · 閱讀</h1>
+  </div>
+
+  <div class="hub-grid">
+
+    {# ── Articles ───────────────────────────────────────────── #}
+    <section class="hub-panel" aria-labelledby="hub-articles-h">
+      <div class="hub-panel__head">
+        <h2 id="hub-articles-h" class="hub-panel__title"><span aria-hidden="true">📄</span> 文章</h2>
+        <span class="sho-mono" aria-label="文章數量">{{ articles_count }}</span>
+      </div>
+      {% if articles %}
+        <ul class="hub-list">
+          {% for a in articles %}
+          <li class="hub-list__item">
+            {% if a.annotatable %}
+              <a class="hub-list__link" href="/robin/read?file={{ a.name | urlencode }}" title="{{ a.title or a.name }}">{{ a.title or a.name }}</a>
+            {% else %}
+              <span class="hub-list__link is-plain" title="{{ a.name }}">{{ a.title or a.name }}</span>
+            {% endif %}
+            {% if a.display_source %}<span class="hub-list__meta sho-mono">{{ a.display_source }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="hub-empty">Inbox 是空的 — 收集的文章會出現在這裡。</p>
+      {% endif %}
+      <div class="hub-panel__foot">
+        <a class="sho-lk" href="/robin">查看全部 →</a>
+      </div>
+    </section>
+
+    {# ── Videos ─────────────────────────────────────────────── #}
+    <section class="hub-panel" aria-labelledby="hub-videos-h">
+      <div class="hub-panel__head">
+        <h2 id="hub-videos-h" class="hub-panel__title"><span aria-hidden="true">🎬</span> 影片</h2>
+        <span class="sho-mono" aria-label="影片數量">{{ videos_count }}</span>
+      </div>
+      {% if videos %}
+        <ul class="hub-list">
+          {% for v in videos %}
+          <li class="hub-list__item">
+            <a class="hub-list__link" href="/robin/watchlist/{{ v.video_id }}" title="{{ v.title }}">{{ v.title }}</a>
+            {% if v.channel %}<span class="hub-list__meta sho-mono">{{ v.channel }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="hub-empty">還沒有影片 — 加一支 YouTube 開始。</p>
+      {% endif %}
+      <div class="hub-panel__foot">
+        <a class="hub-action" href="/robin/watchlist/add">➕ 加影片</a>
+        <a class="sho-lk" href="/robin/watchlist">查看全部 →</a>
+      </div>
+    </section>
+
+    {# ── Books ──────────────────────────────────────────────── #}
+    <section class="hub-panel" aria-labelledby="hub-books-h">
+      <div class="hub-panel__head">
+        <h2 id="hub-books-h" class="hub-panel__title"><span aria-hidden="true">📚</span> 書</h2>
+        <span class="sho-mono" aria-label="書本數量">{{ books_count }}</span>
+      </div>
+      {% if books %}
+        <ul class="hub-booklist">
+          {% for b in books %}
+          <li>
+            <a class="hub-book" href="/robin/books/{{ b.book_id }}" title="{{ b.title }}">
+              <span class="hub-book__cover" aria-hidden="true">
+                <img src="/robin/api/books/{{ b.book_id }}/cover" alt="" loading="lazy">
+                <span class="hub-book__ph">{{ b.title[:1]|upper }}</span>
+              </span>
+              <span class="hub-book__title">{{ b.title }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="hub-empty">書架是空的 — 上傳一本 EPUB 開始。</p>
+      {% endif %}
+      <div class="hub-panel__foot">
+        <a class="hub-action" href="/robin/books/upload">📤 上傳新書</a>
+        <a class="sho-lk" href="/robin/books">查看全部 →</a>
+      </div>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>
