@@ -1274,7 +1274,10 @@ class TestUnifiedTaskViewsAndDone:
             follow_redirects=False,
         )
         assert r.status_code == 303
-        assert r.headers["location"] == f"/bridge/weekly?week={WEEK_KEY}"
+        # v3-I follow-up: done redirect now anchors on the row so the dashboard stays in place.
+        loc = r.headers["location"]
+        assert loc.startswith(f"/bridge/weekly?week={WEEK_KEY}")
+        assert loc.endswith("#task-%E6%B8%AC%E8%A9%A6%E4%BB%BB%E5%8B%99")
         fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
         assert fm["status"] == "done"
         # re-open
@@ -1317,7 +1320,8 @@ class TestUnifiedTaskViewsAndDone:
         (tmp_path / "TaskNotes" / "Tasks" / "工作任務.md").write_text(work, encoding="utf-8")
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
         assert "wk-ci-pom" in body
-        assert "1/3🍅" in body  # actual 1 / planned 3
+        # v3-I follow-up: actual is wrapped for slash-alignment → >1</span>/3🍅
+        assert "wk-pom-a" in body and ">1</span>/3🍅" in body  # actual 1 / planned 3
 
 
 class TestTaskPageCalendarConsistency:
@@ -1637,3 +1641,79 @@ class TestRenameRoute:
         loc = r.headers["location"]
         assert loc.startswith("/bridge/weekly/task/") and "saved=renamed" in loc
         assert "任務頁改名.md" in self._files(tmp_path)
+
+
+class TestRowChips:
+    """v3-I follow-up (修修): task rows carry category (outlined) + priority (solid) chips."""
+
+    def test_dashboard_renders_category_and_priority_chips(self, client, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        # SAMPLE_TASK has no category/priority → misc + normal(Medium)
+        assert "wk-cat-misc" in body
+        assert "wk-pri-normal" in body and "Medium" in body
+        assert "wk-chips" in body
+
+
+class TestDayDone:
+    """v3-I follow-up (修修): the daily-bullet checkbox marks the DAY's plan entry done,
+    NOT the whole task — distinct from the task-list /done checkbox."""
+
+    def test_day_done_marks_plan_entry_only(self, client, tmp_path):
+        def _fm():
+            raw = _task_path(tmp_path).read_text(encoding="utf-8")
+            return yaml.safe_load(raw.split("---", 2)[1])
+
+        # SAMPLE_TASK has a plan entry on 2026-06-03
+        r = client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-03", "done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        fm = _fm()
+        assert fm["status"] == "to-do"  # task NOT marked done
+        entry = next(e for e in fm["plan"] if str(e["date"])[:10] == "2026-06-03")
+        assert entry.get("done") is True
+        # un-mark clears it
+        client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-03", "done": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        entry = next(e for e in _fm()["plan"] if str(e["date"])[:10] == "2026-06-03")
+        assert not entry.get("done")
+
+
+class TestTaskMeta:
+    """v3-I follow-up (修修): edit category + priority from the row / task-page dropdowns."""
+
+    def _fm(self, tmp_path):
+        raw = _task_path(tmp_path).read_text(encoding="utf-8")
+        return yaml.safe_load(raw.split("---", 2)[1])
+
+    def test_meta_updates_category_and_priority(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"category": "health", "priority": "high", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        fm = self._fm(tmp_path)
+        assert fm["category"] == "health"
+        assert fm["priority"] == "high"
+        # plan + status preserved
+        assert fm["status"] == "to-do" and "plan" in fm
+
+    def test_meta_rejects_bad_values(self, client, tmp_path):
+        client.post(
+            "/bridge/weekly/task/測試任務/meta",
+            data={"category": "bogus", "priority": "urgent", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        fm = self._fm(tmp_path)
+        # SAMPLE_TASK had no category (→ misc default at read) / no priority; bad values ignored
+        assert fm.get("category") not in ("bogus",)
+        assert fm.get("priority") not in ("urgent",)

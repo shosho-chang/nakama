@@ -46,7 +46,9 @@ from shared.weekly_writer import (
     migrate_legacy_projection,
     read_task_split,
     remove_plan_entry,
+    set_plan_entry_done,
     set_task_done,
+    set_task_meta,
     sync_scheduled_to_next_plan,
     weekly_file_token,
     write_task_body,
@@ -121,7 +123,7 @@ _SAVED_MSGS = {
     "task_new": "✓ 已新增任務。",
     "plan": "✓ 已儲存本週計畫。",
     "review": "✓ 已存週回顧。",
-    "top3": "✓ 已更新本週三大要事。",
+    "top3": "✓ 已更新本週重要任務。",
     "targets": "✓ 已更新本週目標。",
     "notes": "✓ 已存隨手筆記。",
     "status": "✓ 已更新本週狀態。",
@@ -547,6 +549,69 @@ async def weekly_task_done(
         return _back(wk_key, "task")
     except WeeklyWriteError as exc:
         logger.warning("weekly_task_done: %s", exc)
+        return _back(wk_key, "task")
+    # v3-I follow-up (修修): anchor on the toggled row so the dashboard lands back in
+    # place (the JS save-state restores tab/scroll; the #task- anchor re-opens the row).
+    return _back(wk_key, slug=slug)
+
+
+@page_router.post("/weekly/task/{slug}/meta")
+async def weekly_task_meta(
+    slug: str = PathParam(..., min_length=1),
+    category: str = Form(""),
+    priority: str = Form(""),
+    week: str = Form(""),
+    from_task: int = Form(0),
+    from_project: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """v3-I follow-up (修修): edit a task's category + priority from the dashboard row /
+    task page dropdowns. Writes only the valid fields; stays in place (the row's #anchor
+    + save-state, or the task page / Brief tab when fired from there)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    _FROM_PROJECT.set(from_project.strip())
+    wk_key = _safe_week_key(week)
+    ft = bool(from_task)
+    try:
+        set_task_meta(
+            get_vault_path(),
+            slug,
+            category=category if category in CATEGORY_LABELS else None,
+            priority=priority if priority in {"low", "normal", "high"} else None,
+        )
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_meta: %s", exc)
+        return _back(wk_key, "task")
+    return _plan_back(ft, slug, wk_key)
+
+
+@page_router.post("/weekly/task/{slug}/day-done")
+async def weekly_task_day_done(
+    slug: str = PathParam(..., min_length=1),
+    entry_date: str = Form(..., min_length=1),
+    done: int = Form(0),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """v3-I follow-up (修修): the DAILY bullet checkbox marks 'that day's work on this
+    task is done' — it flips the plan[] entry's done flag for ``entry_date``, NOT the
+    task's overall status (that's /done). The daily item crosses out but stays; the task
+    remains open. Stay-in-place (the JS save-state on .wk-box-form restores tab/scroll)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+    ed = _parse_entry_date(entry_date)
+    if ed is None:
+        return _back(wk_key, "date")
+    try:
+        set_plan_entry_done(get_vault_path(), slug, ed, bool(done))
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_day_done: %s", exc)
         return _back(wk_key, "task")
     return _back(wk_key)
 

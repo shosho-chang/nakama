@@ -337,6 +337,57 @@ def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
     return str(fm.get("status") or "to-do")
 
 
+_TASK_CATEGORIES = ("work", "health", "growth", "misc")
+_TASK_PRIORITIES = ("low", "normal", "high")
+
+
+def set_task_meta(
+    vault_root: Path, task_slug: str, *, category: str | None = None, priority: str | None = None
+) -> str:
+    """Update a task's ``category`` / ``priority`` frontmatter from the dashboard /
+    task-page dropdowns (v3-I follow-up, 修修). Only the given, valid fields are
+    written; plan[]/timeEntries/status/body are preserved. Unknown values are ignored
+    (the dropdowns only emit valid ones). Returns the task slug. Raises
+    :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    if category in _TASK_CATEGORIES:
+        fm["category"] = category
+    if priority in _TASK_PRIORITIES:
+        fm["priority"] = priority
+    _write_task(path, fm, body)
+    return task_slug
+
+
+def set_plan_entry_done(vault_root: Path, task_slug: str, day: date, done: bool) -> str:
+    """Toggle the DAY's plan[] entry done flag (v3-I follow-up, 修修).
+
+    The daily-bullet checkbox means 'that day's work on this task is done' — distinct
+    from the task-list checkbox (``set_task_done``), which marks the WHOLE task done.
+    Only the matching plan[] entry's ``done`` is touched; task ``status`` is untouched,
+    so the task stays open while a day's slice is crossed out. Returns the task slug.
+    Raises :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    plan = fm.get("plan")
+    if isinstance(plan, list):
+        iso = day.isoformat()
+        for e in plan:
+            if isinstance(e, dict) and str(e.get("date"))[:10] == iso:
+                if done:
+                    e["done"] = True
+                else:
+                    e.pop("done", None)
+                break
+        fm["plan"] = plan
+    _write_task(path, fm, body)
+    return task_slug
+
+
 # ── Calendar-block scheduling (ADR-041 — vault is the source of truth) ──────────
 # A scheduled block is, authoritatively, a ``plan[]`` entry (effort intent — D1).
 # The calendar event is a downstream projection; this writer only touches the VAULT:

@@ -298,11 +298,15 @@ def _related_task_view(project_slug: str):
     ]
     tasks.sort(key=lambda t: (t.done, t.name))
     wk = week_for_date(today_taipei())
+    # important_slugs drives the "First" (紫) priority chip — reuse the dashboard's
+    # canonical 本週重要任務 set (weekly-file top3) so the chip matches across surfaces.
+    important_slugs = WeeklyIndexer(get_vault_path()).view(wk).important_slugs
     view = SimpleNamespace(
         week=wk,
         today_iso=today_taipei().isoformat(),
         actual=SimpleNamespace(by_task={t.slug: t.actual_pomodoros for t in tasks}),
         planned_by_task={t.slug: t.est_pomodoros for t in tasks},
+        important_slugs=important_slugs,
     )
     return tasks, view
 
