@@ -24,6 +24,7 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Cookie,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -68,7 +69,7 @@ from shared.schemas.books import Book, BookProgress
 from shared.source_mode import Mode, detect_book_mode
 from shared.state import _get_conn
 from shared.utils import slugify
-from thousand_sunny.auth import check_auth
+from thousand_sunny.auth import check_auth, require_auth_or_key
 
 # Allowed values for the upload form ``mode`` parameter. ``"auto"`` triggers
 # server-side detection from EPUB metadata.lang + body sample.
@@ -446,7 +447,7 @@ def _ingest_status(book_id: str) -> str:
 
 
 @router.get("/api/books/{book_id}")
-async def book_metadata(book_id: str):
+async def book_metadata(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
@@ -456,7 +457,7 @@ async def book_metadata(book_id: str):
 
 
 @router.post("/api/books/{book_id}/ingest-request")
-async def post_ingest_request(book_id: str):
+async def post_ingest_request(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
@@ -467,7 +468,7 @@ async def post_ingest_request(book_id: str):
 
 
 @router.delete("/api/books/{book_id}/ingest-request")
-async def delete_ingest_request(book_id: str):
+async def delete_ingest_request(book_id: str, _auth=Depends(require_auth_or_key)):
     """Cancel a queued ingest. 409 if the book is already ingesting/done."""
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
@@ -477,7 +478,7 @@ async def delete_ingest_request(book_id: str):
 
 
 @router.get("/api/books/{book_id}/cover")
-async def book_cover(book_id: str):
+async def book_cover(book_id: str, _auth=Depends(require_auth_or_key)):
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     blob = read_cover_blob(book_id)
@@ -534,7 +535,7 @@ async def book_file(
 
 
 @router.get("/api/books/{book_id}/annotations")
-async def get_annotations(book_id: str):
+async def get_annotations(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
@@ -564,6 +565,7 @@ async def post_annotations(
     book_id: str,
     payload: dict,
     background_tasks: BackgroundTasks,
+    _auth=Depends(require_auth_or_key),
 ):
     """Accept either an ``AnnotationSetV2`` (legacy book reader payloads) or an
     ``AnnotationSetV3`` (post ADR-021 §1 round-trip from a Reader that already
@@ -598,7 +600,7 @@ async def post_annotations(
 
 
 @router.get("/api/books/{book_id}/progress")
-async def get_book_progress(book_id: str):
+async def get_book_progress(book_id: str, _auth=Depends(require_auth_or_key)):
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     conn = _get_conn()
@@ -617,7 +619,11 @@ async def get_book_progress(book_id: str):
 
 
 @router.put("/api/books/{book_id}/progress")
-async def put_book_progress(book_id: str, payload: BookProgress):
+async def put_book_progress(
+    book_id: str,
+    payload: BookProgress,
+    _auth=Depends(require_auth_or_key),
+):
     if payload.book_id != book_id:
         raise HTTPException(422, detail="book_id in URL does not match payload")
     if get_book(book_id) is None:
