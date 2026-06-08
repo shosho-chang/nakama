@@ -1320,7 +1320,8 @@ class TestUnifiedTaskViewsAndDone:
         (tmp_path / "TaskNotes" / "Tasks" / "工作任務.md").write_text(work, encoding="utf-8")
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
         assert "wk-ci-pom" in body
-        assert "1/3🍅" in body  # actual 1 / planned 3
+        # v3-I follow-up: actual is wrapped for slash-alignment → >1</span>/3🍅
+        assert "wk-pom-a" in body and ">1</span>/3🍅" in body  # actual 1 / planned 3
 
 
 class TestTaskPageCalendarConsistency:

@@ -183,11 +183,20 @@ body.sho .wk-cat-label {
   border-bottom: 1px solid var(--sho-line-2); padding-bottom: 4px;
 }
 body.sho .wk-cat-empty { color: var(--sho-line-2); font-size: 12px; }
-body.sho .wk-cat-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-body.sho .wk-cat-item { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; font-size: 13px; color: var(--sho-text); min-width: 0; }
-/* v3-I follow-up (修修): compact priority chip (right-aligned via rowfill) + muted project
-   adjacent to the title on each daily item. */
-body.sho .wk-ci-pri { height: 15px; padding: 0 5px; font-size: 9px; font-weight: 500; flex: 0 0 auto; }
+/* v3-I follow-up (修修): the daily items are an "invisible table" — the <ul> is a CSS
+   grid and each <li> is display:contents, so its cells (checkbox │ 名稱+專案 │ priority │
+   🍅) land in shared columns and line up across rows. */
+body.sho .wk-cat-items {
+  list-style: none; margin: 0; padding: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) max-content max-content;
+  align-items: center; row-gap: 5px; column-gap: 8px;
+  font-size: 13px; color: var(--sho-text);
+}
+body.sho .wk-cat-item { display: contents; }
+body.sho .wk-ci-main { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; }
+/* compact priority chip (in its own aligned column) */
+body.sho .wk-ci-pri { height: 15px; padding: 0 5px; font-size: 9px; font-weight: 500; }
 body.sho .wk-ci-proj {
   flex: 0 1 auto; min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 11px; color: var(--sho-muted);
@@ -634,10 +643,12 @@ body.sho .wk-cat-item.done button.wk-ci-box { color: var(--sho-accent); }
 
 /* #4 — daily bullet 🍅: 實際 / 預計 on that day, mono + tabular */
 body.sho .wk-ci-pom {
-  margin-left: auto; flex-shrink: 0;
+  justify-self: end;
   font-family: var(--sho-font-mono); font-size: 10px;
   color: var(--sho-text-2); font-variant-numeric: tabular-nums;
 }
+/* slash-align: right-align the actual so "0/1" and "10/1" share the slash x (修修) */
+body.sho .wk-pom-a { display: inline-block; min-width: 1.1em; text-align: right; }
 
 /* ── task-page calendar card (v3-C): per-entry chips + merged 排入, identical to
    the dashboard row — the chip/form internals reuse the .wk-plan-* styles above. ── */
