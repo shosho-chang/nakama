@@ -27,6 +27,11 @@ body{
   -webkit-font-smoothing:antialiased;
 }
 .wrap{max-width:860px; margin:0 auto; padding:0 28px}
+/* system-doc switcher — links to the --sho overview pages, styled in this page's palette */
+.cz-docnav{display:flex; flex-wrap:wrap; gap:4px; justify-content:center; margin:30px 0 4px; font-family:var(--mono)}
+.cz-docnav a{font-size:12px; letter-spacing:.04em; color:var(--ink3); border:1px solid var(--rule2); border-radius:999px; padding:5px 15px; background:var(--paper2)}
+.cz-docnav a:hover{color:var(--terra-d); border-color:var(--terra)}
+.cz-docnav a[aria-current="page"]{color:var(--paper2); background:var(--terra); border-color:var(--terra)}
 p{margin:0 0 1.15em}
 strong{font-weight:700; color:var(--ink)}
 em{font-style:normal; color:var(--terra-d); font-weight:500}
@@ -143,6 +148,13 @@ footer b{color:var(--ink2); font-weight:500}
 </style>
 
 <div class="wrap">
+
+<nav class="cz-docnav" aria-label="系統文件導覽">
+  <a href="/architecture">架構</a>
+  <a href="/crew">船員</a>
+  <a href="/progress">進度</a>
+  <a href="/centaur_zettel" aria-current="page">卡片盒</a>
+</nav>
 
 <!-- ===================== COVER ===================== -->
 <header class="cover">

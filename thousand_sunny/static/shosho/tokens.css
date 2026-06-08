@@ -252,6 +252,33 @@ html[data-theme="dark"] .sho {
 }
 .sho .sho-tag--accent { color: var(--sho-accent); border-color: var(--sho-accent-line); }
 
+/* ── Doc nav — segmented switcher across the system-overview pages.
+      Sits in the shared header of /architecture · /crew · /progress; the
+      current page marks its own link with aria-current="page". ─────────── */
+.sho .sho-docnav {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-pill);
+}
+.sho .sho-docnav a {
+  font-family: var(--sho-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--sho-muted);
+  text-decoration: none;
+  padding: 4px 13px;
+  border-radius: var(--sho-r-pill);
+  transition: color var(--sho-t-fast) var(--sho-ease),
+              background var(--sho-t-fast) var(--sho-ease);
+}
+.sho .sho-docnav a:hover { color: var(--sho-text); }
+.sho .sho-docnav a:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.sho .sho-docnav a[aria-current="page"] { color: var(--sho-bg); background: var(--sho-accent); }
+
 /* ── Reduced motion ─────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .sho { --sho-t-fast: 0ms; --sho-t-base: 0ms; --sho-t-slow: 0ms; }
