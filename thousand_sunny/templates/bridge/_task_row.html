@@ -34,7 +34,15 @@
         <button class="wk-rename-go" type="submit" title="儲存重新命名">✓</button>
         <button type="button" class="wk-rename-cancel" title="取消">✕</button>
       </form>
-      <span class="wk-tproj">{{ t.category_label }}{% if t.project %} · {{ t.project }}{% endif %}</span>
+      {# v3-I follow-up (修修): chips follow the title, column-aligned ("invisible table"
+         feel — the title has a min-width so the chips line up across rows). category
+         (outlined) + priority (solid). No project chip — the 全部 list is grouped by
+         project. priority 'first' (紫) when in 本週重要任務; else high/normal/low. #}
+      {% set pri = 'first' if t.slug in view.important_slugs else t.priority %}
+      <span class="wk-chips">
+        <span class="wk-chip wk-cat-chip wk-cat-{{ t.category }}">{{ t.category_label }}</span>
+        <span class="wk-chip wk-pri-chip wk-pri-{{ pri }}">{{ 'First' if pri == 'first' else t.priority_label }}</span>
+      </span>
       <span class="wk-rowfill" aria-hidden="true"></span>
       {% if timed %}
         {% set first = (timed | sort(attribute='start'))[0] %}
@@ -97,6 +105,25 @@
           <button class="sho-btn wk-plan-go wk-sched-go" type="submit">排入</button>
         </div>
         <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+      </form>
+
+      {# v3-I follow-up (修修): edit 分類 + 優先 inline — the selects auto-submit on change
+         (bridge-weekly.js) and the row stays in place. #}
+      <form class="wk-meta-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/meta">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+        <label class="wk-sched-lbl"><span class="wk-sched-cap">分類</span>
+          <select class="wk-meta-sel" name="category" aria-label="分類">
+            {% for c, lbl in [('work', '工作'), ('health', '身心健康'), ('growth', '自我進修'), ('misc', '雜事')] %}
+              <option value="{{ c }}" {{ 'selected' if c == t.category }}>{{ lbl }}</option>
+            {% endfor %}
+          </select></label>
+        <label class="wk-sched-lbl"><span class="wk-sched-cap">優先</span>
+          <select class="wk-meta-sel" name="priority" aria-label="優先">
+            {% for p, lbl in [('low', 'Low'), ('normal', 'Medium'), ('high', 'High')] %}
+              <option value="{{ p }}" {{ 'selected' if p == t.priority }}>{{ lbl }}</option>
+            {% endfor %}
+          </select></label>
       </form>
     </div>
   </details>

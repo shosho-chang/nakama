@@ -48,7 +48,21 @@
         </form>
       </div>
       <div class="tk-meta">
-        <span class="sho-chip">{{ task.category_label }}</span>
+        {# v3-I follow-up (修修): editable 分類 + 優先 (auto-submit on change). #}
+        <form class="wk-meta-form" method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/meta">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="from_task" value="1">
+          <select class="wk-meta-sel" name="category" aria-label="分類">
+            {% for c, lbl in [('work', '工作'), ('health', '身心健康'), ('growth', '自我進修'), ('misc', '雜事')] %}
+              <option value="{{ c }}" {{ 'selected' if c == task.category }}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+          <select class="wk-meta-sel" name="priority" aria-label="優先">
+            {% for p, lbl in [('low', 'Low'), ('normal', 'Medium'), ('high', 'High')] %}
+              <option value="{{ p }}" {{ 'selected' if p == task.priority }}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+        </form>
         {% if task.project %}<span class="tk-proj">{{ task.project }}</span>{% endif %}
         <span class="sho-chip sho-chip--{{ 'online' if task.status == 'done' else 'offline' }}">{{ task.status }}</span>
         {% if obsidian_uri %}<a class="tk-obsidian" href="{{ obsidian_uri }}" title="在 Obsidian 開啟">↗ Obsidian</a>{% endif %}
@@ -392,6 +406,15 @@
     form.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeEditor(); });
     var cancel = form.querySelector('.wk-rename-cancel');
     if (cancel) cancel.addEventListener('click', closeEditor);
+  })();
+
+  /* v3-I follow-up (修修): 分類/優先 dropdowns auto-submit on change. */
+  (function () {
+    document.querySelectorAll('.wk-meta-form select').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        if (sel.form) (sel.form.requestSubmit ? sel.form.requestSubmit() : sel.form.submit());
+      });
+    });
   })();
   </script>
 </body>

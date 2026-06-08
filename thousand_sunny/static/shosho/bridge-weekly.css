@@ -123,7 +123,9 @@ body.sho .wk-task:last-child { border-bottom: 0; }
 body.sho .wk-box { width: 14px; height: 14px; border: 1.5px solid var(--sho-line-2); border-radius: 3px; flex-shrink: 0; }
 body.sho .wk-box.done { background: var(--sho-text); border-color: var(--sho-text); }
 body.sho .wk-task.done .wk-tname { color: var(--sho-muted); text-decoration: line-through; }
-body.sho .wk-tname { color: var(--sho-text); }
+/* v3-I follow-up (修修): min-width gives the chips that follow the title a consistent
+   start x across rows — an "invisible table" feel. Long names extend past it. */
+body.sho .wk-tname { color: var(--sho-text); min-width: 12rem; }
 body.sho .wk-tproj { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); letter-spacing: 0.04em; }
 /* spacer carries the auto-margin so the date badge can sit just left of the 🍅
    count in the right group (修修); the count itself no longer needs the margin */
@@ -169,7 +171,9 @@ body.sho .wk-day-caret { color: var(--sho-muted); font-size: 11px; transition: t
 body.sho .wk-day[open] .wk-day-caret { transform: rotate(90deg); }
 /* card body — responsive category columns: side-by-side wide, stacked narrow */
 body.sho .wk-day-body {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* v3-I follow-up (修修): 工作 takes 1/2; 身心健康 + 雜事 share the other 1/2 (自我進修
+     column removed in the indexer). Columns are emitted work / health / misc in order. */
+  display: grid; grid-template-columns: 2fr 1fr 1fr;
   gap: 14px 20px; padding: 14px;
 }
 body.sho .wk-catcol { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -179,11 +183,30 @@ body.sho .wk-cat-label {
   border-bottom: 1px solid var(--sho-line-2); padding-bottom: 4px;
 }
 body.sho .wk-cat-empty { color: var(--sho-line-2); font-size: 12px; }
-body.sho .wk-cat-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-body.sho .wk-cat-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sho-text); min-width: 0; }
-body.sho .wk-cat-item.done .wk-ci-name { color: var(--sho-muted); text-decoration: line-through; }
+/* v3-I follow-up (修修): the daily items are an "invisible table" — the <ul> is a CSS
+   grid and each <li> is display:contents, so its cells (checkbox │ 名稱+專案 │ priority │
+   🍅) land in shared columns and line up across rows. */
+body.sho .wk-cat-items {
+  list-style: none; margin: 0; padding: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) max-content max-content;
+  align-items: center; row-gap: 5px; column-gap: 8px;
+  font-size: 13px; color: var(--sho-text);
+}
+body.sho .wk-cat-item { display: contents; }
+body.sho .wk-ci-main { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; }
+/* compact priority chip (in its own aligned column) */
+body.sho .wk-ci-pri { height: 15px; padding: 0 5px; font-size: 9px; font-weight: 500; }
+body.sho .wk-ci-proj {
+  flex: 0 1 auto; min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; color: var(--sho-muted);
+}
+body.sho .wk-cat-item.done .wk-ci-name,
+body.sho .wk-cat-item.done .wk-ci-proj { color: var(--sho-muted); text-decoration: line-through; }
 body.sho .wk-ci-name {
-  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* flex 0 1 — don't grow, so the project sits adjacent to the title; the rowfill
+     (margin-left:auto) pushes the priority chip + 🍅 to the right (修修). */
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: inherit; text-decoration: none;
   transition: color var(--sho-t-fast) var(--sho-ease);
 }
@@ -475,6 +498,17 @@ body.sho .wk-top3-sel {
   transition: border-color var(--sho-t-fast) var(--sho-ease);
 }
 body.sho .wk-top3-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+/* v3-I follow-up (修修): ＋ add another 重要任務 picker */
+body.sho .wk-pri-add {
+  flex: 0 0 auto; align-self: stretch;
+  min-width: 40px; padding: 7px 12px;
+  font-size: 16px; line-height: 1; color: var(--sho-text-2);
+  background: var(--sho-bg); border: 1px dashed var(--sho-line-2); border-radius: var(--sho-r-1);
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-pri-add:hover { border-color: var(--sho-accent); color: var(--sho-accent); }
+body.sho .wk-pri-add:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 body.sho .wk-plan-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 body.sho .wk-plan-row .sho-btn { margin-left: auto; }
 body.sho .wk-field--wide { grid-column: 1 / -1; }
@@ -609,10 +643,12 @@ body.sho .wk-cat-item.done button.wk-ci-box { color: var(--sho-accent); }
 
 /* #4 — daily bullet 🍅: 實際 / 預計 on that day, mono + tabular */
 body.sho .wk-ci-pom {
-  margin-left: auto; flex-shrink: 0;
+  justify-self: end;
   font-family: var(--sho-font-mono); font-size: 10px;
   color: var(--sho-text-2); font-variant-numeric: tabular-nums;
 }
+/* slash-align: right-align the actual so "0/1" and "10/1" share the slash x (修修) */
+body.sho .wk-pom-a { display: inline-block; min-width: 1.1em; text-align: right; }
 
 /* ── task-page calendar card (v3-C): per-entry chips + merged 排入, identical to
    the dashboard row — the chip/form internals reuse the .wk-plan-* styles above. ── */
@@ -754,3 +790,46 @@ body.sho .wk-rename-cancel:hover { border-color: var(--sho-accent); }
 body.sho .tk-titlewrap { display: flex; align-items: center; gap: 6px; }
 body.sho .tk-rename-icon { opacity: 1; font-size: 14px; }
 body.sho .tk-titlewrap .wk-rename-input { height: 36px; font-size: 18px; }
+
+/* ── v3-I follow-up: task-row chips (修修) — category (outlined) / project (outlined)
+   / priority (solid). Aligned right of the name; the chip cluster reads as one unit. */
+body.sho .wk-chips { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+/* v3-I follow-up (修修): chips are smaller + lighter (the solid pills read too heavy). */
+body.sho .wk-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  border-radius: var(--sho-r-pill);
+  white-space: nowrap;
+}
+/* category — outlined, per-category hued border, always-readable text */
+body.sho .wk-cat-chip { border: 1px solid var(--cat-line, var(--sho-line-2)); color: var(--sho-text-2); background: transparent; }
+body.sho .wk-cat-work   { --cat-line: oklch(0.62 0.10 250); }   /* blue   */
+body.sho .wk-cat-health { --cat-line: oklch(0.62 0.10 150); }   /* green  */
+body.sho .wk-cat-growth { --cat-line: oklch(0.62 0.10 300); }   /* purple */
+body.sho .wk-cat-misc   { --cat-line: var(--sho-muted); }       /* neutral */
+/* project — neutral outline */
+body.sho .wk-proj-chip { border: 1px solid var(--sho-line-2); color: var(--sho-text-2); background: transparent; max-width: 160px; overflow: hidden; }
+/* priority — solid fill (white text except amber, which needs dark for contrast) */
+body.sho .wk-pri-chip   { color: #fff; }
+body.sho .wk-pri-first  { background: var(--sho-violet); }         /* 紫 — 本週重要任務 */
+body.sho .wk-pri-high   { background: oklch(0.57 0.18 25); }       /* 紅 */
+body.sho .wk-pri-normal { background: oklch(0.64 0.16 65); color: #fff; }  /* 橘黃 (Medium) — white text (修修) */
+body.sho .wk-pri-low    { background: var(--sho-info); }           /* 淺藍 */
+
+/* ── v3-I follow-up (修修): inline 分類/優先 editor (task row + task page) ── */
+body.sho .wk-meta-form { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px; }
+body.sho .wk-meta-sel {
+  font: inherit; font-size: 13px; color: var(--sho-text);
+  background: var(--sho-bg); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 6px 9px; min-width: 108px;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-meta-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
+/* task page: sits inline in the meta row, no top margin */
+body.sho .tk-meta .wk-meta-form { margin-top: 0; gap: 8px; }
