@@ -1,0 +1,19 @@
+{#
+  Shared Robin reading sub-nav — single source of truth for the cross-links
+  between the reading hub and the three source surfaces. Use from any Robin
+  reading page so the navbar is identical everywhere:
+
+    {% from "_reader_nav.html" import reader_nav %}
+    {{ reader_nav(active='videos') }}
+
+  active slugs: home / articles / videos / books  (empty = none highlighted)
+  Styled by `.reader-nav` in bridge-pages.css (loaded by every reading surface).
+#}
+{% macro reader_nav(active='') -%}
+<nav class="reader-nav" aria-label="Robin 閱讀導覽">
+  <a href="/robin/home"{% if active == 'home' %} class="active" aria-current="page"{% endif %}>🏠 閱讀</a>
+  <a href="/robin"{% if active == 'articles' %} class="active" aria-current="page"{% endif %}>📄 文章</a>
+  <a href="/robin/watchlist"{% if active == 'videos' %} class="active" aria-current="page"{% endif %}>🎬 影片</a>
+  <a href="/robin/books"{% if active == 'books' %} class="active" aria-current="page"{% endif %}>📚 書架</a>
+</nav>
+{%- endmacro %}

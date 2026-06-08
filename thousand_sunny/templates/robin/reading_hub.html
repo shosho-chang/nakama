@@ -17,6 +17,7 @@
 </head>
 <body class="sho robin-page">
 {% from "_chassis_nav.html" import chassis_nav %}
+{% from "_reader_nav.html" import reader_nav %}
 {% call chassis_nav(nav_active='robin') %}
   <form method="post" action="/logout" style="margin:0">
     <button type="submit" class="logout-btn">登出</button>
@@ -26,6 +27,7 @@
   <div class="header">
     <h1><span>🏴‍☠️</span>Robin · 閱讀</h1>
   </div>
+  {{ reader_nav(active='home') }}
 
   <div class="hub-grid">
 
@@ -49,7 +51,7 @@
           {% endfor %}
         </ul>
       {% else %}
-        <p class="hub-empty">Inbox 是空的 — 收集的文章會出現在這裡。</p>
+        <p class="hub-empty">還沒有文章 — 收集到的文章會出現在這裡。</p>
       {% endif %}
       <div class="hub-panel__foot">
         <a class="sho-lk" href="/robin">查看全部 →</a>
