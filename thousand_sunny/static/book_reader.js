@@ -31,12 +31,21 @@ function pushReaderStyles() {
 }
 
 const wideMQ = window.matchMedia('(min-width: 1500px)');
+const mobileMQ = window.matchMedia('(max-width: 768px)');
 function applyColumns() {
   if (!view.renderer) return;
-  view.renderer.setAttribute('flow', 'paginated');
-  view.renderer.setAttribute('max-column-count', wideMQ.matches ? '2' : '1');
+  // Mobile → continuous vertical scroll (smoother on touch; paginated columns
+  // clip the last lines behind the fixed footer on a phone). Desktop keeps
+  // paginated columns (1, or 2 on very wide screens).
+  if (mobileMQ.matches) {
+    view.renderer.setAttribute('flow', 'scrolled');
+  } else {
+    view.renderer.setAttribute('flow', 'paginated');
+    view.renderer.setAttribute('max-column-count', wideMQ.matches ? '2' : '1');
+  }
 }
 wideMQ.addEventListener('change', applyColumns);
+mobileMQ.addEventListener('change', applyColumns);
 
 // ── Annotation state ──────────────────────────────────────────────────────────
 //

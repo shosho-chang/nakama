@@ -21,14 +21,14 @@
     {% endif %}
   </div>
   <nav class="right">
-    <a href="/" class="icon-btn back-inbox">📥 Inbox</a>
+    <a href="/robin/home" class="icon-btn back-inbox">🏠 <span class="btn-label">首頁</span></a>
     {% if book.mode != "monolingual-zh" %}
     <span class="ingest-wrap" id="ingestWrap">
-      <button type="button" class="icon-btn" id="ingestBtn" aria-label="送出整本書 ingest 請求" disabled>📥 Ingest 整本書</button>
+      <button type="button" class="icon-btn" id="ingestBtn" aria-label="送出整本書 ingest 請求" disabled>📥 <span class="btn-label">Ingest 整本書</span></button>
     </span>
     {% endif %}
-    <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 目錄</button>
-    <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 反思</button>
+    <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 <span class="btn-label">目錄</span></button>
+    <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 <span class="btn-label">反思</span></button>
     <button type="button" class="icon-btn" id="kbdHelpBtn" aria-label="鍵盤快捷鍵" title="鍵盤快捷鍵（按 ?）">⌨️</button>
     <button type="button" class="icon-btn" id="deleteBookBtn" aria-label="刪除整本書" title="刪除整本書">🗑️</button>
   </nav>

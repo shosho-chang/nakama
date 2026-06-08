@@ -775,3 +775,22 @@ body.sho .kbd-help-foot kbd {
   font-size: 11px;
   padding: 1px 6px;
 }
+
+/* ── Mobile reader layout (≤768px) ──────────────────────────────────────
+   Phone fixes (修修 feedback 2026-06-08): the desktop bar crams title + six
+   labelled buttons into one row and overlaps the title on a phone. Here we
+   drop title/meta/badge, hide desktop-only / destructive actions, collapse
+   the remaining buttons to icon-only, and add bottom room so the last lines
+   clear the fixed progress footer in scrolled mode (flow set in book_reader.js). */
+@media (max-width: 768px) {
+  body.sho .reader-bar { padding: var(--sho-s-2) var(--sho-s-3); gap: var(--sho-s-2); }
+  body.sho .reader-bar .title,
+  body.sho .reader-bar .meta,
+  body.sho .reader-bar .mode-badge { display: none; }
+  body.sho .reader-bar .right { gap: var(--sho-s-1); }
+  body.sho .icon-btn .btn-label { display: none; }       /* icon-only buttons */
+  body.sho .reader-bar #kbdHelpBtn,                        /* keyboard help = desktop only */
+  body.sho .reader-bar #deleteBookBtn { display: none; }   /* declutter; delete from desktop */
+  body.sho .icon-btn { padding: 6px 9px; }
+  body.sho .reader-shell { padding-bottom: 3.2rem; }       /* clear the fixed footer */
+}
