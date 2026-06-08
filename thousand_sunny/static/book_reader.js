@@ -254,6 +254,29 @@ async function fetchAnnotations() {
   }
 }
 
+// ADR-044 §B8 — surface Syncthing conflict copies of this book's annotation
+// file (VPS Robin write vs mobile Obsidian edit) so the user merges them
+// manually, instead of the divergence being silently dropped.
+function renderConflictBanner() {
+  const banner = document.getElementById('conflictBanner');
+  if (!banner) return;
+  const conflicts = currentSet && Array.isArray(currentSet.conflicts)
+    ? currentSet.conflicts
+    : [];
+  if (conflicts.length === 0) {
+    banner.hidden = true;
+    return;
+  }
+  const textEl = document.getElementById('conflictBannerText');
+  if (textEl) {
+    const devices = [...new Set(conflicts.map((c) => c.device))].join('、');
+    textEl.textContent =
+      `偵測到 ${conflicts.length} 個同步衝突檔（${devices}）—— 此來源的標註在不同裝置上分歧，`
+      + '請到 KB/Annotations 手動合併。新標註仍會存進主檔。';
+  }
+  banner.hidden = false;
+}
+
 async function persistSet(nextSet) {
   // Full-replace POST. Caller passes the new set; on success it becomes the
   // canonical mirror. On failure, the prior snapshot is restored and the
@@ -1532,6 +1555,7 @@ view.addEventListener('draw-annotation', e => {
     // available for chapter <select> population.
     await fetchBookMetadata();
     await fetchAnnotations();
+    renderConflictBanner();
 
     if (currentSet && currentSet.book_version_hash &&
         bookVersionHash && currentSet.book_version_hash !== bookVersionHash) {

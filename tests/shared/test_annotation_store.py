@@ -599,3 +599,47 @@ def test_v2_set_unsynced_count(tmp_path: Path, monkeypatch):
     )
     store.save(ann)
     assert store.unsynced_count("unsynced-book") == 2
+
+
+# ── Sync-conflict detection (ADR-044 §B8) ─────────────────────────────────────
+
+
+def _seed_annotations_dir(tmp_path: Path) -> Path:
+    d = tmp_path / "KB" / "Annotations"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def test_list_annotation_conflicts_detects_parses_and_orders(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    d = _seed_annotations_dir(tmp_path)
+    (d / "財富階梯.md").write_text("{}", encoding="utf-8")  # real file, not a conflict
+    (d / "財富階梯.sync-conflict-20260525-143000-ABC123.md").write_text("{}", encoding="utf-8")
+    (d / "財富階梯.sync-conflict-20260526-090000-DEF456.md").write_text("{}", encoding="utf-8")
+    (d / "另一本.sync-conflict-20260524-100000-ABC123.md").write_text("{}", encoding="utf-8")
+
+    everything = mod.list_annotation_conflicts()
+    assert len(everything) == 3
+    # Newest conflict first.
+    assert everything[0].conflict_timestamp == "20260526-090000"
+    assert everything[0].slug == "財富階梯"
+    assert everything[0].device == "DEF456"
+
+    only = mod.list_annotation_conflicts("財富階梯")
+    assert len(only) == 2
+    assert {c.slug for c in only} == {"財富階梯"}
+
+
+def test_list_annotation_conflicts_empty_when_only_real_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    d = _seed_annotations_dir(tmp_path)
+    (d / "財富階梯.md").write_text("{}", encoding="utf-8")
+    assert mod.list_annotation_conflicts() == []
+
+
+def test_list_annotation_conflicts_no_annotations_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    importlib.reload(mod)
+    assert mod.list_annotation_conflicts() == []
