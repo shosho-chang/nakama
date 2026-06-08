@@ -36,12 +36,12 @@
       </form>
       <span class="wk-rowfill" aria-hidden="true"></span>
       {# v3-I follow-up (修修): aligned chip cluster — category (outlined, per-category
-         colour) + project (outlined) + priority (solid). priority 'first' (紫) when the
-         task is in 本週重要任務; else high(紅)/normal=Medium(橘黃)/low(淺藍). #}
+         colour) + priority (solid). No project chip — the 全部 list is already grouped by
+         project. priority 'first' (紫) when the task is in 本週重要任務; else
+         high(紅)/normal=Medium(橘黃)/low(淺藍). #}
       {% set pri = 'first' if t.slug in view.important_slugs else t.priority %}
       <span class="wk-chips">
         <span class="wk-chip wk-cat-chip wk-cat-{{ t.category }}">{{ t.category_label }}</span>
-        {% if t.project %}<span class="wk-chip wk-proj-chip" title="{{ t.project }}">{{ t.project }}</span>{% endif %}
         <span class="wk-chip wk-pri-chip wk-pri-{{ pri }}">{{ 'First' if pri == 'first' else t.priority_label }}</span>
       </span>
       {% if timed %}

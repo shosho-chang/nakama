@@ -1654,3 +1654,33 @@ class TestRowChips:
         assert "wk-cat-misc" in body
         assert "wk-pri-normal" in body and "Medium" in body
         assert "wk-chips" in body
+
+
+class TestDayDone:
+    """v3-I follow-up (修修): the daily-bullet checkbox marks the DAY's plan entry done,
+    NOT the whole task — distinct from the task-list /done checkbox."""
+
+    def test_day_done_marks_plan_entry_only(self, client, tmp_path):
+        def _fm():
+            raw = _task_path(tmp_path).read_text(encoding="utf-8")
+            return yaml.safe_load(raw.split("---", 2)[1])
+
+        # SAMPLE_TASK has a plan entry on 2026-06-03
+        r = client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-03", "done": "1", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        fm = _fm()
+        assert fm["status"] == "to-do"  # task NOT marked done
+        entry = next(e for e in fm["plan"] if str(e["date"])[:10] == "2026-06-03")
+        assert entry.get("done") is True
+        # un-mark clears it
+        client.post(
+            "/bridge/weekly/task/測試任務/day-done",
+            data={"entry_date": "2026-06-03", "done": "0", "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        entry = next(e for e in _fm()["plan"] if str(e["date"])[:10] == "2026-06-03")
+        assert not entry.get("done")

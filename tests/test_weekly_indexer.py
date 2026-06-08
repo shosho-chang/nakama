@@ -423,8 +423,9 @@ def test_important_tasks_uncapped(tmp_path, monkeypatch):
     assert len(v.important_slugs) == 4
 
 
-def test_daily_drops_growth_and_carries_meta(tmp_path, monkeypatch):
-    # 修修: daily card removes 自我進修 column; items carry priority + project.
+def test_daily_merges_growth_into_other_and_carries_meta(tmp_path, monkeypatch):
+    # 修修: daily card has 3 columns work/health/其他; 自我進修(growth) folds into 其他(misc);
+    # items carry priority + project.
     monkeypatch.setattr(wi, "today_taipei", lambda: date(2026, 6, 3))
     _task(
         tmp_path,
@@ -454,8 +455,11 @@ def test_daily_drops_growth_and_carries_meta(tmp_path, monkeypatch):
     )
     v = WeeklyIndexer(tmp_path).view(week_for_date(date(2026, 6, 1)))
     mon = next(d for d in v.days if d["date"] == "2026-06-01")
-    cat_slugs = [c["slug"] for c in mon["categories"]]
-    assert "growth" not in cat_slugs and "work" in cat_slugs
-    item = next(c for c in mon["categories"] if c["slug"] == "work")["items"][0]
+    cats = {c["slug"]: c for c in mon["categories"]}
+    assert set(cats) == {"work", "health", "misc"}  # no standalone growth column
+    other = cats["misc"]
+    assert other["label"] == "其他"  # misc column relabelled
+    assert "讀書" in [it["name"] for it in other["items"]]  # growth task folded in
+    item = cats["work"]["items"][0]
     assert item["priority"] == "high" and item["priority_label"] == "High"
     assert item["project"] == "專案A"

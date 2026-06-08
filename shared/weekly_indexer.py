@@ -311,6 +311,15 @@ class WeeklyTask:
             return any(a.date == d for a in self.plan)
         return self.scheduled == d
 
+    def done_on(self, d: date) -> bool:
+        """Per-DAY completion for the daily bullet (v3-I follow-up, 修修): the plan[]
+        entry's own ``done`` flag for ``d``. A scheduled-only task (no plan entry) falls
+        back to the task-level done. Distinct from ``done`` (whole-task completion)."""
+        for a in self.plan:
+            if a.date == d:
+                return bool(a.done)
+        return self.done
+
     def is_priority_for(self, wk: WeekRef) -> bool:
         return self.weekly_priority == wk.file_key
 
@@ -895,14 +904,16 @@ class WeeklyIndexer:
             on = [t for t in tasks if t.is_on(d)]
             work_pom = sum(t.pomodoros_on(d) for t in on if t.is_work)
             # weekend never reaches here (Mon-Fri only), so no D9 reason marker needed
+            # v3-I follow-up (修修): the daily card has 3 columns — 工作(½) / 身心健康 / 其他.
+            # 其他 folds 自我進修(growth) into 雜事(misc): both bucket under "misc" and the
+            # column is labelled 其他. (The task-list category chip still shows the real
+            # category.) Unknown categories also fall into 其他.
+            DAILY_OTHER = "misc"
             by_cat: dict[str, list[WeeklyTask]] = {}
             for t in on:
-                by_cat.setdefault(t.category, []).append(t)
-            # v3-I follow-up (修修): the daily card drops the 自我進修(growth) column —
-            # work takes 1/2 the width, 身心健康 + 雜事 share the other 1/2. growth tasks
-            # scheduled that day still show in the task-list views, just not the daily card.
-            daily_order = [c for c in CATEGORY_ORDER if c != "growth"]
-            ordered = daily_order + [c for c in by_cat if c not in CATEGORY_ORDER]
+                cat_key = t.category if t.category in ("work", "health") else DAILY_OTHER
+                by_cat.setdefault(cat_key, []).append(t)
+            ordered = ["work", "health", DAILY_OTHER]
             seen: set[str] = set()
             categories: list[dict] = []
             for slug in ordered:
@@ -916,7 +927,9 @@ class WeeklyIndexer:
                         "slug": t.slug,
                         "pomodoros": t.pomodoros_on(d) if is_work else 0,
                         "actual": t.actual_pomodoros_on(d) if is_work else 0,
-                        "done": t.done,
+                        # v3-I follow-up: daily done = the DAY's plan-entry done (per-day),
+                        # NOT the whole-task done — the daily checkbox is a different action.
+                        "done": t.done_on(d),
                         "relative_path": t.relative_path,
                         # v3-I follow-up: daily items also carry priority + project (修修)
                         "priority": t.priority,
@@ -928,7 +941,8 @@ class WeeklyIndexer:
                 categories.append(
                     {
                         "slug": slug,
-                        "label": CATEGORY_LABELS.get(slug, slug),
+                        # the misc column is the merged 其他 bucket (misc + growth) — 修修
+                        "label": "其他" if slug == DAILY_OTHER else CATEGORY_LABELS.get(slug, slug),
                         "is_work": is_work,
                         "items": items,
                     }

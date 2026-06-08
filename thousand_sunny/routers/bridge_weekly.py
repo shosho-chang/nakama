@@ -46,6 +46,7 @@ from shared.weekly_writer import (
     migrate_legacy_projection,
     read_task_split,
     remove_plan_entry,
+    set_plan_entry_done,
     set_task_done,
     sync_scheduled_to_next_plan,
     weekly_file_token,
@@ -551,6 +552,34 @@ async def weekly_task_done(
     # v3-I follow-up (修修): anchor on the toggled row so the dashboard lands back in
     # place (the JS save-state restores tab/scroll; the #task- anchor re-opens the row).
     return _back(wk_key, slug=slug)
+
+
+@page_router.post("/weekly/task/{slug}/day-done")
+async def weekly_task_day_done(
+    slug: str = PathParam(..., min_length=1),
+    entry_date: str = Form(..., min_length=1),
+    done: int = Form(0),
+    week: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """v3-I follow-up (修修): the DAILY bullet checkbox marks 'that day's work on this
+    task is done' — it flips the plan[] entry's done flag for ``entry_date``, NOT the
+    task's overall status (that's /done). The daily item crosses out but stays; the task
+    remains open. Stay-in-place (the JS save-state on .wk-box-form restores tab/scroll)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    wk_key = _safe_week_key(week)
+    ed = _parse_entry_date(entry_date)
+    if ed is None:
+        return _back(wk_key, "date")
+    try:
+        set_plan_entry_done(get_vault_path(), slug, ed, bool(done))
+    except TaskNotFoundError:
+        return _back(wk_key, "task")
+    except WeeklyWriteError as exc:
+        logger.warning("weekly_task_day_done: %s", exc)
+        return _back(wk_key, "task")
+    return _back(wk_key)
 
 
 @page_router.post("/weekly/task/{slug}/rename")

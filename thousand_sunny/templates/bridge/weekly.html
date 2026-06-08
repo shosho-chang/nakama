@@ -265,12 +265,17 @@
                       <ul class="wk-cat-items">
                         {% for it in cat['items'] %}
                           <li class="wk-cat-item {{ 'done' if it.done }}">
-                            <form class="wk-box-form" method="post" action="/bridge/weekly/task/{{ it.slug | urlencode }}/done">
+                            {# v3-I follow-up (修修): the DAILY checkbox marks 'that day's
+                               work done' (plan-entry done for this date) — NOT the whole
+                               task. Posts /day-done with the day's date; item crosses out
+                               but stays. (The task-list checkbox uses /done = whole task.) #}
+                            <form class="wk-box-form" method="post" action="/bridge/weekly/task/{{ it.slug | urlencode }}/day-done">
                               <input type="hidden" name="week" value="{{ view.week.file_key }}">
+                              <input type="hidden" name="entry_date" value="{{ day.date }}">
                               <input type="hidden" name="done" value="{{ '0' if it.done else '1' }}">
                               <button type="submit" class="wk-ci-box"
                                       aria-pressed="{{ 'true' if it.done else 'false' }}"
-                                      aria-label="{{ ('標記未完成：' if it.done else '標記完成：') ~ it.name }}">{{ '☑' if it.done else '☐' }}</button>
+                                      aria-label="{{ ('標記當天未完成：' if it.done else '標記當天完成：') ~ it.name }}">{{ '☑' if it.done else '☐' }}</button>
                             </form>
                             <a class="wk-ci-name" href="/bridge/weekly/task/{{ it.slug | urlencode }}?week={{ view.week.file_key }}">{{ it.name }}</a>
                             {# v3-I follow-up (修修): daily items also carry priority chip + project

@@ -800,5 +800,5 @@ body.sho .wk-proj-chip { border: 1px solid var(--sho-line-2); color: var(--sho-t
 body.sho .wk-pri-chip   { color: #fff; }
 body.sho .wk-pri-first  { background: var(--sho-violet); }         /* 紫 — 本週重要任務 */
 body.sho .wk-pri-high   { background: oklch(0.57 0.18 25); }       /* 紅 */
-body.sho .wk-pri-normal { background: var(--sho-warning); color: var(--sho-ink); }  /* 橘黃 (Medium) */
+body.sho .wk-pri-normal { background: oklch(0.64 0.16 65); color: #fff; }  /* 橘黃 (Medium) — white text (修修) */
 body.sho .wk-pri-low    { background: var(--sho-info); }           /* 淺藍 */
