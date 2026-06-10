@@ -61,7 +61,10 @@ mobileMQ.addEventListener('change', applyColumns);
 // selection is lost (modals steal focus).
 
 const ANN_HIGHLIGHT_COLOR = 'yellow';   // H button (highlight)
-const ANN_NOTE_COLOR = 'orange';        // A button (annotation w/ note)
+// A button (annotation w/ note) — brand orange (tokens.css --sho-accent,
+// PANTONE 165). Literal because overlays draw inside the sandboxed EPUB
+// iframe where --sho-* custom properties don't cascade.
+const ANN_NOTE_COLOR = 'oklch(0.71 0.135 41)';
 const ANN_COMMENT_ANCHOR_COLOR = 'blue'; // C button when cfi_anchor is set
 
 const popup = document.getElementById('ann-popup');
