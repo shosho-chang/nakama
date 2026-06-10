@@ -1,0 +1,392 @@
+# Thumbnail cutout pose taxonomy.
+#
+# ADR-037 replaces coarse emotion-only cutout selection with multi-axis pose
+# tags. This file is intentionally machine-readable so future import, contact
+# sheet, and picker code can validate candidate cutouts.
+
+schema_version: thumbnail_cutout_pose_tags.v1
+
+axes:
+  body_angle:
+    description: "Torso/head direction in screen coordinates after final crop."
+    values:
+      - front
+      - three_quarter_left
+      - three_quarter_right
+      - profile_left
+      - profile_right
+
+  gaze:
+    description: "Where the eyes look in screen coordinates."
+    values:
+      - camera
+      - screen_left
+      - screen_right
+      - up_left
+      - up_right
+      - down_left
+      - down_right
+      - at_asset
+      - at_text
+
+  expression_family:
+    description: "The communicative read, not just raw emotion."
+    values:
+      - soft_smile
+      - neutral_trust
+      - thoughtful
+      - skeptical
+      - mild_surprise
+      - explain
+      - serious_warning
+      - confident
+      - warm_laugh
+
+  intensity:
+    description: "How exaggerated the expression is."
+    values:
+      - subtle
+      - mild
+      - medium
+      - high
+      - extreme
+
+  mouth:
+    values:
+      - closed
+      - slight_smile
+      - open_small
+      - open_medium
+      - open_wide
+
+  brow:
+    values:
+      - relaxed
+      - raised
+      - slight_frown
+      - deep_frown
+      - one_brow
+
+  hands:
+    values:
+      - none
+      - chin
+      - point_screen_left
+      - point_screen_right
+      - open_palm_screen_left
+      - open_palm_screen_right
+      - open_palms_both
+      - count_one
+      - count_two
+      - count_three
+      - thumbs_up
+      - arms_crossed
+      - hands_on_head
+      - holding_object
+
+  crop:
+    values:
+      - head
+      - chest
+      - waist
+      - upper_body
+
+  credibility:
+    description: "Whether the shot can carry health/longevity trust."
+    values:
+      - high
+      - medium
+      - low
+
+  use_context:
+    values:
+      - ali_warm_explainer
+      - jeff_clean_tutorial
+      - evidence_review
+      - protocol_steps
+      - myth_busting
+      - warning
+      - personal_story
+      - comedy_only
+
+filename_convention:
+  pattern: "shosho__{shot_id}__v{version}.png"
+  example: "shosho__3ql_gaze_r_thoughtful_mild_chin__v01.png"
+  note: "Do not encode every tag in the filename forever; use sidecar JSON for full metadata once importer support exists."
+
+required_core_shots:
+  - shot_id: front_soft_smile_camera
+    priority: must_have
+    tags:
+      body_angle: front
+      gaze: camera
+      expression_family: soft_smile
+      intensity: mild
+      mouth: slight_smile
+      brow: relaxed
+      hands: none
+      crop: waist
+      credibility: high
+    use_context: [ali_warm_explainer, personal_story]
+    avoid_context: [warning]
+    shoot_note: "友善但不要太業配；適合溫暖解釋型縮圖。"
+
+  - shot_id: front_neutral_trust_camera
+    priority: must_have
+    tags:
+      body_angle: front
+      gaze: camera
+      expression_family: neutral_trust
+      intensity: subtle
+      mouth: closed
+      brow: relaxed
+      hands: none
+      crop: waist
+      credibility: high
+    use_context: [evidence_review, jeff_clean_tutorial]
+    avoid_context: [comedy_only]
+    shoot_note: "最保險的健康知識頻道表情；可信、乾淨、低戲劇性。"
+
+  - shot_id: front_serious_warning_camera
+    priority: must_have
+    tags:
+      body_angle: front
+      gaze: camera
+      expression_family: serious_warning
+      intensity: mild
+      mouth: closed
+      brow: slight_frown
+      hands: none
+      crop: waist
+      credibility: high
+    use_context: [warning, myth_busting]
+    avoid_context: [ali_warm_explainer]
+    shoot_note: "像在提醒風險，不要像生氣或恐嚇。"
+
+  - shot_id: three_quarter_left_thoughtful_chin
+    priority: must_have
+    tags:
+      body_angle: three_quarter_left
+      gaze: screen_right
+      expression_family: thoughtful
+      intensity: mild
+      mouth: closed
+      brow: slight_frown
+      hands: chin
+      crop: waist
+      credibility: high
+    use_context: [evidence_review, ali_warm_explainer]
+    avoid_context: [protocol_steps]
+    shoot_note: "留右側給文字或素材；沉思但不要困惑。"
+
+  - shot_id: three_quarter_right_thoughtful_chin
+    priority: must_have
+    tags:
+      body_angle: three_quarter_right
+      gaze: screen_left
+      expression_family: thoughtful
+      intensity: mild
+      mouth: closed
+      brow: slight_frown
+      hands: chin
+      crop: waist
+      credibility: high
+    use_context: [evidence_review, ali_warm_explainer]
+    avoid_context: [protocol_steps]
+    shoot_note: "留左側給文字或素材；跟上一張成鏡像備用。"
+
+  - shot_id: three_quarter_left_skeptical
+    priority: must_have
+    tags:
+      body_angle: three_quarter_left
+      gaze: screen_right
+      expression_family: skeptical
+      intensity: mild
+      mouth: closed
+      brow: one_brow
+      hands: none
+      crop: waist
+      credibility: high
+    use_context: [myth_busting]
+    avoid_context: [personal_story]
+    shoot_note: "像在質疑常見說法，不要演成搞笑。"
+
+  - shot_id: three_quarter_right_skeptical
+    priority: must_have
+    tags:
+      body_angle: three_quarter_right
+      gaze: screen_left
+      expression_family: skeptical
+      intensity: mild
+      mouth: closed
+      brow: one_brow
+      hands: none
+      crop: waist
+      credibility: high
+    use_context: [myth_busting]
+    avoid_context: [personal_story]
+    shoot_note: "鏡像版，用於相反構圖。"
+
+  - shot_id: front_mild_surprise_camera
+    priority: must_have
+    tags:
+      body_angle: front
+      gaze: camera
+      expression_family: mild_surprise
+      intensity: mild
+      mouth: open_small
+      brow: raised
+      hands: none
+      crop: waist
+      credibility: medium
+    use_context: [myth_busting, evidence_review]
+    avoid_context: [warning]
+    shoot_note: "驚訝但不 meme；眼睛可稍大，嘴巴不要張太大。"
+
+  - shot_id: three_quarter_left_mild_surprise
+    priority: should_have
+    tags:
+      body_angle: three_quarter_left
+      gaze: screen_right
+      expression_family: mild_surprise
+      intensity: mild
+      mouth: open_small
+      brow: raised
+      hands: none
+      crop: waist
+      credibility: medium
+    use_context: [myth_busting]
+    avoid_context: [warning]
+    shoot_note: "看向右側素材或 headline；驚訝幅度小。"
+
+  - shot_id: three_quarter_right_mild_surprise
+    priority: should_have
+    tags:
+      body_angle: three_quarter_right
+      gaze: screen_left
+      expression_family: mild_surprise
+      intensity: mild
+      mouth: open_small
+      brow: raised
+      hands: none
+      crop: waist
+      credibility: medium
+    use_context: [myth_busting]
+    avoid_context: [warning]
+    shoot_note: "鏡像版。"
+
+  - shot_id: point_screen_left_explain
+    priority: must_have
+    tags:
+      body_angle: three_quarter_right
+      gaze: screen_left
+      expression_family: explain
+      intensity: mild
+      mouth: open_small
+      brow: relaxed
+      hands: point_screen_left
+      crop: waist
+      credibility: high
+    use_context: [jeff_clean_tutorial, protocol_steps]
+    avoid_context: [personal_story]
+    shoot_note: "手指指向左側文字/素材；嘴型像正在解釋。"
+
+  - shot_id: point_screen_right_explain
+    priority: must_have
+    tags:
+      body_angle: three_quarter_left
+      gaze: screen_right
+      expression_family: explain
+      intensity: mild
+      mouth: open_small
+      brow: relaxed
+      hands: point_screen_right
+      crop: waist
+      credibility: high
+    use_context: [jeff_clean_tutorial, protocol_steps]
+    avoid_context: [personal_story]
+    shoot_note: "鏡像版。"
+
+  - shot_id: open_palm_screen_left_present
+    priority: should_have
+    tags:
+      body_angle: three_quarter_right
+      gaze: screen_left
+      expression_family: explain
+      intensity: subtle
+      mouth: slight_smile
+      brow: relaxed
+      hands: open_palm_screen_left
+      crop: waist
+      credibility: high
+    use_context: [ali_warm_explainer, evidence_review]
+    avoid_context: [warning]
+    shoot_note: "展示左側便條紙、圖表或清單；手掌自然。"
+
+  - shot_id: open_palm_screen_right_present
+    priority: should_have
+    tags:
+      body_angle: three_quarter_left
+      gaze: screen_right
+      expression_family: explain
+      intensity: subtle
+      mouth: slight_smile
+      brow: relaxed
+      hands: open_palm_screen_right
+      crop: waist
+      credibility: high
+    use_context: [ali_warm_explainer, evidence_review]
+    avoid_context: [warning]
+    shoot_note: "鏡像版。"
+
+  - shot_id: count_three_protocol
+    priority: should_have
+    tags:
+      body_angle: front
+      gaze: camera
+      expression_family: explain
+      intensity: mild
+      mouth: open_small
+      brow: relaxed
+      hands: count_three
+      crop: waist
+      credibility: high
+    use_context: [protocol_steps, jeff_clean_tutorial]
+    avoid_context: [personal_story]
+    shoot_note: "用於 3 steps / 3 rules；手勢要清楚但不要遮臉。"
+
+  - shot_id: warm_laugh_camera
+    priority: optional
+    tags:
+      body_angle: front
+      gaze: camera
+      expression_family: warm_laugh
+      intensity: medium
+      mouth: open_medium
+      brow: relaxed
+      hands: none
+      crop: waist
+      credibility: medium
+    use_context: [personal_story, comedy_only]
+    avoid_context: [evidence_review, warning]
+    shoot_note: "保留少量，避免健康知識縮圖太輕浮。"
+
+rare_or_dangerous_shots:
+  - shot_id: extreme_open_mouth_surprise
+    tags:
+      expression_family: mild_surprise
+      intensity: extreme
+      mouth: open_wide
+      hands: hands_on_head
+      credibility: low
+    use_context: [comedy_only]
+    avoid_context: [ali_warm_explainer, jeff_clean_tutorial, evidence_review, warning]
+    note: "只適合少數 meme / shock 題；預設 picker 不應自動選。"
+
+shooting_guidelines:
+  - "同一件上衣、乾淨光線、相機高度接近眼睛。"
+  - "每個 must_have shot 至少拍 2 張，方便挑不僵硬的一張。"
+  - "臉要清楚，手勢不要遮住下巴和嘴。"
+  - "左右方向請以畫面 screen_left / screen_right 為準，不要用本人左手右手描述。"
+  - "健康/長壽題材優先拍 high credibility：表情克制、可信、少 meme。"
+  - "保留腰部以上空間，方便後製裁成胸像或上半身。"

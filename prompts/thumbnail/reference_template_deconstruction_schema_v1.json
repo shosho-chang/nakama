@@ -1,0 +1,440 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nakama.local/schemas/reference-template-deconstruction-v1.json",
+  "title": "Ali/Jeff Reference Template Deconstruction v1",
+  "type": "object",
+  "required": ["batch", "records", "family_feedback", "schema_feedback"],
+  "additionalProperties": false,
+  "properties": {
+    "batch": { "type": "string", "minLength": 1 },
+    "records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    },
+    "family_feedback": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_feedback": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "box": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "record": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "reference_id",
+        "creator",
+        "title",
+        "image_path",
+        "image_size",
+        "priority",
+        "renderable_v1",
+        "template_family_candidate",
+        "family_confidence",
+        "title_intent_tags",
+        "composition",
+        "background",
+        "host",
+        "components",
+        "typography",
+        "overlap_rules",
+        "style_tokens",
+        "generator_constraints",
+        "evaluation_targets",
+        "notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "ali_jeff_template_corpus_v1" },
+        "reference_id": { "type": "string", "minLength": 1 },
+        "creator": { "enum": ["Ali Abdaal", "Jeff Su"] },
+        "title": { "type": "string", "minLength": 1 },
+        "image_path": { "type": "string", "minLength": 1 },
+        "image_size": {
+          "type": "array",
+          "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "priority": { "enum": ["gold", "silver", "archive"] },
+        "renderable_v1": { "type": "boolean" },
+        "template_family_candidate": { "type": "string", "minLength": 1 },
+        "family_confidence": { "enum": ["high", "medium", "low"] },
+        "title_intent_tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "composition": {
+          "type": "object",
+          "required": [
+            "layout_summary",
+            "focal_hierarchy",
+            "reading_path",
+            "visual_balance",
+            "negative_space",
+            "dominant_zones"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "layout_summary": { "type": "string" },
+            "focal_hierarchy": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "reading_path": { "type": "string" },
+            "visual_balance": {
+              "enum": ["left_heavy", "right_heavy", "centered", "split", "mixed"]
+            },
+            "negative_space": { "enum": ["low", "medium", "high"] },
+            "dominant_zones": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "background": {
+          "type": "object",
+          "required": [
+            "type",
+            "detail_level",
+            "color_temperature",
+            "brand_reuse_potential",
+            "notes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": [
+                "blurred_aroll",
+                "studio_room",
+                "dark_ui",
+                "light_ui",
+                "split_screen",
+                "object_scene",
+                "mixed"
+              ]
+            },
+            "detail_level": { "enum": ["low", "medium", "high"] },
+            "color_temperature": { "enum": ["warm", "cool", "neutral", "mixed"] },
+            "brand_reuse_potential": { "enum": ["high", "medium", "low"] },
+            "notes": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "host": {
+          "type": "object",
+          "required": [
+            "present",
+            "box_pct",
+            "face_box_pct",
+            "face_height_ratio",
+            "placement",
+            "gaze",
+            "expression",
+            "gesture",
+            "crop",
+            "occlusion_role",
+            "placement_rule"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "present": { "type": "boolean" },
+            "box_pct": {
+              "anyOf": [{ "$ref": "#/$defs/box" }, { "type": "null" }]
+            },
+            "face_box_pct": {
+              "anyOf": [{ "$ref": "#/$defs/box" }, { "type": "null" }]
+            },
+            "face_height_ratio": { "type": "number" },
+            "placement": {
+              "enum": ["left_third", "center", "right_third", "full_center", "none", "multi"]
+            },
+            "gaze": {
+              "enum": [
+                "camera",
+                "left",
+                "right",
+                "up_left",
+                "up_right",
+                "down_left",
+                "down_right",
+                "none",
+                "unclear"
+              ]
+            },
+            "expression": {
+              "enum": [
+                "excited",
+                "thoughtful",
+                "surprised",
+                "explaining",
+                "serious",
+                "laughing",
+                "smiling",
+                "smiling_explaining",
+                "cheerful",
+                "focused",
+                "confident",
+                "thinking",
+                "neutral_smile",
+                "serious_thoughtful",
+                "pointing",
+                "neutral",
+                "n/a",
+                "unclear"
+              ]
+            },
+            "gesture": {
+              "enum": [
+                "none",
+                "pointing_left",
+                "pointing_right",
+                "pointing_up",
+                "pointing",
+                "open_hands",
+                "chin_touch",
+                "holding_object",
+                "two_hands",
+                "multi_pose",
+                "neutral",
+                "thinking",
+                "n/a",
+                "unclear"
+              ]
+            },
+            "crop": {
+              "enum": [
+                "head_shoulders",
+                "torso",
+                "tight_face",
+                "half_body",
+                "multi_pose",
+                "none"
+              ]
+            },
+            "occlusion_role": {
+              "enum": ["in_front_of_payload", "behind_payload", "separate", "n/a", "mixed"]
+            },
+            "placement_rule": { "type": "string" }
+          }
+        },
+        "components": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/component" }
+        },
+        "typography": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/typography" }
+        },
+        "overlap_rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/overlap_rule" }
+        },
+        "style_tokens": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "generator_constraints": {
+          "type": "object",
+          "required": [
+            "must_preserve",
+            "must_avoid",
+            "max_primary_components",
+            "max_total_components",
+            "minimum_face_height_ratio",
+            "template_breakers"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "must_preserve": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "must_avoid": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "max_primary_components": { "type": "integer" },
+            "max_total_components": { "type": "integer" },
+            "minimum_face_height_ratio": { "type": "number" },
+            "template_breakers": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "evaluation_targets": {
+          "type": "object",
+          "required": [
+            "first_glance_should_read_as",
+            "small_size_checks",
+            "reference_fit_checks",
+            "repair_hints"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "first_glance_should_read_as": { "type": "string" },
+            "small_size_checks": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "reference_fit_checks": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "repair_hints": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "role",
+        "type",
+        "box_pct",
+        "text",
+        "visual_style",
+        "semantic_job",
+        "asset_needs",
+        "z_index",
+        "required"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "component_id": { "type": "string" },
+        "role": {
+          "enum": [
+            "primary_payload",
+            "supporting_asset",
+            "connector",
+            "brand_logo",
+            "brand_anchor",
+            "embedded_label",
+            "metric",
+            "badge",
+            "status"
+          ]
+        },
+        "type": {
+          "enum": [
+            "ui_panel",
+            "command_panel",
+            "action_label",
+            "tool_label",
+            "tool_logo",
+            "logo_tile",
+            "app_icon",
+            "app_icon_cluster",
+            "metric_badge",
+            "metric_badge_pair",
+            "arrow",
+            "quote_card",
+            "social_post_card",
+            "benefit_list_card",
+            "before_after_panel",
+            "whiteboard_diagram",
+            "object_cutout",
+            "simple_icon",
+            "small_badge",
+            "text_banner",
+            "step_card",
+            "screenshot_panel",
+            "marker",
+            "portrait_triptych",
+            "portrait_collage",
+            "status_chip",
+            "document_preview",
+            "formula_overlay",
+            "blurred_list"
+          ]
+        },
+        "box_pct": { "$ref": "#/$defs/box" },
+        "text": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "visual_style": { "type": "string" },
+        "semantic_job": { "type": "string" },
+        "asset_needs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "z_index": { "type": "integer" },
+        "required": { "type": "boolean" }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "required": [
+        "text_id",
+        "text",
+        "box_pct",
+        "style",
+        "case",
+        "max_words",
+        "color",
+        "stroke_or_shadow",
+        "readability"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "text_id": { "type": "string" },
+        "text": { "type": "string" },
+        "box_pct": { "$ref": "#/$defs/box" },
+        "style": {
+          "enum": [
+            "bold_sans",
+            "handwritten_glow",
+            "white_stroke",
+            "black_panel",
+            "pill_label",
+            "none",
+            "mixed"
+          ]
+        },
+        "case": { "enum": ["uppercase", "title_case", "mixed", "chinese"] },
+        "max_words": { "type": "integer" },
+        "color": { "type": "string" },
+        "stroke_or_shadow": { "type": "string" },
+        "readability": { "enum": ["high", "medium", "low"] }
+      }
+    },
+    "overlap_rule": {
+      "type": "object",
+      "required": ["foreground", "background", "status", "protected_region", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "foreground": { "type": "string" },
+        "background": { "type": "string" },
+        "status": { "enum": ["allowed", "tolerated", "forbidden"] },
+        "protected_region": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

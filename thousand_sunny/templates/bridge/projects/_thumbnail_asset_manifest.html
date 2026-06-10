@@ -1,0 +1,131 @@
+{% set manifest = asset_manifest or {} %}
+{% set items = manifest.get('items', []) %}
+{% set policy = manifest.get('policy', {}) %}
+
+<div class="pj-thumb-assets-panel" data-asset-count="{{ items | length }}">
+  <header class="pj-thumb-assets-head">
+    <div>
+      <h4 class="pj-section-subtitle">素材 sourcing</h4>
+      <p class="pj-section-hint">
+        {{ items | length }} 個素材需求
+        {% if manifest.generated_at %}· 更新於 <time>{{ manifest.generated_at }}</time>{% endif %}
+      </p>
+    </div>
+    <form class="pj-inline-form"
+          hx-post="/bridge/projects/{{ slug }}/thumbnail/assets/rebuild"
+          hx-target="#thumb-asset-manifest"
+          hx-swap="innerHTML">
+      <button type="submit" class="pj-btn-secondary pj-btn--small">重建素材清單</button>
+    </form>
+  </header>
+
+  {% if policy %}
+    <p class="pj-thumb-assets-policy">
+      只產生搜尋意圖與 provenance 紀錄；
+      download_allowed=<code>{{ policy.download_allowed }}</code>，
+      bulk_download_allowed=<code>{{ policy.bulk_download_allowed }}</code>。
+    </p>
+  {% endif %}
+
+  {% if items %}
+    <div class="pj-thumb-assets-list">
+      {% for item in items %}
+        {% set prov = item.provenance %}
+        <article class="pj-thumb-asset-card pj-thumb-asset-card--{{ item.status }}">
+          <header class="pj-thumb-asset-card-head">
+            <div>
+              <span class="pj-thumb-asset-id">{{ item.asset_need_id }}</span>
+              <span class="pj-thumb-asset-type">{{ item.need_type }}</span>
+            </div>
+            <span class="pj-thumb-asset-status pj-thumb-asset-status--{{ item.status }}">
+              {{ item.status_label }}
+            </span>
+          </header>
+
+          <div class="pj-thumb-asset-query">{{ item.query }}</div>
+          {% if item.title_pairing %}
+            <p class="pj-thumb-asset-title">{{ item.title_pairing }}</p>
+          {% endif %}
+
+          {% if item.search_urls %}
+            <div class="pj-thumb-asset-links" aria-label="Asset search links">
+              {% for link in item.search_urls %}
+                <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">
+                  {{ link.label }}
+                </a>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <form class="pj-thumb-asset-form"
+                hx-post="/bridge/projects/{{ slug }}/thumbnail/assets/{{ item.asset_need_id }}"
+                hx-target="#thumb-asset-manifest"
+                hx-swap="innerHTML">
+            <label>
+              <span>Status</span>
+              <select name="status">
+                {% for opt in item.status_options %}
+                  <option value="{{ opt.value }}" {% if opt.value == item.status %}selected{% endif %}>
+                    {{ opt.label }}
+                  </option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              <span>Provider</span>
+              <input type="text" name="provider" value="{{ prov.provider }}" placeholder="envato_elements">
+            </label>
+            <label class="pj-thumb-asset-form-wide">
+              <span>Asset URL</span>
+              <input type="url" name="asset_url" value="{{ prov.asset_url }}" placeholder="https://...">
+            </label>
+            <label>
+              <span>Asset ID</span>
+              <input type="text" name="provider_asset_id" value="{{ prov.provider_asset_id }}">
+            </label>
+            <label>
+              <span>Author</span>
+              <input type="text" name="author" value="{{ prov.author }}">
+            </label>
+            <label>
+              <span>License</span>
+              <input type="text" name="license_name" value="{{ prov.license_name }}">
+            </label>
+            <label>
+              <span>Registration</span>
+              <input type="text" name="license_registration" value="{{ prov.license_registration }}">
+            </label>
+            <label>
+              <span>Downloaded at</span>
+              <input type="text" name="downloaded_at" value="{{ prov.downloaded_at }}" placeholder="2026-05-28">
+            </label>
+            <label class="pj-thumb-asset-form-wide">
+              <span>Local path</span>
+              <input type="text" name="local_path" value="{{ prov.local_path }}" placeholder="Attachments/...">
+            </label>
+            <label class="pj-thumb-asset-form-wide">
+              <span>Evidence path</span>
+              <input type="text" name="evidence_path" value="{{ prov.evidence_path }}">
+            </label>
+            <label class="pj-thumb-asset-form-wide">
+              <span>Notes</span>
+              <input type="text" name="notes" value="{{ prov.notes }}">
+            </label>
+            <div class="pj-thumb-asset-actions">
+              <button type="submit" class="pj-btn-primary pj-btn--small">儲存素材紀錄</button>
+              {% if item.provenance_complete %}
+                <span class="pj-status pj-status--success">provenance complete</span>
+              {% elif item.candidate_identified %}
+                <span class="pj-status">candidate recorded</span>
+              {% endif %}
+            </div>
+          </form>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="pj-empty-state pj-empty-state--small">
+      尚未有素材清單。先產生縮圖 idea，或在有 thumbnail_ideas 後重建素材清單。
+    </p>
+  {% endif %}
+</div>

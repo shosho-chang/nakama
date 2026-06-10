@@ -1,0 +1,92 @@
+{# Title pool grid + final slots. Full HTMX swap target after brainstorm/iterate.
+   Renders 10 archetype sections (cards inside) + final 3 slots at the bottom. #}
+<div class="pj-tt-pool" id="title-pool-grid">
+  <header class="pj-tt-pool-header">
+    <div class="pj-tt-pool-header-meta">
+      {% if iteration > 0 %}
+        <span class="pj-tt-pool-iteration">iteration {{ iteration }}</span>
+        <span class="pj-tt-pool-meta-hint">勾選喜歡的方向 → 按「♻️ Iterate」收斂下一輪</span>
+      {% else %}
+        <span class="pj-tt-pool-meta-hint">還沒 brainstorm — 按下方按鈕讓 LLM 一次給 20-30 個候選</span>
+      {% endif %}
+    </div>
+    <div class="pj-tt-pool-header-actions">
+      <button type="button" class="pj-btn-primary"
+              hx-post="/bridge/projects/{{ slug }}/thumbnail/title-pool/brainstorm"
+              hx-target="#title-pool-grid"
+              hx-swap="outerHTML"
+              hx-indicator="#title-pool-spinner">
+        🎲 {% if iteration > 0 %}重新 Brainstorm（換新一池）{% else %}開始 Brainstorm{% endif %}
+      </button>
+      {% if iteration > 0 %}
+        <button type="button" class="pj-btn-secondary"
+                hx-post="/bridge/projects/{{ slug }}/thumbnail/title-pool/iterate"
+                hx-target="#title-pool-grid"
+                hx-swap="outerHTML"
+                hx-indicator="#title-pool-spinner">
+          ♻️ Iterate（用勾選的收斂）
+        </button>
+      {% endif %}
+      <span class="pj-progress htmx-indicator" id="title-pool-spinner" aria-hidden="true">
+        <span class="pj-progress-circle"></span>
+        <span class="pj-progress-label">LLM 思考中</span>
+        <span class="pj-progress-timer" data-timer>0s</span>
+      </span>
+    </div>
+  </header>
+
+  {% if iteration == 0 %}
+    <p class="pj-tt-pool-empty-state">
+      （Pool 還空著 — 點上方按鈕讓 LLM 用 playbook 的 10 種 archetype 一次出 20-30 個候選）
+    </p>
+  {% else %}
+    {% for arch in archetype_groups %}
+      <section class="pj-tt-pool-section">
+        <header class="pj-tt-pool-section-head">
+          <span class="pj-tt-pool-arch-id">{{ arch.id }}</span>
+          <span class="pj-tt-pool-arch-name">{{ arch.name }}</span>
+          <span class="pj-tt-pool-arch-emotion">{{ arch.emotion }}</span>
+          {% if arch.grade and arch.grade != '?' %}
+            <span class="pj-tt-archetype-grade pj-tt-archetype-grade--{{ arch.grade|lower }}">{{ arch.grade }}</span>
+          {% endif %}
+        </header>
+        {% if arch.titles %}
+          <div class="pj-tt-pool-cards">
+            {% for t in arch.titles %}
+              {% set is_checked = t.id in checked_ids %}
+              <label class="pj-tt-pool-card{% if is_checked %} is-checked{% endif %}">
+                <input type="checkbox"
+                       class="pj-tt-pool-card-check"
+                       name="state" value="true"
+                       {% if is_checked %}checked{% endif %}
+                       hx-post="/bridge/projects/{{ slug }}/thumbnail/title-pool/check/{{ t.id }}"
+                       hx-trigger="change"
+                       hx-swap="none"
+                       hx-on::after-request="this.closest('.pj-tt-pool-card').classList.toggle('is-checked', this.checked)">
+                <span class="pj-tt-pool-card-text">{{ t.title }}</span>
+                <span class="pj-tt-pool-card-actions">
+                  {% for slot in ['A', 'B', 'C'] %}
+                    <button type="button" class="pj-tt-promote-btn"
+                            hx-post="/bridge/projects/{{ slug }}/thumbnail/title-pool/promote/{{ t.id }}"
+                            hx-vals='{"slot": "{{ slot }}"}'
+                            hx-target="#title-final-slots"
+                            hx-swap="outerHTML"
+                            title="加進 final 第 {{ slot }} 槽">→ {{ slot }}</button>
+                  {% endfor %}
+                </span>
+              </label>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="pj-tt-pool-section-empty">（LLM 沒生這個 archetype，按上面重來）</p>
+        {% endif %}
+      </section>
+    {% endfor %}
+  {% endif %}
+
+  {# Final slots live inside the same swap target so promote/brainstorm both
+     refresh the final block as part of the grid. #}
+  {% with final_slots=final_slots %}
+    {% include "projects/_title_final_slots.html" %}
+  {% endwith %}
+</div>

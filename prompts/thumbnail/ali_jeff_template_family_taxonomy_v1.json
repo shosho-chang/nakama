@@ -1,0 +1,970 @@
+{
+  "schema_version": "ali_jeff_template_family_taxonomy_v1",
+  "created": "2026-05-29",
+  "scope": {
+    "creators": ["Ali Abdaal", "Jeff Su"],
+    "source_dirs": [
+      "E:/thumbnail-example/Ali Abdaal",
+      "E:/thumbnail-example/Jeff Su"
+    ],
+    "image_count": 54,
+    "selection_note": "User narrowed the corpus to the currently relevant Ali Abdaal and Jeff Su folders before this taxonomy pass."
+  },
+  "production_status_legend": {
+    "renderable_v1": "Good enough to drive deterministic v1 composition with current host cutouts, blurred A-roll backgrounds, text, cards, icons, arrows, and simple UI panels.",
+    "reference_only": "Useful as visual inspiration, but should not be selected for automated v1 rendering until the renderer or asset library is extended.",
+    "archive": "Keep the assignment for coverage, but do not use as a production template."
+  },
+  "component_type_registry": [
+    "action_label",
+    "app_icon",
+    "app_icon_cluster",
+    "arrow",
+    "before_after_panel",
+    "benefit_list_card",
+    "command_panel",
+    "document_preview",
+    "formula_overlay",
+    "logo_tile",
+    "metric_badge_pair",
+    "object_cutout",
+    "quote_card",
+    "simple_icon",
+    "small_badge",
+    "social_post_card",
+    "step_card",
+    "text_banner",
+    "tool_label",
+    "tool_logo",
+    "ui_panel",
+    "whiteboard_diagram"
+  ],
+  "families": [
+    {
+      "family_id": "ali_toggle_metaphor",
+      "creator_style": "Ali Abdaal",
+      "label": "simple metaphor control + host",
+      "production_status": "renderable_v1",
+      "priority": "silver",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/5 Easy Ways to Become More Self-Disciplined.jpg"
+      ],
+      "best_for": ["habit change", "self-control", "one abstract concept that can become a UI metaphor"],
+      "avoid": ["evidence-heavy health claim", "multi-benefit list", "tool tutorial"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["right_third"],
+          "face_height_ratio": [0.25, 0.34],
+          "gaze_policy": "Host may look at the metaphor component or camera; face must stay secondary to the simple switch.",
+          "required_poses": ["thoughtful", "holding_object", "soft_smile"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["tool_label", "simple_icon"],
+          "preferred_zones": ["left_upper", "left_middle"],
+          "max_count": 1
+        },
+        "typography": {
+          "headline_policy": "Usually no separate headline; the component text is the headline.",
+          "max_words": 2
+        },
+        "background": {
+          "policy": "soft blurred room or simple gradient; low detail behind the metaphor."
+        }
+      },
+      "style_tokens": ["white rounded pill", "single green accent", "simple metaphor", "soft warm room"],
+      "cheap_eval_gates": {
+        "max_primary_components": 1,
+        "min_face_height_ratio": 0.25,
+        "max_payload_text_items": 1
+      },
+      "template_breakers": ["component no longer reads as a simple metaphor", "extra icons create list-card energy"],
+      "shot_needs": ["right-third thoughtful host", "hands holding or touching one object"]
+    },
+    {
+      "family_id": "ali_icon_cluster_host",
+      "creator_style": "Ali Abdaal",
+      "label": "host with icon/object cluster",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/5 High Income Skills for Students to Learn in 2026.jpg",
+        "E:/thumbnail-example/Ali Abdaal/8 Simple Habits That Save Me 20+ Hours a Week.jpg",
+        "E:/thumbnail-example/Ali Abdaal/I Tried 137 Productivity Tools. These Are The Best..jpg"
+      ],
+      "best_for": ["ranked tools", "skills list", "habit stack", "collection comparison"],
+      "avoid": ["one dramatic transformation", "single quote/advice card", "medical claim needing evidence nuance"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["center", "right_third", "left_third"],
+          "face_height_ratio": [0.28, 0.42],
+          "gaze_policy": "Camera-facing host can anchor a loose cluster; side gaze should point toward the densest cluster.",
+          "required_poses": ["smiling", "explaining", "open_hands"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["app_icon_cluster", "app_icon", "object_cutout", "small_badge"],
+          "preferred_zones": ["around_host", "opposite_host", "upper_band"],
+          "max_count": 5
+        },
+        "typography": {
+          "headline_policy": "Optional; if present, use one short count or phrase, not a bottom Shosho headline.",
+          "max_words": 4
+        },
+        "background": {
+          "policy": "blurred A-roll or clean studio; icon contrast must beat background detail."
+        }
+      },
+      "style_tokens": ["floating icons", "clean cutouts", "friendly host", "moderate density"],
+      "cheap_eval_gates": {
+        "max_primary_components": 5,
+        "min_face_height_ratio": 0.30,
+        "max_payload_text_items": 4
+      },
+      "template_breakers": ["icons are tiny", "all icons have equal weight with no focal path", "host face becomes secondary"],
+      "shot_needs": ["camera-facing smile", "open hands for icon cluster", "side glance toward floating icons"]
+    },
+    {
+      "family_id": "ali_year_hero",
+      "creator_style": "Ali Abdaal",
+      "label": "large year/number hero + host",
+      "production_status": "renderable_v1",
+      "priority": "silver",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/6 Habits to Make 2026 Your Best Year Yet.jpg",
+        "E:/thumbnail-example/Ali Abdaal/How to Make Next Year The Best Year of Your Life.jpg"
+      ],
+      "best_for": ["new year planning", "future reset", "annual review", "year-specific promise"],
+      "avoid": ["timeless scientific explainer", "tool tutorial", "quote-card advice"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["right_third", "center"],
+          "face_height_ratio": [0.25, 0.38],
+          "gaze_policy": "Host can face camera; the giant year/number owns the first glance.",
+          "required_poses": ["cheerful", "confident", "pointing"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["text_banner", "metric_badge_pair", "simple_icon"],
+          "preferred_zones": ["left_middle", "center_back"],
+          "max_count": 2
+        },
+        "typography": {
+          "headline_policy": "One huge number/year plus one tiny modifier at most.",
+          "max_words": 3
+        },
+        "background": {
+          "policy": "clean bright background with low detail."
+        }
+      },
+      "style_tokens": ["huge year", "optimistic", "bright", "simple promise"],
+      "cheap_eval_gates": {
+        "max_primary_components": 2,
+        "min_face_height_ratio": 0.25,
+        "max_payload_text_items": 2
+      },
+      "template_breakers": ["year competes with long sentence", "number is not instantly readable"],
+      "shot_needs": ["positive camera-facing pose", "pointing to large year"]
+    },
+    {
+      "family_id": "ali_income_cards",
+      "creator_style": "Ali Abdaal",
+      "label": "income/platform cards around host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/6 Side Hustles Students Can Start in 2026.jpg",
+        "E:/thumbnail-example/Ali Abdaal/How to Make $10,000Month Writing Online.jpg",
+        "E:/thumbnail-example/Ali Abdaal/If I Wanted to Make $10,000 as a Student, I'd Do This.jpg"
+      ],
+      "best_for": ["side hustles", "earning online", "money paths", "creator monetization"],
+      "avoid": ["non-money health topic", "abstract mindset advice", "software tutorial without income angle"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["center", "right_third"],
+          "face_height_ratio": [0.30, 0.44],
+          "gaze_policy": "Camera-facing or pointing host anchors several cards; do not select a side-gaze pose unless cards are in that direction.",
+          "required_poses": ["smiling", "explaining", "pointing"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["ui_panel", "social_post_card", "metric_badge_pair", "app_icon_cluster", "object_cutout"],
+          "preferred_zones": ["left_cluster", "right_cluster", "upper_band"],
+          "max_count": 4
+        },
+        "typography": {
+          "headline_policy": "Use money metric as the text anchor; avoid full subtitle paragraphs.",
+          "max_words": 4
+        },
+        "background": {
+          "policy": "warm clean room or neutral gradient; cards must be brighter than background."
+        }
+      },
+      "style_tokens": ["money metric", "floating cards", "creator platforms", "friendly aspiration"],
+      "cheap_eval_gates": {
+        "max_primary_components": 4,
+        "min_face_height_ratio": 0.30,
+        "max_payload_text_items": 4
+      },
+      "template_breakers": ["money amount is small", "cards become unreadable screenshots", "host gaze points away from cards"],
+      "shot_needs": ["center smile", "two hands outward", "pointing to cards"]
+    },
+    {
+      "family_id": "ali_command_text_host",
+      "creator_style": "Ali Abdaal",
+      "label": "large blunt phrase + host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/9 Things I Wish I Knew When I Started YouTube.jpg",
+        "E:/thumbnail-example/Ali Abdaal/How To Get Rich.jpg",
+        "E:/thumbnail-example/Ali Abdaal/Why Everyone Should Start a YouTube Channel.jpg"
+      ],
+      "best_for": ["strong recommendation", "creator advice", "blunt contrarian lesson"],
+      "avoid": ["topic needs visual evidence card", "tool UI walkthrough", "too many list items"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["right_third", "center"],
+          "face_height_ratio": [0.28, 0.42],
+          "gaze_policy": "Host should either face camera or point at the phrase; side gaze must not point off-canvas.",
+          "required_poses": ["confident", "pointing", "explaining"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["text_banner", "simple_icon", "small_badge"],
+          "preferred_zones": ["left_middle", "lower_band", "upper_left"],
+          "max_count": 2
+        },
+        "typography": {
+          "headline_policy": "The big phrase is the design. 2-5 words, high contrast, no second headline.",
+          "max_words": 5
+        },
+        "background": {
+          "policy": "plain or blurred background; text contrast is the main constraint."
+        }
+      },
+      "style_tokens": ["giant phrase", "simple command", "high contrast", "personal advice"],
+      "cheap_eval_gates": {
+        "max_primary_components": 2,
+        "min_face_height_ratio": 0.28,
+        "max_payload_text_items": 1
+      },
+      "template_breakers": ["phrase wraps into paragraph", "phrase covers face", "supporting icons compete with phrase"],
+      "shot_needs": ["confident point", "camera-facing serious smile", "creator authority pose"]
+    },
+    {
+      "family_id": "ali_whiteboard_diagram",
+      "creator_style": "Ali Abdaal",
+      "label": "diagram/whiteboard as main payload",
+      "production_status": "reference_only",
+      "priority": "silver",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/How to Control Dopamine (You're Destroying Your Mind).jpg"
+      ],
+      "best_for": ["mental model", "system map", "biology mechanism", "workflow diagram"],
+      "avoid": ["fast production v1 unless a clean diagram renderer exists", "host-first brand thumbnail"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["none", "small_corner"],
+          "face_height_ratio": [0.00, 0.20],
+          "gaze_policy": "Host is optional; diagram clarity is primary.",
+          "required_poses": ["none"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["whiteboard_diagram", "simple_icon", "text_banner"],
+          "preferred_zones": ["full_center"],
+          "max_count": 1
+        },
+        "typography": {
+          "headline_policy": "Diagram labels are allowed; avoid bottom headline overlays.",
+          "max_words": 8
+        },
+        "background": {
+          "policy": "light board or paper, minimal texture."
+        }
+      },
+      "style_tokens": ["diagram", "whiteboard", "system explanation", "low host salience"],
+      "cheap_eval_gates": {
+        "max_primary_components": 1,
+        "min_face_height_ratio": 0.00,
+        "max_payload_text_items": 6
+      },
+      "template_breakers": ["diagram labels are unreadable", "random decorative icons replace causal structure"],
+      "shot_needs": ["optional pointing-to-board pose if this becomes production"]
+    },
+    {
+      "family_id": "ali_ui_panel_host_side",
+      "creator_style": "Ali Abdaal",
+      "label": "large UI/productivity panel opposite host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/How to Find Time for Everything with a Full Time Job.jpg"
+      ],
+      "best_for": ["calendar workflow", "time-blocking", "productivity system", "one concrete framework"],
+      "avoid": ["abstract advice with no screen metaphor", "dense tool tutorial better suited to Jeff style"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["right_third", "left_third"],
+          "face_height_ratio": [0.30, 0.44],
+          "gaze_policy": "Host gaze or gesture must point toward the panel; do not put a right-looking host on the left if the panel is also right.",
+          "required_poses": ["explaining", "pointing", "thinking"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["ui_panel", "document_preview", "small_badge"],
+          "preferred_zones": ["opposite_host"],
+          "max_count": 2
+        },
+        "typography": {
+          "headline_policy": "Panel title may exist; no large bottom headline unless the reference variant has one.",
+          "max_words": 5
+        },
+        "background": {
+          "policy": "blurred work room, panel contrast high."
+        }
+      },
+      "style_tokens": ["calendar card", "productivity panel", "host-pointing", "clean explanation"],
+      "cheap_eval_gates": {
+        "max_primary_components": 2,
+        "min_face_height_ratio": 0.30,
+        "max_payload_text_items": 4
+      },
+      "template_breakers": ["panel and gaze are on same side", "panel is too small to explain the promise"],
+      "shot_needs": ["pointing left", "pointing right", "thoughtful side glance"]
+    },
+    {
+      "family_id": "ali_before_after_split",
+      "creator_style": "Ali Abdaal",
+      "label": "before/after transformation split",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/How to Reset Your Dopamine (And Change Your Life).jpg",
+        "E:/thumbnail-example/Ali Abdaal/How to Stop Wasting Your Life (Avoid These 5 Things).jpg",
+        "E:/thumbnail-example/Ali Abdaal/Why You’re Always Distracted - 5 Mistakes Ruining Your Focus.jpg"
+      ],
+      "best_for": ["before after", "bad habit reset", "avoid mistakes", "behavior transformation"],
+      "avoid": ["neutral list without contrast", "pure tool walkthrough"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["left_third", "right_third", "center"],
+          "face_height_ratio": [0.30, 0.46],
+          "gaze_policy": "Before/after sides must align with host expression or gesture; confused pose on before side, confident pose on after side.",
+          "required_poses": ["before_confused", "after_confident", "phone_distracted", "focused_writing"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["before_after_panel", "text_banner", "app_icon", "simple_icon"],
+          "preferred_zones": ["left_half", "right_half"],
+          "max_count": 2
+        },
+        "typography": {
+          "headline_policy": "Use two contrast labels or one short warning phrase; no paragraph.",
+          "max_words": 5
+        },
+        "background": {
+          "policy": "split warm/cool or before/after color contrast."
+        }
+      },
+      "style_tokens": ["split contrast", "bad vs good", "habit reset", "clear transformation"],
+      "cheap_eval_gates": {
+        "max_primary_components": 2,
+        "min_face_height_ratio": 0.30,
+        "max_payload_text_items": 2
+      },
+      "template_breakers": ["before and after do not read as opposites", "host expression does not match the side"],
+      "shot_needs": ["phone distracted before-state", "focused writing after-state", "confused side glance"]
+    },
+    {
+      "family_id": "ali_evidence_stack",
+      "creator_style": "Ali Abdaal",
+      "label": "evidence stack or objects as proof",
+      "production_status": "renderable_v1",
+      "priority": "silver",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/I Read 107 Productivity Books. Here's What Actually Works..jpg"
+      ],
+      "best_for": ["book synthesis", "I tested/read many things", "evidence-backed curation"],
+      "avoid": ["single tip", "tool UI tutorial", "simple before/after"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["left_third", "right_third"],
+          "face_height_ratio": [0.25, 0.36],
+          "gaze_policy": "Host can be smaller if object/evidence stack is the main proof.",
+          "required_poses": ["holding_object", "reading", "explaining"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["object_cutout", "document_preview", "small_badge"],
+          "preferred_zones": ["center", "opposite_host"],
+          "max_count": 3
+        },
+        "typography": {
+          "headline_policy": "One count badge or short conclusion phrase.",
+          "max_words": 4
+        },
+        "background": {
+          "policy": "warm study/library, object stack sharply separated."
+        }
+      },
+      "style_tokens": ["proof objects", "tested many", "book stack", "evidence"],
+      "cheap_eval_gates": {
+        "max_primary_components": 3,
+        "min_face_height_ratio": 0.25,
+        "max_payload_text_items": 2
+      },
+      "template_breakers": ["object stack looks like random decoration", "count is not visible"],
+      "shot_needs": ["holding book/tablet", "reading with headphones", "desk study pose"]
+    },
+    {
+      "family_id": "ali_metric_arrow",
+      "creator_style": "Ali Abdaal",
+      "label": "metric contrast + arrow",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/If I Wanted to Be a Millionaire Before 30, I'd Do This.jpg"
+      ],
+      "best_for": ["money transformation", "time saved", "measurable before/after"],
+      "avoid": ["benefits with no two clear metrics", "dense explanation", "tool walkthrough"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["center"],
+          "face_height_ratio": [0.34, 0.48],
+          "gaze_policy": "Camera-facing or two-hand comparison pose; metrics must flank the host symmetrically.",
+          "required_poses": ["two_hands", "pointing_left_right", "confident"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["metric_badge_pair", "arrow", "simple_icon"],
+          "preferred_zones": ["left_metric", "right_metric", "top_arc"],
+          "max_count": 3
+        },
+        "typography": {
+          "headline_policy": "The two metric badges are the text. No separate headline.",
+          "max_words": 2
+        },
+        "background": {
+          "policy": "simple room background; keep metric contrast dominant."
+        }
+      },
+      "style_tokens": ["two huge metrics", "green arrow", "central host", "instant contrast"],
+      "cheap_eval_gates": {
+        "max_primary_components": 3,
+        "min_face_height_ratio": 0.34,
+        "max_payload_text_items": 2
+      },
+      "template_breakers": ["more than two metrics", "arrow points to nothing", "host not centered enough to bridge metrics"],
+      "shot_needs": ["center metric pose with two hands outward", "pointing both directions"]
+    },
+    {
+      "family_id": "ali_social_quote_card",
+      "creator_style": "Ali Abdaal",
+      "label": "social/quote card + approachable host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Ali Abdaal/My honest advice to someone who feels behind in life.jpg",
+        "E:/thumbnail-example/Ali Abdaal/My honest advice to someone who wants financial freedom.jpg"
+      ],
+      "best_for": ["honest advice", "personal reassurance", "single soft contrarian idea"],
+      "avoid": ["numbered benefit list", "hard technical tutorial", "many components"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["right_third", "center_right"],
+          "face_height_ratio": [0.30, 0.42],
+          "gaze_policy": "Host should feel present and approachable; card is usually opposite host.",
+          "required_poses": ["warm_smile", "neutral_smile", "empathetic"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["quote_card", "social_post_card"],
+          "preferred_zones": ["left_middle", "opposite_host"],
+          "max_count": 1
+        },
+        "typography": {
+          "headline_policy": "Card carries 3-7 words; no extra headline.",
+          "max_words": 7
+        },
+        "background": {
+          "policy": "soft blurred room, low detail, human warmth."
+        }
+      },
+      "style_tokens": ["white card", "short advice", "warm host", "soft background"],
+      "cheap_eval_gates": {
+        "max_primary_components": 1,
+        "min_face_height_ratio": 0.30,
+        "max_payload_text_items": 1
+      },
+      "template_breakers": ["card text becomes tweet paragraph", "host expression is too exaggerated"],
+      "shot_needs": ["warm neutral smile", "empathetic camera-facing pose"]
+    },
+    {
+      "family_id": "jeff_tool_header_panel",
+      "creator_style": "Jeff Su",
+      "label": "tool label + UI panel + host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/Google Keep Top 11 Tips for Insane Digital Organization!.jpg",
+        "E:/thumbnail-example/Jeff Su/Learn 80% of Perplexity in under 10 minutes!.jpg",
+        "E:/thumbnail-example/Jeff Su/Learn 80% of NotebookLM in Under 13 Minutes!.jpg",
+        "E:/thumbnail-example/Jeff Su/Learn 80% of Claude Cowork in Under 20 Minutes.jpg",
+        "E:/thumbnail-example/Jeff Su/給入門者的Google AI課程 (只要10分鐘)!.jpg"
+      ],
+      "best_for": ["learn a named tool", "quick software tutorial", "AI app walkthrough", "clean productivity guide"],
+      "avoid": ["non-tool health topic", "money transformation", "quote/advice card"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["left_third", "right_third"],
+          "face_height_ratio": [0.34, 0.50],
+          "gaze_policy": "Host must either face camera or look/point at the UI panel. If the reference host is centered, choose a camera-facing cutout, not a side-gaze cutout.",
+          "required_poses": ["friendly_smile", "chin_touch", "pointing", "camera_facing"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["tool_label", "ui_panel", "logo_tile", "tool_logo"],
+          "preferred_zones": ["opposite_host", "top_band", "center_panel"],
+          "max_count": 3
+        },
+        "typography": {
+          "headline_policy": "Use a product label and one concise UI label. Do not add large handwritten bottom text.",
+          "max_words": 5
+        },
+        "background": {
+          "policy": "cool/neutral blurred A-roll background with vertical office texture; very low detail."
+        }
+      },
+      "style_tokens": ["clean UI card", "black product label", "rounded white panel", "cool blurred office"],
+      "cheap_eval_gates": {
+        "max_primary_components": 3,
+        "min_face_height_ratio": 0.34,
+        "max_payload_text_items": 3
+      },
+      "template_breakers": ["UI panel becomes a blank rectangle", "host gaze points away from the payload", "too many app panels"],
+      "shot_needs": ["front smile with chin touch", "pointing left", "pointing right", "center friendly host"]
+    },
+    {
+      "family_id": "jeff_command_panel",
+      "creator_style": "Jeff Su",
+      "label": "dark command/correction panel + host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/95% of People STILL Prompt ChatGPT-5 Wrong.jpg",
+        "E:/thumbnail-example/Jeff Su/How to Create Cinematic AI Videos (No-BS Guide).jpg",
+        "E:/thumbnail-example/Jeff Su/The CORRECT way to use ChatGPT (in 2026).jpg",
+        "E:/thumbnail-example/Jeff Su/Why 90% of AI Presentations Fail (do this instead).jpg",
+        "E:/thumbnail-example/Jeff Su/寫出完美的ChatGPT指令 8分鐘搞定！.jpg"
+      ],
+      "best_for": ["mistake correction", "do this instead", "prompting", "before/after workflow"],
+      "avoid": ["soft advice", "health benefit list", "collection of many tools"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["right_third", "left_third"],
+          "face_height_ratio": [0.32, 0.48],
+          "gaze_policy": "Host should point toward the correction panel or face camera while the panel owns the opposite side.",
+          "required_poses": ["pointing", "surprised", "explaining"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["command_panel", "action_label", "tool_logo", "text_banner"],
+          "preferred_zones": ["opposite_host", "left_panel", "right_panel"],
+          "max_count": 2
+        },
+        "typography": {
+          "headline_policy": "One strong correction phrase, usually inside the panel or attached label.",
+          "max_words": 5
+        },
+        "background": {
+          "policy": "dark UI or blurred office; panel edges and text must be crisp."
+        }
+      },
+      "style_tokens": ["dark panel", "correction phrase", "blue accent", "one clear mistake"],
+      "cheap_eval_gates": {
+        "max_primary_components": 2,
+        "min_face_height_ratio": 0.32,
+        "max_payload_text_items": 2
+      },
+      "template_breakers": ["command text becomes code paragraph", "panel overlaps face", "wrong-side pointing"],
+      "shot_needs": ["pointing left", "pointing right", "surprised but not exaggerated"]
+    },
+    {
+      "family_id": "jeff_logo_cluster_dark",
+      "creator_style": "Jeff Su",
+      "label": "dark background + app/logo cluster + host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/99% of Beginners Don't Know the Basics of AI.jpg",
+        "E:/thumbnail-example/Jeff Su/A GENIUS Way to use ChatGPT for Presentations!.jpg",
+        "E:/thumbnail-example/Jeff Su/AI Agents, Clearly Explained.jpg",
+        "E:/thumbnail-example/Jeff Su/I Switched 50% of My AI Work to Claude, Here's Why.jpg",
+        "E:/thumbnail-example/Jeff Su/The Only AI Tools You Need (12-Minute Guide).jpg"
+      ],
+      "best_for": ["AI landscape", "tool comparison", "concept explainer with named apps", "many logos but one clear thesis"],
+      "avoid": ["single app tutorial", "money metric", "health claim without tool logos"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["center", "right_third", "left_third"],
+          "face_height_ratio": [0.32, 0.50],
+          "gaze_policy": "Camera-facing smile can hold a logo cluster; if gaze is sideward, cluster must sit in gaze direction.",
+          "required_poses": ["friendly_smile", "explaining", "chin_touch"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["app_icon_cluster", "app_icon", "logo_tile", "tool_logo", "text_banner"],
+          "preferred_zones": ["around_host", "opposite_host", "upper_band"],
+          "max_count": 6
+        },
+        "typography": {
+          "headline_policy": "Optional short concept label; logos should carry most of the meaning.",
+          "max_words": 4
+        },
+        "background": {
+          "policy": "dark cool gradient or blurred office; logos need bright high-contrast cards."
+        }
+      },
+      "style_tokens": ["dark background", "logo swarm", "clean icon cards", "AI/productivity"],
+      "cheap_eval_gates": {
+        "max_primary_components": 6,
+        "min_face_height_ratio": 0.32,
+        "max_payload_text_items": 4
+      },
+      "template_breakers": ["logo count exceeds readable density", "logos are not semantically tied to title", "cluster steals face salience"],
+      "shot_needs": ["center smile", "chin touch", "small pointing gesture"]
+    },
+    {
+      "family_id": "jeff_dual_tool_cards",
+      "creator_style": "Jeff Su",
+      "label": "two tool cards compared around host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/How to Create Cinematic AI Videos (No-BS Guide).jpg"
+      ],
+      "best_for": ["tool comparison", "A vs B", "two competing apps or workflows"],
+      "avoid": ["single tool tutorial", "benefit list", "abstract advice"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["center"],
+          "face_height_ratio": [0.34, 0.50],
+          "gaze_policy": "Host sits between the two cards, camera-facing or looking at the stronger card.",
+          "required_poses": ["center_smile", "chin_touch", "two_sided_comparison"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["ui_panel", "logo_tile", "tool_label", "app_icon"],
+          "preferred_zones": ["left_card", "right_card"],
+          "max_count": 4
+        },
+        "typography": {
+          "headline_policy": "Each card gets one product label. No extra bottom headline.",
+          "max_words": 4
+        },
+        "background": {
+          "policy": "cool blurred A-roll, symmetrical spacing."
+        }
+      },
+      "style_tokens": ["two cards", "comparison", "host center", "balanced symmetry"],
+      "cheap_eval_gates": {
+        "max_primary_components": 4,
+        "min_face_height_ratio": 0.34,
+        "max_payload_text_items": 2
+      },
+      "template_breakers": ["cards unequal without reason", "host blocks a logo", "third card appears"],
+      "shot_needs": ["center friendly host", "two-sided comparison gesture"]
+    },
+    {
+      "family_id": "jeff_ui_panel_host_side",
+      "creator_style": "Jeff Su",
+      "label": "one large UI/document panel opposite host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/10 INCREDIBLE things Google Sheets can do Right Now!.jpg",
+        "E:/thumbnail-example/Jeff Su/Beginner to Pro with ChatGPT in One Video!.jpg",
+        "E:/thumbnail-example/Jeff Su/Master Data Analysis with ChatGPT (in just 12 minutes).jpg",
+        "E:/thumbnail-example/Jeff Su/My Simple Claude Cowork System (for normal people).jpg",
+        "E:/thumbnail-example/Jeff Su/Notion was HARD until I Learned These 8 Tips!.jpg"
+      ],
+      "best_for": ["workflow demonstration", "single dashboard", "document review", "data analysis"],
+      "avoid": ["two app comparison", "pure logo landscape", "large quote card"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["left_third", "right_third"],
+          "face_height_ratio": [0.32, 0.48],
+          "gaze_policy": "Panel must be opposite host or slightly behind host hand. If reference is panel-left host-right, match that relationship.",
+          "required_poses": ["explaining", "pointing", "smiling"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["ui_panel", "document_preview", "formula_overlay", "tool_label", "small_badge"],
+          "preferred_zones": ["opposite_host"],
+          "max_count": 2
+        },
+        "typography": {
+          "headline_policy": "Panel may include short UI labels; avoid giant standalone text.",
+          "max_words": 6
+        },
+        "background": {
+          "policy": "blurred office, panel has strong foreground separation."
+        }
+      },
+      "style_tokens": ["large UI panel", "single screen", "clean tutorial", "host side"],
+      "cheap_eval_gates": {
+        "max_primary_components": 2,
+        "min_face_height_ratio": 0.32,
+        "max_payload_text_items": 4
+      },
+      "template_breakers": ["panel is empty", "panel is on same side as gaze", "host face smaller than UI label"],
+      "shot_needs": ["pointing left", "pointing right", "side glance toward panel"]
+    },
+    {
+      "family_id": "jeff_metric_time_saving",
+      "creator_style": "Jeff Su",
+      "label": "numbered/time-saving metric + app cue",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/8個增加工作生產力的ChatGPT使用祕訣！.jpg"
+      ],
+      "best_for": ["numbered tips", "time saved", "productivity boost", "one clear metric"],
+      "avoid": ["no measurable number", "single app walkthrough without metric"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["right_third", "center_right"],
+          "face_height_ratio": [0.34, 0.48],
+          "gaze_policy": "Host should face or point toward the metric/app cue.",
+          "required_poses": ["surprised", "explaining", "pointing"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["metric_badge_pair", "app_icon", "text_banner", "tool_logo"],
+          "preferred_zones": ["left_middle", "upper_left"],
+          "max_count": 3
+        },
+        "typography": {
+          "headline_policy": "One giant number or time metric plus a tiny label.",
+          "max_words": 4
+        },
+        "background": {
+          "policy": "dark/neutral background with high-contrast metric."
+        }
+      },
+      "style_tokens": ["huge number", "productivity", "tool cue", "high contrast"],
+      "cheap_eval_gates": {
+        "max_primary_components": 3,
+        "min_face_height_ratio": 0.34,
+        "max_payload_text_items": 2
+      },
+      "template_breakers": ["metric is not the biggest text", "tool cue competes with metric"],
+      "shot_needs": ["surprised-but-controlled face", "pointing at number"]
+    },
+    {
+      "family_id": "jeff_text_overlay_panel",
+      "creator_style": "Jeff Su",
+      "label": "large text panel/slogan with host",
+      "production_status": "renderable_v1",
+      "priority": "silver",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/How I Manage My Time - 8 Tips that Changed My Life.jpg",
+        "E:/thumbnail-example/Jeff Su/Master Gemini 3.1 for Work in 12 Minutes (2026).jpg",
+        "E:/thumbnail-example/Jeff Su/NotebookLM Changed Completely Here's What Matters (in 2026).jpg",
+        "E:/thumbnail-example/Jeff Su/Why Your Cover Letter Gets Rejected (5 MISTAKES TO AVOID).jpg"
+      ],
+      "best_for": ["one strong claim", "new update", "mistakes to avoid", "life/work system"],
+      "avoid": ["when a concrete UI card would explain better", "many icons", "soft quote-card advice"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["left_third", "right_third"],
+          "face_height_ratio": [0.30, 0.46],
+          "gaze_policy": "Host expression reinforces the text; panel should not cover face.",
+          "required_poses": ["serious", "smiling", "explaining"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["text_banner", "tool_label", "small_badge", "document_preview"],
+          "preferred_zones": ["opposite_host", "lower_band", "upper_band"],
+          "max_count": 2
+        },
+        "typography": {
+          "headline_policy": "This template is typography-first. 2-6 words in bold sans, not handwritten glow.",
+          "max_words": 6
+        },
+        "background": {
+          "policy": "clean blurred office or dark panel; keep text area quiet."
+        }
+      },
+      "style_tokens": ["bold sans text", "clean panel", "slogan", "host reaction"],
+      "cheap_eval_gates": {
+        "max_primary_components": 2,
+        "min_face_height_ratio": 0.30,
+        "max_payload_text_items": 1
+      },
+      "template_breakers": ["text wraps into too many lines", "font style drifts into Shosho handwritten thumbnail"],
+      "shot_needs": ["serious concerned face", "friendly explainer pose"]
+    },
+    {
+      "family_id": "jeff_roadmap_board",
+      "creator_style": "Jeff Su",
+      "label": "roadmap/diagram board with host",
+      "production_status": "renderable_v1",
+      "priority": "gold",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/The AI Agent Tutorial That Should've Been Your First (no code).jpg",
+        "E:/thumbnail-example/Jeff Su/You're Not Behind Become AI-Native (without the overwhelm).jpg"
+      ],
+      "best_for": ["concept roadmap", "learning path", "system explanation", "not behind reassurance"],
+      "avoid": ["single tool tutorial", "money transformation", "random logo cluster"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["right_third", "left_third"],
+          "face_height_ratio": [0.30, 0.46],
+          "gaze_policy": "Host points to or frames the board; board must stay readable.",
+          "required_poses": ["explaining", "pointing", "teacher"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["whiteboard_diagram", "step_card", "text_banner", "app_icon"],
+          "preferred_zones": ["opposite_host", "center_board"],
+          "max_count": 4
+        },
+        "typography": {
+          "headline_policy": "Few big board labels; no dense roadmap details.",
+          "max_words": 6
+        },
+        "background": {
+          "policy": "dark or neutral background; board is foreground."
+        }
+      },
+      "style_tokens": ["roadmap", "teacher board", "concept path", "clean diagram"],
+      "cheap_eval_gates": {
+        "max_primary_components": 4,
+        "min_face_height_ratio": 0.30,
+        "max_payload_text_items": 4
+      },
+      "template_breakers": ["board details become unreadable", "host does not interact with board"],
+      "shot_needs": ["teacher pose pointing left", "teacher pose pointing right"]
+    },
+    {
+      "family_id": "jeff_step_cards",
+      "creator_style": "Jeff Su",
+      "label": "two-step/checklist cards + host",
+      "production_status": "renderable_v1",
+      "priority": "silver",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/The Productivity System I Taught to 6,642 Googlers.jpg"
+      ],
+      "best_for": ["simple system", "two-step method", "checklist", "operational productivity"],
+      "avoid": ["many unrelated benefits", "single big metric", "logo-heavy tool comparison"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["left_third", "right_third"],
+          "face_height_ratio": [0.28, 0.42],
+          "gaze_policy": "Host can sit beside stacked cards; cards should be opposite host.",
+          "required_poses": ["explaining", "confident", "pointing"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["step_card", "small_badge", "text_banner"],
+          "preferred_zones": ["opposite_host", "center_stack"],
+          "max_count": 3
+        },
+        "typography": {
+          "headline_policy": "Each card gets one short verb phrase.",
+          "max_words": 4
+        },
+        "background": {
+          "policy": "clean blurred office or neutral background."
+        }
+      },
+      "style_tokens": ["step cards", "checklist", "system", "workshop feel"],
+      "cheap_eval_gates": {
+        "max_primary_components": 3,
+        "min_face_height_ratio": 0.28,
+        "max_payload_text_items": 3
+      },
+      "template_breakers": ["cards become equal to full paragraphs", "step order unclear"],
+      "shot_needs": ["explaining pose", "pointing to stacked cards"]
+    },
+    {
+      "family_id": "jeff_trend_collage",
+      "creator_style": "Jeff Su",
+      "label": "editorial trend collage",
+      "production_status": "archive",
+      "priority": "archive",
+      "example_paths": [
+        "E:/thumbnail-example/Jeff Su/Top 6 AI Trends That Will Define 2026 (backed by data).jpg"
+      ],
+      "best_for": ["trend report with many external references"],
+      "avoid": ["automated v1 rendering", "any thumbnail needing fast reliable quality"],
+      "slot_model": {
+        "host": {
+          "preferred_placements": ["varies"],
+          "face_height_ratio": [0.20, 0.40],
+          "gaze_policy": "No stable v1 host rule.",
+          "required_poses": ["none"]
+        },
+        "primary_payload": {
+          "allowed_component_types": ["app_icon_cluster", "text_banner", "document_preview", "object_cutout"],
+          "preferred_zones": ["full_canvas_collage"],
+          "max_count": 8
+        },
+        "typography": {
+          "headline_policy": "Editorial collage text; too variable for v1.",
+          "max_words": 8
+        },
+        "background": {
+          "policy": "custom editorial collage."
+        }
+      },
+      "style_tokens": ["trend collage", "many objects", "editorial", "high production"],
+      "cheap_eval_gates": {
+        "max_primary_components": 8,
+        "min_face_height_ratio": 0.20,
+        "max_payload_text_items": 5
+      },
+      "template_breakers": ["v1 renderer cannot produce editorial collage quality"],
+      "shot_needs": ["not recommended for next shoot"]
+    }
+  ],
+  "image_family_assignments": [
+    {"reference_id": "ali_abdaal_001", "creator": "Ali Abdaal", "title": "5 Easy Ways to Become More Self-Disciplined", "image_path": "E:/thumbnail-example/Ali Abdaal/5 Easy Ways to Become More Self-Disciplined.jpg", "family_id": "ali_toggle_metaphor", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_002", "creator": "Ali Abdaal", "title": "5 High Income Skills for Students to Learn in 2026", "image_path": "E:/thumbnail-example/Ali Abdaal/5 High Income Skills for Students to Learn in 2026.jpg", "family_id": "ali_icon_cluster_host", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_003", "creator": "Ali Abdaal", "title": "6 Habits to Make 2026 Your Best Year Yet", "image_path": "E:/thumbnail-example/Ali Abdaal/6 Habits to Make 2026 Your Best Year Yet.jpg", "family_id": "ali_year_hero", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_004", "creator": "Ali Abdaal", "title": "6 Side Hustles Students Can Start in 2026", "image_path": "E:/thumbnail-example/Ali Abdaal/6 Side Hustles Students Can Start in 2026.jpg", "family_id": "ali_income_cards", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_005", "creator": "Ali Abdaal", "title": "8 Simple Habits That Save Me 20+ Hours a Week", "image_path": "E:/thumbnail-example/Ali Abdaal/8 Simple Habits That Save Me 20+ Hours a Week.jpg", "family_id": "ali_icon_cluster_host", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_006", "creator": "Ali Abdaal", "title": "9 Things I Wish I Knew When I Started YouTube", "image_path": "E:/thumbnail-example/Ali Abdaal/9 Things I Wish I Knew When I Started YouTube.jpg", "family_id": "ali_command_text_host", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_007", "creator": "Ali Abdaal", "title": "How to Control Dopamine (You're Destroying Your Mind)", "image_path": "E:/thumbnail-example/Ali Abdaal/How to Control Dopamine (You're Destroying Your Mind).jpg", "family_id": "ali_whiteboard_diagram", "priority": "silver", "renderable_v1": false},
+    {"reference_id": "ali_abdaal_008", "creator": "Ali Abdaal", "title": "How to Find Time for Everything with a Full Time Job", "image_path": "E:/thumbnail-example/Ali Abdaal/How to Find Time for Everything with a Full Time Job.jpg", "family_id": "ali_ui_panel_host_side", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_009", "creator": "Ali Abdaal", "title": "How To Get Rich", "image_path": "E:/thumbnail-example/Ali Abdaal/How To Get Rich.jpg", "family_id": "ali_command_text_host", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_010", "creator": "Ali Abdaal", "title": "How to Make $10,000Month Writing Online", "image_path": "E:/thumbnail-example/Ali Abdaal/How to Make $10,000Month Writing Online.jpg", "family_id": "ali_income_cards", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_011", "creator": "Ali Abdaal", "title": "How to Make Next Year The Best Year of Your Life", "image_path": "E:/thumbnail-example/Ali Abdaal/How to Make Next Year The Best Year of Your Life.jpg", "family_id": "ali_year_hero", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_012", "creator": "Ali Abdaal", "title": "How to Reset Your Dopamine (And Change Your Life)", "image_path": "E:/thumbnail-example/Ali Abdaal/How to Reset Your Dopamine (And Change Your Life).jpg", "family_id": "ali_before_after_split", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_013", "creator": "Ali Abdaal", "title": "How to Stop Wasting Your Life (Avoid These 5 Things)", "image_path": "E:/thumbnail-example/Ali Abdaal/How to Stop Wasting Your Life (Avoid These 5 Things).jpg", "family_id": "ali_before_after_split", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_014", "creator": "Ali Abdaal", "title": "I Read 107 Productivity Books. Here's What Actually Works.", "image_path": "E:/thumbnail-example/Ali Abdaal/I Read 107 Productivity Books. Here's What Actually Works..jpg", "family_id": "ali_evidence_stack", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_015", "creator": "Ali Abdaal", "title": "I Tried 137 Productivity Tools. These Are The Best.", "image_path": "E:/thumbnail-example/Ali Abdaal/I Tried 137 Productivity Tools. These Are The Best..jpg", "family_id": "ali_icon_cluster_host", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_016", "creator": "Ali Abdaal", "title": "If I Wanted to Be a Millionaire Before 30, I'd Do This", "image_path": "E:/thumbnail-example/Ali Abdaal/If I Wanted to Be a Millionaire Before 30, I'd Do This.jpg", "family_id": "ali_metric_arrow", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_017", "creator": "Ali Abdaal", "title": "If I Wanted to Make $10,000 as a Student, I'd Do This", "image_path": "E:/thumbnail-example/Ali Abdaal/If I Wanted to Make $10,000 as a Student, I'd Do This.jpg", "family_id": "ali_income_cards", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_018", "creator": "Ali Abdaal", "title": "My honest advice to someone who feels behind in life", "image_path": "E:/thumbnail-example/Ali Abdaal/My honest advice to someone who feels behind in life.jpg", "family_id": "ali_social_quote_card", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_019", "creator": "Ali Abdaal", "title": "My honest advice to someone who wants financial freedom", "image_path": "E:/thumbnail-example/Ali Abdaal/My honest advice to someone who wants financial freedom.jpg", "family_id": "ali_social_quote_card", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_020", "creator": "Ali Abdaal", "title": "Why Everyone Should Start a YouTube Channel", "image_path": "E:/thumbnail-example/Ali Abdaal/Why Everyone Should Start a YouTube Channel.jpg", "family_id": "ali_command_text_host", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "ali_abdaal_021", "creator": "Ali Abdaal", "title": "Why You’re Always Distracted - 5 Mistakes Ruining Your Focus", "image_path": "E:/thumbnail-example/Ali Abdaal/Why You’re Always Distracted - 5 Mistakes Ruining Your Focus.jpg", "family_id": "ali_before_after_split", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_001", "creator": "Jeff Su", "title": "10 INCREDIBLE things Google Sheets can do Right Now!", "image_path": "E:/thumbnail-example/Jeff Su/10 INCREDIBLE things Google Sheets can do Right Now!.jpg", "family_id": "jeff_ui_panel_host_side", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_002", "creator": "Jeff Su", "title": "8個增加工作生產力的ChatGPT使用祕訣！", "image_path": "E:/thumbnail-example/Jeff Su/8個增加工作生產力的ChatGPT使用祕訣！.jpg", "family_id": "jeff_metric_time_saving", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_003", "creator": "Jeff Su", "title": "95% of People STILL Prompt ChatGPT-5 Wrong", "image_path": "E:/thumbnail-example/Jeff Su/95% of People STILL Prompt ChatGPT-5 Wrong.jpg", "family_id": "jeff_command_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_004", "creator": "Jeff Su", "title": "99% of Beginners Don't Know the Basics of AI", "image_path": "E:/thumbnail-example/Jeff Su/99% of Beginners Don't Know the Basics of AI.jpg", "family_id": "jeff_logo_cluster_dark", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_005", "creator": "Jeff Su", "title": "A GENIUS Way to use ChatGPT for Presentations!", "image_path": "E:/thumbnail-example/Jeff Su/A GENIUS Way to use ChatGPT for Presentations!.jpg", "family_id": "jeff_logo_cluster_dark", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_006", "creator": "Jeff Su", "title": "AI Agents, Clearly Explained", "image_path": "E:/thumbnail-example/Jeff Su/AI Agents, Clearly Explained.jpg", "family_id": "jeff_logo_cluster_dark", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_007", "creator": "Jeff Su", "title": "Beginner to Pro with ChatGPT in One Video!", "image_path": "E:/thumbnail-example/Jeff Su/Beginner to Pro with ChatGPT in One Video!.jpg", "family_id": "jeff_ui_panel_host_side", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_008", "creator": "Jeff Su", "title": "Google Keep Top 11 Tips for Insane Digital Organization!", "image_path": "E:/thumbnail-example/Jeff Su/Google Keep Top 11 Tips for Insane Digital Organization!.jpg", "family_id": "jeff_tool_header_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_009", "creator": "Jeff Su", "title": "How I Manage My Time - 8 Tips that Changed My Life", "image_path": "E:/thumbnail-example/Jeff Su/How I Manage My Time - 8 Tips that Changed My Life.jpg", "family_id": "jeff_text_overlay_panel", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "jeff_su_010", "creator": "Jeff Su", "title": "How I Organize My Life Notion Tour 2026", "image_path": "E:/thumbnail-example/Jeff Su/How I Organize My Life Notion Tour 2026.jpg", "family_id": "jeff_ui_panel_host_side", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_011", "creator": "Jeff Su", "title": "How to Create Cinematic AI Videos (No-BS Guide)", "image_path": "E:/thumbnail-example/Jeff Su/How to Create Cinematic AI Videos (No-BS Guide).jpg", "family_id": "jeff_dual_tool_cards", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_012", "creator": "Jeff Su", "title": "I Switched 50% of My AI Work to Claude, Here's Why", "image_path": "E:/thumbnail-example/Jeff Su/I Switched 50% of My AI Work to Claude, Here's Why.jpg", "family_id": "jeff_logo_cluster_dark", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_013", "creator": "Jeff Su", "title": "Learn 80% of Claude Cowork in Under 20 Minutes", "image_path": "E:/thumbnail-example/Jeff Su/Learn 80% of Claude Cowork in Under 20 Minutes.jpg", "family_id": "jeff_tool_header_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_014", "creator": "Jeff Su", "title": "Learn 80% of NotebookLM in Under 13 Minutes!", "image_path": "E:/thumbnail-example/Jeff Su/Learn 80% of NotebookLM in Under 13 Minutes!.jpg", "family_id": "jeff_tool_header_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_015", "creator": "Jeff Su", "title": "Learn 80% of Perplexity in under 10 minutes!", "image_path": "E:/thumbnail-example/Jeff Su/Learn 80% of Perplexity in under 10 minutes!.jpg", "family_id": "jeff_tool_header_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_016", "creator": "Jeff Su", "title": "Master 85% of Google Gemini in 12 Minutes", "image_path": "E:/thumbnail-example/Jeff Su/Master 85% of Google Gemini in 12 Minutes.jpg", "family_id": "jeff_text_overlay_panel", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "jeff_su_017", "creator": "Jeff Su", "title": "Master Data Analysis with ChatGPT (in just 12 minutes)", "image_path": "E:/thumbnail-example/Jeff Su/Master Data Analysis with ChatGPT (in just 12 minutes).jpg", "family_id": "jeff_ui_panel_host_side", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_018", "creator": "Jeff Su", "title": "Master Gemini 3.1 for Work in 12 Minutes (2026)", "image_path": "E:/thumbnail-example/Jeff Su/Master Gemini 3.1 for Work in 12 Minutes (2026).jpg", "family_id": "jeff_text_overlay_panel", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "jeff_su_019", "creator": "Jeff Su", "title": "My Simple Claude Cowork System (for normal people)", "image_path": "E:/thumbnail-example/Jeff Su/My Simple Claude Cowork System (for normal people).jpg", "family_id": "jeff_ui_panel_host_side", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_020", "creator": "Jeff Su", "title": "NotebookLM Changed Completely Here's What Matters (in 2026)", "image_path": "E:/thumbnail-example/Jeff Su/NotebookLM Changed Completely Here's What Matters (in 2026).jpg", "family_id": "jeff_text_overlay_panel", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "jeff_su_021", "creator": "Jeff Su", "title": "Notion was HARD until I Learned These 8 Tips!", "image_path": "E:/thumbnail-example/Jeff Su/Notion was HARD until I Learned These 8 Tips!.jpg", "family_id": "jeff_ui_panel_host_side", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_022", "creator": "Jeff Su", "title": "The AI Agent Tutorial That Should've Been Your First (no code)", "image_path": "E:/thumbnail-example/Jeff Su/The AI Agent Tutorial That Should've Been Your First (no code).jpg", "family_id": "jeff_roadmap_board", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_023", "creator": "Jeff Su", "title": "The CORRECT way to use ChatGPT (in 2026)", "image_path": "E:/thumbnail-example/Jeff Su/The CORRECT way to use ChatGPT (in 2026).jpg", "family_id": "jeff_command_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_024", "creator": "Jeff Su", "title": "The CORRECT way to use Google Gemini", "image_path": "E:/thumbnail-example/Jeff Su/The CORRECT way to use Google Gemini.jpg", "family_id": "jeff_tool_header_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_025", "creator": "Jeff Su", "title": "The Only AI Tools You Need (12-Minute Guide)", "image_path": "E:/thumbnail-example/Jeff Su/The Only AI Tools You Need (12-Minute Guide).jpg", "family_id": "jeff_logo_cluster_dark", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_026", "creator": "Jeff Su", "title": "The Productivity System I Taught to 6,642 Googlers", "image_path": "E:/thumbnail-example/Jeff Su/The Productivity System I Taught to 6,642 Googlers.jpg", "family_id": "jeff_step_cards", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "jeff_su_027", "creator": "Jeff Su", "title": "Top 5 ChatGPT Use Cases for Professionals!", "image_path": "E:/thumbnail-example/Jeff Su/Top 5 ChatGPT Use Cases for Professionals!.jpg", "family_id": "jeff_command_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_028", "creator": "Jeff Su", "title": "Top 6 AI Trends That Will Define 2026 (backed by data)", "image_path": "E:/thumbnail-example/Jeff Su/Top 6 AI Trends That Will Define 2026 (backed by data).jpg", "family_id": "jeff_trend_collage", "priority": "archive", "renderable_v1": false},
+    {"reference_id": "jeff_su_029", "creator": "Jeff Su", "title": "Why 90% of AI Presentations Fail (do this instead)", "image_path": "E:/thumbnail-example/Jeff Su/Why 90% of AI Presentations Fail (do this instead).jpg", "family_id": "jeff_command_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_030", "creator": "Jeff Su", "title": "Why Your Cover Letter Gets Rejected (5 MISTAKES TO AVOID)", "image_path": "E:/thumbnail-example/Jeff Su/Why Your Cover Letter Gets Rejected (5 MISTAKES TO AVOID).jpg", "family_id": "jeff_text_overlay_panel", "priority": "silver", "renderable_v1": true},
+    {"reference_id": "jeff_su_031", "creator": "Jeff Su", "title": "You're Not Behind Become AI-Native (without the overwhelm)", "image_path": "E:/thumbnail-example/Jeff Su/You're Not Behind Become AI-Native (without the overwhelm).jpg", "family_id": "jeff_roadmap_board", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_032", "creator": "Jeff Su", "title": "寫出完美的ChatGPT指令 8分鐘搞定！", "image_path": "E:/thumbnail-example/Jeff Su/寫出完美的ChatGPT指令 8分鐘搞定！.jpg", "family_id": "jeff_command_panel", "priority": "gold", "renderable_v1": true},
+    {"reference_id": "jeff_su_033", "creator": "Jeff Su", "title": "給入門者的Google AI課程 (只要10分鐘)!", "image_path": "E:/thumbnail-example/Jeff Su/給入門者的Google AI課程 (只要10分鐘)!.jpg", "family_id": "jeff_tool_header_panel", "priority": "gold", "renderable_v1": true}
+  ]
+}

@@ -1,0 +1,26 @@
+{# Final 3-slot picker + save. HTMX-swappable after promote / save-final. #}
+<section id="title-final-slots" class="pj-tt-final">
+  <header class="pj-tt-final-head">
+    <h3 class="pj-section-subtitle">🏆 最終 3 選</h3>
+    {% if just_saved %}
+      <span class="pj-tt-final-saved">✓ 已儲存</span>
+    {% endif %}
+  </header>
+  <form class="pj-tt-final-form"
+        hx-post="/bridge/projects/{{ slug }}/thumbnail/title-pool/save-final"
+        hx-target="#title-final-slots"
+        hx-swap="outerHTML">
+    {% for slot_letter in ['A', 'B', 'C'] %}
+      {% set i = loop.index0 %}
+      <div class="pj-tt-final-slot">
+        <span class="pj-tt-final-letter">{{ slot_letter }}</span>
+        <textarea name="slot_{{ slot_letter|lower }}" rows="2"
+                  class="pj-tt-final-textarea"
+                  placeholder="（從上方 pool 按「→ {{ slot_letter }}」加進來，或自己輸入）">{{ final_slots[i] if final_slots|length > i else '' }}</textarea>
+      </div>
+    {% endfor %}
+    <div class="pj-tt-final-actions">
+      <button type="submit" class="pj-btn-primary">💾 儲存最終 3 條</button>
+    </div>
+  </form>
+</section>

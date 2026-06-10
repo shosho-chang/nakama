@@ -1,0 +1,24 @@
+{# Title brainstorm edit pane — swapped in by HTMX after brainstorm/iterate.
+   Renders one textarea (all candidates, newline-separated) + per-line lock
+   checkboxes. The lock checkboxes use `form="title-brainstorm-form"` so they
+   submit with the brainstorm/iterate POST (not the save POST). #}
+<textarea name="value" rows="6" class="pj-tt-title-textarea"
+          placeholder="（按上方按鈕讓 LLM brainstorm，或自己每行輸入一條 — 1 到 3 條）">{% for t in title_candidates %}{{ t }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+
+{% if title_candidates %}
+<div class="pj-tt-locks-row">
+  <span class="pj-tt-locks-label">勾選保留：</span>
+  {% for t in title_candidates %}
+    {% set idx = loop.index0 %}
+    {% set is_locked = locked_indices is defined and idx in locked_indices %}
+    <label class="pj-tt-lock-chip">
+      <input type="checkbox" name="locked" value="{{ idx }}"
+             form="title-brainstorm-form"
+             {% if is_locked %}checked{% endif %}>
+      <span class="pj-tt-lock-icon">🔒</span>
+      <span class="pj-tt-lock-num">第 {{ loop.index }} 行</span>
+    </label>
+  {% endfor %}
+</div>
+{% endif %}
