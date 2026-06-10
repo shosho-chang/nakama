@@ -546,8 +546,13 @@ async def get_annotations(book_id: str, _auth=Depends(require_auth_or_key)):
     store = get_annotation_store()
     ann_set = store.load(book_id)
     if ann_set is None:
-        ann_set = AnnotationSetV2(
+        # Fabricate a v3 set, not v2: the reader mutates this object in place and
+        # POSTs it back, and its action handlers build v3-shaped items (`text`,
+        # `speaker`). A v2 schema_version routed that POST to AnnotationSetV2
+        # validation, so the first save on a freshly uploaded book always 422'd.
+        ann_set = AnnotationSetV3(
             slug=book_id,
+            base="books",
             book_id=book_id,
             book_version_hash=book.book_version_hash,
             items=[],
@@ -579,6 +584,11 @@ async def post_annotations(
     received a v3 GET response). Both are upgraded/normalised to v3 on disk.
     """
     from pydantic import ValidationError
+
+    # The GET response decorates the set with a read-only ``conflicts`` key
+    # (ADR-044 §B8) and the reader POSTs the whole object back verbatim; both
+    # set schemas are extra="forbid", so drop the decoration before validating.
+    payload.pop("conflicts", None)
 
     schema_version = payload.get("schema_version")
     try:
