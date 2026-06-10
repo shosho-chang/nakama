@@ -410,6 +410,30 @@ def test_post_v3_first_highlight_on_fresh_book_succeeds(app_client):
     assert body["items"][0]["text"] == "first highlight on fresh book"
 
 
+def test_post_v3_set_with_reflection_item_succeeds(app_client):
+    """The C 反思 flow on a v3 set — book_reader.js posts a ``reflection`` item
+    (the v3 wire name; ``comment`` was v2-only and 422s against the v3 union).
+    Pins the payload shape submitComment() sends since the 2026-06-10 fix."""
+    _upload(app_client, "refl-book")
+    payload = _v3_empty_set("refl-book")
+    payload["items"] = [
+        {
+            "type": "reflection",
+            "chapter_ref": "ch01.xhtml",
+            "cfi_anchor": "epubcfi(/6/4!/4/2,/1:0,/1:8)",
+            "body": "chapter-level thought",
+            "book_version_hash": _HASH,
+            "created_at": _TS,
+            "modified_at": _TS,
+        }
+    ]
+    r = app_client.post("/robin/api/books/refl-book/annotations", json=payload)
+    assert r.status_code == 200, r.text
+    got = app_client.get("/robin/api/books/refl-book/annotations").json()
+    assert [it["type"] for it in got["items"]] == ["reflection"]
+    assert got["items"][0]["body"] == "chapter-level thought"
+
+
 def test_fresh_book_get_mutate_post_roundtrip(app_client):
     """The reader's actual save flow: GET the set, append an item to the returned
     body verbatim (book_reader.js does ``{...currentSet, items: [...]}``), POST it

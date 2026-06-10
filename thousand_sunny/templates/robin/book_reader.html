@@ -55,6 +55,9 @@
   <div class="ann-bubble-excerpt" data-excerpt></div>
   <div class="ann-bubble-note" data-note hidden></div>
   <div class="ann-bubble-meta" data-meta></div>
+  <div class="ann-bubble-actions">
+    <button type="button" class="ann-bubble-edit" id="annBubbleEdit">編輯</button>
+  </div>
 </div>
 
 <!-- Reading progress footer —章節 X / Y · NN% · CFI tooltip. Fixed bottom
@@ -70,7 +73,6 @@
 <div id="ann-popup" class="ann-popup" hidden role="toolbar" aria-label="標註選單">
   <button type="button" class="h-btn" data-action="highlight">H 螢光</button>
   <button type="button" class="a-btn" data-action="annotation">A 註解</button>
-  <button type="button" class="c-btn" data-action="comment">C 反思</button>
 </div>
 
 <dialog id="ann-note-modal" class="ann-dialog" aria-labelledby="ann-note-title">
@@ -90,14 +92,10 @@
 
 <dialog id="ann-comment-modal" class="ann-dialog" aria-labelledby="ann-comment-title">
   <form method="dialog">
-    <h2 id="ann-comment-title">C 反思 · 章節層級的長段思考</h2>
+    <h2 id="ann-comment-title">反思 · 章節層級的長段思考</h2>
     <div class="row">
       <label for="ann-comment-chapter">章節</label>
       <select id="ann-comment-chapter"></select>
-    </div>
-    <div class="row checkbox-row" id="ann-comment-anchor-row" hidden>
-      <input type="checkbox" id="ann-comment-anchor">
-      <label for="ann-comment-anchor">綁到剛選取的段落（除了章節之外，也記住確切位置）</label>
     </div>
     <div class="row">
       <label for="ann-comment-body">反思內容</label>
@@ -127,7 +125,7 @@
     <button type="button" class="icon-btn" id="commentsClose" aria-label="關閉側欄">×</button>
   </header>
   <div class="body" id="comments-list">
-    <div class="empty">尚無反思。點上方 + 新增章節反思，或選取文字後按「C 反思」錨定到具體段落。</div>
+    <div class="empty">尚無反思。點上方「+ 新增」選擇章節，寫下這一章的長段思考。</div>
   </div>
 </aside>
 
@@ -146,6 +144,9 @@
       <span class="rm-time" id="reflectionModalTime">—</span>
     </div>
     <div class="reflection-modal-body" id="reflectionModalBody"></div>
+    <div class="ann-bubble-actions">
+      <button type="button" class="ann-bubble-edit" id="reflectionModalEdit">編輯</button>
+    </div>
   </form>
 </dialog>
 
