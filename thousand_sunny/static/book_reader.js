@@ -1540,9 +1540,9 @@ function showAnnotationBubble(value) {
   annBubbleKind.dataset.kind = kind;
 
   if (annBubbleEdit) {
-    annBubbleEdit.textContent = item.type === 'highlight' ? '✎ 新增註解'
-      : isReflection(item) ? '✎ 編輯反思'
-        : '✎ 編輯註解';
+    // 修修 2026-06-10：編輯就寫「編輯」兩個字。螢光還沒有註解，
+    // 動作是「新增」不是「編輯」，所以保留全名。
+    annBubbleEdit.textContent = item.type === 'highlight' ? '新增註解' : '編輯';
   }
 
   // ζ.3 — annotations: show ONLY the note (skip the excerpt; user already
