@@ -65,7 +65,6 @@ const ANN_HIGHLIGHT_COLOR = 'yellow';   // H button (highlight)
 // PANTONE 165). Literal because overlays draw inside the sandboxed EPUB
 // iframe where --sho-* custom properties don't cascade.
 const ANN_NOTE_COLOR = 'oklch(0.71 0.135 41)';
-const ANN_COMMENT_ANCHOR_COLOR = 'blue'; // C button when cfi_anchor is set
 
 const popup = document.getElementById('ann-popup');
 const noteModal = document.getElementById('ann-note-modal');
@@ -73,8 +72,6 @@ const noteExcerpt = document.getElementById('ann-note-excerpt');
 const noteText = document.getElementById('ann-note-text');
 const commentModal = document.getElementById('ann-comment-modal');
 const commentChapter = document.getElementById('ann-comment-chapter');
-const commentAnchor = document.getElementById('ann-comment-anchor');
-const commentAnchorRow = document.getElementById('ann-comment-anchor-row');
 const commentBody = document.getElementById('ann-comment-body');
 const commentsSidebar = document.getElementById('comments-sidebar');
 const commentsList = document.getElementById('comments-list');
@@ -340,7 +337,6 @@ function renderHighlight(item) {
   // Best-effort: invalid CFI throws; bump the broken counter and move on.
   let color = ANN_HIGHLIGHT_COLOR;
   if (item.type === 'annotation') color = ANN_NOTE_COLOR;
-  else if (isReflection(item)) color = ANN_COMMENT_ANCHOR_COLOR;
   try {
     view.addAnnotation({ value: item.cfi || item.cfi_anchor, color });
     return true;
@@ -356,12 +352,9 @@ function renderAllExisting() {
   for (const item of currentSet.items) {
     if (item.type === 'highlight' || item.type === 'annotation') {
       if (!renderHighlight(item)) broken += 1;
-    } else if (isReflection(item)) {
-      // Only render an overlay if the reflection carries a cfi_anchor.
-      if (item.cfi_anchor) {
-        if (!renderHighlight(item)) broken += 1;
-      }
     }
+    // θ.1（修修 2026-06-10）：反思是章節層級，不再畫段落 overlay —
+    // legacy item 的 cfi_anchor 資料保留，只是不渲染。反思入口在側欄。
   }
   rebuildCommentsSidebar();
   return broken;
@@ -375,7 +368,7 @@ function rebuildCommentsSidebar() {
   if (comments.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = '尚無反思。點上方 + 新增章節反思，或選取文字後按「C 反思」錨定到具體段落。';
+    empty.textContent = '尚無反思。點上方「+ 新增」選擇章節，寫下這一章的長段思考。';
     commentsList.appendChild(empty);
     return;
   }
@@ -420,13 +413,28 @@ const reflectionModal = document.getElementById('reflection-modal');
 const reflectionModalChapter = document.getElementById('reflectionModalChapter');
 const reflectionModalTime = document.getElementById('reflectionModalTime');
 const reflectionModalBody = document.getElementById('reflectionModalBody');
+const reflectionModalEdit = document.getElementById('reflectionModalEdit');
+
+// θ.1 — the viewer is now also the reflection edit entry point（反思沒有
+// 段落 overlay 了，bubble 編輯路徑到不了它）。
+let reflectionModalItem = null;
 
 function openReflectionModal(item) {
   if (!reflectionModal) return;
+  reflectionModalItem = item;
   reflectionModalChapter.textContent = _labelForChapterRef(item.chapter_ref);
   reflectionModalTime.textContent = item.created_at || '';
   reflectionModalBody.textContent = item.body || '';
   reflectionModal.showModal();
+}
+
+if (reflectionModalEdit) {
+  reflectionModalEdit.addEventListener('click', () => {
+    if (!reflectionModalItem) return;
+    const item = reflectionModalItem;
+    reflectionModal.close('edit');
+    openEditModal(item);
+  });
 }
 
 // δ.3 / ε.3 — walk view.book.toc (recursive children) and build a href →
@@ -823,12 +831,6 @@ function openEditModal(item) {
 function openCommentModal() {
   populateChapterSelect();
   commentBody.value = '';
-  commentAnchor.checked = false;
-  // δ.4 — only show the "綁到剛選取的段落" toggle when there is a live
-  // selection; otherwise the row is irrelevant noise.
-  const hasSelection = !!(lastSelection && lastSelection.cfi);
-  commentAnchor.disabled = !hasSelection;
-  if (commentAnchorRow) commentAnchorRow.hidden = !hasSelection;
   hidePopup();
   commentModal.showModal();
   setTimeout(() => commentBody.focus(), 0);
@@ -841,25 +843,20 @@ async function submitComment() {
     return false;
   }
   const chapterRef = commentChapter.value || currentChapter || '';
-  const anchor = commentAnchor.checked && lastSelection && lastSelection.cfi
-    ? lastSelection.cfi
-    : null;
   const ts = nowIso();
   const item = {
     // v3 wire name. ``comment`` was the v2 name — since #870 every set the
     // server hands out is v3, whose item union only accepts ``reflection``,
     // so posting ``comment`` 422s. isReflection() keeps reading both.
+    // θ.1: reflections are chapter-level only — no paragraph anchor.
     type: 'reflection',
     chapter_ref: chapterRef,
-    cfi_anchor: anchor,
+    cfi_anchor: null,
     body,
     book_version_hash: bookVersionHash,
     created_at: ts,
     modified_at: ts,
   };
-  if (anchor) {
-    try { view.addAnnotation({ value: anchor, color: ANN_COMMENT_ANCHOR_COLOR }); } catch (_) { /* ignore */ }
-  }
   const ok = await appendItemAndPersist(item);
   if (ok) rebuildCommentsSidebar();
   return ok;
@@ -872,7 +869,6 @@ popup.addEventListener('click', e => {
   const action = btn.dataset.action;
   if (action === 'highlight') actionHighlight();
   else if (action === 'annotation') openNoteModal();
-  else if (action === 'comment') openCommentModal();
 });
 
 // η.1 — bubble edit button → note modal in edit mode.
@@ -922,6 +918,26 @@ commentsToggle.addEventListener('click', () => {
 });
 commentsClose.addEventListener('click', () => setSidebarOpen(false));
 addCommentBtn.addEventListener('click', openCommentModal);
+
+// θ.2（修修 2026-06-10）— 點側欄以外的地方就收起側欄（反思 + 目錄）。
+// toggle 按鈕本身除外：開啟的那一下 click 會冒泡到 document，
+// 不排除的話側欄一開就被同一個 click 關掉。
+function dismissSidebarsOnOutsideClick(target) {
+  // Clicks inside an open <dialog>（編輯/反思/新增 modal）不算「點到畫面
+  // 其他地方」— 否則在 modal 裡按儲存會順手把背後的側欄關掉。
+  if (target && target.closest && target.closest('dialog')) return;
+  if (commentsSidebar && !commentsSidebar.hidden
+      && !commentsSidebar.contains(target)
+      && !(commentsToggle && commentsToggle.contains(target))) {
+    setSidebarOpen(false);
+  }
+  if (tocSidebar && !tocSidebar.hidden
+      && !tocSidebar.contains(target)
+      && !(tocToggle && tocToggle.contains(target))) {
+    setTocSidebarOpen(false);
+  }
+}
+document.addEventListener('click', e => dismissSidebarsOnOutsideClick(e.target));
 
 // ── Ingest button (Slice 4D) ─────────────────────────────────────────────────
 //
@@ -1460,6 +1476,9 @@ view.addEventListener('load', e => {
     // here. The deferred check leaves the bubble alone if a fresh
     // show-annotation just (re-)opened it for a different annotation.
     doc.addEventListener('click', _maybeDismissBubble);
+    // θ.2 — same mirroring for the sidebars: a click on the book content is
+    // by definition outside both sidebars and toggles.
+    doc.addEventListener('click', () => dismissSidebarsOnOutsideClick(doc.body));
   }
 });
 
