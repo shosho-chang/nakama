@@ -89,6 +89,15 @@ const annBubbleKind = annBubble ? annBubble.querySelector('[data-kind]') : null;
 const annBubbleExcerpt = annBubble ? annBubble.querySelector('[data-excerpt]') : null;
 const annBubbleNote = annBubble ? annBubble.querySelector('[data-note]') : null;
 const annBubbleMeta = annBubble ? annBubble.querySelector('[data-meta]') : null;
+const annBubbleEdit = document.getElementById('annBubbleEdit');
+const noteModalTitle = document.getElementById('ann-note-title');
+const NOTE_MODAL_DEFAULT_TITLE = noteModalTitle ? noteModalTitle.textContent : '';
+
+// Edit-in-place state (η.1) — `bubbleItem` is the item the detail bubble is
+// currently showing; `editingItem` is non-null while the note modal is open in
+// edit mode (opened from the bubble's edit button instead of a fresh selection).
+let bubbleItem = null;
+let editingItem = null;
 
 // Reading-progress footer (δ.2).
 const rpfChapter = document.getElementById('rpfChapter');
@@ -723,6 +732,7 @@ async function submitNote() {
     showToast('請輸入註解內容');
     return false;
   }
+  if (editingItem) return submitNoteEdit(note);
   if (!lastSelection || !lastSelection.cfi) {
     showToast('找不到選取位置');
     return false;
@@ -738,8 +748,73 @@ async function submitNote() {
     modified_at: ts,
   };
   try { view.addAnnotation({ value: item.cfi, color: ANN_NOTE_COLOR }); } catch (_) { /* ignore */ }
-  await appendItemAndPersist(item);
+  // Honest return: on a failed save the modal stays open so the typed note is
+  // not silently discarded (2026-06-10 data-loss lesson).
+  return appendItemAndPersist(item);
+}
+
+// η.1 — edit-in-place save. Replaces `editingItem` inside currentSet instead
+// of appending. A highlight gaining a note becomes an annotation (v3 highlights
+// have no note field), so its overlay is repainted in the annotation color.
+async function submitNoteEdit(note) {
+  const target = editingItem;
+  const ts = nowIso();
+  let updated;
+  if (target.type === 'highlight') {
+    updated = {
+      type: 'annotation',
+      schema_version: 3,
+      cfi: target.cfi,
+      text_excerpt: target.text_excerpt,
+      book_version_hash: target.book_version_hash,
+      note,
+      speaker: target.speaker || '',
+      created_at: target.created_at,
+      modified_at: ts,
+    };
+  } else if (isReflection(target)) {
+    updated = { ...target, body: note, modified_at: ts };
+  } else {
+    updated = { ...target, note, modified_at: ts };
+  }
+  const next = {
+    ...currentSet,
+    items: currentSet.items.map(it => (it === target ? updated : it)),
+    updated_at: ts,
+  };
+  const ok = await persistSet(next);
+  if (!ok) return false;
+  if (target.type === 'highlight') {
+    try {
+      view.deleteAnnotation({ value: updated.cfi });
+      view.addAnnotation({ value: updated.cfi, color: ANN_NOTE_COLOR });
+    } catch (_) { /* ignore */ }
+  }
+  if (isReflection(target)) rebuildCommentsSidebar();
   return true;
+}
+
+// η.1 — open the note modal in edit mode from the bubble's edit button.
+// Reuses the same modal for all three item kinds; the reflection variant
+// hides the excerpt strip (reflections carry no text_excerpt in v3).
+function openEditModal(item) {
+  editingItem = item;
+  if (noteModalTitle) {
+    noteModalTitle.textContent = item.type === 'highlight' ? '新增註解 · 為這段螢光加上想法'
+      : isReflection(item) ? '編輯反思'
+        : '編輯註解';
+  }
+  if (isReflection(item)) {
+    noteExcerpt.hidden = true;
+    noteExcerpt.textContent = '';
+  } else {
+    noteExcerpt.hidden = false;
+    noteExcerpt.textContent = item.text_excerpt || '';
+  }
+  noteText.value = item.type === 'highlight' ? '' : (item.note || item.body || '');
+  hideAnnotationBubble();
+  noteModal.showModal();
+  setTimeout(() => noteText.focus(), 0);
 }
 
 function openCommentModal() {
@@ -768,7 +843,10 @@ async function submitComment() {
     : null;
   const ts = nowIso();
   const item = {
-    type: 'comment',
+    // v3 wire name. ``comment`` was the v2 name — since #870 every set the
+    // server hands out is v3, whose item union only accepts ``reflection``,
+    // so posting ``comment`` 422s. isReflection() keeps reading both.
+    type: 'reflection',
     chapter_ref: chapterRef,
     cfi_anchor: anchor,
     body,
@@ -792,6 +870,21 @@ popup.addEventListener('click', e => {
   if (action === 'highlight') actionHighlight();
   else if (action === 'annotation') openNoteModal();
   else if (action === 'comment') openCommentModal();
+});
+
+// η.1 — bubble edit button → note modal in edit mode.
+if (annBubbleEdit) {
+  annBubbleEdit.addEventListener('click', () => {
+    if (bubbleItem) openEditModal(bubbleItem);
+  });
+}
+
+// η.1 — whatever way the note modal closes (save / cancel / Escape), drop the
+// edit state and restore the create-mode chrome so the next H/A flow is clean.
+noteModal.addEventListener('close', () => {
+  editingItem = null;
+  if (noteModalTitle) noteModalTitle.textContent = NOTE_MODAL_DEFAULT_TITLE;
+  noteExcerpt.hidden = false;
 });
 
 // Modal cancel buttons
@@ -1422,9 +1515,10 @@ function updateProgressFooter(detail) {
   rpfPercent.textContent = `${Math.round(pct * 100)}%`;
 }
 
-// δ.1 / ζ.1 / ζ.3 — annotation detail bubble. Behaviours:
-// - Highlights (no note) DO NOT pop the bubble — there's nothing extra to
-//   show beyond the colored overlay itself.
+// δ.1 / ζ.1 / ζ.3 / η.1 — annotation detail bubble. Behaviours:
+// - Highlights pop a minimal bubble too (η.1 revises ζ.1): no content beyond
+//   the overlay itself, but the edit button lets the user add a note in place,
+//   upgrading the highlight to an annotation.
 // - Annotations show only the note (skip the redundant excerpt — the user
 //   already sees the highlighted text on the page).
 // - Reflections with a cfi_anchor show the body text.
@@ -1435,15 +1529,21 @@ function showAnnotationBubble(value) {
   if (!annBubble || !currentSet || !Array.isArray(currentSet.items)) return;
   const item = currentSet.items.find(it => (it.cfi || it.cfi_anchor) === value);
   if (!item) return;
-  // ζ.1 — highlights have nothing to add beyond the overlay color.
-  if (item.type === 'highlight') return;
+  bubbleItem = item;
 
   const kind = item.type === 'comment' ? 'reflection' : item.type;
   annBubbleKind.textContent = ({
+    highlight: '螢光',
     annotation: '註解',
     reflection: '反思',
   })[kind] || kind;
   annBubbleKind.dataset.kind = kind;
+
+  if (annBubbleEdit) {
+    annBubbleEdit.textContent = item.type === 'highlight' ? '✎ 新增註解'
+      : isReflection(item) ? '✎ 編輯反思'
+        : '✎ 編輯註解';
+  }
 
   // ζ.3 — annotations: show ONLY the note (skip the excerpt; user already
   // sees the highlighted text on the page). Reflections: show the body
