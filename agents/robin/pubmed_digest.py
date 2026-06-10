@@ -150,15 +150,13 @@ class PubMedDigestPipeline(BaseAgent):
         if not scored:
             return f"候選 {len(all_candidates)} 筆，curate/score 後無精選入選"
 
-        # 6. Fetch OA full text for each scored paper
-        self._fetch_fulltext_for_all(scored)
-
-        # 7. Write vault outputs
+        # 6. Write vault outputs
+        # ADR-042: 只寫每日 digest。不再抓 OA 全文、不再寫每篇 Source 頁
+        # （KB/Wiki/Sources/pubmed-*.md + KB/Attachments 全文快取）。修修的流程是
+        # 看 digest 列表 → 值得研究的再點外部 PubMed 連結用 News Coo 抓回。
         if self.dry_run:
-            self.logger.info(f"[dry-run] 模擬寫入 {len(scored)} 篇 source + 1 份 digest")
+            self.logger.info(f"[dry-run] 模擬寫入 1 份 digest（{len(scored)} 篇精選）")
         else:
-            for item in scored:
-                self._write_source_page(item)
             digest_path = self._write_digest_page(scored, curated, len(fresh))
             self._append_kb_log(digest_path, len(scored))
             self._update_kb_index(digest_path, len(scored))
@@ -170,11 +168,11 @@ class PubMedDigestPipeline(BaseAgent):
             for c in fresh_seen_for_mark:
                 mark_seen(_SOURCE_NAME, c["pmid"], c.get("url"))
 
-        html_count = sum(1 for i in scored if i.get("fulltext", {}).get("status") == "oa_html")
+        # ADR-042: OA fulltext is no longer fetched in run() (no per-paper Source
+        # pages), so the old `oa_html` count is dropped from the summary.
         summary = (
             f"fetch={len(all_candidates)} fresh={len(fresh)} "
-            f"selected={len(scored)} oa_html={html_count} "
-            f"(dry_run={self.dry_run})"
+            f"selected={len(scored)} (dry_run={self.dry_run})"
         )
         return summary
 
@@ -735,27 +733,14 @@ def _render_digest_entry(rank: int, item: dict) -> list[str]:
     curate_meta = item["curate_meta"]
     score = item["score_result"]
     tier = cand.get("journal_tier")
-    ft: FullTextResult = item.get("fulltext") or _dry_run_fulltext()
     tier_label = (
         f"{tier['quartile']} · SJR {tier['sjr']}"
         if tier and tier.get("quartile")
         else "未收錄 Scimago"
     )
 
-    # 全文狀態：publisher HTML / 非 OA / 無法取得
-    status = ft.get("status")
-    doi = ft.get("doi")
-    html_relpath = ft.get("html_relpath")
-    publisher_url = ft.get("publisher_url")
-    note = ft.get("note") or ""
-    if status == "oa_html" and html_relpath:
-        domain = urlparse(publisher_url).netloc if publisher_url else "publisher"
-        ft_line = f"- **全文**: 🌐 網頁全文（{domain}）— [[{html_relpath}|本機 markdown]]"
-    elif status == "needs_manual" and doi:
-        ft_line = f"- **全文**: ⚠️ 非 OA — [DOI: {doi}](https://doi.org/{doi}) (需手動取得)"
-    else:
-        ft_line = f"- **全文**: ❌ 無法取得（{note}）"
-
+    # ADR-042: digest entry 只留外部 PubMed 連結（不再有本機 Source 頁 /
+    # 全文快取的 wikilink）。修修值得研究時點外連用 News Coo 抓回。
     return [
         f"### {rank}. {cand['title']}",
         "",
@@ -770,7 +755,6 @@ def _render_digest_entry(rank: int, item: dict) -> list[str]:
         f"N{score.get('scores', {}).get('novelty', '—')})",
         f"- **Verdict**: {score.get('one_line_verdict', '')}",
         f"- **Why**: {score.get('why_it_matters', '')}",
-        ft_line,
-        f"- **→** [[pubmed-{cand['pmid']}]] · [PubMed]({cand['url']})",
+        f"- **→** [PubMed]({cand['url']})",
         "",
     ]

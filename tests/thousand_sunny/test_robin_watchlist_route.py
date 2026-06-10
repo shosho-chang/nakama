@@ -99,7 +99,7 @@ def test_watchlist_empty_renders_empty_state(app_client):
     r = app_client.get("/robin/watchlist")
     assert r.status_code == 200
     assert "text/html" in r.headers.get("content-type", "")
-    assert "Watchlist 是空的" in r.text
+    assert "還沒有影片" in r.text
 
 
 # ── Populated list ─────────────────────────────────────────────────────────

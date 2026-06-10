@@ -4,9 +4,9 @@
 Haiku ranking pipeline 的同時，根據場景換 prompt 框架（YouTube 製作 / SEO audit
 internal link / blog 撰稿 / 通用查詢），避免 Haiku 在錯誤上下文排序 KB 結果。
 
-`engine` parameter（issue #431 Phase 1a）：
-  "haiku"  — 既有 LLM ranker 路徑（default，零改動既有 caller）
-  "hybrid" — BM25 + dense-vec RRF 路徑（shared.kb_hybrid_search）
+`engine` parameter（issue #431 Phase 1a；ADR-042 移除 dense-vec lane）：
+  "haiku"  — 既有 LLM ranker 路徑（小語料互動式查詢用）
+  "hybrid" — BM25 (FTS5) + wikilink RRF 路徑（default，shared.kb_hybrid_search）
 """
 
 import json
@@ -148,7 +148,8 @@ def search_kb(
 ) -> list[KBHit]:
     """Return KB pages relevant to `query`, ranked by the chosen engine.
 
-    Default engine is `hybrid` (ADR-021 §2 + Codex amendment #5): the Haiku
+    Default engine is `hybrid` (ADR-021 §2 + Codex amendment #5; ADR-042
+    reduced it to BM25 + wikilink — the dense-vec lane is gone): the Haiku
     ranker hits the prompt-token wall on corpora > 50 chunks, and Brook 廣搜
     is always above that threshold. The `haiku` lens is still selectable
     explicitly for small-corpus interactive flows.
@@ -165,7 +166,7 @@ def search_kb(
         purpose: framing context for the LLM ranker. Defaults to "general"
             (neutral). Only used when engine="haiku".
         engine: retrieval engine.
-            "hybrid" — BM25 + dense-vec RRF (default, requires indexed kb_index.db).
+            "hybrid" — BM25 (FTS5) + wikilink RRF (default, requires indexed kb_index.db).
             "haiku"  — Claude Haiku LLM ranker (legacy lens; small corpora only).
     """
     if engine == "hybrid":

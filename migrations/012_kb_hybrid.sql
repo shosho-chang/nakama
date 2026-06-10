@@ -26,6 +26,10 @@ CREATE VIRTUAL TABLE kb_chunks USING fts5(
     tokenize='porter unicode61'
 );
 
+-- ⚠️ ADR-042 (2026-06-05): the kb_vectors dense-vector lane is RETIRED. New
+-- kb_index.db files no longer create this table (see shared/kb_hybrid_search._init_schema);
+-- `kb_indexer --rebuild` drops it from any pre-existing DB. The DDL below is kept only
+-- as the restore reference for if/when the textbook + vector lane is revived.
 -- vec0 requires sqlite-vec extension; dim=256 matches model2vec potion-base-8M
 CREATE VIRTUAL TABLE kb_vectors USING vec0(
     embedding float[256]

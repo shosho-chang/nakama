@@ -8,9 +8,10 @@
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/pomodoro-dock.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
 </head>
-<body class="sho bridge-page bridge-page--scroll">
+<body class="sho bridge-page bridge-page--scroll bridge-page--with-dock">
   {% from "_chassis_nav.html" import chassis_nav %}
   {{ chassis_nav(nav_active='weekly') }}
 
@@ -31,98 +32,200 @@
 
     {# ── task header ── #}
     <header class="tk-head">
-      <h1 class="tk-title">{{ task.name }}</h1>
+      {# v3-I.4: inline rename — ✎ swaps the title for an editable field in place. #}
+      <div class="tk-titlewrap">
+        <h1 class="tk-title">{{ task.name }}</h1>
+        <button type="button" class="wk-rename-icon tk-rename-icon" title="重新命名"
+                aria-label="重新命名「{{ task.name }}」">✎</button>
+        <form class="wk-rename-form tk-rename-form" method="post"
+              action="/bridge/weekly/task/{{ task.slug | urlencode }}/rename" hidden>
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="from_task" value="1">
+          <input class="wk-rename-input" type="text" name="new_title" maxlength="80"
+                 value="{{ task.name }}" required autocomplete="off" aria-label="新任務名稱">
+          <button class="wk-rename-go" type="submit" title="儲存重新命名">✓</button>
+          <button type="button" class="wk-rename-cancel" title="取消">✕</button>
+        </form>
+      </div>
       <div class="tk-meta">
-        <span class="sho-chip">{{ task.category_label }}</span>
+        {# v3-I follow-up (修修): editable 分類 + 優先 (auto-submit on change). #}
+        <form class="wk-meta-form" method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/meta">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="from_task" value="1">
+          <select class="wk-meta-sel" name="category" aria-label="分類">
+            {% for c, lbl in [('work', '工作'), ('health', '身心健康'), ('growth', '自我進修'), ('misc', '雜事')] %}
+              <option value="{{ c }}" {{ 'selected' if c == task.category }}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+          <select class="wk-meta-sel" name="priority" aria-label="優先">
+            {% for p, lbl in [('low', 'Low'), ('normal', 'Medium'), ('high', 'High')] %}
+              <option value="{{ p }}" {{ 'selected' if p == task.priority }}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+        </form>
         {% if task.project %}<span class="tk-proj">{{ task.project }}</span>{% endif %}
         <span class="sho-chip sho-chip--{{ 'online' if task.status == 'done' else 'offline' }}">{{ task.status }}</span>
         {% if obsidian_uri %}<a class="tk-obsidian" href="{{ obsidian_uri }}" title="在 Obsidian 開啟">↗ Obsidian</a>{% endif %}
       </div>
     </header>
 
-    {# ── estimate vs actual (accuracy — ADR-039 E, read-only) ── #}
+    {# ── estimate vs actual (accuracy — ADR-039 E, read-only) ──
+       v3-I.5: the 🍅 stats (實際/預估 + 準確率) only for 工作 tasks — 🍅 is a work-only
+       metric (修修). 超專注 (🤩) is not a 番茄 count, so it stays for every task. #}
     <div class="tk-stats">
+      {% if task.is_work %}
       <div class="tk-stat">
         <span class="tk-stat-num">{{ actual_pom }}<span class="tk-stat-den">/{{ task.est_pomodoros or '—' }}</span></span>
         <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 實際 / 預估</span>
       </div>
       <div class="tk-stat">
         <span class="tk-stat-num {{ 'tk-over' if task.est_pomodoros and accuracy_pct > 100 }}">{{ accuracy_pct if task.est_pomodoros else '—' }}{% if task.est_pomodoros %}<span class="tk-stat-den">%</span>{% endif %}</span>
-        <span class="tk-stat-lab">準確率</span>
+        <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 準確率</span>
       </div>
+      {% endif %}
       <div class="tk-stat">
         <span class="tk-stat-num">{{ task.ufo_total }}</span>
         <span class="tk-stat-lab"><span aria-hidden="true">🤩</span> 超專注</span>
       </div>
     </div>
-    {% if task.est_pomodoros and accuracy_pct > 100 %}
+    {% if task.is_work and task.est_pomodoros and accuracy_pct > 100 %}
       <p class="tk-note">⚠ 已超出預估 {{ accuracy_pct - 100 }}%——留意完美主義／低估造成的過勞。</p>
     {% endif %}
 
-    {# ── planned allocations (read-only; editing lives on the dashboard) ── #}
-    {% if task.plan %}
-      <div class="tk-plan">
-        <span class="wk-h">排程</span>
-        {% for a in task.plan %}
-          <span class="tk-plan-chip {{ 'done' if a.done }}">
-            {{ a.date.strftime('%m/%d') }} · {{ a.pomodoros }}🍅{% if a.reason %} <span class="tk-plan-r" title="{{ a.reason }}">⚠</span>{% endif %}
+    {# ── calendar scheduling — per-entry, IDENTICAL to the dashboard row (v3-C/E).
+         Each plan[] entry is its own chip; every 排入 projects a Google event (v3-E):
+         timed → block, blank → all-day. One delete control: ✕, confirm-gated when
+         linked (it deletes the Google event too). Same /weekly/plan{,/remove,/cancel}
+         routes the dashboard uses, posted with from_task=1 so each action lands back
+         here (修修: stop the two surfaces diverging). Colour marks linked-to-Google. #}
+    <section class="tk-cal" aria-label="行事曆排程">
+      <div class="tk-cal-head">
+        <span class="wk-h">📅 行事曆排程</span>
+        <span class="wk-mut">每筆計畫是一天，都會推到 Google 行事曆；填時間＝定時，留空＝整天</span>
+      </div>
+
+      <div class="wk-plan-list">
+        {% for a in task.plan | sort(attribute='date') %}
+          <span class="wk-plan-chip {{ 'done' if a.done }} {{ 'has-reason' if a.reason }} {{ 'is-linked' if a.is_linked }}">
+            <span class="wk-chip-day">{{ a.date.strftime('%m/%d') }}{% if a.time_label %} {{ a.time_label }}{% endif %}</span>
+            {# v3-I.5: non-work shows the block as minutes, not 🍅 #}
+            <span class="wk-chip-pom">{% if task.is_work %}{{ a.pomodoros }}<span class="sho-emoji">🍅</span>{% else %}{{ a.pomodoros * 30 }} 分{% endif %}</span>
+            {% if a.reason %}<span class="wk-chip-reason" title="{{ a.reason }}">⚠</span>{% endif %}
+            {% if a.is_linked %}
+              <form method="post" action="/bridge/weekly/plan/cancel" class="wk-chip-form"
+                    data-confirm="取消 {{ a.date.strftime('%m/%d') }} 的安排？會刪掉 Google 行事曆事件，並移除這天的計畫。">
+                <input type="hidden" name="task_slug" value="{{ task.slug }}">
+                <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
+                <input type="hidden" name="week" value="{{ week_key }}">
+                <input type="hidden" name="from_task" value="1">
+                <button class="wk-chip-x wk-chip-cancel" type="submit"
+                        aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">✕</button>
+              </form>
+            {% else %}
+              <form method="post" action="/bridge/weekly/plan/remove" class="wk-chip-form">
+                <input type="hidden" name="task_slug" value="{{ task.slug }}">
+                <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
+                <input type="hidden" name="week" value="{{ week_key }}">
+                <input type="hidden" name="from_task" value="1">
+                <button class="wk-chip-x" type="submit" aria-label="移除 {{ a.date.strftime('%m/%d') }} 的計畫">✕</button>
+              </form>
+            {% endif %}
           </span>
+        {% else %}
+          <span class="wk-plan-none">尚未排入任何時間。</span>
         {% endfor %}
       </div>
-    {% endif %}
 
-    {# ── pomodoro / super-focus timer ── #}
-    <section class="tk-timerbox" aria-label="番茄鐘計時器">
-      <div class="tk-clock" data-state="idle">
-        <span class="tk-clock-time" aria-live="polite">25:00</span>
-        <span class="tk-clock-mode"></span>
+      {# merged 「排入」 (v3-E): date (any week) + optional time + 🍅 → writes plan[]
+         AND a Google event in one action. With a time = a timed block; blank = all-day. #}
+      <form class="wk-sched-form wk-plan-merged" method="post" action="/bridge/weekly/plan">
+        <input type="hidden" name="task_slug" value="{{ task.slug }}">
+        <input type="hidden" name="week" value="{{ week_key }}">
+        <input type="hidden" name="from_task" value="1">
+        <div class="wk-sched-fields">
+          <label class="wk-sched-lbl"><span class="wk-sched-cap">日期</span>
+            <input class="wk-sched-date" type="date" name="entry_date" value="{{ today_iso }}" required></label>
+          <label class="wk-sched-lbl"><span class="wk-sched-cap">時間 <span class="wk-mut">(留空＝整天)</span></span>
+            <input class="wk-sched-time" type="time" name="entry_time" step="900"></label>
+          <label class="wk-sched-lbl"><span class="wk-sched-cap">{% if task.is_work %}🍅 番茄{% else %}時長{% endif %}</span>
+            <span class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([task.est_pomodoros, 20] | min) if task.est_pomodoros else 2 }}" aria-label="{{ '番茄數' if task.is_work else '時長（每格 30 分）' }}"><span class="wk-sched-dur wk-mut" aria-hidden="true"></span></span></label>
+          {# v3-G: 排入 sits in the same row, right of 番茄 — saves a whole row. No 「強制」
+             checkbox: 排入 auto-detects clashes and Nami asks you in Slack how to resolve. #}
+          <button class="sho-btn wk-plan-go wk-sched-go" type="submit">排入</button>
+        </div>
+        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+      </form>
+    </section>
+
+    {# ── pomodoro / super-focus timer — unified footer dock (same form as the
+         Project page, 25/75 toggle on both; ADR-039 E + 修修 unify request) ── #}
+    <div class="pj-dock tk-dock" id="tk-pomodoro-dock"
+         data-log-url="/bridge/weekly/task/{{ task.slug | urlencode }}/log">
+      <div class="pj-dock-row">
+        {# LEFT — task name + 排定日 chips (#3): kept clear of the timer cluster #}
+        <div class="tk-dock-left">
+          <span class="pj-dock-project"><span class="wk-tomato" aria-hidden="true">🍅</span> {{ task.name }}</span>
+          {% if task.plan %}
+            <span class="tk-dock-sched">
+              <span class="tk-dock-sched-label">排程</span>
+              {% for a in task.plan | sort(attribute='date') %}
+                <span class="tk-plan-chip {{ 'done' if a.done }} {{ 'is-linked' if a.is_linked }}">{{ a.date.strftime('%m/%d') }}{% if a.time_label %} {{ a.time_label }}{% endif %} · {{ a.pomodoros }}<span class="sho-emoji">🍅</span>{% if a.reason %} <span class="tk-plan-r" title="{{ a.reason }}">⚠</span>{% endif %}</span>
+              {% endfor %}
+            </span>
+          {% endif %}
+        </div>
+
+        {# RIGHT — the whole timer cluster (mode / clock / actions / rollup) #}
+        <div class="tk-dock-right">
+          <div class="pj-timer-mode" role="radiogroup" aria-label="番茄長度">
+            <input type="radio" name="tk-timer-mode" id="tk-mode-pomodoro" value="pomodoro" checked
+                   data-timer-mode data-minutes="25">
+            <label for="tk-mode-pomodoro" title="25 分番茄 🍅">25</label>
+            <input type="radio" name="tk-timer-mode" id="tk-mode-deep" value="deep"
+                   data-timer-mode data-minutes="75">
+            <label for="tk-mode-deep" title="75 分超專注 🤩">75</label>
+          </div>
+
+          <div class="pj-dock-timer" data-timer>
+            <button type="button" class="pj-timer-btn" data-timer-btn>
+              <span class="pj-timer-icon" data-timer-icon>▶</span>
+              <span class="pj-timer-display" data-timer-display>25:00</span>
+            </button>
+          </div>
+
+          {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
+          <button type="button" class="pj-timer-secondary tk-finish is-hidden" data-timer-finish>完成·記一段</button>
+          <button type="button" class="pj-timer-secondary tk-abort is-hidden" data-timer-abort>取消</button>
+
+          {# manual backup — log a full block done away from the browser #}
+          <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
+            <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="manual" value="1">
+            <input type="hidden" name="week" value="{{ week_key }}">
+            <button class="pj-timer-secondary" type="submit" title="手動補記一顆 25 分番茄">+1🍅</button>
+          </form>
+          <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
+            <input type="hidden" name="mode" value="deep"><input type="hidden" name="manual" value="1">
+            <input type="hidden" name="week" value="{{ week_key }}">
+            <button class="pj-timer-secondary" type="submit" title="手動補記一段 75 分超專注">+1🤩</button>
+          </form>
+
+          <div class="pj-dock-rollup">
+            🍅 <span class="val">{{ actual_pom }}</span> /
+            <span class="muted">{{ task.est_pomodoros or '—' }}</span>
+          </div>
+        </div>
       </div>
 
-      {# idle: pick a length #}
-      <div class="tk-controls" data-when="idle">
-        <button class="sho-btn tk-start" type="button" data-mode="pomodoro" data-min="25">
-          <span class="wk-tomato" aria-hidden="true">🍅</span> 開始 25 分番茄
-        </button>
-        <button class="sho-btn tk-start tk-start--deep" type="button" data-mode="deep" data-min="75">
-          <span aria-hidden="true">🤩</span> 開始 75 分超專注
-        </button>
-      </div>
-
-      {# running: finish-early / abort #}
-      <div class="tk-controls is-hidden" data-when="running">
-        <button class="sho-btn tk-finish" type="button">完成 · 記一段</button>
-        <button class="sho-btn--ghost tk-abort" type="button">取消</button>
-      </div>
-
-      {# manual backup — log a session done away from the browser #}
-      <div class="tk-manual">
-        <span class="wk-mut">離桌做的？手動補記：</span>
-        <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
-          <input type="hidden" name="mode" value="pomodoro">
-          <input type="hidden" name="manual" value="1">
-          <input type="hidden" name="week" value="{{ week_key }}">
-          <button class="sho-btn--ghost" type="submit">+1 🍅</button>
-        </form>
-        <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
-          <input type="hidden" name="mode" value="deep">
-          <input type="hidden" name="manual" value="1">
-          <input type="hidden" name="week" value="{{ week_key }}">
-          <button class="sho-btn--ghost" type="submit">+1 🤩</button>
-        </form>
-      </div>
-
-      {# hidden forms the live timer submits on completion — JS fills elapsed_seconds #}
+      {# hidden log forms the timer submits on completion/finish — JS fills elapsed_seconds #}
       <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="pomodoro">
-        <input type="hidden" name="mode" value="pomodoro">
-        <input type="hidden" name="elapsed_seconds" value="">
+        <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="elapsed_seconds" value="">
         <input type="hidden" name="week" value="{{ week_key }}">
       </form>
       <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="deep">
-        <input type="hidden" name="mode" value="deep">
-        <input type="hidden" name="elapsed_seconds" value="">
+        <input type="hidden" name="mode" value="deep"><input type="hidden" name="elapsed_seconds" value="">
         <input type="hidden" name="week" value="{{ week_key }}">
       </form>
-    </section>
+    </div>
 
     {# ── note body — scoped draft surface (ADR-040 A7 / Slice W) ── #}
     <section class="tk-notebox" aria-label="任務筆記">
@@ -148,69 +251,171 @@
   </main>
 
   <script>
-  /* Live pomodoro timer — a focus aid that logs ACTUAL elapsed time. On 完成 (or
-     natural countdown to 0) it submits the hidden form with elapsed_seconds =
-     nominal − remaining, so 提早完成 logs the real span (ADR-040 A2), ending "now".
-     No pause in v1; 取消 aborts without logging. */
+  /* Live pomodoro / super-focus timer — unified footer dock (same control as the
+     Project page; 25/75 toggle on both). ▶ starts / ⏸ pauses (keeps the clock);
+     完成·記一段 logs ACTUAL elapsed (nominal − remaining, ADR-040 A2); a natural
+     countdown to 0 logs a full block; 取消 aborts without logging. Posts to the
+     task /log route via the hidden tk-logform matching the selected mode. */
   (function () {
-    var box = document.querySelector('.tk-timerbox');
-    if (!box) return;
-    var clock = box.querySelector('.tk-clock');
-    var timeEl = box.querySelector('.tk-clock-time');
-    var modeEl = box.querySelector('.tk-clock-mode');
-    var idleCtl = box.querySelector('[data-when="idle"]');
-    var runCtl = box.querySelector('[data-when="running"]');
-    var MODE_LABEL = { pomodoro: '🍅 番茄', deep: '🤩 超專注' };
-    var MODE_MIN = { pomodoro: 25, deep: 75 };
-    var tick = null, remaining = 0, mode = 'pomodoro';
+    var dock = document.getElementById('tk-pomodoro-dock');
+    if (!dock) return;
+    var btn = dock.querySelector('[data-timer-btn]');
+    var display = dock.querySelector('[data-timer-display]');
+    var icon = dock.querySelector('[data-timer-icon]');
+    var finishBtn = dock.querySelector('[data-timer-finish]');
+    var abortBtn = dock.querySelector('[data-timer-abort]');
+    var modeRadios = dock.querySelectorAll('[data-timer-mode]');
+    if (!btn || !display || !icon) return;
+
+    function modeEl() {
+      for (var i = 0; i < modeRadios.length; i++) if (modeRadios[i].checked) return modeRadios[i];
+      return modeRadios[0];
+    }
+    function curMode() { var e = modeEl(); return e ? e.value : 'pomodoro'; }
+    function curMin() { var e = modeEl(); return (e && parseInt(e.getAttribute('data-minutes'), 10)) || 25; }
+
+    var remaining = curMin() * 60;
+    var ticker = null, running = false, started = false;  // started = a block is underway (run or paused)
 
     function fmt(s) {
       var m = Math.floor(s / 60), ss = s % 60;
       return (m < 10 ? '0' : '') + m + ':' + (ss < 10 ? '0' : '') + ss;
     }
-    function render() { timeEl.textContent = fmt(remaining); }
-    function show(running) {
-      idleCtl.classList.toggle('is-hidden', running);
-      runCtl.classList.toggle('is-hidden', !running);
-      clock.setAttribute('data-state', running ? 'running' : 'idle');
+    function render() {
+      display.textContent = fmt(Math.max(0, remaining));
+      icon.textContent = running ? '⏸' : '▶';
+      btn.setAttribute('data-running', running ? 'true' : 'false');
+      finishBtn.classList.toggle('is-hidden', !started);
+      abortBtn.classList.toggle('is-hidden', !started);
+      // can't switch length mid-block — lock the toggle once a block is underway
+      Array.prototype.forEach.call(modeRadios, function (r) { r.disabled = started; });
     }
-    function stop() { if (tick) { clearInterval(tick); tick = null; } }
-    function submit() {
-      stop();
-      var f = box.querySelector('.tk-logform[data-mode="' + mode + '"]');
+    function stop() { if (ticker) { clearInterval(ticker); ticker = null; } running = false; }
+    function submitLog() {
+      var mode = curMode();
+      stop(); started = false;
+      var f = dock.querySelector('.tk-logform[data-mode="' + mode + '"]');
       if (!f) return;
-      var nominal = (MODE_MIN[mode] || 25) * 60;
-      var elapsed = nominal - Math.max(0, remaining);  // actual time focused
+      var elapsed = curMin() * 60 - Math.max(0, remaining);  // real time focused
       var inp = f.querySelector('input[name="elapsed_seconds"]');
-      if (inp) inp.value = String(elapsed);
+      if (inp) inp.value = String(Math.max(0, elapsed));
       f.submit();
     }
-    function start(m, mins) {
-      mode = m; remaining = mins * 60; modeEl.textContent = MODE_LABEL[m] || '';
-      render(); show(true);
-      tick = setInterval(function () {
-        remaining -= 1; render();
-        if (remaining <= 0) submit();
-      }, 1000);
+    function tick() {
+      remaining -= 1;
+      if (remaining <= 0) { remaining = 0; render(); submitLog(); return; }
+      render();
     }
 
-    box.querySelectorAll('.tk-start').forEach(function (b) {
-      b.addEventListener('click', function () {
-        start(b.getAttribute('data-mode'), parseInt(b.getAttribute('data-min'), 10));
+    btn.addEventListener('click', function () {
+      if (running) { stop(); render(); return; }  // ⏸ pause, keep remaining
+      started = true; running = true;
+      ticker = setInterval(tick, 1000);
+      render();
+    });
+    if (finishBtn) finishBtn.addEventListener('click', submitLog);
+    if (abortBtn) abortBtn.addEventListener('click', function () {
+      stop(); started = false; remaining = curMin() * 60; render();
+    });
+    Array.prototype.forEach.call(modeRadios, function (r) {
+      r.addEventListener('change', function () {
+        if (started) return;
+        remaining = curMin() * 60; render();
       });
     });
-    var finish = box.querySelector('.tk-finish');
-    if (finish) finish.addEventListener('click', submit);
-    var abort = box.querySelector('.tk-abort');
-    if (abort) abort.addEventListener('click', function () {
-      stop(); remaining = 0; modeEl.textContent = ''; timeEl.textContent = '25:00'; show(false);
-    });
+    render();
   })();
+
+  /* Merged 排入 form (v3-C): weekend-reason gate (only when a weekend date is
+     picked) + derived block length (1🍅=30min), identical to the dashboard row;
+     plus a double-submit guard. */
+  document.querySelectorAll('.wk-sched-form').forEach(function (form) {
+    function isWeekend(v) {
+      if (!v) return false;
+      var day = new Date(v + 'T00:00:00').getDay();   // 0 Sun .. 6 Sat
+      return day === 0 || day === 6;
+    }
+    function endLabel(timeStr, pom) {
+      if (!timeStr || !pom) return '';
+      var parts = timeStr.split(':');
+      var raw = (+parts[0]) * 60 + (+parts[1]) + pom * 30;
+      var nextDay = raw >= 1440;
+      var mins = ((raw % 1440) + 1440) % 1440;
+      var hh = String(Math.floor(mins / 60)).padStart(2, '0');
+      var mm = String(mins % 60).padStart(2, '0');
+      return '→ ' + hh + ':' + mm + (nextDay ? '（+1 天）' : '') + '（' + (pom * 30) + ' 分）';
+    }
+    function sync() {
+      var date = form.querySelector('.wk-sched-date');
+      var time = form.querySelector('.wk-sched-time');
+      var pom = form.querySelector('input[name="pomodoros"]');
+      var reason = form.querySelector('.wk-reason-field');
+      var dur = form.querySelector('.wk-sched-dur');
+      if (date && reason) {
+        var weekend = isWeekend(date.value);
+        form.classList.toggle('is-weekend', weekend);
+        reason.required = weekend;
+      }
+      // v3-I.5: hide the 時長/🍅 field until a time is picked — blank time = all-day,
+      // where a duration would be misleading (修修).
+      var pomLabel = pom && pom.closest('label');
+      if (pomLabel && time) pomLabel.style.display = time.value ? '' : 'none';
+      if (dur && time && pom) dur.textContent = endLabel(time.value, parseInt(pom.value, 10));
+    }
+    form.querySelectorAll('.wk-sched-date, .wk-sched-time, input[name="pomodoros"]')
+      .forEach(function (el) { el.addEventListener('input', sync); });
+    form.addEventListener('submit', function () {
+      var btn = form.querySelector('.wk-sched-go, .wk-plan-go');
+      if (btn) { btn.disabled = true; btn.textContent = '處理中…'; }
+    });
+    sync();
+  });
+
+  /* Cancel actions (v3-C): confirm before deleting the Google event — the 🗑 on a
+     linked chip drops the plan[] entry AND its Google event. */
+  document.querySelectorAll('form[data-confirm]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!window.confirm(f.getAttribute('data-confirm'))) e.preventDefault();
+    });
+  });
 
   /* Dismiss toasts on click. */
   document.querySelectorAll('.wk-toast').forEach(function (t) {
     t.addEventListener('click', function () { t.remove(); });
   });
+
+  /* v3-I.4: inline title rename — ✎ swaps the <h1> for the rename field; ✕/Esc reverts.
+     (Same behaviour as the dashboard rows' shared bridge-weekly.js handler.) */
+  (function () {
+    var wrap = document.querySelector('.tk-titlewrap');
+    if (!wrap) return;
+    var icon = wrap.querySelector('.wk-rename-icon');
+    var form = wrap.querySelector('.wk-rename-form');
+    var titleEl = wrap.querySelector('.tk-title');
+    if (!icon || !form || !titleEl) return;
+    var input = form.querySelector('.wk-rename-input');
+    function openEditor() {
+      titleEl.hidden = true; icon.hidden = true; form.hidden = false;
+      if (input) { input.focus(); input.select(); }
+    }
+    function closeEditor() {
+      form.hidden = true; titleEl.hidden = false; icon.hidden = false;
+      if (input) input.value = input.defaultValue;
+    }
+    icon.addEventListener('click', openEditor);
+    form.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeEditor(); });
+    var cancel = form.querySelector('.wk-rename-cancel');
+    if (cancel) cancel.addEventListener('click', closeEditor);
+  })();
+
+  /* v3-I follow-up (修修): 分類/優先 dropdowns auto-submit on change. */
+  (function () {
+    document.querySelectorAll('.wk-meta-form select').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        if (sel.form) (sel.form.requestSubmit ? sel.form.requestSubmit() : sel.form.submit());
+      });
+    });
+  })();
   </script>
 </body>
 </html>

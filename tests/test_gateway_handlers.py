@@ -272,7 +272,9 @@ def test_create_project_conflict_returns_error_to_loop():
 # ── Agent loop: create_task tool ────────────────────────────────────
 
 
-def test_create_task_tool_writes_page():
+def test_create_task_tool_writes_page(tmp_path):
+    # v3-G: Nami now delegates to the shared dual-write creator (the same path the
+    # web 新增任務 buttons use), so assert on create_task's kwargs, not write_page.
     iter_responses = [
         _fake_response(
             "tool_use",
@@ -297,17 +299,20 @@ def test_create_task_tool_writes_page():
             side_effect=iter_responses,
         ),
         patch("gateway.handlers.nami.set_current_agent"),
-        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("shared.config.get_vault_path", return_value=tmp_path),
+        patch("shared.project_writer.create_task") as mock_create,
         patch("gateway.handlers.nami.emit") as mock_emit,
         patch("gateway.handlers.nami.kb_log"),
     ):
+        mock_create.return_value = tmp_path / "TaskNotes" / "Tasks" / "看牙醫.md"
         result = NamiHandler().handle("create_task", "下週三看牙醫", "U1")
 
     assert "task" in result.text
-    mock_write.assert_called_once()
-    fm = mock_write.call_args[0][1]
-    assert fm["title"] == "看牙醫"
-    assert fm["scheduled"] == "2026-04-22"
+    mock_create.assert_called_once()
+    kwargs = mock_create.call_args.kwargs
+    assert kwargs["task_name"] == "看牙醫"
+    assert kwargs["scheduled"] == "2026-04-22"
+    assert kwargs["project_slug"] is None
     mock_emit.assert_called_once()
     assert mock_emit.call_args[0][1] == "task_created"
 
@@ -651,14 +656,20 @@ def test_create_calendar_event_happy_path():
     assert kwargs["check_conflict"] is True  # force 預設 false
     mock_emit.assert_called_once()
     assert mock_emit.call_args[0][1] == "calendar_event_created"
-    # 驗證 task 同時建立，frontmatter 帶 calendar_event_id + scheduled_end（剝 tz）
+    # v3-D：task 帶 per-entry plan[]（date/pomodoros/start/end/calendar_event_id），
+    # 不再寫 task 層級 scheduled 鏡像
     mock_write.assert_called_once()
     task_fm = mock_write.call_args.args[1]
-    assert task_fm["calendar_event_id"] == "evt42"
-    assert task_fm["scheduled"] == "2026-04-25T15:00:00"
-    assert task_fm["scheduled_end"] == "2026-04-25T16:00:00"
+    assert "scheduled" not in task_fm and "scheduled_end" not in task_fm
+    assert "calendar_event_id" not in task_fm  # lives on the plan entry now
     assert task_fm["title"] == "跟 Angie 開會"
     assert task_fm["status"] == "to-do"
+    entry = task_fm["plan"][0]
+    assert entry["calendar_event_id"] == "evt42"
+    assert entry["date"] == "2026-04-25"
+    assert entry["start"] == "2026-04-25T15:00:00+08:00"
+    assert entry["end"] == "2026-04-25T16:00:00+08:00"
+    assert entry["pomodoros"] == 2  # 60 min ÷ 30
 
 
 def test_create_calendar_event_conflict_returns_error():
@@ -923,7 +934,7 @@ def test_update_calendar_event_by_title():
 
 
 def test_update_calendar_event_syncs_linked_task():
-    """Calendar event 改時段 → 有 calendar_event_id 的 task 也同步 scheduled/scheduled_end。"""
+    """v3-D: Calendar event 改時段 → plan[] 那一筆的 start/end/date 同步更新。"""
     iter_responses = [
         _fake_response(
             "tool_use",
@@ -955,9 +966,12 @@ def test_update_calendar_event_syncs_linked_task():
         "---\n"
         "title: 讀書會\n"
         "status: to-do\n"
-        "calendar_event_id: evt42\n"
-        "scheduled: 2026-04-25T15:00:00\n"
-        "scheduled_end: 2026-04-25T16:00:00\n"
+        "plan:\n"
+        "  - date: 2026-04-25\n"
+        "    pomodoros: 2\n"
+        "    start: 2026-04-25T15:00:00+08:00\n"
+        "    end: 2026-04-25T16:00:00+08:00\n"
+        "    calendar_event_id: evt42\n"
         "---\n"
     )
 
@@ -983,9 +997,14 @@ def test_update_calendar_event_syncs_linked_task():
 
     mock_write.assert_called_once()
     new_fm = mock_write.call_args.args[1]
-    assert new_fm["scheduled"] == "2026-04-26T14:00:00"
-    assert new_fm["scheduled_end"] == "2026-04-26T15:00:00"
-    assert new_fm["calendar_event_id"] == "evt42"
+    # v3-D: the plan entry moved; no task-level mirror left behind
+    assert "scheduled" not in new_fm and "scheduled_end" not in new_fm
+    assert "calendar_event_id" not in new_fm
+    entry = new_fm["plan"][0]
+    assert entry["calendar_event_id"] == "evt42"
+    assert entry["date"] == "2026-04-26"
+    assert entry["start"] == "2026-04-26T14:00:00+08:00"
+    assert entry["end"] == "2026-04-26T15:00:00+08:00"
 
 
 def test_update_calendar_event_no_linked_task_silent():
@@ -1122,6 +1141,54 @@ def test_delete_calendar_event_also_deletes_linked_task():
     mock_delete_page.assert_called_once()
     deleted_path = mock_delete_page.call_args.args[0]
     assert "讀書會" in deleted_path
+
+
+def test_delete_calendar_event_keeps_other_plan_entries():
+    """v3-D multi-block: 刪掉某天的事件只拔掉那一筆 plan entry，同一個 task 的其他天
+    必須保留（不能整檔刪掉）。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("delete_calendar_event", {"title": "寫稿"}, id_="toolu_dce_multi")],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    existing = _fake_cal_event(id_="evt_a", title="寫稿")  # the 6/3 event
+    fake_task_file = SimpleNamespace(name="寫稿.md", stem="寫稿")
+    task_content = (
+        "---\ntitle: 寫稿\nstatus: to-do\nplan:\n"
+        "  - date: 2026-06-03\n    pomodoros: 2\n    start: 2026-06-03T09:00:00+08:00\n"
+        "    end: 2026-06-03T10:00:00+08:00\n    calendar_event_id: evt_a\n"
+        "  - date: 2026-06-05\n    pomodoros: 2\n    start: 2026-06-05T09:00:00+08:00\n"
+        "    end: 2026-06-05T10:00:00+08:00\n    calendar_event_id: evt_b\n"
+        "---\n"
+    )
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.find_events_by_title",
+            return_value=[existing],
+        ),
+        patch("gateway.handlers.nami.google_calendar.delete_event"),
+        patch("gateway.handlers.nami.list_files", return_value=[fake_task_file]),
+        patch("gateway.handlers.nami.read_page", return_value=task_content),
+        patch("gateway.handlers.nami.delete_page") as mock_delete_page,
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "刪寫稿 6/3", "U1")
+
+    mock_delete_page.assert_not_called()  # the task file survives — it still has 6/5
+    mock_write.assert_called_once()
+    new_fm = mock_write.call_args.args[1]
+    remaining = new_fm["plan"]
+    assert len(remaining) == 1
+    assert remaining[0]["calendar_event_id"] == "evt_b"
+    assert remaining[0]["date"] == "2026-06-05"
 
 
 def test_delete_calendar_event_task_not_found_silent():
@@ -2222,3 +2289,95 @@ def test_format_event_message_with_handoff():
     assert len(blocks) >= 2
     handoff_text = blocks[-1]["text"]["text"]
     assert "nami" in handoff_text.lower() or "Nami" in handoff_text
+
+
+# ── schedule_task_entry (ADR-041 v3-F: Nami executes a Bridge-escalated clash) ──
+
+
+def test_schedule_task_entry_schedules_existing_task():
+    """v3-F: Nami's schedule_task_entry schedules an EXISTING task's plan entry via
+    the shared calendar_scheduler (not create_calendar_event), and reports success."""
+    from shared import calendar_scheduler
+
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "schedule_task_entry",
+                    {"task_slug": "寫稿", "date": "2026-06-05", "time": "15:00"},
+                    id_="toolu_ste",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("已排好")]),
+    ]
+    fake_task = SimpleNamespace(title="寫稿", est_pomodoros=4)
+    outcome = SimpleNamespace(calendar_status=calendar_scheduler.CREATED, event_id="evt_s")
+    seen = {}
+
+    def fake_schedule_entry(vault, slug, **kw):
+        seen.update({"slug": slug, **kw})
+        return outcome
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.config.get_vault_path", return_value=Path("/tmp/vault")),
+        patch(
+            "shared.weekly_indexer.WeeklyIndexer",
+            return_value=SimpleNamespace(find_task=lambda s: fake_task),
+        ),
+        patch.object(calendar_scheduler, "schedule_entry", side_effect=fake_schedule_entry),
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "改 15:00", "U1")
+
+    assert seen["slug"] == "寫稿"
+    assert seen["all_day"] is False and seen["pomodoros"] == 4
+    assert seen["start"].hour == 15
+    assert seen["title"] == "寫稿"  # derived from the task, not a client field
+    assert mock_emit.call_args[0][1] == "calendar_event_created"
+
+
+def test_schedule_task_entry_blank_time_is_all_day():
+    """v3-F: blank time → all_day=True passed to the scheduler."""
+    from shared import calendar_scheduler
+
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "schedule_task_entry",
+                    {"task_slug": "寫稿", "date": "2026-06-05"},
+                    id_="toolu_ste2",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("整天排好")]),
+    ]
+    fake_task = SimpleNamespace(title="寫稿", est_pomodoros=2)
+    outcome = SimpleNamespace(calendar_status=calendar_scheduler.CREATED, event_id="evt_s2")
+    seen = {}
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.config.get_vault_path", return_value=Path("/tmp/vault")),
+        patch(
+            "shared.weekly_indexer.WeeklyIndexer",
+            return_value=SimpleNamespace(find_task=lambda s: fake_task),
+        ),
+        patch.object(
+            calendar_scheduler,
+            "schedule_entry",
+            side_effect=lambda vault, slug, **kw: (seen.update(kw), outcome)[1],
+        ),
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "排整天", "U1")
+
+    assert seen["all_day"] is True

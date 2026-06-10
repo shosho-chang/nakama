@@ -1011,78 +1011,10 @@ a.pj-social-text:hover { color: var(--sho-accent, currentColor); }
 
 .bridge-page--with-dock { padding-bottom: 100px; }
 
-.pj-dock {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 50;
-  background: var(--sho-bg-2, #1a1a1a);
-  border-top: 1px solid var(--sho-line-2, #555);
-  padding: var(--sho-s-3, 12px) var(--sho-s-5, 24px);
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
-}
-.pj-dock-row {
-  display: flex;
-  align-items: center;
-  gap: var(--sho-s-4, 16px);
-  flex-wrap: wrap;
-}
-.pj-dock-project {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--sho-text, inherit);
-  text-decoration: none;
-}
-.pj-dock-project:hover { color: var(--sho-accent); }
-
-.pj-dock-task-select {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-}
-.pj-dock-task-label {
-  font-family: var(--sho-font-mono, ui-monospace, monospace);
-  color: var(--sho-muted, #888);
-}
-.pj-dock-task-select select {
-  padding: 4px 8px;
-  background: var(--sho-bg, transparent);
-  border: 1px solid var(--sho-line-2, #555);
-  color: var(--sho-text, inherit);
-  border-radius: var(--sho-r-1, 4px);
-  font-size: 12px;
-}
-
-.pj-dock-timer { display: flex; align-items: center; }
-.pj-timer-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  font-family: var(--sho-font-mono, ui-monospace, monospace);
-  font-size: 14px;
-  border: 1px solid var(--sho-accent);
-  background: transparent;
-  color: var(--sho-accent);
-  cursor: pointer;
-  border-radius: var(--sho-r-1, 4px);
-}
-.pj-timer-btn:hover { background: var(--sho-accent); color: var(--sho-bg); }
-.pj-timer-btn[data-running="true"] {
-  background: var(--sho-accent-soft, color-mix(in oklch, var(--sho-accent) 10%, transparent));
-}
-.pj-timer-icon { font-size: 12px; }
-.pj-timer-display { font-variant-numeric: tabular-nums; min-width: 56px; }
-
-.pj-dock-rollup {
-  font-family: var(--sho-font-mono, ui-monospace, monospace);
-  font-size: 13px;
-  margin-left: auto;
-}
-.pj-dock-rollup .val { color: var(--sho-text, inherit); font-weight: 600; }
-.pj-dock-rollup .muted { color: var(--sho-muted, #888); }
+/* The dock shell + timer control (.pj-dock / .pj-timer-* / .pj-dock-rollup +
+ * the 25│75 .pj-timer-mode toggle) moved to the shared pomodoro-dock.css, now
+ * used by BOTH this Project dock and the Task page (unified form). Project-only
+ * chrome (the Tasks ▾ table + add-task dialog) stays below. */
 
 .pj-dock-tasks-expand { font-size: 12px; }
 .pj-dock-tasks-expand > summary {
@@ -1349,4 +1281,41 @@ a.pj-social-text:hover { color: var(--sho-accent, currentColor); }
   color: var(--sho-text, #e0e0e0);
   border: 1px solid var(--sho-line, #2a2a2a);
   border-radius: 3px;
+}
+
+/* ── Brief tab · 關聯任務 roll-up (修修: surface linked tasks on Brief) ──────── */
+.pj-brief-tasks { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--sho-line, #2a2a2a); }
+.pj-brief-tasks-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.pj-subsection-title {
+  font-family: var(--sho-font-zh); font-size: 14px; font-weight: 600; margin: 0;
+  color: var(--sho-ink, var(--sho-text));
+}
+.pj-brief-tasks .pj-muted { font-family: var(--sho-font-mono, ui-monospace, monospace); font-size: 11px; color: var(--sho-muted, #888); }
+.pj-brief-task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pj-brief-task {
+  display: flex; align-items: center; gap: 12px; padding: 9px 4px;
+  border-bottom: 1px solid var(--sho-line, #2a2a2a); font-size: 14px;
+}
+.pj-brief-task:last-child { border-bottom: 0; }
+.pj-bt-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--sho-line-2, #555); }
+.pj-bt-dot.pj-status-doing { background: var(--sho-accent); }
+.pj-bt-dot.pj-status-done { background: var(--sho-success, var(--sho-accent)); }
+.pj-bt-dot.pj-status-paused { background: var(--sho-warning); }
+.pj-bt-name {
+  color: var(--sho-text); text-decoration: none; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color var(--sho-t-fast, .12s) var(--sho-ease, ease);
+}
+.pj-bt-name:hover { color: var(--sho-accent); }
+.pj-bt-name:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1, 3px); }
+.pj-brief-task--done .pj-bt-name { color: var(--sho-muted, #888); text-decoration: line-through; }
+.pj-bt-status {
+  font-family: var(--sho-font-mono, ui-monospace, monospace); font-size: 10px;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--sho-muted, #888);
+  margin-left: auto;
+}
+.pj-bt-pom {
+  font-family: var(--sho-font-mono, ui-monospace, monospace); font-size: 12px;
+  color: var(--sho-text-2, var(--sho-muted)); font-variant-numeric: tabular-nums;
+  min-width: 56px; text-align: right;
 }

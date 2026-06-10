@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,7 @@ from shared.project_writer import (
     update_research_block,
     update_task_status,
 )
+from shared.weekly_indexer import CATEGORY_LABELS, CATEGORY_ORDER
 from thousand_sunny.auth import check_auth
 from thousand_sunny.routers.bridge_project_thumbnails import (
     prepare_existing_ideas_for_template,
@@ -97,6 +99,7 @@ TAB_SLUGS = tuple(t[0] for t in TABS)
 
 # Pomodoro duration in minutes — fixed in PR1 v1 (configurable later)
 POMODORO_MINUTES = 25
+DEEP_POMODORO_MINUTES = 75  # 🤩 super-focus block (unified dock 25/75 toggle)
 
 
 # ADR-031 PR3: research result cache lives in repo data dir (gitignored). Sidecar
@@ -120,6 +123,7 @@ def _shosho_asset_version() -> str:
         "tokens.css",
         "bridge.css",
         "bridge-pages.css",
+        "pomodoro-dock.css",
         "bridge-projects.css",
         "theme.js",
         "bridge-projects.js",
@@ -272,6 +276,41 @@ async def projects_create(
     return RedirectResponse(f"/bridge/projects/{normalize_slug(title)}", status_code=303)
 
 
+def _related_task_view(project_slug: str):
+    """v3-H Slice 3: hydrate the project's tasks as ``WeeklyTask`` objects so the shared
+    ``task_row`` macro renders the per-entry 排入 chips (parity with the dashboard), plus
+    a lightweight ``view`` shim (the project page is not week-scoped — the macro only
+    needs ``week.file_key`` for hidden form fields, ``today_iso``, and the two 🍅 dicts).
+
+    Matches a task to the project by EITHER frontmatter ``projects: [[slug]]`` (new
+    dual-write tasks) OR filename prefix ``{slug} - {task}.md`` (existing tasks have an
+    empty ``projects:`` and link only by filename — mirrors ``_scan_tasks``)."""
+    from types import SimpleNamespace
+
+    from shared.weekly_indexer import WeeklyIndexer, today_taipei, week_for_date
+
+    key = normalize_slug(project_slug)
+    prefix = f"{key} - "
+    tasks = [
+        t
+        for t in WeeklyIndexer(get_vault_path()).read_tasks()
+        if normalize_slug(t.project) == key or normalize_slug(t.slug).startswith(prefix)
+    ]
+    tasks.sort(key=lambda t: (t.done, t.name))
+    wk = week_for_date(today_taipei())
+    # important_slugs drives the "First" (紫) priority chip — reuse the dashboard's
+    # canonical 本週重要任務 set (weekly-file top3) so the chip matches across surfaces.
+    important_slugs = WeeklyIndexer(get_vault_path()).view(wk).important_slugs
+    view = SimpleNamespace(
+        week=wk,
+        today_iso=today_taipei().isoformat(),
+        actual=SimpleNamespace(by_task={t.slug: t.actual_pomodoros for t in tasks}),
+        planned_by_task={t.slug: t.est_pomodoros for t in tasks},
+        important_slugs=important_slugs,
+    )
+    return tasks, view
+
+
 @page_router.get("/projects/{slug}", response_class=HTMLResponse)
 async def projects_detail(
     request: Request,
@@ -292,7 +331,8 @@ async def projects_detail(
     if tab not in TAB_SLUGS:
         tab = "brief"
 
-    tasks = _scan_tasks(entry.slug)
+    tasks = _scan_tasks(entry.slug)  # dict list — feeds the pomodoro dock table/select
+    related_tasks, related_view = _related_task_view(entry.slug)  # WeeklyTask — Brief tab rows
     tab_status = _tab_status(entry, body_md)
 
     # ADR-031 PR3: hydrate Research tab from sidecar cache if present, so a page
@@ -336,6 +376,9 @@ async def projects_detail(
             "tabs": TABS,
             "tab_status": tab_status,
             "tasks": tasks,
+            "related_tasks": related_tasks,
+            "related_view": related_view,
+            "all_categories": [(c, CATEGORY_LABELS[c]) for c in CATEGORY_ORDER],
             "pomodoro_minutes": POMODORO_MINUTES,
             "cached_zoro": cached_zoro,
             "cached_kb": cached_kb,
@@ -486,13 +529,14 @@ async def projects_timer(
     action: str,
     nakama_auth: str | None = Cookie(None),
     task_name: str = Form(""),
+    mode: str = Form("pomodoro"),  # 'pomodoro' (25min 🍅) | 'deep' (75min 🤩) — unified dock
 ):
     """Pomodoro timer state transitions.
 
-    PR1 v1: ``complete`` writes a 25-min timeEntry to the active task and
-    recomputes project pomodoro rollup. ``start`` and ``cancel`` are no-ops
-    (timer state lives in browser sessionStorage). Endpoint signatures
-    reserved for future server-side persistence.
+    ``complete`` writes a timeEntry to the active task and recomputes the project
+    pomodoro rollup; the block length follows ``mode`` (25-min 🍅 pomodoro or
+    75-min 🤩 super-focus — the unified dock's 25/75 toggle). ``start`` and
+    ``cancel`` are no-ops (timer state lives in the browser).
     """
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
@@ -505,10 +549,11 @@ async def projects_timer(
     if action == "complete":
         if not task_name.strip():
             raise HTTPException(status_code=400, detail="task_name required for complete")
+        minutes = DEEP_POMODORO_MINUTES if mode == "deep" else POMODORO_MINUTES
         _write_pomodoro_entry(
             slug=slug,
             task_name=task_name.strip(),
-            now_minus_minutes=POMODORO_MINUTES,
+            now_minus_minutes=minutes,
         )
 
     return _redirect_back(slug, "brief")
@@ -522,13 +567,13 @@ async def projects_tasks_new(
     name: str = Form(""),
     estimated_pomodoros: int = Form(4),
     priority: str = Form("normal"),
-    scheduled: str = Form(""),
+    category: str = Form("work"),
 ):
-    """Create a new TaskNotes-compatible task for this project.
+    """Create a new TaskNotes-compatible task linked to this project.
 
-    Frontmatter shape matches :func:`shared.lifeos_writer.render_task`
-    so the TaskNotes plugin indexes the file the same way as
-    bootstrap-time tasks.
+    v3-H: BARE creation (no scheduling — time is added later via the per-entry 排入
+    chips on the Brief tab). Frontmatter shape matches
+    :func:`shared.lifeos_writer.render_task` (dual-write: filename prefix + projects:).
     """
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/projects/{slug}", status_code=302)
@@ -541,17 +586,20 @@ async def projects_tasks_new(
     if priority not in ("low", "normal", "high"):
         raise HTTPException(status_code=400, detail=f"unknown priority: {priority!r}")
 
+    if category not in CATEGORY_LABELS:
+        category = "work"
+
     if not (1 <= estimated_pomodoros <= 20):
         raise HTTPException(status_code=400, detail="estimated_pomodoros must be between 1 and 20")
 
     try:
-        create_task(
+        created = create_task(
             vault_root=get_vault_path(),
             project_slug=slug,
             task_name=name,
             estimated_pomodoros=estimated_pomodoros,
             priority=priority,
-            scheduled=scheduled.strip() or None,
+            category=category,
         )
     except ProjectWriteError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -559,7 +607,16 @@ async def projects_tasks_new(
         logger.exception("create_task failed: slug=%s name=%s", slug, name)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    return _redirect_back(slug, "brief")
+    # v3-I: land on the new related task's row with its 排入 chip focused (parity with
+    # the dashboard 新增任務 jump). ?focus drives the shared bridge-weekly.js handler;
+    # the #task-<slug> fragment opens + scrolls the row. Tab stays on brief via ?tab=.
+    new_slug = unicodedata.normalize("NFC", created.stem)
+    from urllib.parse import quote
+
+    return RedirectResponse(
+        f"/bridge/projects/{quote(slug)}?tab=brief&focus={quote(new_slug)}#task-{quote(new_slug)}",
+        status_code=303,
+    )
 
 
 @page_router.post("/projects/{slug}/tasks/{task_name}/status")
@@ -939,6 +996,7 @@ def _scan_tasks(slug: str) -> list[dict[str, Any]]:
         out.append(
             {
                 "name": task_name,
+                "slug": name[: -len(".md")],  # full file stem → weekly task-page link
                 "est_pomodoros": est_int,
                 "actual_pomodoros": actual,
                 "status": str(fm.get("status") or "to-do"),

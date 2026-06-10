@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from datetime import datetime
 
 import pytest
 import yaml
@@ -143,6 +144,15 @@ class TestDetail:
         r = client.get("/bridge/projects/肌酸的妙用")
         assert "pj-pomodoro-dock" in r.text
         assert "Pre-production" in r.text  # task in selector
+
+    def test_brief_lists_linked_tasks(self, client):
+        # 修修: every linked Task surfaced on the Brief tab (not just the dock)
+        body = client.get("/bridge/projects/肌酸的妙用").text
+        assert "pj-brief-tasks" in body
+        assert "關聯任務" in body
+        # each task links to its weekly task page (full file-stem slug)
+        assert "/bridge/weekly/task/" in body
+        assert "Pre-production" in body
 
     def test_404_for_unknown(self, client):
         r = client.get("/bridge/projects/does-not-exist")
@@ -306,6 +316,24 @@ class TestPomodoroTimer:
         entry = fm["timeEntries"][0]
         assert "startTime" in entry
         assert "endTime" in entry
+
+    def test_complete_deep_mode_writes_75min_block(self, client, tmp_path):
+        # Unified dock 25/75 toggle: mode=deep → a 75-min span (≈3🍅 by duration).
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/timer/complete",
+            data={"task_name": "Pre-production", "mode": "deep"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        task_md = (tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - Pre-production.md").read_text(
+            encoding="utf-8"
+        )
+        fm = yaml.safe_load(task_md.split("---")[1])
+        entry = fm["timeEntries"][0]
+        span_min = (
+            datetime.fromisoformat(entry["endTime"]) - datetime.fromisoformat(entry["startTime"])
+        ).total_seconds() / 60
+        assert round(span_min) == 75  # 75-min super-focus block, not 25
 
     def test_complete_no_task_name_rejected(self, client):
         r = client.post(
@@ -495,6 +523,29 @@ class TestTaskDeleteEndpoint:
         assert r.status_code == 404
 
 
+class TestBriefTaskParity:
+    """v3-H Slice 3: the Brief tab's 關聯任務 section renders the shared dashboard
+    task_row (per-entry 排入 chips), scoped to the project, with from_project wired."""
+
+    def test_brief_renders_task_rows_for_project(self, client):
+        html = client.get("/bridge/projects/肌酸的妙用?tab=brief").text
+        # the seeded "肌酸的妙用 - Pre-production" task renders as a unified wk-task row
+        assert 'class="wk-task-d"' in html
+        assert 'data-slug="肌酸的妙用 - Pre-production"' in html
+        # the 排入 / chip forms carry from_project so actions land back on the project
+        assert 'name="from_project" value="肌酸的妙用"' in html
+        # the 新增關聯任務 form is present
+        assert "新增關聯任務" in html
+
+    def test_brief_excludes_other_projects_tasks(self, client, tmp_path):
+        # a standalone (no-prefix, no projects) task must NOT appear under the project
+        (tmp_path / "TaskNotes" / "Tasks" / "獨立任務.md").write_text(
+            "---\ntitle: 獨立任務\nstatus: to-do\n預估🍅: 2\n---\n", encoding="utf-8"
+        )
+        html = client.get("/bridge/projects/肌酸的妙用?tab=brief").text
+        assert 'data-slug="獨立任務"' not in html
+
+
 class TestCreateTaskEndpoint:
     def test_creates_task_with_form_post(self, client, tmp_path):
         r = client.post(
@@ -510,6 +561,22 @@ class TestCreateTaskEndpoint:
         assert fm["title"] == "肌酸的妙用 - Filming v2"
         assert fm["預估🍅"] == 3
         assert fm["priority"] == "high"
+
+    def test_creates_task_with_category(self, client, tmp_path):
+        # v3-H: the Brief add-task form carries a category (default work); scheduled dropped.
+        r = client.post(
+            "/bridge/projects/肌酸的妙用/tasks/new",
+            data={"name": "校色", "category": "growth"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        fm = yaml.safe_load(
+            (tmp_path / "TaskNotes" / "Tasks" / "肌酸的妙用 - 校色.md")
+            .read_text(encoding="utf-8")
+            .split("---")[1]
+        )
+        assert fm["category"] == "growth"
+        assert "scheduled" not in fm
 
     def test_creates_task_with_cjk_name(self, client, tmp_path):
         r = client.post(

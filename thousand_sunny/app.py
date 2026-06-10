@@ -18,6 +18,7 @@ from shared.log import force_utf8_console, get_logger
 force_utf8_console()
 
 from thousand_sunny.middleware.csp import add_csp_middleware  # noqa: E402
+from thousand_sunny.preflight import run_preflight  # noqa: E402
 from thousand_sunny.promotion_wiring import (  # noqa: E402
     load_promotion_wiring_config,
     wire_promotion_surfaces,
@@ -32,6 +33,8 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge_weekly,
     bridge_zoro,
     brook,
+    centaur_zettel,
+    crew,
     foundry,
     franky,
     progress,
@@ -63,9 +66,11 @@ async def _lifespan(app_: FastAPI):
     elsewhere still works.
 
     Startup failures (missing ``VAULT_PATH``, unknown promotion
-    mode) propagate as ``RuntimeError`` so uvicorn / systemd surface the
-    crash to the operator (W4) — silent fallback would mask the misconfig.
+    mode, empty ``WEB_PASSWORD`` in production) propagate as ``RuntimeError``
+    so uvicorn / systemd surface the crash to the operator (W4) — silent
+    fallback would mask the misconfig.
     """
+    run_preflight()
     if not os.getenv("DISABLE_ROBIN"):
         config = load_promotion_wiring_config()
         wire_promotion_surfaces(config)
@@ -98,6 +103,10 @@ app.include_router(franky.page_router)
 # all-authenticated pattern for a deliberately public surface.
 app.include_router(progress.router)
 app.include_router(architecture.router)
+# Public, indexable crew/system-architecture showcase (linked from shosho.tw).
+app.include_router(crew.router)
+# Public, indexable Centaur Zettelkasten methodology doc (shareable, iterated).
+app.include_router(centaur_zettel.router)
 
 # /static must mount unconditionally — public surfaces (/progress,
 # /architecture) and every authenticated page pull /static/shosho/*.css +
@@ -149,7 +158,9 @@ else:
 
     @app.get("/")
     async def root_redirect():
-        return RedirectResponse("/brook/handoff", status_code=302)
+        # Home = the weekly dashboard (修修's daily surface). Was /brook/handoff (the
+        # Brook→Claude.ai context handoff), which is a niche tool, not a landing page.
+        return RedirectResponse("/bridge/weekly", status_code=302)
 
 
 app.include_router(zoro.router)

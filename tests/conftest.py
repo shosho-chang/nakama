@@ -68,6 +68,34 @@ def _prevent_real_slack_alerts(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _prevent_real_google_calendar(request, monkeypatch):
+    """Stop tests from touching the REAL Google Calendar.
+
+    All calendar CRUD (create/update/delete/list_events) goes through the one
+    chokepoint ``shared.google_calendar._get_service``. On a box WITHOUT a token
+    that raised ``GoogleCalendarAuthError`` → ``schedule_entry`` returned
+    UNAVAILABLE, so unmocked tests were side-effect-free *by accident*. The
+    moment a real token lands in ``data/`` (e.g. copied in to run the dev
+    server) those same unmocked tests start writing real events — observed:
+    all-day "測試任務" events appearing on the user's calendar on the test
+    dates. Patch the service chokepoint to reproduce the safe no-token
+    behaviour regardless of whether a token file exists.
+
+    Tests that mock ``create_event``/``list_events`` directly are unaffected
+    (their patch is applied after this and wins). Tests that genuinely need the
+    live API mark themselves ``@pytest.mark.real_calendar``.
+    """
+    if request.node.get_closest_marker("real_calendar"):
+        return
+    from shared.google_calendar import GoogleCalendarAuthError
+
+    def _no_service(*_a, **_k):
+        raise GoogleCalendarAuthError("calendar disabled in tests (no real_calendar marker)")
+
+    monkeypatch.setattr("shared.google_calendar._get_service", _no_service)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
     """Route shared.incident_archive default dir to tmp.
 

@@ -403,3 +403,62 @@ def test_dry_run_matcher_returns_no_match_in_n518b():
     outcome = m.match(candidate, kb_index=None, primary_lang="en")
     assert outcome.canonical_match.match_basis == "none"
     assert outcome.canonical_match.confidence <= 0.1
+
+
+# ── Preflight — WEB_PASSWORD fail-to-start (ADR-044 §B2/B3) ─────────────────
+
+
+def test_preflight_raises_when_web_secret_set_but_password_empty(monkeypatch):
+    """WEB_SECRET set + WEB_PASSWORD empty → app must refuse to start."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.setenv("WEB_SECRET", "somesecret")
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("NAKAMA_DEV_AUTH_BYPASS", raising=False)
+
+    app_module = _reload_app_modules()
+
+    with pytest.raises(RuntimeError, match="WEB_PASSWORD"):
+        with TestClient(app_module.app):
+            pass
+
+
+def test_preflight_skips_when_dev_bypass_set(monkeypatch):
+    """NAKAMA_DEV_AUTH_BYPASS=1 lets the app start even without WEB_PASSWORD."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.setenv("WEB_SECRET", "somesecret")
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.setenv("NAKAMA_DEV_AUTH_BYPASS", "1")
+
+    app_module = _reload_app_modules()
+
+    with TestClient(app_module.app) as client:
+        r = client.get("/healthz")
+        assert r.status_code != 500
+
+
+def test_preflight_passes_when_both_credentials_set(monkeypatch):
+    """WEB_SECRET + WEB_PASSWORD both present — preflight allows startup."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.setenv("WEB_SECRET", "somesecret")
+    monkeypatch.setenv("WEB_PASSWORD", "somepassword")
+    monkeypatch.delenv("NAKAMA_DEV_AUTH_BYPASS", raising=False)
+
+    app_module = _reload_app_modules()
+
+    with TestClient(app_module.app) as client:
+        r = client.get("/healthz")
+        assert r.status_code != 500
+
+
+def test_preflight_skips_when_neither_credential_set(monkeypatch):
+    """No WEB_SECRET + no WEB_PASSWORD (dev/test mode) — preflight is silent."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.delenv("WEB_SECRET", raising=False)
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("NAKAMA_DEV_AUTH_BYPASS", raising=False)
+
+    app_module = _reload_app_modules()
+
+    with TestClient(app_module.app) as client:
+        r = client.get("/healthz")
+        assert r.status_code != 500

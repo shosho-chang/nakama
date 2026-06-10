@@ -1,0 +1,130 @@
+{# ── Unified task row (ADR-041 v3 — multi-block) ──────────────────────────────
+   ONE 「排入」 per row writes the plan[] entry AND (when a time is given) projects
+   it to its own Google event. Each planned day is its own chip with its own time +
+   linked state; the plain ✕ removes a plan-only entry, a linked entry's ✕ is
+   confirm-gated and also deletes the Google event.
+
+   Shared by the Weekly Dashboard (weekly.html) and the Project Brief tab
+   (_tab_brief.html). ``return_to`` (v3-H Slice 3): when set to a project slug, the
+   mutation forms post ``from_project`` so the action lands back on that project's
+   Brief tab instead of the dashboard. Weekly call sites omit it → unchanged. #}
+{% macro task_row(t, view, return_to="") %}
+  {% set timed = t.plan | selectattr('start') | list %}
+  <details class="wk-task-d" data-slug="{{ t.slug }}">
+    <summary class="wk-task {{ 'done' if t.done }}">
+      <form class="wk-box-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/done">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        <input type="hidden" name="done" value="{{ '0' if t.done else '1' }}">
+        {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+        <button type="submit" class="wk-box {{ 'done' if t.done }}"
+                aria-pressed="{{ 'true' if t.done else 'false' }}"
+                aria-label="{{ ('標記未完成：' if t.done else '標記完成：') ~ t.name }}"></button>
+      </form>
+      <span class="wk-tname">{{ t.name }}</span>
+      {# v3-I.4: inline rename — ✎ swaps the title for an editable field in place
+         (修修). stopPropagation in JS keeps the click from toggling the <details>. #}
+      <button type="button" class="wk-rename-icon" title="重新命名"
+              aria-label="重新命名「{{ t.name }}」">✎</button>
+      <form class="wk-rename-form" method="post"
+            action="/bridge/weekly/task/{{ t.slug | urlencode }}/rename" hidden>
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+        <input class="wk-rename-input" type="text" name="new_title" maxlength="80"
+               value="{{ t.name }}" required autocomplete="off" aria-label="新任務名稱">
+        <button class="wk-rename-go" type="submit" title="儲存重新命名">✓</button>
+        <button type="button" class="wk-rename-cancel" title="取消">✕</button>
+      </form>
+      {# v3-I follow-up (修修): chips follow the title, column-aligned ("invisible table"
+         feel — the title has a min-width so the chips line up across rows). category
+         (outlined) + priority (solid). No project chip — the 全部 list is grouped by
+         project. priority 'first' (紫) when in 本週重要任務; else high/normal/low. #}
+      {% set pri = 'first' if t.slug in view.important_slugs else t.priority %}
+      <span class="wk-chips">
+        <span class="wk-chip wk-cat-chip wk-cat-{{ t.category }}">{{ t.category_label }}</span>
+        <span class="wk-chip wk-pri-chip wk-pri-{{ pri }}">{{ 'First' if pri == 'first' else t.priority_label }}</span>
+      </span>
+      <span class="wk-rowfill" aria-hidden="true"></span>
+      {% if timed %}
+        {% set first = (timed | sort(attribute='start'))[0] %}
+        <span class="wk-bl-when {{ 'wk-bl-linked' if first.is_linked }}" title="{{ '已連動 Google 行事曆事件' if first.is_linked else '已排程（尚未推到 Google 行事曆）' }}">{{ first.date.strftime('%m/%d') }}{% if first.time_label %} {{ first.time_label }}{% endif %}{% if timed | length > 1 %} +{{ timed | length - 1 }}{% endif %}</span>
+      {% elif t.scheduled %}<span class="wk-bl-when" title="已排程（尚未推到 Google 行事曆）">{{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
+      {# v3-I.5: 🍅 actual/estimate only for 工作 tasks — only `work` counts toward the
+         weekly 🍅, so a health/growth/misc task shows no count (修修). #}
+      {% if t.is_work %}<span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>{% endif %}
+      <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
+    </summary>
+
+    <div class="wk-plan-edit">
+      {# v3-G: show ALL plan entries (every week, incl. done + cross-week), sorted by
+         date ascending so chips read left→right oldest→newest. #}
+      <div class="wk-plan-list">
+        {% for a in t.plan | sort(attribute='date') %}
+          <span class="wk-plan-chip {{ 'done' if a.done }} {{ 'has-reason' if a.reason }} {{ 'is-linked' if a.is_linked }}">
+            <span class="wk-chip-day">{{ a.date.strftime('%m/%d') }}{% if a.time_label %} {{ a.time_label }}{% endif %}</span>
+            {# v3-I.5: non-work tasks show the block as minutes, not 🍅 (修修). #}
+            <span class="wk-chip-pom">{% if t.is_work %}{{ a.pomodoros }}<span class="sho-emoji">🍅</span>{% else %}{{ a.pomodoros * 30 }} 分{% endif %}</span>
+            {% if a.reason %}<span class="wk-chip-reason" title="{{ a.reason }}">⚠</span>{% endif %}
+            {% if a.is_linked %}
+              <form method="post" action="/bridge/weekly/plan/cancel" class="wk-chip-form"
+                    data-confirm="取消 {{ a.date.strftime('%m/%d') }} 的安排？會刪掉 Google 行事曆事件，並移除這天的計畫。">
+                <input type="hidden" name="task_slug" value="{{ t.slug }}">
+                <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
+                <input type="hidden" name="week" value="{{ view.week.file_key }}">
+                {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+                <button class="wk-chip-x wk-chip-cancel" type="submit"
+                        aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">✕</button>
+              </form>
+            {% else %}
+              <form method="post" action="/bridge/weekly/plan/remove" class="wk-chip-form">
+                <input type="hidden" name="task_slug" value="{{ t.slug }}">
+                <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
+                <input type="hidden" name="week" value="{{ view.week.file_key }}">
+                {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+                <button class="wk-chip-x" type="submit" aria-label="移除 {{ a.date.strftime('%m/%d') }} 的計畫">✕</button>
+              </form>
+            {% endif %}
+          </span>
+        {% else %}
+          <span class="wk-plan-none">尚未排入任何時間。</span>
+        {% endfor %}
+      </div>
+
+      {# merged 「排入」 (v3): date (any week) + optional time + 🍅 → writes plan[]
+         AND, with a time, the Google event in one action. Blank time = all-day. #}
+      <form class="wk-sched-form wk-plan-merged" method="post" action="/bridge/weekly/plan">
+        <input type="hidden" name="task_slug" value="{{ t.slug }}">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+        <div class="wk-sched-fields">
+          <label class="wk-sched-lbl"><span class="wk-sched-cap">日期</span>
+            <input class="wk-sched-date" type="date" name="entry_date" value="{{ view.today_iso }}" required></label>
+          <label class="wk-sched-lbl"><span class="wk-sched-cap">時間 <span class="wk-mut">(留空＝整天)</span></span>
+            <input class="wk-sched-time" type="time" name="entry_time" step="900"></label>
+          <label class="wk-sched-lbl"><span class="wk-sched-cap">{% if t.is_work %}🍅 番茄{% else %}時長{% endif %}</span>
+            <span class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([t.est_pomodoros, 20] | min) if t.est_pomodoros else 2 }}" aria-label="{{ '番茄數' if t.is_work else '時長（每格 30 分）' }}"><span class="wk-sched-dur wk-mut" aria-hidden="true"></span></span></label>
+          <button class="sho-btn wk-plan-go wk-sched-go" type="submit">排入</button>
+        </div>
+        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+      </form>
+
+      {# v3-I follow-up (修修): edit 分類 + 優先 inline — the selects auto-submit on change
+         (bridge-weekly.js) and the row stays in place. #}
+      <form class="wk-meta-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/meta">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+        <label class="wk-sched-lbl"><span class="wk-sched-cap">分類</span>
+          <select class="wk-meta-sel" name="category" aria-label="分類">
+            {% for c, lbl in [('work', '工作'), ('health', '身心健康'), ('growth', '自我進修'), ('misc', '雜事')] %}
+              <option value="{{ c }}" {{ 'selected' if c == t.category }}>{{ lbl }}</option>
+            {% endfor %}
+          </select></label>
+        <label class="wk-sched-lbl"><span class="wk-sched-cap">優先</span>
+          <select class="wk-meta-sel" name="priority" aria-label="優先">
+            {% for p, lbl in [('low', 'Low'), ('normal', 'Medium'), ('high', 'High')] %}
+              <option value="{{ p }}" {{ 'selected' if p == t.priority }}>{{ lbl }}</option>
+            {% endfor %}
+          </select></label>
+      </form>
+    </div>
+  </details>
+{% endmacro %}

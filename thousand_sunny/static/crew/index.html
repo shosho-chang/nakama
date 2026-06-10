@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nakama — 八個 AI 船員的內容團隊 · Shosho</title>
+<meta name="description" content="一個創作者、八個 AI 船員、兩台機器、一艘船。Nakama 是張修修的個人成長內容生產 AI Agent 團隊 — 主題橫跨長壽健康、生產力、心理學、創業與財務，並製作人物專訪 podcast。七層內容流程、每日排程、操作原則與 runtime policy 全公開。">
+<link rel="canonical" href="https://nakama.shosho.tw/crew">
+
+<!-- Open Graph — partner / social unfurl (Gemini panel cascade · /architecture §07) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Nakama · Shosho">
+<meta property="og:title" content="八個 AI 船員的內容團隊 — Nakama 系統架構">
+<meta property="og:description" content="一個創作者、八個 AI 船員、兩台機器、一艘船。七層內容流程、每日排程、操作原則全公開。">
+<meta property="og:image" content="https://nakama.shosho.tw/static/shosho/brand/logo_1.png">
+<meta property="og:url" content="https://nakama.shosho.tw/crew">
+<meta property="og:locale" content="zh_TW">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=__ASSET_VERSION__">
+<link rel="apple-touch-icon" href="/static/favicon.svg?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/shosho/tokens.css?v=__ASSET_VERSION__">
+<link rel="stylesheet" href="/static/crew/crew.css?v=__ASSET_VERSION__">
+<script>
+  // Render-blocking theme set — paint before <body> so there's no flash.
+  // Shares the `sho-theme` localStorage key with the site-wide theme.js toggle.
+  (function () {
+    try {
+      var saved = localStorage.getItem('sho-theme');
+      var dark = saved === 'dark' || (saved !== 'light' &&
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    } catch (_) { document.documentElement.dataset.theme = 'light'; }
+  })();
+</script>
+</head>
+<body class="sho">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="sho-bolt-shape" viewBox="0 0 26 20">
+    <polyline points="2,16 6,10 9,14 13,8 16,12 20,6 24,10"
+              fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+</svg>
+
+<main class="page">
+
+  <!-- ── header ───────────────────────────────────────────────────────── -->
+  <header class="page-header">
+    <div class="header-top">
+      <a href="https://shosho.tw" class="sho-logo-mark logo" rel="noopener">
+        <img src="/static/shosho/brand/logo_1.png" alt="" aria-hidden="true">
+        <span class="logo-text">
+          <span class="logo-zh">張修修</span>
+          <span class="sho-mono sho-mono-up">shosho.tw</span>
+        </span>
+      </a>
+      <nav class="sho-docnav" aria-label="系統文件導覽">
+        <a href="/architecture">架構</a>
+        <a href="/crew" aria-current="page">船員</a>
+        <a href="/progress">進度</a>
+        <a href="/centaur_zettel">卡片盒</a>
+      </nav>
+      <div class="header-meta">
+        <span class="sho-mono sho-mono-up">system overview v1</span>
+        <span class="sho-mono">2026-06-03</span>
+        <button type="button" id="theme-toggle" class="theme-switch"
+                role="switch" aria-label="切換明暗主題" aria-checked="false">
+          <span class="theme-switch-track" aria-hidden="true">
+            <span class="theme-switch-label theme-switch-label-light">L</span>
+            <span class="theme-switch-label theme-switch-label-dark">D</span>
+            <span class="theme-switch-thumb"></span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div class="header-body">
+      <div class="sho-kicker">
+        <span class="sho-kicker-n">00</span>
+        <span>nakama · ai crew setup</span>
+      </div>
+      <h1 class="page-title">
+        八個 AI 船員的內容團隊<br>
+        <span class="page-title-2">一個創作者、八個船員、兩台機器、一艘船</span>
+      </h1>
+      <p class="page-subtitle">
+        Nakama 是張修修的個人成長內容生產 AI Agent 系統 — 主題橫跨長壽健康、生產力、心理學、創業與財務，並製作人物專訪 podcast。船員以《航海王》草帽團命名，每位船員的職務對應他的運算角色：考古學家管知識庫、航海士當秘書、劍士做關鍵字偵察、船匠顧系統。部署在一台 VPS 上，產出雙向同步回本機的 Obsidian LifeOS。這頁把整套 setup 攤開：船員分工、七層內容流程、每日排程、操作原則、runtime policy。
+      </p>
+      <p class="page-subtitle subtitle-note">
+        命名梗：船長是修修本人，<strong>Thousand Sunny（千陽號）是承載全員的平台</strong>（web server / 甲板儀表板），不是船員。狀態標誠實標示 — shipped / in-dev / planned 各如其實。
+      </p>
+    </div>
+  </header>
+
+  <!-- ── /01 系統架構 ─────────────────────────────────────────────────── -->
+  <section aria-labelledby="arch-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">01</span><span>system architecture</span></div>
+      <h2 id="arch-heading">系統架構</h2>
+      <p>修修是船長。所有工作收斂在 Thousand Sunny（FastAPI 甲板儀表板），跑在一台 VPS 上；本機是一台 Windows，存放 Obsidian LifeOS vault，兩邊用 Syncthing 雙向同步。船員透過 cron、Slack gateway、或 daemon 自己醒來做事。</p>
+    </div>
+
+    <!-- 控制流 -->
+    <div class="arch-flow">
+      <div class="arch-node arch-node--owner">
+        <span class="arch-node__role sho-mono-up">owner · 船長</span>
+        <span class="arch-node__name">修修</span>
+        <span class="arch-node__note">下指令、審稿、拍板不可逆動作</span>
+      </div>
+      <span class="arch-arrow" aria-hidden="true">↓</span>
+      <div class="arch-node arch-node--platform">
+        <span class="arch-node__role sho-mono-up">platform · 千陽號（非船員）</span>
+        <span class="arch-node__name">Thousand Sunny</span>
+        <span class="arch-node__note">FastAPI + Jinja2 web server · systemd <code>thousand-sunny.service</code> · VPS :8000 · KB ingest / Reader / 關鍵字 / Bridge ops 中控台</span>
+      </div>
+    </div>
+
+    <!-- 兩台機器 -->
+    <div class="ns-head">
+      <h3>兩台機器</h3>
+      <span class="ns-token">syncthing 雙向同步</span>
+    </div>
+    <div class="machine-grid">
+      <div class="machine-panel">
+        <div class="machine-panel__head">
+          <span class="sho-mono-up">local · windows</span>
+          <span class="machine-panel__path sho-mono">E:\…\Shosho LifeOS\</span>
+        </div>
+        <p class="machine-panel__desc">修修本機。Obsidian LifeOS vault 的 source of truth，修修在這裡讀 Reader、手寫讀書心得、跑本機 Claude Code。</p>
+        <ul class="machine-panel__list">
+          <li><span class="sho-mono">Projects/</span> 專案與 Task</li>
+          <li><span class="sho-mono">KB/</span> Wiki · Sources · Concepts · Entities · Annotations</li>
+          <li><span class="sho-mono">Journals/</span>（agent 禁寫）</li>
+          <li><span class="sho-mono">AgentOutputs/</span> agent 產出</li>
+        </ul>
+      </div>
+      <div class="machine-sync" aria-hidden="true">
+        <span class="machine-sync__line"></span>
+        <span class="machine-sync__label sho-mono-up">⇄ syncthing</span>
+        <span class="machine-sync__line"></span>
+      </div>
+      <div class="machine-panel">
+        <div class="machine-panel__head">
+          <span class="sho-mono-up">vps · linux</span>
+          <span class="machine-panel__path sho-mono">/home/nakama/</span>
+        </div>
+        <p class="machine-panel__desc">永遠開機的那台。systemd services + cron 跑全部 agent，SQLite 存狀態，每天備份到 R2。</p>
+        <ul class="machine-panel__list">
+          <li><span class="sho-mono">thousand-sunny.service</span> · web :8000</li>
+          <li><span class="sho-mono">nakama-usopp.service</span> · 發布 daemon</li>
+          <li><span class="sho-mono">nakama-gateway</span> · Slack socket-mode（6 bots）</li>
+          <li><span class="sho-mono">state.db</span> · SQLite 執行狀態 / 計費 / 事件</li>
+          <li><span class="sho-mono">Cloudflare R2</span> · state.db 每日快照備份</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 船員 roster -->
+    <div class="ns-head roster-head">
+      <h3>船員 roster</h3>
+      <span class="ns-token">8 crew · ~/agents/</span>
+      <span class="roster-hint sho-mono">點卡片展開 ↓</span>
+    </div>
+    <div class="crew-roster">
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">01</span>
+          <span class="crew-card__mono" aria-hidden="true">R</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Robin</span>
+            <span class="crew-card__job">考古學家 · 知識庫</span>
+          </span>
+          <span class="crew-card__tags"><span class="sho-tag">讀資料</span><span class="sho-tag">建知識庫</span><span class="sho-tag">做筆記</span></span>
+          <span class="crew-card__count"><span class="crew-card__count-n">5</span><span class="crew-card__count-l sho-mono-up">模組</span></span>
+          <span class="pill pill--shipped">已上線</span>
+          <button type="button" class="crew-card__diagram" data-diagram-open aria-label="查看這位船員的資料流圖" aria-haspopup="dialog">
+            <svg class="crew-card__diagram-ic" viewBox="0 0 16 12" width="16" height="12" aria-hidden="true"><rect x="0.6" y="2.6" width="5" height="6.8" rx="1.4"/><rect x="10.4" y="2.6" width="5" height="6.8" rx="1.4"/><line x1="5.6" y1="6" x2="10.4" y2="6"/></svg>
+            <span class="crew-card__diagram-t">資料流圖</span>
+          </button>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">工作職責</span>
+            <ol class="crew-num">
+              <li>把文章、論文、書讀進知識庫</li>
+              <li>抽出重點概念，整理成 Wiki 頁面</li>
+              <li>雙語閱讀、劃線、做筆記</li>
+              <li>每天清晨整理最新論文摘要</li>
+            </ol>
+          </div>
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">代表 skill</span>
+            <ol class="crew-num">
+              <li>kb-ingest</li>
+              <li>kb-search</li>
+              <li>textbook-ingest</li>
+            </ol>
+          </div>
+          <div class="crew-col crew-col--meta">
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">工作目錄</span><code class="crew-dir">~/agents/robin</code></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">程式模組</span><span class="crew-mods"><code class="kit-mod">ingest.py</code><code class="kit-mod">pubmed_digest.py</code><code class="kit-mod">kb_search.py</code><code class="kit-mod">annotation_merger.py</code><code class="kit-mod">book_digest_writer.py</code></span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">負責階段</span><span class="crew-stage">收集 · 閱讀 · 整合</span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">為什麼有這個船員</span><p class="crew-why">所有內容的源頭，都是先把東西讀懂、整理進知識庫。Robin 是這個團隊的記憶。</p></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">02</span>
+          <span class="crew-card__mono" aria-hidden="true">N</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Nami</span>
+            <span class="crew-card__job">航海士 · 秘書</span>
+          </span>
+          <span class="crew-card__tags"><span class="sho-tag">每日簡報</span><span class="sho-tag">行程信件</span></span>
+          <span class="crew-card__count"><span class="crew-card__count-n">2</span><span class="crew-card__count-l sho-mono-up">模組</span></span>
+          <span class="pill pill--planned">規劃中</span>
+          <button type="button" class="crew-card__diagram" data-diagram-open aria-label="查看這位船員的資料流圖" aria-haspopup="dialog">
+            <svg class="crew-card__diagram-ic" viewBox="0 0 16 12" width="16" height="12" aria-hidden="true"><rect x="0.6" y="2.6" width="5" height="6.8" rx="1.4"/><rect x="10.4" y="2.6" width="5" height="6.8" rx="1.4"/><line x1="5.6" y1="6" x2="10.4" y2="6"/></svg>
+            <span class="crew-card__diagram-t">資料流圖</span>
+          </button>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">工作職責</span>
+            <ol class="crew-num">
+              <li>整理行事曆與信件</li>
+              <li>把各船員當天的產出，濃縮成一份晨間簡報</li>
+              <li>行程排程（規劃中）</li>
+            </ol>
+          </div>
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">代表 skill</span>
+            <ol class="crew-num">
+              <li>project-bootstrap<span class="crew-li-note">建新專案</span></li>
+            </ol>
+          </div>
+          <div class="crew-col crew-col--meta">
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">工作目錄</span><code class="crew-dir">~/agents/nami</code></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">程式模組</span><span class="crew-mods"><code class="kit-mod">__main__.py</code><code class="kit-mod">gateway/handlers/nami.py</code></span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">負責階段</span><span class="crew-stage">收集 · 監控</span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">為什麼有這個船員</span><p class="crew-why">一個人同時追八個船員的產出會爆炸。Nami 把當天重點濃縮成一份簡報。（多數功能還在規劃）</p></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">03</span>
+          <span class="crew-card__mono" aria-hidden="true">Z</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Zoro</span>
+            <span class="crew-card__job">劍士 · 選題偵察</span>
+          </span>
+          <span class="crew-card__tags"><span class="sho-tag">關鍵字研究</span><span class="sho-tag">趨勢偵察</span><span class="sho-tag">選題建議</span></span>
+          <span class="crew-card__count"><span class="crew-card__count-n">6</span><span class="crew-card__count-l sho-mono-up">模組</span></span>
+          <span class="pill pill--in-dev">開發中</span>
+          <button type="button" class="crew-card__diagram" data-diagram-open aria-label="查看這位船員的資料流圖" aria-haspopup="dialog">
+            <svg class="crew-card__diagram-ic" viewBox="0 0 16 12" width="16" height="12" aria-hidden="true"><rect x="0.6" y="2.6" width="5" height="6.8" rx="1.4"/><rect x="10.4" y="2.6" width="5" height="6.8" rx="1.4"/><line x1="5.6" y1="6" x2="10.4" y2="6"/></svg>
+            <span class="crew-card__diagram-t">資料流圖</span>
+          </button>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">工作職責</span>
+            <ol class="crew-num">
+              <li>每天清晨掃一輪市場關鍵字與趨勢</li>
+              <li>找出有人在搜、值得做的主題</li>
+              <li>整理成選題建議交給 Brook</li>
+            </ol>
+          </div>
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">代表 skill</span>
+            <ol class="crew-num">
+              <li>keyword-research</li>
+            </ol>
+          </div>
+          <div class="crew-col crew-col--meta">
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">工作目錄</span><code class="crew-dir">~/agents/zoro</code></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">程式模組</span><span class="crew-mods"><code class="kit-mod">keyword_research.py</code><code class="kit-mod">brainstorm_scout.py</code><code class="kit-mod">trends_api.py</code><code class="kit-mod">reddit_api.py</code><code class="kit-mod">youtube_api.py</code><code class="kit-mod">twitter_api.py</code></span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">負責階段</span><span class="crew-stage">收集</span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">為什麼有這個船員</span><p class="crew-why">選題不能只靠直覺。Zoro 先去市場探路，帶回真的有人在搜的主題。</p></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">04</span>
+          <span class="crew-card__mono" aria-hidden="true">S</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Sanji</span>
+            <span class="crew-card__job">廚師 · 社群</span>
+          </span>
+          <span class="crew-card__tags"><span class="sho-tag">社群互動</span><span class="sho-tag">回覆問題</span><span class="sho-tag">活動企劃</span></span>
+          <span class="crew-card__count"><span class="crew-card__count-n">1</span><span class="crew-card__count-l sho-mono-up">模組</span></span>
+          <span class="pill pill--planned">規劃中</span>
+          <button type="button" class="crew-card__diagram" data-diagram-open aria-label="查看這位船員的資料流圖" aria-haspopup="dialog">
+            <svg class="crew-card__diagram-ic" viewBox="0 0 16 12" width="16" height="12" aria-hidden="true"><rect x="0.6" y="2.6" width="5" height="6.8" rx="1.4"/><rect x="10.4" y="2.6" width="5" height="6.8" rx="1.4"/><line x1="5.6" y1="6" x2="10.4" y2="6"/></svg>
+            <span class="crew-card__diagram-t">資料流圖</span>
+          </button>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">工作職責</span>
+            <ol class="crew-num">
+              <li>顧社群、回覆常見問題</li>
+              <li>找出沒人回的提問並提醒</li>
+              <li>規劃社群活動（習慣挑戰、讀書會）</li>
+            </ol>
+          </div>
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">代表 skill</span>
+            <p class="crew-none">尚未開工 · 規劃中</p>
+          </div>
+          <div class="crew-col crew-col--meta">
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">工作目錄</span><code class="crew-dir">~/agents/sanji</code></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">程式模組</span><span class="crew-mods"><code class="kit-mod">__main__.py</code></span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">負責階段</span><span class="crew-stage">收集 · 整合 · 發布 · 監控</span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">為什麼有這個船員</span><p class="crew-why">內容發完不是結束 — 讀者的提問與互動需要有人顧。（目前還只是個空殼）</p></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">05</span>
+          <span class="crew-card__mono" aria-hidden="true">F</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Franky</span>
+            <span class="crew-card__job">船匠 · 系統維運</span>
+          </span>
+          <span class="crew-card__tags"><span class="sho-tag">系統健康</span><span class="sho-tag">備份</span><span class="sho-tag">成本追蹤</span></span>
+          <span class="crew-card__count"><span class="crew-card__count-n">5</span><span class="crew-card__count-l sho-mono-up">模組</span></span>
+          <span class="pill pill--shipped">已上線</span>
+          <button type="button" class="crew-card__diagram" data-diagram-open aria-label="查看這位船員的資料流圖" aria-haspopup="dialog">
+            <svg class="crew-card__diagram-ic" viewBox="0 0 16 12" width="16" height="12" aria-hidden="true"><rect x="0.6" y="2.6" width="5" height="6.8" rx="1.4"/><rect x="10.4" y="2.6" width="5" height="6.8" rx="1.4"/><line x1="5.6" y1="6" x2="10.4" y2="6"/></svg>
+            <span class="crew-card__diagram-t">資料流圖</span>
+          </button>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">工作職責</span>
+            <ol class="crew-num">
+              <li>盯系統健康，半夜出事先擋住</li>
+              <li>每天自動備份資料</li>
+              <li>追蹤花費與 Google 搜尋排名</li>
+              <li>整理 AI 工具新聞</li>
+            </ol>
+          </div>
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">代表 skill</span>
+            <p class="crew-none">純後端程式 · 無對話 skill</p>
+          </div>
+          <div class="crew-col crew-col--meta">
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">工作目錄</span><code class="crew-dir">~/agents/franky</code></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">程式模組</span><span class="crew-mods"><code class="kit-mod">reporter.py</code><code class="kit-mod">news_digest.py</code><code class="kit-mod">anomaly_daemon.py</code><code class="kit-mod">health_check.py</code><code class="kit-mod">jobs/gsc_daily.py</code></span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">負責階段</span><span class="crew-stage">收集 · 監控</span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">為什麼有這個船員</span><p class="crew-why">系統要能沒人顧也照跑。Franky 管健康、備份、成本，是這艘船的維修工。</p></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">06</span>
+          <span class="crew-card__mono" aria-hidden="true">U</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Usopp</span>
+            <span class="crew-card__job">狙擊手 · 發佈</span>
+          </span>
+          <span class="crew-card__tags"><span class="sho-tag">WordPress 發佈</span><span class="sho-tag">發佈前審核</span></span>
+          <span class="crew-card__count"><span class="crew-card__count-n">3</span><span class="crew-card__count-l sho-mono-up">模組</span></span>
+          <span class="pill pill--shipped">已上線</span>
+          <button type="button" class="crew-card__diagram" data-diagram-open aria-label="查看這位船員的資料流圖" aria-haspopup="dialog">
+            <svg class="crew-card__diagram-ic" viewBox="0 0 16 12" width="16" height="12" aria-hidden="true"><rect x="0.6" y="2.6" width="5" height="6.8" rx="1.4"/><rect x="10.4" y="2.6" width="5" height="6.8" rx="1.4"/><line x1="5.6" y1="6" x2="10.4" y2="6"/></svg>
+            <span class="crew-card__diagram-t">資料流圖</span>
+          </button>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">工作職責</span>
+            <ol class="crew-num">
+              <li>把審核過的文章發佈到 WordPress</li>
+              <li>發佈前做藥事法 / 醫療法用詞檢查</li>
+              <li>發佈中斷時可從上次進度續跑</li>
+            </ol>
+          </div>
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">代表 skill</span>
+            <p class="crew-none">純後端程式 · 無對話 skill</p>
+          </div>
+          <div class="crew-col crew-col--meta">
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">工作目錄</span><code class="crew-dir">~/agents/usopp</code></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">程式模組</span><span class="crew-mods"><code class="kit-mod">publisher.py</code><code class="kit-mod">shared/approval_queue.py</code><code class="kit-mod">shared/wordpress_client.py</code></span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">負責階段</span><span class="crew-stage">發布（目前只發 WordPress，YT / IG / FB 還沒接）</span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">為什麼有這個船員</span><p class="crew-why">發佈是最後一哩，也最怕出錯。Usopp 確保每篇都過人工審核才上線。</p></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">07</span>
+          <span class="crew-card__mono" aria-hidden="true">B</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Brook</span>
+            <span class="crew-card__job">音樂家 · 內容編製</span>
+          </span>
+          <span class="crew-card__tags"><span class="sho-tag">大綱整理</span><span class="sho-tag">多平台改寫</span><span class="sho-tag">SEO 體檢</span></span>
+          <span class="crew-card__count"><span class="crew-card__count-n">6</span><span class="crew-card__count-l sho-mono-up">模組</span></span>
+          <span class="pill pill--in-dev">開發中</span>
+          <button type="button" class="crew-card__diagram" data-diagram-open aria-label="查看這位船員的資料流圖" aria-haspopup="dialog">
+            <svg class="crew-card__diagram-ic" viewBox="0 0 16 12" width="16" height="12" aria-hidden="true"><rect x="0.6" y="2.6" width="5" height="6.8" rx="1.4"/><rect x="10.4" y="2.6" width="5" height="6.8" rx="1.4"/><line x1="5.6" y1="6" x2="10.4" y2="6"/></svg>
+            <span class="crew-card__diagram-t">資料流圖</span>
+          </button>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">工作職責</span>
+            <ol class="crew-num">
+              <li>把知識庫素材整理成文章大綱（不代寫正文）</li>
+              <li>把一篇內容改成部落格 / FB / IG 多種版本</li>
+              <li>製作影片腳本</li>
+              <li>幫既有文章做 SEO 體檢</li>
+            </ol>
+          </div>
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">代表 skill</span>
+            <ol class="crew-num">
+              <li>article-compose</li>
+              <li>seo-audit-post</li>
+              <li>seo-keyword-enrich</li>
+            </ol>
+          </div>
+          <div class="crew-col crew-col--meta">
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">工作目錄</span><code class="crew-dir">~/agents/brook</code></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">程式模組</span><span class="crew-mods"><code class="kit-mod">repurpose_engine.py</code><code class="kit-mod">blog_renderer.py</code><code class="kit-mod">fb_renderer.py</code><code class="kit-mod">ig_renderer.py</code><code class="kit-mod">synthesize/</code><code class="kit-mod">script_video/</code></span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">負責階段</span><span class="crew-stage">整合 · 輸出 · 製作 · 監控</span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">為什麼有這個船員</span><p class="crew-why">一篇內容要變成多平台版本很費工。Brook 把它編成各種形態 — 但正文還是修修自己寫。</p></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="crew-card">
+        <summary class="crew-card__head">
+          <span class="crew-card__n sho-mono">08</span>
+          <span class="crew-card__mono" aria-hidden="true">F</span>
+          <span class="crew-card__id">
+            <span class="crew-card__name">Foundry</span>
+            <span class="crew-card__job">鍛冶屋 · 影片製作</span>
+          </span>
+          <span class="crew-card__tags"><span class="sho-tag">字幕對齊</span><span class="sho-tag">自動配畫面</span><span class="sho-tag">輸出剪輯檔</span></span>
+          <span class="crew-card__count"><span class="crew-card__count-n">5</span><span class="crew-card__count-l sho-mono-up">模組</span></span>
+          <span class="pill pill--in-dev">開發中</span>
+          <button type="button" class="crew-card__diagram" data-diagram-open aria-label="查看這位船員的資料流圖" aria-haspopup="dialog">
+            <svg class="crew-card__diagram-ic" viewBox="0 0 16 12" width="16" height="12" aria-hidden="true"><rect x="0.6" y="2.6" width="5" height="6.8" rx="1.4"/><rect x="10.4" y="2.6" width="5" height="6.8" rx="1.4"/><line x1="5.6" y1="6" x2="10.4" y2="6"/></svg>
+            <span class="crew-card__diagram-t">資料流圖</span>
+          </button>
+          <span class="crew-card__chev" aria-hidden="true">＋</span>
+        </summary>
+        <div class="crew-card__body">
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">工作職責</span>
+            <ol class="crew-num">
+              <li>把影片逐字稿做成可剪輯的時間軸</li>
+              <li>自動配上對應的 B-roll 畫面</li>
+              <li>輸出可直接進剪輯軟體的檔案</li>
+            </ol>
+          </div>
+          <div class="crew-col">
+            <span class="crew-col__label sho-mono-up">代表 skill</span>
+            <ol class="crew-num">
+              <li>foundry-replan</li>
+            </ol>
+          </div>
+          <div class="crew-col crew-col--meta">
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">工作目錄</span><code class="crew-dir">~/agents/foundry</code></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">程式模組</span><span class="crew-mods"><code class="kit-mod">pipeline.py</code><code class="kit-mod">planner.py</code><code class="kit-mod">render_dispatcher.py</code><code class="kit-mod">fcpxml_emitter.py</code><code class="kit-mod">render_workers/</code></span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">負責階段</span><span class="crew-stage">輸出 · 製作</span></div>
+            <div class="crew-field"><span class="crew-col__label sho-mono-up">為什麼有這個船員</span><p class="crew-why">影片剪輯最耗時的是配畫面。Foundry 把這段自動化，省下大量手工。</p></div>
+          </div>
+        </div>
+      </details>
+
+    </div>
+
+    <p class="codex-note">
+      <span class="sho-tag sho-tag--accent">非船員</span>
+      <strong>Codex / GPT-5 · Gemini</strong> — 不是船員，是 multi-model panel review 用的外部 LLM（ADR-026 / ADR-029）。重大決策（ADR 草案、架構提案、大型 refactor）由 Claude 起草 → Codex push-back 稽核 → Gemini 不同推理鏈稽核 → 整合矩陣 → 修修 sign-off。價值在 disagreement，不在 unanimity。
+    </p>
+
+    <!-- data sources -->
+    <div class="ns-head">
+      <h3>資料來源</h3>
+      <span class="ns-token">core + bolt-on</span>
+    </div>
+    <div class="source-cols">
+      <div class="source-group">
+        <div class="source-group__head"><span class="sho-mono-up">core · 核心</span><span class="source-group__sub">少了會散架</span></div>
+        <ul class="source-list">
+          <li><span class="source-chip">Obsidian LifeOS Vault</span><span class="acc acc--rw">可讀寫</span><span class="source-by sho-mono">全員 · KB / Projects / AgentOutputs</span></li>
+          <li><span class="source-chip">WordPress</span><span class="acc acc--w">可寫</span><span class="source-by sho-mono">Usopp · shosho.tw / fleet.shosho.tw</span></li>
+          <li><span class="source-chip">Slack（gateway）</span><span class="acc acc--rw">可讀寫</span><span class="source-by sho-mono">6 bots · socket-mode</span></li>
+          <li><span class="source-chip">state.db（SQLite）</span><span class="acc acc--rw">可讀寫</span><span class="source-by sho-mono">全員 · 狀態 / 計費 / 事件</span></li>
+        </ul>
+      </div>
+      <div class="source-group">
+        <div class="source-group__head"><span class="sho-mono-up">bolt-on · 外掛</span><span class="source-group__sub">加上去能力更強</span></div>
+        <ul class="source-list">
+          <li><span class="source-chip">PubMed E-utilities</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Robin · 22 top journals</span></li>
+          <li><span class="source-chip">YouTube Data API</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Zoro</span></li>
+          <li><span class="source-chip">Google Trends</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Zoro</span></li>
+          <li><span class="source-chip">Reddit / Twitter</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Zoro</span></li>
+          <li><span class="source-chip">Google Search Console</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Franky · 每日 7 天 ranking</span></li>
+          <li><span class="source-chip">Google Calendar / Gmail</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Nami（planned）</span></li>
+          <li><span class="source-chip">Cloudflare R2</span><span class="acc acc--rw">可讀寫</span><span class="source-by sho-mono">Franky · 備份</span></li>
+          <li><span class="source-chip">GitHub trending</span><span class="acc acc--r">唯讀</span><span class="source-by sho-mono">Franky · AI news</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── /02 內容流程七層 ─────────────────────────────────────────────── -->
+  <section aria-labelledby="pipe-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">02</span><span>content pipeline</span></div>
+      <h2 id="pipe-heading">內容流程七層</h2>
+      <p>任何「開發 X」對話都必先 anchor 在某個 stage，不可 spontaneous 開發。原料從外部世界進來，一路走到發布，理想上 Stage 7 的成效要回灌 Stage 1。</p>
+    </div>
+
+    <ol class="pipeline">
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">1</span>
+        <span class="pipe-step__name">收集 Discovery</span>
+        <span class="pipe-step__desc">趨勢 / 文獻 / 新聞 / 社群 → 原料素材</span>
+        <span class="pipe-step__owner sho-mono">Zoro · Franky · Robin</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">2</span>
+        <span class="pipe-step__name">閱讀 + 註記</span>
+        <span class="pipe-step__desc">Reader 雙語閱讀 · 劃線 + 筆記 + reading session</span>
+        <span class="pipe-step__owner sho-mono">Robin</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">3</span>
+        <span class="pipe-step__name">整合 Ingest</span>
+        <span class="pipe-step__desc">原料 + 註記 → KB Wiki（Source / Concept / Entity）</span>
+        <span class="pipe-step__owner sho-mono">Robin · Brook</span>
+      </li>
+      <li class="pipe-step pipe-step--owner-human">
+        <span class="pipe-step__n sho-mono">4</span>
+        <span class="pipe-step__name">原子文章</span>
+        <span class="pipe-step__desc">canonical content：手寫心得 / 字幕檔 / LLM 輔助稿 — <strong>LLM 不代寫正文</strong></span>
+        <span class="pipe-step__owner sho-mono">修修 · transcribe · Brook scaffold</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">5</span>
+        <span class="pipe-step__name">製作 Production</span>
+        <span class="pipe-step__desc">fan out 4 channel：影片 / 部落格 / FB / IG</span>
+        <span class="pipe-step__owner sho-mono">Brook · Foundry</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">6</span>
+        <span class="pipe-step__name">發布 Publishing</span>
+        <span class="pipe-step__desc">上線到各平台 · <strong>目前僅 WP 自動</strong>，YT/IG/FB 缺口</span>
+        <span class="pipe-step__owner sho-mono">Usopp</span>
+      </li>
+      <li class="pipe-step">
+        <span class="pipe-step__n sho-mono">7</span>
+        <span class="pipe-step__name">監控 Optimization</span>
+        <span class="pipe-step__desc">analytics → SEO 分數 / 排名 / 回饋 → 回灌 Stage 1</span>
+        <span class="pipe-step__owner sho-mono">Brook · Franky</span>
+      </li>
+    </ol>
+
+    <div class="phase phase--warn">
+      <div class="phase-head">
+        <span class="phase-n">結構性觀察 #1</span>
+        <span class="phase-title">Stage 7 → Stage 1 閉環目前是斷的</span>
+      </div>
+      <div class="phase-body">
+        Zoro 偵察 → 人肉橋接 → Robin / Brook 寫 → 人肉發布 → SEO 中控台 audit → <strong>回不去 Zoro</strong>。內容效能無法 inform 下次選題，每集從零開始。誠實標示，不假裝閉環已成。
+      </div>
+    </div>
+  </section>
+
+  <!-- ── /03 一日工作節奏 ─────────────────────────────────────────────── -->
+  <section aria-labelledby="rhythm-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">03</span><span>daily rhythm</span></div>
+      <h2 id="rhythm-heading">一日工作節奏</h2>
+      <p>VPS 時區鎖 Asia/Taipei，cron 在修修起床前把當天素材備好。Slack gateway 則是 always-on，隨時接 DM 與 @mention。下表為 <code>cron.conf</code> 實際排程。</p>
+    </div>
+
+    <table class="rhythm">
+      <thead>
+        <tr><th class="col-time">時間 · TPE</th><th class="col-who">執行者</th><th class="col-evt">事件</th><th class="col-kind">類型</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="sho-mono">02:00</td><td>Robin</td><td>Inbox KB ingest — 把昨天進 Inbox 的素材分類進 KB/Raw</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">03:00</td><td>Franky</td><td>GSC daily — 拉前 7 天 Search Console ranking 進 state.db</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">03:30</td><td>Franky</td><td>R2 backup verify — 確認備份完整可還原</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">04:00</td><td>Nakama</td><td>state.db 每日快照 → R2 nakama-backup bucket</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">05:00</td><td>Zoro</td><td>Brainstorm Scout — 關鍵字 + 趨勢偵察</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">05:30</td><td>Robin</td><td>PubMed digest — 22 本頂尖期刊最新論文</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">06:30</td><td>Franky</td><td>AI news digest — anthropic.com / GitHub trending / awesome-diff</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr class="rhythm--disabled"><td class="sho-mono">07:00</td><td>Nami</td><td>Morning Brief — <strong>DISABLED</strong>（未實作；真實邏輯走 Slack gateway 觸發）</td><td><span class="kind kind--off">disabled</span></td></tr>
+        <tr><td class="sho-mono">10:00 週一</td><td>Franky</td><td>週報 digest — 系統週回顧或 retrospective</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">每小時</td><td>Usopp</td><td>Community Monitor — 掃 Fluent Community 動態</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">每 5 分</td><td>Franky</td><td>Health probes — token 用量 / 延遲 / error rate</td><td><span class="kind kind--daemon">daemon</span></td></tr>
+        <tr><td class="sho-mono">每 15 分</td><td>Franky</td><td>Anomaly daemon — cost / latency / cron cluster 3σ 偵測</td><td><span class="kind kind--daemon">daemon</span></td></tr>
+        <tr><td class="sho-mono">隨時</td><td>Nami · Zoro · Robin · Franky · Brook · Sanji</td><td>Slack gateway — socket-mode，接 DM / @mention 即時回應</td><td><span class="kind kind--gw">gateway</span></td></tr>
+        <tr><td class="sho-mono">週一 04:15</td><td>Nakama</td><td>user_memories decay — 30 天沒存取的記憶 confidence ×0.9</td><td><span class="kind kind--cron">cron</span></td></tr>
+        <tr><td class="sho-mono">每月 1 號 04:30</td><td>Nakama</td><td>user_memories prune — 清掉 confidence &lt; 0.1 的記憶</td><td><span class="kind kind--cron">cron</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── /04 操作原則 ─────────────────────────────────────────────────── -->
+  <section aria-labelledby="principle-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">04</span><span>operating principles</span></div>
+      <h2 id="principle-heading">操作原則</h2>
+      <p>讓人放心把工作丟出去的先決條件。少了任何一條，自動化都會在某個地方漏。</p>
+    </div>
+
+    <div class="principle-grid">
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">三條紅線</span>
+        <h3>任何任務共同遵守</h3>
+        <ol class="numbered">
+          <li><strong>閉環意識</strong> — 每個任務有明確 Definition of Done，「差不多了」不算完成</li>
+          <li><strong>事實驅動</strong> — 每個判斷附檔案路徑 + 行號，「我猜」「應該是」是違規</li>
+          <li><strong>窮盡一切</strong> — 清單不跳過，乾淨的項目明確標「已檢查無問題」，不靜默忽略</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">模式切換</span>
+        <h3>依任務規模換檔</h3>
+        <ol class="numbered">
+          <li><strong>P7 執行</strong> — 單一功能：讀現狀 → 方案 → 影響分析 → 實施 → 三問自審</li>
+          <li><strong>P9 規劃</strong> — 3+ 檔：拆六要素 Task Prompt，輸出是 prompt 不是 code</li>
+          <li><strong>P10 戰略</strong> — 跨服務：輸出目標 / 指標 / 風險 / 時程戰略文件</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">工作面紀律</span>
+        <h3>control plane ≠ write surface</h3>
+        <ol class="numbered">
+          <li>主倉庫只允許讀 / fetch / <span class="sho-mono">pull --ff-only</span> / 開 worktree / merge</li>
+          <li>每個 task 開 sibling worktree 改檔，memory 永遠不在主倉庫寫</li>
+          <li>禁 <span class="sho-mono">git add .</span> — 只 stage 明確列出的 path，避免混入無關改動</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">記憶寫入</span>
+        <h3>三層觸發紀律</h3>
+        <ol class="numbered">
+          <li><strong>L1 明確</strong> — 使用者說「記下 / save」→ 立即寫 durable memory</li>
+          <li><strong>L2 強訊號</strong> — 明確 correction / validation / 新穩定事實 → 寫 durable</li>
+          <li><strong>L3 session 邊界</strong> — 「收工 / 對話結束」→ 寫 ephemeral handoff，不污染 git</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">美學 first-class</span>
+        <h3>不是 nice-to-have</h3>
+        <ol class="numbered">
+          <li>所有 UI surface 出手前讀 <span class="sho-mono">design-system.md</span>，走單一 <span class="sho-mono">--sho-*</span> token</li>
+          <li>拒 AI slop：無 Inter/Roboto、無紫漸層、無均勻 card grid 當預設</li>
+          <li>每個 state（hover / focus / empty / error…）都設計過，a11y 不妥協</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">multi-agent</span>
+        <h3>Claude + Codex 協作</h3>
+        <ol class="numbered">
+          <li>記憶按 agent + 語言切：Claude 讀寫 <span class="sho-mono">claude/</span>、Codex 讀寫 <span class="sho-mono">codex/</span></li>
+          <li><span class="sho-mono">shared/</span> 強制 bilingual frontmatter，否則跨語言找不到</li>
+          <li>UPDATE 走 <span class="sho-mono">.lock</span>，衝突絕不 silent last-write-wins，必呼叫使用者</li>
+        </ol>
+      </div>
+      <div class="principle-card">
+        <span class="principle-card__kicker sho-mono-up">Sandcastle default</span>
+        <h3>並行 dispatch 走雲端隔離</h3>
+        <ol class="numbered">
+          <li>Default 用 Sandcastle（cloud isolation）跑並行 / AFK 任務</li>
+          <li>本機 <span class="sho-mono">isolation: worktree</span> 只用於能盯住全程的單一短任務</li>
+          <li>backend → Sandcastle、UI → 主 session（瀏覽器驗證在 scope 內）</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── /05 Runtime Policy ───────────────────────────────────────────── -->
+  <section aria-labelledby="policy-heading">
+    <div class="section-head">
+      <div class="sho-kicker"><span class="sho-kicker-n">05</span><span>runtime policy</span></div>
+      <h2 id="policy-heading">Runtime Policy</h2>
+      <p>Nakama 不用 PreToolUse / PostToolUse hook，而是用 <code>.claude/settings.json</code> 的 allow / deny permission list + worktree 隔離當護欄。三類守則：安全、穩定、方便。</p>
+    </div>
+
+    <div class="policy-grid">
+      <div class="policy-card policy-card--security">
+        <span class="policy-card__cat sho-mono-up">／ 01　Security · 安全</span>
+        <h3>destructive 指令一律 deny</h3>
+        <p>下列 pattern 在 settings.json deny list，連明確口頭授權都擋得住 — 要繞過得改 settings 或自己另開 shell 跑。</p>
+        <ul class="policy-list">
+          <li><span class="sho-mono">rm</span> · <span class="sho-mono">rmdir</span> — 防誤刪（改走回收桶）</li>
+          <li><span class="sho-mono">sudo</span> — 防本機提權</li>
+          <li><span class="sho-mono">git reset --hard</span> · <span class="sho-mono">checkout --</span> · <span class="sho-mono">clean</span> — 防 destructive git 丟失未提交</li>
+          <li><span class="sho-mono">Edit(.env)</span> — 防 API key 進 transcript / git</li>
+          <li><span class="sho-mono">scp</span> · <span class="sho-mono">rsync</span> — 防檔案外流</li>
+        </ul>
+      </div>
+      <div class="policy-card policy-card--reliability">
+        <span class="policy-card__cat sho-mono-up">／ 02　Reliability · 穩定</span>
+        <h3>主倉庫不可被污染</h3>
+        <p>多視窗並行下，最大風險是 unrelated 改動混進 PR、或主倉庫被 destructive 操作弄亂。</p>
+        <ul class="policy-list">
+          <li>主倉庫只 <span class="sho-mono">pull --ff-only</span>，不在上面 checkout 工作 branch</li>
+          <li>每個 task 開 sibling worktree 隔離 write surface</li>
+          <li>memory commit 走 <span class="sho-mono">paths-ignore</span> 直 push main，絕不在 feature branch</li>
+          <li>stash 用 <span class="sho-mono">-m</span> 命名，不用 <span class="sho-mono">pop stash@{0}</span>（index 會漂移）</li>
+        </ul>
+      </div>
+      <div class="policy-card policy-card--convenience">
+        <span class="policy-card__cat sho-mono-up">／ 03　Convenience · 方便</span>
+        <h3>安全的逃生門</h3>
+        <p>擋掉危險指令之後，留幾條被 allow-list 過的安全替代，讓日常不卡關。</p>
+        <ul class="policy-list">
+          <li>刪檔走 PowerShell 回收桶 <span class="sho-mono">DeleteFile(…'SendToRecycleBin')</span></li>
+          <li>VPS 維運：<span class="sho-mono">ssh nakama-vps "journalctl / systemctl …"</span> 已 allow</li>
+          <li>Python / pytest / ruff / git 讀寫全套 allow-listed，不用每次問</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span class="sho-mono">
+      <span class="sho-bolt footer-bolt" aria-hidden="true">
+        <svg><use href="#sho-bolt-shape"/></svg>
+      </span>
+      研究編號 N°0803 · nakama · system overview v1
+    </span>
+    <span>
+      <a class="sho-lk sho-mono" href="https://github.com/shosho-chang/nakama" rel="noopener">
+        github.com/shosho-chang/nakama
+      </a>
+    </span>
+  </footer>
+
+  <!-- ── per-agent data-flow diagram modal ────────────────────────────── -->
+  <dialog id="crew-diagram-modal" class="cd-modal" aria-labelledby="cd-modal-name">
+    <header class="cd-modal__bar">
+      <span class="cd-modal__mono" id="cd-modal-mono" aria-hidden="true">R</span>
+      <span class="cd-modal__id">
+        <span class="cd-modal__name" id="cd-modal-name">Robin</span>
+        <span class="cd-modal__job" id="cd-modal-job">考古學家 · 知識庫</span>
+      </span>
+      <span class="cd-modal__tag sho-mono-up">data&nbsp;flow</span>
+      <button type="button" class="cd-modal__close" aria-label="關閉資料流圖">✕</button>
+    </header>
+    <div class="cd-modal__scroll" id="cd-modal-body"></div>
+  </dialog>
+
+  <!-- Robin 資料流圖 — 每個方塊是一支可獨立抽換的程式模組（事實來源：agents/robin/*.py） -->
+  <template data-diagram="robin">
+    <p class="cd-intro">先看 <b>總覽</b>（一眼看懂 Robin 在做什麼），再往下看 <b>五條細節資料流</b>。每種元件用不同形狀區分：</p>
+
+    <div class="cd-legend" aria-hidden="true">
+      <span class="cd-lg"><span class="cd-lg-sh cd-lg-sh--trigger"></span>觸發</span>
+      <span class="cd-lg"><span class="cd-lg-sh cd-lg-sh--skill"></span>Skill</span>
+      <span class="cd-lg"><span class="cd-lg-sh cd-lg-sh--proc"></span>程式模組 .py</span>
+      <span class="cd-lg"><span class="cd-lg-sh cd-lg-sh--llm"></span>LLM 模型</span>
+      <span class="cd-lg"><span class="cd-lg-sh cd-lg-sh--ext"></span>外部 / MCP</span>
+      <span class="cd-lg"><span class="cd-lg-sh cd-lg-sh--db"></span>資料庫</span>
+      <span class="cd-lg"><span class="cd-lg-sh cd-lg-sh--data"></span>檔案 / 產出</span>
+    </div>
+    <p class="cd-legend-note">箭頭分三種：<b>實線＝資料流</b>（會標出傳了什麼）、<b>點線＝觸發</b>（誰叫它跑）、<b>虛線＝呼叫 / 包含</b>（A 呼叫 B，或 Skill 包住它的 script）。</p>
+
+    <!-- OVERVIEW — agent flow, layperson-scannable -->
+    <section class="cd-flow cd-flow--overview">
+      <header class="cd-flow__head">
+        <span class="cd-flow__n sho-mono-up">總覽 · agent flow</span>
+        <h4 class="cd-flow__title">Robin 一眼看懂</h4>
+        <p class="cd-flow__desc">誰啟動它 → 它是什麼 → 它讀什麼、寫什麼。</p>
+      </header>
+      <div class="cd-overview">
+        <div class="cd-ov-col">
+          <span class="cd-ov-lbl">怎麼被啟動</span>
+          <div class="cd-node cd-sh-trigger"><span class="cd-node__kind sho-mono-up">觸發 · cron</span><span class="cd-node__name">02:00 文章 ingest</span></div>
+          <div class="cd-node cd-sh-trigger"><span class="cd-node__kind sho-mono-up">觸發 · cron</span><span class="cd-node__name">05:30 PubMed 摘要</span></div>
+          <div class="cd-node cd-sh-skill"><span class="cd-node__kind sho-mono-up">Skill</span><span class="cd-node__name">kb-ingest</span></div>
+          <div class="cd-node cd-sh-skill"><span class="cd-node__kind sho-mono-up">Skill</span><span class="cd-node__name">kb-search</span></div>
+          <div class="cd-node cd-sh-skill"><span class="cd-node__kind sho-mono-up">Skill</span><span class="cd-node__name">textbook-ingest</span></div>
+          <div class="cd-node cd-sh-trigger"><span class="cd-node__kind sho-mono-up">觸發 · web</span><span class="cd-node__name">Reader / 中控台 UI</span></div>
+        </div>
+        <span class="cd-edge2" aria-hidden="true"><span class="cd-edge2__lbl">觸發 / 呼叫</span><span class="cd-edge2__ar">→</span></span>
+        <div class="cd-ov-col cd-ov-col--core">
+          <span class="cd-ov-lbl">它是什麼</span>
+          <div class="cd-node cd-node--hero"><span class="cd-node__kind sho-mono-up">考古學家 · 知識庫</span><span class="cd-node__name">Robin</span><span class="cd-node__role">把素材讀懂、整理進知識庫</span></div>
+          <div class="cd-node cd-sh-llm"><span class="cd-node__kind sho-mono-up">LLM · 大腦</span><span class="cd-node__name">Sonnet 4.6 · Haiku · Opus</span></div>
+          <div class="cd-node cd-sh-ext cd-node--none"><span class="cd-node__kind sho-mono-up">MCP</span><span class="cd-node__name">無 · 純本地 + 自家 API</span></div>
+        </div>
+        <span class="cd-edge2" aria-hidden="true"><span class="cd-edge2__lbl">讀 / 寫</span><span class="cd-edge2__ar">→</span></span>
+        <div class="cd-ov-col">
+          <div class="cd-ov-split">
+            <span class="cd-ov-lbl">讀進來</span>
+            <div class="cd-node cd-sh-db"><span class="cd-node__kind sho-mono-up">資料庫</span><span class="cd-node__name">KB 知識庫</span></div>
+            <div class="cd-node cd-sh-ext"><span class="cd-node__kind sho-mono-up">外部</span><span class="cd-node__name">PubMed / NCBI</span></div>
+            <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">檔案</span><span class="cd-node__name">Inbox · Reader 註記</span></div>
+            <span class="cd-ov-lbl">寫出去</span>
+            <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Wiki 頁 · digest · 風格 profile</span></div>
+            <div class="cd-node cd-sh-db"><span class="cd-node__kind sho-mono-up">資料庫</span><span class="cd-node__name">state.db</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="cd-ov-say">一句話：<b>cron / Skill / Reader 觸發 Robin → 用 LLM 把素材讀懂 → 寫進 KB 知識庫</b>。全程不碰 MCP。</p>
+    </section>
+
+    <p class="cd-subhead">細節 · 五條流 — 每條箭頭標出實際傳了什麼資料：</p>
+
+    <!-- FLOW 1 -->
+    <section class="cd-flow">
+      <header class="cd-flow__head">
+        <span class="cd-flow__n sho-mono-up">flow 1 · cron 02:00（自動）</span>
+        <h4 class="cd-flow__title">文章 / 論文 ingest</h4>
+        <p class="cd-flow__desc">從一個網頁，一路走到 KB 的 Source / Concept / Entity 頁。完整出處鏈，每一跳都標出傳遞的資料。</p>
+      </header>
+      <div class="cd-vflow">
+        <div class="cd-node cd-sh-ext">
+          <span class="cd-node__kind sho-mono-up">來源 · 外部</span>
+          <span class="cd-node__name">網際網路（網頁）</span>
+          <span class="cd-node__role">只有輸出，沒有輸入</span>
+        </div>
+        <div class="cd-vedge cd-vedge--trigger"><span class="cd-vedge__lbl">使用者右鍵「Clip page」/ Alt+Shift+N</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node">
+          <span class="cd-node__kind sho-mono-up">外部工具 · Chrome 擴充</span>
+          <span class="cd-node__name">News Coo</span>
+          <span class="cd-node__role">Defuddle 抽正文、下載圖片、產生 frontmatter</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> 網頁 DOM</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> {slug}.md（frontmatter + 正文）＋ attachments/</span>
+        </div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">FSA 直接寫入 {slug}.md ＋ attachments/{slug}/</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-sh-db">
+          <span class="cd-node__kind sho-mono-up">資料夾 · vault</span>
+          <span class="cd-node__name">Inbox/web/</span>
+          <span class="cd-node__role">待處理區（News Coo 寫、Robin 讀）</span>
+        </div>
+        <div class="cd-vedge cd-vedge--trigger"><span class="cd-vedge__lbl">cron 02:00 觸發 → 掃描未處理檔</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod">
+          <span class="cd-node__kind sho-mono-up">Robin 元件 · 入口</span>
+          <span class="cd-node__name">agent.py</span>
+          <span class="cd-node__role">依副檔名分類、複製到 KB/Raw、搬 attachments、標記已處理</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> Inbox/web/{slug}.md · config.yaml</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> KB/Raw/Articles/{slug}.md · KB/Attachments · state.db</span>
+          <div class="cd-uses"><span class="cd-helper cd-helper--planned">image_fetcher.py · 圖片在地化（未接線）</span></div>
+        </div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">呼叫 ingest(raw_path · source_type · content_nature)</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod">
+          <span class="cd-node__kind sho-mono-up">Robin 元件 · 核心管線</span>
+          <span class="cd-node__name">ingest.py</span>
+          <span class="cd-node__role">摘要 → 抽 Concept / Entity → 寫頁 → 更新索引</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> raw_path · 既有 Concepts 清單</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> Source 摘要 · Concept / Entity 頁 · index · log</span>
+          <div class="cd-uses">
+            <span class="cd-helper"><b>chunker.py</b> 內文 → chunks[]（&gt;30k 才切）</span>
+            <span class="cd-helper cd-helper--ext">LLM → 摘要文字</span>
+            <span class="cd-helper cd-helper--ext">LLM → concept plan JSON</span>
+            <span class="cd-helper"><b>categories.py</b> content_nature 分類</span>
+          </div>
+        </div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">寫入（write_page · upsert_concept_page · append）</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-vrow">
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Wiki/Sources/{slug}</span></div>
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Wiki/Concepts/{slug}</span></div>
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Wiki/Entities/{slug}</span></div>
+          <div class="cd-node cd-sh-data cd-node--minor"><span class="cd-node__kind sho-mono-up">附帶</span><span class="cd-node__name">index.md · log.md · memory</span></div>
+        </div>
+      </div>
+      <div class="cd-group">
+        <div class="cd-group__head"><span class="cd-group__badge">SKILL</span><span class="cd-group__title">kb-ingest</span><span class="cd-group__lbl">另一個入口（手動）</span></div>
+        <p class="cd-group__note"><b>不經 agent.py。</b>修修在 Claude Code 說「ingest 這篇」時，互動式重跑同一套 <b>summarize → extract → write</b>，產出相同的 Sources / Concepts / Entities。<br><b>包含：</b>references/ 模板（非可執行程式）。<b>呼叫：</b>shared.obsidian_writer · shared.kb_writer · LLM。</p>
+      </div>
+    </section>
+
+    <!-- FLOW 2 -->
+    <section class="cd-flow">
+      <header class="cd-flow__head">
+        <span class="cd-flow__n sho-mono-up">flow 2 · cron 05:30（自動）</span>
+        <h4 class="cd-flow__title">PubMed 每日摘要</h4>
+        <p class="cd-flow__desc">22 本頂尖期刊新論文 → 篩選評分 → 抓全文 → 寫成每日 digest。</p>
+      </header>
+      <div class="cd-vflow">
+        <div class="cd-vrow">
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">設定</span><span class="cd-node__name">config/pubmed_feeds.yaml</span><span class="cd-node__role">22 期刊 feed 清單</span></div>
+          <div class="cd-node cd-sh-ext"><span class="cd-node__kind sho-mono-up">外部</span><span class="cd-node__name">PubMed RSS / eUtils</span><span class="cd-node__role">abstract + metadata</span></div>
+        </div>
+        <div class="cd-vedge cd-vedge--trigger"><span class="cd-vedge__lbl">cron 05:30 觸發 → 抓取候選論文</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod">
+          <span class="cd-node__kind sho-mono-up">Robin 元件 · 核心</span>
+          <span class="cd-node__name">pubmed_digest.py</span>
+          <span class="cd-node__role">去重 → 封鎖名單 → 期刊分級 → LLM 策展（選 10–15 篇）→ LLM 評分（6 維）</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> 候選論文清單</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> 選中 + 評分後的 PMID</span>
+          <div class="cd-uses">
+            <span class="cd-helper"><b>journal_metrics</b> SJR 分級</span>
+            <span class="cd-helper"><b>journal_blocklist</b> 擋 MDPI/Frontiers</span>
+            <span class="cd-helper"><b>state</b> scout_seen 去重</span>
+            <span class="cd-helper cd-helper--ext">LLM · 策展 + 評分</span>
+          </div>
+        </div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">每個選中 PMID → 取全文</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod">
+          <span class="cd-node__kind sho-mono-up">Robin 元件</span>
+          <span class="cd-node__name">pubmed_fulltext.py</span>
+          <span class="cd-node__role">NCBI efetch 取 DOI、協調全文抓取</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> PMID</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> DOI · 全文請求</span>
+        </div>
+        <div class="cd-vedge cd-vedge--invoke"><span class="cd-vedge__lbl">呼叫 fetch_publisher_html(DOI)</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod">
+          <span class="cd-node__kind sho-mono-up">Robin 元件</span>
+          <span class="cd-node__name">pubmed_html.py</span>
+          <span class="cd-node__role">elink 找 OA URL → 爬出版商 HTML → 在地化圖片</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> DOI · PMID</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> 全文 markdown + 圖</span>
+        </div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">寫入 digest + 每篇 Source 頁 + 全文附件</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-vrow">
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Wiki/Digests/PubMed/{date}</span></div>
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Wiki/Sources/pubmed-{pmid}</span></div>
+          <div class="cd-node cd-sh-db"><span class="cd-node__kind sho-mono-up">資料庫</span><span class="cd-node__name">KB/Attachments/{pmid}</span></div>
+          <div class="cd-node cd-sh-data cd-node--minor"><span class="cd-node__kind sho-mono-up">附帶</span><span class="cd-node__name">index.md · log.md</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FLOW 3 -->
+    <section class="cd-flow">
+      <header class="cd-flow__head">
+        <span class="cd-flow__n sho-mono-up">flow 3 · Skill（on-demand）</span>
+        <h4 class="cd-flow__title">kb-search — 查知識庫</h4>
+        <p class="cd-flow__desc">這個 Skill 是一層薄包裝：它<b>包含</b>一支 script，透過 HTTP <b>呼叫</b>後端檢索模組。示範「Skill ⊃ script → 呼叫」的關係。</p>
+      </header>
+      <div class="cd-vflow">
+        <div class="cd-node cd-sh-trigger"><span class="cd-node__kind sho-mono-up">觸發</span><span class="cd-node__name">修修 / 其他 agent：「查 KB X」</span></div>
+        <div class="cd-vedge cd-vedge--trigger"><span class="cd-vedge__lbl">執行 Skill</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-group">
+          <div class="cd-group__head"><span class="cd-group__badge">SKILL</span><span class="cd-group__title">kb-search</span><span class="cd-group__lbl">包含 1 支 script</span></div>
+          <div class="cd-group__body">
+            <div class="cd-node"><span class="cd-node__kind sho-mono-up">內含 script</span><span class="cd-node__name">scripts/search.py</span><span class="cd-node__role">把 query 打包成 HTTP 請求 · 不讀 vault</span></div>
+          </div>
+          <p class="cd-group__note"><b>包含：</b>scripts/search.py（隨 Skill 一起 ship，無後端邏輯）。</p>
+        </div>
+        <div class="cd-vedge cd-vedge--invoke"><span class="cd-vedge__lbl">HTTP POST /kb/research（query 字串）</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node">
+          <span class="cd-node__kind sho-mono-up">Web 層 · FastAPI</span>
+          <span class="cd-node__name">routers/robin.py</span>
+          <span class="cd-node__role">/kb/research 端點</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> query (form)</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> 呼叫 search_kb()</span>
+        </div>
+        <div class="cd-vedge cd-vedge--invoke"><span class="cd-vedge__lbl">search_kb(query, vault)</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod">
+          <span class="cd-node__kind sho-mono-up">Robin 元件 · 共用檢索</span>
+          <span class="cd-node__name">kb_search.py</span>
+          <span class="cd-node__role">混合檢索 BM25 + 向量 RRF（或 Haiku ranker）</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> query · purpose</span>
+          <span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> KBHit[]（不寫入）</span>
+        </div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">讀取候選頁面 → 排序</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-sh-db"><span class="cd-node__kind sho-mono-up">資料庫 · 只讀</span><span class="cd-node__name">KB/Wiki/{Sources,Concepts,Entities}</span></div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">回傳 KBHit[] JSON（type · title · path · relevance）</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">排序結果 → 呼叫者</span></div>
+      </div>
+    </section>
+
+    <!-- FLOW 4 -->
+    <section class="cd-flow">
+      <header class="cd-flow__head">
+        <span class="cd-flow__n sho-mono-up">flow 4 · Skill（on-demand）</span>
+        <h4 class="cd-flow__title">textbook-ingest — 整本書進 KB</h4>
+        <p class="cd-flow__desc">這個 Skill <b>包含</b>兩支 script，並<b>呼叫</b>多個共用模組。下半是書籍 digest 彙整（用 flow 3 的檢索）。</p>
+      </header>
+      <div class="cd-vflow">
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">輸入</span><span class="cd-node__name">PDF / EPUB</span><span class="cd-node__role">一本書</span></div>
+        <div class="cd-vedge cd-vedge--trigger"><span class="cd-vedge__lbl">修修：「ingest 這本教科書 &lt;path&gt;」</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-group">
+          <div class="cd-group__head"><span class="cd-group__badge">SKILL</span><span class="cd-group__title">textbook-ingest</span><span class="cd-group__lbl">包含 2 支 script</span></div>
+          <div class="cd-group__body">
+            <div class="cd-node"><span class="cd-node__kind sho-mono-up">內含 script</span><span class="cd-node__name">scripts/parse_book.py</span><span class="cd-node__role">解析章節 → outline.json + 每章 .md</span></div>
+            <div class="cd-node"><span class="cd-node__kind sho-mono-up">內含 script · daemon</span><span class="cd-node__name">scripts/queue_processor.py</span><span class="cd-node__role">--watch 每 60s 輪詢佇列自動派工</span></div>
+          </div>
+          <p class="cd-group__note"><b>呼叫（非內含）：</b>prompts/extract_concepts.md · shared.kb_writer · shared.obsidian_writer · Vision（描述圖）。</p>
+        </div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">parse_book.py 產出 outline.json + chapters/*.md</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">中繼檔</span><span class="cd-node__name">outline.json · chapters/ch*.md</span><span class="cd-node__role">含 &lt;&lt;FIG&gt;&gt; / &lt;&lt;TAB&gt;&gt; 佔位</span></div>
+        <div class="cd-vedge cd-vedge--invoke"><span class="cd-vedge__lbl">逐章：Vision 描述圖 + LLM 抽 concept + upsert</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-vrow">
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Sources/Books/{id}/ch{n}.md</span></div>
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Concepts/{slug}</span></div>
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Entities/Books/{id}</span></div>
+        </div>
+      </div>
+      <div class="cd-vflow cd-vflow--aux">
+        <span class="cd-group__lbl">書籍 digest 彙整</span>
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">輸入</span><span class="cd-node__name">KB/Annotations（H/A/C）+ 既有 digest.md</span><span class="cd-node__role">高亮 / 註記 / 評論 + 👍👎 回饋</span></div>
+        <div class="cd-vedge cd-vedge--invoke"><span class="cd-vedge__lbl">逐項呼叫 kb_search 找相關頁（見 flow 3）</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod"><span class="cd-node__kind sho-mono-up">Robin 元件</span><span class="cd-node__name">book_digest_writer.py</span><span class="cd-node__role">解析 👍👎 回饋、渲染章節、嵌入 KB 連結</span><span class="cd-node__io"><b class="cd-io cd-io--in">IN</b> Annotations · digest.md · KBHit[]</span><span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> Books/{id}/digest.md · state.db(feedback)</span></div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">寫入</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">…/Books/{id}/digest.md</span></div>
+      </div>
+    </section>
+
+    <!-- FLOW 5 -->
+    <section class="cd-flow">
+      <header class="cd-flow__head">
+        <span class="cd-flow__n sho-mono-up">flow 5 · on-demand（內部）</span>
+        <h4 class="cd-flow__title">註記同步 · 寫作交接 · 風格</h4>
+        <p class="cd-flow__desc">三條較短的內部流程，由 Reader 事件或寫作流程觸發。</p>
+      </header>
+
+      <div class="cd-vflow">
+        <span class="cd-group__lbl">5a · Reader 註記同步</span>
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">輸入</span><span class="cd-node__name">KB/Annotations/{slug}</span><span class="cd-node__role">Reader 劃線 / 筆記（v1/v2/v3）</span></div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">LLM 把每條註記對映到 Concept slug</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod"><span class="cd-node__kind sho-mono-up">Robin 元件</span><span class="cd-node__name">annotation_merger.py</span><span class="cd-node__role">依 schema 分派、產生帶邊界標記的 callout</span><div class="cd-uses"><span class="cd-helper"><b>annotation_weave.py</b> 純函數 · 編織 callout</span><span class="cd-helper"><b>book_notes_writer.py</b> notes.md</span><span class="cd-helper cd-helper--ext">LLM</span></div></div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">寫入個人觀點 callout（含邊界標記）</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-vrow">
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">Wiki/Concepts/{slug}</span></div>
+          <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">…/Books/{id}/notes.md</span></div>
+        </div>
+      </div>
+
+      <div class="cd-vflow cd-vflow--aux">
+        <span class="cd-group__lbl">5b · Stage 3→4 寫作交接（LLM 不代寫正文）</span>
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">輸入</span><span class="cd-node__name">digest.md · notes.md · 註記 · source map · Concepts</span></div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">純聚合（無 LLM、無寫入、可重現）</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod"><span class="cd-node__kind sho-mono-up">Robin 元件 · 純聚合</span><span class="cd-node__name">reading_context_package.py</span><span class="cd-node__role">把證據聚成一份「寫作包」</span><span class="cd-node__io"><b class="cd-io cd-io--out">OUT</b> ReadingContextPackage</span></div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">回傳 value object（不寫 vault）</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-sh-trigger cd-node--minor"><span class="cd-node__kind sho-mono-up">交接</span><span class="cd-node__name">Stage 4 · 修修動筆</span></div>
+      </div>
+
+      <div class="cd-vflow cd-vflow--aux">
+        <span class="cd-group__lbl">5c · 寫作風格 profile</span>
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">輸入</span><span class="cd-node__name">KB/Raw/Articles（≤5 篇）</span></div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">LLM 分析語氣 / 句長 / 用詞</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-node--mod"><span class="cd-node__kind sho-mono-up">Robin 元件</span><span class="cd-node__name">style_extractor.py</span><span class="cd-node__role">抽出寫作風格特徵</span><div class="cd-uses"><span class="cd-helper cd-helper--ext">LLM</span></div></div>
+        <div class="cd-vedge"><span class="cd-vedge__lbl">寫入</span><span class="cd-vedge__ar">↓</span></div>
+        <div class="cd-node cd-sh-data"><span class="cd-node__kind sho-mono-up">產出</span><span class="cd-node__name">config/style-profile.json</span></div>
+      </div>
+    </section>
+
+    <p class="cd-foot sho-mono">入口：<b>__main__.py</b> 路由 <code>--mode ingest</code>（flow A）/ <code>--mode pubmed_digest</code>（flow B）；Skill（<b>kb-ingest</b> / <b>kb-search</b> / <b>textbook-ingest</b>）與 Reader / 中控台 UI 為 on-demand 觸發；無 Slack handler。<b>Robin 不使用 MCP</b>。事實來源：<code>agents/robin/*.py</code> · <code>.agents/skills/*</code> · <code>cron.conf</code>。</p>
+  </template>
+
+</main>
+
+<script>
+  // Header theme switch — light/dark with a sliding thumb. The render-blocking
+  // <head> script already set the initial theme; this only wires the toggle.
+  (function () {
+    const KEY = 'sho-theme';
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    function read() { try { return localStorage.getItem(KEY); } catch (_) { return null; } }
+    function write(v) { try { localStorage.setItem(KEY, v); } catch (_) {} }
+    function systemDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    function apply(mode) {
+      document.documentElement.dataset.theme = mode;
+      btn.setAttribute('aria-checked', mode === 'dark' ? 'true' : 'false');
+      btn.dataset.mode = mode;
+    }
+    const saved = read();
+    apply(saved === 'dark' || saved === 'light' ? saved : (systemDark() ? 'dark' : 'light'));
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.mode === 'dark' ? 'light' : 'dark';
+      write(next);
+      apply(next);
+    });
+  })();
+</script>
+
+<script>
+  // Per-agent data-flow diagram modal. Each crew card carries a trigger button;
+  // clicking it opens a native <dialog> populated from the matching <template
+  // data-diagram="…">. Agent identity is read off the card (no duplicated data
+  // attribute). Agents without a template get an honest "製作中" placeholder.
+  (function () {
+    const dlg = document.getElementById('crew-diagram-modal');
+    if (!dlg || typeof dlg.showModal !== 'function') return;
+    const body = document.getElementById('cd-modal-body');
+    const elName = document.getElementById('cd-modal-name');
+    const elJob = document.getElementById('cd-modal-job');
+    const elMono = document.getElementById('cd-modal-mono');
+    const closeBtn = dlg.querySelector('.cd-modal__close');
+    let lastFocus = null;
+
+    function text(el) { return el && el.textContent ? el.textContent.trim() : ''; }
+
+    function openFor(card) {
+      const name = text(card.querySelector('.crew-card__name'));
+      elName.textContent = name;
+      elJob.textContent = text(card.querySelector('.crew-card__job'));
+      elMono.textContent = text(card.querySelector('.crew-card__mono')) || name.slice(0, 1);
+      const tpl = document.querySelector('template[data-diagram="' + name.toLowerCase() + '"]');
+      body.innerHTML = '';
+      if (tpl) {
+        body.appendChild(tpl.content.cloneNode(true));
+      } else {
+        const p = document.createElement('p');
+        p.className = 'cd-pending';
+        p.textContent = '「' + name + '」的資料流圖製作中 — Robin 版定稿後，依同一格式逐一補上。';
+        body.appendChild(p);
+      }
+      dlg.showModal();
+      body.scrollTop = 0;
+    }
+
+    document.querySelectorAll('[data-diagram-open]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        // sits inside <summary>; stop the click from toggling the <details>.
+        e.preventDefault();
+        e.stopPropagation();
+        const card = btn.closest('.crew-card');
+        if (!card) return;
+        lastFocus = btn;
+        openFor(card);
+      });
+    });
+
+    // backdrop click → close (dialog itself is the target only on the ::backdrop)
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+    if (closeBtn) closeBtn.addEventListener('click', () => dlg.close());
+    dlg.addEventListener('close', () => {
+      if (lastFocus) { try { lastFocus.focus(); } catch (_) {} }
+    });
+  })();
+</script>
+
+</body>
+</html>

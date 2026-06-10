@@ -1,0 +1,149 @@
+/* ── Pomodoro dock — shared by the Project detail dock AND the Task page ──────
+ * Single source of visual truth for the sticky-footer pomodoro timer so the two
+ * surfaces never drift again (the form 修修 asked to unify). Project-only chrome
+ * (task table, add-task dialog) stays in bridge-projects.css; this file owns the
+ * dock shell + the timer control (25/75 mode toggle + ▶/⏸ button) + 🍅 rollup.
+ * Tokens only — no hard-coded colours (design-system.md). */
+
+.pj-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  background: var(--sho-bg-2, #1a1a1a);
+  border-top: 1px solid var(--sho-line-2, #555);
+  padding: var(--sho-s-3, 12px) var(--sho-s-5, 24px);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
+}
+.pj-dock-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-4, 16px);
+  flex-wrap: wrap;
+}
+.pj-dock-project {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--sho-text, inherit);
+  text-decoration: none;
+}
+.pj-dock-project:hover { color: var(--sho-accent); }
+
+.pj-dock-task-select {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.pj-dock-task-label {
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  color: var(--sho-muted, #888);
+}
+.pj-dock-task-select select {
+  padding: 4px 8px;
+  background: var(--sho-bg, transparent);
+  border: 1px solid var(--sho-line-2, #555);
+  color: var(--sho-text, inherit);
+  border-radius: var(--sho-r-1, 4px);
+  font-size: 12px;
+}
+
+/* 25 │ 75 segmented mode toggle — accent only on the active segment (line/text,
+ * never a block fill beyond the soft active bg; design-system §49). */
+.pj-timer-mode {
+  display: inline-flex;
+  border: 1px solid var(--sho-line-2, #555);
+  border-radius: var(--sho-r-1, 4px);
+  overflow: hidden;
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+.pj-timer-mode input { position: absolute; opacity: 0; pointer-events: none; }
+.pj-timer-mode label {
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--sho-muted, #888);
+  border-right: 1px solid var(--sho-line-2, #555);
+  user-select: none;
+}
+.pj-timer-mode label:last-of-type { border-right: 0; }
+.pj-timer-mode input:checked + label {
+  background: var(--sho-accent-soft, color-mix(in oklch, var(--sho-accent) 10%, transparent));
+  color: var(--sho-accent);
+}
+.pj-timer-mode input:focus-visible + label {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+
+.pj-dock-timer { display: flex; align-items: center; }
+.pj-timer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 14px;
+  border: 1px solid var(--sho-accent);
+  background: transparent;
+  color: var(--sho-accent);
+  cursor: pointer;
+  border-radius: var(--sho-r-1, 4px);
+}
+.pj-timer-btn:hover { background: var(--sho-accent); color: var(--sho-bg); }
+.pj-timer-btn[data-running="true"] {
+  background: var(--sho-accent-soft, color-mix(in oklch, var(--sho-accent) 10%, transparent));
+}
+.pj-timer-btn:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.pj-timer-icon { font-size: 12px; }
+.pj-timer-display { font-variant-numeric: tabular-nums; min-width: 56px; }
+
+/* a secondary (ghost) timer action — e.g. the Task page's 完成·記一段 / 取消 */
+.pj-timer-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  border: 1px solid var(--sho-line-2, #555);
+  background: transparent;
+  color: var(--sho-text-2, var(--sho-muted, #888));
+  cursor: pointer;
+  border-radius: var(--sho-r-1, 4px);
+}
+.pj-timer-secondary:hover { border-color: var(--sho-accent-line, var(--sho-accent)); color: var(--sho-text); }
+.pj-timer-secondary:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+.pj-dock-rollup {
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  margin-left: auto;
+}
+.pj-dock-rollup .val { color: var(--sho-text, inherit); font-weight: 600; }
+.pj-dock-rollup .muted { color: var(--sho-muted, #888); }
+
+/* running-only controls (Task dock 完成/取消) toggle via .is-hidden */
+.pj-dock .is-hidden { display: none; }
+/* Task-page dock: the manual +1 forms sit inline, no margin from <form> */
+.tk-dock .tk-mform { display: inline-flex; margin: 0; }
+
+/* #3 — Task dock split: scheduled date(s) pinned LEFT, the whole timer cluster
+ * pushed RIGHT, so the timer never gets jostled by the schedule chips. */
+.tk-dock-left {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;
+}
+.tk-dock-right {
+  display: flex; align-items: center; gap: var(--sho-s-4, 16px);
+  margin-left: auto; flex-wrap: wrap;
+}
+.tk-dock-sched { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tk-dock-sched-label {
+  font-family: var(--sho-font-mono, ui-monospace, monospace);
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--sho-muted, #888);
+}
+/* inside the dock the rollup follows the timer; don't let its auto-margin
+ * fight the .tk-dock-right group */
+.tk-dock-right .pj-dock-rollup { margin-left: 0; }

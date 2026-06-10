@@ -17,6 +17,7 @@ import hashlib
 import io
 import threading
 import zipfile
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -24,6 +25,7 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Cookie,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -37,6 +39,7 @@ from shared.annotation_store import (
     AnnotationSetV2,
     AnnotationSetV3,
     get_annotation_store,
+    list_annotation_conflicts,
     upgrade_to_v3,
 )
 from shared.book_queue import (
@@ -68,7 +71,7 @@ from shared.schemas.books import Book, BookProgress
 from shared.source_mode import Mode, detect_book_mode
 from shared.state import _get_conn
 from shared.utils import slugify
-from thousand_sunny.auth import check_auth
+from thousand_sunny.auth import check_auth, require_auth_or_key, set_auth_cookie
 
 # Allowed values for the upload form ``mode`` parameter. ``"auto"`` triggers
 # server-side detection from EPUB metadata.lang + body sample.
@@ -411,7 +414,9 @@ async def books_upload(
 
     response = RedirectResponse(f"/robin/books/{book_id}", status_code=303)
     if nakama_auth:
-        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+        # Re-issue with the full persistent flags so the upload redirect does
+        # not silently downgrade the 90-day login cookie back to a session one.
+        set_auth_cookie(response, nakama_auth)
     return response
 
 
@@ -446,7 +451,7 @@ def _ingest_status(book_id: str) -> str:
 
 
 @router.get("/api/books/{book_id}")
-async def book_metadata(book_id: str):
+async def book_metadata(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
@@ -456,7 +461,7 @@ async def book_metadata(book_id: str):
 
 
 @router.post("/api/books/{book_id}/ingest-request")
-async def post_ingest_request(book_id: str):
+async def post_ingest_request(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
@@ -467,7 +472,7 @@ async def post_ingest_request(book_id: str):
 
 
 @router.delete("/api/books/{book_id}/ingest-request")
-async def delete_ingest_request(book_id: str):
+async def delete_ingest_request(book_id: str, _auth=Depends(require_auth_or_key)):
     """Cancel a queued ingest. 409 if the book is already ingesting/done."""
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
@@ -477,7 +482,7 @@ async def delete_ingest_request(book_id: str):
 
 
 @router.get("/api/books/{book_id}/cover")
-async def book_cover(book_id: str):
+async def book_cover(book_id: str, _auth=Depends(require_auth_or_key)):
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     blob = read_cover_blob(book_id)
@@ -534,20 +539,28 @@ async def book_file(
 
 
 @router.get("/api/books/{book_id}/annotations")
-async def get_annotations(book_id: str):
+async def get_annotations(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     store = get_annotation_store()
     ann_set = store.load(book_id)
     if ann_set is None:
-        ann_set = AnnotationSetV2(
+        # Fabricate a v3 set, not v2: the reader mutates this object in place and
+        # POSTs it back, and its action handlers build v3-shaped items (`text`,
+        # `speaker`). A v2 schema_version routed that POST to AnnotationSetV2
+        # validation, so the first save on a freshly uploaded book always 422'd.
+        ann_set = AnnotationSetV3(
             slug=book_id,
+            base="books",
             book_id=book_id,
             book_version_hash=book.book_version_hash,
             items=[],
         )
-    return ann_set.model_dump()
+    # ADR-044 §B8: surface Syncthing conflict copies of this annotation file so
+    # the reader can warn the user to merge them, instead of losing edits silently.
+    conflicts = [asdict(c) for c in list_annotation_conflicts(book_id)]
+    return {**ann_set.model_dump(), "conflicts": conflicts}
 
 
 def _write_digest_in_background(book_id: str) -> None:
@@ -564,12 +577,18 @@ async def post_annotations(
     book_id: str,
     payload: dict,
     background_tasks: BackgroundTasks,
+    _auth=Depends(require_auth_or_key),
 ):
     """Accept either an ``AnnotationSetV2`` (legacy book reader payloads) or an
     ``AnnotationSetV3`` (post ADR-021 §1 round-trip from a Reader that already
     received a v3 GET response). Both are upgraded/normalised to v3 on disk.
     """
     from pydantic import ValidationError
+
+    # The GET response decorates the set with a read-only ``conflicts`` key
+    # (ADR-044 §B8) and the reader POSTs the whole object back verbatim; both
+    # set schemas are extra="forbid", so drop the decoration before validating.
+    payload.pop("conflicts", None)
 
     schema_version = payload.get("schema_version")
     try:
@@ -598,7 +617,7 @@ async def post_annotations(
 
 
 @router.get("/api/books/{book_id}/progress")
-async def get_book_progress(book_id: str):
+async def get_book_progress(book_id: str, _auth=Depends(require_auth_or_key)):
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
     conn = _get_conn()
@@ -617,7 +636,11 @@ async def get_book_progress(book_id: str):
 
 
 @router.put("/api/books/{book_id}/progress")
-async def put_book_progress(book_id: str, payload: BookProgress):
+async def put_book_progress(
+    book_id: str,
+    payload: BookProgress,
+    _auth=Depends(require_auth_or_key),
+):
     if payload.book_id != book_id:
         raise HTTPException(422, detail="book_id in URL does not match payload")
     if get_book(book_id) is None:

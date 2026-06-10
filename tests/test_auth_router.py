@@ -120,6 +120,14 @@ def test_login_cookie_has_secure_samesite_httponly(client_vps):
     assert "HttpOnly" in set_cookie
 
 
+def test_login_cookie_is_persistent_90_days(client_vps):
+    """Auth cookie 必須帶 Max-Age=90 天，瀏覽器關掉後仍保留（免每次重輸密碼）。"""
+    r = client_vps.post("/login", data={"password": "testpass"})
+    set_cookie = r.headers.get("set-cookie", "")
+    assert "nakama_auth=" in set_cookie
+    assert f"Max-Age={90 * 24 * 60 * 60}" in set_cookie
+
+
 def test_logout_cookie_has_secure_samesite(client_vps):
     """Logout 的 delete cookie 也要帶 Secure + SameSite 才能正確讓瀏覽器清掉。"""
     r = client_vps.post("/logout")
@@ -128,11 +136,11 @@ def test_logout_cookie_has_secure_samesite(client_vps):
     assert "SameSite=lax" in set_cookie.replace("SameSite=Lax", "SameSite=lax")
 
 
-def test_vps_root_redirects_to_brook(client_vps):
-    """VPS 模式下 / 應重導到 /brook/handoff（/architecture v2 R4）。"""
+def test_vps_root_redirects_to_dashboard(client_vps):
+    """VPS 模式下 / 應重導到週看板（修修：handoff 是工具頁、不是首頁）。"""
     r = client_vps.get("/")
     assert r.status_code == 302
-    assert r.headers["location"] == "/brook/handoff"
+    assert r.headers["location"] == "/bridge/weekly"
 
 
 def test_vps_brook_unauth_redirects_with_next(client_vps):

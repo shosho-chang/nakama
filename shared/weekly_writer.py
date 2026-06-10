@@ -21,8 +21,11 @@ import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import yaml
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")  # ADR-041 D4 — naive local stored WITH +08:00 (v3 V1)
 
 TASKS_DIR = "TaskNotes/Tasks"
 WEEKLY_DIR = "Journals/Weekly"
@@ -309,6 +312,82 @@ def add_plan_entry(
     _write_task(path, fm, body)
 
 
+def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
+    """Toggle a task's completion from the dashboard checkbox (#2).
+
+    Marking done sets ``status: done``; un-marking sets ``status: to-do`` and
+    clears a truthy ``✅`` flag so the indexer (``done = status=='done' or ✅``)
+    agrees. Only ``status`` / ``✅`` are touched — plan[]/timeEntries/scheduled
+    and the body are preserved. Returns the new status. Raises
+    :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    if done:
+        fm["status"] = "done"
+        if fm.get("✅") is not None:
+            fm["✅"] = True
+    else:
+        if str(fm.get("status") or "") == "done":
+            fm["status"] = "to-do"
+        if fm.get("✅") is True:
+            fm["✅"] = False
+    _write_task(path, fm, body)
+    return str(fm.get("status") or "to-do")
+
+
+_TASK_CATEGORIES = ("work", "health", "growth", "misc")
+_TASK_PRIORITIES = ("low", "normal", "high")
+
+
+def set_task_meta(
+    vault_root: Path, task_slug: str, *, category: str | None = None, priority: str | None = None
+) -> str:
+    """Update a task's ``category`` / ``priority`` frontmatter from the dashboard /
+    task-page dropdowns (v3-I follow-up, 修修). Only the given, valid fields are
+    written; plan[]/timeEntries/status/body are preserved. Unknown values are ignored
+    (the dropdowns only emit valid ones). Returns the task slug. Raises
+    :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    if category in _TASK_CATEGORIES:
+        fm["category"] = category
+    if priority in _TASK_PRIORITIES:
+        fm["priority"] = priority
+    _write_task(path, fm, body)
+    return task_slug
+
+
+def set_plan_entry_done(vault_root: Path, task_slug: str, day: date, done: bool) -> str:
+    """Toggle the DAY's plan[] entry done flag (v3-I follow-up, 修修).
+
+    The daily-bullet checkbox means 'that day's work on this task is done' — distinct
+    from the task-list checkbox (``set_task_done``), which marks the WHOLE task done.
+    Only the matching plan[] entry's ``done`` is touched; task ``status`` is untouched,
+    so the task stays open while a day's slice is crossed out. Returns the task slug.
+    Raises :class:`TaskNotFoundError` if the file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    fm, body = _read_task(path)
+    plan = fm.get("plan")
+    if isinstance(plan, list):
+        iso = day.isoformat()
+        for e in plan:
+            if isinstance(e, dict) and str(e.get("date"))[:10] == iso:
+                if done:
+                    e["done"] = True
+                else:
+                    e.pop("done", None)
+                break
+        fm["plan"] = plan
+    _write_task(path, fm, body)
+    return task_slug
+
+
 # ── Calendar-block scheduling (ADR-041 — vault is the source of truth) ──────────
 # A scheduled block is, authoritatively, a ``plan[]`` entry (effort intent — D1).
 # The calendar event is a downstream projection; this writer only touches the VAULT:
@@ -384,21 +463,368 @@ def schedule_task_block(
     return scheduled, scheduled_end, task_file_token(vault_root, task_slug)
 
 
+# ── v3 per-entry projection (ADR-041 v3) ───────────────────────────────────────
+# A plan[] entry is the unit of projection: it MAY carry start/end (ISO with the
+# +08:00 offset) + a per-entry calendar_event_id. These functions operate on ONE
+# entry (keyed by date) and never touch the task-level scheduled/calendar_event_id
+# (legacy — migrated by migrate_legacy_projection). The scheduler composes them
+# with the best-effort Google call (one event per {slug}@{date}).
+
+
+def _iso_with_offset(dt: datetime) -> str:
+    """``dt`` as ISO-8601 seconds WITH the Asia/Taipei offset (naive ⇒ assume
+    Taipei). Hardens against the naive-local DST/travel trap (v3 panel)."""
+    aware = dt if dt.tzinfo else dt.replace(tzinfo=TAIPEI_TZ)
+    return aware.isoformat(timespec="seconds")
+
+
+def upsert_plan_entry(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    day: date,
+    pomodoros: int,
+    start: Optional[datetime] = None,
+    all_day: bool = False,
+    reason: Optional[str] = None,
+    calendar_event_id: Optional[str] = None,
+    expected_token: Optional[str] = None,
+) -> tuple[str, str, str]:
+    """The v3 merged 「排入」 write: upsert the ``plan[]`` entry for ``day`` with
+    ``pomodoros`` and a projection. With ``start`` ⇒ a timed block (``start``/``end``
+    = start + pomodoros×30, ISO with +08:00). With ``all_day`` ⇒ a date-only span
+    (``start`` = ``day``, ``end`` = next day, exclusive — ADR-041 v3-E, the new
+    blank-time mode). Neither ⇒ plan-only (legacy / internal). Only the one entry is
+    touched; ``done`` is preserved, and an existing ``start``/``end``/
+    ``calendar_event_id`` is kept when this call doesn't override it (so a plan-only
+    re-pomodoro of a linked entry doesn't silently unlink it). ``calendar_event_id``
+    is the scheduler's write-back. Returns ``(start_iso, end_iso, new_token)``
+    (``""`` when plan-only). Raises TaskNotFound / WeekendReasonRequired / Conflict.
+    """
+    if pomodoros < 1:
+        raise WeeklyWriteError("pomodoros must be >= 1")
+    if _is_weekend(day) and not reason:
+        raise WeekendReasonRequired(f"週末 ({day.isoformat()}) 排程需填寫 reason（D9）")
+
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    _check_token(path, expected_token)
+    fm, body = _read_task(path)
+    entries = _plan_list(fm)
+
+    new_entry: dict[str, Any] = {"date": day.isoformat(), "pomodoros": pomodoros}
+    if reason:
+        new_entry["reason"] = reason
+    start_iso = end_iso = ""
+    if all_day:  # date-only span (v3-E blank-time mode); end exclusive next day
+        start_iso = day.isoformat()
+        end_iso = (day + timedelta(days=1)).isoformat()
+        new_entry["start"], new_entry["end"] = start_iso, end_iso
+    elif start is not None:
+        start_iso = _iso_with_offset(start)
+        end_iso = _iso_with_offset(
+            start + timedelta(minutes=pomodoros * CALENDAR_BLOCK_MINUTES_PER_POMODORO)
+        )
+        new_entry["start"], new_entry["end"] = start_iso, end_iso
+    if calendar_event_id is not None:
+        new_entry["calendar_event_id"] = calendar_event_id
+
+    replaced = False
+    for i, e in enumerate(entries):
+        if _entry_date(e) == day:
+            if "done" in e:
+                new_entry["done"] = e["done"]
+            if start is None and not all_day:  # plan-only edit — keep an existing projection
+                for k in ("start", "end"):
+                    if e.get(k):
+                        new_entry[k] = e[k]
+                start_iso, end_iso = new_entry.get("start", ""), new_entry.get("end", "")
+            if calendar_event_id is None and e.get("calendar_event_id"):
+                new_entry["calendar_event_id"] = e["calendar_event_id"]
+            entries[i] = new_entry
+            replaced = True
+            break
+    if not replaced:
+        entries.append(new_entry)
+    fm["plan"] = entries
+    _write_task(path, fm, body)
+    return start_iso, end_iso, task_file_token(vault_root, task_slug)
+
+
+def read_entry_event_id(vault_root: Path, task_slug: str, day: date) -> str:
+    """The ``calendar_event_id`` on the plan entry for ``day`` ("" if none / no
+    entry / task gone). Lets the scheduler locate a linked block per-entry."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        return ""
+    fm, _ = _read_task(path)
+    for e in _plan_list(fm):
+        if _entry_date(e) == day:
+            return str(e.get("calendar_event_id") or "").strip()
+    return ""
+
+
+def migrate_legacy_projection(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    expected_token: Optional[str] = None,
+) -> str:
+    """Fold a v2 task-level projection (``scheduled``/``scheduled_end``/
+    ``calendar_event_id``) into the ``plan[]`` entry on ``scheduled``'s date, then
+    drop the task-level keys (ADR-041 v3 V4). Idempotent: if no legacy keys, or the
+    plan is already v3-shaped (an entry carries ``start``), it only strips leftover
+    task-level keys. Preserves ``done``/``reason``/``pomodoros``; on a
+    ``scheduled_end`` that disagrees with ``pomodoros×30`` it trusts ``pomodoros``.
+    Returns the new token."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    _check_token(path, expected_token)
+    fm, body = _read_task(path)
+
+    legacy_event = str(fm.get("calendar_event_id") or "").strip()
+    legacy_sched = fm.get("scheduled")
+    has_legacy = bool(legacy_event) or bool(legacy_sched)
+    entries = _plan_list(fm)
+    already_v3 = any(e.get("start") for e in entries)
+
+    def _strip() -> str:
+        for k in ("scheduled", "scheduled_end", "calendar_event_id"):
+            fm.pop(k, None)
+        fm["plan"] = entries
+        _write_task(path, fm, body)
+        return task_file_token(vault_root, task_slug)
+
+    if not has_legacy or already_v3:
+        if has_legacy:  # v3-shaped already → just retire the legacy task-level keys
+            return _strip()
+        return task_file_token(vault_root, task_slug)
+
+    sched_day = _scheduled_date(legacy_sched)
+    if sched_day is None:  # malformed scheduled → just clear, nothing to fold
+        return _strip()
+
+    # naive legacy datetimes → re-emit WITH offset
+    start_iso = _iso_with_offset(_parse_naive(legacy_sched, sched_day))
+    found = next((e for e in entries if _entry_date(e) == sched_day), None)
+    pom = _as_pom(found.get("pomodoros") if found else None)
+    end_iso = _iso_with_offset(
+        _parse_naive(legacy_sched, sched_day)
+        + timedelta(minutes=pom * CALENDAR_BLOCK_MINUTES_PER_POMODORO)
+    )
+    if found is not None:
+        found["start"], found["end"] = start_iso, end_iso
+        if legacy_event:
+            found["calendar_event_id"] = legacy_event
+    else:
+        entry: dict[str, Any] = {"date": sched_day.isoformat(), "pomodoros": pom}
+        entry["start"], entry["end"] = start_iso, end_iso
+        if legacy_event:
+            entry["calendar_event_id"] = legacy_event
+        entries.append(entry)
+    return _strip()
+
+
+def _as_pom(v: Any) -> int:
+    try:
+        n = int(v)
+        return n if n >= 1 else 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def _parse_naive(v: Any, fallback_day: date) -> datetime:
+    """A ``scheduled`` value → datetime (date-only ⇒ 00:00; bad ⇒ fallback 00:00)."""
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, date):
+        return datetime(v.year, v.month, v.day)
+    if isinstance(v, str) and v.strip():
+        try:
+            return datetime.fromisoformat(v.strip())
+        except ValueError:
+            pass
+    return datetime(fallback_day.year, fallback_day.month, fallback_day.day)
+
+
+def _scheduled_date(v: Any) -> Optional[date]:
+    """The date of a ``scheduled`` value, whether it round-tripped as a ``date``
+    (hand-written ``2026-06-03``), a ``datetime``, or our quoted ISO string
+    (``2026-06-03T09:00:00``)."""
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    if isinstance(v, str) and v.strip():
+        try:
+            return date.fromisoformat(v.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def read_task_schedule(vault_root: Path, task_slug: str) -> Optional[dict[str, str]]:
+    """Raw calendar-projection fields for the task-page reschedule form (ADR-041
+    41d). The indexer's ``WeeklyTask.scheduled`` is date-only — the reschedule form
+    needs the clock time — so this reads the verbatim ``scheduled`` /
+    ``scheduled_end`` / ``calendar_event_id`` strings. Returns each as a str
+    (``""`` when absent), or None if the task file is gone."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        return None
+    fm, _ = _read_task(path)
+    return {
+        "scheduled": str(fm.get("scheduled") or ""),
+        "scheduled_end": str(fm.get("scheduled_end") or ""),
+        "calendar_event_id": str(fm.get("calendar_event_id") or "").strip(),
+    }
+
+
+def reschedule_task_block(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    start: datetime,
+    pomodoros: int,
+    reason: Optional[str] = None,
+    expected_token: Optional[str] = None,
+) -> tuple[str, str, str, str]:
+    """Move an already-scheduled block to ``start`` (ADR-041 D8).
+
+    Like :func:`schedule_task_block`, but it **relocates** the plan[] entry: the
+    entry on the *old* ``scheduled`` date is dropped when the date changes (so the
+    moved block never leaves an orphan plan[] entry behind) — unless that entry
+    carries completed work (``done`` truthy), which is preserved as history. The
+    new date's entry is upserted, ``scheduled`` / ``scheduled_end`` are rewritten,
+    and ``calendar_event_id`` is left **untouched** (the caller PATCHes the SAME
+    Google event — D8, no orphan). One If-Match-guarded, atomic write.
+
+    Returns ``(scheduled_iso, scheduled_end_iso, new_token, calendar_event_id)``
+    (``calendar_event_id`` is ``""`` if the task wasn't linked). Raises
+    :class:`TaskNotFoundError`, :class:`WeeklyConflictError`,
+    :class:`WeekendReasonRequired`, or :class:`WeeklyWriteError`."""
+    if pomodoros < 1:
+        raise WeeklyWriteError("pomodoros must be >= 1")
+    day = start.date()
+    if _is_weekend(day) and not reason:
+        raise WeekendReasonRequired(f"週末 ({day.isoformat()}) 排程需填寫 reason（D9）")
+
+    end = start + timedelta(minutes=pomodoros * CALENDAR_BLOCK_MINUTES_PER_POMODORO)
+    scheduled = start.isoformat(timespec="seconds")
+    scheduled_end = end.isoformat(timespec="seconds")
+
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    _check_token(path, expected_token)
+    fm, body = _read_task(path)
+
+    old_day = _scheduled_date(fm.get("scheduled"))
+    entries = _plan_list(fm)
+    # Drop the old block's plan entry when the date moves — but keep one carrying
+    # completed work (its 🍅 history must survive the move).
+    if old_day is not None and old_day != day:
+        entries = [e for e in entries if not (_entry_date(e) == old_day and not e.get("done"))]
+
+    new_entry: dict[str, Any] = {"date": day.isoformat(), "pomodoros": pomodoros}
+    if reason:
+        new_entry["reason"] = reason
+    replaced = False
+    for i, e in enumerate(entries):
+        if _entry_date(e) == day:
+            if "done" in e:
+                new_entry["done"] = e["done"]
+            entries[i] = new_entry
+            replaced = True
+            break
+    if not replaced:
+        entries.append(new_entry)
+    fm["plan"] = entries
+
+    fm["scheduled"] = scheduled
+    fm["scheduled_end"] = scheduled_end
+    event_id = str(fm.get("calendar_event_id") or "").strip()
+
+    _write_task(path, fm, body)
+    return scheduled, scheduled_end, task_file_token(vault_root, task_slug), event_id
+
+
+def unlink_calendar_block(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    expected_token: Optional[str] = None,
+) -> tuple[str, str]:
+    """「移出行事曆」 (ADR-041 D9): clear the calendar-projection fields
+    (``scheduled`` / ``scheduled_end`` / ``calendar_event_id``) but **keep**
+    ``plan[]`` — 修修 still plans the effort, just not as a timed calendar block.
+    Returns ``(old_calendar_event_id, new_token)`` so the caller can delete the
+    Google event. Idempotent: clearing already-clear fields is a harmless re-write.
+    Raises :class:`TaskNotFoundError` / :class:`WeeklyConflictError`."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    _check_token(path, expected_token)
+    fm, body = _read_task(path)
+    old_event_id = str(fm.get("calendar_event_id") or "").strip()
+    for k in ("scheduled", "scheduled_end", "calendar_event_id"):
+        fm.pop(k, None)
+    _write_task(path, fm, body)
+    return old_event_id, task_file_token(vault_root, task_slug)
+
+
+def unschedule_task_block(
+    vault_root: Path,
+    task_slug: str,
+    *,
+    expected_token: Optional[str] = None,
+) -> tuple[str, str]:
+    """「取消排程」 (ADR-041 D9): drop the plan[] entry on the scheduled date
+    (only when it carries no completed work — ``done`` falsy, preserving history)
+    **and** clear the calendar-projection fields. Returns
+    ``(old_calendar_event_id, new_token)``. Raises :class:`TaskNotFoundError` /
+    :class:`WeeklyConflictError`."""
+    path = _task_path(vault_root, task_slug)
+    if not path.exists():
+        raise TaskNotFoundError(f"task not found: {path}")
+    _check_token(path, expected_token)
+    fm, body = _read_task(path)
+    old_event_id = str(fm.get("calendar_event_id") or "").strip()
+    block_day = _scheduled_date(fm.get("scheduled"))
+    if block_day is not None:
+        entries = _plan_list(fm)
+        fm["plan"] = [e for e in entries if not (_entry_date(e) == block_day and not e.get("done"))]
+    for k in ("scheduled", "scheduled_end", "calendar_event_id"):
+        fm.pop(k, None)
+    _write_task(path, fm, body)
+    return old_event_id, task_file_token(vault_root, task_slug)
+
+
 def remove_plan_entry(
     vault_root: Path,
     task_slug: str,
     entry_date: date,
+    *,
+    force: bool = False,
 ) -> bool:
     """Remove the plan entry for ``task_slug`` on ``entry_date``.
 
-    Returns True if an entry was removed, False if none existed (file
-    is not written in the False case). Only ``plan`` is mutated.
-    """
+    **`done`-safe (ADR-041 v3 / panel)**: an entry carrying completed work
+    (``done`` truthy) is NOT dropped unless ``force=True`` — its 🍅 history must
+    survive a stray ✕. Returns True if an entry was removed, False if none existed
+    or it was `done`-protected (file not written in the False case). Only ``plan``
+    is mutated; the Google event (if any) is the caller's concern — this never
+    deletes it (the plain ✕ stays plan-only; calendar deletion is a separate,
+    confirm-gated action)."""
     path = _task_path(vault_root, task_slug)
     fm, body = _read_task(path)
 
     entries = _plan_list(fm)
-    new_entries = [e for e in entries if _entry_date(e) != entry_date]
+    new_entries = [
+        e for e in entries if not (_entry_date(e) == entry_date and (force or not e.get("done")))
+    ]
     if len(new_entries) == len(entries):
         return False
 

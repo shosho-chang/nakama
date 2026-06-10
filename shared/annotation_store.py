@@ -11,6 +11,7 @@ import json
 import re
 import threading
 import unicodedata
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -97,6 +98,55 @@ def _slugify(text: str) -> str:
 
 def _annotations_dir() -> Path:
     return get_vault_path() / "KB" / "Annotations"
+
+
+# ── Syncthing conflict detection (ADR-044 §B8) ────────────────────────────────
+
+# Syncthing names a divergent copy `{basename}.sync-conflict-YYYYMMDD-HHMMSS-DEVICE.md`.
+# A VPS Robin write + a mobile Obsidian edit of the same KB/Annotations/{slug}.md
+# produce one of these; it must be reported, not silently ignored, so the human
+# can merge it (the indexer would otherwise treat it as a junk annotation file).
+ANNOTATION_SYNC_CONFLICT_RE = re.compile(
+    r"^(?P<slug>.+)\.sync-conflict-(?P<ts>\d{8}-\d{6})-(?P<device>[A-Za-z0-9]+)\.md$"
+)
+
+
+@dataclass(frozen=True)
+class AnnotationConflict:
+    """A Syncthing `*.sync-conflict-*.md` sibling of an annotation file."""
+
+    slug: str
+    relative_path: str
+    conflict_timestamp: str
+    device: str
+
+
+def list_annotation_conflicts(slug: str | None = None) -> list[AnnotationConflict]:
+    """Syncthing conflict files under ``KB/Annotations`` — newest first.
+
+    With ``slug`` set, only conflicts whose original file is ``{slug}.md``;
+    otherwise every conflict file. Empty list when none (the common case).
+    """
+    d = _annotations_dir()
+    if not d.exists():
+        return []
+    out: list[AnnotationConflict] = []
+    for p in d.iterdir():
+        m = ANNOTATION_SYNC_CONFLICT_RE.match(p.name)
+        if not m:
+            continue
+        if slug is not None and m.group("slug") != slug:
+            continue
+        out.append(
+            AnnotationConflict(
+                slug=m.group("slug"),
+                relative_path=f"KB/Annotations/{p.name}",
+                conflict_timestamp=m.group("ts"),
+                device=m.group("device"),
+            )
+        )
+    out.sort(key=lambda c: c.conflict_timestamp, reverse=True)
+    return out
 
 
 # ── File locking (per-slug, process-local) ────────────────────────────────────
