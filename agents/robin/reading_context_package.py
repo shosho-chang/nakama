@@ -3,9 +3,13 @@
 Pure deterministic aggregator that assembles a Stage 3 → Stage 4 handoff
 package for one ``ReadingSource``. NO LLM call, NO vault write, NO
 ``shared.book_storage`` import. The builder reads on-disk artifacts
-(digest.md, notes.md, KB/Annotations/{key}.md, source map pages, concept
+(KB/Literature/{slug}.md, KB/Annotations/{key}.md, source map pages, concept
 pages) via narrow file-system primitives and emits a frozen
 ``ReadingContextPackage`` value-object.
+
+N521: the retired per-book ``digest.md`` / ``notes.md`` pair is replaced by the
+unified Literature Note (``KB/Literature/{slug}.md``); its H2 sections feed the
+same ``digest_excerpts`` field (``notes_excerpts`` is now always empty).
 
 ADR-024 §Decision: "Robin may produce a Reading Context Package... Robin
 may not auto-generate book-review prose." This builder is the architectural
@@ -14,9 +18,9 @@ sentences, never opens an LLM session, never publishes anything.
 
 Behavior (Brief §4.3):
 
-1. Read ``digest.md`` → extract H2-prefixed sections → emit one ``EvidenceItem``
-   per non-empty section.
-2. Read ``notes.md`` → same.
+1. Read ``KB/Literature/{slug}.md`` → extract H2-prefixed sections → emit one
+   ``EvidenceItem`` per non-empty section (N521; replaces digest.md + notes.md).
+2. (retired) notes.md merged into the Literature Note above.
 3. Read annotations via injected ``annotation_loader`` → emit one
    ``EvidenceItem`` per annotation.
 4. Walk ``source_map_dir/{source_slug}/*.md`` → extract claim-list bullets +
@@ -110,6 +114,12 @@ _H2_HEADING = re.compile(r"^##\s+(.+)$")
 _BULLET = re.compile(r"^\s*[-*]\s+(.+)$")
 _FRONTMATTER_FENCE = "---"
 
+#: N521 Literature Note ledger zone opener — RCP stops reading evidence here so
+#: the bookkeeping section doesn't pollute ``digest_excerpts``. Kept as a literal
+#: string (not imported from ``shared.literature_writer``) so the RCP builder's
+#: import graph stays free of writer/LLM dependencies (BT10 subprocess gate).
+_LEDGER_BEGIN_MARKER = "<!-- LITERATURE:LEDGER:BEGIN -->"
+
 
 def _split_h2_sections(content: str) -> list[tuple[str, str]]:
     """Walk ``content`` line by line; emit ``(heading, body)`` tuples per
@@ -192,13 +202,17 @@ class ReadingContextPackageBuilder:
         self,
         reading_source: ReadingSource,
         *,
-        digest_path: Path,
-        notes_path: Path,
+        literature_path: Path,
         annotations_path: Path,
         source_map_dir: Path,
         concepts_dir: Path,
     ) -> ReadingContextPackage:
         """Aggregate the reading-context package for ``reading_source``.
+
+        N521: the retired per-book ``digest.md`` / ``notes.md`` pair is replaced
+        by the unified human-readable Literature Note (``KB/Literature/{slug}.md``).
+        Its H2 sections (``## 劃線與心得`` / ``## 🔗 KB 相關`` / 章末心得) become
+        ``EvidenceItem``s — the same shape the digest/notes excerpts used.
 
         On any documented failure, return a clean error envelope (all
         aggregated lists empty + ``error=...``). The F1-analog model
@@ -206,8 +220,8 @@ class ReadingContextPackageBuilder:
         legitimate error shape.
         """
         try:
-            digest_excerpts = _read_digest_excerpts(digest_path)
-            notes_excerpts = _read_notes_excerpts(notes_path)
+            digest_excerpts = _read_literature_excerpts(literature_path)
+            notes_excerpts: list[EvidenceItem] = []
             annotations_items, raw_annotations = _read_annotations(
                 self._annotation_loader,
                 annotations_path,
@@ -251,51 +265,38 @@ class ReadingContextPackageBuilder:
         )
 
 
-# ── Step 1: digest excerpts ───────────────────────────────────────────────────
+# ── Step 1: Literature Note excerpts (N521 — replaces digest.md + notes.md) ────
 
 
-def _read_digest_excerpts(digest_path: Path) -> list[EvidenceItem]:
-    """Read ``digest.md`` and emit one ``EvidenceItem`` per non-empty H2
-    section. ``locator`` = ``"{digest_path}#<heading>"``.
+def _read_literature_excerpts(literature_path: Path) -> list[EvidenceItem]:
+    """Read ``KB/Literature/{slug}.md`` and emit one ``EvidenceItem`` per
+    non-empty H2 section. ``locator`` = ``"{literature_path}#<heading>"``.
 
-    Missing file → ``[]`` (a missing digest is legitimate; a fresh source
-    might have no digest yet). Other ``OSError`` propagates to the
-    builder's narrow tuple.
+    N521: replaces the retired ``digest.md`` + ``notes.md`` excerpt readers —
+    the unified Literature Note carries the same H2-sectioned prose
+    (``## 劃線與心得`` / ``## 🔗 KB 相關``).
+
+    Missing file → ``[]`` (a fresh source might not be ingested yet). Other
+    ``OSError`` propagates to the builder's narrow tuple.
     """
-    if not digest_path.exists():
+    if not literature_path.exists():
         return []
-    content = digest_path.read_text(encoding="utf-8")
+    content = literature_path.read_text(encoding="utf-8")
+    # Strip the bookkeeping ledger zone — it carries AI/human housekeeping
+    # markers, not reading evidence, and would otherwise leak a noise H2 into
+    # the package (N521 idempotency markers).
+    ledger_start = content.find(_LEDGER_BEGIN_MARKER)
+    if ledger_start != -1:
+        content = content[:ledger_start]
     sections = _split_h2_sections(content)
     items: list[EvidenceItem] = []
     for heading, body in sections:
         items.append(
             EvidenceItem(
                 item_kind="annotation",
-                locator=f"{digest_path.as_posix()}#{heading}",
+                locator=f"{literature_path.as_posix()}#{heading}",
                 excerpt=_truncate_excerpt(body),
-                source=f"digest · {heading}",
-            )
-        )
-    return items
-
-
-# ── Step 2: notes excerpts ────────────────────────────────────────────────────
-
-
-def _read_notes_excerpts(notes_path: Path) -> list[EvidenceItem]:
-    """Same shape as :func:`_read_digest_excerpts` for ``notes.md``."""
-    if not notes_path.exists():
-        return []
-    content = notes_path.read_text(encoding="utf-8")
-    sections = _split_h2_sections(content)
-    items: list[EvidenceItem] = []
-    for heading, body in sections:
-        items.append(
-            EvidenceItem(
-                item_kind="annotation",
-                locator=f"{notes_path.as_posix()}#{heading}",
-                excerpt=_truncate_excerpt(body),
-                source=f"notes · {heading}",
+                source=f"literature · {heading}",
             )
         )
     return items

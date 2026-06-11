@@ -15,15 +15,16 @@ v1 paper path (AnnotationSet):
   - Insert / replace boundary-marked block in each matched Concept page ## 個人觀點
 
 v2 book path (AnnotationSetV2):
-  - Comments → ``KB/Wiki/Sources/Books/{book_id}/notes.md`` via book_notes_writer
+  - Whole set → ``KB/Literature/{slug}.md`` via literature_writer (N521; replaces
+    the legacy book_notes_writer notes.md path)
   - Annotations → Concept page ## 讀者註記 via _ask_merger_llm_v2 (highlights skipped, same §Q4)
   - Per-book boundary markers keep multi-book aggregation isolated
 
 v3 unified path (AnnotationSetV3):
   - Discriminated by ``book_id`` presence:
     * book set (``book_id is not None``) — mirrors v2 book path:
-        ReflectionV3 → notes.md (chapter_ref required; missing-ref reflections
-        are dropped with a warning since notes.md groups by chapter heading)
+        Whole set → KB/Literature/{slug}.md via literature_writer (highlights +
+        annotations + reflections, chapter-grouped; N521)
         AnnotationV3 → ## 讀者註記 (re-uses v2 helpers; item shape compatible)
         HighlightV3 → skipped (ADR-017 §Q4 asymmetric)
     * paper set (``book_id is None``) — mirrors v1 paper path:
@@ -307,20 +308,22 @@ class ConceptPageAnnotationMerger:
         return sorted(p.stem for p in concepts_dir.glob("*.md"))
 
     def _sync_v2(self, ann_set) -> SyncReport:
-        """v2 book path: comments → notes.md (Slice 5B), annotations → concepts ## 讀者註記.
+        """v2 book path: reflections → Literature Note (N521), annotations → concepts ## 讀者註記.
 
         Highlights are not synced (ADR-017 §Q4 — same asymmetric rule as v1).
         Comments do not propagate to concept pages (per PRD #378 user-story 32:
         readers' subjective reflections must not pollute the cross-source aggregator);
-        they are routed to a per-book notes.md instead.
+        the human-readable per-source surface is now the unified Literature Note
+        (``KB/Literature/{slug}.md``) rendered from the full annotation set — see
+        N521 / Centaur Literature 規格 §6 (退役 notes.md / digest.md).
         """
-        from agents.robin.book_notes_writer import write_notes
+        from shared.literature_writer import write_literature_note
 
         book_id = ann_set.book_id
 
-        # 1. Comments → KB/Wiki/Sources/Books/{book_id}/notes.md (idempotent on empty list)
-        comments = [i for i in ann_set.items if i.type == "comment"]
-        write_notes(book_id, comments)
+        # 1. Render the unified Literature Note from the full annotation set.
+        #    (Replaces the legacy book_notes_writer reflections→notes.md path.)
+        write_literature_note(ann_set.slug, source_kind="book")
 
         # 2. Annotations → Concept page ## 讀者註記 (LLM-matched)
         annotations = [i for i in ann_set.items if i.type == "annotation"]
@@ -392,14 +395,14 @@ class ConceptPageAnnotationMerger:
         return self._sync_v3_paper(ann_set, slug)
 
     def _sync_v3_book(self, ann_set) -> SyncReport:
-        """v3 book path: mirrors _sync_v2 dispatch.
+        """v3 book path: reflections → Literature Note (N521), annotations → concepts.
 
-        ReflectionV3 → notes.md (chapter_ref required-ish; ``None`` is dropped
-        since the writer would render a literal ``## None`` heading. Empty
-        strings are passed through to match the V2 ``CommentV2.chapter_ref:
-        str`` semantics — V2 also accepted ``""`` and rendered an empty H2
-        rather than dropping the body, and we must not silently regress that
-        for migrated stores).
+        Reflections (章末心得) are now rendered into the unified human-readable
+        Literature Note (``KB/Literature/{slug}.md``) from the full annotation
+        set, replacing the legacy ``book_notes_writer`` notes.md path (N521 /
+        Centaur Literature 規格 §6). The Literature writer groups reflections
+        by chapter itself, so the merger no longer needs to filter / drop on
+        ``chapter_ref``.
 
         AnnotationV3 → Concept page ## 讀者註記 via _ask_merger_llm_v2 +
         _upsert_concept_blocks_v2 (item shape — text_excerpt / note / cfi —
@@ -409,22 +412,13 @@ class ConceptPageAnnotationMerger:
         HighlightV3 → skipped (ADR-017 §Q4 asymmetric — highlights are not
         synced to concept pages, same as v1 + v2).
         """
-        from agents.robin.book_notes_writer import write_notes
+        from shared.literature_writer import write_literature_note
 
         book_id = ann_set.book_id
 
-        reflections = [i for i in ann_set.items if i.type == "reflection"]
-        # ``is not None`` rather than truthy: empty-string chapter_refs were
-        # rendered as ``## `` (empty H2) in the v2 path; dropping them under
-        # v3 would be silent data loss for V2→V3 migrated stores.
-        reflections_with_chapter = [r for r in reflections if r.chapter_ref is not None]
-        dropped = len(reflections) - len(reflections_with_chapter)
-        if dropped:
-            logger.warning(
-                "v3 book sync: dropping reflections without chapter_ref",
-                extra={"book_id": book_id, "dropped_count": dropped},
-            )
-        write_notes(book_id, reflections_with_chapter)
+        # Render the unified Literature Note (covers highlights + annotations +
+        # reflections, chapter-grouped) from the full v3 set.
+        write_literature_note(ann_set.slug, source_kind="book")
 
         annotations = [i for i in ann_set.items if i.type == "annotation"]
         if not annotations:

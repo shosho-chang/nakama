@@ -28,6 +28,15 @@ def vault(tmp_path: Path, monkeypatch) -> Path:
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def _stub_kb_search(monkeypatch):
+    """literature_writer (N521) 的 ``🔗 KB 相關`` 段呼叫 search_kb；stub 掉避免
+    依賴 kb_index.db。"""
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [], raising=False)
+
+
 def _write_concept_stub(vault: Path, slug: str = "anchoring-effect") -> Path:
     """Create a minimal ConceptPageV2 stub so the merger can upsert into it."""
     p = vault / "KB" / "Wiki" / "Concepts" / f"{slug}.md"
@@ -229,14 +238,18 @@ def test_v2_comment_items_not_synced_to_concept_pages(vault: Path, monkeypatch):
     assert "comment" not in types_seen, f"merger leaked comments to LLM input: {types_seen}"
 
 
-def test_v2_comment_items_routed_to_notes_md(vault: Path, monkeypatch):
-    """End-to-end: a v2 sync run with a Comment item must produce
-    KB/Wiki/Sources/Books/{book_id}/notes.md grouped by chapter (Slice 5B).
-    Catches the Slice 5 wiring gap where book_notes_writer was defined but
-    never invoked from the sync entry point."""
+def test_v2_comment_items_routed_to_literature_note(vault: Path, monkeypatch):
+    """End-to-end: a v2 sync run with a Comment item now renders the unified
+    Literature Note (N521). The legacy v2 set is upgraded to v3 in-memory; the
+    reflection prose appears as 章末心得. Replaces the retired notes.md assertion.
+    """
     merger_mod = pytest.importorskip("agents.robin.annotation_merger")
     if not hasattr(merger_mod, "sync_annotations_for_slug"):
         pytest.skip("v2 dispatch entry point not yet implemented")
+
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [], raising=False)
 
     _write_concept_stub(vault, "anchoring-effect")
     _write_v2_annotation_set(vault, "how-to-live")  # contains 1 comment in ch03.xhtml
@@ -249,12 +262,15 @@ def test_v2_comment_items_routed_to_notes_md(vault: Path, monkeypatch):
     )
     merger_mod.sync_annotations_for_slug("how-to-live")
 
-    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "how-to-live" / "notes.md"
-    assert notes_path.exists(), f"notes.md not written at {notes_path}"
-    body = notes_path.read_text(encoding="utf-8")
+    lit_path = vault / "KB" / "Literature" / "how-to-live.md"
+    assert lit_path.exists(), f"Literature Note not written at {lit_path}"
+    body = lit_path.read_text(encoding="utf-8")
+    assert "type: literature" in body
     assert "Long reflection prose" in body
-    assert "ch03.xhtml" in body  # chapter_ref preserved as H2
-    assert "book_id: how-to-live" in body  # frontmatter wired
+    assert "**章末心得**" in body
+    # legacy notes.md retired
+    notes_path = vault / "KB" / "Wiki" / "Sources" / "Books" / "how-to-live" / "notes.md"
+    assert not notes_path.exists(), "legacy notes.md should be retired (N521)"
 
 
 # ---------------------------------------------------------------------------
