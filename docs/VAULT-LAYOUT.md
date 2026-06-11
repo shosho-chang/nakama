@@ -125,9 +125,10 @@ E:\Shosho LifeOS\
 │   ├── Wiki/               AI 加工層 (free write)
 │   │   ├── Sources/          Robin promotion (ADR-024) + textbook-ingest + PubMed digest (pubmed-{pmid}.md)
 │   │   │   └── Books/          textbook-ingest Phase 1 chapter pages
-│   │   ├── Concepts/         textbook-ingest + annotation_merger + 4-action dispatcher (ADR-011 §3.3 — see drift D1)
+│   │   ├── Concepts/         textbook-ingest + annotation_merger + 4-action dispatcher (ADR-011 §3.3 — see drift D1); 紅線⑤ citation lint at write (N524)
 │   │   ├── Entities/         textbook-ingest book entities (v1 schema; see drift D2)
 │   │   │   └── Books/          book entity index pages
+│   │   ├── Outputs/          🤖 查詢 write-back (Centaur v0.2 D-19 復活 / D-18 確認式; N524 storage layer = shared/output_writer.py)
 │   │   ├── Digests/          Daily digests
 │   │   │   ├── AI/             Nami daily AI news
 │   │   │   └── PubMed/         agents/robin/pubmed_digest.py daily digest
@@ -187,7 +188,7 @@ data/agent_reports/franky/
 **Notable absences** (intentionally not in vault):
 - `Schemas/` — declared in legacy CLAUDE.md, never had a producer; deleted (ADR-028 §3).
 - `Files/` — flat image dumping ground; migrated (ADR-028 §8). Until Phase B lands, see drift D-files-pending.
-- `KB/Wiki/Outputs/`, `Syntheses/`, `Comparisons/` — orphan folders, deleted (ADR-028 §3).
+- `Syntheses/`, `Comparisons/` — orphan folders, deleted (ADR-028 §3). (`KB/Wiki/Outputs/` was also deleted then, but **revived by Centaur v0.2 D-19** as the query write-back落點 — N524; see tree + matrix.)
 - `Nami/`, `AgentBriefs/`, `AgentReports/` — consolidated to `AgentOutputs/` + repo `data/agent_reports/` (ADR-028 §4).
 - `Case Studies/`, `Incidents/` — Nakama dev artifacts moved to repo `docs/case-studies/` + `docs/incidents/` (ADR-028 §9).
 
@@ -223,6 +224,7 @@ data/agent_reports/franky/
 | `KB/Wiki/Sources/{slug}/{chapter_ref}.md` | 🤖 | `shared/source_map_builder.py:628` (per-chapter block) | Reader, Brook synthesize | source-map schema |
 | `KB/Wiki/Concepts/{slug}.md` | 🤖 | `shared/kb_writer.upsert_concept_page` (4-action dispatcher, ADR-011 §3.3 — but textbook-ingest Phase B bypasses, drift D1) + `agents/robin/annotation_merger.py` | kb_search, Brook synthesize, RCP | ADR-011 §3.3 v2 schema |
 | `KB/Wiki/Entities/{slug}.md` | 🤖 | textbook-ingest book entity writer (v1 schema, drift D2) | kb_search | ADR-011 §3.1 v1 (frozen) |
+| `KB/Wiki/Outputs/{slug}.md` | 🤖 | `shared/output_writer.py:write_output_page` (Centaur v0.2 D-19 復活 / D-18 確認式 write-back; N524 storage layer — query workflow 另開 task) | KB consumers, future query UI | Centaur v0.2 §8 (P-9 蒸餾); 紅線⑤ enforced at write via `shared/provenance_linter.py` |
 | `KB/Wiki/Entities/Books/{book-id}.md` | 🤖 | textbook-ingest book entity index | 修修, kb_search | ADR-020 §Phase 2 |
 | `KB/Wiki/Digests/AI/{YYYY-MM-DD}.md` | 🤖 | Nami daily AI digest | 修修 | — |
 | `KB/Wiki/Digests/PubMed/{YYYY-MM-DD}.md` | 🤖 | `agents/robin/pubmed_digest.py:521-522` | 修修, Brook synthesize | — |
