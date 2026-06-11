@@ -180,11 +180,14 @@ def test_handoff_includes_rcp_when_annotations_exist(client, monkeypatch, tmp_pa
         lambda query, vault_path, top_k=5: [],
     )
     src_slug = "book-x"
-    (tmp_path / "KB" / "Wiki" / "Sources" / src_slug).mkdir(parents=True)
-    (tmp_path / "KB" / "Wiki" / "Sources" / src_slug / "digest.md").write_text(
-        "## 摘要\nThe digest content for book x.\n",
+    # N521: context_bridge now reads the unified Literature Note instead of the
+    # retired digest.md / notes.md pair.
+    (tmp_path / "KB" / "Literature").mkdir(parents=True)
+    (tmp_path / "KB" / "Literature" / f"{src_slug}.md").write_text(
+        "## 劃線與心得\nThe literature content for book x.\n",
         encoding="utf-8",
     )
+    (tmp_path / "KB" / "Annotations").mkdir(parents=True, exist_ok=True)
     (tmp_path / "KB" / "Annotations" / f"{src_slug}.md").write_text(
         "annotation-1\nannotation-2\n",
         encoding="utf-8",
@@ -195,7 +198,7 @@ def test_handoff_includes_rcp_when_annotations_exist(client, monkeypatch, tmp_pa
     body = r.text
     assert "Reading-Context-Package" in body
     assert "book-x" in body
-    assert "digest content" in body
+    assert "literature content" in body
 
 
 def test_handoff_includes_style_profile_section(client, monkeypatch):
