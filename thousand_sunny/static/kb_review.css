@@ -67,6 +67,9 @@ body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var
 .kb-drawer{position:fixed;top:0;right:0;bottom:0;width:min(580px,100vw);z-index:50;background:var(--sho-bg);border-left:1px solid var(--sho-line);transform:translateX(102%);transition:transform var(--sho-t-slow) var(--sho-ease);display:flex;flex-direction:column}
 .kb-drawer.on{transform:translateX(0)}
 .kb-drawer[hidden]{display:flex}
+/* 抽屜開啟時隱藏浮動主題切換鈕——否則它（fixed bottom-right）會蓋住 drawer-foot
+   的「存入 Vault」鈕、攔截點擊（瀏覽器走查抓到的 z-index 重疊）。 */
+body:has(.kb-drawer.on) .sho-theme-toggle{display:none}
 .drawer-head{display:flex;align-items:center;gap:10px;padding:14px 24px;border-bottom:1px solid var(--sho-line)}
 .drawer-head .t{font-weight:800;font-size:14px;color:var(--sho-ink)}
 .drawer-head .x{margin-left:auto}
