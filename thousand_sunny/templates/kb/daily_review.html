@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每日回顧 · Centaur KB</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/kb_review.css?v={{ asset_version }}">
+</head>
+<body class="sho">
+<div class="kb-shell">
+  <main class="kb-main">
+    <div class="vhead">
+      <h1>每日回顧</h1>
+      <span class="meta">{{ review_label }}</span>
+      {% if weekly_sweep %}<span class="sho-tag sho-tag--warning">每週清掃日</span>{% endif %}
+    </div>
+    <p class="vsub">Robin 已完成記帳與篩選；以下交給你判斷。「之後再說」14 天未動自動歸檔。</p>
+
+    {% if warnings %}
+    <div class="kb-warn" role="status">
+      <span class="kb-warn-h">資料產生時有提醒</span>
+      <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {# ===== 區 001：Fleeting 待處理 ===== #}
+    <div class="sho-kicker">
+      <span class="sho-kicker-n">[ 001 ]</span>
+      <span class="sho-kicker-t">Fleeting 待處理</span>
+      <span class="ln"></span>
+      <span class="c">{{ fleeting|length }} 條</span>
+    </div>
+    <div id="fleet-list">
+      {% if not fleeting %}
+      <div class="kb-empty">
+        <div class="kb-empty-mk">∅</div>
+        <p>沒有待處理的 fleeting。</p>
+        <p class="kb-empty-sub">想到什麼就在 Slack 丟給 Nami — 明天早上會出現在這裡。</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ===== 區 002：候選永久卡 ===== #}
+    <div class="sho-kicker">
+      <span class="sho-kicker-n">[ 002 ]</span>
+      <span class="sho-kicker-t">候選永久卡 — 昨日劃線</span>
+      <span class="ln"></span>
+      <span class="c">{{ candidates|length }} 條</span>
+    </div>
+    <div id="cand-list">
+      {% if not candidates %}
+      <div class="kb-empty">
+        <div class="kb-empty-mk">🌱</div>
+        <p>昨天沒有夠強的劃線浮上來。</p>
+        <p class="kb-empty-sub">休息日也算數 — 卡片盒長得慢，但複利。</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ===== 區 003：每週清掃 ===== #}
+    {% if weekly_sweep %}
+    <div class="sho-kicker">
+      <span class="sho-kicker-n">[ 003 ]</span>
+      <span class="sho-kicker-t">每週清掃</span>
+      <span class="ln"></span>
+      <span class="c">{{ sweep|length }} 項</span>
+    </div>
+    <div id="sweep-list">
+      {% if not sweep %}
+      <div class="kb-empty"><div class="kb-empty-mk">✓</div><p>沒有需要清掃的卡 — 卡片盒很乾淨。</p></div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="kb-footer">
+      <svg class="kb-bolt" viewBox="0 0 24 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><polyline points="1,8 8,2 6,7 14,2 12,9 23,4"/></svg>
+      <span class="sho-mono-up">vault 為唯一真相，本 UI 僅是 renderer</span>
+    </div>
+  </main>
+</div>
+
+{# ===== 開卡 drawer ===== #}
+<div class="kb-scrim" id="scrim"></div>
+<aside class="kb-drawer" id="drawer" role="dialog" aria-modal="true" aria-label="建立永久筆記" hidden>
+  <div class="drawer-head">
+    <span class="t">建立永久筆記</span>
+    <span class="sho-tag">status: seedling</span>
+    <span class="x"><button class="sho-btn sho-btn--ghost" id="btn-close" type="button">關閉 esc</button></span>
+  </div>
+  <div class="drawer-body">
+    <div class="fld">
+      <div class="lbl">檔名（一句宣告句）<span class="who human">🧑 你的判斷</span></div>
+      <div class="titlewrap">
+        <span class="prefix">KB/Permanent/</span>
+        <input id="f-title" type="text" autocomplete="off" spellcheck="false" aria-label="永久卡檔名">
+      </div>
+    </div>
+    <div class="fld">
+      <div class="lbl">來源 source_refs<span class="who">🤖 AI 預填</span></div>
+      <div id="f-srcrefs" class="sho-mono"></div>
+    </div>
+    <div class="fld">
+      <div class="lbl">正文 — 用自己的話<span class="who human">🧑 紅線內側 · AI 不代筆</span></div>
+      <textarea class="body" id="f-body" aria-label="永久卡正文" placeholder="一卡一概念。寫下你的主張，以及它為什麼重要……"></textarea>
+      <div class="fld-err" id="body-err" hidden>正文是紅線內側 — 這段要你自己寫。</div>
+    </div>
+    <div class="fld">
+      <div class="lbl">連結與關係 typed edges<span class="who human">🧑 關係與理由是你的 · 候選由 Robin 篩</span></div>
+      <div id="f-edges"></div>
+    </div>
+    <div class="fld">
+      <details class="preview">
+        <summary>檔案預覽 — 實際寫入 vault 的內容</summary>
+        <pre id="f-preview"></pre>
+      </details>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <span class="note">存檔後 Phase 5：回填 mined_concepts · 更新 index · log append</span>
+    <button class="sho-btn sho-btn--ghost" id="btn-cancel" type="button">取消</button>
+    <button class="sho-btn sho-btn--primary" id="btn-save" type="button">存入 Vault</button>
+  </div>
+</aside>
+
+<div class="kb-toast" id="toast" role="status" aria-live="polite"></div>
+
+{# CSP-safe data island: non-executable JSON consumed by /static/kb_review.js #}
+<script id="kb-data" type="application/json">{{ bundle_json | safe }}</script>
+<script src="/static/kb_review.js?v={{ asset_version }}"></script>
+</body>
+</html>

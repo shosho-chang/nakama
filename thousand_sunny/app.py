@@ -37,6 +37,7 @@ from thousand_sunny.routers import (  # noqa: E402
     crew,
     foundry,
     franky,
+    kb_review,
     progress,
     projects,
     promotion_review,
@@ -140,6 +141,8 @@ if not os.getenv("DISABLE_ROBIN"):
     app.include_router(robin.legacy_router)
     app.include_router(books.router)
     app.include_router(books.legacy_router)
+    # Centaur 每日回顧 Web UI + 開卡 endpoint (N523) — KB surface, vault-backed.
+    app.include_router(kb_review.router)
 
     # foliate-js must be served from the same origin as /robin/books/* so
     # CSP ``script-src 'self'`` allows it. Mount the vendored submodule
