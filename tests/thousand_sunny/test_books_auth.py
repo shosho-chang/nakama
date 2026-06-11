@@ -120,8 +120,8 @@ def test_authenticated_get_metadata_returns_book(prod_client):
 
 def test_authenticated_annotations_roundtrip(prod_client, monkeypatch):
     monkeypatch.setattr(
-        "agents.robin.book_digest_writer.write_digest",
-        lambda book_id: None,
+        "shared.literature_writer.write_literature_note",
+        lambda slug, **kwargs: None,
     )
     tc, cookie = prod_client
     _upload_authed(tc, cookie)

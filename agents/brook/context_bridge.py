@@ -125,24 +125,22 @@ def _try_load_style_profile(topic: str, category: str | None):
 
 
 def _try_load_rcp(vault_path: Path, source_slug: str) -> str | None:
-    """Load Robin Reading-Context-Package for ``source_slug`` if annotation
-    artifacts exist. Returns a markdown excerpt or ``None``.
+    """Load Robin reading context for ``source_slug`` if artifacts exist.
+    Returns a markdown excerpt or ``None``.
 
-    The full builder needs five paths; for the bridge use case we only need a
-    short excerpt to seed Claude.ai's context, so we pull the digest excerpt
-    + annotations summary directly rather than constructing the full
-    ``ReadingContextPackage``.
+    N521: the unified human-readable Literature Note (``KB/Literature/{slug}.md``)
+    replaces the retired per-book ``digest.md`` / ``notes.md``. For the bridge use
+    case we pull the Literature Note excerpt + the raw annotations summary directly
+    rather than constructing the full ``ReadingContextPackage``.
     """
     if not source_slug or "/" in source_slug or "\\" in source_slug:
         return None
-    digest_path = vault_path / "KB" / "Wiki" / "Sources" / source_slug / "digest.md"
-    notes_path = vault_path / "KB" / "Wiki" / "Sources" / source_slug / "notes.md"
+    literature_path = vault_path / "KB" / "Literature" / f"{source_slug}.md"
     annotations_path = vault_path / "KB" / "Annotations" / f"{source_slug}.md"
 
     chunks: list[str] = []
     for label, p in [
-        ("digest", digest_path),
-        ("notes", notes_path),
+        ("literature", literature_path),
         ("annotations", annotations_path),
     ]:
         if p.exists():

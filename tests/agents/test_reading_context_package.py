@@ -2,8 +2,8 @@
 
 12 tests covering Brief §5 BT1-BT12:
 
-- BT1  digest excerpts: H2 sections → EvidenceItem entries.
-- BT2  notes excerpts: same shape as digest.
+- BT1  Literature Note excerpts: H2 sections → EvidenceItem entries (N521).
+- BT2  notes excerpts retired (N521): notes_excerpts is always empty.
 - BT3  annotations via injected loader → EvidenceItem entries.
 - BT4  source quotes: chapter pages with quote bullets → quotes extracted.
 - BT5  concept links: concepts with mentioned_in referencing the source → links.
@@ -15,8 +15,8 @@
 - BT11 subprocess: importing builder does NOT pull shared.book_storage.
 - BT12 round trips: model_dump + model_validate identity.
 
-Tests use the fixture ``tests/fixtures/reading_context/`` for digest, notes,
-annotations, source map, and concepts. The annotation loader is injected
+Tests use the fixture ``tests/fixtures/reading_context/`` for the Literature
+Note, annotations, source map, and concepts. The annotation loader is injected
 inline so the builder is exercised both via the loader path AND the
 JSON-fixture path.
 """
@@ -77,38 +77,38 @@ def _build_with_fixture(
         )
     return builder.build(
         _alpha_source(),
-        digest_path=FIXTURE_DIR / "digest.md",
-        notes_path=FIXTURE_DIR / "notes.md",
+        literature_path=FIXTURE_DIR / "literature.md",
         annotations_path=FIXTURE_DIR / "annotations.json",
         source_map_dir=FIXTURE_DIR / "source_map",
         concepts_dir=FIXTURE_DIR / "concepts",
     )
 
 
-# ── BT1 — digest excerpts ────────────────────────────────────────────────────
+# ── BT1 — Literature Note excerpts (N521 — replaces digest.md) ────────────────
 
 
-def test_bt1_build_aggregates_digest_excerpts():
+def test_bt1_build_aggregates_literature_excerpts():
     package = _build_with_fixture()
     assert package.error is None
-    # Fixture digest.md has 3 H2 sections (ch-1 / ch-3 / ch-5).
-    assert len(package.digest_excerpts) == 3
+    # Fixture literature.md has 2 H2 sections (劃線與心得 / 🔗 KB 相關).
+    assert len(package.digest_excerpts) == 2
     headings = [item.locator.split("#", 1)[1] for item in package.digest_excerpts]
-    assert headings == ["ch-1", "ch-3", "ch-5"]
+    assert headings[0] == "劃線與心得"
     for item in package.digest_excerpts:
         assert item.item_kind == "annotation"
         assert item.excerpt
         assert len(item.excerpt) <= 200
+        assert item.source.startswith("literature · ")
 
 
-# ── BT2 — notes excerpts ─────────────────────────────────────────────────────
+# ── BT2 — notes excerpts retired (N521) ──────────────────────────────────────
 
 
-def test_bt2_build_aggregates_notes_excerpts():
+def test_bt2_notes_excerpts_retired():
+    """N521: notes.md is retired; notes_excerpts is always empty (its prose now
+    lives in the Literature Note read by BT1)."""
     package = _build_with_fixture()
-    assert len(package.notes_excerpts) == 3
-    sources = [item.source for item in package.notes_excerpts]
-    assert all(s.startswith("notes · ") for s in sources)
+    assert package.notes_excerpts == []
 
 
 # ── BT3 — annotations via loader ────────────────────────────────────────────
@@ -233,8 +233,7 @@ def test_bt9_build_missing_piece_prompts_when_evidence_gap():
     builder = ReadingContextPackageBuilder(annotation_loader=lambda _: extra)
     package = builder.build(
         _alpha_source(),
-        digest_path=FIXTURE_DIR / "digest.md",
-        notes_path=FIXTURE_DIR / "notes.md",
+        literature_path=FIXTURE_DIR / "literature.md",
         annotations_path=FIXTURE_DIR / "annotations.json",
         source_map_dir=FIXTURE_DIR / "source_map",
         concepts_dir=FIXTURE_DIR / "concepts",
@@ -366,8 +365,7 @@ def test_build_returns_error_envelope_when_concept_yaml_malformed(tmp_path: Path
     builder = ReadingContextPackageBuilder(annotation_loader=lambda _: _load_fixture_annotations())
     package = builder.build(
         _alpha_source(),
-        digest_path=FIXTURE_DIR / "digest.md",
-        notes_path=FIXTURE_DIR / "notes.md",
+        literature_path=FIXTURE_DIR / "literature.md",
         annotations_path=FIXTURE_DIR / "annotations.json",
         source_map_dir=FIXTURE_DIR / "source_map",
         concepts_dir=bad_concepts,

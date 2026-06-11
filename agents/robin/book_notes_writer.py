@@ -1,57 +1,26 @@
-"""Write KB/Wiki/Sources/Books/{book_id}/notes.md from CommentV2 items.
+"""RETIRED (N521 / Centaur Literature 規格 §6 · D5).
 
-Full-replace semantics: each call overwrites the file entirely.
-Comments are grouped by chapter_ref under H2 headings.
+``KB/Wiki/Sources/Books/{book_id}/notes.md`` 已退役。章末心得 (ReflectionV3) 現在
+render 進統一的人讀 Literature Note ``KB/Literature/{slug}.md``，由
+``shared/literature_writer.write_literature_note`` 產出。
+
+本檔保留為退役樁：``write_notes`` 一律 raise，避免任何 caller 靜默回到舊路徑。
+若你在找「把劃線/註解/心得寫成人讀檔」的入口，用 ``shared.literature_writer``。
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
-
-from shared.config import get_vault_path
-from shared.schemas.annotations import CommentV2
-from shared.vault_rules import assert_reader_can_write
+from typing import NoReturn
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+class RetiredWriterError(RuntimeError):
+    """呼叫已退役的 book notes writer (N521)。"""
 
 
-def write_notes(book_id: str, comments: list[CommentV2]) -> None:
-    """Write KB/Wiki/Sources/Books/{book_id}/notes.md with comments grouped
-    by chapter_ref under H2 headings. Full-replace: existing notes.md
-    contents are overwritten. Empty comments → no-op (or frontmatter-only
-    stub, either works). Idempotent: same input → same output."""
-    relative = f"KB/Wiki/Sources/Books/{book_id}/notes.md"
-    assert_reader_can_write(relative)
-
-    dest: Path = get_vault_path() / relative
-    dest.parent.mkdir(parents=True, exist_ok=True)
-
-    if not comments:
-        return
-
-    # Group by chapter_ref, preserving first-occurrence order
-    chapters: dict[str, list[str]] = {}
-    for c in comments:
-        chapters.setdefault(c.chapter_ref, []).append(c.body)
-
-    frontmatter = (
-        f"---\n"
-        f"type: book_notes\n"
-        f"book_id: {book_id}\n"
-        f'book_entity: "[[Sources/Books/{book_id}]]"\n'
-        f"schema_version: 1\n"
-        f'updated_at: "{_now_iso()}"\n'
-        f"---\n"
+def write_notes(*_args, **_kwargs) -> NoReturn:  # noqa: ANN002, ANN003
+    """RETIRED — 改用 ``shared.literature_writer.write_literature_note``。"""
+    raise RetiredWriterError(
+        "book_notes_writer.write_notes 已於 N521 退役；"
+        "notes.md 由統一的 KB/Literature/{slug}.md 取代。"
+        "改用 shared.literature_writer.write_literature_note(slug, source_kind='book')。"
     )
-
-    sections: list[str] = []
-    for chapter_ref, bodies in chapters.items():
-        heading = f"## {chapter_ref}"
-        body_text = "\n\n".join(bodies)
-        sections.append(f"{heading}\n\n{body_text}")
-
-    content = frontmatter + "\n" + "\n\n".join(sections) + "\n"
-    dest.write_text(content, encoding="utf-8")

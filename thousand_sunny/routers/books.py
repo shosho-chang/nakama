@@ -563,13 +563,16 @@ async def get_annotations(book_id: str, _auth=Depends(require_auth_or_key)):
     return {**ann_set.model_dump(), "conflicts": conflicts}
 
 
-def _write_digest_in_background(book_id: str) -> None:
+def _render_literature_in_background(slug: str) -> None:
+    """N521: render the unified human-readable Literature Note from the book's
+    annotation set, replacing the retired ``book_digest_writer.write_digest``
+    background task. ``slug`` is the annotation-set slug (= Literature filename)."""
     try:
-        from agents.robin.book_digest_writer import write_digest  # noqa: PLC0415
+        from shared.literature_writer import write_literature_note  # noqa: PLC0415
 
-        write_digest(book_id)
+        write_literature_note(slug, source_kind="book")
     except Exception:
-        logger.exception("book digest background task failed for book_id=%s", book_id)
+        logger.exception("book literature render background task failed for slug=%s", slug)
 
 
 @router.post("/api/books/{book_id}/annotations")
@@ -611,8 +614,10 @@ async def post_annotations(
     # boundary so the on-disk store is uniformly v3 (existing BackgroundTasks digest
     # writer pattern is preserved — only ADR-021 v1's prose regenerate hook was
     # cancelled, and that hook never landed in code).
-    get_annotation_store().save(upgrade_to_v3(ann_set))
-    background_tasks.add_task(_write_digest_in_background, book_id)
+    v3_set = upgrade_to_v3(ann_set)
+    get_annotation_store().save(v3_set)
+    # N521: render the unified Literature Note (replaces the retired digest writer).
+    background_tasks.add_task(_render_literature_in_background, v3_set.slug)
     return {"ok": True, "digest_status": "queued"}
 
 

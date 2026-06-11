@@ -175,9 +175,14 @@ def search_kb(
     pages: list[dict] = []
 
     # ADR-021 §2 + Codex amendment: recursive `rglob("*.md")` so nested files
-    # like `KB/Wiki/Sources/Books/{book_id}/notes.md` get scanned too. Subdirs
+    # like `KB/Wiki/Sources/Books/{book_id}/ch{n}.md` get scanned too. Subdirs
     # come from `shared.kb_indexer._KB_SUBDIRS` (single source of truth — no
     # hardcode duplication).
+    #
+    # N521: the retired per-book `notes.md` is no longer produced; the unified
+    # human-readable surface is `KB/Literature/{slug}.md` (a top-level KB dir,
+    # not a Wiki subdir). Indexing `KB/Literature/` into kb_search is ingest-
+    # orchestration scope (N524), not done here.
     for subdir in sorted(_KB_SUBDIRS):
         dir_path = wiki_path / subdir
         if not dir_path.exists():

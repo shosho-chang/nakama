@@ -216,8 +216,8 @@ data/agent_reports/franky/
 | `KB/Wiki/Sources/{slug}.md` | 🤖 | Robin promotion `shared/promotion_commit.py` + textbook-ingest | Brook synthesize, RCP, `/writing-assist/` | ADR-024 + `shared/promotion_renderer.py` |
 | `KB/Wiki/Sources/pubmed-{pmid}.md` | 🤖 | `agents/robin/pubmed_digest.py:476-477` (NOT KB/Raw/Papers as previously documented) | Brook synthesize, KB consumers | PubMed Source schema |
 | `KB/Wiki/Sources/Books/{book-id}/ch{n}.md` | 🤖 | textbook-ingest Phase 1 via `shared/kb_writer.write_source_page` | Brook context_bridge, Reader | ADR-020 §Phase 1 |
-| `KB/Wiki/Sources/Books/{book-id}/digest.md` | 🤖 | `agents/robin/book_digest_writer.py:211` | Brook synthesize, Reader | ADR-020 §Phase 2 digest |
-| `KB/Wiki/Sources/Books/{book-id}/notes.md` | 🤖 | `agents/robin/book_notes_writer.py:26` | 修修 reader, kb_search | ADR-020 §Phase 2 notes |
+| `KB/Wiki/Sources/Books/{book-id}/digest.md` | ⛔ retired | **RETIRED (N521)** — superseded by `KB/Literature/{slug}.md`. `book_digest_writer.write_digest` 退役樁 (raise)；既有檔由 `scripts/migrate_books_to_literature.py` 重 render 後送回收桶 | (none — consumers repointed to Literature) | Centaur Literature 規格 §6 / D5 |
+| `KB/Wiki/Sources/Books/{book-id}/notes.md` | ⛔ retired | **RETIRED (N521)** — superseded by `KB/Literature/{slug}.md`. `book_notes_writer.write_notes` 退役樁 (raise)；既有檔由 migration script 重 render 後送回收桶 | (none — consumers repointed to Literature) | Centaur Literature 規格 §6 / D5 |
 | `KB/Wiki/Sources/{slug}/whole.md` | 🤖 | `shared/source_map_builder.py:557` (single-block whole source map) | Reader, Brook synthesize | source-map schema |
 | `KB/Wiki/Sources/{slug}/index.md` | 🤖 | `shared/source_map_builder.py:598` (multi-block index) | source-map navigation | source-map schema |
 | `KB/Wiki/Sources/{slug}/{chapter_ref}.md` | 🤖 | `shared/source_map_builder.py:628` (per-chapter block) | Reader, Brook synthesize | source-map schema |
@@ -230,7 +230,7 @@ data/agent_reports/franky/
 | `KB/Annotations/{slug}.md` | 🤖 | `shared/annotation_store.AnnotationStore.save` ← Robin Reader `POST /save-annotations` | Reader render, `annotation_merger`, RCP builder | ADR-017 (v1/v2) + v3 code addition |
 | `KB/Permanent/{宣告句}.md` | 🔒 body | **正文 + status：human only** (N523 `POST /kb/api/permanent`). AI 唯一寫入口 = `shared/permanent_layer.py:update_permanent_bookkeeping` — 白名單 frontmatter `source_refs`/`modified`/`aliases`，**永不**碰正文/status/其他 key。`shared/promotion_targets.resolve_target_path` 在 chokepoint `assert_not_permanent_target` 攔截 (紅線 1 negative tripwire) | `kb_hybrid_search.search` (排序置頂)、Obsidian、N523 Web UI | Centaur v0.2 §3 (frontmatter + typed edges) + `shared/permanent_layer.py` |
 | `KB/Fleeting/{ts}-{前幾字}.md` | 🟡 人+Nami | 人 (Obsidian) + Nami Slack bot 寫正文 (N526); AI 只翻 `status: open→processed` + 善後送回收桶 | 每日回顧 (N522) | Centaur v0.2 §4 |
-| `KB/Literature/{slug}.md` | 🤖 render | Robin Literature writer (N521) — ingest 當下 render 人讀快照 | RCP builder, Brook context_bridge, kb_search | Centaur v0.2 (Literature Note 統一規格) |
+| `KB/Literature/{slug}.md` | 🤖 render | `shared/literature_writer.py:write_literature_note` (N521) — 從 `KB/Annotations/{slug}.md` (V3) render 人讀快照；三路版型 (書/文章/影片)；idempotent re-render (記帳區 + frontmatter `status`/`mined_concepts` 保留)。書 ingest 觸發點：`thousand_sunny/routers/books.py:_render_literature_in_background`；reflection 流向：`agents/robin/annotation_merger.py` | RCP builder, Brook context_bridge | Centaur v0.2 (Literature Note 統一規格 §4–6) |
 | `KB/MOCs/{topic}.md` | 🟡 marker | 人寫分組標題 + 「為什麼放這」; AI 維護 `%%agent-robin-unfiled%%` marker section + 孤兒標記 (建 MOC 永遠人決定) | Obsidian, N525 MOC view | Centaur v0.2 §10 |
 | `KB/Attachments/{source-slug}/` | 🤖 | News Coo image fetcher (post-Phase A migration) + `agents/robin/pubmed_digest.py:210` | source-page image refs | binary |
 | `KB/index.md` | 🤖 | `agents/robin/ingest.py:583,600` + `pubmed_digest.py:539` (append) | 修修 manual reads | drift D3: no enforcement |
