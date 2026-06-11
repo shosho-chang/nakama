@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Codex panel audit dispatch — multi-agent-panel skill step 2 for ADR-038.
 
 Reads:
