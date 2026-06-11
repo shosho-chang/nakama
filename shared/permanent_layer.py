@@ -47,8 +47,14 @@ class PermanentWriteViolation(Exception):
 
 
 def _normalize(path: str | Path) -> str:
-    """把任意路徑正規化成 forward-slash posix 字串供前綴比對。"""
-    return Path(str(path)).as_posix()
+    """把任意路徑正規化成 forward-slash 字串供前綴比對。
+
+    顯式 replace 反斜線——不可用 ``Path.as_posix()``：它是**平台相依**的，Windows
+    把 ``\\`` 當分隔符轉 ``/``，但 Linux 把 ``\\`` 當合法檔名字元保留，導致同一個
+    Windows 絕對路徑（如 ``E:\\Shosho LifeOS\\KB\\Permanent\\card.md``）在 CI(Linux)
+    上判定失敗。手動 replace 在兩平台行為一致。
+    """
+    return str(path).replace("\\", "/")
 
 
 def is_permanent_path(path: str | Path) -> bool:
