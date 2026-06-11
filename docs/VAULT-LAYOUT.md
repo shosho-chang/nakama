@@ -135,6 +135,15 @@ E:\Shosho LifeOS\
 │   │
 │   ├── Annotations/{slug}.md   Robin Reader `POST /save-annotations` (ADR-017 v1/v2 + v3 code addition)
 │   │
+│   ├── Permanent/{宣告句}.md   🔒 Human only 正文 — 人寫永久卡 (Centaur v0.2 §3, N520).
+│   │                           AI 唯一寫入口 = `shared/permanent_layer.py:update_permanent_bookkeeping`
+│   │                           (白名單 frontmatter: source_refs/modified/aliases). typed edges
+│   │                           (支持/反駁/延伸) → kb_typed_edges 表. body human-authoring surface 寫
+│   │                           (N523 `POST /kb/api/permanent`)
+│   ├── Fleeting/{ts}-{前幾字}.md  人 + Nami 寫 — 即時捕捉 (Centaur v0.2 §4, N526). AI 只翻 status
+│   ├── Literature/{slug}.md    🤖 render — 人讀文獻筆記快照 (Centaur v0.2, N521 writer)
+│   ├── MOCs/{topic}.md         🟡 marker convention — 人寫分組 + AI `%%agent-robin-unfiled%%` (v0.2 §10)
+│   │
 │   ├── Attachments/{source-slug}/   flat per-source; News Coo (post-Phase A migration) + pubmed digest
 │   │
 │   ├── index.md            Robin ingest append (drift D3 — no coverage check)
@@ -219,6 +228,10 @@ data/agent_reports/franky/
 | `KB/Wiki/Digests/PubMed/{YYYY-MM-DD}.md` | 🤖 | `agents/robin/pubmed_digest.py:521-522` | 修修, Brook synthesize | — |
 | `KB/Wiki/_alias_map.md` | 🤖 | `shared/concept_classifier.py` + `scripts/run_s8_preflight.py` (staging patches) | textbook-ingest re-evaluation | ADR-020 v3 maturity model — see §4 lifecycle |
 | `KB/Annotations/{slug}.md` | 🤖 | `shared/annotation_store.AnnotationStore.save` ← Robin Reader `POST /save-annotations` | Reader render, `annotation_merger`, RCP builder | ADR-017 (v1/v2) + v3 code addition |
+| `KB/Permanent/{宣告句}.md` | 🔒 body | **正文 + status：human only** (N523 `POST /kb/api/permanent`). AI 唯一寫入口 = `shared/permanent_layer.py:update_permanent_bookkeeping` — 白名單 frontmatter `source_refs`/`modified`/`aliases`，**永不**碰正文/status/其他 key。`shared/promotion_targets.resolve_target_path` 在 chokepoint `assert_not_permanent_target` 攔截 (紅線 1 negative tripwire) | `kb_hybrid_search.search` (排序置頂)、Obsidian、N523 Web UI | Centaur v0.2 §3 (frontmatter + typed edges) + `shared/permanent_layer.py` |
+| `KB/Fleeting/{ts}-{前幾字}.md` | 🟡 人+Nami | 人 (Obsidian) + Nami Slack bot 寫正文 (N526); AI 只翻 `status: open→processed` + 善後送回收桶 | 每日回顧 (N522) | Centaur v0.2 §4 |
+| `KB/Literature/{slug}.md` | 🤖 render | Robin Literature writer (N521) — ingest 當下 render 人讀快照 | RCP builder, Brook context_bridge, kb_search | Centaur v0.2 (Literature Note 統一規格) |
+| `KB/MOCs/{topic}.md` | 🟡 marker | 人寫分組標題 + 「為什麼放這」; AI 維護 `%%agent-robin-unfiled%%` marker section + 孤兒標記 (建 MOC 永遠人決定) | Obsidian, N525 MOC view | Centaur v0.2 §10 |
 | `KB/Attachments/{source-slug}/` | 🤖 | News Coo image fetcher (post-Phase A migration) + `agents/robin/pubmed_digest.py:210` | source-page image refs | binary |
 | `KB/index.md` | 🤖 | `agents/robin/ingest.py:583,600` + `pubmed_digest.py:539` (append) | 修修 manual reads | drift D3: no enforcement |
 | `KB/log.md` | 🤖 | `agents/robin/ingest.py` + `pubmed_digest.py:527` (append-only) | 修修 manual reads | append-only |
@@ -240,6 +253,30 @@ data/agent_reports/franky/
 | `Scripts/nakama-config.md` | 🔒 | 修修 | dataviewjs (reads `robin_url`, `robin_key`) | — |
 
 **Reader UI scope contract:** `thousand_sunny/routers/robin.py:135 _get_inbox_files` reads ONE folder (`inbox.iterdir()`, no recursion). `config.yaml.agents.robin.inbox_path = Inbox/web` (post-Phase A). Reader UI lists only `Inbox/web/*.md`. Books/papers/snapshots in sibling Inbox subfolders are invoked by their own ingest tools via absolute path; intentionally not in Reader UI scope.
+
+### Centaur Permanent layer — 演算法紅線 (canonical, v0.2 §7)
+
+These five red lines are the **repo-side canonical** governance for the Centaur
+permanent layer (N520). The vault's own `CLAUDE.md` mirrors this table for the
+in-Obsidian agent; because the vault is not a git repo, the vault edit ships as a
+PR-description checklist, not a committed file (see §5 boundary). When the two
+drift, **this section wins** and the vault copy is re-synced.
+
+1. **AI 絕不寫 `KB/Permanent/` 正文與 status。** 唯一寫入口
+   `shared/permanent_layer.py:update_permanent_bookkeeping`（白名單 key
+   `source_refs`/`modified`/`aliases`）。enforced by `assert_not_permanent_target`
+   at the promotion resolver chokepoint + bookkeeping whitelist. ✅ N520 tripwire.
+2. **每個事實宣稱附 citation**，溯源回 `KB/Raw/` 或 `KB/Annotations/` 錨點.
+   🟡 N520 scaffolding (`shared/provenance_linter.py`), enforcement N524.
+3. **Concept 可寫可 merge，但不冒充永久卡**（provenance 分離，`author` 欄必填）.
+   ✅ N520 — Permanent body 走 human path，`author: human`；Concept 仍由 AI 自由寫.
+4. **ingest 不建 MOC** — MOC 等人的擠壓點 (v0.2 §10). ✅ N520 — 無 ingest-time MOC writer.
+5. **Concept / Output 的終端證據只能是 Sources / Raw / Annotations**，不得以另一個
+   Concept / Output 作為事實來源（防 citation laundering / wiki 自我餵食）.
+   🟡 N520 scaffolding (`provenance_linter.is_terminal_evidence`), enforcement N524.
+
+> ✅ = N520 機械 enforce；🟡 = N520 凍結介面 + placeholder，真檢查延 N524。
+> CJK 全層檢索精度（query-side jieba / FTS5 ICU tokenizer）是獨立 backlog，不綁 N520。
 
 ---
 

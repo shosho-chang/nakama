@@ -80,6 +80,21 @@ def _init_schema(conn: sqlite3.Connection) -> None:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wikilinks_src ON kb_wikilinks(src_path)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_wikilinks_dst ON kb_wikilinks(dst_path)")
+    # Centaur N520: typed edges (支持/反駁/延伸) from KB/Permanent/ cards live in a
+    # structured table, NOT only in FTS text. The edges form a directed knowledge
+    # graph; storing them structurally keeps "show all cards that 反駁 X" a cheap
+    # path query instead of a fragile CJK text-parse (panel Gemini §2). The card
+    # *body* is still FTS-indexed for keyword search — the two are complementary.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS kb_typed_edges (
+            src_path  TEXT NOT NULL,
+            edge_type TEXT NOT NULL,   -- 'support' | 'refute' | 'extend'
+            dst_path  TEXT NOT NULL,
+            reason    TEXT             -- 人的判斷理由（edge 行 '—' 之後）
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_typed_edges_src ON kb_typed_edges(src_path)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_typed_edges_dst ON kb_typed_edges(dst_path)")
     # FTS5 virtual tables don't support IF NOT EXISTS — use try/except
     try:
         conn.execute("""
@@ -136,6 +151,24 @@ class SearchHit:
 # ---------------------------------------------------------------------------
 # Core search
 # ---------------------------------------------------------------------------
+
+
+def _is_permanent_path(path: str) -> bool:
+    """True if a chunk path lives under KB/Permanent/ (canonical guard, N520)."""
+    from shared.permanent_layer import is_permanent_path
+
+    return bool(path) and is_permanent_path(path)
+
+
+def _resolve_candidate_paths(conn: sqlite3.Connection, rowids: list[int]) -> dict[int, str]:
+    """Fetch path for each candidate rowid in one query (for Permanent tiering)."""
+    if not rowids:
+        return {}
+    ph = ",".join("?" * len(rowids))
+    rows = conn.execute(
+        f"SELECT rowid, path FROM kb_chunks WHERE rowid IN ({ph})", rowids
+    ).fetchall()
+    return {r[0]: r["path"] for r in rows}
 
 
 def _wikilink_lane(
@@ -249,12 +282,27 @@ def search(
     if "wikilink" in lanes:
         _wikilink_lane(conn, candidates)
 
+    # Permanent-first authority tier (Centaur v0.2 / handoff fork 2): 永久卡是
+    # 修修「怎麼想」的權威層，檢索排最前。We resolve candidate paths once, then
+    # sort with a (is_permanent, score) key so any Permanent card that MATCHED
+    # the query surfaces ahead of comparable Wiki hits — and critically, this
+    # runs BEFORE the `[:top_k]` truncation below, so a relevant Permanent hit is
+    # never lost in truncation (panel Codex §5: do the boost pre-top_k, not in a
+    # wrapper post-sort). Only candidates that already matched are in the pool —
+    # an irrelevant Permanent card is never conjured up.
+    path_by_rowid = _resolve_candidate_paths(conn, list(candidates))
+
+    def _is_permanent(rowid: int) -> bool:
+        return _is_permanent_path(path_by_rowid.get(rowid, ""))
+
     # Reciprocal Rank Fusion: score = Σ 1/(k + rank_in_lane)
     scored: list[tuple[int, float, dict[str, int]]] = []
     for rowid, lane_ranks in candidates.items():
         score = sum(1.0 / (_RRF_K + r) for r in lane_ranks.values())
         scored.append((rowid, score, lane_ranks))
-    scored.sort(key=lambda x: -x[1])
+    # tier 0 = Permanent (sorts first), tier 1 = everything else; within a tier,
+    # higher RRF score wins.
+    scored.sort(key=lambda x: (0 if _is_permanent(x[0]) else 1, -x[1]))
 
     results: list[SearchHit] = []
     for rowid, rrf_score, lane_ranks in scored[:top_k]:
