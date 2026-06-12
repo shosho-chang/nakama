@@ -380,12 +380,17 @@
       }
     }
     setDragging(true);
+    // 拖前的原位（field 內、無旋轉的 style 值）——純點擊時精確還原，不漂移。
+    var origLeft = elx.style.left;
+    var origTop = elx.style.top;
+    var moved = false;
     // 抓取點：相對卡片左上角的位移（用卡片目前在 viewport 的位置算）。
     var r = elx.getBoundingClientRect();
     var grabX = e.clientX - r.left;
     var grabY = e.clientY - r.top;
     liftToDragLayer(elx, e.clientX, e.clientY, grabX, grabY);
     function mv(ev) {
+      moved = true;
       elx.style.left = ev.clientX - grabX + "px";
       elx.style.top = ev.clientY - grabY + "px";
       dragFeedback(overTarget(ev));
@@ -409,9 +414,22 @@
         commitLink(elx.dataset.title, elx, o);
         return;
       }
-      // 沒落在有效落點：卡片回到場上原位（重排該帶）。
-      elx.remove();
-      renderKeepText();
+      // 沒落在有效落點：卡片留在場上 + 換新角度，不重排其他卡（修修回饋）。
+      var field = $("#kbc-field");
+      field.appendChild(elx);
+      if (moved) {
+        // 真拖動：放在放手的位置（自由擺放）。
+        var er = elx.getBoundingClientRect();
+        var fr = field.getBoundingClientRect();
+        elx.style.left = Math.max(4, Math.min(fr.width - 170, er.left - fr.left)) + "px";
+        elx.style.top = Math.max(4, Math.min(fr.height - 96, er.top - fr.top)) + "px";
+      } else {
+        // 純點擊：精確還原原位，只換角度（不漂移）。
+        elx.style.left = origLeft;
+        elx.style.top = origTop;
+      }
+      elx.style.transform = "rotate(" + (reduced ? 0 : rand(-2.2, 2.2)) + "deg)";
+      elx.style.zIndex = ++zCounter;
     }
     document.addEventListener("pointermove", mv);
     document.addEventListener("pointerup", up);
