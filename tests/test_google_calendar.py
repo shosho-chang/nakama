@@ -126,6 +126,54 @@ def test_overlaps_handles_different_timezones():
     )
 
 
+# ── find_conflicts ───────────────────────────────────────────────────
+
+
+def test_find_conflicts_skips_all_day_event(monkeypatch):
+    """Regression: a timed event on a day that already has an all-day event must
+    NOT crash and must NOT report a conflict. The all-day event's ``start`` is
+    date-only (naive); before the fix it hit ``_overlaps`` and raised
+    ``can't compare offset-naive and offset-aware datetimes`` — and even parsed,
+    an all-day marker shouldn't block a timed sub-event in that day."""
+    from shared import google_calendar
+    from shared.google_calendar import CalendarEvent
+
+    evs = [
+        CalendarEvent(
+            id="allday", title="知識衛星拍片", start="2026-07-04", end="2026-07-05", html_link="h"
+        ),
+    ]
+    monkeypatch.setattr(google_calendar, "list_events", lambda **kw: evs)
+    conflicts = google_calendar.find_conflicts(
+        "2026-07-04T08:30:00", "2026-07-04T22:00:00"
+    )
+    assert conflicts == []
+
+
+def test_find_conflicts_still_detects_timed_overlap(monkeypatch):
+    """A genuinely overlapping timed event is still returned (fix didn't over-filter)."""
+    from shared import google_calendar
+    from shared.google_calendar import CalendarEvent
+
+    evs = [
+        CalendarEvent(
+            id="allday", title="整天", start="2026-07-04", end="2026-07-05", html_link="h"
+        ),
+        CalendarEvent(
+            id="timed",
+            title="會議",
+            start="2026-07-04T09:00:00+08:00",
+            end="2026-07-04T10:00:00+08:00",
+            html_link="h",
+        ),
+    ]
+    monkeypatch.setattr(google_calendar, "list_events", lambda **kw: evs)
+    conflicts = google_calendar.find_conflicts(
+        "2026-07-04T08:30:00", "2026-07-04T22:00:00"
+    )
+    assert [c.id for c in conflicts] == ["timed"]
+
+
 # ── _parse_event ─────────────────────────────────────────────────────
 
 
