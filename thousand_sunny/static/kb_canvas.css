@@ -165,7 +165,30 @@ body.sho.kbc-active { overflow: hidden; }
 }
 .kbc-card.robin:hover { border-color: var(--sho-accent); }
 .kbc-card.dragging { cursor: grabbing; box-shadow: 0 8px 24px oklch(0.1 0 0 / 0.18); }
-.kbc-card .t { font-size: 14px; font-weight: 700; color: var(--sho-ink); line-height: 1.5; margin-bottom: 6px; }
+.kbc-card .t { font-size: 14px; font-weight: 700; color: var(--sho-ink); line-height: 1.5; margin-bottom: 6px; padding-right: 22px; }
+/* 展開圖示（看內容，修修回饋 #3）：卡片右上角，hover 顯現。點它＝預覽；點卡身＝換角度。 */
+.kbc-peek {
+  position: absolute; top: 7px; right: 7px; width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: var(--sho-bg); color: var(--sho-muted);
+  cursor: pointer; opacity: 0; transition: opacity var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-peek svg { width: 15px; height: 15px; }
+.kbc-card:hover .kbc-peek { opacity: .65; }
+.kbc-peek:hover { opacity: 1; color: var(--sho-accent); }
+.kbc-peek:focus-visible { outline: none; box-shadow: var(--sho-focus); opacity: 1; }
+/* 永久卡內容預覽面板 */
+.kbc-peekpop {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 60; width: min(440px, 86vw); max-height: 64vh; display: flex; flex-direction: column;
+  background: var(--sho-bg); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-3);
+  box-shadow: 0 12px 44px oklch(0.2 0.01 80 / 0.22);
+}
+.kbc-peekpop .pk-h { display: flex; align-items: baseline; gap: 10px; padding: 14px 18px 11px; border-bottom: 1px solid var(--sho-line); }
+.kbc-peekpop .pk-h b { font-size: 15px; font-weight: 800; color: var(--sho-ink); }
+.kbc-peekpop .pk-x { margin-left: auto; border: 0; background: none; color: var(--sho-muted); cursor: pointer; font-size: 14px; line-height: 1; }
+.kbc-peekpop .pk-x:hover { color: var(--sho-accent); }
+.kbc-peekpop .pk-body { padding: 14px 18px 18px; overflow-y: auto; font-size: 14px; line-height: 1.85; color: var(--sho-text); white-space: pre-wrap; word-break: break-word; }
 .kbc-card .m { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
 .kbc-minitag { font-size: 11px; border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill); padding: 0 8px; color: var(--sho-muted); white-space: nowrap; }
 .kbc-minitag.hi { color: var(--sho-accent); border-color: var(--sho-accent-line); }
