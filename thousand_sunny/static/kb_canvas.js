@@ -557,9 +557,15 @@
             elx.remove();
             toast("整疊「" + elx.dataset.stack + "」已收回 — 桌面清爽了");
           } else {
-            // 沒丟進回收盒：整疊歸位重排。
-            elx.remove();
-            renderKeepText();
+            // 沒丟進回收盒：整疊留在放手的位置（自由擺放），不重排其他卡（修修回饋）。
+            // 同單卡：座標必須在 appendChild 之前讀，否則 viewport 值被當 field 相對值跳掉。
+            var field = $("#kbc-field");
+            var er = elx.getBoundingClientRect();
+            var fr = field.getBoundingClientRect();
+            field.appendChild(elx);
+            elx.style.left = Math.max(4, Math.min(fr.width - 180, er.left - fr.left)) + "px";
+            elx.style.top = Math.max(4, Math.min(fr.height - 120, er.top - fr.top)) + "px";
+            elx.style.zIndex = ++zCounter;
           }
         }
         document.addEventListener("pointermove", mv);
