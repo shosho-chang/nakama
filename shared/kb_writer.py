@@ -28,6 +28,7 @@ import yaml
 
 from shared.config import get_vault_path
 from shared.log import get_logger
+from shared.provenance_linter import ProvenanceLinter, ProvenanceViolation
 from shared.schemas.kb import (
     ChapterSourcePageV2,
     ConflictBlock,
@@ -232,6 +233,34 @@ def _serialize_page(fm: dict, body: str) -> str:
 def _write_page_file(abs_path: Path, fm: dict, body: str) -> None:
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     abs_path.write_text(_serialize_page(fm, body), encoding="utf-8")
+
+
+def _enforce_concept_provenance(slug: str, fm: dict, body: str) -> None:
+    """紅線 5 enforcement：concept 寫入前 lint 終端證據（N524）.
+
+    在 :func:`_write_page_file` 之前呼叫。若 ``## Sources`` / ``## Evidence`` 區塊
+    或 frontmatter ``mentioned_in`` 的 citation 指向另一個 Concept/Output → raise
+    :class:`ProvenanceViolation`，**整個寫入被 reject**（含先前已 backup 的舊檔
+    保持不動，因為 raise 發生在 ``_write_page_file`` 之前）。
+
+    這是 N520 留給 N524 的掛載點：``ProvenanceLinter.lint_page`` 從 deferred stub
+    升級成真 enforcement，所有走 :func:`upsert_concept_page` 的寫入路徑都過此關。
+    """
+    mentioned_in = fm.get("mentioned_in") or []
+    if not isinstance(mentioned_in, list):
+        mentioned_in = []
+    report = ProvenanceLinter().lint_page(
+        _concept_rel_path(slug),
+        body,
+        mentioned_in=[str(m) for m in mentioned_in],
+    )
+    if report.status == "violations":
+        for finding in report.findings:
+            logger.error(
+                "concept provenance violation (red line 5)",
+                extra={"slug": slug, "citation": finding.citation, "detail": finding.message},
+            )
+        raise ProvenanceViolation(report)
 
 
 # ---------------------------------------------------------------------------
@@ -681,6 +710,7 @@ def upsert_concept_page(
                 "updated": today,
             }
             body = _ensure_h2_skeleton(extracted_body)
+            _enforce_concept_provenance(slug, fm, body)
             _write_page_file(abs_path, fm, body)
             logger.info(
                 "concept created",
@@ -774,6 +804,7 @@ def upsert_concept_page(
             mentioned.append(source_link)
             fm["mentioned_in"] = mentioned
         fm["updated"] = today
+        _enforce_concept_provenance(slug, fm, body)
         _write_page_file(abs_path, fm, body)
         logger.info(
             "concept update_merge complete",
@@ -807,6 +838,7 @@ def upsert_concept_page(
             fm["mentioned_in"] = mentioned
 
         fm["updated"] = today
+        _enforce_concept_provenance(slug, fm, body)
         _write_page_file(abs_path, fm, body)
         logger.info(
             "concept update_conflict complete",

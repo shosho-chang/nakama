@@ -958,3 +958,78 @@ class TestConfidenceMigrationEdgeCases:
         v2_fm, _body, changes = kb_writer._v1_to_v2_in_memory(v1_fm, "## Definition\n\nfoo\n")
         assert v2_fm["confidence"] == 0.9
         assert any("'high'" in c and "0.9" in c for c in changes)
+
+
+# ---------------------------------------------------------------------------
+# Red line 5 enforcement (N524) — concept writes reject Concept/Output terminal cites
+# ---------------------------------------------------------------------------
+
+
+class TestRedLine5Enforcement:
+    """upsert_concept_page rejects bodies whose ## Sources cites Concept/Output."""
+
+    def test_create_with_concept_cite_in_sources_rejected(self, vault):
+        from shared.provenance_linter import ProvenanceViolation
+
+        body = "## Definition\n\nx\n\n## Sources\n\n- [[Concepts/laundered]]\n"
+        with pytest.raises(ProvenanceViolation):
+            kb_writer.upsert_concept_page(
+                slug="sleep-pressure",
+                action="create",
+                source_link="[[Sources/real]]",
+                title="Sleep Pressure",
+                extracted_body=body,
+            )
+        # rejected => no page written
+        assert not (vault / "KB" / "Wiki" / "Concepts" / "sleep-pressure.md").exists()
+
+    def test_create_with_source_cite_passes(self, vault):
+        body = "## Definition\n\nx ^p-1\n\n## Sources\n\n- [[Sources/colleen-carney]]\n"
+        path = kb_writer.upsert_concept_page(
+            slug="sleep-pressure",
+            action="create",
+            source_link="[[Sources/colleen-carney]]",
+            title="Sleep Pressure",
+            extracted_body=body,
+        )
+        assert path.exists()
+
+    def test_create_with_related_concepts_link_passes(self, vault):
+        """Concept->Concept link in ## Related Concepts is a relation, not evidence."""
+        body = (
+            "## Definition\n\nx\n\n"
+            "## Related Concepts\n\n- [[Concepts/adenosine]]\n\n"
+            "## Sources\n\n- [[Sources/real]]\n"
+        )
+        path = kb_writer.upsert_concept_page(
+            slug="sleep-pressure",
+            action="create",
+            source_link="[[Sources/real]]",
+            title="Sleep Pressure",
+            extracted_body=body,
+        )
+        assert path.exists()
+
+    def test_update_merge_rejects_concept_cite(self, vault, monkeypatch):
+        """If the LLM merge emits a Concept cite in ## Sources, reject the write."""
+        from shared.provenance_linter import ProvenanceViolation
+
+        kb_writer.upsert_concept_page(
+            slug="topic",
+            action="create",
+            source_link="[[Sources/real]]",
+            title="Topic",
+            extracted_body="## Definition\n\nx\n\n## Sources\n\n- [[Sources/real]]\n",
+        )
+
+        def bad_merge(prompt, *, system="", max_tokens=16000):
+            return "## Definition\n\nmerged\n\n## Sources\n\n- [[Concepts/laundered]]\n"
+
+        monkeypatch.setattr(kb_writer, "_ask_llm", bad_merge)
+        with pytest.raises(ProvenanceViolation):
+            kb_writer.upsert_concept_page(
+                slug="topic",
+                action="update_merge",
+                source_link="[[Sources/another]]",
+                extracted_body="new material",
+            )
