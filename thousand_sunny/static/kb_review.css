@@ -3,7 +3,7 @@
    .sho-btn / .sho-theme-toggle / focus ring。此檔只補本 surface 專屬 component。 */
 
 *{box-sizing:border-box}
-body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var(--sho-font);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var(--sho-font-sans);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
 
 .kb-shell{min-height:100vh}
 .kb-main{max-width:840px;margin:0 auto;padding:40px clamp(18px,4vw,48px) 120px;min-width:0}
@@ -47,7 +47,15 @@ body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var
 .cand-meta{font-size:11.5px;color:var(--sho-muted);margin-bottom:12px;font-variant-numeric:tabular-nums}
 .cand-rel{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:12px 0 14px}
 .cand-rel .sl{font-size:10.5px;color:var(--sho-muted);text-transform:uppercase;letter-spacing:.05em}
-.cand-act{display:flex;gap:8px;align-items:center;border-top:1px solid var(--sho-line);padding-top:12px}
+/* 分段式動作控制（開卡 | 略過 | 之後再說 連成一顆按鈕；修修回饋） */
+.cand-seg{display:flex;margin-top:14px;padding-top:14px;border-top:1px solid var(--sho-line)}
+.cand-seg .seg{font-family:var(--sho-font-mono);font-size:12px;letter-spacing:.08em;padding:7px 18px;cursor:pointer;background:var(--sho-bg);color:var(--sho-text-2);border:1px solid var(--sho-line-2);border-left-width:0;transition:background var(--sho-t-fast) var(--sho-ease),color var(--sho-t-fast) var(--sho-ease),border-color var(--sho-t-fast) var(--sho-ease)}
+.cand-seg .seg:first-child{border-left-width:1px;border-radius:var(--sho-r-1) 0 0 var(--sho-r-1)}
+.cand-seg .seg:last-child{border-radius:0 var(--sho-r-1) var(--sho-r-1) 0}
+.cand-seg .seg-go{background:var(--sho-text);color:var(--sho-bg);border-color:var(--sho-text);font-weight:700}
+.cand-seg .seg-go:hover{background:var(--sho-accent);border-color:var(--sho-accent)}
+.cand-seg .seg:not(.seg-go):hover{color:var(--sho-accent);border-color:var(--sho-accent)}
+.cand-seg .seg:focus-visible{outline:none;box-shadow:var(--sho-focus);position:relative;z-index:1}
 
 .ex{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);overflow:hidden;margin:0 0 4px}
 .ex-q{background:var(--sho-bg-2);padding:10px 16px;font-size:13.5px;color:var(--sho-text-2);line-height:1.75;display:flex;gap:10px;align-items:baseline}
@@ -122,7 +130,7 @@ textarea.body.invalid{border-color:var(--sho-error)}
 details.preview{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);overflow:hidden}
 details.preview summary{cursor:pointer;list-style:none;padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--sho-text-2);background:var(--sho-bg-2)}
 details.preview summary::-webkit-details-marker{display:none}
-details.preview pre{margin:0;padding:12px 14px;font-size:12px;line-height:1.65;overflow-x:auto;color:var(--sho-text-2);border-top:1px solid var(--sho-line);font-family:var(--sho-font);white-space:pre-wrap;word-break:break-word}
+details.preview pre{margin:0;padding:12px 14px;font-size:12px;line-height:1.65;overflow-x:auto;color:var(--sho-text-2);border-top:1px solid var(--sho-line);font-family:var(--sho-font-sans);white-space:pre-wrap;word-break:break-word}
 
 .drawer-foot{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:1px solid var(--sho-line)}
 .drawer-foot .note{font-size:11.5px;color:var(--sho-muted);margin-right:auto;flex:1 1 auto;min-width:0}

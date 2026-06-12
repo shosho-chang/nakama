@@ -17,7 +17,6 @@
       <span class="meta">{{ review_label }}</span>
       {% if weekly_sweep %}<span class="sho-tag sho-tag--warning">每週清掃日</span>{% endif %}
     </div>
-    <p class="vsub">Robin 已完成記帳與篩選；以下交給你判斷。「之後再說」14 天未動自動歸檔。</p>
 
     {% if warnings %}
     <div class="kb-warn" role="status">
@@ -38,7 +37,6 @@
       <div class="kb-empty">
         <div class="kb-empty-mk">∅</div>
         <p>沒有待處理的 fleeting。</p>
-        <p class="kb-empty-sub">想到什麼就在 Slack 丟給 Nami — 明天早上會出現在這裡。</p>
       </div>
       {% endif %}
     </div>
@@ -74,11 +72,6 @@
       {% endif %}
     </div>
     {% endif %}
-
-    <div class="kb-footer">
-      <svg class="kb-bolt" viewBox="0 4 26 14" fill="none" aria-hidden="true" focusable="false"><polyline points="2,16 6,10 9,14 13,8 16,12 20,6 24,10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span class="sho-mono-up">vault 為唯一真相，本 UI 僅是 renderer</span>
-    </div>
   </main>
 </div>
 
