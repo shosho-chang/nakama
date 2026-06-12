@@ -1,0 +1,855 @@
+/* Centaur 卡片畫布 (N528) — CSP-safe (script-src 'self'，無 inline / onclick).
+   讀 #kb-data JSON island（與 kb_review.js 共用）→ 畫布工作桌 + 三帶卡片場 →
+   拖拉建 typed edge → POST /kb/api/permanent（沿用線性版唯一寫入口）。
+
+   畫布是 opt-in：線性 drawer 為預設（C1/C2）。模式偏好記 localStorage。
+   照 prototype v4 落地——互動、版面、動畫直接搬，token 換成 tokens.css 的 --sho-*。 */
+(function () {
+  "use strict";
+
+  var DATA;
+  try {
+    DATA = JSON.parse(document.getElementById("kb-data").textContent || "{}");
+  } catch (e) {
+    DATA = { candidates: [] };
+  }
+
+  var MODE_KEY = "kb-open-mode"; // "linear"（預設）| "canvas"
+  // typed edge label（後端契約：support/refute/extend；src 是 source_ref 非 edge）。
+  var TLBL = { support: "支持", refute: "反駁", extend: "延伸", src: "來源" };
+
+  function $(s, root) {
+    return (root || document).querySelector(s);
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  var reduced = false;
+  try {
+    reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (e) {
+    reduced = false;
+  }
+  function rand(a, b) {
+    return a + Math.random() * (b - a);
+  }
+
+  /* ---------------- toast（沿用線性版 #toast 元素） ---------------- */
+  var toastTimer;
+  function toast(msg) {
+    var t = $("#toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      t.classList.remove("on");
+    }, 2600);
+  }
+
+  /* ================= state ================= */
+  // 候選佇列：複製 bundle，每張帶 done 旗標。畫布存卡後在此標 done 並推進。
+  var CANDS = (DATA.candidates || []).map(function (c) {
+    return c;
+  });
+  var doneIds = {}; // candidate_id -> true（已存/已收）
+  var centerIdx = 0;
+  var edges = []; // [{target, type, reason}]；type ∈ support/refute/extend
+  var srcRefs = []; // 拖入「來源」格的卡 → 額外 source_ref（raw wikilink）
+  var doneCount = 0;
+  var binCount = 0;
+  var binned = {}; // 場上單卡 / 疊卡的 session-scoped dismissal（key=title 或 "stack:"+name）
+  var editIdx = -1;
+  var zCounter = 12;
+  var overlayEl = null;
+  var memberCache = {}; // moc_path -> members[]（lazy load 結果快取）
+
+  function curCand() {
+    while (centerIdx < CANDS.length && doneIds[CANDS[centerIdx].candidate_id]) centerIdx++;
+    return CANDS[centerIdx] || null;
+  }
+
+  /* ================= field render ================= */
+  function render() {
+    var cand = curCand();
+    var field = $("#kbc-field");
+    var emptyAll = $("#kbc-empty-all");
+    if (!cand) {
+      field.innerHTML = "";
+      emptyAll.hidden = false;
+      $("#kbc-title").value = "";
+      $("#kbc-body").value = "";
+      $("#kbc-edges-box").hidden = true;
+      $("#kbc-i").textContent = CANDS.length;
+      $("#kbc-n").textContent = CANDS.length;
+      $("#kbc-done").textContent = doneCount;
+      $("#kbc-mocbox-n").textContent = "";
+      return;
+    }
+    emptyAll.hidden = true;
+    if (!$("#kbc-title").dataset.dirty) $("#kbc-title").value = cand.suggested_title || "";
+    $("#kbc-i").textContent = centerIdx + 1;
+    $("#kbc-n").textContent = CANDS.length;
+    $("#kbc-done").textContent = doneCount;
+
+    var FW = field.offsetWidth;
+    var FH = field.offsetHeight;
+    var b1 = FW * 0.34;
+    var b2 = FW * 0.66;
+
+    field.innerHTML = "";
+    // 帶標籤 + 分隔線
+    addBandLabel(field, "高關聯 · Robin 判定", b1 * 0.5 - 58);
+    addBandLabel(field, "中關聯 · 字面相關", b1 + (b2 - b1) * 0.5 - 58);
+    addBandLabel(field, "MOC 疊卡 · Robin 篩選", b2 + (FW - b2) * 0.5 - 70);
+    addBandSep(field, b1);
+    addBandSep(field, b2);
+
+    // 高圈：edges（含建議方向 chip）。中圈：related_pool（字面）。
+    var hiCards = (cand.edges || []).filter(function (e) {
+      var t = e.target_title || e.target_card;
+      return !linked(t) && !binned[t];
+    });
+    var midCards = (cand.related_pool || []).filter(function (r) {
+      var t = r.title || r.card_path;
+      return !linked(t) && !binned[t];
+    });
+    placeCards(field, hiCards, 0, b1, FH, "hi");
+    placeCards(field, midCards, b1, b2, FH, "mid");
+
+    // MOC 疊卡：只放 Robin 判定相關的（related_mocs）。其餘收進 MOC 盒（C8）。
+    var mocs = (cand.related_mocs || []).filter(function (m) {
+      return !binned["stack:" + (m.name || m.moc_path)];
+    });
+    mocs.forEach(function (m, i) {
+      var name = m.name || m.moc_path.split("/").pop();
+      var x = b2 + 24 + rand(-4, 4);
+      var y = Math.min(FH - 110, 58 + i * 112 + rand(-4, 4));
+      var stack = el("div", "kbc-stack rel");
+      stack.dataset.stack = name;
+      stack.dataset.mocPath = m.moc_path;
+      stack.style.cssText = "left:" + x + "px;top:" + y + "px;z-index:5";
+      var badge = el("span", "relbadge", "✦ Robin 判定相關");
+      var layers = el("div", "layers");
+      layers.appendChild(el("div", "ly"));
+      layers.appendChild(el("div", "ly"));
+      var top = el("div", "ly");
+      top.appendChild(el("span", "t", name));
+      top.appendChild(el("span", "n", (m.card_count || 0) + " 張 · 點開攤平"));
+      layers.appendChild(top);
+      stack.appendChild(badge);
+      stack.appendChild(layers);
+      field.appendChild(stack);
+    });
+
+    // MOC 盒計數：related_mocs 是已上桌的子集，盒內是全部 related_mocs（含已收回的兜底入口）。
+    var totalMocs = (cand.related_mocs || []).length;
+    $("#kbc-mocbox-n").textContent = totalMocs ? totalMocs + " 個 MOC" : "無相關 MOC";
+
+    renderEdges();
+    bindCards();
+    bindStacks();
+  }
+
+  function addBandLabel(field, text, left) {
+    var lbl = el("span", "kbc-bandlbl", text);
+    lbl.style.left = left + "px";
+    field.appendChild(lbl);
+  }
+  function addBandSep(field, left) {
+    var s = el("div", "kbc-bandsep");
+    s.style.left = left + "px";
+    field.appendChild(s);
+  }
+  function placeCards(field, cards, x0, x1, FH, tier) {
+    cards.forEach(function (d, i) {
+      var title = tier === "hi" ? d.target_title || d.target_card : d.title || d.card_path;
+      var x = Math.max(10, Math.min(x1 - 214, x0 + 18 + rand(0, Math.max(20, x1 - x0 - 240))));
+      var y = 56 + i * ((FH - 140) / Math.max(cards.length, 1)) + rand(-10, 10);
+      var rot = reduced ? 0 : rand(-2.2, 2.2);
+      var card = el("div", "kbc-card");
+      card.dataset.title = title;
+      card.style.cssText =
+        "left:" + x + "px;top:" + Math.min(FH - 120, y) + "px;transform:rotate(" + rot + "deg);z-index:" + zCounter++;
+      card.appendChild(el("div", "t", title));
+      var m = el("div", "m");
+      if (tier === "hi") {
+        m.appendChild(el("span", "kbc-minitag hi", "✦ Robin"));
+        var sugg = d.edge_type;
+        if (sugg && TLBL[sugg]) {
+          m.appendChild(el("span", "kbc-minitag " + sugg, "建議" + TLBL[sugg]));
+        }
+        if (d.direction === "reverse") m.appendChild(el("span", "kbc-minitag", "對方→本卡"));
+      } else {
+        m.appendChild(el("span", "kbc-minitag", "字面相關"));
+        if (d.status) m.appendChild(el("span", "kbc-minitag", d.status));
+      }
+      card.appendChild(m);
+      field.appendChild(card);
+    });
+  }
+
+  function linked(title) {
+    return edges.some(function (e) {
+      return e.target === title;
+    }) || srcRefs.indexOf(title) >= 0;
+  }
+
+  function renderKeepText() {
+    var t = $("#kbc-title").value;
+    var b = $("#kbc-body").value;
+    var dirty = $("#kbc-title").dataset.dirty;
+    render();
+    if (curCand()) {
+      if (dirty) $("#kbc-title").value = t;
+      $("#kbc-body").value = b;
+    }
+  }
+
+  /* ================= edges 清單 ================= */
+  function renderEdges() {
+    var box = $("#kbc-edges-box");
+    var hasAny = edges.length || srcRefs.length;
+    box.hidden = !hasAny;
+    $("#kbc-e-n").textContent = edges.length
+      ? edges.length + " 條 · 點徽章改類型 · ✕ 解除"
+      : srcRefs.length
+        ? srcRefs.length + " 條來源"
+        : "";
+
+    var list = $("#kbc-edges");
+    list.innerHTML = "";
+
+    edges.forEach(function (e, i) {
+      var item = el("div", "kbc-edgeitem");
+      var badge = el("button", "kbc-ebadge " + e.type);
+      badge.type = "button";
+      badge.dataset.eb = i;
+      badge.textContent = TLBL[e.type];
+      badge.addEventListener("click", function (ev) {
+        openPopover(i, badge);
+      });
+      item.appendChild(badge);
+      item.appendChild(el("span", "tg", "[[" + e.target + "]]"));
+      var reason = el("input", "reason-in");
+      reason.type = "text";
+      reason.dataset.ri = i;
+      reason.value = e.reason || "";
+      reason.placeholder = "— 因為…（必填）";
+      reason.setAttribute("aria-label", "「" + e.target + "」關係理由");
+      reason.addEventListener("input", function () {
+        edges[i].reason = reason.value;
+        updateFootHint();
+      });
+      item.appendChild(reason);
+      var rm = el("button", "rm", "✕");
+      rm.type = "button";
+      rm.dataset.rm = i;
+      rm.title = "解除連結";
+      rm.setAttribute("aria-label", "解除「" + e.target + "」連結");
+      rm.addEventListener("click", function () {
+        var removed = edges.splice(i, 1)[0];
+        toast("已解除「" + removed.target + "」— 卡片回到場上");
+        renderKeepText();
+      });
+      item.appendChild(rm);
+      list.appendChild(item);
+    });
+
+    // 來源格收進來的卡（不是 typed edge，存檔時併入 source_refs）。
+    srcRefs.forEach(function (target, i) {
+      var item = el("div", "kbc-edgeitem");
+      var badge = el("span", "kbc-ebadge src", "來源");
+      item.appendChild(badge);
+      item.appendChild(el("span", "tg", "[[" + target + "]]"));
+      item.appendChild(el("span", "reason-in", "source_ref · 不需理由"));
+      var rm = el("button", "rm", "✕");
+      rm.type = "button";
+      rm.title = "解除來源";
+      rm.setAttribute("aria-label", "解除來源「" + target + "」");
+      rm.addEventListener("click", function () {
+        srcRefs.splice(i, 1);
+        toast("已解除來源「" + target + "」");
+        renderKeepText();
+      });
+      item.appendChild(rm);
+      list.appendChild(item);
+    });
+
+    updateFootHint();
+  }
+
+  function updateFootHint() {
+    var missing = edges.filter(function (e) {
+      return !e.reason.trim();
+    }).length;
+    if (edges.length) {
+      $("#kbc-fn").textContent = missing ? missing + " 條理由未填" : "理由都填好了 ✓";
+    } else if (srcRefs.length) {
+      $("#kbc-fn").textContent = "已加來源 · 把卡拖到桌面四邊建立關係";
+    } else {
+      $("#kbc-fn").textContent = "把右邊的卡拖到桌面四邊建立連結";
+    }
+  }
+
+  /* ---------------- popover（改類型） ---------------- */
+  function openPopover(idx, badge) {
+    editIdx = idx;
+    var e = edges[idx];
+    $("#kbc-pop-name").textContent = "修改關係：" + e.target;
+    document.querySelectorAll("#kbc-popover .ptype").forEach(function (p) {
+      p.classList.toggle("sel", p.dataset.t === e.type);
+    });
+    var po = $("#kbc-popover");
+    var r = badge.getBoundingClientRect();
+    po.classList.add("on");
+    po.style.left = Math.min(window.innerWidth - 292, r.left) + "px";
+    po.style.top = r.bottom + 6 + "px";
+  }
+  document.querySelectorAll("#kbc-popover .ptype").forEach(function (p) {
+    p.addEventListener("click", function () {
+      if (editIdx >= 0) {
+        var t = p.dataset.t;
+        if (t === "src") {
+          // 改成「來源」= 從 typed edge 降級為 source_ref。
+          var moved = edges.splice(editIdx, 1)[0];
+          if (srcRefs.indexOf(moved.target) < 0) srcRefs.push(moved.target);
+        } else {
+          edges[editIdx].type = t;
+        }
+        renderEdges();
+      }
+      $("#kbc-popover").classList.remove("on");
+      editIdx = -1;
+    });
+  });
+
+  /* ================= drop targets ================= */
+  function overTarget(ev) {
+    var ib = $("#kbc-inbox").getBoundingClientRect();
+    if (ev.clientX > ib.left - 8 && ev.clientX < ib.right + 8 && ev.clientY > ib.top - 8 && ev.clientY < ib.bottom + 8)
+      return "bin";
+    var desk = $("#kbc-desk");
+    var r = desk.getBoundingClientRect();
+    if (ev.clientX < r.right + 30) {
+      var zones = desk.querySelectorAll(".kbc-dz");
+      for (var i = 0; i < zones.length; i++) {
+        var zr = zones[i].getBoundingClientRect();
+        if (zr.width && ev.clientX > zr.left && ev.clientX < zr.right && ev.clientY > zr.top && ev.clientY < zr.bottom)
+          return zones[i].dataset.z;
+      }
+      return "near";
+    }
+    return null;
+  }
+  function dragFeedback(o) {
+    document.querySelectorAll(".kbc-dz").forEach(function (z) {
+      z.classList.toggle("hot", z.dataset.z === o);
+    });
+    $("#kbc-inbox").classList.toggle("hot", o === "bin");
+  }
+  function setDragging(on) {
+    $("#kbc-desk").classList.toggle("dz-on", on);
+  }
+
+  /* ================= card drag ================= */
+  function startCardDrag(elx, e) {
+    if (elx.setPointerCapture) {
+      try {
+        elx.setPointerCapture(e.pointerId);
+      } catch (er) {
+        /* ignore */
+      }
+    }
+    elx.classList.add("dragging");
+    elx.style.zIndex = ++zCounter;
+    setDragging(true);
+    var f = $("#kbc-field").getBoundingClientRect();
+    var sx = e.clientX - (f.left + elx.offsetLeft);
+    var sy = e.clientY - (f.top + elx.offsetTop);
+    function mv(ev) {
+      elx.style.left = ev.clientX - f.left - sx + "px";
+      elx.style.top = ev.clientY - f.top - sy + "px";
+      dragFeedback(overTarget(ev));
+    }
+    function up(ev) {
+      elx.classList.remove("dragging");
+      document.removeEventListener("pointermove", mv);
+      document.removeEventListener("pointerup", up);
+      var o = overTarget(ev);
+      dragFeedback(null);
+      setDragging(false);
+      if (!o || o === "near") return;
+      if (o === "bin") {
+        binned[elx.dataset.title] = true;
+        binCount++;
+        $("#kbc-bin-n").textContent = "拖來收回 · " + binCount;
+        elx.remove();
+        toast("「" + elx.dataset.title + "」已收回卡片盒");
+        return;
+      }
+      commitLink(elx.dataset.title, elx, o);
+    }
+    document.addEventListener("pointermove", mv);
+    document.addEventListener("pointerup", up);
+  }
+  function bindCards() {
+    document.querySelectorAll("#kbc-field .kbc-card").forEach(function (elx) {
+      elx.addEventListener("pointerdown", function (e) {
+        startCardDrag(elx, e);
+      });
+    });
+  }
+
+  function commitLink(target, cardEl, type) {
+    if (type === "src") {
+      if (srcRefs.indexOf(target) >= 0) {
+        toast("這張卡已經是來源了");
+        return;
+      }
+      srcRefs.push(target);
+      if (cardEl && cardEl.parentElement) cardEl.remove();
+      renderEdges();
+      toast("已加為來源 source_ref");
+      return;
+    }
+    if (linked(target)) {
+      toast("這張卡已經連結過了");
+      return;
+    }
+    edges.push({ target: target, type: type, reason: "" });
+    if (cardEl && cardEl.parentElement) cardEl.remove();
+    renderEdges();
+    var inps = document.querySelectorAll("#kbc-edges .reason-in");
+    if (inps.length && inps[inps.length - 1].tagName === "INPUT") inps[inps.length - 1].focus();
+    toast("已連結「" + TLBL[type] + "」— 補上理由");
+  }
+
+  /* ================= stacks（點＝攤平；拖＝可收回） ================= */
+  function bindStacks() {
+    document.querySelectorAll("#kbc-field .kbc-stack").forEach(function (elx) {
+      elx.addEventListener("pointerdown", function (e) {
+        var moved = false;
+        var f = $("#kbc-field").getBoundingClientRect();
+        var sx = e.clientX - (f.left + elx.offsetLeft);
+        var sy = e.clientY - (f.top + elx.offsetTop);
+        var ox = e.clientX;
+        var oy = e.clientY;
+        function mv(ev) {
+          if (Math.abs(ev.clientX - ox) + Math.abs(ev.clientY - oy) > 8) {
+            moved = true;
+            elx.classList.add("dragging");
+          }
+          if (moved) {
+            elx.style.left = ev.clientX - f.left - sx + "px";
+            elx.style.top = ev.clientY - f.top - sy + "px";
+            dragFeedback(overTarget(ev) === "bin" ? "bin" : null);
+          }
+        }
+        function up(ev) {
+          document.removeEventListener("pointermove", mv);
+          document.removeEventListener("pointerup", up);
+          elx.classList.remove("dragging");
+          if (!moved) {
+            openOverlay(elx.dataset.stack, elx.dataset.mocPath);
+            return;
+          }
+          var o = overTarget(ev);
+          dragFeedback(null);
+          if (o === "bin") {
+            binned["stack:" + elx.dataset.stack] = true;
+            binCount++;
+            $("#kbc-bin-n").textContent = "拖來收回 · " + binCount;
+            elx.remove();
+            toast("整疊「" + elx.dataset.stack + "」已收回 — 桌面清爽了");
+          }
+        }
+        document.addEventListener("pointermove", mv);
+        document.addEventListener("pointerup", up);
+      });
+    });
+  }
+
+  /* ================= overlay（疊卡攤平，lazy load MOC 成員） ================= */
+  function fetchMembers(mocPath, cb) {
+    if (memberCache[mocPath]) {
+      cb(memberCache[mocPath]);
+      return;
+    }
+    fetch("/kb/api/moc/members?moc_path=" + encodeURIComponent(mocPath))
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (j) {
+        var members = (j && j.members) || [];
+        memberCache[mocPath] = members;
+        cb(members);
+      })
+      .catch(function () {
+        cb(null);
+      });
+  }
+
+  function openOverlay(name, mocPath) {
+    closeOverlay();
+    overlayEl = el("div", "kbc-overlay");
+    var head = el("div", "kbc-ov-head");
+    head.appendChild(el("b", null, name));
+    head.appendChild(el("span", null, "載入中…"));
+    var close = el("button", null, "關閉");
+    close.type = "button";
+    close.addEventListener("click", closeOverlay);
+    head.appendChild(close);
+    var grid = el("div", "kbc-ov-grid");
+    overlayEl.appendChild(head);
+    overlayEl.appendChild(grid);
+    document.body.appendChild(overlayEl);
+    overlayEl.addEventListener("pointerdown", function (e) {
+      if (e.target === overlayEl || e.target.classList.contains("kbc-ov-grid")) closeOverlay();
+    });
+
+    fetchMembers(mocPath, function (members) {
+      if (!overlayEl) return;
+      if (members === null) {
+        head.querySelector("span").textContent = "成員載入失敗 · esc 關閉";
+        grid.appendChild(el("div", "kbc-ov-empty", "無法載入這個 MOC 的成員，稍後再試。"));
+        return;
+      }
+      head.querySelector("span").textContent =
+        members.length + " 張 — 看上哪張就拖出來，其餘自動收回 · esc 關閉";
+      if (!members.length) {
+        grid.appendChild(el("div", "kbc-ov-empty", "這個 MOC 還沒有歸位的成員卡。"));
+        return;
+      }
+      members.forEach(function (mem) {
+        var title = mem.title || (mem.card_path || "").split("/").pop();
+        var g = el("div", "kbc-gcard");
+        g.dataset.title = title;
+        g.appendChild(el("div", "t", title));
+        var m = el("div", "m");
+        m.appendChild(el("span", "kbc-minitag", name));
+        if (mem.status) m.appendChild(el("span", "kbc-minitag", mem.status));
+        g.appendChild(m);
+        bindGcardPull(g, title, name);
+        grid.appendChild(g);
+      });
+    });
+  }
+
+  function bindGcardPull(g, title, name) {
+    g.addEventListener("pointerdown", function (e) {
+      var pulled = false;
+      var cardEl = null;
+      var ox = e.clientX;
+      var oy = e.clientY;
+      function mv(ev) {
+        if (!pulled && Math.abs(ev.clientX - ox) + Math.abs(ev.clientY - oy) > 8) {
+          pulled = true;
+          closeOverlay();
+          setDragging(true);
+          var f = $("#kbc-field").getBoundingClientRect();
+          cardEl = el("div", "kbc-card dragging");
+          cardEl.dataset.title = title;
+          cardEl.style.cssText =
+            "left:" + (ev.clientX - f.left - 100) + "px;top:" + (ev.clientY - f.top - 26) + "px;z-index:" + ++zCounter;
+          cardEl.appendChild(el("div", "t", title));
+          var m = el("div", "m");
+          m.appendChild(el("span", "kbc-minitag", name));
+          cardEl.appendChild(m);
+          $("#kbc-field").appendChild(cardEl);
+          toast("從「" + name + "」挑出一張 — 其餘已收回");
+        }
+        if (pulled && cardEl) {
+          var f2 = $("#kbc-field").getBoundingClientRect();
+          cardEl.style.left = ev.clientX - f2.left - 100 + "px";
+          cardEl.style.top = ev.clientY - f2.top - 26 + "px";
+          dragFeedback(overTarget(ev));
+        }
+      }
+      function up(ev) {
+        document.removeEventListener("pointermove", mv);
+        document.removeEventListener("pointerup", up);
+        if (!pulled) return;
+        cardEl.classList.remove("dragging");
+        var o = overTarget(ev);
+        dragFeedback(null);
+        setDragging(false);
+        if (o === "bin") {
+          cardEl.remove();
+        } else if (o && o !== "near") {
+          commitLink(title, cardEl, o);
+        } else {
+          cardEl.addEventListener("pointerdown", function (e2) {
+            startCardDrag(cardEl, e2);
+          });
+        }
+      }
+      document.addEventListener("pointermove", mv);
+      document.addEventListener("pointerup", up);
+    });
+  }
+
+  function closeOverlay() {
+    if (overlayEl) {
+      overlayEl.remove();
+      overlayEl = null;
+    }
+  }
+
+  /* 兜底：全部相關 MOC 索引（手動入口；點一疊攤平） */
+  function openMocIndex() {
+    closeOverlay();
+    var cand = curCand();
+    var base = cand ? (cand.related_mocs || []).filter(function (m) {
+      return !binned["stack:" + (m.name || m.moc_path)];
+    }) : [];
+    overlayEl = el("div", "kbc-overlay");
+    var head = el("div", "kbc-ov-head");
+    head.appendChild(el("b", null, "相關 MOC"));
+    head.appendChild(el("span", null, "Robin 篩過的相關 MOC — 點一疊攤平 · esc 關閉"));
+    var close = el("button", null, "關閉");
+    close.type = "button";
+    close.addEventListener("click", closeOverlay);
+    head.appendChild(close);
+    var grid = el("div", "kbc-ov-grid");
+    if (!base.length) {
+      grid.appendChild(el("div", "kbc-ov-empty", "這張候選沒有 Robin 判定相關的 MOC。"));
+    }
+    base.forEach(function (m) {
+      var name = m.name || m.moc_path.split("/").pop();
+      var g = el("div", "kbc-gcard");
+      g.style.cursor = "pointer";
+      g.appendChild(el("div", "t", name));
+      var mm = el("div", "m");
+      mm.appendChild(el("span", "kbc-minitag", (m.card_count || 0) + " 張"));
+      mm.appendChild(el("span", "kbc-minitag hi", "✦ 相關"));
+      g.appendChild(mm);
+      g.addEventListener("click", function () {
+        openOverlay(name, m.moc_path);
+      });
+      grid.appendChild(g);
+    });
+    overlayEl.appendChild(head);
+    overlayEl.appendChild(grid);
+    document.body.appendChild(overlayEl);
+    overlayEl.addEventListener("pointerdown", function (e) {
+      if (e.target === overlayEl || e.target.classList.contains("kbc-ov-grid")) closeOverlay();
+    });
+  }
+
+  /* ================= save（沿用 POST /kb/api/permanent） ================= */
+  function buildSourceRefs(cand) {
+    var refs = ((cand && cand.source_refs) || []).map(function (r) {
+      return { literature_path: r.literature_path || "", anchor: r.anchor || "", raw: "" };
+    });
+    // 拖入「來源」格的既有卡 → 額外 raw wikilink source_ref。
+    srcRefs.forEach(function (t) {
+      refs.push({ literature_path: "", anchor: "", raw: "[[" + t + "]]" });
+    });
+    return refs;
+  }
+
+  function saveCard() {
+    var cand = curCand();
+    if (!cand) return;
+    var title = $("#kbc-title").value.trim();
+    var body = $("#kbc-body").value.trim();
+    if (!title) {
+      toast("檔名不能是空的——一句宣告句");
+      $("#kbc-title").focus();
+      return;
+    }
+    if (!body) {
+      toast("正文是紅線內側——這段要你自己寫");
+      $("#kbc-body").focus();
+      return;
+    }
+    var missing = edges.filter(function (e) {
+      return !e.reason.trim();
+    }).length;
+    if (missing) {
+      toast("還有 " + missing + " 條連結沒寫理由——理由是你的判斷");
+      return;
+    }
+
+    var payload = {
+      title: title,
+      body: body,
+      edges: edges.map(function (e) {
+        return { edge_type: e.type, target: e.target, reason: e.reason.trim() };
+      }),
+      source_refs: buildSourceRefs(cand),
+      candidate_id: cand.candidate_id || "",
+      literature_slug:
+        cand.primary_ref && cand.primary_ref.literature_path
+          ? cand.primary_ref.literature_path.split("/").pop()
+          : "",
+      fleeting_path: "",
+    };
+
+    var saveBtn = $("#kbc-save");
+    saveBtn.setAttribute("disabled", "");
+    fetch("/kb/api/permanent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          return { ok: r.ok, status: r.status, json: j };
+        });
+      })
+      .then(function (res) {
+        saveBtn.removeAttribute("disabled");
+        if (!res.ok) {
+          var detail = res.json && res.json.detail ? res.json.detail : "存檔失敗（" + res.status + "）";
+          toast(typeof detail === "string" ? detail : "存檔失敗");
+          return;
+        }
+        markSavedInLinear(cand.candidate_id, res.json.path);
+        doneIds[cand.candidate_id] = true;
+        doneCount++;
+        advance(title);
+      })
+      .catch(function () {
+        saveBtn.removeAttribute("disabled");
+        toast("存檔失敗，請重試");
+      });
+  }
+
+  function advance(savedTitle) {
+    function finish() {
+      $("#kbc-desk").classList.remove("flyout");
+      edges = [];
+      srcRefs = [];
+      $("#kbc-body").value = "";
+      $("#kbc-title").dataset.dirty = "";
+      render();
+      var next = curCand();
+      toast(
+        next
+          ? "✓ 已存入：" + savedTitle + " — 下一張：「" + next.suggested_title + "」"
+          : "✓ 已存入：" + savedTitle + " — 今日候選清空 🎉"
+      );
+    }
+    if (reduced) {
+      finish();
+      return;
+    }
+    $("#kbc-desk").classList.add("flyout");
+    setTimeout(finish, 300);
+  }
+
+  // 存卡後在底層線性頁把對應 candidate panel 標 done（兩視圖一致）。
+  function markSavedInLinear(candidateId, path) {
+    if (!candidateId) return;
+    var panel = document.getElementById("panel-" + candidateId);
+    var act = document.getElementById("act-" + candidateId);
+    if (panel) panel.classList.add("done");
+    if (act) {
+      act.innerHTML = "";
+      var tag = el("span", "sho-tag sho-tag--success", "已開卡（畫布）");
+      act.appendChild(tag);
+      if (path) act.appendChild(el("span", "sho-mono", path + " · author: human"));
+    }
+  }
+
+  /* ================= mode toggle ================= */
+  function getMode() {
+    try {
+      return localStorage.getItem(MODE_KEY) === "canvas" ? "canvas" : "linear";
+    } catch (e) {
+      return "linear";
+    }
+  }
+  function setMode(mode) {
+    try {
+      localStorage.setItem(MODE_KEY, mode);
+    } catch (e) {
+      /* ignore */
+    }
+    applyMode(mode);
+  }
+  function applyMode(mode) {
+    var canvas = mode === "canvas";
+    var root = $("#kbc-root");
+    root.hidden = !canvas;
+    document.body.classList.toggle("kbc-active", canvas);
+    var bl = $("#mode-linear");
+    var bc = $("#mode-canvas");
+    if (bl && bc) {
+      bl.classList.toggle("seg-on", !canvas);
+      bc.classList.toggle("seg-on", canvas);
+      bl.setAttribute("aria-pressed", String(!canvas));
+      bc.setAttribute("aria-pressed", String(canvas));
+    }
+    if (canvas) {
+      // 首次進畫布才渲染（避免線性頁 boot 時白算）。
+      renderKeepText();
+      setTimeout(function () {
+        $("#kbc-body").focus();
+      }, 50);
+    } else {
+      closeOverlay();
+      $("#kbc-popover").classList.remove("on");
+    }
+  }
+
+  /* ================= wire ================= */
+  function wire() {
+    var bl = $("#mode-linear");
+    var bc = $("#mode-canvas");
+    if (bl) bl.addEventListener("click", function () { setMode("linear"); });
+    if (bc) bc.addEventListener("click", function () { setMode("canvas"); });
+    $("#kbc-exit").addEventListener("click", function () { setMode("linear"); });
+    $("#kbc-save").addEventListener("click", saveCard);
+    $("#kbc-mocbox").addEventListener("click", openMocIndex);
+    $("#kbc-title").addEventListener("input", function () {
+      $("#kbc-title").dataset.dirty = "1";
+    });
+
+    // 點空白關 popover
+    document.addEventListener("pointerdown", function (e) {
+      if (!e.target.closest("#kbc-popover") && !e.target.closest(".kbc-ebadge")) {
+        $("#kbc-popover").classList.remove("on");
+        editIdx = -1;
+      }
+    });
+    // esc：先關 overlay/popover，否則回線性
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      if ($("#kbc-root").hidden) return;
+      if (overlayEl) {
+        closeOverlay();
+        return;
+      }
+      if ($("#kbc-popover").classList.contains("on")) {
+        $("#kbc-popover").classList.remove("on");
+        editIdx = -1;
+        return;
+      }
+      setMode("linear");
+    });
+    var resizeTimer;
+    window.addEventListener("resize", function () {
+      if ($("#kbc-root").hidden) return;
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        closeOverlay();
+        renderKeepText();
+      }, 150);
+    });
+
+    applyMode(getMode());
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wire);
+  } else {
+    wire();
+  }
+})();

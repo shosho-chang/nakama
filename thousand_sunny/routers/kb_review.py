@@ -64,6 +64,8 @@ def _shosho_asset_version() -> str:
         "shosho/theme.js",
         "kb_review.css",
         "kb_review.js",
+        "kb_canvas.css",
+        "kb_canvas.js",
     ):
         p = static_dir / rel
         if p.exists():
@@ -598,6 +600,34 @@ def _bundle_for_template(bundle: DailyReviewBundle) -> dict:
                 "source_refs": [r.model_dump() for r in c.source_refs],
                 "primary_ref": c.source_refs[0].model_dump() if c.source_refs else None,
                 "edge_groups": edge_groups,
+                # 卡片畫布（N528）消費三層相關資料：高圈 edges（含建議方向）、
+                # 中圈 related_pool（字面命中）、外圈 related_mocs（Robin 篩過的 MOC 疊卡）。
+                "edges": [
+                    {
+                        "edge_type": e.edge_type,
+                        "direction": e.direction,
+                        "target_card": e.target_card,
+                        "target_title": e.target_title or e.target_card.rsplit("/", 1)[-1],
+                    }
+                    for e in c.edges
+                ],
+                "related_pool": [
+                    {
+                        "card_path": r.card_path,
+                        "title": r.title or r.card_path.rsplit("/", 1)[-1],
+                        "status": r.status,
+                        "bm25_rank": r.bm25_rank,
+                    }
+                    for r in c.related_pool
+                ],
+                "related_mocs": [
+                    {
+                        "moc_path": m.moc_path,
+                        "name": m.name or m.moc_path.rsplit("/", 1)[-1],
+                        "card_count": m.card_count,
+                    }
+                    for m in c.related_mocs
+                ],
             }
         )
 

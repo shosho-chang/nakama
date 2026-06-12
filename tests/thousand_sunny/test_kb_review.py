@@ -21,6 +21,8 @@ from shared.schemas.daily_review import (
     CandidateCard,
     DailyReviewBundle,
     FleetingItem,
+    RelatedCard,
+    RelatedMoc,
     SourceRef,
     TypedEdgeChip,
 )
@@ -64,6 +66,21 @@ def mock_bundle() -> DailyReviewBundle:
                         direction="forward",
                         target_card="KB/Permanent/用自己的話寫是檢驗真懂的唯一方法",
                         target_title="用自己的話寫是檢驗真懂的唯一方法",
+                    )
+                ],
+                related_pool=[
+                    RelatedCard(
+                        card_path="KB/Permanent/理解是分層次的",
+                        title="理解是分層次的",
+                        status="seedling",
+                        bm25_rank=0,
+                    )
+                ],
+                related_mocs=[
+                    RelatedMoc(
+                        moc_path="KB/MOCs/學習與刻意練習",
+                        name="學習與刻意練習",
+                        card_count=5,
                     )
                 ],
                 priority=0,
@@ -359,3 +376,152 @@ def test_review_state_roundtrips_with_n522_loader(client):
     state = load_review_state(vault)
     assert "skipme" in state["skipped"]
     assert "laterme" in state["deferred"]
+
+
+# ---------------------------------------------------------------------------
+# N528 卡片畫布模式
+# ---------------------------------------------------------------------------
+
+
+def test_canvas_assets_and_markup_wired(client):
+    """畫布模式：template 注入 kb_canvas.{css,js} + 工作桌 / MOC 盒 / 回收盒 markup。"""
+    tc, _kb, _v = client
+    r = tc.get("/kb/review")
+    assert r.status_code == 200
+    # 畫布資產（CSP-safe：external，不是 inline）
+    assert "/static/kb_canvas.css" in r.text
+    assert "/static/kb_canvas.js" in r.text
+    # 模式切換（線性預設 / 畫布 opt-in）
+    assert 'id="mode-canvas"' in r.text
+    assert 'id="mode-linear"' in r.text
+    # 工作桌 + 三個落點語意 + 兜底盒
+    assert 'id="kbc-desk"' in r.text
+    assert 'id="kbc-field"' in r.text
+    assert 'id="kbc-mocbox"' in r.text
+    assert 'id="kbc-inbox"' in r.text
+
+
+def test_canvas_bundle_exposes_three_layers(client):
+    """JSON island 帶 N527 三層相關資料（高 edges / 中 related_pool / 外 related_mocs），
+    供 kb_canvas.js 渲染三帶卡片場。"""
+    tc, _kb, _v = client
+    r = tc.get("/kb/review")
+    assert r.status_code == 200
+    # 中圈字面卡 + 外圈 MOC 疊卡都在 island 內
+    assert "理解是分層次的" in r.text
+    assert "學習與刻意練習" in r.text
+    assert "related_pool" in r.text
+    assert "related_mocs" in r.text
+
+
+def test_canvas_no_inline_script(client):
+    """CSP 紅線：/kb/review 不得有可執行 inline <script>（JSON island 除外）。"""
+    import re
+
+    tc, _kb, _v = client
+    html = tc.get("/kb/review").text
+    for m in re.finditer(r"<script\b([^>]*)>", html, re.IGNORECASE):
+        attrs = m.group(1)
+        # JSON data island 允許（type="application/json"，非執行）。
+        if "application/json" in attrs:
+            continue
+        # 其餘 <script> 必須是 external（帶 src=），無 inline 邏輯。
+        assert "src=" in attrs, f"inline executable <script> found: {m.group(0)}"
+
+
+def test_canvas_save_writes_refute_edge_author_human(client):
+    """畫布拖卡入「反駁」格 → 存入：vault 卡含 ``反駁:: [[…]] — 理由`` + ``author: human``。
+
+    模擬 kb_canvas.js saveCard() 組出的 payload（edge_type=refute）。
+    """
+    tc, _kb, vault = client
+    payload = {
+        "title": "意志力要用在與目標對齊的艱難任務",
+        "body": "意志力是稀缺資源——花在對齊目標的艱難任務，而非降低摩擦力本身。",
+        "edges": [
+            {
+                "edge_type": "refute",
+                "target": "降低摩擦力是高產出的前提",
+                "reason": "它把手段當成了目的",
+            }
+        ],
+        "source_refs": [{"literature_path": "", "anchor": "", "raw": "[[理解是分層次的]]"}],
+        "candidate_id": "卡片盒筆記-abc12345",
+    }
+    r = tc.post("/kb/api/permanent", json=payload)
+    assert r.status_code == 200, r.text
+    assert r.json()["author"] == "human"
+    content = (vault / "KB" / "Permanent" / "意志力要用在與目標對齊的艱難任務.md").read_text(
+        encoding="utf-8"
+    )
+    assert "author: human" in content
+    assert "反駁:: [[降低摩擦力是高產出的前提]] — 它把手段當成了目的" in content
+    # 拖入「來源」格的卡 → raw wikilink source_ref
+    assert "[[理解是分層次的]]" in content
+
+
+def test_canvas_save_empty_reason_blocked_by_backend(client):
+    """空理由的 edge：前端阻擋是主防線；後端容忍空理由（reason 可空，line 無 — 尾）。
+
+    這裡驗證後端契約——空理由不致 500，且寫出的 edge line 不帶尾隨「 — 」。
+    """
+    tc, _kb, vault = client
+    payload = {
+        "title": "降低摩擦力是高產出的前提",
+        "body": "魯曼的高產出來自從不強迫自己。",
+        "edges": [{"edge_type": "support", "target": "好系統讓你不需要意志力", "reason": ""}],
+    }
+    r = tc.post("/kb/api/permanent", json=payload)
+    assert r.status_code == 200, r.text
+    content = (vault / "KB" / "Permanent" / "降低摩擦力是高產出的前提.md").read_text(
+        encoding="utf-8"
+    )
+    assert "支持:: [[好系統讓你不需要意志力]]" in content
+    assert "好系統讓你不需要意志力]] —" not in content  # 無理由 → 無尾隨破折號
+
+
+def test_canvas_empty_body_422(client):
+    """畫布存卡也走同一寫入口——空正文後端兜底擋（前端 toast 為主防線）。"""
+    tc, _kb, vault = client
+    r = tc.post(
+        "/kb/api/permanent",
+        json={"title": "畫布空正文", "body": "  ", "candidate_id": "x"},
+    )
+    assert r.status_code == 422
+    assert not (vault / "KB" / "Permanent" / "畫布空正文.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# GET /kb/api/moc/members — 疊卡 lazy load
+# ---------------------------------------------------------------------------
+
+
+def test_moc_members_returns_shape(client):
+    """疊卡攤平 lazy-load：回 ``{moc_path, members:[{card_path,title,status}]}``。"""
+    tc, _kb, vault = client
+    # 建 MOC 檔（人寫分組區 [[卡]] 連結）+ 一張成員永久卡（讀其 status）。
+    (vault / "KB" / "MOCs").mkdir(parents=True, exist_ok=True)
+    (vault / "KB" / "MOCs" / "學習與刻意練習.md").write_text(
+        "---\ntype: moc\n---\n\n## 分組\n- [[刻意練習需要立即回饋]]\n",
+        encoding="utf-8",
+    )
+    (vault / "KB" / "Permanent" / "刻意練習需要立即回饋.md").write_text(
+        "---\ntype: permanent\nstatus: evergreen\n---\n正文\n",
+        encoding="utf-8",
+    )
+    r = tc.get("/kb/api/moc/members", params={"moc_path": "KB/MOCs/學習與刻意練習"})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["ok"] is True
+    members = j["members"]
+    assert len(members) == 1
+    m = members[0]
+    assert m["title"] == "刻意練習需要立即回饋"
+    assert m["card_path"] == "KB/Permanent/刻意練習需要立即回饋"
+    assert m["status"] == "evergreen"
+
+
+def test_moc_members_empty_path_422(client):
+    tc, _kb, _v = client
+    r = tc.get("/kb/api/moc/members", params={"moc_path": "  "})
+    assert r.status_code == 422
