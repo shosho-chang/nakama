@@ -585,6 +585,7 @@ def judge_edges(
                     direction=direction,
                     target_card=target,
                     target_title=str(e.get("target_title") or target.split("/")[-1]),
+                    status=_read_card_status(vault_path, target),
                 )
             )
     return chips

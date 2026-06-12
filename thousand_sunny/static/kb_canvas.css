@@ -24,30 +24,19 @@ html[data-theme="dark"] .kbc-root {
   }
 }
 
-/* 切到畫布時鎖住底層線性頁捲動 */
+/* 開畫布時鎖住底層候選清單頁捲動 */
 body.sho.kbc-active { overflow: hidden; }
 
-/* ===== topbar ===== */
-.kbc-topbar {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
-  display: flex; align-items: center; gap: 14px;
-  padding: 9px 20px;
-  background: color-mix(in oklch, var(--sho-bg) 88%, transparent);
-  backdrop-filter: blur(6px);
-  border-bottom: 1px solid var(--sho-line);
-  height: 46px;
-}
-.kbc-brand { font-weight: 800; font-size: 14px; color: var(--sho-ink); white-space: nowrap; }
-.kbc-brand .sub {
-  font-weight: 500; font-size: 11px; color: var(--sho-muted); margin-left: 8px;
-  text-transform: uppercase; letter-spacing: .06em;
-}
-.kbc-hint { font-size: 12.5px; color: var(--sho-muted); margin-right: auto; }
-.kbc-exit { white-space: nowrap; }
+/* 拖曳頂層：.kbc-root 直屬，z-index 高於寫作桌四格落點（.kbc-dz=12）與寫作桌（10）。
+   正在拖的卡移進這層，永遠渲染在落點之上、跟手清楚（修修回饋②）。
+   layer 本身不吃事件，只當座標容器（卡片自身 touch-action:none 仍可拖）。 */
+.kbc-draglayer { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
+.kbc-draglayer .kbc-card,
+.kbc-draglayer .kbc-stack { pointer-events: auto; }
 
 /* ===== desk（左側寫作桌） ===== */
 .kbc-desk {
-  position: absolute; left: 0; top: 46px; bottom: 0; width: var(--kbc-deskw); z-index: 10;
+  position: absolute; left: 0; top: 0; bottom: 0; width: var(--kbc-deskw); z-index: 10;
   background: var(--sho-bg); border-right: 1.5px solid var(--sho-accent-line);
   display: flex; flex-direction: column; padding: 22px 26px 18px;
   transition: transform var(--sho-t-slow) var(--sho-ease), opacity var(--sho-t-slow) var(--sho-ease);
@@ -131,7 +120,7 @@ body.sho.kbc-active { overflow: hidden; }
 
 /* ===== field（右側卡片場） ===== */
 .kbc-field {
-  position: absolute; top: 46px; right: 0; bottom: 0; left: var(--kbc-deskw); overflow: hidden;
+  position: absolute; top: 0; right: 0; bottom: 0; left: var(--kbc-deskw); overflow: hidden;
   background-image: radial-gradient(color-mix(in oklch, var(--sho-line) 55%, transparent) 1px, transparent 1px);
   background-size: 26px 26px;
 }
@@ -151,6 +140,12 @@ body.sho.kbc-active { overflow: hidden; }
   transition: box-shadow var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease);
 }
 .kbc-card:hover { border-color: var(--sho-accent-line); }
+/* 高關聯（Robin 判定）卡：加粗 accent 邊框標示，不用 ✦Robin 文字、不填色（克制）。 */
+.kbc-card.robin {
+  border-width: 2px;
+  border-color: var(--sho-accent-line);
+}
+.kbc-card.robin:hover { border-color: var(--sho-accent); }
 .kbc-card.dragging { cursor: grabbing; box-shadow: 0 8px 24px oklch(0.1 0 0 / 0.18); }
 .kbc-card .t { font-size: 14px; font-weight: 700; color: var(--sho-ink); line-height: 1.5; margin-bottom: 6px; }
 .kbc-card .m { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
@@ -199,7 +194,8 @@ body.sho.kbc-active { overflow: hidden; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease);
 }
-.kbc-inbox .ic { font-size: 18px; line-height: 1; }
+.kbc-inbox .ic { width: 24px; height: 24px; color: var(--sho-text-2); }
+.kbc-inbox.hot .ic { color: var(--sho-accent); }
 .kbc-inbox .blbl { font-size: 11px; font-weight: 700; color: var(--sho-muted); text-transform: uppercase; letter-spacing: .06em; }
 .kbc-inbox .bn { font-size: 10.5px; color: var(--sho-muted); }
 .kbc-inbox.hot .bly { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
@@ -207,7 +203,7 @@ body.sho.kbc-active { overflow: hidden; }
 
 /* overlay（疊卡攤平 / MOC 索引） */
 .kbc-overlay {
-  position: fixed; inset: 0; top: 46px; z-index: 55; background: oklch(0.12 0.005 80 / 0.45);
+  position: fixed; inset: 0; z-index: 55; background: oklch(0.12 0.005 80 / 0.45);
   display: flex; flex-direction: column; animation: kbc-ovin var(--sho-t-base) var(--sho-ease);
 }
 @keyframes kbc-ovin { from { opacity: 0; } to { opacity: 1; } }
@@ -248,15 +244,6 @@ body.sho.kbc-active { overflow: hidden; }
 .kbc-popover .ptype[data-t="src"].sel { color: var(--sho-text-2); border-color: var(--sho-text-2); background: var(--sho-bg-2); }
 
 .kbc-empty-all { position: absolute; left: calc(var(--kbc-deskw) + 50%); top: 50%; transform: translate(-50%, -50%); color: var(--sho-muted); font-size: 15px; z-index: 5; }
-
-/* ===== 開卡模式切換 seg（線性頁 header 內） ===== */
-.mode-seg { display: inline-flex; border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-pill); overflow: hidden; margin-left: auto; }
-.mode-seg button {
-  border: 0; background: none; padding: 4px 14px; font-size: 12.5px; font-weight: 700; color: var(--sho-muted);
-  cursor: pointer; font-family: inherit;
-}
-.mode-seg button.seg-on { color: var(--sho-accent); background: var(--sho-accent-soft); }
-.mode-seg button:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 
 /* reduced-motion：所有動畫歸零（含微旋轉 ±2.2° 與疊卡 rotate） */
 @media (prefers-reduced-motion: reduce) {

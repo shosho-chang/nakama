@@ -608,6 +608,7 @@ def _bundle_for_template(bundle: DailyReviewBundle) -> dict:
                         "direction": e.direction,
                         "target_card": e.target_card,
                         "target_title": e.target_title or e.target_card.rsplit("/", 1)[-1],
+                        "status": e.status,
                     }
                     for e in c.edges
                 ],

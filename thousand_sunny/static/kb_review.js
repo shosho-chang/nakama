@@ -1,5 +1,7 @@
-/* Centaur 每日回顧 (N523) — CSP-safe (script-src 'self'，無 inline / onclick).
-   讀 #kb-data JSON island → render 三段 + 開卡 drawer → POST /kb/api/*. */
+/* Centaur 每日回顧 (N523 → N528) — CSP-safe (script-src 'self'，無 inline / onclick).
+   讀 #kb-data JSON island → render 三段候選清單（Fleeting / 候選 / 清掃）→
+   「開卡」一律開卡片畫布（kb_canvas.js）。線性 drawer 已移除（修修 N528 回饋⑥）。
+   skip / later / POST 寫入仍走原有 endpoint。 */
 (function () {
   "use strict";
 
@@ -10,11 +12,6 @@
     DATA = { candidates: [], fleeting: [], sweep: [] };
   }
 
-  var EDGE_META = {
-    support: { label: "支持", desc: "本卡支持它" },
-    refute: { label: "反駁", desc: "本卡反駁它" },
-    extend: { label: "延伸", desc: "本卡把它延伸到新脈絡" },
-  };
   var EDGE_KEYS = ["support", "refute", "extend"];
 
   function $(s, root) {
@@ -34,12 +31,22 @@
   var toastTimer;
   function toast(msg) {
     var t = $("#toast");
+    if (!t) return;
     t.textContent = msg;
     t.classList.add("on");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       t.classList.remove("on");
     }, 2600);
+  }
+
+  /* ---------------- 開卡：交給畫布（kb_canvas.js 掛 window.__kbCanvasOpen） ---------------- */
+  function openCanvasFor(ctx) {
+    if (typeof window.__kbCanvasOpen === "function") {
+      window.__kbCanvasOpen(ctx);
+    } else {
+      toast("畫布尚未載入，請重新整理頁面");
+    }
   }
 
   /* ---------------- render fleeting ---------------- */
@@ -60,7 +67,7 @@
       var open = el("button", "sho-btn sho-btn--primary", "➕ 開卡");
       open.type = "button";
       open.addEventListener("click", function () {
-        openDrawer(fleetingContext(f));
+        openCanvasFor(fleetingContext(f));
       });
       var trash = el("button", "sho-btn sho-btn--ghost", "丟掉 → 回收桶");
       trash.type = "button";
@@ -143,7 +150,7 @@
       var open = el("button", "sho-btn sho-btn--primary", "➕ 開卡");
       open.type = "button";
       open.addEventListener("click", function () {
-        openDrawer(candidateContext(c));
+        openCanvasFor({ kind: "cand", candidate_id: c.candidate_id });
       });
       var skip = el("button", "sho-btn sho-btn--ghost", "略過");
       skip.type = "button";
@@ -208,7 +215,6 @@
     panel.classList.add("done");
     act.innerHTML = "";
     act.appendChild(el("span", "sho-tag", tagText));
-    refreshOpenCount();
   }
   function postAction(action, candidateId, panel, act, tagText) {
     fetch("/kb/api/review/" + action, {
@@ -227,324 +233,19 @@
         toast("動作沒存成功，請重試");
       });
   }
-  function refreshOpenCount() {
-    // reserved hook for a future nav count; no-op for now.
-  }
 
-  /* ---------------- drawer ---------------- */
-  var currentCtx = null;
-
-  function candidateContext(c) {
-    var refs = (c.source_refs || []).map(function (r) {
-      return { literature_path: r.literature_path || "", anchor: r.anchor || "", raw: "" };
-    });
-    var litSlug = "";
-    if (c.primary_ref && c.primary_ref.literature_path) {
-      litSlug = c.primary_ref.literature_path.split("/").pop();
-    }
-    return {
-      kind: "cand",
-      panelId: "panel-" + c.candidate_id,
-      actId: "act-" + c.candidate_id,
-      title: c.suggested_title,
-      srcRefsHtml: refsLabel(c.source_refs),
-      source_refs: refs,
-      edge_groups: c.edge_groups || {},
-      candidate_id: c.candidate_id,
-      literature_slug: litSlug,
-      fleeting_path: "",
-      body_prefill: "",
-    };
-  }
+  /* ---------------- fleeting → 畫布 context ---------------- */
   function fleetingContext(f) {
     return {
       kind: "fleet",
       panelId: "panel-" + fleetingId(f),
       actId: "act-" + fleetingId(f),
-      title: "",
-      srcRefsHtml: "[[" + (f.path || "") + "]] via " + esc(f.via) + " · 開卡後原檔送回收桶",
-      source_refs: [{ literature_path: "", anchor: "", raw: "[[" + (f.path || "") + "]]" }],
-      edge_groups: {},
-      candidate_id: "",
-      literature_slug: "",
       fleeting_path: f.path || "",
       // fleeting 開卡：把捕捉的原話直接帶進正文當起點（修修 feedback — 少一個動作）。
       body_prefill: f.text || "",
+      source_refs: [{ literature_path: "", anchor: "", raw: "[[" + (f.path || "") + "]]" }],
     };
   }
-  function refsLabel(refs) {
-    if (!refs || !refs.length) return "（無預填來源）";
-    return refs
-      .map(function (r) {
-        var leaf = (r.literature_path || "").split("/").pop();
-        return "[[" + (leaf || "?") + "]] " + (r.anchor ? "^" + r.anchor : "");
-      })
-      .join(" · ");
-  }
-
-  function buildEdgeGroup(key, suggestions) {
-    var meta = EDGE_META[key];
-    var group = el("div", "edgegroup");
-    group.setAttribute("data-g", key);
-
-    var gh = el("div", "gh");
-    gh.appendChild(el("span", "gname " + key, meta.label + "::"));
-    gh.appendChild(el("span", "gdesc", meta.desc));
-    group.appendChild(gh);
-
-    var suggRow = el("div", "sugg-row");
-    suggRow.appendChild(el("span", "sl", "✦ Robin 建議"));
-    if (suggestions && suggestions.length) {
-      suggestions.forEach(function (s) {
-        var title = s.target_title || s.target_card;
-        var chip = el("button", "suggchip");
-        chip.type = "button";
-        chip.setAttribute("data-card", title);
-        chip.appendChild(document.createTextNode("＋ " + title));
-        if (s.direction === "reverse") {
-          chip.appendChild(el("span", "dir", "（對方→本卡）"));
-        }
-        chip.addEventListener("click", function () {
-          addEdgeRow(key, title, chip);
-        });
-        suggRow.appendChild(chip);
-      });
-    } else {
-      suggRow.appendChild(el("span", "sho-mono", "Robin 此方向無建議"));
-    }
-    group.appendChild(suggRow);
-
-    // 全量搜尋兜底（free-text add by name）
-    var search = el("div", "searchall");
-    var input = el("input");
-    input.type = "text";
-    input.placeholder = "或輸入任一張卡名加進此關係（全量兜底，Enter 加入）";
-    input.setAttribute("aria-label", meta.label + " 關係：搜尋全部卡片");
-    input.addEventListener("keydown", function (ev) {
-      if (ev.key === "Enter") {
-        ev.preventDefault();
-        var v = input.value.trim();
-        if (v) {
-          addEdgeRow(key, v, null);
-          input.value = "";
-        }
-      }
-    });
-    search.appendChild(input);
-    group.appendChild(search);
-
-    var rows = el("div", "rows");
-    group.appendChild(rows);
-    return group;
-  }
-
-  function addEdgeRow(key, card, chip) {
-    var rows = $('.edgegroup[data-g="' + key + '"] .rows');
-    if (!rows) return;
-    var existing = rows.querySelectorAll(".ecard");
-    for (var i = 0; i < existing.length; i++) {
-      if (existing[i].textContent === "[[" + card + "]]") {
-        toast("這條關係已經加過了");
-        return;
-      }
-    }
-    var row = el("div", "edgerow");
-    row.appendChild(el("span", "ecard", "[[" + card + "]]"));
-    var reason = el("input", "reason");
-    reason.type = "text";
-    reason.placeholder = "— 因為…（理由是你的判斷）";
-    reason.addEventListener("input", updatePreview);
-    var rm = el("button", "rm", "✕");
-    rm.type = "button";
-    rm.setAttribute("aria-label", "移除此關係");
-    rm.addEventListener("click", function () {
-      row.remove();
-      if (chip) chip.removeAttribute("disabled");
-      updatePreview();
-    });
-    row.appendChild(reason);
-    row.appendChild(rm);
-    rows.appendChild(row);
-    if (chip) chip.setAttribute("disabled", "");
-    updatePreview();
-    reason.focus();
-  }
-
-  function collectEdges() {
-    var out = [];
-    EDGE_KEYS.forEach(function (key) {
-      var rowsEls = document.querySelectorAll('.edgegroup[data-g="' + key + '"] .edgerow');
-      rowsEls.forEach(function (r) {
-        var card = r.querySelector(".ecard").textContent.replace(/^\[\[|\]\]$/g, "");
-        var reason = r.querySelector("input.reason").value.trim();
-        out.push({ edge_type: key, target: card, reason: reason });
-      });
-    });
-    return out;
-  }
-
-  function edgesToLines(edges) {
-    return edges
-      .map(function (e) {
-        var label = EDGE_META[e.edge_type].label;
-        var line = label + ":: [[" + e.target + "]]";
-        if (e.reason) line += " — " + e.reason;
-        return line;
-      })
-      .join("\n");
-  }
-
-  function updatePreview() {
-    if (!currentCtx) return;
-    var title = $("#f-title").value.trim() || "（未命名）";
-    var body = $("#f-body").value.trim() || "（正文待寫）";
-    var refLines = (currentCtx.source_refs || [])
-      .map(function (r) {
-        if (r.literature_path) {
-          var leaf = r.literature_path.split("/").pop();
-          var anchor = r.anchor ? (r.anchor.charAt(0) === "^" ? r.anchor : "^" + r.anchor) : "";
-          return '  - "[[Literature/' + leaf + "]]" + (anchor ? " " + anchor : "") + '"';
-        }
-        return '  - "' + r.raw + '"';
-      })
-      .join("\n");
-    var today = (DATA.review_date || "").trim();
-    var edges = collectEdges();
-    var preview =
-      "--- KB/Permanent/" +
-      title +
-      ".md ---\n" +
-      "type: permanent\n" +
-      "status: seedling\n" +
-      "author: human\n" +
-      "created: " +
-      today +
-      "\n" +
-      "modified: " +
-      today +
-      "\n" +
-      "source_refs:\n" +
-      (refLines || "  []") +
-      "\n" +
-      "aliases: []\n" +
-      "---\n\n" +
-      body +
-      (edges.length ? "\n\n" + edgesToLines(edges) : "");
-    $("#f-preview").textContent = preview;
-  }
-
-  function openDrawer(ctx) {
-    currentCtx = ctx;
-    $("#f-title").value = ctx.title || "";
-    $("#f-body").value = ctx.body_prefill || "";
-    $("#f-body").classList.remove("invalid");
-    $("#body-err").hidden = true;
-    $("#f-srcrefs").textContent = ctx.srcRefsHtml;
-
-    var edgeWrap = $("#f-edges");
-    edgeWrap.innerHTML = "";
-    EDGE_KEYS.forEach(function (key) {
-      var suggs = (ctx.edge_groups && ctx.edge_groups[key]) || [];
-      edgeWrap.appendChild(buildEdgeGroup(key, suggs));
-    });
-
-    updatePreview();
-    $("#scrim").classList.add("on");
-    var drawer = $("#drawer");
-    drawer.classList.add("on");
-    drawer.removeAttribute("hidden");
-    setTimeout(function () {
-      $("#f-body").focus();
-    }, 300);
-  }
-
-  function closeDrawer() {
-    $("#scrim").classList.remove("on");
-    var drawer = $("#drawer");
-    drawer.classList.remove("on");
-    drawer.setAttribute("hidden", "");
-    currentCtx = null;
-  }
-
-  function saveCard() {
-    if (!currentCtx) return;
-    var title = $("#f-title").value.trim();
-    var body = $("#f-body").value.trim();
-    if (!title) {
-      toast("檔名不能是空的——一句宣告句");
-      $("#f-title").focus();
-      return;
-    }
-    if (!body) {
-      // 空正文阻擋（紅線內側）——前端先擋，後端 422 兜底。
-      $("#f-body").classList.add("invalid");
-      $("#body-err").hidden = false;
-      $("#f-body").focus();
-      return;
-    }
-    var ctx = currentCtx;
-    var payload = {
-      title: title,
-      body: body,
-      edges: collectEdges(),
-      source_refs: ctx.source_refs || [],
-      candidate_id: ctx.candidate_id || "",
-      literature_slug: ctx.literature_slug || "",
-      fleeting_path: ctx.fleeting_path || "",
-    };
-    var saveBtn = $("#btn-save");
-    saveBtn.setAttribute("disabled", "");
-    fetch("/kb/api/permanent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(function (r) {
-        return r.json().then(function (j) {
-          return { ok: r.ok, status: r.status, json: j };
-        });
-      })
-      .then(function (res) {
-        saveBtn.removeAttribute("disabled");
-        if (!res.ok) {
-          var detail = res.json && res.json.detail ? res.json.detail : "存檔失敗（" + res.status + "）";
-          toast(typeof detail === "string" ? detail : "存檔失敗");
-          return;
-        }
-        closeDrawer();
-        var panel = document.getElementById(ctx.panelId);
-        var act = document.getElementById(ctx.actId);
-        if (panel && act) {
-          panel.classList.add("done");
-          act.innerHTML = "";
-          act.appendChild(el("span", "sho-tag sho-tag--success", "已開卡"));
-          act.appendChild(
-            el("span", "sho-mono", res.json.path + " · author: human · Phase 5 善後完成")
-          );
-        }
-        refreshOpenCount();
-        toast("✓ 已存入 vault：" + title);
-      })
-      .catch(function () {
-        saveBtn.removeAttribute("disabled");
-        toast("存檔失敗，請重試");
-      });
-  }
-
-  /* ---------------- wire static controls ---------------- */
-  $("#btn-close").addEventListener("click", closeDrawer);
-  $("#btn-cancel").addEventListener("click", closeDrawer);
-  $("#btn-save").addEventListener("click", saveCard);
-  $("#scrim").addEventListener("click", closeDrawer);
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeDrawer();
-  });
-  $("#f-title").addEventListener("input", updatePreview);
-  $("#f-body").addEventListener("input", function () {
-    $("#f-body").classList.remove("invalid");
-    $("#body-err").hidden = true;
-    updatePreview();
-  });
 
   /* ---------------- boot ---------------- */
   renderFleeting();
