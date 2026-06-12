@@ -878,6 +878,7 @@
   function wire() {
     $("#kbc-save").addEventListener("click", saveCard);
     $("#kbc-mocbox").addEventListener("click", openMocIndex);
+    $("#kbc-back").addEventListener("click", closeCanvas);
     $("#kbc-title").addEventListener("input", function () {
       $("#kbc-title").dataset.dirty = "1";
     });
