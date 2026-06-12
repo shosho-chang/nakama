@@ -30,6 +30,8 @@ from shared.schemas.annotations import (
 from shared.schemas.daily_review import (
     CandidateCard,
     DailyReviewBundle,
+    RelatedCard,
+    RelatedMoc,
     SourceRef,
     TypedEdgeChip,
 )
@@ -602,7 +604,7 @@ def test_bundle_schema_round_trips():
     dumped = bundle.model_dump()
     restored = DailyReviewBundle.model_validate(dumped)
     assert restored == bundle
-    assert restored.schema_version == 1
+    assert restored.schema_version == 2  # N527: bumped 1→2 (related_pool / related_mocs)
     # internal_rationale never present anywhere in the contract
     assert "internal_rationale" not in str(dumped)
 
@@ -718,3 +720,428 @@ def test_run_daily_review_weekly_expires_deferred(vault: Path, monkeypatch):
     assert expired[0].path == "old-x"
     # state file no longer carries the expired entry
     assert dr.load_review_state(vault)["deferred"] == {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# N527 — 卡片畫布資料配套（schema v2 + related_pool 中圈 + related_mocs 外圈）
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _write_moc(vault_path: Path, stem: str, content: str) -> None:
+    d = vault_path / "KB" / "MOCs"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{stem}.md").write_text(content, encoding="utf-8")
+
+
+# ── schema v2 + 向後相容 ─────────────────────────────────────────────────────
+
+
+def test_schema_version_is_2():
+    bundle = DailyReviewBundle(generated_at="t", review_date="d")
+    assert bundle.schema_version == 2
+
+
+def test_candidate_card_new_fields_default_empty():
+    """新欄位預設空 list——舊 code 構造的 CandidateCard 仍合法。"""
+    c = CandidateCard(candidate_id="c", suggested_title="t", why="")
+    assert c.related_pool == []
+    assert c.related_mocs == []
+
+
+def test_old_bundle_without_new_fields_reads_back():
+    """向後相容核心：舊 bundle（candidate 無 related_pool / related_mocs）
+    可被 v2 schema model_validate 讀回（預設空 list），不報 extra-forbid。"""
+    old_payload = {
+        "schema_version": 2,
+        "generated_at": "2026-06-11T07:00:00Z",
+        "review_date": "2026-06-11",
+        "candidates": [
+            {
+                "candidate_id": "c1",
+                "suggested_title": "主張",
+                "why": "x",
+                "source_refs": [],
+                "edges": [],
+                "priority": 0,
+                "strong_signal": False,
+                # 注意：故意不帶 related_pool / related_mocs（模擬舊 producer）
+            }
+        ],
+    }
+    bundle = DailyReviewBundle.model_validate(old_payload)
+    assert bundle.candidates[0].related_pool == []
+    assert bundle.candidates[0].related_mocs == []
+
+
+def test_v2_bundle_round_trips_with_three_layers():
+    """三層資料（edges 高圈 / related_pool 中圈 / related_mocs 外圈）round-trip。"""
+    bundle = DailyReviewBundle(
+        generated_at="t",
+        review_date="2026-06-11",
+        candidates=[
+            CandidateCard(
+                candidate_id="c1",
+                suggested_title="主題不是選出來的",
+                why="x",
+                edges=[TypedEdgeChip(edge_type="support", target_card="KB/Permanent/高")],
+                related_pool=[
+                    RelatedCard(
+                        card_path="KB/Permanent/中", title="中", status="seedling", bm25_rank=0
+                    )
+                ],
+                related_mocs=[
+                    RelatedMoc(
+                        moc_path="KB/MOCs/創作與選題", name="創作與選題", card_count=4
+                    )
+                ],
+            )
+        ],
+    )
+    restored = DailyReviewBundle.model_validate(bundle.model_dump())
+    assert restored == bundle
+    assert restored.schema_version == 2
+    assert restored.candidates[0].related_pool[0].card_path == "KB/Permanent/中"
+    assert restored.candidates[0].related_mocs[0].name == "創作與選題"
+
+
+def test_related_card_rejects_unknown_field():
+    with pytest.raises(Exception):
+        RelatedCard(card_path="p", bogus="x")
+
+
+def test_related_moc_rejects_unknown_field():
+    with pytest.raises(Exception):
+        RelatedMoc(moc_path="p", bogus="x")
+
+
+def test_related_card_has_no_score_field():
+    """C3：分層即強度，related_pool 只帶 bm25_rank，不帶 0–1 分數欄位。"""
+    rc = RelatedCard(card_path="p")
+    dumped = rc.model_dump()
+    assert "score" not in dumped
+    assert "relevance" not in dumped
+    assert set(dumped) == {"card_path", "title", "status", "bm25_rank"}
+
+
+# ── related_pool 中圈：FTS pool + 排除已進 typed-edge 的卡 ──────────────────────
+
+
+def test_collect_related_pool_excludes_typed_edge_cards(vault: Path, monkeypatch):
+    """排除邏輯：已進該候選 typed-edge 的卡不重複出現在中圈（高/中圈互斥）。"""
+    candidate = CandidateCard(
+        candidate_id="c",
+        suggested_title="間隔重複需要重複三次",
+        why="x",
+        source_refs=[SourceRef(anchor="^a", literature_path="KB/Literature/x", quote="q", note="")],
+    )
+
+    def _fake_fts(query, vault_path, top_k=8, **kwargs):  # noqa: ARG001
+        return [
+            {"path": "KB/Permanent/已是高圈", "title": "已是高圈", "preview": ""},
+            {"path": "KB/Permanent/中圈甲", "title": "中圈甲", "preview": ""},
+            {"path": "KB/Permanent/中圈乙", "title": "中圈乙", "preview": ""},
+        ]
+
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", _fake_fts)
+    pool = dr.collect_related_pool(candidate, vault, exclude_paths={"KB/Permanent/已是高圈"})
+    paths = [p.card_path for p in pool]
+    assert "KB/Permanent/已是高圈" not in paths  # 排除高圈
+    assert paths == ["KB/Permanent/中圈甲", "KB/Permanent/中圈乙"]
+    # bm25_rank 連續 0-based（扣掉排除項後重編）
+    assert [p.bm25_rank for p in pool] == [0, 1]
+
+
+def test_collect_related_pool_reads_status(vault: Path, monkeypatch):
+    _write_permanent(vault, "有狀態卡", "正文。", status="evergreen")
+
+    def _fake_fts(query, vault_path, top_k=8, **kwargs):  # noqa: ARG001
+        return [{"path": "KB/Permanent/有狀態卡", "title": "有狀態卡", "preview": ""}]
+
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", _fake_fts)
+    pool = dr.collect_related_pool(
+        CandidateCard(candidate_id="c", suggested_title="t", why="x"), vault
+    )
+    # suggested_title="t" 即查詢；status 從檔讀回
+    assert len(pool) == 1
+    assert pool[0].status == "evergreen"
+
+
+def test_collect_related_pool_caps_at_top_k(vault: Path, monkeypatch):
+    def _fake_fts(query, vault_path, top_k=8, **kwargs):  # noqa: ARG001
+        return [{"path": f"KB/Permanent/c{i}", "title": f"c{i}", "preview": ""} for i in range(20)]
+
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", _fake_fts)
+    pool = dr.collect_related_pool(
+        CandidateCard(candidate_id="c", suggested_title="t", why="x"), vault, top_k=8
+    )
+    assert len(pool) == 8
+
+
+def test_collect_related_pool_empty_query_returns_empty(vault: Path):
+    # 無 title、無 source_ref → 無查詢字串 → []
+    pool = dr.collect_related_pool(
+        CandidateCard(candidate_id="c", suggested_title="", why=""), vault
+    )
+    assert pool == []
+
+
+# ── MOC 解析（人寫分組 vs unfiled marker 區）─────────────────────────────────
+
+
+def test_load_mocs_parses_name_and_groups(vault: Path):
+    _write_moc(
+        vault,
+        "創作與選題",
+        "---\ntitle: 創作與選題\n---\n\n# 創作與選題\n\n"
+        "## 選題哲學\n- [[主題不是選出來的]] — 卡片盒長出主題\n- [[從寫作倒推閱讀]]\n\n"
+        "## 創作流程\n- [[卡片是寫作的原料]]\n\n"
+        "%%agent-robin-unfiled%%\n## 未歸位\n- [[某張還沒分組的卡]]\n",
+    )
+    mocs = dr.load_mocs(vault)
+    assert len(mocs) == 1
+    m = mocs[0]
+    assert m["moc_path"] == "KB/MOCs/創作與選題"
+    assert m["name"] == "創作與選題"
+    # 人寫分組標題：選題哲學 / 創作流程；unfiled 區的「未歸位」不算
+    assert "選題哲學" in m["group_headings"]
+    assert "創作流程" in m["group_headings"]
+    assert "未歸位" not in m["group_headings"]
+    # 已歸位成員（unfiled 區的卡不算）→ card_count = 3
+    assert m["card_count"] == 3
+    assert "某張還沒分組的卡" not in m["members"]
+
+
+def test_load_mocs_name_fallback_to_stem(vault: Path):
+    _write_moc(vault, "長壽與健康", "## 機制\n- [[端粒與老化]]\n")
+    mocs = dr.load_mocs(vault)
+    assert mocs[0]["name"] == "長壽與健康"  # 無 frontmatter title / H1 → stem
+
+
+def test_load_mocs_missing_dir(vault: Path):
+    assert dr.load_mocs(vault) == []
+
+
+# ── related_mocs 外圈：P-2 擴判（《卡片盒筆記》負面測試，task §5）─────────────
+
+
+def _card_box_mocs(vault: Path) -> None:
+    """兩個 MOC：『創作與選題』（候選該命中）與『長壽與健康』（不該命中，表面無關）。"""
+    _write_moc(
+        vault,
+        "創作與選題",
+        "---\ntitle: 創作與選題\n---\n"
+        "## 選題哲學\n- [[卡片盒長出主題]]\n"
+        "## 寫作流程\n- [[寫卡即思考]]\n",
+    )
+    _write_moc(
+        vault,
+        "長壽與健康",
+        "---\ntitle: 長壽與健康\n---\n"
+        "## 運動科學\n- [[wingate-test-是無氧功率指標]]\n"
+        "## 營養\n- [[斷食的代謝效應]]\n",
+    )
+
+
+def test_judge_related_mocs_hits_relevant_misses_unrelated(vault: Path, monkeypatch):
+    """《卡片盒筆記》「主題不是選出來的」候選：related_mocs 應命中『創作與選題』、
+    不命中『長壽與健康』（沿用 P-2 表面相似 ≠ 關係過濾，task §5）。"""
+    _card_box_mocs(vault)
+    candidate = CandidateCard(
+        candidate_id="主題-x",
+        suggested_title="主題不是選出來的，是從卡片盒長出來的",
+        why="使用者標記這句是我想的",
+        source_refs=[
+            SourceRef(
+                anchor="^cfi-1",
+                literature_path="KB/Literature/卡片盒筆記",
+                quote="由下而上，主題自己浮現。",
+                note="這句是我想的，應該要記起來。",
+            )
+        ],
+    )
+    mocs = dr.load_mocs(vault)
+
+    # P-2 擴判正確判斷：只回『創作與選題』，不碰『長壽與健康』。
+    def _fake_p2_moc(prompt):  # noqa: ARG001
+        # 防呆：prompt 裡兩個 MOC 都應出現（語料齊全），LLM 才能正確過濾。
+        assert "創作與選題" in prompt
+        assert "長壽與健康" in prompt
+        return {"mocs": [{"moc_path": "KB/MOCs/創作與選題"}]}
+
+    monkeypatch.setattr(dr, "_ask_p2_moc_llm", _fake_p2_moc)
+    related = dr.judge_related_mocs(candidate, mocs)
+    names = {r.name for r in related}
+    assert names == {"創作與選題"}
+    assert "長壽與健康" not in names
+    assert related[0].moc_path == "KB/MOCs/創作與選題"
+    assert related[0].card_count == 2  # 兩張歸位卡
+
+
+def test_judge_related_mocs_caps_at_2(vault: Path, monkeypatch):
+    for i in range(4):
+        _write_moc(vault, f"主題{i}", f"## 組\n- [[卡{i}]]\n")
+    mocs = dr.load_mocs(vault)
+    candidate = CandidateCard(candidate_id="c", suggested_title="t", why="x")
+
+    monkeypatch.setattr(
+        dr,
+        "_ask_p2_moc_llm",
+        lambda p: {"mocs": [{"moc_path": f"KB/MOCs/主題{i}"} for i in range(4)]},
+    )
+    related = dr.judge_related_mocs(candidate, mocs)
+    assert len(related) == 2  # 上限 2
+
+
+def test_judge_related_mocs_ignores_hallucinated_path(vault: Path, monkeypatch):
+    """LLM 回不存在的 MOC path → 不採信（只認既有 MOC）。"""
+    _write_moc(vault, "真主題", "## 組\n- [[卡]]\n")
+    mocs = dr.load_mocs(vault)
+    monkeypatch.setattr(
+        dr, "_ask_p2_moc_llm", lambda p: {"mocs": [{"moc_path": "KB/MOCs/幻覺主題"}]}
+    )
+    related = dr.judge_related_mocs(
+        CandidateCard(candidate_id="c", suggested_title="t", why="x"), mocs
+    )
+    assert related == []
+
+
+def test_judge_related_mocs_no_mocs_returns_empty():
+    related = dr.judge_related_mocs(
+        CandidateCard(candidate_id="c", suggested_title="t", why="x"), []
+    )
+    assert related == []
+
+
+# ── moc_members API（疊卡 lazy-load）────────────────────────────────────────
+
+
+def test_moc_members_lists_filed_cards(vault: Path):
+    _write_moc(
+        vault,
+        "創作與選題",
+        "## 選題哲學\n- [[卡片盒長出主題]]\n%%agent-robin-unfiled%%\n## 未歸位\n- [[還沒分組]]\n",
+    )
+    _write_permanent(vault, "卡片盒長出主題", "正文。", status="evergreen")
+    members = dr.moc_members(vault, "KB/MOCs/創作與選題")
+    assert len(members) == 1  # unfiled 區的「還沒分組」不列
+    assert members[0]["card_path"] == "KB/Permanent/卡片盒長出主題"
+    assert members[0]["title"] == "卡片盒長出主題"
+    assert members[0]["status"] == "evergreen"
+
+
+def test_moc_members_tolerates_path_variants(vault: Path):
+    _write_moc(vault, "主題", "## 組\n- [[某卡]]\n")
+    # 不帶 KB/ 前綴 + 帶 .md 都應解析到同一檔
+    assert dr.moc_members(vault, "主題")[0]["title"] == "某卡"
+    assert dr.moc_members(vault, "KB/MOCs/主題.md")[0]["title"] == "某卡"
+
+
+def test_moc_members_missing_moc(vault: Path):
+    assert dr.moc_members(vault, "KB/MOCs/不存在") == []
+
+
+# ── orchestrator：三層資料端到端（全 mock）─────────────────────────────────
+
+
+def test_run_daily_review_populates_three_layers(vault: Path, monkeypatch):
+    """端到端：bundle 的候選帶齊 edges（高）/ related_pool（中）/ related_mocs（外）。"""
+    _write_annotations(vault, _card_box_set())
+    (vault / "KB").mkdir(exist_ok=True)
+    (vault / "KB" / "index.md").write_text("# index\n", encoding="utf-8")
+    _write_moc(vault, "記憶與學習", "---\ntitle: 記憶與學習\n---\n## 機制\n- [[間隔重複]]\n")
+
+    def _fake_p1(prompt):  # noqa: ARG001
+        return [
+            {
+                "suggested_title": "間隔重複需要重複三次",
+                "why": "強訊號",
+                "anchors": ["^cfi-6-14-116"],
+                "source_quote": "間隔重複是記憶的關鍵。",
+                "user_note": "必須重複三次才會記得。",
+                "strong_signal": True,
+            }
+        ]
+
+    monkeypatch.setattr(dr, "_ask_p1_llm", _fake_p1)
+    import agents.robin.kb_search as kb
+
+    # FTS 撈回兩張：一張會進高圈（P-2 typed-edge），一張只進中圈 pool。
+    monkeypatch.setattr(
+        kb,
+        "search_kb",
+        lambda *a, **k: [
+            {"path": "KB/Permanent/記憶肌肉論", "title": "記憶肌肉論", "preview": ""},
+            {"path": "KB/Permanent/睡眠鞏固記憶", "title": "睡眠鞏固記憶", "preview": ""},
+        ],
+    )
+    # P-2 高圈：把「記憶肌肉論」判為 support。
+    monkeypatch.setattr(
+        dr,
+        "_ask_p2_llm",
+        lambda p: {
+            "supports": [
+                {
+                    "target_path": "KB/Permanent/記憶肌肉論",
+                    "target_title": "記憶肌肉論",
+                    "direction": "forward",
+                    "internal_rationale": "r",
+                }
+            ],
+            "refutes": [],
+            "extends": [],
+        },
+    )
+    # P-2 MOC 擴判：判為相關。
+    monkeypatch.setattr(
+        dr, "_ask_p2_moc_llm", lambda p: {"mocs": [{"moc_path": "KB/MOCs/記憶與學習"}]}
+    )
+
+    bundle = dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
+    assert bundle.schema_version == 2
+    c = bundle.candidates[0]
+    # 高圈
+    assert {e.target_card for e in c.edges} == {"KB/Permanent/記憶肌肉論"}
+    # 中圈：排除已進高圈的「記憶肌肉論」，只剩「睡眠鞏固記憶」
+    assert [r.card_path for r in c.related_pool] == ["KB/Permanent/睡眠鞏固記憶"]
+    # 外圈
+    assert [m.name for m in c.related_mocs] == ["記憶與學習"]
+
+
+def test_run_daily_review_no_mocs_skips_moc_judge(vault: Path, monkeypatch):
+    """無 MOC 時不呼叫 P-2 MOC 擴判（省 LLM call）。"""
+    _write_annotations(vault, _card_box_set())
+
+    monkeypatch.setattr(
+        dr,
+        "_ask_p1_llm",
+        lambda p: [
+            {
+                "suggested_title": "t",
+                "why": "x",
+                "anchors": ["^cfi-6-14-116"],
+                "source_quote": "q",
+                "user_note": "必須重複三次才會記得。",
+                "strong_signal": True,
+            }
+        ],
+    )
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [])
+
+    called = {"moc": False}
+
+    def _moc(p):  # noqa: ARG001
+        called["moc"] = True
+        return {}
+
+    monkeypatch.setattr(dr, "_ask_p2_moc_llm", _moc)
+    bundle = dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
+    assert called["moc"] is False  # 無 MOC → 不浪費 LLM call
+    assert bundle.candidates[0].related_mocs == []

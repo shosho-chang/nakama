@@ -41,6 +41,8 @@ from shared.schemas.daily_review import (
     DailyReviewBundle,
     EdgeType,
     FleetingItem,
+    RelatedCard,
+    RelatedMoc,
     SourceRef,
     SweepItem,
     TypedEdgeChip,
@@ -54,6 +56,8 @@ from shared.utils import extract_frontmatter
 MAX_CANDIDATES = 7  # P-1 上限（超過留給明天，不淹沒人）
 MAX_EDGES_PER_GROUP = 3  # P-2 每方向上限（寧缺勿濫）
 FTS_TOP_K = 6  # 每條候選 FTS5 撈幾張既有卡進 P-2
+RELATED_POOL_TOP_K = 8  # 卡片畫布中圈 FTS pool 上限（N527 / 規格 v1 §3）
+MAX_RELATED_MOCS = 2  # 卡片畫布外圈 MOC 上限（C8 寧缺勿濫）
 DEFER_EXPIRY_DAYS = 14  # 「之後再說」過期歸檔（D-22）
 STALE_SEEDLING_DAYS = 30  # 放超過此天數的 seedling 進清掃（§2）
 
@@ -587,6 +591,305 @@ def judge_edges(
 
 
 # ---------------------------------------------------------------------------
+# 卡片畫布中圈：related_pool（FTS5/BM25 命中、未經 P-2）— N527 / 規格 v1 §3
+# ---------------------------------------------------------------------------
+#
+# 強度＝既有訊號分層（C3）：高圈＝P-2 typed-edge（``judge_edges``），中圈即本層。
+# 純機械（FTS5），不打 LLM。**排除**已進該候選 typed-edge 的卡（避免高/中圈重複）。
+
+
+def _read_card_status(vault_path: Path, kb_path: str) -> str:
+    """讀既有卡 frontmatter ``status``（卡片畫布中圈顯示用）。讀不到 → 空字串。
+
+    ``kb_path`` 是 vault-relative（KB/Permanent/…，無副檔名）。檔不存在 / 無
+    frontmatter / 無 status → ""（不中斷）。
+    """
+    if not kb_path:
+        return ""
+    rel = kb_path[3:] if kb_path.startswith("KB/") else kb_path
+    abs_path = vault_path / "KB" / rel if not kb_path.startswith("KB/") else vault_path / kb_path
+    if not abs_path.suffix:
+        abs_path = abs_path.with_suffix(".md")
+    if not abs_path.exists():
+        return ""
+    try:
+        fm, _ = extract_frontmatter(abs_path.read_text(encoding="utf-8"))
+    except OSError:
+        return ""
+    return str(fm.get("status") or "").strip()
+
+
+def collect_related_pool(
+    candidate: CandidateCard,
+    vault_path: Path,
+    *,
+    top_k: int = RELATED_POOL_TOP_K,
+    exclude_paths: set[str] | None = None,
+) -> list[RelatedCard]:
+    """卡片畫布中圈：FTS5/BM25 撈 top-k 既有卡，排除已進 typed-edge 的卡（規格 v1 §3）。
+
+    用與 P-2 第一段相同的 ``search_kb`` hybrid（BM25 + wikilink + Permanent-first
+    tiering）。``exclude_paths`` 是該候選已進 ``edges`` 的 target_card 集合——避免
+    高/中圈重複（同一張卡不會同時當高關聯 chip 與中關聯 pool）。
+
+    回 :class:`RelatedCard` list（帶 0-based ``bm25_rank``，依 search 回傳序）。
+    強度只用分層表示（C3）：``bm25_rank`` 是排序序位，**不是** 0–1 相關分數。
+    失敗（FTS 無命中 / 檢索異常）→ []（不中斷 job）。
+    """
+    from agents.robin.kb_search import search_kb
+
+    query_parts = [candidate.suggested_title]
+    if candidate.source_refs:
+        query_parts.append(candidate.source_refs[0].quote)
+        query_parts.append(candidate.source_refs[0].note)
+    query = "\n".join(p for p in query_parts if p)
+    if not query.strip():
+        return []
+
+    exclude = exclude_paths or set()
+    try:
+        # 多撈一些（top_k + exclude 量），扣掉排除項後仍湊得到 top_k。
+        hits = search_kb(query[:500], vault_path, top_k=top_k + len(exclude), engine="hybrid")
+    except Exception:  # noqa: BLE001 — pool 是 best-effort，檢索壞掉不沉 job
+        return []
+
+    pool: list[RelatedCard] = []
+    seen: set[str] = set()
+    for h in hits:
+        path = h.get("path") or ""
+        if not path or path in exclude or path in seen:
+            continue
+        seen.add(path)
+        pool.append(
+            RelatedCard(
+                card_path=path,
+                title=h.get("title") or path.split("/")[-1],
+                status=_read_card_status(vault_path, path),
+                bm25_rank=len(pool),
+            )
+        )
+        if len(pool) >= top_k:
+            break
+    return pool
+
+
+# ---------------------------------------------------------------------------
+# 卡片畫布外圈：related_mocs（P-2 擴判候選 ↔ MOC）— N527 / 規格 v1 C8 / C13
+# ---------------------------------------------------------------------------
+#
+# 機械第一段：讀 KB/MOCs/* 的名稱 + 人寫分組標題（語料便宜）。第二段 LLM 擴判：
+# 沿用 P-2「表面相似 ≠ 關係」過濾，輸出與候選相關的 MOC（上限 2，寧缺勿濫）。
+
+# wikilink 抓取：[[Target]] / [[Target|別名]] / [[Target#錨]]——只取 target 葉節點。
+_WIKILINK_RE = re.compile(r"\[\[([^\]\|#]+)")
+# Obsidian comment marker（AI 維護的未歸位區，不算人寫分組）。
+_UNFILED_MARKER = "%%agent-robin-unfiled%%"
+
+
+def _moc_name(fm: dict, body: str, stem: str) -> str:
+    """MOC 顯示名：frontmatter title → 首個 H1 → 檔名 stem。"""
+    title = str(fm.get("title") or "").strip()
+    if title:
+        return title
+    for line in body.splitlines():
+        s = line.strip()
+        if s.startswith("# ") and not s.startswith("##"):
+            return s[2:].strip()
+    return stem
+
+
+def _moc_group_headings(body: str) -> list[str]:
+    """人寫分組標題（H2/H3）——餵 P-2 擴判的語料（C13：成本低）。
+
+    排除 ``%%agent-robin-unfiled%%`` marker 之後的標題（那是 AI 維護的未歸位區，
+    慣例置於檔尾，非人的分組判斷）。marker 一出現即進 unfiled 區直到檔尾。
+    """
+    headings: list[str] = []
+    in_unfiled = False
+    for line in body.splitlines():
+        s = line.strip()
+        if _UNFILED_MARKER in s:
+            in_unfiled = True
+            continue
+        if in_unfiled:
+            continue
+        if s.startswith("##"):
+            headings.append(s.lstrip("#").strip())
+    return [h for h in headings if h]
+
+
+def _moc_member_links(body: str) -> list[str]:
+    """MOC 已歸位成員卡名（人寫分組區的 ``[[...]]``，排除 unfiled marker 之後）。"""
+    members: list[str] = []
+    in_unfiled = False
+    seen: set[str] = set()
+    for line in body.splitlines():
+        s = line.strip()
+        if _UNFILED_MARKER in s:
+            in_unfiled = True
+            continue
+        if in_unfiled:
+            continue
+        for m in _WIKILINK_RE.findall(line):
+            name = m.strip()
+            if name and name not in seen:
+                seen.add(name)
+                members.append(name)
+    return members
+
+
+def load_mocs(vault_path: Path) -> list[dict]:
+    """讀 KB/MOCs/*.md → 每 MOC ``{moc_path, name, group_headings, members, card_count}``。
+
+    純機械（讀 frontmatter + headings + wikilinks）。``card_count`` = 已歸位成員數
+    （unfiled marker 區外的人寫分組連結）。供 :func:`judge_related_mocs` 語料與
+    :func:`moc_members` lazy-load。MOCs 目錄不存在 → []。
+    """
+    d = vault_path / "KB" / "MOCs"
+    if not d.exists():
+        return []
+    out: list[dict] = []
+    for p in sorted(d.glob("*.md")):
+        if ".sync-conflict-" in p.name:
+            continue
+        try:
+            content = p.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm, body = extract_frontmatter(content)
+        members = _moc_member_links(body)
+        out.append(
+            {
+                "moc_path": f"KB/MOCs/{p.stem}",
+                "name": _moc_name(fm, body, p.stem),
+                "group_headings": _moc_group_headings(body),
+                "members": members,
+                "card_count": len(members),
+            }
+        )
+    return out
+
+
+def _build_p2_moc_prompt(candidate: CandidateCard, mocs: list[dict]) -> str:
+    """組 P-2 MOC 擴判 prompt（規格 v1 C13；語料＝MOC 名稱 + 人寫分組標題）。
+
+    沿用 P-2「表面相似 ≠ 關係」紅線（Prompt 規格 v0.1 §3 規則 1）。
+    """
+    quote = candidate.source_refs[0].quote if candidate.source_refs else ""
+    note = candidate.source_refs[0].note if candidate.source_refs else ""
+    moc_lines = []
+    for m in mocs:
+        groups = "、".join(m["group_headings"]) if m["group_headings"] else "（無分組標題）"
+        moc_lines.append(f"- [moc_path={m['moc_path']}] 名稱：{m['name']}｜分組：{groups}")
+    mocs_block = "\n".join(moc_lines) if moc_lines else "（無 MOC）"
+
+    return f"""任務：判斷這張候選永久卡屬於哪些既有 MOC（主題索引）的範疇。
+這是「建議 chips」——Shosho 自己決定分不分組、分到哪一組。
+
+輸入：
+<candidate>
+suggested_title：{candidate.suggested_title}
+引文：{quote}
+note：{note}
+</candidate>
+<mocs>
+{mocs_block}
+</mocs>
+
+判斷規則：
+1. 先過濾：表面相似 ≠ 主題歸屬。候選與 MOC 共用詞彙但講不同層次的事 → 丟棄。
+   寧缺寧濫——只回「這張卡確實該掛在這個主題下」的 MOC。
+2. 只看主題範疇，不需判斷關係方向（那是 typed-edge 的工作）。
+3. 上限 {MAX_RELATED_MOCS} 個——一張候選通常只屬於一兩個主題。沒有相關 MOC
+   就回空陣列，不要硬湊。
+
+輸出 JSON：{{ "mocs": [{{"moc_path": str}}, ...] }}，最多 {MAX_RELATED_MOCS} 個。
+只輸出 JSON，不要其他文字。"""
+
+
+def _ask_p2_moc_llm(prompt: str) -> dict:
+    """P-2 MOC 擴判 LLM call（Sonnet 級）。測試 monkeypatch 此函式。"""
+    set_current_agent("robin")
+    text = ask(prompt, system=_SYSTEM_PREAMBLE, model="claude-sonnet-4-5-20250929", max_tokens=512)
+    return _parse_json_object(text)
+
+
+def judge_related_mocs(
+    candidate: CandidateCard,
+    mocs: list[dict],
+    *,
+    max_mocs: int = MAX_RELATED_MOCS,
+) -> list[RelatedMoc]:
+    """卡片畫布外圈：P-2 擴判候選 ↔ MOC 相關性（規格 v1 C8 / C13）。
+
+    輸入既有 MOC 清單（``load_mocs`` 的輸出）；LLM 回與候選相關的 MOC path 子集
+    （上限 ``max_mocs``，沿用 P-2「表面相似 ≠ 關係」過濾）。回 :class:`RelatedMoc`
+    list，帶 ``card_count``。無 MOC / LLM 空回 / 回的 path 對不上既有 MOC → []。
+    """
+    if not mocs:
+        return []
+    by_path = {m["moc_path"]: m for m in mocs}
+
+    result = _ask_p2_moc_llm(_build_p2_moc_prompt(candidate, mocs))
+    if not result:
+        return []
+    raw = result.get("mocs") or []
+    if not isinstance(raw, list):
+        return []
+
+    out: list[RelatedMoc] = []
+    seen: set[str] = set()
+    for e in raw[:max_mocs]:
+        if not isinstance(e, dict):
+            continue
+        path = str(e.get("moc_path") or "").strip()
+        moc = by_path.get(path)
+        if moc is None or path in seen:
+            continue  # LLM 幻覺 path 不採信（只認既有 MOC）
+        seen.add(path)
+        out.append(RelatedMoc(moc_path=path, name=moc["name"], card_count=moc["card_count"]))
+    return out
+
+
+def moc_members(vault_path: Path, moc_path: str) -> list[dict]:
+    """MOC 成員清單（卡片畫布外圈疊卡 lazy-load）——回 ``{card_path, title, status}[]``。
+
+    料源：MOC 檔人寫分組區的 ``[[卡名]]`` wikilink（排除 unfiled marker 區）。成員
+    解析為 ``KB/Permanent/{卡名}``（永久卡是疊卡內容），讀其 frontmatter status；
+    對不到實檔的連結仍列出（status 空），UI 自行標 dangling。規格 v1 §3：疊卡內容
+    由前端 lazy load，不入 bundle（C12 永不全攤）。
+
+    ``moc_path`` 容忍帶不帶 KB/ 前綴與 .md 副檔名。MOC 不存在 → []。
+    """
+    rel = moc_path.strip().replace("[[", "").replace("]]", "")
+    if rel.startswith("KB/"):
+        rel = rel[len("KB/") :]
+    if rel.endswith(".md"):
+        rel = rel[: -len(".md")]
+    if not rel.startswith("MOCs/"):
+        rel = f"MOCs/{rel.split('/')[-1]}"
+    abs_path = vault_path / "KB" / f"{rel}.md"
+    if not abs_path.exists():
+        return []
+    try:
+        _, body = extract_frontmatter(abs_path.read_text(encoding="utf-8"))
+    except OSError:
+        return []
+
+    out: list[dict] = []
+    for name in _moc_member_links(body):
+        card_path = name if name.startswith("KB/") else f"KB/Permanent/{name.split('/')[-1]}"
+        out.append(
+            {
+                "card_path": card_path,
+                "title": name.split("/")[-1],
+                "status": _read_card_status(vault_path, card_path),
+            }
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Fleeting scan (機械)
 # ---------------------------------------------------------------------------
 
@@ -834,13 +1137,28 @@ def run_daily_review(
         if c.candidate_id not in skipped and c.candidate_id not in deferred_pending
     ]
 
-    # 3) 每候選跑 P-2 typed-edge
+    # 3) 每候選跑 P-2 typed-edge（高圈）+ 卡片畫布中圈/外圈（N527）
+    mocs = load_mocs(vault_path)  # 一次讀 MOC 清單（語料），每候選共用
     for card in candidates:
         try:
             card.edges = judge_edges(card, vault_path)
         except Exception as exc:  # noqa: BLE001 — one bad candidate shouldn't sink the job
             warnings.append(f"P-2 失敗（{card.suggested_title[:20]}）：{exc}")
             card.edges = []
+        # 中圈：FTS pool，排除已進 typed-edge 的卡（高/中圈互斥）
+        try:
+            edge_paths = {e.target_card for e in card.edges}
+            card.related_pool = collect_related_pool(card, vault_path, exclude_paths=edge_paths)
+        except Exception as exc:  # noqa: BLE001 — pool best-effort
+            warnings.append(f"related_pool 失敗（{card.suggested_title[:20]}）：{exc}")
+            card.related_pool = []
+        # 外圈：P-2 擴判候選 ↔ MOC（無 MOC 時免 LLM call）
+        if mocs:
+            try:
+                card.related_mocs = judge_related_mocs(card, mocs)
+            except Exception as exc:  # noqa: BLE001 — MOC 擴判 best-effort
+                warnings.append(f"related_mocs 失敗（{card.suggested_title[:20]}）：{exc}")
+                card.related_mocs = []
 
     # 4) open fleeting
     fleeting = collect_open_fleeting(vault_path)
