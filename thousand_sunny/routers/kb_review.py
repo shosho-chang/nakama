@@ -573,9 +573,8 @@ def _bundle_for_template(bundle: DailyReviewBundle) -> dict:
     weekday_zh = "一二三四五六日"
     try:
         d = date.fromisoformat(bundle.review_date)
-        prev = d.fromordinal(d.toordinal() - 1)
         weekday = weekday_zh[d.weekday()]
-        review_label = f"{bundle.review_date}（{weekday}） · 回顧 {prev.strftime('%m-%d')}"
+        review_label = f"{bundle.review_date}（{weekday}）"
     except ValueError:
         review_label = bundle.review_date
 
