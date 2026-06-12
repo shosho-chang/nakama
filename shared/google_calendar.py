@@ -291,6 +291,11 @@ def find_conflicts(start: str, end: str) -> list[CalendarEvent]:
     不用 ``freebusy.query`` — 它需要額外的 ``calendar.freebusy`` scope。改用
     ``events.list`` 直接撈時段內事件，再用 ``_overlaps`` 精確過濾。只吃 ``calendar.events``
     scope 就夠。
+
+    **整天事件 (all-day) 一律略過**：它們不佔特定時段（與 ``create_event`` line ~189、
+    ``find_free_slots`` 同一語意），不該擋有時間的事件。且整天事件的 ``start`` 是 date-only
+    （``YYYY-MM-DD``，naive），若丟進 ``_overlaps`` 與帶 TZ 的 aware datetime 比對會拋
+    ``can't compare offset-naive and offset-aware datetimes``。
     """
     start_iso = _ensure_tz_iso(start)
     end_iso = _ensure_tz_iso(end)
@@ -299,8 +304,13 @@ def find_conflicts(start: str, end: str) -> list[CalendarEvent]:
         time_max=_parse_iso(end_iso),
         max_results=20,
     )
-    # events.list 會把首尾相接的事件也抓進來；用精確 overlap 過濾
-    return [e for e in events if _overlaps(e.start, e.end, start_iso, end_iso)]
+    # events.list 會把首尾相接的事件、以及整天事件也抓進來；整天事件不佔時段直接略過
+    # （也避開 naive date-only vs aware datetime 的比對 crash），再用精確 overlap 過濾。
+    return [
+        e
+        for e in events
+        if not _is_date_only(e.start) and _overlaps(e.start, e.end, start_iso, end_iso)
+    ]
 
 
 def find_free_slots(
