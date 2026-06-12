@@ -144,9 +144,7 @@ def test_find_conflicts_skips_all_day_event(monkeypatch):
         ),
     ]
     monkeypatch.setattr(google_calendar, "list_events", lambda **kw: evs)
-    conflicts = google_calendar.find_conflicts(
-        "2026-07-04T08:30:00", "2026-07-04T22:00:00"
-    )
+    conflicts = google_calendar.find_conflicts("2026-07-04T08:30:00", "2026-07-04T22:00:00")
     assert conflicts == []
 
 
@@ -168,9 +166,7 @@ def test_find_conflicts_still_detects_timed_overlap(monkeypatch):
         ),
     ]
     monkeypatch.setattr(google_calendar, "list_events", lambda **kw: evs)
-    conflicts = google_calendar.find_conflicts(
-        "2026-07-04T08:30:00", "2026-07-04T22:00:00"
-    )
+    conflicts = google_calendar.find_conflicts("2026-07-04T08:30:00", "2026-07-04T22:00:00")
     assert [c.id for c in conflicts] == ["timed"]
 
 
