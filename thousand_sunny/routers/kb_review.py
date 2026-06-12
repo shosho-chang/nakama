@@ -563,6 +563,32 @@ async def moc_members_endpoint(moc_path: str, nakama_auth: str | None = Cookie(N
     return {"ok": True, "moc_path": mp, "members": members}
 
 
+@router.get("/api/permanent/peek")
+async def permanent_peek_endpoint(path: str, nakama_auth: str | None = Cookie(None)):
+    """回單張永久卡的正文預覽 ``{title, status, body}``——畫布連結前先看內容（read-only）。
+
+    安全：限 ``KB/Permanent/`` 內，且 resolve 後須仍在 Permanent 根下（擋 ``..`` 穿越）。
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(403, detail="not authenticated")
+    from shared.permanent_layer import is_permanent_path
+
+    p = path.strip()
+    if not p or not is_permanent_path(p):
+        raise HTTPException(422, detail="只能 peek KB/Permanent/ 卡")
+    vault = get_vault_path()
+    rel = p if p.endswith(".md") else p + ".md"
+    perm_root = (vault / "KB" / "Permanent").resolve()
+    abs_path = (vault / rel).resolve()
+    if not str(abs_path).startswith(str(perm_root)):
+        raise HTTPException(422, detail="路徑越界")
+    leaf = p.split("/")[-1]
+    if not abs_path.exists():
+        return {"ok": False, "title": leaf, "status": "", "body": ""}
+    fm, body = extract_frontmatter(abs_path.read_text(encoding="utf-8"))
+    return {"ok": True, "title": leaf, "status": str(fm.get("status") or ""), "body": body.strip()}
+
+
 # ---------------------------------------------------------------------------
 # GET /kb/review — 每日回顧頁
 # ---------------------------------------------------------------------------

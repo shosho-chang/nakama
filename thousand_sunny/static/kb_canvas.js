@@ -174,9 +174,25 @@
       var rot = reduced ? 0 : rand(-2.2, 2.2);
       var card = el("div", "kbc-card");
       card.dataset.title = title;
+      card.dataset.path = (tier === "hi" ? d.target_card : d.card_path) || "";
       card.style.cssText =
         "left:" + x + "px;top:" + Math.min(FH - 120, y) + "px;transform:rotate(" + rot + "deg);z-index:" + zCounter++;
       card.appendChild(el("div", "t", title));
+      // 展開圖示：看這張永久卡的內容（修修回饋 #3）。點卡身仍是換角度/拖拉，互不干擾。
+      var peek = el("button", "kbc-peek");
+      peek.type = "button";
+      peek.title = "看內容";
+      peek.setAttribute("aria-label", "看「" + title + "」的內容");
+      peek.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg>';
+      peek.addEventListener("pointerdown", function (ev) {
+        ev.stopPropagation();
+      });
+      peek.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        openPeek(card.dataset.path, title);
+      });
+      card.appendChild(peek);
       var m = el("div", "m");
       if (tier === "hi") {
         // 高關聯（Robin 判定）：無 ✦Robin 文字，改用加粗邊框（.robin）標示區別。
@@ -194,6 +210,38 @@
       card.appendChild(m);
       field.appendChild(card);
     });
+  }
+
+  /* 看候選永久卡內容（修修回饋 #3）：fetch 正文 → 彈出預覽面板。esc / 點外關閉。 */
+  function closePeek() {
+    var p = $("#kbc-peekpop");
+    if (p) p.remove();
+  }
+  function openPeek(path, title) {
+    if (!path) return;
+    closePeek();
+    var pop = el("div", "kbc-peekpop");
+    pop.id = "kbc-peekpop";
+    var h = el("div", "pk-h");
+    h.appendChild(el("b", null, title));
+    var x = el("button", "pk-x", "✕");
+    x.type = "button";
+    x.addEventListener("click", closePeek);
+    h.appendChild(x);
+    pop.appendChild(h);
+    var body = el("div", "pk-body", "載入中…");
+    pop.appendChild(body);
+    $("#kbc-root").appendChild(pop);
+    fetch("/kb/api/permanent/peek?path=" + encodeURIComponent(path))
+      .then(function (r) {
+        return r.ok ? r.json() : null;
+      })
+      .then(function (j) {
+        body.textContent = j && j.body ? j.body : "（這張卡還沒有內容）";
+      })
+      .catch(function () {
+        body.textContent = "讀取失敗";
+      });
   }
 
   function linked(title) {
@@ -893,17 +941,24 @@
       $("#kbc-title").dataset.dirty = "1";
     });
 
-    // 點空白關 popover
+    // 點空白關 popover / peek 預覽
     document.addEventListener("pointerdown", function (e) {
       if (!e.target.closest("#kbc-popover") && !e.target.closest(".kbc-ebadge")) {
         $("#kbc-popover").classList.remove("on");
         editIdx = -1;
       }
+      if (!e.target.closest("#kbc-peekpop") && !e.target.closest(".kbc-peek")) {
+        closePeek();
+      }
     });
-    // esc：先關 overlay/popover，否則關畫布回候選清單。
+    // esc：先關 peek/overlay/popover，否則關畫布回候選清單。
     document.addEventListener("keydown", function (e) {
       if (e.key !== "Escape") return;
       if ($("#kbc-root").hidden) return;
+      if ($("#kbc-peekpop")) {
+        closePeek();
+        return;
+      }
       if (overlayEl) {
         closeOverlay();
         return;
