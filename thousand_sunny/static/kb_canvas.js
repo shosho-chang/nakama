@@ -233,7 +233,7 @@
         openPopover(i, badge);
       });
       item.appendChild(badge);
-      item.appendChild(el("span", "tg", "[[" + e.target + "]]"));
+      item.appendChild(el("span", "tg", e.target));
       var reason = el("input", "reason-in");
       reason.type = "text";
       reason.dataset.ri = i;
@@ -264,7 +264,7 @@
       var item = el("div", "kbc-edgeitem");
       var badge = el("span", "kbc-ebadge src", "來源");
       item.appendChild(badge);
-      item.appendChild(el("span", "tg", "[[" + target + "]]"));
+      item.appendChild(el("span", "tg", target));
       item.appendChild(el("span", "reason-in", "來源"));
       var rm = el("button", "rm", "✕");
       rm.type = "button";
