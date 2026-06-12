@@ -93,7 +93,9 @@ body.sho.kbc-active { overflow: hidden; }
 .kbc-ebadge.extend { color: var(--sho-info); border-color: var(--sho-info); }
 .kbc-ebadge.src { color: var(--sho-muted); border-color: var(--sho-line-2); }
 .kbc-edgeitem .tg {
-  color: var(--sho-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34%;
+  color: var(--sho-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%;
+  border: 1px solid var(--sho-line-2); background: var(--sho-bg-2); border-radius: var(--sho-r-1);
+  padding: 1px 8px; font-size: 12.5px;
 }
 .kbc-edgeitem .reason-in {
   flex: 1; min-width: 80px; border: 0; border-bottom: 1px dashed var(--sho-line-2); background: none;
