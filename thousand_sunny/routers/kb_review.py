@@ -538,6 +538,30 @@ async def review_later(payload: ReviewActionIn, nakama_auth: str | None = Cookie
 
 
 # ---------------------------------------------------------------------------
+# GET /kb/api/moc/members — 卡片畫布外圈疊卡 lazy-load（N527，read-only）
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/moc/members")
+async def moc_members_endpoint(moc_path: str, nakama_auth: str | None = Cookie(None)):
+    """回 MOC 成員清單 ``{card_path,title,status}[]``——卡片畫布外圈疊卡 lazy-load。
+
+    read-only（不寫 vault）；料源 = MOC 檔人寫分組區的 ``[[卡]]`` 連結（規格 v1 §3，
+    C12：疊卡內容前端按需取，不入 bundle）。``moc_path`` 容忍帶不帶 KB/ 前綴。
+    """
+    if not check_auth(nakama_auth):
+        raise HTTPException(403, detail="not authenticated")
+    mp = moc_path.strip()
+    if not mp:
+        raise HTTPException(422, detail="moc_path 不可空")
+
+    from agents.robin.daily_review import moc_members
+
+    members = moc_members(get_vault_path(), mp)
+    return {"ok": True, "moc_path": mp, "members": members}
+
+
+# ---------------------------------------------------------------------------
 # GET /kb/review — 每日回顧頁
 # ---------------------------------------------------------------------------
 
