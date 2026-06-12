@@ -141,7 +141,7 @@
       layers.appendChild(el("div", "ly"));
       var top = el("div", "ly");
       top.appendChild(el("span", "t", name));
-      top.appendChild(el("span", "n", (m.card_count || 0) + " 張 · 點開攤平"));
+      top.appendChild(el("span", "n", (m.card_count || 0) + " 張"));
       layers.appendChild(top);
       stack.appendChild(layers);
       field.appendChild(stack);
@@ -545,12 +545,11 @@
     fetchMembers(mocPath, function (members) {
       if (!overlayEl) return;
       if (members === null) {
-        head.querySelector("span").textContent = "成員載入失敗 · esc 關閉";
+        head.querySelector("span").textContent = "成員載入失敗";
         grid.appendChild(el("div", "kbc-ov-empty", "無法載入這個 MOC 的成員，稍後再試。"));
         return;
       }
-      head.querySelector("span").textContent =
-        members.length + " 張 — 看上哪張就拖出來，其餘自動收回 · esc 關閉";
+      head.querySelector("span").textContent = members.length + " 張";
       if (!members.length) {
         grid.appendChild(el("div", "kbc-ov-empty", "這個 MOC 還沒有歸位的成員卡。"));
         return;
@@ -645,7 +644,6 @@
     overlayEl = el("div", "kbc-overlay");
     var head = el("div", "kbc-ov-head");
     head.appendChild(el("b", null, "相關 MOC"));
-    head.appendChild(el("span", null, "Robin 篩過的相關 MOC — 點一疊攤平 · esc 關閉"));
     var close = el("button", null, "關閉");
     close.type = "button";
     close.addEventListener("click", closeOverlay);

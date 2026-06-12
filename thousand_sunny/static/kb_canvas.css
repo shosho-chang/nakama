@@ -140,7 +140,8 @@ body.sho.kbc-active { overflow: hidden; }
   background-size: 26px 26px;
 }
 .kbc-bandlbl {
-  position: absolute; top: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  /* 不 uppercase——否則人名 Robin 會被強制成 ROBIN，看起來像在吼（修修回饋）。 */
+  position: absolute; top: 10px; font-size: 11px; letter-spacing: .04em;
   font-weight: 700; color: var(--sho-muted); background: var(--sho-bg);
   padding: 1px 8px; border: 1px solid var(--sho-line); border-radius: var(--sho-r-pill); z-index: 3; pointer-events: none;
 }
