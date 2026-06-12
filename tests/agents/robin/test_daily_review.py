@@ -790,9 +790,7 @@ def test_v2_bundle_round_trips_with_three_layers():
                     )
                 ],
                 related_mocs=[
-                    RelatedMoc(
-                        moc_path="KB/MOCs/創作與選題", name="創作與選題", card_count=4
-                    )
+                    RelatedMoc(moc_path="KB/MOCs/創作與選題", name="創作與選題", card_count=4)
                 ],
             )
         ],
