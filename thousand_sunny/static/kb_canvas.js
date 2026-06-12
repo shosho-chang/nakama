@@ -464,15 +464,18 @@
       }
       // 沒落在有效落點：卡片留在場上 + 換新角度，不重排其他卡（修修回饋）。
       var field = $("#kbc-field");
-      field.appendChild(elx);
       if (moved) {
         // 真拖動：放在放手的位置（自由擺放）。
+        // 座標必須在 appendChild **之前**讀——一旦搬進 field，drag-layer 的 viewport
+        // style.left 會被當成 field 相對值，卡片瞬間跳到最右（修修回饋的 X 軸 bug）。
         var er = elx.getBoundingClientRect();
         var fr = field.getBoundingClientRect();
+        field.appendChild(elx);
         elx.style.left = Math.max(4, Math.min(fr.width - 170, er.left - fr.left)) + "px";
         elx.style.top = Math.max(4, Math.min(fr.height - 96, er.top - fr.top)) + "px";
       } else {
         // 純點擊：精確還原原位，只換角度（不漂移）。
+        field.appendChild(elx);
         elx.style.left = origLeft;
         elx.style.top = origTop;
       }
