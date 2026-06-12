@@ -136,7 +136,6 @@
       stack.dataset.stack = name;
       stack.dataset.mocPath = m.moc_path;
       stack.style.cssText = "left:" + x + "px;top:" + y + "px;z-index:5";
-      var badge = el("span", "relbadge", "✦ Robin 判定相關");
       var layers = el("div", "layers");
       layers.appendChild(el("div", "ly"));
       layers.appendChild(el("div", "ly"));
@@ -144,7 +143,6 @@
       top.appendChild(el("span", "t", name));
       top.appendChild(el("span", "n", (m.card_count || 0) + " 張 · 點開攤平"));
       layers.appendChild(top);
-      stack.appendChild(badge);
       stack.appendChild(layers);
       field.appendChild(stack);
     });
@@ -188,10 +186,10 @@
           m.appendChild(el("span", "kbc-minitag " + sugg, "建議" + TLBL[sugg]));
         }
         if (d.direction === "reverse") m.appendChild(el("span", "kbc-minitag", "對方→本卡"));
-        if (d.status) m.appendChild(el("span", "kbc-minitag", d.status));
+        if (d.status) m.appendChild(el("span", "kbc-minitag st-" + d.status, d.status));
       } else {
         m.appendChild(el("span", "kbc-minitag", "字面相關"));
-        if (d.status) m.appendChild(el("span", "kbc-minitag", d.status));
+        if (d.status) m.appendChild(el("span", "kbc-minitag st-" + d.status, d.status));
       }
       card.appendChild(m);
       field.appendChild(card);
@@ -406,7 +404,7 @@
       if (o === "bin") {
         binned[elx.dataset.title] = true;
         binCount++;
-        $("#kbc-bin-n").textContent = "拖來收回 · " + binCount;
+        $("#kbc-bin-n").textContent = binCount ? binCount + " 張" : "";
         elx.remove();
         toast("「" + elx.dataset.title + "」已收回卡片盒");
         return;
@@ -490,7 +488,7 @@
           if (o === "bin") {
             binned["stack:" + elx.dataset.stack] = true;
             binCount++;
-            $("#kbc-bin-n").textContent = "拖來收回 · " + binCount;
+            $("#kbc-bin-n").textContent = binCount ? binCount + " 張" : "";
             elx.remove();
             toast("整疊「" + elx.dataset.stack + "」已收回 — 桌面清爽了");
           } else {
@@ -564,7 +562,7 @@
         g.appendChild(el("div", "t", title));
         var m = el("div", "m");
         m.appendChild(el("span", "kbc-minitag", name));
-        if (mem.status) m.appendChild(el("span", "kbc-minitag", mem.status));
+        if (mem.status) m.appendChild(el("span", "kbc-minitag st-" + mem.status, mem.status));
         g.appendChild(m);
         bindGcardPull(g, title, name);
         grid.appendChild(g);

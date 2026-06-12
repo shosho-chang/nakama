@@ -169,6 +169,29 @@ body.sho.kbc-active { overflow: hidden; }
 .kbc-minitag.support { color: var(--sho-success); border-color: color-mix(in oklch, var(--sho-success) 45%, transparent); }
 .kbc-minitag.refute { color: var(--sho-error); border-color: color-mix(in oklch, var(--sho-error) 45%, transparent); }
 .kbc-minitag.extend { color: var(--sho-info); border-color: color-mix(in oklch, var(--sho-info) 50%, transparent); }
+/* 既有卡成熟度（修修回饋：用顏色+填充辨別）。seedling=幼苗(琥珀)、evergreen=常青(綠)。 */
+.kbc-minitag.st-seedling {
+  color: var(--sho-warning); border-color: color-mix(in oklch, var(--sho-warning) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 12%, transparent);
+}
+.kbc-minitag.st-evergreen {
+  color: var(--sho-success); border-color: color-mix(in oklch, var(--sho-success) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 14%, transparent);
+}
+
+/* 存入 Vault：base .sho-btn 樣式在未載入的 bridge.css，這頁無樣式→純文字。補 primary 按鈕（修修回饋③）。 */
+#kbc-save {
+  font-family: var(--sho-font-mono); font-size: 12px; letter-spacing: .1em; white-space: nowrap;
+  padding: 8px 20px; cursor: pointer;
+  background: var(--sho-text); color: var(--sho-bg);
+  border: 1px solid var(--sho-text); border-radius: var(--sho-r-1);
+  transition: background var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease);
+}
+#kbc-save:hover { background: var(--sho-accent); border-color: var(--sho-accent); }
+#kbc-save:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+/* 畫布開啟時隱藏右下角浮動主題切換鈕——否則會蓋住 MOC 盒 / 回收盒（修修回饋④截圖）。 */
+body.kbc-active .sho-theme-toggle { display: none; }
 
 /* stacks */
 .kbc-stack { position: absolute; width: 188px; cursor: pointer; user-select: none; touch-action: none; }
