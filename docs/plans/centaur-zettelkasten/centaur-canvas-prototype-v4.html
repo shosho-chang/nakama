@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Centaur 卡片畫布 — Prototype v4 · 工作桌</title>
+<script>(function(){try{var t=localStorage.getItem('sho-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();</script>
+<style>
+.sho{
+  --sho-bg:oklch(0.988 0.003 80);--sho-bg-2:oklch(0.967 0.003 80);--sho-bg-3:oklch(0.925 0.003 80);
+  --sho-line:oklch(0.875 0.003 80);--sho-line-2:oklch(0.820 0.003 80);
+  --sho-muted:oklch(0.550 0.005 80);--sho-text-2:oklch(0.360 0.005 80);
+  --sho-text:oklch(0.200 0.005 80);--sho-ink:oklch(0.100 0.005 80);
+  --sho-accent:oklch(0.71 0.135 41);--sho-accent-2:oklch(0.66 0.155 38);
+  --sho-accent-soft:oklch(0.71 0.135 41 / 0.10);--sho-accent-line:oklch(0.71 0.135 41 / 0.45);
+  --sho-success:oklch(0.58 0.115 150);--sho-warning:oklch(0.72 0.140 75);
+  --sho-error:oklch(0.58 0.180 28);--sho-info:oklch(0.62 0.090 235);
+  --sho-r-1:4px;--sho-r-2:8px;--sho-r-3:12px;--sho-r-pill:999px;
+  --sho-t-fast:120ms;--sho-t-base:180ms;--sho-t-slow:280ms;
+  --sho-ease:cubic-bezier(0.22,1,0.36,1);
+  --sho-focus:0 0 0 2px var(--sho-bg),0 0 0 4px var(--sho-accent);
+  --sho-font:"LINE Seed TW","Noto Sans TC","PingFang TC","Microsoft JhengHei UI","Microsoft JhengHei",ui-sans-serif,system-ui,sans-serif;
+  --card-shadow:0 1px 2px oklch(0.1 0 0 / 0.06),0 4px 10px oklch(0.1 0 0 / 0.05);
+  --deskw:clamp(430px,40vw,580px);
+}
+html[data-theme="dark"] .sho{
+  --sho-bg:oklch(0.145 0.005 80);--sho-bg-2:oklch(0.180 0.005 80);--sho-bg-3:oklch(0.235 0.005 80);
+  --sho-line:oklch(0.295 0.005 80);--sho-line-2:oklch(0.355 0.005 80);
+  --sho-muted:oklch(0.600 0.005 80);--sho-text-2:oklch(0.760 0.004 80);
+  --sho-text:oklch(0.880 0.003 80);--sho-ink:oklch(0.960 0.002 80);
+  --sho-accent:oklch(0.78 0.130 48);--sho-accent-2:oklch(0.82 0.125 48);
+  --sho-accent-soft:oklch(0.78 0.130 48 / 0.12);--sho-accent-line:oklch(0.78 0.130 48 / 0.50);
+  --card-shadow:0 1px 2px oklch(0 0 0 / 0.4),0 4px 12px oklch(0 0 0 / 0.3);
+}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme="light"]) .sho{
+    --sho-bg:oklch(0.145 0.005 80);--sho-bg-2:oklch(0.180 0.005 80);--sho-bg-3:oklch(0.235 0.005 80);
+    --sho-line:oklch(0.295 0.005 80);--sho-line-2:oklch(0.355 0.005 80);
+    --sho-muted:oklch(0.600 0.005 80);--sho-text-2:oklch(0.760 0.004 80);
+    --sho-text:oklch(0.880 0.003 80);--sho-ink:oklch(0.960 0.002 80);
+    --sho-accent:oklch(0.78 0.130 48);--sho-accent-2:oklch(0.82 0.125 48);
+    --sho-accent-soft:oklch(0.78 0.130 48 / 0.12);--sho-accent-line:oklch(0.78 0.130 48 / 0.50);
+    --card-shadow:0 1px 2px oklch(0 0 0 / 0.4),0 4px 12px oklch(0 0 0 / 0.3);
+  }
+}
+@media (prefers-reduced-motion: reduce){
+  .sho{--sho-t-fast:0ms;--sho-t-base:0ms;--sho-t-slow:0ms;}
+  .sho .card,.sho .desk,.sho .overlay{transform:none !important;transition:none !important;animation:none !important}
+}
+*{box-sizing:border-box}
+body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var(--sho-font);font-size:15.5px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font-family:inherit}
+.sho-mono{font-size:12.5px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
+
+/* topbar */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;gap:14px;
+  padding:9px 20px;background:color-mix(in oklch,var(--sho-bg) 88%,transparent);backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--sho-line)}
+.brand{font-weight:800;font-size:14px;color:var(--sho-ink);white-space:nowrap}
+.brand .sub{font-weight:500;font-size:11px;color:var(--sho-muted);margin-left:8px;text-transform:uppercase;letter-spacing:.06em}
+.seg{display:flex;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-pill);overflow:hidden}
+.seg button{border:0;background:none;padding:4px 13px;font-size:12.5px;font-weight:700;color:var(--sho-muted);cursor:pointer}
+.seg button.on{color:var(--sho-accent);background:var(--sho-accent-soft)}
+.hint{margin-left:auto;font-size:12.5px;color:var(--sho-muted)}
+.sho-theme-toggle{border:1px solid var(--sho-line-2);background:var(--sho-bg);border-radius:var(--sho-r-pill);
+  padding:4px 12px;font-size:11px;color:var(--sho-muted);cursor:pointer;letter-spacing:.05em;text-transform:uppercase;font-weight:500}
+.sho-theme-toggle:hover{color:var(--sho-accent);border-color:var(--sho-accent-line)}
+
+/* ===== desk（左側寫作桌） ===== */
+.desk{position:fixed;left:0;top:46px;bottom:0;width:var(--deskw);z-index:10;
+  background:var(--sho-bg);border-right:1.5px solid var(--sho-accent-line);
+  display:flex;flex-direction:column;padding:22px 26px 18px;
+  transition:transform var(--sho-t-slow) var(--sho-ease),opacity var(--sho-t-slow) var(--sho-ease)}
+.desk.flyout{transform:translateX(-30%) scale(.6);opacity:0}
+.desk .lbl{display:flex;gap:10px;align-items:baseline;font-size:11.5px;letter-spacing:.05em;font-weight:700;color:var(--sho-accent)}
+.desk .lbl .q{margin-left:auto;color:var(--sho-muted);font-weight:500}
+.desk .lbl .done-n{color:var(--sho-success);font-weight:700}
+.desk input.title{width:100%;border:0;border-bottom:1px solid var(--sho-line);background:none;color:var(--sho-ink);
+  font-family:inherit;font-size:20px;font-weight:800;padding:10px 0 9px;outline:none;line-height:1.4}
+.desk input.title:focus{border-bottom-color:var(--sho-accent)}
+.desk textarea{flex:1;min-height:120px;width:100%;border:0;background:none;color:var(--sho-text);resize:none;
+  font-family:inherit;font-size:15.5px;line-height:1.85;outline:none;margin-top:12px}
+.desk .edges{border-top:1px solid var(--sho-line);padding-top:10px;max-height:38vh;overflow-y:auto}
+.desk .edges .eh{font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--sho-text-2);margin-bottom:6px;display:flex;gap:8px}
+.desk .edges .eh .n{color:var(--sho-muted);font-weight:500;text-transform:none;letter-spacing:0}
+.edgeitem{display:flex;gap:8px;align-items:center;font-size:13.5px;margin:6px 0}
+.ebadge{flex-shrink:0;border:1.5px solid;border-radius:var(--sho-r-1);font-size:11.5px;font-weight:800;padding:1px 9px;cursor:pointer;background:none}
+.ebadge.sup{color:var(--sho-success);border-color:var(--sho-success)}
+.ebadge.ref{color:var(--sho-error);border-color:var(--sho-error)}
+.ebadge.ext{color:var(--sho-info);border-color:var(--sho-info)}
+.ebadge.src{color:var(--sho-muted);border-color:var(--sho-line-2)}
+.edgeitem .tg{color:var(--sho-text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34%}
+.edgeitem .reason-in{flex:1;min-width:80px;border:0;border-bottom:1px dashed var(--sho-line-2);background:none;
+  font-family:inherit;font-size:13px;color:var(--sho-text-2);outline:none;padding:1px 2px}
+.edgeitem .reason-in:focus{border-bottom-color:var(--sho-accent)}
+.edgeitem .rm{border:0;background:none;color:var(--sho-muted);cursor:pointer;font-size:14px;padding:0 4px;flex-shrink:0}
+.edgeitem .rm:hover{color:var(--sho-error)}
+.desk .foot{display:flex;align-items:center;gap:10px;margin-top:12px;border-top:1px solid var(--sho-line);padding-top:12px}
+.desk .foot .n{font-size:12px;color:var(--sho-muted);margin-right:auto}
+.sho-btn{appearance:none;border:1px solid var(--sho-accent-line);background:none;color:var(--sho-accent);
+  border-radius:var(--sho-r-2);padding:7px 20px;font-size:13.5px;font-weight:700;cursor:pointer}
+.sho-btn:hover{background:var(--sho-accent-soft)}
+.sho-btn:focus-visible{outline:none;box-shadow:var(--sho-focus)}
+
+/* desk drop zones（拖卡時在卡片內部浮現 2×2 大格，放手即消失） */
+.dz{position:absolute;border:1.5px dashed;border-radius:var(--sho-r-2);display:none;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  font-size:19px;font-weight:800;letter-spacing:.08em;opacity:.85;z-index:12;
+  background:color-mix(in oklch,var(--sho-bg) 93%,transparent);
+  transition:opacity var(--sho-t-fast) var(--sho-ease),background var(--sho-t-fast) var(--sho-ease)}
+.dz small{font-size:13px;font-weight:500;letter-spacing:0;color:var(--sho-muted)}
+.desk.dz-on .dz{display:flex}
+.dz.hot{opacity:1}
+.dz-sup{top:128px;left:12px;width:calc(50% - 18px);height:calc(50% - 130px);color:var(--sho-success);border-color:var(--sho-success)}
+.dz-sup.hot{background:color-mix(in oklch,var(--sho-success) 16%,var(--sho-bg))}
+.dz-ref{top:128px;right:12px;width:calc(50% - 18px);height:calc(50% - 130px);color:var(--sho-error);border-color:var(--sho-error)}
+.dz-ref.hot{background:color-mix(in oklch,var(--sho-error) 16%,var(--sho-bg))}
+.dz-ext{bottom:76px;left:12px;width:calc(50% - 18px);height:calc(50% - 80px);color:var(--sho-info);border-color:var(--sho-info)}
+.dz-ext.hot{background:color-mix(in oklch,var(--sho-info) 16%,var(--sho-bg))}
+.dz-src{bottom:76px;right:12px;width:calc(50% - 18px);height:calc(50% - 80px);color:var(--sho-muted);border-color:var(--sho-line-2)}
+.dz-src.hot{background:var(--sho-bg-3)}
+
+/* ===== field（右側卡片場） ===== */
+.field{position:fixed;top:46px;right:0;bottom:0;left:var(--deskw);overflow:hidden;
+  background-image:radial-gradient(color-mix(in oklch,var(--sho-line) 55%,transparent) 1px,transparent 1px);
+  background-size:26px 26px}
+.bandlbl{position:absolute;top:10px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--sho-muted);
+  background:var(--sho-bg);padding:1px 8px;border:1px solid var(--sho-line);border-radius:var(--sho-r-pill);z-index:3;pointer-events:none}
+.bandsep{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--sho-line-2);opacity:.7;pointer-events:none}
+
+/* cards */
+.card{position:absolute;width:204px;background:var(--sho-bg);border:1px solid var(--sho-line-2);
+  border-radius:var(--sho-r-2);box-shadow:var(--card-shadow);padding:12px 14px;cursor:grab;
+  user-select:none;touch-action:none;
+  transition:box-shadow var(--sho-t-fast) var(--sho-ease),border-color var(--sho-t-fast) var(--sho-ease)}
+.card:hover{border-color:var(--sho-accent-line)}
+.card.dragging{cursor:grabbing;box-shadow:0 8px 24px oklch(0.1 0 0/0.18)}
+.card .t{font-size:14px;font-weight:700;color:var(--sho-ink);line-height:1.5;margin-bottom:6px}
+.card .m{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.minitag{font-size:11px;border:1px solid var(--sho-line-2);border-radius:var(--sho-r-pill);padding:0 8px;color:var(--sho-muted);white-space:nowrap}
+.minitag.hi{color:var(--sho-accent);border-color:var(--sho-accent-line)}
+.minitag.sup{color:var(--sho-success);border-color:color-mix(in oklch,var(--sho-success) 45%,transparent)}
+.minitag.ref{color:var(--sho-error);border-color:color-mix(in oklch,var(--sho-error) 45%,transparent)}
+.minitag.ext{color:var(--sho-info);border-color:color-mix(in oklch,var(--sho-info) 50%,transparent)}
+
+/* stacks */
+.stack{position:absolute;width:188px;cursor:pointer;user-select:none;touch-action:none}
+.stack .layers{position:relative;height:70px}
+.stack .ly{position:absolute;inset:0;background:var(--sho-bg);border:1px solid var(--sho-line-2);border-radius:var(--sho-r-2);box-shadow:var(--card-shadow)}
+.stack .ly:nth-child(1){transform:rotate(-2.5deg) translate(-3px,4px)}
+.stack .ly:nth-child(2){transform:rotate(1.8deg) translate(3px,2px)}
+.stack .ly:nth-child(3){display:flex;flex-direction:column;justify-content:center;padding:9px 13px;gap:1px}
+.stack .ly .t{font-size:14px;font-weight:800;color:var(--sho-ink)}
+.stack .ly .n{font-size:11.5px;color:var(--sho-muted)}
+.stack:hover .ly:nth-child(3){border-color:var(--sho-accent-line)}
+.stack.rel .ly:nth-child(3){border-color:var(--sho-accent-line)}
+.stack .relbadge{position:absolute;top:-10px;right:8px;font-size:10.5px;font-weight:700;color:var(--sho-accent);
+  background:var(--sho-bg);border:1px solid var(--sho-accent-line);border-radius:var(--sho-r-pill);padding:0 8px;z-index:2}
+.stack.dragging{opacity:.85}
+
+/* MOC 盒（兜底入口，屬性與卡片不同 → 盒子圖示） */
+.mocbox{position:fixed;right:18px;bottom:114px;z-index:20;width:148px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  background:var(--sho-bg);border:1.5px solid var(--sho-line-2);border-radius:var(--sho-r-3);
+  padding:12px 0 10px;cursor:pointer;box-shadow:var(--card-shadow);
+  transition:border-color var(--sho-t-fast) var(--sho-ease),color var(--sho-t-fast) var(--sho-ease)}
+.mocbox svg{width:26px;height:26px;color:var(--sho-text-2)}
+.mocbox .mlbl{font-size:12px;font-weight:800;color:var(--sho-ink);letter-spacing:.04em}
+.mocbox .mn{font-size:10.5px;color:var(--sho-muted)}
+.mocbox:hover{border-color:var(--sho-accent-line)}
+.mocbox:hover svg,.mocbox:hover .mlbl{color:var(--sho-accent)}
+.mocbox:focus-visible{outline:none;box-shadow:var(--sho-focus)}
+
+/* 回收卡片盒 */
+.inbox{position:fixed;right:18px;bottom:16px;z-index:20;width:148px;height:84px;pointer-events:none}
+.inbox .bly{position:absolute;inset:0;background:var(--sho-bg-2);border:1.5px dashed var(--sho-line-2);border-radius:var(--sho-r-3);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  transition:border-color var(--sho-t-fast) var(--sho-ease),background var(--sho-t-fast) var(--sho-ease)}
+.inbox .ic{font-size:18px;line-height:1}
+.inbox .blbl{font-size:11px;font-weight:700;color:var(--sho-muted);text-transform:uppercase;letter-spacing:.06em}
+.inbox .bn{font-size:10.5px;color:var(--sho-muted)}
+.inbox.hot .bly{border-color:var(--sho-accent);background:var(--sho-accent-soft)}
+.inbox.hot .blbl{color:var(--sho-accent)}
+
+/* overlay */
+.overlay{position:fixed;inset:0;top:46px;z-index:35;background:oklch(0.12 0.005 80 / 0.45);
+  display:flex;flex-direction:column;animation:ovin var(--sho-t-base) var(--sho-ease)}
+@keyframes ovin{from{opacity:0}to{opacity:1}}
+.ov-head{display:flex;align-items:baseline;gap:12px;padding:18px 28px 10px}
+.ov-head b{font-size:17px;color:#fff}
+.ov-head span{font-size:12.5px;color:oklch(0.9 0 0 / 0.8)}
+.ov-head button{margin-left:auto;border:1px solid oklch(1 0 0/0.4);background:none;color:#fff;border-radius:var(--sho-r-pill);
+  padding:4px 14px;font-size:12px;cursor:pointer}
+.ov-grid{flex:1;overflow-y:auto;display:flex;flex-wrap:wrap;gap:14px;align-content:flex-start;padding:14px 28px 40px}
+.gcard{width:204px;background:var(--sho-bg);border:1px solid var(--sho-line-2);border-radius:var(--sho-r-2);
+  box-shadow:var(--card-shadow);padding:12px 14px;cursor:grab;user-select:none;touch-action:none}
+.gcard:hover{border-color:var(--sho-accent-line)}
+.gcard .t{font-size:14px;font-weight:700;color:var(--sho-ink);line-height:1.5;margin-bottom:6px}
+
+/* popover（改關係類型） */
+.popover{position:absolute;z-index:40;background:var(--sho-bg);border:1px solid var(--sho-line-2);border-radius:var(--sho-r-3);
+  box-shadow:0 10px 30px oklch(0.1 0 0/0.18);padding:13px 15px;width:280px;display:none}
+.popover.on{display:block}
+.popover .ph{font-size:12.5px;font-weight:700;color:var(--sho-ink);margin-bottom:9px}
+.popover .types{display:flex;gap:6px}
+.ptype{flex:1;border:1px solid var(--sho-line-2);background:none;border-radius:var(--sho-r-1);padding:5px 0;
+  font-size:12.5px;font-weight:700;cursor:pointer;color:var(--sho-muted)}
+.ptype[data-t="sup"].sel{color:var(--sho-success);border-color:var(--sho-success);background:color-mix(in oklch,var(--sho-success) 10%,transparent)}
+.ptype[data-t="ref"].sel{color:var(--sho-error);border-color:var(--sho-error);background:color-mix(in oklch,var(--sho-error) 10%,transparent)}
+.ptype[data-t="ext"].sel{color:var(--sho-info);border-color:var(--sho-info);background:color-mix(in oklch,var(--sho-info) 10%,transparent)}
+.ptype[data-t="src"].sel{color:var(--sho-text-2);border-color:var(--sho-text-2);background:var(--sho-bg-2)}
+
+.toast{position:fixed;left:calc(var(--deskw) + 24px);bottom:24px;z-index:60;background:var(--sho-ink);color:var(--sho-bg);
+  border-radius:var(--sho-r-2);padding:8px 16px;font-size:13px;opacity:0;pointer-events:none;transform:translateY(14px);
+  transition:opacity var(--sho-t-base) var(--sho-ease),transform var(--sho-t-base) var(--sho-ease);max-width:50vw}
+.toast.on{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body class="sho">
+
+<div class="topbar">
+  <span class="brand">卡片畫布<span class="sub">Prototype v4 · 工作桌</span></span>
+  <span style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--sho-muted)">規模</span>
+  <div class="seg" id="seg-stress"><button data-s="0" class="on">示意</button><button data-s="1">壓力測試 600+</button></div>
+  <span class="hint">離桌子越近越相關 · 拖起卡片 → 桌上浮現四格落點 · 不要的拖到右下角卡片盒收回</span>
+  <button class="sho-theme-toggle" id="theme-toggle">theme: auto</button>
+</div>
+
+<!-- 左：寫作桌 -->
+<aside class="desk" id="desk">
+  <div class="dz dz-sup" data-z="sup">支持<small>本卡支持它</small></div>
+  <div class="dz dz-ref" data-z="ref">反駁<small>不能同時為真</small></div>
+  <div class="dz dz-ext" data-z="ext">延伸<small>帶到新脈絡</small></div>
+  <div class="dz dz-src" data-z="src">來源<small>source_ref</small></div>
+  <div class="lbl">永久卡草稿 — 正文由你寫<span class="q">今日候選 <b id="d-i">1</b>/<b id="d-n">5</b> · 已寫 <span class="done-n" id="d-done">0</span></span></div>
+  <input class="title" id="c-title" spellcheck="false">
+  <textarea id="c-body" placeholder="一卡一概念，用自己的話寫……"></textarea>
+  <div class="edges" id="edges-box" style="display:none">
+    <div class="eh">連結與關係<span class="n" id="e-n"></span></div>
+    <div id="c-edges"></div>
+  </div>
+  <div class="foot"><span class="n" id="c-n">把右邊的卡拖到桌面四邊建立連結</span><button class="sho-btn" id="c-save">存入 Vault</button></div>
+</aside>
+
+<!-- 右：卡片場 -->
+<div class="field" id="field"></div>
+
+<!-- MOC 盒（兜底入口：Robin 沒判定相關的 MOC 都住這裡） -->
+<button class="mocbox" id="mocbox" title="打開全部 MOC 索引">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M3 8l2-4h14l2 4"/><rect x="3" y="8" width="18" height="12" rx="1.5"/><path d="M9 12h6"/>
+  </svg>
+  <span class="mlbl">MOC 盒</span><span class="mn" id="mocbox-n"></span>
+</button>
+
+<!-- 回收卡片盒 -->
+<div class="inbox" id="inbox"><div class="bly"><span class="ic">🗃️</span><span class="blbl">收回</span><span class="bn" id="bin-n">拖來收回 · 0</span></div></div>
+
+<div class="popover" id="popover">
+  <div class="ph" id="pop-name"></div>
+  <div class="types">
+    <button class="ptype" data-t="sup">支持</button><button class="ptype" data-t="ref">反駁</button>
+    <button class="ptype" data-t="ext">延伸</button><button class="ptype" data-t="src">來源</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= data ================= */
+const POOL=[
+ {id:"k1",t:"好系統讓你不需要意志力",tier:"hi",sugg:"sup",st:"🌳"},
+ {id:"k2",t:"寫作產出靠的是紀律",tier:"hi",sugg:"ref",st:"🌱"},
+ {id:"k3",t:"Hell yeah or no",tier:"hi",sugg:"ext",st:"🌳"},
+ {id:"k4",t:"可信任的系統讓大腦敢放手",tier:"mid",st:"🌱"},
+ {id:"k5",t:"理解是分層次的，寫作把你推向更深層",tier:"mid",st:"🌱"},
+ {id:"k6",t:"用自己的話寫是檢驗真懂的唯一方法",tier:"mid",st:"🌱"}
+];
+const STACKS=[
+ {name:"創作與選題",n:60},{name:"學習與刻意練習",n:5},{name:"長壽與健康",n:12},{name:"自媒體經營",n:8},{name:"財務階梯",n:5}
+];
+const STRESS_STACKS=["創作與選題","學習與刻意練習","長壽與健康","自媒體經營","財務階梯","睡眠","內在動機","營養","訓練計畫","閱讀方法"].map((n,i)=>({name:n,n:i===0?60:(i===1?24:40+((i*37)%55))}));
+const CANDS=[
+ {id:"c1",t:"主題不是選出來的，是從素材中浮現的",relMoc:"創作與選題"},
+ {id:"c2",t:"意志力要用在與目標對齊的艱難任務",relMoc:null},
+ {id:"c3",t:"降低摩擦力是高產出的前提",relMoc:null},
+ {id:"c4",t:"AI 的最大貢獻是當你的反方",relMoc:"學習與刻意練習"},
+ {id:"c5",t:"理解是分層次的",relMoc:"學習與刻意練習"}
+];
+const TLBL={sup:"支持",ref:"反駁",ext:"延伸",src:"來源"};
+const SAMPLE={
+ "創作與選題":["靈感是輸入的函數","選題枯竭是輸入問題","一支影片一個問題","標題是承諾不是摘要","素材庫先於企劃","觀眾的問題就是地圖","詮釋循環從先入之見開始","由下而上長出主題","頻道方向是浮現的","好奇心是唯一可持續的引擎","寫給一個具體的人","完播率是敘事問題"],
+ "學習與刻意練習":["刻意練習需要立即回饋","天賦被高估了","教是最深的學","間隔重複勝過重讀","錯誤是訊號不是失敗"],
+ "長壽與健康":["Zone 2 是地基","肌肉是老年保險","睡眠是合法增強劑","蛋白質時間窗被高估","HRV 是恢復儀表板","久坐是獨立風險"],
+ "自媒體經營":["回饋循環紅利","一頻道一承諾","演算法是放大器","社群是護城河"],
+ "財務階梯":["判斷藝術非科學","流動淨資產決定階層","第三階標準支出","複利需要不中斷"]};
+
+/* ================= state ================= */
+let stress=false,centerIdx=0,edges=[],doneCount=0,binCount=0,editIdx=-1,zCounter=12;
+const done=new Set(),binned=new Set();
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rand=(a,b)=>a+Math.random()*(b-a);
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2400);}
+
+/* ================= field render ================= */
+function deskW(){return $('#desk').offsetWidth;}
+function render(){
+  const cand=CANDS[centerIdx];
+  if(!cand){
+    $('#field').innerHTML=`<div style="position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);color:var(--sho-muted);font-size:14px">今日候選都處理完了 🎉</div>`;
+    $('#c-title').value="";$('#c-body').value="";$('#edges-box').style.display='none';return;
+  }
+  $('#c-title').value=cand.t;
+  $('#d-i').textContent=centerIdx+1;$('#d-n').textContent=CANDS.length;$('#d-done').textContent=doneCount;
+  const f=$('#field');const FW=f.offsetWidth,FH=f.offsetHeight;
+  /* 三帶：高 / 中 / 疊卡列 */
+  const b1=FW*0.34,b2=FW*0.66;
+  let html=`<span class="bandlbl" style="left:${b1*0.5-58}px">高關聯 · Robin 判定</span>
+    <span class="bandlbl" style="left:${b1+(b2-b1)*0.5-58}px">中關聯 · 字面相關</span>
+    <span class="bandlbl" style="left:${b2+(FW-b2)*0.5-70}px">MOC 疊卡 · 相關優先</span>
+    <div class="bandsep" style="left:${b1}px"></div><div class="bandsep" style="left:${b2}px"></div>`;
+  /* hi / mid 卡 */
+  const lanes={hi:[0,b1],mid:[b1,b2]};
+  for(const tier of["hi","mid"]){
+    const cards=POOL.filter(d=>d.tier===tier&&!edges.some(e=>e.target===d.t)&&!binned.has(d.t));
+    cards.forEach((d,i)=>{
+      const [x0,x1]=lanes[tier];
+      const x=Math.max(10,Math.min(x1-214,x0+18+rand(0,Math.max(20,(x1-x0)-240))));
+      const y=56+i*((FH-140)/Math.max(cards.length,1))+rand(-10,10);
+      const rot=reduced?0:rand(-2.2,2.2);
+      const tag=tier==="hi"?`<span class="minitag hi">✦ Robin</span><span class="minitag ${d.sugg}">建議${TLBL[d.sugg]}</span>`:`<span class="minitag">字面相關</span>`;
+      html+=`<div class="card" data-title="${esc(d.t)}" style="left:${x}px;top:${Math.min(FH-120,y)}px;transform:rotate(${rot}deg);z-index:${zCounter++}">
+        <div class="t">${esc(d.t)}</div><div class="m">${tag}${d.st?`<span class="minitag">${d.st}</span>`:""}</div></div>`;
+    });
+  }
+  /* 疊卡列：只放 Robin 判定相關的 MOC；其餘收進「全部 MOC…」兜底（D-13：永不裸列全量） */
+  const base=(stress?STRESS_STACKS:STACKS).filter(s=>!binned.has("stack:"+s.name));
+  const relStacks=base.filter(s=>s.name===cand.relMoc);
+  const restN=base.length-relStacks.length;
+  relStacks.forEach((s,i)=>{
+    const x=b2+24+rand(-4,4);
+    const y=Math.min(FH-110,58+i*112+rand(-4,4));
+    html+=`<div class="stack rel" data-stack="${esc(s.name)}" style="left:${x}px;top:${y}px;z-index:5">
+      <span class="relbadge">✦ Robin 判定相關</span>
+      <div class="layers"><div class="ly"></div><div class="ly"></div>
+      <div class="ly"><span class="t">${esc(s.name)}</span><span class="n">${s.n} 張 · 點開攤平</span></div></div></div>`;
+  });
+  /* 其餘 MOC 不上桌 — 收進右下角的 MOC 盒（與回收盒分開） */
+  $('#mocbox-n').textContent=`${base.length} 個 MOC`;
+  f.innerHTML=html;
+  renderEdges();bindCards();bindStacks();
+}
+function renderKeepText(){
+  const t=$('#c-title').value,b=$('#c-body').value;
+  render();
+  if(CANDS[centerIdx]){$('#c-title').value=t;$('#c-body').value=b;}
+}
+
+/* ================= edges ================= */
+function renderEdges(){
+  const box=$('#edges-box');
+  box.style.display=edges.length?'block':'none';
+  $('#e-n').textContent=edges.length?`${edges.length} 條 · 點徽章改類型 · ✕ 解除`:'';
+  $('#c-edges').innerHTML=edges.map((e,i)=>`<div class="edgeitem">
+    <button class="ebadge ${e.type}" data-eb="${i}">${TLBL[e.type]}</button>
+    <span class="tg">[[${esc(e.target)}]]</span>
+    <input class="reason-in" data-ri="${i}" value="${esc(e.reason)}" placeholder="— 因為…（必填）">
+    <button class="rm" data-rm="${i}" title="解除連結">✕</button></div>`).join('');
+  document.querySelectorAll('.reason-in').forEach(inp=>inp.addEventListener('input',()=>{edges[+inp.dataset.ri].reason=inp.value;}));
+  document.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>{
+    const e=edges[+b.dataset.rm];edges.splice(+b.dataset.rm,1);
+    toast(`已解除「${e.target}」— 卡片回到場上`);renderKeepText();
+  }));
+  document.querySelectorAll('[data-eb]').forEach(b=>b.addEventListener('click',ev=>{
+    editIdx=+b.dataset.eb;const e=edges[editIdx];
+    $('#pop-name').textContent=`修改關係：${e.target}`;
+    document.querySelectorAll('.ptype').forEach(p=>p.classList.toggle('sel',p.dataset.t===e.type));
+    const po=$('#popover'),r=b.getBoundingClientRect();
+    po.classList.add('on');po.style.left=Math.min(innerWidth-292,r.left)+'px';po.style.top=(r.bottom+6)+'px';
+  }));
+  $('#c-n').textContent=edges.length?`${edges.filter(e=>!e.reason.trim()).length||'0'} 條理由未填`.replace(/^0 條理由未填$/,'理由都填好了 ✓'):"把右邊的卡拖到桌面四邊建立連結";
+}
+document.querySelectorAll('.ptype').forEach(p=>p.addEventListener('click',()=>{
+  if(editIdx>=0){edges[editIdx].type=p.dataset.t;renderEdges();}
+  $('#popover').classList.remove('on');editIdx=-1;
+}));
+document.addEventListener('pointerdown',e=>{
+  if(!e.target.closest('#popover')&&!e.target.closest('[data-eb]')){$('#popover').classList.remove('on');editIdx=-1;}
+});
+
+/* ================= drop targets ================= */
+function overTarget(ev){
+  /* 卡片盒優先 */
+  const ib=$('#inbox').getBoundingClientRect();
+  if(ev.clientX>ib.left-8&&ev.clientX<ib.right+8&&ev.clientY>ib.top-8&&ev.clientY<ib.bottom+8)return "bin";
+  const desk=$('#desk');const r=desk.getBoundingClientRect();
+  if(ev.clientX<r.right+30){
+    for(const z of desk.querySelectorAll('.dz')){
+      const zr=z.getBoundingClientRect();
+      if(zr.width&&ev.clientX>zr.left&&ev.clientX<zr.right&&ev.clientY>zr.top&&ev.clientY<zr.bottom)return z.dataset.z;
+    }
+    return "near";
+  }
+  return null;
+}
+function dragFeedback(o){
+  document.querySelectorAll('.dz').forEach(z=>z.classList.toggle('hot',z.dataset.z===o));
+  $('#inbox').classList.toggle('hot',o==="bin");
+}
+function setDragging(on){$('#desk').classList.toggle('dz-on',on);}
+
+/* ================= drag ================= */
+function startCardDrag(el,e){
+  el.setPointerCapture&&el.setPointerCapture(e.pointerId);
+  el.classList.add('dragging');el.style.zIndex=++zCounter;
+  setDragging(true);
+  const f=$('#field').getBoundingClientRect();
+  const sx=e.clientX-(f.left+el.offsetLeft),sy=e.clientY-(f.top+el.offsetTop);
+  const mv=ev=>{el.style.left=(ev.clientX-f.left-sx)+'px';el.style.top=(ev.clientY-f.top-sy)+'px';dragFeedback(overTarget(ev));};
+  const up=ev=>{
+    el.classList.remove('dragging');
+    document.removeEventListener('pointermove',mv);document.removeEventListener('pointerup',up);
+    const o=overTarget(ev);dragFeedback(null);setDragging(false);
+    if(!o||o==="near")return;
+    if(o==="bin"){binned.add(el.dataset.title);binCount++;$('#bin-n').textContent=`拖來收回 · ${binCount}`;el.remove();toast(`「${el.dataset.title}」已收回卡片盒`);return;}
+    commitLink({t:el.dataset.title},el,o);
+  };
+  document.addEventListener('pointermove',mv);document.addEventListener('pointerup',up);
+}
+function bindCards(){
+  document.querySelectorAll('.card').forEach(el=>el.addEventListener('pointerdown',e=>startCardDrag(el,e)));
+}
+function commitLink(d,cardEl,type){
+  if(edges.some(e=>e.target===d.t)){toast('這張卡已經連結過了');return;}
+  edges.push({target:d.t,type,reason:""});
+  if(cardEl&&cardEl.parentElement)cardEl.remove();
+  renderEdges();
+  const inps=document.querySelectorAll('.reason-in');
+  if(inps.length)inps[inps.length-1].focus();
+  toast(`已連結「${TLBL[type]}」— 補上理由`);
+}
+
+/* ================= stacks（點＝攤平；拖＝可收回） ================= */
+function bindStacks(){
+  document.querySelectorAll('.stack').forEach(el=>{
+    el.addEventListener('pointerdown',e=>{
+      let moved=false;
+      const f=$('#field').getBoundingClientRect();
+      const sx=e.clientX-(f.left+el.offsetLeft),sy=e.clientY-(f.top+el.offsetTop),ox=e.clientX,oy=e.clientY;
+      const mv=ev=>{
+        if(Math.abs(ev.clientX-ox)+Math.abs(ev.clientY-oy)>8){moved=true;el.classList.add('dragging');}
+        if(moved){el.style.left=(ev.clientX-f.left-sx)+'px';el.style.top=(ev.clientY-f.top-sy)+'px';
+          dragFeedback(overTarget(ev)==="bin"?"bin":null);}
+      };
+      const up=ev=>{
+        document.removeEventListener('pointermove',mv);document.removeEventListener('pointerup',up);
+        el.classList.remove('dragging');
+        if(!moved){
+          if(el.dataset.stack==="__all__")openMocIndex();else openOverlay(el.dataset.stack);
+          return;
+        }
+        const o=overTarget(ev);dragFeedback(null);
+        if(o==="bin"){binned.add("stack:"+el.dataset.stack);binCount++;$('#bin-n').textContent=`拖來收回 · ${binCount}`;el.remove();toast(`整疊「${el.dataset.stack}」已收回 — 桌面清爽了`);}
+      };
+      document.addEventListener('pointermove',mv);document.addEventListener('pointerup',up);
+    });
+  });
+}
+
+/* ================= overlay ================= */
+let overlayEl=null;
+function openOverlay(name){
+  closeOverlay();
+  const base=stress?STRESS_STACKS:STACKS;
+  const s=base.find(x=>x.name===name);
+  overlayEl=document.createElement('div');overlayEl.className='overlay';
+  let cards='';const list=SAMPLE[name]||[];
+  for(let i=0;i<s.n;i++){
+    const t=list[i]||`${name}・卡 ${i+1}`;
+    cards+=`<div class="gcard" data-title="${esc(t)}"><div class="t">${esc(t)}</div><div class="m"><span class="minitag">${esc(name)}</span></div></div>`;
+  }
+  overlayEl.innerHTML=`<div class="ov-head"><b>${esc(name)}</b><span>${s.n} 張 — 看上哪張就拖出來，其餘自動收回 · esc 關閉</span><button id="ov-close">關閉</button></div>
+    <div class="ov-grid">${cards}</div>`;
+  document.body.appendChild(overlayEl);
+  overlayEl.querySelector('#ov-close').addEventListener('click',closeOverlay);
+  overlayEl.addEventListener('pointerdown',e=>{if(e.target===overlayEl||e.target.classList.contains('ov-grid'))closeOverlay();});
+  overlayEl.querySelectorAll('.gcard').forEach(g=>{
+    g.addEventListener('pointerdown',e=>{
+      const title=g.dataset.title;let pulled=false,cardEl=null;
+      const ox=e.clientX,oy=e.clientY;
+      const mv=ev=>{
+        if(!pulled&&Math.abs(ev.clientX-ox)+Math.abs(ev.clientY-oy)>8){
+          pulled=true;closeOverlay();setDragging(true);
+          const f=$('#field').getBoundingClientRect();
+          cardEl=document.createElement('div');cardEl.className='card dragging';
+          cardEl.dataset.title=title;
+          cardEl.style.cssText=`left:${ev.clientX-f.left-100}px;top:${ev.clientY-f.top-26}px;z-index:${++zCounter}`;
+          cardEl.innerHTML=`<div class="t">${esc(title)}</div><div class="m"><span class="minitag">${esc(name)}</span></div>`;
+          $('#field').appendChild(cardEl);
+          toast(`從「${name}」挑出一張 — 其餘已收回`);
+        }
+        if(pulled&&cardEl){const f=$('#field').getBoundingClientRect();
+          cardEl.style.left=(ev.clientX-f.left-100)+'px';cardEl.style.top=(ev.clientY-f.top-26)+'px';dragFeedback(overTarget(ev));}
+      };
+      const up=ev=>{
+        document.removeEventListener('pointermove',mv);document.removeEventListener('pointerup',up);
+        if(!pulled)return;
+        cardEl.classList.remove('dragging');
+        const o=overTarget(ev);dragFeedback(null);setDragging(false);
+        if(o==="bin"){cardEl.remove();}
+        else if(o&&o!=="near")commitLink({t:title},cardEl,o);
+        else cardEl.addEventListener('pointerdown',e2=>startCardDrag(cardEl,e2));
+      };
+      document.addEventListener('pointermove',mv);document.addEventListener('pointerup',up);
+    });
+  });
+}
+function closeOverlay(){if(overlayEl){overlayEl.remove();overlayEl=null;}}
+/* 兜底：全部 MOC 索引（Robin 沒判定相關時的手動入口） */
+function openMocIndex(){
+  closeOverlay();
+  const base=(stress?STRESS_STACKS:STACKS).filter(s=>!binned.has("stack:"+s.name));
+  overlayEl=document.createElement('div');overlayEl.className='overlay';
+  overlayEl.innerHTML=`<div class="ov-head"><b>全部 MOC</b><span>Robin 沒判定相關的也在這裡 — 點一疊攤平 · esc 關閉</span><button id="ov-close">關閉</button></div>
+    <div class="ov-grid">${base.map(s=>`<div class="gcard" data-moc="${esc(s.name)}" style="cursor:pointer"><div class="t">${esc(s.name)}</div><div class="m"><span class="minitag">${s.n} 張</span>${s.name===CANDS[centerIdx]?.relMoc?'<span class="minitag hi">✦ 相關</span>':''}</div></div>`).join('')}</div>`;
+  document.body.appendChild(overlayEl);
+  overlayEl.querySelector('#ov-close').addEventListener('click',closeOverlay);
+  overlayEl.addEventListener('pointerdown',e=>{if(e.target===overlayEl||e.target.classList.contains('ov-grid'))closeOverlay();});
+  overlayEl.querySelectorAll('[data-moc]').forEach(g=>g.addEventListener('click',()=>openOverlay(g.dataset.moc)));
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeOverlay();$('#popover').classList.remove('on');editIdx=-1;}});
+
+/* ================= save ================= */
+$('#c-save').addEventListener('click',()=>{
+  if(!CANDS[centerIdx])return;
+  const body=$('#c-body').value.trim();
+  if(!body){toast('正文是紅線內側——這段要你自己寫');$('#c-body').focus();return;}
+  const missing=edges.filter(e=>!e.reason.trim()).length;
+  if(missing){toast(`還有 ${missing} 條連結沒寫理由——理由是你的判斷`);return;}
+  const title=$('#c-title').value;
+  done.add(CANDS[centerIdx].id);doneCount++;
+  const finish=()=>{
+    $('#desk').classList.remove('flyout');
+    const next=CANDS.findIndex(c=>!done.has(c.id));
+    centerIdx=next;edges=[];$('#c-body').value='';render();
+    toast(next>=0?`✓ 已存入：${title} — 下一張：「${CANDS[next].t}」`:`✓ 已存入：${title} — 今日候選清空 🎉`);
+  };
+  if(reduced){finish();return;}
+  $('#desk').classList.add('flyout');
+  setTimeout(finish,300);
+});
+$('#c-title').addEventListener('input',e=>{if(CANDS[centerIdx])CANDS[centerIdx].t=e.target.value;});
+
+/* ================= switches ================= */
+document.querySelectorAll('#seg-stress button').forEach(b=>b.addEventListener('click',()=>{
+  stress=b.dataset.s==="1";
+  document.querySelectorAll('#seg-stress button').forEach(x=>x.classList.toggle('on',x===b));
+  closeOverlay();renderKeepText();
+  toast(stress?"壓力測試：600+ 張 — 疊卡列照樣放得下":"回到示意規模");
+}));
+addEventListener('resize',()=>{closeOverlay();renderKeepText();});
+
+$('#mocbox').addEventListener('click',openMocIndex);
+
+(function(){
+  const btn=$('#theme-toggle');
+  function cur(){try{return localStorage.getItem('sho-theme')||'auto';}catch(e){return 'auto';}}
+  function apply(m){if(m==='auto'){document.documentElement.removeAttribute('data-theme');}else{document.documentElement.setAttribute('data-theme',m);}btn.textContent='theme: '+m;}
+  btn.addEventListener('click',()=>{const o=['auto','light','dark'];const n=o[(o.indexOf(cur())+1)%3];try{localStorage.setItem('sho-theme',n);}catch(e){}apply(n);});
+  apply(cur());
+})();
+
+render();
+</script>
+</body>
+</html>
