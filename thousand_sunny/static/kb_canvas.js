@@ -218,11 +218,7 @@
     var box = $("#kbc-edges-box");
     var hasAny = edges.length || srcRefs.length;
     box.hidden = !hasAny;
-    $("#kbc-e-n").textContent = edges.length
-      ? edges.length + " 條 · 點徽章改類型 · ✕ 解除"
-      : srcRefs.length
-        ? srcRefs.length + " 條來源"
-        : "";
+    $("#kbc-e-n").textContent = "";
 
     var list = $("#kbc-edges");
     list.innerHTML = "";
@@ -242,7 +238,7 @@
       reason.type = "text";
       reason.dataset.ri = i;
       reason.value = e.reason || "";
-      reason.placeholder = "— 因為…（必填）";
+      reason.placeholder = "";
       reason.setAttribute("aria-label", "「" + e.target + "」關係理由");
       reason.addEventListener("input", function () {
         edges[i].reason = reason.value;
@@ -269,7 +265,7 @@
       var badge = el("span", "kbc-ebadge src", "來源");
       item.appendChild(badge);
       item.appendChild(el("span", "tg", "[[" + target + "]]"));
-      item.appendChild(el("span", "reason-in", "source_ref · 不需理由"));
+      item.appendChild(el("span", "reason-in", "來源"));
       var rm = el("button", "rm", "✕");
       rm.type = "button";
       rm.title = "解除來源";
@@ -449,7 +445,7 @@
     renderEdges();
     var inps = document.querySelectorAll("#kbc-edges .reason-in");
     if (inps.length && inps[inps.length - 1].tagName === "INPUT") inps[inps.length - 1].focus();
-    toast("已連結「" + TLBL[type] + "」— 補上理由");
+    toast("已連結「" + TLBL[type] + "」");
   }
 
   /* ================= stacks（點＝攤平；拖＝可收回） ================= */
@@ -705,7 +701,7 @@
       return !e.reason.trim();
     }).length;
     if (missing) {
-      toast("還有 " + missing + " 條連結沒寫理由——理由是你的判斷");
+      toast("還有 " + missing + " 條連結沒寫理由");
       return;
     }
 
