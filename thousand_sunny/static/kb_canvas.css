@@ -34,11 +34,26 @@ body.sho.kbc-active { overflow: hidden; }
 .kbc-draglayer .kbc-card,
 .kbc-draglayer .kbc-stack { pointer-events: auto; }
 
+/* 返回候選清單（navbar 移除後唯一可見退出口；修修回饋）。左上角小 pill，克制。 */
+.kbc-back {
+  position: absolute; top: 16px; left: 16px; z-index: 45;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px 6px 8px;
+  background: var(--sho-bg-2); color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2); border-radius: 999px;
+  font-family: var(--sho-font-mono); font-size: 11px; letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color var(--sho-t-fast) var(--sho-ease), border-color var(--sho-t-fast) var(--sho-ease);
+}
+.kbc-back svg { width: 15px; height: 15px; }
+.kbc-back:hover { color: var(--sho-accent); border-color: var(--sho-accent); }
+.kbc-back:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
 /* ===== desk（左側寫作桌） ===== */
 .kbc-desk {
   position: absolute; left: 0; top: 0; bottom: 0; width: var(--kbc-deskw); z-index: 10;
   background: var(--sho-bg); border-right: 1.5px solid var(--sho-accent-line);
-  display: flex; flex-direction: column; padding: 22px 26px 18px;
+  display: flex; flex-direction: column; padding: 52px 26px 18px;
   transition: transform var(--sho-t-slow) var(--sho-ease), opacity var(--sho-t-slow) var(--sho-ease);
 }
 .kbc-desk.flyout { transform: translateX(-30%) scale(.6); opacity: 0; }
