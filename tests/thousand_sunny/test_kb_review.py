@@ -391,14 +391,16 @@ def test_canvas_assets_and_markup_wired(client):
     # 畫布資產（CSP-safe：external，不是 inline）
     assert "/static/kb_canvas.css" in r.text
     assert "/static/kb_canvas.js" in r.text
-    # 模式切換（線性預設 / 畫布 opt-in）
-    assert 'id="mode-canvas"' in r.text
-    assert 'id="mode-linear"' in r.text
-    # 工作桌 + 三個落點語意 + 兜底盒
+    # N528⑥：開卡一律進畫布，線性 drawer + 模式切換已移除。
+    assert 'id="mode-canvas"' not in r.text
+    assert 'id="mode-linear"' not in r.text
+    assert 'id="drawer"' not in r.text
+    # 工作桌 + 三個落點語意 + 兜底盒 + 拖曳頂層
     assert 'id="kbc-desk"' in r.text
     assert 'id="kbc-field"' in r.text
     assert 'id="kbc-mocbox"' in r.text
     assert 'id="kbc-inbox"' in r.text
+    assert 'id="kbc-draglayer"' in r.text
 
 
 def test_canvas_bundle_exposes_three_layers(client):

@@ -9,6 +9,8 @@ schema_version 演進：
 - v2（N527 卡片畫布）：``CandidateCard`` 加 ``related_pool``（中圈 FTS pool）/
   ``related_mocs``（外圈 P-2 擴判 MOC）。**向後相容**：兩欄預設空 list，舊 bundle
   （無此欄）可被 v2 schema 直接讀回；N523 線性 UI 只讀既有欄位，不受影響。
+  N528 追加 ``TypedEdgeChip.status``（高關聯卡 status badge）——additive-optional 標量、
+  預設空字串，舊 bundle 可直接讀回，故不 bump schema_version（非 enum 擴充、非結構欄）。
 
 設計守則（與 N520/N521 一致的 closed-set 協定）：
 - 純 pydantic value-object，無 I/O、無 LLM、無 vault 依賴；可在測試中自由 construct。
@@ -61,6 +63,9 @@ class TypedEdgeChip(BaseModel):
     紅線（規格 v0.1 §1 鐵律 3 + P-2 規則 4）：AI 提供的是「建議 chips」，理由欄
     是人的工作。故本 schema **不帶** rationale——UI 渲染 chip（方向 + 目標卡名），
     人採用後自己在永久卡 body 寫 ``支持:: [[...]] — 理由``。
+
+    ``status`` 是目標既有卡的 frontmatter status（seedling / evergreen / …）；無則空字串。
+    N528 高關聯卡比照中圈在卡面顯示 status badge。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -69,6 +74,7 @@ class TypedEdgeChip(BaseModel):
     direction: EdgeDirection = "forward"
     target_card: str  # 既有卡的 KB path，e.g. KB/Permanent/好系統讓你不需要意志力
     target_title: str = ""  # 顯示名（path stem fallback）
+    status: str = ""  # 目標既有卡 frontmatter status；未知為空
 
 
 class RelatedCard(BaseModel):

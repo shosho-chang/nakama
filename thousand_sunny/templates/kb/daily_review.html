@@ -16,10 +16,6 @@
       <h1>每日回顧</h1>
       <span class="meta">{{ review_label }}</span>
       {% if weekly_sweep %}<span class="sho-tag sho-tag--warning">每週清掃日</span>{% endif %}
-      <div class="mode-seg" id="mode-seg" role="group" aria-label="開卡模式">
-        <button type="button" class="seg-on" data-mode="linear" id="mode-linear" aria-pressed="true">線性</button>
-        <button type="button" data-mode="canvas" id="mode-canvas" aria-pressed="false">畫布</button>
-      </div>
     </div>
     <p class="vsub">Robin 已完成記帳與篩選；以下交給你判斷。「之後再說」14 天未動自動歸檔。</p>
 
@@ -86,58 +82,12 @@
   </main>
 </div>
 
-{# ===== 開卡 drawer ===== #}
-<div class="kb-scrim" id="scrim"></div>
-<aside class="kb-drawer" id="drawer" role="dialog" aria-modal="true" aria-label="建立永久筆記" hidden>
-  <div class="drawer-head">
-    <span class="t">建立永久筆記</span>
-    <span class="sho-tag">status: seedling</span>
-    <span class="x"><button class="sho-btn sho-btn--ghost" id="btn-close" type="button">關閉 esc</button></span>
-  </div>
-  <div class="drawer-body">
-    <div class="fld">
-      <div class="lbl">檔名（一句宣告句）<span class="who human">🧑 你的判斷</span></div>
-      <div class="titlewrap">
-        <span class="prefix">KB/Permanent/</span>
-        <input id="f-title" type="text" autocomplete="off" spellcheck="false" aria-label="永久卡檔名">
-      </div>
-    </div>
-    <div class="fld">
-      <div class="lbl">來源 source_refs<span class="who">🤖 AI 預填</span></div>
-      <div id="f-srcrefs" class="sho-mono"></div>
-    </div>
-    <div class="fld">
-      <div class="lbl">正文 — 用自己的話<span class="who human">🧑 紅線內側 · AI 不代筆</span></div>
-      <textarea class="body" id="f-body" aria-label="永久卡正文" placeholder="一卡一概念。寫下你的主張，以及它為什麼重要……"></textarea>
-      <div class="fld-err" id="body-err" hidden>正文是紅線內側 — 這段要你自己寫。</div>
-    </div>
-    <div class="fld">
-      <div class="lbl">連結與關係 typed edges<span class="who human">🧑 關係與理由是你的 · 候選由 Robin 篩</span></div>
-      <div id="f-edges"></div>
-    </div>
-    <div class="fld">
-      <details class="preview">
-        <summary>檔案預覽 — 實際寫入 vault 的內容</summary>
-        <pre id="f-preview"></pre>
-      </details>
-    </div>
-  </div>
-  <div class="drawer-foot">
-    <span class="note">存檔後 Phase 5：回填 mined_concepts · 更新 index · log append</span>
-    <button class="sho-btn sho-btn--ghost" id="btn-cancel" type="button">取消</button>
-    <button class="sho-btn sho-btn--primary" id="btn-save" type="button">存入 Vault</button>
-  </div>
-</aside>
-
 <div class="kb-toast" id="toast" role="status" aria-live="polite"></div>
 
-{# ===== 畫布模式（N528）— 全螢幕工作桌 + 卡片場，預設隱藏，opt-in 切換 ===== #}
+{# ===== 畫布模式（N528）— 全螢幕工作桌 + 卡片場，預設隱藏，開卡時開啟 ===== #}
 <div class="kbc-root" id="kbc-root" hidden>
-  <div class="kbc-topbar">
-    <span class="kbc-brand">卡片畫布<span class="sub">工作桌</span></span>
-    <span class="kbc-hint">離桌子越近越相關 · 拖起卡片 → 桌上浮現四格落點 · 不要的拖到右下角卡片盒收回</span>
-    <button type="button" class="sho-btn sho-btn--ghost kbc-exit" id="kbc-exit">回線性 esc</button>
-  </div>
+  {# 拖曳頂層：正在拖的卡渲染於此，z-index 高於寫作桌四格落點（避免被擋住） #}
+  <div class="kbc-draglayer" id="kbc-draglayer"></div>
 
   {# 左：寫作桌 #}
   <aside class="kbc-desk" id="kbc-desk">
@@ -152,7 +102,7 @@
       <div class="eh">連結與關係<span class="n" id="kbc-e-n"></span></div>
       <div id="kbc-edges"></div>
     </div>
-    <div class="kbc-foot"><span class="n" id="kbc-fn">把右邊的卡拖到桌面四邊建立連結</span><button class="sho-btn sho-btn--primary" id="kbc-save" type="button">存入 Vault</button></div>
+    <div class="kbc-foot"><span class="n" id="kbc-fn"></span><button class="sho-btn sho-btn--primary" id="kbc-save" type="button">存入 Vault</button></div>
   </aside>
 
   {# 右：卡片場 #}
@@ -167,7 +117,11 @@
   </button>
 
   {# 回收卡片盒（session-scoped，只記 UI 狀態） #}
-  <div class="kbc-inbox" id="kbc-inbox"><div class="bly"><span class="ic" aria-hidden="true">🗃️</span><span class="blbl">收回</span><span class="bn" id="kbc-bin-n">拖來收回 · 0</span></div></div>
+  <div class="kbc-inbox" id="kbc-inbox"><div class="bly">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M3 14l2.5 4h13l2.5-4"/><path d="M3 14h5l1.2 2h5.6l1.2-2h5"/><path d="M12 3v7"/><path d="M9 7.5l3 3 3-3"/>
+    </svg>
+    <span class="blbl">收回</span><span class="bn" id="kbc-bin-n">拖來收回 · 0</span></div></div>
 
   {# 改關係類型 popover #}
   <div class="kbc-popover" id="kbc-popover" role="dialog" aria-label="修改關係類型">
