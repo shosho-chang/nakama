@@ -147,7 +147,7 @@ def test_review_page_empty_bundle(client, monkeypatch):
     r = tc.get("/kb/review")
     assert r.status_code == 200
     # empty states present, not a blank page
-    assert "沒有待處理的 fleeting" in r.text
+    assert "沒有待處理的靈感卡" in r.text
     assert "昨天沒有夠強的劃線浮上來" in r.text
 
 

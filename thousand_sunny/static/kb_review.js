@@ -58,7 +58,7 @@
     (DATA.fleeting || []).forEach(function (f) {
       var panel = el("div", "panel");
       panel.id = "panel-" + fleetingId(f);
-      var meta = el("div", "cand-meta", "fleeting · via " + esc(f.via) + " · " + esc(f.created));
+      var meta = el("div", "cand-meta", "靈感卡 · via " + esc(f.via) + " · " + esc(f.created));
       var body = el("p", "fleet-text");
       body.id = "body-" + fleetingId(f);
       body.textContent = f.text || "";

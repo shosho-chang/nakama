@@ -19,9 +19,11 @@ body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var
 .kb-warn ul{margin:6px 0 0;padding-left:18px}
 
 /* kicker (mirror prototype) */
-.sho-kicker{display:flex;align-items:center;gap:8px;margin:36px 0 14px}
+.sho-kicker{display:flex;align-items:baseline;gap:10px;margin:36px 0 14px}
+/* 區段標題放大成真正的 heading（修修：字太小）。正常大小寫，不 uppercase。 */
+.sho-kicker .sho-kicker-t{font-size:17px;font-weight:800;color:var(--sho-ink);text-transform:none;letter-spacing:0}
 .sho-kicker .ln{flex:1;height:1px;background:var(--sho-line)}
-.sho-kicker .c{font-size:11px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
+.sho-kicker .c{font-size:11.5px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
 
 /* panels */
 .panel{border:1px solid var(--sho-line);border-radius:var(--sho-r-2);background:var(--sho-bg);margin-bottom:12px;transition:border-color var(--sho-t-fast) var(--sho-ease),opacity var(--sho-t-base) var(--sho-ease)}
