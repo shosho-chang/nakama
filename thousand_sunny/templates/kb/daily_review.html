@@ -25,10 +25,9 @@
     </div>
     {% endif %}
 
-    {# ===== 區 001：Fleeting 待處理 ===== #}
+    {# ===== 待處理靈感卡 ===== #}
     <div class="sho-kicker">
-      <span class="sho-kicker-n">[ 001 ]</span>
-      <span class="sho-kicker-t">Fleeting 待處理</span>
+      <span class="sho-kicker-t">待處理靈感卡</span>
       <span class="ln"></span>
       <span class="c">{{ fleeting|length }} 條</span>
     </div>
@@ -36,14 +35,13 @@
       {% if not fleeting %}
       <div class="kb-empty">
         <div class="kb-empty-mk">∅</div>
-        <p>沒有待處理的 fleeting。</p>
+        <p>沒有待處理的靈感卡。</p>
       </div>
       {% endif %}
     </div>
 
-    {# ===== 區 002：候選永久卡 ===== #}
+    {# ===== 候選永久卡 ===== #}
     <div class="sho-kicker">
-      <span class="sho-kicker-n">[ 002 ]</span>
       <span class="sho-kicker-t">候選永久卡</span>
       <span class="ln"></span>
       <span class="c">{{ candidates|length }} 條</span>
@@ -61,7 +59,6 @@
     {# ===== 區 003：每週清掃 ===== #}
     {% if weekly_sweep %}
     <div class="sho-kicker">
-      <span class="sho-kicker-n">[ 003 ]</span>
       <span class="sho-kicker-t">每週清掃</span>
       <span class="ln"></span>
       <span class="c">{{ sweep|length }} 項</span>
