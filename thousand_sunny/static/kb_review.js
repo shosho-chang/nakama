@@ -62,14 +62,14 @@
       var body = el("p", "fleet-text");
       body.id = "body-" + fleetingId(f);
       body.textContent = f.text || "";
-      var act = el("div", "cand-act");
+      var act = el("div", "cand-seg");
       act.id = "act-" + fleetingId(f);
-      var open = el("button", "sho-btn sho-btn--primary", "➕ 開卡");
+      var open = el("button", "seg seg-go", "開卡");
       open.type = "button";
       open.addEventListener("click", function () {
         openCanvasFor(fleetingContext(f));
       });
-      var trash = el("button", "sho-btn sho-btn--ghost", "丟掉 → 回收桶");
+      var trash = el("button", "seg", "丟掉");
       trash.type = "button";
       trash.addEventListener("click", function () {
         // pilot：fleeting 丟掉只在 UI 標記（無 server fleeting-discard endpoint，
@@ -145,19 +145,20 @@
       }
       pin.appendChild(rel);
 
-      var act = el("div", "cand-act");
+      // 三動作併成一個分段式控制（修修回饋：做成一個按鈕）。開卡為主段、略過/之後再說為次段。
+      var act = el("div", "cand-seg");
       act.id = "act-" + c.candidate_id;
-      var open = el("button", "sho-btn sho-btn--primary", "➕ 開卡");
+      var open = el("button", "seg seg-go", "開卡");
       open.type = "button";
       open.addEventListener("click", function () {
         openCanvasFor({ kind: "cand", candidate_id: c.candidate_id });
       });
-      var skip = el("button", "sho-btn sho-btn--ghost", "略過");
+      var skip = el("button", "seg", "略過");
       skip.type = "button";
       skip.addEventListener("click", function () {
         postAction("skip", c.candidate_id, panel, act, "已略過");
       });
-      var later = el("button", "sho-btn sho-btn--ghost", "之後再說");
+      var later = el("button", "seg", "之後再說");
       later.type = "button";
       later.addEventListener("click", function () {
         postAction("later", c.candidate_id, panel, act, "之後再說 — 14 天後過期歸檔");
