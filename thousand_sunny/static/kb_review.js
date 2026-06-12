@@ -253,6 +253,7 @@
       candidate_id: c.candidate_id,
       literature_slug: litSlug,
       fleeting_path: "",
+      body_prefill: "",
     };
   }
   function fleetingContext(f) {
@@ -267,6 +268,8 @@
       candidate_id: "",
       literature_slug: "",
       fleeting_path: f.path || "",
+      // fleeting 開卡：把捕捉的原話直接帶進正文當起點（修修 feedback — 少一個動作）。
+      body_prefill: f.text || "",
     };
   }
   function refsLabel(refs) {
@@ -433,7 +436,7 @@
   function openDrawer(ctx) {
     currentCtx = ctx;
     $("#f-title").value = ctx.title || "";
-    $("#f-body").value = "";
+    $("#f-body").value = ctx.body_prefill || "";
     $("#f-body").classList.remove("invalid");
     $("#body-err").hidden = true;
     $("#f-srcrefs").textContent = ctx.srcRefsHtml;
