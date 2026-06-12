@@ -7,7 +7,11 @@ only retrieval lane now. The indexer writes `kb_chunks` (FTS5) + `kb_wikilinks`
 `index_vault(vault_path, db)` 接受已初始化的 SQLite connection
 （kb_* tables 已存在），
 掃 KB/Wiki/{Sources,Concepts,Entities}（recursive，含 nested Books/{book_id}/）
-+ KB/Annotations/，按 H2 切 chunk，mtime_ns 增量跳過未改檔案。
++ KB/Annotations/ + KB/Permanent/，按 H2 切 chunk，mtime_ns 增量跳過未改檔案。
+
+Centaur N520：KB/Permanent/（人寫永久卡）走獨立 `_index_permanent` 路徑——卡片
+正文進 FTS5（可被檢索、排序置頂），typed edges（支持/反駁/延伸）進結構化
+`kb_typed_edges` 表（directed graph，不靠 CJK text tokenization）。
 
 Annotation 檔（KB/Annotations/{slug}.md，ADR-021 §2）走獨立路徑：
 parse JSON code block 為 v1/v2/v3 items，每個 highlight.text / annotation.note /
@@ -48,6 +52,16 @@ _H2_RE = re.compile(r"^## (.+)$", re.MULTILINE)
 
 # Wikilink capture (e.g. [[Concepts/overtraining]])
 _WIKILINK_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
+
+# Centaur N520 — typed edges in KB/Permanent/ card bodies (Dataview inline field).
+# Format (v0.2 §3):  支持:: [[卡片標題]] — 理由
+# Direction is always 本卡 → 對方 (v0.2 §3「方向定死」); reverse comes free from
+# kb_typed_edges(dst_path) / Obsidian backlinks, so we never mirror-write.
+_TYPED_EDGE_RE = re.compile(
+    r"^(支持|反駁|延伸)::\s*\[\[([^\[\]]+)\]\]\s*(?:[—–-]\s*(.*?))?\s*$",
+    re.MULTILINE,
+)
+_EDGE_TYPE_MAP = {"支持": "support", "反駁": "refute", "延伸": "extend"}
 
 # H2 sections that are structural boilerplate and not useful for retrieval
 _SKIP_SECTIONS = frozenset(
@@ -248,6 +262,9 @@ def index_vault(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
     _index_annotations(vault_path, db, stats, now)
     db.commit()
 
+    _index_permanent(vault_path, db, stats, now)
+    db.commit()
+
     return stats
 
 
@@ -396,6 +413,114 @@ def _index_annotations(
         stats.files_indexed += 1
 
 
+def _normalize_permanent_link(raw: str) -> str:
+    """Normalize a typed-edge target wikilink to a canonical KB path.
+
+    Permanent cards mostly link to other Permanent cards by title (filename =
+    declaration sentence), e.g. ``[[好系統讓你不需要意志力]]`` →
+    ``KB/Permanent/好系統讓你不需要意志力``. A target that already carries a Wiki
+    subdir prefix (``Concepts/X``) or ``KB/`` is normalized via the Wiki rule.
+    """
+    raw = raw.split("|")[0].strip()
+    wiki = _normalize_wikilink(raw)
+    if wiki is not None:
+        return wiki
+    if raw.startswith("KB/"):
+        return raw
+    # Bare title → Permanent sibling card
+    return f"KB/Permanent/{raw}"
+
+
+def _index_permanent(
+    vault_path: Path,
+    db: sqlite3.Connection,
+    stats: IndexStats,
+    now: str,
+) -> None:
+    """Scan KB/Permanent/*.md — FTS-index card bodies + extract typed edges.
+
+    Two complementary writes per card (Centaur N520):
+      1. card body → ``kb_chunks`` (FTS5), so永久卡 are keyword-searchable and can
+         be ranked first by ``kb_hybrid_search.search`` (handoff fork 2).
+      2. ``支持::`` / ``反駁::`` / ``延伸::`` lines → ``kb_typed_edges`` (structured),
+         so directed-graph queries don't depend on CJK text tokenization
+         (panel Gemini §2).
+
+    KB/Permanent/ is NOT a KB/Wiki/ subdir, so this is a dedicated path (same
+    shape as ``_index_annotations``), never added to ``_KB_SUBDIRS``.
+    """
+    permanent_dir = vault_path / "KB" / "Permanent"
+    if not permanent_dir.exists():
+        return
+
+    for md_file in sorted(permanent_dir.rglob("*.md")):
+        rel = md_file.relative_to(vault_path).with_suffix("").as_posix()
+        page_path = rel  # already "KB/Permanent/..."
+        mtime_ns = md_file.stat().st_mtime_ns
+
+        meta_row = db.execute(
+            "SELECT mtime_ns FROM kb_index_meta WHERE path = ?",
+            (page_path,),
+        ).fetchone()
+        if meta_row is not None and meta_row[0] == mtime_ns:
+            stats.files_skipped += 1
+            continue
+
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        fhash = _file_hash(md_file)
+        fm, body = extract_frontmatter(content)
+        page_title: str = fm.get("title") or md_file.stem
+
+        # Refresh structured typed edges for this card
+        db.execute("DELETE FROM kb_typed_edges WHERE src_path = ?", (page_path,))
+        for m in _TYPED_EDGE_RE.finditer(body):
+            edge_type = _EDGE_TYPE_MAP[m.group(1)]
+            dst = _normalize_permanent_link(m.group(2))
+            reason = (m.group(3) or "").strip() or None
+            db.execute(
+                "INSERT INTO kb_typed_edges(src_path, edge_type, dst_path, reason) "
+                "VALUES (?, ?, ?, ?)",
+                (page_path, edge_type, dst, reason),
+            )
+
+        # Refresh FTS chunks for this card (cards are short — usually 1 preamble chunk)
+        old_rowids: list[int] = [
+            r[0]
+            for r in db.execute(
+                "SELECT rowid FROM kb_chunks WHERE path = ?",
+                (page_path,),
+            ).fetchall()
+        ]
+        if old_rowids:
+            db.execute("DELETE FROM kb_chunks WHERE path = ?", (page_path,))
+            stats.chunks_removed += len(old_rowids)
+
+        chunks = _split_h2_chunks(body, page_title, page_path)
+        for chunk in chunks:
+            db.execute(
+                "INSERT INTO kb_chunks (chunk_text, section, heading_context, path) "
+                "VALUES (?, ?, ?, ?)",
+                (
+                    chunk["chunk_text"],
+                    chunk["section"],
+                    chunk["heading_context"],
+                    chunk["path"],
+                ),
+            )
+            stats.chunks_added += 1
+
+        db.execute(
+            """INSERT OR REPLACE INTO kb_index_meta (path, mtime_ns, file_hash, indexed_at)
+               VALUES (?, ?, ?, ?)""",
+            (page_path, mtime_ns, fhash, now),
+        )
+        stats.files_indexed += 1
+
+
 # ---------------------------------------------------------------------------
 # Rebuild: wipe kb_chunks + kb_index_meta + kb_wikilinks and re-walk from
 # scratch. ADR-042 — also drops the legacy kb_vectors vtab if a pre-removal
@@ -414,6 +539,7 @@ def rebuild_index(vault_path: Path, db: sqlite3.Connection) -> IndexStats:
     db.execute("DELETE FROM kb_chunks")
     db.execute("DELETE FROM kb_index_meta")
     db.execute("DELETE FROM kb_wikilinks")
+    db.execute("DELETE FROM kb_typed_edges")  # Centaur N520 typed edges
     db.commit()
     return index_vault(vault_path, db)
 
