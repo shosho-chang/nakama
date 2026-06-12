@@ -27,6 +27,27 @@
     return s == null ? "" : String(s);
   }
 
+  /* 來源 meta：依 anchor 格式判類型並人話化（修修回饋）。
+     cfi-{章}-… → 書《名》· 第 N 章；p-N → 文章 · 第 N 段；t=秒 → 影片 · mm:ss。
+     raw 錨點（給機器跳轉用）不顯示。 */
+  function fmtSource(name, anchor) {
+    anchor = String(anchor || "");
+    name = name || "來源";
+    if (anchor.indexOf("cfi") === 0) {
+      var ch = anchor.split("-")[1];
+      return "《" + name + "》" + (ch ? " · 第 " + ch + " 章" : "");
+    }
+    if (/^p-?\d/.test(anchor)) {
+      return name + " · 第 " + anchor.replace(/^p-?/, "") + " 段";
+    }
+    if (/^t=?\d/.test(anchor)) {
+      var sec = parseInt(anchor.replace(/^t=?/, ""), 10);
+      var mm = Math.floor(sec / 60), ss = sec % 60;
+      return name + " · " + mm + ":" + (ss < 10 ? "0" : "") + ss;
+    }
+    return name;
+  }
+
   /* ---------------- toast ---------------- */
   var toastTimer;
   function toast(msg) {
@@ -103,16 +124,12 @@
       }
 
       var ref = c.primary_ref;
-      var metaText = "AI 建議卡名（可改）";
-      if (ref) {
-        var litLeaf = (ref.literature_path || "").split("/").pop();
-        metaText += " · " + (litLeaf || "literature") + " · ^" + (ref.anchor || "");
-      }
-      var meta = el("div", "cand-meta", metaText);
-
       var pin = el("div", "panel-in");
       pin.appendChild(head);
-      pin.appendChild(meta);
+      if (ref) {
+        var litLeaf = (ref.literature_path || "").split("/").pop();
+        pin.appendChild(el("div", "cand-meta", fmtSource(litLeaf, ref.anchor)));
+      }
 
       // 引文 + note（v2 視覺語言）
       if (ref && (ref.quote || ref.note)) {
@@ -134,11 +151,11 @@
 
       // 相關既有卡（Robin judged，分方向合併顯示）
       var rel = el("div", "cand-rel");
-      rel.appendChild(el("span", "sl", "相關既有卡"));
+      rel.appendChild(el("span", "sl", "相關永久卡"));
       var allEdges = collectEdgeTargets(c.edge_groups);
       if (allEdges.length) {
         allEdges.forEach(function (t) {
-          rel.appendChild(el("span", "wikilink", "[[" + t.title + "]]"));
+          rel.appendChild(el("span", "wikilink", t.title));
         });
       } else {
         rel.appendChild(el("span", "sho-mono", "KB 尚無相關卡（冷啟動）"));
