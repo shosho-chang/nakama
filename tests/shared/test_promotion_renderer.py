@@ -117,6 +117,24 @@ def test_render_review_item_dispatches_source_page_byte_identical() -> None:
     )
 
 
+def test_render_source_page_h1_uses_chapter_title() -> None:
+    """The page H1 is the human-readable chapter_title, not the machine ref."""
+    item = _make_source()
+    item.chapter_title = "第4章｜第1階（< 1萬美元）"
+    out = render_source_page(item, _make_manifest())
+    assert "# 第4章｜第1階（< 1萬美元）\n" in out
+    # chapter_ref stays the machine slug in frontmatter, NOT the heading.
+    assert "chapter_ref: 'Ch1: Energy systems'" in out or "chapter_ref: Ch1" in out
+
+
+def test_render_source_page_h1_falls_back_to_ref_when_no_title() -> None:
+    """Older manifests without chapter_title still render a heading (ref)."""
+    item = _make_source()
+    item.chapter_title = None
+    out = render_source_page(item, _make_manifest())
+    assert "# Ch1: Energy systems\n" in out
+
+
 def test_render_review_item_dispatches_concept_byte_identical() -> None:
     item = _make_concept()
     manifest = _make_manifest()
