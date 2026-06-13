@@ -537,6 +537,44 @@ async def read_source(
     )
 
 
+@robin_router.get("/literature/{slug}", response_class=HTMLResponse)
+async def literature_view(
+    request: Request,
+    slug: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """N532 — 觀看一個來源的 Literature Note（``KB/Literature/{slug}.md``）。
+
+    三個 reader（書 / 影音 / 文章）的「觀看筆記」按鈕都連到這裡。無檔 →
+    空態（劃線存檔後自動產生）。slug 走 ``safe_resolve`` 防 path traversal。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next=/robin/literature/{slug}", status_code=302)
+    lit_dir = get_vault_path() / "KB" / "Literature"
+    path = safe_resolve(lit_dir, f"{slug}.md")
+    title = slug
+    body_html = ""
+    exists = path.exists()
+    if exists:
+        from shared.markdown import render_markdown  # noqa: PLC0415
+
+        content = read_text(path)
+        frontmatter, body = extract_frontmatter(content)
+        title = str(frontmatter.get("title") or slug)
+        body_html = render_markdown(body)
+    return templates.TemplateResponse(
+        request,
+        "literature_view.html",
+        {
+            "slug": slug,
+            "title": title,
+            "exists": exists,
+            "body_html": body_html,
+            "asset_version": _SHOSHO_ASSET_VERSION,
+        },
+    )
+
+
 # ── WebVTT parser (ADR-035 §D6) ──────────────────────────────────────────────
 # Minimal parser sized for yt-dlp ``--write-auto-sub`` output. Lives here
 # because the av_reader route is the only consumer; promote to ``shared/``

@@ -1,0 +1,98 @@
+/* N532 — 文獻筆記 viewer（/robin/literature/{slug}）。閱讀優化、全 --sho-* token。 */
+body.sho.lit-page {
+  background: var(--sho-bg);
+  color: var(--sho-text);
+  margin: 0;
+}
+
+body.sho .lit-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 16px 24px;
+  background: color-mix(in oklch, var(--sho-bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--sho-line);
+}
+body.sho .lit-back {
+  color: var(--sho-muted);
+  text-decoration: none;
+  font-size: 13px;
+  flex: none;
+  white-space: nowrap;
+}
+body.sho .lit-back:hover { color: var(--sho-accent); }
+body.sho .lit-titlewrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+body.sho .lit-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--sho-accent);
+  text-transform: uppercase;
+}
+body.sho .lit-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--sho-text);
+}
+
+body.sho .lit-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+}
+
+/* ── prose：render_markdown 產出的 body ── */
+body.sho .lit-prose { font-size: 16px; line-height: 1.85; }
+body.sho .lit-prose h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-muted);
+  margin: 34px 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sho-line);
+}
+body.sho .lit-prose h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sho-accent);
+  letter-spacing: 0.03em;
+  margin: 28px 0 10px;
+}
+body.sho .lit-prose blockquote {
+  margin: 12px 0;
+  padding: 4px 0 4px 16px;
+  border-left: 3px solid var(--sho-accent-line);
+  color: var(--sho-text);
+}
+body.sho .lit-prose blockquote p { margin: 0; }
+/* 使用者的 note::（render 成 <strong>note::</strong> …）— 縮排、次要色，跟劃線區隔 */
+body.sho .lit-prose p { margin: 8px 0; color: var(--sho-text-2); }
+body.sho .lit-prose p strong:first-child { color: var(--sho-accent); }
+body.sho .lit-prose a {
+  color: var(--sho-accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--sho-accent-line);
+}
+body.sho .lit-prose a:hover { border-bottom-color: var(--sho-accent); }
+body.sho .lit-prose a:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: 2px; }
+/* 斷鏈 wikilink（[[…]] 無 resolver）— 不要紅色嚇人，淡灰即可 */
+body.sho .lit-prose .wikilink-broken { color: var(--sho-muted); border-bottom: 1px dotted var(--sho-line); }
+body.sho .lit-prose code {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+
+/* ── 空態 ── */
+body.sho .lit-empty {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--sho-muted);
+}
+body.sho .lit-empty-icon { font-size: 40px; margin-bottom: 12px; }
+body.sho .lit-empty-title { font-size: 16px; font-weight: 600; color: var(--sho-text-2); margin: 0 0 6px; }
+body.sho .lit-empty-sub { font-size: 13px; max-width: 360px; margin: 0 auto; line-height: 1.7; }
