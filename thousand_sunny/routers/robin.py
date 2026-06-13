@@ -549,9 +549,16 @@ async def literature_view(
     空態（劃線存檔後自動產生）。slug 走 ``safe_resolve`` 防 path traversal。
     """
     if not check_auth(nakama_auth):
-        return RedirectResponse(f"/login?next=/robin/literature/{slug}", status_code=302)
+        from urllib.parse import quote  # noqa: PLC0415
+
+        nxt = quote(f"/robin/literature/{slug}", safe="/")
+        return RedirectResponse(f"/login?next={nxt}", status_code=302)
     lit_dir = get_vault_path() / "KB" / "Literature"
-    path = safe_resolve(lit_dir, f"{slug}.md")
+    try:
+        path = safe_resolve(lit_dir, f"{slug}.md")
+    except (HTTPException, ValueError) as exc:
+        # 非法 slug（traversal / null byte 等）→ 一律當找不到，不外洩、不 500
+        raise HTTPException(404, detail="文獻筆記不存在") from exc
     title = slug
     body_html = ""
     exists = path.exists()

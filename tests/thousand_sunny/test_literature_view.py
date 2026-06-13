@@ -54,5 +54,7 @@ def test_view_missing_note_shows_empty_state(client):
 def test_view_path_traversal_slug_is_contained(client):
     # ../ 不該逃出 KB/Literature；safe_resolve 擋下 → 當作不存在（空態）或 4xx，總之不外讀
     resp = client.get("/robin/literature/..%2f..%2fsecret")
-    assert resp.status_code in (200, 400, 404)
+    # 依框架路由 / safe_resolve guard，可能 404（路由不匹配）或 403/400（被擋）——
+    # 重點是不得讀到 vault 外內容、不得 500
+    assert resp.status_code in (200, 400, 403, 404)
     assert "type: literature" not in resp.text  # 沒讀到 vault 外的東西

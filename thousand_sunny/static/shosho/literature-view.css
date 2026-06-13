@@ -25,6 +25,7 @@ body.sho .lit-back {
   white-space: nowrap;
 }
 body.sho .lit-back:hover { color: var(--sho-accent); }
+body.sho .lit-back:focus-visible { outline: none; color: var(--sho-accent); box-shadow: var(--sho-focus); border-radius: 2px; }
 body.sho .lit-titlewrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 body.sho .lit-kicker {
   font-size: 11px;
