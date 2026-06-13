@@ -304,3 +304,39 @@ def test_render_markdown_pure_no_write(vault: Path):
     assert lw.LEDGER_BEGIN in md
     # nothing written to disk by the pure function
     assert not (vault / "KB" / "Literature" / "卡片盒筆記.md").exists()
+
+
+# ── 🔗 KB 相關：濾掉來源自身頁面 ──────────────────────────────────────────────
+
+
+def test_is_own_source_path_segment_match():
+    slug = "卡片盒筆記"
+    # 自身的 Annotations / Wiki Source 子頁 → True
+    assert lw._is_own_source_path(f"KB/Annotations/{slug}", slug)
+    assert lw._is_own_source_path(f"KB/Wiki/Sources/Books/{slug}/digest", slug)
+    # 別的頁面 → False；prefix 撞名（{slug}-延伸）也不算自身
+    assert not lw._is_own_source_path("KB/Wiki/Concepts/zettelkasten", slug)
+    assert not lw._is_own_source_path(f"KB/Annotations/{slug}-延伸", slug)
+
+
+def test_kb_related_excludes_own_source_pages(vault: Path, monkeypatch):
+    """🔗 KB 相關 濾掉來源自身頁面，只留跨來源關聯（自我命中無價值）。"""
+    import agents.robin.kb_search as kb
+
+    slug = "卡片盒筆記"
+
+    def _fake(query, vault_path, top_k=3, **kwargs):  # noqa: ARG001
+        # 前兩筆是來源自身頁面（應被濾掉），第三筆才是真正的跨來源關聯。
+        return [
+            {"path": f"KB/Annotations/{slug}", "relevance_reason": "self"},
+            {"path": f"KB/Wiki/Sources/Books/{slug}/digest", "relevance_reason": "self"},
+            {"path": "KB/Wiki/Concepts/zettelkasten", "relevance_reason": "real"},
+        ]
+
+    monkeypatch.setattr(kb, "search_kb", _fake)
+
+    md = lw.render_literature_markdown(_book_set(), "book", vault)
+
+    assert f"[[KB/Annotations/{slug}]]" not in md
+    assert f"[[KB/Wiki/Sources/Books/{slug}/digest]]" not in md
+    assert "[[KB/Wiki/Concepts/zettelkasten]]" in md
