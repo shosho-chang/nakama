@@ -38,7 +38,7 @@
 {% if nav_active == 'vault' %}{% set nav_active = '' %}{% endif %}
 {#-- active-group helpers --#}
 {% set _fleet = ['robin','nami','zoro','brook','sanji','franky','usopp','chopper'] %}
-{% set _ops   = ['cost','logs','memory','docs','progress'] %}
+{% set _ops   = ['cost','logs','memory','docs','progress','models'] %}
 {% set _in_fleet = nav_active in _fleet %}
 {% set _in_ops   = nav_active in _ops %}
 <header class="chassis" role="banner">
@@ -97,6 +97,7 @@
         <a href="/bridge/memory" role="menuitem"{% if nav_active == 'memory' %} class="active" aria-current="page"{% endif %}>MEMORY <span class="zh">記憶</span></a>
         <a href="/bridge/docs" role="menuitem"{% if nav_active == 'docs' %} class="active" aria-current="page"{% endif %}>DOCS <span class="zh">文件搜尋</span></a>
         <a href="/progress" role="menuitem"{% if nav_active == 'progress' %} class="active" aria-current="page"{% endif %}>PROGRESS <span class="zh">系統進度</span></a>
+        <a href="/bridge/models" role="menuitem"{% if nav_active == 'models' %} class="active" aria-current="page"{% endif %}>MODELS <span class="zh">模型</span></a>
       </div>
     </div>
 

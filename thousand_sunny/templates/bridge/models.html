@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Models 模型路由</title>
+<script src="/static/shosho/theme.js"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css">
+<link rel="stylesheet" href="/static/shosho/bridge.css">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css">
+<link rel="stylesheet" href="/static/shosho/bridge-models.css">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='models') }}
+
+  <main class="mdl-main">
+    <header class="mdl-head">
+      <h1 class="mdl-title">模型路由</h1>
+      <p class="mdl-sub">每個 agent / 功能目前接哪個 LLM。改了即時生效，不用重啟。</p>
+    </header>
+
+    {% if saved_msg %}<div class="mdl-toast mdl-toast--ok" role="status">{{ saved_msg }}</div>{% endif %}
+    {% if err_msg %}<div class="mdl-toast mdl-toast--err" role="alert">{{ err_msg }}</div>{% endif %}
+
+    <div class="mdl-tablewrap">
+      <table class="mdl-table">
+        <thead>
+          <tr>
+            <th>Agent</th><th>功能</th><th>目前 model</th><th>來源</th><th>改成</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for s in sites %}
+          <tr>
+            <td class="mdl-agent">{{ s.agent }}</td>
+            <td class="mdl-purpose">{{ s.purpose }}<br><code class="mdl-task">{{ s.task }}</code></td>
+            <td><span class="mdl-model">{{ s.model }}</span> <span class="mdl-prov mdl-prov--{{ s.provider }}">{{ s.provider }}</span></td>
+            <td><span class="mdl-src mdl-src--{{ s.source }}">{{ s.source }}</span></td>
+            <td class="mdl-edit">
+              <form method="post" action="/bridge/models/set" class="mdl-form">
+                <input type="hidden" name="agent" value="{{ s.agent }}">
+                <input type="hidden" name="task" value="{{ s.task }}">
+                <select name="model" class="mdl-select" aria-label="改 {{ s.agent }} / {{ s.task }} 的 model">
+                  {% for opt in model_options %}
+                  <option value="{{ opt.id }}"{% if opt.id == s.model %} selected{% endif %}>{{ opt.id }} · {{ opt.provider }}</option>
+                  {% endfor %}
+                </select>
+                <button class="sho-btn mdl-apply" type="submit">套用</button>
+              </form>
+              {% if s.source == 'override' %}
+              <form method="post" action="/bridge/models/reset" class="mdl-form mdl-form--reset">
+                <input type="hidden" name="agent" value="{{ s.agent }}">
+                <input type="hidden" name="task" value="{{ s.task }}">
+                <button class="mdl-reset" type="submit" title="清除 override，回退到預設">↺ 回預設</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mdl-legend">
+      <b>來源</b>：<span class="mdl-src mdl-src--override">override</span> 面板設定（最高優先）·
+      <span class="mdl-src mdl-src--env">env</span> 環境變數 ·
+      <span class="mdl-src mdl-src--registry">registry</span> 程式預設 ·
+      <span class="mdl-src mdl-src--default">default</span> 全域 fallback
+    </p>
+  </main>
+</body>
+</html>

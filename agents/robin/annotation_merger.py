@@ -43,6 +43,7 @@ from pydantic import BaseModel
 from shared.annotation_store import get_annotation_store
 from shared.config import get_vault_path
 from shared.kb_writer import KB_CONCEPTS_DIR, _load_page, _write_page_file
+from shared.llm_router import get_model
 from shared.log import get_logger
 from shared.prompt_loader import load_prompt
 
@@ -161,7 +162,7 @@ def _ask_merger_llm(prompt: str) -> dict[str, str]:
     response = ask_with_tools(
         messages=[{"role": "user", "content": prompt}],
         tools=[_MERGER_TOOL],
-        model="claude-opus-4-7",
+        model=get_model(agent="robin", task="annotation_merge"),
         max_tokens=8000,
         tool_choice={"type": "tool", "name": "merge_annotations"},
     )
@@ -600,7 +601,7 @@ def _ask_merger_llm_v2(items, concept_slugs: list[str]) -> dict[str, str]:
     response = ask_with_tools(
         messages=[{"role": "user", "content": prompt}],
         tools=[_MERGER_TOOL],
-        model="claude-opus-4-7",
+        model=get_model(agent="robin", task="annotation_merge"),
         max_tokens=8000,
         tool_choice={"type": "tool", "name": "merge_annotations"},
     )
