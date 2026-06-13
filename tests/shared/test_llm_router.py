@@ -117,3 +117,32 @@ def test_list_model_sites_includes_manual_override_outside_registry():
     assert extra is not None
     assert extra["source"] == "override"
     assert extra["model"] == "claude-haiku-4-5"
+
+
+# ── 壞檔 robustness（review 抓到：set/clear 裸 json.loads 會 500）─────────────
+
+
+def test_set_override_on_corrupt_file_recovers(tmp_path, monkeypatch):
+    p = tmp_path / "ov.json"
+    p.write_text("{corrupt", encoding="utf-8")
+    monkeypatch.setenv("NAKAMA_MODEL_OVERRIDES", str(p))
+    monkeypatch.setattr(r, "_overrides_mtime", -1.0)
+    # 壞檔不該 raise；set 後可讀回（壞內容被當空 dict 重建）
+    r.set_override("robin", "concept_merge", "gemini-2.5-pro")
+    assert r.get_override("robin", "concept_merge") == "gemini-2.5-pro"
+
+
+def test_clear_override_on_corrupt_file_no_raise(tmp_path, monkeypatch):
+    p = tmp_path / "ov.json"
+    p.write_text("{corrupt", encoding="utf-8")
+    monkeypatch.setenv("NAKAMA_MODEL_OVERRIDES", str(p))
+    monkeypatch.setattr(r, "_overrides_mtime", -1.0)
+    r.clear_override("robin", "concept_merge")  # 不該 raise
+
+
+def test_clear_override_noop_does_not_write(tmp_path, monkeypatch):
+    p = tmp_path / "ov.json"
+    monkeypatch.setenv("NAKAMA_MODEL_OVERRIDES", str(p))
+    monkeypatch.setattr(r, "_overrides_mtime", -1.0)
+    r.clear_override("robin", "concept_merge")  # 無此 override
+    assert not p.exists()  # 不曾寫檔（避免 spurious mtime）

@@ -21,6 +21,7 @@
     </header>
 
     {% if saved_msg %}<div class="mdl-toast mdl-toast--ok" role="status">{{ saved_msg }}</div>{% endif %}
+    {% if err_msg %}<div class="mdl-toast mdl-toast--err" role="alert">{{ err_msg }}</div>{% endif %}
 
     <div class="mdl-tablewrap">
       <table class="mdl-table">

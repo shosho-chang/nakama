@@ -11,7 +11,7 @@ Resolution 優先序（高到低）：
 這是 production routing 層。Bench / eval 腳本請改走 LiteLLM（設計決策見
 `memory/claude/project_multi_model_architecture.md`）。
 
-Provider coverage（2026-04 步驟 2）：Anthropic + xAI。後續步驟擴 Google + OpenAI。
+Provider coverage：Anthropic + xAI + Google（gemini-）已 wire；OpenAI 待擴。
 """
 
 from __future__ import annotations
@@ -102,6 +102,17 @@ def _overrides_path() -> Path:
     return Path(env) if env else _OVERRIDES_RELPATH
 
 
+def _read_raw_overrides(path: Path) -> dict:
+    """讀原始 JSON dict；不存在 / 壞檔 → ``{}``（set/clear 共用，壞檔不致 500）。"""
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _load_overrides() -> dict[str, dict[str, str]]:
     """讀 override store，用 mtime cache 達成「改檔即生效、又不每次 IO」。"""
     global _overrides_cache, _overrides_mtime
@@ -119,9 +130,11 @@ def _load_overrides() -> dict[str, dict[str, str]]:
                 for a, tasks in data.items()
                 if isinstance(tasks, dict)
             }
+            _overrides_mtime = mtime  # 只在成功時記 mtime
         except (OSError, json.JSONDecodeError, AttributeError):
+            # 壞檔：清快取但 mtime 設 -1，下次重試（不鎖死在空值直到 mtime 再變）。
             _overrides_cache = {}
-        _overrides_mtime = mtime
+            _overrides_mtime = -1.0
     return _overrides_cache
 
 
@@ -136,21 +149,21 @@ def set_override(agent: str, task: str, model: str) -> None:
     """寫入 (agent, task) → model 的 override（Bridge 面板用），即時生效。"""
     path = _overrides_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    data = _read_raw_overrides(path)
     data.setdefault(agent.lower(), {})[task] = model
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def clear_override(agent: str, task: str) -> None:
-    """移除一個 override（回退到 env / registry / DEFAULT_MODELS）。"""
+    """移除一個 override（回退到 env / registry / DEFAULT_MODELS）。無此 override 則不寫檔。"""
     path = _overrides_path()
-    if not path.exists():
-        return
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if agent.lower() in data:
-        data[agent.lower()].pop(task, None)
-        if not data[agent.lower()]:
-            data.pop(agent.lower())
+    data = _read_raw_overrides(path)
+    tasks = data.get(agent.lower())
+    if not isinstance(tasks, dict) or task not in tasks:
+        return  # 沒這筆 → 不動檔，避免 spurious mtime 觸發無謂重載
+    tasks.pop(task, None)
+    if not tasks:
+        data.pop(agent.lower())
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -194,7 +207,8 @@ def get_model(agent: str | None = None, task: str = "default") -> str:
         agent: Agent 名稱（例如 "brook"、"robin"）。大小寫不敏感。
             None 代表沒有 agent 上下文，跳過 agent 層級覆寫並記 debug log
             （協助診斷忘了呼叫 `set_current_agent` 的 silent fallback）。
-        task: 任務類型。目前已知："default"、"tool_use"。
+        task: 任務類型（"default" / "tool_use" / "translate" 等）。具名 (agent, task)
+            call site 的 canonical 清單見 ``MODEL_REGISTRY``。
 
     Returns:
         Model ID 字串（例如 "claude-sonnet-4-6"、"grok-4-fast-non-reasoning"）。

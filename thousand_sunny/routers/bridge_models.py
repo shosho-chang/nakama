@@ -17,8 +17,8 @@ from fastapi.templating import Jinja2Templates
 
 from shared.llm_router import (
     KNOWN_MODELS,
+    _safe_provider,
     clear_override,
-    get_provider,
     list_model_sites,
     set_override,
 )
@@ -32,14 +32,19 @@ _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 router = APIRouter()
 
-# 下拉選項：(model_id, provider) — 讓 UI 標出每個選項屬哪家。
-_MODEL_OPTIONS = [{"id": m, "provider": get_provider(m)} for m in KNOWN_MODELS]
+# 下拉選項：(model_id, provider) — 用 _safe_provider，未知 prefix 標 unknown 而非 startup 炸。
+_MODEL_OPTIONS = [{"id": m, "provider": _safe_provider(m)} for m in KNOWN_MODELS]
 _VALID_MODELS = frozenset(KNOWN_MODELS)
+
+_ERR_MSGS = {"unknown_model": "未知的 model（不在允許清單內），未套用。"}
 
 
 @router.get("/bridge/models", response_class=HTMLResponse)
 async def models_page(
-    request: Request, nakama_auth: str | None = Cookie(None), saved: str | None = None
+    request: Request,
+    nakama_auth: str | None = Cookie(None),
+    saved: str | None = None,
+    err: str | None = None,
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/models", status_code=302)
@@ -51,6 +56,7 @@ async def models_page(
             "sites": sites,
             "model_options": _MODEL_OPTIONS,
             "saved_msg": "已更新並即時生效" if saved == "1" else None,
+            "err_msg": _ERR_MSGS.get(err) if err else None,
         },
     )
 

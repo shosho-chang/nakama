@@ -31,6 +31,11 @@ body.sho .mdl-toast--ok {
   background: color-mix(in oklch, var(--sho-success) 8%, transparent);
   color: var(--sho-text);
 }
+body.sho .mdl-toast--err {
+  border: 1px solid color-mix(in oklch, var(--sho-warning) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 10%, transparent);
+  color: var(--sho-text);
+}
 
 body.sho .mdl-tablewrap {
   overflow-x: auto;
@@ -140,6 +145,7 @@ body.sho .mdl-reset {
   padding: 0;
 }
 body.sho .mdl-reset:hover { color: var(--sho-accent); }
+body.sho .mdl-reset:focus-visible { outline: none; color: var(--sho-accent); box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
 
 body.sho .mdl-legend {
   margin-top: 18px;

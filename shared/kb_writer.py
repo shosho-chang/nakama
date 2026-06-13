@@ -145,7 +145,8 @@ _DIFF_MERGE_PROMPT = """你是知識庫 aggregator。
 
 
 def _ask_llm(prompt: str, *, system: str = "", max_tokens: int = 16000) -> str:
-    """Diff-merge / 內部 LLM call 邊界。預設走 Opus 4.7。
+    """Diff-merge / 內部 LLM call 邊界。model 由 router 解析（N531：registry 預設
+    Opus 4.7，可經 Bridge /bridge/models override）。
 
     為什麼包一層：unit test monkeypatch 這個 function 即可，不必動 shared.llm.ask。
     """
@@ -663,10 +664,11 @@ def upsert_concept_page(
         slug: page slug (filename minus .md)
         action: one of create / update_merge / update_conflict / noop
             - create / update_conflict / noop: pure file I/O (no LLM call)
-            - update_merge: 1× Claude Opus 4.7 diff-merge call via `_ask_llm`
-              (max_tokens=16000, temperature=0.2; ~$0.15–$1.00 per call —
+            - update_merge: 1× diff-merge call via `_ask_llm`（model 由 router 解析，
+              registry 預設 Opus 4.7、可經 Bridge override；以下成本估算以 Opus 4.7 為準：
+              max_tokens=16000, temperature=0.2; ~$0.15–$1.00 per call —
               depends on existing body size; mature pages with full max_tokens
-              output reach ~$1.20 edge case). Caller should batch-budget
+              output reach ~$1.20 edge case）。Caller should batch-budget
               accordingly when ingesting many sources.
         source_link: wikilink form, e.g. "[[Sources/Books/foo/ch1]]"
         title: required for action=create
