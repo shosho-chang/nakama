@@ -139,6 +139,32 @@ def save_review_state(vault_path: Path, state: dict) -> None:
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+# N529: 5am job 持久化最近一次 bundle，讓 weekly dashboard 免重算即可顯示。
+_BUNDLE_RELPATH = "KB/.centaur/daily_review_latest.json"
+
+
+def _bundle_path(vault_path: Path) -> Path:
+    return vault_path / _BUNDLE_RELPATH
+
+
+def save_review_bundle(vault_path: Path, bundle: DailyReviewBundle) -> None:
+    """持久化最近一次每日回顧 bundle（N529）——供 weekly dashboard 讀取。"""
+    path = _bundle_path(vault_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+
+
+def load_review_bundle(vault_path: Path) -> DailyReviewBundle | None:
+    """讀最近一次持久化 bundle；不存在 / 壞檔 → None（dashboard 顯示空態，不 500）。"""
+    path = _bundle_path(vault_path)
+    if not path.exists():
+        return None
+    try:
+        return DailyReviewBundle.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def expire_deferred(
     state: dict,
     *,

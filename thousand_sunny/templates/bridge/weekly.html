@@ -180,6 +180,22 @@
       </div>
     </div>
 
+    {# ── N529 今日回顧卡（5am Centaur daily review；只在本週顯示，起床即見）── #}
+    {% if view.is_current and daily_review %}
+    <a class="wk-review" href="/kb/review" aria-label="今日回顧：{{ daily_review.candidate_count }} 張候選靈感卡">
+      <span class="wk-review-ico" aria-hidden="true">🌅</span>
+      <span class="wk-review-b">
+        <span class="wk-review-t">今日回顧{% if daily_review.weekly_sweep %} <span class="sho-chip">＋週清掃</span>{% endif %}</span>
+        <span class="wk-review-m">
+          {% if daily_review.candidate_count %}{{ daily_review.candidate_count }} 張候選靈感卡待你開{% else %}今天沒有新候選{% endif %}
+          {%- if daily_review.fleeting_count %} · {{ daily_review.fleeting_count }} 則 fleeting 待處理{% endif %}
+          · {{ daily_review.review_date }}
+        </span>
+      </span>
+      <span class="wk-review-go" aria-hidden="true">→</span>
+    </a>
+    {% endif %}
+
     {# ── 本週重要任務 (weekly_priority tasks; done → struck through; uncapped — 修修) ── #}
     {% if view.mode != 'review' %}
       <div class="wk-top3" aria-label="本週重要任務">
