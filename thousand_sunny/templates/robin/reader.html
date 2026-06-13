@@ -26,6 +26,7 @@
       <button class="header-btn" id="translateBtn" onclick="triggerTranslate()" title="後台翻譯成台灣繁體中文後跳雙語閱讀模式">翻譯成中文</button>
       {% endif %}
       <button class="header-btn" id="syncBtn" onclick="syncToKB()">同步到 KB</button>
+      <a class="header-btn" href="/robin/literature/{{ slug }}" target="_blank" rel="noopener" title="觀看文獻筆記（由你的劃線整理）">📖 觀看筆記</a>
       <button class="header-btn" id="bilingualToggle" onclick="cycleBilingual()" title="T">雙語</button>
       <button class="header-btn is-discard" id="discardBtn" type="button" onclick="openDiscardDialog()">丟掉這篇</button>
     </div>

@@ -27,6 +27,7 @@
       <button type="button" class="icon-btn" id="ingestBtn" aria-label="送出整本書 ingest 請求" disabled>📥 <span class="btn-label">Ingest 整本書</span></button>
     </span>
     {% endif %}
+    <a href="/robin/literature/{{ book.book_id }}" target="_blank" rel="noopener" class="icon-btn" title="觀看這本書的文獻筆記（由你的劃線整理）">📖 <span class="btn-label">觀看筆記</span></a>
     <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 <span class="btn-label">目錄</span></button>
     <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 <span class="btn-label">反思</span></button>
     <button type="button" class="icon-btn" id="kbdHelpBtn" aria-label="鍵盤快捷鍵" title="鍵盤快捷鍵（按 ?）">⌨️</button>
