@@ -17,6 +17,7 @@ from typing import Literal, TypedDict
 from shared.kb_indexer import _KB_SUBDIRS
 from shared.llm import ask
 from shared.llm_context import set_current_agent
+from shared.llm_router import get_model
 from shared.utils import extract_frontmatter
 
 TOP_K = 8
@@ -231,7 +232,7 @@ def search_kb(
     # project_seo_d2_f_merged_2026_04_26.md).
     text = ask(
         prompt,
-        model="claude-haiku-4-5-20251001",
+        model=get_model(agent="robin", task="kb_search"),
         max_tokens=1024,
     )
     json_match = re.search(r"\[[\s\S]*\]", text)

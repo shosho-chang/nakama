@@ -35,6 +35,7 @@ from shared.config import get_vault_path
 from shared.kb_hybrid_search import get_kb_conn
 from shared.llm import ask
 from shared.llm_context import set_current_agent
+from shared.llm_router import get_model
 from shared.schemas.annotations import AnnotationSetV3
 from shared.schemas.daily_review import (
     CandidateCard,
@@ -362,7 +363,12 @@ def _ask_p1_llm(prompt: str) -> list[dict]:
     回傳 parse 後的候選 dict list；parse 失敗 → []（job 不中斷）。
     """
     set_current_agent("robin")
-    text = ask(prompt, system=_SYSTEM_PREAMBLE, model="claude-sonnet-4-5-20250929", max_tokens=2048)
+    text = ask(
+        prompt,
+        system=_SYSTEM_PREAMBLE,
+        model=get_model(agent="robin", task="daily_review"),
+        max_tokens=2048,
+    )
     return _parse_json_array(text)
 
 
@@ -554,7 +560,12 @@ note：{note}
 def _ask_p2_llm(prompt: str) -> dict:
     """P-2 LLM call（Sonnet 級）。測試 monkeypatch 此函式。"""
     set_current_agent("robin")
-    text = ask(prompt, system=_SYSTEM_PREAMBLE, model="claude-sonnet-4-5-20250929", max_tokens=1536)
+    text = ask(
+        prompt,
+        system=_SYSTEM_PREAMBLE,
+        model=get_model(agent="robin", task="daily_review"),
+        max_tokens=1536,
+    )
     return _parse_json_object(text)
 
 
@@ -837,7 +848,12 @@ note：{note}
 def _ask_p2_moc_llm(prompt: str) -> dict:
     """P-2 MOC 擴判 LLM call（Sonnet 級）。測試 monkeypatch 此函式。"""
     set_current_agent("robin")
-    text = ask(prompt, system=_SYSTEM_PREAMBLE, model="claude-sonnet-4-5-20250929", max_tokens=512)
+    text = ask(
+        prompt,
+        system=_SYSTEM_PREAMBLE,
+        model=get_model(agent="robin", task="daily_review"),
+        max_tokens=512,
+    )
     return _parse_json_object(text)
 
 

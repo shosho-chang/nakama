@@ -1551,6 +1551,7 @@ def _generate_kb_angles(hits: list[dict], topic: str) -> None:
 
     from shared.llm import ask
     from shared.llm_context import set_current_agent
+    from shared.llm_router import get_model
 
     excerpts: list[str] = []
     for i, h in enumerate(hits, start=1):
@@ -1595,7 +1596,7 @@ def _generate_kb_angles(hits: list[dict], topic: str) -> None:
     set_current_agent("robin")
     raw = ask(
         prompt,
-        model="claude-haiku-4-5-20251001",
+        model=get_model(agent="robin", task="project_angle_scan"),
         max_tokens=2048,
         temperature=0.3,
     )
@@ -1650,6 +1651,7 @@ def _synthesize_kb_hits(
     """
     from shared.llm import ask
     from shared.llm_context import set_current_agent
+    from shared.llm_router import get_model
 
     excerpts: list[str] = []
     for i, h in enumerate(hits, start=1):
@@ -1720,7 +1722,7 @@ def _synthesize_kb_hits(
     # Opus 4.7 deprecated `temperature` — pass only what it still accepts.
     return ask(
         prompt,
-        model="claude-opus-4-7",
+        model=get_model(agent="robin", task="project_mechanism"),
         max_tokens=4096,
     )
 

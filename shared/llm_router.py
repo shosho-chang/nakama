@@ -55,6 +55,8 @@ MODEL_REGISTRY: tuple[ModelSite, ...] = (
     ModelSite("robin", "annotation_merge", "claude-opus-4-7", "註解 merge 進 Concept"),
     ModelSite("robin", "daily_review", "claude-sonnet-4-5-20250929", "每日回顧 P-1/P-2/清掃"),
     ModelSite("robin", "kb_search", "claude-haiku-4-5-20251001", "KB 檢索 relevance reason"),
+    ModelSite("robin", "project_angle_scan", "claude-haiku-4-5-20251001", "專案 KB-hit 角度掃描"),
+    ModelSite("robin", "project_mechanism", "claude-opus-4-7", "專案機制草稿生成"),
     ModelSite("nami", "default", "claude-sonnet-4-20250514", "Nami 對話 / 秘書任務"),
     ModelSite("zoro", "default", "claude-sonnet-4-20250514", "Scout 趨勢 / 關鍵字"),
     ModelSite("brook", "default", "claude-sonnet-4-20250514", "Composer 撰稿輔助"),

@@ -13,8 +13,9 @@
 - Book entity: `KB/Wiki/Entities/Books/{book_id}.md`
 - Backup: `{repo_root}/data/kb_backup/{slug}-{utc-ts}.md`（retain 24h）
 
-LLM call 走 `shared.llm.ask(model="claude-opus-4-7")` — ingest 強制 Opus 4.7
-（ADR-011 §2 P2 LLM-readable deep extract）。測試環境 monkeypatch `_ask_llm`。
+LLM call 走 `shared.llm.ask`，model 由 router 解析（N531：`get_model("robin",
+"concept_merge")`，registry 預設 Opus 4.7，可經 Bridge /bridge/models override）。
+ADR-011 §2 P2 LLM-readable deep extract。測試環境 monkeypatch `_ask_llm`。
 """
 
 from __future__ import annotations
@@ -149,11 +150,12 @@ def _ask_llm(prompt: str, *, system: str = "", max_tokens: int = 16000) -> str:
     為什麼包一層：unit test monkeypatch 這個 function 即可，不必動 shared.llm.ask。
     """
     from shared.llm import ask
+    from shared.llm_router import get_model
 
     return ask(
         prompt=prompt,
         system=system,
-        model="claude-opus-4-7",
+        model=get_model(agent="robin", task="concept_merge"),
         max_tokens=max_tokens,
     )
 
