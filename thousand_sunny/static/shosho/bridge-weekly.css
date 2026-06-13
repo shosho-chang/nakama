@@ -833,3 +833,19 @@ body.sho .wk-meta-sel {
 body.sho .wk-meta-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
 /* task page: sits inline in the meta row, no top margin */
 body.sho .tk-meta .wk-meta-form { margin-top: 0; gap: 8px; }
+
+/* N529 — 今日回顧卡（5am Centaur daily review；dashboard 起床即見，連到 /kb/review）*/
+body.sho .wk-review {
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 16px; margin: 0 0 16px;
+  border: 1px solid var(--sho-accent-line); border-radius: var(--sho-r-2);
+  background: var(--sho-accent-soft); text-decoration: none;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-review:hover { border-color: var(--sho-accent); }
+body.sho .wk-review:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+body.sho .wk-review-ico { font-size: 22px; line-height: 1; flex: none; }
+body.sho .wk-review-b { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 0; }
+body.sho .wk-review-t { color: var(--sho-text); font-size: 15px; font-weight: 600; }
+body.sho .wk-review-m { color: var(--sho-text-2); font-size: 12px; }
+body.sho .wk-review-go { color: var(--sho-accent); font-size: 18px; flex: none; }

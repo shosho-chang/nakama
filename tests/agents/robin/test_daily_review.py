@@ -171,6 +171,42 @@ def test_load_review_state_corrupt_json_returns_skeleton(vault: Path):
     assert dr.load_review_state(vault) == {"skipped": [], "deferred": {}}
 
 
+# ── N529 bundle 持久化（5am job → weekly dashboard 讀）─────────────────────────
+
+
+def test_review_bundle_round_trip(vault: Path):
+    bundle = DailyReviewBundle(
+        generated_at="2026-06-13T05:00:00+00:00",
+        review_date="2026-06-13",
+        weekly_sweep=True,
+        candidates=[
+            CandidateCard(
+                candidate_id="c1",
+                suggested_title="系統優先於意志力",
+                why="昨天劃線的核心",
+            )
+        ],
+    )
+    dr.save_review_bundle(vault, bundle)
+    loaded = dr.load_review_bundle(vault)
+    assert loaded is not None
+    assert loaded.review_date == "2026-06-13"
+    assert loaded.weekly_sweep is True
+    assert len(loaded.candidates) == 1
+    assert loaded.candidates[0].suggested_title == "系統優先於意志力"
+
+
+def test_load_review_bundle_missing_file_returns_none(vault: Path):
+    assert dr.load_review_bundle(vault) is None
+
+
+def test_load_review_bundle_corrupt_json_returns_none(vault: Path):
+    p = dr._bundle_path(vault)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{not json", encoding="utf-8")
+    assert dr.load_review_bundle(vault) is None
+
+
 # ── 孤兒卡偵測 (link graph 程式算) ────────────────────────────────────────────
 
 
