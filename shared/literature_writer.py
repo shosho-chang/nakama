@@ -330,10 +330,21 @@ _ROUTE_RENDERERS = {
 }
 
 
+def _is_own_source_path(path: str, slug: str) -> bool:
+    """True 若 KB 命中是來源自身的頁面（自己的 Annotations / Wiki Source 子頁）。
+
+    自我命中（例：``KB/Annotations/{slug}``、``KB/Wiki/Sources/Books/{slug}/digest``）
+    對「🔗 KB 相關」毫無跨來源價值、反成噪音，故 render 時濾掉。判準：slug 作為
+    完整路徑段出現即視為來源自身頁面（別的頁面不會剛好以整段書名 slug 命名）。
+    """
+    return slug in path.split("/")
+
+
 def _render_kb_related_zone(ann_set: AnnotationSetV3, slug: str, vault_path: Path) -> str:
     """``## 🔗 KB 相關`` — pilot 純 FTS5 (D-17，無 LLM-judge / 無 👍👎 D-21)。
 
     每條有內容的 item 用 ``kb_search`` (hybrid / FTS5) 撈相關卡，列 wikilink。
+    來源自身的頁面（自己的 Annotations / digest）會被濾掉，只留跨來源關聯。
     search 失敗或無命中 → 該條標 ``_（無 KB 命中）_``，不中斷 render。
     """
     from agents.robin.kb_search import search_kb
@@ -351,11 +362,13 @@ def _render_kb_related_zone(ann_set: AnnotationSetV3, slug: str, vault_path: Pat
             continue
 
         try:
-            hits = search_kb(query[:500], vault_path, top_k=3, engine="hybrid")
+            # 多撈幾筆，濾掉來源自身頁面後再取 top 3（自我命中無跨來源價值）。
+            raw_hits = search_kb(query[:500], vault_path, top_k=6, engine="hybrid")
         except Exception as exc:  # noqa: BLE001 — bridge must render even if KB down
             lines.append(f"- {query[:40]}… — _（KB 檢索失敗：{exc}）_")
             continue
 
+        hits = [h for h in raw_hits if not _is_own_source_path(h["path"], slug)][:3]
         label = query[:40].replace("\n", " ")
         if hits:
             hit_links = ", ".join(f"[[{h['path']}]]" for h in hits)

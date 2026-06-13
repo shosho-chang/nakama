@@ -168,11 +168,27 @@ async def weekly_landing(
             "尚未排入（不寫計畫、不建事件）。改個時間重送即可。"
         )
 
+    # N529 — 讀 5am 持久化的每日回顧 bundle（免重算）；缺/壞檔 → None（卡片不顯示）。
+    from agents.robin.daily_review import load_review_bundle  # noqa: PLC0415
+
+    _bundle = load_review_bundle(vault)
+    review_summary = (
+        {
+            "candidate_count": len(_bundle.candidates),
+            "fleeting_count": len(_bundle.fleeting),
+            "review_date": _bundle.review_date,
+            "weekly_sweep": _bundle.weekly_sweep,
+        }
+        if _bundle is not None
+        else None
+    )
+
     return _templates.TemplateResponse(
         request,
         "weekly.html",
         {
             "view": view,
+            "daily_review": review_summary,
             # If-Match token for the weekly-file forms (ADR-040 Slice 2)
             "weekly_token": weekly_file_token(vault, wk.file_key),
             "asset_version": _SHOSHO_ASSET_VERSION,
