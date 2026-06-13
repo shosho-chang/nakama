@@ -85,3 +85,27 @@ This violates the project constitution that Line 2 book-review atomic content is
 - Thousand Sunny owns presentation and human checkpoint UI for promotion review.
 - Brook must not bypass the Reading Context Package boundary to compose Line 2 atomic content.
 - Future implementation work should first update `CONTENT-PIPELINE.md`, then create a parent PRD issue, then split implementation into vertical slices.
+
+## Amendment 2026-06 — Evidence-track semantics for monolingual books
+
+**Context.** The first real whole-book promotion attempt (《財富階梯》, a
+monolingual zh trade book) surfaced that `ReadingSourceRegistry._resolve_book`
+hardwired `has_evidence_track = book.has_original`. A monolingual book has no
+separate "original" upload, so it was classified as having **no evidence
+track** → preflight routed it to `defer` / `annotation_only_sync`, and the
+claim-extraction pipeline (incl. the N519 LLM `ClaimExtractor`) never ran.
+
+**Decision.** A **monolingual original-language** book (`Book.mode ==
+"monolingual-zh"`) carries an evidence track: its single EPUB **is** the
+authoritative original text. The registry now sets `has_evidence_track =
+book.has_original or mode == "monolingual-zh"` and emits a `role="original"`
+variant for the monolingual case (satisfying the #509 invariant
+"has_evidence_track=True ⇒ exactly one role='original'").
+
+**Boundary preserved.** A *bilingual* book whose EN original was never uploaded
+(`mode == "bilingual-en-zh"`, `has_original=False`) still has **no** evidence
+track: its display copy is a *translation*, and factual claims must come from
+the original, not a translation. Only the monolingual original-language case is
+reclassified. This keeps the "Rejected: store full-text mirrors" stance intact —
+the monolingual path still produces a claim-dense map (≤30% excerpt budget),
+not a verbatim mirror.

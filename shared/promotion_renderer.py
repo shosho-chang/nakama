@@ -184,7 +184,7 @@ def render_source_page(item: SourcePageReviewItem, manifest: PromotionManifest) 
     fm_block = _render_frontmatter(fm, _SOURCE_PAGE_FRONTMATTER_KEYS)
 
     sections: list[str] = []
-    sections.append(f"# {item.chapter_ref or item.item_id}\n")
+    sections.append(f"# {item.chapter_title or item.chapter_ref or item.item_id}\n")
     sections.append(f"## Reason\n\n{item.reason.strip()}\n")
 
     if _is_youtube_source(manifest):
