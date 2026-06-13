@@ -66,6 +66,21 @@ MODEL_REGISTRY: tuple[ModelSite, ...] = (
 _REGISTRY_BY_KEY: dict[tuple[str, str], ModelSite] = {(s.agent, s.task): s for s in MODEL_REGISTRY}
 
 
+# N531 — Bridge /bridge/models 下拉的候選 model 清單。新增可選 model 在此加一行；
+# provider 由前綴自動推（見 _PROVIDER_PREFIXES）。只列已 wire 的 provider（見 shared/llm.py）。
+KNOWN_MODELS: tuple[str, ...] = (
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-5-20250929",
+    "claude-sonnet-4-20250514",
+    "claude-haiku-4-5",
+    "claude-haiku-4-5-20251001",
+    "gemini-2.5-pro",
+    "grok-4-fast",
+)
+
+
 def registry_default(agent: str | None, task: str) -> str | None:
     """登記表中 (agent, task) 的預設 model；無登記 → None。"""
     if not agent:

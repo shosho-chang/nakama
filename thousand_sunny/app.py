@@ -28,6 +28,7 @@ from thousand_sunny.routers import (  # noqa: E402
     auth,
     bridge,
     bridge_digests,
+    bridge_models,
     bridge_project_thumbnails,
     bridge_projects,
     bridge_weekly,
@@ -88,6 +89,7 @@ app.include_router(auth.router)
 app.include_router(bridge.router)
 app.include_router(bridge.page_router)
 app.include_router(bridge_digests.page_router)
+app.include_router(bridge_models.router)
 app.include_router(bridge_projects.page_router)
 app.include_router(bridge_project_thumbnails.page_router)
 app.include_router(bridge_weekly.page_router)
