@@ -2,9 +2,11 @@
 
 Resolution 優先序（高到低）：
 1. Caller 顯式傳 `model=...`（router 不介入）
-2. Env var `MODEL_<AGENT>_<TASK>`（例如 `MODEL_BROOK_TOOL_USE`）
-3. Env var `MODEL_<AGENT>`（例如 `MODEL_BROOK`）
-4. `DEFAULT_MODELS[task]`
+2. Override store（N531：Bridge /bridge/models 即時改，刻意優先於 env）
+3. Env var `MODEL_<AGENT>_<TASK>`（例如 `MODEL_BROOK_TOOL_USE`）
+4. Env var `MODEL_<AGENT>`（例如 `MODEL_BROOK`）
+5. `MODEL_REGISTRY` 宣告的 (agent, task) 預設
+6. `DEFAULT_MODELS[task]`
 
 這是 production routing 層。Bench / eval 腳本請改走 LiteLLM（設計決策見
 `memory/claude/project_multi_model_architecture.md`）。
@@ -14,7 +16,10 @@ Provider coverage（2026-04 步驟 2）：Anthropic + xAI。後續步驟擴 Goog
 
 from __future__ import annotations
 
+import json
 import os
+from dataclasses import dataclass
+from pathlib import Path
 
 from shared.log import get_logger
 
@@ -31,6 +36,106 @@ DEFAULT_MODELS: dict[str, str] = {
     "thumbnail_brainstorm": "claude-sonnet-4-6",
     "thumbnail_funnel": "claude-sonnet-4-6",
 }
+
+
+# N531 — Model registry: 集中宣告所有「具名」(agent, task) call site，給 Bridge
+# /bridge/models 面板列舉與顯示用途。``default`` 必須等於該 call site 重接前的
+# 既有 model（行為保留：Slice 2 把硬寫點改成 get_model(agent, task) 時不變行為）。
+@dataclass(frozen=True)
+class ModelSite:
+    agent: str
+    task: str
+    default: str
+    purpose: str  # 人讀用途（UI 顯示）
+
+
+MODEL_REGISTRY: tuple[ModelSite, ...] = (
+    ModelSite("robin", "ingest_summary", "claude-sonnet-4-20250514", "Ingest：Source 摘要"),
+    ModelSite("robin", "concept_merge", "claude-opus-4-7", "Ingest：Concept diff-merge"),
+    ModelSite("robin", "annotation_merge", "claude-opus-4-7", "註解 merge 進 Concept"),
+    ModelSite("robin", "daily_review", "claude-sonnet-4-5-20250929", "每日回顧 P-1/P-2/清掃"),
+    ModelSite("robin", "kb_search", "claude-haiku-4-5-20251001", "KB 檢索 relevance reason"),
+    ModelSite("nami", "default", "claude-sonnet-4-20250514", "Nami 對話 / 秘書任務"),
+    ModelSite("zoro", "default", "claude-sonnet-4-20250514", "Scout 趨勢 / 關鍵字"),
+    ModelSite("brook", "default", "claude-sonnet-4-20250514", "Composer 撰稿輔助"),
+    ModelSite("sanji", "default", "claude-sonnet-4-20250514", "社群監控"),
+)
+
+_REGISTRY_BY_KEY: dict[tuple[str, str], ModelSite] = {(s.agent, s.task): s for s in MODEL_REGISTRY}
+
+
+def registry_default(agent: str | None, task: str) -> str | None:
+    """登記表中 (agent, task) 的預設 model；無登記 → None。"""
+    if not agent:
+        return None
+    site = _REGISTRY_BY_KEY.get((agent.lower(), task))
+    return site.default if site else None
+
+
+# ── Override store（N531：可由 Bridge 即時改、router 每次 call 重讀）─────────────
+# JSON 落點 anchor 到 package（同 book_storage 慣例），與其他 data/ 檔同處。
+# 結構：{"<agent>": {"<task>": "<model-id>", ...}, ...}
+_OVERRIDES_RELPATH = Path(__file__).resolve().parent.parent / "data" / "model_overrides.json"
+_overrides_cache: dict[str, dict[str, str]] = {}
+_overrides_mtime: float = -1.0
+
+
+def _overrides_path() -> Path:
+    env = os.environ.get("NAKAMA_MODEL_OVERRIDES")
+    return Path(env) if env else _OVERRIDES_RELPATH
+
+
+def _load_overrides() -> dict[str, dict[str, str]]:
+    """讀 override store，用 mtime cache 達成「改檔即生效、又不每次 IO」。"""
+    global _overrides_cache, _overrides_mtime
+    path = _overrides_path()
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        _overrides_cache, _overrides_mtime = {}, -1.0
+        return {}
+    if mtime != _overrides_mtime:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            _overrides_cache = {
+                str(a): {str(t): str(m) for t, m in tasks.items()}
+                for a, tasks in data.items()
+                if isinstance(tasks, dict)
+            }
+        except (OSError, json.JSONDecodeError, AttributeError):
+            _overrides_cache = {}
+        _overrides_mtime = mtime
+    return _overrides_cache
+
+
+def get_override(agent: str | None, task: str) -> str | None:
+    """override store 中 (agent, task) 的 model；無 → None。"""
+    if not agent:
+        return None
+    return _load_overrides().get(agent.lower(), {}).get(task)
+
+
+def set_override(agent: str, task: str, model: str) -> None:
+    """寫入 (agent, task) → model 的 override（Bridge 面板用），即時生效。"""
+    path = _overrides_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    data.setdefault(agent.lower(), {})[task] = model
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def clear_override(agent: str, task: str) -> None:
+    """移除一個 override（回退到 env / registry / DEFAULT_MODELS）。"""
+    path = _overrides_path()
+    if not path.exists():
+        return
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if agent.lower() in data:
+        data[agent.lower()].pop(task, None)
+        if not data[agent.lower()]:
+            data.pop(agent.lower())
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
 
 # ADR-026: auth policy 解析。ternary 值 — "api" / "subscription_preferred" /
 # "subscription_required"。預設 subscription_preferred（修修長期 Max Plan
@@ -78,14 +183,25 @@ def get_model(agent: str | None = None, task: str = "default") -> str:
         Model ID 字串（例如 "claude-sonnet-4-6"、"grok-4-fast-non-reasoning"）。
     """
     if agent:
+        # 1) Override store（Bridge /bridge/models，即時生效，刻意優先於 env，
+        #    讓 UI 成為 live 控制面而非被靜態 env 蓋過）
+        override = get_override(agent, task)
+        if override:
+            return override
         agent_upper = agent.upper()
         task_upper = task.upper()
+        # 2) env MODEL_<AGENT>_<TASK>
         specific = os.environ.get(f"MODEL_{agent_upper}_{task_upper}")
         if specific:
             return specific
+        # 3) env MODEL_<AGENT>
         agent_default = os.environ.get(f"MODEL_{agent_upper}")
         if agent_default:
             return agent_default
+        # 4) registry 宣告的 (agent, task) 預設
+        reg = registry_default(agent, task)
+        if reg:
+            return reg
     else:
         # 沒有 agent context — 可能是 caller 沒呼叫 set_current_agent。
         # debug 層級不影響正常輸出，但 `LOG_LEVEL=DEBUG` 時能看到。
@@ -93,6 +209,7 @@ def get_model(agent: str | None = None, task: str = "default") -> str:
             "get_model called without agent context; falling back to DEFAULT_MODELS[%s]",
             task,
         )
+    # 5) task 級全域預設
     return DEFAULT_MODELS.get(task, DEFAULT_MODELS["default"])
 
 
@@ -159,3 +276,65 @@ def get_provider(model: str) -> str:
         f"Unknown model provider for '{model}'. "
         f"Known prefixes: {[p for p, _ in _PROVIDER_PREFIXES]}"
     )
+
+
+def _safe_provider(model: str) -> str:
+    """get_provider 的不丟版（UI 列舉時未知 prefix 標 unknown 而非 500）。"""
+    try:
+        return get_provider(model)
+    except ValueError:
+        return "unknown"
+
+
+def list_model_sites() -> list[dict]:
+    """N531 — 列舉所有登記的 (agent, task) call site + 目前解析到的 model，給 Bridge 面板。
+
+    每筆：agent / task / purpose / model（解析後）/ provider / source / default。
+    ``source`` ∈ {override, env, registry, default}，讓 UI 標示這格目前由誰決定。
+    也納入 override store 內但不在 registry 的 (agent, task)（手動加的格子）。
+    """
+
+    def _source(agent: str, task: str) -> str:
+        if get_override(agent, task):
+            return "override"
+        au, tu = agent.upper(), task.upper()
+        if os.environ.get(f"MODEL_{au}_{tu}") or os.environ.get(f"MODEL_{au}"):
+            return "env"
+        if registry_default(agent, task):
+            return "registry"
+        return "default"
+
+    seen: set[tuple[str, str]] = set()
+    rows: list[dict] = []
+    for site in MODEL_REGISTRY:
+        model = get_model(agent=site.agent, task=site.task)
+        rows.append(
+            {
+                "agent": site.agent,
+                "task": site.task,
+                "purpose": site.purpose,
+                "model": model,
+                "provider": _safe_provider(model),
+                "source": _source(site.agent, site.task),
+                "default": site.default,
+            }
+        )
+        seen.add((site.agent, site.task))
+
+    for agent, tasks in _load_overrides().items():
+        for task in tasks:
+            if (agent, task) in seen:
+                continue
+            model = get_model(agent=agent, task=task)
+            rows.append(
+                {
+                    "agent": agent,
+                    "task": task,
+                    "purpose": "(手動 override)",
+                    "model": model,
+                    "provider": _safe_provider(model),
+                    "source": "override",
+                    "default": "",
+                }
+            )
+    return rows
