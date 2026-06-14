@@ -63,15 +63,18 @@ body.sho .lit-prose h3 {
   letter-spacing: 0.03em;
   margin: 28px 0 10px;
 }
+/* 原文（劃線）= 引用卡：左橘框 + 淡底，視覺上是「書裡的話」 */
 body.sho .lit-prose blockquote {
-  margin: 12px 0;
-  padding: 4px 0 4px 16px;
+  margin: 14px 0 6px;
+  padding: 10px 14px;
   border-left: 3px solid var(--sho-accent-line);
+  background: var(--sho-bg-2);
+  border-radius: 0 var(--sho-r-1) var(--sho-r-1) 0;
   color: var(--sho-text);
 }
 body.sho .lit-prose blockquote p { margin: 0; }
-/* 使用者的 note::（render 成 <strong>note::</strong> …）— 縮排、次要色，跟劃線區隔 */
-body.sho .lit-prose p { margin: 8px 0; color: var(--sho-text-2); }
+/* 我的筆記 = 一般段落（💭 **我的筆記：** …）：次要色 + accent 標籤，跟原文清楚分開 */
+body.sho .lit-prose p { margin: 6px 0 16px; color: var(--sho-text-2); }
 body.sho .lit-prose p strong:first-child { color: var(--sho-accent); }
 body.sho .lit-prose a {
   color: var(--sho-accent);
