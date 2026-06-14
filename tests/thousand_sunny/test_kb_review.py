@@ -527,3 +527,68 @@ def test_moc_members_empty_path_422(client):
     tc, _kb, _v = client
     r = tc.get("/kb/api/moc/members", params={"moc_path": "  "})
     assert r.status_code == 422
+
+
+# ── _compute_bundle 與 dashboard 卡片同源（讀持久化快照、不每次重跑 LLM）─────────
+
+
+def _today_bundle(cands):
+    from agents.robin.daily_review import _now
+
+    return DailyReviewBundle(
+        generated_at="2026-01-01T05:00:00Z",
+        review_date=_now().date().isoformat(),
+        weekly_sweep=False,
+        candidates=cands,
+        fleeting=[],
+        sweep=[],
+        warnings=[],
+    )
+
+
+def test_compute_bundle_reads_persisted_snapshot_no_recompute(vault, monkeypatch):
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import save_review_bundle
+
+    save_review_bundle(
+        vault,
+        _today_bundle([CandidateCard(candidate_id="c1", suggested_title="持久化卡", why="x")]),
+    )
+
+    def _boom(**kw):
+        raise AssertionError("不該重算——應讀持久化快照")
+
+    monkeypatch.setattr("agents.robin.daily_review.run_daily_review", _boom)
+    out = kb._compute_bundle()
+    assert [c.candidate_id for c in out.candidates] == ["c1"]
+
+
+def test_compute_bundle_filters_skipped_and_deferred(vault):
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import save_review_bundle, save_review_state
+
+    save_review_bundle(
+        vault,
+        _today_bundle(
+            [
+                CandidateCard(candidate_id="keep", suggested_title="留", why="x"),
+                CandidateCard(candidate_id="skip", suggested_title="略過", why="x"),
+                CandidateCard(candidate_id="later", suggested_title="之後", why="x"),
+            ]
+        ),
+    )
+    save_review_state(vault, {"skipped": ["skip"], "deferred": {"later": "2026-06-13"}})
+    out = kb._compute_bundle()
+    assert [c.candidate_id for c in out.candidates] == ["keep"]
+
+
+def test_compute_bundle_recomputes_and_persists_when_no_snapshot(vault, monkeypatch):
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import load_review_bundle
+
+    fresh = _today_bundle([CandidateCard(candidate_id="new", suggested_title="重算", why="x")])
+    monkeypatch.setattr("agents.robin.daily_review.run_daily_review", lambda **kw: fresh)
+    assert load_review_bundle(vault) is None
+    out = kb._compute_bundle()
+    assert [c.candidate_id for c in out.candidates] == ["new"]
+    assert load_review_bundle(vault) is not None  # 已持久化 → 卡片從此一致
