@@ -60,15 +60,15 @@ def test_view_path_traversal_slug_is_contained(client):
     assert "type: literature" not in resp.text  # 沒讀到 vault 外的東西
 
 
-def test_prep_strips_anchors_and_separates_note():
+def test_prep_strips_anchors_and_relabels_note():
     import thousand_sunny.routers.robin as robin
 
-    md = "> 原文quote ^cfi-6-26-182\n**note::** 我的筆記內容\n"
+    # 分塊由 literature_writer 處理（note 已是獨立段落）；viewer 只去錨點 + 換標籤
+    md = "> 原文quote ^cfi-6-26-182\n\n**note::** 我的筆記內容\n"
     out = robin._prep_literature_for_web(md)
     assert "^cfi-6-26-182" not in out  # 機器錨點拿掉
     assert "note::" not in out  # 改人話標籤
     assert "💭 **我的筆記：** 我的筆記內容" in out
-    assert "\n\n💭" in out  # 空行分隔（原文/筆記分塊，不再摺進 blockquote）
 
 
 def test_prep_strips_paragraph_and_time_anchors():
