@@ -261,8 +261,8 @@ def _render_book_zone(ann_set: AnnotationSetV3, slug: str) -> str:
         chapters.setdefault(ch, [])
 
     # 把 spine-N 分組鍵換成真章節標題（從 EPUB TOC）；查無 → 維持 spine-N。
-    # 書的 slug == book_id（annotation set 的 book_id 欄位可能為 None，故用 slug）。
-    chapter_titles = _book_chapter_titles(slug)
+    # book_id 優先（精確的 EPUB 落點鍵）；為 None 時退回 slug（書的 slug == book_id）。
+    chapter_titles = _book_chapter_titles(getattr(ann_set, "book_id", None) or slug)
 
     sections: list[str] = []
     for ch_idx, ch in enumerate(chapters, start=1):
