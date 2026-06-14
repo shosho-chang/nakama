@@ -86,10 +86,48 @@ _SHOSHO_ASSET_VERSION = _shosho_asset_version()
 
 
 def _compute_bundle(*, weekly: bool = False) -> DailyReviewBundle:
-    """產生今天的 :class:`DailyReviewBundle`（即時 compute，不發 Nami 通知）。"""
-    from agents.robin.daily_review import run_daily_review
+    """今天的 bundle，與 weekly dashboard 卡片**同源**。
 
-    return run_daily_review(weekly=weekly, notify=False)
+    優先讀 5am job 持久化的快照（卡片讀的同一份）；無快照 / 隔日才重算並持久化——
+    P-1/P-2 是 LLM call，不該每次開頁重跑、也避免「卡片說 3 張、頁面卻空白」的不一致。
+    週清掃即時算、不覆寫每日快照。最後一律套用「當下」skip/later 過濾。
+    """
+    from agents.robin.daily_review import (
+        _now,
+        load_review_bundle,
+        run_daily_review,
+        save_review_bundle,
+    )
+
+    vault = get_vault_path()
+    if weekly:
+        return _filter_actioned(run_daily_review(weekly=True, notify=False), vault)
+
+    today = _now().date().isoformat()
+    bundle = load_review_bundle(vault)
+    if bundle is None or bundle.review_date != today:
+        # 無快照 / 隔日 → 重算並持久化（卡片與後續開頁從此一致、不重跑 LLM）
+        bundle = run_daily_review(notify=False)
+        save_review_bundle(vault, bundle)
+    return _filter_actioned(bundle, vault)
+
+
+def _filter_actioned(bundle: DailyReviewBundle, vault: Path) -> DailyReviewBundle:
+    """濾掉已 skip / later 的候選（對齊 daily_review 的過濾鍵 ``candidate_id``）。
+
+    快照是時間點凍結的；使用者在快照之後 skip/later 的，顯示時要即時濾掉。
+    """
+    from agents.robin.daily_review import load_review_state
+
+    state = load_review_state(vault)
+    skipped = set(state.get("skipped") or [])
+    deferred = set((state.get("deferred") or {}).keys())
+    bundle.candidates = [
+        c
+        for c in bundle.candidates
+        if c.candidate_id not in skipped and c.candidate_id not in deferred
+    ]
+    return bundle
 
 
 # ---------------------------------------------------------------------------
