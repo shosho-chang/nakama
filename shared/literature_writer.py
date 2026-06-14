@@ -129,6 +129,37 @@ def _chapter_of(cfi: str | None) -> str:
     return "unknown"
 
 
+def _book_chapter_titles(book_id: str) -> dict[str, str]:
+    """``{spine-N: 真章節標題}``（key 與 :func:`_chapter_of` 輸出一致），由 EPUB TOC 解析。
+
+    CFI ``/6/N`` 對到第 ``N//2`` 個 spine item（1-based）；該 item 的 href stem 去
+    TOC 查標題（reuse #833 的 helper）。任何失敗（查無此書 / EPUB 壞 / 無 TOC）→ 回
+    ``{}``，呼叫端 fallback 回 spine-N，render 永不中斷。
+    """
+    if not book_id:
+        return {}
+    try:
+        from pathlib import PurePosixPath  # noqa: PLC0415
+
+        from shared import book_storage  # noqa: PLC0415
+        from shared.epub_metadata import extract_metadata  # noqa: PLC0415
+        from shared.source_map_builder import (  # noqa: PLC0415
+            _build_toc_title_map,
+            _extract_epub_spine_items,
+        )
+
+        blob = book_storage.read_book_blob(book_id, lang="bilingual")
+        toc = _build_toc_title_map(extract_metadata(blob).toc)
+        spine = _extract_epub_spine_items(blob)
+        return {
+            f"spine-{i * 2}": toc[PurePosixPath(href).name]
+            for i, (href, _xhtml) in enumerate(spine, start=1)
+            if PurePosixPath(href).name in toc
+        }
+    except Exception:  # noqa: BLE001 — EPUB 問題不該中斷 render；fallback spine-N
+        return {}
+
+
 def _seek_seconds(cfi: str | None) -> float | None:
     """從 ``t=<起>-<迄>`` locator 取起始秒 (影片 seek link)。"""
     if not cfi:
@@ -229,6 +260,10 @@ def _render_book_zone(ann_set: AnnotationSetV3, slug: str) -> str:
     for ch in reflections_by_chapter:
         chapters.setdefault(ch, [])
 
+    # 把 spine-N 分組鍵換成真章節標題（從 EPUB TOC）；查無 → 維持 spine-N。
+    # book_id 優先（精確的 EPUB 落點鍵）；為 None 時退回 slug（書的 slug == book_id）。
+    chapter_titles = _book_chapter_titles(getattr(ann_set, "book_id", None) or slug)
+
     sections: list[str] = []
     for ch_idx, ch in enumerate(chapters, start=1):
         blocks: list[str] = []
@@ -254,7 +289,7 @@ def _render_book_zone(ann_set: AnnotationSetV3, slug: str) -> str:
         blocks.append(f"📖 [開回 Reader]({deep})")
 
         body = "\n\n".join(blocks) if blocks else "_（本章無劃線）_"
-        sections.append(f"### {ch}\n\n{body}")
+        sections.append(f"### {chapter_titles.get(ch, ch)}\n\n{body}")
 
     return "\n\n".join(sections) if sections else "_（尚無劃線）_"
 
