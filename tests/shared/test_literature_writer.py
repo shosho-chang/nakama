@@ -180,6 +180,22 @@ def test_book_render_chapter_grouping_and_anchors(vault: Path):
     assert "📖 [開回 Reader](/robin/books/卡片盒筆記#cfi=" in text
 
 
+def test_book_chapter_title_resolved_into_heading(vault: Path, monkeypatch):
+    # 有 EPUB TOC 解出標題時，heading 用真章節名取代 spine/ch key
+    _save(_book_set())
+    monkeypatch.setattr(lw, "_book_chapter_titles", lambda slug: {"ch2": "第二章｜心流"})
+    md = lw.render_literature_markdown(_book_set(), "book", vault)
+    assert "### 第二章｜心流" in md
+
+
+def test_book_chapter_title_fallback_when_no_epub(vault: Path):
+    # 查無此書 EPUB → {} → render fallback 回原 ch/spine key（不中斷、不丟章節）
+    assert lw._book_chapter_titles("no-such-book-xyz") == {}
+    _save(_book_set())
+    md = lw.render_literature_markdown(_book_set(), "book", vault)
+    assert "### ch2" in md
+
+
 def test_book_highlight_text_verbatim(vault: Path):
     _save(_book_set())
     lw.write_literature_note("卡片盒筆記")
