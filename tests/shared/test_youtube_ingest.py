@@ -52,6 +52,33 @@ def test_extract_video_id_rejects(bad):
 
 
 # ---------------------------------------------------------------------------
+# _run_yt_dlp — base invocation contract
+# ---------------------------------------------------------------------------
+
+
+def test_run_yt_dlp_injects_js_runtimes_nodejs(monkeypatch):
+    """yt-dlp ≥2025.x defaults to Deno only; we must inject --js-runtimes nodejs
+    so Node.js (always present in this environment) is used instead."""
+    captured: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        captured.append(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", fake_run)
+    # trigger any code path that calls _run_yt_dlp
+    try:
+        youtube_ingest.fetch_metadata("dQw4w9WgXcQ")
+    except Exception:
+        pass
+    assert captured, "subprocess.run was never called"
+    cmd = captured[0]
+    assert "--js-runtimes" in cmd
+    idx = cmd.index("--js-runtimes")
+    assert cmd[idx + 1] == "nodejs"
+
+
+# ---------------------------------------------------------------------------
 # fetch_metadata
 # ---------------------------------------------------------------------------
 
