@@ -279,7 +279,9 @@ def test_n3_v3_book_keeps_reflections_without_chapter_ref(vault: Path, monkeypat
     body = lit_path.read_text(encoding="utf-8")
     assert "kept reflection" in body
     assert "reflection without chapter — kept under unknown" in body
-    assert "### ch01.xhtml" in body
+    # 章節 heading 用乾淨的「章節 N」，不外露 raw key（book-orphan 無 EPUB → fallback）
+    assert "### ch01.xhtml" not in body
+    assert "### 章節" in body
     assert "## None" not in body
 
 
