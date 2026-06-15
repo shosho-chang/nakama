@@ -157,9 +157,13 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
         cookies_flags = ["--cookies", cookies_path]
 
     cmd = [
-        sys.executable, "-m", "yt_dlp",
-        "--js-runtimes", "node",
-        "--extractor-args", "youtube:player_client=tv_embedded,web_embedded",
+        sys.executable,
+        "-m",
+        "yt_dlp",
+        "--js-runtimes",
+        "node",
+        "--extractor-args",
+        "youtube:player_client=tv_embedded,web_embedded",
         *cookies_flags,
         *args,
     ]
