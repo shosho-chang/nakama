@@ -143,23 +143,44 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
     exists, ``--cookies <path>`` is injected so yt-dlp can authenticate as a
     logged-in user. This bypasses YouTube's "Sign in to confirm you're not a
     bot" block that datacenter IPs routinely hit.
+
+    The cookie file is *copied to a throwaway temp file* before being handed
+    to yt-dlp, because yt-dlp writes the (rotated) cookie jar back to the
+    file it is given on every run. Pointing it at the user's exported file
+    directly degrades that file over repeated calls — session tokens get
+    rotated to values YouTube eventually rejects, manifesting as the
+    "Sign in to confirm you're not a bot" error. The source file the user
+    exported must stay pristine; only the disposable copy is ever mutated.
     """
+    import shutil
     import sys
+    import tempfile
 
     cookies_flags: list[str] = []
+    tmp_cookies: str | None = None
     cookies_path = os.environ.get("YTDLP_COOKIES_PATH", "").strip()
     if cookies_path and Path(cookies_path).is_file():
-        cookies_flags = ["--cookies", cookies_path]
+        fd, tmp_cookies = tempfile.mkstemp(suffix=".txt", prefix="ytcookies-")
+        os.close(fd)
+        shutil.copyfile(cookies_path, tmp_cookies)
+        cookies_flags = ["--cookies", tmp_cookies]
 
     cmd = [sys.executable, "-m", "yt_dlp", "--js-runtimes", "node", *cookies_flags, *args]
-    return subprocess.run(  # noqa: S603  # cmd vector built from constant + caller-controlled args
-        cmd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=timeout,
-        check=False,
-    )
+    try:
+        return subprocess.run(  # noqa: S603  # cmd vector built from constant + caller-controlled args
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout,
+            check=False,
+        )
+    finally:
+        if tmp_cookies:
+            try:
+                os.unlink(tmp_cookies)
+            except OSError:
+                pass
 
 
 def _iso8601_duration_to_seconds(duration: str) -> int:
