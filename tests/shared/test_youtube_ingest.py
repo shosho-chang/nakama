@@ -1,12 +1,19 @@
 """Tests for ``shared.youtube_ingest`` — the yt-dlp wrapper used by ADR-035
-PR1c-i Robin Watchlist ingestion route. ``yt-dlp`` is monkey-patched at the
-``_run_yt_dlp`` subprocess seam so no network is hit.
+PR1c-i Robin Watchlist ingestion route.
+
+Seams:
+- ``_run_yt_dlp`` is monkey-patched at the subprocess seam for caption tests.
+- ``urllib.request.urlopen`` is monkey-patched for metadata (YouTube Data API).
+No network is hit in any test.
 """
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -56,20 +63,16 @@ def test_extract_video_id_rejects(bad):
 # ---------------------------------------------------------------------------
 
 
-def test_run_yt_dlp_injects_js_runtimes_node(monkeypatch):
+def test_run_yt_dlp_injects_js_runtimes_node(monkeypatch, tmp_path):
     """yt-dlp ≥2025.x defaults to Deno only; we must inject --js-runtimes node
     so Node.js (always present in this environment) is used instead.
-    The runtime name is 'node', not 'nodejs' (yt-dlp rejects the latter)."""
+    The runtime name is 'node', not 'nodejs' (yt-dlp rejects the latter).
+    fetch_caption is used to trigger _run_yt_dlp (fetch_metadata now uses
+    the YouTube Data API and no longer calls yt-dlp)."""
     captured: list[list[str]] = []
-
-    def fake_run(cmd, **_kwargs):
-        captured.append(cmd)
-        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="{}", stderr="")
-
-    monkeypatch.setattr(youtube_ingest.subprocess, "run", fake_run)
-    # trigger any code path that calls _run_yt_dlp
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
     try:
-        youtube_ingest.fetch_metadata("dQw4w9WgXcQ")
+        youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
     except Exception:
         pass
     assert captured, "subprocess.run was never called"
@@ -79,8 +82,65 @@ def test_run_yt_dlp_injects_js_runtimes_node(monkeypatch):
     assert cmd[idx + 1] == "node"
 
 
+def _fake_subprocess_run(captured: list[list[str]], returncode: int = 0):
+    """Return a fake subprocess.run that records the cmd and returns a dummy result."""
+
+    def _run(cmd, **_kwargs):
+        captured.append(list(cmd))
+        return subprocess.CompletedProcess(args=cmd, returncode=returncode, stdout="", stderr="")
+
+    return _run
+
+
+def test_run_yt_dlp_injects_cookies_when_env_set(monkeypatch, tmp_path):
+    """When YTDLP_COOKIES_PATH points to an existing file, --cookies <path>
+    is injected into the yt-dlp command so bot-detection is bypassed on
+    caption downloads (fetch_caption still uses _run_yt_dlp)."""
+    cookies_file = tmp_path / "cookies.txt"
+    cookies_file.write_text("# Netscape HTTP Cookie File\n")
+    captured: list[list[str]] = []
+    monkeypatch.setenv("YTDLP_COOKIES_PATH", str(cookies_file))
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
+    try:
+        youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
+    except Exception:
+        pass
+    assert captured
+    cmd = captured[0]
+    assert "--cookies" in cmd
+    idx = cmd.index("--cookies")
+    assert cmd[idx + 1] == str(cookies_file)
+
+
+def test_run_yt_dlp_no_cookies_when_env_unset(monkeypatch, tmp_path):
+    """When YTDLP_COOKIES_PATH is not set, --cookies must NOT appear."""
+    captured: list[list[str]] = []
+    monkeypatch.delenv("YTDLP_COOKIES_PATH", raising=False)
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
+    try:
+        youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
+    except Exception:
+        pass
+    assert captured
+    assert "--cookies" not in captured[0]
+
+
+def test_run_yt_dlp_no_cookies_when_file_missing(monkeypatch, tmp_path):
+    """When YTDLP_COOKIES_PATH is set but the file doesn't exist, --cookies
+    is silently skipped rather than crashing."""
+    captured: list[list[str]] = []
+    monkeypatch.setenv("YTDLP_COOKIES_PATH", "/nonexistent/cookies.txt")
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
+    try:
+        youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
+    except Exception:
+        pass
+    assert captured
+    assert "--cookies" not in captured[0]
+
+
 # ---------------------------------------------------------------------------
-# fetch_metadata
+# fetch_metadata — YouTube Data API v3
 # ---------------------------------------------------------------------------
 
 
@@ -88,37 +148,38 @@ def _make_completed(returncode: int, stdout: str = "", stderr: str = ""):
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-def test_fetch_metadata_parses_yt_dlp_json(monkeypatch):
-    payload = {
-        "id": "dQw4w9WgXcQ",
-        "title": "Test Title",
-        "channel": "Channel X",
-        "duration": 1234,
-        "automatic_captions": {"en": [{}], "zh-Hant": [{}], "fr": [{}]},
-    }
-    monkeypatch.setattr(
-        youtube_ingest,
-        "_run_yt_dlp",
-        lambda args, timeout=90: _make_completed(0, stdout=json.dumps(payload)),
-    )
+def _mock_urlopen(payload: dict):
+    """Return a context-manager fake for urllib.request.urlopen."""
+
+    class _FakeResp:
+        def read(self):
+            return json.dumps(payload).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    return lambda url, timeout=15: _FakeResp()
+
+
+_API_ITEM = {
+    "snippet": {"title": "Test Title", "channelTitle": "Channel X"},
+    "contentDetails": {"duration": "PT20M34S"},
+}
+
+
+def test_fetch_metadata_parses_api_response(monkeypatch):
+    monkeypatch.setenv("YOUTUBE_API_KEY", "fake-key")
+    monkeypatch.setattr(urllib.request, "urlopen", _mock_urlopen({"items": [_API_ITEM]}))
     meta = youtube_ingest.fetch_metadata("https://youtu.be/dQw4w9WgXcQ")
     assert meta.video_id == "dQw4w9WgXcQ"
     assert meta.title == "Test Title"
     assert meta.channel == "Channel X"
-    assert meta.duration_s == 1234
+    assert meta.duration_s == 20 * 60 + 34
     assert meta.url == "https://youtube.com/watch?v=dQw4w9WgXcQ"
-    assert "en" in meta.available_auto_captions
-    assert "zh-Hant" in meta.available_auto_captions
-
-
-def test_fetch_metadata_falls_back_to_uploader(monkeypatch):
-    payload = {"title": "T", "uploader": "U", "duration": 0, "automatic_captions": {}}
-    stdout = json.dumps(payload)
-    monkeypatch.setattr(
-        youtube_ingest, "_run_yt_dlp", lambda *a, **k: _make_completed(0, stdout=stdout)
-    )
-    meta = youtube_ingest.fetch_metadata("https://youtu.be/dQw4w9WgXcQ")
-    assert meta.channel == "U"
+    assert meta.available_auto_captions == []
 
 
 def test_fetch_metadata_invalid_url_raises():
@@ -126,21 +187,42 @@ def test_fetch_metadata_invalid_url_raises():
         youtube_ingest.fetch_metadata("https://example.com")
 
 
-def test_fetch_metadata_subprocess_failure(monkeypatch):
-    monkeypatch.setattr(
-        youtube_ingest, "_run_yt_dlp", lambda *a, **k: _make_completed(1, stderr="ERROR: Private")
-    )
+def test_fetch_metadata_no_api_key_raises(monkeypatch):
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
     with pytest.raises(youtube_ingest.YtDlpError) as exc:
         youtube_ingest.fetch_metadata("https://youtu.be/dQw4w9WgXcQ")
-    assert "Private" in exc.value.stderr
+    assert "YOUTUBE_API_KEY" in str(exc.value)
 
 
-def test_fetch_metadata_non_json_stdout(monkeypatch):
-    monkeypatch.setattr(
-        youtube_ingest, "_run_yt_dlp", lambda *a, **k: _make_completed(0, stdout="not json")
-    )
+def test_fetch_metadata_empty_items_raises(monkeypatch):
+    """Private / deleted video → API returns items=[] → YtDlpError."""
+    monkeypatch.setenv("YOUTUBE_API_KEY", "fake-key")
+    monkeypatch.setattr(urllib.request, "urlopen", _mock_urlopen({"items": []}))
     with pytest.raises(youtube_ingest.YtDlpError):
         youtube_ingest.fetch_metadata("https://youtu.be/dQw4w9WgXcQ")
+
+
+def test_fetch_metadata_http_error_raises(monkeypatch):
+    """API returning HTTP 403 (bad key / quota) → YtDlpError with status."""
+    monkeypatch.setenv("YOUTUBE_API_KEY", "bad-key")
+
+    def _raise(url, timeout=15):
+        raise urllib.error.HTTPError(url, 403, "Forbidden", {}, io.BytesIO(b"quota exceeded"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", _raise)
+    with pytest.raises(youtube_ingest.YtDlpError) as exc:
+        youtube_ingest.fetch_metadata("https://youtu.be/dQw4w9WgXcQ")
+    assert "403" in str(exc.value)
+
+
+def test_iso8601_duration_to_seconds():
+    f = youtube_ingest._iso8601_duration_to_seconds
+    assert f("PT3M33S") == 213
+    assert f("PT1H2M3S") == 3723
+    assert f("P1DT0H0M0S") == 86400
+    assert f("PT0S") == 0
+    assert f("") == 0
+    assert f("garbage") == 0
 
 
 # ---------------------------------------------------------------------------
