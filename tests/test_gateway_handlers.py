@@ -626,6 +626,7 @@ def test_create_calendar_event_happy_path():
                         "title": "跟 Angie 開會",
                         "start": "2026-04-25T15:00:00",
                         "end": "2026-04-25T16:00:00",
+                        "category": "work",
                     },
                     id_="toolu_cce1",
                 )
@@ -664,6 +665,7 @@ def test_create_calendar_event_happy_path():
     assert "calendar_event_id" not in task_fm  # lives on the plan entry now
     assert task_fm["title"] == "跟 Angie 開會"
     assert task_fm["status"] == "to-do"
+    assert task_fm["category"] == "work"  # LLM-judged category flows to the linked task
     entry = task_fm["plan"][0]
     assert entry["calendar_event_id"] == "evt42"
     assert entry["date"] == "2026-04-25"
@@ -760,6 +762,48 @@ def test_create_calendar_event_force_skips_conflict_check():
         NamiHandler().handle("general", "強制排", "U1")
 
     assert mock_create.call_args.kwargs["check_conflict"] is False
+
+
+def test_create_calendar_event_non_work_category_flows_to_task():
+    """LLM 判斷的非 work 分類（如 growth）要寫進 calendar-linked task 的 frontmatter。
+    回歸測試：先前 _write_calendar_linked_task 硬寫不含 category，導致排程任務一律無分類。"""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [
+                _tool_use_block(
+                    "create_calendar_event",
+                    {
+                        "title": "讀《原子習慣》",
+                        "start": "2026-04-26T20:00:00",
+                        "end": "2026-04-26T21:00:00",
+                        "category": "growth",
+                    },
+                    id_="toolu_cce_growth",
+                )
+            ],
+        ),
+        _fake_response("end_turn", [_text_block("done")]),
+    ]
+
+    fake_created = _fake_cal_event(id_="evtRead", title="讀《原子習慣》")
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch(
+            "gateway.handlers.nami.google_calendar.create_event",
+            return_value=fake_created,
+        ),
+        patch("gateway.handlers.nami.list_files", return_value=[]),
+        patch("gateway.handlers.nami.write_page") as mock_write,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("general", "明晚八點讀原子習慣", "U1")
+
+    mock_write.assert_called_once()
+    task_fm = mock_write.call_args.args[1]
+    assert task_fm["category"] == "growth"
 
 
 def test_create_calendar_event_also_create_task_false_skips_task():

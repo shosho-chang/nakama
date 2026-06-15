@@ -695,13 +695,13 @@ async def weekly_task_delete(
         from shared import google_calendar
 
         for entry in task.plan:
-            if entry.is_linked and entry.calendar_event_id:
+            if entry.is_linked:
                 try:
-                    google_calendar.delete_event(entry.calendar_event_id)
+                    google_calendar.delete_event(entry.event_id)
                 except Exception:  # noqa: BLE001 — vault delete proceeds regardless
                     logger.warning(
                         "weekly_task_delete: cal event %s not removed for task %s",
-                        entry.calendar_event_id,
+                        entry.event_id,
                         slug,
                     )
 
