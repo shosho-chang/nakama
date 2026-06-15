@@ -539,6 +539,9 @@ async def read_source(
 
 # Literature note 的 web 顯示精修（只動呈現，不改 vault 檔——^cfi 在 Obsidian 仍是有效 block-ref）。
 _LIT_ANCHOR_RE = re.compile(r" \^(?:cfi-|p-|t=)[\w\-=,/.:]*")
+# 裸 URL → markdown 連結（筆記裡貼的連結變可點）。前面不可緊接 ( 或 ]（避免重包既有
+# markdown 連結）；URL 收尾排除空白與 CJK 標點（不把後面的「。」「，」吃進去）。
+_LIT_URL_RE = re.compile(r"(?<![(\]])(https?://[^\s<>「」（）。，、)\]]+)")
 
 
 def _prep_literature_for_web(body: str) -> str:
@@ -547,6 +550,8 @@ def _prep_literature_for_web(body: str) -> str:
     body = _LIT_ANCHOR_RE.sub("", body)
     # 2) note 標籤人話化（分塊已由 literature_writer 處理：note 是獨立段落 + <br> 接多段）
     body = body.replace("**note::** ", "💭 **我的筆記：** ")
+    # 3) 裸 URL 變可點連結（render_markdown linkify 關閉，故在此先轉成 [url](url)）
+    body = _LIT_URL_RE.sub(r"[\1](\1)", body)
     return body
 
 

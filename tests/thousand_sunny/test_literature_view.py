@@ -83,3 +83,25 @@ def test_view_existing_note_hides_anchors_in_html(client, tmp_path):
     resp = client.get("/robin/literature/卡片盒筆記")
     assert resp.status_code == 200
     assert "^cfi-" not in resp.text
+
+
+def test_prep_linkifies_bare_url():
+    import thousand_sunny.routers.robin as robin
+
+    out = robin._prep_literature_for_web("看這個 https://youtu.be/abc?si=x&t=20 很重要。")
+    assert "[https://youtu.be/abc?si=x&t=20](https://youtu.be/abc?si=x&t=20)" in out
+
+
+def test_prep_url_does_not_eat_trailing_cjk_punct():
+    import thousand_sunny.routers.robin as robin
+
+    out = robin._prep_literature_for_web("連結 https://a.com/x，然後")
+    assert "[https://a.com/x](https://a.com/x)" in out
+    assert "，然後" in out
+
+
+def test_prep_does_not_double_link_existing_markdown_link():
+    import thousand_sunny.routers.robin as robin
+
+    out = robin._prep_literature_for_web("[連結](https://example.com)")
+    assert out == "[連結](https://example.com)"  # 既有 markdown link 不重包
