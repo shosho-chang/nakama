@@ -679,15 +679,32 @@ async def weekly_task_delete(
     from_project: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
-    """Delete a task by sending its vault file to the recycle bin. Shared by the
-    dashboard task rows and the Project Brief tab (``from_project`` redirects back
-    to the project page rather than the weekly dashboard)."""
+    """Delete a task: cancel linked Google Calendar events best-effort, then send
+    the vault file to the recycle bin. Shared by the dashboard task rows and the
+    Project Brief tab (``from_project`` redirects back to the project page)."""
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     _FROM_PROJECT.set(from_project.strip())
     wk_key = _safe_week_key(week)
     vault = get_vault_path()
     slug = unicodedata.normalize("NFC", slug)
+
+    # Cancel any linked Google Calendar events before the file disappears.
+    task = WeeklyIndexer(vault).find_task(slug)
+    if task is not None:
+        from shared import google_calendar
+
+        for entry in task.plan:
+            if entry.is_linked and entry.calendar_event_id:
+                try:
+                    google_calendar.delete_event(entry.calendar_event_id)
+                except Exception:  # noqa: BLE001 — vault delete proceeds regardless
+                    logger.warning(
+                        "weekly_task_delete: cal event %s not removed for task %s",
+                        entry.calendar_event_id,
+                        slug,
+                    )
+
     task_path = vault / TASKS_DIR / f"{slug}.md"
     if task_path.exists():
         from shared.discard_service import _send_to_recycle_bin
