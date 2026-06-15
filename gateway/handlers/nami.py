@@ -267,7 +267,8 @@ NAMI_TOOLS: list[dict] = [
                         " health = 運動、睡眠、飲食、醫療；"
                         " growth = 閱讀、學習、課程、技能培養、個人成長；"
                         " misc = 雜務、行政、家事、不屬於以上三類的事項。"
-                        " 使用者沒說就自行判斷，不要問。純事件（also_create_task=false）也照填即可。"
+                        " 使用者沒說就自行判斷，不要問。"
+                        "純事件（also_create_task=false）也照填即可。"
                     ),
                 },
             },
