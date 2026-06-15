@@ -438,8 +438,9 @@
       if (!e.target.closest) return;
       // .wk-box-form = the done-toggle checkbox (in the row summary AND the daily card),
       // which lives outside .wk-plan-edit — without it, checking a task jumped the view (修修).
+      // .wk-del-form = the delete button — also outside .wk-plan-edit, needs the same treatment.
       if (!e.target.closest('.wk-plan-edit') && !e.target.closest('.wk-rename-form')
-          && !e.target.closest('.wk-box-form')) return;
+          && !e.target.closest('.wk-box-form') && !e.target.closest('.wk-del-form')) return;
       try {
         sessionStorage.setItem('wk-tab', activeTab() || '');
         sessionStorage.setItem('wk-open', JSON.stringify(openSlugs()));
