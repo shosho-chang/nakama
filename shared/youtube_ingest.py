@@ -196,7 +196,9 @@ def fetch_metadata(url: str) -> YouTubeMetadata:
             stderr="Add YOUTUBE_API_KEY to .env — free key from console.cloud.google.com",
         )
 
-    params = urllib.parse.urlencode({"id": video_id, "part": "snippet,contentDetails", "key": api_key})
+    params = urllib.parse.urlencode(
+        {"id": video_id, "part": "snippet,contentDetails", "key": api_key}
+    )
     api_url = f"https://www.googleapis.com/youtube/v3/videos?{params}"
 
     try:
