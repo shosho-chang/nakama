@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+import html
 import json
 import os
 import platform
@@ -671,7 +672,13 @@ def _parse_webvtt(text: str) -> list[dict]:
         if cur_start is not None and cur_lines:
             last_clean = ""
             for line in reversed(cur_lines):
-                stripped = _VTT_TAG_RE.sub("", line).strip()
+                # Strip the word-level ``<HH:MM:SS.ms><c>`` timing tags first
+                # (they use literal angle brackets), then un-escape WebVTT HTML
+                # entities. WebVTT stores ``>`` ``<`` ``&`` as ``&gt;`` ``&lt;``
+                # ``&amp;`` in cue bodies — notably the ``&gt;&gt;`` speaker-change
+                # marker. Without this the literal ``&gt;&gt;`` survives into
+                # ``cue.text`` and Jinja double-escapes it to a visible ``&gt;&gt;``.
+                stripped = html.unescape(_VTT_TAG_RE.sub("", line)).strip()
                 if stripped:
                     last_clean = stripped
                     break
