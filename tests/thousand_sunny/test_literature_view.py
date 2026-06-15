@@ -107,6 +107,17 @@ def test_prep_does_not_double_link_existing_markdown_link():
     assert out == "[連結](https://example.com)"  # 既有 markdown link 不重包
 
 
+def test_prep_url_keeps_balanced_parens_in_path():
+    import thousand_sunny.routers.robin as robin
+
+    out = robin._prep_literature_for_web(
+        "看 https://en.wikipedia.org/wiki/Test_(disambiguation) 完"
+    )
+    # 路徑內成對括號保留（不在第一個 ) 截斷）
+    u = "https://en.wikipedia.org/wiki/Test_(disambiguation)"
+    assert f"[{u}]({u})" in out
+
+
 def test_prep_hides_machine_kb_and_ledger_sections():
     import thousand_sunny.routers.robin as robin
 

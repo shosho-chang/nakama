@@ -540,11 +540,20 @@ async def read_source(
 # Literature note 的 web 顯示精修（只動呈現，不改 vault 檔——^cfi 在 Obsidian 仍是有效 block-ref）。
 _LIT_ANCHOR_RE = re.compile(r" \^(?:cfi-|p-|t=)[\w\-=,/.:]*")
 # 裸 URL → markdown 連結（筆記裡貼的連結變可點）。前面不可緊接 ( 或 ]（避免重包既有
-# markdown 連結）；URL 收尾排除空白與 CJK 標點（不把後面的「。」「，」吃進去）。
-_LIT_URL_RE = re.compile(r"(?<![(\]])(https?://[^\s<>「」（）。，、)\]]+)")
+# markdown 連結）；URL 收尾排除空白與 CJK 標點。路徑內的成對括號保留（Wikipedia/arXiv），
+# 結尾不成對的 ) 由 _linkify_url 修剪掉。
+_LIT_URL_RE = re.compile(r"(?<![(\]])(https?://[^\s<>「」（）。，、\]]+)")
 # 「🔗 KB 相關」(FTS5 pilot) 與其後的 RENDER_END + 記帳 ledger 都是機器用的——
-# web 給人看的頁面整段隱藏（vault 檔保留，不影響機器/Obsidian）。
-_LIT_MACHINE_TAIL_RE = re.compile(r"\n#+\s*🔗 KB 相關[\s\S]*$")
+# web 給人看的頁面整段隱藏（vault 檔保留，不影響機器/Obsidian）。^ 也涵蓋它在開頭的邊界。
+_LIT_MACHINE_TAIL_RE = re.compile(r"(?:^|\n)#+\s*🔗 KB 相關[\s\S]*$")
+
+
+def _linkify_url(m: re.Match) -> str:
+    url = m.group(1)
+    # 修剪結尾不成對的 )（URL 路徑內成對的 () 保留，如維基的 _(disambiguation)）
+    while url.endswith(")") and url.count(")") > url.count("("):
+        url = url[:-1]
+    return f"[{url}]({url})"
 
 
 def _prep_literature_for_web(body: str) -> str:
@@ -556,7 +565,7 @@ def _prep_literature_for_web(body: str) -> str:
     # 3) note 標籤人話化（分塊已由 literature_writer 處理：note 是獨立段落 + <br> 接多段）
     body = body.replace("**note::** ", "💭 **我的筆記：** ")
     # 4) 裸 URL 變可點連結（render_markdown linkify 關閉，故在此先轉成 [url](url)）
-    body = _LIT_URL_RE.sub(r"[\1](\1)", body)
+    body = _LIT_URL_RE.sub(_linkify_url, body)
     return body
 
 
