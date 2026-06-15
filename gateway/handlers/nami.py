@@ -258,8 +258,21 @@ NAMI_TOOLS: list[dict] = [
                         "是否同時建立對應 Task（預設 true）。純事件（婚禮、生日、紀念日）設 false。"
                     ),
                 },
+                "category": {
+                    "type": "string",
+                    "enum": ["work", "health", "growth", "misc"],
+                    "description": (
+                        "依事件內容判斷分類，寫進一併建立的 Task（只有 work 計入 🍅 統計）："
+                        " work = 專案、寫作、開發、商業、工作相關；"
+                        " health = 運動、睡眠、飲食、醫療；"
+                        " growth = 閱讀、學習、課程、技能培養、個人成長；"
+                        " misc = 雜務、行政、家事、不屬於以上三類的事項。"
+                        " 使用者沒說就自行判斷，不要問。"
+                        "純事件（also_create_task=false）也照填即可。"
+                    ),
+                },
             },
-            "required": ["title", "start", "end"],
+            "required": ["title", "start", "end", "category"],
         },
     },
     {
@@ -1506,6 +1519,7 @@ class NamiHandler(BaseHandler):
         description = input_.get("description", "") or ""
         force = bool(input_.get("force", False))
         also_create_task = bool(input_.get("also_create_task", True))
+        category = input_.get("category") or "work"
 
         # Pre-check task 檔案不存在，避免 calendar 建完後 task 撞名產生孤兒 event
         task_rel_path: str | None = None
@@ -1547,7 +1561,7 @@ class NamiHandler(BaseHandler):
         task_path_display = ""
         if also_create_task and task_rel_path is not None:
             try:
-                self._write_calendar_linked_task(task_rel_path, event)
+                self._write_calendar_linked_task(task_rel_path, event, category)
             except Exception as e:
                 # Task 寫入失敗 → rollback calendar 避免孤兒事件
                 logger.exception(
@@ -1597,15 +1611,19 @@ class NamiHandler(BaseHandler):
             },
         )
 
-    def _write_calendar_linked_task(self, rel_path: str, event: CalendarEvent) -> None:
+    def _write_calendar_linked_task(
+        self, rel_path: str, event: CalendarEvent, category: str = "work"
+    ) -> None:
         """建立 calendar-linked task。v3-D：排程寫進 per-entry ``plan[]``（date /
         pomodoros / start / end / calendar_event_id），不再寫 task 層級的
-        scheduled 鏡像——與 Bridge 的多事件模型同一個來源（ADR-041 v3）。"""
+        scheduled 鏡像——與 Bridge 的多事件模型同一個來源（ADR-041 v3）。``category``
+        由 LLM 依事件內容判斷（只有 work 計入 🍅 統計），與 ``create_task`` 同源。"""
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         frontmatter = {
             "title": event.title,
             "status": "to-do",
             "priority": "normal",
+            "category": category,
             "tags": ["task"],
             "dateCreated": now_iso,
             "dateModified": now_iso,
