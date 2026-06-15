@@ -162,42 +162,75 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
     )
 
 
+def _iso8601_duration_to_seconds(duration: str) -> int:
+    """PT1H2M3S → total seconds. Returns 0 for unrecognised input."""
+    m = re.fullmatch(r"P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration or "")
+    if not m:
+        return 0
+    d, h, mi, s = (int(g or 0) for g in m.groups())
+    return d * 86400 + h * 3600 + mi * 60 + s
+
+
 def fetch_metadata(url: str) -> YouTubeMetadata:
-    """``yt-dlp --dump-json --skip-download`` then normalise to
-    :class:`YouTubeMetadata`.
+    """Fetch video metadata via YouTube Data API v3.
 
-    Always re-extracts ``video_id`` from the URL (rather than trusting the
-    JSON ``id`` field) so a typo'd URL fails fast at parse time, not at
-    manifest-write time.
+    Requires ``YOUTUBE_API_KEY`` in the environment. Uses the official API
+    instead of ``yt-dlp --dump-json`` to avoid YouTube's datacenter-IP
+    bot-detection ("Sign in to confirm you're not a bot"). Public video
+    metadata is freely available via the Data API without any OAuth.
+
+    ``available_auto_captions`` is always ``[]`` — the Data API does not
+    expose auto-generated caption tracks. The caption download step handles
+    :class:`NoCaptionAvailable` directly.
     """
-    video_id = extract_video_id(url)
-    canonical_url = f"https://youtube.com/watch?v={video_id}"
+    import urllib.error
+    import urllib.parse
+    import urllib.request
 
-    result = _run_yt_dlp(["--dump-json", "--skip-download", canonical_url])
-    if result.returncode != 0:
+    video_id = extract_video_id(url)
+
+    api_key = os.environ.get("YOUTUBE_API_KEY", "").strip()
+    if not api_key:
         raise YtDlpError(
-            f"yt-dlp metadata fetch failed for {video_id!r}",
-            stderr=result.stderr.strip(),
+            "YOUTUBE_API_KEY not set",
+            stderr="Add YOUTUBE_API_KEY to .env — free key from console.cloud.google.com",
         )
 
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise YtDlpError(f"yt-dlp returned non-JSON stdout for {video_id!r}") from exc
+    params = urllib.parse.urlencode({"id": video_id, "part": "snippet,contentDetails", "key": api_key})
+    api_url = f"https://www.googleapis.com/youtube/v3/videos?{params}"
 
-    title = str(payload.get("title") or "").strip() or video_id
-    channel = str(payload.get("channel") or payload.get("uploader") or "").strip()
-    duration_s = int(payload.get("duration") or 0)
-    auto_caps = payload.get("automatic_captions") or {}
-    available = sorted(str(k) for k in auto_caps.keys()) if isinstance(auto_caps, dict) else []
+    try:
+        with urllib.request.urlopen(api_url, timeout=15) as resp:  # noqa: S310
+            payload = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")[:400]
+        raise YtDlpError(
+            f"YouTube Data API HTTP {exc.code} for {video_id!r}",
+            stderr=body,
+        ) from exc
+    except Exception as exc:
+        raise YtDlpError(
+            f"YouTube Data API request failed for {video_id!r}",
+            stderr=str(exc),
+        ) from exc
+
+    items = payload.get("items", [])
+    if not items:
+        raise YtDlpError(
+            f"影片 {video_id!r} 不存在或為私人影片",
+            stderr=f"API returned empty items; response keys: {list(payload)}",
+        )
+
+    snippet = items[0].get("snippet", {})
+    content = items[0].get("contentDetails", {})
 
     return YouTubeMetadata(
         video_id=video_id,
-        title=title,
-        channel=channel,
-        duration_s=duration_s,
-        url=canonical_url,
-        available_auto_captions=available,
+        title=str(snippet.get("title") or "").strip() or video_id,
+        channel=str(snippet.get("channelTitle") or "").strip(),
+        duration_s=_iso8601_duration_to_seconds(content.get("duration", "")),
+        url=f"https://youtube.com/watch?v={video_id}",
+        available_auto_captions=[],
     )
 
 
