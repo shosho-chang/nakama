@@ -139,10 +139,15 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
     this flag every YouTube call emits a WARNING and may silently fail.
     Note: the runtime name is ``node`` (not ``nodejs``) per yt-dlp's enum.
 
+    ``--extractor-args youtube:player_client=tv_embedded,web_embedded``
+    instructs yt-dlp to use the TV/web-embedded client instead of the
+    standard web client. Datacenter IPs are bot-detected on the standard
+    client; embedded clients do not trigger the "Sign in to confirm you're
+    not a bot" check for public videos and require no authentication.
+
     If the environment variable ``YTDLP_COOKIES_PATH`` is set and the file
-    exists, ``--cookies <path>`` is injected so yt-dlp can authenticate as a
-    logged-in user. This bypasses YouTube's "Sign in to confirm you're not a
-    bot" block that datacenter IPs routinely hit.
+    exists, ``--cookies <path>`` is also injected as an additional layer of
+    authentication (defence-in-depth for age-restricted or unlisted content).
     """
     import sys
 
@@ -151,7 +156,17 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
     if cookies_path and Path(cookies_path).is_file():
         cookies_flags = ["--cookies", cookies_path]
 
-    cmd = [sys.executable, "-m", "yt_dlp", "--js-runtimes", "node", *cookies_flags, *args]
+    cmd = [
+        sys.executable,
+        "-m",
+        "yt_dlp",
+        "--js-runtimes",
+        "node",
+        "--extractor-args",
+        "youtube:player_client=tv_embedded,web_embedded",
+        *cookies_flags,
+        *args,
+    ]
     return subprocess.run(  # noqa: S603  # cmd vector built from constant + caller-controlled args
         cmd,
         capture_output=True,

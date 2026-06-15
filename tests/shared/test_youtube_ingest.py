@@ -78,8 +78,9 @@ def test_run_yt_dlp_injects_js_runtimes_node(monkeypatch, tmp_path):
     assert captured, "subprocess.run was never called"
     cmd = captured[0]
     assert "--js-runtimes" in cmd
-    idx = cmd.index("--js-runtimes")
-    assert cmd[idx + 1] == "node"
+    assert cmd[cmd.index("--js-runtimes") + 1] == "node"
+    assert "--extractor-args" in cmd
+    assert "player_client=tv_embedded" in cmd[cmd.index("--extractor-args") + 1]
 
 
 def _fake_subprocess_run(captured: list[list[str]], returncode: int = 0):
