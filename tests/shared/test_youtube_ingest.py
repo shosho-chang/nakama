@@ -156,6 +156,38 @@ def test_run_yt_dlp_no_cookies_when_file_missing(monkeypatch, tmp_path):
     assert "--cookies" not in captured[0]
 
 
+def test_run_yt_dlp_injects_proxy_when_env_set(monkeypatch, tmp_path):
+    """When YTDLP_PROXY is set, --proxy <url> is injected so the YouTube
+    request egresses through a residential IP (the VPS datacenter IP is
+    bot-detected). When unset, --proxy must NOT appear."""
+    captured: list[list[str]] = []
+    monkeypatch.setenv("YTDLP_PROXY", "socks5://127.0.0.1:1080")
+    monkeypatch.delenv("YTDLP_COOKIES_PATH", raising=False)
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
+    try:
+        youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
+    except Exception:
+        pass
+    assert captured
+    cmd = captured[0]
+    assert "--proxy" in cmd
+    assert cmd[cmd.index("--proxy") + 1] == "socks5://127.0.0.1:1080"
+
+
+def test_run_yt_dlp_no_proxy_when_env_unset(monkeypatch, tmp_path):
+    """When YTDLP_PROXY is not set, --proxy must NOT appear."""
+    captured: list[list[str]] = []
+    monkeypatch.delenv("YTDLP_PROXY", raising=False)
+    monkeypatch.delenv("YTDLP_COOKIES_PATH", raising=False)
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
+    try:
+        youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
+    except Exception:
+        pass
+    assert captured
+    assert "--proxy" not in captured[0]
+
+
 # ---------------------------------------------------------------------------
 # fetch_metadata — YouTube Data API v3
 # ---------------------------------------------------------------------------

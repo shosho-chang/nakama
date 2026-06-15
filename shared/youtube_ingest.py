@@ -151,6 +151,13 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
     rotated to values YouTube eventually rejects, manifesting as the
     "Sign in to confirm you're not a bot" error. The source file the user
     exported must stay pristine; only the disposable copy is ever mutated.
+
+    If ``YTDLP_PROXY`` is set, ``--proxy <url>`` is injected so the YouTube
+    request egresses through that proxy. Required on this VPS: YouTube
+    bot-detects the datacenter IP and returns ``LOGIN_REQUIRED`` for ordinary
+    videos even with valid cookies — only requests originating from a
+    residential IP succeed. The deploy points ``YTDLP_PROXY`` at a SOCKS5
+    tunnel that egresses through 修修's home connection (ADR-035 ops note).
     """
     import shutil
     import sys
@@ -165,7 +172,21 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
         shutil.copyfile(cookies_path, tmp_cookies)
         cookies_flags = ["--cookies", tmp_cookies]
 
-    cmd = [sys.executable, "-m", "yt_dlp", "--js-runtimes", "node", *cookies_flags, *args]
+    proxy_flags: list[str] = []
+    proxy = os.environ.get("YTDLP_PROXY", "").strip()
+    if proxy:
+        proxy_flags = ["--proxy", proxy]
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "yt_dlp",
+        "--js-runtimes",
+        "node",
+        *proxy_flags,
+        *cookies_flags,
+        *args,
+    ]
     try:
         return subprocess.run(  # noqa: S603  # cmd vector built from constant + caller-controlled args
             cmd,
