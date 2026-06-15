@@ -118,7 +118,14 @@ NAMI_TOOLS: list[dict] = [
                 "category": {
                     "type": "string",
                     "enum": ["work", "health", "growth", "misc"],
-                    "description": "分類，沒講就 work（只有 work 計入 🍅 統計）",
+                    "description": (
+                        "依任務內容判斷分類（只有 work 計入 🍅 統計）："
+                        " work = 專案、寫作、開發、商業、工作相關任務；"
+                        " health = 運動、睡眠、飲食、醫療；"
+                        " growth = 閱讀、學習、課程、技能培養、個人成長；"
+                        " misc = 雜務、行政、家事、不屬於以上三類的事項。"
+                        " 使用者沒說就自行判斷，不要問。"
+                    ),
                 },
                 "est_pomodoros": {
                     "type": "integer",
