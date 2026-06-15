@@ -157,6 +157,22 @@ def test_parse_webvtt_strips_cue_tags():
     assert cues[0]["text"] == "hello world"
 
 
+def test_parse_webvtt_unescapes_html_entities():
+    """WebVTT stores ``>`` ``<`` ``&`` as ``&gt;`` ``&lt;`` ``&amp;`` in cue
+    bodies — notably the ``&gt;&gt;`` speaker-change marker YouTube emits. The
+    parser must un-escape these so the reader shows ``>>`` not a literal
+    ``&gt;&gt;`` (which Jinja would then double-escape and render verbatim)."""
+    from thousand_sunny.routers.robin import _parse_webvtt
+
+    vtt = """WEBVTT
+
+00:00:01.000 --> 00:00:02.000
+&gt;&gt; Good to be here, Tom &amp; Jerry said &lt;loudly&gt;
+"""
+    cues = _parse_webvtt(vtt)
+    assert cues[0]["text"] == ">> Good to be here, Tom & Jerry said <loudly>"
+
+
 def test_parse_webvtt_handles_hour_timestamp():
     from thousand_sunny.routers.robin import _parse_webvtt
 
