@@ -133,7 +133,7 @@ NAMI_TOOLS: list[dict] = [
                 },
                 "notes": {"type": "string", "description": "備註"},
             },
-            "required": ["title"],
+            "required": ["title", "category"],
         },
     },
     {
