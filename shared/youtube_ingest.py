@@ -28,6 +28,7 @@ All functions are I/O-bound and should be called via
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -137,10 +138,20 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
     default, but Node.js is always present in this environment. Without
     this flag every YouTube call emits a WARNING and may silently fail.
     Note: the runtime name is ``node`` (not ``nodejs``) per yt-dlp's enum.
+
+    If the environment variable ``YTDLP_COOKIES_PATH`` is set and the file
+    exists, ``--cookies <path>`` is injected so yt-dlp can authenticate as a
+    logged-in user. This bypasses YouTube's "Sign in to confirm you're not a
+    bot" block that datacenter IPs routinely hit.
     """
     import sys
 
-    cmd = [sys.executable, "-m", "yt_dlp", "--js-runtimes", "node", *args]
+    cookies_flags: list[str] = []
+    cookies_path = os.environ.get("YTDLP_COOKIES_PATH", "").strip()
+    if cookies_path and Path(cookies_path).is_file():
+        cookies_flags = ["--cookies", cookies_path]
+
+    cmd = [sys.executable, "-m", "yt_dlp", "--js-runtimes", "node", *cookies_flags, *args]
     return subprocess.run(  # noqa: S603  # cmd vector built from constant + caller-controlled args
         cmd,
         capture_output=True,

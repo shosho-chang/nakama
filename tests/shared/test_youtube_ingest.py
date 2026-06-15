@@ -79,6 +79,68 @@ def test_run_yt_dlp_injects_js_runtimes_node(monkeypatch):
     assert cmd[idx + 1] == "node"
 
 
+def test_run_yt_dlp_injects_cookies_when_env_set(monkeypatch, tmp_path):
+    """When YTDLP_COOKIES_PATH points to an existing file, --cookies <path>
+    is injected into the yt-dlp command so bot-detection is bypassed."""
+    cookies_file = tmp_path / "cookies.txt"
+    cookies_file.write_text("# Netscape HTTP Cookie File\n")
+
+    captured: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        captured.append(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="{}", stderr="")
+
+    monkeypatch.setenv("YTDLP_COOKIES_PATH", str(cookies_file))
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", fake_run)
+    try:
+        youtube_ingest.fetch_metadata("dQw4w9WgXcQ")
+    except Exception:
+        pass
+    assert captured
+    cmd = captured[0]
+    assert "--cookies" in cmd
+    idx = cmd.index("--cookies")
+    assert cmd[idx + 1] == str(cookies_file)
+
+
+def test_run_yt_dlp_no_cookies_when_env_unset(monkeypatch):
+    """When YTDLP_COOKIES_PATH is not set, --cookies must NOT appear."""
+    captured: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        captured.append(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="{}", stderr="")
+
+    monkeypatch.delenv("YTDLP_COOKIES_PATH", raising=False)
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", fake_run)
+    try:
+        youtube_ingest.fetch_metadata("dQw4w9WgXcQ")
+    except Exception:
+        pass
+    assert captured
+    assert "--cookies" not in captured[0]
+
+
+def test_run_yt_dlp_no_cookies_when_file_missing(monkeypatch):
+    """When YTDLP_COOKIES_PATH is set but the file doesn't exist, --cookies
+    is silently skipped rather than crashing."""
+    captured: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        captured.append(cmd)
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="{}", stderr="")
+
+    monkeypatch.setenv("YTDLP_COOKIES_PATH", "/nonexistent/cookies.txt")
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", fake_run)
+    try:
+        youtube_ingest.fetch_metadata("dQw4w9WgXcQ")
+    except Exception:
+        pass
+    assert captured
+    assert "--cookies" not in captured[0]
+
+
 # ---------------------------------------------------------------------------
 # fetch_metadata
 # ---------------------------------------------------------------------------
