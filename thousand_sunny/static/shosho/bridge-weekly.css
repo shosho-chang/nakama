@@ -371,6 +371,15 @@ body.sho .wk-open {
 }
 body.sho .wk-open:hover { color: var(--sho-accent); }
 body.sho .wk-open:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+/* delete button — sits at the far right of each task row summary */
+body.sho .wk-del-form { display: contents; }
+body.sho .wk-task-del {
+  flex: none; background: none; border: none; padding: 2px 5px; cursor: pointer;
+  font-size: 13px; color: var(--sho-muted); border-radius: var(--sho-r-1);
+  transition: color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .wk-task-del:hover { color: oklch(0.5 0.2 25); background: oklch(0.95 0.04 25); }
+body.sho .wk-task-del:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 
 /* ════════ TASK DETAIL PAGE (ADR-039 E) ════════ */
 body.sho .tk-main { max-width: 760px; }
@@ -831,8 +840,9 @@ body.sho .wk-meta-sel {
   transition: border-color var(--sho-t-fast) var(--sho-ease);
 }
 body.sho .wk-meta-sel:focus-visible { outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus); }
-/* task page: sits inline in the meta row, no top margin */
+/* task page: sits inline in the meta row, no top margin; selects more compact */
 body.sho .tk-meta .wk-meta-form { margin-top: 0; gap: 8px; }
+body.sho .tk-meta .wk-meta-sel { padding: 3px 7px; min-width: 0; font-size: 12px; }
 
 /* N529 — 今日回顧卡（5am Centaur daily review；dashboard 起床即見，連到 /kb/review）*/
 body.sho .wk-review {
