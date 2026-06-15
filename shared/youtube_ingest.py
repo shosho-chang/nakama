@@ -132,14 +132,15 @@ def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedPr
     bare ``yt-dlp`` executable) ensures we hit the version we pin in
     ``pyproject.toml`` rather than whatever happens to be on ``PATH``.
 
-    ``--js-runtimes nodejs`` is injected unconditionally: yt-dlp ≥2025.x
+    ``--js-runtimes node`` is injected unconditionally: yt-dlp ≥2025.x
     requires a JS runtime for YouTube extraction and only enables Deno by
     default, but Node.js is always present in this environment. Without
     this flag every YouTube call emits a WARNING and may silently fail.
+    Note: the runtime name is ``node`` (not ``nodejs``) per yt-dlp's enum.
     """
     import sys
 
-    cmd = [sys.executable, "-m", "yt_dlp", "--js-runtimes", "nodejs", *args]
+    cmd = [sys.executable, "-m", "yt_dlp", "--js-runtimes", "node", *args]
     return subprocess.run(  # noqa: S603  # cmd vector built from constant + caller-controlled args
         cmd,
         capture_output=True,

@@ -56,9 +56,10 @@ def test_extract_video_id_rejects(bad):
 # ---------------------------------------------------------------------------
 
 
-def test_run_yt_dlp_injects_js_runtimes_nodejs(monkeypatch):
-    """yt-dlp ≥2025.x defaults to Deno only; we must inject --js-runtimes nodejs
-    so Node.js (always present in this environment) is used instead."""
+def test_run_yt_dlp_injects_js_runtimes_node(monkeypatch):
+    """yt-dlp ≥2025.x defaults to Deno only; we must inject --js-runtimes node
+    so Node.js (always present in this environment) is used instead.
+    The runtime name is 'node', not 'nodejs' (yt-dlp rejects the latter)."""
     captured: list[list[str]] = []
 
     def fake_run(cmd, **_kwargs):
@@ -75,7 +76,7 @@ def test_run_yt_dlp_injects_js_runtimes_nodejs(monkeypatch):
     cmd = captured[0]
     assert "--js-runtimes" in cmd
     idx = cmd.index("--js-runtimes")
-    assert cmd[idx + 1] == "nodejs"
+    assert cmd[idx + 1] == "node"
 
 
 # ---------------------------------------------------------------------------
