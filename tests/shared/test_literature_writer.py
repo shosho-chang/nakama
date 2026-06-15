@@ -164,9 +164,9 @@ def test_book_render_chapter_grouping_and_anchors(vault: Path):
     assert "status: digested" in text
     assert 'annotations: "[[Annotations/卡片盒筆記]]"' in text
 
-    # chapter grouping (two chapters)
-    assert "### ch2" in text
-    assert "### ch3" in text
+    # chapter grouping (two chapters) — 無 EPUB TOC → 乾淨的「章節 N」fallback（非 spine/ch 鍵）
+    assert "### 章節 1" in text
+    assert "### 章節 2" in text
 
     # cite anchors derived from CFI
     assert "^cfi-6-14-122" in text
@@ -189,11 +189,52 @@ def test_book_chapter_title_resolved_into_heading(vault: Path, monkeypatch):
 
 
 def test_book_chapter_title_fallback_when_no_epub(vault: Path):
-    # 查無此書 EPUB → {} → render fallback 回原 ch/spine key（不中斷、不丟章節）
+    # 查無此書 EPUB → {} → render fallback 回乾淨的「章節 N」（不外露 spine/ch 鍵、不中斷）
     assert lw._book_chapter_titles("no-such-book-xyz") == {}
     _save(_book_set())
     md = lw.render_literature_markdown(_book_set(), "book", vault)
-    assert "### ch2" in md
+    assert "### 章節 1" in md
+    assert "spine-" not in md  # 機器鍵不外露
+
+
+# ── 多段引文 / 多段筆記 同一區塊（修修回報的顯示問題）────────────────────────
+
+
+def test_bq_multiline_quote_all_in_one_blockquote():
+    out = lw._bq("第一段\n\n第二段")
+    # 每行都有 > 前綴（含空行 >）→ markdown 視為同一個 blockquote
+    assert out == "> 第一段\n>\n> 第二段"
+
+
+def test_note_block_multiparagraph_joined_with_br():
+    out = lw._note_block("筆記第一段\n\n筆記第二段")
+    # 多段筆記接成單一段落（<br>），不會跑成獨立段落
+    assert out == "**note::** 筆記第一段<br><br>筆記第二段"
+
+
+def test_multiline_quote_stays_in_blockquote_in_render(vault: Path):
+    from shared.schemas.annotations import AnnotationSetV3, HighlightV3
+
+    aset = AnnotationSetV3(
+        slug="多段測試",
+        base="books",
+        book_id="多段測試",
+        book_version_hash="b" * 64,
+        items=[
+            HighlightV3(
+                cfi="epubcfi(/6/14[c]!/4/2/1)",
+                text_excerpt="x",
+                text="引文段一\n\n引文段二",
+                book_version_hash="b" * 64,
+                created_at=_TS,
+                modified_at=_TS,
+            ),
+        ],
+    )
+    md = lw.render_literature_markdown(aset, "book", vault)
+    # 兩段引文都帶 > 前綴（同一 blockquote），第二段不會變框外普通段落
+    assert "> 引文段一" in md
+    assert "> 引文段二" in md
 
 
 def test_book_highlight_text_verbatim(vault: Path):
