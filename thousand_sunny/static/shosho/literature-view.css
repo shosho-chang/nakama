@@ -73,6 +73,8 @@ body.sho .lit-prose blockquote {
   color: var(--sho-text);
 }
 body.sho .lit-prose blockquote p { margin: 0; }
+/* 多段引文：框內段落間距（整段仍在同一個灰框 + 橘線內）*/
+body.sho .lit-prose blockquote p + p { margin-top: 10px; }
 /* 我的筆記 = 一般段落（💭 **我的筆記：** …）：次要色 + accent 標籤，跟原文清楚分開 */
 body.sho .lit-prose p { margin: 6px 0 16px; color: var(--sho-text-2); }
 body.sho .lit-prose p strong:first-child { color: var(--sho-accent); }

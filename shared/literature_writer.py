@@ -243,6 +243,25 @@ def _render_highlight_body(item: HighlightV3 | AnnotationV3) -> tuple[str, str]:
     return item.text, ""
 
 
+def _bq(text: str) -> str:
+    """多段文字 → 單一 blockquote（每行 ``> `` 前綴、空行 ``>``）。
+
+    讓有換行的引文整段落在同一個 blockquote（一個灰框 + 一條橘線），而不是只有
+    第一段進框、其餘段落跑成框外的普通段落。
+    """
+    return "\n".join(f"> {ln}" if ln.strip() else ">" for ln in text.strip().split("\n"))
+
+
+def _note_block(note: str) -> str:
+    """我的筆記 → 同一區塊（plain，非框，與原文區隔）。
+
+    多段 note 用 ``<br>`` 接成單一段落，避免第二段跑成獨立段落、跟原文/下一條混淆。
+    保留 ``note::`` 供 Obsidian/Dataview；viewer 顯示時換成「💭 我的筆記」。
+    """
+    joined = note.strip().replace("\n", "<br>")
+    return f"**note::** {joined}"
+
+
 def _render_book_zone(ann_set: AnnotationSetV3, slug: str) -> str:
     """書：按章分組 + CFI 錨 + 章末心得 (規格 §5.1)。"""
     # Group highlights / annotations by chapter (preserve first-occurrence order).
@@ -270,9 +289,9 @@ def _render_book_zone(ann_set: AnnotationSetV3, slug: str) -> str:
         for item in chapters[ch]:
             quote, note = _render_highlight_body(item)
             anchor = _cfi_anchor(item.cfi)
-            block = f"> {quote} {anchor}"
+            block = f"{_bq(quote)} {anchor}"  # 多段引文整段進同一 blockquote
             if note:
-                block += f"\n**note::** {note}"
+                block += f"\n\n{_note_block(note)}"  # 空行分隔 → 筆記不被摺進引文框
             blocks.append(block)
 
         reflections = reflections_by_chapter.get(ch, [])
@@ -289,7 +308,9 @@ def _render_book_zone(ann_set: AnnotationSetV3, slug: str) -> str:
         blocks.append(f"📖 [開回 Reader]({deep})")
 
         body = "\n\n".join(blocks) if blocks else "_（本章無劃線）_"
-        sections.append(f"### {chapter_titles.get(ch, ch)}\n\n{body}")
+        # 真章節名（EPUB TOC 解得出）優先；否則用乾淨的「章節 N」，不外露 spine-N / ch 鍵
+        heading = chapter_titles.get(ch) or f"章節 {ch_idx}"
+        sections.append(f"### {heading}\n\n{body}")
 
     return "\n\n".join(sections) if sections else "_（尚無劃線）_"
 
@@ -307,9 +328,9 @@ def _render_article_zone(ann_set: AnnotationSetV3, slug: str) -> str:
             continue
         counter += 1
         quote, note = _render_highlight_body(item)
-        block = f"> {quote} ^p-{counter}"
+        block = f"{_bq(quote)} ^p-{counter}"  # 多段引文整段進同一 blockquote
         if note:
-            block += f"\n**note::** {note}"
+            block += f"\n\n{_note_block(note)}"  # 空行分隔 → 筆記不被摺進引文框
         blocks.append(block)
 
     reflections = [i for i in ann_set.items if i.type == "reflection"]

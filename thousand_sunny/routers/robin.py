@@ -542,11 +542,11 @@ _LIT_ANCHOR_RE = re.compile(r" \^(?:cfi-|p-|t=)[\w\-=,/.:]*")
 
 
 def _prep_literature_for_web(body: str) -> str:
-    """去掉機器 block-ref 錨點 + 把 note 與原文分塊（單 \\n 會被摺進 blockquote）。"""
+    """Literature note 的 web 顯示精修（只動呈現，不改 vault 檔）。"""
     # 1) 拿掉機器用錨點（^cfi-… / ^p-N / ^t=…）——讀者不需要看
     body = _LIT_ANCHOR_RE.sub("", body)
-    # 2) note 與原文分塊：空行分隔讓 blockquote 結束，並換成人話標籤
-    body = body.replace("\n**note::** ", "\n\n💭 **我的筆記：** ")
+    # 2) note 標籤人話化（分塊已由 literature_writer 處理：note 是獨立段落 + <br> 接多段）
+    body = body.replace("**note::** ", "💭 **我的筆記：** ")
     return body
 
 
