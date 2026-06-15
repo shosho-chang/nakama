@@ -12,6 +12,11 @@
     b.addEventListener('click', function (e) { e.stopPropagation(); });
   });
 
+  /* Delete button: same pattern — stop propagation so clicking ✕ doesn't toggle the row. */
+  document.querySelectorAll('.wk-task-del').forEach(function (b) {
+    b.addEventListener('click', function (e) { e.stopPropagation(); });
+  });
+
   /* Confirm-gate destructive chip actions (a linked-entry ✕ deletes its Google
      event too — V3d). */
   document.querySelectorAll('form[data-confirm]').forEach(function (f) {

@@ -52,6 +52,12 @@
          weekly 🍅, so a health/growth/misc task shows no count (修修). #}
       {% if t.is_work %}<span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>{% endif %}
       <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
+      <form class="wk-del-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/delete"
+            data-confirm="確定要刪除任務「{{ t.name }}」？此操作無法復原。">
+        <input type="hidden" name="week" value="{{ view.week.file_key }}">
+        {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
+        <button type="submit" class="wk-task-del" aria-label="刪除任務「{{ t.name }}」">✕</button>
+      </form>
     </summary>
 
     <div class="wk-plan-edit">

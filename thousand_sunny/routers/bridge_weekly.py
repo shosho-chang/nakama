@@ -28,7 +28,7 @@ from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.pomodoro_aggregator import TAIPEI, task_actual
 from shared.project_indexer import ProjectIndexer
-from shared.project_writer import ProjectWriteError, create_task, rename_task
+from shared.project_writer import TASKS_DIR, ProjectWriteError, create_task, rename_task
 from shared.weekly_indexer import (
     CATEGORY_LABELS,
     CATEGORY_ORDER,
@@ -121,6 +121,7 @@ _PLAN_ERRORS = {
 
 _SAVED_MSGS = {
     "task_new": "✓ 已新增任務。",
+    "task_deleted": "✓ 已刪除任務。",
     "plan": "✓ 已儲存本週計畫。",
     "review": "✓ 已存週回顧。",
     "top3": "✓ 已更新本週重要任務。",
@@ -669,6 +670,30 @@ async def weekly_task_rename(
     # (no focus: focus=True is the 新增任務 jump, which switches tab + scrolls; a rename
     # should keep 修修 exactly where he was — the row just re-renders with the new name).
     return _back(wk_key, saved=saved, slug=new_slug)
+
+
+@page_router.post("/weekly/task/{slug}/delete")
+async def weekly_task_delete(
+    slug: str = PathParam(..., min_length=1),
+    week: str = Form(""),
+    from_project: str = Form(""),
+    nakama_auth: str | None = Cookie(None),
+):
+    """Delete a task by sending its vault file to the recycle bin. Shared by the
+    dashboard task rows and the Project Brief tab (``from_project`` redirects back
+    to the project page rather than the weekly dashboard)."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
+    _FROM_PROJECT.set(from_project.strip())
+    wk_key = _safe_week_key(week)
+    vault = get_vault_path()
+    slug = unicodedata.normalize("NFC", slug)
+    task_path = vault / TASKS_DIR / f"{slug}.md"
+    if task_path.exists():
+        from shared.discard_service import _send_to_recycle_bin
+
+        _send_to_recycle_bin(task_path)
+    return _back(wk_key, saved="task_deleted")
 
 
 @page_router.post("/weekly/sync-scheduled")
