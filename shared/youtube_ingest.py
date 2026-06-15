@@ -130,10 +130,16 @@ def extract_video_id(url: str) -> str:
 def _run_yt_dlp(args: list[str], *, timeout: int = 90) -> subprocess.CompletedProcess[str]:
     """Invoke the ``yt-dlp`` Python CLI module. Using ``-m yt_dlp`` (not the
     bare ``yt-dlp`` executable) ensures we hit the version we pin in
-    ``pyproject.toml`` rather than whatever happens to be on ``PATH``."""
+    ``pyproject.toml`` rather than whatever happens to be on ``PATH``.
+
+    ``--js-runtimes nodejs`` is injected unconditionally: yt-dlp ≥2025.x
+    requires a JS runtime for YouTube extraction and only enables Deno by
+    default, but Node.js is always present in this environment. Without
+    this flag every YouTube call emits a WARNING and may silently fail.
+    """
     import sys
 
-    cmd = [sys.executable, "-m", "yt_dlp", *args]
+    cmd = [sys.executable, "-m", "yt_dlp", "--js-runtimes", "nodejs", *args]
     return subprocess.run(  # noqa: S603  # cmd vector built from constant + caller-controlled args
         cmd,
         capture_output=True,
