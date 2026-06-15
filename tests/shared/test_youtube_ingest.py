@@ -92,15 +92,30 @@ def _fake_subprocess_run(captured: list[list[str]], returncode: int = 0):
     return _run
 
 
-def test_run_yt_dlp_injects_cookies_when_env_set(monkeypatch, tmp_path):
-    """When YTDLP_COOKIES_PATH points to an existing file, --cookies <path>
-    is injected into the yt-dlp command so bot-detection is bypassed on
-    caption downloads (fetch_caption still uses _run_yt_dlp)."""
+def test_run_yt_dlp_uses_throwaway_cookie_copy(monkeypatch, tmp_path):
+    """yt-dlp rewrites (rotates) the cookie jar back to the file it is handed
+    on every run. We must hand it a disposable temp copy — never the user's
+    exported file — so repeated calls don't degrade the source until YouTube
+    rejects it as "not a bot". Verifies: (1) --cookies is injected, (2) the
+    path passed is NOT the user's file, (3) the copy carries the original
+    content, (4) the user's file survives yt-dlp's mutation untouched."""
     cookies_file = tmp_path / "cookies.txt"
-    cookies_file.write_text("# Netscape HTTP Cookie File\n")
+    original = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tabc\n"
+    cookies_file.write_text(original)
     captured: list[list[str]] = []
+    copy_contents: list[str] = []
+
+    def _run(cmd, **_kwargs):
+        captured.append(list(cmd))
+        # Read the handed-over file, then simulate yt-dlp mutating it to
+        # prove the original is shielded by the copy.
+        handed = Path(cmd[cmd.index("--cookies") + 1])
+        copy_contents.append(handed.read_text())
+        handed.write_text("# MUTATED BY yt-dlp\n")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
     monkeypatch.setenv("YTDLP_COOKIES_PATH", str(cookies_file))
-    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _run)
     try:
         youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
     except Exception:
@@ -108,8 +123,10 @@ def test_run_yt_dlp_injects_cookies_when_env_set(monkeypatch, tmp_path):
     assert captured
     cmd = captured[0]
     assert "--cookies" in cmd
-    idx = cmd.index("--cookies")
-    assert cmd[idx + 1] == str(cookies_file)
+    handed_path = cmd[cmd.index("--cookies") + 1]
+    assert handed_path != str(cookies_file)  # disposable copy, not the source
+    assert copy_contents == [original]  # copy carried the real cookies
+    assert cookies_file.read_text() == original  # source survived the mutation
 
 
 def test_run_yt_dlp_no_cookies_when_env_unset(monkeypatch, tmp_path):
@@ -137,6 +154,38 @@ def test_run_yt_dlp_no_cookies_when_file_missing(monkeypatch, tmp_path):
         pass
     assert captured
     assert "--cookies" not in captured[0]
+
+
+def test_run_yt_dlp_injects_proxy_when_env_set(monkeypatch, tmp_path):
+    """When YTDLP_PROXY is set, --proxy <url> is injected so the YouTube
+    request egresses through a residential IP (the VPS datacenter IP is
+    bot-detected). When unset, --proxy must NOT appear."""
+    captured: list[list[str]] = []
+    monkeypatch.setenv("YTDLP_PROXY", "socks5://127.0.0.1:1080")
+    monkeypatch.delenv("YTDLP_COOKIES_PATH", raising=False)
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
+    try:
+        youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
+    except Exception:
+        pass
+    assert captured
+    cmd = captured[0]
+    assert "--proxy" in cmd
+    assert cmd[cmd.index("--proxy") + 1] == "socks5://127.0.0.1:1080"
+
+
+def test_run_yt_dlp_no_proxy_when_env_unset(monkeypatch, tmp_path):
+    """When YTDLP_PROXY is not set, --proxy must NOT appear."""
+    captured: list[list[str]] = []
+    monkeypatch.delenv("YTDLP_PROXY", raising=False)
+    monkeypatch.delenv("YTDLP_COOKIES_PATH", raising=False)
+    monkeypatch.setattr(youtube_ingest.subprocess, "run", _fake_subprocess_run(captured))
+    try:
+        youtube_ingest.fetch_caption("dQw4w9WgXcQ", tmp_path / "stage")
+    except Exception:
+        pass
+    assert captured
+    assert "--proxy" not in captured[0]
 
 
 # ---------------------------------------------------------------------------
