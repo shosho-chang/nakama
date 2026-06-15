@@ -56,12 +56,12 @@ body.sho .lit-prose h2 {
   padding-bottom: 6px;
   border-bottom: 1px solid var(--sho-line);
 }
+/* 章節標題 = 真 title 欄位（放大、加粗）*/
 body.sho .lit-prose h3 {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--sho-accent);
-  letter-spacing: 0.03em;
-  margin: 28px 0 10px;
+  margin: 36px 0 12px;
 }
 /* 原文（劃線）= 引用卡：左橘框 + 淡底，視覺上是「書裡的話」 */
 body.sho .lit-prose blockquote {

@@ -83,3 +83,53 @@ def test_view_existing_note_hides_anchors_in_html(client, tmp_path):
     resp = client.get("/robin/literature/卡片盒筆記")
     assert resp.status_code == 200
     assert "^cfi-" not in resp.text
+
+
+def test_prep_linkifies_bare_url():
+    import thousand_sunny.routers.robin as robin
+
+    out = robin._prep_literature_for_web("看這個 https://youtu.be/abc?si=x&t=20 很重要。")
+    assert "[https://youtu.be/abc?si=x&t=20](https://youtu.be/abc?si=x&t=20)" in out
+
+
+def test_prep_url_does_not_eat_trailing_cjk_punct():
+    import thousand_sunny.routers.robin as robin
+
+    out = robin._prep_literature_for_web("連結 https://a.com/x，然後")
+    assert "[https://a.com/x](https://a.com/x)" in out
+    assert "，然後" in out
+
+
+def test_prep_does_not_double_link_existing_markdown_link():
+    import thousand_sunny.routers.robin as robin
+
+    out = robin._prep_literature_for_web("[連結](https://example.com)")
+    assert out == "[連結](https://example.com)"  # 既有 markdown link 不重包
+
+
+def test_prep_url_keeps_balanced_parens_in_path():
+    import thousand_sunny.routers.robin as robin
+
+    out = robin._prep_literature_for_web(
+        "看 https://en.wikipedia.org/wiki/Test_(disambiguation) 完"
+    )
+    # 路徑內成對括號保留（不在第一個 ) 截斷）
+    u = "https://en.wikipedia.org/wiki/Test_(disambiguation)"
+    assert f"[{u}]({u})" in out
+
+
+def test_prep_hides_machine_kb_and_ledger_sections():
+    import thousand_sunny.routers.robin as robin
+
+    body = (
+        "## 劃線與心得\n\n> 引文 ^cfi-1\n\n"
+        "## 🔗 KB 相關（AI 撈，FTS5）\n\n- 某劃線… — _（無 KB 命中）_\n"
+        "<!-- LITERATURE:RENDER:END -->\n\n"
+        "<!-- LITERATURE:LEDGER:BEGIN -->\n## 記帳（AI 善後）\n<!-- LITERATURE:LEDGER:END -->\n"
+    )
+    out = robin._prep_literature_for_web(body)
+    assert "劃線與心得" in out and "引文" in out  # 人看的留著
+    assert "🔗 KB 相關" not in out  # 機器段整段隱藏
+    assert "無 KB 命中" not in out
+    assert "記帳" not in out
+    assert "LITERATURE:" not in out
