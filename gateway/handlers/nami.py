@@ -1619,6 +1619,7 @@ class NamiHandler(BaseHandler):
         scheduled 鏡像——與 Bridge 的多事件模型同一個來源（ADR-041 v3）。``category``
         由 LLM 依事件內容判斷（只有 work 計入 🍅 統計），與 ``create_task`` 同源。"""
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        plan_entry = _event_to_plan_entry(event)
         frontmatter = {
             "title": event.title,
             "status": "to-do",
@@ -1627,7 +1628,9 @@ class NamiHandler(BaseHandler):
             "tags": ["task"],
             "dateCreated": now_iso,
             "dateModified": now_iso,
-            "plan": [_event_to_plan_entry(event)],
+            # 預估🍅：以事件時長換算的番茄數，與 create_task 同欄位 — 否則任務頁 預估 欄顯示 "-"。
+            "預估🍅": int(plan_entry.get("pomodoros") or 0),
+            "plan": [plan_entry],
         }
         write_page(rel_path, frontmatter, "")
 

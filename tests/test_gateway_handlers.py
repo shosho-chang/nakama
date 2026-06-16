@@ -666,6 +666,7 @@ def test_create_calendar_event_happy_path():
     assert task_fm["title"] == "跟 Angie 開會"
     assert task_fm["status"] == "to-do"
     assert task_fm["category"] == "work"  # LLM-judged category flows to the linked task
+    assert task_fm["預估🍅"] == 2  # 60-min event → 2🍅 estimate, else task page shows "-"
     entry = task_fm["plan"][0]
     assert entry["calendar_event_id"] == "evt42"
     assert entry["date"] == "2026-04-25"

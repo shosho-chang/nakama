@@ -579,6 +579,13 @@ class WeeklyIndexer:
                         )
                     )
 
+        # 預估🍅 fallback: a calendar-linked task (Nami's _write_calendar_linked_task
+        # before it wrote 預估🍅) carries its estimate only on the plan[] entries.
+        # Sum them so the task page shows a real 預估 instead of "-". An explicit
+        # 預估🍅 in frontmatter always wins.
+        if not est and plan:
+            est = sum(a.pomodoros for a in plan)
+
         return WeeklyTask(
             slug=slug,
             title=title,

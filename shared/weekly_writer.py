@@ -871,6 +871,19 @@ def _time_entry_list(fm: dict[str, Any]) -> list[dict[str, Any]]:
     return [e for e in raw if isinstance(e, dict)]
 
 
+def _entry_start_dt(entry: dict[str, Any]) -> Optional[datetime]:
+    """A timeEntry's ``startTime`` as a tz-aware datetime (naive ⇒ assume Taipei),
+    or ``None`` when missing/unparseable."""
+    v = entry.get("startTime")
+    if not isinstance(v, str) or not v.strip():
+        return None
+    try:
+        dt = datetime.fromisoformat(v.strip())
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=TAIPEI_TZ)
+
+
 def log_time_entry(
     vault_root: Path,
     task_slug: str,
@@ -914,6 +927,28 @@ def log_time_entry(
 
     path = _task_path(vault_root, task_slug)
     fm, body = _read_task(path)
+    entries = _time_entry_list(fm)
+
+    if manual:
+        # The +1 button asserts a discrete nominal block. Stamping every click at
+        # `now` makes rapid clicks overlap, and the per-task union merge
+        # (pomodoro_aggregator._merge_per_task) then collapses them into a single
+        # 🍅 — so three +1 clicks read as one. Anchor each manual block immediately
+        # BEFORE the earliest block already logged for the same day, so N clicks
+        # stack into N non-overlapping blocks (union == sum == N). When nothing is
+        # logged yet that day, the passed [start, end] is used as-is.
+        block = end - start
+        anchor = end if end.tzinfo else end.replace(tzinfo=TAIPEI_TZ)
+        earliest = anchor
+        for e in entries:
+            est_dt = _entry_start_dt(e)
+            if est_dt is None or est_dt.date() != anchor.date():
+                continue
+            if est_dt < earliest:
+                earliest = est_dt
+        end = earliest
+        start = end - block
+        span = (end - start).total_seconds()
 
     entry: dict[str, Any] = {
         "startTime": start.isoformat(),
@@ -928,7 +963,6 @@ def log_time_entry(
     if manual:
         entry["manual"] = True
 
-    entries = _time_entry_list(fm)
     entries.append(entry)
     fm["timeEntries"] = entries
     _write_task(path, fm, body)

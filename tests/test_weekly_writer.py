@@ -474,6 +474,39 @@ class TestLogTimeEntry:
         with pytest.raises(WeeklyWriteError):
             log_time_entry(vault, "no-such-task", start, end)
 
+    def test_manual_blocks_stack_non_overlapping(self, vault):
+        """Three +1 clicks at ~the same instant must stack into 3 non-overlapping
+        blocks — else the per-task union merge collapses them to one 🍅 (regression:
+        知識衛星試錄課程影片, where 12:50:01/03/11 all overlapped → counted as 1)."""
+        from shared.pomodoro_aggregator import task_actual
+
+        slug = "test-task"
+        p = _make_task(vault, slug, {"title": "Test"})
+        now = datetime(2026, 6, 16, 13, 15, tzinfo=TAIPEI)
+        for _ in range(3):  # rapid manual clicks, all ending "now"
+            log_time_entry(vault, slug, now - timedelta(minutes=25), now, manual=True)
+
+        entries = _read_fm(p)["timeEntries"]
+        assert len(entries) == 3
+        spans = sorted(
+            (datetime.fromisoformat(e["startTime"]), datetime.fromisoformat(e["endTime"]))
+            for e in entries
+        )
+        for (_s1, e1), (s2, _e2) in zip(spans, spans[1:]):
+            assert e1 <= s2  # no overlap
+        # union (the task-page count) now agrees with the raw sum: 3 🍅
+        assert task_actual(vault, slug, entries).total_pomodoros == 3
+
+    def test_manual_block_with_no_prior_entries_keeps_window(self, vault):
+        """First manual click with nothing logged that day keeps its [start, end]."""
+        slug = "test-task"
+        p = _make_task(vault, slug, {"title": "Test"})
+        now = datetime(2026, 6, 16, 13, 15, tzinfo=TAIPEI)
+        log_time_entry(vault, slug, now - timedelta(minutes=25), now, manual=True)
+        e = _read_fm(p)["timeEntries"][0]
+        assert "2026-06-16T12:50:00" in e["startTime"]
+        assert "2026-06-16T13:15:00" in e["endTime"]
+
 
 # ── write_weekly (ADR-040 Slice 2 — Journals/Weekly 🟡) ────────────────────────
 
