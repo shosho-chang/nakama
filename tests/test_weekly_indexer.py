@@ -465,6 +465,51 @@ def test_daily_merges_growth_into_other_and_carries_meta(tmp_path, monkeypatch):
     assert item["project"] == "專案A"
 
 
+def test_est_pomodoros_falls_back_to_plan_sum(tmp_path):
+    """A calendar-linked task created without 預估🍅 carries its estimate only on
+    plan[] — find_task should sum those so 預估 shows a real number, not 0/"-"
+    (regression: 知識衛星試錄課程影片 had plan pomodoros 12 but no 預估🍅 → 預估 "-")."""
+    _task(
+        tmp_path,
+        "知識衛星試錄課程影片.md",
+        {
+            "title": "知識衛星試錄課程影片",
+            "status": "to-do",
+            "category": "work",
+            "plan": [
+                {
+                    "date": "2026-06-16",
+                    "pomodoros": 12,
+                    "start": "2026-06-16T10:30:00+08:00",
+                    "end": "2026-06-16T16:30:00+08:00",
+                    "calendar_event_id": "evt123",
+                }
+            ],
+            "tags": ["task"],
+        },
+    )
+    t = WeeklyIndexer(tmp_path).find_task("知識衛星試錄課程影片")
+    assert t.est_pomodoros == 12
+
+
+def test_explicit_estimate_wins_over_plan_sum(tmp_path):
+    """An explicit 預估🍅 must not be overridden by the plan-sum fallback."""
+    _task(
+        tmp_path,
+        "estimate-task.md",
+        {
+            "title": "estimate-task",
+            "status": "to-do",
+            "category": "work",
+            "預估🍅": 3,
+            "plan": [{"date": "2026-06-16", "pomodoros": 12}],
+            "tags": ["task"],
+        },
+    )
+    t = WeeklyIndexer(tmp_path).find_task("estimate-task")
+    assert t.est_pomodoros == 3
+
+
 def test_plan_entry_done_drives_daily_crossout(tmp_path, monkeypatch):
     # Regression (修修): a plan entry's `done: true` must surface as done_on(d) / the
     # daily item's done — _as_int treats bool as 0, so `done` is parsed truthily instead.
