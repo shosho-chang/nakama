@@ -743,9 +743,7 @@ def _overview_context(vault: Path) -> dict:
     perm_total, perm_by = _count_by_status(
         vault / PERMANENT_DIR, ["seedling", "growing", "evergreen"]
     )
-    fleet_total, fleet_by = _count_by_status(
-        vault / "KB" / "Fleeting", ["open", "processed"]
-    )
+    fleet_total, fleet_by = _count_by_status(vault / "KB" / "Fleeting", ["open", "processed"])
 
     lit_dir = vault / "KB" / "Literature"
     lit_total = 0
