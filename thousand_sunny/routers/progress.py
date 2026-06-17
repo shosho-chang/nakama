@@ -1,50 +1,54 @@
-"""Public partner-facing progress page (unauthenticated).
+"""Internal partner-readiness progress page (`/progress`).
 
-Serves a single static HTML at ``/progress`` summarising Nakama's
-Lines × Stages, Agents × Stages, and Channels × Stages readiness for
-external partners. No auth, no DB — readiness is hand-curated in the
-HTML and committed to git as the single source of truth.
+Summarises Nakama's Lines × Stages, Agents × Stages, and Channels × Stages
+readiness. Readiness is hand-curated in ``templates/bridge/progress.html`` and
+committed to git as the single source of truth (no DB).
 
-This breaks the all-authenticated pattern intentionally; see the
-``/healthz`` precedent (franky.router) for the prior public route.
+Formerly a public static page; now cookie-authed and rendered through the
+shared chassis nav so it lives inside the Bridge instead of carrying its own
+docnav. Render pattern (auth + Jinja + asset-versioned CSS) mirrors
+``franky.py`` / ``inventory.py``.
 """
 
 import hashlib
-from functools import lru_cache
 from pathlib import Path
 
-from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Cookie, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from thousand_sunny.auth import check_auth
 
 router = APIRouter()
 
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "bridge"
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-_PAGE_PATH = _STATIC_DIR / "progress" / "index.html"
-
-# Assets versioned in the served HTML. Hashing the bytes means any edit to
-# these files yields a fresh URL, so Cloudflare's 4h CDN cache invalidates
-# on deploy without manual purge. (Cf cf-cache-status: HIT incident
-# 2026-05-19: post-#606 CSS sat in CF cache for 40+ min because /static/*
-# URLs were unversioned.)
-_VERSIONED_ASSETS = (
-    _STATIC_DIR / "progress" / "progress.css",
-    _STATIC_DIR / "shosho" / "tokens.css",
-    _STATIC_DIR / "shosho" / "brand" / "logo_1.png",
-)
+_templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
 
 
-@lru_cache(maxsize=1)
-def _rendered_html() -> str:
+def _asset_version() -> str:
     h = hashlib.sha1()
-    for f in _VERSIONED_ASSETS:
-        h.update(f.read_bytes())
-    version = h.hexdigest()[:8]
-    return _PAGE_PATH.read_text(encoding="utf-8").replace("__ASSET_VERSION__", version)
+    for rel in (
+        "shosho/tokens.css",
+        "shosho/bridge.css",
+        "shosho/theme.js",
+        "progress/progress.css",
+    ):
+        path = _STATIC_DIR / rel
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:8]
 
 
-@router.api_route("/progress", methods=["GET", "HEAD"], include_in_schema=False)
-async def progress_page() -> HTMLResponse:
-    # HEAD requests still hit this handler — FastAPI/Starlette drop the body
-    # automatically. Cloudflare uptime probes and partner monitoring tools
-    # commonly use HEAD, so 405 from a GET-only route would generate noise.
-    return HTMLResponse(_rendered_html(), media_type="text/html; charset=utf-8")
+_ASSET_VERSION = _asset_version()
+
+
+@router.api_route(
+    "/progress", methods=["GET", "HEAD"], response_class=HTMLResponse, include_in_schema=False
+)
+def progress_page(request: Request, nakama_auth: str | None = Cookie(None)):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/progress", status_code=302)
+    return _templates.TemplateResponse(
+        request, "progress.html", {"asset_version": _ASSET_VERSION}
+    )
