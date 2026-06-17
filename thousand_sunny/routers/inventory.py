@@ -51,6 +51,4 @@ _ASSET_VERSION = _asset_version()
 def bridge_inventory_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/inventory", status_code=302)
-    return _templates.TemplateResponse(
-        request, "inventory.html", {"asset_version": _ASSET_VERSION}
-    )
+    return _templates.TemplateResponse(request, "inventory.html", {"asset_version": _ASSET_VERSION})

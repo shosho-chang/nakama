@@ -49,6 +49,4 @@ _ASSET_VERSION = _asset_version()
 def progress_page(request: Request, nakama_auth: str | None = Cookie(None)):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/progress", status_code=302)
-    return _templates.TemplateResponse(
-        request, "progress.html", {"asset_version": _ASSET_VERSION}
-    )
+    return _templates.TemplateResponse(request, "progress.html", {"asset_version": _ASSET_VERSION})
