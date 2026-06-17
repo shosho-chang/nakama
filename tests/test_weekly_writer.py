@@ -795,7 +795,19 @@ class TestScheduleTaskBlock:
         _make_task(vault, "測試任務", {**self._FM, "custom": "keep"})
         schedule_task_block(vault, "測試任務", start=datetime(2026, 6, 3, 9, 0), pomodoros=2)
         fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
-        assert fm["custom"] == "keep" and fm["title"] == "測試任務" and fm["預估🍅"] == 6
+        # 預估🍅 is NOT "untouched frontmatter" — scheduling syncs it to the plan sum
+        # (修修 option 1). Non-scheduling keys (custom/title) stay put.
+        assert fm["custom"] == "keep" and fm["title"] == "測試任務"
+
+    def test_estimate_syncs_to_scheduled_plan(self, vault):
+        """修修 option 1: scheduling writes 預估🍅 = sum(plan pomodoros), so the task
+        page (預估🍅) and dashboard/bullet (plan sum) can't diverge. _FM starts at 6;
+        scheduling a 3🍅 block drops the estimate to 3 (regression: 寫電子報 showed 4 vs 3)."""
+        _make_task(vault, "測試任務", self._FM)  # 預估🍅: 6
+        schedule_task_block(vault, "測試任務", start=datetime(2026, 6, 3, 9, 0), pomodoros=3)
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert fm["plan"][0]["pomodoros"] == 3
+        assert fm["預估🍅"] == 3
 
     def test_weekend_without_reason_raises(self, vault):
         _make_task(vault, "測試任務", self._FM)

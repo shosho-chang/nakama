@@ -168,6 +168,18 @@ def _plan_list(fm: dict[str, Any]) -> list[dict[str, Any]]:
     return [e for e in raw if isinstance(e, dict)]
 
 
+def _sync_estimate_to_plan(fm: dict[str, Any]) -> None:
+    """Keep ``預估🍅`` in step with the scheduled ``plan[]`` (修修 option 1): the
+    task-level estimate follows the total pomodoros committed to the calendar, so the
+    task page (reads ``預估🍅``) and the dashboard / daily bullet (read the plan sum)
+    never diverge. Called by the plan-mutating scheduling writes only — NOT by
+    timeEntries / body saves (those must not touch the estimate). No-op when there is
+    no plan yet (a bare estimate stands until the task is actually scheduled)."""
+    plan = _plan_list(fm)
+    if plan:
+        fm["預估🍅"] = sum(int(e.get("pomodoros") or 0) for e in plan)
+
+
 # ── Task note body (ADR-040 A7 — scoped writing surface, Slice W) ───────────────
 # The task page is a scoped draft surface: 修修 writes the note BODY on the page
 # (his ask: drafting 本週電子報 on the task). TaskNotes is already 🟡 — no red line —
@@ -459,6 +471,7 @@ def schedule_task_block(
     if calendar_event_id is not None:
         fm["calendar_event_id"] = calendar_event_id
 
+    _sync_estimate_to_plan(fm)  # 修修 option 1: 預估🍅 follows the schedule
     _write_task(path, fm, body)
     return scheduled, scheduled_end, task_file_token(vault_root, task_slug)
 
@@ -548,6 +561,7 @@ def upsert_plan_entry(
     if not replaced:
         entries.append(new_entry)
     fm["plan"] = entries
+    _sync_estimate_to_plan(fm)  # 修修 option 1: 預估🍅 follows the schedule
     _write_task(path, fm, body)
     return start_iso, end_iso, task_file_token(vault_root, task_slug)
 

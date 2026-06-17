@@ -104,6 +104,16 @@ class TestUpsertPlanEntry:
         assert entry["calendar_event_id"] == "evt_x"
         assert entry["pomodoros"] == 6
 
+    def test_estimate_syncs_to_plan_sum(self, vault):
+        """修修 option 1: each 排入 rewrites 預估🍅 = sum(plan pomodoros) so the task
+        page and dashboard/bullet never diverge (regression: 寫電子報 showed 4 vs 3).
+        Fixture starts at 6; scheduling 3 on Wed → 3; then 2 on Thu → total 5."""
+        THU = datetime(2026, 6, 4, 9, 0, 0)
+        upsert_plan_entry(vault, SLUG, day=WED.date(), pomodoros=3)
+        assert _fm(vault)["預估🍅"] == 3
+        upsert_plan_entry(vault, SLUG, day=THU.date(), pomodoros=2)
+        assert _fm(vault)["預估🍅"] == 5
+
     def test_weekend_requires_reason(self, vault):
         with pytest.raises(WeekendReasonRequired):
             upsert_plan_entry(vault, SLUG, day=SAT.date(), pomodoros=2, start=SAT)
