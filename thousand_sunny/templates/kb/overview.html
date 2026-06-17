@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · 卡片盒</title>
+<script src="/static/shosho/theme.js"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/kb-overview.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "bridge/_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='kb') }}
+
+  <main class="kbov-main">
+    <header class="kbov-head">
+      <span class="sho-kicker"><span class="sho-kicker-n">KB</span> 知識庫</span>
+      <h1 class="kbov-title">卡片盒</h1>
+      <p class="kbov-sub">綜覽你所有筆記。每天「該處理什麼」走 <a class="sho-lk" href="/kb/review">每日回顧</a>。</p>
+    </header>
+
+    <section class="kbov-types" aria-label="筆記類型">
+      <div class="kbov-card">
+        <span class="kbov-card-label">永久筆記</span>
+        <span class="kbov-card-n{% if ov.permanent.total == 0 %} kbov-card-n--empty{% endif %}">{{ ov.permanent.total }}</span>
+        {% if ov.permanent.total %}
+          <span class="kbov-card-meta">種子 {{ ov.permanent.by_status.seedling }} · 成長 {{ ov.permanent.by_status.growing }} · 常青 {{ ov.permanent.by_status.evergreen }}</span>
+        {% else %}
+          <span class="kbov-card-cta">從文獻或回顧開第一張卡</span>
+        {% endif %}
+      </div>
+
+      <div class="kbov-card">
+        <span class="kbov-card-label">靈感筆記</span>
+        <span class="kbov-card-n{% if ov.fleeting.total == 0 %} kbov-card-n--empty{% endif %}">{{ ov.fleeting.total }}</span>
+        {% if ov.fleeting.total %}
+          <span class="kbov-card-meta">待整理 {{ ov.fleeting.by_status.open }} · 已整理 {{ ov.fleeting.by_status.processed }}</span>
+        {% else %}
+          <span class="kbov-card-cta">隨手記下一則靈感</span>
+        {% endif %}
+      </div>
+
+      <div class="kbov-card">
+        <span class="kbov-card-label">文獻筆記</span>
+        <span class="kbov-card-n{% if ov.literature.total == 0 %} kbov-card-n--empty{% endif %}">{{ ov.literature.total }}</span>
+        <span class="kbov-card-meta">已劃線 + 心得</span>
+      </div>
+
+      <a class="kbov-card kbov-card--out" href="/bridge/projects">
+        <span class="kbov-card-label">專案筆記</span>
+        <span class="kbov-card-n{% if ov.projects.total == 0 %} kbov-card-n--empty{% endif %}">{{ ov.projects.total }}</span>
+        <span class="kbov-card-cta">在 KB 外 · 連到 Projects →</span>
+      </a>
+    </section>
+
+    <a class="kbov-review" href="/kb/review" aria-label="前往每日回顧">
+      <div>
+        <div class="kbov-review-t">每日回顧</div>
+        <div class="kbov-review-s">Robin 每天 5am 整理永久卡候選 + 靈感待辦</div>
+      </div>
+      <span class="kbov-review-go">前往 →</span>
+    </a>
+
+    <section aria-label="最近文獻筆記">
+      <div class="kbov-sec-h">最近文獻筆記</div>
+      {% if ov.literature.recent %}
+      <div class="kbov-recent">
+        {% for it in ov.literature.recent %}
+        <a class="kbov-row" href="/robin/literature/{{ it.slug | urlencode }}">
+          <span class="kbov-row-t">{{ it.title }}</span>
+          <span class="kbov-row-meta">{{ it.kind_label }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="kbov-empty">還沒有文獻筆記——讀一篇文章 / 一本書，劃線就會出現在這。</div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>
