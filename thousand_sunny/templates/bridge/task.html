@@ -274,54 +274,85 @@
     function curMode() { var e = modeEl(); return e ? e.value : 'pomodoro'; }
     function curMin() { var e = modeEl(); return (e && parseInt(e.getAttribute('data-minutes'), 10)) || 25; }
 
-    var remaining = curMin() * 60;
-    var ticker = null, running = false, started = false;  // started = a block is underway (run or paused)
+    // WALL-CLOCK driven (NOT a per-second counter): the old setInterval(tick,1000)
+    // that did `remaining -= 1` drifted badly when the tab was backgrounded /
+    // minimised — browsers throttle/suspend background timers, so a 75-min block
+    // logged as ~24 min (and then under the 25/70-min thresholds → no 🍅, no UFO).
+    // We instead track real timestamps and derive elapsed from Date.now(), so the
+    // interval is only a display refresh; throttling can't lose focused time.
+    var nominalSec = curMin() * 60;
+    var elapsedBefore = 0;   // focused seconds banked before the current ▶ segment
+    var runStartTs = 0;      // Date.now() when the current segment began (0 = paused)
+    var ticker = null, started = false;  // started = a block is underway (run or paused)
+
+    function isRunning() { return runStartTs !== 0; }
+    function elapsedSec() {
+      return elapsedBefore + (isRunning() ? (Date.now() - runStartTs) / 1000 : 0);
+    }
+    function remainingSec() { return Math.max(0, nominalSec - elapsedSec()); }
 
     function fmt(s) {
+      s = Math.round(s);
       var m = Math.floor(s / 60), ss = s % 60;
       return (m < 10 ? '0' : '') + m + ':' + (ss < 10 ? '0' : '') + ss;
     }
     function render() {
-      display.textContent = fmt(Math.max(0, remaining));
-      icon.textContent = running ? '⏸' : '▶';
-      btn.setAttribute('data-running', running ? 'true' : 'false');
+      display.textContent = fmt(remainingSec());
+      icon.textContent = isRunning() ? '⏸' : '▶';
+      btn.setAttribute('data-running', isRunning() ? 'true' : 'false');
       finishBtn.classList.toggle('is-hidden', !started);
       abortBtn.classList.toggle('is-hidden', !started);
       // can't switch length mid-block — lock the toggle once a block is underway
       Array.prototype.forEach.call(modeRadios, function (r) { r.disabled = started; });
     }
-    function stop() { if (ticker) { clearInterval(ticker); ticker = null; } running = false; }
+    function stopTicker() { if (ticker) { clearInterval(ticker); ticker = null; } }
+    function pause() {
+      if (!isRunning()) return;
+      elapsedBefore = elapsedSec();  // bank the focused time, then stop the clock
+      runStartTs = 0;
+      stopTicker();
+    }
     function submitLog() {
+      stopTicker();
       var mode = curMode();
-      stop(); started = false;
+      // cap at the nominal block (a natural finish / background overshoot logs a full
+      // block; an early 完成 logs the actual focused time — ADR-040 A2). The route
+      // also clamps to [60, nominal*60], this just avoids sending an overshoot.
+      var secs = Math.round(Math.min(nominalSec, elapsedSec()));
+      elapsedBefore = 0; runStartTs = 0; started = false;
       var f = dock.querySelector('.tk-logform[data-mode="' + mode + '"]');
-      if (!f) return;
-      var elapsed = curMin() * 60 - Math.max(0, remaining);  // real time focused
+      if (!f) { render(); return; }
       var inp = f.querySelector('input[name="elapsed_seconds"]');
-      if (inp) inp.value = String(Math.max(0, elapsed));
+      if (inp) inp.value = String(Math.max(0, secs));
       f.submit();
     }
     function tick() {
-      remaining -= 1;
-      if (remaining <= 0) { remaining = 0; render(); submitLog(); return; }
+      // wall-clock derived — correct even after the interval was throttled while hidden
+      if (remainingSec() <= 0) { render(); submitLog(); return; }
       render();
     }
 
     btn.addEventListener('click', function () {
-      if (running) { stop(); render(); return; }  // ⏸ pause, keep remaining
-      started = true; running = true;
-      ticker = setInterval(tick, 1000);
+      if (isRunning()) { pause(); render(); return; }  // ⏸ pause, keep banked time
+      started = true; runStartTs = Date.now();
+      stopTicker(); ticker = setInterval(tick, 500);
       render();
     });
     if (finishBtn) finishBtn.addEventListener('click', submitLog);
     if (abortBtn) abortBtn.addEventListener('click', function () {
-      stop(); started = false; remaining = curMin() * 60; render();
+      stopTicker(); started = false; elapsedBefore = 0; runStartTs = 0;
+      nominalSec = curMin() * 60; render();
     });
     Array.prototype.forEach.call(modeRadios, function (r) {
       r.addEventListener('change', function () {
         if (started) return;
-        remaining = curMin() * 60; render();
+        nominalSec = curMin() * 60; render();
       });
+    });
+    // Recompute the instant the tab regains focus, so a block that hit 0 while
+    // backgrounded is logged as soon as 修修 comes back (not on the next throttled tick).
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && started) tick();
     });
     render();
   })();
