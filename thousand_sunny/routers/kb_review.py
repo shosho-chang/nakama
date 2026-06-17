@@ -740,8 +740,12 @@ def _count_by_status(folder: Path, statuses: list[str]) -> tuple[int, dict[str, 
 
 def _overview_context(vault: Path) -> dict:
     """聚合 vault 四類筆記（讀 frontmatter，不打 LLM、不寫檔）。"""
-    perm_total, perm_by = _count_by_status(vault / PERMANENT_DIR, ["seedling", "growing", "evergreen"])
-    fleet_total, fleet_by = _count_by_status(vault / "KB" / "Fleeting", ["open", "processed"])
+    perm_total, perm_by = _count_by_status(
+        vault / PERMANENT_DIR, ["seedling", "growing", "evergreen"]
+    )
+    fleet_total, fleet_by = _count_by_status(
+        vault / "KB" / "Fleeting", ["open", "processed"]
+    )
 
     lit_dir = vault / "KB" / "Literature"
     lit_total = 0
