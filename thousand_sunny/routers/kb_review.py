@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.permanent_layer import PERMANENT_DIR
+from shared.project_indexer import ProjectIndexer
 from shared.schemas.daily_review import DailyReviewBundle
 from shared.utils import extract_frontmatter, slugify
 from thousand_sunny.auth import check_auth
@@ -45,6 +46,10 @@ router = APIRouter(prefix="/kb")
 
 _TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT / "kb")])
+# Overview (/kb) wears the chassis nav, so its env searches the templates root
+# (resolves both "kb/overview.html" and "bridge/_chassis_nav.html"). The review
+# page keeps the chrome-less `templates` env above untouched.
+_chrome_templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT)])
 
 # typed-edge 中文 label（v0.2 §3 inline field）。
 _EDGE_LABELS: dict[str, str] = {"support": "支持", "refute": "反駁", "extend": "延伸"}
@@ -66,6 +71,7 @@ def _shosho_asset_version() -> str:
         "kb_review.js",
         "kb_canvas.css",
         "kb_canvas.js",
+        "shosho/kb-overview.css",
     ):
         p = static_dir / rel
         if p.exists():
@@ -705,6 +711,94 @@ def _bundle_for_template(bundle: DailyReviewBundle) -> dict:
         "warnings": bundle.warnings,
         "n_open": len(bundle.candidates) + len(bundle.fleeting),
     }
+
+
+# ---------------------------------------------------------------------------
+# Overview (/kb) — 卡片盒首頁：四類筆記量 + 狀態 + 最近文獻
+# ---------------------------------------------------------------------------
+
+_KIND_LABEL = {"book": "書", "article": "文章", "paper": "論文", "video": "影片"}
+
+
+def _count_by_status(folder: Path, statuses: list[str]) -> tuple[int, dict[str, int]]:
+    """Count ``*.md`` in ``folder`` and bucket by frontmatter ``status``."""
+    by_status = {s: 0 for s in statuses}
+    total = 0
+    if not folder.is_dir():
+        return total, by_status
+    for p in folder.glob("*.md"):
+        total += 1
+        try:
+            fm, _ = extract_frontmatter(p.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 — 壞檔不該讓整頁掛掉，只是不計入分桶
+            continue
+        st = str(fm.get("status", "")).strip()
+        if st in by_status:
+            by_status[st] += 1
+    return total, by_status
+
+
+def _overview_context(vault: Path) -> dict:
+    """聚合 vault 四類筆記（讀 frontmatter，不打 LLM、不寫檔）。"""
+    perm_total, perm_by = _count_by_status(
+        vault / PERMANENT_DIR, ["seedling", "growing", "evergreen"]
+    )
+    fleet_total, fleet_by = _count_by_status(vault / "KB" / "Fleeting", ["open", "processed"])
+
+    lit_dir = vault / "KB" / "Literature"
+    lit_total = 0
+    recent: list[dict] = []
+    if lit_dir.is_dir():
+        files = sorted(lit_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+        lit_total = len(files)
+        for p in files[:6]:
+            try:
+                fm, _ = extract_frontmatter(p.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                fm = {}
+            kind = str(fm.get("source_kind") or "article")
+            recent.append(
+                {
+                    "slug": p.stem,
+                    "title": str(fm.get("title") or p.stem),
+                    "kind_label": _KIND_LABEL.get(kind, kind),
+                }
+            )
+
+    # 用 ProjectIndexer（與 /bridge/projects 同源）數，計數一致：濾掉
+    # sync-conflict / Untitled / dotfile / archived（ADR-030 Syncthing vault）。
+    proj_total = len(ProjectIndexer(vault).list_all())
+
+    return {
+        "permanent": {"total": perm_total, "by_status": perm_by},
+        "fleeting": {"total": fleet_total, "by_status": fleet_by},
+        "literature": {"total": lit_total, "recent": recent},
+        "projects": {"total": proj_total},
+    }
+
+
+@router.get("", response_class=HTMLResponse)
+async def kb_overview_page(request: Request, nakama_auth: str | None = Cookie(None)):
+    """卡片盒首頁——綜覽四類筆記（browse）；每日處理工作流走 /kb/review。"""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/kb", status_code=302)
+
+    try:
+        ov = _overview_context(get_vault_path())
+    except Exception:  # noqa: BLE001 — UI 不應因聚合出錯而 500
+        logger.exception("kb overview compute failed")
+        ov = {
+            "permanent": {"total": 0, "by_status": {"seedling": 0, "growing": 0, "evergreen": 0}},
+            "fleeting": {"total": 0, "by_status": {"open": 0, "processed": 0}},
+            "literature": {"total": 0, "recent": []},
+            "projects": {"total": 0},
+        }
+
+    return _chrome_templates.TemplateResponse(
+        request,
+        "kb/overview.html",
+        {"ov": ov, "asset_version": _SHOSHO_ASSET_VERSION},
+    )
 
 
 @router.get("/review", response_class=HTMLResponse)

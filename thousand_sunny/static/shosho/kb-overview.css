@@ -1,0 +1,117 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   KB overview — 卡片盒首頁 (/kb). Browse surface: 四類筆記量 + 狀態 + 最近動態。
+   Tokens from tokens.css; dark mode + prefers-reduced-motion inherited.
+   Sibling of daily_review.html (/kb/review = process surface, chrome-less).
+   ───────────────────────────────────────────────────────────────────────── */
+
+.sho .kbov-main {
+  width: 100%;          /* body is display:flex (bridge chrome) — stretch, then cap */
+  max-width: 920px;
+  margin: 0 auto;
+  padding: var(--sho-s-6) var(--sho-gutter) var(--sho-s-8);
+}
+
+.sho .kbov-head { margin-bottom: var(--sho-s-5); }
+.sho .kbov-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--sho-ink);
+  letter-spacing: -0.01em;
+  margin-top: var(--sho-s-2);
+}
+.sho .kbov-sub {
+  color: var(--sho-text-2);
+  font-size: 14px;
+  margin-top: var(--sho-s-1);
+}
+
+/* ── Four type cards ───────────────────────────────────────────────────── */
+.sho .kbov-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--sho-s-3);
+  margin-bottom: var(--sho-s-5);
+}
+.sho .kbov-card {
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-3);
+  padding: var(--sho-s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-1);
+}
+.sho .kbov-card--out { background: transparent; }
+.sho a.kbov-card { transition: border-color var(--sho-t-fast) var(--sho-ease); }
+.sho a.kbov-card:hover { border-color: var(--sho-accent-line); }
+.sho a.kbov-card:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.sho .kbov-card-label { font-size: 13px; color: var(--sho-text-2); font-weight: 500; }
+.sho .kbov-card-n {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--sho-ink);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.sho .kbov-card-n--empty { color: var(--sho-line-2); }
+.sho .kbov-card-meta { font-size: 12px; color: var(--sho-muted); }
+.sho .kbov-card-cta { font-size: 12px; color: var(--sho-accent); }
+
+/* ── Daily-review banner ───────────────────────────────────────────────── */
+.sho .kbov-review {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sho-s-3);
+  background: var(--sho-accent-soft);
+  border: 1px solid var(--sho-accent-line);
+  border-radius: var(--sho-r-3);
+  padding: var(--sho-s-4);
+  margin-bottom: var(--sho-s-6);
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+.sho .kbov-review:hover { border-color: var(--sho-accent); }
+.sho .kbov-review:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.sho .kbov-review-t { font-size: 15px; font-weight: 600; color: var(--sho-text); }
+.sho .kbov-review-s { font-size: 12.5px; color: var(--sho-text-2); margin-top: 2px; }
+.sho .kbov-review-go { color: var(--sho-accent); font-weight: 600; white-space: nowrap; }
+
+/* ── Recent literature list ────────────────────────────────────────────── */
+.sho .kbov-sec-h {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sho-muted);
+  font-weight: 500;
+  margin-bottom: var(--sho-s-2);
+}
+.sho .kbov-recent { display: flex; flex-direction: column; gap: var(--sho-s-2); }
+.sho .kbov-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sho-s-3);
+  padding: var(--sho-s-3) var(--sho-s-4);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+.sho a.kbov-row:hover { border-color: var(--sho-accent-line); }
+.sho a.kbov-row:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+.sho .kbov-row-t {
+  font-size: 14px;
+  color: var(--sho-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sho .kbov-row-meta { font-size: 12px; color: var(--sho-muted); white-space: nowrap; }
+.sho .kbov-empty {
+  color: var(--sho-muted);
+  font-size: 13px;
+  padding: var(--sho-s-5);
+  text-align: center;
+  border: 1px dashed var(--sho-line-2);
+  border-radius: var(--sho-r-2);
+}
