@@ -206,6 +206,37 @@ def test_events_step_summarizing_md_with_frontmatter(client, vault, monkeypatch)
     assert sess["_author"] == "Jane Doe"
 
 
+def test_events_step_summarizing_source_page_author_is_agent_robin(client, vault, monkeypatch):
+    """Source digest 是 AI 綜整摘要 → frontmatter author 必須是 agent_robin，
+    原文作者另記在 original_author（Centaur 規格 §7 紅線 3，provenance 分離）。
+
+    Regression guard for WEB-UI-AUTHOR-BUG：Web UI 路徑曾把人類作者直接寫進
+    author，謊稱人類寫了 AI 摘要。對齊 CLI pipeline agents/robin/ingest.py:187-188。
+    """
+    tc, mod = client
+    raw = vault / "Inbox" / "web" / "provenance.md"
+    raw.parent.mkdir(parents=True)
+    raw.write_text("---\ntitle: Provenance Title\nauthor: Jane Doe\n---\nbody")
+    sid = mod._new_session(
+        step="summarizing",
+        raw_path=str(raw),
+        file_path=str(raw),
+        source_type="article",
+    )
+    write_page_mock = MagicMock()
+    monkeypatch.setattr(mod.pipeline, "_generate_summary", MagicMock(return_value="summary"))
+    import shared.obsidian_writer as ow
+
+    monkeypatch.setattr(ow, "write_page", write_page_mock)
+
+    r = tc.get(f"/robin/events/{sid}")
+    assert r.status_code == 200
+    # write_page 第二個位置參數是 frontmatter dict
+    fm = write_page_mock.call_args[0][1]
+    assert fm["author"] == "agent_robin"
+    assert fm["original_author"] == "Jane Doe"
+
+
 def test_events_step_summarizing_raw_path_outside_vault_fallback(
     client, vault, tmp_path, monkeypatch
 ):
