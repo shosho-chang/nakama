@@ -1,0 +1,55 @@
+# Gemini audit ROUND 2 — ADR-045 D-E/D-F/D-G
+
+> Verbatim **gemini-2.5-flash** via multi-agent-panel skill, 2026-06-18 (gemini-2.5-pro was 503/overloaded all afternoon; fell back to flash per graceful-degradation matrix). Scope: new decisions only.
+
+---
+
+The ADR-045 Round 2 audit focuses exclusively on D-E, D-F, and D-G. My analysis builds upon the Round 1 audits, specifically addressing the `/draft-map` schism and CJK anchor rot I previously flagged, while providing a distinct reasoning chain and cross-document consistency checks.
+
+---
+
+### 1. CROSS-DOCUMENT CONSISTENCY
+
+-   **D-E vs. Centaur v0.2 §7 Red Line 5:** The ADR correctly identifies the core conflict: ingesting `own-output` as a `terminal` source launders its derived origin, violating Red Line 5's spirit. The proposed `derivation set` and `provenance_linter` expansion are necessary but currently unimplemented. Codex rightly points out the existing linter's limitations and the `unknown` status for `KB/Permanent/` as a potential loophole. The ADR's proposed solution, while conceptually sound, requires significant new infrastructure that is not yet designed in detail, making the current "firewall" more of a conceptual boundary than an enforced one.
+-   **D-F vs. ADR-001 & Centaur v0.2 §4:** D-F's "compounds into domain knowledge" criterion for KB entry is consistent with ADR-001's high-level role assignments (Robin = Knowledge Base, Nami = Secretary). However, it creates a practical ambiguity for `Fleeting Notes` (Centaur v0.2 §4). Centaur states `KB/Fleeting/...` is Nami-captured, with AI only flipping status. D-F implies a capture-time decision for routing fleeting ideas to KB (Robin) or TaskNotes (Nami). This is a functional drift: if Nami captures *all* fleeting notes, then D-F's criterion applies at the *triage* stage, not capture. The ADR punts on this "邊界灰區" without proposing a concrete triage mechanism or clarifying the Nami-Robin handoff for mixed fleeting notes.
+-   **D-G vs. ADR-043 Decision 8 (`/draft-map`) & ADR-024:** The ADR's reconciliation of `/draft-map` as `gather`'s Permanent-only special case is a conceptual unification, but as Codex correctly notes, `/draft-map` has no existing code to reuse. This makes the claim ceremonial. `gather`'s expansion from `per-reading-source` to `per-topic` (across multiple sources/cards) is a non-trivial architectural shift, not a simple refactor. It requires new retrieval, ranking, and aggregation logic. D-G's adherence to ADR-024's "not a draft" and CONTENT-PIPELINE's "no ghostwriting" is critical, but the line between "outline skeleton + evidence cluster" and "drafting" is thin and requires explicit output contracts.
+
+### 2. CJK / BILINGUAL
+
+-   **D-E & CJK Anchor Rot:** My Round 1 audit flagged the CJK anchor rot risk for `source_refs` (Obsidian's `^loc`/`^p` anchors are unstable for Chinese due to lack of word boundaries). D-E's `own-output` reflux, once ingested as a `Source`, will likely generate `source_refs` to `Raw` or `Annotations`. If these underlying `Raw` or `Annotations` use CJK block anchors, D-E inherits this critical, unaddressed link rot vulnerability. The ADR is silent on this, despite the explicit flag in ADR-043's panel audit.
+-   **D-F & Bilingual Fleeting Notes:** D-F's "compounds into domain knowledge" criterion for fleeting notes doesn't address bilingual considerations. If a fleeting idea is captured in mixed Chinese/English, or contains CJK-specific domain knowledge, how does the system ensure consistent routing and future retrieval across language boundaries, especially if aliases are not uniformly managed across Nami's TaskNotes and Robin's KB?
+
+### 3. REASONING SOUNDNESS
+
+-   **D-E Firewall Soundness:** The proposed firewall is conceptually sound in identifying the `citation laundering` risk and proposing `derivation set` tracking. However, its current state is a "placeholder" in code, and the ADR's solution is a high-level proposal, not a detailed design. Without a concrete implementation plan for the provenance graph, transitive cycle detection, and the expanded `provenance_linter`, the firewall is currently theoretical. The ADR wisely suggests delaying Route O until the linter is wired, which is a pragmatic approach given the complexity.
+-   **D-F Decidability of "Compoundability":** The criterion "compounds into domain knowledge" is inherently subjective and difficult to decide at capture time, especially for fleeting notes. Many initial thoughts are ambiguous, containing both operational context and potential domain insight. Punting this to a "邊界灰區" (gray area) without a clear triage mechanism (e.g., a default route, a human review step, or a "mixed" tag) means the decision is effectively punted to the human operator, increasing cognitive load and risking inconsistent KB population.
+-   **D-G Gather/Draft-Map Unification:** The unification is currently ceremonial. `gather` is a significant expansion of `ReadingContextPackageBuilder` from `per-source` to `per-topic`, requiring new logic for cross-source aggregation, ranking, and outline generation. Claiming it "reuses `/draft-map`'s Permanent-layer logic" when `/draft-map` itself is unimplemented is premature. The overlap with `kb-query`/`insight` is also real: `kb-query` answers questions from Robin's Wiki, `insight` finds unexpected connections. `gather`'s "問題清單 + outline skeleton" could easily overlap with these, requiring clear output contracts to prevent functional redundancy or confusion.
+
+### 4. AUDIT-THE-AUDIT
+
+Codex's Round 2 audit was technically robust, particularly in its code grounding and identification of implementation gaps.
+
+-   **Where Codex Was Right:** Codex correctly identified that `provenance_linter.py` lacks the necessary `own-output`, `provenance:self`, or `derivation` symbols and that the derivation-set firewall is not implementable with the current API. Its observation that `KB/Permanent/` could fall through the linter as `unknown` is a critical blind spot in the ADR. For D-G, Codex accurately pointed out the lack of `/draft-map` implementation and the non-trivial nature of extending RCP to `per-topic`.
+-   **Where Codex Was Wrong:** Codex's pushback on D-G's assumption that "assembly cannot become drafting" is too strong. While the line is thin, ADR-024 and CONTENT-PIPELINE.md explicitly define the boundary (scaffolding, not ghostwriting). The ADR's `outline skeleton` and `evidence board` are consistent with scaffolding, provided they don't generate prose. Codex's "assumption push-back" here borders on re-litigating settled red lines rather than auditing the ADR's adherence.
+-   **Where Codex Missed Something:** Codex missed the CJK anchor rot risk for D-E's `source_refs` and D-G's evidence clusters, which I flagged in Round 1. It also didn't fully explore the practical implications of D-F's "decidability at capture time" for fleeting notes, beyond stating a drift.
+
+### 5. BLIND SPOTS
+
+Both Claude and Codex missed the following dimensions for D-E/D-F/D-G:
+
+-   **D-E: Data Integrity & Back-propagation:** Beyond the immediate citation laundering, what are the implications for data integrity if an `own-output` source, derived from a Concept, is later used to *refine* that Concept? This creates a feedback loop where the "truth" can drift further from the original `Raw`/`Annotations` without new external evidence. The proposed `derivation set` is a step, but the system needs a clear policy on *how* derived sources can influence their ancestors, if at all, without introducing circular reasoning or amplifying errors.
+-   **D-F: Cognitive Load & Decision Fatigue:** D-F's "compounds into domain knowledge" criterion, while conceptually sound, places a significant cognitive burden on the human at the point of capture or triage. For every fleeting idea, the human must perform a meta-analysis: "Is this reusable? Is it domain-specific? Or is it just operational?" This constant micro-decision-making can lead to decision fatigue, inconsistent tagging, or simply defaulting to Nami's TaskNotes to avoid the mental overhead, thus starving Robin's KB of valuable fleeting insights.
+-   **D-G: "Taste-Loop" Overfitting for Assembly:** While `taste-profile` is an engine, D-G's `gather` skill will heavily leverage it to "攤出來排給修修看" (lay out for 修修 to see). If `taste-profile` overfits (as I flagged in Round 1), `gather` will consistently present information that aligns with existing preferences, potentially missing novel connections or contradictory evidence that could lead to "意想不到的洞見" (unexpected insights). The `gather` skill, as a primary assembly point, needs a mechanism to inject "taste-breaking" or divergent perspectives to prevent an echo chamber effect in the writing process.
+
+### 6. VERDICT
+
+**Approve-with-modifications.**
+
+D-E, D-F, and D-G introduce necessary capabilities but require significant clarification, implementation detail, and risk mitigation.
+
+1.  **In `docs/decisions/ADR-045...md`, Section "D-E":** Explicitly state that the `provenance_linter` expansion must include **transitive cycle detection** across the full provenance graph, not just direct links, to fully address the laundering risk. Also, add a note that `KB/Permanent/` must be explicitly classified as `terminal` or `derived` within the linter's logic, not `unknown`.
+2.  **In `docs/decisions/ADR-045...md`, Section "D-E" and "風險與緩解":** Add "CJK Anchor Rot" as a specific risk for `own-output` `source_refs`. The mitigation is to assign `kb-lint` the responsibility of validating block anchors in `Raw`/`Annotations` cited by `own-output` sources.
+3.  **In `docs/decisions/ADR-045...md`, Section "D-F":** Clarify the "邊界灰區" for fleeting notes. Propose a default routing (e.g., all fleeting notes initially go to Nami's TaskNotes) and a **human-driven triage step** (e.g., during daily review) where the "compounds into domain knowledge" decision is made, with an option for "mixed" notes that can be linked to both KB and TaskNotes.
+4.  **In `docs/decisions/ADR-045...md`, Section "D-G":** Revise the `/draft-map` reconciliation. Instead of claiming `gather` "reuses" `/draft-map`'s logic, state that `/draft-map` is a *future, specialized component* of a broader `ContextAssembly` service, and `gather` represents the initial, mixed-tier implementation of this service. Remove any implication that `/draft-map` currently exists in code.
+5.  **In `docs/decisions/ADR-045...md`, Section "D-G":** Add a non-overlap contract for `gather` vs. `kb-query`/`insight`. `gather` provides a *scaffolded assembly* of existing knowledge, `kb-query` provides *synthesized answers* to specific questions, and `insight` provides *novel, unprompted connections*.
+6.  **In `docs/decisions/ADR-045...md`, Section "D-G" and "風險與緩解":** Add a risk for `gather`: "Taste-Loop Overfitting in Assembly". The mitigation is to ensure the `taste-profile` engine, when invoked by `gather`, includes a configurable "novelty injection" or "divergent perspective" mechanism to prevent `gather` from only presenting information that reinforces existing biases.
