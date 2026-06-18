@@ -156,7 +156,7 @@ def main() -> None:
     p = sub.add_parser("plan", help="出 Source 摘要 + concept/entity 計畫（不寫 Concept/Entity）")
     p.add_argument("--raw", required=True, help="原始文章檔路徑")
     p.add_argument("--source-type", default="article", choices=["article", "paper"])
-    p.add_argument("--annotation-slug", default=None, help="annotation set slug（Phase 1 Literature）")
+    p.add_argument("--annotation-slug", default=None, help="annotation slug（Phase 1 Literature）")
     p.add_argument("--content-nature", default="popular_science")
     p.add_argument("--guidance", default="", help="修修對抽取方向的引導（可空）")
     p.add_argument("--out", required=True, help="計畫 JSON 輸出路徑")
