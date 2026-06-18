@@ -26,7 +26,10 @@ from shared.log import get_logger
 logger = get_logger("nakama.llm_router")
 
 DEFAULT_MODELS: dict[str, str] = {
-    "default": "claude-sonnet-4-20250514",
+    # 2026-06-16: was claude-sonnet-4-20250514 (Sonnet 4.0) — Anthropic 已退役，
+    # API 回 404 not_found，Franky news curate 先踩到（ADR-026 §237 早標的 drift）。
+    # 對齊 feedback_cost_management「daily Sonnet 4.6」。
+    "default": "claude-sonnet-4-6",
     "tool_use": "claude-haiku-4-5",
     # Translation is high-volume plain text — Sonnet 4.6 is the cost/quality
     # sweet spot. Caller can still override via MODEL_<AGENT>_TRANSLATE.
@@ -50,17 +53,17 @@ class ModelSite:
 
 
 MODEL_REGISTRY: tuple[ModelSite, ...] = (
-    ModelSite("robin", "ingest_summary", "claude-sonnet-4-20250514", "Ingest：Source 摘要"),
+    ModelSite("robin", "ingest_summary", "claude-sonnet-4-6", "Ingest：Source 摘要"),
     ModelSite("robin", "concept_merge", "claude-opus-4-7", "Ingest：Concept diff-merge"),
     ModelSite("robin", "annotation_merge", "claude-opus-4-7", "註解 merge 進 Concept"),
     ModelSite("robin", "daily_review", "claude-sonnet-4-5-20250929", "每日回顧 P-1/P-2/清掃"),
     ModelSite("robin", "kb_search", "claude-haiku-4-5-20251001", "KB 檢索 relevance reason"),
     ModelSite("robin", "project_angle_scan", "claude-haiku-4-5-20251001", "專案 KB-hit 角度掃描"),
     ModelSite("robin", "project_mechanism", "claude-opus-4-7", "專案機制草稿生成"),
-    ModelSite("nami", "default", "claude-sonnet-4-20250514", "Nami 對話 / 秘書任務"),
-    ModelSite("zoro", "default", "claude-sonnet-4-20250514", "Scout 趨勢 / 關鍵字"),
-    ModelSite("brook", "default", "claude-sonnet-4-20250514", "Composer 撰稿輔助"),
-    ModelSite("sanji", "default", "claude-sonnet-4-20250514", "社群監控"),
+    ModelSite("nami", "default", "claude-sonnet-4-6", "Nami 對話 / 秘書任務"),
+    ModelSite("zoro", "default", "claude-sonnet-4-6", "Scout 趨勢 / 關鍵字"),
+    ModelSite("brook", "default", "claude-sonnet-4-6", "Composer 撰稿輔助"),
+    ModelSite("sanji", "default", "claude-sonnet-4-6", "社群監控"),
 )
 
 _REGISTRY_BY_KEY: dict[tuple[str, str], ModelSite] = {(s.agent, s.task): s for s in MODEL_REGISTRY}
@@ -73,7 +76,6 @@ KNOWN_MODELS: tuple[str, ...] = (
     "claude-opus-4-7",
     "claude-sonnet-4-6",
     "claude-sonnet-4-5-20250929",
-    "claude-sonnet-4-20250514",
     "claude-haiku-4-5",
     "claude-haiku-4-5-20251001",
     "gemini-2.5-pro",
