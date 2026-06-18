@@ -24,7 +24,7 @@
   `nav_active` slugs (v3, ADR-029 + ADR-031):
     direct:  bridge / weekly / kb / projects / drafts / digests / seo
     fleet:   robin / nami / zoro / brook / sanji / franky / usopp / chopper
-    ops:     cost / logs / memory / docs / progress
+    ops:     cost / logs / memory / docs / models / architecture / progress / inventory
   Backward compat (deprecated, auto-normalized):
     health → franky · repurpose → brook · vault → (silent, no highlight)
 
@@ -38,7 +38,7 @@
 {% if nav_active == 'vault' %}{% set nav_active = '' %}{% endif %}
 {#-- active-group helpers --#}
 {% set _fleet = ['robin','nami','zoro','brook','sanji','franky','usopp','chopper'] %}
-{% set _ops   = ['cost','logs','memory','docs','progress','models'] %}
+{% set _ops   = ['cost','logs','memory','docs','progress','models','architecture','inventory'] %}
 {% set _in_fleet = nav_active in _fleet %}
 {% set _in_ops   = nav_active in _ops %}
 <header class="chassis" role="banner">
@@ -97,8 +97,10 @@
         <a href="/bridge/logs" role="menuitem"{% if nav_active == 'logs' %} class="active" aria-current="page"{% endif %}>LOGS <span class="zh">日誌</span></a>
         <a href="/bridge/memory" role="menuitem"{% if nav_active == 'memory' %} class="active" aria-current="page"{% endif %}>MEMORY <span class="zh">記憶</span></a>
         <a href="/bridge/docs" role="menuitem"{% if nav_active == 'docs' %} class="active" aria-current="page"{% endif %}>DOCS <span class="zh">文件搜尋</span></a>
-        <a href="/progress" role="menuitem"{% if nav_active == 'progress' %} class="active" aria-current="page"{% endif %}>PROGRESS <span class="zh">系統進度</span></a>
         <a href="/bridge/models" role="menuitem"{% if nav_active == 'models' %} class="active" aria-current="page"{% endif %}>MODELS <span class="zh">模型</span></a>
+        <a href="/architecture" role="menuitem"{% if nav_active == 'architecture' %} class="active" aria-current="page"{% endif %}>ARCHITECTURE <span class="zh">架構</span></a>
+        <a href="/progress" role="menuitem"{% if nav_active == 'progress' %} class="active" aria-current="page"{% endif %}>PROGRESS <span class="zh">系統進度</span></a>
+        <a href="/bridge/inventory" role="menuitem"{% if nav_active == 'inventory' %} class="active" aria-current="page"{% endif %}>INVENTORY <span class="zh">能力盤點</span></a>
       </div>
     </div>
 

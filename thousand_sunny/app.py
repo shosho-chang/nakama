@@ -38,6 +38,7 @@ from thousand_sunny.routers import (  # noqa: E402
     crew,
     foundry,
     franky,
+    inventory,
     kb_review,
     progress,
     projects,
@@ -101,11 +102,13 @@ app.include_router(repurpose.page_router)
 app.include_router(franky.router)
 app.include_router(franky.page_router)
 
-# Partner-facing /progress is public (no auth) — readiness summary for
-# external partners. Mirrors the /healthz precedent of breaking the
-# all-authenticated pattern for a deliberately public surface.
+# /progress + /architecture are now cookie-authed internal Bridge docs
+# (chassis nav, reachable via the Ops dropdown) — they redirect to /login
+# when unauthenticated. /bridge/inventory (agent capability inventory) joins
+# them. Their routers self-gate via check_auth; registration order is moot.
 app.include_router(progress.router)
 app.include_router(architecture.router)
+app.include_router(inventory.page_router)
 # Public, indexable crew/system-architecture showcase (linked from shosho.tw).
 app.include_router(crew.router)
 # Public, indexable Centaur Zettelkasten methodology doc (shareable, iterated).

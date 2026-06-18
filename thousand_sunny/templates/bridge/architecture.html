@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>Nakama URL 架構 · Shosho</title>
-<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=__ASSET_VERSION__">
-<link rel="apple-touch-icon" href="/static/favicon.svg?v=__ASSET_VERSION__">
-<link rel="stylesheet" href="/static/shosho/tokens.css?v=__ASSET_VERSION__">
-<link rel="stylesheet" href="/static/architecture/architecture.css?v=__ASSET_VERSION__">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ asset_version }}">
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/architecture/architecture.css?v={{ asset_version }}">
 </head>
 <body class="sho">
 
@@ -20,37 +21,12 @@
   </symbol>
 </svg>
 
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='architecture') }}
+
 <main class="page">
 
   <header class="page-header">
-    <div class="header-top">
-      <a href="https://shosho.tw" class="sho-logo-mark logo" rel="noopener">
-        <img src="/static/shosho/brand/logo_1.png" alt="" aria-hidden="true">
-        <span class="logo-text">
-          <span class="logo-zh">張修修</span>
-          <span class="sho-mono sho-mono-up">shosho.tw</span>
-        </span>
-      </a>
-      <nav class="sho-docnav" aria-label="系統文件導覽">
-        <a href="/architecture" aria-current="page">架構</a>
-        <a href="/crew">船員</a>
-        <a href="/progress">進度</a>
-        <a href="/centaur_zettel">卡片盒</a>
-      </nav>
-      <div class="header-meta">
-        <span class="sho-mono sho-mono-up">v2 · panel-reviewed</span>
-        <span class="sho-mono">2026-05-19</span>
-        <button type="button" id="theme-toggle" class="theme-switch"
-                role="switch" aria-label="切換明暗主題" aria-checked="false">
-          <span class="theme-switch-track" aria-hidden="true">
-            <span class="theme-switch-label theme-switch-label-light">L</span>
-            <span class="theme-switch-label theme-switch-label-dark">D</span>
-            <span class="theme-switch-thumb"></span>
-          </span>
-        </button>
-      </div>
-    </div>
-
     <div class="header-body">
       <div class="sho-kicker">
         <span class="sho-kicker-n">000</span>
@@ -573,31 +549,6 @@
   </footer>
 
 </main>
-
-<script>
-  // Theme switch — binary light/dark with a sliding thumb.
-  (function () {
-    const KEY = 'sho-theme';
-    const btn = document.getElementById('theme-toggle');
-    const body = document.body;
-    if (!btn || !body) return;
-    function read() { try { return localStorage.getItem(KEY); } catch (_) { return null; } }
-    function write(v) { try { localStorage.setItem(KEY, v); } catch (_) {} }
-    function systemDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches; }
-    function apply(mode) {
-      document.documentElement.dataset.theme = mode;
-      btn.setAttribute('aria-checked', mode === 'dark' ? 'true' : 'false');
-      btn.dataset.mode = mode;
-    }
-    const saved = read();
-    apply(saved === 'dark' || saved === 'light' ? saved : (systemDark() ? 'dark' : 'light'));
-    btn.addEventListener('click', () => {
-      const next = btn.dataset.mode === 'dark' ? 'light' : 'dark';
-      write(next);
-      apply(next);
-    });
-  })();
-</script>
 
 </body>
 </html>
