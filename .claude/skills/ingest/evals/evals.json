@@ -1,0 +1,18 @@
+{
+  "skill_name": "ingest",
+  "evals": [
+    {"id": 1, "prompt": "我把《卡片盒筆記》第三章那篇讀完了，幫我 ingest 進 KB", "should_trigger": true},
+    {"id": 2, "prompt": "/ingest atomic-habits-ch1", "should_trigger": true},
+    {"id": 3, "prompt": "這篇 PubMed 文章我劃完線了，收進知識庫", "should_trigger": true},
+    {"id": 4, "prompt": "把剛剛那篇文章 KB 化，重點放在 CBT-I 那段", "should_trigger": true},
+    {"id": 5, "prompt": "讀完這篇文章，幫我入庫", "should_trigger": true},
+    {"id": 6, "prompt": "KB 裡面有沒有講到間歇性斷食的概念？", "should_trigger": false, "note": "→ kb-search"},
+    {"id": 7, "prompt": "幫我把這個 Concept 開成一張永久卡並連到 X 卡", "should_trigger": false, "note": "→ 每日回顧, AI 不代筆"},
+    {"id": 8, "prompt": "這篇文章幫我潤稿、改成適合 FB 的版本", "should_trigger": false, "note": "→ Brook 重組"},
+    {"id": 9, "prompt": "幫我 ingest 這個 YouTube 影片逐字稿", "should_trigger": false, "note": "→ route E 未上線, 先擋"},
+    {"id": 10, "prompt": "幫我把這本 epub 整本 ingest", "should_trigger": false, "note": "→ route B 走每日迴圈, 先擋"},
+    {"id": 11, "prompt": "把這篇 Paper 讀重點、整理進 KB", "should_trigger": false, "note": "→ 違反 D-A：ingest 全文非內容過濾；共享『整理進 KB』關鍵字的近似誤觸"},
+    {"id": 12, "prompt": "這篇只要講 AI 安全那段，幫我進 KB", "should_trigger": false, "note": "→ 違反 D-A：段落選取＝內容過濾，非全文 ingest"},
+    {"id": 13, "prompt": "讀完這篇，幫我連到《心智圖》那張卡", "should_trigger": false, "note": "→ 純連結請求＝每日回顧，AI 不寫 Permanent 連結（紅線 1）；共享『讀完這篇』開頭的近似誤觸"}
+  ]
+}
