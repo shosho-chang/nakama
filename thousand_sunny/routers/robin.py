@@ -1303,7 +1303,11 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                         "source_refs": [raw_relative],
                         "source_type": sess["source_type"],
                         "content_nature": sess.get("content_nature", "popular_science"),
-                        "author": author,
+                        # Source digest 是 AI 的綜整摘要，author 標 agent_robin
+                        # （provenance 分離，Centaur 規格 §7 紅線 3）。原文作者另記在
+                        # original_author，對齊 CLI pipeline agents/robin/ingest.py。
+                        "author": "agent_robin",
+                        "original_author": author,
                         "confidence": "medium",
                         "tags": [],
                         "related_pages": [],
