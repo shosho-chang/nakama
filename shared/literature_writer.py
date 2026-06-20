@@ -26,6 +26,7 @@ FTS5 (D-17，無 LLM-judge)；👍/👎 不實作 (D-21)。
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -160,6 +161,32 @@ def _book_chapter_titles(book_id: str) -> dict[str, str]:
         return {}
 
 
+def _video_display_title(slug: str, vault_path: Path) -> str:
+    """影片文獻筆記的人讀標題：``頻道｜影片標題｜cast``，由 watchlist manifest 組。
+
+    cast 是扁平名單（慣例首位為主持，其餘來賓）。manifest 缺失 / 壞檔 → fallback
+    回 ``slug``，render 永不中斷（比照 :func:`_book_chapter_titles`）。
+    """
+    if not slug.startswith("youtube_"):
+        return slug
+    video_id = slug[len("youtube_") :]
+    manifest = vault_path / "Watchlist" / "youtube" / video_id / "manifest.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        channel = str(data.get("channel") or "").strip()
+        title = str(data.get("title") or "").strip()
+        cast = [str(c).strip() for c in (data.get("cast") or []) if str(c).strip()]
+    except Exception:  # noqa: BLE001 — manifest 問題不該中斷 render；fallback slug
+        return slug
+    parts: list[str] = []
+    if channel:
+        parts.append(channel)
+    parts.append(title or slug)
+    if cast:
+        parts.append("、".join(cast))
+    return "｜".join(parts)
+
+
 def _seek_seconds(cfi: str | None) -> float | None:
     """從 ``t=<起>-<迄>`` locator 取起始秒 (影片 seek link)。"""
     if not cfi:
@@ -202,18 +229,22 @@ def _render_frontmatter(
     mined_concepts: list[str],
     captured: str,
     ingested: str,
+    display_title: str | None = None,
 ) -> str:
     """組 ``type: literature`` frontmatter (規格 §4)。
 
     ``status`` / ``mined_concepts`` 由 caller 傳入 (re-render 時從舊檔讀回保留)。
+    ``display_title`` 是人讀標題 (影片＝``頻道｜標題｜cast``)；``slug`` /
+    ``annotations`` 永遠維持 ``ann_set.slug`` (識別碼 + 註記連結不可變)。
     """
-    title = ann_set.slug
+    slug = ann_set.slug
+    title = display_title or slug
     anchor_type = _ANCHOR_TYPE.get(source_kind, "excerpt")
 
     lines = ["---", "type: literature", f"source_kind: {source_kind}"]
-    lines.append(f"slug: {title}")
-    lines.append(f"title: {title}")
-    lines.append(f"annotations: {_quote(f'[[Annotations/{title}]]')}")
+    lines.append(f"slug: {slug}")
+    lines.append(f"title: {_quote(title)}")
+    lines.append(f"annotations: {_quote(f'[[Annotations/{slug}]]')}")
     if mined_concepts:
         lines.append("mined_concepts:")
         for c in mined_concepts:
@@ -493,6 +524,9 @@ def render_literature_markdown(
     mined_concepts = mined_concepts or []
     captured = captured or _now_date()
     ingested = ingested or _now_date()
+    # Human-readable title: video → 頻道｜標題｜cast (from watchlist manifest);
+    # other sources keep the slug. slug / annotation-link stay on ann_set.slug.
+    display_title = _video_display_title(slug, vault_path) if source_kind == "video" else slug
 
     fm = _render_frontmatter(
         ann_set,
@@ -501,6 +535,7 @@ def render_literature_markdown(
         mined_concepts=mined_concepts,
         captured=captured,
         ingested=ingested,
+        display_title=display_title,
     )
 
     renderer = _ROUTE_RENDERERS.get(source_kind, _render_article_zone)
@@ -518,7 +553,7 @@ def render_literature_markdown(
 
     ledger_block = ledger if ledger is not None else _LEDGER_DEFAULT
 
-    heading = f"# 文獻筆記：{slug}"
+    heading = f"# 文獻筆記：{display_title}"
     lede = f"> 來源：[[Annotations/{slug}]] · {source_kind}"
 
     return f"{fm}\n\n{heading}\n\n{lede}\n\n{render_block}\n\n{ledger_block}\n"
