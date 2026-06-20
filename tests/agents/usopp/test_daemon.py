@@ -357,7 +357,9 @@ class TestShutdown:
             MagicMock(side_effect=sqlite3.OperationalError("database is locked")),
         )
         # Stop the loop after exactly one iteration.
-        monkeypatch.setattr(daemon, "_sleep_interruptible", lambda: setattr(daemon, "_shutdown", True))
+        monkeypatch.setattr(
+            daemon, "_sleep_interruptible", lambda: setattr(daemon, "_shutdown", True)
+        )
         monkeypatch.setattr(signal, "signal", lambda *a, **kw: None)
         with caplog.at_level(logging.WARNING, logger="nakama.usopp.daemon"):
             daemon.run()  # must not raise
@@ -373,7 +375,9 @@ class TestShutdown:
             daemon, "run_once",
             MagicMock(side_effect=sqlite3.OperationalError("no such table: approval_queue")),
         )
-        monkeypatch.setattr(daemon, "_sleep_interruptible", lambda: setattr(daemon, "_shutdown", True))
+        monkeypatch.setattr(
+            daemon, "_sleep_interruptible", lambda: setattr(daemon, "_shutdown", True)
+        )
         monkeypatch.setattr(signal, "signal", lambda *a, **kw: None)
         with caplog.at_level(logging.ERROR, logger="nakama.usopp.daemon"):
             daemon.run()
