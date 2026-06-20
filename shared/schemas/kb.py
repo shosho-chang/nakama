@@ -105,6 +105,10 @@ class ConceptPageV2(BaseModel):
     schema_version: Literal[2] = 2
     title: str
     type: Literal["concept"] = "concept"
+    # ADR-043 §決策 3：AI 寫的 Concept 頁是「候選草稿」，非權威（人寫的
+    # KB/Permanent/ 才 canonical）。``candidate`` = AI 起草；``superseded`` =
+    # 已被人寫成永久卡（生命週期轉換留待後續 slice）。
+    status: Literal["candidate", "superseded"] = "candidate"
     domain: str
     aliases: list[str] = Field(default_factory=list)
     mentioned_in: list[str] = Field(default_factory=list)

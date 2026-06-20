@@ -94,6 +94,21 @@ def test_create_mentioned_in_set(vault):
     assert "[[Sources/Books/bse-2024/ch1]]" in fm["mentioned_in"]
 
 
+def test_create_marks_concept_candidate(vault):
+    """ADR-043 §決策 3 — AI 寫的 Concept 頁標 candidate + ai-draft，非權威。"""
+    dispatch_concept(
+        "creatine",
+        "create",
+        "[[Sources/Books/bse-2024/ch1]]",
+        title="肌酸",
+        extracted_body="## Definition\n\nCreatine is an organic compound.\n",
+        domain="sport-nutrition",
+    )
+    fm, _ = _parse_concept(vault, "creatine")
+    assert fm["status"] == "candidate"
+    assert "ai-draft" in fm["tags"]
+
+
 # ---------------------------------------------------------------------------
 # en_source_terms — create
 # ---------------------------------------------------------------------------

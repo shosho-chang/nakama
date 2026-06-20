@@ -644,6 +644,16 @@ def aggregate_conflict(
     _write_page_file(page_path, fm, body)
 
 
+def _mark_concept_candidate(fm: dict) -> None:
+    """ADR-043 §決策 3 — AI 寫的 Concept 頁是「候選草稿」，標 ``status: candidate``
+    + ``ai-draft`` tag，與人寫的 canonical ``KB/Permanent/`` 區隔。所有 upsert
+    action（create / update_merge / update_conflict / noop）共用。"""
+    fm.setdefault("status", "candidate")
+    tags = fm.get("tags") or []
+    if "ai-draft" not in tags:
+        fm["tags"] = [*tags, "ai-draft"]
+
+
 def upsert_concept_page(
     slug: str,
     action: Literal["create", "update_merge", "update_conflict", "noop"],
@@ -713,6 +723,7 @@ def upsert_concept_page(
                 "created": today,
                 "updated": today,
             }
+            _mark_concept_candidate(fm)
             body = _ensure_h2_skeleton(extracted_body)
             _enforce_concept_provenance(slug, fm, body)
             _write_page_file(abs_path, fm, body)
@@ -730,6 +741,8 @@ def upsert_concept_page(
 
     # Lazy migrate v1 → v2 if needed
     fm, body, mig_changes = _v1_to_v2_in_memory(raw_fm, raw_body)
+    # ADR-043 §決策 3 — 既有候選頁 re-touch 時補/保持 candidate 標記。
+    _mark_concept_candidate(fm)
 
     needs_legacy_strip = "## 更新（" in body
 
