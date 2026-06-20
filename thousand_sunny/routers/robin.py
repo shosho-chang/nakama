@@ -803,9 +803,24 @@ async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
     raise HTTPException(404)
 
 
+def _render_literature_in_background(slug: str) -> None:
+    """Render the human-readable Literature Note from the annotation set after a
+    reader save/delete (ADR-046 Slice 0B). ``source_kind`` is auto-inferred
+    (``youtube_`` slug → video; else article), mirroring the book trigger at
+    ``books.py:_render_literature_in_background``. Best-effort: a render failure
+    must not fail the annotation write."""
+    try:
+        from shared.literature_writer import write_literature_note  # noqa: PLC0415
+
+        write_literature_note(slug)
+    except Exception:
+        logger.exception("literature render background task failed for slug=%s", slug)
+
+
 @robin_router.post("/save-annotations")
 async def save_annotations(
     ann_set: AnnotationSet,
+    background_tasks: BackgroundTasks,
     nakama_auth: str | None = Cookie(None),
 ):
     """Accept a structured AnnotationSet and persist to KB/Annotations/{slug}.md.
@@ -821,6 +836,9 @@ async def save_annotations(
     # ADR-021 §1: persist as v3 (the Reader UI still posts the v1 shape; we upgrade
     # at the boundary so the on-disk store is uniformly v3 going forward).
     store.save(upgrade_to_v3(ann_set))
+    # ADR-046 Slice 0B: auto-render the Literature Note (article/video reader,
+    # mirrors the book trigger). source_kind auto-inferred from the slug.
+    background_tasks.add_task(_render_literature_in_background, ann_set.slug)
     return {"status": "ok", "unsynced_count": store.unsynced_count(ann_set.slug)}
 
 
@@ -2031,6 +2049,7 @@ def _format_t_locator(start: float, end: float) -> str:
 async def create_video_annotation(
     video_id: str,
     body: _VideoAnnotationCreate,
+    background_tasks: BackgroundTasks,
     nakama_auth: str | None = Cookie(None),
 ):
     """Append a single annotation to ``KB/Annotations/youtube_{video_id}.md``.
@@ -2122,6 +2141,8 @@ async def create_video_annotation(
         ann_set.items = new_items
         ann_set.updated_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     store.save(ann_set)
+    # ADR-046 Slice 0B: re-render the Literature Note after the save.
+    background_tasks.add_task(_render_literature_in_background, slug)
 
     logger.info(
         "video annotation written",
@@ -2140,6 +2161,7 @@ async def create_video_annotation(
 async def delete_video_highlight(
     video_id: str,
     cue_start: float,
+    background_tasks: BackgroundTasks,
     nakama_auth: str | None = Cookie(None),
 ):
     """Remove the mark anchored at ``cue_start`` for this video.
@@ -2191,6 +2213,8 @@ async def delete_video_highlight(
         ann_set.items = kept
         ann_set.updated_at = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         store.save(ann_set)
+        # ADR-046 Slice 0B: re-render the Literature Note so deleted marks drop out.
+        background_tasks.add_task(_render_literature_in_background, slug)
 
     logger.info(
         "video highlight removed",
