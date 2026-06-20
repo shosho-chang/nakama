@@ -144,6 +144,41 @@ def _video_set() -> AnnotationSetV3:
     )
 
 
+# ── video title (ADR-046) ───────────────────────────────────────────────────
+
+
+def _write_watchlist_manifest(vault: Path, video_id: str, **fields) -> None:
+    import json
+
+    entry = vault / "Watchlist" / "youtube" / video_id
+    entry.mkdir(parents=True, exist_ok=True)
+    (entry / "manifest.json").write_text(json.dumps(fields, ensure_ascii=False), encoding="utf-8")
+
+
+def test_video_literature_title_from_manifest(vault: Path):
+    _write_watchlist_manifest(
+        vault,
+        "abc123",
+        channel="Huberman Lab",
+        title="Dopamine Nation",
+        cast=["Andrew Huberman", "Anna Lembke"],
+    )
+    md = lw.render_literature_markdown(_video_set(), "video", vault)
+    expect = "Huberman Lab｜Dopamine Nation｜Andrew Huberman、Anna Lembke"
+    assert f'title: "{expect}"' in md
+    assert f"# 文獻筆記：{expect}" in md
+    # slug / annotation link stay on the slug (identifier unchanged).
+    assert "slug: youtube_abc123" in md
+    assert 'annotations: "[[Annotations/youtube_abc123]]"' in md
+
+
+def test_video_literature_title_fallback_no_manifest(vault: Path):
+    # No watchlist manifest → title falls back to slug; render must not break.
+    md = lw.render_literature_markdown(_video_set(), "video", vault)
+    assert 'title: "youtube_abc123"' in md
+    assert "# 文獻筆記：youtube_abc123" in md
+
+
 # ── book render ──────────────────────────────────────────────────────────────
 
 
