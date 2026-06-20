@@ -9,7 +9,7 @@ relies on.
 
 from __future__ import annotations
 
-from shared.webvtt import parse_webvtt, webvtt_to_prose
+from shared.webvtt import parse_webvtt, webvtt_to_prose, webvtt_to_transcript_markdown
 
 SAMPLE_VTT = """WEBVTT
 Kind: captions
@@ -67,3 +67,31 @@ def test_webvtt_to_prose_unescapes_html_entities():
     assert "&gt;" not in prose
     assert "&amp;" not in prose
     assert ">>" in prose
+
+
+def test_webvtt_to_transcript_markdown_timestamped_paragraphs():
+    md = webvtt_to_transcript_markdown(SAMPLE_VTT)
+    assert md
+    # Each paragraph carries its start timecode as a bold prefix (navigation +
+    # LLM provenance anchor), but no raw vtt timecodes leak.
+    assert "**[00:01]**" in md
+    assert "Hello world." in md
+    assert "This is a test of the system." in md
+    assert "-->" not in md
+    assert "00:00:01" not in md
+
+
+def test_webvtt_to_transcript_markdown_empty_returns_empty():
+    assert webvtt_to_transcript_markdown("") == ""
+    assert webvtt_to_transcript_markdown("WEBVTT\n\nnot a cue line\n") == ""
+
+
+def test_webvtt_to_transcript_markdown_multiple_paragraphs():
+    cues = "\n\n".join(
+        f"00:00:{i:02d}.000 --> 00:00:{i + 1:02d}.000\nThis is sentence number {i} here."
+        for i in range(1, 30)
+    )
+    md = webvtt_to_transcript_markdown("WEBVTT\n\n" + cues, paragraph_chars=120)
+    paras = md.split("\n\n")
+    assert len(paras) >= 2  # exercises the mid-loop paragraph flush + label reset
+    assert all(p.startswith("**[") for p in paras)
