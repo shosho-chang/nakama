@@ -118,7 +118,7 @@ E:\Shosho LifeOS\
 │   │   ├── Papers/           Robin ingest (manual `Inbox/papers/` flow)
 │   │   ├── Books/            textbook-ingest Phase 0
 │   │   ├── Podcasts/         (reserved, currently empty)
-│   │   ├── Videos/           (reserved)
+│   │   ├── Videos/           Robin watchlist transcript `{video_id}.vtt` (ADR-046 §Slice 0A)
 │   │   ├── Repos/            (reserved)
 │   │   └── Data/             (reserved)
 │   │
@@ -214,6 +214,8 @@ data/agent_reports/franky/
 | `KB/Raw/Articles/{slug}.md` | 🤖 | Robin ingest from `Inbox/web/` | KB consumers, RCP builder | ADR-019 |
 | `KB/Raw/Papers/{slug}.md` | 🤖 | Robin manual ingest from `Inbox/papers/` | KB, Brook synthesize | ADR-019 |
 | `KB/Raw/Books/{book-id}.md` | 🤖 | textbook-ingest Phase 0 (lossless EPUB→md via ebooklib) | textbook-ingest Phase 1 LLM | ADR-020 §Phase 0 |
+| `KB/Raw/Videos/{video_id}.vtt` | 🤖 | Robin watchlist confirm `thousand_sunny/routers/robin.py` (yt-dlp caption moved here); path built by `shared/reading_source_registry.py:_resolve_youtube` (convention, not manifest) | AV reader `/robin/watchlist/{id}`, promotion preflight, `shared/video_source_map_builder.py` | ADR-046 §Slice 0A |
+| `Watchlist/youtube/{video_id}/manifest.json` | 🤖 | Robin watchlist confirm (video registry entry: title/channel/cast/`transcript_path`) | `/robin/watchlist` lister `RegistryReadingSourceLister`, `ReadingSourceRegistry._resolve_youtube` | `shared/schemas/youtube_watchlist.py` |
 | `KB/Wiki/Sources/{slug}.md` | 🤖 | Robin promotion `shared/promotion_commit.py` + textbook-ingest | Brook synthesize, RCP, `/writing-assist/` | ADR-024 + `shared/promotion_renderer.py` |
 | `KB/Wiki/Sources/pubmed-{pmid}.md` | 🤖 | `agents/robin/pubmed_digest.py:476-477` (NOT KB/Raw/Papers as previously documented) | Brook synthesize, KB consumers | PubMed Source schema |
 | `KB/Wiki/Sources/Books/{book-id}/ch{n}.md` | 🤖 | textbook-ingest Phase 1 via `shared/kb_writer.write_source_page` | Brook context_bridge, Reader | ADR-020 §Phase 1 |

@@ -205,7 +205,9 @@ def test_post_watchlist_confirm_writes_manifest_and_vtt(app_client, vault, monke
 
     entry_dir = vault / "Watchlist" / "youtube" / "dQw4w9WgXcQ"
     manifest = entry_dir / "manifest.json"
-    transcript = entry_dir / "transcript.vtt"
+    # Transcript (raw content) lands in KB/Raw/Videos/ (ADR-046 Slice 0A); the
+    # manifest stays under the Watchlist entry dir.
+    transcript = vault / "KB" / "Raw" / "Videos" / "dQw4w9WgXcQ.vtt"
     assert manifest.is_file()
     assert transcript.is_file()
     assert "WEBVTT" in transcript.read_text(encoding="utf-8")

@@ -93,7 +93,11 @@ def _write_watchlist_entry(
         json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
     )
     if transcript is not None:
-        (entry_dir / "transcript.vtt").write_text(transcript, encoding="utf-8")
+        # Raw transcript lives in KB/Raw/Videos/{video_id}.vtt (ADR-046
+        # Slice 0A), not under the Watchlist entry dir.
+        raw_videos = vault_path / "KB" / "Raw" / "Videos"
+        raw_videos.mkdir(parents=True, exist_ok=True)
+        (raw_videos / f"{video_id}.vtt").write_text(transcript, encoding="utf-8")
     return entry_dir
 
 

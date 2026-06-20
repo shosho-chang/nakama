@@ -489,7 +489,15 @@ class ReadingSourceRegistry:
             )
             return None
 
-        transcript_rel = f"{entry_rel}/{entry.transcript_path}"
+        # Transcript (raw content) lives in the unified raw layer
+        # ``KB/Raw/Videos/{video_id}.vtt`` — alongside ``KB/Raw/Articles/`` —
+        # NOT under the Watchlist entry dir (ADR-046 Slice 0A). Built by
+        # convention from ``video_id`` so every read site (reader, promotion
+        # preflight, video source-map) follows automatically via this single
+        # ``SourceVariant.path``. The manifest stays under ``Watchlist/youtube/``
+        # as the "videos I've added" registry; ``entry.transcript_path`` is now
+        # vestigial (kept for record, no longer authoritative for location).
+        transcript_rel = f"KB/Raw/Videos/{video_id}.vtt"
         variant = SourceVariant(
             role="original",
             format="vtt",

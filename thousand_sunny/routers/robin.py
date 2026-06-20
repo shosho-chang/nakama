@@ -1761,11 +1761,16 @@ async def watchlist_add_confirm(
     entry_dir = _watchlist_youtube_root() / video_id
     entry_dir.mkdir(parents=True, exist_ok=True)
 
-    # Move staged vtt → canonical transcript.vtt. ``shutil.move`` falls
-    # back to copy+remove across filesystems (e.g. tmp on a different
-    # device from vault).
+    # Transcript (raw content) lands in the unified raw layer
+    # ``KB/Raw/Videos/{video_id}.vtt`` — alongside ``KB/Raw/Articles/`` — so
+    # all three sources' raw content shares one home (ADR-046 Slice 0A). The
+    # manifest (registry entry) stays under ``Watchlist/youtube/`` as the
+    # "videos I've added" list. ``shutil.move`` falls back to copy+remove
+    # across filesystems (e.g. tmp on a different device from vault).
+    raw_videos_dir = get_vault_path() / "KB" / "Raw" / "Videos"
+    raw_videos_dir.mkdir(parents=True, exist_ok=True)
     staged_vtt = Path(str(sess["staging_vtt"]))
-    target_vtt = entry_dir / "transcript.vtt"
+    target_vtt = raw_videos_dir / f"{video_id}.vtt"
     if not staged_vtt.exists():
         raise HTTPException(500, detail="staged transcript missing — please re-add the URL")
     shutil.move(str(staged_vtt), str(target_vtt))
