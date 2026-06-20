@@ -71,8 +71,9 @@ class YouTubeKey:
     Resolution reads ``Watchlist/youtube/{video_id}/manifest.json``
     (validated by :class:`YouTubeWatchlistEntry`) and emits a
     ``ReadingSource(kind='youtube_video', schema_version=2)``. The variant
-    points at ``Watchlist/youtube/{video_id}/{transcript_path}`` (default
-    ``transcript.vtt``) as the original-track evidence.
+    points at the unified raw layer ``KB/Raw/Videos/{video_id}.vtt`` as the
+    original-track evidence (ADR-046 §Slice 0A; built by convention, not from
+    the manifest ``transcript_path`` field which is now vestigial).
     """
 
     video_id: str

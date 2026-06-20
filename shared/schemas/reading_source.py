@@ -36,11 +36,12 @@ SourceKind = Literal["ebook", "inbox_document", "youtube_video"]
                          arrive via Toast / Obsidian Clipper into the same
                          directory; origin is metadata, not a separate kind.
 - v=2 added (ADR-035 §D1/D8):
-  - ``youtube_video``  — video file backed by YouTube. Self-contained
-                         directory ``Watchlist/youtube/{video_id}/`` holds
-                         manifest + transcript.vtt + per-annotation frame
-                         snapshots. Audio-only ``podcast`` SourceKind
-                         deferred per ADR-035 §D8 ("audio-only on demand only").
+  - ``youtube_video``  — video file backed by YouTube. Registry entry
+                         (metadata) at ``Watchlist/youtube/{video_id}/manifest.json``;
+                         raw transcript in the unified raw layer at
+                         ``KB/Raw/Videos/{video_id}.vtt`` (ADR-046 §Slice 0A).
+                         Audio-only ``podcast`` SourceKind deferred per
+                         ADR-035 §D8 ("audio-only on demand only").
 """
 
 TrackRole = Literal["original", "display"]
@@ -58,8 +59,8 @@ VariantFormat = Literal["epub", "markdown", "vtt"]
 
 - v=1 members: ``epub`` (ebook) / ``markdown`` (inbox_document).
 - v=2 added:   ``vtt`` — WebVTT transcript file for ``youtube_video`` source
-               (ADR-035 §D5). Path convention:
-               ``Watchlist/youtube/{video_id}/transcript.vtt``.
+               (ADR-035 §D5). Path convention (ADR-046 §Slice 0A):
+               ``KB/Raw/Videos/{video_id}.vtt``.
 """
 
 

@@ -18,11 +18,16 @@ so the resolver's new path (``KB/Raw/Videos/...``) always has a file behind it.
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
 
 from shared.config import get_vault_path
+
+# Mirror shared.reading_source_registry._VALID_YOUTUBE_ID — only real video-id
+# dirs are migrated; stray/hidden dirs under Watchlist/youtube/ are skipped.
+_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def migrate(vault: Path, *, dry_run: bool) -> int:
@@ -33,11 +38,18 @@ def migrate(vault: Path, *, dry_run: bool) -> int:
         print(f"(no {watchlist_root} — nothing to migrate)")
         return 0
 
+    if not dry_run:
+        raw_videos.mkdir(parents=True, exist_ok=True)
+
     moved = skipped = 0
     for entry_dir in sorted(watchlist_root.iterdir()):
         if not entry_dir.is_dir():
             continue
         video_id = entry_dir.name
+        if not _VIDEO_ID_RE.fullmatch(video_id):
+            print(f"skip  {video_id!r}: not a video-id dir")
+            skipped += 1
+            continue
         old = entry_dir / "transcript.vtt"
         new = raw_videos / f"{video_id}.vtt"
 
@@ -52,7 +64,6 @@ def migrate(vault: Path, *, dry_run: bool) -> int:
 
         print(f"{'PLAN ' if dry_run else 'move '} {old}  ->  KB/Raw/Videos/{video_id}.vtt")
         if not dry_run:
-            raw_videos.mkdir(parents=True, exist_ok=True)
             shutil.move(str(old), str(new))
         moved += 1
 
