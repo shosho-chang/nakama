@@ -1100,3 +1100,229 @@ def test_reading_hub_requires_auth(auth_client):
     r = tc.get("/robin/home")
     assert r.status_code == 302
     assert r.headers["location"] == "/login?next=/robin/home"
+
+
+# ---------------------------------------------------------------------------
+# POST /start-video  (Centaur route E — 影片 ingest 入口；逐字稿已 canonical
+# 落在 KB/Raw/Videos，不從 Inbox 複製，故不可回收原檔)
+# ---------------------------------------------------------------------------
+
+
+def _make_video_transcript(vault: Path, video_id: str) -> Path:
+    vtt = vault / "KB" / "Raw" / "Videos" / f"{video_id}.vtt"
+    vtt.parent.mkdir(parents=True, exist_ok=True)
+    vtt.write_text(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHello from the video.\n",
+        encoding="utf-8",
+    )
+    return vtt
+
+
+def test_start_video_unauth_redirect(auth_client):
+    tc, _, _ = auth_client
+    r = tc.post("/start-video", data={"video_id": "Ch4Sl0POBhU"})
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+
+
+def test_start_video_invalid_id_400(client, vault):
+    """video_id 走 regex 白名單擋路徑穿越 — 含 / 或 .. 一律 400。"""
+    tc, _ = client
+    r = tc.post("/start-video", data={"video_id": "../../etc/passwd"})
+    assert r.status_code == 400
+
+
+def test_start_video_missing_transcript_404(client, vault):
+    """合法 id 但 KB/Raw/Videos 沒有對應逐字稿 → 404。"""
+    tc, _ = client
+    r = tc.post("/start-video", data={"video_id": "no_such_vid"})
+    assert r.status_code == 404
+
+
+def test_start_video_happy_path_creates_session(client, vault):
+    """逐字稿就地存在 → 建 session（直指逐字稿、keep_raw、不複製）→ /processing。"""
+    tc, mod = client
+    vtt = _make_video_transcript(vault, "Ch4Sl0POBhU")
+
+    r = tc.post("/start-video", data={"video_id": "Ch4Sl0POBhU"})
+    assert r.status_code == 302
+    assert r.headers["location"] == "/processing"
+    assert "robin_session" in r.headers.get("set-cookie", "")
+
+    sess = next(s for s in mod.sessions.values() if s.get("source_type") == "video")
+    assert sess["raw_path"] == str(vtt)  # 直指 canonical 逐字稿，未複製
+    assert sess["file_path"] == ""  # 無 Inbox 來源檔 → execute 不回收
+    assert sess["keep_raw"] is True  # cancel 也不回收
+    assert sess["annotation_slug"] == "youtube_Ch4Sl0POBhU"
+    assert sess["step"] == "summarizing"
+
+
+def test_start_video_does_not_copy_or_delete_transcript(client, vault):
+    """canonical 逐字稿留在原處（不像文章從 Inbox 複製到 KB/Raw）。"""
+    tc, _ = client
+    vtt = _make_video_transcript(vault, "v6MWNrVbM4E")
+    before = vtt.read_text(encoding="utf-8")
+
+    r = tc.post("/start-video", data={"video_id": "v6MWNrVbM4E"})
+    assert r.status_code == 302
+    assert vtt.exists()
+    assert vtt.read_text(encoding="utf-8") == before
+
+
+def test_cancel_keeps_raw_for_video_ingest(client, vault, monkeypatch):
+    """keep_raw=True（影片 ingest）→ cancel 不回收 canonical 逐字稿。"""
+    tc, mod = client
+    vtt = _make_video_transcript(vault, "Ch4Sl0POBhU")
+    sid = mod._new_session(step="summarizing", raw_path=str(vtt), summary_path="", keep_raw=True)
+    monkeypatch.setattr(mod.platform, "system", lambda: "Linux")
+    tc.cookies.set("robin_session", sid)
+
+    r = tc.post("/cancel")
+    assert r.status_code == 302
+    assert mod.sessions[sid]["step"] == "cancelled"
+    assert vtt.exists()  # keep_raw 守門 → 逐字稿仍在
+
+
+# ---------------------------------------------------------------------------
+# GET /robin/watchlist/{id}  (video reader — av_reader.html，含 Ingest 按鈕)
+# + DELETE /robin/watchlist/{id}/annotation 邊界
+# ---------------------------------------------------------------------------
+
+
+def _setup_video(vault: Path, video_id: str = "Ch4Sl0POBhU") -> Path:
+    """Watchlist manifest（讓 resolver 認得影片）+ KB/Raw/Videos 逐字稿
+    （ADR-046 canonical 位置，watch_video 從這裡讀 cue）。"""
+    import json
+
+    entry = vault / "Watchlist" / "youtube" / video_id
+    entry.mkdir(parents=True, exist_ok=True)
+    (entry / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "video_id": video_id,
+                "title": "Sample Talk",
+                "channel": "Sample Channel",
+                "url": f"https://youtube.com/watch?v={video_id}",
+                "duration_s": 600,
+                "primary_lang": "en",
+                "cast": ["host", "Guest A"],
+                "transcript_path": "transcript.vtt",
+                "added_at": "2026-06-01T00:00:00Z",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    vtt = vault / "KB" / "Raw" / "Videos" / f"{video_id}.vtt"
+    vtt.parent.mkdir(parents=True, exist_ok=True)
+    vtt.write_text(
+        "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nWelcome to the show.\n\n"
+        "00:00:05.000 --> 00:00:07.000\nToday we discuss sleep.\n",
+        encoding="utf-8",
+    )
+    return vtt
+
+
+def test_watch_video_renders_reader_with_ingest_button(client, vault):
+    """av_reader 渲染逐字稿 cue + 新的「⚙️ Ingest 這支」按鈕（POST /start-video）。"""
+    tc, _ = client
+    _setup_video(vault)
+
+    r = tc.get("/robin/watchlist/Ch4Sl0POBhU")
+    assert r.status_code == 200
+    assert "Welcome to the show." in r.text  # 逐字稿洗出的 cue
+    # 新 ingest 入口存在且接到 /start-video，帶 video_id。
+    assert 'action="/start-video"' in r.text
+    assert "Ingest 這支" in r.text
+    assert 'value="Ch4Sl0POBhU"' in r.text
+
+
+def test_watch_video_renders_annotations_including_unanchored(client, vault):
+    """劃線清單渲染：有 t= 定位的命中 cue marker；無 t= 定位的（start=None）
+    走 ``continue`` 分支不算 marker，但仍渲染在清單。"""
+    from shared.schemas.annotations import AnnotationSetV3, HighlightV3
+
+    tc, mod = client
+    _setup_video(vault)
+
+    store = mod.get_annotation_store()
+    store.save(
+        AnnotationSetV3(
+            slug="youtube_Ch4Sl0POBhU",
+            base="youtube",
+            items=[
+                HighlightV3(
+                    cfi="t=1.0-3.0",
+                    text_excerpt="Welcome to the show.",
+                    text="Welcome to the show.",
+                ),
+                # 無 t= 定位（start 解析為 None）→ 觸發 marker 迴圈的 continue 分支。
+                HighlightV3(
+                    cfi="epubcfi(/6/4!/4/2:0)",
+                    text_excerpt="orphan mark",
+                    text="orphan mark",
+                ),
+            ],
+        )
+    )
+
+    r = tc.get("/robin/watchlist/Ch4Sl0POBhU")
+    assert r.status_code == 200
+    assert "Welcome to the show." in r.text
+    assert "orphan mark" in r.text
+
+
+def test_delete_video_highlight_invalid_id_404(client, vault):
+    """Path-traversal 形狀的 video_id 在碰 vault 前就被 regex 擋成 404。"""
+    tc, _ = client
+    r = tc.delete("/robin/watchlist/bad!id/annotation", params={"cue_start": 1.0})
+    assert r.status_code == 404
+
+
+def test_delete_video_highlight_no_match_keeps_item(client, vault):
+    """在沒有 mark 的 cue 刪除 → 既有 item 全保留、removed=0。"""
+    from shared.schemas.annotations import AnnotationSetV3, HighlightV3
+
+    tc, mod = client
+    _setup_video(vault)
+    mod.get_annotation_store().save(
+        AnnotationSetV3(
+            slug="youtube_Ch4Sl0POBhU",
+            base="youtube",
+            items=[HighlightV3(cfi="t=1.0-3.0", text_excerpt="hi", text="hi")],
+        )
+    )
+
+    r = tc.delete("/robin/watchlist/Ch4Sl0POBhU/annotation", params={"cue_start": 99.0})
+    assert r.status_code == 200
+    assert r.json()["removed"] == 0
+
+
+def test_create_video_annotation_resolver_valueerror_404(client, vault, monkeypatch):
+    """Resolver 丟 ValueError（registry 層偵測 path-traversal/symlink-escape）→
+    端點映成 404，不是 500（defence-in-depth）。"""
+    tc, mod = client
+    _setup_video(vault)
+
+    def boom(self, key):
+        raise ValueError("traversal at registry layer")
+
+    monkeypatch.setattr(mod.ReadingSourceRegistry, "resolve", boom)
+    r = tc.post(
+        "/robin/watchlist/Ch4Sl0POBhU/annotation",
+        json={"cue_start": 1.0, "cue_end": 3.0, "excerpt": "x"},
+    )
+    assert r.status_code == 404
+
+
+def test_delete_video_highlight_resolver_valueerror_404(client, vault, monkeypatch):
+    """同上，DELETE 路徑的 resolver ValueError → 404。"""
+    tc, mod = client
+
+    def boom(self, key):
+        raise ValueError("traversal at registry layer")
+
+    monkeypatch.setattr(mod.ReadingSourceRegistry, "resolve", boom)
+    r = tc.delete("/robin/watchlist/Ch4Sl0POBhU/annotation", params={"cue_start": 1.0})
+    assert r.status_code == 404

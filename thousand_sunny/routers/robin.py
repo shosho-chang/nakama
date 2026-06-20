@@ -2,7 +2,6 @@
 
 import asyncio
 import datetime
-import html
 import json
 import os
 import platform
@@ -49,6 +48,7 @@ from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
 from shared.utils import extract_frontmatter, read_text, slugify
+from shared.webvtt import format_cue_label, parse_webvtt, webvtt_to_prose
 from shared.youtube_ingest import (
     InvalidYouTubeURL,
     NoCaptionAvailable,
@@ -615,178 +615,6 @@ async def literature_view(
     )
 
 
-# ── WebVTT parser (ADR-035 §D6) ──────────────────────────────────────────────
-# Minimal parser sized for yt-dlp ``--write-auto-sub`` output. Lives here
-# because the av_reader route is the only consumer; promote to ``shared/``
-# if a second caller appears.
-
-_VTT_TIME_RE = re.compile(
-    r"^(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})"
-)
-_VTT_TAG_RE = re.compile(r"<[^>]+>")
-_SENTENCE_END_RE = re.compile(r'[.!?][")\]]*\s*$')
-_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+(?=[A-Z"\'(\[])')
-"""Split text on punctuation followed by whitespace + capital letter or
-quote. Avoids splitting on common false positives like ``Dr.`` ``Mr.``
-``e.g.`` because they're followed by a lowercase word."""
-_SENTENCE_MAX_SECONDS = 30.0
-"""Safety cap on coalesced-cue duration. Auto-caption punctuation can
-miss sentence boundaries when the speaker doesn't pause; flush anyway
-once a buffered cue group exceeds this many seconds so the cue list
-never grows a single multi-minute brick."""
-
-
-def _vtt_time_to_seconds(h: str, m: str, s: str, ms: str) -> float:
-    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
-
-
-def _format_cue_label(t: float) -> str:
-    h = int(t // 3600)
-    m = int((t % 3600) // 60)
-    s = int(t % 60)
-    if h:
-        return f"{h}:{m:02d}:{s:02d}"
-    return f"{m:02d}:{s:02d}"
-
-
-def _parse_webvtt(text: str) -> list[dict]:
-    """Parse a WebVTT document into a clean cue stream.
-
-    YouTube auto-captions emit a two-cue-per-spoken-line rhythm:
-    a 10ms "ghost" cue showing only the carry-over text from the previous
-    spoken line, followed by a "real" cue whose body has the carry-over on
-    earlier lines and the newly-spoken words (with word-level ``<HH:MM:SS.ms><c>``
-    timing tags) on the LAST line.
-
-    To keep the cue list reading like a transcript stream rather than a
-    karaoke loop, we take only the last non-empty line of each cue body
-    and drop adjacent duplicates.
-    """
-    cues: list[dict] = []
-    cur_start: float | None = None
-    cur_end: float | None = None
-    cur_lines: list[str] = []
-
-    def flush() -> None:
-        nonlocal cur_start, cur_end, cur_lines
-        if cur_start is not None and cur_lines:
-            last_clean = ""
-            for line in reversed(cur_lines):
-                # Strip the word-level ``<HH:MM:SS.ms><c>`` timing tags first
-                # (they use literal angle brackets), then un-escape WebVTT HTML
-                # entities. WebVTT stores ``>`` ``<`` ``&`` as ``&gt;`` ``&lt;``
-                # ``&amp;`` in cue bodies — notably the ``&gt;&gt;`` speaker-change
-                # marker. Without this the literal ``&gt;&gt;`` survives into
-                # ``cue.text`` and Jinja double-escapes it to a visible ``&gt;&gt;``.
-                stripped = html.unescape(_VTT_TAG_RE.sub("", line)).strip()
-                if stripped:
-                    last_clean = stripped
-                    break
-            if last_clean:
-                cues.append(
-                    {
-                        "start": cur_start,
-                        "end": cur_end,
-                        "label": _format_cue_label(cur_start),
-                        "text": last_clean,
-                    }
-                )
-        cur_start = None
-        cur_end = None
-        cur_lines = []
-
-    for raw in text.splitlines():
-        line = raw.rstrip()
-        m = _VTT_TIME_RE.match(line)
-        if m:
-            flush()
-            cur_start = _vtt_time_to_seconds(m.group(1), m.group(2), m.group(3), m.group(4))
-            cur_end = _vtt_time_to_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
-            continue
-        if cur_start is None:
-            continue
-        if line.strip() == "":
-            flush()
-            continue
-        if line.startswith("WEBVTT") or line.startswith("NOTE") or "-->" in line:
-            continue
-        cur_lines.append(line)
-    flush()
-
-    deduped: list[dict] = []
-    for c in cues:
-        if deduped and deduped[-1]["text"] == c["text"]:
-            deduped[-1]["end"] = c["end"]
-            continue
-        deduped.append(c)
-    return _coalesce_to_sentences(deduped)
-
-
-def _split_sentences(text: str) -> list[str]:
-    """Break a paragraph into sentence-sized chunks."""
-    parts = _SENTENCE_SPLIT_RE.split(text)
-    return [p.strip() for p in parts if p.strip()]
-
-
-def _coalesce_to_sentences(cues: list[dict]) -> list[dict]:
-    """Merge consecutive cues until each ends on a sentence-final mark.
-
-    YouTube auto-caption breaks speech every ~2-3s on audio chunks, not
-    on sentence boundaries. Coalescing by punctuation gives the cue list
-    one entry per complete sentence — easier to read, easier to anchor
-    annotations against. Falls back to flushing on ``_SENTENCE_MAX_SECONDS``
-    when punctuation never arrives (rambling speech, missing periods).
-    """
-    if not cues:
-        return []
-    merged: list[dict] = []
-    buf_start: float | None = None
-    buf_end: float | None = None
-    buf_parts: list[str] = []
-
-    def flush() -> None:
-        nonlocal buf_start, buf_end, buf_parts
-        if buf_parts and buf_start is not None and buf_end is not None:
-            text = " ".join(buf_parts).strip()
-            # Split the buffered text into sentences and proportionally
-            # distribute the [buf_start, buf_end] window by character
-            # count. yt-dlp's word-level ``<HH:MM:SS.ms>`` tags would give
-            # exact per-word timing — punt on that until annotation needs
-            # it (PR2 #766); linear interpolation is good enough for
-            # cue-click seeking.
-            sentences = _split_sentences(text)
-            total_chars = sum(len(s) for s in sentences) or 1
-            window = buf_end - buf_start
-            cursor = buf_start
-            for i, sentence in enumerate(sentences):
-                portion = len(sentence) / total_chars
-                end = buf_end if i == len(sentences) - 1 else cursor + window * portion
-                merged.append(
-                    {
-                        "start": cursor,
-                        "end": end,
-                        "label": _format_cue_label(cursor),
-                        "text": sentence,
-                    }
-                )
-                cursor = end
-        buf_start = None
-        buf_end = None
-        buf_parts = []
-
-    for c in cues:
-        if buf_start is None:
-            buf_start = c["start"]
-        buf_end = c["end"]
-        buf_parts.append(c["text"])
-        joined = " ".join(buf_parts).strip()
-        duration = (buf_end or 0.0) - (buf_start or 0.0)
-        if _SENTENCE_END_RE.search(joined) or duration >= _SENTENCE_MAX_SECONDS:
-            flush()
-    flush()
-    return merged
-
-
 @robin_router.get("/files/{path:path}")
 async def serve_vault_file(path: str, nakama_auth: str | None = Cookie(None)):
     """提供 vault 中的圖片給 reader 顯示。"""
@@ -1188,6 +1016,59 @@ async def start(
     return response
 
 
+# YouTube video id：通常 11 碼 [A-Za-z0-9_-]，放寬到 64 以防格式變動。用來擋
+# 路徑穿越——video_id 來自表單，會直接組進 KB/Raw/Videos/{id}.vtt 路徑。
+_VIDEO_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+@router.post("/start-video")
+async def start_video(
+    video_id: str = Form(...),
+    source_type: str = Form("video"),
+    content_nature: str = Form("popular_science"),
+    nakama_auth: str | None = Cookie(None),
+):
+    """影片 ingest 入口（Centaur route E）。
+
+    逐字稿已由 watchlist confirm 落在 KB/Raw/Videos/{id}.vtt（canonical，ADR-046），
+    不像文章從 Inbox 複製進來。故這裡不複製、不刪除原檔：raw_path 直接指向逐字稿，
+    file_path 留空（executing 階段不回收它），keep_raw=True（cancel 階段也不回收）。
+    後續走與文章相同的 /processing → SSE → /review-plan → /execute HITL 流程。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    if not _VIDEO_ID_RE.fullmatch(video_id):
+        raise HTTPException(400, detail=f"無效的 video_id：{video_id}")
+
+    raw_path = get_vault_path() / "KB" / "Raw" / "Videos" / f"{video_id}.vtt"
+    if not raw_path.exists():
+        raise HTTPException(404, detail=f"找不到影片逐字稿：{video_id}.vtt")
+
+    sid = _new_session(
+        step="summarizing",
+        file_name=f"{video_id}.vtt",
+        file_path="",  # 無 Inbox 來源檔 → executing 不回收原檔
+        raw_path=str(raw_path),
+        keep_raw=True,  # canonical 逐字稿，cancel 不回收
+        source_type=source_type,
+        content_nature=content_nature,
+        annotation_slug=f"youtube_{video_id}",
+        summary_body="",
+        summary_path="",
+        user_guidance="",
+        plan={"concepts": [], "entities": []},
+        result={"created": [], "updated": []},
+        error="",
+    )
+
+    response = RedirectResponse("/processing", status_code=302)
+    response.set_cookie("robin_session", sid, httponly=True)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
 @router.post("/cancel")
 async def cancel(
     robin_session: str | None = Cookie(None),
@@ -1201,7 +1082,9 @@ async def cancel(
         sess["step"] = "cancelled"
         # 清理已複製到 KB/Raw 的檔案（若尚在摘要階段，尚未產出任何 Wiki 頁面）
         raw_path = Path(sess.get("raw_path", ""))
-        if raw_path.exists() and not sess.get("summary_path"):
+        # keep_raw（影片 ingest）：raw_path 指向 canonical 逐字稿
+        # KB/Raw/Videos/{id}.vtt，cancel 不可回收（它不是 Inbox 複製的拋棄檔）。
+        if raw_path.exists() and not sess.get("summary_path") and not sess.get("keep_raw"):
             _send_to_recycle_bin(raw_path)
             logger.info(f"Cancel: 已清理 {raw_path}")
 
@@ -1268,6 +1151,10 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     title = fm.get("title", title)
                     author = fm.get("author", "")
                     content = body if body else content
+                elif raw.suffix.lower() == ".vtt":
+                    # 影片逐字稿：WebVTT → 段落化正文（與 CLI ingest 同一條洗法），
+                    # 否則 LLM 摘要會吃到滿屏時間碼、is_large 也會被時間碼灌爆。
+                    content = webvtt_to_prose(content) or content
 
                 sess["_title"] = title
                 sess["_author"] = author
@@ -1371,8 +1258,12 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                 slug = slugify(title)
                 await asyncio.to_thread(pipeline._update_index, title, slug, sess["source_type"])
 
-                mark_file_processed(Path(sess["file_path"]), "robin")
-                _send_to_recycle_bin(Path(sess["file_path"]))
+                # file_path 為空 = 無 Inbox 來源檔（影片 ingest）：raw_path 指向
+                # canonical 逐字稿，不可回收。只有文章 / Inbox 來源才清理原檔。
+                file_path = sess.get("file_path", "")
+                if file_path:
+                    mark_file_processed(Path(file_path), "robin")
+                    _send_to_recycle_bin(Path(file_path))
 
                 concept_create = [
                     c.get("title") or c.get("slug") or "?"
@@ -1863,7 +1754,7 @@ async def watch_video(
     if rs.variants:
         transcript_path = get_vault_path() / rs.variants[0].path
         if transcript_path.is_file():
-            cues = _parse_webvtt(transcript_path.read_text(encoding="utf-8"))
+            cues = parse_webvtt(transcript_path.read_text(encoding="utf-8"))
 
     cast: list[str] = list(rs.cast) if rs.cast else []
 
@@ -1918,7 +1809,7 @@ async def watch_video(
 # v3 annotation items carry ``speaker`` as of PR2b (cast chip selected at
 # save). For row rendering we extract:
 #   - start (float seconds)        → derived from ``cfi`` locator ``t=<start>[-<end>]``
-#   - label (mm:ss)                → ``_format_cue_label``
+#   - label (mm:ss)                → ``format_cue_label``
 #   - excerpt (cue text snippet)
 #   - note (annotation note / highlight body, or empty for highlight-only)
 #   - speaker (cast chip; "" when unspecified)
@@ -1960,7 +1851,7 @@ def _video_annotation_row(item) -> dict:
     else:
         # ReflectionV3 — chapter-level; we still render it best-effort.
         note = (getattr(item, "body", "") or "").strip()
-    label = _format_cue_label(start) if start is not None else "--:--"
+    label = format_cue_label(start) if start is not None else "--:--"
     # ADR-035 PR2b: ``speaker`` is now a first-class field on Highlight /
     # Annotation v3 items (cast chip selected at save). Existing items
     # default to ``""`` so the read-only display falls back to the
