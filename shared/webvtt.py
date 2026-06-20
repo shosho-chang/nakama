@@ -212,3 +212,34 @@ def webvtt_to_prose(text: str, *, paragraph_chars: int = 600) -> str:
     if buf:
         paragraphs.append(" ".join(buf))
     return "\n\n".join(paragraphs)
+
+
+def webvtt_to_transcript_markdown(text: str, *, paragraph_chars: int = 600) -> str:
+    """把 WebVTT 洗成「時間碼段落」Markdown：每段開頭 ``**[H:MM:SS]**`` + 該段 prose。
+
+    跟 :func:`webvtt_to_prose` 一樣按 ``paragraph_chars`` 把句子聚成段落，但保留每段
+    第一個 cue 的時間碼當前綴 —— 人讀可定位影片時刻，LLM 也拿到時間碼當引用錨點
+    （Centaur provenance）。用於落地的人讀逐字稿 ``KB/Raw/Videos/{id}.md``。
+
+    malformed / 空字幕 → ``parse_webvtt`` 回空 list → 回空字串。
+    """
+    paragraphs: list[str] = []
+    buf: list[str] = []
+    buf_len = 0
+    buf_label: str | None = None
+    for cue in parse_webvtt(text):
+        sentence = cue["text"].strip()
+        if not sentence:
+            continue
+        if not buf:
+            buf_label = cue["label"]
+        buf.append(sentence)
+        buf_len += len(sentence) + 1
+        if buf_len >= paragraph_chars:
+            paragraphs.append(f"**[{buf_label}]** " + " ".join(buf))
+            buf = []
+            buf_len = 0
+            buf_label = None
+    if buf:
+        paragraphs.append(f"**[{buf_label}]** " + " ".join(buf))
+    return "\n\n".join(paragraphs)

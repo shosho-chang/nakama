@@ -542,3 +542,45 @@ def test_youtube_watchlist_entry_rejects_invalid_video_id():
             transcript_path="transcript.vtt",
             added_at="2026-05-28T00:00:00Z",
         )
+
+
+def test_post_watchlist_confirm_writes_cleaned_md(app_client, vault, monkeypatch):
+    """Confirm 落 .vtt 後並排寫一份清理過的人讀 .md（時間碼段落 + frontmatter）。"""
+    tc, robin_module = app_client
+    sid = _do_add(tc, robin_module, monkeypatch)
+
+    r = tc.post(
+        "/robin/watchlist/add/confirm",
+        cookies={"robin_watchlist_session": sid},
+        data={"cast": ["Host"]},
+    )
+    assert r.status_code == 303
+
+    md = vault / "KB" / "Raw" / "Videos" / "dQw4w9WgXcQ.md"
+    assert md.is_file()
+    text = md.read_text(encoding="utf-8")
+    assert "type: video_transcript" in text
+    assert "Test Video" in text  # display title from manifest
+    assert "**[00:00]**" in text  # timestamped paragraph
+    assert "hello" in text  # the staged caption content
+
+
+def test_post_watchlist_confirm_tolerates_md_render_failure(app_client, vault, monkeypatch):
+    """transcript .md render 炸掉時,confirm 仍成功（best-effort，不擋加片）。"""
+    tc, robin_module = app_client
+    sid = _do_add(tc, robin_module, monkeypatch)
+
+    def boom(vault_path, video_id):
+        raise RuntimeError("render boom")
+
+    monkeypatch.setattr(robin_module, "write_video_transcript_md", boom)
+
+    r = tc.post(
+        "/robin/watchlist/add/confirm",
+        cookies={"robin_watchlist_session": sid},
+        data={"cast": ["Host"]},
+    )
+    assert r.status_code == 303  # add succeeded despite md render failure
+    # .vtt still landed; .md absent because the render raised.
+    assert (vault / "KB" / "Raw" / "Videos" / "dQw4w9WgXcQ.vtt").is_file()
+    assert not (vault / "KB" / "Raw" / "Videos" / "dQw4w9WgXcQ.md").is_file()

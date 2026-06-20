@@ -1326,3 +1326,16 @@ def test_delete_video_highlight_resolver_valueerror_404(client, vault, monkeypat
     monkeypatch.setattr(mod.ReadingSourceRegistry, "resolve", boom)
     r = tc.delete("/robin/watchlist/Ch4Sl0POBhU/annotation", params={"cue_start": 1.0})
     assert r.status_code == 404
+
+
+def test_start_video_prefers_cleaned_md_over_vtt(client, vault):
+    """既有清理過的 .md 時,/start-video 拿 .md 當 ingest 輸入(不是 .vtt)。"""
+    tc, mod = client
+    _make_video_transcript(vault, "Ch4Sl0POBhU")  # writes the .vtt
+    md = vault / "KB" / "Raw" / "Videos" / "Ch4Sl0POBhU.md"
+    md.write_text("---\ntitle: T\n---\n**[00:01]** clean prose.\n", encoding="utf-8")
+
+    r = tc.post("/start-video", data={"video_id": "Ch4Sl0POBhU"})
+    assert r.status_code == 302
+    sess = next(s for s in mod.sessions.values() if s.get("source_type") == "video")
+    assert sess["raw_path"].endswith("Ch4Sl0POBhU.md")

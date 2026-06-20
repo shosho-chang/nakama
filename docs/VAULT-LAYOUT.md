@@ -118,7 +118,7 @@ E:\Shosho LifeOS\
 │   │   ├── Papers/           Robin ingest (manual `Inbox/papers/` flow)
 │   │   ├── Books/            textbook-ingest Phase 0
 │   │   ├── Podcasts/         (reserved, currently empty)
-│   │   ├── Videos/           Robin watchlist transcript `{video_id}.vtt` (ADR-046 §Slice 0A)
+│   │   ├── Videos/           Robin watchlist `{video_id}.vtt` (機器原始) + `{video_id}.md` (清理人讀稿, ADR-046 §Slice 0A)
 │   │   ├── Repos/            (reserved)
 │   │   └── Data/             (reserved)
 │   │
@@ -215,6 +215,7 @@ data/agent_reports/franky/
 | `KB/Raw/Papers/{slug}.md` | 🤖 | Robin manual ingest from `Inbox/papers/` | KB, Brook synthesize | ADR-019 |
 | `KB/Raw/Books/{book-id}.md` | 🤖 | textbook-ingest Phase 0 (lossless EPUB→md via ebooklib) | textbook-ingest Phase 1 LLM | ADR-020 §Phase 0 |
 | `KB/Raw/Videos/{video_id}.vtt` | 🤖 | Robin watchlist confirm `thousand_sunny/routers/robin.py` (yt-dlp caption moved here); path built by `shared/reading_source_registry.py:_resolve_youtube` (convention, not manifest) | AV reader `/robin/watchlist/{id}`, promotion preflight, `shared/video_source_map_builder.py` | ADR-046 §Slice 0A |
+| `KB/Raw/Videos/{video_id}.md` | 🤖 | Robin watchlist confirm + `scripts/backfill_video_transcript_md.py` → `shared/video_transcript_writer.py`（清理 `.vtt` 成時間碼段落人讀稿） | 人讀逐字稿；`/start-video` ingest 優先輸入（無則退回 `.vtt`） | ADR-046 + transcript cleaning |
 | `Watchlist/youtube/{video_id}/manifest.json` | 🤖 | Robin watchlist confirm (video registry entry: title/channel/cast/`transcript_path`) | `/robin/watchlist` lister `RegistryReadingSourceLister`, `ReadingSourceRegistry._resolve_youtube` | `shared/schemas/youtube_watchlist.py` |
 | `KB/Wiki/Sources/{slug}.md` | 🤖 | Robin promotion `shared/promotion_commit.py` + textbook-ingest | Brook synthesize, RCP, `/writing-assist/` | ADR-024 + `shared/promotion_renderer.py` |
 | `KB/Wiki/Sources/pubmed-{pmid}.md` | 🤖 | `agents/robin/pubmed_digest.py:476-477` (NOT KB/Raw/Papers as previously documented) | Brook synthesize, KB consumers | PubMed Source schema |

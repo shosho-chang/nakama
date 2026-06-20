@@ -48,6 +48,7 @@ from shared.schemas.youtube_watchlist import YouTubeWatchlistEntry
 from shared.state import is_file_read, mark_file_processed, mark_file_read
 from shared.translator import translate_document
 from shared.utils import extract_frontmatter, read_text, slugify
+from shared.video_transcript_writer import write_video_transcript_md
 from shared.webvtt import format_cue_label, parse_webvtt, webvtt_to_prose
 from shared.youtube_ingest import (
     InvalidYouTubeURL,
@@ -1041,9 +1042,13 @@ async def start_video(
     if not _VIDEO_ID_RE.fullmatch(video_id):
         raise HTTPException(400, detail=f"無效的 video_id：{video_id}")
 
-    raw_path = get_vault_path() / "KB" / "Raw" / "Videos" / f"{video_id}.vtt"
+    # 優先吃清理過的 .md（人讀逐字稿，已是乾淨 prose + frontmatter 帶真標題）；
+    # 沒有才退回 .vtt（ingest 端會即時 webvtt_to_prose）。
+    videos_dir = get_vault_path() / "KB" / "Raw" / "Videos"
+    raw_md = videos_dir / f"{video_id}.md"
+    raw_path = raw_md if raw_md.exists() else videos_dir / f"{video_id}.vtt"
     if not raw_path.exists():
-        raise HTTPException(404, detail=f"找不到影片逐字稿：{video_id}.vtt")
+        raise HTTPException(404, detail=f"找不到影片逐字稿：{video_id}")
 
     sid = _new_session(
         step="summarizing",
@@ -1686,6 +1691,20 @@ async def watchlist_add_confirm(
 
     manifest_path = entry_dir / "manifest.json"
     manifest_path.write_text(entry.model_dump_json(indent=2), encoding="utf-8")
+
+    # 並排寫一份清理過的人讀逐字稿 KB/Raw/Videos/{id}.md（時間碼段落），同時是
+    # /start-video ingest 的優先輸入。best-effort：render 失敗不該擋掉加片。
+    try:
+        write_video_transcript_md(get_vault_path(), video_id)
+    except Exception as exc:  # noqa: BLE001 — transcript md 失敗不阻斷 watchlist add
+        logger.warning(
+            "transcript md render failed",
+            extra={
+                "category": "video_transcript_md_failed",
+                "video_id": video_id,
+                "err": str(exc),
+            },
+        )
 
     # Best-effort staging cleanup — remove the per-video staging dir if
     # empty (yt-dlp may have left other artefacts; ignore failures).
