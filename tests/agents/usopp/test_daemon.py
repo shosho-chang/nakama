@@ -353,7 +353,8 @@ class TestShutdown:
         tripped Franky's error_rate_spike every single day)."""
         daemon = _make_daemon(poll_interval_s=1)
         monkeypatch.setattr(
-            daemon, "run_once",
+            daemon,
+            "run_once",
             MagicMock(side_effect=sqlite3.OperationalError("database is locked")),
         )
         # Stop the loop after exactly one iteration.
@@ -372,7 +373,8 @@ class TestShutdown:
         ERROR, so the lock carve-out doesn't swallow genuine failures."""
         daemon = _make_daemon(poll_interval_s=1)
         monkeypatch.setattr(
-            daemon, "run_once",
+            daemon,
+            "run_once",
             MagicMock(side_effect=sqlite3.OperationalError("no such table: approval_queue")),
         )
         monkeypatch.setattr(
