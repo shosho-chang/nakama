@@ -105,7 +105,7 @@ def _write_watchlist_entry(
 
 
 def test_parse_webvtt_basic_cues():
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     vtt = """WEBVTT
 
@@ -126,7 +126,7 @@ Today we talk about longevity.
 
 
 def test_parse_webvtt_dedups_rolling_repeats():
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     # yt-dlp auto-sub style: same sentence appears in two consecutive
     # cues with shifted timing. Dedup collapses them; sentence-coalesce
@@ -150,7 +150,7 @@ Next thought after that.
 
 
 def test_parse_webvtt_strips_cue_tags():
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     vtt = """WEBVTT
 
@@ -166,7 +166,7 @@ def test_parse_webvtt_unescapes_html_entities():
     bodies — notably the ``&gt;&gt;`` speaker-change marker YouTube emits. The
     parser must un-escape these so the reader shows ``>>`` not a literal
     ``&gt;&gt;`` (which Jinja would then double-escape and render verbatim)."""
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     vtt = """WEBVTT
 
@@ -178,7 +178,7 @@ def test_parse_webvtt_unescapes_html_entities():
 
 
 def test_parse_webvtt_handles_hour_timestamp():
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     vtt = """WEBVTT
 
@@ -191,14 +191,14 @@ in the second hour.
 
 
 def test_parse_webvtt_empty_or_malformed_returns_empty():
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     assert _parse_webvtt("") == []
     assert _parse_webvtt("WEBVTT\n\nnot a cue\n") == []
 
 
 def test_parse_webvtt_skips_inline_note_and_header_lines():
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     # NOTE blocks and stray WEBVTT-style lines inside a cue body should be
     # filtered out; only real text survives.
@@ -223,7 +223,7 @@ def test_parse_webvtt_drops_youtube_carryover_lines():
     text, real cue body is [carry-over line, new-content line]. Keep ONLY
     the new-content line so the cue stream reads as one chunk per spoken
     interval rather than repeating each line twice."""
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     # Lines simplified vs real YT output but preserve the structure:
     # ghost cue is a 10ms cue with the prior carry-over as its only
@@ -253,7 +253,7 @@ def test_parse_webvtt_coalesces_into_sentences():
     """Each output cue ends on a sentence terminator (.!?) when one
     is present in the buffered text. Long groups get split into one
     output cue per sentence with timing distributed by character count."""
-    from thousand_sunny.routers.robin import _parse_webvtt
+    from shared.webvtt import parse_webvtt as _parse_webvtt
 
     vtt = """WEBVTT
 

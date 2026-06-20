@@ -32,6 +32,7 @@ from shared.obsidian_writer import (
 from shared.prompt_loader import load_prompt
 from shared.schemas.kb import ConflictBlock
 from shared.utils import extract_frontmatter, read_text, slugify
+from shared.webvtt import webvtt_to_prose
 
 logger = get_logger("nakama.robin.ingest")
 
@@ -142,6 +143,10 @@ class IngestPipeline:
             title = fm.get("title", title)
             author = fm.get("author", "")
             content = body if body else content
+        elif raw_path.suffix.lower() == ".vtt":
+            # 影片逐字稿：把 WebVTT（時間碼 + karaoke 重複）洗成段落化正文，
+            # 否則 LLM 摘要會吃到滿屏時間碼。空 / 壞檔 → 回退原始文字。
+            content = webvtt_to_prose(content) or content
 
         logger.info(f"Ingest: {title} (type={source_type}, nature={content_nature or 'default'})")
 
