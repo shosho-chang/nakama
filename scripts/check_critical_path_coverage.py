@@ -26,6 +26,7 @@ THRESHOLDS: dict[str, float] = {
     "shared/heartbeat.py": 100.0,  # baseline 100.00%（per-cron heartbeat）
     "shared/kb_writer.py": 90.0,  # baseline 91.15%（KB 結構寫入 / aggregator）
     "shared/wordpress_client.py": 90.0,  # baseline 90.48%（WP REST + media）
+    "shared/webvtt.py": 95.0,  # baseline 99.12%（ADR-046 從 robin.py 抽出）
     "thousand_sunny/routers/robin.py": 95.0,  # baseline 97.08%（Robin SSE + 處理頁）
     "thousand_sunny/routers/bridge.py": 80.0,  # baseline 77.56% → Slice 1 補到 ≥ 80%
 }
