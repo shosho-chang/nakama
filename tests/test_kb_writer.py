@@ -437,6 +437,9 @@ class TestUpsertUpdateMerge:
         assert "[[Sources/Books/foo/ch1]]" in fm["mentioned_in"]
         assert "## 更新" not in body  # legacy stripped
         assert "MERGED definition" in body  # LLM result written
+        # ADR-043 §決策 3 — re-touch of a page stamps candidate + ai-draft.
+        assert fm["status"] == "candidate"
+        assert "ai-draft" in fm["tags"]
 
     def test_idempotent_mentioned_in(self, vault, mock_llm):
         path = _make_v1_concept(vault, "x")
