@@ -102,6 +102,32 @@ def test_verify_empty_bucket_returns_missing(_all_env):
         mock_cls.from_env.return_value = client
         result = verify_once()
     assert result["status"] == "missing"
+    assert "bucket empty?" in result["detail"]
+
+
+def test_verify_empty_prefix_with_siblings_flags_drift(_all_env):
+    """0 objects under the configured prefix but the bucket holds objects under
+    OTHER prefixes → detail must call out likely FRANKY_R2_PREFIXES drift, not
+    the misleading 'bucket empty?'. Regression guard for the 2026-05-13 (PR #333)
+    and 2026-06-07 prefix-drift false alarms (site-name vs `-tw` folder)."""
+    client = MagicMock()
+    client.bucket = "backups"
+
+    def _list(prefix, max_keys=50):
+        if prefix == "shosho/":
+            return []
+        return [
+            _fresh_object(key="shosho-tw/shosho.tw_s_99_20260617.sql"),
+            _fresh_object(key="fleet-shosho-tw/fleet_s_1073_20260617.sql"),
+        ]
+
+    client.list_objects.side_effect = _list
+    with patch.object(r2_backup_verify, "R2Client") as mock_cls:
+        mock_cls.from_env.return_value = client
+        result = verify_once(prefix="shosho/")
+    assert result["status"] == "missing"
+    assert "shosho-tw/" in result["detail"]
+    assert "設定漂移" in result["detail"]
 
 
 # ---------------------------------------------------------------------------

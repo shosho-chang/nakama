@@ -7,7 +7,9 @@ test_publisher.py — these tests stop at the Publisher boundary with a mock.
 
 from __future__ import annotations
 
+import logging
 import signal
+import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -341,6 +343,48 @@ class TestShutdown:
         monkeypatch.setattr(signal, "signal", lambda *a, **kw: None)
         daemon.run()
         pub.publish.assert_not_called()
+
+    def test_run_skips_locked_db_cycle_as_warning_not_crash(self, monkeypatch, caplog):
+        """Transient 'database is locked' → WARNING + skip, never an ERROR crash.
+
+        Regression guard for the daily 21:31 UTC contention: Robin's ingest holds
+        state.db past busy_timeout during the cron burst and Usopp's claim loses
+        the lock. It self-heals next poll, so it must not escalate to ERROR (which
+        tripped Franky's error_rate_spike every single day)."""
+        daemon = _make_daemon(poll_interval_s=1)
+        monkeypatch.setattr(
+            daemon,
+            "run_once",
+            MagicMock(side_effect=sqlite3.OperationalError("database is locked")),
+        )
+        # Stop the loop after exactly one iteration.
+        monkeypatch.setattr(
+            daemon, "_sleep_interruptible", lambda: setattr(daemon, "_shutdown", True)
+        )
+        monkeypatch.setattr(signal, "signal", lambda *a, **kw: None)
+        with caplog.at_level(logging.WARNING, logger="nakama.usopp.daemon"):
+            daemon.run()  # must not raise
+        msgs = " ".join(r.getMessage() for r in caplog.records)
+        assert "state.db locked" in msgs
+        assert not any(r.levelno >= logging.ERROR for r in caplog.records)
+
+    def test_run_non_lock_operational_error_still_escalates(self, monkeypatch, caplog):
+        """A non-lock OperationalError is a real bug — it must still crash-log at
+        ERROR, so the lock carve-out doesn't swallow genuine failures."""
+        daemon = _make_daemon(poll_interval_s=1)
+        monkeypatch.setattr(
+            daemon,
+            "run_once",
+            MagicMock(side_effect=sqlite3.OperationalError("no such table: approval_queue")),
+        )
+        monkeypatch.setattr(
+            daemon, "_sleep_interruptible", lambda: setattr(daemon, "_shutdown", True)
+        )
+        monkeypatch.setattr(signal, "signal", lambda *a, **kw: None)
+        with caplog.at_level(logging.ERROR, logger="nakama.usopp.daemon"):
+            daemon.run()
+        msgs = " ".join(r.getMessage() for r in caplog.records)
+        assert "crashed; backing off" in msgs
 
 
 # ---------------------------------------------------------------------------
