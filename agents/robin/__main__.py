@@ -76,14 +76,18 @@ def main() -> None:
     parser.add_argument(
         "--weekly",
         action="store_true",
-        help="daily_review mode：跑每週清掃（stale/orphan/過期歸檔），週末 cron 用",
+        help="daily_review：強制每週清掃；平日 cron 免帶，週一自動跑",
     )
     args = parser.parse_args()
 
     if args.mode == "pubmed_digest":
         _run_pubmed_digest(dry_run=args.dry_run)
     elif args.mode == "daily_review":
-        _run_daily_review(weekly=args.weekly)
+        # 週一自動帶每週清掃（台北日曆），cron 因此只需單行每天跑；--weekly 可強制覆寫。
+        from agents.robin.daily_review import _local_today, is_weekly_sweep_day
+
+        weekly = args.weekly or is_weekly_sweep_day(_local_today())
+        _run_daily_review(weekly=weekly)
     else:
         RobinAgent(interactive=args.interactive).execute()
 

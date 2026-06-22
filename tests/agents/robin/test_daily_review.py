@@ -759,6 +759,48 @@ def test_run_daily_review_weekly_expires_deferred(vault: Path, monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# 時區：回顧的「今天 / 昨天 / review_date」用台北日曆，不用 UTC
+# fix/daily-review-morning-cron — 5am 台北 cron 跑時 UTC 還停在前一天，不修會標錯
+# review_date、掃到錯天的 annotation。
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_local_today_uses_taipei_calendar():
+    # 2026-06-22 21:00 UTC == 2026-06-23 05:00 台北（cron 跑的時刻）→ 台北「今天」是 23 號
+    assert dr._local_today(datetime(2026, 6, 22, 21, 0, tzinfo=timezone.utc)) == date(2026, 6, 23)
+    # 白天兩時區同日 → 不變
+    assert dr._local_today(datetime(2026, 6, 22, 7, 0, tzinfo=timezone.utc)) == date(2026, 6, 22)
+    # naive datetime 視為 UTC，不丟例外
+    assert dr._local_today(datetime(2026, 6, 22, 21, 0)) == date(2026, 6, 23)
+
+
+def test_created_local_date_buckets_by_taipei():
+    assert dr._created_local_date("2026-06-22T21:00:00Z") == date(2026, 6, 23)  # 隔日（台北）
+    assert dr._created_local_date("2026-06-22T02:00:00Z") == date(2026, 6, 22)  # 同日
+    assert dr._created_local_date("2026-06-22") == date(2026, 6, 22)  # 純日期、無時刻 → 不偏移
+    assert dr._created_local_date("garbage") is None
+    assert dr._created_local_date(None) is None
+
+
+def test_is_weekly_sweep_day_monday_only():
+    assert dr.is_weekly_sweep_day(date(2026, 6, 22)) is True  # Monday
+    for d in range(23, 29):  # Tue..Sun
+        assert dr.is_weekly_sweep_day(date(2026, 6, d)) is False
+
+
+def test_run_daily_review_review_date_is_taipei_not_utc(vault: Path, monkeypatch):
+    """5am 台北 cron（= 前一天 21:00 UTC）跑時，review_date 要是台北今天，不是 UTC 昨天。"""
+    (vault / "KB").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(dr, "_ask_p1_llm", lambda prompt: [])
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [])
+    cron_now = datetime(2026, 6, 21, 21, 0, tzinfo=timezone.utc)  # == 2026-06-22 05:00 台北
+    bundle = dr.run_daily_review(now=cron_now, weekly=False, vault_path=vault, notify=False)
+    assert bundle.review_date == "2026-06-22"  # 台北今天（非 UTC 的 2026-06-21）
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # N527 — 卡片畫布資料配套（schema v2 + related_pool 中圈 + related_mocs 外圈）
 # ═══════════════════════════════════════════════════════════════════════════
 
