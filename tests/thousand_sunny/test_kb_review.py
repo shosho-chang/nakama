@@ -533,11 +533,13 @@ def test_moc_members_empty_path_422(client):
 
 
 def _today_bundle(cands):
-    from agents.robin.daily_review import _now
+    # review_date 以台北日曆計（與 _compute_bundle 的新舊判斷對齊），
+    # 否則 UTC CI 在 16:00–24:00 UTC 跑時會誤判快照過期而 flaky。
+    from agents.robin.daily_review import _local_today
 
     return DailyReviewBundle(
         generated_at="2026-01-01T05:00:00Z",
-        review_date=_now().date().isoformat(),
+        review_date=_local_today().isoformat(),
         weekly_sweep=False,
         candidates=cands,
         fleeting=[],
@@ -592,3 +594,48 @@ def test_compute_bundle_recomputes_and_persists_when_no_snapshot(vault, monkeypa
     out = kb._compute_bundle()
     assert [c.candidate_id for c in out.candidates] == ["new"]
     assert load_review_bundle(vault) is not None  # 已持久化 → 卡片從此一致
+
+
+def test_compute_bundle_monday_reads_snapshot_no_llm(vault, monkeypatch):
+    """週一（weekly=True）也先讀今天的快照、不重跑 LLM——修掉開頁卡頓 + 徽章/頁面數字不一致。
+
+    舊行為：weekly 路徑無條件 run_daily_review(weekly=True)，每次開頁都打 LLM。
+    """
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import save_review_bundle
+
+    save_review_bundle(
+        vault,
+        _today_bundle([CandidateCard(candidate_id="mon", suggested_title="週一卡", why="x")]),
+    )
+
+    def _boom(**kw):
+        raise AssertionError("週一不該重跑 LLM——應讀今天的持久化快照")
+
+    monkeypatch.setattr("agents.robin.daily_review.run_daily_review", _boom)
+    out = kb._compute_bundle(weekly=True)
+    assert [c.candidate_id for c in out.candidates] == ["mon"]
+
+
+def test_compute_bundle_stale_recompute_forwards_weekly_flag(vault, monkeypatch):
+    """快照過期/缺時補算，要把當天 weekly 旗標帶進 run_daily_review（週一補算含週清掃）。"""
+    import thousand_sunny.routers.kb_review as kb
+    from agents.robin.daily_review import _local_today
+
+    captured: dict = {}
+
+    def _capture(**kw):
+        captured.update(kw)
+        return DailyReviewBundle(
+            generated_at="2026-01-01T05:00:00Z",
+            review_date=_local_today().isoformat(),
+            weekly_sweep=bool(kw.get("weekly")),
+            candidates=[],
+            fleeting=[],
+            sweep=[],
+            warnings=[],
+        )
+
+    monkeypatch.setattr("agents.robin.daily_review.run_daily_review", _capture)
+    kb._compute_bundle(weekly=True)  # 無快照 → 補算，旗標應透傳
+    assert captured.get("weekly") is True

@@ -30,6 +30,7 @@ import json
 import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from shared.config import get_vault_path
 from shared.kb_hybrid_search import get_kb_conn
@@ -89,8 +90,27 @@ _SYSTEM_PREAMBLE = """你在 Shosho 的 Centaur Zettelkasten 知識系統內工�
 7. 不確定就標 confidence: low，不要把猜測寫成事實。"""
 
 
+# 回顧的「今天 / 昨天 / review_date」一律以使用者日曆（台北，ADR-041 D4 同慣例）計算，
+# 不用 UTC——否則 5am 台北 cron 跑時 UTC 還停在前一天，會把 review_date 標成昨天、
+# 掃到錯天的 annotation（fix/daily-review-morning-cron）。
+_LOCAL_TZ = ZoneInfo("Asia/Taipei")
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _local_today(now: datetime | None = None) -> date:
+    """now（tz-aware；naive 視為 UTC）→ 台北日曆日。今天 / 昨天 / review_date 的基準。"""
+    now = now or _now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return now.astimezone(_LOCAL_TZ).date()
+
+
+def is_weekly_sweep_day(d: date) -> bool:
+    """週一 = 每週清掃日（pilot 慣例）。route handler 與 cron 共用同一條規則。"""
+    return d.weekday() == 0
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +236,25 @@ def _parse_created_date(raw: str | None) -> date | None:
         return None
 
 
+def _created_local_date(raw: str | None) -> date | None:
+    """annotation ``created_at``（UTC ISO，結尾 ``Z``）→ 台北日曆日，與「昨天」視窗同時區。
+
+    只有日期、無時刻 → 退回字面日期（不偏移）；解析失敗 → None。
+    """
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if "T" not in s:  # 純日期、無時刻 → 字面日期（沒有時區可轉）
+        return _parse_created_date(raw)
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return _parse_created_date(raw)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_LOCAL_TZ).date()
+
+
 def _iter_annotation_files(vault_path: Path):
     """yield KB/Annotations/*.md（排除 sync-conflict 副本）。"""
     d = vault_path / "KB" / "Annotations"
@@ -287,7 +326,7 @@ def collect_yesterday_items(
             continue
         slug = ann_set.slug
         for item in ann_set.items:
-            created = _parse_created_date(getattr(item, "created_at", None))
+            created = _created_local_date(getattr(item, "created_at", None))
             if created != yesterday:
                 continue
             quote, note = _item_quote_note(item)
@@ -1152,7 +1191,7 @@ def run_daily_review(
     """
     now = now or _now()
     vault_path = vault_path or get_vault_path()
-    today = now.date()
+    today = _local_today(now)  # 台北日曆日，非 UTC（5am cron 也要標對 review_date）
     yesterday = today - timedelta(days=1)
     review_url = review_url or "https://nakama.shosho.tw/centaur/daily-review"
 

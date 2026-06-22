@@ -76,6 +76,7 @@ NAKAMA_BACKUP_STALE_THRESHOLD_HOURS: float = float(
 #   - nakama-backup-mirror     (scripts/mirror_backup_to_secondary.py)
 #   - nakama-backup-integrity  (scripts/verify_backup_integrity.py)
 #   - robin-pubmed-digest      (agents/robin/__main__.py via _run_pubmed_digest)
+#   - robin-daily-review       (agents/robin/__main__.py via _run_daily_review)
 #   - zoro-brainstorm-scout    (agents/zoro/__main__.py via _cmd_scout)
 #   - franky-r2-backup-verify  (agents/franky/__main__.py via _cmd_backup_verify)
 #   - franky-weekly-report     (agents/franky/__main__.py via _cmd_digest)
@@ -97,6 +98,7 @@ CRON_SCHEDULES: dict[str, tuple[int, int]] = {
     "nakama-backup-mirror": (24 * 60, 60),  # daily 04:30
     "nakama-backup-integrity": (7 * 24 * 60, 120),  # weekly Sun 03:30
     "robin-pubmed-digest": (24 * 60, 60),  # daily 05:30
+    "robin-daily-review": (24 * 60, 60),  # daily 05:15 — Centaur 每日回顧 cron
     "zoro-brainstorm-scout": (24 * 60, 60),  # daily 05:00
     "franky-r2-backup-verify": (24 * 60, 60),  # daily 03:30
     "franky-news-digest": (24 * 60, 60),  # daily 06:30

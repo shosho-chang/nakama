@@ -94,26 +94,24 @@ _SHOSHO_ASSET_VERSION = _shosho_asset_version()
 def _compute_bundle(*, weekly: bool = False) -> DailyReviewBundle:
     """今天的 bundle，與 weekly dashboard 卡片**同源**。
 
-    優先讀 5am job 持久化的快照（卡片讀的同一份）；無快照 / 隔日才重算並持久化——
-    P-1/P-2 是 LLM call，不該每次開頁重跑、也避免「卡片說 3 張、頁面卻空白」的不一致。
-    週清掃即時算、不覆寫每日快照。最後一律套用「當下」skip/later 過濾。
+    一律先讀 5am cron 持久化的快照（卡片讀的同一份）；只有「無快照 / 隔日（review_date
+    非今天）」才即時補算並持久化——P-1/P-2 是 LLM call，不該每次開頁重跑（週一也不例外，
+    否則開頁卡頓且與徽章數字不一致）。補算時帶當天 weekly 旗標，週清掃即進同一份快照。
+    最後一律套用「當下」skip/later 過濾。``review_date`` 以台北日曆計，與 cron 對齊。
     """
     from agents.robin.daily_review import (
-        _now,
+        _local_today,
         load_review_bundle,
         run_daily_review,
         save_review_bundle,
     )
 
     vault = get_vault_path()
-    if weekly:
-        return _filter_actioned(run_daily_review(weekly=True, notify=False), vault)
-
-    today = _now().date().isoformat()
+    today = _local_today().isoformat()
     bundle = load_review_bundle(vault)
     if bundle is None or bundle.review_date != today:
-        # 無快照 / 隔日 → 重算並持久化（卡片與後續開頁從此一致、不重跑 LLM）
-        bundle = run_daily_review(notify=False)
+        # 無快照 / 隔日（cron 沒跑成功）→ 即時補算並持久化，與卡片同源、之後開頁不再重跑
+        bundle = run_daily_review(weekly=weekly, notify=False)
         save_review_bundle(vault, bundle)
     return _filter_actioned(bundle, vault)
 
@@ -807,7 +805,10 @@ async def daily_review_page(request: Request, nakama_auth: str | None = Cookie(N
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/kb/review", status_code=302)
 
-    today_weekly = date.today().weekday() == 0  # 週一當每週清掃日（pilot 慣例）
+    # 週一 = 每週清掃日（台北日曆，與 cron／daily_review 共用同一條規則）
+    from agents.robin.daily_review import _local_today, is_weekly_sweep_day  # noqa: PLC0415
+
+    today_weekly = is_weekly_sweep_day(_local_today())
     try:
         bundle = _compute_bundle(weekly=today_weekly)
     except Exception as exc:  # noqa: BLE001 — UI 不應因 job 出錯而 500
