@@ -67,8 +67,26 @@ def _ensure_schema() -> None:
         CREATE INDEX IF NOT EXISTS idx_user_memories_lookup
             ON user_memories(agent, user_id);
     """)
+    # Memory v2 bi-temporal columns (additive migration; safe on existing DBs).
+    # A memory is ACTIVE iff superseded_by IS NULL AND invalidated_at IS NULL.
+    # The reflection pass (shared.memory_reflection) soft-invalidates merged /
+    # contradicted / dropped memories instead of hard-deleting, keeping history
+    # and provenance (superseded_by → the memory that replaced it).
+    existing_cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_memories)")}
+    for col, ddl in (
+        ("superseded_by", "ALTER TABLE user_memories ADD COLUMN superseded_by INTEGER"),
+        ("invalidated_at", "ALTER TABLE user_memories ADD COLUMN invalidated_at TEXT"),
+        ("last_reflected_at", "ALTER TABLE user_memories ADD COLUMN last_reflected_at TEXT"),
+    ):
+        if col not in existing_cols:
+            conn.execute(ddl)
     conn.commit()
     _SCHEMA_INITIALIZED = True
+
+
+# A memory is live (eligible for retrieval / extraction-merge) only when it has
+# not been superseded or invalidated by the reflection pass.
+_ACTIVE_CLAUSE = "superseded_by IS NULL AND invalidated_at IS NULL"
 
 
 @dataclass
@@ -135,7 +153,11 @@ def add(
               content = excluded.content,
               confidence = excluded.confidence,
               source_thread = COALESCE(excluded.source_thread, user_memories.source_thread),
-              last_accessed_at = excluded.last_accessed_at""",
+              last_accessed_at = excluded.last_accessed_at,
+              -- Re-asserting a subject revives it: a previously superseded /
+              -- invalidated memory becomes active again (the user said it anew).
+              superseded_by = NULL,
+              invalidated_at = NULL""",
         (agent, user_id, type, subject, content, confidence, source_thread, now, now),
     )
     conn.commit()
@@ -164,7 +186,7 @@ def search(
     _ensure_schema()
     conn = _get_conn()
 
-    conditions = ["agent = ?", "user_id = ?"]
+    conditions = ["agent = ?", "user_id = ?", _ACTIVE_CLAUSE]
     params: list = [agent, user_id]
 
     if type is not None:
@@ -346,7 +368,8 @@ def list_subjects(agent: str, user_id: str) -> list[str]:
     _ensure_schema()
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT subject FROM user_memories WHERE agent = ? AND user_id = ? ORDER BY subject",
+        f"SELECT subject FROM user_memories WHERE agent = ? AND user_id = ? "
+        f"AND {_ACTIVE_CLAUSE} ORDER BY subject",
         (agent, user_id),
     ).fetchall()
     return [r["subject"] for r in rows]
@@ -357,8 +380,8 @@ def list_subjects_with_content(agent: str, user_id: str) -> list[tuple[str, str]
     _ensure_schema()
     conn = _get_conn()
     rows = conn.execute(
-        """SELECT subject, content FROM user_memories
-           WHERE agent = ? AND user_id = ? ORDER BY subject""",
+        f"""SELECT subject, content FROM user_memories
+           WHERE agent = ? AND user_id = ? AND {_ACTIVE_CLAUSE} ORDER BY subject""",
         (agent, user_id),
     ).fetchall()
     return [(r["subject"], r["content"]) for r in rows]
@@ -405,6 +428,67 @@ def prune(*, confidence_threshold: float = 0.1) -> int:
     cur = conn.execute(
         "DELETE FROM user_memories WHERE confidence < ?",
         (confidence_threshold,),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+# ── Memory v2: reflection / consolidation primitives ──────────────────────────
+
+
+def list_active(agent: str, user_id: str, *, limit: int = 200) -> list[UserMemory]:
+    """List ACTIVE memories without touching ``last_accessed_at``.
+
+    Used by the reflection pass (``shared.memory_reflection``) — unlike
+    ``search``, it must not bump recency just by reviewing memories, and unlike
+    ``list_all`` it excludes already superseded/invalidated rows.
+    """
+    _ensure_schema()
+    conn = _get_conn()
+    rows = conn.execute(
+        f"""SELECT id, agent, user_id, type, subject, content, confidence,
+                   source_thread, created_at, last_accessed_at
+            FROM user_memories
+            WHERE agent = ? AND user_id = ? AND {_ACTIVE_CLAUSE}
+            ORDER BY created_at ASC
+            LIMIT ?""",
+        (agent, user_id, limit),
+    ).fetchall()
+    return [_row_to_memory(r) for r in rows]
+
+
+def supersede(memory_id: int, *, replaced_by: int | None = None) -> bool:
+    """Soft-invalidate a memory (bi-temporal): keep the row, stamp
+    ``invalidated_at = now`` and point ``superseded_by`` at the memory that
+    replaced it (``None`` = a plain drop / forget). Returns whether a row was hit.
+
+    The reflection pass uses this for all three destructive ops — merge (mark the
+    absorbed duplicates), supersede (contradiction), and drop (noise) — so history
+    and provenance survive instead of being hard-deleted.
+    """
+    _ensure_schema()
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "UPDATE user_memories SET invalidated_at = ?, superseded_by = ? WHERE id = ?",
+        (now, replaced_by, memory_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def mark_reflected(ids: list[int]) -> int:
+    """Stamp ``last_reflected_at = now`` on the given memory ids (audit: when a
+    memory was last reviewed by the consolidation pass). Returns rows affected."""
+    if not ids:
+        return 0
+    _ensure_schema()
+    conn = _get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    placeholders = ",".join("?" * len(ids))
+    cur = conn.execute(
+        f"UPDATE user_memories SET last_reflected_at = ? WHERE id IN ({placeholders})",
+        [now, *ids],
     )
     conn.commit()
     return cur.rowcount
