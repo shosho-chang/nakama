@@ -16,7 +16,7 @@ import re
 import threading
 from typing import Any
 
-from shared import agent_memory
+from shared import agent_memory, episodic_memory
 from shared.agent_memory import VALID_TYPES
 from shared.llm import ask
 from shared.log import get_logger
@@ -24,9 +24,15 @@ from shared.log import get_logger
 logger = get_logger("nakama.memory_extractor")
 
 _EXTRACTOR_MODEL = "claude-haiku-4-5"
+_EPISODIC_MODEL = "claude-haiku-4-5"
 _MAX_MESSAGES = 30  # 對話超長時，只看最近 N 則
 
-__all__ = ["VALID_TYPES", "extract_from_messages", "extract_in_background"]
+__all__ = [
+    "VALID_TYPES",
+    "extract_from_messages",
+    "extract_episodic_from_messages",
+    "extract_in_background",
+]
 
 _EXTRACTOR_SYSTEM_PROMPT = """你是對話記憶抽取器。
 你的工作是從對話中找出值得**長期記住**關於「使用者」的資訊。
@@ -225,6 +231,78 @@ def extract_from_messages(
     return saved_ids
 
 
+_EPISODIC_SYSTEM_PROMPT = """你是對話事件抽取器。從對話找出「發生了什麼」的具體事件／觀察——
+帶當下時間意義、值得記成日誌的事。
+
+## 抽取
+- 使用者做了／決定了／改變了什麼具體的事（例：把 7/22 拍攝刪掉，理由是專心準備論文）
+- 帶時間或頻率訊號的行為（例：又把錄課排在週二、這週第三次提到睡眠問題）
+
+## 忽略
+- 純閒聊、問候、感謝、系統訊息
+- 抽象偏好（那是長期事實，不是事件）——除非是「這次又發生」這種可累積成模式的觀察
+
+每條一句話，含動作 + 可得的時間／理由。繁體中文。
+**直接輸出純 JSON 字串陣列**（第一個字元是 `[`），沒有就 `[]`。範例：
+["把 7/22 拍攝事件刪除，理由是專心準備論文", "再次把錄課排在週二早上"]"""
+
+
+def extract_episodic_from_messages(
+    agent: str,
+    user_id: str,
+    messages: list[dict],
+    *,
+    source_thread: str | None = None,
+) -> list[int]:
+    """抽取「發生了什麼」的事件，存進 episodic_memories。回傳新增的 ids。
+
+    與 semantic 抽取分開的獨立 Haiku call —— 不動既有 semantic 抽取路徑，降低風險。
+    失敗回空 list 並記 warning，不拋例外。
+    """
+    if not messages:
+        return []
+    conversation = _format_messages_for_extraction(messages)
+    prompt = f"對話紀錄：\n\n{conversation}\n\n請抽取事件（JSON 字串陣列）。"
+    try:
+        raw = ask(
+            prompt=prompt,
+            system=_EPISODIC_SYSTEM_PROMPT,
+            model=_EPISODIC_MODEL,
+            max_tokens=512,
+        )
+    except Exception as e:
+        logger.warning(f"Episodic extraction LLM call failed: {e}")
+        return []
+
+    ids: list[int] = []
+    for obs in _parse_extraction_response(raw):
+        if not isinstance(obs, str) or not obs.strip():
+            continue
+        try:
+            ids.append(
+                episodic_memory.add_episodic(
+                    agent, user_id, obs.strip(), source_thread=source_thread
+                )
+            )
+        except Exception as e:
+            logger.warning(f"add_episodic failed: {e}")
+    logger.info(f"Captured {len(ids)} episodic events for {agent}/{user_id}")
+    return ids
+
+
+def _extract_all(agent: str, user_id: str, messages: list[dict], source_thread: str | None) -> None:
+    """Run semantic + episodic extraction back-to-back; isolate each so one
+    failing doesn't skip the other."""
+    try:
+        extract_from_messages(agent, user_id, messages, source_thread=source_thread)
+    except Exception as e:
+        logger.warning(f"semantic extraction failed: {e}")
+    try:
+        extract_episodic_from_messages(agent, user_id, messages, source_thread=source_thread)
+    except Exception as e:
+        logger.warning(f"episodic extraction failed: {e}")
+
+
 def extract_in_background(
     agent: str,
     user_id: str,
@@ -232,11 +310,10 @@ def extract_in_background(
     *,
     source_thread: str | None = None,
 ) -> threading.Thread:
-    """在 daemon thread 中執行抽取。回傳 thread 物件（測試可 join）。"""
+    """在 daemon thread 中執行 semantic + episodic 抽取。回傳 thread 物件（測試可 join）。"""
     t = threading.Thread(
-        target=extract_from_messages,
-        args=(agent, user_id, list(messages)),
-        kwargs={"source_thread": source_thread},
+        target=_extract_all,
+        args=(agent, user_id, list(messages), source_thread),
         daemon=True,
         name=f"memory-extractor-{agent}-{user_id}",
     )
