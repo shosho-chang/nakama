@@ -114,6 +114,36 @@ def cmd_prune(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_episodic_forget(args: argparse.Namespace) -> int:
+    from shared import episodic_memory
+
+    if args.dry_run:
+        from datetime import timedelta
+
+        from shared.state import _get_conn
+
+        episodic_memory._ensure_schema()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=args.older_than_days)).isoformat()
+        n = (
+            _get_conn()
+            .execute(
+                "SELECT COUNT(*) AS n FROM episodic_memories "
+                "WHERE invalidated_at IS NULL AND occurred_at < ?",
+                (cutoff,),
+            )
+            .fetchone()["n"]
+        )
+        print(f"DRY-RUN episodic-forget: would invalidate {n} events (>{args.older_than_days}d)")
+        return 0
+
+    affected = episodic_memory.forget_older_than(days=args.older_than_days)
+    logger.info(
+        "episodic-forget applied older_than_days=%d affected=%d", args.older_than_days, affected
+    )
+    print(f"episodic-forget: invalidated {affected} events older than {args.older_than_days}d")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="maintain_user_memories")
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -128,6 +158,13 @@ def main(argv: list[str] | None = None) -> int:
     p_prune.add_argument("--threshold", type=float, default=0.1)
     p_prune.add_argument("--dry-run", action="store_true")
     p_prune.set_defaults(func=cmd_prune)
+
+    p_epi = sub.add_parser(
+        "episodic-forget", help="soft-invalidate old un-promoted episodic events"
+    )
+    p_epi.add_argument("--older-than-days", type=int, default=60)
+    p_epi.add_argument("--dry-run", action="store_true")
+    p_epi.set_defaults(func=cmd_episodic_forget)
 
     args = parser.parse_args(argv)
     return args.func(args)
