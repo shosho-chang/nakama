@@ -788,6 +788,18 @@ def test_is_weekly_sweep_day_monday_only():
         assert dr.is_weekly_sweep_day(date(2026, 6, d)) is False
 
 
+def test_p1_parser_tolerates_fence_and_truncation():
+    """P-1 解析容忍 ```json fence；max_tokens 截斷（無收尾 ]）→ 回 [] 不誤拼。
+
+    2026-06-24 回歸：原本天真 regex 在這兩種輸出都吐空 → 每日回顧 0 候選。
+    """
+    fenced = '```json\n[{"suggested_title": "X", "why": "y"}]\n```'
+    assert dr._parse_json_array(fenced) == [{"suggested_title": "X", "why": "y"}]
+    truncated = '```json\n[\n  {"suggested_title": "X", "source_quote": "I just knew'
+    assert dr._parse_json_array(truncated) == []
+    assert dr._parse_json_array('[1, {"a": 2}, "x"]') == [{"a": 2}]  # wrapper 濾非 dict
+
+
 def test_run_daily_review_review_date_is_taipei_not_utc(vault: Path, monkeypatch):
     """5am 台北 cron（= 前一天 21:00 UTC）跑時，review_date 要是台北今天，不是 UTC 昨天。"""
     (vault / "KB").mkdir(parents=True, exist_ok=True)
