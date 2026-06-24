@@ -301,7 +301,9 @@ NAMI_TOOLS: list[dict] = [
     {
         "name": "update_calendar_event",
         "description": (
-            "修改現有 Calendar 事件。by title 模糊搜尋最近 30 天的事件。"
+            "修改現有 Calendar 事件。by title 模糊搜尋；沒給 date 時搜尋過去 7 天～未來 90 天。"
+            "**遠期事件（>90 天）或同名週期事件（如每週『正課拍攝』）務必一併提供 date "
+            "（YYYY-MM-DD）以精準定位該天那一筆**，否則只會回最早一筆、可能改錯。"
             "若改動時段，會再次檢查衝突（同 create 行為）。"
         ),
         "input_schema": {
@@ -310,6 +312,10 @@ NAMI_TOOLS: list[dict] = [
                 "title": {
                     "type": "string",
                     "description": "要修改的事件現有標題（模糊搜尋）",
+                },
+                "date": {
+                    "type": "string",
+                    "description": "目標事件日期 YYYY-MM-DD（可選但強烈建議；定位遠期/同名事件）",
                 },
                 "new_title": {"type": "string", "description": "新標題（可選）"},
                 "start": {"type": "string", "description": "新開始時間（可選）"},
@@ -362,12 +368,18 @@ NAMI_TOOLS: list[dict] = [
         "name": "delete_calendar_event",
         "description": (
             "刪除 Calendar 事件。**呼叫前必須先用 ask_user 列出要刪的事件請使用者確認。**"
-            "by title 模糊搜尋最近 30 天的事件。"
+            "by title 模糊搜尋；沒給 date 時搜尋過去 7 天～未來 90 天。"
+            "**遠期事件（>90 天）或同名週期事件務必一併提供 date（YYYY-MM-DD）"
+            "以精準定位該天那一筆**。"
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "title": {"type": "string", "description": "要刪除的事件標題（模糊搜尋）"},
+                "date": {
+                    "type": "string",
+                    "description": "目標事件日期 YYYY-MM-DD（可選但強烈建議；定位遠期/同名事件）",
+                },
             },
             "required": ["title"],
         },
@@ -1683,10 +1695,14 @@ class NamiHandler(BaseHandler):
         if not title:
             return _ToolOutcome(content="Missing title", is_error=True)
 
-        found = self._find_calendar_event_by_title(title)
+        date = str(input_.get("date") or "").strip() or None
+        found = self._find_calendar_event_by_title(title, date=date)
         if not found:
+            window_hint = (
+                f"（{date} 附近）" if date else "（過去 7 天～未來 90 天；遠期事件請附 date）"
+            )
             return _ToolOutcome(
-                content=f"找不到標題含「{title}」的 Calendar 事件（最近 30 天）。",
+                content=f"找不到標題含「{title}」的 Calendar 事件{window_hint}。",
                 is_error=True,
             )
 
@@ -1805,10 +1821,14 @@ class NamiHandler(BaseHandler):
         if not title:
             return _ToolOutcome(content="Missing title", is_error=True)
 
-        found = self._find_calendar_event_by_title(title)
+        date = str(input_.get("date") or "").strip() or None
+        found = self._find_calendar_event_by_title(title, date=date)
         if not found:
+            window_hint = (
+                f"（{date} 附近）" if date else "（過去 7 天～未來 90 天；遠期事件請附 date）"
+            )
             return _ToolOutcome(
-                content=f"找不到標題含「{title}」的 Calendar 事件（最近 30 天）。",
+                content=f"找不到標題含「{title}」的 Calendar 事件{window_hint}。",
                 is_error=True,
             )
 
@@ -1846,19 +1866,44 @@ class NamiHandler(BaseHandler):
             },
         )
 
-    def _find_calendar_event_by_title(self, title: str) -> CalendarEvent | None:
-        """在最近 30 天（past 7 + future 23）內 by title 模糊搜尋，回第一個匹配。"""
+    def _find_calendar_event_by_title(
+        self, title: str, *, date: str | None = None
+    ) -> CalendarEvent | None:
+        """By-title 模糊搜尋，回符合的事件（list_events 依開始時間排序）。
+
+        給了 ``date``（YYYY-MM-DD）時，搜尋窗收斂到該日附近並優先回傳「當天」那一筆 ——
+        這同時解決兩件事：(1) 遠期事件原本只搜未來 23 天、7 月底的事件搜不到；(2) 同名
+        週期事件（如每週「正課拍攝」）只回最早一筆會誤改。沒給 ``date`` 時退回較寬的預設
+        窗（past 7 + future 90），保留舊的純標題搜尋行為。"""
         tz = ZoneInfo("Asia/Taipei")
         now = datetime.now(tz)
-        time_min = now - timedelta(days=7)
-        time_max = now + timedelta(days=23)
+
+        target_day: datetime | None = None
+        if date:
+            try:
+                target_day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=tz)
+            except ValueError:
+                target_day = None  # 壞日期 → 當作沒給，走寬窗 fallback
+
+        if target_day is not None:
+            time_min = target_day - timedelta(days=1)
+            time_max = target_day + timedelta(days=2)
+        else:
+            time_min = now - timedelta(days=7)
+            time_max = now + timedelta(days=90)
+
         title_lower = title.lower()
         events = google_calendar.find_events_by_title(title, time_min=time_min, time_max=time_max)
-        # Google q 搜尋已做過濾；這裡再確認以防萬一
-        for e in events:
-            if title_lower in e.title.lower():
-                return e
-        return None
+        # Google q 搜尋已做過濾；這裡再確認標題確實命中（q 會連 description 一起搜）。
+        matches = [e for e in events if title_lower in e.title.lower()]
+        if not matches:
+            return None
+        if target_day is not None:
+            target_iso = target_day.strftime("%Y-%m-%d")
+            for e in matches:
+                if e.start.startswith(target_iso):  # 同名時優先回當天那筆
+                    return e
+        return matches[0]
 
     # ── Gmail tool executors ─────────────────────────────────────
 

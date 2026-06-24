@@ -978,6 +978,37 @@ def test_update_calendar_event_by_title():
     assert mock_emit.call_args[0][1] == "calendar_event_updated"
 
 
+def test_find_calendar_event_date_anchors_window_and_disambiguates():
+    """date 參數：搜尋窗收斂到該日附近，且同名週期事件回傳『當天』那一筆，
+    而非 list_events 排序下最早的一筆。修遠期(>23天)搜不到 + 同名誤改兩個問題。"""
+    jul10 = _fake_cal_event(id_="evt_0710", title="正課拍攝", start="2026-07-10T10:30:00+08:00")
+    jul24 = _fake_cal_event(id_="evt_0724", title="正課拍攝", start="2026-07-24T10:30:00+08:00")
+    with patch(
+        "gateway.handlers.nami.google_calendar.find_events_by_title",
+        return_value=[jul10, jul24],
+    ) as mock_find:
+        found = NamiHandler()._find_calendar_event_by_title("正課拍攝", date="2026-07-24")
+
+    assert found is not None and found.id == "evt_0724"  # 當天那筆，不是最早的 7/10
+    kwargs = mock_find.call_args.kwargs
+    assert kwargs["time_min"].date().isoformat() == "2026-07-23"
+    assert kwargs["time_max"].date().isoformat() == "2026-07-26"
+
+
+def test_find_calendar_event_no_date_uses_widened_90day_window():
+    """沒給 date 時退回 past 7 + future 90 的寬窗（原本只有 future 23，7 月底搜不到）。"""
+    evt = _fake_cal_event(id_="e1", title="拍攝")
+    with patch(
+        "gateway.handlers.nami.google_calendar.find_events_by_title",
+        return_value=[evt],
+    ) as mock_find:
+        found = NamiHandler()._find_calendar_event_by_title("拍攝")
+
+    assert found is not None and found.id == "e1"
+    kwargs = mock_find.call_args.kwargs
+    assert (kwargs["time_max"] - kwargs["time_min"]).days == 97  # 7 past + 90 future
+
+
 def test_update_calendar_event_syncs_linked_task():
     """v3-D: Calendar event 改時段 → plan[] 那一筆的 start/end/date 同步更新。"""
     iter_responses = [
