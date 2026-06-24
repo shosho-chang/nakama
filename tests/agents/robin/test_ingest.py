@@ -11,6 +11,7 @@ Goal: 0% → ~100% coverage. LLM / file-IO / interactive input 全 stub。
 from __future__ import annotations
 
 import builtins
+import functools
 import sys
 import types
 from pathlib import Path
@@ -274,7 +275,10 @@ def test_get_map_ask_fn_server_down_falls_back_to_facade(monkeypatch):
     fake.is_server_available = lambda: False
     monkeypatch.setitem(sys.modules, "shared.local_llm", fake)
     fn = IngestPipeline._get_map_ask_fn()
-    assert fn is mod.ask
+    # 雲端 fallback 綁 task="ingest_summary"（partial），不再是裸 ask
+    assert isinstance(fn, functools.partial)
+    assert fn.func is mod.ask
+    assert fn.keywords.get("task") == "ingest_summary"
 
 
 def test_get_map_ask_fn_import_error_falls_back_to_facade(monkeypatch):
@@ -289,7 +293,9 @@ def test_get_map_ask_fn_import_error_falls_back_to_facade(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", blocked)
     fn = IngestPipeline._get_map_ask_fn()
-    assert fn is mod.ask
+    assert isinstance(fn, functools.partial)
+    assert fn.func is mod.ask
+    assert fn.keywords.get("task") == "ingest_summary"
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +323,25 @@ def test_generate_summary_small_doc_uses_facade(pipeline, monkeypatch):
     )
     assert result == "小文件摘要"
     assert "robin:summarize" in captured["prompt"]
+
+
+def test_generate_summary_routes_ingest_summary_task(pipeline, monkeypatch):
+    """小文件摘要走 task='ingest_summary'（registry/override 控得到，不再吃 MODEL_ROBIN）。"""
+    captured: dict = {}
+    monkeypatch.setattr(mod, "ask", lambda **k: captured.update(k) or "s")
+    pipeline._generate_summary(
+        content="short", title="T", author="A", source_type="article", content_nature=""
+    )
+    assert captured.get("task") == "ingest_summary"
+
+
+def test_concept_plan_routes_concept_merge_task(pipeline, monkeypatch):
+    """概念抽取 / dedup 走 task='concept_merge'（registry 預設那格，原意較強的 model）。"""
+    captured: dict = {}
+    monkeypatch.setattr(mod, "ask", lambda **k: captured.update(k) or "{}")
+    monkeypatch.setattr(mod, "list_files", lambda p: [])
+    pipeline._get_concept_plan(summary_body="x", source_path="KB/Raw/x.md")
+    assert captured.get("task") == "concept_merge"
 
 
 def test_generate_summary_large_doc_triggers_map_reduce(pipeline, monkeypatch):

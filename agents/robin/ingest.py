@@ -14,6 +14,7 @@ citation lint（`shared.provenance_linter`）。
 import json
 import re
 from datetime import date
+from functools import partial
 from pathlib import Path
 
 from shared import kb_writer
@@ -308,11 +309,11 @@ class IngestPipeline:
     ) -> str:
         """產出 Source Summary。小文件直接用 facade，大文件走 Map-Reduce。
 
-        facade 依 `MODEL_ROBIN` env 選 provider（預設 Gemini 2.5 Pro，見步驟 4）。
+        走 ``task="ingest_summary"``，model 由 registry/override 路由決定（不吃 MODEL_ROBIN）。
         """
         set_current_agent("robin")  # Web UI 也會呼叫此 method，重設 thread-local
         if len(content) <= self.LARGE_DOC_THRESHOLD:
-            # 小文件：單次 facade 呼叫（provider 由 MODEL_ROBIN 決定）。
+            # 小文件：單次 facade 呼叫（model 由 task="ingest_summary" 路由決定）。
             # ADR-011 P2「不省 token、deep extract」— 這個分支 content 已經
             # 在 LARGE_DOC_THRESHOLD 之內，pass-through 不截斷；先前的
             # `_truncate_at_boundary(content, 30000)` 呼叫在此 branch 永遠是
@@ -329,7 +330,7 @@ class IngestPipeline:
                 date=str(date.today()),
                 content=content,
             )
-            return ask(prompt=prompt, system=_build_robin_system_prompt())
+            return ask(prompt=prompt, system=_build_robin_system_prompt(), task="ingest_summary")
 
         # 大文件：Map-Reduce
         return self._map_reduce_summary(
@@ -348,7 +349,7 @@ class IngestPipeline:
         source_type: str,
         content_nature: str = "",
     ) -> str:
-        """Map-Reduce 摘要：分段用本地模型，合併走 facade（MODEL_ROBIN）。"""
+        """Map-Reduce 摘要：分段用本地模型，合併走 facade（task=ingest_summary）。"""
         set_current_agent("robin")
         from agents.robin.chunker import chunk_document
 
@@ -379,7 +380,7 @@ class IngestPipeline:
             chunk_summaries.append(summary)
             logger.info(f"  chunk {chunk['index']}/{len(chunks)} 完成（{len(summary)} 字元）")
 
-        # Reduce：合併所有 chunk 摘要（走 facade，provider 由 MODEL_ROBIN 決定）
+        # Reduce：合併所有 chunk 摘要（走 facade，task=ingest_summary 路由）
         combined = "\n\n---\n\n".join(
             f"### 段落 {i + 1}：{chunks[i]['heading']}\n{s}" for i, s in enumerate(chunk_summaries)
         )
@@ -395,14 +396,14 @@ class IngestPipeline:
             chunk_summaries=combined,
         )
 
-        return ask(prompt=reduce_prompt, system=system)
+        return ask(prompt=reduce_prompt, system=system, task="ingest_summary")
 
     @staticmethod
     def _get_map_ask_fn():
-        """取得 Map 階段的推理函式：優先本地模型，fallback 到 facade。
+        """取得 Map 階段的推理函式：優先本地模型，fallback 到雲端 facade。
 
-        facade（`shared.llm.ask`）依 `MODEL_ROBIN` env 自動選 provider — Robin
-        預設走 Gemini（步驟 4）。沒設就回退到 DEFAULT_MODELS 的 Claude Sonnet。
+        雲端 fallback 綁 ``task="ingest_summary"``，model 由 registry/override 路由決定，
+        與小文件摘要 / Reduce 同一格，不再吃 agent 層級的 ``MODEL_ROBIN`` 預設。
         """
         try:
             from shared.local_llm import ask_local, is_server_available
@@ -414,7 +415,7 @@ class IngestPipeline:
             pass
 
         logger.warning("本地 LLM 不可用，Map 階段改走雲端 facade（費用較高）")
-        return ask
+        return partial(ask, task="ingest_summary")
 
     def _get_concept_plan(
         self,
@@ -423,7 +424,7 @@ class IngestPipeline:
         user_guidance: str = "",
         content_nature: str = "",
     ) -> dict | None:
-        """呼叫 facade（依 MODEL_ROBIN）取得 v2 plan：{concepts, entities}。
+        """呼叫 facade（task=concept_merge）取得 v2 plan：{concepts, entities}。
 
         ADR-011 §3.3 Step 4：注入既有 concept page aliases + body 給 LLM 做 dedup
         + conflict detection；LLM 對每候選 concept 直接吐 4 種 action 之一。
@@ -451,6 +452,7 @@ class IngestPipeline:
             prompt=prompt,
             system=_build_robin_system_prompt(centaur=True) + "\n\n回傳純 JSON，不要包含其他文字。",
             temperature=0.2,
+            task="concept_merge",
         )
 
         try:
@@ -613,7 +615,9 @@ class IngestPipeline:
             source_refs=source_path,
         )
         # P-4 (Prompt 規格 §1)：entity 抽取掛 Centaur 共同前置。
-        body = ask(prompt=prompt, system=_build_robin_system_prompt(centaur=True))
+        body = ask(
+            prompt=prompt, system=_build_robin_system_prompt(centaur=True), task="ingest_summary"
+        )
 
         write_page(
             f"KB/Wiki/Entities/{slug}.md",
