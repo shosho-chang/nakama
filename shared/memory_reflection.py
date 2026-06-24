@@ -38,8 +38,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared import agent_memory
+from shared import agent_memory, episodic_memory
 from shared.agent_memory import VALID_TYPES, UserMemory
+from shared.episodic_memory import EpisodicMemory
 from shared.llm import ask
 from shared.log import get_logger
 from shared.state import _get_conn
@@ -54,13 +55,15 @@ _REFLECT_MODEL = os.getenv("MODEL_MEMORY_REFLECTION") or "claude-sonnet-4-6"
 # Don't bother the LLM for a near-empty store; consolidation needs material.
 _MIN_MEMORIES = 3
 
-_VALID_OPS = frozenset({"merge", "supersede", "promote", "drop", "share"})
+_VALID_OPS = frozenset({"merge", "supersede", "promote", "drop", "share", "promote_episodic"})
 
 
 _SYSTEM_PROMPT = """你是 AI agent 的「記憶整理員」。給你一個 agent 對某位使用者的現有記憶清單，
 你的工作是讓這份記憶**更精準、更一致、更能反映使用者真實樣貌** —— 但要極度保守，寧可不動也不要亂改。
 
-每筆記憶有 id / type / subject / content / confidence。你只能輸出以下五種操作：
+給你兩份清單：**語意記憶**（穩定的事實/偏好，一個 subject 一筆）與**事件日誌**（episodic，
+帶時間的觀察，id 前綴 `E`）。每筆語意記憶有 id / type / subject / content / confidence。
+你只能輸出以下六種操作：
 
 - `merge`：兩筆以上語意重複/重疊的記憶合併成一筆。給 `ids`（要合併的所有 id）、合併後的
   `subject`/`type`/`content`/`confidence`（content 必須涵蓋所有來源的資訊，不可遺漏）、`reason`。
@@ -73,13 +76,19 @@ _SYSTEM_PROMPT = """你是 AI agent 的「記憶整理員」。給你一個 agen
   跟「這個 agent 的特定任務」無關），值得讓**整個 agent 團隊共用** → 提升到 fleet 共享層。
   給 `id`、`reason`。判準：換成別的助理也該知道這件事 → share；
   只跟本 agent 的工作流程有關（例如「要每週趨勢報告」）→ 不 share。
+- `promote_episodic`：事件日誌裡出現**重複的模式**（例：連三週週二錄課、多次提到睡眠問題）
+  → 萃取成一筆穩定的語意記憶。給 `episodic_ids`（支持此模式的 E 編號，去掉 `E` 前綴只給數字）、
+  新語意記憶的 `subject`/`type`/`content`/`confidence`、`reason`。
+  **這是 agent 從觀察中學會你的核心機制** —— 但同樣保守：單一一次性事件**不算模式**，
+  至少要有重複或明確規律才 promote。
 
 ## 鐵則（違反就是失敗）
-1. **保守**：只在「明顯重複」「明確矛盾」或「明顯通用」時動手。模稜兩可一律不動。
-2. **不可虛構 id**：只能引用清單裡實際存在的 id。
+1. **保守**：只在「明顯重複」「明確矛盾」「明顯通用」或「明確重複模式」時動手。模稜兩可一律不動。
+2. **不可虛構 id**：只能引用清單裡實際存在的 id（語意用數字、episodic 用清單裡的 E 編號去前綴）。
 3. **merge 不可遺失資訊**：合併後的 content 要保留所有來源筆的有效資訊。
 4. **type 必須是** preference / fact / decision / context 之一。
-5. 沒有任何該動的 → 回空陣列 `[]`。不要為了交差而硬湊操作。
+5. **單一事件不是模式**：promote_episodic 至少要有重複/規律佐證。
+6. 沒有任何該動的 → 回空陣列 `[]`。不要為了交差而硬湊操作。
 
 ## 輸出格式
 **直接輸出 JSON 陣列**：回覆的第一個字元必須是 `[`。禁止任何前言、分析、說明或 markdown code fence。
@@ -105,6 +114,8 @@ class ReflectionResult:
     promoted: int = 0
     dropped: int = 0
     shared: int = 0
+    promoted_episodic: int = 0
+    episodic_reviewed: int = 0
     applied: bool = False
     ops: list[dict] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)  # invalid ops + why
@@ -113,8 +124,9 @@ class ReflectionResult:
         mode = "applied" if self.applied else "dry-run"
         return (
             f"[{mode}] {self.agent}/{self.user_id}: reviewed={self.reviewed} "
-            f"merged={self.merged} superseded={self.superseded} "
-            f"promoted={self.promoted} dropped={self.dropped} shared={self.shared} "
+            f"episodic={self.episodic_reviewed} merged={self.merged} "
+            f"superseded={self.superseded} promoted={self.promoted} dropped={self.dropped} "
+            f"shared={self.shared} promoted_episodic={self.promoted_episodic} "
             f"skipped={len(self.skipped)}"
         )
 
@@ -127,6 +139,11 @@ def _format_memories_for_prompt(memories: list[UserMemory]) -> str:
             f"    content: {m.content}"
         )
     return "\n".join(lines)
+
+
+def _format_episodic_for_prompt(events: list[EpisodicMemory]) -> str:
+    # E-prefixed ids so the LLM can't confuse them with semantic memory ids.
+    return "\n".join(f"- E{e.id} ({e.occurred_at[:10]}) {e.observation}" for e in events)
 
 
 def _extract_array(s: str) -> str | None:
@@ -201,12 +218,21 @@ def _valid_replacement(repl: Any) -> dict | None:
     }
 
 
-def _apply_op(op: dict, *, agent: str, user_id: str, valid_ids: set[int]) -> str:
+def _apply_op(
+    op: dict,
+    *,
+    agent: str,
+    user_id: str,
+    valid_ids: set[int],
+    valid_episodic_ids: set[int] | None = None,
+) -> str:
     """Apply one validated op. Returns the op kind on success, raises on bad shape.
 
-    ``valid_ids`` is the set of active memory ids for this (agent, user) — every
-    id an op references must be in it (defends against the LLM hallucinating ids).
+    ``valid_ids`` is the set of active semantic memory ids for this (agent, user);
+    ``valid_episodic_ids`` the active episodic ids. Every id an op references must
+    be in the matching set (defends against the LLM hallucinating ids).
     """
+    valid_episodic_ids = valid_episodic_ids or set()
     kind = op.get("op")
     if kind == "merge":
         ids = [i for i in op.get("ids", []) if isinstance(i, int)]
@@ -275,6 +301,26 @@ def _apply_op(op: dict, *, agent: str, user_id: str, valid_ids: set[int]) -> str
         agent_memory.share(mid)
         return "share"
 
+    if kind == "promote_episodic":
+        eids = [i for i in op.get("episodic_ids", []) if isinstance(i, int)]
+        if not eids or {*eids} - valid_episodic_ids:
+            raise ValueError(f"promote_episodic ids invalid: {op.get('episodic_ids')}")
+        sem = _valid_replacement(
+            {k: op.get(k) for k in ("subject", "type", "content", "confidence")}
+        )
+        if sem is None:
+            raise ValueError("promote_episodic missing valid subject/type/content")
+        semantic_id = agent_memory.add(
+            agent=agent,
+            user_id=user_id,
+            type=sem["type"],
+            subject=sem["subject"],
+            content=sem["content"],
+            confidence=sem["confidence"],
+        )
+        episodic_memory.mark_promoted(eids, semantic_id)
+        return "promote_episodic"
+
     raise ValueError(f"unknown op kind: {kind!r}")
 
 
@@ -292,17 +338,27 @@ def reflect(
     because each pass shrinks duplicates/contradictions and stamps reviewed rows.
     """
     memories = agent_memory.list_active(agent, user_id)
-    result = ReflectionResult(agent=agent, user_id=user_id, reviewed=len(memories))
-    if len(memories) < _MIN_MEMORIES:
+    episodic = episodic_memory.list_recent(agent, user_id, days=30, include_promoted=False)
+    result = ReflectionResult(
+        agent=agent,
+        user_id=user_id,
+        reviewed=len(memories),
+        episodic_reviewed=len(episodic),
+    )
+    # Run if there's enough semantic material OR any episodic backlog to promote.
+    if len(memories) < _MIN_MEMORIES and not episodic:
         logger.info("reflection skipped (only %d memories) %s/%s", len(memories), agent, user_id)
         return result
 
     valid_ids = {m.id for m in memories}
-    prompt = (
-        "以下是目前的記憶清單：\n\n"
-        + _format_memories_for_prompt(memories)
-        + "\n\n請輸出整理操作（JSON 陣列；沒有該動的就回 []）。"
-    )
+    valid_episodic_ids = {e.id for e in episodic}
+    sections = ["## 語意記憶\n" + (_format_memories_for_prompt(memories) or "（無）")]
+    if episodic:
+        sections.append(
+            "## 事件日誌（episodic，找重複模式 → promote_episodic）\n"
+            + _format_episodic_for_prompt(episodic)
+        )
+    prompt = "\n\n".join(sections) + "\n\n請輸出整理操作（JSON 陣列；沒有該動的就回 []）。"
 
     try:
         raw = ask(
@@ -316,7 +372,14 @@ def reflect(
         return result
 
     ops = _parse_ops(raw)
-    counts = {"merge": 0, "supersede": 0, "promote": 0, "drop": 0, "share": 0}
+    counts = {
+        "merge": 0,
+        "supersede": 0,
+        "promote": 0,
+        "drop": 0,
+        "share": 0,
+        "promote_episodic": 0,
+    }
     for op in ops:
         if not isinstance(op, dict) or op.get("op") not in _VALID_OPS:
             result.skipped.append(f"bad op shape: {op!r:.120}")
@@ -326,7 +389,13 @@ def reflect(
             counts[op["op"]] = counts.get(op["op"], 0) + 1
             continue
         try:
-            kind = _apply_op(op, agent=agent, user_id=user_id, valid_ids=valid_ids)
+            kind = _apply_op(
+                op,
+                agent=agent,
+                user_id=user_id,
+                valid_ids=valid_ids,
+                valid_episodic_ids=valid_episodic_ids,
+            )
             counts[kind] += 1
             result.ops.append(op)
         except ValueError as e:
@@ -338,6 +407,7 @@ def reflect(
     result.promoted = counts["promote"]
     result.dropped = counts["drop"]
     result.shared = counts["share"]
+    result.promoted_episodic = counts["promote_episodic"]
     result.applied = apply
 
     if apply:
