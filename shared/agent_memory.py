@@ -88,6 +88,13 @@ def _ensure_schema() -> None:
 # not been superseded or invalidated by the reflection pass.
 _ACTIVE_CLAUSE = "superseded_by IS NULL AND invalidated_at IS NULL"
 
+# Fleet-shared scope. Memories about the *person* (not an agent's task) get
+# promoted here by the reflection pass (`share` op) so every agent reads them —
+# the whole fleet "knows you", not just the agent that happened to learn it.
+# Stored as a reserved ``agent`` value; reads for agent X include (X, _FLEET),
+# with X-specific rows overriding fleet rows of the same subject.
+FLEET_AGENT = "_fleet"
+
 
 @dataclass
 class UserMemory:
@@ -176,18 +183,26 @@ def search(
     query: str | None = None,
     type: MemoryType | None = None,
     limit: int = 20,
+    include_fleet: bool = True,
 ) -> list[UserMemory]:
     """按 confidence × recency 排序回傳記憶。
 
     - ``query``：若給，對 subject/content 做 LIKE 關鍵字匹配
     - ``type``：若給，過濾類型；不在 ``VALID_TYPES`` 內 raise ``ValueError``
+    - ``include_fleet``：預設一併讀 ``FLEET_AGENT`` 共享層，同 subject 時
+      agent 私有的覆蓋 fleet 的（override）。設 False 只看自己（reflection 用）。
     - 命中的記憶 ``last_accessed_at`` 會被更新
     """
     _ensure_schema()
     conn = _get_conn()
 
-    conditions = ["agent = ?", "user_id = ?", _ACTIVE_CLAUSE]
-    params: list = [agent, user_id]
+    agents = [agent, FLEET_AGENT] if (include_fleet and agent != FLEET_AGENT) else [agent]
+    conditions = [
+        f"agent IN ({','.join('?' * len(agents))})",
+        "user_id = ?",
+        _ACTIVE_CLAUSE,
+    ]
+    params: list = [*agents, user_id]
 
     if type is not None:
         _validate_type(type)
@@ -210,12 +225,25 @@ def search(
                    source_thread, created_at, last_accessed_at
             FROM user_memories
             WHERE {where}
-            ORDER BY {order_expr} DESC
-            LIMIT ?""",
-        [*params, limit],
+            ORDER BY {order_expr} DESC""",
+        params,
     ).fetchall()
 
-    memories = [_row_to_memory(r) for r in rows]
+    # Dedup by subject, preferring the requesting agent's own row over the fleet
+    # copy (X-specific overrides shared), preserving score order. Then apply limit.
+    own_subjects = {r["subject"] for r in rows if r["agent"] == agent}
+    deduped: list = []
+    seen: set[str] = set()
+    for r in rows:
+        subj = r["subject"]
+        if subj in seen:
+            continue
+        if r["agent"] == FLEET_AGENT and subj in own_subjects:
+            continue  # overridden by the agent-specific row
+        seen.add(subj)
+        deduped.append(r)
+
+    memories = [_row_to_memory(r) for r in deduped[:limit]]
 
     if memories:
         now = datetime.now(timezone.utc).isoformat()
@@ -340,7 +368,10 @@ def list_agents_with_memory() -> list[str]:
     """回傳目前有記憶資料的 agent 清單（供 Bridge UI 產 tab 列表）。"""
     _ensure_schema()
     conn = _get_conn()
-    rows = conn.execute("SELECT DISTINCT agent FROM user_memories ORDER BY agent").fetchall()
+    rows = conn.execute(
+        "SELECT DISTINCT agent FROM user_memories WHERE agent != ? ORDER BY agent",
+        (FLEET_AGENT,),
+    ).fetchall()
     return [r["agent"] for r in rows]
 
 
@@ -475,6 +506,31 @@ def supersede(memory_id: int, *, replaced_by: int | None = None) -> bool:
     )
     conn.commit()
     return cur.rowcount > 0
+
+
+def share(memory_id: int) -> int | None:
+    """Promote a memory to fleet scope so every agent sees it.
+
+    Copies the memory's fields under ``FLEET_AGENT`` (upsert on subject) and
+    supersedes the original — so the fact moves from one agent's private store
+    into the shared layer without duplication (the origin agent still reads it
+    back via the fleet scope). Returns the fleet memory id, or None if the id is
+    missing or already fleet-scoped. Used by the reflection ``share`` op.
+    """
+    m = get(memory_id)
+    if m is None or m.agent == FLEET_AGENT:
+        return None
+    fleet_id = add(
+        FLEET_AGENT,
+        m.user_id,
+        m.type,  # type: ignore[arg-type]  # already validated when first stored
+        m.subject,
+        m.content,
+        confidence=m.confidence,
+    )
+    if fleet_id != memory_id:
+        supersede(memory_id, replaced_by=fleet_id)
+    return fleet_id
 
 
 def mark_reflected(ids: list[int]) -> int:
