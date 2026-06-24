@@ -36,6 +36,7 @@ from shared.config import get_vault_path
 from shared.kb_hybrid_search import get_kb_conn
 from shared.llm import ask
 from shared.llm_context import set_current_agent
+from shared.llm_json import extract_json_array, extract_json_object
 from shared.llm_router import get_model
 from shared.schemas.annotations import AnnotationSetV3
 from shared.schemas.daily_review import (
@@ -406,31 +407,18 @@ def _ask_p1_llm(prompt: str) -> list[dict]:
         prompt,
         system=_SYSTEM_PREAMBLE,
         model=get_model(agent="robin", task="daily_review"),
-        max_tokens=2048,
+        max_tokens=8192,  # 候選 JSON（中文 why/quote）超過 2048 會被截斷 → parse 回空
     )
     return _parse_json_array(text)
 
 
 def _parse_json_array(text: str) -> list[dict]:
-    m = re.search(r"\[[\s\S]*\]", text or "")
-    if not m:
-        return []
-    try:
-        data = json.loads(m.group())
-    except json.JSONDecodeError:
-        return []
-    return [d for d in data if isinstance(d, dict)]
+    # 容忍 ```json fence / reasoning preamble / 截斷（見 shared/llm_json）；只保留 dict。
+    return [d for d in extract_json_array(text) if isinstance(d, dict)]
 
 
 def _parse_json_object(text: str) -> dict:
-    m = re.search(r"\{[\s\S]*\}", text or "")
-    if not m:
-        return {}
-    try:
-        data = json.loads(m.group())
-    except json.JSONDecodeError:
-        return {}
-    return data if isinstance(data, dict) else {}
+    return extract_json_object(text)
 
 
 def _candidate_id(slug: str, anchors: list[str]) -> str:
@@ -603,7 +591,7 @@ def _ask_p2_llm(prompt: str) -> dict:
         prompt,
         system=_SYSTEM_PREAMBLE,
         model=get_model(agent="robin", task="daily_review"),
-        max_tokens=1536,
+        max_tokens=4096,  # typed-edge JSON 也別被截斷
     )
     return _parse_json_object(text)
 
