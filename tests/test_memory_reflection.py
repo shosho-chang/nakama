@@ -169,6 +169,40 @@ def test_reflect_skips_hallucinated_id(monkeypatch):
     assert len(agent_memory.list_active("nami", "U1")) == 3
 
 
+def test_parse_ops_recovers_array_after_prose():
+    """Reasoning models preface JSON with analysis (observed live). The parser
+    must recover the array, not drop it."""
+    raw = (
+        "我來分析這份記憶清單，找出重複與矛盾。\n\n"
+        "**分析：** id=3 與 id=7 重複。\n\n"
+        '[{"op": "drop", "id": 7, "reason": "dup"}]'
+    )
+    ops = memory_reflection._parse_ops(raw)
+    assert ops == [{"op": "drop", "id": 7, "reason": "dup"}]
+
+
+def test_parse_ops_handles_fence_and_bare():
+    assert memory_reflection._parse_ops('```json\n[{"op":"drop","id":1}]\n```') == [
+        {"op": "drop", "id": 1}
+    ]
+    assert memory_reflection._parse_ops("[]") == []
+    assert memory_reflection._parse_ops("總之沒什麼要動的。") == []  # no array → []
+
+
+def test_reflect_applies_ops_even_with_prose_preamble(monkeypatch):
+    a, _b, _c = _seed()
+    monkeypatch.setattr(
+        memory_reflection,
+        "ask",
+        lambda **kw: (
+            '好的，我分析後認為 id 應該移除。\n\n[{"op":"drop","id":%d,"reason":"noise"}]' % a
+        ),
+    )
+    res = memory_reflection.reflect("nami", "U1", apply=True)
+    assert res.dropped == 1
+    assert all(m.id != a for m in agent_memory.list_active("nami", "U1"))
+
+
 def test_reflect_skips_when_too_few_memories(monkeypatch):
     agent_memory.add("nami", "U1", "fact", "x", "y")
     calls = {"n": 0}

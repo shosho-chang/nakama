@@ -78,7 +78,8 @@ _SYSTEM_PROMPT = """你是 AI agent 的「記憶整理員」。給你一個 agen
 5. 沒有任何該動的 → 回空陣列 `[]`。不要為了交差而硬湊操作。
 
 ## 輸出格式
-純 JSON 陣列，不要 markdown code fence，不要任何解釋文字。範例：
+**直接輸出 JSON 陣列**：回覆的第一個字元必須是 `[`。禁止任何前言、分析、說明或 markdown code fence。
+所有理由寫進每個操作的 `reason` 欄位，不要寫在 JSON 之外。範例：
 
 [
   {"op": "merge", "ids": [3, 7], "subject": "工作時段", "type": "preference",
@@ -123,15 +124,45 @@ def _format_memories_for_prompt(memories: list[UserMemory]) -> str:
     return "\n".join(lines)
 
 
+def _extract_array(s: str) -> str | None:
+    """Pull the first balanced top-level ``[...]`` out of ``s``.
+
+    Reasoning models (Sonnet) often preface the JSON with analysis prose despite
+    the prompt — observed live: ``"我來分析這份記憶清單...\n\n[{...}]"``. Bracket-depth
+    match from the first ``[`` recovers the array instead of dropping valid output.
+    """
+    start = s.find("[")
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(s)):
+        if s[i] == "[":
+            depth += 1
+        elif s[i] == "]":
+            depth -= 1
+            if depth == 0:
+                return s[start : i + 1]
+    return None
+
+
 def _parse_ops(raw: str) -> list[dict]:
-    """Tolerant JSON-array parse (LLM sometimes wraps in a code fence)."""
+    """Tolerant JSON-array parse. Handles a code fence, a bare array, or an array
+    embedded after prose preamble (reasoning models do this even when told not to)."""
     raw = raw.strip()
     fence = re.search(r"```(?:json)?\s*(.*?)\s*```", raw, re.DOTALL)
     if fence:
         raw = fence.group(1).strip()
+    data: Any = None
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
+        candidate = _extract_array(raw)
+        if candidate is not None:
+            try:
+                data = json.loads(candidate)
+            except json.JSONDecodeError:
+                data = None
+    if data is None:
         logger.warning("reflection returned invalid JSON: %s", raw[:200])
         return []
     if not isinstance(data, list):
