@@ -54,13 +54,13 @@ _REFLECT_MODEL = os.getenv("MODEL_MEMORY_REFLECTION") or "claude-sonnet-4-6"
 # Don't bother the LLM for a near-empty store; consolidation needs material.
 _MIN_MEMORIES = 3
 
-_VALID_OPS = frozenset({"merge", "supersede", "promote", "drop"})
+_VALID_OPS = frozenset({"merge", "supersede", "promote", "drop", "share"})
 
 
 _SYSTEM_PROMPT = """你是 AI agent 的「記憶整理員」。給你一個 agent 對某位使用者的現有記憶清單，
 你的工作是讓這份記憶**更精準、更一致、更能反映使用者真實樣貌** —— 但要極度保守，寧可不動也不要亂改。
 
-每筆記憶有 id / type / subject / content / confidence。你只能輸出以下四種操作：
+每筆記憶有 id / type / subject / content / confidence。你只能輸出以下五種操作：
 
 - `merge`：兩筆以上語意重複/重疊的記憶合併成一筆。給 `ids`（要合併的所有 id）、合併後的
   `subject`/`type`/`content`/`confidence`（content 必須涵蓋所有來源的資訊，不可遺漏）、`reason`。
@@ -69,9 +69,13 @@ _SYSTEM_PROMPT = """你是 AI agent 的「記憶整理員」。給你一個 agen
 - `promote`：某筆記憶在多處被佐證、明顯是穩定的核心事實 → 提高 confidence。
   給 `id`、新 `confidence`、可選新 `type`、`reason`。
 - `drop`：明顯是噪音/一次性/已無意義的記憶 → 標記失效。給 `id`、`reason`。
+- `share`：某筆記憶是關於**使用者本人的通用事實**（身分、專業、語言、長期偏好——
+  跟「這個 agent 的特定任務」無關），值得讓**整個 agent 團隊共用** → 提升到 fleet 共享層。
+  給 `id`、`reason`。判準：換成別的助理也該知道這件事 → share；
+  只跟本 agent 的工作流程有關（例如「要每週趨勢報告」）→ 不 share。
 
 ## 鐵則（違反就是失敗）
-1. **保守**：只在「明顯重複」或「明確矛盾」時動手。模稜兩可一律不動。
+1. **保守**：只在「明顯重複」「明確矛盾」或「明顯通用」時動手。模稜兩可一律不動。
 2. **不可虛構 id**：只能引用清單裡實際存在的 id。
 3. **merge 不可遺失資訊**：合併後的 content 要保留所有來源筆的有效資訊。
 4. **type 必須是** preference / fact / decision / context 之一。
@@ -100,6 +104,7 @@ class ReflectionResult:
     superseded: int = 0
     promoted: int = 0
     dropped: int = 0
+    shared: int = 0
     applied: bool = False
     ops: list[dict] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)  # invalid ops + why
@@ -109,7 +114,7 @@ class ReflectionResult:
         return (
             f"[{mode}] {self.agent}/{self.user_id}: reviewed={self.reviewed} "
             f"merged={self.merged} superseded={self.superseded} "
-            f"promoted={self.promoted} dropped={self.dropped} "
+            f"promoted={self.promoted} dropped={self.dropped} shared={self.shared} "
             f"skipped={len(self.skipped)}"
         )
 
@@ -263,6 +268,13 @@ def _apply_op(op: dict, *, agent: str, user_id: str, valid_ids: set[int]) -> str
         agent_memory.supersede(mid, replaced_by=None)
         return "drop"
 
+    if kind == "share":
+        mid = op.get("id")
+        if mid not in valid_ids:
+            raise ValueError(f"share id not active: {mid}")
+        agent_memory.share(mid)
+        return "share"
+
     raise ValueError(f"unknown op kind: {kind!r}")
 
 
@@ -304,7 +316,7 @@ def reflect(
         return result
 
     ops = _parse_ops(raw)
-    counts = {"merge": 0, "supersede": 0, "promote": 0, "drop": 0}
+    counts = {"merge": 0, "supersede": 0, "promote": 0, "drop": 0, "share": 0}
     for op in ops:
         if not isinstance(op, dict) or op.get("op") not in _VALID_OPS:
             result.skipped.append(f"bad op shape: {op!r:.120}")
@@ -325,6 +337,7 @@ def reflect(
     result.superseded = counts["supersede"]
     result.promoted = counts["promote"]
     result.dropped = counts["drop"]
+    result.shared = counts["share"]
     result.applied = apply
 
     if apply:
