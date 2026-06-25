@@ -19,9 +19,11 @@ from shared.llm_router import (
     KNOWN_MODELS,
     _safe_provider,
     clear_override,
+    get_auth_policy,
     list_model_sites,
     set_override,
 )
+from shared.llm_transport import openrouter_enabled
 from shared.log import get_logger
 from thousand_sunny.auth import check_auth
 
@@ -39,6 +41,33 @@ _VALID_MODELS = frozenset(KNOWN_MODELS)
 _ERR_MSGS = {"unknown_model": "未知的 model（不在允許清單內），未套用。"}
 
 
+def _transport_for(site: dict) -> str:
+    """這個 (agent, task) site 在當前 ``LLM_TRANSPORT`` 下實際會走的 transport。
+
+    回 ``"openrouter"`` 或 ``"native"``，給面板逐列標示。對齊 facade / client seam
+    的實際 dispatch 決策（Slice 2/4）：
+
+    - ``LLM_TRANSPORT`` 未設 → 全部 native（kill-switch）
+    - xAI（grok-*）→ 恆 native（OpenRouter 無該 tier）
+    - Anthropic 且 auth policy 非 ``api``（訂閱）→ native（claude -p Max Plan）
+    - 其餘 anthropic(api) / google / openai → openrouter
+    """
+    if not openrouter_enabled():
+        return "native"
+    provider = site.get("provider")
+    if provider == "xai":
+        return "native"
+    if provider == "anthropic":
+        try:
+            policy = get_auth_policy(agent=site["agent"], task=site["task"])
+        except ValueError:
+            policy = "api"  # 壞 AUTH_* 設定不該讓面板 500，保守當 api
+        return "native" if policy != "api" else "openrouter"
+    if provider in ("google", "openai"):
+        return "openrouter"
+    return "native"  # unknown / 未接 provider
+
+
 @router.get("/bridge/models", response_class=HTMLResponse)
 async def models_page(
     request: Request,
@@ -49,12 +78,15 @@ async def models_page(
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/models", status_code=302)
     sites = list_model_sites()
+    for s in sites:
+        s["transport"] = _transport_for(s)
     return _templates.TemplateResponse(
         request,
         "models.html",
         {
             "sites": sites,
             "model_options": _MODEL_OPTIONS,
+            "transport_enabled": openrouter_enabled(),
             "saved_msg": "已更新並即時生效" if saved == "1" else None,
             "err_msg": _ERR_MSGS.get(err) if err else None,
         },

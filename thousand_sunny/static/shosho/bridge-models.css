@@ -110,6 +110,40 @@ body.sho .mdl-src--env { background: color-mix(in oklch, var(--sho-warning) 12%,
 body.sho .mdl-src--registry { background: var(--sho-bg-2); color: var(--sho-text-2); border: 1px solid var(--sho-line); }
 body.sho .mdl-src--default { background: transparent; color: var(--sho-muted); }
 
+/* Transport indicator — 全域 banner + 逐列 chip（Slice 5）。OpenRouter 用 --sho-info
+   區隔（中性藍），不動橘色 accent 預算（保留給 override 的人為覆寫標示）。 */
+body.sho .mdl-transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--sho-muted);
+}
+body.sho .mdl-transport-label {
+  font-family: var(--sho-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sho-text-2);
+}
+body.sho .mdl-trans {
+  display: inline-block;
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--sho-line);
+  color: var(--sho-muted);
+  white-space: nowrap;
+}
+body.sho .mdl-trans--openrouter {
+  border-color: color-mix(in oklch, var(--sho-info) 50%, var(--sho-line));
+  color: var(--sho-info);
+}
+body.sho .mdl-trans--native { border-color: var(--sho-line); color: var(--sho-muted); }
+
 body.sho .mdl-edit {
   display: flex;
   flex-direction: column;
