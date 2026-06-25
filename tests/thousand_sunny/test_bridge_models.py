@@ -80,3 +80,46 @@ def test_post_reset_clears_override(client):
     )
     assert resp.status_code == 303
     assert r.get_override("robin", "kb_search") is None
+
+
+# ── Transport indicator（Slice 5）─────────────────────────────────────────────
+def test_transport_for_covers_all_branches(monkeypatch):
+    from thousand_sunny.routers import bridge_models as bm
+
+    monkeypatch.setenv("LLM_TRANSPORT", "openrouter")
+    assert bm._transport_for({"provider": "google", "agent": "robin", "task": "x"}) == "openrouter"
+    assert bm._transport_for({"provider": "openai", "agent": "robin", "task": "x"}) == "openrouter"
+    assert (
+        bm._transport_for({"provider": "anthropic", "agent": "nami", "task": "default"})
+        == "openrouter"
+    )
+    # xAI carve-out：OpenRouter 無 grok tier，恆 native
+    assert bm._transport_for({"provider": "xai", "agent": "sanji", "task": "default"}) == "native"
+    # Anthropic 訂閱 → native（claude -p Max Plan）
+    monkeypatch.setenv("AUTH_NAMI", "subscription_required")
+    assert (
+        bm._transport_for({"provider": "anthropic", "agent": "nami", "task": "default"}) == "native"
+    )
+    # kill-switch：未設 → 全 native
+    monkeypatch.delenv("LLM_TRANSPORT")
+    assert bm._transport_for({"provider": "google", "agent": "robin", "task": "x"}) == "native"
+
+
+def test_get_shows_native_transport_when_disabled(client, monkeypatch):
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    c, _ = client
+    resp = c.get("/bridge/models")
+    assert resp.status_code == 200
+    assert "mdl-trans--native" in resp.text
+    assert "mdl-trans--openrouter" not in resp.text
+    assert "LLM_TRANSPORT=openrouter" in resp.text  # hint：如何啟用
+
+
+def test_get_shows_openrouter_transport_when_enabled(client, monkeypatch):
+    monkeypatch.setenv("LLM_TRANSPORT", "openrouter")
+    c, _ = client
+    resp = c.get("/bridge/models")
+    assert resp.status_code == 200
+    # registry 預設多為 claude-* / gemini → 進 OpenRouter
+    assert "mdl-trans--openrouter" in resp.text
+    assert "OpenRouter" in resp.text

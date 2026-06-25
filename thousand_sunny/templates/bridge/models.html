@@ -18,6 +18,16 @@
     <header class="mdl-head">
       <h1 class="mdl-title">模型路由</h1>
       <p class="mdl-sub">每個 agent / 功能目前接哪個 LLM。改了即時生效，不用重啟。</p>
+      <p class="mdl-transport" role="status">
+        <span class="mdl-transport-label">Transport</span>
+        {% if transport_enabled %}
+        <span class="mdl-trans mdl-trans--openrouter">OpenRouter</span>
+        <span class="mdl-transport-note">api-tier 文字呼叫經 OpenRouter（實際 cost 入帳）；Max Plan 訂閱與 xAI 仍走原生。</span>
+        {% else %}
+        <span class="mdl-trans mdl-trans--native">native</span>
+        <span class="mdl-transport-note">各家原生 SDK；設 <code class="mdl-task">LLM_TRANSPORT=openrouter</code> 啟用統一 transport。</span>
+        {% endif %}
+      </p>
     </header>
 
     {% if saved_msg %}<div class="mdl-toast mdl-toast--ok" role="status">{{ saved_msg }}</div>{% endif %}
@@ -27,7 +37,7 @@
       <table class="mdl-table">
         <thead>
           <tr>
-            <th>Agent</th><th>功能</th><th>目前 model</th><th>來源</th><th>改成</th>
+            <th>Agent</th><th>功能</th><th>目前 model</th><th>來源</th><th>Transport</th><th>改成</th>
           </tr>
         </thead>
         <tbody>
@@ -37,6 +47,7 @@
             <td class="mdl-purpose">{{ s.purpose }}<br><code class="mdl-task">{{ s.task }}</code></td>
             <td><span class="mdl-model">{{ s.model }}</span> <span class="mdl-prov mdl-prov--{{ s.provider }}">{{ s.provider }}</span></td>
             <td><span class="mdl-src mdl-src--{{ s.source }}">{{ s.source }}</span></td>
+            <td><span class="mdl-trans mdl-trans--{{ s.transport }}">{{ 'OpenRouter' if s.transport == 'openrouter' else 'native' }}</span></td>
             <td class="mdl-edit">
               <form method="post" action="/bridge/models/set" class="mdl-form">
                 <input type="hidden" name="agent" value="{{ s.agent }}">
