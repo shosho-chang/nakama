@@ -306,6 +306,9 @@ def _record_openrouter_usage(
             auth_requested=auth_requested,
             auth_actual=auth_actual,
             fallback_reason=fallback_reason,
+            # 只落庫 OpenRouter 回報的『實際』cost；取不到時留 None，讓 cost panel
+            # 用 calc_cost 估算（與原生呼叫一致），不把估算值混進「實際 cost」欄位。
+            cost_usd=cost_usd if source == "openrouter" else None,
         )
     except Exception as e:
         logger.debug("cost tracking 失敗（忽略）：%s", e)
