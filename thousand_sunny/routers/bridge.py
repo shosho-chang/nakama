@@ -1798,14 +1798,18 @@ def cost_overview(
     latency_rows = state.get_latency_summary(agent=agent, days=days)
 
     def _enrich(row: dict) -> dict:
-        cost = calc_cost(
+        # OpenRouter 呼叫帶實際 cost（actual_cost_usd）；其餘 row（原生 / 歷史 NULL）
+        # 用 calc_cost 估算，但只估「沒有實際 cost 的那部分 token」（est_* 欄位）——
+        # calc_cost 對 token 線性，所以同一 agent×model group 混有實際/估算時加總仍正確。
+        actual = row.get("actual_cost_usd") or 0.0
+        estimate = calc_cost(
             row["model"],
-            input_tokens=row.get("input_tokens") or 0,
-            output_tokens=row.get("output_tokens") or 0,
-            cache_read_tokens=row.get("cache_read_tokens") or 0,
-            cache_write_tokens=row.get("cache_write_tokens") or 0,
+            input_tokens=row.get("est_input_tokens") or 0,
+            output_tokens=row.get("est_output_tokens") or 0,
+            cache_read_tokens=row.get("est_cache_read_tokens") or 0,
+            cache_write_tokens=row.get("est_cache_write_tokens") or 0,
         )
-        return {**row, "cost_usd": round(cost, 6)}
+        return {**row, "cost_usd": round(actual + estimate, 6)}
 
     summary = [_enrich(r) for r in summary_rows]
     timeseries = [_enrich(r) for r in timeseries_rows]

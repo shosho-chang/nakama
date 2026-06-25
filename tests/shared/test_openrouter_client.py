@@ -208,3 +208,39 @@ def test_usage_recording_never_raises_on_bad_shape(monkeypatch):
         out = orc.ask_openrouter("hi", model="claude-sonnet-4-6")
 
     assert out == "ok"  # 主流程不受 usage 缺失影響
+
+
+def test_records_actual_cost_usd_to_record_call(monkeypatch, _fake_response):
+    """OpenRouter 回 usage.cost → record_api_call 收到實際 cost_usd（Slice 3）。"""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    import shared.openrouter_client as orc
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _fake_response(cost=0.0789)
+    recorded = {}
+
+    with (
+        patch.object(orc, "get_client", return_value=fake_client),
+        patch("shared.state.record_api_call", lambda **k: recorded.update(k)),
+    ):
+        orc.ask_openrouter("hi", model="claude-sonnet-4-6")
+
+    assert recorded["cost_usd"] == pytest.approx(0.0789)
+
+
+def test_records_none_cost_when_openrouter_omits_cost(monkeypatch, _fake_response):
+    """OpenRouter 沒回 cost → cost_usd=None（不把 fallback 估算混進實際 cost 欄位）。"""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    import shared.openrouter_client as orc
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _fake_response(cost=None)
+    recorded = {}
+
+    with (
+        patch.object(orc, "get_client", return_value=fake_client),
+        patch("shared.state.record_api_call", lambda **k: recorded.update(k)),
+    ):
+        orc.ask_openrouter("hi", model="claude-sonnet-4-6")
+
+    assert recorded["cost_usd"] is None
