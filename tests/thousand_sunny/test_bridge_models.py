@@ -123,3 +123,15 @@ def test_get_shows_openrouter_transport_when_enabled(client, monkeypatch):
     # registry 預設多為 claude-* / gemini → 進 OpenRouter
     assert "mdl-trans--openrouter" in resp.text
     assert "OpenRouter" in resp.text
+
+
+def test_get_per_agent_transport_override(client, monkeypatch):
+    """LLM_TRANSPORT_<AGENT> 讓單一 agent 走 OpenRouter，面板逐列反映（全域仍 off）。"""
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    monkeypatch.setenv("LLM_TRANSPORT_NAMI", "openrouter")
+    c, _ = client
+    resp = c.get("/bridge/models")
+    assert resp.status_code == 200
+    # Nami（claude api）那列 → openrouter；其餘 agent 全域 off → native，兩者並存
+    assert "mdl-trans--openrouter" in resp.text
+    assert "mdl-trans--native" in resp.text

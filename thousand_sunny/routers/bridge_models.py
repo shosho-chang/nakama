@@ -47,12 +47,12 @@ def _transport_for(site: dict) -> str:
     回 ``"openrouter"`` 或 ``"native"``，給面板逐列標示。對齊 facade / client seam
     的實際 dispatch 決策（Slice 2/4）：
 
-    - ``LLM_TRANSPORT`` 未設 → 全部 native（kill-switch）
+    - transport 未啟用（含 per-agent ``LLM_TRANSPORT_<AGENT>`` override）→ native
     - xAI（grok-*）→ 恆 native（OpenRouter 無該 tier）
     - Anthropic 且 auth policy 非 ``api``（訂閱）→ native（claude -p Max Plan）
     - 其餘 anthropic(api) / google / openai → openrouter
     """
-    if not openrouter_enabled():
+    if not openrouter_enabled(agent=site.get("agent")):
         return "native"
     provider = site.get("provider")
     if provider == "xai":
