@@ -6,6 +6,17 @@ originSessionId: f2ea9d48-f32a-4c33-bf30-c54837e598ec
 ---
 # 多 Model 多 Agent 架構決策（2026-04-20 起）
 
+> **2026-06-25 更新（ADR-049，PR #936–#941）**：production 的 **api-tier** 呼叫已改走
+> **OpenRouter transport**（facade 底下插 seam，api-tier 經 `shared/openrouter_client.py`，
+> BYOK 消化既有 OpenAI/Anthropic credit，cost 記 OpenRouter 回報的**實際**值落
+> `api_calls.cost_usd`）。下方 Q1「production 走直 SDK」為**歷史描述**。當初排斥 LiteLLM 的
+> cache 計費痛點，由 OpenRouter 實際 cost 解掉（比估算更準）。
+> **不變**：bench/eval 的 LiteLLM 路；Anthropic Max Plan 訂閱（`claude -p`）與 xAI `grok-*`
+> （OpenRouter 不載 grok-4-fast tier）仍原生；tool-use / audio 仍原生。
+> 切換：全域 `LLM_TRANSPORT=openrouter|native`（kill-switch）+ per-agent
+> `LLM_TRANSPORT_<AGENT>`（canary）。詳見 `docs/decisions/ADR-049-openrouter-transport.md`
+> 與 `docs/runbooks/openrouter-canary.md`。
+
 調研來源：2026-04-20 三個平行 subagent 深度調研（LiteLLM vs 直 SDK、MoA/panel review、Slack multi-agent）。
 
 ## Q1 — Per-agent 模型路由：Hybrid 方案
