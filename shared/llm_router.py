@@ -11,7 +11,8 @@ Resolution 優先序（高到低）：
 這是 production routing 層。Bench / eval 腳本請改走 LiteLLM（設計決策見
 `memory/claude/project_multi_model_architecture.md`）。
 
-Provider coverage：Anthropic + xAI + Google（gemini-）已 wire；OpenAI 待擴。
+Provider coverage：Anthropic + xAI + Google（gemini-）原生已 wire；OpenAI 經
+OpenRouter transport（``LLM_TRANSPORT=openrouter``）可用，無原生 SDK。
 """
 
 from __future__ import annotations
@@ -80,6 +81,10 @@ KNOWN_MODELS: tuple[str, ...] = (
     "claude-haiku-4-5-20251001",
     "gemini-2.5-pro",
     "grok-4-fast",
+    # OpenAI — 只在 LLM_TRANSPORT=openrouter 時可用（facade 無原生 OpenAI SDK，走
+    # OpenRouter BYOK）；native 時選到會 fail loud。slug 見 shared/openrouter_models.py。
+    "gpt-5",
+    "gpt-5-mini",
 )
 
 

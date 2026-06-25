@@ -212,3 +212,35 @@ def test_tool_use_stays_native_even_when_enabled(monkeypatch):
     assert out is sentinel
     m1.assert_not_called()
     m2.assert_not_called()
+
+
+# ── OpenAI（無原生 client；只在 OpenRouter transport 下可用，Slice 4）──────────
+def test_openai_routes_to_openrouter_when_enabled(monkeypatch):
+    monkeypatch.setenv("LLM_TRANSPORT", "openrouter")
+    from shared import llm
+
+    with patch("shared.openrouter_client.ask_openrouter", return_value="or-gpt") as m:
+        out = llm.ask("hi", model="gpt-5")
+
+    assert out == "or-gpt"
+    assert m.call_args.kwargs["model"] == "gpt-5"
+
+
+def test_openai_multi_routes_to_openrouter_when_enabled(monkeypatch):
+    monkeypatch.setenv("LLM_TRANSPORT", "openrouter")
+    from shared import llm
+
+    with patch("shared.openrouter_client.ask_openrouter_multi", return_value="or-gpt-m") as m:
+        out = llm.ask_multi([{"role": "user", "content": "hi"}], model="gpt-5-mini")
+
+    assert out == "or-gpt-m"
+    assert m.call_args.kwargs["model"] == "gpt-5-mini"
+
+
+def test_openai_raises_clearly_when_transport_native(monkeypatch):
+    """native（kill-switch）時選到 OpenAI → fail loud（無原生 SDK），不 silent。"""
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    from shared import llm
+
+    with pytest.raises(NotImplementedError, match="LLM_TRANSPORT=openrouter"):
+        llm.ask("hi", model="gpt-5")
