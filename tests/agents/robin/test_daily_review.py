@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 import agents.robin.daily_review as dr
+from shared import candidate_inbox
 from shared.kb_hybrid_search import make_conn
 from shared.schemas.annotations import (
     AnnotationSetV3,
@@ -1233,3 +1234,82 @@ def test_run_daily_review_no_mocs_skips_moc_judge(vault: Path, monkeypatch):
     bundle = dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
     assert called["moc"] is False  # 無 MOC → 不浪費 LLM call
     assert bundle.candidates[0].related_mocs == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ADR-048 Phase 1 — 候選收件匣結轉（修「點子消失」）+ 事件 ground truth
+# 收件匣持久化（state.db）讓昨天沒處理的候選結轉到今天，不再被單槽快照覆寫即丟。
+# DB 隔離由 conftest autouse isolated_db fixture 提供。
+# ═══════════════════════════════════════════════════════════════════════════
+
+_NOW_DAY2 = datetime(2026, 6, 12, 7, 0, 0, tzinfo=timezone.utc)  # 隔天（台北 06-12）
+
+
+def _one_strong_candidate(prompt):  # noqa: ARG001
+    """P-1 mock：回《卡片盒筆記》06-10 劃線的單一強訊號候選。"""
+    return [
+        {
+            "suggested_title": "間隔重複需要重複三次",
+            "why": "強訊號",
+            "anchors": ["^cfi-6-14-116"],
+            "source_quote": "間隔重複是記憶的關鍵。",
+            "user_note": "必須重複三次才會記得。",
+            "strong_signal": True,
+        }
+    ]
+
+
+def _seed_day1(vault: Path, monkeypatch) -> str:
+    """跑 Day 1（now=06-11，掃 06-10 劃線）產出一條候選，回其 candidate_id。"""
+    _write_annotations(vault, _card_box_set())
+    (vault / "KB").mkdir(exist_ok=True)
+    (vault / "KB" / "index.md").write_text("# index\n", encoding="utf-8")
+    monkeypatch.setattr(dr, "_ask_p1_llm", _one_strong_candidate)
+    import agents.robin.kb_search as kb
+
+    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [])
+    day1 = dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
+    assert len(day1.candidates) == 1
+    return day1.candidates[0].candidate_id
+
+
+def test_run_daily_review_carries_forward_unactioned_candidate(vault: Path, monkeypatch):
+    """昨天提的候選若沒處理，今天（即使無新劃線）仍要結轉出現——核心「點子消失」修復。"""
+    cid = _seed_day1(vault, monkeypatch)
+    # Day 2（now=06-12，掃 06-11 → 無新劃線，build_candidates 早退）→ 仍須結轉昨天候選
+    day2 = dr.run_daily_review(now=_NOW_DAY2, weekly=False, vault_path=vault, notify=False)
+    assert [c.candidate_id for c in day2.candidates] == [cid]  # 結轉，沒被覆寫掉
+
+
+def test_run_daily_review_carded_candidate_drops_out(vault: Path, monkeypatch):
+    """開卡（mark_carded）後的候選不再出現在後續 bundle。"""
+    cid = _seed_day1(vault, monkeypatch)
+    candidate_inbox.mark_carded(cid, carded_path="KB/Permanent/間隔重複需要重複三次")
+    day2 = dr.run_daily_review(now=_NOW_DAY2, weekly=False, vault_path=vault, notify=False)
+    assert day2.candidates == []  # 已開卡 → 不再結轉
+
+
+def test_run_daily_review_skip_still_filters_carried_forward(vault: Path, monkeypatch):
+    """skip（state JSON 權威）仍生效於結轉候選——收件匣不搶 skip 過濾權。"""
+    cid = _seed_day1(vault, monkeypatch)
+    dr.save_review_state(vault, {"skipped": [cid], "deferred": {}})
+    day2 = dr.run_daily_review(now=_NOW_DAY2, weekly=False, vault_path=vault, notify=False)
+    assert day2.candidates == []  # 結轉後被 JSON skip 濾掉
+    # 但收件匣仍留著該列（status 仍 open，僅顯示端過濾）——event 也記了
+    assert candidate_inbox.get_candidate(cid)["status"] == "open"
+
+
+def test_run_daily_review_logs_proposed_event(vault: Path, monkeypatch):
+    """每日回顧寫候選進收件匣時記 proposed 事件（Phase 3 學習的 ground truth）。"""
+    cid = _seed_day1(vault, monkeypatch)
+    events = candidate_inbox.list_events(candidate_id=cid, event_type="proposed")
+    assert len(events) == 1
+
+
+def test_run_daily_review_proposed_event_not_duplicated_across_runs(vault: Path, monkeypatch):
+    """同一候選跨日結轉，proposed 事件只記一次（再提出只觸 last_seen，不重記）。"""
+    cid = _seed_day1(vault, monkeypatch)
+    # 再跑 Day 1（同 now，同劃線）→ 同候選再 upsert，但不可重複記 proposed
+    dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
+    events = candidate_inbox.list_events(candidate_id=cid, event_type="proposed")
+    assert len(events) == 1
