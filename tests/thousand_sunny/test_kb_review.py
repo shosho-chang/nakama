@@ -136,6 +136,8 @@ def test_review_page_renders(client):
     assert "理解是分層次的，寫作把你推向更深層" in r.text
     # static JS + CSS wired (CSP-safe, no inline script logic)
     assert "/static/kb_review.js" in r.text
+    # 隨手開新卡入口（缺口 A）：header ＋開新卡 鈕，kb_canvas.js 靠此 id wire。
+    assert 'id="kb-newcard"' in r.text
 
 
 def test_review_page_empty_bundle(client, monkeypatch):
