@@ -45,6 +45,9 @@
   </div>
   {% endif %}
 
+  {% if source_slug %}
+  <a href="/kb/review?open=adhoc&amp;slug={{ source_slug | urlencode }}" class="btn-primary">✍️ 從這個來源開一張永久卡</a>
+  {% endif %}
   <a href="/" class="btn-home">← 返回 Inbox</a>
 </div>
 </body>

@@ -1291,6 +1291,7 @@ async def events(session_id: str, nakama_auth: str | None = Cookie(None)):
                     "updated": concept_update,
                     "referenced": concept_noop,
                 }
+                sess["source_slug"] = slug  # 缺口 A：/done「從這個來源開卡」橋預填用
                 sess["step"] = "done"
                 yield sse("done", {"redirect": "/done"})
 
@@ -1437,6 +1438,7 @@ async def done(
             "created": sess["result"].get("created", []),
             "updated": sess["result"].get("updated", []),
             "referenced": sess["result"].get("referenced", []),
+            "source_slug": sess.get("source_slug", ""),
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )

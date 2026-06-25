@@ -789,9 +789,10 @@
       source_refs: buildSourceRefs(cand),
       candidate_id: cand.candidate_id || "",
       literature_slug:
-        cand.primary_ref && cand.primary_ref.literature_path
+        cand.__literature_slug ||
+        (cand.primary_ref && cand.primary_ref.literature_path
           ? cand.primary_ref.literature_path.split("/").pop()
-          : "",
+          : ""),
       fleeting_path: (activeCtx && activeCtx.fleeting_path) || "",
     };
 
@@ -820,7 +821,7 @@
         // fleeting 開卡後不再循環候選（一次性）；候選開卡則自動接下一張。
         activeCtx = null;
         doneCount++;
-        advance(title, cand.__fleeting);
+        advance(title, cand.__fleeting || cand.__adhoc);
       })
       .catch(function () {
         saveBtn.removeAttribute("disabled");
@@ -902,6 +903,20 @@
         __body_prefill: ctx.body_prefill || "",
       };
       CANDS.splice(centerIdx, 0, synth);
+    } else if (ctx.kind === "adhoc") {
+      // 隨手 / ingest 完馬上開卡（缺口 A）：合成一次性空白候選，可帶來源 source_ref。
+      // 與 fleet 同走一次性流程；差別只在預填來源（非 fleeting 正文），存完即關。
+      CANDS.splice(centerIdx, 0, {
+        candidate_id: "",
+        suggested_title: "",
+        edges: [],
+        related_pool: [],
+        related_mocs: [],
+        source_refs: ctx.source_refs || [],
+        __adhoc: true,
+        __body_prefill: "",
+        __literature_slug: ctx.literature_slug || "",
+      });
     } else if (ctx.candidate_id) {
       // 定位到指定候選；找不到就維持目前游標。
       for (var i = 0; i < CANDS.length; i++) {
@@ -949,6 +964,35 @@
     $("#kbc-title").addEventListener("input", function () {
       $("#kbc-title").dataset.dirty = "1";
     });
+
+    // ＋開新卡 / ingest 完直達開卡（缺口 A）：空白 adhoc 畫布；
+    // ?open=adhoc&slug=<source> → 從剛 ingest 的來源預填 source_ref 開卡。
+    var newBtn = $("#kb-newcard");
+    if (newBtn) {
+      newBtn.addEventListener("click", function () {
+        openCanvas({ kind: "adhoc" });
+      });
+    }
+    try {
+      var qp = new URLSearchParams(location.search);
+      if (qp.get("open") === "adhoc") {
+        var sgl = qp.get("slug") || "";
+        var ax = { kind: "adhoc" };
+        if (sgl) {
+          ax.literature_slug = sgl;
+          ax.source_refs = [{ literature_path: "KB/Wiki/Sources/" + sgl, anchor: "", raw: "" }];
+        }
+        openCanvas(ax);
+        // 清掉 query，重新整理不再自動彈卡。
+        try {
+          history.replaceState(null, "", location.pathname);
+        } catch (e2) {
+          /* ignore */
+        }
+      }
+    } catch (e) {
+      /* 無 URLSearchParams → 略過自動開卡 */
+    }
 
     // 點空白關 popover / peek 預覽
     document.addEventListener("pointerdown", function (e) {
