@@ -142,6 +142,9 @@ def ask_openrouter(
     models: list[str] | None = None,
     provider: dict | None = None,
     allow_fallbacks: bool = False,
+    auth_requested: str | None = None,
+    auth_actual: str | None = None,
+    fallback_reason: str | None = None,
 ) -> str:
     """送一次 OpenRouter 請求，回傳純文字。
 
@@ -160,7 +163,14 @@ def ask_openrouter(
     response, latency_ms = _dispatch(
         slug, messages, max_tokens, temperature, models, provider, allow_fallbacks
     )
-    _record_openrouter_usage(bare, response, latency_ms=latency_ms)
+    _record_openrouter_usage(
+        bare,
+        response,
+        latency_ms=latency_ms,
+        auth_requested=auth_requested,
+        auth_actual=auth_actual,
+        fallback_reason=fallback_reason,
+    )
     return response.choices[0].message.content or ""
 
 
@@ -174,6 +184,9 @@ def ask_openrouter_multi(
     models: list[str] | None = None,
     provider: dict | None = None,
     allow_fallbacks: bool = False,
+    auth_requested: str | None = None,
+    auth_actual: str | None = None,
+    fallback_reason: str | None = None,
 ) -> str:
     """多回合版本。messages 用 OpenAI 格式（role: user/assistant）；``system`` 自動 prepend。"""
     bare = _resolve_model(model)
@@ -187,7 +200,14 @@ def ask_openrouter_multi(
     response, latency_ms = _dispatch(
         slug, full_messages, max_tokens, temperature, models, provider, allow_fallbacks
     )
-    _record_openrouter_usage(bare, response, latency_ms=latency_ms)
+    _record_openrouter_usage(
+        bare,
+        response,
+        latency_ms=latency_ms,
+        auth_requested=auth_requested,
+        auth_actual=auth_actual,
+        fallback_reason=fallback_reason,
+    )
     return response.choices[0].message.content or ""
 
 
@@ -229,7 +249,15 @@ def _extract_cost(
     return fallback, "fallback"
 
 
-def _record_openrouter_usage(model: str, response, *, latency_ms: int = 0) -> None:
+def _record_openrouter_usage(
+    model: str,
+    response,
+    *,
+    latency_ms: int = 0,
+    auth_requested: str | None = None,
+    auth_actual: str | None = None,
+    fallback_reason: str | None = None,
+) -> None:
     """把 OpenAI-shape usage（含 OpenRouter 實際 cost）抽成共通欄位後記錄。
 
     用 **bare model ID**（非 slug）記錄，讓 observability / cost panel 與系統其餘部分
@@ -275,6 +303,9 @@ def _record_openrouter_usage(model: str, response, *, latency_ms: int = 0) -> No
             cache_read_tokens=cached,
             cache_write_tokens=0,
             latency_ms=latency_ms,
+            auth_requested=auth_requested,
+            auth_actual=auth_actual,
+            fallback_reason=fallback_reason,
         )
     except Exception as e:
         logger.debug("cost tracking 失敗（忽略）：%s", e)
