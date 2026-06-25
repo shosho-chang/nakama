@@ -240,6 +240,101 @@ def test_create_permanent_conflict_409(client):
 
 
 # ---------------------------------------------------------------------------
+# ADR-048 Phase 1 — 開卡標記候選 carded（修 create_permanent 收 candidate_id 卻沒用）
+# ---------------------------------------------------------------------------
+
+
+def test_create_permanent_marks_candidate_carded(client):
+    """帶 candidate_id 開卡 → 收件匣該候選 open→carded（不再每日重現）+ 記 card 事件。"""
+    tc, _kb, _v = client
+    from shared import candidate_inbox
+    from shared.schemas.daily_review import CandidateCard
+
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="卡片盒筆記-deadbeef", suggested_title="主張", why="x"),
+        today="2026-06-20",
+    )
+    assert candidate_inbox.count_open() == 1
+
+    r = tc.post(
+        "/kb/api/permanent",
+        json={
+            "title": "開卡後該候選要消失",
+            "body": "正文。",
+            "candidate_id": "卡片盒筆記-deadbeef",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["phase5"]["candidate_recorded"] is True
+
+    row = candidate_inbox.get_candidate("卡片盒筆記-deadbeef")
+    assert row["status"] == "carded"
+    assert row["carded_path"] == r.json()["path"]
+    assert candidate_inbox.count_open() == 0
+    card_events = candidate_inbox.list_events(candidate_id="卡片盒筆記-deadbeef", event_type="card")
+    assert len(card_events) == 1
+
+
+def test_create_permanent_without_candidate_id_no_inbox_write(client):
+    """手建卡 / fleeting 開卡（無 candidate_id）→ 不碰收件匣，candidate_recorded=False。"""
+    tc, _kb, _v = client
+    from shared import candidate_inbox
+
+    r = tc.post("/kb/api/permanent", json={"title": "手建卡無候選來源", "body": "正文。"})
+    assert r.status_code == 200, r.text
+    assert r.json()["phase5"]["candidate_recorded"] is False
+    assert candidate_inbox.count_open() == 0
+
+
+def test_review_skip_logs_event(client):
+    """略過候選 → state JSON 仍是過濾權威，且額外記 skip 事件（ground truth）。"""
+    tc, _kb, _v = client
+    from shared import candidate_inbox
+
+    r = tc.post("/kb/api/review/skip", json={"candidate_id": "卡片盒筆記-skipme"})
+    assert r.status_code == 200, r.text
+    skips = candidate_inbox.list_events(candidate_id="卡片盒筆記-skipme", event_type="skip")
+    assert len(skips) == 1
+
+
+def test_review_later_logs_defer_event(client):
+    """之後再說 → 記 defer 事件。"""
+    tc, _kb, _v = client
+    from shared import candidate_inbox
+
+    r = tc.post("/kb/api/review/later", json={"candidate_id": "卡片盒筆記-laterme"})
+    assert r.status_code == 200, r.text
+    defers = candidate_inbox.list_events(candidate_id="卡片盒筆記-laterme", event_type="defer")
+    assert len(defers) == 1
+
+
+def test_filter_actioned_drops_carded_candidate(vault):
+    """_filter_actioned 即時濾掉已開卡候選（快照凍結在開卡前，同日 reload 不該再現）。"""
+    import thousand_sunny.routers.kb_review as kb
+    from shared import candidate_inbox
+    from shared.schemas.daily_review import CandidateCard, DailyReviewBundle
+
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="c-open", suggested_title="o", why=""), today="2026-06-20"
+    )
+    candidate_inbox.upsert_candidate(
+        CandidateCard(candidate_id="c-carded", suggested_title="c", why=""), today="2026-06-20"
+    )
+    candidate_inbox.mark_carded("c-carded")
+
+    bundle = DailyReviewBundle(
+        generated_at="t",
+        review_date="2026-06-20",
+        candidates=[
+            CandidateCard(candidate_id="c-open", suggested_title="o", why=""),
+            CandidateCard(candidate_id="c-carded", suggested_title="c", why=""),
+        ],
+    )
+    filtered = kb._filter_actioned(bundle, vault)
+    assert [c.candidate_id for c in filtered.candidates] == ["c-open"]
+
+
+# ---------------------------------------------------------------------------
 # Phase 5 善後
 # ---------------------------------------------------------------------------
 

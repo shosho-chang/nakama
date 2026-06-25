@@ -117,19 +117,30 @@ def _compute_bundle(*, weekly: bool = False) -> DailyReviewBundle:
 
 
 def _filter_actioned(bundle: DailyReviewBundle, vault: Path) -> DailyReviewBundle:
-    """濾掉已 skip / later 的候選（對齊 daily_review 的過濾鍵 ``candidate_id``）。
+    """濾掉已 skip / later / 開卡 的候選（對齊 daily_review 的過濾鍵 ``candidate_id``）。
 
-    快照是時間點凍結的；使用者在快照之後 skip/later 的，顯示時要即時濾掉。
+    快照凍結在動作之前；使用者在快照之後 skip / later / 開卡的，顯示時要即時濾掉——
+    否則同日 reload 還會看到剛開過卡的候選，要等隔天 cron 重算才消失。skip / later 讀
+    state JSON；開卡讀收件匣 ``carded`` 狀態（ADR-048 Phase 1）。
     """
     from agents.robin.daily_review import load_review_state
 
     state = load_review_state(vault)
     skipped = set(state.get("skipped") or [])
     deferred = set((state.get("deferred") or {}).keys())
+    carded: set[str] = set()
+    try:
+        from shared import candidate_inbox
+
+        carded = candidate_inbox.carded_among([c.candidate_id for c in bundle.candidates])
+    except Exception:  # noqa: BLE001 — 收件匣讀取失敗 → 退回只濾 skip/later（degraded 不 500）
+        logger.exception("carded filter failed; falling back to skip/later only")
     bundle.candidates = [
         c
         for c in bundle.candidates
-        if c.candidate_id not in skipped and c.candidate_id not in deferred
+        if c.candidate_id not in skipped
+        and c.candidate_id not in deferred
+        and c.candidate_id not in carded
     ]
     return bundle
 
@@ -164,6 +175,16 @@ def _update_review_state(candidate_id: str, action: str) -> None:
         raise ValueError(f"unknown review action: {action!r}")
 
     save_review_state(vault, {"skipped": skipped, "deferred": deferred})
+
+
+def _log_candidate_event(candidate_id: str, event_type: str) -> None:
+    """Best-effort 記一筆候選事件（ADR-048 ground truth）；失敗只記 log，不擋使用者動作。"""
+    try:
+        from shared import candidate_inbox
+
+        candidate_inbox.log_event(candidate_id, event_type)
+    except Exception:  # noqa: BLE001 — 事件記錄非關鍵路徑
+        logger.exception("candidate event log failed cid=%s type=%s", candidate_id, event_type)
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +367,7 @@ def _run_phase5(payload: CreatePermanentIn, *, card_rel: str, card_title: str) -
     的工作，非本 endpoint）。
     """
     result: dict[str, object] = {
+        "candidate_recorded": False,
         "literature_backfilled": False,
         "fleeting_processed": False,
         "index_updated": False,
@@ -353,6 +375,17 @@ def _run_phase5(payload: CreatePermanentIn, *, card_rel: str, card_title: str) -
         "warnings": [],
     }
     warnings: list[str] = result["warnings"]  # type: ignore[assignment]
+
+    # ⓪ 候選收件匣：開卡來源候選 → 標 carded（list_open 不再回它）+ 記 card 事件。
+    #    修「create_permanent 收了 candidate_id 卻從不記為已處理」——開卡後不再每日重現。
+    if payload.candidate_id:
+        try:
+            from shared import candidate_inbox
+
+            candidate_inbox.mark_carded(payload.candidate_id, carded_path=card_rel)
+            result["candidate_recorded"] = True
+        except Exception as exc:  # noqa: BLE001 — 收件匣記帳 best-effort，不擋開卡
+            warnings.append(f"收件匣標記開卡失敗（{payload.candidate_id}）：{exc}")
 
     # ① Literature mined_concepts + status: mined（沿人寫的 source_ref 連結）。
     if payload.literature_slug:
@@ -566,6 +599,7 @@ async def review_skip(payload: ReviewActionIn, nakama_auth: str | None = Cookie(
     if not cid:
         raise HTTPException(422, detail="candidate_id 不可空")
     _update_review_state(cid, "skip")
+    _log_candidate_event(cid, "skip")
     return {"ok": True, "candidate_id": cid, "action": "skip"}
 
 
@@ -578,6 +612,7 @@ async def review_later(payload: ReviewActionIn, nakama_auth: str | None = Cookie
     if not cid:
         raise HTTPException(422, detail="candidate_id 不可空")
     _update_review_state(cid, "later")
+    _log_candidate_event(cid, "defer")
     return {"ok": True, "candidate_id": cid, "action": "later"}
 
 

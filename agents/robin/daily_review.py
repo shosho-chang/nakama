@@ -32,6 +32,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from shared import candidate_inbox
 from shared.config import get_vault_path
 from shared.kb_hybrid_search import get_kb_conn
 from shared.llm import ask
@@ -1194,18 +1195,39 @@ def run_daily_review(
         save_review_state(vault_path, state)
     deferred_pending: set[str] = set((state.get("deferred") or {}).keys())
 
-    # 2) 昨日 annotation delta → P-1 候選
+    # 2) 昨日 annotation delta → P-1 候選（raw）→ 寫進收件匣 → 讀回「全部未開卡」候選。
+    #    收件匣讓昨天沒處理的候選**結轉**到今天（修「點子消失」：原本單槽快照覆寫即丟）。
     items = collect_yesterday_items(vault_path, yesterday=yesterday)
     index_text = _read_index_text(vault_path)
-    candidates, p1_warnings = build_candidates(items, index_text)
+    fresh, p1_warnings = build_candidates(items, index_text)
     warnings.extend(p1_warnings)
 
-    # 過濾掉已「略過」與「之後再說（未過期）」的候選——不重複打擾
+    today_iso = today.isoformat()
+    for card in fresh:
+        try:
+            candidate_inbox.upsert_candidate(card, today=today_iso)
+        except Exception as exc:  # noqa: BLE001 — 收件匣寫入失敗不該沉 job
+            warnings.append(f"收件匣寫入失敗（{card.suggested_title[:20]}）：{exc}")
+    try:
+        candidates = candidate_inbox.list_open()  # 結轉 + 今日新候選，強訊號置頂、新→舊
+    except Exception as exc:  # noqa: BLE001 — 收件匣讀取失敗 → 退回當日 fresh（degraded 不中斷）
+        warnings.append(f"收件匣讀取失敗，退回當日候選：{exc}")
+        candidates = fresh
+
+    # 過濾掉已「略過」與「之後再說（未過期）」的候選——skip/defer 過濾權威仍是 state JSON
     candidates = [
         c
         for c in candidates
         if c.candidate_id not in skipped and c.candidate_id not in deferred_pending
     ]
+
+    # 顯示上限：超過的留在收件匣不丟，僅警示（清掉一些後其餘自動浮現）。
+    if len(candidates) > candidate_inbox.MAX_INBOX_DISPLAY:
+        warnings.append(
+            f"收件匣有 {len(candidates)} 條未處理候選，僅顯示前 "
+            f"{candidate_inbox.MAX_INBOX_DISPLAY} 條（其餘已留存，清理後自動浮現）"
+        )
+        candidates = candidates[: candidate_inbox.MAX_INBOX_DISPLAY]
 
     # 3) 每候選跑 P-2 typed-edge（高圈）+ 卡片畫布中圈/外圈（N527）
     mocs = load_mocs(vault_path)  # 一次讀 MOC 清單（語料），每候選共用
@@ -1239,6 +1261,10 @@ def run_daily_review(
         sweep.extend(detect_stale_seedlings(vault_path, today=today))
         sweep.extend(detect_orphans(vault_path, conn=conn))
         for cid in expired_ids:
+            try:
+                candidate_inbox.log_event(cid, "expire")
+            except Exception:  # noqa: BLE001 — 事件記錄 best-effort
+                pass
             sweep.append(
                 SweepItem(
                     kind="expired_defer",
