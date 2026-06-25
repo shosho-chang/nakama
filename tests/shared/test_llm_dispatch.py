@@ -20,12 +20,15 @@ def _reset_singletons_and_transport(monkeypatch):
     monkeypatch.delenv("NAKAMA_REQUIRE_MAX_PLAN", raising=False)
     import shared.anthropic_client as ac
     import shared.xai_client as xai
+    from shared.llm_context import _local
 
     ac._client = None
     xai._client = None
+    _local.agent = None  # 清 set_current_agent 殘留，避免 per-agent transport 漏到別測試
     yield
     ac._client = None
     xai._client = None
+    _local.agent = None
 
 
 def _fake_anthropic_msg(text="native-claude"):
@@ -244,3 +247,34 @@ def test_openai_raises_clearly_when_transport_native(monkeypatch):
 
     with pytest.raises(NotImplementedError, match="LLM_TRANSPORT=openrouter"):
         llm.ask("hi", model="gpt-5")
+
+
+# ── per-agent transport override（Slice 6 canary enabler）─────────────────────
+def test_per_agent_override_enables_single_agent(monkeypatch):
+    from shared.llm_transport import openrouter_enabled
+
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)  # 全域 off
+    monkeypatch.setenv("LLM_TRANSPORT_SANJI", "openrouter")
+    assert openrouter_enabled(agent="sanji") is True
+    assert openrouter_enabled(agent="nami") is False  # 沒被 override，全域也沒開
+
+
+def test_per_agent_override_can_exclude_from_global(monkeypatch):
+    from shared.llm_transport import openrouter_enabled
+
+    monkeypatch.setenv("LLM_TRANSPORT", "openrouter")  # 全域開
+    monkeypatch.setenv("LLM_TRANSPORT_SANJI", "native")  # 但 Sanji 反向排除
+    assert openrouter_enabled(agent="sanji") is False
+    assert openrouter_enabled(agent="nami") is True
+
+
+def test_per_agent_override_reads_threadlocal_agent(monkeypatch):
+    from shared.llm_context import set_current_agent
+    from shared.llm_transport import openrouter_enabled
+
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    monkeypatch.setenv("LLM_TRANSPORT_SANJI", "openrouter")
+    set_current_agent("sanji", run_id=None)
+    assert openrouter_enabled() is True  # 無顯式 agent → 讀 threadlocal
+    set_current_agent("nami", run_id=None)
+    assert openrouter_enabled() is False

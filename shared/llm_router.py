@@ -80,6 +80,7 @@ KNOWN_MODELS: tuple[str, ...] = (
     "claude-haiku-4-5",
     "claude-haiku-4-5-20251001",
     "gemini-2.5-pro",
+    "gemini-2.5-flash",
     "grok-4-fast",
     # OpenAI — 只在 LLM_TRANSPORT=openrouter 時可用（facade 無原生 OpenAI SDK，走
     # OpenRouter BYOK）；native 時選到會 fail loud。slug 見 shared/openrouter_models.py。
