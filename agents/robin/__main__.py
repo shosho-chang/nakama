@@ -50,16 +50,25 @@ def _run_daily_review(*, weekly: bool) -> None:
     record_success(_JOB_NAME_DAILY_REVIEW)
 
 
+def _run_book_ingest() -> None:
+    """Route B（Slice 4C）：排清書本 ingest 佇列（Reader「Ingest 整本書」入列的書）。"""
+    from agents.robin.book_ingest import drain
+
+    n = drain()
+    print(f"book ingest: 處理了 {n} 本書")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Robin — Knowledge Base Agent")
     parser.add_argument(
         "--mode",
-        choices=["ingest", "pubmed_digest", "daily_review"],
+        choices=["ingest", "pubmed_digest", "daily_review", "book_ingest"],
         default="ingest",
         help=(
             "執行模式：ingest = 既有 KB 檔案 ingest（預設）；"
             "pubmed_digest = 每日 PubMed 精選；"
-            "daily_review = Centaur 每日回顧（5am cron，產候選卡 + 持久化給 dashboard）"
+            "daily_review = Centaur 每日回顧（5am cron，產候選卡 + 持久化給 dashboard）；"
+            "book_ingest = 排清書本 ingest 佇列（route B）"
         ),
     )
     parser.add_argument(
@@ -88,6 +97,8 @@ def main() -> None:
 
         weekly = args.weekly or is_weekly_sweep_day(_local_today())
         _run_daily_review(weekly=weekly)
+    elif args.mode == "book_ingest":
+        _run_book_ingest()
     else:
         RobinAgent(interactive=args.interactive).execute()
 
