@@ -362,7 +362,8 @@ def test_create_task_scheduled_projects_to_calendar(tmp_path):
 def test_create_task_weekend_passes_reason(tmp_path):
     """週末日期要帶 reason，否則 upsert_plan_entry 會擋（WeekendReasonRequired）。"""
     _, mock_sched, _ = _create_task_via_nami(
-        tmp_path, {"title": "正課拍攝", "scheduled": "2026-04-25"}  # 週六
+        tmp_path,
+        {"title": "正課拍攝", "scheduled": "2026-04-25"},  # 週六
     )
     assert mock_sched.call_args.kwargs["reason"]  # 非空
 
