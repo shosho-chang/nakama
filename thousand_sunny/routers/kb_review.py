@@ -49,9 +49,7 @@ _TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
 # 「KB 回顧頁沒有導覽列、回不去」。So this env must resolve "bridge/_chassis_nav.html"
 # alongside the kb templates. Mirror the robin router's [own-dir, bridge] search
 # path (robin.py) rather than hardcode the partial elsewhere.
-templates = Jinja2Templates(
-    directory=[str(_TEMPLATE_ROOT / "kb"), str(_TEMPLATE_ROOT / "bridge")]
-)
+templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT / "kb"), str(_TEMPLATE_ROOT / "bridge")])
 # Overview (/kb) wears the chassis nav via a root-rooted env (resolves both
 # "kb/overview.html" and "bridge/_chassis_nav.html").
 _chrome_templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT)])
