@@ -124,12 +124,36 @@ def test_run_once_marks_failed_on_bad_epub(wired, monkeypatch):
     assert _FakePipeline.calls == []  # never reached the pipeline
 
 
-def test_run_once_marks_failed_when_no_original(wired):
-    _make_book("noorig", has_original=False)
-    book_queue.enqueue("noorig")
-    assert bi.run_once() == "noorig"
-    assert _status("noorig")["status"] == "failed"
-    assert _FakePipeline.calls == []
+def test_run_once_ingests_monolingual_zh_via_bilingual_blob(wired, monkeypatch):
+    """中譯-only 書（has_original=False）→ 讀 bilingual.epub（中文）ingest，不再 fail。"""
+    seen = {}
+
+    def _blob(book_id, *, lang):  # noqa: ANN001
+        seen["lang"] = lang
+        return _tiny_epub()
+
+    monkeypatch.setattr(bi, "read_book_blob", _blob)
+    _make_book("zhonly", has_original=False)
+    book_queue.enqueue("zhonly")
+    assert bi.run_once() == "zhonly"
+    assert _status("zhonly")["status"] == "ingested"
+    assert seen["lang"] == "bilingual"  # 讀中文 blob，不是 en
+    assert len(_FakePipeline.calls) == 1
+
+
+def test_run_once_reads_en_original_when_has_original(wired, monkeypatch):
+    """雙語書（has_original=True）→ 讀 EN original.epub（route B 既有行為不變）。"""
+    seen = {}
+
+    def _blob(book_id, *, lang):  # noqa: ANN001
+        seen["lang"] = lang
+        return _tiny_epub()
+
+    monkeypatch.setattr(bi, "read_book_blob", _blob)
+    _make_book("bilingual_bk", has_original=True)
+    book_queue.enqueue("bilingual_bk")
+    assert bi.run_once() == "bilingual_bk"
+    assert seen["lang"] == "en"
 
 
 def test_drain_processes_all_then_stops(wired):
