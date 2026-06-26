@@ -317,6 +317,72 @@ def test_create_task_tool_writes_page(tmp_path):
     assert mock_emit.call_args[0][1] == "task_created"
 
 
+def _create_task_via_nami(tmp_path, tool_input, *, sched_side_effect=None):
+    """Drive _tool_create_task through the dispatcher with create_task +
+    schedule_entry stubbed. Returns (result, mock_schedule_entry, mock_emit)."""
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("create_task", tool_input, id_="toolu_ctp")],
+        ),
+        _fake_response("end_turn", [_text_block("已建立 task")]),
+    ]
+    title = tool_input.get("title", "t")
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses),
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("shared.config.get_vault_path", return_value=tmp_path),
+        patch("shared.project_writer.create_task") as mock_create,
+        patch(
+            "shared.calendar_scheduler.schedule_entry", side_effect=sched_side_effect
+        ) as mock_sched,
+        patch("gateway.handlers.nami.emit") as mock_emit,
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        mock_create.return_value = tmp_path / "TaskNotes" / "Tasks" / f"{title}.md"
+        result = NamiHandler().handle("create_task", "建任務", "U1")
+    return result, mock_sched, mock_emit
+
+
+def test_create_task_scheduled_projects_to_calendar(tmp_path):
+    """item 4 forward-fix: 有排程日期 → 投影到 GCal（all_day）+ 連動。"""
+    _, mock_sched, _ = _create_task_via_nami(
+        tmp_path, {"title": "看牙醫", "scheduled": "2026-04-22"}
+    )
+    mock_sched.assert_called_once()
+    args, kwargs = mock_sched.call_args
+    assert args[1] == "看牙醫"  # slug = task file stem
+    assert kwargs["all_day"] is True
+    assert kwargs["title"] == "看牙醫"
+    assert kwargs["pomodoros"] == 4
+    assert kwargs["start"].date().isoformat() == "2026-04-22"
+    assert kwargs["reason"] is None  # 2026-04-22 是週三（平日）→ 不留多餘理由
+
+
+def test_create_task_weekend_passes_reason(tmp_path):
+    """週末日期要帶 reason，否則 upsert_plan_entry 會擋（WeekendReasonRequired）。"""
+    _, mock_sched, _ = _create_task_via_nami(
+        tmp_path, {"title": "正課拍攝", "scheduled": "2026-04-25"}  # 週六
+    )
+    assert mock_sched.call_args.kwargs["reason"]  # 非空
+
+
+def test_create_task_unscheduled_skips_projection(tmp_path):
+    _, mock_sched, _ = _create_task_via_nami(tmp_path, {"title": "隨手記"})
+    mock_sched.assert_not_called()
+
+
+def test_create_task_calendar_failure_does_not_block(tmp_path):
+    """行事曆掛了 → 建任務仍成功（best-effort，vault 為權威）。"""
+    result, _, mock_emit = _create_task_via_nami(
+        tmp_path,
+        {"title": "看牙醫", "scheduled": "2026-04-22"},
+        sched_side_effect=RuntimeError("gcal down"),
+    )
+    assert "task" in result.text
+    mock_emit.assert_called_once()  # task_created 仍 emit
+
+
 # ── Agent loop: continue_flow with user reply ───────────────────────
 
 
