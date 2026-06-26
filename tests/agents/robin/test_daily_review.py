@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 import agents.robin.daily_review as dr
-from shared import book_queue, candidate_inbox
+from shared import candidate_inbox
 from shared.kb_hybrid_search import make_conn
 from shared.schemas.annotations import (
     AnnotationSetV3,
@@ -766,8 +766,8 @@ def test_run_daily_review_weekly_expires_deferred(vault: Path, monkeypatch):
 
 
 def _book_set(book_id: str = "斷食長壽書") -> AnnotationSetV3:
-    """書本來源 fixture（base=books / book_id）：一條昨日、一條更早，證明整本提案
-    （:func:`collect_book_items`）不限昨日。"""
+    """書本來源 fixture（base=books / book_id）：一條昨日、一條更早。用於 gate 測試
+    （書本不進每日「昨日」流）+ 以 slug 收整份的 :func:`collect_source_items`。"""
     return AnnotationSetV3(
         slug=book_id,
         base="books",
@@ -794,42 +794,10 @@ def _book_set(book_id: str = "斷食長壽書") -> AnnotationSetV3:
     )
 
 
-def _seed_ingested_book(book_id: str, monkeypatch, tmp_path) -> None:
-    """插一筆真 books 列（FK 需要）+ 佇列標 ``ingested``。"""
-    monkeypatch.setenv("NAKAMA_BOOKS_DIR", str(tmp_path / "books"))
-    from shared.book_storage import insert_book
-    from shared.schemas.books import Book
-
-    insert_book(
-        Book(
-            book_id=book_id,
-            title=book_id,
-            author=None,
-            lang_pair="en-zh",
-            genre=None,
-            isbn=None,
-            published_year=None,
-            has_original=True,
-            book_version_hash="b" * 64,
-            created_at="2026-05-05T00:00:00+00:00",
-        )
-    )
-    book_queue.enqueue(book_id)
-    book_queue.mark_status(book_id, "ingested")
-
-
 def test_collect_yesterday_items_excludes_books(vault: Path):
     """書本劃線（即使昨日新增）不進每日「昨日」流。"""
     _write_annotations(vault, _book_set())
     assert dr.collect_yesterday_items(vault, yesterday=date(2026, 6, 10)) == []
-
-
-def test_collect_book_items_returns_all_dates(vault: Path):
-    """collect_book_items 收整本（不限昨日）——昨日 + 更早兩條都在。"""
-    _write_annotations(vault, _book_set("斷食長壽書"))
-    items = dr.collect_book_items(vault, book_id="斷食長壽書")
-    quotes = {it["quote"] for it in items}
-    assert quotes == {"自噬在斷食期間上升。", "運動誘發粒線體新生。"}
 
 
 def test_collect_source_items_by_slug_returns_all_dates(vault: Path):
@@ -846,89 +814,6 @@ def test_collect_source_items_by_slug_returns_all_dates(vault: Path):
 def test_collect_source_items_missing_file_returns_empty(vault: Path):
     """文章從 Inbox 丟進來、沒在 Reader 讀過 → 無 annotation 檔 → 空（無開卡建議）。"""
     assert dr.collect_source_items(vault, slug="從未讀過的文章") == []
-
-
-def test_run_daily_review_gates_unfinished_book(vault: Path, monkeypatch):
-    """書還沒 ingest（無佇列列）→ 不對它跑 P-1、不提案。"""
-    _write_annotations(vault, _book_set())
-    (vault / "KB").mkdir(exist_ok=True)
-    (vault / "KB" / "index.md").write_text("# index\n", encoding="utf-8")
-
-    def _boom_p1(prompt):  # noqa: ARG001
-        raise AssertionError("未完成的書不該觸發 P-1")
-
-    monkeypatch.setattr(dr, "_ask_p1_llm", _boom_p1)
-    import agents.robin.kb_search as kb
-
-    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [])
-
-    bundle = dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
-    assert bundle.candidates == []
-    assert dr.load_ingest_proposed(vault) == set()
-
-
-def test_run_daily_review_proposes_book_on_ingest_complete(vault, monkeypatch, tmp_path):
-    """書 ingest 完成 → 整本劃線一次提案；book_id 記入 proposed。"""
-    _write_annotations(vault, _book_set("斷食長壽書"))
-    (vault / "KB").mkdir(exist_ok=True)
-    (vault / "KB" / "index.md").write_text("# index\n", encoding="utf-8")
-    _seed_ingested_book("斷食長壽書", monkeypatch, tmp_path)
-
-    def _fake_p1(prompt):
-        assert "自噬在斷食期間上升。" in prompt  # 書本劃線確實進了 P-1
-        return [
-            {
-                "suggested_title": "斷食誘發自噬清理受損胞器",
-                "why": "強訊號",
-                "anchors": ["^cfi-6-4-10"],
-                "source_quote": "自噬在斷食期間上升。",
-                "user_note": "這個機制很重要，必須記起來。",
-                "strong_signal": True,
-            }
-        ]
-
-    monkeypatch.setattr(dr, "_ask_p1_llm", _fake_p1)
-    import agents.robin.kb_search as kb
-
-    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [])
-
-    bundle = dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
-    assert "斷食誘發自噬清理受損胞器" in [c.suggested_title for c in bundle.candidates]
-    assert "斷食長壽書" in dr.load_ingest_proposed(vault)
-
-
-def test_run_daily_review_proposes_book_once(vault, monkeypatch, tmp_path):
-    """同一本書只提案一次：第二次再跑不再對它跑 P-1（proposed 去重）。"""
-    _write_annotations(vault, _book_set("斷食長壽書"))
-    (vault / "KB").mkdir(exist_ok=True)
-    (vault / "KB" / "index.md").write_text("# index\n", encoding="utf-8")
-    _seed_ingested_book("斷食長壽書", monkeypatch, tmp_path)
-
-    calls = {"n": 0}
-
-    def _fake_p1(prompt):  # noqa: ARG001
-        calls["n"] += 1
-        return [
-            {
-                "suggested_title": "斷食誘發自噬",
-                "why": "x",
-                "anchors": ["^cfi-6-4-10"],
-                "source_quote": "自噬在斷食期間上升。",
-                "user_note": "很重要",
-                "strong_signal": True,
-            }
-        ]
-
-    monkeypatch.setattr(dr, "_ask_p1_llm", _fake_p1)
-    import agents.robin.kb_search as kb
-
-    monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [])
-
-    dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
-    assert calls["n"] == 1
-    # 第二次：書已在 proposed → 不再對它跑 P-1
-    dr.run_daily_review(now=_NOW, weekly=False, vault_path=vault, notify=False)
-    assert calls["n"] == 1
 
 
 # ═══════════════════════════════════════════════════════════════════════════

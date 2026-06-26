@@ -75,8 +75,6 @@ def _upload_authed(tc: TestClient, cookie: str, book_id: str = "alpha") -> None:
     "method,path",
     [
         ("GET", "/robin/api/books/alpha"),
-        ("POST", "/robin/api/books/alpha/ingest-request"),
-        ("DELETE", "/robin/api/books/alpha/ingest-request"),
         ("GET", "/robin/api/books/alpha/cover"),
         ("GET", "/robin/api/books/alpha/annotations"),
         ("POST", "/robin/api/books/alpha/annotations"),

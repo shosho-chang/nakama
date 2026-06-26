@@ -938,118 +938,22 @@ function dismissSidebarsOnOutsideClick(target) {
 }
 document.addEventListener('click', e => dismissSidebarsOnOutsideClick(e.target));
 
-// ── Ingest button (Slice 4D) ─────────────────────────────────────────────────
+// ── Ingest button label ──────────────────────────────────────────────────────
 //
-// Reader-side trigger for the whole-book ingest pipeline (Slices 4A–4C). Every
-// book is ingestable — has_original reads the EN original.epub, a monolingual-zh
-// 中譯本 reads its Chinese bilingual.epub blob (修修 回饋 item 5) — so the button is
-// no longer gated on has_original; enablement is driven by ingest_status alone.
-// On 200 we lock the button into the "Queued" state; the badge on the library
-// page is the source of truth for downstream status (ingesting / ingested /
-// partial / failed). Single user, manual refresh — no polling here.
+// The button is a <form method="post" action="/start-book"> submit (book_reader.html):
+// clicking POSTs synchronously → /processing runs the SAME SSE autonomous flow as
+// articles/videos (摘要→概念→寫入→開卡建議), 3–5 min + progress bar. No ingest queue,
+// no async fetch here — the form navigates. We only relabel: an already-ingested book
+// (ingest_status='ingested', i.e. its KB/Wiki/Sources page exists) offers "重新 ingest".
 
 const ingestBtn = document.getElementById('ingestBtn');
-const ingestWrap = document.getElementById('ingestWrap');
 
-// The ingest button is a state-machine: its current text + dataset.mode tell the
-// click handler which API to call. queued is the only cancellable state — once
-// the LLM ingest starts (status='ingesting') the API refuses (409) since the
-// background job can't be aborted mid-run.
 function applyIngestState({ ingest_status }) {
-  if (!ingestBtn || !ingestWrap) return;
-  ingestBtn.classList.remove('is-queued');
-  ingestBtn.dataset.mode = 'ingest';
-  ingestWrap.removeAttribute('data-disabled-reason');
-  if (ingest_status === 'queued') {
-    ingestBtn.disabled = false;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.dataset.mode = 'cancel';
-    ingestBtn.textContent = '📥 取消 Queued';
-    return;
-  }
-  if (ingest_status === 'ingesting') {
-    ingestBtn.disabled = true;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.textContent = '📥 Ingesting';
-    return;
-  }
-  if (ingest_status === 'ingested') {
-    ingestBtn.disabled = true;
-    ingestBtn.classList.add('is-queued');
-    ingestBtn.textContent = '📥 Ingested';
-    return;
-  }
-  if (ingest_status === 'partial' || ingest_status === 'failed') {
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = '📥 重試 ingest';
-    return;
-  }
-  ingestBtn.disabled = false;
-  ingestBtn.textContent = '📥 Ingest 整本書';
-}
-
-async function requestIngest() {
   if (!ingestBtn) return;
-  const prevText = ingestBtn.textContent;
-  ingestBtn.disabled = true;
-  ingestBtn.textContent = '📥 送出中⋯';
-  try {
-    const r = await fetch(
-      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
-    );
-    if (!r.ok) {
-      const detail = await r.text().catch(() => '');
-      console.error('ingest request failed', r.status, detail);
-      showToast(`Ingest 送出失敗 (HTTP ${r.status})`);
-      ingestBtn.disabled = false;
-      ingestBtn.textContent = prevText;
-      return;
-    }
-    applyIngestState({ has_original: true, ingest_status: 'queued' });
-  } catch (err) {
-    console.error('ingest request error', err);
-    showToast(`Ingest 送出失敗：${String(err.message || err)}`);
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = prevText;
+  const label = ingestBtn.querySelector('.btn-label');
+  if (label) {
+    label.textContent = ingest_status === 'ingested' ? '重新 ingest' : 'Ingest 整本書';
   }
-}
-
-async function cancelIngest() {
-  if (!ingestBtn) return;
-  const prevText = ingestBtn.textContent;
-  ingestBtn.disabled = true;
-  ingestBtn.textContent = '📥 取消中⋯';
-  try {
-    const r = await fetch(
-      `/robin/api/books/${encodeURIComponent(BOOK_ID)}/ingest-request`,
-      { method: 'DELETE' },
-    );
-    if (!r.ok) {
-      const detail = await r.text().catch(() => '');
-      console.error('ingest cancel failed', r.status, detail);
-      showToast(`取消失敗 (HTTP ${r.status})`);
-      ingestBtn.disabled = false;
-      ingestBtn.textContent = prevText;
-      return;
-    }
-    applyIngestState({ has_original: true, ingest_status: 'never' });
-  } catch (err) {
-    console.error('ingest cancel error', err);
-    showToast(`取消失敗：${String(err.message || err)}`);
-    ingestBtn.disabled = false;
-    ingestBtn.textContent = prevText;
-  }
-}
-
-if (ingestBtn) {
-  ingestBtn.addEventListener('click', () => {
-    if (ingestBtn.dataset.mode === 'cancel') {
-      cancelIngest();
-    } else {
-      requestIngest();
-    }
-  });
 }
 
 const deleteBookBtn = document.getElementById('deleteBookBtn');

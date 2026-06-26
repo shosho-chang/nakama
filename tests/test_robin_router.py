@@ -726,6 +726,66 @@ def test_start_happy_path_creates_session(client, vault):
 
 
 # ---------------------------------------------------------------------------
+# POST /start-book  (Centaur route B — 同步書本 ingest 入口；EPUB→KB/Raw/Books→
+# /processing 自動流程。prepare_book_raw 單元測試見 tests/shared/test_book_raw.py)
+# ---------------------------------------------------------------------------
+
+
+def test_start_book_unauth_redirect(auth_client):
+    tc, _, _ = auth_client
+    r = tc.post("/start-book", data={"book_id": "bk1"})
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+
+
+def test_start_book_missing_book_404(client, monkeypatch):
+    """書不在 books 表 → prepare_book_raw 拋 LookupError → 404。"""
+    tc, mod = client
+
+    def _raise(book_id):
+        raise LookupError("no such book")
+
+    monkeypatch.setattr(mod, "prepare_book_raw", _raise)
+    r = tc.post("/start-book", data={"book_id": "ghost"})
+    assert r.status_code == 404
+
+
+def test_start_book_unextractable_422(client, monkeypatch):
+    """EPUB 抽不出文字 → EPUBTextError → 422。"""
+    tc, mod = client
+    from shared.epub_text import EPUBTextError
+
+    def _raise(book_id):
+        raise EPUBTextError("no extractable text")
+
+    monkeypatch.setattr(mod, "prepare_book_raw", _raise)
+    r = tc.post("/start-book", data={"book_id": "empty-bk"})
+    assert r.status_code == 422
+
+
+def test_start_book_happy_path_creates_session(client, vault, monkeypatch):
+    """書本 raw 就緒 → 建 session（source_type=book、annotation_slug=book_id、
+    keep_raw、無 Inbox 來源檔）→ /processing。"""
+    tc, mod = client
+    raw = vault / "KB" / "Raw" / "Books" / "my-book.md"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text("---\ntitle: My Book\nsource_type: book\n---\nbook body", encoding="utf-8")
+    monkeypatch.setattr(mod, "prepare_book_raw", lambda book_id: raw)
+
+    r = tc.post("/start-book", data={"book_id": "my-book-id"})
+    assert r.status_code == 302
+    assert r.headers["location"] == "/processing"
+    assert "robin_session" in r.headers.get("set-cookie", "")
+
+    sess = next(s for s in mod.sessions.values() if s.get("source_type") == "book")
+    assert sess["raw_path"] == str(raw)  # 直指 KB/Raw/Books，未從 Inbox 複製
+    assert sess["annotation_slug"] == "my-book-id"  # 整本劃線提案用
+    assert sess["file_path"] == ""  # 無 Inbox 來源檔 → execute 不回收
+    assert sess["keep_raw"] is True  # 衍生檔，cancel 不回收
+    assert sess["step"] == "summarizing"
+
+
+# ---------------------------------------------------------------------------
 # POST /cancel
 # ---------------------------------------------------------------------------
 

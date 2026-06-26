@@ -22,12 +22,14 @@
   </div>
   <nav class="right">
     <a href="/robin/home" class="icon-btn back-inbox">🏠 <span class="btn-label">首頁</span></a>
-    {# Ingest 鈕對所有書顯示——中譯-only 書（monolingual-zh）讀中文 blob 跑同一條
-       pipeline，不再限英文原檔（修修 回饋 item 5）。啟用狀態由 book_reader.js
-       applyIngestState 依 ingest_status 決定。 #}
-    <span class="ingest-wrap" id="ingestWrap">
-      <button type="button" class="icon-btn" id="ingestBtn" aria-label="送出整本書 ingest 請求" disabled>📥 <span class="btn-label">Ingest 整本書</span></button>
-    </span>
+    {# Ingest 整本書 → 同步 POST /start-book → /processing（與文章/影片同一條 SSE 自動
+       流程，3–5 分鐘 + 進度條，取代舊的 ingest 佇列）。中譯-only 書讀中文 blob 跑同一條，
+       不限英文原檔（修修 回饋 item 5）。標籤由 book_reader.js 依 ingest_status 設定
+       （ingested → 重新 ingest）。 #}
+    <form method="post" action="/start-book" class="ingest-wrap" id="ingestForm">
+      <input type="hidden" name="book_id" value="{{ book.book_id }}">
+      <button type="submit" class="icon-btn" id="ingestBtn" aria-label="Ingest 整本書（約 3–5 分鐘）">📥 <span class="btn-label">Ingest 整本書</span></button>
+    </form>
     <a href="/robin/literature/{{ book.book_id }}" target="_blank" rel="noopener" class="icon-btn" title="觀看這本書的文獻筆記（由你的劃線整理）">📖 <span class="btn-label">觀看筆記</span></a>
     <button type="button" class="icon-btn" id="tocToggle" aria-label="切換目錄" aria-pressed="false">📑 <span class="btn-label">目錄</span></button>
     <button type="button" class="icon-btn" id="commentsToggle" aria-label="切換反思側欄" aria-pressed="false">💬 <span class="btn-label">反思</span></button>
