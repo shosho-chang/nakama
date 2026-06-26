@@ -32,7 +32,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from shared import candidate_inbox
+from shared import book_queue, candidate_inbox
 from shared.config import get_vault_path
 from shared.kb_hybrid_search import get_kb_conn
 from shared.llm import ask
@@ -160,6 +160,34 @@ def save_review_state(vault_path: Path, state: dict) -> None:
     path = _state_path(vault_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# 書本「整本 ingest 完成 → 一次提案」的去重記錄（item 6）。獨立檔，不混進
+# skip/defer state——kb_review.py 的 skip/later 回寫會整碗覆寫 state，會把這裡洗掉。
+_BOOK_PROPOSED_RELPATH = "KB/.centaur/book_ingest_proposed.json"
+
+
+def load_ingest_proposed(vault_path: Path) -> set[str]:
+    """讀「已對其劃線提過候選卡」的 book_id 集合。檔不存在 / 壞檔 → 空集合（不中斷 job）。"""
+    path = vault_path / _BOOK_PROPOSED_RELPATH
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    proposed = data.get("proposed") if isinstance(data, dict) else None
+    if not isinstance(proposed, list):
+        return set()
+    return {str(b) for b in proposed}
+
+
+def save_ingest_proposed(vault_path: Path, book_ids: set[str]) -> None:
+    """寫回已提案書本集合（排序持久化，diff 友善）。"""
+    path = vault_path / _BOOK_PROPOSED_RELPATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"proposed": sorted(book_ids)}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # N529: 5am job 持久化最近一次 bundle，讓 weekly dashboard 免重算即可顯示。
@@ -311,6 +339,13 @@ def _item_quote_note(item) -> tuple[str, str]:
     return item.text, ""
 
 
+def _is_book_annset(ann_set) -> bool:
+    """這個 annotation set 是不是書本來源（對齊 literature_writer._infer_source_kind：
+    ``base == "books"`` 或有 ``book_id``）。書本不走每日「昨日」流，改走整本 ingest
+    完成後的一次提案（:func:`collect_book_items`）。"""
+    return bool(getattr(ann_set, "book_id", None)) or getattr(ann_set, "base", "") == "books"
+
+
 def collect_yesterday_items(
     vault_path: Path,
     *,
@@ -320,17 +355,51 @@ def collect_yesterday_items(
 
     每筆 dict：``{slug, anchor, quote, note, type, literature_path}``。純 highlight
     （無 note）也收進來——P-1 自己依規則排除（雜訊控制在 prompt 側，保留可調性）。
+
+    **書本來源整批排除**（item 6 / 修修回饋）：讀到一半的書，前一天的劃線不該每天
+    被提案；書本改在整本 ingest 完成後由 :func:`collect_book_items` 一次提案。
     """
     out: list[dict] = []
     for path in _iter_annotation_files(vault_path):
         ann_set = _load_v3_set(path)
         if ann_set is None:
             continue
+        if _is_book_annset(ann_set):
+            continue
         slug = ann_set.slug
         for item in ann_set.items:
             created = _created_local_date(getattr(item, "created_at", None))
             if created != yesterday:
                 continue
+            quote, note = _item_quote_note(item)
+            out.append(
+                {
+                    "slug": slug,
+                    "anchor": _item_anchor(item, slug),
+                    "quote": quote,
+                    "note": note,
+                    "type": item.type,
+                    "literature_path": f"KB/Literature/{slug}",
+                }
+            )
+    return out
+
+
+def collect_book_items(vault_path: Path, *, book_id: str) -> list[dict]:
+    """收某本書「全部」annotation item（不限昨日）——整本 ingest 完成後一次提案用。
+
+    回傳 dict 與 :func:`collect_yesterday_items` 同形（餵 P-1）。一個 annotation 檔
+    對一個來源 slug，以 ``ann_set.book_id`` 對應 books 表 / ingest 佇列的 book_id。
+    """
+    out: list[dict] = []
+    for path in _iter_annotation_files(vault_path):
+        ann_set = _load_v3_set(path)
+        if ann_set is None:
+            continue
+        if getattr(ann_set, "book_id", None) != book_id:
+            continue
+        slug = ann_set.slug
+        for item in ann_set.items:
             quote, note = _item_quote_note(item)
             out.append(
                 {
@@ -1201,6 +1270,27 @@ def run_daily_review(
     index_text = _read_index_text(vault_path)
     fresh, p1_warnings = build_candidates(items, index_text)
     warnings.extend(p1_warnings)
+
+    # 2b) 書本完成 ingest → 一次提案整本累積的劃線（每本獨立一次 P-1；提過不再提）。
+    #     修修回饋（item 6）：整本書看完並 ingest 完成後 Robin 才建議開卡；讀到一半
+    #     的書前一天的劃線不該每天被提案（collect_yesterday_items 已整批排除書本）。
+    try:
+        proposed_books = load_ingest_proposed(vault_path)
+        newly_proposed: set[str] = set()
+        for book_id in book_queue.ingested_book_ids():
+            if book_id in proposed_books:
+                continue
+            book_items = collect_book_items(vault_path, book_id=book_id)
+            if book_items:
+                bcards, bwarn = build_candidates(book_items, index_text)
+                fresh.extend(bcards)
+                warnings.extend(bwarn)
+            # 即使該書無劃線也記為已提案，避免每天重查同一本。
+            newly_proposed.add(book_id)
+        if newly_proposed:
+            save_ingest_proposed(vault_path, proposed_books | newly_proposed)
+    except Exception as exc:  # noqa: BLE001 — 書本提案 best-effort，不沉每日 job
+        warnings.append(f"書本完成提案失敗：{exc}")
 
     today_iso = today.isoformat()
     for card in fresh:
