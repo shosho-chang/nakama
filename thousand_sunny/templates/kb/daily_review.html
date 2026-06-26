@@ -6,17 +6,24 @@
 <title>每日回顧 · Centaur KB</title>
 <script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+{# bridge.css 提供 chassis 導覽列 + .sho-btn base。版面 shell 是 body.sho.bridge-page
+   限定，本頁 body 只有 .sho，不會被劫持；只活化 .chassis* 與 .sho-btn*。 #}
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/kb_review.css?v={{ asset_version }}">
 <link rel="stylesheet" href="/static/kb_canvas.css?v={{ asset_version }}">
 </head>
 <body class="sho">
+{# 全站導覽列（chassis）—— 修補「KB 回顧頁沒有出口、回不去」。KB 高亮；
+   bridge.css 已在 <head> 載入提供樣式，下拉行為走外部 chassis_nav.js（CSP-safe）。 #}
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='kb') }}
 <div class="kb-shell">
   <main class="kb-main">
     <div class="vhead">
       <h1>每日回顧</h1>
       <span class="meta">{{ review_label }}</span>
       {% if weekly_sweep %}<span class="sho-tag sho-tag--warning">每週清掃日</span>{% endif %}
-      <button type="button" class="kb-newcard" id="kb-newcard">＋ 開新卡</button>
+      <button type="button" class="sho-btn sho-btn--ghost kb-newcard" id="kb-newcard">＋ 開新卡</button>
     </div>
 
     {% if warnings %}

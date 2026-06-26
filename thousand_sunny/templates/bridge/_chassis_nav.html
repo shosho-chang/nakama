@@ -114,48 +114,9 @@
     {%- endif %}
   </div>
 </header>
-<script>
-(function () {
-  /* Dropdown toggle: toggle aria-expanded + CSS class on click, close on outside click. */
-  var dropdowns = document.querySelectorAll('.chassis-dropdown');
-  dropdowns.forEach(function (dd) {
-    var trigger = dd.querySelector('.chassis-nav-trigger');
-    var menu = dd.querySelector('.chassis-dropdown-menu');
-    if (!trigger || !menu) return;
-    trigger.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var open = trigger.getAttribute('aria-expanded') === 'true';
-      /* Close all other dropdowns first */
-      dropdowns.forEach(function (other) {
-        var t = other.querySelector('.chassis-nav-trigger');
-        var m = other.querySelector('.chassis-dropdown-menu');
-        if (t) t.setAttribute('aria-expanded', 'false');
-        if (m) m.classList.remove('open');
-      });
-      if (!open) {
-        trigger.setAttribute('aria-expanded', 'true');
-        menu.classList.add('open');
-      }
-    });
-  });
-  document.addEventListener('click', function () {
-    dropdowns.forEach(function (dd) {
-      var t = dd.querySelector('.chassis-nav-trigger');
-      var m = dd.querySelector('.chassis-dropdown-menu');
-      if (t) t.setAttribute('aria-expanded', 'false');
-      if (m) m.classList.remove('open');
-    });
-  });
-  /* Close on Escape */
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
-    dropdowns.forEach(function (dd) {
-      var t = dd.querySelector('.chassis-nav-trigger');
-      var m = dd.querySelector('.chassis-dropdown-menu');
-      if (t) t.setAttribute('aria-expanded', 'false');
-      if (m) m.classList.remove('open');
-    });
-  });
-})();
-</script>
+{#-- Dropdown behaviour lives in an external file so the shared chassis header
+     carries NO inline <script> — required to reuse it on the Reader / KB
+     surfaces (script-src 'self', no-inline convention; see middleware/csp.py
+     + routers/kb_review.py). `defer` so the chassis DOM is parsed first. --#}
+<script defer src="/static/chassis_nav.js"></script>
 {%- endmacro %}
