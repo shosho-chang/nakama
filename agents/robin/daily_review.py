@@ -414,6 +414,37 @@ def collect_book_items(vault_path: Path, *, book_id: str) -> list[dict]:
     return out
 
 
+def collect_source_items(vault_path: Path, *, slug: str) -> list[dict]:
+    """收某個來源 slug「全部」annotation item（不限昨日）——來源 ingest 完成「當下」
+    提案用（與「整本書一次提案」同精神，但 keyed by slug，適用三來源）。
+
+    一個 annotation 檔對一個來源 slug（``KB/Annotations/{slug}.md``）。文章從 Inbox
+    丟進來、沒在 Reader 讀過 → 無 annotation 檔 → 回空（無開卡建議，靠 adhoc 開卡）。
+    影片 / 書讀過劃線 → 回 item 清單餵 P-1。回傳 dict 與 :func:`collect_yesterday_items`
+    同形。書本的 slug 即 ``book_id``（annotation set 的 slug 與 book_id 相同）。
+    """
+    path = vault_path / "KB" / "Annotations" / f"{slug}.md"
+    if not path.exists():
+        return []
+    ann_set = _load_v3_set(path)
+    if ann_set is None:
+        return []
+    out: list[dict] = []
+    for item in ann_set.items:
+        quote, note = _item_quote_note(item)
+        out.append(
+            {
+                "slug": ann_set.slug,
+                "anchor": _item_anchor(item, ann_set.slug),
+                "quote": quote,
+                "note": note,
+                "type": item.type,
+                "literature_path": f"KB/Literature/{ann_set.slug}",
+            }
+        )
+    return out
+
+
 def _has_strong_signal(note: str) -> bool:
     return any(p in note for p in _STRONG_SIGNAL_PATTERNS)
 
