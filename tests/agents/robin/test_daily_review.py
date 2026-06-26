@@ -832,6 +832,22 @@ def test_collect_book_items_returns_all_dates(vault: Path):
     assert quotes == {"自噬在斷食期間上升。", "運動誘發粒線體新生。"}
 
 
+def test_collect_source_items_by_slug_returns_all_dates(vault: Path):
+    """collect_source_items 以 slug 讀單一 annotation 檔，收整份（不限昨日）。"""
+    _write_annotations(vault, _book_set("斷食長壽書"))
+    items = dr.collect_source_items(vault, slug="斷食長壽書")
+    quotes = {it["quote"] for it in items}
+    assert quotes == {"自噬在斷食期間上升。", "運動誘發粒線體新生。"}
+    # 來源 slug 與 literature_path 對齊（餵 P-1 用）
+    assert all(it["slug"] == "斷食長壽書" for it in items)
+    assert all(it["literature_path"] == "KB/Literature/斷食長壽書" for it in items)
+
+
+def test_collect_source_items_missing_file_returns_empty(vault: Path):
+    """文章從 Inbox 丟進來、沒在 Reader 讀過 → 無 annotation 檔 → 空（無開卡建議）。"""
+    assert dr.collect_source_items(vault, slug="從未讀過的文章") == []
+
+
 def test_run_daily_review_gates_unfinished_book(vault: Path, monkeypatch):
     """書還沒 ingest（無佇列列）→ 不對它跑 P-1、不提案。"""
     _write_annotations(vault, _book_set())

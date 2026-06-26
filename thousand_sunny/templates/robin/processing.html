@@ -11,7 +11,13 @@
 <body class="sho robin-center">
 <div class="card">
   <div class="spinner"></div>
-  <h2>{{ label }}</h2>
+  <h2 id="phase-title">{{ label }}</h2>
+  <ol class="steps" id="steps" aria-label="Ingest 進度">
+    <li class="step" data-step="1"><span class="step-marker">1</span><span class="step-label">閱讀摘要</span></li>
+    <li class="step" data-step="2"><span class="step-marker">2</span><span class="step-label">分析概念</span></li>
+    <li class="step" data-step="3"><span class="step-marker">3</span><span class="step-label">寫入知識庫</span></li>
+    <li class="step" data-step="4"><span class="step-marker">4</span><span class="step-label">開卡建議</span></li>
+  </ol>
   <p id="status">連線中...</p>
   <div id="error" class="error-msg" style="display:none"></div>
   <a href="/" class="back-link" style="display:none" id="back">← 返回</a>
@@ -23,22 +29,54 @@
 const sessionId = "{{ session_id }}";
 const evtSource = new EventSource("/robin/events/" + sessionId);
 
-evtSource.addEventListener("status", function(e) {
+// Phase titles mirror the four SSE `phase` steps the autonomous flow emits.
+const PHASE_TITLES = {
+  1: "Robin 正在閱讀並摘要",
+  2: "Robin 正在分析概念與實體",
+  3: "Robin 正在寫入知識庫",
+  4: "Robin 正在整理開卡建議",
+};
+
+function setPhase(n) {
+  document.querySelectorAll("#steps .step").forEach(function (li) {
+    const s = Number(li.dataset.step);
+    const marker = li.querySelector(".step-marker");
+    li.classList.remove("is-active", "is-done");
+    if (s < n) { li.classList.add("is-done"); marker.textContent = "✓"; }
+    else if (s === n) { li.classList.add("is-active"); marker.textContent = String(s); }
+    else { marker.textContent = String(s); }
+  });
+  const title = document.getElementById("phase-title");
+  if (PHASE_TITLES[n]) title.textContent = PHASE_TITLES[n];
+}
+
+evtSource.addEventListener("phase", function (e) {
+  try { setPhase(JSON.parse(e.data).step); } catch (err) { /* malformed — ignore */ }
+});
+
+evtSource.addEventListener("status", function (e) {
   const data = JSON.parse(e.data);
   document.getElementById("status").textContent = data.msg;
 });
 
-evtSource.addEventListener("done", function(e) {
+evtSource.addEventListener("done", function (e) {
   evtSource.close();
+  // Light every step before navigating so the card reads "complete" if the
+  // redirect target is slow to paint.
+  document.querySelectorAll("#steps .step").forEach(function (li) {
+    li.classList.remove("is-active");
+    li.classList.add("is-done");
+    li.querySelector(".step-marker").textContent = "✓";
+  });
   document.getElementById("cancel-form").style.display = "none";
   const data = JSON.parse(e.data);
   window.location.href = data.redirect;
 });
 
-evtSource.addEventListener("error", function(e) {
+evtSource.addEventListener("error", function (e) {
   evtSource.close();
   let msg = "發生錯誤，請重試";
-  try { msg = JSON.parse(e.data).msg; } catch(err) {}
+  try { msg = JSON.parse(e.data).msg; } catch (err) { /* no payload */ }
   document.getElementById("error").textContent = msg;
   document.getElementById("error").style.display = "block";
   document.getElementById("back").style.display = "inline-block";
@@ -46,7 +84,7 @@ evtSource.addEventListener("error", function(e) {
   document.querySelector(".spinner").style.display = "none";
 });
 
-evtSource.onerror = function() {
+evtSource.onerror = function () {
   document.getElementById("status").textContent = "連線中斷，等待重連...";
 };
 </script>

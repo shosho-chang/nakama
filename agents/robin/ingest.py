@@ -448,10 +448,12 @@ class IngestPipeline:
         # P-4/P-5 共同前置（Prompt 規格 §1）：concept/entity 抽取掛 Centaur 鐵律
         # （防注入 + 紅線 + 語言）。紅線 5 的硬 enforcement 在 kb_writer 寫入時，
         # 這裡的 system 前置是 LLM 側的一道軟提示，兩道並存。
+        # 不傳 temperature：concept_merge 路由到的模型已 deprecate temperature 參數
+        # （傳了會 400 invalid_request_error，整條 ingest 卡在概念抽取）。對齊
+        # _generate_summary（同樣不傳、可正常運作）；JSON 抽取靠 prompt 規範即可。
         response = ask(
             prompt=prompt,
             system=_build_robin_system_prompt(centaur=True) + "\n\n回傳純 JSON，不要包含其他文字。",
-            temperature=0.2,
             task="concept_merge",
         )
 
