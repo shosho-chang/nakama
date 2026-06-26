@@ -146,3 +146,22 @@ def mark_status(
                 f"UPDATE book_ingest_queue SET {', '.join(updates)} WHERE book_id = ?",
                 params,
             )
+
+
+def ingested_book_ids() -> list[str]:
+    """Return book_ids whose ingest has completed (status='ingested'), oldest
+    completion first.
+
+    Used by the daily review to surface a finished book's accumulated
+    annotations as card candidates exactly once — the caller tracks which
+    books it has already proposed (KB/.centaur/book_ingest_proposed.json), so
+    this returns every ingested book on every call.
+    """
+    with _lock:
+        conn = _get_conn()
+        rows = conn.execute(
+            "SELECT book_id FROM book_ingest_queue"
+            " WHERE status = 'ingested'"
+            " ORDER BY completed_at ASC"
+        ).fetchall()
+        return [r["book_id"] for r in rows]

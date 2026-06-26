@@ -207,6 +207,36 @@ def test_mark_status_unknown_book_raises(book):
 
 
 # ---------------------------------------------------------------------------
+# ingested_book_ids — daily review consumes finished books (item 6)
+# ---------------------------------------------------------------------------
+
+
+def test_ingested_book_ids_only_returns_ingested(book):
+    """只回 status='ingested' 的書；queued / ingesting 不算。"""
+    from shared.book_storage import insert_book
+    from shared.schemas.books import Book
+
+    insert_book(
+        Book(
+            book_id="beta",
+            title="Beta",
+            author=None,
+            lang_pair="en-zh",
+            genre=None,
+            isbn=None,
+            published_year=None,
+            has_original=True,
+            book_version_hash="b" * 64,
+            created_at="2026-05-06T00:00:00+00:00",
+        )
+    )
+    enqueue("alpha")
+    mark_status("alpha", "ingested")
+    enqueue("beta")  # stays queued — must be excluded
+    assert book_queue.ingested_book_ids() == ["alpha"]
+
+
+# ---------------------------------------------------------------------------
 # Schema — BookIngestQueueEntry
 # ---------------------------------------------------------------------------
 
