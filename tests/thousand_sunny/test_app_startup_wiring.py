@@ -8,7 +8,7 @@ Brief §5 wiring tests:
 - WT3  ``GET /robin/promotion/`` returns 200 (not 503) after wiring.
 - WT4  ``GET /robin/writing-assist/{id_b64}`` for missing package → 404 (not 503).
 - WT5  ``DISABLE_ROBIN=1`` skips wiring.
-- WT6  Missing ``VAULT_PATH`` → startup raises.
+- WT6  Vault resolves via ``get_vault_path`` (config.yaml ∪ env); WT6b raises if unresolvable.
 - WT7  ``NAKAMA_PROMOTION_MODE=llm`` → startup wires the LLM-backed claim
         extractor (N519) and the promotion service (no raise).
 - WT8  Adapter modules expose no top-level instances.
@@ -184,22 +184,41 @@ def test_wt5_app_disable_robin_skips_wiring(tmp_path: Path, monkeypatch):
         assert wa_module._service is None
 
 
-# ── WT6 — bad config raises ─────────────────────────────────────────────────
+# ── WT6 — vault resolves via get_vault_path (config.yaml ∪ env); VPS 502 fix ──
 
 
-def test_wt6_app_bad_config_raises_when_vault_root_missing(tmp_path: Path, monkeypatch):
-    """Missing ``VAULT_PATH`` (with Robin enabled) must crash the
-    lifespan — silent fallback is forbidden by W4."""
-    monkeypatch.delenv("DISABLE_ROBIN", raising=False)
-    monkeypatch.delenv("VAULT_PATH", raising=False)
+def test_wt6_loader_resolves_vault_from_config_when_env_unset(tmp_path: Path, monkeypatch):
+    """Regression: ``load_promotion_wiring_config`` resolves the vault via
+    ``get_vault_path`` (``VAULT_PATH`` env OR ``config.yaml`` ``vault_path``),
+    NOT env-only. The VPS keeps ``vault_path`` in config.yaml and leaves the env
+    unset; the old env-only read crashed startup with a 502."""
+    from thousand_sunny import promotion_wiring
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.delenv("VAULT_PATH", raising=False)  # rely on config.yaml, like the VPS
     monkeypatch.setenv("NAKAMA_PROMOTION_MODE", "dry_run")
-    _disable_auth(monkeypatch)
+    # Stand in for "config.yaml vault_path set, env unset".
+    monkeypatch.setattr(promotion_wiring, "get_vault_path", lambda: vault)
 
-    app_module = _reload_app_modules()
+    cfg = promotion_wiring.load_promotion_wiring_config()
+    assert cfg.vault_root == vault
 
-    with pytest.raises(RuntimeError, match="VAULT_PATH"):
-        with TestClient(app_module.app):
-            pass
+
+def test_wt6b_loader_raises_when_vault_unresolvable(monkeypatch):
+    """Safety (W4): if neither env nor config.yaml yields a vault, the loader
+    must raise loudly — no silent fallback to a guessed path."""
+    from thousand_sunny import promotion_wiring
+
+    monkeypatch.delenv("VAULT_PATH", raising=False)
+
+    def _unresolvable():
+        raise KeyError("vault_path")
+
+    monkeypatch.setattr(promotion_wiring, "get_vault_path", _unresolvable)
+
+    with pytest.raises(RuntimeError, match="Vault path unresolved"):
+        promotion_wiring.load_promotion_wiring_config()
 
 
 # ── WT7 — NAKAMA_PROMOTION_MODE=llm wires the LLM extractor (N519) ──────────
