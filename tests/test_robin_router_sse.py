@@ -11,6 +11,7 @@ namespace，不是原始定義處。
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 from pathlib import Path
@@ -496,3 +497,90 @@ def test_events_exception_during_processing_yields_error_and_marks_session(
     sess = mod.sessions[sid]
     assert sess["step"] == "error"
     assert sess["error"] == "LLM down"
+
+
+# ---------------------------------------------------------------------------
+# _propose_source_cards — ingest 完成「當下」從來源劃線提案永久卡（async helper）
+# ---------------------------------------------------------------------------
+
+
+def test_propose_source_cards_empty_slug_returns_false(client):
+    """無 annotation_slug（如文章從 Inbox 丟進來）→ 直接 False，不碰收件匣。"""
+    _, mod = client
+    assert asyncio.run(mod._propose_source_cards("")) is False
+
+
+def test_propose_source_cards_no_annotation_file_returns_false(client, vault):
+    """來源沒在 Reader 讀過 → 無 KB/Annotations 檔 → collect 回空 → False。"""
+    _, mod = client
+    assert asyncio.run(mod._propose_source_cards("never-read-source")) is False
+
+
+def test_propose_source_cards_upserts_candidates_and_returns_true(client, vault, monkeypatch):
+    """有劃線 → build_candidates 出候選 → 寫進收件匣 → True。"""
+    _, mod = client
+    import agents.robin.daily_review as dr
+    from shared import candidate_inbox
+    from shared.schemas.daily_review import CandidateCard, SourceRef
+
+    monkeypatch.setattr(
+        dr,
+        "collect_source_items",
+        lambda v, *, slug: [
+            {
+                "slug": slug,
+                "anchor": "a1",
+                "quote": "睡眠鞏固記憶",
+                "note": "重點",
+                "type": "annotation",
+                "literature_path": f"KB/Literature/{slug}",
+            }
+        ],
+    )
+    monkeypatch.setattr(dr, "_read_index_text", lambda v: "idx")
+    card = CandidateCard(
+        candidate_id="cid-x",
+        suggested_title="睡眠如何鞏固記憶",
+        why="強訊號",
+        source_refs=[
+            SourceRef(anchor="a1", literature_path="KB/Literature/vid1", quote="q", note="n")
+        ],
+        edges=[],
+        priority=0,
+        strong_signal=True,
+    )
+    monkeypatch.setattr(dr, "build_candidates", lambda items, idx: ([card], []))
+
+    ok = asyncio.run(mod._propose_source_cards("vid1"))
+    assert ok is True
+    assert "cid-x" in {c.candidate_id for c in candidate_inbox.list_open()}
+
+
+def test_propose_source_cards_no_items_skips_build(client, vault, monkeypatch):
+    """collect 回空清單 → 不呼叫 P-1（build_candidates）→ False。"""
+    _, mod = client
+    import agents.robin.daily_review as dr
+
+    called = {"build": False}
+    monkeypatch.setattr(dr, "collect_source_items", lambda v, *, slug: [])
+
+    def _build(*a, **k):
+        called["build"] = True
+        return [], []
+
+    monkeypatch.setattr(dr, "build_candidates", _build)
+    ok = asyncio.run(mod._propose_source_cards("vid1"))
+    assert ok is False
+    assert called["build"] is False
+
+
+def test_propose_source_cards_swallows_exceptions(client, monkeypatch):
+    """提案 best-effort：底層拋例外也回 False，不沉已完成的 ingest。"""
+    _, mod = client
+    import agents.robin.daily_review as dr
+
+    def _boom(*a, **k):
+        raise RuntimeError("collect blew up")
+
+    monkeypatch.setattr(dr, "collect_source_items", _boom)
+    assert asyncio.run(mod._propose_source_cards("vid1")) is False
