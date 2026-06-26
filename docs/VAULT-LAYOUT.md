@@ -116,7 +116,7 @@ E:\Shosho LifeOS\
 │   ├── Raw/                原始證據層 (禁改 body)
 │   │   ├── Articles/         Robin ingest from Inbox/web
 │   │   ├── Papers/           Robin ingest (manual `Inbox/papers/` flow)
-│   │   ├── Books/            textbook-ingest Phase 0
+│   │   ├── Books/            route B 書本 ingest（{slug}.md：EPUB→text → IngestPipeline）
 │   │   ├── Podcasts/         (reserved, currently empty)
 │   │   ├── Videos/           Robin watchlist `{video_id}.vtt` (機器原始) + `{video_id}.md` (清理人讀稿, ADR-046 §Slice 0A)
 │   │   ├── Repos/            (reserved)
@@ -213,7 +213,7 @@ data/agent_reports/franky/
 | `Inbox/snapshots/` | 🤖 | 修修 drops .mhtml | (reserved, future mhtml ingest) | — |
 | `KB/Raw/Articles/{slug}.md` | 🤖 | Robin ingest from `Inbox/web/` | KB consumers, RCP builder | ADR-019 |
 | `KB/Raw/Papers/{slug}.md` | 🤖 | Robin manual ingest from `Inbox/papers/` | KB, Brook synthesize | ADR-019 |
-| `KB/Raw/Books/{book-id}.md` | 🤖 | textbook-ingest Phase 0 (lossless EPUB→md via ebooklib) | textbook-ingest Phase 1 LLM | ADR-020 §Phase 0 |
+| `KB/Raw/Books/{slug}.md` | 🤖 | route B 書本 ingest（`agents/robin/book_ingest.py`：EPUB→text via `shared/epub_text` → `IngestPipeline`；佇列 `shared/book_queue`，Reader「Ingest 整本書」入列） | `IngestPipeline` → `KB/Wiki/Sources/{slug}` + concepts | route B (Slice 4C) |
 | `KB/Raw/Videos/{video_id}.vtt` | 🤖 | Robin watchlist confirm `thousand_sunny/routers/robin.py` (yt-dlp caption moved here); path built by `shared/reading_source_registry.py:_resolve_youtube` (convention, not manifest) | AV reader `/robin/watchlist/{id}`, promotion preflight, `shared/video_source_map_builder.py` | ADR-046 §Slice 0A |
 | `KB/Raw/Videos/{video_id}.md` | 🤖 | Robin watchlist confirm + `scripts/backfill_video_transcript_md.py` → `shared/video_transcript_writer.py`（清理 `.vtt` 成時間碼段落人讀稿） | 人讀逐字稿；`/start-video` ingest 優先輸入（無則退回 `.vtt`） | ADR-046 + transcript cleaning |
 | `Watchlist/youtube/{video_id}/manifest.json` | 🤖 | Robin watchlist confirm (video registry entry: title/channel/cast/`transcript_path`) | `/robin/watchlist` lister `RegistryReadingSourceLister`, `ReadingSourceRegistry._resolve_youtube` | `shared/schemas/youtube_watchlist.py` |
