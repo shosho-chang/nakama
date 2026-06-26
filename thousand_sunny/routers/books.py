@@ -42,15 +42,6 @@ from shared.annotation_store import (
     list_annotation_conflicts,
     upgrade_to_v3,
 )
-from shared.book_queue import (
-    cancel as cancel_book,
-)
-from shared.book_queue import (
-    delete_queue_row,
-)
-from shared.book_queue import (
-    enqueue as enqueue_book,
-)
 from shared.book_storage import (
     BookStorageError,
     delete_book_files,
@@ -64,6 +55,7 @@ from shared.book_storage import (
 from shared.book_storage import (
     delete_book as delete_book_row,
 )
+from shared.config import get_vault_path
 from shared.epub_metadata import MalformedEPUBError, extract_metadata
 from shared.epub_sanitizer import EPUBStructureError, sanitize_epub
 from shared.log import get_logger
@@ -170,16 +162,6 @@ async def _legacy_book_reader_redirect(book_id: str):
 @legacy_router.get("/api/books/{book_id}")
 async def _legacy_book_metadata_redirect(book_id: str):
     return RedirectResponse(f"/robin/api/books/{book_id}", status_code=301)
-
-
-@legacy_router.post("/api/books/{book_id}/ingest-request")
-async def _legacy_ingest_request_redirect(book_id: str):
-    return RedirectResponse(f"/robin/api/books/{book_id}/ingest-request", status_code=308)
-
-
-@legacy_router.delete("/api/books/{book_id}/ingest-request")
-async def _legacy_delete_ingest_request_redirect(book_id: str):
-    return RedirectResponse(f"/robin/api/books/{book_id}/ingest-request", status_code=308)
 
 
 @legacy_router.get("/api/books/{book_id}/cover")
@@ -442,12 +424,15 @@ async def book_reader(
 
 
 def _ingest_status(book_id: str) -> str:
-    row = (
-        _get_conn()
-        .execute("SELECT status FROM book_ingest_queue WHERE book_id = ?", (book_id,))
-        .fetchone()
-    )
-    return row["status"] if row else "never"
+    """書本是否已 ingest。同步流程（/start-book → /processing）跑完會寫
+    KB/Wiki/Sources/{slug}.md，以該頁是否存在當權威（取代舊 ingest 佇列狀態，
+    PR 拆掉佇列後不再有 queued/ingesting/partial）。回 "ingested" / "never"。"""
+    book = get_book(book_id)
+    if book is None:
+        return "never"
+    slug = slugify(book.title) or book_id
+    src = get_vault_path() / "KB" / "Wiki" / "Sources" / f"{slug}.md"
+    return "ingested" if src.exists() else "never"
 
 
 @router.get("/api/books/{book_id}")
@@ -458,29 +443,6 @@ async def book_metadata(book_id: str, _auth=Depends(require_auth_or_key)):
     data = book.model_dump()
     data["ingest_status"] = _ingest_status(book_id)
     return data
-
-
-@router.post("/api/books/{book_id}/ingest-request")
-async def post_ingest_request(book_id: str, _auth=Depends(require_auth_or_key)):
-    book = get_book(book_id)
-    if book is None:
-        raise HTTPException(404, detail=f"book not found: {book_id}")
-    # Every book has a readable EPUB blob: has_original → original.epub (clean EN);
-    # otherwise the bilingual.epub blob, which for a monolingual-zh 中譯本 IS the
-    # Chinese text. The consumer (book_ingest.ingest_one) picks the blob by
-    # has_original — so a 中譯-only book is ingestable too (修修 回饋 item 5).
-    enqueue_book(book_id)
-    return {"ok": True}
-
-
-@router.delete("/api/books/{book_id}/ingest-request")
-async def delete_ingest_request(book_id: str, _auth=Depends(require_auth_or_key)):
-    """Cancel a queued ingest. 409 if the book is already ingesting/done."""
-    if get_book(book_id) is None:
-        raise HTTPException(404, detail=f"book not found: {book_id}")
-    if not cancel_book(book_id):
-        raise HTTPException(409, detail="ingest cannot be cancelled (not queued)")
-    return {"ok": True}
 
 
 @router.get("/api/books/{book_id}/cover")
@@ -500,14 +462,12 @@ async def book_cover(book_id: str, _auth=Depends(require_auth_or_key)):
 
 @router.delete("/api/books/{book_id}")
 async def delete_book_endpoint(book_id: str, nakama_auth: str | None = Cookie(None)):
-    """Remove the book entirely — DB rows (books / queue / progress), EPUB blobs,
-    and the annotation file. Idempotent on partial state."""
+    """Remove the book entirely — DB rows (books / progress), EPUB blobs, and the
+    annotation file. Idempotent on partial state."""
     if not check_auth(nakama_auth):
         raise HTTPException(403, detail="not authenticated")
     if get_book(book_id) is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
-
-    delete_queue_row(book_id)
 
     conn = _get_conn()
     with _progress_write_lock, conn:

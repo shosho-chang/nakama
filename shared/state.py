@@ -395,10 +395,10 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (book_id) REFERENCES books(book_id) ON DELETE CASCADE
         );
 
-        -- Slice 4A: ingest queue for background textbook ingestion.
+        -- DEPRECATED (route B v2): 書本 ingest 改走同步 /start-book → /processing，
+        -- 與文章/影片同一條；佇列碼（shared/book_queue.py + book_ingest consumer）已移除。
+        -- 此表保留供既有 DB 的歷史列，books FK CASCADE 在刪書時自動清理；新流程不寫入。
         -- Canonical DDL: migrations/011_book_ingest_queue.sql.
-        -- Owned by shared/book_queue.py; consumed by queue_processor CLI (Slice 4C).
-        -- PK on book_id: at most one active queue row per book.
         CREATE TABLE IF NOT EXISTS book_ingest_queue (
             book_id        TEXT PRIMARY KEY,
             status         TEXT NOT NULL DEFAULT 'queued'

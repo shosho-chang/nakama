@@ -32,9 +32,11 @@ from shared.annotation_store import (
     get_annotation_store,
     upgrade_to_v3,
 )
+from shared.book_raw import prepare_book_raw
 from shared.book_storage import list_books
 from shared.config import get_agent_config, get_vault_path
 from shared.discard_service import DiscardService
+from shared.epub_text import EPUBTextError
 from shared.llm_context import set_current_agent
 from shared.log import get_logger
 from shared.reading_source_lister import RegistryReadingSourceLister
@@ -1060,6 +1062,54 @@ async def start_video(
         source_type=source_type,
         content_nature=content_nature,
         annotation_slug=f"youtube_{video_id}",
+        summary_body="",
+        summary_path="",
+        plan={"concepts": [], "entities": []},
+        error="",
+    )
+
+    response = RedirectResponse("/processing", status_code=302)
+    response.set_cookie("robin_session", sid, httponly=True)
+    if nakama_auth:
+        response.set_cookie("nakama_auth", nakama_auth, httponly=True)
+    return response
+
+
+@router.post("/start-book")
+async def start_book(
+    book_id: str = Form(...),
+    content_nature: str = Form("popular_science"),
+    nakama_auth: str | None = Cookie(None),
+):
+    """書本 ingest 入口（Centaur route B，同步）。
+
+    EPUB → 攤平文字 → KB/Raw/Books/{slug}.md（``prepare_book_raw``），再走與文章/影片
+    相同的 /processing → SSE 自動流程（摘要→概念→寫入→開卡建議）。3–5 分鐘 + 進度條，
+    取代舊的 ingest 佇列 + cron consumer（修修回饋：不想為書本多一個排程）。
+
+    annotation_slug=book_id：executing 完成後從整本劃線提案永久卡
+    （``collect_source_items(book_id)``）。file_path 留空、keep_raw=True：KB/Raw/Books
+    是衍生檔（可由 EPUB 重生），cancel / executing 都不回收。
+    """
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login", status_code=302)
+
+    try:
+        raw_path = await asyncio.to_thread(prepare_book_raw, book_id)
+    except LookupError:
+        raise HTTPException(404, detail=f"找不到書本：{book_id}") from None
+    except EPUBTextError as exc:
+        raise HTTPException(422, detail=f"這本書無法抽取文字：{exc}") from exc
+
+    sid = _new_session(
+        step="summarizing",
+        file_name=Path(raw_path).name,
+        file_path="",  # 無 Inbox 來源檔 → executing 不回收原檔
+        raw_path=str(raw_path),
+        keep_raw=True,  # KB/Raw/Books 衍生檔，cancel 不回收
+        source_type="book",
+        content_nature=content_nature,
+        annotation_slug=book_id,  # 整本劃線提案用（collect_source_items）
         summary_body="",
         summary_path="",
         plan={"concepts": [], "entities": []},
