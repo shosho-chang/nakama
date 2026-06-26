@@ -465,8 +465,10 @@ async def post_ingest_request(book_id: str, _auth=Depends(require_auth_or_key)):
     book = get_book(book_id)
     if book is None:
         raise HTTPException(404, detail=f"book not found: {book_id}")
-    if not book.has_original:
-        raise HTTPException(400, detail="book has no original EN file to ingest")
+    # Every book has a readable EPUB blob: has_original → original.epub (clean EN);
+    # otherwise the bilingual.epub blob, which for a monolingual-zh 中譯本 IS the
+    # Chinese text. The consumer (book_ingest.ingest_one) picks the blob by
+    # has_original — so a 中譯-only book is ingestable too (修修 回饋 item 5).
     enqueue_book(book_id)
     return {"ok": True}
 

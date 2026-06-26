@@ -249,7 +249,6 @@ async function fetchBookMetadata() {
     const meta = await r.json();
     if (meta.book_version_hash) bookVersionHash = meta.book_version_hash;
     applyIngestState({
-      has_original: meta.has_original === true,
       ingest_status: typeof meta.ingest_status === 'string' ? meta.ingest_status : 'never',
     });
   } catch (err) {
@@ -941,9 +940,10 @@ document.addEventListener('click', e => dismissSidebarsOnOutsideClick(e.target))
 
 // ── Ingest button (Slice 4D) ─────────────────────────────────────────────────
 //
-// Reader-side trigger for the whole-book ingest pipeline (Slices 4A–4C). The
-// button is gated on `has_original` — uploads without an EN original cannot be
-// ingested, so we surface an inline tooltip instead of a silent disabled state.
+// Reader-side trigger for the whole-book ingest pipeline (Slices 4A–4C). Every
+// book is ingestable — has_original reads the EN original.epub, a monolingual-zh
+// 中譯本 reads its Chinese bilingual.epub blob (修修 回饋 item 5) — so the button is
+// no longer gated on has_original; enablement is driven by ingest_status alone.
 // On 200 we lock the button into the "Queued" state; the badge on the library
 // page is the source of truth for downstream status (ingesting / ingested /
 // partial / failed). Single user, manual refresh — no polling here.
@@ -955,16 +955,10 @@ const ingestWrap = document.getElementById('ingestWrap');
 // click handler which API to call. queued is the only cancellable state — once
 // the LLM ingest starts (status='ingesting') the API refuses (409) since the
 // background job can't be aborted mid-run.
-function applyIngestState({ has_original, ingest_status }) {
+function applyIngestState({ ingest_status }) {
   if (!ingestBtn || !ingestWrap) return;
   ingestBtn.classList.remove('is-queued');
   ingestBtn.dataset.mode = 'ingest';
-  if (!has_original) {
-    ingestBtn.disabled = true;
-    ingestBtn.textContent = '📥 Ingest 整本書';
-    ingestWrap.setAttribute('data-disabled-reason', '上傳 EN 原檔以啟用 ingest');
-    return;
-  }
   ingestWrap.removeAttribute('data-disabled-reason');
   if (ingest_status === 'queued') {
     ingestBtn.disabled = false;

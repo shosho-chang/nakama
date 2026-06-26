@@ -4,7 +4,8 @@ Behavior:
 
 - POST a book that exists with ``has_original=True`` → 200, queue row created
   (status="queued").
-- POST a book that exists with ``has_original=False`` → 400, no queue row.
+- POST a book that exists with ``has_original=False`` (中譯-only) → 200, queue row
+  created — the consumer reads its Chinese ``bilingual.epub`` blob (item 5).
 - POST a missing book → 404.
 - POST same book twice in a row → idempotent (only one queued row).
 - The route MUST also gate behind the existing ``check_auth`` cookie like the
@@ -95,15 +96,21 @@ def test_post_ingest_request_idempotent_double_post(app_client):
     assert len(rows) == 1
 
 
+def test_post_ingest_request_without_original_creates_queue_row(app_client):
+    """中譯-only 書（無 EN 原檔，has_original=False）現在也可 ingest（讀中文 blob）——
+    修修 回饋 item 5：不再回 400。"""
+    _upload(app_client, "alpha", with_original=False)
+    r = app_client.post("/robin/api/books/alpha/ingest-request")
+    assert r.status_code == 200, r.text
+
+    from shared.book_queue import next_queued
+
+    assert next_queued() == "alpha"
+
+
 # ---------------------------------------------------------------------------
 # POST failure paths
 # ---------------------------------------------------------------------------
-
-
-def test_post_ingest_request_book_without_original_returns_400(app_client):
-    _upload(app_client, "alpha", with_original=False)
-    r = app_client.post("/robin/api/books/alpha/ingest-request")
-    assert r.status_code == 400
 
 
 def test_post_ingest_request_book_missing_returns_404(app_client):
