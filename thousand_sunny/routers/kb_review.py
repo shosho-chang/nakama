@@ -45,10 +45,15 @@ logger = get_logger("nakama.web.kb_review")
 router = APIRouter(prefix="/kb")
 
 _TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
-templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT / "kb")])
-# Overview (/kb) wears the chassis nav, so its env searches the templates root
-# (resolves both "kb/overview.html" and "bridge/_chassis_nav.html"). The review
-# page keeps the chrome-less `templates` env above untouched.
+# The review page (daily_review.html) now wears the chassis nav too — 修修 回饋
+# 「KB 回顧頁沒有導覽列、回不去」。So this env must resolve "bridge/_chassis_nav.html"
+# alongside the kb templates. Mirror the robin router's [own-dir, bridge] search
+# path (robin.py) rather than hardcode the partial elsewhere.
+templates = Jinja2Templates(
+    directory=[str(_TEMPLATE_ROOT / "kb"), str(_TEMPLATE_ROOT / "bridge")]
+)
+# Overview (/kb) wears the chassis nav via a root-rooted env (resolves both
+# "kb/overview.html" and "bridge/_chassis_nav.html").
 _chrome_templates = Jinja2Templates(directory=[str(_TEMPLATE_ROOT)])
 
 # typed-edge 中文 label（v0.2 §3 inline field）。

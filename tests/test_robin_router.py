@@ -327,16 +327,20 @@ def test_resolve_reader_base_rejects_unknown(client):
 # ---------------------------------------------------------------------------
 
 
-def test_index_dev_mode_returns_html(client):
+def test_index_redirects_to_weekly(client):
+    """`/` 一律重導到週看板（首頁＝修修每日落點）。Robin 收件匣改住 /robin，
+    所以這裡無條件 302 不會孤兒。與 VPS 模式（app.py else 分支）對齊。"""
     tc, _ = client
     r = tc.get("/")
-    assert r.status_code == 200
-    assert "text/html" in r.headers.get("content-type", "")
+    assert r.status_code == 302
+    assert r.headers["location"] == "/bridge/weekly"
 
 
-def test_index_redirects_when_auth_required_no_cookie(auth_client):
+def test_robin_inbox_redirects_when_auth_required_no_cookie(auth_client):
+    """登入守門：`/` 已改為無條件重導 /bridge/weekly，所以未登入的 /login 守門
+    移到各實際頁面 —— Robin 收件匣 /robin 未登入應帶 ?next=/robin redirect 到 /login。"""
     tc, _, _ = auth_client
-    r = tc.get("/")
+    r = tc.get("/robin")
     assert r.status_code == 302
     assert "/login" in r.headers["location"]
 

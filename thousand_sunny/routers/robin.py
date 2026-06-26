@@ -300,15 +300,17 @@ def _render_inbox(request: Request) -> HTMLResponse:
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, nakama_auth: str | None = Cookie(None)):
-    # Per-machine landing override: ROBIN_INDEX_REDIRECT=/bridge makes / land
-    # on Bridge dashboard instead of Robin Inbox (local dev where Bridge is
-    # the canonical control plane). Default unset preserves Robin-as-home.
-    override = os.environ.get("ROBIN_INDEX_REDIRECT")
-    if override:
-        return RedirectResponse(override, status_code=302)
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/", status_code=302)
-    return _render_inbox(request)
+    # Home = the weekly dashboard (修修's daily landing). Robin's inbox keeps its
+    # own stable entry at /robin (chassis-nav), so landing here on Weekly orphans
+    # nothing. This mirrors the VPS-mode redirect in app.py and is robust whether
+    # or not DISABLE_ROBIN is set — previously, with Robin running (VPS or local),
+    # this handler won the `/` route and dumped users on the Robin inbox instead.
+    # ROBIN_INDEX_REDIRECT overrides the target (e.g. =/robin to restore
+    # Robin-as-home on a machine where that's wanted).
+    # `or` (not dict-default): an env var set to "" must still fall back to
+    # Weekly, not redirect to an empty Location.
+    target = os.environ.get("ROBIN_INDEX_REDIRECT") or "/bridge/weekly"
+    return RedirectResponse(target, status_code=302)
 
 
 @robin_router.get("", response_class=HTMLResponse)

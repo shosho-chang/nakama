@@ -11,11 +11,10 @@ body.sho{margin:0;background:var(--sho-bg);color:var(--sho-text);font-family:var
 .vhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
 .vhead h1{font-size:24px;font-weight:800;color:var(--sho-ink);margin:0;letter-spacing:-.01em}
 .vhead .meta{font-size:12.5px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
-/* 隨手開新卡（缺口 A）：header 右側 ghost 鈕。沿用 tokens——本頁未載入 brid.css，
-   不能依賴 .sho-btn base（見 kb_canvas.css 註）。 */
-.kb-newcard{margin-left:auto;align-self:center;font-family:inherit;font-size:13px;font-weight:600;color:var(--sho-accent);background:var(--sho-bg-2);border:1px solid var(--sho-line-2);border-radius:var(--sho-r-1);padding:7px 14px;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
-.kb-newcard:hover{background:var(--sho-bg-3);border-color:var(--sho-accent)}
-.kb-newcard:focus-visible{outline:none;box-shadow:var(--sho-focus)}
+/* 隨手開新卡（缺口 A）：header 右側鈕。本頁現在載入 bridge.css（為了 chassis 導覽列），
+   設計系統的 .sho-btn / .sho-btn--ghost base 已可用 → 改用設計系統按鈕（見
+   daily_review.html），此處只補在 .vhead 內靠右 + 垂直置中。 */
+.kb-newcard{margin-left:auto;align-self:center}
 .vsub{font-size:13px;color:var(--sho-text-2);margin:0 0 28px}
 
 /* warnings banner */
